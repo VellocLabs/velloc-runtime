@@ -1,0 +1,4 @@
+{
+  "_comment": "Managed-binary download registry, served same-origin and published to the host at boot (model.publishBinaryRegistry). Edit this file to update the pinned set online WITHOUT rebuilding the host. SECURITY: each `url` is fetched by the host and verified against its `sha256` before execution — update BOTH together, and only point `url` at trusted release assets. Mirrors the host's compiled-in fallback registry (src/custom_browser/browser/nexus/binaries/nexus_binary_registry.cc). EMPTY on purpose: ripgrep ships with the Windows installer next to chrome.dll and is not downloaded; the mechanism stays for future binaries. Entry shape: { id, label?, version?, assets: [{ platform: win32|darwin|linux, arch: x64|arm64, url, sha256, format: zip|tar.gz, member }] }.",
+  "binaries": []
+}

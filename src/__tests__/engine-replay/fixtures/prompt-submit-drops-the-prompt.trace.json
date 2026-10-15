@@ -1,0 +1,74 @@
+{
+  "modelRequests": [],
+  "modelResponses": [],
+  "transport": [],
+  "retryDelays": [],
+  "toolCalls": [],
+  "permissions": [],
+  "hooks": [],
+  "mods": [
+    {
+      "event": "ready"
+    },
+    {
+      "event": "prompt.submit",
+      "payload": {
+        "text": "here is my secret",
+        "outcome": {
+          "entered": false,
+          "reason": "Prompts mentioning secrets are blocked."
+        }
+      }
+    }
+  ],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "system",
+          "subtype": "informational",
+          "uuid": "<id:1>"
+        }
+      ],
+      "total": 1
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "here is my secret"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "system",
+      "subtype": "informational",
+      "uuid": "<id:1>"
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "uuid": "<id:2>",
+      "result": "",
+      "is_error": false
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "success"
+  },
+  "notes": []
+}

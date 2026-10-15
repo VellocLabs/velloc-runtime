@@ -1,0 +1,5 @@
+export * from './types'
+export { normalizeModelId, buildIdIndex } from './catalogMatch'
+export { createModelCatalog, type ModelCatalog } from './modelCatalog'
+export { createModelCatalogService } from './createModelCatalogService'
+export type { CatalogHttp } from './catalogFetcher'

@@ -1,0 +1,90 @@
+{
+  "modelRequests": [],
+  "modelResponses": [],
+  "transport": [],
+  "retryDelays": [],
+  "toolCalls": [],
+  "permissions": [],
+  "hooks": [],
+  "mods": [],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": "/frobnicate now"
+        },
+        {
+          "type": "system",
+          "subtype": "informational",
+          "uuid": "<id:1>",
+          "content": "Unknown command: /frobnicate",
+          "slashCommand": {
+            "name": "frobnicate",
+            "args": "now"
+          },
+          "level": "info"
+        }
+      ],
+      "total": 2
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "/frobnicate now"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "user",
+      "uuid": "prompt-1",
+      "isMeta": false,
+      "role": "user",
+      "content": "/frobnicate now"
+    },
+    {
+      "type": "system",
+      "subtype": "informational",
+      "uuid": "<id:1>",
+      "content": "Unknown command: /frobnicate",
+      "slashCommand": {
+        "name": "frobnicate",
+        "args": "now"
+      },
+      "level": "info"
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "uuid": "<id:2>",
+      "result": "",
+      "is_error": false
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "success"
+  },
+  "notes": [
+    {
+      "processUserInput": "/frobnicate now"
+    }
+  ]
+}

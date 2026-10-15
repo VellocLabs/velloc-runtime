@@ -1,0 +1,1 @@
+Before a command that changes system state — a restart, a delete, a config edit — make sure the evidence actually supports that particular action. A symptom that looks like a familiar failure can have a different cause.

@@ -1,0 +1,47 @@
+name: CI
+
+# Gates `main`. Nothing here deploys: a deploy is a manual `workflow_dispatch`
+# (build-beta.yml -> promote-production.yml), so this is all a push runs. (G-3)
+# `beta` and `release` stay in the trigger list while those branches exist.
+
+on:
+  push:
+    branches: [main, beta, release]
+  pull_request:
+    branches: [main]
+
+# Declared explicitly, not inherited. The repository default has to be
+# read/write so promote-production.yml can create a Release (a workflow's
+# `permissions:` block cannot exceed the repository default — a restricted
+# default makes `contents: write` a 403 at release-creation time). That default
+# would otherwise hand a write token to every workflow that says nothing,
+# including this one, which only ever needs to read the checkout.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # Must match NODE_VERSION on both Cloudflare Workers Builds projects.
+          # CI only predicts the deploy if it runs the same major.
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # Compiles with VERSIONED_DEPLOY=1, which is how `deploy:stage` builds the
+      # current /v<N>/ — a plain `vite build` would not catch a base-path break.
+      - run: npm run build:versioned

@@ -1,0 +1,106 @@
+name: C · Rollback Production
+
+# Restores a previously published release to app.velloc.app by redeploying its
+# archived bytes; never a rebuild of an old tag (toolchain and deps drift).
+# The Cloudflare dashboard rollback is faster for a fresh regression, but not
+# right after an interface bump: the previous version serves only the older
+# /v<N>/ and 404s every binary on the newer one. This workflow refuses that
+# case. (G-3)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Published release to restore, e.g. runtime-v1-2026.07.18.1'
+        required: true
+      reason:
+        description: 'Why (incident, regression, …) — recorded in the run summary'
+        required: true
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'runtime.zip' --pattern 'manifest.json' \
+            --pattern 'SHA256SUMS' --dir artifact
+
+      - name: Verify integrity
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          # A corrupted or tampered archive must abort BEFORE it reaches
+          # production — a bad rollback during an incident is the worst
+          # possible time to discover an unverified asset.
+          (cd artifact && sha256sum -c SHA256SUMS)
+          V=$(jq -r .interfaceVersion artifact/manifest.json)
+          unzip -q artifact/runtime.zip -d candidate
+          test -f "candidate/site/v$V/index.html"
+          test -f candidate/wrangler.toml
+          grep -q "/v$V/assets/" "candidate/site/v$V/index.html"
+          # A release from before an interface bump has no /v<newer>/ tree:
+          # deploying it would 404 every binary on the newer interface. Only
+          # releases of the newest published interface may be restored.
+          NEWEST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 \
+                     --json tagName --jq '[.[].tagName
+                       | select(test("^runtime-v[0-9]+-"))
+                       | capture("^runtime-v(?<v>[0-9]+)-").v | tonumber]
+                       | max // 0')
+          if [ "$V" -lt "$NEWEST" ]; then
+            echo "::error::$RELEASE_TAG is interface v$V; production serves v$NEWEST — restoring it would drop /v$NEWEST/"
+            exit 1
+          fi
+          {
+            echo "interface_version=$V"
+            echo "candidate_id=$(jq -r .candidateId artifact/manifest.json)"
+            echo "source_commit=$(jq -r .sourceCommit artifact/manifest.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4.120.0 deploy --config candidate/wrangler.toml
+
+      - name: Summary
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          REASON: ${{ inputs.reason }}
+          V: ${{ steps.meta.outputs.interface_version }}
+          CANDIDATE_ID: ${{ steps.meta.outputs.candidate_id }}
+          SOURCE_COMMIT: ${{ steps.meta.outputs.source_commit }}
+        run: |
+          {
+            echo "## Rollback to \`$RELEASE_TAG\`"
+            echo
+            echo '| | |'
+            echo '|---|---|'
+            echo "| Reason | $REASON |"
+            echo "| Candidate | \`$CANDIDATE_ID\` |"
+            echo "| Source commit | \`$SOURCE_COMMIT\` |"
+            echo
+            echo "Verify: <https://app.velloc.app/v$V/build-info.json> must report"
+            echo "\`candidateId: $CANDIDATE_ID\`."
+            echo
+            echo "Note: the GitHub \"latest release\" marker is unchanged — it still"
+            echo "points at the newest promote, which is no longer what production"
+            echo "serves. build-info.json is the source of truth for what is live."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,1 @@
+Renders INTERACTIVE UI, not plain text: forms, inputs, choices/confirmations, dashboards, settings panels, wizards, with data binding and validation. Activate when clicking, typing or toggling beats a written reply; then use a2ui_* tools.

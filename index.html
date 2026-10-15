@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en" style="height: 100%; margin: 0;">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Velloc Code</title>
+    <!-- Theme before first paint: sets the `dark` class on <html> before the
+         deferred module entry's live listener (hostColorScheme.ts) runs, so a
+         dark host paints no white frame. Render-blocking on purpose; the <meta>
+         declares both schemes. Pinned by guest-prepaint-theme.test.ts. -->
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
+    <link rel="icon" type="image/png" href="/product_logo_128.png" />
+    <!-- Fonts are self-hosted (@fontsource-variable/geist{,-mono}, imported by
+         src/glic/main.tsx, emitted as content-hashed /assets/). No external font
+         origin may appear here: first paint must not wait on a third-party
+         origin. Pinned by guest-fonts-selfhosted.test.ts. -->
+    <style>
+      :root {
+        --font-geist-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        --font-geist-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      html, body, #app {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      /* Pre-stylesheet ground: Chrome's TOOLBAR colour (the --toolbar token's
+         fallbacks: light #ffffff, dark #3c3c3c) — the same neutral the host
+         paints around this webview until the real theme lands, so the
+         intermediate frames are one colour. The final --background (dark
+         #1f1f1f) takes over as soon as the stylesheet applies. */
+      html {
+        background: light-dark(#ffffff, #3c3c3c);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      // Boot instrumentation. This inline script runs synchronously the
+      // moment the HTML parser reaches it — i.e. effectively "React
+      // bundle's HTML document started executing". Captured before the
+      // module script below begins fetching/parsing. Compared against
+      // the C++ side's NexusViewContainer construction time (via the
+      // nexus.ui.getBootTimings bridge action), this attributes how
+      // much of the pre-React boot is chrome://glic + inner webview
+      // spawn + React bundle download.
+      //
+      // We additionally capture DOMContentLoaded (after the parser is
+      // done with the document and all sync/defer scripts ran) so we
+      // can see how much time module-import resolution took separately
+      // from the post-mount React work.
+      //
+      // See MultiSessionShell.tsx → boot.guestReady.signaled for the
+      // trace event that aggregates all boot marks.
+      window.__nexusBootMarks = window.__nexusBootMarks || {};
+      window.__nexusBootMarks.htmlParsedMs = Date.now();
+      // Plan N′ — pull pre-navigation timing marks stamped into the URL
+      // hash by chrome://glic's nexus_boot.ts. Hash fragment chosen over
+      // search params because the search-param variant broke the boot —
+      // some path along webview validation / loadcommit / Vite serve
+      // was tripping on the extra params. The hash is invisible to all
+      // network and validation layers but readable from JS via
+      // window.location.hash.
+      try {
+        var __nexusBootHash = (window.location.hash || '').replace(/^#/, '');
+        var __nexusBootParams = new URLSearchParams(__nexusBootHash);
+        var __glicMainStarted = Number(__nexusBootParams.get('glicMainStartedMs'));
+        var __webviewSrcSet = Number(__nexusBootParams.get('webviewSrcSetMs'));
+        if (Number.isFinite(__glicMainStarted) && __glicMainStarted > 0) {
+          window.__nexusBootMarks.glicMainStartedMs = __glicMainStarted;
+        }
+        if (Number.isFinite(__webviewSrcSet) && __webviewSrcSet > 0) {
+          window.__nexusBootMarks.webviewSrcSetMs = __webviewSrcSet;
+        }
+      } catch (_) { /* URL parsing unavailable; ignore */ }
+      document.addEventListener('DOMContentLoaded', function() {
+        window.__nexusBootMarks.domContentLoadedMs = Date.now();
+      }, { once: true });
+      window.addEventListener('load', function() {
+        window.__nexusBootMarks.windowLoadMs = Date.now();
+        // After the critical boot work is done, schedule a background
+        // cache update with a 5 s delay so it never competes with the
+        // React bundle or the SharedWorker handshake. The deferred
+        // backgroundCacheUpdate chunk registered the helper on window.
+        setTimeout(function() {
+          if (window.__runBackgroundCacheUpdate) {
+            window.__runBackgroundCacheUpdate();
+          }
+        }, 5000);
+      }, { once: true });
+    </script>
+    <!-- The runtime SharedWorker is warmed by src/glic/warmSharedWorker.ts.
+         It is injected as a SEPARATE early <script> into <head> by the
+         injectWarmSharedWorker Vite plugin (vite.config.ts). A second <script>
+         tag here would instead be folded into the main entry chunk by Vite's
+         HTML handling and lose its head start. The warm script shares the
+         canonical createBrowserRuntimeSharedWorker factory, so the worker it
+         starts is the same instance nexusBoot later connects to. -->
+    <script type="module" src="/src/glic/main.tsx"></script>
+    <!-- The background cache updater (src/glic/backgroundCacheUpdate.ts) is
+         injected as a SEPARATE deferred <script> by the
+         injectBackgroundCacheUpdate Vite plugin (vite.config.ts).  It is a
+         content-hashed chunk under /assets/ — immutable, never revalidated. -->
+  </body>
+</html>

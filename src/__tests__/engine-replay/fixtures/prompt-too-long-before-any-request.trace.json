@@ -1,0 +1,36 @@
+{
+  "modelRequests": [],
+  "modelResponses": [],
+  "transport": [],
+  "retryDelays": [],
+  "toolCalls": [],
+  "permissions": [],
+  "hooks": [],
+  "mods": [],
+  "sessionWrites": [],
+  "emitted": [
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:1>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Prompt is too long for the selected model context window. Try /compact or start a new conversation."
+        }
+      ],
+      "isApiErrorMessage": true,
+      "apiError": "prompt_too_long",
+      "error": "invalid_request"
+    }
+  ],
+  "hostPushes": [],
+  "terminal": {
+    "reason": "prompt_too_long",
+    "turnCount": 1
+  },
+  "notes": []
+}

@@ -1,0 +1,102 @@
+{
+  "modelRequests": [],
+  "modelResponses": [],
+  "transport": [],
+  "retryDelays": [],
+  "toolCalls": [],
+  "permissions": [],
+  "hooks": [
+    {
+      "event": "UserPromptSubmit",
+      "command": "hook UserPromptSubmit",
+      "stdin": {
+        "session_id": "session-replay",
+        "cwd": "/workspace",
+        "hook_event_name": "UserPromptSubmit",
+        "permission_mode": "default",
+        "prompt": "my password is hunter2"
+      }
+    }
+  ],
+  "mods": [],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": "my password is hunter2"
+        }
+      ],
+      "total": 1
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:1>",
+          "isMeta": true,
+          "role": "user",
+          "content": "[UserPromptSubmit hook]: [hook UserPromptSubmit]: No secrets in prompts."
+        }
+      ],
+      "total": 2
+    },
+    {
+      "op": "terminal",
+      "reason": "prompt_rejected"
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "my password is hunter2"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:1>",
+      "isMeta": true,
+      "role": "user",
+      "content": "[UserPromptSubmit hook]: [hook UserPromptSubmit]: No secrets in prompts."
+    },
+    {
+      "type": "result",
+      "subtype": "error_prompt_rejected",
+      "uuid": "<id:2>",
+      "is_error": true,
+      "terminal": {
+        "reason": "prompt_rejected"
+      }
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "error_prompt_rejected",
+    "terminal": {
+      "reason": "prompt_rejected"
+    }
+  },
+  "notes": [
+    {
+      "processUserInput": "my password is hunter2"
+    }
+  ]
+}

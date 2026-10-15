@@ -1,0 +1,800 @@
+{
+  "modelRequests": [
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "work"
+        }
+      ],
+      "systemPrompt": [
+        "You are running inside the chromium-runtime sidecar project.",
+        {
+          "digest": "dfe5065275b98281fa1a93a5aa4e039cc219a1ad4e476d9c605b66fb49f6c821",
+          "chars": 8790
+        }
+      ],
+      "userContext": {},
+      "systemContext": {},
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": [
+        {
+          "type": "function",
+          "name": "Act",
+          "description": "Act test tool.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "work"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call-1",
+              "toolName": "Act",
+              "args": {
+                "value": "call-1"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": [
+            {
+              "type": "tool-result",
+              "toolCallId": "call-1",
+              "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-1\"}}"
+            }
+          ]
+        }
+      ],
+      "systemPrompt": "<same as previous request>",
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": "<same as previous request>",
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "work"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call-1",
+              "toolName": "Act",
+              "args": {
+                "value": "call-1"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": [
+            {
+              "type": "tool-result",
+              "toolCallId": "call-1",
+              "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-1\"}}"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call-2",
+              "toolName": "Act",
+              "args": {
+                "value": "call-2"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": [
+            {
+              "type": "tool-result",
+              "toolCallId": "call-2",
+              "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-2\"}}"
+            }
+          ]
+        }
+      ],
+      "systemPrompt": "<same as previous request>",
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": "<same as previous request>",
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "work"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call-1",
+              "toolName": "Act",
+              "args": {
+                "value": "call-1"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": [
+            {
+              "type": "tool-result",
+              "toolCallId": "call-1",
+              "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-1\"}}"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call-2",
+              "toolName": "Act",
+              "args": {
+                "value": "call-2"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": [
+            {
+              "type": "tool-result",
+              "toolCallId": "call-2",
+              "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-2\"}}"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call-3",
+              "toolName": "Act",
+              "args": {
+                "value": "call-3"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": [
+            {
+              "type": "tool-result",
+              "toolCallId": "call-3",
+              "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-3\"}}"
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": {
+                "digest": "5684d414109d7fddf8071444af4c9c96806f216da7638779a5f22353e14c2ea2",
+                "chars": 315
+              }
+            }
+          ]
+        }
+      ],
+      "systemPrompt": "<same as previous request>",
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": "<same as previous request>",
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "user: work\nassistant: Done."
+        }
+      ],
+      "systemPrompt": {
+        "digest": "9bd7b777c9079cb499769cd5aa8912b6f7bd9fdeac5be66a155b74d4c4d07b5b",
+        "chars": 359
+      },
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "providerId": "anthropic",
+      "model": "claude-haiku-4-5",
+      "maxOutputTokens": 32000,
+      "tools": [],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "rename_generate_name",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "title",
+        "querySource": "rename_generate_name"
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "request": 1,
+      "reply": "round-1",
+      "querySource": "sdk"
+    },
+    {
+      "request": 2,
+      "reply": "round-2",
+      "querySource": "sdk"
+    },
+    {
+      "request": 3,
+      "reply": "round-3",
+      "querySource": "sdk"
+    },
+    {
+      "request": 4,
+      "reply": "done",
+      "querySource": "sdk"
+    },
+    {
+      "request": 5,
+      "reply": "title",
+      "querySource": "rename_generate_name"
+    }
+  ],
+  "transport": [
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead"
+  ],
+  "retryDelays": [],
+  "toolCalls": [
+    {
+      "event": "start",
+      "tool": "Act",
+      "id": "call-1",
+      "inFlight": [
+        "call-1"
+      ]
+    },
+    {
+      "event": "end",
+      "tool": "Act",
+      "id": "call-1"
+    },
+    {
+      "event": "start",
+      "tool": "Act",
+      "id": "call-2",
+      "inFlight": [
+        "call-2"
+      ]
+    },
+    {
+      "event": "end",
+      "tool": "Act",
+      "id": "call-2"
+    },
+    {
+      "event": "start",
+      "tool": "Act",
+      "id": "call-3",
+      "inFlight": [
+        "call-3"
+      ]
+    },
+    {
+      "event": "end",
+      "tool": "Act",
+      "id": "call-3"
+    }
+  ],
+  "permissions": [],
+  "hooks": [],
+  "mods": [],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": "work"
+        }
+      ],
+      "total": 1
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:1>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call-1",
+              "toolName": "Act",
+              "args": {
+                "value": "call-1"
+              }
+            }
+          ],
+          "stop_reason": "tool_use"
+        }
+      ],
+      "total": 2
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:2>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-1\"}}",
+              "toolCallId": "call-1"
+            }
+          ],
+          "toolUseResult": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-1\"}}",
+          "sourceToolAssistantUUID": "<id:1>"
+        }
+      ],
+      "total": 3
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:3>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call-2",
+              "toolName": "Act",
+              "args": {
+                "value": "call-2"
+              }
+            }
+          ],
+          "stop_reason": "tool_use"
+        }
+      ],
+      "total": 4
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:4>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-2\"}}",
+              "toolCallId": "call-2"
+            }
+          ],
+          "toolUseResult": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-2\"}}",
+          "sourceToolAssistantUUID": "<id:3>"
+        }
+      ],
+      "total": 5
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:5>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call-3",
+              "toolName": "Act",
+              "args": {
+                "value": "call-3"
+              }
+            }
+          ],
+          "stop_reason": "tool_use"
+        }
+      ],
+      "total": 6
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:6>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-3\"}}",
+              "toolCallId": "call-3"
+            }
+          ],
+          "toolUseResult": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-3\"}}",
+          "sourceToolAssistantUUID": "<id:5>"
+        }
+      ],
+      "total": 7
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:7>",
+          "isMeta": true,
+          "role": "user",
+          "content": {
+            "digest": "5684d414109d7fddf8071444af4c9c96806f216da7638779a5f22353e14c2ea2",
+            "chars": 315
+          }
+        }
+      ],
+      "total": 8
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:8>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Done."
+            }
+          ],
+          "stop_reason": "end_turn"
+        }
+      ],
+      "total": 9
+    },
+    {
+      "op": "terminal",
+      "reason": "completed"
+    },
+    {
+      "op": "aiTitle",
+      "aiTitle": "A title"
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "work"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:1>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool-call",
+          "toolCallId": "call-1",
+          "toolName": "Act",
+          "args": {
+            "value": "call-1"
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:2>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-1\"}}",
+          "toolCallId": "call-1"
+        }
+      ],
+      "toolUseResult": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-1\"}}",
+      "sourceToolAssistantUUID": "<id:1>"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:3>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool-call",
+          "toolCallId": "call-2",
+          "toolName": "Act",
+          "args": {
+            "value": "call-2"
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:4>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-2\"}}",
+          "toolCallId": "call-2"
+        }
+      ],
+      "toolUseResult": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-2\"}}",
+      "sourceToolAssistantUUID": "<id:3>"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:5>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool-call",
+          "toolCallId": "call-3",
+          "toolName": "Act",
+          "args": {
+            "value": "call-3"
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:6>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-3\"}}",
+          "toolCallId": "call-3"
+        }
+      ],
+      "toolUseResult": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"call-3\"}}",
+      "sourceToolAssistantUUID": "<id:5>"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:7>",
+      "isMeta": true,
+      "role": "user",
+      "content": {
+        "digest": "5684d414109d7fddf8071444af4c9c96806f216da7638779a5f22353e14c2ea2",
+        "chars": 315
+      }
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:8>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Done."
+        }
+      ],
+      "stop_reason": "end_turn"
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "uuid": "<id:9>",
+      "is_error": false,
+      "terminal": {
+        "reason": "completed"
+      }
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "success",
+    "terminal": {
+      "reason": "completed"
+    }
+  },
+  "notes": [
+    {
+      "processUserInput": "work"
+    },
+    {
+      "drain": 1,
+      "querySource": "sdk"
+    },
+    {
+      "drain": 2,
+      "querySource": "sdk"
+    },
+    {
+      "drain": 3,
+      "querySource": "sdk"
+    }
+  ]
+}

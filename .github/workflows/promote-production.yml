@@ -1,0 +1,529 @@
+name: B · Promote Production
+
+# Ships a candidate that already soaked on beta to app.velloc.app by deploying
+# the same archive. No checkout, no install: nothing here can compile (the
+# guard step asserts it); runtime.zip carries the bundle and wrangler.toml.
+# Two jobs: `resolve` reads and summarises the candidate without an
+# environment, so an approver sees id, digest and tag before `deploy`
+# (`environment: production`) does the irreversible half. (G-3)
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: >-
+          Run ID of an "A · Build & Deploy Beta" run. LEAVE EMPTY to promote
+          the newest successful build — which is what you want right after
+          soaking it. Fill it in to pin a specific one (e.g. someone has
+          rebuilt since you soaked).
+        required: false
+        default: ''
+      release_tag:
+        description: >-
+          LEAVE EMPTY to generate runtime-v<N>-<today>.<n> — <N> is read from
+          the candidate's manifest, never guessed, and <n> is the next free
+          number for today. Fill it in only to claim a specific tag.
+        required: false
+        default: ''
+      release_notes:
+        description: 'Release notes (free text)'
+        required: false
+        default: ''
+
+# Shared with rollback-production.yml: production has exactly one current
+# deployment, and two jobs racing to set it would leave the outcome decided by
+# whichever wrangler call finished last.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create and publish the release
+  actions: read # list build runs and download the candidate artifact
+
+env:
+  # Where a candidate is soaked. The cross-check below reads this origin's
+  # build-info.json, so it is the one place the soak target is named.
+  BETA_ORIGIN: https://beta.velloc.app
+
+jobs:
+  # Everything a human needs in order to decide, before the approval gate.
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ steps.run.outputs.run_id }}
+      release_tag: ${{ steps.tag.outputs.release_tag }}
+      interface_version: ${{ steps.meta.outputs.interface_version }}
+      candidate_id: ${{ steps.meta.outputs.candidate_id }}
+      source_commit: ${{ steps.meta.outputs.source_commit }}
+      digest: ${{ steps.meta.outputs.digest }}
+      beta_state: ${{ steps.beta.outputs.state }}
+    steps:
+      # The invariant is "no build in the promote path". Comments cannot
+      # enforce it and a reviewer can miss a line, so the job asserts it about
+      # its own source before doing anything.
+      #
+      # The patterns are assembled from fragments on purpose: written out
+      # whole, they would match this very step and the guard would always
+      # fire.
+      - name: Guard — this workflow must never build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/promote-production.yml" \
+            --jq .content | base64 -d > self.yml
+          PAT="npm c""i|npm insta""ll|npm run buil""d|vite buil""d|actions/setup-nod""e|actions/checkou""t"
+          if grep -nE "$PAT" self.yml; then
+            echo "::error::promote-production.yml contains a build/checkout step." \
+                 "Production must deploy the candidate artifact verbatim."
+            exit 1
+          fi
+          echo "guard: no build or checkout step in the promote path"
+
+      # Empty input = "the one I just soaked". Resolving it here rather than
+      # making the human copy an 11-digit number removes the transcription
+      # error, and the summary below still names exactly what was chosen — the
+      # decision stays informed, it just stops being manual.
+      - name: Resolve candidate run
+        id: run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID_INPUT: ${{ inputs.candidate_run_id }}
+        run: |
+          set -euo pipefail
+          if [ -n "$RUN_ID_INPUT" ]; then
+            case "$RUN_ID_INPUT" in
+              *[!0-9]*) echo "::error::candidate_run_id must be numeric"; exit 1 ;;
+            esac
+            RUN_ID="$RUN_ID_INPUT"
+            echo "pinned by input: $RUN_ID"
+          else
+            RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow build-beta.yml --status success --limit 1 \
+              --json databaseId --jq '.[0].databaseId // empty')
+            if [ -z "$RUN_ID" ]; then
+              echo "::error::no successful 'A · Build & Deploy Beta' run to promote." \
+                   "Run Workflow A first."
+              exit 1
+            fi
+            echo "resolved newest successful build: $RUN_ID"
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      # Preflight: prove GITHUB_TOKEN can create a release before anything changes
+      # (deploy cannot start until resolve succeeds). Release creation must not
+      # pass `--target <SHA>`: this repository rejects a raw commit SHA as
+      # `target_commitish` with a 403/404 that reads like a permission error.
+      - name: Preflight — this job's token can actually create a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          # The only honest test of "can it create a release" is creating one.
+          # A DRAFT creates no tag and is invisible in the releases list, so
+          # this probe is self-cleaning and leaves nothing behind.
+          PROBE="zz-preflight-$GITHUB_RUN_ID"
+          ID=$(gh api "repos/$GITHUB_REPOSITORY/releases" --method POST \
+                 -f tag_name="$PROBE" -F draft=true --jq .id 2>/dev/null)
+          if [ -z "${ID:-}" ]; then
+            echo "::error::GITHUB_TOKEN cannot create a release on" \
+                 "$GITHUB_REPOSITORY. Check that the repository's default" \
+                 "workflow permission is read/write (a workflow's own" \
+                 "\`permissions:\` block cannot exceed it). Nothing was deployed."
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/releases/$ID" --method DELETE \
+            || echo "::warning::could not delete probe draft $ID — delete it by hand"
+          echo "preflight: token can create and delete releases"
+
+      - name: Download candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.run.outputs.run_id }}
+        # Fails loudly when the run's artifact has aged out of retention.
+        # That is the correct outcome: an expired candidate cannot be
+        # promoted, because rebuilding the same commit produces a different
+        # artifact that nobody soaked.
+        run: |
+          set -euo pipefail
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name candidate --dir artifact
+
+      - name: Verify integrity and metadata
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.run.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          (cd artifact && sha256sum -c SHA256SUMS)
+
+          V=$(jq -r .interfaceVersion artifact/manifest.json)
+          MANIFEST_RUN=$(jq -r .workflowRunId artifact/manifest.json)
+
+          # The artifact must be the one that ran under the id being promoted —
+          # otherwise the audit trail points at a run that built something else.
+          if [ "$MANIFEST_RUN" != "$RUN_ID" ]; then
+            echo "::error::manifest.json says run $MANIFEST_RUN, promoting $RUN_ID"
+            exit 1
+          fi
+
+          unzip -q artifact/runtime.zip -d candidate
+          test -f "candidate/site/v$V/index.html"
+          test -f candidate/wrangler.toml
+          # The bundle's baked-in asset base must match the path it will be
+          # served at; a mismatch is a fleet-wide blank panel.
+          grep -q "/v$V/assets/" "candidate/site/v$V/index.html"
+          # Every deploy replaces the whole site. A candidate from before an
+          # interface bump has no /v<newer>/ tree; promoting it (a pinned old
+          # run, or a beta build of an old ref) would 404 every binary on the
+          # newer interface. Same floor as build-beta and rollback.
+          NEWEST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 \
+                     --json tagName --jq '[.[].tagName
+                       | select(test("^runtime-v[0-9]+-"))
+                       | capture("^runtime-v(?<v>[0-9]+)-").v | tonumber]
+                       | max // 0')
+          if [ "$V" -lt "$NEWEST" ]; then
+            echo "::error::run $RUN_ID is interface v$V; production serves v$NEWEST — deploying it would drop /v$NEWEST/ and 404 every binary on it"
+            exit 1
+          fi
+
+          {
+            echo "interface_version=$V"
+            echo "candidate_id=$(jq -r .candidateId artifact/manifest.json)"
+            echo "source_commit=$(jq -r .sourceCommit artifact/manifest.json)"
+            echo "built_at=$(jq -r .builtAtUtc artifact/manifest.json)"
+            echo "retained=$(jq -r .retainedAssets artifact/manifest.json)"
+            echo "churn_count=$(jq -r '.assetChurn.changedCount // empty' artifact/manifest.json)"
+            echo "churn_total=$(jq -r '.assetChurn.totalCount // empty' artifact/manifest.json)"
+            echo "churn_bytes=$(jq -r '.assetChurn.changedBytes // empty' artifact/manifest.json)"
+            echo "churn_total_bytes=$(jq -r '.assetChurn.totalBytes // empty' artifact/manifest.json)"
+            echo "churn_base_release=$(jq -r '.assetChurn.baselineRelease // empty' artifact/manifest.json)"
+            echo "churn_base_commit=$(jq -r '.assetChurn.baselineCommit // empty' artifact/manifest.json)"
+            echo "churn_content=$(jq -r '.assetChurn.contentCount // empty' artifact/manifest.json)"
+            echo "churn_content_bytes=$(jq -r '.assetChurn.contentBytes // empty' artifact/manifest.json)"
+            echo "churn_rewritten=$(jq -r '.assetChurn.rewrittenCount // empty' artifact/manifest.json)"
+            echo "churn_rewritten_bytes=$(jq -r '.assetChurn.rewrittenBytes // empty' artifact/manifest.json)"
+            echo "digest=$(awk '$2 == "runtime.zip" {print $1}' artifact/SHA256SUMS)"
+          } >> "$GITHUB_OUTPUT"
+
+      # "Production serves what beta soaked", enforced here rather than by a human
+      # comparing ids: the candidate must be the one beta serves. It catches a
+      # pinned older run or a beta redeploy/rollback since; it cannot catch a
+      # rebuild after your soak. A pinned candidate downgrades a mismatch to a
+      # warning.
+      - name: Cross-check the candidate against beta
+        id: beta
+        env:
+          V: ${{ steps.meta.outputs.interface_version }}
+          CANDIDATE_ID: ${{ steps.meta.outputs.candidate_id }}
+          PINNED_RUN: ${{ inputs.candidate_run_id }}
+        # No `set -e`: a failed fetch is handled below rather than ending the
+        # step, so "beta is unreachable" and "beta disagrees" stay distinct.
+        run: |
+          set -uo pipefail
+          URL="$BETA_ORIGIN/v$V/build-info.json"
+          LIVE=''
+          for attempt in 1 2 3; do
+            # s-maxage=0 already makes the edge revalidate; no-cache is belt
+            # and braces against an intermediary holding a stale copy.
+            LIVE=$(curl -fsS --max-time 20 -H 'Cache-Control: no-cache' "$URL" \
+                   | jq -r '.candidateId // empty') && [ -n "$LIVE" ] && break
+            echo "attempt $attempt: could not read $URL"
+            LIVE=''
+            sleep 5
+          done
+
+          if [ -z "$LIVE" ]; then
+            if [ -n "$PINNED_RUN" ]; then
+              echo "::warning::could not read $URL — skipping the beta cross-check, candidate_run_id was pinned explicitly"
+              echo "state=unreachable (cross-check skipped)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::could not read $URL after 3 attempts. The candidate was" \
+                 "auto-resolved, so there is nothing to check it against. Pass" \
+                 "candidate_run_id explicitly to promote without the cross-check."
+            exit 1
+          fi
+
+          if [ "$LIVE" = "$CANDIDATE_ID" ]; then
+            echo "beta serves $LIVE — matches the candidate"
+            echo "state=serving this candidate" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -n "$PINNED_RUN" ]; then
+            echo "::warning::beta serves $LIVE but this promotes $CANDIDATE_ID (pinned" \
+                 "explicitly). Production will serve bytes beta is not serving."
+            echo "state=**MISMATCH** — beta serves \`$LIVE\` (pinned override)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "::error::beta serves $LIVE, but the newest successful build is" \
+               "$CANDIDATE_ID. Deploy that candidate to beta and soak it, or pass" \
+               "candidate_run_id=<run> to promote deliberately."
+          exit 1
+
+      # The tag encodes the interface version, and a mislabelled tag is a
+      # rollback pointed at the wrong wire contract months from now. Generating
+      # it from the manifest removes the one field a human could get wrong in a
+      # way nothing downstream would notice.
+      - name: Resolve release tag
+        id: tag
+        env:
+          # The SAME token that will create the release. A free-tag check made
+          # through a different identity could see a different set of releases
+          # and hand back a tag that then collides at creation time.
+          GH_TOKEN: ${{ github.token }}
+          TAG_INPUT: ${{ inputs.release_tag }}
+          V: ${{ steps.meta.outputs.interface_version }}
+        run: |
+          set -euo pipefail
+          if [ -n "$TAG_INPUT" ]; then
+            case "$TAG_INPUT" in
+              "runtime-v$V-"*) : ;;
+              *) echo "::error::release_tag must start with runtime-v$V- (candidate is interface v$V)"; exit 1 ;;
+            esac
+            if gh release view "$TAG_INPUT" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "::error::release $TAG_INPUT already exists"
+              exit 1
+            fi
+            TAG="$TAG_INPUT"
+            echo "pinned by input: $TAG"
+          else
+            DATE=$(date -u +%Y.%m.%d)
+            N=1
+            # Counts drafts too — `gh release view` sees them, and colliding
+            # with a draft would fail at creation time instead of here.
+            while gh release view "runtime-v$V-$DATE.$N" \
+                    --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; do
+              N=$((N + 1))
+              if [ "$N" -gt 50 ]; then
+                echo "::error::more than 50 releases for v$V on $DATE — pass release_tag explicitly"
+                exit 1
+              fi
+            done
+            TAG="runtime-v$V-$DATE.$N"
+            echo "generated: $TAG"
+          fi
+          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # This is what the approver reads. It exists before the gate precisely so
+      # that "approve" is a decision about a named artifact rather than a
+      # rubber stamp on an unknown one.
+      - name: Summary — what approving will ship
+        env:
+          RUN_ID: ${{ steps.run.outputs.run_id }}
+          PINNED_RUN: ${{ inputs.candidate_run_id }}
+          PINNED_TAG: ${{ inputs.release_tag }}
+          TAG: ${{ steps.tag.outputs.release_tag }}
+          V: ${{ steps.meta.outputs.interface_version }}
+          CANDIDATE_ID: ${{ steps.meta.outputs.candidate_id }}
+          SOURCE_COMMIT: ${{ steps.meta.outputs.source_commit }}
+          BUILT_AT: ${{ steps.meta.outputs.built_at }}
+          RETAINED: ${{ steps.meta.outputs.retained }}
+          CHURN_COUNT: ${{ steps.meta.outputs.churn_count }}
+          CHURN_TOTAL: ${{ steps.meta.outputs.churn_total }}
+          CHURN_BYTES: ${{ steps.meta.outputs.churn_bytes }}
+          CHURN_TOTAL_BYTES: ${{ steps.meta.outputs.churn_total_bytes }}
+          CHURN_BASE_RELEASE: ${{ steps.meta.outputs.churn_base_release }}
+          CHURN_BASE_COMMIT: ${{ steps.meta.outputs.churn_base_commit }}
+          CHURN_CONTENT: ${{ steps.meta.outputs.churn_content }}
+          CHURN_CONTENT_BYTES: ${{ steps.meta.outputs.churn_content_bytes }}
+          CHURN_REWRITTEN: ${{ steps.meta.outputs.churn_rewritten }}
+          CHURN_REWRITTEN_BYTES: ${{ steps.meta.outputs.churn_rewritten_bytes }}
+          DIGEST: ${{ steps.meta.outputs.digest }}
+          BETA_STATE: ${{ steps.beta.outputs.state }}
+        run: |
+          # Same content-hash diff reported on beta (build-beta.yml's
+          # Summary step) — carried through manifest.json, not recomputed.
+          if [ -n "$CHURN_TOTAL" ]; then
+            if [ "$CHURN_TOTAL_BYTES" -gt 0 ]; then
+              PCT=$(awk -v c="$CHURN_BYTES" -v t="$CHURN_TOTAL_BYTES" \
+                'BEGIN { printf "%.1f", (c / t) * 100 }')
+            else
+              PCT='0.0'
+            fi
+            CHANGED_SIZE=$(numfmt --to=iec --suffix=B "$CHURN_BYTES")
+            TOTAL_SIZE=$(numfmt --to=iec --suffix=B "$CHURN_TOTAL_BYTES")
+            CHURN="$CHURN_COUNT/$CHURN_TOTAL files, $PCT% ($CHANGED_SIZE / $TOTAL_SIZE)"
+            # Name what it is measured against — the release production
+            # serves, which is often several commits behind this candidate.
+            if [ -n "$CHURN_BASE_COMMIT" ]; then
+              CHURN="$CHURN — vs \`${CHURN_BASE_RELEASE:-baseline}\` @ \`${CHURN_BASE_COMMIT:0:7}\`…\`${SOURCE_COMMIT:0:7}\`"
+            elif [ -n "$CHURN_BASE_RELEASE" ]; then
+              CHURN="$CHURN — vs \`$CHURN_BASE_RELEASE\`"
+            fi
+          else
+            CHURN='**n/a** — no retention baseline, or it predates the asset-churn report'
+          fi
+          # New code vs chunks re-emitted only because a reference moved —
+          # the difference between what the change is and what it costs.
+          CHURN_SPLIT=''
+          if [ -n "$CHURN_CONTENT" ]; then
+            CONTENT_SIZE=$(numfmt --to=iec --suffix=B "$CHURN_CONTENT_BYTES")
+            REWRITTEN_SIZE=$(numfmt --to=iec --suffix=B "$CHURN_REWRITTEN_BYTES")
+            CHURN_SPLIT="**$CHURN_CONTENT new code** ($CONTENT_SIZE) · "
+            CHURN_SPLIT="$CHURN_SPLIT$CHURN_REWRITTEN re-emitted for reference updates ($REWRITTEN_SIZE)"
+          fi
+          # The named chunks, ranked by cascade — same table beta showed, read
+          # straight from the candidate's manifest rather than threaded through
+          # step outputs, which cannot carry a multi-line value cleanly.
+          CHURN_TABLE=$(node -e '
+            const manifest = JSON.parse(
+              require("fs").readFileSync("artifact/manifest.json", "utf8"))
+            const rows = (manifest.assetChurn && manifest.assetChurn.newAssets) || []
+            const show = 10
+            const out = rows.slice(0, show).map(entry =>
+              "| `" + entry.url + "` | " + (entry.size / 1024).toFixed(1) +
+              " KiB | " + entry.cascadeCount + " |")
+            if (rows.length > show) {
+              out.push("| _…and " + (rows.length - show) +
+                " more in `manifest.json`_ | | |")
+            }
+            process.stdout.write(out.join("\n"))
+          ')
+          {
+            echo "## Ready to promote — verified, not yet deployed"
+            echo
+            echo '| | |'
+            echo '|---|---|'
+            echo "| Candidate | \`$CANDIDATE_ID\` |"
+            echo "| From run | [$RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID) ${PINNED_RUN:+(pinned)}${PINNED_RUN:-(newest successful build)} |"
+            echo "| Release tag | \`$TAG\` ${PINNED_TAG:+(pinned)}${PINNED_TAG:-(generated)} |"
+            echo "| Interface version | v$V |"
+            echo "| Source commit | \`$SOURCE_COMMIT\` |"
+            echo "| Built at | $BUILT_AT |"
+            echo "| Retained assets | $RETAINED |"
+            echo "| Changed assets | $CHURN |"
+            if [ -n "$CHURN_SPLIT" ]; then
+              echo "| ↳ of which | $CHURN_SPLIT |"
+            fi
+            echo "| runtime.zip SHA-256 | \`$DIGEST\` |"
+            echo "| Beta cross-check | $BETA_STATE |"
+            if [ -n "$CHURN_TABLE" ]; then
+              echo
+              echo '<details><summary>New code in this build, ranked by cascade</summary>'
+              echo
+              echo '| New code | Size | Re-emitted downstream |'
+              echo '|---|---:|---:|'
+              echo "$CHURN_TABLE"
+              echo
+              echo 'Top row is the chunk whose edits re-emit the most of the bundle.'
+              echo 'Full lists — including every re-emitted asset and the baseline'
+              echo 'filename it replaced — are in `manifest.json` under `assetChurn`.'
+              echo
+              echo '</details>'
+            fi
+            echo
+            echo "Integrity verified: digests match, the manifest names this run,"
+            echo "the bundle's baked-in base is \`/v$V/assets/\`, and beta was"
+            echo "compared against this candidate rather than taken on trust."
+            echo
+            echo "Note what the cross-check cannot know: whether the candidate beta"
+            echo "is serving now is the one you actually soaked. If someone rebuilt"
+            echo "after your soak, beta moved with it — pin \`candidate_run_id\` when"
+            echo "you need a specific build."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: resolve
+    runs-on: ubuntu-latest
+    # Add required reviewers under Settings → Environments → production to
+    # turn every promote into a two-person action. The resolve job above has
+    # already published what this will ship, so the approval prompt is backed
+    # by a summary rather than by nothing.
+    environment: production
+    env:
+      RUN_ID: ${{ needs.resolve.outputs.run_id }}
+      RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+      V: ${{ needs.resolve.outputs.interface_version }}
+      CANDIDATE_ID: ${{ needs.resolve.outputs.candidate_id }}
+      SOURCE_COMMIT: ${{ needs.resolve.outputs.source_commit }}
+      DIGEST: ${{ needs.resolve.outputs.digest }}
+    steps:
+      # Re-downloaded rather than passed along: jobs get separate runners, and
+      # re-verifying the digest here means the bytes that reach production were
+      # checked on the machine that deploys them.
+      - name: Download and re-verify candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name candidate --dir artifact
+          (cd artifact && sha256sum -c SHA256SUMS)
+          ACTUAL=$(awk '$2 == "runtime.zip" {print $1}' artifact/SHA256SUMS)
+          if [ "$ACTUAL" != "$DIGEST" ]; then
+            echo "::error::digest changed between resolve ($DIGEST) and deploy ($ACTUAL)"
+            exit 1
+          fi
+          unzip -q artifact/runtime.zip -d candidate
+          grep -q "/v$V/assets/" "candidate/site/v$V/index.html"
+          test -f candidate/wrangler.toml
+
+      # Draft first: the release exists with its assets attached BEFORE
+      # production changes, so a failed deploy leaves the archive recoverable
+      # and the tag unpublished rather than a live deploy nothing archived.
+      - name: Create draft release
+        env:
+          # The same identity the preflight probe in `resolve` proved with.
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          {
+            printf '%s\n\n' "$RELEASE_NOTES"
+            echo '| | |'
+            echo '|---|---|'
+            echo "| Candidate | \`$CANDIDATE_ID\` |"
+            echo "| Source commit | \`$SOURCE_COMMIT\` |"
+            echo "| Candidate run | [$RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID) |"
+            echo "| runtime.zip SHA-256 | \`$DIGEST\` |"
+            echo
+            echo 'Deployed to production without rebuilding. Restore with **C · Rollback Production**.'
+          } > notes.md
+          # No --target: this repository rejects a raw commit SHA as
+          # `target_commitish` (404, or 403 for a token), so the tag lands on the
+          # default branch tip. The exact commit is recorded in the notes,
+          # manifest.json and the archive's build-info.json; rollback restores the
+          # attached bytes, not a checkout.
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --title "$RELEASE_TAG" \
+            --notes-file notes.md \
+            artifact/runtime.zip artifact/manifest.json artifact/SHA256SUMS
+
+      - name: Deploy to production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # No --name: wrangler.toml inside the artifact already names the
+        # production worker (velloc-runtime). Beta is the one that overrides.
+        run: |
+          npx --yes wrangler@4.120.0 deploy --config candidate/wrangler.toml
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --draft=false --latest
+
+      - name: Summary
+        run: |
+          {
+            echo "## Promoted to production"
+            echo
+            echo '| | |'
+            echo '|---|---|'
+            echo "| Release | \`$RELEASE_TAG\` |"
+            echo "| Candidate | \`$CANDIDATE_ID\` |"
+            echo "| Source commit | \`$SOURCE_COMMIT\` |"
+            echo "| runtime.zip SHA-256 | \`$DIGEST\` |"
+            echo
+            echo "Verify: <https://app.velloc.app/v$V/build-info.json> must report"
+            echo "\`candidateId: $CANDIDATE_ID\` — the same id beta served."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,62 @@
+/**
+ * UI ⇄ Runtime protocol — the closed error-code set. UI copy is looked up by code,
+ * never rendered from `message` (English, for logs); `retryable` derives from the code.
+ */
+
+export const ERROR_CODES = [
+  'unauthorized',
+  'forbidden_scope',
+  'unknown_route',
+  'bad_payload',
+  'not_found',
+  'conflict',
+  'stale',
+  'timeout',
+  'cancelled',
+  'host_unavailable',
+  'internal',
+] as const
+
+export type ErrorCode = (typeof ERROR_CODES)[number]
+
+export type WireError = {
+  code: ErrorCode
+  /** English, for logs and diagnostics. UI text comes from the catalog keyed by `code`. */
+  message: string
+  data?: unknown
+  /** true = repeating the same request is meaningful (timeout, host busy). */
+  retryable: boolean
+  /**
+   * Receive side only: the code the peer actually sent when this build does
+   * not know it (`code` then reads `internal`). Never set by a sender.
+   */
+  unknownCode?: string
+}
+
+/** Codes for which the identical request may be retried as-is. */
+export const RETRYABLE_ERROR_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
+  'timeout',
+  'host_unavailable',
+])
+
+export function isErrorCode(value: unknown): value is ErrorCode {
+  return typeof value === 'string' && (ERROR_CODES as readonly string[]).includes(value)
+}
+
+export function wireError(code: ErrorCode, message: string, data?: unknown): WireError {
+  const error: WireError = { code, message, retryable: RETRYABLE_ERROR_CODES.has(code) }
+  if (data !== undefined) {
+    error.data = data
+  }
+  return error
+}
+
+/** Structural guard; with `code` it also narrows to that one code. */
+export function isWireError(value: unknown, code?: ErrorCode): value is WireError {
+  if (!value || typeof value !== 'object') return false
+  const v = value as Record<string, unknown>
+  if (!isErrorCode(v['code'])) return false
+  if (typeof v['message'] !== 'string') return false
+  if (typeof v['retryable'] !== 'boolean') return false
+  return code === undefined || v['code'] === code
+}

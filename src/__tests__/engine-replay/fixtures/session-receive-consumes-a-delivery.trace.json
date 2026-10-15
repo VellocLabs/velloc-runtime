@@ -1,0 +1,37 @@
+{
+  "modelRequests": [],
+  "modelResponses": [],
+  "transport": [],
+  "retryDelays": [],
+  "toolCalls": [],
+  "permissions": [],
+  "hooks": [],
+  "mods": [
+    {
+      "event": "session.receive",
+      "payload": {
+        "input": {
+          "origin": {
+            "kind": "task-notification"
+          },
+          "text": "<task-notification>job 4 finished</task-notification>"
+        },
+        "settled": {
+          "consumed": "handled by the plugin"
+        }
+      }
+    },
+    {
+      "event": "ready"
+    }
+  ],
+  "sessionWrites": [],
+  "emitted": [
+    {
+      "submit": "<task-notification>job 4 finished</task-notification>"
+    }
+  ],
+  "hostPushes": [],
+  "terminal": null,
+  "notes": []
+}

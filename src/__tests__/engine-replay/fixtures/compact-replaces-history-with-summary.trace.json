@@ -1,0 +1,520 @@
+{
+  "modelRequests": [
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "first question"
+        }
+      ],
+      "systemPrompt": [
+        "You are running inside the chromium-runtime sidecar project.",
+        {
+          "digest": "dfe5065275b98281fa1a93a5aa4e039cc219a1ad4e476d9c605b66fb49f6c821",
+          "chars": 8790
+        }
+      ],
+      "userContext": {},
+      "systemContext": {},
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": [],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "user: first question\nassistant: First answer."
+        }
+      ],
+      "systemPrompt": {
+        "digest": "9bd7b777c9079cb499769cd5aa8912b6f7bd9fdeac5be66a155b74d4c4d07b5b",
+        "chars": 359
+      },
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "providerId": "anthropic",
+      "model": "claude-haiku-4-5",
+      "maxOutputTokens": 32000,
+      "tools": "<same as previous request>",
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "rename_generate_name",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "title",
+        "querySource": "rename_generate_name"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "first question"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "First answer."
+            }
+          ],
+          "model": "inherit",
+          "usage": {
+            "input_tokens": 10,
+            "output_tokens": 5
+          },
+          "stop_reason": "end_turn"
+        },
+        {
+          "role": "user",
+          "content": {
+            "digest": "5a6323b023315a151a53ea1f31511e08c6c6d352a8515eee4005a7bcfbf91157",
+            "chars": 7051
+          }
+        }
+      ],
+      "systemPrompt": [
+        "You are a helpful AI assistant tasked with summarizing conversations."
+      ],
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "compaction",
+        "querySource": "compact"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Conversation compacted"
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": {
+                "digest": "57905e83c9ddbaa6f5289d06eddd18e276ca080680489af3a54e88959d0b5921",
+                "chars": 743
+              }
+            },
+            {
+              "type": "text",
+              "text": "next question"
+            }
+          ]
+        }
+      ],
+      "systemPrompt": [
+        "You are running inside the chromium-runtime sidecar project.",
+        {
+          "digest": "dfe5065275b98281fa1a93a5aa4e039cc219a1ad4e476d9c605b66fb49f6c821",
+          "chars": 8790
+        }
+      ],
+      "userContext": {},
+      "systemContext": {},
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": [],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "user: /compact keep it short\nuser: next question\nassistant: Continuing."
+        }
+      ],
+      "systemPrompt": {
+        "digest": "9bd7b777c9079cb499769cd5aa8912b6f7bd9fdeac5be66a155b74d4c4d07b5b",
+        "chars": 359
+      },
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "providerId": "anthropic",
+      "model": "claude-haiku-4-5",
+      "maxOutputTokens": 32000,
+      "tools": "<same as previous request>",
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "rename_generate_name",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "title",
+        "querySource": "rename_generate_name"
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "request": 1,
+      "reply": "first-answer",
+      "querySource": "sdk"
+    },
+    {
+      "request": 2,
+      "reply": "title",
+      "querySource": "rename_generate_name"
+    },
+    {
+      "request": 3,
+      "reply": "summary"
+    },
+    {
+      "request": 4,
+      "reply": "after-compact",
+      "querySource": "sdk"
+    },
+    {
+      "request": 5,
+      "reply": "title",
+      "querySource": "rename_generate_name"
+    }
+  ],
+  "transport": [
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead"
+  ],
+  "retryDelays": [],
+  "toolCalls": [],
+  "permissions": [],
+  "hooks": [],
+  "mods": [],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": "first question"
+        }
+      ],
+      "total": 1
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:1>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "First answer."
+            }
+          ],
+          "stop_reason": "end_turn"
+        }
+      ],
+      "total": 2
+    },
+    {
+      "op": "terminal",
+      "reason": "completed"
+    },
+    {
+      "op": "aiTitle",
+      "aiTitle": "A title"
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-8",
+          "isMeta": false,
+          "role": "user",
+          "content": "/compact keep it short"
+        },
+        {
+          "type": "system",
+          "subtype": "compact_boundary",
+          "uuid": "<id:2>",
+          "compactMetadata": {
+            "trigger": "manual",
+            "preTokens": 15,
+            "lastPreCompactMessageUuid": "<id:1>"
+          }
+        },
+        {
+          "type": "user",
+          "uuid": "<id:3>",
+          "isMeta": true,
+          "role": "user",
+          "content": {
+            "digest": "e9bade504930abe33ad72b8114d7b496910f5d20804e1f32d90996d5caa9ba25",
+            "chars": 742
+          }
+        }
+      ],
+      "total": 3
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-13",
+          "isMeta": false,
+          "role": "user",
+          "content": "next question"
+        }
+      ],
+      "total": 4
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:4>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Continuing."
+            }
+          ],
+          "stop_reason": "end_turn"
+        }
+      ],
+      "total": 5
+    },
+    {
+      "op": "terminal",
+      "reason": "completed"
+    },
+    {
+      "op": "aiTitle",
+      "aiTitle": "A title"
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "first question"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:1>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "First answer."
+        }
+      ],
+      "stop_reason": "end_turn"
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "uuid": "<id:5>",
+      "is_error": false,
+      "terminal": {
+        "reason": "completed"
+      }
+    },
+    {
+      "submit": "/compact keep it short"
+    },
+    {
+      "type": "system",
+      "subtype": "compact_boundary",
+      "uuid": "<id:2>",
+      "compactMetadata": {
+        "trigger": "manual",
+        "preTokens": 15,
+        "lastPreCompactMessageUuid": "<id:1>"
+      }
+    },
+    {
+      "type": "user",
+      "uuid": "<id:3>",
+      "isMeta": true,
+      "role": "user",
+      "content": {
+        "digest": "e9bade504930abe33ad72b8114d7b496910f5d20804e1f32d90996d5caa9ba25",
+        "chars": 742
+      }
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "uuid": "<id:6>",
+      "result": "",
+      "is_error": false
+    },
+    {
+      "submit": "next question"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:4>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Continuing."
+        }
+      ],
+      "stop_reason": "end_turn"
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "uuid": "<id:7>",
+      "is_error": false,
+      "terminal": {
+        "reason": "completed"
+      }
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    },
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    },
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "clearReadState": true,
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    },
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "success",
+    "terminal": {
+      "reason": "completed"
+    }
+  },
+  "notes": [
+    {
+      "processUserInput": "first question"
+    },
+    {
+      "processUserInput": "/compact keep it short"
+    },
+    {
+      "processUserInput": "next question"
+    }
+  ]
+}

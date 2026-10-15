@@ -1,0 +1,66 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`system-prompt holders golden > resolves to the golden system prompt — browser + Agent (session guidance folded) 1`] = `
+"You are Velloc Code — an agent.
+
+# Doing tasks
+- act
+- cross-cutting native-tool prose
+- report
+
+# Using your tools
+
+## Browser tools
+
+One call per turn.
+- click { index }
+## Parallelism
+
+Call multiple tools at once.
+
+# Subagents
+- Use the Agent tool with a specialized agent when the task matches that agent's description. Subagents are useful for running independent queries in parallel and for keeping bulky results out of the main context, but you should not use them excessively when they are not needed. Importantly, avoid duplicating a subagent's work: if you hand research to one, do not run the same searches yourself.
+
+# Tone and style
+- be concise"
+`;
+
+exports[`system-prompt holders golden > resolves to the golden system prompt — browser tools (catalog non-empty) 1`] = `
+"You are Velloc Code — an agent.
+
+# Doing tasks
+- act
+- cross-cutting native-tool prose
+- report
+
+# Using your tools
+
+## Browser tools
+
+One call per turn.
+- click { index }
+## Parallelism
+
+Call multiple tools at once.
+
+# Tone and style
+- be concise"
+`;
+
+exports[`system-prompt holders golden > resolves to the golden system prompt — no tools (catalog empty) 1`] = `
+"You are Velloc Code — an agent.
+
+# Doing tasks
+- act
+
+- report
+
+# Using your tools
+
+## Parallelism
+
+Call multiple tools at once.
+
+# Tone and style
+- be concise"
+`;

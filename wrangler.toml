@@ -1,0 +1,19 @@
+name = "velloc-runtime"
+compatibility_date = "2026-05-19"
+
+# Runs only for requests no static asset matched (`run_worker_first` unset on
+# purpose). Its one job: error responses get `Cache-Control: no-store`, since a
+# year-cached 404 for /v<N>/ bricks that client (worker/asset_gateway.mjs;
+# pinned by src/__tests__/deploy-headers-cache.test.ts).
+main = "worker/asset_gateway.mjs"
+
+[assets]
+# Assembled by `npm run deploy:stage` (scripts/stage_deploy.mjs). Never point
+# this at ./dist: the bundle is built for the /v<N>/ base and every asset
+# would 404. This file ships inside the release artifact, so it names the
+# production worker; beta overrides the name on the command line. (G-3)
+directory = "./site"
+# Lets the gateway worker re-enter asset serving (`env.ASSETS.fetch`) so a
+# non-matched request still yields the platform's own 404 shape — the worker
+# only rewrites its caching headers.
+binding = "ASSETS"

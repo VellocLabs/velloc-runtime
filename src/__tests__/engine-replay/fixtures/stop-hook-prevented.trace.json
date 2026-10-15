@@ -1,0 +1,198 @@
+{
+  "modelRequests": [
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "stop me"
+        }
+      ],
+      "systemPrompt": [
+        "You are running inside the chromium-runtime sidecar project.",
+        {
+          "digest": "dfe5065275b98281fa1a93a5aa4e039cc219a1ad4e476d9c605b66fb49f6c821",
+          "chars": 8790
+        }
+      ],
+      "userContext": {},
+      "systemContext": {},
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": [],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "user: stop me\nassistant: Done."
+        }
+      ],
+      "systemPrompt": {
+        "digest": "9bd7b777c9079cb499769cd5aa8912b6f7bd9fdeac5be66a155b74d4c4d07b5b",
+        "chars": 359
+      },
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "providerId": "anthropic",
+      "model": "claude-haiku-4-5",
+      "maxOutputTokens": 32000,
+      "tools": "<same as previous request>",
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "rename_generate_name",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "title",
+        "querySource": "rename_generate_name"
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "request": 1,
+      "reply": "answer",
+      "querySource": "sdk"
+    },
+    {
+      "request": 2,
+      "reply": "title",
+      "querySource": "rename_generate_name"
+    }
+  ],
+  "transport": [
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead"
+  ],
+  "retryDelays": [],
+  "toolCalls": [],
+  "permissions": [],
+  "hooks": [],
+  "mods": [],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": "stop me"
+        }
+      ],
+      "total": 1
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:1>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Done."
+            }
+          ],
+          "stop_reason": "end_turn"
+        }
+      ],
+      "total": 2
+    },
+    {
+      "op": "terminal",
+      "reason": "stop_hook_prevented"
+    },
+    {
+      "op": "aiTitle",
+      "aiTitle": "A title"
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "stop me"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:1>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Done."
+        }
+      ],
+      "stop_reason": "end_turn"
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "uuid": "<id:2>",
+      "is_error": false,
+      "terminal": {
+        "reason": "stop_hook_prevented"
+      }
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "success",
+    "terminal": {
+      "reason": "stop_hook_prevented"
+    }
+  },
+  "notes": [
+    {
+      "processUserInput": "stop me"
+    }
+  ]
+}

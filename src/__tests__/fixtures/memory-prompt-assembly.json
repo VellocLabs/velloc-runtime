@@ -1,0 +1,117 @@
+{
+  "kindIds": [
+    "user",
+    "feedback",
+    "project",
+    "reference"
+  ],
+  "parse": [
+    [
+      "user",
+      "user"
+    ],
+    [
+      "feedback",
+      "feedback"
+    ],
+    [
+      "project",
+      "project"
+    ],
+    [
+      "reference",
+      "reference"
+    ],
+    [
+      "User",
+      null
+    ],
+    [
+      " user",
+      null
+    ],
+    [
+      "users",
+      null
+    ],
+    [
+      "",
+      null
+    ],
+    [
+      null,
+      null
+    ],
+    [
+      "__undef__",
+      null
+    ],
+    [
+      3,
+      null
+    ],
+    [
+      {},
+      null
+    ],
+    [
+      [
+        "user"
+      ],
+      null
+    ]
+  ],
+  "kindGuide": "01806535de4d76fcbad8383c87d3ba2efcbefbf4cd804cb9e09900b2738329e5",
+  "exclusions": "2a5bb2d6448f79275098bd00d6f67d1a9a3d2ad30572846e9f2a1b3ca35685a2",
+  "notesBullets": "12980bc4c5ee050bfeaca07e16a95886396f41a6f797399f83d5b3bc563406f8",
+  "notesBulletsStandalone": "d21aa6906de315ed4366f4a7cbc1792ab4e7e2fd3ebbe0f958a93d75e6affa6c",
+  "staleNote": "1f0287781771f77843c8470239858077d791dd0599a279dbe71aafbefe88ea6a",
+  "recallTiming": "45a3ade7532cc444e2616dc8ff4a1ac65623b3d432c5779abc7da17fa385d3a2",
+  "recallVerify": "5f328ff892ce101635505775cb48b5521e1926ba6846171ba998dcbc43f74952",
+  "headerSample": "3de3916c99b6ecac6792bc1450921f7331dfd811f378d081b70adb3a2f775f71",
+  "briefDefault": "e9bdf992cd79dd7e395d9a533054764f34cc42529a1b4ba158301d1e9c0595db",
+  "brief": [
+    {
+      "n": 1,
+      "e": "",
+      "s": false,
+      "text": "c56ad0d7af271fd4f1261dd5e75dc93ec4240e756dc9621b6c30aaebb179d592"
+    },
+    {
+      "n": 7,
+      "e": "",
+      "s": false,
+      "text": "6ae7e9f564c37c81c88ac924f71850f950bc8b7ff2d417de3349fe3c4b5da509"
+    },
+    {
+      "n": 1,
+      "e": "- a.md: x",
+      "s": false,
+      "text": "fd9eaf661eb2a67310acce68688bbaa398c0efbc4bdd09fd12923f79d71dcdee"
+    },
+    {
+      "n": 7,
+      "e": "- a.md (user): x\n- b.md: y",
+      "s": false,
+      "text": "8480d302e0a404b58ceee5e2aff96f9bea4cda9432e31843e91694bbc9a0daa9"
+    },
+    {
+      "n": 1,
+      "e": "",
+      "s": true,
+      "text": "91d6b715f570a1d896f7a15cff4b1006725295e6b9bfc67f2993e67572a3c8ae"
+    },
+    {
+      "n": 7,
+      "e": "- a.md: x",
+      "s": true,
+      "text": "beb45f9aaf7f86d0795d1ea55861d9baa2970861c8a82bfc2b0aac9960917abf"
+    },
+    {
+      "n": 0,
+      "e": "",
+      "s": false,
+      "text": "6c798c4d13b6521346a0dfab3e42e5246fa45d28d508776b8f1be604826114f5"
+    }
+  ]
+}

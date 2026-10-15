@@ -1,0 +1,160 @@
+{
+  "modelRequests": [
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "a long prompt"
+        }
+      ],
+      "systemPrompt": [
+        "You are running inside the chromium-runtime sidecar project.",
+        {
+          "digest": "dfe5065275b98281fa1a93a5aa4e039cc219a1ad4e476d9c605b66fb49f6c821",
+          "chars": 8790
+        }
+      ],
+      "userContext": {},
+      "systemContext": {},
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": [],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "request": 1,
+      "reply": "too-long",
+      "querySource": "sdk"
+    }
+  ],
+  "transport": [
+    "streamStart",
+    "streamRead",
+    "streamCancel"
+  ],
+  "retryDelays": [],
+  "toolCalls": [],
+  "permissions": [],
+  "hooks": [],
+  "mods": [],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": "a long prompt"
+        }
+      ],
+      "total": 1
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:1>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": {
+                "digest": "d780dada0c3f56858c2ac16ea44de38407b619b19836c60be4cfe2029721cabf",
+                "chars": 200
+              }
+            }
+          ],
+          "apiError": "prompt_too_long"
+        }
+      ],
+      "total": 2
+    },
+    {
+      "op": "terminal",
+      "reason": "prompt_too_long"
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "a long prompt"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:1>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": {
+            "digest": "d780dada0c3f56858c2ac16ea44de38407b619b19836c60be4cfe2029721cabf",
+            "chars": 200
+          }
+        }
+      ],
+      "apiError": "prompt_too_long"
+    },
+    {
+      "type": "result",
+      "subtype": "error_prompt_too_long",
+      "uuid": "<id:2>",
+      "is_error": true,
+      "terminal": {
+        "reason": "prompt_too_long",
+        "turnCount": 1
+      }
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "error_prompt_too_long",
+    "terminal": {
+      "reason": "prompt_too_long",
+      "turnCount": 1
+    }
+  },
+  "notes": [
+    {
+      "processUserInput": "a long prompt"
+    }
+  ]
+}

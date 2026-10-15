@@ -1,0 +1,72 @@
+# Vite content-hashed bundles — filename changes on every content change,
+# so it's always safe to cache forever in browser + edge.
+# `! Cache-Control` removes Cloudflare's default so our value is the only one.
+/assets/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable
+
+# Stable public assets that don't change between deploys often.
+/product_logo_128.png
+  ! Cache-Control
+  Cache-Control: public, max-age=86400
+/velloc.icon
+  ! Cache-Control
+  Cache-Control: public, max-age=86400
+
+# index.html and every other non-asset path (incl. each /v<N>/index.html,
+# which deliberately falls through here — see scripts/stage_deploy.mjs).
+# max-age=31536000 means the browser treats the stored copy as fresh for
+# one year: every boot serves from cache instantly with ZERO network wait.
+# s-maxage=0 forces Cloudflare (shared cache) to revalidate every request, so
+# the background fetch in index.html always gets the newest version. The
+# background fetch (cache: "no-cache") sends a conditional GET — 304 = no
+# change, 200 = new HTML written to browser cache — and the NEXT boot picks
+# up the updated HTML automatically. The content-hashed /assets/* above stay
+# immutably cached, so only changed chunks re-download.
+#
+# Chrome does NOT apply stale-while-revalidate to top-level document
+# navigations, so the old max-age=0 + SWR strategy did not work as intended.
+#
+# Access-Control-Allow-Origin: the About page's update-channel picker probes
+# the OTHER channel's /v<N>/ with a cross-origin HEAD fetch
+# (channelServesThisVersion, src/branding/updateChannels.ts). Without this
+# header the browser blocks the response, the probe fails CLOSED, and the
+# other channel shows "Not available" even while it is serving that version —
+# which is exactly how beta presented before this header existed. Everything
+# served here is public static content, so `*` gives away nothing. Cloudflare
+# merges headers from every matching rule, so this catch-all value also
+# reaches paths with their own Cache-Control rules above/below.
+#
+# Content-Security-Policy frame-ancestors 'none': the public deploy is never
+# legitimately framed. The desktop loads it in a <webview> (a guest is its own
+# top-level frame tree, which frame-ancestors does not govern) and a remote
+# opens it as a plain tab. Everything else — a page that iframes the guest to
+# postMessage a forged `nexus-init` / `nexus-theme` at it — is refused by the
+# browser before any script runs.
+/*
+  ! Cache-Control
+  Access-Control-Allow-Origin: *
+  Content-Security-Policy: frame-ancestors 'none'
+  Cache-Control: public, max-age=31536000, s-maxage=0
+
+# THE ROOT LANDING PAGE ONLY (`/` — deploy/root-index.html). Static, tiny, and
+# never requested by a binary: every build pins itself to /v<N>/. It carries no
+# background cache updater, so under the year max-age above a browser that
+# loaded `/` once would be stuck with that copy for a year and could never be
+# told anything new. Bounded max-age instead: still cached across quick
+# restarts, self-corrects within a day (s-maxage=0 keeps the edge fresh, so the
+# daily conditional GET always sees the newest copy). Every /v<N>/index.html
+# keeps the year strategy above — those bundles carry the updater. Specific
+# rules beat the `/*` catch-all regardless of position (live-verified
+# 2026-07-26: /product_logo_128.png serves its own 86400).
+#
+# (Until 2026-08-04 this served deploy/root-freeze/index.html, the frozen
+# pre-versioning build for binaries that predate /v<N>/. That fleet is gone
+# along with nexus.velloc.app; the freeze and the staging logic carrying it
+# were removed with it.)
+/
+  ! Cache-Control
+  Cache-Control: public, max-age=86400, s-maxage=0
+/index.html
+  ! Cache-Control
+  Cache-Control: public, max-age=86400, s-maxage=0

@@ -1,0 +1,654 @@
+{
+  "modelRequests": [
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "go"
+        }
+      ],
+      "systemPrompt": [
+        "You are running inside the chromium-runtime sidecar project.",
+        {
+          "digest": "dfe5065275b98281fa1a93a5aa4e039cc219a1ad4e476d9c605b66fb49f6c821",
+          "chars": 8790
+        }
+      ],
+      "userContext": {},
+      "systemContext": {},
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": [
+        {
+          "type": "function",
+          "name": "Look",
+          "description": "Look test tool.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "name": "Breaks",
+          "description": "Breaks test tool.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "go"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "look-1",
+              "toolName": "Look",
+              "args": {
+                "value": "look-1"
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "breaks-1",
+              "toolName": "Breaks",
+              "args": {
+                "value": "breaks-1"
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "look-2",
+              "toolName": "Look",
+              "args": {
+                "value": "look-2"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": [
+            {
+              "type": "tool-result",
+              "toolCallId": "breaks-1",
+              "result": "Tool execution error: It broke.",
+              "isError": true
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "look-1",
+              "result": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}"
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "look-2",
+              "result": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-2\"}}"
+            }
+          ]
+        }
+      ],
+      "systemPrompt": "<same as previous request>",
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": "<same as previous request>",
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "user: go\nassistant: Done."
+        }
+      ],
+      "systemPrompt": {
+        "digest": "9bd7b777c9079cb499769cd5aa8912b6f7bd9fdeac5be66a155b74d4c4d07b5b",
+        "chars": 359
+      },
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "providerId": "anthropic",
+      "model": "claude-haiku-4-5",
+      "maxOutputTokens": 32000,
+      "tools": [],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "rename_generate_name",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "title",
+        "querySource": "rename_generate_name"
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "request": 1,
+      "reply": "calls",
+      "querySource": "sdk"
+    },
+    {
+      "request": 2,
+      "reply": "done",
+      "querySource": "sdk"
+    },
+    {
+      "request": 3,
+      "reply": "title",
+      "querySource": "rename_generate_name"
+    }
+  ],
+  "transport": [
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead"
+  ],
+  "retryDelays": [],
+  "toolCalls": [
+    {
+      "event": "start",
+      "tool": "Look",
+      "id": "look-1",
+      "inFlight": [
+        "look-1"
+      ]
+    },
+    {
+      "event": "start",
+      "tool": "Breaks",
+      "id": "breaks-1",
+      "inFlight": [
+        "look-1",
+        "breaks-1"
+      ]
+    },
+    {
+      "event": "start",
+      "tool": "Look",
+      "id": "look-2",
+      "inFlight": [
+        "look-1",
+        "breaks-1",
+        "look-2"
+      ]
+    },
+    {
+      "event": "end",
+      "tool": "Look",
+      "id": "look-1"
+    },
+    {
+      "event": "end",
+      "tool": "Breaks",
+      "id": "breaks-1"
+    },
+    {
+      "event": "end",
+      "tool": "Look",
+      "id": "look-2"
+    }
+  ],
+  "permissions": [],
+  "hooks": [
+    {
+      "event": "PostToolUseFailure",
+      "command": "hook PostToolUseFailure",
+      "stdin": {
+        "session_id": "session-replay",
+        "cwd": "/workspace",
+        "hook_event_name": "PostToolUseFailure",
+        "permission_mode": "default",
+        "tool_name": "Breaks",
+        "tool_input": {
+          "value": "breaks-1"
+        },
+        "tool_response": "It broke.",
+        "tool_use_id": "breaks-1"
+      }
+    },
+    {
+      "event": "PostToolUse",
+      "command": "hook PostToolUse",
+      "stdin": {
+        "session_id": "session-replay",
+        "cwd": "/workspace",
+        "hook_event_name": "PostToolUse",
+        "permission_mode": "default",
+        "tool_name": "Look",
+        "tool_input": {
+          "value": "look-1"
+        },
+        "tool_response": {
+          "ok": true,
+          "tool": "Look",
+          "args": {
+            "value": "look-1"
+          }
+        },
+        "tool_use_id": "look-1"
+      }
+    },
+    {
+      "event": "PostToolUse",
+      "command": "hook PostToolUse",
+      "stdin": {
+        "session_id": "session-replay",
+        "cwd": "/workspace",
+        "hook_event_name": "PostToolUse",
+        "permission_mode": "default",
+        "tool_name": "Look",
+        "tool_input": {
+          "value": "look-2"
+        },
+        "tool_response": {
+          "ok": true,
+          "tool": "Look",
+          "args": {
+            "value": "look-2"
+          }
+        },
+        "tool_use_id": "look-2"
+      }
+    }
+  ],
+  "mods": [],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": "go"
+        }
+      ],
+      "total": 1
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:1>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "look-1",
+              "toolName": "Look",
+              "args": {
+                "value": "look-1"
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "breaks-1",
+              "toolName": "Breaks",
+              "args": {
+                "value": "breaks-1"
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "look-2",
+              "toolName": "Look",
+              "args": {
+                "value": "look-2"
+              }
+            }
+          ],
+          "stop_reason": "tool_use"
+        }
+      ],
+      "total": 2
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:2>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "Tool execution error: It broke.",
+              "isError": true,
+              "toolCallId": "breaks-1"
+            }
+          ],
+          "toolUseResult": "Tool execution error: It broke.",
+          "sourceToolAssistantUUID": "<id:1>"
+        }
+      ],
+      "rewritten": [
+        {
+          "type": "assistant",
+          "uuid": "<id:1>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "look-1",
+              "toolName": "Look",
+              "args": {
+                "value": "look-1"
+              },
+              "toolBatch": {
+                "mode": "concurrent",
+                "batchId": "<id:3>",
+                "batchSize": 3
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "breaks-1",
+              "toolName": "Breaks",
+              "args": {
+                "value": "breaks-1"
+              },
+              "toolBatch": {
+                "mode": "concurrent",
+                "batchId": "<id:3>",
+                "batchSize": 3
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "look-2",
+              "toolName": "Look",
+              "args": {
+                "value": "look-2"
+              },
+              "toolBatch": {
+                "mode": "concurrent",
+                "batchId": "<id:3>",
+                "batchSize": 3
+              }
+            }
+          ],
+          "stop_reason": "tool_use"
+        }
+      ],
+      "total": 3
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:4>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}",
+              "toolCallId": "look-1"
+            }
+          ],
+          "toolUseResult": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}",
+          "sourceToolAssistantUUID": "<id:1>"
+        }
+      ],
+      "total": 4
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:5>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-2\"}}",
+              "toolCallId": "look-2"
+            }
+          ],
+          "toolUseResult": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-2\"}}",
+          "sourceToolAssistantUUID": "<id:1>"
+        }
+      ],
+      "total": 5
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:6>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Done."
+            }
+          ],
+          "stop_reason": "end_turn"
+        }
+      ],
+      "total": 6
+    },
+    {
+      "op": "terminal",
+      "reason": "completed"
+    },
+    {
+      "op": "aiTitle",
+      "aiTitle": "A title"
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "go"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:1>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool-call",
+          "toolCallId": "look-1",
+          "toolName": "Look",
+          "args": {
+            "value": "look-1"
+          }
+        },
+        {
+          "type": "tool-call",
+          "toolCallId": "breaks-1",
+          "toolName": "Breaks",
+          "args": {
+            "value": "breaks-1"
+          }
+        },
+        {
+          "type": "tool-call",
+          "toolCallId": "look-2",
+          "toolName": "Look",
+          "args": {
+            "value": "look-2"
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:2>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "Tool execution error: It broke.",
+          "isError": true,
+          "toolCallId": "breaks-1"
+        }
+      ],
+      "toolUseResult": "Tool execution error: It broke.",
+      "sourceToolAssistantUUID": "<id:1>"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:4>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}",
+          "toolCallId": "look-1"
+        }
+      ],
+      "toolUseResult": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}",
+      "sourceToolAssistantUUID": "<id:1>"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:5>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-2\"}}",
+          "toolCallId": "look-2"
+        }
+      ],
+      "toolUseResult": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-2\"}}",
+      "sourceToolAssistantUUID": "<id:1>"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:6>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Done."
+        }
+      ],
+      "stop_reason": "end_turn"
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "uuid": "<id:7>",
+      "is_error": false,
+      "terminal": {
+        "reason": "completed"
+      }
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "success",
+    "terminal": {
+      "reason": "completed"
+    }
+  },
+  "notes": [
+    {
+      "processUserInput": "go"
+    },
+    {
+      "drain": 1,
+      "querySource": "sdk"
+    }
+  ]
+}

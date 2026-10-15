@@ -1,0 +1,6 @@
+{
+  "$comment": "Older interface versions every deploy keeps serving, each pinned to the published runtime-v<K>-* release whose site/v<K>/ is copied verbatim (scripts/stage_deploy.mjs readRetainedInterfaces; Workflow A downloads each). Keys must be below the current NEXUS_INTERFACE_VERSION. Empty = serve only the current version. Interface 1 stays served from its last production release after the bump to 2: released 1.149.1.x binaries have no upgrade path yet.",
+  "retained": {
+    "1": "runtime-v1-2026.10.07.1"
+  }
+}

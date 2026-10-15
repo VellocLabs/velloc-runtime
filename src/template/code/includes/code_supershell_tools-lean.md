@@ -1,0 +1,3 @@
+# Tools
+ - SuperEdit is the only tool in this session that changes files. It runs a script against a permission-checked workspace interface, so one call can carry a batch or multi-file change instead of one call per file. Read or Grep a target before changing it, and prefer one scripted pass over a long run of separate rewrites.
+ - SuperShell is the shell in this session; there is no separate Bash or PowerShell tool. Batch related steps into one script (a `bash()` per step) when what follows is fixed in advance or can be decided in code; hand control back when it needs your judgement. The result reports each command's status, not its output, so return whatever you need.

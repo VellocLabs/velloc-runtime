@@ -1,0 +1,396 @@
+{
+  "modelRequests": [
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "go"
+        }
+      ],
+      "systemPrompt": [
+        "You are running inside the chromium-runtime sidecar project.",
+        {
+          "digest": "dfe5065275b98281fa1a93a5aa4e039cc219a1ad4e476d9c605b66fb49f6c821",
+          "chars": 8790
+        }
+      ],
+      "userContext": {},
+      "systemContext": {},
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": [
+        {
+          "type": "function",
+          "name": "Look",
+          "description": "Look test tool.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "name": "Stopper",
+          "description": "Stopper test tool.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "name": "Never",
+          "description": "Never test tool.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "request": 1,
+      "reply": "calls",
+      "querySource": "sdk"
+    }
+  ],
+  "transport": [
+    "streamStart",
+    "streamRead"
+  ],
+  "retryDelays": [],
+  "toolCalls": [
+    {
+      "event": "start",
+      "tool": "Look",
+      "id": "look-1",
+      "inFlight": [
+        "look-1"
+      ]
+    },
+    {
+      "event": "end",
+      "tool": "Look",
+      "id": "look-1"
+    },
+    {
+      "event": "start",
+      "tool": "Stopper",
+      "id": "stopper-1",
+      "inFlight": [
+        "stopper-1"
+      ]
+    },
+    {
+      "event": "end",
+      "tool": "Stopper",
+      "id": "stopper-1"
+    }
+  ],
+  "permissions": [],
+  "hooks": [],
+  "mods": [],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": "go"
+        }
+      ],
+      "total": 1
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:1>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "look-1",
+              "toolName": "Look",
+              "args": {
+                "value": "look-1"
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "stopper-1",
+              "toolName": "Stopper",
+              "args": {
+                "value": "stopper-1"
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "never-1",
+              "toolName": "Never",
+              "args": {
+                "value": "never-1"
+              }
+            }
+          ],
+          "stop_reason": "tool_use"
+        }
+      ],
+      "total": 2
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:2>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}",
+              "toolCallId": "look-1"
+            }
+          ],
+          "toolUseResult": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}",
+          "sourceToolAssistantUUID": "<id:1>"
+        }
+      ],
+      "total": 3
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:3>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "{\"ok\":true,\"tool\":\"Stopper\",\"args\":{\"value\":\"stopper-1\"}}",
+              "toolCallId": "stopper-1"
+            }
+          ],
+          "toolUseResult": "{\"ok\":true,\"tool\":\"Stopper\",\"args\":{\"value\":\"stopper-1\"}}",
+          "sourceToolAssistantUUID": "<id:1>"
+        }
+      ],
+      "total": 4
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:4>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "Interrupted by user",
+              "isError": true,
+              "toolCallId": "never-1"
+            }
+          ],
+          "toolUseResult": "Interrupted by user",
+          "sourceToolAssistantUUID": "<id:1>"
+        }
+      ],
+      "total": 5
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:5>",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "[Request interrupted by user for tool use]"
+            }
+          ]
+        }
+      ],
+      "total": 6
+    },
+    {
+      "op": "terminal",
+      "reason": "aborted_streaming"
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "go"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:1>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool-call",
+          "toolCallId": "look-1",
+          "toolName": "Look",
+          "args": {
+            "value": "look-1"
+          }
+        },
+        {
+          "type": "tool-call",
+          "toolCallId": "stopper-1",
+          "toolName": "Stopper",
+          "args": {
+            "value": "stopper-1"
+          }
+        },
+        {
+          "type": "tool-call",
+          "toolCallId": "never-1",
+          "toolName": "Never",
+          "args": {
+            "value": "never-1"
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:2>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}",
+          "toolCallId": "look-1"
+        }
+      ],
+      "toolUseResult": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}",
+      "sourceToolAssistantUUID": "<id:1>"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:3>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "{\"ok\":true,\"tool\":\"Stopper\",\"args\":{\"value\":\"stopper-1\"}}",
+          "toolCallId": "stopper-1"
+        }
+      ],
+      "toolUseResult": "{\"ok\":true,\"tool\":\"Stopper\",\"args\":{\"value\":\"stopper-1\"}}",
+      "sourceToolAssistantUUID": "<id:1>"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:4>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "Interrupted by user",
+          "isError": true,
+          "toolCallId": "never-1"
+        }
+      ],
+      "toolUseResult": "Interrupted by user",
+      "sourceToolAssistantUUID": "<id:1>"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:5>",
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "[Request interrupted by user for tool use]"
+        }
+      ]
+    },
+    {
+      "type": "result",
+      "subtype": "error_aborted_streaming",
+      "uuid": "<id:6>",
+      "is_error": true,
+      "terminal": {
+        "reason": "aborted_streaming"
+      }
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "error_aborted_streaming",
+    "terminal": {
+      "reason": "aborted_streaming"
+    }
+  },
+  "notes": [
+    {
+      "processUserInput": "go"
+    }
+  ]
+}

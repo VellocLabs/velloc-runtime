@@ -1,0 +1,14 @@
+- Act, then verify. Every browser tool call returns a fresh observation, and `index` values are valid only from the latest one. Navigating, scrolling, an automatic page refresh or a tab switch invalidates earlier indexes — observe again before using them. Take a BrowserScreenshot only when you need pixels; the default observation already lists every actionable element.
+
+- One browser tool call per turn. Page-changing tools (BrowserNavigate / BrowserSearch / BrowserBack / BrowserCloseTab / BrowserActivateTab / Done) wait for the page to settle before returning and end the batch, so send them last or alone.
+
+- When a call fails, read the error and fix the cause before retrying. Typical failures:
+  - "missing required X" → a required field was left out. Required fields by tool: BrowserClick / BrowserHover / BrowserScrollToElement / BrowserReadElement / BrowserSelectOption need `index`; BrowserType needs `index` and `text`; BrowserSelectOption also needs `value`; BrowserNavigate needs `url`; BrowserDragAndDrop needs `from_index` and `to_index`; BrowserSearch needs `query`; BrowserScroll needs `direction`; BrowserActivateTab needs `tab_id`; BrowserMediaControl needs `action` (and `seek_time_ms` when action='seek'); BrowserFindText needs `query`; BrowserFillForm needs `fields` (each entry: `{index, action, value?}`); Done needs `success` and `text`. Resend with every required field filled.
+  - "ELEMENT_OFFSCREEN" → run BrowserScrollToElement on that index, then retry. If the index is a fully visible autocomplete suggestion, dropdown item or other JS-onclick widget, the node itself cannot be clicked; use BrowserFindText with its visible text and click the returned clickable_ancestor_index.
+  - "stale index" or unexpected state → the page has changed. Refresh the observation with any observation tool (BrowserReadPage or another action) before acting on earlier indexes.
+  - You need text the observation does not show (article body, result list, error banner) → use BrowserReadPage for the whole tab or BrowserReadElement for one element. Do not guess indexes; the observation lists actionable elements only.
+  - The page returns 404 / 500 / blocked → report the error; do not retry blindly.
+
+- Most tools act on the active tab. To work on another tab, call BrowserActivateTab(tab_id) first. Only BrowserActivateTab (required) and BrowserCloseTab (optional, defaults to the active tab) take an explicit tab_id; every other browser tool drops the field, so passing it does nothing.
+
+- For a form with several fields, prefer BrowserFillForm over calling BrowserType / BrowserSelectOption / BrowserClick one field at a time. Each `fields` entry is `{index, action, value?}`, with action 'type' | 'select' | 'check' | 'uncheck' | 'click'; value is required for 'type' and 'select'. The optional submit_index clicks a submit button at the end. All fields must be on the active tab.

@@ -1,0 +1,837 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+/* Geist is imported from TS (src/glic/main.tsx), not a css `@import` here: the
+ * Tailwind pipeline would not rebase its `url(./files/…)` paths. Pinned by
+ * guest-fonts-selfhosted.test.ts. */
+
+/* Both imports stay above every other statement, Tailwind at-rules included:
+ * CSS honours `@import` only in the prologue, and `@source` ends it. See
+ * src/__tests__/tailwind-source-scope.test.ts. */
+
+/* Keep the whole `deploy/` directory (deploy input, not app source) out of
+ * Tailwind's source scan, so its class names never reach the app CSS. The
+ * path is relative to this file. */
+@source not "../../deploy";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-toolbar: var(--toolbar);
+  /* NOT `--color-base`: a `--color-<name>` entry makes `text-<name>` a COLOUR
+   * utility, and `base` is also Tailwind's default font-SIZE step. Naming it
+   * `--color-base` therefore turned every `text-base` in the app into
+   * `color: var(--base)` -- text painted in the page background: invisible
+   * settings inputs, dialog titles and markdown h1s. Pinned by
+   * src/__tests__/color-tokens-guard.test.ts. */
+  --color-base-surface: var(--base);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  --font-mono: var(--font-geist-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  /* The five-step type scale (boot/guestTextSize.ts). Each utility below sets
+   * BOTH font-size and line-height from the `--nx-*` pair that
+   * `<html data-text-size>` selects further down, so `text-prose` on the
+   * transcript and `text-body` on a tool row follow the Settings · Appearance
+   * step without any component knowing which step is active. `prose` is the
+   * conversation, `body` the interface text (tool rows, sidebar), `caption`
+   * the small labels, `code` fenced blocks, `composer` the input. */
+  --text-prose: var(--nx-prose-size);
+  --text-prose--line-height: var(--nx-prose-leading);
+  --text-body: var(--nx-body-size);
+  --text-body--line-height: var(--nx-body-leading);
+  --text-caption: var(--nx-caption-size);
+  --text-caption--line-height: var(--nx-caption-leading);
+  --text-code: var(--nx-code-size);
+  --text-code--line-height: var(--nx-code-leading);
+  --text-composer: var(--nx-composer-size);
+  --text-composer--line-height: var(--nx-composer-leading);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-success-emphasis: var(--success-emphasis);
+  --color-warning: var(--warning);
+  --color-warning-emphasis: var(--warning-emphasis);
+  --color-info: var(--info);
+  --color-info-emphasis: var(--info-emphasis);
+  --color-diff-added: var(--diff-added);
+  --color-diff-removed: var(--diff-removed);
+  --color-diff-added-bg: var(--diff-added-bg);
+  --color-diff-removed-bg: var(--diff-removed-bg);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --animate-shimmer: shimmer-sweep var(--shimmer-duration, 1000ms) linear
+    infinite both;
+  @keyframes shimmer-sweep {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+  /* The Radix Accordion's open / close slide (accordion.tsx names these). */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Type scale behind the `text-prose` / `text-body` / `text-caption` /
+ * `text-code` / `text-composer` utilities: five steps on `<html
+ * data-text-size>` (boot/guestTextSize.ts, Settings · Appearance). The bare
+ * `:root` block is step 2, the default. Only these tokens step.
+ * ------------------------------------------------------------------------- */
+:root,
+:root[data-text-size="2"] {
+  --nx-prose-size: 14px;
+  --nx-prose-leading: 20px;
+  --nx-body-size: 13px;
+  --nx-body-leading: 19px;
+  --nx-caption-size: 11px;
+  --nx-caption-leading: 17px;
+  --nx-code-size: 12px;
+  --nx-code-leading: 17px;
+  --nx-composer-size: 16px;
+  --nx-composer-leading: 24px;
+}
+:root[data-text-size="1"] {
+  --nx-prose-size: 13px;
+  --nx-prose-leading: 19px;
+  --nx-body-size: 12px;
+  --nx-body-leading: 17px;
+  --nx-caption-size: 10px;
+  --nx-caption-leading: 15px;
+  --nx-code-size: 12px;
+  --nx-code-leading: 17px;
+  --nx-composer-size: 16px;
+  --nx-composer-leading: 24px;
+}
+:root[data-text-size="3"] {
+  --nx-prose-size: 15px;
+  --nx-prose-leading: 22px;
+  --nx-body-size: 14px;
+  --nx-body-leading: 20px;
+  --nx-caption-size: 12px;
+  --nx-caption-leading: 17px;
+  --nx-code-size: 13px;
+  --nx-code-leading: 19px;
+  --nx-composer-size: 16px;
+  --nx-composer-leading: 24px;
+}
+:root[data-text-size="4"] {
+  --nx-prose-size: 16px;
+  --nx-prose-leading: 24px;
+  --nx-body-size: 14px;
+  --nx-body-leading: 20px;
+  --nx-caption-size: 12px;
+  --nx-caption-leading: 17px;
+  --nx-code-size: 13px;
+  --nx-code-leading: 19px;
+  --nx-composer-size: 16px;
+  --nx-composer-leading: 24px;
+}
+:root[data-text-size="5"] {
+  --nx-prose-size: 18px;
+  --nx-prose-leading: 27px;
+  --nx-body-size: 15px;
+  --nx-body-leading: 22px;
+  --nx-caption-size: 13px;
+  --nx-caption-leading: 19px;
+  --nx-code-size: 14px;
+  --nx-code-leading: 21px;
+  --nx-composer-size: 18px;
+  --nx-composer-leading: 27px;
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  /* Chrome's toolbar / active-tab surface (kColorToolbar): the topbar and the
+   * composer bar paint from it. Overridden live by the host's `toolbar` role. */
+  --toolbar: oklch(1 0 0);
+  /* Chrome's base surface (kColorSysBase — dialogs, the composer box and the
+   * running-status bar). Overridden live by the host's `base` role. */
+  --base: oklch(1 0 0);
+  --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.141 0.005 285.823);
+  --primary: oklch(0.21 0.006 285.885);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  --accent: oklch(0.967 0.001 286.375);
+  --accent-foreground: oklch(0.21 0.006 285.885);
+  --destructive: oklch(0.577 0.245 27.325);
+  /* One hairline everywhere: secondary text at 20% (the line markdown tables
+   * always drew). Overridden live by the host's `outline` role. */
+  --border: oklch(0.552 0.016 285.938 / 20%);
+  --input: oklch(0.552 0.016 285.938 / 30%);
+  --ring: oklch(0.705 0.015 286.067);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.141 0.005 285.823);
+  --sidebar-primary: oklch(0.21 0.006 285.885);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.967 0.001 286.375);
+  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-border: oklch(0.552 0.016 285.938 / 20%);
+  --sidebar-ring: oklch(0.705 0.015 286.067);
+
+  /* Semantic status colours: every success / warning / info surface uses these,
+   * never a raw Tailwind hue. `--<name>` is the hue, `--<name>-emphasis` strong
+   * text on its tint; light = 700 stops (AA on white), dark = 400. `--diff-*`
+   * are the added/removed text hues, `--diff-*-bg` the 500-stop row tints.
+   * Pinned by src/__tests__/color-tokens-guard.test.ts. */
+  --success: oklch(0.508 0.118 165.612);
+  --success-emphasis: oklch(0.432 0.095 166.913);
+  --warning: oklch(0.555 0.163 48.998);
+  --warning-emphasis: oklch(0.414 0.112 45.904);
+  --info: oklch(0.5 0.134 242.749);
+  --info-emphasis: oklch(0.391 0.09 240.876);
+  --diff-added: oklch(0.527 0.154 150.069);
+  --diff-removed: oklch(0.505 0.213 27.518);
+  --diff-added-bg: oklch(0.723 0.219 149.579);
+  --diff-removed-bg: oklch(0.637 0.237 25.331);
+
+  /* Syntax-highlight palette for the right-panel code viewer (CodeMirrorView).
+   * GitHub-Light-derived, legible on the light `--background`. The `.dark`
+   * block below overrides these; token colors are referenced as `var(--syntax-*)`
+   * from the editor's HighlightStyle so highlighting is theme-correct with no
+   * per-theme JS. */
+  --syntax-comment: #6e7781;
+  --syntax-keyword: #cf222e;
+  --syntax-string: #0a3069;
+  --syntax-number: #0550ae;
+  --syntax-constant: #0550ae;
+  --syntax-function: #8250df;
+  --syntax-type: #953800;
+  --syntax-property: #0550ae;
+  --syntax-tag: #116329;
+  --syntax-link: #0969da;
+}
+
+.dark {
+  /* Chrome's own dark palette (the fork's Material ref neutrals, in oklch):
+   * surface neutral-10, raised neutral-15, text neutral-90 (not white),
+   * secondary neutral-80, outlines neutral-variant-60 at reduced alpha. */
+  --background: oklch(0.239 0 0);
+  --toolbar: oklch(0.356 0 0); /* neutral toolbar #3c3c3c */
+  --base: oklch(0.239 0 0); /* = surface */
+  --foreground: oklch(0.916 0 0);
+  --card: oklch(0.277 0 0);
+  --card-foreground: oklch(0.916 0 0);
+  --popover: oklch(0.277 0 0);
+  --popover-foreground: oklch(0.916 0 0);
+  --primary: oklch(0.916 0 0);
+  --primary-foreground: oklch(0.239 0 0);
+  --secondary: oklch(0.309 0 0);
+  --secondary-foreground: oklch(0.916 0 0);
+  --muted: oklch(0.309 0 0);
+  --muted-foreground: oklch(0.827 0.004 157.2);
+  --accent: oklch(0.309 0 0);
+  --accent-foreground: oklch(0.916 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(0.827 0.004 157.2 / 20%);
+  --input: oklch(0.827 0.004 157.2 / 30%);
+  --ring: oklch(0.654 0.005 157.1);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.239 0 0); /* = surface */
+  --sidebar-foreground: oklch(0.916 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.916 0 0);
+  --sidebar-accent: oklch(0.309 0 0);
+  --sidebar-accent-foreground: oklch(0.916 0 0);
+  --sidebar-border: oklch(0.827 0.004 157.2 / 20%);
+  --sidebar-ring: oklch(0.654 0.005 157.1);
+
+  /* Status hues lifted for dark surfaces (the 400/100 stops of the same
+   * scales the light block uses). */
+  --success: oklch(0.765 0.177 163.223);
+  --success-emphasis: oklch(0.95 0.052 163.051);
+  --warning: oklch(0.828 0.189 84.429);
+  --warning-emphasis: oklch(0.962 0.059 95.617);
+  --info: oklch(0.746 0.16 232.661);
+  --info-emphasis: oklch(0.951 0.026 236.824);
+  --diff-added: oklch(0.792 0.209 151.711);
+  --diff-removed: oklch(0.704 0.191 22.216);
+  --diff-added-bg: oklch(0.723 0.219 149.579);
+  --diff-removed-bg: oklch(0.637 0.237 25.331);
+
+  /* GitHub-Dark-derived syntax palette — legible on the dark `--background`.
+   * See the light `:root` block for how these are consumed. */
+  --syntax-comment: #8b949e;
+  --syntax-keyword: #ff7b72;
+  --syntax-string: #a5d6ff;
+  --syntax-number: #79c0ff;
+  --syntax-constant: #79c0ff;
+  --syntax-function: #d2a8ff;
+  --syntax-type: #ffa657;
+  --syntax-property: #79c0ff;
+  --syntax-tag: #7ee787;
+  --syntax-link: #a5d6ff;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  :root {
+    color-scheme: light;
+  }
+
+  :root.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    min-height: 100vh;
+  }
+
+  /* -------------------------------------------------------------------------
+   * Text selection: DENY at the root, opt back in for content surfaces. The
+   * opt-ins target elements, so they beat the inherited value; the two `none`
+   * re-assertions come after them and win where they overlap; component
+   * `select-text` / `select-none` utilities win over this `@layer base`. Mark a
+   * new selectable surface with `data-nexus-selectable`.
+   * ---------------------------------------------------------------------- */
+  html {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Content the user reads and copies. */
+  input,
+  textarea,
+  [contenteditable]:not([contenteditable='false']),
+  .aui-thread-viewport,
+  .aui-md,
+  pre,
+  code,
+  kbd,
+  samp,
+  .cm-editor,
+  .aui-file-content,
+  .aui-edit-diff-body,
+  [data-nexus-selectable] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Chrome that sits INSIDE an opted-in surface. The composer footer is a
+   * child of `.aui-thread-viewport` (thread.tsx), so it inherits `text`
+   * without this — its send/stop buttons, model chip and attachment rows are
+   * shell, not transcript. The composer's own textarea is unaffected: the
+   * `textarea` rule above applies to that element directly, and a direct
+   * declaration always beats an inherited one. */
+  .aui-thread-viewport-footer,
+  [data-nexus-selectable='false'] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * A virtualized row remounted on scroll (`data-restored`) does not replay its
+ * arrival animation; a new message still animates.
+ * ------------------------------------------------------------------------- */
+[data-slot='message-slot'][data-restored='true'] .animate-in {
+  animation: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * Transcript-search jump highlight. `revealThreadMessage` stamps
+ * `data-search-hit` on the revealed message row and removes it ~2s later;
+ * the fade makes the landing spot readable without a lingering marker.
+ * ------------------------------------------------------------------------- */
+/* INNER background only — the element itself tints, nothing bleeds
+   outside it. No box-shadow ring, no full-bleed band: the surrounding
+   layout is untouched, exactly the hit's own box lights up. */
+[data-search-hit='true'] {
+  position: relative;
+  border-radius: 0.375rem;
+  animation: nexus-search-hit-box 5s ease-out;
+  scroll-margin-block: 25vh;
+}
+
+/* When a flashed element ENCLOSES another flashed one — a wrapper and the
+   leaf inside it both carry the marker — only the innermost tints. Two
+   stacked backgrounds read as two colours, which is not the hit. */
+[data-search-hit='true']:has([data-search-hit='true']) {
+  animation: none;
+  background-color: transparent;
+}
+
+/* The matched keyword inside the flashed line: heavier weight, no
+   background of its own — the line's flash is the highlight, the weight
+   just draws the eye to the exact words. Registered as a CSS custom
+   highlight (`searchEmphasis.ts`), which does not touch the DOM tree —
+   so it never races React's reconciliation. `::highlight()` cannot set
+   `font-weight` (it must not affect layout), so the heavier look is faked
+   with a tight same-colour text-shadow. */
+::highlight(nexus-search-term) {
+  text-shadow:
+    0 0 0.35px currentColor,
+    0 0 0.35px currentColor;
+}
+
+@keyframes nexus-search-hit-box {
+  0% {
+    background-color: color-mix(in srgb, var(--primary) 32%, transparent);
+  }
+  12% {
+    background-color: color-mix(in srgb, var(--primary) 14%, transparent);
+  }
+  24% {
+    background-color: color-mix(in srgb, var(--primary) 32%, transparent);
+  }
+  70% {
+    background-color: color-mix(in srgb, var(--primary) 20%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Search-jump arrow: `———▶` pointing at the found line from its left.
+ *
+ * Built and positioned imperatively (`searchArrow.ts`) as a body child, so
+ * it floats ABOVE every layer regardless of what card the line sits in, and
+ * tracks the line as opening cards shift the layout under it. Removed when
+ * the flash ends.
+ * ------------------------------------------------------------------------- */
+.nexus-search-arrow {
+  position: fixed;
+  z-index: 2147483000; /* above dialogs, popovers, everything */
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  transform: translateY(-50%);
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, black 35%, transparent));
+  /* Travels in from the conversation's left edge to its resting spot next
+     to the line. `--enter-from` is the (negative) distance, set inline so
+     the slide covers the real gap regardless of where the line landed. */
+  animation: nexus-search-arrow-in 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.nexus-search-arrow--leaving {
+  animation: nexus-search-arrow-out 260ms ease-in forwards;
+}
+
+.nexus-search-arrow-shaft {
+  width: 3.25rem;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--primary) 10%, transparent),
+    var(--primary)
+  );
+}
+
+.nexus-search-arrow-head {
+  width: 0;
+  height: 0;
+  border-top: 0.45rem solid transparent;
+  border-bottom: 0.45rem solid transparent;
+  border-left: 0.7rem solid var(--primary);
+  margin-left: -1px;
+}
+
+@keyframes nexus-search-arrow-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--enter-from, -0.75rem), -50%);
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+}
+
+@keyframes nexus-search-arrow-out {
+  from {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+  to {
+    opacity: 0;
+    transform: translate(0.5rem, -50%);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Conversation loading page: a fast monochrome arc spinner (static track ring
+ * plus a rotating dashed arc, currentColor, opacity-only separation). A
+ * functional indicator: no reduced-motion gate; re-asserted below.
+ * ------------------------------------------------------------------------- */
+.nexus-loadpage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+.nexus-loadpage-stage {
+  width: 48px;
+  height: 48px;
+  display: block;
+}
+/* Dimmed full ring behind the arc — same color, lower alpha. */
+.nexus-loadpage-track {
+  opacity: 0.16;
+}
+/* The moving quarter-arc. transform-origin is the circle's own center (24,24 in
+ * the 48-unit viewBox); transform-box:fill-box would use the arc's dash bounds
+ * instead, which wobble, so the origin is given explicitly in user units. */
+.nexus-loadpage-arc {
+  transform-origin: 24px 24px;
+  animation: nexus-load-spin 900ms linear infinite;
+  will-change: transform;
+}
+/* Muted label beneath the ring. currentColor at low opacity stays in the
+ * monochrome family in both themes. */
+.nexus-loadpage-label {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: currentColor;
+  opacity: 0.55;
+  animation: nexus-load-label-breathe 1.6s ease-in-out infinite;
+}
+@keyframes nexus-load-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes nexus-load-label-breathe {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 0.65; }
+}
+
+/* ---------------------------------------------------------------------------
+ * Nexus topbar — React recreation of the Lit `<nexus-topbar>` visuals.
+ * ------------------------------------------------------------------------- */
+
+/* Width of the OS caption-control strip (min/max/close) that the PANEL paints
+ * over the webview's top-right. The React topbar reserves this much room on its
+ * right so the "Open browser window" button aligns just left of those native
+ * controls. Default is the Windows 3-button width; tune per platform / hide in
+ * the dev mock by overriding to 0px. */
+:root {
+  /* Matches the panel's `WINDOWS_CAPTION_BUTTON_AREA_WIDTH` (3×45 + spacing)
+   * in native_view_aliases.ts so the button lands flush against the controls. */
+  --nexus-caption-inset: 144px;
+}
+
+/* OS window-drag regions: the topbar background is draggable; interactive
+ * controls opt back out. No-ops in the dev/mock browser (only the packaged
+ * frameless window honours `-webkit-app-region`). */
+.app-region-drag {
+  -webkit-app-region: drag;
+}
+.app-region-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Settings → Plugins: the row a mod's icon above the prompt jumped to
+   flashes three times (PluginsSection's `revealPluginRequest`). */
+@keyframes nexus-plugin-flash {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 2px var(--primary);
+    background-color: color-mix(in oklab, var(--primary) 10%, var(--card));
+  }
+}
+
+.nexus-plugin-flash {
+  animation: nexus-plugin-flash 0.6s ease-in-out 3;
+}
+
+/* Conversation running-indicator: a currentColor orbit trio fused by an
+ * alpha-only SVG goo filter (monochrome in both themes). A functional
+ * indicator: no reduced-motion gate; re-asserted below. */
+.nexus-running-blob {
+  /* Rendered at 24px (the 30-unit viewBox scales to fit, so the orbit geometry
+     stays proportional). The status-text size is unchanged — see the
+     `text-[13px]` label. */
+  width: 24px;
+  height: 24px;
+  display: block;
+  overflow: visible; /* goo blur bleeds past the 30-unit viewBox */
+}
+/* The trio of orbiters spins around the center. The dots are placed statically
+ * at 0°/120°/240° (recipe: rotate the coordinate space, push outward); spinning
+ * the GROUP orbits all three together. */
+.nexus-blob-orbit {
+  transform-origin: 15px 15px;
+  animation: nexus-blob-spin 3s linear infinite;
+}
+/* Center dot pulses (scale only): swells to merge with the orbiters under the
+ * goo filter, then shrinks to pinch apart — the liquid heartbeat. */
+.nexus-blob-core {
+  transform-origin: 15px 15px;
+  animation: nexus-blob-pulse 1.5s ease-in-out infinite;
+}
+@keyframes nexus-blob-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes nexus-blob-pulse {
+  0%, 100% { transform: scale(0.5); }
+  50%      { transform: scale(1.1); }
+}
+
+/* ---------------------------------------------------------------------------
+ * Next-message strip "landed": a short pulse plus a bump on the `[N]` badge,
+ * replayed once per append by re-keying the strip. Colour is `--primary`
+ * (`--accent` equals `--muted` here) mixed with `color-mix(in oklab, …)`:
+ * the tokens are `oklch()`, so `hsl(var(…) / a)` is invalid.
+ * ------------------------------------------------------------------------- */
+.nexus-pending-landed {
+  animation: nexus-pending-ring 520ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* One ring, expanding outward from the border and fading — the visual of
+ * something being ADDED, without tinting the strip's fill (which is what made
+ * the old flash read as a warning). `box-shadow` is not clipped by the strip's
+ * `overflow-hidden`, and both properties animate on the compositor's cheap
+ * path. The final keyframe reproduces the resting border exactly, so there is
+ * no fill-mode and no snap when it ends. */
+@keyframes nexus-pending-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 38%, transparent);
+    border-color: color-mix(in oklab, var(--primary) 60%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 5px color-mix(in oklab, var(--primary) 0%, transparent);
+    border-color: color-mix(in oklab, var(--primary) 26%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent);
+    border-color: var(--border);
+  }
+}
+
+/* The count bump: `[N]` is the only thing whose VALUE changed, so it is the
+ * only thing that moves. A single overshoot settles it, and the colour returns
+ * to the resting muted foreground so nothing stays highlighted. `inline-block`
+ * is required for the transform to apply to what is otherwise an inline span. */
+.nexus-pending-count {
+  display: inline-block;
+}
+.nexus-pending-landed .nexus-pending-count {
+  animation: nexus-pending-count-bump 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes nexus-pending-count-bump {
+  0%   { transform: scale(1);    color: var(--primary); }
+  45%  { transform: scale(1.28); color: var(--primary); }
+  100% { transform: scale(1);    color: var(--muted-foreground); }
+}
+
+/* ---------------------------------------------------------------------------
+ * Session-list busy indicator: three currentColor ripples (2s loop, staggered
+ * thirds), transform + opacity only, in a 14px slot. Functional: re-asserted
+ * under reduced-motion below.
+ * ------------------------------------------------------------------------- */
+.nexus-ripple {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.nexus-ripple i {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px; /* center the dot on (50%,50%) so it scales from the middle */
+  border-radius: 50%;
+  background: currentColor;
+}
+/* One keyframe (grow + fade); three copies with thirds-of-duration delays turn a
+ * single pulse into a continuous ripple. */
+.nexus-ripple i:nth-child(1) { animation: nexus-ripple 2s ease-out infinite 0s; }
+.nexus-ripple i:nth-child(2) { animation: nexus-ripple 2s ease-out infinite 0.66s; }
+.nexus-ripple i:nth-child(3) { animation: nexus-ripple 2s ease-out infinite 1.33s; }
+@keyframes nexus-ripple {
+  0%   { transform: scale(0.3); opacity: 1; }
+  100% { transform: scale(4.2); opacity: 0; }
+}
+
+/* Session-list "needs your response" dot — a background session halted on an
+ * approval control (plan / permission ask / question). Amber + a gentle
+ * breathing pulse so it reads as "needs attention" and never looks like the
+ * primary-colored running ripple that may sit in the same icon slot.
+ * FUNCTIONAL (a blocked turn needs the user), so it is re-asserted under
+ * reduced-motion below; the steady amber dot keeps it legible even when
+ * frozen. */
+.nexus-attention-dot {
+  animation: nexus-attention-dot-breathe 2s ease-in-out infinite;
+}
+@keyframes nexus-attention-dot-breathe {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
+}
+
+/* Functional status indicators (blob, ripple, `animate-spin`) keep animating
+ * under reduced-motion: the release WebUI derives `reduce` from the native-UI
+ * animation setting, not the user's web preference. Decorative motion still
+ * honours it. */
+@media (prefers-reduced-motion: reduce) {
+  /* Both the base `animate-spin` utility AND the `motion-safe:animate-spin`
+   * variant. The latter (the plan/todo `StepGlyph` spinner — the tool card's
+   * "Working" header + in-progress sub-step) only has a rule under
+   * `no-preference`, so under `reduce` it has NO rule at all and must be
+   * re-asserted here too, or those tool-card spinners stay frozen. */
+  .animate-spin,
+  .motion-safe\:animate-spin {
+    animation: spin 1s linear infinite !important;
+  }
+  /* The plan/todo ProgressBar's active "working" pulse (also a motion-safe
+   * variant → no rule under reduce). Its sole use is that functional progress
+   * indicator, so re-assert it too. */
+  .motion-safe\:animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite !important;
+  }
+  /* Conversation running-indicator (gooey orbit trio) — re-assert each
+   * animation with !important so the release WebUI's spurious `reduce` can't
+   * freeze this functional "agent is working" indicator. */
+  .nexus-blob-orbit {
+    animation: nexus-blob-spin 3s linear infinite !important;
+  }
+  .nexus-blob-core {
+    animation: nexus-blob-pulse 1.5s ease-in-out infinite !important;
+  }
+  /* Session-list busy indicator (ink drop ripple) — same exemption. Re-assert
+   * per nth-child so the staggered start delays survive (a bare `animation`
+   * shorthand would reset animation-delay to 0 and sync the three ripples). */
+  .nexus-ripple i:nth-child(1) {
+    animation: nexus-ripple 2s ease-out infinite 0s !important;
+  }
+  .nexus-ripple i:nth-child(2) {
+    animation: nexus-ripple 2s ease-out infinite 0.66s !important;
+  }
+  .nexus-ripple i:nth-child(3) {
+    animation: nexus-ripple 2s ease-out infinite 1.33s !important;
+  }
+  /* Next-message "landed" state — same functional exemption, and the strongest
+   * case for it: this is the only confirmation the user gets that a submit made
+   * while the agent was busy was accepted and appended. Frozen by the release
+   * WebUI's spurious `reduce`, the `[N]` badge would change with no signal at
+   * all. BOTH layers are re-asserted rather than just the colour one: in release
+   * `reduce` is reported for every user, so gating either on it would mean
+   * nobody ever sees it. Both are sub-second and non-looping, which is the part
+   * that actually matters for motion sensitivity. */
+  .nexus-pending-landed {
+    animation: nexus-pending-ring 520ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+  .nexus-pending-landed .nexus-pending-count {
+    animation: nexus-pending-count-bump 420ms cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+  }
+  /* Session-list "needs your response" dot — same functional exemption. */
+  .nexus-attention-dot {
+    animation: nexus-attention-dot-breathe 2s ease-in-out infinite !important;
+  }
+  /* Full-panel loading page (fast arc spinner) — same functional exemption. */
+  .nexus-loadpage-arc {
+    animation: nexus-load-spin 900ms linear infinite !important;
+  }
+  .nexus-loadpage-label {
+    animation: nexus-load-label-breathe 1.6s ease-in-out infinite !important;
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * Graphviz dark mode: recolor the emitted SVG (white → transparent, black →
+ * foreground) inside `.aui-graphviz-diagram` under `.dark`; light mode is
+ * unchanged.
+ * ------------------------------------------------------------------------- */
+.dark .aui-graphviz-diagram svg polygon[fill="white"],
+.dark .aui-graphviz-diagram svg polygon[fill="#ffffff"],
+.dark .aui-graphviz-diagram svg polygon[fill="#fff"] {
+  fill: transparent;
+}
+.dark .aui-graphviz-diagram svg text {
+  fill: var(--foreground);
+}
+.dark .aui-graphviz-diagram svg [stroke="black"],
+.dark .aui-graphviz-diagram svg [stroke="#000000"],
+.dark .aui-graphviz-diagram svg [stroke="#000"] {
+  stroke: var(--foreground);
+}
+/* Arrowheads and filled nodes are `fill="black"`; leave `fill="none"` alone. */
+.dark .aui-graphviz-diagram svg [fill="black"],
+.dark .aui-graphviz-diagram svg [fill="#000000"],
+.dark .aui-graphviz-diagram svg [fill="#000"] {
+  fill: var(--foreground);
+}

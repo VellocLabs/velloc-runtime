@@ -1,0 +1,521 @@
+{
+  "modelRequests": [
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix it"
+        }
+      ],
+      "systemPrompt": [
+        "You are running inside the chromium-runtime sidecar project.",
+        {
+          "digest": "dfe5065275b98281fa1a93a5aa4e039cc219a1ad4e476d9c605b66fb49f6c821",
+          "chars": 8790
+        }
+      ],
+      "userContext": {},
+      "systemContext": {},
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": [
+        {
+          "type": "function",
+          "name": "Look",
+          "description": "Look test tool.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "name": "Change",
+          "description": "Change test tool.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "name": "ExitPlanMode",
+          "description": "Prompts the user to exit plan mode and start coding",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "plan": {
+                "type": "string",
+                "description": "The plan to present to the user. If omitted, the persisted plan file (if any) is used."
+              }
+            }
+          }
+        }
+      ],
+      "toolUseContext": {
+        "permissionMode": "plan",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix it"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "look-1",
+              "toolName": "Look",
+              "args": {
+                "value": "look-1"
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "change-1",
+              "toolName": "Change",
+              "args": {
+                "value": "change-1"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": [
+            {
+              "type": "tool-result",
+              "toolCallId": "look-1",
+              "result": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}"
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "change-1",
+              "result": {
+                "digest": "5db3b9835a40ac99b17ae0cb49951e84520901b2425da288e50fcaffcb540b82",
+                "chars": 341
+              },
+              "isError": true
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": {
+                "digest": "0ce450fd147e2ed9d20bd5f5fe0a36b92802e7b8341d9784264bb9fca13d0469",
+                "chars": 1693
+              }
+            }
+          ]
+        }
+      ],
+      "systemPrompt": "<same as previous request>",
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": "<same as previous request>",
+      "toolUseContext": {
+        "permissionMode": "plan",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "user: fix it\nassistant: Planning only."
+        }
+      ],
+      "systemPrompt": {
+        "digest": "9bd7b777c9079cb499769cd5aa8912b6f7bd9fdeac5be66a155b74d4c4d07b5b",
+        "chars": 359
+      },
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "providerId": "anthropic",
+      "model": "claude-haiku-4-5",
+      "maxOutputTokens": 32000,
+      "tools": [],
+      "toolUseContext": {
+        "permissionMode": "plan",
+        "querySource": "rename_generate_name",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "title",
+        "querySource": "rename_generate_name"
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "request": 1,
+      "reply": "calls",
+      "querySource": "sdk"
+    },
+    {
+      "request": 2,
+      "reply": "done",
+      "querySource": "sdk"
+    },
+    {
+      "request": 3,
+      "reply": "title",
+      "querySource": "rename_generate_name"
+    }
+  ],
+  "transport": [
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead"
+  ],
+  "retryDelays": [],
+  "toolCalls": [
+    {
+      "event": "start",
+      "tool": "Look",
+      "id": "look-1",
+      "inFlight": [
+        "look-1"
+      ]
+    },
+    {
+      "event": "end",
+      "tool": "Look",
+      "id": "look-1"
+    }
+  ],
+  "permissions": [],
+  "hooks": [],
+  "mods": [],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": "fix it"
+        }
+      ],
+      "total": 1
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:1>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "look-1",
+              "toolName": "Look",
+              "args": {
+                "value": "look-1"
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "change-1",
+              "toolName": "Change",
+              "args": {
+                "value": "change-1"
+              }
+            }
+          ],
+          "stop_reason": "tool_use"
+        }
+      ],
+      "total": 2
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:2>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}",
+              "toolCallId": "look-1"
+            }
+          ],
+          "toolUseResult": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}",
+          "sourceToolAssistantUUID": "<id:1>"
+        }
+      ],
+      "total": 3
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:3>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": {
+                "digest": "5db3b9835a40ac99b17ae0cb49951e84520901b2425da288e50fcaffcb540b82",
+                "chars": 341
+              },
+              "isError": true,
+              "toolCallId": "change-1"
+            }
+          ],
+          "toolUseResult": {
+            "digest": "5db3b9835a40ac99b17ae0cb49951e84520901b2425da288e50fcaffcb540b82",
+            "chars": 341
+          },
+          "sourceToolAssistantUUID": "<id:1>"
+        }
+      ],
+      "total": 4
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "attachment",
+          "uuid": "<id:4>",
+          "attachment": {
+            "type": "plan_mode",
+            "reminderType": "full",
+            "planFilePath": "/workspace/.velloc/plans/session-replay.md",
+            "planExists": true,
+            "hasSubagents": false
+          }
+        }
+      ],
+      "total": 5
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:5>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Planning only."
+            }
+          ],
+          "stop_reason": "end_turn"
+        }
+      ],
+      "total": 6
+    },
+    {
+      "op": "terminal",
+      "reason": "completed"
+    },
+    {
+      "op": "aiTitle",
+      "aiTitle": "A title"
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "fix it"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:1>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool-call",
+          "toolCallId": "look-1",
+          "toolName": "Look",
+          "args": {
+            "value": "look-1"
+          }
+        },
+        {
+          "type": "tool-call",
+          "toolCallId": "change-1",
+          "toolName": "Change",
+          "args": {
+            "value": "change-1"
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:2>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}",
+          "toolCallId": "look-1"
+        }
+      ],
+      "toolUseResult": "{\"ok\":true,\"tool\":\"Look\",\"args\":{\"value\":\"look-1\"}}",
+      "sourceToolAssistantUUID": "<id:1>"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:3>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": {
+            "digest": "5db3b9835a40ac99b17ae0cb49951e84520901b2425da288e50fcaffcb540b82",
+            "chars": 341
+          },
+          "isError": true,
+          "toolCallId": "change-1"
+        }
+      ],
+      "toolUseResult": {
+        "digest": "5db3b9835a40ac99b17ae0cb49951e84520901b2425da288e50fcaffcb540b82",
+        "chars": 341
+      },
+      "sourceToolAssistantUUID": "<id:1>"
+    },
+    {
+      "type": "attachment",
+      "uuid": "<id:4>",
+      "attachment": {
+        "type": "plan_mode",
+        "reminderType": "full",
+        "planFilePath": "/workspace/.velloc/plans/session-replay.md",
+        "planExists": true,
+        "hasSubagents": false
+      }
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:5>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Planning only."
+        }
+      ],
+      "stop_reason": "end_turn"
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "uuid": "<id:6>",
+      "is_error": false,
+      "terminal": {
+        "reason": "completed"
+      }
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "success",
+    "terminal": {
+      "reason": "completed"
+    }
+  },
+  "notes": [
+    {
+      "processUserInput": "fix it"
+    },
+    {
+      "drain": 1,
+      "querySource": "sdk"
+    }
+  ]
+}

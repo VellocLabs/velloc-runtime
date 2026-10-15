@@ -1,0 +1,9 @@
+/*
+ * The renderer's wrappers set `width: 100%` AND an 8px margin, which overflows on the
+ * right; `width: auto` keeps them filling with equal margins. Matches only elements
+ * with both, scoped to A2UI surfaces.
+ */
+[data-slot='a2ui-surface'] [style*='width: 100%'][style*='margin'],
+[data-slot='a2ui-maximized'] [style*='width: 100%'][style*='margin'] {
+  width: auto !important;
+}

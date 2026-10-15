@@ -1,0 +1,467 @@
+{
+  "modelRequests": [
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "edit the git config"
+        }
+      ],
+      "systemPrompt": [
+        "You are running inside the chromium-runtime sidecar project.",
+        {
+          "digest": "dfe5065275b98281fa1a93a5aa4e039cc219a1ad4e476d9c605b66fb49f6c821",
+          "chars": 8790
+        }
+      ],
+      "userContext": {},
+      "systemContext": {},
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": [
+        {
+          "type": "function",
+          "name": "Write",
+          "description": "Write test tool.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "edit the git config"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "write-1",
+              "toolName": "Write",
+              "args": {
+                "value": "write-1",
+                "file_path": "/workspace/.git/config",
+                "content": "x"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": [
+            {
+              "type": "tool-result",
+              "toolCallId": "write-1",
+              "result": "Permission denied by the user. Do not retry this call.",
+              "isError": true
+            }
+          ]
+        }
+      ],
+      "systemPrompt": "<same as previous request>",
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": "<same as previous request>",
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "user: edit the git config\nassistant: Left it alone."
+        }
+      ],
+      "systemPrompt": {
+        "digest": "9bd7b777c9079cb499769cd5aa8912b6f7bd9fdeac5be66a155b74d4c4d07b5b",
+        "chars": 359
+      },
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "providerId": "anthropic",
+      "model": "claude-haiku-4-5",
+      "maxOutputTokens": 32000,
+      "tools": [],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "rename_generate_name",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "title",
+        "querySource": "rename_generate_name"
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "request": 1,
+      "reply": "write",
+      "querySource": "sdk"
+    },
+    {
+      "request": 2,
+      "reply": "done",
+      "querySource": "sdk"
+    },
+    {
+      "request": 3,
+      "reply": "title",
+      "querySource": "rename_generate_name"
+    }
+  ],
+  "transport": [
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead"
+  ],
+  "retryDelays": [],
+  "toolCalls": [],
+  "permissions": [
+    {
+      "step": "tool.check",
+      "engine": {
+        "decision": "ask",
+        "reason": "Write a protected path (/workspace/.git/config)"
+      },
+      "mod": {
+        "decision": "allow",
+        "reason": "extension says yes"
+      }
+    },
+    {
+      "step": "confirm",
+      "tool": "Write",
+      "toolUseID": "write-1",
+      "message": "Write a protected path (/workspace/.git/config)",
+      "behavior": "reject"
+    }
+  ],
+  "hooks": [],
+  "mods": [
+    {
+      "event": "ready"
+    },
+    {
+      "event": "prompt.submit",
+      "payload": {
+        "text": "edit the git config",
+        "outcome": {
+          "entered": true,
+          "text": "edit the git config",
+          "context": []
+        }
+      }
+    },
+    {
+      "event": "turn.start",
+      "payload": {
+        "text": "edit the git config",
+        "turnId": "<id:1>"
+      }
+    },
+    {
+      "event": "tool.check",
+      "payload": {
+        "e": {
+          "tool": "Write",
+          "input": {
+            "value": "write-1",
+            "file_path": "/workspace/.git/config",
+            "content": "x"
+          },
+          "tool_use_id": "write-1"
+        },
+        "engine": {
+          "decision": "ask",
+          "reason": "Write a protected path (/workspace/.git/config)"
+        },
+        "result": {
+          "decision": "allow",
+          "reason": "extension says yes"
+        }
+      }
+    },
+    {
+      "event": "report",
+      "payload": {
+        "line": {
+          "digest": "73af291b213ecf4ba000edca70cd2c0fb4326802865063d5ed47023cf6ae01e8",
+          "chars": 155
+        }
+      }
+    },
+    {
+      "event": "turn.complete",
+      "payload": {
+        "turnId": "<id:1>",
+        "answer": "Left it alone.",
+        "reason": "answer",
+        "isAborted": false
+      }
+    },
+    {
+      "event": "session.measure",
+      "payload": {
+        "startedAt": 0,
+        "context": {
+          "tokens": 10,
+          "window": 200000,
+          "percent": 0
+        },
+        "rateLimits": []
+      }
+    },
+    {
+      "event": "afterTurn"
+    },
+    {
+      "event": "afterTurn.settled"
+    }
+  ],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": "edit the git config"
+        }
+      ],
+      "total": 1
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:2>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "write-1",
+              "toolName": "Write",
+              "args": {
+                "value": "write-1",
+                "file_path": "/workspace/.git/config",
+                "content": "x"
+              }
+            }
+          ],
+          "stop_reason": "tool_use"
+        }
+      ],
+      "total": 2
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:3>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "Permission denied by the user. Do not retry this call.",
+              "isError": true,
+              "toolCallId": "write-1"
+            }
+          ],
+          "toolUseResult": "Permission denied by the user. Do not retry this call.",
+          "sourceToolAssistantUUID": "<id:2>"
+        }
+      ],
+      "total": 3
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:4>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Left it alone."
+            }
+          ],
+          "stop_reason": "end_turn"
+        }
+      ],
+      "total": 4
+    },
+    {
+      "op": "terminal",
+      "reason": "completed"
+    },
+    {
+      "op": "aiTitle",
+      "aiTitle": "A title"
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "edit the git config"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:2>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool-call",
+          "toolCallId": "write-1",
+          "toolName": "Write",
+          "args": {
+            "value": "write-1",
+            "file_path": "/workspace/.git/config",
+            "content": "x"
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:3>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "Permission denied by the user. Do not retry this call.",
+          "isError": true,
+          "toolCallId": "write-1"
+        }
+      ],
+      "toolUseResult": "Permission denied by the user. Do not retry this call.",
+      "sourceToolAssistantUUID": "<id:2>"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:4>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Left it alone."
+        }
+      ],
+      "stop_reason": "end_turn"
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "uuid": "<id:5>",
+      "is_error": false,
+      "terminal": {
+        "reason": "completed"
+      }
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "success",
+    "terminal": {
+      "reason": "completed"
+    }
+  },
+  "notes": [
+    {
+      "processUserInput": "edit the git config"
+    },
+    {
+      "drain": 1,
+      "querySource": "sdk"
+    }
+  ]
+}

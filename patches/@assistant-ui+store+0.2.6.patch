@@ -1,0 +1,69 @@
+diff --git a/node_modules/@assistant-ui/store/dist/tapClientLookup.js b/node_modules/@assistant-ui/store/dist/tapClientLookup.js
+index da6d6ad..5725894 100644
+--- a/node_modules/@assistant-ui/store/dist/tapClientLookup.js
++++ b/node_modules/@assistant-ui/store/dist/tapClientLookup.js
+@@ -7,6 +7,33 @@ const ClientResourceWithKey = wrapperResource((el) => {
+     }
+     return tapResource(ClientResource(el));
+ });
++// VELLOC PATCH — stale-index clamp. See patches/@assistant-ui+store+*.patch
++// and nexus_web/src/__tests__/assistant-ui-stale-index-read.render.test.ts.
++//
++// assistant-ui subscribes messages and message parts BY INDEX through this
++// lookup. The host app's conversation list legitimately SHRINKS (a superseded
++// provider-error card is dropped, a transport retry discards a failed
++// attempt's streamed parts, a compaction rewrites the transcript). When it
++// does, React's useSyncExternalStore re-reads a still-mounted subscriber at
++// its old index BEFORE the parent re-render unmounts it. Upstream treats that
++// one-frame stale read as a programming error and throws mid-render, which
++// crashes the entire thread into the nearest error boundary. Clamping to the
++// last element renders one frame of neighbouring state and the subscriber is
++// unmounted by the commit already in flight. Rate-limited warn so the races
++// this absorbs stay diagnosable. Negative indices and reads against an EMPTY
++// lookup still throw — there is nothing to clamp to, and those are genuine
++// caller bugs rather than the shrink race.
++let vellocStaleIndexWarnCount = 0;
++function vellocWarnStaleIndexRead(index, length) {
++    if (vellocStaleIndexWarnCount >= 5)
++        return;
++    vellocStaleIndexWarnCount += 1;
++    console.warn(`[assistant-ui patch] tapClientLookup: clamped stale index ${index} ` +
++        `(length: ${length})` +
++        (vellocStaleIndexWarnCount === 5
++            ? " — further clamp warnings suppressed"
++            : ""));
++}
+ export function tapClientLookup(getElements, getElementsDeps) {
+     const resources = tapResources(() => getElements().map((el) => ClientResourceWithKey(el)),
+     // biome-ignore lint/correctness/useExhaustiveDependencies: getElementsDeps is passed through from caller
+@@ -26,6 +53,11 @@ export function tapClientLookup(getElements, getElementsDeps) {
+         state,
+         get: (lookup) => {
+             if ("index" in lookup) {
++                // VELLOC PATCH (see header note): clamp the shrink race.
++                if (lookup.index >= keys.length && keys.length > 0) {
++                    vellocWarnStaleIndexRead(lookup.index, keys.length);
++                    return resources[keys.length - 1].methods;
++                }
+                 if (lookup.index < 0 || lookup.index >= keys.length) {
+                     throw new Error(`tapClientLookup: Index ${lookup.index} out of bounds (length: ${keys.length})`);
+                 }
+diff --git a/node_modules/@assistant-ui/store/src/tapClientLookup.ts b/node_modules/@assistant-ui/store/src/tapClientLookup.ts
+index b59048d..bd0d076 100644
+--- a/node_modules/@assistant-ui/store/src/tapClientLookup.ts
++++ b/node_modules/@assistant-ui/store/src/tapClientLookup.ts
+@@ -61,6 +61,14 @@ export function tapClientLookup<TMethods extends ClientMethods>(
+     state,
+     get: (lookup: { index: number } | { key: string }) => {
+       if ("index" in lookup) {
++        // VELLOC PATCH — stale-index clamp; the executed copy (with the full
++        // rationale) is dist/tapClientLookup.js. A by-index subscriber whose
++        // list shrank re-reads its old index for one frame before its parent
++        // unmounts it; clamp instead of throwing so that frame cannot crash
++        // the host app's thread. Negative / empty-lookup reads still throw.
++        if (lookup.index >= keys.length && keys.length > 0) {
++          return resources[keys.length - 1]!.methods;
++        }
+         if (lookup.index < 0 || lookup.index >= keys.length) {
+           throw new Error(
+             `tapClientLookup: Index ${lookup.index} out of bounds (length: ${keys.length})`,

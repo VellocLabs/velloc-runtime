@@ -1,0 +1,266 @@
+{
+  "modelRequests": [
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": {
+            "digest": "e2376078bf3c28a9c8a0db18234a46422f583d87f402fca78914532ce3343fe8",
+            "chars": 1093
+          }
+        },
+        {
+          "role": "user",
+          "content": {
+            "digest": "bbb8d59360743fa641b0bb4df3d460dd425aa091a015bf5fbb5cbd7eaed0d31c",
+            "chars": 6993
+          }
+        }
+      ],
+      "systemPrompt": [
+        "You are a helpful AI assistant tasked with summarizing conversations."
+      ],
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "compaction",
+        "querySource": "compact"
+      },
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "tools": "<same as previous request>"
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Conversation compacted"
+        },
+        {
+          "role": "user",
+          "content": {
+            "digest": "771d1e28360a574fb127f29027fa59bc759cfc071c73ac5354049cc4fa6247d4",
+            "chars": 750
+          }
+        }
+      ],
+      "systemPrompt": [
+        "You are running inside the chromium-runtime sidecar project.",
+        {
+          "digest": "dfe5065275b98281fa1a93a5aa4e039cc219a1ad4e476d9c605b66fb49f6c821",
+          "chars": 8790
+        }
+      ],
+      "userContext": {},
+      "systemContext": {},
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": [],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "request": 1,
+      "reply": "summary"
+    },
+    {
+      "request": 2,
+      "reply": "still-rejected",
+      "querySource": "sdk"
+    }
+  ],
+  "transport": [
+    "streamStart",
+    "streamRead",
+    "streamStart"
+  ],
+  "retryDelays": [],
+  "toolCalls": [],
+  "permissions": [],
+  "hooks": [],
+  "mods": [],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": {
+            "digest": "e2376078bf3c28a9c8a0db18234a46422f583d87f402fca78914532ce3343fe8",
+            "chars": 1093
+          }
+        }
+      ],
+      "total": 1
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "system",
+          "subtype": "compact_boundary",
+          "uuid": "<id:1>",
+          "compactMetadata": {
+            "trigger": "auto",
+            "preTokens": 274,
+            "lastPreCompactMessageUuid": "prompt-1"
+          }
+        }
+      ],
+      "total": 2
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:2>",
+          "isMeta": true,
+          "role": "user",
+          "content": {
+            "digest": "771d1e28360a574fb127f29027fa59bc759cfc071c73ac5354049cc4fa6247d4",
+            "chars": 750
+          }
+        }
+      ],
+      "total": 3
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:3>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": {
+                "digest": "d780dada0c3f56858c2ac16ea44de38407b619b19836c60be4cfe2029721cabf",
+                "chars": 200
+              }
+            }
+          ],
+          "apiError": "prompt_too_long"
+        }
+      ],
+      "total": 4
+    },
+    {
+      "op": "terminal",
+      "reason": "prompt_too_long"
+    }
+  ],
+  "emitted": [
+    {
+      "submit": {
+        "digest": "e2376078bf3c28a9c8a0db18234a46422f583d87f402fca78914532ce3343fe8",
+        "chars": 1093
+      }
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "system",
+      "subtype": "compact_boundary",
+      "uuid": "<id:1>",
+      "compactMetadata": {
+        "trigger": "auto",
+        "preTokens": 274,
+        "lastPreCompactMessageUuid": "prompt-1"
+      }
+    },
+    {
+      "type": "user",
+      "uuid": "<id:2>",
+      "isMeta": true,
+      "role": "user",
+      "content": {
+        "digest": "771d1e28360a574fb127f29027fa59bc759cfc071c73ac5354049cc4fa6247d4",
+        "chars": 750
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:3>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": {
+            "digest": "d780dada0c3f56858c2ac16ea44de38407b619b19836c60be4cfe2029721cabf",
+            "chars": 200
+          }
+        }
+      ],
+      "apiError": "prompt_too_long"
+    },
+    {
+      "type": "result",
+      "subtype": "error_prompt_too_long",
+      "uuid": "<id:4>",
+      "is_error": true,
+      "terminal": {
+        "reason": "prompt_too_long",
+        "turnCount": 1
+      }
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    },
+    {
+      "clearReadState": true,
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "error_prompt_too_long",
+    "terminal": {
+      "reason": "prompt_too_long",
+      "turnCount": 1
+    }
+  },
+  "notes": [
+    {
+      "processUserInput": {
+        "digest": "e2376078bf3c28a9c8a0db18234a46422f583d87f402fca78914532ce3343fe8",
+        "chars": 1093
+      }
+    }
+  ]
+}

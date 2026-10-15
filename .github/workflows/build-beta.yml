@@ -1,0 +1,500 @@
+name: A · Build & Deploy Beta
+
+# The only place the web runtime is compiled. Beta soak, production promote
+# and rollback consume the artifact this job uploads and never rebuild, so
+# the bytes soaked on beta are the bytes production serves. (G-3)
+# Manual trigger only; pushing `main` runs CI (ci.yml) and deploys nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Source ref to build (branch, tag or commit SHA)'
+        required: true
+        default: main
+      runtime_version:
+        description: >-
+          Assert the bridge interface version. "auto" trusts the source, which
+          is almost always what you want — the real value ALWAYS comes from
+          interfaceVersion.gen.ts in the checked-out ref. Picking a number only
+          adds a check that fails the run if the source disagrees, which is
+          useful when building a ref you are not certain about.
+        type: choice
+        options:
+          - auto
+          - '1'
+          - '2'
+        default: auto
+      note:
+        description: 'What this candidate contains (free text, recorded in manifest.json)'
+        required: false
+        default: ''
+
+# Beta is a shared environment: two candidates deploying at once would leave
+# whichever finished last serving, with no record of the race. Queue instead
+# of cancelling — a cancelled run has already uploaded nothing but may have
+# already deployed.
+concurrency:
+  group: beta-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # The beta-baseline step's `gh run download`: in a private repository,
+  # reading a run's artifacts needs `actions: read`, which `contents: read`
+  # does not cover.
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-node@v7
+        with:
+          # Must match ci.yml. The candidate is compiled once, here — the
+          # toolchain that produces it is part of the release contract.
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Quality gates run BEFORE the candidate exists. A candidate that failed
+      # typecheck or unit tests should never get an id, because an id is a
+      # thing a human can later promote to production by pasting a run number.
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Resolve identity
+        id: id
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          V=$(sed -nE 's/^export const NEXUS_INTERFACE_VERSION = ([0-9]+)$/\1/p' \
+            src/browser/bridge/protocol/interfaceVersion.gen.ts)
+          test -n "$V" || { echo "could not read NEXUS_INTERFACE_VERSION"; exit 1; }
+          # Every deploy replaces the whole site. A ref from before an
+          # interface bump builds no /v<newer>/ tree, so beta would stop
+          # serving the newer binaries — and promote would pick this run as
+          # the newest candidate. Same floor as promote and rollback.
+          NEWEST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 \
+                     --json tagName --jq '[.[].tagName
+                       | select(test("^runtime-v[0-9]+-"))
+                       | capture("^runtime-v(?<v>[0-9]+)-").v | tonumber]
+                       | max // 0')
+          if [ "$V" -lt "$NEWEST" ]; then
+            echo "::error::ref $SOURCE_REF is interface v$V; production serves v$NEWEST — deploying it would drop /v$NEWEST/ and 404 every binary on it"
+            exit 1
+          fi
+          echo "interface_version=$V" >> "$GITHUB_OUTPUT"
+          echo "source_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "candidate_id=candidate-v$V-$(git rev-parse --short=7 HEAD)-${GITHUB_RUN_ID}" \
+            >> "$GITHUB_OUTPUT"
+
+      # Retention baseline: assets an already-open panel may lazy-import after this
+      # deploy replaces its bundle. It must be what production SERVES, not the
+      # newest release (a rollback leaves them apart), so ask production for its
+      # candidate and find the release that produced it. Falling back to the newest
+      # release covers the first build and an unreachable origin. Scoped by tag
+      # prefix, so an interface bump starts with none.
+      - name: Fetch retention baseline (what production serves)
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.id.outputs.interface_version }}
+          PROD_ORIGIN: https://app.velloc.app
+        run: |
+          set -euo pipefail
+          TAGS=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
+                  --json tagName,isDraft \
+                  --jq "[.[] | select(.isDraft == false) | .tagName
+                        | select(startswith(\"runtime-v${V}-\"))] | .[]")
+          if [ -z "$TAGS" ]; then
+            echo "no published runtime-v${V}-* release yet — first candidate " \
+                 "for this interface version, no baseline"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LIVE=$(curl -fsS --max-time 20 -H 'Cache-Control: no-cache' \
+                   "$PROD_ORIGIN/v$V/build-info.json" 2>/dev/null \
+                 | jq -r '.candidateId // empty') || LIVE=''
+
+          TAG=''
+          if [ -n "$LIVE" ]; then
+            # Match by candidateId rather than by tag order — the manifest is
+            # the only thing that ties a release to the bytes it deployed.
+            for t in $TAGS; do
+              ID=$(gh release download "$t" --repo "$GITHUB_REPOSITORY" \
+                     --pattern manifest.json --dir "m-$t" >/dev/null 2>&1 \
+                   && jq -r .candidateId "m-$t/manifest.json" || echo '')
+              if [ "$ID" = "$LIVE" ]; then TAG="$t"; break; fi
+            done
+            if [ -z "$TAG" ]; then
+              echo "::warning::production serves $LIVE, which no published" \
+                   "release claims. Falling back to the newest release."
+            fi
+          else
+            echo "::warning::could not read $PROD_ORIGIN/v$V/build-info.json —" \
+                 "falling back to the newest release for the baseline."
+          fi
+          if [ -z "$TAG" ]; then
+            TAG=$(printf '%s\n' "$TAGS" | head -1)
+          fi
+
+          echo "baseline release: $TAG (production serves ${LIVE:-unknown})"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern runtime.zip --dir baseline-dl
+          unzip -q baseline-dl/runtime.zip -d baseline
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # Beta's baseline is a union: also retain the candidate beta is serving,
+      # since a beta-only candidate is in neither production nor its baseline.
+      # Failure (expired artifact, unreadable beta) only means one baseline fewer:
+      # warn and continue.
+      - name: Fetch beta retention baseline (what beta serves)
+        id: beta_baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.id.outputs.interface_version }}
+          BETA_ORIGIN: https://beta.velloc.app
+        run: |
+          set -euo pipefail
+          BCAND=$(curl -fsS --max-time 20 -H 'Cache-Control: no-cache' \
+                    "$BETA_ORIGIN/v$V/build-info.json" 2>/dev/null \
+                  | jq -r '.candidateId // empty') || BCAND=''
+          # candidate-v<N>-<sha>-<runId>; the run id is the LAST segment. The sha is
+          # `git rev-parse --short=7`, a minimum (git lengthens an ambiguous one), so
+          # the pattern takes 7 or more hex digits.
+          BRUN=$(printf '%s' "$BCAND" | sed -nE 's/^candidate-v[0-9]+-[0-9a-f]{7,}-([0-9]+)$/\1/p')
+          if [ -z "$BRUN" ]; then
+            echo "::warning::could not read a beta candidate run id from " \
+                 "$BETA_ORIGIN/v$V/build-info.json (got '${BCAND:-nothing}') — " \
+                 "beta-only entries will not be retained."
+            exit 0
+          fi
+          # gh's own error goes into the warning, so a permission failure is not
+          # mistaken for an expired artifact. The unzip is guarded: a corrupt or
+          # runtime.zip-less artifact means one baseline fewer, and a partial
+          # extraction is removed so the pack step never sees half a tree.
+          if GH_ERR=$(gh run download "$BRUN" --repo "$GITHUB_REPOSITORY" \
+               --name candidate --dir beta-candidate 2>&1); then
+            if UNZIP_ERR=$(unzip -q beta-candidate/runtime.zip -d beta-baseline 2>&1); then
+              echo "beta baseline: run $BRUN ($BCAND)"
+            else
+              rm -rf beta-baseline
+              echo "::warning::could not unpack the beta candidate artifact " \
+                   "of run $BRUN ($(printf '%s' "$UNZIP_ERR" | tr '\n' ' ')) — " \
+                   "beta-only entries will not be retained."
+            fi
+          else
+            echo "::warning::could not download the beta candidate artifact " \
+                 "of run $BRUN ($(printf '%s' "$GH_ERR" | tr '\n' ' ')) — " \
+                 "beta-only entries will not be retained."
+          fi
+
+      # Retained legacy interface versions: a deploy replaces the whole site, so
+      # binaries pinned to an older /v<K>/ 404 unless the artifact carries it.
+      # deploy/retained-interfaces.json pins each version to one published release,
+      # copied verbatim. Unlike the baselines, a configured release that cannot be
+      # fetched or verified fails the build.
+      - name: Fetch retained legacy interfaces (pinned releases)
+        id: legacy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.id.outputs.interface_version }}
+        run: |
+          set -euo pipefail
+          ENTRIES=$(jq -r '(.retained // {}) | to_entries[] | "\(.key) \(.value)"' \
+                      deploy/retained-interfaces.json)
+          if [ -z "$ENTRIES" ]; then
+            echo "deploy/retained-interfaces.json retains nothing — serving /v$V/ only"
+            echo "args=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LEGACY=''
+          while read -r K TAG; do
+            # stage_deploy.mjs enforces the same rules; checking here names the
+            # problem before anything is downloaded.
+            case "$K" in
+              ''|*[!0-9]*) echo "::error::retained-interfaces.json key '$K' is not a version"; exit 1 ;;
+            esac
+            if [ "$K" -ge "$V" ]; then
+              echo "::error::retained interface v$K is not older than the current v$V"
+              exit 1
+            fi
+            case "$TAG" in
+              "runtime-v$K-"*) : ;;
+              *) echo "::error::v$K must pin a runtime-v$K-* release, got '$TAG'"; exit 1 ;;
+            esac
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern runtime.zip --pattern manifest.json --pattern SHA256SUMS \
+              --dir "legacy-dl/v$K"
+            (cd "legacy-dl/v$K" && sha256sum -c SHA256SUMS)
+            mkdir -p "legacy/v$K"
+            unzip -q "legacy-dl/v$K/runtime.zip" -d "legacy/v$K"
+            test -f "legacy/v$K/site/v$K/index.html"
+            echo "retained /v$K/ from $TAG ($(jq -r .candidateId "legacy-dl/v$K/manifest.json"))"
+            LEGACY="$LEGACY $K=legacy/v$K/site"
+          done <<< "$ENTRIES"
+          echo "args=${LEGACY# }" >> "$GITHUB_OUTPUT"
+
+      # Model catalog snapshot (F-28), generated from the live source by the
+      # runtime's adapter. On a source failure the fresher served snapshot (beta or
+      # production, same interface) is validated and carried forward with a
+      # `::warning::`; the run fails only when all three are unusable.
+      - name: Generate model catalog snapshot
+        env:
+          V: ${{ steps.id.outputs.interface_version }}
+        run: |
+          set -euo pipefail
+          npm run catalog:snapshot -- \
+            --fallback-base "https://beta.velloc.app/v$V" \
+            --fallback-base "https://app.velloc.app/v$V"
+
+      - name: Build and pack candidate
+        # Every user-supplied value goes through env, never through `${{ }}`
+        # inside the script: an input containing a quote would otherwise be
+        # spliced into the shell command.
+        env:
+          CANDIDATE_ID: ${{ steps.id.outputs.candidate_id }}
+          SOURCE_REF: ${{ inputs.ref }}
+          SOURCE_COMMIT: ${{ steps.id.outputs.source_commit }}
+          EXPECT_VERSION: ${{ inputs.runtime_version }}
+          BASELINE_TAG: ${{ steps.baseline.outputs.tag }}
+          LEGACY_SITES: ${{ steps.legacy.outputs.args }}
+          NOTE: ${{ inputs.note }}
+        run: |
+          set -euo pipefail
+          ARGS=(--out artifact
+                --candidate-id "$CANDIDATE_ID"
+                --source-ref "$SOURCE_REF"
+                --source-commit "$SOURCE_COMMIT"
+                --run-id "$GITHUB_RUN_ID"
+                --note "$NOTE")
+          # `if`, not `[ … ] && …`: under `set -e` a false test would end the
+          # step with a green-looking success and no candidate.
+          # "auto" is the choice-input's way of saying "no assertion".
+          if [ -n "$EXPECT_VERSION" ] && [ "$EXPECT_VERSION" != "auto" ]; then
+            ARGS+=(--expect-version "$EXPECT_VERSION")
+          fi
+          if [ -n "$BASELINE_TAG" ]; then
+            ARGS+=(--baseline baseline/site --baseline-release "$BASELINE_TAG")
+          fi
+          # Also retain from the previous beta candidate (second --baseline);
+          # production's baseline stays first, so churn is measured against it and
+          # same-path collisions keep its bytes.
+          if [ -d beta-baseline/site ]; then
+            ARGS+=(--baseline beta-baseline/site)
+          fi
+          # One --legacy <K>=<site dir> per retained interface version. The
+          # stage refuses a configured version that is missing here.
+          for L in $LEGACY_SITES; do
+            ARGS+=(--legacy "$L")
+          done
+          node scripts/pack_artifact.mjs "${ARGS[@]}"
+
+      # Prove the archive is readable by a stock extractor before anything
+      # depends on it — the packer writes zips by hand (scripts/lib/zip.mjs).
+      - name: Verify artifact
+        run: |
+          set -euo pipefail
+          unzip -t artifact/runtime.zip > /dev/null
+          (cd artifact && sha256sum -c SHA256SUMS)
+          unzip -q artifact/runtime.zip -d candidate
+          test -f "candidate/site/v${{ steps.id.outputs.interface_version }}/index.html"
+          test -f candidate/wrangler.toml
+          # Every retained version must have ridden along, at its own base.
+          for K in $(jq -r '.legacyInterfaces[]?.interfaceVersion' artifact/manifest.json); do
+            test -f "candidate/site/v$K/index.html"
+            grep -q "/v$K/assets/" "candidate/site/v$K/index.html"
+          done
+
+      # Defaults named on purpose: promote and rollback download `--name candidate`
+      # as a directory of files, which `archive: true` keeps true (`archive: false`
+      # uploads one bare file and ignores `name`). `overwrite: false`: a second
+      # upload under the same name must fail rather than replace bytes someone may
+      # have soaked.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: candidate
+          path: artifact/
+          # A candidate is a temporary staging object; only what reaches
+          # production is archived, and that goes to a GitHub Release. Once
+          # this expires the candidate can no longer be promoted — rebuild and
+          # re-soak instead (an artifact rebuilt from the same commit is a
+          # DIFFERENT candidate and has not been tested).
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Deploy to beta
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # Deploys the UNZIPPED ARTIFACT, not the workspace's own site/ — so
+        # what soaks on beta is the archive itself, round-tripped. If the zip
+        # were broken, beta would be broken, and we would learn it here rather
+        # than during a promote.
+        #
+        # `--name` overrides wrangler.toml's production worker name on the
+        # command line, deliberately: the config inside the artifact must stay
+        # the production one so promote can deploy it unmodified.
+        run: |
+          npx --yes wrangler@4.120.0 deploy \
+            --config candidate/wrangler.toml \
+            --name velloc-runtime-beta
+
+      - name: Summary
+        env:
+          V: ${{ steps.id.outputs.interface_version }}
+          CANDIDATE_ID: ${{ steps.id.outputs.candidate_id }}
+          SOURCE_REF: ${{ inputs.ref }}
+          SOURCE_COMMIT: ${{ steps.id.outputs.source_commit }}
+          BASELINE_TAG: ${{ steps.baseline.outputs.tag }}
+          NOTE: ${{ inputs.note }}
+          # Built here rather than inline so the markdown link below stays
+          # readable, and so the workflow filename appears exactly once.
+          PROMOTE_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/promote-production.yml
+        run: |
+          set -euo pipefail
+          DIGEST=$(awk '$2 == "runtime.zip" {print $1}' artifact/SHA256SUMS)
+          # Report what retention actually did, not just where the baseline was
+          # looked for.
+          RETAINED=$(jq -r '.retainedAssets' artifact/manifest.json)
+          RETAINED_ENTRIES=$(jq -r '.retainedEntries // 0' artifact/manifest.json)
+          ENTRY_PATH=$(jq -r '.entryPath // empty' artifact/manifest.json)
+          LEGACY=$(jq -r '[.legacyInterfaces[]? | "`/v\(.interfaceVersion)/` from `\(.release)`"] | join(", ")' \
+                     artifact/manifest.json)
+          if [ -z "$LEGACY" ]; then
+            LEGACY='none — this deploy serves only the current version'
+          fi
+          if [ -n "$BASELINE_TAG" ]; then
+            RETENTION="$RETAINED assets, from release \`$BASELINE_TAG\`"
+          elif [ "$RETAINED" -gt 0 ]; then
+            RETENTION="$RETAINED assets, from the committed \`deploy/\` snapshot"
+          else
+            RETENTION='**none** — correct only for the first deploy of this version'
+          fi
+
+          # Changed files vs. the same baseline retention used (a content-hash diff of
+          # assets-manifest.json). `null` (no CHURN_TOTAL) means either no baseline or a
+          # baseline release that predates this field; the two stay distinguishable.
+          CHURN_COUNT=$(jq -r '.assetChurn.changedCount // empty' artifact/manifest.json)
+          CHURN_TOTAL=$(jq -r '.assetChurn.totalCount // empty' artifact/manifest.json)
+          CHURN_BYTES=$(jq -r '.assetChurn.changedBytes // empty' artifact/manifest.json)
+          CHURN_TOTAL_BYTES=$(jq -r '.assetChurn.totalBytes // empty' artifact/manifest.json)
+          CHURN_BASE_COMMIT=$(jq -r '.assetChurn.baselineCommit // empty' artifact/manifest.json)
+          CHURN_CONTENT=$(jq -r '.assetChurn.contentCount // empty' artifact/manifest.json)
+          CHURN_CONTENT_BYTES=$(jq -r '.assetChurn.contentBytes // empty' artifact/manifest.json)
+          CHURN_REWRITTEN=$(jq -r '.assetChurn.rewrittenCount // empty' artifact/manifest.json)
+          CHURN_REWRITTEN_BYTES=$(jq -r '.assetChurn.rewrittenBytes // empty' artifact/manifest.json)
+          if [ -n "$CHURN_TOTAL" ]; then
+            if [ "$CHURN_TOTAL_BYTES" -gt 0 ]; then
+              PCT=$(awk -v c="$CHURN_BYTES" -v t="$CHURN_TOTAL_BYTES" \
+                'BEGIN { printf "%.1f", (c / t) * 100 }')
+            else
+              PCT='0.0'
+            fi
+            CHANGED_SIZE=$(numfmt --to=iec --suffix=B "$CHURN_BYTES")
+            TOTAL_SIZE=$(numfmt --to=iec --suffix=B "$CHURN_TOTAL_BYTES")
+            # Name the baseline inline: the figure is measured against what production
+            # serves, often several commits back.
+            CHURN="$CHURN_COUNT/$CHURN_TOTAL files, $PCT% ($CHANGED_SIZE / $TOTAL_SIZE)"
+            if [ -n "$CHURN_BASE_COMMIT" ]; then
+              CHURN="$CHURN — vs \`$BASELINE_TAG\` @ \`${CHURN_BASE_COMMIT:0:7}\`…\`${SOURCE_COMMIT:0:7}\`"
+            else
+              CHURN="$CHURN — vs \`$BASELINE_TAG\`"
+            fi
+          elif [ -n "$BASELINE_TAG" ]; then
+            CHURN="**n/a** — baseline release \`$BASELINE_TAG\` predates the asset-churn report"
+          else
+            CHURN='**n/a** — no retention baseline (first deploy of this version)'
+          fi
+
+          # Split the changed set into new code vs chunks re-emitted only because a
+          # filename they reference moved (a Rollup chunk embeds its imports'
+          # filenames), so a small edit is not read as a dependency bump.
+          CHURN_SPLIT=''
+          if [ -n "$CHURN_CONTENT" ]; then
+            CONTENT_SIZE=$(numfmt --to=iec --suffix=B "$CHURN_CONTENT_BYTES")
+            REWRITTEN_SIZE=$(numfmt --to=iec --suffix=B "$CHURN_REWRITTEN_BYTES")
+            CHURN_SPLIT="**$CHURN_CONTENT new code** ($CONTENT_SIZE) · "
+            CHURN_SPLIT="$CHURN_SPLIT$CHURN_REWRITTEN re-emitted for reference updates ($REWRITTEN_SIZE)"
+          fi
+
+          # Name the new chunks, ranked by cascade (capped; the remainder is counted,
+          # and manifest.json carries the full lists). node rather than jq: the
+          # multi-line table program runs verbatim on a developer machine.
+          CHURN_TABLE=$(node -e '
+            const manifest = JSON.parse(
+              require("fs").readFileSync("artifact/manifest.json", "utf8"))
+            const rows = (manifest.assetChurn && manifest.assetChurn.newAssets) || []
+            const show = 10
+            const out = rows.slice(0, show).map(entry =>
+              "| `" + entry.url + "` | " + (entry.size / 1024).toFixed(1) +
+              " KiB | " + entry.cascadeCount + " |")
+            if (rows.length > show) {
+              out.push("| _…and " + (rows.length - show) +
+                " more in `manifest.json`_ | | |")
+            }
+            process.stdout.write(out.join("\n"))
+          ')
+          {
+            echo "## Candidate ready"
+            echo
+            echo '| | |'
+            echo '|---|---|'
+            echo "| Candidate ID | \`$CANDIDATE_ID\` |"
+            echo "| **Promote with run ID** | **\`$GITHUB_RUN_ID\`** |"
+            echo "| Source ref | \`$SOURCE_REF\` |"
+            echo "| Source commit | \`$SOURCE_COMMIT\` |"
+            echo "| Interface version | v$V |"
+            echo "| Retained interfaces | $LEGACY |"
+            echo "| runtime.zip SHA-256 | \`$DIGEST\` |"
+            echo "| Asset retention | $RETENTION |"
+            echo "| Immutable entry | \`https://beta.velloc.app${ENTRY_PATH}\` (${RETAINED_ENTRIES} inherited) |"
+            echo "| Changed assets | $CHURN |"
+            if [ -n "$CHURN_SPLIT" ]; then
+              echo "| ↳ of which | $CHURN_SPLIT |"
+            fi
+            echo "| Note | $NOTE |"
+            if [ -n "$CHURN_TABLE" ]; then
+              echo
+              echo '<details><summary>New code in this build, ranked by cascade</summary>'
+              echo
+              echo '| New code | Size | Re-emitted downstream |'
+              echo '|---|---:|---:|'
+              echo "$CHURN_TABLE"
+              echo
+              echo 'Top row is the chunk whose edits re-emit the most of the bundle.'
+              echo 'Full lists — including every re-emitted asset and the baseline'
+              echo 'filename it replaced — are in `manifest.json` under `assetChurn`.'
+              echo
+              echo '</details>'
+            fi
+            echo
+            echo "Soak: <https://beta.velloc.app/v$V/>"
+            echo "Provenance: <https://beta.velloc.app/v$V/build-info.json> reports this candidate ID."
+            echo
+            echo "Then run [**B · Promote Production**]($PROMOTE_URL) — it defaults to"
+            echo "the newest successful build, which is this one, so both inputs can be"
+            echo "left empty if you promote before another build finishes."
+            echo
+            echo "To promote **this** candidate specifically — not merely whatever is"
+            echo "newest when you get there — run:"
+            echo
+            echo '```bash'
+            echo "gh workflow run promote-production.yml --repo $GITHUB_REPOSITORY -f candidate_run_id=$GITHUB_RUN_ID"
+            echo '```'
+            echo
+            echo "<sub>The link opens the workflow with its inputs empty: GitHub has no"
+            echo "way to prefill \`workflow_dispatch\` inputs from a URL"
+            echo "([community discussion 28505](https://github.com/orgs/community/discussions/28505)),"
+            echo "so pinning a specific candidate means either the command above or typing"
+            echo "\`candidate_run_id = $GITHUB_RUN_ID\` into the form.</sub>"
+          } >> "$GITHUB_STEP_SUMMARY"

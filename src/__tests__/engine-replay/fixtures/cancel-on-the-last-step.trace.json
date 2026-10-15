@@ -1,0 +1,452 @@
+{
+  "modelRequests": [
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "work"
+        }
+      ],
+      "systemPrompt": [
+        "You are running inside the chromium-runtime sidecar project.",
+        {
+          "digest": "dfe5065275b98281fa1a93a5aa4e039cc219a1ad4e476d9c605b66fb49f6c821",
+          "chars": 8790
+        }
+      ],
+      "userContext": {},
+      "systemContext": {},
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": [
+        {
+          "type": "function",
+          "name": "Act",
+          "description": "Act test tool.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "name": "Long",
+          "description": "Long test tool.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    },
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "work"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "act-1",
+              "toolName": "Act",
+              "args": {
+                "value": "act-1"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": [
+            {
+              "type": "tool-result",
+              "toolCallId": "act-1",
+              "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"act-1\"}}"
+            }
+          ]
+        }
+      ],
+      "systemPrompt": "<same as previous request>",
+      "userContext": "<same as previous request>",
+      "systemContext": "<same as previous request>",
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": "<same as previous request>",
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "request": 1,
+      "reply": "step-1",
+      "querySource": "sdk"
+    },
+    {
+      "request": 2,
+      "reply": "step-2",
+      "querySource": "sdk"
+    }
+  ],
+  "transport": [
+    "streamStart",
+    "streamRead",
+    "streamStart",
+    "streamRead"
+  ],
+  "retryDelays": [],
+  "toolCalls": [
+    {
+      "event": "start",
+      "tool": "Act",
+      "id": "act-1",
+      "inFlight": [
+        "act-1"
+      ]
+    },
+    {
+      "event": "end",
+      "tool": "Act",
+      "id": "act-1"
+    },
+    {
+      "event": "start",
+      "tool": "Long",
+      "id": "long-1",
+      "inFlight": [
+        "long-1"
+      ]
+    },
+    {
+      "event": "end",
+      "tool": "Long",
+      "id": "long-1"
+    }
+  ],
+  "permissions": [],
+  "hooks": [],
+  "mods": [],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": "work"
+        }
+      ],
+      "total": 1
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:1>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "act-1",
+              "toolName": "Act",
+              "args": {
+                "value": "act-1"
+              }
+            }
+          ],
+          "stop_reason": "tool_use"
+        }
+      ],
+      "total": 2
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:2>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"act-1\"}}",
+              "toolCallId": "act-1"
+            }
+          ],
+          "toolUseResult": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"act-1\"}}",
+          "sourceToolAssistantUUID": "<id:1>"
+        }
+      ],
+      "total": 3
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:3>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "long-1",
+              "toolName": "Long",
+              "args": {
+                "value": "long-1"
+              }
+            }
+          ],
+          "stop_reason": "tool_use"
+        }
+      ],
+      "total": 4
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:4>",
+          "role": "user",
+          "content": [
+            {
+              "type": "tool-result",
+              "result": "{\"ok\":true,\"tool\":\"Long\",\"args\":{\"value\":\"long-1\"}}",
+              "toolCallId": "long-1"
+            }
+          ],
+          "toolUseResult": "{\"ok\":true,\"tool\":\"Long\",\"args\":{\"value\":\"long-1\"}}",
+          "sourceToolAssistantUUID": "<id:3>"
+        }
+      ],
+      "total": 5
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "<id:5>",
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "[Request interrupted by user for tool use]"
+            }
+          ]
+        }
+      ],
+      "total": 6
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "attachment",
+          "uuid": "<id:6>",
+          "attachment": {
+            "type": "max_turns_reached",
+            "maxTurns": 2,
+            "turnCount": 3
+          }
+        }
+      ],
+      "total": 7
+    },
+    {
+      "op": "terminal",
+      "reason": "aborted_streaming"
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "work"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:1>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool-call",
+          "toolCallId": "act-1",
+          "toolName": "Act",
+          "args": {
+            "value": "act-1"
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:2>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"act-1\"}}",
+          "toolCallId": "act-1"
+        }
+      ],
+      "toolUseResult": "{\"ok\":true,\"tool\":\"Act\",\"args\":{\"value\":\"act-1\"}}",
+      "sourceToolAssistantUUID": "<id:1>"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:3>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool-call",
+          "toolCallId": "long-1",
+          "toolName": "Long",
+          "args": {
+            "value": "long-1"
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:4>",
+      "role": "user",
+      "content": [
+        {
+          "type": "tool-result",
+          "result": "{\"ok\":true,\"tool\":\"Long\",\"args\":{\"value\":\"long-1\"}}",
+          "toolCallId": "long-1"
+        }
+      ],
+      "toolUseResult": "{\"ok\":true,\"tool\":\"Long\",\"args\":{\"value\":\"long-1\"}}",
+      "sourceToolAssistantUUID": "<id:3>"
+    },
+    {
+      "type": "user",
+      "uuid": "<id:5>",
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "[Request interrupted by user for tool use]"
+        }
+      ]
+    },
+    {
+      "type": "attachment",
+      "uuid": "<id:6>",
+      "attachment": {
+        "type": "max_turns_reached",
+        "maxTurns": 2,
+        "turnCount": 3
+      }
+    },
+    {
+      "type": "result",
+      "subtype": "error_aborted_streaming",
+      "uuid": "<id:7>",
+      "is_error": true,
+      "terminal": {
+        "reason": "aborted_streaming"
+      }
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "error_aborted_streaming",
+    "terminal": {
+      "reason": "aborted_streaming"
+    }
+  },
+  "notes": [
+    {
+      "processUserInput": "work"
+    },
+    {
+      "drain": 1,
+      "querySource": "sdk"
+    }
+  ]
+}

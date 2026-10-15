@@ -1,0 +1,158 @@
+{
+  "modelRequests": [
+    {
+      "action": "streamStart",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hello"
+        }
+      ],
+      "systemPrompt": [
+        "You are running inside the chromium-runtime sidecar project.",
+        {
+          "digest": "dfe5065275b98281fa1a93a5aa4e039cc219a1ad4e476d9c605b66fb49f6c821",
+          "chars": 8790
+        }
+      ],
+      "userContext": {},
+      "systemContext": {},
+      "model": "inherit",
+      "maxOutputTokens": 8192,
+      "tools": [],
+      "toolUseContext": {
+        "permissionMode": "default",
+        "querySource": "sdk",
+        "availableSkills": [],
+        "discoveredSkillNames": []
+      },
+      "requestContext": {
+        "sessionId": "session-replay",
+        "purpose": "turn",
+        "querySource": "sdk"
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "request": 1,
+      "reply": "broke-mid-stream",
+      "querySource": "sdk"
+    }
+  ],
+  "transport": [
+    "streamStart",
+    "streamRead",
+    "streamCancel"
+  ],
+  "retryDelays": [],
+  "toolCalls": [],
+  "permissions": [],
+  "hooks": [],
+  "mods": [],
+  "sessionWrites": [
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "user",
+          "uuid": "prompt-1",
+          "isMeta": false,
+          "role": "user",
+          "content": "hello"
+        }
+      ],
+      "total": 1
+    },
+    {
+      "op": "record",
+      "added": [
+        {
+          "type": "assistant",
+          "uuid": "<id:1>",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "API Error: Internal server error"
+            }
+          ],
+          "isApiErrorMessage": true,
+          "error": "server_error"
+        }
+      ],
+      "total": 2
+    },
+    {
+      "op": "terminal",
+      "reason": "api_error"
+    }
+  ],
+  "emitted": [
+    {
+      "submit": "hello"
+    },
+    {
+      "type": "system",
+      "subtype": "init",
+      "uuid": "session-replay"
+    },
+    {
+      "type": "stream_request_start"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start"
+      }
+    },
+    {
+      "type": "assistant",
+      "uuid": "<id:1>",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "API Error: Internal server error"
+        }
+      ],
+      "isApiErrorMessage": true,
+      "error": "server_error"
+    },
+    {
+      "type": "result",
+      "subtype": "error_api_error",
+      "uuid": "<id:2>",
+      "is_error": true,
+      "terminal": {
+        "reason": "api_error",
+        "turnCount": 1,
+        "error": "server_error"
+      }
+    }
+  ],
+  "hostPushes": [
+    {
+      "actionTimeoutMs": 180000,
+      "cwd": "/workspace",
+      "browserObservationDiffOptIn": true,
+      "clearBrowserObservationCache": true,
+      "executionContext": {
+        "sessionId": "session-replay"
+      }
+    }
+  ],
+  "terminal": {
+    "result": "error_api_error",
+    "terminal": {
+      "reason": "api_error",
+      "turnCount": 1,
+      "error": "server_error"
+    }
+  },
+  "notes": [
+    {
+      "processUserInput": "hello"
+    }
+  ]
+}

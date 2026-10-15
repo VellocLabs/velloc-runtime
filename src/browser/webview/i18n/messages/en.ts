@@ -1,0 +1,2124 @@
+// English message catalog — the source of truth for message KEYS and the
+// e2e baseline. The Playwright suite runs in the `en` locale and matches
+// these exact strings (visible text AND aria-labels), so keep the English
+// values here identical to what the tests expect when adding/renaming keys.
+//
+// Keys are flat dotted strings (not nested) so `useT()` gets precise
+// key-name autocomplete + type-checking with zero template-literal-type
+// machinery. `{name}` placeholders are interpolated by the `t()` function.
+export const en = {
+  'sidebar.newThread': 'New Thread',
+  'sidebar.recents': 'Recents',
+  'sidebar.rename': 'Rename',
+  'sidebar.delete': 'Delete',
+  'sidebar.threadActionsAria': 'Thread actions: {title}',
+  'sidebar.renameThreadAria': 'Rename thread: {title}',
+  'sidebar.deleteThreadAria': 'Delete thread: {title}',
+  'sidebar.renameInputAria': 'Rename input: {title}',
+  'sidebar.needsAnswer': 'Needs your response',
+  // Session attention: the queued "a session needs you" events.
+  'attention.summary': '{count} sessions need you',
+  'attention.expand': 'Show all',
+  'attention.collapse': 'Hide',
+  'attention.needsInput': 'Waiting for your answer',
+  'attention.endedWithQuestion': 'Ended with a question',
+  'attention.notificationTitle': '{title} needs you',
+  'attention.notificationNeedsInput': 'This session is waiting for your answer.',
+  'attention.notificationQuestion': 'This session ended with a question.',
+  'sidebar.timeToday': 'Today',
+  'sidebar.timeYesterday': 'Yesterday',
+  'sidebar.timePrevious7Days': 'Previous 7 days',
+  'sidebar.timePrevious30Days': 'Previous 30 days',
+  'sidebar.timeOlder': 'Older',
+  'sidebar.showMore': 'Show {count} more',
+  // The sidebar section is named "Workspaces"; the keys keep their historical
+  // `project*` names (they are storage/testid-adjacent, not user-visible).
+  'sidebar.projects': 'Workspaces',
+  'sidebar.projectNewCodeAria': 'New code thread in {name}',
+  'sidebar.addProject': 'Add workspace',
+  'sidebar.projectsEmpty':
+    'No workspaces yet. Use the folder button to add one.',
+  'sidebar.projectNoThreads': 'No threads yet',
+  'sidebar.projectActionsAria': 'Workspace actions: {name}',
+  'sidebar.projectReveal': 'Show in Explorer',
+  'sidebar.projectCopyPath': 'Copy path',
+  'sidebar.projectDelete': 'Delete workspace',
+  'sidebar.projectDeleteTitle': 'Delete workspace?',
+  'sidebar.projectDeleteEmptyBody':
+    'Remove "{name}" from the sidebar? The folder on disk is not touched.',
+  'sidebar.projectDeleteBody':
+    'Delete the {count} thread(s) stored for "{name}"? This removes their history from {store} and cannot be undone. Your workspace folder at {path} is NOT touched.',
+  'sidebar.projectDeleteConfirm': 'Delete threads',
+  'sidebar.projectDeleteCancel': 'Cancel',
+  'composer.placeholder': 'Type / for commands',
+  // The empty composer's placeholder before the thread has any message;
+  // once it has one, `composer.placeholder` points at slash commands.
+  'composer.placeholderEmptyThread': 'Describe a task or ask a question',
+  'composer.inputAria': 'Message input',
+  'composer.nextMessage': 'Next message',
+  'composer.removeNextMessage': 'Remove next message',
+  // The strip shows ONE queued message at a time and rotates through them on a
+  // timer. `{index}` is the 1-based position of the shown message, `{count}`
+  // the total queued (the badge reads `i/N`). Only rendered when count > 1.
+  // Replaces the old bare-total `composer.nextMessageCount`.
+  'composer.nextMessagePosition': 'Message {index} of {count} queued',
+  // A plain-Enter message sent while the turn runs, shown in the
+  // conversation until it reaches the model.
+  'composer.injectPending': 'Will be sent after the current step',
+  'composer.injectRemove': 'Remove and return to composer',
+  // The Send button's tooltip: one row per send mode, label + shortcut.
+  // `{modifier}` is Ctrl (⌘ on macOS), `{alt}` is Alt (⌥ on macOS).
+  'composer.sendShortcut.send': 'Send',
+  'composer.sendShortcut.sendKeys': 'Enter',
+  'composer.sendShortcut.queue': 'Queue for later',
+  'composer.sendShortcut.queueKeys': '{modifier}+Enter',
+  'composer.sendShortcut.fork': 'Send in a forked session',
+  'composer.sendShortcut.forkKeys': '{modifier}+{alt}+Enter',
+  // The hint line beside the composer's attachment button, shown once the
+  // user has typed something: how to send (idle / running), or how to
+  // write the slash command being typed. `{usage}` is the command's own
+  // syntax (`/loop [interval] <prompt>`), never translated.
+  'composer.hint.send': 'Enter to send · {modifier}+{alt}+Enter to send in a forked session · Shift+Enter for a new line',
+  'composer.hint.sendRunning': 'Enter to add to this turn · {modifier}+Enter to queue for later · {modifier}+{alt}+Enter to send in a forked session',
+  // The empty-session variants: no fork clause — an empty session has
+  // nothing to fork.
+  'composer.hint.sendEmpty': 'Enter to send · Shift+Enter for a new line',
+  'composer.hint.sendRunningEmpty': 'Enter to add to this turn · {modifier}+Enter to queue for later',
+  'composer.hint.commandPick': '↑↓ to choose a command · Enter to select · Esc to dismiss',
+  'composer.hint.commandUsage': 'Usage: {usage}',
+  'composer.hint.commandUnknown': 'No command named /{name}',
+  'action.send': 'Send message',
+  'action.stop': 'Stop generating',
+  'action.copy': 'Copy',
+  'action.fork': 'Fork from here',
+  // The title a "Fork from here" copy gets: the source's displayed title
+  // plus a marker, so the two are telling apart in the sidebar. Rewind
+  // (which REPLACES the original) keeps the exact title and never uses it.
+  'session.forkTitle': '{title} (fork)',
+  'action.rewind': 'Rewind to here',
+  'action.rewindConfirm':
+    'Rewind to here? Messages after this point will be discarded.',
+  'action.refresh': 'Refresh',
+  'action.more': 'More',
+  'action.edit': 'Edit',
+  'action.exportMarkdown': 'Export as Markdown',
+  'statusBar.collapseAll': 'Collapse all',
+  'statusBar.lockToBottom': 'Lock to bottom',
+  // Running-indicator status line (`runningStatusText`). Lower-case on
+  // purpose — these are mid-sentence fragments joined by ' · ', not labels.
+  'statusBar.thinking': 'thinking',
+  'statusBar.thinkingMore': 'thinking more',
+  'statusBar.almostDoneThinking': 'almost done thinking',
+  'statusBar.runningTask': 'running task',
+  // `{count}` arrives pre-formatted by compactCount (e.g. '1.8k').
+  'statusBar.tokens': '{count} tokens',
+  'statusBar.retryingIn':
+    'retrying in {seconds}s (attempt {attempt}/{maxRetries})',
+  'statusBar.startingRetry': 'starting retry {attempt}/{maxRetries}',
+  // In-flight retry attempt: `{seconds}` ticks up once a second (worker
+  // `inFlightSeconds`) so the line visibly progresses while the phase waits
+  // for the provider's first stream event.
+  'statusBar.retryInFlight':
+    'retry {attempt}/{maxRetries} in progress ({seconds}s)',
+  // Fallback reasons, keyed by the classifier's `ProviderApiErrorKind` slug
+  // (utils/providerConnectivity.ts) — only reached when the retry phase
+  // carries neither `errorTitleKey` nor a legacy `errorTitle`.
+  'statusBar.retryKind.authentication_failed': 'authentication failed',
+  'statusBar.retryKind.rate_limit': 'provider rate limit',
+  'statusBar.retryKind.invalid_request': 'invalid request',
+  'statusBar.retryKind.billing_error': 'insufficient credits',
+  'statusBar.retryKind.server_error': 'provider server error',
+  'statusBar.retryKind.repetitive_tool_calls': 'repetitive tool calls',
+  'statusBar.retryKind.refusal': 'safety refusal',
+  'statusBar.retryKind.unknown': 'connection error',
+  // ── Provider connectivity verdicts (utils/providerConnectivity.ts) ─────
+  // The classifier returns these KEYS; titles show in the retry status line (e2e
+  // asserts the en titles). Summaries have no UI surface yet.
+  'providerIssue.repetitiveToolCalls.title':
+    'Provider blocked a repeated tool call',
+  'providerIssue.repetitiveToolCalls.summary':
+    'The provider rejected the request because the same tool call (identical name and arguments) repeated across consecutive rounds. Resending the same history hits the same guard — compact the conversation or vary the repeated call before retrying.',
+  'providerIssue.serviceUnavailable.title': 'Provider service unavailable',
+  'providerIssue.serviceUnavailable.summaryCapacity':
+    'The provider reported a temporary capacity failure and asked clients to retry. {product} retries automatically before surfacing the API error.',
+  'providerIssue.serviceUnavailable.summaryUpstream':
+    'The provider or upstream service returned a temporary failure. {product} retries automatically before surfacing the API error.',
+  'providerIssue.quotaExhausted.title': 'Provider quota exhausted',
+  'providerIssue.quotaExhausted.summaryDirective':
+    'The provider reports its quota is exhausted and directed clients to wait longer than any in-session retry can cover, so {product} surfaces the error immediately instead of retrying. The provider message includes when the quota resets.',
+  'providerIssue.quotaExhausted.summaryMessage':
+    "The provider reports the account's quota or usage limit is exhausted, which no in-session retry can clear, so {product} surfaces the error immediately instead of walking the retry ladder. The provider message names the limit that was hit.",
+  'providerIssue.billing.title': 'Provider credits exhausted',
+  'providerIssue.billing.summary':
+    'The provider declined the request for lack of credit (HTTP 402): the account balance, or the API key\'s own credit limit, cannot cover it. No automatic retry can clear that, so {product} surfaces the error immediately.',
+  'providerIssue.rateLimit.title': 'Provider rate limit reached',
+  'providerIssue.rateLimit.summary':
+    'The provider is throttling requests. {product} retries automatically before surfacing the API error.',
+  'providerIssue.credentials.title': 'Credentials need attention',
+  'providerIssue.credentials.summary':
+    'The provider rejected the configured API key or sign-in token. {product} retries the sign-in path before surfacing the API error.',
+  'providerIssue.queued.title': 'Provider busy — request queued',
+  'providerIssue.queued.summary':
+    'The request waited in the provider concurrency queue until its deadline and never reached the provider. {product} retries automatically before surfacing the API error.',
+  'providerIssue.network.title': 'Network connection issue',
+  'providerIssue.network.summary':
+    '{product} could not reliably reach the provider. {product} retries automatically before surfacing the API error.',
+  'providerIssue.configuration.title': 'Provider configuration issue',
+  'providerIssue.configuration.summary':
+    'The provider rejected the request configuration. Check the selected model, base URL, and provider settings.',
+  'attachment.add': 'Add attachment',
+  'attachment.remove': 'Remove attachment',
+  'attachment.pastedText': 'Pasted text',
+  'attachment.pastedTextLines': 'Pasted text · {count} lines',
+  'attachment.pastedTextLinesOne': 'Pasted text · 1 line',
+  'attachment.showInTextField': 'Show in text field',
+  'reasoning.label': 'Reasoning',
+  'thread.loadingConversation': 'Loading…',
+  'thread.conversationInterrupted': 'This conversation was interrupted',
+  'thread.conversationCancelled': 'Conversation was cancelled',
+  'thread.hitTokenLimit': 'Hit token limit — continue response',
+  'thread.addFollowUp': 'Add a follow-up message',
+  'thread.continueConversation': 'Continue',
+  'message.showFullCount': 'Show full message ({count} more lines)',
+  'message.showFullCountOne': 'Show full message (1 more line)',
+  'message.showLess': 'Show less',
+  'sidebar.resizeAria': 'Resize sidebar',
+  'webviewArea.resizeAria': 'Resize browser view',
+  'webviewArea.title': 'Browser',
+  'webviewArea.hideAria': 'Hide browser view',
+  'rightPanel.resizeAria': 'Resize utility panel',
+  // The divider between the two stacked views INSIDE the panel. The en value
+  // is an e2e locator — update the spec if it moves.
+  'rightPanel.resizeSplitAria': 'Resize split',
+  'filePanel.viewRendered': 'Rendered',
+  'filePanel.viewRaw': 'Raw',
+  'filePanel.search': 'Search',
+  'filePanel.refresh': 'Refresh from disk',
+  'filePanel.save': 'Save',
+  'filePanel.editLocked': 'Editing locked while the agent is running',
+  'filePanel.diskChanged': 'This file changed on disk while you were editing.',
+  'filePanel.reload': 'Reload',
+  'filePanel.keepMine': 'Keep mine',
+  'question.submit': 'Submit',
+  'question.specify': 'Specify…',
+  'question.other': 'Other',
+  'question.none': 'No questions provided.',
+  'question.superseded':
+    'This question was not used — invalid input, the assistant retried.',
+  'question.noAnswer': '(no answer)',
+  'question.notes': 'Notes: {note}',
+  'launcher.agent': 'Agent',
+  'launcher.chat': 'Chat',
+  'launcher.code': 'Code',
+  'launcher.team': 'Team',
+  'launcher.newTeam': 'New Team',
+  'launcher.safeCode': 'SafeCode',
+  'launcher.project': 'Project',
+  'launcher.newAgent': 'New agent',
+  'launcher.newChat': 'New chat',
+  'launcher.newCode': 'New code',
+  'launcher.newSafeCode': 'New SafeCode',
+  'launcher.newProject': 'New project',
+  'projectFolder.chipLabel': 'Project folder: {name}',
+  'projectFolder.recent': 'Recent',
+  'projectFolder.openFolder': 'Open folder…',
+  'projectFolder.title': 'Open a project folder',
+  'projectFolder.description':
+    'A code session works inside a project folder — it reads and writes files there. Choose a folder to get started.',
+  'projectFolder.open': 'Open folder',
+  'projectFolder.knownFolders': 'Your folders',
+  'projectFolder.noKnownFolders':
+    'No project folders yet. Open one on the desktop first.',
+  'projectFolder.cancel': 'Cancel and discard this session',
+  'projectFolder.branchLabel': 'Branch: {name}',
+  'projectFolder.copyBranch': 'Copy branch name',
+  'projectFolder.showInExplorer': 'Show in Explorer',
+  'projectFolder.copyPath': 'Copy path',
+  'projectFolder.binding': 'Opening folder…',
+  'projectFolder.error': 'Couldn’t open that folder. Please choose another.',
+
+  // ── Top bar (NexusTopBar) ──────────────────────────────────────────────
+  'topbar.showSidebar': 'Show sidebar',
+  'topbar.collapseSidebar': 'Collapse sidebar',
+  'topbar.search': 'Search conversations',
+  'transcriptSearch.title': 'Search conversations',
+  'transcriptSearch.placeholder': 'Search all conversations…',
+  'transcriptSearch.regex': 'Regular expression',
+  'transcriptSearch.caseSensitive': 'Match case',
+  'transcriptSearch.close': 'Close search',
+  'transcriptSearch.idleHint': 'Type to search your conversations — messages, replies, and tool activity.',
+  'transcriptSearch.hitTimesOne': '1 hit',
+  'transcriptSearch.hitTimes': '{count} hits',
+  'transcriptSearch.recent': 'Recent searches',
+  'transcriptSearch.clearHistory': 'Clear',
+  'transcriptSearch.titleMatch': 'title',
+  'transcriptSearch.progress': 'Searching… {scanned}/{total}',
+  'transcriptSearch.summary': '{conversations} conversations · {matches} hits',
+  'transcriptSearch.noResults': 'No matches found.',
+  'transcriptSearch.truncated': 'Too many matches — showing the most relevant. Refine your search.',
+  'transcriptSearch.unavailable': 'Search is unavailable — the session storage location could not be resolved.',
+  'transcriptSearch.badPattern': 'That regular expression is not valid. {detail}',
+  'transcriptSearch.searchFailed': 'Search failed. Please try again.',
+  'topbar.settings': 'Settings',
+  'topbar.backgroundTasks': 'Background tasks',
+  'topbar.showSidePanel': 'Show side panel',
+  'topbar.hideSidePanel': 'Hide side panel',
+  'topbar.openBrowserWindow': 'Open browser window',
+  'topbar.toggleAgentZone': 'Toggle agent browsing zone',
+  'topbar.agentZone': 'Agent browsing zone',
+  'topbar.sessionShutdown': 'Shut down',
+  'topbar.sessionTabs': 'Team sessions',
+  'topbar.sessionTabsMoreOne': '1 more teammate',
+  'topbar.sessionTabsMore': '{count} more teammates',
+  'teamMessage.kindMessage': 'Message',
+  'teamMessage.kindTurnEnd': 'Reported back',
+  'teamMessage.kindShutdown': 'Shutting down',
+  'teamMessage.kindSystem': 'System notice',
+  'teamMessage.untrusted': 'Untrusted',
+  'teamMessage.openTeammate': 'Open teammate {name}',
+  'teamMessage.spawnEyebrow': 'Teammate started',
+  'teamMessage.spawnRunning': 'Working in its own session',
+  'teamMessage.spawnStarting': 'Starting…',
+  'teamMessage.spawnOpen': 'Open',
+  'teamMessage.expand': 'Show message',
+  'topbar.importFrom': 'Import from {source}',
+  'topbar.remoteDevicesOne': '1 remote device connected',
+  'topbar.remoteDevices': '{count} remote devices connected',
+
+  // ── Import dialog (sessionImport/ImportDialog) ────────────────────────
+  // `{source}` is the third-party product's proper name, passed as data.
+  'import.title': 'Import from {source}',
+  'import.description':
+    'Bring your existing sessions, plugins, and skills into {product}.',
+  'import.tab.sessions': 'Sessions',
+  'import.tab.memory': 'Memory',
+  'import.tab.plugins': 'Plugins',
+  'import.tab.skills': 'Skills',
+  'import.tab.comingSoon': 'Coming soon',
+  'import.sourceLine': '{count} sessions · {path}',
+  'import.refresh': 'Refresh',
+  'import.untitled': 'Untitled session',
+  'import.rowMeta': '{project} · {when} · {size}',
+  'import.action': 'Import',
+  'import.importing': 'Importing…',
+  'import.imported': 'Imported',
+  'import.alreadyImported': 'Already imported — open it from the sidebar',
+  'import.open': 'Open',
+  'import.retry': 'Retry',
+  'import.notImportable': 'Sub-agent transcript — not importable',
+  'import.empty': 'No sessions found in {path}.',
+  'import.loading': 'Scanning sessions…',
+  'import.listError': 'Couldn’t read the session list. {message}',
+  'import.importError': 'Import failed. {message}',
+  'import.showingRange': 'Showing {from}–{to} of {total}',
+  'import.pagePrevAria': 'Previous page',
+  'import.pageNextAria': 'Next page',
+  'import.pageAria': 'Page {page}',
+  'import.skills.loading': 'Scanning skills…',
+  'import.skills.sourceLine': '{count} skills · {path}',
+  'import.skills.empty': 'No skills found in {path}.',
+  'import.skills.listError': 'Couldn’t read the skill list. {message}',
+  'import.skills.fileCount': '{count} files',
+  'import.skills.alreadyImported': 'Already in your {product} skills',
+  'import.memory.loading': 'Scanning project memory…',
+  'import.memory.sourceLine': '{count} projects · {path}',
+  'import.memory.empty': 'No project memory found in {path}.',
+  'import.memory.listError': 'Couldn’t read the memory list. {message}',
+  'import.memory.fileCount': '{count} files',
+  'import.memory.update': 'Update',
+  'import.memory.alreadyImported': 'All memory files already imported',
+  'import.memory.global.name': 'Global memory & instructions',
+  'import.memory.global.dest': 'Merged into {path}',
+  'import.memory.showFiles': 'Show files',
+  'import.memory.hideFiles': 'Hide files',
+  'import.memory.fileImported': 'Already imported',
+
+  // ── Model picker (NexusModelPicker) ────────────────────────────────────
+  'modelPicker.selectModel': 'Select model',
+  'modelPicker.search': 'Search models…',
+  'modelPicker.noModels': 'No models available',
+  'modelPicker.providerSettings': 'Provider settings…',
+  'modelPicker.price': '{input} in · {output} out',
+  'modelPicker.quota.five_hour': '5h',
+  'modelPicker.quota.daily': 'Day',
+  'modelPicker.quota.weekly': 'Week',
+  'modelPicker.quota.monthly': 'Month',
+  'modelPicker.quota.freeRequests': 'Free req.',
+  'modelPicker.quota.balance': 'Balance',
+  'modelPicker.quota.limit_remaining': 'Key limit left',
+  'modelPicker.quota.available': 'Available',
+  'modelPicker.quota.spent_day': 'Today',
+  'modelPicker.quota.spent_week': 'This week',
+  'modelPicker.quota.spent_month': 'This month',
+  'modelPicker.quota.spent_total': 'Spent',
+  'modelPicker.teammateLocked': 'A teammate keeps the model it was started with. It can\'t be changed here.',
+  'modelPicker.latest': 'Latest',
+  'modelPicker.latestVersion': 'Latest · {version}',
+  'modelPicker.pinned': 'Pinned version',
+  'modelPicker.preview': 'Preview',
+  'modelPicker.previewHint': 'Not part of Latest; may be withdrawn at any time.',
+  'modelPicker.providerMenu': '{name} options',
+  'modelPicker.addPinned': 'Add a pinned version',
+  'modelPicker.previewSection': 'Previews',
+  'modelPicker.alreadyAdded': 'Added',
+  'modelPicker.editProvider': 'Edit…',
+  'modelPicker.defaultForNewSessions': 'Default for new sessions',
+  'composerEffort.label': 'Effort',
+  'composerEffort.faster': 'Faster',
+  'composerEffort.smarter': 'Smarter',
+  'composerEffort.recommended': 'Recommended',
+  'composerEffort.help': 'How much the model thinks before it answers. Applies to this session only. New sessions use the default set in the model picker.',
+  'composerEffort.helpAria': 'About effort',
+  'composerEffort.triggerAria': 'Effort: {name}',
+  'composerEffort.stopRecommendedAria': '{name} (recommended)',
+  'composerEffort.teammateLocked': 'A teammate keeps the effort it was started with. It can\'t be changed here.',
+  'composerEffort.tier.none': 'None',
+  'composerEffort.tier.minimal': 'Minimal',
+  'composerEffort.tier.low': 'Low',
+  'composerEffort.tier.medium': 'Medium',
+  'composerEffort.tier.high': 'High',
+  'composerEffort.tier.xhigh': 'Extra',
+  'composerEffort.tier.max': 'Max',
+  'composerEffort.tier.default': 'Default',
+
+  // ── Permission banner ──────────────────────────────────────────────────
+  'permission.allowToRun': 'Allow {tool} to run?',
+  'permission.deny': 'Deny',
+  'permission.allowOnce': 'Allow once',
+  'permission.alwaysAllow': 'Always allow',
+  'permission.allowFolder': 'Allow this folder',
+  'permission.feedbackPlaceholder': 'Optional: tell the model what to do differently…',
+
+  // ── Plan-approval banner (plan-mode handshake) ─────────────────────────
+  'planEnter.title': 'Enter plan mode?',
+  'planEnter.body':
+    '{product} wants to enter plan mode to explore and design an implementation approach. No code changes will be made until you approve the plan.',
+  'planEnter.approve': 'Yes, enter plan mode',
+  'planEnter.reject': 'No, start implementing now',
+  'planApproval.title': 'Ready to code?',
+  'planApproval.viewPlan': 'View plan',
+  'planApproval.panelTitle': 'Plan',
+  'planApproval.close': 'Close plan',
+  'planApproval.description':
+    'Approve this plan to start implementing, or keep planning.',
+  'planApproval.approve': 'Approve & start',
+  'planApproval.keepPlanning': 'No, keep planning',
+  'planApproval.feedbackPlaceholder': 'Optional: what should change?',
+
+  // ── Token-usage indicator ──────────────────────────────────────────────
+  'tokenUsage.contextUsed': 'Context {pct}% used',
+  'tokenUsage.contextSummary': 'Context {used} / {window} ({pct}%)',
+  'tokenUsage.contextFraction': '{used} / {window} ({pct}%)',
+  'tokenUsage.contextWindow': 'Context window',
+  'tokenUsage.untilAutoCompact': '{amount} until auto-compact',
+  'tokenUsage.autoCompactOff': 'Auto-compact is off',
+  'tokenUsage.autoCompactHandle': 'Auto-compact threshold',
+  'tokenUsage.autoCompactHandleAuto': 'Auto · compacts at {threshold}',
+  'tokenUsage.autoCompactHandleFixed': 'Compacts at {threshold}',
+  'tokenUsage.autoCompactNextMessage': 'Compacts on the next message',
+  'tokenUsage.autoCompactLockedManaged': 'Auto-compact window is set by managed settings',
+  'tokenUsage.autoCompactLockedProject': 'Auto-compact window is set by project settings',
+  'tokenUsage.autoCompactLockedFlag': 'Auto-compact window is set by a launch flag',
+  'tokenUsage.autoCompactSaveFailed': 'Couldn\'t save the auto-compact window: {error}',
+  'tokenUsage.compactSession': 'Compact',
+  'tokenUsage.planUsageLimits': 'Plan usage limits',
+  'tokenUsage.planUsageLimitsNamed': 'Plan usage limits · {plan}',
+  'tokenUsage.planSummary': '{pct}% of {window}',
+  'tokenUsage.windowHeadline': '{pct}% of {window}',
+  'tokenUsage.percent': '{pct}%',
+  'tokenUsage.resetsIn': 'Resets in {duration}',
+  'tokenUsage.resetsAt': 'Resets {time}',
+  'tokenUsage.durationHrMin': '{hours} hr {minutes} min',
+  'tokenUsage.durationMin': '{minutes} min',
+  'tokenUsage.window.five_hour': '5-hour limit',
+  'tokenUsage.window.daily': 'Daily limit',
+  'tokenUsage.window.weekly': 'Weekly · all models',
+  'tokenUsage.window.monthly': 'Monthly limit',
+  'tokenUsage.windowShort.five_hour': '5-hour limit',
+  'tokenUsage.windowShort.daily': 'daily limit',
+  'tokenUsage.windowShort.weekly': 'weekly limit',
+  'tokenUsage.windowShort.monthly': 'monthly limit',
+  'tokenUsage.window.freeRequests': 'Free-model requests today',
+  'tokenUsage.windowShort.freeRequests': 'free-model requests',
+  'tokenUsage.amountSummary': '{label} {amount}',
+  'tokenUsage.credits': 'Credits',
+  'tokenUsage.amount.balance': 'Credit balance',
+  'tokenUsage.amount.limit_remaining': 'Key limit remaining',
+  'tokenUsage.amount.available': 'Available',
+  'tokenUsage.balanceNote.needs_key':
+    'Account balance needs a management key — add one in this provider\'s settings. A key\'s limit is a spending cap, not a balance.',
+  'tokenUsage.balanceNote.unavailable':
+    'Couldn\'t read the account balance — check the management key in this provider\'s settings.',
+  'tokenUsage.notAvailable': 'n/a',
+  'tokenUsage.balanceNote.help': 'Why is the balance unavailable?',
+  'tokenUsage.amount.spent_day': 'Spent today',
+  'tokenUsage.amount.spent_week': 'Spent this week',
+  'tokenUsage.amount.spent_month': 'Spent this month',
+  'tokenUsage.amount.spent_total': 'Total spent',
+  'tokenUsage.contextUsedCached': 'Context {pct}% used · last turn {cachePct}% cached',
+  'tokenUsage.withLimitReached': '{label} · Usage limit reached',
+  'tokenUsage.cacheHeadline': 'cache {pct}%',
+
+  // ── Ask-user-question tool UI ──────────────────────────────────────────
+  'ask.oneQuestion': 'A question for you',
+  'ask.manyQuestions': '{count} questions for you',
+
+  // ── A2UI surfaces ──────────────────────────────────────────────────────
+  'a2ui.renderFailed': 'This A2UI surface failed to render.',
+  'a2ui.moved': '“{id}” moved — jump to the latest version',
+  'a2ui.maximize': 'Maximize',
+  'a2ui.maximizeSurface': 'Maximize surface',
+  'a2ui.restore': 'Restore',
+  'a2ui.restoreSurface': 'Restore surface',
+
+  // ── Generative tool UIs ────────────────────────────────────────────────
+  'gen.loadingLocation': 'Loading location...',
+  'gen.selectedDate': 'Selected: {date}',
+  'gen.submittingDate': 'Submitting your selected date...',
+  'gen.confirm': 'Confirm',
+  'gen.contactCollected': 'Contact info collected',
+  'gen.submittingContact': 'Submitting your contact information...',
+  'gen.name': 'Name',
+  'gen.email': 'Email',
+  'gen.phone': 'Phone',
+  'gen.mapOf': 'Map of {name}',
+
+  // ── Tool detail (screenshot) ───────────────────────────────────────────
+  'tool.openScreenshot': 'Open full screenshot in a new tab',
+  'tool.pageScreenshot': 'Page screenshot',
+
+  // ── Tool-call detail body (shared by tool-fallback + the Plan surface) ─
+  // Short labels ending in ':' head a block of tool data; keep the colon.
+  'toolDetail.loadFailed': 'Failed to load tool details.',
+  'skill.viewInPanel': 'View skill',
+  'skill.cardLabel': 'Skill: {name}',
+  'skill.cardLabelLoading': 'Loading Skill: {name}',
+  'skill.cardLabelUnnamed': 'Skill',
+  'skill.argsLine': 'Arguments: {args}',
+  'skillPanel.empty': 'No skill open. Open one from a Skill card.',
+  'skillPanel.loading': 'Loading skill instructions…',
+  'skillPanel.loadFailed': 'Failed to load skill instructions.',
+  'skillPanel.loadedListHeader': 'Loaded skills',
+  'skillPanel.listStats': '{count} skills · {size}',
+  'skillPanel.pickFromList': 'Select a skill above to view its instructions.',
+  'skillPanel.dynamicBody':
+    'This skill’s instructions are generated when it is invoked. Invoke the skill to see what it produces.',
+  'skillPanel.invokedBodyNote':
+    'Instructions from this skill’s last invocation in this session.',
+  'skillPanel.statusLoaded': 'Loaded',
+  'skillPanel.statusFailed': 'Failed',
+  'skillPanel.invocationFailed': 'This skill failed to load.',
+  'toolDetail.stillRunning': 'Tool is still running.',
+  'toolDetail.loading': 'Loading tool details...',
+  'toolDetail.loadingFull': 'Loading full details...',
+  'toolDetail.subAgentWorking': 'Sub-agent working…',
+  'toolDetail.errorLabel': 'Error:',
+  'toolDetail.cancelledReason': 'Cancelled reason:',
+  'toolDetail.argsLabel': 'Args:',
+  'toolDetail.resultLabel': 'Result:',
+  'toolDetail.resultFullLabel': 'Result (full original):',
+  'toolDetail.resultCompactLabel': 'Result (compact):',
+  'toolDetail.showCompact': 'Show compact',
+  'toolDetail.showFullOriginal': 'Show full original',
+  'toolDetail.concurrentRunning': 'Concurrent',
+  'toolDetail.concurrentBatch': 'Concurrent batch',
+  'toolDetail.noStoredDetails': 'No stored tool details were found for this call.',
+  'toolDetail.emptyFile': 'Empty file.',
+
+  // ── Diff surfaces (DiffPanel, TurnDiffSummary, edit-tool diff) ─────────
+  'diff.noChanges': 'No changes.',
+  'diff.loading': 'Loading diff…',
+  'diff.loadFailed': 'Failed to load diff.',
+  'diff.unavailable': 'Diff unavailable.',
+  'diff.viewDiff': 'View diff',
+  'diff.turnN': 'Turn {n}',
+  'diff.showSessionChanges': 'Show changes this session',
+  'diff.showSessionChangesAria': 'Show changes this session in the side panel',
+  // `{n}` may be 1 — keep the singular/plural key pair distinct.
+  'diff.fileCount': '{n} files',
+  'diff.fileCountOne': '{n} file',
+  // `{path}` is a file path, NOT translated.
+  'diff.openFileAria': 'Open {path}',
+  'diff.newFileBadge': 'new',
+  // Label of the counts pill when a changed file has no +/− line counts.
+  'diff.diffLabel': 'diff',
+  'diff.replaceAll': 'Replace all',
+  'diff.selectFilePrompt': 'Select a changed file above to view its diff.',
+  'diff.noChangesYet': 'No changes yet.',
+  // Label of the synthetic "Whole session" total row at the top of the history.
+  'diff.wholeSession': 'Whole session',
+  // Warning on a Whole-session file whose changes are not all from this session.
+  // {from}/{to} are turn numbers, NOT translated.
+  'diff.externalChangeWarning':
+    'Includes changes made outside this session (between turn {from} and turn {to}).',
+
+  // ── File panel / file rows ─────────────────────────────────────────────
+  'filePanel.loadingFile': 'Loading file…',
+  'filePanel.copyFileContents': 'Copy file contents',
+  'filePanel.copyFilePath': 'Copy file path',
+  'filePanel.noContent': 'No content.',
+  'filePanel.readUnavailable': 'File reading is unavailable on this host.',
+  'filePanel.readFailed': 'Failed to read file.',
+  'filePanel.saveFailed': 'Failed to save file.',
+  'filePanel.saveUnavailable': 'Saving is unavailable on this host.',
+  'filePanel.noFileOpen':
+    'No file open. Click a file path in the transcript to view it here.',
+
+  // ── Background tasks (drawer + result cards) ───────────────────────────
+  'backgroundTasks.back': 'Back to background tasks',
+  'backgroundTasks.reloadTranscript': 'Reload transcript',
+  'backgroundTasks.taskActions': 'Task actions',
+  'backgroundTasks.systemPrompt': 'System prompt',
+  'backgroundTasks.paramsHeader': 'Parameters',
+  'backgroundTasks.timeoutLabel': 'Timeout',
+  'backgroundTasks.timeoutUnbounded':
+    'none — runs to completion (auto-backgrounded)',
+  'backgroundTasks.timeoutHostKill': '{duration} (host hard-kill)',
+  'backgroundTasks.backgroundLabel': 'Background',
+  'backgroundTasks.backgroundAuto':
+    'auto-detached past the foreground budget',
+  'backgroundTasks.descriptionLabel': 'Description',
+  'backgroundTasks.sourceLabel': 'Source',
+  'backgroundTasks.jsSourceHeader': 'JS source',
+  'backgroundTasks.jsInputsHeader': 'JS inputs',
+  'backgroundTasks.resultHeader': 'Result',
+  'backgroundTasks.commandLabel': 'Command',
+  'backgroundTasks.promptLabel': 'Prompt',
+  'backgroundTasks.taskLabel': 'Task',
+  'backgroundTasks.subAgentFallbackTitle': 'Sub-agent …{id}',
+  'backgroundTasks.startedAt': 'started {when}',
+  'backgroundTasks.resumeDefaultText': 'Continue.',
+  // Kind categories (Sub-agents / Shell / Super Shell / Super Edit / Running).
+  // "Super Shell" and "Super Edit" are coined tool labels — verbatim in every
+  // locale (G-1).
+  'backgroundTasks.category.subagent': 'Sub-agents',
+  'backgroundTasks.category.shell': 'Shell',
+  'backgroundTasks.category.superShell': 'Super Shell',
+  'backgroundTasks.category.runJs': 'Super Edit',
+  'backgroundTasks.category.running': 'Running',
+  'backgroundTasks.runJsFallbackTitle': 'Super Edit …{id}',
+  'backgroundTasks.superShellFallbackTitle': 'Super Shell …{id}',
+  // One-shot fast-model calls (`local_fast` rows), named by the side-channel
+  // that made them. The worker sends the telemetry tag; the drawer resolves
+  // it here. "WebFetch" is a tool name — verbatim in every locale.
+  'backgroundTasks.fastCall.sessionTitle': 'Session title',
+  'backgroundTasks.fastCall.automaticRecall': 'Automatic recall',
+  'backgroundTasks.fastCall.webFetchExtraction': 'WebFetch extraction',
+  'backgroundTasks.fastCall.generic': 'Fast model call',
+  // Lower-case on purpose — these are row badges joined with ' · '.
+  'backgroundTasks.status.running': 'running',
+  'backgroundTasks.status.success': 'done',
+  'backgroundTasks.status.error': 'failed',
+  'backgroundTasks.status.stopped': 'stopped',
+  'backgroundTasks.status.unknown': 'finished',
+  'backgroundTasks.workingDir': 'Working dir',
+  'backgroundTasks.shellResults': 'Background shell results',
+  'backgroundTasks.subAgentResults': 'Background sub-agent results',
+  'backgroundTasks.loadingTranscript': 'Loading transcript…',
+  'backgroundTasks.noMessages': 'No messages to show for this sub-agent.',
+  // `Agent` is the tool name and `run_in_background` its parameter — protocol,
+  // so both stay English in every locale (G-1).
+  'backgroundTasks.emptyState':
+    'No background tasks. Launch a sub-agent with Agent background mode or a shell command with run_in_background and it will appear here.',
+  'backgroundTasks.resumeTitle': 'Resume “{description}”',
+  'backgroundTasks.resumeHint':
+    'The sub-agent resumes with its prior context preserved. Enter a follow-up directive.',
+  'backgroundTasks.openInDrawer': 'Open in Background Tasks',
+  'backgroundTasks.view': 'View',
+  'backgroundTasks.stillRunningOne':
+    '1 background task still running — its result will be posted here when it finishes.',
+  'backgroundTasks.stillRunning':
+    '{count} background tasks still running — results will be posted here as they finish.',
+
+  // ── Plan/todo card headers (TodoSection + tool-plan-stream) ────────────
+  // Verbs and summary chips of the per-turn plan cards. `{count}` may be 1 —
+  // keep the singular/plural distinction. `{target}` is the tool's target
+  // label (a file path or tool name), NOT translated.
+  'plan.verbWorking': 'Working',
+  'plan.verbDone': 'Done',
+  'plan.verbCancelled': 'Cancelled',
+  'plan.countTools': '{count} tools',
+  'plan.countToolsOne': '{count} tool',
+  'plan.fileRead': 'Read {count}',
+  'plan.fileEdited': 'Edited {count}',
+  'plan.fileDeleted': 'Deleted {count}',
+  'plan.runningTarget': 'Running {target}',
+
+  // ── Utility (right) panel ──────────────────────────────────────────────
+  'rightPanel.tabPlan': 'Plan',
+  'rightPanel.tabTasks': 'Tasks',
+  'rightPanel.tabDiff': 'Diff',
+  'rightPanel.tabSkill': 'Skills',
+  'rightPanel.aria': 'Utility panel',
+  'rightPanel.close': 'Close panel',
+  'rightPanel.maximize': 'Maximize panel',
+  'rightPanel.restore': 'Restore panel size',
+  'rightPanel.noActivePlan': 'No active plan.',
+  'rightPanel.comingSoon': '{view} — coming soon.',
+
+  // ── Transcript dividers + provider-error banner ────────────────────────
+  'thread.providerRequestFailed': 'Provider request failed',
+  'thread.tryAgain': 'Try again',
+  'thread.compactedConversation': 'Compacted conversation',
+  'thread.savedMemory': 'Saved memory',
+  'thread.compactingConversation': 'Compacting conversation',
+  'thread.setUpModelProvider': 'Set up a model provider',
+  'thread.openSettings': 'Open settings',
+  'thread.retrying': 'Retrying…',
+  'thread.issueLabel': 'Issue: {kind}',
+  'thread.providerRetriedSummary':
+    '{product} retried the request {count} times and stopped so you can decide what to do next.',
+  'thread.providerRetriedSummaryOne':
+    '{product} retried the request {count} time and stopped so you can decide what to do next.',
+  'thread.providerNoRetrySummary':
+    '{product} did not retry — the provider rejected this request outright, so resending it unchanged would fail the same way.',
+  'thread.providerBillingNoRetrySummary':
+    '{product} did not retry — the provider declined this request because the account has run out of credit, which no automatic retry can fix.',
+  'thread.providerBillingHint':
+    'Add credits to your provider account — the account balance is what pays for requests. An API key\'s credit limit only caps how much of that balance the key may spend, so a key with limit left still fails while the account is empty. Then select Try again.',
+  'thread.providerRefusalHint':
+    'The provider declined this request on safety grounds (category: {category}). Rephrase it, or choose a different model in the picker and try again.',
+  'thread.providerRefusalHintUncategorized':
+    'The provider declined this request on safety grounds. Rephrase it, or choose a different model in the picker and try again.',
+  'thread.providerLoopGuardHint':
+    'The provider blocks the same tool call (identical name and arguments) repeating across consecutive rounds. Run /compact, or change the repeated call, before retrying — resending the same history hits the same guard.',
+  'thread.compactedSaved': 'Compacted conversation · saved {tokens} tokens',
+  'thread.interrupted': 'Interrupted',
+  'thread.providerMissingDescription':
+    'You need at least one configured and enabled model provider before sending a message. Your draft will be restored when this dialog closes.',
+  'thread.cancel': 'Cancel',
+  'backgroundTasks.resultCountSingular': '{count} result',
+  'backgroundTasks.resultCountPlural': '{count} results',
+  'backgroundTasks.completed': 'Completed',
+  'thread.openSettingsFailed': 'Failed to open settings.',
+  'thread.runtimeConnectionFailed':
+    'The connection to the agent runtime failed. Reload the window to try again.',
+
+  // ── ThreadErrorBoundary fallback card ───────────────────────────────────
+  'thread.crashedTitle': 'Conversation crashed',
+  'thread.crashedBody':
+    'The thread hit a render error. Other sessions are unaffected.',
+  'thread.crashedRetry': 'Retry',
+
+  // ── Permission-mode toggle (thread) ────────────────────────────────────
+  'thread.permissionMode': 'Permission mode (Shift+Ctrl+M)',
+  'permissionMode.title.default': 'Ask permissions',
+  'permissionMode.title.acceptEdits': 'Accept edits',
+  'permissionMode.title.plan': 'Plan mode',
+  'permissionMode.title.bypassPermissions': 'Bypass permissions',
+  'permissionMode.short.default': 'Ask',
+  'permissionMode.short.acceptEdits': 'Accept',
+  'permissionMode.short.plan': 'Plan',
+  'permissionMode.short.bypassPermissions': 'Bypass',
+  'permissionMode.planBannerName': 'Plan mode',
+  'permissionMode.planBannerBody':
+    '· read-only while the agent explores and designs. It will present a plan for your approval before making changes.',
+
+  // ── Bypass-Permissions warning dialog (F-13) ───────────────────────────
+  'bypassDialog.title': 'WARNING: Running in Bypass Permissions mode',
+  'bypassDialog.body':
+    'In Bypass Permissions mode, the agent will not ask for your approval before running potentially dangerous commands. This mode should only be used in a sandboxed environment with restricted internet access that can easily be restored if damaged. By proceeding, you accept all responsibility for actions taken in this mode.',
+  'bypassDialog.learnMore': 'Learn more about security',
+  'bypassDialog.accept': 'Yes, I accept',
+  'bypassDialog.decline': 'No, cancel',
+  'bypassDialog.docsUrl': 'https://velloc.app/docs/security',
+
+  // ── Settings — shell + nav ─────────────────────────────────────────────
+  'settings.title': 'Settings',
+  'settings.close': 'Close settings',
+  'settings.navAria': '{product} settings',
+  'settings.placeholderMigrating':
+    'This section is being migrated into the app and isn’t available here yet.',
+  'settings.bridgeUnavailable': 'Settings bridge unavailable on this host.',
+  'settings.loading': 'Loading…',
+  'settings.resetToDefault': 'Reset to default',
+  'settings.editField': 'Edit {label}',
+  'settings.nav.general': 'General',
+  'settings.nav.models': 'Models',
+  'settings.nav.sessionModels': 'Session Models',
+  'settings.nav.mcp': 'MCP',
+  'settings.nav.instructions': 'Instructions',
+  'settings.nav.memory': 'Memory',
+  'settings.nav.features': 'Skills',
+  'settings.nav.plugins': 'Plugins & Mods',
+  'settings.nav.remoteAccess': 'Remote access',
+  'settings.nav.about': 'About',
+
+  // ── Settings — General (Profile) ───────────────────────────────────────
+  'settings.general.title': 'General',
+  'settings.general.profile': 'Profile',
+  'settings.general.fullName': 'Full name',
+  'settings.general.fullNamePlaceholder': 'Your name',
+  'settings.general.callName': 'Preferred name',
+  'settings.general.callNameDescription': 'How you’d like to be addressed.',
+  'settings.general.callNamePlaceholder': 'Preferred name',
+  'settings.general.workRole': 'Role',
+  'settings.general.rolePlaceholder': 'Select a role…',
+  'settings.general.instructions': 'Instructions for {product}',
+  'settings.general.instructionsDescription':
+    "Standing instructions added to {product}'s system prompt in every project. Stored in your user instruction file; takes effect in a new session.",
+  'settings.general.instructionsConflict':
+    'This file changed on disk, so your edit was not saved. Your text is kept above; the current contents on disk are shown below — reapply your change, then click away to save.',
+  'settings.general.instructionsUnreadable':
+    'This file exists but could not be read, so editing is disabled to avoid overwriting it. Check its permissions and reopen this page.',
+  'settings.general.instructionsSaveFailed':
+    'Couldn\'t save your instructions. Your text is still here — leave the field again to retry.',
+  'settings.general.instructionsPlaceholder':
+    'e.g. Be concise. I prefer TypeScript over JavaScript.',
+  'settings.general.role.engineering': 'Engineering',
+  'settings.general.role.product': 'Product management',
+  'settings.general.role.design': 'Design',
+  'settings.general.role.dataScience': 'Data science',
+  'settings.general.role.research': 'Research',
+  'settings.general.role.marketing': 'Marketing',
+  'settings.general.role.sales': 'Sales',
+  'settings.general.role.operations': 'Operations',
+  'settings.general.role.education': 'Education',
+  'settings.general.role.legal': 'Legal',
+  'settings.general.role.finance': 'Finance',
+  'settings.general.role.other': 'Other',
+
+  // ── Settings — General · Language (inside System — a change restarts) ──
+  'settings.general.uiLanguage': 'Display language',
+  'settings.general.languageUnavailable': 'This version of {product} cannot change the display language from here.',
+  'settings.general.languageRestartTip': 'Restart required to apply this change.',
+  'settings.general.languageRestartNow': 'Restart now',
+  'settings.general.languageRestarting': 'Restarting...',
+  'settings.general.languageRestartFailed': 'Could not restart. Quit and reopen {product} to apply the new language.',
+
+  'settings.general.separateWindow': 'Open agent tabs in a separate window',
+  'settings.general.separateWindowDescription':
+    'When enabled, the agent uses a dedicated browser window to keep automated tabs separate from your current workspace.',
+
+  // ── Settings — General · Appearance (folded in from its own page) ────
+  'settings.appearance.title': 'Appearance',
+  'settings.appearance.unavailable': 'This version of {product} cannot change the appearance from here.',
+  'settings.appearance.mode': 'Mode',
+  'settings.appearance.modeDescription': 'Light, dark, or system appearance.',
+  'settings.appearance.modeSystem': 'System',
+  'settings.appearance.modeLight': 'Light',
+  'settings.appearance.modeDark': 'Dark',
+  'settings.appearance.color': 'Accent colour',
+  'settings.appearance.colorDescription': 'Interface accent colour.',
+  'settings.appearance.textSize': 'Text size',
+  'settings.appearance.textSizeDescription': 'Conversation and sidebar text size.',
+  'settings.appearance.textSize1': 'Smallest',
+  'settings.appearance.textSize2': 'Compact (default)',
+  'settings.appearance.textSize3': 'Medium',
+  'settings.appearance.textSize4': 'Large',
+  'settings.appearance.textSize5': 'Largest',
+  'settings.appearance.showReasoning': 'Show reasoning',
+  'settings.appearance.showReasoningDescription': 'Show the model\'s reasoning in the conversation. Hiding it does not reduce token usage.',
+  'settings.appearance.swatch.default': 'Default',
+  'settings.appearance.swatch.chrome': 'Light blue',
+  'settings.appearance.swatch.grey': 'Grey',
+  'settings.appearance.swatch.blue': 'Blue',
+  'settings.appearance.swatch.aqua': 'Aqua',
+  'settings.appearance.swatch.green': 'Green',
+  'settings.appearance.swatch.citron': 'Citron',
+  'settings.appearance.swatch.orange': 'Orange',
+  'settings.appearance.swatch.rose': 'Rose',
+  'settings.appearance.swatch.violet': 'Violet',
+
+  // ── Settings — Model Providers ─────────────────────────────────────────
+  'settings.models.title': 'Model Providers',
+  'settings.models.errUnauthorized': 'Unauthorized - check your API key',
+  'settings.models.errForbidden':
+    'Forbidden - this key cannot access the endpoint',
+  'settings.models.errInvalidBaseUrl':
+    'Invalid Base URL - enter a valid API endpoint',
+  'settings.models.errUnreachable':
+    'Endpoint unreachable - check the URL or your network',
+  'settings.models.errTimeout': 'Connection timed out - try again',
+  'settings.models.errNoModels': 'Connected, but no models were returned',
+  'settings.models.errUnexpected': 'Unexpected server response',
+  'settings.models.localNote':
+    'No API key is required. {product} loads models from the configured Ollama server.',
+  'settings.models.chipConnecting': 'Connecting',
+  'settings.models.titleConnecting': 'Connecting...',
+  'settings.models.detailConnecting': 'Fetching available models...',
+  'settings.models.chipConnected': 'Connected',
+  'settings.models.titleConnected': 'Connected',
+  'settings.models.modelsFound': '{count} {unit} available',
+  'settings.models.unitModel': 'model',
+  'settings.models.unitModels': 'models',
+  'settings.models.noModelsConfirmed': 'The provider\'s latest model list no longer includes any of these models.',
+  'settings.models.detailReady': 'Current settings are ready to use.',
+  'settings.models.chipPending': 'Changes pending',
+  'settings.models.titleVerification': 'Verification required',
+  'settings.models.detailVerify': 'Configuration changed. Verify to load models.',
+  'settings.models.chipNotConfigured': 'Not configured',
+  'settings.models.titleNoProvider': 'No provider configured',
+  'settings.models.detailAdditionalSetup':
+    'Additional setup is required before this provider can connect.',
+  'settings.models.detailSelectProvider': 'Select a provider to begin.',
+  'settings.models.chipFailed': 'Failed',
+  'settings.models.titleFailed': 'Connection failed',
+  'settings.models.aiProviderHint':
+    'Connect and manage the AI providers used by {product}.',
+  'settings.models.connected': 'Connected',
+  'settings.models.notConnected': 'Not connected',
+  'settings.models.signedIn': 'Signed in',
+  'settings.models.waitingSignIn': 'Waiting for sign-in…',
+  'settings.models.signInWith': 'Sign in with {provider}',
+  'settings.models.providerFallback': 'provider',
+  'settings.models.thisProviderFallback': 'this provider',
+  'settings.models.enterCode':
+    'Enter this code on the authorization page that just opened:',
+  'settings.models.useSubscription':
+    'Use your existing subscription — no API key needed.',
+  'settings.models.baseUrl': 'Base URL',
+  'settings.models.apiKey': 'API key',
+  'settings.models.apiKeyPlaceholder': 'Enter your API key',
+  'settings.models.apiKeySealedPlaceholder': 'Enter a new key to replace the saved key',
+  'settings.models.apiKeySaved': 'Saved',
+  'settings.models.apiKeyStoredHint': 'Stored securely on this device.',
+  'settings.models.openrouterManagementKey': 'Management key (optional)',
+  'settings.models.openrouterManagementKeyHint':
+    'Lets {product} show your OpenRouter account balance — an API key can only read its own spending limit. Create one on openrouter.ai under Settings → Management Keys; it is used only to read the balance.',
+  'settings.models.secretSave': 'Save',
+  'settings.models.secretRemove': 'Remove',
+  'settings.models.secretSaveFailed': 'Couldn\'t save the key. Try again.',
+  'settings.models.enterKeyHint': 'Enter the API key for this provider.',
+  'settings.models.save': 'Save',
+  'settings.models.resetConnection': 'Reset connection',
+  'settings.models.loadingCatalog': 'Loading…',
+  'settings.models.resetTitle': 'Reset {provider} connection?',
+  'settings.models.resetDescription':
+    'This clears the saved connection details for {provider}, removes the verified state, and restores the default values for this provider.',
+  'settings.models.cancel': 'Cancel',
+  'settings.models.data.title': 'Model data',
+  'settings.models.data.description': 'Facts about models, such as limits and prices, kept up to date for the model list.',
+  'settings.models.data.sourceLabel': 'Source',
+  'settings.models.data.sourceLive': 'Live',
+  'settings.models.data.sourceCache': 'Saved copy',
+  'settings.models.data.sourceSnapshot': 'Built-in snapshot',
+  'settings.models.data.sourceNone': 'None',
+  'settings.models.data.updated': 'Updated {time}',
+  'settings.models.data.updatedUnknown': 'Update time unknown',
+  'settings.models.data.count': '{count} models',
+  'settings.models.data.lastError': 'Last error: {error}',
+  'settings.models.data.refresh': 'Refresh model data',
+  'settings.models.data.refreshing': 'Refreshing',
+  'settings.models.data.unavailable': 'Model data is not available right now.',
+  'settings.models.data.refreshFailed': 'Could not refresh model data.',
+  'settings.models.modelId': 'Model',
+  'settings.models.customPathHintOpenai':
+    'OpenAI style appends /chat/completions and /models to this URL — include /v1 if your server needs it.',
+  'settings.models.customPathHintAnthropic':
+    'Anthropic style appends /v1/messages and /v1/models to this URL — use the server root.',
+
+  // ── Settings — Custom Provider (Provider Connection page) ───────────────
+  'settings.models.addCustomProvider': '+ Add custom provider…',
+  'settings.models.addOpencodeZen': '+ Add OpenCode Zen (free models)…',
+  'settings.models.opencodeZenHint':
+    'OpenCode Zen is the OpenCode team\'s model gateway. The API key is optional: without one, the free models run on Zen\'s shared anonymous quota (limited per network per day). Add your own key from opencode.ai/zen for account-based limits and paid models. Free models are limited-time, and most may use your prompts to improve the model. Only OpenAI-compatible Zen models work here — Claude, GPT and Gemini models on Zen use other endpoints.',
+  'settings.models.builtInProviders': 'Built-in providers',
+  'settings.models.gatewayProviders': 'Gateways',
+  'settings.models.customBadge': 'Custom',
+  'settings.models.addCustomProviderTitle': 'Add custom provider',
+  'settings.models.newCustomProvider': 'New custom provider',
+  'settings.models.providerDetails': 'Provider details',
+  'settings.models.providerIcon': 'Provider icon',
+  'settings.models.providerName': 'Provider name',
+  'settings.models.providerNamePlaceholder': 'e.g. ABC Provider',
+  'settings.models.providerNameExists':
+    'A provider named "{name}" already exists.',
+  'settings.models.connection': 'Connection',
+  'settings.models.trust': 'Trust',
+  'settings.models.trustOfficial': 'Official connection',
+  'settings.models.trustHint':
+    'Turn this off if the connection uses a relay, proxy, gateway, or other third-party endpoint.',
+  'settings.models.apiCompatibility': 'API compatibility',
+  'settings.models.apiCompatOpenai': 'OpenAI-compatible API',
+  'settings.models.apiCompatAnthropic': 'Anthropic-compatible API',
+  'settings.models.baseUrlPlaceholderOpenai': 'https://api.example.com/v1',
+  'settings.models.baseUrlPlaceholderAnthropic': 'https://api.example.com',
+  'settings.models.apiKeyHint':
+    'Leave blank if this endpoint does not require an API key.',
+  'settings.models.testAndDiscover': 'Test & discover models',
+  'settings.models.testNotTested': 'Not tested',
+  'settings.models.testSuccessful': 'Connection successful',
+  'settings.models.testFailed': 'Connection failed',
+  'settings.models.testModelsFound': '{count} models were found.',
+  'settings.models.modelsSection': 'Models',
+  'settings.models.defaultModel': 'Default model',
+  'settings.models.entries.title': 'Models',
+  'settings.models.entries.add': 'Add models',
+  'settings.models.entries.addFree': 'Free models',
+  'settings.models.entries.otherModels': 'Other models ({count}, unverified)',
+  'settings.models.entries.otherModelsHint': 'Not in the curated list, so their limits are unverified: a small default output limit, no thinking control and no image input. Each is pinned to its exact version.',
+  'settings.models.entries.unverified': 'Unverified',
+  'settings.models.entries.unverifiedHint': 'Not in the curated list: its limits are defaults, not verified ones.',
+  'settings.models.entries.freePickerTitle': 'Add free {name} models',
+  'settings.models.entries.freePickerHint': 'Models {name} lists at no cost. Each is pinned to its exact version, since a newer version may not be free. A provider may still require an API key to use them.',
+  'settings.models.entries.hint': 'Latest follows the newest version {name} offers; a pinned version stays put. Only these appear in the model picker.',
+  'settings.models.entries.removedNotice': '{name} no longer offers {count} of your models, so they were removed: {models}',
+  'settings.models.entries.dismiss': 'Dismiss',
+  'settings.models.entries.listFailed': 'Couldn\'t load the {name} model list.',
+  'settings.models.entries.retry': 'Retry',
+  'settings.models.entries.empty': 'No models added yet.',
+  'settings.models.entries.remove': 'Remove {model}',
+  'settings.models.entries.pickerTitle': 'Add {name} models',
+  'settings.models.entries.pickerHint': 'A family\'s Latest follows its upgrades; a pinned version stays put. Only models that can call tools are listed.',
+  'settings.models.entries.pickerSearch': 'Search models',
+  'settings.models.entries.pickerStale': 'Showing the last list — refreshing it failed.',
+  'settings.models.entries.pickerLoading': 'Loading the model list…',
+  'settings.models.entries.pickerNoMatch': 'No model matches.',
+  'settings.models.entries.otherVendor': 'Other',
+  'settings.models.entries.customAdd': 'Add custom model',
+  'settings.models.entries.customSection': 'Custom models',
+  'settings.models.entries.customAddTitle': 'Add a {name} model',
+  'settings.models.entries.customEditTitle': 'Edit model',
+  'settings.models.entries.customHint': 'The id is sent to {name} exactly as typed. Use the id the provider documents.',
+  'settings.models.entries.customId': 'Model id',
+  'settings.models.entries.customIdPlaceholder': 'e.g. my-model-v1',
+  'settings.models.entries.customIdInvalid': 'Enter a model id with no spaces.',
+  'settings.models.entries.customDuplicate': 'A model with this id already exists.',
+  'settings.models.entries.customName': 'Display name (optional)',
+  'settings.models.entries.customContext': 'Context window (tokens)',
+  'settings.models.entries.customMaxOutput': 'Max output (tokens)',
+  'settings.models.entries.customFormat': 'API format',
+  'settings.models.entries.customFormatDefault': 'Provider default',
+  'settings.models.entries.customVision': 'Vision input',
+  'settings.models.entries.customReasoning': 'Reasoning',
+  'settings.models.entries.customSave': 'Save',
+  'settings.models.entries.customEdit': 'Edit {model}',
+  'settings.models.entries.customRemove': 'Remove {model}',
+  'settings.models.entries.groupCustom': 'Custom',
+  'settings.models.entries.formatOpenaiChat': 'OpenAI Chat',
+  'settings.models.entries.formatOpenaiResponses': 'OpenAI Responses',
+  'settings.models.entries.formatAnthropic': 'Anthropic Messages',
+  'settings.models.entries.formatGemini': 'Gemini',
+  'settings.models.entries.deprecated': 'Deprecated',
+  'settings.models.entries.filterAll': 'All',
+  'settings.models.entries.added': 'Added',
+  'settings.models.entries.pickerAdd': 'Add selected ({count})',
+  'settings.models.entries.latest': 'Latest',
+  'settings.models.entries.latestNow': 'Latest · now {version}',
+  'settings.models.entries.price': '{input} in · {output} out per 1M tokens',
+  'settings.models.entries.free': 'Free',
+  'settings.models.entries.pinned': 'Pinned version',
+  'settings.models.entries.preview': 'Preview',
+  'settings.models.entries.previewHint': 'Not part of Latest; may be withdrawn at any time.',
+  'settings.models.entries.previewSection': 'Previews',
+  'settings.models.entries.previewOnly': 'Previews only',
+  'settings.models.entries.unavailable': 'Not available right now',
+  'settings.models.entries.versions': 'Versions ({count})',
+  'settings.models.entries.showVersions': 'Show the versions of {model}',
+  'settings.models.entries.saveFailed': 'Couldn\'t save the model list.',
+  'settings.models.selectModel': 'Select a model',
+  'settings.models.configuredModels': 'Configured models',
+  'settings.models.pendingModels': 'Pending models',
+  'settings.models.noModelsYet': 'No models have been added yet.',
+  'settings.models.addModel': '+ Add model',
+  'settings.models.discoverModels': 'Discover models',
+  'settings.models.modelDetailsRequired': 'Model details required',
+  'settings.models.contextWindow': 'Context window',
+  'settings.models.maxOutputTokens': 'Max output tokens',
+  'settings.models.tokens': 'tokens',
+  'settings.models.capabilities': 'Capabilities',
+  'settings.models.capToolCalling': 'Tool calling',
+  'settings.models.capReasoning': 'Reasoning',
+  'settings.models.capVision': 'Vision input',
+  'settings.models.capImageGen': 'Image generation',
+  'settings.models.capStructuredOutput': 'Structured output',
+  'settings.models.addModelTitle': 'Add model',
+  'settings.models.editModelTitle': 'Edit model',
+  'settings.models.modelIdLabel': 'Model ID',
+  'settings.models.modelIdHint': 'The identifier sent to the provider API.',
+  'settings.models.vendorFiguresHint':
+    'Recognized as {model}: context window, max output and capabilities are filled in from its official figures. You can change them.',
+  'settings.models.displayNameLabel': 'Display name',
+  'settings.models.displayNamePlaceholder': 'e.g. ABC Coder',
+  'settings.models.displayNameHint':
+    'Optional. Auto-filled from the model ID if left blank.',
+  'settings.models.modelIdRequired': 'Model ID is required.',
+  'settings.models.contextWindowRequired': 'Context window is required.',
+  'settings.models.maxOutputRequired': 'Max output tokens is required.',
+  'settings.models.maxOutputExceedsContext':
+    'Max output tokens must not exceed the context window.',
+  'settings.models.duplicateModelId':
+    'A model with this ID already exists in this provider.',
+  'settings.models.discoverModelsTitle': 'Discover models',
+  'settings.models.discoverSearch': 'Search',
+  'settings.models.discoverHint':
+    'Model limits may need to be completed manually.',
+  'settings.models.discoverNotSupported':
+    'Model discovery is not supported by this endpoint.',
+  'settings.models.discoverManualHint': 'You can add models manually.',
+  'settings.models.addSelected': 'Add selected',
+  'settings.models.addProvider': 'Add provider',
+  'settings.models.saveChanges': 'Save changes',
+  'settings.models.discardChanges': 'Discard changes',
+  'settings.models.deleteProvider': 'Delete provider…',
+  'settings.models.deleteProviderTitle': 'Delete "{name}"?',
+  'settings.models.deleteProviderDescription':
+    'This will remove its connection settings, credentials, and configured models. This action cannot be undone.',
+  'settings.models.deleteProviderConfirm': 'Delete provider',
+  'settings.models.providerAdded': '{name} added.',
+  'settings.models.discardUnsavedTitle': 'Discard unsaved changes?',
+  'settings.models.discardUnsavedDescription':
+    'Your changes to "{name}" have not been saved.',
+  'settings.models.keepEditing': 'Keep editing',
+  'settings.models.modelEdit': 'Edit',
+  'settings.models.modelRemove': 'Remove',
+  'settings.models.contextLabel': '{value} context',
+  'settings.models.maxOutputLabel': '{value} max output',
+  // Provider connection home page (the added-providers list).
+  'settings.models.addProviderMenu': 'Add provider',
+  'settings.models.noProvidersAdded': 'No providers added yet. Use Add provider to connect one.',
+  'settings.models.defaultBadge': 'Default',
+  'settings.models.providerSettingsAria': '{name} settings',
+  'settings.models.removeProviderAria': 'Remove {name}',
+  'settings.models.removeProvider': 'Remove provider',
+  'settings.models.providerActionsAria': 'More actions for {name}',
+  'settings.models.setAsDefault': 'Set as default',
+  'settings.models.isDefaultProvider': 'Default provider',
+  'settings.models.kindSubscription': 'Subscription sign-in',
+  'settings.models.kindApiKey': 'API key',
+  'settings.models.kindLocal': 'Local',
+  'settings.models.kindCustom': 'Custom endpoint',
+  'settings.models.mod.kindPlugin': 'Plugin provider',
+  'settings.models.mod.pluginProviders': 'Plugin providers',
+  'settings.models.mod.providedBy': 'From the plugin {plugin}',
+  'settings.models.mod.providedByVersion': 'From the plugin {plugin} (version {version})',
+  'settings.models.mod.methodTitle': 'Connect with',
+  'settings.models.mod.methodApiKey': 'API key',
+  'settings.models.mod.methodAnonymous': 'Anonymous',
+  'settings.models.mod.methodLogin': 'Sign in',
+  'settings.models.mod.anonymousHint': 'Use this provider without a key or an account. The provider sets the limits.',
+  'settings.models.mod.anonymousUse': 'Use {name} without a key',
+  'settings.models.mod.anonymousOn': 'Using this provider without a key.',
+  'settings.models.mod.signOut': 'Sign out',
+  'settings.models.mod.signInAgain': 'Sign in again',
+  'settings.models.mod.signedOutNote': 'Your sign-in to {name} has ended. Sign in again to keep using it.',
+  'settings.models.mod.signInFailedToStart': 'Couldn\'t start signing in: {error}',
+  'settings.models.mod.signIn.title': 'Sign in to {name}',
+  'settings.models.mod.signIn.description': 'Follow the steps to sign in to {name}.',
+  'settings.models.mod.signIn.working': 'Working…',
+  'settings.models.mod.signIn.openUrlText': 'Open the sign-in page to continue.',
+  'settings.models.mod.signIn.openUrlButton': 'Open the sign-in page',
+  'settings.models.mod.signIn.codeText': 'Enter this code on the sign-in page:',
+  'settings.models.mod.signIn.codeWaiting': 'Waiting for you to finish signing in…',
+  'settings.models.mod.signIn.continue': 'Continue',
+  'settings.models.mod.signIn.cancel': 'Cancel',
+  'settings.models.mod.signIn.close': 'Close',
+  'settings.models.mod.signIn.doneTitle': 'You\'re signed in.',
+  'settings.models.mod.signIn.failedTitle': 'Sign-in failed',
+  'settings.models.mod.signIn.failedTimeout': 'The sign-in took too long and was stopped.',
+  'settings.models.mod.signIn.failedUnavailable': 'The plugin that handles this sign-in couldn\'t be started.',
+  'settings.models.mod.signIn.failedUnanswered': 'The plugin ended without finishing the sign-in.',
+  'settings.models.mod.signIn.failedNoHook': 'This plugin does not offer a sign-in.',
+  'settings.models.mod.signIn.failedInvalid': 'The plugin returned a sign-in result that can\'t be used.',
+  'settings.models.mod.signIn.failedWrite': 'The sign-in worked, but it couldn\'t be saved.',
+  'settings.models.mod.signIn.answerFailed': 'Couldn\'t send your answer: {error}',
+  'settings.models.mod.save': 'Save',
+  'settings.models.mod.saved': 'Saved',
+  'settings.models.mod.saveFailed': 'Couldn\'t save: {error}',
+  'settings.models.mod.problemRequired': 'Enter a value.',
+  'settings.models.mod.problemPattern': 'This value is not in the expected format.',
+  'settings.models.mod.problemOption': 'Choose one of the options.',
+  'settings.models.mod.choose': 'Choose…',
+  'settings.models.mod.missingTitle': 'Plugin missing',
+  'settings.models.mod.missingBody': 'The plugin that provided {name} is not installed, so this provider can\'t be used or edited. Its saved settings are kept: reinstall or re-enable the plugin to use it again, or remove the provider.',
+  'settings.models.mod.keptHeader': 'Kept settings',
+  'settings.models.mod.keptNothing': 'Nothing is saved for it.',
+  'settings.models.mod.keptApiKey': 'An API key is saved.',
+  'settings.models.mod.keptSecrets': '{count} saved credentials.',
+  'settings.models.mod.keptAccount': 'Signed in as {account}.',
+  'settings.models.mod.keptAnonymous': 'Set to use without a key.',
+  'settings.models.mod.keptVersion': 'Last used with version {version}.',
+  'settings.models.mod.optionsLoadFailed': 'Couldn\'t read this plugin\'s saved settings.',
+  'settings.models.reorderProviderAria': 'Reorder {name} in the model picker: drag, or press the Up and Down arrow keys',
+  'settings.models.reorderProviderHint': 'Drag to change the order in the model picker',
+  'settings.models.backToProviders': 'Providers',
+  'settings.models.removeProviderTitle': 'Remove {name}?',
+  'settings.models.removeProviderDescription': 'This clears the saved key and connection settings for {name}. You can add it again later with Add provider.',
+  'settings.models.removeProviderConfirm': 'Remove provider',
+
+  // ── Settings — MCP ─────────────────────────────────────────────────────
+  'settings.mcp.title': 'MCP Servers',
+  'settings.mcp.addServer': 'Add server',
+  'settings.mcp.infoBanner': 'MCP server changes take effect in a new session.',
+  'settings.mcp.none': 'No MCP servers configured.',
+  'settings.mcp.loadFailed': 'Failed to load MCP servers: {error}',
+  'settings.mcp.removeFailed': 'Failed to remove "{id}": {error}',
+  'settings.mcp.saveFailed': 'Save failed: {error}',
+  'settings.mcp.toolSingular': 'tool',
+  'settings.mcp.toolPlural': 'tools',
+  'settings.mcp.edit': 'Edit',
+  'settings.mcp.editAria': 'Edit {id}',
+  'settings.mcp.remove': 'Remove',
+  'settings.mcp.removeAria': 'Remove {id}',
+  'settings.mcp.import': 'Import (paste an mcpServers JSON config)',
+  'settings.mcp.serverName': 'Server name',
+  'settings.mcp.serverNamePlaceholder':
+    "Leave blank to use the server's reported name",
+  'settings.mcp.transport': 'Transport',
+  'settings.mcp.stdioDesc': 'Local command (spawned on this device)',
+  'settings.mcp.httpDesc': 'Remote server over HTTP',
+  'settings.mcp.command': 'Command (tool id or absolute path)',
+  'settings.mcp.args': 'Args (space-separated)',
+  'settings.mcp.env': 'Env (KEY=VALUE per line — may hold secrets)',
+  'settings.mcp.url': 'URL',
+  'settings.mcp.headers':
+    'Headers (Name: Value or Name=Value per line — may hold secrets)',
+  // The header NAME is literal HTTP syntax and must stay in English; only the
+  // placeholder value ("YOUR_TOKEN") is worth localising.
+  'settings.mcp.headersPlaceholder': 'Authorization: Bearer YOUR_TOKEN',
+  'settings.mcp.cancel': 'Cancel',
+  'settings.mcp.save': 'Save & connect',
+  'settings.mcp.testing': 'Testing connection…',
+  'settings.mcp.footer':
+    '{product} runs stdio servers locally and reaches HTTP servers over the Model Context Protocol. Secrets entered here stay in the browser and are never exposed to the agent runtime.',
+  'settings.mcp.clipboardEmpty':
+    'Clipboard is empty. Copy an mcpServers JSON config first.',
+  'settings.mcp.clipboardInvalid':
+    'Clipboard does not contain a valid MCP config. Copy a JSON config (e.g. an { "mcpServers": { … } } block), then import.',
+  'settings.mcp.urlRequired': 'HTTP transport requires a URL.',
+  'settings.mcp.commandRequired': 'stdio transport requires a command.',
+  'settings.mcp.alreadyExists':
+    'A server named "{id}" already exists. Edit it instead.',
+  'settings.mcp.connectFailed': 'Could not connect: {error}',
+  'settings.mcp.connectFailedGeneric':
+    'Could not connect to the server. Check the URL / command and token, then try again.',
+  'settings.mcp.noName':
+    'Connected, but the server did not report a name. Enter a name and save.',
+
+  // ── Settings — Skills (Features) ───────────────────────────────────────
+  'settings.features.title': 'Skills',
+  'settings.features.infoBanner': 'Skill changes take effect in a new session.',
+  'settings.features.installed': 'Installed skills',
+  'settings.features.noneInstalled':
+    'No skills installed yet. Install skills from the list below.',
+  'settings.features.bundled': 'Bundled skills',
+  'settings.features.loadingFeatures': 'Loading features…',
+  'settings.features.loadFailed': 'Failed to load features.',
+  'settings.features.noFeatures': 'No features available.',
+  'settings.features.loadedFromFile': 'Loaded from ~/{dir}/settings.json',
+  'settings.features.usingDefaults': 'Using defaults — no overrides saved yet.',
+  'settings.features.takesEffect': 'Takes effect on the next session.',
+  'settings.features.slashCommands': 'Slash commands ({count})',
+  'settings.features.appliesTo': 'Applies to',
+  'settings.features.onlyInjected': 'Only injected into {type} sessions',
+  'settings.features.install': 'Install skills',
+  'settings.features.installDescription':
+    'Official Agent Skills from Anthropic and OpenAI. Installs into',
+  'settings.features.catalogUnavailable':
+    'Skill catalog unavailable: {command} could not be loaded.',
+  'settings.features.loadingCatalog': 'Loading skill catalog…',
+  'settings.features.searchPlaceholder': 'Search skills by name or description…',
+  'settings.features.allInstalled': 'All catalog skills are installed.',
+  'settings.features.noMatch': 'No skills match “{query}”.',
+
+  // ── Settings — Skill cards / toasts (SkillsMarketplace) ────────────────
+  'settings.skills.install': 'Install',
+  'settings.skills.uninstall': 'Uninstall',
+  'settings.skills.badgeLocal': 'Local',
+  'settings.skills.badgeImported': 'Imported',
+  'settings.skills.installed': 'Installed {name}',
+  'settings.skills.uninstalled': 'Uninstalled {name}',
+  'settings.skills.uninstallFailed': 'Uninstall failed: {error}',
+  'settings.skills.installFailed': 'Install failed: {error}',
+
+  // ── Settings — Remote access ────────────────────────────────────
+  'settings.remoteAccess.title': 'Remote access',
+  'settings.remoteAccess.description': 'Let another device connect to this {product} runtime.',
+  'settings.remoteAccess.enable': 'Enable remote access',
+  'settings.remoteAccess.otherAddresses': 'Other available addresses',
+  'settings.remoteAccess.recommendedBadge': 'Recommended',
+  'settings.remoteAccess.addressThisDeviceName': 'This device only',
+  'settings.remoteAccess.copyLinkPrimary': 'Copy connection link',
+  'settings.remoteAccess.securityTitle': 'Access security',
+  'settings.remoteAccess.securityNoteTitle': 'The access link works like a password',
+  'settings.remoteAccess.devicesTitle': 'Connected devices',
+  'settings.remoteAccess.devicesEmpty': 'No devices connected',
+  'settings.remoteAccess.securityDetails': 'Security details',
+  'settings.remoteAccess.securityDetailsBody': 'Remote access uses plain HTTP, so traffic on the local network is not encrypted. Use it on a network you trust, or over a VPN.',
+  'settings.remoteAccess.devicesConnectedOne': '1 device connected',
+  'settings.remoteAccess.devicesConnected': '{count} devices connected',
+  'settings.remoteAccess.connectTitle': 'Connect from another device',
+  'settings.remoteAccess.connectDescription': 'Copy the link and open it in a browser on the other device. You only need to do this once.',
+  'settings.remoteAccess.securityNote': 'Anyone who has it can connect to this {product}. Only share it with devices you trust.',
+  'settings.remoteAccess.statusOff': 'Remote access is off.',
+  'settings.remoteAccess.statusStarting': 'Starting the listener…',
+  'settings.remoteAccess.statusRunning': 'Running',
+  'settings.remoteAccess.statusPortInUse':
+    'Port {port} is already in use by another application — restart {product} to pick a fresh one.',
+  'settings.remoteAccess.statusError': 'The listener failed to start.',
+  'settings.remoteAccess.deviceBrowserOnOs':
+    '{browser} on {os}',
+  'settings.remoteAccess.deviceUnnamed':
+    'Unidentified browser',
+  'settings.remoteAccess.deviceConnectedSince': 'Connected {since}',
+  'settings.remoteAccess.deviceJustNow':
+    'just now',
+  'settings.remoteAccess.deviceForMinutes':
+    '{count} min ago',
+  'settings.remoteAccess.deviceForHours':
+    '{count} h ago',
+  'settings.remoteAccess.deviceScopeObserve':
+    'View only',
+  'settings.remoteAccess.deviceScopeControl': 'Sessions only',
+  'settings.remoteAccess.deviceScopeManager': 'Full access',
+  'settings.remoteAccess.cancel': 'Cancel',
+  'settings.remoteAccess.copyLink': 'Copy link',
+  'settings.remoteAccess.copied': 'Copied',
+  'settings.remoteAccess.copyFailed': 'Copy failed',
+  'settings.remoteAccess.noLinkYet':
+    'No access link is available yet — turn remote access off and back on to mint a fresh one.',
+  'settings.remoteAccess.resetLink': 'Regenerate access link',
+  'settings.remoteAccess.resetConfirmTitle': 'Regenerate access link?',
+  'settings.remoteAccess.resetConfirmBody': 'Existing links will stop working immediately, including on devices that remember them. Connected devices are disconnected and need the new link.',
+  'settings.remoteAccess.resetConfirmButton': 'Regenerate',
+  'settings.remoteAccess.disableConfirmTitle': 'Turn off remote access?',
+  'settings.remoteAccess.disableConfirmBodyOne':
+    '1 device is connected. Turning off disconnects it — the link works again when you turn remote access back on.',
+  'settings.remoteAccess.disableConfirmBody':
+    '{count} devices are connected. Turning off disconnects them — the link works again when you turn remote access back on.',
+  'settings.remoteAccess.disableConfirmButton': 'Turn off',
+  'settings.remoteAccess.confirmEnableTitle': 'Enable remote access?',
+  'settings.remoteAccess.confirmEnableBody':
+    'Remote access runs over plain HTTP — traffic is NOT encrypted. Enable it only on a VPN or a network you trust. A remote device holding the access link can read your sessions and drive the agent.',
+  'settings.remoteAccess.confirmEnableButton': 'Enable',
+
+  // ── Settings — Plugins ─────────────────────────────────────────────────
+  'settings.plugins.title': 'Plugins & Mods',
+  'settings.plugins.reloadBanner':
+    'Plugin changes apply immediately. Plugins that add MCP servers take effect in a new session.',
+  'settings.plugins.newFound':
+    'New plugins found: {names}. They stay off until you turn them on below.',
+  'settings.plugins.loading': 'Loading plugins…',
+  'settings.plugins.loadFailed': 'Failed to load plugins.',
+  'settings.plugins.installedHeader': 'Installed plugins & mods',
+  'settings.plugins.noneInstalled': 'No plugins or mods installed',
+  'settings.plugins.installFromBelow': 'Install plugins from a marketplace below.',
+  'settings.plugins.enabled': 'Enabled',
+  'settings.plugins.disabled': 'Disabled',
+  'settings.plugins.enableAria': 'Enable {name}',
+  'settings.plugins.uninstall': 'Uninstall',
+  'settings.plugins.moreAria': 'More actions for {name}',
+  'settings.plugins.marketplaces': 'Marketplaces',
+  'settings.plugins.noMarketplaces': 'No marketplaces configured.',
+  'settings.plugins.official': 'Official',
+  'settings.plugins.builtin': 'Built in',
+  'settings.plugins.builtinMarketplaceName': '{product} Plugins',
+  'settings.plugins.pluginSingular': 'plugin',
+  'settings.plugins.pluginPlural': 'plugins',
+  'settings.plugins.refreshing': 'Refreshing',
+  'settings.plugins.noDescription': 'No description.',
+  'settings.plugins.installing': 'Installing…',
+  'settings.plugins.install': 'Install',
+  'settings.plugins.pluginInstalled': 'Installed',
+  'settings.plugins.fetch': 'Fetch',
+  'settings.plugins.fetching': 'Fetching…',
+  'settings.plugins.refresh': 'Refresh',
+  'settings.plugins.retry': 'Retry',
+  'settings.plugins.statusFetching': 'Fetching plugins…',
+  'settings.plugins.statusError': 'Failed to fetch marketplace',
+  'settings.plugins.lastUpdated': 'Last updated {time}',
+  'settings.plugins.fetched': 'Fetched',
+  'settings.plugins.notFetched': 'Not fetched yet',
+  'settings.plugins.loadingShort': 'Loading…',
+  'settings.plugins.fetchRetry': 'Failed to fetch marketplace. Click Retry.',
+  'settings.plugins.notFetchedHint':
+    'Marketplace not yet fetched. Click Fetch to load.',
+  'settings.plugins.noPluginsIn': 'No plugins in this marketplace.',
+  'settings.plugins.filterPlaceholder':
+    'Filter plugins by name or description…',
+  'settings.plugins.filterAria': 'Filter plugins',
+  'settings.plugins.typeMoreSingular': 'Type {n} more character to filter',
+  'settings.plugins.typeMorePlural': 'Type {n} more characters to filter',
+  'settings.plugins.matchCount': '{shown} of {total} match',
+  'settings.plugins.mods.loaded': 'Loaded',
+  'settings.plugins.mods.refused': 'Refused',
+  'settings.plugins.mods.failed': 'Did not load',
+  'settings.plugins.mods.crashed': 'Restarting',
+  'settings.plugins.mods.dead': 'Stopped',
+  'settings.plugins.mods.activeInSessions': 'Active in {n} session(s)',
+  'settings.plugins.mods.badge': 'Mod',
+  'settings.plugins.providers.consent.title': 'Turn on {name}?',
+  'settings.plugins.providers.consent.intro': '{name} adds model providers. Check what they may do before you turn it on.',
+  'settings.plugins.providers.consent.publisher': 'Published by {publisher}',
+  'settings.plugins.providers.consent.publisherUnknown': 'The publisher is not stated.',
+  'settings.plugins.providers.consent.provider': 'Provider: {provider}',
+  'settings.plugins.providers.consent.domains': 'May contact: {domains}',
+  'settings.plugins.providers.consent.noDomains': 'Declares no domains to contact.',
+  'settings.plugins.providers.consent.secrets': 'Stores secrets named: {secrets}',
+  'settings.plugins.providers.consent.noSecrets': 'Stores no secrets of its own.',
+  'settings.plugins.providers.consent.readsSecrets': 'Reads its saved secrets in plain text, for example to sign requests.',
+  'settings.plugins.providers.consent.keepsSecrets': 'Cannot read its saved secrets in plain text.',
+  'settings.plugins.providers.consent.needs': 'Its code is shown, with each request: {needs}',
+  'settings.plugins.providers.consent.noNeeds': 'Its code is shown only the basic facts of a request (model, URL, headers), not its content.',
+  'settings.plugins.providers.consent.signDigest': 'Signs requests from a digest of the request.',
+  'settings.plugins.providers.consent.signBody': 'Signs requests from the full request body.',
+  'settings.plugins.providers.consent.standing': 'A model provider receives the conversation it is sent: your messages, attached files and tool results. Only turn on providers you trust with that.',
+  'settings.plugins.providers.consent.enable': 'Turn on',
+  'settings.plugins.providers.consent.cancel': 'Cancel',
+  'settings.plugins.providers.consent.desktopOnly': 'Providers can only be turned on from this computer, where you can review what they may do.',
+  'settings.plugins.providers.consent.failed': 'Couldn\'t turn it on: {error}',
+  'settings.plugins.providers.need.system': 'the system prompt',
+  'settings.plugins.providers.need.tools': 'the tool definitions',
+  'settings.plugins.providers.need.body': 'the whole request, including the conversation',
+  'settings.plugins.providers.need.cwd': 'the folder the session is working in',
+  'settings.plugins.updates.title': 'Update plugins automatically',
+  'settings.plugins.updates.autoAria': 'Update plugins automatically',
+  'settings.plugins.updates.lastChecked': 'Last checked {time}',
+  'settings.plugins.updates.neverChecked': 'Not checked for updates yet',
+  'settings.plugins.updates.checking': 'Checking for updates…',
+  'settings.plugins.updates.checkNow': 'Check now',
+  'settings.plugins.updates.available': 'Updates available: {count}',
+  'settings.plugins.updates.updateAll': 'Update all',
+  'settings.plugins.updates.unreachable': 'Couldn\'t check {name}',
+  'settings.plugins.updates.update': 'Update',
+  'settings.plugins.updates.updateAria': 'Update {name} to {version}',
+  'settings.plugins.updates.updating': 'Updating…',
+  'settings.plugins.updates.retry': 'Retry',
+  'settings.plugins.updates.failed': 'Update failed: {reason}',
+  'settings.plugins.updates.applied': 'Updated to version {version}',
+  'settings.plugins.updates.appliedAuto': 'Updated automatically to version {version}',
+  'settings.plugins.updates.updatedToast': '{name} updated to version {version}.',
+  'settings.plugins.updates.rollback': 'Roll back to version {version}',
+  'settings.plugins.updates.rolledBackToast': '{name} rolled back to version {version}.',
+  'settings.plugins.updates.availableChip': 'Update available',
+  'settings.plugins.providers.updates.upToDate': 'Up to date',
+  'settings.plugins.providers.updates.unchecked': 'Not checked for updates yet',
+  'settings.plugins.providers.updates.checkedAt': 'checked {time}',
+  'settings.plugins.providers.updates.applied': 'Updated to version {version}',
+  'settings.plugins.providers.updates.appliedSilent': 'Updated to version {version} automatically',
+  'settings.plugins.providers.updates.check': 'Check for updates',
+  'settings.plugins.providers.updates.checking': 'Checking…',
+  'settings.plugins.providers.updates.waitingTitle': 'Version {version} is waiting for your approval',
+  'settings.plugins.providers.updates.waitingBody': 'It asks for more than you agreed to. The version you have keeps running until you decide.',
+  'settings.plugins.providers.updates.addedProvider': 'New provider: {provider}',
+  'settings.plugins.providers.updates.addedDomains': '{id} may now contact: {domains}',
+  'settings.plugins.providers.updates.addedSecrets': '{id} now stores secrets named: {secrets}',
+  'settings.plugins.providers.updates.addedReadsSecrets': '{id} now reads its saved secrets in plain text.',
+  'settings.plugins.providers.updates.addedNeeds': '{id}\'s code is now also shown: {needs}',
+  'settings.plugins.providers.updates.addedSignDigest': '{id} now signs requests from a digest of the request.',
+  'settings.plugins.providers.updates.addedSignBody': '{id} now signs requests from the full request body.',
+  'settings.plugins.providers.updates.approve': 'Approve and update',
+  'settings.plugins.providers.updates.decline': 'Decline',
+  'settings.plugins.providers.updates.rollback': 'Roll back to version {version}',
+  'settings.plugins.providers.updates.approvedToast': 'Updated to version {version}.',
+  'settings.plugins.providers.updates.declinedToast': 'Declined version {version}.',
+  'settings.plugins.providers.updates.rolledBackToast': 'Rolled back to version {version}.',
+  'settings.plugins.providers.updates.actionFailed': 'Couldn\'t do that: {error}',
+  'settings.plugins.providers.updates.failedCheck': 'Couldn\'t check for updates: {kind}',
+  'settings.plugins.providers.updates.failedVersion': 'Couldn\'t update to version {version}: {kind}',
+  'settings.plugins.providers.updates.failure.fetch': 'the download failed',
+  'settings.plugins.providers.updates.failure.integrity': 'the download does not match its checksum',
+  'settings.plugins.providers.updates.failure.invalid-archive': 'the update package is not valid',
+  'settings.plugins.providers.updates.failure.invalid-manifest': 'its description file is not valid',
+  'settings.plugins.providers.updates.failure.unsupported-provider-api': 'it needs a newer version of Velloc',
+  'settings.plugins.providers.updates.failure.no-providers': 'it no longer adds any provider',
+  'settings.plugins.providers.updates.failure.name-mismatch': 'it is for a different plugin',
+  'settings.plugins.providers.updates.failure.source-missing': 'the plugin is no longer listed at its update source',
+  'settings.plugins.providers.updates.failure.admission': 'its code was refused as unsafe to run',
+  'settings.plugins.providers.updates.failure.activate': 'it could not be switched on, so the previous version keeps running',
+  'settings.plugins.providers.review.waiting': 'Its providers are switched off until you approve them.',
+  'settings.plugins.providers.review.button': 'Review and turn on',
+  'settings.plugins.mods.local': 'Local',
+  'settings.plugins.mods.builtin': 'Built-in',
+  'settings.plugins.scope.global': 'Global',
+  'settings.plugins.scope.globalHint': 'Every session',
+  'settings.plugins.scope.projectHint': 'Only sessions in this workspace',
+  'settings.plugins.mods.hooks': 'Hooks: {events}',
+  'settings.plugins.mods.hooksMore': '+{n}',
+  'settings.plugins.mods.options.title': 'Options',
+  'settings.plugins.mods.options.hint': 'This mod\'s own settings. They apply while it is enabled.',
+  'settings.plugins.mods.options.sensitive': '(secret)',
+  'settings.plugins.mods.options.unset': '(not set)',
+  'settings.plugins.mods.options.keptSecret': '(kept as stored)',
+  'settings.plugins.mods.options.save': 'Save',
+  'settings.plugins.mods.options.savedReloaded': 'Saved. {name} reloaded in {n} session(s).',
+  'settings.plugins.mods.options.savedIdle': 'Saved. {name} uses the new values the next time it loads.',
+  'settings.plugins.mods.options.saveFailed': 'Could not save: {error}',
+  'settings.plugins.mods.options.invalid': 'Not a number within its bounds: {fields}',
+  'notification.mod.refused': 'The hooks module of {name} was refused: {reason}',
+  'notification.mod.refusedNoReason': 'The hooks module of {name} was refused.',
+  'notification.mod.failed': 'The hooks module of {name} did not load: {reason}',
+  'notification.mod.failedNoReason': 'The hooks module of {name} did not load.',
+  'notification.mod.dead': 'The hooks module of {name} stopped and stays off: {reason}',
+  'notification.mod.deadNoReason': 'The hooks module of {name} stopped and stays off.',
+  'mods.toast.dismiss': 'Dismiss',
+  'mods.status.more': 'Show {count} more plugin status lines',
+  'mods.pane.close': 'Close pane',
+  'mods.pane.tabs': 'Plugin panes',
+  'mods.action.confirm': 'Confirm',
+  'mods.action.cancel': 'Cancel',
+  'mods.action.navigate': 'Navigate',
+  'mods.action.nextField': 'Next field',
+  'mods.action.previousField': 'Previous field',
+  'mods.action.toggle': 'Toggle',
+  'mods.action.cycleMode': 'Cycle mode',
+  'mods.action.pageUp': 'Page up',
+  'mods.action.pageDown': 'Page down',
+  'mods.action.first': 'First',
+  'mods.action.last': 'Last',
+  'mods.action.select': 'Select',
+  'mods.action.togglePluginPanel': 'Hide/show plugin panel',
+  'mods.action.focusPluginControls': 'Focus plugin buttons, inputs and selects',
+  'mods.action.press': 'Press / submit / pick',
+  'mods.action.backToPrompt': 'Back to prompt',
+  'mods.action.nextOption': 'Next option',
+  'mods.action.previousOption': 'Previous option',
+  'mods.action.scroll': 'Scroll',
+  'mods.action.top': 'Top',
+  'mods.action.bottom': 'Bottom',
+  'mods.action.growPluginPane': 'Widen / heighten plugin pane',
+  'mods.action.shrinkPluginPane': 'Narrow / shorten plugin pane',
+  'mods.action.closePluginPane': 'Close plugin pane',
+  'mods.action.nextPluginPane': 'Show next plugin pane',
+  'mods.action.previousPluginPane': 'Show previous plugin pane',
+  'mods.action.switchTab': 'Switch tab',
+  'mods.action.toggleDiffTests': 'Show/hide tests in diff panel',
+  'mods.action.scrollDiffFileList': 'Scroll diff panel file list',
+  'mods.action.toggleDiffPreSession': 'Show/hide pre-session changes in diff panel',
+  'mods.action.switchDiffBase': 'Switch diff panel base',
+  'mods.ask.label': 'Question from {name}',
+  'mods.ask.dismiss': 'Dismiss',
+  'mods.ask.yes': 'Yes',
+  'mods.ask.no': 'No',
+  'mods.plugin.open': 'Open {plugin} in Plugins & Mods',
+  'mods.plugin.openHint': 'Click to open it in Settings → Plugins & Mods',
+  'mods.plugin.label': 'Plugin',
+  'settings.plugins.noFilterMatch': 'No plugins match the filter.',
+  'settings.plugins.previous': 'Previous',
+  'settings.plugins.next': 'Next',
+  'settings.plugins.marketplaceRefreshed': 'Marketplace refreshed',
+  'settings.plugins.pluginInstalledToast': 'Plugin installed',
+  'settings.plugins.installFailed': 'Install failed: {error}',
+  'settings.plugins.pluginUninstalled': 'Plugin uninstalled',
+  'settings.plugins.uninstallFailed': 'Uninstall failed: {error}',
+  'settings.plugins.pluginEnabled': 'Plugin enabled',
+  'settings.plugins.pluginDisabled': 'Plugin disabled',
+  'settings.plugins.enableFailed': 'Enable failed: {error}',
+  'settings.plugins.disableFailed': 'Disable failed: {error}',
+  'settings.plugins.uninstallTitle': 'Uninstall {name}?',
+  'settings.plugins.uninstallDescription':
+    'Plugin files stay cached on disk for fast reinstall.',
+  'settings.plugins.uninstallLocalDescription':
+    'This deletes the folder {path} and everything in it. Open sessions reload without it.',
+  'settings.plugins.cancel': 'Cancel',
+
+  // ── Settings — relative time (plugins "last updated") ──────────────────
+  'settings.time.justNow': 'just now',
+  'settings.time.minuteAgo': '{n} minute ago',
+  'settings.time.minutesAgo': '{n} minutes ago',
+  'settings.time.hourAgo': '{n} hour ago',
+  'settings.time.hoursAgo': '{n} hours ago',
+  'settings.time.dayAgo': '{n} day ago',
+  'settings.time.daysAgo': '{n} days ago',
+
+  // ── Settings — About ───────────────────────────────────────────────────
+  'settings.about.title': '{product} Runtime',
+  'settings.about.tagline':
+    '{product} is an open-source AI coding agent developed by AgentXLab.',
+  'settings.about.taglineRuntime':
+    'The runtime powers the {product} Engine. Configure its source and manage updates.',
+  'settings.about.active': 'Active',
+  'settings.about.runtimeCard': 'Runtime',
+  'settings.about.runtimeCardBuilt': 'Runtime ({date})',
+  'settings.about.customSource': 'Custom source',
+  'settings.about.builtinSource': 'Built-in source',
+  'settings.about.connected': 'Connected',
+  'settings.about.client': '{product} Client',
+  'settings.about.builtOnChromium': 'Built on Chromium',
+  'settings.about.unavailable':
+    'Runtime configuration isn’t available on this build.',
+  'settings.about.runtimeSource': 'Runtime source',
+  'settings.about.invalidUrl': 'Enter a valid http(s) URL.',
+  'settings.about.restartTip':
+    'Restart the client to apply the new runtime source.',
+  'settings.about.restartNow': 'Restart now',
+  'settings.about.restarting': 'Restarting…',
+  'settings.about.restartFailed':
+    'Couldn’t restart automatically. Quit and reopen {product} to apply the change.',
+  'settings.about.channelTitle': 'Update Channel',
+  'settings.about.channelDescription':
+    'Choose how your Runtime receives updates.',
+  'settings.about.channelStable': 'Stable',
+  'settings.about.channelStableDesc':
+    'Receive stable releases. Fully tested and production ready.',
+  'settings.about.channelBeta': 'Beta',
+  'settings.about.channelBetaDesc':
+    'Get early access to upcoming features and improvements.',
+  'settings.about.channelRecommended': 'Recommended',
+  'settings.about.channelActiveBadge': 'Active',
+  'settings.about.channelNotAvailable': 'Not Available',
+  'settings.about.channelBlockedTitle':
+    '{channel} isn’t available for this version.',
+  'settings.about.channelBlockedBody':
+    'Update {product} to enable {channel} updates.',
+  'settings.about.channelLearnMore': 'Learn more',
+  'settings.about.channelDocsUrl': 'https://velloc.app/docs/update-channels',
+  'settings.about.channelHint':
+    'A channel change applies after a restart.',
+  'settings.about.channelSwitchFailed':
+    'Could not switch channel. The runtime source was left unchanged.',
+  'settings.about.reloadTitle': 'Reload Runtime',
+  'settings.about.reloadHint': 'Reload the runtime and bypass cached resources.',
+  'settings.about.licenseValue': '{product} is open source.',
+  'settings.about.copyright': '© {year} AgentXLab.',
+
+  // ── Settings — Session models (tier dictionary + feature routing) ──────
+  'settings.sessionModels.title': 'Session Models',
+  'settings.sessionModels.resetAll': 'Reset all',
+  'settings.sessionModels.resetDialogTitle': 'Reset session-model overrides?',
+  'settings.sessionModels.resetDialogBody':
+    'This deletes every tier pin and every feature routing override, returning all sub-sessions to their defaults. This cannot be undone.',
+  'settings.sessionModels.resetDialogCancel': 'Cancel',
+  'settings.sessionModels.resetDialogConfirm': 'Reset everything',
+  'settings.sessionModels.tiersTitle': 'Model tiers',
+  'settings.sessionModels.modeDefault': 'Default',
+  'settings.sessionModels.modeSpecific': 'Specific model',
+  'settings.sessionModels.modeSameAsParent': 'Same as session',
+  'settings.sessionModels.reset': 'Reset to default',
+  'settings.sessionModels.tierDesc.fast':
+    'Quick, cheap work: lookups, extraction, short summaries.',
+  'settings.sessionModels.tierDesc.balanced':
+    'Typical sub-agent work: research, multi-file surveys.',
+  'settings.sessionModels.tierDesc.best':
+    'Hard reasoning: debugging, design review, verification.',
+  'settings.sessionModels.tier.fast': 'Fast',
+  'settings.sessionModels.tier.balanced': 'Balanced',
+  'settings.sessionModels.tier.best': 'Best',
+  'settings.sessionModels.group.memory': 'Memory',
+  'settings.sessionModels.kind.agent_tool': 'Sub-agents (Agent tool)',
+  'settings.sessionModels.kind.session_title': 'Session titles',
+  'settings.sessionModels.kind.memory_recall': 'Automatic recall selection',
+  'settings.sessionModels.kind.web_fetch': 'WebFetch extraction',
+  'settings.sessionModels.kind.prompt_hook': 'Prompt hooks',
+  'settings.sessionModels.kind.compact': 'Compaction summarizer',
+  'settings.sessionModels.kind.memory_extract': 'Memory extraction',
+  'settings.sessionModels.kind.memory_consolidate': 'Memory consolidation',
+  'settings.sessionModels.kind.skill_fork': 'Forked skills',
+  'settings.sessionModels.kind.hook_agent': 'Agent hooks',
+  'settings.sessionModels.description':
+    'Pick a model for each kind of work to balance speed, cost, and quality.',
+  'settings.sessionModels.hint':
+    'A weaker model can make some features work less well.',
+  'settings.sessionModels.modifiedCount': '{count} modified',
+  'settings.sessionModels.tiersDescription':
+    'Three tiers every feature draws from. Most people only need to set these.',
+  'settings.sessionModels.tierUsedBy': 'Used by {count} feature(s)',
+  'settings.sessionModels.auto': 'Auto',
+  'settings.sessionModels.autoFollows': 'follows session',
+  'settings.sessionModels.autoDescription': 'Follows the session\'s provider · default: {model}',
+  'settings.sessionModels.sessionModel': 'Session model',
+  'settings.sessionModels.sessionModelAtEffort': 'Session model ({effort})',
+  'settings.sessionModels.modified': 'Modified',
+  'settings.sessionModels.advancedTitle': 'Advanced options',
+  'settings.sessionModels.advancedSummary':
+    'Choose the model for each feature individually',
+  'settings.sessionModels.advancedSummaryModified':
+    'Choose the model for each feature individually · {count} modified',
+  'settings.sessionModels.sectionTiers': 'Tiers',
+  'settings.sessionModels.cacheHint':
+    'A different provider from the session can\'t reuse its prompt cache, so this costs more.',
+  'settings.sessionModels.weakTier.compact':
+    'Below the recommended tier — the summary may drop details the agent still needs.',
+  'settings.sessionModels.weakTier.memory_recall':
+    'Below the recommended tier — recall may pick less relevant memories.',
+  'settings.sessionModels.defaultValue.agent_tool': 'Per task',
+  'settings.sessionModels.defaultValue.skill_fork': 'Per skill',
+  'settings.sessionModels.defaultValue.prompt_hook': 'Per hook',
+  'settings.sessionModels.defaultValue.hook_agent': 'Per hook',
+  'settings.sessionModels.defaultHint.agent_tool':
+    'The assistant picks a tier per task; otherwise the session model.',
+  'settings.sessionModels.defaultHint.skill_fork':
+    'The skill\'s own setting; otherwise the session model.',
+  'settings.sessionModels.defaultHint.prompt_hook':
+    'The hook\'s own setting; otherwise the Fast tier.',
+  'settings.sessionModels.defaultHint.hook_agent':
+    'The hook\'s own setting; otherwise the session model.',
+  'settings.sessionModels.defaultRecommended': 'Recommended',
+  'settings.sessionModels.unavailableNote':
+    'No longer available — falls back to the session model.',
+  'settings.sessionModels.pinFailingNote':
+    'Failed {count} time(s) and fell back to the session model. Last error: {error}',
+  'settings.sessionModels.kindDesc.agent_tool':
+    'Sub-agents the assistant launches for research or multi-step work. Fork continuations always keep the session model.',
+  'settings.sessionModels.kindDesc.memory_extract':
+    'Saves durable facts from the conversation after each turn.',
+  'settings.sessionModels.kindDesc.memory_consolidate':
+    'Periodically reorganizes and consolidates saved memories.',
+  'settings.sessionModels.kindDesc.memory_recall':
+    'Picks which saved memories are recalled into each turn.',
+  'settings.sessionModels.kindDesc.compact':
+    'Summarizes the conversation when the context window fills up.',
+  'settings.sessionModels.kindDesc.session_title':
+    'Names sessions in the sidebar after the first exchange.',
+  'settings.sessionModels.kindDesc.web_fetch':
+    'Distills fetched web pages down to what the prompt asked for.',
+  'settings.sessionModels.kindDesc.prompt_hook':
+    'Runs the prompt-type hooks you configured.',
+  'settings.sessionModels.kindDesc.skill_fork':
+    'Runs skills that execute in their own fork.',
+  'settings.sessionModels.kindDesc.hook_agent':
+    'Runs agent-type verifier hooks — read-only checks that return a verdict.',
+  'settings.sessionModels.group.agents': 'Sub-agents and skills',
+  'settings.sessionModels.group.conversation': 'Conversation',
+  'settings.sessionModels.group.toolsHooks': 'Tools and hooks',
+
+  // ── Settings — Memory ──────────────────────────────────────────────────
+  'settings.memory.title': 'Memory',
+  'settings.memory.description':
+    'Control auto-memory — what the agent remembers about you across sessions.',
+  'settings.memory.enable': 'Enable auto-memory',
+  'settings.memory.enableDescription':
+    'Let the agent save and recall durable facts about you and your projects. Turn off to disable memory entirely.',
+  'settings.memory.privacyNote':
+    'Memory is stored locally on your device. Don’t save secrets — passwords, API keys, tokens, or other credentials.',
+  'settings.memory.disabledNote':
+    'Auto-memory is off. Nothing will be saved, recalled, extracted, or consolidated.',
+  'settings.memory.recall': 'Automatic recall',
+  'settings.memory.recallDescription':
+    'At the start of each turn, include the saved memories most relevant to your message. Turning this off does not turn memory off: memories are still saved and their index stays in context, so {product} can still read one when it needs to.',
+  'settings.memory.autoExtract': 'Background extraction',
+  'settings.memory.autoExtractDescription':
+    'After each turn, automatically save durable facts from the conversation. Off by default — the agent can still save memory when you explicitly ask.',
+  'settings.memory.maintenance': 'Memory maintenance',
+  'settings.memory.maintenanceDescription':
+    'Choose how the agent maintains memory in the background:\n• Off — no background maintenance.\n• Periodic consolidation — periodically consolidates and cleans up memories.\n• Daily log — writes append-only daily logs and consolidates them nightly.',
+  'settings.memory.maintenanceMode.off': 'Off',
+  'settings.memory.maintenanceMode.periodic': 'Periodic consolidation',
+  'settings.memory.maintenanceMode.dailyLog': 'Daily log',
+  'settings.memory.savedTitle': 'Saved memories',
+  'settings.memory.savedDescription':
+    'See exactly what the agent has remembered. These files are stored locally on your device.',
+  'settings.memory.viewMemories': 'View saved memories',
+  'settings.memory.noMemories': 'No saved memories yet.',
+  'settings.memory.clearMemories': 'Clear all',
+  'settings.memory.clearConfirm': 'Confirm — delete all',
+  'settings.memory.clearCancel': 'Cancel',
+  'settings.memory.openFolder': 'Open folder',
+  'settings.memory.open': 'Open',
+  'settings.memory.groupIndex': 'Index',
+  'settings.memory.instructionsTitle': 'Instruction files',
+  'settings.memory.instructionsDescription':
+    'Files you author that the agent reads as instructions (AGENTS.md / CLAUDE.md and rules). Shown read-only — these are never deleted by “Clear all”.',
+  'settings.memory.noInstructions': 'No instruction files found.',
+
+  // ── Settings — General · System (folded in from its own page; now also ──
+  // holds the display-language row above — two settings under one title) ────
+  'settings.system.title': 'System',
+  'settings.system.unavailable': 'System preferences aren’t available on this build.',
+  // ONE toggle: prefs::kBackgroundModeEnabled drives the tray
+  // keep-alive AND the background panel (the page + sessions survive the
+  // window). The old pair ("Continue running background apps…" / "Show in
+  // the system tray") was merged — the second only ever made sense with the
+  // first, and the first was inert in {product} before the background panel.
+  'settings.system.keepRunning': 'Keep {product} running in the background',
+  'settings.system.keepRunningDescription':
+    'When you close the window, {product} stays in the system tray and your sessions keep running. Click the tray icon or open {product} again to pick up where you left off. Turn this off to quit {product} when the window closes.',
+
+  // ── Slash commands — built-in picker hints ─────────────────────────────
+  // The hint shown beside each built-in command in the composer's slash
+  // picker. The command NAMES are protocol and stay English everywhere (a
+  // translated `/help` would not dispatch); only these descriptions are
+  // translated. Skill- and plugin-contributed commands are not here at all —
+  // their descriptions come from author-written frontmatter and pass through
+  // untranslated.
+  'slash.builtin.help': 'Show available slash commands',
+  'slash.builtin.tabs': 'List the open browser tabs',
+  'slash.builtin.context':
+    'Attach the current browser context to the conversation',
+  'slash.builtin.clear': 'Clear the conversation',
+  'slash.builtin.model': 'Switch provider/model for the next turn',
+  'slash.builtin.compact':
+    'Compact the conversation now (optional: /compact <instructions>)',
+  'slash.builtin.autocompact':
+    'Set the auto-compact window for the current model (/autocompact <size>|auto)',
+  'slash.builtin.status': 'Show session info (browser, tabs, locale)',
+  'slash.builtin.plan':
+    'Enter plan mode — read/search only, design before coding',
+  'slash.builtin.exit-plan': 'Exit plan mode (optional: /exit-plan <plan text>)',
+  'slash.builtin.plugins':
+    'Manage plugins: list, enable/disable/update/uninstall <name>, install <git-url>',
+  'slash.builtin.plugin':
+    'Marketplace plugin management: list, install/uninstall/enable/disable <name>@<marketplace>',
+  'slash.builtin.marketplace':
+    'Plugin marketplaces: list, add <github-url|owner/repo>, remove/update/info <name>',
+  'slash.builtin.mcp': 'Open the MCP servers settings page',
+  'slash.builtin.rename':
+    'Rename this session (optional: /rename <name> — omit to auto-name)',
+  'slash.builtin.cost': 'Show session token usage and estimated cost',
+  'slash.builtin.agents': 'List the agents the Agent tool can run (subagent_type)',
+  'slash.builtin.skills': 'List loaded skills and how each can be invoked',
+  'slash.builtin.hooks': 'List the hooks registered for this session, by event',
+  'slash.builtin.permissions': 'Show the permission mode and the rules in force',
+  // Hidden built-ins — revealed only on an exact full-name query.
+  'slash.builtin.debug':
+    'Diagnose the {product} runtime; subcommands: transcript, log [on|off], verbose [on|off], trace [on|off], inspect [on|off]',
+
+  // ── Slash commands — dispatcher output ────────────────────────────────
+  // What a command prints back into the transcript. These values are also
+  // what the MODEL reads: slash output rides into the next request as a
+  // `role:"system"` turn, rendered from the English catalog in the worker.
+  // Command names, ids and syntax inside `{}` placeholders stay verbatim.
+  'slash.out.unknownCommand': 'Unknown browser slash command: /{command}',
+  'slash.out.availableCommands': 'Available: {commands}',
+  'slash.out.helpHeader': '{product} slash commands',
+  'slash.out.helpHiddenHeading': 'Hidden commands',
+  'slash.out.helpHiddenNote':
+    'These run when you type the full name, but stay out of the command picker so it is not cluttered.',
+  'slash.out.helpFooter': 'Type a message to send a prompt to {product}.',
+  'slash.out.statusBrowser': 'Browser: {browser}',
+  'slash.out.statusTabs': 'Tabs: {count}',
+  'slash.out.statusActiveTab': 'Active tab: {id}',
+  'slash.out.statusLocale': 'Locale: {locale}',
+  'slash.out.statusTimezone': 'Timezone: {timezone}',
+  'slash.out.statusUnknown': 'unknown',
+  'slash.out.statusNone': 'none',
+  'slash.out.cleared': 'Conversation cleared. Start a new prompt.',
+  'slash.out.renamed': 'Session renamed to: {title}',
+  'slash.out.renameUsage':
+    'Could not generate a name (no conversation yet). Usage: /rename <name>',
+  'slash.out.modelSwitched': 'Model switched to: {model}',
+  'slash.out.modelUsage':
+    'Usage: /model <model-name> or /model <provider-id> <model-name>',
+  'slash.out.autoCompactStatusAuto':
+    'Auto-compact window for {model}: auto (compacts at about {threshold} tokens).',
+  'slash.out.autoCompactStatusFixed':
+    'Auto-compact window for {model}: compacts at {window} tokens.',
+  'slash.out.autoCompactUsage':
+    'Use /autocompact <size> (100k to 1M, for example 400k) or /autocompact auto.',
+  'slash.out.autoCompactOff':
+    'Auto-compact is turned off in settings (autoCompaction). /compact still works.',
+  'slash.out.autoCompactSetAuto': 'Auto-compact window for {model} set to auto',
+  'slash.out.autoCompactSetFixed': 'Auto-compact window for {model} set to {window} tokens',
+  'slash.out.autoCompactCapped':
+    '{model} can compact at most at {limit} tokens (its context window less room for the summary), so auto-compact uses {limit}.',
+  'slash.out.autoCompactShadowed':
+    'Another settings file sets the window for this model to {window} tokens; that value applies.',
+  'slash.out.autoCompactInvalid':
+    'Invalid auto-compact window "{input}". Use a size from 100k to 1M (for example 400k, 1M or 200000) or auto.',
+  'slash.out.autoCompactNoSettings':
+    'The auto-compact window cannot be saved: this host has no settings file.',
+  'slash.out.autoCompactNoModel': 'No model is selected. Choose a model first.',
+  'slash.out.autoCompactSaveFailed': 'Could not save the auto-compact window: {error}',
+  'slash.out.mcpOpening': 'Opening MCP server settings…',
+  'slash.out.noTabs': 'No browser tabs are currently available.',
+  'slash.out.tabUntitled': '(untitled)',
+  'slash.out.tabNoUrl': '(no url)',
+  'slash.out.compactUnavailable': 'Compaction is not available in this runtime.',
+  'slash.out.compactNoMessages': 'No messages to compact.',
+  'slash.out.modPromptDropped': 'A plugin stopped this prompt: {reason}',
+  'slash.out.modPromptDroppedNoReason': 'A plugin stopped this prompt.',
+  'slash.out.modPromptInterrupted': 'Stopped while a plugin was checking this prompt, so it was not sent.',
+  'slash.out.modCommandUnanswered': 'No plugin answered /{command}.',
+  'slash.out.helpModsHeading': 'Plugin commands',
+  'slash.out.helpModCommand': '{description} (from the plugin {plugin})',
+  'slash.out.compactSkipped': 'Compaction skipped by a plugin — {reason}. The transcript is unchanged.',
+  'slash.out.compactFailed': 'Compaction failed — {reason}. The transcript is unchanged.',
+  'slash.out.compactBlockedByHook': 'Compaction blocked by a hook — {reason}. The transcript is unchanged.',
+  'slash.out.compactBlockedByHookNoReason': 'Compaction blocked by a hook. The transcript is unchanged.',
+  'slash.out.skillDenied': 'Skill /{name} is not available in this session type.',
+  'slash.out.skillNotUserInvocable':
+    'Skill /{name} cannot be invoked via slash. The model can still call it via the Skill tool.',
+
+  // ── Slash commands — /agents, /skills, /hooks, /permissions ────────────
+  // Grouping headers (the source/event/matcher category a listing groups
+  // by) stay untranslated on purpose: they read straight off loosely-typed
+  // data (a plugin's `source`, a hook's registered `event`), not a closed
+  // enum this catalog can promise to cover. Only the surrounding prose
+  // translates.
+  'slash.out.agents.forkNote':
+    '{route} (reserved) — inherit this session’s full context (system prompt, tools, conversation) instead of starting isolated.',
+  'slash.out.agents.empty': 'No agents are registered for this session.',
+  'slash.out.agents.authorHint':
+    'Author one as markdown with `name`/`description`/`tools`/`model` frontmatter in any of:',
+  'slash.out.agents.userScope': '~/{dir}/agents/  (user scope)',
+  'slash.out.agents.projectScope': '<cwd>/{dir}/agents/  (project scope)',
+  'slash.out.agents.pluginScope': 'a plugin’s agents/ directory',
+  'slash.out.agents.alwaysAvailable': 'Always available regardless:',
+  'slash.out.agents.header': 'Agents: {count} registered (Agent tool `subagent_type`)',
+  'slash.out.agents.reservedHeading': 'Reserved:',
+  'slash.out.skills.empty':
+    'No skills are loaded. Author one as `SKILL.md` (with a `description` frontmatter field) under ~/{dir}/skills/<name>/ or <cwd>/{dir}/skills/<name>/, or install a plugin that ships skills (`/plugin install <name>@<marketplace>`).',
+  'slash.out.skills.header': 'Skills: {loaded} loaded',
+  'slash.out.skills.headerWithWithheld': 'Skills: {loaded} loaded, {withheld} withheld',
+  'slash.out.skills.withheldHeading': 'Withheld — path-gated ({count}):',
+  'slash.out.skills.withheldExplanation':
+    'Loaded and valid, but held out of the active set until file-touch activation. Not invocable yet, by slash or by the model.',
+  'slash.out.hooks.noSession': 'No session is active, so no hooks are registered.',
+  'slash.out.hooks.matcherLabel': 'matcher',
+  'slash.out.hooks.matchAll': '* (match all)',
+  'slash.out.hooks.empty':
+    'No hooks are registered for this session. Declare them under `hooks` in settings.json, or in a skill’s frontmatter (those register when the skill is invoked).',
+  'slash.out.hooks.header': 'Hooks: {hooks} across {matchers} matchers',
+  'slash.out.hooks.headerOneMatcher': 'Hooks: {hooks} across {matchers} matcher',
+  'slash.out.permissions.mode': 'Permission mode: {mode}',
+  'slash.out.permissions.modeBeforePlan': 'Mode before plan mode: {mode}',
+  'slash.out.permissions.bypassDisabled': 'Bypass mode: disabled by settings',
+  'slash.out.permissions.bypassAvailable': 'Bypass mode: available',
+  'slash.out.permissions.allowHeading': 'Allow ({count}):',
+  'slash.out.permissions.askHeading': 'Ask ({count}):',
+  'slash.out.permissions.denyHeading': 'Deny ({count}):',
+  'slash.out.permissions.noRules':
+    'No allow/ask/deny rules are configured — the rule gate is a no-op. Add them under `permissions` in settings.json.',
+  'slash.out.permissions.alwaysAllowHeading': 'Always allow ({count}):',
+  'slash.out.permissions.alwaysAskHeading': 'Always ask ({count}):',
+  'slash.out.permissions.alwaysDenyHeading': 'Always deny ({count}):',
+  'slash.out.permissions.strippedHeading': 'Stripped for the current mode ({count}):',
+  'slash.out.permissions.workingDirsHeading': 'Additional working directories ({count}):',
+  'slash.out.permissions.noContext': 'No permission context is available for this session.',
+
+  // ── Slash commands — /plugins (legacy git-clone install) ───────────────
+  'slash.out.debug.internal.statusOn':
+    'Internal-user mode is on — sub-agents may spawn nested agents.',
+  'slash.out.debug.internal.statusOff':
+    'Internal-user mode is off — sub-agents cannot spawn nested agents.',
+  'slash.out.debug.internal.statusHint':
+    'Use /debug internal on|off to change it; applies to the next agent spawn.',
+  'slash.out.debug.internal.enabled':
+    'Internal-user mode enabled — sub-agents may spawn nested agents. Applies to the next agent spawn; saved to settings.json.',
+  'slash.out.debug.internal.disabled':
+    'Internal-user mode disabled — sub-agents cannot spawn nested agents (the default). Applies to the next agent spawn.',
+  'slash.out.debug.notPersisted':
+    'Note: no settings home directory on this host — the change is not persisted and lasts only until the next reload.',
+  'slash.out.debug.persistFailed':
+    'Warning: failed to persist to settings.json ({error}) — the change lasts only until the next reload.',
+  'slash.out.debug.skillUnavailable':
+    'The debug skill is not available in this session.',
+  'slash.out.debug.usage.title':
+    '{command} usage',
+  'slash.out.debug.usage.issueArg':
+    'issue description',
+  'slash.out.debug.usage.issue':
+    'diagnose the {product} runtime (model-driven debug skill)',
+  'slash.out.debug.usage.transcript':
+    'transcript diagnostics: per-compaction-segment sizes, tool + token stats',
+  'slash.out.debug.usage.status':
+    'one-glance summary of all debug switches + ring buffer state',
+  'slash.out.debug.usage.log':
+    'show/set live debug capture into the worker log ring (this session)',
+  'slash.out.debug.usage.name':
+    'set the product name the model sees in prompts (saved to settings.json); bare /debug name (or "") cancels it',
+  'slash.out.debug.usage.verbose':
+    'show/set verbose model logging (applies next reload)',
+  'slash.out.debug.usage.trace':
+    'show/set the trace overlay (applies next reload)',
+  'slash.out.debug.usage.inspect':
+    'show/set the panel right-click "Inspect" menu (opens DevTools)',
+  'slash.out.debug.usage.internal':
+    'show/set internal-user mode: on = sub-agents may spawn nested agents, off = they cannot (default); saved to settings.json, applies to the next spawn',
+  'slash.out.plugins.empty':
+    'No plugins discovered. Place a plugin under ~/{dir}/plugins/<name>/ or <cwd>/{dir}/plugins/<name>/ (with .claude-plugin/plugin.json), then enable it with `/plugins enable <name>` — which records the choice in ~/{dir}/enabled-plugins.json for a user-scope plugin, or <cwd>/{dir}/enabled-plugins.json for a project-scope one.',
+  'slash.out.plugins.header': 'Plugins: {enabled} enabled, {disabled} disabled',
+  'slash.out.plugins.enabledHeading': 'Enabled:',
+  'slash.out.plugins.disabledHeading':
+    'Disabled (present on disk but not in the enabled allowlist):',
+  'slash.out.plugins.errorsHeading': 'Load errors:',
+
+  // ── Slash commands — /plugin, /marketplace (marketplace pipeline) ──────
+  // Command syntax lines (a bare `/plugin <subcommand> [args]` or an example
+  // invocation) are protocol and stay untranslated; only the prose beside
+  // them is a catalog entry.
+  'slash.out.plugin.usage.list':
+    '  list                                show installed plugins',
+  'slash.out.plugin.usage.install':
+    '  install <name>@<marketplace>        install from a known marketplace',
+  'slash.out.plugin.usage.installFrom':
+    '  install <name> --marketplace <owner/repo>  add the marketplace if needed, then install',
+  'slash.out.plugin.usage.uninstall':
+    '  uninstall <name>@<marketplace>      remove an installed plugin',
+  'slash.out.plugin.usage.enable':
+    '  enable <name>@<marketplace>         enable an installed plugin',
+  'slash.out.plugin.usage.disable':
+    '  disable <name>@<marketplace>        disable without uninstalling',
+  'slash.out.plugin.usage.identifierFormat': 'Identifier format: <plugin>@<marketplace>',
+  'slash.out.plugin.usage.example': 'Example: /plugin install superpowers@claude-plugins-official',
+  'slash.out.plugin.usage.seeAvailable': 'To see what plugins are available in a marketplace:',
+  'slash.out.plugin.usage.legacyNote':
+    'For the legacy git-clone install (project-scoped), use /plugins (plural).',
+  'slash.out.plugin.unknownSubcommand': 'Unknown subcommand: /plugin {sub}',
+  'slash.out.plugin.error': 'Error running /plugin {sub}: {error}',
+  'slash.out.plugin.install.usage': 'Usage: /plugin install <name>@<marketplace>',
+  'slash.out.plugin.invalidIdentifier': 'Invalid identifier: {message}',
+  'slash.out.plugin.install.success': 'Installed {identifier} (v{version})',
+  'slash.out.plugin.install.fileCount': '{count} files → `{path}`',
+  'slash.out.plugin.install.liveNote':
+    'New plugins are enabled by default and take effect in this session now. Other open sessions, and any MCP servers a plugin adds, pick it up in a new session.',
+  'slash.out.plugin.uninstall.usage': 'Usage: /plugin uninstall <name>@<marketplace>',
+  'slash.out.plugin.uninstall.notInstalled': 'Not installed: {id} (nothing to remove)',
+  'slash.out.plugin.uninstall.success': 'Uninstalled {id}',
+  'slash.out.plugin.uninstall.cacheNote':
+    '(cache dir left at `{path}` — manual delete OK; will be reused on reinstall)',
+  'slash.out.plugin.enableDisable.usage': 'Usage: /plugin {verb} <name>@<marketplace>',
+  'slash.out.plugin.enabledConfirm': 'Enabled {id}',
+  'slash.out.plugin.disabledConfirm': 'Disabled {id}',
+  'slash.out.plugin.effectNow':
+    'Takes effect in this session now. Other open sessions, and MCP server changes, pick it up in a new session.',
+  'slash.out.plugin.list.empty': 'No plugins installed via the marketplace pipeline.',
+  'slash.out.plugin.list.installHint': 'To install one: /plugin install <name>@<marketplace>',
+  'slash.out.plugin.list.marketplacesHint':
+    'To see what marketplaces are available: /marketplace list',
+  'slash.out.plugin.list.scopeNote':
+    'Note: this list shows plugins installed via /plugin (marketplace). Project-scoped git-clone installs (via /plugins, plural) live in a separate registry — run /plugins to see those.',
+  'slash.out.plugin.list.header': 'Installed plugins: {count}',
+  'slash.out.plugin.state.disabled': 'disabled',
+  'slash.out.plugin.state.enabledExplicit': 'enabled (explicit)',
+  'slash.out.plugin.state.enabledDefault': 'enabled (default)',
+  'slash.out.marketplace.usage.list':
+    '  list                            show known marketplaces',
+  'slash.out.marketplace.usage.add':
+    '  add <github-url|owner/repo>    register + fetch a marketplace',
+  'slash.out.marketplace.usage.remove':
+    '  remove <name>                  unregister (non-official only)',
+  'slash.out.marketplace.usage.update':
+    '  update <name>                  re-fetch a marketplace’s contents',
+  'slash.out.marketplace.usage.info':
+    '  info <name>                    list available plugins in a marketplace',
+  'slash.out.marketplace.usage.defaultsHeading': 'Default-installed marketplaces:',
+  'slash.out.marketplace.usage.officialLine':
+    '  claude-plugins-official  — Anthropic-curated, SHA-pinned',
+  'slash.out.marketplace.usage.communityLine':
+    '  claude-plugins-community — Anthropic-mirrored community submissions',
+  'slash.out.marketplace.usage.exampleHeading': 'Example:',
+  'slash.out.marketplace.unknownSubcommand': 'Unknown subcommand: /marketplace {sub}',
+  'slash.out.marketplace.error': 'Error running /marketplace {sub}: {error}',
+  'slash.out.marketplace.list.emptyUnexpected':
+    'No marketplaces registered (this should not happen — officials are pre-seeded).',
+  'slash.out.marketplace.list.header': 'Known marketplaces: {count}',
+  'slash.out.marketplace.list.footer': 'For what’s in each: /marketplace info <name>',
+  'slash.out.marketplace.officialTag': '(official)',
+  'slash.out.marketplace.builtinTag': '(built in)',
+  'slash.out.marketplace.notYetFetched': ', not yet fetched',
+  'slash.out.marketplace.lastUpdated': ', last updated {time}',
+  'slash.out.marketplace.add.usage': 'Usage: /marketplace add <github-url|owner/repo>',
+  'slash.out.marketplace.add.parseError':
+    'Could not parse ‘{value}’ as a github URL or owner/repo identifier.',
+  'slash.out.marketplace.add.registerFailed': 'Failed to register marketplace: {error}',
+  'slash.out.marketplace.add.fetchFailed':
+    'Fetched {source} but couldn’t load marketplace.json: {error}',
+  'slash.out.marketplace.add.renameCleanupFailed':
+    'Renamed to ‘{name}’ but cleanup failed: {error}',
+  'slash.out.marketplace.add.success': 'Added marketplace ‘{name}’',
+  'slash.out.marketplace.add.sourceLine': 'source: {source}',
+  'slash.out.marketplace.add.pluginsAvailable': 'plugins available: {count}',
+  'slash.out.marketplace.add.browseHint': 'Browse plugins: /marketplace info {name}',
+  'slash.out.marketplace.add.installHint': 'Install one: /plugin install <name>@{name}',
+  'slash.out.marketplace.remove.usage': 'Usage: /marketplace remove <name>',
+  'slash.out.marketplace.remove.official':
+    'Cannot remove ‘{name}’ — it is an official Anthropic marketplace.',
+  'slash.out.marketplace.remove.builtin':
+    'Cannot remove ‘{name}’ — it is {product}’s built-in marketplace.',
+  'slash.out.marketplace.remove.success': 'Removed marketplace ‘{name}’.',
+  'slash.out.marketplace.update.usage': 'Usage: /marketplace update <name>',
+  'slash.out.marketplace.update.success': 'Refreshed ‘{name}’{sha}',
+  'slash.out.marketplace.info.usage': 'Usage: /marketplace info <name>',
+  'slash.out.marketplace.info.notFetched':
+    'Marketplace ‘{name}’ has not been fetched yet (no local manifest).',
+  'slash.out.marketplace.info.runUpdateHint': 'Run: /marketplace update {name}',
+  'slash.out.marketplace.info.zeroPlugins': 'Marketplace ‘{name}’ contains 0 plugins.',
+  'slash.out.marketplace.info.noDescription': '(no description)',
+  'slash.out.marketplace.info.header': '{name} — {description}',
+  'slash.out.marketplace.info.countLine': '{count} plugins:',
+  'slash.out.marketplace.info.moreCount': '  … and {count} more',
+
+  // ── Slash commands — /cost ──────────────────────────────────────────────
+  'slash.out.cost.empty': 'No model usage recorded in this session yet.',
+  'slash.out.cost.header': 'Session token usage',
+  'slash.out.cost.modelLine':
+    '{model}: {input} in, {output} out, {cacheRead} cache read, {cacheCreate} cache write  {cost}',
+  'slash.out.cost.pricingUnavailable': '— (pricing unavailable)',
+  'slash.out.cost.total':
+    'Total: {total} tokens ({input} in, {output} out, {cacheRead} cache read, {cacheCreate} cache write)',
+  'slash.out.cost.estimated': 'Estimated cost (priced models): {cost}',
+  'slash.out.cost.unpricedNote':
+    '(Dollar cost is shown only for models with published Anthropic pricing; token counts above are exact for every model.)',
+
+  // Remote client: an action outside this connection's grant, and the
+  // connection banner the reconnect loop drives.
+  'remote.forbidden.toast': 'This has to be done on the desktop.',
+  // Chunk-load failure overlay (browser/boot/chunkLoadFailure.ts).
+  'chunkLoad.failedTitle': "The app couldn't load",
+  'chunkLoad.failedBody': 'Part of the app failed to load. Reload to continue.',
+  'chunkLoad.offlineTitle': "You're offline",
+  'chunkLoad.offlineBody': "Part of the app isn't available offline. Reconnect, then reload.",
+  'chunkLoad.reload': 'Reload',
+  'remote.status.reconnecting': 'Reconnecting to your desktop…',
+  'remote.status.desktopOffline':
+    'Your desktop is not reachable. Open {product} on the desktop.',
+  'remote.composer.disabled': 'Waiting for the connection to your desktop.',
+  // The "cannot reach the desktop" card (DesktopUnreachableCard): the live
+  // shell's offline overlay and the connect screen's unreachable states.
+  'remote.unreachable.lostTitle': 'Connection to your desktop lost',
+  'remote.unreachable.lostBody': 'The desktop may have quit, gone to sleep, or become unreachable. Once the connection is back, you can continue where you left off.',
+  'remote.unreachable.neverTitle': 'Desktop not detected',
+  'remote.unreachable.neverBody': 'Make sure {product} is running on your desktop. This page connects on its own once it is.',
+  'remote.unreachable.connectingTitle': 'Connecting to your desktop…',
+  'remote.unreachable.connectingStatus': 'Trying to establish a connection',
+  'remote.unreachable.stuckTitle': 'Still unable to reach your desktop',
+  'remote.unreachable.stuckBody': 'Make sure {product} is running on your desktop and reachable from this network. This page keeps trying.',
+  'remote.unreachable.countdown': 'Reconnecting in {seconds} s',
+  'remote.unreachable.countdownMinutes': 'Reconnecting in {minutes} min',
+  'remote.unreachable.waitingCountdown': 'Waiting for the desktop… retrying in {seconds} s',
+  'remote.unreachable.waitingCountdownMinutes': 'Waiting for the desktop… retrying in {minutes} min',
+  'remote.unreachable.reconnectNow': 'Reconnect now',
+  'remote.unreachable.retry': 'Retry connection',
+  'remote.unreachable.tryAgain': 'Try again',
+
+  // ── Remote client: the connect / error screen (RemoteConnectScreen) ────
+  // The desktop's boot welcome is painted by the outer panel; a remote page
+  // has no outer panel, so this screen is its whole first impression and its
+  // only channel for "why is nothing happening". Every state therefore says
+  // what went wrong AND what to do about it — on the desktop, in most cases,
+  // which is the one place the reader is not currently looking.
+  'remote.connectingTitle': 'Connecting to {product}…',
+  'remote.connectingBody': 'Reaching the desktop this link points to.',
+  'remote.retry': 'Try again',
+  'remote.reconnect': 'Reconnect',
+  'remote.reload': 'Reload',
+  'remote.unauthorizedTitle': 'This link no longer works',
+  'remote.unauthorizedBody':
+    'It was reset or revoked on the desktop. Copy a new link from Settings → Remote access on the desktop and open it here.',
+  'remote.expiredTitle': 'This link has expired',
+  'remote.expiredBody':
+    'Copy a new link from Settings → Remote access on the desktop and open it here.',
+  'remote.invalidTitle': 'This link is not valid',
+  'remote.invalidBody':
+    'It looks incomplete — copy the whole link again from the desktop.',
+  'remote.disabledTitle': 'Remote access is turned off',
+  'remote.disabledBody':
+    'Remote access was turned off on the desktop. Turn it back on there to use this link.',
+  'remote.tooManyTitle': 'Too many remote connections',
+  'remote.tooManyBody':
+    'The desktop is already serving as many remote clients as it allows. Close one and this page reconnects.',
+  'remote.replacedTitle': 'Another tab took over this connection',
+  'remote.replacedBody':
+    'Another tab or window of this browser opened the same link, and only one can hold the connection at a time. This page does not take it back on its own: try again to move it here, and the other one loses it.',
+  'remote.protocolTitle': 'Reload to continue',
+  'remote.protocolBody':
+    'This page and the desktop speak different versions of the protocol. Reloading picks up the matching one.',
+  'remote.buildMismatchTitle': 'The desktop is running a different build',
+  'remote.buildMismatchBody':
+    'This page came from a different build than the desktop is running. Open the matching one so both sides behave the same way.',
+  'remote.openMatchingBuild': 'Open the matching build',
+  'remote.install.prompt':
+    'Install {product} as an app — it opens in its own window and reconnects to this desktop by itself.',
+  'remote.install.chromeMenu':
+    'Use {product} as an app, in its own window: open the browser menu (⋮), then Cast, save, and share → Install page as app…',
+  'remote.install.edgeMenu':
+    'Use {product} as an app, in its own window: open the browser menu (…), then Apps → Install this site as an app.',
+  'remote.install.install':
+    'Install',
+  'remote.install.dismiss':
+    'Not now',
+  'remote.host.connectedTo':
+    'Connected to {host}',
+  'remote.host.logOut':
+    'Log out of this desktop',
+  'remote.fullscreen.enter': 'Enter full screen',
+  'remote.fullscreen.exit': 'Exit full screen',
+}
+
+/** Union of every valid message key (derived from the English catalog). */
+export type MessageKey = keyof typeof en
+
+/** Every locale catalog must provide a string for every key. */
+export type Messages = Record<MessageKey, string>

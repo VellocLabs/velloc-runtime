@@ -1,0 +1,2110 @@
+import type { Messages } from './en'
+
+// French catalog, typed `Messages`. Register: formal *vous*. Apostrophe is always
+// ’ (U+2019); « … » for quoted user input; a PLAIN space before ` : ; ! ?`.
+export const fr: Messages = {
+  'sidebar.newThread': 'Nouvelle discussion',
+  'sidebar.recents': 'Récents',
+  'sidebar.rename': 'Renommer',
+  'sidebar.delete': 'Supprimer',
+  'sidebar.threadActionsAria': 'Actions de la discussion : {title}',
+  'sidebar.renameThreadAria': 'Renommer la discussion : {title}',
+  'sidebar.deleteThreadAria': 'Supprimer la discussion : {title}',
+  'sidebar.renameInputAria': 'Champ de renommage : {title}',
+  'sidebar.needsAnswer': 'Attend votre réponse',
+  // Session attention: the queued "a session needs you" events.
+  'attention.summary': '{count} sessions ont besoin de vous',
+  'attention.expand': 'Tout afficher',
+  'attention.collapse': 'Masquer',
+  'attention.needsInput': 'En attente de votre réponse',
+  'attention.endedWithQuestion': 'Terminée par une question',
+  'attention.notificationTitle': '{title} a besoin de vous',
+  'attention.notificationNeedsInput': 'Cette session attend votre réponse.',
+  'attention.notificationQuestion': 'Cette session s’est terminée par une question.',
+  'sidebar.timeToday': 'Aujourd’hui',
+  'sidebar.timeYesterday': 'Hier',
+  'sidebar.timePrevious7Days': '7 derniers jours',
+  'sidebar.timePrevious30Days': '30 derniers jours',
+  'sidebar.timeOlder': 'Plus ancien',
+  'sidebar.showMore': 'Afficher {count} de plus',
+  'sidebar.projects': 'Espaces de travail',
+  'sidebar.projectNewCodeAria': 'Nouvelle discussion de code dans {name}',
+  'sidebar.addProject': 'Ajouter un espace de travail',
+  'sidebar.projectsEmpty':
+    'Aucun espace de travail pour l’instant. Utilisez le bouton dossier pour en ajouter un.',
+  'sidebar.projectNoThreads': 'Aucune discussion pour l’instant',
+  'sidebar.projectActionsAria': 'Actions de l’espace de travail : {name}',
+  'sidebar.projectReveal': 'Afficher dans l’Explorateur',
+  'sidebar.projectCopyPath': 'Copier le chemin',
+  'sidebar.projectDelete': 'Supprimer l’espace de travail',
+  'sidebar.projectDeleteTitle': 'Supprimer l’espace de travail ?',
+  'sidebar.projectDeleteEmptyBody':
+    'Retirer « {name} » de la barre latérale ? Le dossier sur le disque n’est pas touché.',
+  'sidebar.projectDeleteBody':
+    'Supprimer les {count} discussions enregistrées pour « {name} » ? Leur historique sera retiré de {store}, sans possibilité d’annuler. Votre dossier d’espace de travail dans {path} n’est PAS touché.',
+  'sidebar.projectDeleteConfirm': 'Supprimer les discussions',
+  'sidebar.projectDeleteCancel': 'Annuler',
+  'composer.placeholder': 'Tapez / pour les commandes',
+  'composer.placeholderEmptyThread': 'Décrivez une tâche ou posez une question',
+  'composer.inputAria': 'Saisie du message',
+  'composer.nextMessage': 'Message suivant',
+  'composer.removeNextMessage': 'Supprimer le message suivant',
+  'composer.nextMessagePosition': 'Message {index} sur {count} en attente',
+  'composer.injectPending': 'Sera envoyé après l\'étape en cours',
+  'composer.injectRemove': 'Retirer et remettre dans la zone de saisie',
+  'composer.sendShortcut.send': 'Envoyer',
+  'composer.sendShortcut.sendKeys': 'Entrée',
+  'composer.sendShortcut.queue': 'Mettre en file pour plus tard',
+  'composer.sendShortcut.queueKeys': '{modifier}+Entrée',
+  'composer.sendShortcut.fork': 'Envoyer dans une session bifurquée',
+  'composer.sendShortcut.forkKeys': '{modifier}+{alt}+Entrée',
+  'composer.hint.send': 'Entrée pour envoyer · {modifier}+{alt}+Entrée pour envoyer dans une session bifurquée · Maj+Entrée pour un retour à la ligne',
+  'composer.hint.sendRunning': 'Entrée pour ajouter à ce tour · {modifier}+Entrée pour mettre en file pour plus tard · {modifier}+{alt}+Entrée pour envoyer dans une session bifurquée',
+  // Variantes pour une session vide, sans la clause de bifurcation — une
+  // session vide n'a rien à bifurquer.
+  'composer.hint.sendEmpty': 'Entrée pour envoyer · Maj+Entrée pour un retour à la ligne',
+  'composer.hint.sendRunningEmpty': 'Entrée pour ajouter à ce tour · {modifier}+Entrée pour mettre en file pour plus tard',
+  'composer.hint.commandPick': '↑↓ pour choisir une commande · Entrée pour sélectionner · Échap pour fermer',
+  'composer.hint.commandUsage': 'Utilisation : {usage}',
+  'composer.hint.commandUnknown': 'Aucune commande nommée /{name}',
+  'action.send': 'Envoyer le message',
+  'action.stop': 'Arrêter la génération',
+  'action.copy': 'Copier',
+  'action.fork': 'Bifurquer à partir d’ici',
+  'session.forkTitle': '{title} (fork)',
+  'action.rewind': 'Revenir à ce point',
+  'action.rewindConfirm':
+    'Revenir à ce point ? Les messages suivants seront supprimés.',
+  'action.refresh': 'Regénérer',
+  'action.more': 'Plus',
+  'action.edit': 'Modifier',
+  'action.exportMarkdown': 'Exporter en Markdown',
+  'statusBar.collapseAll': 'Tout replier',
+  'statusBar.lockToBottom': 'Rester en bas',
+  // Ligne d'état de l'indicateur d'activité (`runningStatusText`). En
+  // minuscules à dessein : ce sont des fragments joints par ' · ', pas des
+  // libellés.
+  'statusBar.thinking': 'réfléchit',
+  'statusBar.thinkingMore': 'réfléchit encore',
+  'statusBar.almostDoneThinking': 'a presque fini de réfléchir',
+  'statusBar.runningTask': 'exécute une tâche',
+  // `{count}` arrive déjà mis en forme par compactCount (p. ex. '1.8k').
+  'statusBar.tokens': '{count} jetons',
+  'statusBar.retryingIn':
+    'nouvelle tentative dans {seconds} s (tentative {attempt}/{maxRetries})',
+  'statusBar.startingRetry': 'démarrage de la tentative {attempt}/{maxRetries}',
+  // Tentative en cours : `{seconds}` s'incrémente chaque seconde
+  // (inFlightSeconds du worker) pour que la ligne progresse visiblement.
+  'statusBar.retryInFlight':
+    'tentative {attempt}/{maxRetries} en cours ({seconds} s)',
+  // Motifs de repli, nommés d'après les valeurs `ProviderApiErrorKind` du
+  // classificateur — utilisés seulement si la phase de reprise n'a pas
+  // d'`errorTitle`.
+  'statusBar.retryKind.authentication_failed': 'échec de l’authentification',
+  'statusBar.retryKind.rate_limit': 'limite de débit du fournisseur',
+  'statusBar.retryKind.invalid_request': 'requête invalide',
+  'statusBar.retryKind.billing_error': 'crédits insuffisants',
+  'statusBar.retryKind.server_error': 'erreur serveur du fournisseur',
+  'statusBar.retryKind.repetitive_tool_calls': 'appels d’outils répétitifs',
+  'statusBar.retryKind.refusal': 'refus de sécurité',
+  'statusBar.retryKind.unknown': 'erreur de connexion',
+  'providerIssue.repetitiveToolCalls.title':
+    'Le fournisseur a bloqué un appel d’outils répété',
+  'providerIssue.repetitiveToolCalls.summary':
+    'Le fournisseur a rejeté la requête car le même appel d’outils (nom et arguments identiques) s’est répété sur des tours consécutifs. Renvoyer le même historique déclenche la même protection : compactez la conversation ou modifiez l’appel répété avant de réessayer.',
+  'providerIssue.serviceUnavailable.title': 'Service du fournisseur indisponible',
+  'providerIssue.serviceUnavailable.summaryCapacity':
+    'Le fournisseur a signalé une défaillance temporaire de capacité et a demandé aux clients de réessayer. {product} réessaie automatiquement avant d’afficher l’erreur d’API.',
+  'providerIssue.serviceUnavailable.summaryUpstream':
+    'Le fournisseur ou un service en amont a renvoyé une défaillance temporaire. {product} réessaie automatiquement avant d’afficher l’erreur d’API.',
+  'providerIssue.quotaExhausted.title': 'Quota du fournisseur épuisé',
+  'providerIssue.quotaExhausted.summaryDirective':
+    'Le fournisseur indique que son quota est épuisé et demande aux clients d’attendre plus longtemps que ne peut le couvrir une nouvelle tentative dans la session ; {product} affiche donc l’erreur immédiatement au lieu de réessayer. Le message du fournisseur précise quand le quota est réinitialisé.',
+  'providerIssue.quotaExhausted.summaryMessage':
+    'Le fournisseur indique que le quota ou la limite d’utilisation du compte est épuisé, ce qu’aucune nouvelle tentative dans la session ne peut résoudre ; {product} affiche donc l’erreur immédiatement au lieu de parcourir toute la série de tentatives. Le message du fournisseur précise quelle limite a été atteinte.',
+  'providerIssue.billing.title': 'Crédits du fournisseur épuisés',
+  'providerIssue.billing.summary':
+    'Le fournisseur a refusé la requête faute de crédit (HTTP 402) : le solde du compte, ou la limite de crédit propre à la clé d’API, ne suffit pas à la couvrir. Aucune nouvelle tentative automatique ne peut y remédier ; {product} affiche donc l’erreur immédiatement.',
+  'providerIssue.rateLimit.title': 'Limite de débit du fournisseur atteinte',
+  'providerIssue.rateLimit.summary':
+    'Le fournisseur limite le débit des requêtes. {product} réessaie automatiquement avant d’afficher l’erreur d’API.',
+  'providerIssue.credentials.title': 'Les identifiants nécessitent votre attention',
+  'providerIssue.credentials.summary':
+    'Le fournisseur a rejeté la clé API ou le jeton de connexion configurés. {product} réessaie le parcours de connexion avant d’afficher l’erreur d’API.',
+  'providerIssue.queued.title':
+    'Fournisseur occupé — requête mise en file d’attente',
+  'providerIssue.queued.summary':
+    'La requête est restée dans la file d’attente de concurrence du fournisseur jusqu’à l’expiration de son délai et n’a jamais atteint le fournisseur. {product} réessaie automatiquement avant d’afficher l’erreur d’API.',
+  'providerIssue.network.title': 'Problème de connexion réseau',
+  'providerIssue.network.summary':
+    '{product} n’a pas pu joindre le fournisseur de manière fiable. {product} réessaie automatiquement avant d’afficher l’erreur d’API.',
+  'providerIssue.configuration.title':
+    'Problème de configuration du fournisseur',
+  'providerIssue.configuration.summary':
+    'Le fournisseur a rejeté la configuration de la requête. Vérifiez le modèle sélectionné, l’URL de base et les paramètres du fournisseur.',
+  'attachment.add': 'Ajouter une pièce jointe',
+  'attachment.remove': 'Retirer la pièce jointe',
+  'attachment.pastedText': 'Texte collé',
+  'attachment.pastedTextLines': 'Texte collé · {count} lignes',
+  'attachment.pastedTextLinesOne': 'Texte collé · 1 ligne',
+  'attachment.showInTextField': 'Afficher dans le champ de texte',
+  'reasoning.label': 'Raisonnement',
+  'thread.loadingConversation': 'Chargement…',
+  'thread.conversationInterrupted': 'Cette conversation a été interrompue',
+  'thread.conversationCancelled': 'La conversation a été annulée',
+  'thread.hitTokenLimit': 'Limite de jetons atteinte — poursuivre la réponse',
+  'thread.addFollowUp': 'Ajouter un message de suivi',
+  'thread.continueConversation': 'Continuer',
+  'message.showFullCount':
+    'Afficher le message complet ({count} lignes de plus)',
+  'message.showFullCountOne': 'Afficher le message complet (1 ligne de plus)',
+  'message.showLess': 'Afficher moins',
+  'sidebar.resizeAria': 'Redimensionner la barre latérale',
+  'webviewArea.resizeAria': 'Redimensionner la vue du navigateur',
+  'webviewArea.title': 'Navigateur',
+  'webviewArea.hideAria': 'Masquer la vue du navigateur',
+  'rightPanel.resizeAria': 'Redimensionner le panneau utilitaire',
+  'rightPanel.resizeSplitAria': 'Redimensionner la séparation',
+  'filePanel.viewRendered': 'Rendu',
+  'filePanel.viewRaw': 'Source',
+  'filePanel.search': 'Rechercher',
+  'filePanel.refresh': 'Actualiser depuis le disque',
+  'filePanel.save': 'Enregistrer',
+  'filePanel.editLocked': 'Modification verrouillée pendant l’exécution de l’agent',
+  'filePanel.diskChanged':
+    'Ce fichier a changé sur le disque pendant que vous le modifiiez.',
+  'filePanel.reload': 'Recharger',
+  'filePanel.keepMine': 'Garder ma version',
+  'question.submit': 'Envoyer',
+  'question.specify': 'Préciser…',
+  'question.other': 'Autre',
+  'question.none': 'Aucune question fournie.',
+  'question.superseded':
+    'Cette question n’a pas été utilisée — saisie invalide, l’assistant a réessayé.',
+  'question.noAnswer': '(sans réponse)',
+  'question.notes': 'Notes : {note}',
+  'launcher.agent': 'Agent',
+  'launcher.chat': 'Discussion',
+  'launcher.code': 'Code',
+  'launcher.team': 'Équipe',
+  'launcher.newTeam': 'Nouvelle équipe',
+  'launcher.safeCode': 'SafeCode',
+  'launcher.project': 'Projet',
+  'launcher.newAgent': 'Nouvel agent',
+  'launcher.newChat': 'Nouvelle discussion',
+  'launcher.newCode': 'Nouvelle session de code',
+  'launcher.newSafeCode': 'Nouvelle session SafeCode',
+  'launcher.newProject': 'Nouveau projet',
+  'projectFolder.chipLabel': 'Dossier de projet : {name}',
+  'projectFolder.recent': 'Récents',
+  'projectFolder.openFolder': 'Ouvrir un dossier…',
+  'projectFolder.title': 'Ouvrir un dossier de projet',
+  'projectFolder.description':
+    'Une session de code travaille dans un dossier de projet — elle y lit et y écrit des fichiers. Choisissez un dossier pour commencer.',
+  'projectFolder.open': 'Ouvrir le dossier',
+  'projectFolder.knownFolders': 'Vos dossiers',
+  'projectFolder.noKnownFolders':
+    'Aucun dossier de projet pour l’instant. Ouvrez-en d’abord un sur le poste de bureau.',
+  'projectFolder.cancel': 'Annuler et abandonner cette session',
+  'projectFolder.branchLabel': 'Branche : {name}',
+  'projectFolder.copyBranch': 'Copier le nom de la branche',
+  'projectFolder.showInExplorer': 'Afficher dans l’explorateur',
+  'projectFolder.copyPath': 'Copier le chemin',
+  'projectFolder.binding': 'Ouverture du dossier…',
+  'projectFolder.error':
+    'Impossible d’ouvrir ce dossier. Veuillez en choisir un autre.',
+
+  // ── Barre supérieure (NexusTopBar) ─────────────────────────────────────
+  'topbar.showSidebar': 'Afficher la barre latérale',
+  'topbar.collapseSidebar': 'Replier la barre latérale',
+  'topbar.search': 'Rechercher dans les conversations',
+  'transcriptSearch.title': 'Rechercher dans les conversations',
+  'transcriptSearch.placeholder': 'Rechercher dans toutes les conversations…',
+  'transcriptSearch.regex': 'Expression régulière',
+  'transcriptSearch.caseSensitive': 'Respecter la casse',
+  'transcriptSearch.close': 'Fermer la recherche',
+  'transcriptSearch.idleHint': 'Saisissez du texte pour rechercher dans vos conversations — messages, réponses et activité des outils.',
+  'transcriptSearch.hitTimesOne': '1 résultat',
+  'transcriptSearch.hitTimes': '{count} résultats',
+  'transcriptSearch.recent': 'Recherches récentes',
+  'transcriptSearch.clearHistory': 'Effacer',
+  'transcriptSearch.titleMatch': 'titre',
+  'transcriptSearch.progress': 'Recherche… {scanned}/{total}',
+  'transcriptSearch.summary': '{conversations} conversations · {matches} résultats',
+  'transcriptSearch.noResults': 'Aucun résultat trouvé.',
+  'transcriptSearch.truncated': 'Trop de résultats — les plus pertinents sont affichés. Affinez votre recherche.',
+  'transcriptSearch.unavailable': 'Recherche indisponible — impossible de résoudre l’emplacement de stockage des sessions.',
+  'transcriptSearch.badPattern': 'Cette expression régulière n’est pas valide. {detail}',
+  'transcriptSearch.searchFailed': 'La recherche a échoué. Veuillez réessayer.',
+  'topbar.settings': 'Paramètres',
+  'topbar.backgroundTasks': 'Tâches en arrière-plan',
+  'topbar.showSidePanel': 'Afficher le panneau latéral',
+  'topbar.hideSidePanel': 'Masquer le panneau latéral',
+  'topbar.openBrowserWindow': 'Ouvrir une fenêtre de navigateur',
+  'topbar.toggleAgentZone': 'Afficher ou masquer la zone de navigation de l’agent',
+  'topbar.agentZone': 'Zone de navigation de l’agent',
+  'topbar.sessionShutdown': 'Arrêtée',
+  'topbar.sessionTabs': 'Sessions d’équipe',
+  'topbar.sessionTabsMoreOne': '1 coéquipier de plus',
+  'topbar.sessionTabsMore': '{count} coéquipiers de plus',
+  'teamMessage.kindMessage': 'Message',
+  'teamMessage.kindTurnEnd': 'A rendu compte',
+  'teamMessage.kindShutdown': 'Arrêt en cours',
+  'teamMessage.kindSystem': 'Avis système',
+  'teamMessage.untrusted': 'Non fiable',
+  'teamMessage.openTeammate': 'Ouvrir le coéquipier {name}',
+  'teamMessage.spawnEyebrow': 'Coéquipier démarré',
+  'teamMessage.spawnRunning': 'Travaille dans sa propre session',
+  'teamMessage.spawnStarting': 'Démarrage…',
+  'teamMessage.spawnOpen': 'Ouvrir',
+  'teamMessage.expand': 'Afficher le message',
+  'topbar.importFrom': 'Importer depuis {source}',
+  'topbar.remoteDevicesOne': '1 appareil distant connecté',
+  'topbar.remoteDevices': '{count} appareils distants connectés',
+  'import.title': 'Importer depuis {source}',
+  'import.description': 'Importez vos sessions, extensions et compétences existantes dans {product}.',
+  'import.tab.sessions': 'Sessions',
+  'import.tab.memory': 'Mémoire',
+  'import.tab.plugins': 'Extensions',
+  'import.tab.skills': 'Compétences',
+  'import.tab.comingSoon': 'Bientôt disponible',
+  'import.sourceLine': '{count} sessions · {path}',
+  'import.refresh': 'Actualiser',
+  'import.untitled': 'Session sans titre',
+  'import.rowMeta': '{project} · {when} · {size}',
+  'import.action': 'Importer',
+  'import.importing': 'Importation…',
+  'import.imported': 'Importée',
+  'import.alreadyImported': 'Déjà importée : ouvrez-la depuis la barre latérale',
+  'import.open': 'Ouvrir',
+  'import.retry': 'Réessayer',
+  'import.notImportable': 'Transcription de sous-agent : importation impossible',
+  'import.empty': 'Aucune session trouvée dans {path}.',
+  'import.loading': 'Recherche des sessions…',
+  'import.listError': 'Impossible de lire la liste des sessions. {message}',
+  'import.importError': 'Échec de l’importation. {message}',
+  'import.showingRange': 'Affichage de {from}–{to} sur {total}',
+  'import.pagePrevAria': 'Page précédente',
+  'import.pageNextAria': 'Page suivante',
+  'import.pageAria': 'Page {page}',
+  'import.skills.loading': 'Recherche des compétences…',
+  'import.skills.sourceLine': '{count} compétences · {path}',
+  'import.skills.empty': 'Aucune compétence trouvée dans {path}.',
+  'import.skills.listError': 'Impossible de lire la liste des compétences. {message}',
+  'import.skills.fileCount': '{count} fichiers',
+  'import.skills.alreadyImported': 'Déjà dans vos compétences {product}',
+  'import.memory.loading': 'Recherche de la mémoire des projets…',
+  'import.memory.sourceLine': '{count} projets · {path}',
+  'import.memory.empty': 'Aucune mémoire de projet trouvée dans {path}.',
+  'import.memory.listError': 'Impossible de lire la liste de la mémoire. {message}',
+  'import.memory.fileCount': '{count} fichiers',
+  'import.memory.update': 'Mettre à jour',
+  'import.memory.alreadyImported': 'Tous les fichiers de mémoire sont déjà importés',
+  'import.memory.global.name': 'Mémoire et instructions globales',
+  'import.memory.global.dest': 'Fusionné dans {path}',
+  'import.memory.showFiles': 'Afficher les fichiers',
+  'import.memory.hideFiles': 'Masquer les fichiers',
+  'import.memory.fileImported': 'Déjà importé',
+
+  // ── Sélecteur de modèle (NexusModelPicker) ─────────────────────────────
+  'modelPicker.selectModel': 'Sélectionner un modèle',
+  'modelPicker.search': 'Rechercher des modèles…',
+  'modelPicker.noModels': 'Aucun modèle disponible',
+  'modelPicker.providerSettings': 'Paramètres du fournisseur…',
+  'modelPicker.price': '{input} entrée · {output} sortie',
+  'modelPicker.quota.five_hour': '5 h',
+  'modelPicker.quota.daily': 'Jour',
+  'modelPicker.quota.weekly': 'Semaine',
+  'modelPicker.quota.monthly': 'Mois',
+  'modelPicker.quota.freeRequests': 'Req. gratuites',
+  'modelPicker.quota.balance': 'Solde',
+  'modelPicker.quota.limit_remaining': 'Limite restante',
+  'modelPicker.quota.available': 'Disponible',
+  'modelPicker.quota.spent_day': 'Aujourd’hui',
+  'modelPicker.quota.spent_week': 'Cette semaine',
+  'modelPicker.quota.spent_month': 'Ce mois',
+  'modelPicker.quota.spent_total': 'Dépensé',
+  'modelPicker.teammateLocked': 'Un coéquipier conserve le modèle avec lequel il a été créé. Il ne peut pas être modifié ici.',
+  'modelPicker.latest': 'Dernière',
+  'modelPicker.latestVersion': 'Dernière · {version}',
+  'modelPicker.pinned': 'Version épinglée',
+  'modelPicker.preview': 'Préversion',
+  'modelPicker.previewHint': 'Ne fait pas partie de « Dernière » ; peut être retirée à tout moment.',
+  'modelPicker.providerMenu': 'Options de {name}',
+  'modelPicker.addPinned': 'Ajouter une version épinglée',
+  'modelPicker.previewSection': 'Préversions',
+  'modelPicker.alreadyAdded': 'Ajouté',
+  'modelPicker.editProvider': 'Modifier…',
+  'modelPicker.defaultForNewSessions': 'Par défaut pour les nouvelles sessions',
+  'composerEffort.label': 'Effort',
+  'composerEffort.faster': 'Plus rapide',
+  'composerEffort.smarter': 'Plus intelligent',
+  'composerEffort.recommended': 'Recommandé',
+  'composerEffort.help': 'Le temps de réflexion du modèle avant de répondre. S’applique à cette session uniquement. Les nouvelles sessions utilisent la valeur par défaut du sélecteur de modèle.',
+  'composerEffort.helpAria': 'À propos de l’effort',
+  'composerEffort.triggerAria': 'Effort : {name}',
+  'composerEffort.stopRecommendedAria': '{name} (recommandé)',
+  'composerEffort.teammateLocked': 'Un coéquipier conserve l’effort avec lequel il a été créé. Il ne peut pas être modifié ici.',
+  'composerEffort.tier.none': 'Aucun',
+  'composerEffort.tier.minimal': 'Minimal',
+  'composerEffort.tier.low': 'Faible',
+  'composerEffort.tier.medium': 'Moyen',
+  'composerEffort.tier.high': 'Élevé',
+  'composerEffort.tier.xhigh': 'Très élevé',
+  'composerEffort.tier.max': 'Maximal',
+  'composerEffort.tier.default': 'Par défaut',
+
+  // ── Bandeau d'autorisation ─────────────────────────────────────────────
+  'permission.allowToRun': 'Autoriser {tool} à s’exécuter ?',
+  'permission.deny': 'Refuser',
+  'permission.allowOnce': 'Autoriser une fois',
+  'permission.alwaysAllow': 'Toujours autoriser',
+  'permission.allowFolder': 'Autoriser ce dossier',
+  'permission.feedbackPlaceholder':
+    'Facultatif : indiquez au modèle ce qu’il doit faire autrement…',
+
+  // ── Bandeau de validation du plan (mode planification) ─────────────────
+  'planEnter.title': 'Passer en mode planification ?',
+  'planEnter.body':
+    '{product} souhaite passer en mode planification pour explorer et concevoir une approche de mise en œuvre. Aucun code ne sera modifié tant que vous n’avez pas validé le plan.',
+  'planEnter.approve': 'Oui, passer en mode planification',
+  'planEnter.reject': 'Non, commencer la mise en œuvre maintenant',
+  'planApproval.title': 'Prêt à coder ?',
+  'planApproval.viewPlan': 'Voir le plan',
+  'planApproval.panelTitle': 'Plan',
+  'planApproval.close': 'Fermer le plan',
+  'planApproval.description':
+    'Validez ce plan pour commencer la mise en œuvre, ou poursuivez la planification.',
+  'planApproval.approve': 'Valider et démarrer',
+  'planApproval.keepPlanning': 'Non, continuer à planifier',
+  'planApproval.feedbackPlaceholder': 'Facultatif : que faut-il changer ?',
+
+  // ── Indicateur de consommation de jetons ───────────────────────────────
+  'tokenUsage.contextUsed': 'Contexte utilisé à {pct} %',
+  'tokenUsage.contextSummary': 'Contexte {used} / {window} ({pct} %)',
+  'tokenUsage.contextFraction': '{used} / {window} ({pct} %)',
+  'tokenUsage.contextWindow': 'Fenêtre de contexte',
+  'tokenUsage.untilAutoCompact': '{amount} avant le compactage automatique',
+  'tokenUsage.autoCompactOff': 'Le compactage automatique est désactivé',
+  'tokenUsage.autoCompactHandle': 'Seuil de compactage automatique',
+  'tokenUsage.autoCompactHandleAuto': 'Automatique · compacte à {threshold}',
+  'tokenUsage.autoCompactHandleFixed': 'Compacte à {threshold}',
+  'tokenUsage.autoCompactNextMessage': 'Compactage au prochain message',
+  'tokenUsage.autoCompactLockedManaged': 'La fenêtre de compactage est fixée par les paramètres gérés',
+  'tokenUsage.autoCompactLockedProject': 'La fenêtre de compactage est fixée par les paramètres du projet',
+  'tokenUsage.autoCompactLockedFlag': 'La fenêtre de compactage est fixée par une option de lancement',
+  'tokenUsage.autoCompactSaveFailed': 'Impossible d\'enregistrer la fenêtre de compactage : {error}',
+  'tokenUsage.compactSession': 'Compacter',
+  'tokenUsage.planUsageLimits': 'Limites d\'utilisation du forfait',
+  'tokenUsage.planUsageLimitsNamed': 'Limites d\'utilisation du forfait · {plan}',
+  'tokenUsage.planSummary': '{pct} % de la {window}',
+  'tokenUsage.windowHeadline': '{pct} % de la {window}',
+  'tokenUsage.percent': '{pct} %',
+  'tokenUsage.resetsIn': 'Réinitialisation dans {duration}',
+  'tokenUsage.resetsAt': 'Réinitialisation {time}',
+  'tokenUsage.durationHrMin': '{hours} h {minutes} min',
+  'tokenUsage.durationMin': '{minutes} min',
+  'tokenUsage.window.five_hour': 'Limite sur 5 heures',
+  'tokenUsage.window.daily': 'Limite quotidienne',
+  'tokenUsage.window.weekly': 'Hebdomadaire · tous les modèles',
+  'tokenUsage.window.monthly': 'Limite mensuelle',
+  'tokenUsage.windowShort.five_hour': 'limite sur 5 heures',
+  'tokenUsage.windowShort.daily': 'limite quotidienne',
+  'tokenUsage.windowShort.weekly': 'limite hebdomadaire',
+  'tokenUsage.windowShort.monthly': 'limite mensuelle',
+  'tokenUsage.window.freeRequests': 'Requêtes aux modèles gratuits aujourd\'hui',
+  'tokenUsage.windowShort.freeRequests': 'requêtes aux modèles gratuits',
+  'tokenUsage.amountSummary': '{label} {amount}',
+  'tokenUsage.credits': 'Crédits',
+  'tokenUsage.amount.balance': 'Solde de crédits',
+  'tokenUsage.amount.limit_remaining': 'Limite restante de la clé',
+  'tokenUsage.amount.available': 'Disponible',
+  'tokenUsage.balanceNote.needs_key':
+    'Le solde du compte nécessite une clé de gestion ; ajoutez-en une dans les paramètres de ce fournisseur. La limite d’une clé est un plafond de dépenses, pas un solde.',
+  'tokenUsage.balanceNote.unavailable':
+    'Impossible de lire le solde du compte ; vérifiez la clé de gestion dans les paramètres de ce fournisseur.',
+  'tokenUsage.notAvailable': 'n/d',
+  'tokenUsage.balanceNote.help': 'Pourquoi le solde est-il indisponible ?',
+  'tokenUsage.amount.spent_day': 'Dépensé aujourd\'hui',
+  'tokenUsage.amount.spent_week': 'Dépensé cette semaine',
+  'tokenUsage.amount.spent_month': 'Dépensé ce mois-ci',
+  'tokenUsage.amount.spent_total': 'Total dépensé',
+  'tokenUsage.contextUsedCached': 'Contexte utilisé à {pct} % · dernier tour {cachePct} % en cache',
+  'tokenUsage.withLimitReached': '{label} · Limite d’utilisation atteinte',
+  'tokenUsage.cacheHeadline': 'cache {pct} %',
+
+  // ── Interface de l'outil de question ───────────────────────────────────
+  'ask.oneQuestion': 'Une question pour vous',
+  'ask.manyQuestions': '{count} questions pour vous',
+
+  // ── Surfaces A2UI ──────────────────────────────────────────────────────
+  'a2ui.renderFailed': 'Le rendu de cette surface A2UI a échoué.',
+  'a2ui.moved': '« {id} » a été déplacé — aller à la dernière version',
+  'a2ui.maximize': 'Agrandir',
+  'a2ui.maximizeSurface': 'Agrandir la surface',
+  'a2ui.restore': 'Restaurer',
+  'a2ui.restoreSurface': 'Restaurer la surface',
+
+  // ── Interfaces d'outils génératives ────────────────────────────────────
+  'gen.loadingLocation': 'Chargement du lieu...',
+  'gen.selectedDate': 'Sélection : {date}',
+  'gen.submittingDate': 'Envoi de la date sélectionnée...',
+  'gen.confirm': 'Confirmer',
+  'gen.contactCollected': 'Coordonnées enregistrées',
+  'gen.submittingContact': 'Envoi de vos coordonnées...',
+  'gen.name': 'Nom',
+  'gen.email': 'E-mail',
+  'gen.phone': 'Téléphone',
+  'gen.mapOf': 'Carte de {name}',
+
+  // ── Détail d'outil (capture d'écran) ───────────────────────────────────
+  'tool.openScreenshot':
+    'Ouvrir la capture d’écran complète dans un nouvel onglet',
+  'tool.pageScreenshot': 'Capture d’écran de la page',
+
+  // ── Détail de l'appel d'outil (tool-fallback + surface Plan) ───────────
+  'toolDetail.loadFailed': 'Échec du chargement des détails de l’outil.',
+  'skill.viewInPanel': 'Voir la compétence',
+  'skill.cardLabel': 'Compétence : {name}',
+  'skill.cardLabelLoading': 'Chargement de la compétence : {name}',
+  'skill.cardLabelUnnamed': 'Compétence',
+  'skill.argsLine': 'Arguments : {args}',
+  'skillPanel.empty': 'Aucune compétence ouverte. Ouvrez-en une depuis une carte Compétence.',
+  'skillPanel.loading': 'Chargement des instructions de la compétence…',
+  'skillPanel.loadFailed': 'Échec du chargement des instructions de la compétence.',
+  'skillPanel.loadedListHeader': 'Compétences chargées',
+  'skillPanel.listStats': '{count} compétences · {size}',
+  'skillPanel.pickFromList': 'Sélectionnez une compétence ci-dessus pour afficher ses instructions.',
+  'skillPanel.dynamicBody':
+    'Les instructions de cette compétence sont générées au moment de son invocation. Invoquez-la pour voir ce qu’elle produit.',
+  'skillPanel.invokedBodyNote':
+    'Instructions issues de la dernière invocation de cette compétence dans cette session.',
+  'skillPanel.statusLoaded': 'Chargé',
+  'skillPanel.statusFailed': 'Échec',
+  'skillPanel.invocationFailed': 'Échec du chargement de cette compétence.',
+  'toolDetail.stillRunning': 'L’outil est toujours en cours d’exécution.',
+  'toolDetail.loading': 'Chargement des détails de l’outil...',
+  'toolDetail.loadingFull': 'Chargement des détails complets...',
+  'toolDetail.subAgentWorking': 'Sous-agent au travail…',
+  'toolDetail.errorLabel': 'Erreur :',
+  'toolDetail.cancelledReason': 'Motif de l’annulation :',
+  'toolDetail.argsLabel': 'Arguments :',
+  'toolDetail.resultLabel': 'Résultat :',
+  'toolDetail.resultFullLabel': 'Résultat (original complet) :',
+  'toolDetail.resultCompactLabel': 'Résultat (compact) :',
+  'toolDetail.showCompact': 'Afficher la version compacte',
+  'toolDetail.showFullOriginal': 'Afficher l’original complet',
+  'toolDetail.concurrentRunning': 'Simultané',
+  'toolDetail.concurrentBatch': 'Lot simultané',
+  'toolDetail.noStoredDetails':
+    'Aucun détail d’outil enregistré n’a été trouvé pour cet appel.',
+  'toolDetail.emptyFile': 'Fichier vide.',
+
+  // ── Surfaces de différences ────────────────────────────────────────────
+  'diff.noChanges': 'Aucune modification.',
+  'diff.loading': 'Chargement des différences…',
+  'diff.loadFailed': 'Échec du chargement des différences.',
+  'diff.unavailable': 'Différences indisponibles.',
+  'diff.viewDiff': 'Voir les différences',
+  'diff.turnN': 'Tour {n}',
+  'diff.showSessionChanges': 'Voir les modifications de cette session',
+  'diff.showSessionChangesAria':
+    'Voir les modifications de cette session dans le panneau latéral',
+  'diff.fileCount': '{n} fichiers',
+  'diff.fileCountOne': '{n} fichier',
+  'diff.openFileAria': 'Ouvrir {path}',
+  'diff.newFileBadge': 'nouveau',
+  'diff.diffLabel': 'différences',
+  'diff.replaceAll': 'Tout remplacer',
+  'diff.selectFilePrompt':
+    'Sélectionnez un fichier modifié ci-dessus pour afficher ses différences.',
+  'diff.noChangesYet': 'Aucune modification pour l’instant.',
+  'diff.wholeSession': 'Session complète',
+  'diff.externalChangeWarning':
+    'Inclut des modifications effectuées en dehors de cette session (entre le tour {from} et le tour {to}).',
+
+  // ── Panneau de fichiers et lignes de fichier ───────────────────────────
+  'filePanel.loadingFile': 'Chargement du fichier…',
+  'filePanel.copyFileContents': 'Copier le contenu du fichier',
+  'filePanel.copyFilePath': 'Copier le chemin du fichier',
+  'filePanel.noContent': 'Aucun contenu.',
+  'filePanel.readUnavailable':
+    'La lecture de fichiers n’est pas disponible sur cet hôte.',
+  'filePanel.readFailed': 'Échec de la lecture du fichier.',
+  'filePanel.saveFailed': 'Échec de l’enregistrement du fichier.',
+  'filePanel.saveUnavailable':
+    'L’enregistrement n’est pas disponible sur cet hôte.',
+  'filePanel.noFileOpen':
+    'Aucun fichier ouvert. Cliquez sur un chemin de fichier dans la transcription pour l’afficher ici.',
+
+  // ── Tâches en arrière-plan (panneau + cartes de résultat) ──────────────
+  'backgroundTasks.back': 'Retour aux tâches en arrière-plan',
+  'backgroundTasks.reloadTranscript': 'Recharger la transcription',
+  'backgroundTasks.taskActions': 'Actions de la tâche',
+  'backgroundTasks.systemPrompt': 'Prompt système',
+  'backgroundTasks.paramsHeader': 'Paramètres',
+  'backgroundTasks.timeoutLabel': 'Délai',
+  'backgroundTasks.timeoutUnbounded':
+    'aucun — s’exécute jusqu’au bout (passé en arrière-plan automatiquement)',
+  'backgroundTasks.timeoutHostKill': '{duration} (arrêt forcé par l’hôte)',
+  'backgroundTasks.backgroundLabel': 'Arrière-plan',
+  'backgroundTasks.backgroundAuto':
+    'détaché automatiquement au-delà du budget de premier plan',
+  'backgroundTasks.descriptionLabel': 'Description',
+  'backgroundTasks.sourceLabel': 'Source',
+  'backgroundTasks.jsSourceHeader': 'Source JS',
+  'backgroundTasks.jsInputsHeader': 'Entrées JS',
+  'backgroundTasks.resultHeader': 'Résultat',
+  'backgroundTasks.commandLabel': 'Commande',
+  'backgroundTasks.promptLabel': 'Prompt',
+  'backgroundTasks.taskLabel': 'Tâche',
+  'backgroundTasks.subAgentFallbackTitle': 'Sous-agent …{id}',
+  'backgroundTasks.startedAt': 'démarré {when}',
+  'backgroundTasks.resumeDefaultText': 'Continue.',
+  'backgroundTasks.category.subagent': 'Sous-agents',
+  'backgroundTasks.category.shell': 'Shell',
+  'backgroundTasks.category.superShell': 'Super Shell',
+  'backgroundTasks.category.runJs': 'Super Edit',
+  'backgroundTasks.category.running': 'En cours',
+  'backgroundTasks.runJsFallbackTitle': 'Super Edit …{id}',
+  'backgroundTasks.superShellFallbackTitle': 'Super Shell …{id}',
+  'backgroundTasks.fastCall.sessionTitle': 'Titre de la session',
+  'backgroundTasks.fastCall.automaticRecall': 'Rappel automatique',
+  'backgroundTasks.fastCall.webFetchExtraction': 'Extraction WebFetch',
+  'backgroundTasks.fastCall.generic': 'Appel au modèle rapide',
+  // En minuscules à dessein : ce sont des pastilles jointes par ' · '.
+  'backgroundTasks.status.running': 'en cours',
+  'backgroundTasks.status.success': 'terminé',
+  'backgroundTasks.status.error': 'échec',
+  'backgroundTasks.status.stopped': 'arrêté',
+  'backgroundTasks.status.unknown': 'terminé',
+  'backgroundTasks.workingDir': 'Répertoire de travail',
+  'backgroundTasks.shellResults': 'Résultats du shell en arrière-plan',
+  'backgroundTasks.subAgentResults':
+    'Résultats du sous-agent en arrière-plan',
+  'backgroundTasks.loadingTranscript': 'Chargement de la transcription…',
+  'backgroundTasks.noMessages': 'Aucun message à afficher pour ce sous-agent.',
+  'backgroundTasks.emptyState':
+    'Aucune tâche en arrière-plan. Lancez un sous-agent avec le mode arrière-plan d’Agent, ou une commande shell avec run_in_background, et elle apparaîtra ici.',
+  'backgroundTasks.resumeTitle': 'Reprendre « {description} »',
+  'backgroundTasks.resumeHint':
+    'Le sous-agent reprend en conservant son contexte précédent. Saisissez une instruction de suivi.',
+  'backgroundTasks.openInDrawer': 'Ouvrir dans Tâches en arrière-plan',
+  'backgroundTasks.view': 'Afficher',
+  'backgroundTasks.stillRunningOne':
+    'Il reste 1 tâche en arrière-plan en cours ; son résultat sera publié ici dès qu’elle sera terminée.',
+  'backgroundTasks.stillRunning':
+    'Il reste {count} tâches en arrière-plan en cours ; les résultats seront publiés ici au fur et à mesure.',
+
+  // ── En-têtes des cartes plan/tâches (TodoSection et tool-plan-stream) ──
+  'plan.verbWorking': 'En cours',
+  'plan.verbDone': 'Terminé',
+  'plan.verbCancelled': 'Annulé',
+  'plan.countTools': '{count} outils',
+  'plan.countToolsOne': '{count} outil',
+  'plan.fileRead': 'Lus {count}',
+  'plan.fileEdited': 'Modifiés {count}',
+  'plan.fileDeleted': 'Supprimés {count}',
+  'plan.runningTarget': 'Exécution de {target}',
+
+  // ── Panneau utilitaire ─────────────────────────────────────────────────
+  'rightPanel.tabPlan': 'Plan',
+  'rightPanel.tabTasks': 'Tâches',
+  'rightPanel.tabDiff': 'Différences',
+  'rightPanel.tabSkill': 'Compétences',
+  'rightPanel.aria': 'Panneau utilitaire',
+  'rightPanel.close': 'Fermer le panneau',
+  'rightPanel.maximize': 'Agrandir le panneau',
+  'rightPanel.restore': 'Restaurer la taille du panneau',
+  'rightPanel.noActivePlan': 'Aucun plan actif.',
+  'rightPanel.comingSoon': '{view} — bientôt disponible.',
+
+  // ── Séparateurs de conversation et bandeau d'erreur fournisseur ────────
+  'thread.providerRequestFailed': 'Échec de la requête au fournisseur',
+  'thread.tryAgain': 'Réessayer',
+  'thread.compactedConversation': 'Conversation compactée',
+  'thread.savedMemory': 'Mémoire enregistrée',
+  'thread.compactingConversation': 'Compactage de la conversation',
+  'thread.setUpModelProvider': 'Configurer un fournisseur de modèles',
+  'thread.openSettings': 'Ouvrir les paramètres',
+  'thread.retrying': 'Nouvelle tentative…',
+  'thread.issueLabel': 'Problème : {kind}',
+  'thread.providerRetriedSummary':
+    '{product} a réessayé la requête {count} fois puis s’est arrêté pour que vous puissiez décider de la suite.',
+  'thread.providerRetriedSummaryOne':
+    '{product} a réessayé la requête {count} fois puis s’est arrêté pour que vous puissiez décider de la suite.',
+  'thread.providerNoRetrySummary':
+    '{product} n’a pas réessayé : le fournisseur a rejeté cette requête d’emblée, la renvoyer telle quelle échouerait de la même façon.',
+  'thread.providerBillingNoRetrySummary':
+    '{product} n’a pas réessayé : le fournisseur a refusé cette requête car le compte n’a plus de crédit, ce qu’aucune nouvelle tentative automatique ne peut corriger.',
+  'thread.providerBillingHint':
+    'Ajoutez des crédits au compte du fournisseur : c’est le solde du compte qui paie les requêtes. La limite de crédit d’une clé d’API plafonne seulement la part de ce solde que la clé peut dépenser ; une clé à qui il reste de la limite échoue donc tant que le compte est vide. Sélectionnez ensuite Réessayer.',
+  'thread.providerRefusalHint':
+    'Le fournisseur a refusé cette requête pour des raisons de sécurité (catégorie : {category}). Reformulez-la ou choisissez un autre modèle dans le sélecteur, puis réessayez.',
+  'thread.providerRefusalHintUncategorized':
+    'Le fournisseur a refusé cette requête pour des raisons de sécurité. Reformulez-la ou choisissez un autre modèle dans le sélecteur, puis réessayez.',
+  'thread.providerLoopGuardHint':
+    'Le fournisseur bloque la répétition d’un même appel d’outils (nom et arguments identiques) sur des tours consécutifs. Exécutez /compact, ou modifiez l’appel répété, avant de réessayer : renvoyer le même historique déclenche la même protection.',
+  'thread.compactedSaved': 'Conversation compactée · {tokens} jetons économisés',
+  'thread.interrupted': 'Interrompue',
+  'thread.providerMissingDescription':
+    'Vous devez avoir au moins un fournisseur de modèles configuré et activé avant d’envoyer un message. Votre brouillon sera restauré à la fermeture de cette boîte de dialogue.',
+  'thread.cancel': 'Annuler',
+  'backgroundTasks.resultCountSingular': '{count} résultat',
+  'backgroundTasks.resultCountPlural': '{count} résultats',
+  'backgroundTasks.completed': 'Terminé',
+  'thread.openSettingsFailed': 'Impossible d’ouvrir les paramètres.',
+  'thread.runtimeConnectionFailed':
+    'La connexion au runtime de l’agent a échoué. Rechargez la fenêtre pour réessayer.',
+
+  // ── ThreadErrorBoundary fallback card ───────────────────────────────────
+  'thread.crashedTitle': 'La conversation a échoué',
+  'thread.crashedBody':
+    'Une erreur de rendu s’est produite dans la conversation. Les autres sessions ne sont pas affectées.',
+  'thread.crashedRetry': 'Réessayer',
+
+  // ── Sélecteur de mode d'autorisation (discussion) ──────────────────────
+  'thread.permissionMode': 'Mode d’autorisation (Shift+Ctrl+M)',
+  'permissionMode.title.default': 'Demander les autorisations',
+  'permissionMode.title.acceptEdits': 'Accepter les modifications',
+  'permissionMode.title.plan': 'Mode planification',
+  'permissionMode.title.bypassPermissions': 'Ignorer les autorisations',
+  'permissionMode.short.default': 'Demander',
+  'permissionMode.short.acceptEdits': 'Accepter',
+  'permissionMode.short.plan': 'Planifier',
+  'permissionMode.short.bypassPermissions': 'Ignorer',
+  'permissionMode.planBannerName': 'Mode planification',
+  'permissionMode.planBannerBody':
+    '· lecture seule pendant que l’agent explore et conçoit. Il vous présentera un plan à valider avant toute modification.',
+
+  // ── Boîte de dialogue d'avertissement « Ignorer les autorisations » ────
+  'bypassDialog.title':
+    'AVERTISSEMENT : exécution en mode « Ignorer les autorisations »',
+  'bypassDialog.body':
+    'En mode « Ignorer les autorisations », l’agent ne vous demandera pas votre accord avant d’exécuter des commandes potentiellement dangereuses. Ce mode ne doit être utilisé que dans un environnement isolé, à accès Internet restreint et facile à restaurer en cas de dommage. En continuant, vous acceptez l’entière responsabilité des actions effectuées dans ce mode.',
+  'bypassDialog.learnMore': 'En savoir plus sur la sécurité',
+  'bypassDialog.accept': 'Oui, j’accepte',
+  'bypassDialog.decline': 'Non, annuler',
+  'bypassDialog.docsUrl': 'https://velloc.app/docs/security',
+
+  // ── Paramètres — cadre et navigation ───────────────────────────────────
+  'settings.title': 'Paramètres',
+  'settings.close': 'Fermer les paramètres',
+  'settings.navAria': 'Paramètres de {product}',
+  'settings.placeholderMigrating':
+    'Cette section est en cours de migration dans l’application et n’est pas encore disponible ici.',
+  'settings.bridgeUnavailable':
+    'Le pont des paramètres n’est pas disponible sur cet hôte.',
+  'settings.loading': 'Chargement…',
+  'settings.resetToDefault': 'Rétablir la valeur par défaut',
+  'settings.editField': 'Modifier {label}',
+  'settings.nav.general': 'Général',
+  'settings.nav.models': 'Modèles',
+  'settings.nav.sessionModels': 'Modèles de session',
+  'settings.nav.mcp': 'MCP',
+  'settings.nav.instructions': 'Instructions',
+  'settings.nav.memory': 'Mémoire',
+  'settings.nav.features': 'Compétences',
+  'settings.nav.plugins': 'Extensions et mods',
+  'settings.nav.remoteAccess': 'Accès à distance',
+  'settings.nav.about': 'À propos',
+
+  // ── Paramètres — Général (profil) ──────────────────────────────────────
+  'settings.general.title': 'Général',
+  'settings.general.profile': 'Profil',
+  'settings.general.fullName': 'Nom complet',
+  'settings.general.fullNamePlaceholder': 'Votre nom',
+  'settings.general.callName': 'Nom d’usage',
+  'settings.general.callNameDescription': 'Comment vous souhaitez être appelé.',
+  'settings.general.callNamePlaceholder': 'Nom d’usage',
+  'settings.general.workRole': 'Rôle',
+  'settings.general.rolePlaceholder': 'Sélectionner un rôle…',
+  'settings.general.instructions': 'Instructions pour {product}',
+  'settings.general.instructionsDescription':
+    'Instructions permanentes ajoutées au prompt système de {product} dans tous les projets. Enregistrées dans votre fichier d’instructions utilisateur ; prend effet dans une nouvelle session.',
+  'settings.general.instructionsConflict':
+    'Ce fichier a changé sur le disque, votre modification n’a donc pas été enregistrée. Votre texte est conservé ci-dessus ; le contenu actuel du disque est affiché ci-dessous — réappliquez votre modification, puis cliquez ailleurs pour enregistrer.',
+  'settings.general.instructionsUnreadable':
+    'Ce fichier existe mais n’a pas pu être lu ; l’édition est désactivée pour éviter de l’écraser. Vérifiez ses autorisations et rouvrez cette page.',
+  'settings.general.instructionsSaveFailed':
+    'Impossible d’enregistrer vos instructions. Votre texte est toujours là : quittez à nouveau le champ pour réessayer.',
+  'settings.general.instructionsPlaceholder':
+    'p. ex. Sois concis. Je préfère TypeScript à JavaScript.',
+  'settings.general.role.engineering': 'Ingénierie',
+  'settings.general.role.product': 'Gestion de produit',
+  'settings.general.role.design': 'Design',
+  'settings.general.role.dataScience': 'Science des données',
+  'settings.general.role.research': 'Recherche',
+  'settings.general.role.marketing': 'Marketing',
+  'settings.general.role.sales': 'Ventes',
+  'settings.general.role.operations': 'Opérations',
+  'settings.general.role.education': 'Éducation',
+  'settings.general.role.legal': 'Juridique',
+  'settings.general.role.finance': 'Finance',
+  'settings.general.role.other': 'Autre',
+
+  // ── Paramètres — Général · Langue (intégrée au groupe Système) ────────
+  'settings.general.uiLanguage': 'Langue d’affichage',
+  'settings.general.languageUnavailable': 'Cette version de {product} ne permet pas de changer la langue d’affichage ici.',
+  'settings.general.languageRestartTip': 'Un redémarrage est nécessaire pour appliquer ce changement.',
+  'settings.general.languageRestartNow': 'Redémarrer maintenant',
+  'settings.general.languageRestarting': 'Redémarrage...',
+  'settings.general.languageRestartFailed': 'Le redémarrage a échoué. Quittez et rouvrez {product} pour appliquer la nouvelle langue.',
+  'settings.general.separateWindow':
+    'Ouvrir les onglets de l’agent dans une fenêtre distincte',
+  'settings.general.separateWindowDescription':
+    'Lorsque cette option est activée, l’agent utilise une fenêtre de navigateur dédiée afin de séparer les onglets automatisés de votre espace de travail.',
+
+  // ── Paramètres — Général · Apparence (intégrée depuis sa page) ─────────
+  'settings.appearance.title': 'Apparence',
+  'settings.appearance.unavailable': 'Cette version de {product} ne permet pas de changer l’apparence ici.',
+  'settings.appearance.mode': 'Mode',
+  'settings.appearance.modeDescription': 'Apparence claire, sombre ou système.',
+  'settings.appearance.modeSystem': 'Système',
+  'settings.appearance.modeLight': 'Clair',
+  'settings.appearance.modeDark': 'Sombre',
+  'settings.appearance.color': 'Couleur d’accent',
+  'settings.appearance.colorDescription': 'Couleur d’accent de l’interface.',
+  'settings.appearance.textSize': 'Taille du texte',
+  'settings.appearance.textSizeDescription': 'Taille du texte de la conversation et de la barre latérale.',
+  'settings.appearance.textSize1': 'Très petit',
+  'settings.appearance.textSize2': 'Compact (par défaut)',
+  'settings.appearance.textSize3': 'Moyen',
+  'settings.appearance.textSize4': 'Grand',
+  'settings.appearance.textSize5': 'Très grand',
+  'settings.appearance.showReasoning': 'Afficher le raisonnement',
+  'settings.appearance.showReasoningDescription': 'Affiche le raisonnement du modèle dans la conversation. Le masquer ne réduit pas la consommation de jetons.',
+  'settings.appearance.swatch.default': 'Par défaut',
+  'settings.appearance.swatch.chrome': 'Bleu clair',
+  'settings.appearance.swatch.grey': 'Gris',
+  'settings.appearance.swatch.blue': 'Bleu',
+  'settings.appearance.swatch.aqua': 'Turquoise',
+  'settings.appearance.swatch.green': 'Vert',
+  'settings.appearance.swatch.citron': 'Citron',
+  'settings.appearance.swatch.orange': 'Orange',
+  'settings.appearance.swatch.rose': 'Rose',
+  'settings.appearance.swatch.violet': 'Violet',
+
+  'settings.models.title': 'Fournisseurs de modèles',
+  'settings.models.errUnauthorized': 'Non autorisé - vérifiez votre clé API',
+  'settings.models.errForbidden':
+    'Interdit - cette clé ne peut pas accéder au point de terminaison',
+  'settings.models.errInvalidBaseUrl':
+    'URL de base invalide - saisissez un point de terminaison API valide',
+  'settings.models.errUnreachable':
+    'Point de terminaison injoignable - vérifiez l’URL ou votre réseau',
+  'settings.models.errTimeout': 'Délai de connexion dépassé - réessayez',
+  'settings.models.errNoModels': 'Connecté, mais aucun modèle n’a été renvoyé',
+  'settings.models.errUnexpected': 'Réponse inattendue du serveur',
+  'settings.models.localNote':
+    'Aucune clé API n’est requise. {product} charge les modèles depuis le serveur Ollama configuré.',
+  'settings.models.chipConnecting': 'Connexion',
+  'settings.models.titleConnecting': 'Connexion...',
+  'settings.models.detailConnecting': 'Récupération des modèles disponibles...',
+  'settings.models.chipConnected': 'Connecté',
+  'settings.models.titleConnected': 'Connecté',
+  'settings.models.modelsFound': '{count} {unit} disponible(s)',
+  'settings.models.unitModel': 'modèle',
+  'settings.models.unitModels': 'modèles',
+  'settings.models.noModelsConfirmed': 'La dernière liste de modèles du fournisseur n\'inclut plus aucun de ces modèles.',
+  'settings.models.detailReady': 'Les paramètres actuels sont prêts à l’emploi.',
+  'settings.models.chipPending': 'Modifications en attente',
+  'settings.models.titleVerification': 'Vérification requise',
+  'settings.models.detailVerify':
+    'Configuration modifiée. Vérifiez-la pour charger les modèles.',
+  'settings.models.chipNotConfigured': 'Non configuré',
+  'settings.models.titleNoProvider': 'Aucun fournisseur configuré',
+  'settings.models.detailAdditionalSetup':
+    'Une configuration supplémentaire est nécessaire avant que ce fournisseur puisse se connecter.',
+  'settings.models.detailSelectProvider':
+    'Sélectionnez un fournisseur pour commencer.',
+  'settings.models.chipFailed': 'Échec',
+  'settings.models.titleFailed': 'Échec de la connexion',
+  'settings.models.aiProviderHint':
+    'Connectez et gérez les fournisseurs d’IA utilisés par {product}.',
+  'settings.models.connected': 'Connecté',
+  'settings.models.notConnected': 'Non connecté',
+  'settings.models.signedIn': 'Connecté',
+  'settings.models.waitingSignIn': 'En attente de la connexion…',
+  'settings.models.signInWith': 'Se connecter avec {provider}',
+  'settings.models.providerFallback': 'fournisseur',
+  'settings.models.thisProviderFallback': 'ce fournisseur',
+  'settings.models.enterCode':
+    'Saisissez ce code sur la page d’autorisation qui vient de s’ouvrir :',
+  'settings.models.useSubscription':
+    'Utilisez votre abonnement existant — aucune clé API nécessaire.',
+  'settings.models.baseUrl': 'URL de base',
+  'settings.models.apiKey': 'Clé API',
+  'settings.models.apiKeyPlaceholder': 'Saisissez votre clé API',
+  'settings.models.apiKeySealedPlaceholder': 'Saisissez une nouvelle clé pour remplacer celle enregistrée',
+  'settings.models.apiKeySaved': 'Enregistrée',
+  'settings.models.apiKeyStoredHint': 'Stockée de manière sécurisée sur cet appareil.',
+  'settings.models.openrouterManagementKey': 'Clé de gestion (facultative)',
+  'settings.models.openrouterManagementKeyHint':
+    'Permet à {product} d’afficher le solde de votre compte OpenRouter : une clé d’API ne peut lire que sa propre limite de dépenses. Créez-en une sur openrouter.ai, dans Settings → Management Keys ; elle sert uniquement à lire le solde.',
+  'settings.models.secretSave': 'Enregistrer',
+  'settings.models.secretRemove': 'Supprimer',
+  'settings.models.secretSaveFailed': 'Impossible d’enregistrer la clé. Réessayez.',
+  'settings.models.enterKeyHint': 'Saisissez la clé API de ce fournisseur.',
+  'settings.models.save': 'Enregistrer',
+  'settings.models.resetConnection': 'Réinitialiser la connexion',
+  'settings.models.loadingCatalog': 'Chargement…',
+  'settings.models.resetTitle': 'Réinitialiser la connexion à {provider} ?',
+  'settings.models.resetDescription':
+    'Cela efface les informations de connexion enregistrées pour {provider}, supprime son état vérifié et rétablit les valeurs par défaut de ce fournisseur.',
+  'settings.models.cancel': 'Annuler',
+  'settings.models.data.title': 'Données des modèles',
+  'settings.models.data.description': 'Informations sur les modèles, comme les limites et les prix, tenues à jour pour la liste des modèles.',
+  'settings.models.data.sourceLabel': 'Source',
+  'settings.models.data.sourceLive': 'En direct',
+  'settings.models.data.sourceCache': 'Copie enregistrée',
+  'settings.models.data.sourceSnapshot': 'Instantané intégré',
+  'settings.models.data.sourceNone': 'Aucune',
+  'settings.models.data.updated': 'Mis à jour {time}',
+  'settings.models.data.updatedUnknown': 'Heure de mise à jour inconnue',
+  'settings.models.data.count': '{count} modèles',
+  'settings.models.data.lastError': 'Dernière erreur : {error}',
+  'settings.models.data.refresh': 'Actualiser les données des modèles',
+  'settings.models.data.refreshing': 'Actualisation en cours',
+  'settings.models.data.unavailable': 'Les données des modèles ne sont pas disponibles pour le moment.',
+  'settings.models.data.refreshFailed': 'Impossible d’actualiser les données des modèles.',
+  'settings.models.modelId': 'Modèle',
+  'settings.models.customPathHintOpenai':
+    'Le style OpenAI ajoute /chat/completions et /models à cette URL — incluez /v1 si votre serveur en a besoin.',
+  'settings.models.customPathHintAnthropic':
+    'Le style Anthropic ajoute /v1/messages et /v1/models à cette URL — indiquez la racine du serveur.',
+
+  // ── Paramètres — Fournisseur personnalisé (page de connexion) ──────────
+  'settings.models.addCustomProvider': '+ Ajouter un fournisseur personnalisé…',
+  'settings.models.addOpencodeZen': '+ Ajouter OpenCode Zen (modèles gratuits)…',
+  'settings.models.opencodeZenHint':
+    'OpenCode Zen est la passerelle de modèles de l\'équipe OpenCode. La clé d\'API est facultative : sans clé, les modèles gratuits utilisent le quota anonyme partagé de Zen (limité par réseau et par jour). Avec ta propre clé sur opencode.ai/zen, les limites passent à ton compte et les modèles payants deviennent accessibles. Les modèles gratuits sont temporaires, et la plupart peuvent utiliser tes prompts pour améliorer le modèle. Seuls les modèles Zen compatibles OpenAI fonctionnent ici : les modèles Claude, GPT et Gemini de Zen passent chacun par un autre point de terminaison.',
+  'settings.models.builtInProviders': 'Fournisseurs intégrés',
+  'settings.models.gatewayProviders': 'Passerelles',
+  'settings.models.customBadge': 'Personnalisé',
+  'settings.models.addCustomProviderTitle':
+    'Ajouter un fournisseur personnalisé',
+  'settings.models.newCustomProvider': 'Nouveau fournisseur personnalisé',
+  'settings.models.providerDetails': 'Détails du fournisseur',
+  'settings.models.providerIcon': 'Icône du fournisseur',
+  'settings.models.providerName': 'Nom du fournisseur',
+  'settings.models.providerNamePlaceholder': 'p. ex. ABC Provider',
+  'settings.models.providerNameExists':
+    'Un fournisseur nommé « {name} » existe déjà.',
+  'settings.models.connection': 'Connexion',
+  'settings.models.trust': 'Confiance',
+  'settings.models.trustOfficial': 'Connexion officielle',
+  'settings.models.trustHint':
+    'Désactivez cette option si la connexion passe par un relais, un proxy, une passerelle ou un autre point de terminaison tiers.',
+  'settings.models.apiCompatibility': 'Compatibilité API',
+  'settings.models.apiCompatOpenai': 'API compatible OpenAI',
+  'settings.models.apiCompatAnthropic': 'API compatible Anthropic',
+  'settings.models.baseUrlPlaceholderOpenai': 'https://api.example.com/v1',
+  'settings.models.baseUrlPlaceholderAnthropic': 'https://api.example.com',
+  'settings.models.apiKeyHint':
+    'Laissez vide si ce point de terminaison ne nécessite pas de clé API.',
+  'settings.models.testAndDiscover': 'Tester et découvrir les modèles',
+  'settings.models.testNotTested': 'Non testé',
+  'settings.models.testSuccessful': 'Connexion réussie',
+  'settings.models.testFailed': 'Échec de la connexion',
+  'settings.models.testModelsFound': '{count} modèles ont été trouvés.',
+  'settings.models.modelsSection': 'Modèles',
+  'settings.models.defaultModel': 'Modèle par défaut',
+  'settings.models.entries.title': 'Modèles',
+  'settings.models.entries.add': 'Ajouter des modèles',
+  'settings.models.entries.addFree': 'Modèles gratuits',
+  'settings.models.entries.otherModels': 'Autres modèles ({count}, non vérifiés)',
+  'settings.models.entries.otherModelsHint': 'Absents de la liste sélectionnée, leurs limites ne sont pas vérifiées : une petite limite de sortie par défaut, pas de contrôle de la réflexion ni d\'image en entrée. Chacun est épinglé à sa version exacte.',
+  'settings.models.entries.unverified': 'Non vérifié',
+  'settings.models.entries.unverifiedHint': 'Absent de la liste sélectionnée : ses limites sont des valeurs par défaut, non vérifiées.',
+  'settings.models.entries.freePickerTitle': 'Ajouter des modèles gratuits {name}',
+  'settings.models.entries.freePickerHint': 'Modèles que {name} propose gratuitement. Chacun est épinglé à sa version exacte, car une version plus récente peut ne pas être gratuite. Le fournisseur peut tout de même exiger une clé API pour les utiliser.',
+  'settings.models.entries.hint': '« Dernière » suit la version la plus récente proposée par {name} ; une version épinglée ne change pas. Seuls ceux-ci apparaissent dans le sélecteur de modèles.',
+  'settings.models.entries.removedNotice': '{name} ne propose plus {count} de vos modèles ; ils ont été retirés : {models}',
+  'settings.models.entries.dismiss': 'Ignorer',
+  'settings.models.entries.listFailed': 'Impossible de charger la liste des modèles de {name}.',
+  'settings.models.entries.retry': 'Réessayer',
+  'settings.models.entries.empty': 'Aucun modèle ajouté pour l\'instant.',
+  'settings.models.entries.remove': 'Retirer {model}',
+  'settings.models.entries.pickerTitle': 'Ajouter des modèles {name}',
+  'settings.models.entries.pickerHint': '« Dernière » suit les mises à niveau d\'une famille ; une version épinglée ne change pas. Seuls les modèles capables d\'appeler des outils sont listés.',
+  'settings.models.entries.pickerSearch': 'Rechercher des modèles',
+  'settings.models.entries.pickerStale': 'Affichage de la dernière liste : l\'actualisation a échoué.',
+  'settings.models.entries.pickerLoading': 'Chargement de la liste des modèles…',
+  'settings.models.entries.pickerNoMatch': 'Aucun modèle ne correspond.',
+  'settings.models.entries.otherVendor': 'Autres',
+  'settings.models.entries.customAdd': 'Ajouter un modèle personnalisé',
+  'settings.models.entries.customSection': 'Modèles personnalisés',
+  'settings.models.entries.customAddTitle': 'Ajouter un modèle {name}',
+  'settings.models.entries.customEditTitle': 'Modifier le modèle',
+  'settings.models.entries.customHint': 'L\'identifiant est envoyé à {name} tel que saisi. Utilisez celui que documente le fournisseur.',
+  'settings.models.entries.customId': 'Identifiant du modèle',
+  'settings.models.entries.customIdPlaceholder': 'p. ex. my-model-v1',
+  'settings.models.entries.customIdInvalid': 'Saisissez un identifiant de modèle sans espace.',
+  'settings.models.entries.customDuplicate': 'Un modèle avec cet identifiant existe déjà.',
+  'settings.models.entries.customName': 'Nom affiché (facultatif)',
+  'settings.models.entries.customContext': 'Fenêtre de contexte (jetons)',
+  'settings.models.entries.customMaxOutput': 'Sortie maximale (jetons)',
+  'settings.models.entries.customFormat': 'Format d\'API',
+  'settings.models.entries.customFormatDefault': 'Valeur par défaut du fournisseur',
+  'settings.models.entries.customVision': 'Entrée visuelle',
+  'settings.models.entries.customReasoning': 'Raisonnement',
+  'settings.models.entries.customSave': 'Enregistrer',
+  'settings.models.entries.customEdit': 'Modifier {model}',
+  'settings.models.entries.customRemove': 'Retirer {model}',
+  'settings.models.entries.groupCustom': 'Personnalisé',
+  'settings.models.entries.formatOpenaiChat': 'OpenAI Chat',
+  'settings.models.entries.formatOpenaiResponses': 'OpenAI Responses',
+  'settings.models.entries.formatAnthropic': 'Anthropic Messages',
+  'settings.models.entries.formatGemini': 'Gemini',
+  'settings.models.entries.deprecated': 'Obsolète',
+  'settings.models.entries.filterAll': 'Tous',
+  'settings.models.entries.added': 'Ajouté',
+  'settings.models.entries.pickerAdd': 'Ajouter la sélection ({count})',
+  'settings.models.entries.latest': 'Dernière',
+  'settings.models.entries.latestNow': 'Dernière · actuellement {version}',
+  'settings.models.entries.price': '{input} en entrée · {output} en sortie par million de jetons',
+  'settings.models.entries.free': 'Gratuit',
+  'settings.models.entries.pinned': 'Version épinglée',
+  'settings.models.entries.preview': 'Préversion',
+  'settings.models.entries.previewHint': 'Ne fait pas partie de « Dernière » ; peut être retirée à tout moment.',
+  'settings.models.entries.previewSection': 'Préversions',
+  'settings.models.entries.previewOnly': 'Préversions uniquement',
+  'settings.models.entries.unavailable': 'Indisponible pour le moment',
+  'settings.models.entries.versions': 'Versions ({count})',
+  'settings.models.entries.showVersions': 'Afficher les versions de {model}',
+  'settings.models.entries.saveFailed': 'Impossible d\'enregistrer la liste des modèles.',
+  'settings.models.selectModel': 'Sélectionnez un modèle',
+  'settings.models.configuredModels': 'Modèles configurés',
+  'settings.models.pendingModels': 'Modèles en attente',
+  'settings.models.noModelsYet': 'Aucun modèle n’a encore été ajouté.',
+  'settings.models.addModel': '+ Ajouter un modèle',
+  'settings.models.discoverModels': 'Découvrir des modèles',
+  'settings.models.modelDetailsRequired': 'Détails du modèle requis',
+  'settings.models.contextWindow': 'Fenêtre de contexte',
+  'settings.models.maxOutputTokens': 'Jetons de sortie max.',
+  'settings.models.tokens': 'jetons',
+  'settings.models.capabilities': 'Capacités',
+  'settings.models.capToolCalling': 'Appel d’outils',
+  'settings.models.capReasoning': 'Raisonnement',
+  'settings.models.capVision': 'Entrée visuelle',
+  'settings.models.capImageGen': 'Génération d’images',
+  'settings.models.capStructuredOutput': 'Sortie structurée',
+  'settings.models.addModelTitle': 'Ajouter un modèle',
+  'settings.models.editModelTitle': 'Modifier le modèle',
+  'settings.models.modelIdLabel': 'ID du modèle',
+  'settings.models.modelIdHint': 'L’identifiant envoyé à l’API du fournisseur.',
+  'settings.models.vendorFiguresHint':
+    'Reconnu comme {model} : la fenêtre de contexte, la sortie maximale et les capacités sont remplies d’après ses valeurs officielles. Vous pouvez les modifier.',
+  'settings.models.displayNameLabel': 'Nom d’affichage',
+  'settings.models.displayNamePlaceholder': 'p. ex. ABC Coder',
+  'settings.models.displayNameHint':
+    'Facultatif. Rempli automatiquement à partir de l’ID du modèle si laissé vide.',
+  'settings.models.modelIdRequired': 'L’ID du modèle est obligatoire.',
+  'settings.models.contextWindowRequired':
+    'La fenêtre de contexte est obligatoire.',
+  'settings.models.maxOutputRequired':
+    'Le nombre maximal de jetons de sortie est obligatoire.',
+  'settings.models.maxOutputExceedsContext':
+    'Le nombre maximal de jetons de sortie ne doit pas dépasser la fenêtre de contexte.',
+  'settings.models.duplicateModelId':
+    'Un modèle portant cet ID existe déjà chez ce fournisseur.',
+  'settings.models.discoverModelsTitle': 'Découvrir des modèles',
+  'settings.models.discoverSearch': 'Rechercher',
+  'settings.models.discoverHint':
+    'Les limites des modèles devront peut-être être complétées manuellement.',
+  'settings.models.discoverNotSupported':
+    'La découverte de modèles n’est pas prise en charge par ce point de terminaison.',
+  'settings.models.discoverManualHint':
+    'Vous pouvez ajouter des modèles manuellement.',
+  'settings.models.addSelected': 'Ajouter la sélection',
+  'settings.models.addProvider': 'Ajouter le fournisseur',
+  'settings.models.saveChanges': 'Enregistrer les modifications',
+  'settings.models.discardChanges': 'Abandonner les modifications',
+  'settings.models.deleteProvider': 'Supprimer le fournisseur…',
+  'settings.models.deleteProviderTitle': 'Supprimer « {name} » ?',
+  'settings.models.deleteProviderDescription':
+    'Cela supprimera ses paramètres de connexion, ses identifiants et ses modèles configurés. Cette action est irréversible.',
+  'settings.models.deleteProviderConfirm': 'Supprimer le fournisseur',
+  'settings.models.providerAdded': '{name} ajouté.',
+  'settings.models.discardUnsavedTitle':
+    'Abandonner les modifications non enregistrées ?',
+  'settings.models.discardUnsavedDescription':
+    'Vos modifications de « {name} » n’ont pas été enregistrées.',
+  'settings.models.keepEditing': 'Continuer à modifier',
+  'settings.models.modelEdit': 'Modifier',
+  'settings.models.modelRemove': 'Retirer',
+  'settings.models.contextLabel': '{value} de contexte',
+  'settings.models.maxOutputLabel': '{value} en sortie max.',
+  'settings.models.addProviderMenu': 'Ajouter un fournisseur',
+  'settings.models.noProvidersAdded': 'Aucun fournisseur ajouté pour l’instant. Utilisez Ajouter un fournisseur pour en connecter un.',
+  'settings.models.defaultBadge': 'Par défaut',
+  'settings.models.providerSettingsAria': 'Paramètres de {name}',
+  'settings.models.removeProviderAria': 'Retirer {name}',
+  'settings.models.removeProvider': 'Retirer le fournisseur',
+  'settings.models.providerActionsAria': 'Plus d’actions pour {name}',
+  'settings.models.setAsDefault': 'Définir par défaut',
+  'settings.models.isDefaultProvider': 'Fournisseur par défaut',
+  'settings.models.kindSubscription': 'Connexion par abonnement',
+  'settings.models.kindApiKey': 'Clé API',
+  'settings.models.kindLocal': 'Local',
+  'settings.models.kindCustom': 'Point de terminaison personnalisé',
+  'settings.models.mod.kindPlugin': 'Fournisseur d’extension',
+  'settings.models.mod.pluginProviders': 'Fournisseurs d’extensions',
+  'settings.models.mod.providedBy': 'De l’extension {plugin}',
+  'settings.models.mod.providedByVersion': 'De l’extension {plugin} (version {version})',
+  'settings.models.mod.methodTitle': 'Se connecter avec',
+  'settings.models.mod.methodApiKey': 'Clé API',
+  'settings.models.mod.methodAnonymous': 'Anonyme',
+  'settings.models.mod.methodLogin': 'Se connecter',
+  'settings.models.mod.anonymousHint': 'Utilisez ce fournisseur sans clé ni compte. Les limites sont fixées par le fournisseur.',
+  'settings.models.mod.anonymousUse': 'Utiliser {name} sans clé',
+  'settings.models.mod.anonymousOn': 'Ce fournisseur est utilisé sans clé.',
+  'settings.models.mod.signOut': 'Se déconnecter',
+  'settings.models.mod.signInAgain': 'Se reconnecter',
+  'settings.models.mod.signedOutNote': 'Votre connexion à {name} est terminée. Reconnectez-vous pour continuer à l’utiliser.',
+  'settings.models.mod.signInFailedToStart': 'Impossible de lancer la connexion : {error}',
+  'settings.models.mod.signIn.title': 'Se connecter à {name}',
+  'settings.models.mod.signIn.description': 'Suivez les étapes pour vous connecter à {name}.',
+  'settings.models.mod.signIn.working': 'Traitement en cours…',
+  'settings.models.mod.signIn.openUrlText': 'Ouvrez la page de connexion pour continuer.',
+  'settings.models.mod.signIn.openUrlButton': 'Ouvrir la page de connexion',
+  'settings.models.mod.signIn.codeText': 'Saisissez ce code sur la page de connexion :',
+  'settings.models.mod.signIn.codeWaiting': 'En attente de la fin de votre connexion…',
+  'settings.models.mod.signIn.continue': 'Continuer',
+  'settings.models.mod.signIn.cancel': 'Annuler',
+  'settings.models.mod.signIn.close': 'Fermer',
+  'settings.models.mod.signIn.doneTitle': 'Vous êtes connecté.',
+  'settings.models.mod.signIn.failedTitle': 'Échec de la connexion',
+  'settings.models.mod.signIn.failedTimeout': 'La connexion a pris trop de temps et a été arrêtée.',
+  'settings.models.mod.signIn.failedUnavailable': 'L’extension qui gère cette connexion n’a pas pu être démarrée.',
+  'settings.models.mod.signIn.failedUnanswered': 'L’extension s’est arrêtée sans terminer la connexion.',
+  'settings.models.mod.signIn.failedNoHook': 'Cette extension ne propose pas de connexion.',
+  'settings.models.mod.signIn.failedInvalid': 'L’extension a renvoyé un résultat de connexion inutilisable.',
+  'settings.models.mod.signIn.failedWrite': 'La connexion a réussi, mais elle n’a pas pu être enregistrée.',
+  'settings.models.mod.signIn.answerFailed': 'Impossible d’envoyer votre réponse : {error}',
+  'settings.models.mod.save': 'Enregistrer',
+  'settings.models.mod.saved': 'Enregistré',
+  'settings.models.mod.saveFailed': 'Échec de l’enregistrement : {error}',
+  'settings.models.mod.problemRequired': 'Saisissez une valeur.',
+  'settings.models.mod.problemPattern': 'Cette valeur n’a pas le format attendu.',
+  'settings.models.mod.problemOption': 'Choisissez l’une des options.',
+  'settings.models.mod.choose': 'Choisir…',
+  'settings.models.mod.missingTitle': 'Extension manquante',
+  'settings.models.mod.missingBody': 'L’extension qui fournissait {name} n’est pas installée : ce fournisseur ne peut donc pas être utilisé ni modifié. Ses réglages enregistrés sont conservés : réinstallez ou réactivez l’extension pour l’utiliser de nouveau, ou supprimez le fournisseur.',
+  'settings.models.mod.keptHeader': 'Réglages conservés',
+  'settings.models.mod.keptNothing': 'Rien n’est enregistré pour lui.',
+  'settings.models.mod.keptApiKey': 'Une clé API est enregistrée.',
+  'settings.models.mod.keptSecrets': '{count} identifiants enregistrés.',
+  'settings.models.mod.keptAccount': 'Connecté en tant que {account}.',
+  'settings.models.mod.keptAnonymous': 'Réglé pour être utilisé sans clé.',
+  'settings.models.mod.keptVersion': 'Dernière utilisation avec la version {version}.',
+  'settings.models.mod.optionsLoadFailed': 'Impossible de lire les réglages enregistrés de cette extension.',
+  'settings.models.reorderProviderAria': 'Réorganiser {name} dans le sélecteur de modèles : faites glisser, ou appuyez sur les flèches haut et bas',
+  'settings.models.reorderProviderHint': 'Faites glisser pour changer l’ordre dans le sélecteur de modèles',
+  'settings.models.backToProviders': 'Fournisseurs',
+  'settings.models.removeProviderTitle': 'Retirer {name} ?',
+  'settings.models.removeProviderDescription': 'Cela efface la clé enregistrée et les paramètres de connexion de {name}. Vous pourrez l’ajouter de nouveau plus tard avec Ajouter un fournisseur.',
+  'settings.models.removeProviderConfirm': 'Retirer le fournisseur',
+
+  // ── Paramètres — MCP ───────────────────────────────────────────────────
+  'settings.mcp.title': 'Serveurs MCP',
+  'settings.mcp.addServer': 'Ajouter un serveur',
+  'settings.mcp.infoBanner':
+    'Les modifications des serveurs MCP prennent effet dans une nouvelle session.',
+  'settings.mcp.none': 'Aucun serveur MCP configuré.',
+  'settings.mcp.loadFailed':
+    'Échec du chargement des serveurs MCP : {error}',
+  'settings.mcp.removeFailed': 'Échec de la suppression de « {id} » : {error}',
+  'settings.mcp.saveFailed': 'Échec de l’enregistrement : {error}',
+  'settings.mcp.toolSingular': 'outil',
+  'settings.mcp.toolPlural': 'outils',
+  'settings.mcp.edit': 'Modifier',
+  'settings.mcp.editAria': 'Modifier {id}',
+  'settings.mcp.remove': 'Retirer',
+  'settings.mcp.removeAria': 'Retirer {id}',
+  'settings.mcp.import': 'Importer (collez une configuration JSON mcpServers)',
+  'settings.mcp.serverName': 'Nom du serveur',
+  'settings.mcp.serverNamePlaceholder':
+    'Laissez vide pour utiliser le nom annoncé par le serveur',
+  'settings.mcp.transport': 'Transport',
+  'settings.mcp.stdioDesc': 'Commande locale (lancée sur cet appareil)',
+  'settings.mcp.httpDesc': 'Serveur distant via HTTP',
+  'settings.mcp.command': 'Commande (id d’outil ou chemin absolu)',
+  'settings.mcp.args': 'Arguments (séparés par des espaces)',
+  'settings.mcp.env':
+    'Environnement (KEY=VALUE par ligne — peut contenir des secrets)',
+  'settings.mcp.url': 'URL',
+  'settings.mcp.headers':
+    'En-têtes (Name: Value ou Name=Value par ligne — peuvent contenir des secrets)',
+  'settings.mcp.headersPlaceholder': 'Authorization: Bearer YOUR_TOKEN',
+  'settings.mcp.cancel': 'Annuler',
+  'settings.mcp.save': 'Enregistrer et connecter',
+  'settings.mcp.testing': 'Test de la connexion…',
+  'settings.mcp.footer':
+    '{product} exécute les serveurs stdio en local et joint les serveurs HTTP via le Model Context Protocol. Les secrets saisis ici restent dans le navigateur et ne sont jamais exposés au moteur d’exécution de l’agent.',
+  'settings.mcp.clipboardEmpty':
+    'Le presse-papiers est vide. Copiez d’abord une configuration JSON mcpServers.',
+  'settings.mcp.clipboardInvalid':
+    'Le presse-papiers ne contient pas de configuration MCP valide. Copiez une configuration JSON (p. ex. un bloc { "mcpServers": { … } }), puis importez-la.',
+  'settings.mcp.urlRequired': 'Le transport HTTP nécessite une URL.',
+  'settings.mcp.commandRequired': 'Le transport stdio nécessite une commande.',
+  'settings.mcp.alreadyExists':
+    'Un serveur nommé « {id} » existe déjà. Modifiez-le plutôt.',
+  'settings.mcp.connectFailed': 'Connexion impossible : {error}',
+  'settings.mcp.connectFailedGeneric':
+    'Impossible de se connecter au serveur. Vérifiez l’URL / la commande et le jeton, puis réessayez.',
+  'settings.mcp.noName':
+    'Connecté, mais le serveur n’a pas annoncé de nom. Saisissez un nom et enregistrez.',
+
+  // ── Paramètres — Compétences ───────────────────────────────────────────
+  'settings.features.title': 'Compétences',
+  'settings.features.infoBanner':
+    'Les modifications des compétences prennent effet dans une nouvelle session.',
+  'settings.features.installed': 'Compétences installées',
+  'settings.features.noneInstalled':
+    'Aucune compétence installée pour le moment. Installez-en depuis la liste ci-dessous.',
+  'settings.features.bundled': 'Compétences fournies',
+  'settings.features.loadingFeatures': 'Chargement des fonctionnalités…',
+  'settings.features.loadFailed': 'Échec du chargement des fonctionnalités.',
+  'settings.features.noFeatures': 'Aucune fonctionnalité disponible.',
+  'settings.features.loadedFromFile': 'Chargé depuis ~/{dir}/settings.json',
+  'settings.features.usingDefaults':
+    'Valeurs par défaut utilisées — aucune surcharge enregistrée pour le moment.',
+  'settings.features.takesEffect': 'Prend effet à la prochaine session.',
+  'settings.features.slashCommands': 'Commandes slash ({count})',
+  'settings.features.appliesTo': 'S’applique à',
+  'settings.features.onlyInjected':
+    'Injecté uniquement dans les sessions de type {type}',
+  'settings.features.install': 'Installer des compétences',
+  'settings.features.installDescription':
+    'Agent Skills officiels d’Anthropic et d’OpenAI. Installation dans',
+  'settings.features.catalogUnavailable':
+    'Catalogue de compétences indisponible : impossible de charger {command}.',
+  'settings.features.loadingCatalog': 'Chargement du catalogue de compétences…',
+  'settings.features.searchPlaceholder':
+    'Rechercher des compétences par nom ou description…',
+  'settings.features.allInstalled':
+    'Toutes les compétences du catalogue sont installées.',
+  'settings.features.noMatch': 'Aucune compétence ne correspond à « {query} ».',
+
+  // ── Paramètres — Cartes de compétences / notifications ─────────────────
+  'settings.skills.install': 'Installer',
+  'settings.skills.uninstall': 'Désinstaller',
+  'settings.skills.badgeLocal': 'Locale',
+  'settings.skills.badgeImported': 'Importée',
+  'settings.skills.installed': '{name} installé',
+  'settings.skills.uninstalled': '{name} désinstallé',
+  'settings.skills.uninstallFailed': 'Échec de la désinstallation : {error}',
+  'settings.skills.installFailed': 'Échec de l’installation : {error}',
+
+  // ── Settings — Accès à distance ─────────────────────────────────
+  'settings.remoteAccess.title': 'Accès à distance',
+  'settings.remoteAccess.description': 'Permet à un autre appareil de se connecter à ce runtime {product}.',
+  'settings.remoteAccess.enable': 'Activer l’accès à distance',
+  'settings.remoteAccess.otherAddresses': 'Autres adresses disponibles',
+  'settings.remoteAccess.recommendedBadge': 'Recommandée',
+  'settings.remoteAccess.addressThisDeviceName': 'Cet appareil uniquement',
+  'settings.remoteAccess.copyLinkPrimary': 'Copier le lien de connexion',
+  'settings.remoteAccess.securityTitle': 'Sécurité de l’accès',
+  'settings.remoteAccess.securityNoteTitle': 'Le lien d’accès fonctionne comme un mot de passe',
+  'settings.remoteAccess.devicesTitle': 'Appareils connectés',
+  'settings.remoteAccess.devicesEmpty': 'Aucun appareil connecté',
+  'settings.remoteAccess.securityDetails': 'Détails de sécurité',
+  'settings.remoteAccess.securityDetailsBody': 'L’accès à distance utilise HTTP simple : le trafic sur le réseau local n’est pas chiffré. Utilisez-le sur un réseau de confiance ou via un VPN.',
+  'settings.remoteAccess.devicesConnectedOne': '1 appareil connecté',
+  'settings.remoteAccess.devicesConnected': '{count} appareils connectés',
+  'settings.remoteAccess.connectTitle': 'Se connecter depuis un autre appareil',
+  'settings.remoteAccess.connectDescription': 'Copiez le lien et ouvrez-le dans un navigateur sur l’autre appareil. Une seule fois suffit.',
+  'settings.remoteAccess.securityNote': 'Toute personne qui le possède peut se connecter à ce {product}. Ne le partagez qu’avec des appareils de confiance.',
+  'settings.remoteAccess.statusOff': 'L’accès à distance est désactivé.',
+  'settings.remoteAccess.statusStarting': 'Démarrage du listener…',
+  'settings.remoteAccess.statusRunning': 'En cours',
+  'settings.remoteAccess.statusPortInUse':
+    'Le port {port} est déjà utilisé par une autre application — redémarrez {product} pour en choisir un libre.',
+  'settings.remoteAccess.statusError': 'Le listener n’a pas pu démarrer.',
+  'settings.remoteAccess.deviceBrowserOnOs':
+    '{browser} sur {os}',
+  'settings.remoteAccess.deviceUnnamed':
+    'Navigateur non identifié',
+  'settings.remoteAccess.deviceConnectedSince': 'Connecté {since}',
+  'settings.remoteAccess.deviceJustNow':
+    'à l\'instant',
+  'settings.remoteAccess.deviceForMinutes':
+    'il y a {count} min',
+  'settings.remoteAccess.deviceForHours':
+    'il y a {count} h',
+  'settings.remoteAccess.deviceScopeObserve':
+    'Lecture seule',
+  'settings.remoteAccess.deviceScopeControl': 'Sessions uniquement',
+  'settings.remoteAccess.deviceScopeManager': 'Accès complet',
+  'settings.remoteAccess.cancel': 'Annuler',
+  'settings.remoteAccess.copyLink': 'Copier le lien',
+  'settings.remoteAccess.copied': 'Copié',
+  'settings.remoteAccess.copyFailed': 'Échec de la copie',
+  'settings.remoteAccess.noLinkYet':
+    'Aucun lien d’accès n’est encore disponible — désactivez puis réactivez l’accès à distance pour en générer un nouveau.',
+  'settings.remoteAccess.resetLink': 'Régénérer le lien d’accès',
+  'settings.remoteAccess.resetConfirmTitle': 'Régénérer le lien d’accès ?',
+  'settings.remoteAccess.resetConfirmBody': 'Les liens existants cessent de fonctionner immédiatement, y compris sur les appareils qui les ont mémorisés. Les appareils connectés sont déconnectés et devront utiliser le nouveau lien.',
+  'settings.remoteAccess.resetConfirmButton': 'Régénérer',
+  'settings.remoteAccess.disableConfirmTitle': 'Désactiver l’accès à distance ?',
+  'settings.remoteAccess.disableConfirmBodyOne':
+    '1 appareil est connecté. La désactivation le déconnecte — le lien fonctionnera de nouveau quand vous réactiverez l’accès à distance.',
+  'settings.remoteAccess.disableConfirmBody':
+    '{count} appareils sont connectés. La désactivation les déconnecte — le lien fonctionnera de nouveau quand vous réactiverez l’accès à distance.',
+  'settings.remoteAccess.disableConfirmButton': 'Désactiver',
+  'settings.remoteAccess.confirmEnableTitle': 'Activer l’accès à distance ?',
+  'settings.remoteAccess.confirmEnableBody':
+    'L’accès à distance fonctionne en HTTP en clair : le trafic N’EST PAS chiffré. Ne l’activez que sur un VPN ou un réseau de confiance. Un appareil distant disposant du lien d’accès peut lire vos sessions et piloter l’agent.',
+  'settings.remoteAccess.confirmEnableButton': 'Activer',
+
+  // ── Paramètres — Extensions ────────────────────────────────────────────
+  'settings.plugins.title': 'Extensions et mods',
+  'settings.plugins.reloadBanner':
+    'Les modifications des extensions prennent effet immédiatement. Les extensions qui ajoutent des serveurs MCP prennent effet dans une nouvelle session.',
+  'settings.plugins.newFound':
+    'Nouvelles extensions trouvées : {names}. Elles restent désactivées jusqu’à ce que vous les activiez ci-dessous.',
+  'settings.plugins.loading': 'Chargement des extensions…',
+  'settings.plugins.loadFailed': 'Échec du chargement des extensions.',
+  'settings.plugins.installedHeader': 'Extensions et mods installés',
+  'settings.plugins.noneInstalled': 'Aucune extension ni aucun mod installé',
+  'settings.plugins.installFromBelow':
+    'Installez des extensions depuis une place de marché ci-dessous.',
+  'settings.plugins.enabled': 'Activé',
+  'settings.plugins.disabled': 'Désactivé',
+  'settings.plugins.enableAria': 'Activer {name}',
+  'settings.plugins.uninstall': 'Désinstaller',
+  'settings.plugins.moreAria': 'Autres actions pour {name}',
+  'settings.plugins.marketplaces': 'Places de marché',
+  'settings.plugins.noMarketplaces': 'Aucune place de marché configurée.',
+  'settings.plugins.official': 'Officiel',
+  'settings.plugins.builtin': 'Intégrée',
+  'settings.plugins.builtinMarketplaceName': 'Extensions {product}',
+  'settings.plugins.pluginSingular': 'extension',
+  'settings.plugins.pluginPlural': 'extensions',
+  'settings.plugins.refreshing': 'Actualisation',
+  'settings.plugins.noDescription': 'Aucune description.',
+  'settings.plugins.installing': 'Installation…',
+  'settings.plugins.install': 'Installer',
+  'settings.plugins.pluginInstalled': 'Installé',
+  'settings.plugins.fetch': 'Récupérer',
+  'settings.plugins.fetching': 'Récupération…',
+  'settings.plugins.refresh': 'Actualiser',
+  'settings.plugins.retry': 'Réessayer',
+  'settings.plugins.statusFetching': 'Récupération des extensions…',
+  'settings.plugins.statusError': 'Échec de la récupération de la place de marché',
+  'settings.plugins.lastUpdated': 'Dernière mise à jour {time}',
+  'settings.plugins.fetched': 'Récupéré',
+  'settings.plugins.notFetched': 'Pas encore récupéré',
+  'settings.plugins.loadingShort': 'Chargement…',
+  'settings.plugins.fetchRetry':
+    'Échec de la récupération de la place de marché. Cliquez sur Réessayer.',
+  'settings.plugins.notFetchedHint':
+    'Place de marché pas encore récupérée. Cliquez sur Récupérer pour la charger.',
+  'settings.plugins.noPluginsIn': 'Aucune extension dans cette place de marché.',
+  'settings.plugins.filterPlaceholder':
+    'Filtrer les extensions par nom ou description…',
+  'settings.plugins.filterAria': 'Filtrer les extensions',
+  'settings.plugins.typeMoreSingular':
+    'Saisissez encore {n} caractère pour filtrer',
+  'settings.plugins.typeMorePlural':
+    'Saisissez encore {n} caractères pour filtrer',
+  'settings.plugins.matchCount': '{shown} sur {total} correspondent',
+  'settings.plugins.mods.loaded': 'Chargé',
+  'settings.plugins.mods.refused': 'Refusé',
+  'settings.plugins.mods.failed': 'Non chargé',
+  'settings.plugins.mods.crashed': 'Redémarrage',
+  'settings.plugins.mods.dead': 'Arrêté',
+  'settings.plugins.mods.activeInSessions': 'Actif dans {n} session(s)',
+  'settings.plugins.mods.badge': 'Mod',
+  'settings.plugins.providers.consent.title': 'Activer {name} ?',
+  'settings.plugins.providers.consent.intro': '{name} ajoute des fournisseurs de modèles. Vérifiez ce qu’ils peuvent faire avant de l’activer.',
+  'settings.plugins.providers.consent.publisher': 'Publié par {publisher}',
+  'settings.plugins.providers.consent.publisherUnknown': 'L’éditeur n’est pas indiqué.',
+  'settings.plugins.providers.consent.provider': 'Fournisseur : {provider}',
+  'settings.plugins.providers.consent.domains': 'Peut contacter : {domains}',
+  'settings.plugins.providers.consent.noDomains': 'Ne déclare aucun domaine à contacter.',
+  'settings.plugins.providers.consent.secrets': 'Stocke des secrets nommés : {secrets}',
+  'settings.plugins.providers.consent.noSecrets': 'Ne stocke aucun secret qui lui soit propre.',
+  'settings.plugins.providers.consent.readsSecrets': 'Lit ses secrets enregistrés en clair, par exemple pour signer des requêtes.',
+  'settings.plugins.providers.consent.keepsSecrets': 'Ne peut pas lire ses secrets enregistrés en clair.',
+  'settings.plugins.providers.consent.needs': 'Son code reçoit, avec chaque requête : {needs}',
+  'settings.plugins.providers.consent.noNeeds': 'Son code ne reçoit que les informations de base d’une requête (modèle, URL, en-têtes), pas son contenu.',
+  'settings.plugins.providers.consent.signDigest': 'Signe les requêtes à partir d’une empreinte de la requête.',
+  'settings.plugins.providers.consent.signBody': 'Signe les requêtes à partir du corps complet de la requête.',
+  'settings.plugins.providers.consent.standing': 'Un fournisseur de modèles reçoit la conversation qui lui est envoyée : vos messages, vos fichiers joints et les résultats d’outils. N’activez que des fournisseurs auxquels vous faites confiance pour cela.',
+  'settings.plugins.providers.consent.enable': 'Activer',
+  'settings.plugins.providers.consent.cancel': 'Annuler',
+  'settings.plugins.providers.consent.desktopOnly': 'Les fournisseurs ne peuvent être activés que depuis cet ordinateur, où vous pouvez vérifier ce qu’ils peuvent faire.',
+  'settings.plugins.providers.consent.failed': 'Impossible de l’activer : {error}',
+  'settings.plugins.providers.need.system': 'le prompt système',
+  'settings.plugins.providers.need.tools': 'les définitions d’outils',
+  'settings.plugins.providers.need.body': 'toute la requête, conversation comprise',
+  'settings.plugins.providers.need.cwd': 'le dossier dans lequel la session travaille',
+  'settings.plugins.updates.title': 'Mettre à jour les extensions automatiquement',
+  'settings.plugins.updates.autoAria': 'Mettre à jour les extensions automatiquement',
+  'settings.plugins.updates.lastChecked': 'Dernière vérification : {time}',
+  'settings.plugins.updates.neverChecked': 'Aucune recherche de mises à jour pour l’instant',
+  'settings.plugins.updates.checking': 'Recherche de mises à jour…',
+  'settings.plugins.updates.checkNow': 'Vérifier maintenant',
+  'settings.plugins.updates.available': 'Mises à jour disponibles : {count}',
+  'settings.plugins.updates.updateAll': 'Tout mettre à jour',
+  'settings.plugins.updates.unreachable': 'Impossible de vérifier {name}',
+  'settings.plugins.updates.update': 'Mettre à jour',
+  'settings.plugins.updates.updateAria': 'Mettre à jour {name} vers {version}',
+  'settings.plugins.updates.updating': 'Mise à jour…',
+  'settings.plugins.updates.retry': 'Réessayer',
+  'settings.plugins.updates.failed': 'Échec de la mise à jour : {reason}',
+  'settings.plugins.updates.applied': 'Mis à jour vers la version {version}',
+  'settings.plugins.updates.appliedAuto': 'Mis à jour automatiquement vers la version {version}',
+  'settings.plugins.updates.updatedToast': '{name} mis à jour vers la version {version}.',
+  'settings.plugins.updates.rollback': 'Revenir à la version {version}',
+  'settings.plugins.updates.rolledBackToast': '{name} est revenu à la version {version}.',
+  'settings.plugins.updates.availableChip': 'Mise à jour disponible',
+  'settings.plugins.providers.updates.upToDate': 'À jour',
+  'settings.plugins.providers.updates.unchecked': 'Mises à jour pas encore recherchées',
+  'settings.plugins.providers.updates.checkedAt': 'vérifié {time}',
+  'settings.plugins.providers.updates.applied': 'Mis à jour vers la version {version}',
+  'settings.plugins.providers.updates.appliedSilent': 'Mis à jour automatiquement vers la version {version}',
+  'settings.plugins.providers.updates.check': 'Rechercher des mises à jour',
+  'settings.plugins.providers.updates.checking': 'Recherche…',
+  'settings.plugins.providers.updates.waitingTitle': 'La version {version} attend votre approbation',
+  'settings.plugins.providers.updates.waitingBody': 'Elle demande plus que ce que vous avez accepté. La version actuelle reste active jusqu’à votre décision.',
+  'settings.plugins.providers.updates.addedProvider': 'Nouveau fournisseur : {provider}',
+  'settings.plugins.providers.updates.addedDomains': '{id} peut désormais contacter : {domains}',
+  'settings.plugins.providers.updates.addedSecrets': '{id} stocke désormais des secrets nommés : {secrets}',
+  'settings.plugins.providers.updates.addedReadsSecrets': '{id} lit désormais ses secrets enregistrés en clair.',
+  'settings.plugins.providers.updates.addedNeeds': 'Le code de {id} reçoit désormais aussi : {needs}',
+  'settings.plugins.providers.updates.addedSignDigest': '{id} signe désormais les requêtes à partir d’une empreinte de la requête.',
+  'settings.plugins.providers.updates.addedSignBody': '{id} signe désormais les requêtes à partir du corps complet de la requête.',
+  'settings.plugins.providers.updates.approve': 'Approuver et mettre à jour',
+  'settings.plugins.providers.updates.decline': 'Refuser',
+  'settings.plugins.providers.updates.rollback': 'Revenir à la version {version}',
+  'settings.plugins.providers.updates.approvedToast': 'Mis à jour vers la version {version}.',
+  'settings.plugins.providers.updates.declinedToast': 'Version {version} refusée.',
+  'settings.plugins.providers.updates.rolledBackToast': 'Retour à la version {version}.',
+  'settings.plugins.providers.updates.actionFailed': 'Impossible d’effectuer cette action : {error}',
+  'settings.plugins.providers.updates.failedCheck': 'Impossible de rechercher des mises à jour : {kind}',
+  'settings.plugins.providers.updates.failedVersion': 'Impossible de passer à la version {version} : {kind}',
+  'settings.plugins.providers.updates.failure.fetch': 'le téléchargement a échoué',
+  'settings.plugins.providers.updates.failure.integrity': 'le téléchargement ne correspond pas à sa somme de contrôle',
+  'settings.plugins.providers.updates.failure.invalid-archive': 'le paquet de la mise à jour n’est pas valide',
+  'settings.plugins.providers.updates.failure.invalid-manifest': 'son fichier de description n’est pas valide',
+  'settings.plugins.providers.updates.failure.unsupported-provider-api': 'elle nécessite une version plus récente de Velloc',
+  'settings.plugins.providers.updates.failure.no-providers': 'elle n’ajoute plus aucun fournisseur',
+  'settings.plugins.providers.updates.failure.name-mismatch': 'elle concerne une autre extension',
+  'settings.plugins.providers.updates.failure.source-missing': 'l’extension n’est plus listée dans sa source de mises à jour',
+  'settings.plugins.providers.updates.failure.admission': 'son code a été refusé comme dangereux à exécuter',
+  'settings.plugins.providers.updates.failure.activate': 'elle n’a pas pu être activée, donc la version précédente reste active',
+  'settings.plugins.providers.review.waiting': 'Ses fournisseurs restent désactivés tant que vous ne les avez pas approuvés.',
+  'settings.plugins.providers.review.button': 'Examiner et activer',
+  'settings.plugins.mods.local': 'Local',
+  'settings.plugins.mods.builtin': 'Intégré',
+  'settings.plugins.scope.global': 'Global',
+  'settings.plugins.scope.globalHint': 'Toutes les sessions',
+  'settings.plugins.scope.projectHint': 'Uniquement les sessions de cet espace de travail',
+  'settings.plugins.mods.hooks': 'Hooks : {events}',
+  'settings.plugins.mods.hooksMore': '+{n}',
+  'settings.plugins.mods.options.title': 'Options',
+  'settings.plugins.mods.options.hint': 'Réglages propres à ce mod ; ils s’appliquent tant qu’il est activé.',
+  'settings.plugins.mods.options.sensitive': '(secret)',
+  'settings.plugins.mods.options.unset': '(non défini)',
+  'settings.plugins.mods.options.keptSecret': '(valeur enregistrée conservée)',
+  'settings.plugins.mods.options.save': 'Enregistrer',
+  'settings.plugins.mods.options.savedReloaded': 'Enregistré. {name} a été rechargé dans {n} session(s).',
+  'settings.plugins.mods.options.savedIdle': 'Enregistré. {name} utilisera les nouvelles valeurs au prochain chargement.',
+  'settings.plugins.mods.options.saveFailed': 'Impossible d’enregistrer : {error}',
+  'settings.plugins.mods.options.invalid': 'Pas un nombre dans ses limites : {fields}',
+  'notification.mod.refused': 'Le module de hooks de {name} a été refusé : {reason}',
+  'notification.mod.refusedNoReason': 'Le module de hooks de {name} a été refusé.',
+  'notification.mod.failed': 'Le module de hooks de {name} n’a pas été chargé : {reason}',
+  'notification.mod.failedNoReason': 'Le module de hooks de {name} n’a pas été chargé.',
+  'notification.mod.dead': 'Le module de hooks de {name} s’est arrêté et reste désactivé : {reason}',
+  'notification.mod.deadNoReason': 'Le module de hooks de {name} s’est arrêté et reste désactivé.',
+  'mods.toast.dismiss': 'Fermer',
+  'mods.status.more': 'Afficher {count} lignes d’état d’extension de plus',
+  'mods.pane.close': 'Fermer le panneau',
+  'mods.pane.tabs': 'Panneaux des extensions',
+  'mods.action.confirm': 'Confirmer',
+  'mods.action.cancel': 'Annuler',
+  'mods.action.navigate': 'Naviguer',
+  'mods.action.nextField': 'Champ suivant',
+  'mods.action.previousField': 'Champ précédent',
+  'mods.action.toggle': 'Basculer',
+  'mods.action.cycleMode': 'Changer de mode',
+  'mods.action.pageUp': 'Page précédente',
+  'mods.action.pageDown': 'Page suivante',
+  'mods.action.first': 'Premier',
+  'mods.action.last': 'Dernier',
+  'mods.action.select': 'Sélectionner',
+  'mods.action.togglePluginPanel': 'Afficher/masquer le panneau de l’extension',
+  'mods.action.focusPluginControls': 'Activer les commandes de l’extension',
+  'mods.action.press': 'Appuyer / envoyer / choisir',
+  'mods.action.backToPrompt': 'Retour au prompt',
+  'mods.action.nextOption': 'Option suivante',
+  'mods.action.previousOption': 'Option précédente',
+  'mods.action.scroll': 'Faire défiler',
+  'mods.action.top': 'En haut',
+  'mods.action.bottom': 'En bas',
+  'mods.action.growPluginPane': 'Agrandir le panneau de l’extension',
+  'mods.action.shrinkPluginPane': 'Réduire le panneau de l’extension',
+  'mods.action.closePluginPane': 'Fermer le panneau de l’extension',
+  'mods.action.nextPluginPane': 'Afficher le panneau d’extension suivant',
+  'mods.action.previousPluginPane': 'Afficher le panneau d’extension précédent',
+  'mods.action.switchTab': 'Changer d’onglet',
+  'mods.action.toggleDiffTests': 'Afficher/masquer les tests dans le panneau des différences',
+  'mods.action.scrollDiffFileList': 'Faire défiler la liste des fichiers du panneau des différences',
+  'mods.action.toggleDiffPreSession': 'Afficher/masquer les modifications antérieures à la session dans le panneau des différences',
+  'mods.action.switchDiffBase': 'Changer la base du panneau des différences',
+  'mods.ask.label': 'Question de {name}',
+  'mods.ask.dismiss': 'Ignorer',
+  'mods.ask.yes': 'Oui',
+  'mods.ask.no': 'Non',
+  'mods.plugin.open': 'Ouvrir {plugin} dans Extensions et mods',
+  'mods.plugin.openHint': 'Cliquez pour l’ouvrir dans Paramètres → Extensions et mods',
+  'mods.plugin.label': 'Extension',
+  'settings.plugins.noFilterMatch': 'Aucune extension ne correspond au filtre.',
+  'settings.plugins.previous': 'Précédent',
+  'settings.plugins.next': 'Suivant',
+  'settings.plugins.marketplaceRefreshed': 'Place de marché actualisée',
+  'settings.plugins.pluginInstalledToast': 'Extension installée',
+  'settings.plugins.installFailed': 'Échec de l’installation : {error}',
+  'settings.plugins.pluginUninstalled': 'Extension désinstallée',
+  'settings.plugins.uninstallFailed': 'Échec de la désinstallation : {error}',
+  'settings.plugins.pluginEnabled': 'Extension activée',
+  'settings.plugins.pluginDisabled': 'Extension désactivée',
+  'settings.plugins.enableFailed': 'Échec de l’activation : {error}',
+  'settings.plugins.disableFailed': 'Échec de la désactivation : {error}',
+  'settings.plugins.uninstallTitle': 'Désinstaller {name} ?',
+  'settings.plugins.uninstallDescription':
+    'Les fichiers de l’extension restent en cache sur le disque pour une réinstallation rapide.',
+  'settings.plugins.uninstallLocalDescription':
+    'Le dossier {path} et tout son contenu seront supprimés. Les sessions ouvertes se rechargeront sans lui.',
+  'settings.plugins.cancel': 'Annuler',
+
+  // ── Paramètres — temps relatif (« dernière mise à jour ») ──────────────
+  'settings.time.justNow': 'à l’instant',
+  'settings.time.minuteAgo': 'il y a {n} minute',
+  'settings.time.minutesAgo': 'il y a {n} minutes',
+  'settings.time.hourAgo': 'il y a {n} heure',
+  'settings.time.hoursAgo': 'il y a {n} heures',
+  'settings.time.dayAgo': 'il y a {n} jour',
+  'settings.time.daysAgo': 'il y a {n} jours',
+
+  // ── Paramètres — À propos ──────────────────────────────────────────────
+  'settings.about.title': 'Runtime {product}',
+  'settings.about.tagline':
+    '{product} est un agent de codage IA open source développé par AgentXLab.',
+  'settings.about.taglineRuntime':
+    'Le runtime fait tourner le moteur {product}. Configurez sa source et gérez les mises à jour.',
+  'settings.about.active': 'Actif',
+  'settings.about.runtimeCard': 'Runtime',
+  'settings.about.runtimeCardBuilt': 'Runtime ({date})',
+  'settings.about.customSource': 'Source personnalisée',
+  'settings.about.builtinSource': 'Source intégrée',
+  'settings.about.connected': 'Connecté',
+  'settings.about.client': 'Client {product}',
+  'settings.about.builtOnChromium': 'Basé sur Chromium',
+  'settings.about.unavailable':
+    'La configuration du runtime n’est pas disponible dans cette version.',
+  'settings.about.runtimeSource': 'Source du runtime',
+  'settings.about.invalidUrl': 'Saisissez une URL http(s) valide.',
+  'settings.about.restartTip':
+    'Redémarrez le client pour appliquer la nouvelle source du runtime.',
+  'settings.about.restartNow': 'Redémarrer maintenant',
+  'settings.about.restarting': 'Redémarrage…',
+  'settings.about.restartFailed':
+    'Le redémarrage automatique a échoué. Quittez {product} puis rouvrez-le pour appliquer les modifications.',
+  'settings.about.channelTitle': 'Canal de mise à jour',
+  'settings.about.channelDescription':
+    'Choisissez comment votre runtime reçoit ses mises à jour.',
+  'settings.about.channelStable': 'Stable',
+  'settings.about.channelStableDesc':
+    'Recevez les versions stables. Entièrement testées et prêtes pour la production.',
+  'settings.about.channelBeta': 'Bêta',
+  'settings.about.channelBetaDesc':
+    'Accédez en avant-première aux fonctionnalités et améliorations à venir.',
+  'settings.about.channelRecommended': 'Recommandé',
+  'settings.about.channelActiveBadge': 'Actif',
+  'settings.about.channelNotAvailable': 'Non disponible',
+  'settings.about.channelBlockedTitle':
+    '{channel} n’est pas disponible pour cette version.',
+  'settings.about.channelBlockedBody':
+    'Mettez {product} à jour pour activer les mises à jour {channel}.',
+  'settings.about.channelLearnMore': 'En savoir plus',
+  'settings.about.channelDocsUrl': 'https://velloc.app/docs/update-channels',
+  'settings.about.channelHint':
+    'Un changement de canal prend effet après un redémarrage.',
+  'settings.about.channelSwitchFailed':
+    'Impossible de changer de canal. La source du runtime est restée inchangée.',
+  'settings.about.reloadTitle': 'Recharger le runtime',
+  'settings.about.reloadHint':
+    'Recharge le runtime en contournant les ressources mises en cache.',
+  'settings.about.licenseValue': '{product} est un logiciel open source.',
+  'settings.about.copyright': '© {year} AgentXLab.',
+
+  // ── Paramètres — Modèles de session (niveaux + routage) ────────────────
+  'settings.sessionModels.title': 'Modèles de session',
+  'settings.sessionModels.resetAll': 'Tout réinitialiser',
+  'settings.sessionModels.resetDialogTitle':
+    'Réinitialiser les surcharges de modèles de session ?',
+  'settings.sessionModels.resetDialogBody':
+    'Cela supprime chaque niveau épinglé et chaque surcharge de routage, et ramène toutes les sous-sessions à leurs valeurs par défaut. Cette action est irréversible.',
+  'settings.sessionModels.resetDialogCancel': 'Annuler',
+  'settings.sessionModels.resetDialogConfirm': 'Tout réinitialiser',
+  'settings.sessionModels.tiersTitle': 'Niveaux de modèles',
+  'settings.sessionModels.modeDefault': 'Par défaut',
+  'settings.sessionModels.modeSpecific': 'Modèle précis',
+  'settings.sessionModels.modeSameAsParent': 'Comme la session',
+  'settings.sessionModels.reset': 'Rétablir la valeur par défaut',
+  'settings.sessionModels.tierDesc.fast':
+    'Travail rapide et peu coûteux : recherches, extraction, résumés courts.',
+  'settings.sessionModels.tierDesc.balanced':
+    'Travail courant de sous-agent : recherche, revue de plusieurs fichiers.',
+  'settings.sessionModels.tierDesc.best':
+    'Raisonnement difficile : débogage, revue de conception, vérification.',
+  'settings.sessionModels.tier.fast': 'Rapide',
+  'settings.sessionModels.tier.balanced': 'Équilibré',
+  'settings.sessionModels.tier.best': 'Optimal',
+  'settings.sessionModels.group.memory': 'Mémoire',
+  'settings.sessionModels.kind.agent_tool': 'Sous-agents (outil Agent)',
+  'settings.sessionModels.kind.session_title': 'Titres de session',
+  'settings.sessionModels.kind.memory_recall': 'Sélection du rappel automatique',
+  'settings.sessionModels.kind.web_fetch': 'Extraction WebFetch',
+  'settings.sessionModels.kind.prompt_hook': 'Hooks de prompt',
+  'settings.sessionModels.kind.compact': 'Résumé de compactage',
+  'settings.sessionModels.kind.memory_extract': 'Extraction de mémoire',
+  'settings.sessionModels.kind.memory_consolidate': 'Consolidation de la mémoire',
+  'settings.sessionModels.kind.skill_fork': 'Compétences bifurquées',
+  'settings.sessionModels.kind.hook_agent': 'Hooks agent',
+  'settings.sessionModels.description':
+    'Choisissez un modèle pour chaque type de travail afin d’équilibrer vitesse, coût et qualité.',
+  'settings.sessionModels.hint':
+    'Un modèle plus faible peut dégrader certaines fonctionnalités.',
+  'settings.sessionModels.modifiedCount': '{count} modifié(s)',
+  'settings.sessionModels.tiersDescription':
+    'Trois niveaux utilisés par toutes les fonctionnalités. La plupart des gens n’ont besoin de régler que ceux-ci.',
+  'settings.sessionModels.tierUsedBy': 'Utilisé par {count} fonctionnalité(s)',
+  'settings.sessionModels.auto': 'Automatique',
+  'settings.sessionModels.autoFollows': 'suit la session',
+  'settings.sessionModels.autoDescription': 'Suit le fournisseur de la session · par défaut : {model}',
+  'settings.sessionModels.sessionModel': 'Modèle de la session',
+  'settings.sessionModels.sessionModelAtEffort': 'Modèle de la session ({effort})',
+  'settings.sessionModels.modified': 'Modifié',
+  'settings.sessionModels.advancedTitle': 'Options avancées',
+  'settings.sessionModels.advancedSummary':
+    'Choisissez le modèle de chaque fonctionnalité séparément',
+  'settings.sessionModels.advancedSummaryModified':
+    'Choisissez le modèle de chaque fonctionnalité séparément · {count} modifié(s)',
+  'settings.sessionModels.sectionTiers': 'Niveaux',
+  'settings.sessionModels.cacheHint':
+    'Un fournisseur différent de celui de la session ne peut pas réutiliser son cache de prompts ; cela coûte donc plus cher.',
+  'settings.sessionModels.weakTier.compact':
+    'En dessous du niveau recommandé — le résumé peut perdre des détails dont l’agent a encore besoin.',
+  'settings.sessionModels.weakTier.memory_recall':
+    'En dessous du niveau recommandé — le rappel peut choisir des souvenirs moins pertinents.',
+  'settings.sessionModels.defaultValue.agent_tool': 'Selon la tâche',
+  'settings.sessionModels.defaultValue.skill_fork': 'Selon la compétence',
+  'settings.sessionModels.defaultValue.prompt_hook': 'Selon le hook',
+  'settings.sessionModels.defaultValue.hook_agent': 'Selon le hook',
+  'settings.sessionModels.defaultHint.agent_tool':
+    'L’assistant choisit un niveau selon la tâche ; sinon, le modèle de la session.',
+  'settings.sessionModels.defaultHint.skill_fork':
+    'Le réglage propre à la compétence ; sinon, le modèle de la session.',
+  'settings.sessionModels.defaultHint.prompt_hook':
+    'Le réglage propre au hook ; sinon, le niveau Rapide.',
+  'settings.sessionModels.defaultHint.hook_agent':
+    'Le réglage propre au hook ; sinon, le modèle de la session.',
+  'settings.sessionModels.defaultRecommended': 'Recommandé',
+  'settings.sessionModels.unavailableNote':
+    'N’est plus disponible — le modèle de la session est utilisé à la place.',
+  'settings.sessionModels.pinFailingNote':
+    'A échoué {count} fois et est revenu au modèle de la session. Dernière erreur : {error}',
+  'settings.sessionModels.kindDesc.agent_tool':
+    'Sous-agents que l’assistant lance pour de la recherche ou du travail en plusieurs étapes. Les continuations « fork » conservent toujours le modèle de la session.',
+  'settings.sessionModels.kindDesc.memory_extract':
+    'Enregistre les faits durables de la conversation à la fin de chaque tour.',
+  'settings.sessionModels.kindDesc.memory_consolidate':
+    'Réorganise et consolide périodiquement la mémoire enregistrée.',
+  'settings.sessionModels.kindDesc.memory_recall':
+    'Choisit quels souvenirs enregistrés sont rappelés à chaque tour.',
+  'settings.sessionModels.kindDesc.compact':
+    'Résume la conversation quand la fenêtre de contexte se remplit.',
+  'settings.sessionModels.kindDesc.session_title':
+    'Nomme les sessions dans la barre latérale après le premier échange.',
+  'settings.sessionModels.kindDesc.web_fetch':
+    'Réduit les pages web récupérées à ce que le prompt demandait.',
+  'settings.sessionModels.kindDesc.prompt_hook':
+    'Exécute les hooks de type prompt que vous avez configurés.',
+  'settings.sessionModels.kindDesc.skill_fork':
+    'Exécute les compétences qui tournent dans leur propre fork.',
+  'settings.sessionModels.kindDesc.hook_agent':
+    'Exécute les hooks vérificateurs de type agent — des contrôles en lecture seule qui renvoient un verdict.',
+  'settings.sessionModels.group.agents': 'Sous-agents et compétences',
+  'settings.sessionModels.group.conversation': 'Conversation',
+  'settings.sessionModels.group.toolsHooks': 'Outils et hooks',
+
+  // ── Paramètres — Mémoire ───────────────────────────────────────────────
+  'settings.memory.title': 'Mémoire',
+  'settings.memory.description':
+    'Contrôlez la mémoire automatique — ce que l’agent retient de vous d’une session à l’autre.',
+  'settings.memory.enable': 'Activer la mémoire automatique',
+  'settings.memory.enableDescription':
+    'Laissez l’agent enregistrer et rappeler des faits durables sur vous et vos projets. Désactivez pour couper entièrement la mémoire.',
+  'settings.memory.privacyNote':
+    'La mémoire est stockée localement sur votre appareil. N’y enregistrez pas de secrets — mots de passe, clés API, jetons ou autres identifiants.',
+  'settings.memory.disabledNote':
+    'La mémoire automatique est désactivée. Rien ne sera enregistré, rappelé, extrait ni consolidé.',
+  'settings.memory.recall': 'Rappel automatique',
+  'settings.memory.recallDescription':
+    'Au début de chaque tour, inclure les souvenirs enregistrés les plus pertinents pour votre message. Désactiver cette option ne désactive pas la mémoire : les souvenirs sont toujours enregistrés et leur index reste dans le contexte, donc {product} peut en lire un au besoin.',
+  'settings.memory.autoExtract': 'Extraction en arrière-plan',
+  'settings.memory.autoExtractDescription':
+    'Après chaque tour, enregistrer automatiquement les faits durables de la conversation. Désactivé par défaut — l’agent peut toujours enregistrer un souvenir si vous le lui demandez explicitement.',
+  'settings.memory.maintenance': 'Entretien de la mémoire',
+  'settings.memory.maintenanceDescription':
+    'Choisissez comment l’agent entretient la mémoire en arrière-plan :\n• Désactivé — aucun entretien en arrière-plan.\n• Consolidation périodique — consolide et nettoie périodiquement les souvenirs.\n• Journal quotidien — écrit des journaux quotidiens en ajout seul et les consolide chaque nuit.',
+  'settings.memory.maintenanceMode.off': 'Désactivé',
+  'settings.memory.maintenanceMode.periodic': 'Consolidation périodique',
+  'settings.memory.maintenanceMode.dailyLog': 'Journal quotidien',
+  'settings.memory.savedTitle': 'Souvenirs enregistrés',
+  'settings.memory.savedDescription':
+    'Voyez exactement ce que l’agent a retenu. Ces fichiers sont stockés localement sur votre appareil.',
+  'settings.memory.viewMemories': 'Voir les souvenirs enregistrés',
+  'settings.memory.noMemories': 'Aucun souvenir enregistré pour le moment.',
+  'settings.memory.clearMemories': 'Tout effacer',
+  'settings.memory.clearConfirm': 'Confirmer — tout supprimer',
+  'settings.memory.clearCancel': 'Annuler',
+  'settings.memory.openFolder': 'Ouvrir le dossier',
+  'settings.memory.open': 'Ouvrir',
+  'settings.memory.groupIndex': 'Index',
+  'settings.memory.instructionsTitle': 'Fichiers d’instructions',
+  'settings.memory.instructionsDescription':
+    'Des fichiers que vous rédigez et que l’agent lit comme des instructions (AGENTS.md / CLAUDE.md et règles). Affichés en lecture seule — « Tout effacer » ne les supprime jamais.',
+  'settings.memory.noInstructions': 'Aucun fichier d’instructions trouvé.',
+
+  // ── Paramètres — Général · Système (intégrée depuis sa page) ───────────
+  'settings.system.title': 'Système',
+  'settings.system.unavailable':
+    'Les préférences système ne sont pas disponibles dans cette version.',
+  'settings.system.keepRunning': 'Laisser {product} s’exécuter en arrière-plan',
+  'settings.system.keepRunningDescription':
+    'Lorsque vous fermez la fenêtre, {product} reste dans la zone de notification et vos sessions continuent. Cliquez sur l’icône de la zone de notification ou rouvrez {product} pour reprendre là où vous en étiez. Si cette option est désactivée, {product} se ferme avec la fenêtre.',
+
+  // ── Commandes slash — descriptions du sélecteur ────────────────────────
+  'slash.builtin.help': 'Afficher les commandes slash disponibles',
+  'slash.builtin.tabs': 'Lister les onglets ouverts du navigateur',
+  'slash.builtin.context':
+    'Joindre le contexte actuel du navigateur à la conversation',
+  'slash.builtin.clear': 'Effacer la conversation',
+  'slash.builtin.model': 'Changer de fournisseur/modèle pour le prochain tour',
+  'slash.builtin.compact':
+    'Compacter la conversation maintenant (facultatif : /compact <instructions>)',
+  'slash.builtin.autocompact': 'Définir la fenêtre de compactage automatique du modèle actuel (/autocompact <size>|auto)',
+  'slash.builtin.status':
+    'Afficher les informations de session (navigateur, onglets, langue)',
+  'slash.builtin.plan':
+    'Passer en mode planification — lecture/recherche uniquement, concevoir avant de coder',
+  'slash.builtin.exit-plan':
+    'Quitter le mode planification (facultatif : /exit-plan <plan text>)',
+  'slash.builtin.plugins':
+    'Gérer les extensions : list, enable/disable/update/uninstall <name>, install <git-url>',
+  'slash.builtin.plugin':
+    'Gestion des extensions de la place de marché : list, install/uninstall/enable/disable <name>@<marketplace>',
+  'slash.builtin.marketplace':
+    'Places de marché d’extensions : list, add <github-url|owner/repo>, remove/update/info <name>',
+  'slash.builtin.mcp': 'Ouvrir la page de paramètres des serveurs MCP',
+  'slash.builtin.rename':
+    'Renommer cette session (facultatif : /rename <name> — omettez-le pour un nom automatique)',
+  'slash.builtin.cost':
+    'Afficher la consommation de jetons de la session et le coût estimé',
+  'slash.builtin.agents':
+    'Lister les agents que l’outil Agent peut exécuter (subagent_type)',
+  'slash.builtin.skills':
+    'Lister les compétences chargées et la façon d’invoquer chacune',
+  'slash.builtin.hooks':
+    'Lister les hooks enregistrés pour cette session, par événement',
+  'slash.builtin.permissions':
+    'Afficher le mode d’autorisation et les règles en vigueur',
+  'slash.builtin.debug':
+    'Diagnostiquer le Runtime {product} ; sous-commandes : transcript, log [on|off], verbose [on|off], trace [on|off], inspect [on|off]',
+
+  // ── Commandes slash — sortie des commandes ────────────────────────────
+  'slash.out.unknownCommand': 'Commande slash inconnue : /{command}',
+  'slash.out.availableCommands': 'Disponibles : {commands}',
+  'slash.out.helpHeader': 'Commandes slash de {product}',
+  'slash.out.helpHiddenHeading': 'Commandes masquées',
+  'slash.out.helpHiddenNote':
+    'Elles s’exécutent lorsque vous saisissez le nom complet, mais restent absentes du sélecteur de commandes pour ne pas l’encombrer.',
+  'slash.out.helpFooter':
+    'Saisissez un message pour envoyer un prompt à {product}.',
+  'slash.out.statusBrowser': 'Navigateur : {browser}',
+  'slash.out.statusTabs': 'Onglets : {count}',
+  'slash.out.statusActiveTab': 'Onglet actif : {id}',
+  'slash.out.statusLocale': 'Langue : {locale}',
+  'slash.out.statusTimezone': 'Fuseau horaire : {timezone}',
+  'slash.out.statusUnknown': 'inconnu',
+  'slash.out.statusNone': 'aucun',
+  'slash.out.cleared': 'Conversation effacée. Saisissez un nouveau prompt.',
+  'slash.out.renamed': 'Session renommée en : {title}',
+  'slash.out.renameUsage':
+    'Impossible de générer un nom (aucune conversation pour l’instant). Utilisation : /rename <name>',
+  'slash.out.modelSwitched': 'Modèle basculé sur : {model}',
+  'slash.out.modelUsage':
+    'Utilisation : /model <model-name> ou /model <provider-id> <model-name>',
+  'slash.out.autoCompactStatusAuto': 'Fenêtre de compactage automatique de {model} : auto (compactage vers {threshold} jetons).',
+  'slash.out.autoCompactStatusFixed': 'Fenêtre de compactage automatique de {model} : compactage à {window} jetons.',
+  'slash.out.autoCompactUsage': 'Utilisez /autocompact <size> (de 100k à 1M, par exemple 400k) ou /autocompact auto.',
+  'slash.out.autoCompactOff': 'Le compactage automatique est désactivé dans les paramètres (autoCompaction). /compact fonctionne toujours.',
+  'slash.out.autoCompactSetAuto': 'Fenêtre de compactage automatique de {model} réglée sur auto',
+  'slash.out.autoCompactSetFixed': 'Fenêtre de compactage automatique de {model} réglée sur {window} jetons',
+  'slash.out.autoCompactCapped': '{model} peut compacter au plus à {limit} jetons (sa fenêtre de contexte doit garder de la place pour le résumé) ; {limit} s’applique donc.',
+  'slash.out.autoCompactShadowed': 'Un autre fichier de paramètres fixe la fenêtre de ce modèle à {window} jetons ; c’est cette valeur qui s’applique.',
+  'slash.out.autoCompactInvalid': 'Fenêtre de compactage automatique « {input} » non valide. Indiquez une taille de 100k à 1M (par exemple 400k, 1M ou 200000) ou auto.',
+  'slash.out.autoCompactNoSettings': 'Impossible d’enregistrer la fenêtre de compactage automatique : cet hôte n’a pas de fichier de paramètres.',
+  'slash.out.autoCompactNoModel': 'Aucun modèle n’est sélectionné. Choisissez d’abord un modèle.',
+  'slash.out.autoCompactSaveFailed': 'Impossible d’enregistrer la fenêtre de compactage automatique : {error}',
+  'slash.out.mcpOpening': 'Ouverture des paramètres des serveurs MCP…',
+  'slash.out.noTabs': 'Aucun onglet de navigateur n’est disponible actuellement.',
+  'slash.out.tabUntitled': '(sans titre)',
+  'slash.out.tabNoUrl': '(aucune URL)',
+  'slash.out.compactUnavailable': 'Le compactage n’est pas disponible dans ce runtime.',
+  'slash.out.compactNoMessages': 'Aucun message à compacter.',
+  'slash.out.modPromptDropped': 'Une extension a arrêté ce prompt : {reason}',
+  'slash.out.modPromptDroppedNoReason': 'Une extension a arrêté ce prompt.',
+  'slash.out.modPromptInterrupted': "Arrêté pendant qu'une extension vérifiait ce prompt ; il n'a pas été envoyé.",
+  'slash.out.modCommandUnanswered': 'Aucune extension n’a répondu à /{command}.',
+  'slash.out.helpModsHeading': 'Commandes des extensions',
+  'slash.out.helpModCommand': '{description} (de l’extension {plugin})',
+  'slash.out.compactSkipped': 'Une extension a ignoré le compactage — {reason}. La transcription est inchangée.',
+  'slash.out.compactFailed':
+    'Échec du compactage — {reason}. La transcription est inchangée.',
+  'slash.out.compactBlockedByHook': 'Un hook a bloqué le compactage — {reason}. La transcription est inchangée.',
+  'slash.out.compactBlockedByHookNoReason': 'Un hook a bloqué le compactage. La transcription est inchangée.',
+  'slash.out.skillDenied': 'La compétence /{name} n’est pas disponible dans ce type de session.',
+  'slash.out.skillNotUserInvocable':
+    'La compétence /{name} ne peut pas être invoquée par slash. Le modèle peut toujours l’appeler via l’outil Skill.',
+
+  // ── Commandes slash — /agents, /skills, /hooks, /permissions ───────────
+  // Les en-têtes de regroupement (la catégorie source/événement/motif selon
+  // laquelle un listing regroupe) restent volontairement non traduits : ils
+  // reflètent directement des données faiblement typées (le `source` d’une
+  // extension, l’`event` enregistré d’un hook), pas une énumération fermée
+  // que ce catalogue pourrait promettre de couvrir. Seul le texte alentour
+  // est traduit.
+  'slash.out.agents.forkNote':
+    '{route} (réservé) — hérite du contexte complet de cette session (prompt système, outils, conversation) au lieu de démarrer isolé.',
+  'slash.out.agents.empty': 'Aucun agent n’est enregistré pour cette session.',
+  'slash.out.agents.authorHint':
+    'Rédigez-en un en markdown avec un frontmatter `name`/`description`/`tools`/`model`, dans l’un des emplacements suivants :',
+  'slash.out.agents.userScope': '~/{dir}/agents/  (portée utilisateur)',
+  'slash.out.agents.projectScope': '<cwd>/{dir}/agents/  (portée projet)',
+  'slash.out.agents.pluginScope': 'le répertoire agents/ d’une extension',
+  'slash.out.agents.alwaysAvailable': 'Toujours disponibles, quoi qu’il en soit :',
+  'slash.out.agents.header': 'Agents : {count} enregistrés (outil Agent `subagent_type`)',
+  'slash.out.agents.reservedHeading': 'Réservé :',
+  'slash.out.skills.empty':
+    'Aucune compétence n’est chargée. Rédigez-en une sous forme de `SKILL.md` (avec un champ frontmatter `description`) dans ~/{dir}/skills/<name>/ ou <cwd>/{dir}/skills/<name>/, ou installez une extension qui fournit des compétences (`/plugin install <name>@<marketplace>`).',
+  'slash.out.skills.header': 'Compétences : {loaded} chargées',
+  'slash.out.skills.headerWithWithheld':
+    'Compétences : {loaded} chargées, {withheld} retenues',
+  'slash.out.skills.withheldHeading': 'Retenues — conditionnées à un chemin ({count}) :',
+  'slash.out.skills.withheldExplanation':
+    'Chargées et valides, mais tenues à l’écart de l’ensemble actif jusqu’à leur activation par contact de fichier. Pas encore invocables, ni par slash ni par le modèle.',
+  'slash.out.hooks.noSession':
+    'Aucune session n’est active, donc aucun hook n’est enregistré.',
+  'slash.out.hooks.matcherLabel': 'motif',
+  'slash.out.hooks.matchAll': '* (correspond à tout)',
+  'slash.out.hooks.empty':
+    'Aucun hook n’est enregistré pour cette session. Déclarez-les sous `hooks` dans settings.json, ou dans le frontmatter d’une compétence (ils s’enregistrent alors quand la compétence est invoquée).',
+  'slash.out.hooks.header': 'Hooks : {hooks} sur {matchers} motifs',
+  'slash.out.hooks.headerOneMatcher': 'Hooks : {hooks} sur {matchers} motif',
+  'slash.out.permissions.mode': 'Mode d’autorisation : {mode}',
+  'slash.out.permissions.modeBeforePlan': 'Mode avant le mode planification : {mode}',
+  'slash.out.permissions.bypassDisabled':
+    'Mode « Ignorer les autorisations » : désactivé par les paramètres',
+  'slash.out.permissions.bypassAvailable':
+    'Mode « Ignorer les autorisations » : disponible',
+  'slash.out.permissions.allowHeading': 'Autoriser ({count}) :',
+  'slash.out.permissions.askHeading': 'Demander ({count}) :',
+  'slash.out.permissions.denyHeading': 'Refuser ({count}) :',
+  'slash.out.permissions.noRules':
+    'Aucune règle autoriser/demander/refuser n’est configurée — le filtre de règles est sans effet. Ajoutez-les sous `permissions` dans settings.json.',
+  'slash.out.permissions.alwaysAllowHeading': 'Toujours autoriser ({count}) :',
+  'slash.out.permissions.alwaysAskHeading': 'Toujours demander ({count}) :',
+  'slash.out.permissions.alwaysDenyHeading': 'Toujours refuser ({count}) :',
+  'slash.out.permissions.strippedHeading': 'Retirées pour le mode actuel ({count}) :',
+  'slash.out.permissions.workingDirsHeading':
+    'Répertoires de travail supplémentaires ({count}) :',
+  'slash.out.permissions.noContext':
+    'Aucun contexte d’autorisation n’est disponible pour cette session.',
+
+  // ── Commandes slash — /plugins (installation historique par git-clone) ─
+  'slash.out.debug.internal.statusOn':
+    'Le mode utilisateur interne est activé — les sous-agents peuvent lancer des agents imbriqués.',
+  'slash.out.debug.internal.statusOff':
+    'Le mode utilisateur interne est désactivé — les sous-agents ne peuvent pas lancer d’agents imbriqués.',
+  'slash.out.debug.internal.statusHint':
+    'Utilisez /debug internal on|off pour le modifier ; prend effet au prochain lancement d’agent.',
+  'slash.out.debug.internal.enabled':
+    'Mode utilisateur interne activé — les sous-agents peuvent lancer des agents imbriqués. Prend effet au prochain lancement d’agent ; enregistré dans settings.json.',
+  'slash.out.debug.internal.disabled':
+    'Mode utilisateur interne désactivé — les sous-agents ne peuvent pas lancer d’agents imbriqués (par défaut). Prend effet au prochain lancement d’agent.',
+  'slash.out.debug.notPersisted':
+    'Remarque : aucun répertoire personnel de paramètres sur cet hôte — la modification n’est pas enregistrée et ne dure que jusqu’au prochain rechargement.',
+  'slash.out.debug.persistFailed':
+    'Avertissement : échec de l’enregistrement dans settings.json ({error}) — la modification ne dure que jusqu’au prochain rechargement.',
+  'slash.out.debug.skillUnavailable':
+    'La compétence debug n’est pas disponible dans cette session.',
+  'slash.out.debug.usage.title':
+    'Utilisation de {command}',
+  'slash.out.debug.usage.issueArg':
+    'description du problème',
+  'slash.out.debug.usage.issue':
+    'diagnostiquer le Runtime {product} (compétence debug pilotée par le modèle)',
+  'slash.out.debug.usage.transcript':
+    'diagnostic de la transcription : tailles par segment de compactage, statistiques d’outils et de jetons',
+  'slash.out.debug.usage.status':
+    'aperçu de tous les commutateurs de débogage et de l’état du tampon circulaire',
+  'slash.out.debug.usage.log':
+    'afficher/définir la capture de débogage en direct dans l’anneau de journaux du worker (cette session uniquement)',
+  'slash.out.debug.usage.name':
+    'définir le nom du produit que le modèle voit dans ses prompts (enregistré dans settings.json) ; /debug name sans argument (ou "") l’annule',
+  'slash.out.debug.usage.verbose':
+    'afficher/définir la journalisation détaillée du modèle (prend effet au prochain rechargement)',
+  'slash.out.debug.usage.trace':
+    'afficher/définir la superposition de trace (prend effet au prochain rechargement)',
+  'slash.out.debug.usage.inspect':
+    'afficher/définir le menu « Inspect » du clic droit sur le panneau (ouvre les DevTools)',
+  'slash.out.debug.usage.internal':
+    'afficher/définir le mode utilisateur interne : on = les sous-agents peuvent lancer des agents imbriqués, off = ils ne le peuvent pas (par défaut) ; enregistré dans settings.json, prend effet au prochain lancement',
+  'slash.out.plugins.empty':
+    'Aucune extension détectée. Placez une extension dans ~/{dir}/plugins/<name>/ ou <cwd>/{dir}/plugins/<name>/ (avec .claude-plugin/plugin.json), puis activez-la avec `/plugins enable <name>` — ce qui enregistre le choix dans ~/{dir}/enabled-plugins.json pour une extension à portée utilisateur, ou <cwd>/{dir}/enabled-plugins.json pour une extension à portée projet.',
+  'slash.out.plugins.header': 'Extensions : {enabled} activées, {disabled} désactivées',
+  'slash.out.plugins.enabledHeading': 'Activées :',
+  'slash.out.plugins.disabledHeading':
+    'Désactivées (présentes sur le disque mais absentes de la liste blanche d’activation) :',
+  'slash.out.plugins.errorsHeading': 'Erreurs de chargement :',
+
+  // ── Commandes slash — /plugin, /marketplace (pipeline de place de marché)
+  // Les lignes de syntaxe de commande (un `/plugin <subcommand> [args]` brut
+  // ou un exemple d’invocation) relèvent du protocole et restent non
+  // traduites ; seul le texte qui les accompagne est une entrée du
+  // catalogue.
+  'slash.out.plugin.usage.list':
+    '  list                                afficher les extensions installées',
+  'slash.out.plugin.usage.install':
+    '  install <name>@<marketplace>        installer depuis une place de marché connue',
+  'slash.out.plugin.usage.installFrom':
+    '  install <name> --marketplace <owner/repo>  ajouter la place de marché si besoin, puis installer',
+  'slash.out.plugin.usage.uninstall':
+    '  uninstall <name>@<marketplace>      supprimer une extension installée',
+  'slash.out.plugin.usage.enable':
+    '  enable <name>@<marketplace>         activer une extension installée',
+  'slash.out.plugin.usage.disable':
+    '  disable <name>@<marketplace>        désactiver sans désinstaller',
+  'slash.out.plugin.usage.identifierFormat':
+    'Format de l’identifiant : <plugin>@<marketplace>',
+  'slash.out.plugin.usage.example':
+    'Exemple : /plugin install superpowers@claude-plugins-official',
+  'slash.out.plugin.usage.seeAvailable':
+    'Pour voir quelles extensions sont disponibles dans une place de marché :',
+  'slash.out.plugin.usage.legacyNote':
+    'Pour l’installation historique par git-clone (portée projet), utilisez /plugins (au pluriel).',
+  'slash.out.plugin.unknownSubcommand': 'Sous-commande inconnue : /plugin {sub}',
+  'slash.out.plugin.error': 'Erreur lors de l’exécution de /plugin {sub} : {error}',
+  'slash.out.plugin.install.usage':
+    'Utilisation : /plugin install <name>@<marketplace>',
+  'slash.out.plugin.invalidIdentifier': 'Identifiant invalide : {message}',
+  'slash.out.plugin.install.success': '{identifier} installé (v{version})',
+  'slash.out.plugin.install.fileCount': '{count} fichiers → `{path}`',
+  'slash.out.plugin.install.liveNote':
+    'Les nouvelles extensions sont activées par défaut et prennent effet dès maintenant dans cette session. Les autres sessions ouvertes, et les serveurs MCP qu’une extension ajoute, les prennent en compte dans une nouvelle session.',
+  'slash.out.plugin.uninstall.usage':
+    'Utilisation : /plugin uninstall <name>@<marketplace>',
+  'slash.out.plugin.uninstall.notInstalled':
+    'Non installée : {id} (rien à supprimer)',
+  'slash.out.plugin.uninstall.success': '{id} désinstallée',
+  'slash.out.plugin.uninstall.cacheNote':
+    '(répertoire de cache laissé à `{path}` — suppression manuelle possible ; sera réutilisé en cas de réinstallation)',
+  'slash.out.plugin.enableDisable.usage':
+    'Utilisation : /plugin {verb} <name>@<marketplace>',
+  'slash.out.plugin.enabledConfirm': '{id} activée',
+  'slash.out.plugin.disabledConfirm': '{id} désactivée',
+  'slash.out.plugin.effectNow':
+    'Prend effet dès maintenant dans cette session. Les autres sessions ouvertes, et les changements de serveurs MCP, le prennent en compte dans une nouvelle session.',
+  'slash.out.plugin.list.empty':
+    'Aucune extension installée via le pipeline de place de marché.',
+  'slash.out.plugin.list.installHint':
+    'Pour en installer une : /plugin install <name>@<marketplace>',
+  'slash.out.plugin.list.marketplacesHint':
+    'Pour voir quelles places de marché sont disponibles : /marketplace list',
+  'slash.out.plugin.list.scopeNote':
+    'Remarque : cette liste montre les extensions installées via /plugin (place de marché). Les installations par git-clone à portée projet (via /plugins, au pluriel) vivent dans un registre distinct — exécutez /plugins pour les voir.',
+  'slash.out.plugin.list.header': 'Extensions installées : {count}',
+  'slash.out.plugin.state.disabled': 'désactivée',
+  'slash.out.plugin.state.enabledExplicit': 'activée (explicite)',
+  'slash.out.plugin.state.enabledDefault': 'activée (par défaut)',
+  'slash.out.marketplace.usage.list':
+    '  list                            afficher les places de marché connues',
+  'slash.out.marketplace.usage.add':
+    '  add <github-url|owner/repo>    enregistrer et récupérer une place de marché',
+  'slash.out.marketplace.usage.remove':
+    '  remove <name>                  désenregistrer (non officielles uniquement)',
+  'slash.out.marketplace.usage.update':
+    '  update <name>                  récupérer à nouveau le contenu d’une place de marché',
+  'slash.out.marketplace.usage.info':
+    '  info <name>                    lister les extensions disponibles dans une place de marché',
+  'slash.out.marketplace.usage.defaultsHeading':
+    'Places de marché installées par défaut :',
+  'slash.out.marketplace.usage.officialLine':
+    '  claude-plugins-official  — organisée par Anthropic, épinglée par SHA',
+  'slash.out.marketplace.usage.communityLine':
+    '  claude-plugins-community — soumissions communautaires, miroir Anthropic',
+  'slash.out.marketplace.usage.exampleHeading': 'Exemple :',
+  'slash.out.marketplace.unknownSubcommand':
+    'Sous-commande inconnue : /marketplace {sub}',
+  'slash.out.marketplace.error': 'Erreur lors de l’exécution de /marketplace {sub} : {error}',
+  'slash.out.marketplace.list.emptyUnexpected':
+    'Aucune place de marché enregistrée (cela ne devrait pas arriver — les officielles sont préchargées).',
+  'slash.out.marketplace.list.header': 'Places de marché connues : {count}',
+  'slash.out.marketplace.list.footer':
+    'Pour voir le contenu de chacune : /marketplace info <name>',
+  'slash.out.marketplace.officialTag': '(officielle)',
+  'slash.out.marketplace.builtinTag': '(intégrée)',
+  'slash.out.marketplace.notYetFetched': ', pas encore récupérée',
+  'slash.out.marketplace.lastUpdated': ', dernière mise à jour {time}',
+  'slash.out.marketplace.add.usage':
+    'Utilisation : /marketplace add <github-url|owner/repo>',
+  'slash.out.marketplace.add.parseError':
+    'Impossible d’interpréter « {value} » comme une URL GitHub ou un identifiant owner/repo.',
+  'slash.out.marketplace.add.registerFailed':
+    'Échec de l’enregistrement de la place de marché : {error}',
+  'slash.out.marketplace.add.fetchFailed':
+    '{source} récupéré, mais impossible de charger marketplace.json : {error}',
+  'slash.out.marketplace.add.renameCleanupFailed':
+    'Renommée en « {name} », mais le nettoyage a échoué : {error}',
+  'slash.out.marketplace.add.success': 'Place de marché « {name} » ajoutée',
+  'slash.out.marketplace.add.sourceLine': 'source : {source}',
+  'slash.out.marketplace.add.pluginsAvailable': 'extensions disponibles : {count}',
+  'slash.out.marketplace.add.browseHint':
+    'Parcourir les extensions : /marketplace info {name}',
+  'slash.out.marketplace.add.installHint':
+    'En installer une : /plugin install <name>@{name}',
+  'slash.out.marketplace.remove.usage': 'Utilisation : /marketplace remove <name>',
+  'slash.out.marketplace.remove.official':
+    'Impossible de supprimer « {name} » — il s’agit d’une place de marché officielle Anthropic.',
+  'slash.out.marketplace.remove.builtin':
+    'Impossible de supprimer « {name} » — il s’agit de la place de marché intégrée de {product}.',
+  'slash.out.marketplace.remove.success': 'Place de marché « {name} » supprimée.',
+  'slash.out.marketplace.update.usage': 'Utilisation : /marketplace update <name>',
+  'slash.out.marketplace.update.success': '« {name} »{sha} actualisée',
+  'slash.out.marketplace.info.usage': 'Utilisation : /marketplace info <name>',
+  'slash.out.marketplace.info.notFetched':
+    'La place de marché « {name} » n’a pas encore été récupérée (aucun manifeste local).',
+  'slash.out.marketplace.info.runUpdateHint': 'Exécutez : /marketplace update {name}',
+  'slash.out.marketplace.info.zeroPlugins':
+    'La place de marché « {name} » contient 0 extension.',
+  'slash.out.marketplace.info.noDescription': '(aucune description)',
+  'slash.out.marketplace.info.header': '{name} — {description}',
+  'slash.out.marketplace.info.countLine': '{count} extensions :',
+  'slash.out.marketplace.info.moreCount': '  … et {count} de plus',
+
+  // ── Commandes slash — /cost ──────────────────────────────────────────────
+  'slash.out.cost.empty':
+    'Aucune utilisation de modèle enregistrée pour l’instant dans cette session.',
+  'slash.out.cost.header': 'Consommation de jetons de la session',
+  'slash.out.cost.modelLine':
+    '{model} : {input} en entrée, {output} en sortie, {cacheRead} lecture du cache, {cacheCreate} écriture du cache  {cost}',
+  'slash.out.cost.pricingUnavailable': '— (tarification indisponible)',
+  'slash.out.cost.total':
+    'Total : {total} jetons ({input} en entrée, {output} en sortie, {cacheRead} lecture du cache, {cacheCreate} écriture du cache)',
+  'slash.out.cost.estimated': 'Coût estimé (modèles tarifés) : {cost}',
+  'slash.out.cost.unpricedNote':
+    '(Le coût en dollars n’est affiché que pour les modèles dont la tarification Anthropic est publiée ; le nombre de jetons ci-dessus est exact pour tous les modèles.)',
+
+  // ── Client distant : l'écran de connexion / d'erreur (RemoteConnectScreen)
+  // L'accueil de démarrage du bureau est peint par le panneau extérieur ; une
+  // page distante n'a pas de panneau extérieur, donc cet écran est toute sa
+  // première impression et son seul canal pour « pourquoi rien ne se passe ».
+  // Chaque état dit donc ce qui a échoué ET quoi faire — sur le bureau, dans
+  // la plupart des cas, soit l'endroit que le lecteur n'est pas en train de
+  // regarder.
+  'remote.connectingTitle': 'Connexion à {product}…',
+  'remote.connectingBody': 'Contact du bureau vers lequel pointe ce lien.',
+  'remote.retry': 'Réessayer',
+  'remote.reconnect': 'Se reconnecter',
+  'remote.reload': 'Recharger',
+  'remote.unauthorizedTitle': 'Ce lien ne fonctionne plus',
+  'remote.unauthorizedBody':
+    'Il a été réinitialisé ou révoqué sur le bureau. Copiez un nouveau lien dans Paramètres → Accès à distance sur le bureau, puis ouvrez-le ici.',
+  'remote.expiredTitle': 'Ce lien a expiré',
+  'remote.expiredBody':
+    'Copiez un nouveau lien dans Paramètres → Accès à distance sur le bureau, puis ouvrez-le ici.',
+  'remote.invalidTitle': 'Ce lien n’est pas valide',
+  'remote.invalidBody':
+    'Il semble incomplet — copiez à nouveau le lien complet depuis le bureau.',
+  'remote.disabledTitle': 'L’accès à distance est désactivé',
+  'remote.disabledBody':
+    'L’accès à distance a été désactivé sur le bureau. Réactivez-le là-bas pour utiliser ce lien.',
+  'remote.tooManyTitle': 'Trop de connexions distantes',
+  'remote.tooManyBody':
+    'Le bureau sert déjà autant de clients distants qu’il en autorise. Fermez-en un et cette page se reconnectera.',
+  'remote.replacedTitle': 'Un autre onglet a pris cette connexion',
+  'remote.replacedBody':
+    'Un autre onglet ou une autre fenêtre de ce navigateur a ouvert le même lien, et une seule peut garder la connexion à la fois. Cette page ne la reprend pas d’elle-même : réessayez pour la ramener ici, et l’autre la perdra.',
+  'remote.protocolTitle': 'Rechargez pour continuer',
+  'remote.protocolBody':
+    'Cette page et le bureau parlent des versions différentes du protocole. Un rechargement récupère la version correspondante.',
+  'remote.buildMismatchTitle': 'Le bureau exécute un build différent',
+  'remote.buildMismatchBody':
+    'Cette page provient d’un build différent de celui que le bureau exécute. Ouvrez celui qui correspond pour que les deux côtés se comportent pareil.',
+  'remote.openMatchingBuild': 'Ouvrir le build correspondant',
+  'remote.install.prompt':
+    'Installez {product} en tant qu’application : elle s’ouvre dans sa propre fenêtre et se reconnecte seule à ce poste.',
+  'remote.install.chromeMenu':
+    'Utilisez {product} comme une application, dans sa propre fenêtre : ouvrez le menu du navigateur (⋮), puis Caster, enregistrer et partager → Installer la page en tant qu’appli...',
+  'remote.install.edgeMenu':
+    'Utilisez {product} comme une application, dans sa propre fenêtre : ouvrez le menu du navigateur (…), puis Applications → Installer ce site en tant qu’application.',
+  'remote.install.install':
+    'Installer',
+  'remote.install.dismiss':
+    'Plus tard',
+  'remote.host.connectedTo':
+    'Connecté à {host}',
+  'remote.host.logOut':
+    'Se déconnecter de ce poste',
+  'remote.fullscreen.enter': 'Plein écran',
+  'remote.fullscreen.exit': 'Quitter le plein écran',
+
+  // Client distant : action hors du périmètre accordé, et la bannière de connexion.
+  'remote.forbidden.toast': 'Cette opération doit être effectuée sur le poste de bureau.',
+  // Chunk-load failure overlay (browser/boot/chunkLoadFailure.ts).
+  'chunkLoad.failedTitle': "Impossible de charger l'application",
+  'chunkLoad.failedBody': "Une partie de l'application n'a pas pu être chargée. Rechargez pour continuer.",
+  'chunkLoad.offlineTitle': 'Vous êtes hors ligne',
+  'chunkLoad.offlineBody': "Une partie de l'application n'est pas disponible hors ligne. Reconnectez-vous, puis rechargez.",
+  'chunkLoad.reload': 'Recharger',
+  'remote.status.reconnecting': 'Reconnexion à votre poste de bureau…',
+  'remote.status.desktopOffline':
+    'Votre poste de bureau est injoignable. Ouvrez {product} sur le poste de bureau.',
+  'remote.composer.disabled': 'En attente de la connexion à votre poste de bureau.',
+  // The "cannot reach the desktop" card (DesktopUnreachableCard): the live
+  // shell's offline overlay and the connect screen's unreachable states.
+  'remote.unreachable.lostTitle': 'Connexion à votre poste de bureau perdue',
+  'remote.unreachable.lostBody': 'Le poste de bureau a peut-être été quitté, mis en veille ou n’est plus joignable. Une fois la connexion rétablie, vous pourrez reprendre là où vous en étiez.',
+  'remote.unreachable.neverTitle': 'Poste de bureau non détecté',
+  'remote.unreachable.neverBody': 'Vérifiez que {product} est lancé sur votre poste de bureau. Cette page s’y connectera d’elle-même.',
+  'remote.unreachable.connectingTitle': 'Connexion à votre poste de bureau…',
+  'remote.unreachable.connectingStatus': 'Tentative d’établissement de la connexion',
+  'remote.unreachable.stuckTitle': 'Toujours impossible de joindre votre poste de bureau',
+  'remote.unreachable.stuckBody': 'Vérifiez que {product} est lancé sur votre poste de bureau et joignable depuis ce réseau. Cette page continue d’essayer.',
+  'remote.unreachable.countdown': 'Reconnexion dans {seconds} s',
+  'remote.unreachable.countdownMinutes': 'Reconnexion dans {minutes} min',
+  'remote.unreachable.waitingCountdown': 'En attente du poste de bureau… nouvel essai dans {seconds} s',
+  'remote.unreachable.waitingCountdownMinutes': 'En attente du poste de bureau… nouvel essai dans {minutes} min',
+  'remote.unreachable.reconnectNow': 'Se reconnecter maintenant',
+  'remote.unreachable.retry': 'Réessayer la connexion',
+  'remote.unreachable.tryAgain': 'Réessayer',
+}
