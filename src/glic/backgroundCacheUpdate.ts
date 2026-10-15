@@ -1,6 +1,6 @@
 /**
  * Contract: background HTTP-cache warmer for content-hashed assets, a
- * dependency-free entry run 5 s after load, then every 30 min and on hide /
+ * dependency-free entry run 5 s after the first screen, then every 30 min and on hide /
  * blur (at least 5 min apart). Validates `assets-manifest.json` (`no-cache`); a
  * known `buildId` for that path returns at once. Chunks resolve against the
  * version root, fetched `force-cache`, `priority: "low"`, 4 at a time, bodies
@@ -166,6 +166,16 @@ function recordPrefetched(path: string, buildId: string): void {
 const MIN_CHECK_INTERVAL_MS = 5 * 60 * 1000
 /** The periodic check; the triggers below only ever run it sooner. */
 const CHECK_PERIOD_MS = 30 * 60 * 1000
+/** The first check's delay after the page has loaded and shown its first screen. */
+const FIRST_RUN_DELAY_MS = 5 * 1000
+/** Without a first-screen signal (a boot that ended on an error card or the
+ *  pairing page), the first screen is taken as shown this long after load. */
+const FIRST_SCREEN_FALLBACK_MS = 60 * 1000
+/** Dispatched on `window` by the shell when the boot splash is dismissed. The
+ *  literal is kept in step with `FIRST_SCREEN_EVENT` in
+ *  `browser/boot/firstScreenSignal.ts`; importing it would give this
+ *  import-free entry a chunk import. */
+const FIRST_SCREEN_EVENT = 'nexus:first-screen'
 // sessionStorage (survives the reload, per tab): the build this page last
 // reloaded itself to apply. A reload that comes back on the same old page —
 // the new HTML did not stick — must not reload again for that build, or it
@@ -356,10 +366,10 @@ function runCheck(): Promise<void> {
 }
 
 /**
- * Background cache-update entry point.  Called 5 s after window.load (the
- * inline script in index.html); the first call also schedules the periodic
- * check and the triggers — the page going hidden, and the page losing focus.
- * Returns the first check's completion (for tests); callers ignore it.
+ * Background cache-update entry point.  Called by `scheduleFirstRun`; the
+ * first call also schedules the periodic check and the triggers — the page
+ * going hidden, and the page losing focus. Returns the first check's
+ * completion (for tests); callers ignore it.
  */
 function runBackgroundCacheUpdate(): Promise<void> {
   if (!scheduled) {
@@ -373,5 +383,36 @@ function runBackgroundCacheUpdate(): Promise<void> {
   return runCheck()
 }
 
+/**
+ * The first run: FIRST_RUN_DELAY_MS after the page has both fired `load` and
+ * shown its first screen (FIRST_SCREEN_EVENT), so the warm-up's chunk fetches
+ * never compete with the boot's own. A page that never signals its first
+ * screen is treated as shown FIRST_SCREEN_FALLBACK_MS after load, so a fixed
+ * build can still be staged behind a failed boot.
+ */
+function scheduleFirstRun(): void {
+  let loaded = false
+  let firstScreen = false
+  let started = false
+  const maybeStart = (): void => {
+    if (started || !loaded || !firstScreen) return
+    started = true
+    setTimeout(() => { void runBackgroundCacheUpdate() }, FIRST_RUN_DELAY_MS)
+  }
+  const onFirstScreen = (): void => {
+    firstScreen = true
+    maybeStart()
+  }
+  const onLoad = (): void => {
+    loaded = true
+    setTimeout(onFirstScreen, FIRST_SCREEN_FALLBACK_MS)
+    maybeStart()
+  }
+  window.addEventListener(FIRST_SCREEN_EVENT, onFirstScreen)
+  if (document.readyState === 'complete') onLoad()
+  else window.addEventListener('load', onLoad)
+}
+
 ;(window as { __runBackgroundCacheUpdate?: () => Promise<void> }).__runBackgroundCacheUpdate =
   runBackgroundCacheUpdate
+scheduleFirstRun()

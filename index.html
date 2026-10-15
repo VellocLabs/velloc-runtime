@@ -85,15 +85,8 @@
       }, { once: true });
       window.addEventListener('load', function() {
         window.__nexusBootMarks.windowLoadMs = Date.now();
-        // After the critical boot work is done, schedule a background
-        // cache update with a 5 s delay so it never competes with the
-        // React bundle or the SharedWorker handshake. The deferred
-        // backgroundCacheUpdate chunk registered the helper on window.
-        setTimeout(function() {
-          if (window.__runBackgroundCacheUpdate) {
-            window.__runBackgroundCacheUpdate();
-          }
-        }, 5000);
+        // The background cache updater schedules its own first run, after
+        // the first screen (src/glic/backgroundCacheUpdate.ts).
       }, { once: true });
     </script>
     <!-- The runtime SharedWorker is warmed by src/glic/warmSharedWorker.ts.

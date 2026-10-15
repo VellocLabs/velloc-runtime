@@ -186,6 +186,7 @@ import {
   subscribeE2eTestCode,
 } from './windowTitle'
 import { getProductName } from '../../branding/productName'
+import { signalFirstScreen } from '../boot/firstScreenSignal'
 import { addRecentFolder } from './recentFoldersStorage'
 import { writeLastFolderForType } from './lastFolderByTypeStorage'
 import { isForcedFolderTemplateType } from '../../utils/conversationStoragePaths'
@@ -1614,6 +1615,7 @@ export function MultiSessionShell({
     }
 
     guestReadyFiredRef.current = true
+    if (typeof window !== 'undefined') signalFirstScreen(window)
     // E2e seam (a one-shot global write): record the active session's state at the instant
     // the host boot splash is dismissed, read after the boot completes.
     ;(globalThis as { __NEXUS_E2E_BOOT_DISMISS__?: unknown }).__NEXUS_E2E_BOOT_DISMISS__ = {
