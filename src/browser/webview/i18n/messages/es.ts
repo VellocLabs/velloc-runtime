@@ -1511,7 +1511,7 @@ export const es: Messages = {
   // ── Configuración — Acerca de ──────────────────────────────────────────
   'settings.about.title': 'Runtime de {product}',
   'settings.about.tagline':
-    '{product} es un agente de programación con IA de código abierto desarrollado por AgentXLab.',
+    '{product} es un agente de programación con IA de código abierto desarrollado por VellocLabs.',
   'settings.about.taglineRuntime':
     'El runtime impulsa el motor de {product}. Configure su origen y gestione las actualizaciones.',
   'settings.about.active': 'Activo',
@@ -1558,7 +1558,7 @@ export const es: Messages = {
   'settings.about.reloadHint':
     'Recarga el runtime sin usar los recursos en caché.',
   'settings.about.licenseValue': '{product} es de código abierto.',
-  'settings.about.copyright': '© {year} AgentXLab.',
+  'settings.about.copyright': '© {year} VellocLabs.',
 
   // ── Configuración — Modelos de sesión (niveles + enrutado) ─────────────
   'settings.sessionModels.title': 'Modelos de sesión',

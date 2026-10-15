@@ -107,7 +107,7 @@ describe('extractFilePathCandidates — rejects things that merely look like pat
   })
 
   it('ignores scp/git remotes', () => {
-    expect(paths('git@github.com:agentxlab/velloc-runtime.git')).toEqual([])
+    expect(paths('git@github.com:velloclabs/velloc-runtime.git')).toEqual([])
   })
 
   it('ignores dates and fractions', () => {

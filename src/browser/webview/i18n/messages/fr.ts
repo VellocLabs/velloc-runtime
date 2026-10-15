@@ -1516,7 +1516,7 @@ export const fr: Messages = {
   // ── Paramètres — À propos ──────────────────────────────────────────────
   'settings.about.title': 'Runtime {product}',
   'settings.about.tagline':
-    '{product} est un agent de codage IA open source développé par AgentXLab.',
+    '{product} est un agent de codage IA open source développé par VellocLabs.',
   'settings.about.taglineRuntime':
     'Le runtime fait tourner le moteur {product}. Configurez sa source et gérez les mises à jour.',
   'settings.about.active': 'Actif',
@@ -1563,7 +1563,7 @@ export const fr: Messages = {
   'settings.about.reloadHint':
     'Recharge le runtime en contournant les ressources mises en cache.',
   'settings.about.licenseValue': '{product} est un logiciel open source.',
-  'settings.about.copyright': '© {year} AgentXLab.',
+  'settings.about.copyright': '© {year} VellocLabs.',
 
   // ── Paramètres — Modèles de session (niveaux + routage) ────────────────
   'settings.sessionModels.title': 'Modèles de session',

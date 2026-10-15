@@ -1536,7 +1536,7 @@ export const en = {
   // ── Settings — About ───────────────────────────────────────────────────
   'settings.about.title': '{product} Runtime',
   'settings.about.tagline':
-    '{product} is an open-source AI coding agent developed by AgentXLab.',
+    '{product} is an open-source AI coding agent developed by VellocLabs.',
   'settings.about.taglineRuntime':
     'The runtime powers the {product} Engine. Configure its source and manage updates.',
   'settings.about.active': 'Active',
@@ -1582,7 +1582,7 @@ export const en = {
   'settings.about.reloadTitle': 'Reload Runtime',
   'settings.about.reloadHint': 'Reload the runtime and bypass cached resources.',
   'settings.about.licenseValue': '{product} is open source.',
-  'settings.about.copyright': '© {year} AgentXLab.',
+  'settings.about.copyright': '© {year} VellocLabs.',
 
   // ── Settings — Session models (tier dictionary + feature routing) ──────
   'settings.sessionModels.title': 'Session Models',

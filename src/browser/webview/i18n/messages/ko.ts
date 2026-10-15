@@ -1470,7 +1470,7 @@ export const ko: Messages = {
   // ── 설정 — 정보 ───────────────────────────────────────────────────────
   'settings.about.title': '{product} 런타임',
   'settings.about.tagline':
-    '{product}은(는) AgentXLab이 개발한 오픈소스 AI 코딩 에이전트입니다.',
+    '{product}은(는) VellocLabs가 개발한 오픈소스 AI 코딩 에이전트입니다.',
   'settings.about.taglineRuntime':
     '런타임은 {product} 엔진을 구동합니다. 여기서 가져올 위치를 설정하고 업데이트를 관리하세요.',
   'settings.about.active': '사용 중',
@@ -1512,7 +1512,7 @@ export const ko: Messages = {
   'settings.about.reloadHint':
     '캐시된 리소스를 건너뛰고 런타임을 다시 불러옵니다.',
   'settings.about.licenseValue': '{product}은(는) 오픈소스입니다.',
-  'settings.about.copyright': '© {year} AgentXLab.',
+  'settings.about.copyright': '© {year} VellocLabs.',
 
   // ── 설정 — 세션 모델(등급 사전 + 기능 라우팅) ─────────────────────────
   'settings.sessionModels.title': '세션 모델',

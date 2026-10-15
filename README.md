@@ -8,8 +8,8 @@ browser tabs, all inside one desktop application. This repository is its
 memory and the whole user interface, written in TypeScript and React.
 
 [Download for Windows](https://velloc.app/download/install.exe) ·
-[Releases](https://github.com/AgentXLab/velloc-bootstrap/releases/latest) ·
-[Platform and architecture](https://github.com/AgentXLab/velloc-bootstrap#readme)
+[Releases](https://github.com/VellocLabs/velloc-bootstrap/releases/latest) ·
+[Platform and architecture](https://github.com/VellocLabs/velloc-bootstrap#readme)
 
 ## Why Velloc
 
@@ -64,7 +64,7 @@ handshake and never boots.
 You need an installed client (see Download above) and Node.js 22.
 
 ```bash
-git clone https://github.com/AgentXLab/velloc-runtime.git
+git clone https://github.com/VellocLabs/velloc-runtime.git
 cd velloc-runtime
 npm install
 npm run dev

@@ -3,7 +3,7 @@ import { AppUpdateService, type AppUpdateHost } from '../../appUpdate/AppUpdateS
 import type { AppUpdateState } from '../../appUpdate/appUpdateProtocol'
 
 const ROOT = String.raw`C:\Users\u\AppData\Local\Velloc\Update`
-const PKG = 'https://github.com/AgentXLab/velloc-bootstrap/releases/download/velloc-v1.149.2.5/mini_installer.exe'
+const PKG = 'https://github.com/VellocLabs/velloc-bootstrap/releases/download/velloc-v1.149.2.5/mini_installer.exe'
 
 type Script = {
   current?: string

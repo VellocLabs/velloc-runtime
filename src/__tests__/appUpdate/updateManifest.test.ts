@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compareVersions, parseUpdateManifest, parseVersion, shouldInstall } from '../../appUpdate/updateManifest'
 
-const URL_OK = 'https://github.com/AgentXLab/velloc-bootstrap/releases/download/velloc-v1.149.2.5/mini_installer.exe'
+const URL_OK = 'https://github.com/VellocLabs/velloc-bootstrap/releases/download/velloc-v1.149.2.5/mini_installer.exe'
 
 describe('update manifest', () => {
   it('parses four dotted integers and orders them field by field', () => {

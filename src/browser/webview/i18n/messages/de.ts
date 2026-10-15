@@ -1507,7 +1507,7 @@ export const de: Messages = {
   // ── Einstellungen — Über ───────────────────────────────────────────────
   'settings.about.title': '{product} Runtime',
   'settings.about.tagline':
-    '{product} ist ein quelloffener KI-Coding-Agent, entwickelt von AgentXLab.',
+    '{product} ist ein quelloffener KI-Coding-Agent, entwickelt von VellocLabs.',
   'settings.about.taglineRuntime':
     'Die Runtime treibt die {product} Engine an. Lege ihre Quelle fest und verwalte Updates.',
   'settings.about.active': 'Aktiv',
@@ -1554,7 +1554,7 @@ export const de: Messages = {
   'settings.about.reloadHint':
     'Lädt die Runtime neu und umgeht zwischengespeicherte Ressourcen.',
   'settings.about.licenseValue': '{product} ist quelloffen.',
-  'settings.about.copyright': '© {year} AgentXLab.',
+  'settings.about.copyright': '© {year} VellocLabs.',
 
   // ── Einstellungen — Sitzungsmodelle (Stufen + Funktions-Routing) ───────
   'settings.sessionModels.title': 'Sitzungsmodelle',

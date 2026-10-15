@@ -10,7 +10,7 @@ import { getProductName } from '../branding/productName'
 
 /**
  * About page: the tagline names an open-source AI coding agent, and the footer states the license and the
- * copyright on one line: "{product} is open source. © <year> AgentXLab."
+ * copyright on one line: "{product} is open source. © <year> VellocLabs."
  */
 
 // Isolate the section from the host bridge routes it fetches on mount.
@@ -66,7 +66,7 @@ describe('AboutSection licensing copy', () => {
 
     expect(
       screen.getByText(
-        `${getProductName()} is an open-source AI coding agent developed by AgentXLab.`,
+        `${getProductName()} is an open-source AI coding agent developed by VellocLabs.`,
       ),
     ).toBeTruthy()
   })
@@ -76,11 +76,11 @@ describe('AboutSection licensing copy', () => {
 
     const year = new Date().getFullYear()
     const footer = screen.getByText(
-      `${getProductName()} is open source. © ${year} AgentXLab.`,
+      `${getProductName()} is open source. © ${year} VellocLabs.`,
     )
     expect(footer).toBeTruthy()
     // One paragraph, not two — the copyright must not wrap onto its own line.
-    expect(screen.queryByText(`© ${year} AgentXLab.`, { exact: true })).toBeNull()
+    expect(screen.queryByText(`© ${year} VellocLabs.`, { exact: true })).toBeNull()
     expect(document.body.textContent).not.toContain('Proprietary')
   })
 })

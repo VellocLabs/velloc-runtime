@@ -1476,7 +1476,7 @@ export const ja: Messages = {
   // ── 設定 — このアプリについて ─────────────────────────────────────────
   'settings.about.title': '{product} ランタイム',
   'settings.about.tagline':
-    '{product} は AgentXLab が開発するオープンソースの AI コーディングエージェントです。',
+    '{product} は VellocLabs が開発するオープンソースの AI コーディングエージェントです。',
   'settings.about.taglineRuntime':
     'ランタイムは {product} エンジンを動かします。ここで取得元を設定し、更新を管理できます。',
   'settings.about.active': '使用中',
@@ -1518,7 +1518,7 @@ export const ja: Messages = {
   'settings.about.reloadHint':
     'キャッシュされたリソースを使わずにランタイムを再読み込みします。',
   'settings.about.licenseValue': '{product} はオープンソースです。',
-  'settings.about.copyright': '© {year} AgentXLab.',
+  'settings.about.copyright': '© {year} VellocLabs.',
 
   // ── 設定 — セッションモデル（ティア辞書 + 機能ルーティング） ───────────
   'settings.sessionModels.title': 'セッションモデル',

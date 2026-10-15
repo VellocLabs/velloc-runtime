@@ -1440,7 +1440,7 @@ export const zh: Messages = {
 
   // ── 设置 — 关于 ───────────────────────────────────────────────────────
   'settings.about.title': '{product} 运行时',
-  'settings.about.tagline': '{product} 是 AgentXLab 开发的开源 AI 编程智能体。',
+  'settings.about.tagline': '{product} 是 VellocLabs 开发的开源 AI 编程智能体。',
   'settings.about.taglineRuntime':
     '运行时为 {product} 引擎提供支持。你可以在这里配置它的来源并管理更新。',
   'settings.about.active': '使用中',
@@ -1477,7 +1477,7 @@ export const zh: Messages = {
   'settings.about.reloadTitle': '重新加载运行时',
   'settings.about.reloadHint': '重新加载运行时并绕过缓存资源。',
   'settings.about.licenseValue': '{product} 是开源软件。',
-  'settings.about.copyright': '© {year} AgentXLab。',
+  'settings.about.copyright': '© {year} VellocLabs。',
 
   // ── 设置 — 会话模型（层级字典 + 功能路由） ────────────────────────────
   'settings.sessionModels.title': '会话模型',
