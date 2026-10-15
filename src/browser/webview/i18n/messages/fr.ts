@@ -19,6 +19,7 @@ export const fr: Messages = {
   'sidebar.sortDateCreated': 'Date de création',
   'sidebar.sortDescending': 'Décroissant',
   'sidebar.sortAscending': 'Croissant',
+  'sidebar.resetListView': 'Rétablir les valeurs par défaut',
   'sidebar.rename': 'Renommer',
   'sidebar.delete': 'Supprimer',
   'sidebar.threadActionsAria': 'Actions de la discussion : {title}',

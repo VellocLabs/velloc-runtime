@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { Sidebar, type SessionListItem } from '../browser/webview/Sidebar'
 import {
+  clearSessionListView,
   DEFAULT_SESSION_LIST_VIEW,
   readSessionListView,
   writeSessionListView,
@@ -96,6 +97,13 @@ describe('stored view', () => {
     writeSessionListView({ groupBy: 'date', field: 'created', direction: 'asc' })
     expect(readSessionListView()).toEqual({ groupBy: 'date', field: 'created', direction: 'asc' })
   })
+
+  it('clearing deletes the stored entry, so the defaults apply', () => {
+    writeSessionListView({ groupBy: 'date', field: 'created', direction: 'asc' })
+    clearSessionListView()
+    expect(memoryStorage.has('nexus:sidebar:sessionListView')).toBe(false)
+    expect(readSessionListView()).toEqual(DEFAULT_SESSION_LIST_VIEW)
+  })
 })
 
 describe('Sidebar list menu', () => {
@@ -175,5 +183,25 @@ describe('Sidebar list menu', () => {
     // Bravo is today (no header); the others are older days, shown as dates.
     expect(labels).toHaveLength(3)
     for (const text of labels) expect(text).toMatch(/\d/)
+  })
+
+  it('Reset to defaults deletes the stored view and restores the default list', () => {
+    renderSidebar()
+    openSubmenu('sidebar-group-by')
+    pick('sidebar-group-by-status')
+    openSubmenu('sidebar-sort-by')
+    pick('sidebar-sort-direction-asc')
+    expect(memoryStorage.has('nexus:sidebar:sessionListView')).toBe(true)
+
+    act(() => {
+      fireEvent.keyDown(screen.getByTestId('sidebar-list-options'), { key: 'Enter' })
+    })
+    pick('sidebar-list-reset')
+
+    expect(memoryStorage.has('nexus:sidebar:sessionListView')).toBe(false)
+    expect(rowTitles()).toEqual(['Bravo', 'Alpha', 'Charlie', 'Legacy'])
+    expect(headers()).toEqual(['sidebar.timePrevious7Days', 'sidebar.timeOlder'])
+    openSubmenu('sidebar-group-by')
+    expect(checked('sidebar-group-by-week')).toBe('true')
   })
 })

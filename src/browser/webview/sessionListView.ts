@@ -236,6 +236,15 @@ export function readSessionListView(): SessionListView {
   }
 }
 
+/** Forget this window's view: the stored entry is deleted, so the defaults apply. */
+export function clearSessionListView(): void {
+  try {
+    globalThis.localStorage?.removeItem(STORAGE_KEY)
+  } catch {
+    // Storage unavailable: nothing was stored.
+  }
+}
+
 /** Remember `view` for this window. A view preference, so per-origin page storage. */
 export function writeSessionListView(view: SessionListView): void {
   try {

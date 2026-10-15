@@ -20,6 +20,7 @@ export const ja: Messages = {
   'sidebar.sortDateCreated': '作成日',
   'sidebar.sortDescending': '降順',
   'sidebar.sortAscending': '昇順',
+  'sidebar.resetListView': 'デフォルトに戻す',
   'sidebar.rename': '名前を変更',
   'sidebar.delete': '削除',
   'sidebar.threadActionsAria': 'チャットの操作：{title}',

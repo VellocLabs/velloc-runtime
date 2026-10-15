@@ -23,6 +23,7 @@ export const en = {
   'sidebar.sortDateCreated': 'Date created',
   'sidebar.sortDescending': 'Descending',
   'sidebar.sortAscending': 'Ascending',
+  'sidebar.resetListView': 'Reset to defaults',
   'sidebar.rename': 'Rename',
   'sidebar.delete': 'Delete',
   'sidebar.threadActionsAria': 'Thread actions: {title}',

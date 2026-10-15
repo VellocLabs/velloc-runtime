@@ -20,6 +20,7 @@ export const ko: Messages = {
   'sidebar.sortDateCreated': '생성일',
   'sidebar.sortDescending': '내림차순',
   'sidebar.sortAscending': '오름차순',
+  'sidebar.resetListView': '기본값으로 되돌리기',
   'sidebar.rename': '이름 변경',
   'sidebar.delete': '삭제',
   'sidebar.threadActionsAria': '채팅 작업: {title}',

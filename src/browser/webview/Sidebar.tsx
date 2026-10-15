@@ -24,6 +24,8 @@ import { ProjectSection } from './ProjectSection'
 import { SessionListMenu } from './SessionListMenu'
 import {
   buildSessionListView,
+  clearSessionListView,
+  DEFAULT_SESSION_LIST_VIEW,
   orderSessions,
   readSessionListView,
   writeSessionListView,
@@ -134,6 +136,10 @@ export function SessionListBody({
   const applyView = useCallback((next: SessionListView) => {
     setView(next)
     writeSessionListView(next)
+  }, [])
+  const resetView = useCallback(() => {
+    clearSessionListView()
+    setView(DEFAULT_SESSION_LIST_VIEW)
   }, [])
   const orderedSessions = useMemo(
     () => orderSessions(sessions ?? [], view.field, view.direction),
@@ -261,6 +267,7 @@ export function SessionListBody({
             <SessionListMenu
               view={view}
               onViewChange={applyView}
+              onReset={resetView}
               className="absolute right-1.5 bottom-0.5 opacity-0 focus-visible:opacity-100 group-hover/recents:opacity-100 data-[state=open]:opacity-100"
             />
           </div>

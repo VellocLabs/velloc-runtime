@@ -23,6 +23,7 @@ export const es: Messages = {
   'sidebar.sortDateCreated': 'Fecha de creación',
   'sidebar.sortDescending': 'Descendente',
   'sidebar.sortAscending': 'Ascendente',
+  'sidebar.resetListView': 'Restablecer los valores predeterminados',
   'sidebar.rename': 'Cambiar nombre',
   'sidebar.delete': 'Eliminar',
   'sidebar.threadActionsAria': 'Acciones del chat: {title}',

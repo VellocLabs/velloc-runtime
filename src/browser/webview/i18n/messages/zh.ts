@@ -23,6 +23,7 @@ export const zh: Messages = {
   'sidebar.sortDateCreated': '创建时间',
   'sidebar.sortDescending': '降序',
   'sidebar.sortAscending': '升序',
+  'sidebar.resetListView': '恢复默认',
   'sidebar.rename': '重命名',
   'sidebar.delete': '删除',
   'sidebar.threadActionsAria': '对话操作：{title}',

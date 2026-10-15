@@ -124,16 +124,19 @@ function ChoiceSubmenu({
 }
 
 /**
- * The session list's options menu: "Group by" (none / status / date / week)
- * and "Sort by" (field, then direction). (F-17)
+ * The session list's options menu: "Group by" (none / status / date / week),
+ * "Sort by" (field, then direction) and "Reset to defaults". (F-17)
  */
 export function SessionListMenu({
   view,
   onViewChange,
+  onReset,
   className,
 }: {
   view: SessionListView
   onViewChange: (next: SessionListView) => void
+  /** Drop the stored view and go back to the defaults. */
+  onReset: () => void
   className?: string
 }) {
   const t = useT()
@@ -193,6 +196,14 @@ export function SessionListMenu({
             testId="sidebar-sort-by"
             sections={[fieldSection, directionSection]}
           />
+          <DropdownMenuPrimitive.Separator className="-mx-1 my-1 h-px bg-border" />
+          <DropdownMenuPrimitive.Item
+            data-testid="sidebar-list-reset"
+            onSelect={onReset}
+            className={ITEM_CLASS}
+          >
+            {t('sidebar.resetListView')}
+          </DropdownMenuPrimitive.Item>
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPrimitive.Portal>
     </DropdownMenuPrimitive.Root>

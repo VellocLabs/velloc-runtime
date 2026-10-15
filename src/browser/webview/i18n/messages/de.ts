@@ -22,6 +22,7 @@ export const de: Messages = {
   'sidebar.sortDateCreated': 'Erstellungsdatum',
   'sidebar.sortDescending': 'Absteigend',
   'sidebar.sortAscending': 'Aufsteigend',
+  'sidebar.resetListView': 'Auf Standard zurücksetzen',
   'sidebar.rename': 'Umbenennen',
   'sidebar.delete': 'Löschen',
   'sidebar.threadActionsAria': 'Chat-Aktionen: {title}',
