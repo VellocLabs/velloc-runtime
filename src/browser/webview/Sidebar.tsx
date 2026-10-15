@@ -21,13 +21,14 @@ import {
   type SessionRowEditing,
 } from './SessionRows'
 import { ProjectSection } from './ProjectSection'
-import { SessionOrderMenu } from './SessionOrderMenu'
+import { SessionListMenu } from './SessionListMenu'
 import {
+  buildSessionListView,
   orderSessions,
-  readSessionListOrder,
-  writeSessionListOrder,
-  type SessionListOrder,
-} from './sessionListOrder'
+  readSessionListView,
+  writeSessionListView,
+  type SessionListView,
+} from './sessionListView'
 import { AppUpdateBar } from './AppUpdateBar'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
 import { SESSION_PAGE_SIZE } from './sessionListPaging'
@@ -127,15 +128,26 @@ export function SessionListBody({
   // other piece of row state already syncs for free — title, running animation
   // and deletion all come from the one `sessions` array.
   const [editing, setEditing] = useState<SessionRowEditing>(null)
-  // Sort order of the Recents and project rows; a per-window view preference.
-  const [order, setOrder] = useState<SessionListOrder>(readSessionListOrder)
-  const applyOrder = useCallback((next: SessionListOrder) => {
-    setOrder(next)
-    writeSessionListOrder(next)
+  // How the Recents rows are grouped and ordered (project rows take the order
+  // only); a per-window view preference.
+  const [view, setView] = useState<SessionListView>(readSessionListView)
+  const applyView = useCallback((next: SessionListView) => {
+    setView(next)
+    writeSessionListView(next)
   }, [])
   const orderedSessions = useMemo(
-    () => orderSessions(sessions ?? [], order),
-    [sessions, order],
+    () => orderSessions(sessions ?? [], view.field, view.direction),
+    [sessions, view.field, view.direction],
+  )
+  // The narrow popover lists bare titles: same order, no group headers.
+  const recentGroups = useMemo(
+    () =>
+      buildSessionListView(
+        sessions ?? [],
+        titlesOnly ? { ...view, groupBy: 'none' } : view,
+        Date.now(),
+      ),
+    [sessions, view, titlesOnly],
   )
   const applyRecentsCollapsed = useCallback((next: boolean) => {
     setRecentsCollapsed(next)
@@ -246,9 +258,9 @@ export function SessionListBody({
               )}
             </button>
             {/* Hover-revealed, like the row actions; stays visible while open. */}
-            <SessionOrderMenu
-              order={order}
-              onOrderChange={applyOrder}
+            <SessionListMenu
+              view={view}
+              onViewChange={applyView}
               className="absolute right-1.5 bottom-0.5 opacity-0 focus-visible:opacity-100 group-hover/recents:opacity-100 data-[state=open]:opacity-100"
             />
           </div>
@@ -258,13 +270,11 @@ export function SessionListBody({
           // Collapsing "Recents" (docked sidebar only) hides the rows.
           !titlesOnly && recentsCollapsed ? null : (
             <SessionRowList
-              sessions={orderedSessions}
+              groups={recentGroups}
               activeSessionId={resolvedActiveSessionId}
               onSwitchThread={onSwitchThread}
               onDeleteThread={onDeleteThread}
               onRenameThread={onRenameThread}
-              showTimeSeparators={!titlesOnly}
-              timeField={order.field}
               scope="recents"
               editing={editing}
               onEditingChange={setEditing}

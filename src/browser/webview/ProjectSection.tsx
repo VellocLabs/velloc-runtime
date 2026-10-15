@@ -39,6 +39,7 @@ import {
   type SessionListItem,
   type SessionRowEditing,
 } from './SessionRows'
+import { ungroupedView } from './sessionListView'
 
 export type ProjectSectionProps = {
   sessions: SessionListItem[]
@@ -507,7 +508,7 @@ function ProjectRow({
         >
           {node.sessions.length > 0 ? (
             <SessionRowList
-              sessions={node.sessions}
+              groups={ungroupedView(node.sessions)}
               activeSessionId={activeSessionId}
               onSwitchThread={onSwitchThread}
               onDeleteThread={onDeleteThread}

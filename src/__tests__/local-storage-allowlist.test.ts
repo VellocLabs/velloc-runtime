@@ -97,10 +97,10 @@ const ALLOWLIST: Record<string, Row> = {
     kind: 'view',
     why: "the Recents section's collapsed state",
   },
-  'browser/webview/sessionListOrder.ts': {
-    keys: ['nexus:sidebar:sessionOrder'],
+  'browser/webview/sessionListView.ts': {
+    keys: ['nexus:sidebar:sessionListView'],
     kind: 'view',
-    why: "the order this client lists sessions in (sort field and direction); another device lists its own way",
+    why: "how this client groups and orders its session list (group by, sort field, direction); another device lists its own way",
   },
   'browser/webview/settings/sections/PluginsSection.tsx': {
     keys: ['nexus.plugins.marketplaceListings.v1'],

@@ -8,10 +8,13 @@ import { SessionAttentionDot } from '@/components/assistant-ui/session-attention
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import { Fragment, useState } from 'react'
 
-import { sessionTimeBucket } from './sessionTimeBucket'
-import { sessionOrderTime, type SessionSortField } from './sessionListOrder'
+import {
+  formatGroupDay,
+  type SessionGroup,
+  type SessionGroupLabel,
+} from './sessionListView'
 import { applyClippedTooltip } from './titleOverflow'
-import { useT, type TranslateFn } from './i18n'
+import { useLocale, useT, type TranslateFn } from './i18n'
 import { getLauncherForType, launcherDefaultTitle } from './threadLaunchers'
 import {
   countIncluding,
@@ -106,19 +109,12 @@ export type SessionRowEditing = {
 } | null
 
 export type SessionRowListProps = {
-  sessions: SessionListItem[]
+  /** The rows to show, already grouped and ordered (`buildSessionListView`). */
+  groups: readonly SessionGroup<SessionListItem>[]
   activeSessionId: string
   onSwitchThread?: (sessionId: string) => void
   onDeleteThread?: (sessionId: string) => void
   onRenameThread?: (sessionId: string, title: string) => void
-  /**
-   * Emit the day-group dividers between rows. On for "Recents" (which IS the
-   * time grouping); off inside a project node, where the project is already the
-   * grouping and a second axis of dividers is just noise.
-   */
-  showTimeSeparators?: boolean
-  /** The time the day-group dividers bucket by: the list's sort field. */
-  timeField?: SessionSortField
   /**
    * Extra left inset for rows nested under a project node, so the tree reads as
    * a hierarchy in a 256px-wide panel.
@@ -133,25 +129,24 @@ export type SessionRowListProps = {
 }
 
 /**
- * Renders `sessions` (already in the list's order, by `timeField`) as rows,
- * revealing one page at a time.
+ * Renders `groups` as rows under a header per labeled group, revealing one page
+ * of rows at a time (a header shows with the first visible row of its group).
  */
 export function SessionRowList({
-  sessions,
+  groups,
   activeSessionId,
   onSwitchThread,
   onDeleteThread,
   onRenameThread,
-  showTimeSeparators = false,
-  timeField = 'updated',
   indented = false,
   scope,
   editing = null,
   onEditingChange,
 }: SessionRowListProps) {
   const t = useT()
-  // Captured once per render so all rows bucket against the same day boundary.
-  const now = Date.now()
+  const locale = useLocale()
+  const sessions = groups.flatMap(group => group.sessions)
+  const groupOfRow = groups.flatMap(group => group.sessions.map(() => group))
   // How many rows are revealed. Grows only by explicit clicks — see
   // `sessionListPaging` for why this is deliberately not persisted.
   const [visibleCount, setVisibleCount] = useState(SESSION_PAGE_SIZE)
@@ -167,11 +162,8 @@ export function SessionRowList({
   const moreCount = nextPageCount(sessions.length, effectiveCount)
 
   const displayTitle = (item: SessionListItem) => sessionDisplayTitle(item, t)
-  // An unknown creation time sorts as oldest, so it groups under "Older".
-  const bucketOf = (item: SessionListItem) => {
-    const time = sessionOrderTime(item, timeField)
-    return time === undefined ? 'sidebar.timeOlder' : sessionTimeBucket(time, now)
-  }
+  const groupTitle = (label: SessionGroupLabel) =>
+    label.kind === 'message' ? t(label.key) : formatGroupDay(label.dayStart, locale)
 
   return (
     <>
@@ -193,14 +185,16 @@ export function SessionRowList({
         const canRename = !!onRenameThread
         const canDelete = !!onDeleteThread && !isActive
         const hasRowActions = canRename || canDelete
-        // Relative-time grouping: emit a small gray separator when this row's
-        // day-bucket differs from the previous row's. Rows are sorted by the
-        // bucketed time, so equal buckets are adjacent. Not a session row (no
+        // A group's header sits above its first row. Not a session row (no
         // `span.min-w-0.flex-1`), so the e2e row-count harness ignores it.
-        const timeBucket = bucketOf(session)
-        // A gap-line divider labels each day-group, the first too unless it is "Today". A row whose
-        // title does not fit shows it as a native tooltip, measured on `pointerover` and again on
-        // `transitionend` (the hover padding narrows the title).
+        const group = groupOfRow[index]!
+        const header =
+          group.label &&
+          (index === 0 || groupOfRow[index - 1] !== group)
+            ? group.label
+            : undefined
+        // A row whose title does not fit shows it as a native tooltip, measured on `pointerover`
+        // and again on `transitionend` (the hover padding narrows the title).
         const measureTitleTooltip = (
           event: { currentTarget: HTMLElement },
         ) => {
@@ -211,20 +205,15 @@ export function SessionRowList({
             displayTitle(session),
           )
         }
-        const showTimeSeparator =
-          showTimeSeparators &&
-          (index === 0
-            ? timeBucket !== 'sidebar.timeToday'
-            : bucketOf(visibleSessions[index - 1]) !== timeBucket)
         return (
           <Fragment key={session.sessionId}>
-            {showTimeSeparator && (
+            {header && (
               // Minimized gap-line divider: a short h-3 strip with a
-              // DOTTED rule on each side of a tiny label. `data-bucket`
-              // carries the locale-independent bucket key for e2e.
+              // DOTTED rule on each side of a tiny label. `data-group`
+              // carries the locale-independent group key for e2e.
               <div
-                data-testid="sidebar-time-separator"
-                data-bucket={timeBucket}
+                data-testid="sidebar-group-header"
+                data-group={group.key}
                 className="flex h-3 items-center gap-2 px-3"
               >
                 <span
@@ -232,7 +221,7 @@ export function SessionRowList({
                   className="flex-1 border-t border-dotted border-border/70"
                 />
                 <span className="text-caption leading-none text-muted-foreground/50">
-                  {t(timeBucket)}
+                  {groupTitle(header)}
                 </span>
                 <span
                   aria-hidden
