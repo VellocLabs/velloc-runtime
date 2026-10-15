@@ -9,6 +9,12 @@ import type { Messages } from './en'
 export const es: Messages = {
   'sidebar.newThread': 'Nuevo chat',
   'sidebar.recents': 'Recientes',
+  'sidebar.listOptionsAria': 'Opciones de la lista de sesiones',
+  'sidebar.sortBy': 'Ordenar por',
+  'sidebar.sortLastUpdated': 'Última actualización',
+  'sidebar.sortDateCreated': 'Fecha de creación',
+  'sidebar.sortDescending': 'Descendente',
+  'sidebar.sortAscending': 'Ascendente',
   'sidebar.rename': 'Cambiar nombre',
   'sidebar.delete': 'Eliminar',
   'sidebar.threadActionsAria': 'Acciones del chat: {title}',

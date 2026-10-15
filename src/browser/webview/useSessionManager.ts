@@ -17,7 +17,9 @@ export type LocalSessionEntry = {
    */
   customTitle?: string
   previewText: string
-  createdAt: number
+  /** Creation time: the runtime's persisted one, else this webview's own for a
+   *  session it created and the runtime has not persisted yet. Absent = unknown. */
+  createdAt?: number
   updatedAt: number
   /**
    * Transcript messages seen for this session: `messageCount === 0` is the "is this session empty?" check
@@ -93,6 +95,9 @@ export type RemoteSessionSummary = {
   messageCount?: number
   composerDraft?: string
   lastComposerEditAt?: number
+  createdAt?: number
+  /** The runtime holds a persisted copy of this session. */
+  persisted?: boolean
 }
 
 export type SessionManagerOptions = {
@@ -329,6 +334,10 @@ export function mergeSessions(
       summary.title ||
       local?.title ||
       'New Thread'
+    // A persisted session's creation time is the runtime's alone; a local
+    // placeholder's "now" must not stand in for an unknown one.
+    const createdAt =
+      summary.createdAt ?? (summary.persisted ? undefined : local?.createdAt)
 
     merged.set(summary.sessionId, {
       sessionId: summary.sessionId,
@@ -361,7 +370,7 @@ export function mergeSessions(
         summary.previewText ||
         local?.previewText ||
         '',
-      createdAt: local?.createdAt ?? remoteUpdatedAt,
+      ...(createdAt !== undefined ? { createdAt } : {}),
       // `relaunchedAt` is a FLOOR, not a source: re-launching an empty
       // session floats it to the top without touching the title/preview
       // resolution above (which must still prefer the persisted summary).

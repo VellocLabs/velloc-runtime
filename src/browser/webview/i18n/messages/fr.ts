@@ -5,6 +5,12 @@ import type { Messages } from './en'
 export const fr: Messages = {
   'sidebar.newThread': 'Nouvelle discussion',
   'sidebar.recents': 'Récents',
+  'sidebar.listOptionsAria': 'Options de la liste des sessions',
+  'sidebar.sortBy': 'Trier par',
+  'sidebar.sortLastUpdated': 'Dernière mise à jour',
+  'sidebar.sortDateCreated': 'Date de création',
+  'sidebar.sortDescending': 'Décroissant',
+  'sidebar.sortAscending': 'Croissant',
   'sidebar.rename': 'Renommer',
   'sidebar.delete': 'Supprimer',
   'sidebar.threadActionsAria': 'Actions de la discussion : {title}',

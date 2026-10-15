@@ -158,3 +158,48 @@ describe('local session entry — fields survive the optimistic writers', () => 
     expect(entry?.projectRoot).toBe('D:/work/persisted')
   })
 })
+
+describe('creation time on the merged entry (F-17)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('a session this webview just created keeps its own time until the runtime persists one', () => {
+    const { result } = mountManager()
+    let fresh = ''
+    act(() => {
+      fresh = result.current.openNewSession('code')
+    })
+    flushMerge()
+    const local = result.current.sessions.find(s => s.sessionId === fresh)?.createdAt
+    expect(local).toBeTypeOf('number')
+
+    act(() => {
+      result.current.applyRemoteList([{ sessionId: fresh, updatedAt: 5 }])
+    })
+    flushMerge()
+    expect(result.current.sessions.find(s => s.sessionId === fresh)?.createdAt).toBe(local)
+
+    act(() => {
+      result.current.applyRemoteList([
+        { sessionId: fresh, updatedAt: 5, persisted: true, createdAt: 42 },
+      ])
+    })
+    flushMerge()
+    expect(result.current.sessions.find(s => s.sessionId === fresh)?.createdAt).toBe(42)
+  })
+
+  it('a persisted session without one is unknown, not stamped with a local placeholder time', () => {
+    const { result } = mountManager()
+    act(() => {
+      result.current.applyRemoteList([
+        { sessionId: BOOT, updatedAt: 7, persisted: true },
+      ])
+    })
+    flushMerge()
+    expect(result.current.sessions.find(s => s.sessionId === BOOT)?.createdAt).toBeUndefined()
+  })
+})

@@ -53,8 +53,8 @@ function displayName(path: string): string {
 }
 
 /**
- * Group newest-first `sessions` into project nodes, each keeping that order; projects ordered by newest
- * session, then session-less ones newest addition first. `addedProjectPaths` are deduped against the
+ * Group `sessions` into project nodes, each keeping the input order; projects ordered by newest
+ * activity, then session-less ones newest addition first. `addedProjectPaths` are deduped against the
  * session-derived paths.
  */
 export function buildProjectTree<T extends ProjectTreeSession>(
@@ -88,12 +88,13 @@ export function buildProjectTree<T extends ProjectTreeSession>(
     node.isEmpty = false
   }
 
-  // Newest activity per project — `sessions` arrives newest-first, so the head
-  // of each bucket is that project's most recent session.
+  // Newest activity per project, whatever order the rows are listed in.
   const activityOf = (node: ProjectNode<T>): number => {
-    const newest = node.sessions[0]
-    if (!newest) return -1
-    return Math.max(newest.updatedAt, newest.lastComposerEditAt ?? 0)
+    let newest = -1
+    for (const session of node.sessions) {
+      newest = Math.max(newest, session.updatedAt, session.lastComposerEditAt ?? 0)
+    }
+    return newest
   }
 
   return [...byPath.values()].sort((left, right) => {

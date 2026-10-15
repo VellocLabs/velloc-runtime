@@ -6,6 +6,12 @@ import type { Messages } from './en'
 export const ja: Messages = {
   'sidebar.newThread': '新しいチャット',
   'sidebar.recents': '最近',
+  'sidebar.listOptionsAria': 'セッション一覧のオプション',
+  'sidebar.sortBy': '並べ替え',
+  'sidebar.sortLastUpdated': '最終更新',
+  'sidebar.sortDateCreated': '作成日',
+  'sidebar.sortDescending': '降順',
+  'sidebar.sortAscending': '昇順',
   'sidebar.rename': '名前を変更',
   'sidebar.delete': '削除',
   'sidebar.threadActionsAria': 'チャットの操作：{title}',

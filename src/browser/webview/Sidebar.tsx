@@ -5,7 +5,7 @@ import { InkRipple } from '@/components/assistant-ui/ink-ripple'
 import {
   SessionAttentionDot,
 } from '@/components/assistant-ui/session-attention-dot'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { useT } from './i18n'
 import {
@@ -21,6 +21,13 @@ import {
   type SessionRowEditing,
 } from './SessionRows'
 import { ProjectSection } from './ProjectSection'
+import { SessionOrderMenu } from './SessionOrderMenu'
+import {
+  orderSessions,
+  readSessionListOrder,
+  writeSessionListOrder,
+  type SessionListOrder,
+} from './sessionListOrder'
 import { AppUpdateBar } from './AppUpdateBar'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
 import { SESSION_PAGE_SIZE } from './sessionListPaging'
@@ -120,6 +127,16 @@ export function SessionListBody({
   // other piece of row state already syncs for free — title, running animation
   // and deletion all come from the one `sessions` array.
   const [editing, setEditing] = useState<SessionRowEditing>(null)
+  // Sort order of the Recents and project rows; a per-window view preference.
+  const [order, setOrder] = useState<SessionListOrder>(readSessionListOrder)
+  const applyOrder = useCallback((next: SessionListOrder) => {
+    setOrder(next)
+    writeSessionListOrder(next)
+  }, [])
+  const orderedSessions = useMemo(
+    () => orderSessions(sessions ?? [], order),
+    [sessions, order],
+  )
   const applyRecentsCollapsed = useCallback((next: boolean) => {
     setRecentsCollapsed(next)
     try {
@@ -180,7 +197,7 @@ export function SessionListBody({
             already holds, so it costs no extra fs reads. */}
         {showProjects && (
           <ProjectSection
-            sessions={sessions}
+            sessions={orderedSessions}
             activeSessionId={resolvedActiveSessionId}
             addedProjectPaths={addedProjectPaths ?? []}
             addedProjectOrder={addedProjectOrder ?? new Map()}
@@ -203,42 +220,51 @@ export function SessionListBody({
             Not a session row (no `span.min-w-0.flex-1`), so the e2e
             row-count harness ignores it. */}
         {!titlesOnly && sessions && sessions.length > 0 && (
-          <button
-            type="button"
-            data-testid="sidebar-recents-toggle"
-            aria-label={t('sidebar.recents')}
-            aria-expanded={!recentsCollapsed}
-            onClick={() => applyRecentsCollapsed(!recentsCollapsed)}
-            onKeyDown={e => {
-              if (e.key === 'ArrowRight') {
-                e.preventDefault()
-                applyRecentsCollapsed(false)
-              } else if (e.key === 'ArrowUp') {
-                e.preventDefault()
-                applyRecentsCollapsed(true)
-              }
-            }}
-            className="flex w-full shrink-0 select-none items-center rounded-md px-3 pb-1 pt-3 text-start text-caption font-medium uppercase tracking-wider text-muted-foreground/70 transition-colors hover:text-muted-foreground"
-          >
-            {t('sidebar.recents')}
-            {/* Chevron only while collapsed (click to expand); no arrow when
-                expanded. Sits flush to the right of the label (no gap). */}
-            {recentsCollapsed && (
-              <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />
-            )}
-          </button>
+          <div className="group/recents relative flex shrink-0 items-center">
+            <button
+              type="button"
+              data-testid="sidebar-recents-toggle"
+              aria-label={t('sidebar.recents')}
+              aria-expanded={!recentsCollapsed}
+              onClick={() => applyRecentsCollapsed(!recentsCollapsed)}
+              onKeyDown={e => {
+                if (e.key === 'ArrowRight') {
+                  e.preventDefault()
+                  applyRecentsCollapsed(false)
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  applyRecentsCollapsed(true)
+                }
+              }}
+              className="flex w-full shrink-0 select-none items-center rounded-md px-3 pb-1 pt-3 text-start text-caption font-medium uppercase tracking-wider text-muted-foreground/70 transition-colors hover:text-muted-foreground"
+            >
+              {t('sidebar.recents')}
+              {/* Chevron only while collapsed (click to expand); no arrow when
+                  expanded. Sits flush to the right of the label (no gap). */}
+              {recentsCollapsed && (
+                <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />
+              )}
+            </button>
+            {/* Hover-revealed, like the row actions; stays visible while open. */}
+            <SessionOrderMenu
+              order={order}
+              onOrderChange={applyOrder}
+              className="absolute right-1.5 bottom-0.5 opacity-0 focus-visible:opacity-100 group-hover/recents:opacity-100 data-[state=open]:opacity-100"
+            />
+          </div>
         )}
 
         {hasMultiSession ? (
           // Collapsing "Recents" (docked sidebar only) hides the rows.
           !titlesOnly && recentsCollapsed ? null : (
             <SessionRowList
-              sessions={sessions}
+              sessions={orderedSessions}
               activeSessionId={resolvedActiveSessionId}
               onSwitchThread={onSwitchThread}
               onDeleteThread={onDeleteThread}
               onRenameThread={onRenameThread}
               showTimeSeparators={!titlesOnly}
+              timeField={order.field}
               scope="recents"
               editing={editing}
               onEditingChange={setEditing}

@@ -8,6 +8,12 @@ import type { Messages } from './en'
 export const de: Messages = {
   'sidebar.newThread': 'Neuer Chat',
   'sidebar.recents': 'Zuletzt',
+  'sidebar.listOptionsAria': 'Optionen der Sitzungsliste',
+  'sidebar.sortBy': 'Sortieren nach',
+  'sidebar.sortLastUpdated': 'Zuletzt aktualisiert',
+  'sidebar.sortDateCreated': 'Erstellungsdatum',
+  'sidebar.sortDescending': 'Absteigend',
+  'sidebar.sortAscending': 'Aufsteigend',
   'sidebar.rename': 'Umbenennen',
   'sidebar.delete': 'Löschen',
   'sidebar.threadActionsAria': 'Chat-Aktionen: {title}',

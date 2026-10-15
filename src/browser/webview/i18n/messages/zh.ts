@@ -9,6 +9,12 @@ import type { Messages } from './en'
 export const zh: Messages = {
   'sidebar.newThread': '新建对话',
   'sidebar.recents': '最近',
+  'sidebar.listOptionsAria': '会话列表选项',
+  'sidebar.sortBy': '排序方式',
+  'sidebar.sortLastUpdated': '最近更新',
+  'sidebar.sortDateCreated': '创建时间',
+  'sidebar.sortDescending': '降序',
+  'sidebar.sortAscending': '升序',
   'sidebar.rename': '重命名',
   'sidebar.delete': '删除',
   'sidebar.threadActionsAria': '对话操作：{title}',

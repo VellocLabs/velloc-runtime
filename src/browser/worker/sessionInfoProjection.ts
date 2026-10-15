@@ -93,5 +93,6 @@ export function projectSessionInfo(args: {
     ...(fs ? { persisted: true } : {}),
     ...(composerDraft !== undefined ? { composerDraft } : {}),
     ...(lastComposerEditAt !== undefined ? { lastComposerEditAt } : {}),
+    ...(fs?.createdAt !== undefined ? { createdAt: fs.createdAt } : {}),
   }
 }

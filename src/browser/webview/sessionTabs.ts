@@ -7,8 +7,8 @@ import { RESERVED_MEMBER_KEYS } from '../../team/memberKey'
 import type { SessionListItem } from './SessionRows'
 
 /**
- * When a child was created, for newest-first order: the teammate id's spawn stamp first, since
- * `SessionListItem.createdAt` is an activity clock for sessions this webview did not create. 0 sorts last.
+ * When a child was created, for newest-first order: the teammate id's spawn stamp first, then
+ * `SessionListItem.createdAt` (absent when unknown). 0 sorts last.
  */
 function childCreatedAt(session: SessionListItem): number {
   return (

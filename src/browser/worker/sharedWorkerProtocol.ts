@@ -221,6 +221,9 @@ export type SessionCard = {
    * sort key.
    */
   lastComposerEditAt?: number
+  /** Persisted creation time; absent when unknown (a session older than the
+   *  field, or one not yet persisted). (F-17) */
+  createdAt?: number
 }
 
 export type SharedWorkerOutboundMessage =

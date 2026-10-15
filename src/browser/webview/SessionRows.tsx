@@ -8,7 +8,8 @@ import { SessionAttentionDot } from '@/components/assistant-ui/session-attention
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import { Fragment, useState } from 'react'
 
-import { sessionTimeBucket, sessionActivityTime } from './sessionTimeBucket'
+import { sessionTimeBucket } from './sessionTimeBucket'
+import { sessionOrderTime, type SessionSortField } from './sessionListOrder'
 import { applyClippedTooltip } from './titleOverflow'
 import { useT, type TranslateFn } from './i18n'
 import { getLauncherForType, launcherDefaultTitle } from './threadLaunchers'
@@ -31,11 +32,9 @@ export type SessionListItem = {
   previewText: string
   updatedAt: number
   /**
-   * When the session was created. Only the topbar tab strip reads it, to
-   * order a lead's teammates newest-first (the newest child sits closest to
-   * the lead's tab). Absent for a session known only from the persisted fs
-   * summary, which carries no creation time -- those sort last among
-   * themselves, by id, so the order is at least stable.
+   * When the session was created: the sidebar's "Date created" order and the
+   * topbar tab strip's teammate order read it. Absent when unknown (a session
+   * persisted before creation times were recorded). (F-17)
    */
   createdAt?: number
   /**
@@ -118,6 +117,8 @@ export type SessionRowListProps = {
    * grouping and a second axis of dividers is just noise.
    */
   showTimeSeparators?: boolean
+  /** The time the day-group dividers bucket by: the list's sort field. */
+  timeField?: SessionSortField
   /**
    * Extra left inset for rows nested under a project node, so the tree reads as
    * a hierarchy in a 256px-wide panel.
@@ -132,7 +133,7 @@ export type SessionRowListProps = {
 }
 
 /**
- * Renders `sessions` (already sorted newest-first by the caller) as rows,
+ * Renders `sessions` (already in the list's order, by `timeField`) as rows,
  * revealing one page at a time.
  */
 export function SessionRowList({
@@ -142,6 +143,7 @@ export function SessionRowList({
   onDeleteThread,
   onRenameThread,
   showTimeSeparators = false,
+  timeField = 'updated',
   indented = false,
   scope,
   editing = null,
@@ -165,6 +167,11 @@ export function SessionRowList({
   const moreCount = nextPageCount(sessions.length, effectiveCount)
 
   const displayTitle = (item: SessionListItem) => sessionDisplayTitle(item, t)
+  // An unknown creation time sorts as oldest, so it groups under "Older".
+  const bucketOf = (item: SessionListItem) => {
+    const time = sessionOrderTime(item, timeField)
+    return time === undefined ? 'sidebar.timeOlder' : sessionTimeBucket(time, now)
+  }
 
   return (
     <>
@@ -187,13 +194,10 @@ export function SessionRowList({
         const canDelete = !!onDeleteThread && !isActive
         const hasRowActions = canRename || canDelete
         // Relative-time grouping: emit a small gray separator when this row's
-        // day-bucket differs from the previous row's. Sessions are sorted
-        // newest-first, so equal buckets are adjacent. Not a session row (no
+        // day-bucket differs from the previous row's. Rows are sorted by the
+        // bucketed time, so equal buckets are adjacent. Not a session row (no
         // `span.min-w-0.flex-1`), so the e2e row-count harness ignores it.
-        const timeBucket = sessionTimeBucket(
-          sessionActivityTime(session.updatedAt, session.lastComposerEditAt),
-          now,
-        )
+        const timeBucket = bucketOf(session)
         // A gap-line divider labels each day-group, the first too unless it is "Today". A row whose
         // title does not fit shows it as a native tooltip, measured on `pointerover` and again on
         // `transitionend` (the hover padding narrows the title).
@@ -211,13 +215,7 @@ export function SessionRowList({
           showTimeSeparators &&
           (index === 0
             ? timeBucket !== 'sidebar.timeToday'
-            : sessionTimeBucket(
-                sessionActivityTime(
-                  visibleSessions[index - 1].updatedAt,
-                  visibleSessions[index - 1].lastComposerEditAt,
-                ),
-                now,
-              ) !== timeBucket)
+            : bucketOf(visibleSessions[index - 1]) !== timeBucket)
         return (
           <Fragment key={session.sessionId}>
             {showTimeSeparator && (

@@ -96,6 +96,9 @@ export type BrowserSessionMetadata = Record<string, unknown> & {
   counters?: BrowserSessionCounters
   lastTerminalReason?: string
   lastTerminalTimestamp?: number
+  /** Write-once creation time, stamped on a session's first persist or by a
+   *  fork. Absent on sessions written before it existed: creation unknown. (F-17) */
+  createdAt?: number
 }
 
 export type BrowserSessionCounters = {
@@ -122,6 +125,7 @@ export type BrowserSessionSummary = {
   composerDraft?: string
   lastComposerEditAt?: number
   counters?: BrowserSessionCounters
+  createdAt?: number
 }
 
 // How much of a transcript's end is read to rebuild a session's list entry.
@@ -636,6 +640,12 @@ export function buildSessionSummaryFromMetadata(
     Number.isFinite(metadata.lastComposerEditAt)
       ? metadata.lastComposerEditAt
       : undefined
+  const createdAt =
+    typeof metadata?.createdAt === 'number' &&
+    Number.isFinite(metadata.createdAt) &&
+    metadata.createdAt > 0
+      ? metadata.createdAt
+      : undefined
   const counters = normalizeSessionCounters(metadata?.counters)
   const customTitle =
     typeof metadata?.customTitle === 'string' &&
@@ -680,6 +690,7 @@ export function buildSessionSummaryFromMetadata(
     ...(composerDraft !== undefined ? { composerDraft } : {}),
     ...(lastComposerEditAt !== undefined ? { lastComposerEditAt } : {}),
     ...(counters !== undefined ? { counters } : {}),
+    ...(createdAt !== undefined ? { createdAt } : {}),
   }
 }
 
@@ -942,6 +953,8 @@ export function buildForkedTranscriptEntries(
     ...(composerDraft
       ? { composerDraft, lastComposerEditAt: now }
       : {}),
+    // A fork is a new session: it never inherits the source's creation time.
+    createdAt: now,
   }
   const entries: BrowserTranscriptWriteEntry[] = [...forkedMessages]
   if (inheritedTitle) {
@@ -2151,6 +2164,9 @@ export class BrowserConversationStore implements ConversationStore {
   private readonly restoredSessionId: boolean
   private isPhantomRestoredSession = false
   private metaUnreadableAtLoad = false
+  /** Creation time of a session that loaded with no meta and no transcript,
+   *  folded into its metadata by the first persist. */
+  private pendingCreatedAt: number | undefined
 
   constructor(options: BrowserConversationStoreOptions) {
     this.runtimeConfig = options.runtimeConfig
@@ -2738,6 +2754,11 @@ export class BrowserConversationStore implements ConversationStore {
         this.currentCustomTitle = nonEmptyTitle(normalized.customTitle)
         this.currentCustomTitleAt = normalized.customTitleAt
         this.currentAiTitle = nonEmptyTitle(normalized.aiTitle)
+        // Nothing on disk at all: a new session. An unreadable meta may hide
+        // an old one, so its creation stays unknown.
+        if (!metaUnreadable) {
+          this.pendingCreatedAt = this.runtimeConfig.now()
+        }
       }
     }
 
@@ -2795,6 +2816,13 @@ export class BrowserConversationStore implements ConversationStore {
   private async persistSessionMeta(): Promise<void> {
     if (this.isPhantomRestoredSession || this.persistenceDisabled) {
       return
+    }
+    if (this.pendingCreatedAt !== undefined) {
+      this.currentMetadata = {
+        createdAt: this.pendingCreatedAt,
+        ...(this.currentMetadata ?? {}),
+      }
+      this.pendingCreatedAt = undefined
     }
     if (this.metaUnreadableAtLoad) {
       try {

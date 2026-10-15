@@ -6,6 +6,12 @@ import type { Messages } from './en'
 export const ko: Messages = {
   'sidebar.newThread': '새 채팅',
   'sidebar.recents': '최근',
+  'sidebar.listOptionsAria': '세션 목록 옵션',
+  'sidebar.sortBy': '정렬 기준',
+  'sidebar.sortLastUpdated': '최근 업데이트',
+  'sidebar.sortDateCreated': '생성일',
+  'sidebar.sortDescending': '내림차순',
+  'sidebar.sortAscending': '오름차순',
   'sidebar.rename': '이름 변경',
   'sidebar.delete': '삭제',
   'sidebar.threadActionsAria': '채팅 작업: {title}',

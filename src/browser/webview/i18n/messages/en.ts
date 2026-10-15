@@ -9,6 +9,12 @@
 export const en = {
   'sidebar.newThread': 'New Thread',
   'sidebar.recents': 'Recents',
+  'sidebar.listOptionsAria': 'Session list options',
+  'sidebar.sortBy': 'Sort by',
+  'sidebar.sortLastUpdated': 'Last updated',
+  'sidebar.sortDateCreated': 'Date created',
+  'sidebar.sortDescending': 'Descending',
+  'sidebar.sortAscending': 'Ascending',
   'sidebar.rename': 'Rename',
   'sidebar.delete': 'Delete',
   'sidebar.threadActionsAria': 'Thread actions: {title}',
