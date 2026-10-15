@@ -671,21 +671,31 @@ export function MultiSessionShell({
     [],
   )
 
+  // Pinned state is the runtime's: the row moves once its `session.updated`
+  // carries the new flag.
+  const handlePinThread = useCallback((sessionId: string, pinned: boolean) => {
+    sessionChannelRef.current?.request('session.pin', {
+      sessionId,
+      pinned,
+      requestId: randomUuid(),
+    })
+  }, [])
+
   // "Fork from here" stops BEFORE the cut message and returns its text to the new composer;
   // the fork is titled "<title> (fork)". Rewind posts the same message without the flag or a
   // title (it replaces the original). "Send in a forked session" (`keepCutMessage`) copies
-  // the whole conversation.
+  // the whole conversation, as does the sidebar's Fork, which names no cut at all.
   const handleRequestFork = useCallback(
     (
       fromSessionId: string,
-      cutUuid: string,
+      cutUuid: string | undefined,
       requestId: string,
       sourceTitle?: string,
       keepCutMessage?: boolean,
     ) => {
       sessionChannelRef.current?.request('session.fork', {
         fromSessionId,
-        cutUuid,
+        ...(cutUuid !== undefined ? { cutUuid } : {}),
         requestId,
         ...(keepCutMessage ? {} : { moveCutMessageToDraft: true }),
         ...(sourceTitle
@@ -2940,6 +2950,7 @@ export function MultiSessionShell({
         // newest-first, so the child just spawned sits next to the lead.
         createdAt: s.createdAt,
         lastComposerEditAt: s.lastComposerEditAt,
+        pinned: s.pinned,
         running: runningSessionIds.has(s.sessionId),
         needsAnswer: needsAnswerSessionIds.has(s.sessionId),
       })),
@@ -3365,16 +3376,25 @@ export function MultiSessionShell({
     [handleSearchOpenSession],
   )
 
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
   const handleDeleteThread = useCallback(
     (sessionId: string) => {
-      disposeClient(sessionId)
+      // The runtime deletes a lead's teammates with it, so their threads go too.
+      const doomed = new Set([
+        sessionId,
+        ...sessionsRef.current
+          .filter(session => session.spawnerSessionId === sessionId)
+          .map(session => session.sessionId),
+      ])
+      for (const id of doomed) disposeClient(id)
       deleteSession(sessionId)
-      setMountedSessionIds(prev => prev.filter(id => id !== sessionId))
-      // Drop the deleted session's in-memory Right Panel state (no leak).
+      setMountedSessionIds(prev => prev.filter(id => !doomed.has(id)))
+      // Drop the deleted sessions' in-memory Right Panel state (no leak).
       setRightPanelSessions(prev => {
-        if (!prev.has(sessionId)) return prev
+        if (![...doomed].some(id => prev.has(id))) return prev
         const m = new Map(prev)
-        m.delete(sessionId)
+        for (const id of doomed) m.delete(id)
         return m
       })
     },
@@ -3416,6 +3436,15 @@ export function MultiSessionShell({
         message,
       ),
     [forkSession, forkSendRegistry],
+  )
+
+  // The sidebar's Fork: copy the whole conversation; the `session.forked` ack
+  // switches to the copy.
+  const handleForkThread = useCallback(
+    (sessionId: string) => {
+      forkSession(sessionId, undefined, { keepCutMessage: true })
+    },
+    [forkSession],
   )
 
   const getSessionMessageCallbacks = useMemo(
@@ -3820,6 +3849,8 @@ export function MultiSessionShell({
           onSwitchThread={focusSession}
           onDeleteThread={handleDeleteThread}
           onRenameThread={retitleSession}
+          onPinThread={handlePinThread}
+          onForkThread={handleForkThread}
           width={sidebarWidth}
           isResizing={isResizingSidebar}
           runtimeConnection={runtimeConnection}

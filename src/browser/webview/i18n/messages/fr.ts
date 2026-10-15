@@ -25,6 +25,13 @@ export const fr: Messages = {
   'sidebar.threadActionsAria': 'Actions de la discussion : {title}',
   'sidebar.renameThreadAria': 'Renommer la discussion : {title}',
   'sidebar.deleteThreadAria': 'Supprimer la discussion : {title}',
+  'sidebar.pin': 'Épingler',
+  'sidebar.unpin': 'Désépingler',
+  'sidebar.fork': 'Bifurquer',
+  'sidebar.pinThreadAria': 'Épingler la discussion : {title}',
+  'sidebar.unpinThreadAria': 'Désépingler la discussion : {title}',
+  'sidebar.forkThreadAria': 'Bifurquer la discussion : {title}',
+  'sidebar.pinned': 'Épinglée',
   'sidebar.renameInputAria': 'Champ de renommage : {title}',
   'sidebar.needsAnswer': 'Attend votre réponse',
   // Client update: the bottom-of-sidebar restart notice.

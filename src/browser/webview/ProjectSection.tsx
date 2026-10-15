@@ -40,6 +40,7 @@ import {
   type SessionRowEditing,
 } from './SessionRows'
 import { ungroupedView } from './sessionListView'
+import { pinnedFirst } from './sessionPinning'
 
 export type ProjectSectionProps = {
   sessions: SessionListItem[]
@@ -57,6 +58,8 @@ export type ProjectSectionProps = {
   onSwitchThread?: (sessionId: string) => void
   onDeleteThread?: (sessionId: string) => void
   onRenameThread?: (sessionId: string, title: string) => void
+  onPinThread?: (sessionId: string, pinned: boolean) => void
+  onForkThread?: (sessionId: string) => void
   /** Inline-rename state, shared with Recents so both copies of a session agree. */
   editing?: SessionRowEditing
   onEditingChange?: (next: SessionRowEditing) => void
@@ -75,6 +78,8 @@ export function ProjectSection({
   onSwitchThread,
   onDeleteThread,
   onRenameThread,
+  onPinThread,
+  onForkThread,
   editing,
   onEditingChange,
 }: ProjectSectionProps) {
@@ -216,6 +221,8 @@ export function ProjectSection({
             onSwitchThread={onSwitchThread}
             onDeleteThread={onDeleteThread}
             onRenameThread={onRenameThread}
+            onPinThread={onPinThread}
+            onForkThread={onForkThread}
             editing={editing}
             onEditingChange={onEditingChange}
           />
@@ -246,6 +253,8 @@ type ProjectRowProps = {
   onSwitchThread?: (sessionId: string) => void
   onDeleteThread?: (sessionId: string) => void
   onRenameThread?: (sessionId: string, title: string) => void
+  onPinThread?: (sessionId: string, pinned: boolean) => void
+  onForkThread?: (sessionId: string) => void
   editing?: SessionRowEditing
   onEditingChange?: (next: SessionRowEditing) => void
 }
@@ -263,6 +272,8 @@ function ProjectRow({
   onSwitchThread,
   onDeleteThread,
   onRenameThread,
+  onPinThread,
+  onForkThread,
   editing,
   onEditingChange,
 }: ProjectRowProps) {
@@ -508,11 +519,13 @@ function ProjectRow({
         >
           {node.sessions.length > 0 ? (
             <SessionRowList
-              groups={ungroupedView(node.sessions)}
+              groups={ungroupedView(pinnedFirst(node.sessions))}
               activeSessionId={activeSessionId}
               onSwitchThread={onSwitchThread}
               onDeleteThread={onDeleteThread}
               onRenameThread={onRenameThread}
+              onPinThread={onPinThread}
+              onForkThread={onForkThread}
               editing={editing}
               onEditingChange={onEditingChange}
               indented

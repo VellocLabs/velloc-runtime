@@ -26,6 +26,13 @@ export const ja: Messages = {
   'sidebar.threadActionsAria': 'チャットの操作：{title}',
   'sidebar.renameThreadAria': 'チャットの名前を変更：{title}',
   'sidebar.deleteThreadAria': 'チャットを削除：{title}',
+  'sidebar.pin': 'ピン留め',
+  'sidebar.unpin': 'ピン留めを外す',
+  'sidebar.fork': '分岐',
+  'sidebar.pinThreadAria': 'チャットをピン留め：{title}',
+  'sidebar.unpinThreadAria': 'チャットのピン留めを外す：{title}',
+  'sidebar.forkThreadAria': 'チャットを分岐：{title}',
+  'sidebar.pinned': 'ピン留め済み',
   'sidebar.renameInputAria': '名前の入力欄：{title}',
   'sidebar.needsAnswer': '返答を待っています',
   // Client update: the bottom-of-sidebar restart notice.

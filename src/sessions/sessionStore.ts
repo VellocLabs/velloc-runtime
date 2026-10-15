@@ -99,6 +99,8 @@ export type BrowserSessionMetadata = Record<string, unknown> & {
   /** Write-once creation time, stamped on a session's first persist or by a
    *  fork. Absent on sessions written before it existed: creation unknown. (F-17) */
   createdAt?: number
+  /** Pinned to the top of the session list by the user. */
+  pinned?: boolean
 }
 
 export type BrowserSessionCounters = {
@@ -126,6 +128,7 @@ export type BrowserSessionSummary = {
   lastComposerEditAt?: number
   counters?: BrowserSessionCounters
   createdAt?: number
+  pinned?: boolean
 }
 
 // How much of a transcript's end is read to rebuild a session's list entry.
@@ -691,6 +694,7 @@ export function buildSessionSummaryFromMetadata(
     ...(lastComposerEditAt !== undefined ? { lastComposerEditAt } : {}),
     ...(counters !== undefined ? { counters } : {}),
     ...(createdAt !== undefined ? { createdAt } : {}),
+    ...(metadata?.pinned === true ? { pinned: true } : {}),
   }
 }
 
@@ -772,6 +776,30 @@ export async function applyDiskOnlyRename(
     updatedAt: now,
     customTitleAt: now,
     ...(trimmed.length > 0 ? { customTitle: trimmed } : {}),
+  })
+  return true
+}
+
+// Merges `patch` into the metadata of a session that is not loaded. Returns
+// false when no sidecar exists.
+export async function applyDiskOnlyMetadataPatch(
+  backend: Pick<
+    BrowserConversationStorageBackend,
+    'readSessionMeta' | 'writeSessionMeta' | 'migrateLegacySessionMeta'
+  >,
+  sessionId: string,
+  patch: Partial<BrowserSessionMetadata>,
+): Promise<boolean> {
+  const existing =
+    (await backend.readSessionMeta(sessionId)) ??
+    (await backend.migrateLegacySessionMeta?.(sessionId)) ??
+    null
+  if (!existing) {
+    return false
+  }
+  await backend.writeSessionMeta(sessionId, {
+    ...existing,
+    metadata: { ...existing.metadata, ...patch },
   })
   return true
 }
@@ -874,11 +902,26 @@ function takeAnswersToOpenToolCalls(
   return taken
 }
 
-// Copies the transcript up to `cutUuid` into a new session. Returns null when
-// the cut message is not found.
+// The uuid of the last message in a transcript: the cut that copies the whole
+// conversation. `undefined` when the transcript has no message.
+function lastMessageUuid(
+  sourceEntries: readonly BrowserTranscriptEntry[],
+): string | undefined {
+  for (let index = sourceEntries.length - 1; index >= 0; index--) {
+    const entry = sourceEntries[index]
+    if (isMessageLike(entry) && typeof entry.uuid === 'string' && entry.uuid) {
+      return entry.uuid
+    }
+  }
+  return undefined
+}
+
+// Copies the transcript up to `cutUuid` (the whole conversation when it is
+// undefined) into a new session. Returns null when the cut message is not
+// found.
 export function buildForkedTranscriptEntries(
   sourceEntries: readonly BrowserTranscriptEntry[],
-  cutUuid: string,
+  cutUuid: string | undefined,
   newSessionId: string,
   now: number,
   sourceMetadata?: BrowserSessionMetadata,
@@ -889,6 +932,10 @@ export function buildForkedTranscriptEntries(
   meta: SessionMetaFile
   toolCallIds: string[]
 } | null {
+  const cut = cutUuid ?? lastMessageUuid(sourceEntries)
+  if (!cut) {
+    return null
+  }
   const prefix: BrowserTranscriptMessage[] = []
   let cutIndex = -1
   for (const [index, entry] of sourceEntries.entries()) {
@@ -897,7 +944,7 @@ export function buildForkedTranscriptEntries(
     }
     const message = entry as BrowserTranscriptMessage
     prefix.push(message)
-    if (message.uuid === cutUuid) {
+    if (message.uuid === cut) {
       cutIndex = index
       break
     }

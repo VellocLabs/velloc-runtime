@@ -265,6 +265,8 @@ export const SESSION_MANAGER_ACTION_SCOPES = {
   open: 'control',
   list: 'observe',
   rename: 'control',
+  // Writes one flag into the session's metadata, like `rename`.
+  pin: 'control',
   fork: 'control',
   delete: 'control',
   getToolDetail: 'observe',
@@ -519,6 +521,11 @@ export function installSessionSurface(
   }
   sessionActions.list = { scope: SESSION_MANAGER_ACTION_SCOPES.list }
   sessionActions.rename = { scope: SESSION_MANAGER_ACTION_SCOPES.rename, sessionOf: sessionIdOf, guard: hasSessionId }
+  sessionActions.pin = {
+    scope: SESSION_MANAGER_ACTION_SCOPES.pin,
+    sessionOf: sessionIdOf,
+    guard: p => hasSessionId(p) && typeof (p as { pinned?: unknown }).pinned === 'boolean',
+  }
   sessionActions.fork = {
     scope: SESSION_MANAGER_ACTION_SCOPES.fork,
     sessionOf: forkSourceOf,
@@ -591,6 +598,7 @@ export function installSessionSurface(
         case 'transcript':
           return await host.loadPersistedTranscript(payload.sessionId as string)
         case 'rename':
+        case 'pin':
         case 'fork':
         case 'delete':
           host.dispatch(port, managerMessage(`session.${act}`, payload))

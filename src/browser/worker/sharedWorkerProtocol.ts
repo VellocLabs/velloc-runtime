@@ -108,6 +108,14 @@ export type SharedWorkerInboundMessage =
       requestId?: string
     }
   | {
+      // Pin or unpin a session: persist `pinned` in its metadata (live or
+      // disk-only, like `session.rename`) and broadcast `session.updated`.
+      type: 'session.pin'
+      sessionId: string
+      pinned: boolean
+      requestId?: string
+    }
+  | {
       // Fork a session AT a message: copy the transcript prefix up to and
       // including `cutUuid` into a NEW session (rewriting sessionId +
       // parentUuid, copying tool-detail sidecars), then reply `session.forked`
@@ -115,7 +123,8 @@ export type SharedWorkerInboundMessage =
       // chosen uuid.
       type: 'session.fork'
       fromSessionId: string
-      cutUuid: string
+      // Absent = cut at the last message, copying the whole conversation.
+      cutUuid?: string
       requestId?: string
       // Exclusive cut: leave `cutUuid` OUT of the fork and carry its text into
       // the new session's composer draft instead. Set by "Fork from here";
@@ -224,6 +233,9 @@ export type SessionCard = {
   /** Persisted creation time; absent when unknown (a session older than the
    *  field, or one not yet persisted). (F-17) */
   createdAt?: number
+  /** Pinned by the user: listed above unpinned sessions. Persisted in the
+   *  session's metadata. */
+  pinned?: boolean
 }
 
 export type SharedWorkerOutboundMessage =

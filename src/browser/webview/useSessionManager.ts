@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sessionActivityTime } from './sessionTimeBucket'
-import { hiddenSessionIds, pickVisibleSession } from './sessionVisibility'
+import { hiddenSessionIds, pickNeighborSession } from './sessionVisibility'
 import { randomUuid } from '../../utils/randomUuid'
 
 function createFallbackSessionId(): string {
@@ -69,6 +69,8 @@ export type LocalSessionEntry = {
    * the merged `updatedAt`, so the reused session floats to the top. Local-only; survives the merge.
    */
   relaunchedAt?: number
+  /** Pinned by the user. Owned by the runtime: taken from the remote summary only. */
+  pinned?: boolean
 }
 
 export type SessionMetaUpdate = {
@@ -98,6 +100,7 @@ export type RemoteSessionSummary = {
   createdAt?: number
   /** The runtime holds a persisted copy of this session. */
   persisted?: boolean
+  pinned?: boolean
 }
 
 export type SessionManagerOptions = {
@@ -110,7 +113,8 @@ export type SessionManagerOptions = {
   ) => void
   onRequestFork?: (
     fromSessionId: string,
-    cutUuid: string,
+    /** Absent = the whole conversation. */
+    cutUuid: string | undefined,
     requestId: string,
     /**
      * The source session's REAL title — its user rename or AI title
@@ -146,7 +150,8 @@ export type SessionManagerState = {
   /** Returns the fork request's id — the `session.forked` ack echoes it. */
   forkSession: (
     fromSessionId: string,
-    cutUuid: string,
+    /** Absent = copy the whole conversation. */
+    cutUuid: string | undefined,
     options?: { keepCutMessage?: boolean },
   ) => string
   updateSessionMeta: (
@@ -233,6 +238,7 @@ function entryFromSummary(
     composerDraft: summary.composerDraft ?? base.composerDraft,
     lastComposerEditAt:
       summary.lastComposerEditAt ?? base.lastComposerEditAt,
+    ...(summary.pinned ? { pinned: true } : {}),
   }
 }
 
@@ -388,6 +394,7 @@ export function mergeSessions(
       lastComposerEditAt: preferLocalDraft
         ? local.lastComposerEditAt
         : remoteLastComposerEditAt,
+      ...(summary.pinned ? { pinned: true } : {}),
     })
   }
 
@@ -565,21 +572,37 @@ export function useSessionManager(
 
   const deleteSession = useCallback(
     (sessionId: string) => {
+      // The list as the sidebar shows it, deleted row included, so the
+      // successor is that row's neighbor. The deleted session is on screen
+      // when it is active or one of its teammates is (a lead's teammates go
+      // with it).
+      const before = mergeSessions(
+        Array.from(remoteSummariesRef.current.values()),
+        localCacheRef.current,
+      )
+      const activeId = activeSessionIdRef.current
+      const deletesActive =
+        sessionId === activeId ||
+        before.some(
+          entry =>
+            entry.sessionId === activeId &&
+            entry.spawnerSessionId === sessionId,
+        )
       localCacheRef.current.delete(sessionId)
       remoteSummariesRef.current.delete(sessionId)
 
       // Read AND write the active id through the ref/`selectSession` pair. A ref still naming the deleted id
       // excludes nothing in `findReusableEmptySession`, so the newly-active empty session would be reused and the
       // next launcher click would be a no-op.
-      if (sessionId === activeSessionIdRef.current) {
+      if (deletesActive) {
         // Teammates and sessions this channel hides are excluded from the
         // succession: neither is a sidebar row, so promoting one would leave
         // the UI showing a session the list does not contain.
-        const merged = mergeSessions(
-          Array.from(remoteSummariesRef.current.values()),
-          localCacheRef.current,
+        const next = pickNeighborSession(
+          before,
+          sessionId,
+          hiddenSessionIds(before),
         )
-        const next = pickVisibleSession(merged, hiddenSessionIds(merged))
 
         if (next) {
           selectSession(next.sessionId)
@@ -638,7 +661,7 @@ export function useSessionManager(
   // arrives via the broadcast + ack.
   const forkSession = useCallback((
     fromSessionId: string,
-    cutUuid: string,
+    cutUuid: string | undefined,
     options?: { keepCutMessage?: boolean },
   ): string => {
     const requestId = randomUuid()

@@ -377,6 +377,12 @@ describe('session surface over the hub', () => {
     await expect(connection.request('session.bridgeEvent', { sessionId: 's1', payload: {} })).rejects.toMatchObject({ code: 'unknown_route' })
     await connection.request('session.rename', { sessionId: 's1', title: 'T', requestId: 'r1' })
     expect(rig.manager.dispatched.at(-1)).toEqual({ type: 'session.rename', sessionId: 's1', title: 'T', requestId: 'r1' })
+    await connection.request('session.pin', { sessionId: 's1', pinned: true, requestId: 'r1' })
+    expect(rig.manager.dispatched.at(-1)).toEqual({ type: 'session.pin', sessionId: 's1', pinned: true, requestId: 'r1' })
+    await expect(connection.request('session.pin', { sessionId: 's1', pinned: 'yes' })).rejects.toMatchObject({ code: 'bad_payload' })
+    // A fork that names no cut copies the whole conversation.
+    await connection.request('session.fork', { fromSessionId: 's1' })
+    expect(rig.manager.dispatched.at(-1)).toEqual({ type: 'session.fork', fromSessionId: 's1' })
     await connection.request('session.fork', { fromSessionId: 's1', cutUuid: 'u' })
     expect(rig.manager.dispatched.at(-1)).toMatchObject({ type: 'session.fork', fromSessionId: 's1' })
     // The fork's session binding is judged on `fromSessionId` — the id the
@@ -1364,8 +1370,9 @@ describe('createSessionListChannel (phase 5a: the shell off the raw port)', () =
     channel.request('session.rename', { sessionId: 's1', title: 'T', requestId: 'r1' })
     channel.request('session.fork', { fromSessionId: 's1', cutUuid: 'u', requestId: 'r2' })
     channel.request('task.stop', { sessionId: 's1', requestId: 'r3' })
-    await until(() => rig.manager.dispatched.length >= 3, 'three dispatches')
-    expect(rig.manager.dispatched.map(m => m.type)).toEqual(['session.rename', 'session.fork', 'task.stop'])
+    channel.request('session.pin', { sessionId: 's1', pinned: true, requestId: 'r4' })
+    await until(() => rig.manager.dispatched.length >= 4, 'four dispatches')
+    expect(rig.manager.dispatched.map(m => m.type)).toEqual(['session.rename', 'session.fork', 'task.stop', 'session.pin'])
     expect(rig.manager.dispatched[1]).toMatchObject({ fromSessionId: 's1', cutUuid: 'u', requestId: 'r2' })
 
     // The manager answers the port that asked (the hub's); the answer is a topic event.

@@ -28,6 +28,13 @@ export const de: Messages = {
   'sidebar.threadActionsAria': 'Chat-Aktionen: {title}',
   'sidebar.renameThreadAria': 'Chat umbenennen: {title}',
   'sidebar.deleteThreadAria': 'Chat löschen: {title}',
+  'sidebar.pin': 'Anheften',
+  'sidebar.unpin': 'Nicht mehr anheften',
+  'sidebar.fork': 'Verzweigen',
+  'sidebar.pinThreadAria': 'Chat anheften: {title}',
+  'sidebar.unpinThreadAria': 'Chat nicht mehr anheften: {title}',
+  'sidebar.forkThreadAria': 'Chat verzweigen: {title}',
+  'sidebar.pinned': 'Angeheftet',
   'sidebar.renameInputAria': 'Eingabefeld zum Umbenennen: {title}',
   'sidebar.needsAnswer': 'Wartet auf deine Antwort',
   // Client update: the bottom-of-sidebar restart notice.

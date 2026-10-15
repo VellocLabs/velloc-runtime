@@ -29,6 +29,13 @@ export const en = {
   'sidebar.threadActionsAria': 'Thread actions: {title}',
   'sidebar.renameThreadAria': 'Rename thread: {title}',
   'sidebar.deleteThreadAria': 'Delete thread: {title}',
+  'sidebar.pin': 'Pin',
+  'sidebar.unpin': 'Unpin',
+  'sidebar.fork': 'Fork',
+  'sidebar.pinThreadAria': 'Pin thread: {title}',
+  'sidebar.unpinThreadAria': 'Unpin thread: {title}',
+  'sidebar.forkThreadAria': 'Fork thread: {title}',
+  'sidebar.pinned': 'Pinned',
   'sidebar.renameInputAria': 'Rename input: {title}',
   'sidebar.needsAnswer': 'Needs your response',
   // Client update: the bottom-of-sidebar restart notice.

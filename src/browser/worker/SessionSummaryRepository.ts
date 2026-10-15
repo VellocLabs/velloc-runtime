@@ -33,6 +33,8 @@ export type LiveMeta = {
    *  resurrect from the fs cache. */
   composerDraft?: string | null
   lastComposerEditAt?: number
+  /** Set by a pin/unpin ahead of the fs refresh; wins over the fs summary. */
+  pinned?: boolean
 }
 
 const FS_SUMMARY_CACHE_MAX = 500

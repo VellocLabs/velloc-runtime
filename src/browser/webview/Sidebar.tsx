@@ -23,7 +23,6 @@ import {
 import { ProjectSection } from './ProjectSection'
 import { SessionListMenu } from './SessionListMenu'
 import {
-  buildSessionListView,
   clearSessionListView,
   DEFAULT_SESSION_LIST_VIEW,
   orderSessions,
@@ -31,6 +30,7 @@ import {
   writeSessionListView,
   type SessionListView,
 } from './sessionListView'
+import { buildPinnedFirstView } from './sessionPinning'
 import { AppUpdateBar } from './AppUpdateBar'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
 import { SESSION_PAGE_SIZE } from './sessionListPaging'
@@ -78,6 +78,8 @@ type SessionListBodyProps = SidebarProjectProps & {
   onSwitchThread?: (sessionId: string) => void
   onDeleteThread?: (sessionId: string) => void
   onRenameThread?: (sessionId: string, title: string) => void
+  onPinThread?: (sessionId: string, pinned: boolean) => void
+  onForkThread?: (sessionId: string) => void
   /**
    * Compact mode for the narrow-viewport popover: hides the "New Thread"
    * button (the conversation header owns that affordance there), the Projects
@@ -101,6 +103,8 @@ export function SessionListBody({
   onSwitchThread,
   onDeleteThread,
   onRenameThread,
+  onPinThread,
+  onForkThread,
   titlesOnly = false,
   addedProjectPaths,
   addedProjectOrder,
@@ -148,7 +152,7 @@ export function SessionListBody({
   // The narrow popover lists bare titles: same order, no group headers.
   const recentGroups = useMemo(
     () =>
-      buildSessionListView(
+      buildPinnedFirstView(
         sessions ?? [],
         titlesOnly ? { ...view, groupBy: 'none' } : view,
         Date.now(),
@@ -227,6 +231,8 @@ export function SessionListBody({
             onSwitchThread={onSwitchThread}
             onDeleteThread={onDeleteThread}
             onRenameThread={onRenameThread}
+            onPinThread={onPinThread}
+            onForkThread={onForkThread}
             editing={editing}
             onEditingChange={setEditing}
           />
@@ -282,6 +288,8 @@ export function SessionListBody({
               onSwitchThread={onSwitchThread}
               onDeleteThread={onDeleteThread}
               onRenameThread={onRenameThread}
+              onPinThread={onPinThread}
+              onForkThread={onForkThread}
               scope="recents"
               editing={editing}
               onEditingChange={setEditing}
@@ -442,6 +450,8 @@ export function Sidebar({
   onSwitchThread,
   onDeleteThread,
   onRenameThread,
+  onPinThread,
+  onForkThread,
   width,
   isResizing,
   runtimeConnection,
@@ -463,6 +473,8 @@ export function Sidebar({
   onSwitchThread?: (sessionId: string) => void
   onDeleteThread?: (sessionId: string) => void
   onRenameThread?: (sessionId: string, title: string) => void
+  onPinThread?: (sessionId: string, pinned: boolean) => void
+  onForkThread?: (sessionId: string) => void
   /**
    * Resting width in px when not collapsed. Driven by MultiSessionShell's
    * draggable splitter. Falls back to 256 (matches the previous `w-64`).
@@ -518,6 +530,8 @@ export function Sidebar({
             onSwitchThread={onSwitchThread}
             onDeleteThread={onDeleteThread}
             onRenameThread={onRenameThread}
+            onPinThread={onPinThread}
+            onForkThread={onForkThread}
             {...projectProps}
           />
         </div>

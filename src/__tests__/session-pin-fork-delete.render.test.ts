@@ -1,0 +1,207 @@
+// @vitest-environment happy-dom
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
+import {
+  useSessionManager,
+  type RemoteSessionSummary,
+} from '../browser/webview/useSessionManager'
+import { pinnedFirst } from '../browser/webview/sessionPinning'
+import { pickNeighborSession } from '../browser/webview/sessionVisibility'
+
+// Pinned state comes from the runtime's summary; deleting the session on
+// screen lands on its neighbor in the sidebar's order; the sidebar's Fork asks
+// the runtime for a copy of the whole conversation.
+
+const BOOT = 'boot-session'
+
+/** Let the 16 ms `applyMergedSessions` debounce flush into `sessions`. */
+function flushMerge() {
+  act(() => {
+    vi.advanceTimersByTime(20)
+  })
+}
+
+function summary(
+  sessionId: string,
+  updatedAt: number,
+  extra: Partial<RemoteSessionSummary> = {},
+): RemoteSessionSummary {
+  return {
+    sessionId,
+    title: sessionId,
+    previewText: sessionId,
+    updatedAt,
+    messageCount: 2,
+    ...extra,
+  }
+}
+
+describe('pinnedFirst', () => {
+  it('moves pinned sessions up and keeps each half in order', () => {
+    const rows = [
+      { id: 'a' },
+      { id: 'b', pinned: true },
+      { id: 'c' },
+      { id: 'd', pinned: true },
+    ]
+    expect(pinnedFirst(rows).map(row => row.id)).toEqual(['b', 'd', 'a', 'c'])
+  })
+})
+
+describe('pickNeighborSession', () => {
+  const rows = [
+    { sessionId: 'a' },
+    { sessionId: 'b' },
+    { sessionId: 'teammate', spawnerSessionId: 'b' },
+    { sessionId: 'c' },
+  ]
+
+  it('takes the next row', () => {
+    expect(pickNeighborSession(rows, 'b', new Set())?.sessionId).toBe('c')
+  })
+
+  it('takes the previous row when the deleted one is last', () => {
+    expect(pickNeighborSession(rows, 'c', new Set())?.sessionId).toBe('b')
+  })
+
+  it('follows the pinned-first order and skips hidden rows', () => {
+    const withPin = [...rows, { sessionId: 'p', pinned: true }]
+    // Sidebar order: p, a, b, c — `a` follows `p`.
+    expect(pickNeighborSession(withPin, 'p', new Set())?.sessionId).toBe('a')
+    expect(pickNeighborSession(withPin, 'p', new Set(['a']))?.sessionId).toBe('b')
+  })
+
+  it('finds nothing when the deleted row is the only one', () => {
+    expect(pickNeighborSession([{ sessionId: 'a' }], 'a', new Set())).toBeUndefined()
+  })
+})
+
+describe('useSessionManager pin, fork and delete', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function mount(onRequestFork = vi.fn(), onRequestDelete = vi.fn()) {
+    const hook = renderHook(() =>
+      useSessionManager({
+        openingSessionId: BOOT,
+        onRequestFork,
+        onRequestDelete,
+      }),
+    )
+    return { ...hook, onRequestFork, onRequestDelete }
+  }
+
+  it('carries the runtime’s pinned flag and drops it when the runtime does', () => {
+    const { result } = mount()
+    act(() => {
+      result.current.applyRemoteList([
+        summary('a', 3_000),
+        summary('b', 2_000, { pinned: true }),
+      ])
+    })
+    flushMerge()
+    const pinnedOf = (id: string) =>
+      result.current.sessions.find(s => s.sessionId === id)?.pinned
+    expect(pinnedOf('b')).toBe(true)
+    expect(pinnedOf('a')).toBeUndefined()
+
+    act(() => {
+      result.current.applyRemoteUpdate(summary('b', 2_000))
+    })
+    flushMerge()
+    expect(pinnedOf('b')).toBeUndefined()
+  })
+
+  it('switches to the next session in the list when the active one is deleted', () => {
+    const { result, onRequestDelete } = mount()
+    act(() => {
+      result.current.applyRemoteList([
+        summary('a', 3_000),
+        summary('b', 2_000),
+        summary('c', 1_000),
+      ])
+    })
+    flushMerge()
+    act(() => {
+      result.current.focusSession('b')
+    })
+    act(() => {
+      result.current.deleteSession('b')
+    })
+    flushMerge()
+    expect(result.current.activeSessionId).toBe('c')
+    expect(result.current.sessions.some(s => s.sessionId === 'b')).toBe(false)
+    expect(onRequestDelete).toHaveBeenCalledWith('b', expect.any(String))
+  })
+
+  it('switches to the previous session when the deleted one is last', () => {
+    const { result } = mount()
+    act(() => {
+      result.current.applyRemoteList([summary('a', 3_000), summary('b', 2_000)])
+    })
+    flushMerge()
+    act(() => {
+      result.current.focusSession('b')
+    })
+    act(() => {
+      result.current.deleteSession('b')
+    })
+    // The boot placeholder was minted at mount, so the order is boot, a, b.
+    expect(result.current.activeSessionId).toBe('a')
+  })
+
+  it('moves off a teammate on screen when its lead is deleted', () => {
+    const { result } = mount()
+    act(() => {
+      result.current.applyRemoteList([
+        summary('a', 3_000),
+        summary('lead', 2_000),
+        summary('mate', 2_500, { spawnerSessionId: 'lead', teammateName: 'm' }),
+        summary('c', 1_000),
+      ])
+    })
+    flushMerge()
+    act(() => {
+      result.current.focusSession('mate')
+    })
+    act(() => {
+      result.current.deleteSession('lead')
+    })
+    expect(result.current.activeSessionId).toBe('c')
+  })
+
+  it('opens a fresh session when the deleted one was the only one', () => {
+    const { result } = mount()
+    act(() => {
+      result.current.deleteSession(BOOT)
+    })
+    flushMerge()
+    const active = result.current.activeSessionId
+    expect(active).not.toBe(BOOT)
+    expect(result.current.sessions.map(s => s.sessionId)).toEqual([active])
+  })
+
+  it('forks the whole conversation when no cut is named', () => {
+    const { result, onRequestFork } = mount()
+    act(() => {
+      result.current.applyRemoteList([
+        summary('a', 3_000, { customTitle: 'Plan' }),
+      ])
+    })
+    flushMerge()
+    act(() => {
+      result.current.forkSession('a', undefined, { keepCutMessage: true })
+    })
+    expect(onRequestFork).toHaveBeenCalledWith(
+      'a',
+      undefined,
+      expect.any(String),
+      'Plan',
+      true,
+    )
+  })
+})

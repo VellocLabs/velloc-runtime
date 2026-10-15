@@ -12,6 +12,7 @@ import { eventToManagerMessage } from './workerTransportOverConnection'
 
 export type SessionListRoute =
   | 'session.rename'
+  | 'session.pin'
   | 'session.fork'
   | 'session.delete'
   | 'task.stop'

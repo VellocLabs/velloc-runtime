@@ -53,6 +53,7 @@ import type {
   BrowserTranscriptWriteEntry,
   SessionMetaFile,
 } from '../sessions/sessionStore'
+import { buildSessionSummaryFromMeta } from '../sessions/sessionStore'
 import { SESSION_META_TYPE } from '../runtime/VercelModelConstants'
 import {
   getAllSkillInvocationEvents,
@@ -3885,6 +3886,156 @@ describe('SharedWorkerSessionManager', () => {
     ).toBe(false)
   })
 
+  it('disk-only pin: writes `pinned` into meta.json, keeps the other fields, and acks the pinned card', async () => {
+    const metaWrites: SessionMetaFile[] = []
+    const metas = new Map<string, SessionMetaFile>([
+      [
+        'closed-session',
+        {
+          schemaVersion: 1,
+          sessionId: 'closed-session',
+          updatedAt: 10,
+          customTitle: 'Kept',
+          metadata: { llmSelection: { providerId: 'p', modelId: 'm' } },
+        },
+      ],
+    ])
+    const storage = {
+      append: vi.fn(async () => {}),
+      readSessionMeta: vi.fn(async (sessionId: string) => metas.get(sessionId) ?? null),
+      writeSessionMeta: vi.fn(async (sessionId: string, meta: SessionMetaFile) => {
+        metaWrites.push(meta)
+        metas.set(sessionId, meta)
+      }),
+      load: vi.fn(async (): Promise<BrowserConversationStoragePayload> => null),
+      flush: vi.fn(async () => {}),
+      listSessions: vi.fn(async () => ['closed-session']),
+      loadSessionSummary: vi.fn(async (sessionId: string) => {
+        const meta = metas.get(sessionId)
+        return meta ? buildSessionSummaryFromMeta(meta) : null
+      }),
+      loadToolCallDetail: vi.fn(async () => null),
+      saveToolCallDetail: vi.fn(async () => {}),
+    }
+    const m = (
+      manager as unknown as {
+        storageCoordinator: { storage: BrowserConversationStorageBackend }
+      }
+    ).storageCoordinator
+    m.storage = storage as unknown as BrowserConversationStorageBackend
+
+    const port = createMockPort()
+    manager.handleConnect(port)
+    const lastCard = () =>
+      (
+        port._posted.filter(
+          (msg: unknown) =>
+            (msg as SharedWorkerOutboundMessage).type === 'session.updated',
+        ) as Array<{ payload: { session: { sessionId: string; pinned?: boolean } } }>
+      ).at(-1)?.payload.session
+
+    port._simulateMessage({
+      type: 'session.pin',
+      sessionId: 'closed-session',
+      pinned: true,
+      requestId: 'pin-1',
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(storage.append).not.toHaveBeenCalled()
+    expect(metaWrites).toHaveLength(1)
+    expect(metaWrites[0]!.metadata.pinned).toBe(true)
+    expect(metaWrites[0]!.metadata.llmSelection).toEqual({ providerId: 'p', modelId: 'm' })
+    expect(metaWrites[0]!.customTitle).toBe('Kept')
+    expect(lastCard()).toMatchObject({ sessionId: 'closed-session', pinned: true })
+
+    port._simulateMessage({
+      type: 'session.pin',
+      sessionId: 'closed-session',
+      pinned: false,
+      requestId: 'pin-2',
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(metaWrites.at(-1)!.metadata.pinned).toBe(false)
+    expect(lastCard()?.sessionId).toBe('closed-session')
+    expect(lastCard()?.pinned).toBeUndefined()
+  })
+
+  it('forks the whole conversation when `session.fork` names no cut', async () => {
+    const appended: BrowserTranscriptEntry[] = []
+    const metaWrites: SessionMetaFile[] = []
+    const message = (uuid: string, role: 'user' | 'assistant', text: string) =>
+      ({
+        type: role,
+        uuid,
+        sessionId: 'source-session',
+        parentUuid: null,
+        timestamp: '2026-01-01T00:00:00.000Z',
+        message: { role, content: [{ type: 'text', text }] },
+      }) as unknown as BrowserTranscriptEntry
+    const storage = {
+      append: vi.fn(async (_sessionId: string, entry: BrowserTranscriptEntry) => {
+        appended.push(entry)
+      }),
+      readSessionMeta: vi.fn(async () => null),
+      writeSessionMeta: vi.fn(async (_sessionId: string, meta: SessionMetaFile) => {
+        metaWrites.push(meta)
+      }),
+      load: vi.fn(async (): Promise<BrowserConversationStoragePayload> => [
+        message('u1', 'user', 'hello'),
+        message('a1', 'assistant', 'hi'),
+        message('u2', 'user', 'again'),
+        message('a2', 'assistant', 'sure'),
+        {
+          type: 'custom-title',
+          sessionId: 'source-session',
+          customTitle: 'Source',
+          updatedAt: 1,
+        } as unknown as BrowserTranscriptEntry,
+      ]),
+      flush: vi.fn(async () => {}),
+      loadSessionMetadata: vi.fn(async (): Promise<BrowserSessionMetadata> => ({})),
+      loadSessionSummary: vi.fn(async () => null),
+      loadToolCallDetail: vi.fn(async () => null),
+      saveToolCallDetail: vi.fn(async () => {}),
+    }
+    const m = (
+      manager as unknown as {
+        storageCoordinator: { storage: BrowserConversationStorageBackend }
+      }
+    ).storageCoordinator
+    m.storage = storage as unknown as BrowserConversationStorageBackend
+
+    const port = createMockPort()
+    manager.handleConnect(port)
+    port._simulateMessage({
+      type: 'session.fork',
+      fromSessionId: 'source-session',
+      requestId: 'fork-all',
+      title: 'Source (fork)',
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    const ack = port._posted.find(
+      (msg: unknown) =>
+        (msg as SharedWorkerOutboundMessage).type === 'session.forked',
+    ) as Extract<SharedWorkerOutboundMessage, { type: 'session.forked' }> | undefined
+    expect(ack?.payload).toMatchObject({
+      fromSessionId: 'source-session',
+      requestId: 'fork-all',
+    })
+    const newSessionId = ack!.payload.newSessionId
+    expect(newSessionId).not.toBe('source-session')
+    const copied = appended.filter(
+      e => (e as { type?: string }).type !== 'custom-title',
+    ) as Array<{ uuid: string; sessionId: string }>
+    expect(copied.map(e => e.uuid)).toEqual(['u1', 'a1', 'u2', 'a2'])
+    expect(copied.every(e => e.sessionId === newSessionId)).toBe(true)
+    expect(metaWrites[0]!.customTitle).toBe('Source (fork)')
+    expect(metaWrites[0]!.metadata.messageCount).toBe(4)
+    expect(metaWrites[0]!.metadata.forkedFromSessionId).toBe('source-session')
+    expect(metaWrites[0]!.metadata.pinned).toBeUndefined()
+  })
+
   it('re-applies diagnostic gates when an existing worker is reused', async () => {
     // Models a page reload after the user enables "Verbose logging" /
     // "Trace overlay": the SharedWorker persists, so the reconnect reuses
@@ -4412,6 +4563,7 @@ describe('SharedWorkerSessionManager', () => {
       ['session.transcript', { type: 'session.transcript', sessionId: 'a/b', requestId: 'r2' }],
       ['session.detach', { type: 'session.detach', sessionId: '..' }],
       ['session.rename', { type: 'session.rename', sessionId: 'has space', title: 'x' }],
+      ['session.pin', { type: 'session.pin', sessionId: '../x', pinned: true }],
       ['session.fork', { type: 'session.fork', fromSessionId: 'C:\\evil', cutUuid: 'u' }],
       ['task.stop', { type: 'task.stop', sessionId: '' }],
       ['task.resume', { type: 'task.resume', sessionId: 42, prompt: 'p' }],
@@ -4445,6 +4597,7 @@ describe('SharedWorkerSessionManager', () => {
     it.each([
       ['session.rename title', { type: 'session.rename', sessionId: 'ok', title: 7 }, "'title'"],
       ['session.fork cutUuid', { type: 'session.fork', fromSessionId: 'ok', cutUuid: null }, "'cutUuid'"],
+      ['session.pin pinned', { type: 'session.pin', sessionId: 'ok', pinned: 'yes' }, "'pinned'"],
       ['session.subscribe sessionIds', { type: 'session.subscribe', sessionIds: 'ok' }, "'sessionIds'"],
       ['session.unsubscribe sessionIds', { type: 'session.unsubscribe', sessionIds: [1, 2] }, "'sessionIds'"],
       ['toolDetail.subscribe toolCallIds', { type: 'toolDetail.subscribe', toolCallIds: 't1' }, "'toolCallIds'"],

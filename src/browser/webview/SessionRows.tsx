@@ -2,7 +2,14 @@
  * The sidebar's session-row list, shared by "Recents" and each project node. Owns how many
  * rows are revealed (`sessionListPaging`); rename mode is lifted ({@link SessionRowEditing}).
  */
-import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from 'lucide-react'
+import {
+  GitForkIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PinIcon,
+  PinOffIcon,
+  Trash2Icon,
+} from 'lucide-react'
 import { InkRipple } from '@/components/assistant-ui/ink-ripple'
 import { SessionAttentionDot } from '@/components/assistant-ui/session-attention-dot'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
@@ -81,6 +88,8 @@ export type SessionListItem = {
    * active row since its control is already on screen.
    */
   needsAnswer?: boolean
+  /** Pinned by the user (runtime-owned metadata): listed above the unpinned rows. */
+  pinned?: boolean
 }
 
 /**
@@ -115,6 +124,9 @@ export type SessionRowListProps = {
   onSwitchThread?: (sessionId: string) => void
   onDeleteThread?: (sessionId: string) => void
   onRenameThread?: (sessionId: string, title: string) => void
+  onPinThread?: (sessionId: string, pinned: boolean) => void
+  /** Copy the session's whole conversation into a new session and open it. */
+  onForkThread?: (sessionId: string) => void
   /**
    * Extra left inset for rows nested under a project node, so the tree reads as
    * a hierarchy in a 256px-wide panel.
@@ -138,6 +150,8 @@ export function SessionRowList({
   onSwitchThread,
   onDeleteThread,
   onRenameThread,
+  onPinThread,
+  onForkThread,
   indented = false,
   scope,
   editing = null,
@@ -179,12 +193,14 @@ export function SessionRowList({
         const isRenaming = editing?.sessionId === session.sessionId
         const isEditing = isRenaming && editing?.scope === scope
         const RowIcon = getLauncherForType(session.templateType).Icon
-        // Rename is allowed on any row (incl. the active one, ChatGPT
-        // style); delete stays non-active only (you don't delete the
-        // thread you're viewing), matching the prior affordance.
+        // Every action applies to any row, the active one included: deleting
+        // the active session moves the shell to a neighbor.
+        const isPinned = !!session.pinned
+        const canPin = !!onPinThread
         const canRename = !!onRenameThread
-        const canDelete = !!onDeleteThread && !isActive
-        const hasRowActions = canRename || canDelete
+        const canFork = !!onForkThread
+        const canDelete = !!onDeleteThread
+        const hasRowActions = canPin || canRename || canFork || canDelete
         // A group's header sits above its first row. Not a session row (no
         // `span.min-w-0.flex-1`), so the e2e row-count harness ignores it.
         const group = groupOfRow[index]!
@@ -293,6 +309,7 @@ export function SessionRowList({
                     )}
                     data-active={isActive || undefined}
                     data-running={isRunning || undefined}
+                    data-pinned={isPinned || undefined}
                     aria-current={isActive || undefined}
                     onClick={() => {
                       if (!isActive) onSwitchThread?.(session.sessionId)
@@ -351,6 +368,14 @@ export function SessionRowList({
                         )}
                       </span>
                     </span>
+                    {isPinned && (
+                      <PinIcon
+                        role="img"
+                        aria-label={t('sidebar.pinned')}
+                        data-slot="session-row-pin"
+                        className="ms-1 size-3 shrink-0 text-muted-foreground/60"
+                      />
+                    )}
                     {/* Preview kept in the accessibility tree only: the
                         row is visually title-only (ChatGPT look), but
                         screen readers still get the preview AND the e2e
@@ -384,6 +409,33 @@ export function SessionRowList({
                           onCloseAutoFocus={e => e.preventDefault()}
                           className="z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
                         >
+                          {canPin && (
+                            <DropdownMenuPrimitive.Item
+                              asChild
+                              onSelect={() =>
+                                onPinThread?.(session.sessionId, !isPinned)
+                              }
+                            >
+                              <button
+                                type="button"
+                                data-testid="sidebar-pin-thread"
+                                aria-label={t(
+                                  isPinned
+                                    ? 'sidebar.unpinThreadAria'
+                                    : 'sidebar.pinThreadAria',
+                                  { title: session.title },
+                                )}
+                                className="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-start text-body outline-none hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted"
+                              >
+                                {isPinned ? (
+                                  <PinOffIcon className="size-4" />
+                                ) : (
+                                  <PinIcon className="size-4" />
+                                )}
+                                {t(isPinned ? 'sidebar.unpin' : 'sidebar.pin')}
+                              </button>
+                            </DropdownMenuPrimitive.Item>
+                          )}
                           {canRename && (
                             <DropdownMenuPrimitive.Item
                               asChild
@@ -406,6 +458,30 @@ export function SessionRowList({
                                 {t('sidebar.rename')}
                               </button>
                             </DropdownMenuPrimitive.Item>
+                          )}
+                          {canFork && (
+                            <DropdownMenuPrimitive.Item
+                              asChild
+                              onSelect={() => onForkThread?.(session.sessionId)}
+                            >
+                              <button
+                                type="button"
+                                data-testid="sidebar-fork-thread"
+                                aria-label={t('sidebar.forkThreadAria', {
+                                  title: session.title,
+                                })}
+                                className="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-start text-body outline-none hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted"
+                              >
+                                <GitForkIcon className="size-4" />
+                                {t('sidebar.fork')}
+                              </button>
+                            </DropdownMenuPrimitive.Item>
+                          )}
+                          {canDelete && (canPin || canRename || canFork) && (
+                            <DropdownMenuPrimitive.Separator
+                              data-testid="sidebar-row-actions-separator"
+                              className="-mx-1 my-1 h-px bg-border"
+                            />
                           )}
                           {canDelete && (
                             <DropdownMenuPrimitive.Item

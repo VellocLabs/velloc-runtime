@@ -26,6 +26,13 @@ export const ko: Messages = {
   'sidebar.threadActionsAria': '채팅 작업: {title}',
   'sidebar.renameThreadAria': '채팅 이름 변경: {title}',
   'sidebar.deleteThreadAria': '채팅 삭제: {title}',
+  'sidebar.pin': '고정',
+  'sidebar.unpin': '고정 해제',
+  'sidebar.fork': '분기',
+  'sidebar.pinThreadAria': '채팅 고정: {title}',
+  'sidebar.unpinThreadAria': '채팅 고정 해제: {title}',
+  'sidebar.forkThreadAria': '채팅 분기: {title}',
+  'sidebar.pinned': '고정됨',
   'sidebar.renameInputAria': '이름 입력란: {title}',
   'sidebar.needsAnswer': '답변을 기다리는 중',
   // Client update: the bottom-of-sidebar restart notice.

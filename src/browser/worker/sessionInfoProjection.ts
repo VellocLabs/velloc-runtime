@@ -65,6 +65,7 @@ export function projectSessionInfo(args: {
       : fs?.composerDraft
   const lastComposerEditAt =
     live?.lastComposerEditAt ?? fs?.lastComposerEditAt
+  const pinned = live?.pinned ?? fs?.pinned === true
   // messageCount: prefer the live runtime snapshot (it's the
   // authoritative count for an open session) and fall back to the
   // fs summary for sessions we know only by their persisted file.
@@ -94,5 +95,6 @@ export function projectSessionInfo(args: {
     ...(composerDraft !== undefined ? { composerDraft } : {}),
     ...(lastComposerEditAt !== undefined ? { lastComposerEditAt } : {}),
     ...(fs?.createdAt !== undefined ? { createdAt: fs.createdAt } : {}),
+    ...(pinned ? { pinned: true } : {}),
   }
 }

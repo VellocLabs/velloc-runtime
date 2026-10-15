@@ -44,6 +44,7 @@ import type {
   SessionMetaFile,
 } from '../../sessions/sessionStore'
 import {
+  applyDiskOnlyMetadataPatch,
   applyDiskOnlyRename,
   buildForkedTranscriptEntries,
   isMessageLike,
@@ -223,6 +224,9 @@ type SessionEntry = {
   // Only the bound store writes `meta.json` while a runtime is bound; a
   // manager-side write here would be a lost-update race against it.
   pendingRename?: string
+  // A pin/unpin that arrived in the same pre-bind window; written with the
+  // identity patch at bind, for the same reason as `pendingRename`.
+  pendingPinned?: boolean
   // Persisted to `meta.json` at bind so the sidebar icon/title survive
   // reload.
   templateType?: string
@@ -533,6 +537,8 @@ export class SharedWorkerSessionManager {
       void this.handleSessionDelete(port, sessionId, requestId),
     retitleSession: (port, sessionId, title, requestId) =>
       void this.handleSessionRename(port, sessionId, title, requestId),
+    pinSession: (port, sessionId, pinned, requestId) =>
+      void this.handleSessionPin(port, sessionId, pinned, requestId),
     forkSession: (
       port,
       fromSessionId,
@@ -762,6 +768,9 @@ export class SharedWorkerSessionManager {
       ...(options.projectRoot ? { projectRoot: options.projectRoot } : {}),
       ...(previous?.pendingRename !== undefined
         ? { pendingRename: previous.pendingRename }
+        : {}),
+      ...(previous?.pendingPinned !== undefined
+        ? { pendingPinned: previous.pendingPinned }
         : {}),
     }
     this.sessions.set(sessionId, entry)
@@ -1406,6 +1415,7 @@ export class SharedWorkerSessionManager {
       metadata = undefined
     }
     if (!isCurrentBind()) return false
+    const pendingPinned = entry.pendingPinned
     // CRITICAL merged identity write FIRST — the worker awaits this bind
     // before worker.ready and the force-reinit stub deletion rides the
     // returned persist outcome (P-1). projectRoot writes
@@ -1434,11 +1444,15 @@ export class SharedWorkerSessionManager {
       ...(initMeta?.teammateName && !metadata?.teammateName
         ? { teammateName: initMeta.teammateName }
         : {}),
+      ...(pendingPinned !== undefined ? { pinned: pendingPinned } : {}),
     }
     let persisted = true
     if (!metadata || Object.keys(patch).length > 0) {
       try {
         await store.updateSessionMetadata(patch)
+        if (entry.pendingPinned === pendingPinned) {
+          entry.pendingPinned = undefined
+        }
       } catch {
         // The in-memory entry still drives the UI, but the caller must
         // know the durable record is incomplete.
@@ -2641,9 +2655,16 @@ export class SharedWorkerSessionManager {
   }
 
   /**
-   * A rename stashed for a runtime that never bound is written the disk-only way as the entry goes.
+   * A rename or pin stashed for a runtime that never bound is written the disk-only way as the entry goes.
    */
   private flushPendingRename(sessionId: string, entry: SessionEntry): void {
+    const pendingPinned = entry.pendingPinned
+    if (pendingPinned !== undefined && this.storage) {
+      entry.pendingPinned = undefined
+      void applyDiskOnlyMetadataPatch(this.storage, sessionId, {
+        pinned: pendingPinned,
+      }).catch(() => {})
+    }
     const pendingRename = entry.pendingRename
     if (pendingRename === undefined || !this.storage) return
     entry.pendingRename = undefined
@@ -2877,6 +2898,60 @@ export class SharedWorkerSessionManager {
 
     // Ack the requesting port even if it isn't a session subscriber, so an
     // optimistic UI can reconcile (mirrors handleSessionDelete's ack).
+    if (requestId) {
+      const session = this.buildSessionInfo(sessionId)
+      if (session) {
+        port.postMessage({
+          type: 'session.updated' as const,
+          payload: { session },
+        })
+      }
+    }
+  }
+
+  /**
+   * Pin or unpin a session by writing `pinned` into its metadata, through the
+   * same three owners as a rename: the bound store, the pre-bind stash, or a
+   * disk-only write of `meta.json`.
+   */
+  private async handleSessionPin(
+    port: MessagePort,
+    sessionId: string,
+    pinned: boolean,
+    requestId?: string,
+  ): Promise<void> {
+    const entry = this.sessions.get(sessionId)
+    if (entry?.conversationStore) {
+      try {
+        await entry.conversationStore.updateSessionMetadata({ pinned })
+      } catch {
+        // best-effort; the live overlay + broadcast below still reflect it
+      }
+    } else if (entry) {
+      entry.pendingPinned = pinned
+    } else if (this.storage) {
+      let persisted = false
+      try {
+        await this.summaryRepo.ensureSessionRouting()
+        persisted = await applyDiskOnlyMetadataPatch(this.storage, sessionId, {
+          pinned,
+        })
+      } catch {
+        // best-effort
+      }
+      if (!persisted) {
+        console.warn(
+          `[SharedWorkerSessionManager] pin of ${sessionId} not persisted: ` +
+            'no meta.json or transcript found for it',
+        )
+        return
+      }
+    }
+
+    const prev = this.sessionMeta.get(sessionId) ?? {}
+    this.sessionMeta.set(sessionId, { ...prev, pinned })
+    await this.summaryRepo.refreshFsSummary(sessionId)
+
     if (requestId) {
       const session = this.buildSessionInfo(sessionId)
       if (session) {
@@ -3466,7 +3541,7 @@ export class SharedWorkerSessionManager {
   private async handleSessionFork(
     port: MessagePort,
     fromSessionId: string,
-    cutUuid: string,
+    cutUuid: string | undefined,
     requestId?: string,
     moveCutMessageToDraft?: boolean,
     title?: string,

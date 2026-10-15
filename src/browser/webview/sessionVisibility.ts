@@ -7,6 +7,7 @@ import {
   getLauncherMeta,
   isTypeListedInBundledCatalog,
 } from '../../prompting/templateCatalog'
+import { pinnedFirst } from './sessionPinning'
 
 /** The fields the rule reads — satisfied by both `SessionListItem` and
  *  `LocalSessionEntry`. */
@@ -75,4 +76,25 @@ export function pickVisibleSession<T extends VisibilityEntry>(
   return entries.find(
     entry => !entry.spawnerSessionId && !hidden.has(entry.sessionId),
   )
+}
+
+/**
+ * The session to land on when `deletedId` is deleted while on screen: the row
+ * after it in the sidebar's order (pinned first, then activity), else the row
+ * before it. `entries` still contains `deletedId`. `undefined` when no other
+ * row exists — the caller creates a session.
+ */
+export function pickNeighborSession<T extends VisibilityEntry & { pinned?: boolean }>(
+  entries: readonly T[],
+  deletedId: string,
+  hidden: ReadonlySet<string>,
+): T | undefined {
+  const rows = pinnedFirst(
+    entries.filter(
+      entry => !entry.spawnerSessionId && !hidden.has(entry.sessionId),
+    ),
+  )
+  const index = rows.findIndex(entry => entry.sessionId === deletedId)
+  if (index < 0) return rows[0]
+  return rows[index + 1] ?? rows[index - 1]
 }

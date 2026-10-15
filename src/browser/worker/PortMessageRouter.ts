@@ -35,10 +35,16 @@ export interface PortMessageRouterHost {
     title: string,
     requestId: string | undefined,
   ): void
+  pinSession(
+    port: MessagePort,
+    sessionId: string,
+    pinned: boolean,
+    requestId: string | undefined,
+  ): void
   forkSession(
     port: MessagePort,
     fromSessionId: string,
-    cutUuid: string,
+    cutUuid: string | undefined,
     requestId: string | undefined,
     moveCutMessageToDraft?: boolean,
     title?: string,
@@ -179,6 +185,16 @@ export class PortMessageRouter {
           port,
           message.sessionId,
           message.title,
+          message.requestId,
+        )
+        return
+      }
+
+      case 'session.pin': {
+        this.host.pinSession(
+          port,
+          message.sessionId,
+          message.pinned,
           message.requestId,
         )
         return
@@ -383,9 +399,16 @@ function validateInboundShape(
       if (typeof m.title !== 'string') return badField('title', 'a string')
       return null
 
+    case 'session.pin':
+      if (!isSafeSessionId(m.sessionId)) return badId('sessionId')
+      if (typeof m.pinned !== 'boolean') return badField('pinned', 'a boolean')
+      return null
+
     case 'session.fork':
       if (!isSafeSessionId(m.fromSessionId)) return badId('fromSessionId')
-      if (typeof m.cutUuid !== 'string') return badField('cutUuid', 'a string')
+      if (m.cutUuid !== undefined && typeof m.cutUuid !== 'string') {
+        return badField('cutUuid', 'a string')
+      }
       return null
 
     case 'session.subscribe':

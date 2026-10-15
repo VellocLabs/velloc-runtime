@@ -29,6 +29,13 @@ export const zh: Messages = {
   'sidebar.threadActionsAria': '对话操作：{title}',
   'sidebar.renameThreadAria': '重命名对话：{title}',
   'sidebar.deleteThreadAria': '删除对话：{title}',
+  'sidebar.pin': '置顶',
+  'sidebar.unpin': '取消置顶',
+  'sidebar.fork': '分叉',
+  'sidebar.pinThreadAria': '置顶对话：{title}',
+  'sidebar.unpinThreadAria': '取消置顶对话：{title}',
+  'sidebar.forkThreadAria': '分叉对话：{title}',
+  'sidebar.pinned': '已置顶',
   'sidebar.renameInputAria': '重命名输入框：{title}',
   'sidebar.needsAnswer': '等待你回应',
   // Client update: the bottom-of-sidebar restart notice.

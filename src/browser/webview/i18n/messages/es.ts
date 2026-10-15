@@ -29,6 +29,13 @@ export const es: Messages = {
   'sidebar.threadActionsAria': 'Acciones del chat: {title}',
   'sidebar.renameThreadAria': 'Cambiar el nombre del chat: {title}',
   'sidebar.deleteThreadAria': 'Eliminar el chat: {title}',
+  'sidebar.pin': 'Fijar',
+  'sidebar.unpin': 'Dejar de fijar',
+  'sidebar.fork': 'Bifurcar',
+  'sidebar.pinThreadAria': 'Fijar el chat: {title}',
+  'sidebar.unpinThreadAria': 'Dejar de fijar el chat: {title}',
+  'sidebar.forkThreadAria': 'Bifurcar el chat: {title}',
+  'sidebar.pinned': 'Fijado',
   'sidebar.renameInputAria': 'Campo para cambiar el nombre: {title}',
   'sidebar.needsAnswer': 'Espera su respuesta',
   // Client update: the bottom-of-sidebar restart notice.
