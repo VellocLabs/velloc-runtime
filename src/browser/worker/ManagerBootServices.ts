@@ -51,6 +51,8 @@ import type {
   NotificationSink,
 } from '../../routines/NotificationHub'
 import type { RoutineCoordinator } from './RoutineCoordinator'
+import { installRuntimeRenderCache } from '../../renderCache/runtimeRenderCache'
+import { RENDER_CACHE_IDLE_PURGE_FLAG } from '../../renderCache/RenderCachePolicy'
 
 export interface ManagerBootServicesHost {
   getDirectBridgeTransport(): DirectPortBridgeTransport | null
@@ -68,6 +70,8 @@ export interface ManagerBootServicesHost {
   deliverRoutineToSession: DeliverRoutineToSession
   canDeliverRoutineToSession: CanDeliverRoutineToSession
   scheduleSummary(): void
+  /** Some session is running a turn (the render-cache purge waits for none). */
+  isAnySessionBusy?(): boolean
   trace(event: string, data?: Record<string, unknown>): void
 }
 
@@ -110,11 +114,18 @@ export class ManagerBootServices {
     void this.installModelCatalogOnce()
     // Client auto-update (F-30) needs the port and the manifest; retried per port until it starts.
     void this.installAppUpdate()
+    // The render-cache purge policy needs the port and the manifest too.
+    this.installRenderCache()
     const waiters = [...this.directBridgeWaiters]
     this.directBridgeWaiters.clear()
     for (const resolve of waiters) {
       resolve(transport)
     }
+  }
+
+  /** The host manifest may have arrived after the port: retry what gates on it. */
+  onHostManifestChanged(): void {
+    if (this.host.getDirectBridgeTransport()) this.installRenderCache()
   }
 
   getManagerFs(): RuntimeFs {
@@ -192,6 +203,22 @@ export class ManagerBootServices {
       this.modelCatalogInstalled = false
       console.warn('[ManagerBootServices] model catalog install failed:', error instanceof Error ? error.message : error)
     }
+  }
+
+  private installRenderCache(): void {
+    const skipped = installRuntimeRenderCache({
+      transport: () => this.host.getDirectBridgeTransport(),
+      manifest: () => this.host.getHostManifest?.() ?? null,
+      createRequestId: () => this.host.createBridgeRequestId(),
+      isAnyBusy: () => this.host.isAnySessionBusy?.() ?? false,
+      idlePurgeEnabled: async () => {
+        const homeDir = this.host.getHomeDir()
+        if (!homeDir) return true
+        const { settings } = await readUserLayer(homeDir, this.getManagerFs())
+        return settings.features?.[RENDER_CACHE_IDLE_PURGE_FLAG] !== false
+      },
+    })
+    if (skipped) this.host.trace('render_cache.skipped', { reason: skipped })
   }
 
   private async installAppUpdate(): Promise<void> {

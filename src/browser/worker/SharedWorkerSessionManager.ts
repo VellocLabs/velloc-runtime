@@ -190,6 +190,7 @@ import {
   isSubAgentSessionId,
   isTeammateSessionId,
 } from './taskProjection'
+import { currentRenderCachePolicy } from '../../renderCache/runtimeRenderCache'
 
 const TOOL_DETAIL_CACHE_MAX = 64
 
@@ -491,7 +492,10 @@ export class SharedWorkerSessionManager {
       this.captureRuntimeGlobalsOnReady(sessionId),
     trackNeedsAnswerFromSnapshot: (sessionId, snapshot) =>
       this.trackNeedsAnswerFromSnapshot(sessionId, snapshot),
-    refreshSessionStatus: sessionId => this.feed.emitStatus(sessionId),
+    refreshSessionStatus: sessionId => {
+      this.feed.emitStatus(sessionId)
+      currentRenderCachePolicy()?.noteBusyChanged()
+    },
     interceptHeadlessEmit: (sessionId, message) =>
       this.routines.interceptEmit(sessionId, message),
     interceptSubAgentEmit: (sessionId, message) =>
@@ -831,6 +835,7 @@ export class SharedWorkerSessionManager {
       knownProjectRoots: sessionScope => this.runtimeHub.knownProjectRoots(sessionScope),
       publishHostEnvironment: environment => {
         this.hostEnvironment = hostEnvironmentOf(environment)
+        this.bootServices.onHostManifestChanged()
         // Manifest gate: arm the runtime's remoteAccess driver only when
         // the host advertises the capability. An older binary (no
         // 'remoteAccess' in capabilities) leaves it disarmed so ZERO host
@@ -883,6 +888,7 @@ export class SharedWorkerSessionManager {
         Promise.resolve(),
       setLastInitTemplate: payload => {
         this.lastInitTemplate = payload
+        this.bootServices.onHostManifestChanged()
       },
       announceSessionStatus: sessionId => this.feed.announceStatus(sessionId),
       notifySessionUpserted: sessionId => this.notifySessionUpserted(sessionId),
@@ -904,6 +910,8 @@ export class SharedWorkerSessionManager {
       canDeliverRoutineToSession: sessionId =>
         this.canDeliverRoutineToSession(sessionId),
       scheduleSummary: () => this.feed.scheduleSummary(),
+      isAnySessionBusy: () =>
+        [...this.sessions.values()].some(entry => entry.worker.isBusy()),
       trace: (event, data) =>
         this.tracer.event(event, { attrs: data ?? {} }),
     })

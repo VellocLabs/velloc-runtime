@@ -3,6 +3,9 @@
  * (`nexus.webapp_url`, applied by `relaunch`), for the About page. C++-served on
  * the guest DIRECT bridge.
  */
+/** A process group `purgeRenderCaches` can address. */
+export type RenderCacheTarget = 'guest' | 'gpu' | 'agentTabs'
+
 export type AppInfoBridgeActionMap = {
   getVersionInfo: {
     payload: Record<string, never>
@@ -41,5 +44,22 @@ export type AppInfoBridgeActionMap = {
   relaunch: {
     payload: Record<string, never>
     result: { ok: true }
+  }
+  /**
+   * Memory pressure to the renderers / GPU process so they drop caches (P-3).
+   * `guest` = the Nexus page's renderers (all windows), `agentTabs` = renderers
+   * of session-tagged tabs; default `['guest', 'gpu']` at `critical`. A target
+   * the host rate-limited is in `throttled`. Unknown values are `INVALID_ARGS`;
+   * an older host answers `NOT_IMPLEMENTED`.
+   */
+  purgeRenderCaches: {
+    payload: { targets?: RenderCacheTarget[]; level?: 'moderate' | 'critical' }
+    result: {
+      purged: RenderCacheTarget[]
+      throttled: RenderCacheTarget[]
+      guestProcesses: number
+      agentTabProcesses: number
+      gpuProcesses: number
+    }
   }
 }

@@ -66,6 +66,7 @@ import { resolveHostHome } from './hostFs'
 import { currentTemplateChannel } from '../../branding/updateChannels'
 import { registerCatalogCapability } from './catalogCapability'
 import { registerAppUpdateCapability } from './appUpdateCapability'
+import { registerRenderCacheCapability } from './renderCacheCapability'
 import { registerProviderLoginCapability } from './providerLoginCapability'
 import { registerProviderUsageCapability } from './providerUsageCapability'
 import { getProviderCredentials } from '../../mods/provider/login/credentialDeps'
@@ -326,6 +327,9 @@ export class RuntimeHub {
     // Client auto-update (F-30): `appUpdate/status` (`observe`) and
     // `appUpdate.relaunch` (`full`); the service comes from `appUpdate/appUpdateHolder.ts`.
     registerAppUpdateCapability(this.registry, this.broker)
+    // Render-cache purge (P-3): `renderCache/status` (`observe`) and
+    // `renderCache.purgeNow` (`manager`); `presence.reportActivity` re-arms the idle purge.
+    registerRenderCacheCapability(this.registry, this.broker, this.presence)
     // Provider sign-in (PM-7): the dialog is the `providers/login` topic, the
     // person's answers are `providerLogin.*` actions (`manager`).
     registerProviderLoginCapability(this.registry, this.broker, getProviderCredentials())

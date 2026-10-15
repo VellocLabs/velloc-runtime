@@ -70,6 +70,7 @@ const ALL_PRIMITIVES = [
   'network.wsOpen',
   'network.oauthTemplates',
   'model.rawStreamOpen.oauth',
+  'appInfo.purgeRenderCaches',
 ]
 
 function make(
@@ -323,6 +324,29 @@ describe('shell', () => {
       wasRunning: true,
     })
     expect(await fake.primitives.shell.env(['HOME', 'NOPE'])).toEqual({ HOME: '/h', NOPE: null })
+  })
+})
+
+describe('appInfo', () => {
+  it('purgeRenderCaches sends the targets and level and returns the host reply', async () => {
+    const reply = { purged: ['guest', 'gpu'], throttled: [], guestProcesses: 2, agentTabProcesses: 0, gpuProcesses: 1 }
+    const fake = make(() => ok(reply))
+    expect(
+      await fake.primitives.appInfo.purgeRenderCaches({ targets: ['guest', 'gpu'], level: 'moderate' }),
+    ).toEqual(reply)
+    expect(fake.requests.map(routeOf)).toEqual(['appInfo.purgeRenderCaches'])
+    expect(fake.requests[0].payload).toEqual({ targets: ['guest', 'gpu'], level: 'moderate' })
+  })
+
+  it('purgeRenderCaches is unsupported on a host that does not list it', async () => {
+    const fake = make(() => ok({}), {
+      capabilities: ['fs'],
+      primitives: ALL_PRIMITIVES.filter(p => p !== 'appInfo.purgeRenderCaches'),
+    })
+    await expect(fake.primitives.appInfo.purgeRenderCaches()).rejects.toSatisfy(
+      isNativePrimitiveUnsupported,
+    )
+    expect(fake.requests).toHaveLength(0)
   })
 })
 

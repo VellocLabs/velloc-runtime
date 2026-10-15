@@ -1,7 +1,6 @@
 /**
  * SessionListChannel: the shell's session-list and background-task traffic on
- * the runtime connection (P-3). Requests `session.rename / fork / delete`,
- * `task.stop / resume / transcript / recoverBackground` and `presence.setViewing`;
+ * the runtime connection (P-3). Its requests are the `SessionListRoute`s below;
  * `sessions` / `tasks` topic events reach listeners as manager messages, the
  * inverse of the hub's `eventToManagerMessage`. An answer arrives as a topic event
  * (`session.forked` carries the `requestId`), seen by every client on the topic.
@@ -20,6 +19,7 @@ export type SessionListRoute =
   | 'task.transcript'
   | 'task.recoverBackground'
   | 'presence.setViewing'
+  | 'presence.reportActivity'
 
 export type SessionListMessage = { type: string } & Record<string, unknown>
 

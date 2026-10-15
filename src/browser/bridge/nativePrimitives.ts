@@ -739,6 +739,16 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
     },
   }
 
+  const appInfo = {
+    /** Memory-pressure purge of renderer / GPU caches (P-3). */
+    async purgeRenderCaches(
+      payload: BrowserBridgeRequestPayload<'appInfo', 'purgeRenderCaches'> = {},
+    ): Promise<BrowserBridgeResult<'appInfo', 'purgeRenderCaches'>> {
+      requirePrimitive('appInfo.purgeRenderCaches')
+      return send('appInfo.purgeRenderCaches', 'appInfo', 'purgeRenderCaches', payload)
+    },
+  }
+
   /** Single-web windows (F-29), owned by this connection. */
   const webWindow = {
     async open(
@@ -813,5 +823,5 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
     },
   }
 
-  return { fs, shell, network, secrets, alarms, model, webWindow }
+  return { fs, shell, network, secrets, alarms, model, webWindow, appInfo }
 }

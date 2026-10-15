@@ -274,6 +274,7 @@ import {
   getBootDiagnosticTraceId,
   installSessionTracer,
 } from '../../utils/sessionTrace'
+import { useClientActivityReport } from './clientActivityReport'
 
 /**
  * An opaque identity of what a snapshot is halted ON — the ids of its pending
@@ -1306,6 +1307,9 @@ export function MultiSessionShell({
     }
     sessionChannel?.request('presence.setViewing', { sessionId: activeSessionId })
   }, [sessionChannel, activeSessionId])
+
+  // Input and visibility postpone the runtime's render-cache purge.
+  useClientActivityReport(sessionChannel)
 
   // Mirror the active session to the HOST (boot + every switch), which seeds
   // the map above. Not sent without `session.setActiveSession`.
