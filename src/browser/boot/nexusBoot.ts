@@ -18,11 +18,7 @@ import {
   normalizeBrowserHostManifest,
 } from '../bridge/browserBridgeProtocol'
 import { DirectPortBridgeTransport } from '../bridge/DirectPortBridgeTransport'
-import {
-  hostedSkillsForHost,
-  hostedToolsForHost,
-  type HostShells,
-} from '../../toolkit/builtin/host'
+import type { HostShells } from '../../toolkit/builtin/host'
 import { createNativePrimitives, type NativePrimitives } from '../bridge/nativePrimitives'
 import {
   installBridgeTracerIfEnabled,
@@ -574,6 +570,13 @@ async function prepareNexusBoot(
     href: globalThis.location?.href,
   })
 
+  // The host tool definitions are a large module the entry chunk does not
+  // need until the manifest arrives; loading starts here so it overlaps the
+  // host handshake. The detached catch keeps an unused failure from becoming
+  // an unhandled rejection; the await below still sees it.
+  const hostToolsModule = import('../../toolkit/builtin/host')
+  hostToolsModule.catch(() => {})
+
   const { hostWindow, hostOrigin, panelId } = await waitForNexusHostInit()
   nexusTrace('host init resolved', { hostOrigin, panelId: panelId ?? '(default)' })
 
@@ -608,6 +611,7 @@ async function prepareNexusBoot(
   // model reads are decided here.
   let hostedTools = hostManifest?.hostedTools ?? []
   if (hostManifest) {
+    const { hostedSkillsForHost, hostedToolsForHost } = await hostToolsModule
     let shells: HostShells | undefined
     if (hostManifest.capabilities.includes('exec')) {
       try {

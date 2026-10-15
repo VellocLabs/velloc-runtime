@@ -1,16 +1,21 @@
-import { readFileSync, statSync } from 'node:fs'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+
+import {
+  read,
+  rel,
+  SRC,
+  sourceBytes,
+  staticClosure,
+  stripComments,
+} from './_helpers/staticImportGraph'
 
 /**
  * Boot-chunk budget for the cold UI split (`browser/webview/coldUi.ts`): the settings page, the right panel and
  * the session-import dialog stay behind `import()`, off the shell's boot chunk. The reachability assertions walk
  * the shell's real static import graph; the budget is a floor on what the split keeps out, not a ceiling.
  */
-
-const SRC = join(__dirname, '..')
-const ROOT = join(SRC, '..')
 
 const SHELL = join(SRC, 'browser', 'webview', 'MultiSessionShell.tsx')
 const COLD_UI = join(SRC, 'browser', 'webview', 'coldUi.ts')
@@ -43,97 +48,6 @@ const COLD_PANELS = [
  * measured size so refactoring inside the panels cannot trip it.
  */
 const MIN_DEFERRED_BYTES = 450 * 1024
-
-const rel = (file: string): string => relative(ROOT, file).split(sep).join('/')
-
-const read = (file: string): string => readFileSync(file, 'utf8')
-
-/** Source with comments removed, so a commented-out import is not an edge. */
-const stripComments = (source: string): string =>
-  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-
-/**
- * Resolve a module specifier the way the bundler does — `@/` to `src/`, `./`
- * and `../` relative to the importer.
- *
- * Only `.ts`/`.tsx` (and their `index` forms) resolve: a specifier landing on
- * a `.css` file is not a source module and contributes no bytes here.
- */
-function resolveSpecifier(specifier: string, importer: string): string | null {
-  let base: string
-  if (specifier.startsWith('@/')) {
-    base = join(SRC, specifier.slice(2))
-  } else if (specifier.startsWith('.')) {
-    base = resolve(dirname(importer), specifier)
-  } else {
-    return null
-  }
-  for (const candidate of [
-    `${base}.ts`,
-    `${base}.tsx`,
-    join(base, 'index.ts'),
-    join(base, 'index.tsx'),
-  ]) {
-    try {
-      if (statSync(candidate).isFile()) return candidate
-    } catch {
-      // Not this shape — try the next.
-    }
-  }
-  return null
-}
-
-/**
- * Static import edges out of a module (same chunk); `import type` and `import()` are not followed. Two shapes are
- * matched (single-line and braced clause) so a match cannot run past a statement with no `from`.
- */
-function staticImports(file: string): string[] {
-  const source = stripComments(read(file))
-  const specifiers: string[] = []
-
-  const singleLine =
-    /^[ \t]*(?:import|export)\b[^'"\n]*?\bfrom\b[ \t]*['"]([^'"]+)['"]/gm
-  // `[^'"\n{]*` before the brace so a default-plus-named clause
-  // (`import Foo, {`) is matched too, without letting the pattern cross a line.
-  const braced =
-    /^[ \t]*(?:import|export)[ \t]+(?:type[ \t]+)?[^'"\n{]*\{[\s\S]*?\}[ \t]*from\b[ \t]*['"]([^'"]+)['"]/gm
-  const sideEffect = /^[ \t]*import[ \t]*['"]([^'"]+)['"]/gm
-
-  for (const pattern of [singleLine, braced]) {
-    for (const match of source.matchAll(pattern)) {
-      // `import type X from` / `import type { X } from` are erased.
-      if (/^[ \t]*(?:import|export)[ \t]+type\b/.test(match[0])) continue
-      specifiers.push(match[1])
-    }
-  }
-  for (const match of source.matchAll(sideEffect)) {
-    specifiers.push(match[1])
-  }
-  return specifiers
-}
-
-/** Every module reachable from `roots` through static imports only. */
-function staticClosure(roots: readonly string[]): Set<string> {
-  const seen = new Set(roots)
-  const pending = [...roots]
-  while (pending.length > 0) {
-    const file = pending.pop() as string
-    for (const specifier of staticImports(file)) {
-      const target = resolveSpecifier(specifier, file)
-      if (target && !seen.has(target)) {
-        seen.add(target)
-        pending.push(target)
-      }
-    }
-  }
-  return seen
-}
-
-function sourceBytes(files: Iterable<string>): number {
-  let total = 0
-  for (const file of files) total += statSync(file).size
-  return total
-}
 
 describe('cold UI stays out of the boot chunk', () => {
   const shellClosure = staticClosure([SHELL])
