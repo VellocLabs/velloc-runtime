@@ -6,7 +6,7 @@
 import {
   getLauncherMeta,
   isTypeListedInBundledCatalog,
-} from '../../prompting/templateRegistry'
+} from '../../prompting/templateCatalog'
 
 /** The fields the rule reads — satisfied by both `SessionListItem` and
  *  `LocalSessionEntry`. */

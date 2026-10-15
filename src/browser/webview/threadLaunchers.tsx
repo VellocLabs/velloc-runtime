@@ -15,8 +15,8 @@ import {
   getLauncherCatalog,
   getTemplateIcon,
   getTemplateTitle,
-  type LauncherMeta,
-} from '../../prompting/templateRegistry'
+} from '../../prompting/templateCatalog'
+import type { LauncherMeta } from '../../prompting/templateParsing'
 
 /** A launcher icon component — a lucide-react icon OR an <img> wrapper (for a
  *  template `icon` path / https URL). Both accept `className` for sizing, so
@@ -81,7 +81,7 @@ export function makeImageIcon(src: string): IconComponent {
   return ImageIcon
 }
 
-// A type's launcher icon, from the `index.md` catalog (templateRegistry
+// A type's launcher icon, from the `index.md` catalog (templateCatalog
 // getTemplateIcon): an `icon` SVG data URI → an <img>; else `icon_lucide` → the
 // mapped lucide component; else `fallback`. So `icon` / `icon_lucide` in
 // index.md drive the launcher icon (no icon files).

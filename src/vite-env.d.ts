@@ -21,6 +21,18 @@ declare module 'virtual:bundled-template-registry' {
 }
 
 /**
+ * The bundled launcher catalogs and welcome pages alone, from the same plugin,
+ * fresh on each call — what the page renders, without the template bodies.
+ */
+declare module 'virtual:bundled-template-catalog' {
+  import type { RegistryData } from '@/prompting/templateParsing'
+  export function createBundledCatalog(): Pick<
+    RegistryData,
+    'launcherCatalog' | 'launcherByType' | 'betaLauncherCatalog' | 'welcomeByType'
+  >
+}
+
+/**
  * The built-in mods (F-25), each plugin under `mods/builtin/` compiled at
  * build time by the `builtin-mods` Vite plugin (`vite/builtinModsPlugin.ts`).
  */

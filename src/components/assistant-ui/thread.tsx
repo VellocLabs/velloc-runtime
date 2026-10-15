@@ -129,7 +129,7 @@ import {
   shouldSendInForkOnModAltEnter,
 } from "./composer-send-shortcuts";
 import { useT, useLocale, type TranslateFn } from "@/browser/webview/i18n";
-import { getWelcome } from "@/prompting/templateRegistry";
+import { getWelcome } from "@/prompting/templateCatalog";
 import { visibleSuggestionCount } from "@/components/assistant-ui/welcomeSuggestionLayout";
 import { useMessageActionsContext } from "@/components/assistant-ui/message-actions-context";
 import { VirtualizedThreadMessages } from "@/components/assistant-ui/virtualized-thread-messages";

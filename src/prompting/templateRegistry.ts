@@ -23,56 +23,46 @@ export type {
   ParsedTemplate,
 } from './templateParsing'
 import type {
-  LauncherMeta,
   ParsedTemplate,
   TemplateConfig,
-  WelcomeContent,
 } from './templateParsing'
 import type { PromptProfile } from './promptProfile'
+import type { UpdateChannel } from '../branding/updateChannels'
 import {
-  currentTemplateChannel,
-  type UpdateChannel,
-} from '../branding/updateChannels'
+  replaceLauncherCatalog,
+  resetTemplateCatalogForTest,
+  setLocalWelcome,
+  setTemplateChannelForTest,
+  templateChannel,
+} from './templateCatalog'
+
+// The launcher catalog and welcome pages live in `templateCatalog.ts` so the
+// page can render them without this module's template bodies; re-exported for
+// the runtime's callers.
+export {
+  getLauncherCatalog,
+  getLauncherMeta,
+  getTemplateIcon,
+  getTemplateTitle,
+  getWelcome,
+  isTypeListedInBundledCatalog,
+  type TemplateIcon,
+} from './templateCatalog'
 
 // The LIVE registry. Starts as a fresh clone of the build-time bundled set.
-// `launcherCatalog`/`launcherByType`/`betaLauncherCatalog` are mutable so a
-// local `index.md` overlay can REPLACE them at boot (only when the host
-// signalled `template=local`); the other maps are mutated in place by
-// `registerLocalType` / `applyLocalWelcome`. The getters below close over these
-// bindings.
+// The maps are mutated in place by `registerLocalType`
+// (only when the host signalled `template=local`). The getters below close
+// over these bindings.
 let {
-  launcherCatalog,
-  launcherByType,
-  betaLauncherCatalog,
   sharedHolders,
   typeHolders,
   templates,
   betaTemplates,
-  welcomeByType,
 } = createBundledRegistry()
-// The BUNDLED launcher catalogs, kept when a local `index.md` replaces the live
-// ones (`applyLocalCatalog` reassigns the bindings above; these stay). Read by
-// `isTypeListedInBundledCatalog`.
-const bundledLaunchers = { launcherByType, betaLauncherCatalog }
 // Types loaded from the LOCAL folder (`registerLocalType`). A local type may
 // reuse a bundled holder by its globally-unique (type-prefixed) name; bundled
 // types keep the no-cross-type-borrow invariant (this gate).
 const localTypes = new Set<string>()
-
-// Test-only pin for the channel (`__setTemplateChannelForTest`); `null` reads
-// the realm (`currentTemplateChannel`).
-let channelForTest: UpdateChannel | null = null
-
-/**
- * The channel whose files this registry serves. Read per call, never cached at
- * module load: it is a property of the realm (its origin, or an off-channel
- * preview), so there is nothing to invalidate and no boot-order to get wrong.
- * The one exception is a remote client, which takes its runtime's channel off
- * the connection (`adoptRuntimeChannel`) — once, before its shell renders.
- */
-function templateChannel(): UpdateChannel {
-  return channelForTest ?? currentTemplateChannel()
-}
 
 /**
  * A type's manifest for the current channel: on beta its `template-beta.md`
@@ -126,87 +116,6 @@ export function getHolderProse(
 }
 
 /**
- * A launcher's display title: `title-i18n` via `translate` (which must
- * return undefined for a missing key), else `title`, else `type`.
- */
-export function getTemplateTitle(
-  type: string,
-  translate?: (key: string) => string | undefined,
-): string {
-  const meta = activeLauncherByType().get(type)
-  if (meta?.titleI18n && translate) {
-    const localized = translate(meta.titleI18n)
-    if (localized) return localized
-  }
-  return meta?.title ?? type
-}
-
-/** A resolved launcher icon: an SVG data URI (or image URL) for an `<img>`, or a
- *  lucide-react component name. */
-export type TemplateIcon =
-  | { kind: 'url'; src: string }
-  | { kind: 'lucide'; name: string }
-
-/**
- * The launcher icon for a type, from the `index.md` catalog. Resolution order:
- *   1. `icon` — an inline SVG **data URI** (`data:image/svg+xml;…`) → `<img src>`.
- *   2. `icon_lucide` — a lucide-react icon name → a component.
- * undefined when none is set (the caller keeps its own fallback icon). There are
- * NO icon files; the icon is inlined in `index.md`.
- */
-export function getTemplateIcon(type: string): TemplateIcon | undefined {
-  const meta = activeLauncherByType().get(type)
-  if (meta?.icon) return { kind: 'url', src: meta.icon }
-  if (meta?.iconLucide) return { kind: 'lucide', name: meta.iconLucide }
-  return undefined
-}
-
-/**
- * The launcher catalog for the channel without loading any `template.md`:
- * beta uses `index-beta.md` when bundled, else `index.md`. The array is stable
- * per channel (`getThreadLaunchers` memoizes on it).
- */
-export function getLauncherCatalog(): readonly LauncherMeta[] {
-  return templateChannel() === 'beta' && betaLauncherCatalog
-    ? betaLauncherCatalog
-    : launcherCatalog
-}
-
-/** The launcher metadata for one type in the current channel's catalog. */
-export function getLauncherMeta(type: string): LauncherMeta | undefined {
-  return activeLauncherByType().get(type)
-}
-
-/**
- * Whether the current channel's BUNDLED catalog lists `type` — whatever a
- * local `index.md` overlay did to the live one. A local catalog REPLACES the
- * launcher list (`applyLocalCatalog`), but the bundled types it leaves out are
- * still registered and their existing sessions still run.
- */
-export function isTypeListedInBundledCatalog(type: string): boolean {
-  const beta =
-    templateChannel() === 'beta' ? bundledLaunchers.betaLauncherCatalog : null
-  return beta
-    ? beta.some(meta => meta.type === type)
-    : bundledLaunchers.launcherByType.has(type)
-}
-
-// `launcherByType` for the beta catalog, built on first use and rebuilt only
-// when the beta catalog array is replaced.
-let betaByTypeFor: readonly LauncherMeta[] | null = null
-let betaByType = new Map<string, LauncherMeta>()
-
-function activeLauncherByType(): ReadonlyMap<string, LauncherMeta> {
-  const catalog = getLauncherCatalog()
-  if (catalog === launcherCatalog) return launcherByType
-  if (betaByTypeFor !== catalog) {
-    betaByTypeFor = catalog
-    betaByType = new Map(catalog.map(m => [m.type, m]))
-  }
-  return betaByType
-}
-
-/**
  * Overlay a local catalog (REPLACE): a non-empty `types:` list becomes the
  * catalog on both channels; empty or unparsable is a no-op. Called only when
  * the host signalled `template=local`.
@@ -215,9 +124,7 @@ export async function applyLocalCatalog(indexMd: string): Promise<void> {
   const { parseLauncherCatalog } = await import('./templateParsing')
   const local = parseLauncherCatalog(indexMd)
   if (local.length === 0) return
-  launcherCatalog = local
-  launcherByType = new Map(local.map(m => [m.type, m]))
-  betaLauncherCatalog = null
+  replaceLauncherCatalog(local)
 }
 
 /**
@@ -249,44 +156,25 @@ export async function applyLocalWelcome(
   raw: string,
 ): Promise<void> {
   const { parseWelcome } = await import('./templateParsing')
-  const byLocale = welcomeByType.get(type) ?? new Map<string, WelcomeContent>()
-  byLocale.set(locale, parseWelcome(raw))
-  welcomeByType.set(type, byLocale)
+  setLocalWelcome(type, locale, parseWelcome(raw))
 }
 
 /** Test-only: undo all local overlays (catalog, types, holders, welcome),
  *  restoring the bundled registry so overlay tests don't leak. */
 export function __resetLocalOverlayForTest(): void {
   ;({
-    launcherCatalog,
-    launcherByType,
-    betaLauncherCatalog,
     sharedHolders,
     typeHolders,
     templates,
     betaTemplates,
-    welcomeByType,
   } = createBundledRegistry())
+  resetTemplateCatalogForTest()
   localTypes.clear()
 }
 
 /** Test-only: pin the channel the registry serves (`null` = read the realm). */
 export function __setTemplateChannelForTest(channel: UpdateChannel | null): void {
-  channelForTest = channel
-}
-
-/**
- * A type's welcome page for the active UI `locale` (e.g. 'zh'), from
- * `<type>/welcome-<locale>.md`, falling back to the default `<type>/welcome.md`.
- * undefined when the type ships no welcome.md.
- */
-export function getWelcome(
-  type: string,
-  locale = '',
-): WelcomeContent | undefined {
-  const byLocale = welcomeByType.get(type)
-  if (!byLocale) return undefined
-  return byLocale.get(locale) ?? byLocale.get('')
+  setTemplateChannelForTest(channel)
 }
 
 /**
