@@ -118,6 +118,21 @@ describe('syncModPaneTabs', () => {
     expect(hidden.state.visible).toBe(false)
   })
 
+  it("a mod's focus open activates its tab and shows the panel, once per openSeq", () => {
+    const held = { ...report, asked: false, focus: true }
+    const a = syncModPaneTabs({ ...openView(sessionState(), 'tasks'), visible: false }, { panes: [], seen: undefined, docked: true })
+    const b = syncModPaneTabs(a.state, { panes: [held], seen: a.seen, docked: true })
+    expect(b.state.tabs).toEqual(['tasks', 'diff', REPORT])
+    expect(b.state.activeView).toBe(REPORT)
+    expect(b.state.visible).toBe(true)
+    // The person moves to another tab: the same open does not pull it back.
+    const moved = openView(b.state, 'tasks')
+    expect(syncModPaneTabs(moved, { panes: [held], seen: b.seen, docked: true }).state.activeView).toBe('tasks')
+    // A later focus open does.
+    const again = syncModPaneTabs(moved, { panes: [{ ...held, openSeq: 5 }], seen: b.seen, docked: true })
+    expect(again.state.activeView).toBe(REPORT)
+  })
+
   it("the person's open of a pane already open shows it again: its tab behind another, or its panel hidden", () => {
     const a = syncModPaneTabs(sessionState(), { panes: [], seen: undefined, docked: true })
     const b = syncModPaneTabs(a.state, { panes: [report], seen: a.seen, docked: true })

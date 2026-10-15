@@ -31,6 +31,8 @@ export type ModUiPane = {
   isPlaced: boolean
   /** Its latest open was the person's: a docked client shows it. */
   asked: boolean
+  /** Its latest open passed `focus`: a docked client shows it too. */
+  focus: boolean
   /** Its latest open's place in the slot's opens. */
   openSeq: number
   closeOnEscape: boolean

@@ -1687,6 +1687,7 @@ export class ModRuntime implements TurnExtensions {
         isFocused: pane.isFocused,
         isPlaced: pane.isPlaced,
         asked: pane.asked,
+        focus: pane.focus,
         openSeq: pane.openSeq,
         closeOnEscape: pane.closeOnEscape,
         ...(pane.rows !== undefined ? { rows: pane.rows } : {}),

@@ -278,6 +278,9 @@ export type ModsUiPane = {
    *  page docking it activates its tab and shows the panel, once per
    *  `openSeq`. */
   asked?: boolean
+  /** Its latest open passed `focus`: a docking page shows it as it does
+   *  an asked one. */
+  focus?: boolean
   /** Its latest open's place among the session's opens. */
   openSeq?: number
   rows?: number
@@ -653,6 +656,7 @@ export function isModsUiPane(value: unknown): value is ModsUiPane {
     typeof value.closeOnEscape === 'boolean' &&
     (value.isPlaced === undefined || typeof value.isPlaced === 'boolean') &&
     (value.asked === undefined || typeof value.asked === 'boolean') &&
+    (value.focus === undefined || typeof value.focus === 'boolean') &&
     (value.openSeq === undefined || typeof value.openSeq === 'number') &&
     (value.rows === undefined || typeof value.rows === 'number') &&
     (value.columns === undefined || typeof value.columns === 'number')

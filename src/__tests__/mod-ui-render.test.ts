@@ -187,6 +187,7 @@ describe('$.ui.open / close / panes', () => {
         isFocused: false,
         isPlaced: true,
         asked: false,
+        focus: false,
         openSeq: 1,
         closeOnEscape: false,
       },
@@ -342,6 +343,41 @@ describe('$.ui.open / panes — where the clients seat the panes', () => {
     expect(await panesNow(runtime, reports)).toEqual([{ id: 'report', isShown: true, isPlaced: true }])
     runtime.seat('phone', null)
     expect(await panesNow(runtime, reports)).toEqual([{ id: 'report', isShown: false, isPlaced: true }])
+  })
+
+  const FOCUSER = `
+    on('turn.start', async ($, e, next) => {
+      await $.ui.log('focused ' + JSON.stringify(await $.ui.open({ id: 'hold', title: 'Hold', focus: true })))
+      return next(e)
+    })
+    on('ui.render', { component: 'Pane', requestId: 'hold' }, async ($, e) => {
+      const { Text } = $.ui.resolve(e)
+      return Text({ children: ['held'] })
+    })
+  `
+  const focusedOpens = (reports: string[]): unknown[] =>
+    reports.filter(line => line.startsWith('focuser: focused ')).map(line => JSON.parse(line.slice('focuser: focused '.length)))
+
+  it("a mod's focus open is placed while the only window hides its panel, and is published with focus for the page to show", async () => {
+    const { runtime, reports, lastState } = world({ focuser: FOCUSER })
+    await runtime.ready
+    runtime.seat('c1', { kind: 'dock-hidden' })
+    await runtime.turnStart({ text: 'go', turnId: 't1' })
+    expect(focusedOpens(reports)).toEqual([{ isPlaced: true }])
+    expect(lastState()?.state.panes).toEqual([
+      expect.objectContaining({ id: 'hold', isPlaced: true, asked: false, focus: true, isShown: true }),
+    ])
+  })
+
+  it('a focus open with no window showing the session waits, and is placed once a window shows it with its panel hidden', async () => {
+    const { runtime, reports, lastState } = world({ focuser: FOCUSER })
+    await runtime.ready
+    runtime.seat('c1', { kind: 'dock-visible' })
+    runtime.seat('c1', null)
+    await runtime.turnStart({ text: 'go', turnId: 't1' })
+    expect(focusedOpens(reports)).toEqual([{ isPlaced: false, reason: PANE_WAITS_REASON }])
+    runtime.seat('c2', { kind: 'dock-hidden' })
+    expect(lastState()?.state.panes).toEqual([expect.objectContaining({ id: 'hold', isPlaced: true, focus: true })])
   })
 })
 

@@ -33,6 +33,8 @@ export type ModUiPaneRow = {
   /** Its latest open was the person's: a docked page shows it, once per
    *  `openSeq`. */
   asked?: boolean
+  /** Its latest open passed `focus`: shown as an asked one is. */
+  focus?: boolean
   openSeq?: number
   rows?: number
   columns?: number

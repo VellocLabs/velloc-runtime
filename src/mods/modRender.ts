@@ -405,6 +405,11 @@ function propsProblem(
     const value = props[key]
     // A prop set to `undefined` (`color={cond ? 'red' : undefined}`) is an absent prop.
     if (value === undefined) continue
+    // JSX puts `key` on any element: an identity hint wherever it is not required.
+    if (key === 'key') {
+      if (typeof value !== 'string' && typeof value !== 'number') return `${element}'s key is not a string or a number`
+      continue
+    }
     if (!allowed.has(key)) return `${element} does not take a prop named "${key}"`
     if (key === 'hover') {
       if (!isRecord(value)) return `${element}'s hover is not an object`

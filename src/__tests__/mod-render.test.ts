@@ -48,6 +48,24 @@ describe('validateRenderTree', () => {
     expect(validateRenderTree({ type: 'Box', props: { width: { px: 3 } } })).toMatchObject({ ok: false })
   })
 
+  it('takes a key on every element, as JSX writes it, and refuses one that is not a string or a number', () => {
+    const tree = {
+      type: 'Box',
+      props: { key: 'row' },
+      children: [
+        { type: 'Text', props: { key: 'countdown', dimColor: true }, children: ['auto-cancels in 9 s'] },
+        { type: 'Text', props: { key: 3 }, children: ['third'] },
+        { type: 'Link', props: { key: 'docs', href: 'https://example.com/', label: 'docs' } },
+        { type: 'Code', props: { key: 'src', source: 'x' } },
+      ],
+    }
+    expect(validateRenderTree(tree)).toMatchObject({ ok: true })
+    expect(validateRenderTree({ type: 'Text', props: { key: { id: 1 } }, children: ['x'] })).toMatchObject({
+      ok: false,
+      reason: "Text's key is not a string or a number",
+    })
+  })
+
   it('a leaf without its handler, a Button without a key or label, a bad hotkey, variant or role', () => {
     expect(validateRenderTree({ type: 'Button', props: { key: 'k', label: 'L' } })).toMatchObject({ ok: false, reason: expect.stringContaining('carries no handler') })
     expect(validateRenderTree({ type: 'Button', props: { label: 'L' }, press })).toMatchObject({ ok: false, reason: 'Button has no key' })

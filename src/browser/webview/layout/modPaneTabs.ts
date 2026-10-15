@@ -1,9 +1,10 @@
 /**
  * Mods' docked panes as Right Panel tabs (F-25): folds the runtime's open `panes`
- * into one session's tab strip as `mod:<plugin>:<id>` tabs. Only an open the PERSON
- * asked for (a new `openSeq`) activates the tab and shows the panel; a mod's own
- * open only adds its tab. Nothing counts as newly opened the first time a session is
- * folded. Not docked, the panes draw inline and their tabs leave the strip.
+ * into one session's tab strip as `mod:<plugin>:<id>` tabs. An open the PERSON
+ * asked for, or one a mod opened with `focus` (a new `openSeq`), activates the tab
+ * and shows the panel; a mod's other opens only add their tab. Nothing counts as
+ * newly opened the first time a session is folded. Not docked, the panes draw
+ * inline and their tabs leave the strip.
  */
 import {
   closeView,
@@ -15,7 +16,7 @@ import {
   type RightPanelState,
 } from './rightPanelManager'
 
-export type ModPaneTabSource = { plugin: string; id: string; asked?: boolean; openSeq?: number }
+export type ModPaneTabSource = { plugin: string; id: string; asked?: boolean; focus?: boolean; openSeq?: number }
 
 export function syncModPaneTabs(
   state: RightPanelState,
@@ -38,9 +39,11 @@ export function syncModPaneTabs(
   }
   if (params.docked) {
     for (const { view, pane } of current) {
-      const isAskedAnew =
-        params.seen !== undefined && pane.asked === true && (pane.openSeq ?? 0) > (params.seen.get(view) ?? 0)
-      if (isAskedAnew) next = openView(next, view)
+      const isBroughtForward =
+        params.seen !== undefined &&
+        (pane.asked === true || pane.focus === true) &&
+        (pane.openSeq ?? 0) > (params.seen.get(view) ?? 0)
+      if (isBroughtForward) next = openView(next, view)
       else if (!next.tabs.includes(view)) next = ensureRightPanelTab(next, view)
     }
   }

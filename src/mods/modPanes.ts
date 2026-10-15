@@ -1,8 +1,8 @@
 /**
  * The panes a slot's plugins opened (F-25): one per (plugin, id), in open order.
  * `isPlaced` and `isShown` come from the seats clients report (`mods.seat`); with no
- * seat ever reported, all are placed. An asked open is published state the client
- * acts on, not a call into it.
+ * seat ever reported, all are placed. An asked or focused open is published state
+ * the client acts on, not a call into it.
  */
 
 export type ModPaneOpenArgs = {
@@ -34,6 +34,9 @@ export type ModPane = {
   /** Whether its latest open was the person's (a command, a prompt, a
    *  press), which a docked client answers by showing it. */
   asked: boolean
+  /** Whether its latest open passed `focus`, which a docked client answers
+   *  by showing it as it does an asked one. */
+  focus: boolean
   /** Its latest open's place in the slot's opens, from 1. */
   openSeq: number
   rows?: number
@@ -49,8 +52,9 @@ export type ModPaneSeat =
   | { kind: 'dock-visible'; showing?: { plugin: string; id: string } }
   | { kind: 'dock-hidden' }
 
-/** Why an unasked open waits: no attached surface places panes yet; it is
- *  seated when one that does attaches. */
+/** Why an unasked open waits: no attached surface places panes yet (for a
+ *  `focus` open, no window shows the session); it is seated when one that
+ *  does attaches. */
 export const PANE_WAITS_REASON =
   'no window showing this session has its right panel open; the pane is placed when the person opens it'
 
@@ -99,7 +103,7 @@ export class ModPaneRegistry {
     const key = paneKeyOf(plugin, args.id)
     const title = typeof args.title === 'string' && args.title !== '' ? args.title : args.id
     const held = this.panes.get(key)
-    const placeable = asked || this.placesUnasked()
+    const placeable = asked || this.placesUnasked() || (args.focus === true && this.placesFocused())
     this.opens += 1
     if (args.focus) this.keyed.add(key)
     if (held) {
@@ -108,6 +112,7 @@ export class ModPaneRegistry {
       held.holdToasts = args.holdToasts === true
       held.isPlaced ||= placeable
       held.asked = asked
+      held.focus = args.focus === true
       held.openSeq = this.opens
       if (args.rows !== undefined) held.rows = args.rows
       if (args.columns !== undefined) held.columns = args.columns
@@ -123,6 +128,7 @@ export class ModPaneRegistry {
         closeOnEscape: args.closeOnEscape === true,
         holdToasts: args.holdToasts === true,
         asked,
+        focus: args.focus === true,
         openSeq: this.opens,
         ...(args.rows !== undefined ? { rows: args.rows } : {}),
         ...(args.columns !== undefined ? { columns: args.columns } : {}),
@@ -161,7 +167,8 @@ export class ModPaneRegistry {
 
   /** A client's seat for this session (`mods.seat`); null when it no longer
    *  draws the session (it left, or shows another one). A seat that places
-   *  panes places every waiting one. */
+   *  panes places every waiting one; a seat with its panel hidden places the
+   *  waiting `focus` ones, whose open shows the panel. */
   setSeat(client: string, seat: ModPaneSeat | null): void {
     if (seat) {
       this.seats.set(client, seat)
@@ -169,10 +176,11 @@ export class ModPaneRegistry {
     } else {
       this.seats.delete(client)
     }
-    if (!this.placesUnasked()) return
+    const unasked = this.placesUnasked()
+    const focused = this.placesFocused()
     let placed = false
     for (const pane of this.panes.values()) {
-      if (pane.isPlaced) continue
+      if (pane.isPlaced || !(unasked || (pane.focus && focused))) continue
       pane.isPlaced = true
       placed = true
     }
@@ -221,6 +229,13 @@ export class ModPaneRegistry {
       if (seat.kind !== 'dock-hidden') return true
     }
     return false
+  }
+
+  /** Whether a `focus` open is placed now: some client shows the session,
+   *  its panel open or not (a docked client opens it), or none ever said
+   *  where it does. */
+  private placesFocused(): boolean {
+    return !this.seatsKnown || this.seats.size > 0
   }
 
   /** Whether some client shows the pane now. */
