@@ -482,7 +482,7 @@ describe('BackgroundTasksDrawer bash detail parameters', () => {
           // long build that "stopped at the 10-minute tool limit".
           timeoutMs: 600_000,
           backgroundMode: 'auto',
-          cwd: 'D:/project/velloc',
+          cwd: 'D:/work/repo',
           description: 'build the base target',
         },
       },
@@ -517,7 +517,7 @@ describe('BackgroundTasksDrawer bash detail parameters', () => {
     // Background mode is spelled out (auto-detached vs explicit).
     expect(text).toContain('auto-detached')
     // Working dir + description round out the invoke params.
-    expect(text).toContain('D:/project/velloc')
+    expect(text).toContain('D:/work/repo')
     expect(text).toContain('build the base target')
     // A shell's command renders under a "Command" heading (not the agent "Task").
     expect(text).toContain('Command')
@@ -537,7 +537,7 @@ describe('BackgroundTasksDrawer bash detail parameters', () => {
         shellParams: {
           unbounded: true,
           backgroundMode: 'auto',
-          cwd: 'D:/project/velloc',
+          cwd: 'D:/work/repo',
         },
       },
     }

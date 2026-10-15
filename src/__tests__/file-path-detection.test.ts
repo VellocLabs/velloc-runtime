@@ -25,11 +25,11 @@ describe('extractFilePathCandidates — finds real paths', () => {
   })
 
   it('finds a Windows absolute path in either slash flavour', () => {
-    expect(paths('open D:\\project\\velloc\\nexus_web\\package.json now')).toEqual([
-      'D:\\project\\velloc\\nexus_web\\package.json',
+    expect(paths('open D:\\work\\repo\\app\\package.json now')).toEqual([
+      'D:\\work\\repo\\app\\package.json',
     ])
-    expect(paths('open D:/project/velloc/x.cc')).toEqual([
-      'D:/project/velloc/x.cc',
+    expect(paths('open D:/work/repo/x.cc')).toEqual([
+      'D:/work/repo/x.cc',
     ])
   })
 

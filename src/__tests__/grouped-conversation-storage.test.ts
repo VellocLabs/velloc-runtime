@@ -739,7 +739,7 @@ describe('GroupedConversationStorage (sqlite meta store)', () => {
 
   it('projectRoot still wins over a recorded project_dir (re-bound session)', async () => {
     const oldDir = `${PROJECTS}/old-sandbox`
-    const boundRoot = 'D:/project/velloc'
+    const boundRoot = 'D:/work/repo'
     const { storage, store, created } = makeStorage({ migrated: true })
     // A stale project_dir from before the re-bind, but projectRoot now set.
     await store.seedMeta(

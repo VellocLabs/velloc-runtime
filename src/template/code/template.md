@@ -21,11 +21,11 @@ deferredTools: [browser, a2ui, agent-teams]
 
 ## prompt
 
-# `!system` is the SHARED harness block: `# How this session works` (CC 2.1.258 standard) or
+# `!system` is the SHARED harness block: `# How this session works` (standard profile) or
 
-# `# Harness` (`system-lean.md`, CC's lean prompt). `@standard` gates a line
+# `# Harness` (`system-lean.md`, lean profile). `@standard` gates a line
 
-# to one profile — CC's lean prompt has no `# Approach to tasks` section at all.
+# to one profile — the lean profile has no `# Approach to tasks` section at all.
 
 !code_intro
 !system

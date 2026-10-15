@@ -45,9 +45,9 @@ deferredTools: [a2ui, agent-teams]
 # !agent_tone_and_style = tone_and_style + output_efficiency
 
 
-# !agent_using_your_tools = the `# Tools` block, ported from the
+# !agent_using_your_tools = the `# Tools` block (file/shell + task tracking +
 
-# retired host renderer (file/shell + task tracking + skills). The browser
+# skills). The browser
 
 # one-call-per-turn rule is NOT here: it follows the browser CAPABILITY, in
 
@@ -71,9 +71,9 @@ deferredTools: [a2ui, agent-teams]
 
 # the type-blind C++ registry.
 
-# `!delivering_work` (shared_includes/) follows `!agent_autonomy` with CC's
+# `!delivering_work` (shared_includes/) follows `!agent_autonomy` with the
 
-# own `# Long conversations` / `# Delivering work` / `# Correcting yourself` prose —
+# shared `# Long conversations` / `# Delivering work` / `# Correcting yourself` prose —
 
 # the same block `code` / `safe_code` carry, so all three task-running types
 
@@ -85,7 +85,7 @@ deferredTools: [a2ui, agent-teams]
 
 # payments, sending, unsaved tabs) under BOTH profiles — the shared holder's
 
-# one-paragraph `-lean` rendering is CC's coding caution, and `agent_autonomy`
+# one-paragraph `-lean` rendering is the coding caution `code` uses, and `agent_autonomy`
 
 # below refers back to "the executing actions with care rules above".
 

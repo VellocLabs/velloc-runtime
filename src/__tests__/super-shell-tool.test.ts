@@ -349,7 +349,7 @@ describe('SuperShellTool — contract', () => {
     // The same directory written two ways (the gates resolve it, the default is
     // the live cwd as written) is the default, not a directory to name.
     expect(
-      formatSteps([step({ command: 'pwd', cwd: 'D:\\project\\velloc' })], 'D:/Project/velloc/'),
+      formatSteps([step({ command: 'pwd', cwd: 'D:\\work\\repo' })], 'D:/Work/repo/'),
     ).toBe('Steps:\n✓ pwd  exit 0  5ms  #1')
     // Mixed directories: each step away from the default says where it ran.
     expect(formatSteps([step({ command: 'pwd' }), step({ command: 'ls', cwd: wt })], '/p')).toBe(

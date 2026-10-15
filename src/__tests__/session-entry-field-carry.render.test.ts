@@ -34,7 +34,7 @@ describe('local session entry — fields survive the optimistic writers', () => 
 
     let coded = ''
     act(() => {
-      coded = result.current.openNewSession('code', 'D:/project/demo')
+      coded = result.current.openNewSession('code', 'D:/work/demo')
     })
     flushMerge()
 
@@ -52,13 +52,13 @@ describe('local session entry — fields survive the optimistic writers', () => 
     expect(
       entry?.projectRoot,
       'a rename must not unbind the project folder',
-    ).toBe('D:/project/demo')
+    ).toBe('D:/work/demo')
 
     // The worker.init readers go through these, not through the merged list:
     // dropping the fields here is what makes a renamed `code` session boot
     // untyped and re-prompt for a folder.
     expect(result.current.getSessionTemplateType(coded)).toBe('code')
-    expect(result.current.getSessionProjectRoot(coded)).toBe('D:/project/demo')
+    expect(result.current.getSessionProjectRoot(coded)).toBe('D:/work/demo')
   })
 
   it('updateSessionMeta keeps templateType and projectRoot', () => {
@@ -66,7 +66,7 @@ describe('local session entry — fields survive the optimistic writers', () => 
 
     let coded = ''
     act(() => {
-      coded = result.current.openNewSession('code', 'D:/project/demo')
+      coded = result.current.openNewSession('code', 'D:/work/demo')
     })
     flushMerge()
 
@@ -81,9 +81,9 @@ describe('local session entry — fields survive the optimistic writers', () => 
     const entry = result.current.sessions.find(s => s.sessionId === coded)
     expect(entry?.previewText).toBe('first reply')
     expect(entry?.templateType).toBe('code')
-    expect(entry?.projectRoot).toBe('D:/project/demo')
+    expect(entry?.projectRoot).toBe('D:/work/demo')
     expect(result.current.getSessionTemplateType(coded)).toBe('code')
-    expect(result.current.getSessionProjectRoot(coded)).toBe('D:/project/demo')
+    expect(result.current.getSessionProjectRoot(coded)).toBe('D:/work/demo')
   })
 
   it('retitleSession keeps the launcher float floor (relaunchedAt)', () => {
@@ -131,7 +131,7 @@ describe('local session entry — fields survive the optimistic writers', () => 
           title: 'Persisted title',
           previewText: 'last reply',
           templateType: 'code',
-          projectRoot: 'D:/project/persisted',
+          projectRoot: 'D:/work/persisted',
           messageCount: 4,
           updatedAt: 1_000,
         },
@@ -155,6 +155,6 @@ describe('local session entry — fields survive the optimistic writers', () => 
     ).toBe('last reply')
     expect(entry?.messageCount).toBe(4)
     expect(entry?.templateType).toBe('code')
-    expect(entry?.projectRoot).toBe('D:/project/persisted')
+    expect(entry?.projectRoot).toBe('D:/work/persisted')
   })
 })

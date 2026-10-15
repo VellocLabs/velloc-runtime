@@ -337,7 +337,7 @@ describe('Agent (sub-agent) tool card', () => {
 
   it('constrains long background shell labels so the jump action stays visible', () => {
     const longCommand =
-      "$env:PATH='D:\\project\\velloc\\depot_tools;' + $env:PATH; autoninja -C 'D:\\project\\velloc\\src\\out\\Debug' custom_browser_nexus_browser_unittests.exe; --gtest_filter=FileToolTest.ReadRejectsNoLimitTextFileOverDefaultSizeCap:FileToolTest.ReadWithExplicitLimitCanTargetLargeFile"
+      "$env:PATH='D:\\work\\repo\\depot_tools;' + $env:PATH; autoninja -C 'D:\\work\\repo\\src\\out\\Debug' custom_browser_nexus_browser_unittests.exe; --gtest_filter=FileToolTest.ReadRejectsNoLimitTextFileOverDefaultSizeCap:FileToolTest.ReadWithExplicitLimitCanTargetLargeFile"
     const html = renderToStaticMarkup(
       createElement(
         BackgroundTasksContext.Provider,

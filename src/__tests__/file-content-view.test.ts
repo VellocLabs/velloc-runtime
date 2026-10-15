@@ -30,7 +30,7 @@ describe('middleTruncate', () => {
   })
 
   it('keeps the FIRST and LAST parts with the ellipsis in the middle', () => {
-    const path = 'D:/project/velloc/src/browser/child_process.h'
+    const path = 'D:/work/repo/src/browser/child_process.h'
     const out = middleTruncate(path, 20, byChar)
     expect(out.length).toBeLessThanOrEqual(20)
     expect(out).toContain('…')

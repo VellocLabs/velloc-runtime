@@ -29,7 +29,7 @@ src/template/
     system.md                # `# How this session works` — the harness block (code, agent, chat)
     system-lean.md           # `# Harness` — the same holder's lean rendering
     executing_with_care.md   # `# Acting carefully` (code + agent)
-    executing_with_care-lean.md  # CC's one-paragraph action caution
+    executing_with_care-lean.md  # the one-paragraph action caution (lean)
     tool_call_parallelism.md # the parallel-tool-call paragraph (all four types)
     autonomy.md              # the operating-autonomously block (code + safe_code)
     delivering_work.md       # context / delivering work / corrections (code, agent, safe_code)
@@ -297,7 +297,7 @@ provider/locale override registry were removed).
 - **Profile gate** → `!code_doing_tasks @standard` on the manifest line emits
   the holder under that profile only (`@lean` likewise), and the SAME holder
   may be listed once per profile at two positions — which is how one manifest
-  gives the two profiles a different section ORDER. CC's lean prompt has no
+  gives the two profiles a different section ORDER. `code`'s lean profile has no
   `# Approach to tasks` at all. Any other `@…` token is a parse error, never a
   silent "both profiles".
 - **Render pin** → `!executing_with_care =standard` keeps the line under every
@@ -305,8 +305,8 @@ provider/locale override registry were removed).
   base file for `=standard`, the `-lean` file for `=lean`. It is the one way
   a type can opt OUT of a shared holder's lean variant: `agent` drives the
   browser, so it keeps the full `# Acting carefully` list for
-  every model rather than the one-paragraph lean caution `code` shares with
-  CC. Any other `=…` token is a parse error. **Prose never varies by provider**: the
+  every model rather than the one-paragraph lean caution `code` uses.
+  Any other `=…` token is a parse error. **Prose never varies by provider**: the
   profile is a property of the turn's *model*, resolved once per turn in
   `engine/systemPromptSources.ts` (`prompting/promptProfile.ts::resolvePromptProfile`)
   and threaded to the loader as `promptProfile`. **`lean` is opt-in**: a model

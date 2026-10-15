@@ -237,14 +237,14 @@ describe('aggregateTurnDiffs', () => {
     // Repro: an image upload + a later edit reference the same file with
     // different separators / drive-letter case → it used to show up twice.
     const backslash: FileChangeDiff = {
-      filePath: 'D:\\project\\velloc\\img.png',
+      filePath: 'D:\\work\\repo\\img.png',
       patchHunks: [hunk(['+x'])],
       fileWasCreated: true,
       plusLines: 1,
       minusLines: 0,
     }
     const forwardslash: FileChangeDiff = {
-      filePath: 'd:/project/velloc/img.png',
+      filePath: 'd:/work/repo/img.png',
       patchHunks: [hunk(['+y'])],
       fileWasCreated: false,
       plusLines: 1,
@@ -253,7 +253,7 @@ describe('aggregateTurnDiffs', () => {
     const summary = aggregateTurnDiffs([backslash, forwardslash])
     // One row, not two; hunks + counts merged; first-seen spelling kept.
     expect(summary.touchedFiles).toBe(1)
-    expect(summary.files[0]!.filePath).toBe('D:\\project\\velloc\\img.png')
+    expect(summary.files[0]!.filePath).toBe('D:\\work\\repo\\img.png')
     expect(summary.files[0]!.hunks).toHaveLength(2)
     expect(summary.plusLines).toBe(2)
   })

@@ -3876,7 +3876,7 @@ describe('SharedWorkerSessionManager — background shells (local_bash)', () => 
     installShellHost(manager, always({
       found: true,
       running: false,
-      stdout: '\u001b[1m\u001b[46m RUN \u001b[49m\u001b[22m \u001b[36mv4.1.2 \u001b[39m\u001b[90mD:/project/velloc/nexus_web\u001b[39m',
+      stdout: '\u001b[1m\u001b[46m RUN \u001b[49m\u001b[22m \u001b[36mv4.1.2 \u001b[39m\u001b[90mD:/work/repo/app\u001b[39m',
       stderr: '\u001b]0;title\u0007done',
       stdoutTruncated: false,
       stderrTruncated: false,
@@ -3891,7 +3891,7 @@ describe('SharedWorkerSessionManager — background shells (local_bash)', () => 
     await new Promise(r => setTimeout(r, 50))
 
     expect(parent.submits).toHaveLength(1)
-    expect(parent.submits[0]).toContain('RUN  v4.1.2 D:/project/velloc/nexus_web')
+    expect(parent.submits[0]).toContain('RUN  v4.1.2 D:/work/repo/app')
     expect(parent.submits[0]).toContain('done')
     expect(parent.submits[0]).not.toContain('\u001b')
   })

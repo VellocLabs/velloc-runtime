@@ -25,7 +25,7 @@ describe('normalizeProjectPath', () => {
   it('trims trailing separators so both shapes of the same folder collapse', () => {
     // `resolveProjectRoot` returns its result WITH a trailing separator; a path
     // straight from the picker has none. Same folder, one node.
-    expect(normalizeProjectPath('D:\\project\\velloc\\')).toBe('D:\\project\\velloc')
+    expect(normalizeProjectPath('D:\\work\\repo\\')).toBe('D:\\work\\repo')
     expect(normalizeProjectPath('/home/me/repo/')).toBe('/home/me/repo')
     expect(normalizeProjectPath('  /home/me/repo  ')).toBe('/home/me/repo')
   })
@@ -72,7 +72,7 @@ describe('isSandboxProjectRoot', () => {
     expect(isSandboxProjectRoot('/home/me/.velloc-old/shared-workspace')).toBe(
       false,
     )
-    expect(isSandboxProjectRoot('D:\\project\\velloc')).toBe(false)
+    expect(isSandboxProjectRoot('D:\\work\\repo')).toBe(false)
   })
 })
 
@@ -183,7 +183,7 @@ describe('buildProjectTree', () => {
   })
 
   it('derives the display name from the last path segment', () => {
-    const tree = buildProjectTree([session('a', 1, 'D:\\project\\velloc')], [])
-    expect(tree[0].name).toBe('velloc')
+    const tree = buildProjectTree([session('a', 1, 'D:\\work\\repo')], [])
+    expect(tree[0].name).toBe('repo')
   })
 })

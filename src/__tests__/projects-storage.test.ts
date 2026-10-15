@@ -82,9 +82,9 @@ describe('projectsStorage', () => {
   })
 
   it('round-trips an added project', () => {
-    at(1000, () => addProject('D:\\project\\velloc'))
+    at(1000, () => addProject('D:\\work\\repo'))
     expect(readAddedProjects()).toEqual([
-      { path: 'D:\\project\\velloc', addedAt: 1000 },
+      { path: 'D:\\work\\repo', addedAt: 1000 },
     ])
   })
 
@@ -209,7 +209,7 @@ describe('projectsStorage', () => {
 
   describe('projectDisplayName', () => {
     it('takes the last segment of a Windows path', () => {
-      expect(projectDisplayName('D:\\project\\velloc')).toBe('velloc')
+      expect(projectDisplayName('D:\\work\\repo')).toBe('repo')
     })
 
     it('takes the last segment of a POSIX path', () => {
@@ -218,7 +218,7 @@ describe('projectsStorage', () => {
 
     it('ignores a trailing separator', () => {
       expect(projectDisplayName('/home/me/repo/')).toBe('repo')
-      expect(projectDisplayName('D:\\project\\velloc\\')).toBe('velloc')
+      expect(projectDisplayName('D:\\work\\repo\\')).toBe('repo')
     })
   })
 })
