@@ -16,7 +16,7 @@ import {
 import { refusedStream as refusedCallStream, type ChainStream, type DispatchedStream, type StreamCatchCall, type StreamHookCall } from './streamChain'
 import {
   HOOK_BUDGET,
-  MAX_DISPATCH_CALLS,
+  callRateRefusal,
   type DispatchContext,
   type HookRegistration,
   type PluginTier,
@@ -744,10 +744,10 @@ export class ModInstance {
         const { plugin, tier } = this.options
         // The call's own abort — `mod.cancelCall` from the worker, or this
         // instance going away — beside the calling frame's, when there is one.
-        // The count limit: past `MAX_DISPATCH_CALLS` `$` calls
-        // in one dispatch the call is refused, in the calling hook, by name.
+        // The rate limit: a `$` call past `DISPATCH_CALL_RATE` in one
+        // dispatch is refused, in the calling hook, by name.
         const calls = invocation?.call.context.calls
-        if (calls && ++calls.made > MAX_DISPATCH_CALLS) {
+        if (calls && !calls.take()) {
           this.post({
             type: 'mod.callResult',
             callId: msg.callId,
@@ -755,8 +755,8 @@ export class ModInstance {
             error: {
               name: 'ModDispatchCallsError',
               message:
-                `$.${msg.noun}.${msg.method}: this dispatch of ${invocation.call.event} made more than ` +
-                `${MAX_DISPATCH_CALLS} $ calls (the hooks of ${plugin} and what they called); the call is refused`,
+                `$.${msg.noun}.${msg.method}: this dispatch of ${invocation.call.event} made $ calls ` +
+                `${callRateRefusal()} (the hooks of ${plugin} and what they called); the call is refused`,
             },
           })
           return
@@ -814,12 +814,12 @@ export class ModInstance {
       case 'mod.callStream': {
         const invocation = msg.invocationId ? this.live.get(msg.invocationId) : undefined
         const { plugin, tier } = this.options
-                const calls = invocation?.call.context.calls
+        const calls = invocation?.call.context.calls
         let stream: DispatchedStream<unknown, unknown>
-        if (calls && ++calls.made > MAX_DISPATCH_CALLS) {
+        if (calls && !calls.take()) {
           const error = new Error(
-            `$.${msg.noun}.${msg.method}: this dispatch of ${invocation!.call.event} made more than ` +
-              `${MAX_DISPATCH_CALLS} $ calls (the hooks of ${plugin} and what they called); the call is refused`,
+            `$.${msg.noun}.${msg.method}: this dispatch of ${invocation!.call.event} made $ calls ` +
+              `${callRateRefusal()} (the hooks of ${plugin} and what they called); the call is refused`,
           )
           error.name = 'ModDispatchCallsError'
           stream = refusedCallStream<unknown, unknown>(error)

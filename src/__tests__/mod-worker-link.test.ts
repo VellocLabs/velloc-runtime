@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { ModDispatcher, type HookFailureReport } from '../mods/ModDispatcher'
 import { ModInstance, type ModCall, type ModCallServer } from '../mods/ModInstance'
 import { installModWorkerHost, type HooksModule } from '../mods/ModWorkerHost'
-import { MAX_DISPATCH_CALLS, type PluginTier } from '../mods/modTypes'
+import { DISPATCH_CALL_RATE, DispatchCallRate, ROOT_DISPATCH_CONTEXT, type PluginTier } from '../mods/modTypes'
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -268,7 +268,7 @@ describe('$ — served by the runtime', () => {
     ])
   })
 
-  it(`a dispatch making more than ${MAX_DISPATCH_CALLS} $ calls has the rest refused, in the hook, by name`, async () => {
+  it('a dispatch calling $ faster than the rate has the rest refused, in the hook, by name', async () => {
     const { dispatcher, mod } = world()
     let served = 0
     const { instance } = mod(
@@ -291,16 +291,19 @@ describe('$ — served by the runtime', () => {
       { serveCall: async () => (served += 1, 's1') },
     )
     await instance.load('unused', {})
-    const result = (await dispatcher.dispatch('prompt.submit', { text: 'hi' }, e => e)) as { text: string }
-    expect(served).toBe(MAX_DISPATCH_CALLS)
+    // A clock that never moves: the burst is all the dispatch gets.
+    const frozen = () => ({ context: { ...ROOT_DISPATCH_CONTEXT, calls: new DispatchCallRate(() => 0) } })
+    const { burst } = DISPATCH_CALL_RATE
+    const result = (await dispatcher.dispatch('prompt.submit', { text: 'hi' }, e => e, frozen())) as { text: string }
+    expect(served).toBe(burst)
     expect(result.text).toBe(
-      `${MAX_DISPATCH_CALLS} ModDispatchCallsError: $.session.id: this dispatch of prompt.submit made more than ` +
-        `${MAX_DISPATCH_CALLS} $ calls (the hooks of busy and what they called); the call is refused`,
+      `${burst} ModDispatchCallsError: $.session.id: this dispatch of prompt.submit made $ calls ` +
+        `faster than 100 a second after a burst of 512 (the hooks of busy and what they called); the call is refused`,
     )
-    // The next dispatch starts a count of its own.
+    // The next dispatch starts a meter of its own.
     served = 0
-    const again = (await dispatcher.dispatch('prompt.submit', { text: 'hi' }, e => e)) as { text: string }
-    expect(again.text.startsWith(`${MAX_DISPATCH_CALLS} `)).toBe(true)
+    const again = (await dispatcher.dispatch('prompt.submit', { text: 'hi' }, e => e, frozen())) as { text: string }
+    expect(again.text.startsWith(`${burst} `)).toBe(true)
   })
 
   it("a rejection carries its name and message into the hook", async () => {

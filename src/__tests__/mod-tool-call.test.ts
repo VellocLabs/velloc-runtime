@@ -561,6 +561,25 @@ describe('tool.call — when a hook is wrong', () => {
     expect(reports.join('\n')).toMatch(/guard: tool\.call hook failed: boom/)
   })
 
+  it('a guard that paces its polling holds the call past the burst, and its deny stands', async () => {
+    // Waits with a $ call per tick, as a guard holding a call in a pane does:
+    // a quick start, then about one call per 12 ms, past the 512 of the burst.
+    const { runtime, reports } = mods(`
+      on('tool.call', { tool: 'Shell' }, async ($, e, next) => {
+        for (let i = 0; i < 600; i++) {
+          await $.session.id()
+          if (i >= 500) await new Promise(resolve => setTimeout(resolve, 12))
+        }
+        return { deny: 'guard: nobody answered.' }
+      })
+    `)
+    const { context, calls } = world(runtime)
+    const updates = await run(context, { command: 'git push --force' })
+    expect(calls).toHaveLength(0)
+    expect(resultOf(updates[0])).toMatchObject({ text: 'guard: nobody answered.', isError: true })
+    expect(reports).toEqual([])
+  })
+
   it('a hook that answers a wrong shape is skipped', async () => {
     const { runtime, reports } = mods(`on('tool.call', () => ({ verdict: 'fine' }))`)
     const { context, calls } = world(runtime)

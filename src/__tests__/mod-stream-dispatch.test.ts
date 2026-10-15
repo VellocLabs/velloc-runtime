@@ -10,7 +10,13 @@ import {
   type HookFailureReport,
 } from '../mods/ModDispatcher'
 import type { ChainStream, StreamCatchCall, StreamHookCall } from '../mods/streamChain'
-import { MAX_DISPATCH_CALLS, type PluginTier, type TraceEntry } from '../mods/modTypes'
+import {
+  DISPATCH_CALL_RATE,
+  DispatchCallRate,
+  ROOT_DISPATCH_CONTEXT,
+  type PluginTier,
+  type TraceEntry,
+} from '../mods/modTypes'
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -103,8 +109,8 @@ async function drain<C, R>(stream: AsyncGenerator<C, R | undefined, undefined>):
   }
 }
 
-describe('ModDispatcher.dispatchStream — the call count', () => {
-  it('a next opened again counts: a retry loop ends at the limit', async () => {
+describe('ModDispatcher.dispatchStream — the call rate', () => {
+  it('a next opened again counts: a tight retry loop is refused', async () => {
     const { dispatcher } = setup()
     const { fn, seen } = core([], 'R')
     let ended: string | undefined
@@ -120,9 +126,13 @@ describe('ModDispatcher.dispatchStream — the call count', () => {
         }
       }),
     ])
-    await expect(drain(dispatcher.dispatchStream('turn.step', {}, fn))).resolves.toEqual({ chunks: [], result: 'gave up' })
-    expect(seen.started).toBe(MAX_DISPATCH_CALLS + 1)
-    expect(ended).toMatch(/called next\(\) again past the dispatch's limit/)
+    const context = { ...ROOT_DISPATCH_CONTEXT, calls: new DispatchCallRate(() => 0) }
+    await expect(drain(dispatcher.dispatchStream('turn.step', {}, fn, { context }))).resolves.toEqual({
+      chunks: [],
+      result: 'gave up',
+    })
+    expect(seen.started).toBe(DISPATCH_CALL_RATE.burst + 1)
+    expect(ended).toMatch(/called next\(\) again faster than 100 a second/)
   })
 })
 

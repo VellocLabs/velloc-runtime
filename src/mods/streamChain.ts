@@ -20,7 +20,7 @@ import {
 import {
   countNextAgain,
   tierIndex,
-  type DispatchCallCount,
+  DispatchCallRate,
   type DispatchContext,
   type HookFailure,
   type Origin,
@@ -88,7 +88,7 @@ type Run = {
   event: string
   origin: Origin
   depth: number
-  calls: DispatchCallCount
+  calls: DispatchCallRate
   budgetMs: number
   catchMs: number
   budgetPer: StreamBudgetPer
@@ -196,7 +196,7 @@ export function runStreamDispatch<C, R>(params: StreamDispatchParams<C, R>): Dis
     origin: params.context.origin,
     depth: params.context.depth,
     // A nested dispatch (a `$` call's) shares its root's count.
-    calls: params.context.calls ?? { made: 0 },
+    calls: params.context.calls ?? new DispatchCallRate(),
     budgetMs: params.budgetMs,
     catchMs: params.catchMs,
     budgetPer: params.budgetPer,

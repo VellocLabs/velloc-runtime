@@ -16,7 +16,13 @@ import {
   type HookCall,
   type HookFailureReport,
 } from '../mods/ModDispatcher'
-import { MAX_DISPATCH_CALLS, MAX_DISPATCH_DEPTH, type DispatchCallCount, type PluginTier } from '../mods/modTypes'
+import {
+  DISPATCH_CALL_RATE,
+  DispatchCallRate,
+  MAX_DISPATCH_DEPTH,
+  ROOT_DISPATCH_CONTEXT,
+  type PluginTier,
+} from '../mods/modTypes'
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -841,10 +847,39 @@ describe('ModDispatcher — who raised it, and the recursion skip', () => {
   })
 })
 
-describe('ModDispatcher — the call count', () => {
-  it('starts one count per root dispatch and hands the same one to every nested dispatch', async () => {
+describe('DispatchCallRate', () => {
+  it('takes a burst at once, then one call per interval; a refused call takes nothing', () => {
+    let now = 1_000
+    const rate = new DispatchCallRate(() => now)
+    for (let i = 0; i < DISPATCH_CALL_RATE.burst; i++) expect(rate.take()).toBe(true)
+    expect(rate.take()).toBe(false)
+    expect(rate.take()).toBe(false)
+    now += 1000 / DISPATCH_CALL_RATE.perSecond
+    expect(rate.take()).toBe(true)
+    expect(rate.take()).toBe(false)
+    // Idle for a second: that second's calls are back, never more than the burst.
+    now += 60_000
+    for (let i = 0; i < DISPATCH_CALL_RATE.burst; i++) expect(rate.take()).toBe(true)
+    expect(rate.take()).toBe(false)
+  })
+
+  it('a caller pacing itself at the rate is never refused, however many calls it makes', () => {
+    let now = 0
+    const rate = new DispatchCallRate(() => now)
+    for (let i = 0; i < 100_000; i++) {
+      expect(rate.take()).toBe(true)
+      now += 1000 / DISPATCH_CALL_RATE.perSecond
+    }
+  })
+})
+
+/** A root context whose clock never moves: the burst is the whole allowance. */
+const frozenRoot = () => ({ ...ROOT_DISPATCH_CONTEXT, calls: new DispatchCallRate(() => 0) })
+
+describe('ModDispatcher — the call rate', () => {
+  it('starts one meter per root dispatch and hands the same one to every nested dispatch', async () => {
     const { dispatcher } = setup()
-    const seen: DispatchCallCount[] = []
+    const seen: DispatchCallRate[] = []
     dispatcher.register('a', [
       link('a', 'user', 'tool.call', async call => {
         seen.push(call.context.calls!)
@@ -860,13 +895,13 @@ describe('ModDispatcher — the call count', () => {
     await dispatcher.dispatch('tool.call', {}, () => 'core')
     await dispatcher.dispatch('tool.call', {}, () => 'core')
     expect(seen).toHaveLength(4)
-    expect(seen[0]).toEqual({ made: 0 })
+    expect(seen[0]).toBeInstanceOf(DispatchCallRate)
     expect(seen[1]).toBe(seen[0])
     expect(seen[2]).not.toBe(seen[0])
     expect(seen[3]).toBe(seen[2])
   })
 
-  it('a next called again counts: a retry loop ends at the limit instead of re-running core without end', async () => {
+  it('a next called again counts: a tight retry loop is refused instead of re-running core without end', async () => {
     const { dispatcher } = setup()
     let cores = 0
     let ended: string | undefined
@@ -876,7 +911,7 @@ describe('ModDispatcher — the call count', () => {
           try {
             await call.next(call.e)
           } catch (error) {
-            if (/called next\(\) again past/.test(String(error))) {
+            if (/called next\(\) again faster than/.test(String(error))) {
               ended = String(error)
               return 'gave up'
             }
@@ -888,10 +923,39 @@ describe('ModDispatcher — the call count', () => {
       dispatcher.dispatch('tool.call', {}, () => {
         cores += 1
         throw new Error('still failing')
-      }),
+      }, { context: frozenRoot() }),
     ).resolves.toBe('gave up')
-    expect(cores).toBe(MAX_DISPATCH_CALLS + 1)
-    expect(ended).toMatch(/^Error: a's hook on tool\.call called next\(\) again past the dispatch's limit of 512 calls/)
+    expect(cores).toBe(DISPATCH_CALL_RATE.burst + 1)
+    expect(ended).toMatch(
+      /^Error: a's hook on tool\.call called next\(\) again faster than 100 a second after a burst of 512 calls in one dispatch/,
+    )
+  })
+
+  it('a retry loop that paces itself is served past the burst', async () => {
+    const { dispatcher } = setup()
+    let now = 0
+    const context = { ...ROOT_DISPATCH_CONTEXT, calls: new DispatchCallRate(() => now) }
+    const wanted = DISPATCH_CALL_RATE.burst * 3
+    let cores = 0
+    dispatcher.register('a', [
+      link('a', 'user', 'tool.call', async call => {
+        for (;;) {
+          try {
+            return await call.next(call.e)
+          } catch {
+            now += 1000 / DISPATCH_CALL_RATE.perSecond
+          }
+        }
+      }),
+    ])
+    await expect(
+      dispatcher.dispatch('tool.call', {}, () => {
+        cores += 1
+        if (cores < wanted) throw new Error('not yet')
+        return 'done'
+      }, { context }),
+    ).resolves.toBe('done')
+    expect(cores).toBe(wanted)
   })
 })
 

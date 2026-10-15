@@ -16,7 +16,7 @@ import {
   countNextAgain,
   HOOK_BUDGET,
   MAX_DISPATCH_DEPTH,
-  type DispatchCallCount,
+  DispatchCallRate,
   ROOT_DISPATCH_CONTEXT,
   tierIndex,
   type DispatchContext,
@@ -188,7 +188,7 @@ type Run = {
   event: string
   origin: Origin
   depth: number
-  calls: DispatchCallCount
+  calls: DispatchCallRate
   budgetMs: number
   candidates: readonly ChainLink[]
   core: (e: unknown) => unknown
@@ -299,8 +299,8 @@ export class ModDispatcher {
       event,
       origin: context.origin,
       depth: context.depth,
-      // A nested dispatch (a `$` call's) shares its root's count.
-      calls: context.calls ?? { made: 0 },
+      // A nested dispatch (a `$` call's) shares its root's meter.
+      calls: context.calls ?? new DispatchCallRate(),
       budgetMs: options.budgetMs ?? this.budgetMs,
       candidates,
       core,

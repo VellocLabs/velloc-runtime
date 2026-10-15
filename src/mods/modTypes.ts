@@ -183,32 +183,58 @@ export type DispatchContext = {
    */
   readonly depth: number
   /**
-   * The `$` calls made so far in this dispatch, every nested dispatch
-   * included — ONE counter the whole tree shares. Velloc's guard beside
-   * `depth`: the budget clock stops while a `$` call is in
-   * flight, so a hook that burns the runtime through cheap `$` calls is
-   * caught by their count, not their time. A call past `MAX_DISPATCH_CALLS`
-   * is refused. Absent where nothing is dispatching (a timer's `$`).
+   * The rate of the `$` calls made in this dispatch, nested dispatches
+   * included — ONE meter the whole tree shares. Velloc's guard beside
+   * `depth`: the budget clock stops while a `$` call is in flight, so a hook
+   * spinning on cheap `$` calls is caught by their rate, not their time. A
+   * call past `DISPATCH_CALL_RATE` is refused; a paced hook may make any
+   * number. Absent where nothing is dispatching (a timer's `$`).
    */
-  readonly calls?: DispatchCallCount
+  readonly calls?: DispatchCallRate
 }
-
-/** See `DispatchContext.calls`. Mutable on purpose: it is the shared count. */
-export type DispatchCallCount = { made: number }
 
 /** See `DispatchContext.depth`. */
 export const MAX_DISPATCH_DEPTH = 64
 
-/** See `DispatchContext.calls`. */
-export const MAX_DISPATCH_CALLS = 512
+/** See `DispatchContext.calls`: `burst` calls at once, then `perSecond`. */
+export const DISPATCH_CALL_RATE = Object.freeze({ burst: 512, perSecond: 100 })
+
+/**
+ * See `DispatchContext.calls`. A token bucket kept as its theoretical arrival
+ * time: a call fits while it is no more than `burst - 1` intervals ahead of
+ * now. A refused call takes nothing, so a hook that backs off is served again.
+ */
+export class DispatchCallRate {
+  private ahead = 0
+
+  constructor(private readonly now: () => number = () => Date.now()) {}
+
+  /** Takes one call when it fits; false when the dispatch is calling too fast. */
+  take(): boolean {
+    const interval = 1000 / DISPATCH_CALL_RATE.perSecond
+    const at = this.now()
+    const due = Math.max(this.ahead, at)
+    if (due - at > (DISPATCH_CALL_RATE.burst - 1) * interval) return false
+    this.ahead = due + interval
+    return true
+  }
+}
+
+/** The words a refusal by the rate uses, after what was refused. */
+export function callRateRefusal(): string {
+  return (
+    `faster than ${DISPATCH_CALL_RATE.perSecond} a second after a burst of ` +
+    `${DISPATCH_CALL_RATE.burst}`
+  )
+}
 
 /** A hook's `next` called again counts as a `$` call does: it runs every
- *  hook beneath and core again, on a paused clock. Throws past the limit. */
-export function countNextAgain(calls: DispatchCallCount, plugin: string, event: string): void {
-  if (++calls.made > MAX_DISPATCH_CALLS) {
+ *  hook beneath and core again, on a paused clock. Throws past the rate. */
+export function countNextAgain(calls: DispatchCallRate, plugin: string, event: string): void {
+  if (!calls.take()) {
     throw new Error(
-      `${plugin}'s hook on ${event} called next() again past the dispatch's limit of ` +
-        `${MAX_DISPATCH_CALLS} calls; the call is refused`,
+      `${plugin}'s hook on ${event} called next() again ${callRateRefusal()} calls in one dispatch; ` +
+        `the call is refused`,
     )
   }
 }
