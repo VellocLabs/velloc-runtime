@@ -13,6 +13,12 @@ export const ja: Messages = {
   'sidebar.deleteThreadAria': 'チャットを削除：{title}',
   'sidebar.renameInputAria': '名前の入力欄：{title}',
   'sidebar.needsAnswer': '返答を待っています',
+  // Client update: the bottom-of-sidebar restart notice.
+  'appUpdate.ready': '{product} {version} の準備ができました',
+  'appUpdate.restart': '再起動して更新',
+  'appUpdate.restarting': '再起動しています...',
+  'appUpdate.restartAria': '再起動して {version} に更新',
+  'appUpdate.restartFailed': '再起動できませんでした。{product} を終了して開き直すと更新が完了します。',
   // Session attention: the queued "a session needs you" events.
   'attention.summary': '{count} 件のセッションが対応を待っています',
   'attention.expand': 'すべて表示',

@@ -65,6 +65,7 @@ import { registerPluginUpdatesCapability } from './pluginUpdatesCapability'
 import { resolveHostHome } from './hostFs'
 import { currentTemplateChannel } from '../../branding/updateChannels'
 import { registerCatalogCapability } from './catalogCapability'
+import { registerAppUpdateCapability } from './appUpdateCapability'
 import { registerProviderLoginCapability } from './providerLoginCapability'
 import { registerProviderUsageCapability } from './providerUsageCapability'
 import { getProviderCredentials } from '../../mods/provider/login/credentialDeps'
@@ -322,6 +323,9 @@ export class RuntimeHub {
     // `catalog.refresh` action (`manager`); the service comes from the seam in
     // `catalog/modelCatalogHolder.ts`.
     registerCatalogCapability(this.registry, this.broker)
+    // Client auto-update (F-30): `appUpdate/status` (`observe`) and
+    // `appUpdate.relaunch` (`full`); the service comes from `appUpdate/appUpdateHolder.ts`.
+    registerAppUpdateCapability(this.registry, this.broker)
     // Provider sign-in (PM-7): the dialog is the `providers/login` topic, the
     // person's answers are `providerLogin.*` actions (`manager`).
     registerProviderLoginCapability(this.registry, this.broker, getProviderCredentials())

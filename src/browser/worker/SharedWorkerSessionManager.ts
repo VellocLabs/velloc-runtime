@@ -895,6 +895,8 @@ export class SharedWorkerSessionManager {
       getHomeDir: () => this.homeDir,
       getLocale: () => this.hostEnvironment?.locale ?? this.lastInitTemplate?.locale,
       getHostEnvironment: () => this.hostEnvironment,
+      getHostManifest: () =>
+        this.hostEnvironment?.hostManifest ?? this.lastInitTemplate?.hostManifest ?? null,
       storageRoot: () => this.storagePath,
       spawnHeadlessSession: params =>
         this.routines.spawnHeadlessSession(params),

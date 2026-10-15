@@ -21,6 +21,8 @@ import {
   type SessionRowEditing,
 } from './SessionRows'
 import { ProjectSection } from './ProjectSection'
+import { AppUpdateBar } from './AppUpdateBar'
+import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
 import { SESSION_PAGE_SIZE } from './sessionListPaging'
 
 import { Button } from '@/components/ui/button'
@@ -399,6 +401,7 @@ export function Sidebar({
   onRenameThread,
   width,
   isResizing,
+  runtimeConnection,
   ...projectProps
 }: SidebarProjectProps & {
   title: string
@@ -428,6 +431,8 @@ export function Sidebar({
    * easing 200 ms behind every move event.
    */
   isResizing?: boolean
+  /** Reads the update status for the restart bar (F-30). */
+  runtimeConnection?: () => Promise<RuntimeConnection>
 }) {
   const restingWidth = width ?? 256
   // The sidebar is always docked — two render states (the show/hide toggle
@@ -473,6 +478,13 @@ export function Sidebar({
             {...projectProps}
           />
         </div>
+      )}
+      {showRail ? (
+        <div className="flex shrink-0 justify-center">
+          <AppUpdateBar runtimeConnection={runtimeConnection} variant="rail" />
+        </div>
+      ) : (
+        <AppUpdateBar runtimeConnection={runtimeConnection} variant="bar" />
       )}
     </aside>
   )

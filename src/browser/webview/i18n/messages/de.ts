@@ -15,6 +15,12 @@ export const de: Messages = {
   'sidebar.deleteThreadAria': 'Chat löschen: {title}',
   'sidebar.renameInputAria': 'Eingabefeld zum Umbenennen: {title}',
   'sidebar.needsAnswer': 'Wartet auf deine Antwort',
+  // Client update: the bottom-of-sidebar restart notice.
+  'appUpdate.ready': '{product} {version} ist bereit',
+  'appUpdate.restart': 'Neu starten zum Aktualisieren',
+  'appUpdate.restarting': 'Wird neu gestartet...',
+  'appUpdate.restartAria': 'Neu starten, um auf {version} zu aktualisieren',
+  'appUpdate.restartFailed': 'Neustart fehlgeschlagen. Beende {product} und öffne es neu, um das Update abzuschließen.',
   // Session attention: the queued "a session needs you" events.
   'attention.summary': '{count} Sitzungen brauchen dich',
   'attention.expand': 'Alle anzeigen',

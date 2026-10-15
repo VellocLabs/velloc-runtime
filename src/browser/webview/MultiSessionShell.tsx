@@ -3816,6 +3816,7 @@ export function MultiSessionShell({
           onRenameThread={retitleSession}
           width={sidebarWidth}
           isResizing={isResizingSidebar}
+          runtimeConnection={runtimeConnection}
           addedProjectPaths={addedProjectPaths}
           addedProjectOrder={addedProjectOrder}
           onAddProject={handleAddProject}

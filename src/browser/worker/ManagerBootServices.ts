@@ -1,4 +1,5 @@
 import type { DirectPortBridgeTransport } from '../bridge/DirectPortBridgeTransport'
+import type { BrowserHostManifest } from '../bridge/protocol/manifest'
 import { createBridgeRoute } from '../bridge/protocol/core'
 import { lendProviderHostSources } from '../../mods/provider/providerHostSources'
 import { fetchManagedBinaryRegistry } from '../../utils/binaryRegistry'
@@ -60,6 +61,8 @@ export interface ManagerBootServicesHost {
   /** The host half of the init payload the desktop page published, if any
    *  (a provider mod's `$.provider.device()` reads the user agent and locale). */
   getHostEnvironment?(): { userAgent?: string; locale?: string } | null
+  /** The host manifest from the latest init payload, if any (F-30 reads `primitives`). */
+  getHostManifest?(): Pick<BrowserHostManifest, 'capabilities' | 'primitives'> | null
   storageRoot(): string | null
   spawnHeadlessSession: RoutineCoordinator['spawnHeadlessSession']
   deliverRoutineToSession: DeliverRoutineToSession
@@ -105,6 +108,8 @@ export class ManagerBootServices {
     void this.bootProviderModsOnce()
     // …and the model catalog (its cache lives under the home, read by the fs).
     void this.installModelCatalogOnce()
+    // Client auto-update (F-30) needs the port and the manifest; retried per port until it starts.
+    void this.installAppUpdate()
     const waiters = [...this.directBridgeWaiters]
     this.directBridgeWaiters.clear()
     for (const resolve of waiters) {
@@ -186,6 +191,20 @@ export class ManagerBootServices {
     } catch (error) {
       this.modelCatalogInstalled = false
       console.warn('[ManagerBootServices] model catalog install failed:', error instanceof Error ? error.message : error)
+    }
+  }
+
+  private async installAppUpdate(): Promise<void> {
+    try {
+      const { installRuntimeAppUpdate } = await import('../../appUpdate/runtimeAppUpdate')
+      const skipped = await installRuntimeAppUpdate({
+        transport: () => this.host.getDirectBridgeTransport(),
+        manifest: () => this.host.getHostManifest?.() ?? null,
+        createRequestId: () => this.host.createBridgeRequestId(),
+      })
+      if (skipped) this.host.trace('app_update.skipped', { reason: skipped })
+    } catch (error) {
+      console.warn('[ManagerBootServices] app update install failed:', error instanceof Error ? error.message : error)
     }
   }
 

@@ -13,6 +13,12 @@ export const ko: Messages = {
   'sidebar.deleteThreadAria': '채팅 삭제: {title}',
   'sidebar.renameInputAria': '이름 입력란: {title}',
   'sidebar.needsAnswer': '답변을 기다리는 중',
+  // Client update: the bottom-of-sidebar restart notice.
+  'appUpdate.ready': '{product} {version} 준비 완료',
+  'appUpdate.restart': '다시 시작하여 업데이트',
+  'appUpdate.restarting': '다시 시작하는 중...',
+  'appUpdate.restartAria': '다시 시작하여 {version}(으)로 업데이트',
+  'appUpdate.restartFailed': '다시 시작하지 못했습니다. {product}을(를) 종료했다가 다시 열면 업데이트가 완료됩니다.',
   // Session attention: the queued "a session needs you" events.
   'attention.summary': '{count}개의 세션이 응답을 기다립니다',
   'attention.expand': '모두 표시',

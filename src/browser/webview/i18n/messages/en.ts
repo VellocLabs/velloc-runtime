@@ -16,6 +16,12 @@ export const en = {
   'sidebar.deleteThreadAria': 'Delete thread: {title}',
   'sidebar.renameInputAria': 'Rename input: {title}',
   'sidebar.needsAnswer': 'Needs your response',
+  // Client update: the bottom-of-sidebar restart notice.
+  'appUpdate.ready': '{product} {version} is ready',
+  'appUpdate.restart': 'Restart to update',
+  'appUpdate.restarting': 'Restarting...',
+  'appUpdate.restartAria': 'Restart to update to {version}',
+  'appUpdate.restartFailed': 'Could not restart. Quit and reopen {product} to finish the update.',
   // Session attention: the queued "a session needs you" events.
   'attention.summary': '{count} sessions need you',
   'attention.expand': 'Show all',

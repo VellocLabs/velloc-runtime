@@ -16,6 +16,12 @@ export const zh: Messages = {
   'sidebar.deleteThreadAria': '删除对话：{title}',
   'sidebar.renameInputAria': '重命名输入框：{title}',
   'sidebar.needsAnswer': '等待你回应',
+  // Client update: the bottom-of-sidebar restart notice.
+  'appUpdate.ready': '{product} {version} 已就绪',
+  'appUpdate.restart': '重启以更新',
+  'appUpdate.restarting': '正在重启...',
+  'appUpdate.restartAria': '重启以更新到 {version}',
+  'appUpdate.restartFailed': '重启失败。请退出并重新打开 {product} 以完成更新。',
   // Session attention: the queued "a session needs you" events.
   'attention.summary': '{count} 个会话需要你处理',
   'attention.expand': '显示全部',

@@ -12,6 +12,12 @@ export const fr: Messages = {
   'sidebar.deleteThreadAria': 'Supprimer la discussion : {title}',
   'sidebar.renameInputAria': 'Champ de renommage : {title}',
   'sidebar.needsAnswer': 'Attend votre réponse',
+  // Client update: the bottom-of-sidebar restart notice.
+  'appUpdate.ready': '{product} {version} est prêt',
+  'appUpdate.restart': 'Redémarrer pour mettre à jour',
+  'appUpdate.restarting': 'Redémarrage...',
+  'appUpdate.restartAria': 'Redémarrer pour passer à la version {version}',
+  'appUpdate.restartFailed': 'Le redémarrage a échoué. Quittez et rouvrez {product} pour terminer la mise à jour.',
   // Session attention: the queued "a session needs you" events.
   'attention.summary': '{count} sessions ont besoin de vous',
   'attention.expand': 'Tout afficher',
