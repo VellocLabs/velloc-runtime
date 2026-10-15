@@ -23,10 +23,12 @@ import {
 import { ProjectSection } from './ProjectSection'
 import { SessionListMenu } from './SessionListMenu'
 import {
+  buildSessionListView,
   clearSessionListView,
   DEFAULT_SESSION_LIST_VIEW,
   orderSessions,
   readSessionListView,
+  ungroupedView,
   writeSessionListView,
   type SessionListView,
 } from './sessionListView'
@@ -51,6 +53,80 @@ export type { SessionListItem } from './SessionRows'
 // --- Sidebar ---
 
 const RECENTS_COLLAPSED_STORAGE_KEY = 'nexus:sidebar:recentsCollapsed'
+const PINNED_COLLAPSED_STORAGE_KEY = 'nexus:sidebar:pinnedCollapsed'
+
+/**
+ * A docked session section's collapsed state, persisted to localStorage under
+ * `storageKey` so it survives reloads. Defaults expanded.
+ */
+function useCollapsedSection(
+  storageKey: string,
+): [boolean, (next: boolean) => void] {
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try {
+      return globalThis.localStorage?.getItem(storageKey) === '1'
+    } catch {
+      return false
+    }
+  })
+  const applyCollapsed = useCallback(
+    (next: boolean) => {
+      setCollapsed(next)
+      try {
+        globalThis.localStorage?.setItem(storageKey, next ? '1' : '0')
+      } catch {
+        // ignore storage failures (private mode / quota)
+      }
+    },
+    [storageKey],
+  )
+  return [collapsed, applyCollapsed]
+}
+
+/**
+ * A collapsible session-section header ("Pinned", "Recents"). Toggles via
+ * click / Space / Enter, ArrowRight to expand, ArrowUp to collapse. Not a
+ * session row (no `span.min-w-0.flex-1`), so the e2e row-count harness
+ * ignores it.
+ */
+function SessionSectionToggle({
+  testId,
+  label,
+  collapsed,
+  onCollapsedChange,
+}: {
+  testId: string
+  label: string
+  collapsed: boolean
+  onCollapsedChange: (next: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      aria-label={label}
+      aria-expanded={!collapsed}
+      onClick={() => onCollapsedChange(!collapsed)}
+      onKeyDown={e => {
+        if (e.key === 'ArrowRight') {
+          e.preventDefault()
+          onCollapsedChange(false)
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          onCollapsedChange(true)
+        }
+      }}
+      className="flex w-full shrink-0 select-none items-center rounded-md px-3 pb-1 pt-3 text-start text-caption font-medium uppercase tracking-wider text-muted-foreground/70 transition-colors hover:text-muted-foreground"
+    >
+      {label}
+      {/* Chevron only while collapsed (click to expand); no arrow when
+          expanded. Sits flush to the right of the label (no gap). */}
+      {collapsed && (
+        <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />
+      )}
+    </button>
+  )
+}
 
 /** Px width of the collapsed icon-only rail (wide viewports). */
 const SIDEBAR_RAIL_WIDTH_PX = 56
@@ -117,18 +193,12 @@ export function SessionListBody({
   const t = useT()
   const hasMultiSession = sessions !== undefined
   const resolvedActiveSessionId = activeSessionId ?? sessionId
-  // Collapsed state for the docked "Recents" section header, persisted to
-  // localStorage so it survives reloads. Defaults expanded (so the row list
-  // and existing e2e expectations are unchanged out of the box).
-  const [recentsCollapsed, setRecentsCollapsed] = useState<boolean>(() => {
-    try {
-      return (
-        globalThis.localStorage?.getItem(RECENTS_COLLAPSED_STORAGE_KEY) === '1'
-      )
-    } catch {
-      return false
-    }
-  })
+  const [recentsCollapsed, applyRecentsCollapsed] = useCollapsedSection(
+    RECENTS_COLLAPSED_STORAGE_KEY,
+  )
+  const [pinnedCollapsed, applyPinnedCollapsed] = useCollapsedSection(
+    PINNED_COLLAPSED_STORAGE_KEY,
+  )
   // Inline-rename state, owned HERE rather than inside each list, so the two
   // copies of a session (its Recents row and its project row) agree on it. Every
   // other piece of row state already syncs for free — title, running animation
@@ -149,27 +219,29 @@ export function SessionListBody({
     () => orderSessions(sessions ?? [], view.field, view.direction),
     [sessions, view.field, view.direction],
   )
-  // The narrow popover lists bare titles: same order, no group headers.
+  // The docked sidebar lists a pinned session under "Pinned", a section beside
+  // "Recents", in the view's order and not under Recents. The narrow popover
+  // lists bare titles in one list: pinned rows first, no group headers.
+  const pinnedGroups = useMemo(
+    () =>
+      titlesOnly ? [] : ungroupedView(orderedSessions.filter(s => s.pinned)),
+    [orderedSessions, titlesOnly],
+  )
   const recentGroups = useMemo(
     () =>
-      buildPinnedFirstView(
-        sessions ?? [],
-        titlesOnly ? { ...view, groupBy: 'none' } : view,
-        Date.now(),
-      ),
+      titlesOnly
+        ? buildPinnedFirstView(
+            sessions ?? [],
+            { ...view, groupBy: 'none' },
+            Date.now(),
+          )
+        : buildSessionListView(
+            (sessions ?? []).filter(s => !s.pinned),
+            view,
+            Date.now(),
+          ),
     [sessions, view, titlesOnly],
   )
-  const applyRecentsCollapsed = useCallback((next: boolean) => {
-    setRecentsCollapsed(next)
-    try {
-      globalThis.localStorage?.setItem(
-        RECENTS_COLLAPSED_STORAGE_KEY,
-        next ? '1' : '0',
-      )
-    } catch {
-      // ignore storage failures (private mode / quota)
-    }
-  }, [])
 
   const showProjects = !titlesOnly && hasMultiSession
 
@@ -238,37 +310,43 @@ export function SessionListBody({
           />
         )}
 
-        {/* Collapsible "Recents" section header (docked sidebar only; the
-            narrow popover stays chrome-free). Toggles the row list via
-            click / Space / Enter, ArrowRight to expand, ArrowUp to collapse.
-            Not a session row (no `span.min-w-0.flex-1`), so the e2e
-            row-count harness ignores it. */}
-        {!titlesOnly && sessions && sessions.length > 0 && (
+        {/* Collapsible "Pinned" and "Recents" section headers (docked sidebar
+            only; the narrow popover stays chrome-free). */}
+        {pinnedGroups.length > 0 && (
+          <>
+            <div className="relative flex shrink-0 items-center">
+              <SessionSectionToggle
+                testId="sidebar-pinned-toggle"
+                label={t('sidebar.pinnedSection')}
+                collapsed={pinnedCollapsed}
+                onCollapsedChange={applyPinnedCollapsed}
+              />
+            </div>
+            {!pinnedCollapsed && (
+              <SessionRowList
+                groups={pinnedGroups}
+                activeSessionId={resolvedActiveSessionId}
+                onSwitchThread={onSwitchThread}
+                onDeleteThread={onDeleteThread}
+                onRenameThread={onRenameThread}
+                onPinThread={onPinThread}
+                onForkThread={onForkThread}
+                scope="pinned"
+                editing={editing}
+                onEditingChange={setEditing}
+              />
+            )}
+          </>
+        )}
+
+        {!titlesOnly && recentGroups.length > 0 && (
           <div className="group/recents relative flex shrink-0 items-center">
-            <button
-              type="button"
-              data-testid="sidebar-recents-toggle"
-              aria-label={t('sidebar.recents')}
-              aria-expanded={!recentsCollapsed}
-              onClick={() => applyRecentsCollapsed(!recentsCollapsed)}
-              onKeyDown={e => {
-                if (e.key === 'ArrowRight') {
-                  e.preventDefault()
-                  applyRecentsCollapsed(false)
-                } else if (e.key === 'ArrowUp') {
-                  e.preventDefault()
-                  applyRecentsCollapsed(true)
-                }
-              }}
-              className="flex w-full shrink-0 select-none items-center rounded-md px-3 pb-1 pt-3 text-start text-caption font-medium uppercase tracking-wider text-muted-foreground/70 transition-colors hover:text-muted-foreground"
-            >
-              {t('sidebar.recents')}
-              {/* Chevron only while collapsed (click to expand); no arrow when
-                  expanded. Sits flush to the right of the label (no gap). */}
-              {recentsCollapsed && (
-                <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />
-              )}
-            </button>
+            <SessionSectionToggle
+              testId="sidebar-recents-toggle"
+              label={t('sidebar.recents')}
+              collapsed={recentsCollapsed}
+              onCollapsedChange={applyRecentsCollapsed}
+            />
             {/* Hover-revealed, like the row actions; stays visible while open. */}
             <SessionListMenu
               view={view}

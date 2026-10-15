@@ -32,6 +32,7 @@ export const fr: Messages = {
   'sidebar.unpinThreadAria': 'Désépingler la discussion : {title}',
   'sidebar.forkThreadAria': 'Bifurquer la discussion : {title}',
   'sidebar.pinned': 'Épinglée',
+  'sidebar.pinnedSection': 'Épinglées',
   'sidebar.renameInputAria': 'Champ de renommage : {title}',
   'sidebar.needsAnswer': 'Attend votre réponse',
   // Client update: the bottom-of-sidebar restart notice.

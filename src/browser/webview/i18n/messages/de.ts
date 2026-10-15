@@ -35,6 +35,7 @@ export const de: Messages = {
   'sidebar.unpinThreadAria': 'Chat nicht mehr anheften: {title}',
   'sidebar.forkThreadAria': 'Chat verzweigen: {title}',
   'sidebar.pinned': 'Angeheftet',
+  'sidebar.pinnedSection': 'Angeheftet',
   'sidebar.renameInputAria': 'Eingabefeld zum Umbenennen: {title}',
   'sidebar.needsAnswer': 'Wartet auf deine Antwort',
   // Client update: the bottom-of-sidebar restart notice.

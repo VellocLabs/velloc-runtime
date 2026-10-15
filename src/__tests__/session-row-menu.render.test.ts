@@ -11,8 +11,8 @@ import { DEFAULT_SESSION_LIST_VIEW } from '../browser/webview/sessionListView'
 import { buildPinnedFirstView } from '../browser/webview/sessionPinning'
 
 // The per-row ⋯ menu: Pin/Unpin, Rename, Fork, a separator, then Delete —
-// on every row, the active one included. Pinned rows list first and carry an
-// indicator.
+// on every row, the active one included. Within one list (a workspace group,
+// the narrow popover) pinned rows list first and carry an indicator.
 
 const DAY = 24 * 60 * 60 * 1000
 const NOW = Date.now()

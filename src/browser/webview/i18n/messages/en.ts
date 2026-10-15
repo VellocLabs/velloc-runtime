@@ -36,6 +36,7 @@ export const en = {
   'sidebar.unpinThreadAria': 'Unpin thread: {title}',
   'sidebar.forkThreadAria': 'Fork thread: {title}',
   'sidebar.pinned': 'Pinned',
+  'sidebar.pinnedSection': 'Pinned',
   'sidebar.renameInputAria': 'Rename input: {title}',
   'sidebar.needsAnswer': 'Needs your response',
   // Client update: the bottom-of-sidebar restart notice.

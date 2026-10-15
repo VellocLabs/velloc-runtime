@@ -33,6 +33,7 @@ export const ko: Messages = {
   'sidebar.unpinThreadAria': '채팅 고정 해제: {title}',
   'sidebar.forkThreadAria': '채팅 분기: {title}',
   'sidebar.pinned': '고정됨',
+  'sidebar.pinnedSection': '고정됨',
   'sidebar.renameInputAria': '이름 입력란: {title}',
   'sidebar.needsAnswer': '답변을 기다리는 중',
   // Client update: the bottom-of-sidebar restart notice.

@@ -33,6 +33,7 @@ export const ja: Messages = {
   'sidebar.unpinThreadAria': 'チャットのピン留めを外す：{title}',
   'sidebar.forkThreadAria': 'チャットを分岐：{title}',
   'sidebar.pinned': 'ピン留め済み',
+  'sidebar.pinnedSection': 'ピン留め',
   'sidebar.renameInputAria': '名前の入力欄：{title}',
   'sidebar.needsAnswer': '返答を待っています',
   // Client update: the bottom-of-sidebar restart notice.

@@ -36,6 +36,7 @@ export const es: Messages = {
   'sidebar.unpinThreadAria': 'Dejar de fijar el chat: {title}',
   'sidebar.forkThreadAria': 'Bifurcar el chat: {title}',
   'sidebar.pinned': 'Fijado',
+  'sidebar.pinnedSection': 'Fijados',
   'sidebar.renameInputAria': 'Campo para cambiar el nombre: {title}',
   'sidebar.needsAnswer': 'Espera su respuesta',
   // Client update: the bottom-of-sidebar restart notice.
