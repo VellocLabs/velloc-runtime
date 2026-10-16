@@ -120,6 +120,7 @@ import { createNativePrimitives } from '../bridge/nativePrimitives'
 import { loadLocalAgents } from '../../agents/agentRegistry'
 import { withBuiltInAgents } from '../../agents/builtInAgents'
 import { loadPluginContributions, pluginMcpServer } from '../../pluginHost'
+import { storePluginSecrets } from '../../pluginHost/pluginMcpUserConfig'
 import { traceLine } from '../../utils/debugLog'
 import { isModSlot, selectModModules } from '../../mods/modSlot'
 import { createModIdleUnload, type ModIdleUnload } from '../../mods/modIdleUnload'
@@ -626,6 +627,30 @@ export async function createBrowserRuntime(
   // isolated sub-agent): a project's plugins live in, and are switched by,
   // `<projectRoot>/.velloc/` — the same root `/plugins install` writes and
   // Settings lists.
+  // Each plugin's `userConfig` values: settings.json `pluginConfigs`,
+  // read once here and again on every plugin reload.
+  const readPluginConfigs = async (): Promise<Record<string, { options?: Record<string, unknown> }>> => {
+    try {
+      const { getPluginConfigsMap } = await import('../../pluginHost/pluginConfigs')
+      return await getPluginConfigsMap({ homeDir: settingsHome() }, installedFs)
+    } catch (e) {
+      console.warn(`[mods] plugin options skipped: ${e instanceof Error ? e.message : String(e)}`)
+      return {}
+    }
+  }
+  // The options as the plugins' MCP servers were resolved with them
+  // (`${user_config.KEY}`), for `$.mcp.connect` to resolve them alike.
+  let mcpPluginConfigs = await readPluginConfigs()
+  // A sensitive option reaches a server as a stored secret: written before
+  // the pool launches the servers, and again on every plugin reload.
+  const storeMcpSecrets = async (contributions: typeof pluginContributions): Promise<void> => {
+    const { writes, pluginIds } = contributions.mcpSecrets
+    if (!hostBridge.supportsBridgeCapability('secrets')) {
+      if (writes.length > 0) console.warn('[plugins] this browser stores no secrets; servers taking a sensitive option will not start')
+      return
+    }
+    await storePluginSecrets(writes, pluginIds, hostBridge.primitives.secrets, message => console.warn(message))
+  }
   const pluginContributions = await loadPluginContributions({
     cwd: resolvedProjectRoot,
     fs: installedFs,
@@ -636,11 +661,13 @@ export async function createBrowserRuntime(
     enabledPlugins,
     installRegistry,
     enabledPluginIdentifiers,
+    pluginConfigs: mcpPluginConfigs,
     ...(options.locale !== undefined ? { locale: options.locale } : {}),
   })
   for (const pluginError of pluginContributions.errors) {
     console.warn(`[plugins] ${describePluginError(pluginError)}`)
   }
+  await storeMcpSecrets(pluginContributions)
   const pluginLoadResult = {
     enabled: pluginContributions.plugins,
     disabled: pluginContributions.disabled,
@@ -1249,6 +1276,7 @@ export async function createBrowserRuntime(
         `[onReloadPlugins] marketplace plugin reload skipped: ${e instanceof Error ? e.message : String(e)}`,
       )
     }
+    mcpPluginConfigs = await readPluginConfigs()
     const reloadContributions = await loadPluginContributions({
       cwd: resolvedProjectRoot,
       fs: installedFs,
@@ -1257,11 +1285,13 @@ export async function createBrowserRuntime(
       enabledPlugins: nextEnabledPlugins,
       installRegistry: reloadInstallRegistry,
       enabledPluginIdentifiers: reloadEnabledIds,
+      pluginConfigs: mcpPluginConfigs,
       ...(options.locale !== undefined ? { locale: options.locale } : {}),
     })
     for (const pluginError of reloadContributions.errors) {
       console.warn(`[plugins] ${describePluginError(pluginError)}`)
     }
+    await storeMcpSecrets(reloadContributions)
     sessionTypeDeniedNames.length = 0
     const reloadedCommands =
       resolvedOptions.commands
@@ -1513,17 +1543,6 @@ ${teammateAddendum}`
     headlessMods,
     isTeammate: isTeammateSession,
     teammateName: (resolvedOptions as { teammateName?: string }).teammateName,
-  }
-  // Each plugin's `userConfig` values: settings.json `pluginConfigs`,
-  // read once here and again on every plugin reload.
-  const readPluginConfigs = async (): Promise<Record<string, { options?: Record<string, unknown> }>> => {
-    try {
-      const { getPluginConfigsMap } = await import('../../pluginHost/pluginConfigs')
-      return await getPluginConfigsMap({ homeDir: settingsHome() }, installedFs)
-    } catch (e) {
-      console.warn(`[mods] plugin options skipped: ${e instanceof Error ? e.message : String(e)}`)
-      return {}
-    }
   }
   // settings.json `enabledPlugins`: a built-in's `<name>@builtin` entry
   // switches it over its default — read on every select, so the Settings
@@ -1901,7 +1920,9 @@ ${teammateAddendum}`
                 pool: () => mcpPool,
                 manifestServer: (plugin, key) => {
                   const owner = modPlugins.find(candidate => candidate.name === plugin)
-                  return owner ? pluginMcpServer(owner, key, name => runtimeConfig.getEnv(name)) : undefined
+                  return owner
+                    ? pluginMcpServer(owner, key, { getEnv: name => runtimeConfig.getEnv(name), configs: mcpPluginConfigs })
+                    : undefined
                 },
               }),
             }

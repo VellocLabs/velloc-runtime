@@ -1,18 +1,30 @@
 /**
- * Pure `${...}` substitution for plugin MCP server configs:
- * `${CLAUDE_PLUGIN_ROOT}` and `${NAME}` / `${NAME:-default}` (runtimeConfig env).
+ * Pure `${...}` substitution for plugin MCP server configs: the plugin root,
+ * `${user_config.KEY}` (the plugin's own options) and `${NAME}` /
+ * `${NAME:-default}` (runtimeConfig env).
  * Unknown placeholders stay literal.
  */
 
+import { holdsHostPlaceholder } from '../browser/bridge/hostPlaceholders'
 import type { NexusMcpServerLaunchConfig } from '../mcp/nativeBridge'
 import type { MCPServerConfig } from '../mcp/types'
+
+/** Where a value stands: a stdio server's env value, a header value, or any
+ *  other text (command, args, url, cwd). */
+export type PluginMcpVarSite = 'env' | 'header' | 'text'
 
 export type PluginMcpVarContext = {
   /** ${CLAUDE_PLUGIN_ROOT} → the plugin's directory (ActivePlugin.path). */
   pluginRoot: string
   /** General env lookup for ${NAME} / ${NAME:-default}. */
   getEnv: (name: string) => string | undefined
+  /** ${user_config.KEY} → the text standing for the plugin's option `KEY`
+   *  at `site`; undefined leaves the placeholder literal. Absent: every
+   *  `${user_config.*}` stays literal. */
+  userConfig?: (key: string, site: PluginMcpVarSite) => string | undefined
 }
+
+const USER_CONFIG_PREFIX = 'user_config.'
 
 /**
  *  this for plugin.path on win32 so substituted URLs stay valid). Virtual
@@ -28,16 +40,22 @@ function normalizePath(p: string): string {
 export function substitutePluginMcpString(
   value: string,
   ctx: PluginMcpVarContext,
+  site: PluginMcpVarSite = 'text',
 ): string {
   return value.replace(/\$\{([^}]+)\}/g, (match, varContent: string) => {
     if (varContent === 'CLAUDE_PLUGIN_ROOT') {
       return normalizePath(ctx.pluginRoot)
     }
+    if (varContent.startsWith(USER_CONFIG_PREFIX)) {
+      return ctx.userConfig?.(varContent.slice(USER_CONFIG_PREFIX.length), site) ?? match
+    }
 
     // `varContent.split(':-', 2)`, read from process env (here: getEnv).
+    // Security: an env value holding a host placeholder is not taken, so
+    // the environment cannot name a stored secret for the plugin.
     const [varName, defaultValue] = varContent.split(':-', 2)
     const envValue = ctx.getEnv(varName!)
-    if (envValue !== undefined) return envValue
+    if (envValue !== undefined && !holdsHostPlaceholder(envValue)) return envValue
     if (defaultValue !== undefined) return defaultValue
 
     return match
@@ -57,7 +75,7 @@ export function substitutePluginMcpVars(
   if (config.headers) {
     headers = {}
     for (const [key, value] of Object.entries(config.headers)) {
-      headers[key] = substitutePluginMcpString(value, ctx)
+      headers[key] = substitutePluginMcpString(value, ctx, 'header')
     }
   }
   return headers ? { ...config, url, headers } : { ...config, url }
@@ -77,7 +95,7 @@ export function substituteNativePluginMcpVars(
   if (out.env) {
     const env: Record<string, string> = {}
     for (const [key, value] of Object.entries(out.env)) {
-      env[key] = substitutePluginMcpString(value, ctx)
+      env[key] = substitutePluginMcpString(value, ctx, 'env')
     }
     out.env = env
   }
@@ -87,7 +105,7 @@ export function substituteNativePluginMcpVars(
   if (out.headers) {
     const headers: Record<string, string> = {}
     for (const [key, value] of Object.entries(out.headers)) {
-      headers[key] = substitutePluginMcpString(value, ctx)
+      headers[key] = substitutePluginMcpString(value, ctx, 'header')
     }
     out.headers = headers
   }

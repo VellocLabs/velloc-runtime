@@ -45,7 +45,7 @@ export function isSensitiveMcpEnv(name: string): boolean {
 
 /** One name segment in the store's alphabet ([A-Za-z0-9_.:/@-]), injective:
  *  every other character — `_` and `/` included — becomes `_<hex>_`. */
-function segment(text: string): string {
+export function secretNameSegment(text: string): string {
   let out = ''
   for (const char of text) {
     out += /[A-Za-z0-9.@-]/.test(char)
@@ -57,13 +57,13 @@ function segment(text: string): string {
 
 /** The prefix every secret of server `serverId` carries. */
 export function mcpServerSecretPrefix(serverId: string): string {
-  return `mcp:${segment(serverId)}/`
+  return `mcp:${secretNameSegment(serverId)}/`
 }
 
 /** `mcp:<id>/header/<lower-cased header>` (the store caps a name at 128
  *  characters after the namespace). */
 export function mcpHeaderSecretName(serverId: string, header: string): BridgeSecretName {
-  const name = `${mcpServerSecretPrefix(serverId)}header/${segment(header.toLowerCase())}`
+  const name = `${mcpServerSecretPrefix(serverId)}header/${secretNameSegment(header.toLowerCase())}`
   if (name.length - 'mcp:'.length > 128) {
     throw new Error(
       `The server name "${serverId}" with header "${header}" is too long to store its value securely.`,
@@ -74,7 +74,7 @@ export function mcpHeaderSecretName(serverId: string, header: string): BridgeSec
 
 /** `mcp:<id>/env/<NAME>` — case kept: env names are case-sensitive. */
 export function mcpEnvSecretName(serverId: string, envName: string): BridgeSecretName {
-  const name = `${mcpServerSecretPrefix(serverId)}env/${segment(envName)}`
+  const name = `${mcpServerSecretPrefix(serverId)}env/${secretNameSegment(envName)}`
   if (name.length - 'mcp:'.length > 128) {
     throw new Error(
       `The server name "${serverId}" with variable "${envName}" is too long to store its value securely.`,

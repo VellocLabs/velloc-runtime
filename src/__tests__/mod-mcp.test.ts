@@ -105,11 +105,13 @@ describe('pluginMcpServer', () => {
   it("one plugin's manifest server by its key, substituted as the pool's are; a key it does not list is undefined", async () => {
     const { pluginMcpServer } = await import('../pluginHost')
     const plugin = {
+      name: 'docs',
+      manifest: { name: 'docs' },
       path: '/plugins/docs',
       mcpServers: { search: { type: 'http' as const, url: '${CLAUDE_PLUGIN_ROOT}/x?k=${TOKEN}' } },
       nativeMcpServers: { shell: { transport: 'stdio' as const, command: '${CLAUDE_PLUGIN_ROOT}/bin/s' } },
     }
-    const env = (name: string) => (name === 'TOKEN' ? 't0k' : undefined)
+    const env = { getEnv: (name: string) => (name === 'TOKEN' ? 't0k' : undefined) }
     expect(pluginMcpServer(plugin, 'search', env)).toEqual({
       kind: 'browser',
       entry: { name: 'search', type: 'http', url: '/plugins/docs/x?k=t0k' },
@@ -120,7 +122,7 @@ describe('pluginMcpServer', () => {
       config: { transport: 'stdio', command: '/plugins/docs/bin/s' },
     })
     expect(pluginMcpServer(plugin, 'toString', env)).toBeUndefined()
-    expect(pluginMcpServer({ path: '/p' }, 'search', env)).toBeUndefined()
+    expect(pluginMcpServer({ name: 'p', manifest: { name: 'p' }, path: '/p' }, 'search', env)).toBeUndefined()
   })
 })
 

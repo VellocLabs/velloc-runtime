@@ -9,9 +9,11 @@ import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import { gatherPlugins } from './loadPlugins'
 import { PLUGIN_DESCRIPTION_KEY, readPluginLocaleText } from './pluginLocaleText'
 import {
-  substituteNativePluginMcpVars,
-  substitutePluginMcpVars,
-} from './substituteMcpVars'
+  resolvePluginMcpServer,
+  type PluginConfigsMap,
+  type PluginMcpServer,
+  type PluginSecretWrite,
+} from './pluginMcpUserConfig'
 import type { ActivePlugin, PluginLoadIssue } from './pluginModel'
 import type { InstalledPluginsFile } from './registryFormats'
 
@@ -33,6 +35,10 @@ export type PluginContributions = {
   pluginAgentDirs: Array<{ dirPath: string; pluginName: string }>
   mcpServers: MCPServerConfigWithName[]
   nativeMcpServers: Array<{ id: string; config: NexusMcpServerLaunchConfig }>
+  /** The sensitive options the servers above carry placeholders for, to
+   *  store before they launch (`storePluginSecrets`), and the ids of the
+   *  plugins whose stored values these are. */
+  mcpSecrets: { writes: PluginSecretWrite[]; pluginIds: string[] }
   errors: PluginLoadIssue[]
 }
 
@@ -75,8 +81,11 @@ export async function loadPluginContributions(params: {
    *  `plugin.description` is described in it (`pluginLocaleText.ts`); the
    *  manifest's own English otherwise. Needs `fs`. */
   locale?: string
+  /** settings.json `pluginConfigs`: each plugin's options, for
+   *  `${user_config.KEY}` in its MCP servers. Absent: defaults alone. */
+  pluginConfigs?: PluginConfigsMap
 }): Promise<PluginContributions> {
-  const { enabled: gathered, disabled, errors } = await gatherPlugins(params)
+  const { enabled: gathered, disabled, errors: gatheredErrors } = await gatherPlugins(params)
   const enabled = params.fs && params.locale ? await describeInLocale(gathered, params.fs, params.locale) : gathered
 
   const pluginSkillDirs: Array<{
@@ -87,8 +96,32 @@ export async function loadPluginContributions(params: {
   const pluginAgentDirs: Array<{ dirPath: string; pluginName: string }> = []
   const mcpServers: MCPServerConfigWithName[] = []
   const nativeMcpServers: Array<{ id: string; config: NexusMcpServerLaunchConfig }> = []
+  const secretWrites: PluginSecretWrite[] = []
+  const pluginIds: string[] = []
+  const errors = [...gatheredErrors]
+  const mcpScope = {
+    getEnv: (varName: string) => params.runtimeConfig.getEnv(varName),
+    ...(params.pluginConfigs ? { configs: params.pluginConfigs } : {}),
+  }
+  const addServer = (plugin: ActivePlugin, name: string, server: PluginMcpServer) => {
+    const resolved = resolvePluginMcpServer(plugin, name, server, mcpScope)
+    if (!resolved.ok) {
+      errors.push({
+        type: 'mcp-config-invalid',
+        source: plugin.source,
+        plugin: plugin.name,
+        serverName: name,
+        validationError: resolved.reason,
+      })
+      return
+    }
+    secretWrites.push(...resolved.secrets)
+    if (resolved.kind === 'native') nativeMcpServers.push({ id: name, config: resolved.config })
+    else mcpServers.push({ name, ...resolved.config })
+  }
 
   for (const plugin of enabled) {
+    pluginIds.push(plugin.installIdentifier ?? `${plugin.name}@inline`)
     // A plugin's `commands/` and `skills/` directories both feed the
     // skill/command list (a plugin command surfaces as a model-invocable
     const skillDirs = [plugin.skillsPath, ...(plugin.skillsPaths ?? [])].filter(
@@ -113,30 +146,13 @@ export async function loadPluginContributions(params: {
       pluginAgentDirs.push({ dirPath, pluginName: plugin.name })
     }
 
-    if (plugin.mcpServers) {
-      for (const [name, config] of Object.entries(plugin.mcpServers)) {
-        // the url + each header value before the server is handed to the pool.
-        // ${CLAUDE_PLUGIN_ROOT} → plugin.path, general ${NAME}/${NAME:-default}
-        // ${user_config.X} / ${CLAUDE_PLUGIN_DATA} / ${CLAUDE_PROJECT_DIR} are
-        // intentionally not resolved on this path (see substituteMcpVars.ts).
-        const resolved = substitutePluginMcpVars(config, {
-          pluginRoot: plugin.path,
-          getEnv: varName => params.runtimeConfig.getEnv(varName),
-        })
-        mcpServers.push({ name, ...resolved })
-      }
+    // The plugin root, `${user_config.KEY}` and env placeholders are resolved
+    // before a server is handed to the pool (`resolvePluginMcpServer`).
+    for (const [name, config] of Object.entries(plugin.mcpServers ?? {})) {
+      addServer(plugin, name, { kind: 'browser', config })
     }
-    if (plugin.nativeMcpServers) {
-      for (const [name, config] of Object.entries(plugin.nativeMcpServers)) {
-        const resolved = substituteNativePluginMcpVars(config, {
-          pluginRoot: plugin.path,
-          getEnv: varName => params.runtimeConfig.getEnv(varName),
-        })
-        nativeMcpServers.push({
-          id: name,
-          config: resolved,
-        })
-      }
+    for (const [name, config] of Object.entries(plugin.nativeMcpServers ?? {})) {
+      addServer(plugin, name, { kind: 'native', config })
     }
   }
 
@@ -147,38 +163,35 @@ export async function loadPluginContributions(params: {
     pluginAgentDirs,
     mcpServers,
     nativeMcpServers,
+    mcpSecrets: { writes: secretWrites, pluginIds },
     errors,
   }
 }
 
 /**
- * One server of one plugin's manifest, `${…}` substituted exactly as
- * `loadPluginContributions` substitutes it for the pool — `$.mcp.connect`
+ * One server of one plugin's manifest, resolved exactly as
+ * `loadPluginContributions` resolves it for the pool — `$.mcp.connect`
  * (mods/modMcp.ts) connects "one of the MCP servers this plugin's own
- * manifest lists" by its key. Undefined when the plugin lists no such server.
+ * manifest lists" by its key. Undefined when the plugin lists no such server,
+ * or lists one that cannot start (reported when the plugins loaded).
  */
 export function pluginMcpServer(
-  plugin: Pick<ActivePlugin, 'path' | 'mcpServers' | 'nativeMcpServers'>,
+  plugin: Pick<ActivePlugin, 'name' | 'path' | 'installIdentifier' | 'manifest' | 'mcpServers' | 'nativeMcpServers'>,
   key: string,
-  getEnv: (name: string) => string | undefined,
+  scope: { getEnv: (name: string) => string | undefined; configs?: PluginConfigsMap },
 ):
   | { kind: 'browser'; entry: MCPServerConfigWithName }
   | { kind: 'native'; id: string; config: NexusMcpServerLaunchConfig }
   | undefined {
   const browser = plugin.mcpServers && Object.hasOwn(plugin.mcpServers, key) ? plugin.mcpServers[key] : undefined
-  if (browser) {
-    return {
-      kind: 'browser',
-      entry: { name: key, ...substitutePluginMcpVars(browser, { pluginRoot: plugin.path, getEnv }) },
-    }
-  }
   const native = plugin.nativeMcpServers && Object.hasOwn(plugin.nativeMcpServers, key) ? plugin.nativeMcpServers[key] : undefined
-  if (native) {
-    return {
-      kind: 'native',
-      id: key,
-      config: substituteNativePluginMcpVars(native, { pluginRoot: plugin.path, getEnv }),
-    }
-  }
-  return undefined
+  const server: PluginMcpServer | undefined = browser
+    ? { kind: 'browser', config: browser }
+    : native ? { kind: 'native', config: native } : undefined
+  if (!server) return undefined
+  const resolved = resolvePluginMcpServer(plugin, key, server, scope)
+  if (!resolved.ok) return undefined
+  return resolved.kind === 'native'
+    ? { kind: 'native', id: key, config: resolved.config }
+    : { kind: 'browser', entry: { name: key, ...resolved.config } }
 }
