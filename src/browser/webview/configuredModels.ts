@@ -24,6 +24,8 @@ import {
 import { findConfiguredModelIn } from '../../config/nexusModelConfig/findConfiguredModel'
 import { versionParser } from '../../config/nexusModelConfig/modelEntries'
 import { deriveCanonicalModelId, escapeRegExp } from '../../config/nexusModelConfig/patterns'
+import { markRealmMirrorEntry } from '../../config/customProviderRegistry'
+import { isModProviderId } from '../../mods/provider/providerManifest'
 
 type CatalogModelContext = {
   label: string
@@ -272,13 +274,14 @@ const mirroredRows = new WeakSet<NexusConfiguredModel>()
 
 /**
  * Mirrors the catalog's figures for a runtime-only provider's models this realm has no rule for (the
- * webview never fetches listings). Adds nothing in the worker, where a rule always matches.
+ * webview never fetches listings). Adds nothing in the worker, where a rule always matches. A mod
+ * provider has no entry in a realm without the mod registry; one is made for it here.
  */
 function mirrorEntryFigures(
   provider: BrowserLlmProvider,
   config: NexusModelConfig,
 ): void {
-  const providerConfig = findProviderConfig(provider.id, config)
+  const providerConfig = findProviderConfig(provider.id, config) ?? mirrorEntryForMod(provider.id, config)
   if (!providerConfig) return
   const kept = providerConfig.models.filter(rule => !mirroredRows.has(rule))
   const added: NexusConfiguredModel[] = []
@@ -311,6 +314,15 @@ function mirrorEntryFigures(
   recordPublishedFigures(provider.id, publishedFigures)
   if (added.length === 0 && kept.length === providerConfig.models.length) return
   providerConfig.models = [...kept, ...added]
+}
+
+/** A new, empty entry for a mod provider this realm has none for, added to `config`; undefined for any other id. */
+function mirrorEntryForMod(providerId: string, config: NexusModelConfig): NexusProviderModelConfig | undefined {
+  if (!isModProviderId(providerId)) return undefined
+  const entry: NexusProviderModelConfig = { providerId, filterMode: 'passthrough', models: [] }
+  markRealmMirrorEntry(entry)
+  config.providers.push(entry)
+  return entry
 }
 
 /** The catalog-layer figures a published row states, if any; the tier pair only when `carryTiers`

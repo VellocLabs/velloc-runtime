@@ -40,6 +40,7 @@ import {
 } from '../models/tierSettingsSnapshot'
 import { installBuiltinCatalogFigures } from './_helpers/builtinCatalogFigures'
 import { resetCatalogFigures } from '../config/nexusModelConfig/catalogFigures'
+import { resetCustomProviderRecords, setCustomProviderRecords } from '../config/customProviderRegistry'
 
 // Built-in rows read the context window / output cap / image input they
 // leave unset from the model catalog: install the runtime's figures, as
@@ -1763,6 +1764,82 @@ describe('runtime-only provider figures in a realm without the listing', () => {
     }
     createConfiguredModelCatalog(entryCatalog(123_456), config)
     expect(config.providers[0]!.models).toEqual([listed])
+  })
+})
+
+// A provider mod is registered only where its module runs (the worker); the
+// webview has no entry for it, so without a mirror its composer meter reads 200K. (F-27)
+describe('mod provider figures in a realm without the mod registry', () => {
+  const MOD = 'mod.nebius.token-factory'
+  const MODEL = 'example-org/Wide-Model-2'
+
+  afterEach(() => {
+    resetEntryResolutions()
+    resetCustomProviderRecords()
+    NEXUS_MODEL_CONFIG.providers.splice(
+      0,
+      NEXUS_MODEL_CONFIG.providers.length,
+      ...NEXUS_MODEL_CONFIG.providers.filter(entry => entry.providerId !== MOD),
+    )
+  })
+
+  const modCatalog = (providerId: string, contextWindow: number): BrowserLlmCatalog => ({
+    providers: [
+      {
+        id: providerId,
+        label: 'Nebius Token Factory',
+        iconSvg: '<svg />',
+        enabled: true,
+        models: [
+          {
+            id: `${MODEL}@latest`,
+            label: 'Wide Model 2',
+            enabled: true,
+            contextWindow,
+            maxOutputTokens: 32_768,
+            entry: {
+              kind: 'latest',
+              family: MODEL,
+              familyLabel: 'Wide Model 2',
+              version: 'latest',
+              resolvedId: MODEL,
+              preview: false,
+            },
+          },
+        ],
+        entryFamilies: [],
+      },
+    ],
+  })
+
+  it('resolves the window the catalog states, not the 200K default', () => {
+    const config: NexusModelConfig = { providers: [] }
+    expect(contextWindowOf(`${MODEL}@latest`, MOD, config)).toBe(200_000)
+
+    createConfiguredModelCatalog(modCatalog(MOD, 1_048_576), config)
+    expect(contextWindowOf(`${MODEL}@latest`, MOD, config)).toBe(1_048_576)
+    expect(contextWindowOf(MODEL, MOD, config)).toBe(1_048_576)
+    expect(outputBudgetOf(MODEL, MOD, config)).toBe(32_768)
+
+    // A later catalog updates the same entry.
+    createConfiguredModelCatalog(modCatalog(MOD, 262_144), config)
+    expect(contextWindowOf(MODEL, MOD, config)).toBe(262_144)
+    expect(config.providers.filter(entry => entry.providerId === MOD)).toHaveLength(1)
+  })
+
+  it('keeps the entry when the provider list is rebuilt', () => {
+    createConfiguredModelCatalog(modCatalog(MOD, 1_048_576))
+    expect(contextWindowOf(MODEL, MOD)).toBe(1_048_576)
+
+    setCustomProviderRecords({})
+    expect(contextWindowOf(MODEL, MOD)).toBe(1_048_576)
+  })
+
+  it('makes no entry for a provider that is not a mod', () => {
+    const config: NexusModelConfig = { providers: [] }
+    createConfiguredModelCatalog(modCatalog('unknown-gateway', 1_048_576), config)
+    expect(config.providers).toEqual([])
+    expect(contextWindowOf(MODEL, 'unknown-gateway', config)).toBe(200_000)
   })
 })
 

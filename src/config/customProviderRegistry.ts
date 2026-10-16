@@ -301,6 +301,15 @@ export function toProviderModelConfig(
 let currentRecords: CustomProviderRecord[] = []
 let currentConfigs: Record<string, NexusProviderConfig> = {}
 
+// Entries a realm without the mod registry (the webview) made to hold a mod
+// provider's catalog figures; kept across rebuilds while nothing else has the id.
+const realmMirrorEntries = new WeakSet<NexusProviderModelConfig>()
+
+/** Mark `entry` as a mirror entry, so `setCustomProviderRecords` keeps it in `NEXUS_MODEL_CONFIG`. */
+export function markRealmMirrorEntry(entry: NexusProviderModelConfig): void {
+  realmMirrorEntries.add(entry)
+}
+
 /**
  * Replace the known custom providers and re-apply the `NEXUS_MODEL_CONFIG`
  * overlay. Called by the worker at boot and after every `providers.*` write,
@@ -319,13 +328,14 @@ export function setCustomProviderRecords(
   // The enabled provider mods' entries sit between the shipped catalog and
   // the user's custom providers; they are the registry's definitions' own
   // objects (the listing writes its rows into them in place).
-  const next = [
-    ...BASELINE_PROVIDERS.filter(entry => !overridden.has(entry.providerId)),
-    ...modProviderDefinitions()
-      .map(definition => definition.config)
-      .filter(entry => !overridden.has(entry.providerId)),
-    ...overlay,
-  ]
+  const baseline = BASELINE_PROVIDERS.filter(entry => !overridden.has(entry.providerId))
+  const mods = modProviderDefinitions()
+    .map(definition => definition.config)
+    .filter(entry => !overridden.has(entry.providerId))
+  const defined = new Set([...baseline, ...mods, ...overlay].map(entry => entry.providerId))
+  const mirrored = NEXUS_MODEL_CONFIG.providers
+    .filter(entry => realmMirrorEntries.has(entry) && !defined.has(entry.providerId))
+  const next = [...baseline, ...mods, ...mirrored, ...overlay]
   // Mutate in place: `NEXUS_MODEL_CONFIG` is imported by value all over the
   // codebase (including as a default parameter), so replacing the array
   // object would leave stale references behind.
