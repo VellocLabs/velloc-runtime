@@ -10,6 +10,11 @@
  * default the manifest sets) may hold a host placeholder, and the resolved
  * config holds none but the ones written for the plugin's own options, so it
  * can name no secret but those.
+ * `${provider_key.KEY}` names the key stored for one of the plugin's own
+ * providers (settings.json `providers.configs.<id>.apiKey`, sealed). It
+ * stands only in a stdio server's env value and only when that entry's
+ * `modOwner` is this plugin: the sealed value is copied to a process-only
+ * secret under the plugin's names, so the host alone ever opens it (F-14).
  */
 
 import type { BridgeSecretName } from '../browser/bridge/browserBridgeProtocol'
@@ -29,6 +34,10 @@ import {
 
 /** settings.json `pluginConfigs`, by plugin id. */
 export type PluginConfigsMap = Readonly<Record<string, { options?: Readonly<Record<string, unknown>> }>>
+
+/** settings.json `providers.configs`, by provider id: the sealed key and the
+ *  install identifier of the plugin that owns the entry. */
+export type PluginProviderKeysMap = Readonly<Record<string, { apiKey?: string; modOwner?: string }>>
 
 /** One value to store before the servers launch. */
 export type PluginSecretWrite = {
@@ -51,6 +60,8 @@ export type PluginMcpScope = {
   getEnv: (name: string) => string | undefined
   /** settings.json `pluginConfigs`; absent: every option at its default. */
   configs?: PluginConfigsMap
+  /** settings.json `providers.configs`; absent: no provider has a key. */
+  providers?: PluginProviderKeysMap
 }
 
 /** The store caps a name at this many characters after the namespace. */
@@ -102,7 +113,7 @@ function referencedKeys(values: readonly string[]): string[] {
  * Pure: nothing is stored here.
  */
 export function resolvePluginMcpServer(
-  plugin: Pick<ActivePlugin, 'name' | 'path' | 'installIdentifier' | 'manifest'>,
+  plugin: Pick<ActivePlugin, 'name' | 'path' | 'installIdentifier' | 'manifest' | 'providers'>,
   serverName: string,
   server: PluginMcpServer,
   scope: PluginMcpScope,
@@ -167,7 +178,31 @@ export function resolvePluginMcpServer(
     problems.add(`sensitive option "${key}" can stand only in an env value or a header value`)
     return undefined
   }
-  const ctx: PluginMcpVarContext = { pluginRoot: plugin.path, getEnv: scope.getEnv, userConfig }
+  // Security: only a provider this plugin's own manifest declares (its id is
+  // `mod.<this plugin>.<key>`), and only an entry recorded as this install's.
+  const providerKey = (key: string, site: PluginMcpVarSite): string | undefined => {
+    const provider = plugin.providers?.find(candidate => candidate.key === key)
+    if (!provider) {
+      problems.add(`\${provider_key.${key}} names no provider this plugin declares`)
+      return undefined
+    }
+    if (site !== 'env') {
+      problems.add(`\${provider_key.${key}} can stand only in a stdio server's env value`)
+      return undefined
+    }
+    const stored = scope.providers && Object.hasOwn(scope.providers, provider.id) ? scope.providers[provider.id] : undefined
+    const sealed = typeof stored?.apiKey === 'string' ? stored.apiKey : ''
+    if (sealed === '') return ''
+    if (stored?.modOwner !== pluginId) {
+      problems.add(`the key stored for provider ${provider.id} is not recorded as this plugin's`)
+      return undefined
+    }
+    const name = nameFor(`provider/${secretNameSegment(key)}`)
+    if (!name) return undefined
+    secrets.set(name, { name, value: sealed, processEnv: true })
+    return `{{secret:${name}}}`
+  }
+  const ctx: PluginMcpVarContext = { pluginRoot: plugin.path, getEnv: scope.getEnv, userConfig, providerKey }
 
   // The resolved config may carry no host placeholder but the ones written
   // above for this plugin's own options, however the substituted pieces join.

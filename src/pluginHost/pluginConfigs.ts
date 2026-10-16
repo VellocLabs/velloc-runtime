@@ -8,6 +8,7 @@ import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { readLayer, updateSectionInSource } from '../settings/settingsStore'
 import type { SettingsPathContext } from '../settings/settingsStore'
 import type { NexusPluginConfig } from '../settings/settingsTypes'
+import { isModProviderId } from '../mods/provider/providerManifest'
 
 /** Every plugin's stored options, by plugin id. */
 export async function getPluginConfigsMap(
@@ -16,6 +17,27 @@ export async function getPluginConfigsMap(
 ): Promise<Record<string, NexusPluginConfig>> {
   const { settings } = await readLayer('userSettings', ctx, fs)
   return { ...(settings.pluginConfigs ?? {}) }
+}
+
+/**
+ * The sealed key and owner of every provider mod's stored entry
+ * (`providers.configs`), for `${provider_key.KEY}` in a plugin's MCP servers.
+ * Security: runtime-only; never handed to a client.
+ */
+export async function getPluginProviderKeys(
+  ctx: SettingsPathContext,
+  fs: RuntimeFs,
+): Promise<Record<string, { apiKey?: string; modOwner?: string }>> {
+  const { settings } = await readLayer('userSettings', ctx, fs)
+  const out: Record<string, { apiKey?: string; modOwner?: string }> = {}
+  for (const [id, config] of Object.entries(settings.providers?.configs ?? {})) {
+    if (!isModProviderId(id)) continue
+    out[id] = {
+      ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+      ...(config.modOwner ? { modOwner: config.modOwner } : {}),
+    }
+  }
+  return out
 }
 
 /**

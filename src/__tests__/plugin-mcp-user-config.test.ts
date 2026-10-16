@@ -6,6 +6,7 @@ import {
   type PluginMcpServer,
 } from '../pluginHost/pluginMcpUserConfig'
 import type { PluginUserConfigField } from '../pluginHost/pluginModel'
+import type { ResolvedProvider } from '../mods/provider/providerManifest'
 import type { BridgeSecretName } from '../browser/bridge/browserBridgeProtocol'
 
 const fields: Record<string, PluginUserConfigField> = {
@@ -127,6 +128,93 @@ describe('resolvePluginMcpServer', () => {
     expect(split).toEqual({ ok: false, reason: 'resolves to a host placeholder ({{secret:…}} or {{oauth:…}}) the plugin does not own' })
     const own = resolve({ kind: 'native', config: { transport: 'stdio', command: 'run', env: { K: '${user_config.api_key}', P: '${user_config.project}' } } })
     expect(own.ok).toBe(true)
+  })
+})
+
+describe('resolvePluginMcpServer: ${provider_key.KEY}', () => {
+  const provider = (key: string): ResolvedProvider => ({
+    key,
+    id: `mod.sandbox.${key}`,
+    manifest: {} as ResolvedProvider['manifest'],
+    modulePath: `/plugins/sandbox/providers/${key}.js`,
+  })
+  const owning = { ...plugin, providers: [provider('cloud')] }
+  const sealed = 'NEXUSENC1:c2VhbGVk'
+  const keys = (providers: Record<string, { apiKey?: string; modOwner?: string }>) => ({ ...scope(), providers })
+  const stdio = (env: Record<string, string>): PluginMcpServer => ({ kind: 'native', config: { transport: 'stdio', command: 'run', env } })
+  const name = `${pluginSecretPrefix('sandbox@market')}provider/cloud`
+
+  it('copies the sealed key of a provider the plugin owns into its own process-only secret', () => {
+    const result = resolvePluginMcpServer(owning, 'srv', stdio({ KEY: '${provider_key.cloud}' }), keys({
+      'mod.sandbox.cloud': { apiKey: sealed, modOwner: 'sandbox@market' },
+    }))
+    expect(result).toEqual({
+      ok: true,
+      kind: 'native',
+      config: { transport: 'stdio', command: 'run', env: { KEY: `{{secret:${name}}}` } },
+      secrets: [{ name, value: sealed, processEnv: true }],
+    })
+  })
+
+  it('gives an absent or empty provider key as empty text and stores nothing', () => {
+    const entries: Array<Record<string, { apiKey?: string; modOwner?: string }>> = [
+      {},
+      { 'mod.sandbox.cloud': { modOwner: 'sandbox@market' } },
+      { 'mod.sandbox.cloud': { apiKey: '', modOwner: 'sandbox@market' } },
+    ]
+    for (const providers of entries) {
+      expect(resolvePluginMcpServer(owning, 'srv', stdio({ KEY: '${provider_key.cloud}' }), keys(providers)))
+        .toMatchObject({ ok: true, config: { env: { KEY: '' } }, secrets: [] })
+    }
+    expect(resolvePluginMcpServer(owning, 'srv', stdio({ KEY: '${provider_key.cloud}' }), scope()))
+      .toMatchObject({ ok: true, config: { env: { KEY: '' } }, secrets: [] })
+  })
+
+  it('refuses a built-in provider or a key the plugin declares no provider for', () => {
+    const stored = keys({
+      openrouter: { apiKey: sealed },
+      'mod.sandbox.cloud': { apiKey: sealed, modOwner: 'sandbox@market' },
+    })
+    for (const key of ['openrouter', 'mod.sandbox.cloud', 'other']) {
+      expect(resolvePluginMcpServer(owning, 'srv', stdio({ KEY: `\${provider_key.${key}}` }), stored))
+        .toEqual({ ok: false, reason: `\${provider_key.${key}} names no provider this plugin declares` })
+    }
+    // A plugin with no providers of its own reaches none.
+    expect(resolvePluginMcpServer(plugin, 'srv', stdio({ KEY: '${provider_key.cloud}' }), stored).ok).toBe(false)
+  })
+
+  it("never reaches another plugin's provider of the same key", () => {
+    const result = resolvePluginMcpServer(owning, 'srv', stdio({ KEY: '${provider_key.cloud}' }), keys({
+      'mod.other.cloud': { apiKey: sealed, modOwner: 'other@market' },
+    }))
+    expect(result).toMatchObject({ ok: true, config: { env: { KEY: '' } }, secrets: [] })
+  })
+
+  it("refuses a stored key recorded as another install's, or as no install's", () => {
+    for (const modOwner of ['sandbox@elsewhere', 'sandbox@inline', undefined]) {
+      const result = resolvePluginMcpServer(owning, 'srv', stdio({ KEY: '${provider_key.cloud}' }), keys({
+        'mod.sandbox.cloud': { apiKey: sealed, ...(modOwner ? { modOwner } : {}) },
+      }))
+      expect(result).toEqual({ ok: false, reason: "the key stored for provider mod.sandbox.cloud is not recorded as this plugin's" })
+    }
+  })
+
+  it('refuses the key anywhere but a stdio env value', () => {
+    const stored = keys({ 'mod.sandbox.cloud': { apiKey: sealed, modOwner: 'sandbox@market' } })
+    const reason = "${provider_key.cloud} can stand only in a stdio server's env value"
+    const inArgs = resolvePluginMcpServer(owning, 'srv', { kind: 'native', config: { transport: 'stdio', command: 'run', args: ['${provider_key.cloud}'] } }, stored)
+    expect(inArgs).toEqual({ ok: false, reason })
+    const inHeader = resolvePluginMcpServer(owning, 'srv', { kind: 'browser', config: { type: 'http', url: 'https://a.example', headers: { A: 'Bearer ${provider_key.cloud}' } } }, stored)
+    expect(inHeader).toEqual({ ok: false, reason })
+    const inUrl = resolvePluginMcpServer(owning, 'srv', { kind: 'browser', config: { type: 'http', url: 'https://a.example/?k=${provider_key.cloud}' } }, stored)
+    expect(inUrl).toEqual({ ok: false, reason })
+  })
+
+  it("stands beside the plugin's own options in one server", () => {
+    const result = resolvePluginMcpServer(owning, 'srv', stdio({ KEY: '${provider_key.cloud}', PROJECT: '${user_config.project}' }), keys({
+      'mod.sandbox.cloud': { apiKey: sealed, modOwner: 'sandbox@market' },
+    }))
+    expect(result).toMatchObject({ ok: true, config: { env: { KEY: `{{secret:${name}}}`, PROJECT: 'p-1' } }, secrets: [{ name }] })
   })
 })
 

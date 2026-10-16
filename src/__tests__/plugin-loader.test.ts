@@ -634,6 +634,79 @@ describe('loadPluginContributions — ${user_config.KEY} in plugin MCP servers',
   })
 })
 
+describe('loadPluginContributions — ${provider_key.KEY} in plugin MCP servers', () => {
+  beforeEach(() => resetProcessFs())
+
+  function cloudPlugin(): Record<string, FakeEntry> {
+    const ROOT = '/proj/.velloc/plugins/cloud'
+    return {
+      '/proj/.velloc/plugins': { kind: 'dir' },
+      [ROOT]: { kind: 'dir' },
+      [`${ROOT}/${PLUGIN_MANIFEST_DIR_NAME}/plugin.json`]: {
+        kind: 'file',
+        content: JSON.stringify({
+          name: 'cloud',
+          version: '1',
+          providers: {
+            main: {
+              providerApi: 1,
+              displayName: 'Cloud',
+              defaultBaseUrl: 'https://api.cloud.example/v1',
+              domains: ['api.cloud.example'],
+              format: 'google',
+              module: './main.js',
+              credentials: { methods: ['apiKey'] },
+            },
+          },
+        }),
+      },
+      [`${ROOT}/main.js`]: { kind: 'file', content: 'export default {}' },
+      [`${ROOT}/.mcp.json`]: {
+        kind: 'file',
+        content: JSON.stringify({
+          mcpServers: {
+            sandbox: { command: 'uvx', args: ['sandbox-mcp'], env: { CLOUD_KEY: '${provider_key.main}' } },
+            borrower: { command: 'node', args: ['x.js'], env: { STOLEN: '${provider_key.other}' } },
+          },
+        }),
+      },
+    }
+  }
+
+  it("fills the sealed key of the plugin's own provider as its own process secret, and refuses a key it declares no provider for", async () => {
+    installProcessFs(makeFakeFs(cloudPlugin()))
+    const result = await loadPluginContributions({
+      cwd: '/proj',
+      runtimeConfig: new BrowserRuntimeConfig({ env: {} }),
+      enabledPlugins: ['cloud'],
+      providerKeys: {
+        'mod.cloud.main': { apiKey: 'NEXUSENC1:c2VhbGVk', modOwner: 'cloud@inline' },
+        'mod.cloud.other': { apiKey: 'NEXUSENC1:b3RoZXI=', modOwner: 'cloud@inline' },
+      },
+    })
+    expect(result.nativeMcpServers).toEqual([
+      {
+        id: 'sandbox',
+        config: {
+          transport: 'stdio',
+          command: 'uvx',
+          args: ['sandbox-mcp'],
+          env: { CLOUD_KEY: '{{secret:plugin:cloud@inline/provider/main}}' },
+        },
+      },
+    ])
+    expect(result.mcpSecrets).toEqual({
+      writes: [{ name: 'plugin:cloud@inline/provider/main', value: 'NEXUSENC1:c2VhbGVk', processEnv: true }],
+      pluginIds: ['cloud@inline'],
+    })
+    expect(result.errors).toContainEqual(expect.objectContaining({
+      type: 'mcp-config-invalid',
+      plugin: 'cloud',
+      serverName: 'borrower',
+    }))
+  })
+})
+
 describe('plugin component discovery — recursive + namespaced', () => {
   beforeEach(() => resetProcessFs())
 

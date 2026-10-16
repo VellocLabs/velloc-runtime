@@ -11,6 +11,7 @@ import {
   resetModProviderDefinitions,
 } from '../config/nexusModelConfig/providers'
 import type { ProviderDefinition } from '../config/nexusModelConfig/providerDefinition'
+import { getPluginProviderKeys } from '../pluginHost/pluginConfigs'
 
 /**
  * A provider mod's plugin options over the `providers` bridge: the page reads
@@ -189,5 +190,66 @@ describe('providers.upsert keeps a mod entry\'s fields on disk', () => {
     await expect(
       providersHandlers.upsert({ id: 'mod.acme.main', config: { credentialMode: 'none' } as never }, { homeDir: HOME, fs }),
     ).rejects.toThrow(/credentialMode/)
+  })
+})
+
+describe("a provider mod's stored key reaches its plugin's MCP servers on the next plugin load", () => {
+  const encryptSecret = async (value: string) => `NEXUSENC1:${value}`
+
+  it('reloads the plugins when a mod provider key is saved, replaced or cleared, not on other edits', async () => {
+    const { fs } = makeMemoryFs()
+    const reloadPluginsOnAllSessions = vi.fn()
+    const ctx = { homeDir: HOME, fs, encryptSecret, reloadPluginsOnAllSessions }
+    await providersHandlers.upsert({ id: 'mod.acme.main', config: { source: 'mod', apiKey: 'k-1' } }, ctx)
+    expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(1)
+    await providersHandlers.upsert({ id: 'mod.acme.main', config: { account: 'zed' } }, ctx)
+    await providersHandlers.upsert({ id: 'mod.acme.main', config: { apiKey: 'k-1' } }, ctx)
+    expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(1)
+    await providersHandlers.upsert({ id: 'mod.acme.main', config: { apiKey: 'k-2' } }, ctx)
+    expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(2)
+    await providersHandlers.upsert({ id: 'mod.acme.main', config: { apiKey: '' } }, ctx)
+    expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(3)
+  })
+
+  it('reloads the plugins when a mod provider holding a key is removed', async () => {
+    const { fs } = makeMemoryFs()
+    const reloadPluginsOnAllSessions = vi.fn()
+    const ctx = { homeDir: HOME, fs, encryptSecret, reloadPluginsOnAllSessions }
+    await providersHandlers.upsert({ id: 'mod.acme.keyless', config: { source: 'mod' } }, ctx)
+    await providersHandlers.remove({ id: 'mod.acme.keyless' }, ctx)
+    expect(reloadPluginsOnAllSessions).not.toHaveBeenCalled()
+    await providersHandlers.upsert({ id: 'mod.acme.main', config: { source: 'mod', apiKey: 'k-1' } }, ctx)
+    await providersHandlers.remove({ id: 'mod.acme.main' }, ctx)
+    expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves the plugins alone when a built-in provider key changes', async () => {
+    const { fs } = makeMemoryFs()
+    const reloadPluginsOnAllSessions = vi.fn()
+    const ctx = { homeDir: HOME, fs, encryptSecret, reloadPluginsOnAllSessions }
+    await providersHandlers.upsert({ id: 'openrouter', config: { apiKey: 'k-1' } }, ctx)
+    await providersHandlers.remove({ id: 'openrouter' }, ctx)
+    expect(reloadPluginsOnAllSessions).not.toHaveBeenCalled()
+  })
+})
+
+describe('getPluginProviderKeys', () => {
+  it("gives each provider mod's sealed key and owner, and nothing of a built-in provider", async () => {
+    const { fs } = makeMemoryFs({
+      [SETTINGS_PATH]: JSON.stringify({
+        version: 1,
+        providers: {
+          configs: {
+            openrouter: { apiKey: 'NEXUSENC1:b3Blbg==' },
+            'mod.acme.main': { apiKey: 'NEXUSENC1:YWNtZQ==', modOwner: PLUGIN, account: 'zed', baseUrl: 'https://a.example' },
+            'mod.acme.keyless': { source: 'mod', modOwner: PLUGIN },
+          },
+        },
+      }),
+    })
+    expect(await getPluginProviderKeys({ homeDir: HOME }, fs)).toEqual({
+      'mod.acme.main': { apiKey: 'NEXUSENC1:YWNtZQ==', modOwner: PLUGIN },
+      'mod.acme.keyless': { modOwner: PLUGIN },
+    })
   })
 })

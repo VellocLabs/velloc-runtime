@@ -638,9 +638,21 @@ export async function createBrowserRuntime(
       return {}
     }
   }
-  // The options as the plugins' MCP servers were resolved with them
-  // (`${user_config.KEY}`), for `$.mcp.connect` to resolve them alike.
+  // The keys stored for the plugins' own providers (`${provider_key.KEY}`),
+  // read alongside the options.
+  const readProviderKeys = async (): Promise<Record<string, { apiKey?: string; modOwner?: string }>> => {
+    try {
+      const { getPluginProviderKeys } = await import('../../pluginHost/pluginConfigs')
+      return await getPluginProviderKeys({ homeDir: settingsHome() }, installedFs)
+    } catch (e) {
+      console.warn(`[plugins] provider keys skipped: ${e instanceof Error ? e.message : String(e)}`)
+      return {}
+    }
+  }
+  // The options and provider keys as the plugins' MCP servers were resolved
+  // with them, for `$.mcp.connect` to resolve them alike.
   let mcpPluginConfigs = await readPluginConfigs()
+  let mcpProviderKeys = await readProviderKeys()
   // A sensitive option reaches a server as a stored secret: written before
   // the pool launches the servers, and again on every plugin reload.
   const storeMcpSecrets = async (contributions: typeof pluginContributions): Promise<void> => {
@@ -662,6 +674,7 @@ export async function createBrowserRuntime(
     installRegistry,
     enabledPluginIdentifiers,
     pluginConfigs: mcpPluginConfigs,
+    providerKeys: mcpProviderKeys,
     ...(options.locale !== undefined ? { locale: options.locale } : {}),
   })
   for (const pluginError of pluginContributions.errors) {
@@ -1277,6 +1290,7 @@ export async function createBrowserRuntime(
       )
     }
     mcpPluginConfigs = await readPluginConfigs()
+    mcpProviderKeys = await readProviderKeys()
     const reloadContributions = await loadPluginContributions({
       cwd: resolvedProjectRoot,
       fs: installedFs,
@@ -1286,6 +1300,7 @@ export async function createBrowserRuntime(
       installRegistry: reloadInstallRegistry,
       enabledPluginIdentifiers: reloadEnabledIds,
       pluginConfigs: mcpPluginConfigs,
+      providerKeys: mcpProviderKeys,
       ...(options.locale !== undefined ? { locale: options.locale } : {}),
     })
     for (const pluginError of reloadContributions.errors) {
@@ -1921,7 +1936,7 @@ ${teammateAddendum}`
                 manifestServer: (plugin, key) => {
                   const owner = modPlugins.find(candidate => candidate.name === plugin)
                   return owner
-                    ? pluginMcpServer(owner, key, { getEnv: name => runtimeConfig.getEnv(name), configs: mcpPluginConfigs })
+                    ? pluginMcpServer(owner, key, { getEnv: name => runtimeConfig.getEnv(name), configs: mcpPluginConfigs, providers: mcpProviderKeys })
                     : undefined
                 },
               }),

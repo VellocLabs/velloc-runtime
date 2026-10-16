@@ -17,7 +17,9 @@ export type SecretsBridgeActionMap = {
    *  store plaintext when the keystore is not ready; `TOO_MANY_SECRETS`
    *  past 512; INVALID_ARGS for a bad name / origin / value, a `processEnv`
    *  mark on a `provider:` name, or a missing origin without the mark.
-   *  Replacing a secret without `processEnv` clears the mark. */
+   *  Replacing a secret without `processEnv` clears the mark. A value
+   *  already sealed (`NEXUSENC1:`) is kept as it is, so a sealed provider
+   *  key can be stored without the guest ever opening it. */
   set: {
     payload: { name: BridgeSecretName; value: string; origin?: string; processEnv?: boolean }
     result: { ok: true }

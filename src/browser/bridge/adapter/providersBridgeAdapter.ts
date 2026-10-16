@@ -32,6 +32,7 @@ import type { ProviderModelFamilies } from '../../../models/drivers/modelFamilie
 import { sanitizeUserModels } from '../../../config/nexusModelConfig/userModels'
 import { getProviderDefinition, modProviderDefinitions } from '../../../config/nexusModelConfig/providers'
 import { declaredSecretNames } from '../../../config/nexusModelConfig/providerDefinition'
+import { isModProviderId } from '../../../mods/provider/providerManifest'
 import {
   entryForModelId,
   entryId,
@@ -254,8 +255,9 @@ export type ProvidersAdapterContext = {
   dismissRemovedNotice?: (id: string) => void
   /** Any provider's model ids as it lists them now (`fetchFreshModelIds`). */
   freshModelIds?: (id: string) => Promise<{ ok: true; ids: string[] } | { ok: false; error: string }>
-  /** Reload every session's plugins after a provider mod's options changed
-   *  (`WebUiBridgeContext.reloadPluginsOnAllSessions`), so its module loads
+  /** Reload every session's plugins after a provider mod's options or its
+   *  stored key changed (`WebUiBridgeContext.reloadPluginsOnAllSessions`), so
+   *  its module and its plugin's MCP servers (`${provider_key.KEY}`) load
    *  again with them. Absent: the values apply the next time it loads. */
   reloadPluginsOnAllSessions?: () => void
   /** Clock for the `verifiedAtMs` stamp; tests pin it. */
@@ -480,7 +482,9 @@ async function handleUpsert(
   const { configs: sealedIncoming } = derive
     ? { configs: {} as Record<string, NexusProviderConfig> }
     : await sealProviderApiKeys({ [payload.id]: rawIncoming }, ctx.encryptSecret)
+  let keyBefore: string | undefined
   const updated = await updateProvidersSettings(ctx.homeDir, ctx.fs, prev => {
+    keyBefore = prev?.configs?.[payload.id]?.apiKey
     const incoming = derive
       ? derive(prev?.configs?.[payload.id] ?? {})
       : sealedIncoming[payload.id]!
@@ -535,6 +539,9 @@ async function handleUpsert(
     activeProviderId,
     order: updated.providers?.order ?? [],
   })
+  if (isModProviderId(payload.id) && (keyBefore ?? '') !== (configs[payload.id]?.apiKey ?? '')) {
+    ctx.reloadPluginsOnAllSessions?.()
+  }
   return { ok: true, configs: uiConfigs, activeProviderId }
 }
 
@@ -548,6 +555,7 @@ async function handleRemove(
   // idempotent remove doesn't spam re-renders to every open tab.
   const { settings: current } = await readUserLayer(ctx.homeDir, ctx.fs)
   const currentConfigs = current.providers?.configs
+  const hadKey = !!currentConfigs?.[payload.id]?.apiKey
   const wasActive = current.providers?.activeProviderId === payload.id
   if (
     (!currentConfigs || !(payload.id in currentConfigs))
@@ -607,6 +615,7 @@ async function handleRemove(
     activeProviderId,
     order: updated.providers?.order ?? [],
   })
+  if (hadKey && isModProviderId(payload.id)) ctx.reloadPluginsOnAllSessions?.()
   return { ok: true, configs: uiConfigs, activeProviderId }
 }
 

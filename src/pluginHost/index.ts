@@ -11,7 +11,9 @@ import { PLUGIN_DESCRIPTION_KEY, readPluginLocaleText } from './pluginLocaleText
 import {
   resolvePluginMcpServer,
   type PluginConfigsMap,
+  type PluginMcpScope,
   type PluginMcpServer,
+  type PluginProviderKeysMap,
   type PluginSecretWrite,
 } from './pluginMcpUserConfig'
 import type { ActivePlugin, PluginLoadIssue } from './pluginModel'
@@ -84,6 +86,9 @@ export async function loadPluginContributions(params: {
   /** settings.json `pluginConfigs`: each plugin's options, for
    *  `${user_config.KEY}` in its MCP servers. Absent: defaults alone. */
   pluginConfigs?: PluginConfigsMap
+  /** settings.json `providers.configs`: the keys stored for the plugins' own
+   *  providers, for `${provider_key.KEY}` in their MCP servers. Absent: none. */
+  providerKeys?: PluginProviderKeysMap
 }): Promise<PluginContributions> {
   const { enabled: gathered, disabled, errors: gatheredErrors } = await gatherPlugins(params)
   const enabled = params.fs && params.locale ? await describeInLocale(gathered, params.fs, params.locale) : gathered
@@ -102,6 +107,7 @@ export async function loadPluginContributions(params: {
   const mcpScope = {
     getEnv: (varName: string) => params.runtimeConfig.getEnv(varName),
     ...(params.pluginConfigs ? { configs: params.pluginConfigs } : {}),
+    ...(params.providerKeys ? { providers: params.providerKeys } : {}),
   }
   const addServer = (plugin: ActivePlugin, name: string, server: PluginMcpServer) => {
     const resolved = resolvePluginMcpServer(plugin, name, server, mcpScope)
@@ -176,9 +182,9 @@ export async function loadPluginContributions(params: {
  * or lists one that cannot start (reported when the plugins loaded).
  */
 export function pluginMcpServer(
-  plugin: Pick<ActivePlugin, 'name' | 'path' | 'installIdentifier' | 'manifest' | 'mcpServers' | 'nativeMcpServers'>,
+  plugin: Pick<ActivePlugin, 'name' | 'path' | 'installIdentifier' | 'manifest' | 'providers' | 'mcpServers' | 'nativeMcpServers'>,
   key: string,
-  scope: { getEnv: (name: string) => string | undefined; configs?: PluginConfigsMap },
+  scope: PluginMcpScope,
 ):
   | { kind: 'browser'; entry: MCPServerConfigWithName }
   | { kind: 'native'; id: string; config: NexusMcpServerLaunchConfig }
