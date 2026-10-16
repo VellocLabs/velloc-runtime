@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   defaultSessionCardPrefs,
   moveShownSessionCard,
+  outputFileKind,
   sanitizeSessionCardPrefs,
   sessionChangeFigures,
   setSessionCardHidden,
@@ -101,12 +102,25 @@ describe('sessionChangeFigures', () => {
     expect(sessionChangeFigures(null)).toEqual({ plusLines: 0, minusLines: 0, createdFiles: [] })
   })
 
-  it('sums every turn and lists each created file once, oldest first', () => {
+  it('sums every turn and lists each created file once, newest first', () => {
     const history = [
-      turn(2, [['/w/b.ts', true, 3, 0], ['/w/a.ts', false, 1, 1]]),
       turn(1, [['/w/a.ts', true, 10, 0]]),
+      turn(2, [['/w/b.ts', true, 3, 0], ['/w/c.ts', true, 1, 0], ['/w/a.ts', false, 1, 1]]),
     ]
-    expect(sessionChangeFigures(history)).toEqual({ plusLines: 14, minusLines: 1, createdFiles: ['/w/a.ts', '/w/b.ts'] })
+    // Turn 2 before turn 1; within a turn the last written first.
+    expect(sessionChangeFigures(history)).toEqual({
+      plusLines: 15,
+      minusLines: 1,
+      createdFiles: ['/w/c.ts', '/w/b.ts', '/w/a.ts'],
+    })
+  })
+
+  it('a file created again in a later turn takes that turn\'s place', () => {
+    const history = [
+      turn(1, [['/w/a.ts', true, 1, 0], ['/w/b.ts', true, 1, 0]]),
+      turn(3, [['/w/a.ts', true, 1, 0]]),
+    ]
+    expect(sessionChangeFigures(history).createdFiles).toEqual(['/w/a.ts', '/w/b.ts'])
   })
 
   it('skips the whole-session row for lines, and takes created files from it when present', () => {
@@ -117,5 +131,27 @@ describe('sessionChangeFigures', () => {
     ]
     // `/w/a.ts` was created and then removed: the net row no longer names it.
     expect(sessionChangeFigures(history)).toEqual({ plusLines: 8, minusLines: 0, createdFiles: ['/w/b.ts'] })
+  })
+
+  it('keeps the net row\'s newest-first order, a file only it names last', () => {
+    const history = [
+      turn(0, [['/w/a.ts', true, 1, 0], ['/w/b.ts', true, 1, 0], ['/w/z.ts', true, 1, 0]]),
+      turn(1, [['/w/a.ts', true, 1, 0]]),
+      turn(2, [['/w/b.ts', true, 1, 0]]),
+    ]
+    expect(sessionChangeFigures(history).createdFiles).toEqual(['/w/b.ts', '/w/a.ts', '/w/z.ts'])
+  })
+})
+
+describe('outputFileKind', () => {
+  it('names code, images and notes by suffix; anything else is a plain file', () => {
+    expect(outputFileKind('/w/src/report.ts')).toBe('code')
+    expect(outputFileKind('C:\\w\\patch_render_test.py')).toBe('code')
+    expect(outputFileKind('/w/shot.PNG')).toBe('image')
+    expect(outputFileKind('/w/handoff.md')).toBe('note')
+    expect(outputFileKind('/w/msg.txt')).toBe('file')
+    expect(outputFileKind('/w/Makefile')).toBe('file')
+    expect(outputFileKind('/w/.env')).toBe('file')
+    expect(outputFileKind('/w.d/notes')).toBe('file')
   })
 })

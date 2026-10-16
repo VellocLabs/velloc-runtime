@@ -648,6 +648,8 @@ export const de: Messages = {
   'sessionCards.outputsOne': '1 Datei',
   'sessionCards.outputsMany': '{count} Dateien',
   'sessionCards.connectorsConnected': '{count} verbunden',
+  'sessionCards.showMore': 'Mehr anzeigen',
+  'sessionCards.showLess': 'Weniger anzeigen',
   'sessionCards.tasksRunning': '{count} laufen',
   'sessionCards.show': 'Anzeigen',
   'sessionCards.reset': 'Auf Standard zurücksetzen',

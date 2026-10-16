@@ -115,17 +115,50 @@ describe('SessionCardStack — information cards', () => {
     expect(screen.getByTestId('session-card-tasks-summary').textContent).toBe('3 running')
   })
 
-  it('Outputs counts the created files and unfolds them; a file opens in the side panel', () => {
+  it('Outputs is open from the start, newest first, an icon per kind; a file opens in the side panel', () => {
     const openFile = vi.fn()
     render(tree({ content: { openFile } }))
-    expect(screen.getByTestId('session-card-outputs-summary').textContent).toBe('2 files')
-    expect(screen.queryByTestId('session-card-outputs-list')).toBeNull()
-    fireEvent.click(screen.getByTestId('session-card-outputs-header'))
+    expect(screen.getByTestId('session-card-outputs-header').getAttribute('aria-expanded')).toBe('true')
+    // The count shows only while the card is folded.
+    expect(screen.getByTestId('session-card-outputs-summary').textContent).toBe('')
     const items = screen.getAllByTestId('session-card-output')
-    expect(items.map(item => item.textContent)).toEqual(['notes.md', 'report.ts'])
-    expect(items[1].getAttribute('title')).toBe('/w/src/report.ts')
-    fireEvent.click(items[1])
+    expect(items.map(item => item.textContent)).toEqual(['report.ts', 'notes.md'])
+    expect(items.map(item => item.querySelector('[data-kind]')?.getAttribute('data-kind'))).toEqual(['code', 'note'])
+    expect(screen.queryByTestId('session-card-outputs-more')).toBeNull()
+    fireEvent.click(items[0])
     expect(openFile).toHaveBeenCalledWith({ path: '/w/src/report.ts' })
+
+    fireEvent.click(screen.getByTestId('session-card-outputs-header'))
+    expect(screen.queryByTestId('session-card-outputs-list')).toBeNull()
+    expect(screen.getByTestId('session-card-outputs-summary').textContent).toBe('2 files')
+  })
+
+  it('a hovered file shows its full path in a tooltip', async () => {
+    render(tree({}))
+    const item = screen.getAllByTestId('session-card-output')[0]
+    expect(item.getAttribute('title')).toBeNull()
+    fireEvent.pointerMove(item, { pointerType: 'mouse' })
+    fireEvent.focus(item)
+    await waitFor(() => expect(screen.getAllByText('/w/src/report.ts').length).toBeGreaterThan(0))
+  })
+
+  it('Outputs lists five files, Show more lists all, Show less folds back', () => {
+    const files = Array.from({ length: 7 }, (_, i) => ({
+      filePath: `/w/f${i}.txt`,
+      fileWasCreated: true,
+      plusLines: 1,
+      minusLines: 0,
+    }))
+    render(tree({ history: [{ turnIndex: 1, promptPreview: '', stats: { touchedFiles: 7, plusLines: 7, minusLines: 0 }, files }] }))
+    const names = () => screen.getAllByTestId('session-card-output').map(item => item.textContent)
+    expect(names()).toEqual(['f6.txt', 'f5.txt', 'f4.txt', 'f3.txt', 'f2.txt'])
+    const more = screen.getByTestId('session-card-outputs-more')
+    expect(more.textContent).toBe('Show more')
+    fireEvent.click(more)
+    expect(names()).toHaveLength(7)
+    expect(screen.getByTestId('session-card-outputs-more').textContent).toBe('Show less')
+    fireEvent.click(screen.getByTestId('session-card-outputs-more'))
+    expect(names()).toHaveLength(5)
   })
 
   it('Changes shows the session lines and opens the Diff view', () => {

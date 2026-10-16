@@ -3,13 +3,18 @@ import { ContextMenu as ContextMenuPrimitive } from "radix-ui";
 import {
   CheckIcon,
   ChevronRightIcon,
-  FileTextIcon,
+  CodeXmlIcon,
+  FileIcon,
   GripVerticalIcon,
   PlugIcon,
+  ImageIcon,
+  StickyNoteIcon,
   XIcon,
+  type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { baseName } from "@/utils/paths";
 import type { TurnDiffMeta } from "@/utils/turnDiffs";
 import { useT, type TranslateFn } from "@/browser/webview/i18n";
@@ -17,9 +22,12 @@ import type { MessageKey } from "@/browser/webview/i18n/messages/en";
 import {
   defaultSessionCardPrefs,
   moveShownSessionCard,
+  outputFileKind,
+  OUTPUTS_FOLDED_LIMIT,
   sessionChangeFigures,
   setSessionCardHidden,
   SESSION_CARD_IDS,
+  type OutputFileKind,
   type SessionCardId,
   type SessionCardPrefs,
 } from "@/browser/webview/layout/sessionCards";
@@ -45,6 +53,13 @@ import { ModDockedPane } from "./mod-render";
 /** The popover form, for this thread: open, and how it closes itself. */
 export type SessionCardsPopover = { open: boolean; onClose: () => void };
 export const SessionCardsPopoverContext = React.createContext<SessionCardsPopover | null>(null);
+
+const OUTPUT_ICON: Record<OutputFileKind, LucideIcon> = {
+  code: CodeXmlIcon,
+  image: ImageIcon,
+  note: StickyNoteIcon,
+  file: FileIcon,
+};
 
 const CARD_LABEL_KEY: Record<SessionCardId, MessageKey> = {
   outputs: "sessionCards.outputs",
@@ -138,13 +153,14 @@ function CardStack({
   const { openFile, openDiff } = useRightPanelContent();
   const { openTasksDrawer, runningTaskCount } = useBackgroundTasksContext();
   const [prefs, writePrefs] = useSessionCardPrefs();
-  const [outputsOpen, setOutputsOpen] = React.useState(false);
   const [connectorsOpen, setConnectorsOpen] = React.useState(false);
   const servers = useSessionConnectors();
   const connected = React.useMemo(
     () => servers.filter((server) => server.status === "connected").map((server) => server.name),
     [servers],
   );
+  const [outputsOpen, setOutputsOpen] = React.useState(true);
+  const [outputsAll, setOutputsAll] = React.useState(false);
   const figures = React.useMemo(() => sessionChangeFigures(history), [history]);
   const runningTasks = runningTaskCount ?? 0;
 
@@ -165,7 +181,9 @@ function CardStack({
     const label = t(CARD_LABEL_KEY[id]);
     const handle = drag.handleProps(id, label, t);
     if (id === "outputs") {
-      const count = figures.createdFiles.length;
+      const files = figures.createdFiles;
+      const count = files.length;
+      const listed = outputsAll ? files : files.slice(0, OUTPUTS_FOLDED_LIMIT);
       return (
         <InfoCard
           id={id}
@@ -174,26 +192,56 @@ function CardStack({
           handle={handle}
           expanded={outputsOpen}
           onActivate={() => setOutputsOpen((open) => !open)}
-          summary={count === 1 ? t("sessionCards.outputsOne") : t("sessionCards.outputsMany", { count })}
+          summary={
+            outputsOpen ? null : count === 1 ? t("sessionCards.outputsOne") : t("sessionCards.outputsMany", { count })
+          }
         >
           {outputsOpen ? (
-            <ul className="mt-1 flex flex-col" data-testid="session-card-outputs-list">
-              {figures.createdFiles.map((path) => (
-                <li key={path}>
-                  <button
-                    type="button"
-                    title={path}
-                    disabled={!openFile}
-                    data-testid="session-card-output"
-                    onClick={() => openFile?.({ path })}
-                    className="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent"
-                  >
-                    <FileTextIcon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{baseName(path)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <TooltipProvider delayDuration={400}>
+              <ul className="mt-1 flex flex-col" data-testid="session-card-outputs-list">
+                {listed.map((path) => {
+                  const Icon = OUTPUT_ICON[outputFileKind(path)];
+                  return (
+                    <li key={path}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            disabled={!openFile}
+                            data-testid="session-card-output"
+                            data-path={path}
+                            onClick={() => openFile?.({ path })}
+                            className="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent"
+                          >
+                            <Icon
+                              aria-hidden
+                              data-kind={outputFileKind(path)}
+                              strokeWidth={1.5}
+                              className="size-4 shrink-0 text-muted-foreground"
+                            />
+                            <span className="truncate">{baseName(path)}</span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="left" className="max-w-96 break-all font-mono">
+                          {path}
+                        </TooltipContent>
+                      </Tooltip>
+                    </li>
+                  );
+                })}
+              </ul>
+              {count > OUTPUTS_FOLDED_LIMIT ? (
+                <button
+                  type="button"
+                  data-testid="session-card-outputs-more"
+                  aria-expanded={outputsAll}
+                  onClick={() => setOutputsAll((all) => !all)}
+                  className="mt-0.5 flex h-8 w-full items-center rounded-lg px-1 text-start text-[13px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {outputsAll ? t("sessionCards.showLess") : t("sessionCards.showMore")}
+                </button>
+              ) : null}
+            </TooltipProvider>
           ) : null}
         </InfoCard>
       );

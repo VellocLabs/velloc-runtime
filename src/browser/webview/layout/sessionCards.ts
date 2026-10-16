@@ -93,15 +93,16 @@ export function moveShownSessionCard(
 export type SessionChangeFigures = {
   plusLines: number
   minusLines: number
-  /** Files the session created, oldest first, each once. */
+  /** Files the session created, newest first, each once. */
   createdFiles: string[]
 }
 
 /**
  * Lines are the sum of every turn (the whole-session row, turn 0, is an
  * aggregate and is skipped), matching the composer's session diff chip.
- * Created files come from turn 0 when the history has one (the net result),
- * else from every turn.
+ * Created files are ordered by the latest turn that created them, the last
+ * written first within a turn. When the history has turn 0 (the net result)
+ * only the files it still lists as created are kept.
  */
 export function sessionChangeFigures(history: readonly TurnDiffMeta[] | null | undefined): SessionChangeFigures {
   const figures: SessionChangeFigures = { plusLines: 0, minusLines: 0, createdFiles: [] }
@@ -112,16 +113,51 @@ export function sessionChangeFigures(history: readonly TurnDiffMeta[] | null | u
     figures.plusLines += turn.stats.plusLines
     figures.minusLines += turn.stats.minusLines
   }
+  const newestFirst: string[] = []
   const seen = new Set<string>()
-  const ordered = [...turns].sort((a, b) => a.turnIndex - b.turnIndex)
-  for (const turn of total ? [total] : ordered) {
-    for (const file of turn.files) {
+  for (const turn of [...turns].sort((a, b) => b.turnIndex - a.turnIndex)) {
+    for (const file of [...turn.files].reverse()) {
       if (!file.fileWasCreated || seen.has(file.filePath)) continue
       seen.add(file.filePath)
-      figures.createdFiles.push(file.filePath)
+      newestFirst.push(file.filePath)
     }
   }
+  if (!total) {
+    figures.createdFiles = newestFirst
+    return figures
+  }
+  const net = new Set(total.files.filter(file => file.fileWasCreated).map(file => file.filePath))
+  figures.createdFiles = newestFirst.filter(path => net.has(path))
+  for (const path of net) {
+    if (!seen.has(path)) figures.createdFiles.push(path)
+  }
   return figures
+}
+
+/** How many created files the Outputs card lists before Show more. */
+export const OUTPUTS_FOLDED_LIMIT = 5
+
+export type OutputFileKind = 'code' | 'image' | 'note' | 'file'
+
+const IMAGE_SUFFIXES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif'])
+const NOTE_SUFFIXES = new Set(['md', 'mdx', 'markdown', 'rst'])
+const CODE_SUFFIXES = new Set([
+  'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'rb', 'go', 'rs', 'java', 'kt', 'kts', 'swift',
+  'c', 'cc', 'cpp', 'cxx', 'h', 'hh', 'hpp', 'cs', 'm', 'mm', 'php', 'lua', 'dart', 'scala',
+  'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd', 'sql', 'html', 'htm', 'css', 'scss', 'less',
+  'vue', 'svelte', 'json', 'jsonc', 'yaml', 'yml', 'toml', 'xml', 'gn', 'gni', 'mojom', 'proto',
+])
+
+/** The icon kind for a file by its suffix; anything unknown is a plain file. */
+export function outputFileKind(path: string): OutputFileKind {
+  const name = path.split(/[\\/]/).pop() ?? ''
+  const dot = name.lastIndexOf('.')
+  if (dot <= 0) return 'file'
+  const suffix = name.slice(dot + 1).toLowerCase()
+  if (IMAGE_SUFFIXES.has(suffix)) return 'image'
+  if (NOTE_SUFFIXES.has(suffix)) return 'note'
+  if (CODE_SUFFIXES.has(suffix)) return 'code'
+  return 'file'
 }
 
 /** The prefs with the stack toggle set; the same object when unchanged. */

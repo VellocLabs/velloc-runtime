@@ -651,6 +651,8 @@ export const fr: Messages = {
   'sessionCards.outputsOne': '1 fichier',
   'sessionCards.outputsMany': '{count} fichiers',
   'sessionCards.connectorsConnected': '{count} connectés',
+  'sessionCards.showMore': 'Afficher plus',
+  'sessionCards.showLess': 'Afficher moins',
   'sessionCards.tasksRunning': '{count} en cours',
   'sessionCards.show': 'Afficher',
   'sessionCards.reset': 'Rétablir les valeurs par défaut',

@@ -651,6 +651,8 @@ export const es: Messages = {
   'sessionCards.outputsOne': '1 archivo',
   'sessionCards.outputsMany': '{count} archivos',
   'sessionCards.connectorsConnected': '{count} conectados',
+  'sessionCards.showMore': 'Ver más',
+  'sessionCards.showLess': 'Ver menos',
   'sessionCards.tasksRunning': '{count} en ejecución',
   'sessionCards.show': 'Mostrar',
   'sessionCards.reset': 'Restablecer los valores predeterminados',

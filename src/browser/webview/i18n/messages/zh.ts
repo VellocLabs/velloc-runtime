@@ -624,6 +624,8 @@ export const zh: Messages = {
   'sessionCards.outputsOne': '1 个文件',
   'sessionCards.outputsMany': '{count} 个文件',
   'sessionCards.connectorsConnected': '{count} 个已连接',
+  'sessionCards.showMore': '显示更多',
+  'sessionCards.showLess': '收起',
   'sessionCards.tasksRunning': '{count} 个运行中',
   'sessionCards.show': '显示',
   'sessionCards.reset': '恢复默认',

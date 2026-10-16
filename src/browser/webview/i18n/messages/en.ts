@@ -688,6 +688,8 @@ export const en = {
   'sessionCards.outputsOne': '1 file',
   'sessionCards.outputsMany': '{count} files',
   'sessionCards.connectorsConnected': '{count} connected',
+  'sessionCards.showMore': 'Show more',
+  'sessionCards.showLess': 'Show less',
   'sessionCards.tasksRunning': '{count} running',
   'sessionCards.show': 'Show',
   'sessionCards.reset': 'Reset to defaults',

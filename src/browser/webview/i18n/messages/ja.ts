@@ -636,6 +636,8 @@ export const ja: Messages = {
   'sessionCards.outputsOne': '1 ファイル',
   'sessionCards.outputsMany': '{count} ファイル',
   'sessionCards.connectorsConnected': '{count} 件接続済み',
+  'sessionCards.showMore': 'さらに表示',
+  'sessionCards.showLess': '折りたたむ',
   'sessionCards.tasksRunning': '{count} 件実行中',
   'sessionCards.show': '表示',
   'sessionCards.reset': 'デフォルトに戻す',

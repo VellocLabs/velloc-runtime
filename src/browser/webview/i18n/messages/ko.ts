@@ -632,6 +632,8 @@ export const ko: Messages = {
   'sessionCards.outputsOne': '파일 1개',
   'sessionCards.outputsMany': '파일 {count}개',
   'sessionCards.connectorsConnected': '{count}개 연결됨',
+  'sessionCards.showMore': '더 보기',
+  'sessionCards.showLess': '접기',
   'sessionCards.tasksRunning': '{count}개 실행 중',
   'sessionCards.show': '표시',
   'sessionCards.reset': '기본값으로 되돌리기',
