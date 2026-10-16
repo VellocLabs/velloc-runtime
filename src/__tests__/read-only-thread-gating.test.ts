@@ -54,6 +54,8 @@ const EXEMPT: ReadonlySet<string> = new Set([
   'onPendingQuestionsChange',
   // Which docked mod pane card is open: this page's view state, not a write.
   'onModDockFrontChange',
+  // Closing the session cards' popover: this page's view state, not a write.
+  'onSessionCardsPopoverClose',
 ])
 
 /** Prop names the JSX passes that LOOK mutating (turn-starting / state-writing). */

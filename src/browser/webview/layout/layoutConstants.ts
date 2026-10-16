@@ -53,15 +53,31 @@ export const RIGHT_PANEL_SPLIT_DEFAULT_RATIO = 0.65
 /** Max simultaneously pinned (split-visible) right-panel views. */
 export const RIGHT_PANEL_MAX_PINNED = 2
 
+/** Px width of the collapsed icon-only sidebar rail. */
+export const SIDEBAR_RAIL_WIDTH_PX = 56
+
 /**
- * Viewport width at/under which the shell force-collapses the sidebar to its
- * icon rail. The force-collapse is responsive-only and does NOT overwrite the
- * saved expand/collapse preference (see MultiSessionShell).
+ * The chat never draws narrower than this (the composer's controls need it).
+ * Every other region gives way first (`shellLayout`); only an area narrower
+ * than this clips the chat.
  */
-export const NARROW_MEDIA_QUERY = '(max-width: 899px)'
+export const CHAT_CONTENT_MIN_WIDTH_PX = CHAT_COLUMN_MIN_WIDTH_PX
+
+/**
+ * Drawn chat width the session card stack needs to dock at the transcript's
+ * top right: the transcript keeps the column it has in a bare minimum-width
+ * chat (its 24px start padding plus 312) beside the stack's 315px reserve.
+ */
+export const STACK_DOCK_MIN_CHAT_PX = 651
 
 /**
  * Fallback viewport width when `window.innerWidth` is unavailable (SSR / the
  * vitest node env). Mirrors the previous inline literal.
  */
 export const FALLBACK_VIEWPORT_WIDTH_PX = 1280
+
+/** Chat left uncovered beside the Right Panel's overlay, to press back into. */
+export const RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX = 48
+
+/** Drawn width of a column splitter (`SidebarSplitter`, `w-1`). */
+export const SPLITTER_WIDTH_PX = 4

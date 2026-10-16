@@ -3,6 +3,7 @@ import {
   AppWindowIcon,
   DownloadIcon,
   EllipsisVerticalIcon,
+  LayoutListIcon,
   Link2Icon,
   PanelLeftIcon,
   PanelRightIcon,
@@ -94,6 +95,14 @@ export type NexusTopBarProps = {
   rightPanelVisible?: boolean;
   /** Number of in-flight background sub-agents — drives the button badge. */
   backgroundTaskCount?: number;
+  /** The session cards' toggle: shows or hides the docked stack, or, where
+   *  the chat is too narrow to dock it, opens the cards as a popover.
+   *  Omitted → no button. */
+  onToggleSessionCards?: () => void;
+  /** The cards are on screen (docked, or the popover open): pressed state. */
+  sessionCardsOnScreen?: boolean;
+  /** The toggle opens a popover rather than docking (`aria-expanded`). */
+  sessionCardsAsPopover?: boolean;
   /** Import sources detected on this machine (Claude Code first). One
    *  brand-icon button per source, after the agent-zone toggle and before
    *  the search divider; nothing renders when empty or when
@@ -144,6 +153,9 @@ export function NexusTopBar({
   onDragRegionsChange,
   onToggleRightPanel,
   rightPanelVisible,
+  onToggleSessionCards,
+  sessionCardsOnScreen,
+  sessionCardsAsPopover,
   backgroundTaskCount,
   importSources,
   onOpenImport,
@@ -299,6 +311,33 @@ export function NexusTopBar({
               {rightPanelVisible
                 ? t("topbar.hideSidePanel")
                 : t("topbar.showSidePanel")}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+        {onToggleSessionCards ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                data-testid="topbar-session-cards"
+                aria-pressed={!sessionCardsAsPopover ? !!sessionCardsOnScreen : undefined}
+                aria-expanded={sessionCardsAsPopover ? !!sessionCardsOnScreen : undefined}
+                aria-label={
+                  sessionCardsOnScreen
+                    ? t("topbar.hideSessionCards")
+                    : t("topbar.showSessionCards")
+                }
+                onClick={onToggleSessionCards}
+              >
+                <LayoutListIcon className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {sessionCardsOnScreen
+                ? t("topbar.hideSessionCards")
+                : t("topbar.showSessionCards")}
             </TooltipContent>
           </Tooltip>
         ) : null}

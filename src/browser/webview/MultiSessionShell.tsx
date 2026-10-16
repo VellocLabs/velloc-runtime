@@ -29,9 +29,16 @@ import type { BrowserRuntimeClientState } from './BrowserRuntimeClient'
 import { AssistantUiThread } from './AssistantUiThread'
 import { Sidebar } from './Sidebar'
 import { SidebarSplitter } from './SidebarSplitter'
+import { SidebarPeek } from './SidebarPeek'
+import { resolveShellLayout } from './layout/shellLayout'
+import { useOverlayDismiss } from './layout/useOverlayDismiss'
+import { setSessionCardsShown } from './layout/sessionCards'
+import { useSessionCardPrefs } from '@/components/assistant-ui/session-card-stack'
 import {
   CHAT_COLUMN_MIN_WIDTH_PX,
-  NARROW_MEDIA_QUERY,
+  CHAT_CONTENT_MIN_WIDTH_PX,
+  RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX,
+  SPLITTER_WIDTH_PX,
   RIGHT_PANEL_COMPACT_MAX_WIDTH_PX,
   RIGHT_PANEL_COMPACT_MIN_WIDTH_PX,
   RIGHT_PANEL_MAX_WIDTH_PX,
@@ -365,13 +372,6 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = 'shift-sidebar-collapsed'
 // collapses hide the splitter entirely, so the saved width survives a
 // resize round-trip.
 const SIDEBAR_WIDTH_STORAGE_KEY = 'shift-sidebar-width'
-
-function isNarrowViewport(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-    return false
-  }
-  return window.matchMedia(NARROW_MEDIA_QUERY).matches
-}
 
 function readSavedSidebarCollapsed(): boolean {
   try {
@@ -882,32 +882,41 @@ export function MultiSessionShell({
     readonly NexusSessionSkillRow[]
   >(() => [])
 
-  // Sidebar collapse state. The Sidebar lives once at MultiSessionShell
-  // level (sibling to all mounted thread sections) so it doesn't render N
-  // times; the topbar's side-panel button toggles this shared state.
-  // Narrow viewports always render collapsed — the docked icon rail —
-  // regardless of the saved preference; the preference governs only
-  // wide-mode rendering.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (isNarrowViewport()) return true
-    return readSavedSidebarCollapsed()
-  })
-  // Whether the viewport is under the narrow breakpoint. A mod's pane docks in
-  // the Right Panel only on a wide one (F-25, a pane with `placement: 'dock'`); on a
-  // narrow one it stays inline above the prompt.
-  const [narrowViewport, setNarrowViewport] = useState(isNarrowViewport)
+  // The person's sidebar choice (expanded / icon rail), persisted. The drawn
+  // form comes from `resolveShellLayout`: a narrow session area hides the
+  // sidebar without touching this choice, and the topbar toggle then opens
+  // the peek drawer instead (F-9).
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSavedSidebarCollapsed)
+  const [sidebarPeek, setSidebarPeek] = useState(false)
+  const sidebarHiddenRef = useRef(false)
+  // The Right Panel when it is open but has no room beside the chat: drawn
+  // only on demand, over the chat (F-9). The person's open state is untouched.
+  const [rightPanelOverlayOpen, setRightPanelOverlayOpen] = useState(false)
+  const rightPanelOverlaidRef = useRef(false)
   const handleToggleSidebar = useCallback(() => {
+    if (sidebarHiddenRef.current) {
+      setSidebarPeek(open => !open)
+      return
+    }
     setSidebarCollapsed(prev => {
-      const next = !prev
-      // Only persist the change in wide mode. Narrow viewports never
-      // call this toggle (the trigger renders a popover, not a
-      // sidebar-toggle button), but guard defensively so a stray click
-      // in narrow mode can't overwrite the wide-mode preference.
-      if (!isNarrowViewport()) {
-        writeSavedSidebarCollapsed(next)
-      }
-      return next
+      writeSavedSidebarCollapsed(!prev)
+      return !prev
     })
+  }, [])
+  // The session area's width, which the whole shell layout follows. A hidden
+  // area (Settings open) reports 0 and is ignored: the last width stands.
+  const [sessionAreaWidth, setSessionAreaWidth] = useState(readViewportWidth)
+  const sessionAreaObserverRef = useRef<ResizeObserver | null>(null)
+  const sessionAreaRef = useCallback((node: HTMLDivElement | null) => {
+    sessionAreaObserverRef.current?.disconnect()
+    sessionAreaObserverRef.current = null
+    if (!node || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(entries => {
+      const width = Math.round(entries[entries.length - 1]?.contentRect.width ?? 0)
+      if (width > 0) setSessionAreaWidth(width)
+    })
+    observer.observe(node)
+    sessionAreaObserverRef.current = observer
   }, [])
 
   // Draggable sidebar width. Lives at shell scope so the splitter
@@ -1003,42 +1012,6 @@ export function MultiSessionShell({
   // Warming here means the click resolves from the module map instead.
   useEffect(() => prefetchColdUi(), [])
 
-  // React to viewport-class changes:
-  //   wide → narrow : force-collapse, do NOT persist (the wide-mode
-  //                    preference must survive a resize round-trip).
-  //   narrow → wide : restore the user's saved preference (default
-  //                    expanded). Without this, dragging the host
-  //                    window from wide → narrow → wide would leave
-  //                    the sidebar in whatever state it was forced
-  //                    into during the narrow leg.
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return
-    }
-    const mql = window.matchMedia(NARROW_MEDIA_QUERY)
-    const handler = (event: MediaQueryListEvent) => {
-      setNarrowViewport(event.matches)
-      if (event.matches) {
-        setSidebarCollapsed(true)
-      } else {
-        setSidebarCollapsed(readSavedSidebarCollapsed())
-      }
-    }
-    mql.addEventListener('change', handler)
-    // Sync NOW, not just on future changes: the webview can resize across
-    // the 900px boundary in the gap between the `useState` initializer
-    // sampling a mid-boot (transiently narrow) layout and this listener
-    // registering — that crossing is missed, and a wide window would be
-    // stuck with the collapsed rail until a manual toggle. Re-deriving at
-    // registration heals any pre-listener drift in either direction.
-    setNarrowViewport(mql.matches)
-    if (mql.matches) {
-      setSidebarCollapsed(true)
-    } else {
-      setSidebarCollapsed(readSavedSidebarCollapsed())
-    }
-    return () => mql.removeEventListener('change', handler)
-  }, [])
 
   useEffect(() => {
     setMountedSessionIds(prev => {
@@ -2290,6 +2263,10 @@ export function MultiSessionShell({
   // lands on the Tasks LIST, not a stale detail.
   const handleToggleRightPanel = useCallback(() => {
     setBackgroundTaskFocusSessionId(null)
+    if (rightPanelOverlaidRef.current) {
+      setRightPanelOverlayOpen(open => !open)
+      return
+    }
     updateRightPanel(s =>
       s.visible
         ? setRightPanelVisible(s, false)
@@ -2387,12 +2364,16 @@ export function MultiSessionShell({
   // the same pending plan, never clearing on null) live in
   // `createPlanAutoOpenGate` — see its doc.
   const planAutoOpenGateRef = useRef(createPlanAutoOpenGate())
+  // A view the agent brought forward on its own: it must not draw the
+  // overlay over the chat.
+  const rightPanelUnpromptedViewRef = useRef<string | null>(null)
   useEffect(() => {
     if (
       !planAutoOpenGateRef.current(activeSessionId, activePlanEntry?.toolCallId)
     ) {
       return
     }
+    rightPanelUnpromptedViewRef.current = 'plan'
     updateRightPanel(s => openView(s, 'plan'))
   }, [activePlanEntry, activeSessionId, updateRightPanel])
 
@@ -2461,10 +2442,101 @@ export function MultiSessionShell({
   const rightPanelMaxWidth = browserDocked
     ? RIGHT_PANEL_COMPACT_MAX_WIDTH_PX
     : RIGHT_PANEL_MAX_WIDTH_PX
-  const effectiveRightPanelWidth = clampRightPanelWidthForContext(
+  const storedRightPanelWidth = clampRightPanelWidthForContext(
     rightPanel.widthPx,
     browserDocked,
   )
+  // The drawn layout for this width (F-9): sidebar form, the panel's drawn
+  // width (the chat yields first), the chat's clip, and where the card stack goes.
+  const shellLayout = resolveShellLayout({
+    areaW: sessionAreaWidth,
+    sidebar: { collapsed: sidebarCollapsed, width: sidebarWidth },
+    panel: {
+      visible: rightPanel.visible,
+      maximized: rightPanelMaximized,
+      width: storedRightPanelWidth,
+      minWidth: rightPanelMinWidth,
+    },
+    browserW: webviewAreaCanShow ? webviewAreaWidth + SPLITTER_WIDTH_PX : 0,
+  })
+  const sidebarHidden = shellLayout.sidebar === 'hidden'
+  // The card stack docks only where it fits and the person has it shown;
+  // where it does not fit, the topbar toggle opens the cards as a popover.
+  const [sessionCardPrefs, writeSessionCardPrefs] = useSessionCardPrefs()
+  const sessionCardsFit = shellLayout.stack === 'docked'
+  const sessionCardsDocked = sessionCardsFit && sessionCardPrefs.shown
+  const [sessionCardsPopoverOpen, setSessionCardsPopoverOpen] = useState(false)
+  useEffect(() => {
+    setSessionCardsPopoverOpen(false)
+  }, [sessionCardsFit, activeSessionId])
+  const handleToggleSessionCards = useCallback(() => {
+    if (sessionCardsFit) {
+      writeSessionCardPrefs(setSessionCardsShown(sessionCardPrefs, !sessionCardPrefs.shown))
+    } else {
+      setSessionCardsPopoverOpen(open => !open)
+    }
+  }, [sessionCardsFit, sessionCardPrefs, writeSessionCardPrefs])
+  const closeSessionCardsPopover = useCallback(() => setSessionCardsPopoverOpen(false), [])
+  sidebarHiddenRef.current = sidebarHidden
+  const rightPanelOverlaid = shellLayout.panel === 'overlay'
+  rightPanelOverlaidRef.current = rightPanelOverlaid
+  const rightPanelOverlayShown = rightPanelOverlaid && rightPanelOverlayOpen
+  // Over the chat it leaves a strip of the chat to press back into.
+  const effectiveRightPanelWidth =
+    shellLayout.panel === 'maximized'
+      ? storedRightPanelWidth
+      : rightPanelOverlaid
+        ? Math.max(0, Math.min(storedRightPanelWidth, shellLayout.chatW - RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX))
+        : shellLayout.panelW
+  const closeRightPanelOverlay = useCallback(() => setRightPanelOverlayOpen(false), [])
+  const rightPanelOverlayDismiss = useOverlayDismiss(
+    rightPanelOverlayShown,
+    closeRightPanelOverlay,
+    '[data-testid="topbar-background-tasks"]',
+  )
+  useEffect(() => {
+    if (!rightPanelOverlaid) setRightPanelOverlayOpen(false)
+  }, [rightPanelOverlaid])
+  // While overlaid, a view the person opens (a file link, a card, the Tasks
+  // button) shows the overlay; a session switch hides it.
+  const rightPanelSeenRef = useRef({
+    sessionId: activeSessionId,
+    visible: rightPanel.visible,
+    view: rightPanel.activeView,
+  })
+  useEffect(() => {
+    const prev = rightPanelSeenRef.current
+    const unprompted = rightPanelUnpromptedViewRef.current
+    rightPanelSeenRef.current = {
+      sessionId: activeSessionId,
+      visible: rightPanel.visible,
+      view: rightPanel.activeView,
+    }
+    if (prev.sessionId !== activeSessionId) {
+      rightPanelUnpromptedViewRef.current = null
+      setRightPanelOverlayOpen(false)
+      return
+    }
+    const opened =
+      rightPanel.visible && (!prev.visible || prev.view !== rightPanel.activeView)
+    if (!opened) return
+    rightPanelUnpromptedViewRef.current = null
+    if (rightPanelOverlaid && unprompted !== rightPanel.activeView) {
+      setRightPanelOverlayOpen(true)
+    }
+  }, [activeSessionId, rightPanel.visible, rightPanel.activeView, rightPanelOverlaid])
+  // The splitter never drags the panel past the point that leaves the chat
+  // its content width.
+  const rightPanelDragMax = Math.max(
+    rightPanelMinWidth,
+    Math.min(
+      rightPanelMaxWidth,
+      shellLayout.panelW + shellLayout.chatW - CHAT_CONTENT_MIN_WIDTH_PX,
+    ),
+  )
+  useEffect(() => {
+    if (!sidebarHidden) setSidebarPeek(false)
+  }, [sidebarHidden])
 
   // P2 coexistence: the docked browser and the Right Panel now share the row, so
   // the browser's max shrinks by the panel's reserved width. The stored
@@ -2477,10 +2549,10 @@ export function MultiSessionShell({
     const maxForBrowser = Math.max(
       WEBVIEW_AREA_MIN_WIDTH_PX,
       webviewAreaMaxWidth() -
-        (rightPanel.visible ? effectiveRightPanelWidth : 0),
+        (rightPanel.visible ? storedRightPanelWidth : 0),
     )
     setWebviewAreaWidth((width) => (width > maxForBrowser ? maxForBrowser : width))
-  }, [webviewAreaCanShow, rightPanel.visible, effectiveRightPanelWidth])
+  }, [webviewAreaCanShow, rightPanel.visible, storedRightPanelWidth])
 
   // The model picker's `⋯` → "Edit…": Settings → Models, on that provider's
   // editor. `seq` makes a repeat request for the same provider land again;
@@ -2509,7 +2581,7 @@ export function MultiSessionShell({
   // card is open per session and reports it as the seat's `showing`; it reads
   // the ACTIVE session's mod UI for that (the same per-session stores the
   // thread reads).
-  const modPanesDocked = !narrowViewport
+  const modPanesDocked = sessionCardsDocked
   const shellModUi = useSessionModUi(runtimeConnection, activeSessionId, {
     canListMods: runtimeCapabilities.can('mods', 'list'),
     onOpenPluginSettings: handleOpenPluginSettings,
@@ -3712,7 +3784,7 @@ export function MultiSessionShell({
         modelPickerOpenToken={modelPickerOpenToken}
         onOpenSettings={handleOpenNexusSettings}
         onOpenProviderSettings={handleOpenProviderSettings}
-        sidebarCollapsed={sidebarCollapsed}
+        sidebarCollapsed={sidebarCollapsed || sidebarHidden}
         onToggleSidebar={handleToggleSidebar}
         searchSlot={
           transcriptSearch.enabled ? (
@@ -3735,7 +3807,10 @@ export function MultiSessionShell({
           })
         }}
         onToggleRightPanel={handleToggleRightPanel}
-        rightPanelVisible={rightPanel.visible}
+        rightPanelVisible={rightPanelOverlaid ? rightPanelOverlayShown : rightPanel.visible}
+        onToggleSessionCards={handleToggleSessionCards}
+        sessionCardsOnScreen={sessionCardsFit ? sessionCardPrefs.shown : sessionCardsPopoverOpen}
+        sessionCardsAsPopover={!sessionCardsFit}
         backgroundTaskCount={countRunning(activeSessionSubAgentRows)}
         importSources={topbarImportSources}
         onOpenImport={setImportDialogSource}
@@ -3825,8 +3900,10 @@ export function MultiSessionShell({
       // visibility is published as one flag, `SessionAreaVisibleContext`.
       <SessionAreaVisibleContext.Provider value={!settingsSection}>
       <div
+        ref={sessionAreaRef}
         data-testid="nexus-session-area"
-        className="flex min-h-0 w-full flex-1 overflow-hidden bg-background"
+        data-sidebar-form={shellLayout.sidebar}
+        className="relative flex min-h-0 w-full flex-1 overflow-hidden bg-background"
         // See the overlay note above: hidden — never unmounted — while settings
         // is open, so the mounted threads keep their pending-question and
         // attention state across an open→close.
@@ -3840,11 +3917,17 @@ export function MultiSessionShell({
           highlighting internally. Renders once per shell-render,
           regardless of how many thread trees are in the LRU.
         */}
+        <SidebarPeek
+          hidden={sidebarHidden}
+          open={sidebarPeek}
+          onOpenChange={setSidebarPeek}
+          activeSessionId={activeSessionId}
+        >
         <Sidebar
           title="Conversation"
           sessionId={activeSessionId}
           activeSessionId={sidebarActiveId}
-          collapsed={sidebarCollapsed}
+          collapsed={!sidebarHidden && shellLayout.sidebar === 'rail'}
           sessions={sessionItems}
           onNewThread={openNewSession}
           onLaunchThread={openNewSession}
@@ -3866,8 +3949,9 @@ export function MultiSessionShell({
           onCopyProjectPath={handleCopyProjectPath}
           onLaunchInProject={handleLaunchInProject}
         />
+        </SidebarPeek>
         {/* Splitter between the docked sidebar and the conversation; it draws the 1px divider. */}
-        {!sidebarCollapsed && (
+        {shellLayout.sidebar === 'expanded' && (
           <SidebarSplitter
             width={sidebarWidth}
             minWidth={SIDEBAR_MIN_WIDTH_PX}
@@ -3917,9 +4001,20 @@ export function MultiSessionShell({
                 // the thread mounted, so restoring is a paint toggle).
                 display:
                   isActive && !rightPanelMaximized ? 'flex' : 'none',
+                // Narrower than its content: the content keeps its width and
+                // is clipped at the panel's edge, never squeezed.
+                overflow: isActive && shellLayout.chatClipped ? 'clip' : undefined,
               }}
+              data-chat-clipped={(isActive && shellLayout.chatClipped) || undefined}
             >
-              <div className="flex h-full min-w-0 flex-1">
+              <div
+                className="flex h-full min-w-0 flex-1"
+                style={
+                  isActive && shellLayout.chatClipped
+                    ? { minWidth: CHAT_CONTENT_MIN_WIDTH_PX }
+                    : undefined
+                }
+              >
               <ThreadErrorBoundary sessionId={sessionId} t={t}>
                 <AssistantUiThread
                   state={state}
@@ -3969,6 +4064,8 @@ export function MultiSessionShell({
                   modPanesDocked={modPanesDocked}
                   modDockFront={modDockFronts.get(sessionId) ?? null}
                   onModDockFrontChange={handleModDockFrontChange}
+                  sessionCardsPopoverOpen={isActive && !sessionCardsFit && sessionCardsPopoverOpen}
+                  onSessionCardsPopoverClose={closeSessionCardsPopover}
                   runtimeConnection={runtimeConnection}
                   loadProviderMissingPrompt={handleLoadProviderMissingPrompt}
                   onAdoptDefaultSelection={handleAdoptDefaultSelection}
@@ -3989,11 +4086,11 @@ export function MultiSessionShell({
           <>
             {/* No width splitter while maximized — there is no neighbouring
                 conversation column to drag against. */}
-            {rightPanelMaximized ? null : (
+            {shellLayout.panel !== 'beside' ? null : (
             <SidebarSplitter
               width={effectiveRightPanelWidth}
               minWidth={rightPanelMinWidth}
-              maxWidth={rightPanelMaxWidth}
+              maxWidth={rightPanelDragMax}
               onResize={width =>
                 updateRightPanel(s => setRightPanelWidth(s, width))
               }
@@ -4001,6 +4098,26 @@ export function MultiSessionShell({
               ariaLabel={t('rightPanel.resizeAria')}
             />
             )}
+            {/* One wrapper in every form, so the panel never remounts
+                (unsaved file edits live in its mounted editors). */}
+            <div
+              data-testid="right-panel-seat"
+              data-panel-form={shellLayout.panel}
+              data-overlay-open={rightPanelOverlayShown || undefined}
+              className={
+                !rightPanelOverlaid
+                  ? 'contents'
+                  : rightPanelOverlayShown
+                    ? 'absolute inset-y-0 z-40 flex border-border border-s bg-background shadow-xl'
+                    : 'hidden'
+              }
+              style={
+                rightPanelOverlayShown
+                  ? { insetInlineEnd: webviewAreaCanShow ? webviewAreaWidth : 0 }
+                  : undefined
+              }
+              {...(rightPanelOverlaid ? rightPanelOverlayDismiss : null)}
+            >
             <RightPanelContentContext.Provider value={shellRightPanelContentValue}>
             <FilePathContext.Provider value={shellFilePathContextValue}>
             <Suspense fallback={null}>
@@ -4057,6 +4174,7 @@ export function MultiSessionShell({
             </Suspense>
             </FilePathContext.Provider>
             </RightPanelContentContext.Provider>
+            </div>
           </>
         ) : null}
         {/*
@@ -4075,7 +4193,7 @@ export function MultiSessionShell({
               maxWidth={Math.max(
                 WEBVIEW_AREA_MIN_WIDTH_PX,
                 webviewAreaMaxWidth() -
-                  (rightPanel.visible ? effectiveRightPanelWidth : 0),
+                  (rightPanel.visible ? storedRightPanelWidth : 0),
               )}
               onResize={handleWebviewAreaResize}
               onResizeStart={handleWebviewAreaResizeStart}

@@ -16,6 +16,8 @@ export type SessionCardId = (typeof SESSION_CARD_IDS)[number]
 export type SessionCardPrefs = {
   order: SessionCardId[]
   hidden: SessionCardId[]
+  /** The topbar toggle: whether the stack docks at the transcript's corner. */
+  shown: boolean
 }
 
 export function isSessionCardId(value: unknown): value is SessionCardId {
@@ -23,7 +25,7 @@ export function isSessionCardId(value: unknown): value is SessionCardId {
 }
 
 export function defaultSessionCardPrefs(): SessionCardPrefs {
-  return { order: [...SESSION_CARD_IDS], hidden: [] }
+  return { order: [...SESSION_CARD_IDS], hidden: [], shown: true }
 }
 
 /**
@@ -50,7 +52,7 @@ export function sanitizeSessionCardPrefs(raw: unknown): SessionCardPrefs {
       if (isSessionCardId(id) && !hidden.includes(id)) hidden.push(id)
     }
   }
-  return { order, hidden }
+  return { order, hidden, shown: obj.shown !== false }
 }
 
 export function setSessionCardHidden(
@@ -61,7 +63,7 @@ export function setSessionCardHidden(
   const isHidden = prefs.hidden.includes(id)
   if (isHidden === hidden) return prefs
   return {
-    order: prefs.order,
+    ...prefs,
     hidden: hidden ? [...prefs.hidden, id] : prefs.hidden.filter(each => each !== id),
   }
 }
@@ -84,7 +86,7 @@ export function moveShownSessionCard(
   const shownSet = new Set(shown)
   let next = 0
   const order = prefs.order.map(id => (shownSet.has(id) ? moved[next++] : id))
-  return { order, hidden: prefs.hidden }
+  return { ...prefs, order }
 }
 
 /** What the Outputs and Changes cards read from a session's change history. */
@@ -120,4 +122,9 @@ export function sessionChangeFigures(history: readonly TurnDiffMeta[] | null | u
     }
   }
   return figures
+}
+
+/** The prefs with the stack toggle set; the same object when unchanged. */
+export function setSessionCardsShown(prefs: SessionCardPrefs, shown: boolean): SessionCardPrefs {
+  return prefs.shown === shown ? prefs : { ...prefs, shown }
 }

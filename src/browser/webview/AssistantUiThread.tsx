@@ -1,4 +1,5 @@
 import { ModUiContext } from '../../components/assistant-ui/mod-ui-context'
+import { SessionCardsPopoverContext } from '../../components/assistant-ui/session-card-stack'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useCan } from './useCan'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
@@ -395,6 +396,10 @@ export type AssistantUiThreadProps = {
    *  and reports it as the seat's `showing`. */
   modDockFront?: { plugin: string; id: string } | null
   onModDockFrontChange?: (sessionId: string, front: { plugin: string; id: string } | null) => void
+  /** The session cards' popover (the stack does not dock): open for this
+   *  thread, and how it asks to close. */
+  sessionCardsPopoverOpen?: boolean
+  onSessionCardsPopoverClose?: () => void
   /** The page's runtime connection, for `mods/ui/<sessionId>` — the mods'
    *  status lines, notices and toasts (F-25). Absent on a mock host. */
   runtimeConnection?: () => Promise<RuntimeConnection>
@@ -596,6 +601,8 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   modPanesDocked,
   modDockFront,
   onModDockFrontChange,
+  sessionCardsPopoverOpen,
+  onSessionCardsPopoverClose,
   runtimeConnection,
   loadProviderMissingPrompt,
   onAdoptDefaultSelection,
@@ -648,6 +655,8 @@ export const AssistantUiThread = memo(function AssistantUiThread({
       modPanesDocked={modPanesDocked}
       modDockFront={modDockFront}
       onModDockFrontChange={onModDockFrontChange}
+      sessionCardsPopoverOpen={sessionCardsPopoverOpen}
+      onSessionCardsPopoverClose={onSessionCardsPopoverClose}
       runtimeConnection={runtimeConnection}
       loadProviderMissingPrompt={loadProviderMissingPrompt}
       onAdoptDefaultSelection={onAdoptDefaultSelection}
@@ -702,6 +711,8 @@ function InteractiveAssistantUiThread({
   modPanesDocked,
   modDockFront,
   onModDockFrontChange,
+  sessionCardsPopoverOpen,
+  onSessionCardsPopoverClose,
   runtimeConnection,
   loadProviderMissingPrompt,
   onAdoptDefaultSelection,
@@ -734,6 +745,10 @@ function InteractiveAssistantUiThread({
     dockFront: modDockFront,
     setDockFront: setModDockFront,
   })
+  const sessionCardsPopover = useMemo(
+    () => ({ open: !!sessionCardsPopoverOpen, onClose: onSessionCardsPopoverClose ?? (() => {}) }),
+    [sessionCardsPopoverOpen, onSessionCardsPopoverClose],
+  )
   const [headerError, setHeaderError] = useState<string | null>(null)
   // "Try again" on the ProviderApiErrorCard. When the failed turn is already
   // persisted (the normal case — the card's retryPrompt is derived from the
@@ -1967,6 +1982,7 @@ function InteractiveAssistantUiThread({
                     value={state.snapshot?.commandNames ?? []}
                   >
                   <ModUiContext.Provider value={modUi}>
+                  <SessionCardsPopoverContext.Provider value={sessionCardsPopover}>
                   <ComposerAttachmentPickerProvider
                     value={
                       // Only the real chromium host implements the native picker (`canPickProjectFolder`);
@@ -2015,6 +2031,7 @@ function InteractiveAssistantUiThread({
                       </ContinueConversationProvider>
                     )}
                   </ComposerAttachmentPickerProvider>
+                  </SessionCardsPopoverContext.Provider>
                   </ModUiContext.Provider>
                   </SlashCommandsProvider>
                   </PermissionAskContext.Provider>

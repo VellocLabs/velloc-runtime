@@ -35,9 +35,14 @@ import { ModDockedPane } from "./mod-render";
  * The session card stack (F-9) at the transcript's top right: information
  * cards (Outputs, Changes, Background tasks), each drawn only while it has
  * something to show, in the person's order and Show choices; then one card
- * per mod pane docked here (F-25), which keep their open order. Drawn only
- * where the page docks (a wide window).
+ * per mod pane docked here (F-25), which keep their open order. Docked only
+ * while the chat is wide enough; otherwise the information cards open as a
+ * popover from the topbar toggle, and mod panes draw inline.
  */
+
+/** The popover form, for this thread: open, and how it closes itself. */
+export type SessionCardsPopover = { open: boolean; onClose: () => void };
+export const SessionCardsPopoverContext = React.createContext<SessionCardsPopover | null>(null);
 
 const CARD_LABEL_KEY: Record<SessionCardId, MessageKey> = {
   outputs: "sessionCards.outputs",
@@ -49,7 +54,7 @@ const CARD_LABEL_KEY: Record<SessionCardId, MessageKey> = {
 // the others (another session's thread, mounted but hidden).
 const prefsListeners = new Set<(prefs: SessionCardPrefs) => void>();
 
-function useSessionCardPrefs(): [SessionCardPrefs, (next: SessionCardPrefs) => void] {
+export function useSessionCardPrefs(): [SessionCardPrefs, (next: SessionCardPrefs) => void] {
   const [prefs, setPrefs] = React.useState(loadSessionCardPrefs);
   React.useEffect(() => {
     prefsListeners.add(setPrefs);
@@ -78,8 +83,55 @@ const MENU_ROW_CLASS =
   "flex h-6 w-full cursor-default select-none items-center gap-2 rounded-md px-1.5 text-start text-[13px] outline-none data-[highlighted]:bg-muted";
 
 export function SessionCardStack({ history }: { history: TurnDiffMeta[] | null }) {
+  const popover = React.useContext(SessionCardsPopoverContext);
+  const { panesDocked } = useModUi();
+  if (panesDocked) return <CardStack history={history} placement="docked" />;
+  if (popover?.open) return <CardStack history={history} placement="popover" onClose={popover.onClose} />;
+  return null;
+}
+
+/** Card style in the popover: one card, the information cards in it divided by rules. */
+const FLAT_CARD_CLASS = "group/card flex flex-col p-2 text-foreground";
+
+function CardStack({
+  history,
+  placement,
+  onClose,
+}: {
+  history: TurnDiffMeta[] | null;
+  placement: "docked" | "popover";
+  onClose?: () => void;
+}) {
   const t = useT();
-  const { panes, panesDocked, dockFront, setDockFront, showPane, closePane } = useModUi();
+  const { panes: dockedPanes, dockFront, setDockFront, showPane, closePane } = useModUi();
+  const panes = placement === "docked" ? dockedPanes : [];
+  const flat = placement === "popover";
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  // Set by a press anywhere in the popover's React tree (its Show menu
+  // included) before the document listener reads it.
+  const pressInsideRef = React.useRef(false);
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
+  React.useEffect(() => {
+    if (placement !== "popover") return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) onCloseRef.current?.();
+    };
+    const onPress = (event: PointerEvent) => {
+      const inside = pressInsideRef.current;
+      pressInsideRef.current = false;
+      const target = event.target instanceof Element ? event.target : null;
+      // The topbar toggle closes it through its own click.
+      if (inside || target?.closest('[data-testid="topbar-session-cards"]')) return;
+      onCloseRef.current?.();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPress);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPress);
+    };
+  }, [placement]);
   const { openFile, openDiff } = useRightPanelContent();
   const { openTasksDrawer, runningTaskCount } = useBackgroundTasksContext();
   const [prefs, writePrefs] = useSessionCardPrefs();
@@ -97,8 +149,7 @@ export function SessionCardStack({ history }: { history: TurnDiffMeta[] | null }
     writePrefs(moveShownSessionCard(prefs, shown, from, to)),
   );
 
-  if (!panesDocked) return null;
-  if (shown.length === 0 && panes.length === 0) return null;
+  if (placement === "docked" && shown.length === 0 && panes.length === 0) return null;
 
   const renderCard = (id: SessionCardId): React.ReactNode => {
     const label = t(CARD_LABEL_KEY[id]);
@@ -108,6 +159,7 @@ export function SessionCardStack({ history }: { history: TurnDiffMeta[] | null }
       return (
         <InfoCard
           id={id}
+          flat={flat}
           label={label}
           handle={handle}
           expanded={outputsOpen}
@@ -140,6 +192,7 @@ export function SessionCardStack({ history }: { history: TurnDiffMeta[] | null }
       return (
         <InfoCard
           id={id}
+          flat={flat}
           label={label}
           handle={handle}
           onActivate={openDiff ? () => openDiff({ kind: "turnHistory" }) : undefined}
@@ -157,6 +210,7 @@ export function SessionCardStack({ history }: { history: TurnDiffMeta[] | null }
     return (
       <InfoCard
         id={id}
+        flat={flat}
         label={label}
         handle={handle}
         onActivate={openTasksDrawer ? () => openTasksDrawer() : undefined}
@@ -169,21 +223,33 @@ export function SessionCardStack({ history }: { history: TurnDiffMeta[] | null }
     <ContextMenuPrimitive.Root>
       <ContextMenuPrimitive.Trigger asChild>
         <div
+          ref={rootRef}
           role="region"
           aria-label={t("sessionCards.aria")}
-          data-slot="session-card-stack"
-          data-testid="session-card-stack"
-          className="pointer-events-auto flex min-h-0 flex-col gap-2.5 overflow-y-auto"
+          data-slot={flat ? "session-card-popover" : "session-card-stack"}
+          data-testid={flat ? "session-card-popover" : "session-card-stack"}
+          onPointerDownCapture={() => {
+            pressInsideRef.current = true;
+          }}
+          className={cn(
+            "pointer-events-auto flex min-h-0 flex-col overflow-y-auto",
+            flat ? "rounded-[10px] border border-border bg-background shadow-lg" : "gap-2.5",
+          )}
         >
           {drag.order.map((id) => (
             <div
               key={id}
               ref={drag.refOf(id)}
-              className={cn(drag.dragging === id && "opacity-60")}
+              className={cn(flat && "border-border not-first:border-t", drag.dragging === id && "opacity-60")}
             >
               {renderCard(id)}
             </div>
           ))}
+          {flat && drag.order.length === 0 ? (
+            <p data-testid="session-card-popover-empty" className="px-3 py-2.5 text-[12px] text-muted-foreground">
+              {t("sessionCards.empty")}
+            </p>
+          ) : null}
           {panes.map((pane) => (
             <ModDockCard
               key={`${pane.plugin}\u0000${pane.id}`}
@@ -247,6 +313,7 @@ type HandleProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { "data-testi
 
 function InfoCard({
   id,
+  flat,
   label,
   summary,
   handle,
@@ -256,6 +323,7 @@ function InfoCard({
   children,
 }: {
   id: SessionCardId;
+  flat?: boolean;
   label: string;
   summary: React.ReactNode;
   handle: HandleProps;
@@ -266,7 +334,7 @@ function InfoCard({
   children?: React.ReactNode;
 }) {
   return (
-    <section data-testid={`session-card-${id}`} className={CARD_CLASS}>
+    <section data-testid={`session-card-${id}`} className={flat ? FLAT_CARD_CLASS : CARD_CLASS}>
       <div className={HEADER_CLASS}>
         <button
           type="button"

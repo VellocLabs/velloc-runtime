@@ -6,6 +6,7 @@ import {
   sanitizeSessionCardPrefs,
   sessionChangeFigures,
   setSessionCardHidden,
+  setSessionCardsShown,
 } from '@/browser/webview/layout/sessionCards'
 import { defaultLayoutStorage, sanitizeLayoutStorage } from '@/browser/webview/layout/layoutSanitize'
 import type { TurnDiffMeta } from '@/utils/turnDiffs'
@@ -34,13 +35,13 @@ describe('sanitizeSessionCardPrefs', () => {
   it('defaults when nothing usable is stored', () => {
     expect(sanitizeSessionCardPrefs(undefined)).toEqual(defaultSessionCardPrefs())
     expect(sanitizeSessionCardPrefs('x')).toEqual(defaultSessionCardPrefs())
-    expect(defaultSessionCardPrefs()).toEqual({ order: ['outputs', 'changes', 'tasks'], hidden: [] })
+    expect(defaultSessionCardPrefs()).toEqual({ order: ['outputs', 'changes', 'tasks'], hidden: [], shown: true })
   })
 
   it('drops unknown ids and repeats, and puts a missing card back at its default place', () => {
     expect(
       sanitizeSessionCardPrefs({ order: ['tasks', 'bogus', 'tasks', 'outputs'], hidden: ['changes', 7, 'changes'] }),
-    ).toEqual({ order: ['tasks', 'changes', 'outputs'], hidden: ['changes'] })
+    ).toEqual({ order: ['tasks', 'changes', 'outputs'], hidden: ['changes'], shown: true })
     expect(sanitizeSessionCardPrefs({ order: ['changes'] }).order).toEqual(['outputs', 'changes', 'tasks'])
   })
 
@@ -49,7 +50,16 @@ describe('sanitizeSessionCardPrefs', () => {
     const old = { ...defaultLayoutStorage(), sessionCards: undefined }
     expect(sanitizeLayoutStorage(old).sessionCards).toEqual(defaultSessionCardPrefs())
     const stored = sanitizeLayoutStorage({ ...defaultLayoutStorage(), sessionCards: { order: ['tasks'], hidden: ['outputs'] } })
-    expect(stored.sessionCards).toEqual({ order: ['outputs', 'changes', 'tasks'], hidden: ['outputs'] })
+    expect(stored.sessionCards).toEqual({ order: ['outputs', 'changes', 'tasks'], hidden: ['outputs'], shown: true })
+  })
+
+  it('keeps the topbar toggle: only an explicit false hides the stack', () => {
+    expect(sanitizeSessionCardPrefs({ shown: false }).shown).toBe(false)
+    expect(sanitizeSessionCardPrefs({ shown: 'no' }).shown).toBe(true)
+    const off = setSessionCardsShown(defaultSessionCardPrefs(), false)
+    expect(off.shown).toBe(false)
+    expect(setSessionCardsShown(off, false)).toBe(off)
+    expect(setSessionCardHidden(off, 'tasks', true).shown).toBe(false)
   })
 })
 

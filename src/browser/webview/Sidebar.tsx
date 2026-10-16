@@ -36,6 +36,7 @@ import { buildPinnedFirstView } from './sessionPinning'
 import { AppUpdateBar } from './AppUpdateBar'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
 import { SESSION_PAGE_SIZE } from './sessionListPaging'
+import { SIDEBAR_RAIL_WIDTH_PX } from './layout/layoutConstants'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -128,8 +129,6 @@ function SessionSectionToggle({
   )
 }
 
-/** Px width of the collapsed icon-only rail (wide viewports). */
-const SIDEBAR_RAIL_WIDTH_PX = 56
 
 /** Project-node affordances, threaded from `MultiSessionShell`. */
 export type SidebarProjectProps = {
@@ -583,7 +582,7 @@ export function Sidebar({
       data-resizing={isResizing || undefined}
       data-collapsed={showRail || undefined}
       className={cn(
-        'flex h-full flex-col bg-sidebar',
+        'flex h-full shrink-0 flex-col bg-sidebar',
         !isResizing && 'transition-all duration-200',
       )}
     >

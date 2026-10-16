@@ -8,7 +8,11 @@ import { createElement, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
-import { SessionCardStack } from '@/components/assistant-ui/session-card-stack'
+import {
+  SessionCardStack,
+  SessionCardsPopoverContext,
+  type SessionCardsPopover,
+} from '@/components/assistant-ui/session-card-stack'
 import { EMPTY_MOD_UI, ModUiContext, type ModUiContextValue } from '@/components/assistant-ui/mod-ui-context'
 import {
   RightPanelContentContext,
@@ -57,10 +61,14 @@ type Draw = {
   mod?: Partial<ModUiContextValue>
   content?: RightPanelContentContextValue
   tasks?: BackgroundTasksContextValue
+  popover?: SessionCardsPopover | null
 }
 
-function tree({ history = HISTORY, mod, content = {}, tasks = {} }: Draw): ReactNode {
+function tree({ history = HISTORY, mod, content = {}, tasks = {}, popover = null }: Draw): ReactNode {
   return createElement(
+    SessionCardsPopoverContext.Provider,
+    { value: popover },
+    createElement(
     ModUiContext.Provider,
     { value: { ...EMPTY_MOD_UI, panesDocked: true, ...mod } },
     createElement(
@@ -71,6 +79,7 @@ function tree({ history = HISTORY, mod, content = {}, tasks = {} }: Draw): React
         { value: tasks },
         createElement(SessionCardStack, { history }),
       ),
+    ),
     ),
   )
 }
@@ -258,5 +267,47 @@ describe('SessionCardStack — docked mod panes', () => {
     )
     await waitFor(() => expect(screen.getByTestId('mod-pane-test-report-r-1').textContent).toContain('REPORT BODY'))
     expect(screen.getByTestId('mod-plugin-link-test-report')).toBeTruthy()
+  })
+})
+
+describe('SessionCardStack — popover (the chat too narrow to dock)', () => {
+  const undocked = { panesDocked: false, panes: [pane] }
+
+  it('draws nothing until the popover is opened; open, it holds the information cards and no mod card', () => {
+    render(tree({ mod: undocked, popover: { open: false, onClose: () => {} } }))
+    expect(screen.queryByTestId('session-card-popover')).toBeNull()
+    cleanup()
+    render(tree({ mod: undocked, popover: { open: true, onClose: () => {} } }))
+    expect(screen.getByTestId('session-card-popover')).toBeTruthy()
+    expect(screen.queryByTestId('session-card-stack')).toBeNull()
+    expect(cardIds()).toEqual(['session-card-outputs', 'session-card-changes'])
+  })
+
+  it('says so when the session has nothing to show', () => {
+    render(tree({ history: null, mod: undocked, popover: { open: true, onClose: () => {} } }))
+    expect(screen.getByTestId('session-card-popover-empty').textContent).toBe('Nothing to show for this session yet')
+  })
+
+  it('closes on Escape and on a press outside, but not on a press inside or on the topbar toggle', () => {
+    const onClose = vi.fn()
+    render(tree({ mod: undocked, popover: { open: true, onClose } }))
+    fireEvent.pointerDown(screen.getByTestId('session-card-outputs-header'))
+    expect(onClose).not.toHaveBeenCalled()
+    const toggle = document.createElement('button')
+    toggle.setAttribute('data-testid', 'topbar-session-cards')
+    document.body.appendChild(toggle)
+    fireEvent.pointerDown(toggle)
+    expect(onClose).not.toHaveBeenCalled()
+    toggle.remove()
+    fireEvent.pointerDown(document.body)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it('the docked stack wins while the page docks, whatever the popover says', () => {
+    render(tree({ popover: { open: true, onClose: () => {} } }))
+    expect(screen.getByTestId('session-card-stack')).toBeTruthy()
+    expect(screen.queryByTestId('session-card-popover')).toBeNull()
   })
 })

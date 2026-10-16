@@ -1059,7 +1059,7 @@ export const Thread: FC<{
         scrollToBottomOnRunStart={false}
         scrollToBottomOnInitialize={false}
         scrollToBottomOnThreadSwitch={false}
-        className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-auto ps-6 pe-(--thread-end-reserve,24px) pt-4 [overflow-anchor:none]"
+        className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-auto [[data-chat-clipped]_&]:overflow-x-clip ps-6 pe-(--thread-end-reserve,24px) pt-4 [overflow-anchor:none]"
       >
         {/*
           ThreadWelcome rendering moved to AssistantUiThread level so the
