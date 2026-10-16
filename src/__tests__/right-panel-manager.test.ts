@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  RIGHT_PANEL_COMPACT_MIN_WIDTH_PX,
-  RIGHT_PANEL_DEFAULT_WIDTH_PX,
-  RIGHT_PANEL_MAX_WIDTH_PX,
   RIGHT_PANEL_SPLIT_DEFAULT_RATIO,
   RIGHT_PANEL_SPLIT_MAX_RATIO,
   RIGHT_PANEL_SPLIT_MIN_RATIO,
@@ -36,7 +33,7 @@ import {
   setActiveView,
   setRightPanelSplitRatio,
   setRightPanelVisible,
-  setRightPanelWidth,
+  setRightPanelShares,
   showRightPanel,
   unpinView,
   type RightPanelState,
@@ -85,7 +82,7 @@ describe('defaults & guards', () => {
       activeView: null,
       tabs: [],
       pinnedViews: [],
-      widthPx: RIGHT_PANEL_DEFAULT_WIDTH_PX,
+      shares: {},
       splitTopRatio: RIGHT_PANEL_SPLIT_DEFAULT_RATIO,
     })
     expect(selectRightPanelSplit(s)).toBeNull()
@@ -315,11 +312,12 @@ describe('closing views', () => {
 })
 
 describe('width, ratio & visibility', () => {
-  it('clamps stored width into the union range (compact-min … normal-max)', () => {
+  it('sets the remembered shares, returning the same state when they are unchanged', () => {
     const s = defaultRightPanelState()
-    expect(setRightPanelWidth(s, 10).widthPx).toBe(RIGHT_PANEL_COMPACT_MIN_WIDTH_PX)
-    expect(setRightPanelWidth(s, 9999).widthPx).toBe(RIGHT_PANEL_MAX_WIDTH_PX)
-    expect(setRightPanelWidth(s, 400).widthPx).toBe(400)
+    const shares = { diff: 0.5 }
+    const next = setRightPanelShares(s, shares)
+    expect(next.shares).toBe(shares)
+    expect(setRightPanelShares(next, shares)).toBe(next)
   })
 
   it('clamps split ratio and rejects non-finite', () => {
@@ -415,14 +413,14 @@ describe('session / geometry split (P6 persistence scoping)', () => {
       activationHistory: [],
     })
     expect(defaultRightPanelGeometry()).toEqual({
-      widthPx: RIGHT_PANEL_DEFAULT_WIDTH_PX,
+      shares: {},
       splitTopRatio: RIGHT_PANEL_SPLIT_DEFAULT_RATIO,
     })
   })
 
   it('pick extracts the two halves; combine recombines losslessly', () => {
     let s = pinView(openView(openView(defaultRightPanelState(), 'plan'), 'tasks'), 'plan')
-    s = setRightPanelWidth(setRightPanelSplitRatio(s, 0.4), 420)
+    s = setRightPanelShares(setRightPanelSplitRatio(s, 0.4), { file: 0.55 })
     expect(pickRightPanelSession(s)).toEqual({
       visible: true,
       activeView: 'plan',
@@ -432,7 +430,7 @@ describe('session / geometry split (P6 persistence scoping)', () => {
       // tasks]): the full prior-focus order, most-recent last.
       activationHistory: ['plan', 'tasks'],
     })
-    expect(pickRightPanelGeometry(s)).toEqual({ widthPx: 420, splitTopRatio: 0.4 })
+    expect(pickRightPanelGeometry(s)).toEqual({ shares: { file: 0.55 }, splitTopRatio: 0.4 })
     expect(
       combineRightPanelState(pickRightPanelSession(s), pickRightPanelGeometry(s)),
     ).toEqual(s)
@@ -449,8 +447,11 @@ describe('session / geometry split (P6 persistence scoping)', () => {
     const geometry = defaultRightPanelGeometry()
     expect(rightPanelGeometryEquals(geometry, defaultRightPanelGeometry())).toBe(true)
     expect(
-      rightPanelGeometryEquals(geometry, { ...geometry, widthPx: geometry.widthPx + 1 }),
+      rightPanelGeometryEquals(geometry, { ...geometry, shares: { diff: 0.5 } }),
     ).toBe(false)
+    expect(
+      rightPanelGeometryEquals({ ...geometry, shares: { diff: 0.5 } }, { ...geometry, shares: { diff: 0.5 } }),
+    ).toBe(true)
   })
 })
 

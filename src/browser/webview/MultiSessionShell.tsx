@@ -32,16 +32,22 @@ import { SidebarSplitter } from './SidebarSplitter'
 import { SidebarPeek } from './SidebarPeek'
 import { resolveShellLayout } from './layout/shellLayout'
 import { useOverlayDismiss } from './layout/useOverlayDismiss'
+import {
+  rightPanelShare,
+  rightPanelViewKind,
+  rightPanelWantWidth,
+  setRightPanelShare,
+  shareFromWidth,
+  type RightPanelViewKind,
+} from './layout/panelShare'
 import { setSessionCardsShown } from './layout/sessionCards'
 import { useSessionCardPrefs } from '@/components/assistant-ui/session-card-stack'
 import {
   CHAT_COLUMN_MIN_WIDTH_PX,
   CHAT_CONTENT_MIN_WIDTH_PX,
+  RIGHT_PANEL_FLOAT_MIN_WIDTH_PX,
   RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX,
   SPLITTER_WIDTH_PX,
-  RIGHT_PANEL_COMPACT_MAX_WIDTH_PX,
-  RIGHT_PANEL_COMPACT_MIN_WIDTH_PX,
-  RIGHT_PANEL_MAX_WIDTH_PX,
   RIGHT_PANEL_MIN_WIDTH_PX,
   SIDEBAR_DEFAULT_WIDTH_PX,
   SIDEBAR_MAX_WIDTH_PX,
@@ -49,8 +55,8 @@ import {
   WEBVIEW_AREA_MIN_WIDTH_PX,
 } from './layout/layoutConstants'
 import {
-  clampRightPanelWidthForContext,
   clampSidebarWidth,
+  rightPanelWidthBounds,
   clampWebviewAreaWidth as clampWebviewAreaWidthForViewport,
   readViewportWidth,
   webviewAreaMaxWidth as webviewAreaMaxWidthForViewport,
@@ -72,7 +78,7 @@ import {
   setActiveView,
   setRightPanelSplitRatio,
   setRightPanelVisible,
-  setRightPanelWidth,
+  setRightPanelShares,
   showRightPanel,
   type DefaultRightPanelTabId,
   type RightPanelGeometry,
@@ -2367,6 +2373,8 @@ export function MultiSessionShell({
   // A view the agent brought forward on its own: it must not draw the
   // overlay over the chat.
   const rightPanelUnpromptedViewRef = useRef<string | null>(null)
+  // Set below, once the layout is known: floats a closed panel the agent opens.
+  const rightPanelFloatStartRef = useRef<(view: RightPanelViewId) => void>(() => {})
   useEffect(() => {
     if (
       !planAutoOpenGateRef.current(activeSessionId, activePlanEntry?.toolCallId)
@@ -2374,6 +2382,7 @@ export function MultiSessionShell({
       return
     }
     rightPanelUnpromptedViewRef.current = 'plan'
+    rightPanelFloatStartRef.current('plan')
     updateRightPanel(s => openView(s, 'plan'))
   }, [activePlanEntry, activeSessionId, updateRightPanel])
 
@@ -2432,20 +2441,28 @@ export function MultiSessionShell({
   }, [webviewAreaCanShow])
 
   // When the browser is docked alongside the Right Panel, the panel uses its
-  // compact width range so the conversation + panel + browser stay usable. The
-  // stored width is clamped to the active sub-range for display and for the
-  // resize splitter's bounds (see clampRightPanelWidthForContext).
+  // compact width range so the conversation + panel + browser stay usable.
   const browserDocked = webviewAreaCanShow
-  const rightPanelMinWidth = browserDocked
-    ? RIGHT_PANEL_COMPACT_MIN_WIDTH_PX
-    : RIGHT_PANEL_MIN_WIDTH_PX
-  const rightPanelMaxWidth = browserDocked
-    ? RIGHT_PANEL_COMPACT_MAX_WIDTH_PX
-    : RIGHT_PANEL_MAX_WIDTH_PX
-  const storedRightPanelWidth = clampRightPanelWidthForContext(
-    rightPanel.widthPx,
-    browserDocked,
-  )
+  const { min: rightPanelMinWidth, max: rightPanelMaxWidth } =
+    rightPanelWidthBounds(browserDocked)
+  // The panel's width is a share of the room beside the chat, remembered per
+  // view kind; a settled float holds its own share for its kind until the
+  // kind changes or the panel closes (never saved).
+  const rightPanelKind = rightPanelViewKind(rightPanel.activeView)
+  const [rightPanelShareOverride, setRightPanelShareOverride] = useState<{
+    kind: RightPanelViewKind
+    share: number
+  } | null>(null)
+  const rightPanelShareNow =
+    rightPanelShareOverride?.kind === rightPanelKind
+      ? rightPanelShareOverride.share
+      : rightPanelShare(rightPanel.shares, rightPanelKind)
+  // An agent-opened panel floating over the spare width beside the transcript.
+  const [rightPanelFloat, setRightPanelFloat] = useState<{
+    width: number
+    areaW: number
+    view: RightPanelViewId
+  } | null>(null)
   // The drawn layout for this width (F-9): sidebar form, the panel's drawn
   // width (the chat yields first), the chat's clip, and where the card stack goes.
   const shellLayout = resolveShellLayout({
@@ -2454,8 +2471,10 @@ export function MultiSessionShell({
     panel: {
       visible: rightPanel.visible,
       maximized: rightPanelMaximized,
-      width: storedRightPanelWidth,
+      share: rightPanelShareNow,
       minWidth: rightPanelMinWidth,
+      maxWidth: rightPanelMaxWidth,
+      floatWidth: rightPanel.visible ? rightPanelFloat?.width ?? null : null,
     },
     browserW: webviewAreaCanShow ? webviewAreaWidth + SPLITTER_WIDTH_PX : 0,
   })
@@ -2483,11 +2502,84 @@ export function MultiSessionShell({
   const rightPanelOverlayShown = rightPanelOverlaid && rightPanelOverlayOpen
   // Over the chat it leaves a strip of the chat to press back into.
   const effectiveRightPanelWidth =
-    shellLayout.panel === 'maximized'
-      ? storedRightPanelWidth
-      : rightPanelOverlaid
-        ? Math.max(0, Math.min(storedRightPanelWidth, shellLayout.chatW - RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX))
+    shellLayout.panel === 'overlay'
+      ? Math.max(0, Math.min(shellLayout.panelOffRowW, shellLayout.chatW - RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX))
+      : shellLayout.panel === 'float'
+        ? shellLayout.panelOffRowW
         : shellLayout.panelW
+  const rightPanelFloating = shellLayout.panel === 'float'
+  // Docks the float at the width it floated at: its share of the room the
+  // docked panel will split with the chat.
+  const settleRightPanelFloat = () => {
+    if (!rightPanelFloat) return
+    if (rightPanel.visible) {
+      const room = shellLayout.chatW - SPLITTER_WIDTH_PX
+      const share = shareFromWidth(rightPanelFloat.width, room)
+      if (Number.isFinite(share)) setRightPanelShareOverride({ kind: rightPanelKind, share })
+    }
+    setRightPanelFloat(null)
+  }
+  const settleRightPanelFloatRef = useRef(settleRightPanelFloat)
+  settleRightPanelFloatRef.current = settleRightPanelFloat
+  // The agent opening a view while the panel is closed floats it over the
+  // spare width at the transcript's end, when that is at least the float's
+  // minimum — at most the width it would dock at.
+  rightPanelFloatStartRef.current = (view: RightPanelViewId) => {
+    if (rightPanel.visible || rightPanelMaximized) return
+    const section = document.querySelector(
+      `[data-session-section="${CSS.escape(activeSessionId)}"]`,
+    )
+    const column = section?.querySelector('.aui-thread-viewport-footer')
+    if (!section || !column) return
+    const spare = Math.floor(
+      section.getBoundingClientRect().right - column.getBoundingClientRect().right,
+    )
+    if (spare < RIGHT_PANEL_FLOAT_MIN_WIDTH_PX) return
+    const kind = rightPanelViewKind(view)
+    const docked = rightPanelWantWidth(
+      rightPanelShare(rightPanel.shares, kind),
+      shellLayout.chatW - SPLITTER_WIDTH_PX,
+      rightPanelMinWidth,
+      rightPanelMaxWidth,
+    )
+    setRightPanelFloat({ width: Math.min(spare, docked), areaW: sessionAreaWidth, view })
+  }
+  // The person's next input settles the float: a press (after its click
+  // lands, so nothing moves under it), a key, a wheel.
+  useEffect(() => {
+    if (!rightPanelFloating) return
+    const settle = () => settleRightPanelFloatRef.current()
+    const settleAfterClick = () => window.setTimeout(settle, 0)
+    document.addEventListener('pointerup', settleAfterClick, true)
+    document.addEventListener('keydown', settle, true)
+    document.addEventListener('wheel', settle, { capture: true, passive: true })
+    return () => {
+      document.removeEventListener('pointerup', settleAfterClick, true)
+      document.removeEventListener('keydown', settle, true)
+      document.removeEventListener('wheel', settle, true)
+    }
+  }, [rightPanelFloating])
+  // So do a resize and another view coming to the front; closing drops it.
+  useEffect(() => {
+    if (!rightPanelFloat) return
+    if (!rightPanel.visible) setRightPanelFloat(null)
+    else if (
+      sessionAreaWidth !== rightPanelFloat.areaW ||
+      rightPanel.activeView !== rightPanelFloat.view
+    ) {
+      settleRightPanelFloatRef.current()
+    }
+  }, [rightPanelFloat, rightPanel.visible, rightPanel.activeView, sessionAreaWidth])
+  // A settled float's width lasts while its view kind stays in front.
+  useEffect(() => {
+    setRightPanelShareOverride(o =>
+      o && (o.kind !== rightPanelKind || !rightPanel.visible) ? null : o,
+    )
+  }, [rightPanelKind, rightPanel.visible])
+  useEffect(() => {
+    setRightPanelFloat(null)
+    setRightPanelShareOverride(null)
+  }, [activeSessionId])
   const closeRightPanelOverlay = useCallback(() => setRightPanelOverlayOpen(false), [])
   const rightPanelOverlayDismiss = useOverlayDismiss(
     rightPanelOverlayShown,
@@ -2549,10 +2641,10 @@ export function MultiSessionShell({
     const maxForBrowser = Math.max(
       WEBVIEW_AREA_MIN_WIDTH_PX,
       webviewAreaMaxWidth() -
-        (rightPanel.visible ? storedRightPanelWidth : 0),
+        (rightPanel.visible ? rightPanelMaxWidth : 0),
     )
     setWebviewAreaWidth((width) => (width > maxForBrowser ? maxForBrowser : width))
-  }, [webviewAreaCanShow, rightPanel.visible, storedRightPanelWidth])
+  }, [webviewAreaCanShow, rightPanel.visible, rightPanelMaxWidth])
 
   // The model picker's `⋯` → "Edit…": Settings → Models, on that provider's
   // editor. `seq` makes a repeat request for the same provider land again;
@@ -4091,9 +4183,16 @@ export function MultiSessionShell({
               width={effectiveRightPanelWidth}
               minWidth={rightPanelMinWidth}
               maxWidth={rightPanelDragMax}
-              onResize={width =>
-                updateRightPanel(s => setRightPanelWidth(s, width))
-              }
+              onResize={width => {
+                const room = shellLayout.panelW + shellLayout.chatW
+                updateRightPanel(s =>
+                  setRightPanelShares(
+                    s,
+                    setRightPanelShare(s.shares, rightPanelKind, shareFromWidth(width, room)),
+                  ),
+                )
+                setRightPanelShareOverride(null)
+              }}
               invert
               ariaLabel={t('rightPanel.resizeAria')}
             />
@@ -4105,15 +4204,17 @@ export function MultiSessionShell({
               data-panel-form={shellLayout.panel}
               data-overlay-open={rightPanelOverlayShown || undefined}
               className={
-                !rightPanelOverlaid
-                  ? 'contents'
-                  : rightPanelOverlayShown
-                    ? 'absolute inset-y-0 z-40 flex border-border border-s bg-background shadow-xl'
-                    : 'hidden'
+                rightPanelFloating
+                  ? 'absolute inset-y-0 z-30 flex border-border border-s bg-background shadow-xl animate-in slide-in-from-right duration-200'
+                  : !rightPanelOverlaid
+                    ? 'contents'
+                    : rightPanelOverlayShown
+                      ? 'absolute inset-y-0 z-40 flex border-border border-s bg-background shadow-xl'
+                      : 'hidden'
               }
               style={
-                rightPanelOverlayShown
-                  ? { insetInlineEnd: webviewAreaCanShow ? webviewAreaWidth : 0 }
+                rightPanelOverlayShown || rightPanelFloating
+                  ? { insetInlineEnd: webviewAreaCanShow ? webviewAreaWidth + SPLITTER_WIDTH_PX : 0 }
                   : undefined
               }
               {...(rightPanelOverlaid ? rightPanelOverlayDismiss : null)}
@@ -4193,7 +4294,7 @@ export function MultiSessionShell({
               maxWidth={Math.max(
                 WEBVIEW_AREA_MIN_WIDTH_PX,
                 webviewAreaMaxWidth() -
-                  (rightPanel.visible ? storedRightPanelWidth : 0),
+                  (rightPanel.visible ? rightPanelMaxWidth : 0),
               )}
               onResize={handleWebviewAreaResize}
               onResizeStart={handleWebviewAreaResizeStart}

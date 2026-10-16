@@ -101,8 +101,8 @@ export type RightPanelProps = {
    */
   sessionId?: string
   /**
-   * Rendered width in px — the stored `state.widthPx` after the shell applies
-   * the context (normal vs browser-docked compact) clamp. Owned by
+   * Rendered width in px — the shell's drawn layout (`resolveShellLayout`)
+   * for the front view's share of the room beside the chat. Owned by
    * MultiSessionShell, which also drives the sibling resize splitter.
    */
   width: number

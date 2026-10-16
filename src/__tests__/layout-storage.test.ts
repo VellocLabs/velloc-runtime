@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import {
-  RIGHT_PANEL_DEFAULT_WIDTH_PX,
-  RIGHT_PANEL_MAX_WIDTH_PX,
-  RIGHT_PANEL_SPLIT_DEFAULT_RATIO,
-} from '@/browser/webview/layout/layoutConstants'
+import { RIGHT_PANEL_SPLIT_DEFAULT_RATIO } from '@/browser/webview/layout/layoutConstants'
 import {
   defaultLayoutStorage,
   sanitizeLayoutStorage,
@@ -40,27 +36,30 @@ describe('sanitizeLayoutStorage (geometry-only)', () => {
         tabs: ['plan', 'tasks'],
         pinnedViews: ['plan'],
         // geometry — kept
-        widthPx: 400,
+        shares: { diff: 0.5 },
         splitTopRatio: 0.5,
       },
     })
-    expect(out.rightPanel).toEqual({ widthPx: 400, splitTopRatio: 0.5 })
+    expect(out.rightPanel).toEqual({ shares: { diff: 0.5 }, splitTopRatio: 0.5 })
     expect(out.rightPanel).not.toHaveProperty('visible')
     expect(out.rightPanel).not.toHaveProperty('tabs')
   })
 
-  it('clamps width and defaults a non-finite ratio', () => {
+  it('clamps shares, drops unknown kinds and bad values, and defaults a non-finite ratio', () => {
     const out = sanitizeLayoutStorage({
       version: 1,
-      rightPanel: { widthPx: 99999, splitTopRatio: 'oops' },
+      rightPanel: {
+        shares: { diff: 7, tasks: 0.01, file: 'wide', plan: Number.NaN, mod: 0.5 },
+        splitTopRatio: 'oops',
+      },
     })
-    expect(out.rightPanel.widthPx).toBe(RIGHT_PANEL_MAX_WIDTH_PX)
+    expect(out.rightPanel.shares).toEqual({ diff: 0.9, tasks: 0.1 })
     expect(out.rightPanel.splitTopRatio).toBe(RIGHT_PANEL_SPLIT_DEFAULT_RATIO)
   })
 
-  it('defaults width when missing', () => {
-    const out = sanitizeLayoutStorage({ version: 1, rightPanel: {} })
-    expect(out.rightPanel.widthPx).toBe(RIGHT_PANEL_DEFAULT_WIDTH_PX)
+  it('remembers no share when none is stored', () => {
+    expect(sanitizeLayoutStorage({ version: 1, rightPanel: {} }).rightPanel.shares).toEqual({})
+    expect(sanitizeLayoutStorage({ version: 1, rightPanel: { widthPx: 400 } }).rightPanel.shares).toEqual({})
   })
 
   it('keeps a stored restore tab and rejects anything that is not always-open', () => {
@@ -99,9 +98,9 @@ describe('geometry load/save round-trip (localStorage stub)', () => {
   })
 
   it('persists and reloads the geometry', () => {
-    saveRightPanelGeometry({ widthPx: 420, splitTopRatio: 0.4 })
+    saveRightPanelGeometry({ shares: { file: 0.55 }, splitTopRatio: 0.4 })
     expect(store.get(LAYOUT_STORAGE_KEY)).toContain('"version":1')
-    expect(loadRightPanelGeometry()).toEqual({ widthPx: 420, splitTopRatio: 0.4 })
+    expect(loadRightPanelGeometry()).toEqual({ shares: { file: 0.55 }, splitTopRatio: 0.4 })
   })
 
   it('returns defaults when the stored JSON is corrupt', () => {
@@ -121,12 +120,12 @@ describe('geometry load/save round-trip (localStorage stub)', () => {
   // panel wider would have thrown the remembered tab away.
   it('each writer preserves the other setting', () => {
     saveRightPanelLastView('diff')
-    saveRightPanelGeometry({ widthPx: 420, splitTopRatio: 0.4 })
+    saveRightPanelGeometry({ shares: { file: 0.55 }, splitTopRatio: 0.4 })
     expect(loadRightPanelLastView(), 'a resize keeps the remembered tab')
         .toBe('diff')
 
     saveRightPanelLastView('tasks')
     expect(loadRightPanelGeometry(), 'a tab click keeps the geometry')
-        .toEqual({ widthPx: 420, splitTopRatio: 0.4 })
+        .toEqual({ shares: { file: 0.55 }, splitTopRatio: 0.4 })
   })
 })

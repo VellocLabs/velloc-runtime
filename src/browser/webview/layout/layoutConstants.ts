@@ -23,19 +23,15 @@ export const CHAT_COLUMN_MIN_WIDTH_PX = 360
 
 /**
  * Right Panel — the managed utility-view container (Plan / Tasks / …) —
- * draggable width bounds in CSS px, for the normal (browser-hidden)
- * presentation.
+ * minimum width in CSS px, for the normal (browser-hidden) presentation. Its
+ * width is a share of the room beside the chat (`panelShare`).
  */
 export const RIGHT_PANEL_MIN_WIDTH_PX = 280
-export const RIGHT_PANEL_DEFAULT_WIDTH_PX = 442
-export const RIGHT_PANEL_MAX_WIDTH_PX = 728
 
 /**
  * Compact Right Panel bounds — used when the browser is docked alongside it,
- * so the conversation and browser keep usable widths. The
- * stored width is clamped to the UNION of the normal + compact ranges
- * ([compact-min, normal-max]); the active sub-range is applied at render via
- * `clampRightPanelWidthForContext`.
+ * so the conversation and browser keep usable widths
+ * (`rightPanelWidthBounds`).
  */
 export const RIGHT_PANEL_COMPACT_MIN_WIDTH_PX = 240
 export const RIGHT_PANEL_COMPACT_MAX_WIDTH_PX = 360
@@ -81,3 +77,6 @@ export const RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX = 48
 
 /** Drawn width of a column splitter (`SidebarSplitter`, `w-1`). */
 export const SPLITTER_WIDTH_PX = 4
+
+/** Spare width beside the transcript the agent-opened panel float needs. */
+export const RIGHT_PANEL_FLOAT_MIN_WIDTH_PX = 280

@@ -1,12 +1,13 @@
 /**
  * Security: validation for the PERSISTED layout blob — `localStorage` is never
  * trusted; a corrupt / stale / hand-edited blob degrades to safe defaults (F-9).
- * Only the Right Panel's global geometry (width + split ratio), the
+ * Only the Right Panel's global geometry (per-kind width shares + split ratio), the
  * `rightPanelLastView` preference and the session card stack's order and Show
  * choices are stored; showing state is per-session and in-memory, so stale
  * showing fields in an older blob are ignored.
  */
-import { clampRightPanelSplitRatio, clampRightPanelWidth } from './computeLayout'
+import { clampRightPanelSplitRatio } from './computeLayout'
+import { sanitizeRightPanelShares } from './panelShare'
 import {
   defaultRightPanelGeometry,
   isDefaultRightPanelTab,
@@ -50,16 +51,13 @@ function sanitizeGeometry(raw: unknown): RightPanelGeometry {
   if (typeof raw !== 'object' || raw === null) return def
   const rp = raw as Record<string, unknown>
 
-  const widthPx =
-    typeof rp.widthPx === 'number' && Number.isFinite(rp.widthPx)
-      ? clampRightPanelWidth(rp.widthPx)
-      : def.widthPx
+  const shares = sanitizeRightPanelShares(rp.shares)
 
   const splitTopRatio = clampRightPanelSplitRatio(
     typeof rp.splitTopRatio === 'number' ? rp.splitTopRatio : Number.NaN,
   )
 
-  return { widthPx, splitTopRatio }
+  return { shares, splitTopRatio }
 }
 
 /** Coerce an arbitrary parsed value into a valid `NexusLayoutStorageV1`. */

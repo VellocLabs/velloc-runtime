@@ -15,21 +15,32 @@ import {
   SPLITTER_WIDTH_PX,
   STACK_DOCK_MIN_CHAT_PX,
 } from './layoutConstants'
+import { rightPanelWantWidth } from './panelShare'
 
 export type SidebarForm = 'expanded' | 'rail' | 'hidden'
 /**
  * `none`: closed by the person. `beside`: docked next to the chat.
  * `maximized`: covers the chat. `overlay`: open but no room beside the chat —
- * drawn only on demand, floating over it.
+ * drawn only on demand, over it. `float`: opened by the agent, drawn over the
+ * spare width beside the transcript until the person's next input docks it.
  */
-export type PanelForm = 'none' | 'beside' | 'maximized' | 'overlay'
+export type PanelForm = 'none' | 'beside' | 'maximized' | 'overlay' | 'float'
 export type StackPlacement = 'docked' | 'popover'
 
 export interface ShellLayoutInput {
   /** The session area's width (the window below the topbar). */
   areaW: number
   sidebar: { collapsed: boolean; width: number }
-  panel: { visible: boolean; maximized: boolean; width: number; minWidth: number }
+  panel: {
+    visible: boolean
+    maximized: boolean
+    /** Share of the room beside the chat (`panelShare`). */
+    share: number
+    minWidth: number
+    maxWidth: number
+    /** Set while the panel floats: its drawn width. */
+    floatWidth: number | null
+  }
   /** The docked browser's drawn width with its splitter, 0 when it is not shown. */
   browserW: number
 }
@@ -41,6 +52,8 @@ export interface ShellLayout {
   panel: PanelForm
   /** The panel's drawn width beside the chat, without its splitter; 0 unless `beside`. */
   panelW: number
+  /** The panel's width off the row: an overlay's wanted width, a float's width; else 0. */
+  panelOffRowW: number
   chatW: number
   /** The area itself is narrower than the chat's content: content keeps its floor and is clipped. */
   chatClipped: boolean
@@ -50,7 +63,13 @@ export interface ShellLayout {
 export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
   const { areaW, sidebar, panel, browserW } = input
   const chatMin = CHAT_CONTENT_MIN_WIDTH_PX
-  const panelOpen: PanelForm = !panel.visible ? 'none' : panel.maximized ? 'maximized' : 'beside'
+  const panelOpen: PanelForm = !panel.visible
+    ? 'none'
+    : panel.maximized
+      ? 'maximized'
+      : panel.floatWidth !== null
+        ? 'float'
+        : 'beside'
   const besideRoom = Math.max(0, areaW - Math.max(0, browserW))
 
   // The sidebar stays while the chat keeps its floor beside the panel at its
@@ -66,15 +85,22 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
 
   let panelForm: PanelForm = panelOpen
   let panelW = 0
+  let panelOffRowW = 0
   let chatW = room
   if (panelOpen === 'maximized') {
     panelW = room
     chatW = 0
+  } else if (panelOpen === 'float') {
+    panelOffRowW = panel.floatWidth ?? 0
   } else if (panelOpen === 'beside') {
     const panelRoom = room - SPLITTER_WIDTH_PX
-    if (panelRoom - panel.width >= chatMin) panelW = panel.width
+    const want = rightPanelWantWidth(panel.share, panelRoom, panel.minWidth, panel.maxWidth)
+    if (panelRoom - want >= chatMin) panelW = want
     else if (panelRoom - panel.minWidth >= chatMin) panelW = panelRoom - chatMin
-    else panelForm = 'overlay'
+    else {
+      panelForm = 'overlay'
+      panelOffRowW = want
+    }
     chatW = panelForm === 'beside' ? panelRoom - panelW : room
   }
 
@@ -83,6 +109,7 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
     sidebarW,
     panel: panelForm,
     panelW,
+    panelOffRowW,
     chatW,
     chatClipped: chatW > 0 && chatW < chatMin,
     stack: chatW >= STACK_DOCK_MIN_CHAT_PX && panelForm !== 'maximized' ? 'docked' : 'popover',

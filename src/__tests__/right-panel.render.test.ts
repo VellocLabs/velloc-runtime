@@ -30,7 +30,7 @@ const PLAN_ENTRY = {
 function props(state: RightPanelState): RightPanelProps {
   return {
     state,
-    width: state.widthPx,
+    width: 442,
     onActivateView: () => {},
     onCloseView: () => {},
     onSplitRatioChange: () => {},
@@ -183,7 +183,7 @@ describe('RightPanel render', () => {
     expect(normal).toContain('data-testid="right-panel-maximize"')
     expect(normal).toContain('aria-label="Maximize panel"')
     // Not maximized → fixed width, and no maximized marker.
-    expect(normal).toContain(`width:${state.widthPx}px`)
+    expect(normal).toContain('width:442px')
     expect(normal).not.toContain('data-maximized="true"')
 
     const maximized = renderToStaticMarkup(
@@ -197,7 +197,7 @@ describe('RightPanel render', () => {
     expect(maximized).toContain('aria-label="Restore panel size"')
     expect(maximized).toContain('data-maximized="true"')
     // Maximized → absorbs the row instead of rendering to the stored width.
-    expect(maximized).not.toContain(`width:${state.widthPx}px`)
+    expect(maximized).not.toContain('width:442px')
     expect(maximized).toMatch(/data-testid="right-panel"[^>]*class="[^"]*flex-1/)
 
     // Not wired → no dangling button.

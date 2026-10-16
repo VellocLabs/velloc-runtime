@@ -5,11 +5,11 @@
  * from `pinnedViews`. Tasks and Diff are always-visible, never closable, lazy bodies.
  */
 import {
-  RIGHT_PANEL_DEFAULT_WIDTH_PX,
   RIGHT_PANEL_MAX_PINNED,
   RIGHT_PANEL_SPLIT_DEFAULT_RATIO,
 } from './layoutConstants'
-import { clampRightPanelSplitRatio, clampRightPanelWidth } from './computeLayout'
+import { clampRightPanelSplitRatio } from './computeLayout'
+import type { RightPanelShares } from './panelShare'
 
 /** A per-file view. Each opened file gets its OWN tab, keyed by its path, so
  *  opening a second file no longer replaces the first (dedup is exact-path).
@@ -116,8 +116,8 @@ export interface RightPanelState {
    *  before the one being closed (instead of always falling back to the first
    *  tab, which is the always-open `tasks`). Ephemeral, per-session. */
   activationHistory: RightPanelViewId[]
-  /** Draggable panel width, px. */
-  widthPx: number
+  /** The panel's share of the room beside the chat, per view kind (`panelShare`). */
+  shares: RightPanelShares
   /** Top view's height share when two views are pinned. */
   splitTopRatio: number
 }
@@ -137,7 +137,7 @@ export function defaultRightPanelState(): RightPanelState {
     tabs: [],
     pinnedViews: [],
     activationHistory: [],
-    widthPx: RIGHT_PANEL_DEFAULT_WIDTH_PX,
+    shares: {},
     splitTopRatio: RIGHT_PANEL_SPLIT_DEFAULT_RATIO,
   }
 }
@@ -361,11 +361,11 @@ export function unpinView(
   }
 }
 
-export function setRightPanelWidth(
+export function setRightPanelShares(
   state: RightPanelState,
-  widthPx: number,
+  shares: RightPanelShares,
 ): RightPanelState {
-  return { ...state, widthPx: clampRightPanelWidth(widthPx) }
+  return shares === state.shares ? state : { ...state, shares }
 }
 
 export function setRightPanelSplitRatio(
@@ -548,7 +548,7 @@ export type RightPanelSession = Pick<
 /** Global, persisted geometry: where/how big the panel + split are. */
 export type RightPanelGeometry = Pick<
   RightPanelState,
-  'widthPx' | 'splitTopRatio'
+  'shares' | 'splitTopRatio'
 >
 
 export function defaultRightPanelSession(): RightPanelSession {
@@ -565,7 +565,7 @@ export function defaultRightPanelSession(): RightPanelSession {
 
 export function defaultRightPanelGeometry(): RightPanelGeometry {
   return {
-    widthPx: RIGHT_PANEL_DEFAULT_WIDTH_PX,
+    shares: {},
     splitTopRatio: RIGHT_PANEL_SPLIT_DEFAULT_RATIO,
   }
 }
@@ -591,7 +591,7 @@ export function pickRightPanelSession(state: RightPanelState): RightPanelSession
 export function pickRightPanelGeometry(
   state: RightPanelState,
 ): RightPanelGeometry {
-  return { widthPx: state.widthPx, splitTopRatio: state.splitTopRatio }
+  return { shares: state.shares, splitTopRatio: state.splitTopRatio }
 }
 
 function sameViewList(a: RightPanelViewId[], b: RightPanelViewId[]): boolean {
@@ -615,5 +615,9 @@ export function rightPanelGeometryEquals(
   a: RightPanelGeometry,
   b: RightPanelGeometry,
 ): boolean {
-  return a.widthPx === b.widthPx && a.splitTopRatio === b.splitTopRatio
+  const kinds = new Set([...Object.keys(a.shares), ...Object.keys(b.shares)])
+  return (
+    a.splitTopRatio === b.splitTopRatio &&
+    [...kinds].every(k => a.shares[k as keyof RightPanelShares] === b.shares[k as keyof RightPanelShares])
+  )
 }

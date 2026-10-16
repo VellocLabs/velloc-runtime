@@ -47,7 +47,7 @@ function props(
     state,
     sessionId,
     protectedViews: protectedViews as RightPanelProps['protectedViews'],
-    width: state.widthPx,
+    width: 442,
     onActivateView: () => {},
     onCloseView: handlers?.onCloseView ?? (() => {}),
     onClosePanel: handlers?.onClosePanel,

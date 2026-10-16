@@ -5,7 +5,6 @@ import {
   FALLBACK_VIEWPORT_WIDTH_PX,
   RIGHT_PANEL_COMPACT_MAX_WIDTH_PX,
   RIGHT_PANEL_COMPACT_MIN_WIDTH_PX,
-  RIGHT_PANEL_MAX_WIDTH_PX,
   RIGHT_PANEL_MIN_WIDTH_PX,
   SIDEBAR_DEFAULT_WIDTH_PX,
   SIDEBAR_MAX_WIDTH_PX,
@@ -13,8 +12,8 @@ import {
   WEBVIEW_AREA_MIN_WIDTH_PX,
 } from '@/browser/webview/layout/layoutConstants'
 import {
-  clampRightPanelWidthForContext,
   clampSidebarWidth,
+  rightPanelWidthBounds,
   clampWebviewAreaWidth,
   readViewportWidth,
   webviewAreaMaxWidth,
@@ -75,24 +74,19 @@ describe('clampWebviewAreaWidth', () => {
   })
 })
 
-describe('clampRightPanelWidthForContext', () => {
-  it('uses the normal range when the browser is not docked', () => {
-    expect(clampRightPanelWidthForContext(10, false)).toBe(RIGHT_PANEL_MIN_WIDTH_PX)
-    expect(clampRightPanelWidthForContext(9999, false)).toBe(RIGHT_PANEL_MAX_WIDTH_PX)
-    expect(clampRightPanelWidthForContext(400, false)).toBe(400)
+describe('rightPanelWidthBounds', () => {
+  it('has only a minimum when the browser is not docked', () => {
+    expect(rightPanelWidthBounds(false)).toEqual({
+      min: RIGHT_PANEL_MIN_WIDTH_PX,
+      max: Number.POSITIVE_INFINITY,
+    })
   })
 
   it('uses the compact range when the browser is docked', () => {
-    expect(clampRightPanelWidthForContext(10, true)).toBe(
-      RIGHT_PANEL_COMPACT_MIN_WIDTH_PX,
-    )
-    expect(clampRightPanelWidthForContext(9999, true)).toBe(
-      RIGHT_PANEL_COMPACT_MAX_WIDTH_PX,
-    )
-    // a normal-width value clamps down into the compact ceiling
-    expect(clampRightPanelWidthForContext(500, true)).toBe(
-      RIGHT_PANEL_COMPACT_MAX_WIDTH_PX,
-    )
+    expect(rightPanelWidthBounds(true)).toEqual({
+      min: RIGHT_PANEL_COMPACT_MIN_WIDTH_PX,
+      max: RIGHT_PANEL_COMPACT_MAX_WIDTH_PX,
+    })
   })
 })
 

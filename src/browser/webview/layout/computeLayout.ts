@@ -7,7 +7,6 @@ import {
   FALLBACK_VIEWPORT_WIDTH_PX,
   RIGHT_PANEL_COMPACT_MAX_WIDTH_PX,
   RIGHT_PANEL_COMPACT_MIN_WIDTH_PX,
-  RIGHT_PANEL_MAX_WIDTH_PX,
   RIGHT_PANEL_MIN_WIDTH_PX,
   RIGHT_PANEL_SPLIT_DEFAULT_RATIO,
   RIGHT_PANEL_SPLIT_MAX_RATIO,
@@ -51,34 +50,14 @@ export function clampWebviewAreaWidth(
 }
 
 /**
- * Clamp + round a STORED Right Panel width into the union of the normal and
- * compact ranges ([compact-min, normal-max]). The active context's sub-range
- * is applied at render via `clampRightPanelWidthForContext`. Pure.
+ * The Right Panel's width bounds for the current context: compact when the
+ * browser is docked alongside it, otherwise only a minimum (the chat's own
+ * minimum caps it in `shellLayout`). Pure.
  */
-export function clampRightPanelWidth(width: number): number {
-  return Math.round(
-    Math.min(
-      Math.max(width, RIGHT_PANEL_COMPACT_MIN_WIDTH_PX),
-      RIGHT_PANEL_MAX_WIDTH_PX,
-    ),
-  )
-}
-
-/**
- * Clamp + round a Right Panel width into the bounds for the current context:
- * compact when the browser is docked alongside it, normal otherwise. Pure.
- */
-export function clampRightPanelWidthForContext(
-  width: number,
-  browserDocked: boolean,
-): number {
-  const min = browserDocked
-    ? RIGHT_PANEL_COMPACT_MIN_WIDTH_PX
-    : RIGHT_PANEL_MIN_WIDTH_PX
-  const max = browserDocked
-    ? RIGHT_PANEL_COMPACT_MAX_WIDTH_PX
-    : RIGHT_PANEL_MAX_WIDTH_PX
-  return Math.round(Math.min(Math.max(width, min), max))
+export function rightPanelWidthBounds(browserDocked: boolean): { min: number; max: number } {
+  return browserDocked
+    ? { min: RIGHT_PANEL_COMPACT_MIN_WIDTH_PX, max: RIGHT_PANEL_COMPACT_MAX_WIDTH_PX }
+    : { min: RIGHT_PANEL_MIN_WIDTH_PX, max: Number.POSITIVE_INFINITY }
 }
 
 /**
