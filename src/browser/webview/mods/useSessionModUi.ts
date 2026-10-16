@@ -18,9 +18,12 @@ export function useSessionModUi(
     canListMods: boolean
     onOpenPluginSettings?: (plugin: string) => void
     panesDocked?: boolean
+    /** The docked pane whose card is open (`ModUiContextValue.dockFront`). */
+    dockFront?: { plugin: string; id: string } | null
+    setDockFront?: (front: { plugin: string; id: string } | null) => void
   },
 ): ModUiContextValue {
-  const { canListMods, onOpenPluginSettings, panesDocked } = options
+  const { canListMods, onOpenPluginSettings, panesDocked, dockFront, setDockFront } = options
   const lines = useModsUiView(runtimeConnection, sessionId)
   const modsState = useModsStateView(runtimeConnection, canListMods)
   const plugins = useMemo(
@@ -39,7 +42,9 @@ export function useSessionModUi(
       plugins,
       ...(onOpenPluginSettings ? { openPluginSettings: onOpenPluginSettings } : {}),
       ...(panesDocked ? { panesDocked: true } : {}),
+      ...(dockFront !== undefined ? { dockFront } : {}),
+      ...(setDockFront ? { setDockFront } : {}),
     }),
-    [lines, plugins, onOpenPluginSettings, panesDocked],
+    [lines, plugins, onOpenPluginSettings, panesDocked, dockFront, setDockFront],
   )
 }

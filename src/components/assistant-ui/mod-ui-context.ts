@@ -136,9 +136,15 @@ export type ModUiContextValue = {
   isLoaded?: boolean
   /** The open panes and the hooked sites. */
   panes: readonly ModUiPaneRow[]
-  /** True where the page docks the panes in its Right Panel
+  /** True where the page docks the panes in the session card stack
    *  (`placement: 'dock'`): the thread then draws none above the prompt. */
   panesDocked?: boolean
+  /** The docked pane whose card is open, or null when every pane card is
+   *  closed. Owned by the page, reported to the runtime as the seat's
+   *  `showing`. */
+  dockFront?: { plugin: string; id: string } | null
+  /** Open one docked pane's card (closing the others), or close them all. */
+  setDockFront?: (front: { plugin: string; id: string } | null) => void
   hooked: readonly ModUiHookedSite[]
   stale: ModUiStale
   /** What a `turn.complete` hook answered beneath the last answer. */

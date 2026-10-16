@@ -267,7 +267,7 @@ export function ModToasts() {
   return (
     <div
       data-slot="mod-toasts"
-      className="pointer-events-none absolute right-4 top-3 z-20 flex w-72 max-w-[calc(100%-2rem)] flex-col gap-2"
+      className="pointer-events-none flex flex-col gap-2"
     >
       {toasts.map((toast) => (
         <div

@@ -1,9 +1,10 @@
 /**
  * Security: validation for the PERSISTED layout blob — `localStorage` is never
  * trusted; a corrupt / stale / hand-edited blob degrades to safe defaults (F-9).
- * Only the Right Panel's global geometry (width + split ratio) and the
- * `rightPanelLastView` preference are stored; showing state is per-session and
- * in-memory, so stale showing fields in an older blob are ignored.
+ * Only the Right Panel's global geometry (width + split ratio), the
+ * `rightPanelLastView` preference and the session card stack's order and Show
+ * choices are stored; showing state is per-session and in-memory, so stale
+ * showing fields in an older blob are ignored.
  */
 import { clampRightPanelSplitRatio, clampRightPanelWidth } from './computeLayout'
 import {
@@ -13,6 +14,11 @@ import {
   type DefaultRightPanelTabId,
   type RightPanelGeometry,
 } from './rightPanelManager'
+import {
+  defaultSessionCardPrefs,
+  sanitizeSessionCardPrefs,
+  type SessionCardPrefs,
+} from './sessionCards'
 
 /** Versioned, persisted layout blob (see header for what is in scope). */
 export interface NexusLayoutStorageV1 {
@@ -26,6 +32,8 @@ export interface NexusLayoutStorageV1 {
    * restore into a tab that does not exist.
    */
   rightPanelLastView: DefaultRightPanelTabId
+  /** The session card stack's order and Show choices (global, not per session). */
+  sessionCards: SessionCardPrefs
 }
 
 export function defaultLayoutStorage(): NexusLayoutStorageV1 {
@@ -33,6 +41,7 @@ export function defaultLayoutStorage(): NexusLayoutStorageV1 {
     version: 1,
     rightPanel: defaultRightPanelGeometry(),
     rightPanelLastView: RIGHT_PANEL_DEFAULT_ACTIVE_VIEW,
+    sessionCards: defaultSessionCardPrefs(),
   }
 }
 
@@ -68,5 +77,6 @@ export function sanitizeLayoutStorage(raw: unknown): NexusLayoutStorageV1 {
     rightPanelLastView: isDefaultRightPanelTab(obj.rightPanelLastView)
       ? obj.rightPanelLastView
       : RIGHT_PANEL_DEFAULT_ACTIVE_VIEW,
+    sessionCards: sanitizeSessionCardPrefs(obj.sessionCards),
   }
 }

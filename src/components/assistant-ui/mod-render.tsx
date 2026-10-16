@@ -1057,11 +1057,11 @@ function useModPaneProps(pane: ModUiPaneRow, placement: "dock" | "inline", bodyC
 }
 
 /**
- * A pane docked in the Right Panel (`placement: 'dock'`, "beside the
- * transcript"): its tab's whole body, sized by the panel — the columns and
- * the rows are the panel's, `rows` asked at open is ignored ("the dock
- * ignores it"). Mounted only while its tab is shown, so a pane behind
- * another tab is never asked for.
+ * A pane docked in the session card stack (`placement: 'dock'`, "beside the
+ * transcript"): its card's whole body, sized by the card — the columns and
+ * the rows are the card's, `rows` asked at open is ignored ("the dock
+ * ignores it"). Mounted only while its card is open, so a closed pane is
+ * never asked for.
  */
 export function ModDockedPane({ plugin, id }: { plugin: string; id: string }) {
   const { panes } = useModUi();
@@ -1090,8 +1090,8 @@ function ModDockedPaneBody({ pane }: { pane: ModUiPaneRow }) {
       data-mod-placement="dock"
       className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]"
     >
-      {/* The shell mounts the Right Panel outside the thread's
-          TooltipProvider; the plugin icon on the frame is a Tooltip. */}
+      {/* The plugin icon on the frame is a Tooltip; the body carries its own
+          provider so it draws wherever it is mounted. */}
       <TooltipProvider>
         <ModPluginFrame slot="mod-pane-body" frameClassName="" plugins={[pane.plugin]}>
           <div ref={cellsRef} className="px-2 py-1.5">

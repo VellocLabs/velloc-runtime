@@ -1,6 +1,7 @@
 /**
  * localStorage I/O for the PERSISTED layout blob — the Right Panel's geometry
- * (width + split ratio) and the tab a cold open restores. Mirrors the existing
+ * (width + split ratio), the tab a cold open restores, and the session card
+ * stack's order and Show choices. Mirrors the existing
  * `shift-*` width helpers in MultiSessionShell: best-effort, `try/catch`
  * everywhere, always sanitized on read. The panel's per-session showing state
  * is in-memory only and is never written here (F-9).
@@ -15,6 +16,7 @@ import {
   type DefaultRightPanelTabId,
   type RightPanelGeometry,
 } from './rightPanelManager'
+import type { SessionCardPrefs } from './sessionCards'
 
 export const LAYOUT_STORAGE_KEY = 'nexus.layout.v1'
 
@@ -44,9 +46,9 @@ export function loadRightPanelGeometry(): RightPanelGeometry {
   return loadLayoutStorage().rightPanel
 }
 
-// Both writers below are READ-MODIFY-WRITE, and must stay that way: the blob
-// holds two independent settings written by two unrelated user actions (a
-// drag of the splitter, a click on a tab). Writing a freshly-built object
+// Every writer below is READ-MODIFY-WRITE, and must stay that way: the blob
+// holds independent settings written by unrelated user actions (a drag of
+// the splitter, a click on a tab, a card moved). Writing a freshly-built object
 // would reset whichever field this call is not about.
 
 /** Persist the global Right Panel geometry into the v1 blob. */
@@ -62,6 +64,15 @@ export function loadRightPanelLastView(): DefaultRightPanelTabId {
 /** Remember the always-open tab the user last focused. */
 export function saveRightPanelLastView(view: DefaultRightPanelTabId): void {
   saveLayoutStorage({ ...loadLayoutStorage(), rightPanelLastView: view })
+}
+
+/** The session card stack's order and Show choices (sanitized). */
+export function loadSessionCardPrefs(): SessionCardPrefs {
+  return loadLayoutStorage().sessionCards
+}
+
+export function saveSessionCardPrefs(prefs: SessionCardPrefs): void {
+  saveLayoutStorage({ ...loadLayoutStorage(), sessionCards: prefs })
 }
 
 export { defaultRightPanelGeometry }

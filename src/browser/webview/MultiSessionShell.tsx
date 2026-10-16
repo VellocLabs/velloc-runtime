@@ -67,18 +67,14 @@ import {
   setRightPanelVisible,
   setRightPanelWidth,
   showRightPanel,
-  isModViewId,
-  modViewParts,
   type DefaultRightPanelTabId,
-  type ModViewId,
   type RightPanelGeometry,
   type RightPanelSession,
   type RightPanelState,
   type RightPanelViewId,
 } from './layout/rightPanelManager'
-import { syncModPaneTabs } from './layout/modPaneTabs'
+import { foldModDock, sameModDockFront, type ModDockFront } from './layout/modDock'
 import { useSessionModUi } from './mods/useSessionModUi'
-import { ModUiContext } from '@/components/assistant-ui/mod-ui-context'
 import {
   RightPanelContentContext,
   type RightPanelDiffTarget,
@@ -2508,46 +2504,60 @@ export function MultiSessionShell({
     setSettingsSection('plugins')
   }, [])
 
-  // Mods' panes docked in the Right Panel, beside the transcript (F-25; a
-  // pane with `placement: 'dock'`). The panel renders
-  // outside the thread's provider tree, so the shell provides the ACTIVE
-  // session's mod UI around it — the same per-session stores the thread reads.
+  // Mods' panes docked in the session card stack, at the transcript's top
+  // right (F-25; a pane with `placement: 'dock'`). The shell owns which pane
+  // card is open per session and reports it as the seat's `showing`; it reads
+  // the ACTIVE session's mod UI for that (the same per-session stores the
+  // thread reads).
   const modPanesDocked = !narrowViewport
   const shellModUi = useSessionModUi(runtimeConnection, activeSessionId, {
     canListMods: runtimeCapabilities.can('mods', 'list'),
     onOpenPluginSettings: handleOpenPluginSettings,
     panesDocked: modPanesDocked,
   })
-  // The pane views last folded per session (`syncModPaneTabs`' `seen`): a
-  // pane absent from it opens its tab; one already there only keeps it.
-  const modPaneTabsSeenRef = useRef(new Map<string, Map<ModViewId, number>>())
+  const [modDockFronts, setModDockFronts] = useState<ReadonlyMap<string, ModDockFront | null>>(
+    () => new Map(),
+  )
+  const handleModDockFrontChange = useCallback(
+    (sessionId: string, front: ModDockFront | null) => {
+      setModDockFronts(prev => {
+        if (sameModDockFront(prev.get(sessionId) ?? null, front)) return prev
+        const next = new Map(prev)
+        next.set(sessionId, front)
+        return next
+      })
+    },
+    [],
+  )
+  // The panes last folded per session (`foldModDock`'s `seen`): a pane the
+  // person asked for since comes to the front.
+  const modDockSeenRef = useRef(new Map<string, Map<string, number>>())
   useEffect(() => {
-    if (!activeSessionId || !shellModUi.isLoaded) return
-    const seenBySession = modPaneTabsSeenRef.current
-    updateRightPanel(state => {
-      const synced = syncModPaneTabs(state, {
+    if (!activeSessionId || !shellModUi.isLoaded || !modPanesDocked) return
+    const seenBySession = modDockSeenRef.current
+    setModDockFronts(prev => {
+      const folded = foldModDock({
+        front: prev.get(activeSessionId) ?? null,
         panes: shellModUi.panes,
         seen: seenBySession.get(activeSessionId),
-        docked: modPanesDocked,
       })
-      seenBySession.set(activeSessionId, synced.seen)
-      return synced.state
+      seenBySession.set(activeSessionId, folded.seen)
+      if (sameModDockFront(prev.get(activeSessionId) ?? null, folded.front)) return prev
+      const next = new Map(prev)
+      next.set(activeSessionId, folded.front)
+      return next
     })
-  }, [activeSessionId, shellModUi.isLoaded, shellModUi.panes, modPanesDocked, updateRightPanel])
-  // A docked pane's tab: a click shows it in the runtime's roster too; its
-  // close mark is the person's close (`ui.close`, origin `person`), which a
-  // hook may refuse — the tab leaves only when the runtime drops the pane.
+  }, [activeSessionId, shellModUi.isLoaded, shellModUi.panes, modPanesDocked])
   // Where this window draws the active session's panes (`mods.seat`): what
-  // places a mod's own open and what `$.ui.panes()` reports
-  // shown — a hidden panel shows nothing, so a mod toggling its pane (the
-  // diff mod's `/diff`) opens it again rather than closing what the person
-  // cannot see. A session left behind is told this window no longer draws it.
+  // places a mod's own open and what `$.ui.panes()` reports shown — a
+  // maximized Right Panel covers the stack, so it shows nothing, and a mod
+  // toggling its pane (the diff mod's `/diff`) opens it again rather than
+  // closing what the person cannot see. A session left behind is told this
+  // window no longer draws it.
   const { reportSeat: reportModSeat } = shellModUi
-  const modSeat = !modPanesDocked ? 'inline' : rightPanel.visible ? 'dock-visible' : 'dock-hidden'
+  const modSeat = !modPanesDocked ? 'inline' : rightPanelMaximized ? 'dock-hidden' : 'dock-visible'
   const modSeatShowing =
-    modSeat === 'dock-visible' && rightPanel.activeView && isModViewId(rightPanel.activeView)
-      ? modViewParts(rightPanel.activeView)
-      : null
+    modSeat === 'dock-visible' && activeSessionId ? modDockFronts.get(activeSessionId) ?? null : null
   const modSeatShowingPlugin = modSeatShowing?.plugin
   const modSeatShowingId = modSeatShowing?.id
   const modSeatReportedRef = useRef<{
@@ -2568,25 +2578,17 @@ export function MultiSessionShell({
         : undefined
     void reportModSeat(modSeat, showing).catch(() => {})
   }, [activeSessionId, reportModSeat, modSeat, modSeatShowingPlugin, modSeatShowingId])
-  const { showPane: showModPane, closePane: closeModPane } = shellModUi
   const handleActivateRightPanelView = useCallback(
     (view: RightPanelViewId) => {
       updateRightPanel(s => setActiveView(s, view))
-      const parts = isModViewId(view) ? modViewParts(view) : null
-      if (parts) void showModPane?.(parts.plugin, parts.id)
     },
-    [updateRightPanel, showModPane],
+    [updateRightPanel],
   )
   const handleCloseRightPanelView = useCallback(
     (view: RightPanelViewId) => {
-      if (isModViewId(view)) {
-        const parts = modViewParts(view)
-        if (parts) void closeModPane?.(parts.plugin, parts.id)
-        return
-      }
       updateRightPanel(s => closeView(s, view))
     },
-    [updateRightPanel, closeModPane],
+    [updateRightPanel],
   )
   const handleSettingsNavigate = useCallback((section: SettingsSectionId) => {
     setPluginSettingsRequest(null)
@@ -3965,6 +3967,8 @@ export function MultiSessionShell({
                   openSettings={handleOpenSettings}
                   onOpenPluginSettings={handleOpenPluginSettings}
                   modPanesDocked={modPanesDocked}
+                  modDockFront={modDockFronts.get(sessionId) ?? null}
+                  onModDockFrontChange={handleModDockFrontChange}
                   runtimeConnection={runtimeConnection}
                   loadProviderMissingPrompt={handleLoadProviderMissingPrompt}
                   onAdoptDefaultSelection={handleAdoptDefaultSelection}
@@ -3998,7 +4002,6 @@ export function MultiSessionShell({
             />
             )}
             <RightPanelContentContext.Provider value={shellRightPanelContentValue}>
-            <ModUiContext.Provider value={shellModUi}>
             <FilePathContext.Provider value={shellFilePathContextValue}>
             <Suspense fallback={null}>
             <RightPanel
@@ -4053,7 +4056,6 @@ export function MultiSessionShell({
             />
             </Suspense>
             </FilePathContext.Provider>
-            </ModUiContext.Provider>
             </RightPanelContentContext.Provider>
           </>
         ) : null}

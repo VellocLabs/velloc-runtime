@@ -105,6 +105,7 @@ import {
 } from "./mod-render";
 import { EnterPlanModeFooterControl } from "./enter-plan-mode-footer-control";
 import { BackgroundTasksFooterControl } from "./background-tasks-footer-control";
+import { SessionCardStack } from "./session-card-stack";
 import { NextMessageStrip } from "./next-message-strip";
 import {
   PendingMessageContext,
@@ -1021,15 +1022,25 @@ export const Thread: FC<{
       onChange={onPendingQuestionsChange}
     />
     <ThreadPrimitive.Root
-      className="aui-root aui-thread-root @container relative flex h-full flex-col bg-background"
+      className="aui-root aui-thread-root @container relative flex h-full flex-col bg-background has-[[data-slot=session-card-stack]]:[--thread-end-reserve:clamp(24px,calc(var(--thread-max-width)+654px-100cqw),315px)]"
       style={{
         ["--thread-max-width" as string]: "48rem",
         ["--composer-radius" as string]: "24px",
         ["--composer-padding" as string]: "10px",
       }}
     >
-      {/* The mods' toasts (F-25 `$.ui.toast`) over the transcript's top right corner. */}
-      <ModToasts />
+      {/* The transcript's top right corner: the session card stack (F-9; the
+          mods' docked panes are its last cards, F-25), then the mods' toasts
+          (`$.ui.toast`) beneath it. While the stack shows, the column keeps
+          clear of it: centred when there is room, else moved left (and then
+          narrowed) so its end stays 24px short of the 280px stack. */}
+      <div
+        data-slot="thread-top-right"
+        className="pointer-events-none absolute top-3 right-[11px] z-20 flex max-h-[calc(100%-1.5rem)] w-[280px] max-w-[calc(100%-1.5rem)] flex-col gap-2.5"
+      >
+        <SessionCardStack history={turnDiffHistory ?? null} />
+        <ModToasts />
+      </div>
       {/* The page's clipboard, focus ring and windows, for `$.ui.copy` / `.focus` / `.scroll`. */}
       <ModPageResponder />
       {/* Whole-pane drop target. The composer has its own dropzone, but the
@@ -1048,7 +1059,7 @@ export const Thread: FC<{
         scrollToBottomOnRunStart={false}
         scrollToBottomOnInitialize={false}
         scrollToBottomOnThreadSwitch={false}
-        className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-auto px-6 pt-4 [overflow-anchor:none]"
+        className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-auto ps-6 pe-(--thread-end-reserve,24px) pt-4 [overflow-anchor:none]"
       >
         {/*
           ThreadWelcome rendering moved to AssistantUiThread level so the

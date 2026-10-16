@@ -388,9 +388,13 @@ export type AssistantUiThreadProps = {
   /** Open Settings → Plugins & Mods at one plugin's row — the icon on a
    *  mod's rows above the prompt (F-25). */
   onOpenPluginSettings?: (plugin: string) => void
-  /** The shell docks the mods' panes in its Right Panel (F-25,
+  /** The shell docks the mods' panes in the session card stack (F-25,
    *  `placement: 'dock'`): the thread draws none above the prompt. */
   modPanesDocked?: boolean
+  /** The docked pane whose card is open for this session; the shell owns it
+   *  and reports it as the seat's `showing`. */
+  modDockFront?: { plugin: string; id: string } | null
+  onModDockFrontChange?: (sessionId: string, front: { plugin: string; id: string } | null) => void
   /** The page's runtime connection, for `mods/ui/<sessionId>` — the mods'
    *  status lines, notices and toasts (F-25). Absent on a mock host. */
   runtimeConnection?: () => Promise<RuntimeConnection>
@@ -590,6 +594,8 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   openSettings,
   onOpenPluginSettings,
   modPanesDocked,
+  modDockFront,
+  onModDockFrontChange,
   runtimeConnection,
   loadProviderMissingPrompt,
   onAdoptDefaultSelection,
@@ -640,6 +646,8 @@ export const AssistantUiThread = memo(function AssistantUiThread({
       openSettings={openSettings}
       onOpenPluginSettings={onOpenPluginSettings}
       modPanesDocked={modPanesDocked}
+      modDockFront={modDockFront}
+      onModDockFrontChange={onModDockFrontChange}
       runtimeConnection={runtimeConnection}
       loadProviderMissingPrompt={loadProviderMissingPrompt}
       onAdoptDefaultSelection={onAdoptDefaultSelection}
@@ -692,6 +700,8 @@ function InteractiveAssistantUiThread({
   openSettings,
   onOpenPluginSettings,
   modPanesDocked,
+  modDockFront,
+  onModDockFrontChange,
   runtimeConnection,
   loadProviderMissingPrompt,
   onAdoptDefaultSelection,
@@ -709,10 +719,20 @@ function InteractiveAssistantUiThread({
   // panes, who each plugin is (`mods/state`, for the card on its icon above
   // the prompt), and the icon's jump to the Plugins page.
   const canListMods = useCan('mods', 'list')
-  const modUi = useSessionModUi(runtimeConnection, state.snapshot?.sessionId, {
+  const modSessionId = state.snapshot?.sessionId
+  const setModDockFront = useMemo(
+    () =>
+      modSessionId && onModDockFrontChange
+        ? (front: { plugin: string; id: string } | null) => onModDockFrontChange(modSessionId, front)
+        : undefined,
+    [modSessionId, onModDockFrontChange],
+  )
+  const modUi = useSessionModUi(runtimeConnection, modSessionId, {
     canListMods,
     onOpenPluginSettings,
     panesDocked: modPanesDocked,
+    dockFront: modDockFront,
+    setDockFront: setModDockFront,
   })
   const [headerError, setHeaderError] = useState<string | null>(null)
   // "Try again" on the ProviderApiErrorCard. When the failed turn is already

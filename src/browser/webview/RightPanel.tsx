@@ -13,7 +13,6 @@ import {
   ListTodoIcon,
   Maximize2Icon,
   Minimize2Icon,
-  PuzzleIcon,
   ToolboxIcon,
   XIcon,
   type LucideIcon,
@@ -49,9 +48,7 @@ import {
 import {
   fileViewPath,
   isFileViewId,
-  isModViewId,
   isNonClosableRightPanelTab,
-  modViewParts,
   reconcileMountedBodies,
   sameMountedBodies,
   selectRightPanelSplit,
@@ -59,8 +56,6 @@ import {
   type RightPanelState,
   type RightPanelViewId,
 } from './layout/rightPanelManager'
-import { ModDockedPane } from '@/components/assistant-ui/mod-render'
-import { useModUi, type ModUiPaneRow } from '@/components/assistant-ui/mod-ui-context'
 import { useT, type TranslateFn } from './i18n'
 import type { MessageKey } from './i18n/messages/en'
 
@@ -89,26 +84,12 @@ const VIEW_ICON: Record<FixedRightPanelViewId, LucideIcon> = {
 
 function viewIcon(view: RightPanelViewId): LucideIcon {
   if (isFileViewId(view)) return FileTextIcon
-  if (isModViewId(view)) return PuzzleIcon
   return VIEW_ICON[view]
 }
 
-/** Tab label: a fixed view's name, a file view's base name (`foo.cc`), or a
- *  mod pane's title — "the `title` it was opened with, or its id". */
-function viewLabel(
-  view: RightPanelViewId,
-  t: TranslateFn,
-  panes: readonly ModUiPaneRow[],
-): string {
+/** Tab label: a fixed view's name or a file view's base name (`foo.cc`). */
+function viewLabel(view: RightPanelViewId, t: TranslateFn): string {
   if (isFileViewId(view)) return baseName(fileViewPath(view))
-  if (isModViewId(view)) {
-    const parts = modViewParts(view)
-    if (!parts) return view
-    const pane = panes.find(
-      (row) => row.plugin === parts.plugin && row.id === parts.id,
-    )
-    return pane?.title ?? parts.id
-  }
   return t(VIEW_LABEL_KEY[view])
 }
 
@@ -226,9 +207,6 @@ function EmptyState({ label }: { label: string }): ReactElement {
 
 export function RightPanel(props: RightPanelProps): ReactElement {
   const t = useT();
-  // The mods' panes of this session, for a docked pane's tab title; the shell
-  // provides the session's mod UI around the panel (F-25).
-  const { panes: modPanes } = useModUi()
   const { state } = props
   const sessionKey = props.sessionId ?? ''
   const split = selectRightPanelSplit(state)
@@ -292,11 +270,6 @@ export function RightPanel(props: RightPanelProps): ReactElement {
 
   const renderBody = (view: RightPanelViewId): ReactNode => {
     // A per-file view carries its path in its id → render that file.
-    // A mod's pane docked here (`placement: 'dock'`): its plugin draws it.
-    if (isModViewId(view)) {
-      const parts = modViewParts(view)
-      return parts ? <ModDockedPane plugin={parts.plugin} id={parts.id} /> : null
-    }
     if (isFileViewId(view)) {
       const path = fileViewPath(view)
       return (
@@ -400,11 +373,9 @@ export function RightPanel(props: RightPanelProps): ReactElement {
           {state.tabs.map((view) => {
             const isActive = view === active
             // A file view's tab is titled by its base name (`foo.cc`), with the
-            // full path as the hover tooltip; fixed views use their name; a
-            // mod pane's tab carries its plugin's name as the tooltip.
+            // full path as the hover tooltip; fixed views use their name.
             const filesPath = isFileViewId(view) ? fileViewPath(view) : undefined
-            const modPlugin = isModViewId(view) ? modViewParts(view)?.plugin : undefined
-            const label = viewLabel(view, t, modPanes)
+            const label = viewLabel(view, t)
             const Icon = viewIcon(view)
             // The always-open views (`tasks` / `diff`) plus `skill` — the ONE
             // shared Skills tab (SkillPanel's own doc comment) — have no close
@@ -428,7 +399,7 @@ export function RightPanel(props: RightPanelProps): ReactElement {
                   role="tab"
                   aria-selected={isActive}
                   data-testid={`right-panel-tab-${view}`}
-                  title={filesPath ?? modPlugin ?? undefined}
+                  title={filesPath}
                   onClick={() => props.onActivateView(view)}
                   className={cn(
                     'flex min-w-0 max-w-[12rem] items-center gap-1 outline-none',

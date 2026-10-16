@@ -15,17 +15,11 @@ import { clampRightPanelSplitRatio, clampRightPanelWidth } from './computeLayout
  *  opening a second file no longer replaces the first (dedup is exact-path).
  *  The path travels IN the id — the panel needs no separate file-target map. */
 export type FileViewId = `file:${string}`
-/** A mod's pane docked here (F-25, a `Pane` with `placement: 'dock'`): one tab
- *  per (plugin, pane id), `mod:<plugin>:<id>`. The pane id is "1-64 of
- *  letters, digits, `_` and `-`" (`$.ui.open`), so it never holds a colon and
- *  the LAST colon splits the two. */
-export type ModViewId = `mod:${string}`
 /** The singleton utility views. `files` is NOT here — files are per-file. */
 export type FixedRightPanelViewId = 'plan' | 'tasks' | 'diff' | 'skill'
-export type RightPanelViewId = FixedRightPanelViewId | FileViewId | ModViewId
+export type RightPanelViewId = FixedRightPanelViewId | FileViewId
 
 export const FILE_VIEW_PREFIX = 'file:'
-export const MOD_VIEW_PREFIX = 'mod:'
 
 export function fileViewId(path: string): FileViewId {
   return `${FILE_VIEW_PREFIX}${path}`
@@ -35,20 +29,6 @@ export function isFileViewId(view: RightPanelViewId): view is FileViewId {
 }
 export function fileViewPath(view: FileViewId): string {
   return view.slice(FILE_VIEW_PREFIX.length)
-}
-
-export function modViewId(plugin: string, id: string): ModViewId {
-  return `${MOD_VIEW_PREFIX}${plugin}:${id}`
-}
-export function isModViewId(view: RightPanelViewId): view is ModViewId {
-  return view.startsWith(MOD_VIEW_PREFIX)
-}
-/** The (plugin, pane id) a mod view names; null for a malformed id. */
-export function modViewParts(view: ModViewId): { plugin: string; id: string } | null {
-  const rest = view.slice(MOD_VIEW_PREFIX.length)
-  const cut = rest.lastIndexOf(':')
-  if (cut <= 0 || cut === rest.length - 1) return null
-  return { plugin: rest.slice(0, cut), id: rest.slice(cut + 1) }
 }
 
 /** The FIXED view ids (per-file ids are dynamic and validated by prefix). */
@@ -118,8 +98,7 @@ export function isRightPanelViewId(value: unknown): value is RightPanelViewId {
   return (
     typeof value === 'string' &&
     ((KNOWN_RIGHT_PANEL_VIEWS as readonly string[]).includes(value) ||
-      value.startsWith(FILE_VIEW_PREFIX) ||
-      (value.startsWith(MOD_VIEW_PREFIX) && modViewParts(value as ModViewId) !== null))
+      value.startsWith(FILE_VIEW_PREFIX))
   )
 }
 
@@ -417,8 +396,8 @@ function dedupe(views: readonly RightPanelViewId[]): RightPanelViewId[] {
 
 /**
  * Which tab bodies stay mounted, most-recently-visible first. FILE bodies past `max`
- * are released unless visible or protected; singleton views are never released; a
- * MOD body is kept only while visible. Re-activating a released tab re-mounts it.
+ * are released unless visible or protected; singleton views are never released.
+ * Re-activating a released tab re-mounts it.
  */
 export function reconcileMountedBodies(params: {
   /** Currently mounted views, most-recently-visible first. */
@@ -443,13 +422,6 @@ export function reconcileMountedBodies(params: {
   const kept: RightPanelViewId[] = []
   let fileBodies = 0
   for (const view of ordered) {
-    // A mod's pane is drawn only while it is on screen: a hidden body would
-    // keep asking its plugin for `ui.render` on every stale mark, and the
-    // contract draws the shown pane alone ("the rest are tabs behind it").
-    if (isModViewId(view)) {
-      if (visibleSet.has(view)) kept.push(view)
-      continue
-    }
     if (!isFileViewId(view)) {
       kept.push(view)
       continue
