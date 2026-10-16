@@ -37,6 +37,7 @@ import {
 } from "@/browser/webview/layout/layoutStorage";
 import { useBackgroundTasksContext } from "./background-tasks-context";
 import { useSessionConnectors } from "./session-connectors-context";
+import { SessionTasksList } from "./session-tasks-card";
 import { useRightPanelContent } from "./right-panel-content-context";
 import { useModUi, type ModUiPaneRow } from "./mod-ui-context";
 import { ModDockedPane } from "./mod-render";
@@ -151,7 +152,7 @@ function CardStack({
     };
   }, [placement]);
   const { openFile, openDiff } = useRightPanelContent();
-  const { openTasksDrawer, runningTaskCount } = useBackgroundTasksContext();
+  const { runningTaskCount } = useBackgroundTasksContext();
   const [prefs, writePrefs] = useSessionCardPrefs();
   const [connectorsOpen, setConnectorsOpen] = React.useState(false);
   const servers = useSessionConnectors();
@@ -161,6 +162,7 @@ function CardStack({
   );
   const [outputsOpen, setOutputsOpen] = React.useState(true);
   const [outputsAll, setOutputsAll] = React.useState(false);
+  const [tasksOpen, setTasksOpen] = React.useState(false);
   const figures = React.useMemo(() => sessionChangeFigures(history), [history]);
   const runningTasks = runningTaskCount ?? 0;
 
@@ -300,9 +302,12 @@ function CardStack({
         flat={flat}
         label={label}
         handle={handle}
-        onActivate={openTasksDrawer ? () => openTasksDrawer() : undefined}
-        summary={t("sessionCards.tasksRunning", { count: runningTasks })}
-      />
+        expanded={tasksOpen}
+        onActivate={() => setTasksOpen((open) => !open)}
+        summary={tasksOpen ? null : t("sessionCards.tasksRunning", { count: runningTasks })}
+      >
+        {tasksOpen ? <SessionTasksList /> : null}
+      </InfoCard>
     );
   };
 

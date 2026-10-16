@@ -38,6 +38,7 @@ const EXEMPT: ReadonlySet<string> = new Set([
   'loadTurnDiffDetail',
   'loadProviderMissingPrompt',
   'onOpenBackgroundTasks',
+  'onOpenBackgroundTasksList',
   'onOpenFileInPanel',
   'onOpenDiffInPanel',
   'onOpenSkillInPanel',

@@ -1,5 +1,7 @@
 import { createContext, useContext } from 'react'
 
+import type { NexusTaskSummaryRow } from '@/browser/bridge/protocol/ui'
+
 /**
  * Thread-level handle to open the global Background Tasks drawer. Provided by
  * `AssistantUiThread` (bound to the shell's drawer toggle) and consumed by the
@@ -19,6 +21,13 @@ export type BackgroundTasksContextValue = {
    *  `<task-notification>` turn later — so the session isn't really done.
    *  Absent/0 on hosts without the drawer feed. */
   runningTaskCount?: number
+  /** THIS session's task rows (running and settled), for the session card
+   *  stack's Background tasks card. */
+  taskRows?: readonly NexusTaskSummaryRow[]
+  /** Stop one running task by id. Absent where the host cannot. */
+  stopTask?: (taskId: string) => void
+  /** Open the Tasks view on its list, leaving any task detail it showed. */
+  openTasksList?: () => void
 }
 
 export const BackgroundTasksContext =

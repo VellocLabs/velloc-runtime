@@ -3,6 +3,7 @@ import type { NexusTaskSummaryRow } from '../browser/bridge/protocol/ui'
 import {
   countRunning,
   filterSubAgentRowsBySession,
+  sessionTaskCardRows,
   groupSubAgentsByCategory,
   subAgentsEqual,
   summarizeSubAgents,
@@ -185,5 +186,33 @@ describe('backgroundSubAgents helpers (Background Tasks drawer)', () => {
     // Any other kind shows its own description (author or model text).
     expect(taskRowLabelKey({ type: 'local_fork', querySource: 'memory_recall' })).toBeNull()
     expect(taskRowLabelKey({})).toBeNull()
+  })
+})
+
+describe('sessionTaskCardRows', () => {
+  const row = (sessionId: string, status: NexusTaskSummaryRow['status'], extra: Partial<NexusTaskSummaryRow> = {}): NexusTaskSummaryRow => ({
+    sessionId,
+    spawnerSessionId: 'P',
+    status,
+    description: sessionId,
+    ...extra,
+  })
+
+  it('splits running rows, in order, from the settled rows the Tasks list files', () => {
+    const { running, finished } = sessionTaskCardRows([
+      row('a', 'running'),
+      row('b', 'success'),
+      row('c', 'running', { type: 'local_bash' }),
+      row('d', 'error', { type: 'local_bash' }),
+      // A settled fork and a settled SuperShell step have no row in the list.
+      row('e', 'success', { type: 'local_fork' }),
+      row('f', 'success', { type: 'local_bash', superShellTaskId: 'ss' }),
+    ])
+    expect(running.map(r => r.sessionId)).toEqual(['a', 'c'])
+    expect(finished).toBe(2)
+  })
+
+  it('nothing for no rows', () => {
+    expect(sessionTaskCardRows(undefined)).toEqual({ running: [], finished: 0 })
   })
 })

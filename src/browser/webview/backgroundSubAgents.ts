@@ -9,13 +9,17 @@
 
 import {
   ActivityIcon,
+  BracesIcon,
   CircleUserRoundIcon,
+  ClockIcon,
+  GitForkIcon,
   TerminalIcon,
   UserPenIcon,
+  ZapIcon,
   type LucideIcon,
 } from 'lucide-react'
 
-import type { NexusTaskSummaryRow } from '../bridge/protocol/ui'
+import type { NexusTaskKind, NexusTaskSummaryRow } from '../bridge/protocol/ui'
 
 import type { MessageKey } from './i18n/messages/en'
 
@@ -250,4 +254,37 @@ export function taskRowLabelKey(
   return Object.hasOwn(FAST_CALL_LABEL_KEY, source)
     ? FAST_CALL_LABEL_KEY[source]!
     : 'backgroundTasks.fastCall.generic'
+}
+
+/** A task row's glyph by kind (absent `type` ⇒ `local_agent`): shells share
+ *  the terminal, a subagent is the person. */
+export const TASK_KIND_ICON: Record<NexusTaskKind, LucideIcon> = {
+  local_agent: CircleUserRoundIcon,
+  local_bash: TerminalIcon,
+  local_supershell: TerminalIcon,
+  local_fork: GitForkIcon,
+  local_fast: ZapIcon,
+  local_routine: ClockIcon,
+  local_js: BracesIcon,
+}
+
+/** At most this many running tasks show before Show more. */
+export const SESSION_TASKS_RUNNING_LIMIT = 5
+
+/**
+ * The session card's split of a session's task rows (F-9): the running ones,
+ * in feed order, and how many settled ones the Tasks list files under a kind
+ * (`categorizeSubAgentRow`), which is what "finished" counts.
+ */
+export function sessionTaskCardRows(rows: readonly NexusTaskSummaryRow[] | undefined): {
+  running: NexusTaskSummaryRow[]
+  finished: number
+} {
+  const running: NexusTaskSummaryRow[] = []
+  let finished = 0
+  for (const row of rows ?? []) {
+    if (row.status === 'running') running.push(row)
+    else if (categorizeSubAgentRow(row) !== null) finished += 1
+  }
+  return { running, finished }
 }

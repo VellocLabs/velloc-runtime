@@ -120,6 +120,21 @@ describe('BackgroundTasksDrawer focus consumption', () => {
     expect(onFocusConsumed).toHaveBeenCalledTimes(1)
   })
 
+  it('a new listRequest leaves the detail for the list; an unchanged one does not', async () => {
+    const { rerender } = render(
+      createElement(
+        BackgroundTasksDrawer,
+        drawerProps({ rows: [runningRow()], focusSessionId: 'b-run', listRequest: 0 }),
+      ),
+    )
+    await waitFor(() => expect(detailEl()).not.toBeNull())
+    rerender(createElement(BackgroundTasksDrawer, drawerProps({ rows: [runningRow()], listRequest: 0 })))
+    await Promise.resolve()
+    expect(detailEl()).not.toBeNull()
+    rerender(createElement(BackgroundTasksDrawer, drawerProps({ rows: [runningRow()], listRequest: 1 })))
+    await waitFor(() => expect(detailEl()).toBeNull())
+  })
+
   it('a REPEAT jump to the same task re-focuses after the owner cleared (null → id transition)', async () => {
     const onFocusConsumed = vi.fn()
     const { rerender } = render(

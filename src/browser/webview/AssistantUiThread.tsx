@@ -56,6 +56,7 @@ import type {
   ProviderMissingPrompt,
 } from '../bridge/browserBridgeProtocol'
 import type { AgentRuntimeWorkerSnapshot, SessionMcpServerView } from '../worker/workerProtocol'
+import type { NexusTaskSummaryRow } from '../bridge/protocol/ui'
 import { deriveSessionMetadataFromMessages, isConversationResumable } from '../../sessions/sessionStore'
 import { BrowserComposerAttachmentAdapter } from './BrowserComposerAttachmentAdapter'
 import { getSupportsImageInputForModel } from '../../engine/contextWindow'
@@ -368,6 +369,11 @@ export type AssistantUiThreadProps = {
    *  indicator (a settled turn with running tasks WILL receive more
    *  task-notification turns). */
   runningBackgroundTaskCount?: number
+  /** THIS session's background task rows, for the session card stack. */
+  backgroundTaskRows?: readonly NexusTaskSummaryRow[]
+  onStopBackgroundTask?: (taskId: string) => void
+  /** Open the Tasks view on its list rather than a task's detail. */
+  onOpenBackgroundTasksList?: () => void
   /** Open a file in the right-panel Files view. Provided via
    *  `RightPanelContentContext`; consumed by the Read/Edit tool cards' path
    *  headers. Absent on embeds without a panel host. */
@@ -589,6 +595,9 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   activeSessionId,
   onOpenBackgroundTasks,
   runningBackgroundTaskCount,
+  backgroundTaskRows,
+  onStopBackgroundTask,
+  onOpenBackgroundTasksList,
   onOpenFileInPanel,
   statFilePaths,
   onOpenDiffInPanel,
@@ -643,6 +652,9 @@ export const AssistantUiThread = memo(function AssistantUiThread({
       activeSessionId={activeSessionId}
       onOpenBackgroundTasks={onOpenBackgroundTasks}
       runningBackgroundTaskCount={runningBackgroundTaskCount}
+      backgroundTaskRows={backgroundTaskRows}
+      onStopBackgroundTask={readOnly ? undefined : onStopBackgroundTask}
+      onOpenBackgroundTasksList={onOpenBackgroundTasksList}
       onOpenFileInPanel={onOpenFileInPanel}
       statFilePaths={statFilePaths}
       onOpenDiffInPanel={onOpenDiffInPanel}
@@ -699,6 +711,9 @@ function InteractiveAssistantUiThread({
   activeSessionId,
   onOpenBackgroundTasks,
   runningBackgroundTaskCount,
+  backgroundTaskRows,
+  onStopBackgroundTask,
+  onOpenBackgroundTasksList,
   onOpenFileInPanel,
   statFilePaths,
   onOpenDiffInPanel,
@@ -1334,8 +1349,17 @@ function InteractiveAssistantUiThread({
     () => ({
       openTasksDrawer: onOpenBackgroundTasks,
       runningTaskCount: runningBackgroundTaskCount,
+      taskRows: backgroundTaskRows,
+      stopTask: onStopBackgroundTask,
+      openTasksList: onOpenBackgroundTasksList,
     }),
-    [onOpenBackgroundTasks, runningBackgroundTaskCount],
+    [
+      onOpenBackgroundTasks,
+      runningBackgroundTaskCount,
+      backgroundTaskRows,
+      onStopBackgroundTask,
+      onOpenBackgroundTasksList,
+    ],
   )
   // Every snapshot is a new object; the Connectors card re-renders only when
   // the list itself changes.

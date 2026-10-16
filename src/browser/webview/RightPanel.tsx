@@ -133,6 +133,8 @@ export type RightPanelProps = {
   /** Notified when the drawer consumed `taskFocusSessionId` — the owner should
    *  clear it so later feed updates can't re-hijack back-navigation. */
   onTaskFocusConsumed?: () => void
+  /** Bumped to send the Tasks view back to its list (`listRequest`). */
+  taskListRequest?: number
   onTaskStop: (subAgentSessionId: string) => void
   onTaskResume: (subAgentSessionId: string, prompt: string) => void
   loadTaskTranscript: (
@@ -294,6 +296,7 @@ export function RightPanel(props: RightPanelProps): ReactElement {
             rows={props.taskRows}
             focusSessionId={props.taskFocusSessionId}
             onFocusConsumed={props.onTaskFocusConsumed}
+            listRequest={props.taskListRequest}
             // The Tasks tab is ALWAYS open (no per-tab close), so Esc at the
             // drawer's list level closes the whole panel column instead —
             // consistent with "the tab can't close, but the panel can".

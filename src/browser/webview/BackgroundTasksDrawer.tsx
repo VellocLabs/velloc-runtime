@@ -278,6 +278,9 @@ export type BackgroundTasksDrawerProps = {
   /** Called right after `focusSessionId` has been consumed (detail opened).
    *  The owner should clear its focus state in response. */
   onFocusConsumed?: () => void
+  /** A count the owner bumps to show the list: each new value leaves any
+   *  task detail the drawer shows. */
+  listRequest?: number
   /** Load a sub-agent's read-only transcript + header info for the detail view. */
   loadTranscript: (
     subAgentSessionId: string,
@@ -296,6 +299,7 @@ export function BackgroundTasksDrawer({
   loadTranscript,
   focusSessionId,
   onFocusConsumed,
+  listRequest,
 }: BackgroundTasksDrawerProps): ReactElement {
   const t = useT()
   // The drawer is already scoped to one session, so it groups active work into
@@ -427,6 +431,13 @@ export function BackgroundTasksDrawer({
     setInfo(null)
     setTranscriptLoading(false)
   }, [])
+
+  const seenListRequestRef = useRef(listRequest)
+  useEffect(() => {
+    if (listRequest === seenListRequestRef.current) return
+    seenListRequestRef.current = listRequest
+    backToList()
+  }, [listRequest, backToList])
 
   // Clear a pending action once the authoritative feed reflects it (stop → no
   // longer running; resume → running again) or the row vanished.

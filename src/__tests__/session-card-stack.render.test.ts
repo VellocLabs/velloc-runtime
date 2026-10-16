@@ -201,11 +201,16 @@ describe('SessionCardStack — information cards', () => {
     expect(cardIds()).toEqual(['session-card-outputs', 'session-card-changes'])
   })
 
-  it('Background tasks opens the Tasks view', () => {
+  it('Background tasks starts folded and its header unfolds the task list in place', () => {
     const openTasksDrawer = vi.fn()
     render(tree({ tasks: { runningTaskCount: 1, openTasksDrawer } }))
+    expect(screen.queryByTestId('session-card-tasks-list')).toBeNull()
     fireEvent.click(screen.getByTestId('session-card-tasks-header'))
-    expect(openTasksDrawer).toHaveBeenCalled()
+    expect(screen.getByTestId('session-card-tasks-list')).toBeTruthy()
+    expect(screen.getByTestId('session-card-tasks-header').getAttribute('aria-expanded')).toBe('true')
+    // The count shows only while folded.
+    expect(screen.getByTestId('session-card-tasks-summary').textContent).toBe('')
+    expect(openTasksDrawer).not.toHaveBeenCalled()
   })
 })
 

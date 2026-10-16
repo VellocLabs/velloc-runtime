@@ -2141,6 +2141,19 @@ export function MultiSessionShell({
     () => filterSubAgentRowsBySession(subAgentRows, activeSessionId),
     [subAgentRows, activeSessionId],
   )
+  // Each mounted thread's own rows, one stable array per session until the
+  // feed changes, so a memoized thread re-renders only on a real change.
+  const subAgentRowsForSession = useMemo(() => {
+    const bySession = new Map<string, NexusTaskSummaryRow[]>()
+    return (sessionId: string): NexusTaskSummaryRow[] => {
+      let rows = bySession.get(sessionId)
+      if (!rows) {
+        rows = filterSubAgentRowsBySession(subAgentRows, sessionId)
+        bySession.set(sessionId, rows)
+      }
+      return rows
+    }
+  }, [subAgentRows])
   // LAZY restart-recovery of the Background Tasks drawer rows: only when the
   // drawer is actually OPEN do we ask the worker to rebuild this session's
   // recovered shell + run_js rows from its persisted transcript
@@ -2260,6 +2273,14 @@ export function MultiSessionShell({
   )
   const handleOpenBackgroundTasks = useCallback((focusSessionId?: string) => {
     setBackgroundTaskFocusSessionId(focusSessionId ?? null)
+    updateRightPanel(s => openView(s, 'tasks'))
+  }, [updateRightPanel])
+  // Tasks on its list: each request (a count) sends the drawer back from any
+  // task detail it shows.
+  const [backgroundTaskListRequest, setBackgroundTaskListRequest] = useState(0)
+  const handleOpenBackgroundTasksList = useCallback(() => {
+    setBackgroundTaskFocusSessionId(null)
+    setBackgroundTaskListRequest(n => n + 1)
     updateRightPanel(s => openView(s, 'tasks'))
   }, [updateRightPanel])
   // Topbar toggle: show the Right Panel if hidden, or close it if shown.
@@ -4133,9 +4154,10 @@ export function MultiSessionShell({
                   // session's) — each mounted thread shows its own footer
                   // "still working" indicator. A plain number, so the memoized
                   // thread only re-renders when the count actually changes.
-                  runningBackgroundTaskCount={countRunning(
-                    filterSubAgentRowsBySession(subAgentRows, sessionId),
-                  )}
+                  runningBackgroundTaskCount={countRunning(subAgentRowsForSession(sessionId))}
+                  backgroundTaskRows={subAgentRowsForSession(sessionId)}
+                  onStopBackgroundTask={handleStopSubAgent}
+                  onOpenBackgroundTasksList={handleOpenBackgroundTasksList}
                   onOpenPlanPanel={() =>
                     updateRightPanel(s => openView(s, 'plan'))
                   }
@@ -4246,6 +4268,7 @@ export function MultiSessionShell({
               onPlanResolve={resolveActivePlan}
               taskRows={activeSessionSubAgentRows}
               taskFocusSessionId={backgroundTaskFocusSessionId}
+              taskListRequest={backgroundTaskListRequest}
               onTaskFocusConsumed={handleTaskFocusConsumed}
               onTaskStop={handleStopSubAgent}
               onTaskResume={handleResumeSubAgent}
