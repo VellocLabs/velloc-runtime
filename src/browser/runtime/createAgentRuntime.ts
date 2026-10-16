@@ -137,6 +137,9 @@ import { NEXUS_INTERFACE_VERSION } from '../bridge/protocol/interfaceVersion.gen
 import { getBuildTime } from '../../branding/buildInfo'
 import {
   linkModChild,
+  modSlotToolsFor,
+  onModSlotToolsChanged,
+  publishModSlotTools,
   modRoster,
   modsForAgentLoop,
   noteModSlotChanged,
@@ -2094,6 +2097,8 @@ ${teammateAddendum}`
             mods: agentLoopExtensions(agentLoopMods, agentLoopMods.agentId),
           }
         : {}),
+    // The tools this session's mods register, for the loops under it.
+    onModToolsChanged: registered => publishModSlotTools(resolvedSessionId, registered),
     // `/mcp` jumps to the host MCP settings page via the `ui.openNexusSettings`
     // bridge action (declared in api/declarations/ui/openNexusSettings.api.json).
     // The worker transport reaches `ui.*` routes (same path the session-state
@@ -2192,6 +2197,27 @@ ${teammateAddendum}`
   })
   engineForMods = engine
   for (const entry of earlyRegistrations.splice(0)) entry.apply(engine)
+  undoWhenScopeEnds(() => publishModSlotTools(resolvedSessionId, []), options.runtimeScopeSignal)
+  // A loop under a slot lists the tools the slot's mods registered, scoped
+  // as its own tools are (none for a type that takes no MCP tools); its call
+  // of one is the slot's `tool.call` (F-25).
+  if (agentLoopMods && allowsMcp) {
+    const inheritSlotTools = () => {
+      const registered = [...modSlotToolsFor(resolvedSessionId)]
+      engine.inheritModTools(
+        subAgentScope.forkExactTools
+          ? registered
+          : applySubAgentToolScope(
+              registered,
+              subAgentScope.subAgentAllowTools,
+              subAgentScope.subAgentDisallowTools,
+              subAgentScope.isSubAgent === true,
+            ),
+      )
+    }
+    inheritSlotTools()
+    undoWhenScopeEnds(onModSlotToolsChanged(inheritSlotTools), options.runtimeScopeSignal)
+  }
   if (modIdle) {
     engine.setOnSubmit(() => {
       const arriving = modIdle.noteRan()

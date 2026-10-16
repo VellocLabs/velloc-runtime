@@ -13,7 +13,7 @@ import { contextWindowOf, getFastModelForProvider, getTierModelForProvider } fro
 import { tierFromEffort } from '../config/nexusModelConfig/providers/shared/listing'
 import { isAssistantMessage } from '../runtime/VercelModelConstants'
 import { extractAssistantText } from '../models/fastModelCall'
-import { ModRegisteredTools, isModRegisteredTool, modToolFullName } from '../mods/modRegisteredTools'
+import { ModRegisteredTools, isModRegisteredTool, modToolFullName, type ModRegisteredTool } from '../mods/modRegisteredTools'
 import { mcpServerSkillName } from '../mcp/toolAdapter'
 import {
   ModRegisteredAgents,
@@ -409,16 +409,24 @@ export class ExtensionHosts {
   readonly prompt: Pick<ModPromptHost, 'compose'>
   /** Agent types extensions registered, kept beside the session's own. */
   readonly registeredAgents: ModRegisteredAgents
+  /** A loop under a slot: list the tools the slot's extensions registered,
+   *  in place of any listed before. */
+  readonly inheritRegisteredTools: (tools: readonly ModRegisteredTool[]) => void
   private rewrittenListener: (() => void) | undefined
 
   constructor(private readonly ledger: SessionLedger, writer: TranscriptWriter) {
     const { config } = ledger
     // Each change rebuilds the session's list: its own entries plus the
     // registered ones, replaced by name.
-    const modTools = new ModRegisteredTools(registered => {
+    const listRegistered = (registered: readonly ModRegisteredTool[]) => {
       const names = new Set(registered.map(tool => tool.name))
       config.tools = [...config.tools.filter(tool => !isModRegisteredTool(tool) && !names.has(tool.name)), ...registered]
+    }
+    const modTools = new ModRegisteredTools(registered => {
+      listRegistered(registered)
+      config.onModToolsChanged?.(registered)
     })
+    this.inheritRegisteredTools = listRegistered
     this.registeredAgents = new ModRegisteredAgents(registered => {
       const names = new Set(registered.map(agent => agent.name))
       config.agents = [

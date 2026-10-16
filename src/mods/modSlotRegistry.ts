@@ -19,6 +19,7 @@ import type { ModUiAsk, ModUiAskAnswer, ModUiHookedSite, ModUiPane, ModUiStale, 
 import type { ModPaneSeat } from './modPanes'
 import type { PluginUserConfigField } from '../pluginHost/pluginModel'
 import type { RenderInput, RenderOutcome, RenderSite } from './modRender'
+import type { ModRegisteredTool } from './modRegisteredTools'
 
 /** A session's slot is at most this many parents away. A chain longer than
  *  this is a cycle or a bug, and resolves to no slot. */
@@ -216,6 +217,20 @@ export function modSlotsClientGone(client: string): void {
 }
 const parents = new Map<string, string>()
 const listeners = new Set<(sessionId: string) => void>()
+/** The tools each slot's mods registered (`$.tool.register`), by the slot's
+ *  session id, for the loops under it to list. */
+const slotTools = new Map<string, readonly ModRegisteredTool[]>()
+const slotToolWatchers = new Set<() => void>()
+
+function noteSlotToolsChanged(): void {
+  for (const watcher of [...slotToolWatchers]) {
+    try {
+      watcher()
+    } catch {
+      /* a watcher's failure is its own */
+    }
+  }
+}
 const uiListeners = new Set<(sessionId: string, event: ModSlotUiEvent) => void>()
 
 /**
@@ -226,6 +241,7 @@ const uiListeners = new Set<(sessionId: string, event: ModSlotUiEvent) => void>(
 export function registerModSlot(sessionId: string, mods: ModSlot): () => void {
   slots.set(sessionId, mods)
   noteModSlotChanged(sessionId)
+  noteSlotToolsChanged()
   // The clients already attached join this runtime's roster.
   for (const client of modRoster(sessionId)) {
     try {
@@ -238,6 +254,7 @@ export function registerModSlot(sessionId: string, mods: ModSlot): () => void {
     if (slots.get(sessionId) !== mods) return
     slots.delete(sessionId)
     noteModSlotChanged(sessionId)
+    noteSlotToolsChanged()
   }
 }
 
@@ -315,16 +332,47 @@ export function linkModChild(childSessionId: string, spawnerSessionId: string): 
   }
 }
 
-/** The mod runtime `sessionId` runs under: its own, or its nearest
- *  ancestor's. */
-export function findModSlot(sessionId: string): ToolCallMods | undefined {
+/** The session id of the slot `sessionId` runs under: its own, or its
+ *  nearest ancestor's. */
+function slotSessionOf(sessionId: string): string | undefined {
   let current: string | undefined = sessionId
   for (let depth = 0; current !== undefined && depth <= MOD_SLOT_MAX_DEPTH; depth++) {
-    const slot = slots.get(current)
-    if (slot) return slot
+    if (slots.has(current)) return current
     current = parents.get(current)
   }
   return undefined
+}
+
+/** The mod runtime `sessionId` runs under: its own, or its nearest
+ *  ancestor's. */
+export function findModSlot(sessionId: string): ToolCallMods | undefined {
+  const owner = slotSessionOf(sessionId)
+  return owner === undefined ? undefined : slots.get(owner)
+}
+
+/** Record the tools `sessionId`'s mods registered (none: forget them). */
+export function publishModSlotTools(sessionId: string, tools: readonly ModRegisteredTool[]): void {
+  if (tools.length === 0 && !slotTools.has(sessionId)) return
+  if (tools.length === 0) slotTools.delete(sessionId)
+  else slotTools.set(sessionId, [...tools])
+  noteSlotToolsChanged()
+}
+
+/** The tools the mods of the slot `sessionId` runs under registered: a
+ *  loop under a slot lists them, and its calls of them are the slot's
+ *  `tool.call` (`modsForAgentLoop`). Empty with no slot above it. */
+export function modSlotToolsFor(sessionId: string): readonly ModRegisteredTool[] {
+  const owner = slotSessionOf(sessionId)
+  return owner === undefined ? [] : slotTools.get(owner) ?? []
+}
+
+/** Hear any change to what `modSlotToolsFor` answers: a slot's tools, or a
+ *  slot coming or going. Returns the undo. */
+export function onModSlotToolsChanged(watcher: () => void): () => void {
+  slotToolWatchers.add(watcher)
+  return () => {
+    slotToolWatchers.delete(watcher)
+  }
 }
 
 /** What a child loop's tool path holds: its root slot's `tool.call`, and the
@@ -384,4 +432,6 @@ export function resetModSlotRegistryForTests(): void {
   parents.clear()
   listeners.clear()
   uiListeners.clear()
+  slotTools.clear()
+  slotToolWatchers.clear()
 }

@@ -25,6 +25,7 @@ import {
 import type { StreamHookCall } from '../mods/streamChain'
 import type { SessionUsage } from '../mods/sessionNouns'
 import { declareTool, type ToolContract } from '../toolkit/toolContract'
+import { buildModTool } from '../mods/modRegisteredTools'
 import {
   DefaultRuntimeConfig,
   MemoryConversationStore,
@@ -1425,6 +1426,33 @@ describe('$.tool.register through the engine', () => {
     engine.modTools.forget!('mod-weather')
     expect((await engine.modTools.list()).map(t => t.name)).toEqual(['mcp__mod-sea__tide'])
     expect(engine.transcriptRows()).toEqual([])
+  })
+  it('each change of the registered tools is told to onModToolsChanged, for the loops under the session', () => {
+    const told: string[][] = []
+    const { engine } = makeEngine(passThrough(), true, undefined, [], {}, {
+      onModToolsChanged: (tools: readonly ToolContract[]) => told.push(tools.map(tool => tool.name)),
+    })
+    engine.modTools.register!({ name: 'tide', description: 'Tides.', inputSchema: { type: 'object' } }, 'mod-sea')
+    engine.modTools.forget!('mod-sea')
+    expect(told).toEqual([['mcp__mod-sea__tide'], []])
+  })
+
+  it('a loop under a slot lists the inherited tools in place of those inherited before, beside its own', async () => {
+    const own = declareTool({
+      name: 'Read',
+      argsSchema: { type: 'object' } as never,
+      description: async () => 'Read.',
+      async call() {
+        return { data: 'ok' }
+      },
+    }) as unknown as ToolContract
+    const { engine } = makeEngine(passThrough(), true, undefined, [own])
+    engine.inheritModTools([buildModTool('mod-sea', { name: 'tide', description: 'Tides.', inputSchema: { type: 'object' } })])
+    expect((await engine.modTools.list()).map(t => t.name)).toEqual(['Read', 'mcp__mod-sea__tide'])
+    engine.inheritModTools([buildModTool('mod-sea', { name: 'wave', description: 'Waves.', inputSchema: { type: 'object' } })])
+    expect((await engine.modTools.list()).map(t => t.name)).toEqual(['Read', 'mcp__mod-sea__wave'])
+    engine.inheritModTools([])
+    expect((await engine.modTools.list()).map(t => t.name)).toEqual(['Read'])
   })
 })
 

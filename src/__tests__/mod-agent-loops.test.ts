@@ -21,12 +21,16 @@ import {
   MOD_SLOT_MAX_DEPTH,
   findModSlot,
   linkModChild,
+  modSlotToolsFor,
   modsForAgentLoop,
+  onModSlotToolsChanged,
+  publishModSlotTools,
   registerModSlot,
   resetModSlotRegistryForTests,
   undoWhenScopeEnds,
 } from '../mods/modSlotRegistry'
 import type { ToolCallMods } from '../mods/toolCallEvent'
+import { buildModTool } from '../mods/modRegisteredTools'
 
 let uuid = 0
 let uniqueLoad = 0
@@ -304,6 +308,46 @@ describe('a child loop\'s tool call is the slot\'s tool.call', () => {
   })
 })
 
+describe("a child loop lists the tools its slot's mods registered", () => {
+  const tide = buildModTool('mod-sea', { name: 'tide', description: 'Tides.', inputSchema: { type: 'object' } })
+  const wave = buildModTool('mod-sea', { name: 'wave', description: 'Waves.', inputSchema: { type: 'object' } })
+
+  it("a child reads its nearest slot's tools; a session under no slot reads none", () => {
+    registerModSlot('root', fakeSlot())
+    registerModSlot('mid', fakeSlot())
+    linkModChild('mid', 'root')
+    linkModChild('child', 'root')
+    linkModChild('grandchild', 'mid')
+    publishModSlotTools('root', [tide])
+    publishModSlotTools('mid', [wave])
+    expect(modSlotToolsFor('child').map(tool => tool.name)).toEqual(['mcp__mod-sea__tide'])
+    expect(modSlotToolsFor('grandchild').map(tool => tool.name)).toEqual(['mcp__mod-sea__wave'])
+    expect(modSlotToolsFor('stranger')).toEqual([])
+  })
+
+  it('tools of a session that has no slot are listed under none', () => {
+    linkModChild('child', 'root')
+    publishModSlotTools('root', [tide])
+    expect(modSlotToolsFor('child')).toEqual([])
+  })
+
+  it('a watcher hears a publish, a slot coming and going, and nothing after its undo', () => {
+    let heard = 0
+    const undo = onModSlotToolsChanged(() => {
+      heard += 1
+    })
+    const unregister = registerModSlot('root', fakeSlot())
+    publishModSlotTools('root', [tide])
+    publishModSlotTools('root', [])
+    publishModSlotTools('root', [])
+    unregister()
+    expect(heard).toBe(4)
+    undo()
+    publishModSlotTools('root', [wave])
+    expect(heard).toBe(4)
+  })
+})
+
 describe('the wiring names both kinds of child', () => {
   // `createAgentRuntime` and the coordinator cannot be instantiated here, so
   // pin the text: a child that is not linked is a child the guard never sees.
@@ -326,5 +370,16 @@ describe('the wiring names both kinds of child', () => {
     expect(block).toContain('linkModChild(resolvedSessionId, modParentSessionId)')
     expect(block).toContain('modsForAgentLoop(')
     expect(runtime).toMatch(/registerModSlot\(\s*resolvedSessionId,\s*Object\.assign\(modRuntime,/)
+  })
+
+  it("createAgentRuntime publishes a slot's registered tools and a child lists them, scoped as its own tools", () => {
+    const runtime = read_('browser/runtime/createAgentRuntime.ts')
+    expect(runtime).toContain('onModToolsChanged: registered => publishModSlotTools(resolvedSessionId, registered),')
+    const at = runtime.indexOf('if (agentLoopMods && allowsMcp) {')
+    expect(at).toBeGreaterThan(0)
+    const block = runtime.slice(at, runtime.indexOf('onModSlotToolsChanged(inheritSlotTools)', at))
+    expect(block).toContain('modSlotToolsFor(resolvedSessionId)')
+    expect(block).toContain('applySubAgentToolScope(')
+    expect(block).toContain('engine.inheritModTools(')
   })
 })

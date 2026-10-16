@@ -5,6 +5,7 @@
 import type { WorkingState, ContentBlockParam, ReadFileLedger, Message, StreamRecord } from '../runtime/RuntimeTypes'
 import type { RuleEdit } from '../permissions/ruleUpdates'
 import type { CommandDescribeInput, CommandDescription } from '../mods/describeEvents'
+import type { ModRegisteredTool } from '../mods/modRegisteredTools'
 import { splitCommandWord } from '../input/slashCommandCatalog'
 import { sanitizeMessageForPersistence } from '../utils/toolCallDetails'
 import { runNotificationHooks, type HookNotification } from '../lifecycleHooks/sessionLifecycleHooks'
@@ -215,6 +216,12 @@ export class ConversationEngine {
 
   get modTools(): ExtensionHosts['tools'] {
     return this.hosts.tools
+  }
+
+  /** A loop under a slot: the tools the slot's extensions registered, as
+   *  this loop lists them. */
+  inheritModTools(tools: readonly ModRegisteredTool[]): void {
+    this.hosts.inheritRegisteredTools(tools)
   }
 
   get modModel(): ExtensionHosts['model'] {

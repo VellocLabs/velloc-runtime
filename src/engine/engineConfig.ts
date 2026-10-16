@@ -27,6 +27,7 @@ import type {
   UserRow,
 } from '../runtime/RuntimeTypes'
 import type { PermissionDecider } from '../toolkit/permissionVerdict'
+import type { ModRegisteredTool } from '../mods/modRegisteredTools'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { ToolContractList } from '../toolkit/toolContract'
 import type { ResolvedMemorySettings } from '../memory/memoryPaths'
@@ -125,6 +126,9 @@ export type ConversationEngineConfig = {
   onOpenSettings?: (section: string) => void | Promise<void>
   /** The session's extension runtime, when an enabled plugin carries one. */
   mods?: EngineExtensions
+  /** Told the tools the session's extensions registered (`$.tool.register`),
+   *  at each change, for the loops under it to list. */
+  onModToolsChanged?: (tools: readonly ModRegisteredTool[]) => void
   decidePermission: PermissionDecider
   readAppState: () => WorkingState
   writeAppState: (f: (prev: WorkingState) => WorkingState) => void
