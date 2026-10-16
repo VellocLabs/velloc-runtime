@@ -10,6 +10,7 @@ export const SNAPSHOT_PROVIDER_KEYS: readonly string[] = [
   'opencode-go',
   'openrouter',
   'vercel',
+  'nebius',
   'github-copilot',
   'ollama-cloud',
   // Model makers: Velloc's own providers, and the sources borrowed from.

@@ -146,6 +146,10 @@ describe('snapshot generator', () => {
     for (const key of SNAPSHOT_PROVIDER_KEYS) expect(isSafeProviderKey(key), key).toBe(true)
   })
 
+  it('keeps the gateway keys a provider mod reads from the catalog', () => {
+    expect(SNAPSHOT_PROVIDER_KEYS).toContain('nebius')
+  })
+
   it('refuses a document that is not usable, so a publish cannot ship an empty snapshot', () => {
     expect(() => buildSnapshotFiles('not json', NOW)).toThrow(/not valid JSON/)
     expect(() => buildSnapshotFiles('[]', NOW)).toThrow()
