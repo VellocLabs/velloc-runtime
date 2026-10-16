@@ -30,8 +30,7 @@ export async function callHostFs<T>(host: HostBridge, action: string, payload: u
 
 /**
  * The host user's home: what the runtime already knows, else the host's
- * `fs.userHome`, else its `fs.cwd` (the same chain `resolveHomeDirViaBridge`
- * walks for the runtime itself). `not_found` when the host reports neither.
+ * `fs.userHome`, else its `fs.cwd`. `not_found` when the host reports neither.
  */
 export async function resolveHostHome(ctx: RuntimeContext): Promise<string> {
   if (ctx.homeDir) return ctx.homeDir

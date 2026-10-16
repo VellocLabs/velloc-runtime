@@ -2,45 +2,32 @@ import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProt
 import { createBridgeRoute } from '../browser/bridge/browserBridgeProtocol'
 
 /**
- * The user's home directory from the host (`fs.userHome`, falling back to
- * `fs.cwd`): the reliable source for `~/.velloc` paths, since the SharedWorker
- * env is empty. `null` on any failure or no transport.
+ * The user's home directory from the host's `fs.userHome` (the SharedWorker
+ * env is empty). A failed answer is asked once more; `null` when neither names
+ * a home, or with no transport. Never the host's `fs.cwd`: that is the
+ * browser's own folder, where no other runtime reads user state. Request ids
+ * are unique per call: sessions booting together share one host port, whose
+ * pending replies are keyed by id.
  */
 export async function resolveHomeDirViaBridge(
   transport: BrowserBridgeTransport | undefined,
 ): Promise<string | null> {
   if (!transport) return null
-  const idPrefix = `home-${Date.now().toString(36)}`
-  try {
-    const userHomeResponse = await transport.request({
-      id: `${idPrefix}-uh`,
-      route: createBridgeRoute('fs', 'userHome'),
-      payload: {},
-    })
-    if (userHomeResponse.ok) {
-      const home = userHomeResponse.result as string
-      if (home && home.length > 0) {
-        return home
+  const idPrefix = `home-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  for (const attempt of ['uh', 'uh2']) {
+    try {
+      const response = await transport.request({
+        id: `${idPrefix}-${attempt}`,
+        route: createBridgeRoute('fs', 'userHome'),
+        payload: {},
+      })
+      if (response.ok) {
+        const home = response.result as unknown
+        return typeof home === 'string' && home.length > 0 ? home : null
       }
+    } catch {
+      // Transport error — ask again.
     }
-  } catch {
-    // Transport error / older host without `fs.userHome` — try cwd.
-  }
-
-  try {
-    const cwdResponse = await transport.request({
-      id: `${idPrefix}-cwd`,
-      route: createBridgeRoute('fs', 'cwd'),
-      payload: {},
-    })
-    if (cwdResponse.ok) {
-      const cwd = cwdResponse.result as string
-      if (cwd && cwd.length > 0) {
-        return cwd
-      }
-    }
-  } catch {
-    // Both routes failed — caller degrades to the legacy layout.
   }
   return null
 }

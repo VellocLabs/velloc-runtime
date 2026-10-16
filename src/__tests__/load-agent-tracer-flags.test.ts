@@ -136,7 +136,7 @@ describe('loadAgentTracerFlags', () => {
     expect(flags).toEqual({ log: false, trace: false })
   })
 
-  it('falls back to fs.cwd when fs.userHome returns empty', async () => {
+  it('does not read settings under fs.cwd when fs.userHome returns empty', async () => {
     const { transport, calls } = makeStubBridge({
       userHomeMode: 'empty',
       cwd: '/var/work',
@@ -148,14 +148,11 @@ describe('loadAgentTracerFlags', () => {
       },
     })
     const flags = await loadAgentTracerFlags(transport)
-    expect(flags.log).toBe(true)
-    // `fs.cwd` may be called once by the home-resolution fallback AND
-    // once by `createBrowserFsOperations`'s eager-fetch at adapter
-    // construction. The contract here is "at least the fallback fired."
-    expect(calls.cwd).toBeGreaterThanOrEqual(1)
+    expect(flags).toEqual({ log: false, trace: false })
+    expect(calls.readFile).toEqual([])
   })
 
-  it('falls back to fs.cwd when fs.userHome throws', async () => {
+  it('does not read settings under fs.cwd when fs.userHome throws', async () => {
     const { transport, calls } = makeStubBridge({
       userHomeMode: 'throw',
       cwd: '/var/work',
@@ -167,11 +164,9 @@ describe('loadAgentTracerFlags', () => {
       },
     })
     const flags = await loadAgentTracerFlags(transport)
-    expect(flags.trace).toBe(true)
-    // `fs.cwd` may be called once by the home-resolution fallback AND
-    // once by `createBrowserFsOperations`'s eager-fetch at adapter
-    // construction. The contract here is "at least the fallback fired."
-    expect(calls.cwd).toBeGreaterThanOrEqual(1)
+    expect(flags).toEqual({ log: false, trace: false })
+    expect(calls.userHome).toBe(2)
+    expect(calls.readFile).toEqual([])
   })
 
   it('returns false flags when neither home resolution path works', async () => {
