@@ -268,6 +268,39 @@ describe('fsx — a scoped connection is held to the session project', () => {
     expect(disk.reads).toEqual([`${HOME}/notes.txt`])
   })
 
+  it('a root inside ~/.velloc (the shared workspace) reaches its own files and its uploads, nothing beside it', async () => {
+    // An unbound session's cwd is `~/.velloc/shared-workspace/agent`: the whole root sits inside the
+    // excluded tree, so every scoped read was refused — including the session's own uploads.
+    const disk = fakeDisk()
+    const workspace = `${HOME}/${RUNTIME_DIR_NAME}/shared-workspace/agent`
+    disk.dirs.add(`${HOME}/${RUNTIME_DIR_NAME}/shared-workspace`)
+    disk.dirs.add(workspace)
+    disk.text(`${workspace}/notes.txt`, 'workspace')
+    disk.text(`${HOME}/${RUNTIME_DIR_NAME}/settings.json`, '{"apiKey":"k"}')
+    disk.text(`${HOME}/${RUNTIME_DIR_NAME}/shared-workspace/other.txt`, 'beside')
+    const server = makeServer(disk, { cwd: workspace, projectRoot: workspace })
+    const files = createRuntimeFileAccess({ connection: once(() => connect(server, 'control')) })
+
+    expect(await files.readText(SESSION, 'notes.txt')).toBe('workspace')
+    const uploaded = await files.upload(SESSION, 'shot.png', new Uint8Array([1, 2, 3]), 'image/png')
+    expect(uploaded.startsWith(`${workspace}/${RUNTIME_DIR_NAME}/uploads/${SESSION}/`)).toBe(true)
+    expect(Array.from(await files.readBytes(SESSION, uploaded))).toEqual([1, 2, 3])
+    // The rest of ~/.velloc is still out of reach.
+    expect(await codeOf(files.readText(SESSION, `${HOME}/${RUNTIME_DIR_NAME}/settings.json`))).toBe('forbidden_scope')
+    expect(await codeOf(files.readText(SESSION, '../../settings.json'))).toBe('forbidden_scope')
+    expect(await codeOf(files.readText(SESSION, '../other.txt'))).toBe('forbidden_scope')
+  })
+
+  it('a root that IS ~/.velloc reaches nothing', async () => {
+    const disk = fakeDisk()
+    const runtimeDir = `${HOME}/${RUNTIME_DIR_NAME}`
+    disk.text(`${runtimeDir}/settings.json`, '{"apiKey":"k"}')
+    const server = makeServer(disk, { cwd: runtimeDir, projectRoot: runtimeDir })
+    const files = createRuntimeFileAccess({ connection: once(() => connect(server, 'control')) })
+    expect(await codeOf(files.readText(SESSION, 'settings.json'))).toBe('forbidden_scope')
+    expect(disk.reads).toEqual([])
+  })
+
   it('a project root that is itself a link still works', async () => {
     const disk = fakeDisk()
     disk.dirs.add('/real')

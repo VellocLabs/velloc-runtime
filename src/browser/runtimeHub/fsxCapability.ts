@@ -3,7 +3,8 @@
  * advertised. `full` (the local desktop) resolves any path. Below `full` a path must stay inside the
  * session's project root or cwd, checked on the literal path AND on the host's realpath (or, for a
  * missing path, its nearest existing ancestor's), against both forms of each root; else
- * `forbidden_scope`. `~/.velloc` (credentials, every transcript) is excluded even inside a root.
+ * `forbidden_scope`. `~/.velloc` (credentials, every transcript) is excluded even inside a root;
+ * a root strictly inside it (an unbound session's shared workspace) reaches only itself.
  * Uploads land where the runtime decides, under `<cwd>/.velloc/uploads/<session>/`.
  */
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
@@ -11,7 +12,9 @@ import { checkWithinRoot } from '../../permissions/untrustedReadBoundary'
 import {
   basenameRuntimePath,
   dirnameRuntimePath,
+  isAbsoluteRuntimePath,
   joinRuntimePath,
+  relativeRuntimePath,
   resolveRuntimePath,
 } from '../../utils/runtimePaths'
 import {
@@ -105,13 +108,19 @@ async function realpathOrNull(host: HostBridge, path: string): Promise<string | 
 }
 
 /**
- * Security: the roots a scoped path is judged against (project root and cwd, as given and resolved)
- * and the excluded `~/<runtime dir>` tree. `realpaths` memoises the host's answers per request.
+ * Security: the roots a scoped path is judged against (project root and cwd, as given and resolved),
+ * each with the excluded `~/<runtime dir>` forms that apply to it. `realpaths` memoises the host's
+ * answers per request.
  */
 type RootForms = {
-  forms: ReadonlySet<string>
-  excluded: readonly string[]
+  forms: ReadonlyMap<string, readonly string[]>
   realpaths: Map<string, Promise<string | null>>
+}
+
+/** Is `path` below `tree`, and not `tree` itself? */
+function isStrictlyInside(tree: string, path: string): boolean {
+  const rel = relativeRuntimePath(tree, path)
+  return rel !== '' && rel !== '.' && !rel.startsWith('..') && !isAbsoluteRuntimePath(rel)
 }
 
 /** `realpathOrNull`, asked once per path per request (`RootForms.realpaths`). */
@@ -131,12 +140,12 @@ function realpathMemo(host: HostBridge, memo: Map<string, Promise<string | null>
  */
 async function rootFormsOf(host: HostBridge, roots: FsxSessionRoots, homeDir: string): Promise<RootForms> {
   const realpaths = new Map<string, Promise<string | null>>()
-  const forms = new Set<string>()
+  const rootPaths = new Set<string>()
   for (const root of new Set([roots.projectRoot, roots.cwd])) {
     if (!root) continue
-    forms.add(root)
+    rootPaths.add(root)
     const real = await realpathMemo(host, realpaths, root)
-    if (real) forms.add(real)
+    if (real) rootPaths.add(real)
   }
   // The excluded tree in both forms too, like the roots: with a home
   // directory that is a link (`/home/me` -> `/data/me`) the resolved path of
@@ -149,7 +158,13 @@ async function rootFormsOf(host: HostBridge, roots: FsxSessionRoots, homeDir: st
     const real = await realpathMemo(host, realpaths, literal)
     if (real && real !== literal) excluded.push(real)
   }
-  return { forms, excluded, realpaths }
+  // Security: a root strictly inside an excluded tree is already confined to its own subtree, so
+  // that tree's exclusion would refuse the whole root; a root that IS the tree keeps it.
+  const forms = new Map<string, readonly string[]>()
+  for (const root of rootPaths) {
+    forms.set(root, excluded.filter(tree => !isStrictlyInside(tree, root)))
+  }
+  return { forms, realpaths }
 }
 
 /**
@@ -197,7 +212,7 @@ async function rootViolation(
   if (real !== abs) candidates.push(real)
   for (const candidate of candidates) {
     const inside = Array.from(rootForms.forms).some(
-      root => checkWithinRoot(candidate, root, rootForms.excluded).ok,
+      ([root, excluded]) => checkWithinRoot(candidate, root, excluded).ok,
     )
     if (!inside) return `'${candidate}' is outside this session's project`
   }
