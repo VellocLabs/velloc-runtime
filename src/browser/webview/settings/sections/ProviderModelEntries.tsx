@@ -162,6 +162,7 @@ export function ProviderModelEntries({
   provider,
   onChanged,
   ui,
+  connected = true,
 }: {
   bridge: NexusSettingsBridge;
   providerId: string;
@@ -173,6 +174,8 @@ export function ProviderModelEntries({
   provider: BrowserLlmProvider | undefined;
   /** Re-read the saved configs after a write. */
   onChanged: () => void | Promise<void>;
+  /** A key, a sign-in or the keyless mode is saved. Absent = connected. */
+  connected?: boolean;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -217,6 +220,13 @@ export function ProviderModelEntries({
     void load(false);
   }, [load]);
 
+  // A key saved while the page is open: list again.
+  const wasConnected = React.useRef(connected);
+  React.useEffect(() => {
+    if (connected && !wasConnected.current) void load(false);
+    wasConnected.current = connected;
+  }, [connected, load]);
+
   // The runtime lists the provider again when the model catalog changed what
   // its module read, and says so on `providers.changed`; read the rows again
   // (no spinner: the page keeps showing the old ones until the new arrive).
@@ -254,6 +264,9 @@ export function ProviderModelEntries({
       (id): id is string => !!id && ids.includes(id),
     ) ?? ids[0];
   const removed = families?.ok ? families.removed : undefined;
+  // Nothing to add from until a key lists the models: a provider whose
+  // listing needs one (and has none cached) is shown locked, not failed.
+  const locked = !connected && !(families?.ok && families.families.length > 0);
   const hasFree = (families?.families ?? []).some((f) => f.versions.some((v) => v.free));
 
   const entryLabel = (entry: ModelEntry): string => {
@@ -269,9 +282,11 @@ export function ProviderModelEntries({
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium">
           {t("settings.models.entries.title")}
-          <span className="ml-2 text-muted-foreground text-xs" data-testid="model-entries-count">
-            {entries.length}
-          </span>
+          {entries.length > 0 ? (
+            <span className="ml-2 text-muted-foreground text-xs" data-testid="model-entries-count">
+              {entries.length}
+            </span>
+          ) : null}
         </span>
         <div className="flex items-center gap-2">
           {ui?.customModels ? (
@@ -279,6 +294,7 @@ export function ProviderModelEntries({
               size="sm"
               variant="outline"
               data-testid="model-entries-add-custom"
+              disabled={locked}
               onClick={() => setUserDialog({ open: true, editing: null })}
             >
               {t("settings.models.entries.customAdd")}
@@ -298,15 +314,18 @@ export function ProviderModelEntries({
             size="sm"
             variant="outline"
             data-testid="model-entries-add"
+            disabled={locked}
             onClick={() => setPickerOpen(true)}
           >
             {t("settings.models.entries.add")}
           </Button>
         </div>
       </div>
-      <span className="text-muted-foreground text-xs">
-        {t("settings.models.entries.hint", { name: providerLabel })}
-      </span>
+      {entries.length > 0 ? (
+        <span className="text-muted-foreground text-xs" data-testid="model-entries-hint">
+          {t("settings.models.entries.hint", { name: providerLabel })}
+        </span>
+      ) : null}
       <ModelsUiNote ui={ui} />
 
       {removed && removed.ids.length > 0 ? (
@@ -335,7 +354,7 @@ export function ProviderModelEntries({
         </div>
       ) : null}
 
-      {families && !families.ok ? (
+      {families && !families.ok && !locked ? (
         <div
           className="flex items-center gap-2 text-destructive text-xs"
           data-testid="model-entries-list-error"
@@ -375,7 +394,9 @@ export function ProviderModelEntries({
             className="p-3 text-center text-muted-foreground text-sm"
             data-testid="model-entries-empty"
           >
-            {t("settings.models.entries.empty")}
+            {locked
+              ? t("settings.models.entries.needsKey")
+              : t("settings.models.entries.empty")}
           </p>
         ) : (
           entries.map((entry) => {

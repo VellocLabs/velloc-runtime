@@ -987,6 +987,7 @@ export const en = {
   'settings.models.entries.listFailed': 'Couldn\'t load the {name} model list.',
   'settings.models.entries.retry': 'Retry',
   'settings.models.entries.empty': 'No models added yet.',
+  'settings.models.entries.needsKey': 'Add your API key above to load the model list.',
   'settings.models.entries.remove': 'Remove {model}',
   'settings.models.entries.pickerTitle': 'Add {name} models',
   'settings.models.entries.pickerHint': 'A family\'s Latest follows its upgrades; a pinned version stays put. Only models that can call tools are listed.',

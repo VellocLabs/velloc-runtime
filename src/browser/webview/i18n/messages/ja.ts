@@ -931,6 +931,7 @@ export const ja: Messages = {
   'settings.models.entries.listFailed': '{name} のモデル一覧を読み込めませんでした。',
   'settings.models.entries.retry': '再試行',
   'settings.models.entries.empty': 'まだモデルが追加されていません。',
+  'settings.models.entries.needsKey': '上で API キーを入力すると、モデル一覧が読み込まれます。',
   'settings.models.entries.remove': '{model} を削除',
   'settings.models.entries.pickerTitle': '{name} のモデルを追加',
   'settings.models.entries.pickerHint': '「最新」はモデルファミリーのアップグレードに追従し、固定したバージョンは変わりません。ツールを呼び出せるモデルだけを表示しています。',

@@ -496,8 +496,8 @@ function ReadyEditor({
 
       {/* The models to use, picked from the provider's listing: only the
           entries reach the picker. Shown once there is a connection, and
-          always when the plugin lets the person add models of their own
-          (that needs no key). */}
+          before one when the plugin lets the person add models of their own:
+          locked then, unless the listing answered without a key. */}
       {connected || mod.modelsUi?.customModels ? (
         <ProviderModelEntries
           bridge={bridge}
@@ -507,6 +507,7 @@ function ReadyEditor({
           saved={saved}
           provider={provider}
           onChanged={onChanged}
+          connected={connected}
         />
       ) : null}
       <ProviderSignInDialog name={name} session={loginSession} />

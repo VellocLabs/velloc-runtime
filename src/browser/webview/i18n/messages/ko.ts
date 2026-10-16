@@ -927,6 +927,7 @@ export const ko: Messages = {
   'settings.models.entries.listFailed': '{name} 모델 목록을 불러오지 못했습니다.',
   'settings.models.entries.retry': '다시 시도',
   'settings.models.entries.empty': '아직 추가한 모델이 없습니다.',
+  'settings.models.entries.needsKey': '위에 API 키를 입력하면 모델 목록을 불러옵니다.',
   'settings.models.entries.remove': '{model} 제거',
   'settings.models.entries.pickerTitle': '{name} 모델 추가',
   'settings.models.entries.pickerHint': '"최신"은 모델 계열의 업그레이드를 따라가고, 고정한 버전은 바뀌지 않습니다. 도구를 호출할 수 있는 모델만 표시됩니다.',

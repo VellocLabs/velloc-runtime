@@ -911,6 +911,7 @@ export const zh: Messages = {
   'settings.models.entries.listFailed': '无法加载 {name} 的模型列表。',
   'settings.models.entries.retry': '重试',
   'settings.models.entries.empty': '尚未添加模型。',
+  'settings.models.entries.needsKey': '在上方填写 API 密钥后即可加载模型列表。',
   'settings.models.entries.remove': '移除 {model}',
   'settings.models.entries.pickerTitle': '添加 {name} 模型',
   'settings.models.entries.pickerHint': '“最新”跟随系列的升级；固定版本保持不变。只列出能调用工具的模型。',

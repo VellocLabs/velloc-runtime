@@ -95,6 +95,7 @@ function setup(
   saved: NexusProviderConfig | undefined,
   models: BrowserLlmModel[],
   families: ProviderModelFamilies = { ok: true, families: FAMILIES },
+  options: { connected?: boolean } = {},
 ) {
   const calls: Array<{ action: string; payload: any }> = []
   const listeners = new Set<(envelope: unknown) => void>()
@@ -119,6 +120,7 @@ function setup(
       saved,
       provider,
       onChanged: vi.fn(),
+      ...(options.connected !== undefined ? { connected: options.connected } : {}),
     }),
   )
   const writes = () => calls.filter(c => c.action === 'setModelEntries').map(c => c.payload)
@@ -169,6 +171,47 @@ describe('provider model entries (settings)', () => {
     cleanup()
     setup({ hasApiKey: true }, [])
     expect(screen.getByTestId('model-entries-empty').textContent).toBe('No models added yet.')
+    // No count and no Latest/pinned explanation while there is nothing to count.
+    expect(screen.queryByTestId('model-entries-count')).toBeNull()
+    expect(screen.queryByTestId('model-entries-hint')).toBeNull()
+  })
+
+  it('a provider that needs a key to list is locked until one is saved: no error, a key hint, nothing to add', async () => {
+    const { calls } = setup(undefined, [], { ok: false, error: 'HTTP 401', families: [] }, { connected: false })
+    await waitFor(() => expect(calls.some(c => c.action === 'modelFamilies')).toBe(true))
+    expect((await screen.findByTestId('model-entries-empty')).textContent)
+      .toBe('Add your API key above to load the model list.')
+    expect(screen.queryByTestId('model-entries-list-error')).toBeNull()
+    expect((screen.getByTestId('model-entries-add') as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByTestId('model-entries-count')).toBeNull()
+  })
+
+  it('a listing that answers without a key is not locked', async () => {
+    setup(undefined, [], { ok: true, families: FAMILIES }, { connected: false })
+    await waitFor(() =>
+      expect((screen.getByTestId('model-entries-add') as HTMLButtonElement).disabled).toBe(false),
+    )
+    expect(screen.getByTestId('model-entries-empty').textContent).toBe('No models added yet.')
+  })
+
+  it('a key saved while the page is open unlocks it and lists again', async () => {
+    let current: ProviderModelFamilies = { ok: false, error: 'HTTP 401', families: [] }
+    const request = vi.fn(async (route: { action: string }) =>
+      route.action === 'modelFamilies' ? current : { ok: true, configs: {} },
+    )
+    const bridge = { request, subscribeEvents: () => () => {} } as unknown as NexusSettingsBridge
+    const provider: BrowserLlmProvider = { id: 'mod.acme.main', label: 'Acme', iconSvg: '', enabled: false, models: [] }
+    const props = (connected: boolean, saved: NexusProviderConfig | undefined) => ({
+      bridge, providerId: 'mod.acme.main', providerLabel: 'Acme', saved, provider, onChanged: vi.fn(), connected,
+    })
+    const view = render(createElement(ProviderModelEntries, props(false, undefined)))
+    await waitFor(() => expect((screen.getByTestId('model-entries-add') as HTMLButtonElement).disabled).toBe(true))
+    current = { ok: true, families: FAMILIES }
+    view.rerender(createElement(ProviderModelEntries, props(true, { hasApiKey: true })))
+    await waitFor(() =>
+      expect((screen.getByTestId('model-entries-add') as HTMLButtonElement).disabled).toBe(false),
+    )
+    expect(request.mock.calls.filter(([route]) => route.action === 'modelFamilies')).toHaveLength(2)
   })
 
   it('adds a Latest and a pinned version from the families: search, versions under the family, previews apart', async () => {

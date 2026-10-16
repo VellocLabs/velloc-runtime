@@ -954,6 +954,7 @@ export const fr: Messages = {
   'settings.models.entries.listFailed': 'Impossible de charger la liste des modèles de {name}.',
   'settings.models.entries.retry': 'Réessayer',
   'settings.models.entries.empty': 'Aucun modèle ajouté pour l\'instant.',
+  'settings.models.entries.needsKey': 'Ajoutez votre clé API ci-dessus pour charger la liste des modèles.',
   'settings.models.entries.remove': 'Retirer {model}',
   'settings.models.entries.pickerTitle': 'Ajouter des modèles {name}',
   'settings.models.entries.pickerHint': '« Dernière » suit les mises à niveau d\'une famille ; une version épinglée ne change pas. Seuls les modèles capables d\'appeler des outils sont listés.',

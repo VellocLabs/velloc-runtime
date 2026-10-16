@@ -953,6 +953,7 @@ export const es: Messages = {
   'settings.models.entries.listFailed': 'No se pudo cargar la lista de modelos de {name}.',
   'settings.models.entries.retry': 'Reintentar',
   'settings.models.entries.empty': 'Aún no hay modelos añadidos.',
+  'settings.models.entries.needsKey': 'Añada su clave de API arriba para cargar la lista de modelos.',
   'settings.models.entries.remove': 'Quitar {model}',
   'settings.models.entries.pickerTitle': 'Añadir modelos de {name}',
   'settings.models.entries.pickerHint': '«Más reciente» sigue las actualizaciones de una familia; una versión fijada no cambia. Solo se muestran los modelos que pueden llamar a herramientas.',

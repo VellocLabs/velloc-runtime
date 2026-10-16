@@ -2696,6 +2696,7 @@ export function ModelsSection({
           saved={saved}
           provider={selectedProvider}
           onChanged={reload}
+          connected={status === "ready" || !!saved?.hasApiKey}
         />
       ) : null}
 

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 
 import { ModProviderEditor } from '../browser/webview/settings/sections/ModProviderEditor'
 import type { NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
@@ -11,8 +11,8 @@ import type { NexusProviderConfig } from '../settings/settingsTypes'
 
 /**
  * The models section of a provider mod's editor needs a connection, except for
- * a plugin that lets the person add models of their own: that needs no key, so
- * its section (and the Add custom model button) is there before one is saved.
+ * a plugin that lets the person add models of their own: its section is there
+ * before a key is saved, locked until the listing has something to add from.
  */
 
 const row = (modelsUi?: Record<string, unknown>): BrowserLlmProvider => ({
@@ -50,10 +50,14 @@ function mount(provider: BrowserLlmProvider, saved: NexusProviderConfig | undefi
 afterEach(cleanup)
 
 describe('a provider mod editor\'s models section without a key', () => {
-  it('is there, with Add custom model, when the plugin lets the person add models', async () => {
+  it('is there, locked, when the plugin lets the person add models: a listing that needs the key lists nothing', async () => {
     mount(row({ customModels: { formats: ['openai-chat'] } }), undefined)
     expect(await screen.findByTestId('model-entries')).toBeTruthy()
-    expect(screen.getByTestId('model-entries-add-custom')).toBeTruthy()
+    await waitFor(() =>
+      expect((screen.getByTestId('model-entries-add-custom') as HTMLButtonElement).disabled).toBe(true),
+    )
+    expect((screen.getByTestId('model-entries-add') as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByTestId('model-entries-empty').textContent).toBe('Add your API key above to load the model list.')
   })
 
   it('is not there for a plugin that does not, until a key makes a connection', async () => {

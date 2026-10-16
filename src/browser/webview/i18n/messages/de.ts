@@ -949,6 +949,7 @@ export const de: Messages = {
   'settings.models.entries.listFailed': 'Die Modellliste von {name} konnte nicht geladen werden.',
   'settings.models.entries.retry': 'Erneut versuchen',
   'settings.models.entries.empty': 'Noch keine Modelle hinzugefügt.',
+  'settings.models.entries.needsKey': 'Gib oben deinen API-Schlüssel ein, um die Modellliste zu laden.',
   'settings.models.entries.remove': '{model} entfernen',
   'settings.models.entries.pickerTitle': '{name}-Modelle hinzufügen',
   'settings.models.entries.pickerHint': 'Neueste folgt den Upgrades einer Modellfamilie; eine fixierte Version bleibt unverändert. Aufgeführt sind nur Modelle, die Tools aufrufen können.',
