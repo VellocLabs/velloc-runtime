@@ -314,6 +314,7 @@ export class SharedWorkerSessionManager {
     reloadPluginsOnAllSessions: () => this.reloadPluginsOnAllSessions(),
     reloadModsOnAllSessions: () => this.reloadModsOnAllSessions(),
     runtimeVersion: `interface-${NEXUS_INTERFACE_VERSION}`,
+    resolveHomeDir: () => this.storageCoordinator.resolveHomeDir(),
     // A client started viewing a session: it needs that session's full status,
     // not a delta against a state it never saw.
     onPresenceChanged: change => {

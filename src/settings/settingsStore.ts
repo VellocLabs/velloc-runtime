@@ -855,7 +855,13 @@ export async function setSettingsForSource(
   fs: RuntimeFs,
   settings: NexusSettingsV1,
 ): Promise<void> {
-  const dirPath = joinPath(layerRootDir(source, ctx), NEXUS_DIR_NAME)
+  const root = layerRootDir(source, ctx)
+  // An empty root would make the path relative, and the host resolves that
+  // against the browser's working directory — not where anyone reads it.
+  if (!root) {
+    throw new Error(`nexusSettings: no folder known for ${source}; refusing to write ${NEXUS_DIR_NAME}/settings.json`)
+  }
+  const dirPath = joinPath(root, NEXUS_DIR_NAME)
   try {
     await fs.mkdir(dirPath)
   } catch {

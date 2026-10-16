@@ -55,6 +55,8 @@ export type ConnectionHubOptions = {
   runtimeVersion: string
   /** `welcome.bootstrap` for a fresh (non-resumed) connection. */
   bootstrap(): WelcomeFrame['bootstrap']
+  /** Awaited before a capability request is handed to its handler (after the scope checks). Must not throw. */
+  beforeRequest?(): Promise<void>
   /** How long a closed connection's id stays resumable. Default 5 minutes. */
   resumeRetentionMs?: number
   now?(): number
@@ -784,6 +786,7 @@ class ClientConnection implements TopicSubscriber {
         throw wireError('forbidden_scope', `'${key}' is outside this connection's sessions`)
       }
     }
+    await this.hub.options.beforeRequest?.()
     if (entry.spec.guard && !(await entry.spec.guard(req.payload, this.conn, this.hub.options.context))) {
       throw wireError('bad_payload', `'${key}' rejected the payload`)
     }

@@ -144,6 +144,19 @@ export class SessionStorageCoordinator {
     return this.homeDir
   }
 
+  /**
+   * The user's home as sessions see it: the grouped layout's home, else the
+   * same memoized host probe storage bring-up awaits. Null with no direct
+   * transport yet, in the flat layout, or when the host does not answer.
+   */
+  async resolveHomeDir(): Promise<string | null> {
+    if (this.homeDir) return this.homeDir
+    if (this.establishedStorageMode === 'flat') return null
+    const transport = this.host.getDirectBridgeTransport()
+    if (!transport) return null
+    return this.resolveHostHomeDirOnce(transport)
+  }
+
   storageRoot(): string | null {
     return this.storagePath
   }

@@ -113,6 +113,12 @@ export type RuntimeHubHost = {
    * session's notifications so exactly one window asks the host for a toast.
    */
   panelOfSession?(sessionId: string): string | undefined
+  /**
+   * The user's home, from the same source sessions use. The hub settles it
+   * before serving a request; null (no host answer yet) is asked again on the
+   * next one. Absent: only an attaching panel port can tell the hub its home.
+   */
+  resolveHomeDir?(): Promise<string | null>
 }
 
 /**
@@ -210,6 +216,8 @@ export class RuntimeHub {
   private readonly pluginUpdates: { dispose(): void }
   /** The ISO build stamp of the page that started this runtime (first-writer-wins). */
   private _bootBuild: string | null = null
+  /** The in-flight `host.resolveHomeDir`, shared by every request waiting on it. */
+  private homeProbe: Promise<void> | null = null
 
   constructor(private readonly host: RuntimeHubHost) {
     this.presence = new PresenceTable(change => host.onPresenceChanged?.(change))
@@ -247,6 +255,7 @@ export class RuntimeHub {
       context: this.context,
       runtimeVersion: host.runtimeVersion,
       bootstrap: () => this.bootstrap(),
+      beforeRequest: () => this.ensureHomeDir(),
       onConnectionClosed: info => {
         this.presence.remove(info.connectionId)
         // Its mod drawings and their handles go with it (F-25).
@@ -400,6 +409,7 @@ export class RuntimeHub {
       access: this.remoteAccess.access(),
       connections: this.remoteDeviceRows(),
     })))
+    if (transport) void this.ensureHomeDir()
   }
 
   /**
@@ -431,11 +441,8 @@ export class RuntimeHub {
 
   /** `bridge.attachRuntimePort`: one `ClientConnection` over the transferred port. */
   attachPort(port: MessagePort, homeDir: string, panelId?: string): void {
-    if (homeDir && !this.context.homeDir) {
-      // Upgrade-only, like the legacy hub: never overwrite a known homeDir with an empty one.
-      this.context.homeDir = homeDir
-      this.context.webUiBridge.homeDir = homeDir
-    }
+    // Upgrade-only: never overwrite a known homeDir with an empty one.
+    if (homeDir && !this.context.homeDir) this.setHomeDir(homeDir)
     this.attachTransport(createMessagePortTransport(port), {
       ...(panelId !== undefined ? { panelId } : {}),
     })
@@ -509,6 +516,34 @@ export class RuntimeHub {
     // A new bridge is the one moment the host's identity can be asked for
     // (and the only moment it can change: a different binary).
     this.refreshHostIdentity()
+    if (transport) void this.ensureHomeDir()
+  }
+
+  /**
+   * Contract: resolves once the user's home is known or the host could not
+   * say; never rejects. Settings and plugin writes anchor `~/.velloc` on
+   * `context.homeDir`, and an empty one would land them relative to the
+   * browser's working directory.
+   */
+  private ensureHomeDir(): Promise<void> {
+    if (this.context.homeDir || !this.host.resolveHomeDir) return Promise.resolve()
+    this.homeProbe ??= this.host
+      .resolveHomeDir()
+      .then(
+        home => {
+          if (home && !this.context.homeDir) this.setHomeDir(home)
+        },
+        () => {},
+      )
+      .finally(() => {
+        this.homeProbe = null
+      })
+    return this.homeProbe
+  }
+
+  private setHomeDir(homeDir: string): void {
+    this.context.homeDir = homeDir
+    this.context.webUiBridge.homeDir = homeDir
   }
 
   /**
