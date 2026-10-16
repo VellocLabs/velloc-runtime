@@ -134,6 +134,7 @@ export class MCPPool {
   private readonly callsRunning = new Map<string, number>()
   /** Tail of each server's exclusive-call queue. Never rejects. */
   private readonly exclusiveTails = new Map<string, Promise<void>>()
+  private readonly serversChangedListeners = new Set<() => void>()
 
   constructor(options: MCPPoolOptions) {
     this.cwd = options.cwd
@@ -180,6 +181,7 @@ export class MCPPool {
     if (inFlight) return inFlight
     const run = work().finally(() => {
       this.connecting.delete(name)
+      this.notifyServersChanged()
     })
     this.connecting.set(name, run)
     return run
@@ -450,6 +452,7 @@ export class MCPPool {
     }
     server.status = 'closed'
     this.servers.delete(server.name)
+    this.notifyServersChanged()
   }
 
   /** In-flight `addServer` connects, by name — see `addServer`. */
@@ -489,6 +492,29 @@ export class MCPPool {
 
   listServers(): LiveServerLink[] {
     return Array.from(this.servers.values())
+  }
+
+  /**
+   * Hear every change to `listServers()`: a connect settling (connected or
+   * failed), a server removed, the pool shut down. Not called for an idle
+   * stdio server being parked — its entry does not change. Returns the
+   * unsubscribe.
+   */
+  onServersChanged(listener: () => void): () => void {
+    this.serversChangedListeners.add(listener)
+    return () => {
+      this.serversChangedListeners.delete(listener)
+    }
+  }
+
+  private notifyServersChanged(): void {
+    for (const listener of Array.from(this.serversChangedListeners)) {
+      try {
+        listener()
+      } catch (err) {
+        console.warn('[mcp] servers-changed listener threw:', err)
+      }
+    }
   }
 
   getServer(name: string): LiveServerLink | undefined {
@@ -706,6 +732,7 @@ export class MCPPool {
     const servers = Array.from(this.servers.values())
     this.servers.clear()
     this.lastActiveAt.clear()
+    this.notifyServersChanged()
     await Promise.all(
       servers.map(async server => {
         if (server.nativeServerId !== undefined) {

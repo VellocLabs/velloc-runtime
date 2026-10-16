@@ -8,7 +8,7 @@ import { SESSION_TOTAL_TURN_INDEX, type TurnDiffMeta } from '@/utils/turnDiffs'
 
 /** The information cards, in their default order. Mod panes are not here:
  *  they always follow these cards and are neither hidden nor reordered. */
-export const SESSION_CARD_IDS = ['outputs', 'changes', 'tasks'] as const
+export const SESSION_CARD_IDS = ['outputs', 'changes', 'connectors', 'tasks'] as const
 export type SessionCardId = (typeof SESSION_CARD_IDS)[number]
 
 /** The person's choices: `order` names every card once; `hidden` the ones

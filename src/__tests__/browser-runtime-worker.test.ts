@@ -871,6 +871,108 @@ describe('AgentRuntimeWorker — project folder snapshot', () => {
   })
 })
 
+describe('AgentRuntimeWorker — session MCP servers', () => {
+  // A runtime whose session pool is a stand-in: the test sets the servers and
+  // fires the pool's change listener by hand.
+  function bootWithPool(withPool: boolean) {
+    const emitted: Array<{ type: string; payload?: unknown }> = []
+    const worker = new AgentRuntimeWorker({
+      emit: message => {
+        emitted.push(message as { type: string; payload?: unknown })
+      },
+    })
+    let servers: Array<{ name: string; status: string }> = [
+      { name: 'linear', status: 'connected' },
+      { name: 'github', status: 'connected' },
+      { name: 'slow', status: 'connecting' },
+    ]
+    const listeners = new Set<() => void>()
+    const pool = {
+      listServers: () => servers,
+      onServersChanged: (listener: () => void) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    }
+    const runtime = {
+      conversationStore: {
+        getSessionMetadata: vi.fn(async () => ({})),
+        updateSessionMetadata: vi.fn(async () => ({})),
+      },
+      engine: {
+        boundSessionId: () => 'mcp-test',
+        getCurrentModel: () => 'model-test',
+        getCurrentProviderId: () => 'provider-test',
+        getCurrentThinkingTier: () => undefined,
+        transcriptRows: () => [],
+        getCurrentPermissionMode: () => 'default',
+      },
+      hostBridge: { getModelCatalog: vi.fn(async () => null) },
+      tools: [],
+      usedSandboxProjectRoot: false,
+      options: { cwd: '/workspace', hostMode: 'nexus' },
+      ...(withPool ? { sessionMcpPool: pool } : {}),
+    }
+    vi.mocked(createAgentRuntime).mockResolvedValueOnce(runtime as never)
+    const lastServers = () => {
+      const states = emitted.filter(m => m.type === 'worker.state' || m.type === 'worker.ready')
+      return (states.at(-1)?.payload as { mcpServers?: unknown } | undefined)?.mcpServers
+    }
+    return {
+      worker,
+      emitted,
+      listeners,
+      lastServers,
+      setServers: (next: Array<{ name: string; status: string }>) => {
+        servers = next
+        for (const listener of Array.from(listeners)) listener()
+      },
+    }
+  }
+
+  it('publishes the settled servers by name, and again when the pool changes', async () => {
+    const boot = bootWithPool(true)
+    await boot.worker.receiveFrame({
+      type: 'worker.init',
+      payload: { sessionId: 'mcp-test', cwd: '/workspace' } as never,
+    })
+    expect(boot.worker.getSnapshot().mcpServers).toEqual([
+      { name: 'github', status: 'connected' },
+      { name: 'linear', status: 'connected' },
+    ])
+    const before = boot.emitted.length
+    boot.setServers([
+      { name: 'github', status: 'connected' },
+      { name: 'slow', status: 'failed' },
+    ])
+    expect(boot.emitted.length).toBe(before + 1)
+    expect(boot.lastServers()).toEqual([
+      { name: 'github', status: 'connected' },
+      { name: 'slow', status: 'failed' },
+    ])
+  })
+
+  it('stops hearing the pool once the worker is disposed', async () => {
+    const boot = bootWithPool(true)
+    await boot.worker.receiveFrame({
+      type: 'worker.init',
+      payload: { sessionId: 'mcp-test', cwd: '/workspace' } as never,
+    })
+    expect(boot.listeners.size).toBe(1)
+    await boot.worker.dispose()
+    expect(boot.listeners.size).toBe(0)
+  })
+
+  it('leaves the field out for a runtime without a pool', async () => {
+    const boot = bootWithPool(false)
+    await boot.worker.receiveFrame({
+      type: 'worker.init',
+      payload: { sessionId: 'mcp-test', cwd: '/workspace' } as never,
+    })
+    expect('mcpServers' in boot.worker.getSnapshot()).toBe(false)
+  })
+})
+
 describe('AgentRuntimeWorker — resume projectRoot restore', () => {
   function fakeRuntime(projectRoot?: string) {
     return {

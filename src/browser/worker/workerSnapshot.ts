@@ -11,6 +11,7 @@ import type {
   AgentRuntimeWorkerSnapshot,
   AutoCompactView,
   InjectMessageView,
+  SessionMcpServerView,
   SlashCommandSummary,
 } from './workerProtocol'
 import type { PendingApproval } from '../../runtime/RuntimeTypes'
@@ -30,6 +31,20 @@ export type ProvisionalBootSources = {
   usedSandboxProjectRoot: boolean
   hostMode: string | undefined
   messageCount: number
+}
+
+/** Settled servers only (a connecting or closed one is left out), sorted by
+ *  name so the list does not reorder as connects finish. */
+export function sessionMcpServerViews(
+  servers: ReadonlyArray<{ name: string; status: string }>,
+): SessionMcpServerView[] {
+  const views: SessionMcpServerView[] = []
+  for (const server of servers) {
+    if (server.status === 'connected' || server.status === 'failed') {
+      views.push({ name: server.name, status: server.status })
+    }
+  }
+  return views.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }
 
 /** The read-only view of worker + controller state the snapshot needs. */
@@ -205,6 +220,9 @@ export function buildWorkerSnapshot(
       }),
     ),
     loadedSkills: buildLoadedSkillSummaries(runtime?.options.commands ?? []),
+    ...(runtime?.sessionMcpPool
+      ? { mcpServers: sessionMcpServerViews(runtime.sessionMcpPool.listServers()) }
+      : {}),
     messageCount: runtime
       ? runtime.engine.transcriptRows().length ?? 0
       : provisional?.messageCount ?? 0,

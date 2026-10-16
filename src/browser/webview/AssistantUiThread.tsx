@@ -55,7 +55,7 @@ import type {
   NexusSettingsSection,
   ProviderMissingPrompt,
 } from '../bridge/browserBridgeProtocol'
-import type { AgentRuntimeWorkerSnapshot } from '../worker/workerProtocol'
+import type { AgentRuntimeWorkerSnapshot, SessionMcpServerView } from '../worker/workerProtocol'
 import { deriveSessionMetadataFromMessages, isConversationResumable } from '../../sessions/sessionStore'
 import { BrowserComposerAttachmentAdapter } from './BrowserComposerAttachmentAdapter'
 import { getSupportsImageInputForModel } from '../../engine/contextWindow'
@@ -76,6 +76,7 @@ import {
 // reads only its own key — cf. the multi-session global-state caveat).
 const startupBypassGatedSessions = new Set<string>()
 import { BackgroundTasksContext } from '@/components/assistant-ui/background-tasks-context'
+import { SessionConnectorsContext } from '@/components/assistant-ui/session-connectors-context'
 import { SessionBusyProvider } from '@/components/assistant-ui/session-busy-context'
 import {
   RightPanelContentContext,
@@ -1336,6 +1337,13 @@ function InteractiveAssistantUiThread({
     }),
     [onOpenBackgroundTasks, runningBackgroundTaskCount],
   )
+  // Every snapshot is a new object; the Connectors card re-renders only when
+  // the list itself changes.
+  const sessionConnectorsKey = JSON.stringify(state.snapshot?.mcpServers ?? [])
+  const sessionConnectors = useMemo(
+    () => JSON.parse(sessionConnectorsKey) as SessionMcpServerView[],
+    [sessionConnectorsKey],
+  )
   // Handle for the conversation's Read/Edit tool cards to open a file or diff in
   // the global Right Panel (Files / Diff views), provided via
   // RightPanelContentContext. Memoized for referential stability.
@@ -1855,6 +1863,7 @@ function InteractiveAssistantUiThread({
       <HistoryContentWindowContext.Provider value={historyContentWindow}>
       <MessageActionsContext.Provider value={messageActionsValue}>
       <BackgroundTasksContext.Provider value={backgroundTasksValue}>
+      <SessionConnectorsContext.Provider value={sessionConnectors}>
       <RightPanelContentContext.Provider value={rightPanelContentValue}>
       <FilePathContext.Provider value={filePathContextValue}>
       <ComposerDraftSync
@@ -2100,6 +2109,7 @@ function InteractiveAssistantUiThread({
       </ToolCallDetailProvider>
       </FilePathContext.Provider>
       </RightPanelContentContext.Provider>
+      </SessionConnectorsContext.Provider>
       </BackgroundTasksContext.Provider>
       </MessageActionsContext.Provider>
       </HistoryContentWindowContext.Provider>

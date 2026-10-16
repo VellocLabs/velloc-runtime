@@ -1213,6 +1213,18 @@ export class AgentRuntimeWorker {
     // reconcile, refresh, applySelection) must never commit a stale scope's
     // selection into a successor runtime via the worker-live host getter.
     scope.models.bindRuntime(createdRuntime)
+    // The Connectors card reads the pool's servers off the snapshot; a server
+    // that settles after the build (a slow connect, a settings change) is
+    // published as it happens.
+    const mcpPool = createdRuntime.sessionMcpPool
+    if (mcpPool) {
+      scope.disposeCallbacks.push(
+        mcpPool.onServersChanged(() => {
+          if (!this.isCurrentScope(scope)) return
+          this.emit({ type: 'worker.state', payload: this.getSnapshot() })
+        }),
+      )
+    }
     // F-25: a plugin's `$.session.compact` / `.append` changes the
     // conversation outside the stream this worker mirrors to the page. Mid
     // submission (a mod's command), the whole transcript goes out when the

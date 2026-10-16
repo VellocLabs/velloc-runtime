@@ -1149,6 +1149,7 @@ export async function createBrowserRuntime(
     conversationStore,
     installedFs,
     installedSidechainStore,
+    sessionMcpPool: allowsMcp ? mcpPool : undefined,
     promptContextProvider,
     userInputPipeline,
     systemInitEmitter,

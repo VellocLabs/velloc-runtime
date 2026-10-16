@@ -35,14 +35,21 @@ describe('sanitizeSessionCardPrefs', () => {
   it('defaults when nothing usable is stored', () => {
     expect(sanitizeSessionCardPrefs(undefined)).toEqual(defaultSessionCardPrefs())
     expect(sanitizeSessionCardPrefs('x')).toEqual(defaultSessionCardPrefs())
-    expect(defaultSessionCardPrefs()).toEqual({ order: ['outputs', 'changes', 'tasks'], hidden: [], shown: true })
+    expect(defaultSessionCardPrefs()).toEqual({ order: ['outputs', 'changes', 'connectors', 'tasks'], hidden: [], shown: true })
   })
 
   it('drops unknown ids and repeats, and puts a missing card back at its default place', () => {
     expect(
       sanitizeSessionCardPrefs({ order: ['tasks', 'bogus', 'tasks', 'outputs'], hidden: ['changes', 7, 'changes'] }),
-    ).toEqual({ order: ['tasks', 'changes', 'outputs'], hidden: ['changes'], shown: true })
-    expect(sanitizeSessionCardPrefs({ order: ['changes'] }).order).toEqual(['outputs', 'changes', 'tasks'])
+    ).toEqual({ order: ['tasks', 'changes', 'connectors', 'outputs'], hidden: ['changes'], shown: true })
+    expect(sanitizeSessionCardPrefs({ order: ['changes'] }).order).toEqual(['outputs', 'changes', 'connectors', 'tasks'])
+  })
+
+  it('an order stored before the Connectors card gains it at its default place', () => {
+    expect(sanitizeSessionCardPrefs({ order: ['outputs', 'changes', 'tasks'] }).order)
+      .toEqual(['outputs', 'changes', 'connectors', 'tasks'])
+    expect(sanitizeSessionCardPrefs({ order: ['tasks', 'outputs', 'changes'] }).order)
+      .toEqual(['tasks', 'outputs', 'connectors', 'changes'])
   })
 
   it('rides in the layout blob, which an older blob without it still reads', () => {
@@ -50,7 +57,7 @@ describe('sanitizeSessionCardPrefs', () => {
     const old = { ...defaultLayoutStorage(), sessionCards: undefined }
     expect(sanitizeLayoutStorage(old).sessionCards).toEqual(defaultSessionCardPrefs())
     const stored = sanitizeLayoutStorage({ ...defaultLayoutStorage(), sessionCards: { order: ['tasks'], hidden: ['outputs'] } })
-    expect(stored.sessionCards).toEqual({ order: ['outputs', 'changes', 'tasks'], hidden: ['outputs'], shown: true })
+    expect(stored.sessionCards).toEqual({ order: ['outputs', 'changes', 'connectors', 'tasks'], hidden: ['outputs'], shown: true })
   })
 
   it('keeps the topbar toggle: only an explicit false hides the stack', () => {
@@ -78,8 +85,8 @@ describe('moveShownSessionCard', () => {
     const prefs = defaultSessionCardPrefs()
     // `changes` is empty now: only outputs and tasks are drawn.
     const moved = moveShownSessionCard(prefs, ['outputs', 'tasks'], 1, 0)
-    expect(moved.order).toEqual(['tasks', 'changes', 'outputs'])
-    expect(moveShownSessionCard(prefs, ['outputs', 'changes', 'tasks'], 0, 2).order).toEqual(['changes', 'tasks', 'outputs'])
+    expect(moved.order).toEqual(['tasks', 'changes', 'connectors', 'outputs'])
+    expect(moveShownSessionCard(prefs, ['outputs', 'changes', 'tasks'], 0, 2).order).toEqual(['changes', 'tasks', 'connectors', 'outputs'])
   })
 
   it('ignores a move out of range or onto itself', () => {

@@ -22,6 +22,8 @@ import {
   BackgroundTasksContext,
   type BackgroundTasksContextValue,
 } from '@/components/assistant-ui/background-tasks-context'
+import { SessionConnectorsContext } from '@/components/assistant-ui/session-connectors-context'
+import type { SessionMcpServerView } from '@/browser/worker/workerProtocol'
 import { LAYOUT_STORAGE_KEY, loadSessionCardPrefs } from '@/browser/webview/layout/layoutStorage'
 import type { TurnDiffMeta } from '@/utils/turnDiffs'
 
@@ -61,10 +63,11 @@ type Draw = {
   mod?: Partial<ModUiContextValue>
   content?: RightPanelContentContextValue
   tasks?: BackgroundTasksContextValue
+  connectors?: SessionMcpServerView[]
   popover?: SessionCardsPopover | null
 }
 
-function tree({ history = HISTORY, mod, content = {}, tasks = {}, popover = null }: Draw): ReactNode {
+function tree({ history = HISTORY, mod, content = {}, tasks = {}, connectors = [], popover = null }: Draw): ReactNode {
   return createElement(
     SessionCardsPopoverContext.Provider,
     { value: popover },
@@ -77,7 +80,11 @@ function tree({ history = HISTORY, mod, content = {}, tasks = {}, popover = null
       createElement(
         BackgroundTasksContext.Provider,
         { value: tasks },
-        createElement(SessionCardStack, { history }),
+        createElement(
+          SessionConnectorsContext.Provider,
+          { value: connectors },
+          createElement(SessionCardStack, { history }),
+        ),
       ),
     ),
     ),
@@ -87,7 +94,7 @@ function tree({ history = HISTORY, mod, content = {}, tasks = {}, popover = null
 function cardIds(): string[] {
   return Array.from(document.querySelectorAll('[data-testid^="session-card-"]'))
     .map(node => node.getAttribute('data-testid') ?? '')
-    .filter(id => /^session-card-(outputs|changes|tasks|mod-[^]+)$/.test(id) && !/-(toggle|close)-/.test(id))
+    .filter(id => /^session-card-(outputs|changes|connectors|tasks|mod-[^]+)$/.test(id) && !/-(toggle|close)-/.test(id))
 }
 
 describe('SessionCardStack — information cards', () => {
@@ -140,6 +147,27 @@ describe('SessionCardStack — information cards', () => {
     expect(screen.getByTestId('session-card-changes-summary').textContent).toBe('+5')
   })
 
+  it('Connectors counts the connected servers and unfolds their names; a failed one is left out', () => {
+    const connectors: SessionMcpServerView[] = [
+      { name: 'github', status: 'connected' },
+      { name: 'broken', status: 'failed' },
+      { name: 'linear', status: 'connected' },
+    ]
+    render(tree({ connectors, tasks: { runningTaskCount: 1 } }))
+    expect(cardIds()).toEqual(['session-card-outputs', 'session-card-changes', 'session-card-connectors', 'session-card-tasks'])
+    expect(screen.getByTestId('session-card-connectors-summary').textContent).toBe('2 connected')
+    expect(screen.queryByTestId('session-card-connectors-list')).toBeNull()
+    fireEvent.click(screen.getByTestId('session-card-connectors-header'))
+    expect(screen.getAllByTestId('session-card-connector').map(item => item.textContent)).toEqual(['github', 'linear'])
+    fireEvent.click(screen.getByTestId('session-card-connectors-header'))
+    expect(screen.queryByTestId('session-card-connectors-list')).toBeNull()
+  })
+
+  it('Connectors is not drawn while no server is connected', () => {
+    render(tree({ connectors: [{ name: 'broken', status: 'failed' }] }))
+    expect(cardIds()).toEqual(['session-card-outputs', 'session-card-changes'])
+  })
+
   it('Background tasks opens the Tasks view', () => {
     const openTasksDrawer = vi.fn()
     render(tree({ tasks: { runningTaskCount: 1, openTasksDrawer } }))
@@ -181,6 +209,7 @@ describe('SessionCardStack — Show menu and order', () => {
     expect(items).toEqual([
       'session-card-menu-outputs',
       'session-card-menu-changes',
+      'session-card-menu-connectors',
       'session-card-menu-tasks',
       'session-card-menu-reset',
     ])
@@ -194,10 +223,11 @@ describe('SessionCardStack — Show menu and order', () => {
     expect(cardIds()).toEqual(['session-card-changes', 'session-card-outputs', 'session-card-tasks'])
     fireEvent.keyDown(screen.getByTestId('session-card-outputs-grip'), { key: 'ArrowDown' })
     expect(cardIds()).toEqual(['session-card-changes', 'session-card-tasks', 'session-card-outputs'])
-    expect(loadSessionCardPrefs().order).toEqual(['changes', 'tasks', 'outputs'])
+    expect(loadSessionCardPrefs().order).toEqual(['changes', 'tasks', 'connectors', 'outputs'])
     expect(JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY) ?? '{}').sessionCards.order).toEqual([
       'changes',
       'tasks',
+      'connectors',
       'outputs',
     ])
   })
@@ -221,7 +251,7 @@ describe('SessionCardStack — Show menu and order', () => {
     fireEvent.pointerMove(grip, { pointerId: 1, clientY: 110 })
     fireEvent.pointerUp(grip, { pointerId: 1, clientY: 110 })
     expect(cardIds()).toEqual(['session-card-changes', 'session-card-tasks', 'session-card-outputs'])
-    expect(loadSessionCardPrefs().order).toEqual(['changes', 'tasks', 'outputs'])
+    expect(loadSessionCardPrefs().order).toEqual(['changes', 'tasks', 'connectors', 'outputs'])
   })
 })
 

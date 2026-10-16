@@ -263,6 +263,12 @@ export type LoadedSkillSummary = {
   size?: number
 }
 
+/** One MCP server of a session, as the page sees it. */
+export type SessionMcpServerView = {
+  name: string
+  status: 'connected' | 'failed'
+}
+
 export type AgentRuntimeWorkerSnapshot = {
   initialized: boolean
   /**
@@ -348,6 +354,12 @@ export type AgentRuntimeWorkerSnapshot = {
    * the runtime initializes.
    */
   loadedSkills?: LoadedSkillSummary[]
+  /**
+   * The session's MCP servers that have settled (connected or failed), by
+   * name. Absent until the runtime initializes and for a session type that
+   * takes no MCP tools. The Connectors card reads it.
+   */
+  mcpServers?: SessionMcpServerView[]
   messageCount: number
   isBusy: boolean
   /**

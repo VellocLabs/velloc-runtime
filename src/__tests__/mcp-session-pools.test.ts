@@ -120,6 +120,44 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
+describe('MCPPool.onServersChanged', () => {
+  it('fires when a server settles or is removed and when the pool shuts down; not for parking', async () => {
+    vi.useFakeTimers({ now: 1_000 })
+    const servers: Record<string, FakeServer> = { gh: { transport: 'stdio' } }
+    const host = fakeHost(servers)
+    const { pool } = await acquireSessionMCPPool({
+      sessionId: 's1', cwd: '/p', nativeBridge: host.bridge, loadNativeServers: host.loadNativeServers,
+    })
+    let changes = 0
+    const stop = pool.onServersChanged(() => {
+      changes += 1
+    })
+
+    servers.lin = { transport: 'http' }
+    await pool.refreshNativeServers()
+    expect(changes).toBe(1)
+    expect(pool.listServers().map(server => server.name).sort()).toEqual(['gh', 'lin'])
+
+    delete servers.gh
+    await pool.refreshNativeServers()
+    expect(changes).toBe(2)
+
+    servers.st = { transport: 'stdio' }
+    await pool.refreshNativeServers()
+    expect(changes).toBe(3)
+    vi.setSystemTime(1_000 + MCP_STDIO_IDLE_MS + 1)
+    expect(await pool.parkIdleStdioServers(MCP_STDIO_IDLE_MS)).toEqual(['st'])
+    expect(changes).toBe(3)
+
+    await pool.shutdown()
+    expect(changes).toBe(4)
+    stop()
+    servers.again = { transport: 'http' }
+    await pool.refreshNativeServers()
+    expect(changes).toBe(4)
+  })
+})
+
 describe('acquireSessionMCPPool', () => {
   it('gives each top-level session its own pool, reading its own project config', async () => {
     const a = await acquireSessionMCPPool({ sessionId: 's1', cwd: '/p1' })

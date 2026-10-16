@@ -21,6 +21,7 @@ import type {
   BrowserConversationStorageBackend,
 } from '../../sessions/sessionStore'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
+import type { MCPPool } from '../../mcp/pool'
 import type { AgentLoopSettings } from '../../config/agentLoopConfig'
 import type { FileSnapshotRecorder } from '../../sessions/fileSnapshots/snapshotRecorder'
 import type { AutoCompactWindowSettings } from '../../context/compaction/windowSettings'
@@ -143,6 +144,12 @@ export type BrowserRuntimeCoreState = {
    */
   installedFs: RuntimeFs
   installedSidechainStore: SidechainTranscriptStore | null
+  /**
+   * The top-level session's MCP pool, shared with its sub-agents and
+   * teammates; absent for a session type that takes no MCP tools. Read-only
+   * here: the snapshot lists its servers and republishes on their changes.
+   */
+  sessionMcpPool?: MCPPool
   promptContextProvider: BrowserPromptContextProvider
   userInputPipeline: BrowserUserInputPipeline
   systemInitEmitter: BrowserSystemInitEmitter

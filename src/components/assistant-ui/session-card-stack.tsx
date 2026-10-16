@@ -5,6 +5,7 @@ import {
   ChevronRightIcon,
   FileTextIcon,
   GripVerticalIcon,
+  PlugIcon,
   XIcon,
 } from "lucide-react";
 
@@ -27,13 +28,14 @@ import {
   saveSessionCardPrefs,
 } from "@/browser/webview/layout/layoutStorage";
 import { useBackgroundTasksContext } from "./background-tasks-context";
+import { useSessionConnectors } from "./session-connectors-context";
 import { useRightPanelContent } from "./right-panel-content-context";
 import { useModUi, type ModUiPaneRow } from "./mod-ui-context";
 import { ModDockedPane } from "./mod-render";
 
 /**
  * The session card stack (F-9) at the transcript's top right: information
- * cards (Outputs, Changes, Background tasks), each drawn only while it has
+ * cards (Outputs, Changes, Connectors, Background tasks), each drawn only while it has
  * something to show, in the person's order and Show choices; then one card
  * per mod pane docked here (F-25), which keep their open order. Docked only
  * while the chat is wide enough; otherwise the information cards open as a
@@ -47,6 +49,7 @@ export const SessionCardsPopoverContext = React.createContext<SessionCardsPopove
 const CARD_LABEL_KEY: Record<SessionCardId, MessageKey> = {
   outputs: "sessionCards.outputs",
   changes: "sessionCards.changes",
+  connectors: "sessionCards.connectors",
   tasks: "sessionCards.tasks",
 };
 
@@ -136,12 +139,19 @@ function CardStack({
   const { openTasksDrawer, runningTaskCount } = useBackgroundTasksContext();
   const [prefs, writePrefs] = useSessionCardPrefs();
   const [outputsOpen, setOutputsOpen] = React.useState(false);
+  const [connectorsOpen, setConnectorsOpen] = React.useState(false);
+  const servers = useSessionConnectors();
+  const connected = React.useMemo(
+    () => servers.filter((server) => server.status === "connected").map((server) => server.name),
+    [servers],
+  );
   const figures = React.useMemo(() => sessionChangeFigures(history), [history]);
   const runningTasks = runningTaskCount ?? 0;
 
   const hasContent: Record<SessionCardId, boolean> = {
     outputs: figures.createdFiles.length > 0,
     changes: figures.plusLines > 0 || figures.minusLines > 0,
+    connectors: connected.length > 0,
     tasks: runningTasks > 0,
   };
   const shown = prefs.order.filter((id) => hasContent[id] && !prefs.hidden.includes(id));
@@ -205,6 +215,35 @@ function CardStack({
             </span>
           }
         />
+      );
+    }
+    if (id === "connectors") {
+      return (
+        <InfoCard
+          id={id}
+          flat={flat}
+          label={label}
+          handle={handle}
+          expanded={connectorsOpen}
+          onActivate={() => setConnectorsOpen((open) => !open)}
+          summary={t("sessionCards.connectorsConnected", { count: connected.length })}
+        >
+          {connectorsOpen ? (
+            <ul className="mt-1 flex flex-col" data-testid="session-card-connectors-list">
+              {connected.map((name) => (
+                <li
+                  key={name}
+                  title={name}
+                  data-testid="session-card-connector"
+                  className="flex h-8 min-w-0 items-center gap-1.5 px-1 text-[13px]"
+                >
+                  <PlugIcon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{name}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </InfoCard>
       );
     }
     return (
