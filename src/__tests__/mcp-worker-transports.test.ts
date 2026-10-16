@@ -254,7 +254,7 @@ function splitAt(bytes: Uint8Array, at = Math.floor(bytes.length / 2)): Uint8Arr
 function stdioServerChild(
   host: FakeHost,
   options: {
-    tools?: Array<{ name: string; description?: string }>
+    tools?: Array<{ name: string; description?: string; annotations?: { readOnlyHint?: boolean } }>
     onCall?: (name: string, args: unknown) => string
     stderr?: string
   } = {},
@@ -841,6 +841,26 @@ describe('createWorkerMcpOperations', () => {
     expect(http).toEqual({ ok: true, toolCount: 1, serverName: 'fake-http', serverVersion: '9.9.9' })
     const open = host.requests.find(r => r.route.action === 'streamOpen')!.payload as Record<string, unknown>
     expect(open.allowPrivateNetwork).toBe(true)
+  })
+
+  it('carries the readOnlyHint annotation of a tool, and only when true', async () => {
+    const host = new FakeHost()
+    host.spawn = stdioServerChild(host, {
+      tools: [
+        { name: 'look', annotations: { readOnlyHint: true } },
+        { name: 'change', annotations: { readOnlyHint: false } },
+        { name: 'plain' },
+      ],
+    })
+    const { operations } = ops(host)
+    const connected = await operations.connect('srv', { transport: 'stdio', command: 'srv' })
+    expect(connected.ok).toBe(true)
+    expect(connected.tools.map(tool => [tool.name, tool.readOnlyHint])).toEqual([
+      ['look', true],
+      ['change', undefined],
+      ['plain', undefined],
+    ])
+    await operations.disconnect('srv')
   })
 
   it('testConnect refuses a config without its transport fields', async () => {

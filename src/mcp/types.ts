@@ -36,6 +36,9 @@ export type MCPToolDescriptor = {
   name: string
   description?: string
   inputSchema?: Record<string, unknown>
+  /** The server's `readOnlyHint` annotation; only `true` lets calls skip the
+   *  per-server write queue. */
+  readOnlyHint?: boolean
 }
 
 /** A resource advertised by an MCP server (`resources/list`). Mirrors the

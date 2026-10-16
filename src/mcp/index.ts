@@ -1,7 +1,17 @@
 export { MCPPool } from './pool'
 export type { MCPPoolOptions } from './pool'
-export { ensureMCPPool, getMCPPool, shutdownMCPPool } from './globalPool'
-export type { EnsureMCPPoolOptions } from './globalPool'
+export {
+  acquireSessionMCPPool,
+  closeAllSessionMCPPools,
+  closeSessionMCPPool,
+  listSessionMCPPools,
+  parkIdleMCPServers,
+  topLevelSessionId,
+} from './sessionPools'
+export type {
+  AcquireSessionMCPPoolOptions,
+  SessionMCPPoolLease,
+} from './sessionPools'
 export type {
   McpBridgeOperations,
   NexusMcpServerLaunchConfig,

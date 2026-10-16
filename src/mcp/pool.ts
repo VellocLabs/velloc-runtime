@@ -5,9 +5,10 @@ import {
   connectMCPServer,
   disconnectMCPServer,
 } from './client'
-import type {
-  McpBridgeOperations,
-  NexusMcpServerLaunchConfig,
+import {
+  launchTransportKind,
+  type McpBridgeOperations,
+  type NexusMcpServerLaunchConfig,
 } from './nativeBridge'
 import type {
   LiveServerLink,
@@ -89,6 +90,24 @@ export type MCPPoolOptions = {
   }>>
 }
 
+function abortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error('MCP tool call aborted.')
+}
+
+/** Resolve when `previous` settles, or reject as soon as `signal` aborts. */
+function waitForTurn(previous: Promise<void>, signal?: AbortSignal): Promise<void> {
+  if (!signal) return previous
+  if (signal.aborted) return Promise.reject(abortError(signal))
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortError(signal))
+    signal.addEventListener('abort', onAbort, { once: true })
+    void previous.then(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    })
+  })
+}
+
 /** The host's in-band answer for a server its port service never connected. */
 function isNativeServerNotConnected(error: string | undefined): boolean {
   return typeof error === 'string' && error.startsWith('MCP server is not connected')
@@ -109,6 +128,12 @@ export class MCPPool {
   private initRun: Promise<void> | null = null
   /** Per-name in-flight connects (browser and native) — never two at once. */
   private readonly connecting = new Map<string, Promise<void>>()
+  /** When each server last connected or finished a call; absent once parked. */
+  private readonly lastActiveAt = new Map<string, number>()
+  /** Calls running per server; a server with one is never parked. */
+  private readonly callsRunning = new Map<string, number>()
+  /** Tail of each server's exclusive-call queue. Never rejects. */
+  private readonly exclusiveTails = new Map<string, Promise<void>>()
 
   constructor(options: MCPPoolOptions) {
     this.cwd = options.cwd
@@ -267,6 +292,7 @@ export class MCPPool {
         if (result.ok) {
           server.status = 'connected'
           server.tools = result.tools
+          this.lastActiveAt.set(name, Date.now())
         } else {
           server.status = 'failed'
           server.error = result.error ?? 'connect failed'
@@ -480,7 +506,92 @@ export class MCPPool {
     return result
   }
 
+  /**
+   * Invoke one tool. A tool its server does not mark `readOnlyHint` starts
+   * only after every earlier such call on the same server has settled (the
+   * pool is shared by a session's agents, and one server holds one state); an
+   * abort while waiting rejects without calling. Read-only calls never wait.
+   */
   async callTool(
+    serverName: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const readOnly = this.servers
+      .get(serverName)
+      ?.tools.find(tool => tool.name === toolName)?.readOnlyHint === true
+    if (readOnly) {
+      return this.trackCall(serverName, () =>
+        this.dispatchCall(serverName, toolName, args, signal),
+      )
+    }
+    const previous = this.exclusiveTails.get(serverName) ?? Promise.resolve()
+    let finish!: () => void
+    const own = new Promise<void>(resolve => {
+      finish = resolve
+    })
+    const tail = previous.then(() => own)
+    this.exclusiveTails.set(serverName, tail)
+    try {
+      await waitForTurn(previous, signal)
+      return await this.trackCall(serverName, () =>
+        this.dispatchCall(serverName, toolName, args, signal),
+      )
+    } finally {
+      finish()
+      if (this.exclusiveTails.get(serverName) === tail) {
+        this.exclusiveTails.delete(serverName)
+      }
+    }
+  }
+
+  private async trackCall<T>(serverName: string, run: () => Promise<T>): Promise<T> {
+    this.callsRunning.set(serverName, (this.callsRunning.get(serverName) ?? 0) + 1)
+    try {
+      return await run()
+    } finally {
+      const left = (this.callsRunning.get(serverName) ?? 1) - 1
+      if (left > 0) this.callsRunning.set(serverName, left)
+      else this.callsRunning.delete(serverName)
+      this.lastActiveAt.set(serverName, Date.now())
+    }
+  }
+
+  /**
+   * Stop each connected stdio server that has run no call for `idleMs`. Its
+   * entry keeps `status: 'connected'` and its tools, so the session's tool
+   * list is unchanged; the next call meets "not connected" and reconnects in
+   * `dispatchCall`. A parked server is not parked again until it is used.
+   * Returns the names stopped.
+   */
+  async parkIdleStdioServers(idleMs: number, now: number = Date.now()): Promise<string[]> {
+    const bridge = this.nativeBridge
+    if (!bridge) return []
+    const idle = Array.from(this.servers.values()).filter(server => {
+      if (server.nativeServerId === undefined || server.status !== 'connected') return false
+      if (!server.nativeConfig || launchTransportKind(server.nativeConfig) !== 'stdio') return false
+      if (this.callsRunning.has(server.name) || this.connecting.has(server.name)) return false
+      const since = this.lastActiveAt.get(server.name)
+      return since !== undefined && now - since >= idleMs
+    })
+    await Promise.all(
+      idle.map(async server => {
+        this.lastActiveAt.delete(server.name)
+        try {
+          await bridge.disconnect(server.nativeServerId!)
+        } catch (err) {
+          console.warn(
+            `[mcp] Native server "${server.name}" idle stop failed:`,
+            err instanceof Error ? err.message : err,
+          )
+        }
+      }),
+    )
+    return idle.map(server => server.name)
+  }
+
+  private async dispatchCall(
     serverName: string,
     toolName: string,
     args: Record<string, unknown>,
@@ -505,10 +616,10 @@ export class MCPPool {
       const nativeServerId = server.nativeServerId
       let out = await nativeBridge.callTool(nativeServerId, toolName, args, signal)
       // "Not connected" means the frame never reached a server: its stdio
-      // child exited, or the runtime's host port was replaced under a live
-      // pool (a newer window hands the SharedWorker its own) and the child
-      // died with the old connection (src/mcp/workerServers.ts). Connect it
-      // again on the current port and retry once.
+      // child exited or was parked idle, or the runtime's host port was
+      // replaced under a live pool (a newer window hands the SharedWorker its
+      // own) and the child died with the old connection. Connect it again on
+      // the current port and retry once.
       if (!out.ok && isNativeServerNotConnected(out.error)) {
         const reconnected = server.nativeConfig !== undefined
           ? await nativeBridge.connect(nativeServerId, server.nativeConfig)
@@ -594,6 +705,7 @@ export class MCPPool {
   async shutdown(): Promise<void> {
     const servers = Array.from(this.servers.values())
     this.servers.clear()
+    this.lastActiveAt.clear()
     await Promise.all(
       servers.map(async server => {
         if (server.nativeServerId !== undefined) {

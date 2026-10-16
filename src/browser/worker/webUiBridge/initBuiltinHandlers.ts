@@ -18,7 +18,7 @@ import {
 } from '../../bridge/adapter/providersBridgeAdapter'
 import { handleSessionImportBridgeRequest } from '../../bridge/adapter/sessionImportBridgeAdapter'
 import { installStockSkills } from '../../../skillLibrary/builtin/catalog'
-import { getMCPPool } from '../../../mcp/globalPool'
+import { listSessionMCPPools } from '../../../mcp/sessionPools'
 import { getMcpHost, hostServesWorkerMcp } from '../../../mcp/mcpHost'
 import { createWorkerMcpOperations } from '../../../mcp/workerServers'
 import { createNativePrimitives } from '../../bridge/nativePrimitives'
@@ -420,14 +420,11 @@ export function initBuiltinWebUiBridgeHandlers(): void {
           } as never,
           payload as unknown as Record<string, unknown>,
         )
-        // Local in-worker pool refresh. The pool's loadNativeServers
-        // callback was wired in `createBrowserRuntime` with the
-        // session's homeDir + fs, so calling refresh here re-reads
-        // settings.json and reconciles `add` / `remove` against the
-        // live connection set. Best-effort — never block the bridge
-        // response on it.
-        const pool = getMCPPool()
-        if (pool) {
+        // Every session's pool re-reads settings.json through the
+        // loadNativeServers callback its runtime wired, and reconciles
+        // `add` / `remove` against its live connections. Best-effort —
+        // never block the bridge response on it.
+        for (const pool of listSessionMCPPools()) {
           void pool.refreshNativeServers().catch(err => {
             console.warn(
               '[webUiBridge] mcpSettings.changed → pool refresh failed:',

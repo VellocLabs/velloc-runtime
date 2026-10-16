@@ -163,6 +163,7 @@ import {
 import { BridgeRequestRouter } from './BridgeRequestRouter'
 import { ManagerBootServices } from './ManagerBootServices'
 import { endProviderSessions } from '../../mods/provider/providerSessionEnd'
+import { closeSessionMCPPool } from '../../mcp/sessionPools'
 import { SessionInitOrchestrator } from './SessionInitOrchestrator'
 import { setMcpHostProvider, type McpHostAccess } from '../../mcp/mcpHost'
 import { TaskControlSurface } from './TaskControlSurface'
@@ -2743,6 +2744,8 @@ export class SharedWorkerSessionManager {
     // the session's provider stores go (5 s at most, never rejects; a no-op in
     // a realm with no provider mod). The teammates' sessions end with the lead.
     await endProviderSessions([sessionId, ...teammateIds])
+    // The session's MCP servers stop now rather than after the release grace.
+    void closeSessionMCPPool(sessionId)
 
     if (this.storage) {
       // A background extract fork spawned by this session's last turn may

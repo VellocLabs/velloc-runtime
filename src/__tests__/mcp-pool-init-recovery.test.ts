@@ -1,7 +1,8 @@
 /**
- * Pool init and per-server recovery: a thrown init never pins a singleton,
- * a concurrent init caller waits for the run in flight, failed servers are
- * retried on refresh, and one server is never connected twice at once.
+ * Pool init and per-server recovery: a thrown init runs again, a concurrent
+ * init caller waits for the run in flight, failed servers are retried on
+ * refresh, and one server is never connected twice at once. The per-session
+ * registry: mcp-session-pools.test.ts.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { McpBridgeOperations } from '../mcp/nativeBridge'
@@ -22,7 +23,6 @@ vi.mock('../mcp/client', () => ({
 }))
 
 const { MCPPool } = await import('../mcp/pool')
-const { ensureMCPPool, getMCPPool, shutdownMCPPool } = await import('../mcp/globalPool')
 
 function deferred<T>() {
   let resolve!: (v: T) => void
@@ -74,8 +74,7 @@ beforeEach(() => {
   loadMCPConfig.mockResolvedValue([])
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
-afterEach(async () => {
-  await shutdownMCPPool()
+afterEach(() => {
   vi.restoreAllMocks()
 })
 
@@ -104,43 +103,6 @@ describe('MCPPool.init', () => {
     await expect(pool.init()).rejects.toThrow('disk')
     await pool.init()
     expect(loadMCPConfig).toHaveBeenCalledTimes(2)
-  })
-})
-
-describe('ensureMCPPool', () => {
-  it('concurrent calls share one init', async () => {
-    const [a, b] = await Promise.all([ensureMCPPool('/w'), ensureMCPPool('/w')])
-    expect(a).toBe(b)
-    expect(loadMCPConfig).toHaveBeenCalledTimes(1)
-  })
-
-  it('a thrown init is not kept; the next call inits again', async () => {
-    loadMCPConfig.mockRejectedValueOnce(new Error('disk'))
-    const broken = await ensureMCPPool('/w')
-    expect(getMCPPool()).toBeNull()
-    const next = await ensureMCPPool('/w')
-    expect(next).not.toBe(broken)
-    expect(getMCPPool()).toBe(next)
-    expect(loadMCPConfig).toHaveBeenCalledTimes(2)
-  })
-
-  it('shutdown resets the singleton', async () => {
-    const first = await ensureMCPPool('/w')
-    await shutdownMCPPool()
-    expect(getMCPPool()).toBeNull()
-    const second = await ensureMCPPool('/w')
-    expect(second).not.toBe(first)
-    expect(loadMCPConfig).toHaveBeenCalledTimes(2)
-  })
-
-  it('a later call retries a failed browser server', async () => {
-    loadMCPConfig.mockResolvedValue([httpEntry])
-    connectMCPServer.mockImplementationOnce(failedLink).mockImplementation(connectedLink)
-    const pool = await ensureMCPPool('/w')
-    expect(pool.getServer('a')?.error).toBe('refused')
-    await ensureMCPPool('/w')
-    expect(pool.getServer('a')?.status).toBe('connected')
-    expect(connectMCPServer).toHaveBeenCalledTimes(2)
   })
 })
 

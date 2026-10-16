@@ -3,6 +3,8 @@ export type McpBridgeToolDescriptor = {
   name: string
   description?: string
   inputSchema?: Record<string, unknown>
+  /** Set, to `true`, only when the server annotates the tool read-only. */
+  readOnlyHint?: boolean
 }
 
 /**
@@ -42,6 +44,18 @@ export type NexusMcpServerLaunchConfig = {
   url?: string
   headers?: Record<string, string>
   cwd?: string
+}
+
+/** The transport a launch config selects: explicit `transport`, else
+ *  `command` → stdio, `url` → http; null when it names neither. */
+export function launchTransportKind(
+  config: NexusMcpServerLaunchConfig,
+): 'stdio' | 'http' | null {
+  if (config.transport === 'stdio' || config.transport === 'http') return config.transport
+  if (config.transport !== undefined) return null
+  if (typeof config.command === 'string' && config.command) return 'stdio'
+  if (typeof config.url === 'string' && config.url) return 'http'
+  return null
 }
 
 /**

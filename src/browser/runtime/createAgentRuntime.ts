@@ -111,8 +111,8 @@ import {
   buildMCPToolsFromPool,
   buildMcpResourceToolsFromPool,
   buildMCPSkillCommands,
+  acquireSessionMCPPool,
   createWorkerMcpOperations,
-  ensureMCPPool,
   mcpServerSkillNamesFromPool,
 } from '../../mcp'
 import { getMcpHost, hostServesWorkerMcp } from '../../mcp/mcpHost'
@@ -193,7 +193,7 @@ export type CreateBrowserRuntimeOptions = BrowserRuntimeOptions & {
   traceLogger?: (entry: TraceLoggerEntry) => void
   /**
    * Boot-welcome milestones from inside the runtime build, fired as each step starts: `connectingTools`
-   * before `ensureMCPPool`, `restoring` before the transcript read. Primary boot session only; best-effort.
+   * before the MCP pool connect, `restoring` before the transcript read. Primary boot session only; best-effort.
    */
   onBootStage?: (stage: 'connectingTools' | 'restoring') => void
   /**
@@ -899,12 +899,24 @@ export async function createBrowserRuntime(
   // handshake per server). Fired BEFORE the await so the footer moves the
   // moment the wait starts.
   options.onBootStage?.('connectingTools')
-  const mcpPool = await ensureMCPPool(resolvedCwd, {
+  // One pool per top-level session: a sub-agent or fork names its spawner
+  // (`modParentSessionId`), a teammate its lead (`spawnerSessionId`).
+  const mcpParentSessionId =
+    (resolvedOptions as { modParentSessionId?: string }).modParentSessionId ??
+    ((resolvedOptions as { isTeammate?: boolean }).isTeammate === true
+      ? (resolvedOptions as { spawnerSessionId?: string }).spawnerSessionId
+      : undefined)
+  const mcpLease = await acquireSessionMCPPool({
+    sessionId: resolvedSessionId,
+    parentSessionId: mcpParentSessionId,
+    cwd: resolvedCwd,
     fs: installedFs,
     extraServers: pluginContributions.mcpServers,
     nativeBridge: nativeMcpBridge,
     loadNativeServers: loadNativeMcpServers,
   })
+  undoWhenScopeEnds(mcpLease.release, options.runtimeScopeSignal)
+  const mcpPool = mcpLease.pool
   // Deferrable skills: the template's `deferredTools` decides which defer by default; MCP servers defer
   // by default. Security: a `noExecution` type takes nothing from the MCP pool, structurally, since
   // MCP tools bypass the template allowlist and a stdio server spawns OS processes.

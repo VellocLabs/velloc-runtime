@@ -45,8 +45,8 @@ vi.mock('../browser/bridge/adapter/mcpSettingsBridgeAdapter', () => ({
 vi.mock('../browser/bridge/adapter/pluginsBridgeAdapter', () => ({
   handlePluginsBridgeRequest: vi.fn(),
 }))
-vi.mock('../mcp/globalPool', () => ({
-  getMCPPool: () => null,
+vi.mock('../mcp/sessionPools', () => ({
+  listSessionMCPPools: () => [],
 }))
 vi.mock('../skillLibrary/builtin/catalog', () => ({
   installStockSkills: vi.fn(),

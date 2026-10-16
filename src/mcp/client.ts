@@ -83,6 +83,7 @@ export async function connectMCPServer(
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema as Record<string, unknown> | undefined,
+        ...(tool.annotations?.readOnlyHint === true ? { readOnlyHint: true } : {}),
       }))
     } catch (err) {
       console.warn(`[mcp] Server "${name}" does not support listTools:`, err)

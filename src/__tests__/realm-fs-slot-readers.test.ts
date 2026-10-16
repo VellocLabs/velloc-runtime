@@ -512,7 +512,7 @@ describe('no realm-slot reads on session paths (source guard)', () => {
       }
     }
     expect(src.match(/loadMarketplaceInstallState\(\{ homeDir \}, installedFs\)/g)).toHaveLength(2)
-    expect(src).toMatch(/ensureMCPPool\(resolvedCwd, \{\s*fs: installedFs,/)
+    expect(src).toMatch(/acquireSessionMCPPool\(\{[^}]*cwd: resolvedCwd,\s*fs: installedFs,/)
   })
 
   it('/plugins writes go through the session fs', () => {

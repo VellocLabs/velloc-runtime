@@ -13,9 +13,10 @@ import { createBridgeRoute } from '../browser/bridge/browserBridgeProtocol'
 import { createNativePrimitives } from '../browser/bridge/nativePrimitives'
 import { CLIENT_NAME, CLIENT_VERSION } from './client'
 import type { McpHostAccess } from './mcpHost'
-import type {
-  McpBridgeOperations,
-  NexusMcpServerLaunchConfig,
+import {
+  launchTransportKind,
+  type McpBridgeOperations,
+  type NexusMcpServerLaunchConfig,
 } from './nativeBridge'
 import {
   createPrimitiveFetch,
@@ -74,16 +75,6 @@ const NOT_CONNECTED = 'MCP server is not connected'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-/** The transport a config names: explicit, else inferred (command → stdio,
- *  url → http) — the settings validator's inference. */
-function transportKind(config: NexusMcpServerLaunchConfig): 'stdio' | 'http' | null {
-  if (config.transport === 'stdio' || config.transport === 'http') return config.transport
-  if (config.transport !== undefined) return null
-  if (typeof config.command === 'string' && config.command) return 'stdio'
-  if (typeof config.url === 'string' && config.url) return 'http'
-  return null
 }
 
 /**
@@ -180,7 +171,7 @@ export function createWorkerMcpOperations(
       createRequestId: options.createRequestId,
       manifest: host.manifest,
     })
-    const kind = transportKind(config)
+    const kind = launchTransportKind(config)
     if (kind === 'stdio') {
       if (!config.command) throw new Error('stdio transport requires a `command`')
       return new ShellStdioClientTransport(
@@ -213,7 +204,7 @@ export function createWorkerMcpOperations(
   ): Promise<{ client: Client; transport: Transport; hostTransport: BrowserBridgeTransport }> {
     const host = options.resolveHost()
     if (!host) throw new Error('No host bridge port is attached.')
-    if (transportKind(config) === 'stdio' && !config.cwd) {
+    if (launchTransportKind(config) === 'stdio' && !config.cwd) {
       config = { ...config, cwd: await hostCwd(host.transport, options.createRequestId) }
     }
     const transport = buildTransport(host, config, allowPrivateNetwork)
@@ -254,6 +245,7 @@ export function createWorkerMcpOperations(
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema as Record<string, unknown> | undefined,
+        ...(tool.annotations?.readOnlyHint === true ? { readOnlyHint: true } : {}),
       }))
     } catch (error) {
       console.warn(`[mcp] Server "${label}" does not support listTools:`, error)
@@ -349,7 +341,7 @@ export function createWorkerMcpOperations(
 
     async testConnect(raw) {
       const config = parseLaunchConfig(raw)
-      if (!config || !transportKind(config)) {
+      if (!config || !launchTransportKind(config)) {
         return {
           ok: false,
           error:

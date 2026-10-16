@@ -1,19 +1,16 @@
 /**
- * `registerWebUiBridgeHandler('mcpSettings', ...)` wires `getMCPPool().refreshNativeServers()` into
+ * `registerWebUiBridgeHandler('mcpSettings', ...)` wires `refreshNativeServers()` on every session's pool into
  * `broadcastChanged` beside `ctx.broadcastEvent`. The pool itself: mcp-pool-settings-loader.test.ts.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // vi.mock factories must be hoisted before any `await import(...)` so
-// the module-under-test sees the mocked surface from the start. The
-// real `globalPool` reaches across to `MCPPool` (heavy, network) so a
-// shallow mock is cleaner anyway.
+// the module-under-test sees the mocked surface from the start. Two open
+// session pools share one spy, so each write must refresh both.
 const refreshNativeServers = vi.fn(async () => {})
-vi.mock('../mcp/globalPool', () => ({
-  getMCPPool: () => ({
-    refreshNativeServers,
-  }),
+vi.mock('../mcp/sessionPools', () => ({
+  listSessionMCPPools: () => [{ refreshNativeServers }, { refreshNativeServers }],
 }))
 
 // We also stub the adapter to skip the real settings.json write path
@@ -104,7 +101,7 @@ describe('initBuiltinWebUiBridgeHandlers — mcpSettings broadcast hook', () => 
     // synchronous (fire-and-forget); flush the microtask queue to
     // observe the call.
     await Promise.resolve()
-    expect(refreshNativeServers).toHaveBeenCalledTimes(1)
+    expect(refreshNativeServers).toHaveBeenCalledTimes(2)
   })
 
   it('survives a refreshNativeServers rejection without throwing through the handler', async () => {
