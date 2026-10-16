@@ -8,6 +8,7 @@ import {
   mergeSettingsSources,
   wipeSettingsMemos,
   layerMergeRule,
+  readUserLayer,
   updateSectionInSource,
 } from '../settings/settingsStore'
 
@@ -44,6 +45,23 @@ const SETTINGS_PATH = `${HOME}/.velloc/${NEXUS_SETTINGS_FILE_NAME}`
 
 beforeEach(() => {
   wipeSettingsMemos()
+})
+
+describe('a layer with no root folder', () => {
+  it('reads as defaults without touching a relative path, and a write is refused', async () => {
+    const { fs, files } = makeMemoryFs({
+      [`.velloc/${NEXUS_SETTINGS_FILE_NAME}`]: JSON.stringify({ version: 1, agent: { log: true } }),
+    })
+
+    const read = await readUserLayer('', fs)
+    expect(read).toEqual({ settings: { version: NEXUS_SETTINGS_VERSION }, source: 'default' })
+    await expect(
+      updateSectionInSource('userSettings', { homeDir: '' }, fs, 'agent', () => ({ log: false })),
+    ).rejects.toThrow(/no folder known/)
+    expect(fs.readFile).not.toHaveBeenCalled()
+    expect(fs.writeFile).not.toHaveBeenCalled()
+    expect([...files.keys()]).toEqual([`.velloc/${NEXUS_SETTINGS_FILE_NAME}`])
+  })
 })
 
 describe('updateSectionInSource', () => {

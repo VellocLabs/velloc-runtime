@@ -431,3 +431,64 @@ describe('DirectPortBridgeTransport — unconsumed transferred ports are closed'
     channel.port2.close()
   })
 })
+
+describe('DirectPortBridgeTransport — a duplicate pending request id is refused', () => {
+  it('rejects the second request, posts nothing for it, and the first still gets its own reply', async () => {
+    const channel = new MessageChannel()
+    const client = new DirectPortBridgeTransport({ port: channel.port1, requestTimeoutMs: 500 })
+    const posted: Array<{ id: string; payload: { tag: string } }> = []
+    let releaseReplies: (() => void) | null = null
+    const held = new Promise<void>(resolve => {
+      releaseReplies = resolve
+    })
+    channel.port2.addEventListener('message', (event: MessageEvent) => {
+      const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
+      if (data?.direction !== 'request') return
+      posted.push({ id: data.id, payload: data.payload })
+      // Reply only once the test has issued both requests.
+      void held.then(() => {
+        channel.port2.postMessage({
+          hostBridge: true,
+          direction: 'response',
+          id: data.id,
+          route: data.route,
+          ok: true,
+          result: data.payload.tag,
+        })
+      })
+    })
+    channel.port2.start()
+
+    const first = client.request({ id: 'dup-1', route: makeRoute('fs', 'userHome'), payload: { tag: 'first' } as never })
+    const second = client.request({ id: 'dup-1', route: makeRoute('fs', 'userHome'), payload: { tag: 'second' } as never })
+
+    await expect(second).rejects.toThrow(/request id 'dup-1' .*already pending/)
+    await waitFor(() => posted.length === 1)
+    releaseReplies!()
+    await expect(first).resolves.toMatchObject({ ok: true, result: 'first' })
+    expect(posted.map(p => p.payload.tag)).toEqual(['first'])
+
+    client.dispose()
+    channel.port2.close()
+  })
+
+  it('accepts an id again once its earlier request has settled', async () => {
+    const channel = new MessageChannel()
+    const client = new DirectPortBridgeTransport({ port: channel.port1 })
+    channel.port2.addEventListener('message', (event: MessageEvent) => {
+      const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
+      if (data?.direction !== 'request') return
+      channel.port2.postMessage({ hostBridge: true, direction: 'response', id: data.id, route: data.route, ok: true, result: 'ok' })
+    })
+    channel.port2.start()
+
+    for (let i = 0; i < 2; i++) {
+      await expect(
+        client.request({ id: 'reuse-1', route: makeRoute('fs', 'userHome'), payload: {} as never }),
+      ).resolves.toMatchObject({ ok: true })
+    }
+
+    client.dispose()
+    channel.port2.close()
+  })
+})

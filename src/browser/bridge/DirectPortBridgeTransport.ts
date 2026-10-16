@@ -459,6 +459,14 @@ export class DirectPortBridgeTransport implements BrowserBridgeTransport {
       } as BrowserBridgeResponse<C, A>
     }
 
+    // Replies are matched by id: a second request under a pending id would
+    // take over the first one's reply and leave the first to time out.
+    if (this.pending.has(request.id)) {
+      throw new Error(
+        `DirectPortBridgeTransport: request id '${request.id}' (${formatBridgeRoute(request.route)}) is already pending; ids must be unique`,
+      )
+    }
+
     const policy = getRoutePolicy(request.route)
     const controlRequest = this.buildControlRequest(request, policy)
 

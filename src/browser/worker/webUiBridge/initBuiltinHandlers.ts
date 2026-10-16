@@ -54,6 +54,8 @@ import { getActiveSessionManager } from '../SharedWorkerSessionManager'
 import { discoverInstructionFiles } from '../../../memory/instructionFiles'
 import type { BrowserBridgeTransport } from '../../bridge/protocol/core'
 import { createBridgeRoute } from '../../bridge/protocol/core'
+import { wireError, type WireError } from '../../runtimeProtocol'
+import { resolveHomeDirViaBridgeBounded } from '../../../utils/resolveHomeDirViaBridge'
 import { withProviderUserAgents } from '../../../config/providerUserAgent'
 import { withProviderSecretMirror } from '../../../config/providerSecrets'
 import { refreshBrokerProviderBaseUrls } from '../brokerProviderView'
@@ -73,46 +75,20 @@ let initialized = false
 const PUBLISH_TO_BROKER_TIMEOUT_MS = 3_000
 
 /**
- * Resolve the settings root (features are user-scoped, `~/.velloc/settings.json`): `ctx.homeDir`, then
- * the host's `fs.userHome`, then `fs.cwd`, then `'.'` with no direct bridge. Cached per module.
+ * The settings root (features are user-scoped, `~/.velloc/settings.json`): `ctx.homeDir`, else the host's
+ * `fs.userHome`. Only a found home is cached; with none the request is refused (`host_unavailable`) and the
+ * next one asks again. Never the host's `fs.cwd`.
  */
 let cachedSettingsRoot: string | null = null
-/** In-flight resolution promise. Coalesces concurrent first-time
- *  callers — a WebUI page that fires `features`, `plugins`, `agent`,
- *  AND `mcpSettings` in parallel hits this 4 times at once on first
- *  attach. They all await the same single resolution rather than
- *  issuing 8 redundant direct-bridge calls. */
+/** Coalesces concurrent first-time callers (a settings page opens several capabilities at once). */
 let inFlightResolution: Promise<string> | null = null
 let settingsRootGeneration = 0
 
-/** Per-bridge-call timeout for the `fs.userHome` / `fs.cwd` lookups
- *  below. The default `DirectPortBridgeTransport` timeout is 30 s —
- *  far too long to block the WebUI's first request. 2 s is plenty for
- *  a local C++ call; if C++ doesn't respond that quickly something is
- *  genuinely broken and we should fall through to the degraded path.
- *  Total worst-case wait if both calls time out: ~4 s (was ~60 s,
- *  which hung the WebUI past its own 60 s client timeout — exactly
- *  the symptom users saw on the Plugins page). */
-const SETTINGS_ROOT_BRIDGE_TIMEOUT_MS = 2_000
+/** Bound on the `fs.userHome` ask, well inside the WebUI client's own request timeout. */
+const SETTINGS_ROOT_BRIDGE_TIMEOUT_MS = 5_000
 
-/** Race a promise against a timer. Resolves to `null` on timeout,
- *  the promise's value otherwise. */
-async function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-): Promise<T | null> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const timeoutSentinel: { __timedOut: true } = { __timedOut: true }
-  const timeoutPromise = new Promise<typeof timeoutSentinel>(resolve => {
-    timer = setTimeout(() => resolve(timeoutSentinel), ms)
-  })
-  try {
-    const result = await Promise.race([promise, timeoutPromise])
-    if (result === timeoutSentinel) return null
-    return result as T
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
+function noSettingsRoot(reason: string): WireError {
+  return wireError('host_unavailable', `user home unknown (${reason}); refusing to anchor .velloc settings`)
 }
 
 async function resolveSettingsRoot(
@@ -129,11 +105,7 @@ async function resolveSettingsRoot(
     return inFlightResolution
   }
   if (!directBridge) {
-    // No direct bridge available — degenerate test/mock-host case.
-    // Land at the relative '.' sentinel; whatever the worker's fs
-    // anchors at becomes the settings root.
-    cachedSettingsRoot = '.'
-    return cachedSettingsRoot
+    throw noSettingsRoot('no host bridge')
   }
 
   const generation = settingsRootGeneration
@@ -152,70 +124,22 @@ async function doResolveSettingsRoot(
   directBridge: BrowserBridgeTransport,
   generation: number,
 ): Promise<string> {
-  const idPrefix = `webui-features-root-${Date.now().toString(36)}-${
-    Math.random().toString(36).slice(2, 8)
-  }`
-
-  // Try fs.userHome first — the production user-scope path. Capped at
-  // SETTINGS_ROOT_BRIDGE_TIMEOUT_MS so a hanging C++ host (older build
-  // without `fs.userHome`, deadlocked thread pool, etc.) doesn't block
-  // the WebUI past its own client timeout.
-  const userHomeValue = await tryBridgeFsString(
-    directBridge, 'userHome', `${idPrefix}-uh`,
+  const { home, timedOut } = await resolveHomeDirViaBridgeBounded(
+    directBridge,
+    SETTINGS_ROOT_BRIDGE_TIMEOUT_MS,
   )
   if (generation !== settingsRootGeneration) {
     return resolveSettingsRoot(ctx, ctx.directBridge)
   }
-  if (userHomeValue) {
-    cachedSettingsRoot = userHomeValue
-    return cachedSettingsRoot
+  if (!home) {
+    const reason = timedOut
+      ? `fs.userHome did not answer within ${SETTINGS_ROOT_BRIDGE_TIMEOUT_MS}ms`
+      : 'fs.userHome named no home'
+    console.warn(`[resolveSettingsRoot] ${reason}`)
+    throw noSettingsRoot(reason)
   }
-
-  // Fallback: fs.cwd. Lands at `<cwd>/.velloc/settings.json` — same
-  // root every other `.velloc/...` config file uses.
-  const cwdValue = await tryBridgeFsString(
-    directBridge, 'cwd', `${idPrefix}-cwd`,
-  )
-  if (generation !== settingsRootGeneration) {
-    return resolveSettingsRoot(ctx, ctx.directBridge)
-  }
-  cachedSettingsRoot = cwdValue ?? '.'
-  return cachedSettingsRoot
-}
-
-/** Call an `fs.*` bridge action that returns a string. Returns the
- *  string on success, or `null` on any failure (timeout, transport
- *  error, error envelope, empty string). Doesn't throw — callers
- *  branch on the null. */
-async function tryBridgeFsString(
-  directBridge: BrowserBridgeTransport,
-  action: 'userHome' | 'cwd',
-  requestId: string,
-): Promise<string | null> {
-  try {
-    const response = await withTimeout(
-      directBridge.request({
-        id: requestId,
-        route: createBridgeRoute('fs', action),
-        payload: {},
-      }),
-      SETTINGS_ROOT_BRIDGE_TIMEOUT_MS,
-    )
-    if (response === null) {
-      console.warn(
-        `[resolveSettingsRoot] fs.${action} did not respond within ${SETTINGS_ROOT_BRIDGE_TIMEOUT_MS}ms; falling through`,
-      )
-      return null
-    }
-    if (!response.ok) return null
-    const value = response.result as unknown
-    return typeof value === 'string' && value.length > 0 ? value : null
-  } catch (e) {
-    console.warn(
-      `[resolveSettingsRoot] fs.${action} threw: ${e instanceof Error ? e.message : String(e)}; falling through`,
-    )
-    return null
-  }
+  cachedSettingsRoot = home
+  return home
 }
 
 export function invalidateWebUiSettingsRoot(): void {
@@ -244,13 +168,6 @@ export function initBuiltinWebUiBridgeHandlers(): void {
   registerWebUiBridgeHandler('features', async (request, ctx: WebUiBridgeContext) => {
     const settingsRoot = await resolveSettingsRoot(ctx, ctx.directBridge)
     return handleFeaturesBridgeRequest(request, {
-      // `homeDir` here is a misnomer in the cwd-fallback case — the
-      // settings module is shape-agnostic: it joins
-      // `<root>/.velloc/settings.json`, so whether `<root>` is the
-      // user's HOME or the runtime cwd doesn't change behaviour. The
-      // production path goes through cwd; the architecture stays
-      // ready for proper user-scope when HOME gets injected by the
-      // C++ side in the future.
       homeDir: settingsRoot,
       fs: ctx.fs,
       // Live WorkingState updates are not wired from this surface: each new session reads the file at
@@ -564,7 +481,7 @@ export function initBuiltinWebUiBridgeHandlers(): void {
     const homeDir = await resolveSettingsRoot(ctx, ctx.directBridge)
     const manager = getActiveSessionManager()
     return handleSessionImportBridgeRequest(request, {
-      homeDir: homeDir === '.' ? '' : homeDir,
+      homeDir,
       fs: ctx.fs,
       directBridge: ctx.directBridge,
       writer: manager,

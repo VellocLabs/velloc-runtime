@@ -232,8 +232,7 @@ export class AgentPermissionCoordinator {
       const projectRoot = runtime.options.projectRoot
       const source =
         dest !== 'userSettings' && !projectRoot ? 'userSettings' : dest
-      const homeDir =
-        runtime.options.settingsHomeDir ?? runtime.options.cwd
+      const homeDir = runtime.options.settingsHomeDir ?? ''
       try {
         await updateSectionInSource(
           source,
@@ -381,8 +380,7 @@ export class AgentPermissionCoordinator {
       // home (not cwd/workspace) so the rule lands in ~/.velloc and is read
       // back next boot. (For `localSettings` the root is projectRoot, so
       // homeDir is irrelevant there.)
-      const homeDir =
-        this.runtime.options.settingsHomeDir ?? this.runtime.options.cwd
+      const homeDir = this.runtime.options.settingsHomeDir ?? ''
       try {
         await updateSectionInSource(
           source,
@@ -431,8 +429,7 @@ export class AgentPermissionCoordinator {
       const projectRoot = this.runtime.options.projectRoot
       const source =
         dest !== 'userSettings' && !projectRoot ? 'userSettings' : dest
-      const homeDir =
-        this.runtime.options.settingsHomeDir ?? this.runtime.options.cwd
+      const homeDir = this.runtime.options.settingsHomeDir ?? ''
       try {
         await updateSectionInSource(
           source,
@@ -456,8 +453,7 @@ export class AgentPermissionCoordinator {
    */
   async persistSkipDangerousMode(value: boolean): Promise<void> {
     if (!this.runtime) return
-    const homeDir =
-      this.runtime.options.settingsHomeDir ?? this.runtime.options.cwd
+    const homeDir = this.runtime.options.settingsHomeDir ?? ''
     try {
       await updateSectionInSource(
         'userSettings',
@@ -480,12 +476,9 @@ export class AgentPermissionCoordinator {
    *  Best-effort. */
   async loadSkipDangerousMode(): Promise<void> {
     if (!this.runtime) return
-    const homeDir =
-      this.runtime.options.settingsHomeDir ?? this.runtime.options.cwd
-    this.skipDangerousModePermissionPrompt =
-      await unsafeModeAckGiven(
-        homeDir,
-        this.runtime.installedFs,
-      )
+    const homeDir = this.runtime.options.settingsHomeDir
+    this.skipDangerousModePermissionPrompt = homeDir
+      ? await unsafeModeAckGiven(homeDir, this.runtime.installedFs)
+      : false
   }
 }

@@ -181,6 +181,27 @@ describe('fsx — the desktop (`full`)', () => {
     expect(disk.calls).toEqual(['fs.userHome'])
   })
 
+  it('userHome is not_found when the host names no home, and the cwd is never asked', async () => {
+    const disk = fakeDisk()
+    const inner = disk.host
+    disk.host = {
+      async request(route, payload) {
+        if (route.action === 'userHome') {
+          disk.calls.push('fs.userHome')
+          return { ok: true, result: '' }
+        }
+        if (route.action === 'cwd') {
+          disk.calls.push('fs.cwd')
+          return { ok: true, result: PROJECT }
+        }
+        return inner.request(route, payload)
+      },
+    }
+    const files = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk, undefined, ''), 'observe')) })
+    await expect(files.userHome()).rejects.toMatchObject({ code: 'not_found' })
+    expect(disk.calls).toEqual(['fs.userHome'])
+  })
+
   it('an unknown session is not_found, before any host call', async () => {
     const disk = fakeDisk()
     const files = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk))) })

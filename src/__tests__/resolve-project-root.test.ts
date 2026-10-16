@@ -25,19 +25,19 @@ function makeFs(opts: { mkdir?: (path: string) => Promise<void> } = {}): Runtime
 }
 
 describe('resolveProjectRoot', () => {
-  it('defaults to the shared <cwd>/.velloc/shared-workspace/ when no override is given', async () => {
+  it('defaults to the shared ~/.velloc/shared-workspace/ when no override is given', async () => {
     const result = await resolveProjectRoot({
-      cwd: '/home/user/project',
+      homeDir: '/home/user',
       fs: makeFs(),
     })
     expect(result).toBe(
-      `/home/user/project/.velloc/${DEFAULT_PROJECT_ROOT_NAME}/`,
+      `/home/user/.velloc/${DEFAULT_PROJECT_ROOT_NAME}/`,
     )
   })
 
   it('uses the override when it passes validation', async () => {
     const result = await resolveProjectRoot({
-      cwd: '/home/user/project',
+      homeDir: '/home/user',
       projectRoot: '/explicit/workspace',
       fs: makeFs(),
     })
@@ -46,36 +46,36 @@ describe('resolveProjectRoot', () => {
 
   it('falls through to the shared default when the override is invalid', async () => {
     const result = await resolveProjectRoot({
-      cwd: '/home/user/project',
+      homeDir: '/home/user',
       projectRoot: '/', // root rejected by checkNotesDir
       fs: makeFs(),
     })
     expect(result).toBe(
-      `/home/user/project/.velloc/${DEFAULT_PROJECT_ROOT_NAME}/`,
+      `/home/user/.velloc/${DEFAULT_PROJECT_ROOT_NAME}/`,
     )
   })
 
   it('falls through to the shared default when the override is a relative path', async () => {
     const result = await resolveProjectRoot({
-      cwd: '/home/user/project',
+      homeDir: '/home/user',
       projectRoot: './workspace',
       fs: makeFs(),
     })
     expect(result).toBe(
-      `/home/user/project/.velloc/${DEFAULT_PROJECT_ROOT_NAME}/`,
+      `/home/user/.velloc/${DEFAULT_PROJECT_ROOT_NAME}/`,
     )
   })
 
   it('calls fs.mkdir on the resolved path', async () => {
     const mkdir = vi.fn(async () => {})
     await resolveProjectRoot({
-      cwd: '/home/user/project',
+      homeDir: '/home/user',
       fs: makeFs({ mkdir }),
     })
     expect(mkdir).toHaveBeenCalledTimes(1)
     // mkdir gets the path without trailing separator.
     expect(mkdir).toHaveBeenCalledWith(
-      `/home/user/project/.velloc/${DEFAULT_PROJECT_ROOT_NAME}`,
+      `/home/user/.velloc/${DEFAULT_PROJECT_ROOT_NAME}`,
     )
   })
 
@@ -84,11 +84,11 @@ describe('resolveProjectRoot', () => {
     // that don't pass an explicit projectRoot land in the same dir, so
     // memory accumulates across conversations instead of being siloed.
     const a = await resolveProjectRoot({
-      cwd: '/home/user/project',
+      homeDir: '/home/user',
       fs: makeFs(),
     })
     const b = await resolveProjectRoot({
-      cwd: '/home/user/project',
+      homeDir: '/home/user',
       fs: makeFs(),
     })
     expect(a).toBe(b)
@@ -96,12 +96,12 @@ describe('resolveProjectRoot', () => {
 
   it('two calls with explicit overrides keep their isolation', async () => {
     const a = await resolveProjectRoot({
-      cwd: '/home/user/project',
+      homeDir: '/home/user',
       projectRoot: '/explicit/alpha',
       fs: makeFs(),
     })
     const b = await resolveProjectRoot({
-      cwd: '/home/user/project',
+      homeDir: '/home/user',
       projectRoot: '/explicit/beta',
       fs: makeFs(),
     })
@@ -111,7 +111,7 @@ describe('resolveProjectRoot', () => {
 
   it('swallows mkdir errors silently — still returns the path', async () => {
     const result = await resolveProjectRoot({
-      cwd: '/home/user/project',
+      homeDir: '/home/user',
       fs: makeFs({
         mkdir: async () => {
           throw new Error('EACCES')
@@ -119,17 +119,17 @@ describe('resolveProjectRoot', () => {
       }),
     })
     expect(result).toBe(
-      `/home/user/project/.velloc/${DEFAULT_PROJECT_ROOT_NAME}/`,
+      `/home/user/.velloc/${DEFAULT_PROJECT_ROOT_NAME}/`,
     )
   })
 
-  it('handles Windows-style cwd correctly', async () => {
+  it('handles a Windows-style home correctly', async () => {
     const result = await resolveProjectRoot({
-      cwd: 'C:\\Users\\me\\project',
+      homeDir: 'C:\\Users\\me',
       fs: makeFs(),
     })
     expect(result).toBe(
-      `C:\\Users\\me\\project\\.velloc\\${DEFAULT_PROJECT_ROOT_NAME}\\`,
+      `C:\\Users\\me\\.velloc\\${DEFAULT_PROJECT_ROOT_NAME}\\`,
     )
   })
 
@@ -147,7 +147,6 @@ describe('resolveProjectRoot per-type-shared defaults', () => {
     // is derived, not a hardcoded list.
     for (const type of ['agent', 'chat'] as const) {
       const result = await resolveProjectRoot({
-        cwd: '/host/cwd',
         homeDir,
         templateType: type,
         fs: makeFs(),
@@ -159,7 +158,6 @@ describe('resolveProjectRoot per-type-shared defaults', () => {
 
   it('an unsafe templateType (path injection) falls back to the bare workspace', async () => {
     const result = await resolveProjectRoot({
-      cwd: '/host/cwd',
       homeDir,
       templateType: '../../etc',
       fs: makeFs(),
@@ -170,7 +168,6 @@ describe('resolveProjectRoot per-type-shared defaults', () => {
 
   it('code keeps the bare ~/.velloc/shared-workspace/ (it forces a real folder instead)', async () => {
     const result = await resolveProjectRoot({
-      cwd: '/host/cwd',
       homeDir,
       templateType: 'code',
       fs: makeFs(),
@@ -180,7 +177,7 @@ describe('resolveProjectRoot per-type-shared defaults', () => {
   })
 
   it('absent templateType keeps the bare workspace (back-compat)', async () => {
-    const absent = await resolveProjectRoot({ cwd: '/host/cwd', homeDir, fs: makeFs() })
+    const absent = await resolveProjectRoot({ homeDir, fs: makeFs() })
     expect(absent).toBe(`${getNexusWorkspaceDir(homeDir)}/`)
   })
 
@@ -188,7 +185,6 @@ describe('resolveProjectRoot per-type-shared defaults', () => {
     // No hardcoded type list → a future safe-named type gets a per-type sandbox
     // automatically. Only `code` / unsafe / absent fall back to bare.
     const unknown = await resolveProjectRoot({
-      cwd: '/host/cwd',
       homeDir,
       templateType: 'research',
       fs: makeFs(),
@@ -198,7 +194,6 @@ describe('resolveProjectRoot per-type-shared defaults', () => {
 
   it('an explicit projectRoot override beats the per-type default', async () => {
     const result = await resolveProjectRoot({
-      cwd: '/host/cwd',
       homeDir,
       templateType: 'agent',
       projectRoot: '/explicit/folder',
@@ -207,24 +202,19 @@ describe('resolveProjectRoot per-type-shared defaults', () => {
     expect(result).toBe('/explicit/folder/')
   })
 
-  it('cwd-anchored fallback (no homeDir) also gets the per-type subdir', async () => {
-    const result = await resolveProjectRoot({
-      cwd: '/home/user/project',
-      templateType: 'chat',
-      fs: makeFs(),
-    })
-    expect(result).toBe('/home/user/project/.velloc/shared-workspace/chat/')
+  it('with no home and no valid override it refuses, and never falls back to a cwd', async () => {
+    const mkdir = vi.fn(async () => {})
+    for (const templateType of ['chat', 'code', undefined]) {
+      await expect(
+        resolveProjectRoot({ projectRoot: './relative', templateType, fs: makeFs({ mkdir }) }),
+      ).rejects.toThrow(/no user home/)
+    }
+    expect(mkdir).not.toHaveBeenCalled()
   })
 
-  it('cwd-anchored fallback for code stays bare', async () => {
-    const result = await resolveProjectRoot({
-      cwd: '/home/user/project',
-      templateType: 'code',
-      fs: makeFs(),
-    })
-    expect(result).toBe(
-      `/home/user/project/.velloc/${DEFAULT_PROJECT_ROOT_NAME}/`,
-    )
+  it('with no home a valid override still resolves', async () => {
+    const result = await resolveProjectRoot({ projectRoot: '/explicit/folder', templateType: 'chat', fs: makeFs() })
+    expect(result).toBe('/explicit/folder/')
   })
 })
 
@@ -267,17 +257,17 @@ describe('projectRootIsSandbox', () => {
     expect(projectRootIsSandbox(sandboxInput)).toBe(true)
     expect(projectRootIsSandbox(boundInput)).toBe(false)
     const sandboxResolved = await resolveProjectRoot({
-      cwd: '/home/user/project',
+      homeDir: '/home/user',
       projectRoot: sandboxInput,
       fs: makeFs(),
     })
     const boundResolved = await resolveProjectRoot({
-      cwd: '/home/user/project',
+      homeDir: '/home/user',
       projectRoot: boundInput,
       fs: makeFs(),
     })
     expect(sandboxResolved).toBe(
-      `/home/user/project/.velloc/${DEFAULT_PROJECT_ROOT_NAME}/`,
+      `/home/user/.velloc/${DEFAULT_PROJECT_ROOT_NAME}/`,
     )
     expect(boundResolved).toBe('/explicit/alpha/')
   })

@@ -752,6 +752,9 @@ export async function readLayerFresh(
   ctx: SettingsPathContext,
   fs: RuntimeFs,
 ): Promise<LoadResult> {
+  // No root folder: the relative path would resolve against the browser's
+  // working directory, which holds no one's settings.
+  if (!layerRootDir(source, ctx)) return { settings: defaultSettings(), source: 'default' }
   const path = layerFilePath(source, ctx)
   return loadSettingsDocFresh(path, fs)
 }

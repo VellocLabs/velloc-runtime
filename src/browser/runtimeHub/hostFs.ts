@@ -30,14 +30,12 @@ export async function callHostFs<T>(host: HostBridge, action: string, payload: u
 
 /**
  * The host user's home: what the runtime already knows, else the host's
- * `fs.userHome`, else its `fs.cwd`. `not_found` when the host reports neither.
+ * `fs.userHome`. `not_found` when the host names none; never the host's
+ * `fs.cwd`, the browser's own folder.
  */
 export async function resolveHostHome(ctx: RuntimeContext): Promise<string> {
   if (ctx.homeDir) return ctx.homeDir
-  const host = hostOf(ctx)
-  for (const action of ['userHome', 'cwd']) {
-    const path = await callHostFs<unknown>(host, action, {}).catch(() => null)
-    if (typeof path === 'string' && path.length > 0) return path
-  }
+  const path = await callHostFs<unknown>(hostOf(ctx), 'userHome', {}).catch(() => null)
+  if (typeof path === 'string' && path.length > 0) return path
   throw wireError('not_found', 'the host did not report a home directory')
 }

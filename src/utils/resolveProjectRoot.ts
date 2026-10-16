@@ -8,11 +8,9 @@
 
 import type { RuntimeFs } from './fs/runtimeFs'
 import { checkNotesDir } from '../memory/memoryPaths'
-import { RUNTIME_DIR_NAME } from '../branding/runtimeDir'
 import {
   NEXUS_WORKSPACE_DIR_NAME,
   getNexusWorkspaceDirForType,
-  isPerTypeSharedTemplateType,
 } from './conversationStoragePaths'
 
 /**
@@ -35,20 +33,7 @@ function ensureTrailingSeparator(value: string): string {
   return trimmed + detectSeparator(value || trimmed)
 }
 
-function joinPath(base: string, ...parts: string[]): string {
-  const sep = detectSeparator(base)
-  let result = trimTrailingSeparators(base)
-  for (const part of parts) {
-    const trimmed = part.replace(/^[\\/]+/, '').replace(/[\\/]+$/, '')
-    if (!trimmed) continue
-    result = result ? `${result}${sep}${trimmed}` : trimmed
-  }
-  return result
-}
-
 export type ResolveProjectRootArgs = {
-  /** Host-provided absolute cwd (already resolved by `resolveRuntimeCwd`). */
-  cwd: string
   /**
    * Optional explicit override from `BrowserRuntimeOptions.projectRoot`.
    * When absent or invalid, the shared default `shared-workspace/` is used
@@ -56,15 +41,13 @@ export type ResolveProjectRootArgs = {
    */
   projectRoot?: string
   /**
-   * User home dir (`resolveNexusHomeDir`). When present, the unbound default
-   * is the home-anchored `~/.velloc/shared-workspace/`.
-   * When absent (no HOME/USERPROFILE), falls back to the legacy cwd-anchored
-   * `${cwd}/.velloc/shared-workspace/` so bootstrap never writes to a bogus root.
+   * The user's home (`fs.userHome`). The unbound default is the home-anchored
+   * `~/.velloc/shared-workspace/`; with no home only a valid override resolves.
    */
   homeDir?: string
   /**
    * Per-session template type. Without a `projectRoot` override, a per-type-shared
-   * type ({@link isPerTypeSharedTemplateType}) defaults to
+   * type (`isPerTypeSharedTemplateType`) defaults to
    * `~/.velloc/shared-workspace/<type>/`; others keep the bare workspace.
    */
   templateType?: string
@@ -74,29 +57,25 @@ export type ResolveProjectRootArgs = {
 
 /**
  * Resolve the project-root directory and `mkdir -p` it: a valid `projectRoot`
- * override, else the shared default. Returns the path with exactly one trailing
- * separator. `mkdir` failures are swallowed; writers surface real errors later.
+ * override, else the shared default under the user's home. Returns the path
+ * with exactly one trailing separator. Throws when there is neither: the
+ * host's working directory is the browser's own folder, not a workspace.
+ * `mkdir` failures are swallowed; writers surface real errors later.
  */
 export async function resolveProjectRoot(
   args: ResolveProjectRootArgs,
 ): Promise<string> {
   const override = checkNotesDir(args.projectRoot, { expandTilde: false })
-  // Unbound default: home-anchored `~/.velloc/shared-workspace/`, or
-  // its per-type `~/.velloc/shared-workspace/<type>/` variant for the non-`code`
-  // per-type-shared template types. Fall back to the legacy cwd-anchored
-  // `${cwd}/.velloc/shared-workspace/` (with the same optional `<type>` subdir)
-  // only when no home dir is available, so we never write to a bogus root.
-  const cwdWorkspace = joinPath(
-    args.cwd,
-    RUNTIME_DIR_NAME,
-    DEFAULT_PROJECT_ROOT_NAME,
-  )
-  const defaultWorkspace = args.homeDir
-    ? getNexusWorkspaceDirForType(args.homeDir, args.templateType)
-    : isPerTypeSharedTemplateType(args.templateType)
-      ? joinPath(cwdWorkspace, args.templateType)
-      : cwdWorkspace
-  const resolved = override ?? ensureTrailingSeparator(defaultWorkspace)
+  const resolved =
+    override ??
+    (args.homeDir
+      ? ensureTrailingSeparator(getNexusWorkspaceDirForType(args.homeDir, args.templateType))
+      : undefined)
+  if (!resolved) {
+    throw new Error(
+      'resolveProjectRoot: no project folder and no user home; refusing to place the shared workspace',
+    )
+  }
 
   try {
     await args.fs.mkdir(trimTrailingSeparators(resolved))

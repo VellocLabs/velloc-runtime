@@ -42,6 +42,38 @@ describe('permission mode coordinator', () => {
     await coordinator.applyMode('plan')
     expect(updateSessionMetadata).toHaveBeenCalledWith({ permissionMode: 'plan' })
   })
+
+  it('with no settings home, user-scope settings are neither read nor written under the cwd', async () => {
+    const touched: string[] = []
+    const record = vi.fn(async (path: string) => {
+      touched.push(path)
+      return '{"version":1,"skipDangerousModePermissionPrompt":true}'
+    })
+    const installedFs = {
+      readFile: record,
+      writeFile: vi.fn(async (path: string) => {
+        touched.push(path)
+      }),
+      mkdir: vi.fn(async (path: string) => {
+        touched.push(path)
+      }),
+      rename: vi.fn(async (from: string) => {
+        touched.push(from)
+      }),
+    }
+    const coordinator = new AgentPermissionCoordinator({ emitState: () => {}, emitError: () => {} })
+    coordinator.bindRuntime({
+      engine: { addAllowRule: vi.fn(), clearPendingPermission: vi.fn() },
+      options: { cwd: '/browser/cwd', settingsHomeDir: undefined, projectRoot: undefined },
+      installedFs,
+    } as never)
+
+    await coordinator.loadSkipDangerousMode()
+    await coordinator.persistSkipDangerousMode(true)
+    await coordinator.addAllowRule('Bash(ls)', 'call-1', true)
+
+    expect(touched).toEqual([])
+  })
 })
 
 describe('plan-mode tool gate (isToolAllowedInPlanMode)', () => {

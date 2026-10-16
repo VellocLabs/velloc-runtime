@@ -387,10 +387,10 @@ export async function createBrowserRuntime(
 
   // Project root: `options.projectRoot` when valid, else the shared `~/.velloc/shared-workspace/`;
   // created on disk. The home dir MUST come from the host bridge (the worker env is empty in production).
+  // With neither, the session refuses to start rather than work under the browser's own folder.
   const homeDir =
     (await resolveHomeDirViaBridge(options.bridgeTransport)) ?? undefined
   const resolvedProjectRoot = await resolveProjectRoot({
-    cwd: hostCwd,
     projectRoot: options.projectRoot,
     homeDir,
     // Drives the per-type `~/.velloc/shared-workspace/<type>/` default for
@@ -410,13 +410,10 @@ export async function createBrowserRuntime(
     : undefined
   const resolvedCwd = cwdOverride ?? resolvedProjectRoot
 
-  // Resolve the settings home for the runtime's boot reads (marketplace/feature/
-  // agent overlays + the MCP pool loader). `resolveSettingsHomeDir` reads the
-  // worker-env HOME/USERPROFILE, which nexus_web never sets → it throws, and the
-  // callers below would silently skip, so settings.json overrides are ignored at
-  // boot AND added MCP servers never connect. Fall back to the bridge-resolved
-  // `homeDir` (host fs.userHome/cwd — the SAME root the worker WebUI bridge
-  // writes to). Throws only when neither resolves, preserving the catch-skip.
+  // The settings home for the runtime's boot reads (marketplace/feature/agent
+  // overlays, the MCP pool loader): the worker-env HOME/USERPROFILE (empty in
+  // production), else the bridge-resolved `homeDir` (`fs.userHome`, the root the
+  // WebUI settings pages write to). Throws when neither resolves; callers skip.
   const settingsHome = (): string => {
     try {
       return resolveSettingsHomeDir(runtimeConfig)
@@ -445,15 +442,14 @@ export async function createBrowserRuntime(
     ...options,
     cwd: resolvedCwd,
     projectRoot: resolvedProjectRoot,
-    // Real user-settings home for worker-side settings writes (permission
-    // grants, agent-model mirror). `settingsHome()` resolves HOME/USERPROFILE
-    // and falls back to the bridge-resolved homeDir; if neither is available,
-    // fall back to cwd so writes still land somewhere (prior behavior).
+    // User-settings home for worker-side settings writes (permission grants,
+    // agent-model mirror). Undefined with no home: user-scope writes are then
+    // refused, never anchored at the cwd.
     settingsHomeDir: (() => {
       try {
         return settingsHome()
       } catch {
-        return resolvedCwd
+        return undefined
       }
     })(),
     sessionId: resolvedSessionId,
