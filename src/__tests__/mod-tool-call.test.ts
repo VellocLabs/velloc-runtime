@@ -326,6 +326,26 @@ describe('tool.call — a hook around the call', () => {
     })
   })
 
+  it('a deny after the tool ran and failed still tells the model the tool ran', async () => {
+    const { runtime } = mods(`
+      on('tool.call', async ($, e, next) => {
+        await next(e)
+        return { deny: 'audit: not shown.' }
+      })
+    `)
+    const { context, calls } = world(runtime, {
+      call: async () => {
+        throw new Error('disk on fire')
+      },
+    })
+    const updates = await run(context, { command: 'ls' })
+    expect(calls).toHaveLength(1)
+    expect(resultOf(updates[0])).toMatchObject({
+      modelReads: 'Shell ran, but a plugin withheld its result: audit: not shown.',
+      isError: true,
+    })
+  })
+
   it('a call made while the hooks worker restarts is refused: the tool never runs', async () => {
     const { runtime, crash } = mods(`on('tool.call', ($, e, next) => next(e))`, { respawnBackoffMs: [60_000] })
     const { context, calls } = world(runtime)

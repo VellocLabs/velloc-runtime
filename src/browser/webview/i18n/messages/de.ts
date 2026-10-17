@@ -1849,6 +1849,7 @@ export const de: Messages = {
   'slash.out.modPromptDropped': 'Ein Plugin hat diesen Prompt gestoppt: {reason}',
   'slash.out.modPromptDroppedNoReason': 'Ein Plugin hat diesen Prompt gestoppt.',
   'slash.out.modPromptInterrupted': 'Angehalten, während ein Plugin diesen Prompt prüfte; er wurde nicht gesendet.',
+  'slash.out.modPromptUnreachable': 'Dieser Prompt wurde nicht gesendet: {name} konnte ihn nicht prüfen (seine Hooks starten neu oder wurden entladen).',
   'slash.out.modCommandUnanswered': 'Kein Plugin hat auf /{command} geantwortet.',
   'slash.out.helpModsHeading': 'Plugin-Befehle',
   'slash.out.helpModCommand': '{description} (vom Plugin {plugin})',

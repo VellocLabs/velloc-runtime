@@ -261,6 +261,22 @@ describe('QueryEngine — prompt.submit', () => {
     expect(JSON.stringify(yielded)).not.toContain('my secret is 123')
   })
 
+  it("a prompt the runtime refused because a plugin's hooks were unreachable says so, from the catalog", async () => {
+    const { mods, release } = fakeMods(() => ({
+      entered: false,
+      reason: "guard's hook on prompt.submit could not answer (its hooks worker is restarting)",
+      unreachable: 'guard',
+    }))
+    release()
+    const { engine, modelCalls } = makeEngine(mods)
+    await submit(engine, 'hello')
+    expect(modelCalls).toEqual([])
+    const rows = JSON.stringify(engine.transcriptRows())
+    expect(rows).toContain('slash.out.modPromptUnreachable')
+    expect(rows).toContain('This prompt was not sent: guard could not check it')
+    expect(rows).not.toContain('could not answer')
+  })
+
   it('a prompt stopped without a reason says so', async () => {
     const { mods, release } = fakeMods(() => ({ entered: false }))
     release()

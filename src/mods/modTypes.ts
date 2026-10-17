@@ -168,8 +168,11 @@ export type DispatchContext = {
   readonly origin: Origin
   /**
    * The recursion skip: the link ids of every hook whose own call (its `next`,
-   * a `$` call) is pending above this dispatch, the caller's last. None of them
-   * runs in it, nor in anything raised beneath, and its `.catch` is not asked.
+   * a `$` call) is pending above this dispatch, the caller's last. The caller
+   * never runs in it, nor in anything raised beneath; another of them does not
+   * either unless its tier is above the caller's (`origin`). A skipped hook's
+   * `.catch` is not asked. A `$` call made after its hook settled keeps only
+   * the caller.
    */
   readonly frames?: readonly string[]
   /**
@@ -187,11 +190,11 @@ export type DispatchContext = {
   readonly depth: number
   /**
    * The rate of the `$` calls made in this dispatch, nested dispatches
-   * included — ONE meter the whole tree shares. Velloc's guard beside
-   * `depth`: the budget clock stops while a `$` call is in flight, so a hook
-   * spinning on cheap `$` calls is caught by their rate, not their time. A
-   * call past `DISPATCH_CALL_RATE` is refused; a paced hook may make any
-   * number. Absent where nothing is dispatching (a timer's `$`).
+   * included — one meter for the whole tree, kept per plugin. Velloc's guard
+   * beside `depth`: the budget clock stops while a `$` call is in flight, so a
+   * hook spinning on cheap `$` calls is caught by their rate. A call past
+   * `DISPATCH_CALL_RATE` is refused; a paced hook may make any number. Absent
+   * where nothing is dispatching (a timer's `$`).
    */
   readonly calls?: DispatchCallRate
 }
@@ -203,22 +206,24 @@ export const MAX_DISPATCH_DEPTH = 64
 export const DISPATCH_CALL_RATE = Object.freeze({ burst: 512, perSecond: 100 })
 
 /**
- * See `DispatchContext.calls`. A token bucket kept as its theoretical arrival
- * time: a call fits while it is no more than `burst - 1` intervals ahead of
- * now. A refused call takes nothing, so a hook that backs off is served again.
+ * See `DispatchContext.calls`. A token bucket per plugin, each kept as its
+ * theoretical arrival time on a monotonic clock: a call fits while it is no
+ * more than `burst - 1` intervals ahead of now. A refused call takes nothing,
+ * so a hook that backs off is served again.
  */
 export class DispatchCallRate {
-  private ahead = 0
+  private readonly ahead = new Map<string, number>()
 
-  constructor(private readonly now: () => number = () => Date.now()) {}
+  constructor(private readonly now: () => number = () => performance.now()) {}
 
-  /** Takes one call when it fits; false when the dispatch is calling too fast. */
-  take(): boolean {
+  /** Takes one of `plugin`'s calls when it fits; false when that plugin is
+   *  calling too fast in this dispatch. */
+  take(plugin = ''): boolean {
     const interval = 1000 / DISPATCH_CALL_RATE.perSecond
     const at = this.now()
-    const due = Math.max(this.ahead, at)
+    const due = Math.max(this.ahead.get(plugin) ?? at, at)
     if (due - at > (DISPATCH_CALL_RATE.burst - 1) * interval) return false
-    this.ahead = due + interval
+    this.ahead.set(plugin, due + interval)
     return true
   }
 }
@@ -231,10 +236,20 @@ export function callRateRefusal(): string {
   )
 }
 
+/** The error a `$` call (or stream) refused by the rate rejects with. */
+export function callRateError(noun: string, method: string, event: string, plugin: string): Error {
+  const error = new Error(
+    `$.${noun}.${method}: this dispatch of ${event} made $ calls ${callRateRefusal()} ` +
+      `(the hooks of ${plugin} and what they called); the call is refused`,
+  )
+  error.name = 'ModDispatchCallsError'
+  return error
+}
+
 /** A hook's `next` called again counts as a `$` call does: it runs every
  *  hook beneath and core again, on a paused clock. Throws past the rate. */
 export function countNextAgain(calls: DispatchCallRate, plugin: string, event: string): void {
-  if (!calls.take()) {
+  if (!calls.take(plugin)) {
     throw new Error(
       `${plugin}'s hook on ${event} called next() again ${callRateRefusal()} calls in one dispatch; ` +
         `the call is refused`,

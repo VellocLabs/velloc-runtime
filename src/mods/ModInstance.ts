@@ -17,7 +17,7 @@ import {
 import { refusedStream as refusedCallStream, type ChainStream, type DispatchedStream, type StreamCatchCall, type StreamHookCall } from './streamChain'
 import {
   HOOK_BUDGET,
-  callRateRefusal,
+  callRateError,
   type DispatchContext,
   type HookRegistration,
   type PluginTier,
@@ -182,6 +182,9 @@ export class ModInstance {
   } | null = null
   /** The links `mod.loaded` brought, waiting for `join()` (`deferJoin`). */
   private pendingLinks: ChainLink[] | null = null
+  /** Its hooks joined the chain: only then is the seat's group its own to
+   *  vacate or unregister. */
+  private joined = false
   /** The `mod.serve` calls in flight, by serve id. */
   private readonly serves = new Map<string, Settle & { unlisten: () => void }>()
   /** The serve bounds of the methods and handlers running now. */
@@ -238,6 +241,7 @@ export class ModInstance {
     if (this.disposed || !this.pendingLinks) return
     const links = this.pendingLinks
     this.pendingLinks = null
+    this.joined = true
     this.options.dispatcher.register(this.options.key, links)
   }
 
@@ -267,8 +271,12 @@ export class ModInstance {
       run.reject(new Error(`${this.options.plugin}: the mod was unloaded`))
     }
     this.serves.clear()
-    if (options.keepSeat) this.options.dispatcher.vacate(this.options.key)
-    else this.options.dispatcher.unregister(this.options.key)
+    // A load that never joined leaves the seat as it stands: the previous
+    // generation's stand-ins, or a newer load's hooks.
+    if (this.joined) {
+      if (options.keepSeat) this.options.dispatcher.vacate(this.options.key)
+      else this.options.dispatcher.unregister(this.options.key)
+    }
     const gone = new Error(`${this.options.plugin}: the mod was unloaded`)
     const unanswered = new ModHookUnreachableError(this.options.plugin, 'the mod was unloaded')
     for (const invocation of this.live.values()) invocation.reject(unanswered)
@@ -432,8 +440,11 @@ export class ModInstance {
    *  Not the dispatch's call count: a timer may outlive it by any number of
    *  calls. */
   private keepSettledFrame(invocationId: string, context: DispatchContext): void {
-    const { calls: _calls, ...frame } = context
-    this.settled.set(invocationId, frame)
+    const { calls: _calls, frames, ...frame } = context
+    // Security: only the hook itself is still its own frame; the hooks that
+    // were pending above it have settled and run again.
+    const own = frames && frames.length > 0 ? { frames: frames.slice(-1) } : {}
+    this.settled.set(invocationId, { ...frame, ...own })
     if (this.settled.size > SETTLED_FRAMES_KEPT) this.settled.delete(this.settled.keys().next().value!)
   }
 
@@ -639,7 +650,10 @@ export class ModInstance {
         if (!pending) return
         const links = msg.hooks.map(registration => this.link(registration))
         if (this.options.deferJoin) this.pendingLinks = links
-        else this.options.dispatcher.register(this.options.key, links)
+        else {
+          this.joined = true
+          this.options.dispatcher.register(this.options.key, links)
+        }
         pending.resolve(msg.hooks)
         return
       }
@@ -756,17 +770,12 @@ export class ModInstance {
         // The rate limit: a `$` call past `DISPATCH_CALL_RATE` in one
         // dispatch is refused, in the calling hook, by name.
         const calls = invocation?.call.context.calls
-        if (calls && !calls.take()) {
+        if (calls && !calls.take(plugin)) {
           this.post({
             type: 'mod.callResult',
             callId: msg.callId,
             ok: false,
-            error: {
-              name: 'ModDispatchCallsError',
-              message:
-                `$.${msg.noun}.${msg.method}: this dispatch of ${invocation.call.event} made $ calls ` +
-                `${callRateRefusal()} (the hooks of ${plugin} and what they called); the call is refused`,
-            },
+            error: wireError(callRateError(msg.noun, msg.method, invocation.call.event, plugin)),
           })
           return
         }
@@ -825,13 +834,8 @@ export class ModInstance {
         const { plugin, tier } = this.options
         const calls = invocation?.call.context.calls
         let stream: DispatchedStream<unknown, unknown>
-        if (calls && !calls.take()) {
-          const error = new Error(
-            `$.${msg.noun}.${msg.method}: this dispatch of ${invocation!.call.event} made $ calls ` +
-              `${callRateRefusal()} (the hooks of ${plugin} and what they called); the call is refused`,
-          )
-          error.name = 'ModDispatchCallsError'
-          stream = refusedCallStream<unknown, unknown>(error)
+        if (calls && !calls.take(plugin)) {
+          stream = refusedCallStream<unknown, unknown>(callRateError(msg.noun, msg.method, invocation!.call.event, plugin))
         } else if (!this.options.serveStream) {
           const error = new Error(`$.${msg.noun}.${msg.method} is not available here`)
           error.name = 'NotSupportedError'

@@ -74,6 +74,12 @@ type CoreRun = {
   handed?: string
 }
 
+/** A deny that settled after core had started: it withholds what ran and
+ *  undoes nothing, so the reader is told the tool ran. */
+function deniedText(toolName: string, deny: string, started: boolean): string {
+  return started ? `${toolName} ran, but a plugin withheld its result: ${deny}` : deny
+}
+
 /** Whether a call of `tool` is raised as `tool.call` at all. */
 export function raisesToolCall(tool: ToolContract): boolean {
   // AskUserQuestion and the plan tools halt the loop and are answered by the
@@ -193,6 +199,8 @@ function createCoreRuns(params: CoreRunParams) {
     runs,
     originalArgs,
     last: (): CoreRun | undefined => lastRun,
+    /** Whether core started at least once, finished or not. */
+    started: (): boolean => nextRef > 1,
     settled: (): void => {
       hasSettled = true
     },
@@ -206,8 +214,8 @@ function cancelledError(): Error {
 }
 
 /**
- * A plugin's `$.tool.call`: raises `tool.call` with only the calling hook skipped
- * and resolves to what the chain settled on. Nothing is emitted; `context` on the
+ * A plugin's `$.tool.call`: raises `tool.call` beneath the calling hook's frames
+ * (`DispatchContext.frames`) and resolves to what the chain settled on. Nothing is emitted; `context` on the
  * answer is dropped.
  */
 export async function callToolThroughMods(
@@ -239,6 +247,7 @@ export async function callToolThroughMods(
     return tracker.core(event, never.signal)
   }
   const { context: _context, ...answer } = settlement.result as Record<string, unknown>
+  if (typeof answer.deny === 'string') answer.deny = deniedText(tool.name, answer.deny, tracker.started())
   return answer
 }
 
@@ -268,7 +277,7 @@ export type NestedToolThroughModsParams = {
 /**
  * A nested step raised as `tool.call`. The same settlement as the model's
  * call: core's own object is that run's outcome; `{ deny }` is a step that
- * did not run, the text its reason; a hook's `{ result }` is the step's
+ * failed, the text its reason (saying the step ran when core had started); a hook's `{ result }` is the step's
  * answer (the run that happened stays happened); `context` is appended to
  * the text, as a nested PostToolUse note is — a step has no message of its
  * own to put it in.
@@ -325,7 +334,7 @@ export async function runNestedToolThroughMods(
     traceLine(`[tool] nested ${tool.name} denied by a tool.call hook (${callRef})`, {
       level: 'info',
     })
-    return { ok: false, data: result.deny }
+    return { ok: false, data: deniedText(tool.name, result.deny, nextRef > 1) }
   }
   const note = toolCallContextOf(result).join('\n\n')
   const withNote = (outcome: NestedToolOutcome): NestedToolOutcome =>
@@ -391,12 +400,9 @@ export async function* runToolUseThroughMods(
     traceLine(`[tool] ${tool.name} denied by a tool.call hook (${callRef})`, {
       level: 'info',
     })
-    // After the tool answered without error, the deny withholds that result
-    // and undoes nothing: the model is told it ran.
-    const ran = (lastRun as CoreRun | undefined)?.answer
     yield {
       message: await params.buildResultMessage({
-        data: ran && !ran.isError ? `${tool.name} ran, but a plugin withheld its result: ${result.deny}` : result.deny,
+        data: deniedText(tool.name, result.deny, tracker.started()),
         isError: true,
         args: originalArgs,
       }),

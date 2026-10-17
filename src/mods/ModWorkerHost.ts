@@ -191,16 +191,21 @@ export function installModWorkerHost(
   >()
   let seq = 0
 
-  /** Throws (as a failed clone does, so each sender reports it the same way)
-   *  when a value the frame hands over nests past `MAX_HANDED_DEPTH`. */
+  /** Throws what a failed clone throws, so each sender reports it the same
+   *  way; when a value the frame hands over nests past `MAX_HANDED_DEPTH`, the
+   *  error names that limit. Measured only once the clone has failed. */
   const post = (message: Record<string, unknown>): void => {
-    for (const [key, value] of Object.entries(message)) {
-      const values = key === 'args' && Array.isArray(value) ? value : [value]
-      if (values.some(item => nestsDeeperThan(item, MAX_HANDED_DEPTH))) {
-        throw new RangeError(`it nests deeper than ${MAX_HANDED_DEPTH.toLocaleString('en-US')} levels`)
+    try {
+      peer.postMessage({ ...message, generation })
+    } catch (error) {
+      for (const [key, value] of Object.entries(message)) {
+        const values = key === 'args' && Array.isArray(value) ? value : [value]
+        if (values.some(item => nestsDeeperThan(item, MAX_HANDED_DEPTH))) {
+          throw new RangeError(`it nests deeper than ${MAX_HANDED_DEPTH.toLocaleString('en-US')} levels`)
+        }
       }
+      throw error
     }
-    peer.postMessage({ ...message, generation })
   }
 
   // ── the own-time mirror behind `next.budget` ──

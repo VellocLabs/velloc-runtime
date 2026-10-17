@@ -342,21 +342,23 @@ export type ModToRuntime =
 export const MAX_HANDED_DEPTH = 28_000
 
 /** Whether `value` holds containers nested more than `limit` deep (a container
- *  at the top is depth 1). Iterative, so a deep value cannot overflow the
- *  stack; each container is walked once, so a cycle ends. */
+ *  at the top is depth 1), walked in the order a structured clone writes it: a
+ *  container met again is a back-reference, not deeper nesting. Iterative, so
+ *  a deep value cannot overflow the stack; each container is walked once. */
 export function nestsDeeperThan(value: unknown, limit: number): boolean {
   if (value === null || typeof value !== 'object') return false
   const seen = new Set<object>()
   const stack: Array<[object, number]> = [[value, 1]]
   while (stack.length > 0) {
     const [node, depth] = stack.pop()!
-    if (depth > limit) return true
     if (seen.has(node)) continue
+    if (depth > limit) return true
     seen.add(node)
     if (node instanceof ArrayBuffer || ArrayBuffer.isView(node)) continue
     const children =
       node instanceof Map ? [...node.keys(), ...node.values()] : node instanceof Set ? [...node] : Object.values(node)
-    for (const child of children) {
+    for (let i = children.length - 1; i >= 0; i--) {
+      const child = children[i]
       if (child !== null && typeof child === 'object') stack.push([child, depth + 1])
     }
   }

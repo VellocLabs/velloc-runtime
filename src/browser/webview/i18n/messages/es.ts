@@ -1855,6 +1855,7 @@ export const es: Messages = {
   'slash.out.modPromptDropped': 'Un complemento detuvo este prompt: {reason}',
   'slash.out.modPromptDroppedNoReason': 'Un complemento detuvo este prompt.',
   'slash.out.modPromptInterrupted': 'Se detuvo mientras un complemento revisaba este prompt, así que no se envió.',
+  'slash.out.modPromptUnreachable': 'Este prompt no se envió: {name} no pudo revisarlo (sus hooks se están reiniciando o se descargaron).',
   'slash.out.modCommandUnanswered': 'Ningún complemento respondió a /{command}.',
   'slash.out.helpModsHeading': 'Comandos de complementos',
   'slash.out.helpModCommand': '{description} (del complemento {plugin})',

@@ -264,6 +264,17 @@ describe('$.tool.call', () => {
     expect(logged(reports, 'caller')).toEqual([{ deny: 'guard says no' }])
   })
 
+  it('a guard that denies after the tool ran: the caller is told the tool ran', async () => {
+    const { runtime, reports, calls } = world({
+      guard: `on('tool.call', { tool: 'Shell' }, async ($, e, next) => { await next(e); return { deny: 'guard says no' } })`,
+      caller: callsOnPrompt(`{ tool: 'Shell', command: 'ls' }`),
+    })
+    await runtime.ready
+    await runtime.promptSubmit('go')
+    expect(calls).toHaveLength(1)
+    expect(logged(reports, 'caller')).toEqual([{ deny: 'Shell ran, but a plugin withheld its result: guard says no' }])
+  })
+
   it('a hook beneath rewrites the arguments of a plugin\'s call too', async () => {
     const { runtime, calls } = world({
       trimmer: `on('tool.call', ($, e, next) => next({ ...e, command: e.command.trim() }))`,

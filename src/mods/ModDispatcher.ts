@@ -6,7 +6,8 @@
  * or its `next` result stands (`kept`). A hook that cannot be handed `e` or cannot
  * hand back its answer (ModHookUnreachableError, or a seat whose worker restarts)
  * refuses an event that declares `refusal`, a `next` it ran included; elsewhere it
- * is absent too. No hook runs beneath its own pending call (`DispatchContext.frames`).
+ * is absent too. No hook runs beneath its own pending call (`DispatchContext.frames`),
+ * save one of a tier above the hook that made the call.
  * A core rejection travels up. The budget is the hook's OWN time. Security:
  * `next.to(e, tier)` is allowlisted (NEXT_TO_TARGETS): no user hook skips the
  * organization's, and no appended managed plugin skips its peers. Streaming events
@@ -51,7 +52,8 @@ export type HookFrame = {
   /** Who raised this dispatch. */
   readonly origin: Origin
   /** What a `$` call made from THIS hook carries into the dispatch it raises:
-   *  this hook's plugin as origin, this link as the recursion skip, one deeper. */
+   *  this hook's plugin as origin, its frames (`DispatchContext.frames`) as the
+   *  recursion skip, one deeper. */
   readonly context: DispatchContext
   /** The links beneath, for this hook's latest `next` call: nearest first, the
    *  engine's last. Empty before `next` is called. */
@@ -184,11 +186,15 @@ export type DispatchOptions = {
   /** Security: set for an action a hook can block. A hook that cannot be
    *  handed `e` or cannot hand back its answer then settles the chain on
    *  this answer, the action refused (after its `next` ran, too: what ran
-   *  is withheld). Absent: such a hook is absent, as a failed one. */
-  refusal?: (reason: string) => unknown
+   *  is withheld). Absent: such a hook is absent, as a failed one.
+   *  `plugin`: the unreachable hook's. */
+  refusal?: (reason: string, plugin: string) => unknown
+  /** With `refusal`: a stand-in for a restarting hook is passed over instead
+   *  of refusing; only a hook that becomes unreachable while it runs refuses. */
+  passStandIns?: boolean
 }
 
-export type StreamDispatchOptions = Omit<DispatchOptions, 'accepts' | 'refusal'> & {
+export type StreamDispatchOptions = Omit<DispatchOptions, 'accepts' | 'refusal' | 'passStandIns'> & {
   /** Whether a hook's RESULT (what its generator returned) is one this event
    *  takes. Default: anything but `undefined`. */
   accepts?: (result: unknown) => boolean
@@ -224,7 +230,8 @@ type Run = {
   scope: unknown
   /** The hooks whose own call is pending above this dispatch (`DispatchContext.frames`). */
   frames: readonly string[]
-  refusal?: (reason: string) => unknown
+  refusal?: (reason: string, plugin: string) => unknown
+  passStandIns?: boolean
 }
 
 /** What core learns of where it runs: the hooks whose `next` led to it, with
@@ -347,6 +354,7 @@ export class ModDispatcher {
       scope: options.scope,
       frames: context.frames ?? [],
       ...(options.refusal ? { refusal: options.refusal } : {}),
+      ...(options.passStandIns ? { passStandIns: true } : {}),
     }
     let onAbort: (() => void) | undefined
     const abandoned = new Promise<never>((_, reject) => {
@@ -415,7 +423,7 @@ export class ModDispatcher {
         : new Set((typeof onlyGroup === 'string' ? [onlyGroup] : onlyGroup).flatMap(key => this.groups.get(key)?.links ?? []))
     return this.chain.filter(
       link =>
-        !context.frames?.includes(link.id) &&
+        !skippedByFrames(link, context) &&
         link.plugin !== context.skipPlugin &&
         runsOn(link, event) &&
         (only === undefined || only.has(link)),
@@ -453,7 +461,7 @@ export class ModDispatcher {
       // rewritten it — so it is tested per link, not once per dispatch.
       if (link.matcher !== undefined && !matches(link.matcher, e)) continue
       if (link.unreachable !== undefined) {
-        if (!run.refusal) continue
+        if (!run.refusal || run.passStandIns) continue
         const refused = this.refused(run, i, link, e, link.unreachable, 0, [])
         return { ...refused, entries: [...bypassed, ...refused.entries] }
       }
@@ -634,9 +642,9 @@ export class ModDispatcher {
       }
 
       // It could not be handed `e` or could not hand back its answer: an
-      // action a hook can block is refused, whatever its `next` ran.
+      // action a hook can block is refused, whatever its `next` ran. What
+      // still runs beneath is not awaited: the dispatch's end stops it.
       if (ran.kind === 'throw' && ran.error instanceof ModHookUnreachableError && run.refusal) {
-        if (latest) last = await latest
         return this.refused(run, index, link, e, ran.error.detail, Date.now() - started - nextTime, below())
       }
 
@@ -694,10 +702,10 @@ export class ModDispatcher {
           run.signal.removeEventListener('abort', onCatchAbort)
         }
         if (caught.kind === 'expired') catchController.abort()
-        if (latest) last = await latest
         if (caught.kind === 'throw' && caught.error instanceof ModHookUnreachableError && run.refusal) {
           return this.refused(run, index, link, e, caught.error.detail, Date.now() - started - nextTime, below())
         }
+        if (latest) last = await latest
         if (caught.kind === 'value' && caught.value !== undefined && run.accepts(caught.value, link.plugin)) {
           report('caught')
           return { ok: true, result: caught.value, entries: [entry('caught', caught.value), ...below()] }
@@ -741,7 +749,7 @@ export class ModDispatcher {
     beneath: readonly TraceEntry[],
   ): Settled {
     const reason = `${link.plugin}'s hook on ${run.event} could not answer (${detail})`
-    const answer = run.refusal!(reason)
+    const answer = run.refusal!(reason, link.plugin)
     this.options.onHookFailure?.({
       plugin: link.plugin,
       tier: link.tier,
@@ -763,6 +771,15 @@ export class ModDispatcher {
     }
     return { ok: true, result: answer, entries: [entry, ...beneath] }
   }
+}
+
+/** Security: the recursion skip. The calling hook (the last frame) is always
+ *  left out; another pending frame only when it is not of a tier above the
+ *  caller's, so no hook's `$` call passes over a guard of a higher tier. */
+function skippedByFrames(link: ChainLink, context: DispatchContext): boolean {
+  const frames = context.frames
+  if (!frames || !frames.includes(link.id)) return false
+  return frames[frames.length - 1] === link.id || tierIndex(link.tier) >= tierIndex(context.origin.tier)
 }
 
 /** What stays of a hook while its worker restarts: its place and its

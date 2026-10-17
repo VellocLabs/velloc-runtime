@@ -1783,6 +1783,7 @@ export const ko: Messages = {
   'slash.out.modPromptDropped': '플러그인이 이 프롬프트를 중단했습니다: {reason}',
   'slash.out.modPromptDroppedNoReason': '플러그인이 이 프롬프트를 중단했습니다.',
   'slash.out.modPromptInterrupted': '플러그인이 이 프롬프트를 확인하는 중에 중지되어 전송되지 않았습니다.',
+  'slash.out.modPromptUnreachable': '이 프롬프트는 전송되지 않았습니다: {name}이(가) 확인할 수 없었습니다(훅이 다시 시작 중이거나 언로드됨).',
   'slash.out.modCommandUnanswered': '/{command}에 응답한 플러그인이 없습니다.',
   'slash.out.helpModsHeading': '플러그인 명령',
   'slash.out.helpModCommand': '{description} (플러그인 {plugin} 제공)',

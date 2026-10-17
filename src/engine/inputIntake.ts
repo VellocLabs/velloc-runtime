@@ -73,9 +73,11 @@ export async function passPromptHooks(ledger: SessionLedger, prompt: Prompt, opt
     await mods.ready
     const outcome = await mods.promptSubmit(prompt, signal)
     if (outcome.entered) return { prompt: outcome.text, context: outcome.context }
-    const parts = outcome.reason
-      ? [key('slash.out.modPromptDropped', { reason: outcome.reason })]
-      : [key('slash.out.modPromptDroppedNoReason')]
+    const parts = outcome.unreachable
+      ? [key('slash.out.modPromptUnreachable', { name: outcome.unreachable })]
+      : outcome.reason
+        ? [key('slash.out.modPromptDropped', { reason: outcome.reason })]
+        : [key('slash.out.modPromptDroppedNoReason')]
     return { ...typed, dropped: droppedWith(ledger, parts) }
   } catch (error) {
     if (ledger.cancelSource.signal.aborted) {

@@ -127,6 +127,7 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
   'slash.out.modPromptDropped': 'A plugin stopped this prompt: {reason}',
   'slash.out.modPromptDroppedNoReason': 'A plugin stopped this prompt.',
   'slash.out.modPromptInterrupted': 'Stopped while a plugin was checking this prompt, so it was not sent.',
+  'slash.out.modPromptUnreachable': 'This prompt was not sent: {name} could not check it (its hooks are restarting or were unloaded).',
   'slash.out.modCommandUnanswered': 'No plugin answered /{command}.',
   'slash.out.helpModsHeading': 'Plugin commands',
   'slash.out.helpModCommand': '{description} (from the plugin {plugin})',

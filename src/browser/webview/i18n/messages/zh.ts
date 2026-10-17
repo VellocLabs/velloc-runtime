@@ -1735,6 +1735,7 @@ export const zh: Messages = {
   'slash.out.modPromptDropped': '插件拦下了这条提示词：{reason}',
   'slash.out.modPromptDroppedNoReason': '插件拦下了这条提示词。',
   'slash.out.modPromptInterrupted': '插件检查这条提示词时被停止，因此没有发送。',
+  'slash.out.modPromptUnreachable': '这条提示词没有发送：{name} 无法检查它（其钩子正在重启或已卸载）。',
   'slash.out.modCommandUnanswered': '没有插件回应 /{command}。',
   'slash.out.helpModsHeading': '插件命令',
   'slash.out.helpModCommand': '{description}（来自插件 {plugin}）',

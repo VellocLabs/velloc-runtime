@@ -1293,6 +1293,9 @@ export class ModRuntime implements TurnExtensions {
       const result = (await this.dispatcher.dispatch('plugin.register', e, () => ({ allow: true }), {
         accepts: isPluginRegisterResult,
         refusal: reason => ({ refuse: reason }),
+        // A restarting seat (this one's own previous generation included) is
+        // not among the plugins admitted before it: it does not judge.
+        passStandIns: true,
         trace: trace => {
           entries = trace
         },
@@ -3333,13 +3336,18 @@ export class ModRuntime implements TurnExtensions {
             ...(entered.context.length > 0 ? { context: entered.context } : {}),
           }
         },
-        { ...(signal ? { signal } : {}), accepts: isPromptSubmitResult, refusal: reason => ({ drop: reason }) },
+        {
+          ...(signal ? { signal } : {}),
+          accepts: isPromptSubmitResult,
+          refusal: (reason, plugin) => ({ drop: reason, unreachable: plugin }),
+        },
       )
       if (entered) return { entered: true, ...entered }
-      const drop = (result as { drop?: unknown }).drop
+      const { drop, unreachable } = result as { drop?: unknown; unreachable?: unknown }
       return {
         entered: false,
         ...(typeof drop === 'string' && drop !== '' ? { reason: drop } : {}),
+        ...(typeof unreachable === 'string' ? { unreachable } : {}),
       }
     } catch (error) {
       if (signal?.aborted) throw error

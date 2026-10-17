@@ -50,6 +50,8 @@ function world(
     failOpen?: Record<string, number>
     /** Holds a module's nth read (1-based) until the returned promise settles. */
     holdRead?: (path: string, load: number) => Promise<void> | undefined
+    /** Whether a plugin's nth worker (1-based) dies as soon as it is opened. */
+    crashAtOpen?: (plugin: string, spawn: number) => boolean
   } = {},
 ) {
   const reports: string[] = []
@@ -100,6 +102,7 @@ function world(
         },
       }
       ;(workers[plugin] ??= []).push(worker)
+      if (options.crashAtOpen?.(plugin, workers[plugin]!.length)) worker.crash('gone at open')
       return worker
     },
     session: { id: () => session.id, cwd: () => '/work/project' },
@@ -255,6 +258,7 @@ describe('a worker that dies is restarted', () => {
     await expect(runtime.promptSubmit('c')).resolves.toEqual({
       entered: false,
       reason: "count's hook on prompt.submit could not answer (its hooks worker is restarting)",
+      unreachable: 'count',
     })
 
     await until(() => runtime.status()[0]!.state === 'loaded')
@@ -306,6 +310,36 @@ describe('a worker that dies is restarted', () => {
     await until(() => runtime.status()[0]!.state === 'loaded')
     // Outermost again, not appended after C.
     await expect(runtime.promptSubmit('>')).resolves.toMatchObject({ text: '>ABC' })
+  })
+
+  it('a module hooking every event comes back: its own seat does not judge its restart at plugin.register', async () => {
+    const { runtime, reports, workers } = world({
+      'logger/hooks/register.js': `
+        export function register(on) { on('*', ($, e, next) => next(e)) }
+      `,
+      'count/hooks/register.js': COUNTER,
+    })
+    await runtime.ready
+    workers.logger![0]!.crash()
+    await until(() => runtime.status()[0]!.state === 'crashed')
+    await until(() => runtime.status()[0]!.state !== 'crashed')
+    expect(runtime.status()[0]).toMatchObject({ state: 'loaded', generation: 2 })
+    expect(reports.filter(line => line.includes('refused'))).toEqual([])
+  })
+
+  it('a restart whose new worker dies while loading keeps the seat refusing until it is back', async () => {
+    const { runtime, workers } = world(
+      { 'count/hooks/register.js': COUNTER },
+      { respawnBackoffMs: [10, 2_000], crashAtOpen: (_plugin, spawn) => spawn === 2 },
+    )
+    await runtime.ready
+    workers.count![0]!.crash()
+    await until(() => workers.count!.length === 2)
+    await sleep(30)
+    expect(runtime.status()[0]!.state).not.toBe('loaded')
+    // The seat's stand-ins outlive the failed load: the prompt is refused,
+    // not let past the hook.
+    await expect(runtime.promptSubmit('a')).resolves.toMatchObject({ entered: false, unreachable: 'count' })
   })
 
   it('reads the module again: a restart loads what is on disk now', async () => {

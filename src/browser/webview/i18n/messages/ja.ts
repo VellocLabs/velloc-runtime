@@ -1792,6 +1792,7 @@ export const ja: Messages = {
   'slash.out.modPromptDropped': 'プラグインがこのプロンプトを止めました: {reason}',
   'slash.out.modPromptDroppedNoReason': 'プラグインがこのプロンプトを止めました。',
   'slash.out.modPromptInterrupted': 'プラグインがこのプロンプトを確認している間に停止したため、送信されませんでした。',
+  'slash.out.modPromptUnreachable': 'このプロンプトは送信されませんでした: {name} が確認できませんでした（フックの再起動中、またはアンロード済み）。',
   'slash.out.modCommandUnanswered': '/{command} に応答したプラグインはありません。',
   'slash.out.helpModsHeading': 'プラグインのコマンド',
   'slash.out.helpModCommand': '{description}（プラグイン {plugin} より）',

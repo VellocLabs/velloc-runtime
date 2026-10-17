@@ -1857,6 +1857,7 @@ export const fr: Messages = {
   'slash.out.modPromptDropped': 'Une extension a arrêté ce prompt : {reason}',
   'slash.out.modPromptDroppedNoReason': 'Une extension a arrêté ce prompt.',
   'slash.out.modPromptInterrupted': "Arrêté pendant qu'une extension vérifiait ce prompt ; il n'a pas été envoyé.",
+  'slash.out.modPromptUnreachable': "Ce prompt n'a pas été envoyé : {name} n'a pas pu le vérifier (ses hooks redémarrent ou ont été déchargés).",
   'slash.out.modCommandUnanswered': 'Aucune extension n’a répondu à /{command}.',
   'slash.out.helpModsHeading': 'Commandes des extensions',
   'slash.out.helpModCommand': '{description} (de l’extension {plugin})',

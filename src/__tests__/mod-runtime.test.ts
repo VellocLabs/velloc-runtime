@@ -617,6 +617,7 @@ describe('ModRuntime — the slot', () => {
     await expect(runtime.promptSubmit('hi')).resolves.toEqual({
       entered: false,
       reason: "fragile's hook on prompt.submit could not answer (its hooks worker is restarting)",
+      unreachable: 'fragile',
     })
   })
 

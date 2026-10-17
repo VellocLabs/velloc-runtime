@@ -6,7 +6,7 @@
  * Every rule asserted here is one the `claude-code` module's type
  * declarations state for the chain, plus Velloc's own nesting cap.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   ModDispatchDepthError,
   ModDispatcher,
@@ -805,8 +805,9 @@ describe('ModDispatcher — who raised it, and the recursion skip', () => {
       origins.push(call.origin)
       return call.next(call.e)
     })
-    // A hook ABOVE the caller: its `next` is pending, so its frame is skipped too.
-    const above = link('org', 'prepend', 'fs.write', call => (ran.push('above'), call.next(call.e)))
+    // A hook ABOVE the caller, of its tier: its `next` is pending, so its frame
+    // is skipped too.
+    const above = link('org', 'user', 'fs.write', call => (ran.push('above'), call.next(call.e)))
     dispatcher.register('org', [above])
     dispatcher.register('acme', [caller, sibling])
     await dispatcher.dispatch('fs.write', {}, () => 'outer core')
@@ -840,7 +841,7 @@ describe('ModDispatcher — who raised it, and the recursion skip', () => {
     expect(failures).toEqual([])
   })
 
-  it("a hook beneath another's $ call reaches no hook on the stack, and asks no .catch", async () => {
+  it("a $ call from beneath a guard of a higher tier still passes that guard; the caller is skipped, no .catch asked", async () => {
     const { dispatcher, failures } = setup()
     const ran: string[] = []
     const asked: string[] = []
@@ -864,8 +865,8 @@ describe('ModDispatcher — who raised it, and the recursion skip', () => {
     dispatcher.register('guard', [guard])
     dispatcher.register('inner', [inner])
     await expect(dispatcher.dispatch('tool.call', {}, () => 'core')).resolves.toBe('core')
-    // The nested call ran core alone: both frames were pending above it.
-    expect(ran).toEqual(['guard', 'inner'])
+    // The nested call passes the prepend guard again; the caller is skipped.
+    expect(ran).toEqual(['guard', 'inner', 'guard'])
     expect(asked).toEqual([])
     expect(failures).toEqual([])
   })
@@ -928,6 +929,36 @@ describe('ModDispatcher — a hook that cannot answer', () => {
     ])
   })
 
+  it('a hook lost while its next still runs refuses at once, without waiting on what runs beneath', async () => {
+    const { dispatcher } = setup()
+    let finishCore!: () => void
+    const coreHeld = new Promise<string>(resolve => (finishCore = () => resolve('core')))
+    let lose!: () => void
+    dispatcher.register('a', [
+      link('a', 'user', 'tool.call', call => {
+        void call.next(call.e)
+        return new Promise((_, reject) => (lose = () => reject(unreachable('a'))))
+      }),
+    ])
+    const settled = dispatcher.dispatch('tool.call', {}, () => coreHeld, { refusal: deny })
+    await sleep(5)
+    lose()
+    await expect(settled).resolves.toEqual({ deny: "a's hook on tool.call could not answer (its worker is gone)" })
+    finishCore()
+  })
+
+  it('passStandIns: a restarting seat is passed over even where a refusal is declared', async () => {
+    const { dispatcher } = setup()
+    dispatcher.register('a', [link('a', 'user', 'plugin.register', call => call.next(call.e))])
+    dispatcher.vacate('a')
+    await expect(
+      dispatcher.dispatch('plugin.register', {}, () => ({ allow: true }), {
+        refusal: reason => ({ refuse: reason }),
+        passStandIns: true,
+      }),
+    ).resolves.toEqual({ allow: true })
+  })
+
   it('without a refusal, such a hook is absent as a failed one: beneath runs in its place', async () => {
     const { dispatcher } = setup()
     dispatcher.register('a', [link('a', 'user', 'session.idle', () => Promise.reject(unreachable('a')))])
@@ -988,6 +1019,26 @@ describe('DispatchCallRate', () => {
     expect(rate.take()).toBe(false)
   })
 
+  it("meters each plugin on its own: one plugin's burst does not spend another's", () => {
+    const rate = new DispatchCallRate(() => 0)
+    for (let i = 0; i < DISPATCH_CALL_RATE.burst; i++) expect(rate.take('spinner')).toBe(true)
+    expect(rate.take('spinner')).toBe(false)
+    expect(rate.take('guard')).toBe(true)
+  })
+
+  it('reads a monotonic clock: a wall clock stepped back does not refuse a paced caller', () => {
+    const wall = vi.spyOn(Date, 'now')
+    try {
+      const rate = new DispatchCallRate()
+      wall.mockReturnValue(1_000_000)
+      expect(rate.take('guard')).toBe(true)
+      wall.mockReturnValue(1_000_000 - 60_000)
+      for (let i = 0; i < 10; i++) expect(rate.take('guard')).toBe(true)
+    } finally {
+      wall.mockRestore()
+    }
+  })
+
   it('a caller pacing itself at the rate is never refused, however many calls it makes', () => {
     let now = 0
     const rate = new DispatchCallRate(() => now)
@@ -1032,7 +1083,8 @@ describe('ModDispatcher — the call rate', () => {
     let ended: string | undefined
     dispatcher.register('a', [
       link('a', 'user', 'tool.call', async call => {
-        for (;;) {
+        // Bounded: a regression fails the test instead of spinning on microtasks.
+        for (let tries = 0; tries < DISPATCH_CALL_RATE.burst * 2; tries++) {
           try {
             await call.next(call.e)
           } catch (error) {
@@ -1042,6 +1094,7 @@ describe('ModDispatcher — the call rate', () => {
             }
           }
         }
+        return 'never refused'
       }),
     ])
     await expect(
@@ -1064,13 +1117,16 @@ describe('ModDispatcher — the call rate', () => {
     let cores = 0
     dispatcher.register('a', [
       link('a', 'user', 'tool.call', async call => {
-        for (;;) {
+        // Bounded: a regression fails the test instead of spinning on microtasks.
+        for (let tries = 0; tries < wanted * 2; tries++) {
           try {
             return await call.next(call.e)
-          } catch {
+          } catch (error) {
+            if (/called next\(\) again faster than/.test(String(error))) throw error
             now += 1000 / DISPATCH_CALL_RATE.perSecond
           }
         }
+        return 'gave up'
       }),
     ])
     await expect(

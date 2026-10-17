@@ -398,14 +398,53 @@ describe('$ — served by the runtime', () => {
     await dispatcher.dispatch('fs.write', { path: 'a.txt' }, () => 'written')
     expect(ran).toEqual([
       'audit', 'acme:caller',     // the engine's dispatch
-      'acme:sibling',             // acme's own call: from the top, the caller and audit (its next pending) skipped
+      'audit', 'acme:sibling',    // acme's own call: from the top, the caller skipped; audit, a tier above, still sees it
       'acme:sibling',             // the outer chain goes on beneath the caller
     ])
     expect(origins).toEqual([
       { plugin: 'engine', tier: 'core' }, // audit, on the engine's dispatch
+      { plugin: 'acme', tier: 'user' },   // audit, on acme's call
       { plugin: 'acme', tier: 'user' },   // the sibling, on acme's call
       { plugin: 'engine', tier: 'core' }, // the sibling, on the engine's dispatch
     ])
+  })
+
+  it('a $ call made after its hook settled skips that hook alone, not the hooks that were pending above it', async () => {
+    const { dispatcher, mod } = world()
+    const ran: string[] = []
+    let detached!: () => void
+    const done = new Promise<void>(resolve => (detached = resolve))
+    const serveCall: ModCallServer = async call => {
+      const result = await dispatcher.dispatch(`${call.noun}.${call.method}`, call.args[0], () => 'written', {
+        context: call.context,
+      })
+      if ((call.args[0] as { later?: boolean }).later) detached()
+      return result
+    }
+    const { instance: org } = mod(
+      'org',
+      on => {
+        on('fs.write', (_$: any, e: any, next: any) => (ran.push(e.later ? 'org:later' : 'org'), next(e)))
+      },
+      { serveCall },
+    )
+    const { instance: acme } = mod(
+      'acme',
+      on => {
+        on('fs.write', ($: any, e: any, next: any) => {
+          ran.push(e.later ? 'acme:later' : 'acme')
+          if (!e.later) setTimeout(() => void $.fs.write({ path: e.path, later: true }), 0)
+          return next(e)
+        })
+      },
+      { serveCall },
+    )
+    await org.load('unused', {})
+    await acme.load('unused', {})
+    await dispatcher.dispatch('fs.write', { path: 'a.txt' }, () => 'written')
+    await done
+    // org's `next` settled long before: the detached call passes it again.
+    expect(ran).toEqual(['org', 'acme', 'org:later'])
   })
 
   it('costs the hook nothing while it is in flight — a $.clock wait excepted', async () => {
@@ -758,6 +797,11 @@ describe('how deep a value a hook hands back may nest', () => {
     const cyclic: Record<string, unknown> = {}
     cyclic.self = cyclic
     expect(nestsDeeperThan(cyclic, 2)).toBe(false)
+    // Items that point at earlier items: walked in clone order, each pointer
+    // is a back-reference, not nesting.
+    const items: Array<{ prev?: object }> = []
+    for (let i = 0; i <= MAX_HANDED_DEPTH; i++) items.push(i > 0 ? { prev: items[i - 1]! } : {})
+    expect(nestsDeeperThan(items, MAX_HANDED_DEPTH)).toBe(false)
     // The view is one level; its million bytes are not walked.
     expect(nestsDeeperThan({ bytes: new Uint8Array(1_000_000) }, 2)).toBe(false)
   })

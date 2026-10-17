@@ -40,6 +40,9 @@ export type PromptSubmitOutcome =
       /** The plugin's reason, shown to the user; absent when a hook simply
        *  answered without `next`. */
       reason?: string
+      /** The runtime refused it: this plugin's hooks could not be reached
+       *  (`reason` is then the runtime's own, not the plugin's). */
+      unreachable?: string
     }
 
 /** What `command.run` settled on. `unanswered`: a registered command no
