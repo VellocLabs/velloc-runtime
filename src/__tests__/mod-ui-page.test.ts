@@ -12,6 +12,7 @@ import {
   attachModContributions,
   getModContributions,
   loadedModIconModule,
+  ModIconSlot,
   pluginWelcome,
   setModContributions,
 } from '../browser/webview/mods/modContributionsView'
@@ -95,7 +96,7 @@ describe('plugin launchers', () => {
 })
 
 describe('the contributions store', () => {
-  it('takes the topic\'s state, loading the icon module before a state with contributions shows', async () => {
+  it('takes the topic\'s state at once; each icon slot is blank in the icon\'s own box until the module fills it', async () => {
     let deliver: ((event: { payload: unknown }) => void) | undefined
     const connection = {
       subscribe: vi.fn((_topic: string, listener: (event: { payload: unknown }) => void) => {
@@ -107,9 +108,41 @@ describe('the contributions store', () => {
     expect(connection.subscribe).toHaveBeenCalledWith('mods/contributions', expect.any(Function))
     deliver!({ payload: { nope: true } })
     expect(getModContributions()).toBe(EMPTY_MOD_CONTRIBUTIONS)
+    expect(loadedModIconModule()).toBeNull()
+
     deliver!({ payload: STATE })
-    await vi.waitFor(() => expect(getModContributions()).toBe(STATE))
+    expect(getModContributions()).toBe(STATE)
+    const { container } = render(
+      h('div', { className: 'flex gap-2' },
+        h(ModIconSlot, { icon: { ref: 'h1' }, icons: STATE.icons, className: 'size-4 mr-1' }),
+        h(ModIconSlot, { icon: { ref: 'h1', mask: true }, icons: STATE.icons, className: 'size-4 mr-1' }),
+        h(ModIconSlot, { icon: { lucide: 'list-checks' }, icons: STATE.icons, className: 'size-4 mr-1' }),
+        h('span', null, 'Review')),
+    )
+    const row = container.firstElementChild!
+    const before = [...row.children].slice(0, 3)
+    // Blank: no spinner, no skeleton, not the generic icon.
+    for (const slot of before) {
+      expect(slot.tagName).toBe('SPAN')
+      expect(slot.hasAttribute('data-mod-icon-slot')).toBe(true)
+      expect(slot.childNodes).toHaveLength(0)
+      expect(slot.getAttribute('aria-hidden')).toBe('true')
+    }
+    expect(row.querySelector('svg')).toBeNull()
+
+    await vi.waitFor(() => expect(row.querySelector('[data-mod-icon-slot]')).toBeNull())
     expect(loadedModIconModule()).not.toBeNull()
+    const after = [...row.children].slice(0, 3)
+    expect(after.map(el => el.tagName.toLowerCase())).toEqual(['img', 'span', 'svg'])
+    expect(row.children).toHaveLength(4)
+    // The box classes the render site gave (size, margin) are the same on the
+    // blank slot and on the icon that takes its place.
+    const boxClasses = (el: Element) =>
+      (el.getAttribute('class') ?? '').split(/\s+/).filter(c => /^(size|w|h|m[trblxy]?)-/.test(c)).sort()
+    for (let i = 0; i < 3; i++) {
+      expect(boxClasses(before[i]!)).toEqual(['mr-1', 'size-4'])
+      expect(boxClasses(after[i]!)).toEqual(boxClasses(before[i]!))
+    }
     release()
     expect(getModContributions()).toBe(EMPTY_MOD_CONTRIBUTIONS)
   })

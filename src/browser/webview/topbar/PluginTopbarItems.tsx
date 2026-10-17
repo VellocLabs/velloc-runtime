@@ -5,7 +5,6 @@
  * rendered for a connection that may not press.
  */
 import * as React from "react";
-import { PuzzleIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -13,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { resolveLocalizedText } from "../../../config/localizedText";
 import { useLocale, useT } from "../i18n";
 import { useCan } from "../useCan";
-import { loadedModIconModule, useModContributions } from "../mods/modContributionsView";
+import { ModIconSlot, useModContributions } from "../mods/modContributionsView";
 import type { ModsPressTopbarResult } from "../../runtimeProtocol/modContributions";
 import type { MessageKey } from "../i18n/messages/en";
 
@@ -53,7 +52,6 @@ export function PluginTopbarItems({
     [onPress],
   );
   if (!onPress || !canPress || contributions.topbar.length === 0) return null;
-  const icons = loadedModIconModule();
   return (
     <>
       {contributions.topbar.map(item => {
@@ -74,11 +72,7 @@ export function PluginTopbarItems({
                     if (activeSessionId) press(activeSessionId, item.id);
                   }}
                 >
-                  {icons ? (
-                    <icons.ModIcon icon={item.icon} icons={contributions.icons} className="size-4" />
-                  ) : (
-                    <PuzzleIcon className="size-4" aria-hidden />
-                  )}
+                  <ModIconSlot icon={item.icon} icons={contributions.icons} className="size-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">{tooltip}</TooltipContent>

@@ -10,19 +10,63 @@ import * as React from 'react'
 import {
   EMPTY_MOD_CONTRIBUTIONS,
   MODS_CONTRIBUTIONS_TOPIC,
+  type ContributionIcon,
   type ContributionWelcome,
   type ModContributionsState,
 } from '../../runtimeProtocol/modContributions'
 import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
+import { cn } from '../../../lib/utils'
 
 let state: ModContributionsState = EMPTY_MOD_CONTRIBUTIONS
 const listeners = new Set<() => void>()
 let modIcon: typeof import('./ModIcon') | null = null
-let delivered = 0
+let iconLoad: Promise<void> | null = null
+const iconListeners = new Set<() => void>()
 
 /** The icon module, once a state with contributions has loaded it. */
 export function loadedModIconModule(): typeof import('./ModIcon') | null {
   return modIcon
+}
+
+function subscribeModIconModule(listener: () => void): () => void {
+  iconListeners.add(listener)
+  return () => iconListeners.delete(listener)
+}
+
+/** Load the icon module once; every slot draws its icon when it lands. */
+function loadModIconModule(): void {
+  if (modIcon || iconLoad) return
+  iconLoad = import('./ModIcon').then(
+    module => {
+      modIcon = module
+      for (const listener of [...iconListeners]) listener()
+    },
+    () => {
+      iconLoad = null
+    },
+  )
+}
+
+/**
+ * A plugin icon's place: the icon once the module has loaded, before that a
+ * blank box with the same classes, so nothing around it moves when it fills.
+ */
+export function ModIconSlot({
+  icon,
+  icons,
+  className,
+}: {
+  icon: ContributionIcon | undefined
+  icons: Readonly<Record<string, string>>
+  className?: string
+}): React.ReactElement {
+  const module = React.useSyncExternalStore(subscribeModIconModule, loadedModIconModule, loadedModIconModule)
+  if (module) return React.createElement(module.ModIcon, { icon, icons, className })
+  return React.createElement('span', {
+    'aria-hidden': true,
+    'data-mod-icon-slot': '',
+    className: cn('inline-block shrink-0', className),
+  })
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -61,22 +105,9 @@ export function attachModContributions(connection: Pick<RuntimeConnection, 'subs
   const unsubscribe = connection.subscribe<ModContributionsState>(MODS_CONTRIBUTIONS_TOPIC, event => {
     const next = event.payload
     if (!isModContributionsState(next)) return
-    const seq = ++delivered
-    const take = (): void => {
-      if (seq === delivered) setModContributions(next)
-    }
-    // The icon module loads with the first contribution, before it is shown,
-    // so no launcher draws a placeholder first.
-    if (modIcon || (next.templates.length === 0 && next.topbar.length === 0)) take()
-    else {
-      void import('./ModIcon').then(
-        module => {
-          modIcon = module
-          take()
-        },
-        take,
-      )
-    }
+    // Rows are taken at once; their icons fill in when the module has loaded.
+    setModContributions(next)
+    if (next.templates.length > 0 || next.topbar.length > 0) loadModIconModule()
   })
   return () => {
     unsubscribe()

@@ -25,7 +25,7 @@ import type {
   ModContributionsState,
 } from '../runtimeProtocol/modContributions'
 import { isPluginTemplateId, pluginOfTemplateId } from '../../mods/ui/uiManifest'
-import { getModContributions, loadedModIconModule } from './mods/modContributionsView'
+import { getModContributions, ModIconSlot } from './mods/modContributionsView'
 
 /** A launcher icon component — a lucide-react icon OR an <img> wrapper (for a
  *  template `icon` path / https URL). Both accept `className` for sizing, so
@@ -240,14 +240,9 @@ export function pluginLauncherTestId(type: string): string {
 }
 
 function pluginIcon(template: Pick<ContributedTemplate, 'icon'>, icons: ModContributionsState['icons']): IconComponent {
-  const PluginIcon = ({ className }: { className?: string }) => {
-    const module = loadedModIconModule()
-    return module ? (
-      <module.ModIcon icon={template.icon} icons={icons} className={className} />
-    ) : (
-      <PuzzleIcon className={className} aria-hidden />
-    )
-  }
+  const PluginIcon = ({ className }: { className?: string }) => (
+    <ModIconSlot icon={template.icon} icons={icons} className={className} />
+  )
   PluginIcon.displayName = 'PluginTemplateIcon'
   return PluginIcon
 }
