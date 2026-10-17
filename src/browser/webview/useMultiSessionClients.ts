@@ -433,6 +433,11 @@ export function useMultiSessionClients(
   const clientsRef = useRef(new Map<string, BrowserRuntimeClient>())
   const unsubscribersRef = useRef(new Map<string, () => void>())
   const summaryDigestsRef = useRef(new Map<string, string>())
+  // Per session: the transcript last derived from and its metadata, so a
+  // stream tick that leaves the transcript untouched skips the walk.
+  const derivedMetadataRef = useRef(
+    new Map<string, { messages: unknown; metadata: BrowserSessionMetadata }>(),
+  )
   const optionsRef = useRef(options)
   optionsRef.current = options
 
@@ -463,10 +468,18 @@ export function useMultiSessionClients(
 
   const emitSessionStateChange = useCallback(
     (sessionId: string, state: BrowserRuntimeClientState) => {
-      const metadata = deriveSessionMetadataFromMessages(
-        state.transcriptMessages,
-        null,
-      )
+      let derived = derivedMetadataRef.current.get(sessionId)
+      if (derived?.messages !== state.transcriptMessages) {
+        derived = {
+          messages: state.transcriptMessages,
+          metadata: deriveSessionMetadataFromMessages(
+            state.transcriptMessages,
+            null,
+          ),
+        }
+        derivedMetadataRef.current.set(sessionId, derived)
+      }
+      const metadata = { ...derived.metadata }
       const pendingPrompt =
         typeof state.pendingPrompt === 'string' ? state.pendingPrompt.trim() : ''
       if (!metadata.firstPrompt && pendingPrompt) {
@@ -570,6 +583,7 @@ export function useMultiSessionClients(
     unsubscribe?.()
     unsubscribersRef.current.delete(sessionId)
     summaryDigestsRef.current.delete(sessionId)
+    derivedMetadataRef.current.delete(sessionId)
 
     const client = clientsRef.current.get(sessionId)
     if (client) {
@@ -664,6 +678,7 @@ export function useMultiSessionClients(
       }
       clientsRef.current.clear()
       summaryDigestsRef.current.clear()
+      derivedMetadataRef.current.clear()
     }
   }, [])
 

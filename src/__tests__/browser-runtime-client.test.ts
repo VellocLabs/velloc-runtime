@@ -2047,6 +2047,89 @@ describe('BrowserRuntimeClient — UI-ready split (worker.uiReady)', () => {
     expect(state.transcriptMessages).toHaveLength(2)
   })
 
+  describe('catch-up pull after a provisional start', () => {
+    // The worker pushes its transcript copy asynchronously (after stamping
+    // line numbers), so it can land after start() has already resolved.
+    function createLateCopyTransport() {
+      const listeners = new Set<(message: AgentWorkerOutboundMessage) => void>()
+      const posted: AgentWorkerInboundMessage[] = []
+      const emit = (message: AgentWorkerOutboundMessage) => {
+        for (const listener of listeners) listener(message)
+      }
+      const rows = [
+        { type: 'user', uuid: 'u0', message: { role: 'user', content: 'hi' } },
+        { type: 'assistant', uuid: 'a0', message: { role: 'assistant', content: [] } },
+      ] as never[]
+      const transport: BrowserWorkerClientTransport = {
+        async postMessage(message: AgentWorkerInboundMessage) {
+          posted.push(message)
+          if (message.type === 'worker.init') {
+            emit({
+              type: 'worker.uiReady',
+              payload: {
+                ...createSnapshot(),
+                initialized: false,
+                uiReady: true,
+                messageCount: rows.length,
+                toolNames: [],
+              },
+            })
+          }
+        },
+        addMessageListener(listener) {
+          listeners.add(listener)
+          return () => {
+            listeners.delete(listener)
+          }
+        },
+      }
+      return {
+        transport,
+        pullsPosted: () =>
+          posted.filter(
+            m => m.type === 'worker.getMessages' || m.type === 'worker.getMessagesSince',
+          ),
+        pushCopy: () => emit({ type: 'worker.messages', payload: { messages: rows } }),
+        armWorkerReady: () =>
+          emit({
+            type: 'worker.ready',
+            payload: { ...createSnapshot(), messageCount: rows.length },
+          }),
+      }
+    }
+
+    it('asks only for rows after the pushed copy, never the whole transcript again', async () => {
+      const late = createLateCopyTransport()
+      const client = createClient(late.transport)
+      await client.start()
+      await Promise.resolve()
+
+      expect(late.pullsPosted()).toEqual([])
+
+      late.pushCopy()
+      await vi.waitFor(() => expect(late.pullsPosted()).toHaveLength(1))
+      expect(late.pullsPosted()[0]).toEqual({
+        type: 'worker.getMessagesSince',
+        payload: { sinceOrdinal: 2 },
+      })
+
+      late.armWorkerReady()
+      await Promise.resolve()
+      expect(late.pullsPosted()).toHaveLength(1)
+      expect(client.getState().transcriptMessages).toHaveLength(2)
+    })
+
+    it('falls back to the whole transcript when worker.ready comes before any copy', async () => {
+      const late = createLateCopyTransport()
+      const client = createClient(late.transport)
+      await client.start()
+
+      late.armWorkerReady()
+      await vi.waitFor(() => expect(late.pullsPosted()).toHaveLength(1))
+      expect(late.pullsPosted()[0]).toEqual({ type: 'worker.getMessages' })
+    })
+  })
+
   it('a stale worker.uiReady never replaces an initialized snapshot', async () => {
     const split = createUiReadySplitTransport()
     const client = createClient(split.transport)

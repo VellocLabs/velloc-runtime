@@ -597,6 +597,23 @@ export function deriveSessionMetadataFromMessages(
   }
 }
 
+/** Maps each loaded entry's uuid to the physical line it was read from. */
+function transcriptLinesFromPayload(payload: unknown): Record<string, number> {
+  const entries: unknown[] = Array.isArray(payload)
+    ? payload
+    : (((payload as { messages?: unknown[] } | null)?.messages ?? []) as unknown[])
+  const lines: Record<string, number> = {}
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue
+    const line = (entry as { transcriptLine?: unknown }).transcriptLine
+    const uuid = (entry as { uuid?: unknown }).uuid
+    if (typeof line === 'number' && typeof uuid === 'string' && uuid) {
+      lines[uuid] = line
+    }
+  }
+  return lines
+}
+
 function nonEmptyTitle(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value : undefined
 }
@@ -2318,24 +2335,8 @@ export class BrowserConversationStore implements ConversationStore {
     const quietAtStart = this.transcriptAppendsInFlight === 0
     try {
       const payload = await this.storageBackend.load(this.sessionId)
-      const entries: unknown[] = Array.isArray(payload)
-        ? payload
-        : (((payload as { messages?: unknown[] } | null)?.messages ?? []) as unknown[])
-      for (const entry of entries) {
-        const line = (entry as { transcriptLine?: unknown }).transcriptLine
-        const uuid = (entry as { uuid?: unknown }).uuid
-        if (typeof line === 'number' && typeof uuid === 'string' && uuid) {
-          lines[uuid] = line
-        }
-      }
-      const lineCount = readTranscriptLineCount(payload)
-      if (
-        lineCount !== undefined
-        && quietAtStart
-        && appendEpoch === this.transcriptAppendEpoch
-      ) {
-        this.transcriptLines = { map: lines, nextLine: lineCount }
-      }
+      Object.assign(lines, transcriptLinesFromPayload(payload))
+      this.adoptTranscriptLines(payload, lines, quietAtStart, appendEpoch)
     } catch {
       for (const message of this.storedMessages) {
         const line = (message as { transcriptLine?: number }).transcriptLine
@@ -2346,6 +2347,27 @@ export class BrowserConversationStore implements ConversationStore {
     }
     this.transcriptLinesCache = { size, map: lines }
     return lines
+  }
+
+  /**
+   * Keeps a line map read from `payload` as the live map that appends extend,
+   * but only when the load counted its lines and no append raced the read —
+   * otherwise the map could miss a line written meanwhile.
+   */
+  private adoptTranscriptLines(
+    payload: unknown,
+    map: Record<string, number>,
+    quietAtStart: boolean,
+    appendEpoch: number,
+  ): void {
+    const lineCount = readTranscriptLineCount(payload)
+    if (
+      lineCount !== undefined
+      && quietAtStart
+      && appendEpoch === this.transcriptAppendEpoch
+    ) {
+      this.transcriptLines = { map, nextLine: lineCount }
+    }
   }
 
   async getRecordedMessages(): Promise<readonly Message[]> {
@@ -2753,7 +2775,19 @@ export class BrowserConversationStore implements ConversationStore {
       return
     }
 
+    const appendEpoch = this.transcriptAppendEpoch
+    const quietAtStart = this.transcriptAppendsInFlight === 0
     const payload = await this.storageBackend.load(this.sessionId)
+    // Seeds the search-jump line map from this same read so the first
+    // lookup after open does not read the transcript again.
+    if (!this.transcriptLines) {
+      this.adoptTranscriptLines(
+        payload,
+        transcriptLinesFromPayload(payload),
+        quietAtStart,
+        appendEpoch,
+      )
+    }
     const normalized = normalizeConversationState(
       this.sessionId,
       payload,

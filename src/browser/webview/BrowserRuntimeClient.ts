@@ -478,6 +478,12 @@ export class BrowserRuntimeClient {
     pendingClearInFlight: false,
   }
   private lastKnownOrdinal = 0
+  /**
+   * Set when start() resolved on a provisional snapshot before the worker's
+   * pushed transcript arrived: the catch-up pull waits for that copy so it
+   * can ask only for later rows, or for `worker.ready` if no copy comes.
+   */
+  private catchUpPullPending = false
   private cachedExternalState: BrowserRuntimeClientState | null = null
   /**
    * Open span for an in-progress `start()` call. Closed when the matching
@@ -620,7 +626,13 @@ export class BrowserRuntimeClient {
       this.transport = null
       return this.startReadOnly()
     }
-    void this.requestMessages()
+    const provisional =
+      this.state.snapshot?.uiReady === true && !this.state.snapshot.initialized
+    if (provisional && this.lastKnownOrdinal === 0) {
+      this.catchUpPullPending = true
+    } else {
+      void this.requestMessages()
+    }
 
     return this.getState()
   }
@@ -1523,6 +1535,7 @@ export class BrowserRuntimeClient {
     await this.transport?.dispose?.()
     this.transport = null
     this.lastKnownOrdinal = 0
+    this.catchUpPullPending = false
     for (const [toolCallId, waiters] of this.toolCallDetailWaiters) {
       this.toolCallDetailWaiters.delete(toolCallId)
       for (const waiter of waiters) {
@@ -2042,6 +2055,10 @@ export class BrowserRuntimeClient {
         }
         this.resolveReadyWaiters(message.payload)
         this.emitState()
+        if (this.catchUpPullPending) {
+          this.catchUpPullPending = false
+          void this.requestMessages()
+        }
         return
       }
 
@@ -2151,6 +2168,10 @@ export class BrowserRuntimeClient {
           }).__nexusBootMarks = bootMarks
         }
         this.lastKnownOrdinal = mergedMessages.length
+        if (this.catchUpPullPending && !isDelta) {
+          this.catchUpPullPending = false
+          void this.requestMessages()
+        }
         // Preserve the in-flight turn's pending prompt + live stream while a
         // turn is still live (`submitting`) OR has just failed (`error`): in
         // both cases the reconcile fetch must not blank the partial content

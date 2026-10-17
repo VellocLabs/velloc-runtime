@@ -7,6 +7,7 @@ import {
 } from '../utils/fs/runtimeFs'
 import { createBrowserConversationStorageBackend } from '../sessions/sessionStore'
 import { SESSION_META_TYPE } from '../runtime/VercelModelConstants'
+import { stampTranscriptLineCount } from '../utils/transcriptLineCount'
 
 /**
  * Transcript entries are stamped with the PHYSICAL line they were read from (blank, metadata and unparseable lines
@@ -160,6 +161,73 @@ describe('the physical line survives to the renderer', () => {
     // u-1 is physical line 1; a-1 is line 3 (the blank line 2 still counts).
     expect(lines['u-1']).toBe(1)
     expect(lines['a-1']).toBe(3)
+  })
+
+  it('opening a session reads the transcript once for both messages and line map', async () => {
+    // The worker's bridge backend stamps the physical line count on a whole
+    // file; this file-backed one does not, so the wrapper adds that stamp.
+    let reads = 0
+    let content = `${[
+      JSON.stringify({ type: SESSION_META_TYPE, sessionId: SID, updatedAt: 1 }),
+      userLine('u-1', 'first ask'),
+      '',
+      assistantLine('a-1', 'a reply'),
+    ].join('\n')}\n`
+    installProcessFs({
+      ...processFs(),
+      readFile: async () => content,
+      appendFileSync: (_path: string, data: string) => {
+        content += data
+      },
+      writeFile: async () => {},
+      renameSync: () => {},
+    } as unknown as RuntimeFs)
+    const inner = createBrowserConversationStorageBackend({ fsBasePath: BASE })
+    const storageBackend = Object.create(inner) as typeof inner
+    storageBackend.load = async (sessionId: string) => {
+      reads++
+      const payload = await inner.load(sessionId)
+      if (payload && content.endsWith('\n')) {
+        stampTranscriptLineCount(payload, content.split('\n').length - 1)
+      }
+      return payload
+    }
+    const { BrowserConversationStore } = await import('../sessions/sessionStore')
+    const store = new BrowserConversationStore({
+      sessionId: SID,
+      runtimeConfig: {
+        createTimestamp: () => new Date(0).toISOString(),
+        createUuid: () => 'generated',
+        now: () => 0,
+      },
+      storageBackend,
+    } as never)
+    const linesOf = () =>
+      (
+        store as unknown as {
+          getTranscriptLinesByUuid(): Promise<Record<string, number>>
+        }
+      ).getTranscriptLinesByUuid()
+
+    await store.getRecordedMessages()
+    expect(reads).toBe(1)
+    const readsAfterOpen = reads
+    const lines = await linesOf()
+
+    expect(reads).toBe(readsAfterOpen)
+    expect(lines['u-1']).toBe(1)
+    expect(lines['a-1']).toBe(3)
+
+    // A later append still lands on the next physical line.
+    await store.saveTranscriptRows([
+      {
+        type: 'user',
+        uuid: 'u-2',
+        message: { role: 'user', content: [{ type: 'text', text: 'again' }] },
+      } as never,
+    ])
+    expect((await linesOf())['u-2']).toBe(4)
+    expect(reads).toBe(readsAfterOpen)
   })
 
   it('a message appended while the map is being read still gets its line', async () => {
