@@ -101,6 +101,7 @@ export const RAISED_EVENTS: readonly string[] = Object.freeze([
   'ui.toast',
   // the `Notification` hooks, then no channel on the desktop (modNotify.ts)
   'ui.notify',
+  'ui.view',
   'ui.notice',
   'ui.open',
   'ui.close',

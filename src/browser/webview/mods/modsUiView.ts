@@ -32,7 +32,7 @@ import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { ModUiContextValue, ModUiToastRow } from '../../../components/assistant-ui/mod-ui-context'
 import { EMPTY_MOD_UI, staleKeyOf } from '../../../components/assistant-ui/mod-ui-context'
 
-export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'hooked' | 'editHooked' | 'stale' | 'turnNote' | 'asks'>
+export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'hooked' | 'editHooked' | 'stale' | 'turnNote' | 'asks' | 'view'>
 
 type Listener = (view: ModsUiView) => void
 
@@ -179,6 +179,7 @@ export function holdModsUiView(
         editHooked: event.payload.editHooked === true,
         asks: event.payload.asks ?? [],
         ...(event.payload.turnNote ? { turnNote: event.payload.turnNote } : {}),
+        ...(event.payload.view ? { view: event.payload.view } : {}),
       }
       emit(store)
     })

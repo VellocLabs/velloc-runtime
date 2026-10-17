@@ -17,6 +17,7 @@ import type { PromptEdit } from './modPromptEdit'
 import type { ModPageAnswer, ModPageRequest } from './modPage'
 import type { ModUiAsk, ModUiAskAnswer, ModUiHookedSite, ModUiPane, ModUiStale, ModUiTurnNote } from './modUi'
 import type { ModPaneSeat } from './modPanes'
+import type { ModAgentView } from './modAgentView'
 import type { PluginUserConfigField } from '../pluginHost/pluginModel'
 import type { RenderInput, RenderOutcome, RenderSite } from './modRender'
 import type { ModRegisteredTool } from './modRegisteredTools'
@@ -59,6 +60,7 @@ export type ModSlotUiState = {
   editHooked?: true
   turnNote?: ModUiTurnNote
   asks?: ModUiAsk[]
+  view?: ModAgentView
 }
 
 export type ModSlotUiEvent =

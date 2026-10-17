@@ -104,6 +104,7 @@ import {
 } from './sessionNouns'
 import type { DispatchContext } from './modTypes'
 import { isUiNotifyResult, uiNotifyArgsOf, uiNotifyCore, type ModNotifyHost } from './modNotify'
+import { isUiViewResult, uiViewArgsOf, uiViewCore } from './modAgentView'
 import { isSessionIdentity, promptMediaArgsOf, promptMediaOf, sessionIdentityOf, type PromptMediaArgs } from './modManagedReads'
 import {
   pluginPromptArgsOf,
@@ -208,6 +209,8 @@ export type ModNounHost = {
    *  `ModRuntime` (`modUi.ts`); `.ask` — the question raised as `tool.call`
    *  with the slot's dialog as core (`ModRuntime.askPerson`, `modAsk.ts`). */
   ui?: Pick<ModUiState, 'setStatus' | 'toast' | 'setNotice'> & {
+    /** `$.ui.view`; absent where nothing draws (the noun is refused). */
+    setView?: ModUiState['setView']
     ask?(plugin: string, args: ModUiAskArgs, raise: { context: DispatchContext; signal?: AbortSignal }): Promise<string>
   }
   /** `$.ui.open` / `.close` / `.panes` / `.invalidate` — the slot's panes
@@ -522,6 +525,19 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
       input: (args: readonly unknown[]) => uiNotifyArgsOf(args[0], args[1]),
       run: (e: unknown, { call, session }: NounContext) => uiNotifyCore(e, call, session.notifications),
       accepts: isUiNotifyResult,
+    },
+    // `e` is `{ agentId? }`: the view published on the slot's state for the
+    // page; an id that is no agent of this session is answered `{ deny }`
+    // (`modAgentView.ts`).
+    view: {
+      input: (args: readonly unknown[]) => uiViewArgsOf(args[0]),
+      run: (e: unknown, { session }: NounContext) => {
+        const ui = uiHost(session)
+        if (!ui.setView) return notSupported('$.ui.view is not available: this session draws nothing')
+        const setView = ui.setView.bind(ui)
+        return uiViewCore(e, session.agents, view => setView(view))
+      },
+      accepts: isUiViewResult,
     },
     // `e` is `{ tool_use_id, text }`; the id is identity, pinned.
     notice: {

@@ -7,12 +7,15 @@
 import type { AgentDefinitionFull } from '../agents/agentRegistry'
 import type { SubAgentListEntry } from '../team/subAgentController'
 import type { DispatchContext } from './modTypes'
+import type { ModAgentViewTarget } from './modAgentView'
 
 /** What `$.agent` needs of the session; bound late like `$.tool`. */
 export type ModAgentHost = {
   register(spec: ModAgentSpec, plugin: string): string
   forget(plugin: string): void
   list(): ModAgentInfo[]
+  /** `$.ui.view`'s lookup: where a subagent's or teammate's transcript is. */
+  viewTarget?(agentId: string): ModAgentViewTarget | undefined
   spawn(
     args: ModAgentSpawnArgs,
     raise: { context: DispatchContext; signal?: AbortSignal },

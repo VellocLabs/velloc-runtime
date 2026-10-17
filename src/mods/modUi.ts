@@ -7,6 +7,7 @@
 
 import type { ModComposerRequest } from './modComposer'
 import type { ModPageRequest } from './modPage'
+import type { ModAgentView } from './modAgentView'
 
 export type ModStatusLine = { plugin: string; text: string }
 export type ModNoticeLine = { toolUseId: string; plugin: string; text: string }
@@ -130,6 +131,8 @@ export type ModUiSnapshot = {
   /** Some loaded hook selects `prompt.edit`; absent when none. */
   editHooked?: true
   turnNote?: ModUiTurnNote
+  /** The agent view last asked for (`$.ui.view`); absent before any call. */
+  view?: ModAgentView
 }
 
 /** A drawing (or every drawing a plugin's matchers may select) is to be
@@ -181,6 +184,7 @@ export class ModUiState {
   private readonly notices = new Map<string, { plugin: string; text: string }>()
   private readonly asks = new Map<string, PendingAsk>()
   private nextAsk = 0
+  private view: ModAgentView | undefined
 
   /** `canAsk`: a page draws this session, so `$.ui.ask` has someone to ask.
    *  Without it (a headless build, a sub-agent's slot) the call rejects.
@@ -201,7 +205,14 @@ export class ModUiState {
       status: [...this.status.entries()].map(([plugin, text]) => ({ plugin, text })),
       notices: [...this.notices.entries()].map(([toolUseId, line]) => ({ toolUseId, ...line })),
       ...(this.asks.size > 0 ? { asks: [...this.asks.values()].map(pending => pending.ask) } : {}),
+      ...(this.view ? { view: this.view } : {}),
     }
+  }
+
+  /** `$.ui.view`: the page is asked to show `view` (each call a new `seq`). */
+  setView(view: Omit<ModAgentView, 'seq'>): void {
+    this.view = { seq: (this.view?.seq ?? 0) + 1, ...view }
+    this.changed()
   }
 
   /** The dialog of a `$.ui.ask` for `plugin` — the call's core: shown until

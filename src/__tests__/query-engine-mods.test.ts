@@ -40,6 +40,7 @@ import {
 import { MSG_TYPE_ASSISTANT, ROLE_ASSISTANT } from '../runtime/VercelModelConstants'
 import { contextWindowOf } from '../engine/contextWindow'
 import { setTeamMessenger, type TeamMessenger } from '../team/teamMessenger'
+import { setSubAgentController, type SubAgentController } from '../team/subAgentController'
 import { installBuiltinCatalogFigures } from './_helpers/builtinCatalogFigures'
 import { resetCatalogFigures } from '../config/nexusModelConfig/catalogFigures'
 
@@ -1519,6 +1520,23 @@ describe('$.agent through the engine', () => {
     engine.modAgents.forget('nobody')
     engine.modAgents.forget('lab')
     expect(engine.modAgents.register({ name: 'runner', description: 'Runs', prompt: 'P' }, 'lab')).toBe('lab:runner')
+  })
+
+  it("$.ui.view's lookup: a subagent of this session by its task id, a teammate by its session, anything else undefined", () => {
+    const { engine } = makeEngine(passThrough())
+    expect(engine.modAgents.viewTarget?.('a1')).toBeUndefined()
+    setSubAgentController({
+      list: () => [{ sessionId: 'a1', status: 'running', description: 'scan', agentType: 'Explore', startedAt: 0 }],
+    } as unknown as SubAgentController)
+    setTeamMessenger({ listMembers: () => [{ sessionId: 'teammate-1', name: 'alice', status: 'idle', startedAt: 0 }] } as unknown as TeamMessenger)
+    try {
+      expect(engine.modAgents.viewTarget?.('a1')).toEqual({ kind: 'subagent', sessionId: 'a1' })
+      expect(engine.modAgents.viewTarget?.('teammate-1')).toEqual({ kind: 'teammate', sessionId: 'teammate-1' })
+      expect(engine.modAgents.viewTarget?.('a2')).toBeUndefined()
+    } finally {
+      setSubAgentController(null)
+      setTeamMessenger(null)
+    }
   })
 })
 

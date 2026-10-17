@@ -479,6 +479,7 @@ describe('ModRuntime — $', () => {
       'ui.scroll',
       'ui.status',
       'ui.toast',
+      'ui.view',
     ])
   })
 })

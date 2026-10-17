@@ -262,6 +262,13 @@ function agentHost({ ledger }: HostParts, registeredAgents: ModRegisteredAgents,
     register: (spec, plugin) => registeredAgents.register(spec, plugin),
     forget: plugin => registeredAgents.forget(plugin),
     list: () => getSubAgentController()?.list(ledger.sessionId()).map(entry => agentInfoOf(entry)) ?? [],
+    viewTarget: agentId => {
+      if (getSubAgentController()?.list(ledger.sessionId()).some(entry => entry.sessionId === agentId)) {
+        return { kind: 'subagent', sessionId: agentId }
+      }
+      const roster = getTeamMessenger()?.listMembers?.(ledger.sessionId()) ?? []
+      return roster.some(member => member.sessionId === agentId) ? { kind: 'teammate', sessionId: agentId } : undefined
+    },
     // A spawn is the plugin's own Agent tool call, in the background: it
     // resolves once the subagent started.
     spawn: async (args, raise) => {

@@ -181,6 +181,7 @@ import {
 import { IDS_NEXT_BUDGET_MS, isIdsNextResult, type IdsNextInput } from './idsEvent'
 import { normalizeModLocale } from './modLocale'
 import type { DispatchContext, PluginTier, TraceEntry } from './modTypes'
+import type { ModAgentView } from './modAgentView'
 import type { PluginPromptArgs, PluginPromptOrigin, PluginPromptResult, PluginPromptTurn } from './promptNouns'
 import {
   isToolCallResult,
@@ -589,6 +590,7 @@ export class ModRuntime implements TurnExtensions {
           toast: (plugin: string, text: string, timeoutMs?: number) => this.ui.toast(plugin, text, timeoutMs),
           setNotice: (plugin: string, toolUseId: string, text: string | undefined) =>
             this.ui.setNotice(plugin, toolUseId, text),
+          setView: (view: Omit<ModAgentView, 'seq'>) => this.ui.setView(view),
           ask: (plugin: string, args: ModUiAskArgs, raise: { context: DispatchContext; signal?: AbortSignal }) =>
             this.askPerson(plugin, args, raise),
         },

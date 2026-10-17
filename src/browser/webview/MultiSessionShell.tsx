@@ -88,6 +88,7 @@ import {
 } from './layout/rightPanelManager'
 import { foldModDock, sameModDockFront, type ModDockFront } from './layout/modDock'
 import { useSessionModUi } from './mods/useSessionModUi'
+import { useModAgentView } from './mods/useModAgentView'
 import {
   RightPanelContentContext,
   type RightPanelDiffTarget,
@@ -2283,6 +2284,32 @@ export function MultiSessionShell({
     setBackgroundTaskListRequest(n => n + 1)
     updateRightPanel(s => openView(s, 'tasks'))
   }, [updateRightPanel])
+
+  // `$.ui.view` (F-25): a teammate's transcript is its own session; a
+  // subagent's is its Tasks detail, maximized over the conversation. Going
+  // back restores the panel as it was before.
+  const rightPanelBeforeAgentView = useRef<{ visible: boolean; activeView: RightPanelViewId | null; maximized: boolean } | null>(null)
+  const rightPanelNowRef = useRef({ visible: rightPanel.visible, activeView: rightPanel.activeView, maximized: rightPanelMaximized })
+  rightPanelNowRef.current = { visible: rightPanel.visible, activeView: rightPanel.activeView, maximized: rightPanelMaximized }
+  useModAgentView(runtimeConnection, activeSessionId ?? undefined, {
+    focusSession,
+    showSubagent: taskId => {
+      rightPanelBeforeAgentView.current ??= rightPanelNowRef.current
+      handleOpenBackgroundTasks(taskId)
+      setRightPanelMaximizedState(true)
+    },
+    leaveSubagent: () => {
+      const before = rightPanelBeforeAgentView.current
+      rightPanelBeforeAgentView.current = null
+      setBackgroundTaskFocusSessionId(null)
+      setBackgroundTaskListRequest(n => n + 1)
+      setRightPanelMaximizedState(before?.maximized ?? false)
+      if (!before) return
+      updateRightPanel(s =>
+        before.visible && before.activeView ? openView(s, before.activeView) : setRightPanelVisible(s, before.visible),
+      )
+    },
+  })
   // Topbar toggle: show the Right Panel if hidden, or close it if shown.
   // Showing focuses a tab — this session's own last one, else the remembered
   // preference (`rightPanelLastViewRef`), else Tasks — so the panel never

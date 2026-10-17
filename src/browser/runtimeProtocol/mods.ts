@@ -308,6 +308,23 @@ export type ModsUiState = {
   /** The questions mods asked that wait for the person (`$.ui.ask`); absent
    *  when none, and from an older runtime. */
   asks?: ModsUiAsk[]
+  /** The agent view a mod last asked for (`$.ui.view`): the page acts on a
+   *  `seq` it has not seen; `agentId` absent goes back. Absent before any call. */
+  view?: ModsAgentView
+}
+
+/** `$.ui.view`'s request: a subagent's transcript by its task id, a
+ *  teammate's by its session, or (`agentId` absent) the view before. */
+export type ModsAgentView = { seq: number; agentId?: string; kind?: 'subagent' | 'teammate'; sessionId?: string }
+
+export function isModsAgentView(value: unknown): value is ModsAgentView {
+  if (!isRecord(value) || typeof value.seq !== 'number') return false
+  if (value.agentId === undefined) return true
+  return (
+    typeof value.agentId === 'string' &&
+    (value.kind === 'subagent' || value.kind === 'teammate') &&
+    typeof value.sessionId === 'string'
+  )
 }
 
 /** One option of a mod's question; `engine` marks a label the engine padded
@@ -684,7 +701,8 @@ export function isModsUiState(value: unknown): value is ModsUiState {
     (value.editHooked === undefined || value.editHooked === true) &&
     (value.turnNote === undefined ||
       (isRecord(value.turnNote) && typeof value.turnNote.turnId === 'string' && typeof value.turnNote.text === 'string')) &&
-    (value.asks === undefined || (Array.isArray(value.asks) && value.asks.every(isModsUiAsk)))
+    (value.asks === undefined || (Array.isArray(value.asks) && value.asks.every(isModsUiAsk))) &&
+    (value.view === undefined || isModsAgentView(value.view))
   )
 }
 
