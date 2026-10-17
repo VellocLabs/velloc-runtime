@@ -848,21 +848,15 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
       accepts: (result: unknown) => result === undefined || typeof result === 'string',
     },
     // `e` is `{ name, value? }`; "no `value` unsets". A hook above may rewrite
-    // the value (`next({ ...e, value })`); the name is pinned.
+    // the value (`next({ ...e, value })`); the name is pinned. Resolves `{}`
+    // once the write is made, `{ deny }` saying why when it is not.
     set: {
-      ...VOID,
+      raisesItself: true as const,
       input: (args: readonly unknown[]) => ({
         name: args[0],
         ...(args[1] !== undefined ? { value: args[1] } : {}),
       }),
-      run: (e: unknown, { call, session }: NounContext) => {
-        const name = envName(call.args[0] ?? (isRecord(e) ? e.name : undefined), 'set')
-        const value = isRecord(e) ? e.value : undefined
-        if (value !== undefined && typeof value !== 'string') {
-          throw new TypeError('$.env.set(name, value): value must be a string, or undefined to unset')
-        }
-        envHost(session).set(name, value)
-      },
+      run: (e: unknown, context: NounContext) => envSet(e, context),
     },
   }),
   store: Object.assign(Object.create(null), {
@@ -1597,6 +1591,42 @@ function envName(name: unknown, method: string): string {
     throw new TypeError(`$.env.${method}(name): name must be a non-empty string`)
   }
   return name
+}
+
+export type EnvSetResult = { deny?: string }
+
+function isEnvSetResult(value: unknown): value is EnvSetResult {
+  return isRecord(value) && (value.deny === undefined || (typeof value.deny === 'string' && value.deny !== ''))
+}
+
+/** `$.env.set`: `env.set` raised with the caller's context; core writes the
+ *  slot's variable. A write that was made answers `{}` whatever a hook said
+ *  after it; a hook's `{ deny }` before it answers `{ deny }`, and a hook's
+ *  own `{ value }` is the answer. */
+async function envSet(e: unknown, { call, session, dispatcher }: NounContext): Promise<EnvSetResult> {
+  const name = envName(call.args[0], 'set')
+  const host = envHost(session)
+  let wrote = false
+  const core = (arrived: unknown): EnvSetResult => {
+    const value = isRecord(arrived) ? arrived.value : undefined
+    if (value !== undefined && typeof value !== 'string') {
+      throw new TypeError('$.env.set(name, value): value must be a string, or undefined to unset')
+    }
+    host.set(name, value)
+    wrote = true
+    return {}
+  }
+  if (!dispatcher.hasHooksFor('env.set')) return core(e)
+  const result = (await dispatcher.dispatch('env.set', e, async arrived => ({ value: core(arrived) }), {
+    context: call.context,
+    ...(call.signal ? { signal: call.signal } : {}),
+    accepts: r =>
+      isRecord(r) &&
+      (typeof r.deny === 'string' ? r.deny !== '' && r.value === undefined : r.deny === undefined && isEnvSetResult(r.value)),
+  })) as { value?: EnvSetResult; deny?: string }
+  if (wrote) return {}
+  if (typeof result.deny === 'string') return { deny: result.deny }
+  return typeof result.value?.deny === 'string' ? { deny: result.value.deny } : {}
 }
 
 function envHost(session: ModNounHost): ModEnvHost {

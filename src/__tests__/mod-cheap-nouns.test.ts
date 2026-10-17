@@ -278,6 +278,48 @@ describe('$.env', () => {
     expect(reports).toEqual(['p: ["TypeError","TypeError"]'])
   })
 
+  it('set resolves {} once the variable is set or unset', async () => {
+    const { runtime, reports } = world({
+      p: logging(`(async () => [await $.env.set('GIT_PAGER', 'cat'), await $.env.set('GIT_PAGER', undefined)])()`),
+    })
+    await runtime.ready
+    await runtime.promptSubmit('hi')
+    expect(reports).toEqual(['p: [{},{}]'])
+  })
+
+  it("a hook's { deny } before the write resolves { deny } and nothing is written; a deny after it, or a hook's own answer, does not", async () => {
+    const { runtime, reports } = world({
+      guard: `
+        on('env.set', async ($, e, next) => {
+          if (e.name === 'TOKEN') return { deny: 'no tokens here' }
+          if (e.name === 'LATE') { await next(e); return { deny: 'too late' } }
+          if (e.name === 'ANSWERED') return { value: {} }
+          return next(e)
+        })
+      `,
+      p: logging(`(async () => {
+        const token = await $.env.set('TOKEN', 'abc')
+        const late = await $.env.set('LATE', 'x')
+        const answered = await $.env.set('ANSWERED', 'y')
+        const plain = await $.env.set('PLAIN', 'z')
+        return {
+          token, late, answered, plain,
+          read: [await $.env.get('TOKEN'), await $.env.get('LATE'), await $.env.get('ANSWERED'), await $.env.get('PLAIN')],
+        }
+      })()`),
+    })
+    await runtime.ready
+    await runtime.promptSubmit('hi')
+    const line = reports.find(r => r.startsWith('p: '))!
+    expect(JSON.parse(line.slice('p: '.length))).toEqual({
+      token: { deny: 'no tokens here' },
+      late: {},
+      answered: {},
+      plain: {},
+      read: [null, 'x', null, 'z'],
+    })
+  })
+
   it('is an event: another mod may rewrite a value as it is set, and sees the name', async () => {
     const { runtime, reports } = world({
       guard: `
