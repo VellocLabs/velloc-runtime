@@ -47,6 +47,13 @@ export const MODS_ACTION_SCOPES = {
    *  `prompt.edit`: the box the page then shows. Typing in the page's own
    *  box — `control`. */
   promptEdit: 'control',
+  /** The rows the session's mods add to a page's prompt-box typeahead for
+   *  the token at its caret, raised as `prompt.autocomplete`. Typing in the
+   *  page's own box — `control`. */
+  promptAutocomplete: 'control',
+  /** A page's prompt box changing without a typed edit (a clear, an undo),
+   *  raised as `prompt.change`. The page's own box — `control`. */
+  promptChange: 'control',
   /** The person's answer to a mod's question (`$.ui.ask`), or their
    *  dismissing it: what a mod goes on to do with it runs as the mod —
    *  `control`, as a press on an element it drew is. */
@@ -303,6 +310,12 @@ export type ModsUiState = {
   /** Some loaded hook selects `prompt.edit`: the page asks for each edit
    *  of its box. Absent when none, and from an older runtime. */
   editHooked?: true
+  /** Some loaded hook selects `prompt.autocomplete`: the page asks for rows
+   *  for the token at its caret. Absent when none, and from an older runtime. */
+  autocompleteHooked?: true
+  /** Some loaded hook selects `prompt.change`: the page tells its box's
+   *  untyped changes. Absent when none, and from an older runtime. */
+  changeHooked?: true
   /** What a `turn.complete` hook answered beneath the last answer. */
   turnNote?: { turnId: string; text: string }
   /** The questions mods asked that wait for the person (`$.ui.ask`); absent
@@ -421,11 +434,15 @@ export type ModsSeatPayload = {
 export type ModsPromptBox = { text: string; cursor: number }
 export type ModsComposerFillMode = 'replace' | 'append' | 'insert'
 
+/** Text a mod draws in the prompt box at `end`, never part of the draft;
+ *  `start` / `end` are offsets into the draft it travels beside. */
+export type ModsPromptVirtualText = { start: number; end: number; virtualText: string }
+
 /** A `composer` delta: what the runtime asks of the page's prompt box. A
  *  page that draws no composer for the session leaves it unanswered. */
 export type ModsComposerRequest =
   | { requestId: string; op: 'read' }
-  | { requestId: string; op: 'fill'; text: string; mode: ModsComposerFillMode }
+  | { requestId: string; op: 'fill'; text: string; mode: ModsComposerFillMode; decorations?: ModsPromptVirtualText[] }
   | { requestId: string; op: 'suggest'; text: string }
 
 /** What the page answers, as `mods.composerAnswer`'s payload less the
@@ -455,9 +472,29 @@ export type ModsPromptEdit = {
 
 export type ModsPromptEditPayload = { sessionId: string; edit: ModsPromptEdit }
 
-/** The box the page shows after the edit; null when the session has no mod
- *  runtime (the page applies the edit as typed). */
-export type ModsPromptEditResult = { box: ModsPromptBox | null }
+/** The box the page shows after the edit, with the virtual text drawn over
+ *  it; null when the session has no mod runtime (the page applies the edit
+ *  as typed). */
+export type ModsPromptEditResult = { box: (ModsPromptBox & { decorations?: ModsPromptVirtualText[] }) | null }
+
+/** The token a page's caret stands at the end of: the draft, the caret, the
+ *  run of non-whitespace ending there (never empty) and where it begins. */
+export type ModsPromptAutocompleteQuery = { text: string; cursor: number; token: string; start: number }
+export type ModsPromptAutocompletePayload = { sessionId: string; query: ModsPromptAutocompleteQuery }
+
+/** One row a mod adds: what taking it writes in place of the token, what it
+ *  shows, and a dim line beside it. */
+export type ModsPromptSuggestion = { text: string; label?: string; description?: string }
+
+/** The mods' rows for the token, in order; none when the session has no mod
+ *  runtime. */
+export type ModsPromptAutocompleteResult = { suggestions: ModsPromptSuggestion[] }
+
+/** Why a page's box changed without a typed edit. A plugin's fill is the
+ *  runtime's own to tell, and the page keeps no history to recall. */
+export const MODS_PROMPT_CHANGE_CAUSES = ['clear', 'undo'] as const
+export type ModsPromptChange = ModsPromptBox & { cause: (typeof MODS_PROMPT_CHANGE_CAUSES)[number] }
+export type ModsPromptChangePayload = { sessionId: string; change: ModsPromptChange }
 
 function isPromptBox(value: unknown): value is ModsPromptBox {
   return (
@@ -476,12 +513,31 @@ export function isModsComposerRequest(value: unknown): value is ModsComposerRequ
     case 'read':
       return true
     case 'fill':
-      return typeof value.text === 'string' && (value.mode === 'replace' || value.mode === 'append' || value.mode === 'insert')
+      return (
+        typeof value.text === 'string' &&
+        (value.mode === 'replace' || value.mode === 'append' || value.mode === 'insert') &&
+        (value.decorations === undefined || isVirtualTextList(value.decorations))
+      )
     case 'suggest':
       return typeof value.text === 'string'
     default:
       return false
   }
+}
+
+function isVirtualText(value: unknown): value is ModsPromptVirtualText {
+  return (
+    isRecord(value) &&
+    typeof value.start === 'number' &&
+    Number.isInteger(value.start) &&
+    typeof value.end === 'number' &&
+    Number.isInteger(value.end) &&
+    typeof value.virtualText === 'string'
+  )
+}
+
+export function isVirtualTextList(value: unknown): value is ModsPromptVirtualText[] {
+  return Array.isArray(value) && value.every(isVirtualText)
 }
 
 export function isModsComposerAnswerPayload(value: unknown): value is ModsComposerAnswerPayload {
@@ -699,6 +755,8 @@ export function isModsUiState(value: unknown): value is ModsUiState {
     (value.panes === undefined || (Array.isArray(value.panes) && value.panes.every(isModsUiPane))) &&
     (value.hooked === undefined || (Array.isArray(value.hooked) && value.hooked.every(isModsUiHookedSite))) &&
     (value.editHooked === undefined || value.editHooked === true) &&
+    (value.autocompleteHooked === undefined || value.autocompleteHooked === true) &&
+    (value.changeHooked === undefined || value.changeHooked === true) &&
     (value.turnNote === undefined ||
       (isRecord(value.turnNote) && typeof value.turnNote.turnId === 'string' && typeof value.turnNote.text === 'string')) &&
     (value.asks === undefined || (Array.isArray(value.asks) && value.asks.every(isModsUiAsk))) &&
@@ -766,6 +824,29 @@ export function isModsPromptEditPayload(value: unknown): value is ModsPromptEdit
     isOffsetIn(edit.end, edit.text) &&
     (edit.start as number) <= (edit.end as number) &&
     (edit.key === undefined || isPromptEditKey(edit.key))
+  )
+}
+
+export function isModsPromptAutocompletePayload(value: unknown): value is ModsPromptAutocompletePayload {
+  if (!isRecord(value) || typeof value.sessionId !== 'string' || value.sessionId === '') return false
+  const query = value.query
+  if (!isRecord(query) || typeof query.text !== 'string' || typeof query.token !== 'string') return false
+  return (
+    isOffsetIn(query.cursor, query.text) &&
+    isOffsetIn(query.start, query.text) &&
+    (query.start as number) < (query.cursor as number) &&
+    query.text.slice(query.start as number, query.cursor as number) === query.token
+  )
+}
+
+export function isModsPromptChangePayload(value: unknown): value is ModsPromptChangePayload {
+  if (!isRecord(value) || typeof value.sessionId !== 'string' || value.sessionId === '') return false
+  const change = value.change
+  return (
+    isRecord(change) &&
+    typeof change.text === 'string' &&
+    isOffsetIn(change.cursor, change.text) &&
+    (MODS_PROMPT_CHANGE_CAUSES as readonly unknown[]).includes(change.cause)
   )
 }
 

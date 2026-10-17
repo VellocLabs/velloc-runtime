@@ -20,8 +20,15 @@ import { ModInstance, type ModCall } from './ModInstance'
 import { RAISED_EVENTS, refuseModuleSource, refuseRegistrations, unraisedRenderSites } from './modAdmission'
 import { needsCompiler } from './modCompilerSurface'
 import { implementedNouns, isOpResult, serveNoun, serveNounStream, type ModEnvHost, type ModNounHost } from './modNouns'
-import { HEADLESS_COMPOSER, ModComposerBridge, type ModComposerAnswer } from './modComposer'
+import { HEADLESS_COMPOSER, ModComposerBridge, type DecoratedPromptBox, type ModComposerAnswer } from './modComposer'
 import { applyPromptEdit, raisePromptEdit, type PromptEdit } from './modPromptEdit'
+import {
+  raisePromptAutocomplete,
+  raisePromptChange,
+  type PromptAutocompleteInput,
+  type PromptAutocompleteSuggestion,
+  type PromptChangeInput,
+} from './promptBoxEvents'
 import { EMPTY_USES, ENGINE_NOUNS, pluginNounCalls, unsupportedEngineCalls, type ModUses } from './modScan'
 import { isBuiltinModPath } from './builtinMods'
 import type { ModBuildStore } from './modBuildStore'
@@ -667,8 +674,14 @@ export class ModRuntime implements TurnExtensions {
         state: options.session.state ?? this.state,
         composer: options.session.composer ?? Object.assign(Object.create(null), {
           read: (signal?: AbortSignal) => (this.composer ?? HEADLESS_COMPOSER).read(signal),
-          fill: (input: Parameters<ModComposerBridge['fill']>[0], signal?: AbortSignal) =>
-            (this.composer ?? HEADLESS_COMPOSER).fill(input, signal),
+          fill: async (input: Parameters<ModComposerBridge['fill']>[0], signal?: AbortSignal, context?: DispatchContext) => {
+            const filled = await (this.composer ?? HEADLESS_COMPOSER).fill(input, signal)
+            // The box took a plugin's text: `prompt.change`, past every hook
+            // the filling call is nested in. Not awaited, so a hook that
+            // fills from `prompt.change` does not wait on itself.
+            if (filled.isFilled) void this.promptChange({ ...filled.box, cause: 'fill' }, context)
+            return filled
+          },
           suggest: (input: { text: string }, signal?: AbortSignal) => (this.composer ?? HEADLESS_COMPOSER).suggest(input, signal),
           readsBox,
         }),
@@ -1698,6 +1711,8 @@ export class ModRuntime implements TurnExtensions {
       })),
       hooked: this.renderSites(),
       ...(this.hasPromptEditHooks() ? { editHooked: true } : {}),
+      ...(this.hasPromptAutocompleteHooks() ? { autocompleteHooked: true } : {}),
+      ...(this.hasPromptChangeHooks() ? { changeHooked: true } : {}),
       ...(this.turnNote ? { turnNote: this.turnNote } : {}),
     }
   }
@@ -1712,16 +1727,24 @@ export class ModRuntime implements TurnExtensions {
   /**
    * `turn.start`: "fires when a model turn begins, before its first model
    * call; `next(e)` resolves to `{ turnId }`. Observe: a different return
-   * changes nothing." Never rejects; bounded by the caller's signal.
+   * changes nothing." `agentId` names a loop under the slot (a sub-agent's, a
+   * teammate's with no runtime of its own); absent on the main loop, whose
+   * start alone clears the turn note. Never rejects; bounded by the caller's
+   * signal.
    */
-  async turnStart(input: { text: string; turnId: string }, signal?: AbortSignal): Promise<void> {
-    if (this.turnNote) {
+  async turnStart(input: { text: string; turnId: string; agentId?: string }, signal?: AbortSignal): Promise<void> {
+    if (this.turnNote && input.agentId === undefined) {
       this.turnNote = undefined
       this.emitUiState()
     }
     if (this.disposed || !this.dispatcher.hasHooksFor('turn.start')) return
+    const e = {
+      text: input.text,
+      turnId: input.turnId,
+      ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
+    }
     try {
-      await this.dispatcher.dispatch('turn.start', { text: input.text, turnId: input.turnId }, () => ({ turnId: input.turnId }), {
+      await this.dispatcher.dispatch('turn.start', e, () => ({ turnId: input.turnId }), {
         ...(signal ? { signal } : {}),
         accepts: isRecord,
       })
@@ -2957,9 +2980,40 @@ export class ModRuntime implements TurnExtensions {
 
   /** `prompt.edit` for one edit the person made in the page's box
    *  (`mods.promptEdit`): the box the page shows. Never rejects. */
-  async promptEdit(edit: PromptEdit, signal?: AbortSignal): Promise<{ text: string; cursor: number }> {
+  async promptEdit(edit: PromptEdit, signal?: AbortSignal): Promise<DecoratedPromptBox> {
     if (this.disposed) return applyPromptEdit(edit)
     return raisePromptEdit(this.dispatcher, edit, this.options.report, signal)
+  }
+
+  /** Whether any loaded hook selects `prompt.autocomplete`: the page asks
+   *  for rows only then. */
+  hasPromptAutocompleteHooks(): boolean {
+    return !this.disposed && this.dispatcher.hasHooksFor('prompt.autocomplete')
+  }
+
+  /** `prompt.autocomplete` for the token at a page's caret
+   *  (`mods.promptAutocomplete`): the rows the mods add. Never rejects. */
+  async promptAutocomplete(input: PromptAutocompleteInput, signal?: AbortSignal): Promise<PromptAutocompleteSuggestion[]> {
+    if (this.disposed) return []
+    try {
+      return await raisePromptAutocomplete(this.dispatcher, input, this.options.report, signal)
+    } catch {
+      return []
+    }
+  }
+
+  /** Whether any loaded hook selects `prompt.change`: the page tells its
+   *  box's untyped changes only then. */
+  hasPromptChangeHooks(): boolean {
+    return !this.disposed && this.dispatcher.hasHooksFor('prompt.change')
+  }
+
+  /** `prompt.change` for a change of the box no one typed: a page's clear or
+   *  undo (`mods.promptChange`), a plugin's fill (`context` its call). Never
+   *  rejects. */
+  async promptChange(change: PromptChangeInput, context?: DispatchContext): Promise<void> {
+    if (this.disposed) return
+    await raisePromptChange(this.dispatcher, change, this.options.report, context)
   }
 
   /**

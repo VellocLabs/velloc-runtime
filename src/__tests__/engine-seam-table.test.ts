@@ -25,6 +25,8 @@ const RAISED_ELSEWHERE: Record<string, string> = {
   'ui.input': 'the drawing sites',
   'ui.select': 'the drawing sites',
   'prompt.edit': "the page's prompt box (mods/modPromptEdit.ts)",
+  'prompt.autocomplete': "the page's prompt-box typeahead (mods/promptBoxEvents.ts)",
+  'prompt.change': "the page's prompt box and a plugin's fill (mods/promptBoxEvents.ts)",
   'session.attach': 'the client roster',
   'session.detach': 'the client roster',
   'skill.prompt': 'the skill expansion',

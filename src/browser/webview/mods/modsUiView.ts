@@ -23,6 +23,9 @@ import {
   type ModsComposerRequest,
   type ModsPageAnswer,
   type ModsPageRequest,
+  type ModsPromptAutocompleteQuery,
+  type ModsPromptAutocompleteResult,
+  type ModsPromptChange,
   type ModsPromptEdit,
   type ModsPromptEditResult,
   type ModsRenderResult,
@@ -32,7 +35,7 @@ import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { ModUiContextValue, ModUiToastRow } from '../../../components/assistant-ui/mod-ui-context'
 import { EMPTY_MOD_UI, staleKeyOf } from '../../../components/assistant-ui/mod-ui-context'
 
-export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'hooked' | 'editHooked' | 'stale' | 'turnNote' | 'asks' | 'view'>
+export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'hooked' | 'editHooked' | 'autocompleteHooked' | 'changeHooked' | 'stale' | 'turnNote' | 'asks' | 'view'>
 
 type Listener = (view: ModsUiView) => void
 
@@ -177,6 +180,8 @@ export function holdModsUiView(
         panes: event.payload.panes ?? [],
         hooked: event.payload.hooked ?? [],
         editHooked: event.payload.editHooked === true,
+        autocompleteHooked: event.payload.autocompleteHooked === true,
+        changeHooked: event.payload.changeHooked === true,
         asks: event.payload.asks ?? [],
         ...(event.payload.turnNote ? { turnNote: event.payload.turnNote } : {}),
         ...(event.payload.view ? { view: event.payload.view } : {}),
@@ -274,20 +279,36 @@ export function modsUiActions(
 export function modsComposerControls(
   connection: Pick<RuntimeConnection, 'subscribe' | 'request' | 'can'>,
   sessionId: string,
-): Pick<ModUiContextValue, 'onComposerRequest' | 'answerComposer' | 'promptEdit'> {
-  const can = (action: 'composerAnswer' | 'promptEdit'): boolean => {
+): Pick<ModUiContextValue, 'onComposerRequest' | 'answerComposer' | 'promptEdit' | 'promptAutocomplete' | 'promptChange'> {
+  const can = (action: 'composerAnswer' | 'promptEdit' | 'promptAutocomplete' | 'promptChange'): boolean => {
     try {
       return connection.can(MODS_CAPABILITY, action)
     } catch {
       return false
     }
   }
-  const promptEdit = can('promptEdit')
-    ? {
-        promptEdit: async (edit: ModsPromptEdit) =>
-          (await connection.request<ModsPromptEditResult>('mods.promptEdit', { sessionId, edit })).box,
-      }
-    : {}
+  const promptEdit = {
+    ...(can('promptEdit')
+      ? {
+          promptEdit: async (edit: ModsPromptEdit) =>
+            (await connection.request<ModsPromptEditResult>('mods.promptEdit', { sessionId, edit })).box,
+        }
+      : {}),
+    ...(can('promptAutocomplete')
+      ? {
+          promptAutocomplete: async (query: ModsPromptAutocompleteQuery) =>
+            (await connection.request<ModsPromptAutocompleteResult>('mods.promptAutocomplete', { sessionId, query }))
+              .suggestions,
+        }
+      : {}),
+    ...(can('promptChange')
+      ? {
+          promptChange: async (change: ModsPromptChange) => {
+            await connection.request('mods.promptChange', { sessionId, change })
+          },
+        }
+      : {}),
+  }
   if (!can('composerAnswer')) return promptEdit
   const store = storeFor(connection, sessionId)
   return {

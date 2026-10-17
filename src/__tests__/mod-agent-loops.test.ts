@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkingState, ModelReplyRow, Message } from '../runtime/RuntimeTypes'
 import type { QueryRuntimeDeps } from '../runtime/interfaces/QueryRuntimeDeps'
 import { declareTool } from '../toolkit/toolContract'
@@ -149,9 +149,11 @@ describe('modsForAgentLoop resolves the slot at each use', () => {
 
 // ── the real tool path ───────────────────────────────────────────────────────
 
-function rootRuntime(registerBody: string) {
+function rootRuntime(registerBody: string, respawnBackoffMs?: number[]) {
   const reports: string[] = []
+  const crashes: Array<() => void> = []
   const runtime = new ModRuntime({
+    ...(respawnBackoffMs ? { respawnBackoffMs } : {}),
     modules: [{ plugin: 'guard', path: 'guard/hooks/register.js' }],
     readModule: async () =>
       `export function register(on) {\n${registerBody}\n}\n// load ${++uniqueLoad}`,
@@ -163,13 +165,14 @@ function rootRuntime(registerBody: string) {
       const closed = new Promise<{ reason: 'closed' | 'crashed' }>(resolve => {
         settle = resolve
       })
+      crashes.push(() => settle({ reason: 'crashed' }))
       return { port: channel.port1, closed, close: () => settle({ reason: 'closed' }) }
     },
     session: { id: () => 'root', cwd: () => '/work' },
     report: line => reports.push(line),
   })
   runtimes.push(runtime)
-  return { runtime, reports }
+  return { runtime, reports, crash: () => crashes.at(-1)?.() }
 }
 
 /** A session's own tool context — as a sub-agent's or a teammate's runtime
@@ -304,6 +307,58 @@ describe('a child loop\'s tool call is the slot\'s tool.call', () => {
     runtime.dispose()
     undo()
     expect(resultOf((await read(context, '/repo/.env'))[0]).isError).toBe(false)
+    expect(calls).toHaveLength(1)
+  })
+})
+
+const CHECK_GUARD = `
+  on('tool.check', { tool: 'Read' }, async ($, e, next) => {
+    await $.ui.log('check ' + e.input.file_path + ' agentId=' + e.agentId)
+    return /\.env$/.test(e.input.file_path) ? { decision: 'deny', reason: 'check: .env is off limits' } : next(e)
+  })
+`
+
+describe("a child loop's permission check is the slot's tool.check", () => {
+  it('a sub-agent cannot get past the check, and the hook sees whose check it is', async () => {
+    const { runtime, reports } = rootRuntime(CHECK_GUARD)
+    registerModSlot('root', runtime)
+    linkModChild('subagent-a1b2', 'root')
+    const { context, calls } = sessionContext(modsForAgentLoop('subagent-a1b2', 'a1b2'))
+
+    const denied = await read(context, '/repo/.env')
+    expect(resultOf(denied[0])).toEqual({ text: 'check: .env is off limits', isError: true })
+    expect(calls).toEqual([])
+    await read(context, '/repo/readme.md')
+    expect(calls).toHaveLength(1)
+    expect(reports).toEqual([
+      'guard: check /repo/.env agentId=a1b2',
+      'guard: check /repo/readme.md agentId=a1b2',
+    ])
+  })
+
+  it("the main loop's own check carries no agentId; an in-turn fork's carries its own", async () => {
+    const { runtime, reports } = rootRuntime(CHECK_GUARD)
+    const { context } = sessionContext(runtime)
+    await read(context, '/repo/readme.md')
+    context.agentId = 'fork-7'
+    await read(context, '/repo/readme.md')
+    expect(reports).toEqual(['guard: check /repo/readme.md agentId=undefined', 'guard: check /repo/readme.md agentId=fork-7'])
+  })
+
+  it("while the slot's guard restarts, a sub-agent's check is refused, not waved through", async () => {
+    const { runtime, crash } = rootRuntime(CHECK_GUARD, [60_000])
+    await runtime.ready
+    registerModSlot('root', runtime)
+    linkModChild('subagent-a1b2', 'root')
+    const { context, calls } = sessionContext(modsForAgentLoop('subagent-a1b2', 'a1b2'))
+    await read(context, '/repo/readme.md')
+    expect(calls).toHaveLength(1)
+
+    crash()
+    await vi.waitFor(() => expect(runtime.status().some(row => row.state === 'crashed')).toBe(true))
+    const refused = resultOf((await read(context, '/repo/readme.md'))[0])
+    expect(refused.isError).toBe(true)
+    expect(refused.text).toContain('could not answer')
     expect(calls).toHaveLength(1)
   })
 })

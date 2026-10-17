@@ -145,8 +145,8 @@ export interface TurnExtensions extends ToolCallExtensions {
   ): Promise<{ blocks: PromptContextBlock[]; instructionFiles?: InstructionFile[] }>
 
   // -- L1.15 the turn starts ----------------------------------------------
-  /** @mode observe — `turn.start`. */
-  turnStart(input: { text: string; turnId: string }, signal?: AbortSignal): Promise<void>
+  /** @mode observe — `turn.start`; `agentId` on a loop under the slot. */
+  turnStart(input: { text: string; turnId: string; agentId?: string }, signal?: AbortSignal): Promise<void>
 
   // -- L1.16 a row is kept ------------------------------------------------
   /** @mode around — gate for `session.append`. */
@@ -259,9 +259,10 @@ export function noTurnExtensions(): TurnExtensions {
 }
 
 /** What a loop under a parent session's slot reaches of that slot: the tool
- *  path's seams and `turn.step`, each resolved by the parent at call time. */
+ *  path's seams, `turn.start` and `turn.step`, each resolved by the parent at
+ *  call time. */
 export type AgentLoopParent = Pick<TurnExtensions, 'ready' | 'hasToolCallHooks' | 'toolCall'> &
-  Partial<Pick<TurnExtensions, 'hasTurnStepHooks' | 'turnStep' | 'report' | 'hasClassicHooks' | 'classic' | TurnLevelMember>>
+  Partial<Pick<TurnExtensions, 'hasTurnStepHooks' | 'turnStep' | 'report' | 'hasClassicHooks' | 'classic' | 'turnStart' | TurnLevelMember>>
 
 /** The turn-level seams a child loop reaches of its parent's slot. */
 type TurnLevelMember =
@@ -273,13 +274,24 @@ type TurnLevelMember =
   | 'turnContinue'
 
 /** The extensions of a sub-agent or teammate loop with no runtime of its
- *  own: the parent's tool and model-request seams, raised with `agentId`,
+ *  own: the parent's tool, turn-start and model-request seams, raised with
+ *  `agentId`,
  *  and a `prompt.submit` that enters the text as given (a child loop's
  *  prompts are not typed by a person). `ready` is read from the parent at
  *  each access, so a rebuilt parent runtime is followed. */
 export type AgentLoopExtensions = Pick<
   TurnExtensions,
-  'ready' | 'hasToolCallHooks' | 'toolCall' | 'hasTurnStepHooks' | 'turnStep' | 'report' | 'hasClassicHooks' | 'classic' | 'promptSubmit' | TurnLevelMember
+  | 'ready'
+  | 'hasToolCallHooks'
+  | 'toolCall'
+  | 'hasTurnStepHooks'
+  | 'turnStep'
+  | 'report'
+  | 'hasClassicHooks'
+  | 'classic'
+  | 'promptSubmit'
+  | 'turnStart'
+  | TurnLevelMember
 > & { readonly agentId: string }
 
 export function agentLoopExtensions(parent: AgentLoopParent, agentId: string): AgentLoopExtensions {
@@ -303,5 +315,6 @@ export function agentLoopExtensions(parent: AgentLoopParent, agentId: string): A
     classic: (event, e, core, signal, context) =>
       parent.classic ? parent.classic(event, e, core, signal, context) : Promise.resolve({ settled: false }),
     promptSubmit: async (text) => ({ entered: true, text, context: [] }),
+    turnStart: async (input, signal) => parent.turnStart?.({ ...input, agentId }, signal),
   }
 }

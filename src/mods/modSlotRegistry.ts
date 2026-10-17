@@ -12,8 +12,9 @@ import type {
   ToolCallSettlement,
 } from './toolCallEvent'
 import type { DispatchContext } from './modTypes'
-import type { ModComposerAnswer, ModComposerRequest, PromptBox } from './modComposer'
+import type { DecoratedPromptBox, ModComposerAnswer, ModComposerRequest } from './modComposer'
 import type { PromptEdit } from './modPromptEdit'
+import type { PromptAutocompleteInput, PromptAutocompleteSuggestion, PromptChangeInput } from './promptBoxEvents'
 import type { ModPageAnswer, ModPageRequest } from './modPage'
 import type { ModUiAsk, ModUiAskAnswer, ModUiHookedSite, ModUiPane, ModUiStale, ModUiTurnNote } from './modUi'
 import type { ModPaneSeat } from './modPanes'
@@ -58,6 +59,8 @@ export type ModSlotUiState = {
   panes?: ModUiPane[]
   hooked?: ModUiHookedSite[]
   editHooked?: true
+  autocompleteHooked?: true
+  changeHooked?: true
   turnNote?: ModUiTurnNote
   asks?: ModUiAsk[]
   view?: ModAgentView
@@ -106,7 +109,11 @@ export type ModSlotDrawing = {
   /** A page's answer to a `composer` request; false when none waits. */
   composerAnswer(answer: ModComposerAnswer): boolean
   /** `prompt.edit` for one edit in a page's box: the box it shows. */
-  promptEdit(edit: PromptEdit, signal?: AbortSignal): Promise<PromptBox>
+  promptEdit(edit: PromptEdit, signal?: AbortSignal): Promise<DecoratedPromptBox>
+  /** `prompt.autocomplete` for the token at a page's caret: the mods' rows. */
+  promptAutocomplete(input: PromptAutocompleteInput, signal?: AbortSignal): Promise<PromptAutocompleteSuggestion[]>
+  /** `prompt.change` for a page's box changing without a typed edit. */
+  promptChange(change: PromptChangeInput): Promise<void>
   /** A page's answer to a `$.ui.ask` question; false when none waits. */
   askAnswer(answer: ModUiAskAnswer): boolean
   /** A page's answer to a `page` request (`$.ui.copy` / `.focus` /
@@ -404,8 +411,20 @@ export function modsForAgentLoop(sessionId: string, agentId: string): AgentLoopM
       const slot = findModSlot(sessionId)
       return slot ? slot.toolCall(e, core, signal, context) : Promise.resolve({ settled: false })
     },
-    // A child loop's model requests are the slot's `turn.step` too, carrying
-    // its `agentId`.
+    // A child loop's permission checks are the slot's `tool.check`, carrying
+    // its `agentId` (stamped by the tool path from this holder's).
+    hasToolCheckHooks(): boolean {
+      return findModSlot(sessionId)?.hasToolCheckHooks?.() === true
+    },
+    toolCheck(e, core, signal, context) {
+      const slot = findModSlot(sessionId)
+      return slot?.toolCheck ? slot.toolCheck(e, core, signal, context) : Promise.resolve({ settled: false as const })
+    },
+    // A child loop's turns and model requests are the slot's `turn.start` and
+    // `turn.step` too, carrying its `agentId`.
+    turnStart(input, signal) {
+      return findModSlot(sessionId)?.turnStart?.(input, signal) ?? Promise.resolve()
+    },
     hasTurnStepHooks(): boolean {
       return findModSlot(sessionId)?.hasTurnStepHooks?.() === true
     },

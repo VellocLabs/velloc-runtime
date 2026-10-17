@@ -198,7 +198,7 @@ export const SEAM_EVENTS: readonly SeamEvent[] = Object.freeze([
   {
     event: 'turn.start',
     member: 'turnStart',
-    input: '{text, turnId}',
+    input: '{text, turnId, agentId?}',
     output: 'nothing',
     mode: 'observe',
     kind: 'observe',

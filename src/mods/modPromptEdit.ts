@@ -5,7 +5,7 @@
  */
 
 import type { ModDispatcher } from './ModDispatcher'
-import { isPromptBox, type PromptBox } from './modComposer'
+import { isPromptBox, virtualTextRunsOf, type DecoratedPromptBox, type PromptBox } from './modComposer'
 
 /** `ClientKeyEvent`: the one key that made an edit. */
 export type PromptEditKey = { key: string; ctrl?: true; shift?: true; meta?: true }
@@ -70,16 +70,17 @@ function sameKey(a: PromptEditKey | undefined, b: unknown): boolean {
 }
 
 /**
- * `prompt.edit` through the chain; resolves to the box the page shows. `origin`
- * and `key` are pinned: a hook rewriting either is refused. A failed chain is
- * reported and the edit lands as typed. Rejects only on `signal`'s abort.
+ * `prompt.edit` through the chain; resolves to the box the page shows, with the
+ * `virtualText` runs of the answer's decorations. `origin` and `key` are pinned:
+ * a hook rewriting either is refused. A failed chain is reported and the edit
+ * lands as typed. Rejects only on `signal`'s abort.
  */
 export async function raisePromptEdit(
   dispatcher: ModDispatcher,
   edit: PromptEdit,
   report: (line: string) => void,
   signal?: AbortSignal,
-): Promise<PromptBox> {
+): Promise<DecoratedPromptBox> {
   const typed = applyPromptEdit(edit)
   if (!dispatcher.hasHooksFor('prompt.edit')) return typed
   const e = { origin: PROMPT_EDIT_ORIGIN, ...edit }
@@ -98,7 +99,8 @@ export async function raisePromptEdit(
       },
       { ...(signal ? { signal } : {}), accepts: isPromptBox },
     )
-    return { text: result.text, cursor: result.cursor }
+    const runs = virtualTextRunsOf((result as { decorations?: unknown }).decorations)
+    return { text: result.text, cursor: result.cursor, ...(runs.length > 0 ? { decorations: runs } : {}) }
   } catch (error) {
     if (signal?.aborted) throw error
     report(`mods: prompt.edit failed: ${error instanceof Error ? error.message : String(error)}; the edit lands as typed`)

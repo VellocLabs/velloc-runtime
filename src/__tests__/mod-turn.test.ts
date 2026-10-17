@@ -4,10 +4,12 @@
  * rejects, naming both ids, for a turn that is not running.
  */
 import { afterEach, describe, expect, it } from 'vitest'
+import { agentLoopExtensions } from '../engine/extensionSeam'
 import { RAISED_EVENTS } from '../mods/modAdmission'
 import { implementedNouns } from '../mods/modNouns'
 import { ModRuntime, type ModModuleRef, type ModWorkerHandle } from '../mods/ModRuntime'
 import { installModWorkerHost } from '../mods/ModWorkerHost'
+import { linkModChild, modsForAgentLoop, registerModSlot, resetModSlotRegistryForTests } from '../mods/modSlotRegistry'
 import type { ModUiEvent } from '../mods/modUi'
 
 let uniqueLoad = 0
@@ -16,6 +18,7 @@ const runtimes: ModRuntime[] = []
 afterEach(() => {
   for (const runtime of runtimes.splice(0)) runtime.dispose()
   for (const port of open.splice(0)) port.close()
+  resetModSlotRegistryForTests()
 })
 
 function world(modules: Record<string, string>, options: { abort?: (turnId: string) => void } = {}) {
@@ -84,6 +87,35 @@ describe('turn.start', () => {
     await runtime.ready
     await runtime.turnStart({ text: 'hello', turnId: 'turn-1' })
     expect(logged('watch')).toEqual([{ e: { text: 'hello', turnId: 'turn-1' }, got: { turnId: 'turn-1' } }])
+  })
+
+  it("a sub-agent's turn is heard by its slot's hooks, told apart by agentId", async () => {
+    const { runtime, logged } = world({
+      watch: `on('turn.start', async ($, e, next) => { await $.ui.log(JSON.stringify(e)); return next(e) })`,
+    })
+    await runtime.ready
+    registerModSlot('sess-turn', runtime)
+    linkModChild('subagent-a1', 'sess-turn')
+    const child = agentLoopExtensions(modsForAgentLoop('subagent-a1', 'a1'), 'a1')
+
+    await runtime.turnStart({ text: 'main prompt', turnId: 'turn-1' })
+    await child.turnStart({ text: 'child prompt', turnId: 'turn-c' })
+    expect(logged('watch')).toEqual([
+      { text: 'main prompt', turnId: 'turn-1' },
+      { text: 'child prompt', turnId: 'turn-c', agentId: 'a1' },
+    ])
+  })
+
+  it("a sub-agent's turn leaves the main loop's turn note standing", async () => {
+    const { runtime } = world({
+      tldr: `on('turn.complete', () => ({ text: 'note' }))`,
+    })
+    await runtime.ready
+    await runtime.turnComplete(COMPLETE)
+    await runtime.turnStart({ text: 'child', turnId: 'turn-c', agentId: 'a1' })
+    expect(runtime.uiSnapshot().turnNote).toEqual({ turnId: 'turn-1', text: 'note' })
+    await runtime.turnStart({ text: 'next', turnId: 'turn-2' })
+    expect(runtime.uiSnapshot().turnNote).toBeUndefined()
   })
 
   it('costs nothing unhooked, and a failing hook does not stop the turn', async () => {

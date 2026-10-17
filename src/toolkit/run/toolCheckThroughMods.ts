@@ -93,13 +93,16 @@ export function verdictOfToolCheck(
 }
 
 export type CheckToolThroughModsParams = {
-  mods: Partial<Pick<ToolCallExtensions, 'hasToolCheckHooks' | 'toolCheck' | 'report'>>
+  mods: Partial<Pick<ToolCallExtensions, 'hasToolCheckHooks' | 'toolCheck' | 'report' | 'agentId'>>
   tool: ToolContract
   input: Record<string, unknown>
   /** The engine's own verdict: core of the event. */
   verdict: ToolPermissionVerdict
   /** The call being decided; absent on a `$.tool.check` query. */
   callRef?: string
+  /** The loop a real call is decided in (a sub-agent's, a teammate's);
+   *  absent on the main loop and on a query. */
+  agentId?: string
   signal?: AbortSignal
   /** Who raised it, when a plugin did (`$.tool.check`, or `tool.check`
    *  inside its `$.tool.call`): its `next.origin`, and the hook to skip. */
@@ -127,7 +130,7 @@ export async function checkToolThroughMods(
   if (!mods.toolCheck) return verdict
   if (!params.always && mods.hasToolCheckHooks?.() !== true) return verdict
   const settlement = await mods.toolCheck(
-    toolCheckEventOf(tool.name, input, params.callRef),
+    toolCheckEventOf(tool.name, input, params.callRef, params.agentId),
     async () => toolCheckResultOf(verdict),
     params.signal,
     context,

@@ -362,6 +362,7 @@ async function gatePermission(
               }
             : { decision: 'allow', updatedInput: input, permissionResult: undefined },
       callRef: `runjs-workspace-${op}-check-${++nestedConfirmSeq}`,
+      agentId: context.agentId ?? mods.agentId,
       signal: context.cancelSource.signal,
       context: context.modCallContext,
     })

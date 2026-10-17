@@ -1449,7 +1449,8 @@ async function promptFill(args: PromptFillArgs, context: NounContext): Promise<P
     const input = isRecord(arrived) ? arrived : {}
     const text = withoutInvisible(typeof input.text === 'string' ? input.text : e.text)
     const mode = PROMPT_FILL_MODES.includes(input.mode as PromptFillMode) ? (input.mode as PromptFillMode) : e.mode
-    core = await host.fill({ text, mode }, call.signal)
+    const decorations = Array.isArray(input.decorations) ? (input.decorations as PromptFillArgs['decorations']) : undefined
+    core = await host.fill({ text, mode, ...(decorations ? { decorations } : {}) }, call.signal, call.context)
     return { isFilled: core.isFilled, ...(core.refusal ? { refusal: core.refusal } : {}) }
   }
   let result: { isFilled?: unknown; refusal?: unknown }

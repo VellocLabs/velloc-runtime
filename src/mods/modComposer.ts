@@ -4,6 +4,8 @@
  * A session no page draws a composer for answers as headless.
  */
 
+import type { DispatchContext } from './modTypes'
+
 /** `PromptBox`: the draft and the cursor, a UTF-16 offset into it. */
 export type PromptBox = { text: string; cursor: number }
 
@@ -11,9 +13,18 @@ export type PromptBox = { text: string; cursor: number }
 export type PromptFillMode = 'replace' | 'append' | 'insert'
 export const PROMPT_FILL_MODES: readonly PromptFillMode[] = ['replace', 'append', 'insert']
 
-/** `PromptDecoration`: `[start, end)` and the paint. Carried down the chain
- *  as given; Velloc's composer paints none (F-25). */
-export type PromptDecoration = { start: number; end: number } & Record<string, unknown>
+/** `PromptDecoration`: `[start, end)`, the paint, and `virtualText` drawn in
+ *  the box but never part of the draft. Carried down the chain as given;
+ *  Velloc's composer paints only the `virtualText` (F-25). */
+export type PromptDecoration = { start: number; end: number; virtualText?: string } & Record<string, unknown>
+
+/** A run's `virtualText` as the page draws it: at `end`, the run's own
+ *  offsets into the draft it travels beside. */
+export type PromptVirtualText = { start: number; end: number; virtualText: string }
+
+/** A box as the page shows it: the draft, the caret, and the virtual text
+ *  drawn over that draft; none when absent. */
+export type DecoratedPromptBox = PromptBox & { decorations?: PromptVirtualText[] }
 
 /** `$.prompt.fill(args)` — `PromptFillArgs`. */
 export type PromptFillArgs = { text: string; mode?: PromptFillMode; decorations?: PromptDecoration[] }
@@ -30,7 +41,7 @@ export type PromptFilled = { isFilled: boolean; refusal?: PromptFillRefusal } & 
 /** What the runtime asks of the page's box. */
 export type ModComposerAsk =
   | { op: 'read' }
-  | { op: 'fill'; text: string; mode: PromptFillMode }
+  | { op: 'fill'; text: string; mode: PromptFillMode; decorations?: PromptVirtualText[] }
   | { op: 'suggest'; text: string }
 
 /** One request to the page. */
@@ -47,7 +58,13 @@ export type ModComposerAnswer =
  *  one round trip each. Absent (a headless build): answered as headless. */
 export type ModComposerHost = {
   read(signal?: AbortSignal): Promise<PromptBox>
-  fill(input: { text: string; mode: PromptFillMode }, signal?: AbortSignal): Promise<{ isFilled: boolean; refusal?: PromptFillRefusal; box: PromptBox }>
+  /** `context`: the plugin call the fill is, for the `prompt.change` it
+   *  raises once the box holds the text. */
+  fill(
+    input: { text: string; mode: PromptFillMode; decorations?: readonly PromptDecoration[] },
+    signal?: AbortSignal,
+    context?: DispatchContext,
+  ): Promise<{ isFilled: boolean; refusal?: PromptFillRefusal; box: PromptBox }>
   suggest(input: { text: string }, signal?: AbortSignal): Promise<{ isShown: boolean }>
 }
 
@@ -80,8 +97,22 @@ export function withoutInvisible(text: string): string {
   return text.replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g, '')
 }
 
-function isDecoration(value: unknown): value is PromptDecoration {
-  return isRecord(value) && typeof value.start === 'number' && typeof value.end === 'number'
+export function isDecoration(value: unknown): value is PromptDecoration {
+  return (
+    isRecord(value) &&
+    typeof value.start === 'number' &&
+    typeof value.end === 'number' &&
+    (value.virtualText === undefined || typeof value.virtualText === 'string')
+  )
+}
+
+/** The runs of `decorations` that carry a `virtualText`, as the page draws
+ *  them; none for anything that is not a list of decorations. */
+export function virtualTextRunsOf(decorations: unknown): PromptVirtualText[] {
+  if (!Array.isArray(decorations) || !decorations.every(isDecoration)) return []
+  return decorations
+    .filter(run => typeof run.virtualText === 'string' && run.virtualText !== '')
+    .map(run => ({ start: run.start, end: run.end, virtualText: run.virtualText as string }))
 }
 
 export function promptFillArgsOf(value: unknown): PromptFillArgs {
@@ -92,7 +123,7 @@ export function promptFillArgsOf(value: unknown): PromptFillArgs {
     throw new TypeError("$.prompt.fill: mode is 'replace', 'append' or 'insert'")
   }
   if (decorations !== undefined && (!Array.isArray(decorations) || !decorations.every(isDecoration))) {
-    throw new TypeError('$.prompt.fill: decorations must be a list of { start, end, … }')
+    throw new TypeError('$.prompt.fill: decorations must be a list of { start, end, virtualText?, … }')
   }
   if (value.origin !== undefined) throw new TypeError("$.prompt.fill: origin is the engine's to set")
   return {
@@ -193,10 +224,14 @@ export class ModComposerBridge implements ModComposerHost {
   }
 
   async fill(
-    input: { text: string; mode: PromptFillMode },
+    input: { text: string; mode: PromptFillMode; decorations?: readonly PromptDecoration[] },
     signal?: AbortSignal,
   ): Promise<{ isFilled: boolean; refusal?: PromptFillRefusal; box: PromptBox }> {
-    const answer = await this.ask({ op: 'fill', text: input.text, mode: input.mode }, signal)
+    const runs = virtualTextRunsOf(input.decorations)
+    const answer = await this.ask(
+      { op: 'fill', text: input.text, mode: input.mode, ...(runs.length > 0 ? { decorations: runs } : {}) },
+      signal,
+    )
     if (answer?.op !== 'fill') return { isFilled: false, refusal: 'no_composer', box: { ...EMPTY_PROMPT_BOX } }
     return {
       isFilled: answer.isFilled === true,

@@ -2,12 +2,16 @@
  * The prompt box's answers to `$.prompt.read`, `$.prompt.fill` and `$.prompt.suggest`
  * (F-25). `fill` is refused with `dialog` while a question holds the box; a suggestion
  * shows only in an empty box with no turn running. Mod text is shown as it is. While a
- * mod hooks `prompt.edit`, typing, deleting and pasting are asked of the runtime first.
+ * mod hooks `prompt.edit`, typing, deleting and pasting are asked of the runtime first;
+ * while one hooks `prompt.change`, a clear or an undo of the box is told. The virtual
+ * text a fill or an edit's answer drew stays while the draft is the one it was drawn on.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
-import type { ModsPromptEditKey } from '@/browser/runtimeProtocol'
+import { isVirtualTextList, type ModsPromptEditKey } from '@/browser/runtimeProtocol'
 import { fillBox } from '@/mods/modComposer'
+
+import { landFillRuns, trailingVirtualText, untypedInputCause, type DecoratedDraft } from './mod-prompt-box'
 
 import { PromptEditPump, type PageEdit, type PromptEditBox } from './mod-prompt-edit'
 import { useModUi, type ModUiComposerAnswer, type ModUiComposerRequest } from './mod-ui-context'
@@ -35,6 +39,9 @@ export type ModComposerSuggestion = {
   /** Tab / →: the suggestion becomes the draft. False when there is none to
    *  take (the box holds text). */
   takeSuggestion: () => boolean
+  /** The mods' virtual text drawn after `draft`, the box's text; null when
+   *  none. */
+  virtualText: { draft: string; text: string } | null
 }
 
 /** The request's answer, from the box as it stands. Pure, for the tests. */
@@ -122,8 +129,11 @@ function writeTextarea(element: HTMLTextAreaElement, box: PromptEditBox): boolea
 }
 
 export function useModComposer({ composer, input, isRunning, isBlocked }: ModComposerOptions): ModComposerSuggestion {
-  const { onComposerRequest, answerComposer, editHooked, promptEdit } = useModUi()
+  const { onComposerRequest, answerComposer, editHooked, promptEdit, changeHooked, promptChange } = useModUi()
   const [suggestion, setSuggestion] = useState<string | null>(null)
+  const [decorated, setDecorated] = useState<DecoratedDraft | null>(null)
+  // The page's own writes of the box (a fill, an edit's answer): not a clear.
+  const writingBox = useRef(false)
   const state = useRef({ isRunning, isBlocked })
   state.current = { isRunning, isBlocked }
   // The caret a fill just placed, until the textarea holds its text: a read
@@ -151,7 +161,17 @@ export function useModComposer({ composer, input, isRunning, isBlocked }: ModCom
       })
       if (write) {
         placed.current = write
-        composer.setText(write.text)
+        const runs =
+          request.op === 'fill' && isVirtualTextList(request.decorations)
+            ? landFillRuns(request.decorations, request.mode, { text, cursor })
+            : []
+        setDecorated(runs.length > 0 ? { text: write.text, runs } : null)
+        writingBox.current = true
+        try {
+          composer.setText(write.text)
+        } finally {
+          writingBox.current = false
+        }
         // The caret after the text, once the textarea holds it.
         setTimeout(() => {
           const element = input.current
@@ -175,15 +195,24 @@ export function useModComposer({ composer, input, isRunning, isBlocked }: ModCom
     const pump = new PromptEditPump({
       read,
       write: box => {
+        const runs = isVirtualTextList(box.decorations) ? box.decorations : []
+        setDecorated(runs.length > 0 ? { text: box.text, runs } : null)
         writing = true
+        writingBox.current = true
         let written = false
         try {
           written = writeTextarea(element, box)
         } finally {
           writing = false
+          writingBox.current = false
         }
         if (written) return
-        composer.setText(box.text)
+        writingBox.current = true
+        try {
+          composer.setText(box.text)
+        } finally {
+          writingBox.current = false
+        }
         setTimeout(() => {
           if (element.value === box.text) element.setSelectionRange(box.cursor, box.cursor)
         }, 0)
@@ -230,6 +259,56 @@ export function useModComposer({ composer, input, isRunning, isBlocked }: ModCom
     }
   }, [editHooked, promptEdit, input, composer])
 
+  // `prompt.change`: an undo or a redo (the editor's own history), and the
+  // box emptied by anything but an edit (a send). Typed edits are
+  // `prompt.edit`'s; a plugin's fill is told by the runtime itself.
+  useEffect(() => {
+    const element = input.current
+    if (!changeHooked || !promptChange || !element) return
+    const tell = (cause: 'clear' | 'undo', text: string, cursor: number): void => {
+      void promptChange({ text, cursor: Math.max(0, Math.min(cursor, text.length)), cause }).catch(() => {
+        // An observer: a lost report changes nothing in the box.
+      })
+    }
+    let editing = false
+    let last = composer.getState().text
+    const onBeforeInput = (): void => {
+      editing = true
+      setTimeout(() => {
+        editing = false
+      }, 0)
+    }
+    const onInput = (event: Event): void => {
+      if (untypedInputCause((event as InputEvent).inputType ?? '') === 'undo') tell('undo', element.value, element.selectionStart)
+    }
+    element.addEventListener('beforeinput', onBeforeInput, true)
+    element.addEventListener('input', onInput, true)
+    const unsubscribe = composer.subscribe(() => {
+      const text = composer.getState().text
+      if (text === last) return
+      const cleared = text === '' && !editing && !writingBox.current
+      last = text
+      if (cleared) tell('clear', '', 0)
+    })
+    return () => {
+      unsubscribe()
+      element.removeEventListener('beforeinput', onBeforeInput, true)
+      element.removeEventListener('input', onInput, true)
+    }
+  }, [changeHooked, promptChange, input, composer])
+
+  // The virtual text belongs to the draft it was drawn on.
+  useEffect(() => {
+    if (decorated === null) return
+    if (composer.getState().text !== decorated.text) {
+      setDecorated(null)
+      return
+    }
+    return composer.subscribe(() => {
+      if (composer.getState().text !== decorated.text) setDecorated(null)
+    })
+  }, [composer, decorated])
+
   // Typing, or a turn starting, takes the suggestion away.
   useEffect(() => {
     if (suggestion === null) return
@@ -248,5 +327,7 @@ export function useModComposer({ composer, input, isRunning, isBlocked }: ModCom
     return true
   }, [composer, suggestion])
 
-  return { suggestion, takeSuggestion }
+  const drawn = decorated ? trailingVirtualText(decorated, decorated.text) : null
+  const virtualText = decorated && drawn !== null ? { draft: decorated.text, text: drawn } : null
+  return { suggestion, takeSuggestion, virtualText }
 }

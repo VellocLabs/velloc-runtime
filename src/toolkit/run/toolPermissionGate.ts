@@ -685,6 +685,7 @@ export async function* extensionCheckStage(run: AdmittedRun): AsyncGenerator<Def
     input: rawInput,
     verdict: before,
     callRef: run.block.toolCallId,
+    agentId: callContext.agentId ?? mods.agentId,
     signal: callContext.cancelSource.signal,
     context: callContext.modCallContext,
     safetyAsk: () =>

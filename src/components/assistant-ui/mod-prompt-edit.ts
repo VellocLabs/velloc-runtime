@@ -4,10 +4,11 @@
  * typed while an ask is out fold into one edit with no `key`. An ask unanswered
  * within `PROMPT_EDIT_TIMEOUT_MS` lands as typed and its late answer is dropped.
  */
-import type { ModsPromptEdit, ModsPromptEditKey } from '@/browser/runtimeProtocol'
+import type { ModsPromptEdit, ModsPromptEditKey, ModsPromptVirtualText } from '@/browser/runtimeProtocol'
 import { applyPromptEdit } from '@/mods/modPromptEdit'
 
-export type PromptEditBox = { text: string; cursor: number }
+/** The box to show, and the virtual text the answer drew over it. */
+export type PromptEditBox = { text: string; cursor: number; decorations?: ModsPromptVirtualText[] }
 
 /** How long a held edit waits for the runtime before it lands as typed: past
  *  it, typing would feel slow. */

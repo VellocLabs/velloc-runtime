@@ -154,8 +154,12 @@ export const RAISED_EVENTS: readonly string[] = Object.freeze([
   'agent.list',
   'mcp.call',
   'mcp.connect',
-  // the person's edit in the page's prompt box (modPromptEdit.ts)
+  // the person's edit in the page's prompt box (modPromptEdit.ts), the rows
+  // a mod adds to its typeahead, and its text changing without an edit
+  // (promptBoxEvents.ts)
   'prompt.edit',
+  'prompt.autocomplete',
+  'prompt.change',
   // `$.prompt`'s box: `read` an op event, `fill` / `suggest` the
   // plugin's own calls of their events
   'prompt.read',

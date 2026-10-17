@@ -3,7 +3,16 @@
  * toasts. In its own file so its consumers do not import each other.
  */
 import { createContext, useContext } from 'react'
-import type { ModStateName, ModsPageAnswer, ModsPageRequest, ModsPromptEdit } from '@/browser/runtimeProtocol'
+import type {
+  ModStateName,
+  ModsPageAnswer,
+  ModsPageRequest,
+  ModsPromptAutocompleteQuery,
+  ModsPromptChange,
+  ModsPromptEdit,
+  ModsPromptSuggestion,
+  ModsPromptVirtualText,
+} from '@/browser/runtimeProtocol'
 
 export type ModUiStatusLine = { plugin: string; text: string }
 /** Who a plugin is, for the card on its icon above the prompt: the
@@ -97,10 +106,13 @@ export const staleKeyOf = (component: string, requestId: string): string => `${c
 /** A request to the prompt box (`$.prompt.read` / `.fill` / `.suggest`). */
 export type ModUiComposerRequest =
   | { requestId: string; op: 'read' }
-  | { requestId: string; op: 'fill'; text: string; mode: 'replace' | 'append' | 'insert' }
+  | { requestId: string; op: 'fill'; text: string; mode: 'replace' | 'append' | 'insert'; decorations?: ModsPromptVirtualText[] }
   | { requestId: string; op: 'suggest'; text: string }
 
 export type ModUiPromptBox = { text: string; cursor: number }
+
+/** A box with the mods' virtual text drawn over its draft. */
+export type ModUiDecoratedBox = ModUiPromptBox & { decorations?: ModsPromptVirtualText[] }
 
 export type ModUiComposerAnswer =
   | { requestId: string; op: 'read'; box: ModUiPromptBox }
@@ -182,7 +194,19 @@ export type ModUiContextValue = {
   editHooked?: boolean
   /** `prompt.edit` for one edit: the box to show, or null when the session
    *  has no mod runtime. Absent where the connection may not ask. */
-  promptEdit?: (edit: ModsPromptEdit) => Promise<{ text: string; cursor: number } | null>
+  promptEdit?: (edit: ModsPromptEdit) => Promise<ModUiDecoratedBox | null>
+  /** Some loaded hook selects `prompt.autocomplete`: the typeahead asks for
+   *  rows (`promptAutocomplete`) for the token at the caret. */
+  autocompleteHooked?: boolean
+  /** The mods' rows for the token at the caret. Absent where the connection
+   *  may not ask. */
+  promptAutocomplete?: (query: ModsPromptAutocompleteQuery) => Promise<ModsPromptSuggestion[]>
+  /** Some loaded hook selects `prompt.change`: the box's untyped changes are
+   *  told (`promptChange`). */
+  changeHooked?: boolean
+  /** Tell the box's change no one typed (a clear, an undo). Absent where
+   *  the connection may not. */
+  promptChange?: (change: ModsPromptChange) => Promise<void>
   /** Hear the session's requests for the page's clipboard, focus ring and
    *  windows (`$.ui.copy` / `.focus` / `.scroll`); the responder that
    *  registers last answers. Absent where the connection may not answer. */

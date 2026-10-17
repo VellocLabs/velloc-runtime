@@ -117,6 +117,9 @@ export type ToolCallMods = Partial<ClassicMods> & {
     signal?: AbortSignal,
     context?: DispatchContext,
   ): Promise<ToolCallSettlement>
+  /** `turn.start` as a turn begins; `agentId` names a loop under the slot.
+   *  Optional: a holder without it raises nothing. Never rejects. */
+  turnStart?(input: { text: string; turnId: string; agentId?: string }, signal?: AbortSignal): Promise<void>
   /** Whether any loaded hook selects `turn.step`. False costs nothing. */
   hasTurnStepHooks?(): boolean
   /** `turn.step` around one model request (`ModRuntime.turnStep`): the
@@ -300,6 +303,9 @@ export type ToolCheckEvent = {
   tool: string
   input: unknown
   tool_use_id?: string
+  /** The loop a real call is decided in, as its `tool.call` carries it;
+   *  absent on the main loop and on a query. */
+  agentId?: string
 }
 
 /**
@@ -323,8 +329,13 @@ export type ToolCheckSettlement =
   | { settled: true; result: ToolCheckResult }
   | { settled: false }
 
-export function toolCheckEventOf(tool: string, input: unknown, toolUseId?: string): ToolCheckEvent {
-  return { tool, input, ...(toolUseId !== undefined ? { tool_use_id: toolUseId } : {}) }
+export function toolCheckEventOf(tool: string, input: unknown, toolUseId?: string, agentId?: string): ToolCheckEvent {
+  return {
+    tool,
+    input,
+    ...(toolUseId !== undefined ? { tool_use_id: toolUseId } : {}),
+    ...(agentId !== undefined && agentId !== '' ? { agentId } : {}),
+  }
 }
 
 /** Whether a hook's return answers `tool.check`: `{ decision }` one of the

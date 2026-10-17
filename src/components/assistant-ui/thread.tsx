@@ -76,6 +76,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useModComposer } from "./use-mod-composer";
+import { ModPromptVirtualText } from "./mod-prompt-virtual-text";
 import { ComposerTokenUsage } from "@/browser/webview/TokenUsageIndicator";
 import { REASONING_ONLY_ROW_KEY } from "@/browser/webview/showReasoning";
 import { ComposerEffortPicker } from "@/browser/webview/ComposerEffortPicker";
@@ -1611,7 +1612,7 @@ export const Composer: FC = () => {  const t = useT();
   // `$.prompt.read` / `.fill` / `.suggest`. A suggestion shows dim in the
   // empty box; Tab or → takes it.
   const composerInput = useRef<HTMLTextAreaElement | null>(null);
-  const { suggestion: modSuggestion, takeSuggestion } = useModComposer({
+  const { suggestion: modSuggestion, takeSuggestion, virtualText: modVirtualText } = useModComposer({
     composer,
     input: composerInput,
     isRunning,
@@ -1735,16 +1736,21 @@ export const Composer: FC = () => {  const t = useT();
               // thread and points at slash commands after that.
               // A mod's suggestion (`$.prompt.suggest`) shows dim in its place.
               placeholder={
-                modSuggestion ??
-                (hasMessages
-                  ? t('composer.placeholder')
-                  : t('composer.placeholderEmptyThread'))
+                modVirtualText !== null
+                  ? undefined
+                  : (modSuggestion ??
+                    (hasMessages
+                      ? t('composer.placeholder')
+                      : t('composer.placeholderEmptyThread')))
               }
               className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-composer outline-none placeholder:text-muted-foreground/80 disabled:cursor-not-allowed"
               rows={1}
               autoFocus
               aria-label={t('composer.inputAria')}
             />
+            {/* The mods' virtual text (F-25), drawn over the box after the
+                draft; the box holds and sends the draft alone. */}
+            <ModPromptVirtualText input={composerInput} shown={modVirtualText} />
             <ComposerAction />
           </div>
         </ComposerPrimitive.AttachmentDropzone>

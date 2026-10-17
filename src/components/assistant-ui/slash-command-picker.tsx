@@ -12,6 +12,10 @@ import {
 } from "react";
 import { useAuiState, useComposerRuntime } from "@assistant-ui/react";
 import type { SlashCommandSummary } from "../../browser/worker/workerProtocol";
+import type { ModsPromptSuggestion } from "../../browser/runtimeProtocol";
+import { takeAutocompleteRow } from "../../mods/promptBoxEvents";
+import { autocompleteQueryAt, autocompleteQueryKey } from "./mod-prompt-box";
+import { useModUi } from "./mod-ui-context";
 import {
   isMessageKey,
   useT,
@@ -23,6 +27,8 @@ import {
  * single-char trigger misses the first character. Opens when the text before the caret
  * matches `(^|\s)/[A-Za-z0-9_:-]*` (so a URL's `//` never triggers); the token runs on
  * through the rest of its word, and a completion replaces that word via `setText`.
+ * Beneath the commands come the rows the session's mods add for the token at the caret
+ * (`prompt.autocomplete`, F-25); taking one writes its text in place of the token.
  */
 
 const SLASH_TRIGGER_RE = /(^|\s)\/([A-Za-z0-9_:-]*)$/;
@@ -141,6 +147,42 @@ export const __testing = {
   rankCommands,
 };
 
+/** One row of the picker: a command, or a row a mod added. */
+type PickerRow =
+  | { kind: "command"; key: string; item: SlashCommandSummary }
+  | { kind: "mod"; key: string; row: ModsPromptSuggestion };
+
+const NO_ROWS: readonly ModsPromptSuggestion[] = [];
+
+/** The rows the session's mods add for the token at `caret`: asked while a
+ *  mod hooks `prompt.autocomplete`; only the latest ask's rows are shown. */
+function useModAutocompleteRows(text: string, caret: number) {
+  const { autocompleteHooked, promptAutocomplete } = useModUi();
+  const query = useMemo(
+    () => (autocompleteHooked && promptAutocomplete ? autocompleteQueryAt(text, caret) : null),
+    [autocompleteHooked, promptAutocomplete, text, caret],
+  );
+  const [answered, setAnswered] = useState<{ key: string; rows: readonly ModsPromptSuggestion[] } | null>(null);
+  useEffect(() => {
+    if (!query || !promptAutocomplete) return;
+    let live = true;
+    const key = autocompleteQueryKey(query);
+    promptAutocomplete(query).then(
+      rows => {
+        if (live) setAnswered({ key, rows });
+      },
+      () => {
+        if (live) setAnswered(null);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [query, promptAutocomplete]);
+  const rows = query && answered?.key === autocompleteQueryKey(query) ? answered.rows : NO_ROWS;
+  return { query, rows };
+}
+
 export type SlashCommandPickerProps = {
   commands: readonly SlashCommandSummary[];
   children: ReactNode;
@@ -222,9 +264,17 @@ const SlashCommandPickerSurface: FC<{
     (command: SlashCommandSummary) => slashCommandDescription(command, t),
     [t],
   );
-  const items = useMemo(
+  const commandItems = useMemo(
     () => (token === null ? [] : rankCommands(commands, token.query, describe)),
     [commands, token, describe],
+  );
+  const modRows = useModAutocompleteRows(text, effectiveCaret);
+  const items = useMemo<PickerRow[]>(
+    () => [
+      ...commandItems.map(item => ({ kind: "command" as const, key: `c:${item.name}`, item })),
+      ...modRows.rows.map((row, index) => ({ kind: "mod" as const, key: `m:${index}:${row.text}`, row })),
+    ],
+    [commandItems, modRows.rows],
   );
   const [highlight, setHighlight] = useState(0);
   // Escape dismisses the popover for the composer text as it stands; any further edit
@@ -237,15 +287,28 @@ const SlashCommandPickerSurface: FC<{
     setHighlight(0);
   }, [items]);
 
-  const open =
-    token !== null && items.length > 0 && dismissedText !== text;
+  const open = items.length > 0 && dismissedText !== text;
   const selectByIndex = useCallback(
     (index: number) => {
-      const item = items[index];
-      if (!item || !token) return;
-      composerRuntime.setText(completeSlashToken(text, token, item.name));
+      const row = items[index];
+      if (!row) return;
+      if (row.kind === "command") {
+        if (token) composerRuntime.setText(completeSlashToken(text, token, row.item.name));
+        return;
+      }
+      const query = modRows.query;
+      if (!query) return;
+      const box = takeAutocompleteRow(query, row.row);
+      composerRuntime.setText(box.text);
+      // The caret after the row's text, once the textarea holds it; the
+      // token there is then asked about again.
+      setTimeout(() => {
+        const textarea = getTextarea();
+        if (textarea && textarea.value === box.text) textarea.setSelectionRange(box.cursor, box.cursor);
+        setCaret(box.cursor);
+      }, 0);
     },
-    [items, token, text, composerRuntime],
+    [items, token, text, composerRuntime, modRows.query, getTextarea],
   );
 
   // Keyboard nav while the popover is open. Listening at the document
@@ -314,9 +377,29 @@ const SlashCommandPickerSurface: FC<{
         ref={listRef}
         className="aui-slash-popover-list flex flex-col py-1"
       >
-        {items.map((item, index) => (
+        {items.map((entry, index) => entry.kind === "mod" ? (
           <button
-            key={item.name}
+            key={entry.key}
+            type="button"
+            data-highlighted={index === highlight || undefined}
+            data-slot="mod-autocomplete-item"
+            className="aui-slash-popover-item flex flex-col items-start gap-0.5 px-3 py-2 text-left text-sm transition-colors hover:bg-accent data-[highlighted]:bg-accent"
+            onMouseEnter={() => setHighlight(index)}
+            onMouseDown={event => event.preventDefault()}
+            onClick={() => selectByIndex(index)}
+          >
+            <span className="aui-slash-popover-item-label truncate font-mono text-foreground">
+              {entry.row.label ?? entry.row.text}
+            </span>
+            {entry.row.description ? (
+              <span className="aui-slash-popover-item-description line-clamp-1 text-xs text-muted-foreground">
+                {entry.row.description}
+              </span>
+            ) : null}
+          </button>
+        ) : (
+          <button
+            key={entry.key}
             type="button"
             data-highlighted={index === highlight || undefined}
             data-slot="slash-popover-item"
@@ -341,21 +424,21 @@ const SlashCommandPickerSurface: FC<{
             <span className="aui-slash-popover-item-label font-mono text-foreground">
               {/* Name only — no leading `/`. The user already typed the
                   slash; repeating it in every row is noise. */}
-              {item.name}
-              {item.argumentHint ? (
+              {entry.item.name}
+              {entry.item.argumentHint ? (
                 <span className="aui-slash-popover-item-arg-hint ml-1.5 text-xs font-normal text-muted-foreground">
-                  {item.argumentHint}
+                  {entry.item.argumentHint}
                 </span>
               ) : null}
-              {(item.kind === "skill" || item.kind === "mod") && item.source ? (
+              {(entry.item.kind === "skill" || entry.item.kind === "mod") && entry.item.source ? (
                 <span className="ml-2 text-xs text-muted-foreground">
-                  {item.source}
+                  {entry.item.source}
                 </span>
               ) : null}
             </span>
-            {describe(item) ? (
+            {describe(entry.item) ? (
               <span className="aui-slash-popover-item-description text-xs text-muted-foreground">
-                {describe(item)}
+                {describe(entry.item)}
               </span>
             ) : null}
           </button>

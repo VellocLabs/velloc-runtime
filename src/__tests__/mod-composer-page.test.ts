@@ -32,7 +32,8 @@ function fakeConnection(canAnswer = true) {
       requests.push({ route, payload })
       return {}
     },
-    can: (_cap: string, act: string) => (act !== 'composerAnswer' && act !== 'promptEdit') || canAnswer,
+    can: (_cap: string, act: string) =>
+      !['composerAnswer', 'promptEdit', 'promptAutocomplete', 'promptChange'].includes(act) || canAnswer,
   } as unknown as RuntimeConnection
   return { connection, requests, emit: (topic: string, type: string, payload: unknown) => handlers.get(topic)?.({ type, payload }) }
 }

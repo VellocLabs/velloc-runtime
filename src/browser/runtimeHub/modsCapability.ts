@@ -17,6 +17,8 @@ import {
   isModsAskAnswerPayload,
   isModsComposerAnswerPayload,
   isModsPromptEditPayload,
+  isModsPromptAutocompletePayload,
+  isModsPromptChangePayload,
   isModsListPayload,
   isModsPageAnswerPayload,
   isModsPanePayload,
@@ -31,6 +33,9 @@ import {
   type ModsAskAnswerPayload,
   type ModsComposerAnswerPayload,
   type ModsPromptEditPayload,
+  type ModsPromptAutocompletePayload,
+  type ModsPromptAutocompleteResult,
+  type ModsPromptChangePayload,
   type ModsPromptEditResult,
   type ModsPageAnswerPayload,
   type ModsRenderPayload,
@@ -191,6 +196,8 @@ export function registerModsCapability(
       setOptions: { scope: MODS_ACTION_SCOPES.setOptions, guard: isModsSetOptionsPayload },
       composerAnswer: { scope: MODS_ACTION_SCOPES.composerAnswer, guard: isModsComposerAnswerPayload },
       promptEdit: { scope: MODS_ACTION_SCOPES.promptEdit, guard: isModsPromptEditPayload },
+      promptAutocomplete: { scope: MODS_ACTION_SCOPES.promptAutocomplete, guard: isModsPromptAutocompletePayload },
+      promptChange: { scope: MODS_ACTION_SCOPES.promptChange, guard: isModsPromptChangePayload },
       askAnswer: { scope: MODS_ACTION_SCOPES.askAnswer, guard: isModsAskAnswerPayload },
       pageAnswer: { scope: MODS_ACTION_SCOPES.pageAnswer, guard: isModsPageAnswerPayload },
     },
@@ -258,6 +265,17 @@ export function registerModsCapability(
           const slot = slotOf(request.conn, sessionId)
           if (!slot?.promptEdit) return { box: null } satisfies ModsPromptEditResult
           return { box: await slot.promptEdit(edit) } satisfies ModsPromptEditResult
+        }
+        case 'promptAutocomplete': {
+          const { sessionId, query } = request.payload as ModsPromptAutocompletePayload
+          const slot = slotOf(request.conn, sessionId)
+          if (!slot?.promptAutocomplete) return { suggestions: [] } satisfies ModsPromptAutocompleteResult
+          return { suggestions: await slot.promptAutocomplete(query) } satisfies ModsPromptAutocompleteResult
+        }
+        case 'promptChange': {
+          const { sessionId, change } = request.payload as ModsPromptChangePayload
+          await slotOf(request.conn, sessionId)?.promptChange?.(change)
+          return {}
         }
         case 'askAnswer': {
           // The first page to answer settles the question; a late one (the

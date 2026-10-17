@@ -130,6 +130,10 @@ export type ModUiSnapshot = {
   hooked?: ModUiHookedSite[]
   /** Some loaded hook selects `prompt.edit`; absent when none. */
   editHooked?: true
+  /** Some loaded hook selects `prompt.autocomplete`; absent when none. */
+  autocompleteHooked?: true
+  /** Some loaded hook selects `prompt.change`; absent when none. */
+  changeHooked?: true
   turnNote?: ModUiTurnNote
   /** The agent view last asked for (`$.ui.view`); absent before any call. */
   view?: ModAgentView
