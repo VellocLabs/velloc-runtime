@@ -648,6 +648,102 @@ describe('ui.render — a pane drawn, pressed, redrawn', () => {
     expect(drawn).not.toHaveProperty('sections')
   })
 
+  it("stamps each hook's returned root with its plugin, and hands the stamp beneath to the hook above through next", async () => {
+    const { runtime } = world({
+      usage: `on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+        const { Box, Text } = $.ui.resolve(e)
+        const beneath = await next(e)
+        return Box({ flexDirection: 'column', children: [Text({ children: ['beneath is ' + beneath.part.plugin] }), beneath] })
+      })`,
+      clock: `on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+        const { Text } = $.ui.resolve(e)
+        return Text({ children: ['12:00'] })
+      })`,
+    })
+    await runtime.ready
+    const drawn = await runtime.render({ component: 'AbovePrompt', requestId: 'band', props: BAND_PROPS })
+    if (drawn.kind !== 'tree') throw new Error('the band was not drawn')
+    expect(drawn.tree).toEqual({
+      type: 'Box',
+      props: { flexDirection: 'column' },
+      part: { plugin: 'usage' },
+      children: [
+        { type: 'Text', props: {}, children: ['beneath is clock'] },
+        { type: 'Text', props: {}, part: { plugin: 'clock' }, children: ['12:00'] },
+      ],
+    })
+  })
+
+  it("keeps a hook's own stamps and the ones next handed it, wherever it moves them, and drops any other", async () => {
+    const { runtime } = world({
+      forger: `on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+        const { Box, Text } = $.ui.resolve(e)
+        const beneath = await next(e)
+        const mine = { ...Text({ children: ['mine'] }), part: { plugin: 'forger' } }
+        const moved = { ...Text({ children: ['moved'] }), part: beneath.part }
+        const again = { ...Text({ children: ['again'] }), part: beneath.part }
+        const forged = { ...Text({ children: ['forged'] }), part: { plugin: 'someone' } }
+        return Box({ flexDirection: 'column', children: [mine, moved, again, forged] })
+      })`,
+      clock: `on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+        const { Text } = $.ui.resolve(e)
+        return Text({ children: ['12:00'] })
+      })`,
+    })
+    await runtime.ready
+    const drawn = await runtime.render({ component: 'AbovePrompt', requestId: 'band', props: BAND_PROPS })
+    if (drawn.kind !== 'tree') throw new Error('the band was not drawn')
+    const parts = (drawn.tree as { children: Array<{ children: string[]; part?: unknown }> }).children.map(child => [child.children[0], child.part])
+    expect(parts).toEqual([
+      ['mine', { plugin: 'forger' }],
+      ['moved', { plugin: 'clock' }],
+      ['again', undefined],
+      ['forged', undefined],
+    ])
+  })
+
+  it('credits each band to its own plugin when the band mods move the column stamp onto its owner, though their bands draw alike', async () => {
+    // The shared band-stacking helper band mods ship: unpack the column beneath, the
+    // column's stamp onto its owner's band, then stack this plugin's band last.
+    const stacking = (name: string) => `on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+        const { Box, Text } = $.ui.resolve(e)
+        const rest = await next(e)
+        const isColumn = rest && rest.type === 'Box' && rest.props && rest.props.key === 'bands'
+        const owner = isColumn && rest.part ? rest.part.plugin : undefined
+        const others = !rest ? [] : !isColumn ? [rest] : rest.children.map(k =>
+          owner && typeof k !== 'string' && k.props && k.props.key === 'band:' + owner && !k.part ? { ...k, part: rest.part } : k)
+        const own = Box({ key: 'band:${name}', flexDirection: 'column', children: [Text({ children: ['●'] })] })
+        return Box({ key: 'bands', flexDirection: 'column', children: [...others, own] })
+      })`
+    const { runtime } = world({ context: stacking('context'), weather: stacking('weather'), steps: stacking('steps') })
+    await runtime.ready
+    const drawn = await runtime.render({ component: 'AbovePrompt', requestId: 'band', props: BAND_PROPS })
+    if (drawn.kind !== 'tree') throw new Error('the band was not drawn')
+    const bandsIn = (tree: unknown) => [...JSON.stringify(tree).matchAll(/"key":"(band:\w+)"/g)].map(match => match[1])
+    expect(drawn.sections?.map(section => [section.plugin, bandsIn(section.tree)])).toEqual([
+      ['steps', ['band:steps']],
+      ['weather', ['band:weather']],
+      ['context', ['band:context']],
+    ])
+  })
+
+  it('a Button holding Texts reaches the drawing with its children, its label naming it', async () => {
+    const { runtime } = world({
+      chip: `on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+        const { Button, Text } = $.ui.resolve(e)
+        return Button({ key: 'open', label: 'Open notes', onPress: () => {}, children: ['notes ', Text({ dimColor: true, children: ['2m'] })] })
+      })`,
+    })
+    await runtime.ready
+    const drawn = await runtime.render({ component: 'AbovePrompt', requestId: 'band', props: BAND_PROPS })
+    if (drawn.kind !== 'tree') throw new Error('the band was not drawn')
+    expect(drawn.tree).toMatchObject({
+      type: 'Button',
+      props: { key: 'open', label: 'Open notes' },
+      children: ['notes ', { type: 'Text', props: { dimColor: true }, children: ['2m'] }],
+    })
+  })
+
   it('a mod switched off and on again while another still hooks the band marks the band stale both times, and draws in it again', async () => {
     const { runtime, stale } = world({
       clock: `on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

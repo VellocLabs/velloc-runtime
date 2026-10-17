@@ -61,6 +61,26 @@ function rows(value: unknown): string | undefined {
   return undefined;
 }
 
+/** A Box's spacing steps on this surface's own scale, the same across and down. */
+const SPACE_STEPS: Record<string, string> = { xs: "0.25rem", sm: "0.5rem", md: "0.75rem", lg: "1rem", xl: "1.5rem" };
+function isSpaceStep(value: unknown): value is string {
+  return typeof value === "string" && Object.hasOwn(SPACE_STEPS, value);
+}
+/** A spacing prop: a step, or a count measured by `measure`. */
+function space(value: unknown, measure: (value: unknown) => string | undefined): string | undefined {
+  return isSpaceStep(value) ? SPACE_STEPS[value] : measure(value);
+}
+
+/** A Text's `size` steps. `body` is the tree container's own size (`text-xs`). */
+const TEXT_SIZES: Record<string, string> = {
+  caption: "0.625rem",
+  footnote: "0.6875rem",
+  body: "0.75rem",
+  heading: "0.9375rem",
+  title: "1.125rem",
+};
+const TEXT_WEIGHTS: Record<string, number> = { regular: 400, medium: 500, semibold: 600, bold: 700 };
+
 /** The terminal's named colors, as Ink takes them, on Velloc's token layer
  *  (`styles/globals.css`), so a mod's `color="red"` follows the theme; a raw
  *  color the mod wrote (a hex or functional notation) is its own palette,
@@ -122,7 +142,7 @@ function colorOf(value: unknown): string | undefined {
   return undefined;
 }
 
-function boxStyle(props: Record<string, unknown> = {}): React.CSSProperties {
+function boxStyle(props: Record<string, unknown> = {}, children: readonly Node[] = []): React.CSSProperties {
   const style: React.CSSProperties = {
     display: props.display === "none" ? "none" : "flex",
     flexDirection: (props.flexDirection as React.CSSProperties["flexDirection"]) ?? "row",
@@ -139,12 +159,17 @@ function boxStyle(props: Record<string, unknown> = {}): React.CSSProperties {
   if (typeof props.alignItems === "string") style.alignItems = props.alignItems as React.CSSProperties["alignItems"];
   if (typeof props.alignSelf === "string") style.alignSelf = props.alignSelf as React.CSSProperties["alignSelf"];
   if (typeof props.justifyContent === "string") style.justifyContent = props.justifyContent as React.CSSProperties["justifyContent"];
-  const gap = cells(props.gap);
+  const gap = space(props.gap, cells);
   if (gap) style.gap = gap;
-  const columnGap = cells(props.columnGap);
+  const columnGap = space(props.columnGap, cells);
   if (columnGap) style.columnGap = columnGap;
-  const rowGap = rows(props.rowGap);
+  const rowGap = space(props.rowGap, rows);
   if (rowGap) style.rowGap = rowGap;
+  // A row of Buttons with no gap of its own is drawn `xs` apart.
+  const isRow = style.flexDirection === "row" || style.flexDirection === "row-reverse";
+  if (isRow && !gap && !columnGap && children.some((child) => typeof child !== "string" && child.type === "Button")) {
+    style.columnGap = SPACE_STEPS.xs;
+  }
   const width = cells(props.width);
   if (width) style.width = width;
   const height = rows(props.height);
@@ -161,10 +186,11 @@ function boxStyle(props: Record<string, unknown> = {}): React.CSSProperties {
     const bottom = props[`${name}Bottom`] ?? y ?? all;
     const left = props[`${name}Left`] ?? x ?? all;
     const right = props[`${name}Right`] ?? x ?? all;
-    if (typeof top === "number") style[`${name}Top`] = rows(top);
-    if (typeof bottom === "number") style[`${name}Bottom`] = rows(bottom);
-    if (typeof left === "number") style[`${name}Left`] = cells(left);
-    if (typeof right === "number") style[`${name}Right`] = cells(right);
+    const counted = (value: unknown) => typeof value === "number" || isSpaceStep(value);
+    if (counted(top)) style[`${name}Top`] = space(top, rows);
+    if (counted(bottom)) style[`${name}Bottom`] = space(bottom, rows);
+    if (counted(left)) style[`${name}Left`] = space(left, cells);
+    if (counted(right)) style[`${name}Right`] = space(right, cells);
   };
   spacing("margin");
   spacing("padding");
@@ -186,7 +212,17 @@ function textStyle(props: Record<string, unknown> = {}): React.CSSProperties {
   const background = colorOf(props.backgroundColor);
   if (background) style.backgroundColor = background;
   if (props.dimColor === true) style.opacity = 0.6;
-  if (props.bold === true) style.fontWeight = 600;
+  if (typeof props.size === "string" && Object.hasOwn(TEXT_SIZES, props.size)) style.fontSize = TEXT_SIZES[props.size];
+  // `bold` is the older spelling of `semibold`; an explicit `weight` outranks it.
+  if (typeof props.weight === "string" && Object.hasOwn(TEXT_WEIGHTS, props.weight)) style.fontWeight = TEXT_WEIGHTS[props.weight];
+  else if (props.bold === true) style.fontWeight = TEXT_WEIGHTS.semibold;
+  if (props.mono === true) style.fontFamily = "var(--font-mono)";
+  if (props.tabular === true) style.fontVariantNumeric = "tabular-nums";
+  // Right-to-left text reads in that direction and sits flush right.
+  if (props.dir === "rtl") {
+    style.display = "block";
+    style.textAlign = "right";
+  }
   if (props.italic === true) style.fontStyle = "italic";
   const decorations = [props.underline === true ? "underline" : "", props.strikethrough === true ? "line-through" : ""]
     .filter(Boolean)
@@ -233,7 +269,7 @@ function ModNode({ node, site }: { node: Node; site: SiteRef }): React.ReactElem
     case "Box":
       return (
         <div
-          style={boxStyle(props)}
+          style={boxStyle(props, node.children)}
           data-mod-key={typeof props.key === "string" ? props.key : undefined}
           data-mod-plugin={typeof props.key === "string" ? owner : undefined}
         >
@@ -244,7 +280,7 @@ function ModNode({ node, site }: { node: Node; site: SiteRef }): React.ReactElem
       );
     case "Text":
       return (
-        <span style={textStyle(props)}>
+        <span style={textStyle(props)} dir={props.dir === "rtl" || props.dir === "ltr" ? props.dir : undefined}>
           {(node.children ?? []).map((child, i) =>
             typeof child === "string" ? <React.Fragment key={i}>{child}</React.Fragment> : <ModNode key={i} node={child} site={site} />,
           )}
@@ -253,13 +289,16 @@ function ModNode({ node, site }: { node: Node; site: SiteRef }): React.ReactElem
     case "Button": {
       const key = String(props.key ?? "");
       const plain = props.plain === true;
+      const children = node.children ?? [];
+      // Drawn children: the `label`, when given, names the control.
+      const named = props.role === "dismiss" || (children.length > 0 && typeof props.label === "string");
       return (
         <button
           type="button"
           data-testid={`mod-button-${key}`}
           data-mod-key={key}
           data-mod-plugin={owner}
-          aria-label={props.role === "dismiss" ? String(props.label ?? "") : undefined}
+          aria-label={named ? String(props.label ?? "") : undefined}
           className={cn(
             "inline-flex items-center rounded-md text-xs leading-5",
             plain
@@ -272,7 +311,11 @@ function ModNode({ node, site }: { node: Node; site: SiteRef }): React.ReactElem
           onClick={() => send({ kind: "press", element: key })}
         >
           {plain && typeof props.hotkey === "string" ? <span className="mr-1 text-primary">{props.hotkey}:</span> : null}
-          <ModButtonLabel label={String(props.label ?? "")} action={props.action} />
+          {children.length > 0 ? (
+            children.map((child, i) => <ModNode key={i} node={child} site={site} />)
+          ) : (
+            <ModButtonLabel label={String(props.label ?? "")} action={props.action} />
+          )}
         </button>
       );
     }
@@ -374,27 +417,54 @@ function ModInput({
   const [value, setValue] = React.useState(drawn);
   // "The person's typing replaces it until the hook draws another."
   React.useEffect(() => setValue(drawn), [drawn]);
+  const change = (next: string) => {
+    setValue(next);
+    send({ kind: "input", element: key, inputKind: "change", value: next });
+  };
+  const field = {
+    "data-testid": `mod-input-${key}`,
+    "data-mod-key": key,
+    "data-mod-plugin": owner,
+    className: "rounded-md border border-border/70 bg-background px-1.5 py-0.5 font-mono text-xs",
+    placeholder: typeof props.placeholder === "string" ? props.placeholder : undefined,
+    value,
+    autoFocus: props.autoFocus === true,
+  };
+  const rows = typeof props.rows === "number" && props.rows >= 1 ? props.rows : undefined;
   return (
-    <label className="inline-flex items-center gap-1 text-xs">
+    <label className={cn("inline-flex gap-1 text-xs", rows === undefined ? "items-center" : "items-start")}>
       {typeof props.label === "string" ? <span>{props.label}</span> : null}
-      <input
-        data-testid={`mod-input-${key}`}
-        data-mod-key={key}
-        data-mod-plugin={owner}
-        className="rounded-md border border-border/70 bg-background px-1.5 py-0.5 font-mono text-xs"
-        placeholder={typeof props.placeholder === "string" ? props.placeholder : undefined}
-        value={value}
-        autoFocus={props.autoFocus === true}
-        onChange={(event) => {
-          setValue(event.currentTarget.value);
-          send({ kind: "input", element: key, inputKind: "change", value: event.currentTarget.value });
-        }}
-        onKeyDown={(event) => {
-          if (event.key !== "Enter") return;
-          event.preventDefault();
-          send({ kind: "input", element: key, inputKind: "submit", value });
-        }}
-      />
+      {rows === undefined ? (
+        <input
+          {...field}
+          onChange={(event) => change(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            send({ kind: "input", element: key, inputKind: "submit", value });
+          }}
+        />
+      ) : (
+        // Several lines: Enter submits; Shift+Enter, or a backslash before Enter, starts a new line.
+        <textarea
+          {...field}
+          rows={rows}
+          className={cn(field.className, "resize-none")}
+          onChange={(event) => change(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.shiftKey) return;
+            event.preventDefault();
+            const area = event.currentTarget;
+            const at = area.selectionStart;
+            if (at === area.selectionEnd && at > 0 && value[at - 1] === "\\") {
+              change(`${value.slice(0, at - 1)}\n${value.slice(at)}`);
+              setTimeout(() => area.setSelectionRange(at, at), 0);
+              return;
+            }
+            send({ kind: "input", element: key, inputKind: "submit", value });
+          }}
+        />
+      )}
       {typeof props.submitLabel === "string" ? <span className="opacity-60">⏎ {props.submitLabel}</span> : null}
     </label>
   );

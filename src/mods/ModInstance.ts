@@ -23,6 +23,7 @@ import {
   type PluginTier,
 } from './modTypes'
 import type { ModPeer, ModToRuntime, WireError } from './modWire'
+import { partStampsIn, stampRenderRoot } from './modRender'
 import { PausableDeadline } from '../browser/workerKernel/pausableDeadline'
 
 /** One `$.<noun>.<method>(...args)` as the runtime serves it. */
@@ -116,6 +117,9 @@ type LiveInvocation = Settle & {
    *  "let a rejection pass" from "failed" by identity, and a refusal raised
    *  by the chain itself (`next.to` from a user mod) keeps its message. */
   lastNextError?: unknown
+  /** `ui.render` only: the `part` stamps, by plugin, that this run's `next`
+   *  calls settled to. */
+  handedParts?: Map<string, number>
 }
 
 /** What a streaming invocation keeps between frames. */
@@ -695,7 +699,10 @@ export class ModInstance {
           }
         }
         next(msg.e, msg.tier).then(
-          result => reply({ ok: true, result }),
+          result => {
+            if (call.event === 'ui.render') invocation.handedParts = partStampsIn(result, invocation.handedParts)
+            reply({ ok: true, result })
+          },
           error => {
             invocation.lastNextError = error
             reply({ ok: false, error: wireError(error) })
@@ -894,9 +901,16 @@ export class ModInstance {
         else run.reject(fromWire(msg.error?.name ?? 'Error', msg.error?.message ?? 'the handler failed'))
         return
       }
-      case 'mod.result':
-        this.live.get(msg.invocationId)?.resolve(msg.result)
+      case 'mod.result': {
+        const invocation = this.live.get(msg.invocationId)
+        if (!invocation) return
+        invocation.resolve(
+          invocation.call.event === 'ui.render'
+            ? stampRenderRoot(msg.result, this.options.plugin, invocation.handedParts ?? new Map())
+            : msg.result,
+        )
         return
+      }
       case 'mod.error': {
         const invocation = this.live.get(msg.invocationId)
         if (!invocation) return

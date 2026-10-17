@@ -881,12 +881,13 @@ export function installModWorkerHost(
         const { onPress, ...rest } = withoutChildren(props) as { onPress?: unknown } & Record<string, unknown>
         if (typeof onPress !== 'function') throw new TypeError('Button: onPress is not a function')
         const kids = kidsOf((props as { children?: unknown } | null | undefined)?.children)
-        const label =
-          typeof rest.label === 'string' ? rest.label : kids.length === 1 && typeof kids[0] === 'string' ? kids[0] : undefined
-        if (label === undefined) throw new TypeError('Button: a label, or one string child, is required')
+        const oneString = typeof rest.label !== 'string' && kids.length === 1 && typeof kids[0] === 'string'
+        const label = typeof rest.label === 'string' ? rest.label : oneString ? (kids[0] as string) : undefined
+        if (label === undefined && kids.length === 0) throw new TypeError('Button: a label, or children, is required')
         const key = typeof rest.key === 'string' ? rest.key : label
         const handle = keepHandle(invocation, 'Button', { default: onPress as (...args: unknown[]) => unknown })
-        return { type: 'Button', props: { ...rest, key, label }, press: { plugin, handle } }
+        const drawn = oneString || kids.length === 0 ? {} : { children: kids }
+        return { type: 'Button', props: { ...rest, key, label }, press: { plugin, handle }, ...drawn }
       },
       Input: (props: unknown) => {
         const { onInput, onSubmit, ...rest } = withoutChildren(props) as {

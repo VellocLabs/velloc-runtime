@@ -107,6 +107,66 @@ describe('ModRenderTree', () => {
     expect(uiInput).toHaveBeenLastCalledWith(expect.objectContaining({ element: 'h', handle: 5 }))
   })
 
+  it('a Button holding Texts draws them in its place, named by its label, and presses wherever it is clicked', () => {
+    const uiInput = vi.fn(async () => ({ ok: true }))
+    const tree = {
+      type: 'Button',
+      props: { key: 'open', label: 'Open notes' },
+      press,
+      children: ['notes ', { type: 'Text', props: { dimColor: true }, children: ['2m'] }],
+    }
+    render(withUi({ uiInput }, createElement(ModRenderTree, { tree, site })))
+    const button = screen.getByTestId('mod-button-open')
+    expect(button.textContent).toBe('notes 2m')
+    expect(button.getAttribute('aria-label')).toBe('Open notes')
+    fireEvent.click(button.querySelector('span[style*="opacity"]')!)
+    expect(uiInput).toHaveBeenCalledWith(expect.objectContaining({ kind: 'press', element: 'open', handle: 4 }))
+  })
+
+  it('draws a Text at its size step and weight, bold as semibold under an explicit weight, mono and tabular', () => {
+    const tree = {
+      type: 'Box',
+      children: [
+        { type: 'Text', props: { size: 'title', weight: 'medium', mono: true, tabular: true }, children: ['42%'] },
+        { type: 'Text', props: { bold: true }, children: ['old'] },
+        { type: 'Text', props: { bold: true, weight: 'regular' }, children: ['outranked'] },
+        { type: 'Text', props: { size: 'caption' }, children: ['small'] },
+      ],
+    }
+    const { container } = render(withUi({}, createElement(ModRenderTree, { tree, site })))
+    const [title, old, outranked, caption] = [...container.querySelectorAll('div > div > span')] as HTMLElement[]
+    expect(title!.style.fontSize).toBe('1.125rem')
+    expect(title!.style.fontWeight).toBe('500')
+    expect(title!.style.fontFamily).toBe('var(--font-mono)')
+    expect(title!.style.fontVariantNumeric).toBe('tabular-nums')
+    expect(old!.style.fontWeight).toBe('600')
+    expect(outranked!.style.fontWeight).toBe('400')
+    expect(caption!.style.fontSize).toBe('0.625rem')
+  })
+
+  it("draws a Box's spacing steps on the desktop scale, cells as before, and Buttons in a row with no gap xs apart", () => {
+    const button = (key: string) => ({ type: 'Button', props: { key, label: key }, press })
+    const tree = {
+      type: 'Box',
+      props: { flexDirection: 'column', gap: 'md', paddingX: 'lg', paddingY: 1, marginTop: 'xl' },
+      children: [
+        { type: 'Box', children: [button('a'), button('b')] },
+        { type: 'Box', props: { gap: 2 }, children: [button('c')] },
+      ],
+    }
+    const { container } = render(withUi({}, createElement(ModRenderTree, { tree, site })))
+    const outer = container.querySelector('div > div > div') as HTMLElement
+    expect(outer.style.gap).toBe('0.75rem')
+    expect(outer.style.paddingLeft).toBe('1rem')
+    expect(outer.style.paddingRight).toBe('1rem')
+    expect(outer.style.paddingTop).toBe('calc(1 * 1.5em)')
+    expect(outer.style.marginTop).toBe('1.5rem')
+    const [row, gapped] = [...outer.children] as HTMLElement[]
+    expect(row!.style.columnGap).toBe('0.25rem')
+    expect(gapped!.style.gap).toBe('2ch')
+    expect(gapped!.style.columnGap).not.toBe('0.25rem')
+  })
+
   it("an empty Button on an engine action draws the action's words, else its name, and presses; a labelled one keeps its own", () => {
     const uiInput = vi.fn(async () => ({ ok: true }))
     const tree = {
@@ -147,6 +207,33 @@ describe('ModRenderTree', () => {
     expect(uiInput).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'input', inputKind: 'submit', value: 'hello' }))
     fireEvent.change(screen.getByTestId('mod-select-pick'), { target: { value: 'b' } })
     expect(uiInput).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'select', element: 'pick', value: 'b', handle: 9 }))
+  })
+
+  it('an Input with rows is a field of that many lines: Enter submits, Shift+Enter or a backslash before Enter starts a line', () => {
+    const uiInput = vi.fn(async () => ({ ok: true }))
+    const tree = { type: 'Input', props: { key: 'note', rows: 3, value: 'one' }, press }
+    render(withUi({ uiInput }, createElement(ModRenderTree, { tree, site })))
+    const area = screen.getByTestId('mod-input-note') as HTMLTextAreaElement
+    expect(area.tagName).toBe('TEXTAREA')
+    expect(area.getAttribute('rows')).toBe('3')
+    fireEvent.keyDown(area, { key: 'Enter', shiftKey: true })
+    expect(uiInput).not.toHaveBeenCalled()
+    fireEvent.change(area, { target: { value: 'one\\' } })
+    area.setSelectionRange(4, 4)
+    fireEvent.keyDown(area, { key: 'Enter' })
+    expect(uiInput).toHaveBeenLastCalledWith(expect.objectContaining({ inputKind: 'change', value: 'one\n' }))
+    expect(uiInput).not.toHaveBeenCalledWith(expect.objectContaining({ inputKind: 'submit' }))
+    fireEvent.change(area, { target: { value: 'one\ntwo' } })
+    fireEvent.keyDown(area, { key: 'Enter' })
+    expect(uiInput).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'input', element: 'note', inputKind: 'submit', value: 'one\ntwo' }))
+  })
+
+  it('a Text with dir rtl reads right to left, flush right', () => {
+    const tree = { type: 'Box', props: { flexDirection: 'column' }, children: [{ type: 'Text', props: { dir: 'rtl' }, children: ['שלום'] }] }
+    const { container } = render(withUi({}, createElement(ModRenderTree, { tree, site })))
+    const text = container.querySelector('span[dir]') as HTMLElement
+    expect(text.getAttribute('dir')).toBe('rtl')
+    expect(text.style.textAlign).toBe('right')
   })
 
   it('a Link opens in a new tab with its label; a Code numbers its lines; an Svg is an image; an engine node is nothing', () => {

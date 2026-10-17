@@ -13,6 +13,8 @@ import {
   isAllowedHref,
   isPaneId,
   isRenderAnswer,
+  partStampsIn,
+  stampRenderRoot,
   renderMatcherSite,
   validateRenderTree,
 } from '../mods/modRender'
@@ -90,9 +92,53 @@ describe('validateRenderTree', () => {
     expect(validateRenderTree({ type: 'Button', props: { key: 'k', label: '', action: 'app:exit' }, press })).toMatchObject({ ok: false })
   })
 
+  it("takes a Box's or a Text's part stamp, and refuses one that names no plugin or sits on another element", () => {
+    const tree = { type: 'Box', part: { plugin: 'a' }, children: [{ type: 'Text', part: { plugin: 'b' }, children: ['x'] }] }
+    expect(validateRenderTree(tree)).toEqual({ ok: true, tree })
+    expect(validateRenderTree({ type: 'Box', part: { plugin: '' } })).toMatchObject({ ok: false, reason: "Box's part names no plugin" })
+    expect(validateRenderTree({ type: 'Text', part: 'a', children: ['x'] })).toMatchObject({ ok: false })
+    expect(validateRenderTree({ type: 'Button', props: { key: 'k', label: 'L' }, press, part: { plugin: 'a' } })).toMatchObject({ ok: false, reason: 'Button takes no part' })
+  })
+
+  it("a Text takes a size step, a weight, mono and tabular; bold still stands; other sizes and weights are refused", () => {
+    const text = (props: Record<string, unknown>) => ({ type: 'Text', props, children: ['42%'] })
+    expect(validateRenderTree(text({ size: 'caption', weight: 'medium', mono: true, tabular: true }))).toMatchObject({ ok: true })
+    expect(validateRenderTree(text({ size: 'title', weight: 'bold' }))).toMatchObject({ ok: true })
+    expect(validateRenderTree(text({ bold: true }))).toMatchObject({ ok: true })
+    expect(validateRenderTree(text({ size: 'huge' }))).toMatchObject({ ok: false, reason: expect.stringContaining("Text's size") })
+    expect(validateRenderTree(text({ weight: 900 }))).toMatchObject({ ok: false, reason: expect.stringContaining("Text's weight") })
+  })
+
+  it('a Box takes the spacing steps', () => {
+    expect(validateRenderTree({ type: 'Box', props: { gap: 'xs', padding: 'md', marginX: 'xl', rowGap: 'sm', paddingTop: 'lg' } })).toMatchObject({ ok: true })
+  })
+
+  it('a Button holds strings and Texts, a label naming it or none; any other child is refused', () => {
+    const chip = { type: 'Text', props: { dimColor: true }, children: ['2m'] }
+    expect(validateRenderTree({ type: 'Button', props: { key: 'open', label: 'Open' }, press, children: ['notes ', chip] })).toMatchObject({ ok: true })
+    expect(validateRenderTree({ type: 'Button', props: { key: 'open' }, press, children: ['notes ', chip] })).toMatchObject({ ok: true })
+    expect(validateRenderTree({ type: 'Button', props: { key: 'open' }, press, children: [{ type: 'Box' }] })).toMatchObject({
+      ok: false,
+      reason: 'a Button holds a Box; a Button holds strings and Texts',
+    })
+    expect(validateRenderTree({ type: 'Button', props: { key: 'k' }, press, children: [{ type: 'engine', ref: 0 }] })).toMatchObject({ ok: false })
+    const link = { type: 'Link', props: { href: 'https://example.com/' } }
+    expect(validateRenderTree({ type: 'Button', props: { key: 'k' }, press, children: [{ type: 'Text', children: [link] }] })).toMatchObject({ ok: false })
+    expect(validateRenderTree({ type: 'Button', props: { key: 'k' }, press, children: [] })).toMatchObject({ ok: false, reason: 'Button has no label' })
+  })
+
   it('an Input takes string fields', () => {
     expect(validateRenderTree({ type: 'Input', props: { key: 'q', placeholder: 'ask' }, press })).toMatchObject({ ok: true })
     expect(validateRenderTree({ type: 'Input', props: { key: 'q', value: 3 }, press })).toMatchObject({ ok: false })
+  })
+
+  it('an Input takes rows, a whole number of lines; a Text takes dir, ltr or rtl', () => {
+    expect(validateRenderTree({ type: 'Input', props: { key: 'q', rows: 4, value: 'a\nb' }, press })).toMatchObject({ ok: true })
+    expect(validateRenderTree({ type: 'Input', props: { key: 'q', rows: 0 }, press })).toMatchObject({ ok: false, reason: "Input's rows is not a whole number of at least 1" })
+    expect(validateRenderTree({ type: 'Input', props: { key: 'q', rows: 1.5 }, press })).toMatchObject({ ok: false })
+    expect(validateRenderTree({ type: 'Text', props: { dir: 'rtl' }, children: ['x'] })).toMatchObject({ ok: true })
+    expect(validateRenderTree({ type: 'Text', props: { dir: 'ltr' }, children: ['x'] })).toMatchObject({ ok: true })
+    expect(validateRenderTree({ type: 'Text', props: { dir: 'auto' }, children: ['x'] })).toMatchObject({ ok: false, reason: 'Text\'s dir is not "ltr" or "rtl"' })
   })
 
   it('a Select needs options with unique values', () => {
@@ -213,6 +259,43 @@ describe('drewOf', () => {
     ).toEqual(['clock'])
     expect(drewOf([entry('engine', 'returned', undefined)])).toEqual([])
   })
+
+  it('a link that handed on what was beneath it with only its own stamp on the root drew nothing', () => {
+    const clock = { ...text('12:00'), part: { plugin: 'clock' } }
+    const relayed = { ...text('12:00'), part: { plugin: 'relay' } }
+    expect(drewOf([entry('relay', 'returned', relayed), entry('clock', 'returned', clock)])).toEqual(['clock'])
+  })
+})
+
+describe('partStampsIn, stampRenderRoot', () => {
+  const text = (value: string, plugin?: string) => ({ type: 'Text', children: [value], ...(plugin ? { part: { plugin } } : {}) })
+
+  it('counts the stamps of each plugin in a tree', () => {
+    const tree = { type: 'Box', part: { plugin: 'a' }, children: [text('x', 'b'), text('y', 'b'), { type: 'Button', part: { plugin: 'c' } }] }
+    expect([...partStampsIn(tree)]).toEqual([
+      ['a', 1],
+      ['b', 2],
+    ])
+  })
+
+  it("stamps a Box or Text root with the hook's plugin, over any stamp it carried, and leaves another root unstamped", () => {
+    expect(stampRenderRoot({ type: 'Box', children: [] }, 'mine', new Map())).toEqual({ type: 'Box', children: [], part: { plugin: 'mine' } })
+    expect(stampRenderRoot(text('x', 'beneath'), 'mine', new Map([['beneath', 1]]))).toEqual(text('x', 'mine'))
+    const button = { type: 'Button', props: { key: 'k', label: 'L' }, press: { plugin: 'mine', handle: 1 } }
+    expect(stampRenderRoot(button, 'mine', new Map())).toEqual(button)
+    expect(stampRenderRoot(undefined, 'mine', new Map())).toBeUndefined()
+  })
+
+  it("keeps the hook's own stamps and another plugin's as often as next handed them; drops the rest, and changes no input", () => {
+    const tree = {
+      type: 'Box',
+      children: [text('own', 'mine'), text('moved', 'beneath'), text('twice', 'beneath'), text('forged', 'other'), { type: 'Text', part: 'junk', children: ['junk'] }],
+    }
+    const before = JSON.stringify(tree)
+    const out = stampRenderRoot(tree, 'mine', new Map([['beneath', 1]])) as { children: Array<{ part?: unknown }> }
+    expect(out.children.map(child => child.part)).toEqual([{ plugin: 'mine' }, { plugin: 'beneath' }, undefined, undefined, undefined])
+    expect(JSON.stringify(tree)).toBe(before)
+  })
 })
 
 describe('sectionsOf', () => {
@@ -265,6 +348,37 @@ describe('sectionsOf', () => {
       { plugin: 'steps', tree: { type: 'Box', props: { flexDirection: 'column' }, children: [band('steps'), engine] } },
       { plugin: 'context', tree: band('context') },
     ])
+  })
+
+  it("credits each stamped band to its stamp's plugin, and the outer plugin's own band to it, though every band draws alike", () => {
+    const band = (name: string, plugin?: string) => ({
+      type: 'Box',
+      props: { key: `band:${name}`, flexDirection: 'column' },
+      ...(plugin ? { part: { plugin } } : {}),
+      children: [text('●')],
+    })
+    const column = (plugin: string, ...children: unknown[]) => ({ type: 'Box', props: { key: 'bands', flexDirection: 'column' }, part: { plugin }, children })
+    const steps = column('steps', band('steps'))
+    const weather = column('weather', band('steps', 'steps'), band('weather'))
+    const context = column('context', band('steps', 'steps'), band('weather', 'weather'), band('context'))
+    expect(
+      sectionsOf([entry('context', 'returned', context), entry('weather', 'returned', weather), entry('steps', 'returned', steps)], context as never),
+    ).toEqual([
+      { plugin: 'steps', tree: band('steps', 'steps') },
+      { plugin: 'weather', tree: band('weather', 'weather') },
+      { plugin: 'context', tree: band('context') },
+    ])
+  })
+
+  it('compares trees without their stamps: a band whose stamp moved onto it is still the one its plugin returned', () => {
+    const clock = { ...text('12:00'), part: { plugin: 'clock' } }
+    const usage = { type: 'Box', props: { flexDirection: 'column' }, part: { plugin: 'usage' }, children: [clock, text('usage')] }
+    expect(sectionsOf([entry('usage', 'returned', usage), entry('clock', 'returned', { ...clock, part: { plugin: 'clock' } })], usage as never)?.map(s => s.plugin)).toEqual([
+      'clock',
+      'usage',
+    ])
+    const restamped = { ...usage, part: { plugin: 'somewhere' } }
+    expect(sectionsOf([entry('usage', 'returned', usage), entry('clock', 'returned', clock)], restamped as never)?.map(s => s.plugin)).toEqual(['clock', 'usage'])
   })
 
   it('gives none when a row holds two plugins side by side', () => {

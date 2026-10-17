@@ -221,10 +221,14 @@ export type PressRef = { plugin: string; handle: number }
 
 export type RenderNode = RenderElement | string
 
+/** "Whose part of the drawing starts here, set by the engine on each hook's
+ *  returned root"; a Box's or a Text's alone. */
+export type PartStamp = { plugin: string }
+
 export type RenderElement =
-  | { type: 'Box'; props?: Record<string, unknown>; children?: RenderNode[] }
-  | { type: 'Text'; props?: Record<string, unknown>; children?: RenderNode[] }
-  | { type: 'Button'; props: Record<string, unknown> & { key: string; label: string }; press: PressRef }
+  | { type: 'Box'; props?: Record<string, unknown>; part?: PartStamp; children?: RenderNode[] }
+  | { type: 'Text'; props?: Record<string, unknown>; part?: PartStamp; children?: RenderNode[] }
+  | { type: 'Button'; props: Record<string, unknown> & { key: string; label?: string }; press: PressRef; children?: RenderNode[] }
   | { type: 'Input'; props: Record<string, unknown> & { key: string }; press: PressRef }
   | { type: 'Select'; props: Record<string, unknown> & { key: string; options: unknown[] }; press: PressRef }
   | { type: 'Link'; props: { href: string; label?: string }; children?: RenderNode[] }
@@ -297,13 +301,22 @@ const TEXT_PROPS: ReadonlySet<string> = new Set([
   'color',
   'backgroundColor',
   'dimColor',
+  'size',
+  'weight',
+  'mono',
+  'tabular',
   'bold',
   'italic',
   'underline',
   'strikethrough',
   'inverse',
   'wrap',
+  'dir',
 ])
+
+/** A Text's `size` steps and `weight`s. */
+export const TEXT_SIZES = ['caption', 'footnote', 'body', 'heading', 'title'] as const
+export const TEXT_WEIGHTS = ['regular', 'medium', 'semibold', 'bold'] as const
 
 const HOVER_PROPS: ReadonlySet<string> = new Set([
   'scope',
@@ -343,6 +356,7 @@ const INPUT_PROPS: ReadonlySet<string> = new Set([
   'value',
   'submitLabel',
   'autoFocus',
+  'rows',
 ])
 const SELECT_PROPS: ReadonlySet<string> = new Set(['key', 'label', 'options', 'value', 'autoFocus'])
 const LINK_PROPS: ReadonlySet<string> = new Set(['href', 'label'])
@@ -446,7 +460,19 @@ function keyProblem(props: Record<string, unknown>, element: string): Problem | 
 
 type Walk = { nodes: number }
 
-function nodeProblem(node: unknown, depth: number, walk: Walk, inText: boolean): Problem | null {
+/** What holds a node: a Box (or the root), a Text, or a Button, whose
+ *  children are strings and Texts alone. */
+type Within = 'block' | 'text' | 'button'
+
+function partProblem(node: Record<string, unknown>, type: string): Problem | null {
+  if (node.part === undefined) return null
+  if (type !== 'Box' && type !== 'Text') return `${type} takes no part`
+  const part = node.part
+  if (!isRecord(part) || typeof part.plugin !== 'string' || part.plugin === '') return `${type}'s part names no plugin`
+  return null
+}
+
+function nodeProblem(node: unknown, depth: number, walk: Walk, within: Within): Problem | null {
   if (typeof node === 'string') {
     return textProblem(node, 'a string')
   }
@@ -457,7 +483,8 @@ function nodeProblem(node: unknown, depth: number, walk: Walk, inText: boolean):
   const type = node.type
   if (typeof type !== 'string') return 'a node has no type'
   if (type === 'engine') {
-    if (inText) return 'a Text holds an engine node'
+    if (within === 'text') return 'a Text holds an engine node'
+    if (within === 'button') return 'a Button holds an engine node'
     if (typeof node.ref !== 'number' || !Number.isInteger(node.ref) || node.ref < 0) {
       return 'an engine node has no ref'
     }
@@ -467,13 +494,18 @@ function nodeProblem(node: unknown, depth: number, walk: Walk, inText: boolean):
     return `this surface draws no element named "${type}"`
   }
   const children = node.children
-  const isLeaf = type !== 'Box' && type !== 'Text' && type !== 'Link'
+  const isLeaf = type !== 'Box' && type !== 'Text' && type !== 'Link' && type !== 'Button'
   if (isLeaf && children !== undefined && !(Array.isArray(children) && children.length === 0)) {
     return `${type} takes no children`
   }
-  if (inText && type !== 'Text' && type !== 'Link') {
+  if (within === 'text' && type !== 'Text' && type !== 'Link') {
     return `a Text holds a ${type}; a Text holds strings and inline elements`
   }
+  if (within === 'button' && type !== 'Text') {
+    return `a Button holds a ${type}; a Button holds strings and Texts`
+  }
+  const parted = partProblem(node, type)
+  if (parted) return parted
   const props = node.props
   switch (type) {
     case 'Box': {
@@ -484,13 +516,23 @@ function nodeProblem(node: unknown, depth: number, walk: Walk, inText: boolean):
     case 'Text': {
       const problem = propsProblem(props, TEXT_PROPS, 'Text')
       if (problem) return problem
+      if (isRecord(props)) {
+        if (props.size !== undefined && !(TEXT_SIZES as readonly unknown[]).includes(props.size)) {
+          return `Text's size is not one of ${TEXT_SIZES.join(', ')}`
+        }
+        if (props.weight !== undefined && !(TEXT_WEIGHTS as readonly unknown[]).includes(props.weight)) {
+          return `Text's weight is not one of ${TEXT_WEIGHTS.join(', ')}`
+        }
+        if (props.dir !== undefined && props.dir !== 'ltr' && props.dir !== 'rtl') return 'Text\'s dir is not "ltr" or "rtl"'
+      }
       break
     }
     case 'Button': {
       if (!isRecord(props)) return 'Button has no props'
       const problem = propsProblem(props, BUTTON_PROPS, 'Button') ?? keyProblem(props, 'Button')
       if (problem) return problem
-      if (typeof props.label !== 'string') return 'Button has no label'
+      const labelled = Array.isArray(children) && children.length > 0
+      if (props.label !== undefined ? typeof props.label !== 'string' : !labelled) return 'Button has no label'
       if (props.hotkey !== undefined && !isHotkey(props.hotkey)) {
         return 'Button\'s hotkey is not one digit or one lowercase letter'
       }
@@ -514,6 +556,9 @@ function nodeProblem(node: unknown, depth: number, walk: Walk, inText: boolean):
         if (typeof value !== 'string') return `Input's ${field} is not a string`
         const bad = textProblem(value, `Input's ${field}`)
         if (bad) return bad
+      }
+      if (props.rows !== undefined && !(typeof props.rows === 'number' && Number.isInteger(props.rows) && props.rows >= 1)) {
+        return 'Input\'s rows is not a whole number of at least 1'
       }
       const pressing = pressProblem(node.press, 'Input')
       if (pressing) return pressing
@@ -596,7 +641,8 @@ function nodeProblem(node: unknown, depth: number, walk: Walk, inText: boolean):
   if (children !== undefined) {
     if (!Array.isArray(children)) return `${type}'s children is not a list`
     for (const child of children) {
-      const problem = nodeProblem(child, depth + 1, walk, inText || type === 'Text')
+      const holds: Within = within === 'button' || type === 'Button' ? 'button' : within === 'text' || type === 'Text' ? 'text' : 'block'
+      const problem = nodeProblem(child, depth + 1, walk, holds)
       if (problem) return problem
     }
   }
@@ -608,7 +654,7 @@ export type RenderValidation = { ok: true; tree: RenderElement } | { ok: false; 
 /** Whether `tree` is one the desktop surface draws; the reason when not. */
 export function validateRenderTree(tree: unknown): RenderValidation {
   if (typeof tree === 'string') return { ok: false, reason: 'the answer is a string, not an element' }
-  const problem = nodeProblem(tree, 0, { nodes: 0 }, false)
+  const problem = nodeProblem(tree, 0, { nodes: 0 }, 'block')
   if (problem) return { ok: false, reason: problem }
   return { ok: true, tree: tree as RenderElement }
 }
@@ -647,6 +693,66 @@ export function engineNodesIn(tree: unknown): Array<{ type: 'engine'; ref: numbe
   return out
 }
 
+/** The plugin a Box's or a Text's `part` names; `undefined` for any other node. */
+function partOf(node: unknown): string | undefined {
+  if (!isRecord(node) || (node.type !== 'Box' && node.type !== 'Text')) return undefined
+  const part = node.part
+  return isRecord(part) && typeof part.plugin === 'string' && part.plugin !== '' ? part.plugin : undefined
+}
+
+/** How many `part` stamps of each plugin `tree` holds, added into `into`. */
+export function partStampsIn(tree: unknown, into: Map<string, number> = new Map()): Map<string, number> {
+  const visit = (node: unknown): void => {
+    if (!isRecord(node)) return
+    const owner = partOf(node)
+    if (owner !== undefined) into.set(owner, (into.get(owner) ?? 0) + 1)
+    if (Array.isArray(node.children)) node.children.forEach(visit)
+  }
+  visit(tree)
+  return into
+}
+
+/**
+ * Contract: `tree` as it leaves `plugin`'s `ui.render` hook (F-25). A Box or
+ * Text root is stamped `part: { plugin }`. Beneath it the hook's own stamps
+ * stay; another plugin's stay at most as often as `handed` (what its `next`
+ * calls settled to) held them, wherever the hook moved them; every other
+ * `part` is dropped. Returns a copy; `tree` is not changed.
+ */
+export function stampRenderRoot(tree: unknown, plugin: string, handed: ReadonlyMap<string, number>): unknown {
+  if (!isRecord(tree)) return tree
+  const left = new Map(handed)
+  const copy = (node: unknown): unknown => {
+    if (!isRecord(node)) return node
+    const { part: _part, ...out } = node
+    const owner = partOf(node)
+    const budget = owner === undefined ? 0 : (left.get(owner) ?? 0)
+    if (owner === plugin) out.part = { plugin }
+    else if (owner !== undefined && budget > 0) {
+      left.set(owner, budget - 1)
+      out.part = { plugin: owner }
+    }
+    if (Array.isArray(node.children)) out.children = node.children.map(copy)
+    return out
+  }
+  const { part: _part, ...root } = tree
+  if (Array.isArray(tree.children)) root.children = tree.children.map(copy)
+  if (tree.type === 'Box' || tree.type === 'Text') root.part = { plugin }
+  return root
+}
+
+/** A tree's JSON without its `part` stamps: two trees that differ only in
+ *  whose part starts where draw the same. */
+function treeJson(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value, function (this: unknown, key: string, each: unknown) {
+      return key === 'part' && isRecord(this) && typeof this.type === 'string' ? undefined : each
+    })
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * The plugins whose hooks drew a settled `ui.render` tree, outermost first, from the
  * dispatch trace; a pass-through draws nothing.
@@ -654,11 +760,8 @@ export function engineNodesIn(tree: unknown): Array<{ type: 'engine'; ref: numbe
 export function drewOf(entries: readonly TraceEntry[]): string[] {
   const out: string[] = []
   const same = (a: unknown, b: unknown): boolean => {
-    try {
-      return JSON.stringify(a) === JSON.stringify(b)
-    } catch {
-      return false
-    }
+    const json = treeJson(a)
+    return json !== undefined && json === treeJson(b)
   }
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]!
@@ -690,7 +793,7 @@ function elementsOf(tree: unknown): Set<string> {
   const out = new Set<string>()
   const visit = (node: unknown): void => {
     if (!isRecord(node)) return
-    const json = safeJson(node)
+    const json = treeJson(node)
     if (json !== undefined) out.add(json)
     if (Array.isArray(node.children)) for (const child of node.children) visit(child)
   }
@@ -703,42 +806,55 @@ function isColumn(node: unknown): node is RenderElement & { children: unknown[] 
   return isRecord(node) && node.type === 'Box' && isRecord(node.props) && node.props.flexDirection === 'column' && Array.isArray(node.children)
 }
 
-function safeJson(value: unknown): string | undefined {
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return undefined
-  }
-}
-
 /**
  * A settled tree cut into its drawing plugins' parts, top to bottom (F-25):
- * each element goes to the innermost plugin `drewOf` names whose returned
- * tree holds it unchanged; a column Box mixing plugins is cut between its
- * children. `undefined` unless two or more parts remain, when the outermost
- * tree is not `tree`, or when a non-column element mixes two plugins.
+ * an element under a drawing plugin's `part` stamp below the root goes to
+ * that stamp's plugin, any other to the innermost unstamped drawing plugin
+ * whose returned tree holds it (stamps aside), else the outermost; a column
+ * Box mixing plugins is cut between its children. `undefined` with fewer than
+ * two parts, an outermost tree not `tree`, or an uncuttable mixed element.
  */
 export function sectionsOf(entries: readonly TraceEntry[], tree: RenderElement): RenderSection[] | undefined {
   const drew = drewOf(entries)
   if (drew.length < 2) return undefined
   const returnedBy = (plugin: string): unknown => entries.find(entry => entry.plugin === plugin && (entry.outcome === 'returned' || entry.outcome === 'caught'))?.returned
-  if (safeJson(returnedBy(drew[0]!)) !== safeJson(tree)) return undefined
+  if (treeJson(returnedBy(drew[0]!)) !== treeJson(tree)) return undefined
   const held = drew.map(plugin => elementsOf(returnedBy(plugin)))
-  const drawerOf = (node: unknown): string => {
-    const json = safeJson(node)
-    for (let i = drew.length - 1; i > 0; i--) if (json !== undefined && held[i]!.has(json)) return drew[i]!
+  /** Drawing plugins with a stamp below the root: credited by stamp alone. */
+  const stampedBelow = new Set<string>()
+  const findStamps = (node: unknown): void => {
+    if (!isRecord(node)) return
+    const owner = node === tree ? undefined : partOf(node)
+    if (owner !== undefined && drew.includes(owner)) stampedBelow.add(owner)
+    if (Array.isArray(node.children)) node.children.forEach(findStamps)
+  }
+  findStamps(tree)
+  const drawerOf = (node: unknown, stamped: string | undefined): string => {
+    if (stamped !== undefined) return stamped
+    const json = treeJson(node)
+    for (let i = drew.length - 1; i > 0; i--) {
+      if (json !== undefined && !stampedBelow.has(drew[i]!) && held[i]!.has(json)) return drew[i]!
+    }
     return drew[0]!
+  }
+  /** The drawing plugin whose stamp `node` carries below the root, else
+   *  `stamped`, the nearest one above it. */
+  const stampBelowRoot = (node: unknown, stamped: string | undefined): string | undefined => {
+    if (node === tree) return stamped
+    const owner = partOf(node)
+    return owner !== undefined && drew.includes(owner) ? owner : stamped
   }
   /** The plugins whose drawing `node` shows: a Box is credited with what its
    *  children draw, any other element that draws with its own drawer. */
-  const drawersIn = (node: unknown): Set<string> => {
+  const drawersIn = (node: unknown, above: string | undefined): Set<string> => {
     const out = new Set<string>()
-    const visit = (each: unknown): void => {
+    const visit = (each: unknown, stamped: string | undefined): void => {
       if (!isRecord(each) || !drawsContent(each)) return
-      if (each.type === 'Box' && Array.isArray(each.children)) each.children.forEach(visit)
-      else out.add(drawerOf(each))
+      const own = stampBelowRoot(each, stamped)
+      if (each.type === 'Box' && Array.isArray(each.children)) each.children.forEach(child => visit(child, own))
+      else out.add(drawerOf(each, own))
     }
-    visit(node)
+    visit(node, above)
     return out
   }
   const parts: Array<{ plugin: string; nodes: unknown[] }> = []
@@ -755,15 +871,16 @@ export function sectionsOf(entries: readonly TraceEntry[], tree: RenderElement):
       leading = []
     }
   }
-  const cut = (node: unknown): boolean => {
-    const drawers = drawersIn(node)
+  const cut = (node: unknown, above: string | undefined): boolean => {
+    const drawers = drawersIn(node, above)
     if (drawers.size <= 1) {
       place(drawers.values().next().value, node)
       return true
     }
-    return isColumn(node) && node.children.every(cut)
+    const own = stampBelowRoot(node, above)
+    return isColumn(node) && node.children.every(child => cut(child, own))
   }
-  if (!cut(tree) || parts.length < 2) return undefined
+  if (!cut(tree, undefined) || parts.length < 2) return undefined
   return parts.map(({ plugin, nodes }) => ({
     plugin,
     tree: nodes.length === 1 && isRecord(nodes[0]) ? (nodes[0] as RenderElement) : ({ type: 'Box', props: { flexDirection: 'column' }, children: nodes } as RenderElement),
