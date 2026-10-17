@@ -615,6 +615,26 @@ describe('ui.render — a pane drawn, pressed, redrawn', () => {
     expect(clock).toContain('12:00')
   })
 
+  it('cuts a band whose plugins each unpack the column beneath and stack their own band into it, top to bottom', async () => {
+    const stacking = (name: string) => `on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+        const { Box, Text } = $.ui.resolve(e)
+        const rest = await next(e)
+        const others = rest && rest.props && rest.props.key === 'bands' ? rest.children : [rest]
+        const own = Box({ key: 'band:${name}', flexDirection: 'column', children: [Text({ children: ['${name} line'] })] })
+        return Box({ key: 'bands', flexDirection: 'column', children: [...others, own] })
+      })`
+    const { runtime } = world({ context: stacking('context'), weather: stacking('weather'), steps: stacking('steps') })
+    await runtime.ready
+    const drawn = await runtime.render({ component: 'AbovePrompt', requestId: 'band', props: BAND_PROPS })
+    if (drawn.kind !== 'tree') throw new Error('the band was not drawn')
+    expect(drawn.sections?.map(section => section.plugin)).toEqual(['steps', 'weather', 'context'])
+    for (const section of drawn.sections!) {
+      const json = JSON.stringify(section.tree)
+      expect(json).toContain(`${section.plugin} line`)
+      expect(['context', 'weather', 'steps'].filter(name => json.includes(`${name} line`))).toEqual([section.plugin])
+    }
+  })
+
   it('a band one plugin drew carries no sections', async () => {
     const { runtime } = world({
       clock: `on('ui.render', { component: 'AbovePrompt' }, ($, e) => {

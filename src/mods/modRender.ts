@@ -672,7 +672,7 @@ export function drewOf(entries: readonly TraceEntry[]): string[] {
 }
 
 /** One plugin's own part of a settled tree: what its hook drew, without the
- *  part the hooks beneath it drew. */
+ *  parts the other hooks drew. */
 export type RenderSection = { plugin: string; tree: RenderElement }
 
 /** Whether `node` draws something a person sees: a non-empty string or any
@@ -685,24 +685,22 @@ function drawsContent(node: unknown): boolean {
   return Array.isArray(node.children) && node.children.some(drawsContent)
 }
 
-/** `tree` with its first node equal to `part` taken out; `undefined` when
- *  no node of it is. */
-function withoutPart(tree: unknown, part: string): unknown {
-  const visit = (node: unknown): unknown => {
-    if (!isRecord(node) || !Array.isArray(node.children)) return undefined
-    for (let i = 0; i < node.children.length; i++) {
-      const child = node.children[i]
-      if (safeJson(child) === part) return { ...node, children: node.children.filter((_, at) => at !== i) }
-      const inner = visit(child)
-      if (inner !== undefined) {
-        const children = [...node.children]
-        children[i] = inner
-        return { ...node, children }
-      }
-    }
-    return undefined
+/** The JSON of every element in `tree`, itself included. */
+function elementsOf(tree: unknown): Set<string> {
+  const out = new Set<string>()
+  const visit = (node: unknown): void => {
+    if (!isRecord(node)) return
+    const json = safeJson(node)
+    if (json !== undefined) out.add(json)
+    if (Array.isArray(node.children)) for (const child of node.children) visit(child)
   }
-  return visit(tree)
+  visit(tree)
+  return out
+}
+
+/** A Box that stacks its children top to bottom. */
+function isColumn(node: unknown): node is RenderElement & { children: unknown[] } {
+  return isRecord(node) && node.type === 'Box' && isRecord(node.props) && node.props.flexDirection === 'column' && Array.isArray(node.children)
 }
 
 function safeJson(value: unknown): string | undefined {
@@ -714,29 +712,62 @@ function safeJson(value: unknown): string | undefined {
 }
 
 /**
- * A settled tree cut into each drawing plugin's own part, outermost first
- * (F-25): every plugin `drewOf` names whose tree holds the tree beneath it
- * keeps its tree with that part taken out; the innermost keeps its whole
- * tree. A part that draws nothing is left out. `undefined` unless two or
- * more parts remain, or when the outermost tree is not `tree`.
+ * A settled tree cut into its drawing plugins' parts, top to bottom (F-25):
+ * each element goes to the innermost plugin `drewOf` names whose returned
+ * tree holds it unchanged; a column Box mixing plugins is cut between its
+ * children. `undefined` unless two or more parts remain, when the outermost
+ * tree is not `tree`, or when a non-column element mixes two plugins.
  */
 export function sectionsOf(entries: readonly TraceEntry[], tree: RenderElement): RenderSection[] | undefined {
   const drew = drewOf(entries)
   if (drew.length < 2) return undefined
   const returnedBy = (plugin: string): unknown => entries.find(entry => entry.plugin === plugin && (entry.outcome === 'returned' || entry.outcome === 'caught'))?.returned
   if (safeJson(returnedBy(drew[0]!)) !== safeJson(tree)) return undefined
-  const sections: RenderSection[] = []
-  for (let i = 0; i < drew.length; i++) {
-    const plugin = drew[i]!
-    const own = returnedBy(plugin)
-    const beneath = i + 1 < drew.length ? safeJson(returnedBy(drew[i + 1]!)) : undefined
-    const rest = beneath === undefined ? undefined : withoutPart(own, beneath)
-    const part = rest ?? own
-    if (drawsContent(part)) sections.push({ plugin, tree: part as RenderElement })
-    // The plugins beneath were drawn over, not drawn into this tree.
-    if (rest === undefined) break
+  const held = drew.map(plugin => elementsOf(returnedBy(plugin)))
+  const drawerOf = (node: unknown): string => {
+    const json = safeJson(node)
+    for (let i = drew.length - 1; i > 0; i--) if (json !== undefined && held[i]!.has(json)) return drew[i]!
+    return drew[0]!
   }
-  return sections.length >= 2 ? sections : undefined
+  /** The plugins whose drawing `node` shows: a Box is credited with what its
+   *  children draw, any other element that draws with its own drawer. */
+  const drawersIn = (node: unknown): Set<string> => {
+    const out = new Set<string>()
+    const visit = (each: unknown): void => {
+      if (!isRecord(each) || !drawsContent(each)) return
+      if (each.type === 'Box' && Array.isArray(each.children)) each.children.forEach(visit)
+      else out.add(drawerOf(each))
+    }
+    visit(node)
+    return out
+  }
+  const parts: Array<{ plugin: string; nodes: unknown[] }> = []
+  let leading: unknown[] = []
+  const place = (plugin: string | undefined, node: unknown): void => {
+    const last = parts[parts.length - 1]
+    if (plugin === undefined) {
+      if (last) last.nodes.push(node)
+      else leading.push(node)
+    } else if (last?.plugin === plugin) {
+      last.nodes.push(node)
+    } else {
+      parts.push({ plugin, nodes: [...leading, node] })
+      leading = []
+    }
+  }
+  const cut = (node: unknown): boolean => {
+    const drawers = drawersIn(node)
+    if (drawers.size <= 1) {
+      place(drawers.values().next().value, node)
+      return true
+    }
+    return isColumn(node) && node.children.every(cut)
+  }
+  if (!cut(tree) || parts.length < 2) return undefined
+  return parts.map(({ plugin, nodes }) => ({
+    plugin,
+    tree: nodes.length === 1 && isRecord(nodes[0]) ? (nodes[0] as RenderElement) : ({ type: 'Box', props: { flexDirection: 'column' }, children: nodes } as RenderElement),
+  }))
 }
 
 /** The plugin whose hook drew `tree`, read off its handlers; `undefined` for

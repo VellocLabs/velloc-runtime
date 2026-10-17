@@ -238,9 +238,39 @@ describe('sectionsOf', () => {
         outer as never,
       ),
     ).toEqual([
-      { plugin: 'usage', tree: { type: 'Box', props: { flexDirection: 'column' }, children: [text('usage'), { type: 'Box', children: [] }] } },
-      { plugin: 'clock', tree: clock },
+      { plugin: 'usage', tree: text('usage') },
+      { plugin: 'clock', tree: { type: 'Box', children: [clock] } },
     ])
+  })
+
+  it('keeps the order the parts are drawn in, an outer plugin drawing below the tree beneath', () => {
+    const clock = text('12:00')
+    const usage = { type: 'Box', props: { flexDirection: 'column' }, children: [clock, text('usage')] }
+    expect(sectionsOf([entry('usage', 'returned', usage), entry('clock', 'returned', clock)], usage as never)?.map(s => s.plugin)).toEqual(['clock', 'usage'])
+  })
+
+  it("credits each band to its plugin when an outer plugin unpacked the column beneath and stacked it again", () => {
+    const band = (name: string) => ({ type: 'Box', props: { key: `band:${name}`, flexDirection: 'column' }, children: [text(name)] })
+    const column = (...children: unknown[]) => ({ type: 'Box', props: { key: 'bands', flexDirection: 'column' }, children })
+    const steps = column(band('steps'), engine)
+    const weather = column(band('weather'), band('steps'), engine)
+    const context = column(band('weather'), band('steps'), engine, band('context'))
+    expect(
+      sectionsOf(
+        [entry('context', 'returned', context), entry('weather', 'returned', weather), entry('steps', 'returned', steps), entry('engine', 'returned', engine)],
+        context as never,
+      ),
+    ).toEqual([
+      { plugin: 'weather', tree: band('weather') },
+      { plugin: 'steps', tree: { type: 'Box', props: { flexDirection: 'column' }, children: [band('steps'), engine] } },
+      { plugin: 'context', tree: band('context') },
+    ])
+  })
+
+  it('gives none when a row holds two plugins side by side', () => {
+    const clock = text('12:00')
+    const usage = { type: 'Box', children: [text('usage'), clock] }
+    expect(sectionsOf([entry('usage', 'returned', usage), entry('clock', 'returned', clock)], usage as never)).toBeUndefined()
   })
 
   it('leaves out a plugin that only wrapped the part beneath, and gives none for a single part', () => {
@@ -256,8 +286,8 @@ describe('sectionsOf', () => {
 
   it('gives three sections for three plugins nested in turn', () => {
     const c = text('c')
-    const b = { type: 'Box', children: [text('b'), c] }
-    const a = { type: 'Box', children: [text('a'), b] }
+    const b = { type: 'Box', props: { flexDirection: 'column' }, children: [text('b'), c] }
+    const a = { type: 'Box', props: { flexDirection: 'column' }, children: [text('a'), b] }
     expect(sectionsOf([entry('a', 'returned', a), entry('b', 'returned', b), entry('c', 'returned', c)], a as never)?.map(s => s.plugin)).toEqual(['a', 'b', 'c'])
   })
 })
