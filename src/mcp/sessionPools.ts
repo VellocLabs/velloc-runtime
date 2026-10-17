@@ -24,14 +24,27 @@ const IDLE_SWEEP_INTERVAL_MS = 60_000
 /** Bound on a parent chain walk; agent nesting is far shallower. */
 const MAX_PARENT_DEPTH = 32
 
+/** One lease's fs and settings loader; the pool reads through a root
+ *  session's newest lease, else the newest lease. */
+type PoolHold = {
+  root: boolean
+  fs?: RuntimeFs
+  loadNativeServers?: AcquireSessionMCPPoolOptions['loadNativeServers']
+}
+
 type PoolEntry = {
   pool: MCPPool
-  holders: number
+  /** The project folder the pool read `.nexus/mcp.json` from. */
+  cwd: string
+  /** One per live lease, oldest first. */
+  holds: PoolHold[]
   initialized: boolean
   closeTimer: ReturnType<typeof setTimeout> | null
 }
 
 const pools = new Map<string, PoolEntry>()
+/** Pools replaced under their key, open until their last holder leaves. */
+const detached = new Set<PoolEntry>()
 const parentOf = new Map<string, string>()
 let idleSweep: ReturnType<typeof setInterval> | null = null
 
@@ -81,13 +94,22 @@ export async function acquireSessionMCPPool(
   options: AcquireSessionMCPPoolOptions,
 ): Promise<SessionMCPPoolLease> {
   const { sessionId, parentSessionId } = options
-  const linked = parentSessionId !== undefined && parentSessionId !== sessionId
-  if (linked) parentOf.set(sessionId, parentSessionId)
+  // A link lives as long as its root's pool: a descendant spawned after an
+  // intermediate agent ended still resolves to the same root.
+  if (parentSessionId !== undefined && parentSessionId !== sessionId) parentOf.set(sessionId, parentSessionId)
   const key = topLevelSessionId(sessionId)
+  const root = key === sessionId
 
   let entry = pools.get(key)
+  // The session itself back with another project folder (a rebind) gets a
+  // fresh pool; descendants holding the old one keep it until they release.
+  if (entry && root && entry.cwd !== options.cwd) {
+    detachEntry(key, entry)
+    entry = undefined
+  }
   if (!entry) {
     entry = {
+      cwd: options.cwd,
       pool: new MCPPool({
         cwd: options.cwd,
         fs: options.fs,
@@ -95,7 +117,7 @@ export async function acquireSessionMCPPool(
         nativeBridge: options.nativeBridge,
         loadNativeServers: options.loadNativeServers,
       }),
-      holders: 0,
+      holds: [],
       initialized: false,
       closeTimer: null,
     }
@@ -106,8 +128,10 @@ export async function acquireSessionMCPPool(
     clearTimeout(entry.closeTimer)
     entry.closeTimer = null
   }
-  entry.holders++
   const held = entry
+  const hold: PoolHold = { root, fs: options.fs, loadNativeServers: options.loadNativeServers }
+  held.holds.push(hold)
+  applySources(held)
 
   const settle = held.initialized
     ? held.pool.refresh()
@@ -128,19 +152,42 @@ export async function acquireSessionMCPPool(
     release: () => {
       if (released) return
       released = true
-      if (linked && parentOf.get(sessionId) === parentSessionId) parentOf.delete(sessionId)
+      const at = held.holds.indexOf(hold)
+      if (at !== -1) held.holds.splice(at, 1)
+      if (held.holds.length > 0) applySources(held)
       releaseHolder(key, held)
     },
   }
 }
 
+/** Read through a live holder's sources: a disposed runtime's fs and loader
+ *  fail every read, which a refresh would take for "no servers". */
+function applySources(entry: PoolEntry): void {
+  const hold = entry.holds.findLast(candidate => candidate.root) ?? entry.holds.at(-1)
+  if (hold) entry.pool.setSources({ fs: hold.fs, loadNativeServers: hold.loadNativeServers })
+}
+
 function releaseHolder(key: string, entry: PoolEntry): void {
-  entry.holders = Math.max(0, entry.holders - 1)
-  if (entry.holders > 0 || pools.get(key) !== entry) return
+  if (entry.holds.length > 0) return
+  if (detached.has(entry)) {
+    void shutdownPool(key, entry)
+    return
+  }
+  if (pools.get(key) !== entry) return
   entry.closeTimer = setTimeout(() => {
     entry.closeTimer = null
-    if (entry.holders === 0 && pools.get(key) === entry) void closeEntry(key, entry)
+    if (entry.holds.length === 0 && pools.get(key) === entry) void closeEntry(key, entry)
   }, MCP_POOL_RELEASE_GRACE_MS)
+}
+
+function detachEntry(key: string, entry: PoolEntry): void {
+  if (entry.closeTimer) {
+    clearTimeout(entry.closeTimer)
+    entry.closeTimer = null
+  }
+  pools.delete(key)
+  detached.add(entry)
+  if (entry.holds.length === 0) void shutdownPool(key, entry)
 }
 
 /** Close `sessionId`'s top-level pool now (the session was deleted). */
@@ -155,8 +202,16 @@ async function closeEntry(key: string, entry: PoolEntry): Promise<void> {
     clearTimeout(entry.closeTimer)
     entry.closeTimer = null
   }
-  pools.delete(key)
+  if (pools.get(key) === entry) {
+    pools.delete(key)
+    forgetLinks(key)
+  }
   if (pools.size === 0) stopIdleSweep()
+  await shutdownPool(key, entry)
+}
+
+async function shutdownPool(key: string, entry: PoolEntry): Promise<void> {
+  detached.delete(entry)
   try {
     await entry.pool.shutdown()
   } catch (err) {
@@ -164,9 +219,15 @@ async function closeEntry(key: string, entry: PoolEntry): Promise<void> {
   }
 }
 
+/** Drop the parent links that resolve to `key`. */
+function forgetLinks(key: string): void {
+  const children = Array.from(parentOf.keys()).filter(child => topLevelSessionId(child) === key)
+  for (const child of children) parentOf.delete(child)
+}
+
 /** Every open pool, for realm-wide events (a settings change). */
 export function listSessionMCPPools(): MCPPool[] {
-  return Array.from(pools.values(), entry => entry.pool)
+  return [...Array.from(pools.values(), entry => entry.pool), ...Array.from(detached, entry => entry.pool)]
 }
 
 /** Park the idle stdio servers of every open pool. */
@@ -183,8 +244,12 @@ export async function parkIdleMCPServers(now: number = Date.now()): Promise<void
 /** Close every pool and forget every parent link. */
 export async function closeAllSessionMCPPools(): Promise<void> {
   const entries = Array.from(pools.entries())
+  const replaced = Array.from(detached)
   parentOf.clear()
-  await Promise.all(entries.map(([key, entry]) => closeEntry(key, entry)))
+  await Promise.all([
+    ...entries.map(([key, entry]) => closeEntry(key, entry)),
+    ...replaced.map(entry => shutdownPool('replaced', entry)),
+  ])
 }
 
 function startIdleSweep(): void {

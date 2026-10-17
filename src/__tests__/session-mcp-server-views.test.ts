@@ -52,6 +52,26 @@ describe('sessionMcpServerViews — details', () => {
     ])
   })
 
+  it('leaves out a plugin server that joined after the build; a settings server that joined is listed', () => {
+    const views = sessionMcpServerViews(
+      [
+        { name: 'local', status: 'connected', nativeServerId: 'local', nativeConfig: { command: 'a' } },
+        { name: 'contree', status: 'connected', nativeServerId: 'contree', nativeConfig: { command: 'b' } },
+        { name: 'docs', status: 'connected', config: { type: 'http', url: 'https://d' } },
+        { name: 'down', status: 'failed', nativeServerId: 'down', nativeConfig: { command: 'c' } },
+      ],
+      { ...origins, pluginServers: [...origins.pluginServers, { name: 'down', plugin: 'nebius', track: 'native' }] },
+      new Set(['docs']),
+    )
+    expect(views.map(view => view.name)).toEqual(['docs', 'down', 'local'])
+  })
+
+  it('without an offered set every settled server is listed', () => {
+    expect(
+      sessionMcpServerViews([{ name: 'contree', status: 'connected', nativeServerId: 'contree' }], origins).map(view => view.name),
+    ).toEqual(['contree'])
+  })
+
   it('names no origin when the runtime publishes none', () => {
     expect(sessionMcpServerViews([{ name: 'a', status: 'connected' }])).toEqual([{ name: 'a', status: 'connected' }])
   })
@@ -73,6 +93,10 @@ describe('mcpServerOrigin', () => {
   it('a browser-track server is its plugin\'s, else the project file\'s', () => {
     expect(mcpServerOrigin({ name: 'web' }, sources)).toEqual({ kind: 'plugin', plugin: 'p' })
     expect(mcpServerOrigin({ name: 'other' }, sources)).toEqual({ kind: 'project' })
+  })
+
+  it('a browser-track name the project file holds is the project\'s, though a plugin declares it too', () => {
+    expect(mcpServerOrigin({ name: 'web' }, { ...sources, projectNames: new Set(['web']) })).toEqual({ kind: 'project' })
   })
 
   it('a plugin\'s browser server does not claim a native server of the same name', () => {

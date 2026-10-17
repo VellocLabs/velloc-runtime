@@ -19,6 +19,12 @@ export async function getPluginConfigsMap(
   return { ...(settings.pluginConfigs ?? {}) }
 }
 
+/** Whether the user settings were read from the file, not defaulted after
+ *  a missing, malformed or unreadable one. */
+export async function userSettingsReadFromFile(ctx: SettingsPathContext, fs: RuntimeFs): Promise<boolean> {
+  return (await readLayer('userSettings', ctx, fs)).source === 'file'
+}
+
 /**
  * The sealed key and owner of every provider mod's stored entry
  * (`providers.configs`), for `${provider_key.KEY}` in a plugin's MCP servers.

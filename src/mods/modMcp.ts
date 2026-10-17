@@ -43,6 +43,10 @@ export type ModMcpCallInput = { server: string; tool: string; args: Record<strin
 export type ModMcpManifestServer =
   | { kind: 'browser'; entry: MCPServerConfigWithName }
   | { kind: 'native'; id: string; config: NexusMcpServerLaunchConfig }
+  /** Listed, but its config cannot start (`reason` says why). */
+  | { kind: 'refused'; reason: string }
+
+type StartableManifestServer = Exclude<ModMcpManifestServer, { kind: 'refused' }>
 
 /** What `$.mcp` needs of the session. */
 export type ModMcpHost = {
@@ -138,14 +142,14 @@ export function mcpToolResultOf(raw: unknown): ModMcpToolResult {
   }
 }
 
-function configOf(server: ModMcpManifestServer) {
+function configOf(server: StartableManifestServer) {
   if (server.kind === 'native') return server.config
   const { name: _name, ...config } = server.entry
   return config
 }
 
 /** Whether the pool's `running` is the manifest's `server`, under any name. */
-function isSameServer(running: LiveServerLink, server: ModMcpManifestServer): boolean {
+function isSameServer(running: LiveServerLink, server: StartableManifestServer): boolean {
   if (server.kind === 'native') {
     return running.nativeServerId !== undefined && sameMCPServerConfig(running.nativeConfig, server.config)
   }
@@ -184,6 +188,7 @@ export function poolModMcp(options: {
       if (!server) {
         return { isConnected: false, reason: 'unlisted', message: `"${key}" is not an MCP server in ${plugin}'s manifest` }
       }
+      if (server.kind === 'refused') return failed(`"${key}" cannot start: ${server.reason}`)
       const pool = options.pool()
       if (!pool) return failed(`"${key}" was not connected: the MCP pool is not built`)
       const running = pool.listServers().filter(s => isSameServer(s, server))
@@ -195,7 +200,7 @@ export function poolModMcp(options: {
         return failed(
           known
             ? `"${known.name}" did not connect${known.error ? `: ${known.error}` : ''}`
-            : `"${key}" is a stdio server the session did not start; it connects when the browser next starts`,
+            : `"${key}" is a stdio server the session did not start; it starts with the next session`,
         )
       }
       try {

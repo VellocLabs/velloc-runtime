@@ -122,6 +122,8 @@ describe('pluginMcpServer', () => {
       config: { transport: 'stdio', command: '/plugins/docs/bin/s' },
     })
     expect(pluginMcpServer(plugin, 'toString', env)).toBeUndefined()
+    const bad = { ...plugin, mcpServers: { search: { type: 'http' as const, url: 'https://h/mcp', headers: { X: 3 as unknown as string } } } }
+    expect(pluginMcpServer(bad, 'search', env)).toEqual({ kind: 'refused', reason: 'a header or env value is not text' })
     expect(pluginMcpServer({ name: 'p', manifest: { name: 'p' }, path: '/p' }, 'search', env)).toBeUndefined()
   })
 })
@@ -158,6 +160,7 @@ describe('poolModMcp', () => {
       gh: { kind: 'browser', entry: { name: 'gh', type: 'http', url: 'https://mine.test/mcp' } },
       shell: { kind: 'native', id: 'shell', config: { transport: 'stdio', command: 'node', args: ['s.js'] } },
       later: { kind: 'native', id: 'later', config: { transport: 'stdio', command: 'node', args: ['l.js'] } },
+      locked: { kind: 'refused', reason: 'sensitive option "k" needs an https server URL' },
     },
   }
   const manifestServer = (plugin: string, key: string) => manifests[plugin]?.[key]
@@ -197,6 +200,11 @@ describe('poolModMcp', () => {
       message: '"broken" did not connect: ECONNREFUSED',
     })
     expect(await poolModMcp({ pool: () => null, manifestServer }).connect('docs', 'search')).toMatchObject({ isConnected: false, reason: 'failed' })
+    expect(await mcp.connect('docs', 'locked')).toEqual({
+      isConnected: false,
+      reason: 'failed',
+      message: '"locked" cannot start: sensitive option "k" needs an https server URL',
+    })
   })
 
   it('a native manifest server is answered from the pool: connected under its name, or failed when the session did not start it', async () => {

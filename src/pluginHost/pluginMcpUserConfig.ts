@@ -84,16 +84,23 @@ function optionText(value: unknown): string {
   return Array.isArray(value) ? value.map(String).join(',') : String(value)
 }
 
-/** The origin a secret may be bound to: https, or http on a loopback host. */
+/** The origin a secret may be bound to: https only, since a plugin's
+ *  host-driven server may not reach loopback or the LAN. */
 function secretOriginOf(url: string): string | undefined {
   try {
     const parsed = new URL(url)
-    if (parsed.protocol === 'https:') return parsed.origin
-    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)
-    return parsed.protocol === 'http:' && loopback ? parsed.origin : undefined
+    return parsed.protocol === 'https:' ? parsed.origin : undefined
   } catch {
     return undefined
   }
+}
+
+/** Whether every header and env value of `config` is text. */
+function textValuesOnly(config: object): boolean {
+  const maps = [(config as { headers?: unknown }).headers, (config as { env?: unknown }).env]
+  return maps.every(map =>
+    map === undefined || (typeof map === 'object' && map !== null && Object.values(map).every(value => typeof value === 'string')),
+  )
 }
 
 function strings(value: unknown): string[] {
@@ -118,6 +125,9 @@ export function resolvePluginMcpServer(
   server: PluginMcpServer,
   scope: PluginMcpScope,
 ): ResolvedPluginMcpServer {
+  if (!textValuesOnly(server.config)) {
+    return { ok: false, reason: 'a header or env value is not text' }
+  }
   if (strings(server.config).some(holdsHostPlaceholder)) {
     return { ok: false, reason: 'holds a host placeholder ({{secret:…}} or {{oauth:…}}), which a plugin cannot use' }
   }
@@ -167,7 +177,7 @@ export function resolvePluginMcpServer(
     }
     if (site === 'header' && launch.kind === 'native') {
       if (!headerOrigin) {
-        problems.add(`sensitive option "${key}" needs an https server URL (or http on a loopback host)`)
+        problems.add(`sensitive option "${key}" needs an https server URL`)
         return undefined
       }
       const name = nameFor(`mcp/${secretNameSegment(serverName)}/${secretNameSegment(key)}`)
@@ -228,8 +238,10 @@ export function resolvePluginMcpServer(
 }
 
 /**
- * Store `writes` (the values the resolved servers carry placeholders for) and
- * delete the secrets of `pluginIds` that no server uses any more. A failure
+ * Store `writes` (the values the resolved servers carry placeholders for) and,
+ * when `prune` holds, delete the secrets of `pluginIds` that no server uses
+ * any more. Pass `prune: false` when the options were not read from the
+ * settings file: defaults would drop values live servers still use. A failure
  * is reported through `warn`; the server that needed the value then fails
  * to start, naming the missing secret.
  */
@@ -238,6 +250,7 @@ export async function storePluginSecrets(
   pluginIds: readonly string[],
   store: Pick<McpSecretsStore, 'set' | 'delete' | 'listNames'>,
   warn: (message: string) => void,
+  { prune = true }: { prune?: boolean } = {},
 ): Promise<void> {
   const wanted = new Set(writes.map(write => write.name))
   for (const write of writes) {
@@ -247,7 +260,7 @@ export async function storePluginSecrets(
       warn(`[plugins] could not store ${write.name}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  if (pluginIds.length === 0) return
+  if (!prune || pluginIds.length === 0) return
   try {
     const prefixes = pluginIds.map(pluginSecretPrefix)
     for (const { name } of await store.listNames('plugin')) {

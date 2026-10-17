@@ -76,9 +76,18 @@ describe('resolvePluginMcpServer', () => {
     const inArgs = resolve({ kind: 'native', config: { transport: 'stdio', command: 'run', args: ['${user_config.api_key}'] } })
     expect(inArgs).toEqual({ ok: false, reason: 'sensitive option "api_key" can stand only in an env value or a header value' })
     const plainHttp = resolve({ kind: 'browser', config: { type: 'http', url: 'http://api.example.com', headers: { A: '${user_config.api_key}' } } })
-    expect(plainHttp).toEqual({ ok: false, reason: 'sensitive option "api_key" needs an https server URL (or http on a loopback host)' })
+    expect(plainHttp).toEqual({ ok: false, reason: 'sensitive option "api_key" needs an https server URL' })
+    const loopback = resolve({ kind: 'browser', config: { type: 'http', url: 'http://127.0.0.1:8123/mcp', headers: { A: '${user_config.api_key}' } } })
+    expect(loopback).toEqual({ ok: false, reason: 'sensitive option "api_key" needs an https server URL' })
     const sse = resolve({ kind: 'browser', config: { type: 'sse', url: 'https://a.example', headers: { A: '${user_config.api_key}' } } })
     expect(sse.ok).toBe(false)
+  })
+
+  it('refuses a header or env value that is not text', () => {
+    const header = resolve({ kind: 'browser', config: { type: 'http', url: 'https://h/mcp', headers: { 'X-Retries': 3 as unknown as string } } })
+    expect(header).toEqual({ ok: false, reason: 'a header or env value is not text' })
+    const env = resolve({ kind: 'native', config: { transport: 'stdio', command: 'run', env: { N: null as unknown as string } } })
+    expect(env).toEqual({ ok: false, reason: 'a header or env value is not text' })
   })
 
   it('gives an empty sensitive option as empty text and stores nothing', () => {
@@ -240,6 +249,17 @@ describe('storePluginSecrets', () => {
     expect(store.set).toHaveBeenCalledWith(`${prefix}env/api_5f_key`, 'k', undefined, { processEnv: true })
     expect(store.delete.mock.calls).toEqual([[`${prefix}env/old`]])
     expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('deletes nothing when told not to prune', async () => {
+    const prefix = pluginSecretPrefix('sandbox@market')
+    const store = {
+      set: vi.fn(async () => {}),
+      delete: vi.fn(async () => true),
+      listNames: vi.fn(async () => [{ name: `${prefix}env/old`, origin: '' }]),
+    }
+    await storePluginSecrets([], ['sandbox@market'], store, vi.fn(), { prune: false })
+    expect(store.delete).not.toHaveBeenCalled()
   })
 
   it('reports a store that refuses, and goes on', async () => {

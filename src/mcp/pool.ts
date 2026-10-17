@@ -115,11 +115,16 @@ function isNativeServerNotConnected(error: string | undefined): boolean {
 
 export class MCPPool {
   private readonly cwd: string
-  private readonly fs?: RuntimeFs
-  private readonly extraServers: MCPServerConfigWithName[]
+  private fs?: RuntimeFs
+  private extraServers: MCPServerConfigWithName[]
+  private readonly projectNames = new Set<string>()
   private readonly nativeBridge?: McpBridgeOperations
-  private readonly loadNativeServers?: NonNullable<MCPPoolOptions['loadNativeServers']>
+  private loadNativeServers?: NonNullable<MCPPoolOptions['loadNativeServers']>
   private readonly servers = new Map<string, LiveServerLink>()
+  /** Set by `shutdown`; a connect that settles afterwards is undone. */
+  private closed = false
+  /** In-flight reconnects of native servers from `dispatchCall`, by name. */
+  private readonly reconnecting = new Map<string, Promise<void>>()
   /**
    * The one `init` run, memoised so a second concurrent caller awaits the
    * first instead of returning before any server is registered. Cleared
@@ -144,6 +149,90 @@ export class MCPPool {
     this.loadNativeServers = options.loadNativeServers
   }
 
+  /**
+   * Read through another holder's fs and settings loader from now on. The
+   * bridge, cwd and extra servers stay the creator's. Contract: a holder's
+   * sources must stay usable while it holds the pool.
+   */
+  setSources(sources: Pick<MCPPoolOptions, 'fs' | 'loadNativeServers'>): void {
+    this.fs = sources.fs
+    this.loadNativeServers = sources.loadNativeServers
+  }
+
+  /** Names the project's `.nexus/mcp.json` holds; filled by `init`. */
+  get projectServerNames(): ReadonlySet<string> {
+    return this.projectNames
+  }
+
+  /**
+   * Take a new plugin browser-track list: a server dropped or changed is
+   * disconnected, a new or changed one connects. A name the project or a
+   * native server holds stays theirs. Never rejects.
+   */
+  async setExtraServers(next: MCPServerConfigWithName[]): Promise<void> {
+    const before = new Map(this.extraServers.map(entry => [entry.name, entry]))
+    this.extraServers = next
+    if (!this.initRun) return
+    await this.initRun.catch(() => undefined)
+    const wanted = new Map(next.map(entry => [entry.name, entry]))
+    const names = new Set([...before.keys(), ...wanted.keys()])
+    await Promise.all(
+      Array.from(names, async name => {
+        if (this.closed || this.projectNames.has(name)) return
+        const { name: _old, ...oldConfig } = before.get(name) ?? { name }
+        const target = wanted.get(name)
+        const { name: _new, ...newConfig } = target ?? { name }
+        if (before.has(name) && target && configsEqual(oldConfig as MCPServerConfig, newConfig as MCPServerConfig)) return
+        const existing = this.servers.get(name)
+        if (existing && existing.nativeServerId !== undefined) return
+        if (existing) {
+          this.servers.delete(name)
+          this.lastActiveAt.delete(name)
+          await disconnectMCPServer(existing)
+          this.notifyServersChanged()
+        }
+        if (target && !this.closed) await this.connect(target)
+      }),
+    )
+  }
+
+  /**
+   * Take a plugin reload: the new browser-track list, the native list as the
+   * settings loader now returns it, and a relaunch of each native server
+   * whose config names a stored secret in `changedSecrets` (a server reads
+   * its secrets when it starts).
+   */
+  async followPluginReload(
+    browserServers: MCPServerConfigWithName[],
+    changedSecrets: ReadonlySet<string>,
+  ): Promise<void> {
+    await this.setExtraServers(browserServers)
+    await this.refreshNativeServers()
+    const readsChanged = this.listServers()
+      .filter(server => {
+        const config = server.nativeConfig ? JSON.stringify(server.nativeConfig) : ''
+        return Array.from(changedSecrets).some(name => config.includes(`{{secret:${name}}}`))
+      })
+      .map(server => server.name)
+    await this.restartNativeServers(readsChanged)
+  }
+
+  /** Relaunch the named native servers with their recorded config; a server
+   *  reads its stored secrets when it starts. Never rejects. */
+  async restartNativeServers(names: readonly string[]): Promise<void> {
+    const bridge = this.nativeBridge
+    if (!bridge) return
+    await Promise.all(
+      names.map(async name => {
+        const server = this.servers.get(name)
+        if (!server?.nativeConfig || server.nativeServerId === undefined) return
+        const config = server.nativeConfig
+        await this.disconnectAndEvict(bridge, server)
+        if (!this.closed && !this.servers.has(name)) await this.connectNative(bridge, name, config)
+      }),
+    )
+  }
+
   init(): Promise<void> {
     if (!this.initRun) {
       this.initRun = this.runInit().catch(err => {
@@ -156,7 +245,9 @@ export class MCPPool {
 
   private async runInit(): Promise<void> {
     const configs = await loadMCPConfig(this.cwd, this.fs)
+    if (this.closed) return
     const names = new Set(configs.map(entry => entry.name))
+    for (const name of names) this.projectNames.add(name)
     const merged = [...configs]
     for (const extra of this.extraServers) {
       if (names.has(extra.name)) {
@@ -196,6 +287,10 @@ export class MCPPool {
         config,
         fs: this.fs,
       })
+      if (this.closed) {
+        await disconnectMCPServer(server)
+        return
+      }
       this.servers.set(name, server)
     })
   }
@@ -241,6 +336,7 @@ export class MCPPool {
       console.warn('[mcp] loadNativeServers failed:', err)
       return
     }
+    if (this.closed) return
     await this.addNativeServers(bridge, entries, taken)
   }
 
@@ -308,6 +404,10 @@ export class MCPPool {
         server.error = err instanceof Error ? err.message : String(err)
         console.warn(`[mcp] Native server "${name}" connect threw:`, err)
       }
+      if (this.closed) {
+        if (server.status === 'connected') await this.disconnectQuietly(bridge, name)
+        return
+      }
       this.servers.set(name, server)
     })
   }
@@ -348,6 +448,7 @@ export class MCPPool {
       console.warn('[mcp] loadNativeServers (refresh) failed:', err)
       return
     }
+    if (this.closed) return
 
     // Build the "what should be live" set keyed by id, plus the
     // "what IS live and native" set. The native-only filter is
@@ -442,6 +543,9 @@ export class MCPPool {
     server: LiveServerLink,
   ): Promise<void> {
     if (server.nativeServerId === undefined) return
+    // Closed first: a call arriving while the child stops must not relaunch it.
+    server.status = 'closed'
+    await this.reconnecting.get(server.name)
     try {
       await bridge.disconnect(server.nativeServerId)
     } catch (err) {
@@ -450,9 +554,16 @@ export class MCPPool {
         err instanceof Error ? err.message : err,
       )
     }
-    server.status = 'closed'
     this.servers.delete(server.name)
     this.notifyServersChanged()
+  }
+
+  private async disconnectQuietly(bridge: McpBridgeOperations, id: string): Promise<void> {
+    try {
+      await bridge.disconnect(id)
+    } catch (err) {
+      console.warn(`[mcp] Native server "${id}" disconnect failed:`, err instanceof Error ? err.message : err)
+    }
   }
 
   /** In-flight `addServer` connects, by name — see `addServer`. */
@@ -566,9 +677,13 @@ export class MCPPool {
       )
     } finally {
       finish()
-      if (this.exclusiveTails.get(serverName) === tail) {
-        this.exclusiveTails.delete(serverName)
-      }
+      // Forget the tail only once it has settled: an aborted call still
+      // queued behind a running one must keep the queue closed until then.
+      void tail.then(() => {
+        if (this.exclusiveTails.get(serverName) === tail) {
+          this.exclusiveTails.delete(serverName)
+        }
+      })
     }
   }
 
@@ -647,13 +762,13 @@ export class MCPPool {
       // own) and the child died with the old connection. Connect it again on
       // the current port and retry once.
       if (!out.ok && isNativeServerNotConnected(out.error)) {
-        const reconnected = server.nativeConfig !== undefined
-          ? await nativeBridge.connect(nativeServerId, server.nativeConfig)
-          : { ok: false, tools: [], error: `MCP server "${nativeServerId}" has no launch config.` }
-        if (reconnected.ok) {
-          server.tools = reconnected.tools
-          out = await nativeBridge.callTool(nativeServerId, toolName, args, signal)
+        await this.reconnectNative(nativeBridge, server)
+        if (server.status !== 'connected' || this.servers.get(serverName) !== server) {
+          throw new Error(
+            server.error ?? `MCP server "${serverName}" is not connected (status: ${server.status}).`,
+          )
         }
+        out = await nativeBridge.callTool(nativeServerId, toolName, args, signal)
       }
       if (!out.ok) {
         throw new Error(out.error ?? `MCP tool "${toolName}" failed.`)
@@ -661,6 +776,39 @@ export class MCPPool {
       return out.result
     }
     return invokeServerTool(server, toolName, args, signal)
+  }
+
+  /**
+   * Relaunch `server` with its own config, once for concurrent callers. Only
+   * while it is still this pool's live entry: a server being evicted or a
+   * closed pool is never relaunched. A failure marks the entry failed with
+   * its reason, so the list shows it and the next refresh retries it.
+   */
+  private reconnectNative(bridge: McpBridgeOperations, server: LiveServerLink): Promise<void> {
+    const inFlight = this.reconnecting.get(server.name)
+    if (inFlight) return inFlight
+    const live = () =>
+      !this.closed && server.status === 'connected' && this.servers.get(server.name) === server
+    if (!live()) return Promise.resolve()
+    const run = (async () => {
+      const result = server.nativeConfig !== undefined
+        ? await bridge.connect(server.nativeServerId!, server.nativeConfig)
+        : { ok: false as const, tools: [], error: `MCP server "${server.name}" has no launch config.` }
+      if (!live()) return
+      if (result.ok) {
+        server.tools = result.tools
+        this.lastActiveAt.set(server.name, Date.now())
+      } else {
+        server.status = 'failed'
+        server.error = result.error ?? 'connect failed'
+        console.warn(`[mcp] Native server "${server.name}" reconnect failed:`, server.error)
+      }
+      this.notifyServersChanged()
+    })().finally(() => {
+      this.reconnecting.delete(server.name)
+    })
+    this.reconnecting.set(server.name, run)
+    return run
   }
 
   /**
@@ -729,6 +877,7 @@ export class MCPPool {
   }
 
   async shutdown(): Promise<void> {
+    this.closed = true
     const servers = Array.from(this.servers.values())
     this.servers.clear()
     this.lastActiveAt.clear()
@@ -737,6 +886,7 @@ export class MCPPool {
       servers.map(async server => {
         if (server.nativeServerId !== undefined) {
           if (!this.nativeBridge) return
+          await this.reconnecting.get(server.name)
           try {
             await this.nativeBridge.disconnect(server.nativeServerId)
           } catch (err) {

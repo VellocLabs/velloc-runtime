@@ -53,12 +53,16 @@ export function sessionMcpServerViews(
       Partial<Pick<LiveServerLink, 'config' | 'nativeConfig' | 'nativeServerId' | 'tools' | 'error'>>
   >,
   origins?: McpServerOriginSources,
+  /** When set, a connected plugin server outside it is left out: it joined
+   *  on a plugin reload, and its tools are not in the session's list. */
+  offered?: ReadonlySet<string>,
 ): SessionMcpServerView[] {
   const views: SessionMcpServerView[] = []
   for (const server of servers) {
     if (server.status !== 'connected' && server.status !== 'failed') continue
     const view: SessionMcpServerView = { name: server.name, status: server.status }
     if (origins) view.origin = mcpServerOrigin(server, origins)
+    if (server.status === 'connected' && offered && !offered.has(server.name) && view.origin?.kind === 'plugin') continue
     const transport = mcpServerTransport(server)
     if (transport) view.transport = transport
     if (server.status === 'connected' && server.tools) view.toolCount = server.tools.length
@@ -259,6 +263,7 @@ export function buildWorkerSnapshot(
           mcpServers: sessionMcpServerViews(
             runtime.sessionMcpPool.listServers(),
             runtime.sessionMcpOrigins,
+            runtime.sessionMcpServersOffered,
           ),
         }
       : {}),

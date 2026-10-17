@@ -123,6 +123,8 @@ import {
   createWorkerMcpOperations,
   mcpServerSkillNamesFromPool,
 } from '../../mcp'
+import { MCPPool } from '../../mcp/pool'
+import { settingsMcpServerIds, type McpServerOriginSources } from '../../mcp/serverOrigin'
 import { getMcpHost, hostServesWorkerMcp } from '../../mcp/mcpHost'
 import { createNativePrimitives } from '../bridge/nativePrimitives'
 import { loadLocalAgents } from '../../agents/agentRegistry'
@@ -695,11 +697,16 @@ export async function createBrowserRuntime(
   // Settings lists.
   // Each plugin's `userConfig` values: settings.json `pluginConfigs`,
   // read once here and again on every plugin reload.
+  // Whether the last read found the settings file: only then may storing
+  // drop the plugin secrets the load no longer resolves.
+  let mcpOptionsFromFile = false
   const readPluginConfigs = async (): Promise<Record<string, { options?: Record<string, unknown> }>> => {
     try {
-      const { getPluginConfigsMap } = await import('../../pluginHost/pluginConfigs')
+      const { getPluginConfigsMap, userSettingsReadFromFile } = await import('../../pluginHost/pluginConfigs')
+      mcpOptionsFromFile = await userSettingsReadFromFile({ homeDir: settingsHome() }, installedFs)
       return await getPluginConfigsMap({ homeDir: settingsHome() }, installedFs)
     } catch (e) {
+      mcpOptionsFromFile = false
       console.warn(`[mods] plugin options skipped: ${e instanceof Error ? e.message : String(e)}`)
       return {}
     }
@@ -720,14 +727,26 @@ export async function createBrowserRuntime(
   let mcpPluginConfigs = await readPluginConfigs()
   let mcpProviderKeys = await readProviderKeys()
   // A sensitive option reaches a server as a stored secret: written before
-  // the pool launches the servers, and again on every plugin reload.
-  const storeMcpSecrets = async (contributions: typeof pluginContributions): Promise<void> => {
+  // the pool launches the servers, and again on every plugin reload. Returns
+  // the names whose value changed since this runtime last stored them.
+  const storedMcpSecretValues = new Map<string, string>()
+  const storeMcpSecrets = async (contributions: typeof pluginContributions): Promise<Set<string>> => {
     const { writes, pluginIds } = contributions.mcpSecrets
+    const changed = new Set<string>()
+    for (const write of writes) {
+      const before = storedMcpSecretValues.get(write.name)
+      if (before !== undefined && before !== write.value) changed.add(write.name)
+    }
+    storedMcpSecretValues.clear()
+    for (const write of writes) storedMcpSecretValues.set(write.name, write.value)
     if (!hostBridge.supportsBridgeCapability('secrets')) {
       if (writes.length > 0) console.warn('[plugins] this browser stores no secrets; servers taking a sensitive option will not start')
-      return
+      return changed
     }
-    await storePluginSecrets(writes, pluginIds, hostBridge.primitives.secrets, message => console.warn(message))
+    await storePluginSecrets(writes, pluginIds, hostBridge.primitives.secrets, message => console.warn(message), {
+      prune: mcpOptionsFromFile,
+    })
+    return changed
   }
   const pluginContributions = await loadPluginContributions({
     cwd: resolvedProjectRoot,
@@ -879,7 +898,18 @@ export async function createBrowserRuntime(
   // Settings-configured MCP servers run in the worker over the host's primitives when served,
   // else the browser-transport-only pool. Security: only servers settings.json names may reach
   // loopback / the LAN (`allowPrivateNetwork`); a plugin's server may not.
-  const userConfiguredMcpServerIds = new Set<string>()
+  // MCP pool settings source — same bridge-`homeDir` fallback as the boot
+  // overlays (see `settingsHome`); `null` → only the plugin stdio servers.
+  const settingsHomeDir: string | null = (() => {
+    try {
+      return settingsHome()
+    } catch {
+      return null
+    }
+  })()
+  // Shared by every runtime reading this settings home: a pool outlives the
+  // runtime that created it, and that runtime's bridge still asks this set.
+  const userConfiguredMcpServerIds = settingsMcpServerIds(settingsHomeDir ?? '')
   const sessionMcpHost = {
     transport: resolvedOptions.bridgeTransport,
     manifest: resolvedOptions.hostManifest,
@@ -897,22 +927,15 @@ export async function createBrowserRuntime(
     : undefined
   // The MCP pool reads its settings server list from
   // `~/.velloc/settings.json` (mcp.servers section); each server's full
-  // config travels inline through `connect()`. MCP pool settings source —
-  // same bridge-`homeDir` fallback as the boot overlays (see
-  // `settingsHome`); `null` → only the plugin stdio servers.
-  const settingsHomeDir: string | null = (() => {
-    try {
-      return settingsHome()
-    } catch {
-      return null
-    }
-  })()
+  // config travels inline through `connect()`. The plugin list follows
+  // plugin reloads.
+  let pluginNativeMcpServers = pluginContributions.nativeMcpServers
   const mergePluginNativeMcpServers = (
     settingsEntries: typeof pluginContributions.nativeMcpServers,
   ) => {
     const taken = new Set(settingsEntries.map(entry => entry.id))
     const pluginEntries: typeof pluginContributions.nativeMcpServers = []
-    for (const entry of pluginContributions.nativeMcpServers) {
+    for (const entry of pluginNativeMcpServers) {
       if (taken.has(entry.id)) {
         console.warn(
           `[mcp] Plugin native server "${entry.id}" skipped — a native server with that name is already configured.`,
@@ -977,21 +1000,30 @@ export async function createBrowserRuntime(
     ((resolvedOptions as { isTeammate?: boolean }).isTeammate === true
       ? (resolvedOptions as { spawnerSessionId?: string }).spawnerSessionId
       : undefined)
-  const mcpLease = await acquireSessionMCPPool({
-    sessionId: resolvedSessionId,
-    parentSessionId: mcpParentSessionId,
-    cwd: resolvedCwd,
-    fs: installedFs,
-    extraServers: pluginContributions.mcpServers,
-    nativeBridge: nativeMcpBridge,
-    loadNativeServers: loadNativeMcpServers,
-  })
-  undoWhenScopeEnds(mcpLease.release, options.runtimeScopeSignal)
-  const mcpPool = mcpLease.pool
-  // Deferrable skills: the template's `deferredTools` decides which defer by default; MCP servers defer
-  // by default. Security: a `noExecution` type takes nothing from the MCP pool, structurally, since
-  // MCP tools bypass the template allowlist and a stdio server spawns OS processes.
+  // Security: a `noExecution` type takes nothing from the MCP pool, structurally, since MCP tools
+  // bypass the template allowlist and a stdio server spawns OS processes. It holds no session pool
+  // and starts no server; an empty pool that never connects stands in.
   const allowsMcp = templateAllowsMcp(sessionTemplate?.config)
+  const mcpLease = allowsMcp
+    ? await acquireSessionMCPPool({
+        sessionId: resolvedSessionId,
+        parentSessionId: mcpParentSessionId,
+        cwd: resolvedCwd,
+        fs: installedFs,
+        extraServers: pluginContributions.mcpServers,
+        nativeBridge: nativeMcpBridge,
+        loadNativeServers: loadNativeMcpServers,
+      })
+    : undefined
+  if (mcpLease) undoWhenScopeEnds(mcpLease.release, options.runtimeScopeSignal)
+  const mcpPool = mcpLease?.pool ?? new MCPPool({ cwd: resolvedCwd, fs: installedFs })
+  const mcpOrigins: McpServerOriginSources = {
+    settingsIds: userConfiguredMcpServerIds,
+    pluginServers: pluginContributions.mcpServerPlugins,
+    projectNames: mcpPool.projectServerNames,
+  }
+  // Deferrable skills: the template's `deferredTools` decides which defer by default; MCP servers defer
+  // by default.
   const mcpServerSkills = allowsMcp ? mcpServerSkillNamesFromPool(mcpPool) : []
   const deferrableSkills = resolveDeferrableSkills(
     mcpServerSkills,
@@ -1125,6 +1157,11 @@ export async function createBrowserRuntime(
     templateWantsWorkspaceDiffTool(sessionTemplate?.config)
       ? [WorkspaceDiffTool]
       : []
+  // The servers whose tools this runtime's list holds; a plugin server that
+  // joins later (a plugin reload) is left out of the session's server list.
+  const mcpServersOffered = new Set(
+    mcpPool.listServers().filter(server => server.status === 'connected').map(server => server.name),
+  )
   const allTools = allowsMcp
     ? [
         ...baseTools,
@@ -1189,9 +1226,8 @@ export async function createBrowserRuntime(
     installedFs,
     installedSidechainStore,
     sessionMcpPool: allowsMcp ? mcpPool : undefined,
-    sessionMcpOrigins: allowsMcp
-      ? { settingsIds: userConfiguredMcpServerIds, pluginServers: pluginContributions.mcpServerPlugins }
-      : undefined,
+    sessionMcpOrigins: allowsMcp ? mcpOrigins : undefined,
+    sessionMcpServersOffered: allowsMcp ? mcpServersOffered : undefined,
     promptContextProvider,
     userInputPipeline,
     systemInitEmitter,
@@ -1305,8 +1341,9 @@ export async function createBrowserRuntime(
   // Live reload for `/plugins enable|disable`: re-run discovery with the new
   // allowlist, re-register hooks, refresh the `/plugins` snapshot, and return
   // the new command / agent / plugin-summary sets for the engine to swap in.
-  // MCP server changes are deferred to the next session (the tools array and
-  // pool are not rebuilt here).
+  // The top-level session's reload also brings its MCP pool in line with the
+  // new plugin set; this runtime's tool list is not rebuilt, so a server that
+  // joins serves the next build.
   const onReloadPlugins = async (requestedEnabledPlugins?: string[]) => {
     // No list (a Settings write, `$.config.set`): the enabled files as they
     // are NOW, by the same rule as boot. Folder names — never the loaded
@@ -1359,7 +1396,14 @@ export async function createBrowserRuntime(
     for (const pluginError of reloadContributions.errors) {
       console.warn(`[plugins] ${describePluginError(pluginError)}`)
     }
-    await storeMcpSecrets(reloadContributions)
+    const changedMcpSecrets = await storeMcpSecrets(reloadContributions)
+    if (mcpLease && mcpLease.topLevelSessionId === resolvedSessionId) {
+      pluginNativeMcpServers = reloadContributions.nativeMcpServers
+      mcpOrigins.pluginServers = reloadContributions.mcpServerPlugins
+      void mcpPool.followPluginReload(reloadContributions.mcpServers, changedMcpSecrets).catch(err =>
+        console.warn('[mcp] plugin server reload failed:', err),
+      )
+    }
     sessionTypeDeniedNames.length = 0
     const reloadedCommands =
       resolvedOptions.commands

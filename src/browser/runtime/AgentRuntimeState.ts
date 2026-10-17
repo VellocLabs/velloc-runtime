@@ -151,6 +151,9 @@ export type BrowserRuntimeCoreState = {
   /** Where the pool's servers were configured, for the snapshot's list;
    *  set with `sessionMcpPool`. */
   sessionMcpOrigins?: McpServerOriginSources
+  /** The servers whose tools this runtime's list holds; set with
+   *  `sessionMcpPool`. */
+  sessionMcpServersOffered?: ReadonlySet<string>
   promptContextProvider: BrowserPromptContextProvider
   userInputPipeline: BrowserUserInputPipeline
   systemInitEmitter: BrowserSystemInitEmitter

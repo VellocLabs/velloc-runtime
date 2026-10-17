@@ -194,8 +194,8 @@ export async function loadPluginContributions(params: {
  * One server of one plugin's manifest, resolved exactly as
  * `loadPluginContributions` resolves it for the pool — `$.mcp.connect`
  * (mods/modMcp.ts) connects "one of the MCP servers this plugin's own
- * manifest lists" by its key. Undefined when the plugin lists no such server,
- * or lists one that cannot start (reported when the plugins loaded).
+ * manifest lists" by its key. Undefined when the plugin lists no such server;
+ * `refused` with the reason when it lists one that cannot start.
  */
 export function pluginMcpServer(
   plugin: Pick<ActivePlugin, 'name' | 'path' | 'installIdentifier' | 'manifest' | 'providers' | 'mcpServers' | 'nativeMcpServers'>,
@@ -204,6 +204,7 @@ export function pluginMcpServer(
 ):
   | { kind: 'browser'; entry: MCPServerConfigWithName }
   | { kind: 'native'; id: string; config: NexusMcpServerLaunchConfig }
+  | { kind: 'refused'; reason: string }
   | undefined {
   const browser = plugin.mcpServers && Object.hasOwn(plugin.mcpServers, key) ? plugin.mcpServers[key] : undefined
   const native = plugin.nativeMcpServers && Object.hasOwn(plugin.nativeMcpServers, key) ? plugin.nativeMcpServers[key] : undefined
@@ -212,7 +213,7 @@ export function pluginMcpServer(
     : native ? { kind: 'native', config: native } : undefined
   if (!server) return undefined
   const resolved = resolvePluginMcpServer(plugin, key, server, scope)
-  if (!resolved.ok) return undefined
+  if (!resolved.ok) return { kind: 'refused', reason: resolved.reason }
   return resolved.kind === 'native'
     ? { kind: 'native', id: key, config: resolved.config }
     : { kind: 'browser', entry: { name: key, ...resolved.config } }
