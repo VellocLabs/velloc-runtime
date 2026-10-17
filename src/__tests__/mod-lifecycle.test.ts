@@ -250,8 +250,12 @@ describe('a worker that dies is restarted', () => {
       reason: 'its worker is gone (Uncaught RangeError)',
       generation: 1,
     })
-    // Meanwhile a prompt does not wait on a worker that is not there.
-    await expect(runtime.promptSubmit('c')).resolves.toEqual({ entered: true, text: 'c', context: [] })
+    // Meanwhile a prompt does not wait on a worker that is not there; its
+    // hook cannot be handed it, so it is refused.
+    await expect(runtime.promptSubmit('c')).resolves.toEqual({
+      entered: false,
+      reason: "count's hook on prompt.submit could not answer (its hooks worker is restarting)",
+    })
 
     await until(() => runtime.status()[0]!.state === 'loaded')
     expect(runtime.status()[0]).toMatchObject({ state: 'loaded', generation: 2 })
@@ -297,7 +301,8 @@ describe('a worker that dies is restarted', () => {
     await expect(runtime.promptSubmit('>')).resolves.toMatchObject({ text: '>ABC' })
     workers.a![0]!.crash()
     await until(() => runtime.status()[0]!.state === 'crashed')
-    await expect(runtime.promptSubmit('>')).resolves.toMatchObject({ text: '>BC' })
+    // Its seat holds: the prompt stops there, refused, until it is back.
+    await expect(runtime.promptSubmit('>')).resolves.toMatchObject({ entered: false })
     await until(() => runtime.status()[0]!.state === 'loaded')
     // Outermost again, not appended after C.
     await expect(runtime.promptSubmit('>')).resolves.toMatchObject({ text: '>ABC' })

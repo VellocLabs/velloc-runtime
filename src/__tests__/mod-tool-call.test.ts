@@ -39,8 +39,9 @@ afterEach(() => {
 })
 
 /** A mod runtime over real module text. `source` is the body of `register`. */
-function mods(registerBody: string, options: { budgetMs?: number } = {}) {
+function mods(registerBody: string, options: { budgetMs?: number; respawnBackoffMs?: number[] } = {}) {
   const reports: string[] = []
+  const crashes: Array<() => void> = []
   const modules: ModModuleRef[] = [{ plugin: 'guard', path: 'guard/hooks/register.js' }]
   const runtime = new ModRuntime({
     modules,
@@ -53,14 +54,18 @@ function mods(registerBody: string, options: { budgetMs?: number } = {}) {
       const closed = new Promise<{ reason: 'closed' | 'crashed' }>(resolve => {
         settle = resolve
       })
+      crashes.push(() => settle({ reason: 'crashed' }))
       return { port: channel.port1, closed, close: () => settle({ reason: 'closed' }) }
     },
     session: { id: () => 'session-1', cwd: () => '/work/project' },
     report: line => reports.push(line),
     ...(options.budgetMs !== undefined ? { budgetMs: options.budgetMs } : {}),
+    ...(options.respawnBackoffMs ? { respawnBackoffMs: options.respawnBackoffMs } : {}),
   })
   runtimes.push(runtime)
-  return { runtime, reports }
+  /** The latest worker crashes. */
+  const crash = (): void => crashes.at(-1)?.()
+  return { runtime, reports, crash }
 }
 
 type Calls = { args: Record<string, unknown>; aborted: () => boolean }[]
@@ -302,6 +307,38 @@ describe('tool.call — a hook around the call', () => {
     const allowed = await run(context, { command: 'ls' }, 'Shell', 'tc-2')
     expect(resultOf(allowed[0]).stored).toEqual({ ok: true, ran: 'ls' })
     expect(calls).toHaveLength(1)
+  })
+
+  it('a deny after the tool ran withholds its result, and the model reads that the tool ran', async () => {
+    const { runtime } = mods(`
+      on('tool.call', async ($, e, next) => {
+        await next(e)
+        return { deny: 'audit: not shown.' }
+      })
+    `)
+    const { context, calls } = world(runtime)
+    const updates = await run(context, { command: 'ls' })
+    expect(calls).toHaveLength(1)
+    expect(updates).toHaveLength(1)
+    expect(resultOf(updates[0])).toMatchObject({
+      modelReads: 'Shell ran, but a plugin withheld its result: audit: not shown.',
+      isError: true,
+    })
+  })
+
+  it('a call made while the hooks worker restarts is refused: the tool never runs', async () => {
+    const { runtime, crash } = mods(`on('tool.call', ($, e, next) => next(e))`, { respawnBackoffMs: [60_000] })
+    const { context, calls } = world(runtime)
+    await run(context, { command: 'ls' })
+    expect(calls).toHaveLength(1)
+    crash()
+    for (let i = 0; i < 100 && runtime.status()[0]?.state !== 'crashed'; i++) await sleep(10)
+    const refused = await run(context, { command: 'ls' }, 'Shell', 'tc-2')
+    expect(calls).toHaveLength(1)
+    expect(resultOf(refused[0])).toMatchObject({
+      modelReads: "guard's hook on tool.call could not answer (its hooks worker is restarting)",
+      isError: true,
+    })
   })
 
   it('answers for itself: the result is recorded as the tool\'s, and the tool never runs', async () => {

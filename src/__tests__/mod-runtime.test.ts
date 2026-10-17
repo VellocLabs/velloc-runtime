@@ -607,8 +607,12 @@ describe('ModRuntime — the slot', () => {
     expect(reports).toEqual([
       'fragile: the hooks module stopped — its worker is gone (Uncaught RangeError); restarting it in 1000ms',
     ])
-    // The next prompt does not wait on a worker that is not there.
-    await expect(runtime.promptSubmit('hi')).resolves.toEqual({ entered: true, text: 'hi', context: [] })
+    // The next prompt does not wait on a worker that is not there, nor goes
+    // past its hook: it is refused until the worker is back.
+    await expect(runtime.promptSubmit('hi')).resolves.toEqual({
+      entered: false,
+      reason: "fragile's hook on prompt.submit could not answer (its hooks worker is restarting)",
+    })
   })
 
   it('a worker that crashes before its module answered load is seen at once — not after the load timeout', async () => {

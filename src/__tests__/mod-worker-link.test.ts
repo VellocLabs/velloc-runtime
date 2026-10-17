@@ -5,6 +5,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { ModDispatcher, type HookFailureReport } from '../mods/ModDispatcher'
+import { MAX_HANDED_DEPTH, nestsDeeperThan } from '../mods/modWire'
 import { ModInstance, type ModCall, type ModCallServer } from '../mods/ModInstance'
 import { installModWorkerHost, type HooksModule } from '../mods/ModWorkerHost'
 import { DISPATCH_CALL_RATE, DispatchCallRate, ROOT_DISPATCH_CONTEXT, type PluginTier } from '../mods/modTypes'
@@ -53,6 +54,18 @@ function world(options: { budgetMs?: number; catchMs?: number } = {}) {
     return { instance, channel }
   }
   return { dispatcher, failures, mod }
+}
+
+/** `levels` objects, each the only value of the one above. */
+function nested(levels: number): Record<string, unknown> {
+  const top: Record<string, unknown> = {}
+  let at = top
+  for (let i = 1; i < levels; i++) {
+    const inner: Record<string, unknown> = {}
+    at.a = inner
+    at = inner
+  }
+  return top
 }
 
 describe('loading a hooks module', () => {
@@ -344,7 +357,7 @@ describe('$ — served by the runtime', () => {
     expect(caught).toMatch(/^\$\.ui\.toast: an argument is not plain data/)
   })
 
-  it('carries the calling hook as context: its plugin as origin, itself as the recursion skip', async () => {
+  it('carries the calling hook as context: its plugin as origin, every pending frame as the recursion skip', async () => {
     const { dispatcher, mod } = world()
     const ran: string[] = []
     const origins: unknown[] = []
@@ -363,6 +376,7 @@ describe('$ — served by the runtime', () => {
         })
         on('fs.write', (_$: any, e: any, next: any) => {
           ran.push('acme:sibling')
+          origins.push(next.origin)
           return next(e)
         })
       },
@@ -384,12 +398,13 @@ describe('$ — served by the runtime', () => {
     await dispatcher.dispatch('fs.write', { path: 'a.txt' }, () => 'written')
     expect(ran).toEqual([
       'audit', 'acme:caller',     // the engine's dispatch
-      'audit', 'acme:sibling',    // acme's own call: from the top, the calling hook alone skipped
+      'acme:sibling',             // acme's own call: from the top, the caller and audit (its next pending) skipped
       'acme:sibling',             // the outer chain goes on beneath the caller
     ])
     expect(origins).toEqual([
-      { plugin: 'engine', tier: 'core' },
-      { plugin: 'acme', tier: 'user' },
+      { plugin: 'engine', tier: 'core' }, // audit, on the engine's dispatch
+      { plugin: 'acme', tier: 'user' },   // the sibling, on acme's call
+      { plugin: 'engine', tier: 'core' }, // the sibling, on the engine's dispatch
     ])
   })
 
@@ -672,5 +687,113 @@ describe('the instance', () => {
       peer: channel.port1, dispatcher, serveCall: async () => null, loadTimeoutMs: 40,
     })
     await expect(instance.load('unused', {})).rejects.toThrow('acme: register() did not return within 40ms')
+  })
+})
+
+describe('a hook whose worker cannot answer', () => {
+  const deny = (reason: string) => ({ deny: reason })
+
+  it('refuses the action when the module goes away mid-run, and the seat refuses until it is back', async () => {
+    const { dispatcher, mod } = world()
+    const { instance } = mod('acme', on => {
+      on('tool.call', async (_$: any, e: any, next: any) => {
+        await sleep(200)
+        return next(e)
+      })
+    })
+    await instance.load('unused', {})
+    let coreRuns = 0
+    const pending = dispatcher.dispatch('tool.call', {}, () => ++coreRuns, { refusal: deny })
+    await sleep(30)
+    instance.dispose({ keepSeat: true })
+    await expect(pending).resolves.toEqual({ deny: "acme's hook on tool.call could not answer (the mod was unloaded)" })
+    await expect(dispatcher.dispatch('tool.call', {}, () => ++coreRuns, { refusal: deny })).resolves.toEqual({
+      deny: "acme's hook on tool.call could not answer (its hooks worker is restarting)",
+    })
+    expect(coreRuns).toBe(0)
+  })
+
+  it('withholds what already ran when the answer never comes back', async () => {
+    const { dispatcher, mod } = world()
+    const { instance } = mod('acme', on => {
+      on('tool.call', async (_$: any, e: any, next: any) => {
+        const ran = await next(e)
+        await sleep(200)
+        return ran
+      })
+    })
+    await instance.load('unused', {})
+    let coreRuns = 0
+    const pending = dispatcher.dispatch('tool.call', {}, () => ++coreRuns, { refusal: deny })
+    await sleep(60)
+    expect(coreRuns).toBe(1)
+    instance.dispose()
+    await expect(pending).resolves.toEqual({ deny: "acme's hook on tool.call could not answer (the mod was unloaded)" })
+  })
+
+  it('lets an event with no refusal go on beneath, as before', async () => {
+    const { dispatcher, mod } = world()
+    const { instance } = mod('acme', on => {
+      on('session.idle', async (_$: any, e: any, next: any) => {
+        await sleep(200)
+        return next(e)
+      })
+    })
+    await instance.load('unused', {})
+    const pending = dispatcher.dispatch('session.idle', {}, () => 'core')
+    await sleep(30)
+    instance.dispose()
+    await expect(pending).resolves.toBe('core')
+  })
+})
+
+describe('how deep a value a hook hands back may nest', () => {
+  it('counts containers, iteratively; a cycle ends; bytes are leaves', () => {
+    expect(MAX_HANDED_DEPTH).toBe(28_000)
+    expect(nestsDeeperThan('text', 0)).toBe(false)
+    expect(nestsDeeperThan(nested(MAX_HANDED_DEPTH), MAX_HANDED_DEPTH)).toBe(false)
+    expect(nestsDeeperThan(nested(MAX_HANDED_DEPTH + 1), MAX_HANDED_DEPTH)).toBe(true)
+    expect(nestsDeeperThan([[{ a: new Map([['k', new Set([[1]])]]) }]], 5)).toBe(true)
+    expect(nestsDeeperThan([[{ a: new Map([['k', new Set([[1]])]]) }]], 6)).toBe(false)
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+    expect(nestsDeeperThan(cyclic, 2)).toBe(false)
+    // The view is one level; its million bytes are not walked.
+    expect(nestsDeeperThan({ bytes: new Uint8Array(1_000_000) }, 2)).toBe(false)
+  })
+
+  it('refuses a result deeper than the limit, naming it: the hook failed', async () => {
+    const { dispatcher, failures, mod } = world()
+    const { instance } = mod('acme', on => {
+      on('fs.write', () => nested(MAX_HANDED_DEPTH + 1))
+    })
+    await instance.load('unused', {})
+    await expect(dispatcher.dispatch('fs.write', {}, () => 'core')).resolves.toBe('core')
+    expect(failures.map(f => f.failure.message)).toEqual([
+      "the hook's result is not plain data (it nests deeper than 28,000 levels)",
+    ])
+  })
+
+  it('refuses next(e) and a $ call with an argument deeper than the limit', async () => {
+    const { dispatcher, mod } = world()
+    const { instance } = mod(
+      'acme',
+      on => {
+        on('fs.write', async ($: any, e: any, next: any) => {
+          const said: string[] = []
+          await next(nested(MAX_HANDED_DEPTH + 1)).catch((error: Error) => said.push(error.message))
+          await $.fs.read(nested(MAX_HANDED_DEPTH + 1)).catch((error: Error) => said.push(error.message))
+          return { said }
+        })
+      },
+      { serveCall: async () => 'served' },
+    )
+    await instance.load('unused', {})
+    await expect(dispatcher.dispatch('fs.write', {}, () => 'core')).resolves.toEqual({
+      said: [
+        'next(e): e is not plain data (it nests deeper than 28,000 levels)',
+        '$.fs.read: an argument is not plain data (it nests deeper than 28,000 levels)',
+      ],
+    })
   })
 })

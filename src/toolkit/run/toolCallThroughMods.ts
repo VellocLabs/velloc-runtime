@@ -391,9 +391,12 @@ export async function* runToolUseThroughMods(
     traceLine(`[tool] ${tool.name} denied by a tool.call hook (${callRef})`, {
       level: 'info',
     })
+    // After the tool answered without error, the deny withholds that result
+    // and undoes nothing: the model is told it ran.
+    const ran = (lastRun as CoreRun | undefined)?.answer
     yield {
       message: await params.buildResultMessage({
-        data: result.deny,
+        data: ran && !ran.isError ? `${tool.name} ran, but a plugin withheld its result: ${result.deny}` : result.deny,
         isError: true,
         args: originalArgs,
       }),

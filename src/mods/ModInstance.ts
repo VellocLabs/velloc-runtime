@@ -6,6 +6,7 @@
  */
 
 import {
+  ModHookUnreachableError,
   NextRejectionPassed,
   type CatchCall,
   type ChainLink,
@@ -265,7 +266,8 @@ export class ModInstance {
     if (options.keepSeat) this.options.dispatcher.vacate(this.options.key)
     else this.options.dispatcher.unregister(this.options.key)
     const gone = new Error(`${this.options.plugin}: the mod was unloaded`)
-    for (const invocation of this.live.values()) invocation.reject(gone)
+    const unanswered = new ModHookUnreachableError(this.options.plugin, 'the mod was unloaded')
+    for (const invocation of this.live.values()) invocation.reject(unanswered)
     this.live.clear()
     for (const run of this.handleRuns.values()) {
       run.unlisten()
@@ -461,7 +463,7 @@ export class ModInstance {
     caught: { error: CatchCall['error']; called: boolean } | undefined,
   ): Promise<unknown> {
     if (this.disposed) {
-      return Promise.reject(new Error(`${this.options.plugin}: the mod was unloaded`))
+      return Promise.reject(new ModHookUnreachableError(this.options.plugin, 'the mod was unloaded'))
     }
     const invocationId = `i${++this.seq}`
     return new Promise<unknown>((resolve, reject) => {
@@ -506,10 +508,10 @@ export class ModInstance {
           ...(caught ? { catch: caught } : {}),
         })
       } catch (error) {
-        // `e` could not cross the port. The hook cannot run on it; the chain
-        // treats that as the hook failing and goes on.
+        // `e` could not cross the port: the hook cannot be handed it.
         this.live.get(invocationId)?.reject(
-          new TypeError(
+          new ModHookUnreachableError(
+            this.options.plugin,
             `${call.event}: the event's argument is not plain data (${wireError(error).message})`,
           ),
         )

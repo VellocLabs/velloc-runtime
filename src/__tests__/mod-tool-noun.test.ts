@@ -292,9 +292,9 @@ describe('$.tool.call', () => {
     expect(logged(reports, 'mirror')).toEqual([{ inner: { command: 'inner' } }])
   })
 
-  it('past the depth bound the call is refused — it never runs without its hooks', async () => {
-    // Two hooks call the tool back and forth until the dispatch is too deep.
-    // Unhooked, each level unwinding would run Shell past the guard.
+  it('two hooks calling the tool back and forth end at once — no level runs without the guard', async () => {
+    // Each hook's own call skips every hook whose call is pending above it, so
+    // the bounce stops one level down; the guard is on no stack and sees each.
     const bounce = `
       on('tool.call', { tool: 'Shell' }, async ($, e, next) => {
         try {
@@ -315,7 +315,8 @@ describe('$.tool.call', () => {
     await runtime.promptSubmit('go')
     expect(calls).toEqual([])
     expect(logged(reports, 'caller')).toEqual([{ deny: 'guard says no' }])
-    expect(reports.some(line => line.includes('the call is refused'))).toBe(true)
+    // It never came near the depth bound.
+    expect(reports.some(line => line.includes('the call is refused'))).toBe(false)
   })
 
   it('a hook\'s context is not handed to the caller', async () => {

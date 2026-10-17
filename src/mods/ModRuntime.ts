@@ -1265,6 +1265,7 @@ export class ModRuntime implements TurnExtensions {
     try {
       const result = (await this.dispatcher.dispatch('plugin.register', e, () => ({ allow: true }), {
         accepts: isPluginRegisterResult,
+        refusal: reason => ({ refuse: reason }),
         trace: trace => {
           entries = trace
         },
@@ -2473,6 +2474,7 @@ export class ModRuntime implements TurnExtensions {
       const result = (await this.dispatcher.dispatch('agent.offer', input, () => ({ isOffered: true }), {
         ...(signal ? { signal } : {}),
         accepts: isAgentOfferResult,
+        refusal: () => ({ isOffered: false }),
       })) as { isOffered: boolean }
       return result.isOffered
     } catch (error) {
@@ -2514,7 +2516,7 @@ export class ModRuntime implements TurnExtensions {
           coreModel = answered.model
           return answered
         },
-        { ...(signal ? { signal } : {}), accepts: isAgentSpawnResult },
+        { ...(signal ? { signal } : {}), accepts: isAgentSpawnResult, refusal: reason => ({ deny: reason }) },
       )) as { deny?: string; model?: string }
       if (typeof result.deny === 'string') return { deny: result.deny }
       const decision = spawnDecisionOf(handed ?? input)
@@ -3263,7 +3265,7 @@ export class ModRuntime implements TurnExtensions {
             ...(entered.context.length > 0 ? { context: entered.context } : {}),
           }
         },
-        { ...(signal ? { signal } : {}), accepts: isPromptSubmitResult },
+        { ...(signal ? { signal } : {}), accepts: isPromptSubmitResult, refusal: reason => ({ drop: reason }) },
       )
       if (entered) return { entered: true, ...entered }
       const drop = (result as { drop?: unknown }).drop
@@ -3314,7 +3316,12 @@ export class ModRuntime implements TurnExtensions {
           queued = await queue(text, context)
           return queued
         },
-        { signal: raise.signal, context: raise.context, accepts: isPromptSubmitResult },
+        {
+          signal: raise.signal,
+          context: raise.context,
+          accepts: isPromptSubmitResult,
+          refusal: reason => ({ drop: reason }),
+        },
       )
       if (queued) return queued
       const drop = (result as { drop?: unknown }).drop
@@ -3369,6 +3376,7 @@ export class ModRuntime implements TurnExtensions {
           ...(signal ? { signal } : {}),
           ...(context ? { context } : {}),
           accepts: isToolCallResult,
+          refusal: reason => ({ deny: reason }),
         },
       )
       return { settled: true, result }
@@ -3425,6 +3433,7 @@ export class ModRuntime implements TurnExtensions {
           ...(signal ? { signal } : {}),
           ...(context ? { context } : {}),
           accepts: isToolCheckResult,
+          refusal: reason => ({ decision: 'deny', reason }),
         },
       )
       return { settled: true, result: result as ToolCheckResult }
@@ -3486,6 +3495,7 @@ export class ModRuntime implements TurnExtensions {
         {
           ...(signal ? { signal } : {}),
           accepts: isPreToolUse ? isPreToolUseResult : isClassicResult,
+          ...(isPreToolUse ? { refusal: (reason: string) => ({ deny: reason }) } : {}),
         },
       )
       const settled = result as ClassicResult | PreToolUseResult

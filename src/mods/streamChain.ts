@@ -97,6 +97,8 @@ type Run = {
   accepts: (result: unknown) => boolean
   signal: AbortSignal
   scope: unknown
+  /** The hooks whose own call is pending above this dispatch (`DispatchContext.frames`). */
+  frames: readonly string[]
   onHookFailure?: (report: HookFailureReport) => void
   onHookAnswered?: (linkId: string) => void
 }
@@ -205,10 +207,11 @@ export function runStreamDispatch<C, R>(params: StreamDispatchParams<C, R>): Dis
     accepts: params.accepts,
     signal: controller.signal,
     scope: params.scope,
+    frames: params.context.frames ?? [],
     ...(params.onHookFailure ? { onHookFailure: params.onHookFailure } : {}),
     ...(params.onHookAnswered ? { onHookAnswered: params.onHookAnswered } : {}),
   }
-  return dispatched<C, R>(runFrom(run, 0, params.e), {
+  return dispatched<C, R>(runFrom(run, 0, params.e, []), {
     controller,
     ...(params.signal ? { signal: params.signal } : {}),
     ...(params.trace ? { trace: params.trace } : {}),
@@ -309,7 +312,8 @@ function dispatched<C, R>(
 
 /** The chain from candidate `index` down: the first link there that takes
  *  this `e`, or core. */
-function runFrom(run: Run, index: number, e: unknown, bypass?: Bypass): Settling {
+/** `above`: the links of this run whose `next` led here, outermost first. */
+function runFrom(run: Run, index: number, e: unknown, above: readonly string[], bypass?: Bypass): Settling {
   const bypassed: TraceEntry[] = []
   for (let i = index; i < run.candidates.length; i++) {
     const link = run.candidates[i]!
@@ -330,7 +334,9 @@ function runFrom(run: Run, index: number, e: unknown, bypass?: Bypass): Settling
     // The matcher reads `e` as it ARRIVES here — a hook above may have
     // rewritten it.
     if (link.matcher !== undefined && !matches(link.matcher, e)) continue
-    return prefixed(linkStream(run, i, link, e), bypassed)
+    // A stand-in for a restarting worker's hook (`vacate`): passed over.
+    if (link.unreachable !== undefined) continue
+    return prefixed(linkStream(run, i, link, e, above), bypassed)
   }
   return coreStream(run.core, e, run.candidates.length, run.event, bypassed)
 }
@@ -414,7 +420,7 @@ type Active = {
 }
 
 /** One generator hook, placed in the chain. */
-function linkStream(run: Run, index: number, link: ChainLink, e: unknown): Settling {
+function linkStream(run: Run, index: number, link: ChainLink, e: unknown, above: readonly string[]): Settling {
   const started = Date.now()
   /** Time spent reading beneath, out of the trace entry's `ms`. */
   let beneathMs = 0
@@ -453,7 +459,7 @@ function linkStream(run: Run, index: number, link: ChainLink, e: unknown): Settl
 
   const context: DispatchContext = {
     origin: { plugin: link.plugin, tier: link.tier },
-    skipLinkId: link.id,
+    frames: [...run.frames, ...above, link.id],
     depth: run.depth + 1,
     calls: run.calls,
   }
@@ -500,7 +506,7 @@ function linkStream(run: Run, index: number, link: ChainLink, e: unknown): Settl
     if (replay && latest) return view(latest, clock)
     if (called) countNextAgain(run.calls, link.plugin, run.event)
     called = true
-    const stream = runFrom(run, index + 1, e2, bypass)
+    const stream = runFrom(run, index + 1, e2, [...above, link.id], bypass)
     latest = stream
     opened.push(stream)
     return view(stream, clock)
@@ -610,7 +616,7 @@ function linkStream(run: Run, index: number, link: ChainLink, e: unknown): Settl
     }
     // It failed BEFORE `next`: beneath runs in its place, on the `e` it was
     // given, after whatever it yielded.
-    return leave(runFrom(run, index + 1, e), expired ?? 'skipped')
+    return leave(runFrom(run, index + 1, e, above), expired ?? 'skipped')
   }
 
   const fail = (what: HookFailure): Promise<IteratorResult<unknown, unknown>> => {

@@ -3,10 +3,14 @@
  * core, outermost first: prepend → user → append → builtin → core; with no hook it
  * IS a call of `core`. A hook that FAILS (throws, wrong answer, over budget) is
  * absent, not fatal: its `.catch` first, else beneath runs in its place (`skipped`)
- * or its `next` result stands (`kept`). A core rejection travels up. The budget is
- * the hook's OWN time. Security: `next.to(e, tier)` is allowlisted
- * (NEXT_TO_TARGETS): no user hook skips the organization's, and no appended managed
- * plugin skips its peers. Streaming events use `dispatchStream` (streamChain.ts).
+ * or its `next` result stands (`kept`). A hook that cannot be handed `e` or cannot
+ * hand back its answer (ModHookUnreachableError, or a seat whose worker restarts)
+ * refuses an event that declares `refusal`, a `next` it ran included; elsewhere it
+ * is absent too. No hook runs beneath its own pending call (`DispatchContext.frames`).
+ * A core rejection travels up. The budget is the hook's OWN time. Security:
+ * `next.to(e, tier)` is allowlisted (NEXT_TO_TARGETS): no user hook skips the
+ * organization's, and no appended managed plugin skips its peers. Streaming events
+ * use `dispatchStream` (streamChain.ts).
  */
 
 import { PausableDeadline } from '../browser/workerKernel/pausableDeadline'
@@ -100,6 +104,9 @@ export interface ChainLink {
   runStream?(call: StreamHookCall): ChainStream
   /** Its `.catch` handler, a generator too, "continuing the stream". */
   runCatchStream?(call: StreamCatchCall): ChainStream
+  /** Set on a stand-in for a hook whose worker is restarting (`vacate`): why
+   *  it cannot be reached. Such a link is never run. */
+  readonly unreachable?: string
 }
 
 /**
@@ -111,6 +118,21 @@ export class NextRejectionPassed extends Error {
   constructor() {
     super('the hook let a rejection of next() pass')
     this.name = 'NextRejectionPassed'
+  }
+}
+
+/**
+ * Security: a hook that could not be handed its event or could not hand back
+ * its answer (its worker is gone or restarting, or the frame could not cross).
+ * Made on the runtime's side only; an error a hook throws never is one.
+ */
+export class ModHookUnreachableError extends Error {
+  constructor(
+    plugin: string,
+    readonly detail: string,
+  ) {
+    super(`${plugin}: ${detail}`)
+    this.name = 'ModHookUnreachableError'
   }
 }
 
@@ -159,9 +181,14 @@ export type DispatchOptions = {
    *  dispatcher's: `session.end`'s hooks share one short wall-clock bound,
    *  and `next.budget` must say so. */
   budgetMs?: number
+  /** Security: set for an action a hook can block. A hook that cannot be
+   *  handed `e` or cannot hand back its answer then settles the chain on
+   *  this answer, the action refused (after its `next` ran, too: what ran
+   *  is withheld). Absent: such a hook is absent, as a failed one. */
+  refusal?: (reason: string) => unknown
 }
 
-export type StreamDispatchOptions = Omit<DispatchOptions, 'accepts'> & {
+export type StreamDispatchOptions = Omit<DispatchOptions, 'accepts' | 'refusal'> & {
   /** Whether a hook's RESULT (what its generator returned) is one this event
    *  takes. Default: anything but `undefined`. */
   accepts?: (result: unknown) => boolean
@@ -195,6 +222,9 @@ type Run = {
   accepts: (result: unknown, plugin: string) => boolean
   signal: AbortSignal
   scope: unknown
+  /** The hooks whose own call is pending above this dispatch (`DispatchContext.frames`). */
+  frames: readonly string[]
+  refusal?: (reason: string) => unknown
 }
 
 export class ModDispatcher {
@@ -238,11 +268,13 @@ export class ModDispatcher {
   }
 
   /** Take a group's hooks out of the chain but KEEP ITS SEAT: the module is
-   *  expected back (a respawn), and must come back where it sat. */
-  vacate(key: string): void {
+   *  expected back (a respawn), and must come back where it sat. Until it is,
+   *  each hook stays as a stand-in that cannot be reached: an action that
+   *  declares `refusal` is refused there, any other event passes it over. */
+  vacate(key: string, detail = 'its hooks worker is restarting'): void {
     const existing = this.groups.get(key)
     if (!existing) return
-    this.groups.set(key, { seq: existing.seq, links: [] })
+    this.groups.set(key, { seq: existing.seq, links: existing.links.map(link => standIn(link, detail)) })
     this.rebuild()
   }
 
@@ -256,7 +288,7 @@ export class ModDispatcher {
    *  (absent: every `e`) — what `ui.render`'s "hooked" sites are read off. */
   matchersFor(event: string): Array<{ plugin: string; matcher?: unknown }> {
     return this.chain
-      .filter(link => runsOn(link, event))
+      .filter(link => link.unreachable === undefined && runsOn(link, event))
       .map(link => ({ plugin: link.plugin, ...(link.matcher !== undefined ? { matcher: link.matcher } : {}) }))
   }
 
@@ -307,6 +339,8 @@ export class ModDispatcher {
       accepts: options.accepts ?? (result => result !== undefined),
       signal: controller.signal,
       scope: options.scope,
+      frames: context.frames ?? [],
+      ...(options.refusal ? { refusal: options.refusal } : {}),
     }
     let onAbort: (() => void) | undefined
     const abandoned = new Promise<never>((_, reject) => {
@@ -317,7 +351,7 @@ export class ModDispatcher {
       options.signal?.addEventListener('abort', onAbort)
     })
     try {
-      const settled = await Promise.race([this.runFrom(run, 0, e), abandoned])
+      const settled = await Promise.race([this.runFrom(run, 0, e, []), abandoned])
       options.trace?.(settled.entries)
       if (!settled.ok) throw settled.error
       return settled.result as R
@@ -375,7 +409,7 @@ export class ModDispatcher {
         : new Set((typeof onlyGroup === 'string' ? [onlyGroup] : onlyGroup).flatMap(key => this.groups.get(key)?.links ?? []))
     return this.chain.filter(
       link =>
-        link.id !== context.skipLinkId &&
+        !context.frames?.includes(link.id) &&
         link.plugin !== context.skipPlugin &&
         runsOn(link, event) &&
         (only === undefined || only.has(link)),
@@ -383,11 +417,13 @@ export class ModDispatcher {
   }
 
   /** Run the chain from candidate `index` down: the first link there that
-   *  takes this `e`, or core. */
+   *  takes this `e`, or core. `above`: the links of this run whose `next` led
+   *  here, outermost first. */
   private async runFrom(
     run: Run,
     index: number,
     e: unknown,
+    above: readonly string[],
     bypass?: Bypass,
   ): Promise<Settled> {
     const bypassed: TraceEntry[] = []
@@ -410,7 +446,12 @@ export class ModDispatcher {
       // The matcher reads `e` as it ARRIVES here — a hook above may have
       // rewritten it — so it is tested per link, not once per dispatch.
       if (link.matcher !== undefined && !matches(link.matcher, e)) continue
-      const settled = await this.runLink(run, i, link, e)
+      if (link.unreachable !== undefined) {
+        if (!run.refusal) continue
+        const refused = this.refused(run, i, link, e, link.unreachable, 0, [])
+        return { ...refused, entries: [...bypassed, ...refused.entries] }
+      }
+      const settled = await this.runLink(run, i, link, e, above)
       return { ...settled, entries: [...bypassed, ...settled.entries] }
     }
     const started = Date.now()
@@ -437,6 +478,7 @@ export class ModDispatcher {
     index: number,
     link: ChainLink,
     e: unknown,
+    above: readonly string[],
   ): Promise<Settled> {
     const started = Date.now()
     let nextTime = 0
@@ -456,7 +498,7 @@ export class ModDispatcher {
 
     const context: DispatchContext = {
       origin: { plugin: link.plugin, tier: link.tier },
-      skipLinkId: link.id,
+      frames: [...run.frames, ...above, link.id],
       depth: run.depth + 1,
       calls: run.calls,
     }
@@ -498,7 +540,7 @@ export class ModDispatcher {
         if (called) countNextAgain(run.calls, link.plugin, run.event)
         called = true
         const began = Date.now()
-        const flight = clock.whilePaused(() => this.runFrom(run, index + 1, e2, bypass))
+        const flight = clock.whilePaused(() => this.runFrom(run, index + 1, e2, [...above, link.id], bypass))
         latest = flight
         const settled = await flight
         nextTime += Date.now() - began
@@ -585,6 +627,13 @@ export class ModDispatcher {
         return { ok: false, error: last.error, entries: [entry('rejected', undefined), ...below()] }
       }
 
+      // It could not be handed `e` or could not hand back its answer: an
+      // action a hook can block is refused, whatever its `next` ran.
+      if (ran.kind === 'throw' && ran.error instanceof ModHookUnreachableError && run.refusal) {
+        if (latest) last = await latest
+        return this.refused(run, index, link, e, ran.error.detail, Date.now() - started - nextTime, below())
+      }
+
       // Everything else is a FAILED hook.
       const failure: HookFailure =
         ran.kind === 'expired'
@@ -640,6 +689,9 @@ export class ModDispatcher {
         }
         if (caught.kind === 'expired') catchController.abort()
         if (latest) last = await latest
+        if (caught.kind === 'throw' && caught.error instanceof ModHookUnreachableError && run.refusal) {
+          return this.refused(run, index, link, e, caught.error.detail, Date.now() - started - nextTime, below())
+        }
         if (caught.kind === 'value' && caught.value !== undefined && run.accepts(caught.value, link.plugin)) {
           report('caught')
           return { ok: true, result: caught.value, entries: [entry('caught', caught.value), ...below()] }
@@ -664,10 +716,61 @@ export class ModDispatcher {
       // on the `e` it was given.
       const outcome = absent ?? 'skipped'
       report(outcome)
-      const beneath = await this.runFrom(run, index + 1, e)
+      const beneath = await this.runFrom(run, index + 1, e, above)
       return { ...beneath, entries: [entry(outcome, undefined), ...beneath.entries] }
     } finally {
       run.signal.removeEventListener('abort', onDispatchAbort)
     }
+  }
+
+  /** Settle the chain at `link` on the event's refusal: the hook could not be
+   *  handed `e` or could not hand back its answer (`detail`). */
+  private refused(
+    run: Run,
+    index: number,
+    link: ChainLink,
+    e: unknown,
+    detail: string,
+    ms: number,
+    beneath: readonly TraceEntry[],
+  ): Settled {
+    const reason = `${link.plugin}'s hook on ${run.event} could not answer (${detail})`
+    const answer = run.refusal!(reason)
+    this.options.onHookFailure?.({
+      plugin: link.plugin,
+      tier: link.tier,
+      event: run.event,
+      linkId: link.id,
+      failure: { kind: 'throw', message: `${detail}; the action is refused`, budget: this.catchMs },
+      outcome: 'returned',
+    })
+    const entry: TraceEntry = {
+      index,
+      plugin: link.plugin,
+      tier: link.tier,
+      event: run.event,
+      outcome: 'returned',
+      reason: `refused: ${detail}`,
+      ms: Math.max(0, ms),
+      received: e,
+      returned: answer,
+    }
+    return { ok: true, result: answer, entries: [entry, ...beneath] }
+  }
+}
+
+/** What stays of a hook while its worker restarts: its place and its
+ *  selection, nothing to run. */
+function standIn(link: ChainLink, detail: string): ChainLink {
+  if (link.unreachable !== undefined) return link
+  return {
+    id: link.id,
+    plugin: link.plugin,
+    tier: link.tier,
+    pattern: link.pattern,
+    ...(link.matcher !== undefined ? { matcher: link.matcher } : {}),
+    ...(link.streams ? { streams: true } : {}),
+    unreachable: detail,
+    run: () => Promise.reject(new ModHookUnreachableError(link.plugin, detail)),
   }
 }

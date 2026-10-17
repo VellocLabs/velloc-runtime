@@ -307,6 +307,25 @@ describe('ModDispatcher.dispatchStream — the chain', () => {
   })
 })
 
+describe('ModDispatcher.dispatchStream — a seat whose worker restarts', () => {
+  it('passes over its stand-ins: the hooks beneath and core run as if it were not there', async () => {
+    const { dispatcher, failures } = setup()
+    const ran: string[] = []
+    const tag = (name: string) =>
+      streamLink(name, 'user', 'turn.step', async function* (call, next) {
+        ran.push(name)
+        return yield* next(call.e)
+      })
+    dispatcher.register('a', [tag('a')])
+    dispatcher.register('b', [tag('b')])
+    dispatcher.vacate('a')
+    const { fn } = core([1, 2], 'R')
+    await expect(drain(dispatcher.dispatchStream('turn.step', {}, fn))).resolves.toEqual({ chunks: [1, 2], result: 'R' })
+    expect(ran).toEqual(['b'])
+    expect(failures).toEqual([])
+  })
+})
+
 describe('ModDispatcher.dispatchStream — "a chunk yielded stays"', () => {
   it('a hook that fails mid-stream AFTER next is left: the rest from beneath it (kept)', async () => {
     const { dispatcher, failures } = setup()

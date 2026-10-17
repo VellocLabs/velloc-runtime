@@ -23,6 +23,7 @@ import type {
   ModToWorker,
   WireError,
 } from './modWire'
+import { MAX_HANDED_DEPTH, nestsDeeperThan } from './modWire'
 import { isEngineTable, type EngineTable } from './modEngineTable'
 import { MOD_DEFAULT_LOCALE, normalizeModLocale } from './modLocale'
 import { DESKTOP_ELEMENTS, RENDER_SURFACE } from './modRender'
@@ -190,7 +191,15 @@ export function installModWorkerHost(
   >()
   let seq = 0
 
+  /** Throws (as a failed clone does, so each sender reports it the same way)
+   *  when a value the frame hands over nests past `MAX_HANDED_DEPTH`. */
   const post = (message: Record<string, unknown>): void => {
+    for (const [key, value] of Object.entries(message)) {
+      const values = key === 'args' && Array.isArray(value) ? value : [value]
+      if (values.some(item => nestsDeeperThan(item, MAX_HANDED_DEPTH))) {
+        throw new RangeError(`it nests deeper than ${MAX_HANDED_DEPTH.toLocaleString('en-US')} levels`)
+      }
+    }
     peer.postMessage({ ...message, generation })
   }
 

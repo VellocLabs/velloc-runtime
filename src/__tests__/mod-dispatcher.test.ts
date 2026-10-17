@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ModDispatchDepthError,
   ModDispatcher,
+  ModHookUnreachableError,
   NextRejectionPassed,
   type CatchCall,
   type ChainLink,
@@ -780,7 +781,7 @@ describe('ModDispatcher — who raised it, and the recursion skip', () => {
     ])
   })
 
-  it("a $ call from a hook raises a dispatch from the TOP, skipping that one hook and no other", async () => {
+  it("a $ call from a hook raises a dispatch from the TOP, skipping every hook whose own call is pending above it", async () => {
     const { dispatcher } = setup()
     const ran: string[] = []
     const origins: unknown[] = []
@@ -804,14 +805,14 @@ describe('ModDispatcher — who raised it, and the recursion skip', () => {
       origins.push(call.origin)
       return call.next(call.e)
     })
-    // A hook ABOVE the caller: a dispatch from the top reaches it too.
+    // A hook ABOVE the caller: its `next` is pending, so its frame is skipped too.
     const above = link('org', 'prepend', 'fs.write', call => (ran.push('above'), call.next(call.e)))
     dispatcher.register('org', [above])
     dispatcher.register('acme', [caller, sibling])
     await dispatcher.dispatch('fs.write', {}, () => 'outer core')
     expect(ran).toEqual([
       'above', 'caller(depth 0)',   // the engine's dispatch reaches the caller
-      'above', 'sibling',           // the caller's own: from the top, the caller alone skipped
+      'sibling',                    // the caller's own: from the top, the caller and above skipped
       'sibling',                    // …then the outer chain continues beneath the caller
     ])
     expect(origins).toEqual([
@@ -820,21 +821,53 @@ describe('ModDispatcher — who raised it, and the recursion skip', () => {
     ])
   })
 
-  it("Velloc's cap: two hooks calling each other back through $ end, and say why", async () => {
+  it('two hooks calling each other back through $ end at once: each frame is skipped beneath itself', async () => {
     const { dispatcher, failures } = setup()
+    const ran: string[] = []
     let coreRuns = 0
     const pingPong = (name: string) =>
       link(name, 'user', 'fs.write', async call => {
-        // Skipping only the caller, the OTHER hook is reached, which calls back.
+        ran.push(`${name}(depth ${call.context.depth - 1})`)
         await dispatcher.dispatch('fs.write', call.e, () => ++coreRuns, { context: call.context })
         return call.next(call.e)
       })
     dispatcher.register('a', [pingPong('a')])
     dispatcher.register('b', [pingPong('b')])
-    await expect(dispatcher.dispatch('fs.write', {}, () => ++coreRuns)).resolves.toBeGreaterThan(0)
-    const deep = failures.filter(f => /nested more than 64 deep/.test(f.failure.message ?? ''))
-    expect(deep.length).toBeGreaterThan(0)
-    expect(MAX_DISPATCH_DEPTH).toBe(64)
+    await dispatcher.dispatch('fs.write', {}, () => ++coreRuns)
+    // b on the outer chain runs beneath a's pending `next`: its call skips both.
+    expect(ran).toEqual(['a(depth 0)', 'b(depth 1)', 'b(depth 0)'])
+    expect(coreRuns).toBe(4)
+    expect(failures).toEqual([])
+  })
+
+  it("a hook beneath another's $ call reaches no hook on the stack, and asks no .catch", async () => {
+    const { dispatcher, failures } = setup()
+    const ran: string[] = []
+    const asked: string[] = []
+    // `guard` calls next; `inner`, beneath it, makes a $ call of the event.
+    const guard = link('guard', 'prepend', 'tool.call', call => (ran.push('guard'), call.next(call.e)), {
+      runCatch: () => (asked.push('guard'), { deny: 'no' }),
+    })
+    const inner = link(
+      'inner',
+      'user',
+      'tool.call',
+      async call => {
+        ran.push('inner')
+        if (!(call.e as { nested?: boolean }).nested) {
+          await dispatcher.dispatch('tool.call', { nested: true }, () => 'inner core', { context: call.context })
+        }
+        return call.next(call.e)
+      },
+      { runCatch: () => (asked.push('inner'), { deny: 'no' }) },
+    )
+    dispatcher.register('guard', [guard])
+    dispatcher.register('inner', [inner])
+    await expect(dispatcher.dispatch('tool.call', {}, () => 'core')).resolves.toBe('core')
+    // The nested call ran core alone: both frames were pending above it.
+    expect(ran).toEqual(['guard', 'inner'])
+    expect(asked).toEqual([])
+    expect(failures).toEqual([])
   })
 
   it('refuses a dispatch raised past the cap', async () => {
@@ -844,6 +877,98 @@ describe('ModDispatcher — who raised it, and the recursion skip', () => {
         context: { origin: { plugin: 'a', tier: 'user' }, depth: MAX_DISPATCH_DEPTH + 1 },
       }),
     ).rejects.toBeInstanceOf(ModDispatchDepthError)
+  })
+})
+
+describe('ModDispatcher — a hook that cannot answer', () => {
+  const deny = (reason: string) => ({ deny: reason })
+  const unreachable = (plugin: string) => new ModHookUnreachableError(plugin, 'its worker is gone')
+
+  it('refuses an action that declares a refusal; core never runs and no .catch is asked', async () => {
+    const { dispatcher, failures } = setup()
+    const asked: string[] = []
+    dispatcher.register('a', [
+      link('a', 'user', 'tool.call', () => Promise.reject(unreachable('a')), {
+        runCatch: () => (asked.push('a'), { result: 'caught' }),
+      }),
+    ])
+    let coreRuns = 0
+    await expect(
+      dispatcher.dispatch('tool.call', {}, () => ++coreRuns, { refusal: deny }),
+    ).resolves.toEqual({ deny: "a's hook on tool.call could not answer (its worker is gone)" })
+    expect(coreRuns).toBe(0)
+    expect(asked).toEqual([])
+    expect(failures.map(f => [f.plugin, f.failure.message, f.outcome])).toEqual([
+      ['a', 'its worker is gone; the action is refused', 'returned'],
+    ])
+  })
+
+  it('after its next ran, the refusal still stands: what ran beneath is withheld', async () => {
+    const { dispatcher } = setup()
+    let coreRuns = 0
+    const traces: unknown[] = []
+    dispatcher.register('a', [
+      link('a', 'user', 'tool.call', async call => {
+        await call.next(call.e)
+        throw unreachable('a')
+      }),
+    ])
+    await expect(
+      dispatcher.dispatch('tool.call', {}, () => ++coreRuns, {
+        refusal: deny,
+        trace: entries => traces.push(entries.map(entry => [entry.plugin, entry.outcome, entry.reason])),
+      }),
+    ).resolves.toEqual({ deny: "a's hook on tool.call could not answer (its worker is gone)" })
+    expect(coreRuns).toBe(1)
+    expect(traces).toEqual([
+      [
+        ['a', 'returned', 'refused: its worker is gone'],
+        ['engine', 'returned', undefined],
+      ],
+    ])
+  })
+
+  it('without a refusal, such a hook is absent as a failed one: beneath runs in its place', async () => {
+    const { dispatcher } = setup()
+    dispatcher.register('a', [link('a', 'user', 'session.idle', () => Promise.reject(unreachable('a')))])
+    await expect(dispatcher.dispatch('session.idle', {}, () => 'core')).resolves.toBe('core')
+  })
+
+  it('an error a hook throws is never taken for one, whatever its name', async () => {
+    const { dispatcher } = setup()
+    dispatcher.register('a', [
+      link('a', 'user', 'tool.call', () => {
+        const forged = new Error('a: its worker is gone')
+        forged.name = 'ModHookUnreachableError'
+        throw forged
+      }),
+    ])
+    await expect(dispatcher.dispatch('tool.call', {}, () => 'core', { refusal: deny })).resolves.toBe('core')
+  })
+
+  it("a seat whose worker restarts keeps its hooks as stand-ins: they refuse where a refusal is declared, as their matcher selects", async () => {
+    const { dispatcher } = setup()
+    const ran: string[] = []
+    dispatcher.register('a', [
+      link('a', 'user', 'tool.call', call => (ran.push('a'), call.next(call.e)), { matcher: { tool: 'Bash' } }),
+    ])
+    dispatcher.register('b', [link('b', 'user', 'tool.call', call => (ran.push('b'), call.next(call.e)))])
+    dispatcher.vacate('a')
+    expect(dispatcher.hasHooksFor('tool.call')).toBe(true)
+    expect(dispatcher.matchersFor('tool.call').map(m => m.plugin)).toEqual(['b'])
+    await expect(dispatcher.dispatch('tool.call', { tool: 'Bash' }, () => 'core', { refusal: deny })).resolves.toEqual({
+      deny: "a's hook on tool.call could not answer (its hooks worker is restarting)",
+    })
+    expect(ran).toEqual([])
+    // Its matcher does not select this call: it is not asked, nothing is refused.
+    await expect(dispatcher.dispatch('tool.call', { tool: 'Read' }, () => 'core', { refusal: deny })).resolves.toBe('core')
+    // An event with no refusal passes it over.
+    await expect(dispatcher.dispatch('tool.call', { tool: 'Bash' }, () => 'core')).resolves.toBe('core')
+    expect(ran).toEqual(['b', 'b'])
+    // The module back in its seat: its hook runs again, first.
+    dispatcher.register('a', [link('a', 'user', 'tool.call', call => (ran.push('a2'), call.next(call.e)))])
+    await dispatcher.dispatch('tool.call', { tool: 'Bash' }, () => 'core', { refusal: deny })
+    expect(ran).toEqual(['b', 'b', 'a2', 'b'])
   })
 })
 

@@ -162,12 +162,16 @@ export type HookRegistration = {
 
 /**
  * What a `$` call from inside a hook carries into the dispatch it raises: who caused
- * it, and the one hook frame to skip; the dispatch starts at the TOP of the chain.
+ * it, and the hook frames to skip; the dispatch starts at the TOP of the chain.
  */
 export type DispatchContext = {
   readonly origin: Origin
-  /** The calling hook's link id — the recursion skip. */
-  readonly skipLinkId?: string
+  /**
+   * The recursion skip: the link ids of every hook whose own call (its `next`,
+   * a `$` call) is pending above this dispatch, the caller's last. None of them
+   * runs in it, nor in anything raised beneath, and its `.catch` is not asked.
+   */
+  readonly frames?: readonly string[]
   /**
    * A plugin whose every hook this dispatch leaves out — for the events the
    * declaration raises "through the other plugins' hooks, this plugin's own
@@ -177,8 +181,7 @@ export type DispatchContext = {
   readonly skipPlugin?: string
   /**
    * How many dispatches deep this one is nested through `$` calls. Velloc's
-   * guard, not the spec's: skipping only the immediate caller lets two hooks
-   * on one event call it back and forth forever, so a dispatch past
+   * guard, not the spec's, beside `frames`: a dispatch past
    * `MAX_DISPATCH_DEPTH` is refused.
    */
   readonly depth: number

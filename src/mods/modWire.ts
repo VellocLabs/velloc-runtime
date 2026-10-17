@@ -3,7 +3,8 @@
  * over the instance's own port: `mod.invoke`, `mod.next`, `mod.call`, `mod.result` /
  * `mod.error`, and pull-driven frames for streaming hooks and calls. Every frame
  * carries the instance's `generation`; a mismatched frame is dropped and counted.
- * Types only; not part of the C++ interface.
+ * Types, plus the nesting limit on what a hook hands back; not part of the C++
+ * interface.
  */
 
 import type {
@@ -335,6 +336,32 @@ export type ModToRuntime =
   | ModResultMessage
   | ModErrorMessage
   | ModHandleResultMessage
+
+/** How deep a value a hook hands back (its result, a chunk, `next(e)`'s `e`, a
+ *  `$` call's argument, a served noun's result) may nest; deeper is refused. */
+export const MAX_HANDED_DEPTH = 28_000
+
+/** Whether `value` holds containers nested more than `limit` deep (a container
+ *  at the top is depth 1). Iterative, so a deep value cannot overflow the
+ *  stack; each container is walked once, so a cycle ends. */
+export function nestsDeeperThan(value: unknown, limit: number): boolean {
+  if (value === null || typeof value !== 'object') return false
+  const seen = new Set<object>()
+  const stack: Array<[object, number]> = [[value, 1]]
+  while (stack.length > 0) {
+    const [node, depth] = stack.pop()!
+    if (depth > limit) return true
+    if (seen.has(node)) continue
+    seen.add(node)
+    if (node instanceof ArrayBuffer || ArrayBuffer.isView(node)) continue
+    const children =
+      node instanceof Map ? [...node.keys(), ...node.values()] : node instanceof Set ? [...node] : Object.values(node)
+    for (const child of children) {
+      if (child !== null && typeof child === 'object') stack.push([child, depth + 1])
+    }
+  }
+  return false
+}
 
 /** Minimal duplex port shape — a real `MessagePort` satisfies it. */
 export type ModPeer = {
