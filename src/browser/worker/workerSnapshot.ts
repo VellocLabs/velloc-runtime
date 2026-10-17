@@ -25,6 +25,7 @@ import {
   buildLoadedSkillSummaries,
   buildSlashCommandSummaries,
 } from './slashCommandSummaries'
+import type { SessionDisplayView } from './sessionDisplayState'
 
 /**
  * Provisional boot info: while `runtime` is null and this is set, every snapshot carries
@@ -37,6 +38,9 @@ export type ProvisionalBootSources = {
   usedSandboxProjectRoot: boolean
   hostMode: string | undefined
   messageCount: number
+  /** The model, mode, auto-compact and plan-approval fields a built runtime
+   *  would report; absent until the display state resolves. */
+  display?: SessionDisplayView
 }
 
 /** Settled servers only (a connecting or closed one is left out), sorted by
@@ -153,9 +157,19 @@ export function buildWorkerSnapshot(
   // Provisional applies only while the runtime hasn't been installed —
   // once it exists, every field below reads from the real build.
   const provisional = runtime ? null : src.provisional ?? null
-  const activeModelId = runtime?.engine.getCurrentModel()
-  const currentProviderId = runtime?.engine.getCurrentProviderId()
-  const currentThinkingTier = runtime?.engine.getCurrentThinkingTier?.()
+  const display = provisional?.display
+  const activeModelId = runtime
+    ? runtime.engine.getCurrentModel()
+    : display?.activeModelId
+  const currentProviderId = runtime
+    ? runtime.engine.getCurrentProviderId()
+    : display?.currentProviderId
+  const currentThinkingTier = runtime
+    ? runtime.engine.getCurrentThinkingTier?.()
+    : display?.currentThinkingTier
+  const autoCompactWindows = runtime
+    ? runtime.autoCompactWindows
+    : display?.autoCompactWindows
   const runtimeWithAppState = runtime as
     | { getAppState?: () => { approvalQueue?: PendingApproval[] } }
     | null
@@ -208,17 +222,20 @@ export function buildWorkerSnapshot(
     // The user's auto-compact switch + window for the active model, from the
     // last settings read (each trigger attempt and `/autocompact` re-read).
     // (Optional chain: test doubles of the runtime may not carry a reader.)
-    autoCompact: runtime?.autoCompactWindows
+    autoCompact: autoCompactWindows
       ? pickAutoCompactView(
-          runtime.autoCompactWindows.current(activeModelId, currentProviderId),
-          runtime.autoCompactWindows.canSave,
+          autoCompactWindows.current(activeModelId, currentProviderId),
+          autoCompactWindows.canSave,
           src.autoCompactSaveError,
         )
       : undefined,
-    currentPermissionMode: runtime?.engine.getCurrentPermissionMode?.(),
-    bypassPermissionsModeDisabled:
-      runtime?.getAppState?.().permissionRules
-        ?.bypassPermissionsModeDisabled === true,
+    currentPermissionMode: runtime
+      ? runtime.engine.getCurrentPermissionMode?.()
+      : display?.permissionMode,
+    bypassPermissionsModeDisabled: runtime
+      ? runtime.getAppState?.().permissionRules
+          ?.bypassPermissionsModeDisabled === true
+      : display?.bypassPermissionsModeDisabled === true,
     modelCatalog,
     availableModels: getAvailableModels(runtime, modelCatalog, activeModelId),
     toolNames: runtime?.tools.map(tool => tool.name) ?? [],
@@ -262,7 +279,9 @@ export function buildWorkerSnapshot(
     pendingPermissions: runtime?.engine.getPendingPermissions?.(),
     // ExitPlanMode calls halted for the user's plan approval (Phase 1 plan
     // handshake). Drives the plan-approval banner.
-    pendingPlanApproval: runtime?.engine.getPendingPlanApproval?.(),
+    pendingPlanApproval: runtime
+      ? runtime.engine.getPendingPlanApproval?.()
+      : display?.pendingPlanApproval,
     // requiresUserInteraction tools (e.g. AskUserQuestion) halted for the
     // user's response. Drives the session-list "needs your response" dot via
     // the durable snapshot path (mirrors pendingPlanApproval).

@@ -69,6 +69,13 @@ import { AgentRuntimeRecovery } from './AgentRuntimeRecovery'
 import { AgentTranscriptService } from './AgentTranscriptService'
 import type { TranscriptSource } from './AgentTranscriptService'
 import type { FileSnapshotRecorder } from '../../sessions/fileSnapshots/snapshotRecorder'
+import type { RuntimeFs } from '../../utils/fs/runtimeFs'
+import type { AutoCompactWindowSettings } from '../../context/compaction/windowSettings'
+import type { PermissionSettingsBySource } from '../../permissions/seedPermissionContext'
+import {
+  resolveSessionDisplayState,
+  type SessionDisplayState,
+} from './sessionDisplayState'
 import {
   extractRuntimeSettingsNamespaces,
   parseApiErrorRetryEvent,
@@ -1179,7 +1186,7 @@ export class AgentRuntimeWorker {
         // provisional boot feed (headless/sub-agent builds have no UI to
         // unblock — same gate as the boot-stage reporter above).
         onUiReady: isPrimarySessionBuild
-          ? info => this.publishProvisionalBoot(scope, info)
+          ? info => this.publishProvisionalBoot(scope, info, payload)
           : undefined,
         // Mid-turn task-notification drain. Scope-guarded: a
         // superseded build's runtime must not consume the live session's
@@ -1237,6 +1244,10 @@ export class AgentRuntimeWorker {
     } finally {
       bootStages.clear()
     }
+    // The provisional publish lands before the runtime takes over; its
+    // restore holds the values the display already shows. Without one, each
+    // restore below resolves its own.
+    const restore = (await scope.display)?.restore
 
     // Generation guard: if a newer init was started while we were awaiting
     // createAgentRuntime, discard this result and let the newer scope win.
@@ -1341,7 +1352,10 @@ export class AgentRuntimeWorker {
       traceId: initSpan.traceId,
       parentSpanId: initSpan.spanId,
     })
-    const appliedImmediately = await scope.models.applyImmediateSelection(payload)
+    const appliedImmediately = await scope.models.applyImmediateSelection(
+      payload,
+      restore?.selection,
+    )
     phase1Span.end({ applied: appliedImmediately })
 
     // Scope guard: if superseded during model selection, bail out.
@@ -1353,7 +1367,7 @@ export class AgentRuntimeWorker {
     // identical restore work — and, critically, from reaching the host bind
     // below, which would overwrite the Manager's conversation-store binding
     // with the STALE scope's store.
-    await scope.permissions.applyPersistedMode()
+    await scope.permissions.applyPersistedMode(restore?.persistedMode)
     if (!this.isCurrentScope(scope)) return
     // Load the bypass-warning acknowledgment flag (F-13) so the first switch
     // into bypassPermissions this session knows whether to warn. Best-effort.
@@ -1361,11 +1375,11 @@ export class AgentRuntimeWorker {
     if (!this.isCurrentScope(scope)) return
     await scope.recovery.copyForkedPlanIfNeeded()
     if (!this.isCurrentScope(scope)) return
-    await scope.recovery.restorePendingPlanApproval()
+    await scope.recovery.restorePendingPlanApproval(restore?.planApproval)
     if (!this.isCurrentScope(scope)) return
 
     // Terminal state restore + interrupted-turn detection (Continue button).
-    await scope.recovery.restoreTerminalState()
+    await scope.recovery.restoreTerminalState(restore?.terminal)
     if (!this.isCurrentScope(scope)) return
 
     // Record this build's effective template/folder for the ready result
@@ -1554,10 +1568,61 @@ export class AgentRuntimeWorker {
       /** The building session's own store — see `withTranscriptLines`. */
       conversationStore?: BrowserConversationStore
       fileSnapshotRecorder?: FileSnapshotRecorder
+      installedFs?: RuntimeFs
+      autoCompactWindows?: AutoCompactWindowSettings
+      permissionSettings?: Promise<PermissionSettingsBySource>
     },
+    payload: AgentRuntimeWorkerInitPayload,
   ): void {
     // A superseded build must not publish into the successor's UI.
     if (!this.isCurrentScope(scope)) return
+    // The catalog the install would adopt; the selection resolves against it.
+    if (payload.initialModelCatalog && !scope.models.getCatalog()) {
+      scope.models.setCatalog(payload.initialModelCatalog)
+    }
+    const store = info.conversationStore
+    const display: Promise<SessionDisplayState | null> = store && info.installedFs
+      ? resolveSessionDisplayState({
+          payload,
+          conversationStore: store,
+          rows: info.messages,
+          cwd: info.cwd,
+          sessionId: info.sessionId,
+          fs: info.installedFs,
+          catalog: scope.models.getCatalog(),
+          permissionSettings: info.permissionSettings,
+          autoCompactWindows: info.autoCompactWindows,
+          models: scope.models,
+          permissions: scope.permissions,
+        }).catch(() => null)
+      : Promise.resolve(null)
+    scope.display = display
+    // The first provisional snapshot already carries the display state.
+    void display.then(state => this.finishProvisionalBoot(scope, info, state))
+  }
+
+  private finishProvisionalBoot(
+    scope: RuntimeScope,
+    info: {
+      sessionId: string
+      cwd: string
+      projectRoot: string
+      usedSandboxProjectRoot: boolean
+      hostMode: string | undefined
+      messages: Message[]
+      conversationStore?: BrowserConversationStore
+      fileSnapshotRecorder?: FileSnapshotRecorder
+    },
+    display: SessionDisplayState | null,
+  ): void {
+    // A runtime that installed first publishes through `worker.ready`.
+    if (!this.isCurrentScope(scope) || scope.runtime) return
+    if (display) {
+      scope.recovery.setTerminalState(
+        display.restore.terminal.reason,
+        display.restore.terminal.timestamp,
+      )
+    }
     const earlyRows = info.messages
     const messages = earlyRows.map(sanitizeMessageForUi)
     this.provisionalBoot = {
@@ -1568,6 +1633,7 @@ export class AgentRuntimeWorker {
         usedSandboxProjectRoot: info.usedSandboxProjectRoot,
         hostMode: info.hostMode,
         messageCount: messages.length,
+        ...(display ? { display: display.view } : {}),
       },
       messages: earlyRows,
       conversationStore: info.conversationStore,

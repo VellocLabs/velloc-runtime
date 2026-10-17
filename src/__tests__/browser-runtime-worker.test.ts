@@ -9,6 +9,10 @@ import {
   setCallModelLogEnabled,
 } from '../engine/turn/callModelTrace'
 import type { Message } from '../runtime/RuntimeTypes'
+import { createInitialBrowserAppState } from '../browser/runtime/AgentRuntimeState'
+import { applyPermissionRulesBySource } from '../permissions/seedPermissionContext'
+import { withPermissionMode } from '../permissions/sessionModes'
+import { resolveComposerSendGate } from '../browser/webview/AssistantUiThread'
 import {
   __resetBundledSkillsForTests,
   __resetFeatureRegistryForTests,
@@ -3727,6 +3731,239 @@ describe('AgentRuntimeWorker — UI-ready split', () => {
 
     releaseBuild()
     await init
+  })
+
+  describe('display snapshot before the build', () => {
+    const catalog = {
+      providers: [
+        {
+          id: 'demo',
+          name: 'Demo',
+          enabled: true,
+          models: [
+            { id: 'demo-model', name: 'Demo Model', enabled: true },
+            { id: 'other-model', name: 'Other Model', enabled: true },
+          ],
+        },
+      ],
+      defaultSelection: { providerId: 'demo', modelId: 'demo-model' },
+    }
+
+    type Scenario = {
+      name: string
+      metadata: Record<string, unknown>
+      payload: Record<string, unknown>
+      permissionSources: Array<{ source: string; permissions?: Record<string, unknown> }>
+      rows: Message[]
+    }
+
+    const scenarios: Scenario[] = [
+      {
+        name: 'a saved selection, plan mode over a settings default, a pending plan and a turn killed mid-reply',
+        metadata: {
+          llmSelection: { providerId: 'demo', modelId: 'other-model', thinkingTier: 'high' },
+          permissionMode: 'plan',
+          pendingPlanApprovalToolCallId: 'call-plan-1',
+          lastTerminalReason: 'completed',
+          lastTerminalTimestamp: 1000,
+        },
+        payload: { initialModelCatalog: catalog },
+        permissionSources: [
+          { source: 'userSettings', permissions: { defaultMode: 'acceptEdits', disableBypassPermissionsMode: 'disable' } },
+        ],
+        // The last row is an unanswered prompt: the session offers Continue.
+        rows: transcriptOf(2),
+      },
+      {
+        name: 'a fresh session with only the requested pair and no catalog',
+        metadata: {},
+        payload: { userSpecifiedProviderId: 'demo', userSpecifiedModel: 'demo-model' },
+        permissionSources: [],
+        rows: [],
+      },
+      {
+        name: 'nothing to select: the engine keeps the payload model',
+        metadata: { lastTerminalReason: 'completed', lastTerminalTimestamp: 5 },
+        payload: {},
+        permissionSources: [{ source: 'projectSettings', permissions: { defaultMode: 'acceptEdits' } }],
+        rows: [],
+      },
+    ]
+
+    function displayFixture(scenario: Scenario) {
+      const metadata = { ...scenario.metadata }
+      const store = {
+        getSessionMetadata: vi.fn(async () => ({ ...metadata })),
+        updateSessionMetadata: vi.fn(async (patch: Record<string, unknown>) => {
+          Object.assign(metadata, patch)
+        }),
+        saveToolCallDetail: vi.fn(async () => {}),
+        getToolCallDetail: vi.fn(async () => null),
+      }
+      const installedFs = { readFile: vi.fn(async () => '# Plan\n- step') }
+      const autoCompactWindows = {
+        load: vi.fn(async () => {}),
+        current: (model: string | undefined, provider: string | undefined) => ({
+          enabled: true,
+          windowTokens: model === 'other-model' && provider === 'demo' ? 64000 : 32000,
+          windowSource: 'projectSettings' as const,
+        }),
+        canSave: true,
+      }
+      return { store, installedFs, autoCompactWindows }
+    }
+
+    /** A built runtime whose engine keeps model and mode state the way the
+     *  ledger does, its rules seeded from the same settings. */
+    function builtRuntime(scenario: Scenario, fixture: ReturnType<typeof displayFixture>) {
+      const payload = scenario.payload as {
+        userSpecifiedProviderId?: string
+        userSpecifiedModel?: string
+        userSpecifiedThinkingTier?: string
+      }
+      let appState = createInitialBrowserAppState() as ReturnType<typeof createInitialBrowserAppState> & {
+        pendingPlanApproval?: Record<string, unknown>
+      }
+      if (scenario.permissionSources.some(entry => entry.permissions)) {
+        appState = {
+          ...appState,
+          permissionRules: applyPermissionRulesBySource(
+            appState.permissionRules,
+            scenario.permissionSources as never,
+          ),
+        }
+      }
+      let model = {
+        providerId: payload.userSpecifiedProviderId,
+        model: payload.userSpecifiedModel,
+        thinkingTier: payload.userSpecifiedThinkingTier,
+      }
+      return {
+        engine: {
+          boundSessionId: () => 'split-1',
+          getCurrentModel: () => model.model ?? 'inherit',
+          getCurrentProviderId: () => model.providerId,
+          getCurrentThinkingTier: () => model.thinkingTier,
+          setModelSelection: (next: typeof model) => {
+            model = { providerId: next.providerId, model: next.model, thinkingTier: next.thinkingTier }
+          },
+          getCurrentPermissionMode: () => appState.permissionRules.mode,
+          setPermissionMode: (mode: string) => {
+            appState = { ...appState, permissionRules: withPermissionMode(appState.permissionRules, mode) }
+          },
+          getPendingPlanApproval: () => appState.pendingPlanApproval,
+          transcriptRows: () => scenario.rows,
+          applyRuntimeSettings: vi.fn(),
+          dispose: vi.fn(async () => {}),
+        },
+        conversationStore: fixture.store,
+        installedFs: fixture.installedFs,
+        autoCompactWindows: fixture.autoCompactWindows,
+        hostBridge: { getModelCatalog: vi.fn(async () => null) },
+        tools: [],
+        usedSandboxProjectRoot: false,
+        options: { cwd: '/workspace', hostMode: 'nexus' } as Record<string, unknown>,
+        getAppState: () => appState,
+        setAppState: (updater: (prev: typeof appState) => typeof appState) => {
+          appState = updater(appState)
+        },
+      }
+    }
+
+    const DISPLAY_FIELDS = [
+      'currentSelection',
+      'activeModelId',
+      'currentProviderId',
+      'currentThinkingTier',
+      'currentPermissionMode',
+      'bypassPermissionsModeDisabled',
+      'autoCompact',
+      'lastTerminalReason',
+      'lastTerminalTimestamp',
+      'pendingPlanApproval',
+      'modelCatalog',
+    ] as const
+
+    it.each(scenarios)('the provisional snapshot shows what the built one does: $name', async scenario => {
+      // A clock that moves on every read: a restore resolved twice would
+      // stamp a different interruption time.
+      let clock = 10_000
+      vi.spyOn(Date, 'now').mockImplementation(() => ++clock)
+      const emitted: Emitted[] = []
+      const worker = new AgentRuntimeWorker({ emit: m => emitted.push(m as Emitted) })
+      const fixture = displayFixture(scenario)
+      let releaseBuild!: () => void
+      const buildGate = new Promise<void>(resolve => {
+        releaseBuild = resolve
+      })
+      vi.mocked(createAgentRuntime).mockImplementationOnce(async opts => {
+        const options = opts as unknown as { onUiReady?: (info: Record<string, unknown>) => void }
+        options.onUiReady?.({
+          ...uiReadyInfo(scenario.rows),
+          conversationStore: fixture.store,
+          installedFs: fixture.installedFs,
+          autoCompactWindows: fixture.autoCompactWindows,
+          permissionSettings: Promise.resolve(scenario.permissionSources),
+        })
+        await buildGate
+        return builtRuntime(scenario, fixture) as never
+      })
+
+      const init = worker.receiveFrame({
+        type: 'worker.init',
+        payload: { sessionId: 'split-1', cwd: '/workspace', ...scenario.payload } as never,
+      })
+      await vi.waitFor(() => expect(emitted.some(m => m.type === 'worker.uiReady')).toBe(true))
+      const provisional = emitted.find(m => m.type === 'worker.uiReady')!.payload as Record<string, unknown>
+      expect(provisional.initialized).toBe(false)
+
+      releaseBuild()
+      await init
+      const built = emitted.find(m => m.type === 'worker.ready')!.payload as Record<string, unknown>
+      expect(built.initialized).toBe(true)
+
+      for (const field of DISPLAY_FIELDS) {
+        expect({ field, value: provisional[field] }).toEqual({ field, value: built[field] })
+      }
+      await worker.dispose()
+    })
+
+    it('fills every display field for a session with saved state', async () => {
+      const scenario = scenarios[0]!
+      const worker = new AgentRuntimeWorker({ emit: () => {} })
+      const fixture = displayFixture(scenario)
+      vi.mocked(createAgentRuntime).mockImplementationOnce(async opts => {
+        const options = opts as unknown as { onUiReady?: (info: Record<string, unknown>) => void }
+        options.onUiReady?.({
+          ...uiReadyInfo(scenario.rows),
+          conversationStore: fixture.store,
+          installedFs: fixture.installedFs,
+          autoCompactWindows: fixture.autoCompactWindows,
+          permissionSettings: Promise.resolve(scenario.permissionSources),
+        })
+        return new Promise(() => {}) as never
+      })
+      void worker.receiveFrame({
+        type: 'worker.init',
+        payload: { sessionId: 'split-1', cwd: '/workspace', ...scenario.payload } as never,
+      })
+      await vi.waitFor(() => expect(worker.getSnapshot().uiReady).toBe(true))
+      const snapshot = worker.getSnapshot()
+      expect(snapshot.currentSelection).toEqual({ providerId: 'demo', modelId: 'other-model', thinkingTier: 'high' })
+      expect(snapshot.currentPermissionMode).toBe('plan')
+      expect(snapshot.bypassPermissionsModeDisabled).toBe(true)
+      expect(snapshot.autoCompact).toEqual({ enabled: true, windowTokens: 64000, lockedBy: 'projectSettings', canSave: true })
+      expect(snapshot.lastTerminalReason).toBe('aborted_streaming')
+      expect(snapshot.pendingPlanApproval).toEqual({
+        'call-plan-1': expect.objectContaining({ planText: '# Plan\n- step', restoreMode: 'acceptEdits' }),
+      })
+      // The composer accepts a send from this state.
+      expect(
+        resolveComposerSendGate({ snapshot, activeSessionId: 'split-1', canAdoptDefault: true }),
+      ).toEqual({ kind: 'send' })
+      // Nothing was applied: the engine does not exist yet.
+      expect(fixture.store.updateSessionMetadata).not.toHaveBeenCalled()
+    })
   })
 
   describe('change digest under the early transcript view', () => {

@@ -14,7 +14,7 @@ import type {
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import { isMemoryMaintenanceMode, type ResolvedMemorySettings } from '../memory/memoryPaths'
 import { applyPermissionUpdate, type RuleEdit } from '../permissions/ruleUpdates'
-import { mayEnterMode } from '../permissions/sessionModes'
+import { withPermissionMode } from '../permissions/sessionModes'
 import { mergeAgentLoopSettings } from '../config/agentLoopConfig'
 import { createAgentLoopState, type AgentLoopState } from './loop/agentLoopState'
 import { getSessionId as storeSessionId } from '../sessions/sessionStore'
@@ -209,13 +209,8 @@ export class SessionLedger {
    *  from. A mode the settings forbid is refused. */
   setPermissionMode(mode: string): void {
     this.config.writeAppState(prev => {
-      const oldMode = prev.permissionRules.mode
-      if (oldMode === mode) return prev
-      if (!mayEnterMode(mode, prev.permissionRules)) return prev
-      let modeBeforePlan = prev.permissionRules.modeBeforePlan
-      if (mode === 'plan' && oldMode !== 'plan') modeBeforePlan = oldMode
-      else if (oldMode === 'plan' && mode !== 'plan') modeBeforePlan = undefined
-      return { ...prev, permissionRules: { ...prev.permissionRules, mode, modeBeforePlan } }
+      const permissionRules = withPermissionMode(prev.permissionRules, mode)
+      return permissionRules === prev.permissionRules ? prev : { ...prev, permissionRules }
     })
   }
 

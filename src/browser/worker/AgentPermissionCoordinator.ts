@@ -14,12 +14,16 @@ import {
   permissionUpdateToSettingsPatch,
   type RuleEdit,
 } from '../../permissions/ruleUpdates'
-import { coerceSessionMode } from '../../permissions/sessionModes'
+import { coerceSessionMode, type SessionMode } from '../../permissions/sessionModes'
+import type { BrowserSessionMetadata } from '../../sessions/sessionStore'
 import { PLAN_OFF_TOOL_ID } from '../../toolkit/builtin/planExit'
 import {
   unsafeModeAckGiven,
   updateSectionInSource,
 } from '../../settings/settingsStore'
+
+/** A saved permission mode, resolved; `mode` is absent when none is saved. */
+export type PersistedModeResolution = { mode?: SessionMode }
 
 export type AgentPermissionSnapshot = {
   skipDangerousModePermissionPrompt: boolean
@@ -330,22 +334,33 @@ export class AgentPermissionCoordinator {
   }
 
   /**
-   * Re-apply the persisted permission mode (if any) at init — the mode
-   * analogue of the model controller's persisted-llmSelection restore. A
-   * plain string round-trip; no catalog resolution needed.
+   * The session's saved permission mode, read as a mode id; `mode` is absent
+   * when none is saved. The resolve half of `applyPersistedMode`.
    */
-  async applyPersistedMode(): Promise<void> {
+  resolvePersistedMode(
+    metadata: Pick<BrowserSessionMetadata, 'permissionMode'> | undefined,
+  ): PersistedModeResolution {
+    const persistedMode = metadata?.permissionMode
+    return typeof persistedMode === 'string' && persistedMode
+      ? { mode: coerceSessionMode(persistedMode) }
+      : {}
+  }
+
+  /**
+   * Re-apply the persisted permission mode (if any) at init — the mode
+   * analogue of the model controller's persisted-llmSelection restore.
+   * `resolved` is a mode resolved earlier; when omitted it is read now.
+   */
+  async applyPersistedMode(resolved?: PersistedModeResolution): Promise<void> {
     const runtime = this.runtime
     if (!runtime) {
       return
     }
-    const metadata =
-      await runtime.conversationStore.getSessionMetadata?.()
-    const persistedMode = metadata?.permissionMode
-    if (persistedMode) {
-      runtime.engine.setPermissionMode(
-        coerceSessionMode(persistedMode),
-      )
+    const { mode } =
+      resolved ??
+      this.resolvePersistedMode(await runtime.conversationStore.getSessionMetadata?.())
+    if (mode) {
+      runtime.engine.setPermissionMode(mode)
     }
   }
 

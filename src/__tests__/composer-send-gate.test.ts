@@ -50,6 +50,16 @@ function snapshot(
 }
 
 describe('resolveComposerSendGate', () => {
+  it('sends from the provisional snapshot of an unbuilt session that has a selection', () => {
+    expect(
+      resolveComposerSendGate({
+        snapshot: snapshot({ initialized: false, uiReady: true }),
+        activeSessionId: 'session-a',
+        canAdoptDefault: true,
+      }),
+    ).toEqual({ kind: 'send' })
+  })
+
   it('sends when the session is ready and its pinned model is usable', () => {
     expect(
       resolveComposerSendGate({

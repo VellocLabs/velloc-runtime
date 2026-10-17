@@ -70,6 +70,23 @@ export function mayEnterMode(
   return !(mode === 'bypassPermissions' && context?.bypassPermissionsModeDisabled)
 }
 
+/**
+ * The permission context after a switch to `mode`: unchanged when the mode is
+ * already in effect or the context refuses it; otherwise the new mode, with
+ * the mode plan mode was entered from remembered while in plan.
+ */
+export function withPermissionMode<
+  T extends { mode: string; modeBeforePlan?: string; bypassPermissionsModeDisabled?: boolean },
+>(context: T, mode: string): T {
+  const oldMode = context.mode
+  if (oldMode === mode) return context
+  if (!mayEnterMode(mode, context)) return context
+  let modeBeforePlan = context.modeBeforePlan
+  if (mode === 'plan' && oldMode !== 'plan') modeBeforePlan = oldMode
+  else if (oldMode === 'plan' && mode !== 'plan') modeBeforePlan = undefined
+  return { ...context, mode, modeBeforePlan }
+}
+
 export type CycleOptions = {
   /** The host offers bypass on the shortcut ring at all. */
   bypassOffered?: boolean

@@ -14,7 +14,10 @@ import { buildProfilePromptBlock } from '../context/buildProfilePromptBlock'
 import { buildTeammatePromptAddendum } from '../../team/teammateBrief'
 import { resolveOutputStyleSection } from '../../prompting/responseStyles'
 import { SHELL_TOOL_ID } from '../../prompting/processToolNames'
-import { applyPermissionRulesBySource } from '../../permissions/seedPermissionContext'
+import {
+  applyPermissionRulesBySource,
+  type PermissionSettingsBySource,
+} from '../../permissions/seedPermissionContext'
 import { findShadowedRules } from '../../permissions/ruleEngine'
 import { BrowserUserInputPipeline } from '../../input/submitUserInput'
 import {
@@ -107,7 +110,10 @@ import {
   createBrowserAutoCompact,
   performCompaction,
 } from '../../context/compaction/autoTrigger'
-import { createAutoCompactWindowSettings } from '../../context/compaction/windowSettings'
+import {
+  createAutoCompactWindowSettings,
+  type AutoCompactWindowSettings,
+} from '../../context/compaction/windowSettings'
 import {
   buildMCPToolsFromPool,
   buildMcpResourceToolsFromPool,
@@ -217,6 +223,12 @@ export type CreateBrowserRuntimeOptions = BrowserRuntimeOptions & {
     conversationStore?: BrowserConversationStore
     /** This build's file-snapshot recorder; the turn-diff history reads it. */
     fileSnapshotRecorder?: FileSnapshotRecorder
+    /** This build's filesystem; the display state reads the plan file with it. */
+    installedFs?: RuntimeFs
+    /** The auto-compact reader the built runtime exposes; not yet loaded. */
+    autoCompactWindows?: AutoCompactWindowSettings
+    /** The per-source permission settings the build seeds its rules from. */
+    permissionSettings?: Promise<PermissionSettingsBySource>
   }) => void
   /**
    * Mid-turn task-notification drain.
@@ -600,6 +612,22 @@ export async function createBrowserRuntime(
     options as { forkSeedMessages?: Message[] }
   ).forkSeedMessages
   let earlyRecordedMessages: Message[] | null = null
+  // The user's auto-compact switch and windows (settings.json /
+  // `/autocompact`). One reader per runtime: the trigger, the slash command
+  // and the composer snapshot all resolve through it.
+  let readerOptions: { projectRoot: string } = resolvedOptions
+  const autoCompactWindows = createAutoCompactWindowSettings({
+    homeDir: resolvedOptions.settingsHomeDir ?? null,
+    projectRoot: () => readerOptions.projectRoot,
+    fs: () => installedFs,
+  })
+  // One read of the permission settings, shared by the display state and the
+  // rule seeding below. Unreadable settings seed nothing.
+  const permissionSettings: Promise<PermissionSettingsBySource> = (async () =>
+    loadPermissionSettingsBySource(
+      { homeDir: settingsHome(), projectRoot: resolvedProjectRoot },
+      installedFs,
+    ))().catch(() => [])
   if (options.onUiReady && !earlySeedMessages) {
     earlyRecordedMessages = [...(await conversationStore.getRecordedMessages())]
     options.onUiReady({
@@ -611,6 +639,9 @@ export async function createBrowserRuntime(
       messages: earlyRecordedMessages,
       conversationStore,
       fileSnapshotRecorder,
+      installedFs,
+      autoCompactWindows,
+      permissionSettings,
     })
   }
 
@@ -1135,14 +1166,6 @@ export async function createBrowserRuntime(
     appState = { ...appState, activeSkills: [AGENT_TEAMS_SKILL_NAME] }
   }
 
-  // The user's auto-compact switch and windows (settings.json /
-  // `/autocompact`). One reader per runtime: the trigger, the slash command
-  // and the composer snapshot all resolve through it.
-  const autoCompactWindows = createAutoCompactWindowSettings({
-    homeDir: settingsHomeDir,
-    projectRoot: () => coreState.options.projectRoot,
-    fs: () => installedFs,
-  })
   const coreState = {
     autoCompactWindows,
     options: {
@@ -1244,6 +1267,7 @@ export async function createBrowserRuntime(
     },
     fileSnapshotRecorder,
   }
+  readerOptions = coreState.options
 
   // Register enabled-plugin hooks into the session hook store. Command /
   // prompt / http / agent hook types each run through the executor's runner
@@ -1440,10 +1464,7 @@ export async function createBrowserRuntime(
     }
     // Seed permission rules per settings source, the default mode, `additionalWorkingDirectories`
     // and the `disableBypassPermissionsMode` killswitch BEFORE the engine starts. No block → allow-all.
-    const permissionsBySource = await loadPermissionSettingsBySource(
-      { homeDir: settingsHome(), projectRoot: coreState.options.projectRoot },
-      installedFs,
-    ).catch(() => [])
+    const permissionsBySource = await permissionSettings
     if (permissionsBySource.some(entry => entry.permissions)) {
       coreState.setAppState(prev => ({
         ...prev,

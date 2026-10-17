@@ -3,6 +3,7 @@ import type { AgentModelController } from './AgentModelController'
 import type { AgentPermissionCoordinator } from './AgentPermissionCoordinator'
 import type { AgentRuntimeRecovery } from './AgentRuntimeRecovery'
 import type { AgentTranscriptService, TranscriptSource } from './AgentTranscriptService'
+import type { SessionDisplayState } from './sessionDisplayState'
 
 /**
  * Per-init/reinit runtime scope. Each `worker.init` creates a fresh scope
@@ -23,6 +24,9 @@ export type RuntimeScope = {
   markDisplayReady?: () => void
   /** The transcript view bound at the provisional publish, when there was one. */
   transcriptView?: TranscriptSource
+  /** The display state resolved at the provisional publish (F-32); the
+   *  install applies its restore. Null when it could not be resolved. */
+  display?: Promise<SessionDisplayState | null>
   /** Git branch of the bound project folder (per-scope, cleared on reinit). */
   projectBranch: string | undefined
   /** Whether this scope's critical bind-metadata write landed before ready. */

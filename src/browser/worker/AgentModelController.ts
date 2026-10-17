@@ -9,6 +9,7 @@ import type {
 } from '../bridge/browserBridgeProtocol'
 import type { AgentRuntimeState } from '../runtime/AgentRuntimeState'
 import type { AgentRuntimeWorkerInitPayload } from './workerProtocol'
+import type { BrowserSessionMetadata } from '../../sessions/sessionStore'
 import {
   resolveSelection,
   areSelectionsEqual,
@@ -28,6 +29,47 @@ export type AgentModelSnapshot = {
 }
 
 export type ModelTraceContext = { traceId?: string; parentSpanId?: string }
+
+/**
+ * The selection Phase 1 lands on the engine. `commit` goes through
+ * `applySelection` (persisted, reported, tier filled in); `engine` is a bare
+ * model id set on the engine only.
+ */
+export type ImmediateSelection =
+  | { kind: 'commit'; selection: BrowserLlmSelection; viaCatalog: boolean }
+  | { kind: 'engine'; providerId?: string; modelId: string; thinkingTier?: string }
+
+/** The engine's model, provider and effort once `selection` is applied. */
+export function immediateSelectionView(
+  selection: ImmediateSelection,
+): { providerId?: string; modelId: string; thinkingTier?: string } {
+  return selection.kind === 'commit' ? selection.selection : selection
+}
+
+/** The init payload's requested (provider, model) pair, or null. */
+function requestedSelectionOf(
+  payload: AgentRuntimeWorkerInitPayload,
+): BrowserLlmSelection | null {
+  return payload.userSpecifiedProviderId && payload.userSpecifiedModel
+    ? {
+        providerId: payload.userSpecifiedProviderId,
+        modelId: payload.userSpecifiedModel,
+        ...(payload.userSpecifiedThinkingTier
+          ? { thinkingTier: payload.userSpecifiedThinkingTier }
+          : {}),
+      }
+    : null
+}
+
+/** `selection` with the model's configured default effort when it names none. */
+function withDefaultThinkingTier(selection: BrowserLlmSelection): BrowserLlmSelection {
+  if (selection.thinkingTier) return selection
+  const thinkingTier = findConfiguredModelRule(selection.providerId, {
+    id: selection.modelId,
+    label: selection.modelId,
+  })?.defaultThinkingTier
+  return thinkingTier ? { ...selection, thinkingTier } : selection
+}
 
 /**
  * The worker-provided seam the controller acts through. Kept intentionally
@@ -132,34 +174,20 @@ export class AgentModelController {
   }
 
   /**
-   * Phase 1 of model init: apply a selection synchronously from what's already
-   * at hand (init-payload catalog, persisted metadata, requested pair) so the
-   * first Send never waits on the slow catalog fetch. Returns true when a
-   * selection landed on the engine.
+   * Phase 1 of model init, resolve half: the selection the engine starts on,
+   * from what is already at hand (the catalog, the session's saved selection,
+   * the requested pair). No I/O, no engine; null when nothing applies.
    */
-  async applyImmediateSelection(
+  resolveImmediateSelection(
     payload: AgentRuntimeWorkerInitPayload,
-  ): Promise<boolean> {
-    const runtime = this.currentRuntime()
-    if (!runtime) {
-      return false
-    }
-
-    const metadata = await runtime.conversationStore.getSessionMetadata?.()
+    metadata: Pick<BrowserSessionMetadata, 'llmSelection'> | undefined,
+    catalog: BrowserLlmCatalog | null = this.catalog,
+  ): ImmediateSelection | null {
     const persistedSelection = metadata?.llmSelection ?? null
-    const requestedSelection =
-      payload.userSpecifiedProviderId && payload.userSpecifiedModel
-        ? {
-            providerId: payload.userSpecifiedProviderId,
-            modelId: payload.userSpecifiedModel,
-            ...(payload.userSpecifiedThinkingTier
-              ? { thinkingTier: payload.userSpecifiedThinkingTier }
-              : {}),
-          }
-        : null
+    const requestedSelection = requestedSelectionOf(payload)
 
-    if (this.catalog) {
-      const resolved = resolveSelection(this.catalog, {
+    if (catalog) {
+      const resolved = resolveSelection(catalog, {
         requestedSelection,
         requestedModelId: payload.userSpecifiedProviderId
           ? undefined
@@ -168,12 +196,13 @@ export class AgentModelController {
         fallbackSelection: payload.modelFallbackSelection ?? null,
       })
       if (resolved) {
-        this.warnIfTierFallbackEngaged(payload, requestedSelection, resolved)
-        await this.applySelection(
-          mergeRequestedTier(resolved, requestedSelection),
-        )
-        this.hasEngineSelection = true
-        return true
+        return {
+          kind: 'commit',
+          selection: withDefaultThinkingTier(
+            mergeRequestedTier(resolved, requestedSelection),
+          ),
+          viaCatalog: true,
+        }
       }
     }
 
@@ -181,29 +210,77 @@ export class AgentModelController {
     // only needs {providerId, modelId} strings to route requests; the
     // catalog is for the picker UI.
     if (persistedSelection) {
-      await this.applySelection(
-        mergeRequestedTier(persistedSelection, requestedSelection),
-      )
-      this.hasEngineSelection = true
-      return true
+      return {
+        kind: 'commit',
+        selection: withDefaultThinkingTier(
+          mergeRequestedTier(persistedSelection, requestedSelection),
+        ),
+        viaCatalog: false,
+      }
     }
     if (requestedSelection) {
-      await this.applySelection(requestedSelection)
-      this.hasEngineSelection = true
-      return true
+      return {
+        kind: 'commit',
+        selection: withDefaultThinkingTier(requestedSelection),
+        viaCatalog: false,
+      }
     }
     if (payload.userSpecifiedModel) {
-      runtime.engine.setModelSelection({
-        providerId: payload.userSpecifiedProviderId,
-        model: payload.userSpecifiedModel,
+      return {
+        kind: 'engine',
+        ...(payload.userSpecifiedProviderId
+          ? { providerId: payload.userSpecifiedProviderId }
+          : {}),
+        modelId: payload.userSpecifiedModel,
         ...(payload.userSpecifiedThinkingTier
           ? { thinkingTier: payload.userSpecifiedThinkingTier }
           : {}),
-      })
-      this.hasEngineSelection = true
-      return true
+      }
     }
-    return false
+    return null
+  }
+
+  /**
+   * Phase 1 of model init, apply half: land `resolved` (or, when omitted, a
+   * selection resolved now from the runtime's store) on the engine so the
+   * first Send never waits on the slow catalog fetch. Returns true when a
+   * selection landed on the engine.
+   */
+  async applyImmediateSelection(
+    payload: AgentRuntimeWorkerInitPayload,
+    resolved?: ImmediateSelection | null,
+  ): Promise<boolean> {
+    const runtime = this.currentRuntime()
+    if (!runtime) {
+      return false
+    }
+
+    const selection =
+      resolved !== undefined
+        ? resolved
+        : this.resolveImmediateSelection(
+            payload,
+            await runtime.conversationStore.getSessionMetadata?.(),
+          )
+    if (!selection) return false
+    if (selection.kind === 'commit') {
+      if (selection.viaCatalog) {
+        this.warnIfTierFallbackEngaged(
+          payload,
+          requestedSelectionOf(payload),
+          selection.selection,
+        )
+      }
+      await this.applySelection(selection.selection)
+    } else {
+      runtime.engine.setModelSelection({
+        providerId: selection.providerId,
+        model: selection.modelId,
+        ...(selection.thinkingTier ? { thinkingTier: selection.thinkingTier } : {}),
+      })
+    }
+    this.hasEngineSelection = true
+    return true
   }
 
   /**
@@ -293,16 +370,7 @@ export class AgentModelController {
     // different enabled model.
     const metadata = await runtime.conversationStore.getSessionMetadata?.()
     const persistedSelection = metadata?.llmSelection ?? null
-    const requestedSelection =
-      payload.userSpecifiedProviderId && payload.userSpecifiedModel
-        ? {
-            providerId: payload.userSpecifiedProviderId,
-            modelId: payload.userSpecifiedModel,
-            ...(payload.userSpecifiedThinkingTier
-              ? { thinkingTier: payload.userSpecifiedThinkingTier }
-              : {}),
-          }
-        : null
+    const requestedSelection = requestedSelectionOf(payload)
     const resolved = resolveSelection(this.catalog, {
       requestedSelection,
       requestedModelId: payload.userSpecifiedProviderId
@@ -423,12 +491,7 @@ export class AgentModelController {
     // yet; without this, the first Send of a session on e.g. Opus 4.7 would
     // go out with no `thinking` block even though the model expects
     // extra-high reasoning by default.
-    const resolvedTier =
-      selection.thinkingTier
-        ?? findConfiguredModelRule(selection.providerId, {
-          id: selection.modelId,
-          label: selection.modelId,
-        })?.defaultThinkingTier
+    const resolvedTier = withDefaultThinkingTier(selection).thinkingTier
     runtime.options.userSpecifiedProviderId = selection.providerId
     runtime.options.userSpecifiedModel = selection.modelId
     // Tier lives on the engine config too; the query loop reads it at
