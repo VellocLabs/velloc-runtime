@@ -262,6 +262,7 @@ export function registerModSlot(sessionId: string, mods: ModSlot): () => void {
   return () => {
     if (slots.get(sessionId) !== mods) return
     slots.delete(sessionId)
+    slotTools.delete(sessionId)
     noteModSlotChanged(sessionId)
     noteSlotToolsChanged()
   }
@@ -359,8 +360,15 @@ export function findModSlot(sessionId: string): ToolCallMods | undefined {
   return owner === undefined ? undefined : slots.get(owner)
 }
 
-/** Record the tools `sessionId`'s mods registered (none: forget them). */
-export function publishModSlotTools(sessionId: string, tools: readonly ModRegisteredTool[]): void {
+/** Record the tools `sessionId`'s mods registered (none: forget them).
+ *  `owner` is the slot the publishing runtime announced: a runtime whose slot
+ *  was replaced (a rebuilt session) publishes nothing. */
+export function publishModSlotTools(
+  sessionId: string,
+  tools: readonly ModRegisteredTool[],
+  owner: ModSlot | undefined,
+): void {
+  if (slots.get(sessionId) !== owner) return
   if (tools.length === 0 && !slotTools.has(sessionId)) return
   if (tools.length === 0) slotTools.delete(sessionId)
   else slotTools.set(sessionId, [...tools])

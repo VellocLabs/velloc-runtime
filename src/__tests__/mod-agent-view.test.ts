@@ -10,7 +10,7 @@ import { ModRuntime, type ModModuleRef, type ModWorkerHandle } from '../mods/Mod
 import { installModWorkerHost } from '../mods/ModWorkerHost'
 import type { ModNounHost } from '../mods/modNouns'
 import type { ModAgentHost } from '../mods/modAgents'
-import type { ModUiEvent } from '../mods/modUi'
+import { ModUiState, type ModUiEvent } from '../mods/modUi'
 import { isUiViewResult, uiViewArgsOf } from '../mods/modAgentView'
 import { isModsUiState } from '../browser/runtimeProtocol'
 
@@ -74,6 +74,7 @@ describe('$.ui.view', () => {
     expect(isUiViewResult({})).toBe(true)
     expect(isUiViewResult({ deny: 'no' })).toBe(true)
     expect(isUiViewResult({ deny: 3 })).toBe(false)
+    expect(isUiViewResult({ deny: '' })).toBe(false)
   })
 
   it("publishes a subagent's and a teammate's view, then the way back, each a new seq; an unknown id is denied and publishes nothing", async () => {
@@ -90,10 +91,11 @@ describe('$.ui.view', () => {
       {},
       'TypeError: $.ui.view: agentId must be a non-empty string, or left out to go back',
     ])
+    const first = views()[0]!.seq
     expect(views()).toEqual([
-      { seq: 1, agentId: 'a1', kind: 'subagent', sessionId: 'a1' },
-      { seq: 2, agentId: 'teammate-bo', kind: 'teammate', sessionId: 'teammate-bo' },
-      { seq: 3 },
+      { seq: first, agentId: 'a1', kind: 'subagent', sessionId: 'a1' },
+      { seq: first + 1, agentId: 'teammate-bo', kind: 'teammate', sessionId: 'teammate-bo' },
+      { seq: first + 2 },
     ])
     // The published state is one the page's guard takes.
     expect(views().every(view => isModsUiState({ status: [], notices: [], view }))).toBe(true)
@@ -130,6 +132,14 @@ describe('$.ui.view', () => {
     expect(answers[0]).toEqual({})
     expect(answers[1]).toEqual({ deny: 'not now' })
     expect(answers[2]).toMatch(/hidden/)
-    expect(views()).toEqual([{ seq: 1, agentId: 'a1', kind: 'subagent', sessionId: 'a1' }])
+    expect(views()).toEqual([{ seq: expect.any(Number), agentId: 'a1', kind: 'subagent', sessionId: 'a1' }])
+  })
+
+  it("a rebuilt slot's first view never repeats the seq the page last read", async () => {
+    const before = new ModUiState(() => {})
+    before.setView({ agentId: 'a1', kind: 'subagent', sessionId: 'a1' })
+    const rebuilt = new ModUiState(() => {})
+    rebuilt.setView({ agentId: 'a2', kind: 'subagent', sessionId: 'a2' })
+    expect(rebuilt.snapshot().view!.seq).toBeGreaterThan(before.snapshot().view!.seq)
   })
 })

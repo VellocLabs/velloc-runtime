@@ -99,6 +99,10 @@ describe('the inputs', () => {
     expect(sendableBlocks('RULES and diff' + ' NOTE', blocks)).toEqual([...blocks, { text: ' NOTE' }])
     expect(sendableBlocks('RULES and patch', blocks)).toEqual([blocks[0], blocks[1], { text: 'patch' }])
     expect(sendableBlocks('NEW RULES and diff', blocks)).toEqual([{ text: 'NEW RULES and diff' }])
+    // An empty block is not sent: no stray text, and a mark on it is not kept
+    // over a rewritten opening.
+    expect(sendableBlocks('AB', [{ text: 'A' }, { text: '' }, { text: 'B' }])).toEqual([{ text: 'A' }, { text: 'B' }])
+    expect(sendableBlocks('NEW RULES', [{ text: '', cache: true }, { text: 'RULES' }])).toEqual([{ text: 'NEW RULES' }])
     expect(sendableBlocks('RULES', blocks)).toEqual([blocks[0]])
   })
 

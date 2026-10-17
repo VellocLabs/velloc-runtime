@@ -27,6 +27,13 @@ import {
 } from '../toolkit/run/deferredTools'
 import { loadableTools, owningUnit } from '../toolkit/builtin/toolSearch/catalog'
 import type { WorkingState } from '../runtime/RuntimeTypes'
+import { admitToolCall } from '../toolkit/run/toolCallAdmission'
+import type { QueryToolUseBlock } from '../runtime/interfaces/QueryRuntimeDeps'
+import {
+  NoopPlatformCapabilities,
+  createEmptyAppState,
+  createNoopToolUseContext,
+} from '../runtime/testing/noopAdapters'
 
 const open: MessagePort[] = []
 const runtimes: ModRuntime[] = []
@@ -127,6 +134,34 @@ describe('where a registered tool waits', () => {
     registerExtensionToolUnits(units, key)
     expect(shouldHideToolFromModel(waiting, state(), key)).toBe(false)
     expect(loadableTools([waiting, inFront], key)).toEqual([])
+  })
+
+  it('in front in a loop whose tools hold no ToolSearch, though other units wait there', () => {
+    const scoped = {}
+    registerDeferrableSkills([{ name: 'browser', defaultDeferred: true }], scoped)
+    registerExtensionToolUnits(units, scoped, [{ name: 'Read' }, waiting, inFront])
+    expect(shouldHideToolFromModel(waiting, state(), scoped)).toBe(false)
+    const offered = {}
+    registerDeferrableSkills([{ name: 'browser', defaultDeferred: true }], offered)
+    registerExtensionToolUnits(units, offered, [{ name: 'ToolSearch' }, waiting, inFront])
+    expect(shouldHideToolFromModel(waiting, state(), offered)).toBe(true)
+  })
+
+  it("an extension's own call reaches a waiting tool; the model's call is refused until it is loaded", () => {
+    const key = {}
+    registerDeferrableSkills([{ name: 'browser', defaultDeferred: true }], key)
+    registerExtensionToolUnits(units, key, [{ name: 'ToolSearch' }, waiting])
+    const context = createNoopToolUseContext({
+      tools: [waiting],
+      platformCapabilities: new NoopPlatformCapabilities(),
+      appState: createEmptyAppState(),
+      setAppState: () => {},
+      sessionId: 'sess-wait',
+    })
+    context.options.runtimeConfig = key as never
+    const block = { type: 'tool-call', toolCallId: 't1', toolName: waiting.name, args: {} } as QueryToolUseBlock
+    expect(admitToolCall(block, context).refusal?.content).toContain('ToolSearch')
+    expect(admitToolCall(block, context, { fromExtension: true }).refusal).toBeUndefined()
   })
 
   it("a runtime's units are its own: a sibling runtime's registration leaves them be", () => {

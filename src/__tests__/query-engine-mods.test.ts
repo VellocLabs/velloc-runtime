@@ -1440,19 +1440,37 @@ describe('$.tool.register through the engine', () => {
     expect((await engine.modTools.list()).map(t => t.name)).toEqual(['mcp__mod-sea__tide'])
     expect(engine.transcriptRows()).toEqual([])
   })
+  const toolSearch = declareTool({
+    name: 'ToolSearch',
+    argsSchema: { type: 'object' } as never,
+    description: async () => 'Loads tools.',
+    async call() {
+      return { data: 'ok' }
+    },
+  }) as unknown as ToolContract
+
   it("a registered tool waits behind ToolSearch under the session's own deferral key unless it said isDeferred: false", async () => {
-    const { engine, runtimeConfig } = makeEngine(passThrough(), true, undefined, [])
+    const { engine, runtimeConfig } = makeEngine(passThrough(), true, undefined, [toolSearch])
     registerDeferrableSkills([{ name: 'browser', defaultDeferred: true }], runtimeConfig)
     engine.modTools.register!({ name: 'tide', description: 'Tides.', inputSchema: { type: 'object' } }, 'mod-sea')
     engine.modTools.register!({ name: 'wave', description: 'Waves.', inputSchema: { type: 'object' }, isDeferred: false }, 'mod-sea')
     // `$.tool.list` lists the tools offered now: the waiting one is not.
-    expect((await engine.modTools.list()).map(t => t.name)).toEqual(['mcp__mod-sea__wave'])
+    expect((await engine.modTools.list()).map(t => t.name)).toEqual(['ToolSearch', 'mcp__mod-sea__wave'])
     const none = { activeSkills: [] } as unknown as WorkingState
     expect(shouldHideToolFromModel({ name: 'mcp__mod-sea__tide' }, none, runtimeConfig)).toBe(true)
     expect(shouldHideToolFromModel({ name: 'mcp__mod-sea__wave' }, none, runtimeConfig)).toBe(false)
     // Forgotten with its plugin, the unit goes too.
     engine.modTools.forget!('mod-sea')
     expect(shouldHideToolFromModel({ name: 'mcp__mod-sea__tide' }, none, runtimeConfig)).toBe(false)
+  })
+
+  it('an inherited tool stays in front in a loop whose tools hold no ToolSearch', async () => {
+    const { engine, runtimeConfig } = makeEngine(passThrough(), true, undefined, [])
+    registerDeferrableSkills([{ name: 'browser', defaultDeferred: true }], runtimeConfig)
+    engine.inheritModTools([buildModTool('mod-sea', { name: 'tide', description: 'Tides.', inputSchema: { type: 'object' } })])
+    const none = { activeSkills: [] } as unknown as WorkingState
+    expect(shouldHideToolFromModel({ name: 'mcp__mod-sea__tide' }, none, runtimeConfig)).toBe(false)
+    expect((await engine.modTools.list()).map(t => t.name)).toEqual(['mcp__mod-sea__tide'])
   })
 
   it('each change of the registered tools is told to onModToolsChanged, for the loops under the session', () => {
@@ -1522,17 +1540,27 @@ describe('$.agent through the engine', () => {
     expect(engine.modAgents.register({ name: 'runner', description: 'Runs', prompt: 'P' }, 'lab')).toBe('lab:runner')
   })
 
-  it("$.ui.view's lookup: a subagent of this session by its task id, a teammate by its session, anything else undefined", () => {
+  it("$.ui.view's lookup: a subagent of this session by its task id or its loop id, a teammate by its session, anything else undefined", () => {
     const { engine } = makeEngine(passThrough())
     expect(engine.modAgents.viewTarget?.('a1')).toBeUndefined()
+    const own = engine.boundSessionId()
     setSubAgentController({
-      list: () => [{ sessionId: 'a1', status: 'running', description: 'scan', agentType: 'Explore', startedAt: 0 }],
+      list: (spawner: string) =>
+        spawner === own
+          ? [{ sessionId: 'a1', loopId: 'Explore_1a2b_x', status: 'running', description: 'scan', agentType: 'Explore', startedAt: 0 }]
+          : [{ sessionId: 'a7', status: 'running', description: 'other', startedAt: 0 }],
     } as unknown as SubAgentController)
-    setTeamMessenger({ listMembers: () => [{ sessionId: 'teammate-1', name: 'alice', status: 'idle', startedAt: 0 }] } as unknown as TeamMessenger)
+    setTeamMessenger({
+      listMembers: (lead: string) =>
+        lead === own ? [{ sessionId: 'teammate-1', name: 'alice', status: 'idle', startedAt: 0 }] : [{ sessionId: 'teammate-9', name: 'zed', status: 'idle', startedAt: 0 }],
+    } as unknown as TeamMessenger)
     try {
       expect(engine.modAgents.viewTarget?.('a1')).toEqual({ kind: 'subagent', sessionId: 'a1' })
+      expect(engine.modAgents.viewTarget?.('Explore_1a2b_x')).toEqual({ kind: 'subagent', sessionId: 'a1' })
       expect(engine.modAgents.viewTarget?.('teammate-1')).toEqual({ kind: 'teammate', sessionId: 'teammate-1' })
       expect(engine.modAgents.viewTarget?.('a2')).toBeUndefined()
+      expect(engine.modAgents.viewTarget?.('a7')).toBeUndefined()
+      expect(engine.modAgents.viewTarget?.('teammate-9')).toBeUndefined()
     } finally {
       setSubAgentController(null)
       setTeamMessenger(null)

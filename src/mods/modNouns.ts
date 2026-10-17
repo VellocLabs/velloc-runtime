@@ -1636,6 +1636,7 @@ async function envSet(e: unknown, { call, session, dispatcher }: NounContext): P
   if (!dispatcher.hasHooksFor('env.set')) return core(e)
   const result = (await dispatcher.dispatch('env.set', e, async arrived => ({ value: core(arrived) }), {
     context: call.context,
+    scope: call.scope,
     ...(call.signal ? { signal: call.signal } : {}),
     accepts: r =>
       isRecord(r) &&
@@ -1801,7 +1802,15 @@ export function serveNoun(
     .dispatch(
       `${call.noun}.${call.method}`,
       e,
-      async arrived => ({ value: await method.run(arrived, { call, session, report, dispatcher }) }) as OpResult,
+      async (arrived, beneath) =>
+        ({
+          value: await method.run(arrived, {
+            call: { ...call, context: { ...call.context, frames: beneath.frames } },
+            session,
+            report,
+            dispatcher,
+          }),
+        }) as OpResult,
       {
         context: call.context,
         scope: call.scope,

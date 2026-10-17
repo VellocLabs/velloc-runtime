@@ -13,6 +13,7 @@ import {
   augmentedAppStateForDeferral,
   deferralKeyFromContext,
   hiddenToolCallMessage,
+  isExtensionToolUnit,
   shouldHideToolFromModel,
 } from './deferredTools'
 import { toolOutcomeMessage } from './toolResultShaping'
@@ -39,7 +40,14 @@ export function isToolOffered(tool: ToolContract, callContext: ToolCallContext):
   )
 }
 
-export function admitToolCall(block: QueryToolUseBlock, callContext: ToolCallContext): ToolCallAdmission {
+/** `fromExtension`: an extension's own `$.tool.call` / `$.tool.check`, which
+ *  reaches a registered tool still waiting behind ToolSearch — the wait hides
+ *  it from the model only. */
+export function admitToolCall(
+  block: QueryToolUseBlock,
+  callContext: ToolCallContext,
+  options: { fromExtension?: boolean } = {},
+): ToolCallAdmission {
   const tool = resolveToolByName(callContext.options.tools, block.toolName)
   if (!tool) {
     traceLine(`[tool] model called unknown tool "${block.toolName}"`, { level: 'warn' })
@@ -61,6 +69,7 @@ export function admitToolCall(block: QueryToolUseBlock, callContext: ToolCallCon
     return { tool, refusal: { content: withheld, data: withheld } }
   }
   if (
+    !(options.fromExtension && isExtensionToolUnit(tool.name, deferralKeyFromContext(callContext))) &&
     shouldHideToolFromModel(
       tool,
       augmentedAppStateForDeferral(callContext),

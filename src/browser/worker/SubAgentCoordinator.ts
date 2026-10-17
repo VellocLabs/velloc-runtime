@@ -28,9 +28,10 @@ import {
   taskFileFromRunState,
 } from './subAgentTaskFile'
 import type { SubAgentSpawnParams } from '../../team/subAgentSpawner'
-import type {
-  SubAgentStopResult,
-  SubAgentResumeResult,
+import {
+  subAgentLoopId,
+  type SubAgentStopResult,
+  type SubAgentResumeResult,
 } from '../../team/subAgentController'
 import {
   MAX_SUBAGENT_DEPTH,
@@ -67,6 +68,7 @@ export type SubAgentListEntry = {
   agentType?: string
   startedAt: number
   updates?: number
+  loopId?: string
 }
 
 type WaiterResolver = (snap: SubAgentSnapshot | null) => void
@@ -228,6 +230,7 @@ export class SubAgentCoordinator {
       if (run.spawnerSessionId !== spawnerSessionId) continue
       running.push({
         sessionId: run.taskId ?? run.sessionId,
+        loopId: subAgentLoopId(run.sessionId),
         status: 'running',
         description: run.description,
         agentType: run.agentType,
@@ -240,6 +243,7 @@ export class SubAgentCoordinator {
       if (rec.spawnerSessionId !== spawnerSessionId) continue
       finished.push({
         sessionId: rec.taskId ?? rec.sessionId,
+        loopId: subAgentLoopId(rec.sessionId),
         status: rec.status,
         description: rec.description,
         agentType: rec.agentType,

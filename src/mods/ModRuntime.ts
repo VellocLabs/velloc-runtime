@@ -188,6 +188,7 @@ import {
 import { IDS_NEXT_BUDGET_MS, isIdsNextResult, type IdsNextInput } from './idsEvent'
 import { normalizeModLocale } from './modLocale'
 import type { DispatchContext, PluginTier, TraceEntry } from './modTypes'
+import type { ModNotifyHost } from './modNotify'
 import type { ModAgentView } from './modAgentView'
 import type { PluginPromptArgs, PluginPromptOrigin, PluginPromptResult, PluginPromptTurn } from './promptNouns'
 import {
@@ -668,6 +669,17 @@ export class ModRuntime implements TurnExtensions {
                   return read
                 },
               } satisfies ModAudioHost,
+            }
+          : {}),
+        // A session that is ending runs no `Notification` hooks for a notice.
+        ...(options.session.notifications
+          ? {
+              notifications: {
+                runHooks: async (notice: { message: string; title: string }, context: DispatchContext) => {
+                  if (this.ending) return
+                  await options.session.notifications!.runHooks(notice, context)
+                },
+              } satisfies ModNotifyHost,
             }
           : {}),
         env: options.session.env ?? new SlotEnv(),

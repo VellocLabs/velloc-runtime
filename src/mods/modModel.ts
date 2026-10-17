@@ -149,11 +149,13 @@ function textAndBlocks(
 
 /** The blocks to send for `text`: "the leading blocks whose texts, joined,
  *  still open `prompt` are sent as they stand, marks kept; what is left of
- *  `prompt` follows unmarked". */
+ *  `prompt` follows unmarked". An empty block carries no text, so it is not
+ *  sent and its mark goes with it. */
 export function sendableBlocks(text: string, blocks: readonly ModelTextBlock[]): ModelTextBlock[] {
   const sent: ModelTextBlock[] = []
   let opened = 0
   for (const block of blocks) {
+    if (block.text === '') continue
     if (!text.startsWith(block.text, opened)) break
     sent.push(block)
     opened += block.text.length

@@ -218,7 +218,7 @@ type Run = {
   calls: DispatchCallRate
   budgetMs: number
   candidates: readonly ChainLink[]
-  core: (e: unknown) => unknown
+  core: (e: unknown, beneath: CoreBeneath) => unknown
   accepts: (result: unknown, plugin: string) => boolean
   signal: AbortSignal
   scope: unknown
@@ -226,6 +226,12 @@ type Run = {
   frames: readonly string[]
   refusal?: (reason: string) => unknown
 }
+
+/** What core learns of where it runs: the hooks whose `next` led to it, with
+ *  those pending above the dispatch. A dispatch core raises in turn carries
+ *  them as `DispatchContext.frames`, so none of those hooks runs beneath its
+ *  own pending call. */
+export type CoreBeneath = { readonly frames: readonly string[] }
 
 export class ModDispatcher {
   private readonly groups = new Map<string, { seq: number; links: readonly ChainLink[] }>()
@@ -315,7 +321,7 @@ export class ModDispatcher {
   async dispatch<R>(
     event: string,
     e: unknown,
-    core: (e: unknown) => R | Promise<R>,
+    core: (e: unknown, beneath: CoreBeneath) => R | Promise<R>,
     options: DispatchOptions = {},
   ): Promise<R> {
     const context = options.context ?? ROOT_DISPATCH_CONTEXT
@@ -323,7 +329,7 @@ export class ModDispatcher {
       throw new ModDispatchDepthError(event, context.origin)
     }
     const candidates = this.candidatesFor(event, context, options.onlyGroup)
-    if (candidates.length === 0) return core(e)
+    if (candidates.length === 0) return core(e, { frames: context.frames ?? [] })
     if (options.signal?.aborted) throw abortError()
 
     const controller = new AbortController()
@@ -466,7 +472,7 @@ export class ModDispatcher {
       returned,
     })
     try {
-      const result = await run.core(e)
+      const result = await run.core(e, { frames: [...run.frames, ...above] })
       return { ok: true, result, entries: [...bypassed, engine('returned', result)] }
     } catch (error) {
       return { ok: false, error, entries: [...bypassed, engine('rejected', undefined)] }

@@ -153,6 +153,35 @@ describe('$.ui.notify', () => {
     expect(heard).toEqual(['loud!'])
   })
 
+  it('runs no Notification hooks for a notice raised while the session ends', async () => {
+    const heard: string[] = []
+    const { runtime, reports } = world(
+      {
+        ci: {
+          source: `
+            export function register(on) {
+              on('session.end', async ($, e, next) => {
+                await $.ui.log(JSON.stringify(await $.ui.notify('bye')));
+                return next(e);
+              });
+            }
+          `,
+        },
+      },
+      () => ({
+        notifications: {
+          runHooks: async notice => {
+            heard.push(notice.message)
+          },
+        },
+      }),
+    )
+    await runtime.ready
+    await runtime.sessionEnd('other')
+    expect(reports).toContain('ci: {"isSent":false,"reason":"no-surface"}')
+    expect(heard).toEqual([])
+  })
+
   it('resolves with no host to run hooks, as an unbound session', async () => {
     const { runtime, reports } = world({
       ci: {
@@ -211,6 +240,45 @@ describe('$.ui.notify', () => {
       'listener heard echoed',
       'listener heard turn over',
     ].map(line => (line.startsWith('echo') ? `echo: ${line}` : `listener: ${line}`)).sort())
+  })
+
+  it("a hook whose next reached ui.notify's core is left out of the Notification hooks that core raises", async () => {
+    const { runtime, reports } = world(
+      {
+        ci: {
+          source: `
+            export function register(on) {
+              on('prompt.submit', async ($, e, next) => {
+                await $.ui.notify('tests passed');
+                return next(e);
+              });
+            }
+          `,
+        },
+        audit: {
+          source: `
+            export function register(on) {
+              on('*', async ($, e, next) => {
+                if (e && (e.text === 'tests passed' || e.message === 'tests passed')) {
+                  await $.ui.log('audit saw ' + (e.text !== undefined ? 'ui.notify' : 'classic.Notification'));
+                }
+                return next(e);
+              });
+            }
+          `,
+        },
+      },
+      self => ({
+        notifications: {
+          runHooks: async (notice: { message: string; title: string }, context: DispatchContext) => {
+            await self().classic('Notification', { message: notice.message, title: notice.title }, async () => NO_AGGREGATE, undefined, context)
+          },
+        },
+      }),
+    )
+    await runtime.ready
+    await runtime.promptSubmit('go')
+    expect(reports.filter(r => r.startsWith('audit: audit saw'))).toEqual(['audit: audit saw ui.notify'])
   })
 })
 

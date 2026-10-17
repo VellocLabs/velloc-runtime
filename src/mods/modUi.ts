@@ -183,6 +183,8 @@ function askError(name: 'DismissedError' | 'NotSupportedError' | 'AbortError', m
 
 type PendingAsk = { ask: ModUiAsk; settle: (outcome: { answer: string } | { error: Error }) => void }
 
+let viewSeq = 0
+
 export class ModUiState {
   private readonly status = new Map<string, string>()
   private readonly notices = new Map<string, { plugin: string; text: string }>()
@@ -213,9 +215,11 @@ export class ModUiState {
     }
   }
 
-  /** `$.ui.view`: the page is asked to show `view` (each call a new `seq`). */
+  /** `$.ui.view`: the page is asked to show `view`. Each call takes a new
+   *  `seq` from one realm-wide count, so a rebuilt slot never repeats the one
+   *  a page last read. */
   setView(view: Omit<ModAgentView, 'seq'>): void {
-    this.view = { seq: (this.view?.seq ?? 0) + 1, ...view }
+    this.view = { seq: ++viewSeq, ...view }
     this.changed()
   }
 

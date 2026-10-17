@@ -276,7 +276,7 @@ export async function callToolForMod(params: {
     // `tool_use_id`, `agentId` and `consent` may ride along and are dropped.
     args: toolCallArgsOf(input, {}),
   } as QueryToolUseBlock
-  const admission = admitToolCall(block, callContext)
+  const admission = admitToolCall(block, callContext, { fromExtension: true })
   if (admission.refusal) {
     throw refusedHelperCall('$.tool.call', name, admission, callContext, 'the tool call was aborted')
   }
@@ -327,7 +327,7 @@ export async function checkToolForMod(params: {
   const args =
     typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}
   const block = { type: 'tool-call', toolCallId: 'modcheck', toolName: name, args } as QueryToolUseBlock
-  const admission = admitToolCall(block, callContext)
+  const admission = admitToolCall(block, callContext, { fromExtension: true })
   if (admission.refusal) {
     throw refusedHelperCall('$.tool.check', name, admission, callContext, 'the tool check was aborted')
   }

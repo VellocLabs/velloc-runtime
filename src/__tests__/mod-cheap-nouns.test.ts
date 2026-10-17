@@ -593,3 +593,35 @@ describe('$.clock.sleep with a signal', () => {
     expect(reports).toEqual(['p: "AbortError"'])
   })
 })
+
+describe('$.env.set beneath a draw', () => {
+  it("an env.set hook raised from a ui.render hook keeps the draw's scope, as an env.get hook does", async () => {
+    const { runtime, reports } = world({
+      drawer: `
+        on('ui.render', { component: 'AbovePrompt' }, async ($, e) => {
+          await $.env.get('K')
+          await $.env.set('K', 'v')
+          const { Text } = $.ui.resolve(e)
+          return Text({ children: ['drawn'] })
+        })`,
+      guard: `
+        const tryWrite = ($, tag) => $.state.set({ plugin: 'guard', key: tag }, 1).then(() => 'written', err => err.name)
+        on('env.get', async ($, e, next) => {
+          await $.ui.log('env.get hook state.set: ' + await tryWrite($, 'get'))
+          return next(e)
+        })
+        on('env.set', async ($, e, next) => {
+          await $.ui.log('env.set hook state.set: ' + await tryWrite($, 'set'))
+          return next(e)
+        })`,
+    })
+    await runtime.ready
+    await runtime.render({
+      component: 'AbovePrompt',
+      requestId: 'band',
+      props: { hasSurvey: false, isWorking: false, maxRows: 6, bodyColumns: 80, scroll: { offset: 0, bodyRows: 6 }, view: {} },
+    })
+    expect(reports).toContain('guard: env.get hook state.set: DeniedError')
+    expect(reports).toContain('guard: env.set hook state.set: DeniedError')
+  })
+})

@@ -42,7 +42,7 @@ export function uiViewArgsOf(arg: unknown): UiViewArgs {
 
 /** Whether a hook's answer is one `ui.view` takes. */
 export function isUiViewResult(value: unknown): value is UiViewResult {
-  return isRecord(value) && (value.deny === undefined || typeof value.deny === 'string')
+  return isRecord(value) && (value.deny === undefined || (typeof value.deny === 'string' && value.deny !== ''))
 }
 
 /** Core of `ui.view`: the target looked up, then the view published. */

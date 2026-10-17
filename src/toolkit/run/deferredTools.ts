@@ -116,12 +116,15 @@ const keyedExtensionUnits = new WeakMap<object, ReadonlyMap<string, boolean>>()
 let lastExtensionUnits: ReadonlyMap<string, boolean> = new Map()
 
 /** Replaces the extension-registered tool units for THIS key: tool name →
- *  deferred. */
+ *  deferred. `loaderTools` is the loop's tool list: a unit waits only when
+ *  that list holds ToolSearch, since nothing else could load it. */
 export function registerExtensionToolUnits(
   units: ReadonlyMap<string, boolean>,
   key?: DeferralKey,
+  loaderTools?: readonly { name: string }[],
 ): void {
-  const copy = new Map(units)
+  const offersLoader = loaderTools === undefined || loaderTools.some(tool => tool.name === DEFERRED_TOOL_FINDER)
+  const copy = new Map([...units].map(([name, deferred]) => [name, deferred && offersLoader]))
   if (key) keyedExtensionUnits.set(key, copy)
   lastExtensionUnits = copy
 }
@@ -132,6 +135,11 @@ function extensionUnitsFor(key?: DeferralKey): ReadonlyMap<string, boolean> {
 }
 
 const EMPTY_EXTENSION_UNITS: ReadonlyMap<string, boolean> = new Map()
+
+/** Whether a tool name is an extension-registered unit for THIS key. */
+export function isExtensionToolUnit(toolName: string, key?: DeferralKey): boolean {
+  return extensionUnitsFor(key).has(toolName)
+}
 
 /** The group-unit a tool belongs to (for tools with no `tool.skill`), if any. */
 export function groupUnitForTool(

@@ -53,6 +53,13 @@ export type SubAgentListEntry = {
   finishedAt?: number
   /** Liveness: count of stream updates seen so far. Present while running. */
   updates?: number
+  /** The id the sub-agent's own loop carries as `agentId` on its events. */
+  loopId?: string
+}
+
+/** The `agentId` a sub-agent's own loop carries, from its native session id. */
+export function subAgentLoopId(nativeSessionId: string): string {
+  return nativeSessionId.startsWith('subagent-') ? nativeSessionId.slice('subagent-'.length) : nativeSessionId
 }
 
 /** Result of an `AgentResume` request. */

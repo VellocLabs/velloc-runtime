@@ -12,6 +12,7 @@ import {
 import { BrowserPromptContextProvider } from '../../engine/systemPromptSources'
 import { buildProfilePromptBlock } from '../context/buildProfilePromptBlock'
 import { buildTeammatePromptAddendum } from '../../team/teammateBrief'
+import { subAgentLoopId } from '../../team/subAgentController'
 import { resolveOutputStyleSection } from '../../prompting/responseStyles'
 import { SHELL_TOOL_ID } from '../../prompting/processToolNames'
 import {
@@ -154,6 +155,7 @@ import {
   noteModSlotChanged,
   noteModUiEvent,
   registerModSlot,
+  type ModSlot,
   undoWhenScopeEnds,
   watchModRoster,
   type AgentLoopMods,
@@ -1629,6 +1631,8 @@ ${teammateAddendum}`
   let mods: import('../../mods/ModRuntime').ModRuntime | undefined
   /** Undo of the slot's registry entry; replaced when the runtime is. */
   let unregisterModSlot: (() => void) | undefined
+  // The slot this runtime announced: only it may publish the slot's tools.
+  let ownSlot: ModSlot | undefined
   let engineForMods: ConversationEngine | undefined
   const modEngine = (what: string): ConversationEngine => {
     if (!engineForMods) {
@@ -2073,10 +2077,8 @@ ${teammateAddendum}`
     })
     // Announce the slot, so the loops this session starts (sub-agents,
     // teammates) raise their tool calls here (mods/modSlotRegistry.ts).
-    unregisterSlot = registerModSlot(
-      resolvedSessionId,
-      Object.assign(modRuntime, { uiState: () => modRuntime.uiSnapshot() }),
-    )
+    ownSlot = Object.assign(modRuntime, { uiState: () => modRuntime.uiSnapshot() })
+    unregisterSlot = registerModSlot(resolvedSessionId, ownSlot)
     unregisterModSlot = unregisterSlot
     undoWhenScopeEnds(unregisterSlot, options.runtimeScopeSignal)
     // The slot is gone when its runtime scope is: `session.end` for the mods
@@ -2161,11 +2163,9 @@ ${teammateAddendum}`
     undoWhenScopeEnds(unlink, options.runtimeScopeSignal)
     agentLoopMods = modsForAgentLoop(
       resolvedSessionId,
-      // "For a subagent or a teammate, the id `$.agent.list()` gives it": a
-      // sub-agent's sidechain id, a teammate's session id.
-      resolvedSessionId.startsWith('subagent-')
-        ? resolvedSessionId.slice('subagent-'.length)
-        : resolvedSessionId,
+      // A sub-agent's loop id (`$.ui.view` takes it beside the task id), a
+      // teammate's session id.
+      subAgentLoopId(resolvedSessionId),
     )
   }
 
@@ -2196,7 +2196,7 @@ ${teammateAddendum}`
           }
         : {}),
     // The tools this session's mods register, for the loops under it.
-    onModToolsChanged: registered => publishModSlotTools(resolvedSessionId, registered),
+    onModToolsChanged: registered => publishModSlotTools(resolvedSessionId, registered, ownSlot),
     // `/mcp` jumps to the host MCP settings page via the `ui.openNexusSettings`
     // bridge action (declared in api/declarations/ui/openNexusSettings.api.json).
     // The worker transport reaches `ui.*` routes (same path the session-state
@@ -2295,7 +2295,6 @@ ${teammateAddendum}`
   })
   engineForMods = engine
   for (const entry of earlyRegistrations.splice(0)) entry.apply(engine)
-  undoWhenScopeEnds(() => publishModSlotTools(resolvedSessionId, []), options.runtimeScopeSignal)
   // A loop under a slot lists the tools the slot's mods registered, scoped
   // as its own tools are (none for a type that takes no MCP tools); its call
   // of one is the slot's `tool.call` (F-25).

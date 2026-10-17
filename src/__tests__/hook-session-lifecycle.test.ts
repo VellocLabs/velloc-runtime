@@ -34,6 +34,7 @@ import {
 } from '../lifecycleHooks/sessionLifecycleHooks'
 import type { LifecycleEventName } from '../lifecycleHooks/hookTypes'
 import type { ClassicMods } from '../mods/toolCallEvent'
+import type { DispatchContext } from '../mods/modTypes'
 
 const SID = 'sess-life'
 
@@ -222,7 +223,7 @@ describe('runNotificationHooks', () => {
     ])
   })
 
-  it("a plugin's own notice is raised under its context, so its calling hook is skipped", async () => {
+  it("a plugin's own notice hands the classic chain its dispatch context, frames and all", async () => {
     const holder = appStateHolder()
     const host = hookHost()
     hook(holder, 'Notification')
@@ -236,7 +237,7 @@ describe('runNotificationHooks', () => {
       },
     }
     ctx.options = { ...ctx.options, mods: mods as never }
-    const raisedBy = { origin: { plugin: 'ci', tier: 'user' as const }, skipLinkId: 'link-7', depth: 2 }
+    const raisedBy: DispatchContext = { origin: { plugin: 'ci', tier: 'user' }, frames: ['link-7'], depth: 2 }
     await runNotificationHooks({ message: 'tests passed', title: 'CI', notificationType: 'plugin_notification', raisedBy }, ctx)
     await runNotificationHooks(notice, ctx)
     expect(contexts).toEqual([raisedBy, undefined])

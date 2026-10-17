@@ -263,9 +263,11 @@ function agentHost({ ledger }: HostParts, registeredAgents: ModRegisteredAgents,
     forget: plugin => registeredAgents.forget(plugin),
     list: () => getSubAgentController()?.list(ledger.sessionId()).map(entry => agentInfoOf(entry)) ?? [],
     viewTarget: agentId => {
-      if (getSubAgentController()?.list(ledger.sessionId()).some(entry => entry.sessionId === agentId)) {
-        return { kind: 'subagent', sessionId: agentId }
-      }
+      // A subagent answers to its task id and to the id its own loop's events carry.
+      const subagent = getSubAgentController()
+        ?.list(ledger.sessionId())
+        .find(entry => entry.sessionId === agentId || entry.loopId === agentId)
+      if (subagent) return { kind: 'subagent', sessionId: subagent.sessionId }
       const roster = getTeamMessenger()?.listMembers?.(ledger.sessionId()) ?? []
       return roster.some(member => member.sessionId === agentId) ? { kind: 'teammate', sessionId: agentId } : undefined
     },
@@ -440,7 +442,11 @@ export class ExtensionHosts {
     const listRegistered = (registered: readonly ModRegisteredTool[]) => {
       const names = new Set(registered.map(tool => tool.name))
       config.tools = [...config.tools.filter(tool => !isModRegisteredTool(tool) && !names.has(tool.name)), ...registered]
-      registerExtensionToolUnits(new Map(registered.map(tool => [tool.name, tool.modDeferred])), config.runtimeConfig)
+      registerExtensionToolUnits(
+        new Map(registered.map(tool => [tool.name, tool.modDeferred])),
+        config.runtimeConfig,
+        config.tools,
+      )
     }
     const modTools = new ModRegisteredTools(registered => {
       listRegistered(registered)

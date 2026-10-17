@@ -2301,20 +2301,28 @@ export function MultiSessionShell({
 
   // `$.ui.view` (F-25): a teammate's transcript is its own session; a
   // subagent's is its Tasks detail, maximized over the conversation. Going
-  // back restores the panel as it was before.
-  const rightPanelBeforeAgentView = useRef<{ visible: boolean; activeView: RightPanelViewId | null; maximized: boolean } | null>(null)
-  const rightPanelNowRef = useRef({ visible: rightPanel.visible, activeView: rightPanel.activeView, maximized: rightPanelMaximized })
-  rightPanelNowRef.current = { visible: rightPanel.visible, activeView: rightPanel.activeView, maximized: rightPanelMaximized }
+  // back restores that session's panel as it was before.
+  const rightPanelBeforeAgentView = useRef(
+    new Map<string, { visible: boolean; activeView: RightPanelViewId | null; maximized: boolean }>(),
+  )
   useModAgentView(runtimeConnection, activeSessionId ?? undefined, {
     focusSession,
     showSubagent: taskId => {
-      rightPanelBeforeAgentView.current ??= rightPanelNowRef.current
+      const sessionId = activeSessionIdRef.current
+      if (sessionId && !rightPanelBeforeAgentView.current.has(sessionId)) {
+        rightPanelBeforeAgentView.current.set(sessionId, {
+          visible: rightPanel.visible,
+          activeView: rightPanel.activeView,
+          maximized: rightPanelMaximized,
+        })
+      }
       handleOpenBackgroundTasks(taskId)
       setRightPanelMaximizedState(true)
     },
     leaveSubagent: () => {
-      const before = rightPanelBeforeAgentView.current
-      rightPanelBeforeAgentView.current = null
+      const sessionId = activeSessionIdRef.current
+      const before = sessionId ? rightPanelBeforeAgentView.current.get(sessionId) : undefined
+      if (sessionId) rightPanelBeforeAgentView.current.delete(sessionId)
       setBackgroundTaskFocusSessionId(null)
       setBackgroundTaskListRequest(n => n + 1)
       setRightPanelMaximizedState(before?.maximized ?? false)
