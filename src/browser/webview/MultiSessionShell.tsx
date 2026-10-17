@@ -4,6 +4,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -31,6 +32,7 @@ import { Sidebar } from './Sidebar'
 import { SidebarSplitter } from './SidebarSplitter'
 import { SidebarPeek } from './SidebarPeek'
 import { resolveShellLayout } from './layout/shellLayout'
+import { initialRightPanelPresence, stepRightPanelPresence } from './layout/rightPanelPresence'
 import { useOverlayDismiss } from './layout/useOverlayDismiss'
 import {
   rightPanelShare,
@@ -38,14 +40,12 @@ import {
   rightPanelWantWidth,
   setRightPanelShare,
   shareFromWidth,
-  type RightPanelViewKind,
 } from './layout/panelShare'
 import { setSessionCardsShown } from './layout/sessionCards'
 import { useSessionCardPrefs } from '@/components/assistant-ui/session-card-stack'
 import {
   CHAT_COLUMN_MIN_WIDTH_PX,
   CHAT_CONTENT_MIN_WIDTH_PX,
-  RIGHT_PANEL_FLOAT_MIN_WIDTH_PX,
   RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX,
   SPLITTER_WIDTH_PX,
   RIGHT_PANEL_MIN_WIDTH_PX,
@@ -909,14 +909,16 @@ export function MultiSessionShell({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSavedSidebarCollapsed)
   const [sidebarPeek, setSidebarPeek] = useState(false)
   const sidebarHiddenRef = useRef(false)
-  // The Right Panel when it is open but has no room beside the chat: drawn
-  // only on demand, over the chat (F-9). The person's open state is untouched.
-  const [rightPanelOverlayOpen, setRightPanelOverlayOpen] = useState(false)
-  const rightPanelOverlaidRef = useRef(false)
-  // A view the person opens shows the overlay, also one already in front.
-  const showRightPanelOverlayForOpen = useCallback(() => {
-    if (rightPanelOverlaidRef.current) setRightPanelOverlayOpen(true)
-  }, [])
+  // How the open Right Panel is presented beyond its docked form (F-9): the
+  // overlay over the chat when it has no room beside it, an agent-opened
+  // float, a settled float's held width. Each writer reports its event.
+  const [rightPanelPresence, presentRightPanel] = useReducer(
+    stepRightPanelPresence,
+    undefined,
+    initialRightPanelPresence,
+  )
+  const rightPanelPresenceRef = useRef(rightPanelPresence)
+  rightPanelPresenceRef.current = rightPanelPresence
   const handleToggleSidebar = useCallback(() => {
     if (sidebarHiddenRef.current) {
       setSidebarPeek(open => !open)
@@ -2015,6 +2017,7 @@ export function MultiSessionShell({
         saveRightPanelGeometry(nextGeometry)
         setRightPanelGeometry(nextGeometry)
       }
+      if (prevUi.session.visible && !nextSession.visible) presentRightPanel({ type: 'close' })
       if (!rightPanelSessionEquals(nextSession, prevUi.session)) {
         setRightPanelSessions(prev => {
           const m = new Map(prev)
@@ -2098,8 +2101,8 @@ export function MultiSessionShell({
       m.set(id, { ...cur, session, fileReveal })
       return m
     })
-    showRightPanelOverlayForOpen()
-  }, [showRightPanelOverlayForOpen])
+    presentRightPanel({ type: 'personOpen', view: fileViewId(target.path) })
+  }, [])
   const openDiffInPanel = useCallback((target: RightPanelDiffTarget) => {
     const id = activeSessionIdRef.current
     if (!id) return
@@ -2119,8 +2122,8 @@ export function MultiSessionShell({
       m.set(id, { ...cur, diffTarget: target, session })
       return m
     })
-    showRightPanelOverlayForOpen()
-  }, [rememberRightPanelView, showRightPanelOverlayForOpen])
+    presentRightPanel({ type: 'personOpen', view: 'diff' })
+  }, [rememberRightPanelView])
 
   // Skill card "View skill" → the Skill tab. Same shape as `openDiffInPanel`:
   // records the preference outside the updater, activates `skill`, stores the
@@ -2141,8 +2144,8 @@ export function MultiSessionShell({
       m.set(id, { ...cur, skillTarget: target, session })
       return m
     })
-    showRightPanelOverlayForOpen()
-  }, [rememberRightPanelView, showRightPanelOverlayForOpen])
+    presentRightPanel({ type: 'personOpen', view: 'skill' })
+  }, [rememberRightPanelView])
 
   // Open handles for FilePathLinks rendered INSIDE the panel (plan text /
   // `.md` preview) — same handlers the transcript uses.
@@ -2300,8 +2303,8 @@ export function MultiSessionShell({
   const handleOpenBackgroundTasks = useCallback((focusSessionId?: string) => {
     setBackgroundTaskFocusSessionId(focusSessionId ?? null)
     updateRightPanel(s => openView(s, 'tasks'))
-    showRightPanelOverlayForOpen()
-  }, [updateRightPanel, showRightPanelOverlayForOpen])
+    presentRightPanel({ type: 'personOpen', view: 'tasks' })
+  }, [updateRightPanel])
   // Tasks on its list: each request (a count) sends the drawer back from any
   // task detail it shows.
   const [backgroundTaskListRequest, setBackgroundTaskListRequest] = useState(0)
@@ -2309,8 +2312,8 @@ export function MultiSessionShell({
     setBackgroundTaskFocusSessionId(null)
     setBackgroundTaskListRequest(n => n + 1)
     updateRightPanel(s => openView(s, 'tasks'))
-    showRightPanelOverlayForOpen()
-  }, [updateRightPanel, showRightPanelOverlayForOpen])
+    presentRightPanel({ type: 'personOpen', view: 'tasks' })
+  }, [updateRightPanel])
 
   // `$.ui.view` (F-25): a teammate's transcript is its own session; a
   // subagent's is its Tasks detail, maximized over the conversation. Going
@@ -2340,8 +2343,12 @@ export function MultiSessionShell({
       setBackgroundTaskListRequest(n => n + 1)
       setRightPanelMaximizedState(before?.maximized ?? false)
       if (!before) return
+      const restored = before.visible ? before.activeView : null
+      if (restored && (!rightPanel.visible || rightPanel.activeView !== restored)) {
+        presentRightPanel({ type: 'personOpen', view: restored })
+      }
       updateRightPanel(s =>
-        before.visible && before.activeView ? openView(s, before.activeView) : setRightPanelVisible(s, before.visible),
+        restored ? openView(s, restored) : setRightPanelVisible(s, before.visible),
       )
     },
   })
@@ -2352,15 +2359,16 @@ export function MultiSessionShell({
   // lands on the Tasks LIST, not a stale detail.
   const handleToggleRightPanel = useCallback(() => {
     setBackgroundTaskFocusSessionId(null)
-    if (rightPanelOverlaidRef.current) {
-      setRightPanelOverlayOpen(open => !open)
+    if (rightPanelPresenceRef.current.form === 'overlay') {
+      presentRightPanel({ type: 'toggle' })
       return
     }
-    updateRightPanel(s =>
-      s.visible
-        ? setRightPanelVisible(s, false)
-        : showRightPanel(s, rightPanelLastViewRef.current),
-    )
+    updateRightPanel(s => {
+      if (s.visible) return setRightPanelVisible(s, false)
+      const shown = showRightPanel(s, rightPanelLastViewRef.current)
+      if (shown.activeView) presentRightPanel({ type: 'personOpen', view: shown.activeView })
+      return shown
+    })
   }, [updateRightPanel])
   // The drawer consumed the focus id (detail opened) — clear it so a later
   // summary broadcast can't re-open the detail after the user navigates back,
@@ -2432,14 +2440,6 @@ export function MultiSessionShell({
       submitToolResult,
     ],
   )
-  // A view the agent brought forward on its own (or that a plan's close
-  // brought to the front), in the session it happened in: it must not draw
-  // the overlay over the chat.
-  const rightPanelUnpromptedViewRef = useRef<{
-    view: RightPanelViewId | null
-    sessionId: string
-  } | null>(null)
-
   // The Plan view is ephemeral — tied to a pending ExitPlanMode approval. Drop
   // it from the panel once the approval resolves (and on load, when a persisted
   // 'plan' tab has no pending plan). The close is DEFERRED a tick: a session
@@ -2455,10 +2455,7 @@ export function MultiSessionShell({
         if (!s.tabs.includes('plan')) return s
         const next = closeView(s, 'plan')
         if (s.activeView === 'plan') {
-          rightPanelUnpromptedViewRef.current = {
-            view: next.activeView,
-            sessionId: activeSessionIdRef.current ?? '',
-          }
+          presentRightPanel({ type: 'planClosed', nextView: next.visible ? next.activeView : null })
         }
         return next
       })
@@ -2471,18 +2468,22 @@ export function MultiSessionShell({
   // the same pending plan, never clearing on null) live in
   // `createPlanAutoOpenGate` — see its doc.
   const planAutoOpenGateRef = useRef(createPlanAutoOpenGate())
-  // Set below, once the layout is known: floats a closed panel the agent opens.
-  const rightPanelFloatStartRef = useRef<(view: RightPanelViewId) => void>(() => {})
+  // Set below, once the layout is known: reports a view the agent opened.
+  const agentOpenRightPanelRef = useRef<(view: RightPanelViewId) => void>(() => {})
   useEffect(() => {
     if (
       !planAutoOpenGateRef.current(activeSessionId, activePlanEntry?.toolCallId)
     ) {
       return
     }
-    rightPanelUnpromptedViewRef.current = { view: 'plan', sessionId: activeSessionId }
-    rightPanelFloatStartRef.current('plan')
+    agentOpenRightPanelRef.current('plan')
     updateRightPanel(s => openView(s, 'plan'))
   }, [activePlanEntry, activeSessionId, updateRightPanel])
+  // Declared after the plan auto-open, so a switch keeps the float that
+  // effect just opened for the session switched to.
+  useEffect(() => {
+    presentRightPanel({ type: 'sessionSwitch', sessionId: activeSessionId })
+  }, [activeSessionId])
 
   // Belt-and-suspenders for the native main-contents-view: whenever NO
   // webview_area can be on screen (settings replaced the session rows,
@@ -2547,21 +2548,12 @@ export function MultiSessionShell({
   // view kind; a settled float holds its own share for its kind until the
   // kind changes or the panel closes (never saved).
   const rightPanelKind = rightPanelViewKind(rightPanel.activeView)
-  const [rightPanelShareOverride, setRightPanelShareOverride] = useState<{
-    kind: RightPanelViewKind
-    share: number
-  } | null>(null)
+  const rightPanelHold = rightPanelPresence.hold
   const rightPanelShareNow =
-    rightPanelShareOverride?.kind === rightPanelKind
-      ? rightPanelShareOverride.share
+    rightPanelHold?.kind === rightPanelKind
+      ? rightPanelHold.share
       : rightPanelShare(rightPanel.shares, rightPanelKind)
-  // An agent-opened panel floating over the spare width beside the transcript.
-  const [rightPanelFloat, setRightPanelFloat] = useState<{
-    width: number
-    areaW: number
-    view: RightPanelViewId
-    sessionId: string
-  } | null>(null)
+  const rightPanelFloat = rightPanelPresence.float
   // The drawn layout for this width (F-9): sidebar form, the panel's drawn
   // width (the chat yields first), the chat's clip, and where the card stack goes.
   const shellLayout = resolveShellLayout({
@@ -2611,8 +2603,7 @@ export function MultiSessionShell({
   const closeSessionCardsPopover = useCallback(() => setSessionCardsPopoverOpen(false), [])
   sidebarHiddenRef.current = sidebarHidden
   const rightPanelOverlaid = shellLayout.panel === 'overlay'
-  rightPanelOverlaidRef.current = rightPanelOverlaid
-  const rightPanelOverlayShown = rightPanelOverlaid && rightPanelOverlayOpen
+  const rightPanelOverlayShown = rightPanelOverlaid && rightPanelPresence.overlay
   // Over the chat it leaves a strip of the chat to press back into.
   const effectiveRightPanelWidth =
     shellLayout.panel === 'overlay'
@@ -2621,52 +2612,46 @@ export function MultiSessionShell({
         ? shellLayout.panelOffRowW
         : shellLayout.panelW
   const rightPanelFloating = shellLayout.panel === 'float'
-  // Docks the float at the width it floated at: its share of the room the
-  // docked panel will split with the chat.
-  const settleRightPanelFloat = () => {
-    if (!rightPanelFloat) return
-    if (rightPanel.visible) {
-      const room = shellLayout.chatW - SPLITTER_WIDTH_PX
-      const share = shareFromWidth(rightPanelFloat.width, room)
-      if (Number.isFinite(share)) setRightPanelShareOverride({ kind: rightPanelKind, share })
-    }
-    setRightPanelFloat(null)
-  }
-  const settleRightPanelFloatRef = useRef(settleRightPanelFloat)
-  settleRightPanelFloatRef.current = settleRightPanelFloat
-  // The agent opening a view while the panel is closed floats it over the
-  // spare width at the transcript's end, when that is at least the float's
-  // minimum — at most the width it would dock at.
-  rightPanelFloatStartRef.current = (view: RightPanelViewId) => {
-    if (rightPanel.visible || rightPanelMaximized) return
-    const section = document.querySelector(
-      `[data-session-section="${CSS.escape(activeSessionId)}"]`,
-    )
-    const column = section?.querySelector('.aui-thread-viewport-footer')
-    if (!section || !column) return
-    const spare = Math.floor(
-      section.getBoundingClientRect().right - column.getBoundingClientRect().right,
-    )
-    if (spare < RIGHT_PANEL_FLOAT_MIN_WIDTH_PX) return
-    const kind = rightPanelViewKind(view)
-    const docked = rightPanelWantWidth(
-      rightPanelShare(rightPanel.shares, kind),
-      shellLayout.chatW - SPLITTER_WIDTH_PX,
-      rightPanelMinWidth,
-      rightPanelMaxWidth,
-    )
-    setRightPanelFloat({
-      width: Math.min(spare, docked),
+  const rightPanelRoom = shellLayout.chatW - SPLITTER_WIDTH_PX
+  useEffect(() => {
+    presentRightPanel({
+      type: 'resize',
       areaW: sessionAreaWidth,
+      form: shellLayout.panel,
+      room: rightPanelRoom,
+    })
+  }, [sessionAreaWidth, shellLayout.panel, rightPanelRoom])
+  // The agent opening a view while the panel is closed floats it over the
+  // spare width at the transcript's end, measured here.
+  agentOpenRightPanelRef.current = (view: RightPanelViewId) => {
+    const panelOpen = rightPanel.visible || rightPanelMaximized
+    const section = panelOpen
+      ? null
+      : document.querySelector(`[data-session-section="${CSS.escape(activeSessionId)}"]`)
+    const column = section?.querySelector('.aui-thread-viewport-footer')
+    presentRightPanel({
+      type: 'agentOpen',
       view,
       sessionId: activeSessionId,
+      panelOpen,
+      spare:
+        section && column
+          ? Math.floor(section.getBoundingClientRect().right - column.getBoundingClientRect().right)
+          : null,
+      dockedWidth: rightPanelWantWidth(
+        rightPanelShare(rightPanel.shares, rightPanelViewKind(view)),
+        rightPanelRoom,
+        rightPanelMinWidth,
+        rightPanelMaxWidth,
+      ),
+      areaW: sessionAreaWidth,
     })
   }
   // The person's next input settles the float: a press (after its click
   // lands, so nothing moves under it), a key, a wheel.
   useEffect(() => {
     if (!rightPanelFloating) return
-    const settle = () => settleRightPanelFloatRef.current()
+    const settle = () => presentRightPanel({ type: 'input' })
     const settleAfterClick = () => window.setTimeout(settle, 0)
     document.addEventListener('pointerup', settleAfterClick, true)
     document.addEventListener('keydown', settle, true)
@@ -2677,66 +2662,12 @@ export function MultiSessionShell({
       document.removeEventListener('wheel', settle, true)
     }
   }, [rightPanelFloating])
-  // So do a resize and another view coming to the front; closing drops it.
-  useEffect(() => {
-    if (!rightPanelFloat) return
-    if (!rightPanel.visible) setRightPanelFloat(null)
-    else if (
-      sessionAreaWidth !== rightPanelFloat.areaW ||
-      rightPanel.activeView !== rightPanelFloat.view
-    ) {
-      settleRightPanelFloatRef.current()
-    }
-  }, [rightPanelFloat, rightPanel.visible, rightPanel.activeView, sessionAreaWidth])
-  // A settled float's width lasts while its view kind stays in front.
-  useEffect(() => {
-    setRightPanelShareOverride(o =>
-      o && (o.kind !== rightPanelKind || !rightPanel.visible) ? null : o,
-    )
-  }, [rightPanelKind, rightPanel.visible])
-  // A switch drops the float of the session left behind, not the one the
-  // plan effect (declared earlier) just floated for the new session.
-  useEffect(() => {
-    setRightPanelFloat(f => (f && f.sessionId === activeSessionId ? f : null))
-    setRightPanelShareOverride(null)
-  }, [activeSessionId])
-  const closeRightPanelOverlay = useCallback(() => setRightPanelOverlayOpen(false), [])
+  const closeRightPanelOverlay = useCallback(() => presentRightPanel({ type: 'dismiss' }), [])
   const rightPanelOverlayDismiss = useOverlayDismiss(
     rightPanelOverlayShown,
     closeRightPanelOverlay,
     '[data-testid="topbar-background-tasks"]',
   )
-  useEffect(() => {
-    if (!rightPanelOverlaid) setRightPanelOverlayOpen(false)
-  }, [rightPanelOverlaid])
-  // While overlaid, a view the person opens (a file link, a card, the Tasks
-  // button) shows the overlay; a session switch hides it.
-  const rightPanelSeenRef = useRef({
-    sessionId: activeSessionId,
-    visible: rightPanel.visible,
-    view: rightPanel.activeView,
-  })
-  useEffect(() => {
-    const prev = rightPanelSeenRef.current
-    const unprompted = rightPanelUnpromptedViewRef.current
-    rightPanelSeenRef.current = {
-      sessionId: activeSessionId,
-      visible: rightPanel.visible,
-      view: rightPanel.activeView,
-    }
-    if (prev.sessionId !== activeSessionId) {
-      if (unprompted?.sessionId !== activeSessionId) rightPanelUnpromptedViewRef.current = null
-      setRightPanelOverlayOpen(false)
-      return
-    }
-    const opened =
-      rightPanel.visible && (!prev.visible || prev.view !== rightPanel.activeView)
-    if (!opened) return
-    rightPanelUnpromptedViewRef.current = null
-    if (rightPanelOverlaid && unprompted?.view !== rightPanel.activeView) {
-      setRightPanelOverlayOpen(true)
-    }
-  }, [activeSessionId, rightPanel.visible, rightPanel.activeView, rightPanelOverlaid])
   // The splitter never drags the panel past the point that leaves the chat
   // its content width.
   const rightPanelDragMax = Math.max(
@@ -2865,12 +2796,19 @@ export function MultiSessionShell({
   const handleActivateRightPanelView = useCallback(
     (view: RightPanelViewId) => {
       updateRightPanel(s => setActiveView(s, view))
+      presentRightPanel({ type: 'personOpen', view })
     },
     [updateRightPanel],
   )
   const handleCloseRightPanelView = useCallback(
     (view: RightPanelViewId) => {
-      updateRightPanel(s => closeView(s, view))
+      updateRightPanel(s => {
+        const next = closeView(s, view)
+        if (next.visible && next.activeView && next.activeView !== s.activeView) {
+          presentRightPanel({ type: 'personOpen', view: next.activeView })
+        }
+        return next
+      })
     },
     [updateRightPanel],
   )
@@ -4259,9 +4197,10 @@ export function MultiSessionShell({
                   backgroundTaskRows={subAgentRowsForSession(sessionId)}
                   onStopBackgroundTask={handleStopSubAgent}
                   onOpenBackgroundTasksList={handleOpenBackgroundTasksList}
-                  onOpenPlanPanel={() =>
+                  onOpenPlanPanel={() => {
                     updateRightPanel(s => openView(s, 'plan'))
-                  }
+                    presentRightPanel({ type: 'personOpen', view: 'plan' })
+                  }}
                   onOpenFileInPanel={openFileInPanel}
                   statFilePaths={statFilePaths}
                   onOpenDiffInPanel={openDiffInPanel}
@@ -4314,7 +4253,7 @@ export function MultiSessionShell({
                     setRightPanelShare(s.shares, rightPanelKind, shareFromWidth(width, room)),
                   ),
                 )
-                setRightPanelShareOverride(null)
+                presentRightPanel({ type: 'drag' })
               }}
               invert
               ariaLabel={t('rightPanel.resizeAria')}
