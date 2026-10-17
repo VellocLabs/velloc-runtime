@@ -11,7 +11,6 @@ import {
   resolveLocaleAssetUrl,
 } from '../webview/i18n/translate'
 import { localizeRuntimeNotification } from '../webview/i18n/modNotification'
-import { loadLocalCatalogIfRequested } from './loadLocalTemplates'
 import type { BrowserBridgeTransport } from '../bridge/browserBridgeProtocol'
 import {
   createBridgeRoute,
@@ -402,10 +401,6 @@ export function buildGlicInitPayload(options: {
     // → createBrowserRuntime defaults to 'agent'.
     templateType:
       options.initPayload?.templateType ?? readTemplateTypeFromUrl(),
-    // 'local' when the guest URL carries `?template=local` (host-set when a
-    // local template folder exists) → the worker lazy-loads local types.
-    templateSource:
-      options.initPayload?.templateSource ?? readTemplateSourceFromUrl(),
     userSpecifiedProviderId: options.initPayload?.userSpecifiedProviderId,
     userSpecifiedModel: options.initPayload?.userSpecifiedModel,
     userSpecifiedThinkingTier:
@@ -506,20 +501,6 @@ export function readDevRelayFromUrl(): DevRelayParams | null {
   }
 }
 
-
-/**
- * Read the host's local-template signal `?template=local` from the guest URL.
- * Returns 'local' or undefined (any other value ⇒ bundled templates only). The
- * host appends this param only when `.velloc/template/index.md` exists.
- */
-function readTemplateSourceFromUrl(): 'local' | undefined {
-  try {
-    const params = new URLSearchParams(globalThis.location?.search ?? '')
-    return params.get('template') === 'local' ? 'local' : undefined
-  } catch {
-    return undefined
-  }
-}
 
 /**
  * Read `?logCallModel=1` from the guest URL. Returns `undefined` if
@@ -662,13 +643,6 @@ async function prepareNexusBoot(
       message: error instanceof Error ? error.message : String(error),
     })
   }
-
-  // Local template folder overlay — see `loadLocalTemplates.ts`. Gated on the
-  // host-set `?template=local`; with no such param it issues NO fs request, so
-  // the app stays purely bundled (the "no param, no local I/O" invariant). When
-  // present, it reads `.velloc/template/index.md` and REPLACES the launcher
-  // catalog; per-type files load lazily later, so boot reads only that one file.
-  await loadLocalCatalogIfRequested(transport, globalThis.location?.search ?? '')
 
   if (isTraceLogUrlFlagEnabled()) {
     console.info('[HostedToolsGuest] bootstrap manifest', {

@@ -58,6 +58,20 @@ import {
   onModUiEvents,
   type ModSlotStatus,
 } from '../../mods/modSlotRegistry'
+import {
+  modContributionsState,
+  onModContributionsChanged,
+  resolveTopbarItem,
+  type TopbarResolution,
+} from '../../mods/ui/contributionsState'
+import {
+  MODS_CONTRIBUTIONS_EVENT,
+  MODS_CONTRIBUTIONS_TOPIC,
+  isModsPressTopbarPayload,
+  type ModContributionsState,
+  type ModsPressTopbarPayload,
+  type ModsPressTopbarResult,
+} from '../runtimeProtocol/modContributions'
 import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
 import type { TopicBroker } from './TopicBroker'
 import type { ConnectionInfo, SnapshotPage, TopicProvider } from './types'
@@ -145,6 +159,22 @@ export function modsUiTopicProvider(
   }
 }
 
+/**
+ * `mods/contributions` â€” the launchers and topbar items of the person's
+ * plugins (F-25). Not session-bound: every `observe` connection sees it.
+ */
+export function modsContributionsTopicProvider(
+  getState: () => ModContributionsState = modContributionsState,
+): TopicProvider {
+  return {
+    matches: (id: TopicId) => id === MODS_CONTRIBUTIONS_TOPIC,
+    authorize: (_id, conn) => scopeAllows(conn.scope.mode, 'observe'),
+    async *snapshot(): AsyncIterable<SnapshotPage> {
+      yield { type: MODS_CONTRIBUTIONS_EVENT, payload: getState() }
+    },
+  }
+}
+
 /** The states a person is told about: the module is not running and will not
  *  come back on its own. */
 const NOTIFIED_STATES: ReadonlySet<ModStateRow['state']> = new Set(['refused', 'failed', 'dead'])
@@ -172,9 +202,17 @@ export function registerModsCapability(
       options: ModsSetOptionsPayload['options'],
       keep?: readonly string[],
     ) => Promise<void>
+    /** `mods.pressTopbar`: submit to a session the runtime holds; false when
+     *  it holds none. Absent: every press is `no-session`. */
+    submit?: (sessionId: string, payload: Record<string, unknown>) => boolean
+    /** The published contributions; defaults to the realm's. */
+    contributions?: () => ModContributionsState
+    onContributionsChanged?: (listener: (state: ModContributionsState) => void) => () => void
+    resolveTopbar?: (id: string) => TopbarResolution
   } = {},
 ): { publish(): void; dispose(): void } {
   const getState = options.getState ?? modsStatePayload
+  const getContributions = options.contributions ?? modContributionsState
   // The drawing actions reach one session's slot: a connection
   // bound to a list of sessions may draw and press in those alone.
   const inScope = (conn: ConnectionInfo, sessionId: string): boolean =>
@@ -200,6 +238,12 @@ export function registerModsCapability(
       promptChange: { scope: MODS_ACTION_SCOPES.promptChange, guard: isModsPromptChangePayload },
       askAnswer: { scope: MODS_ACTION_SCOPES.askAnswer, guard: isModsAskAnswerPayload },
       pageAnswer: { scope: MODS_ACTION_SCOPES.pageAnswer, guard: isModsPageAnswerPayload },
+      contributions: { scope: MODS_ACTION_SCOPES.contributions, guard: isModsListPayload },
+      pressTopbar: {
+        scope: MODS_ACTION_SCOPES.pressTopbar,
+        guard: isModsPressTopbarPayload,
+        sessionOf: payload => (payload as ModsPressTopbarPayload).sessionId,
+      },
     },
     handle: async request => {
       switch (request.route.act) {
@@ -291,6 +335,26 @@ export function registerModsCapability(
           const slot = slotOf(request.conn, sessionId)
           return { accepted: slot?.pageAnswer?.(answer) === true }
         }
+        case 'contributions':
+          return getContributions()
+        case 'pressTopbar': {
+          const payload = request.payload as ModsPressTopbarPayload
+          if (!inScope(request.conn, payload.sessionId)) {
+            throw wireError('forbidden_scope', `session ${payload.sessionId} is not in this connection's scope`)
+          }
+          const target = (options.resolveTopbar ?? resolveTopbarItem)(payload.id)
+          if (target.kind !== 'run') return { ok: false, reason: target.kind } satisfies ModsPressTopbarResult
+          const submitted =
+            options.submit?.(payload.sessionId, {
+              prompt: '',
+              pluginCommand: {
+                plugin: target.plugin,
+                command: target.command,
+                ...(target.args !== undefined ? { args: target.args } : {}),
+              },
+            }) === true
+          return (submitted ? { ok: true } : { ok: false, reason: 'no-session' }) satisfies ModsPressTopbarResult
+        }
         case 'setOptions': {
           const payload = request.payload as ModsSetOptionsPayload
           if (!options.setOptions) throw wireError('host_unavailable', 'this runtime stores no plugin options')
@@ -304,6 +368,10 @@ export function registerModsCapability(
   })
   broker.registerProvider(modsStateTopicProvider(getState))
   broker.registerProvider(modsUiTopicProvider())
+  broker.registerProvider(modsContributionsTopicProvider(getContributions))
+  const unsubscribeContributions = (options.onContributionsChanged ?? onModContributionsChanged)(state =>
+    broker.publish(MODS_CONTRIBUTIONS_TOPIC, state, { type: MODS_CONTRIBUTIONS_EVENT }),
+  )
   const unsubscribeUi = onModUiEvents((sessionId, event) => {
     if (event.kind === 'state') {
       broker.publish(topic.modsUi(sessionId), event.state, { type: MODS_UI_STATE_EVENT })
@@ -356,6 +424,7 @@ export function registerModsCapability(
     dispose: () => {
       unsubscribe()
       unsubscribeUi()
+      unsubscribeContributions()
       told.clear()
     },
   }

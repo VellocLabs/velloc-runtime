@@ -20,6 +20,8 @@ import type { RuntimeConnection } from '../browser/runtimeClient/RuntimeConnecti
 import { MODS_STATE_TOPIC, type ModsStatePayload } from '../browser/runtimeProtocol'
 import { summarizeModsByPlugin } from '../browser/webview/mods/modsStateView'
 import { getProductName } from '../branding/productName'
+import { setModContributions } from '../browser/webview/mods/modContributionsView'
+import { EMPTY_MOD_CONTRIBUTIONS } from '../browser/runtimeProtocol/modContributions'
 
 // This vitest realm's `localStorage` is not a working Storage, and the page
 // caches marketplace listings in it; a Map-backed stub stands in (as in
@@ -153,11 +155,15 @@ function renderPlugins(
   bridge: ReturnType<typeof makeBridge>['bridge'],
   capabilities?: CapabilityQuery,
   runtimeConnection?: () => Promise<RuntimeConnection>,
+  onOpenModels?: () => void,
 ) {
   const section = createElement(
     SettingsBridgeContext.Provider,
     { value: bridge },
-    createElement(PluginsSection, runtimeConnection ? { runtimeConnection } : undefined),
+    createElement(PluginsSection, {
+      ...(runtimeConnection ? { runtimeConnection } : {}),
+      ...(onOpenModels ? { onOpenModels } : {}),
+    }),
   )
   return render(
     capabilities
@@ -1004,6 +1010,41 @@ describe('PluginsSection — installed plugins grouped by where they take effect
     expect(screen.getByTestId('mod-enabled-idle-compact').textContent).toBe('Disabled')
     expect(screen.queryByTestId('mod-toggle-idle-compact')).toBeNull()
     expect(screen.queryByTestId('mod-toggle-my-mod')).toBeNull()
+  })
+
+  it('a plugin waiting for its provider says so on its card, with a way to Models; a project\'s plugin never does', async () => {
+    const listing = localListing()
+    const { bridge } = makeBridge([installedEntry('beta')], {
+      ...listing,
+      'plugins.listLocal': () => {
+        const roots = (listing['plugins.listLocal']() as { roots: Array<{ plugins: Array<{ enabled: boolean }> }> }).roots
+        for (const root of roots) for (const plugin of root.plugins) plugin.enabled = true
+        return { roots }
+      },
+    })
+    setModContributions({
+      ...EMPTY_MOD_CONTRIBUTIONS,
+      waiting: [
+        { plugin: 'my-mod', owner: 'my-mod@inline', providers: [{ id: 'mod.my-mod.main', key: 'main' }] },
+        { plugin: 'idle-compact', owner: 'idle-compact@inline', providers: [{ key: 'main' }] },
+        { plugin: 'beta', owner: `beta@${OFFICIAL}`, providers: [], unknown: ['bins'] },
+      ],
+    })
+    try {
+      const onOpenModels = vi.fn()
+      renderPlugins(bridge, queryFor(WITH_LOCAL), connectionPublishing(STATE), onOpenModels)
+      const line = await screen.findByTestId('plugin-needs-setup-my-mod')
+      expect(line.textContent).toContain('main')
+      fireEvent.click(screen.getByTestId('plugin-open-models-my-mod'))
+      expect(onOpenModels).toHaveBeenCalledTimes(1)
+      // A word this build does not know: no setup to point at.
+      expect(screen.getByTestId('plugin-needs-setup-beta').textContent).toContain(`newer version of ${getProductName()}`)
+      expect(screen.queryByTestId('plugin-open-models-beta')).toBeNull()
+      await screen.findByTestId('mod-row-idle-compact')
+      expect(screen.queryByTestId('plugin-needs-setup-idle-compact')).toBeNull()
+    } finally {
+      setModContributions(EMPTY_MOD_CONTRIBUTIONS)
+    }
   })
 
   it('a listing that fails leaves the page: mods from the sessions\' state, in Global and Built-in', async () => {

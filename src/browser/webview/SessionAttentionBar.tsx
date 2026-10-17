@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { useT } from './i18n'
 import type { AttentionEvent } from './sessionAttention'
 import { getLauncherForType } from './threadLaunchers'
+import { useModContributions } from './mods/modContributionsView'
 
 /**
  * The in-app notification bar: sessions waiting for the user while the user is in the
@@ -27,6 +28,7 @@ export function SessionAttentionBar({
   className?: string
 }) {
   const t = useT()
+  useModContributions()
   const [expanded, setExpanded] = useState(false)
 
   if (events.length === 0 || !windowFocused) return null

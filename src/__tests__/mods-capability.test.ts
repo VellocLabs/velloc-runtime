@@ -153,7 +153,7 @@ async function flush(rounds = 4): Promise<void> {
   for (let i = 0; i < rounds; i += 1) await new Promise<void>(resolve => setTimeout(resolve, 0))
 }
 
-function makeRig() {
+function makeRig(extra: NonNullable<Parameters<typeof registerModsCapability>[2]> = {}) {
   const registry = new CapabilityRegistry()
   const broker = new TopicBroker()
   const webUiBridge: WebUiBridgeContext = {
@@ -181,7 +181,7 @@ function makeRig() {
   })
   context.connections = () => hub.list()
   const notified: ModStateNotification[] = []
-  const mods = registerModsCapability(registry, broker, { notify: n => notified.push(n) })
+  const mods = registerModsCapability(registry, broker, { notify: n => notified.push(n), ...extra })
   const ends = loopback()
   hub.attach(ends.server)
   const client = new TestClient(ends.client)
@@ -668,5 +668,87 @@ describe('userConfig options', () => {
     await bare.client.hello({ scopeCeiling: 'manager' })
     const noStore = await bare.client.request('mods.setOptions', { plugin: 'greeter', options: {} })
     expect(noStore.ok).toBe(false)
+  })
+})
+
+describe('mods/contributions and mods.pressTopbar', () => {
+  const STATE = {
+    templates: [{ type: 'acme:review', plugin: 'acme', owner: 'acme@mkt', title: 'Review', launcher: 'both' as const }],
+    topbar: [{ id: 'acme:diff', plugin: 'acme', title: 'Diff', icon: { ref: 'h1' } }],
+    icons: { h1: '<svg/>' },
+    waiting: [],
+  }
+
+  function contributionsRig(resolve: (id: string) => import('../mods/ui/contributionsState').TopbarResolution) {
+    let current = STATE
+    const listeners = new Set<(state: typeof STATE) => void>()
+    const submitted: Array<{ sessionId: string; payload: Record<string, unknown> }> = []
+    const rig = makeRig({
+      contributions: () => current,
+      onContributionsChanged: listener => {
+        listeners.add(listener as never)
+        return () => listeners.delete(listener as never)
+      },
+      resolveTopbar: resolve,
+      submit: (sessionId, payload) => {
+        if (sessionId === 'gone') return false
+        submitted.push({ sessionId, payload })
+        return true
+      },
+    })
+    const publish = (next: typeof STATE): void => {
+      current = next
+      for (const listener of listeners) listener(next)
+    }
+    return { ...rig, submitted, publish }
+  }
+
+  it('an observe connection reads the state: the action, the snapshot, then a delta per change', async () => {
+    const { client, publish } = contributionsRig(() => ({ kind: 'unknown' }))
+    await client.hello({ scopeCeiling: 'observe' })
+    const listed = await client.request('mods.contributions', {})
+    expect(listed.ok && listed.result).toEqual(STATE)
+    await client.request(TOPICS_SUBSCRIBE_ROUTE, { topics: [{ topic: 'mods/contributions' }] })
+    const [snapshot] = await client.eventsFor('mods/contributions', 1)
+    expect(snapshot!.payload).toEqual(STATE)
+    publish({ ...STATE, topbar: [] })
+    const [, delta] = await client.eventsFor('mods/contributions', 2)
+    expect(delta!.type).toBe('state')
+    expect((delta!.payload as typeof STATE).topbar).toEqual([])
+  })
+
+  it('a press is control: refused under observe; under control it submits the plugin command the runtime resolved', async () => {
+    const observe = contributionsRig(() => ({ kind: 'run', plugin: 'acme', command: 'review-diff', args: '--staged' }))
+    await observe.client.hello({ scopeCeiling: 'observe' })
+    const refused = await observe.client.request('mods.pressTopbar', { sessionId: 's1', id: 'acme:diff' })
+    expect(!refused.ok && refused.error.code).toBe('forbidden_scope')
+    expect(observe.submitted).toEqual([])
+
+    const control = contributionsRig(() => ({ kind: 'run', plugin: 'acme', command: 'review-diff', args: '--staged' }))
+    await control.client.hello({ scopeCeiling: 'control' })
+    const pressed = await control.client.request('mods.pressTopbar', { sessionId: 's1', id: 'acme:diff' })
+    expect(pressed.ok && pressed.result).toEqual({ ok: true })
+    expect(control.submitted).toEqual([
+      { sessionId: 's1', payload: { prompt: '', pluginCommand: { plugin: 'acme', command: 'review-diff', args: '--staged' } } },
+    ])
+  })
+
+  it('a press the runtime cannot run says why and submits nothing; the client never names the command', async () => {
+    for (const [resolution, reason] of [
+      [{ kind: 'waiting' }, 'waiting'],
+      [{ kind: 'unknown' }, 'unknown'],
+    ] as const) {
+      const rig = contributionsRig(() => resolution)
+      await rig.client.hello({ scopeCeiling: 'control' })
+      const res = await rig.client.request('mods.pressTopbar', { sessionId: 's1', id: 'acme:diff', command: 'rm' })
+      expect(res.ok && res.result).toEqual({ ok: false, reason })
+      expect(rig.submitted).toEqual([])
+    }
+    const gone = contributionsRig(() => ({ kind: 'run', plugin: 'acme', command: 'x' }))
+    await gone.client.hello({ scopeCeiling: 'control' })
+    const res = await gone.client.request('mods.pressTopbar', { sessionId: 'gone', id: 'acme:diff' })
+    expect(res.ok && res.result).toEqual({ ok: false, reason: 'no-session' })
+    const bad = await gone.client.request('mods.pressTopbar', { sessionId: 's1' })
+    expect(!bad.ok && bad.error.code).toBe('bad_payload')
   })
 })

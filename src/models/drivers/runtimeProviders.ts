@@ -142,10 +142,23 @@ export function setRuntimeProviderConfigs(next: Record<string, NexusProviderConf
     configsLoaded = true
     void flushModAdoptions()
     if (first) for (const listener of [...configsLoadedListeners]) listener()
+    for (const listener of [...configsChangedListeners]) listener()
   }
 }
 
 const configsLoadedListeners = new Set<() => void>()
+const configsChangedListeners = new Set<() => void>()
+
+/** Whether settings.json's provider configs have been read. */
+export function runtimeProviderConfigsLoaded(): boolean {
+  return configsLoaded
+}
+
+/** `listener` runs after every read or write of settings.json's provider configs. */
+export function onRuntimeProviderConfigsChanged(listener: () => void): () => void {
+  configsChangedListeners.add(listener)
+  return () => configsChangedListeners.delete(listener)
+}
 
 /** `listener` runs once settings.json's provider configs are first read. */
 export function onRuntimeProviderConfigsLoaded(listener: () => void): () => void {

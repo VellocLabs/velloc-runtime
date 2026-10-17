@@ -280,6 +280,8 @@ import {
   writeStoredActiveSessionId,
 } from './bootSessionPointer'
 import { useT } from './i18n'
+import { useAttachModContributions } from './mods/modContributionsView'
+import type { ModsPressTopbarResult } from '../runtimeProtocol/modContributions'
 import {
   getBootDiagnosticTraceId,
   installSessionTracer,
@@ -571,6 +573,17 @@ export function MultiSessionShell({
     )
   }, [runtimeConnection])
   const runtimeCapabilities = useCapabilityQuery(runtimeConnection)
+  // F-25: the launchers and topbar items of the person's plugins, one store
+  // for the whole page; the bundled launchers never wait for it.
+  useAttachModContributions(runtimeConnection)
+  const handlePressPluginItem = useCallback(
+    async (sessionId: string, id: string): Promise<ModsPressTopbarResult> => {
+      if (!runtimeConnection) return { ok: false, reason: 'no-session' }
+      const connection = await runtimeConnection()
+      return connection.request<ModsPressTopbarResult>('mods.pressTopbar', { sessionId, id })
+    },
+    [runtimeConnection],
+  )
   // F-24: remote devices connected to this desktop, for the topbar's link
   // button. Read from the page's shared remote/state store, and only by a
   // connection that may read the topic at all (the desktop, a manager). The
@@ -3925,6 +3938,7 @@ export function MultiSessionShell({
         modelPickerOpenToken={modelPickerOpenToken}
         onOpenSettings={handleOpenNexusSettings}
         onOpenProviderSettings={handleOpenProviderSettings}
+        onPressPluginItem={runtimeConnection ? handlePressPluginItem : undefined}
         sidebarCollapsed={sidebarCollapsed || sidebarHidden}
         onToggleSidebar={handleToggleSidebar}
         searchSlot={

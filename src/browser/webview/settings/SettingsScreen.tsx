@@ -62,9 +62,12 @@ function SectionContent({
   remoteState,
   remoteConn,
   runtimeConnection,
+  onOpenModels,
   t,
 }: {
   section: SettingsSectionId;
+  /** Go to the Models page (from a plugin that waits for its provider). */
+  onOpenModels?: () => void;
   /** The page's runtime connection, for the Plugins page's `mods/state` read. */
   runtimeConnection?: () => Promise<RuntimeConnection>;
   openProviderRequest?: { providerId: string; seq: number } | null;
@@ -119,6 +122,7 @@ function SectionContent({
         <PluginsSection
           runtimeConnection={runtimeConnection}
           revealPluginRequest={revealPluginRequest}
+          onOpenModels={onOpenModels}
         />
       );
     case "remoteAccess":
@@ -259,6 +263,7 @@ export function SettingsScreen({
             onProviderConnected={onProviderConnected}
             openProviderRequest={openProviderRequest}
             revealPluginRequest={revealPluginRequest}
+            onOpenModels={() => onNavigate("models")}
             remoteState={remoteState}
             runtimeConnection={runtimeConnection}
             remoteConn={remoteConn}

@@ -172,7 +172,10 @@ const RULES: Rule[] = [
     // `/plugin` and `/plugins` here are the bare (no-backtick) slash-command
     // names, and `claude-plugins-official`/`claude-plugins-community` are
     // literal marketplace identifiers — protocol, not the translatable noun.
+    // `{plugin}` interpolates a plugin's own name.
     exempt: [
+      'launcher.pluginTooltip',
+      'topbar.pluginItemTooltip',
       'slash.out.plugin.usage.example',
       'slash.out.plugin.usage.legacyNote',
       'slash.out.plugin.unknownSubcommand',

@@ -4,6 +4,8 @@ import type { NexusMcpServerLaunchConfig } from '../mcp/nativeBridge'
 import type { MCPServerConfig } from '../mcp/types'
 import type { HookTableByEvent } from '../lifecycleHooks/hookTypes'
 import type { ProviderManifest, ResolvedProvider } from '../mods/provider/providerManifest'
+import type { PluginTemplateDecl, PluginUiDecl } from '../mods/ui/uiManifest'
+import type { PluginRequires } from './pluginRequirements'
 
 export type PluginUserConfigField = {
   type: 'string' | 'number' | 'boolean' | 'directory' | 'file'
@@ -39,6 +41,13 @@ export type PluginDescriptor = {
   /** Provider mods: model providers this plugin adds, by provider key
    *  (`mods/provider/providerManifest.ts`). */
   providers?: Record<string, ProviderManifest>
+  /** Session types offered in the launcher list, by key (`mods/ui/uiManifest.ts`). */
+  templates?: Record<string, PluginTemplateDecl>
+  /** Chrome contributions: topbar items (`mods/ui/uiManifest.ts`). */
+  ui?: PluginUiDecl
+  /** What must be true before the plugin's components take effect
+   *  (`pluginRequirements.ts`); its providers are never gated. */
+  requires?: PluginRequires
 }
 
 export type ActivePlugin = {
@@ -62,13 +71,26 @@ export type ActivePlugin = {
    *  there are none. A provider's module is a different kind from a hooks
    *  module — which it is, is decided by where the manifest lists it. */
   providers?: ResolvedProvider[]
+  /** The plugin's templates whose `template.md` exists, folders resolved;
+   *  absent when there are none. */
+  templates?: ResolvedPluginTemplate[]
   mcpServers?: Record<string, MCPServerConfig>
   nativeMcpServers?: Record<string, NexusMcpServerLaunchConfig>
   /** `<name>@<marketplace>` for marketplace installs; turns on the settings enable check. */
   installIdentifier?: string
 }
 
-export type ComponentKind = 'commands' | 'agents' | 'skills' | 'hooks' | 'providers'
+/** One template of an active plugin: its declaration, its id and its folder. */
+export type ResolvedPluginTemplate = {
+  key: string
+  /** `<plugin>:<key>` */
+  type: string
+  decl: PluginTemplateDecl
+  /** Absolute folder holding `template.md`. */
+  dir: string
+}
+
+export type ComponentKind = 'commands' | 'agents' | 'skills' | 'hooks' | 'providers' | 'templates'
 
 export type PluginLoadIssue = { source: string } & (
   | { type: 'path-not-found'; plugin?: string; path: string; component: ComponentKind }

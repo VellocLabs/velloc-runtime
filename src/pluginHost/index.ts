@@ -18,6 +18,7 @@ import {
   type PluginSecretWrite,
 } from './pluginMcpUserConfig'
 import type { ActivePlugin, PluginLoadIssue } from './pluginModel'
+import { splitByRequirements, type ProviderGateState, type UnmetRequirement } from './pluginRequirements'
 import type { InstalledPluginsFile } from './registryFormats'
 
 export type PluginContributions = {
@@ -26,6 +27,9 @@ export type PluginContributions = {
   /** Discovered-but-not-enabled plugins (present on disk, not allowlisted).
    *  Surfaced by the `/plugins` command so users can see what's available. */
   disabled: ActivePlugin[]
+  /** Enabled by the person but held back by `requires` (`pluginRequirements.ts`):
+   *  none of their components take effect. Empty unless `requirements` was given. */
+  waiting: Array<{ plugin: ActivePlugin; unmet: UnmetRequirement[] }>
   /** Plugin skill + command directories (auto-detected `skills/` & `commands/`
    *  plus manifest-declared dirs), each tagged with the contributing plugin
    *  (`visitMarkdownFiles`) but keeps `skills/` trees top-level-only, so the
@@ -92,9 +96,14 @@ export async function loadPluginContributions(params: {
   /** settings.json `providers.configs`: the keys stored for the plugins' own
    *  providers, for `${provider_key.KEY}` in their MCP servers. Absent: none. */
   providerKeys?: PluginProviderKeysMap
+  /** The provider state the `requires` gate reads. Absent: no plugin is gated. */
+  requirements?: ProviderGateState
 }): Promise<PluginContributions> {
   const { enabled: gathered, disabled, errors: gatheredErrors } = await gatherPlugins(params)
-  const enabled = params.fs && params.locale ? await describeInLocale(gathered, params.fs, params.locale) : gathered
+  const described = params.fs && params.locale ? await describeInLocale(gathered, params.fs, params.locale) : gathered
+  const { effective: enabled, waiting } = params.requirements
+    ? splitByRequirements(described, params.requirements)
+    : { effective: described, waiting: [] }
 
   const pluginSkillDirs: Array<{
     dirPath: string
@@ -170,6 +179,7 @@ export async function loadPluginContributions(params: {
   return {
     plugins: enabled,
     disabled,
+    waiting,
     pluginSkillDirs,
     pluginAgentDirs,
     mcpServers,

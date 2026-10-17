@@ -202,6 +202,22 @@ export {
 } from './mods'
 
 export {
+  EMPTY_MOD_CONTRIBUTIONS,
+  MODS_CONTRIBUTIONS_EVENT,
+  MODS_CONTRIBUTIONS_TOPIC,
+  isModsPressTopbarPayload,
+  type ContributedTemplate,
+  type ContributedTopbarItem,
+  type ContributionIcon,
+  type ContributionText,
+  type ContributionWelcome,
+  type ModContributionsState,
+  type ModsPressTopbarPayload,
+  type ModsPressTopbarResult,
+  type WaitingPlugin,
+} from './modContributions'
+
+export {
   SESSION_TOPIC_KINDS,
   isTopicSegment,
   parseTopic,

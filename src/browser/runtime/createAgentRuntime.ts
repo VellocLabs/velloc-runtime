@@ -91,7 +91,8 @@ import {
 import { SessionSnapshotStore } from '../../sessions/fileSnapshots/snapshotStore'
 import { FileSnapshotRecorder } from '../../sessions/fileSnapshots/snapshotRecorder'
 import { WorkspaceDiffTool } from '../../toolkit/builtin/workspaceDiff'
-import { loadLocalTypeFilesOrFallBack } from '../boot/loadLocalTemplates'
+import { isPluginTemplateId } from '../../mods/ui/uiManifest'
+import { runtimeProviderGate } from '../../pluginHost/providerGate'
 import { registerMemoryExtractor } from '../../memory/extract/extractionRunner'
 import { registerMemoryConsolidator } from '../../memory/consolidate/consolidationRunner'
 import { registerDeferrableSkills } from '../../toolkit/run/deferredTools'
@@ -331,10 +332,12 @@ export async function createBrowserRuntime(
   // `?templateType=` guest URL param. The frontmatter contributes the tool
   // preset, the `tools` allowlist (group-expanded), and `deferredTools`.
   const templateType = options.templateType ?? DEFAULT_TEMPLATE_TYPE
-  // Local template overlay: only when the host signalled `templateSource === 'local'` (no local I/O
-  // otherwise). A malformed overlay falls back to the bundled type, or fails the session when there is none.
-  if (options.templateSource === 'local' && options.bridgeTransport) {
-    await loadLocalTypeFilesOrFallBack(options.bridgeTransport, templateType)
+  // A plugin's type (`<plugin>:<key>`, F-25): registered from the plugin in
+  // effect that offers it, or the session does not start.
+  let pluginTemplateOwner: string | undefined
+  if (isPluginTemplateId(templateType)) {
+    const { openPluginTemplate } = await import('../../mods/ui/pluginTemplateSession')
+    pluginTemplateOwner = (await openPluginTemplate(templateType)).owner
   }
   const sessionTemplate = getTemplate(templateType)
   // Precedence: explicit option → host-mode default. (With a host manifest the
@@ -560,6 +563,12 @@ export async function createBrowserRuntime(
     restoredSessionId: resolvedOptions.restoredSessionId,
   })
   setConversationStore(conversationStore)
+  if (pluginTemplateOwner !== undefined) {
+    const { checkTemplateOwner } = await import('../../mods/ui/pluginTemplateSession')
+    const recorded = (await conversationStore.getSessionMetadata())?.templateOwner
+    checkTemplateOwner(templateType, recorded, pluginTemplateOwner)
+    if (recorded === undefined) await conversationStore.updateSessionMetadata({ templateOwner: pluginTemplateOwner })
+  }
 
   // File-snapshot recorder (`fileSnapshots: true` templates) in the session dir. Main interactive
   // runtime only (the store is single-writer); no storage path ⇒ no recorder and no WorkspaceDiff.
@@ -699,6 +708,7 @@ export async function createBrowserRuntime(
     enabledPluginIdentifiers,
     pluginConfigs: mcpPluginConfigs,
     providerKeys: mcpProviderKeys,
+    requirements: runtimeProviderGate(),
     ...(options.locale !== undefined ? { locale: options.locale } : {}),
   })
   for (const pluginError of pluginContributions.errors) {
@@ -1317,6 +1327,7 @@ export async function createBrowserRuntime(
       enabledPluginIdentifiers: reloadEnabledIds,
       pluginConfigs: mcpPluginConfigs,
       providerKeys: mcpProviderKeys,
+      requirements: runtimeProviderGate(),
       ...(options.locale !== undefined ? { locale: options.locale } : {}),
     })
     for (const pluginError of reloadContributions.errors) {

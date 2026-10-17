@@ -142,9 +142,8 @@ Resolved per call, not cached, so promoting beta's bytes to production flips
 every `-beta` file off without a rebuild. **Existing sessions follow the
 channel** they are opened on: a session created on beta with a beta manifest
 gets the stable manifest's tool set on its next turn after a switch to stable
-(the variant is not pinned to the session). A `?template=local` folder may carry
-its own `index-beta.md` / `template-beta.md`; whatever it provides replaces the
-bundled files on **both** channels.
+(the variant is not pinned to the session). A plugin's template may carry its
+own `template-beta.md` beside its `template.md`.
 
 ## Manifest frontmatter (`template.md`)
 
@@ -225,7 +224,7 @@ dropped id would turn a capability boundary into a typo:
 
 | Stage | When | What it checks | On failure |
 |---|---|---|---|
-| syntax + namespace | template load (`parseManifest`) | `<known-source>:<name>` | **throws** — fails the bundled build; a local overlay of a bundled type falls back to that type, a local-only type fails to start |
+| syntax + namespace | template load (`parseManifest`) | `<known-source>:<name>` | **throws** — fails the bundled build; a plugin's template fails to start |
 | resolution | session start (`createAgentRuntime`) | the id names a skill this session actually loaded | reported (console) — never fatal, because a `project:`/`user:` skill lives in the workspace and its absence is a property of where the session opened |
 
 ---
@@ -274,7 +273,7 @@ provider/locale override registry were removed).
 
 - **Per-type** → `<type>/includes/<name>.md`.
   **The name MUST be `<type>_`-prefixed** (e.g. `code_intro`). Holder names
-  are one global namespace (a local template may reuse a bundled holder by
+  are one global namespace (a plugin's template may reuse a bundled holder by
   name), so two types sharing a bare name would collide. `templateRegistry.test.ts`
   enforces the prefix.
 - **Shared** → `shared_includes/<name>.md` (plain name; used by 2+ types).
@@ -284,11 +283,8 @@ provider/locale override registry were removed).
   other `-<suffix>`** (`-standard` — the base file *is* standard — or a
   retired `-anthropic` / `-openai`) is rejected loudly instead of being filed
   as an unreferenced holder. For the bundled tree that fails the vite build;
-  for a `?template=local` overlay of a BUNDLED type the session logs it and
-  runs on the bundled definition, and for a local-only type — which has no
-  definition to fall back to — the session fails to start, loudly
-  (`loadLocalTypeFilesOrFallBack`): a type with no template config would get
-  every tool and the legacy monolith prompt. A holder with no `-lean` file renders its base prose
+  for a plugin's template the session fails to start, loudly: a type with no
+  template config would get every tool. A holder with no `-lean` file renders its base prose
   under both profiles; a holder with ONLY a `-lean` file (a **lean-only
   section**) is emitted under the lean profile and simply absent under
   standard — no empty part. No holder is lean-only today: the profile
@@ -479,33 +475,16 @@ and `chat_tone_and_style.md` holding the type's own prose, and `!system` /
 
 ---
 
-## Local override folder (`%LOCALAPPDATA%\Velloc\.velloc\template`)
+## Templates from plugins
 
-Users can override the bundled templates at runtime by dropping a folder with the
-**same structure** at `<install root>/.velloc/template` (Windows:
-`%LOCALAPPDATA%\Velloc\.velloc\template`). The browser host detects it and appends
-`?template=local` to the guest URL; the web reads that param **synchronously** and
-only then touches the local folder. **No param ⇒ zero local I/O** — the app runs
-purely on the bundled templates (the common case).
-
-When active:
-
-- **`index.md` REPLACES the launcher catalog** — a non-empty local `types:` list
-  becomes the entire left-panel list; an absent/empty one falls back to the bundled
-  catalog (`applyLocalCatalog`, boot, page thread).
-- **A local type's `template.md` + `includes/` OVERRIDE the bundled definition**,
-  lazy-loaded when a session of that type is created (`createBrowserRuntime` →
-  `loadLocalTypeFiles`, worker thread). A local type may **reuse a bundled holder**
-  by its globally-unique (`<type>_`-prefixed) name — e.g. reference `!agent_intro`
-  with no local file and get the bundled prose (`getHolderProse` cross-type lookup,
-  gated to local types so bundled types keep the no-borrow invariant).
-- **`welcome.md`** is loaded page-side during the boot overlay so the welcome chips
-  render for local types.
-
-A removed folder / a type with no local files ⇒ bundled fallback (else `'agent'`).
-
-> Holder prose for local types is resolved in the guest like bundled prose and
-> sent as finished sections, so this folder needs nothing from the binary.
+A plugin offers more session types through its manifest's `templates`; each
+is a folder of the same shape as a bundled type (`template.md`, optional
+`template-beta.md`, `includes/*.md`, `welcome[-<locale>].md`). Its type is
+`<plugin>:<key>` — a bundled type never holds `:`, so a plugin cannot replace
+one. Its launcher comes from the runtime's `mods/contributions` topic, after
+the bundled list, which never waits for it; the session registers the type
+when it starts (`registerPluginType`). Its own `includes/` are looked up
+first, then the bundled holders by name; never another plugin's (F-25).
 
 ---
 

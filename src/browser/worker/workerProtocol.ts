@@ -82,9 +82,6 @@ export type AgentRuntimeWorkerInitPayload = {
    * root.
    */
   templateType?: string
-  /** 'local' when the host signalled local on-disk templates (`?template=local`);
-   *  the worker then lazy-loads `<type>` from `.velloc/template/`. */
-  templateSource?: 'local'
   userSpecifiedProviderId?: string
   userSpecifiedModel?: string
   /**
@@ -515,6 +512,12 @@ export type AgentWorkerInboundMessage =
          * `'next'`; ignored when idle.
          */
         delivery?: 'inject' | 'next'
+        /**
+         * A topbar press (F-25): the worker types this plugin's own command
+         * in place of `prompt`; a command the plugin does not offer is
+         * refused with `topbar_command_unknown`.
+         */
+        pluginCommand?: { plugin: string; command: string; args?: string }
       }
     }
   | {

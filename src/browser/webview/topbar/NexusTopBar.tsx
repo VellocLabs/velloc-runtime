@@ -36,6 +36,8 @@ import {
 } from "../remote/RemoteHostIndicator";
 import { RemoteFullscreenToggle } from "../remote/RemoteFullscreenToggle";
 import { NexusModelPicker } from "./NexusModelPicker";
+import { PluginTopbarItems } from "./PluginTopbarItems";
+import type { ModsPressTopbarResult } from "../../runtimeProtocol/modContributions";
 import { useTopbarCenterBudget } from "./useTopbarCenterBudget";
 import { useWindowDragRegions } from "./useWindowDragRegions";
 
@@ -132,6 +134,9 @@ export type NexusTopBarProps = {
   /** Forget this device's pairing and return to the connect screen. Required
    *  with `remoteHost`; ignored without it. */
   onRemoteLogOut?: () => void;
+  /** Run a plugin's topbar item (F-25) for a session; omitted → plugins add
+   *  no items. They sit just before the search control. */
+  onPressPluginItem?: (sessionId: string, id: string) => Promise<ModsPressTopbarResult>;
 };
 
 export function NexusTopBar({
@@ -162,6 +167,7 @@ export function NexusTopBar({
   remoteDeviceCount,
   remoteHost,
   onRemoteLogOut,
+  onPressPluginItem,
 }: NexusTopBarProps) {
   const t = useT();
   const teammateActive = !!activeSessionId && isTeammateSessionId(activeSessionId);
@@ -428,6 +434,7 @@ export function NexusTopBar({
             </TooltipContent>
           </Tooltip>
         ) : null}
+        <PluginTopbarItems activeSessionId={activeSessionId} onPress={onPressPluginItem} />
         {/* Transcript search, last and set apart: a hairline divider marks
             it as a different kind of control (it expands into a field)
             and keeps it from reading as one more toggle. */}

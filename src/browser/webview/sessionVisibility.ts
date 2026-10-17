@@ -1,12 +1,10 @@
 /**
- * Which sessions this channel shows: a type the channel's launcher catalog does not list is hidden, and
- * a teammate follows its lead. UI only: nothing is deleted or stopped. Untyped sessions are always shown,
- * and a local catalog never hides a type the bundled catalog lists.
+ * Which sessions this channel shows: a bundled type the channel's launcher catalog does not list is
+ * hidden, and a teammate follows its lead. UI only: nothing is deleted or stopped. Untyped sessions and
+ * plugin types (`<plugin>:<key>`, F-25) are always shown: a person's history stays when a plugin is off.
  */
-import {
-  getLauncherMeta,
-  isTypeListedInBundledCatalog,
-} from '../../prompting/templateCatalog'
+import { getLauncherMeta } from '../../prompting/templateCatalog'
+import { isPluginTemplateId } from '../../mods/ui/uiManifest'
 import { pinnedFirst } from './sessionPinning'
 
 /** The fields the rule reads — satisfied by both `SessionListItem` and
@@ -17,13 +15,12 @@ export type VisibilityEntry = {
   spawnerSessionId?: string
 }
 
-/** Whether the current channel's catalog — live or bundled — lists
- *  `templateType`. */
+/** Whether this channel shows sessions of `templateType`. */
 export function isSessionTypeOffered(templateType: string | undefined): boolean {
   return (
     templateType === undefined ||
     getLauncherMeta(templateType) !== undefined ||
-    isTypeListedInBundledCatalog(templateType)
+    isPluginTemplateId(templateType)
   )
 }
 

@@ -97,6 +97,8 @@ export type RuntimeHubHost = {
   reloadPluginsOnAllSessions(): void
   /** Reload every session's mods whose module text changed (F-25). */
   reloadModsOnAllSessions?(): void
+  /** Submit to a session the runtime holds; false when it holds none. */
+  submitToSession?(sessionId: string, payload: Record<string, unknown>): boolean
   /** What `welcome.server.runtimeVersion` reports. */
   runtimeVersion: string
   /** A client started (or stopped) viewing a session — `presence.setViewing`, or its connection went away. */
@@ -294,6 +296,7 @@ export class RuntimeHub {
     registerModsCapability(this.registry, this.broker, {
       notify: notification => this.notify(notification, 'modState'),
       reloadAll: () => host.reloadModsOnAllSessions?.(),
+      submit: (sessionId, payload) => host.submitToSession?.(sessionId, payload) === true,
       // A plugin's `userConfig` values: written to settings.json, then
       // every session reloads its plugins, so its mods load again with them.
       setOptions: async (plugin, options, keep) => {

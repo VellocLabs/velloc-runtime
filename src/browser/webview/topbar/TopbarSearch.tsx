@@ -40,6 +40,7 @@ import {
 } from '../searchHistoryStorage'
 import { sessionTimeBucket } from '../sessionTimeBucket'
 import { getLauncherForType } from '../threadLaunchers'
+import { useModContributions } from '../mods/modContributionsView'
 import {
   closeTranscriptSearchPopup,
   getTranscriptSearchState,
@@ -139,6 +140,7 @@ export function TopbarSearch({
   openToken,
 }: TopbarSearchProps) {
   const t = useT()
+  useModContributions()
   const state = useTranscriptSearchState()
   const inputRef = React.useRef<HTMLInputElement>(null)
   const containerRef = React.useRef<HTMLDivElement>(null)

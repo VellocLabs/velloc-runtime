@@ -9,11 +9,7 @@ import {
   withoutHiddenKeys,
 } from '../browser/webview/sessionVisibility'
 import { useSessionManager } from '../browser/webview/useSessionManager'
-import {
-  __resetLocalOverlayForTest,
-  __setTemplateChannelForTest,
-  applyLocalCatalog,
-} from '../prompting/templateRegistry'
+import { __setTemplateChannelForTest } from '../prompting/templateRegistry'
 
 // A session whose type the current channel's launcher catalog does not list is
 // hidden, and its teammates with it. `team` is the live case: `index-beta.md`
@@ -56,20 +52,14 @@ describe('isSessionTypeOffered', () => {
   })
 })
 
-describe('isSessionTypeOffered — under a local catalog overlay', () => {
-  afterEach(() => __resetLocalOverlayForTest())
-
-  it('a local catalog naming only its own types hides no bundled-type session', async () => {
-    // `?template=local` REPLACES the launcher list; the bundled types it leaves
-    // out still exist and still run, so their sessions stay listed.
+describe('isSessionTypeOffered — plugin types', () => {
+  it("a plugin type's sessions stay listed whatever the plugin's state", () => {
     __setTemplateChannelForTest('stable')
-    await applyLocalCatalog('---\ntypes:\n  - type: mytype\n---\n')
-    expect(isSessionTypeOffered('mytype')).toBe(true)
-    expect(isSessionTypeOffered('code')).toBe(true)
-    expect(hiddenSessionIds([code, plain, { sessionId: 'mine', templateType: 'mytype' }]).size).toBe(0)
-    // The channel rule is unchanged: stable's bundled catalog never listed `team`.
+    expect(isSessionTypeOffered('acme:review')).toBe(true)
+    expect(hiddenSessionIds([code, plain, { sessionId: 'mine', templateType: 'acme:review' }]).size).toBe(0)
     expect(isSessionTypeOffered('team')).toBe(false)
-    expect(isSessionTypeOffered('removed_local_type')).toBe(false)
+    expect(isSessionTypeOffered('removed_type')).toBe(false)
+    expect(isSessionTypeOffered('acme:')).toBe(false)
   })
 })
 

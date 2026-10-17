@@ -23,6 +23,7 @@ import {
 import { applyClippedTooltip } from './titleOverflow'
 import { useLocale, useT, type TranslateFn } from './i18n'
 import { getLauncherForType, launcherDefaultTitle } from './threadLaunchers'
+import { useModContributions } from './mods/modContributionsView'
 import {
   countIncluding,
   nextPageCount,
@@ -158,6 +159,7 @@ export function SessionRowList({
   onEditingChange,
 }: SessionRowListProps) {
   const t = useT()
+  useModContributions()
   const locale = useLocale()
   const sessions = groups.flatMap(group => group.sessions)
   const groupOfRow = groups.flatMap(group => group.sessions.map(() => group))

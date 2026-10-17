@@ -10,6 +10,8 @@ import type { NexusMcpServerLaunchConfig } from '../mcp/nativeBridge'
 import type { MCPServerConfig } from '../mcp/types'
 import { parseHooksSettings } from '../lifecycleHooks/hookTypes'
 import { checkProviderManifests } from '../mods/provider/providerManifest'
+import { checkTemplateDecls, checkUiDecl } from '../mods/ui/uiManifest'
+import { checkRequires } from './pluginRequirements'
 import type { PluginDescriptor } from './pluginModel'
 import { readUserConfigFields } from './userConfigFields'
 
@@ -168,6 +170,11 @@ export function checkPluginDescriptor(value: unknown): ManifestCheck {
 
   if (value.providers !== undefined) {
     set('providers', checkProviderManifests(name, value.providers, errors))
+  }
+  if (value.templates !== undefined) set('templates', checkTemplateDecls(name, value.templates, errors))
+  if (value.ui !== undefined) set('ui', checkUiDecl(name, value.ui, errors))
+  if (value.requires !== undefined) {
+    set('requires', checkRequires(value.requires, Object.keys(manifest.providers ?? {}), errors))
   }
 
   return { manifest, errors }

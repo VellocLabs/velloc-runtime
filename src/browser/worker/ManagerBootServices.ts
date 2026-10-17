@@ -60,6 +60,8 @@ export interface ManagerBootServicesHost {
   getHomeDir(): string | null
   /** The most recently attached window's locale, if any window has said. */
   getLocale?(): string | undefined
+  /** Every session's plugins load again (a plugin's `requires` was met or lost). */
+  reloadPluginsOnAllSessions?(): void
   /** The host half of the init payload the desktop page published, if any
    *  (a provider mod's `$.provider.device()` reads the user agent and locale). */
   getHostEnvironment?(): { userAgent?: string; locale?: string } | null
@@ -258,6 +260,7 @@ export class ManagerBootServices {
         fs: this.createTransportResolvingFs(),
         transport: () => this.host.getDirectBridgeTransport(),
         locale: () => this.host.getLocale?.(),
+        onRequirementsChanged: () => this.host.reloadPluginsOnAllSessions?.(),
       })
     } catch (error) {
       this.host.trace('providerMods.boot_failed', {

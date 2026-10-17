@@ -64,6 +64,12 @@ export const MODS_ACTION_SCOPES = {
    *  `.focus` / `.scroll`). The page's own clipboard, focus and windows —
    *  `control`, as a press on an element a mod drew is. */
   pageAnswer: 'control',
+  /** The whole `mods/contributions` state, once — what the topic's
+   *  snapshot carries. Manifest facts only; `observe`. */
+  contributions: 'observe',
+  /** A press on a plugin's topbar item: runs that plugin's command in the
+   *  named session, as typing it in that session's box does — `control`. */
+  pressTopbar: 'control',
 } as const satisfies Record<string, ScopeMode>
 export type ModsAction = keyof typeof MODS_ACTION_SCOPES
 

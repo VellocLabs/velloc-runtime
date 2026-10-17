@@ -314,6 +314,11 @@ export class SharedWorkerSessionManager {
       this.applyAgentSettingsToAllSessions(config),
     reloadPluginsOnAllSessions: () => this.reloadPluginsOnAllSessions(),
     reloadModsOnAllSessions: () => this.reloadModsOnAllSessions(),
+    submitToSession: (sessionId, payload) => {
+      if (!this.sessions.has(sessionId) || !this.runtimeSessionSurface) return false
+      this.runtimeSessionSurface.submit(sessionId, payload)
+      return true
+    },
     runtimeVersion: `interface-${NEXUS_INTERFACE_VERSION}`,
     resolveHomeDir: () => this.storageCoordinator.resolveHomeDir(),
     // A client started viewing a session: it needs that session's full status,
@@ -911,6 +916,7 @@ export class SharedWorkerSessionManager {
       createBridgeRequestId: () => this.generateBridgeRequestId(),
       getHomeDir: () => this.homeDir,
       getLocale: () => this.hostEnvironment?.locale ?? this.lastInitTemplate?.locale,
+      reloadPluginsOnAllSessions: () => this.reloadPluginsOnAllSessions(),
       getHostEnvironment: () => this.hostEnvironment,
       getHostManifest: () =>
         this.hostEnvironment?.hostManifest ?? this.lastInitTemplate?.hostManifest ?? null,

@@ -215,8 +215,7 @@ export const BETA_TEMPLATE_FILE = 'template-beta.md'
 // the retired `-<provider>` suffixes (`-anthropic`, `-openai`, …) are not
 // either — prompt prose varies by model profile, never by provider. Every other suffix is rejected loudly rather than silently filed as an
 // unreferenced holder named `foo-bar`: for the bundled tree that fails the
-// vite build; for a `?template=local` overlay the caller catches it and falls
-// back to the bundled type (`createAgentRuntime`).
+// vite build; for a plugin's template the session does not start.
 export const LEAN_SUFFIX = 'lean'
 
 // `intro.md` → { name:'intro', profile:'' }

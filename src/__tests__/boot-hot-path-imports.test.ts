@@ -75,3 +75,27 @@ describe('shell chunk', () => {
     expect(source).not.toContain('virtual:bundled-template-registry')
   })
 })
+
+describe('plugin UI contributions (F-25)', () => {
+  const MOD_ICON = join(SRC, 'browser', 'webview', 'mods', 'ModIcon.tsx')
+  const CONTRIBUTIONS_HOST = join(SRC, 'mods', 'ui', 'contributionsHost.ts')
+  const PLUGIN_TEMPLATE_SESSION = join(SRC, 'mods', 'ui', 'pluginTemplateSession.ts')
+  const entryClosure = staticClosure([ENTRY])
+  const shellClosure = staticClosure([SHELL])
+
+  it.each([MOD_ICON, CONTRIBUTIONS_HOST, PLUGIN_TEMPLATE_SESSION])('keeps %s off the entry and shell graphs', file => {
+    for (const [from, closure] of [[ENTRY, entryClosure], [SHELL, shellClosure]] as const) {
+      expect(
+        closure.has(file),
+        `${rel(file)} is reachable from ${rel(from)} through STATIC imports: the bundled launchers `
+        + 'would wait on plugin code. Chain: ' + staticImportPath(from, file).join(' -> '),
+      ).toBe(false)
+    }
+  })
+
+  it('loads the plugin icon module with import() once a contribution arrives', () => {
+    expect(stripComments(read(join(SRC, 'browser', 'webview', 'mods', 'modContributionsView.ts')))).toContain(
+      "import('./ModIcon')",
+    )
+  })
+})

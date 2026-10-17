@@ -19,7 +19,8 @@ import { FORCED_FOLDER_TEMPLATE_TYPE } from '../../utils/conversationStoragePath
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { useT } from './i18n'
+import { useLocale, useT } from './i18n'
+import { useModContributions } from './mods/modContributionsView'
 import { buildProjectMenuEntries } from './projectMenu'
 import { buildProjectTree, type ProjectNode } from './projectTree'
 import {
@@ -151,9 +152,10 @@ export function ProjectSection({
   // Agent launcher carries `type: undefined` on purpose (it doubles as "New
   // Thread"), so filtering on truthiness would drop Agent from the project
   // menu entirely. `launcherTemplateType` resolves it back to 'agent'.
+  const contributions = useModContributions()
   const projectLaunchers = useMemo(
     () => filterLaunchers(getThreadLaunchers(), 'projectMenu'),
-    [],
+    [contributions],
   )
 
   return (
@@ -278,6 +280,7 @@ function ProjectRow({
   onEditingChange,
 }: ProjectRowProps) {
   const t = useT()
+  const locale = useLocale()
   const FolderGlyph = expanded ? FolderOpenIcon : FolderIcon
   // Tracked so the hover actions stay on screen while the ⋯ menu is open. The
   // menu is portal'd, so moving the pointer from the trigger onto a menu item
@@ -441,7 +444,7 @@ function ProjectRow({
                           className="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-start text-body outline-none hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted"
                         >
                           <Icon className="size-4" />
-                          {launcherTitle(launcher, t)}
+                          {launcherTitle(launcher, t, locale)}
                         </button>
                       </DropdownMenuPrimitive.Item>
                     )

@@ -80,6 +80,8 @@ export type BrowserSessionMetadata = Record<string, unknown> & {
   previewText?: string
   customTitle?: string
   templateType?: string
+  /** A plugin type's install identifier at creation (F-25); a resume under another install is refused. */
+  templateOwner?: string
   projectRoot?: string
   messageCount?: number
   leafUuid?: string | null

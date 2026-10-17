@@ -87,7 +87,14 @@ import {
   endRoutineFireTurn,
 } from '../../routines/routineTurnScope'
 import { resolveBundledSkillBody } from '../../skillLibrary/builtinSkillBody'
+import { topbarCommandPrompt } from '../../mods/ui/topbarCommand'
 import { isTeammateSessionId } from '../../utils/sidechainStoragePaths'
+
+/** The code a failed init reports: a plugin template's own (F-25), else `worker_init_failed`. */
+function initFailureCode(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code
+  return typeof code === 'string' && code.startsWith('plugin_template_') ? code : 'worker_init_failed'
+}
 
 /** How long a session sits idle before it lets go of its tool payloads. */
 export const IDLE_PAYLOAD_RELEASE_MS = 5 * 60_000
@@ -555,7 +562,7 @@ export class AgentRuntimeWorker {
     this.initPromise = initRun.catch(async error => {
       if (!this.isCurrentScope(scope)) return
       this.emitError(
-        'worker_init_failed',
+        initFailureCode(error),
         error instanceof Error ? error.message : String(error),
       )
       await this.disposeRuntimeScope('init_failed').catch(() => {})
@@ -1731,7 +1738,26 @@ export class AgentRuntimeWorker {
   private handleSubmitMessage(
     message: Extract<AgentWorkerInboundMessage, { type: 'worker.submitMessage' }>,
   ): void {
-    this.turns.submitUserMessage(message)
+    const request = message.payload.pluginCommand
+    if (!request) {
+      this.turns.submitUserMessage(message)
+      return
+    }
+    void this.waitForInit().then(() => {
+      const runtime = this.runtime
+      const prompt = runtime
+        ? topbarCommandPrompt(request, {
+            modCommands: runtime.engine.listModCommands?.() ?? [],
+            promptCommands: runtime.options.commands ?? [],
+          })
+        : undefined
+      if (prompt === undefined) {
+        this.emitError('topbar_command_unknown', `The plugin ${request.plugin} offers no command ${request.command}.`)
+        return
+      }
+      const { pluginCommand: _request, ...payload } = message.payload
+      this.turns.submitUserMessage({ ...message, payload: { ...payload, prompt, displayPrompt: prompt, delivery: 'next' } })
+    })
   }
 
   enqueueSubmit(

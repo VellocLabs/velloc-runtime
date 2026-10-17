@@ -66,9 +66,6 @@ export type BrowserRuntimeOptions = {
   appendSystemPrompt?: string
   /** Per-session agent-template type (e.g. 'chat'); defaults to 'chat'. */
   templateType?: string
-  /** 'local' ⇒ lazy-load this type from the local `.velloc/template/` folder
-   *  (host-gated via `?template=local`); else bundled only. */
-  templateSource?: 'local'
   userSpecifiedProviderId?: string
   userSpecifiedModel?: string
   /** Teammate identity, forwarded to the tool context (see `toolkit/toolContract.ts`). */

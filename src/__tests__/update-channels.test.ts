@@ -118,7 +118,7 @@ describe('currentTemplateChannel — which -beta.md files a realm uses', () => {
       withRealm({ origin: 'http://localhost:5173', search: '?channel=beta' }, currentTemplateChannel),
     ).toBe('beta')
     expect(
-      withRealm({ origin: 'http://localhost:5173', search: '?template=local&channel=beta' }, currentTemplateChannel),
+      withRealm({ origin: 'http://localhost:5173', search: '?templateType=code&channel=beta' }, currentTemplateChannel),
     ).toBe('beta')
     // An unrecognised preview previews nothing.
     expect(

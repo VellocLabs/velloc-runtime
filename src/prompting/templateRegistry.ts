@@ -1,12 +1,13 @@
 // Per-session agent templates: the LIVE registry and getters, over data
 // parsed at build time (`virtual:bundled-template-registry`); the `yaml`
-// parsers load only for `?template=local`. Files: `shared_includes/<name>.md`
+// parsers load only for a plugin's template. Files: `shared_includes/<name>.md`
 // (global holders), `<type>/template.md` (manifest), `<type>/includes/` (type
 // holders); `-lean` marks the LEAN rendering. Manifest bodies list
 // `!name` holders, `$name` dynamics and literal text.
 
 import { createBundledRegistry } from 'virtual:bundled-template-registry'
 import { expandGroups, isToolGroup, TOOL_GROUPS } from '../toolkit/builtin/toolGroups'
+import { isPluginTemplateId } from '../mods/ui/uiManifest'
 import type {
   HolderFile,
   RegistryData,
@@ -29,9 +30,6 @@ import type {
 import type { PromptProfile } from './promptProfile'
 import type { UpdateChannel } from '../branding/updateChannels'
 import {
-  replaceLauncherCatalog,
-  resetTemplateCatalogForTest,
-  setLocalWelcome,
   setTemplateChannelForTest,
   templateChannel,
 } from './templateCatalog'
@@ -45,24 +43,20 @@ export {
   getTemplateIcon,
   getTemplateTitle,
   getWelcome,
-  isTypeListedInBundledCatalog,
   type TemplateIcon,
 } from './templateCatalog'
 
-// The LIVE registry. Starts as a fresh clone of the build-time bundled set.
-// The maps are mutated in place by `registerLocalType`
-// (only when the host signalled `template=local`). The getters below close
-// over these bindings.
+// The LIVE registry: the build-time bundled set, plus the plugin types
+// `registerPluginType` adds. The getters below close over these bindings.
 let {
   sharedHolders,
   typeHolders,
   templates,
   betaTemplates,
 } = createBundledRegistry()
-// Types loaded from the LOCAL folder (`registerLocalType`). A local type may
-// reuse a bundled holder by its globally-unique (type-prefixed) name; bundled
-// types keep the no-cross-type-borrow invariant (this gate).
-const localTypes = new Set<string>()
+// Plugin types (`<plugin>:<key>`, F-25). One may reuse a bundled holder by
+// its globally-unique (type-prefixed) name; bundled types never borrow.
+const pluginTypes = new Set<string>()
 
 /**
  * A type's manifest for the current channel: on beta its `template-beta.md`
@@ -103,11 +97,11 @@ export function getHolderProse(
   const own =
     pick(opts.type ? typeHolders.get(opts.type) : undefined) ?? pick(sharedHolders)
   if (own !== undefined) return own
-  // A LOCAL type may reuse a bundled holder by its globally-unique (type-
-  // prefixed) name — e.g. a local template that references `!agent_intro`.
-  // Bundled types keep the no-cross-type-borrow invariant (the localTypes gate).
-  if (opts.type && localTypes.has(opts.type)) {
-    for (const files of typeHolders.values()) {
+  // A plugin type may reuse a bundled holder by its globally-unique (type-
+  // prefixed) name, e.g. `!agent_intro`; never another plugin type's.
+  if (opts.type && pluginTypes.has(opts.type)) {
+    for (const [type, files] of typeHolders) {
+      if (pluginTypes.has(type)) continue
       const hit = pick(files)
       if (hit !== undefined) return hit
     }
@@ -116,60 +110,38 @@ export function getHolderProse(
 }
 
 /**
- * Overlay a local catalog (REPLACE): a non-empty `types:` list becomes the
- * catalog on both channels; empty or unparsable is a no-op. Called only when
- * the host signalled `template=local`.
+ * Register a plugin's type from its files (`<type>/template.md`, optional
+ * `<type>/template-beta.md`, `<type>/includes/*.md`), replacing what an
+ * earlier call registered for it. Security: a type without `:` is refused, so
+ * a plugin can never replace a bundled type; a manifest that does not parse
+ * throws, and the session does not start.
  */
-export async function applyLocalCatalog(indexMd: string): Promise<void> {
-  const { parseLauncherCatalog } = await import('./templateParsing')
-  const local = parseLauncherCatalog(indexMd)
-  if (local.length === 0) return
-  replaceLauncherCatalog(local)
-}
-
-/**
- * Register a LOCAL type's files, overriding a bundled type of that name on
- * both channels (no local `template-beta.md` drops the bundled one), and mark
- * it local. Idempotent; local `shared_includes` are not supported.
- */
-export async function registerLocalType(
+export async function registerPluginType(
   type: string,
   files: Iterable<readonly [string, string]>,
 ): Promise<void> {
+  if (!isPluginTemplateId(type)) throw new Error(`"${type}" is not a plugin template type`)
   const { buildRegistry } = await import('./templateParsing')
   const built = buildRegistry(files)
   const tmpl = built.templates.get(type)
+  if (!tmpl) throw new Error(`the plugin template "${type}" has no template.md`)
+  templates.set(type, tmpl)
   const betaTmpl = built.betaTemplates.get(type)
-  if (tmpl) templates.set(type, tmpl)
   if (betaTmpl) betaTemplates.set(type, betaTmpl)
-  else if (tmpl) betaTemplates.delete(type)
-  const holders = built.typeHolders.get(type)
-  if (holders) typeHolders.set(type, holders)
-  localTypes.add(type)
+  else betaTemplates.delete(type)
+  typeHolders.set(type, built.typeHolders.get(type) ?? [])
+  pluginTypes.add(type)
 }
 
-/** Register/override a local type's welcome page (from a `welcome[-locale].md`).
- *  `locale` is '' for the default `welcome.md`. `async`: see `applyLocalCatalog`. */
-export async function applyLocalWelcome(
-  type: string,
-  locale: string,
-  raw: string,
-): Promise<void> {
-  const { parseWelcome } = await import('./templateParsing')
-  setLocalWelcome(type, locale, parseWelcome(raw))
-}
-
-/** Test-only: undo all local overlays (catalog, types, holders, welcome),
- *  restoring the bundled registry so overlay tests don't leak. */
-export function __resetLocalOverlayForTest(): void {
+/** Test-only: drop every plugin type, restoring the bundled registry. */
+export function __resetPluginTypesForTest(): void {
   ;({
     sharedHolders,
     typeHolders,
     templates,
     betaTemplates,
   } = createBundledRegistry())
-  resetTemplateCatalogForTest()
-  localTypes.clear()
+  pluginTypes.clear()
 }
 
 /** Test-only: pin the channel the registry serves (`null` = read the realm). */

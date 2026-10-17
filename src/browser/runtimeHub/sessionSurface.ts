@@ -377,6 +377,8 @@ export type SessionSurface = {
   port: MessagePort
   /** Forget a session's topics (after `session.removed`). */
   dropSessionTopics(sessionId: string): void
+  /** Submit to a session as its own `session.submitMessage` would. */
+  submit(sessionId: string, payload: Record<string, unknown>): void
 }
 
 export function installSessionSurface(
@@ -696,6 +698,9 @@ export function installSessionSurface(
         broker.dropTopic(topic.session(sessionId, kind))
       }
       attachedKinds.delete(sessionId)
+    },
+    submit: (sessionId, payload) => {
+      host.dispatch(port, { type: 'worker.submitMessage', sessionId, payload })
     },
   }
 }

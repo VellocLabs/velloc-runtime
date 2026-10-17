@@ -63,6 +63,8 @@ import { usePluginUpdates } from "../pluginUpdatesView";
 import { PluginAutoUpdateCard, PluginUpdateButton, PluginUpdateLine } from "./PluginUpdates";
 import type { ProviderModUpdateStatus } from "../../../../pluginHost/providerModUpdates";
 import { useCapabilities } from "../../useCan";
+import { useModContributions } from "../../mods/modContributionsView";
+import type { WaitingPlugin } from "../../../runtimeProtocol/modContributions";
 import {
   pluginsInstall,
   pluginsListBuiltin,
@@ -721,9 +723,41 @@ function InstalledCard({
   );
 }
 
+/** A plugin switched on whose `requires` is not met (F-14): what to set up,
+ *  and the way to the Models page. */
+function PluginWaitingLine({
+  name,
+  waiting,
+  onOpenModels,
+  t,
+}: {
+  name: string;
+  waiting: WaitingPlugin | undefined;
+  onOpenModels?: () => void;
+  t: TranslateFn;
+}) {
+  if (!waiting) return null;
+  const providers = waiting.providers.map(provider => provider.key).join(", ");
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm" data-testid={`plugin-needs-setup-${name}`}>
+      <span className="text-muted-foreground">
+        {waiting.unknown?.length
+          ? t("settings.plugins.needsNewerProduct")
+          : t("settings.plugins.needsSetup", { providers })}
+      </span>
+      {onOpenModels && waiting.providers.length > 0 && !waiting.unknown?.length ? (
+        <Button size="sm" variant="outline" data-testid={`plugin-open-models-${name}`} onClick={onOpenModels}>
+          {t("settings.plugins.openModels")}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function PluginsSection({
   runtimeConnection,
   revealPluginRequest,
+  onOpenModels,
 }: {
   /** The page's runtime connection, for the `mods/state` topic: what became
    *  of each plugin's hooks module in the running sessions. Absent (a mock
@@ -733,9 +767,13 @@ export function PluginsSection({
    *  mod's icon above the prompt. `seq` makes a repeat click land again; a
    *  request is acted on once, when its row exists (the lists load late). */
   revealPluginRequest?: { plugin: string; seq: number } | null;
+  /** Open Settings → Models (a plugin that waits for its provider). */
+  onOpenModels?: () => void;
 }) {
   const t = useT();
   const locale = useLocale();
+  const { waiting } = useModContributions();
+  const waitingOf = (owner: string): WaitingPlugin | undefined => waiting.find(entry => entry.owner === owner);
   const bridge = useSettingsBridge();
   const capabilities = useCapabilities();
   const canSeeMods = capabilities.can("mods", "list");
@@ -1448,6 +1486,12 @@ export function PluginsSection({
                 options={
                   <>
                     <PluginUpdateLine name={p.name} status={updateStatus} t={t} />
+                    <PluginWaitingLine
+                      name={p.name}
+                      waiting={p.enabled ? waitingOf(`${p.name}@${p.marketplace}`) : undefined}
+                      onOpenModels={onOpenModels}
+                      t={t}
+                    />
                     {options}
                     {(() => {
                       const identifier = `${p.name}@${p.marketplace}`;
@@ -1620,7 +1664,19 @@ export function PluginsSection({
                     : []
                 }
                 menuTestId={`${prefix}-menu-${row.name}`}
-                options={liveMod ? options : null}
+                options={
+                  <>
+                    {/* Only the person's own plugins contribute, so only the
+                        global group's are ever waiting. */}
+                    <PluginWaitingLine
+                      name={row.name}
+                      waiting={entry.enabled && group.kind === "global" ? waitingOf(`${row.name}@inline`) : undefined}
+                      onOpenModels={onOpenModels}
+                      t={t}
+                    />
+                    {liveMod ? options : null}
+                  </>
+                }
                 t={t}
               />
             );

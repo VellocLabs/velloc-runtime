@@ -526,14 +526,10 @@ describe('R7 guards', () => {
   })
 
   it('page code never reaches the host `fs` routes — files are `fsx`', () => {
-    // The exceptions are the two boot reads made on the bootstrap port BEFORE
-    // the runtime connection exists: the `?template=local` overlay and the
-    // `agent.log` / `agent.trace` flags from settings.json. They move when boot
-    // is restructured around the connection (phase-4 row).
-    const EXCEPTIONS = new Set([
-      join('browser', 'boot', 'loadLocalTemplates.ts'),
-      join('browser', 'boot', 'loadAgentTracerFlags.ts'),
-    ])
+    // The exception is the boot read made on the bootstrap port BEFORE the
+    // runtime connection exists: the `agent.log` / `agent.trace` flags from
+    // settings.json.
+    const EXCEPTIONS = new Set([join('browser', 'boot', 'loadAgentTracerFlags.ts')])
     // A bridge route built by hand, or an import of a helper that builds them.
     const REACHES_FS = [
       /createBridgeRoute\(\s*['"]fs['"]/,

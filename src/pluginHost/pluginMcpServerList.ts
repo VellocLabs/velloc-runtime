@@ -10,6 +10,8 @@ import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { getEnabledPluginsMap } from './enabledPlugins'
 import { loadEffectiveEnabledPlugins } from './enabledStore'
 import { gatherPlugins, loadMarketplaceInstallState } from './loadPlugins'
+import { splitByRequirements } from './pluginRequirements'
+import { runtimeProviderGate } from './providerGate'
 import type { ActivePlugin } from './pluginModel'
 
 export type PluginMcpServerListing = {
@@ -58,5 +60,6 @@ export async function listPluginMcpServers(deps: {
     enabledPluginIdentifiers: enabledIds,
     ...(enabledDirs ? { enabledPlugins: enabledDirs } : {}),
   })
-  return pluginMcpServerListings(scan.enabled)
+  // A plugin waiting on `requires` starts no server, so it lists none.
+  return pluginMcpServerListings(splitByRequirements(scan.enabled, runtimeProviderGate()).effective)
 }

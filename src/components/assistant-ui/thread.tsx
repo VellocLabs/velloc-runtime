@@ -131,6 +131,8 @@ import {
 } from "./composer-send-shortcuts";
 import { useT, useLocale, type TranslateFn } from "@/browser/webview/i18n";
 import { getWelcome } from "@/prompting/templateCatalog";
+import { isPluginTemplateId } from "@/mods/ui/uiManifest";
+import { pluginWelcome, useModContributions } from "@/browser/webview/mods/modContributionsView";
 import { visibleSuggestionCount } from "@/components/assistant-ui/welcomeSuggestionLayout";
 import { useMessageActionsContext } from "@/components/assistant-ui/message-actions-context";
 import { VirtualizedThreadMessages } from "@/components/assistant-ui/virtualized-thread-messages";
@@ -1322,7 +1324,8 @@ const ConversationSkeleton: FC = () => {
 };
 
 // Per-type welcome page — prompt-starter chips from
-// `src/template/<type>/welcome.md`, locale-resolved via `getWelcome`. Rendered
+// `src/template/<type>/welcome.md`, locale-resolved via `getWelcome` (a
+// plugin type's from its contribution, `pluginWelcome`). Rendered
 // in the empty viewport (see `Thread`). A type with no `welcome.md` (or an
 // empty `suggestions` list) renders nothing; defaults to `agent` (the boot
 // default type). Clicking a chip loads its `prompt` (or `title`) into the
@@ -1330,7 +1333,10 @@ const ConversationSkeleton: FC = () => {
 // "…sourced summary: "), so the chip fills rather than auto-sends.
 const ThreadSuggestions: FC<{ templateType?: string }> = ({ templateType }) => {
   const locale = useLocale();
-  const welcome = getWelcome(templateType ?? "agent", locale);
+  const contributions = useModContributions();
+  const welcome = isPluginTemplateId(templateType)
+    ? pluginWelcome(contributions, templateType, locale)
+    : getWelcome(templateType ?? "agent", locale);
   const rootRef = useRef<HTMLDivElement | null>(null);
   // Measured inline size of the welcome root + the window height. Width comes
   // from a ResizeObserver on the root; height from the WINDOW rather than any

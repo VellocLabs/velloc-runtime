@@ -6,7 +6,13 @@
 import type { ProviderModUpdateService } from '../../pluginHost/providerModUpdates'
 import type { BrowserBridgeTransport } from '../../browser/bridge/browserBridgeProtocol'
 import { providerWireBaseUrl } from '../../models/drivers/driverRegistry'
-import { isProviderSetUp, refreshRuntimeProviderModels } from '../../models/drivers/runtimeProviders'
+import {
+  isProviderSetUp,
+  onRuntimeProviderConfigsChanged,
+  refreshRuntimeProviderModels,
+} from '../../models/drivers/runtimeProviders'
+import { runtimeProviderGate } from '../../pluginHost/providerGate'
+import { getModUiContributionsHost } from '../ui/contributionsHost'
 import type { RuntimeConfig } from '../../runtime/interfaces/RuntimeConfig'
 import { getEnabledPluginsMap } from '../../pluginHost/enabledPlugins'
 import { loadEffectiveEnabledPlugins } from '../../pluginHost/enabledStore'
@@ -14,6 +20,7 @@ import { getPluginConfigsMap } from '../../pluginHost/pluginConfigs'
 import { gatherPlugins, loadMarketplaceInstallState } from '../../pluginHost/loadPlugins'
 import { traceLine } from '../../utils/debugLog'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
+import type { ActivePlugin } from '../../pluginHost/pluginModel'
 import { providerCodeCalls } from './providerCodeCalls'
 import { providerSettingValues } from './nouns/providerSettingsNoun'
 import type { ProviderManifest } from './providerManifest'
@@ -23,7 +30,12 @@ import {
   notifyProviderModUpdatesChanged,
 } from '../../pluginHost/providerModUpdateHolder'
 import { consentCovers } from '../../pluginHost/providerPluginConsent'
-import { getProviderModHost, isGlobalPluginSource, type ProviderPluginScan } from './providerModHost'
+import {
+  getProviderModHost,
+  isGlobalPluginSource,
+  onProviderModRegistered,
+  type ProviderPluginScan,
+} from './providerModHost'
 
 export type ProviderModBootDeps = {
   homeDir: string
@@ -34,6 +46,9 @@ export type ProviderModBootDeps = {
   /** The most recently attached window's locale. A manager with no window
    *  yet has none: `en`. No bridge call is made to find out. */
   locale?: () => string | undefined
+  /** Some plugin moved between in effect and waiting (`requires`): every
+   *  session's plugins load again. */
+  onRequirementsChanged?: () => void
 }
 
 let current: ProviderModBootDeps | undefined
@@ -48,7 +63,7 @@ const report = (line: string): void => {
 const NO_ENV = { getEnv: () => undefined } as unknown as RuntimeConfig
 
 /** Every plugin of the person, enabled and not. Exported for tests. */
-export async function scanProviderPlugins(deps: ProviderModBootDeps): Promise<ProviderPluginScan> {
+export async function scanProviderPlugins(deps: ProviderModBootDeps): Promise<ProviderPluginScan & { enabled: ActivePlugin[] }> {
   const { homeDir, fs } = deps
   const [{ installRegistry }, enabledIds, enabledDirs] = await Promise.all([
     loadMarketplaceInstallState({ homeDir }, fs),
@@ -157,6 +172,8 @@ export function providerUpdateScheduleRunning(): boolean {
 export function disposeProviderModBoot(): void {
   stopUpdateSchedule()
   configureProviderModUpdates(null)
+  stopGateWatch?.()
+  stopGateWatch = undefined
   current = undefined
 }
 
@@ -222,17 +239,54 @@ export async function bootProviderMods(deps: ProviderModBootDeps): Promise<void>
       await refreshRuntimeProviderModels(transport, providerId, { pickDefaults: true })
     },
   })
+  configureContributions(deps)
   await reloadProviderMods()
+}
+
+let stopGateWatch: (() => void) | undefined
+
+/** The templates and topbar items the same scan carries (F-25), and the
+ *  `requires` gate judged again whenever the provider state changes. */
+function configureContributions(deps: ProviderModBootDeps): void {
+  const contributions = getModUiContributionsHost()
+  contributions.configure({
+    readText: path => deps.fs.readFile(path, { encoding: 'utf-8' }),
+    listFiles: async path => {
+      try {
+        return (await deps.fs.readdir(path)).filter(entry => entry.isFile()).map(entry => entry.name)
+      } catch {
+        return []
+      }
+    },
+    gate: runtimeProviderGate,
+    report: line => {
+      traceLine(`[mods] ${line}`, { level: 'warn' })
+      console.warn(`[mods] ${line}`)
+    },
+  })
+  stopGateWatch?.()
+  const recheck = (): void => contributions.recheckGate()
+  const offConfigs = onRuntimeProviderConfigsChanged(recheck)
+  const offRegistered = onProviderModRegistered(() => {
+    recheck()
+  })
+  const offGate = contributions.onGateChanged(() => deps.onRequirementsChanged?.())
+  stopGateWatch = () => {
+    offConfigs()
+    offRegistered()
+    offGate()
+  }
 }
 
 /** A plugin was enabled, disabled, installed or updated: scan again. A no-op
  *  until the boot has run. Never rejects. */
 export async function reloadProviderMods(): Promise<void> {
   if (!current) return
-  let scan: ProviderPluginScan
+  let scan: Awaited<ReturnType<typeof scanProviderPlugins>>
   try {
     scan = await scanProviderPlugins(current)
     await getProviderModHost().sync(scan)
+    await getModUiContributionsHost().sync(scan)
   } catch (error) {
     report(`sync failed: ${error instanceof Error ? error.message : String(error)}`)
     return

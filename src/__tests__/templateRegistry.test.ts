@@ -6,11 +6,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PromptProfile } from '../prompting/promptProfile'
 import {
-  __resetLocalOverlayForTest,
+  __resetPluginTypesForTest,
   __setTemplateChannelForTest,
   __templateBundleForTest,
-  applyLocalCatalog,
-  applyLocalWelcome,
   applyTemplateToolAllowlist,
   getHolderProse,
   getLauncherCatalog,
@@ -20,7 +18,7 @@ import {
   getTemplateTitle,
   getWelcome,
   hasTemplate,
-  registerLocalType,
+  registerPluginType,
   resolveDeferrableSkills,
   templateAllowsMcp,
   templateWantsFileSnapshots,
@@ -795,103 +793,104 @@ describe('templateRegistry — welcome page (welcome.md)', () => {
   })
 })
 
-describe('templateRegistry — local type registration (registerLocalType)', () => {
-  afterEach(() => __resetLocalOverlayForTest())
+describe('templateRegistry — plugin types (registerPluginType)', () => {
+  afterEach(() => __resetPluginTypesForTest())
 
-  it('registers a local type (template + own holders), overriding any bundled type', async () => {
-    await registerLocalType('researcher', [
+  it('registers a plugin type with its own holders', async () => {
+    await registerPluginType('acme:research', [
       [
-        'researcher/template.md',
-        '---\ntype: researcher\ntools: [read]\n---\n\n## prompt\n!researcher_intro\n!agent_intro\n',
+        'acme:research/template.md',
+        '---\ntype: acme:research\ntools: [read]\n---\n\n## prompt\n!research_intro\n!agent_intro\n',
       ],
-      ['researcher/includes/researcher_intro.md', 'You are a researcher.'],
+      ['acme:research/includes/research_intro.md', 'You are a researcher.'],
     ])
-    const t = getTemplate('researcher')!
-    expect(t.config.type).toBe('researcher')
+    const t = getTemplate('acme:research')!
+    expect(t.config.tools).toEqual(['read'])
     expect(t.prompt.map(e => (e.kind === 'holder' ? e.name : e.kind))).toEqual([
-      'researcher_intro',
+      'research_intro',
       'agent_intro',
     ])
-    // The type's OWN holder resolves from its local file.
-    expect(getHolderProse('researcher_intro', { type: 'researcher' })).toBe(
-      'You are a researcher.',
-    )
+    expect(getHolderProse('research_intro', { type: 'acme:research' })).toBe('You are a researcher.')
   })
 
-  it('a local type REUSES a bundled holder by its globally-unique name', async () => {
-    await registerLocalType('researcher', [
-      ['researcher/template.md', '---\ntype: researcher\n---\n\n## prompt\n!agent_intro\n'],
+  it('a plugin type reuses a bundled holder by its globally-unique name', async () => {
+    await registerPluginType('acme:research', [
+      ['acme:research/template.md', '---\ntype: acme:research\n---\n\n## prompt\n!agent_intro\n'],
     ])
     const bundled = getHolderProse('agent_intro', { type: 'agent' })
     expect(bundled).toBeTruthy()
-    // No local `agent_intro` → the local type reuses the bundled prose.
-    expect(getHolderProse('agent_intro', { type: 'researcher' })).toBe(bundled)
+    expect(getHolderProse('agent_intro', { type: 'acme:research' })).toBe(bundled)
+  })
+
+  it("two plugins' holders never meet", async () => {
+    await registerPluginType('acme:review', [
+      ['acme:review/template.md', '---\ntype: acme:review\n---\n\n## prompt\n!intro\n'],
+      ['acme:review/includes/intro.md', 'ACME'],
+    ])
+    await registerPluginType('beta:review', [
+      ['beta:review/template.md', '---\ntype: beta:review\n---\n\n## prompt\n!intro\n'],
+    ])
+    expect(getHolderProse('intro', { type: 'acme:review' })).toBe('ACME')
+    expect(getHolderProse('intro', { type: 'beta:review' })).toBeUndefined()
+  })
+
+  it('refuses a type without a plugin namespace, so no bundled type is replaced', async () => {
+    const before = getTemplate('code')
+    await expect(
+      registerPluginType('code', [['code/template.md', '---\ntype: code\n---\n\n## prompt\nX\n']]),
+    ).rejects.toThrow(/not a plugin template type/)
+    expect(getTemplate('code')).toBe(before)
+  })
+
+  it('refuses a plugin type without template.md', async () => {
+    await expect(
+      registerPluginType('acme:variant', [['acme:variant/template-beta.md', '---\ntype: acme:variant\n---\n']]),
+    ).rejects.toThrow(/has no template.md/)
+    expect(hasTemplate('acme:variant')).toBe(false)
   })
 
   it('a holder file with any suffix other than -lean is rejected loudly (no silent orphan)', async () => {
-    // `-standard` (the base file IS standard) and the retired provider
-    // suffixes must not be filed as unreferenced holders named `x-standard` /
-    // `x-anthropic` — the registry build throws so the mistake is visible.
-    // (`createAgentRuntime` catches this for a local overlay and falls back
-    // to the bundled type; the bundled tree fails the vite build.)
-    for (const bad of ['researcher_intro-standard.md', 'researcher_intro-anthropic.md']) {
+    for (const bad of ['research_intro-standard.md', 'research_intro-strict.md']) {
       await expect(
-        registerLocalType('researcher', [
-          ['researcher/template.md', '---\ntype: researcher\n---\n\n## prompt\n!researcher_intro\n'],
-          [`researcher/includes/${bad}`, 'X'],
+        registerPluginType('acme:research', [
+          ['acme:research/template.md', '---\ntype: acme:research\n---\n\n## prompt\n!research_intro\n'],
+          [`acme:research/includes/${bad}`, 'X'],
         ]),
         bad,
       ).rejects.toThrow(/is not a variant suffix/)
     }
-    // `-lean` is the one accepted suffix.
-    await registerLocalType('researcher', [
-      ['researcher/template.md', '---\ntype: researcher\n---\n\n## prompt\n!researcher_intro\n'],
-      ['researcher/includes/researcher_intro.md', 'STANDARD'],
-      ['researcher/includes/researcher_intro-lean.md', 'LEAN'],
+    await registerPluginType('acme:research', [
+      ['acme:research/template.md', '---\ntype: acme:research\n---\n\n## prompt\n!research_intro\n'],
+      ['acme:research/includes/research_intro.md', 'STANDARD'],
+      ['acme:research/includes/research_intro-lean.md', 'LEAN'],
     ])
-    expect(getHolderProse('researcher_intro', { type: 'researcher' })).toBe('STANDARD')
-    expect(getHolderProse('researcher_intro', { type: 'researcher', profile: 'lean' })).toBe('LEAN')
+    expect(getHolderProse('research_intro', { type: 'acme:research' })).toBe('STANDARD')
+    expect(getHolderProse('research_intro', { type: 'acme:research', profile: 'lean' })).toBe('LEAN')
   })
 
-  it('cross-type reuse is GATED to local types — a bundled type cannot borrow', () => {
-    // `code` is bundled (never registered local) → still cannot borrow agent's.
+  it("a bundled type cannot borrow another type's holder", () => {
     expect(getHolderProse('agent_intro', { type: 'code' })).toBeUndefined()
   })
 
-  it('applyLocalWelcome registers a local type welcome page', async () => {
-    await applyLocalWelcome(
-      'researcher',
-      '',
-      '---\ngreeting: Research time\nsuggestions:\n  - title: Find papers\n---\n',
-    )
-    const w = getWelcome('researcher')!
-    expect(w.greeting).toBe('Research time')
-    expect(w.suggestions[0]?.title).toBe('Find papers')
-  })
-
-  it('getTemplateIcon: only an SVG data URI is accepted (others ignored); no icon files', async () => {
+  it('catalog icons: only an SVG data URI is accepted as `icon`; no icon files', () => {
     const svg = 'data:image/svg+xml;base64,PHN2Zy8+'
-    await applyLocalCatalog(
-      `---\ntypes:\n  - type: mytype\n    icon: '${svg}'\n  - type: bare\n---\n`,
-    )
-    expect(getTemplateIcon('mytype')).toEqual({ kind: 'url', src: svg })
-    // A type with neither `icon` nor `icon_lucide` → undefined (no file fallback).
-    expect(getTemplateIcon('bare')).toBeUndefined()
-
-    // A non-SVG-data-URI `icon` is IGNORED (strict validation) → it falls through
-    // to `icon_lucide` (or undefined). Guards arbitrary URLs / non-SVG data.
-    await applyLocalCatalog(
+    const [mine, bare] = parseLauncherCatalog(`---\ntypes:\n  - type: mytype\n    icon: '${svg}'\n  - type: bare\n---\n`)
+    expect(mine!.icon).toBe(svg)
+    expect(bare!.icon).toBeUndefined()
+    expect(bare!.iconLucide).toBeUndefined()
+    const [http, png] = parseLauncherCatalog(
       "---\ntypes:\n  - type: httptype\n    icon: 'https://cdn.example/icon.svg'\n    icon_lucide: bot\n  - type: pngtype\n    icon: 'data:image/png;base64,AAAA'\n---\n",
     )
-    expect(getTemplateIcon('httptype')).toEqual({ kind: 'lucide', name: 'bot' })
-    expect(getTemplateIcon('pngtype')).toBeUndefined()
+    expect(http!.icon).toBeUndefined()
+    expect(http!.iconLucide).toBe('bot')
+    expect(png!.icon).toBeUndefined()
   })
 })
 
 describe('templateRegistry — beta variants (index-beta.md, template-beta.md)', () => {
   afterEach(() => {
     __setTemplateChannelForTest(null)
-    __resetLocalOverlayForTest()
+    __resetPluginTypesForTest()
   })
 
   const manifest = (type: string, tools: string) =>
@@ -951,14 +950,14 @@ describe('templateRegistry — beta variants (index-beta.md, template-beta.md)',
   })
 
   it('getTemplate prefers template-beta.md on beta and template.md on stable', async () => {
-    await registerLocalType('variant', [
-      ['variant/template.md', manifest('variant', 'read')],
-      ['variant/template-beta.md', manifest('variant', 'read, shell')],
+    await registerPluginType('acme:variant', [
+      ['acme:variant/template.md', manifest('acme:variant', 'read')],
+      ['acme:variant/template-beta.md', manifest('acme:variant', 'read, shell')],
     ])
     __setTemplateChannelForTest('stable')
-    expect(getTemplate('variant')!.config.tools).toEqual(['read'])
+    expect(getTemplate('acme:variant')!.config.tools).toEqual(['read'])
     __setTemplateChannelForTest('beta')
-    expect(getTemplate('variant')!.config.tools).toEqual(['read', 'shell'])
+    expect(getTemplate('acme:variant')!.config.tools).toEqual(['read', 'shell'])
   })
 
   it('no bundled type ships a beta manifest: beta serves every template.md as-is', () => {
@@ -988,36 +987,14 @@ describe('templateRegistry — beta variants (index-beta.md, template-beta.md)',
     expect(holders).not.toContain('code_supershell_tools')
   })
 
-  it('a type with ONLY template-beta.md exists on beta and nowhere else', async () => {
-    await registerLocalType('beta_only', [
-      ['beta_only/template-beta.md', manifest('beta_only', 'read')],
+  it('a plugin template.md with no beta manifest replaces the beta one too', async () => {
+    await registerPluginType('acme:variant', [
+      ['acme:variant/template.md', manifest('acme:variant', 'read')],
+      ['acme:variant/template-beta.md', manifest('acme:variant', 'read, shell')],
     ])
-    __setTemplateChannelForTest('stable')
-    expect(hasTemplate('beta_only')).toBe(false)
-    expect(getTemplate('beta_only')).toBeUndefined()
+    await registerPluginType('acme:variant', [['acme:variant/template.md', manifest('acme:variant', 'webfetch')]])
     __setTemplateChannelForTest('beta')
-    expect(hasTemplate('beta_only')).toBe(true)
-  })
-
-  it('a local template.md with no local beta manifest replaces the beta one too', async () => {
-    // Otherwise a beta runtime would keep running the previously registered
-    // (bundled) beta manifest and never show the local file.
-    await registerLocalType('variant', [
-      ['variant/template.md', manifest('variant', 'read')],
-      ['variant/template-beta.md', manifest('variant', 'read, shell')],
-    ])
-    await registerLocalType('variant', [['variant/template.md', manifest('variant', 'webfetch')]])
-    __setTemplateChannelForTest('beta')
-    expect(getTemplate('variant')!.config.tools).toEqual(['webfetch'])
-  })
-
-  it('a local catalog replaces the bundled index-beta.md on beta as well', async () => {
-    __setTemplateChannelForTest('beta')
-    await applyLocalCatalog('---\ntypes:\n  - type: researcher\n    title: Researcher\n---\n')
-    expect(getLauncherCatalog().map(m => m.type)).toEqual(['researcher'])
-    expect(getLauncherMeta('researcher')!.title).toBe('Researcher')
-    __setTemplateChannelForTest('stable')
-    expect(getLauncherCatalog().map(m => m.type)).toEqual(['researcher'])
+    expect(getTemplate('acme:variant')!.config.tools).toEqual(['webfetch'])
   })
 })
 

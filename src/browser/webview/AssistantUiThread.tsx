@@ -534,6 +534,10 @@ export function getConversationTitle(state: BrowserRuntimeClientState): string {
  */
 const RUNTIME_ERROR_MESSAGE_KEYS: Partial<Record<string, Parameters<TranslateFn>[0]>> = {
   runtime_connection_failed: 'thread.runtimeConnectionFailed',
+  plugin_template_absent: 'thread.pluginTemplateAbsent',
+  plugin_template_waiting: 'thread.pluginTemplateWaiting',
+  plugin_template_owner: 'thread.pluginTemplateOwner',
+  topbar_command_unknown: 'thread.topbarCommandUnknown',
 }
 
 /**

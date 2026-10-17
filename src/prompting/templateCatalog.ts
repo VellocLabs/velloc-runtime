@@ -2,9 +2,8 @@
 // launcher list (titles, icons) and each type's welcome page. Backed by
 // `virtual:bundled-template-catalog`, which carries only these, so the shell
 // does not ship the template bodies; `templateRegistry.ts` owns those and
-// re-exports these getters. Local overlays (`?template=local`) replace or
-// extend this data through `replaceLauncherCatalog` / `setLocalWelcome`,
-// called by the registry's `applyLocalCatalog` / `applyLocalWelcome`.
+// re-exports these getters. Plugin types' launchers come from the runtime
+// (`mods/contributions`), not from here.
 import { createBundledCatalog } from 'virtual:bundled-template-catalog'
 import type { LauncherMeta, WelcomeContent } from './templateParsing'
 import {
@@ -12,11 +11,8 @@ import {
   type UpdateChannel,
 } from '../branding/updateChannels'
 
-let { launcherCatalog, launcherByType, betaLauncherCatalog, welcomeByType } =
+const { launcherCatalog, launcherByType, betaLauncherCatalog, welcomeByType } =
   createBundledCatalog()
-// The BUNDLED launcher catalogs, kept when a local `index.md` replaces the live
-// ones. Read by `isTypeListedInBundledCatalog`.
-let bundledLaunchers = { launcherByType, betaLauncherCatalog }
 
 // Test-only pin for the channel; `null` reads the realm.
 let channelForTest: UpdateChannel | null = null
@@ -89,20 +85,6 @@ export function getTemplateIcon(type: string): TemplateIcon | undefined {
 }
 
 /**
- * Whether the current channel's BUNDLED catalog lists `type` — whatever a
- * local `index.md` overlay did to the live one. A local catalog REPLACES the
- * launcher list, but the bundled types it leaves out are still registered and
- * their existing sessions still run.
- */
-export function isTypeListedInBundledCatalog(type: string): boolean {
-  const beta =
-    templateChannel() === 'beta' ? bundledLaunchers.betaLauncherCatalog : null
-  return beta
-    ? beta.some(meta => meta.type === type)
-    : bundledLaunchers.launcherByType.has(type)
-}
-
-/**
  * A type's welcome page for the active UI `locale` (e.g. 'zh'), from
  * `<type>/welcome-<locale>.md`, falling back to the default `<type>/welcome.md`.
  * undefined when the type ships no welcome.md.
@@ -116,36 +98,7 @@ export function getWelcome(
   return byLocale.get(locale) ?? byLocale.get('')
 }
 
-/**
- * Replace the live catalog on both channels with `local` (a parsed local
- * `index.md`). The bundled catalogs stay for `isTypeListedInBundledCatalog`.
- */
-export function replaceLauncherCatalog(local: LauncherMeta[]): void {
-  launcherCatalog = local
-  launcherByType = new Map(local.map(m => [m.type, m]))
-  betaLauncherCatalog = null
-}
-
-/** Register or override `type`'s welcome page for `locale` ('' = default). */
-export function setLocalWelcome(
-  type: string,
-  locale: string,
-  welcome: WelcomeContent,
-): void {
-  const byLocale = welcomeByType.get(type) ?? new Map<string, WelcomeContent>()
-  byLocale.set(locale, welcome)
-  welcomeByType.set(type, byLocale)
-}
-
-/** Test-only: restore the bundled catalog and welcome pages. */
-export function resetTemplateCatalogForTest(): void {
-  ;({ launcherCatalog, launcherByType, betaLauncherCatalog, welcomeByType } =
-    createBundledCatalog())
-  bundledLaunchers = { launcherByType, betaLauncherCatalog }
-}
-
-// `launcherByType` for the beta catalog, built on first use and rebuilt only
-// when the beta catalog array is replaced.
+// `launcherByType` for the beta catalog, built on first use.
 let betaByTypeFor: readonly LauncherMeta[] | null = null
 let betaByType = new Map<string, LauncherMeta>()
 

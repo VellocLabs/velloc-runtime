@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useT, type TranslateFn } from "../i18n";
 import { sessionDisplayTitle, type SessionListItem } from "../SessionRows";
 import { getLauncherForType } from "../threadLaunchers";
+import { useModContributions } from "../mods/modContributionsView";
 import {
   fitTabLabels,
   groupOverflowMenu,
@@ -102,6 +103,7 @@ export function SessionTabStrip(props: {
   maxWidth?: number;
 }) {
   const t = useT();
+  useModContributions();
   const containerRef = React.useRef<HTMLDivElement>(null);
   const tabRefs = React.useRef(new Map<string, HTMLButtonElement>());
   const labelRefs = React.useRef(new Map<string, HTMLSpanElement>());

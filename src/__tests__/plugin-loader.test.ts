@@ -876,3 +876,57 @@ describe('loadPluginContributions — duplicate MCP server names collide (limita
     expect(new Set(toolsServers.map(s => s.url)).size).toBe(2)
   })
 })
+
+describe('plugin templates and the requires gate (F-25, F-14)', () => {
+  beforeEach(() => resetProcessFs())
+
+  const ROOT = '/proj/.velloc/plugins/neb'
+  function nebTree(manifest: Record<string, unknown>): Record<string, FakeEntry> {
+    return {
+      '/proj/.velloc/plugins': { kind: 'dir' },
+      [ROOT]: { kind: 'dir' },
+      [`${ROOT}/.claude-plugin/plugin.json`]: { kind: 'file', content: JSON.stringify({ name: 'neb', version: '1', ...manifest }) },
+      [`${ROOT}/templates/review/template.md`]: { kind: 'file', content: '---\ntype: neb:review\n---\n\n## prompt\nX\n' },
+      [`${ROOT}/commands/build.md`]: { kind: 'file', content: '---\ndescription: Build\n---\nBuild.\n' },
+      [`${ROOT}/.mcp.json`]: { kind: 'file', content: JSON.stringify({ mcpServers: { srv: { type: 'http', url: 'https://x.test' } } }) },
+    }
+  }
+
+  it('resolves each template folder; one without template.md is reported, not offered', async () => {
+    installProcessFs(makeFakeFs(nebTree({ templates: { review: { title: 'Review' }, gone: { title: 'Gone' } } })))
+    const { plugin, errors } = await assemblePluginAt(ROOT, 'project:/proj', true, 'neb')
+    expect(plugin.templates).toEqual([
+      expect.objectContaining({ key: 'review', type: 'neb:review', dir: `${ROOT}/templates/review` }),
+    ])
+    expect(errors).toEqual([expect.objectContaining({ type: 'path-not-found', component: 'templates' })])
+  })
+
+  it('a plugin whose requires is not met loads no commands or MCP servers and is listed as waiting', async () => {
+    installProcessFs(makeFakeFs(nebTree({ requires: { providers: ['main'] } })))
+    const requirements = { loaded: true, isSetUp: () => true, owner: () => 'neb@inline' }
+    const result = await loadPluginContributions({
+      cwd: '/proj',
+      runtimeConfig: new BrowserRuntimeConfig({ env: {} }),
+      enabledPlugins: ['neb'],
+      requirements,
+    })
+    expect(result.mcpServers).toEqual([])
+    expect(result.pluginSkillDirs).toEqual([])
+    expect(result.plugins).toEqual([])
+    expect(result.waiting.map(entry => ({ plugin: entry.plugin.name, unmet: entry.unmet }))).toEqual([
+      { plugin: 'neb', unmet: [{ kind: 'provider', key: 'main' }] },
+    ])
+
+    resetProcessFs()
+    installProcessFs(makeFakeFs(nebTree({})))
+    const free = await loadPluginContributions({
+      cwd: '/proj',
+      runtimeConfig: new BrowserRuntimeConfig({ env: {} }),
+      enabledPlugins: ['neb'],
+      requirements,
+    })
+    expect(free.mcpServers.map(server => server.name)).toEqual(['srv'])
+    expect(free.pluginSkillDirs.map(dir => dir.pluginName)).toEqual(['neb'])
+    expect(free.waiting).toEqual([])
+  })
+})

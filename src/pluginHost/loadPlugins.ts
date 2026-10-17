@@ -18,6 +18,7 @@ import { parseHooksSettings } from '../lifecycleHooks/hookTypes'
 import { basenameRuntimePath, joinRuntimePath, normalizeRuntimePath } from '../utils/runtimePaths'
 import { resolveHookModulePaths } from './hookModules'
 import { resolveProviders } from '../mods/provider/providerManifest'
+import { modUiId } from '../mods/ui/uiManifest'
 import {
   getProjectPluginsRoot,
   getPluginManifestPath,
@@ -484,6 +485,22 @@ export async function assemblePluginAt(
       })
     }
     if (kept.length > 0) plugin.providers = kept
+  }
+
+  // Templates: each folder must hold a `template.md`; one that does not is
+  // reported and left out (the others stay).
+  if (manifest.templates) {
+    const kept: NonNullable<ActivePlugin['templates']> = []
+    for (const [key, decl] of Object.entries(manifest.templates)) {
+      const dir = joinRuntimePath(pluginPath, ...decl.path.replace(/^\.\//, '').split('/'))
+      const manifestPath = joinRuntimePath(dir, 'template.md')
+      if (await pathExists(fs, manifestPath)) {
+        kept.push({ key, type: modUiId(manifest.name, key), decl, dir })
+        continue
+      }
+      errors.push({ type: 'path-not-found', source, plugin: manifest.name, path: manifestPath, component: 'templates' })
+    }
+    if (kept.length > 0) plugin.templates = kept
   }
 
   // MCP servers: .mcp.json, then manifest.mcpServers (inline or paths).

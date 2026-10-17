@@ -5,6 +5,7 @@ import {
   FolderIcon,
   ListChecksIcon,
   MessageCircleIcon,
+  PuzzleIcon,
   ShieldCheckIcon,
   UsersIcon,
   type LucideIcon,
@@ -17,6 +18,14 @@ import {
   getTemplateTitle,
 } from '../../prompting/templateCatalog'
 import type { LauncherMeta } from '../../prompting/templateParsing'
+import { resolveLocalizedText } from '../../config/localizedText'
+import type {
+  ContributedTemplate,
+  ContributionText,
+  ModContributionsState,
+} from '../runtimeProtocol/modContributions'
+import { isPluginTemplateId, pluginOfTemplateId } from '../../mods/ui/uiManifest'
+import { getModContributions, loadedModIconModule } from './mods/modContributionsView'
 
 /** A launcher icon component — a lucide-react icon OR an <img> wrapper (for a
  *  template `icon` path / https URL). Both accept `className` for sizing, so
@@ -32,13 +41,21 @@ export type IconComponent = ComponentType<{ className?: string }>
 export type ThreadLauncher = {
   /** templateType for the new session; `undefined` = boot default. */
   type?: string
-  /** i18n key for the visible label. Optional: a LOCAL (on-disk) type has no
-   *  i18n key — its label comes from the `index.md` `title`/`title-i18n`. */
+  /** i18n key for the visible label. Optional: a catalog type without one
+   *  takes the `index.md` `title`/`title-i18n`; a plugin's, `plugin.title`. */
   titleKey?: MessageKey
   /** i18n key for a new session's placeholder title ("New {type}"), shown until
-   *  the session has a real title. Optional for local types (→ the catalog
-   *  title is used; see `launcherDefaultTitle`). */
+   *  the session has a real title. Optional (→ the title; see
+   *  `launcherDefaultTitle`). */
   defaultTitleKey?: MessageKey
+  /** A plugin's launcher (`<plugin>:<key>`, F-25): its own text. `available`
+   *  is false for a type no plugin in effect offers (a session's row only). */
+  plugin?: {
+    name: string
+    title: ContributionText
+    description?: ContributionText
+    available: boolean
+  }
   /** Icon shown before the title (launcher row AND each session row): a
    *  lucide-react component or an <img> wrapper (template `icon` url/path). */
   Icon: IconComponent
@@ -98,7 +115,7 @@ function iconForType(type: string, fallback: IconComponent): IconComponent {
 // Built-in launcher affordances by type: the e2e testId, the i18n title/
 // default-title keys, the boot-default `type: undefined` reuse (agent), and a
 // fallback icon. A catalog entry for one of these types reuses its affordance;
-// any other (LOCAL) type gets a generated testId + its title/icon from index.md.
+// any other catalog type gets a generated testId + its title/icon from index.md.
 interface BuiltinAffordance {
   type?: string
   titleKey: MessageKey
@@ -185,21 +202,89 @@ export const DEFAULT_LAUNCHER: ThreadLauncher = {
 }
 
 // Memoized derivation: rebuilt only when the catalog ARRAY IDENTITY changes
-// (once, if a `template=local` overlay replaced it at boot — the channel of a
-// realm is settled before the shell renders, a remote's included, so
-// `getLauncherCatalog` keeps returning one array), so the Icon components stay
-// stable across renders.
+// (the channel of a realm is settled before the shell renders, a remote's
+// included, so `getLauncherCatalog` keeps returning one array), so the Icon
+// components stay stable across renders.
 let cachedCatalog: readonly LauncherMeta[] | null = null
 let cachedLaunchers: ThreadLauncher[] = []
+// The bundled list plus the plugins', rebuilt when either changes.
+let mergedFor: { bundled: ThreadLauncher[]; state: ModContributionsState } | null = null
+let mergedLaunchers: ThreadLauncher[] = []
 
 /**
- * The launcher list, DERIVED from the `index.md` launcher catalog
- * (`getLauncherCatalog`) — so a boot overlay (a local `index.md` via
- * `template=local`) is reflected. Built-in types (agent/chat/code) keep their
- * testIds + the agent `type: undefined` boot-default; any other (local) type is
- * added with a generated testId and its title/icon from the catalog.
+ * The launcher list: the bundled `index.md` catalog first, synchronously,
+ * then the launchers the person's plugins contribute (`mods/contributions`),
+ * once the runtime delivered them. Readers that must redraw when plugins
+ * change call `useModContributions()`.
  */
 export function getThreadLaunchers(): ThreadLauncher[] {
+  const bundled = bundledThreadLaunchers()
+  const state = getModContributions()
+  if (state.templates.length === 0) return bundled
+  if (mergedFor?.bundled === bundled && mergedFor.state === state) return mergedLaunchers
+  mergedFor = { bundled, state }
+  mergedLaunchers = [...bundled, ...state.templates.map(template => pluginLauncher(template, state.icons))]
+  return mergedLaunchers
+}
+
+const PLACEMENT: Record<ContributedTemplate['launcher'], Pick<ThreadLauncher, 'launcherHidden' | 'launcherMenu'>> = {
+  both: {},
+  sidebar: { launcherMenu: false },
+  menu: { launcherHidden: 'sidebar' },
+  hidden: { launcherHidden: 'both' },
+}
+
+/** A stable test id for a plugin type: `launcher-<plugin>--<key>`. */
+export function pluginLauncherTestId(type: string): string {
+  return `launcher-${type.replace(':', '--')}`
+}
+
+function pluginIcon(template: Pick<ContributedTemplate, 'icon'>, icons: ModContributionsState['icons']): IconComponent {
+  const PluginIcon = ({ className }: { className?: string }) => {
+    const module = loadedModIconModule()
+    return module ? (
+      <module.ModIcon icon={template.icon} icons={icons} className={className} />
+    ) : (
+      <PuzzleIcon className={className} aria-hidden />
+    )
+  }
+  PluginIcon.displayName = 'PluginTemplateIcon'
+  return PluginIcon
+}
+
+function pluginLauncher(template: ContributedTemplate, icons: ModContributionsState['icons']): ThreadLauncher {
+  return {
+    type: template.type,
+    Icon: pluginIcon(template, icons),
+    testId: pluginLauncherTestId(template.type),
+    plugin: {
+      name: template.plugin,
+      title: template.title,
+      ...(template.description !== undefined ? { description: template.description } : {}),
+      available: true,
+    },
+    ...PLACEMENT[template.launcher],
+  }
+}
+
+// A session's type whose plugin is off or gone: the generic icon, the key as its title.
+const unavailable = new Map<string, ThreadLauncher>()
+function unavailablePluginLauncher(type: string): ThreadLauncher {
+  let launcher = unavailable.get(type)
+  if (!launcher) {
+    launcher = {
+      type,
+      Icon: PuzzleIcon,
+      testId: pluginLauncherTestId(type),
+      plugin: { name: pluginOfTemplateId(type), title: type.slice(type.indexOf(':') + 1), available: false },
+      launcherHidden: 'both',
+    }
+    unavailable.set(type, launcher)
+  }
+  return launcher
+}
+
+function bundledThreadLaunchers(): ThreadLauncher[] {
   const catalog = getLauncherCatalog()
   if (catalog === cachedCatalog) return cachedLaunchers
   cachedCatalog = catalog
@@ -241,11 +326,10 @@ export function launcherTemplateType(launcher: ThreadLauncher): string {
  */
 export function getLauncherForType(type: string | undefined): ThreadLauncher {
   const launchers = getThreadLaunchers()
-  return (
-    launchers.find(launcher => launcher.type === type) ??
-    launchers.find(launcher => launcher.type === undefined) ??
-    DEFAULT_LAUNCHER
-  )
+  const own = launchers.find(launcher => launcher.type === type)
+  if (own) return own
+  if (isPluginTemplateId(type)) return unavailablePluginLauncher(type)
+  return launchers.find(launcher => launcher.type === undefined) ?? DEFAULT_LAUNCHER
 }
 
 /**
@@ -255,7 +339,8 @@ export function getLauncherForType(type: string | undefined): ThreadLauncher {
  * message makes `t` echo the key, which we treat as "not found" so the literal
  * `title` fallback applies (matching the template-frontmatter contract).
  */
-export function launcherTitle(launcher: ThreadLauncher, t: TranslateFn): string {
+export function launcherTitle(launcher: ThreadLauncher, t: TranslateFn, locale?: string): string {
+  if (launcher.plugin) return resolveLocalizedText(launcher.plugin.title, locale)
   const translate = (key: string): string | undefined => {
     const value = t(key as MessageKey)
     return value === key ? undefined : value
@@ -264,19 +349,27 @@ export function launcherTitle(launcher: ThreadLauncher, t: TranslateFn): string 
   const title = getTemplateTitle(type, translate)
   if (title !== type) return title
   // No catalog title resolved → the launcher's own i18n key (built-in) or the
-  // bare type (a local type with neither a title nor a key — unusual).
+  // bare type (a catalog type with neither a title nor a key — unusual).
   return launcher.titleKey ? t(launcher.titleKey) : title
 }
 
 /**
  * A new session's placeholder title for `launcher` ("New {type}"). Built-in
- * launchers use their i18n `defaultTitleKey`; a local type (no key) falls back
- * to its catalog title (`index.md` `title`/`title-i18n`, else the bare type).
+ * launchers use their i18n `defaultTitleKey`; a plugin's, its own title; any
+ * other its catalog title (`index.md` `title`/`title-i18n`, else the bare type).
  */
 export function launcherDefaultTitle(
   launcher: ThreadLauncher,
   t: TranslateFn,
+  locale?: string,
 ): string {
   if (launcher.defaultTitleKey) return t(launcher.defaultTitleKey)
+  if (launcher.plugin) return resolveLocalizedText(launcher.plugin.title, locale)
   return getTemplateTitle(launcher.type ?? DEFAULT_TYPE)
+}
+
+/** The launcher's tooltip: its title, and for a plugin's the plugin that offers it. */
+export function launcherTooltip(launcher: ThreadLauncher, t: TranslateFn, locale?: string): string {
+  const title = launcherTitle(launcher, t, locale)
+  return launcher.plugin ? t('launcher.pluginTooltip', { title, plugin: launcher.plugin.name }) : title
 }

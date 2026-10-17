@@ -7,12 +7,14 @@ import {
 } from '@/components/assistant-ui/session-attention-dot'
 import { useCallback, useMemo, useState } from 'react'
 
-import { useT } from './i18n'
+import { useLocale, useT } from './i18n'
+import { useModContributions } from './mods/modContributionsView'
 import {
   filterLaunchers,
   getThreadLaunchers,
   getLauncherForType,
   launcherTitle,
+  launcherTooltip,
 } from './threadLaunchers'
 import {
   SessionRowList,
@@ -190,6 +192,8 @@ export function SessionListBody({
   onLaunchInProject,
 }: SessionListBodyProps) {
   const t = useT()
+  const locale = useLocale()
+  useModContributions()
   const hasMultiSession = sessions !== undefined
   const resolvedActiveSessionId = activeSessionId ?? sessionId
   const [recentsCollapsed, applyRecentsCollapsed] = useCollapsedSection(
@@ -263,6 +267,7 @@ export function SessionListBody({
                 key={launcher.testId}
                 variant="ghost"
                 data-testid={launcher.testId}
+                title={launcherTooltip(launcher, t, locale)}
                 className="h-9 w-full justify-start gap-2 rounded-lg px-3 text-sm hover:bg-muted"
                 onClick={() =>
                   launcher.type
@@ -273,7 +278,7 @@ export function SessionListBody({
                 {/* The Agent launcher (index 0, the primary action) gets a
                   larger icon than the other launchers. */}
                 <Icon className={index === 0 ? 'size-5' : 'size-4'} />
-                {launcherTitle(launcher, t)}
+                <span className="truncate">{launcherTitle(launcher, t, locale)}</span>
               </Button>
             )
           })}
@@ -420,6 +425,8 @@ function SidebarIconRail({
   onSwitchThread?: (sessionId: string) => void
 }) {
   const t = useT()
+  const locale = useLocale()
+  useModContributions()
   const resolvedActiveSessionId = activeSessionId ?? sessionId
   // The rail has no room for a "show more" button, so it shows the same first
   // page the expanded list opens on. Without a cap it would render one icon per
@@ -434,7 +441,7 @@ function SidebarIconRail({
         {/* Launcher icons (no labels; title/aria carry the name). */}
         {filterLaunchers(getThreadLaunchers()).map((launcher, index) => {
           const Icon = launcher.Icon
-          const label = launcherTitle(launcher, t)
+          const label = launcherTooltip(launcher, t, locale)
           return (
             <Button
               key={launcher.testId}
