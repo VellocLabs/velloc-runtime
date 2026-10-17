@@ -229,7 +229,9 @@ function translateContentParts(parts: HostList): HostList {
     const part = partValue
     const type = findString(part, 'type')
     if (type === 'text') {
-      result.push(textPart(findString(part, 'text') ?? ''))
+      const block = textPart(findString(part, 'text') ?? '')
+      if (findBool(part, 'cacheMark') === true) block.set('cache_control', ephemeralCacheControl())
+      result.push(block)
     } else if (type === 'image') {
       result.push(
         new Map<string, HostValue>([
@@ -351,8 +353,15 @@ function translateMessages(messages: HostList): { messages: HostList; systemProm
   return { messages: result, systemPrompt }
 }
 
+/** Whether a message part already carries a caller's breakpoint. */
+function hasCallerMark(messages: HostList): boolean {
+  return messages.some(
+    message => isHostDict(message) && (findList(message, 'content') ?? []).some(part => isHostDict(part) && part.has('cache_control')),
+  )
+}
+
 /** TranslateTools (anthropic_provider.cc:1272). */
-function translateTools(tools: HostList): HostList {
+function translateTools(tools: HostList, autoMark: boolean): HostList {
   const result: HostDict[] = []
   for (const toolValue of tools) {
     if (!isHostDict(toolValue)) continue
@@ -373,7 +382,7 @@ function translateTools(tools: HostList): HostList {
   }
   // :1330 — breakpoint on the last tool caches the whole tools[] prefix.
   const last = result[result.length - 1]
-  if (last) last.set('cache_control', ephemeralCacheControl())
+  if (last && autoMark) last.set('cache_control', ephemeralCacheControl())
   return result
 }
 
@@ -403,14 +412,18 @@ function buildMessagesBody(callOptions: HostDict, modelId: string): HostDict {
   body.set('model', findString(callOptions, 'model') ?? modelId)
 
   let systemPrompt = ''
+  // A request that places its own breakpoints gets those alone: the API
+  // refuses a fifth, and the caller chose where its prefix ends (F-25).
+  let autoMark = true
   const messageList = findList(callOptions, 'messages')
   if (messageList) {
     const translated = translateMessages(messageList)
     systemPrompt = translated.systemPrompt
     const messages = translated.messages
+    autoMark = !hasCallerMark(messages)
     // :912 — third breakpoint on the conversation tail.
     const lastMessage = messages[messages.length - 1]
-    if (isHostDict(lastMessage)) {
+    if (autoMark && isHostDict(lastMessage)) {
       const content = findList(lastMessage, 'content')
       const lastPart = content?.[content.length - 1]
       if (isHostDict(lastPart)) lastPart.set('cache_control', ephemeralCacheControl())
@@ -419,7 +432,7 @@ function buildMessagesBody(callOptions: HostDict, modelId: string): HostDict {
   }
   if (systemPrompt) {
     const block = textPart(systemPrompt)
-    block.set('cache_control', ephemeralCacheControl())
+    if (autoMark) block.set('cache_control', ephemeralCacheControl())
     body.set('system', [block])
   }
 
@@ -437,7 +450,7 @@ function buildMessagesBody(callOptions: HostDict, modelId: string): HostDict {
 
   const tools = findList(callOptions, 'tools')
   if (tools) {
-    const translated = translateTools(tools)
+    const translated = translateTools(tools, autoMark)
     if (translated.length > 0) body.set('tools', translated)
   }
   const choice = findDict(callOptions, 'toolChoice')

@@ -197,6 +197,34 @@ describe('anthropic-messages buildRequest', () => {
     expect(results[4].cache_control).toEqual({ type: 'ephemeral' })
   })
 
+  it("a caller's own breakpoints replace the automatic ones; a request with none keeps them", () => {
+    const tools = [{ type: 'function' as const, name: 't', parameters: { type: 'object' } }]
+    const marked = body({
+      systemPrompt: 'S',
+      tools,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'RULES', cache_control: { type: 'ephemeral' } },
+            { type: 'text', text: 'diff' },
+          ],
+        },
+      ],
+    })
+    expect(marked.messages[0].content).toEqual([
+      { type: 'text', text: 'RULES', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: 'diff' },
+    ])
+    expect(marked.system).toEqual([{ type: 'text', text: 'S' }])
+    expect(marked.tools[0]).not.toHaveProperty('cache_control')
+    const plain = body({ systemPrompt: 'S', tools, messages: [{ role: 'user', content: [{ type: 'text', text: 'RULES' }, { type: 'text', text: 'diff' }] }] })
+    expect(plain.messages[0].content[0]).not.toHaveProperty('cache_control')
+    expect(plain.messages[0].content[1].cache_control).toEqual({ type: 'ephemeral' })
+    expect(plain.system[0].cache_control).toEqual({ type: 'ephemeral' })
+    expect(plain.tools[0].cache_control).toEqual({ type: 'ephemeral' })
+  })
+
   it('translates tools: strict + sanitizer, input_examples, cache_control, tool_choice auto', () => {
     const b = body({
       messages: [{ role: 'user', content: 'x' }],

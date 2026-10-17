@@ -41,7 +41,7 @@ export class HostRequestError extends Error {
 export type HostRole = 'system' | 'user' | 'assistant' | 'tool'
 
 export type HostContentPart =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; cache?: true }
   | { type: 'thinking'; text: string; signature?: string }
   | { type: 'redacted_thinking' }
   | { type: 'image'; image: string; mimeType?: string }
@@ -276,7 +276,13 @@ function appendContentPart(value: HostValue, out: HostContentPart[]): void {
     case 'text':
       // FormatTextValue: a present-but-empty "text" becomes `""` (two quote
       // characters) — see appendFormattedText.
-      out.push({ type: 'text', text: formatTextValue(value.get('text')) })
+      // A caller's own breakpoint (`cache_control` on the part) rides as
+      // `cache`; the native host drops it and places its own.
+      out.push({
+        type: 'text',
+        text: formatTextValue(value.get('text')),
+        ...(isHostDict(value.get('cache_control')) ? { cache: true as const } : {}),
+      })
       return
     case 'thinking': {
       const signature = findNonEmptyString(value, 'signature')
@@ -569,9 +575,12 @@ function translateParts(
   const translated: HostList = []
   for (const part of parts) {
     switch (part.type) {
-      case 'text':
-        translated.push(textPart(part.text))
+      case 'text': {
+        const out = textPart(part.text)
+        if (part.cache) out.set('cacheMark', true)
+        translated.push(out)
         break
+      }
       case 'image': {
         if (!part.image) break
         const out: HostDict = new Map<string, HostValue>([

@@ -19,6 +19,7 @@ import {
   modelClassifyInput,
   modelCompleteInput,
   modelForkInput,
+  sendableBlocks,
   usageOf,
   zeroUsage,
   type ModModelRunner,
@@ -73,6 +74,34 @@ describe('the inputs', () => {
     expect(() => modelCompleteInput([{ model: 'm', prompt: 'p', timeoutMs: 1.5 }])).toThrow(/timeoutMs/)
   })
 
+  it('complete: prompt and system as blocks, joined with nothing between, the blocks kept beside', () => {
+    const blocks = [{ text: 'RULES\n', cache: true }, { text: 'diff' }]
+    expect(modelCompleteInput([{ model: 'm', prompt: blocks, system: [{ text: 'be ' }, { text: 'brief', cache: true }] }])).toEqual({
+      model: 'm',
+      prompt: 'RULES\ndiff',
+      promptBlocks: [{ text: 'RULES\n', cache: true }, { text: 'diff' }],
+      system: 'be brief',
+      systemBlocks: [{ text: 'be ' }, { text: 'brief', cache: true }],
+    })
+    // A hook's `e` passed down: the string with its blocks beside it.
+    expect(modelCompleteInput([{ model: 'm', prompt: 'RULES\ndiff', promptBlocks: blocks }])).toMatchObject({ prompt: 'RULES\ndiff', promptBlocks: blocks })
+    expect(modelCompleteInput([{ model: 'm', prompt: 'p' }])).not.toHaveProperty('promptBlocks')
+    for (const none of [null, false]) expect(modelCompleteInput([{ model: 'm', prompt: 'p', system: none }])).toEqual({ model: 'm', prompt: 'p' })
+    expect(() => modelCompleteInput([{ model: 'm', prompt: [{ text: 1 }] }])).toThrow('$.model.complete: request.prompt[0].text must be a string')
+    expect(() => modelCompleteInput([{ model: 'm', prompt: [{ text: 'a', cache: false }] }])).toThrow('request.prompt[0].cache must be true or left out')
+    expect(() => modelCompleteInput([{ model: 'm', prompt: 3 }])).toThrow('request.prompt must be a string or a list of { text, cache? }')
+    expect(() => modelCompleteInput([{ model: 'm', prompt: 'p', promptBlocks: 'x' }])).toThrow('request.promptBlocks must be')
+  })
+
+  it('the blocks sent: those that still open the prompt, marks kept; the rest one unmarked block', () => {
+    const blocks = [{ text: 'RULES', cache: true as const }, { text: ' and ' }, { text: 'diff', cache: true as const }]
+    expect(sendableBlocks('RULES and diff', blocks)).toEqual(blocks)
+    expect(sendableBlocks('RULES and diff' + ' NOTE', blocks)).toEqual([...blocks, { text: ' NOTE' }])
+    expect(sendableBlocks('RULES and patch', blocks)).toEqual([blocks[0], blocks[1], { text: 'patch' }])
+    expect(sendableBlocks('NEW RULES and diff', blocks)).toEqual([{ text: 'NEW RULES and diff' }])
+    expect(sendableBlocks('RULES', blocks)).toEqual([blocks[0]])
+  })
+
   it('classify and fork', () => {
     expect(modelClassifyInput(['t', ['a', 'b'], { model: 'x' }])).toEqual({ text: 't', labels: ['a', 'b'], options: { model: 'x' } })
     expect(modelClassifyInput(['t', ['a', 'b']])).toEqual({ text: 't', labels: ['a', 'b'] })
@@ -104,6 +133,16 @@ describe('modModelHost', () => {
     })
     const silent = modModelHost(fakeRunner(() => ({ kind: 'empty-reply', usage: USAGE })).runner)
     expect(await silent.complete({ model: 'm', prompt: 'p' }, {})).toEqual({ isAnswered: false, reason: 'empty-reply', usage: USAGE })
+  })
+
+  it("forwards the prompt's blocks as sent; a plain string sends none", async () => {
+    const { runner, asks } = fakeRunner()
+    const host = modModelHost(runner)
+    await host.complete({ model: 'm', prompt: 'RULES diff NOTE', promptBlocks: [{ text: 'RULES ', cache: true }, { text: 'diff' }] }, {})
+    await host.complete({ model: 'm', prompt: 'p' }, {})
+    expect(asks[0]!.prompt).toBe('RULES diff NOTE')
+    expect(asks[0]!.promptBlocks).toEqual([{ text: 'RULES ', cache: true }, { text: 'diff' }, { text: ' NOTE' }])
+    expect(asks[1]).not.toHaveProperty('promptBlocks')
   })
 
   it('a bad request rejects by name; a transport that throws is an api-error, not a rejection', async () => {
@@ -231,6 +270,44 @@ describe('$.model through the runtime', () => {
       ['cheap-haiku', 8],
       ['cheap-fast-1', 1024],
     ])
+  })
+
+  it('a hook reads the prompt joined and the blocks beside it; text it adds after them leaves their marks', async () => {
+    const { runner, asks } = fakeRunner()
+    const { runtime, reports } = world(
+      {
+        guard: `
+          export function register(on) {
+            on('model.complete', async ($, e, next) => {
+              await $.ui.log(JSON.stringify({ prompt: e.prompt, promptBlocks: e.promptBlocks, system: e.system, systemBlocks: e.systemBlocks }));
+              return next({ ...e, prompt: e.prompt + ' NOTE' });
+            });
+          }
+        `,
+        asker: `
+          export function register(on) {
+            on('prompt.submit', async ($, e, next) => {
+              await $.model.complete({ model: 'm', prompt: [{ text: 'RULES', cache: true }, { text: ' diff' }], system: 'brief' });
+              return next(e);
+            });
+          }
+        `,
+      },
+      { completions: modModelHost(runner) },
+    )
+    await runtime.ready
+    await runtime.promptSubmit('go')
+    const line = reports.find(r => r.startsWith('guard: {'))!
+    expect(JSON.parse(line.slice('guard: '.length))).toEqual({
+      prompt: 'RULES diff',
+      promptBlocks: [{ text: 'RULES', cache: true }, { text: ' diff' }],
+      system: 'brief',
+    })
+    expect(asks[0]).toMatchObject({
+      prompt: 'RULES diff NOTE',
+      promptBlocks: [{ text: 'RULES', cache: true }, { text: ' diff' }, { text: ' NOTE' }],
+      system: 'brief',
+    })
   })
 
   it("the plugin's own signal resolves the call `aborted` in the hook — mid-call or already aborted — never a throw", async () => {

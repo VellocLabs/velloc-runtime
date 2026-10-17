@@ -1364,6 +1364,17 @@ describe('$.model through the engine', () => {
     expect(t.calls[1]).toMatchObject({ outputTokenCapOverride: 1024, baseInstructions: [] })
   })
 
+  it("complete: the prompt's blocks are the message's text parts, each mark a cache breakpoint", async () => {
+    const t = transport([{}])
+    const { engine } = makeEngine(undefined, true, undefined, [], { callModel: t.callModel })
+    await engine.modModel.complete({ model: 'm', prompt: 'RULES diff', promptBlocks: [{ text: 'RULES ', cache: true }, { text: 'diff' }] }, { signal })
+    const [message] = (t.calls[0] as { messages: Array<{ message: { content: unknown } }> }).messages
+    expect(message!.message.content).toEqual([
+      { type: 'text', text: 'RULES ', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: 'diff' },
+    ])
+  })
+
   it("complete: the transport's error turn is `api-error` with its kind; a reply with no text `empty-reply`", async () => {
     const failing = transport([{ isApiErrorMessage: true, error: 'rate_limit', message: { role: ROLE_ASSISTANT, content: [{ type: 'text', text: 'API Error: 429' }] } }])
     const { engine } = makeEngine(undefined, true, undefined, [], { callModel: failing.callModel })

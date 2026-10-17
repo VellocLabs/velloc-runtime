@@ -22,10 +22,17 @@ export type ModModelUsage = {
   cache_creation_input_tokens: number
 }
 
+/** One block of `prompt` or `system`; `cache` marks a prompt-cache breakpoint. */
+export type ModelTextBlock = { text: string; cache?: true }
+
+/** The request as a hook on `model.complete` reads it: `prompt` and `system`
+ *  as text, the caller's blocks beside them where it gave a list. */
 export type ModModelCompleteRequest = {
   model: string
   prompt: string
+  promptBlocks?: ModelTextBlock[]
   system?: string
+  systemBlocks?: ModelTextBlock[]
   maxTokens?: number
   effort?: ModelEffort
   timeoutMs?: number
@@ -55,6 +62,8 @@ export type ModModelHost = {
 export type ModelOneShot = {
   model: string
   prompt: string
+  /** `prompt` as the blocks sent, marks kept; absent for a plain string. */
+  promptBlocks?: ModelTextBlock[]
   system?: string
   maxTokens: number
   effort?: ModelEffort
@@ -110,13 +119,60 @@ function positiveInt(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0
 }
 
+function blocksOf(value: unknown, field: string): ModelTextBlock[] {
+  if (!Array.isArray(value)) throw new TypeError(`$.model.complete: request.${field} must be a string or a list of { text, cache? }`)
+  return value.map((block, index) => {
+    if (!isRecord(block) || typeof block.text !== 'string') {
+      throw new TypeError(`$.model.complete: request.${field}[${index}].text must be a string`)
+    }
+    if (block.cache !== undefined && block.cache !== true) {
+      throw new TypeError(`$.model.complete: request.${field}[${index}].cache must be true or left out`)
+    }
+    return { text: block.text, ...(block.cache === true ? { cache: true as const } : {}) }
+  })
+}
+
+/** A text field as given: a string, or blocks joined with nothing between
+ *  them; blocks given beside a string (a hook's `promptBlocks`) are kept. */
+function textAndBlocks(
+  value: unknown,
+  beside: unknown,
+  field: 'prompt' | 'system',
+): { text: string; blocks?: ModelTextBlock[] } {
+  if (Array.isArray(value)) {
+    const blocks = blocksOf(value, field)
+    return { text: blocks.map(block => block.text).join(''), blocks }
+  }
+  if (typeof value !== 'string') throw new TypeError(`$.model.complete: request.${field} must be a string or a list of { text, cache? }`)
+  return { text: value, ...(beside !== undefined ? { blocks: blocksOf(beside, `${field}Blocks`) } : {}) }
+}
+
+/** The blocks to send for `text`: "the leading blocks whose texts, joined,
+ *  still open `prompt` are sent as they stand, marks kept; what is left of
+ *  `prompt` follows unmarked". */
+export function sendableBlocks(text: string, blocks: readonly ModelTextBlock[]): ModelTextBlock[] {
+  const sent: ModelTextBlock[] = []
+  let opened = 0
+  for (const block of blocks) {
+    if (!text.startsWith(block.text, opened)) break
+    sent.push(block)
+    opened += block.text.length
+  }
+  if (opened < text.length) sent.push({ text: text.slice(opened) })
+  return sent
+}
+
 /** The checked `ModelCompleteRequest`: each refusal names the field. */
 export function checkCompleteRequest(request: unknown): ModModelCompleteRequest {
   if (!isRecord(request)) throw new TypeError('$.model.complete(request): request must be an object')
-  const { model, prompt, system, maxTokens, effort, timeoutMs } = request
+  const { model, maxTokens, effort, timeoutMs } = request
   if (typeof model !== 'string' || model === '') throw new TypeError('$.model.complete: request.model must be a model alias or id')
-  if (typeof prompt !== 'string') throw new TypeError('$.model.complete: request.prompt must be a string')
-  if (system !== undefined && typeof system !== 'string') throw new TypeError('$.model.complete: request.system must be a string')
+  const prompt = textAndBlocks(request.prompt, request.promptBlocks, 'prompt')
+  // "Passing `null` or `false` down sends none."
+  const system =
+    request.system === undefined || request.system === null || request.system === false
+      ? undefined
+      : textAndBlocks(request.system, request.systemBlocks, 'system')
   if (maxTokens !== undefined && (!positiveInt(maxTokens) || maxTokens > MODEL_MAX_TOKENS_CEILING)) {
     throw new TypeError(`$.model.complete: request.maxTokens must be a positive integer up to ${MODEL_MAX_TOKENS_CEILING}`)
   }
@@ -128,8 +184,10 @@ export function checkCompleteRequest(request: unknown): ModModelCompleteRequest 
   }
   return {
     model,
-    prompt,
-    ...(system !== undefined ? { system } : {}),
+    prompt: prompt.text,
+    ...(prompt.blocks ? { promptBlocks: prompt.blocks } : {}),
+    ...(system !== undefined ? { system: system.text } : {}),
+    ...(system?.blocks ? { systemBlocks: system.blocks } : {}),
     ...(maxTokens !== undefined ? { maxTokens } : {}),
     ...(effort !== undefined ? { effort: effort as ModelEffort } : {}),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
@@ -250,6 +308,7 @@ export function modModelHost(runner: ModModelRunner): ModModelHost {
         const outcome = await runner.complete({
           model: checked.model,
           prompt: checked.prompt,
+          ...(checked.promptBlocks ? { promptBlocks: sendableBlocks(checked.prompt, checked.promptBlocks) } : {}),
           ...(checked.system !== undefined ? { system: checked.system } : {}),
           maxTokens: checked.maxTokens ?? MODEL_DEFAULT_MAX_TOKENS,
           ...(checked.effort !== undefined ? { effort: checked.effort } : {}),

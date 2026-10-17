@@ -4,7 +4,7 @@
  * own whose abort is the calling hook's signal or the runtime scope going
  * away, never the turn's: an extension may call outside any turn.
  */
-import type { Message, InstructionText } from '../runtime/RuntimeTypes'
+import type { ContentBlockParam, Message, InstructionText } from '../runtime/RuntimeTypes'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { ModToolHost, ToolCallMods } from '../mods/toolCallEvent'
 import { callToolForMod, checkToolForMod, listToolsForMods } from '../toolkit/run/executeToolCall'
@@ -216,12 +216,23 @@ async function runOneShot(ledger: SessionLedger, params: OneShot): Promise<Model
   return { kind: 'answered', text, usage }
 }
 
+/** The one user message of `$.model.complete`: its text, or its blocks with
+ *  each mark as a prompt-cache breakpoint. */
+function promptContent(request: ModelOneShot): string | Array<ContentBlockParam> {
+  if (!request.promptBlocks) return request.prompt
+  return request.promptBlocks.map(block => ({
+    type: 'text' as const,
+    text: block.text,
+    ...(block.cache ? { cache_control: { type: 'ephemeral' as const } } : {}),
+  }))
+}
+
 function modelHost({ ledger }: HostParts): ModModelHost {
   return modModelHost({
     fastModel: () => getFastModelForProvider(ledger.config.userSpecifiedProviderId),
     complete: request =>
       runOneShot(ledger, {
-        messages: [createGeneratedUserMessage(request.prompt, { isMeta: false })],
+        messages: [createGeneratedUserMessage(promptContent(request), { isMeta: false })],
         instructions: request.system !== undefined && request.system !== '' ? [request.system] : [],
         modelOverride: resolveAlias(ledger, request.model),
         maxTokens: request.maxTokens,
