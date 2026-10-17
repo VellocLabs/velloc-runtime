@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { Sidebar, type SessionListItem } from '../browser/webview/Sidebar'
 
 // "Pinned" is a section of its own, beside "Recents": a pinned session is
@@ -95,6 +95,61 @@ describe('Sidebar Pinned section', () => {
       '#sidebar-recents-toggle',
       'a',
     ])
+  })
+
+  it('moves the list-options menu to the Pinned header when every session is pinned', () => {
+    renderSidebar([item('a', NOW, true), item('b', NOW - 1000, true)])
+    const options = screen.getAllByTestId('sidebar-list-options')
+    expect(options).toHaveLength(1)
+    expect(options[0]!.parentElement).toBe(
+      screen.getByTestId('sidebar-pinned-toggle').parentElement,
+    )
+  })
+
+  it('the collapsed rail shows the same first rows as the expanded list', () => {
+    const DAY = 24 * 60 * 60 * 1000
+    const sessions = [
+      ...Array.from({ length: 25 }, (_, index) => item(`s${index}`, NOW - index * 1000)),
+      item('old-pinned', NOW - 40 * DAY, true),
+    ]
+    render(
+      createElement(Sidebar, {
+        title: 'Conversation',
+        sessionId: 's0',
+        activeSessionId: 's0',
+        sessions,
+        collapsed: true,
+      }),
+    )
+    const railTitles = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('aside button[title]'),
+    )
+      .map(button => button.title)
+      .filter(title => sessions.some(session => session.title === title))
+    expect(railTitles[0]).toBe('old-pinned')
+    expect(railTitles).toHaveLength(20)
+  })
+
+  it('re-buckets day groups when the local day changes while idle', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date(2026, 9, 15, 23, 59, 0))
+      localStorage.setItem(
+        'nexus:sidebar:sessionListView',
+        JSON.stringify({ groupBy: 'date', field: 'updated', direction: 'desc' }),
+      )
+      renderSidebar([item('a', new Date(2026, 9, 15, 23, 58).getTime())])
+      // Today's group draws no header.
+      expect(screen.queryAllByTestId('sidebar-group-header')).toHaveLength(0)
+      act(() => {
+        vi.advanceTimersByTime(3 * 60 * 1000)
+      })
+      expect(
+        screen.getByTestId('sidebar-group-header').textContent,
+      ).toContain('Yesterday')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('keeps the list-options menu on the Recents header only', () => {

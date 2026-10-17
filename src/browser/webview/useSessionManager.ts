@@ -145,7 +145,8 @@ export type SessionManagerState = {
   getSessionTemplateType: (sessionId: string) => string | undefined
   getSessionProjectRoot: (sessionId: string) => string | undefined
   focusSession: (sessionId: string) => void
-  deleteSession: (sessionId: string) => void
+  /** `rowOrder`: the sidebar's row ids in display order, so the successor is the deleted row's neighbor. */
+  deleteSession: (sessionId: string, rowOrder?: readonly string[]) => void
   retitleSession: (sessionId: string, title: string) => void
   /** Returns the fork request's id — the `session.forked` ack echoes it. */
   forkSession: (
@@ -427,6 +428,9 @@ export function useSessionManager(
 
   const localCacheRef = useRef(new Map<string, LocalSessionEntry>())
   const remoteSummariesRef = useRef(new Map<string, RemoteSessionSummary>())
+  // Sessions this client deleted: a late write for one (a composer draft
+  // flushed as its thread unmounts) must not re-create its row.
+  const deletedSessionIdsRef = useRef(new Set<string>())
   // The boot id this hook last seeded a placeholder for — see below.
   const seededInitialSessionIdRef = useRef<string | null>(null)
   const onRequestDeleteRef = useRef(options.onRequestDelete)
@@ -571,9 +575,9 @@ export function useSessionManager(
   )
 
   const deleteSession = useCallback(
-    (sessionId: string) => {
-      // The list as the sidebar shows it, deleted row included, so the
-      // successor is that row's neighbor. The deleted session is on screen
+    (sessionId: string, rowOrder?: readonly string[]) => {
+      // Every known session, deleted row included, so the successor is that
+      // row's neighbor in `rowOrder`. The deleted session is on screen
       // when it is active or one of its teammates is (a lead's teammates go
       // with it).
       const before = mergeSessions(
@@ -590,6 +594,7 @@ export function useSessionManager(
         )
       localCacheRef.current.delete(sessionId)
       remoteSummariesRef.current.delete(sessionId)
+      deletedSessionIdsRef.current.add(sessionId)
 
       // Read AND write the active id through the ref/`selectSession` pair. A ref still naming the deleted id
       // excludes nothing in `findReusableEmptySession`, so the newly-active empty session would be reused and the
@@ -602,6 +607,7 @@ export function useSessionManager(
           before,
           sessionId,
           hiddenSessionIds(before),
+          rowOrder,
         )
 
         if (next) {
@@ -690,6 +696,9 @@ export function useSessionManager(
     (sessionId: string, meta: SessionMetaUpdate) => {
       const existing = localCacheRef.current.get(sessionId)
       const remote = remoteSummariesRef.current.get(sessionId)
+      if (!existing && !remote && deletedSessionIdsRef.current.has(sessionId)) {
+        return
+      }
       // Merge the two sources ONCE, into a whole entry: everything below reads
       // this base, and the write at the end overrides only the fields this
       // update actually touches. The alternative — an `existing?.X ??

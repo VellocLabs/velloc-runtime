@@ -91,6 +91,8 @@ export type SessionListItem = {
   needsAnswer?: boolean
   /** Pinned by the user (runtime-owned metadata): listed above the unpinned rows. */
   pinned?: boolean
+  /** Transcript messages seen; `0` = nothing to copy, so the row offers no Fork. */
+  messageCount?: number
 }
 
 /**
@@ -200,7 +202,7 @@ export function SessionRowList({
         const isPinned = !!session.pinned
         const canPin = !!onPinThread
         const canRename = !!onRenameThread
-        const canFork = !!onForkThread
+        const canFork = !!onForkThread && session.messageCount !== 0
         const canDelete = !!onDeleteThread
         const hasRowActions = canPin || canRename || canFork || canDelete
         // A group's header sits above its first row. Not a session row (no

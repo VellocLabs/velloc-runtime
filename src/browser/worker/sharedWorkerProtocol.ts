@@ -137,6 +137,9 @@ export type SharedWorkerInboundMessage =
       // replacement keeps the source's exact title. Persisted as the fork's
       // own `custom-title` action + `meta.json` title.
       title?: string
+      // Set by rewind: the copy replaces the source, keeping its pin and
+      // creation time.
+      replacesSource?: boolean
     }
   | {
       type: 'session.subscribe'

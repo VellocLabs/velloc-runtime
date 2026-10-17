@@ -133,6 +133,48 @@ describe('session creation time', () => {
     expect(built?.meta.metadata.createdAt).toBe(T_LATER)
   })
 
+  const oneMessage: BrowserTranscriptEntry[] = [
+    {
+      type: 'user',
+      uuid: 'u1',
+      sessionId: 'old',
+      parentUuid: null,
+      timestamp: new Date(T_CREATE).toISOString(),
+      message: { role: 'user', content: [{ type: 'text', text: 'hi' }] },
+    } as unknown as BrowserTranscriptEntry,
+  ]
+
+  it('a rewind replaces its source: it keeps the source creation time and pin', () => {
+    const built = buildForkedTranscriptEntries(
+      oneMessage,
+      'u1',
+      'new',
+      T_LATER,
+      { createdAt: T_CREATE, pinned: true },
+      undefined,
+      { as: 'rewind' },
+    )
+    expect(built?.meta.metadata.createdAt).toBe(T_CREATE)
+    expect(built?.meta.metadata.pinned).toBe(true)
+  })
+
+  it('a plain fork is not pinned, and an import has no creation time', () => {
+    const fork = buildForkedTranscriptEntries(oneMessage, 'u1', 'new', T_LATER, {
+      pinned: true,
+    })
+    expect(fork?.meta.metadata.pinned).toBeUndefined()
+    const imported = buildForkedTranscriptEntries(
+      oneMessage,
+      'u1',
+      'new',
+      T_LATER,
+      undefined,
+      undefined,
+      { as: 'import' },
+    )
+    expect(imported?.meta.metadata.createdAt).toBeUndefined()
+  })
+
   it('ignores a malformed stored value', () => {
     const summary = buildSessionSummaryFromMeta({
       schemaVersion: SESSION_META_FILE_SCHEMA_VERSION,

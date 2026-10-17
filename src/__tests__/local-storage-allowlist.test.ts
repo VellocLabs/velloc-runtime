@@ -92,15 +92,14 @@ const ALLOWLIST: Record<string, Row> = {
     kind: 'view',
     why: "the Projects section's collapsed state (the project LIST is the runtime's `workspace`)",
   },
-  'browser/webview/Sidebar.tsx': {
-    keys: ['nexus:sidebar:recentsCollapsed'],
-    kind: 'view',
-    why: "the Recents section's collapsed state",
-  },
   'browser/webview/sessionListView.ts': {
-    keys: ['nexus:sidebar:sessionListView'],
+    keys: [
+      'nexus:sidebar:sessionListView',
+      'nexus:sidebar:pinnedCollapsed',
+      'nexus:sidebar:recentsCollapsed',
+    ],
     kind: 'view',
-    why: "how this client groups and orders its session list (group by, sort field, direction); another device lists its own way",
+    why: "how this client groups and orders its session list (group by, sort field, direction), and which of its Pinned / Recents sections are collapsed; another device lists its own way",
   },
   'browser/webview/settings/sections/PluginsSection.tsx': {
     keys: ['nexus.plugins.marketplaceListings.v1'],

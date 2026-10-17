@@ -113,10 +113,10 @@ function localDayStart(time: number): number {
 /** Today and yesterday read as words; earlier days as their date. */
 function dayLabel(dayStart: number, now: number): SessionGroupLabel {
   const today = localDayStart(now)
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
+  // The instant before today's start is yesterday, whatever hour that day began at (DST).
+  const yesterday = localDayStart(today - 1)
   if (dayStart === today) return { kind: 'message', key: 'sidebar.timeToday' }
-  if (dayStart === yesterday.getTime()) {
+  if (dayStart === yesterday) {
     return { kind: 'message', key: 'sidebar.timeYesterday' }
   }
   return { kind: 'day', dayStart }
@@ -134,13 +134,14 @@ function timeGroupOf(
       time === undefined ? 'sidebar.timeOlder' : sessionTimeBucket(time, now)
     return { key: bucket, label: { kind: 'message', key: bucket } }
   }
-  if (time === undefined) {
+  // A time outside the Date range has no calendar day; it groups as unknown.
+  const dayStart = time === undefined ? Number.NaN : localDayStart(time)
+  if (!Number.isFinite(dayStart)) {
     return {
       key: 'day:unknown',
       label: { kind: 'message', key: 'sidebar.groupDateUnknown' },
     }
   }
-  const dayStart = localDayStart(time)
   return { key: `day:${dayStart}`, label: dayLabel(dayStart, now) }
 }
 
@@ -251,5 +252,31 @@ export function writeSessionListView(view: SessionListView): void {
     globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(view))
   } catch {
     // Storage unavailable: the choice lasts for this page only.
+  }
+}
+
+/** A collapsible section of the docked session list. */
+export type SidebarSection = 'pinned' | 'recents'
+
+const SECTION_COLLAPSED_KEYS: Record<SidebarSection, string> = {
+  pinned: 'nexus:sidebar:pinnedCollapsed',
+  recents: 'nexus:sidebar:recentsCollapsed',
+}
+
+/** Whether `section` is collapsed in this window; expanded when unknown. */
+export function readSectionCollapsed(section: SidebarSection): boolean {
+  try {
+    return globalThis.localStorage?.getItem(SECTION_COLLAPSED_KEYS[section]) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** Remember whether `section` is collapsed in this window. */
+export function writeSectionCollapsed(section: SidebarSection, collapsed: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(SECTION_COLLAPSED_KEYS[section], collapsed ? '1' : '0')
+  } catch {
+    // Storage unavailable: the state lasts for this page only.
   }
 }

@@ -19,6 +19,29 @@ export function pinnedFirst<T extends { pinned?: boolean }>(
 }
 
 /**
+ * The docked sidebar's top-level rows in display order: the Pinned section in
+ * the view's order, then Recents in the view's grouping and order. A section
+ * listed in `collapsed` contributes no rows (they are not on screen). (F-17)
+ */
+export function sidebarRowOrder<
+  T extends ListableSession & { pinned?: boolean },
+>(
+  sessions: readonly T[],
+  view: SessionListView,
+  now: number,
+  collapsed: { pinned?: boolean; recents?: boolean } = {},
+): T[] {
+  const pinned = collapsed.pinned
+    ? []
+    : orderSessions(sessions.filter(session => session.pinned), view.field, view.direction)
+  const recents = collapsed.recents
+    ? []
+    : buildSessionListView(sessions.filter(session => !session.pinned), view, now)
+        .flatMap(group => group.sessions)
+  return [...pinned, ...recents]
+}
+
+/**
  * `buildSessionListView` with the pinned sessions lifted into one leading,
  * header-less group (in the view's order). The unpinned rows keep the view's
  * grouping, and their first group always draws its header, so rows below the

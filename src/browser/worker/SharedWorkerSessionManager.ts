@@ -280,6 +280,8 @@ export class SharedWorkerSessionManager {
   private readonly panelOfSession = new Map<string, string>()
   /** Sessions whose in-memory counters changed during the current turn. */
   private readonly dirtySessionCounters = new Set<string>()
+  /** Sessions a `session.delete` is tearing down; metadata writes for them are refused. */
+  private readonly deletingSessions = new Set<string>()
   /** Compatibility state for worker handles without explicit boundary returns. */
   private readonly legacyStreamEndedSessions = new Set<string>()
   private readonly bridgeRouter = new BridgeRequestRouter({
@@ -553,6 +555,7 @@ export class SharedWorkerSessionManager {
       requestId,
       moveCutMessageToDraft,
       title,
+      replacesSource,
     ) =>
       void this.handleSessionFork(
         port,
@@ -561,6 +564,7 @@ export class SharedWorkerSessionManager {
         requestId,
         moveCutMessageToDraft,
         title,
+        replacesSource,
       ),
     handleTaskStop: (port, message) => this.handleTaskStop(port, message),
     handleTaskResume: (port, message) => this.handleTaskResume(port, message),
@@ -2674,7 +2678,11 @@ export class SharedWorkerSessionManager {
       entry.pendingPinned = undefined
       void applyDiskOnlyMetadataPatch(this.storage, sessionId, {
         pinned: pendingPinned,
-      }).catch(() => {})
+      })
+        .catch(() => false)
+        .then(persisted => {
+          if (!persisted) this.dropPinnedOverlay(sessionId)
+        })
     }
     const pendingRename = entry.pendingRename
     if (pendingRename === undefined || !this.storage) return
@@ -2685,6 +2693,15 @@ export class SharedWorkerSessionManager {
       pendingRename,
       Date.now(),
     ).catch(() => {})
+  }
+
+  /** The live overlay stops claiming a pin that never reached storage; the summary falls back to disk. */
+  private dropPinnedOverlay(sessionId: string): void {
+    const prev = this.sessionMeta.get(sessionId)
+    if (!prev || prev.pinned === undefined) return
+    const { pinned: _unsaved, ...rest } = prev
+    this.sessionMeta.set(sessionId, rest)
+    void this.summaryRepo.refreshFsSummary(sessionId).catch(() => {})
   }
 
   private reapSessionEntrySync(sessionId: string): void {
@@ -2708,6 +2725,7 @@ export class SharedWorkerSessionManager {
     sessionId: string,
     requestId?: string,
   ): Promise<void> {
+    this.deletingSessions.add(sessionId)
     // Deleting a lead shuts its teammates down, AWAITED before the storage delete below (their teardown
     // writes under this dir). Ids are collected before the abort: record rows plus running ones.
     const teammateIds = new Set(
@@ -2784,6 +2802,11 @@ export class SharedWorkerSessionManager {
         // best-effort; an orphan row is hidden, not harmful
       }
     }
+
+    // A write that landed while the delete awaited must not outlive it.
+    this.sessionMeta.delete(sessionId)
+    this.fsSummaries.delete(sessionId)
+    this.deletingSessions.delete(sessionId)
 
     const removedMessage = {
       type: 'session.removed' as const,
@@ -2933,12 +2956,20 @@ export class SharedWorkerSessionManager {
     pinned: boolean,
     requestId?: string,
   ): Promise<void> {
+    if (this.deletingSessions.has(sessionId)) {
+      console.warn(`[SharedWorkerSessionManager] pin of ${sessionId} refused: it is being deleted`)
+      return
+    }
     const entry = this.sessions.get(sessionId)
     if (entry?.conversationStore) {
+      // This choice supersedes a pre-bind stash, so a bind still in flight
+      // does not write the older value after it.
+      entry.pendingPinned = undefined
       try {
         await entry.conversationStore.updateSessionMetadata({ pinned })
-      } catch {
-        // best-effort; the live overlay + broadcast below still reflect it
+      } catch (error) {
+        console.warn(`[SharedWorkerSessionManager] pin of ${sessionId} not persisted`, error)
+        return
       }
     } else if (entry) {
       entry.pendingPinned = pinned
@@ -2958,6 +2989,16 @@ export class SharedWorkerSessionManager {
             'no meta.json or transcript found for it',
         )
         return
+      }
+      // A runtime that opened during the write loaded the sidecar without the
+      // pin; hand it the value so its own next save keeps it.
+      const opened = this.sessions.get(sessionId)
+      if (opened?.conversationStore) {
+        await opened.conversationStore
+          .updateSessionMetadata({ pinned })
+          .catch(() => {})
+      } else if (opened) {
+        opened.pendingPinned = pinned
       }
     }
 
@@ -3558,13 +3599,17 @@ export class SharedWorkerSessionManager {
     requestId?: string,
     moveCutMessageToDraft?: boolean,
     title?: string,
+    replacesSource?: boolean,
   ): Promise<void> {
     const storage = this.storage
     if (!storage) return
     try {
       const payload = await storage.load(fromSessionId)
       const sourceEntries = Array.isArray(payload) ? payload : []
-      if (sourceEntries.length === 0) return
+      if (sourceEntries.length === 0) {
+        console.warn('[nexus] fork skipped: the source has no saved messages', fromSessionId)
+        return
+      }
       const newSessionId =
         globalThis.crypto?.randomUUID?.() ??
         `fork-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`
@@ -3586,9 +3631,12 @@ export class SharedWorkerSessionManager {
         // fork's composer, and names the copy after the source ("<title>
         // (fork)", localized by the page); rewind keeps the inclusive cut and
         // the source's exact title.
-        { moveCutMessageToDraft, title },
+        { moveCutMessageToDraft, title, ...(replacesSource ? { as: 'rewind' as const } : {}) },
       )
-      if (!built) return
+      if (!built) {
+        console.warn('[nexus] fork skipped: no message to cut at', fromSessionId)
+        return
+      }
       // Tool details are lazy-loaded per session by toolCallId; copy the
       // referenced sidecars so the fork's tool cards don't get stuck loading.
       const toolDetails: BrowserToolCallDetailRecord[] = []
@@ -3619,8 +3667,9 @@ export class SharedWorkerSessionManager {
         type: 'session.forked' as const,
         payload: { fromSessionId, newSessionId, requestId },
       })
-    } catch {
-      // best-effort — no ack means no fork happened
+    } catch (error) {
+      // No ack means no fork happened.
+      console.warn('[nexus] fork failed', fromSessionId, error)
     }
   }
 

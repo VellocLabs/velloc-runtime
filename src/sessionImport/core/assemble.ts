@@ -76,7 +76,7 @@ export function assembleConvertedBundle(
     options.now,
     options.carryOver,
     undefined,
-    { title: options.title },
+    { title: options.title, as: 'import' },
   )
   if (!built) {
     throw new ImportConvertError(

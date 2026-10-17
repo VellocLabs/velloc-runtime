@@ -764,9 +764,29 @@ export function buildSessionSummaryFromMeta(
   )
 }
 
+// The disk-only writers of one session's sidecar run one at a time, so a rename
+// and a metadata patch cannot each write back a copy lacking the other's field.
+const diskOnlyMetaWrites = new Map<string, Promise<unknown>>()
+
+function serializeDiskOnlyMeta<T>(
+  sessionId: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  const previous = diskOnlyMetaWrites.get(sessionId) ?? Promise.resolve()
+  const run = previous.then(task)
+  const tail = run.catch(() => undefined)
+  diskOnlyMetaWrites.set(sessionId, tail)
+  void tail.then(() => {
+    if (diskOnlyMetaWrites.get(sessionId) === tail) {
+      diskOnlyMetaWrites.delete(sessionId)
+    }
+  })
+  return run
+}
+
 // Renames a session that is not loaded: logs the title and updates the
 // sidecar. Returns false when no sidecar exists. An empty title clears it.
-export async function applyDiskOnlyRename(
+export function applyDiskOnlyRename(
   backend: Pick<
     BrowserConversationStorageBackend,
     'append' | 'readSessionMeta' | 'writeSessionMeta' | 'migrateLegacySessionMeta'
@@ -775,33 +795,35 @@ export async function applyDiskOnlyRename(
   title: string,
   now: number,
 ): Promise<boolean> {
-  const trimmed = title.trim()
-  const existing =
-    (await backend.readSessionMeta(sessionId)) ??
-    (await backend.migrateLegacySessionMeta?.(sessionId)) ??
-    null
-  if (!existing) {
-    return false
-  }
-  await backend.append(sessionId, {
-    type: CUSTOM_TITLE_TYPE,
-    sessionId,
-    customTitle: trimmed,
-    updatedAt: now,
+  return serializeDiskOnlyMeta(sessionId, async () => {
+    const trimmed = title.trim()
+    const existing =
+      (await backend.readSessionMeta(sessionId)) ??
+      (await backend.migrateLegacySessionMeta?.(sessionId)) ??
+      null
+    if (!existing) {
+      return false
+    }
+    await backend.append(sessionId, {
+      type: CUSTOM_TITLE_TYPE,
+      sessionId,
+      customTitle: trimmed,
+      updatedAt: now,
+    })
+    const { customTitle: _previous, ...rest } = existing
+    await backend.writeSessionMeta(sessionId, {
+      ...rest,
+      updatedAt: now,
+      customTitleAt: now,
+      ...(trimmed.length > 0 ? { customTitle: trimmed } : {}),
+    })
+    return true
   })
-  const { customTitle: _previous, ...rest } = existing
-  await backend.writeSessionMeta(sessionId, {
-    ...rest,
-    updatedAt: now,
-    customTitleAt: now,
-    ...(trimmed.length > 0 ? { customTitle: trimmed } : {}),
-  })
-  return true
 }
 
 // Merges `patch` into the metadata of a session that is not loaded. Returns
 // false when no sidecar exists.
-export async function applyDiskOnlyMetadataPatch(
+export function applyDiskOnlyMetadataPatch(
   backend: Pick<
     BrowserConversationStorageBackend,
     'readSessionMeta' | 'writeSessionMeta' | 'migrateLegacySessionMeta'
@@ -809,18 +831,33 @@ export async function applyDiskOnlyMetadataPatch(
   sessionId: string,
   patch: Partial<BrowserSessionMetadata>,
 ): Promise<boolean> {
-  const existing =
-    (await backend.readSessionMeta(sessionId)) ??
-    (await backend.migrateLegacySessionMeta?.(sessionId)) ??
-    null
-  if (!existing) {
-    return false
-  }
-  await backend.writeSessionMeta(sessionId, {
-    ...existing,
-    metadata: { ...existing.metadata, ...patch },
+  return serializeDiskOnlyMeta(sessionId, async () => {
+    const existing =
+      (await backend.readSessionMeta(sessionId)) ??
+      (await backend.migrateLegacySessionMeta?.(sessionId)) ??
+      null
+    if (!existing) {
+      return false
+    }
+    await backend.writeSessionMeta(sessionId, {
+      ...existing,
+      metadata: { ...existing.metadata, ...patch },
+    })
+    return true
   })
-  return true
+}
+
+function forkCreationAndPin(
+  source: BrowserSessionMetadata | undefined,
+  now: number,
+  as: 'rewind' | 'import' | undefined,
+): Partial<BrowserSessionMetadata> {
+  if (as === 'import') return {}
+  if (as !== 'rewind') return { createdAt: now }
+  return {
+    ...(source?.createdAt !== undefined ? { createdAt: source.createdAt } : {}),
+    ...(source?.pinned === true ? { pinned: true } : {}),
+  }
 }
 
 function pickForkCarryOverMetadata(
@@ -945,7 +982,16 @@ export function buildForkedTranscriptEntries(
   now: number,
   sourceMetadata?: BrowserSessionMetadata,
   fromSessionId?: string,
-  options?: { moveCutMessageToDraft?: boolean; title?: string },
+  options?: {
+    moveCutMessageToDraft?: boolean
+    title?: string
+    /**
+     * `rewind`: the copy replaces the source, so it keeps the source's pin and
+     * creation time. `import`: an imported conversation's creation time is
+     * unknown. Absent: a new session, created `now`.
+     */
+    as?: 'rewind' | 'import'
+  },
 ): {
   entries: BrowserTranscriptWriteEntry[]
   meta: SessionMetaFile
@@ -1019,8 +1065,7 @@ export function buildForkedTranscriptEntries(
     ...(composerDraft
       ? { composerDraft, lastComposerEditAt: now }
       : {}),
-    // A fork is a new session: it never inherits the source's creation time.
-    createdAt: now,
+    ...forkCreationAndPin(sourceMetadata, now, options?.as),
   }
   const entries: BrowserTranscriptWriteEntry[] = [...forkedMessages]
   if (inheritedTitle) {

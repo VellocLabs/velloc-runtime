@@ -48,6 +48,7 @@ export interface PortMessageRouterHost {
     requestId: string | undefined,
     moveCutMessageToDraft?: boolean,
     title?: string,
+    replacesSource?: boolean,
   ): void
   // Background Tasks drawer control surface.
   handleTaskStop(
@@ -208,6 +209,7 @@ export class PortMessageRouter {
           message.requestId,
           message.moveCutMessageToDraft,
           message.title,
+          message.replacesSource === true,
         )
         return
       }

@@ -112,6 +112,22 @@ describe('session row menu', () => {
     expect(handlers.onPinThread).toHaveBeenCalledWith('old-pinned', false)
   })
 
+  it('offers no Fork on a session with no messages to copy', async () => {
+    renderList({
+      groups: [
+        {
+          key: 'all',
+          sessions: [
+            { sessionId: 'empty', title: 'Empty', previewText: '', updatedAt: NOW, messageCount: 0 },
+          ],
+        },
+      ],
+      activeSessionId: 'empty',
+    })
+    const menu = await openMenu('empty')
+    expect(menuEntries(menu)).not.toContain('sidebar-fork-thread')
+  })
+
   it('forks the row’s session', async () => {
     const handlers = renderList()
     await openMenu('middle')

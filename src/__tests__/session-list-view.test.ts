@@ -199,4 +199,48 @@ describe('formatGroupDay', () => {
   it('adds the year for a day in another year', () => {
     expect(formatGroupDay(new Date(2025, 11, 30).getTime(), 'en', NOW)).toContain('2025')
   })
+
+  it('a time outside the Date range groups as an unknown day', () => {
+    const view: SessionListView = { groupBy: 'date', field: 'created', direction: 'desc' }
+    const groups = buildSessionListView(
+      [{ sessionId: 'far', updatedAt: NOW, createdAt: 1e17 }],
+      view,
+      NOW,
+    )
+    expect(groups.map(group => group.key)).toEqual(['day:unknown'])
+  })
+
+  /** Runs `body` with the local zone set to `zone`; false when this thread cannot switch zones. */
+  function inZone(zone: string, body: () => void): boolean {
+    const saved = process.env.TZ
+    process.env.TZ = zone
+    try {
+      // Only a process's main thread follows a TZ change (`vitest --pool=forks`).
+      if (new Date(2026, 8, 6, 0, 30).getHours() !== 1) return false
+      body()
+      return true
+    } finally {
+      if (saved === undefined) delete process.env.TZ
+      else process.env.TZ = saved
+    }
+  }
+
+  it('names yesterday on a day whose midnight DST skipped', ctx => {
+    const ran = inZone('America/Santiago', () => {
+      // This day starts at 01:00 in Santiago (clocks jump 00:00 -> 01:00).
+      const now = new Date(2026, 8, 6, 12).getTime()
+      const saturday = new Date(2026, 8, 5, 15).getTime()
+      const view: SessionListView = { groupBy: 'date', field: 'updated', direction: 'desc' }
+      const groups = buildSessionListView(
+        [
+          { sessionId: 'today', updatedAt: now },
+          { sessionId: 'sat', updatedAt: saturday },
+        ],
+        view,
+        now,
+      )
+      expect(groups[1]?.label).toEqual({ kind: 'message', key: 'sidebar.timeYesterday' })
+    })
+    if (!ran) ctx.skip()
+  })
 })

@@ -130,6 +130,8 @@ import {
   withoutHidden,
   withoutHiddenKeys,
 } from './sessionVisibility'
+import { readSectionCollapsed, readSessionListView } from './sessionListView'
+import { sidebarRowOrder } from './sessionPinning'
 import { subscribeTeammateJump } from './teammateJumpRequests'
 import {
   ATTENTION_SECTION_ATTR,
@@ -701,6 +703,9 @@ export function MultiSessionShell({
   // the fork is titled "<title> (fork)". Rewind posts the same message without the flag or a
   // title (it replaces the original). "Send in a forked session" (`keepCutMessage`) copies
   // the whole conversation, as does the sidebar's Fork, which names no cut at all.
+  // Fork requests this window sent. Every client on the sessions topic hears
+  // `session.forked`; only the one that asked switches to the copy.
+  const ownForkRequestsRef = useRef<Set<string>>(new Set())
   const handleRequestFork = useCallback(
     (
       fromSessionId: string,
@@ -709,6 +714,7 @@ export function MultiSessionShell({
       sourceTitle?: string,
       keepCutMessage?: boolean,
     ) => {
+      ownForkRequestsRef.current.add(requestId)
       sessionChannelRef.current?.request('session.fork', {
         fromSessionId,
         ...(cutUuid !== undefined ? { cutUuid } : {}),
@@ -800,6 +806,7 @@ export function MultiSessionShell({
         fromSessionId,
         cutUuid,
         requestId,
+        replacesSource: true,
       })
     },
     [],
@@ -1158,6 +1165,9 @@ export function MultiSessionShell({
             ? pendingRewindRef.current.get(rid)
             : undefined
           if (rid) pendingRewindRef.current.delete(rid)
+          const ownFork = rid !== undefined && ownForkRequestsRef.current.delete(rid)
+          // Another client's fork: its copy reaches the list via session.updated.
+          if (!ownFork && !rewoundFrom) return
           if (rewoundFrom && rewoundFrom !== payload.newSessionId) {
             handleDeleteThread(rewoundFrom)
           }
@@ -3175,6 +3185,7 @@ export function MultiSessionShell({
         createdAt: s.createdAt,
         lastComposerEditAt: s.lastComposerEditAt,
         pinned: s.pinned,
+        messageCount: s.messageCount,
         running: runningSessionIds.has(s.sessionId),
         needsAnswer: needsAnswerSessionIds.has(s.sessionId),
       })),
@@ -3602,6 +3613,8 @@ export function MultiSessionShell({
 
   const sessionsRef = useRef(sessions)
   sessionsRef.current = sessions
+  const sessionItemsRef = useRef(sessionItems)
+  sessionItemsRef.current = sessionItems
   const handleDeleteThread = useCallback(
     (sessionId: string) => {
       // The runtime deletes a lead's teammates with it, so their threads go too.
@@ -3612,7 +3625,18 @@ export function MultiSessionShell({
           .map(session => session.sessionId),
       ])
       for (const id of doomed) disposeClient(id)
-      deleteSession(sessionId)
+      // The rows the sidebar shows, in its order, so the successor of a
+      // deleted on-screen session is its visible neighbor.
+      const rowOrder = sidebarRowOrder(
+        sessionItemsRef.current,
+        readSessionListView(),
+        Date.now(),
+        {
+          pinned: readSectionCollapsed('pinned'),
+          recents: readSectionCollapsed('recents'),
+        },
+      ).map(session => session.sessionId)
+      deleteSession(sessionId, rowOrder)
       setMountedSessionIds(prev => prev.filter(id => !doomed.has(id)))
       // Drop the deleted sessions' in-memory Right Panel state (no leak).
       setRightPanelSessions(prev => {

@@ -3960,6 +3960,99 @@ describe('SharedWorkerSessionManager', () => {
     expect(lastCard()?.pinned).toBeUndefined()
   })
 
+  describe('session.pin persistence', () => {
+    const metas = new Map<string, SessionMetaFile>()
+    const metaWrites: SessionMetaFile[] = []
+    const installStorage = () => {
+      metas.clear()
+      metaWrites.length = 0
+      metas.set('s', { schemaVersion: 1, sessionId: 's', updatedAt: 10, metadata: {} })
+      const storage = {
+        append: vi.fn(async () => {}),
+        readSessionMeta: vi.fn(async (sessionId: string) => metas.get(sessionId) ?? null),
+        writeSessionMeta: vi.fn(async (sessionId: string, meta: SessionMetaFile) => {
+          metaWrites.push(meta)
+          metas.set(sessionId, meta)
+        }),
+        load: vi.fn(async (): Promise<BrowserConversationStoragePayload> => null),
+        flush: vi.fn(async () => {}),
+        listSessions: vi.fn(async () => ['s']),
+        loadSessionSummary: vi.fn(async (sessionId: string) => {
+          const meta = metas.get(sessionId)
+          return meta ? buildSessionSummaryFromMeta(meta) : null
+        }),
+        loadToolCallDetail: vi.fn(async () => null),
+        saveToolCallDetail: vi.fn(async () => {}),
+      }
+      ;(
+        manager as unknown as {
+          storageCoordinator: { storage: BrowserConversationStorageBackend }
+        }
+      ).storageCoordinator.storage = storage as unknown as BrowserConversationStorageBackend
+    }
+    const internals = () =>
+      manager as unknown as {
+        sessions: Map<string, Record<string, unknown>>
+        deletingSessions: Set<string>
+      }
+    const cards = (port: ReturnType<typeof createMockPort>) =>
+      port._posted.filter(
+        (msg: unknown) => (msg as SharedWorkerOutboundMessage).type === 'session.updated',
+      )
+
+    it('a pin through the bound store supersedes the pre-bind stash', async () => {
+      installStorage()
+      // The fake entry leaves before the summary refresh reads its runtime.
+      const updateSessionMetadata = vi.fn(async () => {
+        internals().sessions.delete('s')
+      })
+      const entry: Record<string, unknown> = {
+        conversationStore: { updateSessionMetadata },
+        pendingPinned: true,
+      }
+      internals().sessions.set('s', entry)
+      const port = createMockPort()
+      manager.handleConnect(port)
+      port._simulateMessage({ type: 'session.pin', sessionId: 's', pinned: false })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(updateSessionMetadata).toHaveBeenCalledWith({ pinned: false })
+      expect(entry.pendingPinned).toBeUndefined()
+      internals().sessions.delete('s')
+    })
+
+    it('a pin the bound store fails to save is not acked', async () => {
+      installStorage()
+      const entry: Record<string, unknown> = {
+        conversationStore: {
+          updateSessionMetadata: vi.fn(async () => {
+            // Gone before the ack, so a card would be built from the fs summary.
+            internals().sessions.delete('s')
+            throw new Error('disk full')
+          }),
+        },
+      }
+      internals().sessions.set('s', entry)
+      const port = createMockPort()
+      manager.handleConnect(port)
+      const before = cards(port).length
+      port._simulateMessage({ type: 'session.pin', sessionId: 's', pinned: true, requestId: 'p1' })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(cards(port)).toHaveLength(before)
+      internals().sessions.delete('s')
+    })
+
+    it('a pin for a session being deleted writes nothing', async () => {
+      installStorage()
+      internals().deletingSessions.add('s')
+      const port = createMockPort()
+      manager.handleConnect(port)
+      port._simulateMessage({ type: 'session.pin', sessionId: 's', pinned: true, requestId: 'p2' })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(metaWrites).toHaveLength(0)
+      internals().deletingSessions.delete('s')
+    })
+  })
+
   it('forks the whole conversation when `session.fork` names no cut', async () => {
     const appended: BrowserTranscriptEntry[] = []
     const metaWrites: SessionMetaFile[] = []

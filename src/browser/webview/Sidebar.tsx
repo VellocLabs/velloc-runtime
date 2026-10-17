@@ -5,7 +5,7 @@ import { InkRipple } from '@/components/assistant-ui/ink-ripple'
 import {
   SessionAttentionDot,
 } from '@/components/assistant-ui/session-attention-dot'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLocale, useT } from './i18n'
 import { useModContributions } from './mods/modContributionsView'
@@ -29,12 +29,15 @@ import {
   clearSessionListView,
   DEFAULT_SESSION_LIST_VIEW,
   orderSessions,
+  readSectionCollapsed,
   readSessionListView,
   ungroupedView,
+  writeSectionCollapsed,
   writeSessionListView,
   type SessionListView,
+  type SidebarSection,
 } from './sessionListView'
-import { buildPinnedFirstView } from './sessionPinning'
+import { buildPinnedFirstView, sidebarRowOrder } from './sessionPinning'
 import { AppUpdateBar } from './AppUpdateBar'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
 import { SESSION_PAGE_SIZE } from './sessionListPaging'
@@ -55,35 +58,63 @@ export type { SessionListItem } from './SessionRows'
 
 // --- Sidebar ---
 
-const RECENTS_COLLAPSED_STORAGE_KEY = 'nexus:sidebar:recentsCollapsed'
-const PINNED_COLLAPSED_STORAGE_KEY = 'nexus:sidebar:pinnedCollapsed'
-
 /**
- * A docked session section's collapsed state, persisted to localStorage under
- * `storageKey` so it survives reloads. Defaults expanded.
+ * A docked session section's collapsed state, remembered for this window so it
+ * survives reloads. Defaults expanded.
  */
 function useCollapsedSection(
-  storageKey: string,
+  section: SidebarSection,
 ): [boolean, (next: boolean) => void] {
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try {
-      return globalThis.localStorage?.getItem(storageKey) === '1'
-    } catch {
-      return false
-    }
-  })
+  const [collapsed, setCollapsed] = useState<boolean>(() =>
+    readSectionCollapsed(section),
+  )
   const applyCollapsed = useCallback(
     (next: boolean) => {
       setCollapsed(next)
-      try {
-        globalThis.localStorage?.setItem(storageKey, next ? '1' : '0')
-      } catch {
-        // ignore storage failures (private mode / quota)
-      }
+      writeSectionCollapsed(section, next)
     },
-    [storageKey],
+    [section],
   )
   return [collapsed, applyCollapsed]
+}
+
+/**
+ * The time day groups are computed against: the mount time, advanced just
+ * after each local midnight so "Today" and "Yesterday" follow the calendar
+ * while the list is idle.
+ */
+function useDayClock(): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const nextDay = new Date(now)
+    nextDay.setHours(24, 0, 0, 0)
+    const timer = setTimeout(
+      () => setNow(Date.now()),
+      Math.max(0, nextDay.getTime() - Date.now()) + 1_000,
+    )
+    return () => clearTimeout(timer)
+  }, [now])
+  return now
+}
+
+/** The Sort by / Group by / Reset menu, hover-revealed on a section header. */
+function ListMenuOnHeader({
+  view,
+  onViewChange,
+  onReset,
+}: {
+  view: SessionListView
+  onViewChange: (next: SessionListView) => void
+  onReset: () => void
+}) {
+  return (
+    <SessionListMenu
+      view={view}
+      onViewChange={onViewChange}
+      onReset={onReset}
+      className="absolute right-1.5 bottom-0.5 opacity-0 focus-visible:opacity-100 group-hover/section:opacity-100 data-[state=open]:opacity-100"
+    />
+  )
 }
 
 /**
@@ -157,6 +188,12 @@ type SessionListBodyProps = SidebarProjectProps & {
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
   onForkThread?: (sessionId: string) => void
+  /** How the rows are grouped and ordered: this window's view preference. */
+  view: SessionListView
+  onViewChange: (next: SessionListView) => void
+  onReset: () => void
+  /** The time day groups are computed against (`useDayClock`). */
+  now: number
   /**
    * Compact mode for the narrow-viewport popover: hides the "New Thread"
    * button (the conversation header owns that affordance there), the Projects
@@ -182,6 +219,10 @@ export function SessionListBody({
   onRenameThread,
   onPinThread,
   onForkThread,
+  view,
+  onViewChange,
+  onReset,
+  now,
   titlesOnly = false,
   addedProjectPaths,
   addedProjectOrder,
@@ -196,28 +237,13 @@ export function SessionListBody({
   useModContributions()
   const hasMultiSession = sessions !== undefined
   const resolvedActiveSessionId = activeSessionId ?? sessionId
-  const [recentsCollapsed, applyRecentsCollapsed] = useCollapsedSection(
-    RECENTS_COLLAPSED_STORAGE_KEY,
-  )
-  const [pinnedCollapsed, applyPinnedCollapsed] = useCollapsedSection(
-    PINNED_COLLAPSED_STORAGE_KEY,
-  )
+  const [recentsCollapsed, applyRecentsCollapsed] = useCollapsedSection('recents')
+  const [pinnedCollapsed, applyPinnedCollapsed] = useCollapsedSection('pinned')
   // Inline-rename state, owned HERE rather than inside each list, so the two
   // copies of a session (its Recents row and its project row) agree on it. Every
   // other piece of row state already syncs for free — title, running animation
   // and deletion all come from the one `sessions` array.
   const [editing, setEditing] = useState<SessionRowEditing>(null)
-  // How the Recents rows are grouped and ordered (project rows take the order
-  // only); a per-window view preference.
-  const [view, setView] = useState<SessionListView>(readSessionListView)
-  const applyView = useCallback((next: SessionListView) => {
-    setView(next)
-    writeSessionListView(next)
-  }, [])
-  const resetView = useCallback(() => {
-    clearSessionListView()
-    setView(DEFAULT_SESSION_LIST_VIEW)
-  }, [])
   const orderedSessions = useMemo(
     () => orderSessions(sessions ?? [], view.field, view.direction),
     [sessions, view.field, view.direction],
@@ -236,14 +262,14 @@ export function SessionListBody({
         ? buildPinnedFirstView(
             sessions ?? [],
             { ...view, groupBy: 'none' },
-            Date.now(),
+            now,
           )
         : buildSessionListView(
             (sessions ?? []).filter(s => !s.pinned),
             view,
-            Date.now(),
+            now,
           ),
-    [sessions, view, titlesOnly],
+    [sessions, view, now, titlesOnly],
   )
 
   const showProjects = !titlesOnly && hasMultiSession
@@ -318,13 +344,17 @@ export function SessionListBody({
             only; the narrow popover stays chrome-free). */}
         {pinnedGroups.length > 0 && (
           <>
-            <div className="relative flex shrink-0 items-center">
+            <div className="group/section relative flex shrink-0 items-center">
               <SessionSectionToggle
                 testId="sidebar-pinned-toggle"
                 label={t('sidebar.pinnedSection')}
                 collapsed={pinnedCollapsed}
                 onCollapsedChange={applyPinnedCollapsed}
               />
+              {/* With no Recents header to carry it, the list menu sits here. */}
+              {recentGroups.length === 0 && (
+                <ListMenuOnHeader view={view} onViewChange={onViewChange} onReset={onReset} />
+              )}
             </div>
             {!pinnedCollapsed && (
               <SessionRowList
@@ -344,7 +374,7 @@ export function SessionListBody({
         )}
 
         {!titlesOnly && recentGroups.length > 0 && (
-          <div className="group/recents relative flex shrink-0 items-center">
+          <div className="group/section relative flex shrink-0 items-center">
             <SessionSectionToggle
               testId="sidebar-recents-toggle"
               label={t('sidebar.recents')}
@@ -352,12 +382,7 @@ export function SessionListBody({
               onCollapsedChange={applyRecentsCollapsed}
             />
             {/* Hover-revealed, like the row actions; stays visible while open. */}
-            <SessionListMenu
-              view={view}
-              onViewChange={applyView}
-              onReset={resetView}
-              className="absolute right-1.5 bottom-0.5 opacity-0 focus-visible:opacity-100 group-hover/recents:opacity-100 data-[state=open]:opacity-100"
-            />
+            <ListMenuOnHeader view={view} onViewChange={onViewChange} onReset={onReset} />
           </div>
         )}
 
@@ -416,6 +441,8 @@ function SidebarIconRail({
   onNewThread,
   onLaunchThread,
   onSwitchThread,
+  view,
+  now,
 }: {
   sessionId: string
   activeSessionId?: string
@@ -423,6 +450,8 @@ function SidebarIconRail({
   onNewThread?: () => void
   onLaunchThread?: (templateType?: string) => void
   onSwitchThread?: (sessionId: string) => void
+  view: SessionListView
+  now: number
 }) {
   const t = useT()
   const locale = useLocale()
@@ -431,7 +460,9 @@ function SidebarIconRail({
   // The rail has no room for a "show more" button, so it shows the same first
   // page the expanded list opens on. Without a cap it would render one icon per
   // session — unbounded on a large profile, in a 56px column.
-  const railSessions = sessions?.slice(0, SESSION_PAGE_SIZE)
+  const railSessions = sessions
+    ? sidebarRowOrder(sessions, view, now).slice(0, SESSION_PAGE_SIZE)
+    : undefined
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center px-1.5 py-2">
       {/* Pinned top — the launcher icons + divider do NOT scroll; only the
@@ -582,6 +613,18 @@ export function Sidebar({
   //                hidden panel + a floating trigger.
   //  - expanded  → full SessionListBody.
   const showRail = !!collapsed
+  // How the rows are grouped and ordered (project rows take the order only); a
+  // per-window view preference shared by the expanded list and the rail.
+  const [view, setView] = useState<SessionListView>(readSessionListView)
+  const applyView = useCallback((next: SessionListView) => {
+    setView(next)
+    writeSessionListView(next)
+  }, [])
+  const resetView = useCallback(() => {
+    clearSessionListView()
+    setView(DEFAULT_SESSION_LIST_VIEW)
+  }, [])
+  const now = useDayClock()
   const asideWidth = showRail ? SIDEBAR_RAIL_WIDTH_PX : restingWidth
   return (
     <aside
@@ -601,6 +644,8 @@ export function Sidebar({
           onNewThread={onNewThread}
           onLaunchThread={onLaunchThread}
           onSwitchThread={onSwitchThread}
+          view={view}
+          now={now}
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col py-2">
@@ -616,6 +661,10 @@ export function Sidebar({
             onRenameThread={onRenameThread}
             onPinThread={onPinThread}
             onForkThread={onForkThread}
+            view={view}
+            onViewChange={applyView}
+            onReset={resetView}
+            now={now}
             {...projectProps}
           />
         </div>

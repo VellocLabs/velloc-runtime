@@ -5,7 +5,7 @@ import {
   useSessionManager,
   type RemoteSessionSummary,
 } from '../browser/webview/useSessionManager'
-import { pinnedFirst } from '../browser/webview/sessionPinning'
+import { pinnedFirst, sidebarRowOrder } from '../browser/webview/sessionPinning'
 import { pickNeighborSession } from '../browser/webview/sessionVisibility'
 
 // Pinned state comes from the runtime's summary; deleting the session on
@@ -73,6 +73,33 @@ describe('pickNeighborSession', () => {
 
   it('finds nothing when the deleted row is the only one', () => {
     expect(pickNeighborSession([{ sessionId: 'a' }], 'a', new Set())).toBeUndefined()
+  })
+
+  it('follows the order the sidebar shows, not activity order', () => {
+    // Created a, b, c in that order; activity order is c, a, b.
+    const sessions = [
+      { sessionId: 'c', updatedAt: 3_000, createdAt: 30 },
+      { sessionId: 'a', updatedAt: 2_000, createdAt: 10 },
+      { sessionId: 'b', updatedAt: 1_000, createdAt: 20 },
+    ]
+    const view = { groupBy: 'none', field: 'created', direction: 'asc' } as const
+    const order = sidebarRowOrder(sessions, view, 5_000).map(s => s.sessionId)
+    expect(order).toEqual(['a', 'b', 'c'])
+    expect(pickNeighborSession(sessions, 'b', new Set(), order)?.sessionId).toBe('c')
+  })
+
+  it('skips the rows of a collapsed section', () => {
+    const sessions = [
+      { sessionId: 'p', updatedAt: 3_000, pinned: true },
+      { sessionId: 'a', updatedAt: 2_000 },
+      { sessionId: 'b', updatedAt: 1_000 },
+    ]
+    const view = { groupBy: 'none', field: 'updated', direction: 'desc' } as const
+    const order = sidebarRowOrder(sessions, view, 5_000, { pinned: true }).map(
+      s => s.sessionId,
+    )
+    expect(order).toEqual(['a', 'b'])
+    expect(pickNeighborSession(sessions, 'b', new Set(), order)?.sessionId).toBe('a')
   })
 })
 
@@ -203,5 +230,46 @@ describe('useSessionManager pin, fork and delete', () => {
       'Plan',
       true,
     )
+  })
+
+  it('lands on the neighbor in the row order the caller passes', () => {
+    const { result } = mount()
+    act(() => {
+      result.current.applyRemoteList([
+        summary('a', 3_000),
+        summary('b', 2_000),
+        summary('c', 1_000),
+      ])
+    })
+    flushMerge()
+    act(() => {
+      result.current.focusSession('b')
+    })
+    act(() => {
+      result.current.deleteSession('b', ['c', 'b', 'a'])
+    })
+    expect(result.current.activeSessionId).toBe('a')
+  })
+
+  it('a late write to a deleted session does not bring its row back', () => {
+    const { result } = mount()
+    act(() => {
+      result.current.applyRemoteList([summary('a', 3_000), summary('b', 2_000)])
+    })
+    flushMerge()
+    act(() => {
+      result.current.focusSession('b')
+    })
+    act(() => {
+      result.current.deleteSession('b')
+    })
+    act(() => {
+      result.current.updateSessionMeta('b', {
+        composerDraft: 'half typed',
+        lastComposerEditAt: 9_000,
+      })
+    })
+    flushMerge()
+    expect(result.current.sessions.some(s => s.sessionId === 'b')).toBe(false)
   })
 })
