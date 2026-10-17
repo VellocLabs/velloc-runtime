@@ -108,24 +108,56 @@ export function registerDeferrableSkills(
   lastRegistry = registry
 }
 
+// ── tools an extension registers while the session runs (F-25) ─────────────
+/** Per-runtime: each extension-registered tool is a one-tool group unit named
+ *  after the tool; the value says whether it asked to wait behind ToolSearch.
+ *  Kept apart from the template registry, which is replaced wholesale. */
+const keyedExtensionUnits = new WeakMap<object, ReadonlyMap<string, boolean>>()
+let lastExtensionUnits: ReadonlyMap<string, boolean> = new Map()
+
+/** Replaces the extension-registered tool units for THIS key: tool name →
+ *  deferred. */
+export function registerExtensionToolUnits(
+  units: ReadonlyMap<string, boolean>,
+  key?: DeferralKey,
+): void {
+  const copy = new Map(units)
+  if (key) keyedExtensionUnits.set(key, copy)
+  lastExtensionUnits = copy
+}
+
+function extensionUnitsFor(key?: DeferralKey): ReadonlyMap<string, boolean> {
+  if (key) return keyedExtensionUnits.get(key) ?? EMPTY_EXTENSION_UNITS
+  return lastExtensionUnits
+}
+
+const EMPTY_EXTENSION_UNITS: ReadonlyMap<string, boolean> = new Map()
+
 /** The group-unit a tool belongs to (for tools with no `tool.skill`), if any. */
 export function groupUnitForTool(
   toolName: string,
   key?: DeferralKey,
 ): string | undefined {
-  return registryFor(key).groupToolUnits.get(toolName)
+  return (
+    registryFor(key).groupToolUnits.get(toolName) ??
+    (extensionUnitsFor(key).has(toolName) ? toolName : undefined)
+  )
 }
 
 /**
  * Whether a unit's switch is currently ON — its tools are deferred (hidden
- * until activated). Decided SOLELY by the template-derived default.
+ * until activated). Decided by the template-derived default; an
+ * extension-registered tool waits only while ToolSearch is offered, since
+ * nothing else could load it.
  */
 export function isSkillDeferred(
   unitName: string | undefined,
   key?: DeferralKey,
 ): boolean {
   if (!unitName) return false
-  return registryFor(key).skillDefaults.get(unitName) ?? false
+  const templateDefault = registryFor(key).skillDefaults.get(unitName)
+  if (templateDefault !== undefined) return templateDefault
+  return extensionUnitsFor(key).get(unitName) === true && isAnySkillDeferred(key)
 }
 
 /**
@@ -151,7 +183,7 @@ export function isDeferredSkill(
   skillName: string | undefined,
   key?: DeferralKey,
 ): boolean {
-  return !!skillName && registryFor(key).skillDefaults.has(skillName)
+  return !!skillName && (registryFor(key).skillDefaults.has(skillName) || extensionUnitsFor(key).has(skillName))
 }
 
 /** The registered deferrable-skill names (read-only view). */

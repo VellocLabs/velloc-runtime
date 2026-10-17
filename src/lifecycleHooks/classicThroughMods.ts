@@ -6,6 +6,7 @@
  */
 
 import type { ClassicMods } from '../mods/toolCallEvent'
+import type { DispatchContext } from '../mods/modTypes'
 import type { HookBatchVerdict } from './runHooks'
 
 /** What a call site holds: the `mods` of its tool-use context, if any. */
@@ -25,6 +26,7 @@ export async function runClassicHooks(
   e: () => Record<string, unknown>,
   run: () => Promise<HookBatchVerdict>,
   signal?: AbortSignal,
+  context?: DispatchContext,
 ): Promise<ClassicRun> {
   if (!mods?.classic || !mods.hasClassicHooks?.(event)) return run()
   let last: HookBatchVerdict | undefined
@@ -41,6 +43,7 @@ export async function runClassicHooks(
       return last
     },
     signal,
+    context,
   )
   if (!settlement.settled) return last ?? started ?? run()
   const { aggregate } = settlement

@@ -91,12 +91,16 @@ export const RAISED_EVENTS: readonly string[] = Object.freeze([
   'session.surfaces',
   'session.surface',
   'session.repo',
+  // answered to a managed install alone (modManagedReads.ts)
+  'session.identity',
   'session.messages',
   'session.usage',
   'tool.list',
   'ui.log',
   'ui.status',
   'ui.toast',
+  // the `Notification` hooks, then no channel on the desktop (modNotify.ts)
+  'ui.notify',
   'ui.notice',
   'ui.open',
   'ui.close',

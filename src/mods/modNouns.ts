@@ -103,6 +103,8 @@ import {
   type SessionSendArgs,
 } from './sessionNouns'
 import type { DispatchContext } from './modTypes'
+import { isUiNotifyResult, uiNotifyArgsOf, uiNotifyCore, type ModNotifyHost } from './modNotify'
+import { isSessionIdentity, promptMediaArgsOf, promptMediaOf, sessionIdentityOf, type PromptMediaArgs } from './modManagedReads'
 import {
   pluginPromptArgsOf,
   promptComposeArgsOf,
@@ -218,6 +220,9 @@ export type ModNounHost = {
   /** `$.turn.abort` — the engine's running turn; bound late like
    *  `tools`. Absent where there is no engine. */
   turn?: ModTurnHost
+  /** `$.ui.notify` — the session's `Notification` hooks (`modNotify.ts`).
+   *  Absent: none run, and the call still resolves. */
+  notifications?: ModNotifyHost
   /** `$.fs` — the machine's files through the session's fs bridge (`modFs.ts`). Absent where there is no file system (a test's bare host). */
   fs?: ModFsHost
   /** `$.process.run` — a command on the host through the hosted Bash tool;
@@ -408,6 +413,14 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
     // that attaches as one (a remote client is the same `desktop` guest).
     surfaces: { run: () => ['desktop'], accepts: (result: unknown) => Array.isArray(result) },
     surface: { run: () => 'desktop', accepts: (result: unknown) => result !== undefined },
+    // "To a mod the organization's managed settings install; `{ deny }` to
+    // any other. No request is made" (`modManagedReads.ts`). A hook above
+    // may answer for core.
+    identity: {
+      input: () => ({}),
+      run: (_e: unknown, { call }: NounContext) => sessionIdentityOf(call.context.origin),
+      accepts: isSessionIdentity,
+    },
     repo: {
       run: (_e: unknown, { session }: NounContext) => hostMethod(session, 'repo', 'session.repo')(),
       // `null` is an answer: "null when the directory is not inside one".
@@ -502,6 +515,13 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
         const timeoutMs = isRecord(e) && typeof e.timeoutMs === 'number' ? e.timeoutMs : undefined
         uiHost(session).toast(call.plugin, text, timeoutMs)
       },
+    },
+    // `e` is `{ text, title? }`: the `Notification` hooks run, then no
+    // channel writes on the desktop (`modNotify.ts`).
+    notify: {
+      input: (args: readonly unknown[]) => uiNotifyArgsOf(args[0], args[1]),
+      run: (e: unknown, { call, session }: NounContext) => uiNotifyCore(e, call, session.notifications),
+      accepts: isUiNotifyResult,
     },
     // `e` is `{ tool_use_id, text }`; the id is identity, pinned.
     notice: {
@@ -687,6 +707,13 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
           context: call.context,
           ...(call.signal ? { signal: call.signal } : {}),
         }),
+    },
+    // "The engine's own read, no event: no hook answers for it", for a
+    // managed install alone (`modManagedReads.ts`).
+    media: {
+      raisesItself: true as const,
+      input: (args: readonly unknown[]) => promptMediaArgsOf(args[0]),
+      run: (e: unknown, { call }: NounContext) => promptMediaOf(e as PromptMediaArgs, call.context.origin),
     },
     // `read` is an op event: a hook above may scrub the box, or deny it.
     read: {

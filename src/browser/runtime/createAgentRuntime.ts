@@ -126,6 +126,7 @@ import { isModSlot, selectModModules } from '../../mods/modSlot'
 import { createModIdleUnload, type ModIdleUnload } from '../../mods/modIdleUnload'
 import { modConfigWrite, pluginConfigRows } from '../../mods/modConfig'
 import { readSessionRepo } from '../../mods/sessionRepo'
+import { PLUGIN_NOTIFICATION_TYPE } from '../../mods/modNotify'
 import { fileModBuildStore } from '../../mods/modBuildStore'
 import { renderPartsEnglish, key } from '../../input/systemMessageParts'
 import {
@@ -1970,6 +1971,18 @@ ${teammateAddendum}`
         // `$.turn.abort`: the engine's running turn, bound late like `tools`.
         turn: {
           abort: turnId => modEngine('$.turn.abort').abortTurn(turnId),
+        },
+        // `$.ui.notify`: the session's `Notification` hooks; "unbound or
+        // exiting, none" run.
+        notifications: {
+          runHooks: async (notice, context) => {
+            await engineForMods?.runNotificationHooks({
+              message: notice.message,
+              title: notice.title,
+              notificationType: PLUGIN_NOTIFICATION_TYPE,
+              raisedBy: context,
+            })
+          },
         },
       },
       report: reportMods,

@@ -300,8 +300,8 @@ export function agentLoopExtensions(parent: AgentLoopParent, agentId: string): A
     turnContinue: async (e, signal) => (parent.turnContinue ? parent.turnContinue(e, signal) : { pending: e.pending }),
     report: (line) => parent.report?.(line),
     hasClassicHooks: (event) => parent.hasClassicHooks?.(event) === true,
-    classic: (event, e, core, signal) =>
-      parent.classic ? parent.classic(event, e, core, signal) : Promise.resolve({ settled: false }),
+    classic: (event, e, core, signal, context) =>
+      parent.classic ? parent.classic(event, e, core, signal, context) : Promise.resolve({ settled: false }),
     promptSubmit: async (text) => ({ entered: true, text, context: [] }),
   }
 }

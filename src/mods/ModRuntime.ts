@@ -3469,6 +3469,7 @@ export class ModRuntime implements TurnExtensions {
     e: Record<string, unknown>,
     core: ClassicCore,
     signal?: AbortSignal,
+    context?: DispatchContext,
   ): Promise<ClassicSettlement> {
     if (!this.hasClassicHooks(event)) return { settled: false }
     const runs = new Map<number, ClassicAggregate>()
@@ -3494,6 +3495,7 @@ export class ModRuntime implements TurnExtensions {
         },
         {
           ...(signal ? { signal } : {}),
+          ...(context ? { context } : {}),
           accepts: isPreToolUse ? isPreToolUseResult : isClassicResult,
           ...(isPreToolUse ? { refusal: (reason: string) => ({ deny: reason }) } : {}),
         },

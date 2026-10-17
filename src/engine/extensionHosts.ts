@@ -15,6 +15,7 @@ import { isAssistantMessage } from '../runtime/VercelModelConstants'
 import { extractAssistantText } from '../models/fastModelCall'
 import { ModRegisteredTools, isModRegisteredTool, modToolFullName, type ModRegisteredTool } from '../mods/modRegisteredTools'
 import { mcpServerSkillName } from '../mcp/toolAdapter'
+import { registerExtensionToolUnits } from '../toolkit/run/deferredTools'
 import {
   ModRegisteredAgents,
   agentIdOfLaunch,
@@ -417,10 +418,11 @@ export class ExtensionHosts {
   constructor(private readonly ledger: SessionLedger, writer: TranscriptWriter) {
     const { config } = ledger
     // Each change rebuilds the session's list: its own entries plus the
-    // registered ones, replaced by name.
+    // registered ones, replaced by name, each its own deferral unit.
     const listRegistered = (registered: readonly ModRegisteredTool[]) => {
       const names = new Set(registered.map(tool => tool.name))
       config.tools = [...config.tools.filter(tool => !isModRegisteredTool(tool) && !names.has(tool.name)), ...registered]
+      registerExtensionToolUnits(new Map(registered.map(tool => [tool.name, tool.modDeferred])), config.runtimeConfig)
     }
     const modTools = new ModRegisteredTools(registered => {
       listRegistered(registered)

@@ -26,6 +26,7 @@ import type { StreamHookCall } from '../mods/streamChain'
 import type { SessionUsage } from '../mods/sessionNouns'
 import { declareTool, type ToolContract } from '../toolkit/toolContract'
 import { buildModTool } from '../mods/modRegisteredTools'
+import { registerDeferrableSkills, shouldHideToolFromModel } from '../toolkit/run/deferredTools'
 import {
   DefaultRuntimeConfig,
   MemoryConversationStore,
@@ -131,7 +132,7 @@ function makeEngine(
     ...(mods ? { mods } : {}),
     ...configOverrides,
   })
-  return { engine, modelCalls, prompts }
+  return { engine, modelCalls, prompts, runtimeConfig }
 }
 
 async function submit(
@@ -1427,6 +1428,21 @@ describe('$.tool.register through the engine', () => {
     expect((await engine.modTools.list()).map(t => t.name)).toEqual(['mcp__mod-sea__tide'])
     expect(engine.transcriptRows()).toEqual([])
   })
+  it("a registered tool waits behind ToolSearch under the session's own deferral key unless it said isDeferred: false", async () => {
+    const { engine, runtimeConfig } = makeEngine(passThrough(), true, undefined, [])
+    registerDeferrableSkills([{ name: 'browser', defaultDeferred: true }], runtimeConfig)
+    engine.modTools.register!({ name: 'tide', description: 'Tides.', inputSchema: { type: 'object' } }, 'mod-sea')
+    engine.modTools.register!({ name: 'wave', description: 'Waves.', inputSchema: { type: 'object' }, isDeferred: false }, 'mod-sea')
+    // `$.tool.list` lists the tools offered now: the waiting one is not.
+    expect((await engine.modTools.list()).map(t => t.name)).toEqual(['mcp__mod-sea__wave'])
+    const none = { activeSkills: [] } as unknown as WorkingState
+    expect(shouldHideToolFromModel({ name: 'mcp__mod-sea__tide' }, none, runtimeConfig)).toBe(true)
+    expect(shouldHideToolFromModel({ name: 'mcp__mod-sea__wave' }, none, runtimeConfig)).toBe(false)
+    // Forgotten with its plugin, the unit goes too.
+    engine.modTools.forget!('mod-sea')
+    expect(shouldHideToolFromModel({ name: 'mcp__mod-sea__tide' }, none, runtimeConfig)).toBe(false)
+  })
+
   it('each change of the registered tools is told to onModToolsChanged, for the loops under the session', () => {
     const told: string[][] = []
     const { engine } = makeEngine(passThrough(), true, undefined, [], {}, {

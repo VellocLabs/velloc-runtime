@@ -10,6 +10,7 @@ import type { ModelReplyRow, Message } from '../runtime/RuntimeTypes'
 import { createGeneratedUserMessage } from '../messages/messageFactories'
 import { traceLine } from '../utils/debugLog'
 import { runClassicHooks } from './classicThroughMods'
+import type { DispatchContext } from '../mods/modTypes'
 import {
   fireAlertRaised,
   fireSessionClosed,
@@ -176,8 +177,9 @@ export async function runSubagentStartHooks(
   return result ? contextRows(result) : []
 }
 
-/** What a `Notification` hook is told about the notification going out. */
-export type HookNotification = { message: string; title?: string; notificationType: string }
+/** What a `Notification` hook is told about the notification going out.
+ *  `raisedBy`: a plugin's own `$.ui.notify`, whose calling hook is skipped. */
+export type HookNotification = { message: string; title?: string; notificationType: string; raisedBy?: DispatchContext }
 
 /**
  * `Notification` for `toolUseContext`'s session: informational — matched on
@@ -217,6 +219,7 @@ export async function runNotificationHooks(
           hookInput: { ...runners.hookInput, ...text },
         }),
       runners.signal,
+      notification.raisedBy,
     ),
   )
 }

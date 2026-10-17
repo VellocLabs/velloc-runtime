@@ -9,11 +9,15 @@ import { declareTool, type ToolContract, type ToolArgsJsonShape } from '../toolk
 export const MOD_TOOL_NAME_PREFIX = 'mcp__'
 const NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
-/** What `$.tool.register` takes, checked: `inputSchema` filled in. */
+/** What `$.tool.register` takes, checked: `inputSchema` filled in,
+ *  `isDeferred` as the plugin gave it. */
 export type ModToolSpec = {
   name: string
   description: string
   inputSchema: Record<string, unknown>
+  /** `true` waits behind ToolSearch, `false` is listed in front; left out,
+   *  behind ToolSearch, as an MCP server's tool. */
+  isDeferred?: boolean
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -22,8 +26,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** The checked spec: each refusal names the field. */
 export function modToolSpecOf(value: unknown): ModToolSpec {
-  if (!isRecord(value)) throw new TypeError('$.tool.register(tool): tool must be { name, description, inputSchema? }')
-  const { name, description, inputSchema } = value
+  if (!isRecord(value)) {
+    throw new TypeError('$.tool.register(tool): tool must be { name, description, inputSchema?, isDeferred? }')
+  }
+  const { name, description, inputSchema, isDeferred } = value
   if (typeof name !== 'string' || !NAME_PATTERN.test(name)) {
     throw new TypeError('$.tool.register: name must be letters, digits, "_" or "-", up to 64')
   }
@@ -33,13 +39,22 @@ export function modToolSpecOf(value: unknown): ModToolSpec {
   if (inputSchema !== undefined && (!isRecord(inputSchema) || (inputSchema.type !== undefined && inputSchema.type !== 'object'))) {
     throw new TypeError('$.tool.register: inputSchema must be a JSON schema object of type "object"')
   }
+  if (isDeferred !== undefined && typeof isDeferred !== 'boolean') {
+    throw new TypeError('$.tool.register: isDeferred must be true, false or left out')
+  }
   return {
     name,
     description: description.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g, (half, lead: string) =>
       half.length === 1 ? '�' : `${lead}�`,
     ),
     inputSchema: inputSchema !== undefined ? { ...inputSchema, type: 'object' } : { type: 'object' },
+    ...(isDeferred !== undefined ? { isDeferred } : {}),
   }
+}
+
+/** Whether a registered tool waits behind ToolSearch: unless it said `false`. */
+export function isModToolDeferred(spec: Pick<ModToolSpec, 'isDeferred'>): boolean {
+  return spec.isDeferred !== false
 }
 
 /** The name the model calls: `mcp__<plugin>__<name>`. */
@@ -50,7 +65,7 @@ export function modToolFullName(plugin: string, name: string): string {
 /** A tool the engine lists for a plugin: the spec's description and schema,
  *  a core that fails ("a call no hook answers fails"). `modPlugin` marks it
  *  for `forget`. */
-export type ModRegisteredTool = ToolContract & { readonly modPlugin: string }
+export type ModRegisteredTool = ToolContract & { readonly modPlugin: string; readonly modDeferred: boolean }
 
 export function isModRegisteredTool(tool: ToolContract): tool is ModRegisteredTool {
   return typeof (tool as { modPlugin?: unknown }).modPlugin === 'string'
@@ -65,7 +80,8 @@ export function buildModTool(plugin: string, spec: ModToolSpec): ModRegisteredTo
   const tool = declareTool({
     name: fullName,
     // Named and permission-matched as an MCP tool is (`mcp__<plugin>` rules);
-    // no `skill`, so never deferred, and no `mcpInfo`: there is no server.
+    // no `skill`: its deferral unit is its own name (`modDeferred`); no
+    // `mcpInfo`: there is no server.
     fromMcpServer: true,
     argsSchema: spec.inputSchema as ToolArgsJsonShape,
     description: async () => spec.description,
@@ -77,7 +93,7 @@ export function buildModTool(plugin: string, spec: ModToolSpec): ModRegisteredTo
       return { data: { error: noHookAnsweredText(plugin, fullName), isError: true } }
     },
   }) as unknown as ToolContract
-  return Object.assign(tool, { modPlugin: plugin })
+  return Object.assign(tool, { modPlugin: plugin, modDeferred: isModToolDeferred(spec) })
 }
 
 /** The engine's registry: by full name, replaced on a second registration. */

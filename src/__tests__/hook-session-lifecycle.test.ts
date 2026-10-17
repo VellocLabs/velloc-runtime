@@ -221,6 +221,30 @@ describe('runNotificationHooks', () => {
       { event: 'Notification', e: expect.objectContaining({ notification_type: 'idle_prompt', message: notice.message }) },
     ])
   })
+
+  it("a plugin's own notice is raised under its context, so its calling hook is skipped", async () => {
+    const holder = appStateHolder()
+    const host = hookHost()
+    hook(holder, 'Notification')
+    const ctx = context(holder, host.capabilities)
+    const contexts: unknown[] = []
+    const mods: Partial<ClassicMods> = {
+      hasClassicHooks: event => event === 'Notification',
+      classic: async (_event, _e, core, _signal, raisedBy) => {
+        contexts.push(raisedBy)
+        return { settled: true, aggregate: await core(new AbortController().signal) }
+      },
+    }
+    ctx.options = { ...ctx.options, mods: mods as never }
+    const raisedBy = { origin: { plugin: 'ci', tier: 'user' as const }, skipLinkId: 'link-7', depth: 2 }
+    await runNotificationHooks({ message: 'tests passed', title: 'CI', notificationType: 'plugin_notification', raisedBy }, ctx)
+    await runNotificationHooks(notice, ctx)
+    expect(contexts).toEqual([raisedBy, undefined])
+    expect(host.stdins).toEqual([
+      expect.objectContaining({ notification_type: 'plugin_notification', message: 'tests passed', title: 'CI' }),
+      expect.objectContaining({ notification_type: 'idle_prompt' }),
+    ])
+  })
 })
 
 // ── The engine ───────────────────────────────────────────────────────────

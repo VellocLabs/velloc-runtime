@@ -86,6 +86,8 @@ export type ClassicMods = {
       systemMessages: string[]
     }>,
     signal?: AbortSignal,
+    /** A plugin's own call raising it (`$.ui.notify`): its hook is skipped. */
+    context?: DispatchContext,
   ): Promise<
     | {
         settled: true

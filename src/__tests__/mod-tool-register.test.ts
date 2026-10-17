@@ -1,10 +1,10 @@
 /**
- * `$.tool.register` (F-25) — the spec checked, the full name
- * `mcp__<plugin>__<name>`, a registered tool's core failing ("a call no
- * hook answers fails"), the registry replacing by name and forgetting a
- * plugin's tools; the noun through a real `ModRuntime`: a mod registers, a
- * guard hooking `tool.register` rewrites the description but not the name,
- * a bad spec is refused by name, a host that does not list tools refuses it.
+ * `$.tool.register` (F-25) — the spec checked, the full name, a registered
+ * tool's core failing ("a call no hook answers fails"), the registry replacing
+ * by name and forgetting a plugin's tools; where the tool waits (`isDeferred`:
+ * behind ToolSearch unless `false`, in front with no ToolSearch); the noun
+ * through a real `ModRuntime`: a guard rewrites the description but not the
+ * name, a bad spec is refused by name, a host with no tools refuses it.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
@@ -19,6 +19,14 @@ import {
   modToolSpecOf,
   noHookAnsweredText,
 } from '../mods/modRegisteredTools'
+import {
+  activateSkills,
+  registerDeferrableSkills,
+  registerExtensionToolUnits,
+  shouldHideToolFromModel,
+} from '../toolkit/run/deferredTools'
+import { loadableTools, owningUnit } from '../toolkit/builtin/toolSearch/catalog'
+import type { WorkingState } from '../runtime/RuntimeTypes'
 
 const open: MessagePort[] = []
 const runtimes: ModRuntime[] = []
@@ -45,6 +53,19 @@ describe('the spec and the tool', () => {
     expect(() => modToolSpecOf({ name: 'w', description: '  ' })).toThrow(/description/)
     expect(() => modToolSpecOf({ name: 'w', description: 'x', inputSchema: { type: 'array' } })).toThrow(/inputSchema/)
     expect(() => modToolSpecOf('w')).toThrow(TypeError)
+  })
+
+  it('hands isDeferred on as the plugin gave it, and refuses anything but a boolean', () => {
+    expect(modToolSpecOf({ name: 'w', description: 'x', isDeferred: false }).isDeferred).toBe(false)
+    expect(modToolSpecOf({ name: 'w', description: 'x', isDeferred: true }).isDeferred).toBe(true)
+    expect('isDeferred' in modToolSpecOf({ name: 'w', description: 'x' })).toBe(false)
+    expect(() => modToolSpecOf({ name: 'w', description: 'x', isDeferred: 'yes' })).toThrow(
+      '$.tool.register: isDeferred must be true, false or left out',
+    )
+    // Left out, the tool waits as an MCP server's would.
+    expect(buildModTool('p', modToolSpecOf({ name: 'w', description: 'x' })).modDeferred).toBe(true)
+    expect(buildModTool('p', modToolSpecOf({ name: 'w', description: 'x', isDeferred: true })).modDeferred).toBe(true)
+    expect(buildModTool('p', modToolSpecOf({ name: 'w', description: 'x', isDeferred: false })).modDeferred).toBe(false)
   })
 
   it('a registered tool: the full name, the description and schema the model reads, a core that fails', async () => {
@@ -74,6 +95,49 @@ describe('the spec and the tool', () => {
     expect(registry.list().map(t => t.name)).toEqual(['mcp__q__a'])
     registry.forget('nobody')
     expect(seen).toHaveLength(5)
+  })
+})
+
+describe('where a registered tool waits', () => {
+  const waiting = buildModTool('mod-sea', modToolSpecOf({ name: 'tide', description: 'Tides.' }))
+  const inFront = buildModTool('mod-sea', modToolSpecOf({ name: 'wave', description: 'Waves.', isDeferred: false }))
+  const units = new Map([
+    [waiting.name, waiting.modDeferred],
+    [inFront.name, inFront.modDeferred],
+  ])
+  const state = (activeSkills: string[] = []) => ({ activeSkills }) as unknown as WorkingState
+
+  it('behind ToolSearch unless it said false, each its own unit that ToolSearch loads by name', () => {
+    const key = {}
+    registerDeferrableSkills([{ name: 'browser', defaultDeferred: true }], key)
+    registerExtensionToolUnits(units, key)
+    expect(shouldHideToolFromModel(waiting, state(), key)).toBe(true)
+    expect(shouldHideToolFromModel(inFront, state(), key)).toBe(false)
+    expect(loadableTools([waiting, inFront], key).map(t => t.name)).toEqual([waiting.name])
+    // ToolSearch `select:` activates the tool's own unit.
+    expect(owningUnit(waiting, key)).toBe(waiting.name)
+    let appState = state()
+    activateSkills(write => (appState = write(appState)), [owningUnit(waiting, key)!], key)
+    expect(shouldHideToolFromModel(waiting, appState, key)).toBe(false)
+  })
+
+  it('in front while nothing else waits, since no ToolSearch is offered to load it', () => {
+    const key = {}
+    registerDeferrableSkills([], key)
+    registerExtensionToolUnits(units, key)
+    expect(shouldHideToolFromModel(waiting, state(), key)).toBe(false)
+    expect(loadableTools([waiting, inFront], key)).toEqual([])
+  })
+
+  it("a runtime's units are its own: a sibling runtime's registration leaves them be", () => {
+    const mine = {}
+    const sibling = {}
+    registerDeferrableSkills([{ name: 'browser', defaultDeferred: true }], mine)
+    registerDeferrableSkills([{ name: 'browser', defaultDeferred: true }], sibling)
+    registerExtensionToolUnits(units, mine)
+    registerExtensionToolUnits(new Map(), sibling)
+    expect(shouldHideToolFromModel(waiting, state(), mine)).toBe(true)
+    expect(shouldHideToolFromModel(waiting, state(), sibling)).toBe(false)
   })
 })
 
@@ -152,6 +216,52 @@ describe('$.tool.register through the runtime', () => {
     // A teardown forgets every plugin's.
     runtime.dispose()
     expect(forgotten).toEqual(['weather', 'guard'])
+  })
+
+  it("a guard reads isDeferred on the event and may move the tool; a non-boolean is refused by name", async () => {
+    const registry = new ModRegisteredTools(() => {})
+    const { runtime, reports } = world(
+      {
+        guard: `
+          export function register(on) {
+            on('tool.register', async ($, e, next) => {
+              await $.ui.log('saw ' + e.isDeferred);
+              return next(e.name === 'pinned' ? { ...e, isDeferred: false } : e);
+            });
+          }
+        `,
+        sea: `
+          export function register(on) {
+            on('session.start', async ($, e, next) => {
+              await $.tool.register({ name: 'tide', description: 'Tides.', isDeferred: true });
+              await $.tool.register({ name: 'pinned', description: 'Pinned.' });
+              const bad = await $.tool.register({ name: 'x', description: 'y', isDeferred: 1 }).catch(err => err.message);
+              await $.ui.log(bad);
+              return next(e);
+            });
+          }
+        `,
+      },
+      {
+        tools: {
+          list: async () => [],
+          call: async () => ({}),
+          check: async () => ({ decision: 'allow' as const }),
+          register: (spec, plugin) => registry.register(spec, plugin),
+          forget: () => {},
+        },
+      },
+    )
+    await runtime.ready
+    expect(reports).toEqual([
+      'guard: saw true',
+      'guard: saw undefined',
+      'sea: $.tool.register: isDeferred must be true, false or left out',
+    ])
+    expect(registry.list().map(t => `${t.name}: ${t.modDeferred}`)).toEqual([
+      'mcp__sea__tide: true',
+      'mcp__sea__pinned: false',
+    ])
   })
 
   it('a host that does not list tools refuses the noun by name', async () => {

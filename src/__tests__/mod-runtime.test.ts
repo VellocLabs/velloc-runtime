@@ -392,8 +392,9 @@ describe('ModRuntime — $', () => {
 
   it('every noun served is listed as a raised event', () => {
     // `$.ui.ask` raises no `ui.ask` event: the ask is raised as a `tool.call`
-    // of AskUserQuestion instead (modUi.ts).
-    const NOT_RAISED = ['ui.ask']
+    // of AskUserQuestion instead (modUi.ts). `$.prompt.media` is the engine's
+    // own read, with no event (modManagedReads.ts).
+    const NOT_RAISED = ['ui.ask', 'prompt.media']
     for (const noun of implementedNouns()) {
       if (NOT_RAISED.includes(noun)) expect(RAISED_EVENTS, noun).not.toContain(noun)
       else expect(RAISED_EVENTS, noun).toContain(noun)
@@ -431,6 +432,7 @@ describe('ModRuntime — $', () => {
       'process.spawn',
       'prompt.compose',
       'prompt.fill',
+      'prompt.media',
       'prompt.read',
       'prompt.submit',
       'prompt.suggest',
@@ -438,6 +440,7 @@ describe('ModRuntime — $', () => {
       'session.compact',
       'session.cwd',
       'session.id',
+      'session.identity',
       'session.messages',
       'session.model',
       'session.repo',
@@ -470,6 +473,7 @@ describe('ModRuntime — $', () => {
       'ui.invalidate',
       'ui.log',
       'ui.notice',
+      'ui.notify',
       'ui.open',
       'ui.panes',
       'ui.scroll',
