@@ -192,6 +192,8 @@ export type RightPanelProps = {
   // path click open the file in the Files view.
   turnDiffHistory?: TurnDiffMeta[] | null
   loadTurnDiffDetail?: LoadTurnDiffDetail
+  /** Ask for the turn-diff history while the Diff view shows it and it is missing. */
+  requestTurnDiffHistory?: () => void
   onOpenFile?: (target: RightPanelFileTarget) => void
 }
 
@@ -322,6 +324,7 @@ export function RightPanel(props: RightPanelProps): ReactElement {
             target={props.diffTarget ?? null}
             turnDiffHistory={props.turnDiffHistory}
             loadTurnDiffDetail={props.loadTurnDiffDetail}
+            requestTurnDiffHistory={props.requestTurnDiffHistory}
             onOpenFile={props.onOpenFile}
           />
         )

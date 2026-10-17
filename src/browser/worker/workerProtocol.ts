@@ -17,6 +17,7 @@ import type {
 import type { ToolSetName } from '../../toolkit/toolRegistry'
 import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
 import type { TurnDiffMeta, TurnFileChange } from '../../utils/turnDiffs'
+import type { SessionChangeFigures } from '../../utils/sessionChangeDigest'
 import type { TraceLoggerEntry } from '../../engine/turn/modelTrace'
 import type { RuleEdit } from '../../permissions/ruleUpdates'
 import type { BrowserSessionMetadata } from '../../sessions/sessionStore'
@@ -675,6 +676,12 @@ export type AgentWorkerInboundMessage =
       }
     }
   | {
+      // A view that lists the turn-diff history asks for it (computed on
+      // first need). Replies with worker.turnDiffHistory.
+      type: 'worker.getTurnDiffHistory'
+      payload?: Record<string, never>
+    }
+  | {
       // Resolve a BUNDLED skill's displayable body for the Right Panel Skills
       // tab. Bundled skills carry a synthetic `bundled:<name>` path (no
       // on-disk SKILL.md), so the panel cannot `readFileText` them — the body
@@ -770,6 +777,15 @@ export type AgentWorkerOutboundMessage =
       type: 'worker.turnDiffHistory'
       payload: {
         turns: TurnDiffMeta[]
+      }
+    }
+  | {
+      // The Outputs and Changes cards' figures from the session's stored
+      // digest, sent on open in place of a computed worker.turnDiffHistory
+      // while that digest still describes the transcript (F-9).
+      type: 'worker.sessionChangeFigures'
+      payload: {
+        figures: SessionChangeFigures
       }
     }
   | {

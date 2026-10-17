@@ -1,5 +1,8 @@
 import { ModUiContext } from '../../components/assistant-ui/mod-ui-context'
-import { SessionCardsPopoverContext } from '../../components/assistant-ui/session-card-stack'
+import {
+  SessionCardsPopoverContext,
+  SessionChangeFiguresContext,
+} from '../../components/assistant-ui/session-card-stack'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useCan } from './useCan'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
@@ -2032,6 +2035,7 @@ function InteractiveAssistantUiThread({
                   >
                   <ModUiContext.Provider value={modUi}>
                   <SessionCardsPopoverContext.Provider value={sessionCardsPopover}>
+                  <SessionChangeFiguresContext.Provider value={state.sessionChangeFigures ?? null}>
                   <ComposerAttachmentPickerProvider
                     value={
                       // Only the real chromium host implements the native picker (`canPickProjectFolder`);
@@ -2080,6 +2084,7 @@ function InteractiveAssistantUiThread({
                       </ContinueConversationProvider>
                     )}
                   </ComposerAttachmentPickerProvider>
+                  </SessionChangeFiguresContext.Provider>
                   </SessionCardsPopoverContext.Provider>
                   </ModUiContext.Provider>
                   </SlashCommandsProvider>

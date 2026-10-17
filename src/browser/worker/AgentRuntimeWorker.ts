@@ -290,6 +290,7 @@ export class AgentRuntimeWorker {
   })
   private readonly fallbackTranscript = new AgentTranscriptService({
     emit: m => this.emit(m),
+    isBusy: () => this.isBusy(),
   })
 
   /** Stops hearing the mod slot registry (F-25): the picker's command list
@@ -499,7 +500,10 @@ export class AgentRuntimeWorker {
         clearPendingPlanApprovalMarker: () =>
           scopePermissions.clearPendingPlanApprovalMarker(),
       }),
-      transcript: new AgentTranscriptService({ emit: m => this.emit(m) }),
+      transcript: new AgentTranscriptService({
+        emit: m => this.emit(m),
+        isBusy: () => this.isBusy(),
+      }),
       projectBranch: undefined,
     }
 
@@ -838,9 +842,10 @@ export class AgentRuntimeWorker {
             ),
           },
         })
-        // Recompute the "Changes this turn" strip from persisted sidecars and
-        // push it AFTER the (boot-critical) transcript emit — never blocks it.
-        void this.scopeTranscript.emitTurnDiffHistory()
+        // Bring the change history up to date AFTER the (boot-critical)
+        // transcript emit — never blocks it; an opened session is served
+        // from its stored digest when that still holds.
+        void this.scopeTranscript.refreshTurnDiffHistory()
         return
 
       case 'worker.getMessagesSince': {
@@ -862,7 +867,7 @@ export class AgentRuntimeWorker {
             sinceOrdinal,
           },
         })
-        void this.scopeTranscript.emitTurnDiffHistory()
+        void this.scopeTranscript.refreshTurnDiffHistory()
         return
       }
 
@@ -894,6 +899,8 @@ export class AgentRuntimeWorker {
         // snapshot diff of a fileSnapshots session — the WorkspaceDiff
         // card's file jump reads it; null for sessions without a recorder.
         const turnIndex = message.payload.turnIndex
+        // The history is computed on first need, not on open.
+        if (turnIndex !== 0) await this.scopeTranscript.ensureTurnDiffHistory()
         const files =
           turnIndex === 0
             ? await this.scopeTranscript.getSessionSnapshotDiff()
@@ -904,6 +911,16 @@ export class AgentRuntimeWorker {
           type: 'worker.turnDiffDetail',
           payload: { turnIndex, files },
         })
+        return
+      }
+
+      case 'worker.getTurnDiffHistory': {
+        // A view that lists the history asks for it; computed on this first
+        // need when the open was served from the stored digest.
+        await this.waitForInit()
+        if (!(await this.scopeTranscript.ensureTurnDiffHistory())) {
+          this.scopeTranscript.emitComputedIfCurrent()
+        }
         return
       }
 
@@ -1970,6 +1987,10 @@ export class AgentRuntimeWorker {
             },
           })
         })
+      } else {
+        // The turn's edits are all persisted: the history computed now is the
+        // one the session's change digest records.
+        void this.scopeTranscript.emitTurnDiffHistory()
       }
     }
   }

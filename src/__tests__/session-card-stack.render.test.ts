@@ -11,8 +11,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import {
   SessionCardStack,
   SessionCardsPopoverContext,
+  SessionChangeFiguresContext,
   type SessionCardsPopover,
 } from '@/components/assistant-ui/session-card-stack'
+import type { SessionChangeFigures } from '@/utils/sessionChangeDigest'
 import { EMPTY_MOD_UI, ModUiContext, type ModUiContextValue } from '@/components/assistant-ui/mod-ui-context'
 import {
   RightPanelContentContext,
@@ -67,6 +69,7 @@ type Draw = {
   folder?: string
   openMcpSettings?: () => void
   popover?: SessionCardsPopover | null
+  figures?: SessionChangeFigures | null
 }
 
 function tree({
@@ -78,10 +81,14 @@ function tree({
   folder,
   openMcpSettings,
   popover = null,
+  figures = null,
 }: Draw): ReactNode {
   return createElement(
     SessionCardsPopoverContext.Provider,
     { value: popover },
+    createElement(
+    SessionChangeFiguresContext.Provider,
+    { value: figures },
     createElement(
     ModUiContext.Provider,
     { value: { ...EMPTY_MOD_UI, panesDocked: true, ...mod } },
@@ -97,6 +104,7 @@ function tree({
           createElement(SessionCardStack, { history }),
         ),
       ),
+    ),
     ),
     ),
   )
@@ -178,6 +186,21 @@ describe('SessionCardStack — information cards', () => {
     expect(screen.getByTestId('session-card-changes-summary').textContent).toBe('+12 −4')
     fireEvent.click(screen.getByTestId('session-card-changes-header'))
     expect(openDiff).toHaveBeenCalledWith({ kind: 'turnHistory' })
+  })
+
+  it('before the history arrives, Outputs and Changes draw the stored figures; the history replaces them', () => {
+    const figures = { plusLines: 7, minusLines: 2, createdFiles: ['/w/stored.md'] }
+    render(tree({ history: null, figures, tasks: { runningTaskCount: 0 } }))
+    expect(cardIds()).toEqual(['session-card-outputs', 'session-card-changes'])
+    expect(screen.getByTestId('session-card-changes-summary').textContent).toBe('+7 −2')
+    expect(
+      Array.from(document.querySelectorAll('[data-testid="session-card-output"]')).map(node =>
+        node.getAttribute('data-path'),
+      ),
+    ).toEqual(['/w/stored.md'])
+    cleanup()
+    render(tree({ figures, tasks: { runningTaskCount: 0 } }))
+    expect(screen.getByTestId('session-card-changes-summary').textContent).toBe('+12 −4')
   })
 
   it('Changes leaves out a side that is zero', () => {

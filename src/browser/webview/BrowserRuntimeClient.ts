@@ -40,6 +40,7 @@ import {
 import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
 import type { BundledSkillBodyResult } from '../../skillLibrary/builtinSkillBody'
 import type { TurnDiffMeta, TurnFileChange } from '../../utils/turnDiffs'
+import type { SessionChangeFigures } from '../../utils/sessionChangeDigest'
 import type { BrowserSessionMetadata } from '../../sessions/sessionStore'
 import {
   getBootDiagnosticTraceId,
@@ -334,6 +335,12 @@ export type BrowserRuntimeClientState = {
    */
   turnDiffHistory?: TurnDiffMeta[] | null
   /**
+   * The Outputs and Changes cards' figures from the session's stored digest,
+   * sent on open in place of the history (`worker.sessionChangeFigures`).
+   * Read only while `turnDiffHistory` is null. `null` = none sent.
+   */
+  sessionChangeFigures?: SessionChangeFigures | null
+  /**
    * The session's saved "next message" (a plain-text submit made while the
    * agent was busy, accumulated by the manager and broadcast in FULL). `null`
    * = none. Rendered verbatim by the NextMessage strip; consumed (auto-run) on
@@ -465,6 +472,7 @@ export class BrowserRuntimeClient {
     preSplitPrompt: null,
     preSplitPromptId: null,
     turnDiffHistory: null,
+    sessionChangeFigures: null,
     pendingMessage: null,
     pendingMessageEntries: null,
     pendingClearInFlight: false,
@@ -922,6 +930,16 @@ export class BrowserRuntimeClient {
         sessionId: this.initPayload.sessionId,
       })
     })
+  }
+
+  /**
+   * Ask for the turn-diff history when a view lists it; it arrives as
+   * `worker.turnDiffHistory`. An opened session sends only its stored figures
+   * until something needs the history.
+   */
+  async requestTurnDiffHistory(): Promise<void> {
+    await this.startOnce()
+    await this.transport?.postMessage({ type: 'worker.getTurnDiffHistory' })
   }
 
   /**
@@ -2196,6 +2214,14 @@ export class BrowserRuntimeClient {
         this.state = {
           ...this.state,
           turnDiffHistory: message.payload.turns,
+        }
+        this.emitState()
+        return
+
+      case 'worker.sessionChangeFigures':
+        this.state = {
+          ...this.state,
+          sessionChangeFigures: message.payload.figures,
         }
         this.emitState()
         return

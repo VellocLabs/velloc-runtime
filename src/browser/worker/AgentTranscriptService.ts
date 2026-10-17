@@ -29,6 +29,15 @@ import {
   WRITE_TOOL_ID,
 } from '../../prompting/fileToolNames'
 import { SUPER_EDIT_TOOL_NAME } from '../runJs/runJsProtocol'
+import {
+  buildSessionChangeDigest,
+  readSessionChangeDigest,
+  sameSessionChangeDigest,
+  sessionChangeFigures,
+  SESSION_CHANGES_METADATA_KEY,
+  storedDigestFingerprint,
+  transcriptFingerprint,
+} from '../../utils/sessionChangeDigest'
 
 /** A snapshot-store file diff in the Diff panel's edit-based shape — the
  *  bridge that lets snapshot-backed sessions reuse the whole turn-diff pipe.
@@ -58,6 +67,8 @@ function snapshotTotalToTurnFileDiff(total: SessionTotalFileDiff): TurnFileChang
  *  turn-diff history). Runtime access is via scope-bound `bindRuntime`. */
 export interface AgentTranscriptServiceHost {
   emit(message: AgentWorkerOutboundMessage): void
+  /** Whether a turn is running; the change digest is stored only between turns. */
+  isBusy?(): boolean
 }
 
 export class AgentTranscriptService {
@@ -68,9 +79,14 @@ export class AgentTranscriptService {
   /** Newest diff computation wins — an older overlapping
    *  run must not overwrite a newer run's committed history/emit. */
   private diffRevision = 0
-  /** Single-flight + dirty coalescing for `emitTurnDiffHistory`. */
-  private diffInFlight = false
+  /** Single-flight + dirty coalescing for `emitTurnDiffHistory`: the running
+   *  computation, which also covers the rerun a dirty mark asks for. */
+  private diffRun: Promise<void> | null = null
   private diffDirty = false
+  /** `transcriptFingerprint` of the transcript `turnDiffHistoryFull` and
+   *  `computedMetas` describe; null until the first full computation. */
+  private computedFingerprint: string | null = null
+  private computedMetas: TurnDiffMeta[] | null = null
 
   constructor(private readonly host: AgentTranscriptServiceHost) {}
 
@@ -102,6 +118,8 @@ export class AgentTranscriptService {
     this.turnDiffCompletedCache.clear()
     this.turnDiffHistoryFull = []
     this.turnDiffLastMessageCount = 0
+    this.computedFingerprint = null
+    this.computedMetas = null
     this.runtime = null
   }
 
@@ -170,19 +188,151 @@ export class AgentTranscriptService {
    * Recompute and push the turn-diff history; best-effort, after the boot-critical messages emit.
    * Completed turns are cached (reset on rewind). Single-flight: mid-flight calls trigger one rerun.
    */
-  async emitTurnDiffHistory(): Promise<void> {
-    if (this.diffInFlight) {
+  emitTurnDiffHistory(): Promise<void> {
+    if (this.diffRun) {
       this.diffDirty = true
+      return this.diffRun
+    }
+    const run = (async () => {
+      try {
+        do {
+          this.diffDirty = false
+          await this.computeAndEmitTurnDiffHistory()
+        } while (this.diffDirty)
+      } finally {
+        this.diffRun = null
+      }
+    })()
+    this.diffRun = run
+    return run
+  }
+
+  /**
+   * The transcript was read (session open, switch, delta): bring the change
+   * history up to date as cheaply as it allows (F-9). An unchanged transcript
+   * re-sends the computed history; before the first computation, a stored
+   * digest that still describes this transcript is sent as the figures alone,
+   * reading no snapshot and no sidecar; anything else computes in full.
+   */
+  async refreshTurnDiffHistory(): Promise<void> {
+    const runtime = this.runtime
+    if (!runtime) return
+    const fingerprint = transcriptFingerprint(runtime.engine.transcriptRows())
+    if (this.emitComputedIfCurrent(fingerprint)) return
+    if (this.computedFingerprint === null && !this.diffRun) {
+      const figures = await this.readStoredFigures(runtime, fingerprint)
+      if (this.runtime !== runtime) return
+      if (figures) {
+        this.host.emit({
+          type: 'worker.sessionChangeFigures',
+          payload: { figures },
+        })
+        return
+      }
+    }
+    await this.emitTurnDiffHistory()
+  }
+
+  /**
+   * A view needs the history itself (the Diff panel's list, a turn's hunks):
+   * compute it unless the computed one describes the current transcript.
+   * Resolves true when a computation ran, which emitted the history.
+   */
+  async ensureTurnDiffHistory(): Promise<boolean> {
+    const runtime = this.runtime
+    if (!runtime) return false
+    if (this.diffRun) {
+      await this.diffRun
+      return true
+    }
+    const fingerprint = transcriptFingerprint(runtime.engine.transcriptRows())
+    if (this.computedFingerprint === fingerprint && this.computedMetas) return false
+    await this.emitTurnDiffHistory()
+    return true
+  }
+
+  /** Re-send the computed history when it describes `fingerprint`. */
+  emitComputedIfCurrent(fingerprint?: string): boolean {
+    const runtime = this.runtime
+    if (!runtime || !this.computedMetas) return false
+    const current =
+      fingerprint ?? transcriptFingerprint(runtime.engine.transcriptRows())
+    if (current !== this.computedFingerprint) return false
+    this.host.emit({
+      type: 'worker.turnDiffHistory',
+      payload: { turns: this.computedMetas },
+    })
+    return true
+  }
+
+  private async readStoredFigures(
+    runtime: AgentRuntimeState,
+    fingerprint: string,
+  ) {
+    const store = runtime.conversationStore
+    if (
+      typeof store.getSessionMetadata !== 'function' ||
+      typeof store.getSessionId !== 'function'
+    ) {
+      return null
+    }
+    try {
+      const metadata = await store.getSessionMetadata()
+      return readSessionChangeDigest(
+        metadata?.[SESSION_CHANGES_METADATA_KEY],
+        store.getSessionId(),
+        fingerprint,
+      )
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Keep the session's digest in step with a finished computation. Stored
+   * only when `settled` (between turns, every snapshot turn finalized); a
+   * computation that stores none clears a digest claiming its transcript.
+   * Best-effort: a failed write leaves a digest the next open ignores or
+   * the next computation rewrites.
+   */
+  private async storeDigest(
+    runtime: AgentRuntimeState,
+    fingerprint: string,
+    metas: readonly TurnDiffMeta[],
+    settled: boolean,
+  ): Promise<void> {
+    const store = runtime.conversationStore
+    if (
+      typeof store.getSessionMetadata !== 'function' ||
+      typeof store.updateSessionMetadata !== 'function' ||
+      typeof store.getSessionId !== 'function'
+    ) {
       return
     }
-    this.diffInFlight = true
     try {
-      do {
-        this.diffDirty = false
-        await this.computeAndEmitTurnDiffHistory()
-      } while (this.diffDirty)
-    } finally {
-      this.diffInFlight = false
+      const stored = (await store.getSessionMetadata())?.[
+        SESSION_CHANGES_METADATA_KEY
+      ]
+      const digest = settled
+        ? buildSessionChangeDigest(
+            store.getSessionId(),
+            fingerprint,
+            sessionChangeFigures(metas),
+          )
+        : null
+      if (this.runtime !== runtime) return
+      if (digest) {
+        if (sameSessionChangeDigest(stored, digest)) return
+        await store.updateSessionMetadata({
+          [SESSION_CHANGES_METADATA_KEY]: digest,
+        })
+      } else if (storedDigestFingerprint(stored) === fingerprint) {
+        await store.updateSessionMetadata({
+          [SESSION_CHANGES_METADATA_KEY]: null,
+        })
+      }
+    } catch {
+      // best-effort
     }
   }
 
@@ -194,6 +344,17 @@ export class AgentTranscriptService {
     const revision = ++this.diffRevision
     const isCurrent = (): boolean =>
       this.runtime === runtime && revision === this.diffRevision
+    const fingerprint = transcriptFingerprint(runtime.engine.transcriptRows())
+    const idle = this.host.isBusy ? !this.host.isBusy() : false
+    const commit = (metas: TurnDiffMeta[], settled: boolean): void => {
+      this.computedFingerprint = fingerprint
+      this.computedMetas = metas
+      this.host.emit({
+        type: 'worker.turnDiffHistory',
+        payload: { turns: metas },
+      })
+      void this.storeDigest(runtime, fingerprint, metas, settled && idle)
+    }
     try {
       // Snapshot-backed sessions (`fileSnapshots: true` — SafeCode) mutate
       // through run_js's workspace facade, which the edit-call scan below is
@@ -232,10 +393,9 @@ export class AgentTranscriptService {
           if (!isCurrent()) return
           if (sessionMeta) metas.unshift(sessionMeta)
         }
-        this.host.emit({
-          type: 'worker.turnDiffHistory',
-          payload: { turns: metas },
-        })
+        // An open turn diffs against live disk, so only a fully finalized
+        // history is fixed by the transcript it was computed for.
+        commit(metas, turns.every(turn => turn.finalized))
         return
       }
 
@@ -267,15 +427,12 @@ export class AgentTranscriptService {
 
       if (!isCurrent()) return
       this.turnDiffHistoryFull = history
-      this.host.emit({
-        type: 'worker.turnDiffHistory',
-        // Per-turn newest-first; wire-light (no hunks). No synthetic combined
-        // entry: stacking every turn's snapshot-relative hunks into one "All
-        // changes" view repeated intermediate states (a line added in turn 1
-        // and replaced in turn 2 showed up as +, then -/+ again), which read
-        // as duplicate changes. The per-turn rows are the honest unit.
-        payload: { turns: history.map(toTurnDiffMeta).sort(byTurnStartDesc) },
-      })
+      // Per-turn newest-first; wire-light (no hunks). No synthetic combined
+      // entry: stacking every turn's snapshot-relative hunks into one "All
+      // changes" view repeated intermediate states (a line added in turn 1
+      // and replaced in turn 2 showed up as +, then -/+ again), which read
+      // as duplicate changes. The per-turn rows are the honest unit.
+      commit(history.map(toTurnDiffMeta).sort(byTurnStartDesc), true)
     } catch {
       // best-effort — never let a history failure disrupt the turn
     }

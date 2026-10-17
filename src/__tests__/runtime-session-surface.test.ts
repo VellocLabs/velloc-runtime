@@ -243,7 +243,7 @@ describe('session surface over the hub', () => {
     expect(caps.find(c => c.cap === 'task')?.acts).toEqual(['stop', 'resume', 'transcript', 'recoverBackground'])
     expect(caps.find(c => c.cap === 'diag')?.acts).toEqual(['traceFlush'])
     expect(rig.registry.advertise({ mode: 'observe', sessions: 'all' }).find(c => c.cap === 'session')?.acts).toEqual([
-      'getMessages', 'getMessagesSince', 'getState', 'getToolCallDetail', 'getTurnDiffDetail', 'getSkillBody', 'list', 'getToolDetail', 'transcript',
+      'getMessages', 'getMessagesSince', 'getState', 'getToolCallDetail', 'getTurnDiffDetail', 'getTurnDiffHistory', 'getSkillBody', 'list', 'getToolDetail', 'transcript',
     ])
     // No per-client detach: the shared virtual port leaves a session with its last topic subscriber.
     expect(caps.find(c => c.cap === 'session')?.acts).not.toContain('detach')

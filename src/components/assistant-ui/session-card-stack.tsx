@@ -30,6 +30,7 @@ import {
   type OutputFileKind,
   type SessionCardId,
   type SessionCardPrefs,
+  type SessionChangeFigures,
 } from "@/browser/webview/layout/sessionCards";
 import {
   loadSessionCardPrefs,
@@ -55,6 +56,10 @@ import { ModDockedPane } from "./mod-render";
 /** The popover form, for this thread: open, and how it closes itself. */
 export type SessionCardsPopover = { open: boolean; onClose: () => void };
 export const SessionCardsPopoverContext = React.createContext<SessionCardsPopover | null>(null);
+
+/** The session's stored change figures (F-9): what the Outputs and Changes
+ *  cards draw until the computed history arrives. */
+export const SessionChangeFiguresContext = React.createContext<SessionChangeFigures | null>(null);
 
 const OUTPUT_ICON: Record<OutputFileKind, LucideIcon> = {
   code: CodeXmlIcon,
@@ -170,7 +175,11 @@ function CardStack({
   const [outputsOpen, setOutputsOpen] = React.useState(true);
   const [outputsAll, setOutputsAll] = React.useState(false);
   const [tasksOpen, setTasksOpen] = React.useState(false);
-  const figures = React.useMemo(() => sessionChangeFigures(history), [history]);
+  const storedFigures = React.useContext(SessionChangeFiguresContext);
+  const figures = React.useMemo(
+    () => (history ? sessionChangeFigures(history) : (storedFigures ?? sessionChangeFigures(null))),
+    [history, storedFigures],
+  );
   const runningTasks = runningTaskCount ?? 0;
 
   const hasContent: Record<SessionCardId, boolean> = {

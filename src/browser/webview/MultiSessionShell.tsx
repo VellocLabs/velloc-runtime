@@ -1402,6 +1402,7 @@ export function MultiSessionShell({
     submitToolResult,
     loadToolCallDetail,
     loadTurnDiffDetail,
+    requestTurnDiffHistory,
     loadBundledSkillBody,
     readFileText,
     statFilePaths,
@@ -4320,6 +4321,7 @@ export function MultiSessionShell({
               onFileDirtyChange={handleFileDirtyChange}
               turnDiffHistory={activeState.turnDiffHistory ?? null}
               loadTurnDiffDetail={loadTurnDiffDetail}
+              requestTurnDiffHistory={requestTurnDiffHistory}
               onOpenFile={openFileInPanel}
             />
             </Suspense>

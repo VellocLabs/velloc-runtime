@@ -305,6 +305,9 @@ export type MultiSessionClientsResult = {
     toolCallId: string,
   ) => Promise<BrowserToolCallDetailRecord | null>
   loadTurnDiffDetail: (turnIndex: number) => Promise<TurnFileChange[] | null>
+  /** Ask the active session's worker for its turn-diff history (computed on
+   *  first need; the open sends only the stored change figures). */
+  requestTurnDiffHistory: () => void
   /** Resolve a BUNDLED skill's displayable body from the active session's
    *  worker (Skills tab — `bundled:<name>` paths have no on-disk SKILL.md).
    *  Resolves null when no active client. */
@@ -722,6 +725,14 @@ export function useMultiSessionClients(
     [],
   )
 
+  // A new identity per active session, so a view asking on mount asks again
+  // after a switch.
+  const activeSessionIdForHistory = options.activeSessionId
+  const requestTurnDiffHistory = useCallback(() => {
+    const client = clientsRef.current.get(activeSessionIdForHistory)
+    void client?.requestTurnDiffHistory().catch(() => {})
+  }, [activeSessionIdForHistory])
+
   // Bundled-skill body for the Skills tab, from the ACTIVE session's worker —
   // the answer is session-scoped (a dynamic skill's body is the one invoked
   // in THAT session), unlike the host-global fs reads below.
@@ -953,6 +964,7 @@ export function useMultiSessionClients(
     submitToolResult,
     loadToolCallDetail,
     loadTurnDiffDetail,
+    requestTurnDiffHistory,
     loadBundledSkillBody,
     readFileText,
     statFilePaths,

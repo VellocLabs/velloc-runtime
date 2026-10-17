@@ -53,6 +53,23 @@ describe('DiffPanel', () => {
     expect(screen.queryByText(/No diff open/)).toBeNull()
   })
 
+  it('asks for the history while showing it without one, and not for a file target or once it is there', () => {
+    const requestTurnDiffHistory = vi.fn()
+    const { rerender } = render(createElement(DiffPanel, { target: null, requestTurnDiffHistory }))
+    expect(requestTurnDiffHistory).toHaveBeenCalledTimes(1)
+    rerender(createElement(DiffPanel, { target: null, turnDiffHistory: [], requestTurnDiffHistory }))
+    expect(requestTurnDiffHistory).toHaveBeenCalledTimes(1)
+    cleanup()
+    const forFile = vi.fn()
+    render(
+      createElement(DiffPanel, {
+        target: { kind: 'file', filePath: '/w/a.ts', hunks: [], plusLines: 0, minusLines: 0 },
+        requestTurnDiffHistory: forFile,
+      }),
+    )
+    expect(forFile).not.toHaveBeenCalled()
+  })
+
   it('renders a file diff target with its hunks and +/- counts', () => {
     render(
       createElement(DiffPanel, {

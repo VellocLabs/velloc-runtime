@@ -4,7 +4,6 @@
  * from the session's change history. Pure; the stack component and the
  * layout blob share it.
  */
-import { SESSION_TOTAL_TURN_INDEX, type TurnDiffMeta } from '@/utils/turnDiffs'
 
 /** The information cards, in their default order. Mod panes are not here:
  *  they always follow these cards and are neither hidden nor reordered. */
@@ -89,50 +88,7 @@ export function moveShownSessionCard(
   return { ...prefs, order }
 }
 
-/** What the Outputs and Changes cards read from a session's change history. */
-export type SessionChangeFigures = {
-  plusLines: number
-  minusLines: number
-  /** Files the session created, newest first, each once. */
-  createdFiles: string[]
-}
-
-/**
- * Lines are the sum of every turn (the whole-session row, turn 0, is an
- * aggregate and is skipped), matching the composer's session diff chip.
- * Created files are ordered by the latest turn that created them, the last
- * written first within a turn. When the history has turn 0 (the net result)
- * only the files it still lists as created are kept.
- */
-export function sessionChangeFigures(history: readonly TurnDiffMeta[] | null | undefined): SessionChangeFigures {
-  const figures: SessionChangeFigures = { plusLines: 0, minusLines: 0, createdFiles: [] }
-  if (!history) return figures
-  const total = history.find(turn => turn.turnIndex === SESSION_TOTAL_TURN_INDEX)
-  const turns = history.filter(turn => turn.turnIndex !== SESSION_TOTAL_TURN_INDEX)
-  for (const turn of turns) {
-    figures.plusLines += turn.stats.plusLines
-    figures.minusLines += turn.stats.minusLines
-  }
-  const newestFirst: string[] = []
-  const seen = new Set<string>()
-  for (const turn of [...turns].sort((a, b) => b.turnIndex - a.turnIndex)) {
-    for (const file of [...turn.files].reverse()) {
-      if (!file.fileWasCreated || seen.has(file.filePath)) continue
-      seen.add(file.filePath)
-      newestFirst.push(file.filePath)
-    }
-  }
-  if (!total) {
-    figures.createdFiles = newestFirst
-    return figures
-  }
-  const net = new Set(total.files.filter(file => file.fileWasCreated).map(file => file.filePath))
-  figures.createdFiles = newestFirst.filter(path => net.has(path))
-  for (const path of net) {
-    if (!seen.has(path)) figures.createdFiles.push(path)
-  }
-  return figures
-}
+export { sessionChangeFigures, type SessionChangeFigures } from '@/utils/sessionChangeDigest'
 
 /** How many created files the Outputs card lists before Show more. */
 export const OUTPUTS_FOLDED_LIMIT = 5

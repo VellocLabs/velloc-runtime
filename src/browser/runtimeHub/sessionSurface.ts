@@ -145,7 +145,11 @@ export type ClassifiedMessage = {
 
 const STREAM_TYPES = new Set(['worker.stream'])
 const TRANSCRIPT_TYPES = new Set(['worker.messages'])
-const DIFF_TYPES = new Set(['worker.turnDiffHistory', 'worker.turnDiffDetail'])
+const DIFF_TYPES = new Set([
+  'worker.turnDiffHistory',
+  'worker.turnDiffDetail',
+  'worker.sessionChangeFigures',
+])
 const SESSIONS_TYPES = new Set([
   'session.list',
   'session.updated',
@@ -257,6 +261,7 @@ export const WORKER_ACTION_SCOPES = {
   getState: 'observe',
   getToolCallDetail: 'observe',
   getTurnDiffDetail: 'observe',
+  getTurnDiffHistory: 'observe',
   getSkillBody: 'observe',
 } as const satisfies Record<Exclude<WorkerAct, 'init' | 'bridgeResponse' | 'bridgeEvent'>, ScopeMode>
 

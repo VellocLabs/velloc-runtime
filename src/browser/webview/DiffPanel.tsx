@@ -1,4 +1,4 @@
-import { type ReactElement } from "react";
+import { useEffect, type ReactElement } from "react";
 
 import { useT } from "./i18n";
 import { DiffHunks } from "@/components/assistant-ui/edit-tool-diff";
@@ -21,14 +21,22 @@ export function DiffPanel({
   target,
   turnDiffHistory,
   loadTurnDiffDetail,
+  requestTurnDiffHistory,
   onOpenFile,
 }: {
   target: RightPanelDiffTarget | null;
   turnDiffHistory?: TurnDiffMeta[] | null;
   loadTurnDiffDetail?: LoadTurnDiffDetail;
+  /** Asked while the history view shows and the history has not arrived. */
+  requestTurnDiffHistory?: () => void;
   onOpenFile?: (target: RightPanelFileTarget) => void;
 }): ReactElement {
   const t = useT();
+  const showsHistory = !target || target.kind === "turnHistory";
+  const historyMissing = turnDiffHistory == null;
+  useEffect(() => {
+    if (showsHistory && historyMissing) requestTurnDiffHistory?.();
+  }, [showsHistory, historyMissing, requestTurnDiffHistory]);
   if (!target || target.kind === "turnHistory") {
     return (
       <div
