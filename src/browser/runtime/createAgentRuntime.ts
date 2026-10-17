@@ -1150,6 +1150,9 @@ export async function createBrowserRuntime(
     installedFs,
     installedSidechainStore,
     sessionMcpPool: allowsMcp ? mcpPool : undefined,
+    sessionMcpOrigins: allowsMcp
+      ? { settingsIds: userConfiguredMcpServerIds, pluginServers: pluginContributions.mcpServerPlugins }
+      : undefined,
     promptContextProvider,
     userInputPipeline,
     systemInitEmitter,

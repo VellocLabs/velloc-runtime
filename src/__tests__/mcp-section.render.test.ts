@@ -117,3 +117,36 @@ describe('McpSection add form', () => {
     expect(requestedActions(bridge).filter((a) => a !== 'list')).toEqual([])
   })
 })
+
+describe('McpSection plugin servers', () => {
+  it('lists the enabled plugins\' servers read only, under their own heading', async () => {
+    const bridge = {
+      request: vi.fn(async (route: { action: string }) => {
+        if (route.action === 'list') {
+          return {
+            servers: {},
+            source: 'default',
+            pluginServers: [{ name: 'contree', plugin: 'nebius', transport: 'stdio' }],
+          }
+        }
+        throw new Error(`unexpected mcpSettings.${route.action}`)
+      }),
+      subscribeEvents: () => () => {},
+    } as unknown as NexusSettingsBridge
+    renderSection(bridge)
+    const row = await screen.findByTestId('mcp-plugin-server-row-contree')
+    expect(row.textContent).toContain('contree')
+    expect(row.textContent).toContain('STDIO')
+    expect(row.textContent).toContain(en['settings.mcp.fromPlugin'].replace('{plugin}', 'nebius'))
+    expect(screen.getByTestId('mcp-plugin-servers').textContent).toContain(en['settings.mcp.pluginServers'])
+    expect(row.querySelector('button')).toBeNull()
+    expect(screen.queryByText(en['settings.mcp.none'])).toBeNull()
+  })
+
+  it('shows no plugin group when the list carries none', async () => {
+    const bridge = makeBridge()
+    renderSection(bridge)
+    await screen.findByText(en['settings.mcp.none'])
+    expect(exists('mcp-plugin-servers')).toBe(false)
+  })
+})

@@ -9,6 +9,7 @@ import type {
   BrowserBridgeResponse,
   McpSettingsBridgeActionMap,
   NexusMcpServerConfig,
+  PluginMcpServerListing,
 } from '../protocol'
 import type { RuntimeFs } from '../../../utils/fs/runtimeFs'
 import {
@@ -45,6 +46,9 @@ export type McpSettingsAdapterContext = {
   testConnect?: (
     config: NexusMcpServerConfig,
   ) => Promise<McpSettingsBridgeActionMap['testConnect']['result']>
+  /** The enabled plugins' servers for `list`. Absent or throwing: `list`
+   *  carries no `pluginServers`. */
+  listPluginServers?: () => Promise<PluginMcpServerListing[]>
 }
 
 export type McpSettingsAction = keyof McpSettingsBridgeActionMap
@@ -102,10 +106,14 @@ function validateId(id: unknown): string | null {
 async function handleList(
   ctx: McpSettingsAdapterContext,
 ): Promise<McpSettingsBridgeActionMap['list']['result']> {
-  const { settings, source } = await readUserLayer(ctx.homeDir, ctx.fs)
+  const [{ settings, source }, pluginServers] = await Promise.all([
+    readUserLayer(ctx.homeDir, ctx.fs),
+    ctx.listPluginServers?.().catch(() => undefined),
+  ])
   return {
     servers: settings.mcp?.servers ?? {},
     source,
+    ...(pluginServers ? { pluginServers } : {}),
   }
 }
 

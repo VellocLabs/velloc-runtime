@@ -13,6 +13,7 @@ import {
   gatherPlugins,
 } from '../pluginHost/loadPlugins'
 import { loadPluginContributions } from '../pluginHost'
+import { pluginMcpServerListings } from '../pluginHost/pluginMcpServerList'
 import { PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
 import { buildAgentRegistry } from '../agents/agentRegistry'
 import { loadLocalPromptCommands } from '../skillLibrary/skillDiscovery'
@@ -184,6 +185,25 @@ describe('assemblePluginAt', () => {
           ],
         },
       },
+    ])
+    expect(contributions.mcpServerPlugins).toEqual([{ name: 'github', plugin: 'github', track: 'native' }])
+  })
+
+  it('lists each plugin\'s declared MCP servers with their transport, by plugin then name', () => {
+    expect(
+      pluginMcpServerListings([
+        { name: 'zeta', nativeMcpServers: { run: { command: 'uvx' } } },
+        {
+          name: 'alpha',
+          mcpServers: { web: { type: 'http', url: 'https://w' } },
+          nativeMcpServers: { api: { transport: 'http', url: 'https://a' }, odd: {} },
+        },
+      ]),
+    ).toEqual([
+      { name: 'api', plugin: 'alpha', transport: 'http' },
+      { name: 'odd', plugin: 'alpha' },
+      { name: 'web', plugin: 'alpha', transport: 'http' },
+      { name: 'run', plugin: 'zeta', transport: 'stdio' },
     ])
   })
 

@@ -8,6 +8,9 @@
  */
 
 import type { NexusMcpServerConfig } from '../../../settings/settingsTypes'
+import type { PluginMcpServerListing } from '../../../pluginHost/pluginMcpServerList'
+
+export type { PluginMcpServerListing } from '../../../pluginHost/pluginMcpServerList'
 
 /** Re-export for convenience — the WebUI protocol uses the same
  *  server-config shape that settings.json persists. */
@@ -24,6 +27,10 @@ export type McpSettingsBridgeActionMap = {
        *  `'default'` before the first write (so the UI can distinguish
        *  "user has saved nothing" from "user explicitly removed all"). */
       source: 'file' | 'default'
+      /** The servers the person's enabled user-scope plugins declare, read
+       *  only: a plugin's servers are turned off with the plugin. Absent
+       *  when the host cannot list them. */
+      pluginServers?: PluginMcpServerListing[]
     }
   }
   upsert: {

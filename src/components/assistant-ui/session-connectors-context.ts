@@ -3,11 +3,21 @@ import type { SessionMcpServerView } from '@/browser/worker/workerProtocol'
 
 /**
  * The thread's MCP servers, from the session snapshot (`mcpServers`), for
- * the card stack's Connectors card. Provided by `AssistantUiThread`; empty
- * on hosts and session types without MCP.
+ * the card stack's Connectors card and its server list. Provided by
+ * `AssistantUiThread`; empty on hosts and session types without MCP.
  */
-export const SessionConnectorsContext = createContext<readonly SessionMcpServerView[]>([])
+export type SessionConnectors = {
+  servers: readonly SessionMcpServerView[]
+  /** The session's project folder, the list's subtitle. */
+  folder?: string
+  /** Opens the MCP settings page; absent where settings cannot open. */
+  openMcpSettings?: () => void
+}
 
-export function useSessionConnectors(): readonly SessionMcpServerView[] {
+const NO_CONNECTORS: SessionConnectors = { servers: [] }
+
+export const SessionConnectorsContext = createContext<SessionConnectors>(NO_CONNECTORS)
+
+export function useSessionConnectors(): SessionConnectors {
   return useContext(SessionConnectorsContext)
 }

@@ -22,6 +22,7 @@ import type {
 } from '../../sessions/sessionStore'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import type { MCPPool } from '../../mcp/pool'
+import type { McpServerOriginSources } from '../../mcp/serverOrigin'
 import type { AgentLoopSettings } from '../../config/agentLoopConfig'
 import type { FileSnapshotRecorder } from '../../sessions/fileSnapshots/snapshotRecorder'
 import type { AutoCompactWindowSettings } from '../../context/compaction/windowSettings'
@@ -150,6 +151,9 @@ export type BrowserRuntimeCoreState = {
    * here: the snapshot lists its servers and republishes on their changes.
    */
   sessionMcpPool?: MCPPool
+  /** Where the pool's servers were configured, for the snapshot's list;
+   *  set with `sessionMcpPool`. */
+  sessionMcpOrigins?: McpServerOriginSources
   promptContextProvider: BrowserPromptContextProvider
   userInputPipeline: BrowserUserInputPipeline
   systemInitEmitter: BrowserSystemInitEmitter

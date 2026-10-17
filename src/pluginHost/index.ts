@@ -5,6 +5,7 @@
 
 import type { MCPServerConfigWithName } from '../mcp/types'
 import type { NexusMcpServerLaunchConfig } from '../mcp/nativeBridge'
+import type { PluginMcpServerOwner } from '../mcp/serverOrigin'
 import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import { gatherPlugins } from './loadPlugins'
 import { PLUGIN_DESCRIPTION_KEY, readPluginLocaleText } from './pluginLocaleText'
@@ -37,6 +38,8 @@ export type PluginContributions = {
   pluginAgentDirs: Array<{ dirPath: string; pluginName: string }>
   mcpServers: MCPServerConfigWithName[]
   nativeMcpServers: Array<{ id: string; config: NexusMcpServerLaunchConfig }>
+  /** The plugin each server above comes from, by server name and track. */
+  mcpServerPlugins: PluginMcpServerOwner[]
   /** The sensitive options the servers above carry placeholders for, to
    *  store before they launch (`storePluginSecrets`), and the ids of the
    *  plugins whose stored values these are. */
@@ -101,6 +104,7 @@ export async function loadPluginContributions(params: {
   const pluginAgentDirs: Array<{ dirPath: string; pluginName: string }> = []
   const mcpServers: MCPServerConfigWithName[] = []
   const nativeMcpServers: Array<{ id: string; config: NexusMcpServerLaunchConfig }> = []
+  const mcpServerPlugins: PluginMcpServerOwner[] = []
   const secretWrites: PluginSecretWrite[] = []
   const pluginIds: string[] = []
   const errors = [...gatheredErrors]
@@ -124,6 +128,7 @@ export async function loadPluginContributions(params: {
     secretWrites.push(...resolved.secrets)
     if (resolved.kind === 'native') nativeMcpServers.push({ id: name, config: resolved.config })
     else mcpServers.push({ name, ...resolved.config })
+    mcpServerPlugins.push({ name, plugin: plugin.name, track: resolved.kind })
   }
 
   for (const plugin of enabled) {
@@ -169,6 +174,7 @@ export async function loadPluginContributions(params: {
     pluginAgentDirs,
     mcpServers,
     nativeMcpServers,
+    mcpServerPlugins,
     mcpSecrets: { writes: secretWrites, pluginIds },
     errors,
   }

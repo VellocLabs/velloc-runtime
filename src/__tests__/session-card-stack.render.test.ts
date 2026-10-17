@@ -64,10 +64,21 @@ type Draw = {
   content?: RightPanelContentContextValue
   tasks?: BackgroundTasksContextValue
   connectors?: SessionMcpServerView[]
+  folder?: string
+  openMcpSettings?: () => void
   popover?: SessionCardsPopover | null
 }
 
-function tree({ history = HISTORY, mod, content = {}, tasks = {}, connectors = [], popover = null }: Draw): ReactNode {
+function tree({
+  history = HISTORY,
+  mod,
+  content = {},
+  tasks = {},
+  connectors = [],
+  folder,
+  openMcpSettings,
+  popover = null,
+}: Draw): ReactNode {
   return createElement(
     SessionCardsPopoverContext.Provider,
     { value: popover },
@@ -82,7 +93,7 @@ function tree({ history = HISTORY, mod, content = {}, tasks = {}, connectors = [
         { value: tasks },
         createElement(
           SessionConnectorsContext.Provider,
-          { value: connectors },
+          { value: { servers: connectors, folder, openMcpSettings } },
           createElement(SessionCardStack, { history }),
         ),
       ),
@@ -194,6 +205,69 @@ describe('SessionCardStack — information cards', () => {
     expect(screen.getAllByTestId('session-card-connector').map(item => item.textContent)).toEqual(['github', 'linear'])
     fireEvent.click(screen.getByTestId('session-card-connectors-header'))
     expect(screen.queryByTestId('session-card-connectors-list')).toBeNull()
+  })
+
+  it('a connector row opens the server list: every settled server, where it is configured, its transport and status', () => {
+    const connectors: SessionMcpServerView[] = [
+      { name: 'broken', status: 'failed', origin: { kind: 'settings' }, transport: 'http', error: 'connect ECONNREFUSED' },
+      { name: 'contree', status: 'connected', origin: { kind: 'plugin', plugin: 'nebius' }, transport: 'stdio', toolCount: 12 },
+      { name: 'docs', status: 'connected', origin: { kind: 'project' }, transport: 'sse', toolCount: 1 },
+    ]
+    render(tree({ connectors, folder: 'D:/work/app' }))
+    fireEvent.click(screen.getByTestId('session-card-connectors-header'))
+    expect(screen.queryByTestId('mcp-servers-dialog')).toBeNull()
+    fireEvent.click(screen.getAllByTestId('session-card-connector')[0]!)
+    const dialog = screen.getByTestId('mcp-servers-dialog')
+    expect(dialog.textContent).toContain('MCP servers')
+    expect(screen.getByTestId('mcp-servers-folder').textContent).toBe('D:/work/app')
+    const rows = screen.getAllByTestId('mcp-servers-row')
+    expect(rows.map(row => [row.getAttribute('data-name'), row.getAttribute('data-status')])).toEqual([
+      ['broken', 'failed'],
+      ['contree', 'connected'],
+      ['docs', 'connected'],
+    ])
+    expect(screen.getAllByTestId('mcp-servers-origin').map(cell => cell.textContent)).toEqual([
+      'Settings',
+      'Plugin: nebius',
+      'Project',
+    ])
+    expect(screen.getAllByTestId('mcp-servers-transport').map(cell => cell.textContent)).toEqual(['HTTP', 'STDIO', 'SSE'])
+    expect(screen.getAllByTestId('mcp-servers-tools').map(cell => cell.textContent)).toEqual(['12 tools', '1 tool'])
+    expect(screen.getByTestId('mcp-servers-error').textContent).toBe('connect ECONNREFUSED')
+    expect(rows[0]!.textContent).toContain('Failed')
+    fireEvent.click(screen.getByTestId('mcp-servers-done'))
+    expect(screen.queryByTestId('mcp-servers-dialog')).toBeNull()
+  })
+
+  it('Manage in the server list opens the MCP settings page; without a settings page there is no Manage', () => {
+    const openMcpSettings = vi.fn()
+    const connectors: SessionMcpServerView[] = [{ name: 'github', status: 'connected' }]
+    render(tree({ connectors, openMcpSettings }))
+    fireEvent.click(screen.getByTestId('session-card-connectors-header'))
+    fireEvent.click(screen.getByTestId('session-card-connector'))
+    fireEvent.click(screen.getByTestId('mcp-servers-manage'))
+    expect(openMcpSettings).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('mcp-servers-dialog')).toBeNull()
+    cleanup()
+    render(tree({ connectors }))
+    fireEvent.click(screen.getByTestId('session-card-connectors-header'))
+    fireEvent.click(screen.getByTestId('session-card-connector'))
+    expect(screen.getByTestId('mcp-servers-dialog')).toBeTruthy()
+    expect(screen.queryByTestId('mcp-servers-manage')).toBeNull()
+  })
+
+  it('in the popover form, presses and Escape in the server list leave the popover open', () => {
+    const onClose = vi.fn()
+    const connectors: SessionMcpServerView[] = [{ name: 'github', status: 'connected' }]
+    render(tree({ connectors, mod: { panesDocked: false }, popover: { open: true, onClose } }))
+    fireEvent.click(screen.getByTestId('session-card-connectors-header'))
+    fireEvent.click(screen.getByTestId('session-card-connector'))
+    fireEvent.pointerDown(screen.getByTestId('mcp-servers-row'))
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.keyDown(screen.getByTestId('mcp-servers-dialog'), { key: 'Escape' })
+    expect(screen.queryByTestId('mcp-servers-dialog')).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByTestId('session-card-popover')).toBeTruthy()
   })
 
   it('Connectors is not drawn while no server is connected', () => {

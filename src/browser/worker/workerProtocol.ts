@@ -22,6 +22,7 @@ import type { RuleEdit } from '../../permissions/ruleUpdates'
 import type { BrowserSessionMetadata } from '../../sessions/sessionStore'
 import type { AgentLoopSettings } from '../../config/agentLoopConfig'
 import type { BundledSkillBodyResult } from '../../skillLibrary/builtinSkillBody'
+import type { McpServerOrigin, McpServerTransportKind } from '../../mcp/serverOrigin'
 
 /**
  * Default per-session agent-template type when an init payload omits
@@ -267,6 +268,13 @@ export type LoadedSkillSummary = {
 export type SessionMcpServerView = {
   name: string
   status: 'connected' | 'failed'
+  /** Where it is configured; absent when the runtime publishes no origins. */
+  origin?: McpServerOrigin
+  transport?: McpServerTransportKind
+  /** The tools it serves, while connected. */
+  toolCount?: number
+  /** Why it failed, while failed. */
+  error?: string
 }
 
 export type AgentRuntimeWorkerSnapshot = {

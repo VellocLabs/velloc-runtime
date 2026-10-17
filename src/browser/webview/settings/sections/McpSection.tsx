@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { useUnsavedEditsGate } from "@/glic/unsavedEditsGate";
 
 import type { NexusMcpServerConfig } from "../../../../settings/settingsTypes";
+import type { PluginMcpServerListing } from "../../../bridge/protocol";
 import { useT } from "../../i18n";
 import { useSettingsBridge } from "../../nexusSettingsBridge";
 import {
@@ -16,7 +17,12 @@ import {
   mcpSettingsTestConnect,
   mcpSettingsUpsert,
 } from "../clients";
-import { SettingsNotice, SettingsSubpageLayout } from "../SettingsSubpageLayout";
+import {
+  SettingsGroupLabel,
+  SettingsNotice,
+  SettingsSubpageLayout,
+  settingsText,
+} from "../SettingsSubpageLayout";
 import { canReadClipboard, readClipboard } from "../../../../utils/clipboard";
 
 /**
@@ -139,6 +145,10 @@ export function McpSection() {
   const [toolCounts, setToolCounts] = React.useState<Record<string, number>>(
     {},
   );
+  // Servers the enabled plugins declare: listed, never edited here.
+  const [pluginServers, setPluginServers] = React.useState<
+    PluginMcpServerListing[]
+  >([]);
   const [form, setForm] = React.useState<FormState | null>(null);
   const [editingExisting, setEditingExisting] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -153,6 +163,7 @@ export function McpSection() {
     try {
       const result = await mcpSettingsList(bridge);
       setServers(result.servers);
+      setPluginServers(result.pluginServers ?? []);
       setLoadError(null);
     } catch (e) {
       setLoadError(
@@ -346,7 +357,7 @@ export function McpSection() {
             {loadError}
           </p>
         ) : null}
-        {entries.length === 0 && !form ? (
+        {entries.length === 0 && pluginServers.length === 0 && !form ? (
           <p className="text-muted-foreground text-sm">
             {t("settings.mcp.none")}
           </p>
@@ -553,6 +564,39 @@ export function McpSection() {
               </Button>
             </div>
           </div>
+        ) : null}
+
+        {pluginServers.length > 0 ? (
+          <section
+            data-testid="mcp-plugin-servers"
+            className="flex flex-col gap-2 pt-2"
+          >
+            <SettingsGroupLabel>{t("settings.mcp.pluginServers")}</SettingsGroupLabel>
+            <p className={settingsText.description}>
+              {t("settings.mcp.pluginServersHint")}
+            </p>
+            {pluginServers.map((server) => (
+              <div
+                key={`${server.plugin}\u0000${server.name}`}
+                data-testid={`mcp-plugin-server-row-${server.name}`}
+                className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-card p-4"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 font-medium text-sm">
+                    <span className="truncate">{server.name}</span>
+                    {server.transport ? (
+                      <Badge variant="muted" size="sm">
+                        {server.transport.toUpperCase()}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 text-muted-foreground text-xs">
+                    {t("settings.mcp.fromPlugin", { plugin: server.plugin })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </section>
         ) : null}
 
         {/* Footer helper text — matches the original's prose under the list. */}

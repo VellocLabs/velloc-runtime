@@ -15,6 +15,12 @@ import type {
   SlashCommandSummary,
 } from './workerProtocol'
 import type { PendingApproval } from '../../runtime/RuntimeTypes'
+import type { LiveServerLink } from '../../mcp/types'
+import {
+  mcpServerOrigin,
+  mcpServerTransport,
+  type McpServerOriginSources,
+} from '../../mcp/serverOrigin'
 import {
   buildLoadedSkillSummaries,
   buildSlashCommandSummaries,
@@ -34,15 +40,26 @@ export type ProvisionalBootSources = {
 }
 
 /** Settled servers only (a connecting or closed one is left out), sorted by
- *  name so the list does not reorder as connects finish. */
+ *  name so the list does not reorder as connects finish. Each carries its
+ *  origin when `origins` is given, its transport, its tool count while
+ *  connected and its error while failed. */
 export function sessionMcpServerViews(
-  servers: ReadonlyArray<{ name: string; status: string }>,
+  servers: ReadonlyArray<
+    Pick<LiveServerLink, 'name' | 'status'> &
+      Partial<Pick<LiveServerLink, 'config' | 'nativeConfig' | 'nativeServerId' | 'tools' | 'error'>>
+  >,
+  origins?: McpServerOriginSources,
 ): SessionMcpServerView[] {
   const views: SessionMcpServerView[] = []
   for (const server of servers) {
-    if (server.status === 'connected' || server.status === 'failed') {
-      views.push({ name: server.name, status: server.status })
-    }
+    if (server.status !== 'connected' && server.status !== 'failed') continue
+    const view: SessionMcpServerView = { name: server.name, status: server.status }
+    if (origins) view.origin = mcpServerOrigin(server, origins)
+    const transport = mcpServerTransport(server)
+    if (transport) view.transport = transport
+    if (server.status === 'connected' && server.tools) view.toolCount = server.tools.length
+    if (server.status === 'failed' && server.error) view.error = server.error
+    views.push(view)
   }
   return views.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }
@@ -221,7 +238,12 @@ export function buildWorkerSnapshot(
     ),
     loadedSkills: buildLoadedSkillSummaries(runtime?.options.commands ?? []),
     ...(runtime?.sessionMcpPool
-      ? { mcpServers: sessionMcpServerViews(runtime.sessionMcpPool.listServers()) }
+      ? {
+          mcpServers: sessionMcpServerViews(
+            runtime.sessionMcpPool.listServers(),
+            runtime.sessionMcpOrigins,
+          ),
+        }
       : {}),
     messageCount: runtime
       ? runtime.engine.transcriptRows().length ?? 0

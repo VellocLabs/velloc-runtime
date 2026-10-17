@@ -1364,9 +1364,25 @@ function InteractiveAssistantUiThread({
   // Every snapshot is a new object; the Connectors card re-renders only when
   // the list itself changes.
   const sessionConnectorsKey = JSON.stringify(state.snapshot?.mcpServers ?? [])
+  const sessionFolder = state.snapshot?.cwd ?? state.snapshot?.projectRoot
+  const openMcpSettings = useMemo(
+    () =>
+      openSettings
+        ? () => {
+            void openSettings('mcp').catch((error: unknown) => {
+              console.error('Failed to open MCP settings:', error)
+            })
+          }
+        : undefined,
+    [openSettings],
+  )
   const sessionConnectors = useMemo(
-    () => JSON.parse(sessionConnectorsKey) as SessionMcpServerView[],
-    [sessionConnectorsKey],
+    () => ({
+      servers: JSON.parse(sessionConnectorsKey) as SessionMcpServerView[],
+      ...(sessionFolder ? { folder: sessionFolder } : {}),
+      ...(openMcpSettings ? { openMcpSettings } : {}),
+    }),
+    [sessionConnectorsKey, sessionFolder, openMcpSettings],
   )
   // Handle for the conversation's Read/Edit tool cards to open a file or diff in
   // the global Right Panel (Files / Diff views), provided via

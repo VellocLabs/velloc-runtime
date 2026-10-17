@@ -10,6 +10,7 @@ import { handleSessionModelsBridgeRequest } from '../../bridge/adapter/sessionMo
 import { handleFeaturesBridgeRequest } from '../../bridge/adapter/featuresBridgeAdapter'
 import { handleMcpSettingsBridgeRequest } from '../../bridge/adapter/mcpSettingsBridgeAdapter'
 import { handlePluginsBridgeRequest } from '../../bridge/adapter/pluginsBridgeAdapter'
+import { listPluginMcpServers } from '../../../pluginHost/pluginMcpServerList'
 import { handleSkillsBridgeRequest } from '../../bridge/adapter/skillsBridgeAdapter'
 import {
   handleProvidersBridgeRequest,
@@ -397,6 +398,7 @@ export function initBuiltinWebUiBridgeHandlers(): void {
       homeDir: settingsRoot,
       fs: ctx.fs,
       secrets: primitives?.secrets,
+      listPluginServers: () => listPluginMcpServers({ homeDir: settingsRoot, fs: ctx.fs }),
       testConnect:
         mcpHost && hostServesWorkerMcp(mcpHost.manifest)
           ? config =>

@@ -82,6 +82,31 @@ describe('mcpSettingsHandlers.list', () => {
   })
 })
 
+describe('mcpSettingsHandlers.list — plugin servers', () => {
+  it('carries the enabled plugins\' servers next to the settings servers', async () => {
+    const { fs } = makeMemoryFs()
+    const listPluginServers = vi.fn(async () => [{ name: 'contree', plugin: 'nebius', transport: 'stdio' as const }])
+    const result = await mcpSettingsHandlers.list({ homeDir: HOME, fs, listPluginServers })
+    expect(result.servers).toEqual({})
+    expect(result.pluginServers).toEqual([{ name: 'contree', plugin: 'nebius', transport: 'stdio' }])
+  })
+
+  it('leaves pluginServers out when the plugins cannot be listed, and still lists the settings servers', async () => {
+    const { fs } = makeMemoryFs({
+      [SETTINGS_PATH]: JSON.stringify({ version: 1, mcp: { servers: { local: { transport: 'stdio', command: 'mcp-local' } } } }),
+    })
+    const result = await mcpSettingsHandlers.list({
+      homeDir: HOME,
+      fs,
+      listPluginServers: async () => {
+        throw new Error('plugin scan failed')
+      },
+    })
+    expect(result.servers).toEqual({ local: { transport: 'stdio', command: 'mcp-local' } })
+    expect('pluginServers' in result).toBe(false)
+  })
+})
+
 describe('mcpSettingsHandlers.upsert', () => {
   it('writes a new server and fires broadcastChanged', async () => {
     const { fs, files } = makeMemoryFs()
