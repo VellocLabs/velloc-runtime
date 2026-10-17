@@ -4,26 +4,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import {
-  SessionDiffChip,
   TurnDiffHistoryView,
   formatTurnStart,
 } from '../components/assistant-ui/TurnDiffSummary'
 import { I18nProvider } from '../browser/webview/i18n'
-import {
-  RightPanelContentContext,
-  type RightPanelContentContextValue,
-} from '../components/assistant-ui/right-panel-content-context'
 import { SESSION_TOTAL_TURN_INDEX } from '../utils/turnDiffs'
 import type { TurnDiffMeta, TurnFileChange } from '../utils/turnDiffs'
 
-// The composer-bottom "session diff" chip is a compact opener next to the
-// folder and branch chips: it summarizes the session's COMBINED LINE changes
-// ("+X −Y" — no file count) and never shows the turns/files inline. Clicking it opens
-// the full history in the right-panel Diff view via
-// `openDiff({ kind: 'turnHistory' })`; only when there is no panel (`openDiff`
-// absent) does it fall back to toggling an inline popover. The panel body
-// (`TurnDiffHistoryView`) is a master/detail split — a turns/files list on
-// top, the selected file's diff on the bottom (lazily fetched).
+// The Diff view body (`TurnDiffHistoryView`) is a master/detail split — a
+// turns/files list on top, the selected file's diff on the bottom (lazily
+// fetched).
 
 afterEach(() => cleanup())
 
@@ -47,139 +37,6 @@ const DETAIL: TurnFileChange[] = [
     hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 2, lines: [' a', '+b'] }],
   },
 ]
-
-function renderChip(
-  loadDetail: (turnIndex: number) => Promise<TurnFileChange[] | null>,
-  ctx: RightPanelContentContextValue = {},
-) {
-  return render(
-    createElement(
-      RightPanelContentContext.Provider,
-      { value: ctx },
-      createElement(SessionDiffChip, { history: HISTORY, loadDetail }),
-    ),
-  )
-}
-
-describe('SessionDiffChip — composer-bottom opener', () => {
-  it('shows the session line totals only — no file count, no turns/files inline, no diff fetch', () => {
-    const loadDetail = vi.fn(async () => null)
-    const openDiff = vi.fn()
-    renderChip(loadDetail, { openDiff })
-    const chipText =
-      screen.getByTestId('session-diff-chip-trigger').textContent ?? ''
-    expect(chipText).toContain('+78')
-    expect(chipText).toContain('-16')
-    // The "N files" prefix was dropped — the count lives in the Diff view now.
-    expect(chipText).not.toMatch(/file/i)
-    expect(document.querySelector('.aui-turn-diff-turn')).toBeNull()
-    expect(document.querySelector('[data-slot="turn-diff-file"]')).toBeNull()
-    expect(loadDetail).not.toHaveBeenCalled()
-  })
-
-  it('opens the history in the panel (no inline popover) when openDiff exists', () => {
-    const loadDetail = vi.fn(async () => null)
-    const openDiff = vi.fn()
-    renderChip(loadDetail, { openDiff })
-    fireEvent.click(screen.getByTestId('session-diff-chip-trigger'))
-    expect(openDiff).toHaveBeenCalledTimes(1)
-    expect(openDiff).toHaveBeenCalledWith({ kind: 'turnHistory' })
-    expect(document.querySelector('.aui-turn-diff-turn')).toBeNull()
-    expect(loadDetail).not.toHaveBeenCalled()
-  })
-
-  it('falls back to an inline popover with the history when there is no panel', () => {
-    const loadDetail = vi.fn(async () => null)
-    renderChip(loadDetail, {}) // no openDiff
-    expect(document.querySelector('.aui-turn-diff-turn')).toBeNull()
-    fireEvent.click(screen.getByTestId('session-diff-chip-trigger'))
-    expect(document.querySelector('.aui-turn-diff-turn')).not.toBeNull()
-    expect(screen.getByTitle('C:/shift/wexond_component_update_service.cc')).toBeTruthy()
-  })
-
-  it('renders nothing when there is no history', () => {
-    render(
-      createElement(
-        RightPanelContentContext.Provider,
-        { value: {} },
-        createElement(SessionDiffChip, { history: null, loadDetail: vi.fn(async () => null) }),
-      ),
-    )
-    expect(document.querySelector('[data-slot="session-diff-chip"]')).toBeNull()
-  })
-
-  it('sums every turn\'s stats into the session totals, not just the latest turn\'s', () => {
-    // Multi-turn history (newest first, per-turn entries only — the worker no
-    // longer pins a synthetic combined row); the chip must summarize the whole
-    // session, not any single turn.
-    const multiTurnHistory: TurnDiffMeta[] = [
-      {
-        turnIndex: 2,
-        promptPreview: 'second',
-        stats: { touchedFiles: 1, plusLines: 2, minusLines: 0 },
-        files: [{ filePath: '/b.ts', fileWasCreated: true, plusLines: 2, minusLines: 0 }],
-      },
-      {
-        turnIndex: 1,
-        promptPreview: 'first',
-        stats: { touchedFiles: 1, plusLines: 3, minusLines: 1 },
-        files: [{ filePath: '/a.ts', fileWasCreated: false, plusLines: 3, minusLines: 1 }],
-      },
-    ]
-    render(
-      createElement(
-        RightPanelContentContext.Provider,
-        { value: { openDiff: vi.fn() } },
-        createElement(SessionDiffChip, { history: multiTurnHistory, loadDetail: vi.fn(async () => null) }),
-      ),
-    )
-    const chipText = screen.getByTestId('session-diff-chip-trigger').textContent ?? ''
-    // The summed totals (+5 −1), not turn 2's own (+2 −0).
-    expect(chipText).toContain('+5')
-    expect(chipText).toContain('-1')
-    expect(chipText).not.toContain('+2')
-  })
-
-  it('sums a single edit-turn to that turn\'s own stats', () => {
-    render(
-      createElement(
-        RightPanelContentContext.Provider,
-        { value: { openDiff: vi.fn() } },
-        createElement(SessionDiffChip, { history: HISTORY, loadDetail: vi.fn(async () => null) }),
-      ),
-    )
-    const chipText = screen.getByTestId('session-diff-chip-trigger').textContent ?? ''
-    expect(chipText).toContain('+78')
-    expect(chipText).toContain('-16')
-  })
-
-  it('still renders (icon only) for a change with no line counts', () => {
-    // A turn that only created empty files has touchedFiles > 0 but +0 −0.
-    // Dropping the "N files" text must not leave an invisible/empty pill — the
-    // chip stays as the labelled opener for the Diff view.
-    const emptyFileHistory: TurnDiffMeta[] = [
-      {
-        turnIndex: 1,
-        promptPreview: 'touch a file',
-        stats: { touchedFiles: 1, plusLines: 0, minusLines: 0 },
-        files: [{ filePath: '/empty.ts', fileWasCreated: true, plusLines: 0, minusLines: 0 }],
-      },
-    ]
-    render(
-      createElement(
-        RightPanelContentContext.Provider,
-        { value: { openDiff: vi.fn() } },
-        createElement(SessionDiffChip, {
-          history: emptyFileHistory,
-          loadDetail: vi.fn(async () => null),
-        }),
-      ),
-    )
-    const trigger = screen.getByTestId('session-diff-chip-trigger')
-    expect(trigger).toBeTruthy()
-    expect(trigger.querySelector('svg')).not.toBeNull()
-  })
-})
 
 describe('TurnDiffHistoryView — master/detail split', () => {
   it('lists turns + files up top with an empty detail pane, fetching nothing yet', () => {

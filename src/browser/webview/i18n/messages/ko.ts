@@ -525,7 +525,6 @@ export const ko: Messages = {
   'diff.unavailable': '차이를 표시할 수 없습니다.',
   'diff.viewDiff': '차이 보기',
   'diff.turnN': '{n}번째 턴',
-  'diff.showSessionChanges': '이번 세션의 변경사항 보기',
   'diff.showSessionChangesAria': '이번 세션의 변경사항을 사이드 패널에서 보기',
   'diff.fileCount': '파일 {n}개',
   'diff.fileCountOne': '파일 {n}개',

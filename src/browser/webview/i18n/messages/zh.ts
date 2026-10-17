@@ -521,7 +521,6 @@ export const zh: Messages = {
   'diff.unavailable': '无法显示差异。',
   'diff.viewDiff': '查看差异',
   'diff.turnN': '第 {n} 轮',
-  'diff.showSessionChanges': '查看本次会话的变更',
   'diff.showSessionChangesAria': '在侧面板中查看本次会话的变更',
   'diff.fileCount': '{n} 个文件',
   'diff.fileCountOne': '{n} 个文件',

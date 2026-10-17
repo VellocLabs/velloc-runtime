@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import type { StructuredPatchHunk } from "diff";
 import {
   ChevronDownIcon,
-  FileDiffIcon,
   LoaderIcon,
   TriangleAlertIcon,
 } from "lucide-react";
@@ -15,10 +14,7 @@ import type {
 } from "../../utils/turnDiffs";
 import { DiffHunks } from "./edit-tool-diff";
 import { FilePathHeader, PathLabel } from "./file-content-view";
-import {
-  useRightPanelContent,
-  type RightPanelFileTarget,
-} from "./right-panel-content-context";
+import type { RightPanelFileTarget } from "./right-panel-content-context";
 import { useT } from "@/browser/webview/i18n";
 
 /**
@@ -400,74 +396,6 @@ export function TurnDiffHistoryView({
           onOpenFile={onOpenFile}
         />
       </div>
-    </div>
-  );
-}
-
-/**
- * Composer-bottom chip with this session's combined line changes, hidden until the
- * session has file changes. Opens the Diff view via `openDiff`, or an inline popover
- * when `openDiff` is absent.
- */
-export function SessionDiffChip({
-  history,
-  loadDetail,
-}: {
-  history: TurnDiffMeta[] | null;
-  loadDetail?: LoadTurnDiffDetail;
-}) {
-  const t = useT()
-  const { openDiff } = useRightPanelContent();
-  // Fallback-only inline popover (used when there is no right panel to open).
-  const [open, setOpen] = useState(false);
-
-  if (!history || history.length === 0) return null;
-
-  // Sum every turn's stats — the chip is a glanceable session total; the
-  // per-turn (and per-file) breakdown lives one click away in the Diff view.
-  // Skip the synthetic "Whole session" row (turnIndex 0): it is already an
-  // aggregate, so counting it would double every figure.
-  let touchedFiles = 0;
-  let plusLines = 0;
-  let minusLines = 0;
-  for (const turn of history) {
-    if (turn.turnIndex === SESSION_TOTAL_TURN_INDEX) continue;
-    touchedFiles += turn.stats.touchedFiles;
-    plusLines += turn.stats.plusLines;
-    minusLines += turn.stats.minusLines;
-  }
-  if (touchedFiles === 0 && plusLines === 0 && minusLines === 0) return null;
-
-  const handleClick = () => {
-    if (openDiff) openDiff({ kind: "turnHistory" });
-    else setOpen((v) => !v);
-  };
-
-  return (
-    <div
-      data-slot="session-diff-chip"
-      className="aui-session-diff-chip-root relative w-fit max-w-full"
-    >
-      <button
-        type="button"
-        data-testid="session-diff-chip-trigger"
-        aria-label={t("diff.showSessionChangesAria")}
-        aria-expanded={openDiff ? undefined : open}
-        title={t("diff.showSessionChanges")}
-        onClick={handleClick}
-        className="flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 font-mono text-muted-foreground text-xs tabular-nums transition-colors hover:bg-accent hover:text-foreground"
-      >
-        <FileDiffIcon
-          className="size-3.5 shrink-0 opacity-70"
-          aria-hidden="true"
-        />
-        <StatPills added={plusLines} removed={minusLines} />
-      </button>
-      {!openDiff && open && (
-        <div className="aui-session-diff-popover absolute bottom-full left-0 z-50 mb-1 h-80 w-96 overflow-hidden rounded-xl border bg-background shadow-md">
-          <TurnDiffHistoryView history={history} loadDetail={loadDetail} />
-        </div>
-      )}
     </div>
   );
 }

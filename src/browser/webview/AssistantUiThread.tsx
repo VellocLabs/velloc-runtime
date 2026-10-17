@@ -2051,7 +2051,7 @@ function InteractiveAssistantUiThread({
                         <ContinueConversationProvider value={{ onContinueConversation: handleContinueConversation }}>
                         <IsResumableProvider value={isResumable}>
                         <LastTerminalReasonProvider value={state.snapshot?.lastTerminalReason}>
-                          <Thread templateType={activeTemplateType} sessionId={sessionId} isForeground={isForegroundSession} lockToBottomRef={lockToBottomRef} turnDiffHistory={state.turnDiffHistory} loadTurnDiffDetail={loadTurnDiffDetail} onPendingQuestionsChange={onPendingQuestionsChange} pendingMessage={state.pendingMessage} pendingMessageEntries={state.pendingMessageEntries} onClearPendingMessage={onClearPendingMessage} injectRestore={state.injectRestore} onRemoveInjectMessage={removeInjectMessageRestoringFiles} />
+                          <Thread templateType={activeTemplateType} sessionId={sessionId} isForeground={isForegroundSession} lockToBottomRef={lockToBottomRef} turnDiffHistory={state.turnDiffHistory} onPendingQuestionsChange={onPendingQuestionsChange} pendingMessage={state.pendingMessage} pendingMessageEntries={state.pendingMessageEntries} onClearPendingMessage={onClearPendingMessage} injectRestore={state.injectRestore} onRemoveInjectMessage={removeInjectMessageRestoringFiles} />
                         </LastTerminalReasonProvider>
                         </IsResumableProvider>
                         </ContinueConversationProvider>
@@ -2064,7 +2064,7 @@ function InteractiveAssistantUiThread({
                           <ContinueConversationProvider value={{ onContinueConversation: handleContinueConversation }}>
                           <IsResumableProvider value={isResumable}>
                           <LastTerminalReasonProvider value={state.snapshot?.lastTerminalReason}>
-                            <Thread templateType={activeTemplateType} sessionId={sessionId} isForeground={isForegroundSession} lockToBottomRef={lockToBottomRef} turnDiffHistory={state.turnDiffHistory} loadTurnDiffDetail={loadTurnDiffDetail} onPendingQuestionsChange={onPendingQuestionsChange} pendingMessage={state.pendingMessage} pendingMessageEntries={state.pendingMessageEntries} onClearPendingMessage={onClearPendingMessage} injectRestore={state.injectRestore} onRemoveInjectMessage={removeInjectMessageRestoringFiles} />
+                            <Thread templateType={activeTemplateType} sessionId={sessionId} isForeground={isForegroundSession} lockToBottomRef={lockToBottomRef} turnDiffHistory={state.turnDiffHistory} onPendingQuestionsChange={onPendingQuestionsChange} pendingMessage={state.pendingMessage} pendingMessageEntries={state.pendingMessageEntries} onClearPendingMessage={onClearPendingMessage} injectRestore={state.injectRestore} onRemoveInjectMessage={removeInjectMessageRestoringFiles} />
                           </LastTerminalReasonProvider>
                           </IsResumableProvider>
                           </ContinueConversationProvider>
@@ -2074,7 +2074,7 @@ function InteractiveAssistantUiThread({
                       <ContinueConversationProvider value={{ onContinueConversation: handleContinueConversation }}>
                       <IsResumableProvider value={isResumable}>
                       <LastTerminalReasonProvider value={state.snapshot?.lastTerminalReason}>
-                        <Thread templateType={activeTemplateType} sessionId={sessionId} isForeground={isForegroundSession} lockToBottomRef={lockToBottomRef} turnDiffHistory={state.turnDiffHistory} loadTurnDiffDetail={loadTurnDiffDetail} onPendingQuestionsChange={onPendingQuestionsChange} pendingMessage={state.pendingMessage} pendingMessageEntries={state.pendingMessageEntries} onClearPendingMessage={onClearPendingMessage} injectRestore={state.injectRestore} onRemoveInjectMessage={removeInjectMessageRestoringFiles} />
+                        <Thread templateType={activeTemplateType} sessionId={sessionId} isForeground={isForegroundSession} lockToBottomRef={lockToBottomRef} turnDiffHistory={state.turnDiffHistory} onPendingQuestionsChange={onPendingQuestionsChange} pendingMessage={state.pendingMessage} pendingMessageEntries={state.pendingMessageEntries} onClearPendingMessage={onClearPendingMessage} injectRestore={state.injectRestore} onRemoveInjectMessage={removeInjectMessageRestoringFiles} />
                       </LastTerminalReasonProvider>
                       </IsResumableProvider>
                       </ContinueConversationProvider>

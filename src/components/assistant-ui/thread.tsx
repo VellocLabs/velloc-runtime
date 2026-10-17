@@ -10,8 +10,7 @@ import {
 import { BackgroundResultsCard } from "@/components/assistant-ui/background-results-card";
 import { TeamMessageCard } from "@/components/assistant-ui/team-message-card";
 import { StaticMarkdown } from "@/components/assistant-ui/static-markdown";
-import { SessionDiffChip } from "@/components/assistant-ui/TurnDiffSummary";
-import type { TurnDiffMeta, TurnFileChange } from "@/utils/turnDiffs";
+import type { TurnDiffMeta } from "@/utils/turnDiffs";
 import { NexusLoadingPage } from "@/components/assistant-ui/loading-page";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -667,13 +666,10 @@ export const Thread: FC<{
   isForeground?: boolean;
   lockToBottomRef?: { current: boolean };
   /**
-   * Worker-computed turn-diff history metadata (newest-first), rendered as the
-   * session-diff chip in the composer-bottom row (folder + branch + diff).
-   * `loadTurnDiffDetail` fetches a turn's hunks on demand. Null/empty → the
-   * chip doesn't render.
+   * Worker-computed turn-diff history metadata (newest-first), summarised by
+   * the session card stack's Changes card. Null/empty → no Changes card.
    */
   turnDiffHistory?: TurnDiffMeta[] | null;
-  loadTurnDiffDetail?: (turnIndex: number) => Promise<TurnFileChange[] | null>;
   /** Report this session's unanswered-question state upward (to the shell's
    *  session-list "needs your response" indicator). The pending count lives in
    *  this thread's PendingQuestionsContext, so a reporter inside that provider
@@ -699,7 +695,6 @@ export const Thread: FC<{
   isForeground,
   lockToBottomRef,
   turnDiffHistory,
-  loadTurnDiffDetail,
   onPendingQuestionsChange,
   pendingMessage,
   pendingMessageEntries,
@@ -1140,15 +1135,11 @@ export const Thread: FC<{
               person answers or dismisses it. */}
           <ModAsks />
           <Composer />
-          {/* Folder chip + session-diff chip (left) and context ring (right) on one
-              line below the composer; the negative bottom margin cancels the footer's
-              padding so the row hugs its bottom edge. */}
+          {/* Folder chip (left) and context ring (right) on one line below the
+              composer; the negative bottom margin cancels the footer's padding so
+              the row hugs its bottom edge. */}
           <div className="flex items-center gap-1.5 pr-1 -mb-2.5 md:-mb-[18px]">
             <CurrentProjectFolderChip />
-            <SessionDiffChip
-              history={turnDiffHistory ?? null}
-              loadDetail={loadTurnDiffDetail}
-            />
             <div className="ml-auto flex items-center gap-1">
               {/* This session's model (read-only) + effort — a pick here is
                   per-session; the topbar sets the global default. */}

@@ -563,7 +563,6 @@ export const en = {
   'diff.unavailable': 'Diff unavailable.',
   'diff.viewDiff': 'View diff',
   'diff.turnN': 'Turn {n}',
-  'diff.showSessionChanges': 'Show changes this session',
   'diff.showSessionChangesAria': 'Show changes this session in the side panel',
   // `{n}` may be 1 — keep the singular/plural key pair distinct.
   'diff.fileCount': '{n} files',

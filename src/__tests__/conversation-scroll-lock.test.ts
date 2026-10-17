@@ -252,15 +252,13 @@ describe('conversation scroll lock', () => {
   })
 
   it('collapse-all ignores the composer-bottom chip controls (folder, branch, session diff)', () => {
-    // The composer-bottom row carries three chip controls whose triggers are
-    // excluded from collapse-all (composer UI, not transcript collapsibles).
-    // The session-diff chip replaced the old "Changes this turn" bar.
+    // The composer-bottom row's chip controls are excluded from collapse-all
+    // (composer UI, not transcript collapsibles).
     const viewport = document.createElement('div')
     viewport.className = 'aui-thread-viewport'
     for (const cls of [
       'aui-project-folder-chip-root',
       'aui-project-branch-chip-root',
-      'aui-session-diff-chip-root',
     ]) {
       const root = document.createElement('div')
       root.className = cls

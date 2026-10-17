@@ -536,7 +536,6 @@ export const de: Messages = {
   'diff.unavailable': 'Diff nicht verfügbar.',
   'diff.viewDiff': 'Diff ansehen',
   'diff.turnN': 'Zug {n}',
-  'diff.showSessionChanges': 'Änderungen dieser Sitzung anzeigen',
   'diff.showSessionChangesAria':
     'Änderungen dieser Sitzung im Seitenbereich anzeigen',
   'diff.fileCount': '{n} Dateien',

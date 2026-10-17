@@ -538,7 +538,6 @@ export const es: Messages = {
   'diff.unavailable': 'Diferencias no disponibles.',
   'diff.viewDiff': 'Ver las diferencias',
   'diff.turnN': 'Turno {n}',
-  'diff.showSessionChanges': 'Ver los cambios de esta sesión',
   'diff.showSessionChangesAria':
     'Ver los cambios de esta sesión en el panel lateral',
   'diff.fileCount': '{n} archivos',

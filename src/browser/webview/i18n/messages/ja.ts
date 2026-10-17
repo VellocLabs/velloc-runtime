@@ -528,7 +528,6 @@ export const ja: Messages = {
   'diff.unavailable': '差分を表示できません。',
   'diff.viewDiff': '差分を表示',
   'diff.turnN': 'ターン {n}',
-  'diff.showSessionChanges': 'このセッションの変更を表示',
   'diff.showSessionChangesAria': 'このセッションの変更をサイドパネルに表示',
   'diff.fileCount': '{n} ファイル',
   'diff.fileCountOne': '{n} ファイル',

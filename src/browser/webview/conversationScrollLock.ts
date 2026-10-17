@@ -21,7 +21,6 @@ const COLLAPSIBLE_EXCLUDED_ANCESTOR_SELECTOR = [
   '.aui-composer-mode-picker',
   '.aui-project-folder-chip-root',
   '.aui-project-branch-chip-root',
-  '.aui-session-diff-chip-root',
 ].join(',')
 
 export function findConversationViewport(root: ParentNode): HTMLElement | null {
