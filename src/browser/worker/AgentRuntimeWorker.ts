@@ -67,6 +67,8 @@ import {
 } from './AgentPermissionCoordinator'
 import { AgentRuntimeRecovery } from './AgentRuntimeRecovery'
 import { AgentTranscriptService } from './AgentTranscriptService'
+import type { TranscriptSource } from './AgentTranscriptService'
+import type { FileSnapshotRecorder } from '../../sessions/fileSnapshots/snapshotRecorder'
 import {
   extractRuntimeSettingsNamespaces,
   parseApiErrorRetryEvent,
@@ -197,7 +199,9 @@ export class AgentRuntimeWorker {
    */
   private provisionalBoot: {
     snapshot: ProvisionalBootSources
+    /** The early transcript read, as the engine will be seeded with it. */
     messages: Message[]
+    conversationStore?: BrowserConversationStore
   } | null = null
   /** SINGLE runtime source: the runtime always belongs to the
    *  current scope. Deriving it kills the old dual `this.runtime` field —
@@ -212,6 +216,11 @@ export class AgentRuntimeWorker {
    * `this.runtime`; it stays set (resolved) after init.
    */
   private initPromise: Promise<void> | null = null
+  /**
+   * Settles once the current scope can serve transcript reads: at its
+   * provisional publish, or when its init settles (F-32). Never rejects.
+   */
+  private displayReadyPromise: Promise<void> | null = null
   private boundSessionId: string | null = null
   /** The last composer save of the auto-compact window failed; published on
    *  the snapshot until the next save. */
@@ -486,8 +495,13 @@ export class AgentRuntimeWorker {
     const scopePermissions = new AgentPermissionCoordinator(
       this.makePermissionHost(),
     )
+    let markDisplayReady!: () => void
+    const displayPublished = new Promise<void>(resolve => {
+      markDisplayReady = resolve
+    })
     const scope: RuntimeScope = {
       generation,
+      markDisplayReady: () => markDisplayReady(),
       abortController: new AbortController(),
       runtime: null,
       disposeCallbacks: [],
@@ -546,6 +560,7 @@ export class AgentRuntimeWorker {
       )
       await this.disposeRuntimeScope('init_failed').catch(() => {})
     })
+    this.displayReadyPromise = Promise.race([displayPublished, this.initPromise])
     try {
       await initRun
     } catch (error) {
@@ -828,17 +843,14 @@ export class AgentRuntimeWorker {
         return
 
       case 'worker.getMessages':
-        // Wait for init before reading the engine, or a `worker.getMessages` in the same tick as
-        // `worker.ready` replies with an empty array.
-        await this.waitForInit()
+        // Served from the early transcript read while the build is pending (F-32).
+        await this.waitForDisplay()
         this.emit({
           type: 'worker.messages',
           payload: {
             messages: await this.withTranscriptLines(
-              this.runtime
-                ? this.runtime.engine.transcriptRows().map(sanitizeMessageForUi)
-                : [],
-              this.runtime?.conversationStore,
+              this.displayTranscriptRows().map(sanitizeMessageForUi),
+              this.displayConversationStore(),
             ),
           },
         })
@@ -849,16 +861,14 @@ export class AgentRuntimeWorker {
         return
 
       case 'worker.getMessagesSince': {
-        await this.waitForInit()
-        const allMessages = this.runtime
-          ? this.runtime.engine.transcriptRows()
-          : []
+        await this.waitForDisplay()
+        const allMessages = this.displayTranscriptRows()
         const sinceOrdinal = message.payload.sinceOrdinal
         // Stamped like the full read above: a delta row without its
         // transcript line is one a search jump cannot land on.
         const deltaMessages = await this.withTranscriptLines(
           allMessages.slice(sinceOrdinal).map(sanitizeMessageForUi),
-          this.runtime?.conversationStore,
+          this.displayConversationStore(),
         )
         this.emit({
           type: 'worker.messages',
@@ -872,12 +882,9 @@ export class AgentRuntimeWorker {
       }
 
       case 'worker.getToolCallDetail': {
-        // UI-ready split: the transcript is visible (and expandable) during
-        // the provisional window, so this can arrive before the runtime is
-        // built. Park like getMessages — replying from the unbound transcript
-        // service would return an empty detail for a tool call the user can
-        // see on screen.
-        await this.waitForInit()
+        // The transcript service is bound to the early transcript at the
+        // provisional publish, so a visible tool call resolves before the build.
+        await this.waitForDisplay()
         const detail = await this.scopeTranscript.getToolCallDetail(message.payload.toolCallId)
         this.emit({
           type: 'worker.toolCallDetail',
@@ -890,9 +897,8 @@ export class AgentRuntimeWorker {
       }
 
       case 'worker.getTurnDiffDetail': {
-        // Same provisional-window park as getToolCallDetail above — the
-        // history cache is only populated once the runtime is bound.
-        await this.waitForInit()
+        // Same display-tier read as getToolCallDetail above.
+        await this.waitForDisplay()
         // Serve a turn's hunks from the history cache (computed by
         // emitTurnDiffHistory). The UI fetches this lazily on expand.
         // Sentinel turnIndex 0 (real turns are 1-based): the WHOLE-SESSION
@@ -916,8 +922,9 @@ export class AgentRuntimeWorker {
 
       case 'worker.getTurnDiffHistory': {
         // A view that lists the history asks for it; computed on this first
-        // need when the open was served from the stored digest.
-        await this.waitForInit()
+        // need when the open was served from the stored digest. A display
+        // read: served from the early transcript before the build (F-32).
+        await this.waitForDisplay()
         if (!(await this.scopeTranscript.ensureTurnDiffHistory())) {
           this.scopeTranscript.emitComputedIfCurrent()
         }
@@ -996,6 +1003,26 @@ export class AgentRuntimeWorker {
       // init failed — let the caller see `this.runtime === null` and
       // emit the existing `worker_not_initialized` error.
     }
+  }
+
+  /**
+   * Await the point where transcript reads can be served: the provisional
+   * publish or the end of init. Never rejects; with neither, readers fall
+   * back to an empty transcript.
+   */
+  private async waitForDisplay(): Promise<void> {
+    if (this.runtime || this.provisionalBoot || !this.displayReadyPromise) return
+    await this.displayReadyPromise
+  }
+
+  /** Transcript rows for the page: the engine's once built, else the early read. */
+  private displayTranscriptRows(): readonly Message[] {
+    if (this.runtime) return this.runtime.engine.transcriptRows()
+    return this.provisionalBoot?.messages ?? []
+  }
+
+  private displayConversationStore(): BrowserConversationStore | undefined {
+    return this.runtime?.conversationStore ?? this.provisionalBoot?.conversationStore
   }
 
   /**
@@ -1224,7 +1251,8 @@ export class AgentRuntimeWorker {
     // feed (and its retained transcript copy).
     this.provisionalBoot = null
     scope.permissions.bindRuntime(createdRuntime)
-    scope.transcript.bindRuntime(createdRuntime)
+    // A view bound at the provisional publish already delegates to the runtime.
+    if (!scope.transcriptView) scope.transcript.bindRuntime(createdRuntime)
     scope.recovery.bindRuntime(createdRuntime)
     // Pin the model controller too — its async flows (Phase-2
     // reconcile, refresh, applySelection) must never commit a stale scope's
@@ -1263,9 +1291,16 @@ export class AgentRuntimeWorker {
     // running), so finalizing lazily HERE is still correct. Cheap no-op for
     // sessions with no snapshot DB (a stat probe); fire-and-forget so boot
     // never blocks on it.
-    void createdRuntime.fileSnapshotRecorder?.recoverUnfinalized().catch(() => {
-      // best-effort — the next turn end retries the same finalize
-    })
+    // A history computed before the build saw the unrecovered turns; compute
+    // it again so its digest can be stored.
+    void createdRuntime.fileSnapshotRecorder?.recoverUnfinalized().then(
+      () => {
+        if (this.isCurrentScope(scope)) void scope.transcript.recomputeIfComputed()
+      },
+      () => {
+        // best-effort — the next turn end retries the same finalize
+      },
+    )
 
     // Cache-usage totals are derived from a full transcript walk in
     // getSnapshot() on every snapshot emission — no load-time seed needed.
@@ -1510,12 +1545,14 @@ export class AgentRuntimeWorker {
       hostMode: string | undefined
       messages: Message[]
       /** The building session's own store — see `withTranscriptLines`. */
-      conversationStore?: unknown
+      conversationStore?: BrowserConversationStore
+      fileSnapshotRecorder?: FileSnapshotRecorder
     },
   ): void {
     // A superseded build must not publish into the successor's UI.
     if (!this.isCurrentScope(scope)) return
-    const messages = info.messages.map(sanitizeMessageForUi)
+    const earlyRows = info.messages
+    const messages = earlyRows.map(sanitizeMessageForUi)
     this.provisionalBoot = {
       snapshot: {
         sessionId: info.sessionId,
@@ -1525,8 +1562,29 @@ export class AgentRuntimeWorker {
         hostMode: info.hostMode,
         messageCount: messages.length,
       },
-      messages,
+      messages: earlyRows,
+      conversationStore: info.conversationStore,
     }
+    const earlyStore = info.conversationStore
+    if (earlyStore) {
+      // Reads the early transcript until the runtime installs, then the
+      // runtime's own; one identity, so in-flight reads survive the install.
+      const view: TranscriptSource = {
+        get conversationStore() {
+          return scope.runtime?.conversationStore ?? earlyStore
+        },
+        get fileSnapshotRecorder() {
+          return scope.runtime ? scope.runtime.fileSnapshotRecorder : info.fileSnapshotRecorder
+        },
+        engine: {
+          transcriptRows: () =>
+            scope.runtime ? scope.runtime.engine.transcriptRows() : earlyRows,
+        },
+      }
+      scope.transcriptView = view
+      scope.transcript.bindRuntime(view)
+    }
+    scope.markDisplayReady?.()
     this.emit({ type: 'worker.uiReady', payload: this.getSnapshot() })
     // Emit ONCE, with the transcript lines already attached — never a
     // sync unstamped copy followed by an async stamped one. A double emit
@@ -1555,7 +1613,7 @@ export class AgentRuntimeWorker {
     if (this.runtime || !this.provisionalBoot) return null
     return {
       snapshot: this.getSnapshot(),
-      messages: this.provisionalBoot.messages,
+      messages: this.provisionalBoot.messages.map(sanitizeMessageForUi),
     }
   }
 

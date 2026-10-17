@@ -1,7 +1,7 @@
 /**
  * Boot-order pins for `createBrowserRuntime` (createAgentRuntime.ts), structural because no unit test builds a
  * real runtime: `seedAppStateFromSettings` runs before `loadLocalPromptCommands`, which gets the seeded
- * `appState`; the engine's `sessionStoragePath` reads the caught `settingsHomeDir`, not `settingsHome()` (throws).
+ * `appState`; the engine's `sessionStoragePath` reads the caught `settingsHomeDir`, not `settingsHome()` (throws); the snapshot recorder exists before `onUiReady` (F-32).
  */
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
@@ -33,5 +33,16 @@ describe('createBrowserRuntime boot order', () => {
     expect(at).toBeGreaterThan(-1)
     expect(source).not.toMatch(/sessionStoragePath:\s*settingsHome\(\)/)
     expect(source).not.toContain('projectsHome(settingsHome())')
+  })
+
+  it('builds the file-snapshot recorder before onUiReady and hands it over, ahead of plugin discovery', () => {
+    const recorderAt = source.indexOf('new FileSnapshotRecorder(')
+    const uiReadyAt = source.indexOf('options.onUiReady({')
+    const pluginsAt = source.indexOf('await loadEffectiveEnabledPlugins(')
+    expect(recorderAt).toBeGreaterThan(-1)
+    expect(uiReadyAt).toBeGreaterThan(recorderAt)
+    expect(pluginsAt).toBeGreaterThan(uiReadyAt)
+    const uiReadyCall = source.slice(uiReadyAt, source.indexOf('})', uiReadyAt))
+    expect(uiReadyCall).toMatch(/^\s*fileSnapshotRecorder,\s*$/m)
   })
 })

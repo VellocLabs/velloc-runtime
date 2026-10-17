@@ -63,6 +63,17 @@ function snapshotTotalToTurnFileDiff(total: SessionTotalFileDiff): TurnFileChang
     : base
 }
 
+/**
+ * What the service reads: the session's store, its transcript rows and its
+ * snapshot recorder. A built runtime satisfies it; before the build the
+ * worker binds a view over the early transcript read (F-32).
+ */
+export type TranscriptSource = {
+  readonly conversationStore: AgentRuntimeState['conversationStore']
+  readonly fileSnapshotRecorder?: AgentRuntimeState['fileSnapshotRecorder']
+  readonly engine: Pick<AgentRuntimeState['engine'], 'transcriptRows'>
+}
+
 /** The worker-provided seam: outbound pushes only (sidecar persisted /
  *  turn-diff history). Runtime access is via scope-bound `bindRuntime`. */
 export interface AgentTranscriptServiceHost {
@@ -75,7 +86,7 @@ export class AgentTranscriptService {
   private turnDiffCompletedCache = new Map<number, TurnFullDiff>()
   private turnDiffHistoryFull: TurnFullDiff[] = []
   private turnDiffLastMessageCount = 0
-  private runtime: AgentRuntimeState | null = null
+  private runtime: TranscriptSource | null = null
   /** Newest diff computation wins — an older overlapping
    *  run must not overwrite a newer run's committed history/emit. */
   private diffRevision = 0
@@ -90,7 +101,7 @@ export class AgentTranscriptService {
 
   constructor(private readonly host: AgentTranscriptServiceHost) {}
 
-  bindRuntime(runtime: AgentRuntimeState): void {
+  bindRuntime(runtime: TranscriptSource): void {
     this.runtime = runtime
   }
 
@@ -251,6 +262,16 @@ export class AgentTranscriptService {
     return true
   }
 
+  /**
+   * The snapshot store changed under an already computed history (crash
+   * recovery finalized its open turns): compute it again. No-op when nothing
+   * was computed yet.
+   */
+  recomputeIfComputed(): Promise<void> {
+    if (this.computedFingerprint === null && !this.diffRun) return Promise.resolve()
+    return this.emitTurnDiffHistory()
+  }
+
   /** Re-send the computed history when it describes `fingerprint`. */
   emitComputedIfCurrent(fingerprint?: string): boolean {
     const runtime = this.runtime
@@ -266,7 +287,7 @@ export class AgentTranscriptService {
   }
 
   private async readStoredFigures(
-    runtime: AgentRuntimeState,
+    runtime: TranscriptSource,
     fingerprint: string,
   ) {
     const store = runtime.conversationStore
@@ -296,7 +317,7 @@ export class AgentTranscriptService {
    * the next computation rewrites.
    */
   private async storeDigest(
-    runtime: AgentRuntimeState,
+    runtime: TranscriptSource,
     fingerprint: string,
     metas: readonly TurnDiffMeta[],
     settled: boolean,

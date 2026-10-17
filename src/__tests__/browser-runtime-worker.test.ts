@@ -3679,12 +3679,7 @@ describe('AgentRuntimeWorker — UI-ready split', () => {
     ).toBe(false)
   })
 
-  it('a tool-detail fetch during the provisional window parks until the build lands', async () => {
-    // The transcript is visible (and expandable) during the provisional
-    // window, so worker.getToolCallDetail can arrive pre-build. It must park
-    // like getMessages — an unparked reply would come from the unbound
-    // transcript service and return an empty detail for a tool call the user
-    // can see on screen.
+  it('a tool-detail fetch during the provisional window is answered from the early store', async () => {
     const emitted: Emitted[] = []
     const worker = new AgentRuntimeWorker({
       emit: m => emitted.push(m as Emitted),
@@ -3695,21 +3690,19 @@ describe('AgentRuntimeWorker — UI-ready split', () => {
       args: { command: 'ls' },
       result: { ok: true },
     }
+    const earlyStore = splitFakeRuntime(transcriptOf(1)).conversationStore
+    earlyStore.getToolCallDetail = vi.fn(async () => detail) as never
     let releaseBuild!: () => void
     const buildGate = new Promise<void>(resolve => {
       releaseBuild = resolve
     })
     vi.mocked(createAgentRuntime).mockImplementationOnce(async opts => {
       const options = opts as unknown as {
-        onUiReady?: (info: ReturnType<typeof uiReadyInfo>) => void
+        onUiReady?: (info: ReturnType<typeof uiReadyInfo> & { conversationStore: unknown }) => void
       }
-      options.onUiReady?.(uiReadyInfo(transcriptOf(1)))
+      options.onUiReady?.({ ...uiReadyInfo(transcriptOf(1)), conversationStore: earlyStore })
       await buildGate
-      const runtime = splitFakeRuntime(transcriptOf(1))
-      runtime.conversationStore.getToolCallDetail = vi.fn(
-        async () => detail,
-      ) as never
-      return runtime as never
+      return splitFakeRuntime(transcriptOf(1)) as never
     })
 
     const init = worker.receiveFrame({
@@ -3720,23 +3713,243 @@ describe('AgentRuntimeWorker — UI-ready split', () => {
       expect(emitted.some(m => m.type === 'worker.uiReady')).toBe(true)
     })
 
-    const detailDone = worker.receiveFrame({
+    await worker.receiveFrame({
       type: 'worker.getToolCallDetail',
       payload: { toolCallId: 'tc-1' } as never,
     })
-    await new Promise(resolve => setTimeout(resolve, 25))
-    // Parked: no (empty) reply escaped during the window.
-    expect(emitted.some(m => m.type === 'worker.toolCallDetail')).toBe(false)
-
-    releaseBuild()
-    await init
-    await detailDone
+    // Answered while the build is still held.
+    expect(emitted.some(m => m.type === 'worker.ready')).toBe(false)
     const reply = emitted.find(m => m.type === 'worker.toolCallDetail')
-    expect(reply).toBeDefined()
     expect(
       (reply!.payload as { detail: { toolCallId?: string } | null }).detail
         ?.toolCallId,
     ).toBe('tc-1')
+
+    releaseBuild()
+    await init
+  })
+
+  describe('change digest under the early transcript view', () => {
+    const snapshotTurn = (finalized: boolean) => ({
+      turnSeq: 1,
+      promptPreview: 'write it',
+      startedAt: 1_000,
+      finalized,
+      files: [
+        {
+          displayPath: '/ws/new.ts',
+          kind: 'text',
+          hunks: [{ oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ['+a'] }],
+          fileWasCreated: true,
+          isDeleted: false,
+          plusLines: 1,
+          minusLines: 0,
+        },
+      ],
+    })
+
+    function digestStore() {
+      let metadata: Record<string, unknown> = {}
+      const updateSessionMetadata = vi.fn(async (patch: Record<string, unknown>) => {
+        metadata = { ...metadata, ...patch }
+        return metadata
+      })
+      return {
+        store: {
+          getSessionId: () => 'split-1',
+          getSessionMetadata: vi.fn(async () => metadata),
+          updateSessionMetadata,
+          saveToolCallDetail: vi.fn(async () => {}),
+          getToolCallDetail: vi.fn(async () => null),
+        },
+        digest: () => metadata.sessionChanges,
+        updateSessionMetadata,
+      }
+    }
+
+    async function bootHeld(
+      store: ReturnType<typeof digestStore>['store'],
+      recorder: unknown,
+    ) {
+      const emitted: Emitted[] = []
+      const worker = new AgentRuntimeWorker({
+        emit: m => emitted.push(m as Emitted),
+      })
+      let releaseBuild!: () => void
+      const buildGate = new Promise<void>(resolve => {
+        releaseBuild = resolve
+      })
+      vi.mocked(createAgentRuntime).mockImplementationOnce(async opts => {
+        const options = opts as unknown as {
+          onUiReady?: (info: Record<string, unknown>) => void
+        }
+        options.onUiReady?.({
+          ...uiReadyInfo(transcriptOf(2)),
+          conversationStore: store,
+          fileSnapshotRecorder: recorder,
+        })
+        await buildGate
+        // The built runtime carries the same store and recorder instances.
+        return {
+          ...splitFakeRuntime(transcriptOf(2)),
+          conversationStore: store,
+          fileSnapshotRecorder: recorder,
+        } as never
+      })
+      const init = worker.receiveFrame({
+        type: 'worker.init',
+        payload: { sessionId: 'split-1', cwd: '/workspace' } as never,
+      })
+      await vi.waitFor(() => {
+        expect(emitted.some(m => m.type === 'worker.uiReady')).toBe(true)
+      })
+      return { worker, emitted, init, releaseBuild }
+    }
+
+    const settle = async () => {
+      for (let i = 0; i < 6; i++) await new Promise(resolve => setTimeout(resolve, 0))
+    }
+
+    it('a digest stored before the build is the one the built runtime keeps', async () => {
+      const { store, digest, updateSessionMetadata } = digestStore()
+      const recorder = {
+        getTurnDiffs: vi.fn(async () => [snapshotTurn(true)]),
+        getSessionTotalDiffs: async () => [],
+        recoverUnfinalized: vi.fn(async () => {}),
+      }
+      const { worker, emitted, init, releaseBuild } = await bootHeld(store, recorder)
+
+      await worker.receiveFrame({ type: 'worker.getTurnDiffHistory' } as never)
+      await settle()
+      expect(emitted.some(m => m.type === 'worker.ready')).toBe(false)
+      const early = digest()
+      expect(early).toMatchObject({ sessionId: 'split-1', fingerprint: '2:u1' })
+      expect(updateSessionMetadata).toHaveBeenCalledTimes(1)
+
+      releaseBuild()
+      await init
+      await worker.receiveFrame({ type: 'worker.getTurnDiffHistory' } as never)
+      await worker.receiveFrame({ type: 'worker.getMessages' } as never)
+      await settle()
+      // Built, the same transcript and snapshots describe the same digest:
+      // nothing is rewritten.
+      expect(digest()).toEqual(early)
+      expect(updateSessionMetadata).toHaveBeenCalledTimes(1)
+    })
+
+    it('an unrecovered snapshot turn stores no digest before the build', async () => {
+      const { store, updateSessionMetadata } = digestStore()
+      let finalized = false
+      const recorder = {
+        getTurnDiffs: vi.fn(async () => [snapshotTurn(finalized)]),
+        getSessionTotalDiffs: async () => [],
+        recoverUnfinalized: vi.fn(async () => {
+          finalized = true
+        }),
+      }
+      const { worker, emitted, init, releaseBuild } = await bootHeld(store, recorder)
+
+      await worker.receiveFrame({ type: 'worker.getTurnDiffHistory' } as never)
+      await settle()
+      expect(emitted.some(m => m.type === 'worker.turnDiffHistory')).toBe(true)
+      expect(updateSessionMetadata).not.toHaveBeenCalled()
+
+      releaseBuild()
+      await init
+      await settle()
+      expect(recorder.recoverUnfinalized).toHaveBeenCalledTimes(1)
+      // Recovery recomputes the history it changed, which stores the digest.
+      await vi.waitFor(() => {
+        expect(updateSessionMetadata).toHaveBeenCalledTimes(1)
+      })
+    })
+  })
+
+  it('getMessages and getMessagesSince during the provisional window answer from the early transcript', async () => {
+    const emitted: Emitted[] = []
+    const worker = new AgentRuntimeWorker({
+      emit: m => emitted.push(m as Emitted),
+    })
+    const earlyStore = splitFakeRuntime(transcriptOf(3)).conversationStore
+    let releaseBuild!: () => void
+    const buildGate = new Promise<void>(resolve => {
+      releaseBuild = resolve
+    })
+    vi.mocked(createAgentRuntime).mockImplementationOnce(async opts => {
+      const options = opts as unknown as {
+        onUiReady?: (info: ReturnType<typeof uiReadyInfo> & { conversationStore: unknown }) => void
+      }
+      options.onUiReady?.({ ...uiReadyInfo(transcriptOf(3)), conversationStore: earlyStore })
+      await buildGate
+      return splitFakeRuntime(transcriptOf(3)) as never
+    })
+
+    const init = worker.receiveFrame({
+      type: 'worker.init',
+      payload: { sessionId: 'split-1', cwd: '/workspace' } as never,
+    })
+    await vi.waitFor(() => {
+      expect(emitted.some(m => m.type === 'worker.uiReady')).toBe(true)
+    })
+    emitted.length = 0
+
+    await worker.receiveFrame({ type: 'worker.getMessages' } as never)
+    await worker.receiveFrame({
+      type: 'worker.getMessagesSince',
+      payload: { sinceOrdinal: 2 },
+    } as never)
+    const replies = emitted.filter(m => m.type === 'worker.messages')
+    const counts = replies.map(
+      m => (m.payload as { messages: unknown[] }).messages.length,
+    )
+    expect(counts).toEqual([3, 1])
+    expect(emitted.some(m => m.type === 'worker.ready')).toBe(false)
+
+    releaseBuild()
+    await init
+  })
+
+  it('a transcript read sent before the provisional publish waits for it, not for the build', async () => {
+    const emitted: Emitted[] = []
+    const worker = new AgentRuntimeWorker({
+      emit: m => emitted.push(m as Emitted),
+    })
+    let publish!: () => void
+    const publishGate = new Promise<void>(resolve => {
+      publish = resolve
+    })
+    let releaseBuild!: () => void
+    const buildGate = new Promise<void>(resolve => {
+      releaseBuild = resolve
+    })
+    vi.mocked(createAgentRuntime).mockImplementationOnce(async opts => {
+      const options = opts as unknown as {
+        onUiReady?: (info: ReturnType<typeof uiReadyInfo>) => void
+      }
+      await publishGate
+      options.onUiReady?.(uiReadyInfo(transcriptOf(2)))
+      await buildGate
+      return splitFakeRuntime(transcriptOf(2)) as never
+    })
+
+    const init = worker.receiveFrame({
+      type: 'worker.init',
+      payload: { sessionId: 'split-1', cwd: '/workspace' } as never,
+    })
+    const read = worker.receiveFrame({ type: 'worker.getMessages' } as never)
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(emitted.some(m => m.type === 'worker.messages')).toBe(false)
+
+    publish()
+    await read
+    expect(emitted.some(m => m.type === 'worker.ready')).toBe(false)
+    const lengths = emitted
+      .filter(m => m.type === 'worker.messages')
+      .map(m => (m.payload as { messages: unknown[] }).messages.length)
+    expect(lengths).toContain(2)
+
+    releaseBuild()
+    await init
   })
 
   it('an init failure after uiReady clears the provisional feed (no dead uiReady snapshot)', async () => {

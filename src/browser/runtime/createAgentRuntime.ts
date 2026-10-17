@@ -213,7 +213,9 @@ export type CreateBrowserRuntimeOptions = BrowserRuntimeOptions & {
      * This build's own store. The worker stamps transcript lines from it;
      * the process-global slot may already name another session's.
      */
-    conversationStore?: unknown
+    conversationStore?: BrowserConversationStore
+    /** This build's file-snapshot recorder; the turn-diff history reads it. */
+    fileSnapshotRecorder?: FileSnapshotRecorder
   }) => void
   /**
    * Mid-turn task-notification drain.
@@ -559,6 +561,30 @@ export async function createBrowserRuntime(
   })
   setConversationStore(conversationStore)
 
+  // File-snapshot recorder (`fileSnapshots: true` templates) in the session dir. Main interactive
+  // runtime only (the store is single-writer); no storage path ⇒ no recorder and no WorkspaceDiff.
+  const fileSnapshotRecorder =
+    templateWantsFileSnapshots(sessionTemplate?.config) &&
+    typeof options.sessionStoragePath === 'string' &&
+    options.sessionStoragePath.length > 0 &&
+    options.isSubAgent !== true &&
+    options.bridgeTransport
+      ? new FileSnapshotRecorder({
+          store: new SessionSnapshotStore({
+            transport: options.bridgeTransport,
+            fs: installedFs,
+            sessionDir: getConversationSessionDirectoryPath(
+              options.sessionStoragePath,
+              resolvedOptions.sessionId,
+            ),
+            createRequestId: () => runtimeConfig.createUUID(),
+          }),
+          fs: installedFs,
+          // Never capture the session-storage tree itself (our own blobs/DB
+          // would recurse; sibling sessions' transcripts aren't workspace).
+          excludeRoots: [options.sessionStoragePath],
+        })
+      : undefined
   // Read the persisted transcript early for `onUiReady`; reused later as `initialMessages`. Skipped
   // for a background fork and when `onUiReady` is not wired.
   const earlySeedMessages = (
@@ -575,6 +601,7 @@ export async function createBrowserRuntime(
       hostMode,
       messages: earlyRecordedMessages,
       conversationStore,
+      fileSnapshotRecorder,
     })
   }
 
@@ -1048,30 +1075,6 @@ export async function createBrowserRuntime(
     forkExactTools?: boolean
     forkSeedMessages?: Message[]
   }
-  // File-snapshot recorder (`fileSnapshots: true` templates) in the session dir. Main interactive
-  // runtime only (the store is single-writer); no storage path ⇒ no recorder and no WorkspaceDiff.
-  const fileSnapshotRecorder =
-    templateWantsFileSnapshots(sessionTemplate?.config) &&
-    typeof options.sessionStoragePath === 'string' &&
-    options.sessionStoragePath.length > 0 &&
-    options.isSubAgent !== true &&
-    options.bridgeTransport
-      ? new FileSnapshotRecorder({
-          store: new SessionSnapshotStore({
-            transport: options.bridgeTransport,
-            fs: installedFs,
-            sessionDir: getConversationSessionDirectoryPath(
-              options.sessionStoragePath,
-              resolvedOptions.sessionId,
-            ),
-            createRequestId: () => runtimeConfig.createUUID(),
-          }),
-          fs: installedFs,
-          // Never capture the session-storage tree itself (our own blobs/DB
-          // would recurse; sibling sessions' transcripts aren't workspace).
-          excludeRoots: [options.sessionStoragePath],
-        })
-      : undefined
   // MCP tools and `WorkspaceDiff` land PAST `applyTemplateToolAllowlist`. WorkspaceDiff only for a
   // snapshot session without a shell (`templateWantsWorkspaceDiffTool`).
   const snapshotTools =
