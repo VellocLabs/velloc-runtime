@@ -913,6 +913,10 @@ export function MultiSessionShell({
   // only on demand, over the chat (F-9). The person's open state is untouched.
   const [rightPanelOverlayOpen, setRightPanelOverlayOpen] = useState(false)
   const rightPanelOverlaidRef = useRef(false)
+  // A view the person opens shows the overlay, also one already in front.
+  const showRightPanelOverlayForOpen = useCallback(() => {
+    if (rightPanelOverlaidRef.current) setRightPanelOverlayOpen(true)
+  }, [])
   const handleToggleSidebar = useCallback(() => {
     if (sidebarHiddenRef.current) {
       setSidebarPeek(open => !open)
@@ -2094,7 +2098,8 @@ export function MultiSessionShell({
       m.set(id, { ...cur, session, fileReveal })
       return m
     })
-  }, [])
+    showRightPanelOverlayForOpen()
+  }, [showRightPanelOverlayForOpen])
   const openDiffInPanel = useCallback((target: RightPanelDiffTarget) => {
     const id = activeSessionIdRef.current
     if (!id) return
@@ -2114,7 +2119,8 @@ export function MultiSessionShell({
       m.set(id, { ...cur, diffTarget: target, session })
       return m
     })
-  }, [rememberRightPanelView])
+    showRightPanelOverlayForOpen()
+  }, [rememberRightPanelView, showRightPanelOverlayForOpen])
 
   // Skill card "View skill" → the Skill tab. Same shape as `openDiffInPanel`:
   // records the preference outside the updater, activates `skill`, stores the
@@ -2135,7 +2141,8 @@ export function MultiSessionShell({
       m.set(id, { ...cur, skillTarget: target, session })
       return m
     })
-  }, [rememberRightPanelView])
+    showRightPanelOverlayForOpen()
+  }, [rememberRightPanelView, showRightPanelOverlayForOpen])
 
   // Open handles for FilePathLinks rendered INSIDE the panel (plan text /
   // `.md` preview) — same handlers the transcript uses.
@@ -2156,14 +2163,18 @@ export function MultiSessionShell({
     () => filterSubAgentRowsBySession(subAgentRows, activeSessionId),
     [subAgentRows, activeSessionId],
   )
-  // Each mounted thread's own rows, one stable array per session until the
-  // feed changes, so a memoized thread re-renders only on a real change.
+  // Each mounted thread's own rows: the same array while that session's rows
+  // are unchanged, so another session's feed change re-renders nothing here.
+  const subAgentRowsSeenRef = useRef(new Map<string, NexusTaskSummaryRow[]>())
   const subAgentRowsForSession = useMemo(() => {
     const bySession = new Map<string, NexusTaskSummaryRow[]>()
     return (sessionId: string): NexusTaskSummaryRow[] => {
       let rows = bySession.get(sessionId)
       if (!rows) {
         rows = filterSubAgentRowsBySession(subAgentRows, sessionId)
+        const seen = subAgentRowsSeenRef.current.get(sessionId)
+        if (seen && subAgentsEqual(seen, rows)) rows = seen
+        else subAgentRowsSeenRef.current.set(sessionId, rows)
         bySession.set(sessionId, rows)
       }
       return rows
@@ -2289,7 +2300,8 @@ export function MultiSessionShell({
   const handleOpenBackgroundTasks = useCallback((focusSessionId?: string) => {
     setBackgroundTaskFocusSessionId(focusSessionId ?? null)
     updateRightPanel(s => openView(s, 'tasks'))
-  }, [updateRightPanel])
+    showRightPanelOverlayForOpen()
+  }, [updateRightPanel, showRightPanelOverlayForOpen])
   // Tasks on its list: each request (a count) sends the drawer back from any
   // task detail it shows.
   const [backgroundTaskListRequest, setBackgroundTaskListRequest] = useState(0)
@@ -2297,7 +2309,8 @@ export function MultiSessionShell({
     setBackgroundTaskFocusSessionId(null)
     setBackgroundTaskListRequest(n => n + 1)
     updateRightPanel(s => openView(s, 'tasks'))
-  }, [updateRightPanel])
+    showRightPanelOverlayForOpen()
+  }, [updateRightPanel, showRightPanelOverlayForOpen])
 
   // `$.ui.view` (F-25): a teammate's transcript is its own session; a
   // subagent's is its Tasks detail, maximized over the conversation. Going
@@ -2419,6 +2432,14 @@ export function MultiSessionShell({
       submitToolResult,
     ],
   )
+  // A view the agent brought forward on its own (or that a plan's close
+  // brought to the front), in the session it happened in: it must not draw
+  // the overlay over the chat.
+  const rightPanelUnpromptedViewRef = useRef<{
+    view: RightPanelViewId | null
+    sessionId: string
+  } | null>(null)
+
   // The Plan view is ephemeral — tied to a pending ExitPlanMode approval. Drop
   // it from the panel once the approval resolves (and on load, when a persisted
   // 'plan' tab has no pending plan). The close is DEFERRED a tick: a session
@@ -2430,7 +2451,17 @@ export function MultiSessionShell({
   useEffect(() => {
     if (activePlanEntry) return
     const id = window.setTimeout(() => {
-      updateRightPanel(s => (s.tabs.includes('plan') ? closeView(s, 'plan') : s))
+      updateRightPanel(s => {
+        if (!s.tabs.includes('plan')) return s
+        const next = closeView(s, 'plan')
+        if (s.activeView === 'plan') {
+          rightPanelUnpromptedViewRef.current = {
+            view: next.activeView,
+            sessionId: activeSessionIdRef.current ?? '',
+          }
+        }
+        return next
+      })
     }, 0)
     return () => window.clearTimeout(id)
   }, [activePlanEntry, updateRightPanel])
@@ -2440,9 +2471,6 @@ export function MultiSessionShell({
   // the same pending plan, never clearing on null) live in
   // `createPlanAutoOpenGate` — see its doc.
   const planAutoOpenGateRef = useRef(createPlanAutoOpenGate())
-  // A view the agent brought forward on its own: it must not draw the
-  // overlay over the chat.
-  const rightPanelUnpromptedViewRef = useRef<string | null>(null)
   // Set below, once the layout is known: floats a closed panel the agent opens.
   const rightPanelFloatStartRef = useRef<(view: RightPanelViewId) => void>(() => {})
   useEffect(() => {
@@ -2451,7 +2479,7 @@ export function MultiSessionShell({
     ) {
       return
     }
-    rightPanelUnpromptedViewRef.current = 'plan'
+    rightPanelUnpromptedViewRef.current = { view: 'plan', sessionId: activeSessionId }
     rightPanelFloatStartRef.current('plan')
     updateRightPanel(s => openView(s, 'plan'))
   }, [activePlanEntry, activeSessionId, updateRightPanel])
@@ -2532,6 +2560,7 @@ export function MultiSessionShell({
     width: number
     areaW: number
     view: RightPanelViewId
+    sessionId: string
   } | null>(null)
   // The drawn layout for this width (F-9): sidebar form, the panel's drawn
   // width (the chat yields first), the chat's clip, and where the card stack goes.
@@ -2559,12 +2588,26 @@ export function MultiSessionShell({
     setSessionCardsPopoverOpen(false)
   }, [sessionCardsFit, activeSessionId])
   const handleToggleSessionCards = useCallback(() => {
+    // A maximized panel covers the cards: the toggle restores the chat and
+    // shows them.
+    if (rightPanelMaximized) {
+      setRightPanelMaximizedState(false)
+      if (sessionCardsFit) writeSessionCardPrefs(setSessionCardsShown(sessionCardPrefs, true))
+      else setSessionCardsPopoverOpen(true)
+      return
+    }
     if (sessionCardsFit) {
       writeSessionCardPrefs(setSessionCardsShown(sessionCardPrefs, !sessionCardPrefs.shown))
     } else {
       setSessionCardsPopoverOpen(open => !open)
     }
-  }, [sessionCardsFit, sessionCardPrefs, writeSessionCardPrefs])
+  }, [
+    rightPanelMaximized,
+    setRightPanelMaximizedState,
+    sessionCardsFit,
+    sessionCardPrefs,
+    writeSessionCardPrefs,
+  ])
   const closeSessionCardsPopover = useCallback(() => setSessionCardsPopoverOpen(false), [])
   sidebarHiddenRef.current = sidebarHidden
   const rightPanelOverlaid = shellLayout.panel === 'overlay'
@@ -2612,7 +2655,12 @@ export function MultiSessionShell({
       rightPanelMinWidth,
       rightPanelMaxWidth,
     )
-    setRightPanelFloat({ width: Math.min(spare, docked), areaW: sessionAreaWidth, view })
+    setRightPanelFloat({
+      width: Math.min(spare, docked),
+      areaW: sessionAreaWidth,
+      view,
+      sessionId: activeSessionId,
+    })
   }
   // The person's next input settles the float: a press (after its click
   // lands, so nothing moves under it), a key, a wheel.
@@ -2646,8 +2694,10 @@ export function MultiSessionShell({
       o && (o.kind !== rightPanelKind || !rightPanel.visible) ? null : o,
     )
   }, [rightPanelKind, rightPanel.visible])
+  // A switch drops the float of the session left behind, not the one the
+  // plan effect (declared earlier) just floated for the new session.
   useEffect(() => {
-    setRightPanelFloat(null)
+    setRightPanelFloat(f => (f && f.sessionId === activeSessionId ? f : null))
     setRightPanelShareOverride(null)
   }, [activeSessionId])
   const closeRightPanelOverlay = useCallback(() => setRightPanelOverlayOpen(false), [])
@@ -2675,7 +2725,7 @@ export function MultiSessionShell({
       view: rightPanel.activeView,
     }
     if (prev.sessionId !== activeSessionId) {
-      rightPanelUnpromptedViewRef.current = null
+      if (unprompted?.sessionId !== activeSessionId) rightPanelUnpromptedViewRef.current = null
       setRightPanelOverlayOpen(false)
       return
     }
@@ -2683,7 +2733,7 @@ export function MultiSessionShell({
       rightPanel.visible && (!prev.visible || prev.view !== rightPanel.activeView)
     if (!opened) return
     rightPanelUnpromptedViewRef.current = null
-    if (rightPanelOverlaid && unprompted !== rightPanel.activeView) {
+    if (rightPanelOverlaid && unprompted?.view !== rightPanel.activeView) {
       setRightPanelOverlayOpen(true)
     }
   }, [activeSessionId, rightPanel.visible, rightPanel.activeView, rightPanelOverlaid])
@@ -2789,7 +2839,7 @@ export function MultiSessionShell({
   // closing what the person cannot see. A session left behind is told this
   // window no longer draws it.
   const { reportSeat: reportModSeat } = shellModUi
-  const modSeat = !modPanesDocked ? 'inline' : rightPanelMaximized ? 'dock-hidden' : 'dock-visible'
+  const modSeat = rightPanelMaximized ? 'dock-hidden' : !modPanesDocked ? 'inline' : 'dock-visible'
   const modSeatShowing =
     modSeat === 'dock-visible' && activeSessionId ? modDockFronts.get(activeSessionId) ?? null : null
   const modSeatShowingPlugin = modSeatShowing?.plugin
@@ -3972,7 +4022,9 @@ export function MultiSessionShell({
         onToggleRightPanel={handleToggleRightPanel}
         rightPanelVisible={rightPanelOverlaid ? rightPanelOverlayShown : rightPanel.visible}
         onToggleSessionCards={handleToggleSessionCards}
-        sessionCardsOnScreen={sessionCardsFit ? sessionCardPrefs.shown : sessionCardsPopoverOpen}
+        sessionCardsOnScreen={
+          !rightPanelMaximized && (sessionCardsFit ? sessionCardPrefs.shown : sessionCardsPopoverOpen)
+        }
         sessionCardsAsPopover={!sessionCardsFit}
         backgroundTaskCount={countRunning(activeSessionSubAgentRows)}
         importSources={topbarImportSources}
@@ -4118,7 +4170,7 @@ export function MultiSessionShell({
           <SidebarSplitter
             width={sidebarWidth}
             minWidth={SIDEBAR_MIN_WIDTH_PX}
-            maxWidth={SIDEBAR_MAX_WIDTH_PX}
+            maxWidth={Math.max(SIDEBAR_MIN_WIDTH_PX, Math.min(SIDEBAR_MAX_WIDTH_PX, shellLayout.sidebarMaxW))}
             onResize={handleSidebarResize}
             onResizeStart={handleSidebarResizeStart}
             onResizeEnd={handleSidebarResizeEnd}
@@ -4202,8 +4254,7 @@ export function MultiSessionShell({
                   onOpenBackgroundTasks={handleOpenBackgroundTasks}
                   // THIS session's running background tasks (not the active
                   // session's) — each mounted thread shows its own footer
-                  // "still working" indicator. A plain number, so the memoized
-                  // thread only re-renders when the count actually changes.
+                  // "still working" indicator.
                   runningBackgroundTaskCount={countRunning(subAgentRowsForSession(sessionId))}
                   backgroundTaskRows={subAgentRowsForSession(sessionId)}
                   onStopBackgroundTask={handleStopSubAgent}
@@ -4291,6 +4342,9 @@ export function MultiSessionShell({
               }
               {...(rightPanelOverlaid ? rightPanelOverlayDismiss : null)}
             >
+            {/* Overlaid, Escape belongs to the overlay (it hides it); the
+                panel's own Escape handlers must not close a panel kept open. */}
+            <SessionAreaVisibleContext.Provider value={!settingsSection && !rightPanelOverlaid}>
             <RightPanelContentContext.Provider value={shellRightPanelContentValue}>
             <FilePathContext.Provider value={shellFilePathContextValue}>
             <Suspense fallback={null}>
@@ -4349,6 +4403,7 @@ export function MultiSessionShell({
             </Suspense>
             </FilePathContext.Provider>
             </RightPanelContentContext.Provider>
+            </SessionAreaVisibleContext.Provider>
             </div>
           </>
         ) : null}

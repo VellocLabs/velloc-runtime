@@ -150,4 +150,24 @@ describe('resolveShellLayout — card stack', () => {
     expect(resolveShellLayout(input({ areaW: 1300, panel: TASKS }))).toMatchObject({ chatW: 675, stack: 'docked' })
     expect(resolveShellLayout(input({ areaW: 1250, panel: TASKS }))).toMatchObject({ chatW: 641, stack: 'popover' })
   })
+
+  it('a maximized panel leaves the stack where the chat beside the panel has it', () => {
+    expect(resolveShellLayout(input({ areaW: 1300, panel: open(1 / 3, { maximized: true }) }))).toMatchObject({
+      panel: 'maximized', chatW: 0, stack: 'docked',
+    })
+    expect(resolveShellLayout(input({ areaW: 1250, panel: open(1 / 3, { maximized: true }) })).stack).toBe('popover')
+  })
+})
+
+describe('resolveShellLayout — sidebar drag limit', () => {
+  it('is the widest expanded sidebar that stays docked', () => {
+    // Beside the panel the others need the chat's 360 and the panel's 280 + splitter.
+    const beside = resolveShellLayout(input({ areaW: 1000, panel: DIFF }))
+    expect(beside.sidebarMaxW).toBe(1000 - 4 - 644)
+    const at = (width: number) =>
+      resolveShellLayout(input({ areaW: 1000, panel: DIFF, sidebar: { collapsed: false, width } })).sidebar
+    expect(at(beside.sidebarMaxW)).toBe('expanded')
+    expect(at(beside.sidebarMaxW + 1)).toBe('hidden')
+    expect(resolveShellLayout(input({ areaW: 1600 })).sidebarMaxW).toBe(1600 - 4 - 360)
+  })
 })

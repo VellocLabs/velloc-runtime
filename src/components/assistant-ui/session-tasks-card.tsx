@@ -119,7 +119,11 @@ export function SessionTasksList() {
           className={ROW_CLASS}
         >
           <CheckCheckIcon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate">{t("sessionCards.tasksFinished", { count: finished })}</span>
+          <span className="truncate">
+            {finished === 1
+              ? t("sessionCards.tasksFinishedOne")
+              : t("sessionCards.tasksFinished", { count: finished })}
+          </span>
         </button>
       ) : null}
     </div>

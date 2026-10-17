@@ -70,6 +70,7 @@ type Draw = {
   openMcpSettings?: () => void
   popover?: SessionCardsPopover | null
   figures?: SessionChangeFigures | null
+  isForeground?: boolean
 }
 
 function tree({
@@ -82,6 +83,7 @@ function tree({
   openMcpSettings,
   popover = null,
   figures = null,
+  isForeground,
 }: Draw): ReactNode {
   return createElement(
     SessionCardsPopoverContext.Provider,
@@ -101,7 +103,7 @@ function tree({
         createElement(
           SessionConnectorsContext.Provider,
           { value: { servers: connectors, folder, openMcpSettings } },
-          createElement(SessionCardStack, { history }),
+          createElement(SessionCardStack, { history, isForeground }),
         ),
       ),
     ),
@@ -293,6 +295,19 @@ describe('SessionCardStack — information cards', () => {
     expect(screen.getByTestId('session-card-popover')).toBeTruthy()
   })
 
+  it('the server list closes when the stack empties, and does not come back with the next card', () => {
+    const up: SessionMcpServerView[] = [{ name: 'github', status: 'connected' }]
+    const view = render(tree({ history: null, connectors: up }))
+    fireEvent.click(screen.getByTestId('session-card-connectors-header'))
+    fireEvent.click(screen.getByTestId('session-card-connector'))
+    expect(screen.getByTestId('mcp-servers-dialog')).toBeTruthy()
+    view.rerender(tree({ history: null, connectors: [{ name: 'github', status: 'failed' }] }))
+    expect(screen.queryByTestId('session-card-stack')).toBeNull()
+    view.rerender(tree({ history: null, connectors: up }))
+    expect(screen.getByTestId('session-card-stack')).toBeTruthy()
+    expect(screen.queryByTestId('mcp-servers-dialog')).toBeNull()
+  })
+
   it('Connectors is not drawn while no server is connected', () => {
     render(tree({ connectors: [{ name: 'broken', status: 'failed' }] }))
     expect(cardIds()).toEqual(['session-card-outputs', 'session-card-changes'])
@@ -380,13 +395,16 @@ describe('SessionCardStack — Show menu and order', () => {
     act(() => {
       fireEvent.pointerDown(grip, { button: 0, pointerId: 1, clientY: 20 })
     })
-    fireEvent.pointerMove(grip, { pointerId: 1, clientY: 70 })
+    // Moving the card down re-inserts it, which drops the grip's pointer
+    // capture: the move and the release land elsewhere on the page.
+    fireEvent.pointerMove(document.body, { pointerId: 1, clientY: 70 })
     // Mid-drag the others make room.
     expect(cardIds()).toEqual(['session-card-changes', 'session-card-outputs', 'session-card-tasks'])
-    fireEvent.pointerMove(grip, { pointerId: 1, clientY: 110 })
-    fireEvent.pointerUp(grip, { pointerId: 1, clientY: 110 })
+    fireEvent.pointerMove(document.body, { pointerId: 1, clientY: 110 })
+    fireEvent.pointerUp(document.body, { pointerId: 1, clientY: 110 })
     expect(cardIds()).toEqual(['session-card-changes', 'session-card-tasks', 'session-card-outputs'])
     expect(loadSessionCardPrefs().order).toEqual(['changes', 'tasks', 'connectors', 'outputs'])
+    expect(screen.getByTestId('session-card-outputs').parentElement?.className ?? '').not.toContain('opacity-60')
   })
 })
 
@@ -414,6 +432,20 @@ describe('SessionCardStack — docked mod panes', () => {
     expect(setDockFront).toHaveBeenCalledWith(null)
     fireEvent.click(screen.getByTestId('session-card-mod-close-test-report-r-1'))
     expect(closePane).toHaveBeenCalledWith('test-report', 'r-1')
+  })
+
+  it('in a thread that is not in front, the open card does not draw (or ask for) its pane', () => {
+    const render$ = vi.fn(async () => ({ kind: 'tree' as const, tree: { type: 'Text', children: ['X'] }, plugin: 'test-report' }))
+    render(
+      tree({
+        history: null,
+        isForeground: false,
+        mod: { panes: [pane], dockFront: { plugin: 'test-report', id: 'r-1' }, render: render$ as never },
+      }),
+    )
+    expect(screen.getByTestId('session-card-mod-test-report-r-1')).toBeTruthy()
+    expect(screen.queryByTestId('mod-pane-test-report-r-1')).toBeNull()
+    expect(render$).not.toHaveBeenCalled()
   })
 
   it("draws the open pane's tree with its plugin icon", async () => {
@@ -468,6 +500,18 @@ describe('SessionCardStack — popover (the chat too narrow to dock)', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it('a press in its Show menu leaves the popover open, and the choice applies', async () => {
+    const onClose = vi.fn()
+    render(tree({ mod: undocked, popover: { open: true, onClose } }))
+    fireEvent.contextMenu(screen.getByTestId('session-card-popover'))
+    const changes = await screen.findByTestId('session-card-menu-changes')
+    fireEvent.pointerDown(changes)
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.click(changes)
+    await waitFor(() => expect(loadSessionCardPrefs().hidden).toEqual(['changes']))
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('the docked stack wins while the page docks, whatever the popover says', () => {

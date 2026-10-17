@@ -50,19 +50,25 @@ export function SidebarPeek({
     shownForRef.current = activeSessionId
   }, [activeSessionId, active])
 
-  if (!hidden) return <>{children}</>
+  // One wrapper in every form, so the sidebar inside never remounts: laid out
+  // as if absent while docked, kept mounted but undrawn while the peek is shut.
   return (
     <>
-      {open ? (
-        <div
-          data-testid="sidebar-peek"
-          className="absolute inset-y-0 start-0 z-40 flex border-border border-e shadow-xl"
-          {...dismiss}
-          onPointerLeave={() => onOpenChange(false)}
-        >
-          {children}
-        </div>
-      ) : (
+      <div
+        data-testid={active ? 'sidebar-peek' : undefined}
+        className={
+          !hidden
+            ? 'contents'
+            : open
+              ? 'absolute inset-y-0 start-0 z-40 flex border-border border-e shadow-xl'
+              : 'hidden'
+        }
+        {...(active ? dismiss : null)}
+        onPointerLeave={active ? () => onOpenChange(false) : undefined}
+      >
+        {children}
+      </div>
+      {hidden && !open ? (
         <div
           aria-hidden
           data-testid="sidebar-peek-edge"
@@ -74,7 +80,7 @@ export function SidebarPeek({
           }}
           onPointerLeave={clearDwell}
         />
-      )}
+      ) : null}
     </>
   )
 }

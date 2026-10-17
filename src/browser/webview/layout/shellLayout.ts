@@ -49,6 +49,8 @@ export interface ShellLayout {
   sidebar: SidebarForm
   /** The sidebar's drawn width, with its splitter when expanded. */
   sidebarW: number
+  /** The widest expanded sidebar (without its splitter) that stays docked. */
+  sidebarMaxW: number
   panel: PanelForm
   /** The panel's drawn width beside the chat, without its splitter; 0 unless `beside`. */
   panelW: number
@@ -82,6 +84,7 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
     besideRoom - dockedSidebarW < othersNeed ? 'hidden' : sidebar.collapsed ? 'rail' : 'expanded'
   const sidebarW = form === 'hidden' ? 0 : dockedSidebarW
   const room = besideRoom - sidebarW
+  const sidebarMaxW = besideRoom - SPLITTER_WIDTH_PX - othersNeed
 
   let panelForm: PanelForm = panelOpen
   let panelW = 0
@@ -104,14 +107,24 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
     chatW = panelForm === 'beside' ? panelRoom - panelW : room
   }
 
+  // A maximized panel covers the chat without moving the stack: it stays
+  // where the chat beside the panel has it.
+  const stack: StackPlacement =
+    panelOpen === 'maximized'
+      ? resolveShellLayout({ ...input, panel: { ...panel, maximized: false } }).stack
+      : chatW >= STACK_DOCK_MIN_CHAT_PX
+        ? 'docked'
+        : 'popover'
+
   return {
     sidebar: form,
     sidebarW,
+    sidebarMaxW,
     panel: panelForm,
     panelW,
     panelOffRowW,
     chatW,
     chatClipped: chatW > 0 && chatW < chatMin,
-    stack: chatW >= STACK_DOCK_MIN_CHAT_PX && panelForm !== 'maximized' ? 'docked' : 'popover',
+    stack,
   }
 }

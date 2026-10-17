@@ -1,4 +1,4 @@
-import { useCallback, useRef, type PointerEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, type PointerEvent, type KeyboardEvent } from 'react'
 import { cn } from '@/lib/utils'
 import { useT } from './i18n'
 
@@ -79,6 +79,22 @@ export function SidebarSplitter({
       onResize(clamp(dragRef.current.startWidth + delta, minWidth, maxWidth))
     },
     [onResize, minWidth, maxWidth, sign, horizontal],
+  )
+
+  // Unmounted mid-drag: the drag still ends (cursor restored, end reported).
+  const onResizeEndRef = useRef(onResizeEnd)
+  onResizeEndRef.current = onResizeEnd
+  useEffect(
+    () => () => {
+      if (!dragRef.current) return
+      dragRef.current = null
+      if (typeof document !== 'undefined' && previousBodyCursorRef.current !== null) {
+        document.body.style.cursor = previousBodyCursorRef.current
+        previousBodyCursorRef.current = null
+      }
+      onResizeEndRef.current?.()
+    },
+    [],
   )
 
   const finishDrag = useCallback(

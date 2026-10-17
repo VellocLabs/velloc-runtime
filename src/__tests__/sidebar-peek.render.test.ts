@@ -4,7 +4,7 @@
  * (F-9): opened by resting at the start edge, closed by Escape, a press
  * outside, the pointer leaving, or a session switch; passthrough when docked.
  */
-import { createElement, useState } from 'react'
+import { createElement, useEffect, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 
@@ -45,7 +45,7 @@ describe('SidebarPeek', () => {
   it('opens after the pointer rests at the start edge; a pass that leaves early does not', () => {
     vi.useFakeTimers()
     render(createElement(Harness))
-    expect(screen.queryByTestId('the-sidebar')).toBeNull()
+    expect(screen.getByTestId('the-sidebar').closest('.hidden')).toBeTruthy()
     const edge = screen.getByTestId('sidebar-peek-edge')
     fireEvent.pointerEnter(edge)
     act(() => void vi.advanceTimersByTime(50))
@@ -81,6 +81,28 @@ describe('SidebarPeek', () => {
     expect(screen.getByTestId('sidebar-peek')).toBeTruthy()
     fireEvent.click(toggle)
     expect(screen.queryByTestId('sidebar-peek')).toBeNull()
+  })
+
+  it('keeps the sidebar mounted across peek open/close and hidden/docked crossings', () => {
+    let mounts = 0
+    function Counted() {
+      useEffect(() => {
+        mounts += 1
+      }, [])
+      return createElement('aside', { 'data-testid': 'counted' }, 'list')
+    }
+    const peek = (hidden: boolean, open: boolean) =>
+      createElement(
+        SidebarPeek,
+        { hidden, open, onOpenChange: () => {}, activeSessionId: 's1' },
+        createElement(Counted),
+      )
+    const view = render(peek(false, false))
+    view.rerender(peek(true, false))
+    view.rerender(peek(true, true))
+    view.rerender(peek(true, false))
+    view.rerender(peek(false, false))
+    expect(mounts).toBe(1)
   })
 
   it('closes when the active session changes', () => {

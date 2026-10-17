@@ -107,11 +107,18 @@ const SUMMARY_CLASS =
 const MENU_ROW_CLASS =
   "flex h-6 w-full cursor-default select-none items-center gap-2 rounded-md px-1.5 text-start text-[13px] outline-none data-[highlighted]:bg-muted";
 
-export function SessionCardStack({ history }: { history: TurnDiffMeta[] | null }) {
+export function SessionCardStack({
+  history,
+  isForeground = true,
+}: {
+  history: TurnDiffMeta[] | null;
+  /** False while this thread is mounted but hidden: an open mod card stops drawing its pane. */
+  isForeground?: boolean;
+}) {
   const popover = React.useContext(SessionCardsPopoverContext);
   const { panesDocked } = useModUi();
-  if (panesDocked) return <CardStack history={history} placement="docked" />;
-  if (popover?.open) return <CardStack history={history} placement="popover" onClose={popover.onClose} />;
+  if (panesDocked) return <CardStack history={history} placement="docked" isForeground={isForeground} />;
+  if (popover?.open) return <CardStack history={history} placement="popover" onClose={popover.onClose} isForeground={isForeground} />;
   return null;
 }
 
@@ -122,19 +129,23 @@ function CardStack({
   history,
   placement,
   onClose,
+  isForeground,
 }: {
   history: TurnDiffMeta[] | null;
   placement: "docked" | "popover";
   onClose?: () => void;
+  isForeground: boolean;
 }) {
   const t = useT();
   const { panes: dockedPanes, dockFront, setDockFront, showPane, closePane } = useModUi();
   const panes = placement === "docked" ? dockedPanes : [];
   const flat = placement === "popover";
-  const rootRef = React.useRef<HTMLDivElement | null>(null);
-  // Set by a press anywhere in the popover's React tree (its Show menu
-  // included) before the document listener reads it.
+  // Set by a press in the popover or in its Show menu (portaled, so it marks
+  // the press itself) before the document listener reads it.
   const pressInsideRef = React.useRef(false);
+  const markPressInside = React.useCallback(() => {
+    pressInsideRef.current = true;
+  }, []);
   const onCloseRef = React.useRef(onClose);
   onCloseRef.current = onClose;
   // The server list is a dialog over the popover: while it is open, presses
@@ -193,7 +204,13 @@ function CardStack({
     writePrefs(moveShownSessionCard(prefs, shown, from, to)),
   );
 
-  if (placement === "docked" && shown.length === 0 && panes.length === 0) return null;
+  const drawsNothing = placement === "docked" && shown.length === 0 && panes.length === 0;
+  // The server list closes with the stack, so it never reopens on its own.
+  React.useEffect(() => {
+    if (drawsNothing) setServersDialogOpen(false);
+  }, [drawsNothing]);
+
+  if (drawsNothing) return null;
 
   const renderCard = (id: SessionCardId): React.ReactNode => {
     const label = t(CARD_LABEL_KEY[id]);
@@ -292,7 +309,11 @@ function CardStack({
           handle={handle}
           expanded={connectorsOpen}
           onActivate={() => setConnectorsOpen((open) => !open)}
-          summary={t("sessionCards.connectorsConnected", { count: connected.length })}
+          summary={
+            connected.length === 1
+              ? t("sessionCards.connectorsConnectedOne")
+              : t("sessionCards.connectorsConnected", { count: connected.length })
+          }
         >
           {connectorsOpen ? (
             <ul className="mt-1 flex flex-col" data-testid="session-card-connectors-list">
@@ -323,7 +344,13 @@ function CardStack({
         handle={handle}
         expanded={tasksOpen}
         onActivate={() => setTasksOpen((open) => !open)}
-        summary={tasksOpen ? null : t("sessionCards.tasksRunning", { count: runningTasks })}
+        summary={
+          tasksOpen
+            ? null
+            : runningTasks === 1
+              ? t("sessionCards.tasksRunningOne")
+              : t("sessionCards.tasksRunning", { count: runningTasks })
+        }
       >
         {tasksOpen ? <SessionTasksList /> : null}
       </InfoCard>
@@ -335,14 +362,11 @@ function CardStack({
     <ContextMenuPrimitive.Root>
       <ContextMenuPrimitive.Trigger asChild>
         <div
-          ref={rootRef}
           role="region"
           aria-label={t("sessionCards.aria")}
           data-slot={flat ? "session-card-popover" : "session-card-stack"}
           data-testid={flat ? "session-card-popover" : "session-card-stack"}
-          onPointerDownCapture={() => {
-            pressInsideRef.current = true;
-          }}
+          onPointerDownCapture={markPressInside}
           className={cn(
             "pointer-events-auto flex min-h-0 flex-col overflow-y-auto",
             flat ? "rounded-[10px] border border-border bg-background shadow-lg" : "gap-2.5",
@@ -367,6 +391,7 @@ function CardStack({
               key={`${pane.plugin}\u0000${pane.id}`}
               pane={pane}
               open={dockFront?.plugin === pane.plugin && dockFront.id === pane.id}
+              drawsPane={isForeground}
               onToggle={(open) => {
                 setDockFront?.(open ? { plugin: pane.plugin, id: pane.id } : null);
                 if (open) void showPane?.(pane.plugin, pane.id);
@@ -380,6 +405,7 @@ function CardStack({
       <ContextMenuPrimitive.Portal>
         <ContextMenuPrimitive.Content
           data-testid="session-card-menu"
+          onPointerDownCapture={markPressInside}
           className="z-50 min-w-[9rem] overflow-hidden rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
         >
           <ContextMenuPrimitive.Label className="px-1.5 py-1 font-medium text-[12px] text-muted-foreground">
@@ -500,12 +526,14 @@ function InfoCard({
 function ModDockCard({
   pane,
   open,
+  drawsPane,
   onToggle,
   onClose,
   closeLabel,
 }: {
   pane: ModUiPaneRow;
   open: boolean;
+  drawsPane: boolean;
   onToggle: (open: boolean) => void;
   onClose?: () => void;
   closeLabel: string;
@@ -539,9 +567,10 @@ function ModDockCard({
           </button>
         ) : null}
       </div>
-      {/* Drawn only while open: a closed card's pane is never asked for. A
-          right click in the body is the page's own, not the Show menu. */}
-      {open ? (
+      {/* Drawn only while open and in front: a closed card's pane, or one in
+          a hidden thread, is never asked for. A right click in the body is the
+          page's own, not the Show menu. */}
+      {open && drawsPane ? (
         <div
           className="-mx-2 -mb-2 mt-2 flex h-[min(28rem,55vh)] min-h-0 flex-col overflow-hidden rounded-b-[10px] border-border border-t"
           onContextMenu={(event) => event.stopPropagation()}
@@ -569,6 +598,39 @@ function useCardDrag(
     to: number;
     centers: number[];
   } | null>(null);
+  const stateRef = React.useRef(state);
+  stateRef.current = state;
+  const onMoveRef = React.useRef(onMove);
+  onMoveRef.current = onMove;
+  const dragging = state !== null;
+
+  // Move / release / cancel are heard on the window: a card moved down is
+  // re-inserted, which releases the grip's pointer capture.
+  React.useEffect(() => {
+    if (!dragging) return;
+    const onPointerMove = (event: PointerEvent) => {
+      const now = stateRef.current;
+      if (!now) return;
+      const y = event.clientY;
+      const to = now.centers.filter((center, index) => index !== now.from && center < y).length;
+      if (to !== now.to) setState({ ...now, to });
+    };
+    const onPointerUp = () => {
+      const now = stateRef.current;
+      if (!now) return;
+      setState(null);
+      onMoveRef.current(now.from, now.to);
+    };
+    const onPointerCancel = () => setState(null);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+    };
+  }, [dragging]);
 
   const refOf = React.useCallback(
     (id: SessionCardId) => (node: HTMLDivElement | null) => {
@@ -595,25 +657,12 @@ function useCardDrag(
       const from = shown.indexOf(id);
       if (from < 0) return;
       event.preventDefault();
-      event.currentTarget.setPointerCapture?.(event.pointerId);
       const centers = shown.map((each) => {
         const rect = nodes.current.get(each)?.getBoundingClientRect();
         return rect ? rect.top + rect.height / 2 : 0;
       });
       setState({ id, from, to: from, centers });
     },
-    onPointerMove: (event) => {
-      if (!state || state.id !== id) return;
-      const y = event.clientY;
-      const to = state.centers.filter((center, index) => index !== state.from && center < y).length;
-      if (to !== state.to) setState({ ...state, to });
-    },
-    onPointerUp: () => {
-      if (!state || state.id !== id) return;
-      setState(null);
-      onMove(state.from, state.to);
-    },
-    onPointerCancel: () => setState(null),
     onKeyDown: (event) => {
       const from = shown.indexOf(id);
       if (event.key === "ArrowUp" && from > 0) {
