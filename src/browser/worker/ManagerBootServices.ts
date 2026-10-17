@@ -58,6 +58,9 @@ export interface ManagerBootServicesHost {
   getDirectBridgeTransport(): DirectPortBridgeTransport | null
   createBridgeRequestId(): string
   getHomeDir(): string | null
+  /** The host's home, asked before storage is up (the probe storage itself
+   *  awaits); null when the host does not answer. Absent: only `getHomeDir`. */
+  resolveHomeDir?(): Promise<string | null>
   /** The most recently attached window's locale, if any window has said. */
   getLocale?(): string | undefined
   /** Every session's plugins load again (a plugin's `requires` was met or lost). */
@@ -85,7 +88,7 @@ export class ManagerBootServices {
   private managerFs: RuntimeFs | null = null
   private routineRuntimeHandle: RoutineRuntimeHandle | null = null
   private teamRegistryBooted = false
-  private providerModsBooted = false
+  private providerModsBoot: Promise<void> | null = null
   private modelCatalogInstalled = false
   private readonly directBridgeWaiters = new Set<
     (transport: DirectPortBridgeTransport) => void
@@ -110,7 +113,9 @@ export class ManagerBootServices {
     // The team registry needs a transport (below); if storage became ready
     // before one existed, this is the retry. Idempotent.
     void this.bootTeamRuntimeOnce()
-    // …and so does the provider-mod scan: it reads plugins through the fs.
+    // …and so does the provider-mod scan: it reads plugins through the fs. It
+    // starts here, not at storage ready, so the plugin launchers are published
+    // before the first window subscribes (F-25).
     void this.bootProviderModsOnce()
     // …and the model catalog (its cache lives under the home, read by the fs).
     void this.installModelCatalogOnce()
@@ -240,14 +245,25 @@ export class ManagerBootServices {
   /**
    * Provider mods (F-27): scan the person's plugins and register the
    * providers they add. Manifests only — no worker starts, and a realm with
-   * no provider plugin never loads the runtime's code. Needs the fs, so it
-   * waits for the transport like the team registry does; once only.
+   * no provider plugin never loads the runtime's code. Needs the fs and the
+   * home, not storage: it starts as soon as a transport is attached. Once
+   * only; a boot that found no home is retried by the next trigger.
    */
-  private async bootProviderModsOnce(): Promise<void> {
-    if (this.providerModsBooted) return
-    const homeDir = this.host.getHomeDir()
-    if (!homeDir || !this.host.getDirectBridgeTransport()) return
-    this.providerModsBooted = true
+  private bootProviderModsOnce(): Promise<void> {
+    if (this.providerModsBoot) return this.providerModsBoot
+    if (!this.host.getDirectBridgeTransport()) return Promise.resolve()
+    const boot = this.bootProviderMods()
+    this.providerModsBoot = boot
+    return boot
+  }
+
+  private async bootProviderMods(): Promise<void> {
+    const homeDir =
+      this.host.getHomeDir() ?? (await this.host.resolveHomeDir?.().catch(() => null)) ?? null
+    if (!homeDir || !this.host.getDirectBridgeTransport()) {
+      this.providerModsBoot = null
+      return
+    }
     // What a provider module's nouns reach for, read when they are called.
     lendProviderHostSources({
       transport: () => this.host.getDirectBridgeTransport(),

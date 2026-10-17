@@ -915,6 +915,7 @@ export class SharedWorkerSessionManager {
       getDirectBridgeTransport: () => this.bridgeRouter.getDirectTransport(),
       createBridgeRequestId: () => this.generateBridgeRequestId(),
       getHomeDir: () => this.homeDir,
+      resolveHomeDir: () => this.storageCoordinator.resolveHomeDir(),
       getLocale: () => this.hostEnvironment?.locale ?? this.lastInitTemplate?.locale,
       reloadPluginsOnAllSessions: () => this.reloadPluginsOnAllSessions(),
       getHostEnvironment: () => this.hostEnvironment,

@@ -83,6 +83,9 @@ export class ModUiContributionsHost {
   private readonly gateChanged = new Set<() => void>()
   private syncing: Promise<void> = Promise.resolve()
   private synced = false
+  /** The last scan has a gated plugin and the provider configs are not read
+   *  yet: nothing is judged or published until they are. */
+  private unjudged = false
   private readonly syncedWaiters = new Set<() => void>()
 
   configure(options: ContributionsHostOptions): void {
@@ -117,7 +120,7 @@ export class ModUiContributionsHost {
   }
 
   /**
-   * Settles once the first scan was taken (or failed), so a session restored
+   * Settles once the first scan was taken and judged (or failed), so a session restored
    * at boot does not read "absent" before the plugins were scanned. At once
    * when the host was never configured; at most `capMs` otherwise.
    */
@@ -155,7 +158,17 @@ export class ModUiContributionsHost {
   /** The provider state changed: re-judge the gate over the last scan. */
   recheckGate(): void {
     if (!this.options) return
-    const signature = requirementsSignature(this.plugins, this.options.gate())
+    const gate = this.options.gate()
+    if (this.unjudged) {
+      // The first judgment is not a move between in effect and waiting.
+      if (!this.judgeable(gate)) return
+      this.unjudged = false
+      this.gateSignature = requirementsSignature(this.plugins, gate)
+      this.publish()
+      this.markSynced()
+      return
+    }
+    const signature = requirementsSignature(this.plugins, gate)
     if (signature === this.gateSignature) return
     this.gateSignature = signature
     this.publish()
@@ -188,9 +201,18 @@ export class ModUiContributionsHost {
     try {
       await this.take(scan)
     } finally {
-      this.synced = true
-      for (const waiter of [...this.syncedWaiters]) waiter()
+      if (!this.unjudged) this.markSynced()
     }
+  }
+
+  private markSynced(): void {
+    this.synced = true
+    for (const waiter of [...this.syncedWaiters]) waiter()
+  }
+
+  /** Whether `gate` can judge every plugin of the last scan. */
+  private judgeable(gate: ProviderGateState): boolean {
+    return gate.loaded || !this.plugins.some(plugin => plugin.manifest.requires)
   }
 
   private async take(scan: { enabled: readonly ContributingPlugin[] }): Promise<void> {
@@ -211,7 +233,10 @@ export class ModUiContributionsHost {
     this.assets = assets
     const kept = new Set([...assets.values()].flatMap(entry => [...entry.icons.values()]))
     for (const hash of [...this.iconTexts.keys()]) if (!kept.has(hash)) this.iconTexts.delete(hash)
-    this.gateSignature = requirementsSignature(plugins, options.gate())
+    const gate = options.gate()
+    this.unjudged = !this.judgeable(gate)
+    if (this.unjudged) return
+    this.gateSignature = requirementsSignature(plugins, gate)
     this.publish()
   }
 

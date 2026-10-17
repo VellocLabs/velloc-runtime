@@ -297,6 +297,39 @@ describe('the contributions host', () => {
     expect(resolveTopbarItem('acme:diff')).toEqual({ kind: 'run', plugin: 'acme', command: 'review-diff' })
   })
 
+  it('before the provider configs are read, a scan with a gated plugin publishes nothing, then publishes once without a gate change', async () => {
+    const unread: ProviderGateState = { loaded: false, isSetUp: () => false, owner: () => undefined }
+    const { host, setGate } = rig(FILES, unread)
+    let gateChanges = 0
+    let published = 0
+    host.onGateChanged(() => gateChanges++)
+    host.onChanged(() => published++)
+    let synced = false
+    void host.whenSynced().then(() => (synced = true))
+    await host.sync({ enabled: [acme({ requires: { providers: ['main'] } })] })
+    await Promise.resolve()
+    expect(published).toBe(0)
+    expect(host.state().waiting).toEqual([])
+    expect(synced).toBe(false)
+
+    host.recheckGate()
+    expect(published).toBe(0)
+    setGate({ loaded: true, isSetUp: () => true, owner: () => 'acme@mkt' })
+    host.recheckGate()
+    await Promise.resolve()
+    expect(published).toBe(1)
+    expect(gateChanges).toBe(0)
+    expect(synced).toBe(true)
+    expect(host.state().templates.map(t => t.type)).toEqual(['acme:review'])
+  })
+
+  it('before the provider configs are read, a scan with no gated plugin publishes at once', async () => {
+    const { host } = rig(FILES, { loaded: false, isSetUp: () => false, owner: () => undefined })
+    await host.sync({ enabled: [acme()] })
+    expect(host.state().templates.map(t => t.type)).toEqual(['acme:review'])
+    await host.whenSynced()
+  })
+
   it('a turned-off plugin is absent; an unknown topbar id resolves to nothing', async () => {
     const { host } = rig(FILES)
     await host.sync({ enabled: [acme()] })
