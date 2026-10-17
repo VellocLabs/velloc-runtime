@@ -228,6 +228,30 @@ describe('ModRenderTree', () => {
     expect(uiInput).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'input', element: 'note', inputKind: 'submit', value: 'one\ntwo' }))
   })
 
+  it('an Enter that commits an input method candidate neither submits nor starts a line', () => {
+    const uiInput = vi.fn(async () => ({ ok: true }))
+    render(
+      withUi(
+        { uiInput },
+        createElement(ModRenderTree, {
+          tree: { type: 'Box', children: [{ type: 'Input', props: { key: 'one', value: 'x' }, press }, { type: 'Input', props: { key: 'many', rows: 2, value: 'x\\' }, press }] },
+          site,
+        }),
+      ),
+    )
+    fireEvent.keyDown(screen.getByTestId('mod-input-one'), { key: 'Enter', isComposing: true })
+    const area = screen.getByTestId('mod-input-many') as HTMLTextAreaElement
+    area.setSelectionRange(2, 2)
+    fireEvent.keyDown(area, { key: 'Enter', isComposing: true })
+    expect(uiInput).not.toHaveBeenCalled()
+  })
+
+  it('a Button whose children draw nothing draws its label', () => {
+    const tree = { type: 'Button', props: { key: 'open', label: 'Open notes' }, press, children: ['', { type: 'Text', children: [] }] }
+    render(withUi({}, createElement(ModRenderTree, { tree, site })))
+    expect(screen.getByTestId('mod-button-open').textContent).toBe('Open notes')
+  })
+
   it('a Text with dir rtl reads right to left, flush right', () => {
     const tree = { type: 'Box', props: { flexDirection: 'column' }, children: [{ type: 'Text', props: { dir: 'rtl' }, children: ['שלום'] }] }
     const { container } = render(withUi({}, createElement(ModRenderTree, { tree, site })))

@@ -18,7 +18,7 @@ import {
   renderMatcherSite,
   validateRenderTree,
 } from '../mods/modRender'
-import { ModPaneRegistry } from '../mods/modPanes'
+import { FOCUS_PANE_WAITS_REASON, ModPaneRegistry } from '../mods/modPanes'
 import type { TraceEntry } from '../mods/modTypes'
 
 const press = { plugin: 'p', handle: 1 }
@@ -125,6 +125,8 @@ describe('validateRenderTree', () => {
     const link = { type: 'Link', props: { href: 'https://example.com/' } }
     expect(validateRenderTree({ type: 'Button', props: { key: 'k' }, press, children: [{ type: 'Text', children: [link] }] })).toMatchObject({ ok: false })
     expect(validateRenderTree({ type: 'Button', props: { key: 'k' }, press, children: [] })).toMatchObject({ ok: false, reason: 'Button has no label' })
+    expect(validateRenderTree({ type: 'Button', props: { key: 'k' }, press, children: ['', ' '] })).toMatchObject({ ok: false, reason: 'Button has no label' })
+    expect(validateRenderTree({ type: 'Button', props: { key: 'k' }, press, children: [{ type: 'Text' }] })).toMatchObject({ ok: false, reason: 'Button has no label' })
   })
 
   it('an Input takes string fields', () => {
@@ -286,6 +288,24 @@ describe('partStampsIn, stampRenderRoot', () => {
     expect(stampRenderRoot(undefined, 'mine', new Map())).toBeUndefined()
   })
 
+  it('hands on unchanged the tree a link relayed from beneath it, its stamps as they came', () => {
+    const beneath = { type: 'Box', props: { key: 'bands' }, part: { plugin: 'weather' }, children: [text('x', 'steps')] }
+    const relayed = JSON.parse(JSON.stringify(beneath))
+    expect(stampRenderRoot(relayed, 'relay', new Map([['weather', 1], ['steps', 1]]), [beneath])).toBe(beneath)
+  })
+
+  it('leaves a cyclic tree, or one whose shared subtrees expand past the node bound, as it came for the validator to refuse', () => {
+    const cyclic: { type: string; children: unknown[] } = { type: 'Box', children: [] }
+    cyclic.children.push(cyclic)
+    expect(stampRenderRoot(cyclic, 'mine', new Map())).toBe(cyclic)
+    expect(partStampsIn(cyclic).size).toBe(0)
+    let shared: unknown = text('x')
+    for (let i = 0; i < 30; i++) shared = { type: 'Box', children: [shared, shared] }
+    expect(stampRenderRoot(shared, 'mine', new Map())).toBe(shared)
+    expect(validateRenderTree(cyclic)).toMatchObject({ ok: false })
+    expect(validateRenderTree(shared)).toMatchObject({ ok: false })
+  })
+
   it("keeps the hook's own stamps and another plugin's as often as next handed them; drops the rest, and changes no input", () => {
     const tree = {
       type: 'Box',
@@ -321,8 +341,8 @@ describe('sectionsOf', () => {
         outer as never,
       ),
     ).toEqual([
-      { plugin: 'usage', tree: text('usage') },
-      { plugin: 'clock', tree: { type: 'Box', children: [clock] } },
+      { plugin: 'usage', tree: { type: 'Box', props: { flexDirection: 'column' }, children: [text('usage')] } },
+      { plugin: 'clock', tree: { type: 'Box', props: { flexDirection: 'column' }, children: [{ type: 'Box', children: [clock] }] } },
     ])
   })
 
@@ -344,9 +364,9 @@ describe('sectionsOf', () => {
         context as never,
       ),
     ).toEqual([
-      { plugin: 'weather', tree: band('weather') },
-      { plugin: 'steps', tree: { type: 'Box', props: { flexDirection: 'column' }, children: [band('steps'), engine] } },
-      { plugin: 'context', tree: band('context') },
+      { plugin: 'weather', tree: column(band('weather')) },
+      { plugin: 'steps', tree: column(band('steps'), engine) },
+      { plugin: 'context', tree: column(band('context')) },
     ])
   })
 
@@ -361,12 +381,13 @@ describe('sectionsOf', () => {
     const steps = column('steps', band('steps'))
     const weather = column('weather', band('steps', 'steps'), band('weather'))
     const context = column('context', band('steps', 'steps'), band('weather', 'weather'), band('context'))
+    const shell = (...children: unknown[]) => ({ type: 'Box', props: { key: 'bands', flexDirection: 'column' }, children })
     expect(
       sectionsOf([entry('context', 'returned', context), entry('weather', 'returned', weather), entry('steps', 'returned', steps)], context as never),
     ).toEqual([
-      { plugin: 'steps', tree: band('steps', 'steps') },
-      { plugin: 'weather', tree: band('weather', 'weather') },
-      { plugin: 'context', tree: band('context') },
+      { plugin: 'steps', tree: shell(band('steps', 'steps')) },
+      { plugin: 'weather', tree: shell(band('weather', 'weather')) },
+      { plugin: 'context', tree: shell(band('context')) },
     ])
   })
 
@@ -396,6 +417,62 @@ describe('sectionsOf', () => {
   it('stops at an outer plugin that drew over the part beneath instead of into it', () => {
     const mine = text('mine')
     expect(sectionsOf([entry('over', 'returned', mine), entry('clock', 'returned', text('12:00'))], mine as never)).toBeUndefined()
+  })
+
+  it("keeps a cut column's own props on each of its runs", () => {
+    const clock = text('12:00')
+    const props = { flexDirection: 'column', gap: 1, paddingX: 2, borderStyle: 'round', alignItems: 'flex-end', key: 'usage' }
+    const usage = { type: 'Box', props, children: [clock, text('line 1'), text('line 2')] }
+    expect(sectionsOf([entry('usage', 'returned', usage), entry('clock', 'returned', clock)], usage as never)).toEqual([
+      { plugin: 'clock', tree: { type: 'Box', props, children: [clock] } },
+      { plugin: 'usage', tree: { type: 'Box', props, children: [text('line 1'), text('line 2')] } },
+    ])
+  })
+
+  it("keeps an outer plugin's bare string in its own part", () => {
+    const clock = text('12:00')
+    const usage = { type: 'Box', props: { flexDirection: 'column' }, children: [text('usage line'), clock, 'usage footer words'] }
+    expect(sectionsOf([entry('usage', 'returned', usage), entry('clock', 'returned', clock)], usage as never)?.map(s => [s.plugin, (s.tree as { children?: unknown[] }).children])).toEqual([
+      ['usage', [text('usage line')]],
+      ['clock', [clock]],
+      ['usage', ['usage footer words']],
+    ])
+  })
+
+  it('does not cut a hidden column: what a mod hid stays hidden', () => {
+    const q = text('q line')
+    const p = { type: 'Box', props: { flexDirection: 'column' }, children: [text('p line'), q] }
+    const hidden = { type: 'Box', props: { flexDirection: 'column', display: 'none' }, children: [p] }
+    const o = { type: 'Box', props: { flexDirection: 'column' }, children: [text('o line'), hidden] }
+    expect(sectionsOf([entry('o', 'returned', o), entry('p', 'returned', p), entry('q', 'returned', q)], o as never)).toBeUndefined()
+  })
+
+  it('credits restacked bands whose values draw alike each to its own plugin', () => {
+    const band = (name: string, value: string) => ({ type: 'Box', props: { key: `band:${name}`, flexDirection: 'column' }, children: [text(value)] })
+    const column = (...children: unknown[]) => ({ type: 'Box', props: { key: 'bands', flexDirection: 'column' }, children })
+    const weather = column(band('weather', '40%'))
+    const context = column(band('weather', '40%'), band('context', '40%'))
+    expect(sectionsOf([entry('context', 'returned', context), entry('weather', 'returned', weather)], context as never)?.map(s => s.plugin)).toEqual([
+      'weather',
+      'context',
+    ])
+  })
+
+  it("credits a stamped plugin's unstamped elements to it too", () => {
+    const band = (name: string, plugin?: string) => ({
+      type: 'Box',
+      props: { key: `band:${name}`, flexDirection: 'column' },
+      ...(plugin ? { part: { plugin } } : {}),
+      children: [text(name)],
+    })
+    const hint = { type: 'Box', props: { key: 'hint:steps' }, children: [text('steps hint')] }
+    const column = (plugin: string, ...children: unknown[]) => ({ type: 'Box', props: { key: 'bands', flexDirection: 'column' }, part: { plugin }, children })
+    const steps = column('steps', band('steps'), hint)
+    const context = column('context', band('steps', 'steps'), hint, band('context'))
+    expect(sectionsOf([entry('context', 'returned', context), entry('steps', 'returned', steps)], context as never)?.map(s => [s.plugin, (s.tree as { children?: unknown[] }).children?.length])).toEqual([
+      ['steps', 2],
+      ['context', 1],
+    ])
   })
 
   it('gives three sections for three plugins nested in turn', () => {
@@ -430,5 +507,23 @@ describe('ModPaneRegistry', () => {
     expect(changes).toBeGreaterThan(5)
     panes.clear()
     expect(panes.list()).toEqual([])
+  })
+
+  it('keeps a focus open to be shown through a later open without focus, until a seat shows the pane', () => {
+    const panes = new ModPaneRegistry()
+    panes.setSeat('c1', { kind: 'dock-hidden' })
+    panes.open('p', { id: 'hold', focus: true })
+    panes.open('p', { id: 'hold', title: 'Hold (9 s)' })
+    expect(panes.get('p', 'hold')).toMatchObject({ focus: true, openSeq: 2 })
+    panes.setSeat('c1', { kind: 'dock-visible', showing: { plugin: 'p', id: 'hold' } })
+    expect(panes.get('p', 'hold')).toMatchObject({ focus: false })
+  })
+
+  it('answers a focus re-open with no window showing the session as waiting, though the pane was placed before', () => {
+    const panes = new ModPaneRegistry()
+    panes.setSeat('c1', { kind: 'dock-visible' })
+    expect(panes.open('p', { id: 'hold' })).toEqual({ isPlaced: true })
+    panes.setSeat('c1', null)
+    expect(panes.open('p', { id: 'hold', focus: true })).toEqual({ isPlaced: false, reason: FOCUS_PANE_WAITS_REASON })
   })
 })

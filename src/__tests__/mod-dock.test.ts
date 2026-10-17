@@ -17,6 +17,13 @@ describe('foldModDock', () => {
     expect([...seen]).toEqual([[modDockKey(report), 1]])
   })
 
+  it('a session folded for the first time opens a focus pane no window has shown yet', () => {
+    const waited = { plugin: 'p', id: 'hold', focus: true, openSeq: 2 }
+    const first = foldModDock({ front: null, panes: [report, waited], seen: undefined })
+    expect(first.front).toEqual({ plugin: 'p', id: 'hold' })
+    expect(foldModDock({ front: REPORT, panes: [report, waited], seen: first.seen }).front).toEqual(REPORT)
+  })
+
   it('a pane the person opened while the session is watched comes to the front', () => {
     const first = foldModDock({ front: null, panes: [], seen: undefined })
     expect(foldModDock({ front: first.front, panes: [report], seen: first.seen }).front).toEqual(REPORT)

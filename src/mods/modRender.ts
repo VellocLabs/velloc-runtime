@@ -531,7 +531,9 @@ function nodeProblem(node: unknown, depth: number, walk: Walk, within: Within): 
       if (!isRecord(props)) return 'Button has no props'
       const problem = propsProblem(props, BUTTON_PROPS, 'Button') ?? keyProblem(props, 'Button')
       if (problem) return problem
-      const labelled = Array.isArray(children) && children.length > 0
+      // A child other than a string or a Text is refused by the walk below.
+      const labelled =
+        Array.isArray(children) && children.some(child => drawsContent(child) || (isRecord(child) && child.type !== 'Text'))
       if (props.label !== undefined ? typeof props.label !== 'string' : !labelled) return 'Button has no label'
       if (props.hotkey !== undefined && !isHotkey(props.hotkey)) {
         return 'Button\'s hotkey is not one digit or one lowercase letter'
@@ -700,8 +702,23 @@ function partOf(node: unknown): string | undefined {
   return isRecord(part) && typeof part.plugin === 'string' && part.plugin !== '' ? part.plugin : undefined
 }
 
-/** How many `part` stamps of each plugin `tree` holds, added into `into`. */
+/** Whether walking `tree` as the validator does passes its node or depth
+ *  bound: a cyclic tree, or one whose shared subtrees expand past them. */
+function passesRenderBounds(tree: unknown): boolean {
+  let nodes = 0
+  const visit = (node: unknown, depth: number): boolean => {
+    if (!isRecord(node)) return false
+    nodes += 1
+    if (nodes > RENDER_MAX_NODES || depth > RENDER_MAX_DEPTH) return true
+    return Array.isArray(node.children) && node.children.some(child => visit(child, depth + 1))
+  }
+  return visit(tree, 0)
+}
+
+/** How many `part` stamps of each plugin `tree` holds, added into `into`;
+ *  nothing for a tree past the render bounds. */
 export function partStampsIn(tree: unknown, into: Map<string, number> = new Map()): Map<string, number> {
+  if (passesRenderBounds(tree)) return into
   const visit = (node: unknown): void => {
     if (!isRecord(node)) return
     const owner = partOf(node)
@@ -717,10 +734,21 @@ export function partStampsIn(tree: unknown, into: Map<string, number> = new Map(
  * Text root is stamped `part: { plugin }`. Beneath it the hook's own stamps
  * stay; another plugin's stay at most as often as `handed` (what its `next`
  * calls settled to) held them, wherever the hook moved them; every other
- * `part` is dropped. Returns a copy; `tree` is not changed.
+ * `part` is dropped. A tree that draws as one of `handedTrees` (a link that
+ * handed on what was beneath it) is that tree, its stamps as handed. A tree
+ * past the render bounds is returned as it came, for the validator to refuse.
+ * Otherwise returns a copy; `tree` is not changed.
  */
-export function stampRenderRoot(tree: unknown, plugin: string, handed: ReadonlyMap<string, number>): unknown {
-  if (!isRecord(tree)) return tree
+export function stampRenderRoot(
+  tree: unknown,
+  plugin: string,
+  handed: ReadonlyMap<string, number>,
+  handedTrees: readonly unknown[] = [],
+): unknown {
+  if (!isRecord(tree) || passesRenderBounds(tree)) return tree
+  const json = treeJson(tree)
+  const relayed = json === undefined ? undefined : handedTrees.find(each => treeJson(each) === json)
+  if (relayed !== undefined) return relayed
   const left = new Map(handed)
   const copy = (node: unknown): unknown => {
     if (!isRecord(node)) return node
@@ -745,12 +773,22 @@ export function stampRenderRoot(tree: unknown, plugin: string, handed: ReadonlyM
  *  whose part starts where draw the same. */
 function treeJson(value: unknown): string | undefined {
   try {
-    return JSON.stringify(value, function (this: unknown, key: string, each: unknown) {
-      return key === 'part' && isRecord(this) && typeof this.type === 'string' ? undefined : each
-    })
+    return JSON.stringify(withoutParts(value))
   } catch {
     return undefined
   }
+}
+
+/** `value` with the `part` of each element left out; other values as they are. */
+function withoutParts(value: unknown): unknown {
+  if (!isRecord(value)) return value
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(value)) {
+    if (key === 'part' && typeof value.type === 'string') continue
+    const each = value[key]
+    out[key] = key === 'children' && Array.isArray(each) ? each.map(withoutParts) : each
+  }
+  return out
 }
 
 /**
@@ -779,22 +817,27 @@ export function drewOf(entries: readonly TraceEntry[]): string[] {
 export type RenderSection = { plugin: string; tree: RenderElement }
 
 /** Whether `node` draws something a person sees: a non-empty string or any
- *  leaf element; an engine node and an empty box draw nothing. */
-function drawsContent(node: unknown): boolean {
+ *  leaf element; an engine node, an empty box and a hidden one (`display:
+ *  'none'`) draw nothing. */
+export function drawsContent(node: unknown): boolean {
   if (typeof node === 'string') return node.trim() !== ''
   if (!isRecord(node)) return false
   if (node.type === 'engine') return false
+  if (isRecord(node.props) && node.props.display === 'none') return false
   if (node.type !== 'Box' && node.type !== 'Text') return true
   return Array.isArray(node.children) && node.children.some(drawsContent)
 }
 
-/** The JSON of every element in `tree`, itself included. */
-function elementsOf(tree: unknown): Set<string> {
+/** The JSON of `tree` and of every Box in it: the parts its plugin hands up
+ *  whole. */
+function wholesOf(tree: unknown): Set<string> {
   const out = new Set<string>()
   const visit = (node: unknown): void => {
     if (!isRecord(node)) return
-    const json = treeJson(node)
-    if (json !== undefined) out.add(json)
+    if (node === tree || node.type === 'Box') {
+      const json = treeJson(node)
+      if (json !== undefined) out.add(json)
+    }
     if (Array.isArray(node.children)) for (const child of node.children) visit(child)
   }
   visit(tree)
@@ -808,83 +851,87 @@ function isColumn(node: unknown): node is RenderElement & { children: unknown[] 
 
 /**
  * A settled tree cut into its drawing plugins' parts, top to bottom (F-25):
- * an element under a drawing plugin's `part` stamp below the root goes to
- * that stamp's plugin, any other to the innermost unstamped drawing plugin
- * whose returned tree holds it (stamps aside), else the outermost; a column
- * Box mixing plugins is cut between its children. `undefined` with fewer than
- * two parts, an outermost tree not `tree`, or an uncuttable mixed element.
+ * a node goes to its `part` stamp's plugin below the root, else to the
+ * innermost plugin beneath its holder whose returned root or Box it is, else
+ * to its holder (its nearest credited ancestor's, the outermost's for the
+ * root). A mixed column is cut between its children, each run keeping the
+ * column's props. `undefined` with fewer than two parts, an outermost tree
+ * not `tree`, or an uncuttable mixed element. `drew` is `drewOf(entries)`.
  */
-export function sectionsOf(entries: readonly TraceEntry[], tree: RenderElement): RenderSection[] | undefined {
-  const drew = drewOf(entries)
+export function sectionsOf(
+  entries: readonly TraceEntry[],
+  tree: RenderElement,
+  drew: readonly string[] = drewOf(entries),
+): RenderSection[] | undefined {
   if (drew.length < 2) return undefined
   const returnedBy = (plugin: string): unknown => entries.find(entry => entry.plugin === plugin && (entry.outcome === 'returned' || entry.outcome === 'caught'))?.returned
   if (treeJson(returnedBy(drew[0]!)) !== treeJson(tree)) return undefined
-  const held = drew.map(plugin => elementsOf(returnedBy(plugin)))
-  /** Drawing plugins with a stamp below the root: credited by stamp alone. */
-  const stampedBelow = new Set<string>()
-  const findStamps = (node: unknown): void => {
-    if (!isRecord(node)) return
-    const owner = node === tree ? undefined : partOf(node)
-    if (owner !== undefined && drew.includes(owner)) stampedBelow.add(owner)
-    if (Array.isArray(node.children)) node.children.forEach(findStamps)
-  }
-  findStamps(tree)
-  const drawerOf = (node: unknown, stamped: string | undefined): string => {
-    if (stamped !== undefined) return stamped
+  // The outermost's wholes are never asked for: nothing is beneath its holder.
+  const wholes = drew.map((plugin, i) => (i === 0 ? new Set<string>() : wholesOf(returnedBy(plugin))))
+  /** The index in `drew` of the plugin that drew `node`, held by `holder`'s part. */
+  const creditOf = (node: Record<string, unknown>, holder: number): number => {
+    const stamp = node === tree ? undefined : partOf(node)
+    const stamped = stamp === undefined ? -1 : drew.indexOf(stamp)
+    if (stamped >= 0) return stamped
+    if (holder === drew.length - 1) return holder
     const json = treeJson(node)
-    for (let i = drew.length - 1; i > 0; i--) {
-      if (json !== undefined && !stampedBelow.has(drew[i]!) && held[i]!.has(json)) return drew[i]!
-    }
-    return drew[0]!
-  }
-  /** The drawing plugin whose stamp `node` carries below the root, else
-   *  `stamped`, the nearest one above it. */
-  const stampBelowRoot = (node: unknown, stamped: string | undefined): string | undefined => {
-    if (node === tree) return stamped
-    const owner = partOf(node)
-    return owner !== undefined && drew.includes(owner) ? owner : stamped
+    for (let i = drew.length - 1; i > holder; i--) if (json !== undefined && wholes[i]!.has(json)) return i
+    return holder
   }
   /** The plugins whose drawing `node` shows: a Box is credited with what its
-   *  children draw, any other element that draws with its own drawer. */
-  const drawersIn = (node: unknown, above: string | undefined): Set<string> => {
-    const out = new Set<string>()
-    const visit = (each: unknown, stamped: string | undefined): void => {
+   *  children draw, a string or any other element that draws with its own. */
+  const drawersIn = (node: unknown, holder: number): Set<number> => {
+    const out = new Set<number>()
+    const visit = (each: unknown, by: number): void => {
+      if (typeof each === 'string') {
+        if (each.trim() !== '') out.add(by)
+        return
+      }
       if (!isRecord(each) || !drawsContent(each)) return
-      const own = stampBelowRoot(each, stamped)
-      if (each.type === 'Box' && Array.isArray(each.children)) each.children.forEach(child => visit(child, own))
-      else out.add(drawerOf(each, own))
+      const credited = creditOf(each, by)
+      if (each.type === 'Box' && Array.isArray(each.children)) each.children.forEach(child => visit(child, credited))
+      else out.add(credited)
     }
-    visit(node, above)
+    visit(node, holder)
     return out
   }
-  const parts: Array<{ plugin: string; nodes: unknown[] }> = []
-  let leading: unknown[] = []
-  const place = (plugin: string | undefined, node: unknown): void => {
-    const last = parts[parts.length - 1]
-    if (plugin === undefined) {
-      if (last) last.nodes.push(node)
-      else leading.push(node)
-    } else if (last?.plugin === plugin) {
-      last.nodes.push(node)
-    } else {
-      parts.push({ plugin, nodes: [...leading, node] })
-      leading = []
+  type Piece = { by: number | undefined; node: unknown }
+  /** Consecutive pieces of one plugin together; one that draws nothing joins
+   *  the run before it, or the first run when none is. */
+  const runsOf = (pieces: readonly Piece[]): Array<{ by: number | undefined; nodes: unknown[] }> => {
+    const runs: Array<{ by: number | undefined; nodes: unknown[] }> = []
+    let leading: unknown[] = []
+    for (const { by, node } of pieces) {
+      const last = runs[runs.length - 1]
+      if (by === undefined) {
+        if (last) last.nodes.push(node)
+        else leading.push(node)
+      } else if (last?.by === by) {
+        last.nodes.push(node)
+      } else {
+        runs.push({ by, nodes: [...leading, node] })
+        leading = []
+      }
     }
+    return runs.length > 0 ? runs : [{ by: undefined, nodes: leading }]
   }
-  const cut = (node: unknown, above: string | undefined): boolean => {
-    const drawers = drawersIn(node, above)
-    if (drawers.size <= 1) {
-      place(drawers.values().next().value, node)
-      return true
+  const cut = (node: unknown, holder: number): Piece[] | undefined => {
+    const drawers = drawersIn(node, holder)
+    if (drawers.size <= 1) return [{ by: drawers.values().next().value, node }]
+    if (!isColumn(node)) return undefined
+    const credited = creditOf(node, holder)
+    const pieces: Piece[] = []
+    for (const child of node.children) {
+      const inner = cut(child, credited)
+      if (!inner) return undefined
+      pieces.push(...inner)
     }
-    const own = stampBelowRoot(node, above)
-    return isColumn(node) && node.children.every(child => cut(child, own))
+    const { part: _part, ...shell } = node as Record<string, unknown>
+    return runsOf(pieces).map(run => ({ by: run.by, node: { ...shell, children: run.nodes } }))
   }
-  if (!cut(tree, undefined) || parts.length < 2) return undefined
-  return parts.map(({ plugin, nodes }) => ({
-    plugin,
-    tree: nodes.length === 1 && isRecord(nodes[0]) ? (nodes[0] as RenderElement) : ({ type: 'Box', props: { flexDirection: 'column' }, children: nodes } as RenderElement),
-  }))
+  const pieces = cut(tree, 0)
+  if (!pieces || pieces.length < 2) return undefined
+  return pieces.map(({ by, node }) => ({ plugin: drew[by ?? 0]!, tree: node as RenderElement }))
 }
 
 /** The plugin whose hook drew `tree`, read off its handlers; `undefined` for

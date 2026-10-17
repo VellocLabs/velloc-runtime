@@ -10,7 +10,7 @@ import { ModRuntime, type ModModuleRef, type ModWorkerHandle } from '../mods/Mod
 import { installModWorkerHost } from '../mods/ModWorkerHost'
 import type { ModUiEvent } from '../mods/modUi'
 import type { RenderElement } from '../mods/modRender'
-import { PANE_WAITS_REASON } from '../mods/modPanes'
+import { FOCUS_PANE_WAITS_REASON, PANE_WAITS_REASON } from '../mods/modPanes'
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 async function until(check: () => boolean, timeoutMs = 2_000): Promise<void> {
@@ -311,9 +311,15 @@ describe('$.ui.open / panes — where the clients seat the panes', () => {
     expect(await panesNow(runtime, reports)).toEqual([{ id: 'report', isShown: false, isPlaced: true }])
     await runtime.commandRun({ command: 'show', args: '' }, undefined)
     expect(lastState()?.state.panes).toEqual([expect.objectContaining({ id: 'report', asked: true, openSeq: 2 })])
-    // A mod's own re-open is stamped, but not asked.
+    // A mod's own re-open before the pane is shown keeps the person's open to be shown.
     await runtime.turnStart({ text: 'go', turnId: 't1' })
+    expect(lastState()?.state.panes).toEqual([expect.objectContaining({ id: 'report', asked: true, openSeq: 3 })])
+    // A window showing it answers the open; a mod's re-open after that is not asked.
+    runtime.seat('c1', { kind: 'dock-visible', showing: { plugin: 'opener', id: 'report' } })
     expect(lastState()?.state.panes).toEqual([expect.objectContaining({ id: 'report', asked: false, openSeq: 3 })])
+    runtime.seat('c1', { kind: 'dock-hidden' })
+    await runtime.turnStart({ text: 'go', turnId: 't2' })
+    expect(lastState()?.state.panes).toEqual([expect.objectContaining({ id: 'report', asked: false, openSeq: 4 })])
   })
 
   it('an open under a press on a drawn button is asked', async () => {
@@ -375,7 +381,7 @@ describe('$.ui.open / panes — where the clients seat the panes', () => {
     runtime.seat('c1', { kind: 'dock-visible' })
     runtime.seat('c1', null)
     await runtime.turnStart({ text: 'go', turnId: 't1' })
-    expect(focusedOpens(reports)).toEqual([{ isPlaced: false, reason: PANE_WAITS_REASON }])
+    expect(focusedOpens(reports)).toEqual([{ isPlaced: false, reason: FOCUS_PANE_WAITS_REASON }])
     runtime.seat('c2', { kind: 'dock-hidden' })
     expect(lastState()?.state.panes).toEqual([expect.objectContaining({ id: 'hold', isPlaced: true, focus: true })])
   })

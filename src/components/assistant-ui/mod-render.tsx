@@ -11,6 +11,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/browser/webview/i18n";
 import { ACTION_WORDS } from "@/mods/modEngineActions";
+import { drawsContent } from "@/mods/modRender";
 import { FOOTER_BAR_FRAME } from "./footer-bar-frame";
 import { ICON_SLOT_PX, ModPluginFrame } from "./mod-ui";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -289,7 +290,8 @@ function ModNode({ node, site }: { node: Node; site: SiteRef }): React.ReactElem
     case "Button": {
       const key = String(props.key ?? "");
       const plain = props.plain === true;
-      const children = node.children ?? [];
+      // Children that draw nothing leave the label (or the action's words) drawn.
+      const children = (node.children ?? []).some(drawsContent) ? (node.children ?? []) : [];
       // Drawn children: the `label`, when given, names the control.
       const named = props.role === "dismiss" || (children.length > 0 && typeof props.label === "string");
       return (
@@ -439,7 +441,8 @@ function ModInput({
           {...field}
           onChange={(event) => change(event.currentTarget.value)}
           onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
+            // The Enter that commits an input method's candidate is not a submit.
+            if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
             event.preventDefault();
             send({ kind: "input", element: key, inputKind: "submit", value });
           }}
@@ -452,7 +455,7 @@ function ModInput({
           className={cn(field.className, "resize-none")}
           onChange={(event) => change(event.currentTarget.value)}
           onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.shiftKey) return;
+            if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
             event.preventDefault();
             const area = event.currentTarget;
             const at = area.selectionStart;

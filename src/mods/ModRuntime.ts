@@ -2841,7 +2841,7 @@ export class ModRuntime implements TurnExtensions {
     this.replaceHandles(key, held)
     const plugin = drawnBy(validated.tree)
     const plugins = drewOf(trace)
-    const sections = input.component === 'AbovePrompt' ? sectionsOf(trace, validated.tree) : undefined
+    const sections = input.component === 'AbovePrompt' ? sectionsOf(trace, validated.tree, plugins) : undefined
     const drawnRewrites: Record<string, EngineRewrite> = {}
     for (const node of engineNodesIn(validated.tree)) {
       const rewrite = rewriteOf(node)

@@ -30,9 +30,9 @@ export type ModUiPane = {
   isFocused: boolean
   /** False while an unasked open waits for a client that places it. */
   isPlaced: boolean
-  /** Its latest open was the person's: a docked client shows it. */
+  /** An open of the person's not yet shown: a docked client shows it. */
   asked: boolean
-  /** Its latest open passed `focus`: a docked client shows it too. */
+  /** An open with `focus` not yet shown: a docked client shows it too. */
   focus: boolean
   /** Its latest open's place in the slot's opens. */
   openSeq: number

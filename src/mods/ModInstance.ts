@@ -120,6 +120,8 @@ type LiveInvocation = Settle & {
   /** `ui.render` only: the `part` stamps, by plugin, that this run's `next`
    *  calls settled to. */
   handedParts?: Map<string, number>
+  /** `ui.render` only: the trees this run's `next` calls settled to. */
+  handedTrees?: unknown[]
 }
 
 /** What a streaming invocation keeps between frames. */
@@ -714,7 +716,10 @@ export class ModInstance {
         }
         next(msg.e, msg.tier).then(
           result => {
-            if (call.event === 'ui.render') invocation.handedParts = partStampsIn(result, invocation.handedParts)
+            if (call.event === 'ui.render') {
+              invocation.handedParts = partStampsIn(result, invocation.handedParts)
+              invocation.handedTrees = [...(invocation.handedTrees ?? []), result]
+            }
             reply({ ok: true, result })
           },
           error => {
@@ -910,7 +915,7 @@ export class ModInstance {
         if (!invocation) return
         invocation.resolve(
           invocation.call.event === 'ui.render'
-            ? stampRenderRoot(msg.result, this.options.plugin, invocation.handedParts ?? new Map())
+            ? stampRenderRoot(msg.result, this.options.plugin, invocation.handedParts ?? new Map(), invocation.handedTrees)
             : msg.result,
         )
         return

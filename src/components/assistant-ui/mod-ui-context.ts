@@ -39,10 +39,10 @@ export type ModUiPaneRow = {
   closeOnEscape: boolean
   /** False while a mod's own open waits for a page that places it. */
   isPlaced?: boolean
-  /** Its latest open was the person's: a docked page shows it, once per
-   *  `openSeq`. */
+  /** An open of the person's not yet shown: a docked page shows it, once
+   *  per `openSeq`. */
   asked?: boolean
-  /** Its latest open passed `focus`: shown as an asked one is. */
+  /** An open with `focus` not yet shown: shown as an asked one is. */
   focus?: boolean
   openSeq?: number
   rows?: number

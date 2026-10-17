@@ -287,12 +287,11 @@ export type ModsUiPane = {
   closeOnEscape: boolean
   /** False while an unasked open waits for a page that places it. */
   isPlaced?: boolean
-  /** Its latest open was the person's (a command, a prompt, a press): a
-   *  page docking it activates its tab and shows the panel, once per
-   *  `openSeq`. */
+  /** An open of the person's (a command, a prompt, a press) not yet shown
+   *  by any page: a page docking it brings it forward, once per `openSeq`. */
   asked?: boolean
-  /** Its latest open passed `focus`: a docking page shows it as it does
-   *  an asked one. */
+  /** An open with `focus` not yet shown by any page: a docking page brings
+   *  it forward as it does an asked one, on its first read too. */
   focus?: boolean
   /** Its latest open's place among the session's opens. */
   openSeq?: number

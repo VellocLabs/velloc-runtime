@@ -31,11 +31,13 @@ export type ModPane = {
   isPlaced: boolean
   closeOnEscape: boolean
   holdToasts: boolean
-  /** Whether its latest open was the person's (a command, a prompt, a
-   *  press), which a docked client answers by showing it. */
+  /** Whether an open of the person's (a command, a prompt, a press) is
+   *  still to be shown: a docked client answers it by showing the pane. Set
+   *  until a seat shows the pane, so a later unasked open keeps it. */
   asked: boolean
-  /** Whether its latest open passed `focus`, which a docked client answers
-   *  by showing it as it does an asked one. */
+  /** Whether an open with `focus` is still to be shown, which a docked
+   *  client answers as it does an asked one. Set until a seat shows the
+   *  pane. */
   focus: boolean
   /** Its latest open's place in the slot's opens, from 1. */
   openSeq: number
@@ -52,11 +54,13 @@ export type ModPaneSeat =
   | { kind: 'dock-visible'; showing?: { plugin: string; id: string } }
   | { kind: 'dock-hidden' }
 
-/** Why an unasked open waits: no attached surface places panes yet (for a
- *  `focus` open, no window shows the session); it is seated when one that
- *  does attaches. */
+/** Why an unasked open waits: no window showing the session has its panes
+ *  in view; it is seated when one that does attaches. */
 export const PANE_WAITS_REASON =
-  'no window showing this session has its right panel open; the pane is placed when the person opens it'
+  'no window showing this session has its panes in view; the pane is placed when one does'
+
+/** Why a `focus` open waits: no window shows the session. */
+export const FOCUS_PANE_WAITS_REASON = 'no window shows this session; the pane is placed when one does'
 
 /** A pane's identity across plugins: two plugins may each open `clock`. */
 export function paneKeyOf(plugin: string, id: string): string {
@@ -111,8 +115,8 @@ export class ModPaneRegistry {
       held.closeOnEscape = args.closeOnEscape === true
       held.holdToasts = args.holdToasts === true
       held.isPlaced ||= placeable
-      held.asked = asked
-      held.focus = args.focus === true
+      held.asked ||= asked
+      held.focus ||= args.focus === true
       held.openSeq = this.opens
       if (args.rows !== undefined) held.rows = args.rows
       if (args.columns !== undefined) held.columns = args.columns
@@ -137,7 +141,11 @@ export class ModPaneRegistry {
       // a plugin just put up.
       this.show(key)
     }
+    this.settleShown()
     this.onChanged()
+    // A `focus` open is placed only while a window shows the session, a pane
+    // placed earlier included.
+    if (args.focus === true && !placeable) return { isPlaced: false, reason: FOCUS_PANE_WAITS_REASON }
     return this.panes.get(key)!.isPlaced ? { isPlaced: true } : { isPlaced: false, reason: PANE_WAITS_REASON }
   }
 
@@ -167,8 +175,8 @@ export class ModPaneRegistry {
 
   /** A client's seat for this session (`mods.seat`); null when it no longer
    *  draws the session (it left, or shows another one). A seat that places
-   *  panes places every waiting one; a seat with its panel hidden places the
-   *  waiting `focus` ones, whose open shows the panel. */
+   *  panes places every waiting one; a seat whose panes are out of view
+   *  places the waiting `focus` ones. */
   setSeat(client: string, seat: ModPaneSeat | null): void {
     if (seat) {
       this.seats.set(client, seat)
@@ -184,7 +192,7 @@ export class ModPaneRegistry {
       pane.isPlaced = true
       placed = true
     }
-    if (placed) this.onChanged()
+    if (this.settleShown() || placed) this.onChanged()
   }
 
   /** The plugin is gone (unloaded, its worker lost): its panes with it —
@@ -232,8 +240,7 @@ export class ModPaneRegistry {
   }
 
   /** Whether a `focus` open is placed now: some client shows the session,
-   *  its panel open or not (a docked client opens it), or none ever said
-   *  where it does. */
+   *  its panes in view or not, or none ever said where it does. */
   private placesFocused(): boolean {
     return !this.seatsKnown || this.seats.size > 0
   }
@@ -249,6 +256,21 @@ export class ModPaneRegistry {
       }
     }
     return false
+  }
+
+  /** Clears `asked` and `focus` on the panes a seat shows now: those opens
+   *  are answered. True when any changed. */
+  private settleShown(): boolean {
+    if (!this.seatsKnown) return false
+    let changed = false
+    for (const pane of this.panes.values()) {
+      if ((pane.asked || pane.focus) && this.isSeen(pane)) {
+        pane.asked = false
+        pane.focus = false
+        changed = true
+      }
+    }
+    return changed
   }
 
   private show(key: string): void {
