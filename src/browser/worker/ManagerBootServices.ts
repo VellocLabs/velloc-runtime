@@ -53,6 +53,7 @@ import type {
 import type { RoutineCoordinator } from './RoutineCoordinator'
 import { installRuntimeRenderCache } from '../../renderCache/runtimeRenderCache'
 import { readIdlePurgeEnabled } from '../../renderCache/idlePurgeFlag'
+import { TerminalService } from '../../terminal/TerminalService'
 
 export interface ManagerBootServicesHost {
   getDirectBridgeTransport(): DirectPortBridgeTransport | null
@@ -77,6 +78,9 @@ export interface ManagerBootServicesHost {
   scheduleSummary(): void
   /** Some session is running a turn (the render-cache purge waits for none). */
   isAnySessionBusy?(): boolean
+  /** Where a session's terminal starts (F-31): its worktree when it runs in one, else its project
+   *  root; undefined for a session the runtime does not hold. Absent: no terminal can be created. */
+  getSessionCwd?(sessionId: string): string | undefined
   trace(event: string, data?: Record<string, unknown>): void
 }
 
@@ -93,8 +97,23 @@ export class ManagerBootServices {
   private readonly directBridgeWaiters = new Set<
     (transport: DirectPortBridgeTransport) => void
   >()
+  /**
+   * The runtime's terminals (F-31), on the runtime's host port: the port and
+   * the manifest are read per call, so a replaced port is the one used and
+   * no long-lived service is stranded on a disposed transport.
+   */
+  readonly terminals: TerminalService
 
-  constructor(private readonly host: ManagerBootServicesHost) {}
+  constructor(private readonly host: ManagerBootServicesHost) {
+    this.terminals = new TerminalService({
+      host: () => ({
+        transport: host.getDirectBridgeTransport(),
+        manifest: host.getHostManifest?.() ?? null,
+      }),
+      createRequestId: () => host.createBridgeRequestId(),
+      sessionCwd: sessionId => host.getSessionCwd?.(sessionId),
+    })
+  }
 
   onStorageReady(): void {
     void this.bootRoutineRuntimeOnce()
@@ -123,6 +142,9 @@ export class ManagerBootServices {
     void this.installAppUpdate()
     // The render-cache purge policy needs the port and the manifest too.
     this.installRenderCache()
+    // …and the terminals: availability follows the manifest's primitives and the
+    // shell list is asked of each new port.
+    this.terminals.refreshHost()
     const waiters = [...this.directBridgeWaiters]
     this.directBridgeWaiters.clear()
     for (const resolve of waiters) {
@@ -132,9 +154,15 @@ export class ManagerBootServices {
 
   /** The host manifest may have arrived after the port: retry what gates on it. */
   onHostManifestChanged(): void {
+    this.terminals.refreshHost()
     if (!this.host.getDirectBridgeTransport()) return
     void this.installAppUpdate()
     this.installRenderCache()
+  }
+
+  /** The host port went away: the streams it carried died with it. */
+  onDirectTransportDetached(): void {
+    this.terminals.hostGone()
   }
 
   getManagerFs(): RuntimeFs {

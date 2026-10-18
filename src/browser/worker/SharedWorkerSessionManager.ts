@@ -84,6 +84,7 @@ import {
   RuntimeHub,
   installSessionSurface,
   registerFsxCapability,
+  registerTerminalCapability,
   type HostEnvironment,
   type SessionOpenPayload,
   type SessionProjectRoot,
@@ -264,6 +265,11 @@ const SKILL_EVENTS_WRITE_COALESCE_MS = 250
 
 export type SharedWorkerSessionManagerOptions = {
   createWorker: (options: AgentRuntimeWorkerOptions) => AgentRuntimeWorkerHandle
+  /**
+   * Ends a session's terminals when its runtime ends (F-31). Default: the
+   * manager's own terminal service; a test passes a recorder.
+   */
+  closeTerminalsForSession?: (sessionId: string) => void
 }
 
 export class SharedWorkerSessionManager {
@@ -273,6 +279,8 @@ export class SharedWorkerSessionManager {
   // Assigned in the constructor — it wraps `options.createWorker`.
   private readonly workerFactory: SessionWorkerFactory
   private readonly bootServices: ManagerBootServices
+  /** Ends a session's terminals with its runtime (F-31); assigned in the constructor. */
+  private readonly closeTerminalsForSession: (sessionId: string) => void
   private readonly initOrchestrator: SessionInitOrchestrator
   private readonly taskControl: TaskControlSurface
   private readonly sessions = new Map<string, SessionEntry>()
@@ -304,6 +312,7 @@ export class SharedWorkerSessionManager {
           })
       } else {
         this.storageCoordinator.handleDirectTransportDetached()
+        this.bootServices.onDirectTransportDetached()
       }
     },
   })
@@ -934,8 +943,17 @@ export class SharedWorkerSessionManager {
       scheduleSummary: () => this.feed.scheduleSummary(),
       isAnySessionBusy: () =>
         [...this.sessions.values()].some(entry => entry.worker.isBusy()),
+      getSessionCwd: sessionId => this.sessionTerminalCwd(sessionId),
       trace: (event, data) =>
         this.tracer.event(event, { attrs: data ?? {} }),
+    })
+    this.closeTerminalsForSession =
+      options.closeTerminalsForSession ??
+      (sessionId => this.bootServices.terminals.closeForSession(sessionId))
+    // The `terminal` capability and its two topics (F-31), over the runtime's
+    // own terminal service — all `full`.
+    registerTerminalCapability(this.runtimeHub.registry, this.runtimeHub.broker, {
+      service: this.bootServices.terminals,
     })
     setActiveSessionManager(this)
     // The hub owns the source-subscription lifecycle; the
@@ -2647,12 +2665,7 @@ export class SharedWorkerSessionManager {
         // best-effort; JS-side teardown continues
       }
     }
-    session.ports.clear()
-    try {
-      await session.worker.dispose?.()
-    } catch {
-      // best-effort
-    }
+    await this.disposeSessionWorker(sessionId, session)
     // A stopped sub-agent can be resumed while the old worker is still
     // awaiting native teardown. Never delete a replacement registered under
     // the same session id.
@@ -2712,12 +2725,45 @@ export class SharedWorkerSessionManager {
     if (session) {
       this.flushPendingRename(sessionId, session)
       this.taskDelivery.dropParent(sessionId)
-      session.ports.clear()
-      void session.worker.dispose?.()
+      void this.disposeSessionWorker(sessionId, session)
     }
     // See `disposeManagedSession`: a reaped background run must not leave its
     // status cache entry behind.
     this.feed.forgetStatus(sessionId)
+  }
+
+  /**
+   * The step every session-ending path shares — the awaited dispose and the
+   * sync reap alike: detach the ports, end the session's terminals (they
+   * belong to the session and die with it, F-31), dispose the worker. The
+   * terminals go before the worker's own teardown is awaited, so a path that
+   * does not wait still ends them at once. Best-effort.
+   */
+  private async disposeSessionWorker(sessionId: string, session: SessionEntry): Promise<void> {
+    session.ports.clear()
+    try {
+      this.closeTerminalsForSession(sessionId)
+    } catch {
+      // best-effort
+    }
+    try {
+      await session.worker.dispose?.()
+    } catch {
+      // best-effort
+    }
+  }
+
+  /** Where a session's terminal starts: its worker's cwd (the worktree when it runs in one), else its project root. */
+  private sessionTerminalCwd(sessionId: string): string | undefined {
+    const entry = this.sessions.get(sessionId)
+    if (!entry) return undefined
+    let snapshot: AgentRuntimeWorkerSnapshot | undefined
+    try {
+      snapshot = entry.worker.getSnapshot()
+    } catch {
+      snapshot = undefined
+    }
+    return snapshot?.cwd || snapshot?.projectRoot || entry.projectRoot || undefined
   }
 
   private async handleSessionDelete(

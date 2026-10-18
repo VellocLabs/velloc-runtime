@@ -45,6 +45,12 @@ export {
   type SetViewingPayload,
 } from './presence'
 export {
+  TERMINALS_STATE_EVENT,
+  registerTerminalCapability,
+  terminalTopicProvider,
+  terminalsTopicProvider,
+} from './terminalCapability'
+export {
   WORKSPACE_STATE_FILE,
   WORKSPACE_STATE_FILE_VERSION,
   WorkspaceStateStore,

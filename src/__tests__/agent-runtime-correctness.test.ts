@@ -579,19 +579,21 @@ describe('Teardown: disposal must be awaited', () => {
     expect(hasFireAndForget).toBe(false)
   })
 
-  it('every sessions.delete is paired with worker.dispose', () => {
+  it('every sessions.delete is paired with the shared worker-dispose step', () => {
     const managerSource = SharedWorkerSessionManagerSource()
 
     // Count all `this.sessions.delete(` occurrences.
     const deleteCalls = (managerSource.match(/this\.sessions\.delete\(/g) ?? []).length
 
-    // Count all `worker.dispose` calls (either via disposeManagedSession or
-    // directly paired with a delete).
-    const disposeCalls = (managerSource.match(/worker\.dispose/g) ?? []).length
+    // Both session-ending paths (the awaited dispose and the sync reap) run ONE
+    // shared step, `disposeSessionWorker`, which is the only place the worker
+    // is disposed — so whatever that step ends (the session's terminals) is
+    // ended on every path, and a later path inherits it.
+    const sharedStepCalls = (managerSource.match(/this\.disposeSessionWorker\(/g) ?? []).length
+    const disposeCalls = (managerSource.match(/worker\.dispose\?\.\(\)/g) ?? []).length
 
-    // Every sessions.delete is paired with a worker.dispose: background finalizers do sync delete + async dispose
-    // (the instance guard drops stale events); disposeManagedSession awaits dispose before deleting.
-    expect(disposeCalls).toBeGreaterThanOrEqual(deleteCalls)
+    expect(sharedStepCalls).toBeGreaterThanOrEqual(2)
+    expect(disposeCalls).toBe(1)
     // No more than 3 delete sites (disposeManagedSession, finalizeHeadlessRun, finalizeSubAgentRun).
     expect(deleteCalls).toBeLessThanOrEqual(3)
   })
