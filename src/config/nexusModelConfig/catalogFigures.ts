@@ -6,7 +6,7 @@
  * also takes a row's unset `availableThinkingTiers` and their default. Never a
  * name. Filled per realm; lookups are synchronous and merged rows are remembered.
  */
-import { normalizeModelId } from '../../catalog/catalogMatch'
+import { normalizeModelId, preferSibling } from '../../catalog/catalogMatch'
 import type { CatalogModel, CatalogProviderRecords } from '../../catalog/types'
 import { fallbackTier, orderedTiers } from './providers/shared/listing'
 import type { NexusConfiguredModel, NexusModelConfig, NexusProviderModelConfig } from './types'
@@ -106,12 +106,17 @@ type IndexedLayer = {
 }
 
 function indexLayer(layer: CatalogFigureLayer): IndexedLayer {
-  const normalized = new Map<string, CatalogModelFigures>()
-  for (const [id, figures] of layer) {
+  // Same-normalized siblings resolve by the catalog's own pick (F-28), so the
+  // answer does not depend on the order of the document's records.
+  const best = new Map<string, string>()
+  for (const id of layer.keys()) {
     const form = normalizeModelId(id)
-    // The first record in source order wins, as the catalog's own lookup.
-    if (form.length > 0 && !normalized.has(form)) normalized.set(form, figures)
+    if (form.length === 0) continue
+    const held = best.get(form)
+    if (held === undefined || preferSibling(id, held) < 0) best.set(form, id)
   }
+  const normalized = new Map<string, CatalogModelFigures>()
+  for (const [form, id] of best) normalized.set(form, layer.get(id)!)
   return { exact: layer, normalized }
 }
 

@@ -6,6 +6,7 @@ import {
   NEXUS_MODEL_CONFIG,
   type NexusModelConfig,
 } from '../../config/nexusModelConfig'
+import { dropRealmMirrorEntries } from '../../config/customProviderRegistry'
 import { createConfiguredProvider } from './configuredModels'
 
 export function isSelectionEnabled(
@@ -113,6 +114,8 @@ export function createConfiguredModelCatalog(
     return catalog
   }
 
+  // A mod provider the catalog no longer has takes its mirrored figures with it.
+  dropRealmMirrorEntries(new Set(catalog.providers.map(provider => provider.id)), config)
   const providers = catalog.providers.map(provider =>
     createConfiguredProvider(provider, config),
   )

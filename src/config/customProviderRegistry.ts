@@ -10,6 +10,7 @@ import { modProviderDefinitions } from './nexusModelConfig/providers'
 import { findConfiguredModelIn } from './nexusModelConfig/findConfiguredModel'
 import type {
   NexusConfiguredModel,
+  NexusModelConfig,
   NexusProviderModelConfig,
 } from './nexusModelConfig/types'
 import type {
@@ -310,6 +311,17 @@ export function markRealmMirrorEntry(entry: NexusProviderModelConfig): void {
   realmMirrorEntries.add(entry)
 }
 
+/** Remove from `config` every mirror entry whose provider is not in `liveIds`. */
+export function dropRealmMirrorEntries(
+  liveIds: ReadonlySet<string>,
+  config: NexusModelConfig = NEXUS_MODEL_CONFIG,
+): void {
+  for (let index = config.providers.length - 1; index >= 0; index -= 1) {
+    const entry = config.providers[index]!
+    if (realmMirrorEntries.has(entry) && !liveIds.has(entry.providerId)) config.providers.splice(index, 1)
+  }
+}
+
 /**
  * Replace the known custom providers and re-apply the `NEXUS_MODEL_CONFIG`
  * overlay. Called by the worker at boot and after every `providers.*` write,
@@ -351,8 +363,9 @@ export function reapplyProviderCatalog(): void {
   setCustomProviderRecords(currentConfigs)
 }
 
-/** Test hook: drop every custom provider and restore the shipped catalog. */
+/** Test hook: drop every custom provider and mirror entry and restore the shipped catalog. */
 export function resetCustomProviderRecords(): void {
+  dropRealmMirrorEntries(new Set())
   setCustomProviderRecords({})
 }
 

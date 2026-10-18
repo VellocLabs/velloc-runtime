@@ -196,7 +196,7 @@ describe('provider model entries (settings)', () => {
 
   it('a key saved while the page is open unlocks it and lists again', async () => {
     let current: ProviderModelFamilies = { ok: false, error: 'HTTP 401', families: [] }
-    const request = vi.fn(async (route: { action: string }) =>
+    const request = vi.fn(async (route: { action: string }, _payload?: unknown) =>
       route.action === 'modelFamilies' ? current : { ok: true, configs: {} },
     )
     const bridge = { request, subscribeEvents: () => () => {} } as unknown as NexusSettingsBridge
@@ -211,7 +211,29 @@ describe('provider model entries (settings)', () => {
     await waitFor(() =>
       expect((screen.getByTestId('model-entries-add') as HTMLButtonElement).disabled).toBe(false),
     )
-    expect(request.mock.calls.filter(([route]) => route.action === 'modelFamilies')).toHaveLength(2)
+    const listings = request.mock.calls.filter(([route]) => route.action === 'modelFamilies')
+    expect(listings).toHaveLength(2)
+    // Past the answer from before the key: a remembered failure or a listing still running.
+    expect((listings[1]![1] as { force?: boolean }).force).toBe(true)
+  })
+
+  it('locked with a failed listing still offers a retry that lists afresh', async () => {
+    const { calls } = setup(undefined, [], { ok: false, error: 'offline', families: [] }, { connected: false })
+    fireEvent.click(await screen.findByTestId('model-entries-locked-retry'))
+    await waitFor(() =>
+      expect(calls.filter(c => c.action === 'modelFamilies').map(c => c.payload.force)).toEqual([false, true]),
+    )
+  })
+
+  it('rows of its own keep a provider without a credential unlocked: a failed listing reads as failed', async () => {
+    setup(
+      { modelEntries: [{ family: OPUS_LATEST.entry!.family, version: 'latest' }] },
+      [OPUS_LATEST],
+      { ok: false, error: 'offline', families: [] },
+      { connected: false },
+    )
+    expect(await screen.findByTestId('model-entries-list-error')).toBeTruthy()
+    expect((screen.getByTestId('model-entries-add') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('adds a Latest and a pinned version from the families: search, versions under the family, previews apart', async () => {

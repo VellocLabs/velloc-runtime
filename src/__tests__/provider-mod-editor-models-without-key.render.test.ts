@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { ModProviderEditor } from '../browser/webview/settings/sections/ModProviderEditor'
 import type { NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
@@ -58,6 +58,33 @@ describe('a provider mod editor\'s models section without a key', () => {
     )
     expect((screen.getByTestId('model-entries-add') as HTMLButtonElement).disabled).toBe(true)
     expect(screen.getByTestId('model-entries-empty').textContent).toBe('Add your API key above to load the model list.')
+  })
+
+  it('a saved key the check rejected is not read as a missing key: the listing error and Retry show', async () => {
+    const request = vi.fn(async (route: { action: string }) => {
+      if (route.action === 'verify') return { ok: false, errorCode: 'auth_invalid' }
+      if (route.action === 'modelFamilies') return { ok: false, error: 'HTTP 401', families: [] }
+      return { ok: true, options: {}, storedSensitive: [], configs: {} }
+    })
+    const bridge = { request, subscribeEvents: () => () => {} } as unknown as NexusSettingsBridge
+    render(
+      createElement(
+        I18nProvider,
+        { locale: 'en' },
+        createElement(ModProviderEditor, {
+          provider: row({ customModels: { formats: ['gemini'] } }),
+          saved: { hasApiKey: true },
+          bridge,
+          onChanged: vi.fn(async () => {}),
+        }),
+      ),
+    )
+    fireEvent.change(await screen.findByTestId('mod-prompt-api_key'), { target: { value: 'sk-wrong' } })
+    fireEvent.submit(screen.getByTestId('mod-prompt-form'))
+    expect(await screen.findByTestId('mod-verify-failed')).toBeTruthy()
+    expect(await screen.findByTestId('model-entries-list-error')).toBeTruthy()
+    expect(screen.getByTestId('model-entries-empty').textContent).toBe('No models added yet.')
+    expect((screen.getByTestId('model-entries-add-custom') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('is not there for a plugin that does not, until a key makes a connection', async () => {

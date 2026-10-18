@@ -82,6 +82,21 @@ export function sanitizeUserModels(raw: unknown, allowedFormats?: readonly strin
 export type UserModelWires = {
   wires?: Readonly<Record<string, Record<string, unknown>>>
   defaultFormat?: string
+  /** The base URL the provider sends to, which a wire's `baseUrlTrim` is cut from. */
+  providerBaseUrl?: string
+}
+
+/** A declared wire with `baseUrlTrim` resolved against the provider's base URL:
+ *  the suffix cut off when the base ends with it, else no base of its own. */
+function resolveDeclaredWire(
+  declared: Record<string, unknown> | undefined,
+  providerBaseUrl: string | undefined,
+): Record<string, unknown> | undefined {
+  if (!declared || typeof declared.baseUrlTrim !== 'string') return declared
+  const { baseUrlTrim, ...wire } = declared
+  const base = providerBaseUrl?.replace(/\/+$/, '')
+  if (base && base.endsWith(baseUrlTrim)) wire.baseUrl = base.slice(0, base.length - baseUrlTrim.length)
+  return wire
 }
 
 /** A hand-added model as a listing row. It is tool-capable by assertion: the
@@ -89,7 +104,7 @@ export type UserModelWires = {
  *  is the manifest's for its format (the provider's own when it names none),
  *  with the format the person chose laid over it. */
 export function userModelToInfo(def: UserModelDef, facts: UserModelWires = {}): ProviderModelInfo {
-  const declared = facts.wires?.[def.format ?? facts.defaultFormat ?? '']
+  const declared = resolveDeclaredWire(facts.wires?.[def.format ?? facts.defaultFormat ?? ''], facts.providerBaseUrl)
   const wire: ModelWire | undefined =
     declared || def.format ? { ...(declared as ModelWire | undefined), ...(def.format ? { format: def.format } : {}) } : undefined
   return {

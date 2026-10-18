@@ -1776,11 +1776,17 @@ describe('mod provider figures in a realm without the mod registry', () => {
   afterEach(() => {
     resetEntryResolutions()
     resetCustomProviderRecords()
-    NEXUS_MODEL_CONFIG.providers.splice(
-      0,
-      NEXUS_MODEL_CONFIG.providers.length,
-      ...NEXUS_MODEL_CONFIG.providers.filter(entry => entry.providerId !== MOD),
-    )
+  })
+
+  it('the reset drops a mirror entry, and a catalog without the mod drops its mirror', () => {
+    createConfiguredModelCatalog(modCatalog(MOD, 640_000))
+    expect(NEXUS_MODEL_CONFIG.providers.some(entry => entry.providerId === MOD)).toBe(true)
+    resetCustomProviderRecords()
+    expect(NEXUS_MODEL_CONFIG.providers.some(entry => entry.providerId === MOD)).toBe(false)
+
+    createConfiguredModelCatalog(modCatalog(MOD, 640_000))
+    createConfiguredModelCatalog({ ...modCatalog(MOD, 640_000), providers: [] })
+    expect(NEXUS_MODEL_CONFIG.providers.some(entry => entry.providerId === MOD)).toBe(false)
   })
 
   const modCatalog = (providerId: string, contextWindow: number): BrowserLlmCatalog => ({

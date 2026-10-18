@@ -8,8 +8,8 @@ export const GOOGLE_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
   filterMode: 'curated',
   defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
   // Runs on a runtime ModelProvider: the Gemini codec (the JS twin of the host's
-  // `GoogleProvider`, `streamGenerateContent?alt=sse`, the key in the `key`
-  // query parameter) over `model.rawStream*`. The host class stays for
+  // `GoogleProvider`, `streamGenerateContent?alt=sse`, the key in the
+  // `x-goog-api-key` header) over `model.rawStream*`. The host class stays for
   // discovery and the key check.
   wire: { format: 'gemini' },
   // PDF input: Gemini `inlineData` with `application/pdf`.

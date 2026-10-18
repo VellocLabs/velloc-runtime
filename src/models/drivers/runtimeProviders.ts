@@ -240,6 +240,7 @@ function withHandAdded(providerId: string, models: ProviderModelInfo[]): Provide
   const merged = withUserModels(models, sanitizeUserModels(config.userModels), {
     wires: definition?.catalogMod?.modelsUi?.customModels?.wires,
     defaultFormat: definition?.config.wire?.format,
+    providerBaseUrl: providerWireBaseUrl(providerId),
   })
   // The listed rows were parsed on arrival; the hand-added ones are parsed here.
   return withParsedWires(providerId, merged)

@@ -599,8 +599,14 @@ function checkModelsUi(value: unknown, bad: Problems): ProviderModelsUi | undefi
               if (!(WIRE_FORMATS as readonly string[]).includes(format)) bad(`${at}: not a wire format`)
               else if (!isRecord(wire)) bad(`${at}: expected an object`)
               else {
-                unknownKeys(wire, ['baseUrl', 'path', 'headers', 'compat'], at, bad)
-                wires[format] = wire
+                unknownKeys(wire, ['baseUrl', 'baseUrlTrim', 'path', 'headers', 'compat'], at, bad)
+                if (wire.baseUrlTrim !== undefined && (typeof wire.baseUrlTrim !== 'string' || !wire.baseUrlTrim.startsWith('/'))) {
+                  bad(`${at}.baseUrlTrim: expected a path suffix starting with '/'`)
+                } else if (wire.baseUrlTrim !== undefined && wire.baseUrl !== undefined) {
+                  bad(`${at}: baseUrl and baseUrlTrim cannot both be set`)
+                } else {
+                  wires[format] = wire
+                }
               }
             }
             if (Object.keys(wires).length > 0) out.customModels.wires = wires

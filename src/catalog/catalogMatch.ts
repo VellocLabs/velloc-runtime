@@ -49,7 +49,7 @@ export function findNormalized(
 const DATE_SUFFIX = /-(\d{8})$/
 
 /** Negative when `a` is the better pick of two same-normalized ids. */
-function preferSibling(a: string, b: string): number {
+export function preferSibling(a: string, b: string): number {
   const routedA = a.includes('/') ? 1 : 0
   const routedB = b.includes('/') ? 1 : 0
   if (routedA !== routedB) return routedA - routedB

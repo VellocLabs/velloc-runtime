@@ -507,7 +507,7 @@ function ReadyEditor({
           saved={saved}
           provider={provider}
           onChanged={onChanged}
-          connected={connected}
+          connected={isModProviderConnected(saved)}
         />
       ) : null}
       <ProviderSignInDialog name={name} session={loginSession} />

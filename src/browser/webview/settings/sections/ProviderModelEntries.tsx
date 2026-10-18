@@ -220,10 +220,11 @@ export function ProviderModelEntries({
     void load(false);
   }, [load]);
 
-  // A key saved while the page is open: list again.
+  // A key saved while the page is open: list again, past any answer from
+  // before the key (a remembered failure, or a listing still running).
   const wasConnected = React.useRef(connected);
   React.useEffect(() => {
-    if (connected && !wasConnected.current) void load(false);
+    if (connected && !wasConnected.current) void load(true);
     wasConnected.current = connected;
   }, [connected, load]);
 
@@ -264,9 +265,13 @@ export function ProviderModelEntries({
       (id): id is string => !!id && ids.includes(id),
     ) ?? ids[0];
   const removed = families?.ok ? families.removed : undefined;
-  // Nothing to add from until a key lists the models: a provider whose
-  // listing needs one (and has none cached) is shown locked, not failed.
-  const locked = !connected && !(families?.ok && families.families.length > 0);
+  // Nothing to add from until a key lists the models: a provider with no
+  // credential saved, no rows of its own and nothing listed is shown locked.
+  const locked =
+    !connected &&
+    entries.length === 0 &&
+    userModels.length === 0 &&
+    !(families?.ok && families.families.length > 0);
   const hasFree = (families?.families ?? []).some((f) => f.versions.some((v) => v.free));
 
   const entryLabel = (entry: ModelEntry): string => {
@@ -390,14 +395,26 @@ export function ProviderModelEntries({
 
       <div className="rounded-md border">
         {entries.length === 0 ? (
-          <p
-            className="p-3 text-center text-muted-foreground text-sm"
-            data-testid="model-entries-empty"
-          >
-            {locked
-              ? t("settings.models.entries.needsKey")
-              : t("settings.models.entries.empty")}
-          </p>
+          <div className="flex items-center justify-center gap-2 p-3">
+            <p
+              className="text-center text-muted-foreground text-sm"
+              data-testid="model-entries-empty"
+            >
+              {locked
+                ? t("settings.models.entries.needsKey")
+                : t("settings.models.entries.empty")}
+            </p>
+            {locked && families && !families.ok ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                data-testid="model-entries-locked-retry"
+                onClick={() => void load(true)}
+              >
+                {t("settings.models.entries.retry")}
+              </Button>
+            ) : null}
+          </div>
         ) : (
           entries.map((entry) => {
             const id = entryId(entry);

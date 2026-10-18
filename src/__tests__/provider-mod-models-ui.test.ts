@@ -66,6 +66,16 @@ describe('manifest modelsUi', () => {
     expect(ui?.customModels?.formats).toEqual(['openai-chat', 'anthropic-messages'])
   })
 
+  it('a custom-model wire may cut its base from the provider base, but not also name one', () => {
+    const ok = check({ customModels: { wires: { 'gemini': { baseUrlTrim: '/v1' } } } })
+    expect(ok.errors).toEqual([])
+    expect(ok.ui?.customModels?.wires?.['gemini']).toEqual({ baseUrlTrim: '/v1' })
+    expect(check({ customModels: { wires: { 'gemini': { baseUrlTrim: 'v1' } } } }).errors).not.toEqual([])
+    expect(
+      check({ customModels: { wires: { 'gemini': { baseUrlTrim: '/v1', baseUrl: 'https://a.example' } } } }).errors,
+    ).not.toEqual([])
+  })
+
   it('customModels with no formats allows every wire format', () => {
     expect(check({ customModels: {} }).ui?.customModels?.formats).toHaveLength(4)
   })
@@ -195,6 +205,19 @@ describe('hand-added models', () => {
       tags: ['custom'],
       thinkingTiers: ['low', 'medium', 'high'],
       wire: { format: 'anthropic-messages' },
+    })
+  })
+
+  it('a wire with baseUrlTrim follows the base the person set', () => {
+    const wires = { 'gemini': { baseUrlTrim: '/v1' } }
+    const def = { id: 'm', format: 'gemini' } as const
+    expect(userModelToInfo(def, { wires, providerBaseUrl: 'https://proxy.example/zen/go/v1/' }).wire).toEqual({
+      format: 'gemini',
+      baseUrl: 'https://proxy.example/zen/go',
+    })
+    // A base without the suffix leaves the model on the provider's own base.
+    expect(userModelToInfo(def, { wires, providerBaseUrl: 'https://proxy.example/custom' }).wire).toEqual({
+      format: 'gemini',
     })
   })
 
