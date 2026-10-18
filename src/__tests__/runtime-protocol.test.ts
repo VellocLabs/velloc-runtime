@@ -291,6 +291,8 @@ describe('runtime protocol v1 — routes and topics', () => {
       [topic.diagTrace(), { family: 'diagTrace' }],
       [topic.mods(), { family: 'mods' }],
       [topic.modsUi('s1'), { family: 'modsUi', sessionId: 's1' }],
+      [topic.terminals(), { family: 'terminals' }],
+      [topic.terminal('term_1'), { family: 'terminal', terminalId: 'term_1' }],
     ]
     for (const [id, parsed] of cases) {
       expect(parseTopic(id), id).toEqual(parsed)
