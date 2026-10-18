@@ -13,6 +13,18 @@ export const TERMINAL_CAPABILITY = 'terminal'
 export const TERMINAL_ACTIONS = ['create', 'write', 'resize', 'restart', 'close'] as const
 export type TerminalAction = (typeof TERMINAL_ACTIONS)[number]
 
+/** Every action is `full`: each one starts, drives or ends a program running on the host as the person. */
+export const TERMINAL_ACTION_SCOPES: Record<TerminalAction, 'full'> = {
+  create: 'full',
+  write: 'full',
+  resize: 'full',
+  restart: 'full',
+  close: 'full',
+}
+
+/** The host manifest primitive that covers `shell.spawn`'s `pty` input and `shell.resize`. */
+export const TERMINAL_PTY_PRIMITIVE = 'shell.spawn.pty'
+
 /** `terminal.write` refuses more than this per call; clients split larger pastes. */
 export const TERMINAL_WRITE_MAX_BYTES = 64 * 1024
 /** Console size bounds, inclusive, for `create` and `resize`. */

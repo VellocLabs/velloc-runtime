@@ -60,6 +60,7 @@ const ALL_PRIMITIVES = [
   'fs.writeFile.ifMatch',
   'fs.paths',
   'shell.spawn.argv',
+  'shell.spawn.pty',
   'shell.spawn.persist',
   'shell.persistentList',
   'shell.persistentKill',
@@ -305,6 +306,46 @@ describe('shell', () => {
     await expect(
       fake.primitives.shell.spawnPersistent({ shell: 'bash', command: 'x', logPath: '/l' }),
     ).rejects.toSatisfy(isNativePrimitiveUnsupported)
+  })
+
+  it('spawnPty needs shell.spawn.pty listed: an older host would run a pipe child', async () => {
+    const without = make(() => ok({ streamId: 's' }), {
+      capabilities: ['fs', 'shell'],
+      primitives: ALL_PRIMITIVES.filter(p => p !== 'shell.spawn.pty'),
+    })
+    await expect(
+      without.primitives.shell.spawnPty({ file: 'pwsh' }, { cols: 80, rows: 24 }, {}),
+    ).rejects.toSatisfy(isNativePrimitiveUnsupported)
+    expect(without.requests).toHaveLength(0)
+    expect(without.handlerCount()).toBe(0)
+  })
+
+  it('spawnPty sends the argv form with pty, hears its own child only, and resize goes to shell.resize', async () => {
+    const fake = make(request => (routeOf(request) === 'shell.resize' ? ok({ found: true }) : ok({ streamId: 'pty-1' })))
+    const output: string[] = []
+    const exits: number[] = []
+    const child = await fake.primitives.shell.spawnPty(
+      { file: 'pwsh', args: ['-NoLogo'], cwd: '/p' },
+      { cols: 80, rows: 24 },
+      {
+        onOutput: (_stream, bytes) => output.push(new TextDecoder().decode(bytes)),
+        onExit: exit => exits.push(exit.exitCode),
+      },
+    )
+    expect(fake.requests[0]!.payload).toEqual({ file: 'pwsh', args: ['-NoLogo'], cwd: '/p', pty: { cols: 80, rows: 24 } })
+    expect(child.streamId).toBe('pty-1')
+    expect(await child.resize(100, 30)).toBe(true)
+    expect(routeOf(fake.requests[1]!)).toBe('shell.resize')
+    expect(fake.requests[1]!.payload).toEqual({ streamId: 'pty-1', cols: 100, rows: 30 })
+    // The resize payload is plain JSON on the direct port: no binary field, no route policy entry needed.
+    expect(__test_only_directPortRoutePolicy.shell?.resize).toBeUndefined()
+
+    fake.emit('shell', 'onStreamOutput', { streamId: 'other', stream: 'stdout', dataBase64: bytesToBase64(new TextEncoder().encode('no')) })
+    fake.emit('shell', 'onStreamOutput', { streamId: 'pty-1', stream: 'stdout', dataBase64: bytesToBase64(new TextEncoder().encode('hi')) })
+    fake.emit('shell', 'onStreamExit', { streamId: 'pty-1', exitCode: 0, timedOut: false, killed: false, durationMs: 1 })
+    expect(output).toEqual(['hi'])
+    expect(exits).toEqual([0])
+    expect(fake.handlerCount()).toBe(0)
   })
 
   it('persistentList / persistentKill / env', async () => {

@@ -1,4 +1,4 @@
-/** `shell` bridge capability: the streaming / persistent spawns below and `env`. */
+/** `shell` bridge capability: the streaming / persistent / pseudoconsole spawns below, `resize` and `env`. */
 
 /**
  * The streaming surface (F-25): `shell.spawn` output arrives as base64
@@ -46,7 +46,19 @@ export type BridgeShellSpawnPayload = (
    * so never send it without that entry.
    */
   persist?: { logPath: string }
+  /**
+   * Run the child under a pseudoconsole of this size (F-31): its merged console
+   * output arrives as `onStreamOutput` with `stream: 'stdout'` only, and
+   * `shell.resize` changes the size. With `pty` the host refuses `persist`,
+   * `stdinText` and `closeStdin` (`INVALID_ARGS`), as it does `cols` / `rows`
+   * outside 1..1000. Manifest primitive `shell.spawn.pty` — an older host would
+   * ignore the field and run a pipe child, so never send it without that entry.
+   */
+  pty?: BridgeShellPtySize
 }
+
+/** Console size for a pseudoconsole child; both 1..1000. */
+export type BridgeShellPtySize = { cols: number; rows: number }
 
 export type BridgeShellSpawnResult =
   | { streamId: string; persistentId?: never }
@@ -101,6 +113,15 @@ export type ShellBridgeActionMap = {
   }
   streamKill: {
     payload: { streamId: string }
+    result: BridgeShellStreamFoundResult
+  }
+  /**
+   * Resize the console of a pseudoconsole child (F-31). `found: false` for an
+   * unknown or exited stream; a pipe child answers `found: true` and nothing
+   * happens. Covered by the `shell.spawn.pty` primitive.
+   */
+  resize: {
+    payload: { streamId: string } & BridgeShellPtySize
     result: BridgeShellStreamFoundResult
   }
   /** Host-pushed EVENTS of a streaming child (never requested). */

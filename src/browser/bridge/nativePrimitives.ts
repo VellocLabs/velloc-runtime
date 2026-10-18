@@ -5,8 +5,8 @@
  *   `NativePrimitiveUnsupportedError` WITHOUT calling; so does one an older host
  *   answers `NOT_IMPLEMENTED`.
  * - A variant an older host would silently IGNORE (`writeFile` `ifMatch`,
- *   `shell.spawn` `persist`, `{{secret:NAME}}`) is sent only when the manifest
- *   POSITIVELY lists it.
+ *   `shell.spawn` `persist` / `pty`, `{{secret:NAME}}`) is sent only when the
+ *   manifest POSITIVELY lists it.
  * Callers branch on `isNativePrimitiveUnsupported(error)` and fall back.
  */
 import type {
@@ -119,6 +119,14 @@ export type NativeStreamChild = {
   kill(): Promise<boolean>
   /** Stop delivering events to the handlers (the child keeps running). */
   detach(): void
+}
+
+/** A live pseudoconsole child (`shell.spawnPty`, F-31): a stream child whose
+ *  console can be resized. Its output is the console's merged stream, always
+ *  reported as `stdout`. */
+export type NativePtyChild = NativeStreamChild & {
+  /** Apply a new console size. False once the host no longer knows the stream. */
+  resize(cols: number, rows: number): Promise<boolean>
 }
 
 export type NativePrimitives = ReturnType<typeof createNativePrimitives>
@@ -482,6 +490,40 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
       requireListed('shell.spawn.argv')
       envSecretsGate(spec.env)
       return openStream('shell.spawn.argv', spec, handlers)
+    },
+
+    /**
+     * Run `file` with `args` verbatim under a pseudoconsole of `size`
+     * (`shell.spawn` with `pty`): see `openStream`. The handlers get the
+     * console's merged output as `stdout`; the handle also resizes the
+     * console. Needs `shell.spawn.pty` listed — an older host would ignore
+     * `pty` and run a pipe child (F-31).
+     */
+    async spawnPty(
+      spec: {
+        file: string
+        args?: string[]
+        cwd?: string
+        env?: Record<string, string>
+      },
+      size: { cols: number; rows: number },
+      handlers: NativeStreamHandlers,
+    ): Promise<NativePtyChild> {
+      requireListed('shell.spawn.pty')
+      envSecretsGate(spec.env)
+      const child = await openStream('shell.spawn.pty', { ...spec, pty: size }, handlers)
+      return {
+        ...child,
+        async resize(cols: number, rows: number): Promise<boolean> {
+          return (
+            await send('shell.spawn.pty', 'shell', 'resize', {
+              streamId: child.streamId,
+              cols,
+              rows,
+            })
+          ).found
+        },
+      }
     },
 
     /** Run `command` with the named shell as a live child (`shell.spawn`'s
