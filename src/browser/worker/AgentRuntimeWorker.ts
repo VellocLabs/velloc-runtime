@@ -87,6 +87,7 @@ import {
 import { AgentRuntimeDiagnostics } from './AgentRuntimeDiagnostics'
 import {
   fireSessionDeletedStop as notifySessionDeleted,
+  notifyTurnEnded,
   scheduleActorStopForInterrupt as notifyUserInterrupt,
 } from './agentRuntimeStopNotifications'
 import {
@@ -2027,6 +2028,11 @@ export class AgentRuntimeWorker {
         }
       }
 
+      // A user Stop already told the host; any other ending releases the
+      // turn's agent-tab holds here.
+      if (!this.turns.isStopping() && turnScope?.abortController.signal.aborted !== true) {
+        notifyTurnEnded(this.runtime)
+      }
       this.turns.finishStopping()
       // Clear retry phase on turn completion.
       this.turns.endRetry()
@@ -2080,6 +2086,7 @@ export class AgentRuntimeWorker {
         this.turns.endRetry()
         return { status: 'aborted', reason: 'user_interrupted' }
       }
+      notifyTurnEnded(this.runtime ?? null)
       const errorMessage = error instanceof Error ? error.message : 'Unknown worker error'
       this.emitError('worker_submit_failed', errorMessage)
       return { status: 'failed', code: 'worker_submit_failed', message: errorMessage }

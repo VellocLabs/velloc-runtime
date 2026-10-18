@@ -16,6 +16,23 @@ export function scheduleActorStopForInterrupt(
     })
 }
 
+/**
+ * Best-effort host notification that a turn ended without a user Stop: the
+ * host releases the turn's agent-tab holds (F-21). Every ending sends it, as
+ * the engine's own turn-end notice covers only turns that reach the Stop
+ * hooks; a repeat is harmless.
+ */
+export function notifyTurnEnded(runtime: AgentRuntimeState | null): void {
+  const session = runtime?.hostBridge?.session
+  const sessionId = runtime?.engine.boundSessionId()
+  if (typeof session?.onStop !== 'function' || !sessionId) {
+    return
+  }
+  void session.onStop({ sessionId, reason: 'completed' }).catch(() => {
+    // The next turn's end or the session's deletion releases them instead.
+  })
+}
+
 /** Best-effort host notification that releases native per-session resources. */
 export async function fireSessionDeletedStop(
   runtime: AgentRuntimeState | null,

@@ -778,6 +778,47 @@ describe('AgentRuntimeWorker — permission mode', () => {
       'the mode snapshot must arrive MID-turn (before worker.completed)',
     ).toBeLessThan(completedIdx)
   })
+
+  // A turn that ends without reaching the Stop hooks (an exhausted API retry,
+  // max turns, a parked ask) still tells the host, which releases the turn's
+  // agent-tab holds (F-21).
+  it('a turn that ends on an API error releases the host turn', async () => {
+    const emitted: Array<{ type: string; payload?: unknown }> = []
+    const onStop = vi.fn(async () => ({ ok: true as const, stopped: true }))
+    const runtime = {
+      conversationStore: {
+        getSessionMetadata: vi.fn(async () => ({})),
+        updateSessionMetadata: vi.fn(async () => ({})),
+        saveToolCallDetail: vi.fn(async () => {}),
+      },
+      engine: {
+        boundSessionId: () => 'mode-test',
+        getCurrentModel: () => 'model-test',
+        getCurrentProviderId: () => 'provider-test',
+        getCurrentThinkingTier: () => undefined,
+        transcriptRows: () => [],
+        setModelSelection: vi.fn(),
+        getCurrentPermissionMode: () => 'default',
+        setPermissionMode: vi.fn(),
+        submitTurn: async function* () {
+          yield { type: 'assistant', isApiErrorMessage: true, message: { content: [] } }
+        },
+      },
+      hostBridge: { getModelCatalog: vi.fn(async () => null), session: { onStop } },
+      tools: [],
+      options: { cwd: '/workspace' },
+      getAppState: () => ({ permissionRules: { bypassPermissionsModeDisabled: false } }),
+      setAppState: vi.fn(),
+    }
+    const worker = await initWorker(emitted, runtime)
+
+    await worker.receiveFrame({
+      type: 'worker.submitMessage',
+      payload: { prompt: 'go' } as never,
+    })
+    await vi.waitFor(() => expect(emitted.some(m => m.type === 'worker.completed')).toBe(true))
+    expect(onStop).toHaveBeenCalledWith({ sessionId: 'mode-test', reason: 'completed' })
+  })
 })
 
 describe('AgentRuntimeWorker — project folder snapshot', () => {

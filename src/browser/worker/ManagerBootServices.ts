@@ -119,7 +119,7 @@ export class ManagerBootServices {
     void this.bootProviderModsOnce()
     // …and the model catalog (its cache lives under the home, read by the fs).
     void this.installModelCatalogOnce()
-    // Client auto-update (F-30) needs the port and the manifest; retried per port until it starts.
+    // Client auto-update (F-30) needs the port and the manifest; retried per port and per manifest until it starts.
     void this.installAppUpdate()
     // The render-cache purge policy needs the port and the manifest too.
     this.installRenderCache()
@@ -132,7 +132,9 @@ export class ManagerBootServices {
 
   /** The host manifest may have arrived after the port: retry what gates on it. */
   onHostManifestChanged(): void {
-    if (this.host.getDirectBridgeTransport()) this.installRenderCache()
+    if (!this.host.getDirectBridgeTransport()) return
+    void this.installAppUpdate()
+    this.installRenderCache()
   }
 
   getManagerFs(): RuntimeFs {
