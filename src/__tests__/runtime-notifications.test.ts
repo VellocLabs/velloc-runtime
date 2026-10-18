@@ -31,10 +31,11 @@ async function flush(rounds = 8): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, 0))
 }
 
-async function until(predicate: () => boolean, what: string, timeoutMs = 5_000): Promise<void> {
+async function until(predicate: () => boolean, what: string, timeoutMs = 4_000): Promise<void> {
   // A deadline, not a round count: these run alongside 400 other files, and a
   // fixed number of microtask flushes is a different amount of time on a
-  // loaded machine than on an idle one.
+  // loaded machine than on an idle one. It sits under the 5 s test timeout so
+  // a miss names what it was waiting for.
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     if (predicate()) return
@@ -71,6 +72,14 @@ async function connect(rig: ReturnType<typeof makeRig>, scopeCeiling?: 'control'
   })
 }
 
+/**
+ * Resolves once the hub holds the client's subscription. The topic keeps no
+ * history, so a notification published before then is never delivered.
+ */
+function subscribed(rig: ReturnType<typeof makeRig>): Promise<void> {
+  return until(() => rig.broker.subscribersOf(NOTIFICATIONS_TOPIC).length === 1, 'the subscription to reach the hub')
+}
+
 describe('the notifications topic', () => {
   it('reaches a client, which decides how to show it', async () => {
     const rig = makeRig()
@@ -80,7 +89,7 @@ describe('the notifications topic', () => {
       connection: async () => connection,
       show: notification => shown.push(notification),
     })
-    await flush()
+    await subscribed(rig)
 
     rig.notify({ message: 'Velloc is waiting for your input', title: 'Fix the parser', notificationType: 'turn_complete', sessionId: 's1' })
     await until(() => shown.length === 1, 'the turn-end notification')
@@ -98,7 +107,7 @@ describe('the notifications topic', () => {
     const connection = await connect(rig, 'observe')
     const shown: RuntimeNotification[] = []
     subscribeRuntimeNotifications({ connection: async () => connection, show: n => shown.push(n) })
-    await flush()
+    await subscribed(rig)
 
     rig.notify({ message: 'done', notificationType: 'turn_complete' })
     await until(() => shown.length === 1, 'the observer heard it')
@@ -126,7 +135,7 @@ describe('the notifications topic', () => {
     const connection = await connect(rig)
     const shown: RuntimeNotification[] = []
     subscribeRuntimeNotifications({ connection: async () => connection, show: n => shown.push(n) })
-    await flush()
+    await subscribed(rig)
 
     rig.broker.publish(NOTIFICATIONS_TOPIC, { title: 'no message' }, { type: 'turnEnd' })
     rig.broker.publish(NOTIFICATIONS_TOPIC, null, { type: 'turnEnd' })
