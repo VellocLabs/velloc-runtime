@@ -1,12 +1,14 @@
 /**
  * The in-memory per-session pane records (F-9), seeded from the layout blob
- * once at boot so a session switch reads nothing. Every change goes to the
- * blob through the coalesced writer; records past the cap are dropped least
- * recently used first, and a deleted session's record goes with it.
+ * once at boot so a session switch reads nothing. A change writes only the
+ * record or weight it touched into the blob as stored, so two windows sharing
+ * the storage keep each other's records; another window's write refreshes the
+ * snapshot through the `storage` event. Records past the cap go least recently
+ * used first; a deleted session's record goes with it.
  */
 import { useSyncExternalStore } from 'react'
 
-import { loadLayoutStorage, updateLayoutStorage } from './layoutStorage'
+import { LAYOUT_STORAGE_KEY, loadLayoutStorage, updateLayoutStorage } from './layoutStorage'
 import { SESSION_RECORD_CAP, trimSessionRecords } from './layoutSanitize'
 import {
   defaultSessionPaneRecord,
@@ -33,6 +35,8 @@ export interface SessionLayoutsStore {
   /** Forget deleted sessions. */
   remove(sessionIds: Iterable<string>): void
   setWeight(kind: SidePaneKind, weight: number): void
+  /** Stop following the storage; for tests and teardown. */
+  dispose(): void
 }
 
 export function createSessionLayoutsStore(now: () => number = Date.now): SessionLayoutsStore {
@@ -43,20 +47,31 @@ export function createSessionLayoutsStore(now: () => number = Date.now): Session
   }
   const listeners = new Set<() => void>()
 
-  const commit = (next: SessionLayoutsSnapshot): void => {
+  const publish = (next: SessionLayoutsSnapshot): void => {
     snapshot = next
-    updateLayoutStorage(prev => ({
-      ...prev,
-      paneWeightByKind: next.weights,
-      sessions: Object.fromEntries(next.records),
-    }))
     for (const listener of [...listeners]) listener()
   }
 
-  const withRecord = (sessionId: string, record: SessionPaneRecord): void => {
-    const entries: [string, SessionPaneRecord][] = [...snapshot.records].filter(([id]) => id !== sessionId)
-    entries.push([sessionId, record])
-    commit({ ...snapshot, records: new Map(trimSessionRecords(entries, SESSION_RECORD_CAP)) })
+  /** Merge one record into the blob as it is now; the cap trims the merged map. */
+  const writeRecord = (sessionId: string, record: SessionPaneRecord): void => {
+    const stored = updateLayoutStorage(prev => {
+      const entries: [string, SessionPaneRecord][] = Object.entries(prev.sessions).filter(
+        ([id]) => id !== sessionId,
+      )
+      entries.push([sessionId, record])
+      return { ...prev, sessions: Object.fromEntries(trimSessionRecords(entries, SESSION_RECORD_CAP)) }
+    })
+    publish({ ...snapshot, records: new Map(Object.entries(stored.sessions)) })
+  }
+
+  // Another window's write: take its blob as the snapshot.
+  const onStorage = (event: StorageEvent): void => {
+    if (event.key !== null && event.key !== LAYOUT_STORAGE_KEY) return
+    const blob = loadLayoutStorage()
+    publish({ records: new Map(Object.entries(blob.sessions)), weights: blob.paneWeightByKind })
+  }
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', onStorage)
   }
 
   return {
@@ -72,25 +87,42 @@ export function createSessionLayoutsStore(now: () => number = Date.now): Session
       const prev = snapshot.records.get(sessionId)
       const stamped = { ...record, usedAt: now() }
       if (prev && sessionPaneRecordEquals({ ...prev, usedAt: stamped.usedAt }, stamped)) return
-      withRecord(sessionId, stamped)
+      writeRecord(sessionId, stamped)
     },
     touch: sessionId => {
       const prev = snapshot.records.get(sessionId)
       if (!prev) return
-      withRecord(sessionId, { ...prev, usedAt: now() })
+      writeRecord(sessionId, { ...prev, usedAt: now() })
     },
     remove: sessionIds => {
       const doomed = new Set(sessionIds)
-      if (![...doomed].some(id => snapshot.records.has(id))) return
-      const records = new Map(snapshot.records)
-      for (const id of doomed) records.delete(id)
-      commit({ ...snapshot, records })
+      if (doomed.size === 0) return
+      let changed = [...doomed].some(id => snapshot.records.has(id))
+      const stored = updateLayoutStorage(prev => {
+        if (![...doomed].some(id => id in prev.sessions)) return prev
+        changed = true
+        const sessions = { ...prev.sessions }
+        for (const id of doomed) delete sessions[id]
+        return { ...prev, sessions }
+      })
+      if (changed) publish({ ...snapshot, records: new Map(Object.entries(stored.sessions)) })
     },
     setWeight: (kind, weight) => {
       if (!Number.isFinite(weight) || weight <= 0) return
       const rounded = Math.round(weight * 10_000) / 10_000
       if (snapshot.weights[kind] === rounded) return
-      commit({ ...snapshot, weights: { ...snapshot.weights, [kind]: rounded } })
+      const stored = updateLayoutStorage(prev =>
+        prev.paneWeightByKind[kind] === rounded
+          ? prev
+          : { ...prev, paneWeightByKind: { ...prev.paneWeightByKind, [kind]: rounded } },
+      )
+      publish({ ...snapshot, weights: stored.paneWeightByKind })
+    },
+    dispose: () => {
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+        window.removeEventListener('storage', onStorage)
+      }
+      listeners.clear()
     },
   }
 }

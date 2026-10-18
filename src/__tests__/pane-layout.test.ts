@@ -16,6 +16,7 @@ import {
   normalise,
   openPane,
   panesIn,
+  paneToggleAction,
   paneWeightFor,
   placePane,
   pruneUnrestorable,
@@ -197,5 +198,25 @@ describe('the session record', () => {
     expect(pruned.closedSlots.browser).toEqual({ groupId: 'root', index: 1, axis: 'row', weight: 3 })
     expect(pruned.maximized).toBeNull()
     expect(pruneUnrestorable(record, { browserTabs: 1 })).toBe(record)
+  })
+})
+
+describe('paneToggleAction', () => {
+  it('opens a closed pane, closes an open one, shows a hidden overlay, moves an expansion', () => {
+    const record = openPane(openPane(defaultSessionPaneRecord(), 'diff', {}), 'tasks', {})
+    expect(paneToggleAction(record, 'plan', false)).toBe('open')
+    expect(paneToggleAction(record, 'diff', false)).toBe('close')
+    expect(paneToggleAction(record, 'diff', true)).toBe('show-overlay')
+    const expanded = setMaximized(record, 'tasks')
+    expect(paneToggleAction(expanded, 'diff', false)).toBe('move-expansion')
+    expect(paneToggleAction(expanded, 'tasks', false)).toBe('close')
+  })
+
+  it('decides against the drawn record: a pruned browser pane leaves no expansion behind', () => {
+    const stored = setMaximized(openPane(openPane(defaultSessionPaneRecord(), 'tasks', {}), 'browser', {}), 'browser')
+    expect(paneToggleAction(stored, 'tasks', false)).toBe('move-expansion')
+    const drawn = pruneUnrestorable(stored, { browserTabs: 0 })
+    expect(drawn.maximized).toBeNull()
+    expect(paneToggleAction(drawn, 'tasks', false)).toBe('close')
   })
 })

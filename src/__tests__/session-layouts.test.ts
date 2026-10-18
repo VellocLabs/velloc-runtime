@@ -66,6 +66,32 @@ describe('createSessionLayoutsStore', () => {
     expect(stored().sessions).toEqual({})
   })
 
+  // Two windows share one storage: each writes only what it changed, so the
+  // other window's records survive.
+  it("two stores over one storage keep each other's records and weights", () => {
+    const a = createSessionLayoutsStore(() => now)
+    const b = createSessionLayoutsStore(() => now)
+    a.put('x', openPane(defaultSessionPaneRecord(), 'diff', {}))
+    flushLayoutStorage()
+    b.put('y', openPane(defaultSessionPaneRecord(), 'tasks', {}))
+    flushLayoutStorage()
+    expect(Object.keys(stored().sessions).sort()).toEqual(['x', 'y'])
+    a.setWeight('diff', 2)
+    flushLayoutStorage()
+    b.setWeight('tasks', 1.5)
+    flushLayoutStorage()
+    expect(JSON.parse(store.get(LAYOUT_STORAGE_KEY)!).paneWeightByKind).toEqual({ diff: 2, tasks: 1.5 })
+    // A touch in one window keeps the other's record; a remove deletes only its keys.
+    a.touch('x')
+    flushLayoutStorage()
+    expect(Object.keys(stored().sessions).sort()).toEqual(['x', 'y'])
+    b.remove(['y'])
+    flushLayoutStorage()
+    expect(Object.keys(stored().sessions)).toEqual(['x'])
+    // A write merges over the blob as stored, so the writer's snapshot then holds both.
+    expect([...b.getSnapshot().records.keys()]).toEqual(['x'])
+  })
+
   it('keeps the most recently used records past the cap', () => {
     const layouts = createSessionLayoutsStore(() => now++)
     for (let i = 0; i < SESSION_RECORD_CAP + 3; i++) layouts.put(`s${i}`, openPane(defaultSessionPaneRecord(), 'tasks', {}))

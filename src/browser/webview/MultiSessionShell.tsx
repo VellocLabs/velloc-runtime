@@ -60,6 +60,7 @@ import {
   hasPane,
   openPane,
   panesIn,
+  paneToggleAction,
   paneWeightFor,
   pruneUnrestorable,
   resetPaneLayout,
@@ -1919,9 +1920,18 @@ export function MultiSessionShell({
   const activeNexusTabCount = activeSessionId
     ? (sessionTabCounts.get(activeSessionId)?.nexus ?? 0)
     : 0
+  const sessionTabCountsRef = useRef(sessionTabCounts)
+  sessionTabCountsRef.current = sessionTabCounts
   // The drawn record: the stored one with the panes this session cannot show
-  // right now pruned (a browser pane while it owns no tab). The stored record
-  // keeps them, so they return in place.
+  // right now pruned (a browser pane while it owns no tab; its slot stays, so
+  // it returns in place). Every decision reads this same pruned record.
+  const readPaneRecord = useCallback(
+    (sessionId: string) =>
+      pruneUnrestorable(sessionLayoutsStore.get(sessionId), {
+        browserTabs: sessionTabCountsRef.current.get(sessionId)?.nexus ?? 0,
+      }),
+    [sessionLayoutsStore],
+  )
   const storedPaneRecord = activeSessionId ? sessionLayouts.records.get(activeSessionId) : undefined
   const activePaneRecord = useMemo(
     () => pruneUnrestorable(storedPaneRecord ?? sessionLayoutsStore.get(''), { browserTabs: activeNexusTabCount }),
@@ -1949,7 +1959,7 @@ export function MultiSessionShell({
   const updatePaneRecord = useCallback(
     (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId = activeSessionIdRef.current) => {
       if (!sessionId) return
-      const prev = sessionLayoutsStore.get(sessionId)
+      const prev = readPaneRecord(sessionId)
       const next = fn(prev)
       if (next === prev) return
       if (panesIn(prev.layout).length > 0 && panesIn(next.layout).length === 0) {
@@ -1957,7 +1967,7 @@ export function MultiSessionShell({
       }
       sessionLayoutsStore.put(sessionId, next)
     },
-    [sessionLayoutsStore],
+    [sessionLayoutsStore, readPaneRecord],
   )
   const focusPane = useCallback((kind: SidePaneKind) => {
     const id = activeSessionIdRef.current
@@ -1980,39 +1990,37 @@ export function MultiSessionShell({
     (kind: SidePaneKind) => {
       const id = activeSessionIdRef.current
       if (!id) return
-      if (!hasPane(sessionLayoutsStore.get(id).layout, kind)) return
+      if (!hasPane(readPaneRecord(id).layout, kind)) return
       updatePaneRecord(r => closePane(r, kind))
       lastClosedPaneRef.current.set(id, kind)
       if (focusedPaneRef.current.get(id) === kind) focusedPaneRef.current.delete(id)
     },
-    [updatePaneRecord, sessionLayoutsStore],
+    [updatePaneRecord, readPaneRecord],
   )
-  /** The topbar toggle: open a closed pane, close an open one. Overlaid and
-   *  hidden, an open pane's toggle shows the overlay; while another pane is
-   *  expanded, it moves the expansion to this pane. */
+  /** The topbar toggle (`paneToggleAction` against the drawn record). */
   const togglePane = useCallback(
     (kind: SidePaneKind) => {
       const id = activeSessionIdRef.current
       if (!id) return
       setBackgroundTaskFocusSessionId(null)
-      const record = sessionLayoutsStore.get(id)
-      if (!hasPane(record.layout, kind)) {
-        openPaneFor(kind)
-        return
-      }
       const presence = rightPanelPresenceRef.current
-      if (presence.form === 'overlay' && !presence.overlay) {
-        presentRightPanel({ type: 'personOpen', view: kind })
-        return
+      switch (paneToggleAction(readPaneRecord(id), kind, presence.form === 'overlay' && !presence.overlay)) {
+        case 'open':
+          openPaneFor(kind)
+          break
+        case 'show-overlay':
+          presentRightPanel({ type: 'personOpen', view: kind })
+          break
+        case 'move-expansion':
+          updatePaneRecord(r => setMaximized(r, kind))
+          focusPane(kind)
+          break
+        case 'close':
+          closePaneFor(kind)
+          break
       }
-      if (record.maximized !== null && record.maximized !== kind) {
-        updatePaneRecord(r => setMaximized(r, kind))
-        focusPane(kind)
-        return
-      }
-      closePaneFor(kind)
     },
-    [sessionLayoutsStore, openPaneFor, closePaneFor, updatePaneRecord, focusPane],
+    [readPaneRecord, openPaneFor, closePaneFor, updatePaneRecord, focusPane],
   )
   const handleResetLayout = useCallback(() => {
     updatePaneRecord(resetPaneLayout)
@@ -2262,7 +2270,7 @@ export function MultiSessionShell({
     showSubagent: taskId => {
       const sessionId = activeSessionIdRef.current
       if (sessionId && !panesBeforeAgentView.current.has(sessionId)) {
-        const record = sessionLayoutsStore.get(sessionId)
+        const record = readPaneRecord(sessionId)
         panesBeforeAgentView.current.set(sessionId, {
           hadTasks: hasPane(record.layout, 'tasks'),
           maximized: record.maximized,
@@ -2716,7 +2724,7 @@ export function MultiSessionShell({
       const id = activeSessionIdRef.current
       if (!id) return
       event.preventDefault()
-      const record = sessionLayoutsStore.get(id)
+      const record = readPaneRecord(id)
       const panes = panesIn(record.layout)
       const focused = focusedPaneRef.current.get(id)
       const target = focused && panes.includes(focused) ? focused : panes[panes.length - 1]
@@ -2740,7 +2748,7 @@ export function MultiSessionShell({
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [sessionLayoutsStore, togglePane, closePaneFor, openPaneFor, updatePaneRecord])
+  }, [readPaneRecord, togglePane, closePaneFor, openPaneFor, updatePaneRecord])
   const handleSettingsNavigate = useCallback((section: SettingsSectionId) => {
     setPluginSettingsRequest(null)
     setSettingsSection(section)

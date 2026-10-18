@@ -420,3 +420,22 @@ export function sessionPaneRecordEquals(a: SessionPaneRecord, b: SessionPaneReco
     JSON.stringify(a.files ?? null) === JSON.stringify(b.files ?? null)
   )
 }
+
+/** What a pane toggle does to the record the screen draws. */
+export type PaneToggleAction = 'open' | 'show-overlay' | 'move-expansion' | 'close'
+
+/**
+ * The toggle of `kind` against the DRAWN record: a closed pane opens; an open
+ * pane's toggle shows the hidden overlay when the region is overlaid, moves
+ * the expansion onto the pane when another is expanded, else closes it.
+ */
+export function paneToggleAction(
+  record: SessionPaneRecord,
+  kind: SidePaneKind,
+  overlayHidden: boolean,
+): PaneToggleAction {
+  if (!hasPane(record.layout, kind)) return 'open'
+  if (overlayHidden) return 'show-overlay'
+  if (record.maximized !== null && record.maximized !== kind) return 'move-expansion'
+  return 'close'
+}
