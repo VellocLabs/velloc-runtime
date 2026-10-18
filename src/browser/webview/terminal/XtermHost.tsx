@@ -8,6 +8,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -29,6 +30,7 @@ import { TERMINAL_CAPABILITY, isTerminalSize } from '@/terminal/protocol'
 import { readClipboard, writeClipboard } from '@/utils/clipboard'
 
 import { useT } from '../i18n'
+import { FitScheduler } from './terminalFit'
 import { terminalKeyDecision } from './terminalKeys'
 import type { TerminalPrefs } from './terminalPrefs'
 import { registerTerminalProbe } from './terminalProbe'
@@ -63,6 +65,7 @@ export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }
   const hostRef = useRef<HTMLDivElement | null>(null)
   const termRef = useRef<Terminal | null>(null)
   const searchRef = useRef<SearchAddon | null>(null)
+  const fitterRef = useRef<FitScheduler | null>(null)
   const findInputRef = useRef<HTMLInputElement | null>(null)
   const [findOpen, setFindOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -138,6 +141,12 @@ export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }
       if (dims.cols !== term.cols || dims.rows !== term.rows) term.resize(dims.cols, dims.rows)
       sendSize(term.cols, term.rows)
     }
+    const fitter = new FitScheduler({
+      measure: () => ({ width: host.clientWidth, height: host.clientHeight }),
+      fit,
+      debounceMs: FIT_DEBOUNCE_MS,
+    })
+    fitterRef.current = fitter
     const hasFocus = (): boolean => host.contains(document.activeElement)
 
     const unsubscribe = connection.subscribe(topic.terminal(terminalId), event => {
@@ -146,14 +155,14 @@ export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }
         mirror = next
         // Our own size wins while this view is focused; the first snapshot
         // adopts the console's size until the host has measured itself.
-        fit()
+        fitter.fitNow()
         return
       }
       if (event.type === 'resize' && next && next !== mirror) {
         mirror = next
         if (hasFocus()) {
           lastSent = null
-          fit()
+          fitter.fitNow()
         } else if (next.cols !== term.cols || next.rows !== term.rows) {
           term.resize(next.cols, next.rows)
         }
@@ -195,23 +204,13 @@ export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }
       }
     })
 
-    let fitTimer: ReturnType<typeof setTimeout> | null = null
-    const observer =
-      typeof ResizeObserver === 'function'
-        ? new ResizeObserver(() => {
-            if (fitTimer) clearTimeout(fitTimer)
-            fitTimer = setTimeout(() => {
-              fitTimer = null
-              fit()
-            }, FIT_DEBOUNCE_MS)
-          })
-        : null
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fitter.observed()) : null
     observer?.observe(host)
     const releaseTheme = watchDocumentScheme(scheme => {
       term.options.theme = buildTerminalTheme(scheme, resolveCssToken)
     })
 
-    fit()
+    fitter.fitNow()
     if (autoFocus) term.focus()
     const releaseProbe = registerTerminalProbe(terminalId, {
       lines: () => {
@@ -230,7 +229,8 @@ export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }
 
     return () => {
       releaseProbe()
-      if (fitTimer) clearTimeout(fitTimer)
+      fitterRef.current = null
+      fitter.dispose()
       observer?.disconnect()
       releaseTheme()
       unsubscribe()
@@ -244,6 +244,13 @@ export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }
     // The emulator is rebuilt for another terminal or connection only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terminalId, connection])
+
+  // The observer reports a new box only when the window renders, and a
+  // covered window does not; a render of this host still happens, so the
+  // box is checked here against the last one fitted.
+  useLayoutEffect(() => {
+    fitterRef.current?.rendered()
+  })
 
   useEffect(() => {
     const term = termRef.current

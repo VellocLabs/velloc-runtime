@@ -3,8 +3,8 @@
  * kept free of xterm.js so it is unit-testable: a snapshot resets the screen
  * and replays the scrollback, an `output` delta is written, `resize` /
  * `title` / `state` deltas update the mirrored record. Also the input
- * batcher: keystrokes are collected per animation frame and sent as one
- * `terminal.write`, split at the wire's size cap.
+ * batcher: keystrokes collected for one animation frame (a timer stands in
+ * when no frame comes), escape sequences sent at once, split at the cap.
  */
 import {
   TERMINAL_WRITE_MAX_BYTES,
@@ -123,9 +123,36 @@ export function splitForWire(data: string, maxBytes: number = TERMINAL_WRITE_MAX
 }
 
 /**
- * Collects input and flushes it once per `schedule` tick (an animation
- * frame in the view, a manual tick in tests) through `send`, in wire-sized
- * pieces. `dispose` drops anything pending.
+ * How long a batch waits for an animation frame before a timer sends it:
+ * a covered window renders no frame at all.
+ */
+export const INPUT_FLUSH_FALLBACK_MS = 32
+
+/** The default batch tick: the next animation frame, or the fallback timer, whichever comes first. */
+export function scheduleInputFlush(flush: () => void): void {
+  let done = false
+  const once = (): void => {
+    if (done) return
+    done = true
+    flush()
+  }
+  const timer = setTimeout(once, INPUT_FLUSH_FALLBACK_MS)
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      clearTimeout(timer)
+      once()
+    })
+  }
+}
+
+const ESC = 0x1b
+
+/**
+ * Collects input and flushes it once per `schedule` tick (the default tick
+ * in the view, a manual tick in tests) through `send`, in wire-sized
+ * pieces. Data that begins with ESC (a key sequence, or the emulator's reply
+ * to a console query such as the cursor position, which the host waits for
+ * only briefly) is flushed at once. `dispose` drops anything pending.
  */
 export class InputBatcher {
   private pending = ''
@@ -134,15 +161,16 @@ export class InputBatcher {
 
   constructor(
     private readonly send: (data: string) => void,
-    private readonly schedule: (flush: () => void) => void = flush => {
-      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => flush())
-      else setTimeout(flush, 0)
-    },
+    private readonly schedule: (flush: () => void) => void = scheduleInputFlush,
   ) {}
 
   push(data: string): void {
     if (this.disposed || !data) return
     this.pending += data
+    if (data.charCodeAt(0) === ESC) {
+      this.flush()
+      return
+    }
     if (this.scheduled) return
     this.scheduled = true
     this.schedule(() => this.flush())

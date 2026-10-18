@@ -1,9 +1,11 @@
 /** The topic → emulator glue and the input batcher (F-31), without xterm.js. */
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  INPUT_FLUSH_FALLBACK_MS,
   InputBatcher,
   applyTerminalTopicEvent,
+  scheduleInputFlush,
   splitForWire,
   type MirroredTerminal,
 } from '@/browser/webview/terminal/xtermBinding'
@@ -99,5 +101,68 @@ describe('InputBatcher', () => {
     batcher.dispose()
     tick!()
     expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('an escape sequence is sent at once, with what was pending before it', () => {
+    const send = vi.fn()
+    let tick: (() => void) | null = null
+    const batcher = new InputBatcher(send, flush => {
+      tick = flush
+    })
+    batcher.push('a')
+    expect(send).not.toHaveBeenCalled()
+    batcher.push('\u001b[2;9R')
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith('a\u001b[2;9R')
+    // The tick that was pending finds nothing left.
+    tick!()
+    expect(send).toHaveBeenCalledTimes(1)
+    batcher.push('\u001b[A')
+    expect(send).toHaveBeenLastCalledWith('\u001b[A')
+  })
+
+  describe('the default tick', () => {
+    beforeEach(() => vi.useFakeTimers())
+    afterEach(() => {
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+    })
+
+    it('flushes on the animation frame when one comes', () => {
+      const frames: FrameRequestCallback[] = []
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb))
+      const flush = vi.fn()
+      scheduleInputFlush(flush)
+      expect(flush).not.toHaveBeenCalled()
+      frames.forEach(cb => cb(16))
+      expect(flush).toHaveBeenCalledTimes(1)
+      vi.advanceTimersByTime(INPUT_FLUSH_FALLBACK_MS * 2)
+      expect(flush).toHaveBeenCalledTimes(1)
+    })
+
+    it('flushes on the timer when no frame comes, once', () => {
+      const frames: FrameRequestCallback[] = []
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb))
+      const flush = vi.fn()
+      scheduleInputFlush(flush)
+      vi.advanceTimersByTime(INPUT_FLUSH_FALLBACK_MS - 1)
+      expect(flush).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(1)
+      expect(flush).toHaveBeenCalledTimes(1)
+      // A frame that arrives late does not flush again.
+      frames.forEach(cb => cb(5000))
+      expect(flush).toHaveBeenCalledTimes(1)
+    })
+
+    it('a batcher on the default tick sends its input without any frame', () => {
+      vi.stubGlobal('requestAnimationFrame', () => 0)
+      const send = vi.fn()
+      const batcher = new InputBatcher(send)
+      batcher.push('ls')
+      batcher.push('\r')
+      vi.advanceTimersByTime(INPUT_FLUSH_FALLBACK_MS)
+      expect(send).toHaveBeenCalledTimes(1)
+      expect(send).toHaveBeenCalledWith('ls\r')
+    })
   })
 })
