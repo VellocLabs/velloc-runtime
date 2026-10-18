@@ -271,7 +271,7 @@ export const de: Messages = {
   'topbar.pane.show': '{pane} einblenden',
   'topbar.pane.hide': '{pane} ausblenden',
   'topbar.morePanes': 'Weitere Bereiche',
-  'topbar.sessionOverview': 'Sitzungsübersicht',
+  'topbar.sessionRail': 'Sitzungsleiste',
   'topbar.resetLayout': 'Layout zurücksetzen',
   'pane.expand': 'Bereich vergrößern',
   'pane.restore': 'Bereich wiederherstellen',

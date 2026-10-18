@@ -294,7 +294,7 @@ export const en = {
   'topbar.pane.show': 'Show {pane}',
   'topbar.pane.hide': 'Hide {pane}',
   'topbar.morePanes': 'More panes',
-  'topbar.sessionOverview': 'Session overview',
+  'topbar.sessionRail': 'Session rail',
   'topbar.resetLayout': 'Reset layout',
   'pane.expand': 'Expand pane',
   'pane.restore': 'Restore pane',

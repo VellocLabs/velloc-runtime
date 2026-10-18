@@ -1,10 +1,10 @@
 import {
   ClipboardListIcon,
-  FilesIcon,
-  GitCompareArrowsIcon,
-  GlobeIcon,
+  FileDiffIcon,
+  FolderIcon,
   ListTodoIcon,
-  SquareTerminalIcon,
+  SquareMousePointerIcon,
+  TerminalIcon,
   ToolboxIcon,
   type LucideIcon,
 } from 'lucide-react'
@@ -25,10 +25,10 @@ export const PANE_LABEL_KEY: Record<SidePaneKind, MessageKey> = {
 
 export const PANE_ICON: Record<SidePaneKind, LucideIcon> = {
   tasks: ListTodoIcon,
-  diff: GitCompareArrowsIcon,
-  browser: GlobeIcon,
+  diff: FileDiffIcon,
+  browser: SquareMousePointerIcon,
   plan: ClipboardListIcon,
   skill: ToolboxIcon,
-  files: FilesIcon,
-  terminal: SquareTerminalIcon,
+  files: FolderIcon,
+  terminal: TerminalIcon,
 }

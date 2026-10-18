@@ -5,6 +5,7 @@ import {
   EllipsisVerticalIcon,
   Link2Icon,
   PanelLeftIcon,
+  SquareChartGanttIcon,
 } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 
@@ -45,13 +46,14 @@ import { useWindowDragRegions } from "./useWindowDragRegions";
 
 /**
  * The column header above the conversation grid: LEFT controls (settings,
- * model pill, search), CENTER the session tab strip centred on the WINDOW,
- * RIGHT the sidebar toggle, the pane toggles and the More menu, before the
- * OS caption strip the panel overlays (`--nexus-caption-inset`).
+ * model pill, sidebar toggle, search), CENTER the session tab strip centred
+ * on the WINDOW, RIGHT the session rail toggle, the pane toggles and the More
+ * menu, before the OS caption strip the panel overlays
+ * (`--nexus-caption-inset`).
  */
 
 /** The pane kinds with a toggle of their own in the bar, in bar order. */
-const BAR_PANE_KINDS: readonly SidePaneKind[] = ["diff", "browser"];
+const BAR_PANE_KINDS: readonly SidePaneKind[] = ["terminal", "diff", "browser", "files"];
 /** The pane kinds listed as rows of the More menu, in menu order. */
 const MENU_PANE_KINDS: readonly SidePaneKind[] = ["tasks", "plan", "skill"];
 
@@ -81,8 +83,8 @@ export type NexusTopBarProps = {
   /** Programmatic-open signal for the model picker popover (increment to
    *  open) — see NexusModelPickerProps.openToken. */
   modelPickerOpenToken?: number;
-  /** Sidebar collapsed state + toggle: the first control of the right
-   *  group, global across sessions; omitted on hosts that don't render a
+  /** Sidebar collapsed state + toggle: the control right after the model
+   *  picker, global across sessions; omitted on hosts that don't render a
    *  sidebar (the button hides). */
   sidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
@@ -102,8 +104,8 @@ export type NexusTopBarProps = {
   /** Open a closed pane, or close an open one. Omitted on hosts without
    *  panes: no pane toggle and no More menu render. */
   onTogglePane?: (kind: SidePaneKind) => void;
-  /** The More menu's *Session overview* row: shows or hides the session
-   *  card stack (or opens it as a popover where it does not fit). */
+  /** The session rail toggle, first in the right group: shows or hides the
+   *  session card stack (or opens it as a popover where it does not fit). */
   sessionOverview?: { shown: boolean; onToggle: () => void };
   /** The More menu's *Reset layout* row: the active session back to the default arrangement. */
   onResetLayout?: () => void;
@@ -270,6 +272,33 @@ export function NexusTopBar({
           disabled={teammateActive}
           inertWhy={teammateActive ? t("modelPicker.teammateLocked") : undefined}
         />
+        {/* Sidebar toggle — global: it does not change with the session. */}
+        {onToggleSidebar ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                data-testid="topbar-sidebar-toggle"
+                aria-pressed={!sidebarCollapsed}
+                aria-label={
+                  sidebarCollapsed
+                    ? t("topbar.showSidebar")
+                    : t("topbar.collapseSidebar")
+                }
+                onClick={onToggleSidebar}
+              >
+                <PanelLeftIcon className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {sidebarCollapsed
+                ? t("topbar.showSidebar")
+                : t("topbar.collapseSidebar")}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         {/* Import from another agent product — one brand-icon button per
             detected source. Sits with the feature toggles, left of the
             search control so the expanding field never shifts it. */}
@@ -365,7 +394,7 @@ export function NexusTopBar({
         ) : null}
       </div>
 
-      {/* RIGHT: the sidebar toggle, the pane toggles and the More menu, then
+      {/* RIGHT: the session rail toggle, the pane toggles and the More menu, then
           the OS caption-control strip (`--nexus-caption-inset`). The ref is
           on the COLUMN, which the remote indicator can widen past the spacer. */}
       <div
@@ -374,32 +403,38 @@ export function NexusTopBar({
         data-testid="topbar-right-group"
         className="flex items-center gap-1 justify-self-end"
       >
-        {/* Session rail toggle — global: it does not change with the session. */}
-        {onToggleSidebar ? (
+        {/* Session rail toggle — the card stack docked in the conversation;
+            global (`sessionCards.shown`, default shown). */}
+        {sessionOverview ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                data-testid="topbar-sidebar-toggle"
-                aria-pressed={!sidebarCollapsed}
-                aria-label={
-                  sidebarCollapsed
-                    ? t("topbar.showSidebar")
-                    : t("topbar.collapseSidebar")
-                }
-                onClick={onToggleSidebar}
+                data-testid="topbar-session-rail"
+                aria-pressed={sessionOverview.shown}
+                aria-label={t(sessionOverview.shown ? "topbar.pane.hide" : "topbar.pane.show", {
+                  pane: t("topbar.sessionRail"),
+                })}
+                onClick={sessionOverview.onToggle}
               >
-                <PanelLeftIcon className="size-4" />
+                <SquareChartGanttIcon className="size-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {sidebarCollapsed
-                ? t("topbar.showSidebar")
-                : t("topbar.collapseSidebar")}
+              {t(sessionOverview.shown ? "topbar.pane.hide" : "topbar.pane.show", {
+                pane: t("topbar.sessionRail"),
+              })}
             </TooltipContent>
           </Tooltip>
+        ) : null}
+        {sessionOverview && onTogglePane ? (
+          <div
+            aria-hidden
+            className="mx-1 h-4 w-px shrink-0 bg-border"
+            data-testid="topbar-session-rail-divider"
+          />
         ) : null}
         {BAR_PANE_KINDS.map((kind) => {
           if (!onTogglePane || (kind === "browser" && !canOpenSessionTab)) return null;
@@ -485,22 +520,6 @@ export function NexusTopBar({
                     </DropdownMenuPrimitive.CheckboxItem>
                   );
                 })}
-                {sessionOverview ? (
-                  <>
-                    <DropdownMenuPrimitive.Separator className="-mx-1 my-1 h-px bg-border" />
-                    <DropdownMenuPrimitive.CheckboxItem
-                      checked={sessionOverview.shown}
-                      onCheckedChange={sessionOverview.onToggle}
-                      data-testid="topbar-session-overview"
-                      className={MENU_ITEM_CLASS}
-                    >
-                      <span className="flex-1">{t("topbar.sessionOverview")}</span>
-                      <DropdownMenuPrimitive.ItemIndicator>
-                        <CheckIcon aria-hidden className="size-4 text-primary" />
-                      </DropdownMenuPrimitive.ItemIndicator>
-                    </DropdownMenuPrimitive.CheckboxItem>
-                  </>
-                ) : null}
                 {onResetLayout ? (
                   <>
                     <DropdownMenuPrimitive.Separator className="-mx-1 my-1 h-px bg-border" />

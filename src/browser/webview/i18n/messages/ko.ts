@@ -262,7 +262,7 @@ export const ko: Messages = {
   'topbar.pane.show': '{pane} 표시',
   'topbar.pane.hide': '{pane} 숨기기',
   'topbar.morePanes': '더 많은 패널',
-  'topbar.sessionOverview': '세션 개요',
+  'topbar.sessionRail': '세션 레일',
   'topbar.resetLayout': '레이아웃 재설정',
   'pane.expand': '패널 확대',
   'pane.restore': '패널 복원',

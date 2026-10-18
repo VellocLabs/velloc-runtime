@@ -272,7 +272,7 @@ export const fr: Messages = {
   'topbar.pane.show': 'Afficher {pane}',
   'topbar.pane.hide': 'Masquer {pane}',
   'topbar.morePanes': 'Autres panneaux',
-  'topbar.sessionOverview': 'Aperçu de la session',
+  'topbar.sessionRail': 'Barre de session',
   'topbar.resetLayout': 'Réinitialiser la disposition',
   'pane.expand': 'Agrandir le panneau',
   'pane.restore': 'Restaurer le panneau',

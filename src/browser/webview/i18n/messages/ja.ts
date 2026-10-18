@@ -265,7 +265,7 @@ export const ja: Messages = {
   'topbar.pane.show': '{pane}を表示',
   'topbar.pane.hide': '{pane}を非表示',
   'topbar.morePanes': 'その他のパネル',
-  'topbar.sessionOverview': 'セッションの概要',
+  'topbar.sessionRail': 'セッションレール',
   'topbar.resetLayout': 'レイアウトをリセット',
   'pane.expand': 'パネルを拡大',
   'pane.restore': 'パネルを元に戻す',

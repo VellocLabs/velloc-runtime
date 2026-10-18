@@ -260,7 +260,7 @@ export const zh: Messages = {
   'topbar.pane.show': '显示{pane}',
   'topbar.pane.hide': '隐藏{pane}',
   'topbar.morePanes': '更多面板',
-  'topbar.sessionOverview': '会话概览',
+  'topbar.sessionRail': '会话栏',
   'topbar.resetLayout': '重置布局',
   'pane.expand': '展开面板',
   'pane.restore': '恢复面板',

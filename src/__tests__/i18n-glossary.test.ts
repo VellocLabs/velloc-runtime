@@ -379,6 +379,19 @@ const RULES: Rule[] = [
     },
   },
   {
+    // The topbar toggle for the session card stack docked in the conversation.
+    term: 'session rail',
+    en: /\bsession rail\b/i,
+    expect: {
+      zh: /会话栏/,
+      es: /barra de sesión/i,
+      fr: /barre de session/i,
+      de: /Sitzungsleiste/i,
+      ja: /セッションレール/,
+      ko: /세션 레일/,
+    },
+  },
+  {
     // The sidebar section that groups sessions by folder. Distinct from
     // `project folder` (the code-session binding dialog), which keeps its own
     // wording — so this rule is `expect`-only: 项目 / Projekt / proyecto are

@@ -60,27 +60,59 @@ describe('NexusTopBar render', () => {
     expect(lead).not.toContain('title=')
   })
 
+  it('the sidebar toggle sits in the left group, right after the model picker', () => {
+    const html = markup({ sidebarCollapsed: false, onToggleSidebar: () => {}, onTogglePane: () => {} })
+    const right = html.indexOf('data-testid="topbar-right-group"')
+    const toggle = html.indexOf('data-testid="topbar-sidebar-toggle"')
+    const settings = html.indexOf('data-testid="topbar-settings"')
+    expect(toggle).toBeGreaterThan(settings)
+    expect(toggle).toBeLessThan(right)
+    // Nothing but the model picker stands between the settings button and the toggle.
+    expect(html.slice(settings, toggle).match(/<button/g)?.length).toBe(2)
+  })
+
   describe('the right column', () => {
-    it('holds the sidebar toggle, the pane toggles and the More menu, in that order', () => {
+    it('holds the session rail toggle, a divider, the pane toggles and the More menu, in that order', () => {
       const html = markup({
         sidebarCollapsed: false,
         onToggleSidebar: () => {},
         onTogglePane: () => {},
+        sessionOverview: { shown: true, onToggle: () => {} },
       })
       const group = /<div[^>]*data-testid="topbar-right-group"[\s\S]*$/.exec(html)?.[0] ?? ''
-      const order = ['topbar-sidebar-toggle', 'topbar-pane-diff', 'topbar-pane-browser', 'topbar-more-panes']
-        .map(id => group.indexOf(`data-testid="${id}"`))
+      const order = [
+        'topbar-session-rail',
+        'topbar-session-rail-divider',
+        'topbar-pane-terminal',
+        'topbar-pane-diff',
+        'topbar-pane-browser',
+        'topbar-pane-files',
+        'topbar-more-panes',
+      ].map(id => group.indexOf(`data-testid="${id}"`))
       expect(order.every(index => index >= 0)).toBe(true)
       expect([...order].sort((a, b) => a - b)).toEqual(order)
-      // The left group no longer carries the sidebar toggle.
-      const left = html.slice(0, html.indexOf('data-testid="topbar-right-group"'))
-      expect(left).not.toContain('topbar-sidebar-toggle')
-      // Panes Velloc does not have yet have no toggle.
-      expect(html).not.toContain('topbar-pane-terminal')
-      expect(html).not.toContain('topbar-pane-files')
+      expect(group).not.toContain('topbar-sidebar-toggle')
       // The retired controls are gone.
       for (const id of ['topbar-background-tasks', 'topbar-session-cards', 'topbar-open-browser-window']) {
         expect(html).not.toContain(id)
+      }
+    })
+
+    it('the session rail toggle is pressed exactly when the card stack is shown', () => {
+      const shown = tag(markup({ sessionOverview: { shown: true, onToggle: () => {} } }), 'topbar-session-rail')
+      expect(shown).toContain('aria-pressed="true"')
+      expect(shown).toContain('aria-label="Hide Session rail"')
+      const hidden = tag(markup({ sessionOverview: { shown: false, onToggle: () => {} } }), 'topbar-session-rail')
+      expect(hidden).toContain('aria-pressed="false"')
+      expect(hidden).toContain('aria-label="Show Session rail"')
+    })
+
+    it('a terminal and a files toggle follow the layout like any pane', () => {
+      for (const kind of ['terminal', 'files'] as const) {
+        expect(tag(markup({ onTogglePane: () => {} }), `topbar-pane-${kind}`)).toContain('aria-pressed="false"')
+        expect(tag(markup({ onTogglePane: () => {}, openPanes: [kind] }), `topbar-pane-${kind}`)).toContain(
+          'aria-pressed="true"',
+        )
       }
     })
 
