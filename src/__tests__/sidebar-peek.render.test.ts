@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 /**
- * The sidebar's peek drawer while the session area is too narrow to dock it
- * (F-9): opened by resting at the start edge, closed by Escape, a press
- * outside, the pointer leaving, or a session switch; passthrough when docked.
+ * The sidebar's peek drawer (F-9): from the hidden form opened by resting at
+ * the start edge, from the rail by resting on the rail (its width held in the
+ * layout); closed by Escape, a press outside, the pointer leaving, or a
+ * session switch; passthrough when docked expanded.
  */
 import { createElement, useEffect, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -15,8 +16,9 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function Harness({ hidden = true, sessionId = 's1', initialOpen = false }: {
+function Harness({ hidden = true, railWidth, sessionId = 's1', initialOpen = false }: {
   hidden?: boolean
+  railWidth?: number
   sessionId?: string
   initialOpen?: boolean
 }) {
@@ -26,7 +28,7 @@ function Harness({ hidden = true, sessionId = 's1', initialOpen = false }: {
     null,
     createElement(
       SidebarPeek,
-      { hidden, open, onOpenChange: setOpen, activeSessionId: sessionId },
+      { hidden, railWidth, open, onOpenChange: setOpen, activeSessionId: sessionId },
       createElement('aside', { 'data-testid': 'the-sidebar' }, 'list'),
     ),
     createElement('button', { 'data-testid': 'topbar-sidebar-toggle', onClick: () => setOpen(o => !o) }, 't'),
@@ -102,6 +104,74 @@ describe('SidebarPeek', () => {
     view.rerender(peek(true, true))
     view.rerender(peek(true, false))
     view.rerender(peek(false, false))
+    expect(mounts).toBe(1)
+  })
+
+  it('from the rail: a pointer resting on it floats the sidebar over the chat, holding the rail width', () => {
+    vi.useFakeTimers()
+    render(createElement(Harness, { hidden: false, railWidth: 56 }))
+    const rail = screen.getByTestId('sidebar-rail-peek')
+    expect(rail.className).toBe('contents')
+    expect(screen.queryByTestId('sidebar-peek-edge')).toBeNull()
+    fireEvent.pointerEnter(screen.getByTestId('the-sidebar'))
+    act(() => void vi.advanceTimersByTime(250))
+    fireEvent.pointerLeave(screen.getByTestId('the-sidebar'))
+    act(() => void vi.advanceTimersByTime(500))
+    expect(screen.queryByTestId('sidebar-peek')).toBeNull()
+
+    fireEvent.pointerEnter(screen.getByTestId('the-sidebar'))
+    act(() => void vi.advanceTimersByTime(299))
+    expect(screen.queryByTestId('sidebar-peek')).toBeNull()
+    act(() => void vi.advanceTimersByTime(1))
+    const peek = screen.getByTestId('sidebar-peek')
+    expect(peek.getAttribute('data-peek-from')).toBe('rail')
+    expect(peek.className).toContain('absolute')
+    expect(screen.getByTestId('sidebar-rail-spacer').style.width).toBe('56px')
+
+    fireEvent.pointerDown(screen.getByTestId('the-sidebar'))
+    expect(screen.getByTestId('sidebar-peek')).toBeTruthy()
+    fireEvent.pointerLeave(peek)
+    expect(screen.queryByTestId('sidebar-peek')).toBeNull()
+    expect(screen.queryByTestId('sidebar-rail-spacer')).toBeNull()
+    expect(screen.getByTestId('sidebar-rail-peek').className).toBe('contents')
+  })
+
+  it('a pointer move outside closes it even without a leave event; a move inside keeps it', () => {
+    render(createElement(Harness, { hidden: false, railWidth: 56, initialOpen: true }))
+    fireEvent.pointerMove(screen.getByTestId('the-sidebar'))
+    expect(screen.getByTestId('sidebar-peek')).toBeTruthy()
+    fireEvent.pointerMove(screen.getByTestId('outside'))
+    expect(screen.queryByTestId('sidebar-peek')).toBeNull()
+  })
+
+  it('from the rail: Escape and a press outside close it', () => {
+    render(createElement(Harness, { hidden: false, railWidth: 56, initialOpen: true }))
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('sidebar-peek')).toBeNull()
+    cleanup()
+    render(createElement(Harness, { hidden: false, railWidth: 56, initialOpen: true }))
+    fireEvent.pointerDown(screen.getByTestId('outside'))
+    expect(screen.queryByTestId('sidebar-peek')).toBeNull()
+  })
+
+  it('keeps the sidebar mounted across rail peeks and rail/expanded crossings', () => {
+    let mounts = 0
+    function Counted() {
+      useEffect(() => {
+        mounts += 1
+      }, [])
+      return createElement('aside', null, 'list')
+    }
+    const peek = (railWidth: number | undefined, open: boolean) =>
+      createElement(
+        SidebarPeek,
+        { hidden: false, railWidth, open, onOpenChange: () => {}, activeSessionId: 's1' },
+        createElement(Counted),
+      )
+    const view = render(peek(56, false))
+    view.rerender(peek(56, true))
+    view.rerender(peek(56, false))
+    view.rerender(peek(undefined, false))
     expect(mounts).toBe(1)
   })
 

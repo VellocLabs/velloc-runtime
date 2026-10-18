@@ -44,6 +44,7 @@ import {
   SIDEBAR_MIN_WIDTH_PX,
   SIDEBAR_RAIL_WIDTH_PX,
 } from './layout/layoutConstants'
+import { useSidebarCollapsed, writeSidebarCollapsed } from './sidebarCollapsedPref'
 import {
   clampSidebarWidth,
   readViewportWidth,
@@ -373,36 +374,12 @@ export type MultiSessionShellProps = {
 // read, write, and the durability caveat that makes a restored id a hint.
 const NEXUS_ACTIVE_SESSION_CHANGED_EVENT = 'nexus:activeSessionChanged'
 
-// Wide-mode docked-sidebar collapse state. Only mutated when the user
-// clicks the toggle in wide mode; narrow-mode forced collapses do NOT
-// touch this so the wide-mode preference is preserved across resizes.
-const SIDEBAR_COLLAPSED_STORAGE_KEY = 'shift-sidebar-collapsed'
-
 // Wide-mode sidebar width (px). Persists across reloads; mirrors the
 // collapse pref's behavior — only written when the splitter is actually
 // usable (i.e. wide viewport + sidebar expanded). Narrow-mode auto-
 // collapses hide the splitter entirely, so the saved width survives a
 // resize round-trip.
 const SIDEBAR_WIDTH_STORAGE_KEY = 'shift-sidebar-width'
-
-function readSavedSidebarCollapsed(): boolean {
-  try {
-    return globalThis.localStorage?.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-function writeSavedSidebarCollapsed(collapsed: boolean): void {
-  try {
-    globalThis.localStorage?.setItem(
-      SIDEBAR_COLLAPSED_STORAGE_KEY,
-      collapsed ? '1' : '0',
-    )
-  } catch {
-    // localStorage may be unavailable; persistence is best-effort.
-  }
-}
 
 function readSavedSidebarWidth(): number {
   try {
@@ -845,11 +822,13 @@ export function MultiSessionShell({
     readonly NexusSessionSkillRow[]
   >(() => [])
 
-  // The person's sidebar choice (expanded / icon rail), persisted. The drawn
-  // form comes from `resolveShellLayout`: a narrow session area hides the
-  // sidebar without touching this choice, and the topbar toggle then opens
-  // the peek drawer instead (F-9).
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSavedSidebarCollapsed)
+  // The person's sidebar choice (expanded / icon rail), global across
+  // sessions and windows. The drawn form comes from `resolveShellLayout`: a
+  // narrow session area hides the sidebar without touching this choice, and
+  // the topbar toggle then opens the peek drawer instead (F-9).
+  const sidebarCollapsed = useSidebarCollapsed()
+  const sidebarCollapsedRef = useRef(sidebarCollapsed)
+  sidebarCollapsedRef.current = sidebarCollapsed
   const [sidebarPeek, setSidebarPeek] = useState(false)
   const sidebarHiddenRef = useRef(false)
   const sidebarRailRef = useRef(false)
@@ -868,10 +847,8 @@ export function MultiSessionShell({
       setSidebarPeek(open => !open)
       return
     }
-    setSidebarCollapsed(prev => {
-      writeSavedSidebarCollapsed(!prev)
-      return !prev
-    })
+    setSidebarPeek(false)
+    writeSidebarCollapsed(!sidebarCollapsedRef.current)
   }, [])
   // The session area's width, which the whole shell layout follows. A hidden
   // area (Settings open) reports 0 and is ignored: the last width stands.
@@ -2629,8 +2606,8 @@ export function MultiSessionShell({
     }
   }, [rightPanelFloating])
   useEffect(() => {
-    if (!sidebarHidden) setSidebarPeek(false)
-  }, [sidebarHidden])
+    setSidebarPeek(false)
+  }, [shellLayout.sidebar])
 
   // The model picker's `⋯` → "Edit…": Settings → Models, on that provider's
   // editor. `seq` makes a repeat request for the same provider land again;
@@ -4267,6 +4244,7 @@ export function MultiSessionShell({
         */}
         <SidebarPeek
           hidden={sidebarHidden}
+          railWidth={sidebarRail ? SIDEBAR_RAIL_WIDTH_PX : undefined}
           open={sidebarPeek}
           onOpenChange={setSidebarPeek}
           activeSessionId={activeSessionId}
@@ -4275,7 +4253,7 @@ export function MultiSessionShell({
           title="Conversation"
           sessionId={activeSessionId}
           activeSessionId={sidebarActiveId}
-          collapsed={sidebarRail}
+          collapsed={sidebarRail && !sidebarPeek}
           sessions={sessionItems}
           onNewThread={openNewSession}
           onLaunchThread={openNewSession}
