@@ -31,7 +31,6 @@ import { useLocale, useT } from '../i18n'
 import { PANE_ICON, PANE_LABEL_KEY } from '../panes/paneKinds'
 import {
   EMPTY_SLOTS,
-  distinctTabLabels,
   loadTerminalLayout,
   markPlaceholderStarting,
   orderedKeys,
@@ -108,7 +107,8 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
     row: rows.find(row => row.id === key) ?? null,
     placeholder: slots.placeholders.find(placeholder => placeholder.id === key) ?? null,
   }))
-  const labels = distinctTabLabels(tabs.map(tab => tab.row?.title ?? tab.placeholder?.shell ?? name))
+  // Tabs read "Terminal 1", "Terminal 2", … in strip order; the shell's own title is the tooltip.
+  const labels = tabs.map((_, index) => `${name} ${index + 1}`)
 
   const [activeBySession, setActiveBySession] = useState<Record<string, string>>({})
   const chosen = sessionId ? activeBySession[sessionId] : undefined

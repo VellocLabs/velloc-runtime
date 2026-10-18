@@ -2,7 +2,7 @@
 /**
  * The remembered terminal layout and the page's slots (F-31): sanitizing,
  * the per-session memory with its eviction, blank tabs that turn into
- * terminals in place, the tab order, and distinct tab labels.
+ * terminals in place, and the tab order.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -10,7 +10,6 @@ import {
   TERMINAL_LAYOUT_MAX_SESSIONS,
   TERMINAL_LAYOUT_MAX_SLOTS,
   TERMINAL_LAYOUT_STORAGE_KEY,
-  distinctTabLabels,
   forgetSessionTerminals,
   loadTerminalLayout,
   markPlaceholderStarting,
@@ -151,13 +150,5 @@ describe('the page slots', () => {
       'term_b',
     ])
     expect(orderedKeys([], ['term_a'], [])).toEqual(['term_a'])
-  })
-})
-
-describe('distinctTabLabels', () => {
-  it('numbers only the labels that repeat', () => {
-    expect(distinctTabLabels(['pwsh', 'vim', 'pwsh', 'cmd'])).toEqual(['pwsh 1', 'vim', 'pwsh 2', 'cmd'])
-    expect(distinctTabLabels(['pwsh'])).toEqual(['pwsh'])
-    expect(distinctTabLabels([])).toEqual([])
   })
 })

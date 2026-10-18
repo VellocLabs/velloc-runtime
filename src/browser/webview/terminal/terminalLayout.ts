@@ -220,22 +220,6 @@ export function orderedKeys(order: readonly string[], liveIds: readonly string[]
   return kept
 }
 
-/**
- * Tab labels made distinct: a label several tabs share gets its ordinal
- * among them (`pwsh 1`, `pwsh 2`); a label on its own stays as it is.
- */
-export function distinctTabLabels(labels: readonly string[]): string[] {
-  const counts = new Map<string, number>()
-  for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1)
-  const seen = new Map<string, number>()
-  return labels.map(label => {
-    if ((counts.get(label) ?? 0) < 2) return label
-    const ordinal = (seen.get(label) ?? 0) + 1
-    seen.set(label, ordinal)
-    return `${label} ${ordinal}`
-  })
-}
-
 /** Forget every session's slots (tests). */
 export function resetTerminalSlotsForTests(): void {
   slotsBySession.clear()

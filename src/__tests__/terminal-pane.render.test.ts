@@ -169,7 +169,9 @@ describe('TerminalPane', () => {
     expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_a')
     fireEvent.click(screen.getByTestId('pane-terminal-close:term_b'))
     expect(fake.request).toHaveBeenCalledWith('terminal.close', { id: 'term_b' })
-    expect(screen.getByTestId('pane-terminal-close:term_b').getAttribute('aria-label')).toBe('Close vim')
+    expect(screen.getByTestId('pane-terminal-close:term_b').getAttribute('aria-label')).toBe('Close Terminal 2')
+    // The shell's own title is the tab's tooltip.
+    expect(screen.getByTestId('pane-terminal-tab:term_b').getAttribute('title')).toBe('vim')
   })
 
   it('an exited terminal keeps its screen, says the code and restarts in place', async () => {
@@ -284,7 +286,7 @@ describe('TerminalPane', () => {
     const tabs = screen.getByTestId('pane-terminal-tabs').querySelectorAll('[role="tab"]')
     expect(tabs).toHaveLength(2)
     expect(Array.from(tabs).map(tab => tab.getAttribute('data-state'))).toEqual(['pending', 'pending'])
-    expect(Array.from(tabs).map(tab => tab.textContent)).toEqual(['pwsh', 'cmd'])
+    expect(Array.from(tabs).map(tab => tab.textContent)).toEqual(['Terminal 1', 'Terminal 2'])
     expect(screen.queryByTestId('xterm-stub')).toBeNull()
     const placeholder = screen.getByTestId('pane-terminal-placeholder')
     expect(placeholder.textContent).toBe('Click to start this terminal')
@@ -314,8 +316,7 @@ describe('TerminalPane', () => {
     fake.publish('terminals', state([]))
     await flush()
     const tabs = screen.getByTestId('pane-terminal-tabs').querySelectorAll('[role="tab"]')
-    // Two tabs of the same shell are told apart by number.
-    expect(Array.from(tabs).map(tab => tab.textContent)).toEqual(['pwsh 1', 'pwsh 2'])
+    expect(Array.from(tabs).map(tab => tab.textContent)).toEqual(['Terminal 1', 'Terminal 2'])
     const key = tabs[0]!.getAttribute('data-testid')!.slice('pane-terminal-tab:'.length)
     fireEvent.click(screen.getByTestId(`pane-terminal-close:${key}`))
     await flush()
@@ -325,14 +326,15 @@ describe('TerminalPane', () => {
     expect(loadTerminalLayout().sessions.s1?.slots).toEqual([{ shell: 'pwsh' }])
   })
 
-  it('live terminals sharing a title are numbered in the tab strip', async () => {
+  it('tabs read Terminal 1, 2, 3 in strip order whatever the shells call themselves', async () => {
     const fake = fakeConnection()
     renderPane(fake.conn)
     await flush()
     fake.publish('terminals', state([running('term_a', 's1', 'pwsh'), running('term_b', 's1', 'pwsh'), running('term_c', 's1', 'vim')]))
     await flush()
     const tabs = screen.getByTestId('pane-terminal-tabs').querySelectorAll('[role="tab"]')
-    expect(Array.from(tabs).map(tab => tab.textContent)).toEqual(['pwsh 1', 'pwsh 2', 'vim'])
-    expect(screen.getByTestId('pane-terminal-close:term_b').getAttribute('aria-label')).toBe('Close pwsh 2')
+    expect(Array.from(tabs).map(tab => tab.textContent)).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3'])
+    expect(Array.from(tabs).map(tab => tab.getAttribute('title'))).toEqual(['pwsh', 'pwsh', 'vim'])
+    expect(screen.getByTestId('pane-terminal-close:term_c').getAttribute('aria-label')).toBe('Close Terminal 3')
   })
 })
