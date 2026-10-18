@@ -5,7 +5,7 @@
  * for several, close and restart, and the unavailable host.
  */
 import { createElement, type ReactNode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -13,13 +13,44 @@ import type { RuntimeConnection, TopicEvent } from '@/browser/runtimeClient/Runt
 import type { TerminalsState } from '@/terminal/protocol'
 import { useTerminalsState } from '@/browser/webview/terminal/useTerminals'
 import { TerminalPane } from '@/browser/webview/terminal/TerminalPane'
+import {
+  TERMINAL_LAYOUT_STORAGE_KEY,
+  loadTerminalLayout,
+  resetTerminalSlotsForTests,
+} from '@/browser/webview/terminal/terminalLayout'
 
 vi.mock('@/browser/webview/terminal/XtermHost', () => ({
   default: (props: { terminalId: string }) =>
     createElement('div', { 'data-testid': 'xterm-stub', 'data-terminal': props.terminalId }),
 }))
 
-afterEach(cleanup)
+/** A Storage stand-in: the environment's localStorage lacks the methods the layout store calls. */
+function fakeStorage(): Storage {
+  const map = new Map<string, string>()
+  return {
+    get length() {
+      return map.size
+    },
+    clear: () => map.clear(),
+    getItem: key => map.get(key) ?? null,
+    key: index => Array.from(map.keys())[index] ?? null,
+    removeItem: key => {
+      map.delete(key)
+    },
+    setItem: (key, value) => {
+      map.set(key, String(value))
+    },
+  }
+}
+
+beforeEach(() => {
+  vi.stubGlobal('localStorage', fakeStorage())
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  resetTerminalSlotsForTests()
+})
 
 type Listener = (event: TopicEvent<unknown>) => void
 
@@ -225,5 +256,83 @@ describe('TerminalPane', () => {
     fireEvent.click(screen.getByTestId('pane-terminal-new'))
     await flush()
     expect(fake.request).toHaveBeenCalledWith('terminal.create', { sessionId: 's1', cols: 80, rows: 24 })
+  })
+  it('the tabs shown are remembered for the session: their shells and the active one', async () => {
+    const fake = fakeConnection()
+    renderPane(fake.conn)
+    await flush()
+    fake.publish('terminals', state([running('term_a', 's1'), { ...running('term_b', 's1'), shell: 'cmd' }]))
+    await flush()
+    expect(loadTerminalLayout().sessions.s1).toMatchObject({ slots: [{ shell: 'pwsh' }, { shell: 'cmd' }], active: 1 })
+    fireEvent.click(screen.getByTestId('pane-terminal-tab:term_a'))
+    await flush()
+    expect(loadTerminalLayout().sessions.s1?.active).toBe(0)
+  })
+
+  it('remembered tabs come back blank, start nothing, and a click starts that tab\'s shell in place', async () => {
+    localStorage.setItem(
+      TERMINAL_LAYOUT_STORAGE_KEY,
+      JSON.stringify({ sessions: { s1: { slots: [{ shell: 'pwsh' }, { shell: 'cmd' }], active: 1, at: 1 } } }),
+    )
+    const fake = fakeConnection()
+    renderPane(fake.conn)
+    await flush()
+    fake.publish('terminals', state([], { shells: [{ id: 'pwsh', version: null }, { id: 'cmd', version: null }] }))
+    await flush()
+    // Two blank tabs, no shell started, no emulator mounted.
+    expect(fake.request).not.toHaveBeenCalled()
+    const tabs = screen.getByTestId('pane-terminal-tabs').querySelectorAll('[role="tab"]')
+    expect(tabs).toHaveLength(2)
+    expect(Array.from(tabs).map(tab => tab.getAttribute('data-state'))).toEqual(['pending', 'pending'])
+    expect(Array.from(tabs).map(tab => tab.textContent)).toEqual(['pwsh', 'cmd'])
+    expect(screen.queryByTestId('xterm-stub')).toBeNull()
+    const placeholder = screen.getByTestId('pane-terminal-placeholder')
+    expect(placeholder.textContent).toBe('Click to start this terminal')
+    expect(tabs[1]?.getAttribute('aria-selected')).toBe('true')
+
+    // The click starts the remembered shell; the tab becomes that terminal where it was.
+    fireEvent.click(placeholder)
+    await flush()
+    expect(fake.request).toHaveBeenCalledWith('terminal.create', { sessionId: 's1', shell: 'cmd', cols: 80, rows: 24 })
+    expect(fake.request).toHaveBeenCalledTimes(1)
+    fake.publish('terminals', state([{ ...running('term_s1_1', 's1', 'cmd'), shell: 'cmd' }]), 'delta', 'state')
+    await flush()
+    expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_s1_1')
+    const after = screen.getByTestId('pane-terminal-tabs').querySelectorAll('[role="tab"]')
+    expect(Array.from(after).map(tab => tab.getAttribute('data-state'))).toEqual(['pending', 'running'])
+    expect(loadTerminalLayout().sessions.s1).toMatchObject({ slots: [{ shell: 'pwsh' }, { shell: 'cmd' }], active: 1 })
+  })
+
+  it('× on a blank tab drops it, and the memory follows', async () => {
+    localStorage.setItem(
+      TERMINAL_LAYOUT_STORAGE_KEY,
+      JSON.stringify({ sessions: { s1: { slots: [{ shell: 'pwsh' }, { shell: 'pwsh' }], active: 0, at: 1 } } }),
+    )
+    const fake = fakeConnection()
+    renderPane(fake.conn)
+    await flush()
+    fake.publish('terminals', state([]))
+    await flush()
+    const tabs = screen.getByTestId('pane-terminal-tabs').querySelectorAll('[role="tab"]')
+    // Two tabs of the same shell are told apart by number.
+    expect(Array.from(tabs).map(tab => tab.textContent)).toEqual(['pwsh 1', 'pwsh 2'])
+    const key = tabs[0]!.getAttribute('data-testid')!.slice('pane-terminal-tab:'.length)
+    fireEvent.click(screen.getByTestId(`pane-terminal-close:${key}`))
+    await flush()
+    expect(fake.request).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('pane-terminal-tabs')).toBeNull()
+    expect(screen.getByTestId('pane-terminal-placeholder')).toBeTruthy()
+    expect(loadTerminalLayout().sessions.s1?.slots).toEqual([{ shell: 'pwsh' }])
+  })
+
+  it('live terminals sharing a title are numbered in the tab strip', async () => {
+    const fake = fakeConnection()
+    renderPane(fake.conn)
+    await flush()
+    fake.publish('terminals', state([running('term_a', 's1', 'pwsh'), running('term_b', 's1', 'pwsh'), running('term_c', 's1', 'vim')]))
+    await flush()
+    const tabs = screen.getByTestId('pane-terminal-tabs').querySelectorAll('[role="tab"]')
+    expect(Array.from(tabs).map(tab => tab.textContent)).toEqual(['pwsh 1', 'pwsh 2', 'vim'])
+    expect(screen.getByTestId('pane-terminal-close:term_b').getAttribute('aria-label')).toBe('Close pwsh 2')
   })
 })

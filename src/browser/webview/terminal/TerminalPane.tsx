@@ -3,8 +3,9 @@
  * `terminals` topic — a tab per terminal when there are several, a **+**
  * that starts a shell, the ⋮ menu of display preferences — and the active
  * terminal's emulator. The first open of a session with no terminal starts
- * the default shell. A terminal that has exited keeps its screen and offers
- * Restart.
+ * the default shell; a session whose tabs this viewer remembers gets them
+ * back blank, each starting its shell on the first click. A terminal that
+ * has exited keeps its screen and offers Restart.
  */
 import {
   Suspense,
@@ -13,6 +14,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactElement,
   type ReactNode,
 } from 'react'
@@ -27,6 +29,21 @@ import { TERMINAL_CAPABILITY, type TerminalCreateResult, type TerminalRow } from
 
 import { useLocale, useT } from '../i18n'
 import { PANE_ICON, PANE_LABEL_KEY } from '../panes/paneKinds'
+import {
+  EMPTY_SLOTS,
+  distinctTabLabels,
+  loadTerminalLayout,
+  markPlaceholderStarting,
+  orderedKeys,
+  placeholderStarted,
+  rememberSessionTerminals,
+  removePlaceholder,
+  restorePlaceholders,
+  sessionSlots,
+  subscribeTerminalSlots,
+  type SessionSlots,
+  type TerminalPlaceholder,
+} from './terminalLayout'
 import {
   TERMINAL_CURSOR_STYLES,
   TERMINAL_SCROLLBACK_CHOICES,
@@ -55,8 +72,19 @@ export type TerminalPaneProps = {
   openLink: (url: string) => void
 }
 
+/** One tab: a live terminal, or a blank one waiting for its first click. */
+type Tab = { key: string; row: TerminalRow | null; placeholder: TerminalPlaceholder | null }
+
 function shellLabel(id: string, version: string | null): string {
   return version ? `${id} ${version}` : id
+}
+
+function useSessionSlots(sessionId: string | null): SessionSlots {
+  return useSyncExternalStore(
+    subscribeTerminalSlots,
+    () => (sessionId ? sessionSlots(sessionId) : EMPTY_SLOTS),
+    () => EMPTY_SLOTS,
+  )
 }
 
 export function TerminalPane(props: TerminalPaneProps): ReactElement {
@@ -66,13 +94,35 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
   const conn = useResolvedConnection(props.runtimeConnection)
   const state = useTerminalsState(conn)
   const prefs = useTerminalPrefs()
+  const slots = useSessionSlots(sessionId)
   const name = t(PANE_LABEL_KEY.terminal)
   const Icon = PANE_ICON.terminal
 
   const rows: TerminalRow[] = sessionId && state ? state.terminals.filter(row => row.sessionId === sessionId) : []
+  const tabs: Tab[] = orderedKeys(
+    slots.order,
+    rows.map(row => row.id),
+    slots.placeholders.map(placeholder => placeholder.id),
+  ).map(key => ({
+    key,
+    row: rows.find(row => row.id === key) ?? null,
+    placeholder: slots.placeholders.find(placeholder => placeholder.id === key) ?? null,
+  }))
+  const labels = distinctTabLabels(tabs.map(tab => tab.row?.title ?? tab.placeholder?.shell ?? name))
+
   const [activeBySession, setActiveBySession] = useState<Record<string, string>>({})
   const chosen = sessionId ? activeBySession[sessionId] : undefined
-  const active = rows.find(row => row.id === chosen) ?? rows[rows.length - 1] ?? null
+  const activeIndex = Math.max(
+    0,
+    tabs.findIndex(tab => tab.key === chosen) === -1 ? tabs.length - 1 : tabs.findIndex(tab => tab.key === chosen),
+  )
+  const activeTab = tabs[activeIndex] ?? null
+  const activate = useCallback(
+    (key: string): void => {
+      if (sessionId) setActiveBySession(prev => ({ ...prev, [sessionId]: key }))
+    },
+    [sessionId],
+  )
 
   const request = useCallback(
     (act: string, payload: unknown): Promise<unknown> =>
@@ -80,9 +130,12 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
     [conn],
   )
 
+  const shells = state?.shells ?? []
+
+  /** Start a shell for the session; resolves with the new terminal's id, or null when the runtime refused. */
   const createTerminal = useCallback(
-    async (shell?: string): Promise<void> => {
-      if (!sessionId) return
+    async (shell?: string): Promise<string | null> => {
+      if (!sessionId) return null
       try {
         const result = (await request('create', {
           sessionId,
@@ -91,31 +144,72 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
           rows: INITIAL_ROWS,
         })) as TerminalCreateResult
         setActiveBySession(prev => ({ ...prev, [sessionId]: result.id }))
+        return result.id
       } catch {
         // The topic's state says what the runtime could not start.
+        return null
       }
     },
     [request, sessionId],
   )
 
-  // The first open of a session with no terminal starts the default shell,
-  // once per session while this pane is mounted.
-  const autoStarted = useRef(new Set<string>())
-  useEffect(() => {
-    if (!sessionId || !state?.available || rows.length > 0) return
-    if (autoStarted.current.has(sessionId)) return
-    autoStarted.current.add(sessionId)
-    void createTerminal()
-  }, [sessionId, state?.available, rows.length, createTerminal])
+  /** The blank tab's first click: its shell starts and the tab becomes that terminal, in place. */
+  const startPlaceholder = useCallback(
+    async (placeholder: TerminalPlaceholder): Promise<void> => {
+      if (!sessionId || placeholder.starting) return
+      markPlaceholderStarting(sessionId, placeholder.id, true)
+      // A shell this host no longer lists falls back to the default.
+      const shell = placeholder.shell && shells.some(known => known.id === placeholder.shell) ? placeholder.shell : undefined
+      const id = await createTerminal(shell)
+      if (id) placeholderStarted(sessionId, placeholder.id, id)
+      else markPlaceholderStarting(sessionId, placeholder.id, false)
+    },
+    [sessionId, shells, createTerminal],
+  )
 
-  const closeTerminal = (id: string): void => {
-    void request('close', { id }).catch(() => {})
+  // The first time this pane sees a session: with no terminal and no
+  // remembered tabs it starts the default shell; with remembered tabs it
+  // shows them blank and starts nothing.
+  const entered = useRef(new Set<string>())
+  useEffect(() => {
+    if (!sessionId || !state?.available) return
+    if (entered.current.has(sessionId)) return
+    entered.current.add(sessionId)
+    if (rows.length > 0 || slots.placeholders.length > 0) return
+    const memory = loadTerminalLayout().sessions[sessionId]
+    if (memory && memory.slots.length > 0) {
+      const ids = restorePlaceholders(
+        sessionId,
+        memory.slots.map(slot => slot.shell),
+      )
+      const pick = ids[Math.min(memory.active, ids.length - 1)]
+      if (pick) activate(pick)
+      return
+    }
+    void createTerminal()
+  }, [sessionId, state?.available, rows.length, slots.placeholders.length, createTerminal, activate])
+
+  // What the pane shows is what it remembers: the tabs' shells and the active one.
+  const tabSignature = tabs.map(tab => tab.row?.shell ?? tab.placeholder?.shell ?? '').join('\u0000')
+  useEffect(() => {
+    if (!sessionId || !state?.available || !entered.current.has(sessionId)) return
+    rememberSessionTerminals(
+      sessionId,
+      tabs.map(tab => ({ shell: tab.row?.shell ?? tab.placeholder?.shell ?? null })),
+      activeIndex,
+    )
+    // `tabs` is derived; its signature and the active index are what matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, state?.available, tabSignature, activeIndex])
+
+  const closeTab = (tab: Tab): void => {
+    if (tab.row) void request('close', { id: tab.row.id }).catch(() => {})
+    else if (tab.placeholder && sessionId) removePlaceholder(sessionId, tab.placeholder.id)
   }
   const restartTerminal = (id: string): void => {
     void request('restart', { id }).catch(() => {})
   }
 
-  const shells = state?.shells ?? []
   const newButton = (
     <Button
       type="button"
@@ -134,7 +228,7 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
   const title = (
     <>
       <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-      {rows.length <= 1 ? (
+      {tabs.length <= 1 ? (
         <span className="min-w-0 truncate">{name}</span>
       ) : (
         <div
@@ -143,11 +237,13 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
           data-testid="pane-terminal-tabs"
           className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden"
         >
-          {rows.map(row => {
-            const isActive = row.id === active?.id
+          {tabs.map((tab, index) => {
+            const isActive = index === activeIndex
+            const label = labels[index] ?? ''
+            const kind = tab.row ? tab.row.state.kind : 'pending'
             return (
               <div
-                key={row.id}
+                key={tab.key}
                 className={cn(
                   'group flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pe-0.5 ps-1.5 text-[12px]',
                   isActive ? 'bg-muted' : 'hover:bg-muted/50',
@@ -157,25 +253,24 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
                   type="button"
                   role="tab"
                   aria-selected={isActive}
-                  data-testid={`pane-terminal-tab:${row.id}`}
-                  data-state={row.state.kind}
-                  title={row.title}
-                  onClick={() => {
-                    if (sessionId) setActiveBySession(prev => ({ ...prev, [sessionId]: row.id }))
-                  }}
+                  data-testid={`pane-terminal-tab:${tab.key}`}
+                  data-state={kind}
+                  title={tab.row ? tab.row.title : t('terminal.placeholder.pending')}
+                  onClick={() => activate(tab.key)}
                   className={cn(
                     'flex min-w-0 max-w-[10rem] items-center gap-1 outline-none',
                     isActive ? 'font-medium text-foreground' : 'text-muted-foreground',
-                    row.state.kind === 'exited' || row.state.kind === 'failed' ? 'line-through' : null,
+                    kind === 'exited' || kind === 'failed' ? 'line-through' : null,
+                    kind === 'pending' ? 'italic' : null,
                   )}
                 >
-                  <span className="min-w-0 truncate">{row.title}</span>
+                  <span className="min-w-0 truncate">{label}</span>
                 </button>
                 <button
                   type="button"
-                  aria-label={t('terminal.closeTerminal', { title: row.title })}
-                  data-testid={`pane-terminal-close:${row.id}`}
-                  onClick={() => closeTerminal(row.id)}
+                  aria-label={t('terminal.closeTerminal', { title: label })}
+                  data-testid={`pane-terminal-close:${tab.key}`}
+                  onClick={() => closeTab(tab)}
                   className="flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
                 >
                   <XIcon className="size-3" />
@@ -347,7 +442,7 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
     content = <Notice label={t('terminal.connecting')} testId="pane-terminal-connecting" />
   } else if (!state || !state.available) {
     content = <Notice label={t('terminal.unavailable')} testId="pane-terminal-unavailable" />
-  } else if (!active) {
+  } else if (!activeTab) {
     content = (
       <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-body text-muted-foreground">
         <span data-testid="pane-terminal-empty">{t('terminal.empty')}</span>
@@ -356,7 +451,22 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
         </Button>
       </div>
     )
+  } else if (activeTab.placeholder) {
+    const placeholder = activeTab.placeholder
+    content = (
+      <button
+        type="button"
+        data-testid="pane-terminal-placeholder"
+        data-placeholder={placeholder.id}
+        disabled={placeholder.starting}
+        onClick={() => void startPlaceholder(placeholder)}
+        className="flex h-full w-full cursor-text items-center justify-center bg-card px-4 text-center text-body text-muted-foreground/70 outline-none"
+      >
+        {placeholder.starting ? t('terminal.placeholder.starting') : t('terminal.placeholder.start')}
+      </button>
+    )
   } else {
+    const active = activeTab.row as TerminalRow
     const endedText =
       active.state.kind === 'exited'
         ? active.state.exitCode === null

@@ -47,6 +47,11 @@ const ALLOWLIST: Record<string, Row> = {
     kind: 'view',
     why: "this viewer's cursor style, cursor blink, copy-on-select and scrollback for the Terminal pane; display preferences only, never terminal output",
   },
+  'browser/webview/terminal/terminalLayout.ts': {
+    keys: ['nexus.terminal.layout'],
+    kind: 'view',
+    why: "how many terminal tabs this viewer's pane showed per session, each tab's shell id and which was active, so the pane can draw them again as blank tabs before any shell runs; counts and shell ids only, never titles, paths or output",
+  },
   'browser/boot/guestTextSize.ts': {
     keys: ['velloc.appearance.textSize'],
     kind: 'view',
