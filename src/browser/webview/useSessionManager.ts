@@ -145,8 +145,8 @@ export type SessionManagerState = {
   getSessionTemplateType: (sessionId: string) => string | undefined
   getSessionProjectRoot: (sessionId: string) => string | undefined
   focusSession: (sessionId: string) => void
-  /** `rowOrder`: the sidebar's row ids in display order, so the successor is the deleted row's neighbor. */
-  deleteSession: (sessionId: string, rowOrder?: readonly string[]) => void
+  /** `rowOrders`: row id lists in display order, tried in turn, so the successor is the deleted row's neighbor (see `pickNeighborSession`). */
+  deleteSession: (sessionId: string, rowOrders?: readonly (readonly string[])[]) => void
   retitleSession: (sessionId: string, title: string) => void
   /** Returns the fork request's id — the `session.forked` ack echoes it. */
   forkSession: (
@@ -575,7 +575,7 @@ export function useSessionManager(
   )
 
   const deleteSession = useCallback(
-    (sessionId: string, rowOrder?: readonly string[]) => {
+    (sessionId: string, rowOrders?: readonly (readonly string[])[]) => {
       // Every known session, deleted row included, so the successor is that
       // row's neighbor in `rowOrder`. The deleted session is on screen
       // when it is active or one of its teammates is (a lead's teammates go
@@ -607,7 +607,7 @@ export function useSessionManager(
           before,
           sessionId,
           hiddenSessionIds(before),
-          rowOrder,
+          rowOrders,
         )
 
         if (next) {

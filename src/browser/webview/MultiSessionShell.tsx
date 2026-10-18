@@ -916,6 +916,7 @@ export function MultiSessionShell({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSavedSidebarCollapsed)
   const [sidebarPeek, setSidebarPeek] = useState(false)
   const sidebarHiddenRef = useRef(false)
+  const sidebarRailRef = useRef(false)
   // How the open Right Panel is presented beyond its docked form (F-9): the
   // overlay over the chat when it has no room beside it, an agent-opened
   // float, a settled float's held width. Each writer reports its event.
@@ -2612,6 +2613,8 @@ export function MultiSessionShell({
   ])
   const closeSessionCardsPopover = useCallback(() => setSessionCardsPopoverOpen(false), [])
   sidebarHiddenRef.current = sidebarHidden
+  const sidebarRail = !sidebarHidden && shellLayout.sidebar === 'rail'
+  sidebarRailRef.current = sidebarRail
   const rightPanelOverlaid = shellLayout.panel === 'overlay'
   const rightPanelOverlayShown = rightPanelOverlaid && rightPanelPresence.overlay
   // Over the chat it leaves a strip of the chat to press back into.
@@ -3625,18 +3628,26 @@ export function MultiSessionShell({
           .map(session => session.sessionId),
       ])
       for (const id of doomed) disposeClient(id)
-      // The rows the sidebar shows, in its order, so the successor of a
-      // deleted on-screen session is its visible neighbor.
-      const rowOrder = sidebarRowOrder(
-        sessionItemsRef.current,
-        readSessionListView(),
-        Date.now(),
-        {
-          pinned: readSectionCollapsed('pinned'),
-          recents: readSectionCollapsed('recents'),
-        },
-      ).map(session => session.sessionId)
-      deleteSession(sessionId, rowOrder)
+      // The successor of a deleted on-screen session is its neighbor among the
+      // rows the sidebar shows; a row a collapsed section hides takes its
+      // neighbor in the full order. The rail ignores collapse.
+      const view = readSessionListView()
+      const now = Date.now()
+      const ids = (collapsed?: { pinned: boolean; recents: boolean }) =>
+        sidebarRowOrder(sessionItemsRef.current, view, now, collapsed).map(
+          session => session.sessionId,
+        )
+      const full = ids()
+      const rowOrders = sidebarRailRef.current
+        ? [full]
+        : [
+            ids({
+              pinned: readSectionCollapsed('pinned'),
+              recents: readSectionCollapsed('recents'),
+            }),
+            full,
+          ]
+      deleteSession(sessionId, rowOrders)
       setMountedSessionIds(prev => prev.filter(id => !doomed.has(id)))
       // Drop the deleted sessions' in-memory Right Panel state (no leak).
       setRightPanelSessions(prev => {
@@ -4104,7 +4115,7 @@ export function MultiSessionShell({
           title="Conversation"
           sessionId={activeSessionId}
           activeSessionId={sidebarActiveId}
-          collapsed={!sidebarHidden && shellLayout.sidebar === 'rail'}
+          collapsed={sidebarRail}
           sessions={sessionItems}
           onNewThread={openNewSession}
           onLaunchThread={openNewSession}

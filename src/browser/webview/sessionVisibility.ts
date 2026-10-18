@@ -77,25 +77,31 @@ export function pickVisibleSession<T extends VisibilityEntry>(
 
 /**
  * The session to land on when `deletedId` is deleted while on screen: the row
- * after it in the sidebar's order, else the row before it. `rowOrder` is the
- * ids of the rows the sidebar shows, in display order; without it the order is
- * pinned first, then `entries`' order. `entries` still contains `deletedId`.
- * `undefined` when no other row exists — the caller creates a session.
+ * after it in the sidebar's order, else the row before it. `rowOrders` are row
+ * id lists in display order, tried in turn: the first that holds `deletedId`
+ * and another listed row decides. Past them the order is pinned first, then
+ * `entries`' order. `entries` still contains `deletedId`. `undefined` when no
+ * other row exists — the caller creates a session.
  */
 export function pickNeighborSession<T extends VisibilityEntry & { pinned?: boolean }>(
   entries: readonly T[],
   deletedId: string,
   hidden: ReadonlySet<string>,
-  rowOrder?: readonly string[],
+  rowOrders: readonly (readonly string[])[] = [],
 ): T | undefined {
   const listed = entries.filter(
     entry => !entry.spawnerSessionId && !hidden.has(entry.sessionId),
   )
   const byId = new Map(listed.map(entry => [entry.sessionId, entry]))
-  const rows = rowOrder
-    ? rowOrder.flatMap(id => byId.get(id) ?? [])
-    : pinnedFirst(listed)
-  const index = rows.findIndex(entry => entry.sessionId === deletedId)
-  if (index < 0) return rows[0]
-  return rows[index + 1] ?? rows[index - 1]
+  const fallback = pinnedFirst(listed)
+  const candidates = [
+    ...rowOrders.map(order => order.flatMap(id => byId.get(id) ?? [])),
+    fallback,
+  ]
+  for (const rows of candidates) {
+    const index = rows.findIndex(entry => entry.sessionId === deletedId)
+    if (index < 0 || rows.length < 2) continue
+    return rows[index + 1] ?? rows[index - 1]
+  }
+  return fallback.find(entry => entry.sessionId !== deletedId)
 }

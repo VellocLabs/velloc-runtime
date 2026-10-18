@@ -4051,6 +4051,25 @@ describe('SharedWorkerSessionManager', () => {
       expect(metaWrites).toHaveLength(0)
       internals().deletingSessions.delete('s')
     })
+
+    it('a delete that throws does not keep refusing pins', async () => {
+      installStorage()
+      const teams = (manager as unknown as {
+        teams: { abortTeammatesOf: (sessionId: string) => Promise<void> }
+      }).teams
+      vi.spyOn(teams, 'abortTeammatesOf').mockRejectedValueOnce(new Error('teardown failed'))
+      const port = createMockPort()
+      manager.handleConnect(port)
+      await expect(
+        (manager as unknown as {
+          handleSessionDelete: (port: MessagePort, sessionId: string) => Promise<void>
+        }).handleSessionDelete(port as unknown as MessagePort, 's'),
+      ).rejects.toThrow('teardown failed')
+      expect(internals().deletingSessions.has('s')).toBe(false)
+      port._simulateMessage({ type: 'session.pin', sessionId: 's', pinned: true, requestId: 'p3' })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(metaWrites.at(-1)?.metadata).toMatchObject({ pinned: true })
+    })
   })
 
   it('forks the whole conversation when `session.fork` names no cut', async () => {

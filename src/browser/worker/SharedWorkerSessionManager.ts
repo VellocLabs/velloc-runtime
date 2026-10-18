@@ -2732,81 +2732,85 @@ export class SharedWorkerSessionManager {
       this.teams.listTeammatesOf(sessionId).map(tm => tm.sessionId),
     )
     try {
-      for (const child of (await this.groupedStorage?.listTeammateChildren(
-        sessionId,
-      )) ?? []) {
-        teammateIds.add(child.sessionId)
+      try {
+        for (const child of (await this.groupedStorage?.listTeammateChildren(
+          sessionId,
+        )) ?? []) {
+          teammateIds.add(child.sessionId)
+        }
+      } catch {
+        // best-effort; the live roster still covers the running children
       }
-    } catch {
-      // best-effort; the live roster still covers the running children
+      await this.teams.abortTeammatesOf(sessionId)
+      // What the coordinator remembered about this lead goes with it — after
+      // the children's teardown, which is what writes the last of it.
+      this.teams.forgetLead(sessionId)
+
+      // Cascade: deleting a parent abandons its in-flight background
+      // sub-agents — abort + tear them down so they don't keep running / leak, and
+      // drop any results queued for the vanishing parent. AWAITED: the children's
+      // transcripts live under the parent dir the
+      // storage delete below removes, and each child's worktree cleanup is
+      // sequenced after its worker dispose inside the cascade.
+      await this.cascadeSubAgentsOnParentClose(sessionId)
+
+      // Unified disposal (drop deliveries, fire C++ stop, clear ports,
+      // dispose worker, remove entry).
+      await this.disposeManagedSession(sessionId, { fireStop: true })
+      this.sessionMeta.delete(sessionId)
+      this.fsSummaries.delete(sessionId)
+      this.forgetSkillEvents(sessionId)
+      // Written on every `session.open`; this is its only removal.
+      this.panelOfSession.delete(sessionId)
+      this.runtimeSessionSurface?.dropSessionTopics(sessionId)
+
+      // A deleted session must not leave its prev-snapshot cache
+      // behind, so nothing stale can re-emit for the dead id.
+      this.feed.forgetStatus(sessionId)
+
+      // Provider mods: `provider.sessionEnd` in the modules that hook it, then
+      // the session's provider stores go (5 s at most, never rejects; a no-op in
+      // a realm with no provider mod). The teammates' sessions end with the lead.
+      await endProviderSessions([sessionId, ...teammateIds])
+      // The session's MCP servers stop now rather than after the release grace.
+      void closeSessionMCPPool(sessionId)
+
+      if (this.storage) {
+        // A background extract fork spawned by this session's last turn may
+        // still be mid-flight, appending its sidechain transcript under the
+        // session dir the delete below removes. Give it a bounded window to
+        // finish (memory writes land in the memory dir, so this mainly
+        // prevents the fork erroring against vanished storage). The timeout
+        // is short — a
+        // user-initiated delete must not hang on a slow model call.
+        try {
+          await awaitMemoryExtractions(5_000)
+        } catch {
+          // drain is best-effort; deletion proceeds regardless
+        }
+        try {
+          await this.storage.deleteSession(sessionId)
+        } catch {
+          // best-effort; the in-memory state is already gone
+        }
+        // Cascade the meta ROWS of this session's teammates. Their FILES are
+        // already gone — they live under the directory just removed — but the
+        // rows are in the one global sessions DB and would otherwise leak:
+        // never listed (their parent no longer exists) and never removed.
+        try {
+          await this.groupedStorage?.deleteMetaByParent(sessionId)
+        } catch {
+          // best-effort; an orphan row is hidden, not harmful
+        }
+      }
+
+      // A write that landed while the delete awaited must not outlive it.
+      this.sessionMeta.delete(sessionId)
+      this.fsSummaries.delete(sessionId)
+    } finally {
+      // A throw above leaves the session alive; its pins must not stay refused.
+      this.deletingSessions.delete(sessionId)
     }
-    await this.teams.abortTeammatesOf(sessionId)
-    // What the coordinator remembered about this lead goes with it — after
-    // the children's teardown, which is what writes the last of it.
-    this.teams.forgetLead(sessionId)
-
-    // Cascade: deleting a parent abandons its in-flight background
-    // sub-agents — abort + tear them down so they don't keep running / leak, and
-    // drop any results queued for the vanishing parent. AWAITED: the children's
-    // transcripts live under the parent dir the
-    // storage delete below removes, and each child's worktree cleanup is
-    // sequenced after its worker dispose inside the cascade.
-    await this.cascadeSubAgentsOnParentClose(sessionId)
-
-    // Unified disposal (drop deliveries, fire C++ stop, clear ports,
-    // dispose worker, remove entry).
-    await this.disposeManagedSession(sessionId, { fireStop: true })
-    this.sessionMeta.delete(sessionId)
-    this.fsSummaries.delete(sessionId)
-    this.forgetSkillEvents(sessionId)
-    // Written on every `session.open`; this is its only removal.
-    this.panelOfSession.delete(sessionId)
-    this.runtimeSessionSurface?.dropSessionTopics(sessionId)
-
-    // A deleted session must not leave its prev-snapshot cache
-    // behind, so nothing stale can re-emit for the dead id.
-    this.feed.forgetStatus(sessionId)
-
-    // Provider mods: `provider.sessionEnd` in the modules that hook it, then
-    // the session's provider stores go (5 s at most, never rejects; a no-op in
-    // a realm with no provider mod). The teammates' sessions end with the lead.
-    await endProviderSessions([sessionId, ...teammateIds])
-    // The session's MCP servers stop now rather than after the release grace.
-    void closeSessionMCPPool(sessionId)
-
-    if (this.storage) {
-      // A background extract fork spawned by this session's last turn may
-      // still be mid-flight, appending its sidechain transcript under the
-      // session dir the delete below removes. Give it a bounded window to
-      // finish (memory writes land in the memory dir, so this mainly
-      // prevents the fork erroring against vanished storage). The timeout
-      // is short — a
-      // user-initiated delete must not hang on a slow model call.
-      try {
-        await awaitMemoryExtractions(5_000)
-      } catch {
-        // drain is best-effort; deletion proceeds regardless
-      }
-      try {
-        await this.storage.deleteSession(sessionId)
-      } catch {
-        // best-effort; the in-memory state is already gone
-      }
-      // Cascade the meta ROWS of this session's teammates. Their FILES are
-      // already gone — they live under the directory just removed — but the
-      // rows are in the one global sessions DB and would otherwise leak:
-      // never listed (their parent no longer exists) and never removed.
-      try {
-        await this.groupedStorage?.deleteMetaByParent(sessionId)
-      } catch {
-        // best-effort; an orphan row is hidden, not harmful
-      }
-    }
-
-    // A write that landed while the delete awaited must not outlive it.
-    this.sessionMeta.delete(sessionId)
-    this.fsSummaries.delete(sessionId)
-    this.deletingSessions.delete(sessionId)
 
     const removedMessage = {
       type: 'session.removed' as const,

@@ -85,7 +85,7 @@ describe('pickNeighborSession', () => {
     const view = { groupBy: 'none', field: 'created', direction: 'asc' } as const
     const order = sidebarRowOrder(sessions, view, 5_000).map(s => s.sessionId)
     expect(order).toEqual(['a', 'b', 'c'])
-    expect(pickNeighborSession(sessions, 'b', new Set(), order)?.sessionId).toBe('c')
+    expect(pickNeighborSession(sessions, 'b', new Set(), [order])?.sessionId).toBe('c')
   })
 
   it('skips the rows of a collapsed section', () => {
@@ -99,7 +99,45 @@ describe('pickNeighborSession', () => {
       s => s.sessionId,
     )
     expect(order).toEqual(['a', 'b'])
-    expect(pickNeighborSession(sessions, 'b', new Set(), order)?.sessionId).toBe('a')
+    expect(pickNeighborSession(sessions, 'b', new Set(), [order])?.sessionId).toBe('a')
+  })
+
+  it('takes the full order when every section is collapsed', () => {
+    const sessions = [
+      { sessionId: 'p', updatedAt: 3_000, pinned: true },
+      { sessionId: 'a', updatedAt: 2_000 },
+      { sessionId: 'b', updatedAt: 1_000 },
+    ]
+    const view = { groupBy: 'none', field: 'updated', direction: 'desc' } as const
+    const shown = sidebarRowOrder(sessions, view, 5_000, { pinned: true, recents: true })
+      .map(s => s.sessionId)
+    const full = sidebarRowOrder(sessions, view, 5_000).map(s => s.sessionId)
+    expect(shown).toEqual([])
+    expect(pickNeighborSession(sessions, 'a', new Set(), [shown, full])?.sessionId).toBe('b')
+  })
+
+  it('takes the full order for a row a collapsed section hides', () => {
+    const sessions = [
+      { sessionId: 'p', updatedAt: 4_000, pinned: true },
+      { sessionId: 'q', updatedAt: 3_000, pinned: true },
+      { sessionId: 'a', updatedAt: 2_000 },
+      { sessionId: 'b', updatedAt: 1_000 },
+    ]
+    const view = { groupBy: 'none', field: 'updated', direction: 'desc' } as const
+    const shown = sidebarRowOrder(sessions, view, 5_000, { pinned: true }).map(s => s.sessionId)
+    const full = sidebarRowOrder(sessions, view, 5_000).map(s => s.sessionId)
+    // `q` is not in the shown rows: its neighbor in the full order is `a`, not
+    // the shown list's first row.
+    expect(pickNeighborSession(sessions, 'p', new Set(), [shown, full])?.sessionId).toBe('q')
+    expect(pickNeighborSession(sessions, 'q', new Set(), [shown, full])?.sessionId).toBe('a')
+  })
+
+  it('takes the full order when the shown rows hold only the deleted one', () => {
+    const sessions = [
+      { sessionId: 'p', updatedAt: 3_000, pinned: true },
+      { sessionId: 'a', updatedAt: 2_000 },
+    ]
+    expect(pickNeighborSession(sessions, 'a', new Set(), [['a'], ['p', 'a']])?.sessionId).toBe('p')
   })
 })
 
@@ -246,9 +284,29 @@ describe('useSessionManager pin, fork and delete', () => {
       result.current.focusSession('b')
     })
     act(() => {
-      result.current.deleteSession('b', ['c', 'b', 'a'])
+      result.current.deleteSession('b', [['c', 'b', 'a']])
     })
     expect(result.current.activeSessionId).toBe('a')
+  })
+
+  it('lands on an existing session, not a new one, when every section is collapsed', () => {
+    const { result } = mount()
+    act(() => {
+      result.current.applyRemoteList([summary('a', 3_000), summary('b', 2_000)])
+    })
+    flushMerge()
+    act(() => {
+      result.current.focusSession('b')
+    })
+    const before = result.current.sessions.map(s => s.sessionId)
+    act(() => {
+      result.current.deleteSession('b', [[], ['a', 'b']])
+    })
+    expect(result.current.activeSessionId).toBe('a')
+    flushMerge()
+    expect(
+      result.current.sessions.filter(s => !before.includes(s.sessionId)),
+    ).toEqual([])
   })
 
   it('a late write to a deleted session does not bring its row back', () => {
