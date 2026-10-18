@@ -9,7 +9,6 @@ import {
   PlugIcon,
   ImageIcon,
   StickyNoteIcon,
-  XIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -41,20 +40,17 @@ import { useSessionConnectors } from "./session-connectors-context";
 import { McpServersDialog } from "./mcp-servers-dialog";
 import { SessionTasksList } from "./session-tasks-card";
 import { useRightPanelContent } from "./right-panel-content-context";
-import { useModUi, type ModUiPaneRow } from "./mod-ui-context";
-import { ModDockedPane } from "./mod-render";
 
 /**
  * The session card stack (F-9) at the transcript's top right: information
  * cards (Outputs, Changes, Connectors, Background tasks), each drawn only while it has
- * something to show, in the person's order and Show choices; then one card
- * per mod pane docked here (F-25), which keep their open order. Docked only
- * while the chat is wide enough; otherwise the information cards open as a
- * popover from the topbar toggle, and mod panes draw inline.
+ * something to show, in the person's order and Show choices. Docked only
+ * while the chat is wide enough; otherwise the cards open as a popover from
+ * the topbar toggle.
  */
 
-/** The popover form, for this thread: open, and how it closes itself. */
-export type SessionCardsPopover = { open: boolean; onClose: () => void };
+/** The stack's form for this thread: docked, or the popover — open, and how it closes itself. */
+export type SessionCardsPopover = { docked?: boolean; open: boolean; onClose: () => void };
 export const SessionCardsPopoverContext = React.createContext<SessionCardsPopover | null>(null);
 
 /** The session's stored change figures (F-9): what the Outputs and Changes
@@ -107,18 +103,10 @@ const SUMMARY_CLASS =
 const MENU_ROW_CLASS =
   "flex h-6 w-full cursor-default select-none items-center gap-2 rounded-md px-1.5 text-start text-[13px] outline-none data-[highlighted]:bg-muted";
 
-export function SessionCardStack({
-  history,
-  isForeground = true,
-}: {
-  history: TurnDiffMeta[] | null;
-  /** False while this thread is mounted but hidden: an open mod card stops drawing its pane. */
-  isForeground?: boolean;
-}) {
+export function SessionCardStack({ history }: { history: TurnDiffMeta[] | null }) {
   const popover = React.useContext(SessionCardsPopoverContext);
-  const { panesDocked } = useModUi();
-  if (panesDocked) return <CardStack history={history} placement="docked" isForeground={isForeground} />;
-  if (popover?.open) return <CardStack history={history} placement="popover" onClose={popover.onClose} isForeground={isForeground} />;
+  if (popover?.docked) return <CardStack history={history} placement="docked" />;
+  if (popover?.open) return <CardStack history={history} placement="popover" onClose={popover.onClose} />;
   return null;
 }
 
@@ -129,16 +117,12 @@ function CardStack({
   history,
   placement,
   onClose,
-  isForeground,
 }: {
   history: TurnDiffMeta[] | null;
   placement: "docked" | "popover";
   onClose?: () => void;
-  isForeground: boolean;
 }) {
   const t = useT();
-  const { panes: dockedPanes, dockFront, setDockFront, showPane, closePane } = useModUi();
-  const panes = placement === "docked" ? dockedPanes : [];
   const flat = placement === "popover";
   // Set by a press in the popover or in its Show menu (portaled, so it marks
   // the press itself) before the document listener reads it.
@@ -204,7 +188,7 @@ function CardStack({
     writePrefs(moveShownSessionCard(prefs, shown, from, to)),
   );
 
-  const drawsNothing = placement === "docked" && shown.length === 0 && panes.length === 0;
+  const drawsNothing = placement === "docked" && shown.length === 0;
   // The server list closes with the stack, so it never reopens on its own.
   React.useEffect(() => {
     if (drawsNothing) setServersDialogOpen(false);
@@ -386,20 +370,6 @@ function CardStack({
               {t("sessionCards.empty")}
             </p>
           ) : null}
-          {panes.map((pane) => (
-            <ModDockCard
-              key={`${pane.plugin}\u0000${pane.id}`}
-              pane={pane}
-              open={dockFront?.plugin === pane.plugin && dockFront.id === pane.id}
-              drawsPane={isForeground}
-              onToggle={(open) => {
-                setDockFront?.(open ? { plugin: pane.plugin, id: pane.id } : null);
-                if (open) void showPane?.(pane.plugin, pane.id);
-              }}
-              onClose={closePane ? () => void closePane(pane.plugin, pane.id) : undefined}
-              closeLabel={t("mods.pane.close")}
-            />
-          ))}
         </div>
       </ContextMenuPrimitive.Trigger>
       <ContextMenuPrimitive.Portal>
@@ -523,64 +493,6 @@ function InfoCard({
   );
 }
 
-function ModDockCard({
-  pane,
-  open,
-  drawsPane,
-  onToggle,
-  onClose,
-  closeLabel,
-}: {
-  pane: ModUiPaneRow;
-  open: boolean;
-  drawsPane: boolean;
-  onToggle: (open: boolean) => void;
-  onClose?: () => void;
-  closeLabel: string;
-}) {
-  return (
-    <section
-      data-testid={`session-card-mod-${pane.plugin}-${pane.id}`}
-      className={CARD_CLASS}
-    >
-      <div className={HEADER_CLASS}>
-        <button
-          type="button"
-          data-testid={`session-card-mod-toggle-${pane.plugin}-${pane.id}`}
-          aria-expanded={open}
-          title={pane.plugin}
-          onClick={() => onToggle(!open)}
-          className={HEADER_BUTTON_CLASS}
-        >
-          <span className={TITLE_CLASS}>{pane.title}</span>
-          <ChevronRightIcon aria-hidden strokeWidth={1.75} className={cn(CHEVRON_CLASS, open && "rotate-90")} />
-        </button>
-        {onClose ? (
-          <button
-            type="button"
-            aria-label={closeLabel}
-            data-testid={`session-card-mod-close-${pane.plugin}-${pane.id}`}
-            onClick={onClose}
-            className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <XIcon aria-hidden strokeWidth={2} className="size-3.5" />
-          </button>
-        ) : null}
-      </div>
-      {/* Drawn only while open and in front: a closed card's pane, or one in
-          a hidden thread, is never asked for. A right click in the body is the
-          page's own, not the Show menu. */}
-      {open && drawsPane ? (
-        <div
-          className="-mx-2 -mb-2 mt-2 flex h-[min(28rem,55vh)] min-h-0 flex-col overflow-hidden rounded-b-[10px] border-border border-t"
-          onContextMenu={(event) => event.stopPropagation()}
-        >
-          <ModDockedPane plugin={pane.plugin} id={pane.id} />
-        </div>
-      ) : null}
-    </section>
-  );
-}
 
 /**
  * Reordering the information cards: a press on a card's grip drags it among

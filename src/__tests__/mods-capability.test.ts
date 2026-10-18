@@ -486,6 +486,8 @@ describe('the drawing actions', () => {
     for (const payload of [
       { sessionId: 's1', seat: 'dock-visible', showing },
       { sessionId: 's1', seat: 'dock-hidden' },
+      { sessionId: 's1', seat: 'dock-hidden', places: 'all' },
+      { sessionId: 's1', seat: 'dock-hidden', places: [showing] },
       { sessionId: 's1', seat: 'inline' },
       { sessionId: 's1', seat: 'none' },
     ]) {
@@ -493,13 +495,23 @@ describe('the drawing actions', () => {
       expect(sent.ok).toBe(true)
     }
     const seats = calls.filter(c => c.what === 'seat').map(c => c.input as { client: string; seat: unknown })
-    expect(seats.map(s => s.seat)).toEqual([{ kind: 'dock-visible', showing }, { kind: 'dock-hidden' }, { kind: 'inline' }, null])
+    expect(seats.map(s => s.seat)).toEqual([
+      { kind: 'dock-visible', showing },
+      { kind: 'dock-hidden' },
+      { kind: 'dock-hidden', places: 'all' },
+      { kind: 'dock-hidden', places: [showing] },
+      { kind: 'inline' },
+      null,
+    ])
     expect(new Set(seats.map(s => s.client)).size).toBe(1)
     expect(seats[0]!.client).not.toBe('')
     for (const bad of [
       { sessionId: 's1', seat: 'docked' },
       { sessionId: 's1', seat: 'dock-hidden', showing },
       { sessionId: 's1', seat: 'dock-visible', showing: { plugin: 'p', id: '' } },
+      { sessionId: 's1', seat: 'dock-visible', places: 'all' },
+      { sessionId: 's1', seat: 'dock-hidden', places: 'some' },
+      { sessionId: 's1', seat: 'dock-hidden', places: [{ plugin: 'p' }] },
     ]) {
       const sent = await control.client.request('mods.seat', bad)
       expect(sent.ok).toBe(false)

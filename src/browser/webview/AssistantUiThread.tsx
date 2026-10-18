@@ -399,13 +399,11 @@ export type AssistantUiThreadProps = {
   /** Open Settings → Plugins & Mods at one plugin's row — the icon on a
    *  mod's rows above the prompt (F-25). */
   onOpenPluginSettings?: (plugin: string) => void
-  /** The shell docks the mods' panes in the session card stack (F-25,
+  /** The shell docks the mods' panes in its Plugins side pane (F-25,
    *  `placement: 'dock'`): the thread draws none above the prompt. */
   modPanesDocked?: boolean
-  /** The docked pane whose card is open for this session; the shell owns it
-   *  and reports it as the seat's `showing`. */
-  modDockFront?: { plugin: string; id: string } | null
-  onModDockFrontChange?: (sessionId: string, front: { plugin: string; id: string } | null) => void
+  /** The session card stack docks at the transcript's top right (F-9). */
+  sessionCardsDocked?: boolean
   /** The session cards' popover (the stack does not dock): open for this
    *  thread, and how it asks to close. */
   sessionCardsPopoverOpen?: boolean
@@ -616,8 +614,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   openSettings,
   onOpenPluginSettings,
   modPanesDocked,
-  modDockFront,
-  onModDockFrontChange,
+  sessionCardsDocked,
   sessionCardsPopoverOpen,
   onSessionCardsPopoverClose,
   runtimeConnection,
@@ -673,8 +670,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
       openSettings={openSettings}
       onOpenPluginSettings={onOpenPluginSettings}
       modPanesDocked={modPanesDocked}
-      modDockFront={modDockFront}
-      onModDockFrontChange={onModDockFrontChange}
+      sessionCardsDocked={sessionCardsDocked}
       sessionCardsPopoverOpen={sessionCardsPopoverOpen}
       onSessionCardsPopoverClose={onSessionCardsPopoverClose}
       runtimeConnection={runtimeConnection}
@@ -732,8 +728,7 @@ function InteractiveAssistantUiThread({
   openSettings,
   onOpenPluginSettings,
   modPanesDocked,
-  modDockFront,
-  onModDockFrontChange,
+  sessionCardsDocked,
   sessionCardsPopoverOpen,
   onSessionCardsPopoverClose,
   runtimeConnection,
@@ -754,23 +749,18 @@ function InteractiveAssistantUiThread({
   // the prompt), and the icon's jump to the Plugins page.
   const canListMods = useCan('mods', 'list')
   const modSessionId = state.snapshot?.sessionId
-  const setModDockFront = useMemo(
-    () =>
-      modSessionId && onModDockFrontChange
-        ? (front: { plugin: string; id: string } | null) => onModDockFrontChange(modSessionId, front)
-        : undefined,
-    [modSessionId, onModDockFrontChange],
-  )
   const modUi = useSessionModUi(runtimeConnection, modSessionId, {
     canListMods,
     onOpenPluginSettings,
     panesDocked: modPanesDocked,
-    dockFront: modDockFront,
-    setDockFront: setModDockFront,
   })
   const sessionCardsPopover = useMemo(
-    () => ({ open: !!sessionCardsPopoverOpen, onClose: onSessionCardsPopoverClose ?? (() => {}) }),
-    [sessionCardsPopoverOpen, onSessionCardsPopoverClose],
+    () => ({
+      docked: !!sessionCardsDocked,
+      open: !!sessionCardsPopoverOpen,
+      onClose: onSessionCardsPopoverClose ?? (() => {}),
+    }),
+    [sessionCardsDocked, sessionCardsPopoverOpen, onSessionCardsPopoverClose],
   )
   const [headerError, setHeaderError] = useState<string | null>(null)
   // "Try again" on the ProviderApiErrorCard. When the failed turn is already

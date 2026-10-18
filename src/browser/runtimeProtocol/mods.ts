@@ -427,12 +427,18 @@ export type ModsPanePayload = { sessionId: string; plugin: string; id: string }
 
 /** `mods.seat`: where this page draws `sessionId`'s panes. `none`: it does
  *  not draw that session (any more). `dock-visible` names the pane whose tab
- *  is active, absent when another tab is. */
+ *  is active, absent when another tab is. `dock-hidden` may name the mod's
+ *  own opens it would still bring into view (`places`): `all`, or the listed
+ *  panes; absent, none. */
 export const MODS_SEATS = ['inline', 'dock-visible', 'dock-hidden', 'none'] as const
+/** At most this many panes in a seat's `places` list. */
+export const MODS_SEAT_PLACES_CAP = 200
+export type ModsSeatPlaces = 'all' | readonly { plugin: string; id: string }[]
 export type ModsSeatPayload = {
   sessionId: string
   seat: (typeof MODS_SEATS)[number]
   showing?: { plugin: string; id: string }
+  places?: ModsSeatPlaces
 }
 
 /** The prompt box: the draft and the cursor, a UTF-16 offset into it. */
@@ -885,7 +891,16 @@ export function isModsSeatPayload(value: unknown): value is ModsSeatPayload {
         isRecord(value.showing) &&
         typeof value.showing.plugin === 'string' &&
         typeof value.showing.id === 'string' &&
-        value.showing.id !== ''))
+        value.showing.id !== '')) &&
+    (value.places === undefined ||
+      (value.seat === 'dock-hidden' &&
+        (value.places === 'all' ||
+          (Array.isArray(value.places) &&
+            value.places.length <= MODS_SEAT_PLACES_CAP &&
+            value.places.every(
+              (pane: unknown) =>
+                isRecord(pane) && typeof pane.plugin === 'string' && typeof pane.id === 'string' && pane.id !== '',
+            )))))
   )
 }
 

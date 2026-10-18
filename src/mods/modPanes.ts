@@ -48,11 +48,13 @@ export type ModPane = {
 export type ModPaneCloseOrigin = 'plugin' | 'person' | 'unload'
 
 /** Where one client draws a session's panes (`mods.seat`). `dock-visible`
- *  names the pane whose tab is active, absent when another tab is. */
+ *  names the pane whose tab is active, absent when another tab is.
+ *  `dock-hidden` names the mod's own opens it would bring into view
+ *  (`places`: all, or the listed panes), absent for none. */
 export type ModPaneSeat =
   | { kind: 'inline' }
   | { kind: 'dock-visible'; showing?: { plugin: string; id: string } }
-  | { kind: 'dock-hidden' }
+  | { kind: 'dock-hidden'; places?: 'all' | readonly { plugin: string; id: string }[] }
 
 /** Why an unasked open waits: no window showing the session has its panes
  *  in view; it is seated when one that does attaches. */
@@ -107,7 +109,8 @@ export class ModPaneRegistry {
     const key = paneKeyOf(plugin, args.id)
     const title = typeof args.title === 'string' && args.title !== '' ? args.title : args.id
     const held = this.panes.get(key)
-    const placeable = asked || this.placesUnasked() || (args.focus === true && this.placesFocused())
+    const placeable =
+      asked || this.placesUnasked(plugin, args.id) || (args.focus === true && this.placesFocused())
     this.opens += 1
     if (args.focus) this.keyed.add(key)
     if (held) {
@@ -184,11 +187,10 @@ export class ModPaneRegistry {
     } else {
       this.seats.delete(client)
     }
-    const unasked = this.placesUnasked()
     const focused = this.placesFocused()
     let placed = false
     for (const pane of this.panes.values()) {
-      if (pane.isPlaced || !(unasked || (pane.focus && focused))) continue
+      if (pane.isPlaced || !(this.placesUnasked(pane.plugin, pane.id) || (pane.focus && focused))) continue
       pane.isPlaced = true
       placed = true
     }
@@ -229,12 +231,16 @@ export class ModPaneRegistry {
     return this.keyed.has(paneKeyOf(plugin, id))
   }
 
-  /** Whether an unasked open is placed now: some client draws panes, or
-   *  none ever said where it does. */
-  private placesUnasked(): boolean {
+  /** Whether an unasked open of this pane is placed now: some client draws
+   *  panes or would bring this one into view, or none ever said where it
+   *  does. */
+  private placesUnasked(plugin: string, id: string): boolean {
     if (!this.seatsKnown) return true
     for (const seat of this.seats.values()) {
       if (seat.kind !== 'dock-hidden') return true
+      const places = seat.places
+      if (places === 'all') return true
+      if (places?.some(pane => pane.plugin === plugin && pane.id === id)) return true
     }
     return false
   }

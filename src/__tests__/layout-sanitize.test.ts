@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import {
   defaultLayoutStorage,
   sanitizeLayoutStorage,
+  sanitizeModPanesAsked,
   sanitizePaneLayout,
   sanitizePaneWeightByKind,
   sanitizeSessionPaneRecord,
@@ -33,6 +34,16 @@ describe('sanitizeLayoutStorage', () => {
     expect(out.paneWeightByKind).toEqual({})
     expect(panesIn(out.sessions.s1.layout)).toEqual(['diff'])
     expect(out.sessionCards.hidden).toEqual(['changes'])
+  })
+})
+
+describe('sanitizeModPanesAsked', () => {
+  it('keeps well-formed pane keys once each, the newest last; anything else is dropped', () => {
+    const a = 'p\u0000a'
+    const b = 'p\u0000b'
+    expect(sanitizeModPanesAsked([a, 'no-separator', 7, b, a])).toEqual([b, a])
+    expect(sanitizeModPanesAsked('x')).toEqual([])
+    expect(sanitizeLayoutStorage({ modPanesAsked: [a] }).modPanesAsked).toEqual([a])
   })
 })
 

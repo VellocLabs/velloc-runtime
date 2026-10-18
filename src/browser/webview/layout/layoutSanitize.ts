@@ -25,6 +25,7 @@ import {
   sanitizeSessionCardPrefs,
   type SessionCardPrefs,
 } from './sessionCards'
+import { ASKED_MEMORY_CAP, modPaneOfKey } from './modsPane'
 
 /** Per-session records kept; the least recently used go first. */
 export const SESSION_RECORD_CAP = 100
@@ -37,10 +38,22 @@ export interface NexusLayoutStorage {
   paneWeightByKind: PaneWeightByKind
   sessions: Record<string, SessionPaneRecord>
   sessionCards: SessionCardPrefs
+  /** The mod panes the person asked for and has not closed by hand (`modsPane.ts` keys). */
+  modPanesAsked: readonly string[]
 }
 
 export function defaultLayoutStorage(): NexusLayoutStorage {
-  return { paneWeightByKind: {}, sessions: {}, sessionCards: defaultSessionCardPrefs() }
+  return { paneWeightByKind: {}, sessions: {}, sessionCards: defaultSessionCardPrefs(), modPanesAsked: [] }
+}
+
+/** Remembered asked panes: well-formed keys, each once, the newest `ASKED_MEMORY_CAP`. */
+export function sanitizeModPanesAsked(raw: unknown): readonly string[] {
+  if (!Array.isArray(raw)) return []
+  const keys = raw.filter(
+    (key): key is string => typeof key === 'string' && key.length <= 200 && modPaneOfKey(key) !== null,
+  )
+  const unique = keys.filter((key, index) => keys.lastIndexOf(key) === index)
+  return unique.length > ASKED_MEMORY_CAP ? unique.slice(unique.length - ASKED_MEMORY_CAP) : unique
 }
 
 function sanitizeWeight(raw: unknown): number {
@@ -182,5 +195,6 @@ export function sanitizeLayoutStorage(raw: unknown): NexusLayoutStorage {
     paneWeightByKind: sanitizePaneWeightByKind(obj.paneWeightByKind),
     sessions: sanitizeSessionRecords(obj.sessions),
     sessionCards: sanitizeSessionCardPrefs(obj.sessionCards),
+    modPanesAsked: sanitizeModPanesAsked(obj.modPanesAsked),
   }
 }

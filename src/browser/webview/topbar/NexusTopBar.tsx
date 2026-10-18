@@ -53,7 +53,7 @@ import { useWindowDragRegions } from "./useWindowDragRegions";
  */
 
 /** The pane kinds with a toggle of their own in the bar, in bar order. */
-const BAR_PANE_KINDS: readonly SidePaneKind[] = ["terminal", "diff", "browser", "files"];
+const BAR_PANE_KINDS: readonly SidePaneKind[] = ["terminal", "diff", "browser", "files", "mods"];
 /** The pane kinds listed as rows of the More menu, in menu order. */
 const MENU_PANE_KINDS: readonly SidePaneKind[] = ["tasks", "plan", "skill"];
 
@@ -101,6 +101,8 @@ export type NexusTopBarProps = {
   /** The panes in the active session's layout: each toggle is pressed
    *  exactly when its pane is listed. */
   openPanes?: readonly SidePaneKind[];
+  /** Some mod has a pane open in the active session: the Plugins toggle shows (F-25). */
+  hasModPanes?: boolean;
   /** Open a closed pane, or close an open one. Omitted on hosts without
    *  panes: no pane toggle and no More menu render. */
   onTogglePane?: (kind: SidePaneKind) => void;
@@ -176,6 +178,7 @@ export function NexusTopBar({
   searchSlot,
   onDragRegionsChange,
   openPanes,
+  hasModPanes,
   onTogglePane,
   sessionOverview,
   onResetLayout,
@@ -438,8 +441,9 @@ export function NexusTopBar({
         ) : null}
         {BAR_PANE_KINDS.map((kind) => {
           if (!onTogglePane || (kind === "browser" && !canOpenSessionTab)) return null;
-          const Icon = PANE_ICON[kind];
           const pressed = open.has(kind);
+          if (kind === "mods" && !hasModPanes && !pressed) return null;
+          const Icon = PANE_ICON[kind];
           const name = t(PANE_LABEL_KEY[kind]);
           return (
             <Tooltip key={kind}>

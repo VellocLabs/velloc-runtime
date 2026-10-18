@@ -293,7 +293,9 @@ export function registerModsCapability(
               ? null
               : payload.seat === 'dock-visible'
                 ? { kind: 'dock-visible', ...(payload.showing ? { showing: payload.showing } : {}) }
-                : { kind: payload.seat },
+                : payload.seat === 'dock-hidden'
+                  ? { kind: 'dock-hidden', ...(payload.places ? { places: payload.places } : {}) }
+                  : { kind: payload.seat },
           )
           return {}
         }

@@ -297,6 +297,22 @@ describe('$.ui.open / panes — where the clients seat the panes', () => {
     expect(await panesNow(runtime, reports)).toEqual([{ id: 'report', isShown: true, isPlaced: true }])
   })
 
+  it("a hidden pane naming the mod's own opens it would bring into view places them at once", async () => {
+    const { runtime, reports } = world({ opener: OPENER })
+    await runtime.ready
+    runtime.seat('c1', { kind: 'dock-hidden', places: [{ plugin: 'other', id: 'report' }] })
+    await runtime.turnStart({ text: 'go', turnId: 't1' })
+    expect(logged(reports, 'unasked')).toEqual([{ isPlaced: false, reason: PANE_WAITS_REASON }])
+    // Widened to the floor that admits it: the waiting pane is placed.
+    runtime.seat('c1', { kind: 'dock-hidden', places: [{ plugin: 'opener', id: 'report' }] })
+    expect(await panesNow(runtime, reports)).toEqual([{ id: 'report', isShown: false, isPlaced: true }])
+    const second = world({ opener: OPENER })
+    await second.runtime.ready
+    second.runtime.seat('c1', { kind: 'dock-hidden', places: 'all' })
+    await second.runtime.turnStart({ text: 'go', turnId: 't1' })
+    expect(logged(second.reports, 'unasked')).toEqual([{ isPlaced: true }])
+  })
+
   it("the person's command places at once and stamps an asked open; hiding the panel unshows it; asking again stamps anew", async () => {
     const { runtime, reports, lastState } = world({ opener: OPENER })
     await runtime.ready

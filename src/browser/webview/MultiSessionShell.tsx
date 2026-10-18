@@ -42,6 +42,7 @@ import {
   SIDEBAR_DEFAULT_WIDTH_PX,
   SIDEBAR_MAX_WIDTH_PX,
   SIDEBAR_MIN_WIDTH_PX,
+  SIDEBAR_RAIL_WIDTH_PX,
 } from './layout/layoutConstants'
 import {
   clampSidebarWidth,
@@ -49,6 +50,7 @@ import {
 } from './layout/computeLayout'
 import {
   closePane,
+  dropModsPane,
   hasPane,
   browserToggleAction,
   followBrowserTabs,
@@ -77,7 +79,21 @@ import { paneShortcutFor } from './layout/paneShortcuts'
 import { PaneArea } from './panes/PaneArea'
 import { PaneFrame } from './panes/PaneFrame'
 import { PANE_ICON, PANE_LABEL_KEY } from './panes/paneKinds'
-import { foldModDock, sameModDockFront, type ModDockFront } from './layout/modDock'
+import {
+  DOCK_FLOOR_CELLS,
+  forgetAskedPane,
+  modPaneOfKey,
+  modsPanePlaces,
+  modsPaneWeight,
+  newModPaneOpens,
+  opensBringModsPane,
+  rememberAskedPanes,
+  type ModsPaneRow,
+} from './layout/modsPane'
+import { loadModPanesAsked, saveModPanesAsked } from './layout/layoutStorage'
+import { ModsPane } from './panes/ModsPane'
+import { useModCellWidth } from '@/components/assistant-ui/mod-render'
+import type { ModUiSeatPlaces } from '@/components/assistant-ui/mod-ui-context'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useModAgentView } from './mods/useModAgentView'
 import {
@@ -460,6 +476,8 @@ interface PaneSessionUi {
 const EMPTY_PANE_UI: PaneSessionUi = { diffTarget: null, skillTarget: null, fileReveal: null }
 
 const EMPTY_FILES_PANE: FilesPaneState = emptyFilesPane()
+/** The Plugins pane's px around its body's cells: frame borders, the body's insets, the scrollbar's room. */
+const MODS_PANE_CHROME_PX = 40
 
 export function MultiSessionShell({
   createWorkerTransport,
@@ -1861,20 +1879,36 @@ export function MultiSessionShell({
     : 0
   const sessionTabCountsRef = useRef(sessionTabCounts)
   sessionTabCountsRef.current = sessionTabCounts
+  // Each session's open mod panes, known once its mod UI has loaded: the
+  // Plugins pane is pruned only for a session known to have none.
+  const modPaneCountsRef = useRef(new Map<string, number>())
+  // The session area beside the sidebar, in the cells a mod's tree is drawn
+  // in: mod panes dock in the Plugins pane from `DOCK_FLOOR_CELLS`, else draw
+  // inline above the prompt (and the Plugins pane is not drawn).
+  const modCellWidth = useModCellWidth()
+  const modRowWidth = Math.max(0, sessionAreaWidth - (sidebarCollapsed ? SIDEBAR_RAIL_WIDTH_PX : sidebarWidth))
+  const modRowCells = Math.floor(modRowWidth / modCellWidth)
+  const modPanesDocked = modRowCells >= DOCK_FLOOR_CELLS
   // The drawn record: the stored one with the panes this session cannot show
-  // right now pruned (a browser pane while it owns no tab; its slot stays, so
-  // it returns in place). Every decision reads this same pruned record.
+  // right now pruned (a browser pane while it owns no tab, the Plugins pane
+  // while no mod has a pane open; each slot stays, so the pane returns in
+  // place). Every decision reads this same pruned record.
   const readPaneRecord = useCallback(
     (sessionId: string) =>
       pruneUnrestorable(sessionLayoutsStore.get(sessionId), {
         browserTabs: sessionTabCountsRef.current.get(sessionId)?.nexus ?? 0,
+        modPanes: modPaneCountsRef.current.get(sessionId),
       }),
     [sessionLayoutsStore],
   )
   const storedPaneRecord = activeSessionId ? sessionLayouts.records.get(activeSessionId) : undefined
   const activePaneRecord = useMemo(
-    () => pruneUnrestorable(storedPaneRecord ?? sessionLayoutsStore.get(''), { browserTabs: activeNexusTabCount }),
-    [storedPaneRecord, activeNexusTabCount, sessionLayoutsStore],
+    () =>
+      pruneUnrestorable(storedPaneRecord ?? sessionLayoutsStore.get(''), {
+        browserTabs: activeNexusTabCount,
+        ...(modPanesDocked ? {} : { modPanes: 0 }),
+      }),
+    [storedPaneRecord, activeNexusTabCount, sessionLayoutsStore, modPanesDocked],
   )
   const paneLayout = activePaneRecord.layout
   const openPanes = useMemo(() => panesIn(paneLayout), [paneLayout])
@@ -1941,6 +1975,18 @@ export function MultiSessionShell({
   // on new tab activity (another count), not for the state it was closed in.
   // Transient, like the dismissal it replaces.
   const browserDismissedAtRef = useRef(new Map<string, number>())
+  // The sessions whose Plugins pane the person closed: a mod's own open
+  // waits there until the person opens the pane or asks for a pane.
+  const [modsPaneDismissed, setModsPaneDismissed] = useState<ReadonlySet<string>>(() => new Set())
+  const setModsPaneDismissedFor = useCallback((sessionId: string, dismissed: boolean) => {
+    setModsPaneDismissed(prev => {
+      if (prev.has(sessionId) === dismissed) return prev
+      const next = new Set(prev)
+      if (dismissed) next.add(sessionId)
+      else next.delete(sessionId)
+      return next
+    })
+  }, [])
   const closePaneFor = useCallback(
     (kind: SidePaneKind) => {
       const id = activeSessionIdRef.current
@@ -1952,8 +1998,9 @@ export function MultiSessionShell({
       if (kind === 'browser') {
         browserDismissedAtRef.current.set(id, sessionTabCountsRef.current.get(id)?.nexus ?? 0)
       }
+      if (kind === 'mods') setModsPaneDismissedFor(id, true)
     },
-    [updatePaneRecord, readPaneRecord],
+    [updatePaneRecord, readPaneRecord, setModsPaneDismissedFor],
   )
   /** A new session-owned tab inside the browser pane: the host creates it in
    *  this window; the count change then places the pane (`followBrowserTabs`). */
@@ -1984,6 +2031,7 @@ export function MultiSessionShell({
           break
         case 'open':
           if (kind === 'browser') browserDismissedAtRef.current.delete(id)
+          if (kind === 'mods') setModsPaneDismissedFor(id, false)
           openPaneFor(kind)
           break
         case 'move-expansion':
@@ -1995,7 +2043,7 @@ export function MultiSessionShell({
           break
       }
     },
-    [readPaneRecord, openPaneFor, closePaneFor, updatePaneRecord, focusPane, openBrowserTab],
+    [readPaneRecord, openPaneFor, closePaneFor, updatePaneRecord, focusPane, openBrowserTab, setModsPaneDismissedFor],
   )
   // The browser pane follows each session's tab count: a change above zero
   // places it (unless closed at that count), zero leaves it to the prune.
@@ -2606,62 +2654,155 @@ export function MultiSessionShell({
     setSettingsSection('plugins')
   }, [])
 
-  // Mods' panes docked in the session card stack, at the transcript's top
-  // right (F-25; a pane with `placement: 'dock'`). The shell owns which pane
-  // card is open per session and reports it as the seat's `showing`; it reads
-  // the ACTIVE session's mod UI for that (the same per-session stores the
-  // thread reads).
-  const modPanesDocked = sessionCardsDocked
+  // Mods' panes dock in the Plugins side pane (F-25; `placement: 'dock'`),
+  // one tab per pane, the runtime's `isShown` in front. The shell reads the
+  // ACTIVE session's mod UI (the same per-session stores the thread reads)
+  // to bring the pane into the layout on an open and to report the seat.
   const shellModUi = useSessionModUi(runtimeConnection, activeSessionId, {
     canListMods: runtimeCapabilities.can('mods', 'list'),
     onOpenPluginSettings: handleOpenPluginSettings,
     panesDocked: modPanesDocked,
   })
-  const [modDockFronts, setModDockFronts] = useState<ReadonlyMap<string, ModDockFront | null>>(
-    () => new Map(),
-  )
-  const handleModDockFrontChange = useCallback(
-    (sessionId: string, front: ModDockFront | null) => {
-      setModDockFronts(prev => {
-        if (sameModDockFront(prev.get(sessionId) ?? null, front)) return prev
-        const next = new Map(prev)
-        next.set(sessionId, front)
-        return next
-      })
+  // The panes the person asked for and has not closed by hand, across
+  // sessions: from `REMEMBERED_FLOOR_CELLS` a mod's own open of one is placed.
+  const [modPanesAsked, setModPanesAsked] = useState<readonly string[]>(loadModPanesAsked)
+  const modPanesAskedRef = useRef(modPanesAsked)
+  modPanesAskedRef.current = modPanesAsked
+  const writeModPanesAsked = useCallback((next: readonly string[]) => {
+    if (next === modPanesAskedRef.current) return
+    modPanesAskedRef.current = next
+    setModPanesAsked(next)
+    saveModPanesAsked(next)
+  }, [])
+  const modsPlaces = modsPanePlaces({
+    columns: modRowCells,
+    dismissed: activeSessionId ? modsPaneDismissed.has(activeSessionId) : false,
+  })
+  const modsPlacesRef = useRef(modsPlaces)
+  modsPlacesRef.current = modsPlaces
+  const modRowWidthRef = useRef(0)
+  modRowWidthRef.current = modRowWidth
+  // Bring the Plugins pane into a session's layout: at its slot, else beside
+  // the chat as wide as `columns` cells (a width the person dragged wins);
+  // `forward` also shows it over a pane expanded in front.
+  const bringModsPane = useCallback(
+    (sessionId: string, columns: number | undefined, forward: boolean) => {
+      updatePaneRecord(r => {
+        const weights = sessionLayoutsStore.getSnapshot().weights
+        const asked =
+          weights.mods === undefined
+            ? modsPaneWeight({
+                columns,
+                cellWidth: modCellWidth,
+                chromeWidth: MODS_PANE_CHROME_PX,
+                rowWidth: modRowWidthRef.current,
+                chatWeight: PANE_CHAT_WEIGHT,
+              })
+            : null
+        const opened = openPane(r, 'mods', asked !== null ? { ...weights, mods: asked } : weights)
+        return forward && opened.maximized !== null ? setMaximized(opened, 'mods') : opened
+      }, sessionId)
     },
-    [],
+    [updatePaneRecord, sessionLayoutsStore, modCellWidth],
   )
-  // The panes last folded per session (`foldModDock`'s `seen`): a pane the
-  // person asked for since comes to the front.
-  const modDockSeenRef = useRef(new Map<string, Map<string, number>>())
+  // Per session: the opens last folded (`newModPaneOpens`'s `seen`), and
+  // the mod's own opens that wait for the pane (placed when the window
+  // widens to their floor).
+  const modPaneSeenRef = useRef(new Map<string, Map<string, number>>())
+  const modPanesWaitingRef = useRef(new Map<string, ModsPaneRow[]>())
   useEffect(() => {
-    if (!activeSessionId || !shellModUi.isLoaded || !modPanesDocked) return
-    const seenBySession = modDockSeenRef.current
-    setModDockFronts(prev => {
-      const folded = foldModDock({
-        front: prev.get(activeSessionId) ?? null,
-        panes: shellModUi.panes,
-        seen: seenBySession.get(activeSessionId),
-      })
-      seenBySession.set(activeSessionId, folded.seen)
-      if (sameModDockFront(prev.get(activeSessionId) ?? null, folded.front)) return prev
-      const next = new Map(prev)
-      next.set(activeSessionId, folded.front)
-      return next
-    })
-  }, [activeSessionId, shellModUi.isLoaded, shellModUi.panes, modPanesDocked])
+    if (!activeSessionId || !shellModUi.isLoaded) return
+    const id = activeSessionId
+    const panes = shellModUi.panes
+    modPaneCountsRef.current.set(id, panes.length)
+    const { opens, seen } = newModPaneOpens(panes, modPaneSeenRef.current.get(id))
+    modPaneSeenRef.current.set(id, seen)
+    // Inline above the prompt: every pane is drawn there.
+    if (!modPanesDocked) return
+    if (panes.length === 0) {
+      // No pane left: the Plugins pane leaves the stored layout too, its
+      // slot kept, so a later open is decided afresh.
+      modPanesWaitingRef.current.delete(id)
+      const stored = sessionLayoutsStore.get(id)
+      const dropped = dropModsPane(stored)
+      if (dropped !== stored) sessionLayoutsStore.put(id, dropped)
+      return
+    }
+    if (opens.length === 0) return
+    writeModPanesAsked(rememberAskedPanes(modPanesAskedRef.current, opens))
+    const record = readPaneRecord(id)
+    const forward = opens.some(open => open.asked === true || open.focus === true)
+    if (forward) setModsPaneDismissedFor(id, false)
+    const inLayout = hasPane(record.layout, 'mods')
+    if (inLayout && !(forward && record.maximized !== null && record.maximized !== 'mods')) return
+    if (!opensBringModsPane(opens, modsPlacesRef.current, new Set(modPanesAskedRef.current))) {
+      const waiting = modPanesWaitingRef.current.get(id) ?? []
+      modPanesWaitingRef.current.set(id, [...waiting, ...opens])
+      return
+    }
+    modPanesWaitingRef.current.delete(id)
+    bringModsPane(id, opens[opens.length - 1]?.columns, forward)
+  }, [activeSessionId, shellModUi.isLoaded, shellModUi.panes, modPanesDocked, readPaneRecord, sessionLayoutsStore, writeModPanesAsked, setModsPaneDismissedFor, bringModsPane])
+  // Widened from inline to the dock floor: the panes drawn inline dock, so
+  // the Plugins pane comes in (unless the person closed it).
+  const modPanesDockedBeforeRef = useRef(modPanesDocked)
+  useEffect(() => {
+    const before = modPanesDockedBeforeRef.current
+    modPanesDockedBeforeRef.current = modPanesDocked
+    if (before || !modPanesDocked || !activeSessionId || !shellModUi.isLoaded) return
+    if (shellModUi.panes.length === 0 || modsPaneDismissed.has(activeSessionId)) return
+    if (hasPane(readPaneRecord(activeSessionId).layout, 'mods')) return
+    bringModsPane(activeSessionId, undefined, false)
+  }, [modPanesDocked, activeSessionId, shellModUi.isLoaded, shellModUi.panes, modsPaneDismissed, readPaneRecord, bringModsPane])
+  // A window widened to a waiting open's floor brings the pane in.
+  useEffect(() => {
+    if (!activeSessionId || !modPanesDocked) return
+    const waiting = modPanesWaitingRef.current.get(activeSessionId)
+    if (!waiting || waiting.length === 0) return
+    if (hasPane(readPaneRecord(activeSessionId).layout, 'mods')) {
+      modPanesWaitingRef.current.delete(activeSessionId)
+      return
+    }
+    if (!opensBringModsPane(waiting, modsPlaces, new Set(modPanesAskedRef.current))) return
+    modPanesWaitingRef.current.delete(activeSessionId)
+    bringModsPane(activeSessionId, waiting[waiting.length - 1]?.columns, false)
+  }, [activeSessionId, modPanesDocked, modsPlaces, readPaneRecord, bringModsPane])
+  // The person's close mark on a tab: `ui.close`, origin `person`; the pane
+  // is no longer one they asked for.
+  const { closePane: closeModPane } = shellModUi
+  const handleCloseModTab = useCallback(
+    (pane: { plugin: string; id: string }) => {
+      writeModPanesAsked(forgetAskedPane(modPanesAskedRef.current, pane))
+      void closeModPane?.(pane.plugin, pane.id)
+    },
+    [closeModPane, writeModPanesAsked],
+  )
   // Where this window draws the active session's panes (`mods.seat`): what
-  // places a mod's own open and what `$.ui.panes()` reports shown — a
-  // maximized Right Panel covers the stack, so it shows nothing, and a mod
-  // toggling its pane (the diff mod's `/diff`) opens it again rather than
-  // closing what the person cannot see. A session left behind is told this
-  // window no longer draws it.
+  // places a mod's own open and what `$.ui.panes()` reports shown. In view
+  // while the Plugins pane is in the layout and no other pane is expanded
+  // over it; otherwise hidden, naming the mod's own opens it would still
+  // bring into view. A session left behind is told this window no longer
+  // draws it.
   const { reportSeat: reportModSeat } = shellModUi
-  const modSeat = paneMaximized !== null ? 'dock-hidden' : !modPanesDocked ? 'inline' : 'dock-visible'
-  const modSeatShowing =
-    modSeat === 'dock-visible' && activeSessionId ? modDockFronts.get(activeSessionId) ?? null : null
-  const modSeatShowingPlugin = modSeatShowing?.plugin
-  const modSeatShowingId = modSeatShowing?.id
+  const modsPaneInLayout = hasPane(paneLayout, 'mods')
+  const modSeat = !modPanesDocked
+    ? 'inline'
+    : modsPaneInLayout && (paneMaximized === null || paneMaximized === 'mods')
+      ? 'dock-visible'
+      : 'dock-hidden'
+  const modShownPane =
+    modSeat === 'dock-visible' ? shellModUi.panes.find(pane => pane.isShown) : undefined
+  const modSeatShowingPlugin = modShownPane?.plugin
+  const modSeatShowingId = modShownPane?.id
+  const modSeatPlaces: ModUiSeatPlaces | undefined =
+    modSeat === 'dock-hidden' && !modsPaneInLayout
+      ? modsPlaces === 'all'
+        ? 'all'
+        : modsPlaces === 'remembered'
+          ? modPanesAsked.map(modPaneOfKey).filter((pane): pane is { plugin: string; id: string } => pane !== null)
+          : undefined
+      : undefined
+  const modSeatPlacesKey = modSeatPlaces === undefined ? '' : JSON.stringify(modSeatPlaces)
   const modSeatReportedRef = useRef<{
     sessionId: string
     report: NonNullable<typeof reportModSeat>
@@ -2678,8 +2819,9 @@ export function MultiSessionShell({
       modSeatShowingPlugin !== undefined && modSeatShowingId !== undefined
         ? { plugin: modSeatShowingPlugin, id: modSeatShowingId }
         : undefined
-    void reportModSeat(modSeat, showing).catch(() => {})
-  }, [activeSessionId, reportModSeat, modSeat, modSeatShowingPlugin, modSeatShowingId])
+    const places = modSeatPlacesKey === '' ? undefined : (JSON.parse(modSeatPlacesKey) as ModUiSeatPlaces)
+    void reportModSeat(modSeat, showing, places).catch(() => {})
+  }, [activeSessionId, reportModSeat, modSeat, modSeatShowingPlugin, modSeatShowingId, modSeatPlacesKey])
   // Pane shortcuts (F-9): Diff toggles, the focused pane closes or
   // expands, the last closed pane reopens. Not while Settings covers the area.
   useEffect(() => {
@@ -3854,6 +3996,15 @@ export function MultiSessionShell({
         </SessionAreaVisibleContext.Provider>
       </PaneFrame>
     )
+    if (kind === 'mods') {
+      return (
+        <ModsPane
+          modUi={shellModUi}
+          onCloseTab={handleCloseModTab}
+          frame={({ title, body }) => frame(title, body)}
+        />
+      )
+    }
     if (kind === 'files') {
       return (
         <Suspense fallback={null}>
@@ -3999,6 +4150,7 @@ export function MultiSessionShell({
           })
         }}
         openPanes={openPanes}
+        hasModPanes={modPanesDocked && shellModUi.panes.length > 0}
         onTogglePane={togglePane}
         sessionOverview={{
           shown:
@@ -4239,8 +4391,7 @@ export function MultiSessionShell({
                   openSettings={handleOpenSettings}
                   onOpenPluginSettings={handleOpenPluginSettings}
                   modPanesDocked={modPanesDocked}
-                  modDockFront={modDockFronts.get(sessionId) ?? null}
-                  onModDockFrontChange={handleModDockFrontChange}
+                  sessionCardsDocked={sessionCardsDocked}
                   sessionCardsPopoverOpen={isActive && !sessionCardsFit && sessionCardsPopoverOpen}
                   onSessionCardsPopoverClose={closeSessionCardsPopover}
                   runtimeConnection={runtimeConnection}

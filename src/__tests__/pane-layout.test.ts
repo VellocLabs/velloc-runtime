@@ -11,6 +11,7 @@ import {
   browserToggleAction,
   closePane,
   defaultPaneLayout,
+  dropModsPane,
   defaultSessionPaneRecord,
   findSlot,
   followBrowserTabs,
@@ -241,6 +242,29 @@ describe('the session record', () => {
     expect(pruned.closedSlots.browser).toEqual({ groupId: 'root', index: 1, axis: 'row', weight: 3 })
     expect(pruned.maximized).toBeNull()
     expect(pruneUnrestorable(record, { browserTabs: 1 })).toBe(record)
+  })
+
+  it('dropModsPane removes only the Plugins pane: a browser pane with no tab stays stored', () => {
+    const stored = openPane(openPane(openPane(defaultSessionPaneRecord(), 'tasks', {}), 'browser', {}), 'mods', {})
+    const dropped = dropModsPane(stored)
+    expect(panesIn(dropped.layout)).toEqual(['tasks', 'browser'])
+    expect(dropped.closedSlots.mods).toBeDefined()
+    // No Plugins pane (a session without plugins): nothing to write.
+    const plain = openPane(openPane(defaultSessionPaneRecord(), 'tasks', {}), 'browser', {})
+    expect(dropModsPane(plain)).toBe(plain)
+  })
+
+  it('prunes the Plugins pane only for a session known to have no mod pane open, keeping its slot', () => {
+    const record = openPane(defaultSessionPaneRecord(), 'mods', {})
+    const pruned = pruneUnrestorable(record, { browserTabs: 0, modPanes: 0 })
+    expect(hasPane(pruned.layout, 'mods')).toBe(false)
+    expect(pruned.closedSlots.mods).toEqual({ groupId: 'root', index: 1, axis: 'row', weight: 1 })
+    expect(pruneUnrestorable(record, { browserTabs: 0, modPanes: 2 })).toBe(record)
+    // Not loaded yet: the pane stays.
+    expect(pruneUnrestorable(record, { browserTabs: 0 })).toBe(record)
+    // Reopened, it returns to its slot.
+    const back = openPane(pruned, 'mods', { mods: 5 })
+    expect(findSlot(back.layout, 'mods')).toEqual({ groupId: 'root', index: 1, axis: 'row', weight: 1 })
   })
 })
 

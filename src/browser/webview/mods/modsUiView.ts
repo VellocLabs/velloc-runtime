@@ -253,11 +253,12 @@ export function modsUiActions(
       : {}),
     ...(can('seat')
       ? {
-          reportSeat: async (seat, showing) => {
+          reportSeat: async (seat, showing, places) => {
             await connection.request('mods.seat', {
               sessionId,
               seat,
               ...(seat === 'dock-visible' && showing ? { showing } : {}),
+              ...(seat === 'dock-hidden' && places ? { places } : {}),
             })
           },
         }

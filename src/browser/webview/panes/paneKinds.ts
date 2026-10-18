@@ -3,6 +3,7 @@ import {
   FileDiffIcon,
   FolderIcon,
   ListTodoIcon,
+  PuzzleIcon,
   SquareMousePointerIcon,
   TerminalIcon,
   ToolboxIcon,
@@ -21,6 +22,7 @@ export const PANE_LABEL_KEY: Record<SidePaneKind, MessageKey> = {
   skill: 'topbar.pane.skill',
   files: 'topbar.pane.files',
   terminal: 'topbar.pane.terminal',
+  mods: 'topbar.pane.mods',
 }
 
 export const PANE_ICON: Record<SidePaneKind, LucideIcon> = {
@@ -31,4 +33,5 @@ export const PANE_ICON: Record<SidePaneKind, LucideIcon> = {
   skill: ToolboxIcon,
   files: FolderIcon,
   terminal: TerminalIcon,
+  mods: PuzzleIcon,
 }

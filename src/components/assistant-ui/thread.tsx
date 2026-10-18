@@ -1038,7 +1038,7 @@ export const Thread: FC<{
         data-slot="thread-top-right"
         className="pointer-events-none absolute top-3 right-[11px] z-20 flex max-h-[calc(100%-1.5rem)] w-[280px] max-w-[calc(100%-1.5rem)] flex-col gap-2.5"
       >
-        <SessionCardStack history={turnDiffHistory ?? null} isForeground={isForeground !== false} />
+        <SessionCardStack history={turnDiffHistory ?? null} />
         <ModToasts />
       </div>
       {/* The page's clipboard, focus ring and windows, for `$.ui.copy` / `.focus` / `.scroll`. */}

@@ -2,7 +2,7 @@
 /**
  * The session card stack (F-9) at the transcript's top right: the information
  * cards (drawn only while they have something to show), the Show menu, the
- * reordering, and the mods' docked panes as its last cards (F-25).
+ * reordering; the mods' panes dock in the Plugins side pane instead (F-25).
  */
 import { createElement, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -68,9 +68,10 @@ type Draw = {
   connectors?: SessionMcpServerView[]
   folder?: string
   openMcpSettings?: () => void
-  popover?: SessionCardsPopover | null
+  /** The stack docks (the default); false: only the popover may draw it. */
+  docked?: boolean
+  popover?: Omit<SessionCardsPopover, 'docked'> | null
   figures?: SessionChangeFigures | null
-  isForeground?: boolean
 }
 
 function tree({
@@ -81,19 +82,19 @@ function tree({
   connectors = [],
   folder,
   openMcpSettings,
+  docked = true,
   popover = null,
   figures = null,
-  isForeground,
 }: Draw): ReactNode {
   return createElement(
     SessionCardsPopoverContext.Provider,
-    { value: popover },
+    { value: { docked, open: popover?.open ?? false, onClose: popover?.onClose ?? (() => {}) } },
     createElement(
     SessionChangeFiguresContext.Provider,
     { value: figures },
     createElement(
     ModUiContext.Provider,
-    { value: { ...EMPTY_MOD_UI, panesDocked: true, ...mod } },
+    { value: { ...EMPTY_MOD_UI, ...mod } },
     createElement(
       RightPanelContentContext.Provider,
       { value: content },
@@ -103,7 +104,7 @@ function tree({
         createElement(
           SessionConnectorsContext.Provider,
           { value: { servers: connectors, folder, openMcpSettings } },
-          createElement(SessionCardStack, { history, isForeground }),
+          createElement(SessionCardStack, { history }),
         ),
       ),
     ),
@@ -120,7 +121,7 @@ function cardIds(): string[] {
 
 describe('SessionCardStack — information cards', () => {
   it('draws nothing on a window that does not dock (narrow), nor when no card has anything', () => {
-    render(tree({ mod: { panesDocked: false }, tasks: { runningTaskCount: 2 } }))
+    render(tree({ docked: false, tasks: { runningTaskCount: 2 } }))
     expect(screen.queryByTestId('session-card-stack')).toBeNull()
     cleanup()
     render(tree({ history: null, tasks: { runningTaskCount: 0 } }))
@@ -284,7 +285,7 @@ describe('SessionCardStack — information cards', () => {
   it('in the popover form, presses and Escape in the server list leave the popover open', () => {
     const onClose = vi.fn()
     const connectors: SessionMcpServerView[] = [{ name: 'github', status: 'connected' }]
-    render(tree({ connectors, mod: { panesDocked: false }, popover: { open: true, onClose } }))
+    render(tree({ connectors, docked: false, popover: { open: true, onClose } }))
     fireEvent.click(screen.getByTestId('session-card-connectors-header'))
     fireEvent.click(screen.getByTestId('session-card-connector'))
     fireEvent.pointerDown(screen.getByTestId('mcp-servers-row'))
@@ -410,86 +411,35 @@ describe('SessionCardStack — Show menu and order', () => {
   })
 })
 
-describe('SessionCardStack — docked mod panes', () => {
-  it('a pane is a card after the information cards, with no grip; it opens in front and is asked to draw only then', () => {
-    const setDockFront = vi.fn()
-    const showPane = vi.fn(async () => {})
-    render(tree({ mod: { panes: [pane], dockFront: null, setDockFront, showPane } }))
-    expect(cardIds()).toEqual(['session-card-outputs', 'session-card-changes', 'session-card-mod-test-report-r-1'])
-    const card = screen.getByTestId('session-card-mod-test-report-r-1')
-    expect(card.textContent).toContain('Report')
-    expect(card.querySelector('[data-testid$="-grip"]')).toBeNull()
+describe('SessionCardStack — mod panes', () => {
+  it('draws no card for a pane a mod opened: panes dock in the Plugins side pane', () => {
+    render(tree({ mod: { panes: [pane] } }))
+    expect(cardIds()).toEqual(['session-card-outputs', 'session-card-changes'])
     expect(screen.queryByTestId('mod-pane-test-report-r-1')).toBeNull()
-    fireEvent.click(screen.getByTestId('session-card-mod-toggle-test-report-r-1'))
-    expect(setDockFront).toHaveBeenCalledWith({ plugin: 'test-report', id: 'r-1' })
-    expect(showPane).toHaveBeenCalledWith('test-report', 'r-1')
-  })
-
-  it('the open card draws the pane at placement dock; its toggle closes it; its close mark asks the runtime', () => {
-    const setDockFront = vi.fn()
-    const closePane = vi.fn(async () => {})
-    render(tree({ history: null, mod: { panes: [pane], dockFront: { plugin: 'test-report', id: 'r-1' }, setDockFront, closePane } }))
-    expect(screen.getByTestId('mod-pane-test-report-r-1').getAttribute('data-mod-placement')).toBe('dock')
-    fireEvent.click(screen.getByTestId('session-card-mod-toggle-test-report-r-1'))
-    expect(setDockFront).toHaveBeenCalledWith(null)
-    fireEvent.click(screen.getByTestId('session-card-mod-close-test-report-r-1'))
-    expect(closePane).toHaveBeenCalledWith('test-report', 'r-1')
-  })
-
-  it('in a thread that is not in front, the open card does not draw (or ask for) its pane', () => {
-    const render$ = vi.fn(async () => ({ kind: 'tree' as const, tree: { type: 'Text', children: ['X'] }, plugin: 'test-report' }))
-    render(
-      tree({
-        history: null,
-        isForeground: false,
-        mod: { panes: [pane], dockFront: { plugin: 'test-report', id: 'r-1' }, render: render$ as never },
-      }),
-    )
-    expect(screen.getByTestId('session-card-mod-test-report-r-1')).toBeTruthy()
-    expect(screen.queryByTestId('mod-pane-test-report-r-1')).toBeNull()
-    expect(render$).not.toHaveBeenCalled()
-  })
-
-  it("draws the open pane's tree with its plugin icon", async () => {
-    const render$ = vi.fn(async () => ({ kind: 'tree' as const, tree: { type: 'Text', children: ['REPORT BODY'] }, plugin: 'test-report' }))
-    render(
-      tree({
-        history: null,
-        mod: {
-          panes: [pane],
-          dockFront: { plugin: 'test-report', id: 'r-1' },
-          hooked: [{ plugin: 'test-report' }],
-          render: render$ as never,
-          openPluginSettings: vi.fn(),
-        },
-      }),
-    )
-    await waitFor(() => expect(screen.getByTestId('mod-pane-test-report-r-1').textContent).toContain('REPORT BODY'))
-    expect(screen.getByTestId('mod-plugin-link-test-report')).toBeTruthy()
   })
 })
 
 describe('SessionCardStack — popover (the chat too narrow to dock)', () => {
-  const undocked = { panesDocked: false, panes: [pane] }
+  const undocked = { panes: [pane] }
 
   it('draws nothing until the popover is opened; open, it holds the information cards and no mod card', () => {
-    render(tree({ mod: undocked, popover: { open: false, onClose: () => {} } }))
+    render(tree({ docked: false, mod: undocked, popover: { open: false, onClose: () => {} } }))
     expect(screen.queryByTestId('session-card-popover')).toBeNull()
     cleanup()
-    render(tree({ mod: undocked, popover: { open: true, onClose: () => {} } }))
+    render(tree({ docked: false, mod: undocked, popover: { open: true, onClose: () => {} } }))
     expect(screen.getByTestId('session-card-popover')).toBeTruthy()
     expect(screen.queryByTestId('session-card-stack')).toBeNull()
     expect(cardIds()).toEqual(['session-card-outputs', 'session-card-changes'])
   })
 
   it('says so when the session has nothing to show', () => {
-    render(tree({ history: null, mod: undocked, popover: { open: true, onClose: () => {} } }))
+    render(tree({ history: null, docked: false, mod: undocked, popover: { open: true, onClose: () => {} } }))
     expect(screen.getByTestId('session-card-popover-empty').textContent).toBe('Nothing to show for this session yet')
   })
 
   it('closes on Escape and on a press outside, but not on a press inside or on the topbar toggle', () => {
     const onClose = vi.fn()
-    render(tree({ mod: undocked, popover: { open: true, onClose } }))
+    render(tree({ docked: false, mod: undocked, popover: { open: true, onClose } }))
     fireEvent.pointerDown(screen.getByTestId('session-card-outputs-header'))
     expect(onClose).not.toHaveBeenCalled()
     const toggle = document.createElement('button')
@@ -506,7 +456,7 @@ describe('SessionCardStack — popover (the chat too narrow to dock)', () => {
 
   it('a press in its Show menu leaves the popover open, and the choice applies', async () => {
     const onClose = vi.fn()
-    render(tree({ mod: undocked, popover: { open: true, onClose } }))
+    render(tree({ docked: false, mod: undocked, popover: { open: true, onClose } }))
     fireEvent.contextMenu(screen.getByTestId('session-card-popover'))
     const changes = await screen.findByTestId('session-card-menu-changes')
     fireEvent.pointerDown(changes)

@@ -1,6 +1,7 @@
 /**
  * localStorage I/O for the layout blob (F-9): pane layouts per session, the
- * per-kind pane weights and the session card prefs, under one key. Writes are
+ * per-kind pane weights, the session card prefs and the mod panes the person
+ * asked for, under one key. Writes are
  * read-modify-write of the whole blob, coalesced to one `setItem` per task;
  * `pagehide` flushes. Best-effort: storage may be missing, and every read is
  * sanitized.
@@ -77,4 +78,12 @@ export function loadSessionCardPrefs(): SessionCardPrefs {
 
 export function saveSessionCardPrefs(prefs: SessionCardPrefs): void {
   updateLayoutStorage(prev => (prev.sessionCards === prefs ? prev : { ...prev, sessionCards: prefs }))
+}
+
+export function loadModPanesAsked(): readonly string[] {
+  return loadLayoutStorage().modPanesAsked
+}
+
+export function saveModPanesAsked(keys: readonly string[]): void {
+  updateLayoutStorage(prev => (prev.modPanesAsked === keys ? prev : { ...prev, modPanesAsked: keys }))
 }

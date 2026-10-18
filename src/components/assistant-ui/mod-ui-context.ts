@@ -52,6 +52,7 @@ export type ModUiPaneRow = {
 /** Where this page draws a session's panes (`mods.seat`): inline above the
  *  prompt, docked in a Right Panel shown or hidden, or not at all. */
 export type ModUiSeat = 'inline' | 'dock-visible' | 'dock-hidden' | 'none'
+export type ModUiSeatPlaces = 'all' | readonly { plugin: string; id: string }[]
 
 /** A `ui.render` site some loaded hook may draw; the client asks for hooked
  *  sites alone ("an unhooked site is never asked for"). */
@@ -148,15 +149,9 @@ export type ModUiContextValue = {
   isLoaded?: boolean
   /** The open panes and the hooked sites. */
   panes: readonly ModUiPaneRow[]
-  /** True where the page docks the panes in the session card stack
+  /** True where the page docks the panes in its Plugins side pane
    *  (`placement: 'dock'`): the thread then draws none above the prompt. */
   panesDocked?: boolean
-  /** The docked pane whose card is open, or null when every pane card is
-   *  closed. Owned by the page, reported to the runtime as the seat's
-   *  `showing`. */
-  dockFront?: { plugin: string; id: string } | null
-  /** Open one docked pane's card (closing the others), or close them all. */
-  setDockFront?: (front: { plugin: string; id: string } | null) => void
   hooked: readonly ModUiHookedSite[]
   stale: ModUiStale
   /** What a `turn.complete` hook answered beneath the last answer. */
@@ -183,8 +178,14 @@ export type ModUiContextValue = {
   /** The person's click on a pane's tab. */
   showPane?: (plugin: string, id: string) => Promise<void>
   /** Tell the runtime where this page draws the session's panes; `showing`
-   *  names the pane whose docked tab is active (`dock-visible` only). */
-  reportSeat?: (seat: ModUiSeat, showing?: { plugin: string; id: string }) => Promise<void>
+   *  names the pane whose docked tab is active (`dock-visible` only);
+   *  `places` the mod's own opens a hidden dock would bring into view
+   *  (`dock-hidden` only). */
+  reportSeat?: (
+    seat: ModUiSeat,
+    showing?: { plugin: string; id: string },
+    places?: ModUiSeatPlaces,
+  ) => Promise<void>
   /** Hear the session's prompt-box requests; the composer that
    *  registers last answers. Absent where the connection may not answer. */
   onComposerRequest?: (listener: (request: ModUiComposerRequest) => void) => () => void

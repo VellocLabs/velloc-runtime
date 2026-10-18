@@ -57,13 +57,14 @@ function EmptyState({ label }: { label: string }): ReactElement {
 }
 
 /**
- * One pane's body by kind; the Files pane draws its own (`FilesPane`) and the
- * browser pane's body is the native view's placeholder (`WebviewArea`).
+ * One pane's body by kind; the Files and Plugins panes draw their own
+ * (`FilesPane`, `ModsPane`) and the browser pane's body is the native view's
+ * placeholder (`WebviewArea`).
  */
 export function SidePaneBody({
   kind,
   ...props
-}: SidePaneContentProps & { kind: Exclude<SidePaneKind, 'files' | 'browser'> }): ReactElement {
+}: SidePaneContentProps & { kind: Exclude<SidePaneKind, 'files' | 'browser' | 'mods'> }): ReactElement {
   const t = useT()
   switch (kind) {
     case 'tasks':

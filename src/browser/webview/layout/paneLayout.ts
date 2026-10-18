@@ -6,7 +6,7 @@
  */
 
 /** The utility views that can be panes beside the chat. */
-export type SidePaneKind = 'tasks' | 'diff' | 'browser' | 'plan' | 'skill' | 'files' | 'terminal'
+export type SidePaneKind = 'tasks' | 'diff' | 'browser' | 'plan' | 'skill' | 'files' | 'terminal' | 'mods'
 
 export const SIDE_PANE_KINDS: readonly SidePaneKind[] = [
   'tasks',
@@ -16,6 +16,7 @@ export const SIDE_PANE_KINDS: readonly SidePaneKind[] = [
   'skill',
   'files',
   'terminal',
+  'mods',
 ]
 
 /** A leaf of the tree: the chat, or one side pane. */
@@ -511,19 +512,31 @@ export function resetPaneLayout(record: SessionPaneRecord): SessionPaneRecord {
 
 /**
  * Drop the panes a session cannot show right now: the browser pane while the
- * session owns no tab (its slot is kept, so it returns in place when a tab
- * opens). `maximized` survives only with its pane.
+ * session owns no tab, the Plugins pane while no mod is known to have a pane
+ * open (`modPanes` 0; absent is not known yet). Each keeps its slot, so it
+ * returns in place. `maximized` survives only with its
+ * pane.
  */
 export function pruneUnrestorable(
   record: SessionPaneRecord,
-  env: { browserTabs: number },
+  env: { browserTabs: number; modPanes?: number },
 ): SessionPaneRecord {
   let next = record
   if (env.browserTabs <= 0 && hasPane(next.layout, 'browser')) next = closePane(next, 'browser')
+  if (env.modPanes !== undefined && env.modPanes <= 0 && hasPane(next.layout, 'mods')) next = closePane(next, 'mods')
   if (next.maximized !== null && !hasPane(next.layout, next.maximized)) {
     next = { ...next, maximized: null }
   }
   return next
+}
+
+/**
+ * The record without its Plugins pane (its slot kept), for a session whose
+ * mods have no pane left; every other pane as stored. The same reference
+ * when the layout holds no Plugins pane.
+ */
+export function dropModsPane(record: SessionPaneRecord): SessionPaneRecord {
+  return hasPane(record.layout, 'mods') ? closePane(record, 'mods') : record
 }
 
 export function sessionPaneRecordEquals(a: SessionPaneRecord, b: SessionPaneRecord): boolean {

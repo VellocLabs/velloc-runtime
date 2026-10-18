@@ -500,13 +500,14 @@ function paddingOf(node: HTMLElement): { across: number; down: number } {
 
 /** The site's width in character cells and height in rows, from the window or the
  *  site's own box (`node`), measured inside the tree box's padding; a default where
- *  nothing measures. */
+ *  nothing measures. `isFullscreen`: the page docks panes beside the transcript. */
 function useCellViewport(
   ref: React.RefObject<HTMLElement | null>,
   rowsFrom: "window" | "node" = "window",
   cellsRef?: React.RefObject<HTMLElement | null>,
 ): ModUiViewport {
-  const [viewport, setViewport] = React.useState<ModUiViewport>({ columns: 80, rows: 24, isFullscreen: false });
+  const isFullscreen = useModUi().panesDocked === true;
+  const [viewport, setViewport] = React.useState<ModUiViewport>({ columns: 80, rows: 24, isFullscreen });
   React.useLayoutEffect(() => {
     const node = ref.current;
     if (!node || typeof ResizeObserver === "undefined") return;
@@ -532,7 +533,9 @@ function useCellViewport(
           ? Math.max(1, Math.floor(bodyHeight / lineHeight))
           : Math.max(10, Math.floor((typeof window !== "undefined" ? window.innerHeight : 600) / lineHeight));
       setViewport((prev) =>
-        prev.columns === columns && prev.rows === screenRows ? prev : { columns, rows: screenRows, isFullscreen: false },
+        prev.columns === columns && prev.rows === screenRows && prev.isFullscreen === isFullscreen
+          ? prev
+          : { columns, rows: screenRows, isFullscreen },
       );
     };
     measure();
@@ -540,8 +543,29 @@ function useCellViewport(
     observer.observe(node);
     if (box !== node) observer.observe(box);
     return () => observer.disconnect();
-  }, [ref, rowsFrom, cellsRef]);
+  }, [ref, rowsFrom, cellsRef, isFullscreen]);
   return viewport;
+}
+
+/** The width in px of one character cell a mod's tree is drawn in; 7 until
+ *  measured. */
+export function useModCellWidth(): number {
+  const [width, setWidth] = React.useState(7);
+  React.useLayoutEffect(() => {
+    if (typeof document === "undefined" || !document.body) return;
+    const probe = document.createElement("div");
+    probe.textContent = "0000000000";
+    probe.style.position = "absolute";
+    probe.style.visibility = "hidden";
+    probe.style.whiteSpace = "pre";
+    probe.style.width = "max-content";
+    probe.className = "font-mono text-xs";
+    document.body.appendChild(probe);
+    const measured = probe.getBoundingClientRect().width / 10;
+    document.body.removeChild(probe);
+    if (measured > 0) setWidth(measured);
+  }, []);
+  return width;
 }
 
 /**
@@ -1130,11 +1154,11 @@ function useModPaneProps(pane: ModUiPaneRow, placement: "dock" | "inline", bodyC
 }
 
 /**
- * A pane docked in the session card stack (`placement: 'dock'`, "beside the
- * transcript"): its card's whole body, sized by the card — the columns and
- * the rows are the card's, `rows` asked at open is ignored ("the dock
- * ignores it"). Mounted only while its card is open, so a closed pane is
- * never asked for.
+ * A pane docked in the Plugins side pane (`placement: 'dock'`, "beside the
+ * transcript"): the side pane's whole body, sized by it — the columns and
+ * the rows are its own, `rows` asked at open is ignored ("the dock ignores
+ * it"). Mounted only for the tab in front, so a pane behind a tab is never
+ * asked for.
  */
 export function ModDockedPane({ plugin, id }: { plugin: string; id: string }) {
   const { panes } = useModUi();
@@ -1207,7 +1231,7 @@ function ModPaneBody({ pane }: { pane: ModUiPaneRow }) {
 export function ModPanes() {
   const t = useT();
   const { panes, closePane, showPane, panesDocked } = useModUi();
-  // Docked in the Right Panel instead (`ModDockedPane`).
+  // Docked in the Plugins side pane instead (`ModDockedPane`).
   if (panesDocked || panes.length === 0) return null;
   const shown = panes.find((pane) => pane.isShown) ?? panes[panes.length - 1]!;
   return (
