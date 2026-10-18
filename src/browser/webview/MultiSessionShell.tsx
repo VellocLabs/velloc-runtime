@@ -69,6 +69,7 @@ import {
   CHAT_WEIGHT as PANE_CHAT_WEIGHT,
 } from './layout/paneLayout'
 import { sideRegionMetrics } from './layout/paneGeometry'
+import { fitRootRowAfterOpen } from './layout/paneFit'
 import { rootPaneWeightsByKind } from './layout/paneResize'
 import { activateFileTab, closeFileTab, emptyFilesPane, openFileTab } from './layout/filesPane'
 import { createSessionLayoutsStore, useSessionLayouts, type SessionLayoutsStore } from './layout/sessionLayouts'
@@ -1890,16 +1891,28 @@ export function MultiSessionShell({
     if (activeSessionId) sessionLayoutsStore.touch(activeSessionId)
   }, [activeSessionId, sessionLayoutsStore])
 
+  // The px the chat's slot and the side region split for `layout` at the
+  // current width (null when it would not sit beside the chat); set once the
+  // shell layout is resolved below.
+  const rowWidthForRef = useRef<(layout: PaneLayout) => number | null>(() => null)
   // Apply a record change to a session (the active one by default); the
   // store writes it and re-renders the shell. A record returned unchanged
-  // writes nothing. The side region closing (its last pane gone) is reported
-  // to the presence reducer.
+  // writes nothing. A pane the change opens rebalances the root row once, in
+  // the same write (never `paneWeightByKind`). The side region closing (its
+  // last pane gone) is reported to the presence reducer.
   const updatePaneRecord = useCallback(
     (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId = activeSessionIdRef.current) => {
       if (!sessionId) return
       const prev = readPaneRecord(sessionId)
-      const next = fn(prev)
+      let next = fn(prev)
       if (next === prev) return
+      for (const kind of panesIn(next.layout)) {
+        if (hasPane(prev.layout, kind)) continue
+        const rowWidth = rowWidthForRef.current(next.layout)
+        if (rowWidth === null) continue
+        const layout = fitRootRowAfterOpen(next.layout, kind, { rowWidth, gutter: PANE_GUTTER_PX })
+        if (layout !== next.layout) next = { ...next, layout }
+      }
       if (panesIn(prev.layout).length > 0 && panesIn(next.layout).length === 0) {
         presentRightPanel({ type: 'close' })
       }
@@ -2464,6 +2477,24 @@ export function MultiSessionShell({
       gutter: PANE_GUTTER_PX,
     },
   })
+  rowWidthForRef.current = (layout: PaneLayout) => {
+    const metrics = sideRegionMetrics(layout)
+    if (metrics.count === 0) return null
+    const drawn = resolveShellLayout({
+      areaW: sessionAreaWidth,
+      sidebar: { collapsed: sidebarCollapsed, width: sidebarWidth },
+      panel: {
+        visible: true,
+        maximized: false,
+        share: metrics.share,
+        minWidth: Math.max(RIGHT_PANEL_MIN_WIDTH_PX, metrics.minWidth),
+        maxWidth: Number.POSITIVE_INFINITY,
+        floatWidth: null,
+        gutter: PANE_GUTTER_PX,
+      },
+    })
+    return drawn.panel === 'beside' ? drawn.chatW + drawn.panelW : null
+  }
   const sidebarHidden = shellLayout.sidebar === 'hidden'
   // The card stack docks only where it fits and the person has it shown;
   // where it does not fit, the topbar toggle opens the cards as a popover.
