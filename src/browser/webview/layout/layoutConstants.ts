@@ -29,6 +29,12 @@ export const PANE_MIN_HEIGHT_PX = 160
 /** Gap between pane cards, and between a card and the area's edge. */
 export const PANE_GUTTER_PX = 8
 
+/** A pane separator's pointer hit area across the gutter it sits in. */
+export const PANE_SEPARATOR_HIT_PX = 12
+
+/** How far an arrow key moves a pane separator (Shift doubles it). */
+export const PANE_RESIZE_STEP_PX = 16
+
 /** A pane card's header row. */
 export const PANE_HEADER_HEIGHT_PX = 36
 

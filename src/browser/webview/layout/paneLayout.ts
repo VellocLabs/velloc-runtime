@@ -177,7 +177,8 @@ function replaceGroup(node: PaneNode, id: string, next: PaneGroup): PaneNode {
   return changed ? { ...node, children } : node
 }
 
-function withGroup(layout: PaneLayout, id: string, next: PaneGroup): PaneLayout {
+/** The layout with the group `id` replaced by `next`; the same reference when it has no such group. */
+export function withGroup(layout: PaneLayout, id: string, next: PaneGroup): PaneLayout {
   const root = replaceGroup(layout.root, id, next)
   return root === layout.root ? layout : { root: root as PaneGroup }
 }

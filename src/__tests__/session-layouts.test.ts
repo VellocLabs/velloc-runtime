@@ -7,7 +7,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { SESSION_RECORD_CAP } from '@/browser/webview/layout/layoutSanitize'
 import { flushLayoutStorage, LAYOUT_STORAGE_KEY } from '@/browser/webview/layout/layoutStorage'
-import { defaultSessionPaneRecord, openPane, panesIn } from '@/browser/webview/layout/paneLayout'
+import { sideRegionMetrics } from '@/browser/webview/layout/paneGeometry'
+import {
+  defaultSessionPaneRecord,
+  openPane,
+  panesIn,
+  type PaneLayout,
+  type SidePaneKind,
+} from '@/browser/webview/layout/paneLayout'
+import { rootPaneWeightsByKind } from '@/browser/webview/layout/paneResize'
 import { createSessionLayoutsStore } from '@/browser/webview/layout/sessionLayouts'
 
 describe('createSessionLayoutsStore', () => {
@@ -109,5 +117,38 @@ describe('createSessionLayoutsStore', () => {
     const snap = layouts.getSnapshot()
     layouts.setWeight('diff', 2.1235)
     expect(layouts.getSnapshot()).toBe(snap)
+  })
+
+  // A separator run ends in the record's layout plus the root-row kinds'
+  // weights: every write of the run lands in one setItem, and the weight a
+  // kind was left at is what it opens at in another session.
+  it('a resize commit is one stored write, and the kind reopens at that weight', () => {
+    const layouts = createSessionLayoutsStore(() => now)
+    const writes = { count: 0 }
+    const raw = (globalThis as { localStorage: Storage }).localStorage
+    const setItem = raw.setItem.bind(raw)
+    raw.setItem = (k: string, v: string) => {
+      writes.count++
+      setItem(k, v)
+    }
+    const resized: PaneLayout = {
+      root: { id: 'root', axis: 'row', weight: 1, children: [{ pane: 'chat', weight: 2.4 }, { pane: 'diff', weight: 2.6 }] },
+    }
+    layouts.put('a', { ...defaultSessionPaneRecord(), layout: resized })
+    for (const [kind, weight] of Object.entries(rootPaneWeightsByKind(resized))) {
+      layouts.setWeight(kind as SidePaneKind, weight!)
+    }
+    expect(writes.count).toBe(0)
+    flushLayoutStorage()
+    expect(writes.count).toBe(1)
+    const blob = JSON.parse(store.get(LAYOUT_STORAGE_KEY)!) as {
+      sessions: Record<string, { layout: PaneLayout }>
+      paneWeightByKind: Record<string, number>
+    }
+    expect(blob.sessions.a.layout.root.children[1].weight).toBe(2.6)
+    expect(blob.paneWeightByKind.diff).toBeCloseTo((2.6 * 2) / 2.4, 4)
+    // Another session opening Diff gets the same chat:pane share.
+    const other = openPane(defaultSessionPaneRecord(), 'diff', layouts.getSnapshot().weights)
+    expect(sideRegionMetrics(other.layout).share).toBeCloseTo(sideRegionMetrics(resized).share, 4)
   })
 })

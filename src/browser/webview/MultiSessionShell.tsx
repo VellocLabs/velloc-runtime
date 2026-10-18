@@ -56,6 +56,7 @@ import {
   browserToggleAction,
   followBrowserTabs,
   openPane,
+  paneLayoutEquals,
   panesIn,
   paneToggleAction,
   paneWeightFor,
@@ -63,11 +64,13 @@ import {
   resetPaneLayout,
   setMaximized,
   type FilesPaneState,
+  type PaneLayout,
   type SessionPaneRecord,
   type SidePaneKind,
   CHAT_WEIGHT as PANE_CHAT_WEIGHT,
 } from './layout/paneLayout'
 import { sideRegionMetrics } from './layout/paneGeometry'
+import { rootPaneWeightsByKind } from './layout/paneResize'
 import { activateFileTab, closeFileTab, emptyFilesPane, openFileTab } from './layout/filesPane'
 import { createSessionLayoutsStore, useSessionLayouts, type SessionLayoutsStore } from './layout/sessionLayouts'
 import { paneShortcutFor } from './layout/paneShortcuts'
@@ -2014,6 +2017,20 @@ export function MultiSessionShell({
   const handleResetLayout = useCallback(() => {
     updatePaneRecord(resetPaneLayout)
   }, [updatePaneRecord])
+  // A separator run ends in one commit: the session's layout, then the weight
+  // of every pane sitting directly in the root row as what its kind opens at
+  // next (a column's panes have none of their own); a held float share gives
+  // way to the person's own sizing.
+  const commitPaneResize = useCallback(
+    (layout: PaneLayout) => {
+      updatePaneRecord(r => (paneLayoutEquals(r.layout, layout) ? r : { ...r, layout }))
+      for (const [kind, weight] of Object.entries(rootPaneWeightsByKind(layout))) {
+        if (typeof weight === 'number') sessionLayoutsStore.setWeight(kind as SidePaneKind, weight)
+      }
+      presentRightPanel({ type: 'drag' })
+    },
+    [updatePaneRecord, sessionLayoutsStore],
+  )
   const updatePaneUi = useCallback((sessionId: string, fn: (prev: PaneSessionUi) => PaneSessionUi) => {
     setPaneSessionUi(prev => {
       const cur = prev.get(sessionId) ?? EMPTY_PANE_UI
@@ -4140,6 +4157,7 @@ export function MultiSessionShell({
           overlayShown={rightPanelOverlayShown}
           seatProps={rightPanelOverlaid ? rightPanelOverlayDismiss : undefined}
           renderPane={renderSidePane}
+          onResizeCommit={commitPaneResize}
           chat={
           <>
         {mountedSessionIds.map(sessionId => {

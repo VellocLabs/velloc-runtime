@@ -12,7 +12,18 @@ import {
   RIGHT_PANEL_MIN_WIDTH_PX,
   WEBVIEW_AREA_MIN_WIDTH_PX,
 } from './layoutConstants'
-import { isPaneGroup, type PaneGroup, type PaneId, type PaneLayout, type PaneNode } from './paneLayout'
+import {
+  isPaneGroup,
+  panesIn,
+  ROOT_GROUP_ID,
+  type PaneAxis,
+  type PaneGroup,
+  type PaneId,
+  type PaneLayout,
+  type PaneNode,
+  type SidePaneKind,
+} from './paneLayout'
+import type { PanelForm } from './shellLayout'
 
 export interface PaneRect {
   left: number
@@ -176,4 +187,187 @@ export function sideRegionMetrics(layout: PaneLayout, gutter = PANE_GUTTER_PX): 
   const total = root.children.reduce((sum, child) => sum + Math.max(0, child.weight), 0)
   const sideWeight = side.reduce((sum, child) => sum + Math.max(0, child.weight), 0)
   return { minWidth, share: total > 0 ? sideWeight / total : 0, count: side.length }
+}
+
+// ---------------------------------------------------------------------------
+// Separators and the drawn area
+// ---------------------------------------------------------------------------
+
+/** One flank of a separator: its drawn length along the axis and its minimum there. */
+export interface SeparatorFlank {
+  length: number
+  min: number
+}
+
+/**
+ * The gutter between two adjacent children of a group, as a resize handle: a
+ * row's separator is a vertical bar, a column's a horizontal one.
+ */
+export interface PaneSeparatorGeometry {
+  /** `<groupId>:<index>`; the same while the pair exists. */
+  key: string
+  groupId: string
+  /** The first flank's index among the group's children; the second is `index + 1`. */
+  index: number
+  axis: PaneAxis
+  /** The gutter between the flanks, in area px. */
+  rect: PaneRect
+  first: SeparatorFlank
+  second: SeparatorFlank
+}
+
+/** The box a node's drawn leaves cover, or null when none is drawn. */
+export function nodeExtent(node: PaneNode, rects: ReadonlyMap<PaneId, PaneRect>): PaneRect | null {
+  if (!isPaneGroup(node)) return rects.get(node.pane) ?? null
+  let out: PaneRect | null = null
+  for (const child of node.children) {
+    const extent = nodeExtent(child, rects)
+    if (!extent) continue
+    if (!out) {
+      out = { ...extent }
+      continue
+    }
+    const left = Math.min(out.left, extent.left)
+    const top = Math.min(out.top, extent.top)
+    const right = Math.max(out.left + out.width, extent.left + extent.width)
+    const bottom = Math.max(out.top + out.height, extent.top + extent.height)
+    out = { left, top, width: right - left, height: bottom - top }
+  }
+  return out
+}
+
+function collectSeparators(
+  group: PaneGroup,
+  rects: ReadonlyMap<PaneId, PaneRect>,
+  gutter: number,
+  out: PaneSeparatorGeometry[],
+): void {
+  const row = group.axis === 'row'
+  for (let index = 0; index + 1 < group.children.length; index++) {
+    const first = group.children[index]
+    const second = group.children[index + 1]
+    const a = nodeExtent(first, rects)
+    const b = nodeExtent(second, rects)
+    if (!a || !b) continue
+    const rect: PaneRect = row
+      ? {
+          left: a.left + a.width,
+          top: Math.min(a.top, b.top),
+          width: Math.max(0, b.left - a.left - a.width),
+          height: Math.max(a.top + a.height, b.top + b.height) - Math.min(a.top, b.top),
+        }
+      : {
+          left: Math.min(a.left, b.left),
+          top: a.top + a.height,
+          width: Math.max(a.left + a.width, b.left + b.width) - Math.min(a.left, b.left),
+          height: Math.max(0, b.top - a.top - a.height),
+        }
+    out.push({
+      key: `${group.id}:${index}`,
+      groupId: group.id,
+      index,
+      axis: group.axis,
+      rect,
+      first: { length: row ? a.width : a.height, min: nodeMinLength(first, group.axis, gutter) },
+      second: { length: row ? b.width : b.height, min: nodeMinLength(second, group.axis, gutter) },
+    })
+  }
+  for (const child of group.children) {
+    if (isPaneGroup(child)) collectSeparators(child, rects, gutter, out)
+  }
+}
+
+/** A separator for every adjacent pair whose flanks are both drawn; groups walked depth-first. */
+export function resolvePaneSeparators(
+  layout: PaneLayout,
+  rects: ReadonlyMap<PaneId, PaneRect>,
+  gutter = PANE_GUTTER_PX,
+): PaneSeparatorGeometry[] {
+  const out: PaneSeparatorGeometry[] = []
+  collectSeparators(layout.root, rects, gutter, out)
+  return out
+}
+
+export interface AreaGeometryInput {
+  layout: PaneLayout
+  maximized: SidePaneKind | null
+  /** The side region's drawn form; `none` while the tree holds no pane. */
+  form: PanelForm
+  /** The area's size. */
+  width: number
+  height: number
+  /** The chat's drawn width while the panes are beside it. */
+  chatWidth: number
+  /** The seat's width while the region is overlaid or floating. */
+  seatWidth: number
+  gutter?: number
+}
+
+export interface AreaGeometry {
+  /** The chat's box; null while a pane covers it. */
+  chat: PaneRect | null
+  /** The side region's box; null while the tree holds no pane. */
+  seat: PaneRect | null
+  /** Each drawn pane's box in area px; a pane missing here is hidden. */
+  panes: Map<SidePaneKind, PaneRect>
+  /** The resize handles: only while the panes sit beside the chat with none expanded. */
+  separators: PaneSeparatorGeometry[]
+}
+
+/**
+ * Where everything in the area is drawn: the chat, the side region's box
+ * beside the chat (`beside`), over everything (`maximized`), or a seat at the
+ * area's end (`overlay`, `float`), each pane inside it, and the separators.
+ */
+export function resolveAreaGeometry(input: AreaGeometryInput): AreaGeometry {
+  const gutter = input.gutter ?? PANE_GUTTER_PX
+  const { layout, maximized, form, width, height } = input
+  const panes = new Map<SidePaneKind, PaneRect>()
+  const full: PaneRect = { left: 0, top: 0, width, height }
+  if (panesIn(layout).length === 0 || form === 'none') return { chat: full, seat: null, panes, separators: [] }
+  if (maximized !== null) {
+    panes.set(maximized, {
+      left: gutter,
+      top: gutter,
+      width: Math.max(0, width - 2 * gutter),
+      height: Math.max(0, height - 2 * gutter),
+    })
+    return { chat: null, seat: full, panes, separators: [] }
+  }
+  const seated = form === 'overlay' || form === 'float'
+  let chat: PaneRect = full
+  let seat: PaneRect
+  if (seated) {
+    const seatWidth = Math.max(0, Math.min(width, Math.round(input.seatWidth)))
+    seat = { left: width - seatWidth, top: 0, width: seatWidth, height }
+  } else {
+    const chatWidth = Math.max(0, Math.min(width, Math.round(input.chatWidth)))
+    chat = { left: 0, top: 0, width: chatWidth, height }
+    seat = { left: chatWidth + gutter, top: 0, width: Math.max(0, width - chatWidth - gutter), height }
+  }
+  // The side children of the root row, laid out on their own in the seat,
+  // inset by a gutter at the top, the bottom and the area's edge (both edges
+  // when the seat floats over the chat).
+  const side: PaneLayout = {
+    root: {
+      ...layout.root,
+      id: ROOT_GROUP_ID,
+      children: layout.root.children.filter(child => isPaneGroup(child) || child.pane !== 'chat'),
+    },
+  }
+  const inset = seated ? gutter : 0
+  const rects = resolvePaneRects(side, {
+    width: Math.max(0, seat.width - gutter - inset),
+    height: Math.max(0, seat.height - 2 * gutter),
+    chatWidth: 0,
+    gutter,
+  })
+  for (const [pane, rect] of rects) {
+    if (pane === 'chat') continue
+    panes.set(pane, { ...rect, left: seat.left + inset + rect.left, top: gutter + rect.top })
+  }
+  if (seated) return { chat, seat, panes, separators: [] }
+  const all = new Map<PaneId, PaneRect>(panes)
+  all.set('chat', chat)
+  return { chat, seat, panes, separators: resolvePaneSeparators(layout, all, gutter) }
 }

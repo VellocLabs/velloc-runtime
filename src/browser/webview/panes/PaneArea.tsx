@@ -1,5 +1,8 @@
 import {
+  useCallback,
+  useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -9,22 +12,25 @@ import {
 } from 'react'
 
 import { PANE_GUTTER_PX } from '../layout/layoutConstants'
-import { resolvePaneRects, type PaneRect } from '../layout/paneGeometry'
 import {
-  isPaneGroup,
-  panesIn,
-  ROOT_GROUP_ID,
-  type PaneLayout,
-  type SidePaneKind,
-} from '../layout/paneLayout'
+  resolveAreaGeometry,
+  type AreaGeometry,
+  type AreaGeometryInput,
+  type PaneRect,
+  type PaneSeparatorGeometry,
+} from '../layout/paneGeometry'
+import { isPaneGroup, panesIn, ROOT_GROUP_ID, type PaneLayout, type SidePaneKind } from '../layout/paneLayout'
+import { clampResizeDelta, resizeLayoutAt } from '../layout/paneResize'
 import type { PanelForm } from '../layout/shellLayout'
+import { PaneSeparator, separatorStyle } from './PaneSeparator'
 
 /**
  * Draws a session's pane tree (F-9). Groups are not DOM nodes: the chat and
  * every pane sit at absolute rects inside the area, so a pane's body stays
  * mounted whatever happens to the tree around it. The side region is one box
- * beside the chat (`beside`), over everything (`maximized`), or a seat over
- * the chat's end (`overlay`, `float`), the forms the shell's cascade decides.
+ * beside the chat, over everything, or a seat over the chat's end, as the
+ * shell's cascade decides. Beside the chat a separator sits in every gutter;
+ * a drag moves the rects through the elements and commits once at its end.
  */
 export type PaneAreaProps = {
   layout: PaneLayout
@@ -43,11 +49,33 @@ export type PaneAreaProps = {
   chat: ReactNode
   /** One pane's frame. */
   renderPane: (kind: SidePaneKind) => ReactNode
+  /** A separator run ended on a changed layout: persist it. */
+  onResizeCommit?: (layout: PaneLayout) => void
 }
 
 function rectStyle(rect: PaneRect): CSSProperties {
   return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
 }
+
+function applyRect(el: HTMLElement | null | undefined, rect: PaneRect | null): void {
+  if (!el) return
+  if (!rect) {
+    el.style.display = 'none'
+    return
+  }
+  el.style.display = ''
+  el.style.left = `${rect.left}px`
+  el.style.top = `${rect.top}px`
+  el.style.width = `${rect.width}px`
+  el.style.height = `${rect.height}px`
+}
+
+/** A pane's rect inside the seat it is drawn in. */
+function inSeat(rect: PaneRect, seat: PaneRect): PaneRect {
+  return { ...rect, left: rect.left - seat.left, top: rect.top - seat.top }
+}
+
+const FULL: CSSProperties = { left: 0, top: 0, width: '100%', height: '100%' }
 
 export function PaneArea(props: PaneAreaProps): ReactElement {
   const areaRef = useRef<HTMLDivElement>(null)
@@ -74,58 +102,147 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
   const seated = form === 'overlay' || form === 'float'
   const covering = maximized !== null && form !== 'none'
 
-  // The region's box in the area, and each pane's rect inside it. A pane with
-  // no rect is hidden (kept mounted).
-  let seatRect: PaneRect | null = null
-  let chatStyle: CSSProperties = { left: 0, top: 0, width: '100%', height: '100%' }
-  const paneRects = new Map<SidePaneKind, PaneRect>()
-  if (measured && panes.length > 0) {
-    if (covering) {
-      seatRect = { left: 0, top: 0, width: size.width, height: size.height }
-      paneRects.set(maximized, {
-        left: gutter,
-        top: gutter,
-        width: Math.max(0, size.width - 2 * gutter),
-        height: Math.max(0, size.height - 2 * gutter),
-      })
-    } else {
-      if (form === 'beside') {
-        const chatWidth = Math.max(0, Math.min(size.width, Math.round(props.chatWidth)))
-        chatStyle = { left: 0, top: 0, width: chatWidth, height: size.height }
-        seatRect = {
-          left: chatWidth + gutter,
-          top: 0,
-          width: Math.max(0, size.width - chatWidth - gutter),
-          height: size.height,
-        }
-      } else if (seated) {
-        const width = Math.max(0, Math.min(size.width, Math.round(props.seatWidth)))
-        seatRect = { left: size.width - width, top: 0, width, height: size.height }
+  const input = useMemo<AreaGeometryInput | null>(
+    () =>
+      measured
+        ? {
+            layout,
+            maximized,
+            form,
+            width: size.width,
+            height: size.height,
+            chatWidth: props.chatWidth,
+            seatWidth: props.seatWidth,
+            gutter,
+          }
+        : null,
+    [measured, layout, maximized, form, size.width, size.height, props.chatWidth, props.seatWidth, gutter],
+  )
+  const geometry = useMemo<AreaGeometry | null>(() => (input ? resolveAreaGeometry(input) : null), [input])
+
+  // The live drag: the latest delta is painted once per frame through the
+  // elements, and the layout it ends at is committed. The render that commit
+  // causes draws the same rects.
+  const chatRef = useRef<HTMLDivElement>(null)
+  const seatRef = useRef<HTMLDivElement>(null)
+  const slotRefs = useRef(new Map<SidePaneKind, HTMLDivElement>())
+  const separatorRefs = useRef(new Map<string, HTMLDivElement>())
+  const inputRef = useRef(input)
+  inputRef.current = input
+  const geometryRef = useRef(geometry)
+  geometryRef.current = geometry
+  const dragRef = useRef<{
+    separator: PaneSeparatorGeometry
+    delta: number
+    /** A paint is scheduled for the next frame. */
+    pending: boolean
+    frame: number | null
+  } | null>(null)
+  const commitRef = useRef(props.onResizeCommit)
+  commitRef.current = props.onResizeCommit
+
+  const paint = useCallback((g: AreaGeometry) => {
+    applyRect(chatRef.current, g.chat)
+    applyRect(seatRef.current, g.seat)
+    for (const [kind, el] of slotRefs.current) {
+      const rect = g.panes.get(kind)
+      applyRect(el, rect && g.seat ? inSeat(rect, g.seat) : null)
+    }
+    for (const separator of g.separators) {
+      const el = separatorRefs.current.get(separator.key)
+      if (!el) continue
+      const style = separatorStyle(separator)
+      el.style.left = `${style.left}px`
+      el.style.top = `${style.top}px`
+      el.style.width = `${style.width}px`
+      el.style.height = `${style.height}px`
+    }
+  }, [])
+
+  /** The layout and rects a run of `delta` px at `separator` ends at (the current ones when it moves nothing). */
+  const previewFor = useCallback(
+    (separator: PaneSeparatorGeometry, delta: number): { layout: PaneLayout; geometry: AreaGeometry } | null => {
+      const base = inputRef.current
+      const current = geometryRef.current
+      if (!base || !current) return null
+      const next = resizeLayoutAt(base.layout, separator, delta, { areaWidth: base.width, gutter: base.gutter })
+      if (next === base.layout) return { layout: base.layout, geometry: current }
+      const moved = clampResizeDelta(separator.first, separator.second, delta)
+      let chatDelta = 0
+      if (separator.groupId === ROOT_GROUP_ID) {
+        const first = base.layout.root.children[separator.index]
+        const second = base.layout.root.children[separator.index + 1]
+        if (first && !isPaneGroup(first) && first.pane === 'chat') chatDelta = moved
+        else if (second && !isPaneGroup(second) && second.pane === 'chat') chatDelta = -moved
       }
-      if (seatRect) {
-        // The side children of the root row, laid out on their own in the box.
-        const side = {
-          root: {
-            ...layout.root,
-            id: ROOT_GROUP_ID,
-            children: layout.root.children.filter(child => isPaneGroup(child) || child.pane !== 'chat'),
-          },
-        }
-        const inset = seated ? gutter : 0
-        const rects = resolvePaneRects(side, {
-          width: Math.max(0, seatRect.width - gutter - inset),
-          height: Math.max(0, seatRect.height - 2 * gutter),
-          chatWidth: 0,
-          gutter,
-        })
-        for (const kind of panes) {
-          const rect = rects.get(kind)
-          if (rect) paneRects.set(kind, { ...rect, left: rect.left + inset, top: rect.top + gutter })
-        }
+      return {
+        layout: next,
+        geometry: resolveAreaGeometry({ ...base, layout: next, chatWidth: base.chatWidth + chatDelta }),
       }
+    },
+    [],
+  )
+
+  const cancelFrame = () => {
+    const drag = dragRef.current
+    if (drag?.frame !== null && drag?.frame !== undefined && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(drag.frame)
+    }
+    if (drag) {
+      drag.frame = null
+      drag.pending = false
     }
   }
 
+  const onResizeStart = useCallback((separator: PaneSeparatorGeometry) => {
+    cancelFrame()
+    dragRef.current = { separator, delta: 0, pending: false, frame: null }
+  }, [])
+
+  const onResize = useCallback(
+    (separator: PaneSeparatorGeometry, delta: number): number => {
+      const drag = dragRef.current
+      const moved = clampResizeDelta(separator.first, separator.second, delta)
+      if (!drag || drag.separator.key !== separator.key) return moved
+      drag.delta = delta
+      if (!drag.pending && typeof requestAnimationFrame === 'function') {
+        drag.pending = true
+        drag.frame = requestAnimationFrame(() => {
+          const live = dragRef.current
+          if (!live || live.separator.key !== separator.key) return
+          live.pending = false
+          live.frame = null
+          const preview = previewFor(live.separator, live.delta)
+          if (preview) paint(preview.geometry)
+        })
+      }
+      return moved
+    },
+    [previewFor, paint],
+  )
+
+  const onResizeEnd = useCallback(
+    (separator: PaneSeparatorGeometry, delta: number) => {
+      cancelFrame()
+      dragRef.current = null
+      const preview = previewFor(separator, delta)
+      if (!preview) return
+      paint(preview.geometry)
+      if (preview.layout !== inputRef.current?.layout) commitRef.current?.(preview.layout)
+    },
+    [previewFor, paint],
+  )
+
+  // The tree changing under a run (a pane opened by the agent) ends it unsaved.
+  useEffect(() => {
+    if (dragRef.current) {
+      cancelFrame()
+      dragRef.current = null
+    }
+  }, [layout])
+
+  const chatStyle: CSSProperties = geometry?.chat ? rectStyle(geometry.chat) : FULL
+  const seatRect = geometry?.seat ?? null
   const seatVisible = !seated || form === 'float' || props.overlayShown
   const seatClass =
     form === 'float'
@@ -142,6 +259,7 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
       className="relative h-full min-w-0 flex-1 overflow-hidden"
     >
       <div
+        ref={chatRef}
         data-testid="pane-chat"
         className="absolute flex"
         style={covering ? { ...chatStyle, display: 'none' } : chatStyle}
@@ -150,6 +268,7 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
       </div>
       {panes.length > 0 ? (
         <div
+          ref={seatRef}
           data-testid="side-region"
           data-panel-form={form}
           data-overlay-open={form === 'overlay' && props.overlayShown ? 'true' : undefined}
@@ -158,13 +277,17 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
           {...(seated ? props.seatProps : null)}
         >
           {panes.map(kind => {
-            const rect = paneRects.get(kind)
+            const rect = geometry?.panes.get(kind)
             return (
               <div
                 key={kind}
+                ref={el => {
+                  if (el) slotRefs.current.set(kind, el)
+                  else slotRefs.current.delete(kind)
+                }}
                 data-pane-slot={kind}
                 className="absolute flex flex-col"
-                style={rect ? rectStyle(rect) : { display: 'none' }}
+                style={rect && seatRect ? rectStyle(inSeat(rect, seatRect)) : { display: 'none' }}
               >
                 {props.renderPane(kind)}
               </div>
@@ -172,6 +295,21 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
           })}
         </div>
       ) : null}
+      {seatVisible && geometry
+        ? geometry.separators.map(separator => (
+            <PaneSeparator
+              key={separator.key}
+              separator={separator}
+              elementRef={el => {
+                if (el) separatorRefs.current.set(separator.key, el)
+                else separatorRefs.current.delete(separator.key)
+              }}
+              onResizeStart={onResizeStart}
+              onResize={onResize}
+              onResizeEnd={onResizeEnd}
+            />
+          ))
+        : null}
     </div>
   )
 }

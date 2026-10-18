@@ -6,7 +6,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  nodeExtent,
   nodeMinLength,
+  resolveAreaGeometry,
   resolvePaneRects,
   shareLength,
   sideRegionMetrics,
@@ -83,5 +85,57 @@ describe('sideRegionMetrics', () => {
     // Beside a diff pane in the root row the minimum is both plus the gutter.
     const diffAndBrowser = { root: { ...browser.root, children: [...browser.root.children, { pane: 'diff' as const, weight: 3 }] } }
     expect(sideRegionMetrics(diffAndBrowser)).toEqual({ minWidth: 480 + 8 + 280, share: 6 / 8, count: 2 })
+  })
+})
+
+describe('resolveAreaGeometry', () => {
+  const input = (over: Partial<Parameters<typeof resolveAreaGeometry>[0]>) => ({
+    layout: diffThenTasks(),
+    maximized: null,
+    form: 'beside' as const,
+    width: 1508,
+    height: 600,
+    chatWidth: 600,
+    seatWidth: 0,
+    gutter: 8,
+    ...over,
+  })
+
+  it('beside: the chat, the seat, the panes in area px, and a separator in every gutter between siblings', () => {
+    const geometry = resolveAreaGeometry(input({}))
+    expect(geometry.chat).toEqual({ left: 0, top: 0, width: 600, height: 600 })
+    expect(geometry.seat).toEqual({ left: 608, top: 0, width: 900, height: 600 })
+    expect(geometry.panes.get('diff')).toEqual({ left: 608, top: 8, width: 892, height: 288 })
+    expect(geometry.panes.get('tasks')).toEqual({ left: 608, top: 304, width: 892, height: 288 })
+    expect(geometry.separators.map(s => [s.key, s.axis, s.rect])).toEqual([
+      ['root:0', 'row', { left: 600, top: 0, width: 8, height: 600 }],
+      ['g1:0', 'column', { left: 608, top: 296, width: 892, height: 8 }],
+    ])
+    // The chat|column separator's second flank is the column: its width, its widest child's minimum.
+    expect(geometry.separators[0].first).toEqual({ length: 600, min: 360 })
+    expect(geometry.separators[0].second).toEqual({ length: 892, min: 280 })
+  })
+
+  it('a column of leaves spans both for its extent', () => {
+    const geometry = resolveAreaGeometry(input({}))
+    const rects = new Map(geometry.panes)
+    expect(nodeExtent(diffThenTasks().root.children[1], rects)).toEqual({ left: 608, top: 8, width: 892, height: 584 })
+    expect(nodeExtent({ pane: 'plan', weight: 1 }, rects)).toBeNull()
+  })
+
+  it('no separator while a pane is expanded or the region is a seat over the chat', () => {
+    const expanded = resolveAreaGeometry(input({ maximized: 'diff' }))
+    expect(expanded.chat).toBeNull()
+    expect(expanded.panes.get('diff')).toEqual({ left: 8, top: 8, width: 1492, height: 584 })
+    expect(expanded.panes.has('tasks')).toBe(false)
+    expect(expanded.separators).toEqual([])
+    const overlay = resolveAreaGeometry(input({ form: 'overlay', seatWidth: 500 }))
+    expect(overlay.chat).toEqual({ left: 0, top: 0, width: 1508, height: 600 })
+    expect(overlay.seat).toEqual({ left: 1008, top: 0, width: 500, height: 600 })
+    expect(overlay.panes.get('diff')).toEqual({ left: 1016, top: 8, width: 484, height: 288 })
+    expect(overlay.separators).toEqual([])
+    const chatOnly = resolveAreaGeometry(input({ layout: defaultPaneLayout(), form: 'none' }))
+    expect(chatOnly.seat).toBeNull()
+    expect(chatOnly.separators).toEqual([])
   })
 })
