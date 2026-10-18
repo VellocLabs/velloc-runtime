@@ -11,6 +11,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { RuntimeConnection, TopicEvent } from '@/browser/runtimeClient/RuntimeConnection'
 import type { TerminalsState } from '@/terminal/protocol'
+import { useTerminalsState } from '@/browser/webview/terminal/useTerminals'
 import { TerminalPane } from '@/browser/webview/terminal/TerminalPane'
 
 vi.mock('@/browser/webview/terminal/XtermHost', () => ({
@@ -24,12 +25,18 @@ type Listener = (event: TopicEvent<unknown>) => void
 
 function fakeConnection(over: { can?: boolean } = {}) {
   const listeners = new Map<string, Set<Listener>>()
+  const linkListeners = new Set<() => void>()
+  let can = over.can ?? true
   const request = vi.fn(async (route: string, payload: unknown) => {
     if (route === 'terminal.create') return { id: `term_${String((payload as { sessionId: string }).sessionId)}_${request.mock.calls.length}` }
     return undefined
   })
   const conn = {
-    can: () => over.can ?? true,
+    can: () => can,
+    watchLinkState: (listener: () => void) => {
+      linkListeners.add(listener)
+      return () => linkListeners.delete(listener)
+    },
     request,
     subscribe: (topic: string, listener: Listener) => {
       let set = listeners.get(topic)
@@ -48,7 +55,14 @@ function fakeConnection(over: { can?: boolean } = {}) {
       }
     })
   }
-  return { conn, request, publish, subscribers: (topic: string) => listeners.get(topic)?.size ?? 0 }
+  /** The welcome lands with the grant: `can` flips and the link state fires. */
+  const grant = () => {
+    can = true
+    act(() => {
+      for (const listener of linkListeners) listener()
+    })
+  }
+  return { conn, request, publish, grant, subscribers: (topic: string) => listeners.get(topic)?.size ?? 0 }
 }
 
 const running = (id: string, sessionId: string, title = 'pwsh') => ({
@@ -163,6 +177,43 @@ describe('TerminalPane', () => {
     await flush()
     expect(fake.subscribers('terminals')).toBe(0)
     expect(screen.getByTestId('pane-terminal-unavailable')).toBeTruthy()
+  })
+
+  it('a grant that lands after the connection resolved still subscribes', async () => {
+    const fake = fakeConnection({ can: false })
+    renderPane(fake.conn)
+    await flush()
+    expect(fake.subscribers('terminals')).toBe(0)
+    fake.grant()
+    await flush()
+    expect(fake.subscribers('terminals')).toBe(1)
+    fake.publish('terminals', state([running('term_a', 's1')]))
+    await flush()
+    expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_a')
+  })
+
+  it('a pane mounted after another reader of the same connection sees the state already received', async () => {
+    const fake = fakeConnection()
+    const first = renderPane(fake.conn)
+    await flush()
+    fake.publish('terminals', state([running('term_a', 's1')]))
+    await flush()
+    expect(fake.subscribers('terminals')).toBe(1)
+    first.unmount()
+    // The topbar (another reader) would hold the topic; stand in for it.
+    const Reader = () => {
+      useTerminalsState(fake.conn)
+      return null
+    }
+    const holder = render(createElement(Reader))
+    await flush()
+    fake.publish('terminals', state([running('term_a', 's1')]))
+    await flush()
+    renderPane(fake.conn)
+    await flush()
+    expect(fake.subscribers('terminals')).toBe(1)
+    expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_a')
+    holder.unmount()
   })
 
   it('the + button starts another shell and makes it active', async () => {
