@@ -16,7 +16,6 @@ const COLLAPSIBLE_TRIGGER_SELECTOR = [
   '[data-role="background-results-card"] [data-slot="collapsible-trigger"]',
 ].join(',')
 const COLLAPSIBLE_EXCLUDED_ANCESTOR_SELECTOR = [
-  '[data-slot="nexus-status-bar"]',
   '.aui-composer-root',
   '.aui-composer-mode-picker',
   '.aui-project-folder-chip-root',

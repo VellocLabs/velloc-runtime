@@ -11,6 +11,11 @@ import {
   thinkingVerb,
 } from '../components/assistant-ui/running-indicator'
 import { FOOTER_BAR_FRAME } from '../components/assistant-ui/footer-bar-frame'
+import {
+  isRunStatusRowInView,
+  tabRunStatusLabel,
+  TAB_RUN_STATUS_MAX_CHARS,
+} from '../components/assistant-ui/offscreen-run-status'
 import { createTranslate } from '../browser/webview/i18n'
 
 /**
@@ -475,16 +480,17 @@ describe('RunningIndicatorView render', () => {
     expect(html).toContain('thinking')
   })
 
-  // The status bar wears the footer-bar frame the mods' band and status lines
-  // share, and its row is the compact 32px one (min-h-8, down from min-h-10).
-  it('wears the shared footer-bar frame at the compact height', () => {
+  // The row is part of the conversation: it shares the message column, not
+  // the footer bars' frame, and carries no actions of its own.
+  it('renders as a conversation row, not a framed footer bar', () => {
     const html = renderToStaticMarkup(
       createElement(RunningIndicatorView, { running: true, elapsed: '3s', statusText: 'thinking' }),
     )
-    const cls = /data-slot="nexus-status-bar"[^>]*class="([^"]*)"/.exec(html)?.[1] ?? ''
-    for (const token of FOOTER_BAR_FRAME.split(' ')) expect(cls.split(' ')).toContain(token)
+    const cls = /data-slot="nexus-run-status"[^>]*class="([^"]*)"/.exec(html)?.[1] ?? ''
+    expect(cls.split(' ')).toContain('max-w-(--thread-max-width)')
     expect(cls.split(' ')).toContain('min-h-8')
-    expect(cls).not.toContain('min-h-10')
+    for (const token of FOOTER_BAR_FRAME.split(' ')) expect(cls.split(' ')).not.toContain(token)
+    expect(html).not.toContain('<button')
   })
 
   it('renders just the time when there is no status text yet', () => {
@@ -536,40 +542,12 @@ describe('RunningIndicatorView render', () => {
     expect(elapsedSpan![1]).toContain('tabular-nums')
   })
 
-  it('renders the collapse-all status-bar action (lock-to-bottom moved to the floating button)', () => {
+  // A settled conversation with nothing to explain has no row at all.
+  it('renders nothing when the turn is over and there is no idle notice', () => {
     const html = renderToStaticMarkup(
-      createElement(RunningIndicatorView, {
-        running: true,
-        elapsed: '3s',
-        statusText: 'thinking',
-        onAction: () => {},
-      }),
+      createElement(RunningIndicatorView, { running: false, elapsed: '0s', statusText: '' }),
     )
-    expect(html).toContain('data-slot="nexus-status-bar"')
-    expect(html).toContain('data-testid="status-bar-collapse-all"')
-    expect(html).not.toContain('data-testid="status-bar-lock-bottom"')
-    expect(html).not.toContain('data-testid="status-bar-right-panel-toggle"')
-    expect(html).toContain('aria-label="Collapse all"')
-  })
-
-  // Same row, no status cluster — the state a never-run thread starts in AND
-  // the one a finished turn returns to. The actions must survive both, so
-  // collapse-all stays reachable in a settled conversation.
-  it('keeps the action-only status bar when not running', () => {
-    const html = renderToStaticMarkup(
-      createElement(RunningIndicatorView, {
-        running: false,
-        elapsed: '0s',
-        statusText: '',
-        onAction: () => {},
-      }),
-    )
-    expect(html).toContain('data-slot="nexus-status-bar"')
-    expect(html).toContain('data-testid="status-bar-collapse-all"')
-    expect(html).not.toContain('data-testid="status-bar-lock-bottom"')
-    expect(html).not.toContain('data-testid="status-bar-right-panel-toggle"')
-    expect(html).not.toContain('nexus-running-blob')
-    expect(html).not.toContain('0s')
+    expect(html).toBe('')
   })
 
   // Regression guard for the duplicate-filter-id "one SVG vanishes" bug: two
@@ -587,5 +565,43 @@ describe('RunningIndicatorView render', () => {
     for (const id of ids) {
       expect(html).toContain(`url(#${id})`)
     }
+  })
+})
+
+describe('tabRunStatusLabel', () => {
+  it("takes the status line's lead segment", () => {
+    expect(tabRunStatusLabel('thinking · 1.8k tokens', '12s')).toBe('thinking')
+    expect(tabRunStatusLabel('Bash · 300 tokens', '4s')).toBe('Bash')
+  })
+
+  it('falls back to the elapsed time when there is no status text yet', () => {
+    expect(tabRunStatusLabel('', '3s')).toBe('3s')
+  })
+
+  it(`cuts to ${TAB_RUN_STATUS_MAX_CHARS} characters, ellipsis included`, () => {
+    const label = tabRunStatusLabel('almost done thinking · 12k tokens', '1m 2s')
+    expect(Array.from(label)).toHaveLength(TAB_RUN_STATUS_MAX_CHARS)
+    expect(label).toBe('almost do…')
+    expect(tabRunStatusLabel('thinking more', '1s')).toBe('thinking…')
+  })
+
+  it('counts characters, not UTF-16 units, so CJK and emoji are cut whole', () => {
+    expect(tabRunStatusLabel('正在思考中，请稍候再试一下', '1s')).toBe('正在思考中，请稍候…')
+    expect(tabRunStatusLabel('🔧🔧🔧🔧🔧🔧🔧🔧🔧🔧🔧', '1s')).toBe('🔧🔧🔧🔧🔧🔧🔧🔧🔧…')
+    expect(tabRunStatusLabel('思考中', '1s')).toBe('思考中')
+  })
+})
+
+describe('isRunStatusRowInView', () => {
+  const band = { top: 100, bottom: 500 }
+  it('counts the row as visible while its middle is inside the band', () => {
+    expect(isRunStatusRowInView({ top: 200, bottom: 232 }, band)).toBe(true)
+    // Half under the composer footer: the middle is still on screen.
+    expect(isRunStatusRowInView({ top: 480, bottom: 512 }, band)).toBe(true)
+  })
+
+  it('counts the row as hidden once its middle leaves the band', () => {
+    expect(isRunStatusRowInView({ top: 490, bottom: 522 }, band)).toBe(false)
+    expect(isRunStatusRowInView({ top: 70, bottom: 96 }, band)).toBe(false)
   })
 })

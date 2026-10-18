@@ -1,17 +1,18 @@
 import {
-  ListCollapseIcon,
-} from "lucide-react";
-import {
   useEffect,
   useId,
   useRef,
   useState,
   type FC,
-  type ReactNode,
+  type RefObject,
 } from "react";
 import { useAssistantState } from "@assistant-ui/react";
 import { cn } from "@/lib/utils";
-import { FOOTER_BAR_FRAME } from "./footer-bar-frame";
+import {
+  isRunStatusRowInView,
+  publishOffscreenRunStatus,
+  tabRunStatusLabel,
+} from "./offscreen-run-status";
 import { compactCount } from "@/utils/humanize/compactCount";
 import { useTurnTimer } from "@/hooks/useTurnTimer";
 import { isMessageKey, useT, type TranslateFn } from "@/browser/webview/i18n";
@@ -25,8 +26,10 @@ import { useLiveTurnOutputTokens } from "@/browser/webview/TokenUsageIndicator";
 import type { NexusCurrentSessionPhase } from "@/browser/bridge/protocol/ui";
 
 /**
- * Running indicator pinned at the top of the composer: an animated mark plus a live
- * status line, both removed when the turn ends. The status text follows
+ * Running indicator after the last message, part of the conversation: an animated
+ * mark plus a live status line, both removed when the turn ends. Scrolled out of
+ * view, the status moves to the active session tab (`publishOffscreenRunStatus`,
+ * F-22). The status text follows
  * `useNexusSessionStatus` plus live token usage; the run gate reads the session port,
  * like the composer's Send/Stop gate (`resolveRunningIndicatorVisibility`).
  */
@@ -218,12 +221,13 @@ export function resolveRunningIndicatorVisibility(params: {
 
 // The goo `<filter>` id MUST be unique per mounted instance (shared ids can make an SVG
 // vanish), so it derives from useId(). The `<svg>` carries `text-primary`, so only the
-// animation follows the accent.
-const RunningBlob: FC = () => {
+// animation follows the accent. `compact` is the tab-icon size.
+export const RunningBlob: FC<{ compact?: boolean }> = ({ compact }) => {
   const gooId = `nexus-blob-goo-${useId().replace(/:/g, "")}`;
   return (
     <svg
       className="nexus-running-blob text-primary"
+      data-size={compact ? "compact" : undefined}
       viewBox="0 0 30 30"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -264,44 +268,10 @@ const RunningBlob: FC = () => {
   );
 };
 
-export type RunningIndicatorAction = "collapse-all";
-
-export type RunningIndicatorActionAvailability = {
-  collapseAll?: boolean;
-};
-
-function StatusBarButton({
-  label,
-  onClick,
-  children,
-  testId,
-}: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-  testId: string;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      data-slot="nexus-status-bar-action"
-      data-testid={testId}
-      onClick={onClick}
-      className={cn(
-        "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
 /**
- * Presentational shell, free of assistant-ui / bridge hooks. `running` gates the whole
- * status cluster, which is removed rather than frozen when the turn ends; the row stays
- * so its actions remain reachable.
+ * Presentational row, free of assistant-ui / bridge hooks. `running` gates the whole
+ * status cluster, which is removed rather than frozen when the turn ends; a settled
+ * row carries only the idle notice.
  */
 export const RunningIndicatorView: FC<{
   running: boolean;
@@ -312,94 +282,133 @@ export const RunningIndicatorView: FC<{
    * shown only while `running` is false.
    */
   idleNotice?: string;
-  onAction?: (action: RunningIndicatorAction) => void;
-  actions?: RunningIndicatorActionAvailability;
-}> = ({
-  running,
-  elapsed,
-  statusText,
-  idleNotice,
-  onAction,
-  actions,
-}) => {
-  const t = useT();
-  const showCollapseAll = actions?.collapseAll ?? Boolean(onAction);
-  const showActions = Boolean(onAction) && showCollapseAll;
-
+  rowRef?: RefObject<HTMLDivElement | null>;
+}> = ({ running, elapsed, statusText, idleNotice, rowRef }) => {
+  if (!running && !idleNotice) return null;
   return (
     <div
+      ref={rowRef}
       data-testid="nexus-running-indicator"
-      data-slot="nexus-status-bar"
+      data-slot="nexus-run-status"
       data-running={running ? "true" : undefined}
       className={cn(
-        "aui-running-indicator flex min-h-8 items-center gap-2 px-3 text-foreground/80 transition-opacity duration-300",
-        FOOTER_BAR_FRAME,
+        "aui-running-indicator mx-auto flex min-h-8 w-full max-w-(--thread-max-width) shrink-0 items-center gap-2 px-2 text-foreground/80",
+        // A settled row sits under the last answer's action bar, not on it.
+        !running && "mt-4",
       )}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        {running ? (
-          <>
-            <RunningBlob />
-            {/* Order: [blob] [elapsed time] [status text] — the per-turn time sits
-                between the animation and the status, per the design. */}
-            <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-none text-muted-foreground">
-              {/* The elapsed time must never shrink or wrap: as a flex item
-                  its min-content width is its longest WORD, so under pressure
-                  from a long status text "16m 51s" broke onto two lines. */}
-              <span className="shrink-0 whitespace-nowrap tabular-nums">
-                {elapsed}
-              </span>
-              {statusText ? (
-                <>
-                  <span aria-hidden="true" className="opacity-50">
-                    ·
-                  </span>
-                  {/* The row truncates; a retry reason is the one status long
-                      enough to lose text, so keep the full string hoverable.
-                      `tabular-nums` for the same reason the elapsed span has
-                      it: the status carries live counters (retry countdown,
-                      attempt n/N, token count) that re-render every second, and
-                      in the proportional default a `1` is narrower than an `8`,
-                      so every tick nudged the whole line's width. */}
-                  <span
-                    className="min-w-0 truncate tabular-nums"
-                    title={statusText}
-                  >
-                    {statusText}
-                  </span>
-                </>
-              ) : null}
+      {running ? (
+        <>
+          <RunningBlob />
+          {/* Order: [blob] [elapsed time] [status text]. */}
+          <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-none text-muted-foreground">
+            {/* Never shrinks or wraps: as a flex item its min-content width is
+                its longest word, so a long status text would break "16m 51s". */}
+            <span className="shrink-0 whitespace-nowrap tabular-nums">
+              {elapsed}
             </span>
-          </>
-        ) : idleNotice ? (
-          <span
-            data-testid="status-bar-idle-notice"
-            className="min-w-0 truncate text-[13px] leading-none text-muted-foreground"
-            title={idleNotice}
-          >
-            {idleNotice}
+            {statusText ? (
+              <>
+                <span aria-hidden="true" className="opacity-50">
+                  ·
+                </span>
+                {/* Truncates, so the full string stays hoverable. Tabular digits
+                    keep the per-second counters from nudging the line width. */}
+                <span
+                  className="min-w-0 truncate tabular-nums"
+                  title={statusText}
+                >
+                  {statusText}
+                </span>
+              </>
+            ) : null}
           </span>
-        ) : null}
-      </div>
-      {showActions ? (
-        <div
-          data-slot="nexus-status-bar-actions"
-          className="flex shrink-0 items-center gap-0.5"
+        </>
+      ) : (
+        <span
+          data-testid="status-bar-idle-notice"
+          className="min-w-0 truncate text-[13px] leading-none text-muted-foreground"
+          title={idleNotice}
         >
-          {showCollapseAll ? (
-            <StatusBarButton
-              label={t("statusBar.collapseAll")}
-              onClick={() => onAction?.("collapse-all")}
-              testId="status-bar-collapse-all"
-            >
-              <ListCollapseIcon className="size-4" aria-hidden="true" />
-            </StatusBarButton>
-          ) : null}
-        </div>
-      ) : null}
+          {idleNotice}
+        </span>
+      )}
     </div>
   );
 };
+
+/**
+ * Publishes the run status to the session tab while `rowRef`'s row is out of the
+ * conversation viewport's visible band (above the sticky composer footer), and
+ * clears it when the row is back, the run ends, or the thread unmounts.
+ */
+function useOffscreenRunStatusPublisher(params: {
+  sessionId: string | undefined;
+  active: boolean;
+  rowRef: RefObject<HTMLDivElement | null>;
+  elapsed: string;
+  statusText: string;
+}): void {
+  const { sessionId, active, rowRef, elapsed, statusText } = params;
+  const [offscreen, setOffscreen] = useState(false);
+
+  useEffect(() => {
+    setOffscreen(false);
+    const row = rowRef.current;
+    if (!active || !row || typeof IntersectionObserver === "undefined") return;
+    const viewport = row.closest<HTMLElement>(".aui-thread-viewport");
+    if (!viewport) return;
+    const footer = viewport.querySelector<HTMLElement>(
+      ".aui-thread-viewport-footer",
+    );
+    let observer: IntersectionObserver | null = null;
+    const observe = () => {
+      observer?.disconnect();
+      const footerHeight = footer?.offsetHeight ?? 0;
+      observer = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[entries.length - 1];
+          if (!entry?.rootBounds) return;
+          setOffscreen(
+            !isRunStatusRowInView(entry.boundingClientRect, entry.rootBounds),
+          );
+        },
+        {
+          root: viewport,
+          rootMargin: `0px 0px -${footerHeight}px 0px`,
+          threshold: [0, 0.25, 0.5, 0.75, 1],
+        },
+      );
+      observer.observe(row);
+    };
+    observe();
+    const footerResize =
+      footer && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(observe)
+        : null;
+    if (footer) footerResize?.observe(footer);
+    return () => {
+      footerResize?.disconnect();
+      observer?.disconnect();
+    };
+  }, [active, rowRef]);
+
+  const show = active && offscreen && Boolean(sessionId);
+  const label = show ? tabRunStatusLabel(statusText, elapsed) : "";
+  const detail = show
+    ? statusText
+      ? `${elapsed} · ${statusText}`
+      : elapsed
+    : "";
+  useEffect(() => {
+    if (!sessionId) return;
+    publishOffscreenRunStatus(sessionId, show ? { label, detail } : null);
+  }, [sessionId, show, label, detail]);
+  useEffect(() => {
+    if (!sessionId) return;
+    return () => publishOffscreenRunStatus(sessionId, null);
+  }, [sessionId]);
+}
 
 export const RunningIndicator: FC<{
   sessionId?: string;
@@ -412,11 +421,10 @@ export const RunningIndicator: FC<{
    * true for standalone/single-session use.
    */
   isForeground?: boolean;
-  /** See `RunningIndicatorView.idleNotice`. Supplied by the Thread footer,
-   *  which owns the continue-conversation contexts. */
+  /** See `RunningIndicatorView.idleNotice`. Supplied by the Thread, which owns
+   *  the continue-conversation contexts. */
   idleNotice?: string;
-  onAction?: (action: RunningIndicatorAction) => void;
-}> = ({ sessionId, isForeground = true, idleNotice, onAction }) => {
+}> = ({ sessionId, isForeground = true, idleNotice }) => {
   const t = useT();
   const isRunning = useAssistantState((s) => s.thread.isRunning);
   const sessionBusy = useSessionBusy();
@@ -425,6 +433,7 @@ export const RunningIndicator: FC<{
   // run gate above is what decides whether any of it is on screen.
   const { phase, active } = useNexusSessionStatus(statusChannel, sessionId);
   const generatedTokens = useLiveTurnOutputTokens();
+  const rowRef = useRef<HTMLDivElement | null>(null);
 
   const showIndicator = resolveRunningIndicatorVisibility({
     isRunning,
@@ -479,18 +488,23 @@ export const RunningIndicator: FC<{
     thinkingElapsedMs,
   });
 
-  // Nothing to draw: off-foreground, or a stopped turn on a host that supplies
-  // neither row actions nor an idle notice. With either, the row persists so
-  // collapse-all stays reachable (and the resume reason readable) in a settled
-  // conversation — it just carries no live status cluster.
-  if (!isForeground || (!showIndicator && !onAction && !idleNotice)) return null;
+  const visible = isForeground && showIndicator;
+  useOffscreenRunStatusPublisher({
+    sessionId,
+    active: visible,
+    rowRef,
+    elapsed,
+    statusText,
+  });
+
+  if (!isForeground) return null;
   return (
     <RunningIndicatorView
       running={showIndicator}
       elapsed={elapsed}
       statusText={statusText}
       idleNotice={idleNotice}
-      onAction={onAction}
+      rowRef={rowRef}
     />
   );
 };

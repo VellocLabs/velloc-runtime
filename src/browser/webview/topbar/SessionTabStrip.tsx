@@ -3,6 +3,8 @@ import { MoreHorizontalIcon } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 
 import { InkRipple } from "@/components/assistant-ui/ink-ripple";
+import { useOffscreenRunStatus } from "@/components/assistant-ui/offscreen-run-status";
+import { RunningBlob } from "@/components/assistant-ui/running-indicator";
 import { SessionAttentionDot } from "@/components/assistant-ui/session-attention-dot";
 import { cn } from "@/lib/utils";
 import { useT, type TranslateFn } from "../i18n";
@@ -104,6 +106,9 @@ export function SessionTabStrip(props: {
 }) {
   const t = useT();
   useModContributions();
+  // The active conversation's run status while its inline row is scrolled out
+  // of view: that tab paints it in place of its type icon and title (F-22).
+  const offscreenRunStatus = useOffscreenRunStatus(props.activeSessionId);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const tabRefs = React.useRef(new Map<string, HTMLButtonElement>());
   const labelRefs = React.useRef(new Map<string, HTMLSpanElement>());
@@ -276,6 +281,7 @@ export function SessionTabStrip(props: {
           const needsAnswer = !!session.needsAnswer && !active;
           const showLabel = active || !hiddenLabels.has(session.sessionId);
           const TabIcon = getLauncherForType(session.templateType).Icon;
+          const runStatus = active ? offscreenRunStatus : null;
           return (
             <button
               key={session.sessionId}
@@ -304,7 +310,8 @@ export function SessionTabStrip(props: {
               data-running={isRunning || undefined}
               data-shutdown={session.shutdown || undefined}
               data-label-hidden={showLabel ? "false" : "true"}
-              title={label}
+              data-run-status={runStatus ? "true" : undefined}
+              title={runStatus ? `${label} — ${runStatus.detail}` : label}
               onClick={() => props.onSelect(session.sessionId)}
               className={cn(
                 "flex h-7 min-w-0 items-center gap-1.5 rounded px-2 text-body",
@@ -316,23 +323,43 @@ export function SessionTabStrip(props: {
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              <TabStatusSlot
-                running={isRunning}
-                shutdown={!!session.shutdown}
-                needsAnswer={needsAnswer}
-                needsAnswerLabel={t("sidebar.needsAnswer")}
-                // Same dot as the sidebar row; only the ring changes, to the
-                // ground this strip actually sits on.
-                dotClassName="ring-background"
-                icon={
-                  <TabIcon
+              {runStatus ? (
+                <>
+                  <span
+                    data-slot="session-tab-run-status-icon"
+                    className="flex size-3.5 shrink-0 items-center justify-center"
+                  >
+                    <RunningBlob compact />
+                  </span>
+                  {/* Not a measured label: the tab's cached width stays its
+                      title's, which it returns to once the row is back. */}
+                  <span
                     aria-hidden
-                    data-slot="session-tab-type-icon"
-                    className="size-3.5 shrink-0"
-                  />
-                }
-              />
-              {showLabel ? (
+                    data-slot="session-tab-run-status"
+                    className="truncate tabular-nums"
+                  >
+                    {runStatus.label}
+                  </span>
+                </>
+              ) : (
+                <TabStatusSlot
+                  running={isRunning}
+                  shutdown={!!session.shutdown}
+                  needsAnswer={needsAnswer}
+                  needsAnswerLabel={t("sidebar.needsAnswer")}
+                  // Same dot as the sidebar row; only the ring changes, to the
+                  // ground this strip actually sits on.
+                  dotClassName="ring-background"
+                  icon={
+                    <TabIcon
+                      aria-hidden
+                      data-slot="session-tab-type-icon"
+                      className="size-3.5 shrink-0"
+                    />
+                  }
+                />
+              )}
+              {showLabel && !runStatus ? (
                 <span
                   ref={(node) => {
                     if (node) labelRefs.current.set(session.sessionId, node);

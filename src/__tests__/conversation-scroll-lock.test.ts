@@ -290,16 +290,9 @@ describe('conversation scroll lock', () => {
     expect(turnTrigger.getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('collapse-all ignores status-bar and composer controls', () => {
+  it('collapse-all ignores composer controls', () => {
     const viewport = document.createElement('div')
     viewport.className = 'aui-thread-viewport'
-    const statusBar = document.createElement('div')
-    statusBar.dataset.slot = 'nexus-status-bar'
-    const statusButton = document.createElement('button')
-    statusButton.dataset.slot = 'tool-fallback-trigger'
-    statusButton.setAttribute('aria-expanded', 'true')
-    statusButton.onclick = () => statusButton.setAttribute('aria-expanded', 'false')
-    statusBar.append(statusButton)
     const composer = document.createElement('div')
     composer.className = 'aui-composer-root'
     const composerButton = document.createElement('button')
@@ -307,11 +300,10 @@ describe('conversation scroll lock', () => {
     composerButton.setAttribute('aria-expanded', 'true')
     composerButton.onclick = () => composerButton.setAttribute('aria-expanded', 'false')
     composer.append(composerButton)
-    viewport.append(statusBar, composer)
+    viewport.append(composer)
     document.body.append(viewport)
 
     expect(collapseConversationCollapsibles(document)).toBe(0)
-    expect(statusButton.getAttribute('aria-expanded')).toBe('true')
     expect(composerButton.getAttribute('aria-expanded')).toBe('true')
   })
 })

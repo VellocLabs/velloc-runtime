@@ -5,7 +5,6 @@ import { useSessionAreaVisible } from "@/browser/webview/sessionAreaVisibility";
 import {
   providerApiErrorKindLabel,
   RunningIndicator,
-  type RunningIndicatorAction,
 } from "@/components/assistant-ui/running-indicator";
 import { BackgroundResultsCard } from "@/components/assistant-ui/background-results-card";
 import { TeamMessageCard } from "@/components/assistant-ui/team-message-card";
@@ -39,6 +38,7 @@ import {
   useAssistantState,
   useComposerRuntime,
   useThreadRuntime,
+  useThreadViewport,
   type ThreadRuntime,
 } from "@assistant-ui/react";
 import { useActionBarCopy } from "@assistant-ui/core/react";
@@ -54,6 +54,7 @@ import {
   FolderOpenIcon,
   GitBranchIcon,
   HistoryIcon,
+  ListCollapseIcon,
   LockIcon,
   Minimize2Icon,
   SquareIcon,
@@ -983,14 +984,9 @@ export const Thread: FC<{
     }
   }, [pendingQuestionCount, lockToBottomRef]);
 
-  const handleStatusBarAction = useCallback(
-    (action: "collapse-all") => {
-      if (action === "collapse-all") {
-        collapseConversationCollapsibles(viewportRef.current ?? document);
-      }
-    },
-    [],
-  );
+  const handleCollapseAll = useCallback(() => {
+    collapseConversationCollapsibles(viewportRef.current ?? document);
+  }, []);
 
   // Unified execution-phase enum for the composer gate. The worker broadcasts
   // this only for the foreground session; off-foreground it stays the idle
@@ -1081,6 +1077,11 @@ export const Thread: FC<{
           components={TRANSCRIPT_MESSAGE_COMPONENTS}
         />
 
+        {/* The live run status (blob + progress text), or why the composer offers
+            Continue, as the conversation's last row. Scrolled out of view, the
+            status shows on the session tab instead. */}
+        <ConversationRunStatus sessionId={sessionId} isForeground={isForeground} />
+
         {/* A mod's note on the turn just ended (F-25 `turn.complete`), right
             under the last answer, until the next turn starts. */}
         <ModTurnNote />
@@ -1097,24 +1098,14 @@ export const Thread: FC<{
             viewportRef={viewportRef}
             lockToBottomEnabled={lockToBottomEnabled}
             onLockToBottom={() => setLockToBottomEnabled(true)}
+            canCollapseAll={!isEmpty}
+            onCollapseAll={handleCollapseAll}
           />
           {/* The session's saved "next message" (a submit made while the agent
               was busy). Right-aligned, sized to its text (capped at 40% of the
-              footer width), on the TOP row of the composer footer — above the
-              running-indicator status line. × clears it (restoring text into
-              this WebView's composer). */}
+              footer width), on the TOP row of the composer footer. × clears it
+              (restoring text into this WebView's composer). */}
           <NextMessageStrip />
-          {/* Live running-indicator (blob + progress text) that shows the
-              turn is working. Pinned here at the top of the
-              composer — NOT in the scrolling message list — so it stays put as
-              the conversation scrolls. Self-managing: it renders nothing until
-              the first turn starts, then animates while running and freezes
-              (static pose + last status) when the turn stops. */}
-          <ComposerStatusBar
-            sessionId={sessionId}
-            isForeground={isForeground}
-            onAction={handleStatusBarAction}
-          />
           {/* Permission ask + plan-approval controls, each on its own line above the
               composer. */}
           <PermissionAskFooterControl />
@@ -1226,22 +1217,51 @@ const ComposerContextUsage: FC<{ isForeground?: boolean }> = ({ isForeground }) 
   );
 };
 
-// Circular floating button above the composer and the "lock to bottom" control:
-// clicking re-engages the lock and snaps to the bottom. A pin while locked, a
-// down-arrow once released; visible until the viewport is at the bottom.
+// Circular floating button above the composer. Away from the bottom it is the
+// "lock to bottom" control: clicking re-engages the lock and snaps to the bottom
+// (a pin while locked, a down-arrow once released). At the bottom it becomes
+// Collapse all, which closes every open card in the conversation.
 const ThreadLockToBottom: FC<{
   lockToBottomRef?: { current: boolean };
   viewportRef: { current: HTMLDivElement | null };
   lockToBottomEnabled: boolean;
   onLockToBottom: () => void;
-}> = ({ lockToBottomRef, viewportRef, lockToBottomEnabled, onLockToBottom }) => {
+  canCollapseAll: boolean;
+  onCollapseAll: () => void;
+}> = ({
+  lockToBottomRef,
+  viewportRef,
+  lockToBottomEnabled,
+  onLockToBottom,
+  canCollapseAll,
+  onCollapseAll,
+}) => {
   const t = useT();
+  const isAtBottom = useThreadViewport((s) => s.isAtBottom);
+  const buttonClassName =
+    "absolute -top-12 z-10 self-center rounded-full p-4 dark:border-border dark:bg-background dark:hover:bg-accent";
+  if (isAtBottom) {
+    if (!canCollapseAll) return null;
+    return (
+      <TooltipIconButton
+        tooltip={t("statusBar.collapseAll")}
+        aria-label={t("statusBar.collapseAll")}
+        variant="outline"
+        data-testid="thread-collapse-all"
+        onClick={onCollapseAll}
+        className={cn("aui-thread-collapse-all", buttonClassName)}
+      >
+        <ListCollapseIcon />
+      </TooltipIconButton>
+    );
+  }
   return (
     <ThreadPrimitive.ScrollToBottom behavior="instant" asChild>
       <TooltipIconButton
         tooltip={t('statusBar.lockToBottom')}
         aria-label={t('statusBar.lockToBottom')}
         variant="outline"
+        data-testid="thread-scroll-to-bottom"
         data-active={lockToBottomEnabled ? "true" : undefined}
         onClick={() => {
           if (lockToBottomRef) {
@@ -1249,7 +1269,10 @@ const ThreadLockToBottom: FC<{
           }
           onLockToBottom();
         }}
-        className="aui-thread-scroll-to-bottom absolute -top-12 z-10 self-center rounded-full p-4 disabled:invisible dark:border-border dark:bg-background dark:hover:bg-accent"
+        className={cn(
+          "aui-thread-scroll-to-bottom disabled:invisible",
+          buttonClassName,
+        )}
       >
         {lockToBottomEnabled ? <LockIcon /> : <ArrowDownIcon />}
       </TooltipIconButton>
@@ -1418,15 +1441,14 @@ const ThreadSuggestions: FC<{ templateType?: string }> = ({ templateType }) => {
 };
 
 /**
- * The status row above the composer, plus why the composer offers Continue. Subscribes
+ * The conversation's run-status row, plus why the composer offers Continue. Subscribes
  * to the continue-conversation contexts so only this row re-renders; the sentence
  * follows resumability alone, not composer content.
  */
-const ComposerStatusBar: FC<{
+const ConversationRunStatus: FC<{
   sessionId?: string;
   isForeground?: boolean;
-  onAction?: (action: RunningIndicatorAction) => void;
-}> = ({ sessionId, isForeground, onAction }) => {
+}> = ({ sessionId, isForeground }) => {
   const t = useT();
   const { onContinueConversation } = useContext(ContinueConversationContext);
   const isResumable = useContext(IsResumableContext);
@@ -1440,7 +1462,6 @@ const ComposerStatusBar: FC<{
       sessionId={sessionId}
       isForeground={isForeground}
       idleNotice={idleNotice}
-      onAction={onAction}
     />
   );
 };

@@ -623,6 +623,11 @@
   display: block;
   overflow: visible; /* goo blur bleeds past the 30-unit viewBox */
 }
+/* The session tab's icon slot. */
+.nexus-running-blob[data-size="compact"] {
+  width: 16px;
+  height: 16px;
+}
 /* The trio of orbiters spins around the center. The dots are placed statically
  * at 0°/120°/240° (recipe: rotate the coordinate space, push outward); spinning
  * the GROUP orbits all three together. */

@@ -144,7 +144,7 @@ describe('where the mods\' rows sit in the composer footer', () => {
     }
     const composer = at('Composer')
     const mods = ['ModPanes', 'ModAbovePrompt', 'ModAsks'].map(at)
-    for (const engine of ['ComposerStatusBar', 'PermissionAskFooterControl', 'PlanApprovalFooterControl', 'EnterPlanModeFooterControl', 'BackgroundTasksFooterControl']) {
+    for (const engine of ['PermissionAskFooterControl', 'PlanApprovalFooterControl', 'EnterPlanModeFooterControl', 'BackgroundTasksFooterControl']) {
       expect(at(engine), engine).toBeLessThan(Math.min(...mods))
     }
     expect(mods).toEqual([...mods].sort((a, b) => a - b))
@@ -171,6 +171,11 @@ describe('where the mods\' rows sit in the composer footer', () => {
     const note = at('ModTurnNote')
     expect(note).toBeGreaterThan(at('VirtualizedThreadMessages'))
     expect(note).toBeLessThan(at('ThreadPrimitive.ViewportFooter'))
+    // The run status is the transcript's own last row, ahead of the turn note,
+    // not a bar in the composer's footer.
+    const runStatus = at('ConversationRunStatus')
+    expect(runStatus).toBeGreaterThan(at('VirtualizedThreadMessages'))
+    expect(runStatus).toBeLessThan(note)
   })
 })
 
