@@ -596,9 +596,8 @@ export function Sidebar({
    */
   width?: number
   /**
-   * True while the user is actively dragging the splitter. Suppresses the
-   * `transition-[width]` so the width follows the pointer 1:1 instead of
-   * easing 200 ms behind every move event.
+   * True while the width must change without easing: during a splitter drag
+   * (the width follows the pointer 1:1) and as the rail returns from its peek.
    */
   isResizing?: boolean
   /** Reads the update status for the restart bar (F-30). */

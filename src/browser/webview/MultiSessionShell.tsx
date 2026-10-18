@@ -2608,6 +2608,13 @@ export function MultiSessionShell({
   useEffect(() => {
     setSidebarPeek(false)
   }, [shellLayout.sidebar])
+  // The rail coming back from its peek snaps to its width: easing it in the
+  // flow would push the chat over and back.
+  const sidebarPeekShownRef = useRef(sidebarPeek)
+  const railPeekClosing = sidebarRail && sidebarPeekShownRef.current && !sidebarPeek
+  useEffect(() => {
+    sidebarPeekShownRef.current = sidebarPeek
+  }, [sidebarPeek])
 
   // The model picker's `⋯` → "Edit…": Settings → Models, on that provider's
   // editor. `seq` makes a repeat request for the same provider land again;
@@ -4263,7 +4270,7 @@ export function MultiSessionShell({
           onPinThread={handlePinThread}
           onForkThread={handleForkThread}
           width={sidebarWidth}
-          isResizing={isResizingSidebar}
+          isResizing={isResizingSidebar || railPeekClosing}
           runtimeConnection={runtimeConnection}
           addedProjectPaths={addedProjectPaths}
           addedProjectOrder={addedProjectOrder}
