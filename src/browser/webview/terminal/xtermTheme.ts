@@ -47,43 +47,45 @@ const FALLBACK: Record<TerminalScheme, Record<keyof typeof TERMINAL_THEME_TOKENS
   dark: { background: '#2b2b2b', foreground: '#e6e6e6', cursor: '#e6e6e6', cursorAccent: '#2b2b2b' },
 }
 
-const ANSI: Record<TerminalScheme, Omit<TerminalTheme, keyof typeof TERMINAL_THEME_TOKENS | 'selectionBackground' | 'selectionInactiveBackground'>> = {
+type Hue = 'black' | 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white'
+type BrightHue = `bright${Capitalize<Hue>}`
+
+/**
+ * Our ANSI palettes: per hue, its normal and its bright colour. Tuned for
+ * the pane's card — the normal eight read on a light card, the bright eight
+ * on a dark one — and each hue keeps its place from one scheme to the other.
+ */
+const ANSI_PALETTE: Record<TerminalScheme, Record<Hue, readonly [normal: string, bright: string]>> = {
   light: {
-    black: '#000000',
-    red: '#c91b00',
-    green: '#00894b',
-    yellow: '#a26e00',
-    blue: '#0451a5',
-    magenta: '#a3137f',
-    cyan: '#007587',
-    white: '#c7c7c7',
-    brightBlack: '#6f6f6f',
-    brightRed: '#e03131',
-    brightGreen: '#1a9c57',
-    brightYellow: '#b58500',
-    brightBlue: '#1a73e8',
-    brightMagenta: '#c026a3',
-    brightCyan: '#0598a6',
-    brightWhite: '#ffffff',
+    black: ['#1f2328', '#5c6370'],
+    red: ['#b3261e', '#d6453d'],
+    green: ['#1e7f3c', '#2a9d4f'],
+    yellow: ['#8a6d00', '#b08900'],
+    blue: ['#1f5fbf', '#3b7ddd'],
+    magenta: ['#8f3fa8', '#b05ac7'],
+    cyan: ['#0b7a8c', '#1595a8'],
+    white: ['#b8bcc4', '#f4f5f7'],
   },
   dark: {
-    black: '#000000',
-    red: '#f0524f',
-    green: '#5cb85c',
-    yellow: '#e5c07b',
-    blue: '#61afef',
-    magenta: '#c678dd',
-    cyan: '#56b6c2',
-    white: '#cccccc',
-    brightBlack: '#7f7f7f',
-    brightRed: '#ff7b72',
-    brightGreen: '#7ee787',
-    brightYellow: '#f2cc60',
-    brightBlue: '#79c0ff',
-    brightMagenta: '#d2a8ff',
-    brightCyan: '#80d0dd',
-    brightWhite: '#ffffff',
+    black: ['#1e1e24', '#868b96'],
+    red: ['#e5635c', '#f28b84'],
+    green: ['#6fcf7a', '#8fe59a'],
+    yellow: ['#e2c46a', '#f0d58a'],
+    blue: ['#6ea6f5', '#8fc0ff'],
+    magenta: ['#c98ae6', '#dcaaf2'],
+    cyan: ['#62c4d3', '#86dbe8'],
+    white: ['#d4d6db', '#ffffff'],
   },
+}
+
+/** The scheme's palette spread over the `ITheme` slots: `red` and `brightRed` from the `red` pair, and so on. */
+function ansiColours(scheme: TerminalScheme): Record<Hue | BrightHue, string> {
+  const out: Partial<Record<Hue | BrightHue, string>> = {}
+  for (const [hue, [normal, bright]] of Object.entries(ANSI_PALETTE[scheme]) as [Hue, readonly [string, string]][]) {
+    out[hue] = normal
+    out[`bright${hue.charAt(0).toUpperCase()}${hue.slice(1)}` as BrightHue] = bright
+  }
+  return out as Record<Hue | BrightHue, string>
 }
 
 /** `#rrggbb` → `#rrggbbaa` with `alpha` in 0..1. */
@@ -112,7 +114,7 @@ export function buildTerminalTheme(
     cursorAccent: pick('cursorAccent'),
     selectionBackground: withAlpha(foreground, scheme === 'dark' ? 0.3 : 0.2),
     selectionInactiveBackground: withAlpha(foreground, 0.12),
-    ...ANSI[scheme],
+    ...ansiColours(scheme),
   }
 }
 
