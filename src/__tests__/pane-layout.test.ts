@@ -1,7 +1,8 @@
 /**
  * The pane tree (F-9): default placement beside the chat, later panes stacked
  * below the right-most root child, a closed pane's slot remembered and reused,
- * normalisation, and the per-session record ops. Same reference on no-ops.
+ * normalisation, moving a pane to each kind of target, and the per-session
+ * record ops. Same reference on no-ops.
  */
 import { describe, expect, it } from 'vitest'
 
@@ -15,6 +16,7 @@ import {
   followBrowserTabs,
   hasPane,
   isPaneGroup,
+  movePane,
   normalise,
   openPane,
   panesIn,
@@ -273,5 +275,125 @@ describe('followBrowserTabs', () => {
     expect(gone.closedSlots.browser).toEqual(slot)
     const again = followBrowserTabs(gone, { prevTabs: 0, nextTabs: 1, dismissedAt: null }, {})
     expect(findSlot(again.layout, 'browser')).toEqual(slot)
+  })
+})
+
+describe('movePane', () => {
+  const chatColumn = () =>
+    placePane(placePane(defaultPaneLayout(), 'diff', { weight: 3 }), 'tasks', { weight: 1 })
+  const threeStacked = () => placePane(chatColumn(), 'plan', { weight: 1 })
+  const threeInRow = (): PaneLayout => ({
+    root: { id: 'root', axis: 'row', weight: 1, children: [leaf('chat', 2), leaf('diff', 3), leaf('tasks', 1)] },
+  })
+  const weightsOf = (layout: PaneLayout, groupId: string) => {
+    const walk = (node: PaneGroup['children'][number]): PaneGroup | null => {
+      if (!isPaneGroup(node)) return null
+      if (node.id === groupId) return node
+      for (const child of node.children) {
+        const found = walk(child)
+        if (found) return found
+      }
+      return null
+    }
+    return walk(layout.root)!.children.map(child => child.weight)
+  }
+
+  it('insert reorders within a group at the mean weight; the moved pane takes the index as the group was', () => {
+    const up = movePane(chatColumn(), 'tasks', { type: 'insert', groupId: 'g1', index: 0 })
+    expect(shape(up)).toEqual({ row: ['chat', { column: ['tasks', 'diff'] }] })
+    expect(weightsOf(up, 'g1')).toEqual([1, 1])
+    const out = movePane(chatColumn(), 'tasks', { type: 'insert', groupId: 'root', index: 1 })
+    // The column it leaves collapses onto Diff, which keeps the column's weight.
+    expect(shape(out)).toEqual({ row: ['chat', 'tasks', 'diff'] })
+    expect(weightsOf(out, 'root')).toEqual([2, 2.5, 3])
+    const after = movePane(chatColumn(), 'tasks', { type: 'insert', groupId: 'root', index: 2 })
+    expect(shape(after)).toEqual({ row: ['chat', 'diff', 'tasks'] })
+    expect(weightsOf(after, 'root')).toEqual([2, 3, 2.5])
+  })
+
+  it('insert at either gutter beside its own slot is a no-op (same reference)', () => {
+    const layout = chatColumn()
+    expect(movePane(layout, 'tasks', { type: 'insert', groupId: 'g1', index: 1 })).toBe(layout)
+    expect(movePane(layout, 'tasks', { type: 'insert', groupId: 'g1', index: 2 })).toBe(layout)
+    expect(movePane(layout, 'diff', { type: 'insert', groupId: 'g1', index: 0 })).toBe(layout)
+    const row = threeInRow()
+    expect(movePane(row, 'diff', { type: 'insert', groupId: 'root', index: 2 })).toBe(row)
+    expect(movePane(row, 'tasks', { type: 'insert', groupId: 'root', index: 3 })).toBe(row)
+  })
+
+  it('wrap beside a pane makes a row (left / right) or a column (top / bottom) of the two, halving its weight', () => {
+    const left = movePane(threeStacked(), 'plan', { type: 'wrap', pane: 'diff', side: 'left' })
+    expect(shape(left)).toEqual({ row: ['chat', { column: [{ row: ['plan', 'diff'] }, 'tasks'] }] })
+    const column = left.root.children[1] as PaneGroup
+    const pair = column.children[0] as PaneGroup
+    expect(pair.weight).toBe(1)
+    expect(pair.children.map(c => c.weight)).toEqual([1, 1])
+    expect(column.children[1].weight).toBe(1)
+    const right = movePane(threeStacked(), 'plan', { type: 'wrap', pane: 'tasks', side: 'right' })
+    expect(shape(right)).toEqual({ row: ['chat', { column: ['diff', { row: ['tasks', 'plan'] }] }] })
+    // Along the column's own axis the pair flattens into it, 1:1 of the target's weight.
+    const top = movePane(threeStacked(), 'plan', { type: 'wrap', pane: 'tasks', side: 'top' })
+    expect(shape(top)).toEqual({ row: ['chat', { column: ['diff', 'plan', 'tasks'] }] })
+    expect(weightsOf(top, 'g1')).toEqual([1, 0.5, 0.5])
+    const bottom = movePane(threeStacked(), 'plan', { type: 'wrap', pane: 'diff', side: 'bottom' })
+    expect(shape(bottom)).toEqual({ row: ['chat', { column: ['diff', 'plan', 'tasks'] }] })
+    expect(weightsOf(bottom, 'g1')).toEqual([0.5, 0.5, 1])
+    const inRow = movePane(threeInRow(), 'tasks', { type: 'wrap', pane: 'diff', side: 'left' })
+    expect(shape(inRow)).toEqual({ row: ['chat', 'tasks', 'diff'] })
+    expect(weightsOf(inRow, 'root')).toEqual([2, 1.5, 1.5])
+  })
+
+  it('wrap onto the last sibling of the group it leaves keeps that group', () => {
+    const moved = movePane(chatColumn(), 'tasks', { type: 'wrap', pane: 'diff', side: 'top' })
+    expect(shape(moved)).toEqual({ row: ['chat', { column: ['tasks', 'diff'] }] })
+    const column = moved.root.children[1] as PaneGroup
+    expect(column.id).toBe('g1')
+    expect(column.weight).toBe(3)
+    const same = chatColumn()
+    expect(movePane(same, 'tasks', { type: 'wrap', pane: 'tasks', side: 'top' })).toBe(same)
+  })
+
+  it("split puts the pane at a group's outer edge, in a group of the perpendicular axis", () => {
+    const left = movePane(threeStacked(), 'plan', { type: 'split', groupId: 'g1', side: 'left' })
+    expect(shape(left)).toEqual({ row: ['chat', 'plan', { column: ['diff', 'tasks'] }] })
+    expect(weightsOf(left, 'root')).toEqual([2, 1.5, 1.5])
+    const top = movePane(threeStacked(), 'plan', { type: 'split', groupId: 'g1', side: 'top' })
+    expect(shape(top)).toEqual({ row: ['chat', { column: ['plan', 'diff', 'tasks'] }] })
+    // The group that wrapped the column is the column now (the old one flattened into it).
+    expect((top.root.children[1] as PaneGroup).children.map(c => c.weight)).toEqual([1, 0.5, 0.5])
+    const layout = threeStacked()
+    expect(movePane(layout, 'plan', { type: 'split', groupId: 'root', side: 'left' })).toBe(layout)
+    expect(movePane(layout, 'plan', { type: 'split', groupId: 'g9', side: 'left' })).toBe(layout)
+  })
+
+  it("edge puts the pane first or last in the root row at the kind's weight; a pane can sit left of the chat", () => {
+    const start = movePane(chatColumn(), 'tasks', { type: 'edge', side: 'start' }, { tasks: 1.5 })
+    expect(shape(start)).toEqual({ row: ['tasks', 'chat', 'diff'] })
+    expect(weightsOf(start, 'root')).toEqual([1.5, 2, 3])
+    expect(findSlot(start, 'chat')).toEqual({ groupId: 'root', index: 1, axis: 'row', weight: 2 })
+    const end = movePane(chatColumn(), 'tasks', { type: 'edge', side: 'end' })
+    expect(shape(end)).toEqual({ row: ['chat', 'diff', 'tasks'] })
+    expect(weightsOf(end, 'root')).toEqual([2, 3, 1])
+    expect(movePane(end, 'tasks', { type: 'edge', side: 'end' })).toBe(end)
+    expect(movePane(start, 'tasks', { type: 'edge', side: 'start' })).toBe(start)
+    const back = movePane(start, 'tasks', { type: 'edge', side: 'end' })
+    expect(shape(back)).toEqual({ row: ['chat', 'diff', 'tasks'] })
+  })
+
+  it('an absent pane or a target that is gone leaves the layout (same reference)', () => {
+    const layout = chatColumn()
+    expect(movePane(layout, 'plan', { type: 'edge', side: 'end' })).toBe(layout)
+    expect(movePane(layout, 'tasks', { type: 'insert', groupId: 'g7', index: 0 })).toBe(layout)
+    expect(movePane(layout, 'tasks', { type: 'wrap', pane: 'plan', side: 'left' })).toBe(layout)
+  })
+
+  it('the result is normalised: no single-child group, no same-axis nesting, each pane once', () => {
+    const moved = movePane(threeStacked(), 'diff', { type: 'edge', side: 'end' })
+    expect(shape(moved)).toEqual({ row: ['chat', { column: ['tasks', 'plan'] }, 'diff'] })
+    expect(panesIn(moved)).toEqual(['tasks', 'plan', 'diff'])
+    expect(normalise(moved)).toBe(moved)
+    const wrapped = movePane(moved, 'diff', { type: 'wrap', pane: 'plan', side: 'bottom' })
+    expect(shape(wrapped)).toEqual({ row: ['chat', { column: ['tasks', 'plan', 'diff'] }] })
+    expect(normalise(wrapped)).toBe(wrapped)
   })
 })

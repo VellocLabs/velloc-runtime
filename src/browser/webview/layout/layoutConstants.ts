@@ -35,6 +35,18 @@ export const PANE_SEPARATOR_HIT_PX = 12
 /** How far an arrow key moves a pane separator (Shift doubles it). */
 export const PANE_RESIZE_STEP_PX = 16
 
+/** Pointer travel from a pane handle before a drag of the pane begins. */
+export const PANE_DRAG_THRESHOLD_PX = 6
+
+/** The strip at the area's left and right edge a pane can be dropped on. */
+export const PANE_DROP_EDGE_PX = 24
+
+/** The share of a pane card, per side, that drops a pane beside it. */
+export const PANE_DROP_WRAP_SHARE = 0.25
+
+/** The width the drop indicator gives a gutter a pane would be inserted at. */
+export const PANE_DROP_INSERT_PX = 24
+
 /** A pane card's header row. */
 export const PANE_HEADER_HEIGHT_PX = 36
 

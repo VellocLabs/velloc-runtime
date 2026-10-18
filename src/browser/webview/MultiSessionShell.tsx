@@ -56,6 +56,7 @@ import {
   browserToggleAction,
   followBrowserTabs,
   openPane,
+  movePane,
   paneLayoutEquals,
   panesIn,
   paneToggleAction,
@@ -64,6 +65,7 @@ import {
   resetPaneLayout,
   setMaximized,
   type FilesPaneState,
+  type PaneDropTarget,
   type PaneLayout,
   type SessionPaneRecord,
   type SidePaneKind,
@@ -2028,6 +2030,17 @@ export function MultiSessionShell({
         if (typeof weight === 'number') sessionLayoutsStore.setWeight(kind as SidePaneKind, weight)
       }
       presentRightPanel({ type: 'drag' })
+    },
+    [updatePaneRecord, sessionLayoutsStore],
+  )
+  // A drop on a zone or an arrow key at a pane's handle moves the pane: one
+  // record write, nothing when the tree does not change.
+  const commitPaneMove = useCallback(
+    (kind: SidePaneKind, target: PaneDropTarget) => {
+      updatePaneRecord(r => {
+        const layout = movePane(r.layout, kind, target, sessionLayoutsStore.getSnapshot().weights)
+        return layout === r.layout ? r : { ...r, layout }
+      })
     },
     [updatePaneRecord, sessionLayoutsStore],
   )
@@ -4158,6 +4171,7 @@ export function MultiSessionShell({
           seatProps={rightPanelOverlaid ? rightPanelOverlayDismiss : undefined}
           renderPane={renderSidePane}
           onResizeCommit={commitPaneResize}
+          onPaneMove={commitPaneMove}
           chat={
           <>
         {mountedSessionIds.map(sessionId => {

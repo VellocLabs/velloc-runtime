@@ -116,6 +116,41 @@ describe('resolveAreaGeometry', () => {
     expect(geometry.separators[0].second).toEqual({ length: 892, min: 280 })
   })
 
+  it('beside: a pane left of the chat is drawn there, inset at the edge, and the seat spans the panes', () => {
+    const flanked = resolveAreaGeometry(
+      input({
+        layout: {
+          root: {
+            id: 'root',
+            axis: 'row',
+            weight: 1,
+            children: [{ pane: 'tasks', weight: 1 }, { pane: 'chat', weight: 2 }, { pane: 'diff', weight: 3 }],
+          },
+        },
+      }),
+    )
+    // The row is 1508 less a gutter at each edge; Tasks is held at its 280 minimum.
+    expect(flanked.panes.get('tasks')).toEqual({ left: 8, top: 8, width: 280, height: 584 })
+    expect(flanked.chat).toEqual({ left: 296, top: 0, width: 600, height: 600 })
+    expect(flanked.panes.get('diff')).toEqual({ left: 904, top: 8, width: 596, height: 584 })
+    expect(flanked.seat).toEqual({ left: 0, top: 0, width: 1508, height: 600 })
+    expect(flanked.separators.map(s => [s.key, s.rect])).toEqual([
+      ['root:0', { left: 288, top: 0, width: 8, height: 600 }],
+      ['root:1', { left: 896, top: 0, width: 8, height: 600 }],
+    ])
+    const leftOnly = resolveAreaGeometry(
+      input({
+        layout: {
+          root: { id: 'root', axis: 'row', weight: 1, children: [{ pane: 'tasks', weight: 1 }, { pane: 'chat', weight: 2 }] },
+        },
+      }),
+    )
+    expect(leftOnly.panes.get('tasks')).toEqual({ left: 8, top: 8, width: 892, height: 584 })
+    expect(leftOnly.chat).toEqual({ left: 908, top: 0, width: 600, height: 600 })
+    // The seat takes the edge gutter with the pane, as it does at the area's end.
+    expect(leftOnly.seat).toEqual({ left: 0, top: 0, width: 900, height: 600 })
+  })
+
   it('a column of leaves spans both for its extent', () => {
     const geometry = resolveAreaGeometry(input({}))
     const rects = new Map(geometry.panes)

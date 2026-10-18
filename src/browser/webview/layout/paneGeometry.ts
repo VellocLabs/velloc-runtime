@@ -316,8 +316,9 @@ export interface AreaGeometry {
 
 /**
  * Where everything in the area is drawn: the chat, the side region's box
- * beside the chat (`beside`), over everything (`maximized`), or a seat at the
- * area's end (`overlay`, `float`), each pane inside it, and the separators.
+ * beside the chat (`beside`; around it when panes sit on both sides), over
+ * everything (`maximized`), or a seat at the area's end (`overlay`,
+ * `float`), each pane inside it, and the separators.
  */
 export function resolveAreaGeometry(input: AreaGeometryInput): AreaGeometry {
   const gutter = input.gutter ?? PANE_GUTTER_PX
@@ -334,39 +335,58 @@ export function resolveAreaGeometry(input: AreaGeometryInput): AreaGeometry {
     })
     return { chat: null, seat: full, panes, separators: [] }
   }
-  const seated = form === 'overlay' || form === 'float'
-  let chat: PaneRect = full
-  let seat: PaneRect
-  if (seated) {
+  if (form === 'overlay' || form === 'float') {
     const seatWidth = Math.max(0, Math.min(width, Math.round(input.seatWidth)))
-    seat = { left: width - seatWidth, top: 0, width: seatWidth, height }
-  } else {
-    const chatWidth = Math.max(0, Math.min(width, Math.round(input.chatWidth)))
-    chat = { left: 0, top: 0, width: chatWidth, height }
-    seat = { left: chatWidth + gutter, top: 0, width: Math.max(0, width - chatWidth - gutter), height }
+    const seat: PaneRect = { left: width - seatWidth, top: 0, width: seatWidth, height }
+    // The side children of the root row, laid out on their own in the seat,
+    // inset by a gutter on every side.
+    const side: PaneLayout = {
+      root: {
+        ...layout.root,
+        id: ROOT_GROUP_ID,
+        children: layout.root.children.filter(child => isPaneGroup(child) || child.pane !== 'chat'),
+      },
+    }
+    const rects = resolvePaneRects(side, {
+      width: Math.max(0, seat.width - 2 * gutter),
+      height: Math.max(0, seat.height - 2 * gutter),
+      chatWidth: 0,
+      gutter,
+    })
+    for (const [pane, rect] of rects) {
+      if (pane === 'chat') continue
+      panes.set(pane, { ...rect, left: seat.left + gutter + rect.left, top: gutter + rect.top })
+    }
+    return { chat: full, seat, panes, separators: [] }
   }
-  // The side children of the root row, laid out on their own in the seat,
-  // inset by a gutter at the top, the bottom and the area's edge (both edges
-  // when the seat floats over the chat).
-  const side: PaneLayout = {
-    root: {
-      ...layout.root,
-      id: ROOT_GROUP_ID,
-      children: layout.root.children.filter(child => isPaneGroup(child) || child.pane !== 'chat'),
-    },
-  }
-  const inset = seated ? gutter : 0
-  const rects = resolvePaneRects(side, {
-    width: Math.max(0, seat.width - gutter - inset),
-    height: Math.max(0, seat.height - 2 * gutter),
-    chatWidth: 0,
+  // Beside the chat the root row is laid out whole: the chat at its width,
+  // the side children sharing the rest in order on either side of it, inset
+  // by a gutter at the top, the bottom and the area's edges. The seat is the
+  // box the panes cover: beside the chat, or around it when they flank it.
+  const chatWidth = Math.max(0, Math.min(width, Math.round(input.chatWidth)))
+  const isChat = (node: PaneNode | undefined) => node !== undefined && !isPaneGroup(node) && node.pane === 'chat'
+  const leftInset = isChat(layout.root.children[0]) ? 0 : gutter
+  const rightInset = isChat(layout.root.children[layout.root.children.length - 1]) ? 0 : gutter
+  const rects = resolvePaneRects(layout, {
+    width: Math.max(0, width - leftInset - rightInset),
+    height: Math.max(0, height - 2 * gutter),
+    chatWidth,
     gutter,
   })
+  const chatRect = rects.get('chat')
+  const chat: PaneRect = chatRect ? { left: chatRect.left + leftInset, top: 0, width: chatRect.width, height } : full
+  let left = Infinity
+  let right = -Infinity
   for (const [pane, rect] of rects) {
     if (pane === 'chat') continue
-    panes.set(pane, { ...rect, left: seat.left + inset + rect.left, top: gutter + rect.top })
+    const placed: PaneRect = { left: rect.left + leftInset, top: gutter + rect.top, width: rect.width, height: rect.height }
+    panes.set(pane, placed)
+    left = Math.min(left, placed.left)
+    right = Math.max(right, placed.left + placed.width)
   }
-  if (seated) return { chat, seat, panes, separators: [] }
+  const seatLeft = left < chat.left ? 0 : chat.left + chat.width + gutter
+  const seatRight = right > chat.left + chat.width ? width : chat.left - gutter
+  const seat: PaneRect = { left: seatLeft, top: 0, width: Math.max(0, seatRight - seatLeft), height }
   const all = new Map<PaneId, PaneRect>(panes)
   all.set('chat', chat)
   return { chat, seat, panes, separators: resolvePaneSeparators(layout, all, gutter) }

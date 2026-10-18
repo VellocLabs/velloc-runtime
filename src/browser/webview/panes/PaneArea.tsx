@@ -19,18 +19,29 @@ import {
   type PaneRect,
   type PaneSeparatorGeometry,
 } from '../layout/paneGeometry'
-import { isPaneGroup, panesIn, ROOT_GROUP_ID, type PaneLayout, type SidePaneKind } from '../layout/paneLayout'
+import { useT } from '../i18n'
+import {
+  isPaneGroup,
+  panesIn,
+  ROOT_GROUP_ID,
+  type PaneDropTarget,
+  type PaneLayout,
+  type SidePaneKind,
+} from '../layout/paneLayout'
 import { clampResizeDelta, resizeLayoutAt } from '../layout/paneResize'
 import type { PanelForm } from '../layout/shellLayout'
+import { PANE_ICON, PANE_LABEL_KEY } from './paneKinds'
+import { PaneDropIndicator } from './PaneDropIndicator'
 import { PaneSeparator, separatorStyle } from './PaneSeparator'
+import { PaneHandleContext, usePaneDrag } from './usePaneDrag'
 
 /**
  * Draws a session's pane tree (F-9). Groups are not DOM nodes: the chat and
  * every pane sit at absolute rects inside the area, so a pane's body stays
  * mounted whatever happens to the tree around it. The side region is one box
  * beside the chat, over everything, or a seat over the chat's end, as the
- * shell's cascade decides. Beside the chat a separator sits in every gutter;
- * a drag moves the rects through the elements and commits once at its end.
+ * shell's cascade decides. Beside the chat every gutter is a separator (its
+ * drag paints live, commits once); a pane's handle drags it to a drop zone.
  */
 export type PaneAreaProps = {
   layout: PaneLayout
@@ -51,6 +62,8 @@ export type PaneAreaProps = {
   renderPane: (kind: SidePaneKind) => ReactNode
   /** A separator run ended on a changed layout: persist it. */
   onResizeCommit?: (layout: PaneLayout) => void
+  /** A pane was dropped on a zone or moved by a key: apply `movePane` and persist. */
+  onPaneMove?: (kind: SidePaneKind, target: PaneDropTarget) => void
 }
 
 function rectStyle(rect: PaneRect): CSSProperties {
@@ -140,6 +153,28 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
   } | null>(null)
   const commitRef = useRef(props.onResizeCommit)
   commitRef.current = props.onResizeCommit
+
+  const t = useT()
+  const sizeRef = useRef(size)
+  sizeRef.current = size
+  const layoutRef = useRef(layout)
+  layoutRef.current = layout
+  const chipRef = useRef<HTMLDivElement | null>(null)
+  const indicatorRef = useRef<HTMLDivElement | null>(null)
+  const paneDrag = usePaneDrag({
+    areaRef,
+    layoutRef,
+    geometryRef,
+    sizeRef,
+    slotRefs,
+    chipRef,
+    indicatorRef,
+    canDrag: form === 'beside' && maximized === null,
+    canReorder: maximized === null,
+    onMove: props.onPaneMove,
+  })
+  const cancelPaneDrag = paneDrag.cancel
+  const ChipIcon = paneDrag.dragging ? PANE_ICON[paneDrag.dragging] : null
 
   const paint = useCallback((g: AreaGeometry) => {
     applyRect(chatRef.current, g.chat)
@@ -233,13 +268,15 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
     [previewFor, paint],
   )
 
-  // The tree changing under a run (a pane opened by the agent) ends it unsaved.
+  // The tree changing under a run (a pane opened by the agent, a session
+  // switch) ends it unsaved, and cancels a pane drag.
   useEffect(() => {
     if (dragRef.current) {
       cancelFrame()
       dragRef.current = null
     }
-  }, [layout])
+    cancelPaneDrag()
+  }, [layout, cancelPaneDrag])
 
   const chatStyle: CSSProperties = geometry?.chat ? rectStyle(geometry.chat) : FULL
   const seatRect = geometry?.seat ?? null
@@ -249,7 +286,7 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
       ? 'absolute z-30 border-border border-s bg-background shadow-xl animate-in slide-in-from-right duration-200'
       : form === 'overlay'
         ? 'absolute z-40 border-border border-s bg-background shadow-xl'
-        : 'absolute'
+        : 'absolute pointer-events-none'
 
   return (
     <div
@@ -257,7 +294,9 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
       data-testid="pane-area"
       data-panes={panes.join(' ') || undefined}
       className="relative h-full min-w-0 flex-1 overflow-hidden"
+      {...paneDrag.areaProps}
     >
+      <PaneHandleContext.Provider value={paneDrag.handleFor}>
       <div
         ref={chatRef}
         data-testid="pane-chat"
@@ -286,7 +325,7 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
                   else slotRefs.current.delete(kind)
                 }}
                 data-pane-slot={kind}
-                className="absolute flex flex-col"
+                className="pointer-events-auto absolute flex flex-col"
                 style={rect && seatRect ? rectStyle(inSeat(rect, seatRect)) : { display: 'none' }}
               >
                 {props.renderPane(kind)}
@@ -310,6 +349,25 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
             />
           ))
         : null}
+      {paneDrag.dragging && ChipIcon ? (
+        <>
+          <PaneDropIndicator
+            elementRef={el => {
+              indicatorRef.current = el
+            }}
+          />
+          <div
+            ref={chipRef}
+            aria-hidden
+            data-testid="pane-drag-chip"
+            className="pointer-events-none absolute z-50 flex items-center gap-1.5 rounded-md border border-border bg-popover px-2 py-1 text-[13px] font-medium text-popover-foreground shadow-md"
+          >
+            <ChipIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+            <span>{t(PANE_LABEL_KEY[paneDrag.dragging])}</span>
+          </div>
+        </>
+      ) : null}
+      </PaneHandleContext.Provider>
     </div>
   )
 }

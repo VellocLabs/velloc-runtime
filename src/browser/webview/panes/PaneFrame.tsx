@@ -12,12 +12,14 @@ import {
 
 import { useT } from '../i18n'
 import type { SidePaneKind } from '../layout/paneLayout'
+import { usePaneHandle } from './usePaneDrag'
 
 /**
  * The chrome every side pane shares (F-9): a card with a 36px header — the
  * pane's title slot at the start, its own actions, then Expand / Restore and
  * Close — over a body that owns its scrolling. The header outside its controls
- * is the pane's handle. Brings its own TooltipProvider: panes render outside
+ * is the pane's handle: inside an area it drags the pane and moves it with
+ * the arrow keys. Brings its own TooltipProvider: panes render outside
  * the thread providers.
  */
 export type PaneFrameProps = {
@@ -41,6 +43,7 @@ export type PaneFrameProps = {
 export function PaneFrame(props: PaneFrameProps): ReactElement {
   const t = useT()
   const { kind, name } = props
+  const handle = usePaneHandle(kind)
   return (
     <TooltipProvider>
       <section
@@ -65,7 +68,8 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
             tabIndex={0}
             aria-label={t('pane.move', { pane: name })}
             data-testid={`pane-${kind}-handle`}
-            className="flex h-full min-w-0 flex-1 cursor-grab items-center gap-1.5 text-[13px] font-medium leading-none outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex h-full min-w-0 flex-1 cursor-grab touch-none select-none items-center gap-1.5 text-[13px] font-medium leading-none outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            {...handle}
           >
             {props.title}
           </div>

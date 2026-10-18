@@ -323,6 +323,129 @@ export function paneLayoutEquals(a: PaneLayout, b: PaneLayout): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Moving a pane
+// ---------------------------------------------------------------------------
+
+export type PaneSide = 'left' | 'right' | 'top' | 'bottom'
+
+/**
+ * Where a pane goes when moved: `insert` between two children of a group
+ * (`index` counts the group's children before the move), `wrap` beside one
+ * pane (left / right make a row of the two, top / bottom a column), `split`
+ * at a group's outer edge the same way, `edge` as the first or last child
+ * of the root row (a pane may sit left of the chat).
+ */
+export type PaneDropTarget =
+  | { type: 'insert'; groupId: string; index: number }
+  | { type: 'wrap'; pane: SidePaneKind; side: PaneSide }
+  | { type: 'split'; groupId: string; side: PaneSide }
+  | { type: 'edge'; side: 'start' | 'end' }
+
+export function paneDropTargetEquals(a: PaneDropTarget | null, b: PaneDropTarget | null): boolean {
+  return a === b || (a !== null && b !== null && JSON.stringify(a) === JSON.stringify(b))
+}
+
+/** The axis a drop beside a node makes: a row for left / right, a column for top / bottom. */
+export function wrapAxis(side: PaneSide): PaneAxis {
+  return side === 'left' || side === 'right' ? 'row' : 'column'
+}
+
+function findParent(group: PaneGroup, pred: (node: PaneNode) => boolean): { parent: PaneGroup; index: number } | null {
+  for (let index = 0; index < group.children.length; index++) {
+    const child = group.children[index]
+    if (pred(child)) return { parent: group, index }
+    if (isPaneGroup(child)) {
+      const found = findParent(child, pred)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+/** The moved leaf beside `node`, in a new group of the side's axis that takes the node's weight 1:1. */
+function wrapNode(layout: PaneLayout, node: PaneNode, side: PaneSide, leaf: PaneLeaf): PaneLayout {
+  const found = findParent(layout.root, each => each === node)
+  if (!found) return layout
+  const axis = wrapAxis(side)
+  const before = side === 'left' || side === 'top'
+  const inner: PaneNode = { ...node, weight: 1 }
+  const moved: PaneLeaf = { ...leaf, weight: 1 }
+  const group: PaneGroup = {
+    id: nextGroupId(layout),
+    axis,
+    weight: node.weight,
+    children: before ? [moved, inner] : [inner, moved],
+  }
+  const children = [...found.parent.children]
+  children[found.index] = group
+  return withGroup(layout, found.parent.id, { ...found.parent, children })
+}
+
+/**
+ * Put `kind` at `target` (see `PaneDropTarget`), then normalise. Weights: a
+ * wrap or split halves the target's former weight between the two; an
+ * insert gives the moved pane the group's mean; an edge gives it what the
+ * kind opens at (`paneWeightFor`). The chat is never wrapped. Returns the
+ * same reference when the pane is absent, the target is gone, or the move
+ * would leave the arrangement as it is.
+ */
+export function movePane(
+  layout: PaneLayout,
+  kind: SidePaneKind,
+  target: PaneDropTarget,
+  weights: PaneWeightByKind = {},
+): PaneLayout {
+  const slot = findSlot(layout, kind)
+  if (!slot) return layout
+  const leaf: PaneLeaf = { pane: kind, weight: slot.weight }
+  // The leaf leaves the tree first; the tree is not normalised yet, so the
+  // target's group ids and child indexes still hold.
+  const without: PaneLayout = { root: removeLeaf(layout.root, kind) as PaneGroup }
+  let next: PaneLayout
+  switch (target.type) {
+    case 'insert': {
+      const group = groupById(without, target.groupId)
+      if (!group) return layout
+      let index = target.index
+      if (slot.groupId === group.id && slot.index < index) index -= 1
+      index = Math.max(0, Math.min(index, group.children.length))
+      if (slot.groupId === group.id && index === slot.index) return layout
+      const children = [...group.children]
+      children.splice(index, 0, { ...leaf, weight: meanWeight(group.children) })
+      next = withGroup(without, group.id, { ...group, children })
+      break
+    }
+    case 'wrap': {
+      if (target.pane === kind) return layout
+      const found = findParent(without.root, node => !isPaneGroup(node) && node.pane === target.pane)
+      if (!found) return layout
+      next = wrapNode(without, found.parent.children[found.index], target.side, leaf)
+      break
+    }
+    case 'split': {
+      const group = groupById(without, target.groupId)
+      if (!group || group.id === ROOT_GROUP_ID) return layout
+      next = wrapNode(without, group, target.side, leaf)
+      break
+    }
+    case 'edge': {
+      const root = without.root
+      const at = target.side === 'start' ? 0 : root.children.length
+      if (slot.groupId === ROOT_GROUP_ID) {
+        const own = target.side === 'start' ? 0 : layout.root.children.length - 1
+        if (slot.index === own) return layout
+      }
+      const children = [...root.children]
+      children.splice(at, 0, { ...leaf, weight: paneWeightFor(kind, weights) })
+      next = { root: { ...root, children } }
+      break
+    }
+  }
+  const result = normalise(next)
+  return paneLayoutEquals(result, layout) ? layout : result
+}
+
+// ---------------------------------------------------------------------------
 // The per-session record
 // ---------------------------------------------------------------------------
 
