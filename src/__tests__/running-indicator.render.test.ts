@@ -11,11 +11,7 @@ import {
   thinkingVerb,
 } from '../components/assistant-ui/running-indicator'
 import { FOOTER_BAR_FRAME } from '../components/assistant-ui/footer-bar-frame'
-import {
-  isRunStatusRowInView,
-  tabRunStatusLabel,
-  TAB_RUN_STATUS_MAX_CHARS,
-} from '../components/assistant-ui/offscreen-run-status'
+import { isRunStatusRowInView } from '../components/assistant-ui/run-status-row'
 import { createTranslate } from '../browser/webview/i18n'
 
 /**
@@ -565,30 +561,6 @@ describe('RunningIndicatorView render', () => {
     for (const id of ids) {
       expect(html).toContain(`url(#${id})`)
     }
-  })
-})
-
-describe('tabRunStatusLabel', () => {
-  it("takes the status line's lead segment", () => {
-    expect(tabRunStatusLabel('thinking · 1.8k tokens', '12s')).toBe('thinking')
-    expect(tabRunStatusLabel('Bash · 300 tokens', '4s')).toBe('Bash')
-  })
-
-  it('falls back to the elapsed time when there is no status text yet', () => {
-    expect(tabRunStatusLabel('', '3s')).toBe('3s')
-  })
-
-  it(`cuts to ${TAB_RUN_STATUS_MAX_CHARS} characters, ellipsis included`, () => {
-    const label = tabRunStatusLabel('almost done thinking · 12k tokens', '1m 2s')
-    expect(Array.from(label)).toHaveLength(TAB_RUN_STATUS_MAX_CHARS)
-    expect(label).toBe('almost do…')
-    expect(tabRunStatusLabel('thinking more', '1s')).toBe('thinking…')
-  })
-
-  it('counts characters, not UTF-16 units, so CJK and emoji are cut whole', () => {
-    expect(tabRunStatusLabel('正在思考中，请稍候再试一下', '1s')).toBe('正在思考中，请稍候…')
-    expect(tabRunStatusLabel('🔧🔧🔧🔧🔧🔧🔧🔧🔧🔧🔧', '1s')).toBe('🔧🔧🔧🔧🔧🔧🔧🔧🔧…')
-    expect(tabRunStatusLabel('思考中', '1s')).toBe('思考中')
   })
 })
 

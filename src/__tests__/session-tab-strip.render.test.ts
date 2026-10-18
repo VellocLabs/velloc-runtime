@@ -14,7 +14,7 @@ import {
   sidebarActiveSessionId,
 } from '../browser/webview/sessionTabs'
 import type { SessionListItem } from '../browser/webview/SessionRows'
-import { publishOffscreenRunStatus } from '../components/assistant-ui/offscreen-run-status'
+import { publishRunStatusRow } from '../components/assistant-ui/run-status-row'
 
 afterEach(cleanup)
 
@@ -351,7 +351,7 @@ describe('SessionTabStrip', () => {
     expect(child.getAttribute('data-running')).toBeNull()
   })
 
-  it('shows the run status in place of the icon and title while it is offscreen', () => {
+  it('keeps the active tab icon and title while its run status row is scrolled away', () => {
     render(
       createElement(SessionTabStrip, {
         tabs: [{ ...LEAD, running: true }, CHILD],
@@ -359,43 +359,13 @@ describe('SessionTabStrip', () => {
         onSelect: () => {},
       }),
     )
-    act(() => publishOffscreenRunStatus('lead-1', { label: 'Thinking', detail: '12s · Thinking · 1.2k tokens' }))
-    const [lead, child] = screen.getAllByRole('tab')
-    expect(lead!.getAttribute('data-run-status')).toBe('true')
-    expect(lead!.querySelector('[data-slot="session-tab-run-status"]')?.textContent).toBe('Thinking')
-    expect(lead!.querySelector('.nexus-running-blob')).not.toBeNull()
-    // The icon slot and the title both give way to the status.
-    expect(lead!.querySelector('[data-slot="session-tab-type-icon"]')).toBeNull()
-    expect(lead!.querySelector('[data-slot="session-tab-running-icon"]')).toBeNull()
-    expect(lead!.textContent).not.toContain('Ship the parser')
-    // The accessible name stays the session's; the tooltip adds the full status.
-    expect(lead!.getAttribute('aria-label')).toBe('Ship the parser')
-    expect(lead!.getAttribute('title')).toBe('Ship the parser — 12s · Thinking · 1.2k tokens')
-    // Only the active tab carries it.
-    expect(child!.getAttribute('data-run-status')).toBeNull()
-    expect(child!.textContent).toContain('worker-a')
-
-    // Back in view: the tab returns to its own icon and title.
-    act(() => publishOffscreenRunStatus('lead-1', null))
-    const restored = screen.getAllByRole('tab')[0]!
-    expect(restored.getAttribute('data-run-status')).toBeNull()
-    expect(restored.textContent).toContain('Ship the parser')
-    expect(restored.querySelector('[data-slot="session-tab-run-status"]')).toBeNull()
-  })
-
-  it('ignores a run status published for a session that is not active', () => {
-    render(
-      createElement(SessionTabStrip, {
-        tabs: [LEAD, CHILD],
-        activeSessionId: 'lead-1',
-        onSelect: () => {},
-      }),
-    )
-    act(() => publishOffscreenRunStatus('teammate-1', { label: 'Bash', detail: '3s · Bash' }))
-    for (const tab of screen.getAllByRole('tab')) {
-      expect(tab.getAttribute('data-run-status')).toBeNull()
-    }
-    act(() => publishOffscreenRunStatus('teammate-1', null))
+    act(() => publishRunStatusRow('lead-1', { inView: false }))
+    const lead = screen.getAllByRole('tab')[0]!
+    expect(lead.textContent).toContain('Ship the parser')
+    expect(lead.getAttribute('title')).toBe('Ship the parser')
+    expect(lead.querySelector('.nexus-running-blob')).toBeNull()
+    expect(lead.getAttribute('data-run-status')).toBeNull()
+    act(() => publishRunStatusRow('lead-1', null))
   })
 
   it('shows the attention dot on a background tab that needs a response', () => {

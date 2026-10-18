@@ -8,11 +8,7 @@ import {
 } from "react";
 import { useAssistantState } from "@assistant-ui/react";
 import { cn } from "@/lib/utils";
-import {
-  isRunStatusRowInView,
-  publishOffscreenRunStatus,
-  tabRunStatusLabel,
-} from "./offscreen-run-status";
+import { isRunStatusRowInView, publishRunStatusRow } from "./run-status-row";
 import { compactCount } from "@/utils/humanize/compactCount";
 import { useTurnTimer } from "@/hooks/useTurnTimer";
 import { isMessageKey, useT, type TranslateFn } from "@/browser/webview/i18n";
@@ -28,7 +24,7 @@ import type { NexusCurrentSessionPhase } from "@/browser/bridge/protocol/ui";
 /**
  * Running indicator after the last message, part of the conversation: an animated
  * mark plus a live status line, both removed when the turn ends. Scrolled out of
- * view, the status moves to the active session tab (`publishOffscreenRunStatus`,
+ * view, the floating scroll button paints the animation (`publishRunStatusRow`,
  * F-22). The status text follows
  * `useNexusSessionStatus` plus live token usage; the run gate reads the session port,
  * like the composer's Send/Stop gate (`resolveRunningIndicatorVisibility`).
@@ -338,18 +334,16 @@ export const RunningIndicatorView: FC<{
 };
 
 /**
- * Publishes the run status to the session tab while `rowRef`'s row is out of the
- * conversation viewport's visible band (above the sticky composer footer), and
- * clears it when the row is back, the run ends, or the thread unmounts.
+ * Publishes whether `rowRef`'s row is inside the conversation viewport's visible
+ * band (above the sticky composer footer) while the run is active, and clears
+ * the entry when the run ends or the thread unmounts.
  */
-function useOffscreenRunStatusPublisher(params: {
+function useRunStatusRowPublisher(params: {
   sessionId: string | undefined;
   active: boolean;
   rowRef: RefObject<HTMLDivElement | null>;
-  elapsed: string;
-  statusText: string;
 }): void {
-  const { sessionId, active, rowRef, elapsed, statusText } = params;
+  const { sessionId, active, rowRef } = params;
   const [offscreen, setOffscreen] = useState(false);
 
   useEffect(() => {
@@ -393,20 +387,13 @@ function useOffscreenRunStatusPublisher(params: {
     };
   }, [active, rowRef]);
 
-  const show = active && offscreen && Boolean(sessionId);
-  const label = show ? tabRunStatusLabel(statusText, elapsed) : "";
-  const detail = show
-    ? statusText
-      ? `${elapsed} · ${statusText}`
-      : elapsed
-    : "";
   useEffect(() => {
     if (!sessionId) return;
-    publishOffscreenRunStatus(sessionId, show ? { label, detail } : null);
-  }, [sessionId, show, label, detail]);
+    publishRunStatusRow(sessionId, active ? { inView: !offscreen } : null);
+  }, [sessionId, active, offscreen]);
   useEffect(() => {
     if (!sessionId) return;
-    return () => publishOffscreenRunStatus(sessionId, null);
+    return () => publishRunStatusRow(sessionId, null);
   }, [sessionId]);
 }
 
@@ -489,12 +476,10 @@ export const RunningIndicator: FC<{
   });
 
   const visible = isForeground && showIndicator;
-  useOffscreenRunStatusPublisher({
+  useRunStatusRowPublisher({
     sessionId,
     active: visible,
     rowRef,
-    elapsed,
-    statusText,
   });
 
   if (!isForeground) return null;

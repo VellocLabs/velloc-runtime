@@ -4,8 +4,14 @@ import { TOOL_LINE_RANGES_KEY } from "@/browser/webview/assistantUiAdapter";
 import { useSessionAreaVisible } from "@/browser/webview/sessionAreaVisibility";
 import {
   providerApiErrorKindLabel,
+  RunningBlob,
   RunningIndicator,
 } from "@/components/assistant-ui/running-indicator";
+import {
+  COLLAPSE_ALL_OFFER_MS,
+  resolveFloatingScrollButton,
+  useRunStatusRow,
+} from "@/components/assistant-ui/run-status-row";
 import { BackgroundResultsCard } from "@/components/assistant-ui/background-results-card";
 import { TeamMessageCard } from "@/components/assistant-ui/team-message-card";
 import { StaticMarkdown } from "@/components/assistant-ui/static-markdown";
@@ -1094,6 +1100,7 @@ export const Thread: FC<{
 
         <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col gap-1.5 overflow-visible rounded-t-(--composer-radius) bg-background pb-4 md:pb-6">
           <ThreadLockToBottom
+            sessionId={sessionId}
             lockToBottomRef={lockToBottomRef}
             viewportRef={viewportRef}
             lockToBottomEnabled={lockToBottomEnabled}
@@ -1217,11 +1224,13 @@ const ComposerContextUsage: FC<{ isForeground?: boolean }> = ({ isForeground }) 
   );
 };
 
-// Circular floating button above the composer. Away from the bottom it is the
-// "lock to bottom" control: clicking re-engages the lock and snaps to the bottom
-// (a pin while locked, a down-arrow once released). At the bottom it becomes
+// Circular floating button above the composer. While the last row is out of
+// view it is the "lock to bottom" control: clicking re-engages the lock and
+// snaps to the bottom (a pin while locked, a down-arrow once released; during
+// a run, the run animation until hovered). After that click it briefly becomes
 // Collapse all, which closes every open card in the conversation.
 const ThreadLockToBottom: FC<{
+  sessionId?: string;
   lockToBottomRef?: { current: boolean };
   viewportRef: { current: HTMLDivElement | null };
   lockToBottomEnabled: boolean;
@@ -1229,6 +1238,7 @@ const ThreadLockToBottom: FC<{
   canCollapseAll: boolean;
   onCollapseAll: () => void;
 }> = ({
+  sessionId,
   lockToBottomRef,
   viewportRef,
   lockToBottomEnabled,
@@ -1238,10 +1248,23 @@ const ThreadLockToBottom: FC<{
 }) => {
   const t = useT();
   const isAtBottom = useThreadViewport((s) => s.isAtBottom);
+  const runRow = useRunStatusRow(sessionId);
+  const [collapseOffer, setCollapseOffer] = useState(0);
+  useEffect(() => {
+    if (collapseOffer === 0) return;
+    const id = setTimeout(() => setCollapseOffer(0), COLLAPSE_ALL_OFFER_MS);
+    return () => clearTimeout(id);
+  }, [collapseOffer]);
+  const mode = resolveFloatingScrollButton({
+    runRowInView: runRow ? runRow.inView : null,
+    isAtBottom,
+    collapseOffered: collapseOffer !== 0,
+    canCollapseAll,
+  });
   const buttonClassName =
     "absolute -top-12 z-10 self-center rounded-full p-4 dark:border-border dark:bg-background dark:hover:bg-accent";
-  if (isAtBottom) {
-    if (!canCollapseAll) return null;
+  if (mode === null) return null;
+  if (mode === "collapse") {
     return (
       <TooltipIconButton
         tooltip={t("statusBar.collapseAll")}
@@ -1255,6 +1278,7 @@ const ThreadLockToBottom: FC<{
       </TooltipIconButton>
     );
   }
+  const scrollIcon = lockToBottomEnabled ? <LockIcon /> : <ArrowDownIcon />;
   return (
     <ThreadPrimitive.ScrollToBottom behavior="instant" asChild>
       <TooltipIconButton
@@ -1263,18 +1287,38 @@ const ThreadLockToBottom: FC<{
         variant="outline"
         data-testid="thread-scroll-to-bottom"
         data-active={lockToBottomEnabled ? "true" : undefined}
+        data-run-status={mode === "run" ? "true" : undefined}
         onClick={() => {
           if (lockToBottomRef) {
             engageConversationLockToBottom(lockToBottomRef, viewportRef.current);
           }
           onLockToBottom();
+          setCollapseOffer((n) => n + 1);
         }}
         className={cn(
-          "aui-thread-scroll-to-bottom disabled:invisible",
+          "aui-thread-scroll-to-bottom group disabled:invisible",
           buttonClassName,
         )}
       >
-        {lockToBottomEnabled ? <LockIcon /> : <ArrowDownIcon />}
+        {mode === "run" ? (
+          <>
+            {/* The run animation; hover or keyboard focus shows the action. */}
+            <span
+              data-slot="thread-scroll-run-status"
+              className="contents group-hover:hidden group-focus-visible:hidden"
+            >
+              <RunningBlob compact />
+            </span>
+            <span
+              data-slot="thread-scroll-action-icon"
+              className="hidden group-hover:contents group-focus-visible:contents"
+            >
+              {scrollIcon}
+            </span>
+          </>
+        ) : (
+          scrollIcon
+        )}
       </TooltipIconButton>
     </ThreadPrimitive.ScrollToBottom>
   );
