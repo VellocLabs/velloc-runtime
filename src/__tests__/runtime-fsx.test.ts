@@ -270,7 +270,7 @@ describe('fsx — a scoped connection is held to the session project', () => {
 
   it('a root inside ~/.velloc (the shared workspace) reaches its own files and its uploads, nothing beside it', async () => {
     // An unbound session's cwd is `~/.velloc/shared-workspace/agent`: the whole root sits inside the
-    // excluded tree, so every scoped read was refused — including the session's own uploads.
+    // excluded tree, yet its own files and uploads stay readable.
     const disk = fakeDisk()
     const workspace = `${HOME}/${RUNTIME_DIR_NAME}/shared-workspace/agent`
     disk.dirs.add(`${HOME}/${RUNTIME_DIR_NAME}/shared-workspace`)
@@ -289,6 +289,48 @@ describe('fsx — a scoped connection is held to the session project', () => {
     expect(await codeOf(files.readText(SESSION, `${HOME}/${RUNTIME_DIR_NAME}/settings.json`))).toBe('forbidden_scope')
     expect(await codeOf(files.readText(SESSION, '../../settings.json'))).toBe('forbidden_scope')
     expect(await codeOf(files.readText(SESSION, '../other.txt'))).toBe('forbidden_scope')
+  })
+
+  it('the bare shared workspace, which holds every per-type sandbox, reaches nothing', async () => {
+    const disk = fakeDisk()
+    const sandbox = `${HOME}/${RUNTIME_DIR_NAME}/shared-workspace`
+    disk.dirs.add(sandbox)
+    disk.dirs.add(`${sandbox}/chat`)
+    disk.text(`${sandbox}/notes.txt`, 'shared')
+    disk.text(`${sandbox}/chat/${RUNTIME_DIR_NAME}/uploads/other/a.png`, 'theirs')
+    const server = makeServer(disk, { cwd: sandbox, projectRoot: sandbox })
+    const files = createRuntimeFileAccess({ connection: once(() => connect(server, 'control')) })
+    expect(await codeOf(files.readText(SESSION, 'notes.txt'))).toBe('forbidden_scope')
+    expect(await codeOf(files.readText(SESSION, `chat/${RUNTIME_DIR_NAME}/uploads/other/a.png`))).toBe('forbidden_scope')
+    expect(disk.reads).toEqual([])
+  })
+
+  it('with no home known, a scoped request is refused instead of skipping the exclusion', async () => {
+    const disk = fakeDisk()
+    const inner = disk.host
+    disk.host = {
+      async request(route, payload) {
+        if (route.action === 'userHome') return { ok: true, result: '' }
+        return inner.request(route, payload)
+      },
+    }
+    disk.text(`${HOME}/${RUNTIME_DIR_NAME}/settings.json`, '{"apiKey":"k"}')
+    const server = makeServer(disk, { cwd: HOME, projectRoot: HOME }, '')
+    const files = createRuntimeFileAccess({ connection: once(() => connect(server, 'control')) })
+    expect(await codeOf(files.readText(SESSION, `${RUNTIME_DIR_NAME}/settings.json`))).toBe('forbidden_scope')
+    const stats = await files.statBatch(SESSION, [`${RUNTIME_DIR_NAME}/settings.json`]).catch(error => error)
+    expect(isRuntimeRequestError(stats) ? stats.code : stats).toBe('forbidden_scope')
+    expect(disk.reads).toEqual([])
+  })
+
+  it('with no home on the runtime, a scoped request asks the host and keeps the exclusion', async () => {
+    const disk = fakeDisk()
+    disk.text(`${HOME}/${RUNTIME_DIR_NAME}/settings.json`, '{"apiKey":"k"}')
+    disk.text(`${HOME}/notes.txt`, 'mine')
+    const server = makeServer(disk, { cwd: HOME, projectRoot: HOME }, '')
+    const files = createRuntimeFileAccess({ connection: once(() => connect(server, 'control')) })
+    expect(await files.readText(SESSION, 'notes.txt')).toBe('mine')
+    expect(await codeOf(files.readText(SESSION, `${RUNTIME_DIR_NAME}/settings.json`))).toBe('forbidden_scope')
   })
 
   it('a root that IS ~/.velloc reaches nothing', async () => {

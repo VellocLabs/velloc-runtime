@@ -44,10 +44,6 @@ describe('resolveHomeDirViaBridgeBounded', () => {
     }
   })
 
-  // Regression: the previous inline `Promise.race([probe, setTimeout(...)])` left
-  // the timeout's `setTimeout` scheduled even after a fast host won the race, so
-  // its callback fired ~8s after a SUCCESSFUL resolve and logged a spurious
-  // "timed out … falling back" warning on every boot. The timer must be cleared.
   it('leaves no pending timer after a fast resolve (no spurious late timeout)', async () => {
     vi.useFakeTimers()
     try {
@@ -57,6 +53,32 @@ describe('resolveHomeDirViaBridgeBounded', () => {
       )
       expect(result.timedOut).toBe(false)
       expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a caller after a timeout joins the probe still waiting instead of asking again', async () => {
+    vi.useFakeTimers()
+    try {
+      let asked = 0
+      let answer: ((value: unknown) => void) | undefined
+      const transport = {
+        request: () => {
+          asked += 1
+          return new Promise(resolve => {
+            answer = resolve
+          })
+        },
+      } as unknown as Parameters<typeof resolveHomeDirViaBridgeBounded>[0]
+      const first = resolveHomeDirViaBridgeBounded(transport, 5_000)
+      await vi.advanceTimersByTimeAsync(5_000)
+      await expect(first).resolves.toEqual({ home: null, timedOut: true })
+      const second = resolveHomeDirViaBridgeBounded(transport, 5_000)
+      expect(asked).toBe(1)
+      answer?.({ ok: true, result: '/home/user' })
+      await expect(second).resolves.toEqual({ home: '/home/user', timedOut: false })
+      expect(asked).toBe(1)
     } finally {
       vi.useRealTimers()
     }

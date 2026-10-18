@@ -787,6 +787,8 @@ class ClientConnection implements TopicSubscriber {
       }
     }
     await this.hub.options.beforeRequest?.()
+    // Already answered `cancelled` while the hub was settling: never run it.
+    if (signal.aborted) throw wireError('cancelled', 'request cancelled')
     if (entry.spec.guard && !(await entry.spec.guard(req.payload, this.conn, this.hub.options.context))) {
       throw wireError('bad_payload', `'${key}' rejected the payload`)
     }

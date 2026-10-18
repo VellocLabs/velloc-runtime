@@ -9,6 +9,7 @@
  */
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { checkWithinRoot } from '../../permissions/untrustedReadBoundary'
+import { getNexusWorkspaceDir } from '../../utils/conversationStoragePaths'
 import {
   basenameRuntimePath,
   dirnameRuntimePath,
@@ -133,12 +134,15 @@ function realpathMemo(host: HostBridge, memo: Map<string, Promise<string | null>
   return pending
 }
 
-/**
- * Resolved ONCE per request: a `statBatch` of 500 paths used to re-resolve
- * both roots for every path, three host round trips per path where one
- * suffices.
- */
+/** The user's home for a scoped check: the runtime's, else the host's; '' when neither knows. */
+function scopedHomeOf(ctx: RuntimeContext): Promise<string> {
+  return resolveHostHome(ctx).catch(() => '')
+}
+
+/** Resolved ONCE per request, so a large `statBatch` asks the host about each root once. */
 async function rootFormsOf(host: HostBridge, roots: FsxSessionRoots, homeDir: string): Promise<RootForms> {
+  // Security: fail closed — with no home the excluded tree cannot be placed.
+  if (!homeDir) throw wireError('forbidden_scope', 'the user home is not known, so scoped file access is refused')
   const realpaths = new Map<string, Promise<string | null>>()
   const rootPaths = new Set<string>()
   for (const root of new Set([roots.projectRoot, roots.cwd])) {
@@ -152,17 +156,24 @@ async function rootFormsOf(host: HostBridge, roots: FsxSessionRoots, homeDir: st
   // `~/<runtime dir>` sits inside the resolved root and outside the literal
   // exclusion, and a request naming it would have read the credentials file.
   const excluded: string[] = []
-  if (homeDir) {
-    const literal = joinRuntimePath(homeDir, RUNTIME_DIR_NAME)
-    excluded.push(literal)
-    const real = await realpathMemo(host, realpaths, literal)
-    if (real && real !== literal) excluded.push(real)
-  }
-  // Security: a root strictly inside an excluded tree is already confined to its own subtree, so
-  // that tree's exclusion would refuse the whole root; a root that IS the tree keeps it.
+  const literal = joinRuntimePath(homeDir, RUNTIME_DIR_NAME)
+  excluded.push(literal)
+  const real = await realpathMemo(host, realpaths, literal)
+  if (real && real !== literal) excluded.push(real)
+  const sandbox = getNexusWorkspaceDir(homeDir)
+  // Security: a root strictly inside the shared sandbox (literal or resolved) is confined to its
+  // own subtree, so the excluded tree's exclusion would refuse the whole root. Any other root
+  // inside the excluded tree — the bare sandbox, which holds every per-type sandbox, or the tree
+  // itself — keeps it.
   const forms = new Map<string, readonly string[]>()
   for (const root of rootPaths) {
-    forms.set(root, excluded.filter(tree => !isStrictlyInside(tree, root)))
+    const inside = excluded.filter(tree => isStrictlyInside(tree, root))
+    let ownSandbox = false
+    if (inside.length > 0) {
+      const realSandbox = await realpathMemo(host, realpaths, sandbox)
+      ownSandbox = [sandbox, realSandbox].some(form => !!form && isStrictlyInside(form, root))
+    }
+    forms.set(root, ownSandbox ? excluded.filter(tree => !inside.includes(tree)) : excluded)
   }
   return { forms, realpaths }
 }
@@ -238,7 +249,7 @@ async function resolveForConnection(
   const host = hostOf(ctx)
   const abs = resolveRuntimePath(roots.cwd, path)
   if (request.conn.scope.mode !== 'full') {
-    const violation = await rootViolation(host, abs, await rootFormsOf(host, roots, ctx.homeDir))
+    const violation = await rootViolation(host, abs, await rootFormsOf(host, roots, await scopedHomeOf(ctx)))
     if (violation) throw wireError('forbidden_scope', violation)
   }
   return { abs, roots, host }
@@ -269,7 +280,7 @@ async function statBatch(
   const host = hostOf(ctx)
   const absent = (path: string): FsxStatEntry => ({ path, exists: false, isFile: false, isDirectory: false })
   // Which requested paths this connection may see; the rest read as absent.
-  const rootForms = request.conn.scope.mode === 'full' ? null : await rootFormsOf(host, roots, ctx.homeDir)
+  const rootForms = request.conn.scope.mode === 'full' ? null : await rootFormsOf(host, roots, await scopedHomeOf(ctx))
   const resolved = paths.map(path => ({ path, abs: resolveRuntimePath(roots.cwd, path) }))
   let visible: Array<{ path: string; abs: string }>
   if (rootForms === null) {

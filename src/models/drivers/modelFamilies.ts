@@ -100,7 +100,7 @@ function details(
 
 async function hostCatalog(transport: BrowserBridgeTransport): Promise<BrowserLlmCatalog> {
   const response = (await transport.request({
-    id: `model-families-${Date.now().toString(36)}`,
+    id: `model-families-${crypto.randomUUID()}`,
     route: createBridgeRoute('model', 'catalog'),
     payload: {},
   })) as { ok: true; result: BrowserLlmCatalog } | { ok: false; error: { code: string; message: string } }
@@ -154,7 +154,7 @@ export async function providerModelFamilies(
       } else {
         await transport
           .request({
-            id: `model-families-refresh-${Date.now().toString(36)}`,
+            id: `model-families-refresh-${crypto.randomUUID()}`,
             route: createBridgeRoute('providerAuth', 'refresh'),
             payload: { providerId },
           })

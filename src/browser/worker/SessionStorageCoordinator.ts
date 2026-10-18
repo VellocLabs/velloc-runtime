@@ -102,14 +102,17 @@ export class SessionStorageCoordinator {
   /** Host home dir (`~`) resolved once via the bridge; null ⇒ legacy cwd layout. */
   private homeDir: string | null = null
   /**
-   * Worker-lifetime memo of the host home-dir probe. The probe resolves fast on
-   * a real host but HANGS when the host doesn't answer `fs.userHome` (the web
-   * deployment), where it costs the full boot-blocking timeout. Caching the
-   * result means a re-entry never re-pays that wait, and the timeout warning is
-   * emitted at most once. (The manager is a worker singleton —
-   * `agentRuntime.sharedworker.ts` — so this is effectively per-worker.)
+   * Memo of the host home-dir probe, bound to the transport it asked. The probe
+   * resolves fast on a real host but HANGS when the host doesn't answer
+   * `fs.userHome` (the web deployment), where it costs the full boot-blocking
+   * timeout; storage bring-up on the same transport never re-pays that wait.
    */
-  private hostHomeDirProbe?: Promise<string | null>
+  private hostHomeDirProbe?: {
+    transport: BrowserBridgeTransport
+    probe: Promise<string | null>
+  }
+  /** The home the host named, whatever storage layout boot settled on. */
+  private hostHome: string | null = null
   /** De-dupes concurrent first-`ensureStorage` calls (it awaits the home dir). */
   private ensureStoragePromise: Promise<void> | null = null
   private readonly storageReadyWaiters = new Set<{
@@ -146,15 +149,20 @@ export class SessionStorageCoordinator {
 
   /**
    * The user's home as sessions see it: the grouped layout's home, else the
-   * same memoized host probe storage bring-up awaits. Null with no direct
-   * transport yet, in the flat layout, or when the host does not answer.
+   * host probe storage bring-up shares, in either layout. Null with no direct
+   * transport yet or when the host does not answer; a no-answer is forgotten,
+   * so the next call asks again.
    */
   async resolveHomeDir(): Promise<string | null> {
     if (this.homeDir) return this.homeDir
-    if (this.establishedStorageMode === 'flat') return null
+    if (this.hostHome) return this.hostHome
     const transport = this.host.getDirectBridgeTransport()
     if (!transport) return null
-    return this.resolveHostHomeDirOnce(transport)
+    const probe = this.resolveHostHomeDirOnce(transport)
+    const home = await probe
+    if (home) return home
+    if (this.hostHomeDirProbe?.probe === probe) this.hostHomeDirProbe = undefined
+    return null
   }
 
   storageRoot(): string | null {
@@ -329,6 +337,10 @@ export class SessionStorageCoordinator {
       this.establishedStorageMode === 'flat'
         ? null
         : await this.resolveHostHomeDirOnce(transport)
+    // The layout latches below; a later home question asks the host afresh.
+    if (!homeDir && this.hostHomeDirProbe?.transport === transport) {
+      this.hostHomeDirProbe = undefined
+    }
     if (generation !== this.storageGeneration) {
       return
     }
@@ -395,15 +407,16 @@ export class SessionStorageCoordinator {
    * Resolve the host home dir ONCE per worker, racing a boot-blocking timeout.
    * On a real host this returns in milliseconds; when the host never answers
    * `fs.userHome` (the web deployment) it resolves to null after the timeout and
-   * warns exactly once. Memoized so re-entry never re-pays the wait. Reduced
-   * from the previous 8s to 5s — a post-handshake local IPC answers far faster,
-   * so this only trims the dead-wait on host-less deployments.
+   * warns once per probe. Memoized per transport so re-entry never re-pays the
+   * wait, and an answer lost with a replaced port is never this port's answer.
    */
   private resolveHostHomeDirOnce(
     transport: BrowserBridgeTransport,
   ): Promise<string | null> {
-    if (this.hostHomeDirProbe) return this.hostHomeDirProbe
-    this.hostHomeDirProbe = resolveHomeDirViaBridgeBounded(
+    if (this.hostHomeDirProbe?.transport === transport) {
+      return this.hostHomeDirProbe.probe
+    }
+    const probe = resolveHomeDirViaBridgeBounded(
       transport,
       HOST_HOME_DIR_TIMEOUT_MS,
     ).then(({ home, timedOut }) => {
@@ -416,9 +429,11 @@ export class SessionStorageCoordinator {
             '(worker.ready is emitted regardless).',
         )
       }
+      if (home) this.hostHome = home
       return home
     })
-    return this.hostHomeDirProbe
+    this.hostHomeDirProbe = { transport, probe }
+    return probe
   }
 
   /**

@@ -55,7 +55,7 @@ import { getActiveSessionManager } from '../SharedWorkerSessionManager'
 import { discoverInstructionFiles } from '../../../memory/instructionFiles'
 import type { BrowserBridgeTransport } from '../../bridge/protocol/core'
 import { createBridgeRoute } from '../../bridge/protocol/core'
-import { wireError, type WireError } from '../../runtimeProtocol'
+import { isWireError, wireError, type WireError } from '../../runtimeProtocol'
 import { resolveHomeDirViaBridgeBounded } from '../../../utils/resolveHomeDirViaBridge'
 import { withProviderUserAgents } from '../../../config/providerUserAgent'
 import { withProviderSecretMirror } from '../../../config/providerSecrets'
@@ -607,6 +607,15 @@ function providersAdapterContext(
   }
 }
 
+/** `resolveSettingsRoot` for callers that format errors as `Error`s: its refusal keeps its text. */
+async function settingsRootForProviders(ctx: WebUiBridgeContext): Promise<string> {
+  try {
+    return await resolveSettingsRoot(ctx, ctx.directBridge)
+  } catch (error) {
+    throw isWireError(error) ? new Error(error.message) : error
+  }
+}
+
 /**
  * What `models/drivers/runtimeProviders.ts` needs from the runtime:
  * provider-config writes through the `providers` write path, and its listing
@@ -615,12 +624,12 @@ function providersAdapterContext(
  */
 export function createRuntimeProvidersHost(ctx: WebUiBridgeContext): RuntimeProvidersHost {
   const cacheDir = async (): Promise<string> => {
-    const root = await resolveSettingsRoot(ctx, ctx.directBridge)
+    const root = await settingsRootForProviders(ctx)
     return joinPath(root, NEXUS_DIR_NAME, 'cache', 'provider-models')
   }
   return {
     async writeProviderConfig(providerId, config) {
-      const settingsRoot = await resolveSettingsRoot(ctx, ctx.directBridge)
+      const settingsRoot = await settingsRootForProviders(ctx)
       const response = await handleProvidersBridgeRequest(
         {
           id: `runtime-provider-${crypto.randomUUID()}`,
@@ -651,7 +660,7 @@ export function createRuntimeProvidersHost(ctx: WebUiBridgeContext): RuntimeProv
       })
     },
     async broadcastProvidersChanged(extra) {
-      const settingsRoot = await resolveSettingsRoot(ctx, ctx.directBridge)
+      const settingsRoot = await settingsRootForProviders(ctx)
       const adapter = providersAdapterContext(ctx, settingsRoot)
       const response = await handleProvidersBridgeRequest(
         {
@@ -671,7 +680,7 @@ export function createRuntimeProvidersHost(ctx: WebUiBridgeContext): RuntimeProv
     },
     async writeCache(providerId, text) {
       const dir = await cacheDir()
-      const root = await resolveSettingsRoot(ctx, ctx.directBridge)
+      const root = await settingsRootForProviders(ctx)
       // mkdir is not recursive on every fs facade: create each level.
       for (const level of [
         joinPath(root, NEXUS_DIR_NAME),

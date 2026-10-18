@@ -784,7 +784,7 @@ export async function createBrowserRuntime(
     },
     // `/plugin` + `/marketplace` resolve `~/.velloc/...` paths; the worker env
     // HOME/USERPROFILE is empty in production (the env-based resolver throws),
-    // so thread the bridge-resolved settings home (falls back to cwd).
+    // so thread the bridge-resolved settings home; undefined with no home.
     settingsHomeDir: resolvedOptions.settingsHomeDir,
     // `/marketplace` + `/plugin install` fetch GitHub tarballs. A direct
     // `globalThis.fetch` from the SharedWorker is CSP-blocked ("Failed to

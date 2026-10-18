@@ -245,6 +245,7 @@ function makeRig(options: {
   now?: () => number
   resumeRetentionMs?: number
   pairings?: PairingTable
+  beforeRequest?: () => Promise<void>
 } = {}) {
   const registry = options.registry ?? new CapabilityRegistry()
   const broker = options.broker ?? new TopicBroker()
@@ -261,6 +262,7 @@ function makeRig(options: {
     now: options.now,
     resumeRetentionMs: options.resumeRetentionMs,
     ...(options.pairings ? { pairings: options.pairings } : {}),
+    ...(options.beforeRequest ? { beforeRequest: options.beforeRequest } : {}),
   })
   context.connections = () => hub.list()
   const ends = loopback(options.loopback)
@@ -435,6 +437,30 @@ describe('ConnectionHub requests', () => {
     expect(aborted).toBe(true)
     resolveHandler('late')
     await flush()
+    expect(client.frames.filter(f => f.kind === 'res' && f.id === pending.id)).toHaveLength(1)
+  })
+
+  it('a request cancelled while the hub settles before serving never reaches its handler', async () => {
+    let settle: () => void = () => {}
+    const { client, registry } = makeRig({ beforeRequest: () => new Promise(resolve => (settle = resolve)) })
+    let ran = false
+    registry.registerCapability({
+      cap: 'write',
+      actions: { run: { scope: 'observe' } },
+      handle: async () => {
+        ran = true
+        return 'done'
+      },
+    })
+    await client.hello()
+    const pending = client.request('write.run')
+    await flush()
+    client.transport.send({ kind: 'cancel', id: pending.id })
+    const res = await pending
+    expect(res.ok === false && res.error.code).toBe('cancelled')
+    settle()
+    await flush()
+    expect(ran).toBe(false)
     expect(client.frames.filter(f => f.kind === 'res' && f.id === pending.id)).toHaveLength(1)
   })
 

@@ -18,6 +18,7 @@ import {
 } from '../browser/worker/webUiBridge'
 import {
   __resetBuiltinWebUiBridgeHandlersForTests,
+  createRuntimeProvidersHost,
   initBuiltinWebUiBridgeHandlers,
 } from '../browser/worker/webUiBridge/initBuiltinHandlers'
 
@@ -234,6 +235,16 @@ describe('WebUI settings root', () => {
     await expect(
       callFeaturesHandler(makeRequest('setEnabled', { patch: { a: false } }), makeCtx(fs, null)),
     ).rejects.toMatchObject({ code: 'host_unavailable' })
+    expect(files.size).toBe(0)
+  })
+
+  it('the runtime providers host refuses with an Error that keeps the reason', async () => {
+    const { fs, files } = makeMemoryFs()
+    const host = createRuntimeProvidersHost(makeCtx(fs, null))
+
+    const error = await host.writeProviderConfig('p', {} as never).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toContain('user home unknown')
     expect(files.size).toBe(0)
   })
 

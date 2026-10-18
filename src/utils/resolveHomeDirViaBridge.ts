@@ -32,10 +32,25 @@ export async function resolveHomeDirViaBridge(
   return null
 }
 
+/** The probe still waiting on each transport; bounded callers join it rather than ask again. */
+const pendingProbes = new WeakMap<BrowserBridgeTransport, Promise<string | null>>()
+
+function sharedProbe(transport: BrowserBridgeTransport): Promise<string | null> {
+  const pending = pendingProbes.get(transport)
+  if (pending) return pending
+  const probe = resolveHomeDirViaBridge(transport).finally(() => {
+    if (pendingProbes.get(transport) === probe) pendingProbes.delete(transport)
+  })
+  pendingProbes.set(transport, probe)
+  return probe
+}
+
 /**
  * Boot-safe {@link resolveHomeDirViaBridge}: races the probe against a timeout
  * so boot cannot stall on a host that never answers. The timer is always
- * cleared; `timedOut: true` only when the timer actually wins.
+ * cleared; `timedOut: true` only when the timer actually wins. A caller that
+ * gives up leaves the probe running, and the next bounded caller on the same
+ * transport waits on that probe instead of adding another request.
  */
 export async function resolveHomeDirViaBridgeBounded(
   transport: BrowserBridgeTransport | undefined,
@@ -47,7 +62,7 @@ export async function resolveHomeDirViaBridgeBounded(
   })
   try {
     const result = await Promise.race([
-      resolveHomeDirViaBridge(transport).then(home => ({ home }) as const),
+      (transport ? sharedProbe(transport) : Promise.resolve(null)).then(home => ({ home }) as const),
       timeout,
     ])
     return result === 'timeout'

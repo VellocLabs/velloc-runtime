@@ -783,7 +783,7 @@ export async function fetchFreshModelIds(
   }
   try {
     const response = (await transport.request({
-      id: `fresh-models-${providerId}-${Date.now().toString(36)}`,
+      id: `fresh-models-${providerId}-${crypto.randomUUID()}`,
       route: createBridgeRoute('providerAuth', 'refresh'),
       payload: { providerId },
     })) as
