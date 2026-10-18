@@ -1,6 +1,7 @@
 /**
  * One xterm.js emulator bound to one `terminal/<id>` topic (F-31): the
- * snapshot replays the scrollback, deltas stream output, keystrokes go back
+ * snapshot replays the scrollback (the emulator's answers to queries in it
+ * are not sent), deltas stream output, keystrokes go back
  * as `terminal.write` once per frame, and the host element's size drives
  * `terminal.resize`. Also the find bar (Ctrl+Shift+F). Loaded lazily: this
  * module carries the xterm chunk.
@@ -34,7 +35,7 @@ import { FitScheduler } from './terminalFit'
 import { terminalKeyDecision } from './terminalKeys'
 import type { TerminalPrefs } from './terminalPrefs'
 import { registerTerminalProbe } from './terminalProbe'
-import { applyTerminalTopicEvent, InputBatcher, type MirroredTerminal } from './xtermBinding'
+import { applyTerminalTopicEvent, InputBatcher, ReplayGate, type MirroredTerminal } from './xtermBinding'
 import {
   buildTerminalTheme,
   documentScheme,
@@ -124,6 +125,7 @@ export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }
       })
     }
     const input = new InputBatcher(data => request('write', { id: terminalId, data }))
+    const replay = new ReplayGate()
     let mirror: MirroredTerminal | null = null
     let lastSent: { cols: number; rows: number } | null = null
 
@@ -150,7 +152,7 @@ export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }
     const hasFocus = (): boolean => host.contains(document.activeElement)
 
     const unsubscribe = connection.subscribe(topic.terminal(terminalId), event => {
-      const next = applyTerminalTopicEvent(term, mirror, event)
+      const next = applyTerminalTopicEvent(term, mirror, event, replay)
       if (event.form === 'snapshot') {
         mirror = next
         // Our own size wins while this view is focused; the first snapshot
@@ -171,7 +173,9 @@ export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }
       mirror = next
     })
 
-    const dataDisposable = term.onData(data => input.push(data))
+    const dataDisposable = term.onData(data => {
+      if (replay.admits(data)) input.push(data)
+    })
     const selectionDisposable = term.onSelectionChange(() => {
       if (prefsRef.current.copyOnSelect && term.hasSelection()) {
         void writeClipboard(term.getSelection())

@@ -242,10 +242,14 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
             const label = labels[index] ?? ''
             const kind = tab.row ? tab.row.state.kind : 'pending'
             return (
+              // The whole pill is the tab: a press on its edge activates it too.
               <div
                 key={tab.key}
+                onClick={event => {
+                  if (event.target === event.currentTarget) activate(tab.key)
+                }}
                 className={cn(
-                  'group flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pe-0.5 ps-1.5 text-[12px]',
+                  'group flex min-w-0 cursor-default items-stretch rounded-md text-[12px]',
                   isActive ? 'bg-muted' : 'hover:bg-muted/50',
                 )}
               >
@@ -258,7 +262,7 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
                   title={tab.row ? tab.row.title : t('terminal.placeholder.pending')}
                   onClick={() => activate(tab.key)}
                   className={cn(
-                    'flex min-w-0 max-w-[10rem] items-center gap-1 outline-none',
+                    'flex min-w-0 max-w-[10rem] items-center gap-1 py-0.5 pe-1 ps-1.5 outline-none',
                     isActive ? 'font-medium text-foreground' : 'text-muted-foreground',
                     kind === 'exited' || kind === 'failed' ? 'line-through' : null,
                     kind === 'pending' ? 'italic' : null,
@@ -271,7 +275,7 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
                   aria-label={t('terminal.closeTerminal', { title: label })}
                   data-testid={`pane-terminal-close:${tab.key}`}
                   onClick={() => closeTab(tab)}
-                  className="flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                  className="me-0.5 flex size-4 shrink-0 items-center justify-center self-center rounded text-muted-foreground hover:text-foreground"
                 >
                   <XIcon className="size-3" />
                 </button>

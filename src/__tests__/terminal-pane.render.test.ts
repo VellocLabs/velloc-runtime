@@ -167,7 +167,13 @@ describe('TerminalPane', () => {
     expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_b')
     fireEvent.click(screen.getByTestId('pane-terminal-tab:term_a'))
     expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_a')
+    // A press on the tab's pill outside its label activates it too.
+    fireEvent.click(screen.getByTestId('pane-terminal-tab:term_b').parentElement as HTMLElement)
+    expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_b')
+    fireEvent.click(screen.getByTestId('pane-terminal-tab:term_a'))
     fireEvent.click(screen.getByTestId('pane-terminal-close:term_b'))
+    // The close button does not activate its tab.
+    expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_a')
     expect(fake.request).toHaveBeenCalledWith('terminal.close', { id: 'term_b' })
     expect(screen.getByTestId('pane-terminal-close:term_b').getAttribute('aria-label')).toBe('Close Terminal 2')
     // The shell's own title is the tab's tooltip.

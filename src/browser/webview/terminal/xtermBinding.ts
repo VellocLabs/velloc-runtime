@@ -2,9 +2,9 @@
  * The glue between one `terminal/<id>` subscription and one emulator (F-31),
  * kept free of xterm.js so it is unit-testable: a snapshot resets the screen
  * and replays the scrollback, an `output` delta is written, `resize` /
- * `title` / `state` deltas update the mirrored record. Also the input
- * batcher: keystrokes collected for one animation frame (a timer stands in
- * when no frame comes), escape sequences sent at once, split at the cap.
+ * `title` / `state` deltas update the mirrored record; the replay gate holds
+ * back the emulator's answers to queries in replayed text. Also the input
+ * batcher: keystrokes per animation frame (or timer), split at the cap.
  */
 import {
   TERMINAL_WRITE_MAX_BYTES,
@@ -13,10 +13,44 @@ import {
   type TerminalState,
 } from '@/terminal/protocol'
 
-/** What the binding needs from the emulator. */
+/** What the binding needs from the emulator. `parsed` runs once `data` has been parsed. */
 export interface EmulatorLike {
   reset(): void
-  write(data: string): void
+  write(data: string, parsed?: () => void): void
+}
+
+const ESC = 0x1b
+
+/**
+ * Closed while a snapshot's scrollback is being parsed. The scrollback can
+ * hold console queries (device attributes, cursor position) answered long
+ * ago; the emulator answers them again as it replays, and those answers are
+ * not input, and let through they would be typed at the shell's prompt
+ * on every re-open.
+ * Keystrokes still pass; only escape-led data is held back while closed.
+ */
+export class ReplayGate {
+  private replays = 0
+
+  /** A replay begins; the returned function ends it (once). */
+  begin(): () => void {
+    this.replays++
+    let ended = false
+    return () => {
+      if (ended) return
+      ended = true
+      this.replays--
+    }
+  }
+
+  get replaying(): boolean {
+    return this.replays > 0
+  }
+
+  /** Whether `data` the emulator produced may go to the shell now. */
+  admits(data: string): boolean {
+    return !this.replaying || data.charCodeAt(0) !== ESC
+  }
 }
 
 /** The terminal as the topic last described it. */
@@ -49,17 +83,21 @@ export function isTerminalSnapshot(value: unknown): value is TerminalSnapshot {
 
 /**
  * Apply one topic event. Returns the mirrored record after the event (the
- * same reference when the event changed nothing of it).
+ * same reference when the event changed nothing of it). A snapshot's replay
+ * keeps `gate` closed until the emulator has parsed it.
  */
 export function applyTerminalTopicEvent(
   emulator: EmulatorLike,
   mirror: MirroredTerminal | null,
   event: TerminalTopicEventLike,
+  gate?: ReplayGate,
 ): MirroredTerminal | null {
   if (event.form === 'snapshot') {
     if (!isTerminalSnapshot(event.payload)) return mirror
     emulator.reset()
-    if (event.payload.scrollback) emulator.write(event.payload.scrollback)
+    const scrollback = event.payload.scrollback
+    if (scrollback && gate) emulator.write(scrollback, gate.begin())
+    else if (scrollback) emulator.write(scrollback)
     return {
       cols: event.payload.cols,
       rows: event.payload.rows,
@@ -144,8 +182,6 @@ export function scheduleInputFlush(flush: () => void): void {
     })
   }
 }
-
-const ESC = 0x1b
 
 /**
  * Collects input and flushes it once per `schedule` tick (the default tick

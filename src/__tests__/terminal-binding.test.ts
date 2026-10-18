@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   INPUT_FLUSH_FALLBACK_MS,
   InputBatcher,
+  ReplayGate,
   applyTerminalTopicEvent,
   scheduleInputFlush,
   splitForWire,
@@ -65,6 +66,60 @@ describe('applyTerminalTopicEvent', () => {
     const running = applyTerminalTopicEvent(em, starting, { form: 'delta', type: 'state', payload: { state: { kind: 'running' } } })
     expect(running?.state).toEqual({ kind: 'running' })
     expect(em.reset).toHaveBeenCalledTimes(2)
+  })
+})
+
+/**
+ * An emulator that answers a device-attributes query found in written text
+ * at once and reports the text parsed only later, as a real one does.
+ */
+function answeringEmulator(onData: (data: string) => void) {
+  const parsed: Array<() => void> = []
+  return {
+    parsed,
+    reset: vi.fn(),
+    write: vi.fn((data: string, done?: () => void) => {
+      if (data.includes('[c')) onData('[?1;2c')
+      if (done) parsed.push(done)
+    }),
+  }
+}
+
+describe('ReplayGate', () => {
+  it("holds back the emulator's answers to queries in a replayed scrollback until it is parsed", () => {
+    const gate = new ReplayGate()
+    const sent: string[] = []
+    const em = answeringEmulator(data => {
+      if (gate.admits(data)) sent.push(data)
+    })
+    applyTerminalTopicEvent(em, null, snapshot({ scrollback: 'PS> [c' }), gate)
+    expect(sent).toEqual([])
+    expect(gate.replaying).toBe(true)
+    // Typed text still passes during the replay; key sequences wait for its end.
+    expect(gate.admits('ls')).toBe(true)
+    expect(gate.admits('[A')).toBe(false)
+    em.parsed.forEach(done => done())
+    expect(gate.replaying).toBe(false)
+    // A query in live output is answered.
+    applyTerminalTopicEvent(em, null, { form: 'delta', type: 'output', payload: { data: '[c' } }, gate)
+    expect(sent).toEqual(['[?1;2c'])
+  })
+
+  it('stays closed until every replay has ended; ending one twice counts once', () => {
+    const gate = new ReplayGate()
+    const first = gate.begin()
+    const second = gate.begin()
+    first()
+    first()
+    expect(gate.replaying).toBe(true)
+    second()
+    expect(gate.replaying).toBe(false)
+  })
+
+  it('an empty scrollback opens no replay', () => {
+    const gate = new ReplayGate()
+    applyTerminalTopicEvent(emulator(), null, snapshot({ scrollback: '' }), gate)
+    expect(gate.replaying).toBe(false)
   })
 })
 
