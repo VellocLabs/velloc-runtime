@@ -1,40 +1,42 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { cleanup, render } from '@testing-library/react'
 
+import type { ShellChannel } from '../browser/runtimeClient/shellChannel'
 import { WebviewArea } from '../browser/webview/WebviewArea'
 
 /**
- * The docked browser view's header: it and its close button live OUTSIDE the measured `webview-area` placeholder
- * (the native view paints over it), and the X calls `onHide`. `active={false}` keeps the ResizeObserver effect off.
+ * The browser pane's body (F-9): only the measured `webview-area` placeholder, nothing interactive inside it (the
+ * native view paints over it); the active instance blanks the native view when it unmounts.
  */
 
 afterEach(cleanup)
 
-describe('WebviewArea header', () => {
-  it('renders the header with a close button, separate from the placeholder', () => {
-    const { getByTestId } = render(
-      createElement(WebviewArea, { active: false, width: 400 }),
-    )
-    const header = getByTestId('webview-area-header')
-    const placeholder = getByTestId('webview-area')
-    const hide = getByTestId('webview-area-hide')
+class StillResizeObserver {
+  observe(): void {}
+  disconnect(): void {}
+}
 
-    // The close button must be in the header, NOT inside the measured
-    // placeholder the native view paints over.
-    expect(header.contains(hide)).toBe(true)
-    expect(placeholder.contains(hide)).toBe(false)
-    expect(header.contains(placeholder)).toBe(false)
-    expect(hide.getAttribute('aria-label')).toBe('Hide browser view')
+describe('WebviewArea', () => {
+  it('renders the placeholder alone, hidden from assistive tech', () => {
+    const { container, getByTestId } = render(createElement(WebviewArea, { active: false }))
+    const placeholder = getByTestId('webview-area')
+    expect(placeholder.getAttribute('aria-hidden')).toBe('true')
+    expect(placeholder.children.length).toBe(0)
+    expect(container.querySelectorAll('button').length).toBe(0)
   })
 
-  it('invokes onHide when the close button is clicked', () => {
-    const onHide = vi.fn()
-    const { getByTestId } = render(
-      createElement(WebviewArea, { active: false, width: 400, onHide }),
-    )
-    fireEvent.click(getByTestId('webview-area-hide'))
-    expect(onHide).toHaveBeenCalledTimes(1)
+  it('the active instance posts {visible:false} when it unmounts', () => {
+    vi.stubGlobal('ResizeObserver', StillResizeObserver)
+    try {
+      const publishLayout = vi.fn()
+      const shell = { publishLayout } as unknown as ShellChannel
+      const { unmount } = render(createElement(WebviewArea, { active: true, shell }))
+      unmount()
+      expect(publishLayout).toHaveBeenLastCalledWith({ visible: false })
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

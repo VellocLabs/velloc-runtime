@@ -74,10 +74,9 @@ export function useMainContentsLayout(
       if (rafId === null) rafId = requestAnimationFrame(flush)
     }
 
-    // The element's own size covers splitter drags; window resize covers
-    // viewport-driven offset shifts (the area is pinned to the right
-    // edge, so sidebar resizes never move it — no MutationObserver
-    // needed).
+    // The element's own size covers the pane's rect changes (the pane area
+    // lays it out at an absolute rect, so a move is a size or offset change
+    // of this element); window resize covers viewport-driven offset shifts.
     const ro = new ResizeObserver(schedule)
     ro.observe(el)
     window.addEventListener('resize', schedule)

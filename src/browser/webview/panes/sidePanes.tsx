@@ -56,11 +56,14 @@ function EmptyState({ label }: { label: string }): ReactElement {
   )
 }
 
-/** One pane's body by kind; the Files pane draws its own (`FilesPane`). */
+/**
+ * One pane's body by kind; the Files pane draws its own (`FilesPane`) and the
+ * browser pane's body is the native view's placeholder (`WebviewArea`).
+ */
 export function SidePaneBody({
   kind,
   ...props
-}: SidePaneContentProps & { kind: Exclude<SidePaneKind, 'files'> }): ReactElement {
+}: SidePaneContentProps & { kind: Exclude<SidePaneKind, 'files' | 'browser'> }): ReactElement {
   const t = useT()
   switch (kind) {
     case 'tasks':
@@ -107,7 +110,6 @@ export function SidePaneBody({
           loadBundledSkillBody={props.loadBundledSkillBody}
         />
       )
-    case 'browser':
     case 'terminal':
       return <EmptyState label={t(PANE_LABEL_KEY[kind])} />
   }

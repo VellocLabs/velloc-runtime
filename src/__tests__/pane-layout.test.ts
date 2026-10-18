@@ -7,10 +7,12 @@ import { describe, expect, it } from 'vitest'
 
 import {
   CHAT_WEIGHT,
+  browserToggleAction,
   closePane,
   defaultPaneLayout,
   defaultSessionPaneRecord,
   findSlot,
+  followBrowserTabs,
   hasPane,
   isPaneGroup,
   normalise,
@@ -218,5 +220,58 @@ describe('paneToggleAction', () => {
     const drawn = pruneUnrestorable(stored, { browserTabs: 0 })
     expect(drawn.maximized).toBeNull()
     expect(paneToggleAction(drawn, 'tasks', false)).toBe('close')
+  })
+})
+
+describe('browserToggleAction', () => {
+  it('with no pane and no tab it creates a tab; with a tab it opens; open, it closes like any pane', () => {
+    const closed = defaultSessionPaneRecord()
+    expect(browserToggleAction(closed, false, { browserTabs: 0 })).toBe('new-tab')
+    expect(browserToggleAction(closed, false, { browserTabs: 2 })).toBe('open')
+    const open = openPane(closed, 'browser', {})
+    expect(browserToggleAction(open, false, { browserTabs: 1 })).toBe('close')
+    expect(browserToggleAction(open, true, { browserTabs: 1 })).toBe('show-overlay')
+    const expandedOther = setMaximized(openPane(open, 'tasks', {}), 'tasks')
+    expect(browserToggleAction(expandedOther, false, { browserTabs: 1 })).toBe('move-expansion')
+  })
+})
+
+describe('followBrowserTabs', () => {
+  const chatOnly = defaultSessionPaneRecord()
+
+  it('the first tab places the browser pane at its default (wide) weight', () => {
+    const placed = followBrowserTabs(chatOnly, { prevTabs: 0, nextTabs: 1, dismissedAt: null }, {})
+    expect(shape(placed.layout)).toEqual({ row: ['chat', 'browser'] })
+    expect(findSlot(placed.layout, 'browser')?.weight).toBe(3)
+  })
+
+  it('a pane closed at a count stays closed for that count and returns on another, in its slot', () => {
+    const withTasks = openPane(chatOnly, 'tasks', {})
+    const open = followBrowserTabs(withTasks, { prevTabs: 0, nextTabs: 1, dismissedAt: null }, {})
+    expect(shape(open.layout)).toEqual({ row: ['chat', { column: ['tasks', 'browser'] }] })
+    const closed = closePane(open, 'browser')
+    // Another event at the dismissed count (the stale state replayed): nothing.
+    expect(followBrowserTabs(closed, { prevTabs: 0, nextTabs: 1, dismissedAt: 1 }, {})).toBe(closed)
+    // New tab activity: the pane returns where it sat.
+    const back = followBrowserTabs(closed, { prevTabs: 1, nextTabs: 2, dismissedAt: 1 }, {})
+    expect(shape(back.layout)).toEqual({ row: ['chat', { column: ['tasks', 'browser'] }] })
+    expect(back.closedSlots.browser).toBeUndefined()
+  })
+
+  it('a count of zero, an unchanged count, or a pane already open change nothing (same reference)', () => {
+    const open = openPane(chatOnly, 'browser', {})
+    expect(followBrowserTabs(open, { prevTabs: 1, nextTabs: 2, dismissedAt: null }, {})).toBe(open)
+    expect(followBrowserTabs(chatOnly, { prevTabs: 1, nextTabs: 0, dismissedAt: null }, {})).toBe(chatOnly)
+    expect(followBrowserTabs(chatOnly, { prevTabs: 2, nextTabs: 2, dismissedAt: null }, {})).toBe(chatOnly)
+  })
+
+  it('round trip: 0→1 places, the prune hides at 0 keeping the slot, 0→1 places again in that slot', () => {
+    const placed = followBrowserTabs(openPane(chatOnly, 'diff', {}), { prevTabs: 0, nextTabs: 1, dismissedAt: null }, {})
+    const slot = findSlot(placed.layout, 'browser')
+    const gone = pruneUnrestorable(placed, { browserTabs: 0 })
+    expect(hasPane(gone.layout, 'browser')).toBe(false)
+    expect(gone.closedSlots.browser).toEqual(slot)
+    const again = followBrowserTabs(gone, { prevTabs: 0, nextTabs: 1, dismissedAt: null }, {})
+    expect(findSlot(again.layout, 'browser')).toEqual(slot)
   })
 })

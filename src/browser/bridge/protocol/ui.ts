@@ -480,13 +480,13 @@ export type UiBridgeCapabilityMap = {
       result: { ok: true }
     }
     /**
-     * Open a regular (non-agent) browser window — the topbar's "Open browser
-     * window" button (originally the Lit `sysbtn` → `BrowserApiProxy
-     * .openBrowserWindow()`). Now a guest→C++ route so the React topbar can
-     * trigger it; the C++ `ui` adapter opens the window for the profile.
+     * Open a new tab owned by `sessionId` in this Nexus window (the new-tab
+     * page, foregrounded, tagged with the session and counted in its tally,
+     * so the browser pane shows it). The browser toggle and the pane's New
+     * tab use it; the agent's tabs come from the browser tools.
      */
-    openBrowserWindow: {
-      payload: Record<string, never>
+    openSessionTab: {
+      payload: { sessionId: string }
       result: { ok: true }
     }
     /**

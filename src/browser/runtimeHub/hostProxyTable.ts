@@ -31,7 +31,8 @@ export const HOST_PROXY_TABLE = {
     setWindowDragRegions: 'full',
     openNexusSettings: 'full',
     openLanguageSettings: 'full',
-    openBrowserWindow: 'full',
+    // A tab in THIS window's strip, shown by this window's own browser pane.
+    openSessionTab: 'full',
     getBootTimings: 'full',
     getProviderMissingPrompt: 'full',
     getInspectMenuEnabled: 'full',

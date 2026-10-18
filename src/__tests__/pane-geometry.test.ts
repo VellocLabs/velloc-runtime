@@ -66,4 +66,22 @@ describe('sideRegionMetrics', () => {
     expect(sideRegionMetrics(browser).minWidth).toBe(480)
     expect(nodeMinLength(browser.root, 'row', 8)).toBe(360 + 8 + 480)
   })
+
+  // The browser is a pane of the region, not a column subtracted first: its
+  // 480 is the region's minimum when it is the widest child, its weight
+  // counts like any pane's, and nothing in the metrics is browser-specific.
+  it('a browser pane is one more pane of the region: its 480 minimum, its weight', () => {
+    const browser = placePane(defaultPaneLayout(), 'browser', { weight: 3 })
+    expect(sideRegionMetrics(browser)).toEqual({ minWidth: 480, share: 3 / 5, count: 1 })
+    const browserThenTasks = placePane(browser, 'tasks', { weight: 1 })
+    // A column: as wide as its widest child (the browser), the column's weight is the browser's.
+    expect(sideRegionMetrics(browserThenTasks)).toEqual({ minWidth: 480, share: 3 / 5, count: 1 })
+    expect(nodeMinLength(browserThenTasks.root.children[1], 'column', 8)).toBe(160 + 8 + 160)
+    const rects = resolvePaneRects(browserThenTasks, { width: 1000, height: 600, chatWidth: 400, gutter: 8 })
+    expect(rects.get('browser')).toEqual({ left: 408, top: 0, width: 592, height: 296 })
+    expect(rects.get('tasks')).toEqual({ left: 408, top: 304, width: 592, height: 296 })
+    // Beside a diff pane in the root row the minimum is both plus the gutter.
+    const diffAndBrowser = { root: { ...browser.root, children: [...browser.root.children, { pane: 'diff' as const, weight: 3 }] } }
+    expect(sideRegionMetrics(diffAndBrowser)).toEqual({ minWidth: 480 + 8 + 280, share: 6 / 8, count: 2 })
+  })
 })

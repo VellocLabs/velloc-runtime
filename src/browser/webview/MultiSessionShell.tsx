@@ -38,26 +38,23 @@ import { useOverlayDismiss } from './layout/useOverlayDismiss'
 import { setSessionCardsShown } from './layout/sessionCards'
 import { useSessionCardPrefs } from '@/components/assistant-ui/session-card-stack'
 import {
-  CHAT_COLUMN_MIN_WIDTH_PX,
   CHAT_CONTENT_MIN_WIDTH_PX,
   PANE_GUTTER_PX,
   RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX,
-  SPLITTER_WIDTH_PX,
   RIGHT_PANEL_MIN_WIDTH_PX,
   SIDEBAR_DEFAULT_WIDTH_PX,
   SIDEBAR_MAX_WIDTH_PX,
   SIDEBAR_MIN_WIDTH_PX,
-  WEBVIEW_AREA_MIN_WIDTH_PX,
 } from './layout/layoutConstants'
 import {
   clampSidebarWidth,
-  clampWebviewAreaWidth as clampWebviewAreaWidthForViewport,
   readViewportWidth,
-  webviewAreaMaxWidth as webviewAreaMaxWidthForViewport,
 } from './layout/computeLayout'
 import {
   closePane,
   hasPane,
+  browserToggleAction,
+  followBrowserTabs,
   openPane,
   panesIn,
   paneToggleAction,
@@ -164,7 +161,7 @@ import {
 import type { NexusProviderConfig } from '../../settings/settingsTypes'
 import {
   getProviderMissingPrompt,
-  openBrowserWindow,
+  openSessionTab,
   openUrl,
   setActiveSessionTitle,
   setWindowDragRegions,
@@ -196,6 +193,7 @@ import { useWorkspaceState } from './workspaceStore'
 import { normalizeProjectPath } from './projectTree'
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { Button } from '@/components/ui/button'
+import { PlusIcon } from 'lucide-react'
 import { NexusTopBar } from './topbar/NexusTopBar'
 import {
   IMPORT_SOURCE_META,
@@ -403,42 +401,6 @@ function writeSavedSidebarWidth(width: number): void {
   try {
     globalThis.localStorage?.setItem(
       SIDEBAR_WIDTH_STORAGE_KEY,
-      String(Math.round(width)),
-    )
-  } catch {
-    // localStorage may be unavailable; persistence is best-effort.
-  }
-}
-
-// Shared (cross-session) width of the per-session webview_area, the column the native
-// main-contents-view is synced onto. The math lives in ./layout/computeLayout.
-const WEBVIEW_AREA_WIDTH_STORAGE_KEY = 'shift-webview-area-width'
-
-function webviewAreaMaxWidth(): number {
-  return webviewAreaMaxWidthForViewport(readViewportWidth())
-}
-
-function clampWebviewAreaWidth(width: number): number {
-  return clampWebviewAreaWidthForViewport(width, readViewportWidth())
-}
-
-function readSavedWebviewAreaWidth(): number {
-  const fallback = clampWebviewAreaWidth(Math.round(readViewportWidth() * 0.5))
-  try {
-    const raw = globalThis.localStorage?.getItem(WEBVIEW_AREA_WIDTH_STORAGE_KEY)
-    if (raw == null) return fallback
-    const parsed = Number(raw)
-    if (!Number.isFinite(parsed)) return fallback
-    return clampWebviewAreaWidth(parsed)
-  } catch {
-    return fallback
-  }
-}
-
-function writeSavedWebviewAreaWidth(width: number): void {
-  try {
-    globalThis.localStorage?.setItem(
-      WEBVIEW_AREA_WIDTH_STORAGE_KEY,
       String(Math.round(width)),
     )
   } catch {
@@ -940,36 +902,10 @@ export function MultiSessionShell({
     writeSavedSidebarWidth(sidebarWidth)
   }, [sidebarWidth])
 
-  // Draggable webview_area width — shared across all sessions (see the
-  // storage-key comment up top). Same persistence split as the sidebar:
-  // pointer drags persist on resize-end only, keyboard steps persist
-  // immediately.
-  const [webviewAreaWidth, setWebviewAreaWidth] = useState(() =>
-    readSavedWebviewAreaWidth(),
-  )
-  const isResizingWebviewAreaRef = useRef(false)
-  const handleWebviewAreaResize = useCallback((width: number) => {
-    const clamped = clampWebviewAreaWidth(width)
-    setWebviewAreaWidth(clamped)
-    if (!isResizingWebviewAreaRef.current) {
-      writeSavedWebviewAreaWidth(clamped)
-    }
-  }, [])
-  const handleWebviewAreaResizeStart = useCallback(() => {
-    isResizingWebviewAreaRef.current = true
-  }, [])
-  const handleWebviewAreaResizeEnd = useCallback(() => {
-    isResizingWebviewAreaRef.current = false
-    setWebviewAreaWidth(width => {
-      writeSavedWebviewAreaWidth(width)
-      return width
-    })
-  }, [])
-
   // Per-session browser-tab counts, keyed by sessionId. `nexus` (tabs
-  // hosted in the kNexus window) gates the session's webview_area:
-  // > 0 → the session row renders the splitter + placeholder and the
-  // native main-contents-view syncs onto it. Seeded by every
+  // hosted in the kNexus window) gates the session's browser pane: the
+  // pane is drawn only while it is > 0, and a change above zero places it
+  // (`followBrowserTabs`). Seeded by every
   // `session.setActiveSession` response; kept live by the host-pushed
   // `browser.sessionTabsChanged` events (first tab from a browser tool,
   // tab closed, tab dragged between windows, session deleted).
@@ -1986,6 +1922,10 @@ export function MultiSessionShell({
     },
     [updatePaneRecord, sessionLayoutsStore, focusPane],
   )
+  // The tab count a session's browser pane was closed at: the pane returns
+  // on new tab activity (another count), not for the state it was closed in.
+  // Transient, like the dismissal it replaces.
+  const browserDismissedAtRef = useRef(new Map<string, number>())
   const closePaneFor = useCallback(
     (kind: SidePaneKind) => {
       const id = activeSessionIdRef.current
@@ -1994,8 +1934,22 @@ export function MultiSessionShell({
       updatePaneRecord(r => closePane(r, kind))
       lastClosedPaneRef.current.set(id, kind)
       if (focusedPaneRef.current.get(id) === kind) focusedPaneRef.current.delete(id)
+      if (kind === 'browser') {
+        browserDismissedAtRef.current.set(id, sessionTabCountsRef.current.get(id)?.nexus ?? 0)
+      }
     },
     [updatePaneRecord, readPaneRecord],
+  )
+  /** A new session-owned tab inside the browser pane: the host creates it in
+   *  this window; the count change then places the pane (`followBrowserTabs`). */
+  const openBrowserTab = useCallback(
+    (sessionId: string) => {
+      browserDismissedAtRef.current.delete(sessionId)
+      void openSessionTab(hostBridgeTransport, sessionId).catch(() => {
+        /* no Nexus window (a remote page, the dev mock): nothing to show */
+      })
+    },
+    [hostBridgeTransport],
   )
   /** The topbar toggle (`paneToggleAction` against the drawn record). */
   const togglePane = useCallback(
@@ -2004,8 +1958,19 @@ export function MultiSessionShell({
       if (!id) return
       setBackgroundTaskFocusSessionId(null)
       const presence = rightPanelPresenceRef.current
-      switch (paneToggleAction(readPaneRecord(id), kind, presence.form === 'overlay' && !presence.overlay)) {
+      const overlayHidden = presence.form === 'overlay' && !presence.overlay
+      const action =
+        kind === 'browser'
+          ? browserToggleAction(readPaneRecord(id), overlayHidden, {
+              browserTabs: sessionTabCountsRef.current.get(id)?.nexus ?? 0,
+            })
+          : paneToggleAction(readPaneRecord(id), kind, overlayHidden)
+      switch (action) {
+        case 'new-tab':
+          openBrowserTab(id)
+          break
         case 'open':
+          if (kind === 'browser') browserDismissedAtRef.current.delete(id)
           openPaneFor(kind)
           break
         case 'show-overlay':
@@ -2020,8 +1985,32 @@ export function MultiSessionShell({
           break
       }
     },
-    [readPaneRecord, openPaneFor, closePaneFor, updatePaneRecord, focusPane],
+    [readPaneRecord, openPaneFor, closePaneFor, updatePaneRecord, focusPane, openBrowserTab],
   )
+  // The browser pane follows each session's tab count: a change above zero
+  // places it (unless closed at that count), zero leaves it to the prune.
+  const prevTabCountsRef = useRef<ReadonlyMap<string, { nexus: number; total: number }>>(new Map())
+  useEffect(() => {
+    const prev = prevTabCountsRef.current
+    prevTabCountsRef.current = sessionTabCounts
+    for (const [sessionId, counts] of sessionTabCounts) {
+      const prevTabs = prev.get(sessionId)?.nexus ?? 0
+      if (counts.nexus === prevTabs) continue
+      updatePaneRecord(
+        r =>
+          followBrowserTabs(
+            r,
+            {
+              prevTabs,
+              nextTabs: counts.nexus,
+              dismissedAt: browserDismissedAtRef.current.get(sessionId) ?? null,
+            },
+            sessionLayoutsStore.getSnapshot().weights,
+          ),
+        sessionId,
+      )
+    }
+  }, [sessionTabCounts, updatePaneRecord, sessionLayoutsStore])
   const handleResetLayout = useCallback(() => {
     updatePaneRecord(resetPaneLayout)
   }, [updatePaneRecord])
@@ -2413,57 +2402,17 @@ export function MultiSessionShell({
     presentRightPanel({ type: 'sessionSwitch', sessionId: activeSessionId })
   }, [activeSessionId])
 
-  // Belt-and-suspenders for the native main-contents-view: whenever NO
-  // webview_area can be on screen (settings replaced the session rows,
-  // or the active session owns no kNexus-window tabs), push an explicit
-  // hide. The active area's unmount cleanup covers most paths; this
-  // covers the ones where no reporter instance exists at all — e.g. a
-  // switch to a tab-less session whose row never renders an area. The
-  // module-level dedupe in postMainContentsLayout makes overlaps free.
-
-  // User dismissal of the docked browser view (header X button). Keyed by
-  // `{sessionId}:{tabCount}` so the dismissal is scoped to the exact state it
-  // was made in: switching sessions OR the agent opening/closing a tab (which
-  // moves the count) mints a new key, so the view re-reveals on genuine new
-  // browser activity instead of staying hidden forever. No effect/ref needed —
-  // the key comparison resets itself.
-  const webviewKey = activeSessionId
-    ? `${activeSessionId}:${activeNexusTabCount}`
-    : null
-  const [webviewDismissedKey, setWebviewDismissedKey] = useState<string | null>(
-    null,
-  )
-  const webviewDismissed =
-    webviewDismissedKey !== null && webviewDismissedKey === webviewKey
-  const handleHideWebview = useCallback(() => {
-    setWebviewDismissedKey(webviewKey)
-  }, [webviewKey])
-  const handleToggleWebview = useCallback(() => {
-    if (activeNexusTabCount === 0) {
-      // No browser tabs exist — open a new browser window instead of
-      // toggling a dismissed state that would have no visible effect.
-      void openBrowserWindow(hostBridgeTransport).catch(() => {})
-      return
-    }
-    if (webviewDismissed) {
-      // Show the webview by clearing the dismissed key
-      setWebviewDismissedKey(null)
-    } else {
-      // Hide the webview by setting the dismissed key
-      setWebviewDismissedKey(webviewKey)
-    }
-  }, [activeNexusTabCount, webviewDismissed, webviewKey])
-  // P2: the native browser view now COEXISTS with the Right Panel. The panel is
-  // inserted between the conversation and the (rightmost) browser column, so
-  // opening it no longer hides the docked view — only settings (which replaces
-  // the whole column area), a tab-less active session, or a user dismissal do.
-  const webviewAreaCanShow =
-    activeNexusTabCount > 0 && settingsSection === null && !webviewDismissed
+  // Whenever no browser pane can be on screen (the active session's tree has
+  // none, or Settings covers the area), push an explicit hide to the native
+  // main-contents-view: the placeholder's own unmount covers most paths, this
+  // covers a session switch to a tree that never mounts one. The dedupe in
+  // postMainContentsLayout makes overlaps free.
+  const browserPaneShown = openPanes.includes('browser') && settingsSection === null
   useEffect(() => {
-    if (!webviewAreaCanShow) {
+    if (!browserPaneShown) {
       postMainContentsLayout(shellChannelRef.current, { visible: false })
     }
-  }, [webviewAreaCanShow])
+  }, [browserPaneShown])
 
   // The side region as the cascade sees it: its minimum is its root-row
   // children's minimums plus gutters, its share the side weights over all
@@ -2491,7 +2440,6 @@ export function MultiSessionShell({
       floatWidth: sideVisible ? rightPanelFloat?.width ?? null : null,
       gutter: PANE_GUTTER_PX,
     },
-    browserW: webviewAreaCanShow ? webviewAreaWidth + SPLITTER_WIDTH_PX : 0,
   })
   const sidebarHidden = shellLayout.sidebar === 'hidden'
   // The card stack docks only where it fits and the person has it shown;
@@ -2601,22 +2549,6 @@ export function MultiSessionShell({
   useEffect(() => {
     if (!sidebarHidden) setSidebarPeek(false)
   }, [sidebarHidden])
-
-  // P2 coexistence: the docked browser and the Right Panel now share the row, so
-  // the browser's max shrinks by the panel's reserved width. The stored
-  // `webviewAreaWidth` is only re-clamped during a drag, so opening the panel
-  // next to an already-wide browser would push the conversation below its floor
-  // until the user dragged. Re-clamp here whenever the panel's footprint changes
-  // so the browser yields immediately (shrink-only; never auto-grows the browser).
-  useEffect(() => {
-    if (!webviewAreaCanShow) return
-    const maxForBrowser = Math.max(
-      WEBVIEW_AREA_MIN_WIDTH_PX,
-      webviewAreaMaxWidth() -
-        (sideVisible ? sideMetrics.minWidth : 0),
-    )
-    setWebviewAreaWidth((width) => (width > maxForBrowser ? maxForBrowser : width))
-  }, [webviewAreaCanShow, sideVisible, sideMetrics.minWidth])
 
   // The model picker's `⋯` → "Edit…": Settings → Models, on that provider's
   // editor. `seq` makes a repeat request for the same provider land again;
@@ -3867,11 +3799,12 @@ export function MultiSessionShell({
   const renderSidePane = (kind: SidePaneKind): ReactNode => {
     const name = t(PANE_LABEL_KEY[kind])
     const Icon = PANE_ICON[kind]
-    const frame = (title: ReactNode, body: ReactNode) => (
+    const frame = (title: ReactNode, body: ReactNode, actions?: ReactNode) => (
       <PaneFrame
         kind={kind}
         name={name}
         title={title}
+        actions={actions}
         maximized={paneMaximized === kind}
         onToggleMaximized={() =>
           updatePaneRecord(r => setMaximized(r, r.maximized === kind ? null : kind))
@@ -3916,6 +3849,38 @@ export function MultiSessionShell({
         <span className="min-w-0 truncate">{name}</span>
       </>
     )
+    if (kind === 'browser') {
+      // The title slot names the tab count until the pane has a page title to
+      // show (the pane's own tab strip is a later package).
+      return frame(
+        <>
+          {label}
+          <span
+            data-testid="pane-browser-tab-count"
+            className="min-w-0 truncate font-normal text-muted-foreground"
+          >
+            {activeNexusTabCount === 1
+              ? t('pane.browser.oneTab')
+              : t('pane.browser.tabs', { count: String(activeNexusTabCount) })}
+          </span>
+        </>,
+        <WebviewArea active shell={shellChannel ?? null} />,
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="size-7"
+          data-testid="pane-browser-new-tab"
+          aria-label={t('pane.browser.newTab')}
+          title={t('pane.browser.newTab')}
+          onClick={() => {
+            if (activeSessionId) openBrowserTab(activeSessionId)
+          }}
+        >
+          <PlusIcon className="size-3.5" />
+        </Button>,
+      )
+    }
     return frame(
       label,
       <SidePaneBody
@@ -4003,7 +3968,6 @@ export function MultiSessionShell({
         }}
         openPanes={openPanes}
         onTogglePane={togglePane}
-        browserToggle={{ pressed: webviewAreaCanShow, onToggle: handleToggleWebview }}
         sessionOverview={{
           shown:
             paneMaximized === null &&
@@ -4181,13 +4145,6 @@ export function MultiSessionShell({
         {mountedSessionIds.map(sessionId => {
           const isActive = sessionId === activeSessionId
           const state = sessionStates.get(sessionId) ?? activeState
-          // Whether this session owns kNexus-window tabs — floors the chat
-          // column (below) so the docked browser doesn't crush it. The browser
-          // itself is no longer per-section: a SINGLE shell-scoped WebviewArea
-          // for the active session is rendered after the Right Panel (P2), and
-          // the native main-contents-view position-syncs onto it.
-          const hasNexusTabs =
-            (sessionTabCounts.get(sessionId)?.nexus ?? 0) > 0
           const messageCallbacks = getSessionMessageCallbacks(sessionId)
           return (
             <section
@@ -4198,15 +4155,6 @@ export function MultiSessionShell({
               style={{
                 height: '100%',
                 flex: isActive ? 1 : undefined,
-                // The chat-column floor MUST live on this row-level flex child,
-                // not the inner div below. With the floor on the inner div, the
-                // section's own min-width was 0, so flexbox let the section
-                // collapse toward 0 and never shrank the docked browser column
-                // (flex-basis auto = its full width) — the inner conversation
-                // then overflowed its collapsed section and the browser painted
-                // over the composer. Flooring the section makes flex shrink the
-                // browser instead, keeping the columns side by side.
-                minWidth: hasNexusTabs ? CHAT_COLUMN_MIN_WIDTH_PX : 0,
                 // A maximized Right Panel covers the conversation: hide it the
                 // same way an inactive session is hidden (display none keeps
                 // the thread mounted, so restoring is a paint toggle).
@@ -4293,38 +4241,6 @@ export function MultiSessionShell({
           </>
           }
         />
-        {/*
-          Docked browser — a SINGLE shell-scoped WebviewArea for the active
-          session, kept rightmost so the conversation (the flex absorber) takes
-          sidebar/panel changes while the native main-contents-view stays
-          position-synced to this placeholder's rect (P2). The webview's own
-          resize splitter caps against the Right Panel's reserved width so a
-          drag can't overrun the conversation floor.
-        */}
-        {webviewAreaCanShow ? (
-          <>
-            <SidebarSplitter
-              width={webviewAreaWidth}
-              minWidth={WEBVIEW_AREA_MIN_WIDTH_PX}
-              maxWidth={Math.max(
-                WEBVIEW_AREA_MIN_WIDTH_PX,
-                webviewAreaMaxWidth() -
-                  (sideVisible ? sideMetrics.minWidth : 0),
-              )}
-              onResize={handleWebviewAreaResize}
-              onResizeStart={handleWebviewAreaResizeStart}
-              onResizeEnd={handleWebviewAreaResizeEnd}
-              invert
-              ariaLabel={t('webviewArea.resizeAria')}
-            />
-            <WebviewArea
-              active
-              width={webviewAreaWidth}
-              shell={shellChannel ?? null}
-              onHide={handleHideWebview}
-            />
-          </>
-        ) : null}
       </div>
       </SessionAreaVisibleContext.Provider>}
       {projectDeleteTarget && (

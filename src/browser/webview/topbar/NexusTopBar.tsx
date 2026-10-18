@@ -102,9 +102,6 @@ export type NexusTopBarProps = {
   /** Open a closed pane, or close an open one. Omitted on hosts without
    *  panes: no pane toggle and no More menu render. */
   onTogglePane?: (kind: SidePaneKind) => void;
-  /** The docked browser's toggle: pressed while it is on screen. Omitted
-   *  (a remote page) → no browser toggle. */
-  browserToggle?: { pressed: boolean; onToggle: () => void };
   /** The More menu's *Session overview* row: shows or hides the session
    *  card stack (or opens it as a popover where it does not fit). */
   sessionOverview?: { shown: boolean; onToggle: () => void };
@@ -178,7 +175,6 @@ export function NexusTopBar({
   onDragRegionsChange,
   openPanes,
   onTogglePane,
-  browserToggle,
   sessionOverview,
   onResetLayout,
   backgroundTaskCount,
@@ -191,13 +187,13 @@ export function NexusTopBar({
 }: NexusTopBarProps) {
   const t = useT();
   const teammateActive = !!activeSessionId && isTeammateSessionId(activeSessionId);
-  // The browser toggle's other job is to open a HOST browser window when the
-  // session has no tab to show (`ui.openBrowserWindow`, `full`). A client
-  // without that route has nothing for it to do. It gets no tab counts (they
-  // arrive on the page's own C++ port), and the docked view is placed by
-  // `shell.publishLayout` (`full`). So the button is not rendered. A full grant
-  // and a tree with no capability provider both answer true.
-  const canOpenBrowserWindow = useCan("ui", "openBrowserWindow");
+  // The browser pane shows this window's native tab view, and its toggle
+  // creates a session tab in this window when there is none
+  // (`ui.openSessionTab`, `full`). A client without that route gets no tab
+  // counts either (they arrive on the page's own C++ port), so the button is
+  // not rendered. A full grant and a tree with no capability provider both
+  // answer true.
+  const canOpenSessionTab = useCan("ui", "openSessionTab");
   const headerRef = React.useRef<HTMLElement>(null);
   const leftGroupRef = React.useRef<HTMLDivElement>(null);
   const rightGroupRef = React.useRef<HTMLDivElement>(null);
@@ -222,12 +218,6 @@ export function NexusTopBar({
   useWindowDragRegions(headerRef, onDragRegionsChange);
 
   const open = new Set(openPanes ?? []);
-  const isOpen = (kind: SidePaneKind) =>
-    kind === "browser" && browserToggle ? browserToggle.pressed : open.has(kind);
-  const toggle = (kind: SidePaneKind) => {
-    if (kind === "browser" && browserToggle) browserToggle.onToggle();
-    else onTogglePane?.(kind);
-  };
 
   return (
     // Self-contained TooltipProvider: the topbar mounts in MultiSessionShell
@@ -412,9 +402,9 @@ export function NexusTopBar({
           </Tooltip>
         ) : null}
         {BAR_PANE_KINDS.map((kind) => {
-          if (kind === "browser" ? !browserToggle || !canOpenBrowserWindow : !onTogglePane) return null;
+          if (!onTogglePane || (kind === "browser" && !canOpenSessionTab)) return null;
           const Icon = PANE_ICON[kind];
-          const pressed = isOpen(kind);
+          const pressed = open.has(kind);
           const name = t(PANE_LABEL_KEY[kind]);
           return (
             <Tooltip key={kind}>
@@ -426,7 +416,7 @@ export function NexusTopBar({
                   data-testid={`topbar-pane-${kind}`}
                   aria-pressed={pressed}
                   aria-label={t(pressed ? "topbar.pane.hide" : "topbar.pane.show", { pane: name })}
-                  onClick={() => toggle(kind)}
+                  onClick={() => onTogglePane(kind)}
                 >
                   <Icon className="size-4" />
                 </Button>
@@ -480,8 +470,8 @@ export function NexusTopBar({
                   return (
                     <DropdownMenuPrimitive.CheckboxItem
                       key={kind}
-                      checked={isOpen(kind)}
-                      onCheckedChange={() => toggle(kind)}
+                      checked={open.has(kind)}
+                      onCheckedChange={() => onTogglePane(kind)}
                       data-testid={`topbar-pane-row-${kind}`}
                       className={MENU_ITEM_CLASS}
                     >

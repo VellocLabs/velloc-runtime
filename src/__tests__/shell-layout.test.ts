@@ -25,7 +25,7 @@ const DIFF = open(3 / 5)
 const TASKS = open(1 / 3)
 
 function input(over: Partial<ShellLayoutInput> & { areaW: number }): ShellLayoutInput {
-  return { sidebar: { collapsed: false, width: 280 }, panel: CLOSED, browserW: 0, ...over }
+  return { sidebar: { collapsed: false, width: 280 }, panel: CLOSED, ...over }
 }
 
 function sweep(base: Omit<ShellLayoutInput, 'areaW'>, from: number, to: number): ShellLayout[] {
@@ -104,11 +104,28 @@ describe('resolveShellLayout — Right Panel width', () => {
     })
   })
 
-  it('keeps its minimum, and the compact maximum beside a docked browser', () => {
+  it('keeps its minimum', () => {
     expect(resolveShellLayout(input({ areaW: 1000, panel: TASKS }))).toMatchObject({ panelW: 280, chatW: 432 })
-    const compact = open(3 / 5, { minWidth: 240, maxWidth: 360 })
-    expect(resolveShellLayout(input({ areaW: 1600, panel: compact, browserW: 484 }))).toMatchObject({
-      sidebarW: 284, panelW: 360, chatW: 468,
+  })
+
+  // The browser is a pane of the region: the region's minimum is the browser's
+  // 480 and nothing is subtracted from the area before the cascade.
+  it('a region holding the browser pane is one region of minimum 480, like any other', () => {
+    const browser = open(3 / 5, { minWidth: 480, gutter: 8 })
+    // Area 1600: sidebar 284 stays (1316 ≥ 360 + 488); room 1316, less the gutter 1308; 3/5 = 785.
+    expect(resolveShellLayout(input({ areaW: 1600, panel: browser }))).toMatchObject({
+      sidebar: 'expanded', panel: 'beside', panelW: 785, chatW: 523,
+    })
+    // Area 1000: 1000 − 284 < 360 + 488, so the sidebar hides first; room 1000, 992 less the gutter.
+    expect(resolveShellLayout(input({ areaW: 1000, panel: browser }))).toMatchObject({
+      sidebar: 'hidden', panel: 'beside', panelW: 595, chatW: 397,
+    })
+    // Below chat 360 + gutter + browser 480 the region overlays, wanting its share.
+    expect(resolveShellLayout(input({ areaW: 840, panel: browser }))).toMatchObject({
+      sidebar: 'hidden', panel: 'overlay', panelW: 0, panelOffRowW: 499, chatW: 840,
+    })
+    expect(resolveShellLayout(input({ areaW: 848, panel: browser }))).toMatchObject({
+      sidebar: 'hidden', panel: 'beside', panelW: 480, chatW: 360,
     })
   })
 

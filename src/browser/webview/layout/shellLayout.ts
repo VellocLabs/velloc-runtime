@@ -1,7 +1,8 @@
 /**
  * The shell's drawn layout for a session-area width (F-9). Priority, highest
- * first: the chat, the side region (the panes), the sidebar, the docked card stack; as the
- * area narrows the lowest gives way first and the chat keeps its minimum.
+ * first: the chat, the side region (the panes, the browser among them), the
+ * sidebar, the docked card stack; as the area narrows the lowest gives way
+ * first and the chat keeps its minimum.
  */
 
 /*
@@ -42,8 +43,6 @@ export interface ShellLayoutInput {
     /** The gap between the chat and the panel; the splitter's width by default. */
     gutter?: number
   }
-  /** The docked browser's drawn width with its splitter, 0 when it is not shown. */
-  browserW: number
 }
 
 export interface ShellLayout {
@@ -74,7 +73,7 @@ export function rightPanelWantWidth(
 }
 
 export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
-  const { areaW, sidebar, panel, browserW } = input
+  const { areaW, sidebar, panel } = input
   const chatMin = CHAT_CONTENT_MIN_WIDTH_PX
   const panelOpen: PanelForm = !panel.visible
     ? 'none'
@@ -83,7 +82,7 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
       : panel.floatWidth !== null
         ? 'float'
         : 'beside'
-  const besideRoom = Math.max(0, areaW - Math.max(0, browserW))
+  const besideRoom = Math.max(0, areaW)
 
   // The sidebar stays while the chat keeps its floor beside the panel at its
   // minimum (a maximized panel needs only its minimum).

@@ -461,17 +461,18 @@ export async function openUrl(
 }
 
 /**
- * Open a regular (non-agent) browser window — the topbar's "Open browser
- * window" button. Routes to the C++ `ui` adapter (`ui.openBrowserWindow`),
- * which replaces the Lit topbar's `BrowserApiProxy.openBrowserWindow()`.
+ * Open a new tab owned by `sessionId` in this Nexus window — the browser
+ * pane's own tab creation (`ui.openSessionTab`). The host tags the tab with
+ * the session and recounts, so `browser.sessionTabsChanged` follows.
  */
-export async function openBrowserWindow(
+export async function openSessionTab(
   transport: BrowserBridgeTransport,
+  sessionId: string,
 ): Promise<void> {
   await requestHostBridge(
     transport,
-    createBridgeRoute('ui', 'openBrowserWindow'),
-    {},
+    createBridgeRoute('ui', 'openSessionTab'),
+    { sessionId },
   )
 }
 

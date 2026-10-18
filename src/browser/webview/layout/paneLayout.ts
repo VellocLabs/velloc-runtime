@@ -439,3 +439,37 @@ export function paneToggleAction(
   if (record.maximized !== null && record.maximized !== kind) return 'move-expansion'
   return 'close'
 }
+
+/**
+ * The browser toggle: a pane's toggle, except that with the pane closed and
+ * no session tab to show there is nothing to open yet, so a session tab is
+ * created inside the pane (`new-tab`); the pane follows the tab (below).
+ */
+export type BrowserToggleAction = PaneToggleAction | 'new-tab'
+
+export function browserToggleAction(
+  record: SessionPaneRecord,
+  overlayHidden: boolean,
+  env: { browserTabs: number },
+): BrowserToggleAction {
+  if (!hasPane(record.layout, 'browser') && env.browserTabs <= 0) return 'new-tab'
+  return paneToggleAction(record, 'browser', overlayHidden)
+}
+
+/**
+ * The browser pane follows the session's tabs: a change to a count above
+ * zero places the pane (its remembered slot, else the default place) unless
+ * the person closed it at exactly that count — `dismissedAt`, the count the
+ * pane was closed at, so new tab activity brings it back and a repeat of the
+ * dismissed state does not. A count of zero changes nothing here
+ * (`pruneUnrestorable` hides the pane). Same reference when nothing changes.
+ */
+export function followBrowserTabs(
+  record: SessionPaneRecord,
+  env: { prevTabs: number; nextTabs: number; dismissedAt: number | null },
+  weights: PaneWeightByKind,
+): SessionPaneRecord {
+  if (env.nextTabs <= 0 || env.nextTabs === env.prevTabs) return record
+  if (env.dismissedAt === env.nextTabs) return record
+  return openPane(record, 'browser', weights)
+}

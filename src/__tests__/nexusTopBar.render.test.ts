@@ -66,7 +66,6 @@ describe('NexusTopBar render', () => {
         sidebarCollapsed: false,
         onToggleSidebar: () => {},
         onTogglePane: () => {},
-        browserToggle: { pressed: false, onToggle: () => {} },
       })
       const group = /<div[^>]*data-testid="topbar-right-group"[\s\S]*$/.exec(html)?.[0] ?? ''
       const order = ['topbar-sidebar-toggle', 'topbar-pane-diff', 'topbar-pane-browser', 'topbar-more-panes']
@@ -101,14 +100,17 @@ describe('NexusTopBar render', () => {
       expect(open).toContain('aria-label="Hide Diff"')
     })
 
-    it('the browser toggle follows the docked browser, not the layout', () => {
-      const html = markup({
-        onTogglePane: () => {},
-        openPanes: [],
-        browserToggle: { pressed: true, onToggle: () => {} },
-      })
-      expect(tag(html, 'topbar-pane-browser')).toContain('aria-pressed="true"')
-      expect(markup({ onTogglePane: () => {} })).not.toContain('topbar-pane-browser')
+    // The browser is a pane of the layout: its toggle is pressed exactly when
+    // the pane is in the tree, whatever the session's tab count (the shell
+    // decides what a press does: close, open, or create the first tab).
+    it('the browser toggle follows the layout like any pane', () => {
+      const closed = tag(markup({ onTogglePane: () => {}, openPanes: ['diff'] }), 'topbar-pane-browser')
+      expect(closed).toContain('aria-pressed="false"')
+      expect(closed).toContain('aria-label="Show Browser"')
+      const open = tag(markup({ onTogglePane: () => {}, openPanes: ['browser'] }), 'topbar-pane-browser')
+      expect(open).toContain('aria-pressed="true"')
+      expect(open).toContain('aria-label="Hide Browser"')
+      expect(markup({ onTogglePane: () => {} })).toContain('topbar-pane-browser')
     })
 
     it('the running-task badge sits on the More button', () => {
@@ -120,16 +122,14 @@ describe('NexusTopBar render', () => {
     })
   })
 
-  // With no browser tab to show, the toggle opens a HOST browser window
-  // (`ui.openBrowserWindow`, `full`). A scoped client has no tab counts and no
-  // docked view, so that is all the button could do, and the runtime refused
-  // it: a click did nothing. The button is not rendered without the route.
-  // The grants come from the real scope tables.
+  // The browser pane shows THIS window's native tab view and its toggle
+  // creates a session tab in this window (`ui.openSessionTab`, `full`). A
+  // scoped client has no tab counts and no native view, so the button is not
+  // rendered without the route. The grants come from the real scope tables.
   describe('the browser toggle follows the grant', () => {
     const wired: NexusTopBarProps = {
       ...BASE,
       onTogglePane: () => {},
-      browserToggle: { pressed: false, onToggle: () => {} },
     }
     const markupFor = (mode: ScopeMode) =>
       renderToStaticMarkup(

@@ -83,9 +83,9 @@ const ALLOWLIST: Record<string, Row> = {
     why: "pane layout per session, per-kind pane weights, session card prefs; the retired `nexus.layout.v1` key is named only to remove it",
   },
   'browser/webview/MultiSessionShell.tsx': {
-    keys: ['shift-sidebar-collapsed', 'shift-sidebar-width', 'shift-webview-area-width'],
+    keys: ['shift-sidebar-collapsed', 'shift-sidebar-width'],
     kind: 'view',
-    why: 'sidebar and webview-area geometry',
+    why: 'sidebar geometry; the browser pane has no width key of its own (its weight is in the pane layout)',
   },
   'browser/webview/projectsStorage.ts': {
     keys: ['nexus:sidebar:projectsCollapsed'],

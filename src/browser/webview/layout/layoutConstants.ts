@@ -1,5 +1,5 @@
 /**
- * Numeric layout limits for the Nexus shell's docked columns and panes (F-9).
+ * Numeric layout limits for the Nexus shell's sidebar, chat and panes (F-9).
  * A saved `shift-sidebar-width` outside the sidebar bounds clamps into them on
  * read. The collapsed icon-rail width lives in AssistantUiThread.tsx beside
  * `SidebarIconRail`.
@@ -14,13 +14,11 @@ export const SIDEBAR_MAX_WIDTH_PX = 360
 export const SIDEBAR_DEFAULT_WIDTH_PX = 280
 
 /**
- * Docked browser column: the placeholder the native `<main-contents-view>` is
- * position-synced onto. Minimum keeps the native view usable.
+ * The browser pane: its body is the placeholder the native
+ * `<main-contents-view>` is position-synced onto. Minimum keeps the native
+ * view usable.
  */
 export const WEBVIEW_AREA_MIN_WIDTH_PX = 480
-
-/** Floor the conversation column keeps when the browser is docked. */
-export const CHAT_COLUMN_MIN_WIDTH_PX = 360
 
 /** A side pane other than the browser never draws narrower than this. */
 export const RIGHT_PANEL_MIN_WIDTH_PX = 280
@@ -42,7 +40,7 @@ export const SIDEBAR_RAIL_WIDTH_PX = 56
  * Every other region gives way first (`shellLayout`); only an area narrower
  * than this clips the chat.
  */
-export const CHAT_CONTENT_MIN_WIDTH_PX = CHAT_COLUMN_MIN_WIDTH_PX
+export const CHAT_CONTENT_MIN_WIDTH_PX = 360
 
 /**
  * Drawn chat width the session card stack needs to dock at the transcript's
