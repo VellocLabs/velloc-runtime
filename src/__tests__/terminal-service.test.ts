@@ -127,6 +127,20 @@ describe('TerminalService create', () => {
     expect(r.service.list().terminals[0]!.state).toEqual({ kind: 'running' })
   })
 
+  it('restart after an exit starts from an empty scrollback', async () => {
+    const r = await ready()
+    const id = await r.service.create({ sessionId: 's1', shell: 'cmd', cols: 80, rows: 24 })
+    r.output(r.spawned[0]!, 'old output')
+    r.exit(r.spawned[0]!, 0)
+    expect(r.service.snapshot(id)!.scrollback).toBe('old output')
+    await r.service.restart(id)
+    expect(r.service.list().terminals[0]!.state).toEqual({ kind: 'running' })
+    expect(r.service.snapshot(id)!.scrollback).toBe('')
+    r.output(r.spawned[1]!, 'new')
+    r.exit(r.spawned[1]!, 0)
+    expect(r.service.snapshot(id)!.scrollback).toBe('new')
+  })
+
   it('pwsh the host cannot resolve falls back to Windows PowerShell', async () => {
     const r = await ready({
       answer: request =>

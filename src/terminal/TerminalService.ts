@@ -310,6 +310,8 @@ export class TerminalService {
     this.requireAvailable()
     record.decoder = new TextDecoder('utf-8')
     record.titles = new TitleSequenceScanner()
+    // A restarted terminal starts afresh: the old shell's output does not carry over.
+    record.scrollback = new ScrollbackRing(this.deps.scrollbackLimit ?? TERMINAL_SCROLLBACK_BYTES)
     this.setTitle(record, record.shell)
     this.setState(record, { kind: 'starting' })
     await this.spawn(record)
