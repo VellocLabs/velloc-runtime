@@ -258,7 +258,9 @@ import {
   prefetchColdUi,
   SidePaneBody,
   FilesPane,
+  TerminalPane,
 } from './coldUi'
+import { useResolvedConnection, useTerminalsState } from './terminal/useTerminals'
 // Type-only, so it adds no edge to the emitted graph and the split holds.
 import type { SettingsSectionId } from './settings/SettingsScreen'
 import { isSettingsSectionVisible } from './settings/settingsNav'
@@ -488,6 +490,9 @@ export function MultiSessionShell({
     )
   }, [runtimeConnection])
   const runtimeCapabilities = useCapabilityQuery(runtimeConnection)
+  // The Terminal pane's availability (F-31): the toggle hides when the host
+  // cannot run a pseudoconsole; unknown yet counts as available.
+  const terminalsState = useTerminalsState(useResolvedConnection(runtimeConnection))
   // F-25: the launchers and topbar items of the person's plugins, one store
   // for the whole page; the bundled launchers never wait for it.
   useAttachModContributions(runtimeConnection)
@@ -3952,6 +3957,19 @@ export function MultiSessionShell({
     [hostBridgeTransport],
   );
 
+  // A web link in a terminal's output opens like any external link: through
+  // the host when the grant allows, else in this client's own browser (F-31).
+  const openTerminalLink = useCallback(
+    (url: string) => {
+      if (runtimeCapabilities.can('ui', 'openUrl')) {
+        void openUrl(hostBridgeTransport, url).catch(() => {})
+      } else {
+        openInClientTab(url)
+      }
+    },
+    [runtimeCapabilities, hostBridgeTransport],
+  )
+
   // One pane's frame and body (F-9). The panes render outside the thread
   // providers, so each brings the handles the deep cards need.
   const renderSidePane = (kind: SidePaneKind): ReactNode => {
@@ -3987,6 +4005,18 @@ export function MultiSessionShell({
           onCloseTab={handleCloseModTab}
           frame={({ title, body }) => frame(title, body)}
         />
+      )
+    }
+    if (kind === 'terminal') {
+      return (
+        <Suspense fallback={null}>
+          <TerminalPane
+            runtimeConnection={runtimeConnection}
+            sessionId={activeSessionId}
+            openLink={openTerminalLink}
+            frame={({ title, actions, body }) => frame(title, body, actions)}
+          />
+        </Suspense>
       )
     }
     if (kind === 'files') {
@@ -4135,6 +4165,7 @@ export function MultiSessionShell({
         }}
         openPanes={openPanes}
         hasModPanes={modPanesDocked && shellModUi.panes.length > 0}
+        terminalAvailable={terminalsState?.available ?? true}
         onTogglePane={togglePane}
         sessionOverview={{
           shown:

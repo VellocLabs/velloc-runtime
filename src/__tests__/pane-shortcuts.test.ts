@@ -20,6 +20,11 @@ describe('paneShortcutFor', () => {
     expect(paneShortcutFor(key('KeyT', { shiftKey: true }))).toEqual({ action: 'reopen-closed' })
   })
 
+  it('Ctrl+` toggles the Terminal pane; with Shift it is nothing', () => {
+    expect(paneShortcutFor(key('Backquote'))).toEqual({ action: 'toggle', kind: 'terminal' })
+    expect(paneShortcutFor(key('Backquote', { shiftKey: true }))).toBeNull()
+  })
+
   it('ignores other chords and keys', () => {
     expect(paneShortcutFor(key('KeyD'))).toBeNull()
     expect(paneShortcutFor(key('KeyT'))).toBeNull()

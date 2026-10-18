@@ -16,7 +16,6 @@ import { BackgroundTasksDrawer } from '../BackgroundTasksDrawer'
 import { DiffPanel } from '../DiffPanel'
 import { useT } from '../i18n'
 import type { SidePaneKind } from '../layout/paneLayout'
-import { PANE_LABEL_KEY } from './paneKinds'
 import { PlanDetailsPanel } from '../PlanDetailsPanel'
 import type { SkillPanelListRow } from '../sessionSkills'
 import { SkillPanel } from '../SkillPanel'
@@ -57,14 +56,14 @@ function EmptyState({ label }: { label: string }): ReactElement {
 }
 
 /**
- * One pane's body by kind; the Files and Plugins panes draw their own
- * (`FilesPane`, `ModsPane`) and the browser pane's body is the native view's
- * placeholder (`WebviewArea`).
+ * One pane's body by kind; the Files, Plugins and Terminal panes draw their
+ * own (`FilesPane`, `ModsPane`, `TerminalPane`) and the browser pane's body
+ * is the native view's placeholder (`WebviewArea`).
  */
 export function SidePaneBody({
   kind,
   ...props
-}: SidePaneContentProps & { kind: Exclude<SidePaneKind, 'files' | 'browser' | 'mods'> }): ReactElement {
+}: SidePaneContentProps & { kind: Exclude<SidePaneKind, 'files' | 'browser' | 'mods' | 'terminal'> }): ReactElement {
   const t = useT()
   switch (kind) {
     case 'tasks':
@@ -111,7 +110,5 @@ export function SidePaneBody({
           loadBundledSkillBody={props.loadBundledSkillBody}
         />
       )
-    case 'terminal':
-      return <EmptyState label={t(PANE_LABEL_KEY[kind])} />
   }
 }

@@ -9,6 +9,7 @@ import { lazy } from 'react'
 const loadSettingsScreen = () => import('./settings/SettingsScreen')
 const loadSidePanes = () => import('./panes/sidePanes')
 const loadFilesPane = () => import('./panes/FilesPane')
+const loadTerminalPane = () => import('./terminal/TerminalPane')
 const loadImportDialog = () => import('./sessionImport/ImportDialog')
 
 export const SettingsScreen = lazy(async () => {
@@ -24,6 +25,11 @@ export const SidePaneBody = lazy(async () => {
 export const FilesPane = lazy(async () => {
   const module = await loadFilesPane()
   return { default: module.FilesPane }
+})
+
+export const TerminalPane = lazy(async () => {
+  const module = await loadTerminalPane()
+  return { default: module.TerminalPane }
 })
 
 export const ImportDialog = lazy(async () => {
@@ -51,6 +57,7 @@ export function prefetchColdUi(): () => void {
     void loadSettingsScreen()
     void loadSidePanes()
     void loadFilesPane()
+    void loadTerminalPane()
     void loadImportDialog()
   }
 

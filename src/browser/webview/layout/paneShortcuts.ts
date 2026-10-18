@@ -1,6 +1,6 @@
 /**
  * Keyboard shortcuts for the side panes (F-9): Ctrl+Shift+D toggles Diff,
- * Ctrl+\ closes the focused pane, Ctrl+Shift+\ expands or restores it,
+ * Ctrl+` toggles Terminal, Ctrl+\ closes the focused pane, Ctrl+Shift+\ expands or restores it,
  * Ctrl+Shift+T reopens the last closed pane. Matched on physical keys, so a
  * keyboard layout does not move them. Pure.
  */
@@ -26,6 +26,8 @@ export function paneShortcutFor(event: ShortcutKeyEvent): PaneShortcut | null {
   switch (event.code) {
     case 'KeyD':
       return event.shiftKey ? { action: 'toggle', kind: 'diff' } : null
+    case 'Backquote':
+      return event.shiftKey ? null : { action: 'toggle', kind: 'terminal' }
     case 'KeyT':
       return event.shiftKey ? { action: 'reopen-closed' } : null
     case 'Backslash':

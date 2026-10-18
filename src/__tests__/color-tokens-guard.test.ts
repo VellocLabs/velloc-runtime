@@ -14,6 +14,8 @@ const ALLOWLIST: Record<string, string> = {
   'styles/globals.css': 'the token definitions themselves',
   'utils/traceOverlay.ts':
     'self-contained vanilla-DOM debug overlay, lazy-loaded only behind the trace flag; owns its palette by design',
+  'browser/webview/terminal/xtermTheme.ts':
+    'the 16 ANSI colours a terminal program names by number, plus the fallbacks used when a token does not resolve; the screen, cursor and selection colours come from the tokens.',
   'browser/webview/settings/appearanceOptions.ts':
     'theme-colour SEEDS, not painted UI: each hex is a value sent to the host, which resolves it through the Chrome colour pipeline. The swatch paints its own seed on purpose — it is the colour being chosen, so it must NOT follow the theme.',
 }

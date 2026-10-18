@@ -16,6 +16,7 @@ import {
   WORKSPACE_CAPABILITY,
 } from '../../browser/runtimeProtocol/workspace'
 import { capabilityQueryOf, type CapabilityQuery } from '../../browser/webview/useCan'
+import { TERMINAL_ACTIONS, TERMINAL_CAPABILITY } from '../../terminal/protocol'
 
 /**
  * A `CapabilityQuery` built like the live one, from a welcome's scope-filtered advert list via
@@ -56,6 +57,8 @@ export function advertsForScope(mode: ScopeMode): CapabilityAdvert[] {
     [WORKSPACE_CAPABILITY]: WORKSPACE_ACTION_SCOPES,
     [PROVIDER_UPDATES_CAPABILITY]: PROVIDER_UPDATES_ACTION_SCOPES,
     [PLUGIN_UPDATES_CAPABILITY]: PLUGIN_UPDATES_ACTION_SCOPES,
+    // Every terminal action is `full`: a terminal runs programs on the host.
+    [TERMINAL_CAPABILITY]: Object.fromEntries(TERMINAL_ACTIONS.map(act => [act, 'full'])),
   } as Record<string, Record<string, ScopeMode>>
   return Object.entries(tables).flatMap(([cap, acts]) => {
     const allowed = Object.entries(acts)

@@ -187,4 +187,35 @@ describe('NexusTopBar render', () => {
       },
     )
   })
+
+  // A terminal runs programs on the host as the person (`terminal.create`,
+  // `full`): a paired remote client never sees the toggle, and neither does
+  // a host that reports no pseudoconsole.
+  describe('the terminal toggle follows the grant and the host', () => {
+    const markupFor = (mode: ScopeMode, props: Partial<NexusTopBarProps> = {}) =>
+      renderToStaticMarkup(
+        createElement(
+          RuntimeCapabilitiesContext.Provider,
+          { value: queryFor(advertsForScope(mode)) },
+          createElement(NexusTopBar, { ...BASE, onTogglePane: () => {}, ...props }),
+        ),
+      )
+
+    it('renders for a full grant on a host with terminals', () => {
+      expect(markupFor('full')).toContain('data-testid="topbar-pane-terminal"')
+      expect(markupFor('full', { terminalAvailable: true })).toContain('data-testid="topbar-pane-terminal"')
+    })
+
+    it.each<ScopeMode>(['manager', 'control', 'observe'])('is not rendered for a %s grant', mode => {
+      const html = markupFor(mode)
+      expect(html).not.toContain('data-testid="topbar-pane-terminal"')
+      expect(html).toContain('data-testid="topbar-pane-diff"')
+    })
+
+    it('is not rendered when the host reports no pseudoconsole', () => {
+      const html = markupFor('full', { terminalAvailable: false })
+      expect(html).not.toContain('data-testid="topbar-pane-terminal"')
+      expect(html).toContain('data-testid="topbar-pane-diff"')
+    })
+  })
 })

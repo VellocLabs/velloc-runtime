@@ -42,6 +42,11 @@ const ALLOWLIST: Record<string, Row> = {
     kind: 'view',
     why: 'one-shot sentinel: the host-pref theme was copied into this panel already',
   },
+  'browser/webview/terminal/terminalPrefs.ts': {
+    keys: ['nexus.terminal.prefs'],
+    kind: 'view',
+    why: "this viewer's cursor style, cursor blink, copy-on-select and scrollback for the Terminal pane; display preferences only, never terminal output",
+  },
   'browser/boot/guestTextSize.ts': {
     keys: ['velloc.appearance.textSize'],
     kind: 'view',

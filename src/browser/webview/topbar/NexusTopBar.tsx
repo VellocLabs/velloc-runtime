@@ -107,6 +107,8 @@ export type NexusTopBarProps = {
   openPanes?: readonly SidePaneKind[];
   /** Some mod has a pane open in the active session: the Plugins toggle shows (F-25). */
   hasModPanes?: boolean;
+  /** Whether the host can run terminals; false hides the Terminal toggle. */
+  terminalAvailable?: boolean;
   /** Open a closed pane, or close an open one. Omitted on hosts without
    *  panes: no pane toggle and no More menu render. */
   onTogglePane?: (kind: SidePaneKind) => void;
@@ -183,6 +185,7 @@ export function NexusTopBar({
   onDragRegionsChange,
   openPanes,
   hasModPanes,
+  terminalAvailable,
   onTogglePane,
   sessionOverview,
   onResetLayout,
@@ -203,6 +206,8 @@ export function NexusTopBar({
   // not rendered. A full grant and a tree with no capability provider both
   // answer true.
   const canOpenSessionTab = useCan("ui", "openSessionTab");
+  // The Terminal pane is `full` scope: a remote client never sees its toggle.
+  const canTerminal = useCan("terminal", "create");
   const headerRef = React.useRef<HTMLElement>(null);
   const leftGroupRef = React.useRef<HTMLDivElement>(null);
   const rightGroupRef = React.useRef<HTMLDivElement>(null);
@@ -212,6 +217,7 @@ export function NexusTopBar({
     ? BAR_PANE_KINDS.filter(
         (kind) =>
           !(kind === "browser" && !canOpenSessionTab) &&
+          !(kind === "terminal" && (!canTerminal || terminalAvailable === false)) &&
           !(kind === "mods" && !hasModPanes && !open.has(kind)),
       )
     : [];
