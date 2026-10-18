@@ -4,29 +4,19 @@
  * `host_unavailable`.
  */
 import type { AppUpdateService } from './AppUpdateService'
+import { createRealmHolder } from '../utils/realmHolder'
 
-let service: AppUpdateService | null = null
-const listeners = new Set<() => void>()
+const holder = createRealmHolder<AppUpdateService>('app-update')
 
 /** Set (or, with `null`, clear) the service; listeners hear of the change. */
 export function configureAppUpdateService(next: AppUpdateService | null): void {
-  service = next
-  for (const listener of [...listeners]) {
-    try {
-      listener()
-    } catch (error) {
-      console.warn('[app-update] a change listener failed:', error)
-    }
-  }
+  holder.set(next)
 }
 
 export function currentAppUpdateService(): AppUpdateService | null {
-  return service
+  return holder.get()
 }
 
 export function onAppUpdateServiceChanged(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-  }
+  return holder.onChanged(listener)
 }

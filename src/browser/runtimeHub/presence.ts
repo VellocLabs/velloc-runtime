@@ -16,10 +16,13 @@ export type PresenceChange = {
   previous: string | null
 }
 
+/** `used`: a person used or showed/hid a page. `closed`: a connection went away. */
+export type PresenceActivity = 'used' | 'closed'
+
 export class PresenceTable {
   private readonly byConnection = new Map<string, string>()
   private readonly visibleByConnection = new Map<string, boolean>()
-  private readonly activityListeners = new Set<() => void>()
+  private readonly activityListeners = new Set<(activity: PresenceActivity) => void>()
 
   constructor(private readonly onChange: (change: PresenceChange) => void = () => {}) {}
 
@@ -36,13 +39,13 @@ export class PresenceTable {
   /** The connection is gone: it views nothing. */
   remove(connectionId: string): void {
     this.set(connectionId, null)
-    if (this.visibleByConnection.delete(connectionId)) this.emitActivity()
+    if (this.visibleByConnection.delete(connectionId)) this.emitActivity('closed')
   }
 
   /** `connectionId`'s person used its page, or its page was shown or hidden. */
   reportActivity(connectionId: string, visible: boolean): void {
     this.visibleByConnection.set(connectionId, visible)
-    this.emitActivity()
+    this.emitActivity('used')
   }
 
   /** Some connection last reported its page visible. */
@@ -51,17 +54,17 @@ export class PresenceTable {
     return false
   }
 
-  onActivity(listener: () => void): () => void {
+  onActivity(listener: (activity: PresenceActivity) => void): () => void {
     this.activityListeners.add(listener)
     return () => {
       this.activityListeners.delete(listener)
     }
   }
 
-  private emitActivity(): void {
+  private emitActivity(activity: PresenceActivity): void {
     for (const listener of [...this.activityListeners]) {
       try {
-        listener()
+        listener(activity)
       } catch (error) {
         console.warn('[presence] an activity listener failed:', error)
       }

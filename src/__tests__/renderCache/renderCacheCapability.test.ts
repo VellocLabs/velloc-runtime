@@ -142,6 +142,8 @@ describe('renderCache capability over a connection', () => {
     expect(await codeOf(phone.request('presence.reportActivity', { visible: 'yes' }))).toBe('bad_payload')
     phone.close()
     await until(() => !table.anyVisible(), 'the closed connection to stop counting')
+    // A connection going away is nobody using a page.
+    expect(noteActivity).toHaveBeenCalledTimes(1)
   })
 })
 

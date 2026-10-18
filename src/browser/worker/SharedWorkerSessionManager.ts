@@ -2660,6 +2660,8 @@ export class SharedWorkerSessionManager {
       // status BEFORE the background interceptors), but only the UI delete
       // path forgot it. Idempotent — the delete path forgets again.
       this.feed.forgetStatus(sessionId)
+      // A session removed mid-turn never reports its turn ending.
+      currentRenderCachePolicy()?.noteBusyChanged()
     }
   }
 

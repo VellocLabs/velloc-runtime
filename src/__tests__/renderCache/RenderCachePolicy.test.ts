@@ -127,6 +127,39 @@ describe('RenderCachePolicy', () => {
     expect(h.purges).toHaveLength(0)
   })
 
+  it('the settings flag is read and published at start, before any quiet period ends', async () => {
+    const h = harness({ enabled: false })
+    h.policy.start()
+    for (let i = 0; i < 5; i += 1) await Promise.resolve()
+    expect(h.purges).toHaveLength(0)
+    expect(h.policy.getState().idlePurge).toBe(false)
+    expect(h.states.at(-1)?.idlePurge).toBe(false)
+  })
+
+  it('activity re-reads the turn state, so a turn that ended unreported does not block the purge', async () => {
+    const h = harness({ busy: true })
+    h.policy.start()
+    expect(h.policy.isArmed()).toBe(false)
+    h.setBusy(false)
+    h.policy.noteActivity()
+    expect(h.policy.isArmed()).toBe(true)
+    await h.elapse()
+    expect(h.purges).toHaveLength(1)
+  })
+
+  it('a turn found running when the timer fires re-arms the purge when it ends', async () => {
+    const h = harness()
+    h.policy.start()
+    h.setBusy(true)
+    await h.elapse()
+    expect(h.purges).toHaveLength(0)
+    h.setBusy(false)
+    h.policy.noteBusyChanged()
+    expect(h.policy.isArmed()).toBe(true)
+    await h.elapse()
+    expect(h.purges).toHaveLength(1)
+  })
+
   it('the settings flag off skips the idle purge and is published', async () => {
     const h = harness({ enabled: false })
     h.policy.start()

@@ -61,8 +61,8 @@ export class RenderCachePolicy {
   }
 
   start(): void {
-    this.busy = this.deps.isAnyBusy()
     this.arm()
+    void this.refreshIdlePurgeFlag()
   }
 
   dispose(): void {
@@ -123,6 +123,8 @@ export class RenderCachePolicy {
 
   private arm(): void {
     this.disarm()
+    // Re-read: a session removed mid-turn never reports its turn ending.
+    this.busy = this.deps.isAnyBusy()
     if (this.disposed || this.busy || this.purgedSinceActivity) return
     this.timer = this.setTimer(() => {
       this.timer = null
@@ -137,16 +139,26 @@ export class RenderCachePolicy {
   }
 
   private async fireIdle(): Promise<void> {
-    if (this.disposed || this.deps.isAnyBusy()) return
-    this.purgedSinceActivity = true
-    const enabled = await this.deps.idlePurgeEnabled().catch(() => true)
-    if (enabled !== this.idlePurge) {
-      this.idlePurge = enabled
-      this.publish()
+    if (this.disposed) return
+    if (this.deps.isAnyBusy()) {
+      // That turn's end re-arms the timer through noteBusyChanged.
+      this.busy = true
+      return
     }
+    this.purgedSinceActivity = true
+    const enabled = await this.refreshIdlePurgeFlag()
     // A turn may have started while the flag was read.
     if (!enabled || this.disposed || this.deps.isAnyBusy()) return
     await this.runPurge('idle').catch(() => {})
+  }
+
+  private async refreshIdlePurgeFlag(): Promise<boolean> {
+    const enabled = await this.deps.idlePurgeEnabled().catch(() => true)
+    if (!this.disposed && enabled !== this.idlePurge) {
+      this.idlePurge = enabled
+      this.publish()
+    }
+    return enabled
   }
 
   private async runPurge(reason: RenderCachePurgeReason): Promise<RenderCachePurgeRecord> {

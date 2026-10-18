@@ -216,6 +216,7 @@ export class RuntimeHub {
   readonly sharing: SharingPairing
   private relayErrorText: string | undefined
   private readonly pluginUpdates: { dispose(): void }
+  private readonly renderCache: { dispose(): void }
   /** The ISO build stamp of the page that started this runtime (first-writer-wins). */
   private _bootBuild: string | null = null
   /** The in-flight `host.resolveHomeDir`, shared by every request waiting on it. */
@@ -341,7 +342,7 @@ export class RuntimeHub {
     registerAppUpdateCapability(this.registry, this.broker)
     // Render-cache purge (P-3): `renderCache/status` (`observe`) and
     // `renderCache.purgeNow` (`manager`); `presence.reportActivity` re-arms the idle purge.
-    registerRenderCacheCapability(this.registry, this.broker, this.presence)
+    this.renderCache = registerRenderCacheCapability(this.registry, this.broker, this.presence)
     // Provider sign-in (PM-7): the dialog is the `providers/login` topic, the
     // person's answers are `providerLogin.*` actions (`manager`).
     registerProviderLoginCapability(this.registry, this.broker, getProviderCredentials())
@@ -623,6 +624,7 @@ export class RuntimeHub {
   /** Close every connection and stop the connection hub's heartbeat reaper: the runtime is going away. */
   dispose(code: ByeCode = 'shutting_down'): void {
     this.pluginUpdates.dispose()
+    this.renderCache.dispose()
     this.connections.dispose(code)
   }
 

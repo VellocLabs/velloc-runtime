@@ -14,9 +14,43 @@ export const rel = (file: string): string => relative(ROOT, file).split(sep).joi
 
 export const read = (file: string): string => readFileSync(file, 'utf8')
 
-/** Source with comments removed, so a commented-out import is not an edge. */
-export const stripComments = (source: string): string =>
-  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+/**
+ * Source with comments removed, so a commented-out import is not an edge.
+ * String and template literals are kept whole: a `/*` or `//` inside one is
+ * not a comment. Regex literals are not recognised.
+ */
+export function stripComments(source: string): string {
+  let out = ''
+  let i = 0
+  while (i < source.length) {
+    const ch = source[i]
+    const next = source[i + 1]
+    if (ch === '/' && next === '*') {
+      const end = source.indexOf('*/', i + 2)
+      i = end === -1 ? source.length : end + 2
+      continue
+    }
+    if (ch === '/' && next === '/') {
+      const end = source.indexOf('\n', i + 2)
+      i = end === -1 ? source.length : end
+      continue
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      let j = i + 1
+      while (j < source.length && source[j] !== ch) {
+        if (source[j] === '\\') j += 1
+        else if (ch !== '`' && source[j] === '\n') break
+        j += 1
+      }
+      out += source.slice(i, j + 1)
+      i = j + 1
+      continue
+    }
+    out += ch
+    i += 1
+  }
+  return out
+}
 
 /**
  * Resolve a module specifier the way the bundler does — `@/` to `src/`, `./`
@@ -33,6 +67,18 @@ export function resolveSpecifier(specifier: string, importer: string): string | 
     base = resolve(dirname(importer), specifier)
   } else {
     return null
+  }
+  // An ESM-style `.js` / `.jsx` / `.mjs` suffix names the TS source.
+  const emitted = /\.(?:m?js|jsx)$/.exec(base)
+  if (emitted) {
+    const stem = base.slice(0, -emitted[0].length)
+    for (const candidate of [`${stem}.ts`, `${stem}.tsx`, `${stem}.mts`]) {
+      try {
+        if (statSync(candidate).isFile()) return candidate
+      } catch {
+        // Not this shape — try the next.
+      }
+    }
   }
   for (const candidate of [
     `${base}.ts`,

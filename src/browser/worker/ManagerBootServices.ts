@@ -52,7 +52,7 @@ import type {
 } from '../../routines/NotificationHub'
 import type { RoutineCoordinator } from './RoutineCoordinator'
 import { installRuntimeRenderCache } from '../../renderCache/runtimeRenderCache'
-import { RENDER_CACHE_IDLE_PURGE_FLAG } from '../../renderCache/RenderCachePolicy'
+import { readIdlePurgeEnabled } from '../../renderCache/idlePurgeFlag'
 
 export interface ManagerBootServicesHost {
   getDirectBridgeTransport(): DirectPortBridgeTransport | null
@@ -221,8 +221,7 @@ export class ManagerBootServices {
       idlePurgeEnabled: async () => {
         const homeDir = this.host.getHomeDir()
         if (!homeDir) return true
-        const { settings } = await readUserLayer(homeDir, this.getManagerFs())
-        return settings.features?.[RENDER_CACHE_IDLE_PURGE_FLAG] !== false
+        return readIdlePurgeEnabled(homeDir, this.getManagerFs())
       },
     })
     if (skipped) this.host.trace('render_cache.skipped', { reason: skipped })

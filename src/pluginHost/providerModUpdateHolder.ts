@@ -4,6 +4,7 @@
  * answer `null` (`host_unavailable`).
  */
 import type { ProviderModUpdateService } from './providerModUpdates'
+import { createChangeListeners } from '../utils/realmHolder'
 
 type Factory = () => Promise<ProviderModUpdateService>
 
@@ -11,17 +12,8 @@ let factory: Factory | null = null
 let service: ProviderModUpdateService | null = null
 let building: Promise<ProviderModUpdateService> | null = null
 let unsubscribeService: (() => void) | null = null
-const listeners = new Set<() => void>()
-
-function notify(): void {
-  for (const listener of [...listeners]) {
-    try {
-      listener()
-    } catch (error) {
-      console.warn('[provider-mod-updates] a change listener failed:', error)
-    }
-  }
-}
+const changes = createChangeListeners('provider-mod-updates')
+const notify = changes.notify
 
 /** Set (or, with `null`, clear) how the service is built. Replacing the
  *  factory drops the service built by the previous one. */
@@ -74,8 +66,5 @@ export function notifyProviderModUpdatesChanged(): void {
 
 /** A status may have changed. Returns the unsubscribe. */
 export function onProviderModUpdatesChanged(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-  }
+  return changes.subscribe(listener)
 }

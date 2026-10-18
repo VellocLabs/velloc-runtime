@@ -75,10 +75,11 @@ export function registerRenderCacheCapability(
     },
   })
 
-  const unwatchActivity = presence.onActivity(() => {
-    // The policy publishes its own state; visibility is ours to publish.
+  const unwatchActivity = presence.onActivity(activity => {
+    // The policy publishes its own state; visibility is ours to publish. A
+    // closed connection changes visibility but is nobody using a page.
     const policy = getPolicy()
-    if (policy) policy.noteActivity()
+    if (policy && activity === 'used') policy.noteActivity()
     else publish()
   })
 

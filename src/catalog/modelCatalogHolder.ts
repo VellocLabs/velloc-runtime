@@ -4,31 +4,22 @@
  * `host_unavailable`.
  */
 import type { ModelCatalog } from './modelCatalog'
+import { createRealmHolder } from '../utils/realmHolder'
 
 export type ModelCatalogGetter = () => ModelCatalog | undefined | Promise<ModelCatalog | undefined>
 
-let getter: ModelCatalogGetter | null = null
-const listeners = new Set<() => void>()
+const holder = createRealmHolder<ModelCatalogGetter>('model-catalog')
 
 /** Set (or, with `null`, clear) where the service comes from; listeners hear of the change. */
 export function configureModelCatalogSource(next: ModelCatalogGetter | null): void {
-  getter = next
-  for (const listener of [...listeners]) {
-    try {
-      listener()
-    } catch (error) {
-      console.warn('[model-catalog] a change listener failed:', error)
-    }
-  }
+  holder.set(next)
 }
 
 export async function acquireModelCatalog(): Promise<ModelCatalog | undefined> {
+  const getter = holder.get()
   return getter ? await getter() : undefined
 }
 
 export function onModelCatalogSourceChanged(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-  }
+  return holder.onChanged(listener)
 }

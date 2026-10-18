@@ -13,34 +13,25 @@ import {
   RenderCachePolicy,
   type RenderCachePolicyDeps,
 } from './RenderCachePolicy'
+import { createRealmHolder } from '../utils/realmHolder'
 
 export const RENDER_CACHE_PRIMITIVE = 'appInfo.purgeRenderCaches'
 
-let policy: RenderCachePolicy | null = null
-const listeners = new Set<() => void>()
+const holder = createRealmHolder<RenderCachePolicy>('render-cache', {
+  onReplace: previous => previous.dispose(),
+})
 
 /** Set (or, with `null`, clear) the policy; listeners hear of the change. */
 export function configureRenderCachePolicy(next: RenderCachePolicy | null): void {
-  if (policy && policy !== next) policy.dispose()
-  policy = next
-  for (const listener of [...listeners]) {
-    try {
-      listener()
-    } catch (error) {
-      console.warn('[render-cache] a change listener failed:', error)
-    }
-  }
+  holder.set(next)
 }
 
 export function currentRenderCachePolicy(): RenderCachePolicy | null {
-  return policy
+  return holder.get()
 }
 
 export function onRenderCachePolicyChanged(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-  }
+  return holder.onChanged(listener)
 }
 
 export type RuntimeRenderCacheDeps = Pick<RenderCachePolicyDeps, 'isAnyBusy' | 'idlePurgeEnabled'> & {
@@ -55,7 +46,7 @@ export type RuntimeRenderCacheDeps = Pick<RenderCachePolicyDeps, 'isAnyBusy' | '
  * Safe to call on every port attach.
  */
 export function installRuntimeRenderCache(deps: RuntimeRenderCacheDeps): string | null {
-  if (policy) return null
+  if (holder.get()) return null
   const manifest = deps.manifest()
   if (!manifest?.primitives?.includes(RENDER_CACHE_PRIMITIVE)) return 'host_unsupported'
   if (!deps.transport()) return 'no_transport'
