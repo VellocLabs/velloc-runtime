@@ -1,7 +1,8 @@
 /**
- * Numeric layout limits for the Nexus shell's docked columns (F-9). A saved
- * `shift-sidebar-width` outside the sidebar bounds clamps into them on read. The
- * collapsed icon-rail width lives in AssistantUiThread.tsx beside `SidebarIconRail`.
+ * Numeric layout limits for the Nexus shell's docked columns and panes (F-9).
+ * A saved `shift-sidebar-width` outside the sidebar bounds clamps into them on
+ * read. The collapsed icon-rail width lives in AssistantUiThread.tsx beside
+ * `SidebarIconRail`.
  */
 
 /**
@@ -21,33 +22,17 @@ export const WEBVIEW_AREA_MIN_WIDTH_PX = 480
 /** Floor the conversation column keeps when the browser is docked. */
 export const CHAT_COLUMN_MIN_WIDTH_PX = 360
 
-/**
- * Right Panel — the managed utility-view container (Plan / Tasks / …) —
- * minimum width in CSS px, for the normal (browser-hidden) presentation. Its
- * width is a share of the room beside the chat (`panelShare`).
- */
+/** A side pane other than the browser never draws narrower than this. */
 export const RIGHT_PANEL_MIN_WIDTH_PX = 280
 
-/**
- * Compact Right Panel bounds — used when the browser is docked alongside it,
- * so the conversation and browser keep usable widths
- * (`rightPanelWidthBounds`).
- */
-export const RIGHT_PANEL_COMPACT_MIN_WIDTH_PX = 240
-export const RIGHT_PANEL_COMPACT_MAX_WIDTH_PX = 360
+/** A side pane never draws shorter than this. */
+export const PANE_MIN_HEIGHT_PX = 160
 
-/**
- * Vertical-split ratio (the top view's share of the panel height) bounds and
- * default, for two pinned views. Stored as a ratio because panel height
- * changes often; the derived split is null unless exactly two views are
- * pinned.
- */
-export const RIGHT_PANEL_SPLIT_MIN_RATIO = 0.2
-export const RIGHT_PANEL_SPLIT_MAX_RATIO = 0.8
-export const RIGHT_PANEL_SPLIT_DEFAULT_RATIO = 0.65
+/** Gap between pane cards, and between a card and the area's edge. */
+export const PANE_GUTTER_PX = 8
 
-/** Max simultaneously pinned (split-visible) right-panel views. */
-export const RIGHT_PANEL_MAX_PINNED = 2
+/** A pane card's header row. */
+export const PANE_HEADER_HEIGHT_PX = 36
 
 /** Px width of the collapsed icon-only sidebar rail. */
 export const SIDEBAR_RAIL_WIDTH_PX = 56
@@ -72,11 +57,11 @@ export const STACK_DOCK_MIN_CHAT_PX = 651
  */
 export const FALLBACK_VIEWPORT_WIDTH_PX = 1280
 
-/** Chat left uncovered beside the Right Panel's overlay, to press back into. */
+/** Chat left uncovered beside the side region's overlay, to press back into. */
 export const RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX = 48
 
 /** Drawn width of a column splitter (`SidebarSplitter`, `w-1`). */
 export const SPLITTER_WIDTH_PX = 4
 
-/** Spare width beside the transcript the agent-opened panel float needs. */
+/** Spare width beside the transcript the agent-opened pane float needs. */
 export const RIGHT_PANEL_FLOAT_MIN_WIDTH_PX = 280

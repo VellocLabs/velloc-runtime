@@ -1,6 +1,6 @@
 /**
  * The shell's drawn layout for a session-area width (F-9). Priority, highest
- * first: the chat, the Right Panel, the sidebar, the docked card stack; as the
+ * first: the chat, the side region (the panes), the sidebar, the docked card stack; as the
  * area narrows the lowest gives way first and the chat keeps its minimum.
  */
 
@@ -15,7 +15,6 @@ import {
   SPLITTER_WIDTH_PX,
   STACK_DOCK_MIN_CHAT_PX,
 } from './layoutConstants'
-import { rightPanelWantWidth } from './panelShare'
 
 export type SidebarForm = 'expanded' | 'rail' | 'hidden'
 /**
@@ -40,6 +39,8 @@ export interface ShellLayoutInput {
     maxWidth: number
     /** Set while the panel floats: its drawn width. */
     floatWidth: number | null
+    /** The gap between the chat and the panel; the splitter's width by default. */
+    gutter?: number
   }
   /** The docked browser's drawn width with its splitter, 0 when it is not shown. */
   browserW: number
@@ -62,6 +63,16 @@ export interface ShellLayout {
   stack: StackPlacement
 }
 
+/** The panel's wanted width in `room`, inside `[minWidth, maxWidth]`. */
+export function rightPanelWantWidth(
+  share: number,
+  room: number,
+  minWidth: number,
+  maxWidth: number,
+): number {
+  return Math.round(Math.min(Math.max(share * Math.max(0, room), minWidth), maxWidth))
+}
+
 export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
   const { areaW, sidebar, panel, browserW } = input
   const chatMin = CHAT_CONTENT_MIN_WIDTH_PX
@@ -77,7 +88,8 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
   // The sidebar stays while the chat keeps its floor beside the panel at its
   // minimum (a maximized panel needs only its minimum).
   const dockedSidebarW = sidebar.collapsed ? SIDEBAR_RAIL_WIDTH_PX : sidebar.width + SPLITTER_WIDTH_PX
-  const panelMinNeed = panel.minWidth + SPLITTER_WIDTH_PX
+  const panelGap = panel.gutter ?? SPLITTER_WIDTH_PX
+  const panelMinNeed = panel.minWidth + panelGap
   const othersNeed =
     panelOpen === 'maximized' ? panel.minWidth : panelOpen === 'beside' ? chatMin + panelMinNeed : chatMin
   const form: SidebarForm =
@@ -96,7 +108,7 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
   } else if (panelOpen === 'float') {
     panelOffRowW = panel.floatWidth ?? 0
   } else if (panelOpen === 'beside') {
-    const panelRoom = room - SPLITTER_WIDTH_PX
+    const panelRoom = room - panelGap
     const want = rightPanelWantWidth(panel.share, panelRoom, panel.minWidth, panel.maxWidth)
     if (panelRoom - want >= chatMin) panelW = want
     else if (panelRoom - panel.minWidth >= chatMin) panelW = panelRoom - chatMin

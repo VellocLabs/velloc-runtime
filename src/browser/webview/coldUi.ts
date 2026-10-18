@@ -7,7 +7,8 @@ import { lazy } from 'react'
  */
 
 const loadSettingsScreen = () => import('./settings/SettingsScreen')
-const loadRightPanel = () => import('./RightPanel')
+const loadSidePanes = () => import('./panes/sidePanes')
+const loadFilesPane = () => import('./panes/FilesPane')
 const loadImportDialog = () => import('./sessionImport/ImportDialog')
 
 export const SettingsScreen = lazy(async () => {
@@ -15,9 +16,14 @@ export const SettingsScreen = lazy(async () => {
   return { default: module.SettingsScreen }
 })
 
-export const RightPanel = lazy(async () => {
-  const module = await loadRightPanel()
-  return { default: module.RightPanel }
+export const SidePaneBody = lazy(async () => {
+  const module = await loadSidePanes()
+  return { default: module.SidePaneBody }
+})
+
+export const FilesPane = lazy(async () => {
+  const module = await loadFilesPane()
+  return { default: module.FilesPane }
 })
 
 export const ImportDialog = lazy(async () => {
@@ -43,7 +49,8 @@ const PREFETCH_FALLBACK_DELAY_MS = 1500
 export function prefetchColdUi(): () => void {
   const warm = (): void => {
     void loadSettingsScreen()
-    void loadRightPanel()
+    void loadSidePanes()
+    void loadFilesPane()
     void loadImportDialog()
   }
 
@@ -62,7 +69,7 @@ export function prefetchColdUi(): () => void {
   }
 }
 
-/** Load every cold panel now; resolves once all three chunks have evaluated. */
+/** Load every cold panel now; resolves once all chunks have evaluated. */
 export async function warmColdUi(): Promise<void> {
-  await Promise.all([loadSettingsScreen(), loadRightPanel(), loadImportDialog()])
+  await Promise.all([loadSettingsScreen(), loadSidePanes(), loadFilesPane(), loadImportDialog()])
 }

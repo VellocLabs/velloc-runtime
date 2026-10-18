@@ -1,131 +1,82 @@
+/**
+ * The layout blob's storage (F-9): one key, the retired key removed on the
+ * first read without carrying its values, writes coalesced to one `setItem`
+ * per task, and each writer keeping the other fields.
+ */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { RIGHT_PANEL_SPLIT_DEFAULT_RATIO } from '@/browser/webview/layout/layoutConstants'
+import { defaultLayoutStorage } from '@/browser/webview/layout/layoutSanitize'
 import {
-  defaultLayoutStorage,
-  sanitizeLayoutStorage,
-} from '@/browser/webview/layout/layoutSanitize'
-import {
+  flushLayoutStorage,
   LAYOUT_STORAGE_KEY,
   loadLayoutStorage,
-  loadRightPanelGeometry,
-  loadRightPanelLastView,
-  saveRightPanelGeometry,
-  saveRightPanelLastView,
+  loadSessionCardPrefs,
+  saveSessionCardPrefs,
+  updateLayoutStorage,
 } from '@/browser/webview/layout/layoutStorage'
+import { defaultSessionCardPrefs } from '@/browser/webview/layout/sessionCards'
 
-// P6 (F-9): the Right Panel's global geometry
-// and the last-used always-open tab are persisted; the per-session showing
-// state is in-memory and must never be written. localStorage is never trusted.
-
-describe('sanitizeLayoutStorage (geometry-only)', () => {
-  it('falls back to defaults for non-objects and wrong versions', () => {
-    expect(sanitizeLayoutStorage(null)).toEqual(defaultLayoutStorage())
-    expect(sanitizeLayoutStorage('garbage')).toEqual(defaultLayoutStorage())
-    expect(sanitizeLayoutStorage({ version: 2 })).toEqual(defaultLayoutStorage())
-    expect(sanitizeLayoutStorage({})).toEqual(defaultLayoutStorage())
-  })
-
-  it('keeps only geometry — showing-state fields are dropped', () => {
-    const out = sanitizeLayoutStorage({
-      version: 1,
-      rightPanel: {
-        // showing state — must NOT survive (never restored across restart)
-        visible: true,
-        activeView: 'plan',
-        tabs: ['plan', 'tasks'],
-        pinnedViews: ['plan'],
-        // geometry — kept
-        shares: { diff: 0.5 },
-        splitTopRatio: 0.5,
-      },
-    })
-    expect(out.rightPanel).toEqual({ shares: { diff: 0.5 }, splitTopRatio: 0.5 })
-    expect(out.rightPanel).not.toHaveProperty('visible')
-    expect(out.rightPanel).not.toHaveProperty('tabs')
-  })
-
-  it('clamps shares, drops unknown kinds and bad values, and defaults a non-finite ratio', () => {
-    const out = sanitizeLayoutStorage({
-      version: 1,
-      rightPanel: {
-        shares: { diff: 7, tasks: 0.01, file: 'wide', plan: Number.NaN, mod: 0.5 },
-        splitTopRatio: 'oops',
-      },
-    })
-    expect(out.rightPanel.shares).toEqual({ diff: 0.9, tasks: 0.1 })
-    expect(out.rightPanel.splitTopRatio).toBe(RIGHT_PANEL_SPLIT_DEFAULT_RATIO)
-  })
-
-  it('remembers no share when none is stored', () => {
-    expect(sanitizeLayoutStorage({ version: 1, rightPanel: {} }).rightPanel.shares).toEqual({})
-    expect(sanitizeLayoutStorage({ version: 1, rightPanel: { widthPx: 400 } }).rightPanel.shares).toEqual({})
-  })
-
-  it('keeps a stored restore tab and rejects anything that is not always-open', () => {
-    expect(sanitizeLayoutStorage({ version: 1, rightPanelLastView: 'diff' })
-        .rightPanelLastView).toBe('diff')
-    // A blob written before the field existed → the default.
-    expect(sanitizeLayoutStorage({ version: 1 }).rightPanelLastView).toBe('tasks')
-    // `plan` and `file:` views are per-session — restoring into one is
-    // impossible, so they can never be stored.
-    for (const bad of ['plan', 'file:/repo/x.ts', 'nope', 42, null, {}]) {
-      expect(sanitizeLayoutStorage({ version: 1, rightPanelLastView: bad })
-          .rightPanelLastView, `rejects ${JSON.stringify(bad)}`).toBe('tasks')
-    }
-  })
-})
-
-describe('geometry load/save round-trip (localStorage stub)', () => {
+describe('layout storage (localStorage stub)', () => {
   let store: Map<string, string>
+  let writes: number
 
   beforeEach(() => {
     store = new Map()
+    writes = 0
     ;(globalThis as { localStorage?: unknown }).localStorage = {
       getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
-      setItem: (k: string, v: string) => void store.set(k, v),
+      setItem: (k: string, v: string) => {
+        writes += 1
+        store.set(k, v)
+      },
       removeItem: (k: string) => void store.delete(k),
       clear: () => store.clear(),
     }
   })
 
   afterEach(() => {
+    flushLayoutStorage()
     delete (globalThis as { localStorage?: unknown }).localStorage
   })
 
-  it('returns defaults when nothing is stored', () => {
+  it('returns defaults when nothing is stored, or the JSON is corrupt', () => {
     expect(loadLayoutStorage()).toEqual(defaultLayoutStorage())
-  })
-
-  it('persists and reloads the geometry', () => {
-    saveRightPanelGeometry({ shares: { file: 0.55 }, splitTopRatio: 0.4 })
-    expect(store.get(LAYOUT_STORAGE_KEY)).toContain('"version":1')
-    expect(loadRightPanelGeometry()).toEqual({ shares: { file: 0.55 }, splitTopRatio: 0.4 })
-  })
-
-  it('returns defaults when the stored JSON is corrupt', () => {
     store.set(LAYOUT_STORAGE_KEY, '{ not json')
     expect(loadLayoutStorage()).toEqual(defaultLayoutStorage())
   })
 
-  it('persists and reloads the restore tab', () => {
-    expect(loadRightPanelLastView(), 'nothing stored → Tasks').toBe('tasks')
-    saveRightPanelLastView('diff')
-    expect(loadRightPanelLastView()).toBe('diff')
+  it('removes the retired key on the first read and carries nothing from it', () => {
+    store.set('nexus.layout.v1', JSON.stringify({ version: 1, sessionCards: { hidden: ['changes'] } }))
+    expect(loadLayoutStorage()).toEqual(defaultLayoutStorage())
+    expect(store.has('nexus.layout.v1')).toBe(false)
+    expect(store.has(LAYOUT_STORAGE_KEY)).toBe(false)
   })
 
-  // Regression: both settings share ONE blob and are written by unrelated user
-  // actions (dragging the splitter vs clicking a tab). A writer that rebuilt
-  // the blob instead of merging silently reset the other field — dragging the
-  // panel wider would have thrown the remembered tab away.
-  it('each writer preserves the other setting', () => {
-    saveRightPanelLastView('diff')
-    saveRightPanelGeometry({ shares: { file: 0.55 }, splitTopRatio: 0.4 })
-    expect(loadRightPanelLastView(), 'a resize keeps the remembered tab')
-        .toBe('diff')
+  it('coalesces the updates of one task into one write, and reads the pending result', async () => {
+    updateLayoutStorage(prev => ({ ...prev, paneWeightByKind: { diff: 2 } }))
+    updateLayoutStorage(prev => ({ ...prev, paneWeightByKind: { ...prev.paneWeightByKind, tasks: 1.5 } }))
+    expect(loadLayoutStorage().paneWeightByKind).toEqual({ diff: 2, tasks: 1.5 })
+    expect(writes).toBe(0)
+    await Promise.resolve()
+    expect(writes).toBe(1)
+    expect(JSON.parse(store.get(LAYOUT_STORAGE_KEY)!).paneWeightByKind).toEqual({ diff: 2, tasks: 1.5 })
+  })
 
-    saveRightPanelLastView('tasks')
-    expect(loadRightPanelGeometry(), 'a tab click keeps the geometry')
-        .toEqual({ shares: { file: 0.55 }, splitTopRatio: 0.4 })
+  it('an update returning its input writes nothing', async () => {
+    updateLayoutStorage(prev => prev)
+    await Promise.resolve()
+    expect(writes).toBe(0)
+  })
+
+  it('each writer keeps the other fields', async () => {
+    updateLayoutStorage(prev => ({ ...prev, paneWeightByKind: { diff: 2 } }))
+    flushLayoutStorage()
+    saveSessionCardPrefs({ ...defaultSessionCardPrefs(), hidden: ['changes'] })
+    flushLayoutStorage()
+    const stored = JSON.parse(store.get(LAYOUT_STORAGE_KEY)!)
+    expect(stored.paneWeightByKind).toEqual({ diff: 2 })
+    expect(stored.sessionCards.hidden).toEqual(['changes'])
+    expect(loadSessionCardPrefs().hidden).toEqual(['changes'])
+    expect(stored).not.toHaveProperty('version')
   })
 })

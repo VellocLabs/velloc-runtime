@@ -12,7 +12,7 @@ import {
 } from './_helpers/staticImportGraph'
 
 /**
- * Boot-chunk budget for the cold UI split (`browser/webview/coldUi.ts`): the settings page, the right panel and
+ * Boot-chunk budget for the cold UI split (`browser/webview/coldUi.ts`): the settings page, the pane bodies and
  * the session-import dialog stay behind `import()`, off the shell's boot chunk. The reachability assertions walk
  * the shell's real static import graph; the budget is a floor on what the split keeps out, not a ceiling.
  */
@@ -32,9 +32,14 @@ const COLD_PANELS = [
     join(SRC, 'browser', 'webview', 'settings', 'SettingsScreen.tsx'),
   ],
   [
-    'RightPanel',
-    './RightPanel',
-    join(SRC, 'browser', 'webview', 'RightPanel.tsx'),
+    'SidePaneBody',
+    './panes/sidePanes',
+    join(SRC, 'browser', 'webview', 'panes', 'sidePanes.tsx'),
+  ],
+  [
+    'FilesPane',
+    './panes/FilesPane',
+    join(SRC, 'browser', 'webview', 'panes', 'FilesPane.tsx'),
   ],
   [
     'ImportDialog',

@@ -1,49 +1,48 @@
 /**
- * How the open Right Panel is presented beyond its docked form (F-9): the
- * overlay drawn over the chat when the panel has no room beside it, the float
- * an agent-opened view takes over the spare width at the chat's end, and the
+ * How the open side region is presented beyond its docked form (F-9): the
+ * overlay drawn over the chat when the region has no room beside it, the float
+ * an agent-opened pane takes over the spare width at the chat's end, and the
  * width a settled float holds. Pure: the shell reports each event with its
  * origin — the person, the agent, a resolved plan, input, a resize, a session
  * switch, a close — and draws what this state says.
  */
 import { RIGHT_PANEL_FLOAT_MIN_WIDTH_PX } from './layoutConstants'
-import { rightPanelViewKind, shareFromWidth, type RightPanelViewKind } from './panelShare'
-import type { RightPanelViewId } from './rightPanelManager'
+import type { SidePaneKind } from './paneLayout'
 import type { PanelForm } from './shellLayout'
 
-/** An agent-opened view floating over the spare width, in the session it opened in. */
+/** An agent-opened pane floating over the spare width, in the session it opened in. */
 export interface RightPanelFloat {
   width: number
   /** The session-area width it floated at; another width settles it. */
   areaW: number
-  view: RightPanelViewId
+  view: SidePaneKind
   sessionId: string
 }
 
 export interface RightPanelPresence {
-  /** The person asked for the overlay; it is drawn only while the panel's form is `overlay`. */
+  /** The person asked for the overlay; it is drawn only while the region's form is `overlay`. */
   overlay: boolean
   float: RightPanelFloat | null
-  /** A settled float's share, held while its view kind stays in front. */
-  hold: { kind: RightPanelViewKind; share: number } | null
-  /** The panel's drawn form as last reported. */
+  /** A settled float's share, held while its pane kind stays in front. */
+  hold: { kind: SidePaneKind; share: number } | null
+  /** The region's drawn form as last reported. */
   form: PanelForm
-  /** The room a docked panel splits with the chat. */
+  /** The room a docked region splits with the chat. */
   room: number
 }
 
 export type RightPanelPresenceEvent =
-  /** The person brought `view` forward: a link, a card, a tab, the toggle. */
-  | { type: 'personOpen'; view: RightPanelViewId }
+  /** The person brought `view` forward: a link, a card, a toggle. */
+  | { type: 'personOpen'; view: SidePaneKind }
   /**
-   * The agent brought `view` forward on its own. `panelOpen`: the panel was
+   * The agent brought `view` forward on its own. `panelOpen`: the region was
    * already shown (docked or maximized). `spare`: the width beside the
    * transcript column, null when unmeasured. `dockedWidth`: the width the
-   * view would dock at. `areaW`: the session-area width now.
+   * pane would dock at. `areaW`: the session-area width now.
    */
   | {
       type: 'agentOpen'
-      view: RightPanelViewId
+      view: SidePaneKind
       sessionId: string
       panelOpen: boolean
       spare: number | null
@@ -51,18 +50,18 @@ export type RightPanelPresenceEvent =
       areaW: number
     }
   /** A resolved plan left `nextView` in front; null when nothing is left. */
-  | { type: 'planClosed'; nextView: RightPanelViewId | null }
+  | { type: 'planClosed'; nextView: SidePaneKind | null }
   /** A press, key or wheel by the person. */
   | { type: 'input' }
   | { type: 'resize'; areaW: number; form: PanelForm; room: number }
   | { type: 'sessionSwitch'; sessionId: string }
-  /** The topbar panel toggle while the panel is overlaid. */
+  /** A topbar pane toggle while the region is overlaid. */
   | { type: 'toggle' }
   /** Escape or a press outside the overlay. */
   | { type: 'dismiss' }
-  /** The person dragged the panel's splitter. */
+  /** The person dragged a separator. */
   | { type: 'drag' }
-  /** The panel closed. */
+  /** The region closed (its last pane left). */
   | { type: 'close' }
 
 export function initialRightPanelPresence(): RightPanelPresence {
@@ -76,8 +75,8 @@ export function stepRightPanelPresence(
   switch (event.type) {
     case 'personOpen': {
       const next = frontView(state, event.view)
-      // Before the panel is drawn its form is unknown; the next resize drops
-      // the request unless the panel lands overlaid.
+      // Before the region is drawn its form is unknown; the next resize drops
+      // the request unless the region lands overlaid.
       const overlaidOrPending = state.form === 'overlay' || state.form === 'none'
       return overlaidOrPending && !next.overlay ? { ...next, overlay: true } : next
     }
@@ -126,21 +125,20 @@ export function stepRightPanelPresence(
   }
 }
 
-/** `view` came to the front: another view settles the float; another kind drops the hold. */
-function frontView(state: RightPanelPresence, view: RightPanelViewId): RightPanelPresence {
+/** `view` came to the front: another pane settles the float; another kind drops the hold. */
+function frontView(state: RightPanelPresence, view: SidePaneKind): RightPanelPresence {
   const settled = state.float && state.float.view !== view ? settle(state, view) : state
-  const kind = rightPanelViewKind(view)
-  return settled.hold && settled.hold.kind !== kind ? { ...settled, hold: null } : settled
+  return settled.hold && settled.hold.kind !== view ? { ...settled, hold: null } : settled
 }
 
 /** Docks the float at the width it floated at, held for the kind of `view`. */
-function settle(state: RightPanelPresence, view: RightPanelViewId): RightPanelPresence {
+function settle(state: RightPanelPresence, view: SidePaneKind): RightPanelPresence {
   if (!state.float) return state
-  const share = shareFromWidth(state.float.width, state.room)
+  const share = state.room > 0 ? state.float.width / state.room : Number.NaN
   return {
     ...state,
     float: null,
-    hold: Number.isFinite(share) ? { kind: rightPanelViewKind(view), share } : state.hold,
+    hold: Number.isFinite(share) ? { kind: view, share } : state.hold,
   }
 }
 

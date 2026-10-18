@@ -3,9 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   CHAT_COLUMN_MIN_WIDTH_PX,
   FALLBACK_VIEWPORT_WIDTH_PX,
-  RIGHT_PANEL_COMPACT_MAX_WIDTH_PX,
-  RIGHT_PANEL_COMPACT_MIN_WIDTH_PX,
-  RIGHT_PANEL_MIN_WIDTH_PX,
   SIDEBAR_DEFAULT_WIDTH_PX,
   SIDEBAR_MAX_WIDTH_PX,
   SIDEBAR_MIN_WIDTH_PX,
@@ -13,7 +10,6 @@ import {
 } from '@/browser/webview/layout/layoutConstants'
 import {
   clampSidebarWidth,
-  rightPanelWidthBounds,
   clampWebviewAreaWidth,
   readViewportWidth,
   webviewAreaMaxWidth,
@@ -71,22 +67,6 @@ describe('clampWebviewAreaWidth', () => {
   it('passes through and rounds an in-range width', () => {
     expect(clampWebviewAreaWidth(700, 1600)).toBe(700)
     expect(clampWebviewAreaWidth(700.4, 1600)).toBe(700)
-  })
-})
-
-describe('rightPanelWidthBounds', () => {
-  it('has only a minimum when the browser is not docked', () => {
-    expect(rightPanelWidthBounds(false)).toEqual({
-      min: RIGHT_PANEL_MIN_WIDTH_PX,
-      max: Number.POSITIVE_INFINITY,
-    })
-  })
-
-  it('uses the compact range when the browser is docked', () => {
-    expect(rightPanelWidthBounds(true)).toEqual({
-      min: RIGHT_PANEL_COMPACT_MIN_WIDTH_PX,
-      max: RIGHT_PANEL_COMPACT_MAX_WIDTH_PX,
-    })
   })
 })
 

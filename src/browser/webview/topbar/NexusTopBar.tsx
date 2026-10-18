@@ -1,13 +1,12 @@
 import * as React from "react";
 import {
-  AppWindowIcon,
+  CheckIcon,
   DownloadIcon,
   EllipsisVerticalIcon,
-  LayoutListIcon,
   Link2Icon,
   PanelLeftIcon,
-  PanelRightIcon,
 } from "lucide-react";
+import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +27,9 @@ import type {
 } from "../../bridge/protocol/nexus_llm";
 import type { ImportSource } from "../../bridge/protocol/sessionImport";
 import type { WindowDragRect } from "../../bridge/protocol/ui";
+import type { SidePaneKind } from "../layout/paneLayout";
+import { paneShortcutLabel } from "../layout/paneShortcuts";
+import { PANE_ICON, PANE_LABEL_KEY } from "../panes/paneKinds";
 import { ProviderIcon } from "../ProviderIcon";
 import type { SettingsSectionId } from "../settings/SettingsScreen";
 import {
@@ -42,11 +44,21 @@ import { useTopbarCenterBudget } from "./useTopbarCenterBudget";
 import { useWindowDragRegions } from "./useWindowDragRegions";
 
 /**
- * The column header above the conversation grid: LEFT controls (settings, model pill,
- * side-panel toggle, search), CENTER the session tab strip centred on the WINDOW,
- * RIGHT a spacer for the OS caption controls the panel overlays
- * (`--nexus-caption-inset`).
+ * The column header above the conversation grid: LEFT controls (settings,
+ * model pill, search), CENTER the session tab strip centred on the WINDOW,
+ * RIGHT the sidebar toggle, the pane toggles and the More menu, before the
+ * OS caption strip the panel overlays (`--nexus-caption-inset`).
  */
+
+/** The pane kinds with a toggle of their own in the bar, in bar order. */
+const BAR_PANE_KINDS: readonly SidePaneKind[] = ["diff", "browser"];
+/** The pane kinds listed as rows of the More menu, in menu order. */
+const MENU_PANE_KINDS: readonly SidePaneKind[] = ["tasks", "plan", "skill"];
+
+const MENU_ITEM_CLASS =
+  "flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-start text-body outline-none data-[highlighted]:bg-muted";
+const MENU_CONTENT_CLASS =
+  "z-50 min-w-[12rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md";
 
 export type NexusTopBarProps = {
   /** The active session's family (the session itself, plus its teammates
@@ -69,9 +81,9 @@ export type NexusTopBarProps = {
   /** Programmatic-open signal for the model picker popover (increment to
    *  open) — see NexusModelPickerProps.openToken. */
   modelPickerOpenToken?: number;
-  /** Sidebar collapsed state + toggle. The side-panel control moved from the
-   *  sidebar's own rail into the topbar (next to the model picker); omitted
-   *  on hosts that don't render a sidebar (the button hides). */
+  /** Sidebar collapsed state + toggle: the first control of the right
+   *  group, global across sessions; omitted on hosts that don't render a
+   *  sidebar (the button hides). */
   sidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
   /** The transcript-search control (`TopbarSearch`), rendered LAST in the
@@ -80,31 +92,26 @@ export type NexusTopBarProps = {
    *  shifting the buttons. Omitted when the host doesn't advertise the
    *  `search` capability, and the divider goes with it. */
   searchSlot?: React.ReactNode;
-  /** Agent-zone (in-window browsing surface) toggle. Omitted until the
-   *  React→panel round-trip is wired (the zone still auto-reveals on
-   *  browser-tool dispatch); when omitted the globe is hidden. */
-  agentZoneVisible?: boolean;
-  onToggleAgentZone?: () => void;
   /** Report the topbar's OS window-drag map to the host (`ui
    *  .setWindowDragRegions`) so the frameless window can be dragged from the
    *  bar. Omitted in the dev mock (no host frame to drag). */
   onDragRegionsChange?: (regions: WindowDragRect[]) => void;
-  /** Toggle the managed Right Panel (show if hidden, close if shown). Omitted
-   *  on hosts without the panel (the button hides). */
-  onToggleRightPanel?: () => void;
-  /** Whether the Right Panel is currently shown — drives the toggle's pressed
-   *  state + show/hide label. */
-  rightPanelVisible?: boolean;
-  /** Number of in-flight background sub-agents — drives the button badge. */
+  /** The panes in the active session's layout: each toggle is pressed
+   *  exactly when its pane is listed. */
+  openPanes?: readonly SidePaneKind[];
+  /** Open a closed pane, or close an open one. Omitted on hosts without
+   *  panes: no pane toggle and no More menu render. */
+  onTogglePane?: (kind: SidePaneKind) => void;
+  /** The docked browser's toggle: pressed while it is on screen. Omitted
+   *  (a remote page) → no browser toggle. */
+  browserToggle?: { pressed: boolean; onToggle: () => void };
+  /** The More menu's *Session overview* row: shows or hides the session
+   *  card stack (or opens it as a popover where it does not fit). */
+  sessionOverview?: { shown: boolean; onToggle: () => void };
+  /** The More menu's *Reset layout* row: the active session back to the default arrangement. */
+  onResetLayout?: () => void;
+  /** Number of in-flight background sub-agents — the badge on the More button. */
   backgroundTaskCount?: number;
-  /** The session cards' toggle: shows or hides the docked stack, or, where
-   *  the chat is too narrow to dock it, opens the cards as a popover.
-   *  Omitted → no button. */
-  onToggleSessionCards?: () => void;
-  /** The cards are on screen (docked, or the popover open): pressed state. */
-  sessionCardsOnScreen?: boolean;
-  /** The toggle opens a popover rather than docking (`aria-expanded`). */
-  sessionCardsAsPopover?: boolean;
   /** Import sources detected on this machine (Claude Code first). One
    *  brand-icon button per source, after the agent-zone toggle and before
    *  the search divider; nothing renders when empty or when
@@ -139,6 +146,21 @@ export type NexusTopBarProps = {
   onPressPluginItem?: (sessionId: string, id: string) => Promise<ModsPressTopbarResult>;
 };
 
+/** A pane's tooltip or menu row text: its name, and its shortcut when it has one. */
+function PaneLabel({ kind, verb }: { kind: SidePaneKind; verb?: "show" | "hide" }) {
+  const t = useT();
+  const name = t(PANE_LABEL_KEY[kind]);
+  const shortcut = paneShortcutLabel(kind);
+  return (
+    <>
+      <span>{verb ? t(verb === "show" ? "topbar.pane.show" : "topbar.pane.hide", { pane: name }) : name}</span>
+      {shortcut ? (
+        <kbd className="ms-2 font-sans text-caption text-muted-foreground">{shortcut}</kbd>
+      ) : null}
+    </>
+  );
+}
+
 export function NexusTopBar({
   sessionTabs,
   activeSessionId,
@@ -153,14 +175,12 @@ export function NexusTopBar({
   sidebarCollapsed,
   onToggleSidebar,
   searchSlot,
-  agentZoneVisible,
-  onToggleAgentZone,
   onDragRegionsChange,
-  onToggleRightPanel,
-  rightPanelVisible,
-  onToggleSessionCards,
-  sessionCardsOnScreen,
-  sessionCardsAsPopover,
+  openPanes,
+  onTogglePane,
+  browserToggle,
+  sessionOverview,
+  onResetLayout,
   backgroundTaskCount,
   importSources,
   onOpenImport,
@@ -180,14 +200,14 @@ export function NexusTopBar({
   const canOpenBrowserWindow = useCan("ui", "openBrowserWindow");
   const headerRef = React.useRef<HTMLElement>(null);
   const leftGroupRef = React.useRef<HTMLDivElement>(null);
-  const captionSpacerRef = React.useRef<HTMLDivElement>(null);
+  const rightGroupRef = React.useRef<HTMLDivElement>(null);
   // How much the centre column may spend before the strip stops being centred
   // on the window / starts covering a side group. The strip drops whole tab
   // titles to stay inside it.
   const centerBudget = useTopbarCenterBudget(
     headerRef,
     leftGroupRef,
-    captionSpacerRef,
+    rightGroupRef,
   );
   // Stable identity so the memoized NexusModelPicker isn't re-rendered every
   // turn just because this arrow was re-created (it opens the Models settings
@@ -200,6 +220,14 @@ export function NexusTopBar({
   // window. Instead we measure the bar + its `data-app-region="no-drag"`
   // controls and report the map to the host (see useWindowDragRegions).
   useWindowDragRegions(headerRef, onDragRegionsChange);
+
+  const open = new Set(openPanes ?? []);
+  const isOpen = (kind: SidePaneKind) =>
+    kind === "browser" && browserToggle ? browserToggle.pressed : open.has(kind);
+  const toggle = (kind: SidePaneKind) => {
+    if (kind === "browser" && browserToggle) browserToggle.onToggle();
+    else onTogglePane?.(kind);
+  };
 
   return (
     // Self-contained TooltipProvider: the topbar mounts in MultiSessionShell
@@ -252,124 +280,6 @@ export function NexusTopBar({
           disabled={teammateActive}
           inertWhy={teammateActive ? t("modelPicker.teammateLocked") : undefined}
         />
-        {/* Side-panel control — moved here from the sidebar's own rail. */}
-        {onToggleSidebar ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                data-testid="topbar-sidebar-toggle"
-                aria-pressed={!sidebarCollapsed}
-                aria-label={
-                  sidebarCollapsed
-                    ? t("topbar.showSidebar")
-                    : t("topbar.collapseSidebar")
-                }
-                onClick={onToggleSidebar}
-              >
-                <PanelLeftIcon className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {sidebarCollapsed
-                ? t("topbar.showSidebar")
-                : t("topbar.collapseSidebar")}
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-        {/* Right Panel toggle — show/close the managed side panel (Plan /
-            Tasks / Files / Diff). The badge still counts running background
-            sub-agents so activity is visible even while the panel is closed. */}
-        {onToggleRightPanel ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                data-testid="topbar-background-tasks"
-                aria-pressed={rightPanelVisible}
-                aria-label={
-                  rightPanelVisible
-                    ? t("topbar.hideSidePanel")
-                    : t("topbar.showSidePanel")
-                }
-                onClick={onToggleRightPanel}
-                className="relative"
-              >
-                <PanelRightIcon className="size-4" />
-                {backgroundTaskCount && backgroundTaskCount > 0 ? (
-                  // The count is RUNNING tasks only — pulse so it reads as
-                  // live activity (the session will still receive their
-                  // task-notification turns), not a static unread count.
-                  <span
-                    aria-hidden
-                    className="absolute right-0.5 top-0.5 flex min-w-3.5 animate-pulse items-center justify-center rounded-full bg-primary px-1 text-[9px] font-medium leading-none text-primary-foreground"
-                  >
-                    {backgroundTaskCount}
-                  </span>
-                ) : null}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {rightPanelVisible
-                ? t("topbar.hideSidePanel")
-                : t("topbar.showSidePanel")}
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-        {onToggleSessionCards ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                data-testid="topbar-session-cards"
-                aria-pressed={!sessionCardsAsPopover ? !!sessionCardsOnScreen : undefined}
-                aria-expanded={sessionCardsAsPopover ? !!sessionCardsOnScreen : undefined}
-                aria-label={
-                  sessionCardsOnScreen
-                    ? t("topbar.hideSessionCards")
-                    : t("topbar.showSessionCards")
-                }
-                onClick={onToggleSessionCards}
-              >
-                <LayoutListIcon className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {sessionCardsOnScreen
-                ? t("topbar.hideSessionCards")
-                : t("topbar.showSessionCards")}
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-        {/* Browser view toggle — shows/hides the in-window browser view (agent zone).
-            Replaces the old "open browser window" button to keep browser tabs in the
-            current window instead of a separate window. */}
-        {onToggleAgentZone && canOpenBrowserWindow ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                data-testid="topbar-open-browser-window"
-                aria-pressed={agentZoneVisible}
-                aria-label={t("topbar.openBrowserWindow")}
-                onClick={onToggleAgentZone}
-              >
-                <AppWindowIcon className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {t("topbar.openBrowserWindow")}
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
         {/* Import from another agent product — one brand-icon button per
             detected source. Sits with the feature toggles, left of the
             search control so the expanding field never shifts it. */}
@@ -465,12 +375,158 @@ export function NexusTopBar({
         ) : null}
       </div>
 
-      {/* RIGHT: reserve the OS caption-control strip (`--nexus-caption-inset`). */}
-      {/* The ref is on the COLUMN, which the remote indicator can widen past the spacer. */}
+      {/* RIGHT: the sidebar toggle, the pane toggles and the More menu, then
+          the OS caption-control strip (`--nexus-caption-inset`). The ref is
+          on the COLUMN, which the remote indicator can widen past the spacer. */}
       <div
-        ref={captionSpacerRef}
+        ref={rightGroupRef}
+        data-app-region="no-drag"
+        data-testid="topbar-right-group"
         className="flex items-center gap-1 justify-self-end"
       >
+        {/* Session rail toggle — global: it does not change with the session. */}
+        {onToggleSidebar ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                data-testid="topbar-sidebar-toggle"
+                aria-pressed={!sidebarCollapsed}
+                aria-label={
+                  sidebarCollapsed
+                    ? t("topbar.showSidebar")
+                    : t("topbar.collapseSidebar")
+                }
+                onClick={onToggleSidebar}
+              >
+                <PanelLeftIcon className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {sidebarCollapsed
+                ? t("topbar.showSidebar")
+                : t("topbar.collapseSidebar")}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+        {BAR_PANE_KINDS.map((kind) => {
+          if (kind === "browser" ? !browserToggle || !canOpenBrowserWindow : !onTogglePane) return null;
+          const Icon = PANE_ICON[kind];
+          const pressed = isOpen(kind);
+          const name = t(PANE_LABEL_KEY[kind]);
+          return (
+            <Tooltip key={kind}>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  data-testid={`topbar-pane-${kind}`}
+                  aria-pressed={pressed}
+                  aria-label={t(pressed ? "topbar.pane.hide" : "topbar.pane.show", { pane: name })}
+                  onClick={() => toggle(kind)}
+                >
+                  <Icon className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <PaneLabel kind={kind} verb={pressed ? "hide" : "show"} />
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+        {onTogglePane ? (
+          <DropdownMenuPrimitive.Root modal={false}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuPrimitive.Trigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    data-testid="topbar-more-panes"
+                    aria-label={t("topbar.morePanes")}
+                    className="relative"
+                  >
+                    <EllipsisVerticalIcon className="size-4" />
+                    {backgroundTaskCount && backgroundTaskCount > 0 ? (
+                      // The count is RUNNING tasks only — pulse so it reads as
+                      // live activity (the session will still receive their
+                      // task-notification turns), not a static unread count.
+                      <span
+                        aria-hidden
+                        data-testid="topbar-running-tasks"
+                        className="absolute right-0.5 top-0.5 flex min-w-3.5 animate-pulse items-center justify-center rounded-full bg-primary px-1 text-[9px] font-medium leading-none text-primary-foreground"
+                      >
+                        {backgroundTaskCount}
+                      </span>
+                    ) : null}
+                  </Button>
+                </DropdownMenuPrimitive.Trigger>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t("topbar.morePanes")}</TooltipContent>
+            </Tooltip>
+            <DropdownMenuPrimitive.Portal>
+              <DropdownMenuPrimitive.Content
+                align="end"
+                sideOffset={6}
+                data-testid="topbar-more-panes-menu"
+                className={MENU_CONTENT_CLASS}
+              >
+                {MENU_PANE_KINDS.map((kind) => {
+                  const Icon = PANE_ICON[kind];
+                  return (
+                    <DropdownMenuPrimitive.CheckboxItem
+                      key={kind}
+                      checked={isOpen(kind)}
+                      onCheckedChange={() => toggle(kind)}
+                      data-testid={`topbar-pane-row-${kind}`}
+                      className={MENU_ITEM_CLASS}
+                    >
+                      <Icon aria-hidden className="size-4 text-muted-foreground" />
+                      <span className="flex flex-1 items-center">
+                        <PaneLabel kind={kind} />
+                      </span>
+                      <DropdownMenuPrimitive.ItemIndicator>
+                        <CheckIcon aria-hidden className="size-4 text-primary" />
+                      </DropdownMenuPrimitive.ItemIndicator>
+                    </DropdownMenuPrimitive.CheckboxItem>
+                  );
+                })}
+                {sessionOverview ? (
+                  <>
+                    <DropdownMenuPrimitive.Separator className="-mx-1 my-1 h-px bg-border" />
+                    <DropdownMenuPrimitive.CheckboxItem
+                      checked={sessionOverview.shown}
+                      onCheckedChange={sessionOverview.onToggle}
+                      data-testid="topbar-session-overview"
+                      className={MENU_ITEM_CLASS}
+                    >
+                      <span className="flex-1">{t("topbar.sessionOverview")}</span>
+                      <DropdownMenuPrimitive.ItemIndicator>
+                        <CheckIcon aria-hidden className="size-4 text-primary" />
+                      </DropdownMenuPrimitive.ItemIndicator>
+                    </DropdownMenuPrimitive.CheckboxItem>
+                  </>
+                ) : null}
+                {onResetLayout ? (
+                  <>
+                    <DropdownMenuPrimitive.Separator className="-mx-1 my-1 h-px bg-border" />
+                    <DropdownMenuPrimitive.Item
+                      onSelect={onResetLayout}
+                      data-testid="topbar-reset-layout"
+                      className={MENU_ITEM_CLASS}
+                    >
+                      <span className="flex-1">{t("topbar.resetLayout")}</span>
+                    </DropdownMenuPrimitive.Item>
+                  </>
+                ) : null}
+              </DropdownMenuPrimitive.Content>
+            </DropdownMenuPrimitive.Portal>
+          </DropdownMenuPrimitive.Root>
+        ) : null}
         {/* Remote only: which desktop this is, and the way out. A browser tab
             has no caption strip to reserve, so the space is free — and this
             is the one control whose absence a remote user cannot work

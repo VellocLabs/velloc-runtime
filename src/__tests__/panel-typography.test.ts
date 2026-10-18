@@ -15,7 +15,9 @@ const read = (rel: string) => readFileSync(join(SRC, rel), 'utf8')
 describe('panel and code surfaces carry the type-scale utilities', () => {
   const stepped = [
     'browser/webview/topbar/SessionTabStrip.tsx',
-    'browser/webview/RightPanel.tsx',
+    'browser/webview/panes/PaneFrame.tsx',
+    'browser/webview/panes/PaneArea.tsx',
+    'browser/webview/panes/FilesPane.tsx',
     'browser/webview/FilePanel.tsx',
     'browser/webview/DiffPanel.tsx',
     'browser/webview/PlanDetailsPanel.tsx',

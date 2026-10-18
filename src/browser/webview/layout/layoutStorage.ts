@@ -1,28 +1,30 @@
 /**
- * localStorage I/O for the PERSISTED layout blob — the Right Panel's geometry
- * (width + split ratio), the tab a cold open restores, and the session card
- * stack's order and Show choices. Mirrors the existing
- * `shift-*` width helpers in MultiSessionShell: best-effort, `try/catch`
- * everywhere, always sanitized on read. The panel's per-session showing state
- * is in-memory only and is never written here (F-9).
+ * localStorage I/O for the layout blob (F-9): pane layouts per session, the
+ * per-kind pane weights and the session card prefs, under one key. Writes are
+ * read-modify-write of the whole blob, coalesced to one `setItem` per task;
+ * `pagehide` flushes. Best-effort: storage may be missing, and every read is
+ * sanitized.
  */
 import {
   defaultLayoutStorage,
   sanitizeLayoutStorage,
-  type NexusLayoutStorageV1,
+  type NexusLayoutStorage,
 } from './layoutSanitize'
-import {
-  defaultRightPanelGeometry,
-  type DefaultRightPanelTabId,
-  type RightPanelGeometry,
-} from './rightPanelManager'
 import type { SessionCardPrefs } from './sessionCards'
 
-export const LAYOUT_STORAGE_KEY = 'nexus.layout.v1'
+export const LAYOUT_STORAGE_KEY = 'nexus.layout'
+/** The key an earlier shape used; removed on the first read, its values are not carried. */
+const RETIRED_LAYOUT_STORAGE_KEY = 'nexus.layout.v1'
 
-export function loadLayoutStorage(): NexusLayoutStorageV1 {
+let pending: NexusLayoutStorage | null = null
+let flushQueued = false
+
+function readStorage(): NexusLayoutStorage {
   try {
-    const raw = globalThis.localStorage?.getItem(LAYOUT_STORAGE_KEY)
+    const storage = globalThis.localStorage
+    if (!storage) return defaultLayoutStorage()
+    if (storage.getItem(RETIRED_LAYOUT_STORAGE_KEY) !== null) storage.removeItem(RETIRED_LAYOUT_STORAGE_KEY)
+    const raw = storage.getItem(LAYOUT_STORAGE_KEY)
     if (raw == null) return defaultLayoutStorage()
     return sanitizeLayoutStorage(JSON.parse(raw))
   } catch {
@@ -30,49 +32,49 @@ export function loadLayoutStorage(): NexusLayoutStorageV1 {
   }
 }
 
-export function saveLayoutStorage(storage: NexusLayoutStorageV1): void {
+/** The blob as stored (a pending write counts), sanitized. */
+export function loadLayoutStorage(): NexusLayoutStorage {
+  return pending ?? readStorage()
+}
+
+/** Write the pending blob now; a no-op when nothing is pending. */
+export function flushLayoutStorage(): void {
+  const blob = pending
+  pending = null
+  flushQueued = false
+  if (!blob) return
   try {
-    globalThis.localStorage?.setItem(
-      LAYOUT_STORAGE_KEY,
-      JSON.stringify(storage),
-    )
+    globalThis.localStorage?.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(blob))
   } catch {
-    // localStorage may be unavailable; persistence is best-effort.
+    // Storage may be unavailable or full; persistence is best-effort.
   }
 }
 
-/** Load the global, persisted Right Panel geometry (sanitized). */
-export function loadRightPanelGeometry(): RightPanelGeometry {
-  return loadLayoutStorage().rightPanel
+/**
+ * Apply `fn` to the blob. The first update in a task reads storage; later
+ * ones in the same task build on the pending result, and one `setItem`
+ * follows in a microtask. `fn` returning its input writes nothing.
+ */
+export function updateLayoutStorage(fn: (prev: NexusLayoutStorage) => NexusLayoutStorage): NexusLayoutStorage {
+  const prev = pending ?? readStorage()
+  const next = fn(prev)
+  if (next === prev && pending === null) return prev
+  pending = next
+  if (!flushQueued) {
+    flushQueued = true
+    queueMicrotask(flushLayoutStorage)
+  }
+  return next
 }
 
-// Every writer below is READ-MODIFY-WRITE, and must stay that way: the blob
-// holds independent settings written by unrelated user actions (a drag of
-// the splitter, a click on a tab, a card moved). Writing a freshly-built object
-// would reset whichever field this call is not about.
-
-/** Persist the global Right Panel geometry into the v1 blob. */
-export function saveRightPanelGeometry(geometry: RightPanelGeometry): void {
-  saveLayoutStorage({ ...loadLayoutStorage(), rightPanel: geometry })
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('pagehide', flushLayoutStorage)
 }
 
-/** The always-open tab a cold panel open restores (sanitized). */
-export function loadRightPanelLastView(): DefaultRightPanelTabId {
-  return loadLayoutStorage().rightPanelLastView
-}
-
-/** Remember the always-open tab the user last focused. */
-export function saveRightPanelLastView(view: DefaultRightPanelTabId): void {
-  saveLayoutStorage({ ...loadLayoutStorage(), rightPanelLastView: view })
-}
-
-/** The session card stack's order and Show choices (sanitized). */
 export function loadSessionCardPrefs(): SessionCardPrefs {
   return loadLayoutStorage().sessionCards
 }
 
 export function saveSessionCardPrefs(prefs: SessionCardPrefs): void {
-  saveLayoutStorage({ ...loadLayoutStorage(), sessionCards: prefs })
+  updateLayoutStorage(prev => (prev.sessionCards === prefs ? prev : { ...prev, sessionCards: prefs }))
 }
-
-export { defaultRightPanelGeometry }

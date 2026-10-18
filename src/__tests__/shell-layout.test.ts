@@ -171,3 +171,14 @@ describe('resolveShellLayout — sidebar drag limit', () => {
     expect(resolveShellLayout(input({ areaW: 1600 })).sidebarMaxW).toBe(1600 - 4 - 360)
   })
 })
+
+describe('resolveShellLayout — the panel gap', () => {
+  it('a gutter in place of the splitter takes its width from the room the panel splits', () => {
+    const base = input({ areaW: 1600, panel: DIFF })
+    const splitter = resolveShellLayout(base)
+    const gutter = resolveShellLayout({ ...base, panel: { ...DIFF, gutter: 8 } })
+    expect(splitter.panel).toBe('beside')
+    expect(gutter.panel).toBe('beside')
+    expect(gutter.chatW + gutter.panelW).toBe(splitter.chatW + splitter.panelW - 4)
+  })
+})

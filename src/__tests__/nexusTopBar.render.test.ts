@@ -5,12 +5,28 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { Tooltip, TooltipTrigger } from '@/components/ui/tooltip'
 
 import type { ScopeMode } from '../browser/runtimeProtocol'
-import { NexusTopBar } from '../browser/webview/topbar/NexusTopBar'
+import { NexusTopBar, type NexusTopBarProps } from '../browser/webview/topbar/NexusTopBar'
 import { RuntimeCapabilitiesContext } from '../browser/webview/useCan'
 import { advertsForScope, queryFor } from './_helpers/capabilityQuery'
 
 // NexusTopBar mounts outside the <TooltipProvider> inside AssistantUiThread, so it wraps its own. This renders it
 // with no provider ancestor via react-dom/server and asserts it does not throw.
+const BASE: NexusTopBarProps = {
+  catalog: null,
+  selection: null,
+  onSelectModel: () => {},
+  onOpenSettings: () => {},
+}
+
+function markup(props: Partial<NexusTopBarProps> = {}): string {
+  return renderToStaticMarkup(createElement(NexusTopBar, { ...BASE, ...props }))
+}
+
+/** The opening tag of the control with `testId`, or '' when it is not rendered. */
+function tag(html: string, testId: string): string {
+  return new RegExp(`<button[^>]*data-testid="${testId}"[^>]*>`).exec(html)?.[0] ?? ''
+}
+
 describe('NexusTopBar render', () => {
   // Proves the harness genuinely DETECTS the missing-provider crash, so the
   // topbar test below is not a vacuous pass: a bare <Tooltip> with no
@@ -26,16 +42,7 @@ describe('NexusTopBar render', () => {
 
   it('renders standalone (no TooltipProvider ancestor) without throwing', () => {
     expect(() =>
-      renderToStaticMarkup(
-        createElement(NexusTopBar, {
-          catalog: null,
-          selection: null,
-          onSelectModel: () => {},
-          onOpenSettings: () => {},
-          sidebarCollapsed: false,
-          onToggleSidebar: () => {},
-        }),
-      ),
+      markup({ sidebarCollapsed: false, onToggleSidebar: () => {}, onTogglePane: () => {} }),
     ).not.toThrow()
   })
 
@@ -44,49 +51,73 @@ describe('NexusTopBar render', () => {
   // trusted child onto an untrusted relay). The picker is read-only there,
   // and says why.
   it('the model picker is read-only on a teammate tab, and says why', () => {
-    const base = {
-      catalog: null,
-      selection: null,
-      onSelectModel: () => {},
-      onOpenSettings: () => {},
-    }
-    const trigger = (markup: string) =>
-      /<button[^>]*data-testid="nexus-model-picker-trigger"[^>]*>/.exec(markup)?.[0] ?? ''
-
-    const teammate = trigger(
-      renderToStaticMarkup(
-        createElement(NexusTopBar, {
-          ...base,
-          activeSessionId: 'teammate-lead-1-worker-a-1789000000000',
-        }),
-      ),
-    )
+    const teammate = tag(markup({ activeSessionId: 'teammate-lead-1-worker-a-1789000000000' }), 'nexus-model-picker-trigger')
     expect(teammate).toContain('disabled=""')
     expect(teammate).toContain('title="A teammate keeps the model it was started with.')
 
-    const lead = trigger(
-      renderToStaticMarkup(
-        createElement(NexusTopBar, { ...base, activeSessionId: 'lead-1' }),
-      ),
-    )
+    const lead = tag(markup({ activeSessionId: 'lead-1' }), 'nexus-model-picker-trigger')
     expect(lead).not.toContain('disabled=""')
     expect(lead).not.toContain('title=')
   })
 
-  it('renders the browser view toggle button only when wired', () => {
-    const base = {
-      catalog: null,
-      selection: null,
-      onSelectModel: () => {},
-      onOpenSettings: () => {},
-    }
-    const without = renderToStaticMarkup(createElement(NexusTopBar, base))
-    expect(without).not.toContain('data-testid="topbar-open-browser-window"')
+  describe('the right column', () => {
+    it('holds the sidebar toggle, the pane toggles and the More menu, in that order', () => {
+      const html = markup({
+        sidebarCollapsed: false,
+        onToggleSidebar: () => {},
+        onTogglePane: () => {},
+        browserToggle: { pressed: false, onToggle: () => {} },
+      })
+      const group = /<div[^>]*data-testid="topbar-right-group"[\s\S]*$/.exec(html)?.[0] ?? ''
+      const order = ['topbar-sidebar-toggle', 'topbar-pane-diff', 'topbar-pane-browser', 'topbar-more-panes']
+        .map(id => group.indexOf(`data-testid="${id}"`))
+      expect(order.every(index => index >= 0)).toBe(true)
+      expect([...order].sort((a, b) => a - b)).toEqual(order)
+      // The left group no longer carries the sidebar toggle.
+      const left = html.slice(0, html.indexOf('data-testid="topbar-right-group"'))
+      expect(left).not.toContain('topbar-sidebar-toggle')
+      // Panes Velloc does not have yet have no toggle.
+      expect(html).not.toContain('topbar-pane-terminal')
+      expect(html).not.toContain('topbar-pane-files')
+      // The retired controls are gone.
+      for (const id of ['topbar-background-tasks', 'topbar-session-cards', 'topbar-open-browser-window']) {
+        expect(html).not.toContain(id)
+      }
+    })
 
-    const withButton = renderToStaticMarkup(
-      createElement(NexusTopBar, { ...base, onToggleAgentZone: () => {} }),
-    )
-    expect(withButton).toContain('data-testid="topbar-open-browser-window"')
+    it('renders no pane toggle and no More menu on a host without panes', () => {
+      const html = markup({ sidebarCollapsed: false, onToggleSidebar: () => {} })
+      expect(html).toContain('topbar-sidebar-toggle')
+      expect(html).not.toContain('topbar-pane-diff')
+      expect(html).not.toContain('topbar-more-panes')
+    })
+
+    it('a pane toggle is pressed exactly when its pane is in the layout, with the matching label', () => {
+      const closed = tag(markup({ onTogglePane: () => {}, openPanes: ['tasks'] }), 'topbar-pane-diff')
+      expect(closed).toContain('aria-pressed="false"')
+      expect(closed).toContain('aria-label="Show Diff"')
+      const open = tag(markup({ onTogglePane: () => {}, openPanes: ['tasks', 'diff'] }), 'topbar-pane-diff')
+      expect(open).toContain('aria-pressed="true"')
+      expect(open).toContain('aria-label="Hide Diff"')
+    })
+
+    it('the browser toggle follows the docked browser, not the layout', () => {
+      const html = markup({
+        onTogglePane: () => {},
+        openPanes: [],
+        browserToggle: { pressed: true, onToggle: () => {} },
+      })
+      expect(tag(html, 'topbar-pane-browser')).toContain('aria-pressed="true"')
+      expect(markup({ onTogglePane: () => {} })).not.toContain('topbar-pane-browser')
+    })
+
+    it('the running-task badge sits on the More button', () => {
+      const html = markup({ onTogglePane: () => {}, backgroundTaskCount: 3 })
+      const more = /<button[^>]*data-testid="topbar-more-panes"[\s\S]*?<\/button>/.exec(html)?.[0] ?? ''
+      expect(more).toContain('data-testid="topbar-running-tasks"')
+      expect(more).toContain('>3<')
+      expect(markup({ onTogglePane: () => {}, backgroundTaskCount: 0 })).not.toContain('topbar-running-tasks')
+    })
   })
 
   // With no browser tab to show, the toggle opens a HOST browser window
@@ -94,13 +125,11 @@ describe('NexusTopBar render', () => {
   // docked view, so that is all the button could do, and the runtime refused
   // it: a click did nothing. The button is not rendered without the route.
   // The grants come from the real scope tables.
-  describe('the browser view toggle follows the grant', () => {
-    const wired = {
-      catalog: null,
-      selection: null,
-      onSelectModel: () => {},
-      onOpenSettings: () => {},
-      onToggleAgentZone: () => {},
+  describe('the browser toggle follows the grant', () => {
+    const wired: NexusTopBarProps = {
+      ...BASE,
+      onTogglePane: () => {},
+      browserToggle: { pressed: false, onToggle: () => {} },
     }
     const markupFor = (mode: ScopeMode) =>
       renderToStaticMarkup(
@@ -112,55 +141,18 @@ describe('NexusTopBar render', () => {
       )
 
     it('renders for a full grant', () => {
-      expect(markupFor('full')).toContain('data-testid="topbar-open-browser-window"')
+      expect(markupFor('full')).toContain('data-testid="topbar-pane-browser"')
     })
 
     it.each<ScopeMode>(['manager', 'control', 'observe'])(
       'is not rendered for a %s grant',
       mode => {
-        const markup = markupFor(mode)
-        expect(markup).not.toContain('data-testid="topbar-open-browser-window"')
+        const html = markupFor(mode)
+        expect(html).not.toContain('data-testid="topbar-pane-browser"')
         // The rest of the bar is still there.
-        expect(markup).toContain('data-slot="nexus-topbar"')
+        expect(html).toContain('data-slot="nexus-topbar"')
+        expect(html).toContain('data-testid="topbar-pane-diff"')
       },
     )
-  })
-
-  it('renders the Right Panel toggle button only when wired', () => {
-    const base = {
-      catalog: null,
-      selection: null,
-      onSelectModel: () => {},
-      onOpenSettings: () => {},
-    }
-    const without = renderToStaticMarkup(createElement(NexusTopBar, base))
-    expect(without).not.toContain('data-testid="topbar-background-tasks"')
-
-    const withButton = renderToStaticMarkup(
-      createElement(NexusTopBar, { ...base, onToggleRightPanel: () => {} }),
-    )
-    expect(withButton).toContain('data-testid="topbar-background-tasks"')
-  })
-
-  it('reflects the Right Panel visibility as the toggle pressed state + label', () => {
-    const base = {
-      catalog: null,
-      selection: null,
-      onSelectModel: () => {},
-      onOpenSettings: () => {},
-      onToggleRightPanel: () => {},
-    }
-    // Hidden → not pressed, "show" label.
-    const hidden = renderToStaticMarkup(
-      createElement(NexusTopBar, { ...base, rightPanelVisible: false }),
-    )
-    expect(hidden).toContain('aria-label="Show side panel"')
-    expect(hidden).not.toContain('aria-pressed="true"')
-    // Shown → pressed, "hide" label.
-    const shown = renderToStaticMarkup(
-      createElement(NexusTopBar, { ...base, rightPanelVisible: true }),
-    )
-    expect(shown).toContain('aria-label="Hide side panel"')
-    expect(shown).toContain('aria-pressed="true"')
   })
 })

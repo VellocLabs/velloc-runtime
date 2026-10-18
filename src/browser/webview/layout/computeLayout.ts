@@ -5,12 +5,6 @@
 import {
   CHAT_COLUMN_MIN_WIDTH_PX,
   FALLBACK_VIEWPORT_WIDTH_PX,
-  RIGHT_PANEL_COMPACT_MAX_WIDTH_PX,
-  RIGHT_PANEL_COMPACT_MIN_WIDTH_PX,
-  RIGHT_PANEL_MIN_WIDTH_PX,
-  RIGHT_PANEL_SPLIT_DEFAULT_RATIO,
-  RIGHT_PANEL_SPLIT_MAX_RATIO,
-  RIGHT_PANEL_SPLIT_MIN_RATIO,
   SIDEBAR_MAX_WIDTH_PX,
   SIDEBAR_MIN_WIDTH_PX,
   WEBVIEW_AREA_MIN_WIDTH_PX,
@@ -46,29 +40,6 @@ export function clampWebviewAreaWidth(
       Math.max(width, WEBVIEW_AREA_MIN_WIDTH_PX),
       webviewAreaMaxWidth(paneWidthPx),
     ),
-  )
-}
-
-/**
- * The Right Panel's width bounds for the current context: compact when the
- * browser is docked alongside it, otherwise only a minimum (the chat's own
- * minimum caps it in `shellLayout`). Pure.
- */
-export function rightPanelWidthBounds(browserDocked: boolean): { min: number; max: number } {
-  return browserDocked
-    ? { min: RIGHT_PANEL_COMPACT_MIN_WIDTH_PX, max: RIGHT_PANEL_COMPACT_MAX_WIDTH_PX }
-    : { min: RIGHT_PANEL_MIN_WIDTH_PX, max: Number.POSITIVE_INFINITY }
-}
-
-/**
- * Clamp a vertical-split ratio into its bounds; non-finite input falls back to
- * the default. Pure.
- */
-export function clampRightPanelSplitRatio(ratio: number): number {
-  if (!Number.isFinite(ratio)) return RIGHT_PANEL_SPLIT_DEFAULT_RATIO
-  return Math.min(
-    Math.max(ratio, RIGHT_PANEL_SPLIT_MIN_RATIO),
-    RIGHT_PANEL_SPLIT_MAX_RATIO,
   )
 }
 

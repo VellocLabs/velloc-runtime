@@ -26,7 +26,7 @@ import {
 } from '@/components/assistant-ui/background-tasks-context'
 import { SessionConnectorsContext } from '@/components/assistant-ui/session-connectors-context'
 import type { SessionMcpServerView } from '@/browser/worker/workerProtocol'
-import { LAYOUT_STORAGE_KEY, loadSessionCardPrefs } from '@/browser/webview/layout/layoutStorage'
+import { LAYOUT_STORAGE_KEY, flushLayoutStorage, loadSessionCardPrefs } from '@/browser/webview/layout/layoutStorage'
 import type { TurnDiffMeta } from '@/utils/turnDiffs'
 
 // This vitest realm's `localStorage` is not a working Storage; the layout
@@ -374,6 +374,8 @@ describe('SessionCardStack — Show menu and order', () => {
     fireEvent.keyDown(screen.getByTestId('session-card-outputs-grip'), { key: 'ArrowDown' })
     expect(cardIds()).toEqual(['session-card-changes', 'session-card-tasks', 'session-card-outputs'])
     expect(loadSessionCardPrefs().order).toEqual(['changes', 'tasks', 'connectors', 'outputs'])
+    // The blob is written once per task; flush it to read the stored copy.
+    flushLayoutStorage()
     expect(JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY) ?? '{}').sessionCards.order).toEqual([
       'changes',
       'tasks',

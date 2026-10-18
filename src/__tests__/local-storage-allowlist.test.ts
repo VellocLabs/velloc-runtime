@@ -78,9 +78,9 @@ const ALLOWLIST: Record<string, Row> = {
     why: 'the session THIS client was looking at; two clients look at different ones',
   },
   'browser/webview/layout/layoutStorage.ts': {
-    keys: ['nexus.layout.v1'],
+    keys: ['nexus.layout', 'nexus.layout.v1'],
     kind: 'view',
-    why: 'right-panel geometry',
+    why: "pane layout per session, per-kind pane weights, session card prefs; the retired `nexus.layout.v1` key is named only to remove it",
   },
   'browser/webview/MultiSessionShell.tsx': {
     keys: ['shift-sidebar-collapsed', 'shift-sidebar-width', 'shift-webview-area-width'],

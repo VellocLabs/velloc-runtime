@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ReactNode,
 } from 'react'
 import type { AppendMessage } from '@assistant-ui/react'
 import type {
@@ -31,21 +32,15 @@ import { AssistantUiThread } from './AssistantUiThread'
 import { Sidebar } from './Sidebar'
 import { SidebarSplitter } from './SidebarSplitter'
 import { SidebarPeek } from './SidebarPeek'
-import { resolveShellLayout } from './layout/shellLayout'
+import { resolveShellLayout, rightPanelWantWidth } from './layout/shellLayout'
 import { initialRightPanelPresence, stepRightPanelPresence } from './layout/rightPanelPresence'
 import { useOverlayDismiss } from './layout/useOverlayDismiss'
-import {
-  rightPanelShare,
-  rightPanelViewKind,
-  rightPanelWantWidth,
-  setRightPanelShare,
-  shareFromWidth,
-} from './layout/panelShare'
 import { setSessionCardsShown } from './layout/sessionCards'
 import { useSessionCardPrefs } from '@/components/assistant-ui/session-card-stack'
 import {
   CHAT_COLUMN_MIN_WIDTH_PX,
   CHAT_CONTENT_MIN_WIDTH_PX,
+  PANE_GUTTER_PX,
   RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX,
   SPLITTER_WIDTH_PX,
   RIGHT_PANEL_MIN_WIDTH_PX,
@@ -56,36 +51,31 @@ import {
 } from './layout/layoutConstants'
 import {
   clampSidebarWidth,
-  rightPanelWidthBounds,
   clampWebviewAreaWidth as clampWebviewAreaWidthForViewport,
   readViewportWidth,
   webviewAreaMaxWidth as webviewAreaMaxWidthForViewport,
 } from './layout/computeLayout'
 import {
-  capFileViewTabs,
-  closeView,
-  combineRightPanelState,
-  defaultRightPanelSession,
-  ensureRightPanelTab,
-  fileViewId,
-  isDefaultRightPanelTab,
-  openView,
-  pickRightPanelGeometry,
-  pickRightPanelSession,
-  reconcileRightPanelMaximized,
-  rightPanelGeometryEquals,
-  rightPanelSessionEquals,
-  setActiveView,
-  setRightPanelSplitRatio,
-  setRightPanelVisible,
-  setRightPanelShares,
-  showRightPanel,
-  type DefaultRightPanelTabId,
-  type RightPanelGeometry,
-  type RightPanelSession,
-  type RightPanelState,
-  type RightPanelViewId,
-} from './layout/rightPanelManager'
+  closePane,
+  hasPane,
+  openPane,
+  panesIn,
+  paneWeightFor,
+  pruneUnrestorable,
+  resetPaneLayout,
+  setMaximized,
+  type FilesPaneState,
+  type SessionPaneRecord,
+  type SidePaneKind,
+  CHAT_WEIGHT as PANE_CHAT_WEIGHT,
+} from './layout/paneLayout'
+import { sideRegionMetrics } from './layout/paneGeometry'
+import { activateFileTab, closeFileTab, emptyFilesPane, openFileTab } from './layout/filesPane'
+import { createSessionLayoutsStore, useSessionLayouts, type SessionLayoutsStore } from './layout/sessionLayouts'
+import { paneShortcutFor } from './layout/paneShortcuts'
+import { PaneArea } from './panes/PaneArea'
+import { PaneFrame } from './panes/PaneFrame'
+import { PANE_ICON, PANE_LABEL_KEY } from './panes/paneKinds'
 import { foldModDock, sameModDockFront, type ModDockFront } from './layout/modDock'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useModAgentView } from './mods/useModAgentView'
@@ -99,12 +89,6 @@ import {
   FilePathContext,
   createFilePathProbe,
 } from '@/components/assistant-ui/file-path-context'
-import {
-  loadRightPanelGeometry,
-  loadRightPanelLastView,
-  saveRightPanelGeometry,
-  saveRightPanelLastView,
-} from './layout/layoutStorage'
 import { ThreadErrorBoundary } from './ThreadErrorBoundary'
 import { TopbarSearch } from './topbar/TopbarSearch'
 import {
@@ -242,9 +226,7 @@ import type {
 } from '../bridge/protocol/ui'
 import {
   buildSessionSkillPanelList,
-  filterSessionSkillsByParent,
   restoreSessionSkillsFromTranscript,
-  sessionHasInvokedSkills,
   sessionSkillsEqual,
   type SkillPanelListRow,
 } from './sessionSkills'
@@ -255,7 +237,8 @@ import {
   ImportDialog,
   SettingsScreen,
   prefetchColdUi,
-  RightPanel,
+  SidePaneBody,
+  FilesPane,
 } from './coldUi'
 // Type-only, so it adds no edge to the emitted graph and the split holds.
 import type { SettingsSectionId } from './settings/SettingsScreen'
@@ -493,55 +476,24 @@ function getTranscriptUpdatedAt(state: BrowserRuntimeClientState): number {
 }
 
 /**
- * Per-session, in-memory Right Panel showing state: the reducer's session half
- * plus the Files/Diff content targets. Held in a `Map<sessionId, …>` that is
- * empty on mount, so every session starts with the panel hidden and a restart
- * resets all of them (F-9).
+ * Per-session, in-memory pane content that is not layout (F-9): the Diff and
+ * Skill targets and a file's reveal request. The layout itself is the
+ * session's persisted record (`sessionLayouts`).
  */
-interface RightPanelSessionUi {
-  session: RightPanelSession
-  // Files are per-file VIEWS (id `file:<path>`), so the open path travels in the
-  // tab id — no single fileTarget. Only the diff view keeps a mutable target.
+interface PaneSessionUi {
+  // The diff the Diff pane shows: the last one the person opened.
   diffTarget: RightPanelDiffTarget | null
-  // The skill whose instructions the Skill view shows (Skill card "View skill").
+  // The skill whose instructions the Skill pane shows (Skill card "View skill").
   skillTarget: RightPanelSkillTarget | null
-  // Line-reveal request for a file view, from a `path:42` transcript mention.
-  // Mutable per-session state (the line can't travel in the `file:<path>` tab
-  // id — reopening the same file at a different line must re-target the SAME
-  // tab). The nonce edge-triggers delivery, so clicking the same `path:42`
-  // twice re-centers.
+  // Line-reveal request for a file, from a `path:42` transcript mention. The
+  // nonce edge-triggers delivery, so clicking the same `path:42` twice
+  // re-centers.
   fileReveal: { path: string; line: number; nonce: number } | null
 }
 
-/** Stable empty UI for sessions without an entry yet (panel hidden). */
-const EMPTY_RIGHT_PANEL_UI: RightPanelSessionUi = {
-  session: {
-    visible: false,
-    activeView: null,
-    tabs: [],
-    pinnedViews: [],
-    activationHistory: [],
-  },
-  diffTarget: null,
-  skillTarget: null,
-  fileReveal: null,
-}
+const EMPTY_PANE_UI: PaneSessionUi = { diffTarget: null, skillTarget: null, fileReveal: null }
 
-function defaultRightPanelSessionUi(): RightPanelSessionUi {
-  return {
-    session: defaultRightPanelSession(),
-    diffTarget: null,
-    skillTarget: null,
-    fileReveal: null,
-  }
-}
-
-// `EMPTY_RIGHT_PANEL_UI` above deliberately mirrors `defaultRightPanelSession`
-// EXCEPT `tabs`: the empty fallback is only ever read while the panel is
-// HIDDEN (no session entry yet), so it needs no always-open tabs — the real
-// session default (`defaultRightPanelSession`, which seeds them) is what
-// renders once the panel is shown. Keep the divergence commented so a future
-// reader doesn't "fix" it into a second source of truth.
+const EMPTY_FILES_PANE: FilesPaneState = emptyFilesPane()
 
 export function MultiSessionShell({
   createWorkerTransport,
@@ -1945,100 +1897,136 @@ export function MultiSessionShell({
   const [settingsSection, setSettingsSection] =
     useState<SettingsSectionId | null>(null)
 
-  // Right Panel (F-9). Persistence is split: GEOMETRY is global and persisted; SHOWING state
-  // is per-session and in-memory; the last-used always-open tab is a global persisted preference.
-  const [rightPanelGeometry, setRightPanelGeometry] =
-    useState<RightPanelGeometry>(() => loadRightPanelGeometry())
-  const [rightPanelSessions, setRightPanelSessions] = useState<
-    Map<string, RightPanelSessionUi>
-  >(() => new Map())
-  // Read once (lazy initializer), then held in a ref: the preference is only
-  // ever consulted inside callbacks, so re-rendering the shell when it changes
-  // would buy nothing.
-  const [initialRightPanelLastView] = useState<DefaultRightPanelTabId>(
-    loadRightPanelLastView,
+  // Side panes (F-9). Each session's arrangement is a persisted record held
+  // in one store seeded at boot; the pane content that is not layout stays
+  // in memory per session.
+  const sessionLayoutsStoreRef = useRef<SessionLayoutsStore | null>(null)
+  if (sessionLayoutsStoreRef.current === null) {
+    sessionLayoutsStoreRef.current = createSessionLayoutsStore()
+  }
+  const sessionLayoutsStore = sessionLayoutsStoreRef.current
+  const sessionLayouts = useSessionLayouts(sessionLayoutsStore)
+  const [paneSessionUi, setPaneSessionUi] = useState<Map<string, PaneSessionUi>>(
+    () => new Map(),
   )
-  const rightPanelLastViewRef = useRef(initialRightPanelLastView)
-
-  const rightPanelGeometryRef = useRef(rightPanelGeometry)
-  rightPanelGeometryRef.current = rightPanelGeometry
-  const rightPanelSessionsRef = useRef(rightPanelSessions)
-  rightPanelSessionsRef.current = rightPanelSessions
   const activeSessionIdRef = useRef(activeSessionId)
   activeSessionIdRef.current = activeSessionId
+  const settingsOpenRef = useRef(false)
+  settingsOpenRef.current = settingsSection !== null
 
-  // The active session's showing state, recombined with the global geometry into
-  // the RightPanelState the reducer + UI operate on.
-  const activeRightPanelUi =
-    (activeSessionId ? rightPanelSessions.get(activeSessionId) : undefined) ??
-    EMPTY_RIGHT_PANEL_UI
-  const rightPanel = useMemo(
-    () => combineRightPanelState(activeRightPanelUi.session, rightPanelGeometry),
-    [activeRightPanelUi.session, rightPanelGeometry],
+  const activePaneUi =
+    (activeSessionId ? paneSessionUi.get(activeSessionId) : undefined) ?? EMPTY_PANE_UI
+  const activeNexusTabCount = activeSessionId
+    ? (sessionTabCounts.get(activeSessionId)?.nexus ?? 0)
+    : 0
+  // The drawn record: the stored one with the panes this session cannot show
+  // right now pruned (a browser pane while it owns no tab). The stored record
+  // keeps them, so they return in place.
+  const storedPaneRecord = activeSessionId ? sessionLayouts.records.get(activeSessionId) : undefined
+  const activePaneRecord = useMemo(
+    () => pruneUnrestorable(storedPaneRecord ?? sessionLayoutsStore.get(''), { browserTabs: activeNexusTabCount }),
+    [storedPaneRecord, activeNexusTabCount, sessionLayoutsStore],
   )
-  const rightPanelDiffTarget = activeRightPanelUi.diffTarget
-  const rightPanelSkillTarget = activeRightPanelUi.skillTarget
-  const rightPanelFileReveal = activeRightPanelUi.fileReveal
+  const paneLayout = activePaneRecord.layout
+  const openPanes = useMemo(() => panesIn(paneLayout), [paneLayout])
+  const paneMaximized = activePaneRecord.maximized
+  const sideVisible = openPanes.length > 0
+  const rightPanelDiffTarget = activePaneUi.diffTarget
+  const rightPanelSkillTarget = activePaneUi.skillTarget
+  const rightPanelFileReveal = activePaneUi.fileReveal
+  // The pane a press or focus last landed in, and the pane last closed, per
+  // session: what the close and reopen shortcuts act on.
+  const focusedPaneRef = useRef(new Map<string, SidePaneKind>())
+  const lastClosedPaneRef = useRef(new Map<string, SidePaneKind>())
+  useEffect(() => {
+    if (activeSessionId) sessionLayoutsStore.touch(activeSessionId)
+  }, [activeSessionId, sessionLayoutsStore])
 
-  // Right Panel MAXIMIZED: a transient view mode outside `RightPanelState`, reset during
-  // render on a session switch or a closed panel (`reconcileRightPanelMaximized`).
-  const [rightPanelMaximizedState, setRightPanelMaximizedState] =
-    useState(false)
-  const maximizedSessionRef = useRef(activeSessionId)
-  const sessionChanged = maximizedSessionRef.current !== activeSessionId
-  maximizedSessionRef.current = activeSessionId
-  const { maximized: rightPanelMaximized, resetState: resetMaximizedState } =
-    reconcileRightPanelMaximized({
-      maximizedState: rightPanelMaximizedState,
-      panelVisible: rightPanel.visible,
-      sessionChanged,
-    })
-  if (resetMaximizedState) setRightPanelMaximizedState(false)
-
-  // Remember the always-open tab the user just focused, so the NEXT panel open
-  // that names no view lands there (a fresh session, or after a restart).
-  // Ignores everything else: `plan` and `file:<path>` views exist only in the
-  // session that opened them, so restoring into one is impossible.
-  const rememberRightPanelView = useCallback((view: RightPanelViewId | null) => {
-    if (!isDefaultRightPanelTab(view)) return
-    if (view === rightPanelLastViewRef.current) return
-    rightPanelLastViewRef.current = view
-    saveRightPanelLastView(view)
+  // Apply a record change to a session (the active one by default); the
+  // store writes it and re-renders the shell. A record returned unchanged
+  // writes nothing. The side region closing (its last pane gone) is reported
+  // to the presence reducer.
+  const updatePaneRecord = useCallback(
+    (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId = activeSessionIdRef.current) => {
+      if (!sessionId) return
+      const prev = sessionLayoutsStore.get(sessionId)
+      const next = fn(prev)
+      if (next === prev) return
+      if (panesIn(prev.layout).length > 0 && panesIn(next.layout).length === 0) {
+        presentRightPanel({ type: 'close' })
+      }
+      sessionLayoutsStore.put(sessionId, next)
+    },
+    [sessionLayoutsStore],
+  )
+  const focusPane = useCallback((kind: SidePaneKind) => {
+    const id = activeSessionIdRef.current
+    if (id) focusedPaneRef.current.set(id, kind)
   }, [])
-
-  // Apply a reducer action against the ACTIVE session's combined state, routing
-  // geometry changes to the global (persisted) store and showing-state changes
-  // to the per-session (in-memory) map. Each half is written only when it
-  // actually changed (reducers return the same ref on no-ops).
-  const updateRightPanel = useCallback(
-    (fn: (prev: RightPanelState) => RightPanelState) => {
+  /** Open `kind` for the person: placed, focused, shown when overlaid, and
+   *  expanded in place of a pane that was expanded. */
+  const openPaneFor = useCallback(
+    (kind: SidePaneKind) => {
+      updatePaneRecord(r => {
+        const opened = openPane(r, kind, sessionLayoutsStore.getSnapshot().weights)
+        return opened.maximized !== null ? setMaximized(opened, kind) : opened
+      })
+      focusPane(kind)
+      presentRightPanel({ type: 'personOpen', view: kind })
+    },
+    [updatePaneRecord, sessionLayoutsStore, focusPane],
+  )
+  const closePaneFor = useCallback(
+    (kind: SidePaneKind) => {
       const id = activeSessionIdRef.current
       if (!id) return
-      const prevUi =
-        rightPanelSessionsRef.current.get(id) ?? defaultRightPanelSessionUi()
-      const prevGeometry = rightPanelGeometryRef.current
-      const next = fn(combineRightPanelState(prevUi.session, prevGeometry))
-      const nextGeometry = pickRightPanelGeometry(next)
-      const nextSession = pickRightPanelSession(next)
-      // Every user-driven tab change flows through here (tab click, topbar
-      // toggle, "open Tasks" from a tool card), so this is the one place the
-      // restore preference has to be recorded.
-      rememberRightPanelView(nextSession.activeView)
-      if (!rightPanelGeometryEquals(nextGeometry, prevGeometry)) {
-        saveRightPanelGeometry(nextGeometry)
-        setRightPanelGeometry(nextGeometry)
-      }
-      if (prevUi.session.visible && !nextSession.visible) presentRightPanel({ type: 'close' })
-      if (!rightPanelSessionEquals(nextSession, prevUi.session)) {
-        setRightPanelSessions(prev => {
-          const m = new Map(prev)
-          m.set(id, { ...(m.get(id) ?? defaultRightPanelSessionUi()), session: nextSession })
-          return m
-        })
-      }
+      if (!hasPane(sessionLayoutsStore.get(id).layout, kind)) return
+      updatePaneRecord(r => closePane(r, kind))
+      lastClosedPaneRef.current.set(id, kind)
+      if (focusedPaneRef.current.get(id) === kind) focusedPaneRef.current.delete(id)
     },
-    [rememberRightPanelView],
+    [updatePaneRecord, sessionLayoutsStore],
   )
+  /** The topbar toggle: open a closed pane, close an open one. Overlaid and
+   *  hidden, an open pane's toggle shows the overlay; while another pane is
+   *  expanded, it moves the expansion to this pane. */
+  const togglePane = useCallback(
+    (kind: SidePaneKind) => {
+      const id = activeSessionIdRef.current
+      if (!id) return
+      setBackgroundTaskFocusSessionId(null)
+      const record = sessionLayoutsStore.get(id)
+      if (!hasPane(record.layout, kind)) {
+        openPaneFor(kind)
+        return
+      }
+      const presence = rightPanelPresenceRef.current
+      if (presence.form === 'overlay' && !presence.overlay) {
+        presentRightPanel({ type: 'personOpen', view: kind })
+        return
+      }
+      if (record.maximized !== null && record.maximized !== kind) {
+        updatePaneRecord(r => setMaximized(r, kind))
+        focusPane(kind)
+        return
+      }
+      closePaneFor(kind)
+    },
+    [sessionLayoutsStore, openPaneFor, closePaneFor, updatePaneRecord, focusPane],
+  )
+  const handleResetLayout = useCallback(() => {
+    updatePaneRecord(resetPaneLayout)
+  }, [updatePaneRecord])
+  const updatePaneUi = useCallback((sessionId: string, fn: (prev: PaneSessionUi) => PaneSessionUi) => {
+    setPaneSessionUi(prev => {
+      const cur = prev.get(sessionId) ?? EMPTY_PANE_UI
+      const next = fn(cur)
+      if (next === cur) return prev
+      const m = new Map(prev)
+      m.set(sessionId, next)
+      return m
+    })
+  }, [])
 
   // Paths whose Files-view editor currently holds UNSAVED edits. Reported by
   // the mounted `FilePanel`s (and cleared by them on unmount), so this only
@@ -2058,15 +2046,9 @@ export function MultiSessionShell({
       return next
     })
   }, [])
-  const dirtyFileViews = useMemo<ReadonlySet<RightPanelViewId>>(
-    () => new Set([...dirtyFilePaths].map(fileViewId)),
-    [dirtyFilePaths],
-  )
 
-  // Open a file in its own per-session right-panel tab (`file:<path>`); past
-  // `RIGHT_PANEL_MAX_FILE_TABS` the oldest is dropped, never an active, pinned or dirty one.
-  // The panel renders outside AssistantUiThread's provider tree, so the shell provides its
-  // own path probe + open handles around <RightPanel>.
+  // The panes render outside AssistantUiThread's provider tree, so the shell
+  // provides its own path probe + open handles around them.
   const shellFilePathProbe = useMemo(
     () => createFilePathProbe(statFilePaths),
     [statFilePaths],
@@ -2082,81 +2064,63 @@ export function MultiSessionShell({
   // Monotonic nonce for fileReveal — a plain counter (no Date.now) so two
   // clicks in the same millisecond still read as two requests.
   const fileRevealNonceRef = useRef(0)
+  // Open a file as a tab of the Files pane; past the strip's cap the oldest
+  // tab is dropped, never the active or a dirty one.
   const openFileInPanel = useCallback((target: RightPanelFileTarget) => {
     const id = activeSessionIdRef.current
     if (!id) return
-    setRightPanelSessions(prev => {
-      const m = new Map(prev)
-      const cur = m.get(id) ?? defaultRightPanelSessionUi()
-      const opened = openView(
-        combineRightPanelState(cur.session, rightPanelGeometryRef.current),
-        fileViewId(target.path),
-      )
-      const session = pickRightPanelSession(
-        capFileViewTabs(opened, {
-          protectedViews: new Set(
-            [...dirtyFilePathsRef.current].map(fileViewId),
-          ),
-        }),
-      )
-      // A `path:42` mention carries a landing line — record the reveal even
-      // for an already-open tab (the click means "take me THERE, again").
-      const fileReveal =
-        target.line !== undefined
-          ? {
-              path: target.path,
-              line: target.line,
-              nonce: ++fileRevealNonceRef.current,
-            }
-          : cur.fileReveal
-      m.set(id, { ...cur, session, fileReveal })
-      return m
+    updatePaneRecord(r => {
+      const files = openFileTab(r.files ?? EMPTY_FILES_PANE, target.path, {
+        protectedPaths: dirtyFilePathsRef.current,
+      })
+      const opened = openPane(r, 'files', sessionLayoutsStore.getSnapshot().weights)
+      return files === r.files ? opened : { ...opened, files }
     })
-    presentRightPanel({ type: 'personOpen', view: fileViewId(target.path) })
-  }, [])
+    focusPane('files')
+    // A `path:42` mention carries a landing line — record the reveal even
+    // for an already-open tab (the click means "take me THERE, again").
+    if (target.line !== undefined) {
+      const line = target.line
+      updatePaneUi(id, cur => ({
+        ...cur,
+        fileReveal: { path: target.path, line, nonce: ++fileRevealNonceRef.current },
+      }))
+    }
+    presentRightPanel({ type: 'personOpen', view: 'files' })
+  }, [updatePaneRecord, sessionLayoutsStore, focusPane, updatePaneUi])
+  const handleActivateFileTab = useCallback(
+    (path: string) => {
+      updatePaneRecord(r => {
+        const files = activateFileTab(r.files ?? EMPTY_FILES_PANE, path)
+        return files === r.files ? r : { ...r, files }
+      })
+    },
+    [updatePaneRecord],
+  )
+  const handleCloseFileTab = useCallback(
+    (path: string) => {
+      updatePaneRecord(r => {
+        const files = closeFileTab(r.files ?? EMPTY_FILES_PANE, path)
+        return files === r.files ? r : { ...r, files }
+      })
+    },
+    [updatePaneRecord],
+  )
   const openDiffInPanel = useCallback((target: RightPanelDiffTarget) => {
     const id = activeSessionIdRef.current
     if (!id) return
-    // This writer bypasses `updateRightPanel`, so it records the preference
-    // itself — and does it OUTSIDE the state updater, which React may call
-    // twice. The view it activates is always `diff`.
-    rememberRightPanelView('diff')
-    setRightPanelSessions(prev => {
-      const m = new Map(prev)
-      const cur = m.get(id) ?? defaultRightPanelSessionUi()
-      const session = pickRightPanelSession(
-        openView(
-          combineRightPanelState(cur.session, rightPanelGeometryRef.current),
-          'diff',
-        ),
-      )
-      m.set(id, { ...cur, diffTarget: target, session })
-      return m
-    })
-    presentRightPanel({ type: 'personOpen', view: 'diff' })
-  }, [rememberRightPanelView])
+    updatePaneUi(id, cur => ({ ...cur, diffTarget: target }))
+    openPaneFor('diff')
+  }, [updatePaneUi, openPaneFor])
 
-  // Skill card "View skill" → the Skill tab. Same shape as `openDiffInPanel`:
-  // records the preference outside the updater, activates `skill`, stores the
-  // target the panel body reads.
+  // Skill card "View skill" → the Skill pane: stores the target the pane
+  // body reads and opens the pane.
   const openSkillInPanel = useCallback((target: RightPanelSkillTarget) => {
     const id = activeSessionIdRef.current
     if (!id) return
-    rememberRightPanelView('skill')
-    setRightPanelSessions(prev => {
-      const m = new Map(prev)
-      const cur = m.get(id) ?? defaultRightPanelSessionUi()
-      const session = pickRightPanelSession(
-        openView(
-          combineRightPanelState(cur.session, rightPanelGeometryRef.current),
-          'skill',
-        ),
-      )
-      m.set(id, { ...cur, skillTarget: target, session })
-      return m
-    })
-    presentRightPanel({ type: 'personOpen', view: 'skill' })
-  }, [rememberRightPanelView])
+    updatePaneUi(id, cur => ({ ...cur, skillTarget: target }))
+    openPaneFor('skill')
+  }, [updatePaneUi, openPaneFor])
 
   // Open handles for FilePathLinks rendered INSIDE the panel (plan text /
   // `.md` preview) — same handlers the transcript uses.
@@ -2200,8 +2164,7 @@ export function MultiSessionShell({
   // (`task.recoverBackground`, idempotent per session in the manager). A closed
   // drawer triggers no transcript scan — the deferral the user asked for.
   // Mirrors the Skills tab's open-gated scan below.
-  const backgroundTasksTabOpen =
-    rightPanel.visible && rightPanel.activeView === 'tasks'
+  const backgroundTasksTabOpen = openPanes.includes('tasks')
   useEffect(() => {
     // Depend on `sessionChannel` (not just the ref) so that if it is not there
     // yet when the drawer first opens, the request re-fires the moment it is —
@@ -2211,46 +2174,10 @@ export function MultiSessionShell({
       sessionId: activeSessionId,
     })
   }, [backgroundTasksTabOpen, activeSessionId, sessionChannel])
-  // Skill invocations recovered from the ACTIVE session's transcript, so the Skills tab
-  // survives a restart. View-only (never written to the worker store), scanned only while
-  // the panel is visible, cached per session over appended messages.
-  const skillPresenceCacheRef = useRef<
-    Map<string, { scanned: number; has: boolean }>
-  >(new Map())
-  const activeSessionHasSkills = useMemo(() => {
-    if (!rightPanel.visible || !activeSessionId) return false
-    // The live feed is authoritative when it has rows for this session — it
-    // carries EVERY invocation outcome, including a `failed` one that injects no
-    // transcript message at all (so the scan below would miss it) and, after a
-    // restart, the sidecar-reseeded history. A session whose only skill activity
-    // was a failure therefore still gets its tab back.
-    if (filterSessionSkillsByParent(sessionSkillRows, activeSessionId).length > 0) {
-      return true
-    }
-    const messages = activeState.transcriptMessages ?? []
-    const cache = skillPresenceCacheRef.current
-    const prior = cache.get(activeSessionId)
-    if (prior?.has) return true
-    // Append-only in the common case; a shrink (e.g. compaction replaced the
-    // tail) falls back to a full re-scan from the start.
-    const from = prior && prior.scanned <= messages.length ? prior.scanned : 0
-    const has = sessionHasInvokedSkills(
-      from === 0 ? messages : messages.slice(from),
-    )
-    cache.set(activeSessionId, { scanned: messages.length, has })
-    return has
-  }, [
-    rightPanel.visible,
-    activeSessionId,
-    activeState.transcriptMessages,
-    sessionSkillRows,
-  ])
-  useEffect(() => {
-    if (!activeSessionHasSkills || !activeSessionId) return
-    updateRightPanel(s => ensureRightPanelTab(s, 'skill'))
-  }, [activeSessionHasSkills, activeSessionId, updateRightPanel])
-  const skillTabOpen =
-    rightPanel.visible && rightPanel.activeView === 'skill'
+  // Skill invocations recovered from the ACTIVE session's transcript, so the
+  // Skills pane survives a restart. View-only (never written to the worker
+  // store), scanned only while the pane is open.
+  const skillTabOpen = openPanes.includes('skill')
   const restoredSessionSkills = useMemo(
     () =>
       skillTabOpen
@@ -2313,74 +2240,53 @@ export function MultiSessionShell({
   )
   const handleOpenBackgroundTasks = useCallback((focusSessionId?: string) => {
     setBackgroundTaskFocusSessionId(focusSessionId ?? null)
-    updateRightPanel(s => openView(s, 'tasks'))
-    presentRightPanel({ type: 'personOpen', view: 'tasks' })
-  }, [updateRightPanel])
+    openPaneFor('tasks')
+  }, [openPaneFor])
   // Tasks on its list: each request (a count) sends the drawer back from any
   // task detail it shows.
   const [backgroundTaskListRequest, setBackgroundTaskListRequest] = useState(0)
   const handleOpenBackgroundTasksList = useCallback(() => {
     setBackgroundTaskFocusSessionId(null)
     setBackgroundTaskListRequest(n => n + 1)
-    updateRightPanel(s => openView(s, 'tasks'))
-    presentRightPanel({ type: 'personOpen', view: 'tasks' })
-  }, [updateRightPanel])
+    openPaneFor('tasks')
+  }, [openPaneFor])
 
   // `$.ui.view` (F-25): a teammate's transcript is its own session; a
-  // subagent's is its Tasks detail, maximized over the conversation. Going
-  // back restores that session's panel as it was before.
-  const rightPanelBeforeAgentView = useRef(
-    new Map<string, { visible: boolean; activeView: RightPanelViewId | null; maximized: boolean }>(),
+  // subagent's is its Tasks detail, expanded over the conversation. Going
+  // back restores that session's panes as they were before.
+  const panesBeforeAgentView = useRef(
+    new Map<string, { hadTasks: boolean; maximized: SidePaneKind | null }>(),
   )
   useModAgentView(runtimeConnection, activeSessionId ?? undefined, {
     focusSession,
     showSubagent: taskId => {
       const sessionId = activeSessionIdRef.current
-      if (sessionId && !rightPanelBeforeAgentView.current.has(sessionId)) {
-        rightPanelBeforeAgentView.current.set(sessionId, {
-          visible: rightPanel.visible,
-          activeView: rightPanel.activeView,
-          maximized: rightPanelMaximized,
+      if (sessionId && !panesBeforeAgentView.current.has(sessionId)) {
+        const record = sessionLayoutsStore.get(sessionId)
+        panesBeforeAgentView.current.set(sessionId, {
+          hadTasks: hasPane(record.layout, 'tasks'),
+          maximized: record.maximized,
         })
       }
       handleOpenBackgroundTasks(taskId)
-      setRightPanelMaximizedState(true)
+      updatePaneRecord(r => setMaximized(r, 'tasks'))
     },
     leaveSubagent: () => {
       const sessionId = activeSessionIdRef.current
-      const before = sessionId ? rightPanelBeforeAgentView.current.get(sessionId) : undefined
-      if (sessionId) rightPanelBeforeAgentView.current.delete(sessionId)
+      const before = sessionId ? panesBeforeAgentView.current.get(sessionId) : undefined
+      if (sessionId) panesBeforeAgentView.current.delete(sessionId)
       setBackgroundTaskFocusSessionId(null)
       setBackgroundTaskListRequest(n => n + 1)
-      setRightPanelMaximizedState(before?.maximized ?? false)
-      if (!before) return
-      const restored = before.visible ? before.activeView : null
-      if (restored && (!rightPanel.visible || rightPanel.activeView !== restored)) {
-        presentRightPanel({ type: 'personOpen', view: restored })
+      if (!before) {
+        updatePaneRecord(r => setMaximized(r, null))
+        return
       }
-      updateRightPanel(s =>
-        restored ? openView(s, restored) : setRightPanelVisible(s, before.visible),
-      )
+      updatePaneRecord(r => {
+        const restored = before.hadTasks ? r : closePane(r, 'tasks')
+        return setMaximized(restored, before.maximized)
+      })
     },
   })
-  // Topbar toggle: show the Right Panel if hidden, or close it if shown.
-  // Showing focuses a tab — this session's own last one, else the remembered
-  // preference (`rightPanelLastViewRef`), else Tasks — so the panel never
-  // opens onto an empty container. Clear any pending task-focus so opening
-  // lands on the Tasks LIST, not a stale detail.
-  const handleToggleRightPanel = useCallback(() => {
-    setBackgroundTaskFocusSessionId(null)
-    if (rightPanelPresenceRef.current.form === 'overlay') {
-      presentRightPanel({ type: 'toggle' })
-      return
-    }
-    updateRightPanel(s => {
-      if (s.visible) return setRightPanelVisible(s, false)
-      const shown = showRightPanel(s, rightPanelLastViewRef.current)
-      if (shown.activeView) presentRightPanel({ type: 'personOpen', view: shown.activeView })
-      return shown
-    })
-  }, [updateRightPanel])
   // The drawer consumed the focus id (detail opened) — clear it so a later
   // summary broadcast can't re-open the detail after the user navigates back,
   // and so a repeat jump to the SAME task re-triggers (null → id transition).
@@ -2451,36 +2357,39 @@ export function MultiSessionShell({
       submitToolResult,
     ],
   )
-  // The Plan view is ephemeral — tied to a pending ExitPlanMode approval. Drop
-  // it from the panel once the approval resolves (and on load, when a persisted
-  // 'plan' tab has no pending plan). The close is DEFERRED a tick: a session
-  // switch / snapshot refetch can make `activePlanEntry` momentarily null and
-  // resolve back to a real plan on the next render — the cleanup cancels the
-  // pending close in that case, so a plan the user is actively viewing isn't
-  // yanked out from under them. `closeView` returns the same ref when 'plan'
-  // isn't open, so a real close neither loops nor writes storage needlessly.
+  // The Plan pane closes once its approval resolves (a plan gives way to
+  // none in the same session); a session restored with a Plan pane and no
+  // plan keeps it. The close is DEFERRED a tick: a session switch / snapshot
+  // refetch can make `activePlanEntry` momentarily null and resolve back to
+  // a real plan on the next render — the cleanup cancels the pending close.
+  const lastPlanRef = useRef<{ sessionId: string; toolCallId: string | null }>({
+    sessionId: '',
+    toolCallId: null,
+  })
   useEffect(() => {
-    if (activePlanEntry) return
+    const last = lastPlanRef.current
+    const toolCallId = activePlanEntry?.toolCallId ?? null
+    lastPlanRef.current = { sessionId: activeSessionId, toolCallId }
+    if (toolCallId !== null || last.sessionId !== activeSessionId || last.toolCallId === null) return
     const id = window.setTimeout(() => {
-      updateRightPanel(s => {
-        if (!s.tabs.includes('plan')) return s
-        const next = closeView(s, 'plan')
-        if (s.activeView === 'plan') {
-          presentRightPanel({ type: 'planClosed', nextView: next.visible ? next.activeView : null })
-        }
+      updatePaneRecord(r => {
+        if (!hasPane(r.layout, 'plan')) return r
+        const next = closePane(r, 'plan')
+        const remaining = panesIn(next.layout)
+        presentRightPanel({ type: 'planClosed', nextView: remaining[0] ?? null })
         return next
-      })
+      }, activeSessionId)
     }, 0)
     return () => window.clearTimeout(id)
-  }, [activePlanEntry, updateRightPanel])
-  // Auto-open the Plan view when a NEW pending plan approval arrives (mirrors
+  }, [activePlanEntry, activeSessionId, updatePaneRecord])
+  // Auto-open the Plan pane when a NEW pending plan approval arrives (mirrors
   // the file/diff-click auto-open) so the user sees the plan without having to
   // press "View plan". Gate semantics (per-session keying, never re-opening
   // the same pending plan, never clearing on null) live in
   // `createPlanAutoOpenGate` — see its doc.
   const planAutoOpenGateRef = useRef(createPlanAutoOpenGate())
-  // Set below, once the layout is known: reports a view the agent opened.
-  const agentOpenRightPanelRef = useRef<(view: RightPanelViewId) => void>(() => {})
+  // Set below, once the layout is known: reports a pane the agent opened.
+  const agentOpenRightPanelRef = useRef<(view: SidePaneKind) => void>(() => {})
   useEffect(() => {
     if (
       !planAutoOpenGateRef.current(activeSessionId, activePlanEntry?.toolCallId)
@@ -2488,8 +2397,8 @@ export function MultiSessionShell({
       return
     }
     agentOpenRightPanelRef.current('plan')
-    updateRightPanel(s => openView(s, 'plan'))
-  }, [activePlanEntry, activeSessionId, updateRightPanel])
+    updatePaneRecord(r => openPane(r, 'plan', sessionLayoutsStore.getSnapshot().weights))
+  }, [activePlanEntry, activeSessionId, updatePaneRecord, sessionLayoutsStore])
   // Declared after the plan auto-open, so a switch keeps the float that
   // effect just opened for the session switched to.
   useEffect(() => {
@@ -2503,9 +2412,7 @@ export function MultiSessionShell({
   // covers the ones where no reporter instance exists at all — e.g. a
   // switch to a tab-less session whose row never renders an area. The
   // module-level dedupe in postMainContentsLayout makes overlaps free.
-  const activeNexusTabCount = activeSessionId
-    ? (sessionTabCounts.get(activeSessionId)?.nexus ?? 0)
-    : 0
+
   // User dismissal of the docked browser view (header X button). Keyed by
   // `{sessionId}:{tabCount}` so the dismissal is scoped to the exact state it
   // was made in: switching sessions OR the agent opening/closing a tab (which
@@ -2550,33 +2457,31 @@ export function MultiSessionShell({
     }
   }, [webviewAreaCanShow])
 
-  // When the browser is docked alongside the Right Panel, the panel uses its
-  // compact width range so the conversation + panel + browser stay usable.
-  const browserDocked = webviewAreaCanShow
-  const { min: rightPanelMinWidth, max: rightPanelMaxWidth } =
-    rightPanelWidthBounds(browserDocked)
-  // The panel's width is a share of the room beside the chat, remembered per
-  // view kind; a settled float holds its own share for its kind until the
-  // kind changes or the panel closes (never saved).
-  const rightPanelKind = rightPanelViewKind(rightPanel.activeView)
+  // The side region as the cascade sees it: its minimum is its root-row
+  // children's minimums plus gutters, its share the side weights over all
+  // weights; a settled float holds its own share while its pane stays in
+  // front (never saved).
+  const sideMetrics = useMemo(() => sideRegionMetrics(paneLayout), [paneLayout])
+  const frontPane = openPanes[0] ?? null
   const rightPanelHold = rightPanelPresence.hold
-  const rightPanelShareNow =
-    rightPanelHold?.kind === rightPanelKind
+  const sideShareNow =
+    rightPanelHold && frontPane !== null && rightPanelHold.kind === frontPane
       ? rightPanelHold.share
-      : rightPanelShare(rightPanel.shares, rightPanelKind)
+      : sideMetrics.share
   const rightPanelFloat = rightPanelPresence.float
-  // The drawn layout for this width (F-9): sidebar form, the panel's drawn
-  // width (the chat yields first), the chat's clip, and where the card stack goes.
+  // The drawn layout for this width (F-9): sidebar form, the side region's
+  // drawn width (the chat yields first), the chat's clip, and where the card stack goes.
   const shellLayout = resolveShellLayout({
     areaW: sessionAreaWidth,
     sidebar: { collapsed: sidebarCollapsed, width: sidebarWidth },
     panel: {
-      visible: rightPanel.visible,
-      maximized: rightPanelMaximized,
-      share: rightPanelShareNow,
-      minWidth: rightPanelMinWidth,
-      maxWidth: rightPanelMaxWidth,
-      floatWidth: rightPanel.visible ? rightPanelFloat?.width ?? null : null,
+      visible: sideVisible,
+      maximized: paneMaximized !== null,
+      share: sideShareNow,
+      minWidth: Math.max(RIGHT_PANEL_MIN_WIDTH_PX, sideMetrics.minWidth),
+      maxWidth: Number.POSITIVE_INFINITY,
+      floatWidth: sideVisible ? rightPanelFloat?.width ?? null : null,
+      gutter: PANE_GUTTER_PX,
     },
     browserW: webviewAreaCanShow ? webviewAreaWidth + SPLITTER_WIDTH_PX : 0,
   })
@@ -2593,8 +2498,8 @@ export function MultiSessionShell({
   const handleToggleSessionCards = useCallback(() => {
     // A maximized panel covers the cards: the toggle restores the chat and
     // shows them.
-    if (rightPanelMaximized) {
-      setRightPanelMaximizedState(false)
+    if (paneMaximized !== null) {
+      updatePaneRecord(r => setMaximized(r, null))
       if (sessionCardsFit) writeSessionCardPrefs(setSessionCardsShown(sessionCardPrefs, true))
       else setSessionCardsPopoverOpen(true)
       return
@@ -2605,8 +2510,8 @@ export function MultiSessionShell({
       setSessionCardsPopoverOpen(open => !open)
     }
   }, [
-    rightPanelMaximized,
-    setRightPanelMaximizedState,
+    paneMaximized,
+    updatePaneRecord,
     sessionCardsFit,
     sessionCardPrefs,
     writeSessionCardPrefs,
@@ -2618,14 +2523,17 @@ export function MultiSessionShell({
   const rightPanelOverlaid = shellLayout.panel === 'overlay'
   const rightPanelOverlayShown = rightPanelOverlaid && rightPanelPresence.overlay
   // Over the chat it leaves a strip of the chat to press back into.
-  const effectiveRightPanelWidth =
+  const effectiveSideWidth =
     shellLayout.panel === 'overlay'
       ? Math.max(0, Math.min(shellLayout.panelOffRowW, shellLayout.chatW - RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX))
       : shellLayout.panel === 'float'
         ? shellLayout.panelOffRowW
         : shellLayout.panelW
   const rightPanelFloating = shellLayout.panel === 'float'
-  const rightPanelRoom = shellLayout.chatW - SPLITTER_WIDTH_PX
+  // The room a docked region splits with the chat: beside, both widths;
+  // otherwise the chat's width less the gutter the region would take.
+  const rightPanelRoom =
+    shellLayout.chatW + shellLayout.panelW - (shellLayout.panel === 'beside' ? 0 : PANE_GUTTER_PX)
   useEffect(() => {
     presentRightPanel({
       type: 'resize',
@@ -2634,14 +2542,15 @@ export function MultiSessionShell({
       room: rightPanelRoom,
     })
   }, [sessionAreaWidth, shellLayout.panel, rightPanelRoom])
-  // The agent opening a view while the panel is closed floats it over the
+  // The agent opening a pane while the region is closed floats it over the
   // spare width at the transcript's end, measured here.
-  agentOpenRightPanelRef.current = (view: RightPanelViewId) => {
-    const panelOpen = rightPanel.visible || rightPanelMaximized
+  agentOpenRightPanelRef.current = (view: SidePaneKind) => {
+    const panelOpen = sideVisible
     const section = panelOpen
       ? null
       : document.querySelector(`[data-session-section="${CSS.escape(activeSessionId)}"]`)
     const column = section?.querySelector('.aui-thread-viewport-footer')
+    const weight = paneWeightFor(view, sessionLayouts.weights)
     presentRightPanel({
       type: 'agentOpen',
       view,
@@ -2652,10 +2561,10 @@ export function MultiSessionShell({
           ? Math.floor(section.getBoundingClientRect().right - column.getBoundingClientRect().right)
           : null,
       dockedWidth: rightPanelWantWidth(
-        rightPanelShare(rightPanel.shares, rightPanelViewKind(view)),
+        weight / (PANE_CHAT_WEIGHT + weight),
         rightPanelRoom,
-        rightPanelMinWidth,
-        rightPanelMaxWidth,
+        RIGHT_PANEL_MIN_WIDTH_PX,
+        Number.POSITIVE_INFINITY,
       ),
       areaW: sessionAreaWidth,
     })
@@ -2679,16 +2588,7 @@ export function MultiSessionShell({
   const rightPanelOverlayDismiss = useOverlayDismiss(
     rightPanelOverlayShown,
     closeRightPanelOverlay,
-    '[data-testid="topbar-background-tasks"]',
-  )
-  // The splitter never drags the panel past the point that leaves the chat
-  // its content width.
-  const rightPanelDragMax = Math.max(
-    rightPanelMinWidth,
-    Math.min(
-      rightPanelMaxWidth,
-      shellLayout.panelW + shellLayout.chatW - CHAT_CONTENT_MIN_WIDTH_PX,
-    ),
+    '[data-testid^="topbar-pane-"], [data-testid="topbar-more-panes"], [data-testid="topbar-more-panes-menu"]',
   )
   useEffect(() => {
     if (!sidebarHidden) setSidebarPeek(false)
@@ -2705,10 +2605,10 @@ export function MultiSessionShell({
     const maxForBrowser = Math.max(
       WEBVIEW_AREA_MIN_WIDTH_PX,
       webviewAreaMaxWidth() -
-        (rightPanel.visible ? rightPanelMaxWidth : 0),
+        (sideVisible ? sideMetrics.minWidth : 0),
     )
     setWebviewAreaWidth((width) => (width > maxForBrowser ? maxForBrowser : width))
-  }, [webviewAreaCanShow, rightPanel.visible, rightPanelMaxWidth])
+  }, [webviewAreaCanShow, sideVisible, sideMetrics.minWidth])
 
   // The model picker's `⋯` → "Edit…": Settings → Models, on that provider's
   // editor. `seq` makes a repeat request for the same provider land again;
@@ -2783,7 +2683,7 @@ export function MultiSessionShell({
   // closing what the person cannot see. A session left behind is told this
   // window no longer draws it.
   const { reportSeat: reportModSeat } = shellModUi
-  const modSeat = rightPanelMaximized ? 'dock-hidden' : !modPanesDocked ? 'inline' : 'dock-visible'
+  const modSeat = paneMaximized !== null ? 'dock-hidden' : !modPanesDocked ? 'inline' : 'dock-visible'
   const modSeatShowing =
     modSeat === 'dock-visible' && activeSessionId ? modDockFronts.get(activeSessionId) ?? null : null
   const modSeatShowingPlugin = modSeatShowing?.plugin
@@ -2806,25 +2706,41 @@ export function MultiSessionShell({
         : undefined
     void reportModSeat(modSeat, showing).catch(() => {})
   }, [activeSessionId, reportModSeat, modSeat, modSeatShowingPlugin, modSeatShowingId])
-  const handleActivateRightPanelView = useCallback(
-    (view: RightPanelViewId) => {
-      updateRightPanel(s => setActiveView(s, view))
-      presentRightPanel({ type: 'personOpen', view })
-    },
-    [updateRightPanel],
-  )
-  const handleCloseRightPanelView = useCallback(
-    (view: RightPanelViewId) => {
-      updateRightPanel(s => {
-        const next = closeView(s, view)
-        if (next.visible && next.activeView && next.activeView !== s.activeView) {
-          presentRightPanel({ type: 'personOpen', view: next.activeView })
+  // Pane shortcuts (F-9): Diff toggles, the focused pane closes or
+  // expands, the last closed pane reopens. Not while Settings covers the area.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || settingsOpenRef.current) return
+      const shortcut = paneShortcutFor(event)
+      if (!shortcut) return
+      const id = activeSessionIdRef.current
+      if (!id) return
+      event.preventDefault()
+      const record = sessionLayoutsStore.get(id)
+      const panes = panesIn(record.layout)
+      const focused = focusedPaneRef.current.get(id)
+      const target = focused && panes.includes(focused) ? focused : panes[panes.length - 1]
+      switch (shortcut.action) {
+        case 'toggle':
+          togglePane(shortcut.kind)
+          break
+        case 'close-focused':
+          if (target) closePaneFor(target)
+          break
+        case 'expand-focused':
+          if (record.maximized !== null) updatePaneRecord(r => setMaximized(r, null))
+          else if (target) updatePaneRecord(r => setMaximized(r, target))
+          break
+        case 'reopen-closed': {
+          const kind = lastClosedPaneRef.current.get(id)
+          if (kind && !panes.includes(kind)) openPaneFor(kind)
+          break
         }
-        return next
-      })
-    },
-    [updateRightPanel],
-  )
+      }
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [sessionLayoutsStore, togglePane, closePaneFor, openPaneFor, updatePaneRecord])
   const handleSettingsNavigate = useCallback((section: SettingsSectionId) => {
     setPluginSettingsRequest(null)
     setSettingsSection(section)
@@ -3649,15 +3565,16 @@ export function MultiSessionShell({
           ]
       deleteSession(sessionId, rowOrders)
       setMountedSessionIds(prev => prev.filter(id => !doomed.has(id)))
-      // Drop the deleted sessions' in-memory Right Panel state (no leak).
-      setRightPanelSessions(prev => {
+      // Drop the deleted sessions' pane records and content (no leak).
+      sessionLayoutsStore.remove(doomed)
+      setPaneSessionUi(prev => {
         if (![...doomed].some(id => prev.has(id))) return prev
         const m = new Map(prev)
         for (const id of doomed) m.delete(id)
         return m
       })
     },
-    [disposeClient, deleteSession],
+    [disposeClient, deleteSession, sessionLayoutsStore],
   )
 
   const handleComposerEdit = useCallback(
@@ -3935,6 +3852,92 @@ export function MultiSessionShell({
     [hostBridgeTransport],
   );
 
+  // One pane's frame and body (F-9). The panes render outside the thread
+  // providers, so each brings the handles the deep cards need. Overlaid,
+  // Escape belongs to the overlay (it hides it); the panes' own Escape
+  // handlers must not close a pane kept open.
+  const renderSidePane = (kind: SidePaneKind): ReactNode => {
+    const name = t(PANE_LABEL_KEY[kind])
+    const Icon = PANE_ICON[kind]
+    const frame = (title: ReactNode, body: ReactNode) => (
+      <PaneFrame
+        kind={kind}
+        name={name}
+        title={title}
+        maximized={paneMaximized === kind}
+        onToggleMaximized={() =>
+          updatePaneRecord(r => setMaximized(r, r.maximized === kind ? null : kind))
+        }
+        onClose={() => closePaneFor(kind)}
+        onFocus={() => focusPane(kind)}
+        className="h-full"
+      >
+        <SessionAreaVisibleContext.Provider value={!settingsSection && !rightPanelOverlaid}>
+        <RightPanelContentContext.Provider value={shellRightPanelContentValue}>
+        <FilePathContext.Provider value={shellFilePathContextValue}>
+        <Suspense fallback={null}>{body}</Suspense>
+        </FilePathContext.Provider>
+        </RightPanelContentContext.Provider>
+        </SessionAreaVisibleContext.Provider>
+      </PaneFrame>
+    )
+    if (kind === 'files') {
+      return (
+        <Suspense fallback={null}>
+          <FilesPane
+            state={activePaneRecord.files ?? EMPTY_FILES_PANE}
+            sessionKey={activeSessionId}
+            onActivate={handleActivateFileTab}
+            onCloseTab={handleCloseFileTab}
+            protectedPaths={dirtyFilePaths}
+            onDirtyChange={handleFileDirtyChange}
+            fileReveal={rightPanelFileReveal}
+            readFileText={readFileText}
+            writeFileText={writeFileText}
+            // Lock the editor while THIS session's turn is running (the agent
+            // may be writing the same files); editing re-enables when it ends.
+            editingLocked={runningSessionIds.has(activeSessionId)}
+            frame={({ title, body }) => frame(title, body)}
+          />
+        </Suspense>
+      )
+    }
+    const label = (
+      <>
+        <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 truncate">{name}</span>
+      </>
+    )
+    return frame(
+      label,
+      <SidePaneBody
+        kind={kind}
+        planEntry={activePlanEntry}
+        onPlanResolve={resolveActivePlan}
+        onClosePlan={() => closePaneFor('plan')}
+        taskRows={activeSessionSubAgentRows}
+        taskFocusSessionId={backgroundTaskFocusSessionId}
+        taskListRequest={backgroundTaskListRequest}
+        onTaskFocusConsumed={handleTaskFocusConsumed}
+        onCloseTasks={() => closePaneFor('tasks')}
+        onTaskStop={handleStopSubAgent}
+        onTaskResume={handleResumeSubAgent}
+        loadTaskTranscript={handleLoadSubAgentTranscript}
+        diffTarget={rightPanelDiffTarget}
+        skillTarget={rightPanelSkillTarget}
+        loadedSkills={activeLoadedSkills}
+        onSelectSkill={handleSelectSkill}
+        loadToolCallDetail={loadToolCallDetail}
+        loadBundledSkillBody={loadBundledSkillBody}
+        readFileText={readFileText}
+        turnDiffHistory={activeState.turnDiffHistory ?? null}
+        loadTurnDiffDetail={loadTurnDiffDetail}
+        requestTurnDiffHistory={requestTurnDiffHistory}
+        onOpenFile={openFileInPanel}
+      />,
+    )
+  }
+
   return (
     // Both providers are no-ops on the desktop (F-24): a `full`
     // grant answers every `can()` true, and a MessagePort connection is
@@ -3985,20 +3988,21 @@ export function MultiSessionShell({
             />
           ) : undefined
         }
-        agentZoneVisible={webviewAreaCanShow}
-        onToggleAgentZone={handleToggleWebview}
         onDragRegionsChange={(regions) => {
           void setWindowDragRegions(hostBridgeTransport, regions).catch(() => {
             /* build-gated C++ route / mock host has no window to drag */
           })
         }}
-        onToggleRightPanel={handleToggleRightPanel}
-        rightPanelVisible={rightPanelOverlaid ? rightPanelOverlayShown : rightPanel.visible}
-        onToggleSessionCards={handleToggleSessionCards}
-        sessionCardsOnScreen={
-          !rightPanelMaximized && (sessionCardsFit ? sessionCardPrefs.shown : sessionCardsPopoverOpen)
-        }
-        sessionCardsAsPopover={!sessionCardsFit}
+        openPanes={openPanes}
+        onTogglePane={togglePane}
+        browserToggle={{ pressed: webviewAreaCanShow, onToggle: handleToggleWebview }}
+        sessionOverview={{
+          shown:
+            paneMaximized === null &&
+            (sessionCardsFit ? sessionCardPrefs.shown : sessionCardsPopoverOpen),
+          onToggle: handleToggleSessionCards,
+        }}
+        onResetLayout={handleResetLayout}
         backgroundTaskCount={countRunning(activeSessionSubAgentRows)}
         importSources={topbarImportSources}
         onOpenImport={setImportDialogSource}
@@ -4155,6 +4159,17 @@ export function MultiSessionShell({
           with `display: none`). Hidden trees stay in the React tree so
           switching is a paint-toggle, not an unmount/remount.
         */}
+        <PaneArea
+          layout={paneLayout}
+          maximized={paneMaximized}
+          form={shellLayout.panel}
+          chatWidth={shellLayout.chatW}
+          seatWidth={effectiveSideWidth}
+          overlayShown={rightPanelOverlayShown}
+          seatProps={rightPanelOverlaid ? rightPanelOverlayDismiss : undefined}
+          renderPane={renderSidePane}
+          chat={
+          <>
         {mountedSessionIds.map(sessionId => {
           const isActive = sessionId === activeSessionId
           const state = sessionStates.get(sessionId) ?? activeState
@@ -4187,8 +4202,7 @@ export function MultiSessionShell({
                 // A maximized Right Panel covers the conversation: hide it the
                 // same way an inactive session is hidden (display none keeps
                 // the thread mounted, so restoring is a paint toggle).
-                display:
-                  isActive && !rightPanelMaximized ? 'flex' : 'none',
+                display: isActive ? 'flex' : 'none',
                 // Narrower than its content: the content keeps its width and
                 // is clipped at the panel's edge, never squeezed.
                 overflow: isActive && shellLayout.chatClipped ? 'clip' : undefined,
@@ -4232,10 +4246,7 @@ export function MultiSessionShell({
                   backgroundTaskRows={subAgentRowsForSession(sessionId)}
                   onStopBackgroundTask={handleStopSubAgent}
                   onOpenBackgroundTasksList={handleOpenBackgroundTasksList}
-                  onOpenPlanPanel={() => {
-                    updateRightPanel(s => openView(s, 'plan'))
-                    presentRightPanel({ type: 'personOpen', view: 'plan' })
-                  }}
+                  onOpenPlanPanel={() => openPaneFor('plan')}
                   onOpenFileInPanel={openFileInPanel}
                   statFilePaths={statFilePaths}
                   onOpenDiffInPanel={openDiffInPanel}
@@ -4271,116 +4282,9 @@ export function MultiSessionShell({
             </section>
           )
         })}
-        {rightPanel.visible ? (
-          <>
-            {/* No width splitter while maximized — there is no neighbouring
-                conversation column to drag against. */}
-            {shellLayout.panel !== 'beside' ? null : (
-            <SidebarSplitter
-              width={effectiveRightPanelWidth}
-              minWidth={rightPanelMinWidth}
-              maxWidth={rightPanelDragMax}
-              onResize={width => {
-                const room = shellLayout.panelW + shellLayout.chatW
-                updateRightPanel(s =>
-                  setRightPanelShares(
-                    s,
-                    setRightPanelShare(s.shares, rightPanelKind, shareFromWidth(width, room)),
-                  ),
-                )
-                presentRightPanel({ type: 'drag' })
-              }}
-              invert
-              ariaLabel={t('rightPanel.resizeAria')}
-            />
-            )}
-            {/* One wrapper in every form, so the panel never remounts
-                (unsaved file edits live in its mounted editors). */}
-            <div
-              data-testid="right-panel-seat"
-              data-panel-form={shellLayout.panel}
-              data-overlay-open={rightPanelOverlayShown || undefined}
-              className={
-                rightPanelFloating
-                  ? 'absolute inset-y-0 z-30 flex border-border border-s bg-background shadow-xl animate-in slide-in-from-right duration-200'
-                  : !rightPanelOverlaid
-                    ? 'contents'
-                    : rightPanelOverlayShown
-                      ? 'absolute inset-y-0 z-40 flex border-border border-s bg-background shadow-xl'
-                      : 'hidden'
-              }
-              style={
-                rightPanelOverlayShown || rightPanelFloating
-                  ? { insetInlineEnd: webviewAreaCanShow ? webviewAreaWidth + SPLITTER_WIDTH_PX : 0 }
-                  : undefined
-              }
-              {...(rightPanelOverlaid ? rightPanelOverlayDismiss : null)}
-            >
-            {/* Overlaid, Escape belongs to the overlay (it hides it); the
-                panel's own Escape handlers must not close a panel kept open. */}
-            <SessionAreaVisibleContext.Provider value={!settingsSection && !rightPanelOverlaid}>
-            <RightPanelContentContext.Provider value={shellRightPanelContentValue}>
-            <FilePathContext.Provider value={shellFilePathContextValue}>
-            <Suspense fallback={null}>
-            <RightPanel
-              state={rightPanel}
-              // Session identity: scopes the body cache + keys, so a session
-              // switch releases the hidden session's tab bodies (buttons stay
-              // via the per-session RightPanelSession state) and never leaks
-              // one session's view state into another.
-              sessionId={activeSessionId}
-              width={effectiveRightPanelWidth}
-              onActivateView={handleActivateRightPanelView}
-              onCloseView={handleCloseRightPanelView}
-              onClosePanel={() =>
-                updateRightPanel(s => setRightPanelVisible(s, false))
-              }
-              maximized={rightPanelMaximized}
-              onToggleMaximized={() =>
-                setRightPanelMaximizedState(prev => !prev)
-              }
-              onSplitRatioChange={ratio =>
-                updateRightPanel(s => setRightPanelSplitRatio(s, ratio))
-              }
-              planEntry={activePlanEntry}
-              onPlanResolve={resolveActivePlan}
-              taskRows={activeSessionSubAgentRows}
-              taskFocusSessionId={backgroundTaskFocusSessionId}
-              taskListRequest={backgroundTaskListRequest}
-              onTaskFocusConsumed={handleTaskFocusConsumed}
-              onTaskStop={handleStopSubAgent}
-              onTaskResume={handleResumeSubAgent}
-              loadTaskTranscript={handleLoadSubAgentTranscript}
-              diffTarget={rightPanelDiffTarget}
-              skillTarget={rightPanelSkillTarget}
-              loadedSkills={activeLoadedSkills}
-              onSelectSkill={handleSelectSkill}
-              loadToolCallDetail={loadToolCallDetail}
-              loadBundledSkillBody={loadBundledSkillBody}
-              fileReveal={rightPanelFileReveal}
-              readFileText={readFileText}
-              writeFileText={writeFileText}
-              // Lock the Files-view editor while THIS session's turn is running
-              // (the agent may be writing the same files) — a conservative
-              // no-conflict policy; editing re-enables when the turn ends.
-              editingLocked={runningSessionIds.has(activeSessionId)}
-              // File views with unsaved edits: the panel's mount cache must not
-              // release them (the edit lives only in the mounted editor doc),
-              // and the file-tab cap must not close them.
-              protectedViews={dirtyFileViews}
-              onFileDirtyChange={handleFileDirtyChange}
-              turnDiffHistory={activeState.turnDiffHistory ?? null}
-              loadTurnDiffDetail={loadTurnDiffDetail}
-              requestTurnDiffHistory={requestTurnDiffHistory}
-              onOpenFile={openFileInPanel}
-            />
-            </Suspense>
-            </FilePathContext.Provider>
-            </RightPanelContentContext.Provider>
-            </SessionAreaVisibleContext.Provider>
-            </div>
           </>
-        ) : null}
+          }
+        />
         {/*
           Docked browser — a SINGLE shell-scoped WebviewArea for the active
           session, kept rightmost so the conversation (the flex absorber) takes
@@ -4397,7 +4301,7 @@ export function MultiSessionShell({
               maxWidth={Math.max(
                 WEBVIEW_AREA_MIN_WIDTH_PX,
                 webviewAreaMaxWidth() -
-                  (rightPanel.visible ? rightPanelMaxWidth : 0),
+                  (sideVisible ? sideMetrics.minWidth : 0),
               )}
               onResize={handleWebviewAreaResize}
               onResizeStart={handleWebviewAreaResizeStart}
