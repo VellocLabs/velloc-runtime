@@ -39,9 +39,13 @@ import {
 } from "../remote/RemoteHostIndicator";
 import { RemoteFullscreenToggle } from "../remote/RemoteFullscreenToggle";
 import { NexusModelPicker } from "./NexusModelPicker";
-import { PluginTopbarItems } from "./PluginTopbarItems";
+import {
+  PluginTopbarItems,
+  pluginFoldKey,
+  usePluginTopbarItems,
+} from "./PluginTopbarItems";
 import type { ModsPressTopbarResult } from "../../runtimeProtocol/modContributions";
-import { useTopbarCenterBudget } from "./useTopbarCenterBudget";
+import { FOLD_ATTR, useTopbarFit } from "./useTopbarFit";
 import { useWindowDragRegions } from "./useWindowDragRegions";
 
 /**
@@ -49,7 +53,7 @@ import { useWindowDragRegions } from "./useWindowDragRegions";
  * model pill, sidebar toggle, search), CENTER the session tab strip centred
  * on the WINDOW, RIGHT the session rail toggle, the pane toggles and the More
  * menu, before the OS caption strip the panel overlays
- * (`--nexus-caption-inset`).
+ * (`--nexus-caption-inset`). Too narrow, it gives way per `planTopbarFit` (F-9).
  */
 
 /** The pane kinds with a toggle of their own in the bar, in bar order. */
@@ -202,14 +206,52 @@ export function NexusTopBar({
   const headerRef = React.useRef<HTMLElement>(null);
   const leftGroupRef = React.useRef<HTMLDivElement>(null);
   const rightGroupRef = React.useRef<HTMLDivElement>(null);
-  // How much the centre column may spend before the strip stops being centred
-  // on the window / starts covering a side group. The strip drops whole tab
-  // titles to stay inside it.
-  const centerBudget = useTopbarCenterBudget(
+  const open = new Set(openPanes ?? []);
+  const plugins = usePluginTopbarItems(activeSessionId, onPressPluginItem);
+  const barPaneKinds = onTogglePane
+    ? BAR_PANE_KINDS.filter(
+        (kind) =>
+          !(kind === "browser" && !canOpenSessionTab) &&
+          !(kind === "mods" && !hasModPanes && !open.has(kind)),
+      )
+    : [];
+  const showRemoteDevices = !remoteHost && !!remoteDeviceCount && remoteDeviceCount > 0;
+  const importEntries = onOpenImport && importSources ? importSources : [];
+  // Fold units, first-to-fold first: right, the pane toggles from the end and
+  // then the rail; left, plugin items, the devices link, then the imports.
+  // Nothing folds without a More menu to fold into.
+  const rightFoldKeys = onTogglePane
+    ? [
+        ...barPaneKinds.map((kind) => `pane:${kind}`).reverse(),
+        ...(sessionOverview ? ["rail"] : []),
+      ]
+    : [];
+  const leftFoldKeys = onTogglePane
+    ? [
+        ...(plugins?.items ?? []).map((item) => pluginFoldKey(item.id)).reverse(),
+        ...(showRemoteDevices ? ["remote"] : []),
+        ...importEntries.map((entry) => `import:${entry.source}`).reverse(),
+      ]
+    : [];
+  const fit = useTopbarFit(
     headerRef,
     leftGroupRef,
     rightGroupRef,
+    leftFoldKeys,
+    rightFoldKeys,
   );
+  const folded = fit.folded;
+  const foldedPanes = barPaneKinds.filter((kind) => folded.has(`pane:${kind}`));
+  const railFolded = !!sessionOverview && folded.has("rail");
+  const foldedImports = importEntries.filter((entry) => folded.has(`import:${entry.source}`));
+  const remoteFolded = showRemoteDevices && folded.has("remote");
+  const foldedPlugins = (plugins?.items ?? []).filter((item) =>
+    folded.has(pluginFoldKey(item.id)),
+  );
+  const remoteDevicesLabel =
+    remoteDeviceCount === 1
+      ? t("topbar.remoteDevicesOne")
+      : t("topbar.remoteDevices", { count: remoteDeviceCount ?? 0 });
   // Stable identity so the memoized NexusModelPicker isn't re-rendered every
   // turn just because this arrow was re-created (it opens the Models settings
   // section). Without it, React.memo on the picker can never skip.
@@ -221,8 +263,6 @@ export function NexusTopBar({
   // window. Instead we measure the bar + its `data-app-region="no-drag"`
   // controls and report the map to the host (see useWindowDragRegions).
   useWindowDragRegions(headerRef, onDragRegionsChange);
-
-  const open = new Set(openPanes ?? []);
 
   return (
     // Self-contained TooltipProvider: the topbar mounts in MultiSessionShell
@@ -242,6 +282,7 @@ export function NexusTopBar({
       <div
         ref={leftGroupRef}
         data-app-region="no-drag"
+        data-testid="topbar-left-group"
         className="flex items-center gap-1 justify-self-start"
       >
         {/* Settings — first control in the bar; kebab (vertical-ellipsis)
@@ -305,8 +346,8 @@ export function NexusTopBar({
         {/* Import from another agent product — one brand-icon button per
             detected source. Sits with the feature toggles, left of the
             search control so the expanding field never shifts it. */}
-        {onOpenImport && importSources
-          ? importSources.map((entry) => (
+        {onOpenImport
+          ? importEntries.map((entry) => folded.has(`import:${entry.source}`) ? null : (
               <Tooltip key={entry.source}>
                 <TooltipTrigger asChild>
                   <Button
@@ -314,6 +355,7 @@ export function NexusTopBar({
                     variant="ghost"
                     size="icon-sm"
                     data-testid={`topbar-import-${entry.source}`}
+                    {...{ [FOLD_ATTR]: `import:${entry.source}` }}
                     aria-label={t("topbar.importFrom", { source: entry.label })}
                     onClick={() => onOpenImport(entry.source)}
                   >
@@ -333,7 +375,7 @@ export function NexusTopBar({
         {/* Remote devices connected — only while there are some. Just before
             the search control, so its appearing and going never shifts the
             buttons to its left. */}
-        {!remoteHost && remoteDeviceCount && remoteDeviceCount > 0 ? (
+        {showRemoteDevices && !remoteFolded ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -342,11 +384,8 @@ export function NexusTopBar({
                 size="icon-sm"
                 data-testid="topbar-remote-devices"
                 data-count={remoteDeviceCount}
-                aria-label={
-                  remoteDeviceCount === 1
-                    ? t("topbar.remoteDevicesOne")
-                    : t("topbar.remoteDevices", { count: remoteDeviceCount })
-                }
+                {...{ [FOLD_ATTR]: "remote" }}
+                aria-label={remoteDevicesLabel}
                 onClick={() => onOpenSettings("remoteAccess")}
                 className="relative"
               >
@@ -359,14 +398,10 @@ export function NexusTopBar({
                 </span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {remoteDeviceCount === 1
-                ? t("topbar.remoteDevicesOne")
-                : t("topbar.remoteDevices", { count: remoteDeviceCount })}
-            </TooltipContent>
+            <TooltipContent side="bottom">{remoteDevicesLabel}</TooltipContent>
           </Tooltip>
         ) : null}
-        <PluginTopbarItems activeSessionId={activeSessionId} onPress={onPressPluginItem} />
+        <PluginTopbarItems state={plugins} folded={folded} />
         {/* Transcript search, last and set apart: a hairline divider marks
             it as a different kind of control (it expands into a field)
             and keeps it from reading as one more toggle. */}
@@ -386,13 +421,16 @@ export function NexusTopBar({
           display-only, so leaving it draggable widens the grab area.
           `min-w-0` is what lets the grid shrink this column instead of the
           side ones — without it the strip's content width becomes a floor. */}
-      <div className="flex min-w-0 items-center justify-center gap-2 justify-self-center">
-        {sessionTabs && activeSessionId && onSelectSessionTab ? (
+      <div
+        className="flex min-w-0 items-center justify-center gap-2 justify-self-center"
+        style={fit.centerBudget === undefined ? undefined : { maxWidth: fit.centerBudget }}
+      >
+        {fit.showStrip && sessionTabs && activeSessionId && onSelectSessionTab ? (
           <SessionTabStrip
             tabs={sessionTabs}
             activeSessionId={activeSessionId}
             onSelect={onSelectSessionTab}
-            maxWidth={centerBudget}
+            maxWidth={fit.centerBudget}
           />
         ) : null}
       </div>
@@ -408,7 +446,7 @@ export function NexusTopBar({
       >
         {/* Session rail toggle — the card stack docked in the conversation;
             global (`sessionCards.shown`, default shown). */}
-        {sessionOverview ? (
+        {sessionOverview && !railFolded ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -416,6 +454,7 @@ export function NexusTopBar({
                 variant="ghost"
                 size="icon-sm"
                 data-testid="topbar-session-rail"
+                {...{ [FOLD_ATTR]: "rail" }}
                 aria-pressed={sessionOverview.shown}
                 aria-label={t(sessionOverview.shown ? "topbar.pane.hide" : "topbar.pane.show", {
                   pane: t("topbar.sessionRail"),
@@ -432,17 +471,17 @@ export function NexusTopBar({
             </TooltipContent>
           </Tooltip>
         ) : null}
-        {sessionOverview && onTogglePane ? (
+        {sessionOverview && onTogglePane && !railFolded ? (
           <div
             aria-hidden
             className="mx-1 h-4 w-px shrink-0 bg-border"
             data-testid="topbar-session-rail-divider"
+            {...{ [FOLD_ATTR]: "rail" }}
           />
         ) : null}
-        {BAR_PANE_KINDS.map((kind) => {
-          if (!onTogglePane || (kind === "browser" && !canOpenSessionTab)) return null;
+        {barPaneKinds.map((kind) => {
+          if (!onTogglePane || folded.has(`pane:${kind}`)) return null;
           const pressed = open.has(kind);
-          if (kind === "mods" && !hasModPanes && !pressed) return null;
           const Icon = PANE_ICON[kind];
           const name = t(PANE_LABEL_KEY[kind]);
           return (
@@ -453,6 +492,7 @@ export function NexusTopBar({
                   variant="ghost"
                   size="icon-sm"
                   data-testid={`topbar-pane-${kind}`}
+                  {...{ [FOLD_ATTR]: `pane:${kind}` }}
                   aria-pressed={pressed}
                   aria-label={t(pressed ? "topbar.pane.hide" : "topbar.pane.show", { pane: name })}
                   onClick={() => onTogglePane(kind)}
@@ -504,7 +544,23 @@ export function NexusTopBar({
                 data-testid="topbar-more-panes-menu"
                 className={MENU_CONTENT_CLASS}
               >
-                {MENU_PANE_KINDS.map((kind) => {
+                {/* Folded bar controls first, in bar order: the same
+                    toggles the bar would have shown. */}
+                {railFolded && sessionOverview ? (
+                  <DropdownMenuPrimitive.CheckboxItem
+                    checked={sessionOverview.shown}
+                    onCheckedChange={sessionOverview.onToggle}
+                    data-testid="topbar-folded-rail"
+                    className={MENU_ITEM_CLASS}
+                  >
+                    <SquareChartGanttIcon aria-hidden className="size-4 text-muted-foreground" />
+                    <span className="flex-1">{t("topbar.sessionRail")}</span>
+                    <DropdownMenuPrimitive.ItemIndicator>
+                      <CheckIcon aria-hidden className="size-4 text-primary" />
+                    </DropdownMenuPrimitive.ItemIndicator>
+                  </DropdownMenuPrimitive.CheckboxItem>
+                ) : null}
+                {[...foldedPanes, ...MENU_PANE_KINDS].map((kind) => {
                   const Icon = PANE_ICON[kind];
                   return (
                     <DropdownMenuPrimitive.CheckboxItem
@@ -512,6 +568,7 @@ export function NexusTopBar({
                       checked={open.has(kind)}
                       onCheckedChange={() => onTogglePane(kind)}
                       data-testid={`topbar-pane-row-${kind}`}
+                      data-folded={foldedPanes.includes(kind) || undefined}
                       className={MENU_ITEM_CLASS}
                     >
                       <Icon aria-hidden className="size-4 text-muted-foreground" />
@@ -524,6 +581,52 @@ export function NexusTopBar({
                     </DropdownMenuPrimitive.CheckboxItem>
                   );
                 })}
+                {foldedImports.length > 0 || remoteFolded || foldedPlugins.length > 0 ? (
+                  <DropdownMenuPrimitive.Separator className="-mx-1 my-1 h-px bg-border" />
+                ) : null}
+                {onOpenImport
+                  ? foldedImports.map((entry) => (
+                      <DropdownMenuPrimitive.Item
+                        key={entry.source}
+                        onSelect={() => onOpenImport(entry.source)}
+                        data-testid={`topbar-folded-import-${entry.source}`}
+                        className={MENU_ITEM_CLASS}
+                      >
+                        {entry.iconSvg ? (
+                          <ProviderIcon svg={entry.iconSvg} />
+                        ) : (
+                          <DownloadIcon aria-hidden className="size-4 text-muted-foreground" />
+                        )}
+                        <span className="flex-1">
+                          {t("topbar.importFrom", { source: entry.label })}
+                        </span>
+                      </DropdownMenuPrimitive.Item>
+                    ))
+                  : null}
+                {remoteFolded ? (
+                  <DropdownMenuPrimitive.Item
+                    onSelect={() => onOpenSettings("remoteAccess")}
+                    data-testid="topbar-folded-remote-devices"
+                    className={MENU_ITEM_CLASS}
+                  >
+                    <Link2Icon aria-hidden className="size-4 text-muted-foreground" />
+                    <span className="flex-1">{remoteDevicesLabel}</span>
+                  </DropdownMenuPrimitive.Item>
+                ) : null}
+                {plugins
+                  ? foldedPlugins.map((item) => (
+                      <DropdownMenuPrimitive.Item
+                        key={item.id}
+                        disabled={!plugins.sessionReady}
+                        onSelect={() => plugins.press(item.id)}
+                        data-testid={`topbar-folded-plugin-${item.id.replace(":", "--")}`}
+                        className={MENU_ITEM_CLASS}
+                      >
+                        {item.icon}
+                        <span className="flex-1">{item.label}</span>
+                      </DropdownMenuPrimitive.Item>
+                    ))
+                  : null}
                 {onResetLayout ? (
                   <>
                     <DropdownMenuPrimitive.Separator className="-mx-1 my-1 h-px bg-border" />

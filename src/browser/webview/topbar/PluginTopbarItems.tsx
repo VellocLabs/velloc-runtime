@@ -23,14 +23,22 @@ const REFUSAL: Record<Extract<ModsPressTopbarResult, { ok: false }>["reason"], M
 };
 const NOTICE_MS = 4000;
 
-export function PluginTopbarItems({
-  activeSessionId,
-  onPress,
-}: {
-  activeSessionId?: string;
+export type PluginTopbarItem = { id: string; label: string; icon: React.ReactNode };
+
+export type PluginTopbarState = {
+  items: readonly PluginTopbarItem[];
+  /** Run an item for the active session; a refusal shows a notice beside the bar. */
+  press: (id: string) => void;
+  notice: { id: string; key: MessageKey } | null;
+  sessionReady: boolean;
+};
+
+/** The plugin topbar items and their press, or `null` when none render. */
+export function usePluginTopbarItems(
+  activeSessionId: string | undefined,
   /** Run the item `id` for `sessionId`. Omitted: nothing renders. */
-  onPress?: (sessionId: string, id: string) => Promise<ModsPressTopbarResult>;
-}) {
+  onPress: ((sessionId: string, id: string) => Promise<ModsPressTopbarResult>) | undefined,
+): PluginTopbarState | null {
   const t = useT();
   const locale = useLocale();
   const contributions = useModContributions();
@@ -42,23 +50,49 @@ export function PluginTopbarItems({
     return () => clearTimeout(timer);
   }, [notice]);
   const press = React.useCallback(
-    (sessionId: string, id: string) => {
-      if (!onPress) return;
-      onPress(sessionId, id).then(
+    (id: string) => {
+      if (!onPress || !activeSessionId) return;
+      onPress(activeSessionId, id).then(
         result => setNotice(result.ok ? null : { id, key: REFUSAL[result.reason] }),
         () => setNotice({ id, key: "topbar.pluginItemUnavailable" }),
       );
     },
-    [onPress],
+    [onPress, activeSessionId],
   );
   if (!onPress || !canPress || contributions.topbar.length === 0) return null;
+  return {
+    items: contributions.topbar.map(item => ({
+      id: item.id,
+      label: t("topbar.pluginItemTooltip", {
+        title: resolveLocalizedText(item.title, locale),
+        plugin: item.plugin,
+      }),
+      icon: <ModIconSlot icon={item.icon} icons={contributions.icons} className="size-4" />,
+    })),
+    press,
+    notice,
+    sessionReady: !!activeSessionId,
+  };
+}
+
+/** The unit key an item folds under (`useTopbarFit`). */
+export const pluginFoldKey = (id: string) => `plugin:${id}`;
+
+/** The items still in the bar; a notice shows for any item, folded or not. */
+export function PluginTopbarItems({
+  state,
+  folded,
+}: {
+  state: PluginTopbarState | null;
+  folded: ReadonlySet<string>;
+}) {
+  const t = useT();
+  if (!state) return null;
   return (
     <>
-      {contributions.topbar.map(item => {
-        const title = resolveLocalizedText(item.title, locale);
-        const tooltip = t("topbar.pluginItemTooltip", { title, plugin: item.plugin });
-        return (
-          <React.Fragment key={item.id}>
+      {state.items.map(item => (
+        <React.Fragment key={item.id}>
+          {folded.has(pluginFoldKey(item.id)) ? null : (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -66,29 +100,28 @@ export function PluginTopbarItems({
                   variant="ghost"
                   size="icon-sm"
                   data-testid={`topbar-plugin-item-${item.id.replace(":", "--")}`}
-                  aria-label={tooltip}
-                  disabled={!activeSessionId}
-                  onClick={() => {
-                    if (activeSessionId) press(activeSessionId, item.id);
-                  }}
+                  data-topbar-fold={pluginFoldKey(item.id)}
+                  aria-label={item.label}
+                  disabled={!state.sessionReady}
+                  onClick={() => state.press(item.id)}
                 >
-                  <ModIconSlot icon={item.icon} icons={contributions.icons} className="size-4" />
+                  {item.icon}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">{tooltip}</TooltipContent>
+              <TooltipContent side="bottom">{item.label}</TooltipContent>
             </Tooltip>
-            {notice?.id === item.id ? (
-              <span
-                role="status"
-                data-testid="topbar-plugin-item-notice"
-                className="max-w-56 truncate rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-              >
-                {t(notice.key)}
-              </span>
-            ) : null}
-          </React.Fragment>
-        );
-      })}
+          )}
+          {state.notice?.id === item.id ? (
+            <span
+              role="status"
+              data-testid="topbar-plugin-item-notice"
+              className="max-w-56 truncate rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+            >
+              {t(state.notice.key)}
+            </span>
+          ) : null}
+        </React.Fragment>
+      ))}
     </>
   );
 }

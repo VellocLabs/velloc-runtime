@@ -24,7 +24,7 @@ import {
   launcherTitle,
   launcherTooltip,
 } from '../browser/webview/threadLaunchers'
-import { PluginTopbarItems } from '../browser/webview/topbar/PluginTopbarItems'
+import { PluginTopbarItems, usePluginTopbarItems } from '../browser/webview/topbar/PluginTopbarItems'
 import { TooltipProvider } from '../components/ui/tooltip'
 import { createTranslate } from '../browser/webview/i18n'
 import { RuntimeCapabilitiesContext } from '../browser/webview/useCan'
@@ -176,12 +176,15 @@ describe('ModIcon', () => {
 })
 
 describe('plugin topbar items', () => {
+  function BarItems({ onPress }: { onPress?: (sessionId: string, id: string) => Promise<never> }) {
+    return h(PluginTopbarItems, { state: usePluginTopbarItems('s1', onPress), folded: new Set<string>() })
+  }
   function renderItems(onPress?: (sessionId: string, id: string) => Promise<never>, can = true) {
     return render(
       h(
         RuntimeCapabilitiesContext.Provider,
         { value: { can: (cap: string, act?: string) => can || !(cap === 'mods' && act === 'pressTopbar') } },
-        h(TooltipProvider, null, h(PluginTopbarItems, { activeSessionId: 's1', onPress })),
+        h(TooltipProvider, null, h(BarItems, { onPress })),
       ),
     )
   }
