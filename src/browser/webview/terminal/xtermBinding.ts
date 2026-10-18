@@ -87,6 +87,8 @@ export function applyTerminalTopicEvent(
       return mirror
     case 'state':
       if (mirror && isRecord(payload) && isTerminalState(payload.state)) {
+        // A restart: the runtime starts the scrollback afresh, so does the screen.
+        if (payload.state.kind === 'starting' && mirror.state.kind !== 'starting') emulator.reset()
         return { ...mirror, state: payload.state }
       }
       return mirror

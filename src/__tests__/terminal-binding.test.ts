@@ -50,6 +50,20 @@ describe('applyTerminalTopicEvent', () => {
     expect(applyTerminalTopicEvent(em, exited, { form: 'delta', type: 'bell', payload: {} })).toBe(exited)
     expect(em.write).toHaveBeenCalledTimes(2)
   })
+
+  it('a restart (exited → starting) clears the screen; a repeated starting does not', () => {
+    const em = emulator()
+    const base = applyTerminalTopicEvent(em, null, snapshot({ state: { kind: 'exited', exitCode: 0 } }))
+    expect(em.reset).toHaveBeenCalledTimes(1)
+    const starting = applyTerminalTopicEvent(em, base, { form: 'delta', type: 'state', payload: { state: { kind: 'starting' } } })
+    expect(starting?.state).toEqual({ kind: 'starting' })
+    expect(em.reset).toHaveBeenCalledTimes(2)
+    applyTerminalTopicEvent(em, starting, { form: 'delta', type: 'state', payload: { state: { kind: 'starting' } } })
+    expect(em.reset).toHaveBeenCalledTimes(2)
+    const running = applyTerminalTopicEvent(em, starting, { form: 'delta', type: 'state', payload: { state: { kind: 'running' } } })
+    expect(running?.state).toEqual({ kind: 'running' })
+    expect(em.reset).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('splitForWire', () => {
