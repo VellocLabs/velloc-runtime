@@ -31,6 +31,7 @@ import { readClipboard, writeClipboard } from '@/utils/clipboard'
 import { useT } from '../i18n'
 import { terminalKeyDecision } from './terminalKeys'
 import type { TerminalPrefs } from './terminalPrefs'
+import { registerTerminalProbe } from './terminalProbe'
 import { applyTerminalTopicEvent, InputBatcher, type MirroredTerminal } from './xtermBinding'
 import {
   buildTerminalTheme,
@@ -212,8 +213,23 @@ export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }
 
     fit()
     if (autoFocus) term.focus()
+    const releaseProbe = registerTerminalProbe(terminalId, {
+      lines: () => {
+        const buffer = term.buffer.active
+        const lines: string[] = []
+        for (let i = 0; i < buffer.length; i++) {
+          lines.push(buffer.getLine(i)?.translateToString(true) ?? '')
+        }
+        while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
+        return lines
+      },
+      cols: () => term.cols,
+      rows: () => term.rows,
+      input: data => term.input(data, true),
+    })
 
     return () => {
+      releaseProbe()
       if (fitTimer) clearTimeout(fitTimer)
       observer?.disconnect()
       releaseTheme()
