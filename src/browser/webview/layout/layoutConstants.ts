@@ -54,11 +54,14 @@ export const PANE_HEADER_HEIGHT_PX = 36
 export const SIDEBAR_RAIL_WIDTH_PX = 56
 
 /**
- * The chat never draws narrower than this (the composer's controls need it).
- * Every other region gives way first (`shellLayout`); only an area narrower
- * than this clips the chat.
+ * The chat's content never draws narrower than this (the composer's controls
+ * need it). A narrower chat slot keeps the content at this width, anchored at
+ * the slot's start; the side region covers its end (`paneGeometry`).
  */
 export const CHAT_CONTENT_MIN_WIDTH_PX = 360
+
+/** The narrowest slot the root row gives the chat, before everything shrinks together. */
+export const CHAT_SLOT_MIN_WIDTH_PX = 100
 
 /**
  * Drawn chat width the session card stack needs to dock at the transcript's
@@ -72,9 +75,6 @@ export const STACK_DOCK_MIN_CHAT_PX = 651
  * vitest node env). Mirrors the previous inline literal.
  */
 export const FALLBACK_VIEWPORT_WIDTH_PX = 1280
-
-/** Chat left uncovered beside the side region's overlay, to press back into. */
-export const RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX = 48
 
 /** Drawn width of a column splitter (`SidebarSplitter`, `w-1`). */
 export const SPLITTER_WIDTH_PX = 4

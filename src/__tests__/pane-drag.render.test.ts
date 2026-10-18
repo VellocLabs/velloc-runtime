@@ -33,7 +33,6 @@ function renderArea(over: Partial<PaneAreaProps> = {}) {
     form: 'beside',
     chatWidth: 600,
     seatWidth: 0,
-    overlayShown: false,
     chat: createElement('div', { 'data-testid': 'chat-body' }),
     renderPane: (kind: SidePaneKind) =>
       createElement(PaneFrame, {
@@ -198,12 +197,12 @@ describe('dragging a pane', () => {
     release(1000, 60)
     expect(moves(expanded.props)).toEqual([])
     cleanup()
-    const overlaid = renderArea({ form: 'overlay', seatWidth: 500, overlayShown: true })
+    const floating = renderArea({ form: 'float', seatWidth: 500 })
     press('tasks', 1200, 320)
     moveTo(1200, 360)
     expect(area().hasAttribute('data-pane-dragging')).toBe(false)
     release(1200, 360)
-    expect(moves(overlaid.props)).toEqual([])
+    expect(moves(floating.props)).toEqual([])
   })
 })
 

@@ -1,14 +1,12 @@
 /**
  * How the open side region is presented beyond its docked form (F-9): the
- * overlay drawn over the chat when the region has no room beside it, the float
- * an agent-opened pane takes over the spare width at the chat's end, and the
- * width a settled float holds. Pure: the shell reports each event with its
- * origin — the person, the agent, a resolved plan, input, a resize, a session
- * switch, a close — and draws what this state says.
+ * float an agent-opened pane takes over the spare width at the chat's end,
+ * and the width a settled float holds. Pure: the shell reports each event
+ * with its origin — the person, the agent, a resolved plan, input, a resize,
+ * a session switch, a close — and draws what this state says.
  */
 import { RIGHT_PANEL_FLOAT_MIN_WIDTH_PX } from './layoutConstants'
 import type { SidePaneKind } from './paneLayout'
-import type { PanelForm } from './shellLayout'
 
 /** An agent-opened pane floating over the spare width, in the session it opened in. */
 export interface RightPanelFloat {
@@ -20,14 +18,10 @@ export interface RightPanelFloat {
 }
 
 export interface RightPanelPresence {
-  /** The person asked for the overlay; it is drawn only while the region's form is `overlay`. */
-  overlay: boolean
   float: RightPanelFloat | null
   /** A settled float's share, held while its pane kind stays in front. */
   hold: { kind: SidePaneKind; share: number } | null
-  /** The region's drawn form as last reported. */
-  form: PanelForm
-  /** The room a docked region splits with the chat. */
+  /** The room a docked region splits with the chat, as last reported. */
   room: number
 }
 
@@ -53,19 +47,15 @@ export type RightPanelPresenceEvent =
   | { type: 'planClosed'; nextView: SidePaneKind | null }
   /** A press, key or wheel by the person. */
   | { type: 'input' }
-  | { type: 'resize'; areaW: number; form: PanelForm; room: number }
+  | { type: 'resize'; areaW: number; room: number }
   | { type: 'sessionSwitch'; sessionId: string }
-  /** A topbar pane toggle while the region is overlaid. */
-  | { type: 'toggle' }
-  /** Escape or a press outside the overlay. */
-  | { type: 'dismiss' }
   /** The person dragged a separator. */
   | { type: 'drag' }
   /** The region closed (its last pane left). */
   | { type: 'close' }
 
 export function initialRightPanelPresence(): RightPanelPresence {
-  return { overlay: false, float: null, hold: null, form: 'none', room: 0 }
+  return { float: null, hold: null, room: 0 }
 }
 
 export function stepRightPanelPresence(
@@ -73,13 +63,8 @@ export function stepRightPanelPresence(
   event: RightPanelPresenceEvent,
 ): RightPanelPresence {
   switch (event.type) {
-    case 'personOpen': {
-      const next = frontView(state, event.view)
-      // Before the region is drawn its form is unknown; the next resize drops
-      // the request unless the region lands overlaid.
-      const overlaidOrPending = state.form === 'overlay' || state.form === 'none'
-      return overlaidOrPending && !next.overlay ? { ...next, overlay: true } : next
-    }
+    case 'personOpen':
+      return frontView(state, event.view)
     case 'agentOpen': {
       const next = frontView(state, event.view)
       if (event.panelOpen || event.spare === null || event.spare < RIGHT_PANEL_FLOAT_MIN_WIDTH_PX) {
@@ -100,24 +85,18 @@ export function stepRightPanelPresence(
     case 'input':
       return state.float ? settle(state, state.float.view) : state
     case 'resize': {
-      const reported = { ...state, form: event.form, room: event.room }
-      const withOverlay =
-        reported.overlay && event.form !== 'overlay' ? { ...reported, overlay: false } : reported
-      return withOverlay.float && withOverlay.float.areaW !== event.areaW
-        ? settle(withOverlay, withOverlay.float.view)
-        : withOverlay
+      const reported = state.room === event.room ? state : { ...state, room: event.room }
+      return reported.float && reported.float.areaW !== event.areaW
+        ? settle(reported, reported.float.view)
+        : reported
     }
     case 'sessionSwitch': {
       // The float of the session left behind goes; one the agent just opened
       // in the session switched to stays.
       const float = state.float?.sessionId === event.sessionId ? state.float : null
-      if (!state.overlay && float === state.float && state.hold === null) return state
-      return { ...state, overlay: false, float, hold: null }
+      if (float === state.float && state.hold === null) return state
+      return { ...state, float, hold: null }
     }
-    case 'toggle':
-      return state.form === 'overlay' ? { ...state, overlay: !state.overlay } : state
-    case 'dismiss':
-      return state.overlay ? { ...state, overlay: false } : state
     case 'drag':
       return state.hold ? { ...state, hold: null } : state
     case 'close':
@@ -143,6 +122,6 @@ function settle(state: RightPanelPresence, view: SidePaneKind): RightPanelPresen
 }
 
 function closed(state: RightPanelPresence): RightPanelPresence {
-  if (!state.overlay && !state.float && !state.hold) return state
-  return { ...state, overlay: false, float: null, hold: null }
+  if (!state.float && !state.hold) return state
+  return { ...state, float: null, hold: null }
 }

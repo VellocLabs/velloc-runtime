@@ -3,10 +3,12 @@
  * drawn at an absolute rect inside the area, so a pane keeps its mounted body
  * (an editor with unsaved edits) when the tree around it changes. A group
  * shares its length among its children by weight, each held at its minimum
- * and separated by a gutter. Pure.
+ * and separated by a gutter; a length under the minimums' sum is shared in
+ * proportion to them. Pure.
  */
 import {
   CHAT_CONTENT_MIN_WIDTH_PX,
+  CHAT_SLOT_MIN_WIDTH_PX,
   PANE_GUTTER_PX,
   PANE_MIN_HEIGHT_PX,
   RIGHT_PANEL_MIN_WIDTH_PX,
@@ -41,9 +43,9 @@ export interface PaneGeometryInput {
   gutter?: number
 }
 
-/** A pane's narrowest drawn width. */
+/** A pane's narrowest drawn width; the chat's is its slot's (its content may be wider). */
 export function paneMinWidth(pane: PaneId): number {
-  if (pane === 'chat') return CHAT_CONTENT_MIN_WIDTH_PX
+  if (pane === 'chat') return CHAT_SLOT_MIN_WIDTH_PX
   if (pane === 'browser') return WEBVIEW_AREA_MIN_WIDTH_PX
   return RIGHT_PANEL_MIN_WIDTH_PX
 }
@@ -66,8 +68,9 @@ export function nodeMinLength(node: PaneNode, axis: 'row' | 'column', gutter = P
 
 /**
  * Share `length` among `children` by weight: each child at least its minimum,
- * the rest in proportion, gutters between. Rounded to whole px; the last
- * child absorbs the rounding.
+ * the rest in proportion, gutters between. When the minimums do not fit, each
+ * child gets its minimum's share of the length instead. Rounded to whole px;
+ * the last child absorbs the rounding.
  */
 export function shareLength(
   children: readonly { weight: number; min: number }[],
@@ -78,6 +81,15 @@ export function shareLength(
   if (n === 0) return []
   const free = Math.max(0, length - gutter * (n - 1))
   const out = new Array<number>(n).fill(0)
+  const minSum = children.reduce((sum, child) => sum + Math.max(0, child.min), 0)
+  if (minSum > free) {
+    let used = 0
+    for (let i = 0; i < n; i++) {
+      out[i] = i === n - 1 ? Math.max(0, free - used) : Math.round((Math.max(0, children[i].min) * free) / minSum)
+      used += out[i]
+    }
+    return out
+  }
   const fixed = new Set<number>()
   // Children under their minimum are pinned there; the others share what is left.
   for (;;) {
@@ -170,7 +182,7 @@ export function resolvePaneRects(layout: PaneLayout, input: PaneGeometryInput): 
 
 /** The side region beside the chat, as the shell's cascade sees it. */
 export interface SideRegionMetrics {
-  /** The narrowest the region draws: its root-row children's minimums plus gutters. */
+  /** The narrowest the region draws: its root-row children's minimums plus the gutters between them and at the area's edge. */
   minWidth: number
   /** The region's share of the root row: side weights over all weights. */
   share: number
@@ -183,7 +195,7 @@ export function sideRegionMetrics(layout: PaneLayout, gutter = PANE_GUTTER_PX): 
   const side = root.children.filter(child => isPaneGroup(child) || child.pane !== 'chat')
   if (side.length === 0) return { minWidth: 0, share: 0, count: 0 }
   const minWidth =
-    side.reduce((sum, child) => sum + nodeMinLength(child, 'row', gutter), 0) + gutter * (side.length - 1)
+    side.reduce((sum, child) => sum + nodeMinLength(child, 'row', gutter), 0) + gutter * side.length
   const total = root.children.reduce((sum, child) => sum + Math.max(0, child.weight), 0)
   const sideWeight = side.reduce((sum, child) => sum + Math.max(0, child.weight), 0)
   return { minWidth, share: total > 0 ? sideWeight / total : 0, count: side.length }
@@ -296,16 +308,31 @@ export interface AreaGeometryInput {
   /** The area's size. */
   width: number
   height: number
-  /** The chat's drawn width while the panes are beside it. */
+  /** The chat's slot width while the panes are beside it. */
   chatWidth: number
-  /** The seat's width while the region is overlaid or floating. */
+  /** The seat's width while the region floats. */
   seatWidth: number
   gutter?: number
 }
 
+/**
+ * Stacking inside the area, lowest first: the chat's content, the opaque
+ * cover over its part outside the slot, the side region beside the chat.
+ */
+export const PANE_AREA_LAYER = { chat: 0, chatCover: 1, region: 2 } as const
+
 export interface AreaGeometry {
-  /** The chat's box; null while a pane covers it. */
+  /** The chat's slot; null while a pane covers it. */
   chat: PaneRect | null
+  /**
+   * The chat content's box: the slot's, or `CHAT_CONTENT_MIN_WIDTH_PX` when
+   * the slot is narrower — anchored at the slot's
+   * start (moved back so it ends inside the area when it would not), drawn
+   * under the side region. Null while a pane covers the chat.
+   */
+  chatContent: PaneRect | null
+  /** The parts of `chatContent` outside the slot and inside the area; the panes draw over them. */
+  chatCovers: PaneRect[]
   /** The side region's box; null while the tree holds no pane. */
   seat: PaneRect | null
   /** Each drawn pane's box in area px; a pane missing here is hidden. */
@@ -315,17 +342,21 @@ export interface AreaGeometry {
 }
 
 /**
- * Where everything in the area is drawn: the chat, the side region's box
- * beside the chat (`beside`; around it when panes sit on both sides), over
- * everything (`maximized`), or a seat at the area's end (`overlay`,
- * `float`), each pane inside it, and the separators.
+ * Where everything in the area is drawn: the chat's slot and its content, the
+ * side region's box beside the chat (`beside`; around it when panes sit on
+ * both sides), over everything (`maximized`), or a seat at the area's end
+ * (`float`), each pane inside it, and the separators.
  */
 export function resolveAreaGeometry(input: AreaGeometryInput): AreaGeometry {
   const gutter = input.gutter ?? PANE_GUTTER_PX
   const { layout, maximized, form, width, height } = input
   const panes = new Map<SidePaneKind, PaneRect>()
   const full: PaneRect = { left: 0, top: 0, width, height }
-  if (panesIn(layout).length === 0 || form === 'none') return { chat: full, seat: null, panes, separators: [] }
+  const contentOf = (slot: PaneRect): { chatContent: PaneRect; chatCovers: PaneRect[] } =>
+    chatContentIn(slot, CHAT_CONTENT_MIN_WIDTH_PX, width)
+  if (panesIn(layout).length === 0 || form === 'none') {
+    return { chat: full, ...contentOf(full), seat: null, panes, separators: [] }
+  }
   if (maximized !== null) {
     panes.set(maximized, {
       left: gutter,
@@ -333,9 +364,9 @@ export function resolveAreaGeometry(input: AreaGeometryInput): AreaGeometry {
       width: Math.max(0, width - 2 * gutter),
       height: Math.max(0, height - 2 * gutter),
     })
-    return { chat: null, seat: full, panes, separators: [] }
+    return { chat: null, chatContent: null, chatCovers: [], seat: full, panes, separators: [] }
   }
-  if (form === 'overlay' || form === 'float') {
+  if (form === 'float') {
     const seatWidth = Math.max(0, Math.min(width, Math.round(input.seatWidth)))
     const seat: PaneRect = { left: width - seatWidth, top: 0, width: seatWidth, height }
     // The side children of the root row, laid out on their own in the seat,
@@ -357,7 +388,7 @@ export function resolveAreaGeometry(input: AreaGeometryInput): AreaGeometry {
       if (pane === 'chat') continue
       panes.set(pane, { ...rect, left: seat.left + gutter + rect.left, top: gutter + rect.top })
     }
-    return { chat: full, seat, panes, separators: [] }
+    return { chat: full, ...contentOf(full), seat, panes, separators: [] }
   }
   // Beside the chat the root row is laid out whole: the chat at its width,
   // the side children sharing the rest in order on either side of it, inset
@@ -389,5 +420,28 @@ export function resolveAreaGeometry(input: AreaGeometryInput): AreaGeometry {
   const seat: PaneRect = { left: seatLeft, top: 0, width: Math.max(0, seatRight - seatLeft), height }
   const all = new Map<PaneId, PaneRect>(panes)
   all.set('chat', chat)
-  return { chat, seat, panes, separators: resolvePaneSeparators(layout, all, gutter) }
+  return { chat, ...contentOf(chat), seat, panes, separators: resolvePaneSeparators(layout, all, gutter) }
+}
+
+/**
+ * The chat content's box for `slot`: at least the slot's width, anchored at
+ * its start and moved back to end inside an area of `areaWidth` when it can;
+ * the covers are its parts outside the slot, clipped to the area.
+ */
+export function chatContentIn(
+  slot: PaneRect,
+  contentWidth: number,
+  areaWidth: number,
+): { chatContent: PaneRect; chatCovers: PaneRect[] } {
+  const w = Math.max(slot.width, contentWidth)
+  if (w <= slot.width) return { chatContent: slot, chatCovers: [] }
+  const left = Math.max(0, Math.min(slot.left, areaWidth - w))
+  const chatContent: PaneRect = { left, top: slot.top, width: w, height: slot.height }
+  const chatCovers: PaneRect[] = []
+  const before = slot.left - left
+  if (before > 0) chatCovers.push({ left, top: slot.top, width: before, height: slot.height })
+  const slotEnd = slot.left + slot.width
+  const after = Math.min(left + w, areaWidth) - slotEnd
+  if (after > 0) chatCovers.push({ left: slotEnd, top: slot.top, width: after, height: slot.height })
+  return { chatContent, chatCovers }
 }

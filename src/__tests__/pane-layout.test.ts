@@ -1,6 +1,6 @@
 /**
- * The pane tree (F-9): default placement beside the chat, later panes stacked
- * below the right-most root child, a closed pane's slot remembered and reused,
+ * The pane tree (F-9): default placement beside the chat, later panes paired
+ * into two-high columns, a closed pane's slot remembered and reused,
  * normalisation, moving a pane to each kind of target, and the per-session
  * record ops. Same reference on no-ops.
  */
@@ -54,12 +54,51 @@ describe('placePane', () => {
     const column = two.root.children[1] as PaneGroup
     expect(column.weight).toBe(3)
     expect(column.children.map(c => c.weight)).toEqual([1, 1])
-    const three = placePane(two, 'plan', { weight: 1 })
-    expect(shape(three)).toEqual({ row: ['chat', { column: ['diff', 'tasks', 'plan'] }] })
-    expect(panesIn(three)).toEqual(['diff', 'tasks', 'plan'])
   })
 
-  it('a remembered slot wins when its group still exists, with the index clamped', () => {
+  it('pairs panes into two-high columns: a column or the chat last gets a new root-row child', () => {
+    const kinds = ['diff', 'terminal', 'files', 'tasks', 'plan', 'skill'] as const
+    const weights: Record<string, number> = { diff: 3, terminal: 1, files: 3, tasks: 1, plan: 1, skill: 1 }
+    const steps: PaneLayout[] = []
+    let layout = defaultPaneLayout()
+    for (const kind of kinds) {
+      layout = placePane(layout, kind, { weight: weights[kind] })
+      steps.push(layout)
+    }
+    expect(steps.map(shape)).toEqual([
+      { row: ['chat', 'diff'] },
+      { row: ['chat', { column: ['diff', 'terminal'] }] },
+      { row: ['chat', { column: ['diff', 'terminal'] }, 'files'] },
+      { row: ['chat', { column: ['diff', 'terminal'] }, { column: ['files', 'tasks'] }] },
+      { row: ['chat', { column: ['diff', 'terminal'] }, { column: ['files', 'tasks'] }, 'plan'] },
+      {
+        row: [
+          'chat',
+          { column: ['diff', 'terminal'] },
+          { column: ['files', 'tasks'] },
+          { column: ['plan', 'skill'] },
+        ],
+      },
+    ])
+    // A new root-row child opens at its kind's weight; a column keeps the
+    // weight of the pane it was made from, 1:1 inside.
+    const root = steps[5].root.children
+    expect(root.map(child => child.weight)).toEqual([CHAT_WEIGHT, 3, 3, 1])
+    for (const column of root.slice(1) as PaneGroup[]) {
+      expect(column.children.map(c => c.weight)).toEqual([1, 1])
+    }
+    expect(new Set(root.slice(1).map(c => (c as PaneGroup).id)).size).toBe(3)
+    expect(panesIn(steps[5])).toEqual([...kinds])
+  })
+
+  it('a pane left of the chat does not pair: the chat last gets a new root-row child', () => {
+    const left: PaneLayout = {
+      root: { id: 'root', axis: 'row', weight: 1, children: [leaf('diff', 3), leaf('chat', 2)] },
+    }
+    expect(shape(placePane(left, 'tasks', { weight: 1 }))).toEqual({ row: ['diff', 'chat', 'tasks'] })
+  })
+
+  it('a remembered slot wins over the pairing when its group still exists, with the index clamped', () => {
     const base = placePane(placePane(defaultPaneLayout(), 'diff', { weight: 3 }), 'tasks', { weight: 1 })
     const column = base.root.children[1] as PaneGroup
     const placed = placePane(base, 'plan', {
@@ -206,35 +245,33 @@ describe('the session record', () => {
 })
 
 describe('paneToggleAction', () => {
-  it('opens a closed pane, closes an open one, shows a hidden overlay, moves an expansion', () => {
+  it('opens a closed pane, closes an open one, moves an expansion', () => {
     const record = openPane(openPane(defaultSessionPaneRecord(), 'diff', {}), 'tasks', {})
-    expect(paneToggleAction(record, 'plan', false)).toBe('open')
-    expect(paneToggleAction(record, 'diff', false)).toBe('close')
-    expect(paneToggleAction(record, 'diff', true)).toBe('show-overlay')
+    expect(paneToggleAction(record, 'plan')).toBe('open')
+    expect(paneToggleAction(record, 'diff')).toBe('close')
     const expanded = setMaximized(record, 'tasks')
-    expect(paneToggleAction(expanded, 'diff', false)).toBe('move-expansion')
-    expect(paneToggleAction(expanded, 'tasks', false)).toBe('close')
+    expect(paneToggleAction(expanded, 'diff')).toBe('move-expansion')
+    expect(paneToggleAction(expanded, 'tasks')).toBe('close')
   })
 
   it('decides against the drawn record: a pruned browser pane leaves no expansion behind', () => {
     const stored = setMaximized(openPane(openPane(defaultSessionPaneRecord(), 'tasks', {}), 'browser', {}), 'browser')
-    expect(paneToggleAction(stored, 'tasks', false)).toBe('move-expansion')
+    expect(paneToggleAction(stored, 'tasks')).toBe('move-expansion')
     const drawn = pruneUnrestorable(stored, { browserTabs: 0 })
     expect(drawn.maximized).toBeNull()
-    expect(paneToggleAction(drawn, 'tasks', false)).toBe('close')
+    expect(paneToggleAction(drawn, 'tasks')).toBe('close')
   })
 })
 
 describe('browserToggleAction', () => {
   it('with no pane and no tab it creates a tab; with a tab it opens; open, it closes like any pane', () => {
     const closed = defaultSessionPaneRecord()
-    expect(browserToggleAction(closed, false, { browserTabs: 0 })).toBe('new-tab')
-    expect(browserToggleAction(closed, false, { browserTabs: 2 })).toBe('open')
+    expect(browserToggleAction(closed, { browserTabs: 0 })).toBe('new-tab')
+    expect(browserToggleAction(closed, { browserTabs: 2 })).toBe('open')
     const open = openPane(closed, 'browser', {})
-    expect(browserToggleAction(open, false, { browserTabs: 1 })).toBe('close')
-    expect(browserToggleAction(open, true, { browserTabs: 1 })).toBe('show-overlay')
+    expect(browserToggleAction(open, { browserTabs: 1 })).toBe('close')
     const expandedOther = setMaximized(openPane(open, 'tasks', {}), 'tasks')
-    expect(browserToggleAction(expandedOther, false, { browserTabs: 1 })).toBe('move-expansion')
+    expect(browserToggleAction(expandedOther, { browserTabs: 1 })).toBe('move-expansion')
   })
 })
 
@@ -281,7 +318,17 @@ describe('followBrowserTabs', () => {
 describe('movePane', () => {
   const chatColumn = () =>
     placePane(placePane(defaultPaneLayout(), 'diff', { weight: 3 }), 'tasks', { weight: 1 })
-  const threeStacked = () => placePane(chatColumn(), 'plan', { weight: 1 })
+  const threeStacked = (): PaneLayout => ({
+    root: {
+      id: 'root',
+      axis: 'row',
+      weight: 1,
+      children: [
+        leaf('chat', 2),
+        { id: 'g1', axis: 'column', weight: 3, children: [leaf('diff'), leaf('tasks'), leaf('plan')] },
+      ],
+    },
+  })
   const threeInRow = (): PaneLayout => ({
     root: { id: 'root', axis: 'row', weight: 1, children: [leaf('chat', 2), leaf('diff', 3), leaf('tasks', 1)] },
   })

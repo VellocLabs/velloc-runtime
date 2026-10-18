@@ -1,7 +1,6 @@
 /**
- * The Right Panel's overlay, agent-opened float and settled-float hold
- * (F-9): each event carries its origin, and only a view the person opens
- * shows the overlay.
+ * The side region's agent-opened float and settled-float hold (F-9): each
+ * event carries its origin; a narrow window adds no form of its own.
  */
 import { describe, expect, it } from 'vitest'
 
@@ -11,7 +10,6 @@ import {
   type RightPanelPresence,
   type RightPanelPresenceEvent,
 } from '@/browser/webview/layout/rightPanelPresence'
-import type { PanelForm } from '@/browser/webview/layout/shellLayout'
 
 const AREA = 900
 const ROOM = 600
@@ -20,8 +18,8 @@ function run(state: RightPanelPresence, ...events: RightPanelPresenceEvent[]): R
   return events.reduce(stepRightPanelPresence, state)
 }
 
-const resize = (form: PanelForm, areaW = AREA, room = ROOM): RightPanelPresenceEvent => ({
-  type: 'resize', areaW, form, room,
+const resize = (areaW = AREA, room = ROOM): RightPanelPresenceEvent => ({
+  type: 'resize', areaW, room,
 })
 
 const agentPlan = (
@@ -37,70 +35,22 @@ const agentPlan = (
   ...over,
 })
 
-/** The panel open and overlaid, the overlay hidden. */
-const overlaid = (): RightPanelPresence => run(initialRightPanelPresence(), resize('overlay'))
-
-describe('overlay', () => {
-  it('a view the person opens shows the overlay', () => {
-    expect(run(overlaid(), { type: 'personOpen', view: 'diff' }).overlay).toBe(true)
+describe('opens by the person', () => {
+  it('a view the person opens changes nothing while nothing floats or is held', () => {
+    const beside = run(initialRightPanelPresence(), resize())
+    expect(run(beside, { type: 'personOpen', view: 'diff' })).toBe(beside)
   })
 
-  it('a view the person opens shows the overlay even when already in front', () => {
-    const state = run(overlaid(), { type: 'personOpen', view: 'tasks' }, { type: 'dismiss' })
-    expect(state.overlay).toBe(false)
-    expect(run(state, { type: 'personOpen', view: 'tasks' }).overlay).toBe(true)
+  it('a resize at an unchanged room and width changes nothing', () => {
+    const beside = run(initialRightPanelPresence(), resize())
+    expect(run(beside, resize())).toBe(beside)
+    expect(run(beside, resize(600, ROOM))).toBe(beside)
   })
 
-  it('opening the closed panel shows the overlay only when it lands overlaid', () => {
-    const closed = initialRightPanelPresence()
-    expect(run(closed, { type: 'personOpen', view: 'tasks' }, resize('overlay')).overlay).toBe(true)
-    expect(run(closed, { type: 'personOpen', view: 'tasks' }, resize('beside')).overlay).toBe(false)
-  })
-
-  it('a person opening a view beside the chat does not arm the overlay for a later narrowing', () => {
-    const beside = run(initialRightPanelPresence(), resize('beside'))
-    const state = run(beside, { type: 'personOpen', view: 'diff' }, resize('overlay', 600))
-    expect(state.overlay).toBe(false)
-  })
-
-  it('an agent-opened plan does not show the overlay', () => {
-    expect(run(overlaid(), agentPlan({ panelOpen: true })).overlay).toBe(false)
-  })
-
-  it('the view a resolved plan leaves in front does not show the overlay', () => {
-    const state = run(overlaid(), agentPlan({ panelOpen: true }), { type: 'planClosed', nextView: 'diff' })
-    expect(state.overlay).toBe(false)
-  })
-
-  it('Escape or a press outside hides it', () => {
-    const shown = run(overlaid(), { type: 'personOpen', view: 'diff' })
-    expect(run(shown, { type: 'dismiss' }).overlay).toBe(false)
-  })
-
-  it('the toggle hides and shows it while overlaid, and does nothing otherwise', () => {
-    const shown = run(overlaid(), { type: 'personOpen', view: 'diff' })
-    const hidden = run(shown, { type: 'toggle' })
-    expect(hidden.overlay).toBe(false)
-    expect(run(hidden, { type: 'toggle' }).overlay).toBe(true)
-    const beside = run(initialRightPanelPresence(), resize('beside'))
-    expect(run(beside, { type: 'toggle' })).toBe(beside)
-  })
-
-  it('a session switch hides it', () => {
-    const shown = run(overlaid(), { type: 'personOpen', view: 'diff' })
-    expect(run(shown, { type: 'sessionSwitch', sessionId: 's2' }).overlay).toBe(false)
-  })
-
-  it('widening the window out of overlay hides it, and narrowing again keeps it hidden', () => {
-    const shown = run(overlaid(), { type: 'personOpen', view: 'diff' })
-    const widened = run(shown, resize('beside', 1400))
-    expect(widened.overlay).toBe(false)
-    expect(run(widened, resize('overlay', 600)).overlay).toBe(false)
-  })
-
-  it('closing the panel hides it', () => {
-    const shown = run(overlaid(), { type: 'personOpen', view: 'diff' })
-    expect(run(shown, { type: 'close' }).overlay).toBe(false)
+  it('the state has only the float, the hold and the room: no width-driven form', () => {
+    const state = run(initialRightPanelPresence(), { type: 'personOpen', view: 'tasks' }, resize(400, 100))
+    expect(Object.keys(state).sort()).toEqual(['float', 'hold', 'room'])
+    expect(state).toEqual({ float: null, hold: null, room: 100 })
   })
 })
 
@@ -119,29 +69,28 @@ describe('agent-opened float', () => {
   })
 
   it('the person\'s next input settles it into a held share of its kind', () => {
-    const state = run(closed, agentPlan(), resize('float'), { type: 'input' })
+    const state = run(closed, agentPlan(), resize(), { type: 'input' })
     expect(state.float).toBeNull()
     expect(state.hold).toEqual({ kind: 'plan', share: 300 / ROOM })
   })
 
   it('a resize settles it; a report at the same width does not', () => {
-    const floating = run(closed, agentPlan(), resize('float'))
+    const floating = run(closed, agentPlan(), resize())
     expect(floating.float).not.toBeNull()
-    const state = run(floating, resize('float', 1000, 700))
+    const state = run(floating, resize(1000, 700))
     expect(state.float).toBeNull()
     expect(state.hold).toEqual({ kind: 'plan', share: 300 / 700 })
   })
 
   it('another view coming forward settles it, held for that view\'s kind', () => {
-    const floating = run(closed, agentPlan(), resize('float'))
+    const floating = run(closed, agentPlan(), resize())
     const state = run(floating, { type: 'personOpen', view: 'tasks' })
     expect(state.float).toBeNull()
     expect(state.hold).toEqual({ kind: 'tasks', share: 300 / ROOM })
-    expect(state.overlay).toBe(false)
   })
 
   it('a resolved plan settles it for the view left in front, and drops it when nothing is left', () => {
-    const floating = run(closed, agentPlan(), resize('float'))
+    const floating = run(closed, agentPlan(), resize())
     expect(run(floating, { type: 'planClosed', nextView: 'diff' }).hold).toEqual({ kind: 'diff', share: 300 / ROOM })
     const gone = run(floating, { type: 'planClosed', nextView: null })
     expect(gone.float).toBeNull()
@@ -149,7 +98,7 @@ describe('agent-opened float', () => {
   })
 
   it('closing the panel drops it without a hold', () => {
-    const state = run(closed, agentPlan(), resize('float'), { type: 'close' })
+    const state = run(closed, agentPlan(), resize(), { type: 'close' })
     expect(state.float).toBeNull()
     expect(state.hold).toBeNull()
   })
@@ -157,7 +106,6 @@ describe('agent-opened float', () => {
   it('a switch into a session whose plan auto-opens keeps that plan\'s float', () => {
     const state = run(closed, agentPlan({ sessionId: 's2' }), { type: 'sessionSwitch', sessionId: 's2' })
     expect(state.float).toEqual({ width: 300, areaW: AREA, view: 'plan', sessionId: 's2' })
-    expect(state.overlay).toBe(false)
   })
 
   it('a switch drops the float of the session left behind', () => {
@@ -168,7 +116,7 @@ describe('agent-opened float', () => {
 
 describe('held share', () => {
   const held = (): RightPanelPresence =>
-    run(initialRightPanelPresence(), agentPlan(), resize('float'), { type: 'input' })
+    run(initialRightPanelPresence(), agentPlan(), resize(), { type: 'input' })
 
   it('lasts while its kind stays in front', () => {
     expect(run(held(), { type: 'personOpen', view: 'plan' }).hold).not.toBeNull()

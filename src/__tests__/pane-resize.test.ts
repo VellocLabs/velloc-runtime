@@ -82,7 +82,7 @@ describe('resizeLayoutAt', () => {
     const layout = chatDiff()
     const geometry = resolveAreaGeometry(area(layout, 600))
     const separator = geometry.separators[0]
-    expect(separator.first).toEqual({ length: 600, min: 360 })
+    expect(separator.first).toEqual({ length: 600, min: 100 })
     expect(separator.second).toEqual({ length: 892, min: 280 })
 
     const next = resizeLayoutAt(layout, separator, 100, { areaWidth: AREA, gutter: 8 })
@@ -96,11 +96,11 @@ describe('resizeLayoutAt', () => {
     expect(drawn.separators[0].rect).toEqual({ left: 700, top: 0, width: 8, height: 600 })
   })
 
-  it('clamps at the chat minimum and at the pane minimum', () => {
+  it('clamps at the chat slot minimum and at the pane minimum', () => {
     const layout = chatDiff()
     const separator = resolveAreaGeometry(area(layout, 600)).separators[0]
     const narrowChat = resizeLayoutAt(layout, separator, -1000, { areaWidth: AREA })
-    expect(cascadeChat(narrowChat)).toBe(360)
+    expect(cascadeChat(narrowChat)).toBe(100)
     const narrowDiff = resizeLayoutAt(layout, separator, 1000, { areaWidth: AREA })
     expect(cascadeChat(narrowDiff)).toBe(1212)
     expect(resolveAreaGeometry(area(narrowDiff, 1212)).panes.get('diff')?.width).toBe(280)
@@ -170,7 +170,7 @@ describe('resizeLayoutAt', () => {
     expect(resizeLayoutAt(layout, separator, 0, { areaWidth: AREA })).toBe(layout)
     expect(resizeLayoutAt(layout, separator, 0.4, { areaWidth: AREA })).toBe(layout)
     const atMin = resizeLayoutAt(layout, separator, -1000, { areaWidth: AREA })
-    const atMinSep = resolveAreaGeometry(area(atMin, 360)).separators[0]
+    const atMinSep = resolveAreaGeometry(area(atMin, 100)).separators[0]
     expect(resizeLayoutAt(atMin, atMinSep, -50, { areaWidth: AREA })).toBe(atMin)
     expect(resizeLayoutAt(layout, { ...separator, groupId: 'nope' }, 50, { areaWidth: AREA })).toBe(layout)
   })

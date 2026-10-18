@@ -190,10 +190,11 @@ function meanWeight(children: readonly PaneNode[]): number {
 
 /**
  * Put `kind` into the tree. `slot` (where it last sat) wins when its group
- * still exists, with the index clamped. Otherwise the first pane sits beside
- * the chat at `weight`; a later pane goes below the right-most root child,
- * which is wrapped into a column (or appended when it already is one). The
- * chat is never wrapped. A pane already in the tree leaves it unchanged.
+ * still exists, with the index clamped. Otherwise the last root-row child
+ * decides: a lone pane is wrapped into a column with `kind` below it (1:1,
+ * the column keeps the pane's weight); the chat or a column gets `kind` as a
+ * new root-row child at `weight`. No cap; the chat is never wrapped. A pane
+ * already in the tree leaves it unchanged.
  */
 export function placePane(
   layout: PaneLayout,
@@ -213,26 +214,17 @@ export function placePane(
   }
   const root = layout.root
   const last = root.children[root.children.length - 1]
-  const sidePanes = panesIn(layout)
-  if (sidePanes.length === 0 || !last || (!isPaneGroup(last) && last.pane === 'chat')) {
+  if (!last || isPaneGroup(last) || last.pane === 'chat') {
     return normalise({
       root: { ...root, children: [...root.children, { pane: kind, weight: options.weight }] },
     })
   }
-  const leaf: PaneLeaf = { pane: kind, weight: 1 }
   const children = [...root.children]
-  if (isPaneGroup(last) && last.axis === 'column') {
-    children[children.length - 1] = {
-      ...last,
-      children: [...last.children, { ...leaf, weight: meanWeight(last.children) }],
-    }
-  } else {
-    children[children.length - 1] = {
-      id: nextGroupId(layout),
-      axis: 'column',
-      weight: last.weight,
-      children: [{ ...last, weight: 1 }, leaf],
-    }
+  children[children.length - 1] = {
+    id: nextGroupId(layout),
+    axis: 'column',
+    weight: last.weight,
+    children: [{ ...last, weight: 1 }, { pane: kind, weight: 1 }],
   }
   return normalise({ root: { ...root, children } })
 }
@@ -546,20 +538,15 @@ export function sessionPaneRecordEquals(a: SessionPaneRecord, b: SessionPaneReco
 }
 
 /** What a pane toggle does to the record the screen draws. */
-export type PaneToggleAction = 'open' | 'show-overlay' | 'move-expansion' | 'close'
+export type PaneToggleAction = 'open' | 'move-expansion' | 'close'
 
 /**
  * The toggle of `kind` against the DRAWN record: a closed pane opens; an open
- * pane's toggle shows the hidden overlay when the region is overlaid, moves
- * the expansion onto the pane when another is expanded, else closes it.
+ * pane's toggle moves the expansion onto the pane when another is expanded,
+ * else closes it.
  */
-export function paneToggleAction(
-  record: SessionPaneRecord,
-  kind: SidePaneKind,
-  overlayHidden: boolean,
-): PaneToggleAction {
+export function paneToggleAction(record: SessionPaneRecord, kind: SidePaneKind): PaneToggleAction {
   if (!hasPane(record.layout, kind)) return 'open'
-  if (overlayHidden) return 'show-overlay'
   if (record.maximized !== null && record.maximized !== kind) return 'move-expansion'
   return 'close'
 }
@@ -573,11 +560,10 @@ export type BrowserToggleAction = PaneToggleAction | 'new-tab'
 
 export function browserToggleAction(
   record: SessionPaneRecord,
-  overlayHidden: boolean,
   env: { browserTabs: number },
 ): BrowserToggleAction {
   if (!hasPane(record.layout, 'browser') && env.browserTabs <= 0) return 'new-tab'
-  return paneToggleAction(record, 'browser', overlayHidden)
+  return paneToggleAction(record, 'browser')
 }
 
 /**

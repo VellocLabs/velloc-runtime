@@ -22,7 +22,6 @@ function renderArea(over: Partial<PaneAreaProps> = {}) {
     form: 'beside',
     chatWidth: 600,
     seatWidth: 0,
-    overlayShown: false,
     chat: createElement('div', { 'data-testid': 'chat-body' }),
     renderPane: kind => createElement('div', { 'data-testid': `body-${kind}` }),
     onResizeCommit: vi.fn(),
@@ -123,7 +122,11 @@ describe('PaneArea separators', () => {
     const chatDiff = separator('root:0')
     fireEvent.pointerDown(chatDiff, { button: 0, pointerId: 1, clientX: 604, clientY: 300 })
     fireEvent.pointerMove(chatDiff, { pointerId: 1, clientX: 100, clientY: 300 })
-    expect(styleOf('pane-chat').width).toBe('360px')
+    expect(styleOf('pane-chat').width).toBe('100px')
+    // The slot at its 100 keeps the content at 360, its end under a cover.
+    expect(styleOf('pane-chat-content').width).toBe('360px')
+    const [cover] = screen.getAllByTestId('pane-chat-cover')
+    expect([cover.style.display, cover.style.left, cover.style.width]).toEqual(['', '100px', '260px'])
     fireEvent.pointerMove(chatDiff, { pointerId: 1, clientX: 604, clientY: 300 })
     fireEvent.pointerUp(chatDiff, { pointerId: 1, clientX: 604, clientY: 300 })
     expect(props.onResizeCommit).not.toHaveBeenCalled()
@@ -133,9 +136,7 @@ describe('PaneArea separators', () => {
   it('no separator while a pane is expanded or the region is a seat', () => {
     const { rerender } = renderArea({ maximized: 'diff' })
     expect(screen.queryAllByRole('separator')).toEqual([])
-    rerender({ maximized: null, form: 'overlay', seatWidth: 500, overlayShown: true })
-    expect(screen.queryAllByRole('separator')).toEqual([])
-    rerender({ form: 'float', seatWidth: 500 })
+    rerender({ maximized: null, form: 'float', seatWidth: 500 })
     expect(screen.queryAllByRole('separator')).toEqual([])
     rerender({ maximized: null, form: 'beside' })
     expect(screen.getAllByRole('separator')).toHaveLength(2)

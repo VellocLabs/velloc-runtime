@@ -1,8 +1,10 @@
 /**
- * The shell's drawn layout for a session-area width (F-9). Priority, highest
- * first: the chat, the side region (the panes, the browser among them), the
- * sidebar, the docked card stack; as the area narrows the lowest gives way
- * first and the chat keeps its minimum.
+ * The shell's drawn layout for a session-area width (F-9): the sidebar, the
+ * side region (the panes, the browser among them) and the card stack around
+ * the chat. The region splits the room with the chat's slot by its share; the
+ * slot gives way to `CHAT_SLOT_MIN_WIDTH_PX` while the chat's content keeps
+ * `CHAT_CONTENT_MIN_WIDTH_PX` under the region. Below both minimums the two
+ * shrink in proportion to them. No width hides a region.
  */
 
 /*
@@ -12,6 +14,7 @@
  */
 import {
   CHAT_CONTENT_MIN_WIDTH_PX,
+  CHAT_SLOT_MIN_WIDTH_PX,
   SIDEBAR_RAIL_WIDTH_PX,
   SPLITTER_WIDTH_PX,
   STACK_DOCK_MIN_CHAT_PX,
@@ -20,11 +23,10 @@ import {
 export type SidebarForm = 'expanded' | 'rail' | 'hidden'
 /**
  * `none`: closed by the person. `beside`: docked next to the chat.
- * `maximized`: covers the chat. `overlay`: open but no room beside the chat —
- * drawn only on demand, over it. `float`: opened by the agent, drawn over the
+ * `maximized`: covers the chat. `float`: opened by the agent, drawn over the
  * spare width beside the transcript until the person's next input docks it.
  */
-export type PanelForm = 'none' | 'beside' | 'maximized' | 'overlay' | 'float'
+export type PanelForm = 'none' | 'beside' | 'maximized' | 'float'
 export type StackPlacement = 'docked' | 'popover'
 
 export interface ShellLayoutInput {
@@ -54,11 +56,16 @@ export interface ShellLayout {
   panel: PanelForm
   /** The panel's drawn width beside the chat, without its splitter; 0 unless `beside`. */
   panelW: number
-  /** The panel's width off the row: an overlay's wanted width, a float's width; else 0. */
+  /** A float's width, off the row; else 0. */
   panelOffRowW: number
+  /** The chat's slot: what the row gives it. */
   chatW: number
-  /** The area itself is narrower than the chat's content: content keeps its floor and is clipped. */
-  chatClipped: boolean
+  /**
+   * The chat content's width: at least `CHAT_CONTENT_MIN_WIDTH_PX` while the
+   * chat is drawn (0 while a maximized panel covers it). Wider than `chatW`,
+   * its end lies under the side region, or past the area's edge.
+   */
+  chatContentW: number
   stack: StackPlacement
 }
 
@@ -75,6 +82,7 @@ export function rightPanelWantWidth(
 export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
   const { areaW, sidebar, panel } = input
   const chatMin = CHAT_CONTENT_MIN_WIDTH_PX
+  const slotMin = CHAT_SLOT_MIN_WIDTH_PX
   const panelOpen: PanelForm = !panel.visible
     ? 'none'
     : panel.maximized
@@ -84,20 +92,20 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
         : 'beside'
   const besideRoom = Math.max(0, areaW)
 
-  // The sidebar stays while the chat keeps its floor beside the panel at its
-  // minimum (a maximized panel needs only its minimum).
+  // The sidebar stays while the rest keeps its minimum beside it: the chat's
+  // content alone, the chat's slot and the panel at its minimum beside each
+  // other, or a maximized panel's minimum.
   const dockedSidebarW = sidebar.collapsed ? SIDEBAR_RAIL_WIDTH_PX : sidebar.width + SPLITTER_WIDTH_PX
   const panelGap = panel.gutter ?? SPLITTER_WIDTH_PX
   const panelMinNeed = panel.minWidth + panelGap
   const othersNeed =
-    panelOpen === 'maximized' ? panel.minWidth : panelOpen === 'beside' ? chatMin + panelMinNeed : chatMin
+    panelOpen === 'maximized' ? panel.minWidth : panelOpen === 'beside' ? slotMin + panelMinNeed : chatMin
   const form: SidebarForm =
     besideRoom - dockedSidebarW < othersNeed ? 'hidden' : sidebar.collapsed ? 'rail' : 'expanded'
   const sidebarW = form === 'hidden' ? 0 : dockedSidebarW
   const room = besideRoom - sidebarW
   const sidebarMaxW = besideRoom - SPLITTER_WIDTH_PX - othersNeed
 
-  let panelForm: PanelForm = panelOpen
   let panelW = 0
   let panelOffRowW = 0
   let chatW = room
@@ -107,15 +115,16 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
   } else if (panelOpen === 'float') {
     panelOffRowW = panel.floatWidth ?? 0
   } else if (panelOpen === 'beside') {
-    const panelRoom = room - panelGap
+    const panelRoom = Math.max(0, room - panelGap)
     const want = rightPanelWantWidth(panel.share, panelRoom, panel.minWidth, panel.maxWidth)
-    if (panelRoom - want >= chatMin) panelW = want
-    else if (panelRoom - panel.minWidth >= chatMin) panelW = panelRoom - chatMin
+    if (panelRoom - want >= slotMin) panelW = want
+    else if (panelRoom >= slotMin + panel.minWidth) panelW = panelRoom - slotMin
     else {
-      panelForm = 'overlay'
-      panelOffRowW = want
+      // Both at their minimums do not fit: each keeps its minimum's share.
+      const mins = slotMin + panel.minWidth
+      panelW = mins > 0 ? panelRoom - Math.round((slotMin * panelRoom) / mins) : 0
     }
-    chatW = panelForm === 'beside' ? panelRoom - panelW : room
+    chatW = panelRoom - panelW
   }
 
   // A maximized panel covers the chat without moving the stack: it stays
@@ -131,11 +140,11 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
     sidebar: form,
     sidebarW,
     sidebarMaxW,
-    panel: panelForm,
+    panel: panelOpen,
     panelW,
     panelOffRowW,
     chatW,
-    chatClipped: chatW > 0 && chatW < chatMin,
+    chatContentW: panelOpen === 'maximized' ? 0 : Math.max(chatW, chatMin),
     stack,
   }
 }

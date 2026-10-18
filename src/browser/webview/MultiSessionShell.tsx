@@ -34,13 +34,10 @@ import { SidebarSplitter } from './SidebarSplitter'
 import { SidebarPeek } from './SidebarPeek'
 import { resolveShellLayout, rightPanelWantWidth } from './layout/shellLayout'
 import { initialRightPanelPresence, stepRightPanelPresence } from './layout/rightPanelPresence'
-import { useOverlayDismiss } from './layout/useOverlayDismiss'
 import { setSessionCardsShown } from './layout/sessionCards'
 import { useSessionCardPrefs } from '@/components/assistant-ui/session-card-stack'
 import {
-  CHAT_CONTENT_MIN_WIDTH_PX,
   PANE_GUTTER_PX,
-  RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX,
   RIGHT_PANEL_MIN_WIDTH_PX,
   SIDEBAR_DEFAULT_WIDTH_PX,
   SIDEBAR_MAX_WIDTH_PX,
@@ -837,9 +834,9 @@ export function MultiSessionShell({
   const [sidebarPeek, setSidebarPeek] = useState(false)
   const sidebarHiddenRef = useRef(false)
   const sidebarRailRef = useRef(false)
-  // How the open Right Panel is presented beyond its docked form (F-9): the
-  // overlay over the chat when it has no room beside it, an agent-opened
-  // float, a settled float's held width. Each writer reports its event.
+  // How the open side region is presented beyond its docked form (F-9): an
+  // agent-opened float, a settled float's held width. Each writer reports
+  // its event.
   const [rightPanelPresence, presentRightPanel] = useReducer(
     stepRightPanelPresence,
     undefined,
@@ -1914,8 +1911,8 @@ export function MultiSessionShell({
     const id = activeSessionIdRef.current
     if (id) focusedPaneRef.current.set(id, kind)
   }, [])
-  /** Open `kind` for the person: placed, focused, shown when overlaid, and
-   *  expanded in place of a pane that was expanded. */
+  /** Open `kind` for the person: placed, focused, and expanded in place of
+   *  a pane that was expanded. */
   const openPaneFor = useCallback(
     (kind: SidePaneKind) => {
       updatePaneRecord(r => {
@@ -1962,14 +1959,12 @@ export function MultiSessionShell({
       const id = activeSessionIdRef.current
       if (!id) return
       setBackgroundTaskFocusSessionId(null)
-      const presence = rightPanelPresenceRef.current
-      const overlayHidden = presence.form === 'overlay' && !presence.overlay
       const action =
         kind === 'browser'
-          ? browserToggleAction(readPaneRecord(id), overlayHidden, {
+          ? browserToggleAction(readPaneRecord(id), {
               browserTabs: sessionTabCountsRef.current.get(id)?.nexus ?? 0,
             })
-          : paneToggleAction(readPaneRecord(id), kind, overlayHidden)
+          : paneToggleAction(readPaneRecord(id), kind)
       switch (action) {
         case 'new-tab':
           openBrowserTab(id)
@@ -1977,9 +1972,6 @@ export function MultiSessionShell({
         case 'open':
           if (kind === 'browser') browserDismissedAtRef.current.delete(id)
           openPaneFor(kind)
-          break
-        case 'show-overlay':
-          presentRightPanel({ type: 'personOpen', view: kind })
           break
         case 'move-expansion':
           updatePaneRecord(r => setMaximized(r, kind))
@@ -2457,7 +2449,8 @@ export function MultiSessionShell({
       : sideMetrics.share
   const rightPanelFloat = rightPanelPresence.float
   // The drawn layout for this width (F-9): sidebar form, the side region's
-  // drawn width (the chat yields first), the chat's clip, and where the card stack goes.
+  // drawn width beside the chat's slot (the slot yields first, the chat's
+  // content keeps its floor under the region), and where the card stack goes.
   const shellLayout = resolveShellLayout({
     areaW: sessionAreaWidth,
     sidebar: { collapsed: sidebarCollapsed, width: sidebarWidth },
@@ -2506,28 +2499,14 @@ export function MultiSessionShell({
   sidebarHiddenRef.current = sidebarHidden
   const sidebarRail = !sidebarHidden && shellLayout.sidebar === 'rail'
   sidebarRailRef.current = sidebarRail
-  const rightPanelOverlaid = shellLayout.panel === 'overlay'
-  const rightPanelOverlayShown = rightPanelOverlaid && rightPanelPresence.overlay
-  // Over the chat it leaves a strip of the chat to press back into.
-  const effectiveSideWidth =
-    shellLayout.panel === 'overlay'
-      ? Math.max(0, Math.min(shellLayout.panelOffRowW, shellLayout.chatW - RIGHT_PANEL_OVERLAY_CHAT_STRIP_PX))
-      : shellLayout.panel === 'float'
-        ? shellLayout.panelOffRowW
-        : shellLayout.panelW
   const rightPanelFloating = shellLayout.panel === 'float'
   // The room a docked region splits with the chat: beside, both widths;
   // otherwise the chat's width less the gutter the region would take.
   const rightPanelRoom =
     shellLayout.chatW + shellLayout.panelW - (shellLayout.panel === 'beside' ? 0 : PANE_GUTTER_PX)
   useEffect(() => {
-    presentRightPanel({
-      type: 'resize',
-      areaW: sessionAreaWidth,
-      form: shellLayout.panel,
-      room: rightPanelRoom,
-    })
-  }, [sessionAreaWidth, shellLayout.panel, rightPanelRoom])
+    presentRightPanel({ type: 'resize', areaW: sessionAreaWidth, room: rightPanelRoom })
+  }, [sessionAreaWidth, rightPanelRoom])
   // The agent opening a pane while the region is closed floats it over the
   // spare width at the transcript's end, measured here.
   agentOpenRightPanelRef.current = (view: SidePaneKind) => {
@@ -2570,12 +2549,6 @@ export function MultiSessionShell({
       document.removeEventListener('wheel', settle, true)
     }
   }, [rightPanelFloating])
-  const closeRightPanelOverlay = useCallback(() => presentRightPanel({ type: 'dismiss' }), [])
-  const rightPanelOverlayDismiss = useOverlayDismiss(
-    rightPanelOverlayShown,
-    closeRightPanelOverlay,
-    '[data-testid^="topbar-pane-"], [data-testid="topbar-more-panes"], [data-testid="topbar-more-panes-menu"]',
-  )
   useEffect(() => {
     if (!sidebarHidden) setSidebarPeek(false)
   }, [sidebarHidden])
@@ -3823,9 +3796,7 @@ export function MultiSessionShell({
   );
 
   // One pane's frame and body (F-9). The panes render outside the thread
-  // providers, so each brings the handles the deep cards need. Overlaid,
-  // Escape belongs to the overlay (it hides it); the panes' own Escape
-  // handlers must not close a pane kept open.
+  // providers, so each brings the handles the deep cards need.
   const renderSidePane = (kind: SidePaneKind): ReactNode => {
     const name = t(PANE_LABEL_KEY[kind])
     const Icon = PANE_ICON[kind]
@@ -3843,7 +3814,7 @@ export function MultiSessionShell({
         onFocus={() => focusPane(kind)}
         className="h-full"
       >
-        <SessionAreaVisibleContext.Provider value={!settingsSection && !rightPanelOverlaid}>
+        <SessionAreaVisibleContext.Provider value={!settingsSection}>
         <RightPanelContentContext.Provider value={shellRightPanelContentValue}>
         <FilePathContext.Provider value={shellFilePathContextValue}>
         <Suspense fallback={null}>{body}</Suspense>
@@ -4166,9 +4137,7 @@ export function MultiSessionShell({
           maximized={paneMaximized}
           form={shellLayout.panel}
           chatWidth={shellLayout.chatW}
-          seatWidth={effectiveSideWidth}
-          overlayShown={rightPanelOverlayShown}
-          seatProps={rightPanelOverlaid ? rightPanelOverlayDismiss : undefined}
+          seatWidth={shellLayout.panelOffRowW}
           renderPane={renderSidePane}
           onResizeCommit={commitPaneResize}
           onPaneMove={commitPaneMove}
@@ -4191,20 +4160,9 @@ export function MultiSessionShell({
                 // same way an inactive session is hidden (display none keeps
                 // the thread mounted, so restoring is a paint toggle).
                 display: isActive ? 'flex' : 'none',
-                // Narrower than its content: the content keeps its width and
-                // is clipped at the panel's edge, never squeezed.
-                overflow: isActive && shellLayout.chatClipped ? 'clip' : undefined,
               }}
-              data-chat-clipped={(isActive && shellLayout.chatClipped) || undefined}
             >
-              <div
-                className="flex h-full min-w-0 flex-1"
-                style={
-                  isActive && shellLayout.chatClipped
-                    ? { minWidth: CHAT_CONTENT_MIN_WIDTH_PX }
-                    : undefined
-                }
-              >
+              <div className="flex h-full min-w-0 flex-1">
               <ThreadErrorBoundary sessionId={sessionId} t={t}>
                 <AssistantUiThread
                   state={state}

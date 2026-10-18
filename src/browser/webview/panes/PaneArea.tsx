@@ -6,13 +6,13 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type HTMLAttributes,
   type ReactElement,
   type ReactNode,
 } from 'react'
 
 import { PANE_GUTTER_PX } from '../layout/layoutConstants'
 import {
+  PANE_AREA_LAYER,
   resolveAreaGeometry,
   type AreaGeometry,
   type AreaGeometryInput,
@@ -38,24 +38,20 @@ import { PaneHandleContext, usePaneDrag } from './usePaneDrag'
 /**
  * Draws a session's pane tree (F-9). Groups are not DOM nodes: the chat and
  * every pane sit at absolute rects inside the area, so a pane's body stays
- * mounted whatever happens to the tree around it. The side region is one box
- * beside the chat, over everything, or a seat over the chat's end, as the
- * shell's cascade decides. Beside the chat every gutter is a separator (its
- * drag paints live, commits once); a pane's handle drags it to a drop zone.
+ * mounted whatever happens to the tree around it. The side region sits beside
+ * the chat (a narrow slot leaves the content's end under it), over everything,
+ * or floats over the chat's end. Every gutter beside the chat is a separator
+ * (live paint, one commit); a pane's handle drags it to a drop zone.
  */
 export type PaneAreaProps = {
   layout: PaneLayout
   maximized: SidePaneKind | null
   /** The side region's drawn form; `none` while the tree holds no pane. */
   form: PanelForm
-  /** The chat's drawn width while the panes are beside it. */
+  /** The chat's slot width while the panes are beside it. */
   chatWidth: number
-  /** The seat's width while the region is overlaid or floating. */
+  /** The seat's width while the region floats. */
   seatWidth: number
-  /** Overlaid: whether the seat is on screen. */
-  overlayShown: boolean
-  /** Spread on the seat: the overlay's dismissal handlers. */
-  seatProps?: HTMLAttributes<HTMLDivElement>
   /** The chat: the mounted session sections. */
   chat: ReactNode
   /** One pane's frame. */
@@ -83,10 +79,18 @@ function applyRect(el: HTMLElement | null | undefined, rect: PaneRect | null): v
   el.style.height = `${rect.height}px`
 }
 
-/** A pane's rect inside the seat it is drawn in. */
+/** A rect inside the box `seat` it is drawn in. */
 function inSeat(rect: PaneRect, seat: PaneRect): PaneRect {
   return { ...rect, left: rect.left - seat.left, top: rect.top - seat.top }
 }
+
+/** The chat content's rect inside the chat's slot. */
+function contentInSlot(g: AreaGeometry): PaneRect | null {
+  return g.chat && g.chatContent ? inSeat(g.chatContent, g.chat) : null
+}
+
+/** Two cover elements: the content may stick out of the slot on either side. */
+const COVER_SLOTS = [0, 1] as const
 
 const FULL: CSSProperties = { left: 0, top: 0, width: '100%', height: '100%' }
 
@@ -112,7 +116,7 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
   const panes = panesIn(layout)
   const gutter = PANE_GUTTER_PX
   const measured = size.width > 0 && size.height > 0
-  const seated = form === 'overlay' || form === 'float'
+  const seated = form === 'float'
   const covering = maximized !== null && form !== 'none'
 
   const input = useMemo<AreaGeometryInput | null>(
@@ -129,7 +133,17 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
             gutter,
           }
         : null,
-    [measured, layout, maximized, form, size.width, size.height, props.chatWidth, props.seatWidth, gutter],
+    [
+      measured,
+      layout,
+      maximized,
+      form,
+      size.width,
+      size.height,
+      props.chatWidth,
+      props.seatWidth,
+      gutter,
+    ],
   )
   const geometry = useMemo<AreaGeometry | null>(() => (input ? resolveAreaGeometry(input) : null), [input])
 
@@ -137,6 +151,8 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
   // elements, and the layout it ends at is committed. The render that commit
   // causes draws the same rects.
   const chatRef = useRef<HTMLDivElement>(null)
+  const chatContentRef = useRef<HTMLDivElement>(null)
+  const coverRefs = useRef<(HTMLDivElement | null)[]>([null, null])
   const seatRef = useRef<HTMLDivElement>(null)
   const slotRefs = useRef(new Map<SidePaneKind, HTMLDivElement>())
   const separatorRefs = useRef(new Map<string, HTMLDivElement>())
@@ -178,6 +194,8 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
 
   const paint = useCallback((g: AreaGeometry) => {
     applyRect(chatRef.current, g.chat)
+    applyRect(chatContentRef.current, contentInSlot(g))
+    COVER_SLOTS.forEach(i => applyRect(coverRefs.current[i], g.chatCovers[i] ?? null))
     applyRect(seatRef.current, g.seat)
     for (const [kind, el] of slotRefs.current) {
       const rect = g.panes.get(kind)
@@ -279,14 +297,11 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
   }, [layout, cancelPaneDrag])
 
   const chatStyle: CSSProperties = geometry?.chat ? rectStyle(geometry.chat) : FULL
+  const contentRect = geometry ? contentInSlot(geometry) : null
   const seatRect = geometry?.seat ?? null
-  const seatVisible = !seated || form === 'float' || props.overlayShown
-  const seatClass =
-    form === 'float'
-      ? 'absolute z-30 border-border border-s bg-background shadow-xl animate-in slide-in-from-right duration-200'
-      : form === 'overlay'
-        ? 'absolute z-40 border-border border-s bg-background shadow-xl'
-        : 'absolute pointer-events-none'
+  const seatClass = seated
+    ? 'absolute z-30 border-border border-s bg-background shadow-xl animate-in slide-in-from-right duration-200'
+    : 'absolute pointer-events-none'
 
   return (
     <div
@@ -300,20 +315,41 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
       <div
         ref={chatRef}
         data-testid="pane-chat"
-        className="absolute flex"
-        style={covering ? { ...chatStyle, display: 'none' } : chatStyle}
+        data-chat-covered={geometry?.chatCovers.length ? 'true' : undefined}
+        className="absolute"
+        style={{ ...(covering ? { ...chatStyle, display: 'none' } : chatStyle), zIndex: PANE_AREA_LAYER.chat }}
       >
-        {props.chat}
+        <div
+          ref={chatContentRef}
+          data-testid="pane-chat-content"
+          className="absolute flex"
+          style={contentRect ? rectStyle(contentRect) : FULL}
+        >
+          {props.chat}
+        </div>
       </div>
+      {COVER_SLOTS.map(i => {
+        const cover = covering ? null : geometry?.chatCovers[i] ?? null
+        return (
+          <div
+            key={i}
+            ref={el => {
+              coverRefs.current[i] = el
+            }}
+            aria-hidden
+            data-testid="pane-chat-cover"
+            className="absolute bg-background"
+            style={cover ? { ...rectStyle(cover), zIndex: PANE_AREA_LAYER.chatCover } : { display: 'none' }}
+          />
+        )
+      })}
       {panes.length > 0 ? (
         <div
           ref={seatRef}
           data-testid="side-region"
           data-panel-form={form}
-          data-overlay-open={form === 'overlay' && props.overlayShown ? 'true' : undefined}
           className={seatClass}
-          style={seatRect && seatVisible ? rectStyle(seatRect) : { display: 'none' }}
-          {...(seated ? props.seatProps : null)}
+          style={seatRect ? { ...rectStyle(seatRect), ...(seated ? null : { zIndex: PANE_AREA_LAYER.region }) } : { display: 'none' }}
         >
           {panes.map(kind => {
             const rect = geometry?.panes.get(kind)
@@ -334,7 +370,7 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
           })}
         </div>
       ) : null}
-      {seatVisible && geometry
+      {geometry
         ? geometry.separators.map(separator => (
             <PaneSeparator
               key={separator.key}
