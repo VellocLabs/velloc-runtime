@@ -160,19 +160,27 @@ export function resolveMonoFont(doc: Document | undefined = globalThis.document)
 }
 
 /**
- * Call `onChange` when `<html>`'s class list changes (the host theme toggles
- * `dark`). Returns the release.
+ * Call `onChange` with the rebuilt theme whenever `<html>`'s class or inline
+ * style changes the result: the host theme toggles `dark` and writes the
+ * colour tokens inline, and a new palette in the same scheme touches only
+ * the tokens. Returns the release.
  */
-export function watchDocumentScheme(onChange: (scheme: TerminalScheme) => void, doc: Document | undefined = globalThis.document): () => void {
+export function watchDocumentTheme(
+  onChange: (theme: TerminalTheme) => void,
+  doc: Document | undefined = globalThis.document,
+  resolve: (token: string, doc: Document) => string | null = resolveCssToken,
+): () => void {
   if (!doc?.documentElement || typeof MutationObserver === 'undefined') return () => {}
-  let last = documentScheme(doc)
+  const build = (): TerminalTheme => buildTerminalTheme(documentScheme(doc), token => resolve(token, doc))
+  let last = JSON.stringify(build())
   const observer = new MutationObserver(() => {
-    const next = documentScheme(doc)
-    if (next !== last) {
-      last = next
-      onChange(next)
+    const theme = build()
+    const key = JSON.stringify(theme)
+    if (key !== last) {
+      last = key
+      onChange(theme)
     }
   })
-  observer.observe(doc.documentElement, { attributes: true, attributeFilter: ['class'] })
+  observer.observe(doc.documentElement, { attributes: true, attributeFilter: ['class', 'style'] })
   return () => observer.disconnect()
 }

@@ -41,7 +41,7 @@ import {
   documentScheme,
   resolveCssToken,
   resolveMonoFont,
-  watchDocumentScheme,
+  watchDocumentTheme,
 } from './xtermTheme'
 
 export type XtermHostProps = {
@@ -210,8 +210,8 @@ export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }
 
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fitter.observed()) : null
     observer?.observe(host)
-    const releaseTheme = watchDocumentScheme(scheme => {
-      term.options.theme = buildTerminalTheme(scheme, resolveCssToken)
+    const releaseTheme = watchDocumentTheme(theme => {
+      term.options.theme = theme
     })
 
     fitter.fitNow()
