@@ -186,6 +186,21 @@ describe('filterTree', () => {
     ])
   })
 
+  it('matches the path below the root: a folder\'s word keeps every listed entry under it', () => {
+    expect(filterTree(sample(), 'SRC').map(rowKey)).toEqual([
+      '/repo',
+      '/repo/src',
+      '/repo/src/lib',
+      '/repo/src/a.ts',
+      '/repo/src/current',
+    ])
+    expect(filterTree(sample(), 'repo')).toEqual([])
+  })
+
+  it('needs every space-separated word somewhere in the path, in any order', () => {
+    expect(filterTree(sample(), 'a src').map(rowKey)).toEqual(['/repo', '/repo/src', '/repo/src/a.ts'])
+  })
+
   it('searches collapsed folders that were listed, and returns nothing without a match', () => {
     const collapsed = toggleDir(sample(), '/repo/src')
     expect(filterTree(collapsed, 'a.ts').map(rowKey)).toContain('/repo/src/a.ts')

@@ -474,7 +474,7 @@ function resultRows(
     }
     if (!state.scanning && state.files.length === 0) rows.push(noteRow('files-find-no-matches', t('filesFind.noFiles')))
     if (state.matched > state.files.length) {
-      rows.push(noteRow('files-find-capped', t('filesFind.filesCapped', { count: state.files.length })))
+      rows.push(noteRow('files-find-capped', t('filesFind.filesCapped', { shown: state.files.length, total: state.matched })))
     }
     if (state.indexTruncated) rows.push(noteRow('files-find-index-truncated', t('filesFind.indexTruncated')))
     return rows

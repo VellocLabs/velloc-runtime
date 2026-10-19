@@ -2,7 +2,9 @@
  * Security: file search (`fsx.findFiles` / `fsx.searchText`, F-9) runs the host's search binary as a
  * streaming child (argv, no shell) in a folder the caller has already root-checked. The child never
  * follows links (no `--follow`), so it stays below that folder; VCS internals and the runtime directory
- * are never listed. Each search's topic is readable only by the connection that started it.
+ * are never listed. A repository below the folder that the folder's ignore files leave out is listed
+ * by a child started inside it, found by a probe that reads no ignore files but stays as shallow as
+ * `FSX_FIND_NESTED_REPO_DEPTH`. Each search's topic is readable only by the connection that started it.
  * `findFiles` lists a folder once, keeps the list until `invalidate()` or a `refresh`, and ranks it here
  * per query; `searchText` runs one `--json` child per query. A newer search from the same connection
  * for the same session, `cancel`, the last unsubscribe, or the owner being gone ends a search.
@@ -70,9 +72,68 @@ const EXCLUDE_ARGS = ['--glob', '!.git', '--glob', `!${RUNTIME_DIR_NAME}`]
 // `--no-require-git`: a folder's `.gitignore` applies whether or not it is inside a repository.
 const WALK_ARGS = ['--hidden', '--no-require-git', ...EXCLUDE_ARGS, '--no-messages', '--line-buffered']
 
-/** The file listing's argv: every file below the cwd that the ignore files keep, one per line. */
-export function findFilesArgs(): string[] {
-  return ['--files', ...WALK_ARGS, '--', '.']
+/** Repositories at most this many folders below a listed folder are found by the probe. */
+export const FSX_FIND_NESTED_REPO_DEPTH = 3
+
+const GIT_HEAD_SUFFIX = '/.git/HEAD'
+
+function escapeGlob(text: string): string {
+  return text.replace(/[\\*?[\]{}]/g, char => `\\${char}`)
+}
+
+/**
+ * The file listing's argv: every file below the cwd that the ignore files keep, one per line.
+ * `exclude`: folders ('/'-separated, relative to the cwd) left out, because they are listed on their own.
+ */
+export function findFilesArgs(exclude: readonly string[] = []): string[] {
+  return ['--files', ...WALK_ARGS, ...exclude.flatMap(dir => ['--glob', `!/${escapeGlob(dir)}/**`]), '--', '.']
+}
+
+/**
+ * The probe's argv: the `.git/HEAD` of every repository up to `FSX_FIND_NESTED_REPO_DEPTH` folders
+ * below the cwd, ignore files not read. A `.git` file (a linked worktree or a submodule) is not a match.
+ */
+export function nestedRepoProbeArgs(): string[] {
+  return [
+    '--files',
+    '--hidden',
+    '--no-ignore',
+    '--max-depth',
+    String(FSX_FIND_NESTED_REPO_DEPTH + 2),
+    '--glob',
+    `**${GIT_HEAD_SUFFIX}`,
+    '--glob',
+    '!node_modules',
+    '--glob',
+    `!${RUNTIME_DIR_NAME}`,
+    '--no-messages',
+    '--',
+    '.',
+  ]
+}
+
+/**
+ * The repositories among `probed` (normalized probe lines) that the folder's own listing left out
+ * (no path in `listed` lies inside them), deepest first so an outer one can leave them out in turn.
+ */
+export function unlistedRepoRoots(probed: readonly string[], listed: readonly string[]): string[] {
+  const roots = probed
+    .filter(path => path.endsWith(GIT_HEAD_SUFFIX))
+    .map(path => path.slice(0, -GIT_HEAD_SUFFIX.length))
+    .filter(root => root !== '')
+  const unlisted = [...new Set(roots)].filter(root => {
+    const inside = `${root}/`
+    return !listed.some(path => path.startsWith(inside))
+  })
+  const depth = (path: string) => path.split('/').length
+  return unlisted.sort((a, b) => depth(b) - depth(a) || (a < b ? -1 : a > b ? 1 : 0))
+}
+
+function joinUnderRoot(root: string, relative: string): string {
+  const windows = isWindowsPath(root)
+  const sep = windows ? '\\' : '/'
+  const base = root.endsWith('/') || root.endsWith('\\') ? root.slice(0, -1) : root
+  return `${base}${sep}${windows ? relative.replace(/\//g, '\\') : relative}`
 }
 
 /** The content search's argv for one query; at most `FSX_SEARCH_TEXT_MAX_PER_FILE + 1` lines per file. */
@@ -167,7 +228,8 @@ type FileIndex = {
   scanning: boolean
   truncated: boolean
   error?: FsxSearchError
-  child: NativeStreamChild | null
+  /** The listing and probe children still running. */
+  children: Set<NativeStreamChild>
   /** Called on every change; one per search reading this list. */
   readers: Set<() => void>
   lastUsed: number
@@ -393,7 +455,7 @@ export class FsxSearchService {
   /** Stop every search and child. */
   dispose(): void {
     for (const search of [...this.searches.values()]) this.forget(search)
-    for (const index of this.indexes.values()) void index.child?.kill().catch(() => {})
+    for (const index of this.indexes.values()) this.stopIndex(index)
     this.indexes.clear()
   }
 
@@ -472,7 +534,7 @@ export class FsxSearchService {
       index = undefined
     }
     if (!index) {
-      index = { root, paths: [], scanning: true, truncated: false, child: null, readers: new Set(), lastUsed: 0 }
+      index = { root, paths: [], scanning: true, truncated: false, children: new Set(), readers: new Set(), lastUsed: 0 }
       this.indexes.set(root, index)
       this.evictIndexes()
       this.scan(index)
@@ -481,13 +543,20 @@ export class FsxSearchService {
     return index
   }
 
-  /** A list nobody reads any more: a finished one stays cached, a listing in progress is killed. */
+  /** A list nobody reads any more: a finished one stays cached, a listing in progress is stopped. */
   private releaseIndex(index: FileIndex): void {
     if (index.readers.size > 0 || !index.scanning) return
-    void index.child?.kill().catch(() => {})
-    index.child?.detach()
-    index.child = null
+    index.scanning = false
+    this.stopIndex(index)
     if (this.indexes.get(index.root) === index) this.indexes.delete(index.root)
+  }
+
+  private stopIndex(index: FileIndex): void {
+    for (const child of index.children) {
+      void child.kill().catch(() => {})
+      child.detach()
+    }
+    index.children.clear()
   }
 
   private evictIndexes(): void {
@@ -502,63 +571,148 @@ export class FsxSearchService {
     }
   }
 
-  private scan(index: FileIndex): void {
+  private endIndex(index: FileIndex, error?: FsxSearchError): void {
+    if (!index.scanning) return
+    index.scanning = false
+    if (error) index.error = error
+    this.stopIndex(index)
+    this.notifyIndex(index)
+  }
+
+  private notifyIndex(index: FileIndex): void {
+    for (const reader of [...index.readers]) reader()
+  }
+
+  /** Adds listed `lines` under `prefix` while the list holds fewer than `limit`; false once it is full. */
+  private take(index: FileIndex, lines: readonly string[], prefix: string, limit: number): boolean {
     const windows = isWindowsPath(index.root)
-    const splitter = new LineSplitter()
-    const notify = () => {
-      for (const reader of [...index.readers]) reader()
-    }
-    const end = (error?: FsxSearchError) => {
-      if (!index.scanning) return
-      index.scanning = false
-      if (error) index.error = error
-      index.child?.detach()
-      index.child = null
-      notify()
-    }
-    const take = (lines: string[]) => {
-      let added = false
-      for (const line of lines) {
-        if (line === '' || index.truncated) continue
-        if (index.paths.length >= (this.deps.indexMaxFiles ?? FSX_FIND_INDEX_MAX_FILES)) {
-          index.truncated = true
-          void index.child?.kill().catch(() => {})
-          end()
-          return
-        }
-        index.paths.push(normalizeFoundPath(line, windows))
-        added = true
+    let added = false
+    let full = false
+    for (const line of lines) {
+      if (line === '') continue
+      if (index.paths.length >= limit) {
+        index.truncated = true
+        full = true
+        break
       }
-      if (added) notify()
+      index.paths.push(prefix + normalizeFoundPath(line, windows))
+      added = true
     }
+    if (added) this.notifyIndex(index)
+    return !full
+  }
+
+  /**
+   * Lists the folder, then every repository below it that the folder's ignore files left out (F-9), each
+   * with its own ignore files and an equal share of what the cap has left, deepest first.
+   */
+  private scan(index: FileIndex): void {
     const spawner = this.deps.spawner()
     if (!spawner) {
-      end('unavailable')
+      this.endIndex(index, 'unavailable')
       return
     }
-    spawner(
-      { file: FSX_SEARCH_BINARY, args: findFilesArgs(), cwd: index.root },
-      {
-        onOutput: (stream, bytes) => {
-          if (stream === 'stdout' && index.scanning) take(splitter.push(bytes))
-        },
-        onExit: exit => {
-          if (!index.scanning) return
-          take(splitter.end())
-          // 1 is "nothing listed"; 2 is an error, which only counts when nothing was listed.
-          end(exit.exitCode === 2 && index.paths.length === 0 && !exit.killed ? 'failed' : undefined)
-        },
-      },
-    ).then(
-      child => {
-        if (!index.scanning || this.indexes.get(index.root) !== index) {
-          void child.kill().catch(() => {})
+    void this.listAll(index, spawner)
+  }
+
+  private async listAll(index: FileIndex, spawner: FsxStreamSpawner): Promise<void> {
+    const max = this.deps.indexMaxFiles ?? FSX_FIND_INDEX_MAX_FILES
+    const windows = isWindowsPath(index.root)
+    const probed: string[] = []
+    const probe = this.runListing(index, spawner, nestedRepoProbeArgs(), index.root, lines => {
+      for (const line of lines) if (line !== '') probed.push(normalizeFoundPath(line, windows))
+      return true
+    })
+    const main = await this.runListing(index, spawner, findFilesArgs(), index.root, lines => this.take(index, lines, '', max))
+    if (!index.scanning) return
+    if ('error' in main) {
+      this.endIndex(index, spawnError(main.error))
+      return
+    }
+    // 1 is "nothing listed"; 2 is an error, which only counts when nothing was listed.
+    if (main.exitCode === 2 && index.paths.length === 0 && !main.killed) {
+      this.endIndex(index, 'failed')
+      return
+    }
+    if (index.truncated) {
+      this.endIndex(index)
+      return
+    }
+    const probeEnd = await probe
+    if (!index.scanning) return
+    const repos = 'error' in probeEnd ? [] : unlistedRepoRoots(probed, index.paths)
+    const listed: string[] = []
+    for (const [at, repo] of repos.entries()) {
+      const share = Math.floor((max - index.paths.length) / (repos.length - at))
+      if (share <= 0) {
+        index.truncated = true
+        break
+      }
+      const inner = listed.filter(done => done.startsWith(`${repo}/`)).map(done => done.slice(repo.length + 1))
+      const limit = index.paths.length + share
+      await this.runListing(index, spawner, findFilesArgs(inner), joinUnderRoot(index.root, repo), lines =>
+        this.take(index, lines, `${repo}/`, limit),
+      )
+      if (!index.scanning) return
+      listed.push(repo)
+    }
+    this.endIndex(index)
+  }
+
+  /**
+   * Runs one child of `index`'s listing, handing its stdout lines to `onLines` until that answers
+   * false (the child is then killed). Resolves when the child ends, is stopped, or fails to start.
+   */
+  private runListing(
+    index: FileIndex,
+    spawner: FsxStreamSpawner,
+    args: string[],
+    cwd: string,
+    onLines: (lines: string[]) => boolean,
+  ): Promise<{ exitCode: number | null; killed: boolean } | { error: unknown }> {
+    return new Promise(resolve => {
+      const splitter = new LineSplitter()
+      let child: NativeStreamChild | null = null
+      let done = false
+      const settle = (result: { exitCode: number | null; killed: boolean } | { error: unknown }) => {
+        if (done) return
+        done = true
+        if (child) {
+          index.children.delete(child)
           child.detach()
-          return
         }
-        index.child = child
-      },
-      (error: unknown) => end(spawnError(error)),
-    )
+        resolve(result)
+      }
+      const feed = (lines: string[]) => {
+        if (done || !index.scanning) return
+        if (onLines(lines)) return
+        void child?.kill().catch(() => {})
+        settle({ exitCode: null, killed: true })
+      }
+      spawner(
+        { file: FSX_SEARCH_BINARY, args, cwd },
+        {
+          onOutput: (stream, bytes) => {
+            if (stream === 'stdout') feed(splitter.push(bytes))
+          },
+          onExit: exit => {
+            feed(splitter.end())
+            settle({ exitCode: exit.exitCode, killed: exit.killed })
+          },
+        },
+      ).then(
+        started => {
+          if (done || !index.scanning) {
+            void started.kill().catch(() => {})
+            started.detach()
+            settle({ exitCode: null, killed: true })
+            return
+          }
+          child = started
+          index.children.add(started)
+        },
+        (error: unknown) => settle({ error }),
+      )
+    })
   }
 }

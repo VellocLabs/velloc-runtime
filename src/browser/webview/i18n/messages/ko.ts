@@ -282,7 +282,7 @@ export const ko: Messages = {
   'filesFind.invalidRegex': '정규 표현식이 올바르지 않습니다',
   'filesFind.noFiles': '일치하는 파일이 없습니다',
   'filesFind.noContentMatches': '파일 내용에 일치하는 항목이 없습니다',
-  'filesFind.filesCapped': '처음 {count}개 결과만 표시됩니다. 범위를 좁히려면 계속 입력하세요.',
+  'filesFind.filesCapped': '{total}개 결과 중 {shown}개만 표시됩니다. 범위를 좁히려면 계속 입력하세요.',
   'filesFind.linesCapped': '일치하는 처음 {count}줄만 표시됩니다. 범위를 좁히려면 계속 입력하세요.',
   'filesFind.indexTruncated': '일부 파일이 표시되지 않을 수 있습니다',
   'filesFind.moreInFile': '이 파일에 일치하는 항목이 더 있습니다',

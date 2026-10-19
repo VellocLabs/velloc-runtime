@@ -292,7 +292,7 @@ export const fr: Messages = {
   'filesFind.invalidRegex': 'Expression régulière non valide',
   'filesFind.noFiles': 'Aucun fichier correspondant',
   'filesFind.noContentMatches': 'Aucune correspondance dans le contenu des fichiers',
-  'filesFind.filesCapped': 'Seules les {count} premières correspondances sont affichées. Continuez à saisir pour affiner.',
+  'filesFind.filesCapped': '{shown} correspondances affichées sur {total}. Continuez à saisir pour affiner.',
   'filesFind.linesCapped': 'Seules les {count} premières lignes correspondantes sont affichées. Continuez à saisir pour affiner.',
   'filesFind.indexTruncated': 'Certains fichiers ne sont peut-être pas répertoriés',
   'filesFind.moreInFile': 'Autres correspondances dans ce fichier',

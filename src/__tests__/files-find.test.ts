@@ -1,5 +1,5 @@
 /**
- * The Files pane search's pure parts (F-9): ranking file paths by name, reading the filter box's
+ * The Files pane search's pure parts (F-9): ranking file paths by where the query falls in the path, reading the filter box's
  * mode from what is typed, where "go up" leads, and splitting a result's text on its hit ranges.
  */
 import { describe, expect, it } from 'vitest'
@@ -41,6 +41,48 @@ describe('rankFilePaths', () => {
 
   it('a query without letters or digits matches as a plain substring', () => {
     expect(ranked(['a.b', 'ab', 'x/.env'], '.')).toEqual(['x/.env', 'a.b'])
+  })
+
+  it('a word matches the whole path: name bands, then a folder holding it (shorter first), then fuzzy in the name, then fuzzy in the folders', () => {
+    const paths = [
+      'cxustom_dir/a.ts',
+      'src/custom_browser/tools/file_tool.cc',
+      'cxuxsxtxoxm.ts',
+      'a/custom_dir/x.txt',
+      'my_custom.ts',
+      'custom_tool.cc',
+      'zz/custom.txt',
+      'other/readme.md',
+    ]
+    expect(ranked(paths, 'custom')).toEqual([
+      'zz/custom.txt',
+      'custom_tool.cc',
+      'my_custom.ts',
+      'a/custom_dir/x.txt',
+      'src/custom_browser/tools/file_tool.cc',
+      'cxuxsxtxoxm.ts',
+      'cxustom_dir/a.ts',
+    ])
+  })
+
+  it('a hit in the folders is a range in the parent part of the path', () => {
+    const result = rankFilePaths(['src/custom_browser/a.cc'], 'CUSTOM', 5)
+    expect(result.files).toEqual([{ index: 0, ranges: [4, 10] }])
+  })
+
+  it('every space-separated word must match, in any order; ranges come back ordered', () => {
+    const paths = ['src/custom_browser/tools/file_tool.cc', 'src/custom_browser/a.cc', 'tools/other.cc']
+    expect(ranked(paths, 'custom tool')).toEqual(['src/custom_browser/tools/file_tool.cc'])
+    expect(ranked(paths, 'tool  custom')).toEqual(['src/custom_browser/tools/file_tool.cc'])
+    expect(rankFilePaths(paths, 'tool custom', 5).files[0]!.ranges).toEqual([4, 10, 30, 34])
+  })
+
+  it('matched counts folder hits the limit leaves out', () => {
+    const paths = ['custom.ts', ...Array.from({ length: 80 }, (_, i) => `src/custom_browser/f${i}.cc`)]
+    const result = rankFilePaths(paths, 'custom', 50)
+    expect(result.matched).toBe(81)
+    expect(result.files).toHaveLength(50)
+    expect(paths[result.files[0]!.index]).toBe('custom.ts')
   })
 
   it('an empty query matches nothing', () => {

@@ -138,34 +138,39 @@ export function flattenTree(state: FileTreeState): TreeRow[] {
 }
 
 /**
- * The listed entries whose name contains `query` (case-insensitive), with
- * the folders above them, drawn expanded. Only what has been listed is
- * searched; a matching folder with no listed match below it stays collapsed.
+ * The listed entries whose path below their root contains every
+ * space-separated word of `query` (case-insensitive), with the folders above
+ * them, drawn expanded (F-9). Only what has been listed is searched; a
+ * matching folder with no listed entry below it stays collapsed.
  */
 export function filterTree(state: FileTreeState, query: string): TreeNode[] {
-  const needle = query.trim().toLowerCase()
-  if (!needle) return []
-  const hits = (name: string) => name.toLowerCase().includes(needle)
+  const words = query.trim().toLowerCase().split(/\s+/).filter(word => word !== '')
+  if (words.length === 0) return []
+  const hits = (relative: string) => {
+    const lower = relative.toLowerCase()
+    return words.every(word => lower.includes(word))
+  }
   const out: TreeNode[] = []
-  const visit = (path: string, depth: number): boolean => {
+  const visit = (path: string, relative: string, depth: number): boolean => {
     const before = out.length
     for (const entry of state.children.get(path) ?? []) {
       const entryPath = childPath(path, entry.name)
+      const entryRelative = relative ? `${relative}/${entry.name}` : entry.name
       if (entry.kind !== 'dir') {
-        if (hits(entry.name)) out.push({ path: entryPath, name: entry.name, kind: entry.kind, depth })
+        if (hits(entryRelative)) out.push({ path: entryPath, name: entry.name, kind: entry.kind, depth })
         continue
       }
       const at = out.length
       out.push({ path: entryPath, name: entry.name, kind: 'dir', depth, expanded: false })
-      if (visit(entryPath, depth + 1)) out[at] = { ...out[at], expanded: true }
-      else if (!hits(entry.name)) out.length = at
+      if (visit(entryPath, entryRelative, depth + 1)) out[at] = { ...out[at], expanded: true }
+      else if (!hits(entryRelative)) out.length = at
     }
     return out.length > before
   }
   for (const root of state.roots) {
     const at = out.length
     out.push({ path: root, name: rootName(root), kind: 'dir', depth: 0, expanded: true })
-    if (!visit(root, 1)) out.length = at
+    if (!visit(root, '', 1)) out.length = at
   }
   return out
 }

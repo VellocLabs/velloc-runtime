@@ -285,7 +285,7 @@ export const ja: Messages = {
   'filesFind.invalidRegex': '正規表現が正しくありません',
   'filesFind.noFiles': '一致するファイルはありません',
   'filesFind.noContentMatches': 'ファイル内に一致する箇所はありません',
-  'filesFind.filesCapped': '最初の {count} 件を表示しています。入力を続けて絞り込んでください。',
+  'filesFind.filesCapped': '{total} 件中 {shown} 件を表示しています。入力を続けて絞り込んでください。',
   'filesFind.linesCapped': '一致する最初の {count} 行を表示しています。入力を続けて絞り込んでください。',
   'filesFind.indexTruncated': '一部のファイルが表示されていない可能性があります',
   'filesFind.moreInFile': 'このファイルには他にも一致する箇所があります',

@@ -280,7 +280,7 @@ export const zh: Messages = {
   'filesFind.invalidRegex': '正则表达式无效',
   'filesFind.noFiles': '没有匹配的文件',
   'filesFind.noContentMatches': '文件内容中没有匹配项',
-  'filesFind.filesCapped': '仅显示前 {count} 个匹配项。继续输入以缩小范围。',
+  'filesFind.filesCapped': '显示 {total} 个匹配项中的 {shown} 个。继续输入以缩小范围。',
   'filesFind.linesCapped': '仅显示前 {count} 个匹配行。继续输入以缩小范围。',
   'filesFind.indexTruncated': '可能有部分文件未列出',
   'filesFind.moreInFile': '此文件中还有更多匹配项',

@@ -21,6 +21,9 @@ import {
   ConnectionHub,
   FsxSearchService,
   TopicBroker,
+  findFilesArgs,
+  nestedRepoProbeArgs,
+  unlistedRepoRoots,
   registerFsxCapability,
   type FsxStreamSpawner,
   type HostBridge,
@@ -73,10 +76,24 @@ type FakeChild = {
   exit(exit?: Partial<NativeStreamExit>): void
 }
 
-function fakeSpawner() {
+/**
+ * A fake spawner. The nested-repository probe never lands in `children`: it answers with the
+ * `.git/HEAD` of each folder in `repos` and exits, and `probes` records its runs.
+ */
+function fakeSpawner(options: { repos?: string[] } = {}) {
   const children: FakeChild[] = []
+  const probes: Array<{ args: string[]; cwd: string }> = []
   const spawner: FsxStreamSpawner = async (spec, handlers: NativeStreamHandlers) => {
     const encoder = new TextEncoder()
+    if (spec.args.includes('--no-ignore')) {
+      probes.push({ args: spec.args, cwd: spec.cwd })
+      queueMicrotask(() => {
+        const lines = (options.repos ?? []).map(repo => `./${repo}/.git/HEAD\n`).join('')
+        if (lines) handlers.onOutput?.('stdout', encoder.encode(lines))
+        handlers.onExit?.({ exitCode: lines ? 0 : 1, timedOut: false, killed: false, durationMs: 1 })
+      })
+      return { streamId: 'probe', write: async () => true, closeStdin: async () => true, kill: async () => true, detach: () => {} }
+    }
     let exited = false
     const child: FakeChild = {
       spec,
@@ -101,7 +118,7 @@ function fakeSpawner() {
       detach: () => {},
     }
   }
-  return { children, spawner }
+  return { children, probes, spawner }
 }
 
 function makeServer(options: { spawner?: FsxStreamSpawner | null; indexMaxFiles?: number } = {}) {
@@ -238,9 +255,10 @@ describe('fsx.findFiles', () => {
     const state = second.last()!
     expect(state.kind === 'files' && state.files.map(file => file.path)).toEqual(['beta.ts'])
 
-    await follow(files, { kind: 'files', path: PROJECT, query: 'beta', refresh: true })
+    const third = await follow(files, { kind: 'files', path: PROJECT, query: 'beta', refresh: true })
     await vi.waitFor(() => expect(children).toHaveLength(2))
     children[1]!.exit()
+    await vi.waitFor(() => expect(third.last()?.scanning).toBe(false))
     server.search.invalidate()
     await follow(files, { kind: 'files', path: PROJECT, query: 'beta' })
     await vi.waitFor(() => expect(children).toHaveLength(3))
@@ -282,6 +300,61 @@ describe('fsx.findFiles', () => {
     const state = search.last()!
     expect(state.kind === 'files' && state.indexTruncated).toBe(true)
     expect(state.kind === 'files' && state.matched).toBe(3)
+  })
+
+  it('lists, under its own path, a repository the folder\'s ignore files left out, and leaves an inner one to its own listing', async () => {
+    const { children, probes, spawner } = fakeSpawner({ repos: ['vendor/lib', 'tracked', 'vendor/lib/inner'] })
+    const { files } = await client(makeServer({ spawner }))
+    const search = await follow(files, { kind: 'files', path: PROJECT, query: 'custom' })
+    await vi.waitFor(() => expect(children).toHaveLength(1))
+    expect(probes).toEqual([{ args: nestedRepoProbeArgs(), cwd: PROJECT }])
+    expect(nestedRepoProbeArgs()).toEqual(expect.arrayContaining(['--no-ignore', '--max-depth', '5', '**/.git/HEAD', '!node_modules']))
+    children[0]!.out('a.ts\ntracked/t.ts\n')
+    children[0]!.exit()
+
+    await vi.waitFor(() => expect(children).toHaveLength(2))
+    expect(children[1]!.spec).toEqual({ file: 'rg', args: findFilesArgs(), cwd: `${PROJECT}/vendor/lib/inner` })
+    children[1]!.out('./i.ts\n')
+    children[1]!.exit()
+    await vi.waitFor(() => expect(children).toHaveLength(3))
+    expect(children[2]!.spec).toEqual({ file: 'rg', args: findFilesArgs(['inner']), cwd: `${PROJECT}/vendor/lib` })
+    expect(findFilesArgs(['inner'])).toEqual(expect.arrayContaining(['--glob', '!/inner/**']))
+    children[2]!.out('./custom.cc\n')
+    children[2]!.exit()
+
+    await vi.waitFor(() => expect(search.last()?.scanning).toBe(false))
+    expect(children).toHaveLength(3)
+    const state = search.last()!
+    expect(state.kind === 'files' && state.files.map(file => file.path)).toEqual(['vendor/lib/custom.cc'])
+    const all = await follow(files, { kind: 'files', path: PROJECT, query: 'ts' })
+    await vi.waitFor(() => expect(all.last()?.scanning).toBe(false))
+    const listed = all.last()!
+    expect(listed.kind === 'files' && listed.files.map(file => file.path).sort()).toEqual(['a.ts', 'tracked/t.ts', 'vendor/lib/inner/i.ts'])
+  })
+
+  it('gives each left-out repository an equal share of what the cap has left', async () => {
+    const { children, spawner } = fakeSpawner({ repos: ['y', 'x'] })
+    const { files } = await client(makeServer({ spawner, indexMaxFiles: 6 }))
+    const search = await follow(files, { kind: 'files', path: PROJECT, query: 'f' })
+    await vi.waitFor(() => expect(children).toHaveLength(1))
+    children[0]!.out('f1\nf2\n')
+    children[0]!.exit()
+    await vi.waitFor(() => expect(children).toHaveLength(2))
+    expect(children[1]!.spec.cwd).toBe(`${PROJECT}/x`)
+    children[1]!.out('fa\nfb\nfc\n')
+    await vi.waitFor(() => expect(children).toHaveLength(3))
+    expect(children[1]!.killed).toBe(true)
+    children[2]!.out('fd\n')
+    children[2]!.exit()
+    await vi.waitFor(() => expect(search.last()?.scanning).toBe(false))
+    const state = search.last()!
+    expect(state.kind === 'files' && state.matched).toBe(5)
+    expect(state.kind === 'files' && state.indexTruncated).toBe(true)
+  })
+
+  it('finds left-out repositories deepest first and escapes glob characters in an inner one', () => {
+    expect(unlistedRepoRoots(['.git/HEAD', 'a/.git/HEAD', 'a/b/.git/HEAD', 'c/.git/HEAD', 'd/.git'], ['c/x.ts'])).toEqual(['a/b', 'a'])
+    expect(findFilesArgs(['we[1]/x'])).toEqual(expect.arrayContaining(['--glob', '!/we\\[1\\]/x/**']))
   })
 
   it('a scoped connection searches inside the project and is forbidden_scope outside it, before any child starts', async () => {

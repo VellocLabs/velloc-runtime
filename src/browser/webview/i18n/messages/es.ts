@@ -292,7 +292,7 @@ export const es: Messages = {
   'filesFind.invalidRegex': 'Expresión regular no válida',
   'filesFind.noFiles': 'No hay archivos coincidentes',
   'filesFind.noContentMatches': 'No hay coincidencias en el contenido de los archivos',
-  'filesFind.filesCapped': 'Se muestran las primeras {count} coincidencias. Siga escribiendo para acotar.',
+  'filesFind.filesCapped': 'Se muestran {shown} de {total} coincidencias. Siga escribiendo para acotar.',
   'filesFind.linesCapped': 'Se muestran las primeras {count} líneas coincidentes. Siga escribiendo para acotar.',
   'filesFind.indexTruncated': 'Es posible que no se muestren todos los archivos',
   'filesFind.moreInFile': 'Más coincidencias en este archivo',

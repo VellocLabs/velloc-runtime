@@ -33,9 +33,12 @@ export {
 export {
   FSX_SEARCH_BINARY,
   FSX_SEARCH_PUBLISH_INTERVAL_MS,
+  FSX_FIND_NESTED_REPO_DEPTH,
   FsxSearchService,
   findFilesArgs,
+  nestedRepoProbeArgs,
   searchTextArgs,
+  unlistedRepoRoots,
   type FsxSearchDeps,
   type FsxStreamSpawner,
 } from './fsxSearch'

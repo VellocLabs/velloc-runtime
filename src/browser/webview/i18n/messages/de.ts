@@ -291,7 +291,7 @@ export const de: Messages = {
   'filesFind.invalidRegex': 'Ungültiger regulärer Ausdruck',
   'filesFind.noFiles': 'Keine passenden Dateien',
   'filesFind.noContentMatches': 'Keine Treffer in Dateiinhalten',
-  'filesFind.filesCapped': 'Die ersten {count} Treffer werden angezeigt. Tippe weiter, um einzugrenzen.',
+  'filesFind.filesCapped': '{shown} von {total} Treffern werden angezeigt. Tippe weiter, um einzugrenzen.',
   'filesFind.linesCapped': 'Die ersten {count} passenden Zeilen werden angezeigt. Tippe weiter, um einzugrenzen.',
   'filesFind.indexTruncated': 'Möglicherweise werden nicht alle Dateien aufgeführt',
   'filesFind.moreInFile': 'Weitere Treffer in dieser Datei',

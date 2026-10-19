@@ -247,9 +247,19 @@ describe('FilesBrowse search modes', () => {
     expect(screen.getByTestId('files-find-spinner')).toBeTruthy()
     act(() => started[0]!.publish(filesState([{ path: 'src/lib/deep.ts', ranges: [8, 12] }], false, 120)))
     await waitFor(() => expect(screen.queryByTestId('files-find-spinner')).toBeNull())
-    expect(screen.getByTestId('files-find-capped')).toBeTruthy()
+    expect(screen.getByTestId('files-find-capped').textContent).toBe('Showing 1 of 120 matches. Keep typing to narrow.')
     fireEvent.keyDown(box, { key: 'Enter' })
     expect(onOpen).toHaveBeenCalledWith('/repo/src/lib/deep.ts')
+  })
+
+  it('a hit in the folders is marked in the parent path under the name', async () => {
+    const { started, type } = setup()
+    type('custom')
+    await waitFor(() => expect(started).toHaveLength(1))
+    act(() => started[0]!.publish(filesState([{ path: 'src/custom_browser/a.cc', ranges: [4, 10] }], false)))
+    const result = await screen.findByTestId('files-find-file:src/custom_browser/a.cc')
+    expect([...result.querySelectorAll('mark')].map(mark => mark.textContent)).toEqual(['custom'])
+    expect(result.querySelector('mark')?.parentElement?.textContent).toBe('src/custom_browser')
   })
 
   it('a newer query starts before the older search ends, and only the first lists the folder again', async () => {

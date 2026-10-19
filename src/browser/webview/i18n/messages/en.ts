@@ -314,7 +314,7 @@ export const en = {
   'filesFind.invalidRegex': 'Invalid regular expression',
   'filesFind.noFiles': 'No matching files',
   'filesFind.noContentMatches': 'No matches in file contents',
-  'filesFind.filesCapped': 'Showing the first {count} matches. Keep typing to narrow.',
+  'filesFind.filesCapped': 'Showing {shown} of {total} matches. Keep typing to narrow.',
   'filesFind.linesCapped': 'Showing the first {count} matching lines. Keep typing to narrow.',
   'filesFind.indexTruncated': 'Some files may not be listed',
   'filesFind.moreInFile': 'More matches in this file',
