@@ -336,6 +336,38 @@ describe('TerminalPane', () => {
     expect(loadTerminalLayout().sessions.s1?.slots).toEqual([{ shell: 'pwsh' }])
   })
 
+  it('closing a tab keeps the numbers of the others, and the next new tab counts on from the highest', async () => {
+    const fake = fakeConnection()
+    renderPane(fake.conn)
+    await flush()
+    fake.publish('terminals', state([running('term_a', 's1'), running('term_b', 's1'), running('term_c', 's1')]))
+    await flush()
+    const labels = () =>
+      Array.from(screen.getByTestId('pane-terminal-tabs').querySelectorAll('[role="tab"]')).map(tab => tab.textContent)
+    expect(labels()).toEqual(['Terminal 1 - pwsh', 'Terminal 2 - pwsh', 'Terminal 3 - pwsh'])
+    // × on Terminal 2: the runtime drops it from the topic; Terminal 3 stays Terminal 3.
+    fireEvent.click(screen.getByTestId('pane-terminal-close:term_b'))
+    expect(fake.request).toHaveBeenCalledWith('terminal.close', { id: 'term_b' })
+    fake.publish('terminals', state([running('term_a', 's1'), running('term_c', 's1')]))
+    await flush()
+    expect(labels()).toEqual(['Terminal 1 - pwsh', 'Terminal 3 - pwsh'])
+    expect(screen.getByTestId('pane-terminal-close:term_c').getAttribute('aria-label')).toBe('Close Terminal 3')
+    // A new terminal takes the number after the highest, never a closed one's.
+    fake.publish('terminals', state([running('term_a', 's1'), running('term_c', 's1'), running('term_d', 's1')]))
+    await flush()
+    expect(labels()).toEqual(['Terminal 1 - pwsh', 'Terminal 3 - pwsh', 'Terminal 4 - pwsh'])
+    // Down to one terminal: no tab strip.
+    fake.publish('terminals', state([running('term_a', 's1')]))
+    await flush()
+    expect(screen.queryByTestId('pane-terminal-tabs')).toBeNull()
+    // With every tab gone the count starts over.
+    fake.publish('terminals', state([]))
+    await flush()
+    fake.publish('terminals', state([running('term_e', 's1'), running('term_f', 's1')]))
+    await flush()
+    expect(labels()).toEqual(['Terminal 1 - pwsh', 'Terminal 2 - pwsh'])
+  })
+
   it('tabs read Terminal 1, 2, 3 in strip order, each followed by the title of its shell', async () => {
     const fake = fakeConnection()
     renderPane(fake.conn)

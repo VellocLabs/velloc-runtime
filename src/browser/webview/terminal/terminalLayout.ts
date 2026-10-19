@@ -140,16 +140,23 @@ export type SessionSlots = {
   /** Tab keys — terminal ids and placeholder ids — in display order. */
   order: readonly string[]
   placeholders: readonly TerminalPlaceholder[]
+  /**
+   * Each tab's number, by key: given once, in opening order, and kept for
+   * the tab's life, so closing one never renumbers the others.
+   */
+  numbers: Readonly<Record<string, number>>
 }
 
-export const EMPTY_SLOTS: SessionSlots = { order: [], placeholders: [] }
+export const EMPTY_SLOTS: SessionSlots = { order: [], placeholders: [], numbers: {} }
 
 const slotsBySession = new Map<string, SessionSlots>()
 const slotListeners = new Set<() => void>()
 let placeholderCounter = 0
 
 function setSlots(sessionId: string, next: SessionSlots): void {
-  if (next.order.length === 0 && next.placeholders.length === 0) slotsBySession.delete(sessionId)
+  if (next.order.length === 0 && next.placeholders.length === 0 && Object.keys(next.numbers).length === 0) {
+    slotsBySession.delete(sessionId)
+  }
   else slotsBySession.set(sessionId, next)
   for (const listener of [...slotListeners]) listener()
 }
@@ -177,6 +184,7 @@ export function restorePlaceholders(sessionId: string, shells: readonly (string 
   setSlots(sessionId, {
     order: [...current.order, ...added.map(placeholder => placeholder.id)],
     placeholders: [...current.placeholders, ...added],
+    numbers: current.numbers,
   })
   return added.map(placeholder => placeholder.id)
 }
@@ -189,26 +197,62 @@ export function markPlaceholderStarting(sessionId: string, id: string, starting:
     placeholders: current.placeholders.map(placeholder =>
       placeholder.id === id ? { ...placeholder, starting } : placeholder,
     ),
+    numbers: current.numbers,
   })
 }
 
-/** The placeholder became terminal `terminalId`: it takes the placeholder's place in the order. */
+/** The placeholder became terminal `terminalId`: it takes the placeholder's place in the order, and its number. */
 export function placeholderStarted(sessionId: string, id: string, terminalId: string): void {
   const current = sessionSlots(sessionId)
   if (!current.placeholders.some(placeholder => placeholder.id === id)) return
+  const { [id]: number, ...rest } = current.numbers
   setSlots(sessionId, {
     order: current.order.map(key => (key === id ? terminalId : key)),
     placeholders: current.placeholders.filter(placeholder => placeholder.id !== id),
+    numbers: number === undefined ? rest : { ...rest, [terminalId]: number },
   })
 }
 
 export function removePlaceholder(sessionId: string, id: string): void {
   const current = sessionSlots(sessionId)
   if (!current.placeholders.some(placeholder => placeholder.id === id)) return
+  const { [id]: _dropped, ...numbers } = current.numbers
   setSlots(sessionId, {
     order: current.order.filter(key => key !== id),
     placeholders: current.placeholders.filter(placeholder => placeholder.id !== id),
+    numbers,
   })
+}
+
+/**
+ * The numbers the tabs `keys` carry: a key already numbered keeps its number;
+ * a new key takes the one after the highest in use, in order. Keys no longer
+ * shown are dropped, and with none left the count starts over at 1.
+ */
+export function numberTabs(numbers: Readonly<Record<string, number>>, keys: readonly string[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  let highest = 0
+  for (const key of keys) {
+    const known = numbers[key]
+    if (known !== undefined) {
+      out[key] = known
+      highest = Math.max(highest, known)
+    }
+  }
+  for (const key of keys) {
+    if (out[key] !== undefined) continue
+    highest += 1
+    out[key] = highest
+  }
+  return out
+}
+
+/** Keep `numbers` as the session's tab numbers (what `numberTabs` gave the tabs shown). */
+export function rememberTabNumbers(sessionId: string, numbers: Readonly<Record<string, number>>): void {
+  const current = sessionSlots(sessionId)
+  const keys = Object.keys(numbers)
+  if (keys.length === Object.keys(current.numbers).length && keys.every(key => current.numbers[key] === numbers[key])) return
+  setSlots(sessionId, { order: current.order, placeholders: current.placeholders, numbers: { ...numbers } })
 }
 
 /** Keep `order` to the keys still present, with the live ids it does not know yet appended in their own order. */

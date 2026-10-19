@@ -7,15 +7,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  EMPTY_SLOTS,
   TERMINAL_LAYOUT_MAX_SESSIONS,
   TERMINAL_LAYOUT_MAX_SLOTS,
   TERMINAL_LAYOUT_STORAGE_KEY,
   forgetSessionTerminals,
   loadTerminalLayout,
   markPlaceholderStarting,
+  numberTabs,
   orderedKeys,
   placeholderStarted,
   rememberSessionTerminals,
+  rememberTabNumbers,
   removePlaceholder,
   resetTerminalSlotsForTests,
   restorePlaceholders,
@@ -139,6 +142,43 @@ describe('the page slots', () => {
     expect(sessionSlots('s1').order).toEqual(['term_x', ids[2]])
     // Another session is untouched.
     expect(sessionSlots('s2').placeholders).toHaveLength(0)
+    release()
+  })
+
+  it('numberTabs gives new tabs the next number, keeps the numbers of the rest, and starts over when none is left', () => {
+    const three = numberTabs({}, ['a', 'b', 'c'])
+    expect(three).toEqual({ a: 1, b: 2, c: 3 })
+    // Closing the middle tab leaves 1 and 3; the next new tab is 4, not 3.
+    const twoLeft = numberTabs(three, ['a', 'c'])
+    expect(twoLeft).toEqual({ a: 1, c: 3 })
+    expect(numberTabs(twoLeft, ['a', 'c', 'd'])).toEqual({ a: 1, c: 3, d: 4 })
+    // Reordering changes no number.
+    expect(numberTabs(twoLeft, ['c', 'a'])).toEqual({ a: 1, c: 3 })
+    expect(numberTabs(twoLeft, [])).toEqual({})
+    expect(numberTabs({}, ['e'])).toEqual({ e: 1 })
+  })
+
+  it('tab numbers live in the slots: a started placeholder keeps its number, a removed one frees it', () => {
+    let notified = 0
+    const release = subscribeTerminalSlots(() => notified++)
+    const ids = restorePlaceholders('s1', [null, null])
+    rememberTabNumbers('s1', { [ids[0]!]: 1, [ids[1]!]: 2 })
+    expect(notified).toBe(2)
+    // The same numbers again change nothing and tell nobody.
+    rememberTabNumbers('s1', { [ids[1]!]: 2, [ids[0]!]: 1 })
+    expect(notified).toBe(2)
+    placeholderStarted('s1', ids[1]!, 'term_x')
+    expect(sessionSlots('s1').numbers).toEqual({ [ids[0]!]: 1, term_x: 2 })
+    removePlaceholder('s1', ids[0]!)
+    expect(sessionSlots('s1').numbers).toEqual({ term_x: 2 })
+    // With no tab shown the numbers are dropped, so the count starts over.
+    rememberTabNumbers('s1', {})
+    expect(sessionSlots('s1').numbers).toEqual({})
+    // A session with nothing left at all keeps no entry.
+    const lone = restorePlaceholders('s3', [null])
+    rememberTabNumbers('s3', { [lone[0]!]: 1 })
+    removePlaceholder('s3', lone[0]!)
+    expect(sessionSlots('s3')).toBe(EMPTY_SLOTS)
     release()
   })
 

@@ -33,9 +33,11 @@ import {
   EMPTY_SLOTS,
   loadTerminalLayout,
   markPlaceholderStarting,
+  numberTabs,
   orderedKeys,
   placeholderStarted,
   rememberSessionTerminals,
+  rememberTabNumbers,
   removePlaceholder,
   restorePlaceholders,
   sessionSlots,
@@ -107,8 +109,10 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
     row: rows.find(row => row.id === key) ?? null,
     placeholder: slots.placeholders.find(placeholder => placeholder.id === key) ?? null,
   }))
-  // Tabs read "Terminal 1", "Terminal 2", … in strip order; a started tab adds the shell's own title.
-  const labels = tabs.map((_, index) => `${name} ${index + 1}`)
+  // Tabs read "Terminal 1", "Terminal 2", … numbered once, in opening order,
+  // and kept through closes; a started tab adds the shell's own title.
+  const numbers = numberTabs(slots.numbers, tabs.map(tab => tab.key))
+  const labels = tabs.map(tab => `${name} ${numbers[tab.key] ?? ''}`)
   const titled = (label: string, row: TerminalRow | null): string =>
     row && row.title ? t('terminal.titled', { name: label, title: row.title }) : label
 
@@ -203,6 +207,13 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
     // `tabs` is derived; its signature and the active index are what matter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, state?.available, tabSignature, activeIndex])
+
+  const tabKeys = tabs.map(tab => tab.key).join('\u0000')
+  useEffect(() => {
+    if (sessionId) rememberTabNumbers(sessionId, numbers)
+    // `numbers` follows the tab keys.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, tabKeys])
 
   const closeTab = (tab: Tab): void => {
     if (tab.row) void request('close', { id: tab.row.id }).catch(() => {})
