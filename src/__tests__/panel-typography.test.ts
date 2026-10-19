@@ -18,6 +18,8 @@ describe('panel and code surfaces carry the type-scale utilities', () => {
     'browser/webview/panes/PaneFrame.tsx',
     'browser/webview/panes/PaneArea.tsx',
     'browser/webview/panes/FilesPane.tsx',
+    'browser/webview/panes/FilesBrowse.tsx',
+    'browser/webview/panes/FileTreeView.tsx',
     'browser/webview/FilePanel.tsx',
     'browser/webview/DiffPanel.tsx',
     'browser/webview/PlanDetailsPanel.tsx',

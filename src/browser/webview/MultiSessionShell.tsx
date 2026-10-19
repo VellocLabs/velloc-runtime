@@ -1375,6 +1375,7 @@ export function MultiSessionShell({
     requestTurnDiffHistory,
     loadBundledSkillBody,
     readFileText,
+    listDir,
     statFilePaths,
     writeFileText,
     pickComposerAttachmentFiles,
@@ -2224,6 +2225,17 @@ export function MultiSessionShell({
     }
     presentRightPanel({ type: 'personOpen', view: 'files' })
   }, [updatePaneRecord, sessionLayoutsStore, focusPane, updatePaneUi])
+  const openFileFromTree = useCallback(
+    (path: string) => openFileInPanel({ path }),
+    [openFileInPanel],
+  )
+  // The Files tree's roots: the session's working folder, once the session has reported one.
+  const hasActiveSnapshot = activeState.snapshot != null
+  const activeCwd = activeState.snapshot?.cwd ?? activeState.snapshot?.projectRoot
+  const filesTreeRoots = useMemo(
+    () => (hasActiveSnapshot ? (activeCwd ? [activeCwd] : []) : null),
+    [hasActiveSnapshot, activeCwd],
+  )
   const handleActivateFileTab = useCallback(
     (path: string) => {
       updatePaneRecord(r => {
@@ -4109,6 +4121,9 @@ export function MultiSessionShell({
             // Lock the editor while THIS session's turn is running (the agent
             // may be writing the same files); editing re-enables when it ends.
             editingLocked={runningSessionIds.has(activeSessionId)}
+            onOpen={openFileFromTree}
+            listDir={listDir}
+            roots={filesTreeRoots}
             frame={({ title, body }) => frame(title, body)}
           />
         </Suspense>
