@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactElement, ReactNode } from 'react'
-import { Maximize2Icon, Minimize2Icon, XIcon } from 'lucide-react'
+import { GripVerticalIcon, Maximize2Icon, Minimize2Icon, XIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -17,9 +17,9 @@ import { usePaneHandle } from './usePaneDrag'
 /**
  * The chrome every side pane shares (F-9): a card with a 36px header — the
  * pane's title slot at the start, its own actions, then Expand / Restore and
- * Close — over a body that owns its scrolling. The header outside its controls
- * is the pane's handle: inside an area it drags the pane and moves it with
- * the arrow keys. Brings its own TooltipProvider: panes render outside
+ * Close — over a body that owns its scrolling. Only the grip at the header's
+ * start is the pane's handle: inside an area it drags the pane and moves it
+ * with the arrow keys; the rest of the header never starts a drag. Brings its own TooltipProvider: panes render outside
  * the thread providers.
  */
 export type PaneFrameProps = {
@@ -68,8 +68,17 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
             tabIndex={0}
             aria-label={t('pane.move', { pane: name })}
             data-testid={`pane-${kind}-handle`}
-            className="flex h-full min-w-0 flex-1 cursor-grab touch-none select-none items-center gap-1.5 text-[13px] font-medium leading-none outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className={cn(
+              'flex h-6 w-4 shrink-0 touch-none select-none items-center justify-center rounded text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              handle ? 'cursor-grab hover:bg-muted hover:text-foreground' : 'cursor-default',
+            )}
             {...handle}
+          >
+            <GripVerticalIcon aria-hidden="true" className="size-3.5" />
+          </div>
+          <div
+            data-testid={`pane-${kind}-title`}
+            className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-[13px] font-medium leading-none"
           >
             {props.title}
           </div>

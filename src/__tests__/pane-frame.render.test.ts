@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { PaneFrame } from '@/browser/webview/panes/PaneFrame'
+import { PaneHandleContext } from '@/browser/webview/panes/usePaneDrag'
 
 afterEach(cleanup)
 
@@ -56,5 +57,37 @@ describe('PaneFrame', () => {
     expect(props.onClose).toHaveBeenCalledTimes(1)
     fireEvent.pointerDown(screen.getByTestId('body'))
     expect(props.onFocus).toHaveBeenCalled()
+  })
+
+  it('only the grip starts a drag: a press on the title or a control does not', () => {
+    const onPointerDown = vi.fn()
+    const onKeyDown = vi.fn()
+    const props = {
+      kind: 'browser' as const,
+      name: 'Browser',
+      title: createElement('button', { 'data-testid': 'tab', type: 'button' }, 'Tab 1'),
+      maximized: false,
+      onToggleMaximized: vi.fn(),
+      onClose: vi.fn(),
+      children: createElement('div', null, 'body'),
+    }
+    render(
+      createElement(
+        PaneHandleContext.Provider,
+        { value: () => ({ onPointerDown, onKeyDown }) },
+        createElement(PaneFrame, props),
+      ),
+    )
+    const handle = screen.getByTestId('pane-browser-handle')
+    expect(handle.contains(screen.getByTestId('tab'))).toBe(false)
+    expect(handle.className).toContain('cursor-grab')
+    expect(screen.getByTestId('pane-browser-title').className).not.toContain('cursor-grab')
+    fireEvent.pointerDown(screen.getByTestId('tab'))
+    fireEvent.pointerDown(screen.getByTestId('pane-browser-title'))
+    fireEvent.pointerDown(screen.getByTestId('pane-browser-header'))
+    fireEvent.pointerDown(screen.getByTestId('pane-browser-close'))
+    expect(onPointerDown).not.toHaveBeenCalled()
+    fireEvent.pointerDown(handle)
+    expect(onPointerDown).toHaveBeenCalledTimes(1)
   })
 })
