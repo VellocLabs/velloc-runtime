@@ -277,6 +277,7 @@ export const ko: Messages = {
   'pane.browser.newTab': '새 탭',
   'terminal.new': '새 터미널',
   'terminal.tabs': '터미널',
+  'terminal.titled': '{name} - {title}',
   'terminal.closeTerminal': '{title} 닫기',
   'terminal.options': '터미널 옵션',
   'terminal.cursorStyle': '커서 모양',

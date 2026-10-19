@@ -148,9 +148,13 @@ describe('TerminalPane', () => {
     fake.publish('terminals', state([running('term_a', 's1')]), 'delta', 'state')
     await flush()
     expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_a')
-    // One terminal: the plain name, no tab strip.
+    // One terminal: the name with the shell's title, no tab strip.
     expect(screen.queryByTestId('pane-terminal-tabs')).toBeNull()
-    expect(screen.getByTestId('title').textContent).toContain('Terminal')
+    expect(screen.getByTestId('title').textContent).toBe('Terminal - pwsh')
+    // A new title from the shell follows into the label.
+    fake.publish('terminals', state([running('term_a', 's1', 'npm run dev')]), 'delta', 'state')
+    await flush()
+    expect(screen.getByTestId('title').textContent).toBe('Terminal - npm run dev')
   })
 
   it('shows only the session\'s terminals, as tabs when there are several; a tab activates, × closes', async () => {
@@ -332,14 +336,14 @@ describe('TerminalPane', () => {
     expect(loadTerminalLayout().sessions.s1?.slots).toEqual([{ shell: 'pwsh' }])
   })
 
-  it('tabs read Terminal 1, 2, 3 in strip order whatever the shells call themselves', async () => {
+  it('tabs read Terminal 1, 2, 3 in strip order, each followed by the title of its shell', async () => {
     const fake = fakeConnection()
     renderPane(fake.conn)
     await flush()
     fake.publish('terminals', state([running('term_a', 's1', 'pwsh'), running('term_b', 's1', 'pwsh'), running('term_c', 's1', 'vim')]))
     await flush()
     const tabs = screen.getByTestId('pane-terminal-tabs').querySelectorAll('[role="tab"]')
-    expect(Array.from(tabs).map(tab => tab.textContent)).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3'])
+    expect(Array.from(tabs).map(tab => tab.textContent)).toEqual(['Terminal 1 - pwsh', 'Terminal 2 - pwsh', 'Terminal 3 - vim'])
     expect(Array.from(tabs).map(tab => tab.getAttribute('title'))).toEqual(['pwsh', 'pwsh', 'vim'])
     expect(screen.getByTestId('pane-terminal-close:term_c').getAttribute('aria-label')).toBe('Close Terminal 3')
   })

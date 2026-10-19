@@ -280,6 +280,7 @@ export const ja: Messages = {
   'pane.browser.newTab': '新しいタブ',
   'terminal.new': '新しいターミナル',
   'terminal.tabs': 'ターミナル',
+  'terminal.titled': '{name} - {title}',
   'terminal.closeTerminal': '{title} を閉じる',
   'terminal.options': 'ターミナルのオプション',
   'terminal.cursorStyle': 'カーソルの形',

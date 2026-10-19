@@ -287,6 +287,7 @@ export const fr: Messages = {
   'pane.browser.newTab': 'Nouvel onglet',
   'terminal.new': 'Nouveau terminal',
   'terminal.tabs': 'Terminaux',
+  'terminal.titled': '{name} - {title}',
   'terminal.closeTerminal': 'Fermer {title}',
   'terminal.options': 'Options du terminal',
   'terminal.cursorStyle': 'Style du curseur',

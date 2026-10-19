@@ -107,8 +107,10 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
     row: rows.find(row => row.id === key) ?? null,
     placeholder: slots.placeholders.find(placeholder => placeholder.id === key) ?? null,
   }))
-  // Tabs read "Terminal 1", "Terminal 2", … in strip order; the shell's own title is the tooltip.
+  // Tabs read "Terminal 1", "Terminal 2", … in strip order; a started tab adds the shell's own title.
   const labels = tabs.map((_, index) => `${name} ${index + 1}`)
+  const titled = (label: string, row: TerminalRow | null): string =>
+    row && row.title ? t('terminal.titled', { name: label, title: row.title }) : label
 
   const [activeBySession, setActiveBySession] = useState<Record<string, string>>({})
   const chosen = sessionId ? activeBySession[sessionId] : undefined
@@ -229,7 +231,9 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
     <>
       <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       {tabs.length <= 1 ? (
-        <span className="min-w-0 truncate">{name}</span>
+        <span className="min-w-0 truncate" title={activeTab?.row?.title}>
+          {titled(name, activeTab?.row ?? null)}
+        </span>
       ) : (
         <div
           role="tablist"
@@ -262,13 +266,13 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
                   title={tab.row ? tab.row.title : t('terminal.placeholder.pending')}
                   onClick={() => activate(tab.key)}
                   className={cn(
-                    'flex min-w-0 max-w-[10rem] items-center gap-1 py-0.5 pe-1 ps-1.5 outline-none',
+                    'flex min-w-0 max-w-[14rem] items-center gap-1 py-0.5 pe-1 ps-1.5 outline-none',
                     isActive ? 'font-medium text-foreground' : 'text-muted-foreground',
                     kind === 'exited' || kind === 'failed' ? 'line-through' : null,
                     kind === 'pending' ? 'italic' : null,
                   )}
                 >
-                  <span className="min-w-0 truncate">{label}</span>
+                  <span className="min-w-0 truncate">{titled(label, tab.row)}</span>
                 </button>
                 <button
                   type="button"

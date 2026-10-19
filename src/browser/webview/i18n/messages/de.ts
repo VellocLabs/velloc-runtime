@@ -286,6 +286,7 @@ export const de: Messages = {
   'pane.browser.newTab': 'Neuer Tab',
   'terminal.new': 'Neues Terminal',
   'terminal.tabs': 'Terminals',
+  'terminal.titled': '{name} - {title}',
   'terminal.closeTerminal': '{title} schließen',
   'terminal.options': 'Terminal-Optionen',
   'terminal.cursorStyle': 'Cursorform',

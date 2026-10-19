@@ -275,6 +275,7 @@ export const zh: Messages = {
   'pane.browser.newTab': '新建标签页',
   'terminal.new': '新建终端',
   'terminal.tabs': '终端',
+  'terminal.titled': '{name} - {title}',
   'terminal.closeTerminal': '关闭 {title}',
   'terminal.options': '终端选项',
   'terminal.cursorStyle': '光标样式',

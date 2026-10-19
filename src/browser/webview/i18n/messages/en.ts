@@ -310,6 +310,7 @@ export const en = {
   // The Terminal pane: its tab strip, the + button, the options menu and the exit line.
   'terminal.new': 'New terminal',
   'terminal.tabs': 'Terminals',
+  'terminal.titled': '{name} - {title}',
   'terminal.closeTerminal': 'Close {title}',
   'terminal.options': 'Terminal options',
   'terminal.cursorStyle': 'Text cursor',
