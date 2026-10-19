@@ -270,7 +270,6 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
 
   const title = state.tabs.length === 0 ? (
     <>
-      <FolderIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       <span data-testid="files-pane-browse-title" className="min-w-0 truncate">
         {t('filesBrowse.title')}
       </span>
