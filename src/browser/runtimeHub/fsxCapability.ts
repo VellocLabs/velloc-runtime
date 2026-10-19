@@ -11,6 +11,8 @@
  * below `full` every directory is root-checked before the walk enters it: the host reports no links
  * from a directory read, so a junction out of the project reads as a directory and only the
  * realpath check catches it.
+ * File search (`findFiles`, `searchText`) root-checks the searched folder like `listDir`, then hands it
+ * to `FsxSearchService`, which never leaves it.
  */
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { checkWithinRoot } from '../../permissions/untrustedReadBoundary'
@@ -26,16 +28,21 @@ import {
 import {
   FSX_ACTION_SCOPES,
   FSX_CAPABILITY,
+  FSX_FIND_MAX_LIMIT,
   FSX_LIST_MAX_ENTRIES,
+  FSX_SEARCH_QUERY_MAX_LENGTH,
+  FSX_SEARCH_TEXT_MAX_LIMIT,
   FSX_STAT_BATCH_MAX_PATHS,
   FSX_TREE_DEFAULT_DEPTH,
   FSX_TREE_MAX_DEPTH,
   FSX_TREE_MAX_ENTRIES,
   isBlobRef,
   wireError,
+  type FsxCancelSearchPayload,
   type FsxCommitUploadPayload,
   type FsxCommitUploadResult,
   type FsxDirEntry,
+  type FsxFindFilesPayload,
   type FsxListDirPayload,
   type FsxListDirResult,
   type FsxListTreePayload,
@@ -43,6 +50,8 @@ import {
   type FsxReadBlobResult,
   type FsxReadPayload,
   type FsxReadTextResult,
+  type FsxSearchStartResult,
+  type FsxSearchTextPayload,
   type FsxStatBatchPayload,
   type FsxStatBatchResult,
   type FsxStatEntry,
@@ -51,6 +60,7 @@ import {
   type FsxWriteTextPayload,
 } from '../runtimeProtocol'
 import type { CapabilityRegistry } from './CapabilityRegistry'
+import type { FsxSearchService } from './fsxSearch'
 import { callHostFs, hostOf, resolveHostHome } from './hostFs'
 import type { ActionSpec, HandlerRequest, HostBridge, RuntimeContext } from './types'
 
@@ -92,6 +102,34 @@ function isListTreePayload(value: unknown): value is FsxListTreePayload {
     depth === undefined ||
     (typeof depth === 'number' && Number.isInteger(depth) && depth >= 1 && depth <= FSX_TREE_MAX_DEPTH)
   )
+}
+
+const isOptionalBoolean = (value: unknown): boolean => value === undefined || typeof value === 'boolean'
+const isOptionalLimit = (value: unknown, max: number): boolean =>
+  value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= max)
+const isSearchQuery = (value: unknown): value is string =>
+  isNonEmptyString(value) && value.length <= FSX_SEARCH_QUERY_MAX_LENGTH
+
+function isFindFilesPayload(value: unknown): value is FsxFindFilesPayload {
+  if (!isReadPayload(value)) return false
+  const payload = value as Dict
+  return isSearchQuery(payload.query) && isOptionalLimit(payload.limit, FSX_FIND_MAX_LIMIT) && isOptionalBoolean(payload.refresh)
+}
+
+function isSearchTextPayload(value: unknown): value is FsxSearchTextPayload {
+  if (!isReadPayload(value)) return false
+  const payload = value as Dict
+  return (
+    isSearchQuery(payload.query) &&
+    isOptionalLimit(payload.limit, FSX_SEARCH_TEXT_MAX_LIMIT) &&
+    isOptionalBoolean(payload.caseSensitive) &&
+    isOptionalBoolean(payload.wholeWord) &&
+    isOptionalBoolean(payload.regex)
+  )
+}
+
+function isCancelSearchPayload(value: unknown): value is FsxCancelSearchPayload {
+  return isDict(value) && isNonEmptyString(value.searchId)
 }
 
 function isWriteTextPayload(value: unknown): value is FsxWriteTextPayload {
@@ -507,6 +545,22 @@ async function listTree(
   return { entries, truncated }
 }
 
+/** The folder a search runs in: root-checked like a listing; `not_found` when missing, `conflict` for a file. */
+async function searchRoot(
+  request: HandlerRequest<FsxReadPayload>,
+  ctx: RuntimeContext,
+  fsxHost: FsxHost,
+  search: FsxSearchService | undefined,
+): Promise<{ abs: string; search: FsxSearchService }> {
+  const { sessionId, path } = request.payload
+  const { abs, host } = await resolveForConnection(request, ctx, fsxHost, sessionId, path)
+  if (!search) throw wireError('host_unavailable', 'file search is not available in this runtime')
+  const stat = await callHostFs<StatResult>(host, 'stat', { path: abs }).catch(() => null)
+  if (!stat) throw wireError('not_found', `no directory '${abs}'`)
+  if (!stat.isDirectory) throw wireError('conflict', `'${abs}' is not a directory`)
+  return { abs, search }
+}
+
 async function commitUpload(
   request: HandlerRequest<FsxCommitUploadPayload>,
   ctx: RuntimeContext,
@@ -528,7 +582,12 @@ async function commitUpload(
   return { path }
 }
 
-export function registerFsxCapability(registry: CapabilityRegistry, fsxHost: FsxHost): void {
+/** `search` serves `findFiles` / `searchText` / `cancelSearch`; without it they answer `host_unavailable`. */
+export function registerFsxCapability(
+  registry: CapabilityRegistry,
+  fsxHost: FsxHost,
+  search?: FsxSearchService,
+): void {
   const spec = (action: keyof typeof FSX_ACTION_SCOPES, guard: (payload: unknown) => boolean): ActionSpec => ({
     scope: FSX_ACTION_SCOPES[action],
     sessionOf,
@@ -543,6 +602,9 @@ export function registerFsxCapability(registry: CapabilityRegistry, fsxHost: Fsx
       readBlob: spec('readBlob', isReadPayload),
       listDir: spec('listDir', isListDirPayload),
       listTree: spec('listTree', isListTreePayload),
+      findFiles: spec('findFiles', isFindFilesPayload),
+      searchText: spec('searchText', isSearchTextPayload),
+      cancelSearch: { scope: FSX_ACTION_SCOPES.cancelSearch, guard: isCancelSearchPayload },
       writeText: spec('writeText', isWriteTextPayload),
       commitUpload: spec('commitUpload', isCommitUploadPayload),
     },
@@ -568,6 +630,23 @@ export function registerFsxCapability(registry: CapabilityRegistry, fsxHost: Fsx
           return listDir(request as HandlerRequest<FsxListDirPayload>, ctx, fsxHost)
         case 'listTree':
           return listTree(request as HandlerRequest<FsxListTreePayload>, ctx, fsxHost)
+        case 'findFiles': {
+          const payload = request.payload as FsxFindFilesPayload
+          const { abs, search: service } = await searchRoot(request as HandlerRequest<FsxReadPayload>, ctx, fsxHost, search)
+          const owner = { connectionId: request.conn.connectionId, sessionId: payload.sessionId }
+          return { searchId: service.startFindFiles(owner, abs, payload) } satisfies FsxSearchStartResult
+        }
+        case 'searchText': {
+          const payload = request.payload as FsxSearchTextPayload
+          const { abs, search: service } = await searchRoot(request as HandlerRequest<FsxReadPayload>, ctx, fsxHost, search)
+          const owner = { connectionId: request.conn.connectionId, sessionId: payload.sessionId }
+          return { searchId: service.startSearchText(owner, abs, payload) } satisfies FsxSearchStartResult
+        }
+        case 'cancelSearch': {
+          const { searchId } = request.payload as FsxCancelSearchPayload
+          search?.cancel(request.conn.connectionId, searchId)
+          return undefined
+        }
         case 'writeText': {
           const { sessionId, path, text } = request.payload as FsxWriteTextPayload
           const { abs, host } = await resolveForConnection(request, ctx, fsxHost, sessionId, path)

@@ -30,6 +30,16 @@ export {
   type FsxHost,
   type FsxSessionRoots,
 } from './fsxCapability'
+export {
+  FSX_SEARCH_BINARY,
+  FSX_SEARCH_PUBLISH_INTERVAL_MS,
+  FsxSearchService,
+  findFilesArgs,
+  searchTextArgs,
+  type FsxSearchDeps,
+  type FsxStreamSpawner,
+} from './fsxSearch'
+export { rankFilePaths, type RankedFile, type RankedFiles } from './fsxFileRank'
 export { callHostFs, hostOf, resolveHostHome } from './hostFs'
 export {
   knownProjectRootOrRefuse,

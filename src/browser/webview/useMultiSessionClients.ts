@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppendMessage } from '@assistant-ui/react'
 import type { BrowserBridgeTransport } from '../bridge/browserBridgeProtocol'
 import type { RuntimeFileAccess } from '../runtimeClient/fileAccess'
-import type { FsxListDirResult, FsxListTreeResult } from '../runtimeProtocol'
+import type { FsxListDirResult, FsxListTreeResult, FsxSearchState } from '../runtimeProtocol'
+import type { FileSearchRequest } from '../runtimeClient/fileAccess'
 import type { BrowserLlmSelection } from '../bridge/browserBridgeProtocol'
 import type { AgentRuntimeWorkerInitPayload } from '../worker/workerProtocol'
 import type { RuleEdit } from '../../permissions/ruleUpdates'
@@ -325,6 +326,12 @@ export type MultiSessionClientsResult = {
    *  (`fsx.listTree`). Resolves null when no active client; rejects on a
    *  runtime error. */
   listTree: (path: string, depth?: number) => Promise<FsxListTreeResult | null>
+  /** One Files pane search through the ACTIVE session's client; resolves with the function that
+   *  ends it, or null with no active client. Rejects when the search cannot start. */
+  startFileSearch: (
+    request: FileSearchRequest,
+    onState: (state: FsxSearchState) => void,
+  ) => Promise<(() => void) | null>
   /** Batched `isFile` check for the transcript's auto-detected paths. */
   statFilePaths: (
     paths: string[],
@@ -791,6 +798,15 @@ export function useMultiSessionClients(
     return client.listTree(path, depth)
   }, [])
 
+  const startFileSearch = useCallback(
+    async (request: FileSearchRequest, onState: (state: FsxSearchState) => void) => {
+      const client = clientsRef.current.get(optionsRef.current.activeSessionId)
+      if (!client) return null
+      return client.startFileSearch(request, onState)
+    },
+    [],
+  )
+
   // Batched existence check for the transcript's auto-detected file paths.
   // Same "any client can stat any absolute path" rule as the read above (fs is
   // host-global). Resolves [] with no client, so paths simply stay plain text.
@@ -1007,6 +1023,7 @@ export function useMultiSessionClients(
     readFileText,
     listDir,
     listTree,
+    startFileSearch,
     statFilePaths,
     writeFileText,
     pickComposerAttachmentFiles,

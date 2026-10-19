@@ -1387,6 +1387,7 @@ export function MultiSessionShell({
     loadBundledSkillBody,
     readFileText,
     listDir,
+    startFileSearch,
     statFilePaths,
     writeFileText,
     pickComposerAttachmentFiles,
@@ -2237,7 +2238,7 @@ export function MultiSessionShell({
     presentRightPanel({ type: 'personOpen', view: 'files' })
   }, [updatePaneRecord, sessionLayoutsStore, focusPane, updatePaneUi])
   const openFileFromTree = useCallback(
-    (path: string) => openFileInPanel({ path }),
+    (path: string, line?: number) => openFileInPanel(line === undefined ? { path } : { path, line }),
     [openFileInPanel],
   )
   // The Files tree's roots: the session's working folder, once the session has reported one.
@@ -4180,6 +4181,7 @@ export function MultiSessionShell({
             editingLocked={runningSessionIds.has(activeSessionId)}
             onOpen={openFileFromTree}
             listDir={listDir}
+            search={startFileSearch}
             roots={filesTreeRoots}
             frame={({ title, actions, body }) => frame(title, body, actions)}
           />

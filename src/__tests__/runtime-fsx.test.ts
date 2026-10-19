@@ -781,21 +781,21 @@ describe('R7 guards', () => {
     const full = registry.advertise({ mode: 'full', sessions: 'all' })
     expect(full.find(entry => entry.cap === 'fs')).toBeUndefined()
     expect(full.find(entry => entry.cap === 'fsx')?.acts.slice().sort()).toEqual(
-      ['commitUpload', 'listDir', 'listTree', 'readBlob', 'readText', 'statBatch', 'userHome', 'writeText'],
+      ['cancelSearch', 'commitUpload', 'findFiles', 'listDir', 'listTree', 'readBlob', 'readText', 'searchText', 'statBatch', 'userHome', 'writeText'],
     )
     const control = registry.advertise({ mode: 'control', sessions: 'all' })
     expect(control.find(entry => entry.cap === 'fsx')?.acts.slice().sort()).toEqual(
-      ['commitUpload', 'listDir', 'listTree', 'readBlob', 'readText', 'statBatch', 'userHome'],
+      ['cancelSearch', 'commitUpload', 'findFiles', 'listDir', 'listTree', 'readBlob', 'readText', 'searchText', 'statBatch', 'userHome'],
     )
     // A manager writes session files: everything control has, plus writeText.
     const manager = registry.advertise({ mode: 'manager', sessions: 'all' })
     expect(manager.find(entry => entry.cap === 'fsx')?.acts.slice().sort()).toEqual(
-      ['commitUpload', 'listDir', 'listTree', 'readBlob', 'readText', 'statBatch', 'userHome', 'writeText'],
+      ['cancelSearch', 'commitUpload', 'findFiles', 'listDir', 'listTree', 'readBlob', 'readText', 'searchText', 'statBatch', 'userHome', 'writeText'],
     )
-    // Listings are reads: an observer browses the project it may already read.
+    // Listings and searches are reads: an observer browses the project it may already read.
     const observe = registry.advertise({ mode: 'observe', sessions: 'all' })
     expect(observe.find(entry => entry.cap === 'fsx')?.acts.slice().sort()).toEqual(
-      ['listDir', 'listTree', 'readBlob', 'readText', 'statBatch', 'userHome'],
+      ['cancelSearch', 'findFiles', 'listDir', 'listTree', 'readBlob', 'readText', 'searchText', 'statBatch', 'userHome'],
     )
   })
 

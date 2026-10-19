@@ -28,6 +28,8 @@ export {
 } from './hostBridgeOverConnection'
 export {
   createRuntimeFileAccess,
+  startFileSearch,
+  type FileSearchRequest,
   type RuntimeFileAccess,
   type RuntimeFileAccessOptions,
 } from './fileAccess'

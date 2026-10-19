@@ -51,6 +51,7 @@
     "@copilotkit/a2ui-renderer": "^1.59.2",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
+    "@leeoniya/ufuzzy": "^1.0.19",
     "@lezer/highlight": "^1.2.3",
     "@material-symbols/font-400": "^0.44.10",
     "@mixmark-io/domino": "^2.2.0",

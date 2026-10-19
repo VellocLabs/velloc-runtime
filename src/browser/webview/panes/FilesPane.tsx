@@ -23,7 +23,7 @@ import { reconcileMountedFiles, sameMountedFiles } from '../layout/filesPane'
 import { dockFits, maxDockWidth, treeSpelling } from '../layout/filesTreeDock'
 import type { FilesPaneState } from '../layout/paneLayout'
 import { FILES_TREE_ARIA_SHORTCUT, PANE_SHORTCUT_MODIFIER } from '../layout/paneShortcuts'
-import { FilesBrowse, type FilesListDir, type TreeUpdate } from './FilesBrowse'
+import { FilesBrowse, type FilesListDir, type FilesSearch, type TreeUpdate } from './FilesBrowse'
 import { setFilesEditorPrefs, useFilesEditorPrefs } from './filesEditorPrefs'
 import { FilesOptionsMenu } from './FilesOptionsMenu'
 import { FilesRowMenuContext, type FilesRowMenuActions } from './FilesRowMenu'
@@ -61,10 +61,12 @@ export type FilesPaneProps = {
   readFileText?: (path: string) => Promise<string | null>
   writeFileText?: (path: string, text: string) => Promise<boolean>
   editingLocked?: boolean
-  /** Opens a file from the tree, as a path link in the conversation does. */
-  onOpen: (path: string) => void
+  /** Opens a file from the tree or a search result (at `line` for a content hit), as a path link does. */
+  onOpen: (path: string, line?: number) => void
   /** Lists a folder for the tree; absent while the session has no runtime to ask. */
   listDir?: FilesListDir
+  /** Searches file names and contents for the filter box; absent with no runtime to ask. */
+  search?: FilesSearch
   /** The tree's roots: the session's folders. `null` while the session has not reported them. */
   roots?: readonly string[] | null
   /** Builds the frame around the strip, the header actions and the bodies. */
@@ -263,6 +265,7 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
         tree={tree}
         onTreeChange={updateTree}
         listDir={props.listDir}
+        search={props.search}
         onOpen={props.onOpen}
         currentPath={currentPath}
       />

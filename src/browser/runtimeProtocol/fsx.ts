@@ -23,6 +23,9 @@ export const FSX_ACTION_SCOPES = {
   readBlob: 'observe',
   listDir: 'observe',
   listTree: 'observe',
+  findFiles: 'observe',
+  searchText: 'observe',
+  cancelSearch: 'observe',
   writeText: 'manager',
   commitUpload: 'control',
 } as const satisfies Record<string, ScopeMode>
@@ -85,3 +88,104 @@ export type FsxListTreeResult = { entries: FsxTreeEntry[]; truncated: boolean }
 export type FsxCommitUploadPayload = { sessionId: string; blob: BlobRef; name: string }
 /** The absolute host path the upload was written to. */
 export type FsxCommitUploadResult = { path: string }
+
+/**
+ * File search (F-9 Files pane): `findFiles` ranks file names, `searchText` searches file contents. Each
+ * call answers `{ searchId }` at once; results are STATE on the topic `fsxSearchTopic(searchId)`, which
+ * only the connection that started the search may read: the whole `FsxSearchState` as the snapshot and
+ * again in every `state` delta. A newer search from the same connection for the same session, a
+ * `cancelSearch`, or the connection going away ends the older one.
+ */
+export const FSX_SEARCH_STATE_EVENT = 'state'
+/** Results one `findFiles` publishes when the payload names no `limit`. */
+export const FSX_FIND_DEFAULT_LIMIT = 50
+/** Most results a `findFiles` may ask for. */
+export const FSX_FIND_MAX_LIMIT = 200
+/** Most file paths the runtime lists below one root for `findFiles`; past it `indexTruncated`. */
+export const FSX_FIND_INDEX_MAX_FILES = 200_000
+/** Hit lines one `searchText` publishes when the payload names no `limit`. */
+export const FSX_SEARCH_TEXT_DEFAULT_LIMIT = 500
+/** Most hit lines a `searchText` may ask for. */
+export const FSX_SEARCH_TEXT_MAX_LIMIT = 2000
+/** Most hit lines kept per file; past it the file says `moreInFile`. */
+export const FSX_SEARCH_TEXT_MAX_PER_FILE = 20
+/** Longest query either search accepts, in UTF-16 code units. */
+export const FSX_SEARCH_QUERY_MAX_LENGTH = 1000
+
+const FSX_SEARCH_TOPIC_PREFIX = 'fsx/search/'
+
+/** The topic a search's results are published on. `searchId` is the runtime's, slash-free. */
+export function fsxSearchTopic(searchId: string): string {
+  return `${FSX_SEARCH_TOPIC_PREFIX}${searchId}`
+}
+
+/** The search id a topic names, or `null` for any other topic. */
+export function parseFsxSearchTopic(topicId: string): string | null {
+  if (!topicId.startsWith(FSX_SEARCH_TOPIC_PREFIX)) return null
+  const searchId = topicId.slice(FSX_SEARCH_TOPIC_PREFIX.length)
+  return searchId.length > 0 && !searchId.includes('/') ? searchId : null
+}
+
+/**
+ * `path` is the folder searched (relative to the session's cwd, or absolute). `refresh` drops the
+ * runtime's file list for that folder and lists it again; otherwise a list from an earlier search is
+ * reused until the session's turn ends.
+ */
+export type FsxFindFilesPayload = {
+  sessionId: string
+  path: string
+  query: string
+  limit?: number
+  refresh?: boolean
+}
+
+export type FsxSearchTextPayload = {
+  sessionId: string
+  path: string
+  query: string
+  caseSensitive?: boolean
+  wholeWord?: boolean
+  /** The query is a regular expression (the search tool's syntax); otherwise a literal. */
+  regex?: boolean
+  limit?: number
+}
+
+export type FsxSearchStartResult = { searchId: string }
+export type FsxCancelSearchPayload = { searchId: string }
+
+/**
+ * `ranges` are flat `[start, end)` pairs of UTF-16 offsets into the text they belong to. Paths are
+ * '/'-separated and relative to the searched folder.
+ */
+export type FsxFileMatch = { path: string; ranges: number[] }
+/** `line` is 1-based; `text` is the line without its end, cut around the first hit when long. */
+export type FsxTextHit = { line: number; text: string; ranges: number[] }
+export type FsxTextFileHits = { path: string; hits: FsxTextHit[]; moreInFile: boolean }
+
+/** Why a search ended without results: a bad regular expression, no search binary, or anything else. */
+export type FsxSearchError = 'invalid_regex' | 'unavailable' | 'failed'
+
+/** `scanning` is true while the host is still walking the folder; the last state of a search has it false. */
+export type FsxSearchState =
+  | {
+      kind: 'files'
+      searchId: string
+      scanning: boolean
+      /** Ranked best first, at most the request's `limit`. */
+      files: FsxFileMatch[]
+      /** Every file that matched, of which `files` is the head. */
+      matched: number
+      /** The folder held more files than the runtime lists, so some were not searched. */
+      indexTruncated: boolean
+      error?: FsxSearchError
+    }
+  | {
+      kind: 'text'
+      searchId: string
+      scanning: boolean
+      /** In the order the host found them. */
+      files: FsxTextFileHits[]
+      /** The search stopped at the request's `limit`. */
+      truncated: boolean
+      error?: FsxSearchError
+    }

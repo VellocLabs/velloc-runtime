@@ -26,8 +26,8 @@ export type SubmitDelivery = 'inject' | 'next'
 import type { Message, StreamRecord } from '../../runtime/RuntimeTypes'
 import type { ContentBlockParam } from '../../runtime/RuntimeTypes'
 import type { AppendMessage, CompleteAttachment } from '@assistant-ui/react'
-import type { RuntimeFileAccess } from '../runtimeClient/fileAccess'
-import type { FsxListDirResult, FsxListTreeResult } from '../runtimeProtocol'
+import { startFileSearch, type FileSearchRequest, type RuntimeFileAccess } from '../runtimeClient/fileAccess'
+import type { FsxListDirResult, FsxListTreeResult, FsxSearchState } from '../runtimeProtocol'
 import { SESSION_OPEN_FORBIDDEN } from '../runtimeClient/workerTransportOverConnection'
 import {
   BROWSER_COMPOSER_ATTACHMENT_EXTENSIONS,
@@ -1634,6 +1634,18 @@ export class BrowserRuntimeClient {
   async listTree(path: string, depth?: number): Promise<FsxListTreeResult> {
     await this.startOnce()
     return this.requireFiles().listTree(this.fileSessionId(), path, depth)
+  }
+
+  /**
+   * One Files pane search over `fsx.findFiles` / `fsx.searchText`, its state followed with
+   * `onState`; resolves with the function that ends it. Rejects like `listDir`.
+   */
+  async startFileSearch(
+    request: FileSearchRequest,
+    onState: (state: FsxSearchState) => void,
+  ): Promise<() => void> {
+    await this.startOnce()
+    return startFileSearch(this.requireFiles(), this.fileSessionId(), request, onState)
   }
 
   /**

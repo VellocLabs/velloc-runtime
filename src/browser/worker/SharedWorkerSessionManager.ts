@@ -2,6 +2,7 @@ import type {
   BrowserBridgeRequest,
 } from '../bridge/browserBridgeProtocol'
 import { createBridgeRoute } from '../bridge/protocol/core'
+import { createNativePrimitives } from '../bridge/nativePrimitives'
 import {
   setBackgroundShellResultAcknowledger,
   setBackgroundShellSink,
@@ -81,6 +82,7 @@ import type {
 } from '../bridge/protocol/ui'
 import {
   DEFAULT_PANEL_ID,
+  FsxSearchService,
   RuntimeHub,
   installSessionSurface,
   registerFsxCapability,
@@ -281,6 +283,8 @@ export class SharedWorkerSessionManager {
   private readonly bootServices: ManagerBootServices
   /** Ends a session's terminals with its runtime (F-31); assigned in the constructor. */
   private readonly closeTerminalsForSession: (sessionId: string) => void
+  /** The `fsx` file search (F-9): its children run on the runtime's host port. */
+  private readonly fsxSearch: FsxSearchService
   private readonly initOrchestrator: SessionInitOrchestrator
   private readonly taskControl: TaskControlSurface
   private readonly sessions = new Map<string, SessionEntry>()
@@ -828,6 +832,23 @@ export class SharedWorkerSessionManager {
   }
 
   constructor(options: SharedWorkerSessionManagerOptions) {
+    this.fsxSearch = new FsxSearchService({
+      spawner: () => {
+        const transport = this.bridgeRouter.getDirectTransport()
+        if (!transport) return null
+        const manifest = this.hostEnvironment?.hostManifest ?? this.lastInitTemplate?.hostManifest ?? undefined
+        const primitives = createNativePrimitives({
+          transport,
+          createRequestId: () => this.generateBridgeRequestId(),
+          manifest,
+        })
+        return (spec, handlers) => primitives.shell.spawnArgvStream(spec, handlers)
+      },
+      publish: (id, payload, opts) => this.runtimeHub.broker.publish(id, payload, opts),
+      dropTopic: id => this.runtimeHub.broker.dropTopic(id),
+      connections: () => this.runtimeHub.list(),
+    })
+    this.runtimeHub.broker.registerProvider(this.fsxSearch.topicProvider())
     // `fsx`: client file access, resolved against the
     // session's own cwd / project root as its worker last reported them.
     registerFsxCapability(this.runtimeHub.registry, {
@@ -840,7 +861,7 @@ export class SharedWorkerSessionManager {
         const projectRoot = snapshot?.projectRoot ?? entry.projectRoot
         return { cwd, ...(projectRoot ? { projectRoot } : {}) }
       },
-    })
+    }, this.fsxSearch)
     this.runtimeSessionSurface = installSessionSurface(this.runtimeHub, {
       dispatch: (port, data) =>
         this.portRouter.handle(port, { data } as MessageEvent),
@@ -1770,6 +1791,8 @@ export class SharedWorkerSessionManager {
     if (nextPhase !== 'idle' || prevPhase === null || prevPhase === 'idle') {
       return
     }
+    // The turn may have added or removed files: file search lists its folders again.
+    this.fsxSearch.invalidate()
     // Lead-side mailbox drain: if this session is a
     // team lead with a queued teammate message, deliver it as the lead's
     // next turn at this idle boundary. Teammates drain via their own idle
