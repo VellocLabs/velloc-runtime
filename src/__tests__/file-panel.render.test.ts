@@ -757,3 +757,27 @@ describe("FilePanel", () => {
     expect(screen.queryByTestId("file-panel-save")).toBeNull();
   });
 });
+
+describe("FilePanel — path row", () => {
+  it("shows the plain path label without a lister, and the path bar with one", async () => {
+    const readFileText = vi.fn(async () => "x\n");
+    const { rerender } = render(
+      createElement(FilePanel, { target: { path: "/repo/src/a.ts" }, readFileText }),
+    );
+    await screen.findByTestId("cm-view");
+    expect(screen.queryByTestId("files-pathbar")).toBeNull();
+    expect(screen.getByTestId("file-panel-search")).toBeTruthy();
+    rerender(
+      createElement(FilePanel, {
+        target: { path: "/repo/src/a.ts" },
+        readFileText,
+        root: "/repo",
+        listDir: vi.fn(async () => ({ entries: [], truncated: false })),
+        onOpen: vi.fn(),
+      }),
+    );
+    const bar = screen.getByTestId("files-pathbar");
+    expect(bar.querySelector('[data-testid="files-pathbar-segment:/repo/src"]')?.textContent).toBe("src");
+    expect(bar.contains(screen.getByTestId("file-panel-search"))).toBe(true);
+  });
+});

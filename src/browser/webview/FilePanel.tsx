@@ -28,6 +28,8 @@ import type { RightPanelFileTarget } from "@/components/assistant-ui/right-panel
 // stack onto the boot bundle (the editor stays behind the lazy import below).
 import type { CodeMirrorApi } from "@/components/assistant-ui/CodeMirrorView";
 import { useT } from "./i18n";
+import type { FilesListDir } from "./panes/FilesBrowse";
+import { FilesPathBar } from "./panes/FilesPathBar";
 import { rememberBounded } from "@/components/assistant-ui/boundedUiMemory";
 
 // CodeMirror (+ its language grammars) is loaded ONLY when a non-markdown file
@@ -266,6 +268,9 @@ export function FilePanel({
   wordWrap,
   tabSize,
   ref,
+  root,
+  listDir,
+  onOpen,
 }: {
   target: RightPanelFileTarget | null;
   /** Resolves `null` when no client can read right now (no active session
@@ -293,6 +298,12 @@ export function FilePanel({
   wordWrap?: boolean;
   tabSize?: number;
   ref?: Ref<FilePanelHandle>;
+  /** The session root the path bar shows the path relative to. */
+  root?: string | null;
+  /** With `onOpen`, turns the path label into the browsable path bar (F-9). */
+  listDir?: FilesListDir;
+  /** Opens a file picked from a path-bar dropdown. */
+  onOpen?: (path: string) => void;
 }): ReactElement {
   const t = useT()
   const [state, setState] = useState<LoadState>({ status: "idle" });
@@ -531,45 +542,54 @@ export function FilePanel({
     );
   }
 
+  const copyText = state.status === "ready" ? state.content : path;
+  const trailing =
+    isMarkdown || showEditorBody ? (
+      <div className="flex shrink-0 items-center gap-1.5">
+        {isMarkdown ? (
+          <MarkdownViewToggle view={view} onChange={setView} />
+        ) : null}
+        {canEdit ? (
+          <FileSaveButton
+            dirty={dirty}
+            locked={editingLocked}
+            saving={saving}
+            onClick={handleSave}
+          />
+        ) : null}
+        {state.status === "ready" && readFileText ? (
+          <FileRefreshButton refreshing={refreshing} onClick={handleRefresh} />
+        ) : null}
+        {showEditorBody ? (
+          <FileSearchButton onClick={() => cmApiRef.current?.openSearch()} />
+        ) : null}
+      </div>
+    ) : undefined;
+
   return (
     <div
       data-testid="file-panel"
       className="flex h-full min-h-0 flex-col gap-2 p-2"
     >
-      <FilePathHeader
-        path={path}
-        copyText={state.status === "ready" ? state.content : path}
-        copyTooltip={t("filePanel.copyFileContents")}
-        copyAlwaysVisible
-        trailing={
-          isMarkdown || showEditorBody ? (
-            <div className="flex shrink-0 items-center gap-1.5">
-              {isMarkdown ? (
-                <MarkdownViewToggle view={view} onChange={setView} />
-              ) : null}
-              {canEdit ? (
-                <FileSaveButton
-                  dirty={dirty}
-                  locked={editingLocked}
-                  saving={saving}
-                  onClick={handleSave}
-                />
-              ) : null}
-              {state.status === "ready" && readFileText ? (
-                <FileRefreshButton
-                  refreshing={refreshing}
-                  onClick={handleRefresh}
-                />
-              ) : null}
-              {showEditorBody ? (
-                <FileSearchButton
-                  onClick={() => cmApiRef.current?.openSearch()}
-                />
-              ) : null}
-            </div>
-          ) : undefined
-        }
-      />
+      {listDir && onOpen ? (
+        <FilesPathBar
+          path={path}
+          root={root}
+          listDir={listDir}
+          onOpen={onOpen}
+          copyText={copyText}
+          copyTooltip={t("filePanel.copyFileContents")}
+          trailing={trailing}
+        />
+      ) : (
+        <FilePathHeader
+          path={path}
+          copyText={copyText}
+          copyTooltip={t("filePanel.copyFileContents")}
+          copyAlwaysVisible
+          trailing={trailing}
+        />
+      )}
       {conflict !== null ? (
         <DiskChangedBanner
           onReload={handleReload}

@@ -366,6 +366,9 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
                 target={{ path }}
                 wordWrap={editorPrefs.wordWrap}
                 tabSize={editorPrefs.tabSize}
+                root={roots?.[0]}
+                listDir={props.listDir}
+                onOpen={props.onOpen}
                 readFileText={props.readFileText}
                 writeFileText={props.writeFileText}
                 editingLocked={props.editingLocked}
