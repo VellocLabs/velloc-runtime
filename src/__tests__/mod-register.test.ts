@@ -587,12 +587,13 @@ describe('engine.create', () => {
   it("a $ wait begun before a method ran does not stop that method's bound", async () => {
     const { runtime } = world(
       {
+        // kick's wait is caught: 90 ms plus the hops may run past slow's own bound.
         'voice/hooks/register.js': `
           export function register(on) {
             on('engine.create', async ($, e, next) => {
               const built = await next(e)
               return { ...built, voice: {
-                kick: () => { built.slow.wait(); return 'kicked' },
+                kick: () => { built.slow.wait().catch(() => {}); return 'kicked' },
                 idle: () => new Promise(resolve => setTimeout(() => resolve('done'), 160)),
               } }
             })
