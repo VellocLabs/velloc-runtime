@@ -1,10 +1,10 @@
 /**
  * localStorage I/O for the layout blob (F-9): pane layouts per session, the
  * per-kind pane weights, the session card prefs, the mod panes the person
- * asked for and the Files pane's docked tree, under one key. Writes are
- * read-modify-write of the whole blob, coalesced to one `setItem` per task;
- * `pagehide` flushes. Best-effort: storage may be missing, and every read is
- * sanitized.
+ * asked for and the Files pane's docked tree and editor prefs, under one
+ * key. Writes are read-modify-write of the whole blob, coalesced to one
+ * `setItem` per task; `pagehide` flushes. Best-effort: storage may be
+ * missing, and every read is sanitized.
  */
 import {
   defaultLayoutStorage,
@@ -12,6 +12,7 @@ import {
   type NexusLayoutStorage,
 } from './layoutSanitize'
 import type { FilesTreePrefs } from './filesTreeDock'
+import type { FilesEditorPrefs } from './filesEditor'
 import type { SessionCardPrefs } from './sessionCards'
 
 export const LAYOUT_STORAGE_KEY = 'nexus.layout'
@@ -100,4 +101,12 @@ export function saveFilesTreePrefs(prefs: FilesTreePrefs): void {
       ? prev
       : { ...prev, filesTreeVisible: prefs.visible, filesTreeWidth: prefs.width },
   )
+}
+
+export function loadFilesEditorPrefs(): FilesEditorPrefs {
+  return loadLayoutStorage().filesEditor
+}
+
+export function saveFilesEditorPrefs(prefs: FilesEditorPrefs): void {
+  updateLayoutStorage(prev => (prev.filesEditor === prefs ? prev : { ...prev, filesEditor: prefs }))
 }

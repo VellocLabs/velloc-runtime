@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
+import { useContext, useRef, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { ChevronRightIcon, FileTextIcon, FolderIcon, LinkIcon, Loader2Icon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -14,6 +14,7 @@ import {
   type TreeRow,
   type TreeStatusRow,
 } from '../layout/fileTree'
+import { FILES_ROW_PATH_ATTR, FilesRowMenu, FilesRowMenuContext } from './FilesRowMenu'
 
 const TREE_KEYS: ReadonlySet<string> = new Set<TreeKey>([
   'ArrowUp',
@@ -57,6 +58,7 @@ export type FileTreeViewProps = {
 export function FileTreeView(props: FileTreeViewProps): ReactElement {
   const t = useT()
   const { rows } = props
+  const rowMenu = useContext(FilesRowMenuContext)
   const rowEls = useRef(new Map<string, HTMLElement>())
   const firstFocusable = rows.findIndex(isFocusableRow)
   const activeIndex = (() => {
@@ -104,7 +106,7 @@ export function FileTreeView(props: FileTreeViewProps): ReactElement {
     else if (move.index !== index) focusRow(move.index)
   }
 
-  return (
+  const tree = (
     <div
       role="tree"
       aria-label={props.label}
@@ -136,6 +138,7 @@ export function FileTreeView(props: FileTreeViewProps): ReactElement {
               aria-current={row.path === props.currentPath ? 'true' : undefined}
               data-testid={`files-tree-row:${row.path}`}
               data-kind={row.kind}
+              {...{ [FILES_ROW_PATH_ATTR]: row.path }}
               title={row.path}
               onClick={() => activate(row)}
               className={cn(
@@ -163,6 +166,7 @@ export function FileTreeView(props: FileTreeViewProps): ReactElement {
       })}
     </div>
   )
+  return rowMenu ? <FilesRowMenu {...rowMenu}>{tree}</FilesRowMenu> : tree
 }
 
 function IndentGuides({ depth }: { depth: number }): ReactNode {

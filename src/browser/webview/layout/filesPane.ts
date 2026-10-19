@@ -47,6 +47,50 @@ export function closeFileTab(state: FilesPaneState, path: string): FilesPaneStat
   return { tabs, active }
 }
 
+/**
+ * The bulk closes keep every protected tab (unsaved edits) and close the rest
+ * of their range. The active tab stays when it survives; otherwise `prefer`
+ * when it survives, else the first survivor, else none.
+ */
+function keepTabs(
+  state: FilesPaneState,
+  keep: (path: string, index: number) => boolean,
+  protectedPaths: ReadonlySet<string> | undefined,
+  prefer?: string,
+): FilesPaneState {
+  const tabs = state.tabs.filter((path, index) => keep(path, index) || protectedPaths?.has(path) === true)
+  if (tabs.length === state.tabs.length) return state
+  const survives = (path: string | null | undefined): path is string => !!path && tabs.includes(path)
+  const active = survives(state.active) ? state.active : survives(prefer) ? prefer : (tabs[0] ?? null)
+  return { tabs, active }
+}
+
+/** Close every tab but `path`; `path` comes in front. */
+export function closeOtherTabs(
+  state: FilesPaneState,
+  path: string,
+  protectedPaths?: ReadonlySet<string>,
+): FilesPaneState {
+  if (!state.tabs.includes(path)) return state
+  const next = keepTabs(state, each => each === path, protectedPaths, path)
+  return next.active === path ? next : { ...next, active: path }
+}
+
+/** Close the tabs after `path` in strip order. */
+export function closeTabsAfter(
+  state: FilesPaneState,
+  path: string,
+  protectedPaths?: ReadonlySet<string>,
+): FilesPaneState {
+  const at = state.tabs.indexOf(path)
+  if (at === -1) return state
+  return keepTabs(state, (_each, index) => index <= at, protectedPaths, path)
+}
+
+export function closeAllTabs(state: FilesPaneState, protectedPaths?: ReadonlySet<string>): FilesPaneState {
+  return keepTabs(state, () => false, protectedPaths)
+}
+
 export function activateFileTab(state: FilesPaneState, path: string): FilesPaneState {
   if (!state.tabs.includes(path) || state.active === path) return state
   return { ...state, active: path }

@@ -46,6 +46,7 @@ function Harness(props: { initial: FilesPaneState; listDir: FilesListDir; onOpen
     sessionKey: 's1',
     onActivate: path => setState(current => activateFileTab(current, path)),
     onCloseTab: path => setState(current => closeFileTab(current, path)),
+    onCloseTabs: vi.fn(),
     protectedPaths: new Set<string>(),
     onDirtyChange: vi.fn(),
     onOpen: path => {
@@ -140,6 +141,23 @@ describe('FilesPane header and docked tree', () => {
     expect(screen.queryByTestId('files-pane-tree-toggle')).toBeNull()
     await waitFor(() => expect(row('/repo/src/deep/leaf.ts').getAttribute('aria-current')).toBe('true'))
     expect(row('/repo/src/deep').getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it("the tab menu's Reveal in file tree docks the tree on that file; the pane options hide it again", async () => {
+    render(createElement(Harness, { initial: opened('/repo/src/deep/leaf.ts', '/repo/README.md'), listDir: fakeLister() }))
+    expect(dock()).toBeNull()
+    fireEvent.contextMenu(screen.getByTestId('files-pane-tab:/repo/src/deep/leaf.ts'))
+    fireEvent.click(await screen.findByTestId('files-menu-reveal-in-tree'))
+    expect(screen.getByTestId('files-pane-tab:/repo/src/deep/leaf.ts').getAttribute('aria-selected')).toBe('true')
+    expect(toggle().getAttribute('aria-pressed')).toBe('true')
+    await waitFor(() => expect(row('/repo/src/deep/leaf.ts').getAttribute('aria-current')).toBe('true'))
+    act(() => {
+      fireEvent.keyDown(screen.getByTestId('files-pane-options'), { key: 'Enter' })
+    })
+    const item = await screen.findByTestId('files-options-tree')
+    expect(item.getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(item)
+    expect(dock()).toBeNull()
   })
 
   it('the handle resizes the tree with the arrow keys and remembers the width', async () => {

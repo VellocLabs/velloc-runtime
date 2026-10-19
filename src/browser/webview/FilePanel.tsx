@@ -2,9 +2,11 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
   type ReactElement,
+  type Ref,
 } from "react";
 import {
   LoaderIcon,
@@ -244,6 +246,16 @@ export function __resetUnsavedFileDraftsForTests(): void {
   unsavedFileDrafts.clear();
 }
 
+/** What the Files pane's menus drive on a mounted body. */
+export type FilePanelHandle = {
+  /** Opens the find bar; a rendered Markdown file switches to its raw view first. */
+  openFind: () => void;
+  /** The file's text as last read from disk; `null` until it has loaded. */
+  diskText: () => string | null;
+  /** Re-reads from disk; unsaved edits raise the reload-or-keep banner instead. */
+  reload: () => void;
+};
+
 export function FilePanel({
   target,
   readFileText,
@@ -251,6 +263,9 @@ export function FilePanel({
   editingLocked = false,
   onDirtyChange,
   reveal,
+  wordWrap,
+  tabSize,
+  ref,
 }: {
   target: RightPanelFileTarget | null;
   /** Resolves `null` when no client can read right now (no active session
@@ -275,6 +290,9 @@ export function FilePanel({
    * describes mounted bodies and nothing else.
    */
   onDirtyChange?: (path: string, dirty: boolean) => void;
+  wordWrap?: boolean;
+  tabSize?: number;
+  ref?: Ref<FilePanelHandle>;
 }): ReactElement {
   const t = useT()
   const [state, setState] = useState<LoadState>({ status: "idle" });
@@ -294,6 +312,8 @@ export function FilePanel({
   // load); delivered by `onReady`. Cleared once fired so a remount (Rendered/
   // Raw toggle) doesn't replay a stale jump.
   const pendingRevealRef = useRef<{ line: number; nonce: number } | null>(null);
+  // A find request that arrived before the editor mounted; delivered by `onReady`.
+  const pendingFindRef = useRef(false);
   // Latest state/dirty/lock, read by the turn-end refresh effect without adding
   // them to its deps (so it fires only on the lock transition, not every edit).
   const stateRef = useRef(state);
@@ -489,6 +509,20 @@ export function FilePanel({
   };
   const handleKeepMine = () => setConflict(null);
 
+  useImperativeHandle(ref, () => ({
+    openFind: () => {
+      const api = cmApiRef.current;
+      if (api) {
+        api.openSearch();
+        return;
+      }
+      pendingFindRef.current = true;
+      if (isMarkdown) setView("raw");
+    },
+    diskText: () => (stateRef.current.status === "ready" ? stateRef.current.content : null),
+    reload: handleRefresh,
+  }));
+
   if (!path) {
     return (
       <div className="flex h-full items-center justify-center px-4 text-center text-muted-foreground text-body">
@@ -575,6 +609,8 @@ export function FilePanel({
                 content={state.content}
                 filename={path}
                 readOnly={editorReadOnly}
+                wordWrap={wordWrap}
+                tabSize={tabSize}
                 onReady={(api) => {
                   cmApiRef.current = api;
                   // Restore a draft stashed by a released/unmounted body for
@@ -599,6 +635,10 @@ export function FilePanel({
                   if (api && pending) {
                     pendingRevealRef.current = null;
                     api.revealLine(pending.line);
+                  }
+                  if (api && pendingFindRef.current) {
+                    pendingFindRef.current = false;
+                    api.openSearch();
                   }
                 }}
                 onDirtyChange={setDirty}

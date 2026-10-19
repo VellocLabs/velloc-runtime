@@ -196,7 +196,7 @@ import {
 } from './revealThreadMessage'
 import { requestPartReveal } from './partRevealStore'
 import { useShowReasoning, withoutReasoningParts } from './showReasoning'
-import { ComposerDraftSync, ComposerTextRestore } from './ThreadComposerSync'
+import { ComposerDraftSync, ComposerTextInsert, ComposerTextRestore } from './ThreadComposerSync'
 import { ProviderMissingDialog, WorkspaceProjectFolderDialog } from './ThreadDialogs'
 
 /**
@@ -328,6 +328,8 @@ export type AssistantUiThreadProps = {
    * we never overwrite the user's in-progress typing.
    */
   initialComposerDraft?: string
+  /** Text to add to the end of the composer, once per `nonce` (F-9 *Attach as context*). */
+  composerInsert?: { text: string; nonce: number } | null
   /**
    * Fires on a 500 ms debounce after the user edits the composer. The
    * parent persists the draft to localStorage and bumps the session's
@@ -626,6 +628,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   onOpenProjectFolder,
   onRevealProjectFolder,
   initialComposerDraft,
+  composerInsert,
   onComposerEdit,
   onPendingQuestionsChange,
 }: AssistantUiThreadProps) {
@@ -638,6 +641,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
       continueConversation={readOnly ? undefined : continueConversation}
       submitComposerMessage={readOnly ? undefined : submitComposerMessage}
       onPickAttachmentFiles={readOnly ? undefined : onPickAttachmentFiles}
+      composerInsert={readOnly ? null : composerInsert}
       submitToolResult={readOnly ? readOnlyNoop : submitToolResult}
       loadToolCallDetail={loadToolCallDetail}
       loadTurnDiffDetail={loadTurnDiffDetail}
@@ -740,6 +744,7 @@ function InteractiveAssistantUiThread({
   onOpenProjectFolder,
   onRevealProjectFolder,
   initialComposerDraft,
+  composerInsert,
   onComposerEdit,
   onPendingQuestionsChange,
 }: AssistantUiThreadProps) {
@@ -2121,6 +2126,7 @@ function InteractiveAssistantUiThread({
               onOpenSettings={openSettings ? handleOpenSettings : undefined}
             />
           )}
+          {composerInsert && <ComposerTextInsert insert={composerInsert} />}
           {restoreComposerText !== null && (
             <ComposerTextRestore
               text={restoreComposerText}

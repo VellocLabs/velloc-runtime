@@ -4,6 +4,7 @@
  * sanitize is its default and the rest is kept; every tree is rebuilt node by
  * node; records past the cap are dropped least recently used first.
  */
+import { defaultFilesEditorPrefs, sanitizeFilesEditorPrefs, type FilesEditorPrefs } from './filesEditor'
 import { sanitizeFilesPane } from './filesPane'
 import { clampFilesTreeWidth, defaultFilesTreePrefs } from './filesTreeDock'
 import {
@@ -45,6 +46,8 @@ export interface NexusLayoutStorage {
   filesTreeVisible: boolean
   /** The Files pane's docked tree width, px. */
   filesTreeWidth: number
+  /** The Files pane's editor: word wrap and tab size, for every file. */
+  filesEditor: FilesEditorPrefs
 }
 
 export function defaultLayoutStorage(): NexusLayoutStorage {
@@ -56,6 +59,7 @@ export function defaultLayoutStorage(): NexusLayoutStorage {
     modPanesAsked: [],
     filesTreeVisible: tree.visible,
     filesTreeWidth: tree.width,
+    filesEditor: defaultFilesEditorPrefs(),
   }
 }
 
@@ -211,5 +215,6 @@ export function sanitizeLayoutStorage(raw: unknown): NexusLayoutStorage {
     modPanesAsked: sanitizeModPanesAsked(obj.modPanesAsked),
     filesTreeVisible: obj.filesTreeVisible === true,
     filesTreeWidth: clampFilesTreeWidth(obj.filesTreeWidth),
+    filesEditor: sanitizeFilesEditorPrefs(obj.filesEditor),
   }
 }

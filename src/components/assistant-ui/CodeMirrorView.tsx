@@ -14,6 +14,7 @@ import {
   foldGutter,
   foldKeymap,
   HighlightStyle,
+  indentUnit,
   LanguageDescription,
   syntaxHighlighting,
 } from "@codemirror/language";
@@ -348,7 +349,19 @@ export type CodeMirrorViewProps = {
    * view is already destroyed.
    */
   onUnmountWhileDirty?: (draft: { text: string; baseline: string }) => void;
+  /** Soft-wrap long lines (default off). */
+  wordWrap?: boolean;
+  /** Columns a tab shows as and one indent level inserts (default 4). */
+  tabSize?: number;
 };
+
+function layoutExtensions(wordWrap: boolean, tabSize: number) {
+  return [
+    EditorState.tabSize.of(tabSize),
+    indentUnit.of(" ".repeat(tabSize)),
+    wordWrap ? EditorView.lineWrapping : [],
+  ];
+}
 
 export default function CodeMirrorView({
   content,
@@ -358,6 +371,8 @@ export default function CodeMirrorView({
   onDirtyChange,
   onSave,
   onUnmountWhileDirty,
+  wordWrap = false,
+  tabSize = 4,
 }: CodeMirrorViewProps): ReactElement {
   const parentRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -373,10 +388,11 @@ export default function CodeMirrorView({
   const baselineRef = useRef(content);
   const dirtyRef = useRef(false);
   // Compartments (reconfigurable without rebuilding state, so the doc + undo
-  // history survive): the async language grammar, and editability — toggled
-  // when the host locks editing while a turn runs.
+  // history survive): the async language grammar, editability — toggled
+  // when the host locks editing while a turn runs — and wrap / tab size.
   const languageComp = useRef(new Compartment());
   const editableComp = useRef(new Compartment());
+  const layoutComp = useRef(new Compartment());
 
   // Create the editor once. Content/language/editability are applied by the
   // effects below so switching files reuses this instance (and its chunk).
@@ -418,6 +434,7 @@ export default function CodeMirrorView({
           }),
           baseTheme,
           languageComp.current.of([]),
+          layoutComp.current.of(layoutExtensions(wordWrap, tabSize)),
         ],
       }),
     });
@@ -501,6 +518,12 @@ export default function CodeMirrorView({
       ]),
     });
   }, [readOnly]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: layoutComp.current.reconfigure(layoutExtensions(wordWrap, tabSize)),
+    });
+  }, [wordWrap, tabSize]);
 
   // Reflect an external content change (fresh load / re-read) into the doc — but
   // NEVER clobber unsaved edits. Adopted content becomes the new saved baseline

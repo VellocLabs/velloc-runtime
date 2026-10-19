@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactElement,
@@ -12,9 +13,10 @@ import { FileTextIcon, FolderIcon, ListTreeIcon, SearchIcon, XIcon } from 'lucid
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { writeClipboard } from '@/utils/clipboard'
 import { baseName } from '@/utils/paths'
 
-import { FilePanel } from '../FilePanel'
+import { FilePanel, type FilePanelHandle } from '../FilePanel'
 import { useT } from '../i18n'
 import { emptyFileTree, revealPath, withRoots, type FileTreeState } from '../layout/fileTree'
 import { reconcileMountedFiles, sameMountedFiles } from '../layout/filesPane'
@@ -22,8 +24,15 @@ import { dockFits, maxDockWidth, treeSpelling } from '../layout/filesTreeDock'
 import type { FilesPaneState } from '../layout/paneLayout'
 import { FILES_TREE_ARIA_SHORTCUT, PANE_SHORTCUT_MODIFIER } from '../layout/paneShortcuts'
 import { FilesBrowse, type FilesListDir, type TreeUpdate } from './FilesBrowse'
+import { setFilesEditorPrefs, useFilesEditorPrefs } from './filesEditorPrefs'
+import { FilesOptionsMenu } from './FilesOptionsMenu'
+import { FilesRowMenuContext, type FilesRowMenuActions } from './FilesRowMenu'
+import { FilesTabMenu } from './FilesTabMenu'
 import { FilesTreeHandle } from './FilesTreeHandle'
 import { setFilesTreeVisible, setFilesTreeWidth, toggleFilesTreeVisible, useFilesTreePrefs } from './filesTreePrefs'
+
+/** The tab menu's bulk closes; tabs with unsaved edits always stay. */
+export type FilesBulkClose = 'others' | 'right' | 'all'
 
 /**
  * The Files pane's content (F-9): a tab strip in the title slot, the editor
@@ -39,6 +48,12 @@ export type FilesPaneProps = {
   sessionKey: string
   onActivate: (path: string) => void
   onCloseTab: (path: string) => void
+  /** Closes `others` than `path`, the tabs `right` of it, or `all`. */
+  onCloseTabs: (close: FilesBulkClose, path: string) => void
+  /** Adds a path to the session's composer as context; the menu item is omitted without it. */
+  onAttach?: (path: string) => void
+  /** Reveals a path in the OS file manager; the menu item is omitted without it. */
+  onShowInFolder?: (path: string) => void
   /** Paths whose editor holds unsaved edits; never released, never evicted. */
   protectedPaths: ReadonlySet<string>
   onDirtyChange: (path: string, dirty: boolean) => void
@@ -177,6 +192,65 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
     setFilesTreeVisible(true)
   }
 
+  const editorPrefs = useFilesEditorPrefs()
+  const handles = useRef(new Map<string, FilePanelHandle>())
+  const handleRefs = useRef(new Map<string, (handle: FilePanelHandle | null) => void>())
+  const handleRef = (path: string) => {
+    let ref = handleRefs.current.get(path)
+    if (!ref) {
+      ref = handle => {
+        if (handle) handles.current.set(path, handle)
+        else handles.current.delete(path)
+      }
+      handleRefs.current.set(path, ref)
+    }
+    return ref
+  }
+  // Find opens on a tab the menu brought in front, once its body is mounted.
+  const [pendingFind, setPendingFind] = useState<string | null>(null)
+  useEffect(() => {
+    if (pendingFind === null || state.active !== pendingFind) return
+    const handle = handles.current.get(pendingFind)
+    if (!handle) return
+    setPendingFind(null)
+    handle.openFind()
+  })
+
+  const { onAttach, onShowInFolder, readFileText } = props
+  const rowMenu = useMemo<FilesRowMenuActions>(
+    () => ({ roots: roots ?? [], onAttach, onShowInFolder }),
+    [roots, onAttach, onShowInFolder],
+  )
+  const copyContents = (path: string) => {
+    const text = handles.current.get(path)?.diskText()
+    if (typeof text === 'string') {
+      void writeClipboard(text)
+      return
+    }
+    void readFileText?.(path).then(read => {
+      if (typeof read === 'string') void writeClipboard(read)
+    })
+  }
+  const tabMenu = {
+    ...rowMenu,
+    tabs: state.tabs,
+    onRevealInTree: (path: string) => {
+      props.onActivate(path)
+      setFilesTreeVisible(true)
+      reveal(path)
+    },
+    onFind: (path: string) => {
+      props.onActivate(path)
+      setPendingFind(path)
+    },
+    onCopyContents: copyContents,
+    onReload: (path: string) => handles.current.get(path)?.reload(),
+    onClose: props.onCloseTab,
+    onCloseOthers: (path: string) => props.onCloseTabs('others', path),
+    onCloseToRight: (path: string) => props.onCloseTabs('right', path),
+    onCloseAll: () => props.onCloseTabs('all', state.active ?? state.tabs[0] ?? ''),
+  }
+
   const spelled = (path: string | null) => (path && roots ? treeSpelling(roots, path) : path)
   const browseTree = (currentPath: string | null) =>
     !props.listDir || !tree ? (
@@ -207,38 +281,39 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
         const active = path === state.active
         const label = baseName(path)
         return (
-          <div
-            key={path}
-            className={cn(
-              'group flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pe-0.5 ps-1.5 text-[12px]',
-              active ? 'bg-muted' : 'hover:bg-muted/50',
-            )}
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={active}
-              data-testid={`files-pane-tab:${path}`}
-              title={path}
-              onClick={() => props.onActivate(path)}
+          <FilesTabMenu key={path} path={path} {...tabMenu}>
+            <div
               className={cn(
-                'flex min-w-0 max-w-[12rem] items-center gap-1 outline-none',
-                active ? 'font-medium text-foreground' : 'text-muted-foreground',
+                'group flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pe-0.5 ps-1.5 text-[12px]',
+                active ? 'bg-muted' : 'hover:bg-muted/50',
               )}
             >
-              <FileTextIcon aria-hidden className="size-3 shrink-0" />
-              <span className="min-w-0 truncate">{label}</span>
-            </button>
-            <button
-              type="button"
-              aria-label={t('pane.closeFileTab', { name: label })}
-              data-testid={`files-pane-close:${path}`}
-              onClick={() => props.onCloseTab(path)}
-              className="flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
-            >
-              <XIcon className="size-3" />
-            </button>
-          </div>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={active}
+                data-testid={`files-pane-tab:${path}`}
+                title={path}
+                onClick={() => props.onActivate(path)}
+                className={cn(
+                  'flex min-w-0 max-w-[12rem] items-center gap-1 outline-none',
+                  active ? 'font-medium text-foreground' : 'text-muted-foreground',
+                )}
+              >
+                <FileTextIcon aria-hidden className="size-3 shrink-0" />
+                <span className="min-w-0 truncate">{label}</span>
+              </button>
+              <button
+                type="button"
+                aria-label={t('pane.closeFileTab', { name: label })}
+                data-testid={`files-pane-close:${path}`}
+                onClick={() => props.onCloseTab(path)}
+                className="flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+              >
+                <XIcon className="size-3" />
+              </button>
+            </div>
+          </FilesTabMenu>
         )
       })}
     </div>
@@ -264,6 +339,12 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
         onClick={toggleFilesTreeVisible}
         icon={<ListTreeIcon className="size-3.5" />}
       />
+      <FilesOptionsMenu
+        editor={editorPrefs}
+        onEditorChange={setFilesEditorPrefs}
+        treeVisible={prefs.visible}
+        onTreeVisibleChange={setFilesTreeVisible}
+      />
     </TooltipProvider>
   )
 
@@ -281,7 +362,10 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
               className={cn('min-h-0 flex-1 flex-col overflow-hidden', active ? 'flex' : 'hidden')}
             >
               <FilePanel
+                ref={handleRef(path)}
                 target={{ path }}
+                wordWrap={editorPrefs.wordWrap}
+                tabSize={editorPrefs.tabSize}
                 readFileText={props.readFileText}
                 writeFileText={props.writeFileText}
                 editingLocked={props.editingLocked}
@@ -325,7 +409,11 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
     </div>
   )
 
-  return <>{props.frame({ title, actions, body })}</>
+  return (
+    <FilesRowMenuContext.Provider value={rowMenu}>
+      {props.frame({ title, actions, body })}
+    </FilesRowMenuContext.Provider>
+  )
 }
 
 /** The docked tree's filter box, once drawn. */

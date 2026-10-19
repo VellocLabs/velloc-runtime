@@ -4,7 +4,7 @@ import {
   useComposerRuntime,
 } from '@assistant-ui/react'
 
-import { Suspense, lazy, useEffect } from 'react'
+import { Suspense, lazy, useEffect, useRef } from 'react'
 
 import { useComposerDraftSync } from './useComposerDraftSync'
 
@@ -55,5 +55,30 @@ export function ComposerTextRestore({
     }
     onDone()
   }, [composer, text, onDone])
+  return null
+}
+
+/**
+ * Adds `insert.text` to the end of the composer once per `insert.nonce`,
+ * after a space when the draft does not end in whitespace.
+ */
+export function ComposerTextInsert({
+  insert,
+}: {
+  insert: { text: string; nonce: number }
+}) {
+  const composer = useComposerRuntime()
+  const applied = useRef<number | null>(null)
+  useEffect(() => {
+    if (applied.current === insert.nonce) return
+    applied.current = insert.nonce
+    try {
+      const draft = composer.getState().text
+      const glue = draft === '' || /\s$/.test(draft) ? '' : ' '
+      composer.setText(`${draft}${glue}${insert.text}`)
+    } catch (error) {
+      console.warn('Failed to add text to the composer:', error)
+    }
+  }, [composer, insert.nonce, insert.text])
   return null
 }

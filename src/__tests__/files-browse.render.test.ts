@@ -139,6 +139,7 @@ describe('FilesPane browse branch', () => {
     sessionKey: 's1',
     onActivate: vi.fn(),
     onCloseTab: vi.fn(),
+    onCloseTabs: vi.fn(),
     protectedPaths: new Set(),
     onDirtyChange: vi.fn(),
     onOpen: vi.fn(),

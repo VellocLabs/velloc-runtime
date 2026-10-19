@@ -74,7 +74,17 @@ import {
 import { sideRegionMetrics } from './layout/paneGeometry'
 import { fitRootRowAfterOpen } from './layout/paneFit'
 import { rootPaneWeightsByKind } from './layout/paneResize'
-import { activateFileTab, closeFileTab, emptyFilesPane, openFileTab } from './layout/filesPane'
+import {
+  activateFileTab,
+  closeAllTabs,
+  closeFileTab,
+  closeOtherTabs,
+  closeTabsAfter,
+  emptyFilesPane,
+  openFileTab,
+} from './layout/filesPane'
+import { createQuotedAttachmentPrefix } from './BrowserComposerAttachmentAdapter'
+import type { FilesBulkClose } from './panes/FilesPane'
 import { createSessionLayoutsStore, useSessionLayouts, type SessionLayoutsStore } from './layout/sessionLayouts'
 import { paneShortcutFor } from './layout/paneShortcuts'
 import { toggleFilesTreeVisible } from './panes/filesTreePrefs'
@@ -2255,6 +2265,40 @@ export function MultiSessionShell({
     },
     [updatePaneRecord],
   )
+  // The tab menu's bulk closes never close a tab with unsaved edits.
+  const handleCloseFileTabs = useCallback(
+    (close: FilesBulkClose, path: string) => {
+      updatePaneRecord(r => {
+        const current = r.files ?? EMPTY_FILES_PANE
+        const dirty = dirtyFilePathsRef.current
+        const files =
+          close === 'others'
+            ? closeOtherTabs(current, path, dirty)
+            : close === 'right'
+              ? closeTabsAfter(current, path, dirty)
+              : closeAllTabs(current, dirty)
+        return files === r.files ? r : { ...r, files }
+      })
+    },
+    [updatePaneRecord],
+  )
+  // *Attach as context* (F-9): the path goes into the active session's
+  // composer as the same `@"path"` mention an attachment sends as.
+  const [composerInsert, setComposerInsert] = useState<{
+    sessionId: string
+    text: string
+    nonce: number
+  } | null>(null)
+  const composerInsertNonceRef = useRef(0)
+  const attachPathToComposer = useCallback((path: string) => {
+    const sessionId = activeSessionIdRef.current
+    if (!sessionId) return
+    setComposerInsert({
+      sessionId,
+      text: createQuotedAttachmentPrefix([path]),
+      nonce: ++composerInsertNonceRef.current,
+    })
+  }, [])
   const openDiffInPanel = useCallback((target: RightPanelDiffTarget) => {
     const id = activeSessionIdRef.current
     if (!id) return
@@ -4122,6 +4166,11 @@ export function MultiSessionShell({
             sessionKey={activeSessionId}
             onActivate={handleActivateFileTab}
             onCloseTab={handleCloseFileTab}
+            onCloseTabs={handleCloseFileTabs}
+            onAttach={attachPathToComposer}
+            onShowInFolder={
+              runtimeCapabilities.can('ui', 'revealProjectFolder') ? handleRevealProjectFolder : undefined
+            }
             protectedPaths={dirtyFilePaths}
             onDirtyChange={handleFileDirtyChange}
             fileReveal={rightPanelFileReveal}
@@ -4526,6 +4575,7 @@ export function MultiSessionShell({
                   onOpenProjectFolder={handleOpenProjectFolder}
                   onRevealProjectFolder={handleRevealProjectFolder}
                   initialComposerDraft={sessionDraftBySessionId.get(sessionId)}
+                  composerInsert={composerInsert?.sessionId === sessionId ? composerInsert : null}
                   onComposerEdit={handleComposerEdit}
                 />
               </ThreadErrorBoundary>

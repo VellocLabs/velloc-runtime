@@ -65,6 +65,21 @@ describe('Files pane docked tree prefs', () => {
   })
 })
 
+describe('filesEditor', () => {
+  it('defaults to word wrap on and tab size 4; each field falls back on its own', () => {
+    expect(defaultLayoutStorage().filesEditor).toEqual({ wordWrap: true, tabSize: 4 })
+    expect(sanitizeLayoutStorage({ filesEditor: { wordWrap: false, tabSize: 8 } }).filesEditor).toEqual({
+      wordWrap: false,
+      tabSize: 8,
+    })
+    expect(sanitizeLayoutStorage({ filesEditor: { wordWrap: 'yes', tabSize: 3 } }).filesEditor).toEqual({
+      wordWrap: true,
+      tabSize: 4,
+    })
+    expect(sanitizeLayoutStorage({ filesEditor: { tabSize: 2 } }).filesEditor).toEqual({ wordWrap: true, tabSize: 2 })
+  })
+})
+
 describe('sanitizePaneWeightByKind', () => {
   it('keeps finite positive weights of known kinds, clamped', () => {
     expect(sanitizePaneWeightByKind({ diff: 2.5, tasks: -1, plan: Number.NaN, mod: 1, browser: 1e9, files: 0 })).toEqual({

@@ -1,13 +1,17 @@
 /**
  * The Files pane's strip (F-9): the tab cap evicts the oldest evictable tab,
  * never the active or a protected one; closing focuses a neighbour; the
- * mounted-body LRU keeps visible and protected bodies.
+ * mounted-body LRU keeps visible and protected bodies; the bulk closes never
+ * close a protected tab.
  */
 import { describe, expect, it } from 'vitest'
 
 import {
   activateFileTab,
+  closeAllTabs,
   closeFileTab,
+  closeOtherTabs,
+  closeTabsAfter,
   emptyFilesPane,
   FILES_PANE_MAX_MOUNTED,
   FILES_PANE_MAX_TABS,
@@ -53,6 +57,32 @@ describe('closeFileTab / activateFileTab', () => {
     expect(activateFileTab(state, '/b.ts').active).toBe('/b.ts')
     expect(activateFileTab(state, '/a.ts')).toBe(state)
     expect(activateFileTab(state, '/zz.ts')).toBe(state)
+  })
+})
+
+describe('bulk closes', () => {
+  const strip = { tabs: ['/a', '/b', '/c', '/d'], active: '/b' }
+  const dirty = new Set(['/d'])
+
+  it('close others keeps the target in front and every protected tab', () => {
+    expect(closeOtherTabs(strip, '/c')).toEqual({ tabs: ['/c'], active: '/c' })
+    expect(closeOtherTabs(strip, '/c', dirty)).toEqual({ tabs: ['/c', '/d'], active: '/c' })
+    expect(closeOtherTabs(strip, '/zz')).toBe(strip)
+  })
+
+  it('close to the right keeps the active tab when it survives, else the target', () => {
+    expect(closeTabsAfter(strip, '/b')).toEqual({ tabs: ['/a', '/b'], active: '/b' })
+    expect(closeTabsAfter(strip, '/a', dirty)).toEqual({ tabs: ['/a', '/d'], active: '/a' })
+    expect(closeTabsAfter(strip, '/d')).toBe(strip)
+  })
+
+  it('close all leaves only protected tabs, the first survivor in front', () => {
+    expect(closeAllTabs(strip)).toEqual({ tabs: [], active: null })
+    expect(closeAllTabs(strip, new Set(['/c', '/a']))).toEqual({ tabs: ['/a', '/c'], active: '/a' })
+    expect(closeAllTabs({ tabs: ['/a', '/b'], active: '/b' }, new Set(['/b']))).toEqual({
+      tabs: ['/b'],
+      active: '/b',
+    })
   })
 })
 
