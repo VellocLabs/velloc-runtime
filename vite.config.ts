@@ -13,6 +13,7 @@ import {
 import { localeAssetsPlugin } from './vite/localeAssetsPlugin'
 import { devCatalogSnapshotPlugin } from './vite/devCatalogSnapshotPlugin'
 import { devServerWatch } from './vite/devServerWatch'
+import { xtermHeadlessWorkerPlugin } from './vite/xtermHeadlessWorkerPlugin'
 import { NEXUS_INTERFACE_VERSION } from './src/browser/bridge/protocol/interfaceVersion'
 import { BUILD_TIME_META_NAME, buildTimeFromCommit } from './src/branding/buildInfo'
 
@@ -280,6 +281,7 @@ export default defineConfig(({ mode }) => ({
   base: resolvePagesBasePath(),
   plugins: [
     devWatch.plugin,
+    xtermHeadlessWorkerPlugin(),
     processPolyfillPlugin(mode),
     injectWarmSharedWorkerPlugin(),
     injectBackgroundCacheUpdatePlugin(),
@@ -309,7 +311,7 @@ export default defineConfig(({ mode }) => ({
     // here too — the worker imports `templateRegistry` (via createBrowserRuntime).
     // So must `virtual:builtin-mods`: the session boot registers the built-in
     // mods there.
-    plugins: () => [bundledTemplateRegistryPlugin(), builtinModsPlugin()],
+    plugins: () => [bundledTemplateRegistryPlugin(), builtinModsPlugin(), xtermHeadlessWorkerPlugin()],
   },
   server: {
     watch: {

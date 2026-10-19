@@ -86,7 +86,7 @@ describe('terminals in the manager boot services', () => {
     const id = await r.services.terminals.create({ sessionId: 'sess', cols: 80, rows: 24 })
     r.detach()
     expect(r.services.terminals.available).toBe(false)
-    expect(r.services.terminals.snapshot(id)!.state).toEqual({ kind: 'exited', exitCode: null })
+    expect((await r.services.terminals.snapshot(id))!.state).toEqual({ kind: 'exited', exitCode: null })
     expect(r.fake.shellRequests('streamKill')).toHaveLength(0)
   })
 })

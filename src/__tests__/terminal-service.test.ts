@@ -5,16 +5,15 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { BrowserBridgeRequest } from '../browser/bridge/browserBridgeProtocol'
-import { ScrollbackRing } from '../terminal/scrollback'
 import { TitleSequenceScanner } from '../terminal/titleScanner'
 import { TerminalService, type TerminalHost, type TerminalServiceEvent } from '../terminal/TerminalService'
-import { TERMINAL_SCROLLBACK_BYTES } from '../terminal/protocol'
+import { renderSnapshot } from './_helpers/renderTerminalSnapshot'
 import { fail, fakePtyHost, ok, routeOf, settle, type FakePtyHostOptions } from './_helpers/fakePtyHost'
 
 type RigOptions = FakePtyHostOptions & {
   manifest?: TerminalHost['manifest']
   sessions?: Record<string, string>
-  scrollbackLimit?: number
+  historyLines?: number
   coalesceWindowMs?: number
 }
 
@@ -30,7 +29,7 @@ function rig(options: RigOptions = {}) {
     createRequestId: () => `r-${++n}`,
     sessionCwd: id => sessions[id],
     coalesceWindowMs: options.coalesceWindowMs ?? 1,
-    scrollbackLimit: options.scrollbackLimit,
+    historyLines: options.historyLines,
     newId: () => `${++ids}`,
   })
   service.subscribe(event => events.push(event))
@@ -100,7 +99,7 @@ describe('TerminalService create', () => {
       { id, sessionId: 's1', shell: 'pwsh', title: 'pwsh', state: { kind: 'running' } },
     ])
     expect(r.states(id)).toEqual([{ kind: 'running' }])
-    expect(r.service.snapshot(id)).toEqual({ cols: 120, rows: 40, title: 'pwsh', state: { kind: 'running' }, scrollback: '' })
+    expect(await r.service.snapshot(id)).toEqual({ cols: 120, rows: 40, title: 'pwsh', state: { kind: 'running' }, scrollback: '' })
   })
 
   it('refuses an unknown session, an unknown shell and a size outside the bounds', async () => {
@@ -132,13 +131,13 @@ describe('TerminalService create', () => {
     const id = await r.service.create({ sessionId: 's1', shell: 'cmd', cols: 80, rows: 24 })
     r.output(r.spawned[0]!, 'old output')
     r.exit(r.spawned[0]!, 0)
-    expect(r.service.snapshot(id)!.scrollback).toBe('old output')
+    expect(await renderSnapshot(await r.service.snapshot(id))).toEqual(['old output'])
     await r.service.restart(id)
     expect(r.service.list().terminals[0]!.state).toEqual({ kind: 'running' })
-    expect(r.service.snapshot(id)!.scrollback).toBe('')
+    expect(await renderSnapshot(await r.service.snapshot(id))).toEqual([])
     r.output(r.spawned[1]!, 'new')
     r.exit(r.spawned[1]!, 0)
-    expect(r.service.snapshot(id)!.scrollback).toBe('new')
+    expect(await renderSnapshot(await r.service.snapshot(id))).toEqual(['new'])
   })
 
   it('pwsh the host cannot resolve falls back to Windows PowerShell', async () => {
@@ -186,33 +185,50 @@ describe('TerminalService output', () => {
     expect(r.outputs(id)).toEqual([])
     await settle()
     expect(r.outputs(id)).toEqual(['A€B'])
-    expect(r.service.snapshot(id)!.scrollback).toBe('A€B')
+    expect(await renderSnapshot(await r.service.snapshot(id))).toEqual(['A€B'])
   })
 
-  it('appends to the scrollback as it delivers, so a snapshot and the deltas after it never overlap', async () => {
+  it('a snapshot taken as output is delivered holds that output and none delivered after it', async () => {
     const r = await ready()
     const id = await r.service.create({ sessionId: 's1', cols: 80, rows: 24 })
-    const seen: string[] = []
+    const taken: ReturnType<TerminalService['snapshot']>[] = []
     r.service.subscribe(event => {
-      if (event.kind === 'output') seen.push(r.service.snapshot(id)!.scrollback)
+      if (event.kind === 'output') taken.push(r.service.snapshot(id))
     })
     r.output(r.spawned[0]!, 'one ')
     await settle()
     r.output(r.spawned[0]!, 'two')
     await settle()
     expect(r.outputs(id)).toEqual(['one ', 'two'])
-    expect(seen).toEqual(['one ', 'one two'])
+    const seen = await Promise.all(taken.map(async snapshot => renderSnapshot(await snapshot)))
+    expect(seen).toEqual([['one '], ['one two']])
   })
 
-  it('caps the scrollback, dropping the oldest text first', async () => {
-    const r = await ready({ scrollbackLimit: 10 })
-    const id = await r.service.create({ sessionId: 's1', cols: 80, rows: 24 })
-    r.output(r.spawned[0]!, 'abcdefgh')
+  it('keeps at most historyLines lines above the screen, dropping the oldest first', async () => {
+    const r = await ready({ historyLines: 2 })
+    const id = await r.service.create({ sessionId: 's1', cols: 20, rows: 3 })
+    r.output(r.spawned[0]!, Array.from({ length: 8 }, (_, i) => `line ${i + 1}`).join('\r\n'))
     await settle()
-    r.output(r.spawned[0]!, 'ijkl')
+    expect(await renderSnapshot(await r.service.snapshot(id))).toEqual(['line 4', 'line 5', 'line 6', 'line 7', 'line 8'])
+  })
+
+  it('a line drawn once and never redrawn survives any amount of redrawing around it', async () => {
+    const r = await ready()
+    const id = await r.service.create({ sessionId: 's1', cols: 40, rows: 6 })
+    const [stream] = r.spawned
+    r.output(stream!, 'history 1\r\nhistory 2\r\n\x1b[6;1Hfooter')
     await settle()
-    expect(r.service.snapshot(id)!.scrollback).toBe('cdefghijkl')
-    expect(r.outputs(id)).toEqual(['abcdefgh', 'ijkl'])
+    // Each frame rewrites row 3 only, as a console that sends changed cells does.
+    const frame = (n: number) => `\x1b[3;1H\x1b[2Kframe ${n} ${'x'.repeat(28)}\x1b[6;7H`
+    for (let chunk = 0; chunk < 40; chunk++) {
+      r.output(stream!, Array.from({ length: 500 }, (_, i) => frame(chunk * 500 + i)).join(''))
+      await settle()
+    }
+    const lines = await renderSnapshot(await r.service.snapshot(id))
+    expect(lines[0]).toBe('history 1')
+    expect(lines[1]).toBe('history 2')
+    expect(lines[2]).toMatch(/^frame 19999 x+$/)
+    expect(lines[5]).toBe('footer')
   })
 
   it('takes the title from OSC 0 / OSC 2, even split across chunks, else the shell id', async () => {
@@ -226,9 +242,7 @@ describe('TerminalService output', () => {
     expect(r.service.list().terminals[0]!.title).toBe('My Title')
     r.output(stream!, '\x1b]0;Other\x1b\\')
     await settle()
-    expect(r.service.snapshot(id)!.title).toBe('Other')
-    // The sequence stays in the text: the emulator reads it too.
-    expect(r.service.snapshot(id)!.scrollback).toContain('\x1b]2;My Title\x07')
+    expect((await r.service.snapshot(id))!.title).toBe('Other')
   })
 
   it('writes keystrokes as UTF-8 to the child and nothing once it has exited', async () => {
@@ -258,7 +272,7 @@ describe('TerminalService size, exit and restart', () => {
     await r.service.resize(id, 100, 30)
     expect(r.shellRequests('resize')[0]!.payload).toEqual({ streamId: r.spawned[0], cols: 100, rows: 30 })
     expect(r.events).toContainEqual({ kind: 'resize', id, cols: 100, rows: 30 })
-    expect(r.service.snapshot(id)).toMatchObject({ cols: 100, rows: 30 })
+    expect(await r.service.snapshot(id)).toMatchObject({ cols: 100, rows: 30 })
     await expect(r.service.resize(id, 0, 30)).rejects.toSatisfy(e => codeOf(e) === 'bad_payload')
   })
 
@@ -275,7 +289,7 @@ describe('TerminalService size, exit and restart', () => {
 
     const other = await r.service.create({ sessionId: 's1', cols: 80, rows: 24 })
     r.exit(r.spawned[1]!, -1)
-    expect(r.service.snapshot(other)!.state).toEqual({ kind: 'exited', exitCode: null })
+    expect((await r.service.snapshot(other))!.state).toEqual({ kind: 'exited', exitCode: null })
   })
 
   it('restart runs the same shell again under the same id with a fresh title; a running one is a conflict', async () => {
@@ -309,7 +323,7 @@ describe('TerminalService close', () => {
     await settle(0)
     expect(r.shellRequests('streamKill')[0]!.payload).toEqual({ streamId: r.spawned[0] })
     expect(r.service.has(id)).toBe(false)
-    expect(r.service.snapshot(id)).toBeUndefined()
+    expect(await r.service.snapshot(id)).toBeUndefined()
     expect(r.events).toContainEqual({ kind: 'closed', id })
     expect(r.service.list().terminals).toEqual([])
     expect(() => r.service.close(id)).toThrow()
@@ -351,7 +365,7 @@ describe('TerminalService close', () => {
     r.service.refreshHost()
     await settle()
     await r.service.restart(id)
-    expect(r.service.snapshot(id)!.state).toEqual({ kind: 'running' })
+    expect((await r.service.snapshot(id))!.state).toEqual({ kind: 'running' })
   })
 
   it('dispose ends everything and stops listening', async () => {
@@ -390,33 +404,6 @@ describe('the shells probe', () => {
     failing.service.refreshHost()
     await settle()
     expect(failing.service.list().shells).toEqual([])
-  })
-})
-
-describe('ScrollbackRing', () => {
-  it('measures in UTF-16 code units and never cuts a surrogate pair', () => {
-    const ring = new ScrollbackRing(3)
-    ring.append('ab😀cd')
-    expect(ring.text()).toBe('cd')
-    const wide = new ScrollbackRing(5)
-    wide.append('ab')
-    wide.append('😀cd')
-    expect(wide.text()).toBe('b😀cd')
-    const split = new ScrollbackRing(4)
-    split.append('ab😀cd')
-    // Four units from the end starts exactly on the pair, so it is kept whole.
-    expect(split.text()).toBe('😀cd')
-    expect(split.size).toBe(4)
-    split.clear()
-    expect(split.text()).toBe('')
-    expect(TERMINAL_SCROLLBACK_BYTES).toBe(512 * 1024)
-  })
-
-  it('a piece larger than the limit keeps only its tail', () => {
-    const ring = new ScrollbackRing(4)
-    ring.append('x'.repeat(10))
-    ring.append('yz')
-    expect(ring.text()).toBe('xxyz')
   })
 })
 

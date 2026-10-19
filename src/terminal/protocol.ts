@@ -30,8 +30,8 @@ export const TERMINAL_WRITE_MAX_BYTES = 64 * 1024
 /** Console size bounds, inclusive, for `create` and `resize`. */
 export const TERMINAL_SIZE_MIN = 1
 export const TERMINAL_SIZE_MAX = 1000
-/** The runtime keeps at most this much decoded output per terminal, in memory. */
-export const TERMINAL_SCROLLBACK_BYTES = 512 * 1024
+/** History lines the runtime's mirror of a terminal's screen keeps above it, in memory. */
+export const TERMINAL_HISTORY_LINES = 5_000
 
 /** A shell the host can start; `id` is the host's tool id (`pwsh`, `powershell`, `cmd`, `bash`). */
 export type TerminalShellInfo = {

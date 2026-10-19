@@ -5,6 +5,7 @@
  * `terminal/<id>` snapshot-then-deltas stream across two connections.
  */
 import { afterEach, describe, expect, it } from 'vitest'
+import { renderSnapshot } from './_helpers/renderTerminalSnapshot'
 import { CapabilityRegistry } from '../browser/runtimeHub/CapabilityRegistry'
 import { ConnectionHub } from '../browser/runtimeHub/ConnectionHub'
 import { registerTerminalCapability, TERMINALS_STATE_EVENT } from '../browser/runtimeHub/terminalCapability'
@@ -245,7 +246,7 @@ describe('terminal capability scope', () => {
     // Nothing of it reached the host or the service.
     expect(r.fake.shellRequests('writeStdin')).toHaveLength(0)
     expect(r.fake.shellRequests('spawn')).toHaveLength(1)
-    expect(r.service.snapshot(id)).toMatchObject({ cols: 80, rows: 24, state: { kind: 'running' } })
+    expect(await r.service.snapshot(id)).toMatchObject({ cols: 80, rows: 24, state: { kind: 'running' } })
     await settle(2)
     expect(lesser.events).toEqual([])
   })
@@ -354,7 +355,7 @@ describe('terminal topics', () => {
     expect((await b.subscribe(topic.terminal(id))).ok).toBe(true)
     const [bSnapshot] = await b.eventsFor(topic.terminal(id), 1)
     expect(bSnapshot!.form).toBe('snapshot')
-    expect((bSnapshot!.payload as TerminalSnapshot).scrollback).toBe('first line\r\n')
+    expect(await renderSnapshot(bSnapshot!.payload as TerminalSnapshot)).toEqual(['first line'])
 
     r.fake.output(stream, '\x1b]2;Shell\x07second')
     await settle()

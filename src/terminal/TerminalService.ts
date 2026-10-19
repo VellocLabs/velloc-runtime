@@ -3,10 +3,10 @@
  * terminal on the runtime's host port, owned here and never by a client or a
  * session engine. Per terminal: its id (`term_<uuid>`), the session it
  * belongs to, the shell and cwd it started with, its title, size and state,
- * and a scrollback of decoded text capped at TERMINAL_SCROLLBACK_BYTES UTF-16
- * code units. Output bytes are decoded once with a streaming UTF-8 decoder;
- * the text reaches the scrollback and the listeners in coalesced pieces, so a
- * snapshot and the deltas after it never overlap. Listeners hear every change
+ * and a mirror of its screen with up to TERMINAL_HISTORY_LINES lines of
+ * history above it. Output bytes are decoded once with a streaming UTF-8
+ * decoder; the text reaches the mirror and the listeners in coalesced pieces,
+ * so a snapshot and the deltas after it never overlap. Listeners hear every change
  * as a `TerminalServiceEvent`; the `terminal` capability turns them into topic
  * deltas. An unknown id throws `not_found`; a host without `shell.spawn.pty`,
  * or none at all, throws `host_unavailable`.
@@ -31,7 +31,7 @@ import { OutputCoalescer } from './outputCoalescer'
 import {
   isTerminalSize,
   TERMINAL_PTY_PRIMITIVE,
-  TERMINAL_SCROLLBACK_BYTES,
+  TERMINAL_HISTORY_LINES,
   type TerminalCreatePayload,
   type TerminalRow,
   type TerminalShellInfo,
@@ -39,7 +39,7 @@ import {
   type TerminalState,
   type TerminalsState,
 } from './protocol'
-import { ScrollbackRing } from './scrollback'
+import { ScreenMirror } from './screenMirror'
 import {
   defaultTerminalShell,
   isTerminalShellId,
@@ -67,7 +67,7 @@ export type TerminalServiceDeps = {
   /** Output coalescing window and size; defaults ~16 ms / 64 Ki units. */
   coalesceWindowMs?: number
   coalesceMaxUnits?: number
-  scrollbackLimit?: number
+  historyLines?: number
   newId?(): string
 }
 
@@ -94,7 +94,7 @@ type TerminalRecord = {
   cols: number
   rows: number
   state: TerminalState
-  scrollback: ScrollbackRing
+  screen: ScreenMirror
   coalescer: OutputCoalescer
   titles: TitleSequenceScanner
   decoder: TextDecoder
@@ -219,16 +219,13 @@ export class TerminalService {
     return this.records.has(id)
   }
 
-  snapshot(id: string): TerminalSnapshot | undefined {
+  /** The terminal as it is now; its `scrollback` redraws the screen and history on a reset emulator of that size. */
+  async snapshot(id: string): Promise<TerminalSnapshot | undefined> {
     const record = this.records.get(id)
     if (!record) return undefined
-    return {
-      cols: record.cols,
-      rows: record.rows,
-      title: record.title,
-      state: record.state,
-      scrollback: record.scrollback.text(),
-    }
+    const { cols, rows, title, state } = record
+    const scrollback = await record.screen.serialize()
+    return { cols, rows, title, state, scrollback }
   }
 
   /** Start a shell for `sessionId` in its folder; resolves with the id once the start settled (running or failed). */
@@ -255,7 +252,7 @@ export class TerminalService {
       cols: input.cols,
       rows: input.rows,
       state: { kind: 'starting' },
-      scrollback: new ScrollbackRing(this.deps.scrollbackLimit ?? TERMINAL_SCROLLBACK_BYTES),
+      screen: this.newScreen(input.cols, input.rows),
       coalescer: new OutputCoalescer(
         data => this.deliverOutput(id, data),
         this.deps.coalesceWindowMs ?? DEFAULT_COALESCE_WINDOW_MS,
@@ -291,6 +288,7 @@ export class TerminalService {
     }
     record.cols = cols
     record.rows = rows
+    record.screen.resize(cols, rows)
     this.emit({ kind: 'resize', id, cols, rows })
     const child = record.child
     if (!child) return
@@ -311,7 +309,8 @@ export class TerminalService {
     record.decoder = new TextDecoder('utf-8')
     record.titles = new TitleSequenceScanner()
     // A restarted terminal starts afresh: the old shell's output does not carry over.
-    record.scrollback = new ScrollbackRing(this.deps.scrollbackLimit ?? TERMINAL_SCROLLBACK_BYTES)
+    record.screen.dispose()
+    record.screen = this.newScreen(record.cols, record.rows)
     this.setTitle(record, record.shell)
     this.setState(record, { kind: 'starting' })
     await this.spawn(record)
@@ -440,10 +439,14 @@ export class TerminalService {
     this.setState(record, { kind: 'exited', exitCode: exit.exitCode >= 0 ? exit.exitCode : null })
   }
 
+  private newScreen(cols: number, rows: number): ScreenMirror {
+    return new ScreenMirror(cols, rows, this.deps.historyLines ?? TERMINAL_HISTORY_LINES)
+  }
+
   private deliverOutput(id: string, data: string): void {
     const record = this.records.get(id)
     if (!record) return
-    record.scrollback.append(data)
+    record.screen.write(data)
     this.emit({ kind: 'output', id, data })
   }
 
@@ -464,6 +467,7 @@ export class TerminalService {
     if (!this.records.delete(record.id)) return
     record.spawn = null
     record.coalescer.dispose()
+    record.screen.dispose()
     const child = record.child
     record.child = null
     if (child) {

@@ -106,7 +106,7 @@ export function terminalTopicProvider(service: TerminalService | null): TopicPro
     authorize: fullOnly,
     async *snapshot(id): AsyncIterable<SnapshotPage> {
       const terminalId = terminalIdOf(id)
-      const snapshot = terminalId === null ? undefined : service?.snapshot(terminalId)
+      const snapshot = terminalId === null ? undefined : await service?.snapshot(terminalId)
       if (snapshot) yield { payload: snapshot }
     },
   }
