@@ -90,4 +90,38 @@ describe('PaneFrame', () => {
     fireEvent.pointerDown(handle)
     expect(onPointerDown).toHaveBeenCalledTimes(1)
   })
+
+  it('the header shows the pane icon, swapped for the grip while the header is hovered', () => {
+    render(
+      createElement(
+        PaneHandleContext.Provider,
+        { value: () => ({ onPointerDown: vi.fn(), onKeyDown: vi.fn() }) },
+        createElement(PaneFrame, {
+          kind: 'terminal',
+          name: 'Terminal',
+          title: 'Terminal',
+          maximized: false,
+          onToggleMaximized: vi.fn(),
+          onClose: vi.fn(),
+          children: null,
+        }),
+      ),
+    )
+    const header = screen.getByTestId('pane-terminal-header')
+    const handle = screen.getByTestId('pane-terminal-handle')
+    const icon = screen.getByTestId('pane-terminal-icon')
+    const grip = screen.getByTestId('pane-terminal-grip')
+    expect(header.className).toContain('group/pane-header')
+    expect(handle.contains(icon) && handle.contains(grip)).toBe(true)
+    expect(icon.getAttribute('class')).toContain('group-hover/pane-header:hidden')
+    expect(grip.getAttribute('class')).toMatch(/(^| )hidden( |$)/)
+    expect(grip.getAttribute('class')).toContain('group-hover/pane-header:block')
+    expect(header.className).not.toContain('cursor-grab')
+  })
+
+  it('outside an area the icon stays and no grip is drawn', () => {
+    renderFrame()
+    expect(screen.getByTestId('pane-diff-icon')).toBeTruthy()
+    expect(screen.queryByTestId('pane-diff-grip')).toBeNull()
+  })
 })

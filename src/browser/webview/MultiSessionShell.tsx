@@ -90,7 +90,7 @@ import { paneShortcutFor } from './layout/paneShortcuts'
 import { toggleFilesTreeVisible } from './panes/filesTreePrefs'
 import { PaneArea } from './panes/PaneArea'
 import { PaneFrame } from './panes/PaneFrame'
-import { PANE_ICON, PANE_LABEL_KEY } from './panes/paneKinds'
+import { PANE_LABEL_KEY } from './panes/paneKinds'
 import {
   DOCK_FLOOR_CELLS,
   forgetAskedPane,
@@ -4113,7 +4113,6 @@ export function MultiSessionShell({
   // providers, so each brings the handles the deep cards need.
   const renderSidePane = (kind: SidePaneKind): ReactNode => {
     const name = t(PANE_LABEL_KEY[kind])
-    const Icon = PANE_ICON[kind]
     const frame = (title: ReactNode, body: ReactNode, actions?: ReactNode) => (
       <PaneFrame
         kind={kind}
@@ -4189,7 +4188,6 @@ export function MultiSessionShell({
     }
     const label = (
       <>
-        <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 truncate">{name}</span>
       </>
     )

@@ -12,15 +12,15 @@ import {
 
 import { useT } from '../i18n'
 import type { SidePaneKind } from '../layout/paneLayout'
+import { PANE_ICON } from './paneKinds'
 import { usePaneHandle } from './usePaneDrag'
 
 /**
- * The chrome every side pane shares (F-9): a card with a 36px header — the
- * pane's title slot at the start, its own actions, then Expand / Restore and
- * Close — over a body that owns its scrolling. Only the grip at the header's
- * start is the pane's handle: inside an area it drags the pane and moves it
- * with the arrow keys; the rest of the header never starts a drag. Brings its own TooltipProvider: panes render outside
- * the thread providers.
+ * The chrome every side pane shares (F-9): a 36px header (icon, title slot,
+ * own actions, Expand / Restore, Close) over a body that owns its scrolling.
+ * The icon becomes a grip while the header is hovered and is the only drag
+ * handle (pointer, or arrow keys when focused). Brings its own
+ * TooltipProvider: panes render outside the thread providers.
  */
 export type PaneFrameProps = {
   kind: SidePaneKind
@@ -44,6 +44,7 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
   const t = useT()
   const { kind, name } = props
   const handle = usePaneHandle(kind)
+  const KindIcon = PANE_ICON[kind]
   return (
     <TooltipProvider>
       <section
@@ -61,7 +62,7 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
       >
         <div
           data-testid={`pane-${kind}-header`}
-          className="flex h-9 shrink-0 items-center gap-0.5 border-b border-border pe-1 ps-2"
+          className="group/pane-header flex h-9 shrink-0 items-center gap-0.5 border-b border-border pe-1 ps-2"
         >
           <div
             role="button"
@@ -74,7 +75,18 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
             )}
             {...handle}
           >
-            <GripVerticalIcon aria-hidden="true" className="size-3.5" />
+            <KindIcon
+              aria-hidden="true"
+              data-testid={`pane-${kind}-icon`}
+              className={cn('size-3.5', handle ? 'group-hover/pane-header:hidden group-focus-within/pane-header:hidden' : null)}
+            />
+            {handle ? (
+              <GripVerticalIcon
+                aria-hidden="true"
+                data-testid={`pane-${kind}-grip`}
+                className="hidden size-3.5 group-hover/pane-header:block group-focus-within/pane-header:block"
+              />
+            ) : null}
           </div>
           <div
             data-testid={`pane-${kind}-title`}

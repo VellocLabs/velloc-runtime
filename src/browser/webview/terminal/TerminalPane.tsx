@@ -28,7 +28,7 @@ import type { RuntimeConnection } from '@/browser/runtimeClient/RuntimeConnectio
 import { TERMINAL_CAPABILITY, type TerminalCreateResult, type TerminalRow } from '@/terminal/protocol'
 
 import { useLocale, useT } from '../i18n'
-import { PANE_ICON, PANE_LABEL_KEY } from '../panes/paneKinds'
+import { PANE_LABEL_KEY } from '../panes/paneKinds'
 import {
   EMPTY_SLOTS,
   loadTerminalLayout,
@@ -97,7 +97,6 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
   const prefs = useTerminalPrefs()
   const slots = useSessionSlots(sessionId)
   const name = t(PANE_LABEL_KEY.terminal)
-  const Icon = PANE_ICON.terminal
 
   const rows: TerminalRow[] = sessionId && state ? state.terminals.filter(row => row.sessionId === sessionId) : []
   const tabs: Tab[] = orderedKeys(
@@ -240,7 +239,6 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
 
   const title = (
     <>
-      <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       {tabs.length <= 1 ? (
         <span className="min-w-0 truncate" title={activeTab?.row?.title}>
           {titled(name, activeTab?.row ?? null)}
