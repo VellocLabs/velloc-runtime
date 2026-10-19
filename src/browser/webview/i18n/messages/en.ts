@@ -307,6 +307,9 @@ export const en = {
   'pane.browser.oneTab': 'One tab',
   'pane.browser.tabs': '{count} tabs',
   'pane.browser.newTab': 'New tab',
+  'pane.browser.closeTab': 'Close {title}',
+  'pane.browser.address': 'Address',
+  'pane.browser.addressPlaceholder': 'Enter an address or search',
   // The Terminal pane: its tab strip, the + button, the options menu and the exit line.
   'terminal.new': 'New terminal',
   'terminal.tabs': 'Terminals',

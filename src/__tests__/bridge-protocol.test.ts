@@ -17,6 +17,7 @@ import {
   sqliteOpen,
   sqliteQuery,
   subscribeSessionTabsChanged,
+  subscribeSessionTabListChanged,
 } from '../browser/webview/nexusBridgeActions'
 import { NEXUS_DIRECT_BRIDGE_CAPABILITIES } from '../browser/bridge/directBridgeCapabilities'
 
@@ -703,6 +704,43 @@ describe('BrowserHostBridge', () => {
 
     unsubscribe()
     expect(unsubscribed).toBe(true)
+  })
+
+  it('subscribeSessionTabListChanged filters to browser.sessionTabListChanged', () => {
+    type Envelope = {
+      route: { namespace: string; capability: string; action: string }
+      payload: Record<string, unknown>
+    }
+    let listener: ((envelope: Envelope) => void) | null = null
+    const transport = {
+      request: async () => {
+        throw new Error('not used')
+      },
+      subscribeEvents: (handler: (envelope: Envelope) => void) => {
+        listener = handler
+        return () => {}
+      },
+    } as unknown as Parameters<typeof subscribeSessionTabListChanged>[0]
+
+    const received: unknown[] = []
+    subscribeSessionTabListChanged(transport, event => {
+      received.push(event)
+    })
+    expect(listener).not.toBeNull()
+
+    // The count event rides the same capability and must not leak through.
+    listener!({
+      route: { namespace: 'nexus', capability: 'browser', action: 'sessionTabsChanged' },
+      payload: { sessionId: 's1', nexusTabCount: 1, totalTabCount: 1 },
+    })
+    expect(received).toHaveLength(0)
+
+    const tabs = [{ id: 7, title: 'Docs', url: 'https://example.com/', active: true }]
+    listener!({
+      route: { namespace: 'nexus', capability: 'browser', action: 'sessionTabListChanged' },
+      payload: { sessionId: 's1', tabs },
+    })
+    expect(received).toEqual([{ sessionId: 's1', tabs }])
   })
 
   it('provides browser context snapshots', async () => {

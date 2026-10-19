@@ -33,6 +33,9 @@ export const HOST_PROXY_TABLE = {
     openLanguageSettings: 'full',
     // A tab in THIS window's strip, shown by this window's own browser pane.
     openSessionTab: 'full',
+    activateSessionTab: 'full',
+    closeSessionTab: 'full',
+    navigateSessionTab: 'full',
     getBootTimings: 'full',
     getProviderMissingPrompt: 'full',
     getInspectMenuEnabled: 'full',

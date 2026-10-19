@@ -180,7 +180,10 @@ import {
 } from './settings/clients'
 import type { NexusProviderConfig } from '../../settings/settingsTypes'
 import {
+  activateSessionTab,
+  closeSessionTab,
   getProviderMissingPrompt,
+  navigateSessionTab,
   openSessionTab,
   openUrl,
   setActiveSessionTitle,
@@ -189,8 +192,11 @@ import {
   revealProjectFolder,
   subscribeAgentConfig,
   subscribeSessionTabsChanged,
+  subscribeSessionTabListChanged,
 } from './nexusBridgeActions'
+import type { SessionTabEntry } from '../bridge/protocol/session'
 import { WebviewArea } from './WebviewArea'
+import { BrowserAddressBar, BrowserTabStrip } from './panes/BrowserPaneChrome'
 import { postMainContentsLayout } from './useMainContentsLayout'
 import {
   applyE2eTestCodePrefix,
@@ -293,6 +299,22 @@ import {
   installSessionTracer,
 } from '../../utils/sessionTrace'
 import { useClientActivityReport } from './clientActivityReport'
+
+const EMPTY_TAB_LIST: readonly SessionTabEntry[] = []
+
+/** Two tab lists the strip would draw identically. */
+function sameTabList(a: readonly SessionTabEntry[], b: readonly SessionTabEntry[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((tab, i) => {
+    const other = b[i]
+    return (
+      tab.id === other.id &&
+      tab.title === other.title &&
+      tab.url === other.url &&
+      tab.active === other.active
+    )
+  })
+}
 
 /**
  * An opaque identity of what a snapshot is halted ON — the ids of its pending
@@ -929,6 +951,25 @@ export function MultiSessionShell({
     },
     [],
   )
+  // Per-session kNexus-window tab lists (the browser pane's strip and
+  // address field), seeded by `session.setActiveSession` and kept live by
+  // `browser.sessionTabListChanged`.
+  const [sessionTabLists, setSessionTabLists] = useState<
+    ReadonlyMap<string, readonly SessionTabEntry[]>
+  >(() => new Map())
+  const setSessionTabList = useCallback(
+    (sessionId: string, tabs: SessionTabEntry[]) => {
+      setSessionTabLists(prev => {
+        const existing = prev.get(sessionId)
+        if (existing && sameTabList(existing, tabs)) return prev
+        const next = new Map(prev)
+        if (tabs.length === 0) next.delete(sessionId)
+        else next.set(sessionId, tabs)
+        return next
+      })
+    },
+    [],
+  )
 
   // Warm the on-demand panel chunks (settings, right panel, import dialog)
   // once the shell is up and the main thread goes idle. This is the other half
@@ -1226,6 +1267,7 @@ export function MultiSessionShell({
     activeSessionId,
     runtimeCapabilities,
     mergeSessionTabCounts,
+    setSessionTabList,
   )
 
   // Live per-session tab-count feed from the host's tab tracker.
@@ -1238,6 +1280,12 @@ export function MultiSessionShell({
       )
     })
   }, [hostBridgeTransport, mergeSessionTabCounts])
+  // Live per-session tab lists, the same tracker.
+  useEffect(() => {
+    return subscribeSessionTabListChanged(hostBridgeTransport, event => {
+      setSessionTabList(event.sessionId, event.tabs)
+    })
+  }, [hostBridgeTransport, setSessionTabList])
 
   // Transcript search anchors its targets at the host home — the runtime's
   // answer over `fsx`, like every other file question the page asks.
@@ -1859,6 +1907,9 @@ export function MultiSessionShell({
   const activeNexusTabCount = activeSessionId
     ? (sessionTabCounts.get(activeSessionId)?.nexus ?? 0)
     : 0
+  const activeSessionTabs = activeSessionId
+    ? (sessionTabLists.get(activeSessionId) ?? EMPTY_TAB_LIST)
+    : EMPTY_TAB_LIST
   const sessionTabCountsRef = useRef(sessionTabCounts)
   sessionTabCountsRef.current = sessionTabCounts
   // Each session's open mod panes, known once its mod UI has loaded: the
@@ -1994,6 +2045,29 @@ export function MultiSessionShell({
       })
     },
     [hostBridgeTransport],
+  )
+  /** The strip's tab press, close and the address field: each acts on one of
+   *  this session's tabs; a refused one (the tab just closed) is left alone. */
+  const activateBrowserTab = useCallback(
+    (tabId: number) => {
+      if (!activeSessionId) return
+      void activateSessionTab(hostBridgeTransport, activeSessionId, tabId).catch(() => {})
+    },
+    [hostBridgeTransport, activeSessionId],
+  )
+  const closeBrowserTab = useCallback(
+    (tabId: number) => {
+      if (!activeSessionId) return
+      void closeSessionTab(hostBridgeTransport, activeSessionId, tabId).catch(() => {})
+    },
+    [hostBridgeTransport, activeSessionId],
+  )
+  const navigateBrowserTab = useCallback(
+    (tabId: number, text: string) => {
+      if (!activeSessionId) return
+      void navigateSessionTab(hostBridgeTransport, activeSessionId, tabId, text).catch(() => {})
+    },
+    [hostBridgeTransport, activeSessionId],
   )
   /** The topbar toggle (`paneToggleAction` against the drawn record). */
   const togglePane = useCallback(
@@ -4047,21 +4121,30 @@ export function MultiSessionShell({
       </>
     )
     if (kind === 'browser') {
-      // The title slot names the tab count until the pane has a page title to
-      // show (the pane's own tab strip is a later package).
+      // The title slot is the session's tab strip, the count beside it; the
+      // body stacks the address field over the native view's placeholder.
+      const activeTab = activeSessionTabs.find(tab => tab.active) ?? null
       return frame(
         <>
           {label}
+          <BrowserTabStrip
+            tabs={activeSessionTabs}
+            onActivate={activateBrowserTab}
+            onClose={closeBrowserTab}
+          />
           <span
             data-testid="pane-browser-tab-count"
-            className="min-w-0 truncate font-normal text-muted-foreground"
+            className="min-w-0 shrink-0 truncate font-normal text-muted-foreground"
           >
             {activeNexusTabCount === 1
               ? t('pane.browser.oneTab')
               : t('pane.browser.tabs', { count: String(activeNexusTabCount) })}
           </span>
         </>,
-        <WebviewArea active shell={shellChannel ?? null} />,
+        <div className="flex h-full min-h-0 flex-col">
+          <BrowserAddressBar tab={activeTab} onNavigate={navigateBrowserTab} />
+          <WebviewArea active shell={shellChannel ?? null} />
+        </div>,
         <Button
           type="button"
           variant="ghost"

@@ -14,6 +14,8 @@ import type {
   ProviderMissingPrompt,
   SessionApplyAgentConfigEvent,
   SessionTabsChangedEvent,
+  SessionTabEntry,
+  SessionTabListChangedEvent,
   WindowDragRect,
 } from '../bridge/browserBridgeProtocol'
 import { createBridgeRoute } from '../bridge/browserBridgeProtocol'
@@ -655,11 +657,76 @@ export async function setSessionActive(
   activated: boolean
   nexusTabCount: number
   totalTabCount: number
+  tabs?: SessionTabEntry[]
 }> {
   return requestHostBridge(
     transport,
     createBridgeRoute('session', 'setActiveSession'),
     { sessionId },
+  )
+}
+
+/**
+ * Subscribe to host-pushed `browser.sessionTabListChanged` events — a
+ * session's kNexus-window tab list (ids, titles, URLs, the active one),
+ * re-sent on every change. Feeds the browser pane's strip and address field.
+ */
+export function subscribeSessionTabListChanged(
+  transport: BrowserBridgeTransport,
+  handler: (event: SessionTabListChangedEvent) => void,
+): BridgeEventUnsubscribe {
+  if (!transport.subscribeEvents) {
+    return () => {}
+  }
+  return transport.subscribeEvents((envelope: BridgeEventEnvelope) => {
+    const capability = (envelope.route as { capability: string }).capability
+    const action = (envelope.route as { action: string }).action
+    if (capability === 'browser' && action === 'sessionTabListChanged') {
+      handler(envelope.payload as SessionTabListChangedEvent)
+    }
+  })
+}
+
+/** Foreground one of the session's tabs in this window (the pane's strip). */
+export async function activateSessionTab(
+  transport: BrowserBridgeTransport,
+  sessionId: string,
+  tabId: number,
+): Promise<void> {
+  await requestHostBridge(
+    transport,
+    createBridgeRoute('ui', 'activateSessionTab'),
+    { sessionId, tabId },
+  )
+}
+
+/** Close one of the session's tabs in this window (the strip's close). */
+export async function closeSessionTab(
+  transport: BrowserBridgeTransport,
+  sessionId: string,
+  tabId: number,
+): Promise<void> {
+  await requestHostBridge(
+    transport,
+    createBridgeRoute('ui', 'closeSessionTab'),
+    { sessionId, tabId },
+  )
+}
+
+/**
+ * Load the address field's text in one of the session's tabs. The host
+ * decides: an http/https address, else a default-search query.
+ */
+export async function navigateSessionTab(
+  transport: BrowserBridgeTransport,
+  sessionId: string,
+  tabId: number,
+  text: string,
+): Promise<void> {
+  await requestHostBridge(
+    transport,
+    createBridgeRoute('ui', 'navigateSessionTab'),
+    { sessionId, tabId, text },
   )
 }
 

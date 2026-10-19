@@ -490,6 +490,24 @@ export type UiBridgeCapabilityMap = {
       result: { ok: true }
     }
     /**
+     * The browser pane's tab strip and address field, each acting on one
+     * of `sessionId`'s tabs in this Nexus window; the host refuses a tab
+     * the session does not own. `navigateSessionTab` takes the typed text:
+     * the host loads it as an http/https URL or as a default-search query.
+     */
+    activateSessionTab: {
+      payload: { sessionId: string; tabId: number }
+      result: { ok: true }
+    }
+    closeSessionTab: {
+      payload: { sessionId: string; tabId: number }
+      result: { ok: true }
+    }
+    navigateSessionTab: {
+      payload: { sessionId: string; tabId: number; text: string }
+      result: { ok: true }
+    }
+    /**
      * Open Chrome's native languages settings page (chrome://settings/languages)
      * in a normal (non-Nexus) browser window. Trusted, fixed internal URL — does
      * NOT go through `openUrl` (which blocks chrome:// for untrusted links).

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 
 import type { BrowserBridgeTransport } from '../bridge/browserBridgeProtocol'
+import type { SessionTabEntry } from '../bridge/protocol/session'
 import { setSessionActive } from './nexusBridgeActions'
 import { mayIssue, type CapabilityQuery } from './useCan'
 
@@ -15,6 +16,7 @@ export function useActiveSessionOnHost(
   activeSessionId: string | null | undefined,
   capabilities: CapabilityQuery,
   onTabCounts: (sessionId: string, nexus: number, total: number) => void,
+  onTabList?: (sessionId: string, tabs: SessionTabEntry[]) => void,
 ): void {
   const canSetActive = mayIssue(capabilities, 'session', 'setActiveSession')
 
@@ -25,6 +27,7 @@ export function useActiveSessionOnHost(
       .then(result => {
         if (cancelled) return
         onTabCounts(activeSessionId, result.nexusTabCount, result.totalTabCount)
+        if (result.tabs) onTabList?.(activeSessionId, result.tabs)
       })
       .catch(() => {
         /* see above */
@@ -32,5 +35,5 @@ export function useActiveSessionOnHost(
     return () => {
       cancelled = true
     }
-  }, [transport, activeSessionId, canSetActive, onTabCounts])
+  }, [transport, activeSessionId, canSetActive, onTabCounts, onTabList])
 }

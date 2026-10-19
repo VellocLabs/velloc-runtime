@@ -91,9 +91,33 @@ export type SessionBridgeCapabilityMap = {
         nexusTabCount: number
         // All session-owned tabs across this profile's windows.
         totalTabCount: number
+        // The kNexus-window tabs themselves, in strip order (the browser
+        // pane's strip); absent on a host without the tab list.
+        tabs?: SessionTabEntry[]
       }
     }
   }
+}
+
+/**
+ * One session-owned tab in the kNexus window, as the browser pane draws
+ * it. `id` is the host's tab id, the one the browser tools use.
+ */
+export type SessionTabEntry = {
+  id: number
+  title: string
+  url: string
+  active: boolean
+}
+
+/**
+ * Host-pushed `browser.sessionTabListChanged` event payload: a session's
+ * kNexus-window tab list whenever its membership, order, active tab, a
+ * title or a URL changes. Subscribe via `subscribeSessionTabListChanged`.
+ */
+export type SessionTabListChangedEvent = {
+  sessionId: string
+  tabs: SessionTabEntry[]
 }
 
 /**
