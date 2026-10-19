@@ -299,6 +299,7 @@ export const fr: Messages = {
   'filesPane.showTree': 'Afficher l’arborescence des fichiers',
   'filesPane.hideTree': 'Masquer l’arborescence des fichiers',
   'filesPane.resizeTree': 'Redimensionner l’arborescence des fichiers',
+  'filesPane.treeShortcutKeys': '{modifier}+Maj+E',
   'pane.browser.oneTab': 'Un onglet',
   'pane.browser.tabs': '{count} onglets',
   'pane.browser.newTab': 'Nouvel onglet',

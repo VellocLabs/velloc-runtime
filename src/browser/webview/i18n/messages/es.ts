@@ -299,6 +299,7 @@ export const es: Messages = {
   'filesPane.showTree': 'Mostrar árbol de archivos',
   'filesPane.hideTree': 'Ocultar árbol de archivos',
   'filesPane.resizeTree': 'Cambiar tamaño del árbol de archivos',
+  'filesPane.treeShortcutKeys': '{modifier}+Mayús+E',
   'pane.browser.oneTab': 'Una pestaña',
   'pane.browser.tabs': '{count} pestañas',
   'pane.browser.newTab': 'Nueva pestaña',

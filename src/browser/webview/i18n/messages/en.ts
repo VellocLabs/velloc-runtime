@@ -321,6 +321,8 @@ export const en = {
   'filesPane.showTree': 'Show file tree',
   'filesPane.hideTree': 'Hide file tree',
   'filesPane.resizeTree': 'Resize file tree',
+  // `{modifier}` is Ctrl on every platform: the pane shortcuts match Ctrl, also on macOS.
+  'filesPane.treeShortcutKeys': '{modifier}+Shift+E',
   'pane.browser.oneTab': 'One tab',
   'pane.browser.tabs': '{count} tabs',
   'pane.browser.newTab': 'New tab',

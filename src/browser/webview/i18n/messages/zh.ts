@@ -287,6 +287,7 @@ export const zh: Messages = {
   'filesPane.showTree': '显示文件树',
   'filesPane.hideTree': '隐藏文件树',
   'filesPane.resizeTree': '调整文件树大小',
+  'filesPane.treeShortcutKeys': '{modifier}+Shift+E',
   'pane.browser.oneTab': '1 个标签页',
   'pane.browser.tabs': '{count} 个标签页',
   'pane.browser.newTab': '新建标签页',

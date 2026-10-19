@@ -20,7 +20,7 @@ import { emptyFileTree, revealPath, withRoots, type FileTreeState } from '../lay
 import { reconcileMountedFiles, sameMountedFiles } from '../layout/filesPane'
 import { dockFits, maxDockWidth, treeSpelling } from '../layout/filesTreeDock'
 import type { FilesPaneState } from '../layout/paneLayout'
-import { FILES_TREE_ARIA_SHORTCUT, FILES_TREE_SHORTCUT_LABEL } from '../layout/paneShortcuts'
+import { FILES_TREE_ARIA_SHORTCUT, PANE_SHORTCUT_MODIFIER } from '../layout/paneShortcuts'
 import { FilesBrowse, type FilesListDir, type TreeUpdate } from './FilesBrowse'
 import { FilesTreeHandle } from './FilesTreeHandle'
 import { setFilesTreeVisible, setFilesTreeWidth, toggleFilesTreeVisible, useFilesTreePrefs } from './filesTreePrefs'
@@ -258,7 +258,7 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
         testId="files-pane-tree-toggle"
         label={t('filesPane.showTree')}
         tooltip={t(prefs.visible ? 'filesPane.hideTree' : 'filesPane.showTree')}
-        shortcut={FILES_TREE_SHORTCUT_LABEL}
+        shortcut={t('filesPane.treeShortcutKeys', { modifier: PANE_SHORTCUT_MODIFIER })}
         ariaShortcut={FILES_TREE_ARIA_SHORTCUT}
         pressed={prefs.visible}
         onClick={toggleFilesTreeVisible}

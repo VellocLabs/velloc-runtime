@@ -289,6 +289,7 @@ export const ko: Messages = {
   'filesPane.showTree': '파일 트리 표시',
   'filesPane.hideTree': '파일 트리 숨기기',
   'filesPane.resizeTree': '파일 트리 크기 조정',
+  'filesPane.treeShortcutKeys': '{modifier}+Shift+E',
   'pane.browser.oneTab': '탭 1개',
   'pane.browser.tabs': '탭 {count}개',
   'pane.browser.newTab': '새 탭',

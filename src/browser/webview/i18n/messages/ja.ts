@@ -292,6 +292,7 @@ export const ja: Messages = {
   'filesPane.showTree': 'ファイルツリーを表示',
   'filesPane.hideTree': 'ファイルツリーを非表示',
   'filesPane.resizeTree': 'ファイルツリーのサイズを変更',
+  'filesPane.treeShortcutKeys': '{modifier}+Shift+E',
   'pane.browser.oneTab': 'タブ 1 件',
   'pane.browser.tabs': 'タブ {count} 件',
   'pane.browser.newTab': '新しいタブ',

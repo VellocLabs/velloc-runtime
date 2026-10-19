@@ -18,9 +18,9 @@ export type PaneShortcut =
   | { action: 'reopen-closed' }
   | { action: 'toggle-files-tree' }
 
-/** The Files pane's tree toggle, as its tooltip shows it. */
-export const FILES_TREE_SHORTCUT_LABEL = 'Ctrl+Shift+E'
-/** The same chord for `aria-keyshortcuts`. */
+/** The `{modifier}` a pane shortcut's catalog key text is filled with: Ctrl on every platform. */
+export const PANE_SHORTCUT_MODIFIER = 'Ctrl'
+/** The Files pane's tree toggle for `aria-keyshortcuts`. */
 export const FILES_TREE_ARIA_SHORTCUT = 'Control+Shift+E'
 
 export interface ShortcutKeyEvent {

@@ -298,6 +298,7 @@ export const de: Messages = {
   'filesPane.showTree': 'Dateibaum anzeigen',
   'filesPane.hideTree': 'Dateibaum ausblenden',
   'filesPane.resizeTree': 'Größe des Dateibaums ändern',
+  'filesPane.treeShortcutKeys': '{modifier}+Umschalt+E',
   'pane.browser.oneTab': 'Ein Tab',
   'pane.browser.tabs': '{count} Tabs',
   'pane.browser.newTab': 'Neuer Tab',
