@@ -5592,4 +5592,68 @@ describe('SharedWorkerSessionManager — background-row recovery (task.recoverBa
       outputText: 'Better name',
     })
   })
+
+  it('recovers before any worker.init: brings storage up from the host environment, routes, then reads', async () => {
+    // A Tasks pane restored open on the session the window boots into asks
+    // for recovery before the first worker.init has brought storage up.
+    const manager = new SharedWorkerSessionManager({
+      createWorker: createMockWorkerFactory().factory,
+    })
+    const coordinator = (
+      manager as unknown as {
+        storageCoordinator: {
+          storage: unknown
+          groupedStorage: unknown
+          ensureStorage(path: string | null): Promise<void>
+        }
+      }
+    ).storageCoordinator
+    const calls: string[] = []
+    const storage = {
+      load: async (sessionId: string) => {
+        calls.push(`load ${sessionId}`)
+        return [
+          launchTurn('sh-1', 'Bash', { command: 'echo hi' }),
+          resultTurn('sh-1', { shell_id: 'b1', status: 'completed' }),
+        ]
+      },
+      loadToolCallDetail: async () => null,
+      routeSessionFromMeta: async (sessionId: string) => {
+        calls.push(`route ${sessionId}`)
+      },
+    }
+    coordinator.storage = undefined
+    coordinator.groupedStorage = undefined
+    coordinator.ensureStorage = async (path: string | null) => {
+      calls.push(`ensure ${path}`)
+      coordinator.storage = storage
+      coordinator.groupedStorage = storage
+    }
+    ;(manager as unknown as { hostEnvironment: unknown }).hostEnvironment = {
+      sessionStoragePath: '/home/.velloc',
+    }
+    const internals = manager as unknown as {
+      handleRecoverBackground(sessionId: string): Promise<void>
+      recoveredBash: Map<string, unknown[]>
+    }
+
+    await internals.handleRecoverBackground('S-boot')
+
+    expect(calls).toEqual(['ensure /home/.velloc', 'route S-boot', 'load S-boot'])
+    expect(internals.recoveredBash.get('S-boot')?.length).toBe(1)
+  })
+
+  it('reads nothing and keeps the session unclaimed when no storage backend can be reached', async () => {
+    const manager = new SharedWorkerSessionManager({
+      createWorker: createMockWorkerFactory().factory,
+    })
+    const internals = manager as unknown as {
+      handleRecoverBackground(sessionId: string): Promise<void>
+      recoveredBash: Map<string, unknown[]>
+      backgroundRecovered: Set<string>
+    }
+    await internals.handleRecoverBackground('S-none')
+    expect(internals.recoveredBash.has('S-none')).toBe(false)
+    expect(internals.backgroundRecovered.has('S-none')).toBe(false)
+  })
 })

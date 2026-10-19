@@ -1847,28 +1847,7 @@ export class SharedWorkerSessionManager {
     sessionId: string,
   ): Promise<{ messages: Message[]; error?: string }> {
     try {
-      // Storage comes up on the first `worker.init`. A client that may not
-      // open sessions (an `observe` grant reads every session through here)
-      // can be the runtime's first reader, so bring storage up from the
-      // published host environment rather than fail on a runtime that simply
-      // has not opened anything yet. Once storage is up this is a no-op.
-      if (!this.storage && this.hostEnvironment?.sessionStoragePath) {
-        await this.storageCoordinator.ensureStorage(this.hostEnvironment.sessionStoragePath)
-      }
-      const storage = this.storage
-      if (!storage) {
-        // No backend at all is a failure, not an empty transcript.
-        throw new Error('session storage is not available')
-      }
-      // The project dir must be known first, or grouped storage answers EMPTY from the default dir.
-      // Keyed `routeSessionFromMeta`, not the whole scan; it fills a routing gap only.
-      await this.groupedStorage?.routeSessionFromMeta(sessionId)
-      const payload = await storage.load(sessionId)
-      const entries = Array.isArray(payload)
-        ? payload
-        : Array.isArray((payload as { messages?: unknown[] } | null)?.messages)
-          ? (payload as { messages: unknown[] }).messages
-          : []
+      const entries = await this.readPersistedEntries(sessionId)
       return { messages: entries.filter(isMessageLike) }
     } catch (err) {
       return {
@@ -1876,6 +1855,30 @@ export class SharedWorkerSessionManager {
         error: err instanceof Error ? err.message : String(err),
       }
     }
+  }
+
+  /**
+   * Contract: a session's raw persisted entries (title records included), read
+   * without creating a runtime. Brings storage up from the published host
+   * environment when no `worker.init` has yet, and routes the session to its
+   * project dir first. Throws when no storage backend can be reached; an
+   * unwritten session reads as [].
+   */
+  private async readPersistedEntries(sessionId: string): Promise<unknown[]> {
+    // A client that may not open sessions can be the runtime's first reader.
+    if (!this.storage && this.hostEnvironment?.sessionStoragePath) {
+      await this.storageCoordinator.ensureStorage(this.hostEnvironment.sessionStoragePath)
+    }
+    const storage = this.storage
+    if (!storage) {
+      throw new Error('session storage is not available')
+    }
+    // Grouped storage answers EMPTY from the default dir until the session is routed.
+    await this.groupedStorage?.routeSessionFromMeta(sessionId)
+    const payload = await storage.load(sessionId)
+    if (Array.isArray(payload)) return payload
+    const wrapped = (payload as { messages?: unknown } | null)?.messages
+    return Array.isArray(wrapped) ? wrapped : []
   }
 
   /**
@@ -1988,22 +1991,16 @@ export class SharedWorkerSessionManager {
   private async recoverBackgroundRows(sessionId: string): Promise<void> {
     let messages: unknown[] = []
     try {
-      // `load` returns either the entry array directly or a record wrapping it.
-      const payload = await this.storage?.load?.(sessionId)
-      if (Array.isArray(payload)) {
-        messages = payload
-      } else if (Array.isArray((payload as { messages?: unknown })?.messages)) {
-        messages = (payload as { messages: unknown[] }).messages
-      }
+      // The request can precede the first `worker.init` (a pane restored open
+      // on the session the window boots into); the read brings storage up.
+      messages = await this.readPersistedEntries(sessionId)
     } catch {
-      // RELEASE handleRecoverBackground's claim on a read failure (storage not
-      // yet wired, or a transient error) so a later drawer-open retries — never
-      // permanently skip recovery for a session that just wasn't ready yet.
+      // No storage backend: release the claim so the next request reads again.
       this.backgroundRecovered.delete(sessionId)
       return
     }
     if (messages.length === 0) {
-      // No transcript yet (storage not ready / not written) — retryable too.
+      // Nothing written yet; a later request reads what the session has by then.
       this.backgroundRecovered.delete(sessionId)
       return
     }
