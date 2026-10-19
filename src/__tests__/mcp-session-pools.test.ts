@@ -269,6 +269,7 @@ describe('pool lifetime', () => {
 
 describe('idle stdio parking', () => {
   it('parks a stdio server idle past the limit, keeps its tools, and restarts it on the next call', async () => {
+    vi.useFakeTimers()
     const host = fakeHost({ gh: { transport: 'stdio' }, api: { transport: 'http' } })
     const { pool } = await acquireSessionMCPPool({
       sessionId: 's1', cwd: '/p', nativeBridge: host.bridge, loadNativeServers: host.loadNativeServers,
