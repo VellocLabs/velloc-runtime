@@ -9,6 +9,8 @@ import {
   FSX_CAPABILITY,
   type FsxAction,
   type FsxCommitUploadResult,
+  type FsxListDirResult,
+  type FsxListTreeResult,
   type FsxReadBlobResult,
   type FsxReadTextResult,
   type FsxStatBatchResult,
@@ -25,6 +27,13 @@ export interface RuntimeFileAccess {
   readText(sessionId: string, path: string): Promise<string>
   readBytes(sessionId: string, path: string): Promise<Uint8Array>
   statBatch(sessionId: string, paths: readonly string[]): Promise<FsxStatBatchResult>
+  /** A directory's entries, folders first; `truncated` when the runtime's cap cut the listing. */
+  listDir(sessionId: string, path: string): Promise<FsxListDirResult>
+  /**
+   * The files and folders below `path`, `depth` levels down (the runtime's default when omitted),
+   * without VCS, dependency and runtime directories; paths '/'-separated, relative to `path`.
+   */
+  listTree(sessionId: string, path: string, depth?: number): Promise<FsxListTreeResult>
   writeText(sessionId: string, path: string, text: string): Promise<void>
   /** Store bytes as a session upload; resolves with the host path the runtime chose. */
   upload(sessionId: string, name: string, bytes: Uint8Array, mime?: string): Promise<string>
@@ -59,6 +68,16 @@ export function createRuntimeFileAccess(options: RuntimeFileAccessOptions): Runt
     },
     statBatch(sessionId, paths) {
       return call<FsxStatBatchResult>('statBatch', { sessionId, paths })
+    },
+    listDir(sessionId, path) {
+      return call<FsxListDirResult>('listDir', { sessionId, path })
+    },
+    listTree(sessionId, path, depth) {
+      return call<FsxListTreeResult>('listTree', {
+        sessionId,
+        path,
+        ...(depth === undefined ? {} : { depth }),
+      })
     },
     async writeText(sessionId, path, text) {
       await call<undefined>('writeText', { sessionId, path, text })

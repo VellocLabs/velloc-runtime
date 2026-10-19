@@ -21,6 +21,8 @@ export const FSX_ACTION_SCOPES = {
   statBatch: 'observe',
   readText: 'observe',
   readBlob: 'observe',
+  listDir: 'observe',
+  listTree: 'observe',
   writeText: 'manager',
   commitUpload: 'control',
 } as const satisfies Record<string, ScopeMode>
@@ -43,6 +45,42 @@ export type FsxReadTextResult = { text: string }
 export type FsxReadBlobResult = { blob: BlobRef }
 
 export type FsxWriteTextPayload = { sessionId: string; path: string; text: string }
+
+/** Most entries one `listDir` answers; past it the listing is cut and `truncated`. */
+export const FSX_LIST_MAX_ENTRIES = 2000
+/** Most entries one `listTree` answers over its whole walk; past it the walk stops and `truncated`. */
+export const FSX_TREE_MAX_ENTRIES = 20000
+/** Deepest `listTree` a client may ask for: levels below the requested path. */
+export const FSX_TREE_MAX_DEPTH = 8
+/** Levels a `listTree` walks when the payload names no `depth`. */
+export const FSX_TREE_DEFAULT_DEPTH = 4
+
+export type FsxListDirPayload = { sessionId: string; path: string }
+/**
+ * One entry of a directory as the host reports it. `isSymbolicLink` is the host's word and today's
+ * host reports none from a directory read (a junction reads as a directory), so no boundary may
+ * rest on it: the runtime decides what a walk enters by the root rule, never by this flag.
+ */
+export type FsxDirEntry = {
+  name: string
+  isFile: boolean
+  isDirectory: boolean
+  isSymbolicLink: boolean
+}
+/** Folders first, then names in case-insensitive order; cut at `FSX_LIST_MAX_ENTRIES`. */
+export type FsxListDirResult = { entries: FsxDirEntry[]; truncated: boolean }
+
+/** `depth`: an integer 1..`FSX_TREE_MAX_DEPTH`; 1 is the directory itself, as `listDir`. */
+export type FsxListTreePayload = { sessionId: string; path: string; depth?: number }
+/**
+ * `path` is '/'-separated and relative to the request's `path` (wire contract, as the host's
+ * `readdirTree`). Entries come level by level, each level folders first then names. `size` is
+ * 0 for a directory and for a file the host could not stat. Below `full` a directory is entered
+ * only when it passes the connection's root check (a link out of the project is listed, not
+ * entered); `full` walks through links.
+ */
+export type FsxTreeEntry = { path: string; isDirectory: boolean; size: number }
+export type FsxListTreeResult = { entries: FsxTreeEntry[]; truncated: boolean }
 
 export type FsxCommitUploadPayload = { sessionId: string; blob: BlobRef; name: string }
 /** The absolute host path the upload was written to. */

@@ -8,13 +8,20 @@ import { join, relative } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { RUNTIME_DIR_NAME } from '../branding/runtimeDir'
-import { SYS_PUT_BLOB_ROUTE, type BlobRef, type ScopeMode } from '../browser/runtimeProtocol'
+import {
+  FSX_LIST_MAX_ENTRIES,
+  FSX_TREE_MAX_ENTRIES,
+  SYS_PUT_BLOB_ROUTE,
+  type BlobRef,
+  type ScopeMode,
+} from '../browser/runtimeProtocol'
 import { createMessagePortTransport, type FrameTransportLimits } from '../browser/runtimeTransport'
 import {
   BlobInbox,
   CapabilityRegistry,
   ConnectionHub,
   DEFAULT_BLOB_INBOX_LIMITS,
+  FSX_TREE_SKIPPED_DIRS,
   TopicBroker,
   hostProxySpecs,
   registerFsxCapability,
@@ -48,20 +55,55 @@ function fakeDisk() {
   }
   const calls: string[] = []
   const reads: string[] = []
+  const readdirs: string[] = []
   const host: HostBridge = {
     async request(route, payload) {
       const action = String(route.action)
       calls.push(`${route.capability}.${action}`)
       if (action === 'readFile') reads.push(String((payload as { path?: string }).path))
+      if (action === 'readdir') readdirs.push(String((payload as { path?: string }).path))
       const p = payload as { path?: string; paths?: string[]; content?: Uint8Array }
       const fail = (message: string) => ({ ok: false as const, error: { code: 'FS_ERROR', message } })
       const statOf = (path: string) => {
         const real = realpath(path)
-        if (files.has(real)) return { isFile: true, isDirectory: false }
-        if (dirs.has(real)) return { isFile: false, isDirectory: true }
+        if (files.has(real)) return { isFile: true, isDirectory: false, size: files.get(real)!.byteLength }
+        if (dirs.has(real)) return { isFile: false, isDirectory: true, size: 0 }
         return null
       }
+      // The children of `real`: every known path (file, dir, link) one segment
+      // below it, a directory when something lies deeper. A link reports the
+      // kind of its target and NO `isSymbolicLink`, as the host's readdir does
+      // (a junction reads as a directory there).
+      const childrenOf = (real: string) => {
+        const prefix = real === '/' ? '/' : `${real}/`
+        const names = new Map<string, { name: string; isFile: boolean; isDirectory: boolean; isSymbolicLink: boolean }>()
+        for (const known of [...files.keys(), ...dirs, ...links.keys()]) {
+          if (!known.startsWith(prefix) || known === real) continue
+          const name = known.slice(prefix.length).split('/')[0]!
+          const full = `${prefix}${name}`
+          const current = names.get(name) ?? { name, isFile: false, isDirectory: false, isSymbolicLink: false }
+          if (known !== full) current.isDirectory = true
+          else if (links.has(full)) {
+            const target = statOf(full)
+            current.isDirectory = target?.isDirectory === true
+            current.isFile = target?.isFile === true
+          } else if (files.has(full)) current.isFile = true
+          else current.isDirectory = true
+          names.set(name, current)
+        }
+        return Array.from(names.values())
+      }
       switch (action) {
+        case 'stat': {
+          const stat = statOf(p.path!)
+          return stat ? { ok: true, result: stat } : fail('not found')
+        }
+        case 'readdir': {
+          const real = realpath(p.path!)
+          if (files.has(real)) return fail('not a directory')
+          if (!dirs.has(real) && childrenOf(real).length === 0) return fail('not found')
+          return { ok: true, result: childrenOf(real) }
+        }
         case 'realpath': {
           // Like the Windows host: links are followed only when asked for
           // (`resolveLinks`); the default form just normalizes.
@@ -90,7 +132,7 @@ function fakeDisk() {
     },
   }
   const text = (path: string, value: string) => files.set(path, new TextEncoder().encode(value))
-  return { files, dirs, links, host, calls, reads, text }
+  return { files, dirs, links, host, calls, reads, readdirs, text }
 }
 
 function makeServer(
@@ -425,6 +467,193 @@ describe('fsx — a scoped connection is held to the session project', () => {
   })
 })
 
+describe('fsx — directory listings', () => {
+  /** A project with VCS, dependency and runtime directories beside its sources, and a link out. */
+  function projectDisk() {
+    const disk = fakeDisk()
+    disk.text(`${PROJECT}/README.md`, 'hello')
+    disk.text(`${PROJECT}/zeta.ts`, 'z')
+    disk.text(`${PROJECT}/Alpha.ts`, 'A')
+    disk.text(`${PROJECT}/src/a.ts`, 'export {}')
+    disk.text(`${PROJECT}/src/lib/deep/deeper/leaf.ts`, 'leaf')
+    disk.text(`${PROJECT}/.git/HEAD`, 'ref')
+    disk.text(`${PROJECT}/node_modules/dep/index.js`, 'dep')
+    disk.text(`${PROJECT}/src/node_modules/nested/index.js`, 'nested')
+    disk.text(`${PROJECT}/${RUNTIME_DIR_NAME}/settings.json`, '{}')
+    disk.dirs.add(`${PROJECT}/empty`)
+    // A link target must stat as a directory for the fake realpath to resolve it.
+    disk.dirs.add(`${PROJECT}/src`)
+    disk.dirs.add('/etc')
+    disk.text('/etc/passwd', 'secret')
+    disk.links.set(`${PROJECT}/escape`, '/etc')
+    return disk
+  }
+
+  it('listDir: folders first, then names case-insensitively; a link reads as what it points to', async () => {
+    const disk = projectDisk()
+    const files = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk), 'observe')) })
+    const listing = await files.listDir(SESSION, '.')
+    expect(listing.truncated).toBe(false)
+    expect(listing.entries.map(entry => entry.name)).toEqual([
+      '.git',
+      RUNTIME_DIR_NAME,
+      'empty',
+      'escape',
+      'node_modules',
+      'src',
+      'Alpha.ts',
+      'README.md',
+      'zeta.ts',
+    ])
+    // The host reports no links from a directory read: the junction out of the
+    // project is a directory to `listDir`, and the root rule is what keeps a
+    // scoped walk out of it (below).
+    expect(listing.entries.find(entry => entry.name === 'escape')).toEqual({
+      name: 'escape',
+      isFile: false,
+      isDirectory: true,
+      isSymbolicLink: false,
+    })
+    expect(listing.entries.find(entry => entry.name === 'Alpha.ts')).toEqual({
+      name: 'Alpha.ts',
+      isFile: true,
+      isDirectory: false,
+      isSymbolicLink: false,
+    })
+    // A relative path resolves against the cwd; an empty directory lists as empty.
+    expect((await files.listDir(SESSION, 'src')).entries.map(entry => entry.name)).toEqual(['lib', 'node_modules', 'a.ts'])
+    expect((await files.listDir(SESSION, 'empty')).entries).toEqual([])
+    expect(disk.calls.filter(call => call === 'fs.readdir')).toHaveLength(3)
+  })
+
+  it('a scoped connection lists inside the root and is forbidden_scope outside, through `..` and through a link', async () => {
+    const disk = projectDisk()
+    const files = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk), 'control')) })
+    expect((await files.listDir(SESSION, `${PROJECT}/src`)).entries.length).toBeGreaterThan(0)
+    expect(await codeOf(files.listDir(SESSION, '/etc'))).toBe('forbidden_scope')
+    expect(await codeOf(files.listDir(SESSION, '../../etc'))).toBe('forbidden_scope')
+    expect(await codeOf(files.listDir(SESSION, 'escape'))).toBe('forbidden_scope')
+    expect(await codeOf(files.listTree(SESSION, '/etc'))).toBe('forbidden_scope')
+    expect(await codeOf(files.listTree(SESSION, 'escape'))).toBe('forbidden_scope')
+    expect(disk.calls.filter(call => call === 'fs.readdir')).toHaveLength(1)
+  })
+
+  it('`full` lists anywhere', async () => {
+    const disk = projectDisk()
+    const files = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk))) })
+    expect((await files.listDir(SESSION, '/etc')).entries.map(entry => entry.name)).toEqual(['passwd'])
+    expect((await files.listTree(SESSION, '/etc')).entries.map(entry => entry.path)).toEqual(['passwd'])
+  })
+
+  it('a missing directory is not_found; a file is conflict — for both listings', async () => {
+    const disk = projectDisk()
+    const files = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk), 'control')) })
+    expect(await codeOf(files.listDir(SESSION, 'nope'))).toBe('not_found')
+    expect(await codeOf(files.listDir(SESSION, 'README.md'))).toBe('conflict')
+    expect(await codeOf(files.listTree(SESSION, 'nope'))).toBe('not_found')
+    expect(await codeOf(files.listTree(SESSION, 'README.md'))).toBe('conflict')
+  })
+
+  it('listDir cuts at the cap and says so', async () => {
+    const disk = fakeDisk()
+    for (let index = 0; index < FSX_LIST_MAX_ENTRIES + 1; index += 1) disk.text(`${PROJECT}/many/f${index}.txt`, 'x')
+    for (let index = 0; index < FSX_LIST_MAX_ENTRIES; index += 1) disk.text(`${PROJECT}/exact/f${index}.txt`, 'x')
+    const files = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk))) })
+    const many = await files.listDir(SESSION, 'many')
+    expect(many.entries).toHaveLength(FSX_LIST_MAX_ENTRIES)
+    expect(many.truncated).toBe(true)
+    const exact = await files.listDir(SESSION, 'exact')
+    expect(exact.entries).toHaveLength(FSX_LIST_MAX_ENTRIES)
+    expect(exact.truncated).toBe(false)
+  })
+
+  it('listTree walks breadth-first with relative `/` paths and sizes, skipping VCS, dependency and runtime dirs at any depth', async () => {
+    const disk = projectDisk()
+    const files = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk), 'observe')) })
+    const tree = await files.listTree(SESSION, '.')
+    expect(tree.truncated).toBe(false)
+    expect(tree.entries.map(entry => entry.path)).toEqual([
+      // Level 1: folders first, then files; `.git`, `node_modules` and the runtime dir are absent.
+      'empty',
+      'escape',
+      'src',
+      'Alpha.ts',
+      'README.md',
+      'zeta.ts',
+      // Level 2: `src/node_modules` is skipped too; `escape` (a link out of the
+      // root, a plain directory to the host) failed the root check: listed, not entered.
+      'src/lib',
+      'src/a.ts',
+      'src/lib/deep',
+      // The default depth is 4: `src/lib/deep/deeper` is level 4, its leaf (level 5) is not.
+      'src/lib/deep/deeper',
+    ])
+    for (const name of FSX_TREE_SKIPPED_DIRS) {
+      expect(tree.entries.some(entry => entry.path.split('/').includes(name))).toBe(false)
+    }
+    expect(tree.entries.find(entry => entry.path === 'src/a.ts')).toEqual({ path: 'src/a.ts', isDirectory: false, size: 9 })
+    expect(tree.entries.find(entry => entry.path === 'src')).toEqual({ path: 'src', isDirectory: true, size: 0 })
+    // Sizes come from one `statBatch` over the files, not a stat each.
+    expect(disk.calls.filter(call => call === 'fs.statBatch')).toHaveLength(1)
+    expect(disk.calls.filter(call => call === 'fs.stat')).toHaveLength(0)
+    // `/etc` was never read: the link is listed, not entered.
+    expect(disk.calls.filter(call => call === 'fs.readdir')).toHaveLength(5)
+  })
+
+  it('a scoped walk enters a directory only when it passes the root check; `full` walks through links', async () => {
+    // What the host hands the walk: `escape` -> /etc and `alias` -> src are
+    // both plain directories (no link flag). Only the realpath check tells
+    // them apart, so it runs on every directory before the walk enters it.
+    const disk = projectDisk()
+    disk.links.set(`${PROJECT}/alias`, `${PROJECT}/src`)
+    const scoped = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk), 'control')) })
+    const tree = await scoped.listTree(SESSION, '.', 2)
+    const paths = tree.entries.map(entry => entry.path)
+    expect(paths).toContain('escape')
+    expect(paths.some(path => path.startsWith('escape/'))).toBe(false)
+    // A link that stays inside the root is entered like any directory.
+    expect(paths).toContain('alias/a.ts')
+    // `/etc` itself was never read.
+    expect(disk.readdirs).not.toContain('/etc')
+
+    const full = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk))) })
+    const everything = await full.listTree(SESSION, '.', 2)
+    expect(everything.entries.map(entry => entry.path)).toContain('escape/passwd')
+  })
+
+  it('listTree honours `depth`: 1 is the directory itself, 8 is the most a client may ask for', async () => {
+    const disk = projectDisk()
+    const files = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk), 'observe')) })
+    expect((await files.listTree(SESSION, '.', 1)).entries.map(entry => entry.path)).toEqual([
+      'empty',
+      'escape',
+      'src',
+      'Alpha.ts',
+      'README.md',
+      'zeta.ts',
+    ])
+    const deep = await files.listTree(SESSION, '.', 8)
+    expect(deep.entries.map(entry => entry.path)).toContain('src/lib/deep/deeper/leaf.ts')
+    expect(await codeOf(files.listTree(SESSION, '.', 0))).toBe('bad_payload')
+    expect(await codeOf(files.listTree(SESSION, '.', 9))).toBe('bad_payload')
+    expect(await codeOf(files.listTree(SESSION, '.', 2.5))).toBe('bad_payload')
+  })
+
+  it('listTree stops at the cap, keeps the shallow entries and says so', async () => {
+    const disk = fakeDisk()
+    disk.text(`${PROJECT}/top.txt`, 'x')
+    for (let index = 0; index < FSX_TREE_MAX_ENTRIES; index += 1) disk.text(`${PROJECT}/many/f${index}.txt`, 'x')
+    const files = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk))) })
+    const tree = await files.listTree(SESSION, '.')
+    expect(tree.truncated).toBe(true)
+    expect(tree.entries).toHaveLength(FSX_TREE_MAX_ENTRIES)
+    expect(tree.entries.slice(0, 2).map(entry => entry.path)).toEqual(['many', 'top.txt'])
+    // Every listed file got its size, in host-sized stat batches.
+    expect(tree.entries.every(entry => entry.isDirectory || entry.size === 1)).toBe(true)
+    expect(disk.calls.filter(call => call === 'fs.statBatch')).toHaveLength(10)
+  })
+})
+
 describe('fsx — uploads', () => {
   it('bytes go up as a BlobRef and land in the session uploads directory under a runtime-chosen name', async () => {
     const disk = fakeDisk()
@@ -552,19 +781,22 @@ describe('R7 guards', () => {
     const full = registry.advertise({ mode: 'full', sessions: 'all' })
     expect(full.find(entry => entry.cap === 'fs')).toBeUndefined()
     expect(full.find(entry => entry.cap === 'fsx')?.acts.slice().sort()).toEqual(
-      ['commitUpload', 'readBlob', 'readText', 'statBatch', 'userHome', 'writeText'],
+      ['commitUpload', 'listDir', 'listTree', 'readBlob', 'readText', 'statBatch', 'userHome', 'writeText'],
     )
     const control = registry.advertise({ mode: 'control', sessions: 'all' })
     expect(control.find(entry => entry.cap === 'fsx')?.acts.slice().sort()).toEqual(
-      ['commitUpload', 'readBlob', 'readText', 'statBatch', 'userHome'],
+      ['commitUpload', 'listDir', 'listTree', 'readBlob', 'readText', 'statBatch', 'userHome'],
     )
     // A manager writes session files: everything control has, plus writeText.
     const manager = registry.advertise({ mode: 'manager', sessions: 'all' })
     expect(manager.find(entry => entry.cap === 'fsx')?.acts.slice().sort()).toEqual(
-      ['commitUpload', 'readBlob', 'readText', 'statBatch', 'userHome', 'writeText'],
+      ['commitUpload', 'listDir', 'listTree', 'readBlob', 'readText', 'statBatch', 'userHome', 'writeText'],
     )
+    // Listings are reads: an observer browses the project it may already read.
     const observe = registry.advertise({ mode: 'observe', sessions: 'all' })
-    expect(observe.find(entry => entry.cap === 'fsx')?.acts.slice().sort()).toEqual(['readBlob', 'readText', 'statBatch', 'userHome'])
+    expect(observe.find(entry => entry.cap === 'fsx')?.acts.slice().sort()).toEqual(
+      ['listDir', 'listTree', 'readBlob', 'readText', 'statBatch', 'userHome'],
+    )
   })
 
   it('page code never reaches the host `fs` routes — files are `fsx`', () => {

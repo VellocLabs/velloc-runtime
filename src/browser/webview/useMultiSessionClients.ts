@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppendMessage } from '@assistant-ui/react'
 import type { BrowserBridgeTransport } from '../bridge/browserBridgeProtocol'
 import type { RuntimeFileAccess } from '../runtimeClient/fileAccess'
+import type { FsxListDirResult, FsxListTreeResult } from '../runtimeProtocol'
 import type { BrowserLlmSelection } from '../bridge/browserBridgeProtocol'
 import type { AgentRuntimeWorkerInitPayload } from '../worker/workerProtocol'
 import type { RuleEdit } from '../../permissions/ruleUpdates'
@@ -317,6 +318,13 @@ export type MultiSessionClientsResult = {
   /** Read a file's full UTF-8 contents from the host fs bridge (right-panel
    *  Files view). Resolves null when no active client; rejects on bridge error. */
   readFileText: (path: string) => Promise<string | null>
+  /** A directory's entries for the Files pane's browse state (`fsx.listDir`).
+   *  Resolves null when no active client; rejects on a runtime error. */
+  listDir: (path: string) => Promise<FsxListDirResult | null>
+  /** The tree below `path` for the Files pane's go-to-file index
+   *  (`fsx.listTree`). Resolves null when no active client; rejects on a
+   *  runtime error. */
+  listTree: (path: string, depth?: number) => Promise<FsxListTreeResult | null>
   /** Batched `isFile` check for the transcript's auto-detected paths. */
   statFilePaths: (
     paths: string[],
@@ -768,6 +776,21 @@ export function useMultiSessionClients(
     return client.readFileText(path)
   }, [])
 
+  // Directory listings for the Files pane's browse state, through the ACTIVE
+  // session's client like the read above. Rejections propagate so the pane can
+  // render its own error row.
+  const listDir = useCallback(async (path: string) => {
+    const client = clientsRef.current.get(optionsRef.current.activeSessionId)
+    if (!client) return null
+    return client.listDir(path)
+  }, [])
+
+  const listTree = useCallback(async (path: string, depth?: number) => {
+    const client = clientsRef.current.get(optionsRef.current.activeSessionId)
+    if (!client) return null
+    return client.listTree(path, depth)
+  }, [])
+
   // Batched existence check for the transcript's auto-detected file paths.
   // Same "any client can stat any absolute path" rule as the read above (fs is
   // host-global). Resolves [] with no client, so paths simply stay plain text.
@@ -982,6 +1005,8 @@ export function useMultiSessionClients(
     requestTurnDiffHistory,
     loadBundledSkillBody,
     readFileText,
+    listDir,
+    listTree,
     statFilePaths,
     writeFileText,
     pickComposerAttachmentFiles,

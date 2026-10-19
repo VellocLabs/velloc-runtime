@@ -6,6 +6,11 @@
  * `forbidden_scope`. `~/.velloc` (credentials, every transcript) is excluded even inside a root;
  * a root strictly inside it (an unbound session's shared workspace) reaches only itself.
  * Uploads land where the runtime decides, under `<cwd>/.velloc/uploads/<session>/`.
+ * Directory listings (`listDir`, `listTree`) are root-bound like reads; the tree is walked here,
+ * one `fs.readdir` per directory, so VCS, dependency and runtime directories can be left out, and
+ * below `full` every directory is root-checked before the walk enters it: the host reports no links
+ * from a directory read, so a junction out of the project reads as a directory and only the
+ * realpath check catches it.
  */
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { checkWithinRoot } from '../../permissions/untrustedReadBoundary'
@@ -21,17 +26,27 @@ import {
 import {
   FSX_ACTION_SCOPES,
   FSX_CAPABILITY,
+  FSX_LIST_MAX_ENTRIES,
   FSX_STAT_BATCH_MAX_PATHS,
+  FSX_TREE_DEFAULT_DEPTH,
+  FSX_TREE_MAX_DEPTH,
+  FSX_TREE_MAX_ENTRIES,
   isBlobRef,
   wireError,
   type FsxCommitUploadPayload,
   type FsxCommitUploadResult,
+  type FsxDirEntry,
+  type FsxListDirPayload,
+  type FsxListDirResult,
+  type FsxListTreePayload,
+  type FsxListTreeResult,
   type FsxReadBlobResult,
   type FsxReadPayload,
   type FsxReadTextResult,
   type FsxStatBatchPayload,
   type FsxStatBatchResult,
   type FsxStatEntry,
+  type FsxTreeEntry,
   type FsxUserHomeResult,
   type FsxWriteTextPayload,
 } from '../runtimeProtocol'
@@ -63,6 +78,19 @@ function isStatBatchPayload(value: unknown): value is FsxStatBatchPayload {
     Array.isArray(value.paths) &&
     value.paths.length <= FSX_STAT_BATCH_MAX_PATHS &&
     value.paths.every(isNonEmptyString)
+  )
+}
+
+function isListDirPayload(value: unknown): value is FsxListDirPayload {
+  return isReadPayload(value)
+}
+
+function isListTreePayload(value: unknown): value is FsxListTreePayload {
+  if (!isReadPayload(value)) return false
+  const depth = (value as Dict).depth
+  return (
+    depth === undefined ||
+    (typeof depth === 'number' && Number.isInteger(depth) && depth >= 1 && depth <= FSX_TREE_MAX_DEPTH)
   )
 }
 
@@ -230,7 +258,8 @@ async function rootViolation(
   return null
 }
 
-type Resolved = { abs: string; roots: FsxSessionRoots; host: HostBridge }
+/** `rootForms` is `null` for `full`, else the request's memoised roots for further checks. */
+type Resolved = { abs: string; roots: FsxSessionRoots; host: HostBridge; rootForms: RootForms | null }
 
 function rootsOf(host: FsxHost, sessionId: string): FsxSessionRoots {
   const roots = host.sessionRoots(sessionId)
@@ -248,11 +277,13 @@ async function resolveForConnection(
   const roots = rootsOf(fsxHost, sessionId)
   const host = hostOf(ctx)
   const abs = resolveRuntimePath(roots.cwd, path)
+  let rootForms: RootForms | null = null
   if (request.conn.scope.mode !== 'full') {
-    const violation = await rootViolation(host, abs, await rootFormsOf(host, roots, await scopedHomeOf(ctx)))
+    rootForms = await rootFormsOf(host, roots, await scopedHomeOf(ctx))
+    const violation = await rootViolation(host, abs, rootForms)
     if (violation) throw wireError('forbidden_scope', violation)
   }
-  return { abs, roots, host }
+  return { abs, roots, host, rootForms }
 }
 
 async function ensureDirectory(host: HostBridge, path: string): Promise<void> {
@@ -265,10 +296,28 @@ async function ensureDirectory(host: HostBridge, path: string): Promise<void> {
   }
 }
 
-type StatResult = { isFile?: boolean; isDirectory?: boolean } | null
+type StatResult = { isFile?: boolean; isDirectory?: boolean; size?: number } | null
 
 /** Root checks in flight at once in a scoped `statBatch`: each is host round trips. */
 const STAT_BATCH_CHECKS_IN_FLIGHT = 8
+
+/** `work` over `items`, at most `limit` at once, started in order; results in item order. */
+async function mapInFlight<T, R>(
+  items: readonly T[],
+  limit: number,
+  work: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let next = 0
+  const run = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next++
+      results[index] = await work(items[index]!)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run))
+  return results
+}
 
 async function statBatch(
   request: HandlerRequest<FsxStatBatchPayload>,
@@ -288,15 +337,11 @@ async function statBatch(
   } else {
     // The checks are independent host round trips (several per absent path,
     // down its ancestors): a few at a time, in request order, not one by one.
-    const allowed = new Array<boolean>(resolved.length)
-    let next = 0
-    const check = async (): Promise<void> => {
-      while (next < resolved.length) {
-        const index = next++
-        allowed[index] = (await rootViolation(host, resolved[index]!.abs, rootForms)) === null
-      }
-    }
-    await Promise.all(Array.from({ length: Math.min(STAT_BATCH_CHECKS_IN_FLIGHT, resolved.length) }, check))
+    const allowed = await mapInFlight(
+      resolved,
+      STAT_BATCH_CHECKS_IN_FLIGHT,
+      async entry => (await rootViolation(host, entry.abs, rootForms)) === null,
+    )
     visible = resolved.filter((_, index) => allowed[index])
   }
   const stats = new Map<string, StatResult>()
@@ -321,6 +366,145 @@ async function statBatch(
     if (!stat) return absent(path)
     return { path, exists: true, isFile: stat.isFile === true, isDirectory: stat.isDirectory === true }
   })
+}
+
+/**
+ * Directories a `listTree` walk never enters, at any depth: VCS internals, dependency trees and
+ * the runtime's own directory. The host's `readdirTree` has no exclude list, so with a
+ * `node_modules` present its row cap would fill with dependencies before the project's own files.
+ */
+export const FSX_TREE_SKIPPED_DIRS: ReadonlySet<string> = new Set(['.git', 'node_modules', RUNTIME_DIR_NAME])
+
+/** Host calls in flight at once in a `listTree` walk. */
+const TREE_WALK_CALLS_IN_FLIGHT = 8
+
+/** Most paths the host's `fs.statBatch` accepts in one call. */
+const HOST_STAT_BATCH_MAX_PATHS = 2000
+
+type HostDirent = { name?: unknown; isFile?: unknown; isDirectory?: unknown; isSymbolicLink?: unknown }
+
+function toDirEntry(raw: HostDirent): FsxDirEntry | null {
+  if (typeof raw.name !== 'string' || raw.name.length === 0) return null
+  return {
+    name: raw.name,
+    isFile: raw.isFile === true,
+    isDirectory: raw.isDirectory === true,
+    isSymbolicLink: raw.isSymbolicLink === true,
+  }
+}
+
+/** Folders first, then names case-insensitively; equal names fall back to the exact spelling. */
+function compareDirEntries(left: FsxDirEntry, right: FsxDirEntry): number {
+  if (left.isDirectory !== right.isDirectory) return left.isDirectory ? -1 : 1
+  const a = left.name.toLowerCase()
+  const b = right.name.toLowerCase()
+  if (a !== b) return a < b ? -1 : 1
+  return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+}
+
+/** `fs.readdir` of `abs`, sorted. A directory that is not there is `not_found`; a file is `conflict`. */
+async function readDirectory(host: HostBridge, abs: string): Promise<FsxDirEntry[]> {
+  let raw: unknown
+  try {
+    raw = await callHostFs<unknown>(host, 'readdir', { path: abs })
+  } catch (error) {
+    // The host's readdir failure names no cause; what is at the path decides.
+    const stat = await callHostFs<StatResult>(host, 'stat', { path: abs }).catch(() => null)
+    if (!stat) throw wireError('not_found', `no directory '${abs}'`)
+    if (!stat.isDirectory) throw wireError('conflict', `'${abs}' is not a directory`)
+    throw error
+  }
+  if (!Array.isArray(raw)) return []
+  return (raw as HostDirent[]).flatMap(entry => toDirEntry(entry) ?? []).sort(compareDirEntries)
+}
+
+async function listDir(
+  request: HandlerRequest<FsxListDirPayload>,
+  ctx: RuntimeContext,
+  fsxHost: FsxHost,
+): Promise<FsxListDirResult> {
+  const { sessionId, path } = request.payload
+  const { abs, host } = await resolveForConnection(request, ctx, fsxHost, sessionId, path)
+  const entries = await readDirectory(host, abs)
+  const truncated = entries.length > FSX_LIST_MAX_ENTRIES
+  return { entries: truncated ? entries.slice(0, FSX_LIST_MAX_ENTRIES) : entries, truncated }
+}
+
+/** The byte size of each file, by absolute path, from `fs.statBatch`; a file the host cannot stat is absent. */
+async function fileSizes(host: HostBridge, paths: readonly string[]): Promise<Map<string, number>> {
+  const chunks: string[][] = []
+  for (let start = 0; start < paths.length; start += HOST_STAT_BATCH_MAX_PATHS) {
+    chunks.push(paths.slice(start, start + HOST_STAT_BATCH_MAX_PATHS))
+  }
+  const batches = await mapInFlight(chunks, TREE_WALK_CALLS_IN_FLIGHT, chunk =>
+    callHostFs<Array<{ path: string; stat: StatResult }>>(host, 'statBatch', { paths: chunk }).catch(() => []),
+  )
+  const sizes = new Map<string, number>()
+  for (const batch of batches) {
+    if (!Array.isArray(batch)) continue
+    for (const entry of batch) {
+      if (typeof entry?.stat?.size === 'number') sizes.set(entry.path, entry.stat.size)
+    }
+  }
+  return sizes
+}
+
+/**
+ * A breadth-first walk of `fs.readdir` calls: one level is complete before the next starts, so
+ * a cut at the cap keeps the shallow entries, the ones a tree shows first. A directory that
+ * cannot be read below the root (gone, unreadable) is skipped. Security: below `full` a directory
+ * is entered only when `rootViolation` clears it, like a `readText` of it would be — the host's
+ * dirents never flag a link, so a junction out of the project is a plain directory to them and
+ * would otherwise be walked. Such a directory is listed, not entered.
+ */
+async function listTree(
+  request: HandlerRequest<FsxListTreePayload>,
+  ctx: RuntimeContext,
+  fsxHost: FsxHost,
+): Promise<FsxListTreeResult> {
+  const { sessionId, path, depth = FSX_TREE_DEFAULT_DEPTH } = request.payload
+  const { abs, host, rootForms } = await resolveForConnection(request, ctx, fsxHost, sessionId, path)
+  type Dir = { abs: string; rel: string; level: number }
+  const entries: FsxTreeEntry[] = []
+  const filesByAbs: Array<{ abs: string; index: number }> = []
+  let truncated = false
+  let pending: Dir[] = []
+  const take = (parent: Dir | null, listed: FsxDirEntry[]): void => {
+    for (const entry of listed) {
+      if (entry.isDirectory && FSX_TREE_SKIPPED_DIRS.has(entry.name)) continue
+      if (entries.length >= FSX_TREE_MAX_ENTRIES) {
+        truncated = true
+        return
+      }
+      const rel = parent ? `${parent.rel}/${entry.name}` : entry.name
+      const level = parent ? parent.level + 1 : 1
+      if (!entry.isDirectory) filesByAbs.push({ abs: joinRuntimePath(abs, ...rel.split('/')), index: entries.length })
+      entries.push({ path: rel, isDirectory: entry.isDirectory, size: 0 })
+      if (entry.isDirectory && level < depth) {
+        pending.push({ abs: joinRuntimePath(abs, ...rel.split('/')), rel, level })
+      }
+    }
+  }
+  take(null, await readDirectory(host, abs))
+  while (pending.length > 0 && !truncated) {
+    const level = pending
+    pending = []
+    const enterable = rootForms
+      ? await mapInFlight(level, TREE_WALK_CALLS_IN_FLIGHT, async dir => (await rootViolation(host, dir.abs, rootForms)) === null)
+      : level.map(() => true)
+    const listings = await mapInFlight(
+      level.map((dir, index) => ({ dir, enter: enterable[index] === true })),
+      TREE_WALK_CALLS_IN_FLIGHT,
+      ({ dir, enter }) => (enter ? readDirectory(host, dir.abs).catch((): FsxDirEntry[] => []) : Promise.resolve([])),
+    )
+    for (let index = 0; index < level.length && !truncated; index += 1) take(level[index]!, listings[index]!)
+  }
+  const sizes = await fileSizes(host, filesByAbs.map(file => file.abs))
+  for (const file of filesByAbs) {
+    const size = sizes.get(file.abs)
+    if (size !== undefined) entries[file.index]!.size = size
+  }
+  return { entries, truncated }
 }
 
 async function commitUpload(
@@ -357,6 +541,8 @@ export function registerFsxCapability(registry: CapabilityRegistry, fsxHost: Fsx
       statBatch: spec('statBatch', isStatBatchPayload),
       readText: spec('readText', isReadPayload),
       readBlob: spec('readBlob', isReadPayload),
+      listDir: spec('listDir', isListDirPayload),
+      listTree: spec('listTree', isListTreePayload),
       writeText: spec('writeText', isWriteTextPayload),
       commitUpload: spec('commitUpload', isCommitUploadPayload),
     },
@@ -378,6 +564,10 @@ export function registerFsxCapability(registry: CapabilityRegistry, fsxHost: Fsx
           const bytes = await callHostFs<Uint8Array>(host, 'readFile', { path: abs })
           return { blob: request.blobs.offer(bytes) } satisfies FsxReadBlobResult
         }
+        case 'listDir':
+          return listDir(request as HandlerRequest<FsxListDirPayload>, ctx, fsxHost)
+        case 'listTree':
+          return listTree(request as HandlerRequest<FsxListTreePayload>, ctx, fsxHost)
         case 'writeText': {
           const { sessionId, path, text } = request.payload as FsxWriteTextPayload
           const { abs, host } = await resolveForConnection(request, ctx, fsxHost, sessionId, path)

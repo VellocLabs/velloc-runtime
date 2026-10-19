@@ -27,6 +27,7 @@ import type { Message, StreamRecord } from '../../runtime/RuntimeTypes'
 import type { ContentBlockParam } from '../../runtime/RuntimeTypes'
 import type { AppendMessage, CompleteAttachment } from '@assistant-ui/react'
 import type { RuntimeFileAccess } from '../runtimeClient/fileAccess'
+import type { FsxListDirResult, FsxListTreeResult } from '../runtimeProtocol'
 import { SESSION_OPEN_FORBIDDEN } from '../runtimeClient/workerTransportOverConnection'
 import {
   BROWSER_COMPOSER_ATTACHMENT_EXTENSIONS,
@@ -1618,6 +1619,21 @@ export class BrowserRuntimeClient {
   async readFileText(path: string): Promise<string> {
     await this.startOnce()
     return this.requireFiles().readText(this.fileSessionId(), path)
+  }
+
+  /**
+   * A directory's entries over `fsx.listDir` (the Files pane's browse state). A relative
+   * `path` resolves against the session's cwd. Rejects like `readFileText`.
+   */
+  async listDir(path: string): Promise<FsxListDirResult> {
+    await this.startOnce()
+    return this.requireFiles().listDir(this.fileSessionId(), path)
+  }
+
+  /** The tree below `path` over `fsx.listTree` (go-to-file index); see `RuntimeFileAccess.listTree`. */
+  async listTree(path: string, depth?: number): Promise<FsxListTreeResult> {
+    await this.startOnce()
+    return this.requireFiles().listTree(this.fileSessionId(), path, depth)
   }
 
   /**

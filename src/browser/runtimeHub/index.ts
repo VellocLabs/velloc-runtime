@@ -23,6 +23,7 @@ export {
 } from './shellCapability'
 export { BlobInbox, DEFAULT_BLOB_INBOX_LIMITS, type BlobInboxLimits } from './BlobInbox'
 export {
+  FSX_TREE_SKIPPED_DIRS,
   registerFsxCapability,
   sanitizeUploadFileName,
   sanitizeUploadPathSegment,
