@@ -1,10 +1,10 @@
 /**
  * One xterm.js emulator bound to one `terminal/<id>` topic (F-31): the
- * snapshot replays the scrollback (the emulator's answers to queries in it
- * are not sent), deltas stream output, keystrokes go back
- * as `terminal.write` once per frame, and the host element's size drives
- * `terminal.resize`. Also the find bar (Ctrl+Shift+F). Loaded lazily: this
- * module carries the xterm chunk.
+ * snapshot replays the screen (answers to queries in it are not sent),
+ * deltas stream output, keystrokes go back as `terminal.write`, the host's
+ * size drives `terminal.resize`; the find bar is Ctrl+Shift+F. Out of sight
+ * the emulator is released, rebuilt from the snapshot when shown
+ * (`ViewRetention`). Loaded lazily: this module carries the xterm chunk.
  */
 import {
   useCallback,
@@ -35,6 +35,7 @@ import { FitScheduler } from './terminalFit'
 import { terminalKeyDecision } from './terminalKeys'
 import type { TerminalPrefs } from './terminalPrefs'
 import { registerTerminalProbe } from './terminalProbe'
+import { measureViewSight, ViewRetention } from './terminalRetention'
 import { applyTerminalTopicEvent, InputBatcher, ReplayGate, type MirroredTerminal } from './xtermBinding'
 import {
   buildTerminalTheme,
@@ -58,10 +59,58 @@ const FIT_DEBOUNCE_MS = 100
 const FONT_SIZE_PX = 13
 
 /**
+ * The view's box, holding the emulator while it is live. Its box is what is
+ * measured, so a released view still learns when it is shown again.
+ */
+export function XtermHost(props: XtermHostProps): ReactElement {
+  const boxRef = useRef<HTMLDivElement | null>(null)
+  const retentionRef = useRef<ViewRetention | null>(null)
+  const [live, setLive] = useState(true)
+  const builtRef = useRef(false)
+  const autoFocus = props.autoFocus && !builtRef.current
+  if (live) builtRef.current = true
+
+  useEffect(() => {
+    const box = boxRef.current
+    if (!box) return
+    const retention = new ViewRetention({ onChange: setLive })
+    retentionRef.current = retention
+    const check = (): void => retention.update(measureViewSight(box))
+    check()
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(check) : null
+    observer?.observe(box)
+    document.addEventListener('visibilitychange', check)
+    return () => {
+      document.removeEventListener('visibilitychange', check)
+      observer?.disconnect()
+      retention.dispose()
+      retentionRef.current = null
+    }
+  }, [])
+
+  // The observer does not deliver in a covered window; a render does happen.
+  useLayoutEffect(() => {
+    const box = boxRef.current
+    if (box) retentionRef.current?.update(measureViewSight(box))
+  })
+
+  return (
+    <div
+      ref={boxRef}
+      className="relative flex min-h-0 flex-1 flex-col"
+      data-testid={`terminal-host-${props.terminalId}`}
+      data-terminal-view={live ? 'live' : 'released'}
+    >
+      {live ? <XtermView {...props} autoFocus={autoFocus} /> : <div className="min-h-0 flex-1 bg-card" />}
+    </div>
+  )
+}
+
+/**
  * Security: input is sent only to the terminal id this host was given, and
  * only through the runtime's `terminal.write` action.
  */
-export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }: XtermHostProps): ReactElement {
+function XtermView({ terminalId, connection, prefs, autoFocus, openLink }: XtermHostProps): ReactElement {
   const t = useT()
   const hostRef = useRef<HTMLDivElement | null>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -285,7 +334,7 @@ export function XtermHost({ terminalId, connection, prefs, autoFocus, openLink }
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col" data-testid={`terminal-host-${terminalId}`}>
+    <div className="relative flex min-h-0 flex-1 flex-col">
       {findOpen ? (
         <div
           data-testid="terminal-find"
