@@ -29,6 +29,13 @@ export const ESTIMATED_MESSAGE_HEIGHT_PX = 160
  */
 export const INITIAL_ACTIVE_TAIL = 20
 
+/**
+ * Measure-and-re-window passes the list runs synchronously after commits in
+ * one task. Each pass that moves state commits again; the cap keeps rows whose
+ * height keeps changing from chaining past React's nested-update limit.
+ */
+export const MAX_SYNC_REWINDOW_PASSES = 8
+
 /** Upper bound on pinned rows, so a long clicking session can't pin the lot. */
 export const MAX_PINNED_ROWS = 64
 

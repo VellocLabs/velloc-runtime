@@ -16,6 +16,7 @@ import { ThreadPrimitive, useAssistantState } from "@assistant-ui/react";
 import {
   ESTIMATED_MESSAGE_HEIGHT_PX,
   INITIAL_ACTIVE_TAIL,
+  MAX_SYNC_REWINDOW_PASSES,
   type MessageRange,
   type VirtualSegment,
   buildMessageSegments,
@@ -364,16 +365,53 @@ export const VirtualizedThreadMessages: FC<VirtualizedThreadMessagesProps> = ({
     return changed;
   }, [compensateScroll, viewportRef]);
 
-  // After every commit: re-measure, repair the scroll position, re-window.
-  // Unconditional rather than keyed on anything — the window has to track the
-  // transcript growing during a turn, and a message can land without a scroll
-  // event or a size change on any row we already had mounted. Both steps are
-  // no-ops when nothing moved (`updateRange` only sets state on a real change),
-  // so this settles after one pass.
-  useLayoutEffect(() => {
+  // Passes run in the current task, and the timer that resets the count and
+  // runs any pass deferred past the cap. A timer, not an animation frame: an
+  // occluded window never runs frames and the window would stay frozen.
+  const framePassesRef = useRef(0);
+  const frameRequestRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deferredPassRef = useRef(false);
+  const passRef = useRef<() => void>(() => {});
+  passRef.current = () => {
     reconcileHeights();
     updateRange();
+  };
+
+  // After every commit: re-measure, repair the scroll position, re-window.
+  // Unconditional — a message can land without a scroll event or a size change
+  // on a mounted row. Both steps are no-ops when nothing moved. A pass that
+  // moves state commits and runs this again; rows whose height keeps changing
+  // could chain that past React's nested-update limit, so at most
+  // `MAX_SYNC_REWINDOW_PASSES` run per task and the rest continue on the next.
+  useLayoutEffect(() => {
+    if (frameRequestRef.current === null) {
+      frameRequestRef.current = setTimeout(() => {
+        frameRequestRef.current = null;
+        framePassesRef.current = 0;
+        if (deferredPassRef.current) {
+          deferredPassRef.current = false;
+          framePassesRef.current = 1;
+          passRef.current();
+        }
+      }, 0);
+    }
+    if (framePassesRef.current >= MAX_SYNC_REWINDOW_PASSES) {
+      deferredPassRef.current = true;
+      return;
+    }
+    framePassesRef.current += 1;
+    passRef.current();
   });
+
+  useEffect(
+    () => () => {
+      if (frameRequestRef.current !== null) {
+        clearTimeout(frameRequestRef.current);
+        frameRequestRef.current = null;
+      }
+    },
+    [],
+  );
 
   // Track the window while the user scrolls, and while streaming grows the
   // last message (the thread's lock-to-bottom snap produces scroll events too).

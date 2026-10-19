@@ -36,7 +36,8 @@ vi.mock('@assistant-ui/react', async () => {
 const { VirtualizedThreadMessages } = await import(
   '../components/assistant-ui/virtualized-thread-messages'
 )
-const { ESTIMATED_MESSAGE_HEIGHT_PX, MESSAGE_TAIL_KEEP } = await import(
+const { ESTIMATED_MESSAGE_HEIGHT_PX, MAX_SYNC_REWINDOW_PASSES, MESSAGE_TAIL_KEEP } =
+  await import(
   '../browser/webview/messageVirtualization'
 )
 const { HistoryContentWindowContext } = await import(
@@ -69,13 +70,14 @@ function mountList(
   count: number,
   isForeground = true,
   withContentWindow = false,
+  compensateScroll: (deltaPx: number) => void = () => {},
 ): void {
   thread.count = count
   const viewportRef = { current: viewport }
   const list = createElement(VirtualizedThreadMessages, {
     viewportRef,
     isForeground,
-    compensateScroll: () => {},
+    compensateScroll,
     components: {} as never,
   })
   act(() => {
@@ -301,5 +303,48 @@ describe('VirtualizedThreadMessages', () => {
     thread.stubs = new Set()
     scrollTo(2 * ROW_HEIGHT)
     expect(renderedIndices()).toContain(0)
+  })
+
+  it('spreads a re-measure loop over tasks instead of exceeding the nested-update limit', () => {
+    // Rows whose measured height changes on every read, above the viewport so
+    // each pass compensates the scroll position and moves the window: without
+    // a per-task cap this chains commits until React throws.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const flipped = new WeakSet<Element>()
+    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+      const index = (this as HTMLElement).dataset?.messageIndex
+      if (index === undefined) return rect(0, VIEWPORT_HEIGHT)
+      const short = !flipped.has(this)
+      if (short) flipped.add(this)
+      else flipped.delete(this)
+      return rect(-100_000, short ? 20 : 2000)
+    }
+    const count = 3000
+    viewport.scrollTop = count * ROW_HEIGHT - VIEWPORT_HEIGHT
+    let compensations = 0
+    const compensate = (delta: number): void => {
+      compensations++
+      viewport.scrollTop = Math.max(0, viewport.scrollTop + delta)
+    }
+    try {
+      expect(() => mountList(count, true, false, compensate)).not.toThrow()
+      const firstTask = compensations
+      expect(firstTask).toBeGreaterThan(0)
+      expect(firstTask).toBeLessThanOrEqual(MAX_SYNC_REWINDOW_PASSES)
+      // The deferred passes continue on later tasks, each one capped too.
+      for (let task = 0; task < 5; task++) {
+        const before = compensations
+        expect(() => {
+          act(() => {
+            vi.advanceTimersByTime(1)
+          })
+        }).not.toThrow()
+        expect(compensations).toBeGreaterThan(before)
+        expect(compensations - before).toBeLessThanOrEqual(MAX_SYNC_REWINDOW_PASSES)
+      }
+      expect(renderedIndices().length).toBeGreaterThan(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
