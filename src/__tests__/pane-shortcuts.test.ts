@@ -20,6 +20,12 @@ describe('paneShortcutFor', () => {
     expect(paneShortcutFor(key('KeyT', { shiftKey: true }))).toEqual({ action: 'reopen-closed' })
   })
 
+  it('Ctrl+Shift+E toggles the Files tree; without Shift it is nothing', () => {
+    expect(paneShortcutFor(key('KeyE', { shiftKey: true }))).toEqual({ action: 'toggle-files-tree' })
+    expect(paneShortcutFor(key('KeyE'))).toBeNull()
+    expect(paneShortcutFor(key('KeyE', { shiftKey: true, altKey: true }))).toBeNull()
+  })
+
   it('Ctrl+` toggles the Terminal pane; with Shift it is nothing', () => {
     expect(paneShortcutFor(key('Backquote'))).toEqual({ action: 'toggle', kind: 'terminal' })
     expect(paneShortcutFor(key('Backquote', { shiftKey: true }))).toBeNull()

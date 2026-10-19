@@ -77,6 +77,7 @@ import { rootPaneWeightsByKind } from './layout/paneResize'
 import { activateFileTab, closeFileTab, emptyFilesPane, openFileTab } from './layout/filesPane'
 import { createSessionLayoutsStore, useSessionLayouts, type SessionLayoutsStore } from './layout/sessionLayouts'
 import { paneShortcutFor } from './layout/paneShortcuts'
+import { toggleFilesTreeVisible } from './panes/filesTreePrefs'
 import { PaneArea } from './panes/PaneArea'
 import { PaneFrame } from './panes/PaneFrame'
 import { PANE_ICON, PANE_LABEL_KEY } from './panes/paneKinds'
@@ -2898,12 +2899,20 @@ export function MultiSessionShell({
     void reportModSeat(modSeat, showing, places).catch(() => {})
   }, [activeSessionId, reportModSeat, modSeat, modSeatShowingPlugin, modSeatShowingId, modSeatPlacesKey])
   // Pane shortcuts (F-9): Diff toggles, the focused pane closes or
-  // expands, the last closed pane reopens. Not while Settings covers the area.
+  // expands, the last closed pane reopens, the Files tree shows or hides
+  // while focus is in the Files pane. Not while Settings covers the area.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || settingsOpenRef.current) return
       const shortcut = paneShortcutFor(event)
       if (!shortcut) return
+      if (shortcut.action === 'toggle-files-tree') {
+        const focused = document.activeElement
+        if (!(focused instanceof Element) || !focused.closest('[data-pane="files"]')) return
+        event.preventDefault()
+        toggleFilesTreeVisible()
+        return
+      }
       const id = activeSessionIdRef.current
       if (!id) return
       event.preventDefault()
@@ -4124,7 +4133,7 @@ export function MultiSessionShell({
             onOpen={openFileFromTree}
             listDir={listDir}
             roots={filesTreeRoots}
-            frame={({ title, body }) => frame(title, body)}
+            frame={({ title, actions, body }) => frame(title, body, actions)}
           />
         </Suspense>
       )

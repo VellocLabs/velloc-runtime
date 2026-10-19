@@ -47,6 +47,24 @@ describe('sanitizeModPanesAsked', () => {
   })
 })
 
+describe('Files pane docked tree prefs', () => {
+  it('are off and 260 px by default; a stored width is clamped, a bad one is the default', () => {
+    expect(defaultLayoutStorage()).toMatchObject({ filesTreeVisible: false, filesTreeWidth: 260 })
+    expect(sanitizeLayoutStorage({})).toMatchObject({ filesTreeVisible: false, filesTreeWidth: 260 })
+    expect(sanitizeLayoutStorage({ filesTreeVisible: true, filesTreeWidth: 300.4 })).toMatchObject({
+      filesTreeVisible: true,
+      filesTreeWidth: 300,
+    })
+    expect(sanitizeLayoutStorage({ filesTreeVisible: 'yes', filesTreeWidth: 40 })).toMatchObject({
+      filesTreeVisible: false,
+      filesTreeWidth: 180,
+    })
+    expect(sanitizeLayoutStorage({ filesTreeWidth: 1e6 }).filesTreeWidth).toBe(800)
+    expect(sanitizeLayoutStorage({ filesTreeWidth: Number.NaN }).filesTreeWidth).toBe(260)
+    expect(sanitizeLayoutStorage({ filesTreeWidth: '300' }).filesTreeWidth).toBe(260)
+  })
+})
+
 describe('sanitizePaneWeightByKind', () => {
   it('keeps finite positive weights of known kinds, clamped', () => {
     expect(sanitizePaneWeightByKind({ diff: 2.5, tasks: -1, plan: Number.NaN, mod: 1, browser: 1e9, files: 0 })).toEqual({

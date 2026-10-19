@@ -5,6 +5,7 @@
  * node; records past the cap are dropped least recently used first.
  */
 import { sanitizeFilesPane } from './filesPane'
+import { clampFilesTreeWidth, defaultFilesTreePrefs } from './filesTreeDock'
 import {
   CHAT_WEIGHT,
   groupById,
@@ -40,10 +41,22 @@ export interface NexusLayoutStorage {
   sessionCards: SessionCardPrefs
   /** The mod panes the person asked for and has not closed by hand (`modsPane.ts` keys). */
   modPanesAsked: readonly string[]
+  /** The Files pane's Show file tree toggle, for every session. */
+  filesTreeVisible: boolean
+  /** The Files pane's docked tree width, px. */
+  filesTreeWidth: number
 }
 
 export function defaultLayoutStorage(): NexusLayoutStorage {
-  return { paneWeightByKind: {}, sessions: {}, sessionCards: defaultSessionCardPrefs(), modPanesAsked: [] }
+  const tree = defaultFilesTreePrefs()
+  return {
+    paneWeightByKind: {},
+    sessions: {},
+    sessionCards: defaultSessionCardPrefs(),
+    modPanesAsked: [],
+    filesTreeVisible: tree.visible,
+    filesTreeWidth: tree.width,
+  }
 }
 
 /** Remembered asked panes: well-formed keys, each once, the newest `ASKED_MEMORY_CAP`. */
@@ -196,5 +209,7 @@ export function sanitizeLayoutStorage(raw: unknown): NexusLayoutStorage {
     sessions: sanitizeSessionRecords(obj.sessions),
     sessionCards: sanitizeSessionCardPrefs(obj.sessionCards),
     modPanesAsked: sanitizeModPanesAsked(obj.modPanesAsked),
+    filesTreeVisible: obj.filesTreeVisible === true,
+    filesTreeWidth: clampFilesTreeWidth(obj.filesTreeWidth),
   }
 }

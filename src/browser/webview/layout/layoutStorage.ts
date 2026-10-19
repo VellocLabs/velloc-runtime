@@ -1,7 +1,7 @@
 /**
  * localStorage I/O for the layout blob (F-9): pane layouts per session, the
- * per-kind pane weights, the session card prefs and the mod panes the person
- * asked for, under one key. Writes are
+ * per-kind pane weights, the session card prefs, the mod panes the person
+ * asked for and the Files pane's docked tree, under one key. Writes are
  * read-modify-write of the whole blob, coalesced to one `setItem` per task;
  * `pagehide` flushes. Best-effort: storage may be missing, and every read is
  * sanitized.
@@ -11,6 +11,7 @@ import {
   sanitizeLayoutStorage,
   type NexusLayoutStorage,
 } from './layoutSanitize'
+import type { FilesTreePrefs } from './filesTreeDock'
 import type { SessionCardPrefs } from './sessionCards'
 
 export const LAYOUT_STORAGE_KEY = 'nexus.layout'
@@ -86,4 +87,17 @@ export function loadModPanesAsked(): readonly string[] {
 
 export function saveModPanesAsked(keys: readonly string[]): void {
   updateLayoutStorage(prev => (prev.modPanesAsked === keys ? prev : { ...prev, modPanesAsked: keys }))
+}
+
+export function loadFilesTreePrefs(): FilesTreePrefs {
+  const blob = loadLayoutStorage()
+  return { visible: blob.filesTreeVisible, width: blob.filesTreeWidth }
+}
+
+export function saveFilesTreePrefs(prefs: FilesTreePrefs): void {
+  updateLayoutStorage(prev =>
+    prev.filesTreeVisible === prefs.visible && prev.filesTreeWidth === prefs.width
+      ? prev
+      : { ...prev, filesTreeVisible: prefs.visible, filesTreeWidth: prefs.width },
+  )
 }

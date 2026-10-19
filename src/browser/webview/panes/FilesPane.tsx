@@ -1,23 +1,37 @@
-import { useCallback, useState, type ReactElement, type ReactNode } from 'react'
-import { FileTextIcon, FolderIcon, XIcon } from 'lucide-react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react'
+import { FileTextIcon, FolderIcon, ListTreeIcon, SearchIcon, XIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { baseName } from '@/utils/paths'
 
 import { FilePanel } from '../FilePanel'
 import { useT } from '../i18n'
-import { emptyFileTree, withRoots, type FileTreeState } from '../layout/fileTree'
+import { emptyFileTree, revealPath, withRoots, type FileTreeState } from '../layout/fileTree'
 import { reconcileMountedFiles, sameMountedFiles } from '../layout/filesPane'
+import { dockFits, maxDockWidth, treeSpelling } from '../layout/filesTreeDock'
 import type { FilesPaneState } from '../layout/paneLayout'
+import { FILES_TREE_ARIA_SHORTCUT, FILES_TREE_SHORTCUT_LABEL } from '../layout/paneShortcuts'
 import { FilesBrowse, type FilesListDir, type TreeUpdate } from './FilesBrowse'
+import { FilesTreeHandle } from './FilesTreeHandle'
+import { setFilesTreeVisible, setFilesTreeWidth, toggleFilesTreeVisible, useFilesTreePrefs } from './filesTreePrefs'
 
 /**
- * The Files pane's content (F-9): a strip with one tab per opened path in
- * the frame's title slot, and the editor bodies below. Bodies mount on first
- * activation and stay while the strip keeps the tab, bounded by the files
- * LRU; a body with unsaved edits is never released. Only the active body shows.
- * With no active tab the body is the browse state: a filter box and the
- * session's file tree, whose expansion is kept per session while the pane lives.
+ * The Files pane's content (F-9): a tab strip in the title slot, the editor
+ * bodies below, mounted on first activation and kept within the files LRU
+ * (never a body with unsaved edits). No active tab: the browse state, a
+ * filter box over the session's file tree (expansion kept per session).
+ * A tab active: Go to file and Show file tree in the header; the same tree
+ * docks at the end edge and reveals the active file. Last tab closed: browse.
  */
 export type FilesPaneProps = {
   state: FilesPaneState
@@ -38,8 +52,8 @@ export type FilesPaneProps = {
   listDir?: FilesListDir
   /** The tree's roots: the session's folders. `null` while the session has not reported them. */
   roots?: readonly string[] | null
-  /** Builds the frame around the strip and the bodies. */
-  frame: (parts: { title: ReactNode; body: ReactNode }) => ReactNode
+  /** Builds the frame around the strip, the header actions and the bodies. */
+  frame: (parts: { title: ReactNode; actions?: ReactNode; body: ReactNode }) => ReactNode
 }
 
 export function FilesPane(props: FilesPaneProps): ReactElement {
@@ -83,6 +97,102 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
     },
     [sessionKey, roots],
   )
+
+  const prefs = useFilesTreePrefs()
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [bodyWidth, setBodyWidth] = useState(0)
+  const [liveWidth, setLiveWidth] = useState<number | null>(null)
+  const treeWidth = liveWidth ?? prefs.width
+  const docked = state.active !== null && prefs.visible && dockFits(bodyWidth, prefs.width)
+
+  useLayoutEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const measure = () => setBodyWidth(el.getBoundingClientRect().width)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // Reveal: expand the folders above a file (the tree lists them as they come
+  // on screen), mark it current, and scroll its row into view once drawn.
+  const scrollTarget = useRef<string | null>(null)
+  const focusFilter = useRef(false)
+  const reveal = useCallback(
+    (path: string) => {
+      if (!roots) return
+      updateTree(current => revealPath(current, path).state)
+      scrollTarget.current = treeSpelling(roots, path)
+    },
+    [roots, updateTree],
+  )
+  useEffect(() => {
+    const box = bodyRef.current
+    if (!box) return
+    const target = scrollTarget.current
+    if (target !== null) {
+      const row = [...box.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(
+        el => el.getAttribute('data-testid') === `files-tree-row:${target}`,
+      )
+      if (row) {
+        row.scrollIntoView?.({ block: 'nearest' })
+        scrollTarget.current = null
+      }
+    }
+    if (focusFilter.current) {
+      const filter = dockFilter(box)
+      if (filter) {
+        filter.focus()
+        focusFilter.current = false
+      }
+    }
+  })
+
+  // The docked tree follows the active tab while it is shown.
+  useEffect(() => {
+    if (docked && state.active) reveal(state.active)
+  }, [docked, state.active, sessionKey, reveal])
+
+  // The last tab closed: browse opens on the closed file's row.
+  const lastActive = useRef({ key: sessionKey, path: state.active })
+  const [browseCurrent, setBrowseCurrent] = useState<{ key: string; path: string } | null>(null)
+  useEffect(() => {
+    const previous = lastActive.current
+    lastActive.current = { key: sessionKey, path: state.active }
+    if (previous.key !== sessionKey || previous.path === null || state.active !== null) return
+    setBrowseCurrent({ key: sessionKey, path: previous.path })
+    reveal(previous.path)
+  }, [sessionKey, state.active, reveal])
+
+  // Go to file: the tree comes in if hidden, and its filter box takes focus.
+  const goToFile = () => {
+    const filter = bodyRef.current ? dockFilter(bodyRef.current) : null
+    if (filter) {
+      filter.focus()
+      return
+    }
+    focusFilter.current = true
+    setFilesTreeVisible(true)
+  }
+
+  const spelled = (path: string | null) => (path && roots ? treeSpelling(roots, path) : path)
+  const browseTree = (currentPath: string | null) =>
+    !props.listDir || !tree ? (
+      <BrowseNotice testId="files-browse-not-started" text={t('filesBrowse.notStarted')} />
+    ) : tree.roots.length === 0 ? (
+      <BrowseNotice testId="files-browse-no-folder" text={t('filesBrowse.noWorkingDirectory')} />
+    ) : (
+      <FilesBrowse
+        key={sessionKey}
+        tree={tree}
+        onTreeChange={updateTree}
+        listDir={props.listDir}
+        onOpen={props.onOpen}
+        currentPath={currentPath}
+      />
+    )
 
   const title = state.tabs.length === 0 ? (
     <>
@@ -134,53 +244,129 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
     </div>
   )
 
+  // Header while a file is open, start to end after the strip: Go to file,
+  // Show file tree, then the pane menu.
+  const actions = state.active === null ? null : (
+    <TooltipProvider>
+      <HeaderButton
+        testId="files-pane-go-to-file"
+        label={t('filesPane.goToFile')}
+        onClick={goToFile}
+        icon={<SearchIcon className="size-3.5" />}
+      />
+      <HeaderButton
+        testId="files-pane-tree-toggle"
+        label={t('filesPane.showTree')}
+        tooltip={t(prefs.visible ? 'filesPane.hideTree' : 'filesPane.showTree')}
+        shortcut={FILES_TREE_SHORTCUT_LABEL}
+        ariaShortcut={FILES_TREE_ARIA_SHORTCUT}
+        pressed={prefs.visible}
+        onClick={toggleFilesTreeVisible}
+        icon={<ListTreeIcon className="size-3.5" />}
+      />
+    </TooltipProvider>
+  )
+
+  // `[file | handle | tree]`: the file at the start, the docked tree at the end edge.
   const body = (
-    <div className="relative flex min-h-0 flex-1 flex-col">
-      {state.tabs.map(path => {
-        if (!mountedSet.has(path)) return null
-        const active = path === state.active
-        return (
-          <div
-            key={`${sessionKey}:${path}`}
-            data-files-pane-body={path}
-            className={cn('min-h-0 flex-1 flex-col overflow-hidden', active ? 'flex' : 'hidden')}
-          >
-            <FilePanel
-              target={{ path }}
-              readFileText={props.readFileText}
-              writeFileText={props.writeFileText}
-              editingLocked={props.editingLocked}
-              onDirtyChange={props.onDirtyChange}
-              reveal={
-                props.fileReveal && props.fileReveal.path === path
-                  ? { line: props.fileReveal.line, nonce: props.fileReveal.nonce }
-                  : undefined
-              }
-            />
+    <div ref={bodyRef} className="relative flex min-h-0 flex-1 flex-row">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {state.tabs.map(path => {
+          if (!mountedSet.has(path)) return null
+          const active = path === state.active
+          return (
+            <div
+              key={`${sessionKey}:${path}`}
+              data-files-pane-body={path}
+              className={cn('min-h-0 flex-1 flex-col overflow-hidden', active ? 'flex' : 'hidden')}
+            >
+              <FilePanel
+                target={{ path }}
+                readFileText={props.readFileText}
+                writeFileText={props.writeFileText}
+                editingLocked={props.editingLocked}
+                onDirtyChange={props.onDirtyChange}
+                reveal={
+                  props.fileReveal && props.fileReveal.path === path
+                    ? { line: props.fileReveal.line, nonce: props.fileReveal.nonce }
+                    : undefined
+                }
+              />
+            </div>
+          )
+        })}
+        {state.active === null && (
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {browseTree(browseCurrent?.key === sessionKey ? spelled(browseCurrent.path) : null)}
           </div>
-        )
-      })}
-      {state.active === null && (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {!props.listDir || !tree ? (
-            <BrowseNotice testId="files-browse-not-started" text={t('filesBrowse.notStarted')} />
-          ) : tree.roots.length === 0 ? (
-            <BrowseNotice testId="files-browse-no-folder" text={t('filesBrowse.noWorkingDirectory')} />
-          ) : (
-            <FilesBrowse
-              key={sessionKey}
-              tree={tree}
-              onTreeChange={updateTree}
-              listDir={props.listDir}
-              onOpen={props.onOpen}
-            />
-          )}
-        </div>
+        )}
+      </div>
+      {docked && (
+        <>
+          <FilesTreeHandle
+            width={treeWidth}
+            maxWidth={maxDockWidth(bodyWidth)}
+            onResize={setLiveWidth}
+            onResizeEnd={width => {
+              setLiveWidth(null)
+              setFilesTreeWidth(width)
+            }}
+          />
+          <div
+            data-files-tree-dock
+            data-testid="files-pane-tree-dock"
+            className="flex min-h-0 shrink-0 flex-col overflow-hidden"
+            style={{ width: treeWidth }}
+          >
+            {browseTree(spelled(state.active))}
+          </div>
+        </>
       )}
     </div>
   )
 
-  return <>{props.frame({ title, body })}</>
+  return <>{props.frame({ title, actions, body })}</>
+}
+
+/** The docked tree's filter box, once drawn. */
+function dockFilter(box: HTMLElement): HTMLInputElement | null {
+  return box.querySelector<HTMLInputElement>('[data-files-tree-dock] [data-testid="files-browse-filter"]')
+}
+
+function HeaderButton(props: {
+  testId: string
+  label: string
+  /** The tooltip, when it differs from the label. */
+  tooltip?: string
+  shortcut?: string
+  ariaShortcut?: string
+  pressed?: boolean
+  onClick: () => void
+  icon: ReactNode
+}): ReactElement {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="size-7"
+          data-testid={props.testId}
+          aria-label={props.label}
+          aria-pressed={props.pressed}
+          aria-keyshortcuts={props.ariaShortcut}
+          onClick={props.onClick}
+        >
+          {props.icon}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {props.tooltip ?? props.label}
+        {props.shortcut && <span className="ms-2 opacity-70">{props.shortcut}</span>}
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 function BrowseNotice({ testId, text }: { testId: string; text: string }): ReactElement {
