@@ -15,6 +15,8 @@ const manifestOf = (buildId: string, tag: string) => ({
   assets: [
     { url: `assets/index-${tag}.js`, type: 'js' },
     { url: `assets/index-${tag}.css`, type: 'css' },
+    { url: `assets/geist-${tag}.woff2`, type: 'font' },
+    { url: `assets/logo-${tag}.png`, type: 'other' },
     { url: `assets/locales/fr-${tag}.json`, type: 'locale' },
     // Not the active locale — must not be warmed.
     { url: `assets/locales/de-${tag}.json`, type: 'locale' },
@@ -56,7 +58,7 @@ async function runWarmer(
     address = ENTRY,
     baseURI = ENTRY,
     storage = memoryStorage(),
-    expectChunks = 3,
+    expectChunks = 5,
     pageBuild = baseURI === ROOT ? ROOT_MANIFEST.buildId : BUILD_ID,
   }: { address?: string; baseURI?: string; storage?: Storage; expectChunks?: number; pageBuild?: string } = {},
 ): Promise<{ fetched: string[]; storage: Storage }> {
@@ -114,7 +116,7 @@ async function runWarmer(
     await new Promise((resolve) => setTimeout(resolve, 20))
     return { fetched, storage }
   }
-  // Three chunks: js, css and the active (fr) locale.
+  // Five chunks: js, css, font, image and the active (fr) locale.
   await vi.waitFor(() => {
     expect(chunkUrls(fetched)).toHaveLength(expectChunks)
   })
@@ -133,9 +135,11 @@ describe('backgroundCacheUpdate at an immutable build entry', () => {
   it('fetches every chunk from the version root, never from inside the entry', async () => {
     const { fetched } = await runWarmer()
     expect(chunkUrls(fetched).sort()).toEqual([
+      `${ORIGIN}/v1/assets/geist-abc.woff2`,
       `${ORIGIN}/v1/assets/index-abc.css`,
       `${ORIGIN}/v1/assets/index-abc.js`,
       `${ORIGIN}/v1/assets/locales/fr-abc.json`,
+      `${ORIGIN}/v1/assets/logo-abc.png`,
     ])
     expect(fetched.some((u) => u.includes('/b/20260920T230614000Z/assets/'))).toBe(false)
   })
@@ -170,7 +174,7 @@ describe('backgroundCacheUpdate at an immutable build entry', () => {
     const storage = memoryStorage()
     storage.setItem(RECORD_KEY, '"build-abc"')
     const { fetched } = await runWarmer({ storage })
-    expect(chunkUrls(fetched)).toHaveLength(3)
+    expect(chunkUrls(fetched)).toHaveLength(5)
     expect(recorded(storage)).toEqual({ '/v1/b/20260920T230614000Z/assets-manifest.json': BUILD_ID })
 
     // Ten older entries recorded: the newest write survives, the oldest go.

@@ -1,5 +1,6 @@
 /**
- * Contract: background HTTP-cache warmer for content-hashed assets, a
+ * Contract: background HTTP-cache warmer for content-hashed assets (every
+ * manifest asset but the inactive locales), a
  * dependency-free entry run 5 s after the first screen, then every 30 min and on hide /
  * blur (at least 5 min apart). Validates `assets-manifest.json` (`no-cache`); a
  * known `buildId` for that path returns at once. Chunks resolve against the
@@ -282,13 +283,11 @@ function checkOnce(): Promise<void> {
     const localePrefix = activeLocale ? `assets/locales/${activeLocale}-` : null
     const urls: string[] = []
     for (const a of data.assets) {
-      if (a.type === 'js' || a.type === 'css') {
+      if (a.type !== 'locale') {
+        // Every non-locale asset (js, css, fonts, images), so a build staged
+        // offline-ready has no file left to fetch on demand.
         urls.push(new URL(a.url, assetBase).href)
-      } else if (
-        a.type === 'locale' &&
-        localePrefix &&
-        a.url.startsWith(localePrefix)
-      ) {
+      } else if (localePrefix && a.url.startsWith(localePrefix)) {
         // The active locale only — see activeLocaleFromMap.  Warming it here
         // means the next boot resolves the new catalog straight from the HTTP
         // cache, so a redeploy never costs a non-English user a network wait
