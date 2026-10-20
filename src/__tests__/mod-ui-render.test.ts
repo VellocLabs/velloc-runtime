@@ -3,7 +3,7 @@
  * raises (F-25): a hook answers with a tree from `$.ui.resolve(e)`; a leaf's handler stays in the plugin; a read
  * subscribes, so a later `$.state.set` redraws exactly the readers; an invalid tree falls back to the engine's.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RAISED_EVENTS, refuseRegistrations } from '../mods/modAdmission'
 import { implementedNouns } from '../mods/modNouns'
 import { ModRuntime, type ModModuleRef, type ModWorkerHandle } from '../mods/ModRuntime'
@@ -31,14 +31,17 @@ afterEach(() => {
 
 type Worker = ModWorkerHandle & { crash(): void }
 
-function world(modules: Record<string, string>) {
+function world(modules: Record<string, string>, gates: Record<string, Promise<void>> = {}) {
   const reports: string[] = []
   const events: ModUiEvent[] = []
   const workers: Record<string, Worker[]> = {}
   const refs: ModModuleRef[] = Object.keys(modules).map(plugin => ({ plugin, path: `/plugins/${plugin}/hooks/register.js` }))
   const runtime = new ModRuntime({
     modules: refs,
-    readModule: async path => `export function register(on) {\n${modules[path.split('/')[2]!]}\n}\n// load ${++uniqueLoad}`,
+    readModule: async path => {
+      await gates[path.split('/')[2]!]
+      return `export function register(on) {\n${modules[path.split('/')[2]!]}\n}\n// load ${++uniqueLoad}`
+    },
     openWorker: async (plugin): Promise<ModWorkerHandle> => {
       const channel = new MessageChannel()
       open.push(channel.port1, channel.port2)
@@ -820,6 +823,33 @@ describe('ui.render — a pane drawn, pressed, redrawn', () => {
 
     await runtime.reconcile([ref('bar'), ref('weather')])
     expect(await drawnBy()).toEqual(['bar', 'weather'])
+  })
+
+  it('a switched-off plugin is marked stale before the rest of the reconcile finishes', async () => {
+    let openGate!: () => void
+    const slow = new Promise<void>(resolve => { openGate = resolve })
+    const gates: Record<string, Promise<void>> = {}
+    const { runtime, stale } = world({
+      bar: `on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+        const { Box, Text } = $.ui.resolve(e)
+        return Box({ flexDirection: 'column', children: [await next(e), Text({ children: ['BAR'] })] })
+      })`,
+      weather: `on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+        const { Text } = $.ui.resolve(e)
+        return Text({ children: ['SUNNY'] })
+      })`,
+      clock: `on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => next(e))`,
+    }, gates)
+    const ref = (plugin: string): ModModuleRef => ({ plugin, path: `/plugins/${plugin}/hooks/register.js` })
+    await runtime.reconcile([ref('bar'), ref('weather')])
+    await runtime.ready
+    gates.clock = slow
+    let done = false
+    const run = runtime.reconcile([ref('weather'), ref('clock')]).then(() => { done = true })
+    await vi.waitFor(() => expect(stale()).toContainEqual({ plugin: 'bar' }))
+    expect(done).toBe(false)
+    openGate()
+    await run
   })
 
   it('a runtime marks each plugin hooking a site stale once it is up, so a client that asked before it came up draws again', async () => {

@@ -935,6 +935,13 @@ export class ModRuntime implements TurnExtensions {
       void this.options.builds?.forget(seat.ref).catch(() => undefined)
       outcome.removed.push(seat.ref.path)
     }
+    // Told now, not at the end: the rest of this reconcile may wait on module
+    // reads, and a drawing that was in flight still holds the removed hook
+    // until the clients ask again. Plugins switched on are told at the end.
+    for (const plugin of redraw) {
+      if (!this.disposed) this.emitUi({ kind: 'stale', stale: { plugin } })
+    }
+    redraw.clear()
     const started: string[] = []
     for (const seat of [...this.seats]) {
       if (this.disposed) return outcome
