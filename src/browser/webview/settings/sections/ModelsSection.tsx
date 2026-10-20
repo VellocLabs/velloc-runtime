@@ -157,6 +157,27 @@ function sameOrder(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((id, i) => id === b[i]);
 }
 
+/** How many unechoed order writes are remembered (`settleEchoedOrder`). */
+const MAX_UNECHOED_ORDERS = 16;
+
+/**
+ * Settles `written` (orders this page wrote that nothing has echoed yet,
+ * oldest first) against an echoed `order`. The host echoes writes in order,
+ * so the echo is the OLDEST equal write: it and every write before it are
+ * dropped. Returns whether the echo may be shown: not while a newer write is
+ * still unechoed — the list shows that order, and moving it back would make
+ * the next drop look current and write nothing. An unwritten order shows.
+ */
+export function settleEchoedOrder(
+  written: string[][],
+  order: readonly string[],
+): boolean {
+  const index = written.findIndex((w) => sameOrder(w, order));
+  if (index < 0) return true;
+  written.splice(0, index + 1);
+  return written.length === 0;
+}
+
 /**
  * Arrow-key reordering moves the row at once but writes the order only once
  * the keys have been still this long (or the grip loses focus): holding or
@@ -477,6 +498,8 @@ export function ModelsSection({
     order: string[];
     timer: ReturnType<typeof setTimeout>;
   } | null>(null);
+  /** Orders written here whose echo has not arrived (`settleEchoedOrder`). */
+  const unechoedOrdersRef = React.useRef<string[][]>([]);
   /** The latest `writeOrder` / `flushKeyboardOrder`, for the reorder timer
    *  and the unmount flush, which outlive the render that armed them. */
   const writeOrderRef = React.useRef<(order: string[]) => void>(() => {});
@@ -639,10 +662,12 @@ export function ModelsSection({
         };
         if (payload.configs) setConfigs(pinEnforcedTrust(payload.configs));
         setActiveProviderId(payload.activeProviderId);
-        // An arrow-key reorder still waiting to be written stays on screen:
-        // the event describes the order before it.
-        if (Array.isArray(payload.order) && !keyboardOrderRef.current) {
-          setOrder(payload.order);
+        // An arrow-key reorder still waiting to be written stays on screen,
+        // and so does a newer order already written: the event describes
+        // the order before either.
+        if (Array.isArray(payload.order)) {
+          const current = settleEchoedOrder(unechoedOrdersRef.current, payload.order);
+          if (current && !keyboardOrderRef.current) setOrder(payload.order);
         }
       }
     });
@@ -1642,7 +1667,12 @@ export function ModelsSection({
     return sameOrder(next, order) ? null : next;
   };
   const writeOrder = (next: string[]) => {
+    const written = unechoedOrdersRef.current;
+    written.push(next);
+    if (written.length > MAX_UNECHOED_ORDERS) written.shift();
     void providersSetOrder(bridge, next).catch(() => {
+      // Nothing will echo a failed write; the re-read shows the stored order.
+      unechoedOrdersRef.current = [];
       void reload();
     });
   };

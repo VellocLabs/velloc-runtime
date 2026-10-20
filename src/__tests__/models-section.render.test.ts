@@ -10,7 +10,7 @@ import {
   waitFor,
 } from '@testing-library/react'
 
-import { ModelsSection } from '../browser/webview/settings/sections/ModelsSection'
+import { ModelsSection, settleEchoedOrder } from '../browser/webview/settings/sections/ModelsSection'
 import { SettingsBridgeContext } from '../browser/webview/nexusSettingsBridge'
 import type { NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
@@ -1840,6 +1840,76 @@ describe('ModelsSection provider order', () => {
     await screen.findByTestId('models-provider-row-anthropic')
     await new Promise(r => setTimeout(r, 0))
     expect(rowIds()).toEqual([CUSTOM_ID, 'anthropic', 'openai'])
+  })
+
+  // The host echoes every order write as a `providers.changed`. The page
+  // keeps a newer written order on screen when an older write's echo
+  // arrives, even mid-drag: a drop compares its order against the list, so
+  // a list moved back to the older order would make the drop look current
+  // and write nothing.
+  it('keeps a drop whose order an older write echoed late would have put back on screen', async () => {
+    const h = makeHomeHarness()
+    renderHome(h)
+    const [idA, idB] = homeCatalog.providers.map(p => p.id)
+    await screen.findByTestId(`models-provider-row-${idB}`)
+    expect(rowIds()).toEqual([idA, idB, CUSTOM_ID])
+
+    const drag = async (id: string, onto: string) => {
+      const grip = screen.getByTestId(`models-provider-grip-${id}`)
+      fireEvent.pointerDown(grip, { button: 0, pointerId: 1 })
+      const spy = pointerOver(onto)
+      fireEvent.pointerMove(grip, { pointerId: 1, clientX: 5, clientY: 5 })
+      spy.mockRestore()
+      return grip
+    }
+    const drop = (grip: HTMLElement) => fireEvent.pointerUp(grip, { pointerId: 1 })
+
+    // Two drags, neither echoed yet.
+    drop(await drag(idB, idA))
+    const first = [idB, idA, CUSTOM_ID]
+    await waitFor(() => expect(h.calls.setOrder).toEqual([first]))
+    drop(await drag(idA, idB))
+    const second = [idA, idB, CUSTOM_ID]
+    await waitFor(() => expect(h.calls.setOrder).toEqual([first, second]))
+
+    // A third drag back to the first order; the first write's echo lands
+    // while it is in flight.
+    const grip = await drag(idA, idB)
+    expect(rowIds()).toEqual(first)
+    act(() => h.emitChanged({ order: first, reason: 'order' }))
+    drop(grip)
+    await waitFor(() => expect(h.calls.setOrder).toEqual([first, second, first]))
+    expect(rowIds()).toEqual(first)
+
+    // The second write's echo is older than what the list shows too.
+    act(() => h.emitChanged({ order: second, reason: 'order' }))
+    expect(rowIds()).toEqual(first)
+    // The third's settles it…
+    act(() => h.emitChanged({ order: first, reason: 'order' }))
+    expect(rowIds()).toEqual(first)
+    // …and an order written elsewhere is shown again.
+    const elsewhere = [CUSTOM_ID, idB, idA]
+    act(() => h.emitChanged({ order: elsewhere, reason: 'order' }))
+    expect(rowIds()).toEqual(elsewhere)
+    expect(h.calls.setOrder).toHaveLength(3)
+  })
+
+  // Drag, drag back, drag again writes [A, B, A]; the echoes arrive in write
+  // order. The first echo is A's OLDEST write, not its newest: reading it as
+  // the newest would settle the list at once, and B's echo would then pass
+  // as another surface's order and move the list back to B.
+  it('settles an echo against the oldest equal write', () => {
+    const a = ['a', 'b']
+    const b = ['b', 'a']
+    const written = [a, b, a]
+    expect(settleEchoedOrder(written, a)).toBe(false)
+    expect(written).toEqual([b, a])
+    expect(settleEchoedOrder(written, b)).toBe(false)
+    expect(written).toEqual([a])
+    expect(settleEchoedOrder(written, a)).toBe(true)
+    expect(written).toEqual([])
+    // Nothing written: any order is another surface's and shows.
+    expect(settleEchoedOrder(written, b)).toBe(true)
   })
 
   // H5: holding or tapping an arrow is one gesture — one write, not one per
