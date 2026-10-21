@@ -24,6 +24,7 @@ import {
 } from '../../lifecycleHooks/permissionRequestHooks'
 import { applyRuleEdits } from '../../permissions/ruleUpdates'
 import { isToolAllowedInPlanMode, planModeRejectMessage } from '../../permissions/planMode'
+import { confinedFileAccessDenial, isLocalAccessConfined } from '../../permissions/chatLocalAccess'
 import { planDocPath } from '../../utils/planFiles'
 import {
   getScratchpadDirectoryPath,
@@ -248,6 +249,26 @@ function planModeGate({ tool, rawInput, callContext, ruleSet }: GateInputs): Too
  * the allow it settled on (`settled`), or nothing decided. Bypass modes skip
  * its non-safety asks.
  */
+/** A chat session's file tools stay inside its memory, skill and upload roots, in every mode. */
+function confinedSessionGate({ tool, rawInput, callContext }: GateInputs): ToolPermissionVerdict | null {
+  if (!isLocalAccessConfined(callContext.options.templateType)) return null
+  const skillRoots = callContext.options.commands
+    .map(command => command.baseDir)
+    .filter((dir): dir is string => typeof dir === 'string' && dir.length > 0)
+  const message = confinedFileAccessDenial(tool.name, rawInput, {
+    cwd: callContext.options.cwd,
+    memoryDir: memoryDirOf(callContext),
+    skillRoots,
+  })
+  if (!message) return null
+  return {
+    decision: 'deny',
+    message,
+    log: `[tool] ${tool.name} denied by confined-session gate`,
+    reason: message,
+  }
+}
+
 async function fileToolGate(
   inputs: GateInputs,
 ): Promise<{ verdict: ToolPermissionVerdict } | { settled: ToolPermissionResult } | null> {
@@ -400,6 +421,9 @@ export async function decideToolPermission(
   const isFileTool = FILE_READ_TOOLS.has(tool.name) || FILE_WRITE_TOOLS.has(tool.name)
   const safetyAsk = (hasExplicitAllowRule: boolean) =>
     filePathSafetyAsk(tool, rawInput, callContext, ruleSet, hasExplicitAllowRule)
+
+  const confinedDenial = confinedSessionGate(inputs)
+  if (confinedDenial) return confinedDenial
 
   if (after) {
     if (after.stage === 'rule' && !isFileTool) {

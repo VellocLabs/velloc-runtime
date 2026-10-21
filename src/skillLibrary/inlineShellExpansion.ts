@@ -1,6 +1,7 @@
 
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import { createBashHookCommandRunner } from '../lifecycleHooks/hookCommandRunner'
+import { isLocalAccessConfined } from '../permissions/chatLocalAccess'
 
 export type PromptShellRunner = (
   command: string,
@@ -58,8 +59,8 @@ export async function expandShellSnippets(
   return result
 }
 
-// Expands shell snippets in a skill body. Skipped in plan mode and when no
-// shell runner is available, leaving the body as written.
+// Expands shell snippets in a skill body. Skipped in plan mode, in a chat
+// session, and when no shell runner is available, leaving the body as written.
 export async function expandSkillBodyShell(
   body: string,
   context: ToolCallContext,
@@ -69,6 +70,10 @@ export async function expandSkillBodyShell(
   }
 
   if (context.readAppState().permissionRules.mode === 'plan') {
+    return body
+  }
+
+  if (isLocalAccessConfined(context.options.templateType)) {
     return body
   }
 

@@ -100,16 +100,14 @@ describe('templateRegistry — manifest parse', () => {
     expect(hasTemplate('chat')).toBe(true)
     const t = getTemplate('chat')!
     expect(t.config.type).toBe('chat')
-    // Unified model: deferredTools accepts a GROUP (`shell`) alongside skills.
-    expect(t.config.deferredTools).toEqual(['shell', 'browser', 'a2ui', 'agent-teams'])
-    // `tools:` lists the EAGER groups; expand to tool names. shell is DEFERRED
-    // (listed in deferredTools, not tools:) so Bash is not eager; read/edit/webfetch
-    // are eager; a2ui_* / Team* defer.
+    expect(t.config.deferredTools).toEqual(['browser', 'a2ui'])
+    // `tools:` lists the EAGER groups; expand to tool names. read/edit/webfetch
+    // are eager (file tools confined at the gate); no shell at all; a2ui_* defer.
     const eager = expandGroups(t.config.tools ?? [])
     expect(eager).toContain('Read') // read group
     expect(eager).toContain('WebFetch') // webfetch group
     expect(eager).toContain('Write') // edit group (now eager)
-    expect(eager).not.toContain('Bash') // shell deferred (in deferredTools)
+    expect(eager).not.toContain('Bash') // no shell group
     expect(eager).not.toContain('TodoWrite') // todo group excluded
     expect(eager).not.toContain('a2ui_create_surface') // deferred
     expect(eager).not.toContain('TeamCreate')
@@ -127,7 +125,8 @@ describe('templateRegistry — manifest parse', () => {
       expect(agent, `agent should keep ${t}`).toContain(t)
     }
     expect(deferredOf('agent')).toEqual(['a2ui', 'agent-teams'])
-    // chat = read + edit + webfetch; the `shell` GROUP + browser/a2ui/teams DEFER.
+    // chat = read + edit (confined to memory / skills / uploads) + webfetch;
+    // browser/a2ui DEFER; no shell, not even deferred.
     const chat = eagerOf('chat')
     for (const t of ['Read', 'Write', 'Edit', 'WebFetch']) {
       expect(chat, `chat should keep ${t}`).toContain(t)
@@ -135,7 +134,7 @@ describe('templateRegistry — manifest parse', () => {
     for (const t of ['Bash', 'EnterPlanMode', 'Agent', 'CronCreate']) {
       expect(chat, `chat should exclude/defer ${t}`).not.toContain(t)
     }
-    expect(deferredOf('chat')).toEqual(['shell', 'browser', 'a2ui', 'agent-teams'])
+    expect(deferredOf('chat')).toEqual(['browser', 'a2ui'])
     // code = dev: shell + plan + sub-agents eager, NO scheduling. Mutation is
     // `SuperEdit` ONLY — the `edit` group (Write/Edit/NotebookEdit) was dropped
     // so a coding session has a single, permission-gated write surface. The
@@ -1571,15 +1570,11 @@ describe('templateRegistry — the `!holder @profile` gate', () => {
 describe('templateRegistry — tool resolution helpers', () => {
   it('resolveDeferrableSkills: the template deferredTools is the SOLE source (groups + skills)', () => {
     // TEMPLATE-ONLY: the hosted manifest is not even consulted (no param). chat
-    // lists [shell, browser, a2ui, agent-teams]; a GROUP (shell) carries its
-    // toolNames, a SKILL does not. MCP servers always defer.
+    // lists [browser, a2ui]; a SKILL unit carries no toolNames. MCP servers
+    // always defer. (Group units: next test.)
     const result = resolveDeferrableSkills(['mcp__x'], getTemplate('chat')!.config)
-    expect(result.map(u => u.name)).toEqual([
-      'shell', 'browser', 'a2ui', 'agent-teams', 'mcp__x',
-    ])
+    expect(result.map(u => u.name)).toEqual(['browser', 'a2ui', 'mcp__x'])
     expect(result.every(u => u.defaultDeferred)).toBe(true)
-    // The `shell` GROUP unit carries its tool names; a SKILL unit does not.
-    expect(result.find(u => u.name === 'shell')!.toolNames).toContain('Bash')
     expect(result.find(u => u.name === 'browser')!.toolNames).toBeUndefined()
   })
 

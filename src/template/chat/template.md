@@ -1,11 +1,14 @@
 ---
 type: chat
-description: Conversation — read + edit + web + chat; shell/browser/UI deferred (activate on demand); no planning or scheduling.
+description: Conversation — web + chat + skills + memory; no access to the user's local files or shell; browser/UI deferred (activate on demand); no planning or scheduling.
 # Launcher name/title/icon for this type live in `src/template/index.md`.
 # A light conversational type. EAGER groups (tools:): read = Read/Glob/Grep,
 # edit = Write/Edit/NotebookEdit, webfetch = WebFetch, ask = AskUserQuestion,
 # skills = Skill/ToolSearch, misc = Sleep. EXCLUDED by omission: subagent, plan,
-# todo, schedule.
+# todo, schedule, shell.
+# Security: in a chat session the file tools are confined by the chat
+# local-access gate — read and write inside the memory dir, read-only inside
+# loaded skill roots and the session's uploads dir, denied everywhere else.
 tools:
   - read
   - edit
@@ -14,10 +17,8 @@ tools:
   - skills
   - misc
 # DEFERRED (deferredTools:) — loaded but hidden until Skill()/ToolSearch: the
-# `shell` GROUP (Bash/PowerShell — a chat surfaces it only when a command is
-# actually needed) plus the browser / a2ui / agent-teams SKILLS. This is the
-# unified model: a GROUP or a SKILL can be deferred here.
-deferredTools: [shell, browser, a2ui, agent-teams]
+# browser / a2ui SKILLS. A GROUP or a SKILL can be deferred here.
+deferredTools: [browser, a2ui]
 ---
 
 ## prompt
