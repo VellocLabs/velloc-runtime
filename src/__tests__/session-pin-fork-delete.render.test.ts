@@ -267,6 +267,22 @@ describe('useSessionManager pin, fork and delete', () => {
       expect.any(String),
       'Plan',
       true,
+      undefined,
+    )
+  })
+
+  it('a retargeted fork carries the retarget and leaves the copy untitled', () => {
+    const { result, onRequestFork } = mount()
+    act(() => {
+      result.current.forkSession('a', 'cut-1', { retarget: { templateType: 'code', projectRoot: '/work/app' } })
+    })
+    expect(onRequestFork).toHaveBeenCalledWith(
+      'a',
+      'cut-1',
+      expect.any(String),
+      undefined,
+      undefined,
+      { templateType: 'code', projectRoot: '/work/app' },
     )
   })
 

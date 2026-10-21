@@ -28,6 +28,8 @@ export const TOOL_GROUPS = {
   webfetch: ['WebFetch'],
   /** Ask the user a structured multiple-choice question. */
   ask: ['AskUserQuestion'],
+  /** Offer to continue a chat in a Code session (chat only). */
+  codehandoff: ['ContinueInCode'],
   /** Scheduled + remote-triggered routines. */
   schedule: [
     'CronCreate',
@@ -64,6 +66,8 @@ export const TOOL_GROUPS = {
 export const CHILD_AGENT_DENYLIST: readonly string[] = [
   ...TOOL_GROUPS.plan,
   ...TOOL_GROUPS.ask,
+  // The offer card lives in the main thread's transcript only.
+  ...TOOL_GROUPS.codehandoff,
   // The control tools from the `subagent` group — everything except `Agent`
   // itself, whose exposure is mode-gated (getAllAgentDisallowedTools).
   ...TOOL_GROUPS.subagent.filter((name) => name !== 'Agent'),

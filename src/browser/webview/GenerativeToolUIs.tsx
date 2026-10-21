@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { AskUserQuestionToolUI } from './AskUserQuestionToolUI'
 import { SkillToolUI } from './SkillToolUI'
+import { ContinueInCodeToolUI } from './ContinueInCodeToolUI'
 import { useT } from './i18n'
 import {
   A2UI_CREATE_SURFACE,
@@ -331,6 +332,7 @@ export function GenerativeToolUIs() {
       <ContactFormToolUI />
       <AskUserQuestionToolUI />
       <SkillToolUI />
+      <ContinueInCodeToolUI />
       <A2uiCreateSurfaceToolUI />
       <A2uiUpdateComponentsToolUI />
       <A2uiUpdateDataModelToolUI />

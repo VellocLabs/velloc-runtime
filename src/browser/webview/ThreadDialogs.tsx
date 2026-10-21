@@ -171,6 +171,8 @@ export type ProjectFolderDialogProps = {
   /** May this connection open the host's folder picker? Default: yes. */
   canOpenFolder?: boolean
   onCancel: () => void
+  /** The close button's label. Default: cancel and discard the session. */
+  cancelLabel?: string
 }
 
 /**
@@ -204,6 +206,7 @@ export function ProjectFolderDialog({
   knownFolders = [],
   canOpenFolder = true,
   onCancel,
+  cancelLabel,
 }: ProjectFolderDialogProps) {
   const t = useT()
   const [busy, setBusy] = useState(false)
@@ -255,7 +258,7 @@ export function ProjectFolderDialog({
           type="button"
           onClick={handleCancel}
           disabled={busy}
-          aria-label={t('projectFolder.cancel')}
+          aria-label={cancelLabel ?? t('projectFolder.cancel')}
           className="aui-project-folder-dialog-close absolute end-3 top-3 flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         >
           <XIcon className="size-4" aria-hidden="true" />

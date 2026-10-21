@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { sessionActivityTime } from './sessionTimeBucket'
 import { hiddenSessionIds, pickNeighborSession } from './sessionVisibility'
 import { randomUuid } from '../../utils/randomUuid'
+import type { ForkRetarget } from '../worker/sharedWorkerProtocol'
 
 function createFallbackSessionId(): string {
   return randomUuid()
@@ -130,6 +131,8 @@ export type SessionManagerOptions = {
      * whole conversation; "Fork from here" leaves it unset.
      */
     keepCutMessage?: boolean,
+    /** The copy's own type and folder ("Continue in Code"). */
+    retarget?: ForkRetarget,
   ) => void
 }
 
@@ -153,7 +156,7 @@ export type SessionManagerState = {
     fromSessionId: string,
     /** Absent = copy the whole conversation. */
     cutUuid: string | undefined,
-    options?: { keepCutMessage?: boolean },
+    options?: { keepCutMessage?: boolean; retarget?: ForkRetarget },
   ) => string
   updateSessionMeta: (
     sessionId: string,
@@ -668,7 +671,7 @@ export function useSessionManager(
   const forkSession = useCallback((
     fromSessionId: string,
     cutUuid: string | undefined,
-    options?: { keepCutMessage?: boolean },
+    options?: { keepCutMessage?: boolean; retarget?: ForkRetarget },
   ): string => {
     const requestId = randomUuid()
     // The source's REAL title — a user rename or the AI title, i.e. the
@@ -686,8 +689,10 @@ export function useSessionManager(
       fromSessionId,
       cutUuid,
       requestId,
-      sourceTitle || undefined,
+      // A retargeted copy is a new piece of work, not "<title> (fork)".
+      options?.retarget ? undefined : sourceTitle || undefined,
       options?.keepCutMessage,
+      options?.retarget,
     )
     return requestId
   }, [])

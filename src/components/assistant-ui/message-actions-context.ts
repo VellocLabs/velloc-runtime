@@ -17,6 +17,10 @@ export type MessageActionsContextValue = {
   onRewindToMessage?: (cutUuid: string) => void
   /** Retry a final provider API-error turn from its previous visible prompt. */
   onRetryProviderApiError?: (prompt: string) => void | Promise<void>
+  /** Open the folder chooser that continues this chat in a Code session. */
+  onRequestContinueInCode?: (toolCallId: string) => void
+  /** Tool calls whose offer the user already took in this window. */
+  continuedInCode?: ReadonlySet<string>
 }
 
 export const MessageActionsContext = createContext<MessageActionsContextValue>(

@@ -128,7 +128,7 @@ describe('templateRegistry — manifest parse', () => {
     // chat = read + edit (confined to memory / skills / uploads) + webfetch;
     // browser/a2ui DEFER; no shell, not even deferred.
     const chat = eagerOf('chat')
-    for (const t of ['Read', 'Write', 'Edit', 'WebFetch']) {
+    for (const t of ['Read', 'Write', 'Edit', 'WebFetch', 'ContinueInCode']) {
       expect(chat, `chat should keep ${t}`).toContain(t)
     }
     for (const t of ['Bash', 'EnterPlanMode', 'Agent', 'CronCreate']) {
@@ -1639,8 +1639,9 @@ describe('templateRegistry — tool resolution helpers', () => {
     const eagerTools = expandGroups(cfg.tools ?? [])
     const deferred = new Set(cfg.deferredTools ?? [])
     // Absent from `agent` on purpose: `exec` (subsumed by agent's real Bash), `SuperEdit` (agent edits through hosted
-    // Write/Edit), and `SuperShell` (registered only by a manifest listing `supershell`; none is bundled).
-    const agentExempt = new Set(['Exec', 'SuperEdit', 'SuperShell'])
+    // Write/Edit), `SuperShell` (registered only by a manifest listing `supershell`; none is bundled), and
+    // `ContinueInCode` (a chat's offer to move into a Code session; meaningless elsewhere).
+    const agentExempt = new Set(['Exec', 'SuperEdit', 'SuperShell', 'ContinueInCode'])
     for (const tool of allBundledTools('default')) {
       if (agentExempt.has(tool.name)) continue
       const isDeferredSkillTool =

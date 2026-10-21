@@ -2,8 +2,9 @@ import type {
   SharedWorkerInboundMessage,
   SessionWorkerInboundMessage,
   SessionCard,
+  ForkRetarget,
 } from './sharedWorkerProtocol'
-import { isSafeSessionId, isSessionMessage } from './sharedWorkerProtocol'
+import { isForkRetarget, isSafeSessionId, isSessionMessage } from './sharedWorkerProtocol'
 import { traceLine } from '../../utils/debugLog'
 import { setKernelControlPort } from '../workerKernel/IsolatedWorkerKernel'
 
@@ -49,6 +50,7 @@ export interface PortMessageRouterHost {
     moveCutMessageToDraft?: boolean,
     title?: string,
     replacesSource?: boolean,
+    retarget?: ForkRetarget,
   ): void
   // Background Tasks drawer control surface.
   handleTaskStop(
@@ -210,6 +212,7 @@ export class PortMessageRouter {
           message.moveCutMessageToDraft,
           message.title,
           message.replacesSource === true,
+          message.retarget,
         )
         return
       }
@@ -410,6 +413,9 @@ function validateInboundShape(
       if (!isSafeSessionId(m.fromSessionId)) return badId('fromSessionId')
       if (m.cutUuid !== undefined && typeof m.cutUuid !== 'string') {
         return badField('cutUuid', 'a string')
+      }
+      if (m.retarget !== undefined && !isForkRetarget(m.retarget)) {
+        return badField('retarget', 'a {templateType, projectRoot} pair of non-empty strings')
       }
       return null
 

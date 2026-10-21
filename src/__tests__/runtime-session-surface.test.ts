@@ -391,6 +391,19 @@ describe('session surface over the hub', () => {
     expect(fork.sessionOf!({ fromSessionId: 's2', sessionId: 's1' })).toBe('s2')
     expect(fork.sessionOf!({ sessionId: 's1' })).toBeUndefined()
     await expect(connection.request('session.fork', { sessionId: 's1', cutUuid: 'u' })).rejects.toMatchObject({ code: 'bad_payload' })
+    // A retargeted fork binds its copy to a folder: below `full`, only a known project.
+    rig.manager.known = ['D:\\work\\app']
+    const control = await connect(rig, 'control')
+    await control.request('session.fork', { fromSessionId: 's1', retarget: { templateType: 'code', projectRoot: 'd:/work/app/' } })
+    expect(rig.manager.dispatched.at(-1)).toEqual({
+      type: 'session.fork',
+      fromSessionId: 's1',
+      retarget: { templateType: 'code', projectRoot: 'D:\\work\\app' },
+    })
+    await expect(
+      control.request('session.fork', { fromSessionId: 's1', retarget: { templateType: 'code', projectRoot: 'C:/Users/me/secrets' } }),
+    ).rejects.toMatchObject({ code: 'forbidden_scope' })
+    control.close()
     expect(await connection.request('session.list')).toEqual({ sessions: [{ sessionId: 's1', initialized: true }] })
     await connection.request('task.stop', { sessionId: 's1', requestId: 'q' })
     expect(rig.manager.dispatched.at(-1)).toEqual({ type: 'task.stop', sessionId: 's1', requestId: 'q' })

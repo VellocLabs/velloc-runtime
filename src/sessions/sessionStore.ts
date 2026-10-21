@@ -972,6 +972,28 @@ function lastMessageUuid(
   return undefined
 }
 
+/**
+ * The prompt that started the turn holding tool call `toolCallId`: the nearest
+ * real user prompt before the assistant message that made the call. `null`
+ * when the call or such a prompt is not in `entries`. "Continue in Code" forks
+ * EXCLUSIVELY at it, so the copy re-opens that prompt in its composer. (F-17)
+ */
+export function resolvePromptCutForToolCall(
+  entries: readonly unknown[],
+  toolCallId: string,
+): string | null {
+  const callIndex = entries.findIndex(entry => toolPartIds(entry, 'call').includes(toolCallId))
+  for (let i = callIndex - 1; i >= 0; i--) {
+    const entry = entries[i]
+    if (!isMessageLike(entry as BrowserTranscriptEntry)) continue
+    const message = entry as Message
+    if (extractComposerDraftText(message) && typeof message.uuid === 'string' && message.uuid) {
+      return message.uuid
+    }
+  }
+  return null
+}
+
 // Copies the transcript up to `cutUuid` (the whole conversation when it is
 // undefined) into a new session. Returns null when the cut message is not
 // found.

@@ -296,6 +296,8 @@ import { useMultiSessionClients } from './useMultiSessionClients'
 import { shouldDismissBootWelcome } from './assistantUiAdapter'
 import { createSessionMessageCallbackFactory } from './sessionMessageCallbacks'
 import { createForkSendRegistry, deliverForkSend } from './forkSend'
+import type { ForkRetarget } from '../worker/sharedWorkerProtocol'
+import type { ContinueInCodeFolder } from './sessionMessageCallbacks'
 import {
   isRestoredSessionPointer,
   readStoredActiveSessionId,
@@ -664,12 +666,14 @@ export function MultiSessionShell({
       requestId: string,
       sourceTitle?: string,
       keepCutMessage?: boolean,
+      retarget?: ForkRetarget,
     ) => {
       ownForkRequestsRef.current.add(requestId)
       sessionChannelRef.current?.request('session.fork', {
         fromSessionId,
         ...(cutUuid !== undefined ? { cutUuid } : {}),
         requestId,
+        ...(retarget ? { retarget } : {}),
         ...(keepCutMessage ? {} : { moveCutMessageToDraft: true }),
         ...(sourceTitle
           ? { title: t('session.forkTitle', { title: sourceTitle }) }
@@ -3859,6 +3863,32 @@ export function MultiSessionShell({
     [forkSession, forkSendRegistry],
   )
 
+  // "Continue in Code": fork a chat EXCLUSIVELY at the prompt that led to the
+  // offer, as a `code` session bound to the chosen folder; the ack switches to
+  // it and the prompt waits in its composer. Resolves false when no folder was
+  // chosen. (F-17)
+  const handleContinueInCode = useCallback(
+    async (fromSessionId: string, cutUuid: string, folder: ContinueInCodeFolder) => {
+      let path = 'path' in folder ? folder.path.trim() : ''
+      if ('pick' in folder) {
+        try {
+          const result = await pickProjectFolder(hostBridgeTransport)
+          if (result.canceled || !result.path) return false
+          path = result.path.trim()
+        } catch (error) {
+          console.warn('Failed to open the project-folder picker:', error)
+          return false
+        }
+      }
+      if (!path) return false
+      addRecentFolder(path)
+      writeLastFolderForType('code', path)
+      forkSession(fromSessionId, cutUuid, { retarget: { templateType: 'code', projectRoot: path } })
+      return true
+    },
+    [forkSession, hostBridgeTransport],
+  )
+
   // The sidebar's Fork: copy the whole conversation; the `session.forked` ack
   // switches to the copy.
   const handleForkThread = useCallback(
@@ -3874,8 +3904,9 @@ export function MultiSessionShell({
         forkSession,
         handleRewindFromMessage,
         handleSendInForkedSession,
+        handleContinueInCode,
       ),
-    [forkSession, handleRewindFromMessage, handleSendInForkedSession],
+    [forkSession, handleRewindFromMessage, handleSendInForkedSession, handleContinueInCode],
   )
 
   // Re-bind a code session to a known recent folder (chip dropdown pick). The
@@ -4557,6 +4588,7 @@ export function MultiSessionShell({
                   onRenameThread={retitleSession}
                   onForkFromMessage={messageCallbacks.onFork}
                   onSendInForkedSession={messageCallbacks.onSendInFork}
+                  onContinueInCode={messageCallbacks.onContinueInCode}
                   onRewindToMessage={messageCallbacks.onRewind}
                   onPendingQuestionsChange={handlePendingQuestionsChange}
                   onNewThread={openNewSession}

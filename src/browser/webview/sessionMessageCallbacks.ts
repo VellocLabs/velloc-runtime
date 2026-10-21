@@ -7,7 +7,12 @@ export type SessionMessageCallbacks = {
   onRewind: (cutUuid: string) => void
   /** Send a composer message into a forked copy (the composer's Ctrl/Cmd+Alt+Enter). */
   onSendInFork?: (cutUuid: string, message: AppendMessage) => Promise<boolean>
+  /** Continue the conversation in a new Code session bound to `folder` (or the one the user picks). */
+  onContinueInCode?: (cutUuid: string, folder: ContinueInCodeFolder) => Promise<boolean>
 }
+
+/** A folder path, or `pick` to ask the host's folder dialog. */
+export type ContinueInCodeFolder = { path: string } | { pick: true }
 
 /**
  * Builds a factory returning referentially stable per-session fork/rewind callbacks, so the memoized
@@ -22,6 +27,11 @@ export function createSessionMessageCallbackFactory(
     cutUuid: string,
     message: AppendMessage,
   ) => Promise<boolean>,
+  continueInCode?: (
+    sessionId: string,
+    cutUuid: string,
+    folder: ContinueInCodeFolder,
+  ) => Promise<boolean>,
 ): (sessionId: string) => SessionMessageCallbacks {
   const cache = new Map<string, SessionMessageCallbacks>()
   return (sessionId: string) => {
@@ -34,6 +44,12 @@ export function createSessionMessageCallbackFactory(
           ? {
               onSendInFork: (cutUuid: string, message: AppendMessage) =>
                 sendInForkedSession(sessionId, cutUuid, message),
+            }
+          : {}),
+        ...(continueInCode
+          ? {
+              onContinueInCode: (cutUuid: string, folder: ContinueInCodeFolder) =>
+                continueInCode(sessionId, cutUuid, folder),
             }
           : {}),
       }

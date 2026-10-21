@@ -140,6 +140,10 @@ export type SharedWorkerInboundMessage =
       // Set by rewind: the copy replaces the source, keeping its pin and
       // creation time.
       replacesSource?: boolean
+      // The copy becomes a session of this type, bound to `projectRoot`,
+      // instead of carrying the source's. Both or neither. Set by "Continue in
+      // Code" (F-17).
+      retarget?: ForkRetarget
     }
   | {
       type: 'session.subscribe'
@@ -417,6 +421,18 @@ export function isSessionMessage(
  * (`mintTaskHandle`, base36). No separators, no `.`/`..`, bounded length.
  */
 const SAFE_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+
+/** The type and folder a fork's copy takes instead of its source's. */
+export type ForkRetarget = { templateType: string; projectRoot: string }
+
+export function isForkRetarget(value: unknown): value is ForkRetarget {
+  const v = value as Partial<Record<keyof ForkRetarget, unknown>> | null
+  return (
+    typeof v === 'object' && v !== null &&
+    typeof v.templateType === 'string' && v.templateType.length > 0 &&
+    typeof v.projectRoot === 'string' && v.projectRoot.trim().length > 0
+  )
+}
 
 /**
  * Whether a session id from a port message may be used as-is. Session ids

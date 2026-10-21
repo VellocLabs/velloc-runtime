@@ -20,6 +20,7 @@ import { SuperEditTool } from './builtin/superEdit'
 import { SuperShellTool } from './builtin/superShell'
 import { SkillRunTool } from './builtin/skill'
 import { SleepTool } from './builtin/sleepWait'
+import { ContinueInCodeTool } from './builtin/continueInCode'
 import { deferredLoaderTool } from './builtin/toolSearch'
 import { ChecklistTool } from './builtin/todoWrite'
 import { PageReadTool } from './builtin/webFetch/webFetch'
@@ -124,6 +125,8 @@ const SESSION_TOOLS: ToolContractList = [
   AgentListTool,
   // An interruptible wait, for "wait, then continue" flows.
   SleepTool,
+  // A chat's offer to continue in a Code session; only the chat template lists it.
+  ContinueInCodeTool,
   // Loads deferred tools on demand; only offered while deferral is on.
   deferredLoaderTool,
 ]

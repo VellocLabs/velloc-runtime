@@ -604,9 +604,21 @@ export function installSessionSurface(
           return { detail: await host.loadToolDetail(payload.sessionId as string, payload.toolCallId as string) }
         case 'transcript':
           return await host.loadPersistedTranscript(payload.sessionId as string)
+        case 'fork': {
+          // A retargeted fork binds its copy to a folder: the same known-project
+          // rule as `open`.
+          const retarget = payload.retarget as { projectRoot?: unknown } | undefined
+          if (request.conn.scope.mode !== 'full' && retarget?.projectRoot !== undefined) {
+            const known = await host.knownProjectRoots(request.conn.scope.sessions)
+            const projectRoot = knownProjectRootOrRefuse(retarget.projectRoot, known, 'session.fork')
+            host.dispatch(port, managerMessage('session.fork', { ...payload, retarget: { ...retarget, projectRoot } }))
+            return undefined
+          }
+          host.dispatch(port, managerMessage('session.fork', payload))
+          return undefined
+        }
         case 'rename':
         case 'pin':
-        case 'fork':
         case 'delete':
           host.dispatch(port, managerMessage(`session.${act}`, payload))
           return undefined

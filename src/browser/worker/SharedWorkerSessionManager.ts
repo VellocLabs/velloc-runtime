@@ -72,7 +72,9 @@ import type {
   SharedWorkerInboundMessage,
   SessionWorkerInboundMessage,
   SessionCard,
+  ForkRetarget,
 } from './sharedWorkerProtocol'
+import { hasTemplate } from '../../prompting/templateRegistry'
 import type { BrowserLlmSelection } from '../bridge/protocol/nexus_llm'
 import type {
   NexusCurrentSessionPhase,
@@ -569,6 +571,7 @@ export class SharedWorkerSessionManager {
       moveCutMessageToDraft,
       title,
       replacesSource,
+      retarget,
     ) =>
       void this.handleSessionFork(
         port,
@@ -578,6 +581,7 @@ export class SharedWorkerSessionManager {
         moveCutMessageToDraft,
         title,
         replacesSource,
+        retarget,
       ),
     handleTaskStop: (port, message) => this.handleTaskStop(port, message),
     handleTaskResume: (port, message) => this.handleTaskResume(port, message),
@@ -3670,9 +3674,14 @@ export class SharedWorkerSessionManager {
     moveCutMessageToDraft?: boolean,
     title?: string,
     replacesSource?: boolean,
+    retarget?: ForkRetarget,
   ): Promise<void> {
     const storage = this.storage
     if (!storage) return
+    if (retarget && !hasTemplate(retarget.templateType)) {
+      console.warn('[nexus] fork skipped: unknown template type', retarget.templateType)
+      return
+    }
     try {
       const payload = await storage.load(fromSessionId)
       const sourceEntries = Array.isArray(payload) ? payload : []
@@ -3687,8 +3696,11 @@ export class SharedWorkerSessionManager {
       // permission mode) into the fork so the copy is a faithful duplicate, not
       // a reset-to-default thread — the same tail read the rename flow trusts.
       // Transcript-derived fields are recomputed from the cut prefix.
-      const sourceMetadata =
+      const loadedMetadata =
         (await storage.loadSessionMetadata?.(fromSessionId)) ?? undefined
+      const sourceMetadata = retarget
+        ? { ...loadedMetadata, templateType: retarget.templateType, projectRoot: retarget.projectRoot }
+        : loadedMetadata
       const built = buildForkedTranscriptEntries(
         sourceEntries,
         cutUuid,
@@ -3729,7 +3741,8 @@ export class SharedWorkerSessionManager {
         entries: built.entries,
         meta: built.meta,
         toolDetails,
-        projectDir: this.groupedStorage?.projectRouteOf(fromSessionId),
+        // A retargeted copy lives with its new folder, not its source.
+        projectDir: retarget ? undefined : this.groupedStorage?.projectRouteOf(fromSessionId),
         projectRoot: sourceMetadata?.projectRoot,
         templateType: sourceMetadata?.templateType,
       })

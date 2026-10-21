@@ -3373,6 +3373,99 @@ describe('SharedWorkerSessionManager', () => {
     expect(metaWrites[0]!.meta.metadata.messageCount).toBe(1)
   })
 
+  it('a retargeted fork becomes a session of the new type, bound to the new folder, routed there', async () => {
+    // "Continue in Code": a chat forks EXCLUSIVELY at its prompt into a `code`
+    // session bound to the chosen folder. The copy routes to that folder's
+    // project dir, not the source's, and the prompt waits in its composer.
+    const sourceProjectDir = '/home/me/.velloc/projects/chat-sandbox'
+    const routes = new Map<string, string>([['source-session', sourceProjectDir]])
+    const metaWrites: Array<{ sessionId: string; route: string; meta: SessionMetaFile }> = []
+    const storage = {
+      append: vi.fn(async () => {}),
+      readSessionMeta: vi.fn(async () => null),
+      writeSessionMeta: vi.fn(async (sessionId: string, meta: SessionMetaFile) => {
+        metaWrites.push({ sessionId, route: routes.get(sessionId) ?? 'DEFAULT_WORKSPACE', meta })
+      }),
+      load: vi.fn(async (): Promise<BrowserConversationStoragePayload> => [
+        {
+          type: 'user',
+          uuid: 'u1',
+          sessionId: 'source-session',
+          parentUuid: null,
+          timestamp: '2026-01-01T00:00:00.000Z',
+          message: { role: 'user', content: [{ type: 'text', text: 'fix the failing test' }] },
+        } as unknown as BrowserTranscriptEntry,
+      ]),
+      flush: vi.fn(async () => {}),
+      loadSessionMetadata: vi.fn(
+        async (): Promise<BrowserSessionMetadata> => ({ templateType: 'chat', projectRoot: '/home/me/.velloc/shared-workspace/chat' }),
+      ),
+      loadSessionSummary: vi.fn(async (sessionId: string) => ({ sessionId, updatedAt: 1, messageCount: 0 })),
+      projectRouteOf: vi.fn((sessionId: string) => routes.get(sessionId)),
+      setSessionProjectDir: vi.fn((sessionId: string, projectDir: string) => {
+        routes.set(sessionId, projectDir)
+      }),
+      loadToolCallDetail: vi.fn(async () => null),
+      saveToolCallDetail: vi.fn(async () => {}),
+    }
+    const m = (
+      manager as unknown as {
+        storageCoordinator: {
+          storage: BrowserConversationStorageBackend
+          groupedStorage: typeof storage
+          homeDir: string
+        }
+      }
+    ).storageCoordinator
+    m.storage = storage as unknown as BrowserConversationStorageBackend
+    m.groupedStorage = storage
+    m.homeDir = '/home/me'
+
+    const port = createMockPort()
+    manager.handleConnect(port)
+    const forkAcks = () =>
+      port._posted.filter(
+        (msg: unknown) => (msg as SharedWorkerOutboundMessage).type === 'session.forked',
+      ) as Array<Extract<SharedWorkerOutboundMessage, { type: 'session.forked' }>>
+
+    // An unknown type is refused: no copy, no ack.
+    port._simulateMessage({
+      type: 'session.fork',
+      fromSessionId: 'source-session',
+      cutUuid: 'u1',
+      requestId: 'bad',
+      moveCutMessageToDraft: true,
+      retarget: { templateType: 'no-such-type', projectRoot: '/work/app' },
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(forkAcks()).toHaveLength(0)
+    expect(metaWrites).toHaveLength(0)
+
+    port._simulateMessage({
+      type: 'session.fork',
+      fromSessionId: 'source-session',
+      cutUuid: 'u1',
+      requestId: 'continue-1',
+      moveCutMessageToDraft: true,
+      retarget: { templateType: 'code', projectRoot: '/work/app' },
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    const ack = forkAcks()[0]
+    expect(ack?.payload.requestId).toBe('continue-1')
+    const newSessionId = ack!.payload.newSessionId
+    const expectedDir = projectHomeFor('/home/me', '/work/app')
+    expect(storage.setSessionProjectDir).toHaveBeenCalledWith(newSessionId, expectedDir)
+    expect(metaWrites).toHaveLength(1)
+    expect(metaWrites[0]).toMatchObject({ sessionId: newSessionId, route: expectedDir })
+    expect(metaWrites[0]!.meta.metadata).toMatchObject({
+      templateType: 'code',
+      projectRoot: '/work/app',
+      composerDraft: 'fix the failing test',
+      messageCount: 0,
+    })
+  })
+
   it('writeSessionBundle routes, appends, projects, saves sidecars and publishes — the import write path', async () => {
     // The session-import adapter hands a converted session to this one
     // method (fork shares it). Grouped layout: the id is routed to the dir

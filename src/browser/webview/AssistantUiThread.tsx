@@ -60,7 +60,13 @@ import type {
 } from '../bridge/browserBridgeProtocol'
 import type { AgentRuntimeWorkerSnapshot, SessionMcpServerView } from '../worker/workerProtocol'
 import type { NexusTaskSummaryRow } from '../bridge/protocol/ui'
-import { deriveSessionMetadataFromMessages, isConversationResumable } from '../../sessions/sessionStore'
+import {
+  deriveSessionMetadataFromMessages,
+  isConversationResumable,
+  resolvePromptCutForToolCall,
+} from '../../sessions/sessionStore'
+import { CONTINUE_IN_CODE_TOOL_ID } from '../../toolkit/builtin/continueInCode'
+import type { ContinueInCodeFolder } from './sessionMessageCallbacks'
 import { BrowserComposerAttachmentAdapter } from './BrowserComposerAttachmentAdapter'
 import { getSupportsImageInputForModel } from '../../engine/contextWindow'
 import {
@@ -236,6 +242,7 @@ const GENERATIVE_TOOL_NAMES = new Set([
   A2UI_UPDATE_COMPONENTS,
   A2UI_UPDATE_DATA_MODEL,
   A2UI_DELETE_SURFACE,
+  CONTINUE_IN_CODE_TOOL_ID,
 ])
 
 export type AssistantUiThreadProps = {
@@ -357,6 +364,12 @@ export type AssistantUiThreadProps = {
     cutUuid: string,
     message: AppendMessage,
   ) => Promise<boolean>
+  /**
+   * Continue this chat in a new Code session bound to a folder, forked at
+   * `cutUuid` (exclusive). Resolves false when no folder was chosen. Bound to
+   * this thread's session by MultiSessionShell.
+   */
+  onContinueInCode?: (cutUuid: string, folder: ContinueInCodeFolder) => Promise<boolean>
   /** Rewind the conversation to a message uuid (restore + discard after). */
   onRewindToMessage?: (cutUuid: string) => void
   /**
@@ -597,6 +610,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   onOpenPlanPanel,
   onForkFromMessage,
   onSendInForkedSession,
+  onContinueInCode,
   onRewindToMessage,
   sessions,
   activeSessionId,
@@ -655,6 +669,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
       onOpenPlanPanel={readOnly ? undefined : onOpenPlanPanel}
       onForkFromMessage={readOnly ? undefined : onForkFromMessage}
       onSendInForkedSession={readOnly ? undefined : onSendInForkedSession}
+      onContinueInCode={readOnly ? undefined : onContinueInCode}
       onRewindToMessage={readOnly ? undefined : onRewindToMessage}
       sessions={sessions}
       activeSessionId={activeSessionId}
@@ -713,6 +728,7 @@ function InteractiveAssistantUiThread({
   onOpenPlanPanel,
   onForkFromMessage,
   onSendInForkedSession,
+  onContinueInCode,
   onRewindToMessage,
   sessions,
   activeSessionId,
@@ -791,13 +807,48 @@ function InteractiveAssistantUiThread({
     },
     [state.transcriptMessages, submitActionMessage, submitPrompt],
   )
+  // "Continue in Code": the offer card opens this folder chooser; a chosen
+  // folder forks the chat at the prompt behind the offer. Offers taken in this
+  // window fold their cards. (F-17)
+  const [continueInCodeCall, setContinueInCodeCall] = useState<string | null>(null)
+  const [continuedInCode, setContinuedInCode] = useState<ReadonlySet<string>>(() => new Set())
+  const handleRequestContinueInCode = useCallback((toolCallId: string) => {
+    setContinueInCodeCall(toolCallId)
+  }, [])
+  const finishContinueInCode = useCallback(
+    async (folder: ContinueInCodeFolder) => {
+      const toolCallId = continueInCodeCall
+      if (!toolCallId || !onContinueInCode) return
+      const cut = resolvePromptCutForToolCall(state.transcriptMessages, toolCallId)
+      if (!cut) {
+        setContinueInCodeCall(null)
+        return
+      }
+      if (await onContinueInCode(cut, folder)) {
+        setContinuedInCode(previous => new Set(previous).add(toolCallId))
+        setContinueInCodeCall(null)
+      }
+    },
+    [continueInCodeCall, onContinueInCode, state.transcriptMessages],
+  )
   const messageActionsValue = useMemo(
     () => ({
       onForkFromMessage: readOnly ? undefined : onForkFromMessage,
       onRewindToMessage: readOnly ? undefined : onRewindToMessage,
       onRetryProviderApiError: readOnly ? undefined : handleRetryProviderApiError,
+      onRequestContinueInCode:
+        readOnly || !onContinueInCode ? undefined : handleRequestContinueInCode,
+      continuedInCode,
     }),
-    [readOnly, onForkFromMessage, onRewindToMessage, handleRetryProviderApiError],
+    [
+      readOnly,
+      onForkFromMessage,
+      onRewindToMessage,
+      handleRetryProviderApiError,
+      onContinueInCode,
+      handleRequestContinueInCode,
+      continuedInCode,
+    ],
   )
   const [providerPrompt, setProviderPrompt] = useState<string | null>(null)
   // Draft text to put back into the composer after a send was intercepted by
@@ -2150,6 +2201,14 @@ function InteractiveAssistantUiThread({
                 onCancel={() => onDeleteThread?.(activeSessionId)}
               />
             )}
+          {continueInCodeCall && (
+            <WorkspaceProjectFolderDialog
+              onOpenFolder={() => finishContinueInCode({ pick: true })}
+              onSelectFolder={path => void finishContinueInCode({ path })}
+              onCancel={() => setContinueInCodeCall(null)}
+              cancelLabel={t('continueInCode.cancel')}
+            />
+          )}
         </TooltipProvider>
       </ToolCallDetailProvider>
       </FilePathContext.Provider>

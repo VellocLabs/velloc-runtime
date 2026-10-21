@@ -4,8 +4,8 @@ description: Conversation — web + chat + skills + memory; no access to the use
 # Launcher name/title/icon for this type live in `src/template/index.md`.
 # A light conversational type. EAGER groups (tools:): read = Read/Glob/Grep,
 # edit = Write/Edit/NotebookEdit, webfetch = WebFetch, ask = AskUserQuestion,
-# skills = Skill/ToolSearch, misc = Sleep. EXCLUDED by omission: subagent, plan,
-# todo, schedule, shell.
+# codehandoff = ContinueInCode, skills = Skill/ToolSearch, misc = Sleep.
+# EXCLUDED by omission: subagent, plan, todo, schedule, shell.
 # Security: in a chat session the file tools are confined by the chat
 # local-access gate — read and write inside the memory dir, read-only inside
 # loaded skill roots and the session's uploads dir, denied everywhere else.
@@ -14,6 +14,7 @@ tools:
   - edit
   - webfetch
   - ask
+  - codehandoff
   - skills
   - misc
 # DEFERRED (deferredTools:) — loaded but hidden until Skill()/ToolSearch: the
