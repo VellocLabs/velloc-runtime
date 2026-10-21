@@ -4,7 +4,8 @@
  * refused in every permission mode, and skill bodies run no shell.
  */
 import { describe, expect, it } from 'vitest'
-import type { RuntimeConfig, WorkingState } from '../runtime/RuntimeTypes'
+import type { WorkingState } from '../runtime/RuntimeTypes'
+import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import { declareTool, type ToolContract } from '../toolkit/toolContract'
 import { decideToolPermission } from '../toolkit/run/toolPermissionGate'
 import { getMemoryDir } from '../memory/memoryPaths'
