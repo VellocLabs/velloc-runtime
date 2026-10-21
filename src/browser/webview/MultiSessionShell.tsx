@@ -232,10 +232,7 @@ import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { Button } from '@/components/ui/button'
 import { PlusIcon } from 'lucide-react'
 import { NexusTopBar } from './topbar/NexusTopBar'
-import {
-  IMPORT_SOURCE_META,
-  importSourceIconSvg,
-} from './sessionImport/sourceMeta'
+import { topbarImportEntries } from './sessionImport/sourceMeta'
 import type { ImportSource } from '../bridge/protocol/sessionImport'
 import { useDetectedImportSources } from './sessionImport/useDetectedImportSources'
 import { useTranscriptSearchGate } from './topbar/useTranscriptSearchGate'
@@ -1889,12 +1886,7 @@ export function MultiSessionShell({
     setImportDialogMounted(true)
   }
   const topbarImportSources = useMemo(
-    () =>
-      importSources.map(entry => ({
-        source: entry.source,
-        label: IMPORT_SOURCE_META[entry.source].label,
-        iconSvg: importSourceIconSvg(configuredActiveCatalog, entry.source),
-      })),
+    () => topbarImportEntries(configuredActiveCatalog, importSources),
     [importSources, configuredActiveCatalog],
   )
 

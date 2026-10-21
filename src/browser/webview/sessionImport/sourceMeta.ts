@@ -36,3 +36,24 @@ export function importSourceIconSvg(
   const svg = catalog?.providers.find((p) => p.id === providerId)?.iconSvg;
   return svg && svg.length > 0 ? svg : undefined;
 }
+
+export type TopbarImportEntry = {
+  source: ImportSource;
+  label: string;
+  iconSvg?: string;
+};
+
+/** The topbar import buttons for the detected sources. Empty until the host
+ *  catalog has providers: before then no brand mark is known, and a button
+ *  would draw the generic fallback icon only to swap it a moment later. */
+export function topbarImportEntries(
+  catalog: BrowserLlmCatalog | null | undefined,
+  sources: ReadonlyArray<{ source: ImportSource }>,
+): TopbarImportEntry[] {
+  if (!catalog || catalog.providers.length === 0) return [];
+  return sources.map((entry) => ({
+    source: entry.source,
+    label: IMPORT_SOURCE_META[entry.source].label,
+    iconSvg: importSourceIconSvg(catalog, entry.source),
+  }));
+}
