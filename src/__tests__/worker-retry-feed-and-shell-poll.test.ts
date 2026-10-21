@@ -373,6 +373,46 @@ describe('BackgroundShellCoordinator — poll cadence', () => {
   })
 })
 
+describe('BackgroundShellCoordinator — inline waiter cadence', () => {
+  it('a waitForCompletion caller keeps a quiet shell past the fast window on the normal cadence, so its exit is seen within seconds', async () => {
+    vi.useFakeTimers()
+    const running = runningStatus('') as Extract<ShellStatus, { ok: true }>
+    const exited = {
+      ok: true,
+      result: { ...running.result, running: false, exitCode: 0 },
+    } as ShellStatus
+    const { coordinator, requestShellStatus, runOf } = shellHarness([
+      runningStatus(''),
+      runningStatus(''),
+      exited,
+    ])
+    coordinator.register({ shellId: 'sh3', command: 'sleep 17' } as never)
+    const run = runOf('sh3')!
+    // Aged and quiet: past the fast window, no output inside the active window.
+    run.startedAt = Date.now() - 20_000
+    run.lastActivityAt = Date.now() - 10_000
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(requestShellStatus).toHaveBeenCalledTimes(1)
+    // Parked on the safety cadence: no poll for the next 20s.
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(requestShellStatus).toHaveBeenCalledTimes(1)
+
+    const waited = coordinator.waitForCompletion('sh3', 60_000)
+    // The waiter re-arms the poll at the normal cadence ...
+    await vi.advanceTimersByTimeAsync(1_600)
+    expect(requestShellStatus).toHaveBeenCalledTimes(2)
+    // ... and holds it there while the shell stays quiet, so the exit that
+    // answers the next poll reaches the waiter at once.
+    await vi.advanceTimersByTimeAsync(1_600)
+    expect(requestShellStatus).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(300)
+    const snap = await waited
+    expect(snap?.status ?? 'gone').not.toBe('running')
+    expect(run.inlineWaiters).toBe(0)
+  })
+})
+
 describe('BackgroundShellCoordinator — single poll chain', () => {
   it('kickPoll during an in-flight poll does not start a second chain', async () => {
     vi.useFakeTimers()

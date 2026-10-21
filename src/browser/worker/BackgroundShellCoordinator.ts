@@ -77,6 +77,10 @@ export type BackgroundShellRunState = {
    *  one poll chain exists per shell. Optional so test seeds
    *  need not carry it. */
   pollInFlight?: boolean
+  /** Callers blocked in waitForCompletion: while any exists the poll keeps
+   *  the normal cadence past the fast window, so a quiet command's exit is
+   *  not left to the safety poll. Optional so test seeds need not carry it. */
+  inlineWaiters?: number
   /** The finite-timeout kill timer (see BackgroundShellLaunch.killAfterMs). */
   deadlineHandle?: ReturnType<typeof setTimeout> | null
   /** The registry killed the child at its deadline: a timeout, not a Stop. */
@@ -564,7 +568,10 @@ export class BackgroundShellCoordinator {
     if (Date.now() - run.startedAt < SHELL_FOREGROUND_POLL_WINDOW_MS) {
       return SHELL_FOREGROUND_POLL_INTERVAL_MS
     }
-    if (Date.now() - run.lastActivityAt < SHELL_ACTIVE_VIEW_WINDOW_MS) {
+    if (
+      (run.inlineWaiters ?? 0) > 0 ||
+      Date.now() - run.lastActivityAt < SHELL_ACTIVE_VIEW_WINDOW_MS
+    ) {
       return SHELL_POLL_INTERVAL_MS
     }
     return SHELL_SAFETY_POLL_INTERVAL_MS
@@ -862,11 +869,23 @@ export class BackgroundShellCoordinator {
       void this.stop(shellId)
       return Promise.resolve(this.getSnapshot(shellId))
     }
+    const run = this.registry.getLiveByType(shellId, 'local_bash') as
+      | BackgroundShellRunState | undefined
+    if (run) {
+      run.inlineWaiters = (run.inlineWaiters ?? 0) + 1
+      // A poll already parked on the safety cadence would otherwise report
+      // this exit up to 30s late.
+      if (run.pollHandle !== null && !run.pollInFlight) {
+        clearTimeout(run.pollHandle)
+        this.schedulePoll(run, SHELL_POLL_INTERVAL_MS)
+      }
+    }
     return new Promise((resolve) => {
       let settled = false
       const finish = (snap: SubAgentSnapshot | null): void => {
         if (settled) return
         settled = true
+        if (run) run.inlineWaiters = Math.max(0, (run.inlineWaiters ?? 0) - 1)
         clearInterval(poll)
         clearTimeout(timer)
         signal?.removeEventListener('abort', onAbort)
