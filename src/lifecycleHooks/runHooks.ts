@@ -95,7 +95,11 @@ export type HookBatchVerdict = {
   results: SingleHookResult[]
 }
 
-const DEFAULT_HOOK_TIMEOUT_MS = 5_000
+/** A persistable hook (command, prompt, agent, http) with no `timeout`: long
+ *  enough for a cold host shell or a model call on a busy machine. (F-7) */
+const DEFAULT_PERSISTABLE_HOOK_TIMEOUT_MS = 60_000
+/** An in-process function hook with no `timeout`. */
+const DEFAULT_FUNCTION_HOOK_TIMEOUT_MS = 5_000
 
 type WorkingStateWriter = (updater: (prev: WorkingState) => WorkingState) => void
 
@@ -207,7 +211,9 @@ function timeoutOf(hook: AnyHook): number {
     // and the SDK-level callers expect ms there.
     return hook.type === 'function' ? hook.timeout : hook.timeout * 1000
   }
-  return DEFAULT_HOOK_TIMEOUT_MS
+  return hook.type === 'function'
+    ? DEFAULT_FUNCTION_HOOK_TIMEOUT_MS
+    : DEFAULT_PERSISTABLE_HOOK_TIMEOUT_MS
 }
 
 function chainAbortSignal(parent: AbortSignal | undefined, child: AbortController): void {

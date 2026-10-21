@@ -17,7 +17,7 @@ import {
 } from '../lifecycleHooks/hookCommandRunner'
 import { hookJsonToDecision, readHookReply } from '../lifecycleHooks/hookOutput'
 import type { HookPromptRunner } from '../lifecycleHooks/hookPromptRunner'
-import { attachTransientHook } from '../lifecycleHooks/sessionScopedHooks'
+import { attachInProcessHook, attachTransientHook } from '../lifecycleHooks/sessionScopedHooks'
 import type { ShellHookSpec, PromptHook } from '../lifecycleHooks/hookTypes'
 
 // ---- resolveShellPreference ----------------------------------------------
@@ -301,6 +301,106 @@ describe('fireBeforeToolCall — command execution', () => {
 // / SessionStart, via plain exit-0 stdout. `fireLifecycleEvent` aggregates these
 // onto `result.additionalContext` / `result.systemMessages`; the integration
 // sites (engine/turnLoop.ts, toolExecution.ts) inject them into the conversation.
+
+describe('default hook timeout', () => {
+  function promptHookState(hook: Parameters<typeof attachTransientHook>[4]): {
+    appState: WorkingState
+    setAppState: (u: (p: WorkingState) => WorkingState) => void
+  } {
+    let appState: WorkingState = createInitialBrowserAppState()
+    const setAppState = (u: (p: WorkingState) => WorkingState) => {
+      appState = u(appState)
+    }
+    attachTransientHook(setAppState, 'sess', 'UserPromptSubmit', '', hook, {
+      skillRoot: '/skills/s',
+    })
+    return { appState, setAppState }
+  }
+
+  function answerAfter(ms: number, result: HookCommandRunnerResult): HookCommandRunner {
+    return vi.fn(
+      () => new Promise<HookCommandRunnerResult>((resolve) => setTimeout(() => resolve(result), ms)),
+    )
+  }
+
+  it('a command hook with no timeout that answers after 6s keeps its context, and the host gets a 60s kill timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      const { appState, setAppState } = promptHookState(HOOK)
+      const slow = answerAfter(6_000, { stdout: 'Current branch: main\n', exitCode: 0 })
+      const pending = firePromptSubmitted({
+        sessionId: 'sess',
+        appState,
+        setAppState,
+        commandRunner: slow,
+        hookInput: { cwd: '/w' },
+      })
+      await vi.advanceTimersByTimeAsync(6_000)
+      const res = await pending
+      expect(res.results[0]!.outcome.status).toBe('pass')
+      expect(res.additionalContext).toEqual(['Current branch: main'])
+      expect(vi.mocked(slow).mock.calls[0]![0].timeoutMs).toBe(60_000)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a command hook with no timeout that never answers times out at 60s', async () => {
+    vi.useFakeTimers()
+    try {
+      const { appState, setAppState } = promptHookState(HOOK)
+      const pending = firePromptSubmitted({
+        sessionId: 'sess',
+        appState,
+        setAppState,
+        // A command that never exits: like the host, the fake kills it at timeoutMs.
+        commandRunner: vi.fn(
+          (input) =>
+            new Promise<HookCommandRunnerResult>((resolve) =>
+              setTimeout(() => resolve({ stdout: '', exitCode: 1 }), input.timeoutMs),
+            ),
+        ),
+        hookInput: { cwd: '/w' },
+      })
+      let settled = false
+      void pending.then(() => { settled = true })
+      await vi.advanceTimersByTimeAsync(59_000)
+      expect(settled).toBe(false)
+      await vi.advanceTimersByTimeAsync(1_000)
+      const res = await pending
+      expect(res.results[0]!.outcome.status).toBe('timeout')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a function hook with no timeout keeps the 5s default', async () => {
+    vi.useFakeTimers()
+    try {
+      let appState: WorkingState = createInitialBrowserAppState()
+      const setAppState = (u: (p: WorkingState) => WorkingState) => {
+        appState = u(appState)
+      }
+      attachInProcessHook(
+        setAppState,
+        'sess',
+        'UserPromptSubmit',
+        '',
+        (signal) =>
+          new Promise<boolean>((resolve) => {
+            signal?.addEventListener('abort', () => resolve(true))
+          }),
+        'function hook did not answer',
+      )
+      const pending = firePromptSubmitted({ sessionId: 'sess', appState, setAppState })
+      await vi.advanceTimersByTimeAsync(5_000)
+      const res = await pending
+      expect(res.results[0]!.outcome.status).toBe('timeout')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
 
 describe('fireLifecycleEvent — additionalContext / systemMessage aggregation', () => {
   it('carries structured additionalContext + systemMessage on a pass', async () => {
