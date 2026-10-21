@@ -653,12 +653,10 @@ export const de: Messages = {
     'Änderungen dieser Sitzung im Seitenbereich anzeigen',
   'diff.fileCount': '{n} Dateien',
   'diff.fileCountOne': '{n} Datei',
-  'diff.openFileAria': '{path} öffnen',
+  'diff.openDiffAria': 'Änderungen an {path} anzeigen',
   'diff.newFileBadge': 'neu',
-  'diff.diffLabel': 'Diff',
   'diff.replaceAll': 'Alle ersetzen',
-  'diff.selectFilePrompt':
-    'Wähle oben eine geänderte Datei aus, um ihren Diff anzusehen.',
+  'diff.backToChanges': 'Zurück zu den Änderungen',
   'diff.noChangesYet': 'Noch keine Änderungen.',
   'diff.wholeSession': 'Gesamte Sitzung',
   'diff.externalChangeWarning':

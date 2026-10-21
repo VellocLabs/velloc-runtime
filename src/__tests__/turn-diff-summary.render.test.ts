@@ -11,9 +11,9 @@ import { I18nProvider } from '../browser/webview/i18n'
 import { SESSION_TOTAL_TURN_INDEX } from '../utils/turnDiffs'
 import type { TurnDiffMeta, TurnFileChange } from '../utils/turnDiffs'
 
-// The Diff view body (`TurnDiffHistoryView`) is a master/detail split — a
-// turns/files list on top, the selected file's diff on the bottom (lazily
-// fetched).
+// The Diff view body (`TurnDiffHistoryView`) has two views: the turns/files
+// list, and — once a file row is chosen — that file's diff (lazily fetched)
+// filling the body, with a way back to the list in its header.
 
 afterEach(() => cleanup())
 
@@ -38,8 +38,8 @@ const DETAIL: TurnFileChange[] = [
   },
 ]
 
-describe('TurnDiffHistoryView — master/detail split', () => {
-  it('lists turns + files up top with an empty detail pane, fetching nothing yet', () => {
+describe('TurnDiffHistoryView — list and detail views', () => {
+  it('lists turns + files, fetching nothing and opening no detail yet', () => {
     const loadDetail = vi.fn(async () => DETAIL)
     render(createElement(TurnDiffHistoryView, { history: HISTORY, loadDetail }))
     expect(screen.getByTestId('turn-diff-history')).toBeTruthy()
@@ -49,45 +49,81 @@ describe('TurnDiffHistoryView — master/detail split', () => {
     expect(screen.getByText('Turn 2')).toBeTruthy()
     // File row present (latest turn open by default), but no diff selected yet.
     expect(screen.getByTestId('turn-diff-file')).toBeTruthy()
-    expect(screen.getByText(/Select a changed file/)).toBeTruthy()
+    expect(screen.queryByTestId('turn-diff-detail')).toBeNull()
     expect(loadDetail).not.toHaveBeenCalled()
     expect(document.querySelector('.aui-edit-diff-body')).toBeNull()
     // The removed "Changes this turn" header must NOT be inside the panel body.
     expect(screen.queryByText('Changes this turn')).toBeNull()
   })
 
-  it('shows a file\'s diff in the detail pane when its row is clicked (lazy fetch)', async () => {
+  it('shows a file\'s diff as the whole view when its row is clicked (lazy fetch)', async () => {
     const loadDetail = vi.fn(async () => DETAIL)
     render(createElement(TurnDiffHistoryView, { history: HISTORY, loadDetail }))
-    fireEvent.click(screen.getByTestId('turn-diff-file-diff'))
+    fireEvent.click(screen.getByTestId('turn-diff-file'))
     await waitFor(() =>
       expect(document.querySelector('[data-testid="turn-diff-detail"] .aui-edit-diff-body')).not.toBeNull(),
     )
     expect(loadDetail).toHaveBeenCalledWith(2)
   })
 
-  it('splits the file row: the path opens the file, the counts pill opens the diff', async () => {
+  it('the file row replaces the list with the diff, and Back restores the list', async () => {
     const loadDetail = vi.fn(async () => DETAIL)
     const onOpenFile = vi.fn()
     render(
       createElement(TurnDiffHistoryView, { history: HISTORY, loadDetail, onOpenFile }),
     )
-    // The path button opens the file directly — no diff selection/fetch.
-    fireEvent.click(screen.getByTestId('turn-diff-file-path'))
-    expect(onOpenFile).toHaveBeenCalledWith({
-      path: 'C:/shift/wexond_component_update_service.cc',
-    })
-    expect(loadDetail).not.toHaveBeenCalled()
-    expect(document.querySelector('[data-testid="turn-diff-detail"] .aui-edit-diff-body')).toBeNull()
-
-    // The counts pill opens the diff in the detail pane (and does NOT re-open the file).
-    onOpenFile.mockClear()
-    fireEvent.click(screen.getByTestId('turn-diff-file-diff'))
+    fireEvent.click(screen.getByTestId('turn-diff-file'))
     await waitFor(() =>
       expect(document.querySelector('[data-testid="turn-diff-detail"] .aui-edit-diff-body')).not.toBeNull(),
     )
-    expect(loadDetail).toHaveBeenCalledWith(2)
+    // Opening the diff never opens the file; the list is gone while it shows.
     expect(onOpenFile).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('turn-diff-file')).toBeNull()
+    expect(screen.getByTestId('turn-diff-history').getAttribute('data-view')).toBe('detail')
+    // The header carries the file's counts.
+    expect(screen.getByTestId('turn-diff-detail').textContent).toContain('+78')
+    expect(screen.getByTestId('turn-diff-detail').textContent).toContain('-16')
+
+    fireEvent.click(screen.getByTestId('turn-diff-detail-back'))
+    expect(screen.queryByTestId('turn-diff-detail')).toBeNull()
+    expect(screen.getByTestId('turn-diff-file')).toBeTruthy()
+    expect(screen.getByTestId('turn-diff-history').getAttribute('data-view')).toBe('list')
+  })
+
+  it('Back keeps the turns the user expanded and the list scroll position', async () => {
+    const loadDetail = vi.fn(async () => DETAIL)
+    const older: TurnDiffMeta = {
+      turnIndex: 1,
+      promptPreview: 'earlier',
+      stats: { touchedFiles: 1, plusLines: 1, minusLines: 0 },
+      files: [{ filePath: 'C:/shift/older.cc', fileWasCreated: true, plusLines: 1, minusLines: 0 }],
+    }
+    render(
+      createElement(TurnDiffHistoryView, { history: [...HISTORY, older], loadDetail }),
+    )
+    const triggers = () => document.querySelectorAll('[data-slot="turn-diff-turn-trigger"]')
+    // Only the latest turn is open by default; the user opens the older one.
+    expect(screen.getAllByTestId('turn-diff-file')).toHaveLength(1)
+    fireEvent.click(triggers()[1]!)
+    expect(screen.getAllByTestId('turn-diff-file')).toHaveLength(2)
+    const list = screen.getByTestId('turn-diff-history')
+    list.scrollTop = 120
+    fireEvent.scroll(list)
+
+    fireEvent.click(screen.getAllByTestId('turn-diff-file')[0]!)
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="turn-diff-detail"] .aui-edit-diff-body')).not.toBeNull(),
+    )
+    fireEvent.click(screen.getByTestId('turn-diff-detail-back'))
+
+    // Both turns are still open, and the list sits where it was scrolled.
+    expect(screen.getAllByTestId('turn-diff-file')).toHaveLength(2)
+    expect(triggers()[1]!.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByTestId('turn-diff-history').scrollTop).toBe(120)
+    // A turn the user closed stays closed too.
+    fireEvent.click(triggers()[0]!)
+    expect(triggers()[0]!.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getAllByTestId('turn-diff-file')).toHaveLength(1)
   })
 
   it('opens the file in the Files view when the detail header path is clicked', async () => {
@@ -100,7 +136,7 @@ describe('TurnDiffHistoryView — master/detail split', () => {
     expect(
       document.querySelector('[data-testid="turn-diff-detail"] [data-slot="file-path-open"]'),
     ).toBeNull()
-    fireEvent.click(screen.getByTestId('turn-diff-file-diff'))
+    fireEvent.click(screen.getByTestId('turn-diff-file'))
     await waitFor(() =>
       expect(
         document.querySelector('[data-testid="turn-diff-detail"] [data-slot="file-path-open"]'),
@@ -197,7 +233,7 @@ describe('TurnDiffHistoryView — master/detail split', () => {
     expect(screen.queryByText(/Invalid Date/)).toBeNull()
   })
 
-  it('swaps the detail pane to the newly clicked file', async () => {
+  it('shows the newly chosen file\'s diff after going back to the list', async () => {
     const twoFileHistory: TurnDiffMeta[] = [
       {
         turnIndex: 5,
@@ -214,13 +250,13 @@ describe('TurnDiffHistoryView — master/detail split', () => {
       { filePath: '/b.ts', fileWasCreated: true, plusLines: 2, minusLines: 0, hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 2, lines: ['+BBB', '+CCC'] }] },
     ])
     render(createElement(TurnDiffHistoryView, { history: twoFileHistory, loadDetail }))
-    // Each file's diff opens from its own counts pill (DOM order: a.ts, b.ts).
-    const diffButtons = screen.getAllByTestId('turn-diff-file-diff')
-    fireEvent.click(diffButtons[0]!)
+    // Each file's diff opens from its own row (DOM order: a.ts, b.ts).
+    fireEvent.click(screen.getAllByTestId('turn-diff-file')[0]!)
     await waitFor(() => expect(screen.getByText('AAA')).toBeTruthy())
-    fireEvent.click(diffButtons[1]!)
+    fireEvent.click(screen.getByTestId('turn-diff-detail-back'))
+    fireEvent.click(screen.getAllByTestId('turn-diff-file')[1]!)
     await waitFor(() => expect(screen.getByText('BBB')).toBeTruthy())
-    // The previous file's hunk is gone — the detail pane swapped, not appended.
+    // The previous file's hunk is gone — the view swapped, not appended.
     expect(screen.queryByText('AAA')).toBeNull()
   })
 

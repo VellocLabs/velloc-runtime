@@ -637,11 +637,10 @@ export const zh: Messages = {
   'diff.showSessionChangesAria': '在侧面板中查看本次会话的变更',
   'diff.fileCount': '{n} 个文件',
   'diff.fileCountOne': '{n} 个文件',
-  'diff.openFileAria': '打开 {path}',
+  'diff.openDiffAria': '显示 {path} 的变更',
   'diff.newFileBadge': '新增',
-  'diff.diffLabel': '差异',
   'diff.replaceAll': '全部替换',
-  'diff.selectFilePrompt': '在上方选择一个已变更的文件，即可查看其差异。',
+  'diff.backToChanges': '返回变更列表',
   'diff.noChangesYet': '暂无变更。',
   'diff.wholeSession': '整个会话',
   'diff.externalChangeWarning':

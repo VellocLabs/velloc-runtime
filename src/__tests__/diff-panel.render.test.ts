@@ -6,11 +6,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { DiffPanel } from '../browser/webview/DiffPanel'
 import type { TurnDiffMeta, TurnFileChange } from '../utils/turnDiffs'
 
-// The right-panel Diff view renders one of two targets:
-//   • kind:'file' — one Edit's diff (pre-computed hunks + counts, from the card);
-//   • kind:'turnHistory' — the whole "Changes this turn" history from the LIVE
-//     per-session props, as a master/detail split: a turns/files list on top
-//     and the selected file's diff (lazily fetched) on the bottom.
+// The right-panel Diff view's entry is the "Changes this turn" history from the
+// LIVE per-session props (kind:'turnHistory', also the default): a turns/files
+// list. A file row swaps the whole view for that file's diff (lazily fetched),
+// whose header leads back to the list. A kind:'file' target — one Edit's diff
+// (pre-computed hunks + counts, from the card) — opens as that detail directly.
 
 afterEach(() => cleanup())
 
@@ -87,7 +87,7 @@ describe('DiffPanel', () => {
     expect(screen.getByText('+1')).toBeTruthy()
   })
 
-  it('renders the turn-diff history master/detail split for a turnHistory target', () => {
+  it('renders the turn-diff history list for a turnHistory target, with no detail open', () => {
     render(
       createElement(DiffPanel, {
         target: { kind: 'turnHistory' },
@@ -102,10 +102,11 @@ describe('DiffPanel', () => {
     expect(screen.getByText(new Date('2026-09-02T10:00:00.000Z').toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }))).toBeTruthy()
     expect(screen.queryByText(/\bTurn \d+/)).toBeNull()
     expect(screen.getByTestId('turn-diff-file')).toBeTruthy()
-    expect(screen.getByText(/Select a changed file/)).toBeTruthy()
+    expect(screen.getByTestId('turn-diff-history').getAttribute('data-view')).toBe('list')
+    expect(screen.queryByTestId('turn-diff-detail')).toBeNull()
   })
 
-  it('fetches + shows a file\'s diff in the detail pane only when its row is clicked', async () => {
+  it('fetches + shows a file\'s diff as the whole view only when its row is clicked', async () => {
     const detail: TurnFileChange[] = [
       { filePath: '/repo/x.ts', fileWasCreated: false, plusLines: 1, minusLines: 0, hunks: HUNKS },
     ]
@@ -119,12 +120,15 @@ describe('DiffPanel', () => {
     )
     expect(loadTurnDiffDetail).not.toHaveBeenCalled()
     expect(document.querySelector('.aui-edit-diff-body')).toBeNull()
-    fireEvent.click(screen.getByTestId('turn-diff-file-diff'))
+    fireEvent.click(screen.getByTestId('turn-diff-file'))
     await waitFor(() =>
       expect(document.querySelector('[data-testid="turn-diff-detail"] .aui-edit-diff-body')).not.toBeNull(),
     )
     expect(loadTurnDiffDetail).toHaveBeenCalledWith(1)
     expect(screen.getByText('added-line')).toBeTruthy()
+    // The detail REPLACES the list: no file rows while a diff is open.
+    expect(screen.getByTestId('turn-diff-history').getAttribute('data-view')).toBe('detail')
+    expect(screen.queryByTestId('turn-diff-file')).toBeNull()
   })
 
   it('routes the detail header path click to onOpenFile (Files view)', async () => {
@@ -140,7 +144,7 @@ describe('DiffPanel', () => {
         onOpenFile,
       }),
     )
-    fireEvent.click(screen.getByTestId('turn-diff-file-diff'))
+    fireEvent.click(screen.getByTestId('turn-diff-file'))
     await waitFor(() =>
       expect(
         document.querySelector('[data-testid="turn-diff-detail"] [data-slot="file-path-open"]'),
@@ -154,24 +158,38 @@ describe('DiffPanel', () => {
     expect(onOpenFile).toHaveBeenCalledWith({ path: '/repo/x.ts' })
   })
 
-  it('opens the file directly from the top-list path button (no diff fetch)', () => {
-    // The top file row is split: the PATH opens the file in the Files view,
-    // separate from the counts pill that opens the diff. Clicking the path must
-    // open the file WITHOUT selecting/fetching the diff.
-    const loadTurnDiffDetail = vi.fn(async () => null)
-    const onOpenFile = vi.fn()
+  it('the detail\'s back control returns to the list', async () => {
     render(
       createElement(DiffPanel, {
         target: { kind: 'turnHistory' },
         turnDiffHistory: HISTORY,
-        loadTurnDiffDetail,
-        onOpenFile,
+        loadTurnDiffDetail: async () => null,
       }),
     )
-    fireEvent.click(screen.getByTestId('turn-diff-file-path'))
-    expect(onOpenFile).toHaveBeenCalledWith({ path: '/repo/x.ts' })
-    // The path opener must not trigger a diff fetch (that's the pill's job).
-    expect(loadTurnDiffDetail).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('turn-diff-file'))
+    await waitFor(() => expect(screen.getByTestId('turn-diff-detail-back')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('turn-diff-detail-back'))
+    expect(screen.queryByTestId('turn-diff-detail')).toBeNull()
+    expect(screen.getByTestId('turn-diff-file')).toBeTruthy()
+    expect(screen.getByTestId('turn-diff-history').getAttribute('data-view')).toBe('list')
+  })
+
+  it('a file target opens as the detail, and its back control shows the history until a new target arrives', () => {
+    const fileTarget = { kind: 'file' as const, filePath: '/repo/a.ts', hunks: HUNKS, plusLines: 1, minusLines: 0 }
+    const { rerender } = render(
+      createElement(DiffPanel, { target: fileTarget, turnDiffHistory: HISTORY, loadTurnDiffDetail: async () => null }),
+    )
+    expect(screen.getByTestId('diff-panel').getAttribute('data-diff-kind')).toBe('file')
+    expect(screen.getByText('added-line')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('turn-diff-detail-back'))
+    expect(screen.getByTestId('diff-panel').getAttribute('data-diff-kind')).toBe('turn-history')
+    expect(screen.getByTestId('turn-diff-file')).toBeTruthy()
+    // The same (dismissed) target re-rendered keeps the history…
+    rerender(createElement(DiffPanel, { target: fileTarget, turnDiffHistory: HISTORY, loadTurnDiffDetail: async () => null }))
+    expect(screen.getByTestId('diff-panel').getAttribute('data-diff-kind')).toBe('turn-history')
+    // …a new target opens its detail again.
+    rerender(createElement(DiffPanel, { target: { ...fileTarget }, turnDiffHistory: HISTORY, loadTurnDiffDetail: async () => null }))
+    expect(screen.getByTestId('diff-panel').getAttribute('data-diff-kind')).toBe('file')
   })
 
   it('shows an empty message when a turnHistory target has no history yet', () => {

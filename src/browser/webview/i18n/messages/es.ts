@@ -655,12 +655,10 @@ export const es: Messages = {
     'Ver los cambios de esta sesión en el panel lateral',
   'diff.fileCount': '{n} archivos',
   'diff.fileCountOne': '{n} archivo',
-  'diff.openFileAria': 'Abrir {path}',
+  'diff.openDiffAria': 'Mostrar los cambios de {path}',
   'diff.newFileBadge': 'nuevo',
-  'diff.diffLabel': 'diferencias',
   'diff.replaceAll': 'Reemplazar todo',
-  'diff.selectFilePrompt':
-    'Seleccione arriba un archivo modificado para ver sus diferencias.',
+  'diff.backToChanges': 'Volver a los cambios',
   'diff.noChangesYet': 'Aún no hay cambios.',
   'diff.wholeSession': 'Sesión completa',
   'diff.externalChangeWarning':

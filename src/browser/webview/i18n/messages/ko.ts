@@ -641,11 +641,10 @@ export const ko: Messages = {
   'diff.showSessionChangesAria': '이번 세션의 변경사항을 사이드 패널에서 보기',
   'diff.fileCount': '파일 {n}개',
   'diff.fileCountOne': '파일 {n}개',
-  'diff.openFileAria': '{path} 열기',
+  'diff.openDiffAria': '{path} 변경 사항 보기',
   'diff.newFileBadge': '신규',
-  'diff.diffLabel': '차이',
   'diff.replaceAll': '모두 바꾸기',
-  'diff.selectFilePrompt': '위에서 변경된 파일을 선택하면 그 차이를 볼 수 있습니다.',
+  'diff.backToChanges': '변경 목록으로 돌아가기',
   'diff.noChangesYet': '아직 변경사항이 없습니다.',
   'diff.wholeSession': '전체 세션',
   'diff.externalChangeWarning':

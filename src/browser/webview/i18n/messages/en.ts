@@ -682,12 +682,10 @@ export const en = {
   'diff.fileCount': '{n} files',
   'diff.fileCountOne': '{n} file',
   // `{path}` is a file path, NOT translated.
-  'diff.openFileAria': 'Open {path}',
+  'diff.openDiffAria': 'Show changes to {path}',
   'diff.newFileBadge': 'new',
-  // Label of the counts pill when a changed file has no +/− line counts.
-  'diff.diffLabel': 'diff',
   'diff.replaceAll': 'Replace all',
-  'diff.selectFilePrompt': 'Select a changed file above to view its diff.',
+  'diff.backToChanges': 'Back to changes',
   'diff.noChangesYet': 'No changes yet.',
   // Label of the synthetic "Whole session" total row at the top of the history.
   'diff.wholeSession': 'Whole session',

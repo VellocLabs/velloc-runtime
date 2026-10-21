@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { StructuredPatchHunk } from "diff";
 import {
+  ArrowLeftIcon,
   ChevronDownIcon,
   LoaderIcon,
   TriangleAlertIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { SESSION_TOTAL_TURN_INDEX } from "../../utils/turnDiffs";
 import type {
   TurnDiffFileMeta,
@@ -27,7 +29,7 @@ export type LoadTurnDiffDetail = (
   turnIndex: number,
 ) => Promise<TurnFileChange[] | null>;
 
-/** The file the detail pane is showing — a turn + a path within it. */
+/** The file the detail view is showing — a turn + a path within it. */
 type SelectedFile = { turnIndex: number; filePath: string };
 
 /** The turn row's leading label: the turn's START time (locale-formatted), since
@@ -69,106 +71,63 @@ function StatPills({ added, removed }: { added: number; removed: number }) {
 }
 
 /**
- * A changed file within a turn → a row split into two independent controls:
- *   • the PATH (left, flex) opens the full file in the Files view;
- *   • the COUNTS (right), styled as a pill button, opens that file's DIFF in the
- *     detail pane below (the selection state; it does not expand in place).
- * On a host without a Files view (`onOpenFile` absent — the footer's inline
- * fallback) the path click degrades to selecting the diff, so it's never inert.
+ * A changed file within a turn: one row, one action — it opens that file's diff
+ * as the panel's detail view. The file itself opens from the detail header.
  */
 function TurnFileItem({
   file,
   turnIndex,
-  selected,
   onSelect,
-  onOpenFile,
 }: {
   file: TurnDiffFileMeta;
   turnIndex: number;
-  selected: SelectedFile | null;
   onSelect: (file: SelectedFile) => void;
-  onOpenFile?: (target: RightPanelFileTarget) => void;
 }) {
   const t = useT()
-  const isSelected =
-    selected?.turnIndex === turnIndex && selected?.filePath === file.filePath;
-  const hasCounts = file.plusLines > 0 || file.minusLines > 0;
   return (
     <div className="flex flex-col">
-    <div
-      data-slot="turn-diff-file"
-      data-testid="turn-diff-file"
-      className={cn(
-        "flex w-full items-center gap-2 px-3 py-1.5 text-xs transition-colors",
-        isSelected ? "bg-muted/50" : "hover:bg-muted/30",
-      )}
-    >
-      {/* Part 1 — the file path → opens the file in the Files view. */}
       <button
         type="button"
-        data-slot="turn-diff-file-path"
-        data-testid="turn-diff-file-path"
-        aria-label={t("diff.openFileAria", { path: file.filePath })}
-        onClick={() =>
-          onOpenFile
-            ? onOpenFile({ path: file.filePath })
-            : onSelect({ turnIndex, filePath: file.filePath })
-        }
-        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        data-slot="turn-diff-file"
+        data-testid="turn-diff-file"
+        aria-label={t("diff.openDiffAria", { path: file.filePath })}
+        title={t("diff.viewDiff")}
+        onClick={() => onSelect({ turnIndex, filePath: file.filePath })}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted/40"
       >
         <PathLabel
           path={file.filePath}
-          className="min-w-0 flex-1 font-mono text-muted-foreground hover:text-foreground hover:underline"
+          className="min-w-0 flex-1 font-mono text-muted-foreground"
         />
         {file.fileWasCreated && (
           <span className="shrink-0 rounded bg-diff-added-bg/15 px-1.5 py-0.5 text-[0.65rem] text-diff-added">
             {t("diff.newFileBadge")}
           </span>
         )}
-      </button>
-      {/* Part 2 — the change counts, styled as a pill button → opens the diff. */}
-      <button
-        type="button"
-        data-slot="turn-diff-file-diff"
-        data-testid="turn-diff-file-diff"
-        aria-pressed={isSelected}
-        aria-label={t("diff.viewDiff")}
-        title={t("diff.viewDiff")}
-        onClick={() => onSelect({ turnIndex, filePath: file.filePath })}
-        className={cn(
-          "flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[0.7rem] tabular-nums transition-colors",
-          isSelected
-            ? "border-primary/40 bg-primary/10 text-foreground"
-            : "border-border bg-muted/50 text-muted-foreground hover:bg-muted",
-        )}
-      >
-        {hasCounts ? (
+        <span className="flex shrink-0 items-center gap-1 font-mono text-[0.7rem] tabular-nums">
           <StatPills added={file.plusLines} removed={file.minusLines} />
-        ) : (
-          <span className="text-muted-foreground">{t("diff.diffLabel")}</span>
-        )}
-      </button>
-    </div>
-    {/* On the "Whole session" row, a file changed OUTSIDE this session between
-        two turns carries a warning: its total diff is real (both endpoints are
-        captured states) but not purely this session's work. */}
-    {file.externalChange && (
-      <div
-        data-testid="turn-diff-external-warning"
-        className="flex items-start gap-1 px-3 pb-1.5 text-[0.7rem] text-warning"
-      >
-        <TriangleAlertIcon
-          className="mt-0.5 size-3 shrink-0"
-          aria-hidden="true"
-        />
-        <span>
-          {t("diff.externalChangeWarning", {
-            from: file.externalChange.afterTurn,
-            to: file.externalChange.beforeTurn,
-          })}
         </span>
-      </div>
-    )}
+      </button>
+      {/* On the "Whole session" row, a file changed OUTSIDE this session between
+          two turns carries a warning: its total diff is real (both endpoints are
+          captured states) but not purely this session's work. */}
+      {file.externalChange && (
+        <div
+          data-testid="turn-diff-external-warning"
+          className="flex items-start gap-1 px-3 pb-1.5 text-[0.7rem] text-warning"
+        >
+          <TriangleAlertIcon
+            className="mt-0.5 size-3 shrink-0"
+            aria-hidden="true"
+          />
+          <span>
+            {t("diff.externalChangeWarning", {
+              from: file.externalChange.afterTurn,
+              to: file.externalChange.beforeTurn,
+            })}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -176,19 +135,16 @@ function TurnFileItem({
 /** One turn in the history → its changed-file list (collapsible). */
 function TurnRow({
   turn,
-  selected,
   onSelectFile,
-  onOpenFile,
-  defaultOpen,
+  open,
+  onToggle,
 }: {
   turn: TurnDiffMeta;
-  selected: SelectedFile | null;
   onSelectFile: (file: SelectedFile) => void;
-  onOpenFile?: (target: RightPanelFileTarget) => void;
-  defaultOpen?: boolean;
+  open: boolean;
+  onToggle: () => void;
 }) {
   const t = useT()
-  const [open, setOpen] = useState(defaultOpen ?? false);
   const isSessionTotal = turn.turnIndex === SESSION_TOTAL_TURN_INDEX;
   return (
     <div className="aui-turn-diff-turn flex flex-col">
@@ -196,7 +152,7 @@ function TurnRow({
         type="button"
         data-slot="turn-diff-turn-trigger"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={onToggle}
         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted/40"
       >
         <ChevronDownIcon
@@ -231,9 +187,7 @@ function TurnRow({
               key={file.filePath}
               file={file}
               turnIndex={turn.turnIndex}
-              selected={selected}
               onSelect={onSelectFile}
-              onOpenFile={onOpenFile}
             />
           ))}
         </div>
@@ -242,34 +196,92 @@ function TurnRow({
   );
 }
 
+/**
+ * The frame around one file's diff when it fills the Diff view: a header with
+ * the way back to the changes list, the file path (opens the file in the Files
+ * view when `onOpenFile` is given, copies otherwise) and its `+N -M` counts,
+ * then the body below.
+ */
+export function DiffDetailFrame({
+  filePath,
+  plusLines,
+  minusLines,
+  onBack,
+  onOpenFile,
+  children,
+}: {
+  filePath: string;
+  plusLines?: number;
+  minusLines?: number;
+  onBack: () => void;
+  onOpenFile?: (target: RightPanelFileTarget) => void;
+  children: ReactNode;
+}) {
+  const t = useT()
+  const hasCounts = (plusLines ?? 0) > 0 || (minusLines ?? 0) > 0;
+  return (
+    <div
+      data-testid="turn-diff-detail"
+      className="flex h-full min-h-0 flex-col"
+    >
+      <div className="flex shrink-0 items-center gap-1.5 border-b px-2 py-1.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 shrink-0"
+          onClick={onBack}
+          aria-label={t("diff.backToChanges")}
+          title={t("diff.backToChanges")}
+          data-testid="turn-diff-detail-back"
+        >
+          <ArrowLeftIcon className="size-4" />
+        </Button>
+        <div className="min-w-0 flex-1">
+          <FilePathHeader
+            path={filePath}
+            onOpen={onOpenFile ? () => onOpenFile({ path: filePath }) : undefined}
+            copyText={filePath}
+            copyTooltip={t("filePanel.copyFilePath")}
+            trailing={
+              hasCounts ? (
+                <span className="flex shrink-0 items-center gap-1 font-mono text-caption tabular-nums">
+                  <StatPills added={plusLines ?? 0} removed={minusLines ?? 0} />
+                </span>
+              ) : undefined
+            }
+          />
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto p-2">{children}</div>
+    </div>
+  );
+}
+
 type DetailState =
-  | { status: "idle" }
   | { status: "loading" }
   | { status: "ready"; hunks: StructuredPatchHunk[] }
   | { status: "error"; message: string };
 
-/** The detail pane: the selected file's full diff, hunks fetched on demand for
- *  that file's turn (mirrors the Files view's `readFileText` on-select load).
- *  Clicking the header path opens the full file in the right-panel Files view. */
+/** The detail view: the selected file's full diff, hunks fetched on demand for
+ *  that file's turn (mirrors the Files view's `readFileText` on-select load). */
 function DiffFileDetail({
   selected,
+  meta,
   loadDetail,
+  onBack,
   onOpenFile,
 }: {
-  selected: SelectedFile | null;
+  selected: SelectedFile;
+  meta: TurnDiffFileMeta | undefined;
   loadDetail?: LoadTurnDiffDetail;
+  onBack: () => void;
   onOpenFile?: (target: RightPanelFileTarget) => void;
 }) {
   const t = useT()
-  const [state, setState] = useState<DetailState>({ status: "idle" });
-  const turnIndex = selected?.turnIndex;
-  const filePath = selected?.filePath;
+  const [state, setState] = useState<DetailState>({ status: "loading" });
+  const { turnIndex, filePath } = selected;
 
   useEffect(() => {
-    if (turnIndex === undefined || filePath === undefined) {
-      setState({ status: "idle" });
-      return;
-    }
     if (!loadDetail) {
       setState({ status: "ready", hunks: [] });
       return;
@@ -295,57 +307,39 @@ function DiffFileDetail({
     };
   }, [turnIndex, filePath, loadDetail]);
 
-  if (!selected) {
-    return (
-      <div className="flex h-full items-center justify-center px-4 text-center text-muted-foreground text-xs">
-        {t("diff.selectFilePrompt")}
-      </div>
-    );
-  }
-
   return (
-    <div
-      data-testid="turn-diff-detail"
-      className="flex h-full min-h-0 flex-col gap-2 p-2"
+    <DiffDetailFrame
+      filePath={filePath}
+      plusLines={meta?.plusLines}
+      minusLines={meta?.minusLines}
+      onBack={onBack}
+      onOpenFile={onOpenFile}
     >
-      {/* The detail header reuses the shared file-content-view header (path +
-          copy); clicking the path opens the full file in the Files view. */}
-      <div className="shrink-0">
-        <FilePathHeader
-          path={selected.filePath}
-          onOpen={
-            onOpenFile ? () => onOpenFile({ path: selected.filePath }) : undefined
-          }
-          copyText={selected.filePath}
-          copyTooltip={t("filePanel.copyFilePath")}
-        />
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        {state.status === "loading" ? (
-          <div className="flex items-center gap-2 px-1 py-2 text-muted-foreground text-xs">
-            <LoaderIcon className="size-3 animate-spin" />
-            <span>{t("diff.loading")}</span>
-          </div>
-        ) : state.status === "error" ? (
-          <div className="px-1 py-2 text-destructive text-xs">{state.message}</div>
-        ) : state.status === "ready" && state.hunks.length > 0 ? (
-          <DiffHunks hunks={state.hunks} />
-        ) : (
-          <p className="px-1 text-muted-foreground text-xs">
-            {t("diff.noChanges")}
-          </p>
-        )}
-      </div>
-    </div>
+      {state.status === "loading" ? (
+        <div className="flex items-center gap-2 px-1 py-2 text-muted-foreground text-xs">
+          <LoaderIcon className="size-3 animate-spin" />
+          <span>{t("diff.loading")}</span>
+        </div>
+      ) : state.status === "error" ? (
+        <div className="px-1 py-2 text-destructive text-xs">{state.message}</div>
+      ) : state.hunks.length > 0 ? (
+        <DiffHunks hunks={state.hunks} />
+      ) : (
+        <p className="px-1 text-muted-foreground text-xs">
+          {t("diff.noChanges")}
+        </p>
+      )}
+    </DiffDetailFrame>
   );
 }
 
 /**
- * The full turn-diff history — a master/detail split. TOP: the scrolling list of
- * turns and their changed files (each file a selectable row). BOTTOM: the diff
- * of the currently selected file. This is the body the footer bar opens into the
- * right-panel **Diff** view; it also serves as the footer's inline fallback on
- * hosts without a right panel. The latest turn starts expanded.
+ * The full turn-diff history, two views in one body. The LIST: every turn and
+ * its changed files, the latest turn expanded. Choosing a file replaces the
+ * list with that file's DIFF, and the diff's header leads back to the list,
+ * which keeps the turns the user expanded and its scroll position. This is
+ * the body the footer bar opens into the right-panel **Diff** view; it also
+ * serves as the footer's inline fallback on hosts without a right panel.
  */
 export function TurnDiffHistoryView({
   history,
@@ -358,6 +352,18 @@ export function TurnDiffHistoryView({
 }) {
   const t = useT();
   const [selected, setSelected] = useState<SelectedFile | null>(null);
+  // Turns the user opened or closed, by turn index; unlisted turns follow the
+  // default (the latest open). Survives the detail view, unlike row state.
+  const [openTurns, setOpenTurns] = useState<ReadonlyMap<number, boolean>>(
+    () => new Map(),
+  );
+  const listRef = useRef<HTMLDivElement>(null);
+  const listScrollTop = useRef(0);
+  useLayoutEffect(() => {
+    if (!selected && listRef.current) {
+      listRef.current.scrollTop = listScrollTop.current;
+    }
+  }, [selected]);
 
   if (!history || history.length === 0) {
     return (
@@ -367,35 +373,53 @@ export function TurnDiffHistoryView({
     );
   }
 
-  return (
-    <div
-      data-slot="turn-diff-history"
-      data-testid="turn-diff-history"
-      className="flex h-full min-h-0 flex-col text-sm"
-    >
-      {/* TOP — the turns/files list. Height is DYNAMIC (sizes to content) and
-          capped so a long list scrolls instead of pushing the diff off-screen;
-          the detail pane below takes all remaining space. */}
-      <div className="flex max-h-[40%] shrink-0 flex-col overflow-auto py-1">
-        {history.map((turn, idx) => (
-          <TurnRow
-            key={turn.turnIndex}
-            turn={turn}
-            selected={selected}
-            onSelectFile={setSelected}
-            onOpenFile={onOpenFile}
-            defaultOpen={idx === 0}
-          />
-        ))}
-      </div>
-      {/* BOTTOM — the selected file's diff; fills the rest of the view. */}
-      <div className="flex min-h-0 flex-1 flex-col border-t">
+  if (selected) {
+    const meta = history
+      .find((turn) => turn.turnIndex === selected.turnIndex)
+      ?.files.find((file) => file.filePath === selected.filePath);
+    return (
+      <div
+        data-slot="turn-diff-history"
+        data-testid="turn-diff-history"
+        data-view="detail"
+        className="flex h-full min-h-0 flex-col text-sm"
+      >
         <DiffFileDetail
           selected={selected}
+          meta={meta}
           loadDetail={loadDetail}
+          onBack={() => setSelected(null)}
           onOpenFile={onOpenFile}
         />
       </div>
+    );
+  }
+
+  return (
+    <div
+      ref={listRef}
+      data-slot="turn-diff-history"
+      data-testid="turn-diff-history"
+      data-view="list"
+      className="flex h-full min-h-0 flex-col overflow-auto py-1 text-sm"
+      onScroll={(event) => {
+        listScrollTop.current = event.currentTarget.scrollTop;
+      }}
+    >
+      {history.map((turn, idx) => {
+        const open = openTurns.get(turn.turnIndex) ?? idx === 0;
+        return (
+          <TurnRow
+            key={turn.turnIndex}
+            turn={turn}
+            onSelectFile={setSelected}
+            open={open}
+            onToggle={() =>
+              setOpenTurns((prev) => new Map(prev).set(turn.turnIndex, !open))
+            }
+          />
+        );
+      })}
     </div>
   );
 }

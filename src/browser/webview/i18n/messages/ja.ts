@@ -644,11 +644,10 @@ export const ja: Messages = {
   'diff.showSessionChangesAria': 'このセッションの変更をサイドパネルに表示',
   'diff.fileCount': '{n} ファイル',
   'diff.fileCountOne': '{n} ファイル',
-  'diff.openFileAria': '{path} を開く',
+  'diff.openDiffAria': '{path} の変更を表示',
   'diff.newFileBadge': '新規',
-  'diff.diffLabel': '差分',
   'diff.replaceAll': 'すべて置換',
-  'diff.selectFilePrompt': '上で変更されたファイルを選ぶと、その差分が表示されます。',
+  'diff.backToChanges': '変更一覧に戻る',
   'diff.noChangesYet': 'まだ変更はありません。',
   'diff.wholeSession': 'セッション全体',
   'diff.externalChangeWarning':
