@@ -133,6 +133,9 @@ export class FileSnapshotRecorder {
   /** (turnSeq → set of captured path keys) — the fast idempotency check so
    *  a script writing one file in a loop pays one capture, not N queries. */
   private readonly capturedByTurn = new Map<number, Set<string>>()
+  /** (turnSeq → path keys) a SECOND capture relied on an existing row for.
+   *  A probe may discard only a row no other capture leans on. */
+  private readonly sharedByTurn = new Map<number, Set<string>>()
 
   constructor(options: FileSnapshotRecorderOptions) {
     this.store = options.store
@@ -167,34 +170,100 @@ export class FileSnapshotRecorder {
    */
   trackBeforeMutation(absPath: string, turn: SnapshotTurnInfo): Promise<void> {
     return this.enqueue(async () => {
-      const pathKey = normalizePathKey(absPath)
-      if (this.isExcluded(pathKey)) return
-      const captured = this.capturedByTurn.get(turn.seq)
-      if (captured?.has(pathKey)) return
-      try {
-        if (!captured && !(await this.store.getTurnFile(turn.seq, pathKey))) {
-          // Fresh instance over an existing DB (recovery/reload): fall
-          // through to capture. With a row already present, just re-seed the
-          // in-memory set below.
-        } else if (!captured) {
-          this.remember(turn.seq, pathKey)
-          return
-        }
-        const before = await this.captureState(absPath)
-        const deduped = await this.reusePriorSnapshot(pathKey, turn.seq, before)
-        await this.store.recordBeforeCapture({
-          turn,
-          path: pathKey,
-          displayPath: absPath,
-          before: deduped,
-        })
+      await this.captureBefore(absPath, turn)
+    })
+  }
+
+  /**
+   * A speculative capture ahead of a command that MAY write `absPath` (a
+   * shell line naming it). Same capture as {@link trackBeforeMutation};
+   * resolves true when this call recorded the row, false when the path was
+   * already tracked this turn (or is excluded) — only a true result may be
+   * handed back to {@link discardUnchangedProbe}.
+   */
+  probeBeforeMutation(absPath: string, turn: SnapshotTurnInfo): Promise<boolean> {
+    return this.enqueue(() => this.captureBefore(absPath, turn))
+  }
+
+  /** True when this call recorded the (turn, path) row. */
+  private async captureBefore(absPath: string, turn: SnapshotTurnInfo): Promise<boolean> {
+    const pathKey = normalizePathKey(absPath)
+    if (this.isExcluded(pathKey)) return false
+    const captured = this.capturedByTurn.get(turn.seq)
+    if (captured?.has(pathKey)) {
+      this.share(turn.seq, pathKey)
+      return false
+    }
+    try {
+      if (!captured && !(await this.store.getTurnFile(turn.seq, pathKey))) {
+        // Fresh instance over an existing DB (recovery/reload): fall
+        // through to capture. With a row already present, just re-seed the
+        // in-memory set below.
+      } else if (!captured) {
         this.remember(turn.seq, pathKey)
-      } catch (err) {
-        throw new SnapshotCaptureError(
-          `File snapshot capture failed for ${absPath}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        )
+        this.share(turn.seq, pathKey)
+        return false
+      }
+      const before = await this.captureState(absPath)
+      const deduped = await this.reusePriorSnapshot(pathKey, turn.seq, before)
+      await this.store.recordBeforeCapture({
+        turn,
+        path: pathKey,
+        displayPath: absPath,
+        before: deduped,
+      })
+      this.remember(turn.seq, pathKey)
+      return true
+    } catch (err) {
+      throw new SnapshotCaptureError(
+        `File snapshot capture failed for ${absPath}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      )
+    }
+  }
+
+  /**
+   * After the command a probe ran for: drop the probe's row when the file is
+   * byte-for-byte what the probe captured, so a path a command merely named
+   * never shows as a change. Keeps the row (resolves false) when the file
+   * changed, another capture has relied on the row, the turn is finalized, or
+   * the before-state cannot be compared (a skipped capture). Blobs nothing
+   * references any more go with the row. A store failure resolves false.
+   */
+  discardUnchangedProbe(absPath: string, turnSeq: number): Promise<boolean> {
+    return this.enqueue(async () => {
+      const pathKey = normalizePathKey(absPath)
+      if (this.sharedByTurn.get(turnSeq)?.has(pathKey)) return false
+      try {
+        const row = await this.store.getTurnFile(turnSeq, pathKey)
+        if (!row || row.after !== null || row.before.skipped) return false
+        const now = await this.captureState(row.displayPath, { noThrow: true })
+        if (now.skipped || now.exists !== row.before.exists) return false
+        if (now.exists) {
+          const beforeBytes =
+            row.before.snapshotId === null
+              ? null
+              : await this.store.readSnapshotBlob(row.before.snapshotId)
+          if (!beforeBytes || !now.bytes || !bytesEqual(beforeBytes, now.bytes)) return false
+        }
+        await this.store.deleteTurnFile(turnSeq, pathKey)
+        this.capturedByTurn.get(turnSeq)?.delete(pathKey)
+        const orphanIds = new Set<number>()
+        if (row.before.snapshotId !== null) orphanIds.add(row.before.snapshotId)
+        if ((await this.store.countTurnFilesForPath(pathKey)) === 0) {
+          const sessionFile = await this.store.getSessionFile(pathKey)
+          if (sessionFile) {
+            await this.store.deleteSessionFile(pathKey)
+            if (sessionFile.original.snapshotId !== null) orphanIds.add(sessionFile.original.snapshotId)
+          }
+        }
+        for (const id of orphanIds) {
+          if ((await this.store.countSnapshotReferences(id)) === 0) await this.store.deleteSnapshot(id)
+        }
+        return true
+      } catch {
+        return false
       }
     })
   }
@@ -644,6 +713,15 @@ export class FileSnapshotRecorder {
     if (!set) {
       set = new Set()
       this.capturedByTurn.set(turnSeq, set)
+    }
+    set.add(pathKey)
+  }
+
+  private share(turnSeq: number, pathKey: string): void {
+    let set = this.sharedByTurn.get(turnSeq)
+    if (!set) {
+      set = new Set()
+      this.sharedByTurn.set(turnSeq, set)
     }
     set.add(pathKey)
   }

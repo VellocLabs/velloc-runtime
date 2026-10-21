@@ -102,6 +102,20 @@ export const SQL_MARK_TURN_FINALIZED =
   'UPDATE turns SET finalized = 1 WHERE turn_seq = ?'
 export const SQL_LIST_SESSION_FILES =
   'SELECT path, display_path, original_exists, original_snapshot_id, original_skipped FROM session_files ORDER BY path'
+export const SQL_SELECT_SESSION_FILE =
+  'SELECT path, display_path, original_exists, original_snapshot_id, original_skipped FROM session_files WHERE path = ?'
+export const SQL_DELETE_TURN_FILE =
+  'DELETE FROM turn_files WHERE turn_seq = ? AND path = ?'
+export const SQL_COUNT_TURN_FILES_FOR_PATH =
+  'SELECT COUNT(*) FROM turn_files WHERE path = ?'
+export const SQL_DELETE_SESSION_FILE =
+  'DELETE FROM session_files WHERE path = ?'
+export const SQL_COUNT_SNAPSHOT_TURN_REFS =
+  'SELECT COUNT(*) FROM turn_files WHERE before_snapshot_id = ? OR after_snapshot_id = ?'
+export const SQL_COUNT_SNAPSHOT_SESSION_REFS =
+  'SELECT COUNT(*) FROM session_files WHERE original_snapshot_id = ?'
+export const SQL_DELETE_SNAPSHOT =
+  'DELETE FROM snapshots WHERE snapshot_id = ?'
 
 // Bounded lock retry — same rationale as SqliteSessionMetaStore, but this DB
 // is single-writer (one recorder per session serializes every op), so
@@ -420,6 +434,51 @@ export class SessionSnapshotStore {
     await this.ensureReady()
     const rows = await this.query(SQL_LIST_SESSION_FILES, [])
     return rows.map(rowToSessionFile)
+  }
+
+  async getSessionFile(path: string): Promise<SnapshotSessionFileRow | null> {
+    await this.ensureReady()
+    const rows = await this.query(SQL_SELECT_SESSION_FILE, [path])
+    return rows[0] ? rowToSessionFile(rows[0]) : null
+  }
+
+  /** Remove one turn-file row — a probe capture the command left unchanged. */
+  async deleteTurnFile(turnSeq: number, path: string): Promise<void> {
+    await this.ensureReady()
+    await this.execute(SQL_DELETE_TURN_FILE, [turnSeq, path])
+  }
+
+  async countTurnFilesForPath(path: string): Promise<number> {
+    await this.ensureReady()
+    const rows = await this.query(SQL_COUNT_TURN_FILES_FOR_PATH, [path])
+    return num(rows[0]?.[0]) ?? 0
+  }
+
+  async deleteSessionFile(path: string): Promise<void> {
+    await this.ensureReady()
+    await this.execute(SQL_DELETE_SESSION_FILE, [path])
+  }
+
+  /** Rows (turn before/after and session originals) that point at a blob. */
+  async countSnapshotReferences(snapshotId: number): Promise<number> {
+    await this.ensureReady()
+    const [turnRefs, sessionRefs] = await Promise.all([
+      this.query(SQL_COUNT_SNAPSHOT_TURN_REFS, [snapshotId, snapshotId]),
+      this.query(SQL_COUNT_SNAPSHOT_SESSION_REFS, [snapshotId]),
+    ])
+    return (num(turnRefs[0]?.[0]) ?? 0) + (num(sessionRefs[0]?.[0]) ?? 0)
+  }
+
+  /** Drop a blob's row and file. The caller has checked it is unreferenced;
+   *  an unlink failure leaves an orphan blob the session-dir delete sweeps. */
+  async deleteSnapshot(snapshotId: number): Promise<void> {
+    await this.ensureReady()
+    await this.execute(SQL_DELETE_SNAPSHOT, [snapshotId])
+    try {
+      await this.fs.unlink(this.blobPath(snapshotId))
+    } catch {
+      // Orphan blob — swept with the session directory.
+    }
   }
 
   // --- transport ------------------------------------------------------------

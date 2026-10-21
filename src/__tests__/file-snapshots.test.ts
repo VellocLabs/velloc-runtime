@@ -17,6 +17,13 @@ import {
   SQL_SELECT_PRIOR_TURN_FILE,
   SQL_SELECT_TURN_FILE,
   SQL_UPDATE_TURN_FILE_AFTER,
+  SQL_SELECT_SESSION_FILE,
+  SQL_DELETE_TURN_FILE,
+  SQL_COUNT_TURN_FILES_FOR_PATH,
+  SQL_DELETE_SESSION_FILE,
+  SQL_COUNT_SNAPSHOT_TURN_REFS,
+  SQL_COUNT_SNAPSHOT_SESSION_REFS,
+  SQL_DELETE_SNAPSHOT,
 } from '../sessions/fileSnapshots/snapshotStore'
 import {
   FileSnapshotRecorder,
@@ -28,6 +35,12 @@ import {
   decodeSnapshotBytes,
   formatUnifiedDiffText,
 } from '../sessions/fileSnapshots/snapshotDiff'
+import {
+  beginShellMutationProbe,
+  holdShellMutationProbe,
+  resetHeldShellMutationProbes,
+  settleHeldShellMutationProbe,
+} from '../sessions/fileSnapshots/shellMutationProbe'
 import { deriveSnapshotTurnInfo, isTurnBoundary } from '../utils/turnDiffs'
 import { normalizePathKey } from '../utils/paths'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
@@ -192,6 +205,15 @@ function makeFakeSqlite(opts?: {
       if (row) row[4] = 1
       return ok({ rowsAffected: row ? 1 : 0 })
     }
+    if (sql === SQL_DELETE_TURN_FILE) {
+      return ok({ rowsAffected: turnFiles.delete(tfKey(params[0], params[1])) ? 1 : 0 })
+    }
+    if (sql === SQL_DELETE_SESSION_FILE) {
+      return ok({ rowsAffected: sessionFiles.delete(params[0] as string) ? 1 : 0 })
+    }
+    if (sql === SQL_DELETE_SNAPSHOT) {
+      return ok({ rowsAffected: snapshots.delete(params[0] as number) ? 1 : 0 })
+    }
     return err(`UNEXPECTED_SQL:${sql}`)
   }
 
@@ -244,6 +266,19 @@ function makeFakeSqlite(opts?: {
       return [...sessionFiles.values()].sort((a, b) =>
         String(a[0]).localeCompare(String(b[0])),
       )
+    }
+    if (sql === SQL_SELECT_SESSION_FILE) {
+      const row = sessionFiles.get(params[0] as string)
+      return row ? [row] : []
+    }
+    if (sql === SQL_COUNT_TURN_FILES_FOR_PATH) {
+      return [[sortedTurnFiles().filter(r => r[1] === params[0]).length]]
+    }
+    if (sql === SQL_COUNT_SNAPSHOT_TURN_REFS) {
+      return [[sortedTurnFiles().filter(r => r[4] === params[0] || r[7] === params[1]).length]]
+    }
+    if (sql === SQL_COUNT_SNAPSHOT_SESSION_REFS) {
+      return [[[...sessionFiles.values()].filter(r => r[3] === params[0]).length]]
     }
     throw new Error(`UNEXPECTED_QUERY:${sql}`)
   }
@@ -851,6 +886,172 @@ describe('FileSnapshotRecorder — revert', () => {
     await recorder.trackBeforeMutation('/ws/a.txt', T1)
     const result = await recorder.revertSession()
     expect(result.restored).toEqual([])
+  })
+})
+
+describe('FileSnapshotRecorder — shell probes (speculative capture + discard)', () => {
+  it('probeBeforeMutation reports a fresh capture once; an unchanged probe is discarded with its session row and blob', async () => {
+    const h = makeHarness({ initialFiles: { '/proj/a.txt': 'A' } })
+    expect(await h.recorder.probeBeforeMutation('/proj/a.txt', T1)).toBe(true)
+    expect(await h.recorder.probeBeforeMutation('/proj/a.txt', T1)).toBe(false)
+    expect(h.fake.turnFiles.size).toBe(1)
+    expect(h.fake.snapshots.size).toBe(1)
+    expect(h.disk.listUnder(`${SESSION_DIR}/snapshots`)).toHaveLength(1)
+
+    // A second probe shared the row: nothing may discard it now.
+    expect(await h.recorder.discardUnchangedProbe('/proj/a.txt', 1)).toBe(false)
+    expect(h.fake.turnFiles.size).toBe(1)
+
+    const fresh = makeHarness({ initialFiles: { '/proj/a.txt': 'A' } })
+    expect(await fresh.recorder.probeBeforeMutation('/proj/a.txt', T1)).toBe(true)
+    expect(await fresh.recorder.discardUnchangedProbe('/proj/a.txt', 1)).toBe(true)
+    expect(fresh.fake.turnFiles.size).toBe(0)
+    expect(fresh.fake.sessionFiles.size).toBe(0)
+    expect(fresh.fake.snapshots.size).toBe(0)
+    expect(fresh.disk.listUnder(`${SESSION_DIR}/snapshots`)).toHaveLength(0)
+    // The path is free again: a later real mutation this turn captures anew.
+    expect(await fresh.recorder.probeBeforeMutation('/proj/a.txt', T1)).toBe(true)
+  })
+
+  it('keeps the row when the file changed, and the turn then diffs it', async () => {
+    const h = makeHarness({ initialFiles: { '/proj/a.txt': 'A\n' } })
+    await h.recorder.probeBeforeMutation('/proj/a.txt', T1)
+    h.disk.write('/proj/a.txt', 'B\n')
+    expect(await h.recorder.discardUnchangedProbe('/proj/a.txt', 1)).toBe(false)
+    await h.recorder.finalizeOpenTurns()
+    const turns = await h.recorder.getTurnDiffs()
+    expect(turns[0]?.files.map(f => f.displayPath)).toEqual(['/proj/a.txt'])
+  })
+
+  it('refuses to discard a row another capture relied on, even when the disk is unchanged', async () => {
+    const h = makeHarness({ initialFiles: { '/proj/a.txt': 'A' } })
+    expect(await h.recorder.probeBeforeMutation('/proj/a.txt', T1)).toBe(true)
+    await h.recorder.trackBeforeMutation('/proj/a.txt', T1)
+    expect(await h.recorder.discardUnchangedProbe('/proj/a.txt', 1)).toBe(false)
+    expect(h.fake.turnFiles.size).toBe(1)
+  })
+
+  it('a discarded probe in a later turn leaves the session original and the shared blob in place', async () => {
+    const h = makeHarness({ initialFiles: { '/proj/a.txt': 'A' } })
+    await h.recorder.trackBeforeMutation('/proj/a.txt', T1)
+    h.disk.write('/proj/a.txt', 'B')
+    await h.recorder.finalizeOpenTurns()
+    const blobsAfterTurn1 = h.fake.snapshots.size
+    expect(await h.recorder.probeBeforeMutation('/proj/a.txt', T2)).toBe(true)
+    // Turn 2's before reused turn 1's after blob — no new blob.
+    expect(h.fake.snapshots.size).toBe(blobsAfterTurn1)
+    expect(await h.recorder.discardUnchangedProbe('/proj/a.txt', 2)).toBe(true)
+    expect(h.fake.turnFiles.size).toBe(1)
+    expect(h.fake.sessionFiles.size).toBe(1)
+    expect(h.fake.snapshots.size).toBe(blobsAfterTurn1)
+  })
+
+  it('an absent path: still absent → discarded; created → kept as a new file', async () => {
+    const h = makeHarness()
+    await h.recorder.probeBeforeMutation('/proj/new.txt', T1)
+    await h.recorder.probeBeforeMutation('/proj/made.txt', T1)
+    h.disk.write('/proj/made.txt', 'hello')
+    expect(await h.recorder.discardUnchangedProbe('/proj/new.txt', 1)).toBe(true)
+    expect(await h.recorder.discardUnchangedProbe('/proj/made.txt', 1)).toBe(false)
+    await h.recorder.finalizeOpenTurns()
+    const turns = await h.recorder.getTurnDiffs()
+    expect(turns[0]?.files.map(f => [f.displayPath, f.fileWasCreated])).toEqual([['/proj/made.txt', true]])
+  })
+
+  it('never discards after finalize or when the before-state was skipped', async () => {
+    const h = makeHarness({ initialFiles: { '/proj/a.txt': 'A', '/proj/big.txt': 'x'.repeat(40) }, maxSnapshotBytes: 10 })
+    await h.recorder.probeBeforeMutation('/proj/a.txt', T1)
+    await h.recorder.probeBeforeMutation('/proj/big.txt', T1)
+    expect(await h.recorder.discardUnchangedProbe('/proj/big.txt', 1)).toBe(false)
+    await h.recorder.finalizeOpenTurns()
+    expect(await h.recorder.discardUnchangedProbe('/proj/a.txt', 1)).toBe(false)
+  })
+})
+
+describe('beginShellMutationProbe — a shell command end to end', () => {
+  const big = 'x'.repeat(3 * 1024 * 1024)
+
+  it('captures the named write targets, then keeps only what the command changed', async () => {
+    const h = makeHarness({
+      initialFiles: { '/proj/a.txt': 'A\n', '/proj/in.txt': 'in', '/proj/large.log': big },
+    })
+    const probe = await beginShellMutationProbe({
+      recorder: h.recorder,
+      fs: h.disk.fs,
+      turn: T1,
+      shell: 'bash',
+      cwd: '/proj',
+      command: "sed -i 's/A/B/' a.txt && cat in.txt > out.txt && mytool large.log && touch same.txt",
+    })
+    // a.txt (writer), out.txt (redirect, absent), same.txt (writer, absent);
+    // in.txt is read; large.log is a weak operand over the size cap.
+    expect([...probe.tracked].sort()).toEqual(['/proj/a.txt', '/proj/out.txt', '/proj/same.txt'])
+    expect(h.fake.turnFiles.size).toBe(3)
+
+    h.disk.write('/proj/a.txt', 'B\n')
+    h.disk.write('/proj/out.txt', 'in')
+    await probe.settle()
+    await probe.settle()
+    expect([...h.fake.turnFiles.keys()].sort()).toEqual(['1|/proj/a.txt', '1|/proj/out.txt'])
+    await h.recorder.finalizeOpenTurns()
+    const turns = await h.recorder.getTurnDiffs()
+    expect(turns[0]?.files.map(f => [f.displayPath, f.fileWasCreated]).sort()).toEqual([
+      ['/proj/a.txt', false],
+      ['/proj/out.txt', true],
+    ])
+  })
+
+  it('a weak operand under the cap is captured, and let go when the tool only read it', async () => {
+    const h = makeHarness({ initialFiles: { '/proj/src/x.ts': 'const a = 1\n' } })
+    const probe = await beginShellMutationProbe({
+      recorder: h.recorder, fs: h.disk.fs, turn: T1, shell: 'bash', cwd: '/proj',
+      command: 'npx prettier --check src/x.ts',
+    })
+    expect(probe.tracked).toEqual(['/proj/src/x.ts'])
+    await probe.settle()
+    expect(h.fake.turnFiles.size).toBe(0)
+    expect(h.fake.snapshots.size).toBe(0)
+  })
+
+  it('a recursive removal captures the tree through the directory walk', async () => {
+    const h = makeHarness({ initialFiles: { '/proj/build/a.js': '1', '/proj/build/sub/b.js': '2' } })
+    const probe = await beginShellMutationProbe({
+      recorder: h.recorder, fs: h.disk.fs, turn: T1, shell: 'bash', cwd: '/proj', command: 'rm -rf build',
+    })
+    expect(probe.tracked).toEqual([])
+    expect([...h.fake.turnFiles.keys()].sort()).toEqual(['1|/proj/build/a.js', '1|/proj/build/sub/b.js'])
+    await h.disk.fs.rm('/proj/build')
+    await probe.settle()
+    await h.recorder.finalizeOpenTurns()
+    const turns = await h.recorder.getTurnDiffs()
+    expect(turns[0]?.files.map(f => f.isDeleted)).toEqual([true, true])
+  })
+
+  it('a capture failure skips that path and the command still gets its probe', async () => {
+    const h = makeHarness({ initialFiles: { '/proj/a.txt': 'A' } })
+    const stat = h.disk.fs.stat.bind(h.disk.fs)
+    ;(h.disk.fs as { stat: unknown }).stat = async (p: string) => {
+      if (p.endsWith('bad.txt')) throw new Error('EACCES: denied')
+      return stat(p)
+    }
+    const probe = await beginShellMutationProbe({
+      recorder: h.recorder, fs: h.disk.fs, turn: T1, shell: 'bash', cwd: '/proj', command: 'touch bad.txt a.txt',
+    })
+    expect(probe.tracked).toEqual(['/proj/a.txt'])
+  })
+
+  it('held probes settle by task id, once', async () => {
+    resetHeldShellMutationProbes()
+    const h = makeHarness({ initialFiles: { '/proj/a.txt': 'A' } })
+    const probe = await beginShellMutationProbe({
+      recorder: h.recorder, fs: h.disk.fs, turn: T1, shell: 'bash', cwd: '/proj', command: 'touch a.txt',
+    })
+    holdShellMutationProbe('b1', probe)
+    expect(h.fake.turnFiles.size).toBe(1)
+    await settleHeldShellMutationProbe('b1')
+    expect(h.fake.turnFiles.size).toBe(0)
+    await settleHeldShellMutationProbe('b1')
+    await settleHeldShellMutationProbe('never-held')
   })
 })
 

@@ -19,6 +19,7 @@ import {
   HOST_SUPER_SHELL_TASK_ID,
 } from '../run/backgroundShellSink'
 import { joinRuntimePath, resolveRuntimePath } from '../../utils/runtimePaths'
+import { settleHeldShellMutationProbe } from '../../sessions/fileSnapshots/shellMutationProbe'
 import { oneLineCommand } from '../../browser/runJs/shellHelpers'
 import {
   getConversationSessionDirectoryPath,
@@ -705,6 +706,9 @@ export class SuperShellInvocation {
       this.foreground.delete(taskId)
     }
     this.env.controller.acknowledgeResult?.(taskId)
+    // The step's shell write capture (F-6): the command has ended, so the
+    // files it named but did not change can be let go.
+    await settleHeldShellMutationProbe(taskId)
 
     const file = (name: string): string => joinRuntimePath(stepDir, name)
     const [ecText, cwdErr, stdout, stderr] = await Promise.all([

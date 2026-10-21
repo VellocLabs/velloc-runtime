@@ -28,7 +28,9 @@ import {
   EDIT_TOOL_ID,
   WRITE_TOOL_ID,
 } from '../../prompting/fileToolNames'
-import { SUPER_EDIT_TOOL_NAME } from '../runJs/runJsProtocol'
+import { SUPER_EDIT_TOOL_NAME, SUPER_SHELL_TOOL_NAME } from '../runJs/runJsProtocol'
+import { SHELL_TOOL_ID } from '../../prompting/processToolNames'
+import { PWSH_TOOL_ID } from '../../toolkit/builtin/host/shellArgs'
 import {
   buildSessionChangeDigest,
   readSessionChangeDigest,
@@ -172,7 +174,13 @@ export class AgentTranscriptService {
         // (`code`/`safe_code`) must refresh the Diff panel mid-turn when a
         // SuperEdit result persists, exactly as Edit/Write do above. Without
         // this the panel only caught up at turn finalize.
-        detail.toolName === SUPER_EDIT_TOOL_NAME
+        detail.toolName === SUPER_EDIT_TOOL_NAME ||
+        // A shell command's writes are captured by the snapshot recorder
+        // too, so its persisted result refreshes the panel the same way.
+        (runtime.fileSnapshotRecorder !== undefined &&
+          (detail.toolName === SHELL_TOOL_ID ||
+            detail.toolName === PWSH_TOOL_ID ||
+            detail.toolName === SUPER_SHELL_TOOL_NAME))
       ) {
         persistedEditDetail = true
       }

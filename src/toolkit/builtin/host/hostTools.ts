@@ -33,6 +33,14 @@ import { mintTaskHandle } from '../../../backgroundTasks/taskId'
 import { EDIT_TOOL_ID, READ_TOOL_ID, WRITE_TOOL_ID } from '../../../prompting/fileToolNames'
 import { getLiveCwd, interceptBashCd, type BashCommandArgs } from '../glic/bashCwdInterceptor'
 import { nativizeForHost } from '../../../utils/hostPathForm'
+import { resolveRuntimePath } from '../../../utils/runtimePaths'
+import { fsForContext } from '../../../utils/fs/runtimeFs'
+import { deriveSnapshotTurnInfo } from '../../../utils/turnDiffs'
+import {
+  beginShellMutationProbe,
+  holdShellMutationProbe,
+  type ShellMutationProbe,
+} from '../../../sessions/fileSnapshots/shellMutationProbe'
 import {
   applyReadContextWindow,
   applyWorktreeIsolation,
@@ -120,6 +128,42 @@ function unwrapData(rawResult: unknown): unknown {
     return wrapped.data ?? rawResult
   }
   return rawResult
+}
+
+/**
+ * Shell write capture for one Bash / PowerShell call (F-6): a probe over the
+ * files the command line names, or null when the session has no snapshot
+ * recorder or the call carries no command. Resolves relative paths against
+ * the call's own `cwd` when it has one, else the session's live shell cwd.
+ * Never throws.
+ */
+async function beginShellProbeForCall(args: {
+  isShellTool: boolean
+  toolName: string
+  command: unknown
+  cwdArg: unknown
+  context: ToolCallContext
+}): Promise<ShellMutationProbe | null> {
+  const recorder = args.context.options.fileSnapshotRecorder
+  if (!args.isShellTool || !recorder || typeof args.command !== 'string') return null
+  try {
+    const sessionCwd = getLiveCwd(args.context)
+    const cwd =
+      typeof args.cwdArg === 'string' && args.cwdArg.length > 0
+        ? resolveRuntimePath(sessionCwd, args.cwdArg)
+        : sessionCwd
+    return await beginShellMutationProbe({
+      recorder,
+      fs: fsForContext(args.context),
+      turn: deriveSnapshotTurnInfo(args.context.messages ?? []),
+      command: args.command,
+      shell: args.toolName === PWSH_TOOL_ID ? 'powershell' : 'bash',
+      cwd,
+      homeDir: args.context.options.homeDir,
+    })
+  } catch {
+    return null
+  }
 }
 
 function buildHostToolExecutionContext(
@@ -340,6 +384,16 @@ function buildHostTool(
       }
 
       let progressCounter = 0
+      // Shell write capture (F-6): snapshot the files the command line names
+      // as write targets before it runs; the unchanged ones are discarded
+      // once it has finished (held by task id for a background command).
+      const shellProbe = await beginShellProbeForCall({
+        isShellTool,
+        toolName: definition.name,
+        command: displayCommand ?? (callArgs as Record<string, unknown>).command,
+        cwdArg: (callArgs as Record<string, unknown>).cwd,
+        context,
+      })
       // A background command the worker's registry owns: start it here as a
       // persistent host child whose log is the task's output file, and carry
       // on below exactly as for a host `{ shell_id, status: 'running' }` ack.
@@ -348,6 +402,7 @@ function buildHostTool(
       // finds the child's owner again.
       let workerShell: { taskId: string; outputFilePath: string } | null = null
       let rawResult: unknown
+      try {
       if (
         shellSpawner &&
         shellController &&
@@ -384,6 +439,12 @@ function buildHostTool(
             : undefined,
         })
       }
+      } catch (err) {
+        // The command may have run before the failure: keep what changed.
+        await shellProbe?.settle()
+        throw err
+      }
+      let shellProbeHeld = false
       const agentMeta = extractAgentMeta(rawResult)
       // The host answers with data; the sentences the model reads are the
       // runtime's (resultText.ts).
@@ -491,6 +552,10 @@ function buildHostTool(
               shellController.acknowledgeResult?.(taskId)
               data = buildForegroundShellResult(snap, taskId)
             } else {
+              if (shellProbe) {
+                holdShellMutationProbe(taskId, shellProbe)
+                shellProbeHeld = true
+              }
               // Still running → it's already a background task; hand off. The
               // completion delivery is idle-gated (maybeFlushBackgroundShell
               // Results defers while streaming/inflight), so it CANNOT race this
@@ -501,6 +566,10 @@ function buildHostTool(
           } else {
             // Model asked for background explicitly (or no manager present):
             // fire-and-forget, return the running ack immediately.
+            if (shellProbe) {
+              holdShellMutationProbe(taskId, shellProbe)
+              shellProbeHeld = true
+            }
             const message =
               data && typeof data === 'object'
                 ? (data as { message?: unknown }).message
@@ -514,6 +583,7 @@ function buildHostTool(
           }
         }
       }
+      if (shellProbe && !shellProbeHeld) await shellProbe.settle()
       // Conditional-rules trigger: a successful Read adds its path to
       // `nestedMemoryAttachmentTriggers`. Record the read file path so the query
       // loop can inject any `.velloc/rules` / `.claude/rules` whose `paths:`
