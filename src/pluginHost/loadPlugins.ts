@@ -642,7 +642,10 @@ export async function gatherPlugins(params: {
   const enabled: ActivePlugin[] = []
   const disabled: ActivePlugin[] = []
   const errors: PluginLoadIssue[] = []
+  // Names an enabled plugin has claimed; a switched-off directory plugin
+  // claims none, so a same-named marketplace copy still loads (F-14).
   const seenNames = new Set<string>()
+  const disabledNames = new Set<string>()
 
   // ---- 1. Legacy directory walk ------------------------------------------
   for (const { root, sourcePrefix } of roots) {
@@ -675,10 +678,11 @@ export async function gatherPlugins(params: {
       if (seenNames.has(plugin.name)) {
         continue
       }
-      seenNames.add(plugin.name)
       if (plugin.enabled) {
+        seenNames.add(plugin.name)
         enabled.push(plugin)
-      } else {
+      } else if (!disabledNames.has(plugin.name)) {
+        disabledNames.add(plugin.name)
         disabled.push(plugin)
       }
     }
@@ -687,8 +691,8 @@ export async function gatherPlugins(params: {
   // ---- 2. Marketplace-installed plugins ----------------------------------
   // Walk `installed_plugins.json`. For each entry, load the manifest
   // from its `installPath` and create a ActivePlugin with the install
-  // identifier attached. Name collisions with legacy plugins drop the
-  // marketplace entry (legacy wins — explicit user intent).
+  // identifier attached. An enabled directory plugin of the same name drops
+  // the marketplace entry (the local copy wins); a disabled one does not.
   if (params.installRegistry) {
     const marketplacePlugins = await loadInstalledMarketplacePlugins(
       params.installRegistry,
@@ -698,9 +702,7 @@ export async function gatherPlugins(params: {
     for (const { plugin, errors: pluginErrors } of marketplacePlugins) {
       errors.push(...pluginErrors)
       if (seenNames.has(plugin.name)) {
-        // Legacy plugin with same manifest name took precedence.
-        // The marketplace plugin stays installed (registry entry intact),
-        // it's just shadowed in this session's discovery output.
+        // Shadowed in this session; the registry entry stays installed.
         continue
       }
       seenNames.add(plugin.name)

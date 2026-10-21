@@ -599,6 +599,7 @@ function InstalledCard({
   isMod,
   description,
   location,
+  notices,
   mod,
   stateTestId,
   enabledControl,
@@ -626,6 +627,8 @@ function InstalledCard({
   description?: string;
   /** Where it lives on disk, for a person's own mod. */
   location?: { text: string | undefined; testId: string };
+  /** Warning lines under the location, e.g. a local copy loading instead. */
+  notices?: { text: string; testId: string }[];
   mod?: ModPluginSummary;
   stateTestId: string;
   enabledControl?: React.ReactNode;
@@ -716,6 +719,16 @@ function InstalledCard({
           {location.text}
         </div>
       ) : null}
+      {notices?.map((notice) => (
+        <div
+          key={notice.testId}
+          data-testid={notice.testId}
+          title={notice.text}
+          className="mt-1.5 break-all text-warning text-xs"
+        >
+          {notice.text}
+        </div>
+      ))}
       {mod ? <ModStatus summary={mod} t={t} testId={stateTestId} /> : null}
       {mod ? <ModHooksLine mod={mod} t={t} /> : null}
       {options}
@@ -1432,6 +1445,12 @@ export function PluginsSection({
                 // before any session has loaded it; by its state after.
                 isMod={Boolean(mod) || Boolean(p.isMod)}
                 description={mod?.description ?? p.description}
+                notices={(p.shadowedBy ?? []).map((shadow, index) => ({
+                  testId: `plugin-shadowed-${p.name}-${index}`,
+                  text: shadow.project === undefined
+                    ? t("settings.plugins.shadowedByLocal", { path: shadow.path })
+                    : t("settings.plugins.shadowedByLocalProject", { path: shadow.path, project: shadow.project }),
+                }))}
                 mod={mod}
                 stateTestId={`plugin-mod-state-${p.name}`}
                 enabledControl={

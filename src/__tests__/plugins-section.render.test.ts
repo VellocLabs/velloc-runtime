@@ -82,7 +82,7 @@ function installedEntry(name: string) {
  * the page makes is recorded in `calls`.
  */
 function makeBridge(
-  installed: Array<ReturnType<typeof installedEntry> & { isMod?: boolean; description?: string }> = [installedEntry('beta')],
+  installed: Array<ReturnType<typeof installedEntry> & { isMod?: boolean; description?: string; shadowedBy?: { path: string; project?: string }[] }> = [installedEntry('beta')],
   /** More routes, each recorded too — `plugins.listLocal` has none by default. */
   extra: Record<string, (payload: unknown) => unknown> = {},
 ) {
@@ -526,6 +526,22 @@ describe('PluginsSection — installed plugins and mods are one list', () => {
     // Not a mod: the source line names the marketplace alone.
     expect(screen.queryByTestId('mod-badge-beta')).toBeNull()
     expect(screen.getByTestId('plugin-description-beta').textContent).toBe('Plain plugin.')
+  })
+
+  it('says which local copy loads instead of a marketplace plugin, per root', async () => {
+    const { bridge } = makeBridge([
+      { ...installedEntry('queue'), shadowedBy: [{ path: '/h/.velloc/plugins/queue' }, { path: '/w/p/.velloc/plugins/queue', project: '/w/p' }] },
+      installedEntry('beta'),
+    ])
+    renderPlugins(bridge)
+    await screen.findByTestId('installed-plugin-queue')
+    expect(screen.getByTestId('plugin-shadowed-queue-0').textContent).toBe(
+      'Not loaded: the local copy at /h/.velloc/plugins/queue replaces it.',
+    )
+    expect(screen.getByTestId('plugin-shadowed-queue-1').textContent).toBe(
+      'Not loaded in /w/p: the local copy at /w/p/.velloc/plugins/queue replaces it there.',
+    )
+    expect(screen.queryByTestId('plugin-shadowed-beta-0')).toBeNull()
   })
 
   // A built-in ships with the product: it is never offered for uninstall,

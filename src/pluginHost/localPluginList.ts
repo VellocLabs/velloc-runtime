@@ -132,3 +132,22 @@ export async function listLocalPlugins(params: {
   }
   return roots
 }
+
+/** An enabled directory plugin that replaces a marketplace plugin of its name. */
+export type LocalPluginShadow = {
+  /** The local plugin's folder, absolute. */
+  path: string
+  /** Absent: the user root, so every session. Otherwise only that project's. */
+  project?: string
+}
+
+/** The enabled directory plugins named `name`, root by root: the loader loads
+ *  one of them instead of the marketplace copy (a disabled one replaces nothing). */
+export function localCopiesShadowing(roots: readonly LocalPluginRoot[], name: string): LocalPluginShadow[] {
+  const out: LocalPluginShadow[] = []
+  for (const root of roots) {
+    const copy = root.plugins.find(plugin => plugin.enabled && plugin.name === name)
+    if (copy) out.push({ path: copy.path, ...(root.project !== undefined ? { project: root.project } : {}) })
+  }
+  return out
+}

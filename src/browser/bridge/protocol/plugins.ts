@@ -6,7 +6,7 @@
  * (absence reads as default-on).
  */
 
-import type { LocalPluginRoot } from '../../../pluginHost/localPluginList'
+import type { LocalPluginRoot, LocalPluginShadow } from '../../../pluginHost/localPluginList'
 import type {
   CatalogRecord,
   PluginSetupRecord,
@@ -44,6 +44,10 @@ export type PluginInstalledUiEntry = PluginSetupRecord & {
   /** True when its `hooks/hooks.json` names hooks modules — the plugin is a
    *  mod, whether or not a session has loaded it yet. */
   isMod?: boolean
+  /** Enabled local copies of the same name, which load instead of this one
+   *  (the user root's in every session, a project's in that project's).
+   *  Absent when there are none. */
+  shadowedBy?: LocalPluginShadow[]
 }
 
 /** One entry in `plugins/listMarketplaces` — the known-marketplaces file

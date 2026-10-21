@@ -1485,6 +1485,8 @@ export const en = {
   'settings.plugins.enableAria': 'Enable {name}',
   'settings.plugins.uninstall': 'Uninstall',
   'settings.plugins.moreAria': 'More actions for {name}',
+  'settings.plugins.shadowedByLocal': 'Not loaded: the local copy at {path} replaces it.',
+  'settings.plugins.shadowedByLocalProject': 'Not loaded in {project}: the local copy at {path} replaces it there.',
   'settings.plugins.marketplaces': 'Marketplaces',
   'settings.plugins.noMarketplaces': 'No marketplaces configured.',
   'settings.plugins.official': 'Official',

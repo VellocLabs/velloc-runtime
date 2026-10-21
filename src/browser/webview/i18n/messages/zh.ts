@@ -1393,6 +1393,8 @@ export const zh: Messages = {
   'settings.plugins.enableAria': '启用 {name}',
   'settings.plugins.uninstall': '卸载',
   'settings.plugins.moreAria': '{name} 的更多操作',
+  'settings.plugins.shadowedByLocal': '未加载：{path} 中的本地副本覆盖了它。',
+  'settings.plugins.shadowedByLocalProject': '在 {project} 中未加载：{path} 中的本地副本在该项目中覆盖了它。',
   'settings.plugins.marketplaces': '市场',
   'settings.plugins.noMarketplaces': '尚未配置任何市场。',
   'settings.plugins.official': '官方',

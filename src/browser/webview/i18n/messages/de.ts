@@ -1454,6 +1454,8 @@ export const de: Messages = {
   'settings.plugins.enableAria': '{name} aktivieren',
   'settings.plugins.uninstall': 'Deinstallieren',
   'settings.plugins.moreAria': 'Weitere Aktionen für {name}',
+  'settings.plugins.shadowedByLocal': 'Nicht geladen: Die lokale Kopie unter {path} ersetzt es.',
+  'settings.plugins.shadowedByLocalProject': 'In {project} nicht geladen: Die lokale Kopie unter {path} ersetzt es dort.',
   'settings.plugins.marketplaces': 'Marktplätze',
   'settings.plugins.noMarketplaces': 'Keine Marktplätze konfiguriert.',
   'settings.plugins.official': 'Offiziell',

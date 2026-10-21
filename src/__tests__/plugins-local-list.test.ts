@@ -11,7 +11,9 @@ import { RUNTIME_DIR_NAME } from '../branding/runtimeDir'
 import { pluginsHandlers } from '../browser/bridge/adapter/pluginsBridgeAdapter'
 import { WORKSPACE_STATE_FILE } from '../browser/runtimeHub/workspaceCapability'
 import { LEGACY_WEBUI_CAPABILITIES } from '../browser/runtimeHub/legacyWebUiCapabilities'
-import { listLocalPlugins } from '../pluginHost/localPluginList'
+import { listLocalPlugins, localCopiesShadowing } from '../pluginHost/localPluginList'
+import { forgetRegistryFile, recordInstalledPlugin } from '../pluginHost/installedRegistry'
+import { getPluginManifestPath } from '../pluginHost/pluginPaths'
 import { pluginLocaleCandidates } from '../pluginHost/pluginLocaleText'
 import { makeMemFs } from './_helpers/memFs'
 
@@ -173,5 +175,45 @@ describe('plugins/listLocal — the sidebar\'s projects, read on the host', () =
 
   it('is a `manager` action: it reads paths on the host\'s disk', () => {
     expect(LEGACY_WEBUI_CAPABILITIES.plugins.listLocal).toBe('manager')
+  })
+})
+
+describe('a marketplace plugin replaced by an enabled local copy', () => {
+  async function withMarketplaceCopies(fs: Awaited<ReturnType<typeof seeded>>) {
+    forgetRegistryFile()
+    // `shared` loads from both roots (the user file enables it); `plain` is
+    // switched off, so it replaces nothing.
+    for (const name of ['shared', 'plain']) {
+      await recordInstalledPlugin({ homeDir: HOME }, fs, `${name}@velloc`, {
+        scope: 'user', version: '1.0', installedAt: '2026-01-01T00:00:00.000Z', installPath: `/cache/${name}`,
+      })
+    }
+    await fs.writeFile(getPluginManifestPath(`${USER_ROOT}/shared`), '{"name":"shared"}')
+    await fs.writeFile(
+      `${HOME}/${RUNTIME_DIR_NAME}/${WORKSPACE_STATE_FILE}`,
+      JSON.stringify({ projects: [{ path: PROJECT, addedAt: 1 }] }),
+    )
+    return fs
+  }
+
+  it('localCopiesShadowing names each root\'s enabled copy and skips a switched-off one', async () => {
+    const fs = await withMarketplaceCopies(await seeded())
+    const roots = await listLocalPlugins({ homeDir: HOME, projects: [PROJECT], fs })
+    expect(localCopiesShadowing(roots, 'shared')).toEqual([
+      { path: `${USER_ROOT}/shared` },
+      { path: `${PROJECT_ROOT}/shared`, project: PROJECT },
+    ])
+    expect(localCopiesShadowing(roots, 'plain')).toEqual([])
+  })
+
+  it('plugins/listInstalled carries shadowedBy only on a row a local copy replaces', async () => {
+    const fs = await withMarketplaceCopies(await seeded())
+    const { plugins } = await pluginsHandlers.listInstalled({ homeDir: HOME, fs })
+    const byName = new Map(plugins.map(p => [p.name, p]))
+    expect(byName.get('shared')!.shadowedBy).toEqual([
+      { path: `${USER_ROOT}/shared` },
+      { path: `${PROJECT_ROOT}/shared`, project: PROJECT },
+    ])
+    expect(byName.get('plain')).not.toHaveProperty('shadowedBy')
   })
 })

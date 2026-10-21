@@ -1426,6 +1426,8 @@ export const ja: Messages = {
   'settings.plugins.enableAria': '{name} を有効にする',
   'settings.plugins.uninstall': 'アンインストール',
   'settings.plugins.moreAria': '{name} のその他の操作',
+  'settings.plugins.shadowedByLocal': '読み込まれていません: {path} のローカルコピーが代わりに使われます。',
+  'settings.plugins.shadowedByLocalProject': '{project} では読み込まれていません: {path} のローカルコピーが代わりに使われます。',
   'settings.plugins.marketplaces': 'マーケットプレイス',
   'settings.plugins.noMarketplaces': 'マーケットプレイスが設定されていません。',
   'settings.plugins.official': '公式',

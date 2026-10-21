@@ -1458,6 +1458,8 @@ export const es: Messages = {
   'settings.plugins.enableAria': 'Activar {name}',
   'settings.plugins.uninstall': 'Desinstalar',
   'settings.plugins.moreAria': 'Más acciones para {name}',
+  'settings.plugins.shadowedByLocal': 'No se carga: la copia local en {path} lo sustituye.',
+  'settings.plugins.shadowedByLocalProject': 'No se carga en {project}: la copia local en {path} lo sustituye allí.',
   'settings.plugins.marketplaces': 'Mercados',
   'settings.plugins.noMarketplaces': 'No hay mercados configurados.',
   'settings.plugins.official': 'Oficial',

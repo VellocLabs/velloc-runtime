@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { getPluginManifestPath } from '../pluginHost/pluginPaths'
 import { BrowserRuntimeConfig } from '../config/BrowserRuntimeConfig'
 import {
   unconfiguredFs,
@@ -515,6 +516,42 @@ describe('gatherPlugins — marketplace integration', () => {
     // Legacy one (no installIdentifier) wins.
     expect(superpowers[0]!.installIdentifier).toBeUndefined()
     expect(superpowers[0]!.manifest.version).toBe('0.9-local')
+  })
+
+  it('a switched-off local copy replaces nothing: the marketplace copy of its name loads', async () => {
+    installProcessFs(makeFakeFs({
+      ...alphaTree(),
+      '/proj/.velloc/plugins/superpowers': { kind: 'dir' as const },
+      [getPluginManifestPath('/proj/.velloc/plugins/superpowers')]: {
+        kind: 'file' as const,
+        content: JSON.stringify({ name: 'superpowers', version: '0.9-local' }),
+      },
+      '/home/user/.velloc/plugins': { kind: 'dir' as const },
+      '/home/user/.velloc/plugins/cache': { kind: 'dir' as const },
+      '/home/user/.velloc/plugins/cache/my-mkt/superpowers/1.0': { kind: 'dir' as const },
+      [getPluginManifestPath('/home/user/.velloc/plugins/cache/my-mkt/superpowers/1.0')]: {
+        kind: 'file' as const,
+        content: JSON.stringify({ name: 'superpowers', version: '1.0-mkt' }),
+      },
+    }))
+    const result = await gatherPlugins({
+      cwd: '/proj',
+      runtimeConfig: new BrowserRuntimeConfig({ env: { HOME: '/home/user' } }),
+      enabledPlugins: ['alpha'],
+      installRegistry: makeRegistry([{
+        name: 'superpowers',
+        marketplace: 'my-mkt',
+        version: '1.0',
+        installPath: '/home/user/.velloc/plugins/cache/my-mkt/superpowers/1.0',
+      }]),
+    })
+    const loaded = result.enabled.filter(p => p.name === 'superpowers')
+    expect(loaded).toHaveLength(1)
+    expect(loaded[0]!.installIdentifier).toBe('superpowers@my-mkt')
+    expect(loaded[0]!.manifest.version).toBe('1.0-mkt')
+    // The local copy keeps its switched-off row.
+    expect(result.disabled.filter(p => p.name === 'superpowers').map(p => p.manifest.version))
+      .toEqual(['0.9-local'])
   })
 
   it('empty installRegistry is identical to omitting it (back-compat)', async () => {

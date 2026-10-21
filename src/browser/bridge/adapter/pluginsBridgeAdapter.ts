@@ -23,7 +23,7 @@ import {
   removeLocalPlugin,
   setLocalPluginEnabled,
 } from '../../../pluginHost/localPluginRemove'
-import { listLocalPlugins } from '../../../pluginHost/localPluginList'
+import { listLocalPlugins, localCopiesShadowing } from '../../../pluginHost/localPluginList'
 import { forgetModBuilds } from '../../../mods/modBuildStore'
 import { RUNTIME_DIR_NAME } from '../../../branding/runtimeDir'
 import { joinRuntimePath } from '../../../utils/runtimePaths'
@@ -96,7 +96,7 @@ export type PluginsAction = keyof PluginsBridgeActionMap
  * `plugins/listInstalled` — flatten the V2 array-per-id registry, merge
  * with the user's `enabledPlugins` map from settings.json. UI gets every
  * field it needs to render the installed-plugins list without a second
- * round-trip.
+ * round-trip, including the enabled local copies that replace a row.
  */
 async function handleListInstalled(
   ctx: PluginsAdapterContext,
@@ -107,7 +107,28 @@ async function handleListInstalled(
     { homeDir: ctx.homeDir }, ctx.fs,
   )
   const flat = flattenRegistryForUi(registry, enabledMap)
-  return { plugins: await Promise.all(flat.map(entry => withPluginFacts(entry, ctx.fs))) }
+  const localRoots = await listLocalPlugins({ homeDir: ctx.homeDir, projects: await sidebarProjects(ctx), fs: ctx.fs })
+  return {
+    plugins: await Promise.all(flat.map(async entry => {
+      const shadows = localCopiesShadowing(localRoots, entry.name)
+      const withFacts = await withPluginFacts(entry, ctx.fs)
+      return shadows.length > 0 ? { ...withFacts, shadowedBy: shadows } : withFacts
+    })),
+  }
+}
+
+/** The sidebar's project folders (`~/.velloc/workspace-state.json`): the
+ *  host's own list, never paths a client names. Empty when there is none. */
+async function sidebarProjects(ctx: PluginsAdapterContext): Promise<string[]> {
+  try {
+    const text = await ctx.fs.readFile(
+      joinRuntimePath(ctx.homeDir, RUNTIME_DIR_NAME, WORKSPACE_STATE_FILE),
+      { encoding: 'utf-8' },
+    )
+    return sanitizeWorkspaceState(JSON.parse(text)).projects.map(project => project.path)
+  } catch {
+    return []
+  }
 }
 
 /** An installed row with what its files say — description, and whether it
@@ -277,16 +298,7 @@ async function handleListLocal(
   ctx: PluginsAdapterContext,
 ): Promise<PluginsBridgeActionMap['listLocal']['result']> {
   const locale = typeof payload?.locale === 'string' ? payload.locale : undefined
-  let projects: string[] = []
-  try {
-    const text = await ctx.fs.readFile(
-      joinRuntimePath(ctx.homeDir, RUNTIME_DIR_NAME, WORKSPACE_STATE_FILE),
-      { encoding: 'utf-8' },
-    )
-    projects = sanitizeWorkspaceState(JSON.parse(text)).projects.map(project => project.path)
-  } catch {
-    // No sidebar yet (or unreadable): the user root alone.
-  }
+  const projects = await sidebarProjects(ctx)
   return { roots: await listLocalPlugins({ homeDir: ctx.homeDir, projects, fs: ctx.fs, ...(locale ? { locale } : {}) }) }
 }
 

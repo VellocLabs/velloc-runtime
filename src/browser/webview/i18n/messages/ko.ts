@@ -1420,6 +1420,8 @@ export const ko: Messages = {
   'settings.plugins.enableAria': '{name} 사용',
   'settings.plugins.uninstall': '제거',
   'settings.plugins.moreAria': '{name} 추가 작업',
+  'settings.plugins.shadowedByLocal': '로드되지 않음: {path}의 로컬 사본이 대신 사용됩니다.',
+  'settings.plugins.shadowedByLocalProject': '{project}에서 로드되지 않음: {path}의 로컬 사본이 대신 사용됩니다.',
   'settings.plugins.marketplaces': '마켓플레이스',
   'settings.plugins.noMarketplaces': '설정된 마켓플레이스가 없습니다.',
   'settings.plugins.official': '공식',
