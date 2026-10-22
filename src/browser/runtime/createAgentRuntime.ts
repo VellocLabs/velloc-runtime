@@ -121,6 +121,7 @@ import {
   buildMCPSkillCommands,
   acquireSessionMCPPool,
   createWorkerMcpOperations,
+  mcpServerInstructionsFromPool,
   mcpServerSkillNamesFromPool,
 } from '../../mcp'
 import { MCPPool } from '../../mcp/pool'
@@ -2224,6 +2225,7 @@ ${teammateAddendum}`
     tools: coreState.tools,
     commands: coreState.options.commands ?? [],
     mcpClients: (coreState.options.mcpClients ?? []) as [],
+    mcpServerInstructions: () => (allowsMcp ? mcpServerInstructionsFromPool(mcpPool) : []),
     agents: (coreState.options.agents ?? []) as [],
     plugins: pluginContributions.plugins.map(plugin => ({
       name: plugin.name,

@@ -12,6 +12,7 @@ import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProt
 import { createBridgeRoute } from '../browser/bridge/browserBridgeProtocol'
 import { createNativePrimitives } from '../browser/bridge/nativePrimitives'
 import { CLIENT_NAME, CLIENT_VERSION } from './client'
+import { cleanMcpInstructions } from './instructions'
 import type { McpHostAccess } from './mcpHost'
 import {
   launchTransportKind,
@@ -291,7 +292,8 @@ export function createWorkerMcpOperations(
       }
       server.tools = await listTools(serverId, opened.client)
       live.set(serverId, server)
-      return { ok: true, tools: server.tools }
+      const instructions = cleanMcpInstructions(opened.client.getInstructions())
+      return { ok: true, tools: server.tools, ...(instructions !== undefined ? { instructions } : {}) }
     } catch (error) {
       return { ok: false, tools: [], error: errorMessage(error) }
     }

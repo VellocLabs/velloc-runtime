@@ -253,6 +253,7 @@ attachments (opening context before the user's first message).
 !chat_using_your_tools
 !tool_call_parallelism @standard
 $skill_catalogs
+$mcp_servers
 $session_guidance
 !chat_tone_and_style
 $environment
@@ -365,6 +366,7 @@ Web-computed each turn (the manifest just fixes their *position*). Known names:
 | Name | Where | Content |
 |---|---|---|
 | `$skill_catalogs` | `## prompt` | JS skill tool-catalog sections (e.g. a2ui), deferral-gated. |
+| `$mcp_servers` | `## prompt` | Each connected MCP server's own instructions under a host header (callable prefix, how to load); rendered whether or not the server's tools are loaded, empty when no server sent any. Not in `safe_code`. |
 | `$session_guidance` | `## prompt` | Sub-agent / search guidance — only when the `Agent` tool is enabled. |
 | `$environment` | `## prompt` | Environment block (cwd, OS, …). *Positioned here; actually appended downstream by `queryContext`/`QueryEngine`.* |
 | `$memory` | `## prompt` | Memory block (when non-empty). *Appended downstream like `$environment`.* |
@@ -460,6 +462,7 @@ deferredTools: [shell, browser, a2ui, agent-teams]
 !chat_using_your_tools
 !tool_call_parallelism @standard
 $skill_catalogs
+$mcp_servers
 $session_guidance
 !chat_tone_and_style
 $environment

@@ -40,6 +40,7 @@ deferredTools: [browser, a2ui, agent-teams]
 !autonomy
 !code_autonomy
 $skill_catalogs
+$mcp_servers
 $session_guidance
 $environment
 $memory

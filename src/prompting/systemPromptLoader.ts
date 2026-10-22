@@ -5,6 +5,7 @@ import type { SystemPromptVariant } from './systemPromptLoader.types'
 import { sessionGuidanceChunk } from './systemPromptSessionGuidance'
 import { getEnabledToolNames } from './systemPromptToolSection'
 import { getVisibleSkillCatalogs } from '../toolkit/run/skillCatalogs'
+import { renderMcpServerSections, type McpServerPromptEntry } from './mcpServerSections'
 import { getHolderProse, getTemplate } from './templateRegistry'
 import {
   renderPromptSection,
@@ -25,6 +26,8 @@ export type PromptSectionRenderer = (params: {
 
 export type SelectSystemPromptParams = {
   tools: ToolContractList
+  /** The connected MCP servers with instructions, for `$mcp_servers`. */
+  mcpServers?: ReadonlyArray<McpServerPromptEntry>
   /**
    * Per-session agent-template type (the `src/template/<type>/` folder, e.g.
    * `chat`). When set AND a manifest exists, the prompt is composed from
@@ -187,6 +190,10 @@ export async function loadSystemPromptSections(
     new Set(catalogEnabledToolNames),
   ).map(({ holderName, content }) => ({ name: holderName, text: content }))
 
+  // The connected MCP servers' own instructions, rendered whether or not
+  // their tools are loaded: the section is how the model learns when to load them.
+  const mcpServersChunk = renderMcpServerSections(p.mcpServers ?? [])
+
   // ── Manifest path (per-session agent template) ──────────────────────
   // When a template type is given AND a manifest exists, compose the prompt
   // from its `## prompt` skeleton (fine-grained per-holder elements). The
@@ -223,6 +230,8 @@ export async function loadSystemPromptSections(
       } else if (el.kind === 'dynamic') {
         if (el.name === 'skill_catalogs') {
           parts.push(...skillCatalogHolders)
+        } else if (el.name === 'mcp_servers') {
+          if (mcpServersChunk) parts.push(mcpServersChunk)
         } else if (el.name === 'session_guidance') {
           if (sessionGuidance) parts.push({ text: sessionGuidance })
         }
@@ -257,6 +266,7 @@ export async function loadSystemPromptSections(
       { name: 'base.full', text: trimmed },
       ...catalogParts,
       ...skillCatalogHolders,
+      ...(mcpServersChunk ? [mcpServersChunk] : []),
     ]
     return sessionGuidance ? [...parts, { text: sessionGuidance }] : parts
   }
@@ -275,6 +285,7 @@ export async function loadSystemPromptSections(
   if (before) parts.push({ name: 'base.pre', text: before })
   parts.push(...catalogParts)
   parts.push(...skillCatalogHolders)
+  if (mcpServersChunk) parts.push(mcpServersChunk)
   if (afterWithGuidance) parts.push({ name: 'base.post', text: afterWithGuidance })
   return parts
 }

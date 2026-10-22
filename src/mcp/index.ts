@@ -28,8 +28,15 @@ export {
   mcpToolName,
   mcpServerSkillName,
   mcpServerSkillNamesFromPool,
+  mcpServerInstructionsFromPool,
+  mcpServerSkillDescription,
   buildMCPSkillCommands,
 } from './toolAdapter'
+export {
+  cleanMcpInstructions,
+  summarizeMcpInstructions,
+  MCP_INSTRUCTIONS_MAX_CHARS,
+} from './instructions'
 export {
   buildMcpResourceToolsFromPool,
   formatResourceList,

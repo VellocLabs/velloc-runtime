@@ -2,6 +2,7 @@ import { declareTool, type ToolContract, type ToolArgsJsonShape } from '../toolk
 import type { ChromiumPromptCommand } from '../runtime/CommandTypes'
 import type { LiveServerLink, MCPToolDescriptor } from './types'
 import type { MCPPool } from './pool'
+import { summarizeMcpInstructions } from './instructions'
 
 const MCP_TOOL_NAME_PREFIX = 'mcp__'
 const NAME_SEPARATOR = '__'
@@ -108,6 +109,29 @@ export function mcpServerSkillNamesFromPool(pool: MCPPool): string[] {
 }
 
 /**
+ * Every connected server's instructions, for the prompt's `$mcp_servers`
+ * section. Servers without instructions are left out.
+ */
+export function mcpServerInstructionsFromPool(
+  pool: Pick<MCPPool, 'listServers'>,
+): Array<{ name: string; instructions: string }> {
+  const out: Array<{ name: string; instructions: string }> = []
+  for (const server of pool.listServers()) {
+    if (server.status !== 'connected' || server.instructions === undefined) continue
+    out.push({ name: server.name, instructions: server.instructions })
+  }
+  return out
+}
+
+/** The one-line description of a server's Skill: what loading it gives, then
+ *  the server's own summary when it sent instructions. */
+export function mcpServerSkillDescription(server: Pick<LiveServerLink, 'name' | 'instructions'>): string {
+  const lead = `Loads the tools of the "${server.name}" MCP server.`
+  const summary = server.instructions !== undefined ? summarizeMcpInstructions(server.instructions) : undefined
+  return summary ? `${lead} ${summary}` : lead
+}
+
+/**
  * A model-invocable `Skill('mcp__<server>')` per connected server, activating
  * its deferred tools. `name` must equal `mcpServerSkillName`.
  */
@@ -125,7 +149,7 @@ export function buildMCPSkillCommands(pool: MCPPool): ChromiumPromptCommand[] {
     commands.push({
       type: 'prompt',
       name: mcpServerSkillName(server.name),
-      description: `Load the tools from the "${server.name}" MCP server.`,
+      description: mcpServerSkillDescription(server),
       content:
         `The "${server.name}" MCP server is now active. You can call its ` +
         `tools:\n\n${toolLines || '(no tools advertised)'}`,

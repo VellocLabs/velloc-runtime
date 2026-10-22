@@ -973,6 +973,8 @@ describe('plugin templates and the requires gate (F-25, F-14)', () => {
       requirements,
     })
     expect(result.mcpServers).toEqual([])
+    expect(result.nativeMcpServers).toEqual([])
+    expect(result.mcpServerPlugins).toEqual([])
     expect(result.pluginSkillDirs).toEqual([])
     expect(result.plugins).toEqual([])
     expect(result.waiting.map(entry => ({ plugin: entry.plugin.name, unmet: entry.unmet }))).toEqual([

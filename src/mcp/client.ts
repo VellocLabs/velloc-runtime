@@ -1,6 +1,7 @@
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { traceLine } from '../utils/debugLog'
+import { cleanMcpInstructions } from './instructions'
 import { createTransport } from './transport'
 import type {
   LiveServerLink,
@@ -89,10 +90,12 @@ export async function connectMCPServer(
       console.warn(`[mcp] Server "${name}" does not support listTools:`, err)
     }
 
+    const instructions = cleanMcpInstructions(client.getInstructions())
     connected.client = client
     connected.transport = transport
     connected.status = 'connected'
     connected.tools = tools
+    if (instructions !== undefined) connected.instructions = instructions
     traceLine(
       `[mcp] connected to "${name}" — ${tools.length} tool(s)`,
     )

@@ -1,8 +1,11 @@
 import type { ServerLink, Message } from '../RuntimeTypes'
 import type { ToolContractList } from '../../toolkit/toolContract'
+import type { McpServerPromptEntry } from '../../prompting/mcpServerSections'
 
 export type FetchSystemPromptPartsParams = {
   tools: ToolContractList
+  /** The connected MCP servers with instructions, for the `$mcp_servers` section. */
+  mcpServers?: ReadonlyArray<McpServerPromptEntry>
   /**
    * Deferral-aware visible tool names (deferral-filtered set). Forwarded to
    * the holder-emitting loader so the tool-catalog holder is gated on the

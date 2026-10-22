@@ -49,6 +49,7 @@ deferredTools: [browser, a2ui]
 !delivering_work
 !autonomy
 $skill_catalogs
+$mcp_servers
 $session_guidance
 $environment
 $memory

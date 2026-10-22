@@ -390,6 +390,7 @@ export class MCPPool {
         if (result.ok) {
           server.status = 'connected'
           server.tools = result.tools
+          if (result.instructions !== undefined) server.instructions = result.instructions
           this.lastActiveAt.set(name, Date.now())
         } else {
           server.status = 'failed'
@@ -797,6 +798,8 @@ export class MCPPool {
       if (!live()) return
       if (result.ok) {
         server.tools = result.tools
+        if (result.instructions !== undefined) server.instructions = result.instructions
+        else delete server.instructions
         this.lastActiveAt.set(server.name, Date.now())
       } else {
         server.status = 'failed'

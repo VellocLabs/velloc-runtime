@@ -40,6 +40,21 @@ export function isToolOffered(tool: ToolContract, callContext: ToolCallContext):
   )
 }
 
+/** A server's own notes name its tools by their short names: the refusal for
+ *  such a name gives the full names behind it and how to load each. */
+function mcpShortNameHint(shortName: string, callContext: ToolCallContext): string | undefined {
+  const matches = callContext.options.tools.filter(tool => tool.mcpInfo?.toolName === shortName)
+  if (matches.length === 0) return undefined
+  const named = matches.map(tool => {
+    const server = `server "${tool.mcpInfo!.serverName}"`
+    const skill = typeof tool.skill === 'string' ? tool.skill : undefined
+    return isToolOffered(tool, callContext) || !skill
+      ? `"${tool.name}" (${server})`
+      : `"${tool.name}" (${server}; not loaded yet: call Skill "${skill}" or ToolSearch "select:${tool.name}" first)`
+  })
+  return `Unknown tool: ${shortName}. MCP tools are called by their full name: ${named.join('; ')}.`
+}
+
 /** `fromExtension`: an extension's own `$.tool.call` / `$.tool.check`, which
  *  reaches a registered tool still waiting behind ToolSearch — the wait hides
  *  it from the model only. */
@@ -53,7 +68,9 @@ export function admitToolCall(
     traceLine(`[tool] model called unknown tool "${block.toolName}"`, { level: 'warn' })
     return {
       refusal: {
-        content: `Unknown tool: ${block.toolName}. Available browser tools: ${callContext.options.tools.map(t => t.name).join(', ')}`,
+        content:
+          mcpShortNameHint(block.toolName, callContext) ??
+          `Unknown tool: ${block.toolName}. Available browser tools: ${callContext.options.tools.map(t => t.name).join(', ')}`,
         data: `Unknown tool: ${block.toolName}`,
       },
     }

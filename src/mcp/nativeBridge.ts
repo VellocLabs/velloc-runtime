@@ -15,6 +15,8 @@ export type McpBridgeToolDescriptor = {
 export type McpBridgeConnectResult = {
   ok: boolean
   tools: McpBridgeToolDescriptor[]
+  /** The server's initialize `instructions`, bounded (`cleanMcpInstructions`). */
+  instructions?: string
   error?: string
 }
 

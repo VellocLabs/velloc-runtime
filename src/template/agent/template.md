@@ -98,6 +98,7 @@ deferredTools: [a2ui, agent-teams]
 !agent_using_your_tools
 !tool_call_parallelism @standard
 $skill_catalogs
+$mcp_servers
 $session_guidance
 !agent_tone_and_style
 $environment

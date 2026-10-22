@@ -52,6 +52,7 @@ async function buildDefaultSystemPrompt(
 
   const loaderParams = {
     tools: params.tools,
+    mcpServers: params.mcpServers,
     visibleToolNames: params.visibleToolNames,
     providerId: params.providerId,
     promptProfile,

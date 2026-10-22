@@ -193,6 +193,7 @@ export async function assemblePrompt(
   const parts = await gatherSystemPromptSources(
     {
       tools: config.tools,
+      mcpServers: config.mcpServerInstructions?.() ?? [],
       visibleToolNames: tools,
       mainLoopModel: model,
       extraWorkspaceRoots: roots instanceof Map ? Array.from(roots.keys()) : [],

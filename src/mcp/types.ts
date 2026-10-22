@@ -83,6 +83,9 @@ export type LiveServerLink = {
   client?: Client
   transport?: Transport
   tools: MCPToolDescriptor[]
+  /** The server's initialize `instructions`, already bounded by
+   *  `cleanMcpInstructions`; absent when it sent none. */
+  instructions?: string
   error?: string
 }
 

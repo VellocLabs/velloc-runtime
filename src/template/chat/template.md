@@ -65,6 +65,7 @@ deferredTools: [browser, a2ui]
 !chat_using_your_tools
 !tool_call_parallelism @standard
 $skill_catalogs
+$mcp_servers
 $session_guidance
 !chat_tone_and_style
 $environment

@@ -115,6 +115,9 @@ export type ConversationEngineConfig = {
   tools: ToolContractList
   commands: RuntimeCommandList
   mcpClients: ServerLink[]
+  /** The connected MCP servers' initialize instructions, read at every
+   *  prompt render so a server that connects later shows up (F-10). */
+  mcpServerInstructions?: () => ReadonlyArray<{ name: string; instructions: string }>
   agents: AgentProfile[]
   /** Loaded plugins, listed in the session-init row. */
   plugins?: PluginInitSummary[]
