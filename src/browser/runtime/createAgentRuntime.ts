@@ -713,7 +713,7 @@ export async function createBrowserRuntime(
   }
   // The keys stored for the plugins' own providers (`${provider_key.KEY}`),
   // read alongside the options.
-  const readProviderKeys = async (): Promise<Record<string, { apiKey?: string; modOwner?: string }>> => {
+  const readProviderKeys = async (): Promise<import('../../pluginHost/pluginMcpUserConfig').PluginProviderKeysMap> => {
     try {
       const { getPluginProviderKeys } = await import('../../pluginHost/pluginConfigs')
       return await getPluginProviderKeys({ homeDir: settingsHome() }, installedFs)

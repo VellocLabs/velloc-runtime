@@ -11,7 +11,8 @@ import {
   resetModProviderDefinitions,
 } from '../config/nexusModelConfig/providers'
 import type { ProviderDefinition } from '../config/nexusModelConfig/providerDefinition'
-import { getPluginProviderKeys } from '../pluginHost/pluginConfigs'
+import { getPluginProviderKeys, setPluginPageOptions } from '../pluginHost/pluginConfigs'
+import { forgetRegistryFile } from '../pluginHost/installedRegistry'
 
 /**
  * A provider mod's plugin options over the `providers` bridge: the page reads
@@ -78,6 +79,7 @@ function registerAcme(configId = PLUGIN) {
 
 beforeEach(() => {
   wipeSettingsMemos()
+  forgetRegistryFile()
   resetModProviderDefinitions()
   registerAcme()
 })
@@ -241,15 +243,99 @@ describe('getPluginProviderKeys', () => {
         providers: {
           configs: {
             openrouter: { apiKey: 'NEXUSENC1:b3Blbg==' },
-            'mod.acme.main': { apiKey: 'NEXUSENC1:YWNtZQ==', modOwner: PLUGIN, account: 'zed', baseUrl: 'https://a.example' },
+            'mod.acme.main': { apiKey: 'NEXUSENC1:YWNtZQ==', secrets: { tavily_api_key: 'NEXUSENC1:dGF2' }, modOwner: PLUGIN, account: 'zed', baseUrl: 'https://a.example' },
             'mod.acme.keyless': { source: 'mod', modOwner: PLUGIN },
           },
         },
       }),
     })
     expect(await getPluginProviderKeys({ homeDir: HOME }, fs)).toEqual({
-      'mod.acme.main': { apiKey: 'NEXUSENC1:YWNtZQ==', modOwner: PLUGIN },
+      'mod.acme.main': { apiKey: 'NEXUSENC1:YWNtZQ==', secrets: { tavily_api_key: 'NEXUSENC1:dGF2' }, modOwner: PLUGIN },
       'mod.acme.keyless': { modOwner: PLUGIN },
     })
+  })
+})
+
+
+describe('named MCP credential lifecycle', () => {
+  it('reloads for secret save, rotation, clearing and provider removal but not unrelated edits', async () => {
+    const { fs } = makeMemoryFs()
+    const reloadPluginsOnAllSessions = vi.fn()
+    const ctx = { homeDir: HOME, fs, encryptSecret: async (s: string) => `NEXUSENC1:${s}`, reloadPluginsOnAllSessions }
+    const id = 'mod.acme.main'
+    const save = (secrets: Record<string, string>) => providersHandlers.upsert({ id, config: { modOwner: PLUGIN, secrets } }, ctx)
+    await save({ tavily_api_key: 'one' })
+    expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(1)
+    await save({ tavily_api_key: 'one' })
+    await providersHandlers.upsert({ id, config: { modOwner: PLUGIN, account: 'edited' } }, ctx)
+    expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(1)
+    await save({ tavily_api_key: 'two' })
+    expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(2)
+    await save({ tavily_api_key: '' })
+    expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(3)
+    await save({ tavily_api_key: 'three' })
+    await providersHandlers.remove({ id }, ctx)
+    expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(5)
+    expect(await getPluginProviderKeys({ homeDir: HOME }, fs)).toEqual({})
+    await providersHandlers.remove({ id }, ctx)
+    expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(5)
+  })
+})
+
+describe('Plugins-page options save', () => {
+  it('reads a disabled local plugin manifest without a live provider registration', async () => {
+    const plugin = 'acme@inline'
+    const root = `${HOME}/.velloc/plugins`
+    const { fs, files } = makeMemoryFs({
+      [SETTINGS_PATH]: JSON.stringify({ version: 1, pluginConfigs: { [plugin]: { options: { region: 'eu', project_id: 'p', 'signin.plan': 'free' } } } }),
+      [`${root}/acme/.claude-plugin/plugin.json`]: JSON.stringify({ name: 'acme', userConfig: { region: { type: 'string', title: 'Region', description: '' } } }),
+    })
+    fs.readdir = vi.fn(async (path: string) => path === root ? [{ name: 'acme', isDirectory: () => true, isFile: () => false, isSymbolicLink: () => false }] : []) as RuntimeFs['readdir']
+    resetModProviderDefinitions()
+    await setPluginPageOptions({ homeDir: HOME }, fs, plugin, {})
+    expect(stored(files).pluginConfigs[plugin].options).toEqual({ project_id: 'p', 'signin.plan': 'free' })
+  })
+
+  it('preserves unknown omitted keys when no plugin metadata is available, but honors explicit values', async () => {
+    const { fs, files } = seeded()
+    resetModProviderDefinitions()
+    await setPluginPageOptions({ homeDir: HOME }, fs, PLUGIN, { region: 'us' })
+    expect(stored(files).pluginConfigs[PLUGIN].options).toEqual({ region: 'us', token: 'T0P', unrelated: 'keep me', 'signin.plan': 'free' })
+    await setPluginPageOptions({ homeDir: HOME }, fs, PLUGIN, {})
+    expect(stored(files).pluginConfigs[PLUGIN].options['signin.plan']).toBe('free')
+  })
+
+  it('replaces/reset top-level fields while keeping masked values and non-top-level options', async () => {
+    const { fs, files } = seeded()
+    files.set(`${HOME}/.velloc/plugins/installed_plugins.json`, JSON.stringify({ version: 2, plugins: { [PLUGIN]: [{ scope: 'user', installPath: '/plugins/acme' }] } }))
+    files.set('/plugins/acme/.claude-plugin/plugin.json', JSON.stringify({ name: 'acme', userConfig: {
+      region: { type: 'string', title: 'Region', description: '' }, token: { type: 'string', title: 'Token', description: '', sensitive: true },
+    } }))
+    resetModProviderDefinitions()
+    await setPluginPageOptions({ homeDir: HOME }, fs, PLUGIN, {}, ['token'])
+    expect(stored(files).pluginConfigs[PLUGIN].options).toEqual({ token: 'T0P', unrelated: 'keep me', 'signin.plan': 'free' })
+    await setPluginPageOptions({ homeDir: HOME }, fs, PLUGIN, null)
+    expect(stored(files).pluginConfigs[PLUGIN].options).toEqual({ unrelated: 'keep me', 'signin.plan': 'free' })
+  })
+
+  it('preserves omitted provider fields while updating other options, including reset', async () => {
+    const { fs, files } = seeded()
+    // The same shared key can move from userConfig to provider settings.
+    registerModProviderDefinition({
+      config: { providerId: 'mod.acme.project', models: [] }, runtimeOnly: true,
+      catalogMod: { state: 'ready', plugin: 'acme', configId: PLUGIN, settings: { project_id: { type: 'string', title: 'Project' } } },
+    } as unknown as ProviderDefinition)
+    await providersHandlers.setModOptions({ plugin: PLUGIN, owned: ['project_id'], values: { project_id: 'saved-project' } }, { homeDir: HOME, fs })
+    files.set(`${HOME}/.velloc/plugins/installed_plugins.json`, JSON.stringify({ version: 2, plugins: { [PLUGIN]: [{ scope: 'user', installPath: '/plugins/acme' }] } }))
+    files.set('/plugins/acme/.claude-plugin/plugin.json', JSON.stringify({ name: 'acme', userConfig: { unrelated: { type: 'string', title: 'Other', description: '' } } }))
+    // Disabling unregisters every live provider; the shared settings remain.
+    resetModProviderDefinitions()
+    await setPluginPageOptions({ homeDir: HOME }, fs, PLUGIN, { unrelated: 'updated' })
+    expect(stored(files).pluginConfigs[PLUGIN].options).toEqual({ region: 'eu', token: 'T0P', project_id: 'saved-project', 'signin.plan': 'free', unrelated: 'updated' })
+    await setPluginPageOptions({ homeDir: HOME }, fs, PLUGIN, null)
+    expect(stored(files).pluginConfigs[PLUGIN].options).toEqual({ region: 'eu', token: 'T0P', project_id: 'saved-project', 'signin.plan': 'free' })
+    expect(stored(files).pluginConfigs['other@marketplace'].options).toEqual({ x: 1 })
+    await setPluginPageOptions({ homeDir: HOME }, fs, PLUGIN, { project_id: '' })
+    expect(stored(files).pluginConfigs[PLUGIN].options.project_id).toBe('')
   })
 })

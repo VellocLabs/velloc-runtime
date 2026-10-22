@@ -301,8 +301,8 @@ export class RuntimeHub {
       // A plugin's `userConfig` values: written to settings.json, then
       // every session reloads its plugins, so its mods load again with them.
       setOptions: async (plugin, options, keep) => {
-        const { setPluginOptions } = await import('../../pluginHost/pluginConfigs')
-        await setPluginOptions({ homeDir: this.context.homeDir }, this.context.fs, plugin, options, keep)
+        const { setPluginPageOptions } = await import('../../pluginHost/pluginConfigs')
+        await setPluginPageOptions({ homeDir: this.context.homeDir }, this.context.fs, plugin, options, keep, await this.knownProjectRoots('all'))
         host.reloadPluginsOnAllSessions()
       },
     })

@@ -1,7 +1,8 @@
 /**
  * Pure `${...}` substitution for plugin MCP server configs: the plugin root,
  * `${user_config.KEY}` (the plugin's own options), `${provider_key.KEY}`
- * (the key stored for the plugin's own provider `KEY`) and `${NAME}` /
+ * (the key stored for the plugin's own provider `KEY`),
+ * `${provider_secret.KEY.NAME}` (a declared named credential) and `${NAME}` /
  * `${NAME:-default}` (runtimeConfig env).
  * Unknown placeholders stay literal.
  */
@@ -27,10 +28,13 @@ export type PluginMcpVarContext = {
    *  plugin's provider `KEY` at `site`; undefined leaves the placeholder
    *  literal. Absent: every `${provider_key.*}` stays literal. */
   providerKey?: (key: string, site: PluginMcpVarSite) => string | undefined
+  /** ${provider_secret.PROVIDER.NAME}; runtime-only, never a general env lookup. */
+  providerSecret?: (reference: string, site: PluginMcpVarSite) => string | undefined
 }
 
 const USER_CONFIG_PREFIX = 'user_config.'
 const PROVIDER_KEY_PREFIX = 'provider_key.'
+const PROVIDER_SECRET_PREFIX = 'provider_secret.'
 
 /**
  *  this for plugin.path on win32 so substituted URLs stay valid). Virtual
@@ -58,6 +62,12 @@ export function substitutePluginMcpString(
     if (varContent.startsWith(PROVIDER_KEY_PREFIX)) {
       return ctx.providerKey?.(varContent.slice(PROVIDER_KEY_PREFIX.length), site) ?? match
     }
+
+    if (varContent.startsWith(PROVIDER_SECRET_PREFIX)) {
+      return ctx.providerSecret?.(varContent.slice(PROVIDER_SECRET_PREFIX.length), site) ?? match
+    }
+    // Reserve the namespace even for malformed references; never read it as env.
+    if (varContent === 'provider_secret') return match
 
     // `varContent.split(':-', 2)`, read from process env (here: getEnv).
     // Security: an env value holding a host placeholder is not taken, so

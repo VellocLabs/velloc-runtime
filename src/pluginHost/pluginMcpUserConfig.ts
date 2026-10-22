@@ -10,6 +10,9 @@
  * default the manifest sets) may hold a host placeholder, and the resolved
  * config holds none but the ones written for the plugin's own options, so it
  * can name no secret but those.
+ * Provider settings share those options and are settled under their existing
+ * keys. `${provider_secret.KEY.NAME}` names a declared credential of an owned
+ * provider; it reaches only stdio env or a native HTTPS header bound per server.
  * `${provider_key.KEY}` names the key stored for one of the plugin's own
  * providers (settings.json `providers.configs.<id>.apiKey`, sealed). It
  * stands only in a stdio server's env value and only when that entry's
@@ -23,7 +26,9 @@ import { secretNameSegment, type McpSecretsStore } from '../mcp/mcpServerSecrets
 import type { NexusMcpServerLaunchConfig } from '../mcp/nativeBridge'
 import type { MCPServerConfig } from '../mcp/types'
 import { settleOptions } from '../mods/optionValues'
-import type { ActivePlugin } from './pluginModel'
+import type { ActivePlugin, PluginUserConfigField } from './pluginModel'
+import { resolveLocalizedText } from '../config/localizedText'
+import { modProviderId } from '../mods/provider/providerManifest'
 import {
   substituteNativePluginMcpVars,
   substitutePluginMcpString,
@@ -37,7 +42,12 @@ export type PluginConfigsMap = Readonly<Record<string, { options?: Readonly<Reco
 
 /** settings.json `providers.configs`, by provider id: the sealed key and the
  *  install identifier of the plugin that owns the entry. */
-export type PluginProviderKeysMap = Readonly<Record<string, { apiKey?: string; modOwner?: string }>>
+export type PluginProviderKeysMap = Readonly<Record<string, {
+  apiKey?: string
+  modOwner?: string
+  /** Sealed named credentials; never exposed to mod scripts or UI clients. */
+  secrets?: Readonly<Record<string, string>>
+}>>
 
 /** One value to store before the servers launch. */
 export type PluginSecretWrite = {
@@ -114,6 +124,37 @@ function referencedKeys(values: readonly string[]): string[] {
   return values.flatMap(value => [...value.matchAll(USER_CONFIG_REF)].map(match => match[1]!))
 }
 
+/** Provider settings share pluginConfigs options with top-level userConfig.
+ * Labels are presentation-only; incompatible value/security contracts refuse
+ * the server rather than silently choosing a declaration's sensitivity. */
+function mcpOptionFields(plugin: Pick<ActivePlugin, 'manifest' | 'providers'>): {
+  fields: Record<string, PluginUserConfigField>
+  conflicts: string[]
+} {
+  const fields: Record<string, PluginUserConfigField> = { ...plugin.manifest.userConfig }
+  const conflicts: string[] = []
+  const contract = (field: PluginUserConfigField) => JSON.stringify({
+    type: field.type, sensitive: field.sensitive === true, required: field.required === true,
+    multiple: field.multiple === true, default: field.default,
+    min: field.min, max: field.max, options: field.options,
+  })
+  for (const provider of plugin.providers ?? []) {
+    for (const [key, field] of Object.entries(provider.manifest.settings ?? {})) {
+      const normalized: PluginUserConfigField = {
+        ...field,
+        title: resolveLocalizedText(field.title, 'en'),
+        description: field.description === undefined ? '' : resolveLocalizedText(field.description, 'en'),
+      }
+      if (Object.hasOwn(fields, key) && contract(fields[key]!) !== contract(normalized)) {
+        conflicts.push(`option "${key}" has conflicting declarations`)
+      } else {
+        Object.defineProperty(fields, key, { value: normalized, enumerable: true, configurable: true, writable: true })
+      }
+    }
+  }
+  return { fields, conflicts }
+}
+
 /**
  * Resolve one server of `plugin`'s manifest for launch. `secrets` lists what
  * must be stored before it starts; `ok: false` names why it cannot start.
@@ -132,14 +173,17 @@ export function resolvePluginMcpServer(
     return { ok: false, reason: 'holds a host placeholder ({{secret:…}} or {{oauth:…}}), which a plugin cannot use' }
   }
   const pluginId = pluginIdOf(plugin)
-  const fields = plugin.manifest.userConfig ?? {}
+  const { fields, conflicts } = mcpOptionFields(plugin)
+  if (conflicts.length > 0) return { ok: false, reason: conflicts.join('; ') }
   const values = settleOptions(fields, scope.configs?.[pluginId]?.options).values
   const isSensitive = (key: string) => Object.hasOwn(fields, key) && fields[key]!.sensitive === true
 
   // An http server whose headers take a sensitive option is driven by the
   // host, which alone can fill a stored secret into a request.
   let launch: PluginMcpServer = server
-  if (server.kind === 'browser' && referencedKeys(Object.values(server.config.headers ?? {})).some(isSensitive)) {
+  const headerValues = Object.values(server.config.headers ?? {})
+  if (server.kind === 'browser' && (referencedKeys(headerValues).some(isSensitive)
+    || headerValues.some(value => value.includes('${provider_secret')))) {
     if (server.config.type !== 'http') {
       return { ok: false, reason: `a sensitive option can reach only a stdio or http server, not ${server.config.type}` }
     }
@@ -212,7 +256,44 @@ export function resolvePluginMcpServer(
     secrets.set(name, { name, value: sealed, processEnv: true })
     return `{{secret:${name}}}`
   }
-  const ctx: PluginMcpVarContext = { pluginRoot: plugin.path, getEnv: scope.getEnv, userConfig, providerKey }
+  const providerSecret = (reference: string, site: PluginMcpVarSite): string | undefined => {
+    // Provider keys cannot contain dots; secret names may (the manifest's charset).
+    const parts = /^([A-Za-z0-9_-]{1,32})\.([A-Za-z0-9_.-]{1,64})$/.exec(reference)
+    const provider = parts && plugin.providers?.find(candidate => candidate.key === parts[1]
+      && candidate.id === modProviderId(plugin.name, candidate.key))
+    const secret = parts?.[2]
+    if (!provider || !secret || !provider.manifest.credentials?.secrets?.some(decl => decl.name === secret)) {
+      problems.add('a provider_secret reference must name a declared secret of this plugin\'s own provider')
+      return undefined
+    }
+    const stored = scope.providers && Object.hasOwn(scope.providers, provider.id) ? scope.providers[provider.id] : undefined
+    if (stored?.modOwner !== pluginId) {
+      problems.add(`the secrets stored for provider ${provider.id} are not recorded as this plugin's`)
+      return undefined
+    }
+    const value = stored.secrets && Object.hasOwn(stored.secrets, secret) ? stored.secrets[secret] : undefined
+    if (typeof value !== 'string' || value.trim() === '') {
+      problems.add(`provider ${provider.id} has no stored secret "${secret}"`)
+      return undefined
+    }
+    const suffix = `${secretNameSegment(provider.key)}/${secretNameSegment(secret)}`
+    if (site === 'env' && launch.kind === 'native' && launch.config.transport === 'stdio') {
+      const name = nameFor(`provider-secret/env/${suffix}`)
+      if (!name) return undefined
+      secrets.set(name, { name, value, processEnv: true })
+      return `{{secret:${name}}}`
+    }
+    if (site === 'header' && launch.kind === 'native' && launch.config.transport === 'http' && headerOrigin) {
+      // Each server has its own binding: another server cannot rebind this secret.
+      const name = nameFor(`provider-secret/mcp/${secretNameSegment(serverName)}/${suffix}`)
+      if (!name) return undefined
+      secrets.set(name, { name, value, origin: headerOrigin })
+      return `{{secret:${name}}}`
+    }
+    problems.add('a provider_secret can stand only in a stdio env value or a native https server header')
+    return undefined
+  }
+  const ctx: PluginMcpVarContext = { pluginRoot: plugin.path, getEnv: scope.getEnv, userConfig, providerKey, providerSecret }
 
   // The resolved config may carry no host placeholder but the ones written
   // above for this plugin's own options, however the substituted pieces join.
@@ -221,6 +302,11 @@ export function resolvePluginMcpServer(
     return strings(config).some(value => holdsHostPlaceholder(own.reduce((rest, mark) => rest.split(mark).join(''), value)))
   }
   const settle = (resolved: PluginMcpServer): ResolvedPluginMcpServer => {
+    // Fail closed for malformed, indirect, or otherwise unhandled references,
+    // including references in map keys and unsupported config fields.
+    if (JSON.stringify(resolved.config).includes('${provider_secret')) {
+      problems.add('an unresolved or malformed provider_secret reference remains')
+    }
     if (foreignPlaceholder(resolved.config)) {
       problems.add('resolves to a host placeholder ({{secret:…}} or {{oauth:…}}) the plugin does not own')
     }

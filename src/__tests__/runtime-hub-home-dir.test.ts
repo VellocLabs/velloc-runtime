@@ -9,6 +9,9 @@ import { connectRuntime, type RuntimeConnection } from '../browser/runtimeClient
 import { RuntimeHub, type RuntimeHubHost } from '../browser/runtimeHub/RuntimeHub'
 import { createMessagePortTransport } from '../browser/runtimeTransport'
 import { wipeSettingsMemos } from '../settings/settingsStore'
+import { registerModProviderDefinition, resetModProviderDefinitions } from '../config/nexusModelConfig/providers'
+import type { ProviderDefinition } from '../config/nexusModelConfig/providerDefinition'
+import { forgetRegistryFile } from '../pluginHost/installedRegistry'
 
 const ENC = new TextEncoder()
 const DEC = new TextDecoder()
@@ -86,9 +89,10 @@ function deferred<T>() {
 
 describe('runtime hub home directory', () => {
   const hubs: RuntimeHub[] = []
-  beforeEach(() => wipeSettingsMemos())
+  beforeEach(() => { wipeSettingsMemos(); forgetRegistryFile(); resetModProviderDefinitions() })
   afterEach(() => {
     for (const hub of hubs.splice(0)) hub.dispose()
+    resetModProviderDefinitions()
   })
 
   it('writes plugin options under the host home when the panel attached with no home', async () => {
@@ -127,6 +131,22 @@ describe('runtime hub home directory', () => {
     ).rejects.toThrow(/no folder known/)
     expect(bridge.writes).toEqual([])
     expect(reloads).not.toHaveBeenCalled()
+  })
+
+  it('keeps provider-only project_id when the Plugins page saves its older option form', async () => {
+    const stored = { version: 1, enabledPlugins: { 'nebius@inline': false }, pluginConfigs: { 'nebius@inline': { options: { project_id: 'p-123', region: 'eu', 'signin.plan': 'free' } } } }
+    const bridge = hostBridge({ [SETTINGS]: JSON.stringify(stored) })
+    const { hub, reloads } = makeHub(bridge, async () => HOME)
+    hubs.push(hub)
+    registerModProviderDefinition({
+      config: { providerId: 'mod.nebius.token-factory', models: [] }, runtimeOnly: true,
+      catalogMod: { state: 'ready', plugin: 'nebius', configId: 'nebius@inline', settings: { project_id: { type: 'string', title: 'Project' } } },
+    } as unknown as ProviderDefinition)
+    const conn = await connect(hub, 'remote')
+    resetModProviderDefinitions()
+    await conn.request('mods.setOptions', { plugin: 'nebius@inline', options: { region: 'us' } })
+    expect(bridge.json(SETTINGS)?.pluginConfigs).toEqual({ 'nebius@inline': { options: { project_id: 'p-123', region: 'us', 'signin.plan': 'free' } } })
+    expect(reloads).toHaveBeenCalledTimes(1)
   })
 
   it('keeps a stored sensitive option the client left blank', async () => {

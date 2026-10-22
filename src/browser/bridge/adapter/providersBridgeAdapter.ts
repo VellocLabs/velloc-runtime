@@ -483,8 +483,12 @@ async function handleUpsert(
     ? { configs: {} as Record<string, NexusProviderConfig> }
     : await sealProviderApiKeys({ [payload.id]: rawIncoming }, ctx.encryptSecret)
   let keyBefore: string | undefined
+  let secretsBefore: Readonly<Record<string, string>> = {}
+  let ownerBefore: string | undefined
   const updated = await updateProvidersSettings(ctx.homeDir, ctx.fs, prev => {
     keyBefore = prev?.configs?.[payload.id]?.apiKey
+    secretsBefore = prev?.configs?.[payload.id]?.secrets ?? {}
+    ownerBefore = prev?.configs?.[payload.id]?.modOwner
     const incoming = derive
       ? derive(prev?.configs?.[payload.id] ?? {})
       : sealedIncoming[payload.id]!
@@ -539,7 +543,13 @@ async function handleUpsert(
     activeProviderId,
     order: updated.providers?.order ?? [],
   })
-  if (isModProviderId(payload.id) && (keyBefore ?? '') !== (configs[payload.id]?.apiKey ?? '')) {
+  const after = configs[payload.id]
+  const secretsAfter = after?.secrets ?? {}
+  const secretsChanged = [...new Set([...Object.keys(secretsBefore), ...Object.keys(secretsAfter)])]
+    .some(name => secretsBefore[name] !== secretsAfter[name])
+  const ownershipChanged = ownerBefore !== after?.modOwner
+    && (!!keyBefore || !!after?.apiKey || Object.keys(secretsBefore).length > 0 || Object.keys(secretsAfter).length > 0)
+  if (isModProviderId(payload.id) && ((keyBefore ?? '') !== (after?.apiKey ?? '') || secretsChanged || ownershipChanged)) {
     ctx.reloadPluginsOnAllSessions?.()
   }
   return { ok: true, configs: uiConfigs, activeProviderId }
@@ -555,7 +565,7 @@ async function handleRemove(
   // idempotent remove doesn't spam re-renders to every open tab.
   const { settings: current } = await readUserLayer(ctx.homeDir, ctx.fs)
   const currentConfigs = current.providers?.configs
-  const hadKey = !!currentConfigs?.[payload.id]?.apiKey
+  let hadCredentials = false
   const wasActive = current.providers?.activeProviderId === payload.id
   if (
     (!currentConfigs || !(payload.id in currentConfigs))
@@ -569,6 +579,8 @@ async function handleRemove(
   }
   const updated = await updateProvidersSettings(ctx.homeDir, ctx.fs, prev => {
     const nextConfigs = { ...(prev?.configs ?? {}) }
+    const removed = nextConfigs[payload.id]
+    hadCredentials = !!removed?.apiKey || Object.keys(removed?.secrets ?? {}).length > 0
     delete nextConfigs[payload.id]
     // Clear activeProviderId if it was pointing at the removed id so
     // the UI doesn't surface a dangling selection.
@@ -615,7 +627,7 @@ async function handleRemove(
     activeProviderId,
     order: updated.providers?.order ?? [],
   })
-  if (hadKey && isModProviderId(payload.id)) ctx.reloadPluginsOnAllSessions?.()
+  if (hadCredentials && isModProviderId(payload.id)) ctx.reloadPluginsOnAllSessions?.()
   return { ok: true, configs: uiConfigs, activeProviderId }
 }
 

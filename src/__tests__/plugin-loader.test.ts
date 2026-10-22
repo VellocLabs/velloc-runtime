@@ -730,6 +730,31 @@ describe('loadPluginContributions — ${provider_key.KEY} in plugin MCP servers'
     }
   }
 
+  it('keeps other servers running when an optional named secret is missing, then promotes its HTTP server when supplied', async () => {
+    const tree = cloudPlugin()
+    const root = '/proj/.velloc/plugins/cloud'
+    const manifestPath = `${root}/${PLUGIN_MANIFEST_DIR_NAME}/plugin.json`
+    const manifest = JSON.parse((tree[manifestPath] as { content: string }).content)
+    manifest.providers.main.credentials.secrets = [{ name: 'tavily_api_key' }]
+    manifest.providers.main.settings = { project_id: { type: 'string', title: { en: 'Project' }, default: 'project' } }
+    tree[manifestPath] = { kind: 'file', content: JSON.stringify(manifest) }
+    tree[`${root}/.mcp.json`] = { kind: 'file', content: JSON.stringify({ mcpServers: {
+      compute: { command: 'run', env: { PROJECT: '${user_config.project_id}' } },
+      search: { type: 'http', url: 'https://mcp.tavily.com/mcp', headers: { Authorization: 'Bearer ${provider_secret.main.tavily_api_key}' } },
+    } }) }
+    installProcessFs(makeFakeFs(tree))
+    const options = { cwd: '/proj', runtimeConfig: new BrowserRuntimeConfig({ env: {} }), enabledPlugins: ['cloud'] }
+    const missing = await loadPluginContributions(options)
+    expect(missing.nativeMcpServers.map(server => server.id)).toEqual(['compute'])
+    expect(missing.errors).toContainEqual(expect.objectContaining({ type: 'mcp-config-invalid', serverName: 'search' }))
+    const ready = await loadPluginContributions({ ...options, providerKeys: {
+      'mod.cloud.main': { modOwner: 'cloud@inline', secrets: { tavily_api_key: 'NEXUSENC1:c2VhbGVk' } },
+    } })
+    expect(ready.nativeMcpServers.map(server => server.id).sort()).toEqual(['compute', 'search'])
+    expect(ready.mcpSecrets.writes).toEqual([expect.objectContaining({ value: 'NEXUSENC1:c2VhbGVk', origin: 'https://mcp.tavily.com' })])
+    expect(ready.errors.filter(error => error.type === 'mcp-config-invalid')).toEqual([])
+  })
+
   it("fills the sealed key of the plugin's own provider as its own process secret, and refuses a key it declares no provider for", async () => {
     installProcessFs(makeFakeFs(cloudPlugin()))
     const result = await loadPluginContributions({
