@@ -599,3 +599,31 @@ describe('AssistantMessageBody — reasoning is a row of the tool card, not a br
     expect(container.querySelector('[data-slot="tool-plan-stream-root"]')).toBeNull()
   })
 })
+
+describe('AssistantMessageBody — the Continue in Code offer stays a top-level card', () => {
+  afterEach(cleanup)
+
+  const offer = {
+    type: 'tool-call' as const,
+    toolCallId: 'cic',
+    toolName: 'ContinueInCode',
+    args: { reason: 'This needs the files in your project.' },
+    result: 'ok',
+  }
+
+  it.each([
+    ['after reasoning', [{ type: 'reasoning' as const, text: 'I cannot read local files here.' }, offer]],
+    ['after another tool call', [BASH, offer]],
+  ])('%s, the offer never folds into a collapsed tool card', async (_label, content) => {
+    const Harness = makeHarness(
+      { role: 'assistant', status: { type: 'complete', reason: 'stop' }, content } as ThreadMessageLike,
+      false,
+    )
+    const { container } = render(createElement(Harness))
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="tool-row-ContinueInCode"]')).not.toBeNull()
+    })
+    const row = container.querySelector('[data-testid="tool-row-ContinueInCode"]')!
+    expect(row.closest('[data-slot="tool-plan-stream-root"]')).toBeNull()
+  })
+})

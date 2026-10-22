@@ -36,6 +36,7 @@ import {
 import { CHECKLIST_TOOL_ID } from "../../toolkit/builtin/todoWrite";
 import { ASK_TOOL_ID } from "../../toolkit/builtin/askUser";
 import { isA2uiToolName } from "../../toolkit/builtin/a2ui/a2uiToolNames";
+import { CONTINUE_IN_CODE_TOOL_ID } from "../../toolkit/builtin/continueInCode";
 
 /**
  * Sentinel type that makes `groupSliceByPartType` treat an AskUserQuestion as
@@ -57,8 +58,10 @@ function isUngroupableToolName(toolName: string | undefined): boolean {
   // tools" group: the collapsed Collapsible unmounts its content, which would
   // hide (and unmount) the surface. Keeping each a2ui_* tool-call isolated also
   // makes the move-to-latest breadcrumb logic render one element per position.
+  // The Continue in Code offer is a card with buttons, so it stays out as well.
   return (
     toolName === ASK_TOOL_ID ||
+    toolName === CONTINUE_IN_CODE_TOOL_ID ||
     (toolName !== undefined && isA2uiToolName(toolName))
   );
 }
