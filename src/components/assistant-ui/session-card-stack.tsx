@@ -37,7 +37,7 @@ import {
 } from "@/browser/webview/layout/layoutStorage";
 import { useBackgroundTasksContext } from "./background-tasks-context";
 import { useSessionConnectors } from "./session-connectors-context";
-import { McpServersDialog } from "./mcp-servers-dialog";
+import { McpServerDetailDialog } from "./mcp-server-detail-dialog";
 import { SessionTasksList } from "./session-tasks-card";
 import { useRightPanelContent } from "./right-panel-content-context";
 
@@ -132,11 +132,10 @@ function CardStack({
   }, []);
   const onCloseRef = React.useRef(onClose);
   onCloseRef.current = onClose;
-  // The server list is a dialog over the popover: while it is open, presses
+  // The server detail is a dialog over the popover: while it is open, presses
   // and keys belong to it.
-  const [serversDialogOpen, setServersDialogOpen] = React.useState(false);
+  const [detailName, setDetailName] = React.useState<string | null>(null);
   const serversDialogOpenRef = React.useRef(false);
-  serversDialogOpenRef.current = serversDialogOpen;
   React.useEffect(() => {
     if (placement !== "popover") return;
     const onKey = (event: KeyboardEvent) => {
@@ -162,7 +161,16 @@ function CardStack({
   const { runningTaskCount } = useBackgroundTasksContext();
   const [prefs, writePrefs] = useSessionCardPrefs();
   const [connectorsOpen, setConnectorsOpen] = React.useState(false);
-  const { servers, folder, openMcpSettings } = useSessionConnectors();
+  const { servers, openMcpSettings } = useSessionConnectors();
+  // The detail is open exactly while its server is listed.
+  const detailServer =
+    detailName === null ? null : (servers.find((server) => server.name === detailName) ?? null);
+  serversDialogOpenRef.current = detailServer !== null;
+  // A server that leaves the list closes its detail; it does not reopen when
+  // the server comes back.
+  React.useEffect(() => {
+    if (detailName !== null && detailServer === null) setDetailName(null);
+  }, [detailName, detailServer]);
   const connected = React.useMemo(
     () => servers.filter((server) => server.status === "connected").map((server) => server.name),
     [servers],
@@ -189,9 +197,9 @@ function CardStack({
   );
 
   const drawsNothing = placement === "docked" && shown.length === 0;
-  // The server list closes with the stack, so it never reopens on its own.
+  // The server detail closes with the stack, so it never reopens on its own.
   React.useEffect(() => {
-    if (drawsNothing) setServersDialogOpen(false);
+    if (drawsNothing) setDetailName(null);
   }, [drawsNothing]);
 
   if (drawsNothing) return null;
@@ -307,7 +315,7 @@ function CardStack({
                     type="button"
                     title={name}
                     data-testid="session-card-connector"
-                    onClick={() => setServersDialogOpen(true)}
+                    onClick={() => setDetailName(name)}
                     className="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <PlugIcon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
@@ -414,11 +422,12 @@ function CardStack({
         </ContextMenuPrimitive.Content>
       </ContextMenuPrimitive.Portal>
     </ContextMenuPrimitive.Root>
-    <McpServersDialog
-      open={serversDialogOpen}
-      onOpenChange={setServersDialogOpen}
-      servers={servers}
-      folder={folder}
+    <McpServerDetailDialog
+      open={detailServer !== null}
+      onOpenChange={(open) => {
+        if (!open) setDetailName(null);
+      }}
+      server={detailServer}
       onManage={
         openMcpSettings
           ? () => {

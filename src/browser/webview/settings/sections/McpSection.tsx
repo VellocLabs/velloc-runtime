@@ -1,6 +1,7 @@
 import * as React from "react";
 import { PencilIcon, Trash2Icon } from "lucide-react";
 
+import { McpServerDetailDialog } from "@/components/assistant-ui/mcp-server-detail-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { useUnsavedEditsGate } from "@/glic/unsavedEditsGate";
 
 import type { NexusMcpServerConfig } from "../../../../settings/settingsTypes";
 import type { PluginMcpServerListing } from "../../../bridge/protocol";
+import type { McpToolSummary } from "../../../../mcp/toolSummary";
 import { useT } from "../../i18n";
 import { useSettingsBridge } from "../../nexusSettingsBridge";
 import {
@@ -149,6 +151,15 @@ export function McpSection() {
   const [pluginServers, setPluginServers] = React.useState<
     PluginMcpServerListing[]
   >([]);
+  // The server whose detail view is open, with its tools from a live probe.
+  const [detail, setDetail] = React.useState<{
+    id: string;
+    loading: boolean;
+    tools?: McpToolSummary[];
+    version?: string;
+    error?: string;
+  } | null>(null);
+  const detailRequest = React.useRef(0);
   const [form, setForm] = React.useState<FormState | null>(null);
   const [editingExisting, setEditingExisting] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -308,6 +319,45 @@ export function McpSection() {
     }
   };
 
+  // Opens the detail view and lists the server's tools through a probe
+  // connection; a later open supersedes an earlier one still in flight.
+  const openDetail = async (id: string) => {
+    const config = servers[id];
+    if (!bridge || !config) return;
+    const request = ++detailRequest.current;
+    setDetail({ id, loading: true });
+    let next: NonNullable<typeof detail>;
+    try {
+      const test = await mcpSettingsTestConnect(bridge, config);
+      next = test.ok
+        ? {
+            id,
+            loading: false,
+            tools: test.tools ?? [],
+            ...(test.serverVersion ? { version: test.serverVersion } : {}),
+          }
+        : {
+            id,
+            loading: false,
+            error: test.error
+              ? t("settings.mcp.connectFailed", { error: test.error })
+              : t("settings.mcp.connectFailedGeneric"),
+          };
+      if (test.ok && test.toolCount !== undefined) {
+        const toolCount = test.toolCount;
+        setToolCounts((counts) => ({ ...counts, [id]: toolCount }));
+      }
+    } catch (e) {
+      next = { id, loading: false, error: t("settings.mcp.connectFailed", { error: errMsg(e) }) };
+    }
+    if (request === detailRequest.current) setDetail(next);
+  };
+
+  const closeDetail = () => {
+    detailRequest.current += 1;
+    setDetail(null);
+  };
+
   const remove = async (id: string) => {
     if (!bridge) return;
     try {
@@ -372,10 +422,17 @@ export function McpSection() {
                 data-testid={`mcp-server-row-${id}`}
                 className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-card p-4"
               >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 font-medium text-sm">
-                    {id}
-                    <Badge variant="muted" size="sm">
+                <button
+                  type="button"
+                  data-testid={`mcp-server-details-${id}`}
+                  title={t("settings.mcp.details")}
+                  aria-label={t("settings.mcp.detailsAria", { id })}
+                  onClick={() => void openDetail(id)}
+                  className="-m-2 min-w-0 flex-1 rounded-lg p-2 text-start outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <div className="flex min-w-0 items-center gap-2 font-medium text-sm">
+                    <span className="truncate">{id}</span>
+                    <Badge variant="muted" size="sm" className="shrink-0">
                       {(config.transport ?? "stdio").toUpperCase()}
                     </Badge>
                   </div>
@@ -389,7 +446,7 @@ export function McpSection() {
                       )}
                     </div>
                   ) : null}
-                </div>
+                </button>
                 <div className="flex shrink-0 items-center gap-1">
                   <Button
                     variant="ghost"
@@ -604,6 +661,27 @@ export function McpSection() {
           {t("settings.mcp.footer")}
         </p>
       </div>
+      <McpServerDetailDialog
+        open={detail !== null}
+        onOpenChange={(open) => {
+          if (!open) closeDetail();
+        }}
+        server={
+          detail && servers[detail.id]
+            ? {
+                name: detail.id,
+                origin: { kind: "settings" },
+                transport: servers[detail.id].transport ?? "stdio",
+                version: detail.version ?? servers[detail.id].version,
+                toolCount: toolCounts[detail.id] ?? servers[detail.id].toolCount,
+                ...(detail.tools ? { status: "connected" as const, tools: detail.tools } : {}),
+              }
+            : null
+        }
+        toolsLoading={detail?.loading}
+        toolsError={detail?.error}
+        onRetry={detail ? () => void openDetail(detail.id) : undefined}
+      />
     </SettingsSubpageLayout>
   );
 }

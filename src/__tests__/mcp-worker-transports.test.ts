@@ -827,18 +827,24 @@ describe('createWorkerMcpOperations', () => {
     expect(result.error).toContain('missing Authorization')
   })
 
-  it('testConnect reports identity and tool count, then closes', async () => {
+  it('testConnect reports identity, tool count and tool summaries, then closes', async () => {
     const host = new FakeHost()
     host.spawn = stdioServerChild(host, { tools: [{ name: 'a' }, { name: 'b' }] })
     const { operations } = ops(host)
     const result = await operations.testConnect({ transport: 'stdio', command: 'srv', version: 'ignored' })
-    expect(result).toEqual({ ok: true, toolCount: 2, serverName: 'fake-stdio', serverVersion: '1.2.3' })
+    expect(result).toEqual({
+      ok: true,
+      toolCount: 2,
+      tools: [{ name: 'a' }, { name: 'b' }],
+      serverName: 'fake-stdio',
+      serverVersion: '1.2.3',
+    })
     await flush()
     expect(host.children.size).toBe(0)
     // A form's http server may be local: the probe asks for private reach.
     host.http = streamableHttpServer()
     const http = await operations.testConnect({ transport: 'http', url: 'http://localhost:1/mcp' })
-    expect(http).toEqual({ ok: true, toolCount: 1, serverName: 'fake-http', serverVersion: '9.9.9' })
+    expect(http).toMatchObject({ ok: true, toolCount: 1, serverName: 'fake-http', serverVersion: '9.9.9' })
     const open = host.requests.find(r => r.route.action === 'streamOpen')!.payload as Record<string, unknown>
     expect(open.allowPrivateNetwork).toBe(true)
   })

@@ -25,6 +25,7 @@ import {
   type ShellStdioTransportOptions,
 } from './primitiveTransports'
 import type { MCPToolDescriptor } from './types'
+import { summarizeMcpTools, type McpToolSummary } from './toolSummary'
 
 /** How long a server's connect may take. */
 export const MCP_CONNECT_TIMEOUT_MS = 30_000
@@ -36,6 +37,7 @@ export type McpTestConnectResult = {
   serverName?: string
   serverVersion?: string
   toolCount?: number
+  tools?: McpToolSummary[]
   error?: string
 }
 
@@ -362,6 +364,7 @@ export function createWorkerMcpOperations(
         return {
           ok: true,
           toolCount: tools.length,
+          tools: summarizeMcpTools(tools),
           ...(identity?.name ? { serverName: identity.name } : {}),
           ...(identity?.version ? { serverVersion: identity.version } : {}),
         }

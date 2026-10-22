@@ -34,7 +34,7 @@ describe('sessionMcpServerViews — details', () => {
     pluginServers: [{ name: 'contree', plugin: 'nebius', track: 'native' }],
   }
 
-  it('carries origin, transport, the tool count while connected and the error while failed', () => {
+  it('carries origin, transport, the tool count and summaries while connected and the error while failed', () => {
     const tool = { name: 't', inputSchema: {} } as unknown as LiveServerLink['tools'][number]
     expect(
       sessionMcpServerViews(
@@ -46,10 +46,19 @@ describe('sessionMcpServerViews — details', () => {
         origins,
       ),
     ).toEqual([
-      { name: 'contree', status: 'connected', origin: { kind: 'plugin', plugin: 'nebius' }, transport: 'stdio', toolCount: 2 },
-      { name: 'docs', status: 'connected', origin: { kind: 'project' }, transport: 'sse', toolCount: 1 },
+      { name: 'contree', status: 'connected', origin: { kind: 'plugin', plugin: 'nebius' }, transport: 'stdio', toolCount: 2, tools: [{ name: 't' }, { name: 't' }] },
+      { name: 'docs', status: 'connected', origin: { kind: 'project' }, transport: 'sse', toolCount: 1, tools: [{ name: 't' }] },
       { name: 'local', status: 'failed', origin: { kind: 'settings' }, transport: 'http', error: 'refused' },
     ])
+  })
+
+  it('reuses the summaries of a tool list across snapshots and rebuilds them for a new list', () => {
+    const tools = [{ name: 'a', description: 'First.' }]
+    const first = sessionMcpServerViews([{ name: 's', status: 'connected', tools }])
+    const second = sessionMcpServerViews([{ name: 's', status: 'connected', tools }])
+    expect(second[0]!.tools).toBe(first[0]!.tools)
+    const replaced = sessionMcpServerViews([{ name: 's', status: 'connected', tools: [{ name: 'b' }] }])
+    expect(replaced[0]!.tools).toEqual([{ name: 'b' }])
   })
 
   it('leaves out a plugin server that joined after the build; a settings server that joined is listed', () => {

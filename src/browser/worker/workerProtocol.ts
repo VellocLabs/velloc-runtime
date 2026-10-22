@@ -24,6 +24,7 @@ import type { BrowserSessionMetadata } from '../../sessions/sessionStore'
 import type { AgentLoopSettings } from '../../config/agentLoopConfig'
 import type { BundledSkillBodyResult } from '../../skillLibrary/builtinSkillBody'
 import type { McpServerOrigin, McpServerTransportKind } from '../../mcp/serverOrigin'
+import type { McpToolSummary } from '../../mcp/toolSummary'
 
 /**
  * Default per-session agent-template type when an init payload omits
@@ -271,6 +272,8 @@ export type SessionMcpServerView = {
   transport?: McpServerTransportKind
   /** The tools it serves, while connected. */
   toolCount?: number
+  /** Those tools' summaries, while connected. */
+  tools?: McpToolSummary[]
   /** Why it failed, while failed. */
   error?: string
 }

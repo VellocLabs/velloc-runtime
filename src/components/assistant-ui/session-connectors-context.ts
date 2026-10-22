@@ -3,13 +3,11 @@ import type { SessionMcpServerView } from '@/browser/worker/workerProtocol'
 
 /**
  * The thread's MCP servers, from the session snapshot (`mcpServers`), for
- * the card stack's Connectors card and its server list. Provided by
+ * the card stack's Connectors card and its server detail view. Provided by
  * `AssistantUiThread`; empty on hosts and session types without MCP.
  */
 export type SessionConnectors = {
   servers: readonly SessionMcpServerView[]
-  /** The session's project folder, the list's subtitle. */
-  folder?: string
   /** Opens the MCP settings page; absent where settings cannot open. */
   openMcpSettings?: () => void
 }

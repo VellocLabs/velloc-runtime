@@ -9,6 +9,7 @@
 
 import type { NexusMcpServerConfig } from '../../../settings/settingsTypes'
 import type { PluginMcpServerListing } from '../../../pluginHost/pluginMcpServerList'
+import type { McpToolSummary } from '../../../mcp/toolSummary'
 
 export type { PluginMcpServerListing } from '../../../pluginHost/pluginMcpServerList'
 
@@ -59,6 +60,7 @@ export type McpSettingsBridgeActionMap = {
       serverName?: string
       serverVersion?: string
       toolCount?: number
+      tools?: McpToolSummary[]
       error?: string
     }
   }

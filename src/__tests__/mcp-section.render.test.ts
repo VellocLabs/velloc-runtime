@@ -150,3 +150,55 @@ describe('McpSection plugin servers', () => {
     expect(exists('mcp-plugin-servers')).toBe(false)
   })
 })
+
+describe('McpSection server detail', () => {
+  function detailBridge(testConnect: () => Promise<unknown>) {
+    return {
+      request: vi.fn(async (route: { action: string }) => {
+        if (route.action === 'list') {
+          return { servers: { github: { transport: 'http', url: 'https://g', toolCount: 1 } } }
+        }
+        if (route.action === 'testConnect') return testConnect()
+        throw new Error(`unexpected mcpSettings.${route.action}`)
+      }),
+      subscribeEvents: () => () => {},
+    } as unknown as NexusSettingsBridge
+  }
+
+  it('a server row opens its detail view with the tools a probe lists', async () => {
+    const bridge = detailBridge(async () => ({
+      ok: true,
+      serverVersion: '2.1.0',
+      toolCount: 2,
+      tools: [{ name: 'create_issue', description: 'Opens an issue.' }, { name: 'get_issue', readOnly: true }],
+    }))
+    renderSection(bridge)
+    fireEvent.click(await screen.findByTestId('mcp-server-details-github'))
+    await screen.findByTestId('mcp-server-detail')
+    expect(screen.getByTestId('mcp-server-detail-name').textContent).toBe('github')
+    await waitFor(() => expect(screen.getAllByTestId('mcp-server-detail-tool')).toHaveLength(2))
+    expect(screen.getByTestId('mcp-server-detail-meta').textContent).toContain('v2.1.0')
+    expect(screen.getByTestId('mcp-server-detail-count').textContent).toBe('2 tools')
+    expect(screen.getAllByTestId('mcp-server-detail-tool-summary')[0]!.textContent).toBe('Opens an issue.')
+    // The fresh count reaches the row too.
+    fireEvent.click(screen.getByTestId('mcp-server-detail-done'))
+    await waitFor(() => expect(exists('mcp-server-detail')).toBe(false))
+    expect(screen.getByTestId('mcp-server-row-github').textContent).toContain('2')
+  })
+
+  it('a failed probe shows its error and Retry probes again', async () => {
+    let calls = 0
+    const bridge = detailBridge(async () => {
+      calls += 1
+      return calls === 1 ? { ok: false, error: 'connect ECONNREFUSED' } : { ok: true, toolCount: 0, tools: [] }
+    })
+    renderSection(bridge)
+    fireEvent.click(await screen.findByTestId('mcp-server-details-github'))
+    const error = await screen.findByTestId('mcp-server-detail-error')
+    expect(error.textContent).toContain('connect ECONNREFUSED')
+    fireEvent.click(screen.getByTestId('mcp-server-detail-retry'))
+    await screen.findByTestId('mcp-server-detail-empty')
+    expect(calls).toBe(2)
+    expect(exists('mcp-server-detail-error')).toBe(false)
+  })
+})

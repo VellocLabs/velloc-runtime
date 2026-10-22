@@ -16,6 +16,7 @@ import type {
 } from './workerProtocol'
 import type { PendingApproval } from '../../runtime/RuntimeTypes'
 import type { LiveServerLink } from '../../mcp/types'
+import { summarizeMcpTools, type McpToolSummary } from '../../mcp/toolSummary'
 import {
   mcpServerOrigin,
   mcpServerTransport,
@@ -43,10 +44,23 @@ export type ProvisionalBootSources = {
   display?: SessionDisplayView
 }
 
+// Summaries per tool list; the pool replaces a server's `tools` array, never
+// edits it, so a list's summaries are built once.
+const toolSummaries = new WeakMap<readonly LiveServerLink['tools'][number][], McpToolSummary[]>()
+
+function cachedToolSummaries(tools: LiveServerLink['tools']): McpToolSummary[] {
+  let summaries = toolSummaries.get(tools)
+  if (!summaries) {
+    summaries = summarizeMcpTools(tools)
+    toolSummaries.set(tools, summaries)
+  }
+  return summaries
+}
+
 /** Settled servers only (a connecting or closed one is left out), sorted by
  *  name so the list does not reorder as connects finish. Each carries its
- *  origin when `origins` is given, its transport, its tool count while
- *  connected and its error while failed. */
+ *  origin when `origins` is given, its transport, its tools (count and
+ *  summaries) while connected and its error while failed. */
 export function sessionMcpServerViews(
   servers: ReadonlyArray<
     Pick<LiveServerLink, 'name' | 'status'> &
@@ -65,7 +79,10 @@ export function sessionMcpServerViews(
     if (server.status === 'connected' && offered && !offered.has(server.name) && view.origin?.kind === 'plugin') continue
     const transport = mcpServerTransport(server)
     if (transport) view.transport = transport
-    if (server.status === 'connected' && server.tools) view.toolCount = server.tools.length
+    if (server.status === 'connected' && server.tools) {
+      view.toolCount = server.tools.length
+      view.tools = cachedToolSummaries(server.tools)
+    }
     if (server.status === 'failed' && server.error) view.error = server.error
     views.push(view)
   }
