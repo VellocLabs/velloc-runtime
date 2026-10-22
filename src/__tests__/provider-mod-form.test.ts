@@ -10,6 +10,8 @@ import {
   modFormDirty,
   modFormRows,
   modFormWrites,
+  modProviderOwnedOptions,
+  modProviderResettable,
   satisfiesPromptPattern,
   modProviderConfig,
   promptProblems,
@@ -384,5 +386,31 @@ describe('the one form: rows and where a save goes', () => {
     // A named credential never lands in the options, and a setting never in a secret.
     expect(JSON.stringify(writes.settings)).not.toContain('srch-9')
     expect(JSON.stringify(writes.secrets)).not.toContain('p-9')
+  })
+})
+
+describe('reset connection', () => {
+  it('owns the declared settings and the signin answers of the non-secret prompts', () => {
+    expect(modProviderOwnedOptions(prompts, ['region', 'project_id'])).toEqual([
+      'region',
+      'project_id',
+      'signin.plan',
+      'signin.team_id',
+      'signin.note',
+    ])
+    expect(modProviderOwnedOptions([defaultKeyPrompt('API key')], [])).toEqual([])
+  })
+
+  it('has something to clear once anything is stored, and nothing on a fresh pick', () => {
+    const owned = ['region', 'signin.plan']
+    expect(modProviderResettable(undefined, [], owned)).toBe(false)
+    expect(modProviderResettable({ source: 'mod', modVersion: '1' }, [], owned)).toBe(false)
+    expect(modProviderResettable({ source: 'mod', hasApiKey: true }, [], owned)).toBe(true)
+    expect(modProviderResettable({ source: 'mod', credentialMode: 'anonymous' }, [], owned)).toBe(true)
+    expect(modProviderResettable({ source: 'mod', account: 'zed' }, [], owned)).toBe(true)
+    expect(modProviderResettable({ source: 'mod', storedSecrets: ['search_key'] }, [], owned)).toBe(true)
+    expect(modProviderResettable(undefined, ['region'], owned)).toBe(true)
+    // An option the provider does not own (the plugin's own userConfig) is not its to clear.
+    expect(modProviderResettable(undefined, ['greeting'], owned)).toBe(false)
   })
 })

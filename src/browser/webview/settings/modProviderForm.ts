@@ -199,6 +199,28 @@ export function isModProviderConnected(saved: NexusProviderConfig | undefined): 
   return saved?.credentialMode === 'anonymous' || saved?.hasApiKey === true || holdsModSignIn(saved)
 }
 
+/** The plugin options the provider owns: its declared settings and the
+ *  `signin.*` answers of its non-secret prompts. */
+export function modProviderOwnedOptions(
+  prompts: readonly CredentialPrompt[],
+  settingNames: readonly string[],
+): string[] {
+  return [...settingNames, ...promptWrites(prompts, {}).ownedOptions]
+}
+
+/** Whether a reset has anything to clear: an entry that counts as added or
+ *  holds a key, a stored named credential, or a stored option the provider
+ *  owns (`storedOptions`: the names that hold a value). */
+export function modProviderResettable(
+  saved: NexusProviderConfig | undefined,
+  storedOptions: readonly string[],
+  owned: readonly string[],
+): boolean {
+  if (isModProviderAdded(saved) || saved?.hasApiKey === true) return true
+  if ((saved?.storedSecrets ?? []).length > 0) return true
+  return owned.some(name => storedOptions.includes(name))
+}
+
 /** The declared settings as the options form takes them: the vendor's text
  *  resolved in the person's language, a stored sensitive value masked. */
 export function settingsAsUserConfig(

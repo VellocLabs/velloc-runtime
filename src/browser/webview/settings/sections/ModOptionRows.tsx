@@ -12,6 +12,10 @@ import { cn } from "@/lib/utils";
 import type { ModsUserConfigField } from "../../../runtimeProtocol";
 import { useT } from "../../i18n";
 
+/** A fixed control column: every control of the form starts and ends at
+ *  the same edges, a row's extra button inside it. */
+const FIXED_SLOT = "w-[21rem] max-w-full justify-end";
+
 /** The list the rows sit in. */
 export function OptionRowList({ children, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
   return (
@@ -33,6 +37,7 @@ export function OptionRow({
   hint,
   note,
   testId,
+  fixedSlot,
   children,
 }: {
   /** The control's id, the label's `for`. */
@@ -45,6 +50,8 @@ export function OptionRow({
   /** Below the hint: a problem with the value. */
   note?: React.ReactNode;
   testId?: string;
+  /** The control sits in the form's fixed column (`FIXED_SLOT`). */
+  fixedSlot?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -58,7 +65,7 @@ export function OptionRow({
         {hint ? <span className="text-[11px] text-muted-foreground leading-snug">{hint}</span> : null}
         {note}
       </div>
-      <div className="flex shrink-0 items-center gap-2">{children}</div>
+      <div className={cn("flex shrink-0 items-center gap-2", fixedSlot && FIXED_SLOT)}>{children}</div>
     </div>
   );
 }
@@ -72,6 +79,7 @@ export function OptionFieldControl({
   value,
   kept,
   disabled,
+  fill,
   onChange,
 }: {
   id: string;
@@ -80,6 +88,8 @@ export function OptionFieldControl({
   /** A sensitive field holds a stored value. */
   kept: boolean;
   disabled?: boolean;
+  /** Fill the row's control column rather than size to the value. */
+  fill?: boolean;
   onChange: (next: string | boolean) => void;
 }) {
   const t = useT();
@@ -90,11 +100,14 @@ export function OptionFieldControl({
     // A native picker, drawn as the settings select trigger: as wide as its
     // longest choice, not the row.
     return (
-      <div className="relative">
+      <div className={cn("relative", fill && "w-full")}>
         <select
           id={id}
           data-testid={id}
-          className="h-8 min-w-[7rem] max-w-[14rem] cursor-pointer appearance-none truncate rounded-md border border-input bg-background pr-7 pl-2.5 text-xs outline-none transition-colors hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+          className={cn(
+            "h-8 cursor-pointer appearance-none truncate rounded-md border border-input bg-background pr-7 pl-2.5 text-xs outline-none transition-colors hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
+            fill ? "w-full" : "min-w-[7rem] max-w-[14rem]",
+          )}
           value={typeof value === "string" ? value : ""}
           disabled={disabled}
           onChange={(event) => {
@@ -127,7 +140,11 @@ export function OptionFieldControl({
       {...(field.type === "number" && field.max !== undefined ? { max: field.max } : {})}
       // A number is a short right-aligned figure; a text gets room for a
       // path or a list.
-      className={cn("h-8 text-xs", field.type === "number" ? "w-24 text-right tabular-nums" : "w-56")}
+      className={cn(
+        "h-8 text-xs",
+        field.type === "number" && "text-right tabular-nums",
+        fill ? "w-full" : field.type === "number" ? "w-24" : "w-56",
+      )}
       value={typeof value === "string" ? value : ""}
       placeholder={
         kept

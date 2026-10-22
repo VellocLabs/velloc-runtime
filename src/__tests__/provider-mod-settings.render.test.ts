@@ -77,6 +77,9 @@ function harness(
   let configs = { ...initialConfigs }
   const upserts: NexusProviderConfig[] = []
   const optionWrites: Array<Record<string, unknown>> = []
+  const removes: string[] = []
+  // The plugin's stored options, as `setModOptions` leaves them.
+  let stored: Record<string, unknown> = { ...options }
   const bridge = {
     request: vi.fn(async (route: { action: string }, payload: Record<string, unknown>) => {
       switch (route.action) {
@@ -100,10 +103,22 @@ function harness(
           return { ok: true, configs }
         }
         case 'modOptions':
-          return { ok: true, options, storedSensitive: [] }
-        case 'setModOptions':
+          return { ok: true, options: stored, storedSensitive: [] }
+        case 'setModOptions': {
           optionWrites.push(payload)
+          const owned = new Set(payload.owned as string[])
+          stored = {
+            ...Object.fromEntries(Object.entries(stored).filter(([name]) => !owned.has(name))),
+            ...(payload.values as Record<string, unknown>),
+          }
           return { ok: true }
+        }
+        case 'remove': {
+          removes.push(payload.id as string)
+          const { [payload.id as string]: _gone, ...rest } = configs
+          configs = rest
+          return { ok: true, configs }
+        }
         case 'verify':
           verifies.push(payload.id as string)
           return verifyResult
@@ -119,7 +134,7 @@ function harness(
     request: vi.fn(async () => ({ ok: true, result: { providers: [] } })),
     subscribeEvents: () => () => {},
   } as unknown as BrowserBridgeTransport
-  return { bridge, transport, upserts, optionWrites, verifies, catalog }
+  return { bridge, transport, upserts, optionWrites, removes, verifies, catalog }
 }
 
 function mount(h: ReturnType<typeof harness>, locale = 'en') {
@@ -270,6 +285,27 @@ describe('credentials form', () => {
     expect(h.upserts[0]!.apiKey).toBeUndefined()
   })
 
+  it('a stored secret is removed with an icon button, staged until Save, and Keep undoes it', async () => {
+    const h = harness({ [ID]: { source: 'mod', modVersion: '1.2.0', hasApiKey: true, storedSecrets: ['refresh_token'] } }, withRow(modRow()))
+    mount(h)
+    fireEvent.click(await screen.findByTestId(`models-provider-settings-${ID}`))
+    const remove = await screen.findByTestId('models-secret-refresh_token-remove')
+    // An icon, named for the credential it removes: no visible word.
+    expect(remove.textContent).toBe('')
+    expect(remove.getAttribute('aria-label')).toBe('Remove the saved Refresh token')
+    expect(remove.querySelector('svg')).not.toBeNull()
+    fireEvent.click(remove)
+    const keep = await screen.findByTestId('models-secret-refresh_token-keep')
+    expect(keep.getAttribute('aria-label')).toBe('Keep the saved Refresh token')
+    expect(h.upserts).toHaveLength(0)
+    fireEvent.click(keep)
+    expect((await screen.findByTestId('mod-credentials-save') as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(await screen.findByTestId('models-secret-refresh_token-remove'))
+    fireEvent.click(screen.getByTestId('mod-credentials-save'))
+    await waitFor(() => expect(h.upserts).toHaveLength(1))
+    expect(h.upserts[0]!.secrets).toEqual({ refresh_token: '' })
+  })
+
   it('draws the declared settings with the vendor text and stores them per plugin', async () => {
     const h = harness({ [ID]: { source: 'mod', account: 'zed' } }, withRow(modRow()), { region: 'eu' })
     mount(h, 'de')
@@ -370,5 +406,62 @@ describe('verify after saving, and the model picks', () => {
     await openFromAddMenu()
     await screen.findByTestId('mod-provider-editor')
     expect(screen.queryByTestId('model-entries-add')).toBeNull()
+  })
+})
+
+describe('reset connection', () => {
+  it('removes the entry and the options the provider owns, and leaves a fresh form on the page', async () => {
+    const h = harness(
+      { [ID]: { source: 'mod', modVersion: '1.2.0', hasApiKey: true, storedSecrets: ['refresh_token'] } },
+      withRow(modRow({ credentialMethods: ['apiKey'] })),
+      { region: 'eu', 'signin.plan': 'free', greeting: 'kept: the plugin owns it' },
+    )
+    mount(h)
+    fireEvent.click(await screen.findByTestId(`models-provider-settings-${ID}`))
+    expect(await screen.findByTestId('mod-prompt-api_key-saved')).toBeTruthy()
+    await waitFor(() => expect((screen.getByTestId('mod-option-acme-region') as HTMLSelectElement).value).toBe('eu'))
+    fireEvent.change(screen.getByTestId('mod-prompt-api_key'), { target: { value: 'typed, never saved' } })
+
+    fireEvent.click(await screen.findByTestId('mod-reset-connection'))
+    // Nothing goes before the confirmation.
+    expect(h.removes).toEqual([])
+    fireEvent.click(await screen.findByTestId('mod-reset-confirm'))
+
+    await waitFor(() => expect(h.removes).toEqual([ID]))
+    await waitFor(() =>
+      expect(h.optionWrites.at(-1)).toEqual({
+        plugin: 'acme@inline',
+        owned: ['region', 'signin.plan', 'signin.team_id'],
+        values: {},
+      }),
+    )
+    expect(h.upserts).toHaveLength(0)
+    // The page stays, as a fresh pick from the Add menu: nothing saved,
+    // nothing typed, nothing left to reset.
+    await waitFor(() => expect(screen.queryByTestId('mod-prompt-api_key-saved')).toBeNull())
+    expect(screen.getByTestId('mod-provider-editor')).toBeTruthy()
+    expect((screen.getByTestId('mod-prompt-api_key') as HTMLInputElement).value).toBe('')
+    expect(screen.queryByTestId('models-secret-refresh_token-saved')).toBeNull()
+    await waitFor(() => expect((screen.getByTestId('mod-option-acme-region') as HTMLSelectElement).value).toBe(''))
+    await waitFor(() => expect(screen.queryByTestId('mod-reset-connection')).toBeNull())
+  })
+
+  it('is not offered on a fresh pick, with nothing stored', async () => {
+    mount(harness({}, withRow(modRow())))
+    await openFromAddMenu()
+    await screen.findByTestId('mod-provider-editor')
+    expect(screen.queryByTestId('mod-reset-connection')).toBeNull()
+  })
+
+  it('cancelling the confirmation writes nothing', async () => {
+    const h = harness({ [ID]: { source: 'mod', hasApiKey: true } }, withRow(modRow({ credentialMethods: ['apiKey'] })))
+    mount(h)
+    fireEvent.click(await screen.findByTestId(`models-provider-settings-${ID}`))
+    fireEvent.click(await screen.findByTestId('mod-reset-connection'))
+    fireEvent.click(await screen.findByText('Cancel'))
+    await waitFor(() => expect(screen.queryByTestId('mod-reset-confirm')).toBeNull())
+    expect(h.removes).toEqual([])
+    expect(h.optionWrites).toEqual([])
+    expect(screen.getByTestId('mod-prompt-api_key-saved')).toBeTruthy()
   })
 })

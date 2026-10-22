@@ -1,7 +1,15 @@
 import * as React from "react";
-import { CheckIcon, Loader2Icon } from "lucide-react";
+import { CheckIcon, Loader2Icon, Trash2Icon, Undo2Icon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useUnsavedEditsGate } from "@/glic/unsavedEditsGate";
@@ -14,6 +22,7 @@ import { useLocale, useT } from "../../i18n";
 import type { NexusSettingsBridge } from "../../nexusSettingsBridge";
 import {
   providersModOptions,
+  providersRemove,
   providersSetModOptions,
   providersUpsert,
   providersVerify,
@@ -27,6 +36,8 @@ import {
   modFormRows,
   modFormWrites,
   modProviderConfig,
+  modProviderOwnedOptions,
+  modProviderResettable,
   promptProblems,
   promptsTouched,
   settingsAsUserConfig,
@@ -305,6 +316,49 @@ function ReadyEditor({
     );
   };
 
+  // Reset: every stored value of this provider goes (the entry, its
+  // credentials, the options it owns) and the page reads as a fresh pick
+  // from the Add menu.
+  const ownedOptions = React.useMemo(
+    () => modProviderOwnedOptions(mod.prompts ?? [], Object.keys(mod.settings ?? {})),
+    [mod.prompts, mod.settings],
+  );
+  const resettable = modProviderResettable(
+    saved,
+    options ? [...Object.keys(options.values), ...options.storedSensitive] : [],
+    ownedOptions,
+  );
+  const [resetOpen, setResetOpen] = React.useState(false);
+  const [resetBusy, setResetBusy] = React.useState(false);
+  const [resetError, setResetError] = React.useState<string | null>(null);
+  // Bumped by a reset: the form remounts with nothing typed.
+  const [formGeneration, setFormGeneration] = React.useState(0);
+  const resetConnection = async () => {
+    if (resetBusy) return;
+    setResetOpen(false);
+    setResetBusy(true);
+    setResetError(null);
+    try {
+      // A held sign-in is ended through the plugin first; a failure there
+      // must not keep the stored entry.
+      if (holdsModSignIn(saved)) await getProviderLoginStore().signOut(providerId).catch(() => {});
+      await providersRemove(bridge, providerId);
+      if (configId && ownedOptions.length > 0) {
+        await providersSetModOptions(bridge, { plugin: configId, owned: ownedOptions, values: {} });
+      }
+      setPicked(null);
+      setVerifyFailed(null);
+      setLoginError(null);
+      setFormGeneration((n) => n + 1);
+      await onChanged();
+      await loadOptions();
+    } catch (error) {
+      setResetError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
   const chooseAnonymous = async () => {
     // Nothing to check without a key.
     setVerifyFailed(null);
@@ -447,7 +501,7 @@ function ReadyEditor({
       ) : null}
 
       <ModProviderForm
-        key={`${providerId}:${customPrompts ? "prompts" : "key"}`}
+        key={`${providerId}:${customPrompts ? "prompts" : "key"}:${formGeneration}`}
         prompts={method === "apiKey" ? prompts : null}
         saved={saved}
         options={options}
@@ -489,6 +543,47 @@ function ReadyEditor({
           connected={isModProviderConnected(saved)}
         />
       ) : null}
+      {resettable || resetError ? (
+        <div className="flex items-center justify-end gap-2" data-testid="mod-reset-row">
+          {resetError ? (
+            <span className="text-destructive text-xs" data-testid="mod-reset-failed">
+              {t("settings.models.mod.resetFailed", { error: resetError })}
+            </span>
+          ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={resetBusy}
+            data-testid="mod-reset-connection"
+            onClick={() => setResetOpen(true)}
+          >
+            {resetBusy ? <Loader2Icon className="size-3.5 animate-spin" aria-hidden /> : null}
+            {t("settings.models.resetConnection")}
+          </Button>
+        </div>
+      ) : null}
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("settings.models.resetTitle", { provider: name })}</DialogTitle>
+            <DialogDescription>{t("settings.models.resetDescription", { provider: name })}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setResetOpen(false)}>
+              {t("settings.models.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              data-testid="mod-reset-confirm"
+              onClick={() => void resetConnection()}
+            >
+              {t("settings.models.resetConnection")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ProviderSignInDialog name={name} session={loginSession} />
     </div>
   );
@@ -706,6 +801,7 @@ function ModProviderForm({
                 label={resolveLocalizedText(prompt.message, locale)}
                 mark={isStored ? savedMark(`${id}-saved`) : null}
                 hint={prompt.type === "select" ? <SelectHint prompt={prompt} value={value} locale={locale} /> : null}
+                fixedSlot
                 note={
                   problem ? (
                     <span className="text-destructive text-xs" data-testid={`${id}-error`}>
@@ -719,7 +815,7 @@ function ModProviderForm({
                     id={id}
                     data-testid={id}
                     className={cn(
-                      "h-8 min-w-[7rem] max-w-[14rem] rounded-md border border-input bg-background px-2.5 text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                      "h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                       problem && "border-destructive",
                     )}
                     value={value}
@@ -737,7 +833,7 @@ function ModProviderForm({
                     id={id}
                     data-testid={id}
                     type={prompt.secret || prompt.key === API_KEY_PROMPT_KEY ? "password" : "text"}
-                    className="h-8 w-56 text-xs"
+                    className="h-8 w-full text-xs"
                     autoComplete="off"
                     value={answers[prompt.key] ?? storedPlain[prompt.key] ?? ""}
                     placeholder={
@@ -769,6 +865,7 @@ function ModProviderForm({
                   ) : null
                 }
                 hint={field.description || undefined}
+                fixedSlot
               >
                 <OptionFieldControl
                   id={id}
@@ -776,6 +873,7 @@ function ModProviderForm({
                   value={settingsDraft[name]}
                   kept={settingsConfig ? holdsStoredSecret(settingsConfig, name) : false}
                   disabled={!configId}
+                  fill
                   onChange={(next) => setSetting(name, next)}
                 />
               </OptionRow>
@@ -794,12 +892,13 @@ function ModProviderForm({
               label={secret.label}
               mark={isStored && !removing ? savedMark(`${testId}-saved`) : null}
               hint={secret.hint}
+              fixedSlot
             >
               <Input
                 id={`${testId}-input`}
                 data-testid={`${testId}-input`}
                 type="password"
-                className="h-8 w-56 text-xs"
+                className="h-8 min-w-0 flex-1 text-xs"
                 autoComplete="off"
                 value={edit ?? ""}
                 disabled={removing}
@@ -816,24 +915,28 @@ function ModProviderForm({
                 removing ? (
                   <Button
                     type="button"
-                    size="sm"
+                    size="icon-sm"
                     variant="ghost"
-                    className="h-8 text-xs"
+                    className="shrink-0 text-muted-foreground"
+                    aria-label={t("settings.models.mod.secretKeepAria", { name: secret.label })}
+                    title={t("settings.models.mod.secretKeepAria", { name: secret.label })}
                     data-testid={`${testId}-keep`}
                     onClick={() => setSecret(secret.name, "")}
                   >
-                    {t("settings.models.mod.secretKeep")}
+                    <Undo2Icon className="size-4" aria-hidden />
                   </Button>
                 ) : (
                   <Button
                     type="button"
-                    size="sm"
+                    size="icon-sm"
                     variant="ghost"
-                    className="h-8 text-xs"
+                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                    aria-label={t("settings.models.mod.secretRemoveAria", { name: secret.label })}
+                    title={t("settings.models.mod.secretRemoveAria", { name: secret.label })}
                     data-testid={`${testId}-remove`}
                     onClick={() => setSecret(secret.name, null)}
                   >
-                    {t("settings.models.secretRemove")}
+                    <Trash2Icon className="size-4" aria-hidden />
                   </Button>
                 )
               ) : null}
