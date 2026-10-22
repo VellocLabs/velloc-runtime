@@ -145,10 +145,10 @@ describe('guest text size', () => {
  */
 describe('globals.css type scale', () => {
   const css = readFileSync(join(__dirname, '..', 'styles', 'globals.css'), 'utf8')
+  // The composer has no step tokens of its own: it reads the prose pair.
   const TOKENS = [
     'prose-size', 'prose-leading', 'body-size', 'body-leading',
     'caption-size', 'caption-leading', 'code-size', 'code-leading',
-    'composer-size', 'composer-leading',
   ]
 
   /** The declarations of the block whose selector list contains `selector`. */
@@ -196,9 +196,14 @@ describe('globals.css type scale', () => {
   })
 
   it('exposes each token pair as a Tailwind font-size utility', () => {
-    for (const name of ['prose', 'body', 'caption', 'code', 'composer']) {
+    for (const name of ['prose', 'body', 'caption', 'code']) {
       expect(css).toContain(`--text-${name}: var(--nx-${name}-size);`)
       expect(css).toContain(`--text-${name}--line-height: var(--nx-${name}-leading);`)
     }
+    // The composer follows prose, floored on touch screens.
+    expect(css).toContain('--text-composer: max(var(--nx-entry-floor-size, 0px), var(--nx-prose-size));')
+    expect(css).toContain(
+      '--text-composer--line-height: max(var(--nx-entry-floor-leading, 0px), var(--nx-prose-leading));',
+    )
   })
 })

@@ -34,8 +34,9 @@ describe('cn keeps the custom font-size utilities', () => {
 
   it('lists exactly the `--text-<name>` sizes declared in globals.css', () => {
     const css = readFileSync(join(__dirname, '..', 'styles', 'globals.css'), 'utf8')
+    // A size is `var(--nx-…)` or a `max(…)` over such tokens (the composer's touch floor).
     const declared = new Set(
-      [...css.matchAll(/^\s*--text-([a-z]+):\s*var\(--nx-/gm)].map((m) => m[1]!),
+      [...css.matchAll(/^\s*--text-([a-z]+):\s*(?:var|max)\(/gm)].map((m) => m[1]!),
     )
     expect([...declared].sort()).toEqual([...CUSTOM_FONT_SIZE_NAMES].sort())
   })

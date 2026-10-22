@@ -258,7 +258,8 @@ describe('credentials form', () => {
     expect((input as HTMLInputElement).type).toBe('password')
     expect(screen.getByTestId('models-secret-refresh_token').textContent).toContain('Refresh token')
     fireEvent.change(input, { target: { value: 'rt-1' } })
-    fireEvent.click(screen.getByTestId('models-secret-refresh_token-save'))
+    // One Save for the whole form; an untouched key row writes nothing of its own.
+    fireEvent.click(screen.getByTestId('mod-credentials-save'))
     await waitFor(() => expect(h.upserts).toHaveLength(1))
     expect(h.upserts[0]).toMatchObject({
       source: 'mod',
@@ -277,7 +278,7 @@ describe('credentials form', () => {
     await waitFor(() => expect(select.value).toBe('eu'))
     expect(screen.getByTestId('mod-option-acme-region-row').textContent).toContain('Region (de)')
     fireEvent.change(select, { target: { value: 'us' } })
-    fireEvent.click(screen.getByTestId('mod-options-save-acme'))
+    fireEvent.click(screen.getByTestId('mod-credentials-save'))
     await waitFor(() => expect(h.optionWrites).toHaveLength(1))
     expect(h.optionWrites[0]).toEqual({
       plugin: 'acme@inline',
