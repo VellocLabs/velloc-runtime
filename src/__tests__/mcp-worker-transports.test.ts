@@ -257,12 +257,16 @@ function stdioServerChild(
     tools?: Array<{ name: string; description?: string; annotations?: { readOnlyHint?: boolean } }>
     onCall?: (name: string, args: unknown) => string
     stderr?: string
+    instructions?: string
   } = {},
 ): (streamId: string, spec: Record<string, unknown>) => FakeChild {
   return (streamId, spec) => {
     const server = new Server(
       { name: 'fake-stdio', version: '1.2.3' },
-      { capabilities: { tools: {} } },
+      {
+        capabilities: { tools: {} },
+        ...(options.instructions !== undefined ? { instructions: options.instructions } : {}),
+      },
     )
     const tools = options.tools ?? [{ name: 'echo', description: 'Echo — répète' }]
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -867,6 +871,18 @@ describe('createWorkerMcpOperations', () => {
       ['plain', undefined],
     ])
     await operations.disconnect('srv')
+  })
+
+  it("testConnect carries the server's instructions, cleaned, and none when it sends none", async () => {
+    const host = new FakeHost()
+    host.spawn = stdioServerChild(host, { instructions: '  Search first.\r\nOne step per run.\u0007  ' })
+    const { operations } = ops(host)
+    const result = await operations.testConnect({ transport: 'stdio', command: 'srv' })
+    expect(result).toMatchObject({ ok: true, instructions: 'Search first.\nOne step per run.' })
+    host.spawn = stdioServerChild(host)
+    const bare = await operations.testConnect({ transport: 'stdio', command: 'srv' })
+    expect(bare.ok).toBe(true)
+    expect(bare).not.toHaveProperty('instructions')
   })
 
   it('testConnect refuses a config without its transport fields', async () => {

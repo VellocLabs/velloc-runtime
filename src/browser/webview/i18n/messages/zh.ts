@@ -764,6 +764,7 @@ export const zh: Messages = {
   'mcpServers.done': '完成',
   'mcpServers.version': 'v{version}',
   'mcpServers.toolsHeading': '工具',
+  'mcpServers.instructionsHeading': '指令',
   'mcpServers.filterPlaceholder': '筛选工具',
   'mcpServers.loadingTools': '正在加载工具…',
   'mcpServers.noTools': '此服务器未提供任何工具。',

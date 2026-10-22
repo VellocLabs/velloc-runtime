@@ -787,6 +787,7 @@ export const de: Messages = {
   'mcpServers.done': 'Fertig',
   'mcpServers.version': 'v{version}',
   'mcpServers.toolsHeading': 'Tools',
+  'mcpServers.instructionsHeading': 'Anweisungen',
   'mcpServers.filterPlaceholder': 'Tools filtern',
   'mcpServers.loadingTools': 'Tools werden geladen…',
   'mcpServers.noTools': 'Dieser Server bietet keine Tools an.',

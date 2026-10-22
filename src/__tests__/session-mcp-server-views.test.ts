@@ -52,6 +52,19 @@ describe('sessionMcpServerViews — details', () => {
     ])
   })
 
+  it("carries a connected server's instructions, never a failed one's", () => {
+    const views = sessionMcpServerViews([
+      { name: 'a', status: 'connected', tools: [], instructions: 'Search first.' },
+      { name: 'b', status: 'failed', tools: [], instructions: 'stale', error: 'gone' },
+      { name: 'c', status: 'connected', tools: [] },
+    ])
+    expect(views.map(view => [view.name, view.instructions])).toEqual([
+      ['a', 'Search first.'],
+      ['b', undefined],
+      ['c', undefined],
+    ])
+  })
+
   it('reuses the summaries of a tool list across snapshots and rebuilds them for a new list', () => {
     const tools = [{ name: 'a', description: 'First.' }]
     const first = sessionMcpServerViews([{ name: 's', status: 'connected', tools }])

@@ -274,6 +274,8 @@ export type SessionMcpServerView = {
   toolCount?: number
   /** Those tools' summaries, while connected. */
   tools?: McpToolSummary[]
+  /** Its initialize `instructions`, bounded, while connected. */
+  instructions?: string
   /** Why it failed, while failed. */
   error?: string
 }

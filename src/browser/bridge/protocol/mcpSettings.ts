@@ -61,6 +61,8 @@ export type McpSettingsBridgeActionMap = {
       serverVersion?: string
       toolCount?: number
       tools?: McpToolSummary[]
+      /** The server's initialize `instructions`, bounded (F-10). */
+      instructions?: string
       error?: string
     }
   }

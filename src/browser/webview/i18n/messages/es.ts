@@ -790,6 +790,7 @@ export const es: Messages = {
   'mcpServers.done': 'Listo',
   'mcpServers.version': 'v{version}',
   'mcpServers.toolsHeading': 'Herramientas',
+  'mcpServers.instructionsHeading': 'Instrucciones',
   'mcpServers.filterPlaceholder': 'Filtrar herramientas',
   'mcpServers.loadingTools': 'Cargando herramientas…',
   'mcpServers.noTools': 'Este servidor no ofrece herramientas.',

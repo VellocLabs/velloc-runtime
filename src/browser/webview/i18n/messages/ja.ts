@@ -776,6 +776,7 @@ export const ja: Messages = {
   'mcpServers.done': '完了',
   'mcpServers.version': 'v{version}',
   'mcpServers.toolsHeading': 'ツール',
+  'mcpServers.instructionsHeading': '指示',
   'mcpServers.filterPlaceholder': 'ツールを絞り込む',
   'mcpServers.loadingTools': 'ツールを読み込んでいます…',
   'mcpServers.noTools': 'このサーバーにはツールがありません。',

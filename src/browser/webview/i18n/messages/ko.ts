@@ -772,6 +772,7 @@ export const ko: Messages = {
   'mcpServers.done': '완료',
   'mcpServers.version': 'v{version}',
   'mcpServers.toolsHeading': '도구',
+  'mcpServers.instructionsHeading': '지침',
   'mcpServers.filterPlaceholder': '도구 필터',
   'mcpServers.loadingTools': '도구를 불러오는 중…',
   'mcpServers.noTools': '이 서버에는 도구가 없습니다.',

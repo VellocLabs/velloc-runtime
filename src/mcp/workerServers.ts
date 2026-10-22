@@ -363,12 +363,14 @@ export function createWorkerMcpOperations(
       try {
         const tools = await listTools('test', opened.client)
         const identity = opened.client.getServerVersion()
+        const instructions = cleanMcpInstructions(opened.client.getInstructions())
         return {
           ok: true,
           toolCount: tools.length,
           tools: summarizeMcpTools(tools),
           ...(identity?.name ? { serverName: identity.name } : {}),
           ...(identity?.version ? { serverVersion: identity.version } : {}),
+          ...(instructions !== undefined ? { instructions } : {}),
         }
       } finally {
         await opened.client.close().catch(() => {})

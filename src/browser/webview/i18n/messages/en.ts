@@ -827,6 +827,7 @@ export const en = {
   'mcpServers.done': 'Done',
   'mcpServers.version': 'v{version}',
   'mcpServers.toolsHeading': 'Tools',
+  'mcpServers.instructionsHeading': 'Instructions',
   'mcpServers.filterPlaceholder': 'Filter tools',
   'mcpServers.loadingTools': 'Loading tools…',
   'mcpServers.noTools': 'This server offers no tools.',

@@ -186,6 +186,22 @@ describe('McpSection server detail', () => {
     expect(screen.getByTestId('mcp-server-row-github').textContent).toContain('2')
   })
 
+  it('the detail view shows the instructions a probe returns', async () => {
+    const bridge = detailBridge(async () => ({
+      ok: true,
+      toolCount: 0,
+      tools: [],
+      instructions: 'Search before you build.',
+    }))
+    renderSection(bridge)
+    fireEvent.click(await screen.findByTestId('mcp-server-details-github'))
+    const text = await screen.findByTestId('mcp-server-detail-instructions-text')
+    expect(text.textContent).toBe('Search before you build.')
+    expect(screen.getByTestId('mcp-server-detail-instructions').textContent).toContain(
+      en['mcpServers.instructionsHeading'],
+    )
+  })
+
   it('a failed probe shows its error and Retry probes again', async () => {
     let calls = 0
     const bridge = detailBridge(async () => {

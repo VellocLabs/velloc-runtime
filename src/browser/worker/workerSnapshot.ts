@@ -64,7 +64,7 @@ function cachedToolSummaries(tools: LiveServerLink['tools']): McpToolSummary[] {
 export function sessionMcpServerViews(
   servers: ReadonlyArray<
     Pick<LiveServerLink, 'name' | 'status'> &
-      Partial<Pick<LiveServerLink, 'config' | 'nativeConfig' | 'nativeServerId' | 'tools' | 'error'>>
+      Partial<Pick<LiveServerLink, 'config' | 'nativeConfig' | 'nativeServerId' | 'tools' | 'instructions' | 'error'>>
   >,
   origins?: McpServerOriginSources,
   /** When set, a connected plugin server outside it is left out: it joined
@@ -83,6 +83,7 @@ export function sessionMcpServerViews(
       view.toolCount = server.tools.length
       view.tools = cachedToolSummaries(server.tools)
     }
+    if (server.status === 'connected' && server.instructions) view.instructions = server.instructions
     if (server.status === 'failed' && server.error) view.error = server.error
     views.push(view)
   }

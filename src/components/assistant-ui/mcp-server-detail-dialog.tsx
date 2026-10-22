@@ -19,7 +19,7 @@ import type { McpToolSummary } from "@/mcp/toolSummary";
 
 /**
  * One MCP server in detail (F-9, F-10): its status, origin, transport and
- * version, then its tools — each a row that expands to the full description
+ * version, then the instructions it sent at initialize, then its tools — each a row that expands to the full description
  * and its parameters. Opened from a Connectors card row and from the MCP
  * settings page.
  */
@@ -32,6 +32,8 @@ export type McpServerDetail = {
   version?: string;
   toolCount?: number;
   tools?: readonly McpToolSummary[];
+  /** The server's initialize `instructions`; shown as plain text, never markup. */
+  instructions?: string;
   error?: string;
 };
 
@@ -39,6 +41,10 @@ export type McpServerDetail = {
 const FILTER_THRESHOLD = 6;
 /** An error longer than this starts clamped with a Show more toggle. */
 const ERROR_CLAMP_CHARS = 240;
+/** Instructions with more lines or characters than these start clamped
+ *  (`line-clamp-6`) with a Show more toggle. */
+const INSTRUCTIONS_CLAMP_LINES = 6;
+const INSTRUCTIONS_CLAMP_CHARS = 480;
 
 function originLabel(origin: McpServerOrigin | undefined, t: TranslateFn): string | null {
   switch (origin?.kind) {
@@ -207,8 +213,12 @@ function DetailBody({
       <div className="min-h-0 overflow-y-auto px-5 py-4">
         {error ? <ErrorPanel message={error} onRetry={failed ? undefined : onRetry} t={t} /> : null}
 
+        {!failed && server.instructions ? (
+          <InstructionsSection text={server.instructions} spaced={Boolean(error)} t={t} />
+        ) : null}
+
         {!failed ? (
-          <section className={cn("flex flex-col gap-2", error ? "mt-4" : null)}>
+          <section className={cn("flex flex-col gap-2", error || server.instructions ? "mt-4" : null)}>
             <div className="flex items-center justify-between gap-3">
               <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
                 {t("mcpServers.toolsHeading")}
@@ -268,6 +278,48 @@ function DetailBody({
         ) : null}
       </div>
     </>
+  );
+}
+
+function InstructionsSection({ text, spaced, t }: { text: string; spaced: boolean; t: TranslateFn }) {
+  const long =
+    text.length > INSTRUCTIONS_CLAMP_CHARS || text.split("\n").length > INSTRUCTIONS_CLAMP_LINES;
+  const [full, setFull] = React.useState(false);
+  const bodyId = React.useId();
+  return (
+    <section
+      data-testid="mcp-server-detail-instructions"
+      data-expanded={long ? full : undefined}
+      className={cn("flex flex-col gap-2", spaced ? "mt-4" : null)}
+    >
+      <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+        {t("mcpServers.instructionsHeading")}
+      </h3>
+      <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">
+        <p
+          id={bodyId}
+          data-testid="mcp-server-detail-instructions-text"
+          className={cn(
+            "whitespace-pre-wrap break-words text-foreground/90 text-xs leading-relaxed",
+            long && !full && "line-clamp-6",
+          )}
+        >
+          {text}
+        </p>
+        {long ? (
+          <button
+            type="button"
+            data-testid="mcp-server-detail-instructions-toggle"
+            aria-expanded={full}
+            aria-controls={bodyId}
+            className="mt-1.5 font-medium text-muted-foreground text-xs underline-offset-2 hover:text-foreground hover:underline"
+            onClick={() => setFull((value) => !value)}
+          >
+            {full ? t("mcpServers.showLess") : t("mcpServers.showMore")}
+          </button>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

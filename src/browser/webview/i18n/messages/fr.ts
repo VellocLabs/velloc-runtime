@@ -790,6 +790,7 @@ export const fr: Messages = {
   'mcpServers.done': 'Terminé',
   'mcpServers.version': 'v{version}',
   'mcpServers.toolsHeading': 'Outils',
+  'mcpServers.instructionsHeading': 'Instructions',
   'mcpServers.filterPlaceholder': 'Filtrer les outils',
   'mcpServers.loadingTools': 'Chargement des outils…',
   'mcpServers.noTools': 'Ce serveur ne propose aucun outil.',

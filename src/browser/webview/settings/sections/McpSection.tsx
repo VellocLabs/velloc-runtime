@@ -157,6 +157,7 @@ export function McpSection() {
     loading: boolean;
     tools?: McpToolSummary[];
     version?: string;
+    instructions?: string;
     error?: string;
   } | null>(null);
   const detailRequest = React.useRef(0);
@@ -335,6 +336,7 @@ export function McpSection() {
             loading: false,
             tools: test.tools ?? [],
             ...(test.serverVersion ? { version: test.serverVersion } : {}),
+            ...(test.instructions ? { instructions: test.instructions } : {}),
           }
         : {
             id,
@@ -675,6 +677,7 @@ export function McpSection() {
                 version: detail.version ?? servers[detail.id].version,
                 toolCount: toolCounts[detail.id] ?? servers[detail.id].toolCount,
                 ...(detail.tools ? { status: "connected" as const, tools: detail.tools } : {}),
+                ...(detail.instructions ? { instructions: detail.instructions } : {}),
               }
             : null
         }
