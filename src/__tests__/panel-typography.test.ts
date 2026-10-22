@@ -68,6 +68,27 @@ describe('panel and code surfaces carry the type-scale utilities', () => {
     expect(read('components/assistant-ui/thread.tsx')).toMatch(/aui-edit-composer-input [^"]*text-composer /)
   })
 
+  it('the composer types at the conversation size at every step', () => {
+    const css = read('styles/globals.css')
+    expect(css).toContain('--text-composer: max(var(--nx-entry-floor-size, 0px), var(--nx-prose-size));')
+    expect(css).toContain(
+      '--text-composer--line-height: max(var(--nx-entry-floor-leading, 0px), var(--nx-prose-leading));',
+    )
+    // A composer-only step would let the input drift from the transcript again.
+    expect(css).not.toContain('--nx-composer-')
+    expect(read('components/assistant-ui/thread.tsx')).toMatch(/aui-composer-input [^"]*text-composer /)
+  })
+
+  it('text entry keeps a 16px floor on touch screens', () => {
+    // Under 16px a focused input makes mobile browsers zoom the page (remote client on a phone).
+    const css = read('styles/globals.css')
+    const touch = css.match(/@media \(pointer: coarse\) \{\s*:root \{([^}]*)\}/)
+    expect(touch?.[1]).toContain('--nx-entry-floor-size: 16px;')
+    expect(touch?.[1]).toContain('--nx-entry-floor-leading: 24px;')
+    // The floor is touch-only: no unconditional declaration sets it.
+    expect(css.match(/--nx-entry-floor-size: 16px;/g)).toHaveLength(1)
+  })
+
   it('code rows are one code line tall at every step', () => {
     // `leading-6` (24px) used to fix the row height while the code size
     // stepped, so the inline cap of N rows stopped landing on a row boundary.

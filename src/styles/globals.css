@@ -34,7 +34,8 @@
    * transcript and `text-body` on a tool row follow the Settings · Appearance
    * step without any component knowing which step is active. `prose` is the
    * conversation, `body` the interface text (tool rows, sidebar), `caption`
-   * the small labels, `code` fenced blocks, `composer` the input. */
+   * the small labels, `code` fenced blocks, `composer` the input (the prose step, floored on
+   * touch screens below). */
   --text-prose: var(--nx-prose-size);
   --text-prose--line-height: var(--nx-prose-leading);
   --text-body: var(--nx-body-size);
@@ -43,8 +44,8 @@
   --text-caption--line-height: var(--nx-caption-leading);
   --text-code: var(--nx-code-size);
   --text-code--line-height: var(--nx-code-leading);
-  --text-composer: var(--nx-composer-size);
-  --text-composer--line-height: var(--nx-composer-leading);
+  --text-composer: max(var(--nx-entry-floor-size, 0px), var(--nx-prose-size));
+  --text-composer--line-height: max(var(--nx-entry-floor-leading, 0px), var(--nx-prose-leading));
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -135,8 +136,6 @@
   --nx-caption-leading: 17px;
   --nx-code-size: 12px;
   --nx-code-leading: 17px;
-  --nx-composer-size: 16px;
-  --nx-composer-leading: 24px;
 }
 :root[data-text-size="1"] {
   --nx-prose-size: 13px;
@@ -147,8 +146,6 @@
   --nx-caption-leading: 15px;
   --nx-code-size: 12px;
   --nx-code-leading: 17px;
-  --nx-composer-size: 16px;
-  --nx-composer-leading: 24px;
 }
 :root[data-text-size="3"] {
   --nx-prose-size: 15px;
@@ -159,8 +156,6 @@
   --nx-caption-leading: 17px;
   --nx-code-size: 13px;
   --nx-code-leading: 19px;
-  --nx-composer-size: 16px;
-  --nx-composer-leading: 24px;
 }
 :root[data-text-size="4"] {
   --nx-prose-size: 16px;
@@ -171,8 +166,6 @@
   --nx-caption-leading: 17px;
   --nx-code-size: 13px;
   --nx-code-leading: 19px;
-  --nx-composer-size: 16px;
-  --nx-composer-leading: 24px;
 }
 :root[data-text-size="5"] {
   --nx-prose-size: 18px;
@@ -183,8 +176,16 @@
   --nx-caption-leading: 19px;
   --nx-code-size: 14px;
   --nx-code-leading: 21px;
-  --nx-composer-size: 18px;
-  --nx-composer-leading: 27px;
+}
+
+/* Mobile browsers zoom the page when a focused input types under 16px; the
+ * remote client serves this shell to phones, so text entry keeps a 16/24px
+ * floor on touch screens (F-22). */
+@media (pointer: coarse) {
+  :root {
+    --nx-entry-floor-size: 16px;
+    --nx-entry-floor-leading: 24px;
+  }
 }
 
 :root {
