@@ -116,13 +116,12 @@ import {
   type AutoCompactWindowSettings,
 } from '../../context/compaction/windowSettings'
 import {
-  buildMCPToolsFromPool,
-  buildMcpResourceToolsFromPool,
-  buildMCPSkillCommands,
   acquireSessionMCPPool,
   createWorkerMcpOperations,
+  isMcpSessionTool,
   mcpServerInstructionsFromPool,
-  mcpServerSkillNamesFromPool,
+  mcpSessionOffering,
+  type McpSessionOffering,
 } from '../../mcp'
 import { MCPPool } from '../../mcp/pool'
 import { settingsMcpServerIds, type McpServerOriginSources } from '../../mcp/serverOrigin'
@@ -1023,11 +1022,15 @@ export async function createBrowserRuntime(
     pluginServers: pluginContributions.mcpServerPlugins,
     projectNames: mcpPool.projectServerNames,
   }
+  // The session's MCP offering (F-10): the pool's connected servers as tool contracts, deferral
+  // units, Skill commands and the set of servers offered. Read again after a plugin reload.
+  const readMcpOffering = (): McpSessionOffering =>
+    allowsMcp ? mcpSessionOffering(mcpPool) : { tools: [], skillNames: [], commands: [], servers: new Set() }
+  let mcpOffering = readMcpOffering()
   // Deferrable skills: the template's `deferredTools` decides which defer by default; MCP servers defer
   // by default.
-  const mcpServerSkills = allowsMcp ? mcpServerSkillNamesFromPool(mcpPool) : []
   const deferrableSkills = resolveDeferrableSkills(
-    mcpServerSkills,
+    mcpOffering.skillNames,
     sessionTemplate?.config,
   )
   // Registered under THIS runtime's key (RuntimeConfig identity): the
@@ -1115,7 +1118,7 @@ export async function createBrowserRuntime(
   const allCommands = [
     ...localCommands,
     ...hostedSkills.map(hostedSkillToCommand),
-    ...(allowsMcp ? buildMCPSkillCommands(mcpPool) : []),
+    ...mcpOffering.commands,
   ]
   // Per-type `skills:` allowlist on the one registry every skill surface reads, so a denied skill is
   // absent; `deniedNames` only feeds error text. Recomputed on a `/plugins` reload.
@@ -1158,19 +1161,23 @@ export async function createBrowserRuntime(
     templateWantsWorkspaceDiffTool(sessionTemplate?.config)
       ? [WorkspaceDiffTool]
       : []
-  // The servers whose tools this runtime's list holds; a plugin server that
-  // joins later (a plugin reload) is left out of the session's server list.
-  const mcpServersOffered = new Set(
-    mcpPool.listServers().filter(server => server.status === 'connected').map(server => server.name),
-  )
-  const allTools = allowsMcp
-    ? [
-        ...baseTools,
-        ...snapshotTools,
-        ...buildMCPToolsFromPool(mcpPool),
-        ...buildMcpResourceToolsFromPool(mcpPool),
-      ]
-    : [...baseTools, ...snapshotTools]
+  // The servers whose tools this runtime's list holds. A plugin reload re-reads the pool
+  // (`refreshMcpOffering`), so a server a plugin brings or takes mid-session follows.
+  const mcpServersOffered = new Set(mcpOffering.servers)
+  const allTools = [...baseTools, ...snapshotTools, ...mcpOffering.tools]
+  // After a plugin reload: the engine's MCP tools, the deferral units, the Skill commands and the
+  // offered set follow the pool, so the prompt, the tool list and the server views agree.
+  const refreshMcpOffering = (): McpSessionOffering => {
+    mcpOffering = readMcpOffering()
+    registerDeferrableSkills(
+      resolveDeferrableSkills(mcpOffering.skillNames, sessionTemplate?.config),
+      runtimeConfig,
+    )
+    mcpServersOffered.clear()
+    for (const name of mcpOffering.servers) mcpServersOffered.add(name)
+    engine.replaceTools(isMcpSessionTool, mcpOffering.tools)
+    return mcpOffering
+  }
   // A background FORK keeps the parent's EXACT tool pool (no sub-agent strip),
   // so its serialized tools array stays aligned with the parent's for prompt-
   // cache reuse; a named/general-purpose sub-agent gets the scoped set.
@@ -1401,9 +1408,12 @@ export async function createBrowserRuntime(
     if (mcpLease && mcpLease.topLevelSessionId === resolvedSessionId) {
       pluginNativeMcpServers = reloadContributions.nativeMcpServers
       mcpOrigins.pluginServers = reloadContributions.mcpServerPlugins
-      void mcpPool.followPluginReload(reloadContributions.mcpServers, changedMcpSecrets).catch(err =>
-        console.warn('[mcp] plugin server reload failed:', err),
-      )
+      try {
+        await mcpPool.followPluginReload(reloadContributions.mcpServers, changedMcpSecrets)
+      } catch (err) {
+        console.warn('[mcp] plugin server reload failed:', err)
+      }
+      refreshMcpOffering()
     }
     sessionTypeDeniedNames.length = 0
     const reloadedCommands =
@@ -1423,7 +1433,7 @@ export async function createBrowserRuntime(
         // forward the same value the initial load used so a `/plugins`
         // reload doesn't accidentally widen the bundled-skill set.
         templateType,
-      }))
+      })).concat(hostedSkills.map(hostedSkillToCommand), mcpOffering.commands)
     const reloadedAgents = withBuiltInAgents(
       resolvedOptions.agents
       ?? (await loadLocalAgents({
@@ -2225,7 +2235,8 @@ ${teammateAddendum}`
     tools: coreState.tools,
     commands: coreState.options.commands ?? [],
     mcpClients: (coreState.options.mcpClients ?? []) as [],
-    mcpServerInstructions: () => (allowsMcp ? mcpServerInstructionsFromPool(mcpPool) : []),
+    mcpServerInstructions: () =>
+      mcpServerInstructionsFromPool(mcpPool).filter(entry => mcpServersOffered.has(entry.name)),
     agents: (coreState.options.agents ?? []) as [],
     plugins: pluginContributions.plugins.map(plugin => ({
       name: plugin.name,

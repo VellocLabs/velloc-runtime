@@ -14,6 +14,7 @@ import { SessionLedger } from './sessionLedger'
 import { TranscriptWriter } from './transcriptWriter'
 import { SessionTitler } from './autoTitle'
 import { ExtensionHosts } from './extensionHosts'
+import type { ToolContract } from '../toolkit/toolContract'
 import { runTurn, type EngineParts } from './turnRunner'
 
 export type { ConversationEngineConfig, ModelSelection, SubmitTurnOptions } from './engineConfig'
@@ -100,6 +101,13 @@ export class ConversationEngine {
   /** The `Notification` hooks for a notice about this session; never rejects. */
   async runNotificationHooks(notification: HookNotification): Promise<void> {
     await runNotificationHooks(notification, this.ledger.callContext())
+  }
+
+  /** Swaps the tools `drop` matches for `add`; every other tool, an
+   *  extension's included, stays. Returns the list now in force. */
+  replaceTools(drop: (tool: ToolContract) => boolean, add: readonly ToolContract[]): readonly ToolContract[] {
+    this.ledger.config.tools = [...this.ledger.config.tools.filter(tool => !drop(tool)), ...add]
+    return this.ledger.config.tools
   }
 
   // Settings

@@ -963,6 +963,20 @@ describe('plugin templates and the requires gate (F-25, F-14)', () => {
     expect(errors).toEqual([expect.objectContaining({ type: 'path-not-found', component: 'templates' })])
   })
 
+  it('a disabled plugin loads no MCP servers and is listed as disabled', async () => {
+    installProcessFs(makeFakeFs(nebTree({})))
+    const result = await loadPluginContributions({
+      cwd: '/proj',
+      runtimeConfig: new BrowserRuntimeConfig({ env: {} }),
+      enabledPlugins: ['other'],
+    })
+    expect(result.mcpServers).toEqual([])
+    expect(result.nativeMcpServers).toEqual([])
+    expect(result.mcpServerPlugins).toEqual([])
+    expect(result.plugins).toEqual([])
+    expect(result.disabled.map(plugin => plugin.name)).toEqual(['neb'])
+  })
+
   it('a plugin whose requires is not met loads no commands or MCP servers and is listed as waiting', async () => {
     installProcessFs(makeFakeFs(nebTree({ requires: { providers: ['main'] } })))
     const requirements = { loaded: true, isSetUp: () => true, owner: () => 'neb@inline' }

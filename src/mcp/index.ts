@@ -70,3 +70,4 @@ export type {
   MCPOAuthTokens,
   MCPAuthStore,
 } from './types'
+export { isMcpSessionTool, mcpSessionOffering, type McpSessionOffering } from './sessionOffering'
