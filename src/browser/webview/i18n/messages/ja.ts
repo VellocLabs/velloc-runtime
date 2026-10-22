@@ -1252,6 +1252,8 @@ export const ja: Messages = {
   'settings.models.mod.keptAnonymous': 'キーなしで使う設定です。',
   'settings.models.mod.keptVersion': 'バージョン {version} で最後に使用されました。',
   'settings.models.mod.optionsLoadFailed': 'このプラグインの保存済み設定を読み取れませんでした。',
+  'settings.models.mod.secretRemovePending': '保存時に削除されます',
+  'settings.models.mod.secretKeep': '保持',
   'settings.models.reorderProviderAria': 'モデルピッカーでの {name} の順序を変更：ドラッグするか、上下の矢印キーを押します',
   'settings.models.reorderProviderHint': 'ドラッグしてモデルピッカーでの順序を変更',
   'settings.models.backToProviders': 'プロバイダ',

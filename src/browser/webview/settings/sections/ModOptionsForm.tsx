@@ -6,77 +6,18 @@
  */
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2Icon, ChevronDownIcon, Loader2Icon } from "lucide-react";
+import { CheckCircle2Icon, Loader2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { ModsOptionValue, ModsUserConfig } from "../../../runtimeProtocol";
 import { useT } from "../../i18n";
-
-type Draft = Record<string, string | boolean>;
+import { draftChanged, draftOf, holdsStoredSecret, valuesOf, type OptionsDraft } from "../modOptionsDraft";
+import { OptionFieldControl, OptionRow, OptionRowList } from "./ModOptionRows";
 
 /** How long the "saved" tip stays up. */
 const SAVED_TIP_MS = 2600;
 /** The tip's fade-out, the end of its {@link SAVED_TIP_MS}. */
 const SAVED_TIP_FADE_MS = 300;
-
-function draftOf(config: ModsUserConfig): Draft {
-  const draft: Draft = {};
-  for (const [name, field] of Object.entries(config.fields)) {
-    const value = config.values[name] ?? field.default;
-    if (field.type === "boolean") draft[name] = value === true;
-    else if (field.sensitive) draft[name] = "";
-    else if (Array.isArray(value)) draft[name] = (value as readonly string[]).join(", ");
-    else draft[name] = value === undefined ? "" : String(value);
-  }
-  return draft;
-}
-
-/** The draft as values to store: a blank text is "unset" (the default
- *  applies); a blank sensitive field keeps what is stored. */
-function valuesOf(
-  config: ModsUserConfig,
-  draft: Draft,
-): { values: Record<string, ModsOptionValue>; keep: string[]; invalid: string[] } {
-  const values: Record<string, ModsOptionValue> = {};
-  const keep: string[] = [];
-  const invalid: string[] = [];
-  for (const [name, field] of Object.entries(config.fields)) {
-    const raw = draft[name];
-    if (field.type === "boolean") {
-      values[name] = raw === true;
-      continue;
-    }
-    const text = typeof raw === "string" ? raw.trim() : "";
-    if (text === "") {
-      if (field.sensitive && config.values[name] !== undefined && config.values[name] !== "") {
-        // Kept: the stored secret is not shown and not replaced. What this
-        // form holds is only its mask, so the runtime keeps it by name.
-        keep.push(name);
-      }
-      continue;
-    }
-    if (field.type === "number") {
-      // A number input: finite, and within the field's bounds.
-      const number = Number(text);
-      if (
-        !Number.isFinite(number) ||
-        (field.min !== undefined && number < field.min) ||
-        (field.max !== undefined && number > field.max)
-      ) {
-        invalid.push(field.title || name);
-        continue;
-      }
-      values[name] = number;
-    } else if (field.type === "string" && field.multiple) {
-      values[name] = text.split(",").map((entry) => entry.trim()).filter((entry) => entry !== "");
-    } else {
-      values[name] = text;
-    }
-  }
-  return { values, keep, invalid };
-}
 
 /** The tip after a save: bottom-centre, a moment, then it fades out.
  *  Portaled to the body so a transformed settings container cannot pin its
@@ -114,9 +55,9 @@ export function ModOptionsForm({
   onSave?: (values: Record<string, ModsOptionValue>, keep: string[]) => Promise<void>;
 }) {
   const t = useT();
-  const [draft, setDraft] = React.useState<Draft>(() => draftOf(config));
+  const [draft, setDraft] = React.useState<OptionsDraft>(() => draftOf(config));
   // The draft as last saved (or as loaded): what `dirty` compares against.
-  const baseline = React.useRef<Draft>(draftOf(config));
+  const baseline = React.useRef<OptionsDraft>(draftOf(config));
   const [state, setState] = React.useState<{ kind: "idle" } | { kind: "saving" } | { kind: "failed"; error: string }>({ kind: "idle" });
   // The tip's words, fixed when the save lands; null once it has faded.
   const [tip, setTip] = React.useState<string | null>(null);
@@ -142,7 +83,7 @@ export function ModOptionsForm({
   }, [tip]);
   const names = Object.keys(config.fields);
   if (names.length === 0) return null;
-  const dirty = JSON.stringify(draft) !== JSON.stringify(baseline.current);
+  const dirty = draftChanged(draft, baseline.current);
   const set = (name: string, next: string | boolean) => setDraft((prev) => ({ ...prev, [name]: next }));
   const save = async () => {
     if (!onSave) return;
@@ -183,96 +124,35 @@ export function ModOptionsForm({
         <span className="font-medium text-foreground text-xs">{t("settings.plugins.mods.options.title")}</span>
         <span className="text-muted-foreground text-xs">{t("settings.plugins.mods.options.hint")}</span>
       </div>
-      <div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border/70 bg-muted/20">
+      <OptionRowList>
         {names.map((name) => {
           const field = config.fields[name]!;
           const id = `mod-option-${plugin}-${name}`;
-          const value = draft[name];
           return (
-            // A row wraps its control below the words when the card is narrow.
-            <div key={name} data-testid={`${id}-row`} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-3 py-2.5">
-              <div className="flex min-w-[12rem] flex-1 flex-col gap-0.5">
-                <label htmlFor={id} className="flex items-center gap-1.5 font-medium text-foreground text-xs">
-                  <span>{field.title || name}</span>
-                  {field.required ? <span className="text-destructive">*</span> : null}
-                  {field.sensitive ? (
-                    <span className="font-normal text-muted-foreground">{t("settings.plugins.mods.options.sensitive")}</span>
-                  ) : null}
-                </label>
-                {field.description ? (
-                  <span className="text-[11px] text-muted-foreground leading-snug">{field.description}</span>
-                ) : null}
-              </div>
-              <div className="flex shrink-0 items-center">
-                {field.type === "boolean" ? (
-                  <Switch
-                    id={id}
-                    data-testid={id}
-                    checked={value === true}
-                    disabled={!onSave}
-                    onCheckedChange={(next) => set(name, next)}
-                  />
-                ) : field.type === "string" && field.options ? (
-                  // A native picker, drawn as the settings select trigger: as
-                  // wide as its longest choice, not the row.
-                  <div className="relative">
-                    <select
-                      id={id}
-                      data-testid={id}
-                      className="h-8 min-w-[7rem] max-w-[14rem] cursor-pointer appearance-none truncate rounded-md border border-input bg-background pr-7 pl-2.5 text-xs outline-none transition-colors hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
-                      value={typeof value === "string" ? value : ""}
-                      disabled={!onSave}
-                      onChange={(event) => {
-                        // Read now: React clears `currentTarget` once the handler
-                        // returns, before the updater runs.
-                        const next = event.currentTarget.value;
-                        set(name, next);
-                      }}
-                    >
-                      {!field.required ? <option value="">{t("settings.plugins.mods.options.unset")}</option> : null}
-                      {field.options.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDownIcon
-                      className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-muted-foreground"
-                      aria-hidden
-                    />
-                  </div>
-                ) : (
-                  <Input
-                    id={id}
-                    data-testid={id}
-                    type={field.sensitive ? "password" : field.type === "number" ? "number" : "text"}
-                    {...(field.type === "number" && field.min !== undefined ? { min: field.min } : {})}
-                    {...(field.type === "number" && field.max !== undefined ? { max: field.max } : {})}
-                    // A number is a short right-aligned figure; a text gets
-                    // room for a path or a list.
-                    className={cn("h-8 text-xs", field.type === "number" ? "w-24 text-right tabular-nums" : "w-56")}
-                    value={typeof value === "string" ? value : ""}
-                    placeholder={
-                      field.sensitive && config.values[name] !== undefined && config.values[name] !== ""
-                        ? t("settings.plugins.mods.options.keptSecret")
-                        : field.default !== undefined
-                          ? String(Array.isArray(field.default) ? (field.default as readonly string[]).join(", ") : field.default)
-                          : undefined
-                    }
-                    disabled={!onSave}
-                    onChange={(event) => {
-                      // Read now: React clears `currentTarget` once the handler
-                      // returns, before the updater runs.
-                      const next = event.currentTarget.value;
-                      set(name, next);
-                    }}
-                  />
-                )}
-              </div>
-            </div>
+            <OptionRow
+              key={name}
+              id={id}
+              label={field.title || name}
+              required={field.required}
+              mark={
+                field.sensitive ? (
+                  <span className="font-normal text-muted-foreground">{t("settings.plugins.mods.options.sensitive")}</span>
+                ) : null
+              }
+              hint={field.description || undefined}
+            >
+              <OptionFieldControl
+                id={id}
+                field={field}
+                value={draft[name]}
+                kept={holdsStoredSecret(config, name)}
+                disabled={!onSave}
+                onChange={(next) => set(name, next)}
+              />
+            </OptionRow>
           );
         })}
-      </div>
+      </OptionRowList>
       {onSave ? (
         // Right-aligned, the way a settings form ends; a failure reads just
         // before the button, a success is the tip.

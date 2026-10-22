@@ -1278,6 +1278,8 @@ export const es: Messages = {
   'settings.models.mod.keptAnonymous': 'Configurado para usarse sin clave.',
   'settings.models.mod.keptVersion': 'Usado por última vez con la versión {version}.',
   'settings.models.mod.optionsLoadFailed': 'No se pudo leer la configuración guardada de este complemento.',
+  'settings.models.mod.secretRemovePending': 'Se quita al guardar',
+  'settings.models.mod.secretKeep': 'Conservar',
   'settings.models.reorderProviderAria': 'Reordenar {name} en el selector de modelos: arrastre o pulse las teclas de flecha arriba y abajo',
   'settings.models.reorderProviderHint': 'Arrastre para cambiar el orden en el selector de modelos',
   'settings.models.backToProviders': 'Proveedores',

@@ -1229,6 +1229,8 @@ export const zh: Messages = {
   'settings.models.mod.keptAnonymous': '已设置为不使用密钥。',
   'settings.models.mod.keptVersion': '上次使用的版本为 {version}。',
   'settings.models.mod.optionsLoadFailed': '无法读取该插件已保存的设置。',
+  'settings.models.mod.secretRemovePending': '保存时将移除',
+  'settings.models.mod.secretKeep': '保留',
   'settings.models.reorderProviderAria': '在模型选择器中调整 {name} 的顺序：拖动，或按上下方向键',
   'settings.models.reorderProviderHint': '拖动以调整在模型选择器中的顺序',
   'settings.models.backToProviders': '服务商',

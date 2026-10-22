@@ -1249,6 +1249,8 @@ export const ko: Messages = {
   'settings.models.mod.keptAnonymous': '키 없이 사용하도록 설정되어 있습니다.',
   'settings.models.mod.keptVersion': '버전 {version}으로 마지막으로 사용했습니다.',
   'settings.models.mod.optionsLoadFailed': '이 플러그인의 저장된 설정을 읽지 못했습니다.',
+  'settings.models.mod.secretRemovePending': '저장 시 제거됩니다',
+  'settings.models.mod.secretKeep': '유지',
   'settings.models.reorderProviderAria': '모델 선택기에서 {name} 순서 변경: 드래그하거나 위아래 화살표 키를 누르세요',
   'settings.models.reorderProviderHint': '드래그하여 모델 선택기의 순서 변경',
   'settings.models.backToProviders': '제공업체',

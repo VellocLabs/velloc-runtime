@@ -1280,6 +1280,8 @@ export const fr: Messages = {
   'settings.models.mod.keptAnonymous': 'Réglé pour être utilisé sans clé.',
   'settings.models.mod.keptVersion': 'Dernière utilisation avec la version {version}.',
   'settings.models.mod.optionsLoadFailed': 'Impossible de lire les réglages enregistrés de cette extension.',
+  'settings.models.mod.secretRemovePending': 'Supprimée à l’enregistrement',
+  'settings.models.mod.secretKeep': 'Conserver',
   'settings.models.reorderProviderAria': 'Réorganiser {name} dans le sélecteur de modèles : faites glisser, ou appuyez sur les flèches haut et bas',
   'settings.models.reorderProviderHint': 'Faites glisser pour changer l’ordre dans le sélecteur de modèles',
   'settings.models.backToProviders': 'Fournisseurs',

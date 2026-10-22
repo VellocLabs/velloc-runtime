@@ -1274,6 +1274,8 @@ export const de: Messages = {
   'settings.models.mod.keptAnonymous': 'Auf Nutzung ohne Schlüssel gestellt.',
   'settings.models.mod.keptVersion': 'Zuletzt mit Version {version} genutzt.',
   'settings.models.mod.optionsLoadFailed': 'Die gespeicherten Einstellungen dieses Plugins konnten nicht gelesen werden.',
+  'settings.models.mod.secretRemovePending': 'Wird beim Speichern entfernt',
+  'settings.models.mod.secretKeep': 'Behalten',
   'settings.models.reorderProviderAria': '{name} in der Modellauswahl neu anordnen: ziehen oder die Pfeiltasten nach oben und unten drücken',
   'settings.models.reorderProviderHint': 'Ziehen, um die Reihenfolge in der Modellauswahl zu ändern',
   'settings.models.backToProviders': 'Anbieter',

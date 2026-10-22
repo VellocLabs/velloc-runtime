@@ -7,6 +7,9 @@ import {
   defaultKeyPrompt,
   isModProviderAdded,
   isModProviderConnected,
+  modFormDirty,
+  modFormRows,
+  modFormWrites,
   satisfiesPromptPattern,
   modProviderConfig,
   promptProblems,
@@ -16,7 +19,10 @@ import {
   storedAnswers,
   storedPromptKeys,
   visiblePrompts,
+  type ModFormEdits,
 } from '../browser/webview/settings/modProviderForm'
+import { draftOf } from '../browser/webview/settings/modOptionsDraft'
+import type { ModsUserConfig } from '../browser/runtimeProtocol'
 import type { CredentialPrompt } from '../mods/provider/providerManifest'
 import type { NexusProviderConfig } from '../settings/settingsTypes'
 
@@ -267,5 +273,116 @@ describe('declared settings', () => {
     expect(config.values).toEqual({ region: 'eu', limit: 3, token: '••••' })
     expect(JSON.stringify(config)).not.toContain('LEAK')
     expect(settingsAsUserConfig(mod, { token: 'LEAK' }, [], 'en').values.token).toBeUndefined()
+  })
+})
+
+describe('the one form: rows and where a save goes', () => {
+  const key = defaultKeyPrompt('API key')
+  const settings: ModsUserConfig = {
+    fields: {
+      project_id: { type: 'string', title: 'Project id', description: 'Which project' },
+      limit: { type: 'number', title: 'Limit', description: '', min: 1, max: 9 },
+      token: { type: 'string', title: 'Token', description: '', sensitive: true },
+    },
+    values: { project_id: 'p-1', token: '••••' },
+  }
+  const secrets = [{ name: 'search_key', label: 'Search key' }]
+  const untouched = (): ModFormEdits => ({
+    answers: {},
+    storedAnswers: {},
+    settings: { config: settings, draft: draftOf(settings), baseline: draftOf(settings) },
+    secrets: {},
+  })
+
+  it('draws the prompts, then the settings, then the named credentials', () => {
+    const rows = modFormRows([prompts[0]!, key], settings, secrets)
+    expect(rows.map(row => (row.kind === 'prompt' ? `prompt:${row.prompt.key}` : row.kind === 'setting' ? `setting:${row.name}` : `secret:${row.secret.name}`))).toEqual([
+      'prompt:plan',
+      `prompt:${API_KEY_PROMPT_KEY}`,
+      'setting:project_id',
+      'setting:limit',
+      'setting:token',
+      'secret:search_key',
+    ])
+    // A method without prompts still draws the settings and the credentials.
+    expect(modFormRows(null, settings, secrets).map(row => row.kind)).toEqual(['setting', 'setting', 'setting', 'secret'])
+    expect(modFormRows(null, null, [])).toEqual([])
+  })
+
+  it('an untouched form is not dirty and writes nothing', () => {
+    expect(modFormDirty(untouched())).toBe(false)
+    const writes = modFormWrites([key], untouched())
+    expect(writes.credentials).toBeUndefined()
+    expect(writes.settings).toBeUndefined()
+    expect(writes.secrets).toEqual({})
+    expect(writes.invalid).toEqual([])
+  })
+
+  it('a typed key reaches the provider entry and nothing else', () => {
+    const edits = { ...untouched(), answers: { [API_KEY_PROMPT_KEY]: 'sk-1' } }
+    expect(modFormDirty(edits)).toBe(true)
+    const writes = modFormWrites([key], edits)
+    expect(writes.credentials?.apiKey).toBe('sk-1')
+    expect(writes.settings).toBeUndefined()
+    expect(writes.secrets).toEqual({})
+  })
+
+  it('a prompt answer writes the prompts as a whole, over the stored plain answers', () => {
+    const edits = { ...untouched(), answers: { team_id: 't-3' }, storedAnswers: { plan: 'team' } }
+    const writes = modFormWrites(prompts, edits)
+    expect(writes.credentials?.options).toEqual({ 'signin.plan': 'team', 'signin.team_id': 't-3' })
+    expect(writes.credentials?.apiKey).toBeUndefined()
+  })
+
+  it('a cleared prompt field is not an answer', () => {
+    const edits = { ...untouched(), answers: { [API_KEY_PROMPT_KEY]: '  ' } }
+    expect(modFormDirty(edits)).toBe(false)
+    expect(modFormWrites([key], edits).credentials).toBeUndefined()
+  })
+
+  it('a changed setting reaches the plugin options, owning every declared field, keeping a stored secret', () => {
+    const edits = untouched()
+    edits.settings!.draft = { ...edits.settings!.draft, project_id: 'p-2' }
+    expect(modFormDirty(edits)).toBe(true)
+    const writes = modFormWrites([key], edits)
+    expect(writes.settings).toEqual({
+      owned: ['project_id', 'limit', 'token'],
+      values: { project_id: 'p-2' },
+      keep: ['token'],
+    })
+    expect(writes.credentials).toBeUndefined()
+    expect(writes.secrets).toEqual({})
+  })
+
+  it('a setting that is not a number within its bounds is named and nothing is written for it', () => {
+    const edits = untouched()
+    edits.settings!.draft = { ...edits.settings!.draft, limit: '42' }
+    const writes = modFormWrites([key], edits)
+    expect(writes.invalid).toEqual(['Limit'])
+    expect(writes.settings?.values).toEqual({ project_id: 'p-1' })
+  })
+
+  it('a typed named credential writes by name, trimmed; a blank one writes nothing; Remove writes ""', () => {
+    expect(modFormWrites([key], { ...untouched(), secrets: { search_key: '  srch-1 ' } }).secrets).toEqual({ search_key: 'srch-1' })
+    const blank = { ...untouched(), secrets: { search_key: '   ' } }
+    expect(modFormDirty(blank)).toBe(false)
+    expect(modFormWrites([key], blank).secrets).toEqual({})
+    const removed = { ...untouched(), secrets: { search_key: null } }
+    expect(modFormDirty(removed)).toBe(true)
+    expect(modFormWrites([key], removed).secrets).toEqual({ search_key: '' })
+  })
+
+  it('a changed row of each kind goes to its own writer in one save', () => {
+    const edits = untouched()
+    edits.answers = { [API_KEY_PROMPT_KEY]: 'sk-9' }
+    edits.settings!.draft = { ...edits.settings!.draft, project_id: 'p-9' }
+    edits.secrets = { search_key: 'srch-9' }
+    const writes = modFormWrites([key], edits)
+    expect(writes.credentials?.apiKey).toBe('sk-9')
+    expect(writes.settings?.values).toEqual({ project_id: 'p-9' })
+    expect(writes.secrets).toEqual({ search_key: 'srch-9' })
+    // A named credential never lands in the options, and a setting never in a secret.
+    expect(JSON.stringify(writes.settings)).not.toContain('srch-9')
+    expect(JSON.stringify(writes.secrets)).not.toContain('p-9')
   })
 })

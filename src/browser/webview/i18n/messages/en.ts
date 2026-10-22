@@ -1310,6 +1310,8 @@ export const en = {
   'settings.models.mod.keptAnonymous': 'Set to use without a key.',
   'settings.models.mod.keptVersion': 'Last used with version {version}.',
   'settings.models.mod.optionsLoadFailed': 'Couldn\'t read this plugin\'s saved settings.',
+  'settings.models.mod.secretRemovePending': 'Removed when you save',
+  'settings.models.mod.secretKeep': 'Keep',
   'settings.models.reorderProviderAria': 'Reorder {name} in the model picker: drag, or press the Up and Down arrow keys',
   'settings.models.reorderProviderHint': 'Drag to change the order in the model picker',
   'settings.models.backToProviders': 'Providers',

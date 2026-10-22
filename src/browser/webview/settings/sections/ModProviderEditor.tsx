@@ -1,5 +1,5 @@
 import * as React from "react";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, Loader2Icon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { resolveLocalizedText } from "../../../../config/localizedText";
 import type { CredentialPrompt } from "../../../../mods/provider/providerManifest";
 import type { NexusProviderConfig } from "../../../../settings/settingsTypes";
 import type { BrowserLlmProvider } from "../../../bridge/protocol/nexus_llm";
+import type { ModsUserConfig } from "../../../runtimeProtocol";
 import { useLocale, useT } from "../../i18n";
 import type { NexusSettingsBridge } from "../../nexusSettingsBridge";
 import {
@@ -22,22 +23,27 @@ import {
   credentialMethodsOf,
   defaultKeyPrompt,
   isModProviderConnected,
+  modFormDirty,
+  modFormRows,
+  modFormWrites,
   modProviderConfig,
   promptProblems,
-  promptWrites,
+  promptsTouched,
   settingsAsUserConfig,
   storedAnswers,
   storedPromptKeys,
   visiblePrompts,
+  type ModFormEdits,
   type PromptAnswers,
   type PromptProblem,
+  type SecretRowView,
 } from "../modProviderForm";
+import { draftOf, holdsStoredSecret, type OptionsDraft } from "../modOptionsDraft";
 import { mapErrorCode } from "../verifyErrorText";
 import { getProviderLoginStore, useProviderLogin } from "../../providerLoginStore";
-import { ModOptionsForm } from "./ModOptionsForm";
+import { OptionFieldControl, OptionRow, OptionRowList } from "./ModOptionRows";
 import { ProviderModelEntries } from "./ProviderModelEntries";
 import { ProviderSignInDialog } from "./ProviderSignInDialog";
-import { ProviderSecretFields, type SecretFieldView } from "./ProviderSecretFields";
 import { holdsModSignIn } from "../../../../settings/providerSignIn";
 
 /** The name a provider mod's row shows: the vendor's, in the person's language. */
@@ -277,7 +283,7 @@ function ReadyEditor({
         : null,
     [mod, options, locale],
   );
-  const secretViews = React.useMemo<SecretFieldView[]>(
+  const secretViews = React.useMemo<SecretRowView[]>(
     () =>
       (mod.secrets ?? []).map((secret) => ({
         name: secret.name,
@@ -290,14 +296,13 @@ function ReadyEditor({
   );
 
   // A declared secret is a named secret written on its own, against the
-  // stored entry (a half-typed form must not ride along).
+  // stored entry (the rest of the form must not ride along).
   const saveSecret = async (secretName: string, value: string) => {
     await providersUpsert(
       bridge,
       providerId,
       modProviderConfig(stored, { secrets: { [secretName]: value } }),
     );
-    await onChanged();
   };
 
   const chooseAnonymous = async () => {
@@ -367,26 +372,6 @@ function ReadyEditor({
             </Button>
           ))}
         </div>
-      ) : null}
-
-      {method === "apiKey" ? (
-        <PromptForm
-          key={`${providerId}:${customPrompts ? "prompts" : "key"}`}
-          prompts={prompts}
-          saved={saved}
-          options={options}
-          locale={locale}
-          providerId={providerId}
-          configId={configId}
-          bridge={bridge}
-          onSaved={async () => {
-            await onChanged();
-            await loadOptions();
-          }}
-          buildBase={(change) => modProviderConfig(stored, change)}
-          verifyKey={verifyKey}
-          t={t}
-        />
       ) : null}
 
       {method === "anonymous" ? (
@@ -461,33 +446,27 @@ function ReadyEditor({
         </div>
       ) : null}
 
-      {secretViews.length > 0 ? (
-        <ProviderSecretFields
-          fields={secretViews}
-          storedNames={saved?.storedSecrets ?? []}
-          onSave={saveSecret}
-        />
-      ) : null}
-
-      {settingsConfig && Object.keys(settingsConfig.fields).length > 0 ? (
-        configId ? (
-          <ModOptionsForm
-            plugin={`${mod.plugin ?? providerId}`}
-            config={settingsConfig}
-            onSave={async (values, keep) => {
-              await providersSetModOptions(bridge, {
-                plugin: configId,
-                owned: Object.keys(settingsConfig.fields),
-                values: values as Record<string, string | number | boolean | string[]>,
-                ...(keep.length > 0 ? { keep } : {}),
-              });
-              await loadOptions();
-            }}
-          />
-        ) : (
-          <ModOptionsForm plugin={`${mod.plugin ?? providerId}`} config={settingsConfig} />
-        )
-      ) : null}
+      <ModProviderForm
+        key={`${providerId}:${customPrompts ? "prompts" : "key"}`}
+        prompts={method === "apiKey" ? prompts : null}
+        saved={saved}
+        options={options}
+        settingsConfig={settingsConfig && Object.keys(settingsConfig.fields).length > 0 ? settingsConfig : null}
+        settingsId={`${mod.plugin ?? providerId}`}
+        secretViews={secretViews}
+        locale={locale}
+        providerId={providerId}
+        configId={configId}
+        bridge={bridge}
+        onSaved={async () => {
+          await onChanged();
+          await loadOptions();
+        }}
+        buildBase={(change) => modProviderConfig(stored, change)}
+        saveSecret={saveSecret}
+        verifyKey={verifyKey}
+        t={t}
+      />
       {optionsFailed ? (
         <span className="text-destructive text-xs" data-testid="mod-options-load-failed">
           {t("settings.models.mod.optionsLoadFailed")}
@@ -516,27 +495,38 @@ function ReadyEditor({
 }
 
 /**
- * The `apiKey` method's form: the manifest's prompts (or the one key field
- * when it declares none), with the `when` rules, the `pattern` checks and the
- * routing of each answer (`modProviderForm.promptWrites`). A secret answer
- * is held only in the field until Save and is never read back.
+ * The provider's one form: the `apiKey` method's prompts (or the one key
+ * field when the manifest declares none), the declared settings and the
+ * declared named credentials, as rows of one list with one Save. A secret
+ * answer, a named credential and a sensitive setting are held only in their
+ * field until Save and never read back; Save is inert until a row changes,
+ * and routes each changed group to its own writer (`modFormWrites`).
  */
-function PromptForm({
+function ModProviderForm({
   prompts,
   saved,
   options,
+  settingsConfig,
+  settingsId,
+  secretViews,
   locale,
   providerId,
   configId,
   bridge,
   onSaved,
   buildBase,
+  saveSecret,
   verifyKey,
   t,
 }: {
-  prompts: CredentialPrompt[];
+  /** The method in force takes prompts; null hides them. */
+  prompts: CredentialPrompt[] | null;
   saved: NexusProviderConfig | undefined;
   options: { values: Record<string, unknown>; storedSensitive: string[] } | null;
+  settingsConfig: ModsUserConfig | null;
+  /** The settings rows' id stem: the plugin's name. */
+  settingsId: string;
+  secretViews: SecretRowView[];
   locale: string;
   providerId: string;
   configId: string | undefined;
@@ -547,6 +537,8 @@ function PromptForm({
     secrets?: Record<string, string>;
     credentialMode?: "anonymous" | null;
   }) => NexusProviderConfig;
+  /** Store one named credential; `""` removes it. */
+  saveSecret: (name: string, value: string) => Promise<void>;
   /** Check the stored key; the error code of a failure, else null. */
   verifyKey: () => Promise<string | null>;
   t: ReturnType<typeof useT>;
@@ -556,63 +548,123 @@ function PromptForm({
   const [busy, setBusy] = React.useState(false);
   const [failed, setFailed] = React.useState<string | null>(null);
   const [done, setDone] = React.useState(false);
-  // The non-secret answers stored earlier: the form starts from them, until
-  // the person types.
+  const [secretEdits, setSecretEdits] = React.useState<Record<string, string | null>>({});
+  const [settingsDraft, setSettingsDraft] = React.useState<OptionsDraft>(() =>
+    settingsConfig ? draftOf(settingsConfig) : {},
+  );
+  // The settings as last loaded or saved: what a changed draft is measured against.
+  const settingsBaseline = React.useRef<OptionsDraft>(settingsDraft);
+  const settingsKey = settingsConfig ? JSON.stringify(settingsConfig) : "";
+  // A reload brought new values (a save landed, another client wrote): the
+  // settings rows follow.
+  React.useEffect(() => {
+    const next = settingsConfig ? draftOf(settingsConfig) : {};
+    setSettingsDraft(next);
+    settingsBaseline.current = next;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsKey]);
+
+  const promptList = prompts ?? [];
+  // The non-secret answers stored earlier: the prompts start from them,
+  // until the person types.
   const storedPlain = React.useMemo(
-    () => (options ? storedAnswers(prompts, options.values) : {}),
-    [prompts, options],
+    () => (options ? storedAnswers(promptList, options.values) : {}),
+    [promptList, options],
   );
   const effective = React.useMemo<PromptAnswers>(
     () => ({ ...storedPlain, ...answers }),
     [storedPlain, answers],
   );
-  const stored = React.useMemo(() => storedPromptKeys(prompts, saved), [prompts, saved]);
-  const problems = promptProblems(prompts, effective, stored);
-  const shown = visiblePrompts(prompts, effective);
-  // A typed, unsaved secret lives only here: hold the background updater's reload.
-  useUnsavedEditsGate(Object.values(answers).some((value) => value !== ""));
+  const stored = React.useMemo(() => storedPromptKeys(promptList, saved), [promptList, saved]);
+  const problems = promptProblems(promptList, effective, stored);
+  const shown = prompts ? visiblePrompts(prompts, effective) : null;
+  const storedSecrets = saved?.storedSecrets ?? [];
 
-  const set = (key: string, value: string) => {
+  const edits: ModFormEdits = {
+    answers,
+    storedAnswers: storedPlain,
+    settings: settingsConfig
+      ? { config: settingsConfig, draft: settingsDraft, baseline: settingsBaseline.current }
+      : null,
+    secrets: secretEdits,
+  };
+  const dirty = modFormDirty(edits);
+  // A typed, unsaved secret lives only here: hold the background updater's reload.
+  useUnsavedEditsGate(dirty);
+
+  const rows = modFormRows(shown, settingsConfig, secretViews);
+  if (rows.length === 0) return null;
+
+  const setAnswer = (key: string, value: string) => {
     setAnswers((prev) => ({ ...prev, [key]: value }));
+    setDone(false);
+  };
+  const setSetting = (name: string, value: string | boolean) => {
+    setSettingsDraft((prev) => ({ ...prev, [name]: value }));
+    setDone(false);
+  };
+  const setSecret = (name: string, value: string | null) => {
+    setSecretEdits((prev) => ({ ...prev, [name]: value }));
     setDone(false);
   };
 
   const save = async () => {
     if (busy) return;
     setTouched(true);
-    if (Object.keys(problems).length > 0) return;
-    const writes = promptWrites(prompts, effective);
-    // Plain answers need the plugin's options; a row with no config id has
-    // nowhere to put them.
-    if (writes.ownedOptions.length > 0 && !configId) {
+    const credentialsTouched = promptsTouched(answers);
+    if (credentialsTouched && Object.keys(problems).length > 0) return;
+    const writes = modFormWrites(promptList, edits);
+    if (writes.invalid.length > 0) {
+      setFailed(t("settings.plugins.mods.options.invalid", { fields: writes.invalid.join(", ") }));
+      return;
+    }
+    // Plain answers and settings need the plugin's options; a row with no
+    // config id has nowhere to put them.
+    const needsOptions =
+      (writes.credentials !== undefined && writes.credentials.ownedOptions.length > 0) || writes.settings !== undefined;
+    if (needsOptions && !configId) {
       setFailed(t("settings.models.mod.optionsLoadFailed"));
       return;
     }
     setBusy(true);
     setFailed(null);
     try {
-      // Choosing a key leaves the keyless mode.
-      await providersUpsert(
-        bridge,
-        providerId,
-        buildBase({
-          ...(writes.apiKey !== undefined ? { apiKey: writes.apiKey } : {}),
-          secrets: writes.secrets,
-          credentialMode: null,
-        }),
-      );
-      if (writes.ownedOptions.length > 0 && configId) {
+      // The named credentials go first: the key's write is the one that
+      // leaves the keyless mode, and it has the last word on the entry.
+      for (const [name, value] of Object.entries(writes.secrets)) await saveSecret(name, value);
+      if (writes.credentials) {
+        await providersUpsert(
+          bridge,
+          providerId,
+          buildBase({
+            ...(writes.credentials.apiKey !== undefined ? { apiKey: writes.credentials.apiKey } : {}),
+            secrets: writes.credentials.secrets,
+            credentialMode: null,
+          }),
+        );
+        if (writes.credentials.ownedOptions.length > 0 && configId) {
+          await providersSetModOptions(bridge, {
+            plugin: configId,
+            owned: writes.credentials.ownedOptions,
+            values: writes.credentials.options,
+          });
+        }
+      }
+      if (writes.settings && configId) {
         await providersSetModOptions(bridge, {
           plugin: configId,
-          owned: writes.ownedOptions,
-          values: writes.options,
+          owned: writes.settings.owned,
+          values: writes.settings.values as Record<string, string | number | boolean | string[]>,
+          ...(writes.settings.keep.length > 0 ? { keep: writes.settings.keep } : {}),
         });
+        settingsBaseline.current = { ...settingsDraft };
       }
       setAnswers({});
+      setSecretEdits({});
       setTouched(false);
-      // The key is stored first, then checked (a failed check leaves it
+      // A new key is stored first, then checked (a failed check leaves it
       // stored, as the gateways' do); the editor shows the failure.
-      const failedCode = await verifyKey();
+      const failedCode = writes.credentials?.apiKey !== undefined ? await verifyKey() : null;
       setDone(failedCode === null);
       await onSaved();
     } catch (error) {
@@ -621,6 +673,13 @@ function PromptForm({
       setBusy(false);
     }
   };
+
+  const savedMark = (testId: string) => (
+    <span className="flex items-center gap-1 font-normal text-success text-xs" data-testid={testId}>
+      {t("settings.models.apiKeySaved")}
+      <CheckIcon className="size-3.5" />
+    </span>
+  );
 
   return (
     <form
@@ -632,70 +691,156 @@ function PromptForm({
         void save();
       }}
     >
-      {shown.map((prompt) => {
-        const problem = touched ? problems[prompt.key] : undefined;
-        const id = `mod-prompt-${prompt.key}`;
-        const message = resolveLocalizedText(prompt.message, locale);
-        const value = effective[prompt.key] ?? "";
-        const isStored = stored.has(prompt.key);
-        return (
-          <div key={prompt.key} className="flex flex-col gap-1 text-sm" data-testid={`${id}-row`}>
-            <label htmlFor={id} className="flex items-center justify-between gap-2 font-medium">
-              <span>{message}</span>
-              {isStored ? (
-                <span className="flex items-center gap-1 font-normal text-success text-xs" data-testid={`${id}-saved`}>
-                  {t("settings.models.apiKeySaved")}
-                  <CheckIcon className="size-3.5" />
-                </span>
-              ) : null}
-            </label>
-            {prompt.type === "select" ? (
-              <select
+      <OptionRowList>
+        {rows.map((row) => {
+          if (row.kind === "prompt") {
+            const prompt = row.prompt;
+            const problem = touched ? problems[prompt.key] : undefined;
+            const id = `mod-prompt-${prompt.key}`;
+            const value = effective[prompt.key] ?? "";
+            const isStored = stored.has(prompt.key);
+            return (
+              <OptionRow
+                key={id}
                 id={id}
-                data-testid={id}
-                className={cn(
-                  "h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                  problem && "border-destructive",
-                )}
-                value={value}
-                onChange={(event) => set(prompt.key, event.currentTarget.value)}
+                label={resolveLocalizedText(prompt.message, locale)}
+                mark={isStored ? savedMark(`${id}-saved`) : null}
+                hint={prompt.type === "select" ? <SelectHint prompt={prompt} value={value} locale={locale} /> : null}
+                note={
+                  problem ? (
+                    <span className="text-destructive text-xs" data-testid={`${id}-error`}>
+                      {t(PROBLEM_KEY[problem])}
+                    </span>
+                  ) : null
+                }
               >
-                <option value="">{t("settings.models.mod.choose")}</option>
-                {prompt.options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {resolveLocalizedText(option.label, locale)}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <Input
+                {prompt.type === "select" ? (
+                  <select
+                    id={id}
+                    data-testid={id}
+                    className={cn(
+                      "h-8 min-w-[7rem] max-w-[14rem] rounded-md border border-input bg-background px-2.5 text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                      problem && "border-destructive",
+                    )}
+                    value={value}
+                    onChange={(event) => setAnswer(prompt.key, event.currentTarget.value)}
+                  >
+                    <option value="">{t("settings.models.mod.choose")}</option>
+                    {prompt.options.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {resolveLocalizedText(option.label, locale)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    id={id}
+                    data-testid={id}
+                    type={prompt.secret || prompt.key === API_KEY_PROMPT_KEY ? "password" : "text"}
+                    className="h-8 w-56 text-xs"
+                    autoComplete="off"
+                    value={answers[prompt.key] ?? storedPlain[prompt.key] ?? ""}
+                    placeholder={
+                      isStored
+                        ? t("settings.models.apiKeySealedPlaceholder")
+                        : prompt.placeholder !== undefined
+                          ? resolveLocalizedText(prompt.placeholder, locale)
+                          : undefined
+                    }
+                    aria-invalid={problem ? true : undefined}
+                    onChange={(event) => setAnswer(prompt.key, event.currentTarget.value)}
+                  />
+                )}
+              </OptionRow>
+            );
+          }
+          if (row.kind === "setting") {
+            const { name, field } = row;
+            const id = `mod-option-${settingsId}-${name}`;
+            return (
+              <OptionRow
+                key={id}
                 id={id}
-                data-testid={id}
-                type={prompt.secret || prompt.key === API_KEY_PROMPT_KEY ? "password" : "text"}
+                label={field.title || name}
+                required={field.required}
+                mark={
+                  field.sensitive ? (
+                    <span className="font-normal text-muted-foreground">{t("settings.plugins.mods.options.sensitive")}</span>
+                  ) : null
+                }
+                hint={field.description || undefined}
+              >
+                <OptionFieldControl
+                  id={id}
+                  field={field}
+                  value={settingsDraft[name]}
+                  kept={settingsConfig ? holdsStoredSecret(settingsConfig, name) : false}
+                  disabled={!configId}
+                  onChange={(next) => setSetting(name, next)}
+                />
+              </OptionRow>
+            );
+          }
+          const { secret } = row;
+          const testId = `models-secret-${secret.name}`;
+          const isStored = storedSecrets.includes(secret.name);
+          const edit = secretEdits[secret.name];
+          const removing = edit === null;
+          return (
+            <OptionRow
+              key={testId}
+              id={`${testId}-input`}
+              testId={testId}
+              label={secret.label}
+              mark={isStored && !removing ? savedMark(`${testId}-saved`) : null}
+              hint={secret.hint}
+            >
+              <Input
+                id={`${testId}-input`}
+                data-testid={`${testId}-input`}
+                type="password"
+                className="h-8 w-56 text-xs"
                 autoComplete="off"
-                value={answers[prompt.key] ?? storedPlain[prompt.key] ?? ""}
+                value={edit ?? ""}
+                disabled={removing}
                 placeholder={
-                  isStored
-                    ? t("settings.models.apiKeySealedPlaceholder")
-                    : prompt.placeholder !== undefined
-                      ? resolveLocalizedText(prompt.placeholder, locale)
+                  removing
+                    ? t("settings.models.mod.secretRemovePending")
+                    : isStored
+                      ? t("settings.models.apiKeySealedPlaceholder")
                       : undefined
                 }
-                aria-invalid={problem ? true : undefined}
-                onChange={(event) => set(prompt.key, event.currentTarget.value)}
+                onChange={(event) => setSecret(secret.name, event.currentTarget.value)}
               />
-            )}
-            {prompt.type === "select" ? (
-              <SelectHint prompt={prompt} value={value} locale={locale} />
-            ) : null}
-            {problem ? (
-              <span className="text-destructive text-xs" data-testid={`${id}-error`}>
-                {t(PROBLEM_KEY[problem])}
-              </span>
-            ) : null}
-          </div>
-        );
-      })}
+              {isStored ? (
+                removing ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-xs"
+                    data-testid={`${testId}-keep`}
+                    onClick={() => setSecret(secret.name, "")}
+                  >
+                    {t("settings.models.mod.secretKeep")}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-xs"
+                    data-testid={`${testId}-remove`}
+                    onClick={() => setSecret(secret.name, null)}
+                  >
+                    {t("settings.models.secretRemove")}
+                  </Button>
+                )
+              ) : null}
+            </OptionRow>
+          );
+        })}
+      </OptionRowList>
       <div className="flex items-center justify-end gap-2">
         {failed ? (
           <span className="text-destructive text-xs" data-testid="mod-prompt-failed">
@@ -709,9 +854,11 @@ function PromptForm({
         <Button
           type="submit"
           size="sm"
-          disabled={busy || (Object.keys(answers).length === 0 && !touched)}
+          className="min-w-[4.5rem] text-xs"
+          disabled={busy || !dirty}
           data-testid="mod-credentials-save"
         >
+          {busy ? <Loader2Icon className="size-3.5 animate-spin" aria-hidden /> : null}
           {t("settings.models.mod.save")}
         </Button>
       </div>

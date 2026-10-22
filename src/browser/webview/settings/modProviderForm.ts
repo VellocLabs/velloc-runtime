@@ -1,7 +1,8 @@
 /**
- * The pure half of the provider-mod credentials form: which sign-in prompts show,
- * whether the answers fit, where each goes, and the config an upsert writes. Driven
- * by the catalog row's `mod` field alone; renders nothing.
+ * The pure half of the provider-mod form: which sign-in prompts show, whether
+ * the answers fit, the rows of the one form and where each changed row goes on
+ * Save, and the config an upsert writes. Driven by the catalog row's `mod`
+ * field alone; renders nothing.
  */
 
 import { resolveLocalizedText } from '../../../config/localizedText'
@@ -12,7 +13,8 @@ import type {
   ProviderCredentialMethod,
 } from '../../../mods/provider/providerManifest'
 import type { NexusProviderConfig } from '../../../settings/settingsTypes'
-import type { ModsUserConfig, ModsUserConfigField } from '../../runtimeProtocol'
+import type { ModsOptionValue, ModsUserConfig, ModsUserConfigField } from '../../runtimeProtocol'
+import { draftChanged, valuesOf, type OptionsDraft } from './modOptionsDraft'
 import { hasUserProviderSetup } from './providerFormHelpers'
 import { holdsModSignIn } from '../../../settings/providerSignIn'
 
@@ -229,4 +231,98 @@ export function settingsAsUserConfig(
     else if (Array.isArray(value) && value.every(entry => typeof entry === 'string')) values[name] = value as string[]
   }
   return { fields, values }
+}
+
+/** A named credential as the form draws it: the vendor's text, resolved. */
+export type SecretRowView = { name: string; label: string; hint?: string }
+
+/** One row of the provider's form, in the order the form draws them. */
+export type ModFormRow =
+  | { kind: 'prompt'; prompt: CredentialPrompt }
+  | { kind: 'setting'; name: string; field: ModsUserConfigField }
+  | { kind: 'secret'; secret: SecretRowView }
+
+/**
+ * The rows of the one form: the sign-in prompts (the key among them), then
+ * the declared settings, then the declared named credentials. `prompts` are
+ * the ones to draw (already filtered by their `when` rules); null when the
+ * method in force takes no prompts.
+ */
+export function modFormRows(
+  prompts: readonly CredentialPrompt[] | null,
+  settings: ModsUserConfig | null,
+  secrets: readonly SecretRowView[],
+): ModFormRow[] {
+  const rows: ModFormRow[] = []
+  for (const prompt of prompts ?? []) rows.push({ kind: 'prompt', prompt })
+  for (const [name, field] of Object.entries(settings?.fields ?? {})) rows.push({ kind: 'setting', name, field })
+  for (const secret of secrets) rows.push({ kind: 'secret', secret })
+  return rows
+}
+
+/** What the person changed in the form since it was loaded or last saved. */
+export type ModFormEdits = {
+  /** The prompt answers typed, by key (the stored plain answers underneath). */
+  answers: PromptAnswers
+  /** The stored plain answers the prompts opened with. */
+  storedAnswers: PromptAnswers
+  /** The settings' draft against what they opened with; null without settings. */
+  settings: { config: ModsUserConfig; draft: OptionsDraft; baseline: OptionsDraft } | null
+  /** A named credential's typed value, or null: remove the stored one. */
+  secrets: Readonly<Record<string, string | null>>
+}
+
+/** Where one save goes: each changed group to its own writer, nothing for
+ *  an untouched one. */
+export type ModFormWrites = {
+  /** The prompts' answers, when one was typed (`promptWrites`). */
+  credentials?: PromptWrites
+  /** The declared settings' values, when one changed. */
+  settings?: { owned: string[]; values: Record<string, ModsOptionValue>; keep: string[] }
+  /** The named credentials to store by name; `''` removes one. */
+  secrets: Record<string, string>
+  /** Settings whose value is not a number within its bounds: nothing is saved. */
+  invalid: string[]
+}
+
+/** Whether a prompt answer was typed (a cleared field is not an answer). */
+export function promptsTouched(answers: PromptAnswers): boolean {
+  return Object.values(answers).some(value => value.trim() !== '')
+}
+
+/** Whether a named credential's row holds a change: a typed value or a removal. */
+export function secretsTouched(secrets: Readonly<Record<string, string | null>>): boolean {
+  return Object.values(secrets).some(value => value === null || value.trim() !== '')
+}
+
+/** Whether anything in the form changed: what wakes the Save button. */
+export function modFormDirty(edits: ModFormEdits): boolean {
+  return (
+    promptsTouched(edits.answers) ||
+    (edits.settings !== null && draftChanged(edits.settings.draft, edits.settings.baseline)) ||
+    secretsTouched(edits.secrets)
+  )
+}
+
+/**
+ * The writes of one save. The prompts write as a whole once any was answered
+ * (their rules read every answer); a setting group writes once its draft
+ * differs; a named credential writes on its own when typed or removed, and a
+ * blank one writes nothing.
+ */
+export function modFormWrites(prompts: readonly CredentialPrompt[], edits: ModFormEdits): ModFormWrites {
+  const writes: ModFormWrites = { secrets: {}, invalid: [] }
+  if (promptsTouched(edits.answers)) {
+    writes.credentials = promptWrites(prompts, { ...edits.storedAnswers, ...edits.answers })
+  }
+  if (edits.settings && draftChanged(edits.settings.draft, edits.settings.baseline)) {
+    const { values, keep, invalid } = valuesOf(edits.settings.config, edits.settings.draft)
+    writes.invalid = invalid
+    writes.settings = { owned: Object.keys(edits.settings.config.fields), values, keep }
+  }
+  for (const [name, value] of Object.entries(edits.secrets)) {
+    if (value === null) writes.secrets[name] = ''
+    else if (value.trim() !== '' && SECRET_NAME.test(name)) writes.secrets[name] = value.trim()
+  }
+  return writes
 }
