@@ -377,26 +377,37 @@ jobs:
   deploy:
     needs: [typecheck, test, pack]
     runs-on: ubuntu-latest
+    env:
+      WRANGLER_PKG: wrangler@4.120.0
     steps:
-      - uses: actions/download-artifact@v7
-        with:
-          name: candidate
-          path: artifact
-
       # Wrangler and the summary script only; the bundle was compiled in `pack`.
       - uses: actions/setup-node@v7
         with:
           node-version: 22
 
+      # Installs while the candidate downloads; `Deploy to beta` waits for it
+      # and falls back to npx if it failed. Exit code lands in install.rc.
+      - name: Install wrangler in the background
+        run: |
+          WRANGLER_DIR="$RUNNER_TEMP/wrangler"
+          mkdir -p "$WRANGLER_DIR"
+          ( npm install --prefix "$WRANGLER_DIR" --no-audit --no-fund "$WRANGLER_PKG"
+            echo $? > "$WRANGLER_DIR/install.rc" ) > "$WRANGLER_DIR/install.log" 2>&1 &
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: candidate
+          path: artifact
+
       # Prove the archive is readable by a stock extractor before anything
-      # depends on it — the packer writes zips by hand (scripts/lib/zip.mjs).
-      # The checksum also covers the hand-off between jobs.
+      # depends on it — the packer writes zips by hand (scripts/lib/zip.mjs);
+      # `unzip` fails on a bad CRC. The checksum also covers the hand-off
+      # between jobs.
       - name: Verify artifact
         env:
           V: ${{ needs.pack.outputs.interface_version }}
         run: |
           set -euo pipefail
-          unzip -t artifact/runtime.zip > /dev/null
           (cd artifact && sha256sum -c SHA256SUMS)
           unzip -q artifact/runtime.zip -d candidate
           test -f "candidate/site/v$V/index.html"
@@ -420,7 +431,20 @@ jobs:
         # command line, deliberately: the config inside the artifact must stay
         # the production one so promote can deploy it unmodified.
         run: |
-          npx --yes wrangler@4.120.0 deploy \
+          set -euo pipefail
+          WRANGLER_DIR="$RUNNER_TEMP/wrangler"
+          for _ in $(seq 120); do
+            [ -f "$WRANGLER_DIR/install.rc" ] && break
+            sleep 1
+          done
+          WRANGLER=(npx --yes "$WRANGLER_PKG")
+          if [ "$(cat "$WRANGLER_DIR/install.rc" 2>/dev/null)" = 0 ]; then
+            WRANGLER=("$WRANGLER_DIR/node_modules/.bin/wrangler")
+          else
+            echo "::warning::background $WRANGLER_PKG install did not finish cleanly — using npx"
+            cat "$WRANGLER_DIR/install.log" 2>/dev/null || true
+          fi
+          "${WRANGLER[@]}" deploy \
             --config candidate/wrangler.toml \
             --name velloc-runtime-beta
 

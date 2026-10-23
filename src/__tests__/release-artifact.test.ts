@@ -387,7 +387,32 @@ describe('Workflow A gates the deploy, not the build', () => {
       if (job === 'deploy') continue
       expect(body(job), `${job} must not deploy`).not.toMatch(/wrangler@/)
     }
-    expect(body('deploy')).toMatch(/wrangler@[\d.]+ deploy[\s\S]*--name velloc-runtime-beta/)
+    // One exact wrangler version, used by the background install and by the
+    // npx fallback alike.
+    expect(doc.jobs.deploy.env.WRANGLER_PKG).toMatch(/^wrangler@\d+\.\d+\.\d+$/)
+    expect(body('deploy')).not.toMatch(/wrangler@\d/)
+    const install = jobs.deploy.steps.find(s => /npm install --prefix/.test(s.run ?? ''))
+    const deploy = jobs.deploy.steps.find(s => /--name velloc-runtime-beta/.test(s.run ?? ''))
+    expect(install?.run).toContain('"$WRANGLER_PKG"')
+    expect(deploy?.run).toContain('WRANGLER=(npx --yes "$WRANGLER_PKG")')
+    expect(deploy?.run).toMatch(/"\$\{WRANGLER\[@\]\}" deploy \\\n\s*--config candidate\/wrangler\.toml/)
+  })
+
+  it('starts the wrangler install before the download it overlaps', () => {
+    const steps = jobs.deploy.steps
+    const install = steps.findIndex(s => /npm install --prefix[^\n]*&?/.test(s.run ?? ''))
+    const download = steps.findIndex(s => s.uses?.startsWith('actions/download-artifact@'))
+    expect(install).toBeGreaterThanOrEqual(0)
+    expect(install).toBeLessThan(download)
+    // Backgrounded, so the download step starts at once.
+    expect(steps[install].run).toMatch(/\) > "\$WRANGLER_DIR\/install\.log" 2>&1 &\s*$/)
+  })
+
+  it('checks the candidate digest before unpacking it', () => {
+    const verify = jobs.deploy.steps.find(s => /unzip -q artifact\/runtime\.zip/.test(s.run ?? ''))
+    const run = verify?.run ?? ''
+    expect(run.indexOf('sha256sum -c SHA256SUMS')).toBeGreaterThanOrEqual(0)
+    expect(run.indexOf('sha256sum -c SHA256SUMS')).toBeLessThan(run.indexOf('unzip -q'))
   })
 
   it('builds and tests the one commit `source` resolved', () => {
