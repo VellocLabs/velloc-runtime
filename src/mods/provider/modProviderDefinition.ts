@@ -109,6 +109,10 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
     wire: { format: manifest.format },
     models: [],
   }
+  const tiers = manifest.modelsUi?.tierModels
+  if (tiers?.best) config.bestModel = tiers.best
+  if (tiers?.balanced) config.balancedModel = tiers.balanced
+  if (tiers?.fast) config.fastModel = tiers.fast
   const secrets = manifest.credentials.secrets ?? []
   const definition: ProviderDefinition = {
     config,

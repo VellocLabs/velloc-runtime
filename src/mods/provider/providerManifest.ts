@@ -104,6 +104,13 @@ export type ProviderModelsUi = {
    * does not have are skipped.
    */
   starterModels?: string[]
+  /**
+   * The provider's own tier ladder: the model id each sub-session tier
+   * (`best` / `balanced` / `fast`) runs on, as the listing states it. Becomes
+   * the provider's `bestModel` / `balancedModel` / `fastModel`; an unset tier
+   * keeps the borrowed-ladder fallback.
+   */
+  tierModels?: Partial<Record<ProviderModelTier, string>>
   customModels?: {
     formats: ProviderWireFormat[]
     /**
@@ -497,6 +504,8 @@ const MODELS_UI_NAME = /^[A-Za-z0-9_.-]{1,40}$/
 export const PLATFORM_FREE_TAG = 'free'
 const STARTER_MODEL_ID = /^\S{1,256}$/
 const STARTER_MODELS_MAX = 8
+const MODEL_TIERS = ['best', 'balanced', 'fast'] as const
+export type ProviderModelTier = (typeof MODEL_TIERS)[number]
 const MODELS_UI_MAX_ENTRIES = 32
 
 function checkModelsUi(value: unknown, bad: Problems): ProviderModelsUi | undefined {
@@ -504,7 +513,7 @@ function checkModelsUi(value: unknown, bad: Problems): ProviderModelsUi | undefi
     bad('modelsUi: expected an object')
     return undefined
   }
-  unknownKeys(value, ['intro', 'empty', 'links', 'groups', 'tags', 'filters', 'starterModels', 'customModels'], 'modelsUi', bad)
+  unknownKeys(value, ['intro', 'empty', 'links', 'groups', 'tags', 'filters', 'starterModels', 'tierModels', 'customModels'], 'modelsUi', bad)
   const out: ProviderModelsUi = {}
   const intro = optionalLocalized(value, 'intro', 'modelsUi', bad)
   if (intro !== undefined) out.intro = intro
@@ -579,6 +588,23 @@ function checkModelsUi(value: unknown, bad: Problems): ProviderModelsUi | undefi
     ) {
       bad(`modelsUi.starterModels: expected a list of at most ${STARTER_MODELS_MAX} model ids`)
     } else if (value.starterModels.length > 0) out.starterModels = [...new Set(value.starterModels)]
+  }
+  if (value.tierModels !== undefined) {
+    const raw = value.tierModels
+    if (!isRecord(raw)) bad('modelsUi.tierModels: expected an object keyed by best / balanced / fast')
+    else {
+      unknownKeys(raw, MODEL_TIERS, 'modelsUi.tierModels', bad)
+      const tiers: Partial<Record<ProviderModelTier, string>> = {}
+      for (const tier of MODEL_TIERS) {
+        const id = raw[tier]
+        if (id === undefined) continue
+        // A mod has no family rows, so a family key (`*`) would name nothing.
+        if (typeof id !== 'string' || !STARTER_MODEL_ID.test(id) || id.includes('*')) {
+          bad(`modelsUi.tierModels.${tier}: expected a model id`)
+        } else tiers[tier] = id
+      }
+      if (Object.keys(tiers).length > 0) out.tierModels = tiers
+    }
   }
   if (value.customModels !== undefined) {
     const raw = value.customModels
