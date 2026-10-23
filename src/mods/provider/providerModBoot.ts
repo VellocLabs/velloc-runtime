@@ -278,6 +278,31 @@ function configureContributions(deps: ProviderModBootDeps): void {
   }
 }
 
+/**
+ * Records the first consent to the installed provider plugin `pluginId` (the
+ * grant of the version on disk) and registers its providers. Before the boot
+ * it only records, over `at`; the boot's scan then registers them. Rejects
+ * when the plugin is not an installed provider plugin.
+ */
+export async function recordProviderPluginConsent(
+  pluginId: string,
+  at: { homeDir: string; fs: RuntimeFs },
+): Promise<void> {
+  let service = await acquireProviderModUpdateService()
+  if (!service) {
+    // No provider plugin was installed at the last scan, so no service exists.
+    const { createProductionUpdateService } = await import('./providerModUpdateWiring')
+    service = createProductionUpdateService({
+      homeDir: current?.homeDir ?? at.homeDir,
+      fs: current?.fs ?? at.fs,
+      transport: () => current?.transport?.(),
+      report,
+      afterConsent: () => reloadProviderMods(),
+    })
+  }
+  await service.recordInitialConsent(pluginId)
+}
+
 /** A plugin was enabled, disabled, installed or updated: scan again. A no-op
  *  until the boot has run. Never rejects. */
 export async function reloadProviderMods(): Promise<void> {

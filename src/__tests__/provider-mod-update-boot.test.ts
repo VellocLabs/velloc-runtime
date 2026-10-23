@@ -64,6 +64,7 @@ import {
   disposeProviderModBoot,
   hasProviderUpdateSource,
   providerUpdateScheduleRunning,
+  recordProviderPluginConsent,
   reloadProviderMods,
   bootProviderMods,
 } from '../mods/provider/providerModBoot'
@@ -193,5 +194,37 @@ describe('the boot and the update schedule', () => {
   it('a reload before the boot is a no-op: nothing is scanned, nothing scheduled', async () => {
     await reloadProviderMods()
     expect(startSchedule).not.toHaveBeenCalled()
+  })
+})
+
+describe('the first consent at a built-in install', () => {
+  const AT = { homeDir: '/home/at', fs: { at: true } as never }
+
+  it('goes through the service the boot already has', async () => {
+    scanResult = { enabled: [plugin('acme', 'marketplace:acme@shop')], disabled: [], errors: [] }
+    await boot()
+    await recordProviderPluginConsent('acme@shop', AT)
+    expect(createService).toHaveBeenCalledTimes(1)
+    expect(createService.mock.calls[0]![0]).toMatchObject({ homeDir: '/home/u' })
+    expect(fakeService.recordInitialConsent).toHaveBeenCalledExactlyOnceWith('acme@shop')
+  })
+
+  it('builds a service over the booted home when no provider plugin was there to make one', async () => {
+    await boot()
+    await recordProviderPluginConsent('nebius@velloc', AT)
+    expect(createService).toHaveBeenCalledTimes(1)
+    expect(createService.mock.calls[0]![0]).toMatchObject({ homeDir: '/home/u' })
+    expect(fakeService.recordInitialConsent).toHaveBeenCalledExactlyOnceWith('nebius@velloc')
+  })
+
+  it('before the boot records over the home it is given', async () => {
+    await recordProviderPluginConsent('nebius@velloc', AT)
+    expect(createService.mock.calls[0]![0]).toMatchObject({ homeDir: '/home/at', fs: AT.fs })
+    expect(fakeService.recordInitialConsent).toHaveBeenCalledExactlyOnceWith('nebius@velloc')
+  })
+
+  it('rejects when the service refuses the plugin', async () => {
+    fakeService.recordInitialConsent.mockRejectedValueOnce(new Error('nebius@velloc is not an installed provider mod'))
+    await expect(recordProviderPluginConsent('nebius@velloc', AT)).rejects.toThrow('not an installed provider mod')
   })
 })

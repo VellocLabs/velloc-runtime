@@ -33,9 +33,11 @@ import {
 } from '../pluginHost/marketplaces'
 import { builtinMarketplaceStateFilePath, getKnownMarketplacesFilePath } from '../pluginHost/pluginDirs'
 import { createPluginUpdateService } from '../pluginHost/pluginUpdates'
+import { createProviderModUpdateService } from '../pluginHost/providerModUpdates'
+import { consentCovers } from '../pluginHost/providerPluginConsent'
 import { wipeSettingsMemos } from '../settings/settingsStore'
 import { makeMemFs } from './_helpers/memFs'
-import { archive, servedFetch, type Served } from './_helpers/pluginArchive'
+import { archive, providerJson, servedFetch, type Served } from './_helpers/pluginArchive'
 
 const HOME = '/home/u'
 const ctx = { homeDir: HOME }
@@ -79,9 +81,10 @@ async function tarballOf(plugins: Listing[]): Promise<Uint8Array> {
           content: JSON.stringify({
             name: p.name,
             version: p.version,
-            ...(p.providers ? { providers: { main: { providerApi: 1 } } } : {}),
+            ...(p.providers ? { providers: { main: providerJson() } } : {}),
           }),
         },
+        ...(p.providers ? [{ name: `plugins/${p.name}/providers/main.js`, content: 'export default {}\n' }] : []),
         { name: `plugins/${p.name}/skills/hello/SKILL.md`, content: `v${p.version}\n` },
       ]),
     ],
@@ -309,11 +312,61 @@ describe('first launch', () => {
     }
   })
 
-  it('holds a provider plugin for consent even when the listing says on', async () => {
+  it('holds a provider plugin for consent when nothing can record it, even when the listing says on', async () => {
     const r = await rig([{ name: 'prov', version: '1.0.0', providers: true }])
     await r.run()
     expect(await r.installedVersion('prov')).toBe('1.0.0')
     expect((await getEnabledPluginsMap(ctx, r.fs))['prov@velloc']).toBe(false)
+  })
+
+  it('consents to a provider plugin the listing leaves on, with the hold already lifted', async () => {
+    const r = await rig([{ name: 'prov', version: '1.0.0', providers: true }])
+    const seenAtConsent: Array<boolean | undefined> = []
+    const consentProviders = vi.fn(async (pluginId: string) => {
+      seenAtConsent.push((await getEnabledPluginsMap(ctx, r.fs))[pluginId])
+    })
+    const outcome = await r.run({ consentProviders })
+    expect(outcome.installed).toEqual([id('prov')])
+    expect(consentProviders).toHaveBeenCalledExactlyOnceWith(id('prov'))
+    expect(seenAtConsent).toEqual([undefined])
+    expect((await getEnabledPluginsMap(ctx, r.fs))[id('prov')]).toBeUndefined()
+  })
+
+  it('never consents to a provider plugin listed off, nor to a plugin without providers', async () => {
+    const r = await rig([
+      { name: 'prov-off', version: '1.0.0', providers: true, onByDefault: false },
+      { name: 'plain', version: '1.0.0' },
+    ])
+    const consentProviders = vi.fn(async () => {})
+    await r.run({ consentProviders })
+    expect(consentProviders).not.toHaveBeenCalled()
+    expect(await getEnabledPluginsMap(ctx, r.fs)).toEqual({ [id('prov-off')]: false })
+  })
+
+  it('puts the hold back when the consent cannot be recorded, and does not install again', async () => {
+    const r = await rig([{ name: 'prov', version: '1.0.0', providers: true }])
+    const consentProviders = vi.fn(async () => {
+      throw new Error('no service')
+    })
+    const outcome = await r.run({ consentProviders })
+    expect(outcome.installed).toEqual([id('prov')])
+    expect((await getEnabledPluginsMap(ctx, r.fs))[id('prov')]).toBe(false)
+    expect(r.lines.some(line => line.includes(`'${id('prov')}' stays off until it is approved: no service`))).toBe(true)
+    expect((await readBuiltinSeedState(ctx, r.fs))?.seeded[id('prov')]).toBeDefined()
+    await r.run({ consentProviders })
+    expect(consentProviders).toHaveBeenCalledTimes(1)
+  })
+
+  it('records a baseline the consent gate accepts for the version installed', async () => {
+    const r = await rig([{ name: 'prov', version: '1.0.0', providers: true }])
+    const service = createProviderModUpdateService({ ctx, fs: r.fs, fetchImpl: r.fetchImpl })
+    await r.run({ consentProviders: async pluginId => void (await service.recordInitialConsent(pluginId)) })
+    expect((await getEnabledPluginsMap(ctx, r.fs))[id('prov')]).toBeUndefined()
+    const manifest = { name: 'prov', version: '1.0.0', providers: { main: providerJson() } }
+    expect(await consentCovers(ctx, r.fs, id('prov'), manifest)).toBe(true)
+    // A version that asks for more is not covered by it.
+    const wider = { ...manifest, providers: { main: providerJson({ domains: ['api.acme.test', 'collector.example'] }) } }
+    expect(await consentCovers(ctx, r.fs, id('prov'), wider)).toBe(false)
   })
 })
 

@@ -112,6 +112,8 @@ export type PluginSetupOutcome = {
   entry: PluginSetupRecord
   identifier: string
   fileCount: number
+  /** It declares providers and was turned off until the person consents. */
+  heldForConsent: boolean
 }
 
 /** Installs one plugin from a marketplace entry at user scope. */
@@ -198,12 +200,13 @@ export async function setupPlugin(
   await recordPluginSetup(ctx, fs, identifier, recorded)
   // A plugin that adds model providers starts OFF: the person turns it on
   // through the consent dialog.
-  await holdProviderPluginForConsent(ctx, fs, identifier, manifestParsed)
+  const heldForConsent = await holdProviderPluginForConsent(ctx, fs, identifier, manifestParsed)
 
   return {
     entry: recorded,
     identifier,
     fileCount: writeResult.written,
+    heldForConsent,
   }
 }
 

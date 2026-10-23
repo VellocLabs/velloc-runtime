@@ -61,6 +61,9 @@ export type BuiltinMarketplaceJobOptions = {
   channel: () => UpdateChannel
   /** Default: settings.json `features[builtinMarketplace.autoInstall] !== false`. */
   autoInstall?: () => Promise<boolean>
+  /** The first consent to a provider plugin the catalog installs on; absent
+   *  leaves it held off. */
+  consentProviders?: (pluginId: string, at: { homeDir: string; fs: RuntimeFs }) => Promise<void>
   /** Schedule knobs (tests): the first attempt, the retry while the host has
    *  no home folder yet, the interval between runs. */
   firstDelayMs?: number
@@ -258,6 +261,9 @@ export function registerPluginUpdatesCapability(
           (await readLayerFresh('userSettings', { homeDir }, fs)).settings.features?.[BUILTIN_MARKETPLACE_AUTO_INSTALL_FLAG] !== false),
       updates: service,
       ...(options.reloadPluginsOnAllSessions ? { reloadPluginsOnAllSessions: options.reloadPluginsOnAllSessions } : {}),
+      ...(job.consentProviders
+        ? { consentProviders: (pluginId: string) => job.consentProviders!(pluginId, { homeDir, fs }) }
+        : {}),
       report: line => report(`builtin marketplace: ${line}`),
     })
     job.onRun?.(outcome)

@@ -331,7 +331,15 @@ export class RuntimeHub {
       }),
       resolveHome: () => resolveHostHome(this.context),
       reloadPluginsOnAllSessions: () => host.reloadPluginsOnAllSessions(),
-      builtinMarketplace: { channel: currentTemplateChannel },
+      builtinMarketplace: {
+        channel: currentTemplateChannel,
+        // A provider plugin the built-in catalog installs on is consented to
+        // at that install (F-27).
+        consentProviders: async (pluginId, at) => {
+          const { recordProviderPluginConsent } = await import('../../mods/provider/providerModBoot')
+          await recordProviderPluginConsent(pluginId, at)
+        },
+      },
     })
     // Model data (F-28): the catalog status on `catalog/status` and the
     // `catalog.refresh` action (`manager`); the service comes from the seam in

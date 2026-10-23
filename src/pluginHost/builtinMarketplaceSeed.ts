@@ -6,7 +6,9 @@
  * `buildId` changed, after which the installed built-in plugins are upgraded
  * through the update service. Reconcile: every listing the channel shows
  * that was never seeded is installed, disabled when `onByDefault` is false;
- * a listing already installed by hand is only recorded. A seeded id is never
+ * a provider plugin left on is consented to at that install through
+ * `consentProviders` and stays off without it (F-27); a listing already
+ * installed by hand is only recorded. A seeded id is never
  * installed again, so an uninstall sticks. Every failure is reported and
  * retried at the next run. A profile with the `features` flag
  * `builtinMarketplace.autoInstall` set to false runs nothing.
@@ -68,6 +70,9 @@ export type BuiltinSeedDeps = {
   updates?: Pick<PluginUpdateService, 'syncMarketplace'>
   /** Every open session reloads its plugins. */
   reloadPluginsOnAllSessions?: () => void
+  /** Records the consent baseline of a provider plugin this job installed on
+   *  and registers its providers. Absent: such a plugin stays held off. */
+  consentProviders?: (pluginId: string) => Promise<void>
   now?: () => string
   report?: (line: string) => void
 }
@@ -272,8 +277,9 @@ export async function seedBuiltinMarketplace(deps: BuiltinSeedDeps): Promise<Bui
       outcome.skipped.push(id)
       continue
     }
+    let awaitsConsent: boolean
     try {
-      await installListing(ctx, fs, listing, id, deps.fetchImpl(), now())
+      awaitsConsent = await installListing(ctx, fs, listing, id, deps.fetchImpl(), now())
     } catch (error) {
       report(`'${id}' was not installed: ${errorText(error)}`)
       outcome.failed.push(id)
@@ -282,6 +288,9 @@ export async function seedBuiltinMarketplace(deps: BuiltinSeedDeps): Promise<Bui
     state.seeded[id] = record
     await writeBuiltinSeedState(ctx, fs, state)
     outcome.installed.push(id)
+    if (awaitsConsent && deps.consentProviders) {
+      await consentAtInstall(ctx, fs, id, deps.consentProviders, report)
+    }
   }
 
   if (outcome.installed.length > 0) deps.reloadPluginsOnAllSessions?.()
@@ -295,10 +304,36 @@ async function installListing(
   id: string,
   fetchImpl: typeof fetch,
   nowIso: string,
-): Promise<void> {
-  await setupPlugin(ctx, fs, BUILTIN_MARKETPLACE_KEY, listing.name, { fetchImpl, nowIso })
+): Promise<boolean> {
+  const { heldForConsent } = await setupPlugin(ctx, fs, BUILTIN_MARKETPLACE_KEY, listing.name, { fetchImpl, nowIso })
   if (listing.onByDefault === false) {
     await setPluginEnabled({ homeDir: ctx.homeDir }, fs, id, false)
+    return false
+  }
+  return heldForConsent
+}
+
+/**
+ * Security: the built-in catalog stands in for the person's first consent to
+ * a provider plugin it lists on. The hold is lifted before the baseline is
+ * recorded, so the registration that follows sees it on; if recording fails
+ * the hold returns and the person consents in Settings as for any plugin.
+ * A later version that asks for more still waits for their consent (F-27).
+ */
+async function consentAtInstall(
+  ctx: PluginInstallPathContext,
+  fs: RuntimeFs,
+  id: string,
+  consentProviders: (pluginId: string) => Promise<void>,
+  report: (line: string) => void,
+): Promise<void> {
+  const settingsCtx = { homeDir: ctx.homeDir }
+  try {
+    await setPluginEnabled(settingsCtx, fs, id, null)
+    await consentProviders(id)
+  } catch (error) {
+    report(`'${id}' stays off until it is approved: ${errorText(error)}`)
+    await setPluginEnabled(settingsCtx, fs, id, false).catch(() => {})
   }
 }
 
