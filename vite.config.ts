@@ -322,14 +322,29 @@ export default defineConfig(({ mode }) => ({
     },
   },
   optimizeDeps: {
-    // The A2UI renderer is reachable ONLY through the lazy host import
-    // (src/browser/webview/a2ui/A2uiProviderHost.tsx), so Vite's dev-server
-    // startup scan never sees it. Without pre-bundling, the first lazy load
-    // discovers it late, triggers a mid-flight dep re-optimize, and the dynamic
-    // import fails ("Failed to fetch dynamically imported module"). Pre-bundle
-    // it explicitly. Production (rollup) is unaffected — it's already a clean,
-    // isolated chunk — so this only matters for `npm run dev` .
-    include: ['@copilotkit/a2ui-renderer'],
+    // Dependencies reached only through lazy imports or worker modules (e.g.
+    // the A2UI renderer via a2ui/A2uiProviderHost.tsx): the dev-server startup
+    // scan never sees them, so each one found later re-optimizes the deps,
+    // reloads every open page, and can fail an in-flight dynamic import
+    // ("Failed to fetch dynamically imported module"). Dev only; production
+    // (rollup) is unaffected.
+    include: [
+      '@copilotkit/a2ui-renderer',
+      '@leeoniya/ufuzzy',
+      '@mixmark-io/domino',
+      '@modelcontextprotocol/sdk/client/index.js',
+      '@modelcontextprotocol/sdk/client/sse.js',
+      '@modelcontextprotocol/sdk/client/streamableHttp.js',
+      '@modelcontextprotocol/sdk/client/websocket.js',
+      '@modelcontextprotocol/sdk/types.js',
+      '@xterm/addon-serialize',
+      'cron-parser',
+      'lru-cache',
+      'react/jsx-dev-runtime',
+      'turndown',
+      'typescript',
+      'yaml',
+    ],
   },
   build: {
     rollupOptions: {
