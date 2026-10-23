@@ -1179,6 +1179,14 @@ export async function createBrowserRuntime(
     engine.replaceTools(isMcpSessionTool, mcpOffering.tools)
     return mcpOffering
   }
+  // A stdio server `$.mcp.connect` launched mid-session (F-25): the offering and the
+  // `mcp__<server>` Skill commands follow the pool, as after a plugin reload.
+  const offerLaunchedMcpServer = (): void => {
+    const previous = new Set(mcpOffering.commands.map(command => command.name))
+    refreshMcpOffering()
+    const kept = (coreState.options.commands ?? []).filter(command => !previous.has(command.name))
+    coreState.options.commands = applySkillAllowlist([...kept, ...mcpOffering.commands]).allowed
+  }
   // A background FORK keeps the parent's EXACT tool pool (no sub-agent strip),
   // so its serialized tools array stays aligned with the parent's for prompt-
   // cache reuse; a named/general-purpose sub-agent gets the scoped set.
@@ -2049,6 +2057,7 @@ ${teammateAddendum}`
                     ? pluginMcpServer(owner, key, { getEnv: name => runtimeConfig.getEnv(name), configs: mcpPluginConfigs, providers: mcpProviderKeys })
                     : undefined
                 },
+                onNativeLaunched: () => offerLaunchedMcpServer(),
               }),
             }
           : {}),

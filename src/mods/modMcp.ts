@@ -163,10 +163,13 @@ function failed(message: string): ModMcpConnectResult {
 /**
  * `$.mcp` over the session's pool. `manifestServer(plugin, key)` is the
  * server under `key` in that plugin's own manifest, or undefined.
+ * `onNativeLaunched(name)` runs once for each stdio server `connect` brought
+ * up, after it connected — the session offers its tools from then on.
  */
 export function poolModMcp(options: {
   pool: () => ModMcpPool | null
   manifestServer: (plugin: string, key: string) => ModMcpManifestServer | undefined
+  onNativeLaunched?: (name: string) => void
 }): ModMcpHost {
   const poolOrThrow = (): ModMcpPool => {
     const pool = options.pool()
@@ -176,6 +179,30 @@ export function poolModMcp(options: {
       throw error
     }
     return pool
+  }
+  /** In-flight stdio launches by name; concurrent connects share one. */
+  const launches = new Map<string, Promise<LiveServerLink | undefined>>()
+  const launchNative = (
+    pool: ModMcpPool,
+    name: string,
+    server: Extract<StartableManifestServer, { kind: 'native' }>,
+  ): Promise<LiveServerLink | undefined> => {
+    const inFlight = launches.get(name)
+    if (inFlight) return inFlight
+    const run = pool.launchNativeServer(name, server.config).then(link => {
+      if (link?.status === 'connected' && isSameServer(link, server)) {
+        try {
+          options.onNativeLaunched?.(link.name)
+        } catch (error) {
+          console.warn(`[mods] $.mcp.connect: offering "${link.name}" failed:`, error)
+        }
+      }
+      return link
+    }).finally(() => {
+      launches.delete(name)
+    })
+    launches.set(name, run)
+    return run
   }
   return {
     async call(input, { signal }) {
@@ -200,7 +227,7 @@ export function poolModMcp(options: {
       const name = server.kind === 'native' ? running[0]?.name ?? server.id : server.entry.name
       try {
         const added = server.kind === 'native'
-          ? await pool.launchNativeServer(name, server.config)
+          ? await launchNative(pool, name, server)
           : await pool.addServer(server.entry)
         if (!added) return failed(`"${key}" was not connected: this session cannot start stdio servers`)
         if (!isSameServer(added, server)) {
