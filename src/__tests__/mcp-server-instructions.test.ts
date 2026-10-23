@@ -186,7 +186,12 @@ describe('the server Skill description', () => {
     expect(mcpServerSkillDescription(connected('files', NOTES))).toBe(
       'Loads the tools of the "files" MCP server. Files server',
     )
-    expect(mcpServerSkillDescription(connected('files'))).toBe('Loads the tools of the "files" MCP server.')
+    expect(mcpServerSkillDescription(connected('files'))).toBe(
+      'Loads the tools of the "files" MCP server. Tools: read_file, search. Reads a file',
+    )
+    expect(mcpServerSkillDescription({ ...connected('files'), tools: [] })).toBe(
+      'Loads the tools of the "files" MCP server.',
+    )
   })
 
   it('is what the Skill command carries', () => {

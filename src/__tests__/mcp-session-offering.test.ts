@@ -28,6 +28,7 @@ function server(name: string, status: LiveServerLink['status'] = 'connected'): L
     config: { type: 'http', url: 'http://example.test' },
     status,
     tools: [{ name: 'echo', description: 'Echoes' }],
+    instructions: 'Usage notes.',
   }
 }
 

@@ -42,6 +42,8 @@ function connectedServer(name: string): LiveServerLink {
       { name: 'do_thing', description: 'Does a thing' },
       { name: 'other_thing' },
     ],
+    // A server with instructions is deferred whatever its size.
+    instructions: 'Usage notes.',
   }
 }
 

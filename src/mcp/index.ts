@@ -31,6 +31,9 @@ export {
   mcpServerInstructionsFromPool,
   mcpServerSkillDescription,
   buildMCPSkillCommands,
+  isMcpServerInline,
+  mcpServerSchemaChars,
+  MCP_INLINE_SCHEMA_BUDGET_CHARS,
 } from './toolAdapter'
 export {
   cleanMcpInstructions,

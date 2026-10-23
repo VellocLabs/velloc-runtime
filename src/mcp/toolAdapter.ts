@@ -93,16 +93,42 @@ export function buildMCPToolsForServer(
   )
 }
 
+/** Largest total tool-definition size, in characters, of a server offered inline. */
+export const MCP_INLINE_SCHEMA_BUDGET_CHARS = 10_000
+
+/** The size of a server's tool definitions as a request carries them: each
+ *  tool's name, description and input schema, serialized. */
+export function mcpServerSchemaChars(server: Pick<LiveServerLink, 'tools'>): number {
+  let total = 0
+  for (const tool of server.tools) {
+    total += JSON.stringify({
+      name: tool.name,
+      description: tool.description ?? '',
+      input_schema: tool.inputSchema ?? {},
+    }).length
+  }
+  return total
+}
+
 /**
- * Distinct skill-bucket names for every connected server in the pool.
- * Register these as deferred (every MCP tool is) so MCP tools are hidden
- * from tools[] until ToolSearch / Skill activates the server's bucket.
+ * Whether a server's tools are offered inline instead of deferred (F-10): it
+ * sent no instructions, so nothing outside its tool definitions says what it
+ * is for, and those definitions fit `MCP_INLINE_SCHEMA_BUDGET_CHARS`.
+ */
+export function isMcpServerInline(server: Pick<LiveServerLink, 'instructions' | 'tools'>): boolean {
+  return server.instructions === undefined && mcpServerSchemaChars(server) <= MCP_INLINE_SCHEMA_BUDGET_CHARS
+}
+
+/**
+ * Skill-bucket names of the connected servers whose tools are deferred:
+ * hidden from tools[] until ToolSearch / Skill activates the bucket. Inline
+ * servers (`isMcpServerInline`) are left out, so their tools stay listed.
  * Empty when no server is connected.
  */
 export function mcpServerSkillNamesFromPool(pool: MCPPool): string[] {
   const names = new Set<string>()
   for (const server of pool.listServers()) {
-    if (server.status !== 'connected') continue
+    if (server.status !== 'connected' || isMcpServerInline(server)) continue
     names.add(mcpServerSkillName(server.name))
   }
   return [...names]
@@ -123,11 +149,30 @@ export function mcpServerInstructionsFromPool(
   return out
 }
 
+/** How many tool names a Skill description lists before eliding the rest. */
+const SKILL_DESCRIPTION_TOOL_NAMES = 8
+
+/** A server's tools for its Skill description when it sent no instructions:
+ *  the tool names, then the first tool description's opening summary. */
+function summarizeMcpTools(tools: ReadonlyArray<MCPToolDescriptor>): string | undefined {
+  if (tools.length === 0) return undefined
+  const shown = tools.slice(0, SKILL_DESCRIPTION_TOOL_NAMES).map(tool => tool.name)
+  const names = tools.length > shown.length ? `${shown.join(', ')}, …` : shown.join(', ')
+  const described = tools.find(tool => tool.description?.trim())
+  const lead = described?.description ? summarizeMcpInstructions(described.description) : undefined
+  return lead ? `Tools: ${names}. ${lead}` : `Tools: ${names}.`
+}
+
 /** The one-line description of a server's Skill: what loading it gives, then
- *  the server's own summary when it sent instructions. */
-export function mcpServerSkillDescription(server: Pick<LiveServerLink, 'name' | 'instructions'>): string {
+ *  the server's own summary when it sent instructions, else its tools. */
+export function mcpServerSkillDescription(
+  server: Pick<LiveServerLink, 'name' | 'instructions'> & Partial<Pick<LiveServerLink, 'tools'>>,
+): string {
   const lead = `Loads the tools of the "${server.name}" MCP server.`
-  const summary = server.instructions !== undefined ? summarizeMcpInstructions(server.instructions) : undefined
+  const summary =
+    server.instructions !== undefined
+      ? summarizeMcpInstructions(server.instructions)
+      : summarizeMcpTools(server.tools ?? [])
   return summary ? `${lead} ${summary}` : lead
 }
 
