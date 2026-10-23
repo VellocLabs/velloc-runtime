@@ -29,7 +29,7 @@ import type { ActionSpec, ConnectionInfo, SnapshotPage, TopicProvider } from './
 /** The `terminals` topic's `state` delta type. */
 export const TERMINALS_STATE_EVENT = 'state'
 
-const NO_TERMINALS: TerminalsState = { available: false, shells: [], terminals: [] }
+const NO_TERMINALS: TerminalsState = { available: false, shells: [], clis: [], terminals: [] }
 
 type Dict = Record<string, unknown>
 const isDict = (value: unknown): value is Dict =>
@@ -50,13 +50,21 @@ function guardsFor(service: TerminalService | null): Record<TerminalAction, (pay
   const knownShell = (shell: unknown): boolean =>
     shell === undefined ||
     (isString(shell) && (service?.list().shells.some(known => known.id === shell) ?? false))
+  const cliStart = (cli: unknown): boolean =>
+    cli === undefined ||
+    (isDict(cli) &&
+      onlyKeys(cli, ['id', 'start']) &&
+      isString(cli.id) &&
+      (cli.start === 'new' || cli.start === 'continue'))
   return {
     create: payload =>
       isDict(payload) &&
-      onlyKeys(payload, ['sessionId', 'shell', 'cols', 'rows']) &&
+      onlyKeys(payload, ['sessionId', 'shell', 'cli', 'cols', 'rows']) &&
       isString(payload.sessionId) &&
       payload.sessionId.length > 0 &&
       knownShell(payload.shell) &&
+      cliStart(payload.cli) &&
+      !(payload.shell !== undefined && payload.cli !== undefined) &&
       isTerminalSize(payload.cols, payload.rows),
     write: payload =>
       isDict(payload) &&
@@ -71,6 +79,7 @@ function guardsFor(service: TerminalService | null): Record<TerminalAction, (pay
       isTerminalSize(payload.cols, payload.rows),
     restart: payload => isDict(payload) && onlyKeys(payload, ['id']) && isString(payload.id),
     close: payload => isDict(payload) && onlyKeys(payload, ['id']) && isString(payload.id),
+    rescanClis: payload => isDict(payload) && onlyKeys(payload, []),
   }
 }
 
@@ -158,6 +167,9 @@ export function registerTerminalCapability(
           return undefined
         case 'close':
           service.close((payload as TerminalClosePayload).id)
+          return undefined
+        case 'rescanClis':
+          await service.rescanClis()
           return undefined
         default:
           throw wireError('unknown_route', `terminal has no action '${request.route.act}'`)

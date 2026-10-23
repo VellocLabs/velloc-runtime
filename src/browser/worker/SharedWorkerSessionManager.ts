@@ -50,6 +50,8 @@ import {
   buildForkedTranscriptEntries,
   isMessageLike,
 } from '../../sessions/sessionStore'
+import type { CliConversationStore } from '../../terminal/TerminalService'
+import { createCliConversationStore } from './cliConversationStore'
 import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
 import { installSessionTracer } from '../../utils/sessionTrace'
 import { joinRuntimePath } from '../../utils/runtimePaths'
@@ -969,6 +971,7 @@ export class SharedWorkerSessionManager {
       isAnySessionBusy: () =>
         [...this.sessions.values()].some(entry => entry.worker.isBusy()),
       getSessionCwd: sessionId => this.sessionTerminalCwd(sessionId),
+      cliConversations: this.cliConversationStore(),
       trace: (event, data) =>
         this.tracer.event(event, { attrs: data ?? {} }),
     })
@@ -2775,6 +2778,19 @@ export class SharedWorkerSessionManager {
     } catch {
       // best-effort
     }
+  }
+
+  /** A CLI session's conversation id (F-34), in its session metadata. */
+  private cliConversationStore(): CliConversationStore {
+    return createCliConversationStore({
+      storage: () => this.storage ?? null,
+      entry: sessionId => this.sessions.get(sessionId),
+      ensureRouting: async () => {
+        await this.summaryRepo.ensureSessionRouting()
+      },
+      refreshSummary: sessionId => this.summaryRepo.refreshFsSummary(sessionId),
+      writeNewSession: args => this.writeSessionBundle({ ...args, entries: [], toolDetails: [] }),
+    })
   }
 
   /** Where a session's terminal starts: its worker's cwd (the worktree when it runs in one), else its project root. */

@@ -39,6 +39,7 @@ import {
 import { allBundledTools } from '../toolkit/toolRegistry'
 import { BROWSER_SYSTEM_PROMPT_CATALOG } from '../toolkit/builtin/glic/browserSkillCatalog'
 import { expandGroups, TOOL_GROUPS } from '../toolkit/builtin/toolGroups'
+import { CLI_AGENT_IDS } from '../terminal/cliAgents'
 
 // intro / tone_and_style / final_reminder moved into agent/includes/ (as
 // agent_*). The SHARED holders are the cross-type prose: delivering_work
@@ -931,8 +932,8 @@ describe('templateRegistry — beta variants (index-beta.md, template-beta.md)',
     expect(beta.find(m => m.type === 'team')!.launcherHidden).toBeUndefined()
     expect(getTemplateTitle('team')).toBe('Team')
     expect(getTemplateIcon('team')).toEqual({ kind: 'lucide', name: 'users' })
-    // Every other entry is the same on both channels.
-    expect(beta.filter(m => m.type !== 'team')).toEqual(stable)
+    // Every other entry but the beta-only CLI session types is the same on both channels.
+    expect(beta.filter(m => m.type !== 'team' && m.kind !== 'terminal')).toEqual(stable)
     // Not in stable's catalog ≠ not a type: the template still resolves there
     // (`?templateType=team`, an existing team session), with no catalog
     // title/icon of its own.
@@ -940,6 +941,20 @@ describe('templateRegistry — beta variants (index-beta.md, template-beta.md)',
     expect(hasTemplate('team')).toBe(true)
     expect(getTemplateTitle('team')).toBe('team')
     expect(getTemplateIcon('team')).toBeUndefined()
+  })
+
+  it('the CLI session types are beta-only, hidden, kind terminal, and name their CLI (F-34)', () => {
+    __setTemplateChannelForTest('beta')
+    const cli = getLauncherCatalog().filter(m => m.kind === 'terminal')
+    // One type per CLI the runtime runs, named `cli-<cli>`, in table order.
+    expect(cli.map(m => m.cli)).toEqual([...CLI_AGENT_IDS])
+    for (const m of cli) {
+      expect(m.type).toBe(`cli-${m.cli}`)
+      expect(m.launcherHidden).toBe('both')
+      expect(hasTemplate(m.type)).toBe(false)
+    }
+    __setTemplateChannelForTest('stable')
+    expect(getLauncherCatalog().some(m => m.kind === 'terminal' || m.type.startsWith('cli-'))).toBe(false)
   })
 
   it('getLauncherCatalog is one stable array per channel — the launcher memo keys on it', () => {
@@ -967,7 +982,10 @@ describe('templateRegistry — beta variants (index-beta.md, template-beta.md)',
     // both channels. Adding a bundled template-beta.md again is deliberate:
     // update this test, and add its -beta goldens and e2e cases.
     __setTemplateChannelForTest('beta')
-    const types = getLauncherCatalog().map(m => m.type)
+    // A CLI session type (`kind: terminal`, F-34) has no manifest on either channel.
+    const types = getLauncherCatalog()
+      .filter(m => m.kind !== 'terminal')
+      .map(m => m.type)
     expect(types).toContain('code')
     const beta = new Map(types.map(t => [t, getTemplate(t)]))
     __setTemplateChannelForTest('stable')

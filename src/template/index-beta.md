@@ -11,6 +11,10 @@
 #   team   listed here only — still soaking, so stable's catalog has no entry
 #          for it (a team session opened on stable shows the Agent icon and
 #          title; `?templateType=team` still works there).
+#   cli-claude, cli-codex
+#          CLI session types (F-34), beta only. `kind: terminal` = the session
+#          is a terminal running the host CLI named by `cli`; no `<type>/`
+#          folder. Hidden until the CLI session view lands.
 types:
   - type: code
     title: Code
@@ -32,6 +36,18 @@ types:
     title: SafeCode
     title-i18n: launcher.safeCode
     icon_lucide: shield-check
+    launcherHidden: both
+  - type: cli-claude
+    title: Claude Code CLI
+    kind: terminal
+    cli: claude
+    icon_lucide: square-terminal
+    launcherHidden: both
+  - type: cli-codex
+    title: Codex CLI
+    kind: terminal
+    cli: codex
+    icon_lucide: square-terminal
     launcherHidden: both
 ---
 

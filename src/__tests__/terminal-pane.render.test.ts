@@ -107,6 +107,7 @@ const running = (id: string, sessionId: string, title = 'pwsh') => ({
 const state = (terminals: TerminalsState['terminals'], over: Partial<TerminalsState> = {}): TerminalsState => ({
   available: true,
   shells: [{ id: 'pwsh', version: '7.6.7' }],
+  clis: [],
   terminals,
   ...over,
 })

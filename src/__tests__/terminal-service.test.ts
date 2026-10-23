@@ -56,7 +56,7 @@ describe('TerminalService availability', () => {
   it('is unavailable without a host, or without shell.spawn.pty, and reads the shells once a host is there', async () => {
     const r = rig({ manifest: null })
     expect(r.service.available).toBe(false)
-    expect(r.service.list()).toEqual({ available: false, shells: [], terminals: [] })
+    expect(r.service.list()).toEqual({ available: false, shells: [], clis: [], terminals: [] })
     await expect(r.service.create({ sessionId: 's1', cols: 80, rows: 24 })).rejects.toSatisfy(
       e => codeOf(e) === 'host_unavailable',
     )
@@ -353,6 +353,7 @@ describe('TerminalService close', () => {
     expect(r.service.list()).toEqual({
       available: false,
       shells: [],
+      clis: [],
       terminals: [{ id, sessionId: 's1', shell: 'pwsh', title: 'pwsh', state: { kind: 'exited', exitCode: null } }],
     })
     // No kill is sent to a port that is gone; a later exit from it is ignored.

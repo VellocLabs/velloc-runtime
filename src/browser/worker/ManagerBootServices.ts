@@ -53,7 +53,7 @@ import type {
 import type { RoutineCoordinator } from './RoutineCoordinator'
 import { installRuntimeRenderCache } from '../../renderCache/runtimeRenderCache'
 import { readIdlePurgeEnabled } from '../../renderCache/idlePurgeFlag'
-import { TerminalService } from '../../terminal/TerminalService'
+import { TerminalService, type CliConversationStore } from '../../terminal/TerminalService'
 
 export interface ManagerBootServicesHost {
   getDirectBridgeTransport(): DirectPortBridgeTransport | null
@@ -81,6 +81,8 @@ export interface ManagerBootServicesHost {
   /** Where a session's terminal starts (F-31): its worktree when it runs in one, else its project
    *  root; undefined for a session the runtime does not hold. Absent: no terminal can be created. */
   getSessionCwd?(sessionId: string): string | undefined
+  /** Where a CLI session's conversation id is kept (F-34). Absent: no CLI can be started. */
+  cliConversations?: CliConversationStore
   trace(event: string, data?: Record<string, unknown>): void
 }
 
@@ -112,6 +114,7 @@ export class ManagerBootServices {
       }),
       createRequestId: () => host.createBridgeRequestId(),
       sessionCwd: sessionId => host.getSessionCwd?.(sessionId),
+      cliConversations: host.cliConversations,
     })
   }
 

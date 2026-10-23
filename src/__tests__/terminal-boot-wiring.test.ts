@@ -19,12 +19,19 @@ function rig() {
   let transport: DirectPortBridgeTransport | null = fake.transport as unknown as DirectPortBridgeTransport
   let manifest: BrowserHostManifest | null = PTY_MANIFEST as BrowserHostManifest
   let n = 0
+  const recorded: unknown[] = []
   const host: ManagerBootServicesHost = {
     getDirectBridgeTransport: () => transport,
     createBridgeRequestId: () => `r-${++n}`,
     getHomeDir: () => null,
     getHostManifest: () => manifest,
     getSessionCwd: sessionId => (sessionId === 'sess' ? '/work/tree' : undefined),
+    cliConversations: {
+      read: async () => undefined,
+      record: async (sessionId, record) => {
+        recorded.push([sessionId, record])
+      },
+    },
     storageRoot: () => null,
     spawnHeadlessSession: (() => null) as never,
     deliverRoutineToSession: (() => false) as never,
@@ -37,6 +44,7 @@ function rig() {
   return {
     services,
     fake,
+    recorded,
     attach: () => services.onDirectTransportAttached(transport!),
     detach: () => {
       transport = null
@@ -67,13 +75,22 @@ describe('terminals in the manager boot services', () => {
     )
   })
 
+  it('starts a CLI through the host’s conversation store (F-34)', async () => {
+    const r = rig()
+    r.attach()
+    await settle()
+    await r.services.terminals.create({ sessionId: 'sess', cli: { id: 'codex', start: 'new' }, cols: 80, rows: 24 })
+    expect(r.recorded).toEqual([['sess', { cli: 'codex', id: null }]])
+    expect(r.fake.shellRequests('spawn')[0]!.payload).toMatchObject({ file: 'codex', cwd: '/work/tree' })
+  })
+
   it('follows the manifest: no shell.spawn.pty, no terminals', async () => {
     const r = rig()
     r.attach()
     await settle()
     r.setManifest({ capabilities: ['fs', 'shell', 'exec'], primitives: ['shell.spawn.argv'] } as BrowserHostManifest)
     expect(r.services.terminals.available).toBe(false)
-    expect(r.services.terminals.list()).toEqual({ available: false, shells: [], terminals: [] })
+    expect(r.services.terminals.list()).toEqual({ available: false, shells: [], clis: [], terminals: [] })
     r.setManifest(PTY_MANIFEST as BrowserHostManifest)
     await settle()
     expect(r.services.terminals.list().shells.length).toBe(4)

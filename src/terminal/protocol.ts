@@ -1,6 +1,6 @@
 /**
  * The `terminal` capability's wire shapes (F-31): what the runtime publishes
- * on the `terminals` and `terminal/<id>` topics and what the five actions
+ * on the `terminals` and `terminal/<id>` topics and what the six actions
  * take and answer. Shared by the runtime (publisher) and the pane (client);
  * pure types and constants, no behaviour.
  *
@@ -10,7 +10,7 @@
 
 export const TERMINAL_CAPABILITY = 'terminal'
 
-export const TERMINAL_ACTIONS = ['create', 'write', 'resize', 'restart', 'close'] as const
+export const TERMINAL_ACTIONS = ['create', 'write', 'resize', 'restart', 'close', 'rescanClis'] as const
 export type TerminalAction = (typeof TERMINAL_ACTIONS)[number]
 
 /** Every action is `full`: each one starts, drives or ends a program running on the host as the person. */
@@ -20,6 +20,7 @@ export const TERMINAL_ACTION_SCOPES: Record<TerminalAction, 'full'> = {
   resize: 'full',
   restart: 'full',
   close: 'full',
+  rescanClis: 'full',
 }
 
 /** The host manifest primitive that covers `shell.spawn`'s `pty` input and `shell.resize`. */
@@ -50,6 +51,8 @@ export type TerminalRow = {
   id: string
   sessionId: string
   shell: string
+  /** Set when the terminal runs a coding-agent CLI (F-34) instead of a shell; `shell` is then that id too. */
+  cli?: string
   /** From the shell's OSC 0/2 title sequence, else the shell id. */
   title: string
   state: TerminalState
@@ -60,6 +63,8 @@ export type TerminalsState = {
   /** False without a terminal service or without the host's `shell.spawn.pty` primitive. */
   available: boolean
   shells: TerminalShellInfo[]
+  /** The coding-agent CLIs the host has (F-34), found by file lookups; empty until probed. */
+  clis: string[]
   terminals: TerminalRow[]
 }
 
@@ -86,6 +91,11 @@ export type TerminalCreatePayload = {
   sessionId: string
   /** One of the topic's `shells`; default the first of pwsh, powershell, cmd. */
   shell?: string
+  /**
+   * Run a coding-agent CLI instead of a shell (F-34); exclusive with `shell`.
+   * `continue` resumes the conversation the runtime recorded for the session.
+   */
+  cli?: { id: string; start: 'new' | 'continue' }
   cols: number
   rows: number
 }

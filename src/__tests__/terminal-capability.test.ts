@@ -219,7 +219,7 @@ const CREATE = { sessionId: 's1', cols: 80, rows: 24 }
 describe('terminal capability scope', () => {
   it('declares every action full', async () => {
     const r = await rig()
-    expect(TERMINAL_ACTION_SCOPES).toEqual({ create: 'full', write: 'full', resize: 'full', restart: 'full', close: 'full' })
+    expect(TERMINAL_ACTION_SCOPES).toEqual({ create: 'full', write: 'full', resize: 'full', restart: 'full', close: 'full', rescanClis: 'full' })
     for (const action of TERMINAL_ACTIONS) expect(r.registry.resolve('terminal', action)!.spec.scope).toBe('full')
   })
 
@@ -237,6 +237,7 @@ describe('terminal capability scope', () => {
       resize: { id, cols: 90, rows: 30 },
       restart: { id },
       close: { id },
+      rescanClis: {},
     }
     for (const action of TERMINAL_ACTIONS) {
       expect(errorCode(await lesser.request(`terminal.${action}`, payloads[action])), action).toBe('forbidden_scope')
@@ -421,7 +422,7 @@ describe('terminal topics', () => {
     const conn = { connectionId: 'c', clientId: 'c', kind: 'cli', scope: { mode: 'full', sessions: 'all' }, transport: 'message-port' } as ConnectionInfo
     const received: EvtFrame[] = []
     await broker.subscribe({ conn, send: evt => received.push(evt), bufferedBytes: () => 0 }, topic.terminals())
-    expect(received[0]!.payload).toEqual({ available: false, shells: [], terminals: [] })
+    expect(received[0]!.payload).toEqual({ available: false, shells: [], clis: [], terminals: [] })
     const entry = registry.resolve('terminal', 'create')!
     // No service: no shell is known, so only a create that leaves the choice to the runtime passes the guard.
     expect(entry.spec.guard?.(CREATE, conn, {} as never)).toBe(true)

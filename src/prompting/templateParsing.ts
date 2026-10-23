@@ -140,6 +140,13 @@ export interface LauncherMeta {
    *  Strict `false` only; absent ⇒ offered (today's behaviour). Inverted
    *  polarity vs `launcherHidden` on purpose: absence must change nothing. */
   launcherMenu?: false
+  /** `kind: terminal` — a CLI session type (F-34): the session is a terminal
+   *  running the coding-agent CLI named by `cli`, with no `template.md` and no
+   *  agent engine. Absent ⇒ an agent type. */
+  kind?: 'terminal'
+  /** The CLI a `kind: terminal` type runs (a host tool id such as `codex`);
+   *  read only with `kind: terminal`. */
+  cli?: string
 }
 
 /** One welcome-page suggestion chip (a prompt starter) from `welcome.md`. */
@@ -410,6 +417,9 @@ export function parseLauncherCatalog(raw: string): LauncherMeta[] {
       // (every template today) keeps the project menu exactly as it was.
       ...(e.launcherMenu === false || e.launcherMenu === 'false'
         ? { launcherMenu: false as const }
+        : {}),
+      ...(e.kind === 'terminal'
+        ? { kind: 'terminal' as const, ...(str(e.cli) ? { cli: str(e.cli) } : {}) }
         : {}),
     })
   }

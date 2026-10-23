@@ -50,6 +50,15 @@ import {
   type TerminalShellId,
 } from './shells'
 import { TitleSequenceScanner } from './titleScanner'
+import {
+  CLI_ASSIGNS_CONVERSATION_ID,
+  cliAgentArgv,
+  isCliAgentId,
+  isConversationId,
+  probeCliAgents,
+  type CliAgentId,
+  type CliConversation,
+} from './cliAgents'
 
 /** The runtime's host port and manifest, read per call so a replaced port is used. */
 export type TerminalHost = {
@@ -64,11 +73,24 @@ export type TerminalServiceDeps = {
   sessionCwd(sessionId: string): string | undefined
   /** Which shells the host has. Default: `exec.listShells` and `fs.systemInfo`. */
   probeShells?(host: TerminalHost, createRequestId: () => string): Promise<TerminalShellInfo[]>
+  /** Which coding-agent CLIs the host has (F-34). Default: `probeCliAgents`. */
+  probeClis?(host: TerminalHost, createRequestId: () => string): Promise<CliAgentId[]>
+  /** Where a CLI session's conversation id is kept; without it a CLI cannot be started. */
+  cliConversations?: CliConversationStore
   /** Output coalescing window and size; defaults ~16 ms / 64 Ki units. */
   coalesceWindowMs?: number
   coalesceMaxUnits?: number
   historyLines?: number
   newId?(): string
+}
+
+/** A CLI session's recorded conversation (F-34): `id` is null until it is known. */
+export type CliConversationRecord = { cli: CliAgentId; id: string | null }
+
+/** Reads and writes the conversation a CLI session started, in that session's metadata. */
+export type CliConversationStore = {
+  read(sessionId: string): Promise<CliConversationRecord | undefined>
+  record(sessionId: string, record: CliConversationRecord): Promise<void>
 }
 
 export type TerminalServiceEvent =
@@ -88,7 +110,9 @@ const POWERSHELL_FALLBACK_CODES = new Set(['BINARY_NOT_FOUND', 'COMMAND_NOT_ALLO
 type TerminalRecord = {
   id: string
   sessionId: string
-  shell: TerminalShellId
+  shell: TerminalShellId | CliAgentId
+  /** Set for a CLI terminal: what it runs and the conversation its next start names. */
+  cli: { id: CliAgentId; conversation: CliConversation | null } | null
   cwd: string
   title: string
   cols: number
@@ -146,6 +170,8 @@ export class TerminalService {
   private readonly listeners = new Set<(event: TerminalServiceEvent) => void>()
   private readonly encoder = new TextEncoder()
   private shellList: TerminalShellInfo[] = []
+  private cliList: CliAgentId[] = []
+  private cliScan: Promise<void> | null = null
   private lastAvailable = false
   private probeToken = 0
   private disposed = false
@@ -178,14 +204,33 @@ export class TerminalService {
       this.emit({ kind: 'list' })
     }
     if (!available) {
-      if (this.shellList.length > 0) {
+      if (this.shellList.length > 0 || this.cliList.length > 0) {
         this.shellList = []
+        this.cliList = []
         this.emit({ kind: 'list' })
       }
       return
     }
     const token = ++this.probeToken
     void this.probe(token)
+    this.cliScan = null
+    void this.rescanClis()
+  }
+
+  /**
+   * Look for the coding-agent CLIs again (F-34): file lookups only, one scan
+   * at a time — a call while one runs shares it. Listeners hear a `list` when
+   * the answer differs.
+   */
+  rescanClis(): Promise<void> {
+    if (this.disposed || !this.available) return Promise.resolve()
+    if (this.cliScan) return this.cliScan
+    const token = this.probeToken
+    const scan = this.scanClis(token).finally(() => {
+      if (this.cliScan === scan) this.cliScan = null
+    })
+    this.cliScan = scan
+    return scan
   }
 
   /**
@@ -211,6 +256,7 @@ export class TerminalService {
     return {
       available,
       shells: available ? [...this.shellList] : [],
+      clis: available ? [...this.cliList] : [],
       terminals: Array.from(this.records.values(), rowOf),
     }
   }
@@ -235,18 +281,30 @@ export class TerminalService {
     if (cwd === undefined) {
       throw wireError('not_found', `terminal: the runtime holds no session '${input.sessionId}'`)
     }
-    const shell = input.shell ?? defaultTerminalShell(this.shellList)
-    if (!isTerminalShellId(shell) || !this.shellList.some(known => known.id === shell)) {
-      throw wireError('bad_payload', `terminal: shell '${String(shell)}' is not one this host has`)
-    }
     if (!isTerminalSize(input.cols, input.rows)) {
       throw wireError('bad_payload', 'terminal: cols and rows must be integers in 1..1000')
+    }
+    let shell: TerminalShellId | CliAgentId
+    let cli: TerminalRecord['cli'] = null
+    if (input.cli !== undefined) {
+      if (input.shell !== undefined) {
+        throw wireError('bad_payload', 'terminal: give a shell or a cli, not both')
+      }
+      cli = await this.cliStart(input.sessionId, input.cli)
+      shell = cli.id
+    } else {
+      const picked = input.shell ?? defaultTerminalShell(this.shellList)
+      if (!isTerminalShellId(picked) || !this.shellList.some(known => known.id === picked)) {
+        throw wireError('bad_payload', `terminal: shell '${String(picked)}' is not one this host has`)
+      }
+      shell = picked
     }
     const id = `term_${(this.deps.newId ?? randomId)()}`
     const record: TerminalRecord = {
       id,
       sessionId: input.sessionId,
       shell,
+      cli,
       cwd,
       title: shell,
       cols: input.cols,
@@ -311,6 +369,8 @@ export class TerminalService {
     // A restarted terminal starts afresh: the old shell's output does not carry over.
     record.screen.dispose()
     record.screen = this.newScreen(record.cols, record.rows)
+    // A CLI restarted after its first run continues the conversation it started.
+    if (record.cli?.conversation) record.cli.conversation = { ...record.cli.conversation, resume: true }
     this.setTitle(record, record.shell)
     this.setState(record, { kind: 'starting' })
     await this.spawn(record)
@@ -354,6 +414,49 @@ export class TerminalService {
     for (const listener of Array.from(this.listeners)) listener(event)
   }
 
+  /** Validates a CLI start and settles the conversation it names, recording a new one first. */
+  private async cliStart(
+    sessionId: string,
+    request: NonNullable<TerminalCreatePayload['cli']>,
+  ): Promise<NonNullable<TerminalRecord['cli']>> {
+    const cliId = request.id
+    if (!isCliAgentId(cliId)) {
+      throw wireError('bad_payload', `terminal: cli '${String(cliId)}' is not one Velloc runs`)
+    }
+    const store = this.deps.cliConversations
+    if (!store) throw wireError('host_unavailable', 'terminal: this runtime cannot start a cli')
+    if (request.start === 'continue') {
+      const recorded = await store.read(sessionId)
+      if (!recorded || recorded.cli !== cliId || !isConversationId(recorded.id)) {
+        throw wireError('bad_payload', `terminal: session '${sessionId}' has no ${cliId} conversation to continue`)
+      }
+      return { id: cliId, conversation: { id: recorded.id, resume: true } }
+    }
+    if (request.start !== 'new') {
+      throw wireError('bad_payload', "terminal: cli start must be 'new' or 'continue'")
+    }
+    const conversationId = CLI_ASSIGNS_CONVERSATION_ID[cliId] ? newConversationId() : null
+    await store.record(sessionId, { cli: cliId, id: conversationId })
+    return {
+      id: cliId,
+      conversation: conversationId ? { id: conversationId, resume: false } : null,
+    }
+  }
+
+  private async scanClis(token: number): Promise<void> {
+    const probeClis = this.deps.probeClis ?? probeCliAgents
+    let clis: CliAgentId[]
+    try {
+      clis = await probeClis(this.deps.host(), this.deps.createRequestId)
+    } catch {
+      clis = []
+    }
+    if (token !== this.probeToken || this.disposed) return
+    if (clis.length === this.cliList.length && clis.every((cli, i) => cli === this.cliList[i])) return
+    this.cliList = clis
+    this.emit({ kind: 'list' })
+  }
+
   private async probe(token: number): Promise<void> {
     const probeShells = this.deps.probeShells ?? probeHostShells
     let shells: TerminalShellInfo[]
@@ -389,9 +492,14 @@ export class TerminalService {
         if (record.spawn === spawn) this.onExit(record, exit)
       },
     }
-    const start = (shell: TerminalShellId) =>
+    const start = (shell: TerminalShellId | CliAgentId) =>
       primitives.shell.spawnPty(
-        { ...TERMINAL_SHELL_ARGV[shell], cwd: record.cwd },
+        {
+          ...(record.cli
+            ? cliAgentArgv(record.cli.id, record.cli.conversation)
+            : TERMINAL_SHELL_ARGV[shell as TerminalShellId]),
+          cwd: record.cwd,
+        },
         { cols: record.cols, rows: record.rows },
         handlers,
       )
@@ -484,9 +592,16 @@ function rowOf(record: TerminalRecord): TerminalRow {
     id: record.id,
     sessionId: record.sessionId,
     shell: record.shell,
+    ...(record.cli ? { cli: record.cli.id } : {}),
     title: record.title,
     state: record.state,
   }
+}
+
+function newConversationId(): string {
+  const uuid = globalThis.crypto?.randomUUID?.()
+  if (!uuid) throw wireError('host_unavailable', 'terminal: no random source for a conversation id')
+  return uuid
 }
 
 function isPowerShellFallback(error: unknown): boolean {
