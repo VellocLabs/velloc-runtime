@@ -172,4 +172,13 @@ describe('NexusTopBar on a narrow window', () => {
     expect(screen.queryByTestId('topbar-session-rail')).not.toBeNull()
     expect(screen.queryByTestId('topbar-import-acme-agent')).not.toBeNull()
   })
+
+  it('a hidden bar measures nothing, so its 0 width folds nothing', () => {
+    // Settings hides the bar; a unit that arrives meanwhile (the devices
+    // link) re-plans the fit, which must not read the hidden bar as 0 wide.
+    renderBar(0, { hidden: true, remoteDeviceCount: 2 })
+    for (const id of ['topbar-session-rail', 'topbar-pane-files', 'topbar-import-acme-agent', 'topbar-remote-devices']) {
+      expect(screen.queryByTestId(id), id).not.toBeNull()
+    }
+  })
 })

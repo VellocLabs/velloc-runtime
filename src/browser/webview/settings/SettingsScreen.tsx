@@ -8,6 +8,8 @@ import { useT, type TranslateFn } from "../i18n";
 import { useCapabilities } from "../useCan";
 import type { BrowserBridgeTransport } from "../../bridge/browserBridgeProtocol";
 import type { BrowserLlmCatalog } from "../../bridge/protocol/nexus_llm";
+import type { WindowDragRect } from "../../bridge/protocol/ui";
+import { useWindowDragRegions } from "../topbar/useWindowDragRegions";
 import type { RuntimeConnection } from "../../runtimeClient/RuntimeConnection";
 import { useRemoteAccessView } from "../remote/remoteAccessView";
 import { AboutSection } from "./sections/AboutSection";
@@ -35,7 +37,7 @@ import {
 
 /**
  * Full-screen settings surface, rendered by `MultiSessionShell` in place of the
- * conversation grid (the topbar stays). Left vertical section-nav + content.
+ * conversation grid and the topbar. Left vertical section-nav + content.
  */
 
 export { visibleNav, type SettingsSectionId } from "./settingsNav";
@@ -157,6 +159,7 @@ export function SettingsScreen({
   revealPluginRequest,
   runtimeConnection,
   remoteClient = false,
+  onDragRegionsChange,
 }: {
   section: SettingsSectionId;
   onNavigate: (id: SettingsSectionId) => void;
@@ -185,6 +188,9 @@ export function SettingsScreen({
    * to one falls back like any other hidden section.
    */
   remoteClient?: boolean;
+  /** Reports the header's window-drag map to the host (F-9). Omitted where
+   *  there is no host frame to drag. */
+  onDragRegionsChange?: (regions: WindowDragRect[]) => void;
 }) {
   const t = useT();
   const capabilities = useCapabilities();
@@ -202,31 +208,54 @@ export function SettingsScreen({
   // selection) must not render its content either — hiding the nav entry and
   // still showing the page would be trimming in name only.
   const shown = resolveSettingsPage(section, nav) ?? nav[0]?.id ?? section;
+  const headerRef = React.useRef<HTMLElement | null>(null);
+  useWindowDragRegions(headerRef, onDragRegionsChange);
   return (
     <div
       data-testid="nexus-settings"
       data-section={shown}
-      // Full-bleed under the topbar, exactly like the session area it replaces
-      // in the shell column — so no radius and no outer border. See the sibling
-      // comment in MultiSessionShell.
+      // Full-bleed, like the session area it replaces in the shell column — so
+      // no radius and no outer border. See the sibling comment in
+      // MultiSessionShell.
       className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-background"
     >
-      {/* Top header bar — the original `#settings-header`: an arrow-back button
-          (aria-label/title "Close settings") + the "Settings" title. */}
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3">
+      {/* Settings replaces the topbar: this header is the window's drag
+          surface, and on the desktop it reserves the OS caption strip. The
+          back arrow and the title both close settings. */}
+      <header
+        ref={headerRef}
+        data-testid="settings-header"
+        className="flex h-14 shrink-0 items-center gap-2 border-b px-3"
+      >
         <Button
           variant="ghost"
           size="icon-sm"
           data-testid="settings-back"
+          data-app-region="no-drag"
           aria-label={t("settings.close")}
           title={t("settings.close")}
           onClick={onClose}
         >
           <ArrowLeftIcon className="size-4" />
         </Button>
-        <span className="font-semibold text-base text-foreground">
+        <button
+          type="button"
+          data-testid="settings-title"
+          data-app-region="no-drag"
+          title={t("settings.close")}
+          onClick={onClose}
+          className="rounded-md px-1 font-semibold text-base text-foreground hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           {t("settings.title")}
-        </span>
+        </button>
+        {remoteClient ? null : (
+          <div
+            aria-hidden
+            data-testid="settings-caption-inset"
+            className="ms-auto shrink-0 self-stretch"
+            style={{ width: "var(--nexus-caption-inset, 0px)" }}
+          />
+        )}
       </header>
 
       {/* Body — left section-nav + content (the original `#container`). */}

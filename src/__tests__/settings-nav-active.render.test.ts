@@ -56,7 +56,7 @@ describe('settings nav selected state', () => {
 })
 
 /**
- * The settings surface is full-bleed below the topbar: no corner radius and no outer border.
+ * The settings surface is full-bleed: no corner radius and no outer border.
  */
 describe('settings surface edges', () => {
   it('renders full-bleed: no corner radius and no outer border', () => {

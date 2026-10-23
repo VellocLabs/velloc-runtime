@@ -38,6 +38,8 @@ export function useTopbarFit(
     const right = rightRef.current;
     if (!header || !left || !right) return;
     const measure = () => {
+      // A hidden bar measures 0 wide: keep the last plan until it is shown.
+      if (header.hidden) return;
       const style = getComputedStyle(header);
       const columnGap = parseFloat(style.columnGap || "0") || 0;
       const inner =

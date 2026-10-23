@@ -44,10 +44,13 @@ export function useWindowDragRegions(
 ): void {
   const onChangeRef = React.useRef(onChange);
   onChangeRef.current = onChange;
+  // Dropping `onChange` (a hidden bar) clears the host map; restoring it reports afresh.
+  const active = onChange !== undefined;
 
   React.useEffect(() => {
     const header = ref.current;
-    if (!header || !onChangeRef.current) return;
+    const reportedTo = onChangeRef.current;
+    if (!header || !reportedTo) return;
 
     let rafId: number | null = null;
     let lastJson = "";
@@ -94,7 +97,7 @@ export function useWindowDragRegions(
       mo.disconnect();
       window.removeEventListener("resize", schedule);
       // Clear the host map so a stale region can't keep eating clicks.
-      onChangeRef.current?.([]);
+      (onChangeRef.current ?? reportedTo)([]);
     };
-  }, [ref]);
+  }, [ref, active]);
 }

@@ -256,6 +256,7 @@ import type {
   NexusTaskInfo,
   NexusTaskSummaryRow,
   NexusTaskTranscriptEntry,
+  WindowDragRect,
 } from '../bridge/protocol/ui'
 import {
   buildSessionSkillPanelList,
@@ -3017,6 +3018,16 @@ export function MultiSessionShell({
     setAddProviderRequest(addProviderSeqRef.current)
     setSettingsSection('models')
   }, [])
+  // One host drag map at a time: the topbar's, or the settings header's while
+  // settings replaces the topbar.
+  const handleDragRegionsChange = useCallback(
+    (regions: WindowDragRect[]) => {
+      void setWindowDragRegions(hostBridgeTransport, regions).catch(() => {
+        /* build-gated C++ route / mock host has no window to drag */
+      })
+    },
+    [hostBridgeTransport],
+  )
 
   // Deep-link receiver: the thin Lit panel no longer hosts settings,
   // so it forwards the C++ `ui.openNexusSettings` deep-link (e.g. a rejected
@@ -4328,6 +4339,9 @@ export function MultiSessionShell({
       }}
     >
       <NexusTopBar
+        // Settings takes the whole window: its header replaces the topbar as
+        // the drag surface and caption reserve.
+        hidden={settingsSection !== null}
         sessionTabs={sessionTabs}
         activeSessionId={activeSessionId}
         // Switching tab IS switching session — that is the whole feature.
@@ -4356,11 +4370,7 @@ export function MultiSessionShell({
             />
           ) : undefined
         }
-        onDragRegionsChange={(regions) => {
-          void setWindowDragRegions(hostBridgeTransport, regions).catch(() => {
-            /* build-gated C++ route / mock host has no window to drag */
-          })
-        }}
+        onDragRegionsChange={handleDragRegionsChange}
         openPanes={openPanes}
         hasModPanes={modPanesDocked && shellModUi.panes.length > 0}
         terminalAvailable={terminalsState?.available ?? true}
@@ -4447,6 +4457,7 @@ export function MultiSessionShell({
           // F-24: Remote access manages the DESKTOP's listener — never shown
           // on a remote client page, whatever its grant.
           remoteClient={remoteHost !== undefined}
+          onDragRegionsChange={handleDragRegionsChange}
           // OAuth sign-in (e.g. ChatGPT Pro) connects on the C++ broker without
           // firing `providers.changed`, so refresh the catalog directly on
           // success — otherwise the quick model picker misses the new provider

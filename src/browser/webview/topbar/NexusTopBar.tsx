@@ -154,6 +154,9 @@ export type NexusTopBarProps = {
   /** Run a plugin's topbar item (F-25) for a session; omitted → plugins add
    *  no items. They sit just before the search control. */
   onPressPluginItem?: (sessionId: string, id: string) => Promise<ModsPressTopbarResult>;
+  /** Not drawn and reports no drag map, but stays mounted so its controls
+   *  keep their state (Settings takes the window, F-18). */
+  hidden?: boolean;
 };
 
 /** A pane's tooltip or menu row text: its name, and its shortcut when it has one. */
@@ -200,6 +203,7 @@ export function NexusTopBar({
   remoteHost,
   onRemoteLogOut,
   onPressPluginItem,
+  hidden = false,
 }: NexusTopBarProps) {
   const t = useT();
   const teammateActive = !!activeSessionId && isTeammateSessionId(activeSessionId);
@@ -272,7 +276,7 @@ export function NexusTopBar({
   // The topbar is in the <webview>, so `-webkit-app-region` can't drag the host
   // window. Instead we measure the bar + its `data-app-region="no-drag"`
   // controls and report the map to the host (see useWindowDragRegions).
-  useWindowDragRegions(headerRef, onDragRegionsChange);
+  useWindowDragRegions(headerRef, hidden ? undefined : onDragRegionsChange);
 
   return (
     // Self-contained TooltipProvider: the topbar mounts in MultiSessionShell
@@ -284,6 +288,8 @@ export function NexusTopBar({
       <header
         ref={headerRef}
         data-slot="nexus-topbar"
+        hidden={hidden}
+        style={hidden ? { display: "none" } : undefined}
         // The whole bar is the drag surface; controls carry `data-app-region="no-drag"`.
         // Equal `1fr` side columns centre the strip on the window; each is floored
         // at `min-content`, so only the centre column shrinks.
