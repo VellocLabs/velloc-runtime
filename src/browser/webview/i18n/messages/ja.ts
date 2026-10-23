@@ -1843,7 +1843,7 @@ export const ja: Messages = {
   'settings.memory.noInstructions': 'このプロジェクトにはありません。',
   'settings.memory.tierProject': 'プロジェクト',
   'settings.memory.tierLocal': 'ローカル',
-  'settings.memory.otherUserFiles': 'こちらも適用',
+  'settings.memory.otherUserFiles': '併せて適用',
 
   // ── 設定 — 全般 · システム（独立ページから統合）──────────────────────────
   'settings.system.title': 'システム',
