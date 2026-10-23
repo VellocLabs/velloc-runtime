@@ -7,6 +7,7 @@ import {
   MessageCircleIcon,
   PuzzleIcon,
   ShieldCheckIcon,
+  SquareTerminalIcon,
   UsersIcon,
   type LucideIcon,
 } from 'lucide-react'
@@ -69,6 +70,9 @@ export type ThreadLauncher = {
   /** From the catalog's `launcherMenu: false`: not offered in the project
    *  folder's `+`/`⋯` menu (the sidebar launcher is unaffected). */
   launcherMenu?: false
+  /** A CLI session launcher (F-34): the host tool id it runs. Offered only
+   *  while the host reports that CLI installed (`filterLaunchers`). */
+  cli?: string
 }
 
 // The boot-default template type (the `type: undefined` "New Thread" launcher
@@ -85,6 +89,7 @@ const LUCIDE_BY_NAME: Record<string, LucideIcon> = {
   'list-checks': ListChecksIcon,
   folder: FolderIcon,
   users: UsersIcon,
+  'square-terminal': SquareTerminalIcon,
 }
 
 // An <img> wrapper for a template `icon` (an SVG data URI), with the same
@@ -180,8 +185,11 @@ export type LauncherSurface = 'sidebar' | 'projectMenu'
 export function filterLaunchers(
   launchers: readonly ThreadLauncher[],
   surface: LauncherSurface = 'sidebar',
+  installedClis: readonly string[] = [],
 ): ThreadLauncher[] {
   return launchers.filter(l => {
+    // A CLI session launcher is offered only while its CLI is installed (F-34).
+    if (l.cli !== undefined && !installedClis.includes(l.cli)) return false
     // `launcherHidden` scope: `'sidebar'` hides the sidebar only; `'both'`
     // hides both surfaces.
     const hidden = l.launcherHidden
@@ -301,6 +309,7 @@ function bundledThreadLaunchers(): ThreadLauncher[] {
           testId: `launcher-${meta.type}`,
           ...(meta.launcherHidden ? { launcherHidden: meta.launcherHidden } : {}),
           ...(meta.launcherMenu === false ? { launcherMenu: false as const } : {}),
+          ...(meta.kind === 'terminal' && meta.cli ? { cli: meta.cli } : {}),
         }
   })
   return cachedLaunchers

@@ -56,6 +56,8 @@ export type ProjectSectionProps = {
   onCopyProjectPath?: (path: string) => void
   /** Create a session of `templateType` bound to `projectRoot`. */
   onLaunchInProject?: (projectRoot: string, templateType: string) => void
+  /** CLIs the host has (F-34): a CLI launcher is offered only for these. */
+  installedClis?: readonly string[]
   onSwitchThread?: (sessionId: string) => void
   onDeleteThread?: (sessionId: string) => void
   onRenameThread?: (sessionId: string, title: string) => void
@@ -76,6 +78,7 @@ export function ProjectSection({
   onRevealProject: onRevealProjectProp,
   onCopyProjectPath,
   onLaunchInProject,
+  installedClis,
   onSwitchThread,
   onDeleteThread,
   onRenameThread,
@@ -154,8 +157,8 @@ export function ProjectSection({
   // menu entirely. `launcherTemplateType` resolves it back to 'agent'.
   const contributions = useModContributions()
   const projectLaunchers = useMemo(
-    () => filterLaunchers(getThreadLaunchers(), 'projectMenu'),
-    [contributions],
+    () => filterLaunchers(getThreadLaunchers(), 'projectMenu', installedClis),
+    [contributions, installedClis],
   )
 
   return (

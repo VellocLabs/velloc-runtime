@@ -82,6 +82,8 @@ export type NexusTopBarProps = {
    *  override does not hide what new sessions will get. */
   defaultSelection?: BrowserLlmSelection | null;
   onSelectModel: (selection: BrowserLlmSelection) => void;
+  /** No model picker: the active session runs no Velloc model (a CLI session, F-34). */
+  hideModelPicker?: boolean;
   onOpenSettings: (section?: SettingsSectionId) => void;
   /** Open one provider's settings page (the model picker's `⋯` → "Edit…"). */
   onOpenProviderSettings?: (providerId: string) => void;
@@ -198,6 +200,7 @@ export function NexusTopBar({
   sessionOverview,
   onResetLayout,
   backgroundTaskCount,
+  hideModelPicker,
   importSources,
   onOpenImport,
   remoteDeviceCount,
@@ -319,7 +322,7 @@ export function NexusTopBar({
           </TooltipTrigger>
           <TooltipContent side="bottom">{t("topbar.settings")}</TooltipContent>
         </Tooltip>
-        <NexusModelPicker
+        {hideModelPicker ? null : <NexusModelPicker
           catalog={catalog}
           selection={selection}
           defaultSelection={defaultSelection}
@@ -333,7 +336,7 @@ export function NexusTopBar({
           // (useMultiSessionClients.setModelSelection).
           disabled={teammateActive}
           inertWhy={teammateActive ? t("modelPicker.teammateLocked") : undefined}
-        />
+        />}
         {/* Sidebar toggle — global: it does not change with the session. */}
         {onToggleSidebar ? (
           <Tooltip>

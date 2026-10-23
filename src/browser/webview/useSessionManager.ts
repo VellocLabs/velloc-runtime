@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sessionActivityTime } from './sessionTimeBucket'
 import { hiddenSessionIds, pickNeighborSession } from './sessionVisibility'
+import { cliOfTemplateType } from '../../prompting/templateCatalog'
 import { randomUuid } from '../../utils/randomUuid'
 import type { ForkRetarget } from '../worker/sharedWorkerProtocol'
 
@@ -261,7 +262,7 @@ export const normalizeTemplateType = normalizeStringArg
 /**
  * An empty thread (`messageCount === 0`) `openNewSession` may hand back instead of minting a new one.
  * Never reused: another `templateType`, a `customTitle`, or the active session (pass the id from
- * `activeSessionIdRef`). A project launch reuses only an empty bound to that folder; a plain launch prefers
+ * `activeSessionIdRef`), nor any CLI session. A project launch reuses only an empty bound to that folder; a plain launch prefers
  * an unbound empty but falls back to a bound one.
  */
 export function findReusableEmptySession(
@@ -270,6 +271,8 @@ export function findReusableEmptySession(
   projectRoot: string | undefined,
   activeSessionId: string | undefined,
 ): LocalSessionEntry | undefined {
+  // A CLI session never counts messages, so "empty" says nothing about it (F-34).
+  if (cliOfTemplateType(templateType)) return undefined
   const isReusable = (entry: LocalSessionEntry): boolean =>
     entry.messageCount === 0 &&
     entry.templateType === templateType &&

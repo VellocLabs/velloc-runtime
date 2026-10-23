@@ -98,7 +98,9 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
   const slots = useSessionSlots(sessionId)
   const name = t(PANE_LABEL_KEY.terminal)
 
-  const rows: TerminalRow[] = sessionId && state ? state.terminals.filter(row => row.sessionId === sessionId) : []
+  // A CLI session's terminal is its main area (F-34), never a tab here.
+  const rows: TerminalRow[] =
+    sessionId && state ? state.terminals.filter(row => row.sessionId === sessionId && row.cli === undefined) : []
   const tabs: Tab[] = orderedKeys(
     slots.order,
     rows.map(row => row.id),

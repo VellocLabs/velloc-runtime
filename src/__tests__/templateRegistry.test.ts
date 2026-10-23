@@ -943,14 +943,14 @@ describe('templateRegistry — beta variants (index-beta.md, template-beta.md)',
     expect(getTemplateIcon('team')).toBeUndefined()
   })
 
-  it('the CLI session types are beta-only, hidden, kind terminal, and name their CLI (F-34)', () => {
+  it('the CLI session types are beta-only, kind terminal, and name their CLI (F-34)', () => {
     __setTemplateChannelForTest('beta')
     const cli = getLauncherCatalog().filter(m => m.kind === 'terminal')
     // One type per CLI the runtime runs, named `cli-<cli>`, in table order.
     expect(cli.map(m => m.cli)).toEqual([...CLI_AGENT_IDS])
     for (const m of cli) {
       expect(m.type).toBe(`cli-${m.cli}`)
-      expect(m.launcherHidden).toBe('both')
+      expect(m.launcherHidden).toBeUndefined()
       expect(hasTemplate(m.type)).toBe(false)
     }
     __setTemplateChannelForTest('stable')

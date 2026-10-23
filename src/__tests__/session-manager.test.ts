@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { __setTemplateChannelForTest } from '../prompting/templateRegistry'
+import { CLI_AGENT_IDS } from '../terminal/cliAgents'
 import type { LocalSessionEntry } from '../browser/webview/useSessionManager'
 import {
   findReusableEmptySession,
@@ -611,6 +613,20 @@ describe('findReusableEmptySession', () => {
       undefined,
     )
     expect(found).toBeUndefined()
+  })
+
+  describe('CLI session types (F-34)', () => {
+    afterEach(() => __setTemplateChannelForTest(null))
+
+    it('never reuses an empty-looking CLI session: it counts no messages even after running', () => {
+      __setTemplateChannelForTest('beta')
+      for (const cli of CLI_AGENT_IDS) {
+        const type = `cli-${cli}`
+        const ran = localEntry({ sessionId: `ran-${cli}`, templateType: type, projectRoot: '/repo/one' })
+        expect(findReusableEmptySession([ran], type, '/repo/one', 'other')).toBeUndefined()
+        expect(findReusableEmptySession([ran], type, undefined, 'other')).toBeUndefined()
+      }
+    })
   })
 
   it('never reuses an UNBOUND thread for a project launch', () => {

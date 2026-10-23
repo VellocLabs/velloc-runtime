@@ -9,6 +9,7 @@ import {
   type ThreadLauncher,
 } from '../browser/webview/threadLaunchers'
 import { __setTemplateChannelForTest } from '../prompting/templateRegistry'
+import { CLI_AGENT_IDS } from '../terminal/cliAgents'
 
 // The sidebar launcher icon + title are now SOURCED from each template's
 // frontmatter (`icon_lucide` / `title-i18n` / `title`) via templateRegistry's
@@ -124,6 +125,31 @@ describe('threadLaunchers — icon + title sourced from the template', () => {
     // the visibility rule is the catalog data alone.
     expect(filterLaunchers(fixture).map(l => l.testId)).toEqual(['b', 'd'])
     expect(filterLaunchers(fixture, 'projectMenu').map(l => l.testId)).toEqual(['b', 'd'])
+  })
+
+  it('filterLaunchers offers a CLI launcher only while its CLI is installed (F-34)', () => {
+    const Icon = BotIcon
+    const fixture: ThreadLauncher[] = [
+      { type: 'code', Icon, testId: 'code' },
+      { type: 'cli-codex', Icon, testId: 'cli', cli: 'codex' },
+    ]
+    for (const surface of ['sidebar', 'projectMenu'] as const) {
+      expect(filterLaunchers(fixture, surface).map(l => l.testId)).toEqual(['code'])
+      expect(filterLaunchers(fixture, surface, ['pwsh']).map(l => l.testId)).toEqual(['code'])
+      expect(filterLaunchers(fixture, surface, ['codex']).map(l => l.testId)).toEqual(['code', 'cli'])
+    }
+  })
+
+  it('the beta catalog\'s CLI launchers carry their CLI and show once it is installed (F-34)', () => {
+    __setTemplateChannelForTest('beta')
+    const clis = getThreadLaunchers().filter(l => l.cli !== undefined)
+    expect(clis.map(l => l.type).sort()).toEqual(CLI_AGENT_IDS.map(id => `cli-${id}`).sort())
+    expect(filterLaunchers(getThreadLaunchers()).some(l => l.cli)).toBe(false)
+    expect(filterLaunchers(getThreadLaunchers(), 'projectMenu', ['codex']).filter(l => l.cli).map(l => l.type)).toEqual([
+      'cli-codex',
+    ])
+    __setTemplateChannelForTest('stable')
+    expect(getThreadLaunchers().some(l => l.cli !== undefined)).toBe(false)
   })
 
   it('makeImageIcon: a template `icon` SVG data URI renders an <img> with that src', () => {

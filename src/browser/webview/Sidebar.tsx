@@ -183,6 +183,8 @@ type SessionListBodyProps = SidebarProjectProps & {
   sessions?: SessionListItem[]
   onNewThread?: () => void
   onLaunchThread?: (templateType?: string) => void
+  /** CLIs the host has (F-34): a CLI launcher is offered only for these. */
+  installedClis?: readonly string[]
   onSwitchThread?: (sessionId: string) => void
   onDeleteThread?: (sessionId: string) => void
   onRenameThread?: (sessionId: string, title: string) => void
@@ -214,6 +216,7 @@ export function SessionListBody({
   sessions,
   onNewThread,
   onLaunchThread,
+  installedClis,
   onSwitchThread,
   onDeleteThread,
   onRenameThread,
@@ -286,7 +289,7 @@ export function SessionListBody({
           reuse. Config lives in threadLaunchers.tsx. */}
       {!titlesOnly && (
         <div className="flex shrink-0 flex-col gap-0.5">
-          {filterLaunchers(getThreadLaunchers()).map((launcher, index) => {
+          {filterLaunchers(getThreadLaunchers(), 'sidebar', installedClis).map((launcher, index) => {
             const Icon = launcher.Icon
             return (
               <Button
@@ -321,6 +324,7 @@ export function SessionListBody({
             already holds, so it costs no extra fs reads. */}
         {showProjects && (
           <ProjectSection
+            installedClis={installedClis}
             sessions={orderedSessions}
             activeSessionId={resolvedActiveSessionId}
             addedProjectPaths={addedProjectPaths ?? []}
@@ -440,6 +444,7 @@ function SidebarIconRail({
   sessions,
   onNewThread,
   onLaunchThread,
+  installedClis,
   onSwitchThread,
   view,
   now,
@@ -449,6 +454,8 @@ function SidebarIconRail({
   sessions?: SessionListItem[]
   onNewThread?: () => void
   onLaunchThread?: (templateType?: string) => void
+  /** CLIs the host has (F-34): a CLI launcher is offered only for these. */
+  installedClis?: readonly string[]
   onSwitchThread?: (sessionId: string) => void
   view: SessionListView
   now: number
@@ -470,7 +477,7 @@ function SidebarIconRail({
           the topbar now.) */}
       <div className="flex shrink-0 flex-col items-center gap-0.5">
         {/* Launcher icons (no labels; title/aria carry the name). */}
-        {filterLaunchers(getThreadLaunchers()).map((launcher, index) => {
+        {filterLaunchers(getThreadLaunchers(), 'sidebar', installedClis).map((launcher, index) => {
           const Icon = launcher.Icon
           const label = launcherTooltip(launcher, t, locale)
           return (
@@ -562,6 +569,7 @@ export function Sidebar({
   sessions,
   onNewThread,
   onLaunchThread,
+  installedClis,
   onSwitchThread,
   onDeleteThread,
   onRenameThread,
@@ -585,6 +593,8 @@ export function Sidebar({
   sessions?: SessionListItem[]
   onNewThread?: () => void
   onLaunchThread?: (templateType?: string) => void
+  /** CLIs the host has (F-34): a CLI launcher is offered only for these. */
+  installedClis?: readonly string[]
   onSwitchThread?: (sessionId: string) => void
   onDeleteThread?: (sessionId: string) => void
   onRenameThread?: (sessionId: string, title: string) => void
@@ -642,6 +652,7 @@ export function Sidebar({
           sessions={sessions}
           onNewThread={onNewThread}
           onLaunchThread={onLaunchThread}
+          installedClis={installedClis}
           onSwitchThread={onSwitchThread}
           view={view}
           now={now}
@@ -655,6 +666,7 @@ export function Sidebar({
             sessions={sessions}
             onNewThread={onNewThread}
             onLaunchThread={onLaunchThread}
+            installedClis={installedClis}
             onSwitchThread={onSwitchThread}
             onDeleteThread={onDeleteThread}
             onRenameThread={onRenameThread}

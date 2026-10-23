@@ -14,7 +14,7 @@
 #   cli-claude, cli-codex
 #          CLI session types (F-34), beta only. `kind: terminal` = the session
 #          is a terminal running the host CLI named by `cli`; no `<type>/`
-#          folder. Hidden until the CLI session view lands.
+#          folder. Offered only while the host reports that CLI installed.
 types:
   - type: code
     title: Code
@@ -42,13 +42,11 @@ types:
     kind: terminal
     cli: claude
     icon_lucide: square-terminal
-    launcherHidden: both
   - type: cli-codex
     title: Codex CLI
     kind: terminal
     cli: codex
     icon_lucide: square-terminal
-    launcherHidden: both
 ---
 
 # Template catalog — beta

@@ -48,6 +48,13 @@ export function getLauncherMeta(type: string): LauncherMeta | undefined {
   return activeLauncherByType().get(type)
 }
 
+/** The CLI a `kind: terminal` type runs (F-34), else undefined. */
+export function cliOfTemplateType(type: string | undefined): string | undefined {
+  if (!type) return undefined
+  const meta = activeLauncherByType().get(type)
+  return meta?.kind === 'terminal' ? meta.cli : undefined
+}
+
 /**
  * A launcher's display title: `title-i18n` via `translate` (which must
  * return undefined for a missing key), else `title`, else `type`.

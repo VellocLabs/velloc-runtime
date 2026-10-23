@@ -71,6 +71,15 @@ describe('NexusTopBar render', () => {
     expect(html.slice(settings, toggle).match(/<button/g)?.length).toBe(2)
   })
 
+  it('in a CLI session shows only Settings and the sidebar toggle (F-34)', () => {
+    // What the shell passes while a CLI session is active: no model picker,
+    // no session tabs, panes, rail, search, imports or plugin items.
+    const html = markup({ hideModelPicker: true, sidebarCollapsed: false, onToggleSidebar: () => {} })
+    const buttons = [...html.matchAll(/<button[^>]*data-testid="([^"]+)"/g)].map(match => match[1])
+    expect(buttons).toEqual(['topbar-settings', 'topbar-sidebar-toggle'])
+    expect(html).not.toContain('nexus-model-picker-trigger')
+  })
+
   describe('the right column', () => {
     it('holds the session rail toggle, a divider, the pane toggles and the More menu, in that order', () => {
       const html = markup({

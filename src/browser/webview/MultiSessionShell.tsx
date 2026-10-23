@@ -62,6 +62,7 @@ import {
   paneToggleAction,
   paneWeightFor,
   pruneUnrestorable,
+  defaultSessionPaneRecord,
   resetPaneLayout,
   setMaximized,
   type FilesPaneState,
@@ -274,8 +275,17 @@ import {
   SidePaneBody,
   FilesPane,
   TerminalPane,
+  CliSessionView,
 } from './coldUi'
 import { useResolvedConnection, useTerminalsState } from './terminal/useTerminals'
+import { markCliSessionFresh } from './terminal/freshCliSessions'
+import { cliOfTemplateType, getLauncherCatalog, getTemplateTitle } from '../../prompting/templateCatalog'
+import { TERMINAL_CAPABILITY } from '../../terminal/protocol'
+import { WorkspaceProjectFolderDialog } from './ThreadDialogs'
+
+const NO_CLIS: readonly string[] = []
+// What a CLI session's area draws: the session alone, no side pane (F-34).
+const CLI_SESSION_PANE_RECORD = defaultSessionPaneRecord()
 // Type-only, so it adds no edge to the emitted graph and the split holds.
 import type { SettingsSectionId } from './settings/SettingsScreen'
 import { isSettingsSectionVisible } from './settings/settingsNav'
@@ -525,7 +535,8 @@ export function MultiSessionShell({
   const runtimeCapabilities = useCapabilityQuery(runtimeConnection)
   // The Terminal pane's availability (F-31): the toggle hides when the host
   // cannot run a pseudoconsole; unknown yet counts as available.
-  const terminalsState = useTerminalsState(useResolvedConnection(runtimeConnection))
+  const terminalConnection = useResolvedConnection(runtimeConnection)
+  const terminalsState = useTerminalsState(terminalConnection)
   // F-25: the launchers and topbar items of the person's plugins, one store
   // for the whole page; the bundled launchers never wait for it.
   useAttachModContributions(runtimeConnection)
@@ -1944,14 +1955,31 @@ export function MultiSessionShell({
       }),
     [sessionLayoutsStore],
   )
+  // CLI sessions (F-34) by id: the CLI each runs and the folder it runs in.
+  const cliSessions = useMemo(() => {
+    const out = new Map<string, { cli: string; type: string; folder?: string }>()
+    for (const session of sessions) {
+      const cli = cliOfTemplateType(session.templateType)
+      if (cli && session.templateType) {
+        out.set(session.sessionId, { cli, type: session.templateType, folder: session.projectRoot })
+      }
+    }
+    return out
+  }, [sessions])
+  const activeCli = activeSessionId ? cliSessions.get(activeSessionId)?.cli : undefined
+  const activeCliRef = useRef(activeCli)
+  activeCliRef.current = activeCli
   const storedPaneRecord = activeSessionId ? sessionLayouts.records.get(activeSessionId) : undefined
   const activePaneRecord = useMemo(
     () =>
-      pruneUnrestorable(storedPaneRecord ?? sessionLayoutsStore.get(''), {
-        browserTabs: activeNexusTabCount,
-        ...(modPanesDocked ? {} : { modPanes: 0 }),
-      }),
-    [storedPaneRecord, activeNexusTabCount, sessionLayoutsStore, modPanesDocked],
+      // A CLI session shows only its terminal: no side pane is drawn, whatever its record holds.
+      activeCli
+        ? CLI_SESSION_PANE_RECORD
+        : pruneUnrestorable(storedPaneRecord ?? sessionLayoutsStore.get(''), {
+            browserTabs: activeNexusTabCount,
+            ...(modPanesDocked ? {} : { modPanes: 0 }),
+          }),
+    [activeCli, storedPaneRecord, activeNexusTabCount, sessionLayoutsStore, modPanesDocked],
   )
   const paneLayout = activePaneRecord.layout
   const openPanes = useMemo(() => panesIn(paneLayout), [paneLayout])
@@ -2953,7 +2981,8 @@ export function MultiSessionShell({
   // while focus is in the Files pane. Not while Settings covers the area.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || settingsOpenRef.current) return
+      // A CLI session has no panes; its keys belong to the terminal.
+      if (event.defaultPrevented || settingsOpenRef.current || activeCliRef.current) return
       const shortcut = paneShortcutFor(event)
       if (!shortcut) return
       if (shortcut.action === 'toggle-files-tree') {
@@ -3264,6 +3293,24 @@ export function MultiSessionShell({
       }
     }
   }, [refreshModelCatalog, refreshProjectBranch])
+
+  // Re-read which CLIs are installed when the view regains focus (F-34), so a
+  // CLI installed meanwhile gets its launcher. Only where the catalog lists one.
+  const canRescanClis = runtimeCapabilities.can(TERMINAL_CAPABILITY, 'rescanClis')
+  useEffect(() => {
+    if (!terminalConnection || !canRescanClis) return
+    if (!getLauncherCatalog().some(meta => meta.kind === 'terminal')) return
+    const rescan = (): void => {
+      if (document.hidden) return
+      void terminalConnection.request(`${TERMINAL_CAPABILITY}.rescanClis`, {}).catch(() => {})
+    }
+    document.addEventListener('visibilitychange', rescan)
+    window.addEventListener('focus', rescan)
+    return () => {
+      document.removeEventListener('visibilitychange', rescan)
+      window.removeEventListener('focus', rescan)
+    }
+  }, [terminalConnection, canRescanClis])
 
   // Refresh the catalog on `providers.changed` too (an in-shell settings save fires no focus
   // event). One read gate for this and the boot read, so an older `providers.list` never wins.
@@ -3761,7 +3808,7 @@ export function MultiSessionShell({
   // Gated on the host advertising the `search` bridge capability AND on the
   // grant holding `search.queryTranscripts` (useTranscriptSearchGate).
   const transcriptSearch = useTranscriptSearchGate(
-    searchCapable ?? false,
+    (searchCapable ?? false) && !activeCli,
     runtimeCapabilities,
   )
 
@@ -4044,12 +4091,44 @@ export function MultiSessionShell({
     (projectRoot: string, templateType: string) => {
       const trimmed = projectRoot.trim()
       if (!trimmed) return
-      openNewSession(templateType, trimmed)
+      const sessionId = openNewSession(templateType, trimmed)
+      // A CLI session launched here starts its CLI on first sight (F-34).
+      if (cliOfTemplateType(templateType)) markCliSessionFresh(sessionId)
       addRecentFolder(trimmed)
       writeLastFolderForType(templateType, trimmed)
     },
     [openNewSession],
   )
+
+  // The sidebar launcher row: a CLI type first asks for its folder (F-34);
+  // a cancel creates nothing. Every other type opens at once.
+  const [cliLaunchType, setCliLaunchType] = useState<string | null>(null)
+  const handleLaunchThread = useCallback(
+    (templateType?: string) => {
+      if (cliOfTemplateType(templateType)) setCliLaunchType(templateType ?? null)
+      else openNewSession(templateType)
+    },
+    [openNewSession],
+  )
+  const launchCliIn = useCallback(
+    (path: string) => {
+      const type = cliLaunchType
+      setCliLaunchType(null)
+      if (type) handleLaunchInProject(path, type)
+    },
+    [cliLaunchType, handleLaunchInProject],
+  )
+  const pickCliFolder = useCallback(async () => {
+    let result: Awaited<ReturnType<typeof pickProjectFolder>>
+    try {
+      result = await pickProjectFolder(hostBridgeTransport)
+    } catch (error) {
+      console.warn('Failed to open the project-folder picker:', error)
+      return
+    }
+    if (result.canceled || !result.path) return
+    launchCliIn(result.path)
+  }, [hostBridgeTransport, launchCliIn])
 
   // Copy a project's path (⋯ menu). Mirrors the composer chip's Copy path.
   const handleCopyProjectPath = useCallback((path: string) => {
@@ -4342,7 +4421,7 @@ export function MultiSessionShell({
         // Settings takes the whole window: its header replaces the topbar as
         // the drag surface and caption reserve.
         hidden={settingsSection !== null}
-        sessionTabs={sessionTabs}
+        sessionTabs={activeCli ? undefined : sessionTabs}
         activeSessionId={activeSessionId}
         // Switching tab IS switching session — that is the whole feature.
         onSelectSessionTab={focusSession}
@@ -4350,15 +4429,16 @@ export function MultiSessionShell({
         selection={activeSelection}
         defaultSelection={globalDefaultSelection ?? browserDefaultSelection}
         onSelectModel={handleTopbarSelectModel}
+        hideModelPicker={activeCli !== undefined}
         modelPickerOpenToken={modelPickerOpenToken}
         onOpenSettings={handleOpenNexusSettings}
         onOpenProviderSettings={handleOpenProviderSettings}
         onOpenAddProvider={handleOpenAddProvider}
-        onPressPluginItem={runtimeConnection ? handlePressPluginItem : undefined}
+        onPressPluginItem={runtimeConnection && !activeCli ? handlePressPluginItem : undefined}
         sidebarCollapsed={sidebarCollapsed || sidebarHidden}
         onToggleSidebar={handleToggleSidebar}
         searchSlot={
-          transcriptSearch.enabled ? (
+          transcriptSearch.enabled && !activeCli ? (
             <TopbarSearch
               transport={hostBridgeTransport}
               resolveHomeDir={resolveSearchHomeDir}
@@ -4374,18 +4454,22 @@ export function MultiSessionShell({
         openPanes={openPanes}
         hasModPanes={modPanesDocked && shellModUi.panes.length > 0}
         terminalAvailable={terminalsState?.available ?? true}
-        onTogglePane={togglePane}
-        sessionOverview={{
-          shown:
-            paneMaximized === null &&
-            (sessionCardsFit ? sessionCardPrefs.shown : sessionCardsPopoverOpen),
-          onToggle: handleToggleSessionCards,
-        }}
-        onResetLayout={handleResetLayout}
+        onTogglePane={activeCli ? undefined : togglePane}
+        sessionOverview={
+          activeCli
+            ? undefined
+            : {
+                shown:
+                  paneMaximized === null &&
+                  (sessionCardsFit ? sessionCardPrefs.shown : sessionCardsPopoverOpen),
+                onToggle: handleToggleSessionCards,
+              }
+        }
+        onResetLayout={activeCli ? undefined : handleResetLayout}
         backgroundTaskCount={countRunning(activeSessionSubAgentRows)}
-        importSources={topbarImportSources}
-        onOpenImport={setImportDialogSource}
-        remoteDeviceCount={remoteDeviceCount}
+        importSources={activeCli ? undefined : topbarImportSources}
+        onOpenImport={activeCli ? undefined : setImportDialogSource}
+        remoteDeviceCount={activeCli ? 0 : remoteDeviceCount}
         remoteHost={remoteHost}
         onRemoteLogOut={onRemoteLogOut}
       />
@@ -4505,7 +4589,8 @@ export function MultiSessionShell({
           collapsed={sidebarRail && !sidebarPeek}
           sessions={sessionItems}
           onNewThread={openNewSession}
-          onLaunchThread={openNewSession}
+          onLaunchThread={handleLaunchThread}
+          installedClis={terminalsState?.clis ?? NO_CLIS}
           onSwitchThread={focusSession}
           onDeleteThread={handleDeleteThread}
           onRenameThread={retitleSession}
@@ -4557,6 +4642,7 @@ export function MultiSessionShell({
           const isActive = sessionId === activeSessionId
           const state = sessionStates.get(sessionId) ?? activeState
           const messageCallbacks = getSessionMessageCallbacks(sessionId)
+          const cliSession = cliSessions.get(sessionId)
           return (
             <section
               key={sessionId}
@@ -4573,6 +4659,18 @@ export function MultiSessionShell({
               }}
             >
               <div className="flex h-full min-w-0 flex-1">
+              {cliSession ? (
+                <Suspense fallback={null}>
+                  <CliSessionView
+                    sessionId={sessionId}
+                    cli={cliSession.cli}
+                    name={getTemplateTitle(cliSession.type)}
+                    folder={cliSession.folder}
+                    runtimeConnection={runtimeConnection}
+                    openLink={openTerminalLink}
+                  />
+                </Suspense>
+              ) : (
               <ThreadErrorBoundary sessionId={sessionId} t={t}>
                 <AssistantUiThread
                   state={state}
@@ -4635,6 +4733,7 @@ export function MultiSessionShell({
                   onComposerEdit={handleComposerEdit}
                 />
               </ThreadErrorBoundary>
+              )}
               </div>
             </section>
           )
@@ -4657,6 +4756,14 @@ export function MultiSessionShell({
       {/* Safety net for a refusal no `useCan` trimmed — and the thing that
           keeps `forbidden_scope` from surfacing as an unhandled rejection. */}
       <ForbiddenScopeNotice />
+      {cliLaunchType ? (
+        <WorkspaceProjectFolderDialog
+          onOpenFolder={pickCliFolder}
+          onSelectFolder={launchCliIn}
+          onCancel={() => setCliLaunchType(null)}
+          cancelLabel={t('thread.cancel')}
+        />
+      ) : null}
     </main>
     </SettingsSessionContext.Provider>
     </SettingsHostActionsContext.Provider>
