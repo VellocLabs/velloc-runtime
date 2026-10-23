@@ -36,6 +36,13 @@ export {
   MCP_INLINE_SCHEMA_BUDGET_CHARS,
 } from './toolAdapter'
 export {
+  mcpServerFailuresFromPool,
+  redactCredentialText,
+  summarizeMcpServerError,
+  MCP_FAILURE_REASON_MAX_CHARS,
+  type McpServerFailure,
+} from './serverFailures'
+export {
   cleanMcpInstructions,
   summarizeMcpInstructions,
   MCP_INSTRUCTIONS_MAX_CHARS,

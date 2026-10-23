@@ -118,6 +118,9 @@ export type ConversationEngineConfig = {
   /** The connected MCP servers' initialize instructions, read at every
    *  prompt render so a server that connects later shows up (F-10). */
   mcpServerInstructions?: () => ReadonlyArray<{ name: string; instructions: string }>
+  /** The MCP servers that failed to connect, each with a masked one-line
+   *  error; read at every prompt render, so a reconnect drops it (F-10). */
+  mcpServerFailures?: () => ReadonlyArray<{ name: string; reason: string }>
   agents: AgentProfile[]
   /** Loaded plugins, listed in the session-init row. */
   plugins?: PluginInitSummary[]

@@ -194,6 +194,7 @@ export async function assemblePrompt(
     {
       tools: config.tools,
       mcpServers: config.mcpServerInstructions?.() ?? [],
+      mcpServerFailures: config.mcpServerFailures?.() ?? [],
       visibleToolNames: tools,
       mainLoopModel: model,
       extraWorkspaceRoots: roots instanceof Map ? Array.from(roots.keys()) : [],

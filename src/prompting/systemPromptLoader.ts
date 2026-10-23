@@ -6,6 +6,7 @@ import { sessionGuidanceChunk } from './systemPromptSessionGuidance'
 import { getEnabledToolNames } from './systemPromptToolSection'
 import { getVisibleSkillCatalogs } from '../toolkit/run/skillCatalogs'
 import { renderMcpServerSections, type McpServerPromptEntry } from './mcpServerSections'
+import type { McpServerFailure } from '../mcp/serverFailures'
 import { getHolderProse, getTemplate } from './templateRegistry'
 import {
   renderPromptSection,
@@ -28,6 +29,8 @@ export type SelectSystemPromptParams = {
   tools: ToolContractList
   /** The connected MCP servers with instructions, for `$mcp_servers`. */
   mcpServers?: ReadonlyArray<McpServerPromptEntry>
+  /** The MCP servers that failed to connect, listed in `$mcp_servers`. */
+  mcpServerFailures?: ReadonlyArray<McpServerFailure>
   /**
    * Per-session agent-template type (the `src/template/<type>/` folder, e.g.
    * `chat`). When set AND a manifest exists, the prompt is composed from
@@ -192,7 +195,7 @@ export async function loadSystemPromptSections(
 
   // The connected MCP servers' own instructions, rendered whether or not
   // their tools are loaded: the section is how the model learns when to load them.
-  const mcpServersChunk = renderMcpServerSections(p.mcpServers ?? [])
+  const mcpServersChunk = renderMcpServerSections(p.mcpServers ?? [], p.mcpServerFailures ?? [])
 
   // ── Manifest path (per-session agent template) ──────────────────────
   // When a template type is given AND a manifest exists, compose the prompt

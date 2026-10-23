@@ -120,6 +120,7 @@ import {
   createWorkerMcpOperations,
   isMcpSessionTool,
   mcpServerInstructionsFromPool,
+  mcpServerFailuresFromPool,
   mcpSessionOffering,
   type McpSessionOffering,
 } from '../../mcp'
@@ -2237,6 +2238,7 @@ ${teammateAddendum}`
     mcpClients: (coreState.options.mcpClients ?? []) as [],
     mcpServerInstructions: () =>
       mcpServerInstructionsFromPool(mcpPool).filter(entry => mcpServersOffered.has(entry.name)),
+    mcpServerFailures: () => (allowsMcp ? mcpServerFailuresFromPool(mcpPool) : []),
     agents: (coreState.options.agents ?? []) as [],
     plugins: pluginContributions.plugins.map(plugin => ({
       name: plugin.name,

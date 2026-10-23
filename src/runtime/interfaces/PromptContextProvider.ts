@@ -1,11 +1,14 @@
 import type { ServerLink, Message } from '../RuntimeTypes'
 import type { ToolContractList } from '../../toolkit/toolContract'
 import type { McpServerPromptEntry } from '../../prompting/mcpServerSections'
+import type { McpServerFailure } from '../../mcp/serverFailures'
 
 export type FetchSystemPromptPartsParams = {
   tools: ToolContractList
   /** The connected MCP servers with instructions, for the `$mcp_servers` section. */
   mcpServers?: ReadonlyArray<McpServerPromptEntry>
+  /** The MCP servers that failed to connect, for the same section. */
+  mcpServerFailures?: ReadonlyArray<McpServerFailure>
   /**
    * Deferral-aware visible tool names (deferral-filtered set). Forwarded to
    * the holder-emitting loader so the tool-catalog holder is gated on the
