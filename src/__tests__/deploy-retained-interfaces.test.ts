@@ -401,7 +401,7 @@ describe('assembleSite — a whole local stage with a fake legacy release', () =
 describe('the release workflows carry retained versions without rebuilding', () => {
   const workflows = join(repoRoot, '.github', 'workflows')
   const beta = parse(readFileSync(join(workflows, 'build-beta.yml'), 'utf8'))
-  const steps = beta.jobs.build.steps as Array<{ name?: string, id?: string, run?: string, 'continue-on-error'?: unknown }>
+  const steps = beta.jobs.pack.steps as Array<{ name?: string, id?: string, run?: string, 'continue-on-error'?: unknown }>
 
   it('Workflow A fetches every pinned release before packing, and a failed fetch fails the build', () => {
     const legacyIndex = steps.findIndex(step => step.id === 'legacy')

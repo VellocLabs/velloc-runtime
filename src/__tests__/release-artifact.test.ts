@@ -367,6 +367,54 @@ describe('computeAssetChurn', () => {
   })
 })
 
+describe('Workflow A gates the deploy, not the build', () => {
+  const doc = parse(readFileSync(join(workflows, 'build-beta.yml'), 'utf8'))
+  const jobs = doc.jobs as Record<string, {
+    needs?: string | string[], steps: Array<{ uses?: string, run?: string, with?: Record<string, unknown> }>
+  }>
+  const needsOf = (job: string) => [jobs[job].needs ?? []].flat()
+  const body = (job: string) => JSON.stringify(jobs[job].steps)
+
+  it('deploys only after typecheck, every test shard and pack succeed', () => {
+    expect(needsOf('deploy').sort()).toEqual(['pack', 'test', 'typecheck'])
+    for (const gate of ['typecheck', 'test', 'pack']) {
+      expect(needsOf(gate)).toEqual(['source'])
+    }
+  })
+
+  it('touches beta from the deploy job alone', () => {
+    for (const job of Object.keys(jobs)) {
+      if (job === 'deploy') continue
+      expect(body(job), `${job} must not deploy`).not.toMatch(/wrangler@/)
+    }
+    expect(body('deploy')).toMatch(/wrangler@[\d.]+ deploy[\s\S]*--name velloc-runtime-beta/)
+  })
+
+  it('builds and tests the one commit `source` resolved', () => {
+    for (const job of ['typecheck', 'test', 'pack']) {
+      const checkout = jobs[job].steps.find(s => s.uses?.startsWith('actions/checkout@'))
+      expect(checkout?.with?.ref, job).toBe('${{ needs.source.outputs.commit }}')
+    }
+  })
+
+  it('shards the tests with one retry, and lets every shard report', () => {
+    const test = doc.jobs.test
+    const shards: number[] = test.strategy.matrix.shard
+    expect(shards).toEqual(shards.map((_, i) => i + 1))
+    expect(test.strategy['fail-fast']).toBe(false)
+    expect(body('test')).toContain(`--shard=\${{ matrix.shard }}/${shards.length} --retry=1`)
+  })
+
+  it('uploads `candidate` once, from pack, and deploys what it downloads', () => {
+    const uploads = Object.entries(jobs).flatMap(([job, j]) => j.steps
+      .filter(s => s.uses?.startsWith('actions/upload-artifact@'))
+      .map(s => [job, s.with?.name]))
+    expect(uploads).toEqual([['pack', 'candidate']])
+    const download = jobs.deploy.steps.find(s => s.uses?.startsWith('actions/download-artifact@'))
+    expect(download?.with?.name).toBe('candidate')
+  })
+})
+
 describe('promote input ergonomics', () => {
   // Both promote inputs are optional and resolved by the workflow: the run id
   // defaults to the newest successful build, the tag is generated from the
@@ -427,6 +475,22 @@ describe('promote input ergonomics', () => {
     expect(step.run).toMatch(/::warning::beta serves/)
     // Unreachable beta must not silently pass in the auto path either.
     expect(step.run).toMatch(/::error::could not read/)
+  })
+
+  it('promotes only a completed, successful Workflow A run, pinned or not', () => {
+    // A failed-gate run still holds a `candidate` (pack uploads it before the
+    // gates finish), so the run's own state is what keeps it off production.
+    const step = doc.jobs.resolve.steps.find(
+      (s: { id?: string }) => s.id === 'run')
+    expect(step, 'resolve must resolve the run').toBeDefined()
+    const check = step.run.slice(step.run.lastIndexOf('fi\n'))
+    expect(check).toMatch(/gh api "repos\/\$GITHUB_REPOSITORY\/actions\/runs\/\$RUN_ID"/)
+    expect(check).toContain('"\\(.path) \\(.status) \\(.conclusion)"')
+    expect(check).toContain('".github/workflows/build-beta.yml completed success") : ;;')
+    expect(check).toMatch(/\*\) echo "::error::run \$RUN_ID is not a successful[^\n]*\n\s*exit 1/)
+    // The check runs on both paths: after the pinned/resolved branch closes,
+    // before the run id is published to the deploy job.
+    expect(check.indexOf('gh api')).toBeLessThan(check.indexOf('run_id=$RUN_ID'))
   })
 
   it('names the soak origin in exactly one place', () => {
@@ -886,6 +950,7 @@ describe('release workflow contract', () => {
       'actions/checkout': 5,
       'actions/setup-node': 5,
       'actions/upload-artifact': 6,
+      'actions/download-artifact': 7,
     }
     let seen = 0
     for (const name of readdirSync(workflows).filter(n => /\.ya?ml$/.test(n))) {
