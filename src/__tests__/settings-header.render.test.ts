@@ -2,9 +2,11 @@
 import { createElement, useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
 import { SettingsScreen } from '../browser/webview/settings/SettingsScreen'
+import { NexusTopBar } from '../browser/webview/topbar/NexusTopBar'
 import {
   computeRegions,
   useWindowDragRegions,
@@ -98,6 +100,26 @@ describe('settings header', () => {
     report.mockClear()
     rerender(createElement(Bar, { hidden: false }))
     await waitFor(() => expect(report).toHaveBeenLastCalledWith([bar]))
+  })
+
+  it('is exactly as tall as the topbar it replaces', () => {
+    renderSettings()
+    const heightOf = (className: string) =>
+      className.split(/\s+/).filter(c => /^h-/.test(c))
+    const topbar = renderToStaticMarkup(
+      createElement(NexusTopBar, {
+        catalog: null,
+        selection: null,
+        onSelectModel: () => {},
+        onOpenSettings: () => {},
+      }),
+    )
+    const topbarClass =
+      /<header[^>]*data-slot="nexus-topbar"[^>]*class="([^"]*)"/.exec(topbar)?.[1] ??
+      /<header[^>]*class="([^"]*)"[^>]*data-slot="nexus-topbar"/.exec(topbar)?.[1] ??
+      ''
+    expect(heightOf(topbarClass)).toEqual(['h-11'])
+    expect(heightOf(screen.getByTestId('settings-header').className)).toEqual(['h-11'])
   })
 
   it('reserves the OS caption strip on the desktop only', () => {

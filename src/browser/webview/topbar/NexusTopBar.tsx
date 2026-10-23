@@ -47,6 +47,7 @@ import {
 import type { ModsPressTopbarResult } from "../../runtimeProtocol/modContributions";
 import { FOLD_ATTR, useTopbarFit } from "./useTopbarFit";
 import { useWindowDragRegions } from "./useWindowDragRegions";
+import { TOP_BAR_HEIGHT_CLASS } from "./barHeight";
 
 /**
  * The column header above the conversation grid: LEFT controls (settings,
@@ -293,7 +294,7 @@ export function NexusTopBar({
         // The whole bar is the drag surface; controls carry `data-app-region="no-drag"`.
         // Equal `1fr` side columns centre the strip on the window; each is floored
         // at `min-content`, so only the centre column shrinks.
-        className="grid h-11 shrink-0 grid-cols-[minmax(min-content,1fr)_minmax(0,auto)_minmax(min-content,1fr)] items-center gap-2 border-b bg-toolbar px-2"
+        className={`grid ${TOP_BAR_HEIGHT_CLASS} shrink-0 grid-cols-[minmax(min-content,1fr)_minmax(0,auto)_minmax(min-content,1fr)] items-center gap-2 border-b bg-toolbar px-2`}
       >
       <div
         ref={leftGroupRef}

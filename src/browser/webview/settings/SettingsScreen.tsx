@@ -10,6 +10,7 @@ import type { BrowserBridgeTransport } from "../../bridge/browserBridgeProtocol"
 import type { BrowserLlmCatalog } from "../../bridge/protocol/nexus_llm";
 import type { WindowDragRect } from "../../bridge/protocol/ui";
 import { useWindowDragRegions } from "../topbar/useWindowDragRegions";
+import { TOP_BAR_HEIGHT_CLASS } from "../topbar/barHeight";
 import type { RuntimeConnection } from "../../runtimeClient/RuntimeConnection";
 import { useRemoteAccessView } from "../remote/remoteAccessView";
 import { AboutSection } from "./sections/AboutSection";
@@ -225,7 +226,7 @@ export function SettingsScreen({
       <header
         ref={headerRef}
         data-testid="settings-header"
-        className="flex h-14 shrink-0 items-center gap-2 border-b px-3"
+        className={cn("flex shrink-0 items-center gap-2 border-b px-3", TOP_BAR_HEIGHT_CLASS)}
       >
         <Button
           variant="ghost"
