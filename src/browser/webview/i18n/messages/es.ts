@@ -909,9 +909,9 @@ export const es: Messages = {
   'settings.general.callNamePlaceholder': 'Nombre preferido',
   'settings.general.workRole': 'Función',
   'settings.general.rolePlaceholder': 'Seleccione una función…',
-  'settings.general.instructions': 'Instrucciones para {product}',
+  'settings.general.instructions': 'Todos los proyectos',
   'settings.general.instructionsDescription':
-    'Instrucciones permanentes que se añaden al prompt del sistema de {product} en todos los proyectos. Se guardan en tu archivo de instrucciones de usuario; se aplican en una sesión nueva.',
+    'Se añaden al prompt del sistema y se aplican en una sesión nueva.',
   'settings.general.instructionsConflict':
     'Este archivo cambió en el disco, así que tu edición no se guardó. Tu texto se conserva arriba; abajo se muestra el contenido actual del disco: vuelve a aplicar tu cambio y haz clic fuera para guardar.',
   'settings.general.instructionsUnreadable':
@@ -1888,9 +1888,9 @@ export const es: Messages = {
   'settings.memory.openFolder': 'Abrir la carpeta',
   'settings.memory.open': 'Abrir',
   'settings.memory.groupIndex': 'Índice',
-  'settings.memory.instructionsTitle': 'Archivos de instrucciones',
+  'settings.memory.instructionsTitle': 'Archivos cargados',
   'settings.memory.instructionsDescription':
-    'Archivos que escribe usted y que el agente lee como instrucciones (AGENTS.md / CLAUDE.md y reglas). Se muestran en solo lectura: «Borrar todo» nunca los elimina.',
+    'Archivos de instrucciones y reglas que lee el agente. Solo lectura: «Borrar todo» nunca los elimina.',
   'settings.memory.noInstructions':
     'No se encontró ningún archivo de instrucciones.',
 

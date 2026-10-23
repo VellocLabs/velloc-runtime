@@ -880,9 +880,8 @@ export const zh: Messages = {
   'settings.general.callNamePlaceholder': '习惯的称呼',
   'settings.general.workRole': '职能',
   'settings.general.rolePlaceholder': '选择职能…',
-  'settings.general.instructions': '给 {product} 的指令',
-  'settings.general.instructionsDescription':
-    '在每个项目中都添加到 {product} 系统提示词的长期指令。保存在你的用户指令文件中，在新会话中生效。',
+  'settings.general.instructions': '所有项目',
+  'settings.general.instructionsDescription': '添加到系统提示词，在新会话中生效。',
   'settings.general.instructionsConflict':
     '该文件已在磁盘上变更，你的修改未保存。你输入的内容仍保留在上方，下方显示的是磁盘上的当前内容 — 请重新应用你的修改，然后点击其他位置保存。',
   'settings.general.instructionsUnreadable':
@@ -1784,9 +1783,8 @@ export const zh: Messages = {
   'settings.memory.openFolder': '打开文件夹',
   'settings.memory.open': '打开',
   'settings.memory.groupIndex': '索引',
-  'settings.memory.instructionsTitle': '指令文件',
-  'settings.memory.instructionsDescription':
-    '由你编写、智能体当作指令来读取的文件（AGENTS.md / CLAUDE.md 和规则文件）。这里只读显示 — “全部清除”永远不会删除它们。',
+  'settings.memory.instructionsTitle': '已加载文件',
+  'settings.memory.instructionsDescription': '智能体读取的指令文件和规则文件。只读 — “全部清除”不会删除它们。',
   'settings.memory.noInstructions': '未找到任何指令文件。',
 
   // ── 设置 — 通用 · 系统（从独立页面并入）──────────────────────────────────

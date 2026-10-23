@@ -945,9 +945,8 @@ export const en = {
   'settings.general.callNamePlaceholder': 'Preferred name',
   'settings.general.workRole': 'Role',
   'settings.general.rolePlaceholder': 'Select a role…',
-  'settings.general.instructions': 'Instructions for {product}',
-  'settings.general.instructionsDescription':
-    "Standing instructions added to {product}'s system prompt in every project. Stored in your user instruction file; takes effect in a new session.",
+  'settings.general.instructions': 'All projects',
+  'settings.general.instructionsDescription': 'Added to the system prompt in every new session.',
   'settings.general.instructionsConflict':
     'This file changed on disk, so your edit was not saved. Your text is kept above; the current contents on disk are shown below — reapply your change, then click away to save.',
   'settings.general.instructionsUnreadable':
@@ -1909,9 +1908,9 @@ export const en = {
   'settings.memory.openFolder': 'Open folder',
   'settings.memory.open': 'Open',
   'settings.memory.groupIndex': 'Index',
-  'settings.memory.instructionsTitle': 'Instruction files',
+  'settings.memory.instructionsTitle': 'Loaded files',
   'settings.memory.instructionsDescription':
-    'Files you author that the agent reads as instructions (AGENTS.md / CLAUDE.md and rules). Shown read-only — these are never deleted by “Clear all”.',
+    'Instruction files and rules the agent reads. Read-only — “Clear all” never deletes them.',
   'settings.memory.noInstructions': 'No instruction files found.',
 
   // ── Settings — General · System (folded in from its own page; now also ──

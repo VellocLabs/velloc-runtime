@@ -890,9 +890,8 @@ export const ko: Messages = {
   'settings.general.callNamePlaceholder': '선호하는 호칭',
   'settings.general.workRole': '역할',
   'settings.general.rolePlaceholder': '역할 선택…',
-  'settings.general.instructions': '{product}에 대한 지침',
-  'settings.general.instructionsDescription':
-    '모든 프로젝트에서 {product}의 시스템 프롬프트에 추가되는 상시 지침입니다. 사용자 지침 파일에 저장되며 새 세션부터 적용됩니다.',
+  'settings.general.instructions': '모든 프로젝트',
+  'settings.general.instructionsDescription': '시스템 프롬프트에 추가되며 새 세션부터 적용됩니다.',
   'settings.general.instructionsConflict':
     '이 파일이 디스크에서 변경되어 편집 내용이 저장되지 않았습니다. 입력한 내용은 위에 그대로 남아 있고, 디스크의 현재 내용은 아래에 표시됩니다 — 변경을 다시 적용한 뒤 다른 곳을 클릭해 저장하세요.',
   'settings.general.instructionsUnreadable':
@@ -1830,9 +1829,9 @@ export const ko: Messages = {
   'settings.memory.openFolder': '폴더 열기',
   'settings.memory.open': '열기',
   'settings.memory.groupIndex': '색인',
-  'settings.memory.instructionsTitle': '지침 파일',
+  'settings.memory.instructionsTitle': '불러오는 파일',
   'settings.memory.instructionsDescription':
-    '당신이 작성하고 에이전트가 지침으로 읽는 파일입니다(AGENTS.md / CLAUDE.md와 규칙). 읽기 전용으로 표시되며 "모두 지우기"로 삭제되지 않습니다.',
+    '에이전트가 읽는 지침 파일과 규칙 파일입니다. 읽기 전용이며 "모두 지우기"로 삭제되지 않습니다.',
   'settings.memory.noInstructions': '지침 파일을 찾지 못했습니다.',
 
   // ── 설정 — 일반 · 시스템(독립 페이지에서 통합) ───────────────────────────

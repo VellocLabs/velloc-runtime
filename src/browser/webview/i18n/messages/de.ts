@@ -906,9 +906,9 @@ export const de: Messages = {
   'settings.general.callNamePlaceholder': 'Bevorzugte Anrede',
   'settings.general.workRole': 'Rolle',
   'settings.general.rolePlaceholder': 'Rolle auswählen …',
-  'settings.general.instructions': 'Anweisungen für {product}',
+  'settings.general.instructions': 'Alle Projekte',
   'settings.general.instructionsDescription':
-    'Dauerhafte Anweisungen, die dem System-Prompt von {product} in jedem Projekt hinzugefügt werden. Werden in deiner Benutzer-Anweisungsdatei gespeichert; wirkt sich in einer neuen Sitzung aus.',
+    'Wird dem System-Prompt hinzugefügt und wirkt sich in einer neuen Sitzung aus.',
   'settings.general.instructionsConflict':
     'Diese Datei wurde auf der Festplatte geändert, deine Bearbeitung wurde daher nicht gespeichert. Dein Text bleibt oben erhalten; unten steht der aktuelle Inhalt der Datei — wende deine Änderung erneut an und klicke dann daneben, um zu speichern.',
   'settings.general.instructionsUnreadable':
@@ -1882,9 +1882,9 @@ export const de: Messages = {
   'settings.memory.openFolder': 'Ordner öffnen',
   'settings.memory.open': 'Öffnen',
   'settings.memory.groupIndex': 'Index',
-  'settings.memory.instructionsTitle': 'Anweisungsdateien',
+  'settings.memory.instructionsTitle': 'Geladene Dateien',
   'settings.memory.instructionsDescription':
-    'Dateien, die du selbst schreibst und die der Agent als Anweisungen liest (AGENTS.md / CLAUDE.md und Regeln). Werden nur lesend angezeigt — „Alle löschen“ entfernt sie nie.',
+    'Anweisungsdateien und Regeln, die der Agent liest. Nur lesbar — „Alle löschen“ entfernt sie nie.',
   'settings.memory.noInstructions': 'Keine Anweisungsdateien gefunden.',
 
   // ── Einstellungen — Allgemein · System (eingegliedert) ─────────────────

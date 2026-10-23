@@ -24,8 +24,8 @@ import {
 
 /**
  * Instructions — what YOU author to shape the agent (Memory is what the agent
- * writes). "Instructions for Nexus" edits the USER-tier file `~/.velloc/AGENTS.md`
- * (every project, next session); "Instruction files" lists the discovered hierarchy
+ * writes). "All projects" edits the USER-tier file `~/.velloc/AGENTS.md`
+ * (every project, next session); "Loaded files" lists the discovered hierarchy
  * read-only. There is no settings-backed instruction field.
  */
 export function InstructionsSection() {
@@ -274,7 +274,7 @@ function dirOf(path: string): string {
 }
 
 /**
- * "Instruction files" — the user-authored AGENTS.md hierarchy + rules, grouped
+ * "Loaded files" — the user-authored AGENTS.md hierarchy + rules, grouped
  * by tier (User / Project / Local). READ-ONLY: each row has an "Open" (reveal
  * the containing folder) but NO delete — these are your files, never touched by
  * Memory's "Clear all". Auto-loads on mount via the `memory` bridge's

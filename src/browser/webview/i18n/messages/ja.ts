@@ -894,9 +894,8 @@ export const ja: Messages = {
   'settings.general.callNamePlaceholder': '呼び名',
   'settings.general.workRole': '役割',
   'settings.general.rolePlaceholder': '役割を選択…',
-  'settings.general.instructions': '{product} への指示',
-  'settings.general.instructionsDescription':
-    'すべてのプロジェクトで {product} のシステムプロンプトに追加される恒常的な指示です。ユーザー指示ファイルに保存され、新しいセッションから有効になります。',
+  'settings.general.instructions': 'すべてのプロジェクト',
+  'settings.general.instructionsDescription': 'システムプロンプトに追加され、新しいセッションから有効になります。',
   'settings.general.instructionsConflict':
     'このファイルがディスク上で変更されたため、編集は保存されませんでした。入力した内容は上にそのまま残しています。下にディスク上の現在の内容を表示しています — 変更をもう一度適用し、フォーカスを外して保存してください。',
   'settings.general.instructionsUnreadable':
@@ -1839,9 +1838,9 @@ export const ja: Messages = {
   'settings.memory.openFolder': 'フォルダを開く',
   'settings.memory.open': '開く',
   'settings.memory.groupIndex': '索引',
-  'settings.memory.instructionsTitle': '指示ファイル',
+  'settings.memory.instructionsTitle': '読み込まれるファイル',
   'settings.memory.instructionsDescription':
-    'あなたが書き、エージェントが指示として読むファイルです（AGENTS.md / CLAUDE.md とルール）。読み取り専用で表示され、「すべて消去」で削除されることはありません。',
+    'エージェントが読む指示ファイルとルールファイルです。読み取り専用で、「すべて消去」では削除されません。',
   'settings.memory.noInstructions': '指示ファイルは見つかりませんでした。',
 
   // ── 設定 — 全般 · システム（独立ページから統合）──────────────────────────

@@ -910,9 +910,9 @@ export const fr: Messages = {
   'settings.general.callNamePlaceholder': 'Nom d’usage',
   'settings.general.workRole': 'Rôle',
   'settings.general.rolePlaceholder': 'Sélectionner un rôle…',
-  'settings.general.instructions': 'Instructions pour {product}',
+  'settings.general.instructions': 'Tous les projets',
   'settings.general.instructionsDescription':
-    'Instructions permanentes ajoutées au prompt système de {product} dans tous les projets. Enregistrées dans votre fichier d’instructions utilisateur ; prend effet dans une nouvelle session.',
+    'Ajoutées au prompt système ; prend effet dans une nouvelle session.',
   'settings.general.instructionsConflict':
     'Ce fichier a changé sur le disque, votre modification n’a donc pas été enregistrée. Votre texte est conservé ci-dessus ; le contenu actuel du disque est affiché ci-dessous — réappliquez votre modification, puis cliquez ailleurs pour enregistrer.',
   'settings.general.instructionsUnreadable':
@@ -1891,9 +1891,9 @@ export const fr: Messages = {
   'settings.memory.openFolder': 'Ouvrir le dossier',
   'settings.memory.open': 'Ouvrir',
   'settings.memory.groupIndex': 'Index',
-  'settings.memory.instructionsTitle': 'Fichiers d’instructions',
+  'settings.memory.instructionsTitle': 'Fichiers chargés',
   'settings.memory.instructionsDescription':
-    'Des fichiers que vous rédigez et que l’agent lit comme des instructions (AGENTS.md / CLAUDE.md et règles). Affichés en lecture seule — « Tout effacer » ne les supprime jamais.',
+    'Fichiers d’instructions et règles lus par l’agent. Lecture seule — « Tout effacer » ne les supprime jamais.',
   'settings.memory.noInstructions': 'Aucun fichier d’instructions trouvé.',
 
   // ── Paramètres — Général · Système (intégrée depuis sa page) ───────────
