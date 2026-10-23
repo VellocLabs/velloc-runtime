@@ -34,16 +34,21 @@ type BridgeOptions = {
    * simulating the file changing on disk while the page sat open.
    */
   conflictWith?: string
+  /** Discovered instruction files (`memory.instructions`). */
+  files?: Array<{ path: string; tier: 'User' | 'Project' | 'Local'; bytes: number }>
 }
 
 function makeBridge(options: BridgeOptions = {}) {
-  const { initial = 'Be terse.', conflictWith } = options
+  const {
+    initial = 'Be terse.',
+    conflictWith,
+    files: instrFiles = [
+      { path: USER_INSTRUCTIONS_PATH, tier: 'User' as const, bytes: 40 },
+      { path: '/repo/VELLOC.md', tier: 'Project' as const, bytes: 80 },
+    ],
+  } = options
   let content = initial
   let conflictPending = conflictWith !== undefined
-  const instrFiles = [
-    { path: USER_INSTRUCTIONS_PATH, tier: 'User' as const, bytes: 40 },
-    { path: '/repo/VELLOC.md', tier: 'Project' as const, bytes: 80 },
-  ]
   const writes: Array<{ content: string; expected?: string | null }> = []
   const bridge = {
     request: vi.fn(
@@ -305,17 +310,67 @@ describe('InstructionsSection', () => {
     )
   })
 
-  it('auto-loads the read-only instruction files, grouped by tier, with per-file Open', async () => {
-    const { revealFolder } = renderSection(makeBridge().bridge)
+  it('lists the project files by tier under "This project", with per-file Open', async () => {
+    const { revealFolder } = renderSection(
+      makeBridge({
+        files: [
+          { path: '/repo/VELLOC.md', tier: 'Project', bytes: 80 },
+          { path: '/repo/VELLOC.local.md', tier: 'Local', bytes: 10 },
+        ],
+      }).bridge,
+    )
     const instr = await screen.findByTestId('memory-instructions')
-    expect(instr.textContent ?? '').toContain(USER_INSTRUCTIONS_PATH)
+    await waitFor(() =>
+      expect(instr.textContent ?? '').toContain('/repo/VELLOC.local.md'),
+    )
     expect(instr.textContent ?? '').toContain('/repo/VELLOC.md')
-    expect(instr.textContent ?? '').toMatch(/user/i)
-    expect(instr.textContent ?? '').toMatch(/project/i)
+    const labels = Array.from(instr.querySelectorAll('h3')).map(h => h.textContent)
+    expect(labels).toEqual(['Project', 'Local'])
+    expect(screen.getByText('This project')).toBeTruthy()
     // Open reveals the file's CONTAINING folder (not the file itself).
     const openButtons = await screen.findAllByTestId('memory-instruction-open')
     fireEvent.click(openButtons[0]!)
-    expect(revealFolder).toHaveBeenCalledWith('/home/u/.velloc')
+    expect(revealFolder).toHaveBeenCalledWith('/repo')
+  })
+
+  it('never lists User-tier files under "This project"; the edited file is not repeated', async () => {
+    renderSection(makeBridge().bridge)
+    await screen.findByTestId('user-instructions')
+    const instr = await screen.findByTestId('memory-instructions')
+    await waitFor(() => expect(instr.textContent ?? '').toContain('/repo/VELLOC.md'))
+    expect(instr.textContent ?? '').not.toContain(USER_INSTRUCTIONS_PATH)
+    // The only User-tier file is the one the field edits: no "Also applies" list.
+    expect(screen.queryByTestId('user-instruction-files')).toBeNull()
+  })
+
+  it('lists the other User-tier files under "All projects"', async () => {
+    renderSection(
+      makeBridge({
+        files: [
+          { path: USER_INSTRUCTIONS_PATH, tier: 'User', bytes: 40 },
+          { path: '/home/u/.velloc/rules/style.md', tier: 'User', bytes: 12 },
+        ],
+      }).bridge,
+    )
+    const extra = await screen.findByTestId('user-instruction-files')
+    expect(extra.textContent ?? '').toContain('/home/u/.velloc/rules/style.md')
+    expect(extra.textContent ?? '').toContain('Also applies')
+    expect(extra.textContent ?? '').not.toContain(USER_INSTRUCTIONS_PATH)
+    expect(screen.getByText('All projects')).toBeTruthy()
+    // No project-tier files → the empty note.
+    const empty = await screen.findByTestId('memory-instructions-empty')
+    expect(empty.textContent).toBe('None in this project.')
+  })
+
+  it('matches the edited file across separator style and case', async () => {
+    renderSection(
+      makeBridge({
+        files: [{ path: '\\HOME\\u\\.velloc\\VELLOC.md', tier: 'User', bytes: 40 }],
+      }).bridge,
+    )
+    await screen.findByTestId('user-instructions-path')
+    await screen.findByTestId('memory-instructions-empty')
+    expect(screen.queryByTestId('user-instruction-files')).toBeNull()
   })
 
   it('holds the updater reload gate while the draft is not on disk', async () => {

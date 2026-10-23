@@ -912,7 +912,7 @@ export const fr: Messages = {
   'settings.general.rolePlaceholder': 'Sélectionner un rôle…',
   'settings.general.instructions': 'Tous les projets',
   'settings.general.instructionsDescription':
-    'Ajoutées au prompt système ; prend effet dans une nouvelle session.',
+    'Prend effet à votre prochaine session.',
   'settings.general.instructionsConflict':
     'Ce fichier a changé sur le disque, votre modification n’a donc pas été enregistrée. Votre texte est conservé ci-dessus ; le contenu actuel du disque est affiché ci-dessous — réappliquez votre modification, puis cliquez ailleurs pour enregistrer.',
   'settings.general.instructionsUnreadable':
@@ -1891,10 +1891,13 @@ export const fr: Messages = {
   'settings.memory.openFolder': 'Ouvrir le dossier',
   'settings.memory.open': 'Ouvrir',
   'settings.memory.groupIndex': 'Index',
-  'settings.memory.instructionsTitle': 'Fichiers chargés',
+  'settings.memory.instructionsTitle': 'Ce projet',
   'settings.memory.instructionsDescription':
-    'Fichiers d’instructions et règles lus par l’agent. Lecture seule — « Tout effacer » ne les supprime jamais.',
-  'settings.memory.noInstructions': 'Aucun fichier d’instructions trouvé.',
+    'Fichiers lus par l’agent dans le projet actuel.',
+  'settings.memory.noInstructions': 'Aucun dans ce projet.',
+  'settings.memory.tierProject': 'Projet',
+  'settings.memory.tierLocal': 'Local',
+  'settings.memory.otherUserFiles': 'S’applique aussi',
 
   // ── Paramètres — Général · Système (intégrée depuis sa page) ───────────
   'settings.system.title': 'Système',

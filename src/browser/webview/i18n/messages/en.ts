@@ -946,7 +946,8 @@ export const en = {
   'settings.general.workRole': 'Role',
   'settings.general.rolePlaceholder': 'Select a role…',
   'settings.general.instructions': 'All projects',
-  'settings.general.instructionsDescription': 'Added to the system prompt in every new session.',
+  'settings.general.instructionsDescription':
+    'Takes effect in your next session.',
   'settings.general.instructionsConflict':
     'This file changed on disk, so your edit was not saved. Your text is kept above; the current contents on disk are shown below — reapply your change, then click away to save.',
   'settings.general.instructionsUnreadable':
@@ -1908,10 +1909,13 @@ export const en = {
   'settings.memory.openFolder': 'Open folder',
   'settings.memory.open': 'Open',
   'settings.memory.groupIndex': 'Index',
-  'settings.memory.instructionsTitle': 'Loaded files',
+  'settings.memory.instructionsTitle': 'This project',
   'settings.memory.instructionsDescription':
-    'Instruction files and rules the agent reads. Read-only — “Clear all” never deletes them.',
-  'settings.memory.noInstructions': 'No instruction files found.',
+    'Files the agent reads in the current project.',
+  'settings.memory.noInstructions': 'None in this project.',
+  'settings.memory.tierProject': 'Project',
+  'settings.memory.tierLocal': 'Local',
+  'settings.memory.otherUserFiles': 'Also applies',
 
   // ── Settings — General · System (folded in from its own page; now also ──
   // holds the display-language row above — two settings under one title) ────

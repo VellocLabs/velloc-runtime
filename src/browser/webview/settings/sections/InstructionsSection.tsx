@@ -24,9 +24,10 @@ import {
 
 /**
  * Instructions — what YOU author to shape the agent (Memory is what the agent
- * writes). "All projects" edits the USER-tier file `~/.velloc/AGENTS.md`
- * (every project, next session); "Loaded files" lists the discovered hierarchy
- * read-only. There is no settings-backed instruction field.
+ * writes). "All projects" edits the USER-tier file `~/.velloc/AGENTS.md` (every
+ * project, next session) and lists the other User-tier files; "This project"
+ * lists the Project and Local tiers read-only. There is no settings-backed
+ * instruction field.
  */
 export function InstructionsSection() {
   const t = useT();
@@ -46,11 +47,51 @@ export function InstructionsSection() {
 
   return (
     <SettingsSubpageLayout title={t("settings.nav.instructions")}>
-      <div data-testid="settings-instructions" className="flex flex-col gap-4">
-        <GlobalInstructionsField bridge={bridge} />
-        <InstructionFilesList bridge={bridge} />
-      </div>
+      <InstructionsBody bridge={bridge} />
     </SettingsSubpageLayout>
+  );
+}
+
+type InstructionFile = {
+  path: string;
+  tier: "User" | "Project" | "Local";
+  bytes: number;
+};
+
+/**
+ * Loads the discovered instruction files once (`memory.instructions`, for the
+ * session the client shows) and splits them by scope: User-tier files belong to
+ * "All projects", Project and Local tiers to "This project".
+ */
+function InstructionsBody({ bridge }: { bridge: NexusSettingsBridge }) {
+  const sessionId = useSettingsSession();
+  const [files, setFiles] = React.useState<InstructionFile[] | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await memoryInstructions(bridge, sessionId);
+        if (!cancelled) setFiles(r.files);
+      } catch {
+        if (!cancelled) setFiles([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, sessionId]);
+
+  return (
+    <div data-testid="settings-instructions" className="flex flex-col gap-4">
+      <GlobalInstructionsField
+        bridge={bridge}
+        userFiles={files?.filter((f) => f.tier === "User") ?? []}
+      />
+      <InstructionFilesList
+        files={files?.filter((f) => f.tier !== "User") ?? null}
+      />
+    </div>
   );
 }
 
@@ -60,7 +101,14 @@ export function InstructionsSection() {
  * CONFLICT-CHECKED against the loaded baseline; on a conflict the field resyncs to
  * disk and says so instead of overwriting. Takes effect in the NEXT session.
  */
-function GlobalInstructionsField({ bridge }: { bridge: NexusSettingsBridge }) {
+function GlobalInstructionsField({
+  bridge,
+  userFiles,
+}: {
+  bridge: NexusSettingsBridge;
+  /** User-tier files; the one this field edits is not listed again. */
+  userFiles: InstructionFile[];
+}) {
   const t = useT();
   // `value` doubles as the load flag (null = still loading) AND the baseline
   // the conflict check is made against, so the two can never disagree.
@@ -183,6 +231,8 @@ function GlobalInstructionsField({ bridge }: { bridge: NexusSettingsBridge }) {
   const commitRef = React.useRef(commit);
   commitRef.current = commit;
 
+  const otherUserFiles = userFiles.filter((f) => !samePath(f.path, path));
+
   return (
     <SettingsSection
       title={t("settings.general.instructions")}
@@ -253,10 +303,27 @@ function GlobalInstructionsField({ bridge }: { bridge: NexusSettingsBridge }) {
               {path}
             </p>
           ) : null}
+          {otherUserFiles.length > 0 ? (
+            <div
+              className="mt-3 flex flex-col gap-1"
+              data-testid="user-instruction-files"
+            >
+              <SettingsGroupLabel>
+                {t("settings.memory.otherUserFiles")}
+              </SettingsGroupLabel>
+              <InstructionFileRows files={otherUserFiles} />
+            </div>
+          ) : null}
         </>
       )}
     </SettingsSection>
   );
+}
+
+/** Path equality across separator style and case (Windows paths). */
+function samePath(a: string, b: string): boolean {
+  const norm = (p: string) => p.replace(/\\/g, "/").toLowerCase();
+  return norm(a) === norm(b);
 }
 
 /** Compact byte-size formatter for the file list (no i18n — units are universal
@@ -273,44 +340,20 @@ function dirOf(path: string): string {
   return i > 0 ? path.slice(0, i) : path;
 }
 
+const TIER_LABEL_KEYS = {
+  Project: "settings.memory.tierProject",
+  Local: "settings.memory.tierLocal",
+} as const;
+
 /**
- * "Loaded files" — the user-authored AGENTS.md hierarchy + rules, grouped
- * by tier (User / Project / Local). READ-ONLY: each row has an "Open" (reveal
- * the containing folder) but NO delete — these are your files, never touched by
- * Memory's "Clear all". Auto-loads on mount via the `memory` bridge's
- * `instructions` action (a read-only on-disk discovery, no migration).
+ * "This project" — the Project and Local tier files of the session the client
+ * shows, grouped by tier. READ-ONLY: each row has an "Open" (reveal the
+ * containing folder) but NO delete — these are your files, never touched by
+ * Memory's "Clear all". `files` is null while the discovery is loading.
  */
-function InstructionFilesList({ bridge }: { bridge: NexusSettingsBridge }) {
+function InstructionFilesList({ files }: { files: InstructionFile[] | null }) {
   const t = useT();
-  const hostActions = useSettingsHostActions();
-  const sessionId = useSettingsSession();
-  const [files, setFiles] = React.useState<Array<{
-    path: string;
-    tier: "User" | "Project" | "Local";
-    bytes: number;
-  }> | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const r = await memoryInstructions(bridge, sessionId);
-        if (!cancelled) setFiles(r.files);
-      } catch {
-        if (!cancelled) setFiles([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [bridge, sessionId]);
-
-  const tiers: Array<"User" | "Project" | "Local"> = [
-    "User",
-    "Project",
-    "Local",
-  ];
-  const groups = tiers
+  const groups = (["Project", "Local"] as const)
     .map((tier) => ({ tier, files: (files ?? []).filter((f) => f.tier === tier) }))
     .filter((g) => g.files.length > 0);
 
@@ -333,37 +376,46 @@ function InstructionFilesList({ bridge }: { bridge: NexusSettingsBridge }) {
         ) : null}
         {groups.map((g) => (
           <div key={g.tier} className="flex flex-col gap-1">
-            <SettingsGroupLabel>{g.tier}</SettingsGroupLabel>
-            <ul className="flex flex-col gap-1">
-              {g.files.map((f) => (
-                <li
-                  key={f.path}
-                  className="flex items-center justify-between gap-4 text-sm"
-                >
-                  <span className="min-w-0 truncate font-mono" title={f.path}>
-                    {f.path}
-                  </span>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className="text-muted-foreground text-xs">
-                      {formatBytes(f.bytes)}
-                    </span>
-                    {hostActions ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => void hostActions.revealFolder(dirOf(f.path))}
-                        data-testid="memory-instruction-open"
-                      >
-                        {t("settings.memory.open")}
-                      </Button>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <SettingsGroupLabel>{t(TIER_LABEL_KEYS[g.tier])}</SettingsGroupLabel>
+            <InstructionFileRows files={g.files} />
           </div>
         ))}
       </div>
     </SettingsSection>
+  );
+}
+
+/** One row per file: path, size, and "Open" (reveals the containing folder). */
+function InstructionFileRows({ files }: { files: InstructionFile[] }) {
+  const t = useT();
+  const hostActions = useSettingsHostActions();
+  return (
+    <ul className="flex flex-col gap-1">
+      {files.map((f) => (
+        <li
+          key={f.path}
+          className="flex items-center justify-between gap-4 text-sm"
+        >
+          <span className="min-w-0 truncate font-mono" title={f.path}>
+            {f.path}
+          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-muted-foreground text-xs">
+              {formatBytes(f.bytes)}
+            </span>
+            {hostActions ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void hostActions.revealFolder(dirOf(f.path))}
+                data-testid="memory-instruction-open"
+              >
+                {t("settings.memory.open")}
+              </Button>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }

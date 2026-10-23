@@ -911,7 +911,7 @@ export const es: Messages = {
   'settings.general.rolePlaceholder': 'Seleccione una función…',
   'settings.general.instructions': 'Todos los proyectos',
   'settings.general.instructionsDescription':
-    'Se añaden al prompt del sistema y se aplican en una sesión nueva.',
+    'Se aplica desde la próxima sesión.',
   'settings.general.instructionsConflict':
     'Este archivo cambió en el disco, así que tu edición no se guardó. Tu texto se conserva arriba; abajo se muestra el contenido actual del disco: vuelve a aplicar tu cambio y haz clic fuera para guardar.',
   'settings.general.instructionsUnreadable':
@@ -1888,11 +1888,13 @@ export const es: Messages = {
   'settings.memory.openFolder': 'Abrir la carpeta',
   'settings.memory.open': 'Abrir',
   'settings.memory.groupIndex': 'Índice',
-  'settings.memory.instructionsTitle': 'Archivos cargados',
+  'settings.memory.instructionsTitle': 'Este proyecto',
   'settings.memory.instructionsDescription':
-    'Archivos de instrucciones y reglas que lee el agente. Solo lectura: «Borrar todo» nunca los elimina.',
-  'settings.memory.noInstructions':
-    'No se encontró ningún archivo de instrucciones.',
+    'Archivos que lee el agente en el proyecto actual.',
+  'settings.memory.noInstructions': 'Ninguno en este proyecto.',
+  'settings.memory.tierProject': 'Proyecto',
+  'settings.memory.tierLocal': 'Local',
+  'settings.memory.otherUserFiles': 'También se aplica',
 
   // ── Configuración — General · Sistema (integrada desde su página) ──────
   'settings.system.title': 'Sistema',

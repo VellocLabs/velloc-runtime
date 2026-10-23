@@ -908,7 +908,7 @@ export const de: Messages = {
   'settings.general.rolePlaceholder': 'Rolle auswählen …',
   'settings.general.instructions': 'Alle Projekte',
   'settings.general.instructionsDescription':
-    'Wird dem System-Prompt hinzugefügt und wirkt sich in einer neuen Sitzung aus.',
+    'Gilt ab deiner nächsten Sitzung.',
   'settings.general.instructionsConflict':
     'Diese Datei wurde auf der Festplatte geändert, deine Bearbeitung wurde daher nicht gespeichert. Dein Text bleibt oben erhalten; unten steht der aktuelle Inhalt der Datei — wende deine Änderung erneut an und klicke dann daneben, um zu speichern.',
   'settings.general.instructionsUnreadable':
@@ -1882,10 +1882,13 @@ export const de: Messages = {
   'settings.memory.openFolder': 'Ordner öffnen',
   'settings.memory.open': 'Öffnen',
   'settings.memory.groupIndex': 'Index',
-  'settings.memory.instructionsTitle': 'Geladene Dateien',
+  'settings.memory.instructionsTitle': 'Dieses Projekt',
   'settings.memory.instructionsDescription':
-    'Anweisungsdateien und Regeln, die der Agent liest. Nur lesbar — „Alle löschen“ entfernt sie nie.',
-  'settings.memory.noInstructions': 'Keine Anweisungsdateien gefunden.',
+    'Dateien, die der Agent im aktuellen Projekt liest.',
+  'settings.memory.noInstructions': 'Keine in diesem Projekt.',
+  'settings.memory.tierProject': 'Projekt',
+  'settings.memory.tierLocal': 'Lokal',
+  'settings.memory.otherUserFiles': 'Gilt ebenfalls',
 
   // ── Einstellungen — Allgemein · System (eingegliedert) ─────────────────
   'settings.system.title': 'System',
