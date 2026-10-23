@@ -262,7 +262,7 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
                   if (event.target === event.currentTarget) activate(tab.key)
                 }}
                 className={cn(
-                  'group flex min-w-0 cursor-default items-stretch rounded-md text-[12px]',
+                  'group flex h-7 min-w-0 cursor-default items-stretch rounded-md text-[12px]',
                   isActive ? 'bg-muted' : 'hover:bg-muted/50',
                 )}
               >
@@ -275,7 +275,7 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
                   title={tab.row ? tab.row.title : t('terminal.placeholder.pending')}
                   onClick={() => activate(tab.key)}
                   className={cn(
-                    'flex min-w-0 max-w-[14rem] items-center gap-1 py-0.5 pe-1 ps-1.5 outline-none',
+                    'flex min-w-0 max-w-[14rem] items-center gap-1 pe-1 ps-1.5 outline-none',
                     isActive ? 'font-medium text-foreground' : 'text-muted-foreground',
                     kind === 'exited' || kind === 'failed' ? 'line-through' : null,
                     kind === 'pending' ? 'italic' : null,

@@ -49,12 +49,16 @@ export function BrowserTabStrip({ tabs, onActivate, onClose }: BrowserTabStripPr
       {tabs.map(tab => {
         const label = tabLabel(tab, fallback)
         return (
+          // The whole pill is the tab: a press on its edge activates it too.
           <div
             key={tab.id}
             data-testid={`pane-browser-tab:${tab.id}`}
             data-active={tab.active ? 'true' : undefined}
+            onClick={event => {
+              if (event.target === event.currentTarget) onActivate(tab.id)
+            }}
             className={cn(
-              'group flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pe-0.5 ps-1.5 text-[12px]',
+              'group flex h-7 min-w-0 cursor-default items-stretch gap-0.5 rounded-md pe-0.5 text-[12px]',
               tab.active ? 'bg-muted' : 'hover:bg-muted/50',
             )}
           >
@@ -66,7 +70,7 @@ export function BrowserTabStrip({ tabs, onActivate, onClose }: BrowserTabStripPr
               title={displayAddress(tab.url) || label}
               onClick={() => onActivate(tab.id)}
               className={cn(
-                'flex min-w-0 max-w-[12rem] items-center gap-1 outline-none',
+                'flex min-w-0 max-w-[12rem] items-center gap-1 ps-1.5 outline-none',
                 tab.active ? 'font-medium text-foreground' : 'text-muted-foreground',
               )}
             >
@@ -78,7 +82,7 @@ export function BrowserTabStrip({ tabs, onActivate, onClose }: BrowserTabStripPr
               aria-label={t('pane.browser.closeTab', { title: label })}
               data-testid={`pane-browser-tab-close:${tab.id}`}
               onClick={() => onClose(tab.id)}
-              className="flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+              className="flex size-4 shrink-0 items-center justify-center self-center rounded text-muted-foreground hover:text-foreground"
             >
               <XIcon className="size-3" />
             </button>

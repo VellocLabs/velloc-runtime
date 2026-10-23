@@ -58,6 +58,17 @@ describe('BrowserTabStrip', () => {
     expect(onClose).toHaveBeenCalledWith(11)
     expect(onActivate).toHaveBeenCalledTimes(1)
   })
+
+  it('a press on the pill around the tab activates it; × does not', () => {
+    const onActivate = vi.fn()
+    const onClose = vi.fn()
+    render(createElement(BrowserTabStrip, { tabs: TABS, onActivate, onClose }))
+    fireEvent.click(screen.getByTestId('pane-browser-tab:13'))
+    expect(onActivate).toHaveBeenCalledWith(13)
+    fireEvent.click(screen.getByTestId('pane-browser-tab-close:13'))
+    expect(onActivate).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledWith(13)
+  })
 })
 
 describe('BrowserAddressBar', () => {
