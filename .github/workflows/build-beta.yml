@@ -46,12 +46,69 @@ permissions:
   actions: read
 
 jobs:
-  build:
+  # Quality gates run BEFORE the candidate exists: `build` needs every job
+  # below. A candidate that failed typecheck or unit tests should never get an
+  # id, because an id is a thing a human can later promote to production by
+  # pasting a run number. Separate jobs so "Re-run failed jobs" repeats only
+  # the gate that failed.
+
+  # Resolves `ref` to one commit, so the gates and the build check out the same
+  # bytes even if a branch moves mid-run.
+  source:
     runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.rev.outputs.commit }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
+      - id: rev
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  typecheck:
+    needs: source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.source.outputs.commit }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  test:
+    needs: source
+    runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports, so one re-run covers every failing shard.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    name: test (shard ${{ matrix.shard }}/4)
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.source.outputs.commit }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Each shard still runs its files serially (vitest.config.mjs). One retry
+      # absorbs a timing-sensitive test on a loaded runner; a real failure
+      # fails both attempts.
+      - run: npm test -- --shard=${{ matrix.shard }}/4 --retry=1
+
+  build:
+    needs: [source, typecheck, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.source.outputs.commit }}
 
       - uses: actions/setup-node@v7
         with:
@@ -61,12 +118,6 @@ jobs:
           cache: npm
 
       - run: npm ci
-
-      # Quality gates run BEFORE the candidate exists. A candidate that failed
-      # typecheck or unit tests should never get an id, because an id is a
-      # thing a human can later promote to production by pasting a run number.
-      - run: npm run typecheck
-      - run: npm test
 
       - name: Resolve identity
         id: id
