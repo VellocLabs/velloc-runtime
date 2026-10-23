@@ -2132,3 +2132,30 @@ describe('ModelsSection — the quick picker\'s "Edit…" deep link', () => {
     expect((await screen.findByTestId('models-editing-provider')).textContent).toContain('OpenAI')
   })
 })
+
+describe('ModelsSection — the quick picker\'s "add a provider" request', () => {
+  it('opens the Add menu with the built-ins on the home list; a pick opens that editor; only a new request reopens it', async () => {
+    const { transport, bridge } = makeHarness({})
+    const tree = (seq: number) =>
+      createElement(
+        SettingsBridgeContext.Provider,
+        { value: bridge },
+        createElement(ModelsSection, { catalog, transport, openAddProviderRequest: seq }),
+      )
+    const view = render(tree(1))
+    // Open without a click on the trigger, and with the fixture's built-in listed.
+    const builtIn = catalog.providers[0]
+    const option = await screen.findByTestId(`models-provider-select-option-${builtIn.id}`)
+    expect(screen.getByTestId('models-add-custom-provider')).toBeTruthy()
+
+    fireEvent.click(option)
+    expect((await screen.findByTestId('models-editing-provider')).textContent).toContain(builtIn.label)
+
+    fireEvent.click(screen.getByTestId('models-back-to-providers'))
+    await screen.findByTestId('models-provider-home')
+    view.rerender(tree(1))
+    expect(screen.queryByTestId('models-add-custom-provider')).toBeNull()
+    view.rerender(tree(2))
+    expect(await screen.findByTestId('models-add-custom-provider')).toBeTruthy()
+  })
+})

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createElement, useCallback, useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { NexusModelPicker } from '../browser/webview/topbar/NexusModelPicker'
 import { isCustomProviderId } from '../browser/webview/ModelQuickPicker'
@@ -108,6 +108,59 @@ describe('NexusModelPicker — the Provider settings footer follows the grant', 
       ).toBeNull()
     },
   )
+})
+
+/**
+ * With no provider set up the popover would list nothing, so a click on the
+ * trigger goes straight to adding one; while the catalog is still loading, or
+ * once any provider is set up, the popover opens as before.
+ */
+describe('NexusModelPicker — no provider set up', () => {
+  const noProviders = {
+    providers: providers.map(p => ({ ...p, enabled: false })),
+  } as unknown as BrowserLlmCatalog
+  const withProviders = { providers, defaultSelection: selection } as unknown as BrowserLlmCatalog
+
+  function renderPicker(
+    catalog: BrowserLlmCatalog | null,
+    capabilities?: CapabilityQuery,
+  ): { addRequests: () => number } {
+    let count = 0
+    const picker = createElement(NexusModelPicker, {
+      catalog,
+      selection: null,
+      onSelect: () => {},
+      onOpenSettings: () => {},
+      onOpenAddProvider: () => {
+        count += 1
+      },
+    })
+    render(
+      capabilities
+        ? createElement(RuntimeCapabilitiesContext.Provider, { value: capabilities }, picker)
+        : picker,
+    )
+    return { addRequests: () => count }
+  }
+
+  it('asks to add a provider instead of opening an empty popover', () => {
+    const { addRequests } = renderPicker(noProviders)
+    fireEvent.click(screen.getByTestId('nexus-model-picker-trigger'))
+    expect(addRequests()).toBe(1)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it.each<[string, BrowserLlmCatalog | null, CapabilityQuery | undefined]>([
+    ['a set-up provider', withProviders, undefined],
+    ['a catalog still loading', null, undefined],
+    // Cannot open Settings → Models: the empty popover is all there is.
+    ['a control grant', noProviders, queryFor(advertsForScope('control'))],
+  ])('opens the popover for %s', async (_label, catalog, capabilities) => {
+    const { addRequests } = renderPicker(catalog, capabilities)
+    fireEvent.click(screen.getByTestId('nexus-model-picker-trigger'))
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+    expect(addRequests()).toBe(0)
+  })
 })
 
 describe('NexusModelPicker memoization', () => {

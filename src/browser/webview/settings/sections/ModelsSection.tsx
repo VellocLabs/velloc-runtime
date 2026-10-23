@@ -433,9 +433,16 @@ export function ModelsSection({
   onProviderConnected,
   footer,
   openProviderRequest,
+  openAddProviderRequest,
 }: {
   catalog: BrowserLlmCatalog | null | undefined;
   transport: BrowserBridgeTransport;
+  /**
+   * Show the home list with its "Add provider" menu open, once the providers
+   * are loaded — the quick picker clicked while no provider is set up. A new
+   * value is a new request.
+   */
+  openAddProviderRequest?: number | null;
   /**
    * Open this provider's editor instead of the home list — the quick
    * picker's "Edit…" on a provider. `seq` changes on every request, so asking
@@ -925,6 +932,19 @@ export function ModelsSection({
     setSelectedId(openProviderRequest.providerId);
     setView("edit");
   }, [openProviderRequest]);
+
+  // Waits for the provider lists, so the menu opens with its built-ins.
+  const [addMenuOpen, setAddMenuOpen] = React.useState(false);
+  const handledAddRequest = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!openAddProviderRequest || handledAddRequest.current === openAddProviderRequest) return;
+    if (!configsLoaded || catalog === undefined) return;
+    handledAddRequest.current = openAddProviderRequest;
+    setCreating(false);
+    setSelectedId("");
+    setView("home");
+    setAddMenuOpen(true);
+  }, [openAddProviderRequest, configsLoaded, catalog]);
 
   // A half-filled provider form — a built-in's key / URL, or a custom
   // provider's draft — lives only in this page: hold the background
@@ -1766,7 +1786,12 @@ export function ModelsSection({
    * selection; a pick opens that provider's editor.
    */
   const renderAddMenu = () => (
-    <SelectRoot value="" onValueChange={addFromMenu}>
+    <SelectRoot
+      value=""
+      onValueChange={addFromMenu}
+      open={addMenuOpen}
+      onOpenChange={setAddMenuOpen}
+    >
       <SelectTrigger
         size="sm"
         className="shrink-0"

@@ -58,6 +58,7 @@ function SectionContent({
   transport,
   onProviderConnected,
   openProviderRequest,
+  openAddProviderRequest,
   revealPluginRequest,
   remoteState,
   remoteConn,
@@ -71,6 +72,7 @@ function SectionContent({
   /** The page's runtime connection, for the Plugins page's `mods/state` read. */
   runtimeConnection?: () => Promise<RuntimeConnection>;
   openProviderRequest?: { providerId: string; seq: number } | null;
+  openAddProviderRequest?: number | null;
   revealPluginRequest?: { plugin: string; seq: number } | null;
   /** Models was reached by way of Session models (a deep link or a
    *  remembered selection): scroll its embedded group into view. */
@@ -95,6 +97,7 @@ function SectionContent({
           transport={transport}
           onProviderConnected={onProviderConnected}
           openProviderRequest={openProviderRequest}
+          openAddProviderRequest={openAddProviderRequest}
           footer={
             <>
               <SessionModelsSection
@@ -150,6 +153,7 @@ export function SettingsScreen({
   transport,
   onProviderConnected,
   openProviderRequest,
+  openAddProviderRequest,
   revealPluginRequest,
   runtimeConnection,
   remoteClient = false,
@@ -163,6 +167,8 @@ export function SettingsScreen({
   onProviderConnected?: () => void;
   /** Forwarded to ModelsSection — open one provider's editor. */
   openProviderRequest?: { providerId: string; seq: number } | null;
+  /** Forwarded to ModelsSection — open its "Add provider" menu. */
+  openAddProviderRequest?: number | null;
   /** Forwarded to PluginsSection — scroll to one plugin's row and flash it
    *  (a click on a mod's icon above the prompt). */
   revealPluginRequest?: { plugin: string; seq: number } | null;
@@ -262,6 +268,7 @@ export function SettingsScreen({
             transport={transport}
             onProviderConnected={onProviderConnected}
             openProviderRequest={openProviderRequest}
+            openAddProviderRequest={openAddProviderRequest}
             revealPluginRequest={revealPluginRequest}
             onOpenModels={() => onNavigate("models")}
             remoteState={remoteState}

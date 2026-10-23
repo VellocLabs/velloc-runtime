@@ -62,6 +62,13 @@ export type ModelQuickPickerProps = {
   onSelect: (selection: BrowserLlmSelection) => void;
   /** Renders the "Provider settings" footer row when provided (topbar). */
   onOpenSettings?: () => void;
+  /**
+   * Called INSTEAD of opening the popover when the loaded catalog has no
+   * set-up provider, so there is nothing to pick (topbar: go add one). Absent
+   * = the popover opens on its empty state. A catalog still loading
+   * (`null`/`undefined`) opens as usual.
+   */
+  onNoProviders?: () => void;
   /** Programmatic-open signal: increment to open the popover. Used by the
    *  send gate when it adopts the catalog default for a session whose pinned
    *  model went away — the user must SEE the pick to be able to change it.
@@ -259,6 +266,7 @@ function ModelQuickPickerImpl({
   defaultSelection,
   onSelect,
   onOpenSettings,
+  onNoProviders,
   openToken,
   disabled,
   inertWhy,
@@ -282,7 +290,12 @@ function ModelQuickPickerImpl({
   // room (the model list scrolls). The trigger is never covered.
   const anchored = !!leadingOptions?.length;
   const [side, setSide] = React.useState<"top" | "bottom">("bottom");
+  const noProviders = !!catalog && !catalog.providers.some((p) => p.enabled);
   const openPopover = (next: boolean) => {
+    if (next && noProviders && onNoProviders) {
+      onNoProviders();
+      return;
+    }
     if (next && anchored && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
       const below = window.innerHeight - rect.bottom;

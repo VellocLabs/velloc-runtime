@@ -84,6 +84,9 @@ export type NexusTopBarProps = {
   onOpenSettings: (section?: SettingsSectionId) => void;
   /** Open one provider's settings page (the model picker's `⋯` → "Edit…"). */
   onOpenProviderSettings?: (providerId: string) => void;
+  /** Settings → Models with the "Add provider" menu open (the model picker
+   *  while no provider is set up). */
+  onOpenAddProvider?: () => void;
   /** Programmatic-open signal for the model picker popover (increment to
    *  open) — see NexusModelPickerProps.openToken. */
   modelPickerOpenToken?: number;
@@ -178,6 +181,7 @@ export function NexusTopBar({
   onSelectModel,
   onOpenSettings,
   onOpenProviderSettings,
+  onOpenAddProvider,
   modelPickerOpenToken,
   sidebarCollapsed,
   onToggleSidebar,
@@ -315,6 +319,7 @@ export function NexusTopBar({
           onSelect={onSelectModel}
           onOpenSettings={handleOpenModelSettings}
           onOpenProviderSettings={onOpenProviderSettings}
+          onOpenAddProvider={onOpenAddProvider}
           openToken={modelPickerOpenToken}
           // A teammate keeps the model its lead spawned it on — read-only
           // here, and the page refuses the change anyway
