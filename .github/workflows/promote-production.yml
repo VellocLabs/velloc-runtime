@@ -109,6 +109,18 @@ jobs:
             fi
             echo "resolved newest successful build: $RUN_ID"
           fi
+          # Security: Build & Deploy Beta uploads `candidate` before its gates
+          # finish, so a run whose typecheck or tests failed still holds one.
+          # Only a completed, successful run of that workflow is promotable,
+          # whether resolved above or pinned by hand.
+          RUN_STATE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                        --jq '"\(.path) \(.status) \(.conclusion)"') || {
+            echo "::error::could not read run $RUN_ID"; exit 1; }
+          case "$RUN_STATE" in
+            ".github/workflows/build-beta.yml completed success") : ;;
+            *) echo "::error::run $RUN_ID is not a successful 'A · Build & Deploy Beta' run ($RUN_STATE) — its candidate did not pass the gates"
+               exit 1 ;;
+          esac
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
       # Preflight: prove GITHUB_TOKEN can create a release before anything changes

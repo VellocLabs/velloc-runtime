@@ -46,11 +46,11 @@ permissions:
   actions: read
 
 jobs:
-  # Quality gates run BEFORE the candidate exists: `build` needs every job
-  # below. A candidate that failed typecheck or unit tests should never get an
-  # id, because an id is a thing a human can later promote to production by
-  # pasting a run number. Separate jobs so "Re-run failed jobs" repeats only
-  # the gate that failed.
+  # `pack` builds and uploads `candidate` alongside the gates; `deploy` needs
+  # every gate. A build that failed typecheck or unit tests is never deployed
+  # and its run never succeeds, and promote accepts only a successful run, so
+  # nobody can promote it by pasting its number. Separate jobs so "Re-run
+  # failed jobs" repeats only the gate that failed.
 
   # Resolves `ref` to one commit, so the gates and the build check out the same
   # bytes even if a branch moves mid-run.
@@ -86,8 +86,8 @@ jobs:
       # Every shard reports, so one re-run covers every failing shard.
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
-    name: test (shard ${{ matrix.shard }}/4)
+        shard: [1, 2, 3, 4, 5, 6]
+    name: test (shard ${{ matrix.shard }}/6)
     steps:
       - uses: actions/checkout@v7
         with:
@@ -100,11 +100,16 @@ jobs:
       # Each shard still runs its files serially (vitest.config.mjs). One retry
       # absorbs a timing-sensitive test on a loaded runner; a real failure
       # fails both attempts.
-      - run: npm test -- --shard=${{ matrix.shard }}/4 --retry=1
+      - run: npm test -- --shard=${{ matrix.shard }}/6 --retry=1
 
-  build:
-    needs: [source, typecheck, test]
+  pack:
+    needs: source
     runs-on: ubuntu-latest
+    outputs:
+      interface_version: ${{ steps.id.outputs.interface_version }}
+      source_commit: ${{ steps.id.outputs.source_commit }}
+      candidate_id: ${{ steps.id.outputs.candidate_id }}
+      baseline_tag: ${{ steps.baseline.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -350,29 +355,15 @@ jobs:
           done
           node scripts/pack_artifact.mjs "${ARGS[@]}"
 
-      # Prove the archive is readable by a stock extractor before anything
-      # depends on it — the packer writes zips by hand (scripts/lib/zip.mjs).
-      - name: Verify artifact
-        run: |
-          set -euo pipefail
-          unzip -t artifact/runtime.zip > /dev/null
-          (cd artifact && sha256sum -c SHA256SUMS)
-          unzip -q artifact/runtime.zip -d candidate
-          test -f "candidate/site/v${{ steps.id.outputs.interface_version }}/index.html"
-          test -f candidate/wrangler.toml
-          # Every retained version must have ridden along, at its own base.
-          for K in $(jq -r '.legacyInterfaces[]?.interfaceVersion' artifact/manifest.json); do
-            test -f "candidate/site/v$K/index.html"
-            grep -q "/v$K/assets/" "candidate/site/v$K/index.html"
-          done
-
-      # Defaults named on purpose: promote and rollback download `--name candidate`
-      # as a directory of files, which `archive: true` keeps true (`archive: false`
-      # uploads one bare file and ignores `name`). `overwrite: false`: a second
-      # upload under the same name must fail rather than replace bytes someone may
-      # have soaked.
+      # Security: uploaded before the gates finish, so a run whose gates fail
+      # still holds a `candidate`; promote accepts only a successful run, pinned
+      # or not, which keeps those bytes off production.
       - uses: actions/upload-artifact@v7
         with:
+          # Promote downloads `--name candidate` as a directory of files, which
+          # the default `archive: true` keeps. The default `overwrite: false`
+          # makes a second upload under this name fail instead of replacing
+          # bytes someone may have soaked.
           name: candidate
           path: artifact/
           # A candidate is a temporary staging object; only what reaches
@@ -382,6 +373,39 @@ jobs:
           # DIFFERENT candidate and has not been tested).
           retention-days: 30
           if-no-files-found: error
+
+  deploy:
+    needs: [typecheck, test, pack]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: candidate
+          path: artifact
+
+      # Wrangler and the summary script only; the bundle was compiled in `pack`.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Prove the archive is readable by a stock extractor before anything
+      # depends on it — the packer writes zips by hand (scripts/lib/zip.mjs).
+      # The checksum also covers the hand-off between jobs.
+      - name: Verify artifact
+        env:
+          V: ${{ needs.pack.outputs.interface_version }}
+        run: |
+          set -euo pipefail
+          unzip -t artifact/runtime.zip > /dev/null
+          (cd artifact && sha256sum -c SHA256SUMS)
+          unzip -q artifact/runtime.zip -d candidate
+          test -f "candidate/site/v$V/index.html"
+          test -f candidate/wrangler.toml
+          # Every retained version must have ridden along, at its own base.
+          for K in $(jq -r '.legacyInterfaces[]?.interfaceVersion' artifact/manifest.json); do
+            test -f "candidate/site/v$K/index.html"
+            grep -q "/v$K/assets/" "candidate/site/v$K/index.html"
+          done
 
       - name: Deploy to beta
         env:
@@ -402,11 +426,11 @@ jobs:
 
       - name: Summary
         env:
-          V: ${{ steps.id.outputs.interface_version }}
-          CANDIDATE_ID: ${{ steps.id.outputs.candidate_id }}
+          V: ${{ needs.pack.outputs.interface_version }}
+          CANDIDATE_ID: ${{ needs.pack.outputs.candidate_id }}
           SOURCE_REF: ${{ inputs.ref }}
-          SOURCE_COMMIT: ${{ steps.id.outputs.source_commit }}
-          BASELINE_TAG: ${{ steps.baseline.outputs.tag }}
+          SOURCE_COMMIT: ${{ needs.pack.outputs.source_commit }}
+          BASELINE_TAG: ${{ needs.pack.outputs.baseline_tag }}
           NOTE: ${{ inputs.note }}
           # Built here rather than inline so the markdown link below stays
           # readable, and so the workflow filename appears exactly once.
