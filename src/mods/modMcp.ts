@@ -55,7 +55,7 @@ export type ModMcpHost = {
 }
 
 /** What the host needs of the pool. `MCPPool` satisfies it. */
-export type ModMcpPool = Pick<MCPPool, 'listServers' | 'callTool' | 'addServer'>
+export type ModMcpPool = Pick<MCPPool, 'listServers' | 'callTool' | 'addServer' | 'launchNativeServer'>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -195,18 +195,16 @@ export function poolModMcp(options: {
       const connected = running.find(s => s.status === 'connected')
       // "The same server run under another name answers with that name."
       if (connected) return { isConnected: true, server: connected.name }
-      if (server.kind === 'native') {
-        const known = running[0]
-        return failed(
-          known
-            ? `"${known.name}" did not connect${known.error ? `: ${known.error}` : ''}`
-            : `"${key}" is a stdio server the session did not start; it starts with the next session`,
-        )
-      }
+      // A stdio server that failed, or that the session never started, is
+      // launched again under the name it holds, else its manifest id.
+      const name = server.kind === 'native' ? running[0]?.name ?? server.id : server.entry.name
       try {
-        const added = await pool.addServer(server.entry)
+        const added = server.kind === 'native'
+          ? await pool.launchNativeServer(name, server.config)
+          : await pool.addServer(server.entry)
+        if (!added) return failed(`"${key}" was not connected: this session cannot start stdio servers`)
         if (!isSameServer(added, server)) {
-          return failed(`"${server.entry.name}" is another MCP server's name in this session`)
+          return failed(`"${name}" is another MCP server's name in this session`)
         }
         if (added.status === 'connected') return { isConnected: true, server: added.name }
         return failed(`"${added.name}" did not connect${added.error ? `: ${added.error}` : ''}`)

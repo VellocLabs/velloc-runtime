@@ -597,6 +597,40 @@ export class MCPPool {
     return run
   }
 
+  /** In-flight `launchNativeServer` runs, by name — see `launchNativeServer`. */
+  private readonly launching = new Map<string, Promise<LiveServerLink | undefined>>()
+
+  /**
+   * Launch one native server after `init` (`$.mcp.connect`): a failed or
+   * closed native entry under `name` with the same config is relaunched, a
+   * name the pool does not hold is launched. Any other registered entry is
+   * answered as it is. Concurrent calls share one launch. Undefined without a
+   * native bridge, or once the pool is shut down. Never rejects.
+   */
+  launchNativeServer(name: string, config: NexusMcpServerLaunchConfig): Promise<LiveServerLink | undefined> {
+    const inFlight = this.launching.get(name)
+    if (inFlight) return inFlight
+    const bridge = this.nativeBridge
+    const existing = this.servers.get(name)
+    if (!bridge || this.closed) return Promise.resolve(bridge ? existing : undefined)
+    const retry =
+      existing !== undefined
+      && existing.nativeServerId !== undefined
+      && (existing.status === 'failed' || existing.status === 'closed')
+      && configsEqual(existing.nativeConfig, config)
+    if (existing && !retry) return Promise.resolve(existing)
+    const run = (async () => {
+      // The failed entry stays listed, with its reason, until the launch settles.
+      if (existing) await this.disconnectQuietly(bridge, existing.nativeServerId!)
+      await this.connectNative(bridge, name, config)
+      return this.servers.get(name)
+    })().finally(() => {
+      this.launching.delete(name)
+    })
+    this.launching.set(name, run)
+    return run
+  }
+
   /** Whether a server is registered under `name`, in any status. */
   hasServer(name: string): boolean {
     return this.servers.has(name)

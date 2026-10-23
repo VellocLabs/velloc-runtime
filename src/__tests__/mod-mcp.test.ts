@@ -1,9 +1,11 @@
 /**
  * `$.mcp.call` / `$.mcp.connect` (F-25): argument checks, server naming (`mcp__` spelling), the result shape,
  * `MCPPool.addServer` (collisions, retry after failure, one connect for concurrent calls), `poolModMcp` over a real
- * pool, and both nouns through a real `ModRuntime`, including a guard denying another plugin's call.
+ * pool, including the launch of a stdio server that failed or never started, and both nouns through a real
+ * `ModRuntime`, including a guard denying another plugin's call.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { McpBridgeOperations } from '../mcp/nativeBridge'
 import type { MCPServerConfig, MCPServerConfigWithName } from '../mcp/types'
 
 const configured: { servers: MCPServerConfigWithName[] } = { servers: [] }
@@ -207,18 +209,118 @@ describe('poolModMcp', () => {
     })
   })
 
-  it('a native manifest server is answered from the pool: connected under its name, or failed when the session did not start it', async () => {
+  it('a connected native manifest server is answered from the pool under its name, with no launch', async () => {
     const fake = {
       listServers: () => [
         { name: 'shell', nativeServerId: 'shell', nativeConfig: { transport: 'stdio', command: 'node', args: ['s.js'] }, status: 'connected', tools: [] },
       ],
       callTool: vi.fn(),
       addServer: vi.fn(),
+      launchNativeServer: vi.fn(),
     }
     const mcp = poolModMcp({ pool: () => fake as never, manifestServer })
     expect(await mcp.connect('docs', 'shell')).toEqual({ isConnected: true, server: 'shell' })
-    expect(await mcp.connect('docs', 'later')).toMatchObject({ isConnected: false, reason: 'failed', message: expect.stringContaining('stdio server the session did not start') })
+    expect(fake.launchNativeServer).not.toHaveBeenCalled()
     expect(fake.addServer).not.toHaveBeenCalled()
+  })
+})
+
+describe('poolModMcp over native (stdio) servers', () => {
+  const shell = { transport: 'stdio' as const, command: 'node', args: ['s.js'] }
+  const manifests: Record<string, Record<string, ModMcpManifestServer>> = {
+    docs: {
+      shell: { kind: 'native', id: 'shell', config: shell },
+      later: { kind: 'native', id: 'later', config: { transport: 'stdio', command: 'node', args: ['l.js'] } },
+    },
+  }
+  const manifestServer = (plugin: string, key: string) => manifests[plugin]?.[key]
+
+  /** A pool whose session started `natives`; each bridge connect takes the next outcome (the last repeats). */
+  async function nativePool(outcomes: Array<'ok' | 'fail'>, natives: Array<{ id: string; config: typeof shell }>) {
+    const launches: string[] = []
+    const stops: string[] = []
+    let i = 0
+    const nativeBridge: McpBridgeOperations = {
+      async connect(id) {
+        launches.push(id)
+        const outcome = outcomes[Math.min(i++, outcomes.length - 1)]
+        await Promise.resolve()
+        return outcome === 'ok' ? { ok: true, tools: [{ name: 'run' }] } : { ok: false, tools: [], error: `uv not found (${i})` }
+      },
+      async callTool() {
+        return { ok: true, result: {} }
+      },
+      async disconnect(id) {
+        stops.push(id)
+      },
+    }
+    const built = new MCPPool({ cwd: '/work', nativeBridge, loadNativeServers: async () => natives })
+    await built.init()
+    return { pool: built, launches, stops, mcp: poolModMcp({ pool: () => built, manifestServer }) }
+  }
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('a server that failed at session start is launched again and answers connected', async () => {
+    const { pool: p, launches, stops, mcp } = await nativePool(['fail', 'ok'], [{ id: 'shell', config: shell }])
+    expect(p.getServer('shell')).toMatchObject({ status: 'failed', error: 'uv not found (1)' })
+    expect(await mcp.connect('docs', 'shell')).toEqual({ isConnected: true, server: 'shell' })
+    expect(launches).toEqual(['shell', 'shell'])
+    expect(stops).toEqual(['shell'])
+    expect(p.getServer('shell')).toMatchObject({ status: 'connected', nativeConfig: shell, tools: [{ name: 'run' }] })
+  })
+
+  it('a launch that fails again answers failed with the new error', async () => {
+    const { launches, mcp } = await nativePool(['fail'], [{ id: 'shell', config: shell }])
+    expect(await mcp.connect('docs', 'shell')).toEqual({
+      isConnected: false,
+      reason: 'failed',
+      message: '"shell" did not connect: uv not found (2)',
+    })
+    expect(launches).toEqual(['shell', 'shell'])
+  })
+
+  it('concurrent connects share one launch', async () => {
+    const { launches, mcp } = await nativePool(['fail', 'ok'], [{ id: 'shell', config: shell }])
+    const answers = await Promise.all([mcp.connect('docs', 'shell'), mcp.connect('docs', 'shell'), mcp.connect('docs', 'shell')])
+    expect(answers).toEqual(Array(3).fill({ isConnected: true, server: 'shell' }))
+    expect(launches).toEqual(['shell', 'shell'])
+  })
+
+  it('a connected server is not launched again', async () => {
+    const { launches, stops, mcp } = await nativePool(['ok'], [{ id: 'shell', config: shell }])
+    expect(await mcp.connect('docs', 'shell')).toEqual({ isConnected: true, server: 'shell' })
+    expect(await mcp.connect('docs', 'shell')).toEqual({ isConnected: true, server: 'shell' })
+    expect(launches).toEqual(['shell'])
+    expect(stops).toEqual([])
+  })
+
+  it('a server the session never started is launched under its manifest id; a name another config holds is failed', async () => {
+    const { pool: p, launches, mcp } = await nativePool(['ok'], [])
+    expect(await mcp.connect('docs', 'later')).toEqual({ isConnected: true, server: 'later' })
+    expect(launches).toEqual(['later'])
+    expect(p.getServer('later')).toMatchObject({ status: 'connected', nativeServerId: 'later' })
+    const held = await nativePool(['ok'], [{ id: 'later', config: shell }])
+    expect(await held.mcp.connect('docs', 'later')).toEqual({
+      isConnected: false,
+      reason: 'failed',
+      message: '"later" is another MCP server\'s name in this session',
+    })
+    expect(held.launches).toEqual(['later'])
+  })
+
+  it('a pool with no native bridge cannot start one and says so', async () => {
+    const mcp = poolModMcp({ pool: () => new MCPPool({ cwd: '/work' }), manifestServer })
+    expect(await mcp.connect('docs', 'later')).toEqual({
+      isConnected: false,
+      reason: 'failed',
+      message: '"later" was not connected: this session cannot start stdio servers',
+    })
   })
 })
 
