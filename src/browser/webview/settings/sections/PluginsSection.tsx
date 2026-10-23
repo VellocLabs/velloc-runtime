@@ -52,6 +52,8 @@ import {
 } from "../../mods/modsStateView";
 import { useSettingsBridge } from "../../nexusSettingsBridge";
 import { ModOptionsForm } from "./ModOptionsForm";
+import { PluginSetupDialog, type PluginSetupTarget } from "./PluginSetupDialog";
+import type { ModsOptionValue } from "../../../runtimeProtocol";
 import {
   ProviderConsentDialog,
   ProviderUpdatePanel,
@@ -76,6 +78,8 @@ import {
   pluginsListLocal,
   pluginsSetLocalEnabled,
   pluginsSetEnabled,
+  pluginsRequiredSettings,
+  pluginsSetSettings,
   pluginsUninstall,
 } from "../clients";
 import {
@@ -908,6 +912,33 @@ export function PluginsSection({
     window.setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 3000);
   }, []);
 
+  // A plugin just turned on or installed: ask for the `required` settings it
+  // still lacks. Best effort; a failed read asks nothing.
+  const canSetUp = capabilities.can("plugins", "requiredSettings") && capabilities.can("plugins", "setSettings");
+  const [setupTarget, setSetupTarget] = React.useState<PluginSetupTarget | null>(null);
+  const askForSetup = async (name: string, plugin: string, path?: string) => {
+    if (!bridge || !canSetUp) return;
+    try {
+      const res = await pluginsRequiredSettings(bridge, { plugin, ...(path ? { path } : {}) }, locale);
+      if (Object.keys(res.missing).length > 0) {
+        setSetupTarget({ name, plugin, ...(path ? { path } : {}), fields: res.missing });
+      }
+    } catch {
+      // The settings page still marks the missing fields.
+    }
+  };
+  const saveSetup = async (target: PluginSetupTarget, values: Record<string, ModsOptionValue>) => {
+    if (!bridge) return;
+    await pluginsSetSettings(
+      bridge,
+      { plugin: target.plugin, ...(target.path ? { path: target.path } : {}) },
+      values as Record<string, string | number | boolean | string[]>,
+    );
+    setSetupTarget(null);
+    showToast(t("settings.plugins.setup.saved", { name: target.name }));
+    await reloadInstalled().catch(() => {});
+  };
+
   // Opening the page looks for updates; the runtime skips it when a recent
   // check already covered every installed plugin.
   React.useEffect(() => {
@@ -1140,6 +1171,7 @@ export function PluginsSection({
       const mp = identifier.split("@")[1];
       if (mp && fetchState[mp]) await fetchMarketplace(mp, false);
       showToast(t("settings.plugins.pluginInstalledToast"));
+      await askForSetup(identifier.split("@")[0] ?? identifier, identifier);
     } catch (e) {
       // Surface the failure; without a catch the button appears to do nothing.
       showToast(t("settings.plugins.installFailed", { error: errMsg(e) }));
@@ -1170,13 +1202,14 @@ export function PluginsSection({
   const toggleLocal = async (path: string, next: boolean) => {
     if (!bridge) return;
     try {
-      await pluginsSetLocalEnabled(bridge, path, next);
+      const { name } = await pluginsSetLocalEnabled(bridge, path, next);
       await reloadInstalled();
       showToast(
         next
           ? t("settings.plugins.pluginEnabled")
           : t("settings.plugins.pluginDisabled"),
       );
+      if (next) await askForSetup(name, `${name}@inline`, path);
     } catch (e) {
       showToast(
         next
@@ -1195,6 +1228,7 @@ export function PluginsSection({
       await pluginsSetEnabled(bridge, entry.identifier, next);
       await reloadInstalled();
       showToast(next ? t("settings.plugins.pluginEnabled") : t("settings.plugins.pluginDisabled"));
+      if (next) await askForSetup(entry.name, entry.identifier);
     } catch (e) {
       showToast(
         next
@@ -1281,6 +1315,7 @@ export function PluginsSection({
           ? t("settings.plugins.pluginEnabled")
           : t("settings.plugins.pluginDisabled"),
       );
+      if (next) await askForSetup(entry.name, identifier);
     } catch (e) {
       showToast(
         next
@@ -2065,6 +2100,7 @@ export function PluginsSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <PluginSetupDialog target={setupTarget} onSave={saveSetup} onSkip={() => setSetupTarget(null)} />
       <ProviderConsentDialog
         target={consentTarget ? { name: consentTarget.entry.name, status: consentTarget.status } : null}
         busy={consentBusy}

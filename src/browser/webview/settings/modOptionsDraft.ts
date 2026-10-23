@@ -28,6 +28,15 @@ export function holdsStoredSecret(config: ModsUserConfig, name: string): boolean
   return field?.sensitive === true && config.values[name] !== undefined && config.values[name] !== ''
 }
 
+/** Whether a `required` field holds neither a stored value nor a default:
+ *  the mod cannot load until it is set. */
+export function isMissingRequired(config: ModsUserConfig, name: string): boolean {
+  const field = config.fields[name]
+  if (field?.required !== true) return false
+  const value = config.values[name] ?? field.default
+  return value === undefined || value === '' || (Array.isArray(value) && value.length === 0)
+}
+
 /** The draft as values to store: a blank text is "unset" (the default
  *  applies); a blank sensitive field keeps what is stored. */
 export function valuesOf(

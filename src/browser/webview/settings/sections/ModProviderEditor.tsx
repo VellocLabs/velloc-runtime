@@ -49,10 +49,10 @@ import {
   type PromptProblem,
   type SecretRowView,
 } from "../modProviderForm";
-import { draftOf, holdsStoredSecret, type OptionsDraft } from "../modOptionsDraft";
+import { draftOf, holdsStoredSecret, isMissingRequired, type OptionsDraft } from "../modOptionsDraft";
 import { mapErrorCode } from "../verifyErrorText";
 import { getProviderLoginStore, useProviderLogin } from "../../providerLoginStore";
-import { OptionFieldControl, OptionRow, OptionRowList } from "./ModOptionRows";
+import { MissingRequiredMark, OptionFieldControl, OptionRow, OptionRowList } from "./ModOptionRows";
 import { ProviderModelEntries } from "./ProviderModelEntries";
 import { ProviderSignInDialog } from "./ProviderSignInDialog";
 import { holdsModSignIn } from "../../../../settings/providerSignIn";
@@ -860,9 +860,14 @@ function ModProviderForm({
                 label={field.title || name}
                 required={field.required}
                 mark={
-                  field.sensitive ? (
-                    <span className="font-normal text-muted-foreground">{t("settings.plugins.mods.options.sensitive")}</span>
-                  ) : null
+                  <>
+                    {field.sensitive ? (
+                      <span className="font-normal text-muted-foreground">{t("settings.plugins.mods.options.sensitive")}</span>
+                    ) : null}
+                    {settingsConfig && isMissingRequired(settingsConfig, name) ? (
+                      <MissingRequiredMark testId={`${id}-missing`} />
+                    ) : null}
+                  </>
                 }
                 hint={field.description || undefined}
                 fixedSlot

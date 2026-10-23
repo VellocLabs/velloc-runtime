@@ -70,6 +70,16 @@ export function OptionRow({
   );
 }
 
+/** Beside a `required` field's label while it holds no value. */
+export function MissingRequiredMark({ testId }: { testId: string }) {
+  const t = useT();
+  return (
+    <span data-testid={testId} className="rounded bg-destructive/10 px-1.5 py-px font-normal text-[10px] text-destructive">
+      {t("settings.plugins.mods.options.missing")}
+    </span>
+  );
+}
+
 /** The control of a declared field, by its type: a switch, a picker, a
  *  number, a text; a sensitive text as a password whose stored value is
  *  kept while the field stays blank. */

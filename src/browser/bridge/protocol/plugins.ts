@@ -7,6 +7,7 @@
  */
 
 import type { LocalPluginRoot, LocalPluginShadow } from '../../../pluginHost/localPluginList'
+import type { PluginUserConfigField } from '../../../pluginHost/pluginModel'
 import type {
   CatalogRecord,
   PluginSetupRecord,
@@ -200,6 +201,34 @@ export type PluginsBridgeActionMap = {
         owner?: { name?: string; email?: string; url?: string }
         plugins: PluginAvailableUiEntry[]
       } | null
+    }
+  }
+  /** The settings a plugin declares `required: true` that hold no value yet
+   *  (its `userConfig` and its providers' settings), asked for when it is
+   *  turned on. `plugin` is its id (`<name>@<marketplace>`, `<name>@inline`);
+   *  `path` is a directory plugin's folder, counted only when its manifest
+   *  names the plugin. Values are never returned. */
+  requiredSettings: {
+    payload: { plugin: string; path?: string; locale?: string }
+    result: {
+      ok: true
+      /** Missing fields by option name, text in `locale`; empty when none. */
+      missing: Record<string, PluginUserConfigField>
+    }
+  }
+  /** Store some of a plugin's declared settings over what is stored (the
+   *  others kept; a blank value unsets one), then reload every session's
+   *  plugins. Names the manifest does not declare are refused. */
+  setSettings: {
+    payload: {
+      plugin: string
+      path?: string
+      values: Record<string, string | number | boolean | string[]>
+    }
+    result: {
+      ok: true
+      /** What is still missing afterwards. */
+      missing: Record<string, PluginUserConfigField>
     }
   }
 }

@@ -88,6 +88,11 @@ export const LEGACY_WEBUI_CAPABILITIES = {
     // Deletes a directory plugin's folder from the host's disk.
     removeLocal: 'full',
     refreshMarketplace: 'full',
+    // Which declared settings are unset (names and text, never values), and
+    // their write, which reloads every session's plugins — as
+    // `providers.modOptions` / `setModOptions`.
+    requiredSettings: 'manager',
+    setSettings: 'manager',
   },
   skills: {
     listInstalled: 'observe',

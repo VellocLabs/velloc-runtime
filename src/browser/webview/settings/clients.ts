@@ -314,6 +314,25 @@ export function pluginsRefreshMarketplace(
   return bridge.request(createBridgeRoute('plugins', 'refreshMarketplace'), { name })
 }
 
+/** The required settings a plugin still lacks (`target.path`: a directory
+ *  plugin's folder). */
+export function pluginsRequiredSettings(
+  bridge: NexusSettingsBridge,
+  target: { plugin: string; path?: string },
+  locale?: string,
+): Promise<BrowserBridgeResult<'plugins', 'requiredSettings'>> {
+  return bridge.request(createBridgeRoute('plugins', 'requiredSettings'), { ...target, ...(locale ? { locale } : {}) })
+}
+
+/** Store some of a plugin's declared settings; every session's plugins reload. */
+export function pluginsSetSettings(
+  bridge: NexusSettingsBridge,
+  target: { plugin: string; path?: string },
+  values: Record<string, string | number | boolean | string[]>,
+): Promise<BrowserBridgeResult<'plugins', 'setSettings'>> {
+  return bridge.request(createBridgeRoute('plugins', 'setSettings'), { ...target, values })
+}
+
 // --- skills (remote Agent-Skill install into ~/.velloc/skills/) -------------
 
 export function skillsListInstalled(

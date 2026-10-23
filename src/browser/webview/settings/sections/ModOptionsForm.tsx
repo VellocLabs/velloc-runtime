@@ -11,8 +11,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ModsOptionValue, ModsUserConfig } from "../../../runtimeProtocol";
 import { useT } from "../../i18n";
-import { draftChanged, draftOf, holdsStoredSecret, valuesOf, type OptionsDraft } from "../modOptionsDraft";
-import { OptionFieldControl, OptionRow, OptionRowList } from "./ModOptionRows";
+import { draftChanged, draftOf, holdsStoredSecret, isMissingRequired, valuesOf, type OptionsDraft } from "../modOptionsDraft";
+import { MissingRequiredMark, OptionFieldControl, OptionRow, OptionRowList } from "./ModOptionRows";
 
 /** How long the "saved" tip stays up. */
 const SAVED_TIP_MS = 2600;
@@ -135,9 +135,12 @@ export function ModOptionsForm({
               label={field.title || name}
               required={field.required}
               mark={
-                field.sensitive ? (
-                  <span className="font-normal text-muted-foreground">{t("settings.plugins.mods.options.sensitive")}</span>
-                ) : null
+                <>
+                  {field.sensitive ? (
+                    <span className="font-normal text-muted-foreground">{t("settings.plugins.mods.options.sensitive")}</span>
+                  ) : null}
+                  {isMissingRequired(config, name) ? <MissingRequiredMark testId={`${id}-missing`} /> : null}
+                </>
               }
               hint={field.description || undefined}
             >

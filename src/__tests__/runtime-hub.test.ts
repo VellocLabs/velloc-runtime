@@ -1307,7 +1307,7 @@ describe('legacy WebUI capabilities on the new hub', () => {
     expect(control.find(a => a.cap === 'mcpSettings')).toBeUndefined()
     expect(manager.find(a => a.cap === 'memory')?.acts).toEqual(MEMORY_AT_CONTROL)
     expect(manager.find(a => a.cap === 'plugins')?.acts).toEqual([
-      'listInstalled', 'listMarketplaces', 'listMarketplacePlugins', 'listBuiltin', 'setEnabled', 'setLocalEnabled', 'listLocal',
+      'listInstalled', 'listMarketplaces', 'listMarketplacePlugins', 'listBuiltin', 'setEnabled', 'setLocalEnabled', 'listLocal', 'requiredSettings', 'setSettings',
     ])
     expect(manager.find(a => a.cap === 'sessionImport')?.acts).toHaveLength(4)
     expect(manager.find(a => a.cap === 'skills')?.acts).toEqual(['listInstalled', 'rescan', 'listImportable', 'importLocal'])

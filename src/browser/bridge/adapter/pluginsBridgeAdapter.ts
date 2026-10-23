@@ -40,6 +40,8 @@ import {
 import { isBuiltinMarketplace } from '../../../pluginHost/builtinMarketplace'
 import { currentTemplateChannel, type UpdateChannel } from '../../../branding/updateChannels'
 import { pluginBlockReason } from '../../../pluginHost/blocklist'
+import { getPluginConfigsMap, mergePluginOptions, readPluginManifests } from '../../../pluginHost/pluginConfigs'
+import { declaredSettings, missingRequiredSettings, settingValueProblems } from '../../../pluginHost/requiredSettings'
 import {
   isCuratedCatalog,
   joinPluginRef,
@@ -400,6 +402,57 @@ async function handleRefreshMarketplace(
   }
 }
 
+/** A plugin's id as `pluginConfigs` is keyed; a folder, when given, absolute text. */
+function checkSettingsTarget(payload: { plugin?: unknown; path?: unknown } | undefined): { plugin: string; paths: string[] } {
+  const plugin = payload?.plugin
+  if (typeof plugin !== 'string' || plugin.length === 0 || plugin.length > 200 || plugin.lastIndexOf('@') < 1) {
+    throw new Error('`plugin` must be a plugin id such as `name@marketplace`')
+  }
+  const path = payload?.path
+  if (path !== undefined && (typeof path !== 'string' || path.length === 0)) throw new Error('`path` must be a folder path')
+  return { plugin, paths: path === undefined ? [] : [path] }
+}
+
+async function missingSettingsOf(
+  ctx: PluginsAdapterContext,
+  plugin: string,
+  paths: readonly string[],
+  locale?: string,
+): Promise<{ fields: ReturnType<typeof declaredSettings>; missing: ReturnType<typeof missingRequiredSettings> }> {
+  const pathCtx = { homeDir: ctx.homeDir }
+  const manifests = await readPluginManifests(pathCtx, ctx.fs, plugin, await sidebarProjects(ctx), paths)
+  const fields = declaredSettings(manifests, locale)
+  const stored = (await getPluginConfigsMap(pathCtx, ctx.fs))[plugin]?.options
+  return { fields, missing: missingRequiredSettings(fields, stored) }
+}
+
+/** `plugins/requiredSettings` — the required settings a plugin still lacks. */
+async function handleRequiredSettings(
+  payload: PluginsBridgeActionMap['requiredSettings']['payload'],
+  ctx: PluginsAdapterContext,
+): Promise<PluginsBridgeActionMap['requiredSettings']['result']> {
+  const { plugin, paths } = checkSettingsTarget(payload)
+  const locale = typeof payload.locale === 'string' ? payload.locale : undefined
+  return { ok: true, missing: (await missingSettingsOf(ctx, plugin, paths, locale)).missing }
+}
+
+/** `plugins/setSettings` — store declared settings, checked against the
+ *  manifest on disk, then reload every session's plugins. */
+async function handleSetSettings(
+  payload: PluginsBridgeActionMap['setSettings']['payload'],
+  ctx: PluginsAdapterContext,
+): Promise<PluginsBridgeActionMap['setSettings']['result']> {
+  const { plugin, paths } = checkSettingsTarget(payload)
+  const values = payload.values
+  if (!values || typeof values !== 'object' || Array.isArray(values)) throw new Error('`values` must be an object')
+  const { fields } = await missingSettingsOf(ctx, plugin, paths)
+  const problems = settingValueProblems(fields, values)
+  if (problems.length > 0) throw new Error(problems.join('; '))
+  await mergePluginOptions({ homeDir: ctx.homeDir }, ctx.fs, plugin, values)
+  ctx.reloadPluginsOnAllSessions?.()
+  return { ok: true, missing: (await missingSettingsOf(ctx, plugin, paths)).missing }
+}
+
 /** Exported map so tests can call individual handlers directly without
  *  constructing a bridge envelope. */
 export const pluginsHandlers = {
@@ -414,6 +467,8 @@ export const pluginsHandlers = {
   setLocalEnabled: handleSetLocalEnabled,
   setEnabled: handleSetEnabled,
   refreshMarketplace: handleRefreshMarketplace,
+  requiredSettings: handleRequiredSettings,
+  setSettings: handleSetSettings,
 }
 
 // ---------------------------------------------------------------------------
@@ -486,6 +541,18 @@ export async function handlePluginsBridgeRequest(
       case 'refreshMarketplace':
         result = await handleRefreshMarketplace(
           request.payload as PluginsBridgeActionMap['refreshMarketplace']['payload'],
+          ctx,
+        )
+        break
+      case 'requiredSettings':
+        result = await handleRequiredSettings(
+          request.payload as PluginsBridgeActionMap['requiredSettings']['payload'],
+          ctx,
+        )
+        break
+      case 'setSettings':
+        result = await handleSetSettings(
+          request.payload as PluginsBridgeActionMap['setSettings']['payload'],
           ctx,
         )
         break

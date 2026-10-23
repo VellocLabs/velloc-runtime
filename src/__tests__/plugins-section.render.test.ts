@@ -1184,3 +1184,83 @@ describe('PluginsSection — browsing a large marketplace listing', () => {
     await waitFor(() => expect(cards()).toHaveLength(0))
   })
 })
+
+describe('PluginsSection — required settings on enable', () => {
+  const MISSING = {
+    project_id: { type: 'string', title: 'Project ID', description: 'For sandboxes only', required: true },
+    api_token: { type: 'string', title: 'Token', description: '', required: true, sensitive: true },
+  }
+  const disabledBeta = () => ({ ...installedEntry('beta'), enabled: false })
+
+  it('asks for the missing required fields once the plugin is on, and stores what is filled in', async () => {
+    const { bridge, calls, requests } = makeBridge([disabledBeta()], {
+      'plugins.requiredSettings': () => ({ ok: true, missing: MISSING }),
+      'plugins.setSettings': () => ({ ok: true, missing: {} }),
+    })
+    renderPlugins(bridge)
+    fireEvent.click(await screen.findByTestId('plugin-toggle-beta'))
+    const dialog = await screen.findByTestId('plugin-setup-dialog')
+    expect(calls.indexOf('plugins.setEnabled')).toBeLessThan(calls.indexOf('plugins.requiredSettings'))
+    expect(requests.find(r => r.route === 'plugins.requiredSettings')!.payload).toMatchObject({ plugin: `beta@${OFFICIAL}` })
+    expect(dialog.textContent).toContain('Set up beta')
+    expect(dialog.textContent).toContain('Project ID')
+    expect(dialog.textContent).toContain('For sandboxes only')
+    // A sensitive field is masked as it is typed.
+    expect((screen.getByTestId('plugin-setup-api_token') as HTMLInputElement).type).toBe('password')
+    // Nothing filled in: nothing to save.
+    expect((screen.getByTestId('plugin-setup-save') as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.change(screen.getByTestId('plugin-setup-project_id'), { target: { value: ' proj-1 ' } })
+    fireEvent.change(screen.getByTestId('plugin-setup-api_token'), { target: { value: 'tok' } })
+    fireEvent.click(screen.getByTestId('plugin-setup-save'))
+    await screen.findByText('Saved settings for beta.')
+    expect(requests.find(r => r.route === 'plugins.setSettings')!.payload).toEqual({
+      plugin: `beta@${OFFICIAL}`,
+      values: { project_id: 'proj-1', api_token: 'tok' },
+    })
+    await waitFor(() => expect(screen.queryByTestId('plugin-setup-dialog')).toBeNull())
+  })
+
+  it('Skip leaves the plugin on and stores nothing', async () => {
+    const { bridge, calls } = makeBridge([disabledBeta()], {
+      'plugins.requiredSettings': () => ({ ok: true, missing: MISSING }),
+    })
+    renderPlugins(bridge)
+    fireEvent.click(await screen.findByTestId('plugin-toggle-beta'))
+    await screen.findByTestId('plugin-setup-dialog')
+    fireEvent.click(screen.getByTestId('plugin-setup-skip'))
+    await waitFor(() => expect(screen.queryByTestId('plugin-setup-dialog')).toBeNull())
+    expect(calls).not.toContain('plugins.setSettings')
+    expect(calls.filter(c => c === 'plugins.setEnabled')).toHaveLength(1)
+  })
+
+  it('asks nothing when every required field is set, or when the plugin is turned off', async () => {
+    const { bridge, calls } = makeBridge([disabledBeta()], {
+      'plugins.requiredSettings': () => ({ ok: true, missing: {} }),
+    })
+    renderPlugins(bridge)
+    fireEvent.click(await screen.findByTestId('plugin-toggle-beta'))
+    await screen.findByText('Plugin enabled')
+    await waitFor(() => expect(calls).toContain('plugins.requiredSettings'))
+    expect(screen.queryByTestId('plugin-setup-dialog')).toBeNull()
+
+    cleanup()
+    const off = makeBridge([installedEntry('beta')], {
+      'plugins.requiredSettings': () => ({ ok: true, missing: MISSING }),
+    })
+    renderPlugins(off.bridge)
+    fireEvent.click(await screen.findByTestId('plugin-toggle-beta'))
+    await screen.findByText('Plugin disabled')
+    expect(off.calls).not.toContain('plugins.requiredSettings')
+  })
+
+  it('asks after an install too', async () => {
+    const { bridge, requests } = makeBridge([], {
+      'plugins.requiredSettings': () => ({ ok: true, missing: MISSING }),
+    })
+    renderPlugins(bridge)
+    fireEvent.click(await screen.findByTestId(`mp-toggle-${OFFICIAL}`))
+    fireEvent.click(await screen.findByTestId('plugin-install-alpha'))
+    await screen.findByTestId('plugin-setup-dialog')
+    expect(requests.find(r => r.route === 'plugins.requiredSettings')!.payload).toMatchObject({ plugin: `alpha@${OFFICIAL}` })
+  })
+})
