@@ -17,6 +17,7 @@ import {
   followBrowserTabs,
   hasPane,
   isPaneGroup,
+  keepOnlyPanes,
   movePane,
   normalise,
   openPane,
@@ -212,6 +213,18 @@ describe('the session record', () => {
     const record = openPane(defaultSessionPaneRecord(), 'diff', {})
     expect(openPane(record, 'diff', {})).toBe(record)
     expect(closePane(record, 'tasks')).toBe(record)
+  })
+
+  it('keepOnlyPanes closes every other pane and drops an expansion of one (a CLI session, F-34)', () => {
+    let record = defaultSessionPaneRecord()
+    for (const kind of ['diff', 'terminal', 'files', 'browser'] as const) record = openPane(record, kind, {})
+    record = setMaximized(record, 'diff')
+    const kept = keepOnlyPanes(record, ['browser', 'terminal'])
+    expect(panesIn(kept.layout).sort()).toEqual(['browser', 'terminal'])
+    expect(kept.maximized).toBeNull()
+    // Nothing to close: the same record back.
+    expect(keepOnlyPanes(kept, ['browser', 'terminal'])).toBe(kept)
+    expect(panesIn(keepOnlyPanes(record, []).layout)).toEqual([])
   })
 
   it('expanding needs the pane present; closing the expanded pane restores', () => {

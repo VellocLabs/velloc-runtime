@@ -71,12 +71,21 @@ describe('NexusTopBar render', () => {
     expect(html.slice(settings, toggle).match(/<button/g)?.length).toBe(2)
   })
 
-  it('in a CLI session shows only Settings and the sidebar toggle (F-34)', () => {
+  it('in a CLI session shows Settings, the sidebar toggle and only the Terminal and Browser panes (F-34)', () => {
     // What the shell passes while a CLI session is active: no model picker,
-    // no session tabs, panes, rail, search, imports or plugin items.
-    const html = markup({ hideModelPicker: true, sidebarCollapsed: false, onToggleSidebar: () => {} })
+    // no session tabs, rail, search, imports or plugin items; two panes.
+    const html = markup({
+      hideModelPicker: true,
+      sidebarCollapsed: false,
+      onToggleSidebar: () => {},
+      onTogglePane: () => {},
+      paneKinds: ['browser', 'terminal'],
+      openPanes: ['terminal'],
+      hasModPanes: true,
+    })
     const buttons = [...html.matchAll(/<button[^>]*data-testid="([^"]+)"/g)].map(match => match[1])
-    expect(buttons).toEqual(['topbar-settings', 'topbar-sidebar-toggle'])
+    expect(buttons).toEqual(['topbar-settings', 'topbar-sidebar-toggle', 'topbar-pane-terminal', 'topbar-pane-browser', 'topbar-more-panes'])
+    expect(tag(html, 'topbar-pane-terminal')).toContain('aria-pressed="true"')
     expect(html).not.toContain('nexus-model-picker-trigger')
   })
 

@@ -489,6 +489,15 @@ export function closePane(record: SessionPaneRecord, kind: SidePaneKind): Sessio
   }
 }
 
+/** `record` with every pane outside `kinds` closed, as `closePane` closes one. */
+export function keepOnlyPanes(record: SessionPaneRecord, kinds: readonly SidePaneKind[]): SessionPaneRecord {
+  let out = record
+  for (const kind of panesIn(record.layout)) {
+    if (!kinds.includes(kind)) out = closePane(out, kind)
+  }
+  return out
+}
+
 /** Expand `kind` over the area (it must be in the tree), or restore with null. */
 export function setMaximized(
   record: SessionPaneRecord,

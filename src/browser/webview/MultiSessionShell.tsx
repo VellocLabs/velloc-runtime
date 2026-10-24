@@ -62,7 +62,7 @@ import {
   paneToggleAction,
   paneWeightFor,
   pruneUnrestorable,
-  defaultSessionPaneRecord,
+  keepOnlyPanes,
   resetPaneLayout,
   setMaximized,
   type FilesPaneState,
@@ -284,8 +284,8 @@ import { TERMINAL_CAPABILITY } from '../../terminal/protocol'
 import { WorkspaceProjectFolderDialog } from './ThreadDialogs'
 
 const NO_CLIS: readonly string[] = []
-// What a CLI session's area draws: the session alone, no side pane (F-34).
-const CLI_SESSION_PANE_RECORD = defaultSessionPaneRecord()
+// The side panes a CLI session offers (F-34); every other pane stays closed.
+const CLI_SESSION_PANES: readonly SidePaneKind[] = ['browser', 'terminal']
 // Type-only, so it adds no edge to the emitted graph and the split holds.
 import type { SettingsSectionId } from './settings/SettingsScreen'
 import { isSettingsSectionVisible } from './settings/settingsNav'
@@ -1948,12 +1948,14 @@ export function MultiSessionShell({
   // while no mod has a pane open; each slot stays, so the pane returns in
   // place). Every decision reads this same pruned record.
   const readPaneRecord = useCallback(
-    (sessionId: string) =>
-      pruneUnrestorable(sessionLayoutsStore.get(sessionId), {
+    (sessionId: string) => {
+      const record = pruneUnrestorable(sessionLayoutsStore.get(sessionId), {
         browserTabs: sessionTabCountsRef.current.get(sessionId)?.nexus ?? 0,
         modPanes: modPaneCountsRef.current.get(sessionId),
-      }),
-    [sessionLayoutsStore],
+      })
+      return cliOfTemplateType(getSessionTemplateType(sessionId)) ? keepOnlyPanes(record, CLI_SESSION_PANES) : record
+    },
+    [sessionLayoutsStore, getSessionTemplateType],
   )
   // CLI sessions (F-34) by id: the CLI each runs and the folder it runs in.
   const cliSessions = useMemo(() => {
@@ -1970,17 +1972,14 @@ export function MultiSessionShell({
   const activeCliRef = useRef(activeCli)
   activeCliRef.current = activeCli
   const storedPaneRecord = activeSessionId ? sessionLayouts.records.get(activeSessionId) : undefined
-  const activePaneRecord = useMemo(
-    () =>
-      // A CLI session shows only its terminal: no side pane is drawn, whatever its record holds.
-      activeCli
-        ? CLI_SESSION_PANE_RECORD
-        : pruneUnrestorable(storedPaneRecord ?? sessionLayoutsStore.get(''), {
-            browserTabs: activeNexusTabCount,
-            ...(modPanesDocked ? {} : { modPanes: 0 }),
-          }),
-    [activeCli, storedPaneRecord, activeNexusTabCount, sessionLayoutsStore, modPanesDocked],
-  )
+  const activePaneRecord = useMemo(() => {
+    const record = pruneUnrestorable(storedPaneRecord ?? sessionLayoutsStore.get(''), {
+      browserTabs: activeNexusTabCount,
+      ...(modPanesDocked ? {} : { modPanes: 0 }),
+    })
+    // A CLI session draws only the panes it offers, whatever its record holds.
+    return activeCli ? keepOnlyPanes(record, CLI_SESSION_PANES) : record
+  }, [activeCli, storedPaneRecord, activeNexusTabCount, sessionLayoutsStore, modPanesDocked])
   const paneLayout = activePaneRecord.layout
   const openPanes = useMemo(() => panesIn(paneLayout), [paneLayout])
   const paneMaximized = activePaneRecord.maximized
@@ -2033,6 +2032,7 @@ export function MultiSessionShell({
    *  a pane that was expanded. */
   const openPaneFor = useCallback(
     (kind: SidePaneKind) => {
+      if (activeCliRef.current && !CLI_SESSION_PANES.includes(kind)) return
       updatePaneRecord(r => {
         const opened = openPane(r, kind, sessionLayoutsStore.getSnapshot().weights)
         return opened.maximized !== null ? setMaximized(opened, kind) : opened
@@ -2112,6 +2112,7 @@ export function MultiSessionShell({
     (kind: SidePaneKind) => {
       const id = activeSessionIdRef.current
       if (!id) return
+      if (activeCliRef.current && !CLI_SESSION_PANES.includes(kind)) return
       setBackgroundTaskFocusSessionId(null)
       const action =
         kind === 'browser'
@@ -2981,10 +2982,11 @@ export function MultiSessionShell({
   // while focus is in the Files pane. Not while Settings covers the area.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      // A CLI session has no panes; its keys belong to the terminal.
-      if (event.defaultPrevented || settingsOpenRef.current || activeCliRef.current) return
+      if (event.defaultPrevented || settingsOpenRef.current) return
       const shortcut = paneShortcutFor(event)
       if (!shortcut) return
+      // A CLI session's toggle of a pane it does not offer leaves the key to the terminal.
+      if (activeCliRef.current && shortcut.action === 'toggle' && !CLI_SESSION_PANES.includes(shortcut.kind)) return
       if (shortcut.action === 'toggle-files-tree') {
         const focused = document.activeElement
         if (!(focused instanceof Element) || !focused.closest('[data-pane="files"]')) return
@@ -4454,7 +4456,8 @@ export function MultiSessionShell({
         openPanes={openPanes}
         hasModPanes={modPanesDocked && shellModUi.panes.length > 0}
         terminalAvailable={terminalsState?.available ?? true}
-        onTogglePane={activeCli ? undefined : togglePane}
+        onTogglePane={togglePane}
+        paneKinds={activeCli ? CLI_SESSION_PANES : undefined}
         sessionOverview={
           activeCli
             ? undefined
@@ -4465,7 +4468,7 @@ export function MultiSessionShell({
                 onToggle: handleToggleSessionCards,
               }
         }
-        onResetLayout={activeCli ? undefined : handleResetLayout}
+        onResetLayout={handleResetLayout}
         backgroundTaskCount={countRunning(activeSessionSubAgentRows)}
         importSources={activeCli ? undefined : topbarImportSources}
         onOpenImport={activeCli ? undefined : setImportDialogSource}

@@ -118,6 +118,8 @@ export type NexusTopBarProps = {
   /** Open a closed pane, or close an open one. Omitted on hosts without
    *  panes: no pane toggle and no More menu render. */
   onTogglePane?: (kind: SidePaneKind) => void;
+  /** The panes the active session offers; omitted = every pane (a CLI session offers fewer, F-34). */
+  paneKinds?: readonly SidePaneKind[];
   /** The session rail toggle, first in the right group: shows or hides the
    *  session card stack (or opens it as a popover where it does not fit). */
   sessionOverview?: { shown: boolean; onToggle: () => void };
@@ -197,6 +199,7 @@ export function NexusTopBar({
   hasModPanes,
   terminalAvailable,
   onTogglePane,
+  paneKinds,
   sessionOverview,
   onResetLayout,
   backgroundTaskCount,
@@ -225,9 +228,11 @@ export function NexusTopBar({
   const rightGroupRef = React.useRef<HTMLDivElement>(null);
   const open = new Set(openPanes ?? []);
   const plugins = usePluginTopbarItems(activeSessionId, onPressPluginItem);
+  const offered = (kind: SidePaneKind) => !paneKinds || paneKinds.includes(kind);
   const barPaneKinds = onTogglePane
     ? BAR_PANE_KINDS.filter(
         (kind) =>
+          offered(kind) &&
           !(kind === "browser" && !canOpenSessionTab) &&
           !(kind === "terminal" && (!canTerminal || terminalAvailable === false)) &&
           !(kind === "mods" && !hasModPanes && !open.has(kind)),
@@ -581,7 +586,7 @@ export function NexusTopBar({
                     </DropdownMenuPrimitive.ItemIndicator>
                   </DropdownMenuPrimitive.CheckboxItem>
                 ) : null}
-                {[...foldedPanes, ...MENU_PANE_KINDS].map((kind) => {
+                {[...foldedPanes, ...MENU_PANE_KINDS.filter(offered)].map((kind) => {
                   const Icon = PANE_ICON[kind];
                   return (
                     <DropdownMenuPrimitive.CheckboxItem
