@@ -30,3 +30,23 @@ export function formatShellLine(
   }
   return `Shell: ${shell}`
 }
+
+/**
+ * The `PowerShell:` line: which edition the PowerShell tool runs, so commands
+ * are written for it. Windows PowerShell 5.1 lacks the pipeline-chain and
+ * null operators that PowerShell 7 has. Null off Windows or when unknown.
+ */
+export function formatPowerShellLine(
+  platform: Platform | undefined,
+  powershell: string | undefined,
+): string | null {
+  if (platform !== 'win32' || !powershell) return null
+  const name = powershell.trim().toLowerCase()
+  if (name === 'pwsh') {
+    return 'PowerShell: PowerShell 7+ (pwsh); `&&` and `||` chain commands'
+  }
+  if (name === 'powershell') {
+    return 'PowerShell: Windows PowerShell 5.1 (powershell.exe); it has no `&&`, `||`, `??` or ternary: separate commands with `;` and test `$?` or `$LASTEXITCODE`, e.g. `cmd1; if ($?) { cmd2 }`'
+  }
+  return null
+}

@@ -5,7 +5,7 @@
  */
 
 import type { Platform } from './hostPlatform'
-import { formatShellLine } from './hostPlatform'
+import { formatPowerShellLine, formatShellLine } from './hostPlatform'
 
 export type EnvironmentInfo = {
   cwd?: string
@@ -16,6 +16,8 @@ export type EnvironmentInfo = {
   platform?: Platform
   osVersion?: string
   shell?: string
+  /** The PowerShell the PowerShell tool launches: `pwsh` or `powershell`. */
+  powershell?: string
   mainLoopModel?: string
 }
 
@@ -57,6 +59,10 @@ export function buildEnvironmentInfo(info: EnvironmentInfo): string | null {
   const shellLine = formatShellLine(info.platform, info.shell)
   if (shellLine) {
     items.push(shellLine)
+  }
+  const powerShellLine = formatPowerShellLine(info.platform, info.powershell)
+  if (powerShellLine) {
+    items.push(powerShellLine)
   }
   if (info.osVersion) {
     items.push(`OS Version: ${info.osVersion}`)

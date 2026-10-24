@@ -88,7 +88,7 @@ const NEXUS_HOST_SUPPORTED_CAPABILITIES = NEXUS_DIRECT_BRIDGE_CAPABILITIES
 
 /** The host facts `fs.systemInfo` contributes to `BrowserSessionState`. */
 type SystemInfoFields = Partial<
-  Pick<BrowserSessionState, 'platform' | 'osVersion' | 'shell'>
+  Pick<BrowserSessionState, 'platform' | 'osVersion' | 'shell' | 'powershell'>
 >
 
 export class BrowserHostBridge implements PlatformCapabilities {
@@ -381,6 +381,9 @@ export class BrowserHostBridge implements PlatformCapabilities {
       }
       if (raw.shell && raw.shell.length > 0) {
         out.shell = raw.shell
+      }
+      if (typeof raw.powershell === 'string' && raw.powershell.length > 0) {
+        out.powershell = raw.powershell
       }
       return Object.keys(out).length > 0 ? out : undefined
     } catch {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildEnvironmentInfo } from '../utils/environmentInfo'
-import { formatShellLine } from '../utils/hostPlatform'
+import { formatPowerShellLine, formatShellLine } from '../utils/hostPlatform'
 
 describe('formatShellLine', () => {
   it('returns null when no shell is known', () => {
@@ -40,6 +40,28 @@ describe('formatShellLine', () => {
     // both fields together, so this branch is mostly a defensive case
     // for partial test fixtures.
     expect(formatShellLine(undefined, 'fish')).toBe('Shell: fish')
+  })
+})
+
+describe('formatPowerShellLine', () => {
+  it('names Windows PowerShell 5.1 and the chaining it lacks', () => {
+    const line = formatPowerShellLine('win32', 'powershell')
+    expect(line).toMatch(/^PowerShell: Windows PowerShell 5\.1 \(powershell\.exe\)/)
+    expect(line).toContain('no `&&`, `||`')
+    expect(line).toContain('cmd1; if ($?) { cmd2 }')
+  })
+
+  it('names PowerShell 7 when pwsh is what the tool launches', () => {
+    expect(formatPowerShellLine('win32', 'pwsh')).toBe(
+      'PowerShell: PowerShell 7+ (pwsh); `&&` and `||` chain commands',
+    )
+  })
+
+  it('says nothing off Windows, for an older host, or for an unknown name', () => {
+    expect(formatPowerShellLine('linux', 'pwsh')).toBeNull()
+    expect(formatPowerShellLine('win32', undefined)).toBeNull()
+    expect(formatPowerShellLine('win32', '')).toBeNull()
+    expect(formatPowerShellLine('win32', 'nu')).toBeNull()
   })
 })
 
@@ -103,5 +125,18 @@ describe('buildEnvironmentInfo', () => {
     expect(block).not.toContain('Shell:')
     expect(block).not.toContain('OS Version:')
     expect(block).toContain('Primary working directory:')
+  })
+
+  it('puts the PowerShell edition right after the Shell line on Windows', () => {
+    const block = buildEnvironmentInfo({
+      platform: 'win32',
+      shell: 'bash',
+      powershell: 'powershell',
+      osVersion: 'Windows 11 Pro 10.0.26200',
+    })!
+    const lines = block.split('\n')
+    const shell = lines.findIndex(line => line.startsWith('- Shell: bash'))
+    expect(lines[shell + 1]).toMatch(/^- PowerShell: Windows PowerShell 5\.1/)
+    expect(lines[shell + 2]).toBe('- OS Version: Windows 11 Pro 10.0.26200')
   })
 })

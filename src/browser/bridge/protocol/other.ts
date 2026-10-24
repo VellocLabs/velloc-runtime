@@ -16,10 +16,12 @@ export type BrowserSessionState = {
   activeTabId?: string
   // Host platform identifiers (`fs.systemInfo`), all optional: platform is
   // 'win32' | 'darwin' | 'linux'; osVersion human-readable; shell the interpreter
-  // name only, no path.
+  // name only, no path; powershell the one the PowerShell tool launches
+  // ("pwsh" | "powershell").
   platform?: 'win32' | 'darwin' | 'linux'
   osVersion?: string
   shell?: string
+  powershell?: string
 }
 
 export type BrowserUserProfile = {

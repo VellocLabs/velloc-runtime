@@ -233,6 +233,10 @@ export type FsBridgeActionMap = {
       // $SHELL on POSIX, $SHELL → $COMSPEC fallback on Windows. Empty
       // when neither env var is set.
       shell: string
+      // The PowerShell the PowerShell tool launches on Windows: "pwsh"
+      // (PowerShell 7+) or "powershell" (Windows PowerShell 5.1). Empty or
+      // absent when there is none, off Windows, or on an older host.
+      powershell?: string
     }
   }
 

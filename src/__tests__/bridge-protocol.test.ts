@@ -833,6 +833,31 @@ describe('BrowserHostBridge', () => {
     expect(bare.platform).toBeUndefined()
     expect(bare.shell).toBeUndefined()
   })
+
+  it('carries the PowerShell edition when the host names one, and nothing when it is empty or absent', async () => {
+    const manifest = {
+      capabilities: ['browser', 'fs'] as never,
+      toolNames: [],
+      commandNames: [],
+      hostedTools: [],
+    }
+    const sessionFor = async (powershell: string | undefined) => {
+      const transport = createLocalBrowserBridgeTransport({
+        ...createMinimalHandlers(),
+        'fs.systemInfo': async () => ({
+          platform: 'win32',
+          osVersion: 'Windows 11',
+          shell: 'bash',
+          ...(powershell === undefined ? {} : { powershell }),
+        }),
+      })
+      return new BrowserHostBridge({ transport, hostMode: 'nexus', hostManifest: manifest }).describeHostSession()
+    }
+
+    expect((await sessionFor('powershell')).powershell).toBe('powershell')
+    expect((await sessionFor('')).powershell).toBeUndefined()
+    expect((await sessionFor(undefined)).powershell, 'an older host omits the field').toBeUndefined()
+  })
 })
 
 describe('BrowserHostBridge — fs.systemInfo memo', () => {

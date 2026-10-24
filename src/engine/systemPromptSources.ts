@@ -131,6 +131,7 @@ export async function gatherSystemPromptSources(
     platform: snapshot.session.platform,
     osVersion: snapshot.session.osVersion,
     shell: snapshot.session.shell,
+    powershell: snapshot.session.powershell,
     // A model ENTRY (`claude-haiku-*@latest`) is a virtual id; the model is
     // told the concrete one it resolves to.
     mainLoopModel: resolveModelId(params.providerId, params.mainLoopModel),
