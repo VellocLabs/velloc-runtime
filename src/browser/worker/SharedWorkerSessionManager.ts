@@ -984,6 +984,10 @@ export class SharedWorkerSessionManager {
     registerTerminalCapability(this.runtimeHub.registry, this.runtimeHub.broker, {
       service: this.bootServices.terminals,
     })
+    // A CLI session's running indicator follows its CLI (F-34).
+    this.bootServices.terminals.subscribe(event => {
+      if (event.kind === 'cliBusy') this.feed.scheduleSummary()
+    })
     setActiveSessionManager(this)
     // The hub owns the source-subscription lifecycle; the
     // Manager only supplies the ring buffers.
@@ -1005,6 +1009,7 @@ export class SharedWorkerSessionManager {
       recoveredBashRows: () => this.recoveredBash.entries(),
       recoveredSuperShellRows: () => this.recoveredSuperShell.entries(),
       recoveredTitleRows: () => this.recoveredTitles.entries(),
+      isCliBusy: sessionId => this.bootServices.terminals.cliBusy(sessionId),
     })
     // Write-through persistence for the Skills-tab invocation event log: the log
     // lives realm-global (its producers run in the runtime), but only the

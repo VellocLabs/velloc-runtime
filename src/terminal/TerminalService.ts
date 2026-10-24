@@ -50,7 +50,7 @@ import {
   type TerminalShellId,
 } from './shells'
 import { TitleSequenceScanner } from './titleScanner'
-import { CliTitleFollower } from './cliTitles'
+import { CliBusyTracker, CliTitleFollower } from './cliTitles'
 import {
   CLI_ASSIGNS_CONVERSATION_ID,
   cliAgentArgv,
@@ -80,6 +80,8 @@ export type TerminalServiceDeps = {
   cliConversations?: CliConversationStore
   /** How long a CLI's terminal title must hold before it becomes the session title; default `CLI_TITLE_SETTLE_MS`. */
   cliTitleSettleMs?: number
+  /** How long a CLI counts as working after its title glyph last changed; default `CLI_BUSY_HOLD_MS`. */
+  cliBusyHoldMs?: number
   /** Output coalescing window and size; defaults ~16 ms / 64 Ki units. */
   coalesceWindowMs?: number
   coalesceMaxUnits?: number
@@ -105,6 +107,8 @@ export type TerminalServiceEvent =
   | { kind: 'title'; id: string; title: string }
   | { kind: 'state'; id: string; state: TerminalState }
   | { kind: 'closed'; id: string }
+  /** A CLI session started or stopped working (F-34); read `cliBusy`. */
+  | { kind: 'cliBusy'; sessionId: string; busy: boolean }
 
 const DEFAULT_COALESCE_WINDOW_MS = 16
 const DEFAULT_COALESCE_MAX_UNITS = 64 * 1024
@@ -181,12 +185,22 @@ export class TerminalService {
   private probeToken = 0
   private disposed = false
   private readonly cliTitles: CliTitleFollower | null
+  private readonly cliWork: CliBusyTracker
 
   constructor(private readonly deps: TerminalServiceDeps) {
     const store = deps.cliConversations
     this.cliTitles = store?.retitle
       ? new CliTitleFollower((sessionId, title) => store.retitle!(sessionId, title), deps.cliTitleSettleMs)
       : null
+    this.cliWork = new CliBusyTracker(
+      (sessionId, busy) => this.emit({ kind: 'cliBusy', sessionId, busy }),
+      deps.cliBusyHoldMs,
+    )
+  }
+
+  /** Whether `sessionId`'s CLI is working, read from its title's spinner (F-34). */
+  cliBusy(sessionId: string): boolean {
+    return this.cliWork.isBusy(sessionId)
   }
 
   /** False without a host port or without the host's `shell.spawn.pty` primitive. */
@@ -405,6 +419,7 @@ export class TerminalService {
     this.disposed = true
     this.probeToken += 1
     this.cliTitles?.dispose()
+    this.cliWork.dispose()
     for (const record of Array.from(this.records.values())) this.forget(record)
     this.listeners.clear()
   }
@@ -574,19 +589,25 @@ export class TerminalService {
   private setTitle(record: TerminalRecord, title: string): void {
     if (record.title === title) return
     record.title = title
-    if (record.cli) this.cliTitles?.observe(record.sessionId, record.cli.id, title)
+    if (record.cli) {
+      this.cliTitles?.observe(record.sessionId, record.cli.id, title)
+      this.cliWork.observe(record.sessionId, title)
+    }
     this.emit({ kind: 'title', id: record.id, title })
     this.emit({ kind: 'list' })
   }
 
   private setState(record: TerminalRecord, state: TerminalState): void {
     record.state = state
+    // A CLI that stopped is not working, whatever its last title showed.
+    if (record.cli && (state.kind === 'exited' || state.kind === 'failed')) this.cliWork.end(record.sessionId)
     this.emit({ kind: 'state', id: record.id, state })
     this.emit({ kind: 'list' })
   }
 
   private forget(record: TerminalRecord): void {
     if (!this.records.delete(record.id)) return
+    if (record.cli) this.cliWork.end(record.sessionId)
     record.spawn = null
     record.coalescer.dispose()
     record.screen.dispose()

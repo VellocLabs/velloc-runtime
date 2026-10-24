@@ -100,6 +100,8 @@ export interface SessionFeedHost {
    *  this worker lifetime, so none duplicates a registry record. Optional for
    *  hosts that never recover. */
   recoveredTitleRows?(): Iterable<[string, RecoveredTitleRow[]]>
+  /** Whether a CLI session's CLI is working (F-34); a CLI session has no turn of its own. */
+  isCliBusy?(sessionId: string): boolean
 }
 
 export class SessionFeedPublisher {
@@ -329,7 +331,8 @@ export class SessionFeedPublisher {
         // transition both scheduleSummary(), so the flip re-broadcasts.
         running:
           this.derivePhase(entry) !== 'idle' ||
-          this.hasRunningTasksFor(sessionId),
+          this.hasRunningTasksFor(sessionId) ||
+          (this.host.isCliBusy?.(sessionId) ?? false),
         // Halted-on-ask flag (cached from worker.state by the Manager) —
         // the sidebar dot's client-independent source.
         needsAnswer: entry.needsAnswer,
@@ -348,7 +351,7 @@ export class SessionFeedPublisher {
       const c = summary?.counters
       rows.push({
         sessionId,
-        running: false,
+        running: this.host.isCliBusy?.(sessionId) ?? false,
         tool: c?.tool ?? 0,
         toolFail: c?.toolFail ?? 0,
         mcp: c?.mcp ?? 0,

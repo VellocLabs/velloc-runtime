@@ -197,6 +197,9 @@ export function registerTerminalCapability(
       case 'closed':
         broker.dropTopic(topic.terminal(event.id))
         return
+      case 'cliBusy':
+        // The session list carries it, as the row's `running`.
+        return
     }
   }
   const unsubscribe = service?.subscribe(onEvent) ?? (() => {})
