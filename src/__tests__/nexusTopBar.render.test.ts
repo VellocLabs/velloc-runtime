@@ -60,6 +60,15 @@ describe('NexusTopBar render', () => {
     expect(lead).not.toContain('title=')
   })
 
+  it('the Settings button shows a gear, not the kebab of the More menu', () => {
+    const html = markup({ onTogglePane: () => {} })
+    const button = (testId: string) =>
+      new RegExp(`<button[^>]*data-testid="${testId}"[\\s\\S]*?</button>`).exec(html)?.[0] ?? ''
+    expect(button('topbar-settings')).toContain('lucide-settings')
+    expect(button('topbar-settings')).not.toContain('lucide-ellipsis-vertical')
+    expect(button('topbar-more-panes')).toContain('lucide-ellipsis-vertical')
+  })
+
   it('the sidebar toggle sits in the left group, right after the model picker', () => {
     const html = markup({ sidebarCollapsed: false, onToggleSidebar: () => {}, onTogglePane: () => {} })
     const right = html.indexOf('data-testid="topbar-right-group"')

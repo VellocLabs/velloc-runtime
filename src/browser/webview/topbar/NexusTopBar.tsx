@@ -5,6 +5,7 @@ import {
   EllipsisVerticalIcon,
   Link2Icon,
   PanelLeftIcon,
+  SettingsIcon,
   SquareChartGanttIcon,
 } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
@@ -310,8 +311,8 @@ export function NexusTopBar({
         data-testid="topbar-left-group"
         className="flex items-center gap-1 justify-self-start"
       >
-        {/* Settings — first control in the bar; kebab (vertical-ellipsis)
-            icon, opens the General page. */}
+        {/* Settings — first control in the bar; gear icon, so it never reads
+            as the More menu's kebab on the right. Opens the General page. */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -322,7 +323,7 @@ export function NexusTopBar({
               aria-label={t("topbar.settings")}
               onClick={() => onOpenSettings("general")}
             >
-              <EllipsisVerticalIcon className="size-4" />
+              <SettingsIcon className="size-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">{t("topbar.settings")}</TooltipContent>
