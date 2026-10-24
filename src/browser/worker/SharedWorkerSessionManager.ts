@@ -77,6 +77,7 @@ import type {
   ForkRetarget,
 } from './sharedWorkerProtocol'
 import { hasTemplate } from '../../prompting/templateRegistry'
+import { cliOfTypeInAnyChannel } from '../../prompting/templateCatalog'
 import type { BrowserLlmSelection } from '../bridge/protocol/nexus_llm'
 import type {
   NexusCurrentSessionPhase,
@@ -2780,6 +2781,15 @@ export class SharedWorkerSessionManager {
     }
   }
 
+  /**
+   * Whether a live entry without a bound store will get one. A CLI session
+   * (F-34) never builds an engine, so its store never binds and its writes
+   * go to disk.
+   */
+  private awaitsStoreBind(entry: SessionEntry): boolean {
+    return cliOfTypeInAnyChannel(entry.templateType) === undefined
+  }
+
   /** A CLI session's conversation id (F-34), in its session metadata. */
   private cliConversationStore(): CliConversationStore {
     return createCliConversationStore({
@@ -2971,7 +2981,7 @@ export class SharedWorkerSessionManager {
       } catch {
         // best-effort; the live overlay + broadcast below still reflect it
       }
-    } else if (entry) {
+    } else if (entry && this.awaitsStoreBind(entry)) {
       // Runtime exists, store not bound yet: the store already loaded its
       // state, so a disk write here would be overwritten by its first persist.
       // Stash it; `bindSessionRuntime` applies it through the store.
@@ -3061,7 +3071,7 @@ export class SharedWorkerSessionManager {
         console.warn(`[SharedWorkerSessionManager] pin of ${sessionId} not persisted`, error)
         return
       }
-    } else if (entry) {
+    } else if (entry && this.awaitsStoreBind(entry)) {
       entry.pendingPinned = pinned
     } else if (this.storage) {
       let persisted = false
@@ -3087,7 +3097,7 @@ export class SharedWorkerSessionManager {
         await opened.conversationStore
           .updateSessionMetadata({ pinned })
           .catch(() => {})
-      } else if (opened) {
+      } else if (opened && this.awaitsStoreBind(opened)) {
         opened.pendingPinned = pinned
       }
     }

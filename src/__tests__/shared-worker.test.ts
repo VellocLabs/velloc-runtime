@@ -4134,6 +4134,35 @@ describe('SharedWorkerSessionManager', () => {
       internals().sessions.delete('s')
     })
 
+    it('an open CLI session, whose store never binds, renames and pins on disk instead of stashing (F-34)', async () => {
+      installStorage()
+      const cli: Record<string, unknown> = {
+        templateType: 'cli-codex',
+        worker: { receiveFrame: vi.fn(async () => {}), getSnapshot: () => ({ messageCount: 0, messages: [] }) },
+        ports: new Set(),
+      }
+      internals().sessions.set('s', cli)
+      const port = createMockPort()
+      manager.handleConnect(port)
+      port._simulateMessage({ type: 'session.rename', sessionId: 's', title: 'Mine' })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      port._simulateMessage({ type: 'session.pin', sessionId: 's', pinned: true })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(cli.pendingRename).toBeUndefined()
+      expect(cli.pendingPinned).toBeUndefined()
+      expect(metaWrites.at(-1)).toMatchObject({ customTitle: 'Mine', metadata: { pinned: true } })
+
+      // An agent session in the same state still waits for its store.
+      metaWrites.length = 0
+      const agent: Record<string, unknown> = { ...cli, templateType: 'code' }
+      internals().sessions.set('s', agent)
+      port._simulateMessage({ type: 'session.pin', sessionId: 's', pinned: false })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(agent.pendingPinned).toBe(false)
+      expect(metaWrites).toHaveLength(0)
+      internals().sessions.delete('s')
+    })
+
     it('a pin for a session being deleted writes nothing', async () => {
       installStorage()
       internals().deletingSessions.add('s')

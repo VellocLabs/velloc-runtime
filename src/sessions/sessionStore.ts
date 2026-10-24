@@ -847,6 +847,32 @@ export function applyDiskOnlyMetadataPatch(
   })
 }
 
+// Sets the automatic title of a session that is not loaded. A manual
+// `customTitle` still wins at every read. Returns false when no sidecar exists.
+export function applyDiskOnlyAiTitle(
+  backend: Pick<
+    BrowserConversationStorageBackend,
+    'readSessionMeta' | 'writeSessionMeta' | 'migrateLegacySessionMeta'
+  >,
+  sessionId: string,
+  title: string,
+  now: number,
+): Promise<boolean> {
+  return serializeDiskOnlyMeta(sessionId, async () => {
+    const trimmed = title.trim()
+    if (!trimmed) return false
+    const existing =
+      (await backend.readSessionMeta(sessionId)) ??
+      (await backend.migrateLegacySessionMeta?.(sessionId)) ??
+      null
+    if (!existing) {
+      return false
+    }
+    await backend.writeSessionMeta(sessionId, { ...existing, updatedAt: now, aiTitle: trimmed })
+    return true
+  })
+}
+
 function forkCreationAndPin(
   source: BrowserSessionMetadata | undefined,
   now: number,

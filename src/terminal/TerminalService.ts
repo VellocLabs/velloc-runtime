@@ -50,6 +50,7 @@ import {
   type TerminalShellId,
 } from './shells'
 import { TitleSequenceScanner } from './titleScanner'
+import { CliTitleFollower } from './cliTitles'
 import {
   CLI_ASSIGNS_CONVERSATION_ID,
   cliAgentArgv,
@@ -77,6 +78,8 @@ export type TerminalServiceDeps = {
   probeClis?(host: TerminalHost, createRequestId: () => string): Promise<CliAgentId[]>
   /** Where a CLI session's conversation id is kept; without it a CLI cannot be started. */
   cliConversations?: CliConversationStore
+  /** How long a CLI's terminal title must hold before it becomes the session title; default `CLI_TITLE_SETTLE_MS`. */
+  cliTitleSettleMs?: number
   /** Output coalescing window and size; defaults ~16 ms / 64 Ki units. */
   coalesceWindowMs?: number
   coalesceMaxUnits?: number
@@ -91,6 +94,8 @@ export type CliConversationRecord = { cli: CliAgentId; id: string | null }
 export type CliConversationStore = {
   read(sessionId: string): Promise<CliConversationRecord | undefined>
   record(sessionId: string, record: CliConversationRecord): Promise<void>
+  /** Sets the session's automatic title from its CLI's terminal title; without it titles are not followed. */
+  retitle?(sessionId: string, title: string): Promise<void>
 }
 
 export type TerminalServiceEvent =
@@ -175,8 +180,14 @@ export class TerminalService {
   private lastAvailable = false
   private probeToken = 0
   private disposed = false
+  private readonly cliTitles: CliTitleFollower | null
 
-  constructor(private readonly deps: TerminalServiceDeps) {}
+  constructor(private readonly deps: TerminalServiceDeps) {
+    const store = deps.cliConversations
+    this.cliTitles = store?.retitle
+      ? new CliTitleFollower((sessionId, title) => store.retitle!(sessionId, title), deps.cliTitleSettleMs)
+      : null
+  }
 
   /** False without a host port or without the host's `shell.spawn.pty` primitive. */
   get available(): boolean {
@@ -384,6 +395,7 @@ export class TerminalService {
 
   /** The session ended: its terminals die with it. */
   closeForSession(sessionId: string): void {
+    this.cliTitles?.forget(sessionId)
     for (const record of Array.from(this.records.values())) {
       if (record.sessionId === sessionId) this.forget(record)
     }
@@ -392,6 +404,7 @@ export class TerminalService {
   dispose(): void {
     this.disposed = true
     this.probeToken += 1
+    this.cliTitles?.dispose()
     for (const record of Array.from(this.records.values())) this.forget(record)
     this.listeners.clear()
   }
@@ -561,6 +574,7 @@ export class TerminalService {
   private setTitle(record: TerminalRecord, title: string): void {
     if (record.title === title) return
     record.title = title
+    if (record.cli) this.cliTitles?.observe(record.sessionId, record.cli.id, title)
     this.emit({ kind: 'title', id: record.id, title })
     this.emit({ kind: 'list' })
   }

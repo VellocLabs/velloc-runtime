@@ -20,6 +20,7 @@ import {
   type TopicId,
 } from '../runtimeProtocol'
 import { currentTemplateChannel } from '../../branding/updateChannels'
+import { cliOfTypeInAnyChannel } from '../../prompting/templateCatalog'
 import { buildEntryUrl } from './buildEntry'
 import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
 import { knownProjectRootOrRefuse } from './knownProjects'
@@ -295,6 +296,31 @@ const sessionVisibleTo = (conn: ConnectionInfo, sessionId: unknown): boolean =>
 const rowsVisibleTo = <T>(conn: ConnectionInfo, rows: readonly T[], key: keyof T & string): T[] =>
   rows.filter(row => sessionVisibleTo(conn, (row as Record<string, unknown>)[key]))
 
+/**
+ * Security: a CLI session (F-34) is a terminal, which is `full` scope, and its
+ * title is terminal output, so a connection below `full` never sees one.
+ */
+const seesCliSessions = (conn: ConnectionInfo): boolean => conn.scope.mode === 'full'
+const isCliSessionRow = (row: unknown): boolean =>
+  cliOfTypeInAnyChannel((row as { templateType?: unknown } | null)?.templateType as string | undefined) !== undefined
+const withoutCliRows = <T>(rows: readonly T[]): T[] => rows.filter(row => !isCliSessionRow(row))
+
+/** A `sessions` event with its CLI session rows removed; an update about one is withheld. */
+function withoutCliSessions(type: string | undefined, payload: unknown): unknown {
+  const inner = innerOf(payload)
+  switch (type) {
+    case 'session.list':
+    case 'session.summary':
+      return Array.isArray(inner?.sessions)
+        ? { ...(payload as object), payload: { ...inner, sessions: withoutCliRows(inner.sessions as unknown[]) } }
+        : payload
+    case 'session.updated':
+      return isCliSessionRow(inner?.session) ? undefined : payload
+    default:
+      return payload
+  }
+}
+
 const innerOf = (payload: unknown): Record<string, unknown> | null => {
   const inner = (payload as { payload?: unknown } | null)?.payload
   return inner && typeof inner === 'object' ? (inner as Record<string, unknown>) : null
@@ -309,6 +335,11 @@ const innerOf = (payload: unknown): Record<string, unknown> | null => {
  * table does not know is withheld (`undefined`), never passed through.
  */
 export function sessionsEventFor(conn: ConnectionInfo, type: string | undefined, payload: unknown): unknown {
+  const visible = sessionsEventInScope(conn, type, payload)
+  return visible === undefined || seesCliSessions(conn) ? visible : withoutCliSessions(type, visible)
+}
+
+function sessionsEventInScope(conn: ConnectionInfo, type: string | undefined, payload: unknown): unknown {
   if (conn.scope.sessions === 'all') return payload
   const inner = innerOf(payload)
   switch (type) {
@@ -434,7 +465,8 @@ export function installSessionSurface(
     authorize: (id, conn) => {
       const parsed = parseTopic(id)
       if (parsed?.family !== 'session') return false
-      return conn.scope.sessions === 'all' || conn.scope.sessions.includes(parsed.sessionId)
+      if (!(conn.scope.sessions === 'all' || conn.scope.sessions.includes(parsed.sessionId))) return false
+      return seesCliSessions(conn) || !host.buildSessionInfoList().some(row => row.sessionId === parsed.sessionId && isCliSessionRow(row))
     },
     async *snapshot(id) {
       const parsed = parseTopic(id)
@@ -476,7 +508,8 @@ export function installSessionSurface(
     matches: id => id === topic.sessions(),
     authorize: () => true,
     async *snapshot(_id, conn) {
-      const sessions = rowsVisibleTo(conn, host.buildSessionInfoList(), 'sessionId')
+      const visible = rowsVisibleTo(conn, host.buildSessionInfoList(), 'sessionId')
+      const sessions = seesCliSessions(conn) ? visible : withoutCliRows(visible)
       yield { type: 'session.list', payload: { payload: { sessions } } }
     },
     project: (_id, conn, evt) => sessionsEventFor(conn, evt.type, evt.payload),
@@ -562,6 +595,13 @@ export function installSessionSurface(
     handle: async (request: HandlerRequest) => {
       const act = request.route.act
       const payload = request.payload as Record<string, unknown>
+      if (!seesCliSessions(request.conn)) {
+        const named = act === 'fork' ? forkSourceOf(payload) : sessionIdOf(payload)
+        const cliNamed = named !== undefined && host.buildSessionInfoList().some(row => row.sessionId === named && isCliSessionRow(row))
+        if (cliNamed || (act === 'open' && isCliSessionRow(payload))) {
+          throw wireError('forbidden_scope', `session.${act}: a CLI session needs scope 'full'`)
+        }
+      }
       switch (act) {
         case 'open': {
           let open = request.payload as SessionOpenPayload
@@ -598,8 +638,10 @@ export function installSessionSurface(
           host.dispatch(port, managerMessage('worker.updateSessionMetadata', payload))
           return undefined
         }
-        case 'list':
-          return { sessions: rowsVisibleTo(request.conn, host.buildSessionInfoList(), 'sessionId') }
+        case 'list': {
+          const visible = rowsVisibleTo(request.conn, host.buildSessionInfoList(), 'sessionId')
+          return { sessions: seesCliSessions(request.conn) ? visible : withoutCliRows(visible) }
+        }
         case 'getToolDetail':
           return { detail: await host.loadToolDetail(payload.sessionId as string, payload.toolCallId as string) }
         case 'transcript':

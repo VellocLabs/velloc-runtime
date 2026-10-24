@@ -516,6 +516,49 @@ describe('session surface over the hub', () => {
     ])
   })
 
+  it('a connection below full never sees a CLI session: list, deltas, its topics and its actions (F-34)', async () => {
+    const rig = makeRig()
+    rig.manager.buildSessionInfoList = () =>
+      [
+        { sessionId: 's1', initialized: true, templateType: 'code' },
+        { sessionId: 'c1', initialized: true, templateType: 'cli-codex', title: 'terminal output' },
+      ] as never
+    const control: ConnectionInfo = { connectionId: 'r', clientId: 'r', kind: 'mobile', scope: { mode: 'control', sessions: 'all' }, transport: 'websocket', connectedAt: 0 }
+    const full: ConnectionInfo = { ...control, connectionId: 'd', clientId: 'd', scope: { mode: 'full', sessions: 'all' } }
+    const seen: EvtFrame[] = []
+    await rig.broker.subscribe({ conn: control, send: e => seen.push(e), bufferedBytes: () => 0 }, topic.sessions())
+    expect((seen[0]!.payload as { payload: { sessions: Array<{ sessionId: string }> } }).payload.sessions.map(r => r.sessionId)).toEqual(['s1'])
+
+    const post = (message: Record<string, unknown>) => rig.surface.port.postMessage(message)
+    post({ type: 'session.updated', payload: { session: { sessionId: 'c1', templateType: 'cli-codex' } } })
+    post({ type: 'session.summary', payload: { sessions: [{ sessionId: 's1' }, { sessionId: 'c1', templateType: 'cli-codex' }] } })
+    expect(seen.slice(1).map(e => [e.type, e.payload])).toEqual([
+      [undefined, null],
+      ['session.summary', { payload: { sessions: [{ sessionId: 's1' }] } }],
+    ])
+    // The desktop's own connection sees it as published.
+    expect(sessionsEventFor(full, 'session.updated', { payload: { session: { sessionId: 'c1', templateType: 'cli-codex' } } })).toEqual({
+      payload: { session: { sessionId: 'c1', templateType: 'cli-codex' } },
+    })
+
+    expect(rig.broker.authorize(topic.session('c1', 'state'), control)).toBe('forbidden')
+    expect(rig.broker.authorize(topic.session('s1', 'state'), control)).not.toBe('forbidden')
+    expect(rig.broker.authorize(topic.session('c1', 'state'), full)).not.toBe('forbidden')
+
+    const request = (act: string, payload: unknown, conn: ConnectionInfo) => ({
+      id: 'r', route: { cap: 'session', act }, payload, conn, signal: new AbortController().signal, blobs: {} as never,
+    })
+    const list = rig.registry.resolve('session', 'list')!
+    expect(await list.handle(request('list', {}, control), {} as RuntimeContext)).toMatchObject({ sessions: [{ sessionId: 's1' }] })
+    expect(((await list.handle(request('list', {}, full), {} as RuntimeContext)) as { sessions: unknown[] }).sessions).toHaveLength(2)
+    const rename = rig.registry.resolve('session', 'rename')!
+    await expect(rename.handle(request('rename', { sessionId: 'c1', title: 'x' }, control), {} as RuntimeContext)).rejects.toMatchObject({ code: 'forbidden_scope' })
+    const open = rig.registry.resolve('session', 'open')!
+    await expect(open.handle(request('open', { sessionId: 'n1', templateType: 'cli-codex' }, control), {} as RuntimeContext)).rejects.toMatchObject({ code: 'forbidden_scope' })
+    await rename.handle(request('rename', { sessionId: 'c1', title: 'x' }, full), {} as RuntimeContext)
+    expect(rig.manager.dispatched.some(m => m.type === 'session.rename')).toBe(true)
+  })
+
   it('getToolDetail and diag.traceFlush are answered from host methods, not by waiting on port replies', async () => {
     const rig = makeRig()
     const connection = await connect(rig)

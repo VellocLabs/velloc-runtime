@@ -97,6 +97,7 @@ describe('CLI conversation store', () => {
           updateSessionMetadata: async patch => {
             metadata = { ...metadata, ...patch }
           },
+          storeAutoTitle: async () => {},
         },
       },
     })
@@ -111,5 +112,33 @@ describe('CLI conversation store', () => {
     expect(await r.store.read('s2')).toBeUndefined()
     const none = rig({ storage: false })
     await expect(none.store.record('s1', { cli: 'claude', id: CONVERSATION })).rejects.toThrow()
+  })
+
+  it('retitle sets the automatic title of a stored session, leaves a manual one in charge, and refreshes the row', async () => {
+    const r = rig({ meta: { s1: existing({ templateType: 'cli-codex' }) } })
+    await r.store.retitle?.('s1', 'Fix the login form')
+    expect(r.calls).toEqual(['route', 'write s1', 'summary s1'])
+    expect(r.meta.s1).toMatchObject({ updatedAt: 42, customTitle: 'Mine', aiTitle: 'Fix the login form' })
+  })
+
+  it('retitle writes nothing for a session with no meta.json, and goes through a bound store', async () => {
+    const r = rig()
+    await r.store.retitle?.('s1', 'Anything')
+    expect(r.calls).toEqual(['route'])
+    const titles: string[] = []
+    const bound = rig({
+      entry: {
+        conversationStore: {
+          getSessionMetadata: async () => ({}),
+          updateSessionMetadata: async () => {},
+          storeAutoTitle: async title => {
+            titles.push(title)
+          },
+        },
+      },
+    })
+    await bound.store.retitle?.('s1', 'Review the diff')
+    expect(titles).toEqual(['Review the diff'])
+    expect(bound.calls).toEqual(['summary s1'])
   })
 })

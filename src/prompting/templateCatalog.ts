@@ -43,6 +43,16 @@ export function getLauncherCatalog(): readonly LauncherMeta[] {
     : launcherCatalog
 }
 
+/**
+ * The CLI a `kind: terminal` type runs in either channel's catalog (F-34).
+ * For runtime checks, which must hold whatever channel served the client.
+ */
+export function cliOfTypeInAnyChannel(type: string | undefined): string | undefined {
+  if (!type) return undefined
+  const meta = launcherByType.get(type) ?? betaLauncherCatalog?.find(entry => entry.type === type)
+  return meta?.kind === 'terminal' ? meta.cli : undefined
+}
+
 /** The launcher metadata for one type in the current channel's catalog. */
 export function getLauncherMeta(type: string): LauncherMeta | undefined {
   return activeLauncherByType().get(type)

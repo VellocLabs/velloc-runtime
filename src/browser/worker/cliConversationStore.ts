@@ -3,8 +3,11 @@
  * the session's metadata — through its bound store when it has one, else in
  * `meta.json` directly. The first record of a session that never persisted
  * writes that `meta.json`, so the session is listed and survives a relaunch.
+ * The session's automatic title, which follows the CLI's terminal title, is
+ * written the same two ways.
  */
 import {
+  applyDiskOnlyAiTitle,
   applyDiskOnlyMetadataPatch,
   SESSION_META_FILE_SCHEMA_VERSION,
   type BrowserConversationStorageBackend,
@@ -19,6 +22,7 @@ export type CliConversationEntry = {
   conversationStore?: {
     getSessionMetadata(): Promise<BrowserSessionMetadata | undefined>
     updateSessionMetadata(patch: Partial<BrowserSessionMetadata>): Promise<unknown>
+    storeAutoTitle(aiTitle: string): Promise<unknown>
   }
   templateType?: string
   projectRoot?: string
@@ -81,6 +85,18 @@ export function createCliConversationStore(deps: CliConversationStoreDeps): CliC
         projectRoot: entry?.projectRoot,
         templateType: entry?.templateType,
       })
+    },
+    retitle: async (sessionId, title) => {
+      const bound = deps.entry(sessionId)?.conversationStore
+      if (bound) {
+        await bound.storeAutoTitle(title)
+      } else {
+        const storage = deps.storage()
+        if (!storage) return
+        await deps.ensureRouting()
+        if (!(await applyDiskOnlyAiTitle(storage, sessionId, title, (deps.now ?? Date.now)()))) return
+      }
+      await deps.refreshSummary(sessionId)
     },
   }
 }
