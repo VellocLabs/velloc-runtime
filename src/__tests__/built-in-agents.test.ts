@@ -283,6 +283,18 @@ describe('resolveSubagentRoute', () => {
       expect(route.message).not.toContain('fork')
     }
   })
+
+  it('a name that differs only in case is refused with the exact name to use', () => {
+    // Never resolved case-insensitively: an `Agent(Explore)` permission rule
+    // matches the requested string, so `explore` must not reach Explore.
+    const route = resolveSubagentRoute('explore', [explore])
+    expect(route.kind).toBe('error')
+    if (route.kind === 'error') {
+      expect(route.message).toContain('Did you mean "Explore"? Names are case-sensitive.')
+    }
+    const other = resolveSubagentRoute('Nope', [explore])
+    if (other.kind === 'error') expect(other.message).not.toContain('Did you mean')
+  })
 })
 
 describe('SpawnAgentTool.description advertises available agents', () => {

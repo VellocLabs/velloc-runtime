@@ -17,6 +17,7 @@ import {
   shouldHideToolFromModel,
 } from './deferredTools'
 import { toolOutcomeMessage } from './toolResultShaping'
+import { SKILL_TOOL_NAME } from '../../prompting/skillToolName'
 import type { AdmittedRun, DeferredMessageUpdate, StageStep, ToolCallRun } from './executeToolCall'
 
 export type ToolCallAdmission =
@@ -55,6 +56,17 @@ function mcpShortNameHint(shortName: string, callContext: ToolCallContext): stri
   return `Unknown tool: ${shortName}. MCP tools are called by their full name: ${named.join('; ')}.`
 }
 
+/** A skill's name called as a tool (the skill listing names skills next to
+ *  tools): the refusal says to run it through the Skill tool. */
+function skillNameHint(name: string, callContext: ToolCallContext): string | undefined {
+  const wanted = name.trim().replace(/^\/+/, '')
+  const skill = callContext.options.commands.find(
+    command => command.type === 'prompt' && command.name === wanted,
+  )
+  if (!skill || skill.hiddenFromModel) return undefined
+  return `Unknown tool: ${name}. "${skill.name}" is a skill, not a tool: call ${SKILL_TOOL_NAME} with skill "${skill.name}".`
+}
+
 /** `fromExtension`: an extension's own `$.tool.call` / `$.tool.check`, which
  *  reaches a registered tool still waiting behind ToolSearch — the wait hides
  *  it from the model only. */
@@ -70,6 +82,7 @@ export function admitToolCall(
       refusal: {
         content:
           mcpShortNameHint(block.toolName, callContext) ??
+          skillNameHint(block.toolName, callContext) ??
           `Unknown tool: ${block.toolName}. Available browser tools: ${callContext.options.tools.map(t => t.name).join(', ')}`,
         data: `Unknown tool: ${block.toolName}`,
       },

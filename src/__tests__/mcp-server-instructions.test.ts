@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { QueryToolUseBlock } from '../runtime/interfaces/QueryRuntimeDeps'
-import type { WorkingState } from '../runtime/RuntimeTypes'
+import type { RuntimeCommandList, WorkingState } from '../runtime/RuntimeTypes'
 import {
   NoopPlatformCapabilities,
   createEmptyAppState,
@@ -234,6 +234,30 @@ describe('a short MCP tool name in a tool call', () => {
     const refusal = admitToolCall(call('read_file'), contextWith(tools, state)).refusal!
     expect(refusal.content).toContain('"mcp__files__read_file"')
     expect(refusal.content).not.toContain('Skill "mcp__files"')
+  })
+
+  it('tells the model to run a skill it called as a tool through the Skill tool', () => {
+    const commands = [
+      { name: 'browser', type: 'prompt', description: 'drives the browser' },
+      { name: 'internal-only', type: 'prompt', description: 'x', hiddenFromModel: true },
+    ] as unknown as RuntimeCommandList
+    const context = createNoopToolUseContext({
+      tools: [] as ToolContractList,
+      platformCapabilities: new NoopPlatformCapabilities(),
+      appState: createEmptyAppState(),
+      setAppState: () => {},
+      sessionId: 'sess-hint',
+      commands,
+    })
+    const refusal = admitToolCall(call('browser'), context).refusal!
+    expect(refusal.data).toBe('Unknown tool: browser')
+    expect(refusal.content).toBe(
+      'Unknown tool: browser. "browser" is a skill, not a tool: call Skill with skill "browser".',
+    )
+    // A skill the model may not run gets no pointer to it.
+    expect(admitToolCall(call('internal-only'), context).refusal!.content).toBe(
+      'Unknown tool: internal-only. Available browser tools: ',
+    )
   })
 
   it('keeps the plain refusal for a name no server has', () => {

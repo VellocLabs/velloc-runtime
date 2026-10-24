@@ -227,10 +227,19 @@ export function resolveSubagentRoute(
         (name): name is string =>
           typeof name === 'string' && name !== FORK_ROUTE_KIND,
       )
+    // Names are matched exactly, never case-folded: an `Agent(<type>)`
+    // permission rule compares the requested string, so resolving `explore`
+    // to `Explore` would slip past a rule written for `Explore`.
+    const sameButCase = available.filter(
+      name => name.toLowerCase() === requestedType.toLowerCase(),
+    )
+    const suggestion =
+      sameButCase.length === 1 ? `Did you mean "${sameButCase[0]}"? Names are case-sensitive. ` : ''
     return {
       kind: 'error',
       message:
         `Agent could not start: unknown subagent_type "${requestedType}". ` +
+        suggestion +
         (available.length > 0
           ? `Available agents: ${available.join(', ')}.`
           : 'No custom agents are registered.'),
