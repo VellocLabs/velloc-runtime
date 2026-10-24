@@ -28,6 +28,8 @@ export const es: Messages = {
   'sidebar.delete': 'Eliminar',
   'sidebar.threadActionsAria': 'Acciones del chat: {title}',
   'sidebar.renameThreadAria': 'Cambiar el nombre del chat: {title}',
+  'sidebar.useAutomaticTitle': 'Usar título automático',
+  'sidebar.useAutomaticTitleAria': 'Usar título automático: {title}',
   'sidebar.deleteThreadAria': 'Eliminar el chat: {title}',
   'sidebar.pin': 'Fijar',
   'sidebar.unpin': 'Dejar de fijar',

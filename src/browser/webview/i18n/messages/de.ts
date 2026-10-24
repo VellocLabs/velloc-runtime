@@ -27,6 +27,8 @@ export const de: Messages = {
   'sidebar.delete': 'Löschen',
   'sidebar.threadActionsAria': 'Chat-Aktionen: {title}',
   'sidebar.renameThreadAria': 'Chat umbenennen: {title}',
+  'sidebar.useAutomaticTitle': 'Automatischen Titel verwenden',
+  'sidebar.useAutomaticTitleAria': 'Automatischen Titel verwenden: {title}',
   'sidebar.deleteThreadAria': 'Chat löschen: {title}',
   'sidebar.pin': 'Anheften',
   'sidebar.unpin': 'Nicht mehr anheften',

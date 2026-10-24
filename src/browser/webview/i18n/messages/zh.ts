@@ -28,6 +28,8 @@ export const zh: Messages = {
   'sidebar.delete': '删除',
   'sidebar.threadActionsAria': '对话操作：{title}',
   'sidebar.renameThreadAria': '重命名对话：{title}',
+  'sidebar.useAutomaticTitle': '使用自动标题',
+  'sidebar.useAutomaticTitleAria': '使用自动标题：{title}',
   'sidebar.deleteThreadAria': '删除对话：{title}',
   'sidebar.pin': '置顶',
   'sidebar.unpin': '取消置顶',

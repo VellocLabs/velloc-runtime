@@ -28,6 +28,8 @@ export const en = {
   'sidebar.delete': 'Delete',
   'sidebar.threadActionsAria': 'Thread actions: {title}',
   'sidebar.renameThreadAria': 'Rename thread: {title}',
+  'sidebar.useAutomaticTitle': 'Use automatic title',
+  'sidebar.useAutomaticTitleAria': 'Use automatic title: {title}',
   'sidebar.deleteThreadAria': 'Delete thread: {title}',
   'sidebar.pin': 'Pin',
   'sidebar.unpin': 'Unpin',

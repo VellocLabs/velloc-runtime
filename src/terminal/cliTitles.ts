@@ -70,6 +70,11 @@ export class CliTitleFollower {
     this.pending.set(sessionId, handle)
   }
 
+  /** True once a terminal title of `sessionId`'s CLI is written or about to be. */
+  hasTitle(sessionId: string): boolean {
+    return this.written.has(sessionId) || this.pending.has(sessionId)
+  }
+
   /** Drops `sessionId`'s pending write and what was last written for it. */
   forget(sessionId: string): void {
     this.cancel(sessionId)

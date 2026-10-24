@@ -9,6 +9,8 @@ import { terminalAgentImportSource } from './claude-code'
 import { TERMINAL_AGENT_SOURCE_ID } from './claude-code/sourceIdentity'
 import { codexImportSource } from './codex'
 
+export { TERMINAL_AGENT_SOURCE_ID }
+
 const SOURCES: Record<ImportSource, ImportSourceAdapter> = {
   [TERMINAL_AGENT_SOURCE_ID]: terminalAgentImportSource,
   codex: codexImportSource,

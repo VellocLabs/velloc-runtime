@@ -101,17 +101,13 @@ export function cliAgentsFound(env: CliProbeEnv, isFile: (path: string) => boole
 
 const STAT_BATCH_LIMIT = 2000
 
-/**
- * Which CLIs the host has, by file lookups only (`shell.env`, `fs.systemInfo`,
- * one `fs.statBatch`) — nothing is launched. An older host without
- * `shell.env` reports none.
- */
-export async function probeCliAgents(
+/** The host's platform, `PATH`, home and app-data folders (`shell.env`, `fs.systemInfo`); null on a host without `shell.env`. */
+export async function readCliProbeEnv(
   host: TerminalHost,
   createRequestId: () => string,
-): Promise<CliAgentId[]> {
+): Promise<CliProbeEnv | null> {
   const transport = host.transport
-  if (!transport || !(host.manifest?.primitives?.includes('shell.env') ?? false)) return []
+  if (!transport || !(host.manifest?.primitives?.includes('shell.env') ?? false)) return null
   const primitives = createNativePrimitives({
     transport,
     createRequestId,
@@ -122,12 +118,26 @@ export async function probeCliAgents(
     transport.request({ id: createRequestId(), route: createBridgeRoute('fs', 'systemInfo'), payload: {} }),
   ])
   const platform = info.ok && typeof info.result.platform === 'string' ? info.result.platform : ''
-  const env: CliProbeEnv = {
+  return {
     platform,
     path: values.PATH ?? null,
     home: (platform === 'win32' ? values.USERPROFILE : values.HOME) ?? null,
     appData: values.APPDATA ?? null,
   }
+}
+
+/**
+ * Which CLIs the host has, by file lookups only (`shell.env`, `fs.systemInfo`,
+ * one `fs.statBatch`) — nothing is launched. An older host without
+ * `shell.env` reports none.
+ */
+export async function probeCliAgents(
+  host: TerminalHost,
+  createRequestId: () => string,
+): Promise<CliAgentId[]> {
+  const transport = host.transport
+  const env = await readCliProbeEnv(host, createRequestId)
+  if (!transport || !env) return []
   const paths = [...new Set(CLI_AGENT_IDS.flatMap(cli => cliCandidatePaths(cli, env)))].slice(
     0,
     STAT_BATCH_LIMIT,

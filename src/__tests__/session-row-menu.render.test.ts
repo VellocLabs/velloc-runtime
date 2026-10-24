@@ -9,6 +9,7 @@ import {
 } from '../browser/webview/SessionRows'
 import { DEFAULT_SESSION_LIST_VIEW } from '../browser/webview/sessionListView'
 import { buildPinnedFirstView } from '../browser/webview/sessionPinning'
+import { setTemplateChannelForTest } from '../prompting/templateCatalog'
 
 // The per-row ⋯ menu: Pin/Unpin, Rename, Fork, a separator, then Delete —
 // on every row, the active one included. Within one list (a workspace group,
@@ -190,5 +191,50 @@ describe('pinned rows', () => {
     expect(groups.map(group => group.key)).toEqual(['pinned', 'sidebar.groupIdle'])
     expect(groups[0]!.label).toBeUndefined()
     expect(groups[0]!.sessions.map(s => s.sessionId)).toEqual(['new-pinned', 'old-pinned'])
+  })
+})
+
+describe('Use automatic title (F-34)', () => {
+  const cliRows = (rows: Partial<SessionListItem>[]) =>
+    buildPinnedFirstView(
+      rows.map((row, i) => ({ sessionId: `s${i}`, title: `T${i}`, previewText: '', updatedAt: NOW - i, ...row })),
+      DEFAULT_SESSION_LIST_VIEW,
+      NOW,
+    )
+  afterEach(() => setTemplateChannelForTest(null))
+
+  it('a renamed CLI session offers it after Rename; choosing it clears the rename', async () => {
+    setTemplateChannelForTest('beta')
+    const handlers = renderList({
+      groups: cliRows([{ templateType: 'cli-codex', renamed: true }]),
+      activeSessionId: 's0',
+    })
+    const menu = await openMenu('s0')
+    expect(menuEntries(menu)).toEqual([
+      'sidebar-pin-thread',
+      'sidebar-rename-thread',
+      'sidebar-use-automatic-title',
+      'sidebar-fork-thread',
+      'separator',
+      'sidebar-delete-thread',
+    ])
+    fireEvent.click(screen.getByTestId('sidebar-use-automatic-title'))
+    expect(handlers.onRenameThread).toHaveBeenCalledWith('s0', '')
+  })
+
+  it('is not offered for an unrenamed CLI session or a renamed session of another type', async () => {
+    setTemplateChannelForTest('beta')
+    renderList({
+      groups: cliRows([
+        { templateType: 'cli-codex' },
+        { templateType: 'code', renamed: true },
+      ]),
+      activeSessionId: 's0',
+    })
+    expect(menuEntries(await openMenu('s0'))).not.toContain('sidebar-use-automatic-title')
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    cleanup()
+    renderList({ groups: cliRows([{ templateType: 'code', renamed: true }]), activeSessionId: 's0' })
+    expect(menuEntries(await openMenu('s0'))).not.toContain('sidebar-use-automatic-title')
   })
 })

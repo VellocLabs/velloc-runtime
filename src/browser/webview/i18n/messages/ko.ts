@@ -25,6 +25,8 @@ export const ko: Messages = {
   'sidebar.delete': '삭제',
   'sidebar.threadActionsAria': '채팅 작업: {title}',
   'sidebar.renameThreadAria': '채팅 이름 변경: {title}',
+  'sidebar.useAutomaticTitle': '자동 제목 사용',
+  'sidebar.useAutomaticTitleAria': '자동 제목 사용: {title}',
   'sidebar.deleteThreadAria': '채팅 삭제: {title}',
   'sidebar.pin': '고정',
   'sidebar.unpin': '고정 해제',

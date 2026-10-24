@@ -8,6 +8,7 @@ import {
   PencilIcon,
   PinIcon,
   PinOffIcon,
+  RotateCcwIcon,
   Trash2Icon,
 } from 'lucide-react'
 import { InkRipple } from '@/components/assistant-ui/ink-ripple'
@@ -23,6 +24,7 @@ import {
 import { applyClippedTooltip } from './titleOverflow'
 import { useLocale, useT, type TranslateFn } from './i18n'
 import { getLauncherForType, launcherDefaultTitle } from './threadLaunchers'
+import { cliOfTemplateType } from '../../prompting/templateCatalog'
 import { useModContributions } from './mods/modContributionsView'
 import {
   countIncluding,
@@ -91,6 +93,8 @@ export type SessionListItem = {
   needsAnswer?: boolean
   /** Pinned by the user (runtime-owned metadata): listed above the unpinned rows. */
   pinned?: boolean
+  /** The title is a manual rename (`customTitle`), not the automatic one. */
+  renamed?: boolean
   /** Transcript messages seen; `0` = nothing to copy, so the row offers no Fork. */
   messageCount?: number
 }
@@ -126,6 +130,7 @@ export type SessionRowListProps = {
   activeSessionId: string
   onSwitchThread?: (sessionId: string) => void
   onDeleteThread?: (sessionId: string) => void
+  /** An empty `title` clears a rename, so the automatic title shows again. */
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
   /** Copy the session's whole conversation into a new session and open it. */
@@ -202,6 +207,9 @@ export function SessionRowList({
         const isPinned = !!session.pinned
         const canPin = !!onPinThread
         const canRename = !!onRenameThread
+        // A CLI session's automatic title follows its CLI (F-34); a rename stops that until cleared.
+        const canUseAutomaticTitle =
+          canRename && !!session.renamed && cliOfTemplateType(session.templateType) !== undefined
         const canFork = !!onForkThread && session.messageCount !== 0
         const canDelete = !!onDeleteThread
         const hasRowActions = canPin || canRename || canFork || canDelete
@@ -460,6 +468,24 @@ export function SessionRowList({
                               >
                                 <PencilIcon className="size-4" />
                                 {t('sidebar.rename')}
+                              </button>
+                            </DropdownMenuPrimitive.Item>
+                          )}
+                          {canUseAutomaticTitle && (
+                            <DropdownMenuPrimitive.Item
+                              asChild
+                              onSelect={() => onRenameThread?.(session.sessionId, '')}
+                            >
+                              <button
+                                type="button"
+                                data-testid="sidebar-use-automatic-title"
+                                aria-label={t('sidebar.useAutomaticTitleAria', {
+                                  title: session.title,
+                                })}
+                                className="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-start text-body outline-none hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted"
+                              >
+                                <RotateCcwIcon className="size-4" />
+                                {t('sidebar.useAutomaticTitle')}
                               </button>
                             </DropdownMenuPrimitive.Item>
                           )}

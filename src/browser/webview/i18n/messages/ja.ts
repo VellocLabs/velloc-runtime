@@ -25,6 +25,8 @@ export const ja: Messages = {
   'sidebar.delete': '削除',
   'sidebar.threadActionsAria': 'チャットの操作：{title}',
   'sidebar.renameThreadAria': 'チャットの名前を変更：{title}',
+  'sidebar.useAutomaticTitle': '自動タイトルを使用',
+  'sidebar.useAutomaticTitleAria': '自動タイトルを使用：{title}',
   'sidebar.deleteThreadAria': 'チャットを削除：{title}',
   'sidebar.pin': 'ピン留め',
   'sidebar.unpin': 'ピン留めを外す',

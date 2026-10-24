@@ -117,7 +117,8 @@ const IMPORT_SOURCES = Object.keys(SOURCE_LOCATORS) as ImportSource[]
 /** Bytes per `fs.readRange` call when reading a whole file for import. */
 const IMPORT_READ_CHUNK_BYTES = 2 * 1024 * 1024
 
-function sourceRoot(homeDir: string, source: ImportSource): string {
+/** Where `source` keeps its session logs under `homeDir`. */
+export function sourceRoot(homeDir: string, source: ImportSource): string {
   return joinRuntimePath(homeDir, ...SOURCE_LOCATORS[source].rootSegments)
 }
 

@@ -639,9 +639,19 @@ export function useSessionManager(
   const retitleSession = useCallback(
     (sessionId: string, title: string) => {
       const trimmed = title.trim()
-      if (!trimmed) return // reject empty; the UI cancels on a blank input
       const existing = localCacheRef.current.get(sessionId)
       const remote = remoteSummariesRef.current.get(sessionId)
+      if (!trimmed) {
+        // An empty title clears the rename; the runtime's next summary carries the automatic title.
+        if (!existing?.customTitle && !remote?.customTitle) return
+        if (existing) {
+          const { customTitle: _cleared, ...rest } = existing
+          localCacheRef.current.set(sessionId, { ...rest, title: '' })
+          applyMergedSessions()
+        }
+        onRequestRenameRef.current?.(sessionId, '', randomUuid())
+        return
+      }
       const now = Date.now()
       // Spread a whole entry and override only what a rename changes. `customTitle` and a fresh `updatedAt`
       // make the next `mergeSessions` keep the local title.

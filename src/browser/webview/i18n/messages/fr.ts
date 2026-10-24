@@ -24,6 +24,8 @@ export const fr: Messages = {
   'sidebar.delete': 'Supprimer',
   'sidebar.threadActionsAria': 'Actions de la discussion : {title}',
   'sidebar.renameThreadAria': 'Renommer la discussion : {title}',
+  'sidebar.useAutomaticTitle': 'Utiliser le titre automatique',
+  'sidebar.useAutomaticTitleAria': 'Utiliser le titre automatique : {title}',
   'sidebar.deleteThreadAria': 'Supprimer la discussion : {title}',
   'sidebar.pin': 'Épingler',
   'sidebar.unpin': 'Désépingler',
