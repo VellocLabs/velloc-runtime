@@ -374,6 +374,7 @@ export class TerminalService {
     const record = this.require(id)
     const child = record.child
     if (!child || data.length === 0) return
+    if (record.cli) this.cliLogs?.typed(record.sessionId, data, (this.deps.now ?? Date.now)())
     try {
       await child.write(this.encoder.encode(data))
     } catch (error) {
