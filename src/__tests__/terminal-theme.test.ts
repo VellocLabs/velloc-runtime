@@ -25,6 +25,13 @@ describe('buildTerminalTheme', () => {
     expect(theme.cursor).toMatch(HEX)
     expect(theme.selectionBackground).toMatch(HEX_ALPHA)
     expect(theme.selectionInactiveBackground).toMatch(HEX_ALPHA)
+    for (const slider of [
+      theme.scrollbarSliderBackground,
+      theme.scrollbarSliderHoverBackground,
+      theme.scrollbarSliderActiveBackground,
+    ]) {
+      expect(slider).toMatch(HEX_ALPHA)
+    }
     const ansi = [
       theme.black, theme.red, theme.green, theme.yellow, theme.blue, theme.magenta, theme.cyan, theme.white,
       theme.brightBlack, theme.brightRed, theme.brightGreen, theme.brightYellow, theme.brightBlue,
@@ -49,5 +56,15 @@ describe('withAlpha', () => {
     expect(withAlpha('#000000', 2)).toBe('#000000ff')
     expect(withAlpha('#000000', -1)).toBe('#00000000')
     expect(withAlpha('#12345678', 1)).toBe('#123456ff')
+  })
+})
+
+describe('the scrollbar colours', () => {
+  it('come from the muted foreground, stronger on hover and while dragged', () => {
+    const theme = buildTerminalTheme('light', token => (token === '--muted-foreground' ? '#445566' : null))
+    expect(theme.scrollbarSliderBackground.slice(0, 7)).toBe('#445566')
+    const alpha = (hex: string) => parseInt(hex.slice(7), 16)
+    expect(alpha(theme.scrollbarSliderHoverBackground)).toBeGreaterThan(alpha(theme.scrollbarSliderBackground))
+    expect(alpha(theme.scrollbarSliderActiveBackground)).toBeGreaterThan(alpha(theme.scrollbarSliderHoverBackground))
   })
 })

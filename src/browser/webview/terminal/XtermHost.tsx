@@ -35,6 +35,7 @@ import { FitScheduler } from './terminalFit'
 import { terminalKeyDecision } from './terminalKeys'
 import type { TerminalPrefs } from './terminalPrefs'
 import { registerTerminalProbe } from './terminalProbe'
+import { hasScrollback } from './terminalScrollback'
 import { takesFocusOnWheel } from './wheelFocus'
 import { measureViewSight, ViewRetention } from './terminalRetention'
 import { applyTerminalTopicEvent, InputBatcher, ReplayGate, type MirroredTerminal } from './xtermBinding'
@@ -230,6 +231,18 @@ function XtermView({ terminalId, connection, prefs, autoFocus, focusOnWheel, ope
     const dataDisposable = term.onData(data => {
       if (replay.admits(data)) input.push(data)
     })
+    // Keeps the scrollbar shown while there are lines above the screen.
+    const markScrollback = (): void => {
+      if (hasScrollback(term.buffer.active, term.rows)) host.dataset.scrollback = ''
+      else delete host.dataset.scrollback
+    }
+    const scrollbackDisposables = [
+      term.onScroll(markScrollback),
+      term.onWriteParsed(markScrollback),
+      term.onResize(markScrollback),
+      term.buffer.onBufferChange(markScrollback),
+    ]
+    markScrollback()
     const selectionDisposable = term.onSelectionChange(() => {
       if (prefsRef.current.copyOnSelect && term.hasSelection()) {
         void writeClipboard(term.getSelection())
@@ -299,6 +312,8 @@ function XtermView({ terminalId, connection, prefs, autoFocus, focusOnWheel, ope
       releaseTheme()
       unsubscribe()
       dataDisposable.dispose()
+      for (const disposable of scrollbackDisposables) disposable.dispose()
+      delete host.dataset.scrollback
       selectionDisposable.dispose()
       input.dispose()
       searchRef.current = null

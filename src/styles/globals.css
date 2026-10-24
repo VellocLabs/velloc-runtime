@@ -841,3 +841,9 @@
 .dark .aui-graphviz-diagram svg [fill="#000"] {
   fill: var(--foreground);
 }
+
+/* Terminal (F-31): the scrollbar stays shown while there is scrollback. */
+[data-scrollback] .xterm .xterm-scrollable-element > .scrollbar.vertical.invisible {
+  opacity: 1;
+  pointer-events: auto;
+}

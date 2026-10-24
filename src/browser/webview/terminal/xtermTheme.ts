@@ -1,7 +1,7 @@
 /**
  * The emulator's colours from the guest's own tokens (F-31): the pane's
- * card colours for the screen, cursor and selection, and a fixed ANSI
- * palette per scheme. Pure given a token resolver; `resolveCssToken` is
+ * card colours for the screen, cursor and selection, the muted foreground
+ * for the scrollbar, and a fixed ANSI palette per scheme. Pure given a token resolver; `resolveCssToken` is
  * the DOM-backed one.
  */
 
@@ -13,6 +13,9 @@ export interface TerminalTheme {
   cursorAccent: string
   selectionBackground: string
   selectionInactiveBackground: string
+  scrollbarSliderBackground: string
+  scrollbarSliderHoverBackground: string
+  scrollbarSliderActiveBackground: string
   black: string
   red: string
   green: string
@@ -39,12 +42,13 @@ export const TERMINAL_THEME_TOKENS = {
   foreground: '--card-foreground',
   cursor: '--foreground',
   cursorAccent: '--card',
+  scrollbar: '--muted-foreground',
 } as const
 
 /** `#rrggbb` fallbacks for a token that does not resolve (tests, a detached document). */
 const FALLBACK: Record<TerminalScheme, Record<keyof typeof TERMINAL_THEME_TOKENS, string>> = {
-  light: { background: '#ffffff', foreground: '#1b1b1f', cursor: '#1b1b1f', cursorAccent: '#ffffff' },
-  dark: { background: '#2b2b2b', foreground: '#e6e6e6', cursor: '#e6e6e6', cursorAccent: '#2b2b2b' },
+  light: { background: '#ffffff', foreground: '#1b1b1f', cursor: '#1b1b1f', cursorAccent: '#ffffff', scrollbar: '#6b6b73' },
+  dark: { background: '#2b2b2b', foreground: '#e6e6e6', cursor: '#e6e6e6', cursorAccent: '#2b2b2b', scrollbar: '#a0a0a8' },
 }
 
 type Hue = 'black' | 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white'
@@ -107,6 +111,7 @@ export function buildTerminalTheme(
   const pick = (role: keyof typeof TERMINAL_THEME_TOKENS): string =>
     resolve(TERMINAL_THEME_TOKENS[role]) ?? FALLBACK[scheme][role]
   const foreground = pick('foreground')
+  const scrollbar = pick('scrollbar')
   return {
     background: pick('background'),
     foreground,
@@ -114,6 +119,9 @@ export function buildTerminalTheme(
     cursorAccent: pick('cursorAccent'),
     selectionBackground: withAlpha(foreground, scheme === 'dark' ? 0.3 : 0.2),
     selectionInactiveBackground: withAlpha(foreground, 0.12),
+    scrollbarSliderBackground: withAlpha(scrollbar, 0.35),
+    scrollbarSliderHoverBackground: withAlpha(scrollbar, 0.55),
+    scrollbarSliderActiveBackground: withAlpha(scrollbar, 0.7),
     ...ansiColours(scheme),
   }
 }
