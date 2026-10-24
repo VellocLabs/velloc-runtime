@@ -379,7 +379,6 @@ export const zh: Messages = {
   'terminal.placeholder.start': '点击以启动此终端',
   'terminal.placeholder.starting': '正在启动…',
   'terminal.placeholder.pending': '尚未启动',
-  'cliSession.header': '{name} · {folder}',
   'cliSession.startPrompt': '继续上一次的 {name} 对话，或开始新对话。',
   'cliSession.continue': '继续',
   'cliSession.new': '新对话',

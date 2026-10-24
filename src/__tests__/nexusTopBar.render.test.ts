@@ -73,7 +73,7 @@ describe('NexusTopBar render', () => {
 
   it('in a CLI session shows Settings, the sidebar toggle and only the Terminal and Browser panes (F-34)', () => {
     // What the shell passes while a CLI session is active: no model picker,
-    // no session tabs, rail, search, imports or plugin items; two panes.
+    // no rail, search, imports or plugin items; two panes.
     const html = markup({
       hideModelPicker: true,
       sidebarCollapsed: false,

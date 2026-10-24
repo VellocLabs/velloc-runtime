@@ -390,7 +390,6 @@ export const de: Messages = {
   'terminal.placeholder.start': 'Klicken, um dieses Terminal zu starten',
   'terminal.placeholder.starting': 'Wird gestartet…',
   'terminal.placeholder.pending': 'Noch nicht gestartet',
-  'cliSession.header': '{name} · {folder}',
   'cliSession.startPrompt': 'Die letzte {name}-Unterhaltung fortsetzen oder eine neue beginnen.',
   'cliSession.continue': 'Fortsetzen',
   'cliSession.new': 'Neue Unterhaltung',

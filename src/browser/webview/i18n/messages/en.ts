@@ -415,7 +415,6 @@ export const en = {
   'terminal.placeholder.start': 'Click to start this terminal',
   'terminal.placeholder.starting': 'Starting…',
   'terminal.placeholder.pending': 'Not started yet',
-  'cliSession.header': '{name} · {folder}',
   'cliSession.startPrompt': 'Continue the last {name} conversation, or start a new one.',
   'cliSession.continue': 'Continue',
   'cliSession.new': 'New conversation',

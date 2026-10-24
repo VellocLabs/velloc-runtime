@@ -391,7 +391,6 @@ export const fr: Messages = {
   'terminal.placeholder.start': 'Cliquez pour démarrer ce terminal',
   'terminal.placeholder.starting': 'Démarrage…',
   'terminal.placeholder.pending': 'Pas encore démarré',
-  'cliSession.header': '{name} · {folder}',
   'cliSession.startPrompt': 'Reprenez la dernière conversation {name} ou commencez-en une nouvelle.',
   'cliSession.continue': 'Reprendre',
   'cliSession.new': 'Nouvelle conversation',

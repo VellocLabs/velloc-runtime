@@ -391,7 +391,6 @@ export const es: Messages = {
   'terminal.placeholder.start': 'Haz clic para iniciar este terminal',
   'terminal.placeholder.starting': 'Iniciando…',
   'terminal.placeholder.pending': 'Aún no iniciado',
-  'cliSession.header': '{name} · {folder}',
   'cliSession.startPrompt': 'Continúa la última conversación de {name} o empieza una nueva.',
   'cliSession.continue': 'Continuar',
   'cliSession.new': 'Nueva conversación',

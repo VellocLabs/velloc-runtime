@@ -35,6 +35,7 @@ import { FitScheduler } from './terminalFit'
 import { terminalKeyDecision } from './terminalKeys'
 import type { TerminalPrefs } from './terminalPrefs'
 import { registerTerminalProbe } from './terminalProbe'
+import { takesFocusOnWheel } from './wheelFocus'
 import { measureViewSight, ViewRetention } from './terminalRetention'
 import { applyTerminalTopicEvent, InputBatcher, ReplayGate, type MirroredTerminal } from './xtermBinding'
 import {
@@ -51,6 +52,8 @@ export type XtermHostProps = {
   prefs: TerminalPrefs
   /** Take keyboard focus once the emulator is open. */
   autoFocus?: boolean
+  /** A wheel turned over the emulator focuses it first (`takesFocusOnWheel`). */
+  focusOnWheel?: boolean
   /** A web link clicked in the output. */
   openLink: (url: string) => void
 }
@@ -110,7 +113,7 @@ export function XtermHost(props: XtermHostProps): ReactElement {
  * Security: input is sent only to the terminal id this host was given, and
  * only through the runtime's `terminal.write` action.
  */
-function XtermView({ terminalId, connection, prefs, autoFocus, openLink }: XtermHostProps): ReactElement {
+function XtermView({ terminalId, connection, prefs, autoFocus, focusOnWheel, openLink }: XtermHostProps): ReactElement {
   const t = useT()
   const hostRef = useRef<HTMLDivElement | null>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -121,6 +124,8 @@ function XtermView({ terminalId, connection, prefs, autoFocus, openLink }: Xterm
   const [query, setQuery] = useState('')
   const openLinkRef = useRef(openLink)
   openLinkRef.current = openLink
+  const focusOnWheelRef = useRef(focusOnWheel)
+  focusOnWheelRef.current = focusOnWheel
   const prefsRef = useRef(prefs)
   prefsRef.current = prefs
 
@@ -259,6 +264,11 @@ function XtermView({ terminalId, connection, prefs, autoFocus, openLink }: Xterm
 
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fitter.observed()) : null
     observer?.observe(host)
+    // Capture phase: focus lands before the emulator turns the wheel into input.
+    const onWheel = (): void => {
+      if (focusOnWheelRef.current && takesFocusOnWheel(document.activeElement, host)) term.focus()
+    }
+    host.addEventListener('wheel', onWheel, { capture: true, passive: true })
     const releaseTheme = watchDocumentTheme(theme => {
       term.options.theme = theme
     })
@@ -285,6 +295,7 @@ function XtermView({ terminalId, connection, prefs, autoFocus, openLink }: Xterm
       fitterRef.current = null
       fitter.dispose()
       observer?.disconnect()
+      host.removeEventListener('wheel', onWheel, { capture: true })
       releaseTheme()
       unsubscribe()
       dataDisposable.dispose()

@@ -1957,13 +1957,13 @@ export function MultiSessionShell({
     },
     [sessionLayoutsStore, getSessionTemplateType],
   )
-  // CLI sessions (F-34) by id: the CLI each runs and the folder it runs in.
+  // CLI sessions (F-34) by id: the CLI each runs and its catalog type.
   const cliSessions = useMemo(() => {
-    const out = new Map<string, { cli: string; type: string; folder?: string }>()
+    const out = new Map<string, { cli: string; type: string }>()
     for (const session of sessions) {
       const cli = cliOfTemplateType(session.templateType)
       if (cli && session.templateType) {
-        out.set(session.sessionId, { cli, type: session.templateType, folder: session.projectRoot })
+        out.set(session.sessionId, { cli, type: session.templateType })
       }
     }
     return out
@@ -4424,7 +4424,7 @@ export function MultiSessionShell({
         // Settings takes the whole window: its header replaces the topbar as
         // the drag surface and caption reserve.
         hidden={settingsSection !== null}
-        sessionTabs={activeCli ? undefined : sessionTabs}
+        sessionTabs={sessionTabs}
         activeSessionId={activeSessionId}
         // Switching tab IS switching session — that is the whole feature.
         onSelectSessionTab={focusSession}
@@ -4660,6 +4660,9 @@ export function MultiSessionShell({
                 // same way an inactive session is hidden (display none keeps
                 // the thread mounted, so restoring is a paint toggle).
                 display: isActive ? 'flex' : 'none',
+                // A row-flex item: without it the section cannot narrow below a
+                // terminal's drawn width, and the emulator refits a few columns at a time.
+                minWidth: 0,
               }}
             >
               <div className="flex h-full min-w-0 flex-1">
@@ -4669,7 +4672,6 @@ export function MultiSessionShell({
                     sessionId={sessionId}
                     cli={cliSession.cli}
                     name={getTemplateTitle(cliSession.type)}
-                    folder={cliSession.folder}
                     runtimeConnection={runtimeConnection}
                     openLink={openTerminalLink}
                   />

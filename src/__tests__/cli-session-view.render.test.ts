@@ -105,7 +105,6 @@ function renderView(conn: RuntimeConnection, sessionId: string) {
       sessionId,
       cli: 'codex',
       name: 'Codex CLI',
-      folder: 'D:\\work\\api',
       runtimeConnection: () => Promise.resolve(conn),
       openLink: vi.fn(),
     }),
@@ -128,7 +127,8 @@ describe('CliSessionView', () => {
     fake.publish(topic([cliRow('fresh1', { kind: 'running' })]))
     await flush()
     expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_fresh1')
-    expect(screen.getByTestId('cli-session-header').textContent).toBe('Codex CLI · D:\\work\\api')
+    // The CLI draws its own header; the view adds none above the terminal.
+    expect(screen.getByTestId('cli-session-view').firstElementChild).toBe(screen.getByTestId('cli-session-body'))
     // A remount (the session reopened) does not start a second one.
     view.unmount()
     renderView(fake.conn, 'fresh1')

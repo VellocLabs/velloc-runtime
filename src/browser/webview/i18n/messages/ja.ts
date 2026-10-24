@@ -384,7 +384,6 @@ export const ja: Messages = {
   'terminal.placeholder.start': 'クリックしてこのターミナルを起動',
   'terminal.placeholder.starting': '起動中…',
   'terminal.placeholder.pending': '未起動',
-  'cliSession.header': '{name} · {folder}',
   'cliSession.startPrompt': '前回の {name} の会話を続けるか、新しい会話を始めます。',
   'cliSession.continue': '続ける',
   'cliSession.new': '新しい会話',

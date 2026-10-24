@@ -1,13 +1,12 @@
 /**
  * The main area of a CLI session (F-34): the one terminal that runs the
- * session's coding-agent CLI, full width, with the F-31 emulator. A session
+ * session's coding-agent CLI, full width, with the F-31 emulator and no header of its own. A session
  * launched in this window starts a new conversation on first sight; any
  * other opens on a card offering Continue (the recorded conversation) or New.
  * An exited CLI keeps its screen under the same choice; a CLI the host no
  * longer has shows a not-found card with Check again.
  */
 import { Suspense, lazy, useCallback, useEffect, useState, type ReactElement, type ReactNode } from 'react'
-import { SquareTerminalIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import type { RuntimeConnection } from '@/browser/runtimeClient/RuntimeConnection'
@@ -28,15 +27,13 @@ export type CliSessionViewProps = {
   cli: string
   /** The launcher's display name for the CLI. */
   name: string
-  /** The folder the CLI runs in, shown in the header. */
-  folder?: string
   runtimeConnection?: () => Promise<RuntimeConnection>
   /** A web link clicked in the output. */
   openLink: (url: string) => void
 }
 
 export function CliSessionView(props: CliSessionViewProps): ReactElement {
-  const { sessionId, cli, name, folder, openLink } = props
+  const { sessionId, cli, name, openLink } = props
   const t = useT()
   const conn = useResolvedConnection(props.runtimeConnection)
   const state = useTerminalsState(conn)
@@ -134,7 +131,7 @@ export function CliSessionView(props: CliSessionViewProps): ReactElement {
       <>
         {conn ? (
           <Suspense fallback={null}>
-            <XtermHost key={row.id} terminalId={row.id} connection={conn} prefs={prefs} autoFocus openLink={openLink} />
+            <XtermHost key={row.id} terminalId={row.id} connection={conn} prefs={prefs} autoFocus focusOnWheel openLink={openLink} />
           </Suspense>
         ) : null}
         {ended && !installed && row.state.kind === 'failed' ? (
@@ -173,12 +170,6 @@ export function CliSessionView(props: CliSessionViewProps): ReactElement {
 
   return (
     <div data-testid="cli-session-view" data-cli={cli} className="flex h-full min-w-0 flex-1 flex-col bg-card">
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3 text-body text-muted-foreground">
-        <SquareTerminalIcon className="size-4 shrink-0" aria-hidden />
-        <span className="truncate" data-testid="cli-session-header">
-          {folder ? t('cliSession.header', { name, folder }) : name}
-        </span>
-      </div>
       <div data-testid="cli-session-body" className="relative flex min-h-0 flex-1 flex-col">
         {content}
       </div>

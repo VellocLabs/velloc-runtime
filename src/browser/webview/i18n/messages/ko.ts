@@ -381,7 +381,6 @@ export const ko: Messages = {
   'terminal.placeholder.start': '클릭하여 이 터미널을 시작합니다',
   'terminal.placeholder.starting': '시작 중…',
   'terminal.placeholder.pending': '아직 시작되지 않음',
-  'cliSession.header': '{name} · {folder}',
   'cliSession.startPrompt': '마지막 {name} 대화를 이어 가거나 새 대화를 시작하세요.',
   'cliSession.continue': '이어 하기',
   'cliSession.new': '새 대화',
