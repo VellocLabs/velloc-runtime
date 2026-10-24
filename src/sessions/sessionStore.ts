@@ -131,6 +131,9 @@ export type BrowserSessionSummary = {
   counters?: BrowserSessionCounters
   createdAt?: number
   pinned?: boolean
+  /** `true`: the title is a manual rename (`customTitle` in `meta.json`); `false`: `customTitle` above
+   *  is an automatic title; absent: not known. */
+  renamed?: boolean
 }
 
 // How much of a transcript's end is read to rebuild a session's list entry.
@@ -757,11 +760,14 @@ export function metadataFromSessionMeta(
 export function buildSessionSummaryFromMeta(
   meta: SessionMetaFile,
 ): BrowserSessionSummary | null {
-  return buildSessionSummaryFromMetadata(
+  const summary = buildSessionSummaryFromMetadata(
     meta.sessionId,
     meta.updatedAt,
     metadataFromSessionMeta(meta),
   )
+  if (!summary) return summary
+  if (nonEmptyTitle(meta.customTitle) !== undefined) return { ...summary, renamed: true }
+  return summary.customTitle !== undefined ? { ...summary, renamed: false } : summary
 }
 
 // The disk-only writers of one session's sidecar run one at a time, so a rename

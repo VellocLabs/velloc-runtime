@@ -73,6 +73,8 @@ export type LocalSessionEntry = {
   relaunchedAt?: number
   /** Pinned by the user. Owned by the runtime: taken from the remote summary only. */
   pinned?: boolean
+  /** The title is a manual rename, which a CLI session's automatic title does not replace (F-34). */
+  renamed?: boolean
 }
 
 export type SessionMetaUpdate = {
@@ -103,6 +105,7 @@ export type RemoteSessionSummary = {
   /** The runtime holds a persisted copy of this session. */
   persisted?: boolean
   pinned?: boolean
+  renamed?: boolean
 }
 
 export type SessionManagerOptions = {
@@ -244,6 +247,7 @@ function entryFromSummary(
     lastComposerEditAt:
       summary.lastComposerEditAt ?? base.lastComposerEditAt,
     ...(summary.pinned ? { pinned: true } : {}),
+    ...(summary.renamed ? { renamed: true } : {}),
   }
 }
 
@@ -402,6 +406,8 @@ export function mergeSessions(
         ? local.lastComposerEditAt
         : remoteLastComposerEditAt,
       ...(summary.pinned ? { pinned: true } : {}),
+      // The runtime's word, unless this client renamed it since.
+      ...(summary.renamed || (preferLocalTranscript && local?.renamed) ? { renamed: true } : {}),
     })
   }
 
@@ -646,7 +652,7 @@ export function useSessionManager(
         if (!existing?.customTitle && !remote?.customTitle) return
         if (existing) {
           const { customTitle: _cleared, ...rest } = existing
-          localCacheRef.current.set(sessionId, { ...rest, title: '' })
+          localCacheRef.current.set(sessionId, { ...rest, title: '', renamed: false })
           applyMergedSessions()
         }
         onRequestRenameRef.current?.(sessionId, '', randomUuid())
@@ -659,6 +665,7 @@ export function useSessionManager(
         ...(existing ?? entryFromSummary(sessionId, remote, now)),
         title: trimmed,
         customTitle: trimmed,
+        renamed: true,
         updatedAt: now,
         // messageCount is monotonic and the two sides can disagree: a local
         // entry that predates the latest broadcast must not un-count the

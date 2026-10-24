@@ -3423,7 +3423,7 @@ export function MultiSessionShell({
         createdAt: s.createdAt,
         lastComposerEditAt: s.lastComposerEditAt,
         pinned: s.pinned,
-        renamed: s.customTitle !== undefined,
+        renamed: s.renamed === true,
         messageCount: s.messageCount,
         running: runningSessionIds.has(s.sessionId),
         needsAnswer: needsAnswerSessionIds.has(s.sessionId),

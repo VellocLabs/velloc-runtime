@@ -243,6 +243,8 @@ export type SessionCard = {
   /** Pinned by the user: listed above unpinned sessions. Persisted in the
    *  session's metadata. */
   pinned?: boolean
+  /** The title is a manual rename; `customTitle` may also hold an automatic title (F-34). */
+  renamed?: boolean
 }
 
 export type SharedWorkerOutboundMessage =

@@ -46,7 +46,10 @@ export function projectSessionInfo(args: {
   const teammateName = entry?.teammateName ?? fs?.teammateName
   const shutdown = fs?.shutdown === true
   const shutdownAt = fs?.shutdownAt
-  const title = customTitle ?? live?.title ?? fs?.firstPrompt
+  // A cleared rename falls back to the persisted title only when the summary
+  // marks it automatic; any other persisted `customTitle` may be the cleared rename.
+  const clearedTo = live?.customTitle === null && fs?.renamed === false ? fs.customTitle : undefined
+  const title = customTitle ?? clearedTo ?? live?.title ?? fs?.firstPrompt
   const previewText = live?.previewText ?? fs?.previewText
   // `updatedAt` is an activity clock that only moves forward (F-17): the newer of live and persisted
   // (a rename floats the persisted one).
@@ -66,6 +69,9 @@ export function projectSessionInfo(args: {
   const lastComposerEditAt =
     live?.lastComposerEditAt ?? fs?.lastComposerEditAt
   const pinned = live?.pinned ?? fs?.pinned === true
+  // A live rename (or its `null` clear) is ahead of the persisted summary.
+  const renamed =
+    live && live.customTitle !== undefined ? live.customTitle !== null : fs?.renamed === true
   // messageCount: prefer the live runtime snapshot (it's the
   // authoritative count for an open session) and fall back to the
   // fs summary for sessions we know only by their persisted file.
@@ -96,5 +102,6 @@ export function projectSessionInfo(args: {
     ...(lastComposerEditAt !== undefined ? { lastComposerEditAt } : {}),
     ...(fs?.createdAt !== undefined ? { createdAt: fs.createdAt } : {}),
     ...(pinned ? { pinned: true } : {}),
+    ...(renamed ? { renamed: true } : {}),
   }
 }

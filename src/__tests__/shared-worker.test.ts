@@ -53,6 +53,7 @@ import type {
   BrowserTranscriptWriteEntry,
   SessionMetaFile,
 } from '../sessions/sessionStore'
+import type { CliConversationStore } from '../terminal/TerminalService'
 import { buildSessionSummaryFromMeta } from '../sessions/sessionStore'
 import { SESSION_META_TYPE } from '../runtime/VercelModelConstants'
 import {
@@ -4160,6 +4161,36 @@ describe('SharedWorkerSessionManager', () => {
       await new Promise(resolve => setTimeout(resolve, 10))
       expect(agent.pendingPinned).toBe(false)
       expect(metaWrites).toHaveLength(0)
+      internals().sessions.delete('s')
+    })
+
+    it('a CLI session’s automatic title reaches the session list and is not a rename (F-34)', async () => {
+      installStorage()
+      const cli: Record<string, unknown> = {
+        templateType: 'cli-codex',
+        worker: { receiveFrame: vi.fn(async () => {}), getSnapshot: () => ({ messageCount: 0, messages: [] }) },
+        ports: new Set(),
+      }
+      internals().sessions.set('s', cli)
+      const port = createMockPort()
+      manager.handleConnect(port)
+      port._simulateMessage({ type: 'session.subscribe', all: true })
+      const store = (manager as unknown as { cliConversationStore(): CliConversationStore }).cliConversationStore()
+      await store.retitle!('s', 'Fake work')
+      await new Promise(resolve => setTimeout(resolve, 10))
+      const card = () =>
+        (cards(port).at(-1) as { payload: { session: { title?: string; renamed?: boolean } } } | undefined)?.payload
+          .session
+      expect(card()?.title).toBe('Fake work')
+      // An automatic title is not a rename; a rename is, until it is cleared.
+      expect(card()?.renamed).toBeUndefined()
+      port._simulateMessage({ type: 'session.rename', sessionId: 's', title: 'Mine', requestId: 'r1' })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(card()).toMatchObject({ title: 'Mine', renamed: true })
+      port._simulateMessage({ type: 'session.rename', sessionId: 's', title: '', requestId: 'r2' })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(card()?.title).toBe('Fake work')
+      expect(card()?.renamed).toBeUndefined()
       internals().sessions.delete('s')
     })
 
