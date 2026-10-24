@@ -391,8 +391,12 @@ export function mergeSessions(
       // `relaunchedAt` is a FLOOR, not a source: re-launching an empty
       // session floats it to the top without touching the title/preview
       // resolution above (which must still prefer the persisted summary).
+      // A live session with no transcript yet has no remote clock; its local
+      // creation time must stand in, or the row sorts below every older one (F-17).
       updatedAt: Math.max(
-        preferLocalTranscript ? local.updatedAt : remoteUpdatedAt,
+        preferLocalTranscript
+          ? local.updatedAt
+          : summary.updatedAt ?? local?.updatedAt ?? 0,
         local?.relaunchedAt ?? 0,
       ),
       ...(local?.relaunchedAt !== undefined

@@ -396,6 +396,22 @@ describe('mergeSessions', () => {
     expect(merged[0]?.customTitle).toBe('Persisted Rename')
   })
 
+  it('keeps a fresh boot placeholder newest when the runtime card has no clock yet', () => {
+    // A live session with no transcript: the runtime card carries no updatedAt.
+    const merged = mergeSessions(
+      [
+        { sessionId: 'boot', messageCount: 0 },
+        { sessionId: 'older', updatedAt: 500, title: 'Older', messageCount: 2 },
+      ],
+      new Map([
+        ['boot', localEntry({ sessionId: 'boot', createdAt: 9_000, updatedAt: 9_000 })],
+      ]),
+    )
+
+    expect(merged.map(s => s.sessionId)).toEqual(['boot', 'older'])
+    expect(merged[0]?.updatedAt).toBe(9_000)
+  })
+
   // A re-launched empty session must float to the top of the sidebar. It
   // can't do that through the local `updatedAt`: an empty session is an
   // "untouched placeholder", so its local clock deliberately loses to the
