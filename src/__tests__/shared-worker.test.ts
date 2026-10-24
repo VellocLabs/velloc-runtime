@@ -53,7 +53,7 @@ import type {
   BrowserTranscriptWriteEntry,
   SessionMetaFile,
 } from '../sessions/sessionStore'
-import type { CliConversationStore } from '../terminal/TerminalService'
+import type { CliConversationStore, TerminalService } from '../terminal/TerminalService'
 import { buildSessionSummaryFromMeta } from '../sessions/sessionStore'
 import { SESSION_META_TYPE } from '../runtime/VercelModelConstants'
 import {
@@ -4162,6 +4162,72 @@ describe('SharedWorkerSessionManager', () => {
       expect(agent.pendingPinned).toBe(false)
       expect(metaWrites).toHaveLength(0)
       internals().sessions.delete('s')
+    })
+
+    it('deleting a CLI session erases its conversation from the CLI’s logs once its terminal is closed (F-34)', async () => {
+      installStorage()
+      const record = { cli: 'codex', id: '0b7f3c2e-9a41-4d6b-8f0e-5c2d1a3b4e6f' }
+      metas.set('s', {
+        schemaVersion: 1,
+        sessionId: 's',
+        updatedAt: 10,
+        metadata: { templateType: 'cli-codex', projectRoot: 'D:/work/api', cliConversation: record },
+      })
+      const terminals = (manager as unknown as { bootServices: { terminals: TerminalService } }).bootServices.terminals
+      const order: string[] = []
+      const close = vi.spyOn(terminals, 'closeForSession').mockImplementation(() => {
+        order.push('close')
+      })
+      const erase = vi.spyOn(terminals, 'eraseCliConversation').mockImplementation(async () => {
+        order.push('erase')
+        return []
+      })
+      internals().sessions.set('s', {
+        templateType: 'cli-codex',
+        projectRoot: 'D:/work/api',
+        worker: {
+          receiveFrame: vi.fn(async () => {}),
+          getSnapshot: () => ({ messageCount: 0, messages: [] }),
+          dispose: vi.fn(async () => {}),
+        },
+        ports: new Set(),
+      })
+      const port = createMockPort()
+      manager.handleConnect(port)
+      port._simulateMessage({ type: 'session.delete', sessionId: 's' })
+      await vi.waitFor(() => expect(erase).toHaveBeenCalledWith(record, 'D:/work/api'))
+      expect(order.indexOf('close')).toBeLessThan(order.indexOf('erase'))
+
+      // A session that runs in a worktree erases from the folder its CLI started in.
+      erase.mockClear()
+      installStorage()
+      metas.set('s', {
+        schemaVersion: 1,
+        sessionId: 's',
+        updatedAt: 10,
+        metadata: { templateType: 'cli-codex', projectRoot: 'D:/work/api', cliConversation: record },
+      })
+      internals().sessions.set('s', {
+        templateType: 'cli-codex',
+        projectRoot: 'D:/work/api',
+        worker: {
+          receiveFrame: vi.fn(async () => {}),
+          getSnapshot: () => ({ messageCount: 0, messages: [], projectRoot: 'D:/work/api', cwd: 'D:/work/api-wt' }),
+          dispose: vi.fn(async () => {}),
+        },
+        ports: new Set(),
+      })
+      port._simulateMessage({ type: 'session.delete', sessionId: 's' })
+      await vi.waitFor(() => expect(erase).toHaveBeenCalledWith(record, 'D:/work/api-wt'))
+
+      // A session with no recorded conversation erases nothing.
+      erase.mockClear()
+      installStorage()
+      port._simulateMessage({ type: 'session.delete', sessionId: 's' })
+      await new Promise(resolve => setTimeout(resolve, 20))
+      expect(erase).not.toHaveBeenCalled()
+      close.mockRestore()
+      erase.mockRestore()
     })
 
     it('a CLI session’s store that loaded before its conversation id was written keeps the id on bind (F-34)', async () => {

@@ -51,6 +51,7 @@ import {
 } from './shells'
 import { TitleSequenceScanner } from './titleScanner'
 import { CliBusyTracker, CliTitleFollower } from './cliTitles'
+import { createBridgeCliLogEraser, type CliLogEraser } from './cliLogErase'
 import { CliLogFollower, createBridgeCliLogReader, type CliLogReader } from './cliLogs'
 import {
   CLI_ASSIGNS_CONVERSATION_ID,
@@ -85,6 +86,8 @@ export type TerminalServiceDeps = {
   cliBusyHoldMs?: number
   /** Reads the CLIs' own conversation logs; default over the host's `fs` bridge. */
   cliLogs?: CliLogReader
+  /** Removes a deleted CLI session's conversation from its CLI's logs; default over the host's `fs` bridge. */
+  cliLogEraser?: CliLogEraser
   /** When a running CLI's log is looked for; default `CLI_LOG_RETRY_MS`. */
   cliLogRetryMs?: readonly number[]
   now?(): number
@@ -423,6 +426,13 @@ export class TerminalService {
   close(id: string): void {
     const record = this.require(id)
     this.forget(record)
+  }
+
+  /** A deleted CLI session's conversation leaves its CLI's own logs; call after `closeForSession`. Never throws. */
+  async eraseCliConversation(record: CliConversationRecord, cwd: string): Promise<string[]> {
+    if (!isConversationId(record.id)) return []
+    const eraser = this.deps.cliLogEraser ?? createBridgeCliLogEraser(this.deps.host, this.deps.createRequestId)
+    return eraser.erase(record.cli, { cwd, id: record.id }).catch(() => [])
   }
 
   /** The session ended: its terminals die with it. */

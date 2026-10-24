@@ -50,7 +50,7 @@ import {
   buildForkedTranscriptEntries,
   isMessageLike,
 } from '../../sessions/sessionStore'
-import type { CliConversationStore } from '../../terminal/TerminalService'
+import type { CliConversationRecord, CliConversationStore } from '../../terminal/TerminalService'
 import { createCliConversationStore } from './cliConversationStore'
 import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
 import { installSessionTracer } from '../../utils/sessionTrace'
@@ -2820,6 +2820,24 @@ export class SharedWorkerSessionManager {
     })
   }
 
+  /** A CLI session's recorded conversation and its folder, for erasing it with the session (F-34). */
+  private async cliConversationToErase(
+    sessionId: string,
+  ): Promise<{ record: CliConversationRecord; cwd: string } | undefined> {
+    try {
+      const record = await this.cliConversationStore().read(sessionId)
+      if (!record?.id) return undefined
+      // The folder the CLI started in keys its log: the worktree when it runs in one.
+      const cwd =
+        this.sessionTerminalCwd(sessionId) ??
+        this.fsSummaries.peek(sessionId)?.projectRoot ??
+        (await this.storage?.readSessionMeta(sessionId))?.metadata?.projectRoot
+      return typeof cwd === 'string' && cwd ? { record, cwd } : undefined
+    } catch {
+      return undefined
+    }
+  }
+
   /** Where a session's terminal starts: its worker's cwd (the worktree when it runs in one), else its project root. */
   private sessionTerminalCwd(sessionId: string): string | undefined {
     const entry = this.sessions.get(sessionId)
@@ -2867,9 +2885,13 @@ export class SharedWorkerSessionManager {
       // sequenced after its worker dispose inside the cascade.
       await this.cascadeSubAgentsOnParentClose(sessionId)
 
+      // Read while the session's metadata is still there; erased once its CLI is gone.
+      const cliLog = await this.cliConversationToErase(sessionId)
+
       // Unified disposal (drop deliveries, fire C++ stop, clear ports,
       // dispose worker, remove entry).
       await this.disposeManagedSession(sessionId, { fireStop: true })
+      if (cliLog) await this.bootServices.terminals.eraseCliConversation(cliLog.record, cliLog.cwd)
       this.sessionMeta.delete(sessionId)
       this.fsSummaries.delete(sessionId)
       this.forgetSkillEvents(sessionId)
