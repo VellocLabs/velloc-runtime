@@ -16,9 +16,9 @@ export interface TerminalKeyEvent {
 
 /**
  * `app`: the event is left to the app's own handlers (pane shortcuts and
- * session switching). `copy` / `paste`: the view copies the selection or
- * pastes the clipboard. `search`: the view opens its find bar. `shell`: the
- * emulator encodes the key for the program.
+ * session switching). `copy`: the view copies the selection. `paste`: the
+ * browser's own paste runs, not the program's key. `search`: the view opens
+ * its find bar. `shell`: the emulator encodes the key for the program.
  */
 export type TerminalKeyDecision = 'app' | 'copy' | 'paste' | 'search' | 'shell'
 

@@ -28,7 +28,7 @@ import { Button } from '@/components/ui/button'
 import type { RuntimeConnection } from '@/browser/runtimeClient/RuntimeConnection'
 import { topic } from '@/browser/runtimeProtocol'
 import { TERMINAL_CAPABILITY, isTerminalSize } from '@/terminal/protocol'
-import { readClipboard, writeClipboard } from '@/utils/clipboard'
+import { writeClipboard } from '@/utils/clipboard'
 
 import { useT } from '../i18n'
 import { FitScheduler } from './terminalFit'
@@ -261,10 +261,8 @@ function XtermView({ terminalId, connection, prefs, autoFocus, focusOnWheel, ope
           event.preventDefault()
           return false
         case 'paste':
-          event.preventDefault()
-          void readClipboard().then(text => {
-            if (text) term.paste(text)
-          })
+          // The browser's own paste reaches the emulator's paste handler and
+          // needs no clipboard-read permission, which the guest is not given.
           return false
         case 'search':
           event.preventDefault()
