@@ -14,7 +14,7 @@ import {
   type BrowserSessionMetadata,
   type SessionMetaFile,
 } from '../../sessions/sessionStore'
-import type { CliConversationStore } from '../../terminal/TerminalService'
+import type { CliConversationRecord, CliConversationStore } from '../../terminal/TerminalService'
 import { parseCliConversation } from '../../terminal/cliAgents'
 
 /** The parts of a live session entry the store reads. */
@@ -47,6 +47,14 @@ export type CliConversationStoreDeps = {
 }
 
 export function createCliConversationStore(deps: CliConversationStoreDeps): CliConversationStore {
+  // A store that bound while the disk write ran holds metadata loaded before
+  // it, and its next write would drop the record.
+  const throughStoreBoundMeanwhile = async (
+    sessionId: string,
+    record: CliConversationRecord,
+  ): Promise<void> => {
+    await deps.entry(sessionId)?.conversationStore?.updateSessionMetadata({ cliConversation: record })
+  }
   return {
     read: async sessionId => {
       const bound = deps.entry(sessionId)?.conversationStore
@@ -65,6 +73,7 @@ export function createCliConversationStore(deps: CliConversationStoreDeps): CliC
       }
       await deps.ensureRouting()
       if (await applyDiskOnlyMetadataPatch(storage, sessionId, { cliConversation: record })) {
+        await throughStoreBoundMeanwhile(sessionId, record)
         await deps.refreshSummary(sessionId)
         return
       }
@@ -85,6 +94,7 @@ export function createCliConversationStore(deps: CliConversationStoreDeps): CliC
         projectRoot: entry?.projectRoot,
         templateType: entry?.templateType,
       })
+      await throughStoreBoundMeanwhile(sessionId, record)
     },
     retitle: async (sessionId, title) => {
       const bound = deps.entry(sessionId)?.conversationStore

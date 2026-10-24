@@ -106,12 +106,30 @@ describe('CLI conversation store', () => {
     expect(await r.store.read('s1')).toEqual({ cli: 'claude', id: CONVERSATION })
   })
 
+  it('a store that binds while the record is written to disk gets the record too', async () => {
+    let metadata: BrowserSessionMetadata = {}
+    const entry: CliConversationEntry = { templateType: 'cli-codex', projectRoot: 'D:/work/api' }
+    const r = rig({ entry })
+    const bindDuringWrite = {
+      getSessionMetadata: async () => metadata,
+      updateSessionMetadata: async (patch: Partial<BrowserSessionMetadata>) => {
+        metadata = { ...metadata, ...patch }
+      },
+      storeAutoTitle: async () => {},
+    }
+    const pending = r.store.record('s1', { cli: 'codex', id: CONVERSATION })
+    entry.conversationStore = bindDuringWrite
+    await pending
+    expect(r.calls).toEqual(['route', 'new s1'])
+    expect(metadata.cliConversation).toEqual({ cli: 'codex', id: CONVERSATION })
+  })
+
   it('reads nothing for a missing or malformed record, and refuses to record without storage', async () => {
-    const r = rig({ meta: { s1: existing({ cliConversation: { cli: 'claude', id: '--resume x' } }) } })
+    const r = rig({ meta: { s1: existing({ cliConversation: { cli: 'codex', id: '--resume x' } }) } })
     expect(await r.store.read('s1')).toBeUndefined()
     expect(await r.store.read('s2')).toBeUndefined()
     const none = rig({ storage: false })
-    await expect(none.store.record('s1', { cli: 'claude', id: CONVERSATION })).rejects.toThrow()
+    await expect(none.store.record('s1', { cli: 'codex', id: CONVERSATION })).rejects.toThrow()
   })
 
   it('retitle sets the automatic title of a stored session, leaves a manual one in charge, and refreshes the row', async () => {

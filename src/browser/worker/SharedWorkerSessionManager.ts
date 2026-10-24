@@ -1480,6 +1480,17 @@ export class SharedWorkerSessionManager {
       metadata = undefined
     }
     if (!isCurrentBind()) return false
+    // A CLI session's conversation id may have been written to disk after
+    // this store loaded; the identity write below must not drop it (F-34).
+    let diskCliConversation: unknown
+    if (cliOfTypeInAnyChannel(templateType) !== undefined && metadata?.cliConversation === undefined) {
+      try {
+        diskCliConversation = (await this.storage?.readSessionMeta(sessionId))?.metadata?.cliConversation
+      } catch {
+        diskCliConversation = undefined
+      }
+      if (!isCurrentBind()) return false
+    }
     const pendingPinned = entry.pendingPinned
     // CRITICAL merged identity write FIRST — the worker awaits this bind
     // before worker.ready and the force-reinit stub deletion rides the
@@ -1510,6 +1521,7 @@ export class SharedWorkerSessionManager {
         ? { teammateName: initMeta.teammateName }
         : {}),
       ...(pendingPinned !== undefined ? { pinned: pendingPinned } : {}),
+      ...(diskCliConversation !== undefined ? { cliConversation: diskCliConversation } : {}),
     }
     let persisted = true
     if (!metadata || Object.keys(patch).length > 0) {
