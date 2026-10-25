@@ -1,6 +1,7 @@
 import type { AgentBridgeActionMap } from './agent'
 import type { AlarmsBridgeActionMap } from './alarms'
 import type { WebWindowBridgeActionMap } from './webWindow'
+import type { PageScriptBridgeActionMap } from './pageScript'
 import type { McpSettingsBridgeActionMap } from './mcpSettings'
 import type { BrowserCapabilityMap } from './browser'
 import type { ExecBridgeActionMap } from './exec'
@@ -87,6 +88,9 @@ export type NativeCapabilityMap =
     alarms: AlarmsBridgeActionMap
     // Single-web windows owned by this connection (F-29). See ./webWindow.ts.
     webWindow: WebWindowBridgeActionMap
+    // Script channels to a window above or a tab in this Nexus window (F-29).
+    // See ./pageScript.ts.
+    pageScript: PageScriptBridgeActionMap
   }
 
 export type WorkerCapabilityMap = {
@@ -133,6 +137,7 @@ export const NATIVE_CAPABILITY_DECLARATION_DIRS: Readonly<
   alarms: 'alarms',
   appInfo: 'app_info',
   webWindow: 'web_window',
+  pageScript: 'page_script',
   appearance: 'appearance',
   browserTools: 'browser_tools',
   fs: 'fs',

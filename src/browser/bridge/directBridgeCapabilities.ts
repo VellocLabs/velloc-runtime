@@ -32,4 +32,7 @@ export const NEXUS_DIRECT_BRIDGE_CAPABILITIES: ReadonlySet<BrowserBridgeCapabili
     'alarms',
     // Single-web windows (F-29); manifest-gated by its caller.
     'webWindow',
+    // Script channels to those windows or to this window's tabs (F-29);
+    // manifest-gated by its caller.
+    'pageScript',
   ])

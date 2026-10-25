@@ -9,6 +9,7 @@ import {
   bytesToBase64,
   createNativePrimitives,
   isNativePrimitiveUnsupported,
+  PAGE_SCRIPT_EARLY_MESSAGE_LIMIT,
   isPreconditionFailed,
   NativePrimitiveError,
 } from '../browser/bridge/nativePrimitives'
@@ -603,6 +604,114 @@ describe('webWindow', () => {
     for (const off of offs) off()
     fake.emit('webWindow', 'onClosed', { windowId: 4, reason: 'api' })
     expect(seen).toEqual(['nav 3 https://a.example/', 'title 3 A', 'closed 3 user'])
+  })
+})
+
+describe('pageScript', () => {
+  it('is gated on the advertised capability', async () => {
+    const { primitives, requests } = make(() => ok({ channelId: 1 }), {
+      capabilities: ['webWindow'],
+      primitives: [],
+    })
+    await expect(primitives.pageScript.attach({ webWindowId: 1 })).rejects.toSatisfy(
+      isNativePrimitiveUnsupported,
+    )
+    expect(() => primitives.pageScript.onMessage(() => {})).toThrow()
+    expect(requests).toHaveLength(0)
+  })
+
+  it('sends each action with its wire shape and unwraps the result', async () => {
+    const fake = make(
+      request => {
+        switch (routeOf(request)) {
+          case 'pageScript.attach':
+            return ok({ channelId: 5 })
+          case 'pageScript.executeScript':
+            return ok({ value: { title: 'A' } })
+          case 'pageScript.addInitScript':
+            return ok({ scriptId: 's-1' })
+          case 'pageScript.removeInitScript':
+            return ok({ ok: false })
+          default:
+            return ok({ ok: true })
+        }
+      },
+      { capabilities: ['pageScript'], primitives: [] },
+    )
+    const { pageScript } = fake.primitives
+    expect(await pageScript.attach({ webWindowId: 7 })).toBe(5)
+    expect(await pageScript.attach({ tabId: 12 }, { exposeToPage: true })).toBe(5)
+    expect(await pageScript.executeScript(5, 'document.title')).toEqual({ value: { title: 'A' } })
+    await pageScript.executeScript(5, '1 + 1', 'main')
+    await pageScript.postMessage(5, { type: 'ping', n: 1 })
+    await pageScript.postMessage(5, undefined)
+    expect(await pageScript.addInitScript(5, 'console.log(1)')).toBe('s-1')
+    expect(await pageScript.removeInitScript(5, 's-1')).toBe(false)
+    await pageScript.detach(5)
+
+    expect(fake.requests.map(r => [routeOf(r), r.payload])).toEqual([
+      ['pageScript.attach', { webWindowId: 7 }],
+      ['pageScript.attach', { tabId: 12, exposeToPage: true }],
+      ['pageScript.executeScript', { channelId: 5, code: 'document.title' }],
+      ['pageScript.executeScript', { channelId: 5, code: '1 + 1', world: 'main' }],
+      ['pageScript.postMessage', { channelId: 5, data: '{"type":"ping","n":1}' }],
+      ['pageScript.postMessage', { channelId: 5, data: 'null' }],
+      ['pageScript.addInitScript', { channelId: 5, source: 'console.log(1)' }],
+      ['pageScript.removeInitScript', { channelId: 5, scriptId: 's-1' }],
+      ['pageScript.detach', { channelId: 5 }],
+    ])
+  })
+
+  it('surfaces a host refusal with its code', async () => {
+    const { primitives } = make(
+      () => ({ ok: false, error: { code: 'target_not_found', message: 'no such window or tab on this connection' } }),
+      { capabilities: ['pageScript'], primitives: [] },
+    )
+    const error = await primitives.pageScript.attach({ tabId: 99 }).catch(e => e)
+    expect(error).toBeInstanceOf(NativePrimitiveError)
+    expect((error as NativePrimitiveError).code).toBe('target_not_found')
+  })
+
+  it('parses message data and keeps each listener to its own action', async () => {
+    const fake = make(() => ok({ ok: true }), { capabilities: ['pageScript'], primitives: [] })
+    const seen: unknown[] = []
+    const offMessage = fake.primitives.pageScript.onMessage(e => seen.push(['msg', e.channelId, e.data, e.origin, e.world]))
+    const offDetached = fake.primitives.pageScript.onDetached(e => seen.push(['gone', e.channelId, e.reason]))
+    fake.emit('pageScript', 'onMessage', {
+      channelId: 2, data: '{"type":"route","path":"/a"}', origin: 'https://a.example', frameUrl: 'https://a.example/a', world: 'isolated',
+    })
+    fake.emit('pageScript', 'onMessage', {
+      channelId: 2, data: 'not json', origin: 'https://a.example', frameUrl: 'https://a.example/a', world: 'main',
+    })
+    fake.emit('webWindow', 'onClosed', { windowId: 3, reason: 'user' })
+    fake.emit('pageScript', 'onDetached', { channelId: 2, reason: 'target_gone' })
+    offMessage()
+    offDetached()
+    fake.emit('pageScript', 'onDetached', { channelId: 4, reason: 'target_gone' })
+    expect(seen).toEqual([
+      ['msg', 2, { type: 'route', path: '/a' }, 'https://a.example', 'isolated'],
+      ['msg', 2, 'not json', 'https://a.example', 'main'],
+      ['gone', 2, 'target_gone'],
+    ])
+  })
+
+  it('holds messages that arrive before the first listener, up to the limit', async () => {
+    const fake = make(() => ok({ channelId: 1 }), { capabilities: ['pageScript'], primitives: [] })
+    await fake.primitives.pageScript.attach({ webWindowId: 1 })
+    for (let i = 0; i < PAGE_SCRIPT_EARLY_MESSAGE_LIMIT + 5; i += 1) {
+      fake.emit('pageScript', 'onMessage', {
+        channelId: 1, data: String(i), origin: '', frameUrl: '', world: 'isolated',
+      })
+    }
+    const seen: unknown[] = []
+    const off = fake.primitives.pageScript.onMessage(e => seen.push(e.data))
+    expect(seen).toHaveLength(PAGE_SCRIPT_EARLY_MESSAGE_LIMIT)
+    expect(seen[0]).toBe(5)
+    expect(seen[seen.length - 1]).toBe(PAGE_SCRIPT_EARLY_MESSAGE_LIMIT + 4)
+    // Live now: nothing is held once a listener exists.
+    fake.emit('pageScript', 'onMessage', { channelId: 1, data: '"live"', origin: '', frameUrl: '', world: 'isolated' })
+    expect(seen[seen.length - 1]).toBe('live')
+    off()
   })
 })
 

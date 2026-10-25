@@ -37,6 +37,11 @@ import type {
   BridgeWebWindowOnNavigatedPayload,
   BridgeWebWindowOnTitleChangedPayload,
   BridgeWebWindowState,
+  BridgePageScriptExecuteResult,
+  BridgePageScriptOnDetachedPayload,
+  BridgePageScriptOnMessagePayload,
+  BridgePageScriptTarget,
+  BridgePageScriptWorld,
 } from './browserBridgeProtocol'
 import { createBridgeRoute } from './browserBridgeProtocol'
 
@@ -150,6 +155,9 @@ export function base64ToBytes(base64: string): Uint8Array {
   }
   return bytes
 }
+
+/** How many `pageScript.onMessage` events wait for the first listener. */
+export const PAGE_SCRIPT_EARLY_MESSAGE_LIMIT = 100
 
 const SECRET_PLACEHOLDER = '{{secret:'
 const OAUTH_PLACEHOLDER = '{{oauth:'
@@ -865,5 +873,107 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
     },
   }
 
-  return { fs, shell, network, secrets, alarms, model, webWindow, appInfo }
+  // ---- pageScript (F-29): a script channel to a page -----------------------
+  // Messages that arrive before the first `onMessage` listener wait for it
+  // (at most `PAGE_SCRIPT_EARLY_MESSAGE_LIMIT`, oldest dropped).
+  const earlyPageMessages: BridgePageScriptOnMessagePayload[] = []
+  let pageMessageListeners = 0
+  let earlyPageMessagesOff: (() => void) | null = null
+  const bufferEarlyPageMessages = () => {
+    if (earlyPageMessagesOff || !transport.subscribeEvents) return
+    earlyPageMessagesOff = transport.subscribeEvents(event => {
+      if (pageMessageListeners > 0 || !isRoute(event, 'pageScript', 'onMessage')) return
+      earlyPageMessages.push(event.payload as BridgePageScriptOnMessagePayload)
+      if (earlyPageMessages.length > PAGE_SCRIPT_EARLY_MESSAGE_LIMIT) earlyPageMessages.shift()
+    })
+  }
+  const pageScript = {
+    /** Opens a channel to a window this connection opened or a tab in this
+     *  window; returns its channelId. */
+    async attach(
+      target: BridgePageScriptTarget,
+      options: { exposeToPage?: boolean } = {},
+    ): Promise<number> {
+      requireCapability('pageScript')
+      bufferEarlyPageMessages()
+      const result = await send('pageScript', 'pageScript', 'attach', {
+        ...target,
+        ...(options.exposeToPage ? { exposeToPage: true } : {}),
+      })
+      return result.channelId
+    },
+    async detach(channelId: number): Promise<void> {
+      requireCapability('pageScript')
+      await send('pageScript', 'pageScript', 'detach', { channelId })
+    },
+    /** Evaluates `code` in the page's main frame and awaits it: the JSON
+     *  value, or the thrown error's text under `exception`. */
+    async executeScript(
+      channelId: number,
+      code: string,
+      world?: BridgePageScriptWorld,
+    ): Promise<BridgePageScriptExecuteResult> {
+      requireCapability('pageScript')
+      return send('pageScript', 'pageScript', 'executeScript', {
+        channelId,
+        code,
+        ...(world ? { world } : {}),
+      })
+    },
+    /** Delivers `data` (any JSON value) to the channel scripts' listeners. */
+    async postMessage(channelId: number, data: unknown): Promise<void> {
+      requireCapability('pageScript')
+      await send('pageScript', 'pageScript', 'postMessage', {
+        channelId,
+        data: JSON.stringify(data === undefined ? null : data),
+      })
+    },
+    async addInitScript(channelId: number, source: string): Promise<string> {
+      requireCapability('pageScript')
+      return (await send('pageScript', 'pageScript', 'addInitScript', { channelId, source })).scriptId
+    },
+    async removeInitScript(channelId: number, scriptId: string): Promise<boolean> {
+      requireCapability('pageScript')
+      return (await send('pageScript', 'pageScript', 'removeInitScript', { channelId, scriptId })).ok
+    },
+    /** Every message from any owned channel; `data` is parsed JSON. The
+     *  first listener also receives what arrived before it. Returns the
+     *  unsubscribe. */
+    onMessage(
+      listener: (event: Omit<BridgePageScriptOnMessagePayload, 'data'> & { data: unknown }) => void,
+    ): () => void {
+      requireCapability('pageScript')
+      const deliver = (payload: BridgePageScriptOnMessagePayload) => {
+        let data: unknown = null
+        try {
+          data = JSON.parse(payload.data)
+        } catch {
+          data = payload.data
+        }
+        listener({ ...payload, data })
+      }
+      const off = subscribe(
+        event => isRoute(event, 'pageScript', 'onMessage'),
+        event => deliver(event.payload as BridgePageScriptOnMessagePayload),
+        'pageScript',
+      )
+      pageMessageListeners += 1
+      const early = earlyPageMessages.splice(0)
+      for (const payload of early) deliver(payload)
+      return () => {
+        pageMessageListeners -= 1
+        off()
+      }
+    },
+    onDetached(listener: (event: BridgePageScriptOnDetachedPayload) => void): () => void {
+      requireCapability('pageScript')
+      return subscribe(
+        event => isRoute(event, 'pageScript', 'onDetached'),
+        event => listener(event.payload as BridgePageScriptOnDetachedPayload),
+        'pageScript',
+      )
+    },
+  }
+
+  return { fs, shell, network, secrets, alarms, model, webWindow, pageScript, appInfo }
 }
