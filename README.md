@@ -7,7 +7,7 @@ browser tabs, all inside one desktop application. This repository is its
 **runtime**: the agent loop, the tools as the model sees them, sessions,
 memory and the whole user interface, written in TypeScript and React.
 
-[Download for Windows](https://velloc.app/download/install.exe) ·
+[Download for Windows](https://velloc.app/download/VellocSetup.exe) ·
 [Releases](https://github.com/VellocLabs/velloc-bootstrap/releases/latest) ·
 [Platform and architecture](https://github.com/VellocLabs/velloc-bootstrap#readme)
 
