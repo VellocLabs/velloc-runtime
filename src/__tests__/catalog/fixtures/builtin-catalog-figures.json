@@ -183,6 +183,16 @@
       "maxOutputTokens": 131072,
       "supportsImageInput": true
     },
+    "k3.1-pro": {
+      "contextWindow": 1048576,
+      "maxOutputTokens": 131072,
+      "supportsImageInput": true
+    },
+    "k3.1-pro-highspeed": {
+      "contextWindow": 1048576,
+      "maxOutputTokens": 131072,
+      "supportsImageInput": true
+    },
     "kimi-for-coding": {
       "contextWindow": 1048576,
       "maxOutputTokens": 32768,

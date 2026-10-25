@@ -124,6 +124,8 @@ const UNSHIPPED: ReadonlyArray<readonly [string, string, Frozen]> = [
   ['google', 'gemini-3.9-flash', { todoTools: false, contextWindow: 1_048_576, defaultMaxOutputTokens: 32_000, maxOutputTokens: 65_536 }],
   ['google', 'gemini-3.5-pro', { contextWindow: 1_048_576, defaultMaxOutputTokens: 32_000, maxOutputTokens: 65_536 }],
   ['kimi', 'k4', { todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: ['none', 'low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }],
+  ['kimi', 'k4-pro', { todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }],
+  ['kimi', 'k3.2-pro-highspeed', { todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }],
   ['minimax', 'MiniMax-M3.5', { todoTools: false, contextWindow: 1_000_000, defaultMaxOutputTokens: 8_192, maxOutputTokens: 16_384 }],
   ['minimax', 'minimax-m4', { todoTools: false, contextWindow: 1_000_000, defaultMaxOutputTokens: 8_192, maxOutputTokens: 16_384 }],
   // The window and cap below are the vendor's (were 983,616 / 32,768).
@@ -144,6 +146,8 @@ const ADDED: ReadonlyArray<readonly [string, string, Frozen & { name: string }]>
   ['openai', 'gpt-5.4', { ...GPT_LUNA, name: 'GPT-5.4', defaultThinkingTier: 'none', availableThinkingTiers: ['none', 'low', 'medium', 'high', 'xhigh'] }],
   ['openai', 'gpt-5.4-mini', { ...GPT_LUNA, name: 'GPT-5.4 mini', defaultThinkingTier: 'none', availableThinkingTiers: ['none', 'low', 'medium', 'high', 'xhigh'], contextWindow: 400_000 }],
   ['openai', 'gpt-5.4-pro', { ...GPT_LUNA, name: 'GPT-5.4 Pro', availableThinkingTiers: ['medium', 'high', 'xhigh'] }],
+  ['kimi', 'k3.1-pro', { ...{ todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }, name: 'K3.1 Pro' }],
+  ['kimi', 'k3.1-pro-highspeed', { ...{ todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }, name: 'K3.1 Pro Highspeed' }],
 ]
 const ADDED_IDS: Record<string, string[]> = {}
 for (const [providerId, id] of ADDED) (ADDED_IDS[providerId] ??= []).push(id)
@@ -169,6 +173,7 @@ const UNCOVERED: ReadonlyArray<readonly [string, string, string]> = [
   ['google', 'gemini-2-flash', 'below minVersion 2.5'],
   ['google', 'gemini-4-ultra', 'no row'],
   ['kimi', 'k2', 'below minVersion'],
+  ['kimi', 'k3-pro', 'below the Pro row (minVersion 3.1)'],
   ['kimi', 'kimi-for-coding-pro', 'a FIXED row is one id'],
   ['minimax', 'MiniMax-M1', 'below minVersion'],
   ['qwen', 'qwen3.6-max', 'below minVersion 3.7'],
@@ -479,7 +484,7 @@ describe('no table grafts a row for a discovered version', () => {
     glm: ['glm-5.3', 'glm-5.4', 'glm-6-flash'],
     deepseek: ['deepseek-v4-pro', 'deepseek-v5-pro'],
     google: ['gemini-3.8-flash', 'gemini-3.9-flash', 'gemini-3.5-pro', 'gemini-3.1-pro-preview'],
-    kimi: ['k3', 'k4'],
+    kimi: ['k3', 'k4', 'k3.1-pro', 'k4-pro'],
     minimax: ['MiniMax-M3', 'MiniMax-M3.5'],
     qwen: ['qwen3.8-max', 'qwen3.9-max'],
   }

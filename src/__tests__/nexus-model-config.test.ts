@@ -1046,18 +1046,21 @@ describe('nexus model config helpers', () => {
       provider => provider.providerId === 'kimi',
     )
 
-    // `k3-256k` joins, and `kimi-for-coding` became the K2.8
-    // Preview at 1M context (it was K2.7 Code at 256K); only the highspeed
-    // row is still the 256K K2.7.
+    // The K3.1 Pro rows lead; `k3-256k` is K3 at 256K, `kimi-for-coding` the
+    // K2.8 Preview at 1M context; only the K2.7 highspeed row is still 256K.
     expect(kimi?.models.map(model => model.model.toString())).toEqual([
+      '/^k3\\.1-pro$/i',
+      '/^k3\\.1-pro-highspeed$/i',
       '/^k3$/i',
       '/^k3-256k$/i',
       '/^kimi-for-coding$/i',
       '/^kimi-for-coding-highspeed$/i',
     ])
     // The windows are the catalog's (the rows leave them unset).
-    expect(['k3', 'k3-256k', 'kimi-for-coding', 'kimi-for-coding-highspeed']
+    expect(['k3.1-pro', 'k3.1-pro-highspeed', 'k3', 'k3-256k', 'kimi-for-coding', 'kimi-for-coding-highspeed']
       .map(id => findConfiguredModel('kimi', id)?.contextWindow)).toEqual([
+      1_048_576,
+      1_048_576,
       1_048_576,
       262_144,
       1_048_576,
@@ -1074,22 +1077,39 @@ describe('nexus model config helpers', () => {
       bestModel: 'k*',
     })
     expect(getTierModelForProvider('kimi', 'best')).toBe('k3')
-    // Effort vocabulary per the model page (re-read): low/high/max
-    // on every non-highspeed row, default `high` on the K3 rows and `max` on
-    // the K2.8 row; highspeed is "Thinking: ON" only, so no pills there.
+    // Effort vocabulary per the model page: low/high/max on every row but the
+    // K2.7 highspeed one, default `high` on the K3.1 Pro and K3 rows and
+    // `max` on the K2.8 row. The K3.1 Pro rows have NO `none` pill: the
+    // endpoint rejects a request that disables thinking (HTTP 400), where the
+    // K3 / K2.8 rows route it to a non-thinking model. K2.7 highspeed is
+    // "Thinking: ON" only, so no pills there.
     expect(kimi?.models[0]).toMatchObject({
       defaultThinkingTier: 'high',
-      availableThinkingTiers: ['none', 'low', 'high', 'max'],
+      availableThinkingTiers: ['low', 'high', 'max'],
     })
     expect(kimi?.models[1]).toMatchObject({
       defaultThinkingTier: 'high',
-      availableThinkingTiers: ['none', 'low', 'high', 'max'],
+      availableThinkingTiers: ['low', 'high', 'max'],
     })
     expect(kimi?.models[2]).toMatchObject({
+      defaultThinkingTier: 'high',
+      availableThinkingTiers: ['none', 'low', 'high', 'max'],
+    })
+    expect(kimi?.models[3]).toMatchObject({
+      defaultThinkingTier: 'high',
+      availableThinkingTiers: ['none', 'low', 'high', 'max'],
+    })
+    expect(kimi?.models[4]).toMatchObject({
       defaultThinkingTier: 'max',
       availableThinkingTiers: ['none', 'low', 'high', 'max'],
     })
-    expect(kimi?.models[3]?.availableThinkingTiers).toBeUndefined()
+    expect(kimi?.models[5]?.availableThinkingTiers).toBeUndefined()
+    // A version of the Pro line the vendor has not shipped reads the same row.
+    expect(findConfiguredModel('kimi', 'k4-pro')).toMatchObject({
+      todoTools: false,
+      defaultThinkingTier: 'high',
+      availableThinkingTiers: ['low', 'high', 'max'],
+    })
   })
   it('gates the qwen thinking tiers per model (3.8-max has NO `none` pill)', () => {
     // The DashScope / token-plan gateway RESTRICTS `enable_thinking` to

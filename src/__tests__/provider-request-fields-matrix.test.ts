@@ -62,6 +62,7 @@ const UNSHIPPED_VERSIONS: ReadonlyArray<readonly [string, string]> = [
   ['openai', 'gpt-7-astra'],
   ['qwen', 'qwen3.9-max'],
   ['kimi', 'k4'],
+  ['kimi', 'k4-pro'],
   ['deepseek', 'deepseek-v5-pro'],
 ]
 

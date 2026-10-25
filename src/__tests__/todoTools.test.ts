@@ -68,6 +68,8 @@ describe('modelUsesTodoTools — the catalog flag is the only source', () => {
       ['deepseek', 'deepseek-v4-pro'],
       ['glm', 'glm-5.3'],
       ['kimi', 'k3'],
+      ['kimi', 'k3.1-pro'],
+      ['kimi', 'k3.1-pro-highspeed'],
       ['minimax', 'MiniMax-M3'],
       ['qwen', 'qwen3.8-max'],
     ]

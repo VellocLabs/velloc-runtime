@@ -86,6 +86,11 @@ describe('per-model output-token resolution', () => {
       expect(getDefaultMaxOutputTokensForModel('k3', 'kimi')).toBe(64_000)
     })
 
+    it('returns 64_000 for the Kimi K3.1 Pro rows (thinking cannot be turned off)', () => {
+      expect(getDefaultMaxOutputTokensForModel('k3.1-pro', 'kimi')).toBe(64_000)
+      expect(getDefaultMaxOutputTokensForModel('k3.1-pro-highspeed', 'kimi')).toBe(64_000)
+    })
+
     it('leaves the K2.7 Code rows at 32_000 — no published ceiling', () => {
       // The Kimi Code docs publish output ceilings for neither K2.7 row, so
       // the 131_072 figure taken from the K3 platform quickstart must NOT
@@ -148,6 +153,11 @@ describe('per-model output-token resolution', () => {
       expect(outputBudgetOf('k3', 'kimi')).toBe(131_072)
     })
 
+    it('reads the same 131_072 ceiling for the K3.1 Pro rows from the catalog', () => {
+      expect(outputBudgetOf('k3.1-pro', 'kimi')).toBe(131_072)
+      expect(outputBudgetOf('k3.1-pro-highspeed', 'kimi')).toBe(131_072)
+    })
+
     it('keeps the K3 ceiling well under its own context window', () => {
       // The documented 1,048,576 hard max is exactly K3's context window, so
       // escalating there would reserve the entire window for output and
@@ -187,6 +197,8 @@ describe('per-model output-token resolution', () => {
       ['qwen', 'qwen3.8-max'],
       ['qwen', 'qwen3.6-flash'],
       ['kimi', 'k3'],
+      ['kimi', 'k3.1-pro'],
+      ['kimi', 'k3.1-pro-highspeed'],
       ['kimi', 'kimi-for-coding'],
       ['kimi', 'kimi-for-coding-highspeed'],
       ['glm', 'glm-4.6'],

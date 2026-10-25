@@ -1,9 +1,9 @@
 import type { NexusProviderModelConfig } from '../../types'
 import { createExactModelPattern } from '../../patterns'
 
-// Context windows and K3's `maxOutputTokens` (131,072) come from the model catalog
-// (F-28); the documented 1,048,576 maximum is not adopted (it equals the whole
-// window). The `kimi-for-coding` rows keep a conservative 32K reservation; the
+// Context windows and the K3 / K3.1 Pro rows' `maxOutputTokens` (131,072) come
+// from the model catalog (F-28); the documented 1,048,576 maximum is not adopted
+// (it equals the whole window). The `kimi-for-coding` rows keep a conservative 32K reservation; the
 // `none` pill disables thinking.
 export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
   providerId: 'kimi',
@@ -34,6 +34,34 @@ export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
   // under `versions` (`undefined` takes a field away). A row without
   // `family` is FIXED: one model, offered as itself, followed by nothing.
   models: [
+    {
+      family: 'k*-pro',
+      model: createExactModelPattern('k3\\.1-pro'),
+      name: 'K3.1 Pro',
+      minVersion: '3.1',
+      // Current-generation flagship tier — no TodoWrite (see `todoTools` in
+      // ../types.ts).
+      todoTools: false,
+      // Thinking is always on: the endpoint rejects a request that disables
+      // it (HTTP 400), so there is no `none` pill. Documented default `high`.
+      defaultThinkingTier: 'high',
+      availableThinkingTiers: ['low', 'high', 'max'],
+      defaultMaxOutputTokens: 64_000,
+    },
+    {
+      family: 'k*-pro-highspeed',
+      // Same model as `k3.1-pro`, served faster (2-3x speed, 2x consumption);
+      // same tier vocabulary and defaults.
+      model: createExactModelPattern('k3\\.1-pro-highspeed'),
+      name: 'K3.1 Pro Highspeed',
+      minVersion: '3.1',
+      // Current-generation flagship tier — no TodoWrite (see `todoTools` in
+      // ../types.ts).
+      todoTools: false,
+      defaultThinkingTier: 'high',
+      availableThinkingTiers: ['low', 'high', 'max'],
+      defaultMaxOutputTokens: 64_000,
+    },
     {
       family: 'k*',
       model: createExactModelPattern('k3'),
