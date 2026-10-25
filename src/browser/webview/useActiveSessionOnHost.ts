@@ -7,7 +7,8 @@ import { mayIssue, type CapabilityQuery } from './useCan'
 
 /**
  * Mirror the active session to the host (boot and every switch), which foregrounds the session's tab and
- * replies with its tab counts. Best-effort: a host without `session.setActiveSession` leaves the counts
+ * replies with its tab counts. While `paused` (another screen owns the window's tab view) nothing is sent;
+ * unpausing sends again, which brings the session's tab back to the front. Best-effort: a host without `session.setActiveSession` leaves the counts
  * untouched. The route is `full`: a connection without it never sends, and it waits while the grant is
  * unknown (`mayIssue`). `capabilities` is a parameter because the caller provides the capability context.
  */
@@ -17,11 +18,12 @@ export function useActiveSessionOnHost(
   capabilities: CapabilityQuery,
   onTabCounts: (sessionId: string, nexus: number, total: number) => void,
   onTabList?: (sessionId: string, tabs: SessionTabEntry[]) => void,
+  paused = false,
 ): void {
   const canSetActive = mayIssue(capabilities, 'session', 'setActiveSession')
 
   useEffect(() => {
-    if (!activeSessionId || !canSetActive) return
+    if (!activeSessionId || !canSetActive || paused) return
     let cancelled = false
     void setSessionActive(transport, activeSessionId)
       .then(result => {
@@ -35,5 +37,5 @@ export function useActiveSessionOnHost(
     return () => {
       cancelled = true
     }
-  }, [transport, activeSessionId, canSetActive, onTabCounts, onTabList])
+  }, [transport, activeSessionId, canSetActive, onTabCounts, onTabList, paused])
 }

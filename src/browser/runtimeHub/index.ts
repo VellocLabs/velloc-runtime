@@ -21,6 +21,7 @@ export {
   shellTopicProvider,
   type ShellState,
 } from './shellCapability'
+export { registerCustomizePageCapability } from './customizePageCapability'
 export { BlobInbox, DEFAULT_BLOB_INBOX_LIMITS, type BlobInboxLimits } from './BlobInbox'
 export {
   FSX_TREE_SKIPPED_DIRS,

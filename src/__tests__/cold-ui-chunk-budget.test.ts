@@ -46,6 +46,11 @@ const COLD_PANELS = [
     './sessionImport/ImportDialog',
     join(SRC, 'browser', 'webview', 'sessionImport', 'ImportDialog.tsx'),
   ],
+  [
+    'CustomizeScreen',
+    './customize/CustomizeScreen',
+    join(SRC, 'browser', 'webview', 'customize', 'CustomizeScreen.tsx'),
+  ],
 ]
 
 /**

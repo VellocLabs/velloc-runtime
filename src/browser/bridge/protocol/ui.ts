@@ -508,6 +508,26 @@ export type UiBridgeCapabilityMap = {
       result: { ok: true }
     }
     /**
+     * A utility tab (F-35): a tab in this Nexus window that belongs to the
+     * window's own UI, not to a session — no session counts it and no
+     * browser pane lists it. `openUtilityTab` returns the tab already
+     * carrying `key` (foregrounded, not renavigated, `created: false`) or
+     * opens one at `url` (http/https only). The other two refuse a tab that
+     * is not a utility tab.
+     */
+    openUtilityTab: {
+      payload: { key: string; url: string }
+      result: { tabId: number; created: boolean }
+    }
+    navigateUtilityTab: {
+      payload: { tabId: number; url: string }
+      result: { ok: true }
+    }
+    closeUtilityTab: {
+      payload: { tabId: number }
+      result: { ok: true }
+    }
+    /**
      * Open Chrome's native languages settings page (chrome://settings/languages)
      * in a normal (non-Nexus) browser window. Trusted, fixed internal URL — does
      * NOT go through `openUrl` (which blocks chrome:// for untrusted links).

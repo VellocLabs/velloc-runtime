@@ -90,6 +90,7 @@ import {
   FsxSearchService,
   RuntimeHub,
   installSessionSurface,
+  registerCustomizePageCapability,
   registerFsxCapability,
   registerTerminalCapability,
   type HostEnvironment,
@@ -98,6 +99,8 @@ import {
   type SessionSurface,
 } from '../runtimeHub'
 import { wireError } from '../runtimeProtocol'
+import { CustomizePageService } from '../../customize/CustomizePageService'
+import { createCustomizePageHostSource } from '../../customize/customizePageHost'
 import { composeSessionInit, hostEnvironmentOf } from './sessionOpenComposer'
 import { NEXUS_INTERFACE_VERSION } from '../bridge/protocol/interfaceVersion'
 import { setTeammateSpawner } from '../../team/teammateSpawner'
@@ -869,6 +872,16 @@ export class SharedWorkerSessionManager {
         return { cwd, ...(projectRoot ? { projectRoot } : {}) }
       },
     }, this.fsxSearch)
+    // `customizePage` (F-35): this window's Customize tab and its page channel.
+    registerCustomizePageCapability(
+      this.runtimeHub.registry,
+      this.runtimeHub.broker,
+      new CustomizePageService(createCustomizePageHostSource({
+        getTransport: () => this.bridgeRouter.getDirectTransport(),
+        getManifest: () => this.hostEnvironment?.hostManifest ?? this.lastInitTemplate?.hostManifest ?? undefined,
+        createRequestId: () => this.generateBridgeRequestId(),
+      })),
+    )
     this.runtimeSessionSurface = installSessionSurface(this.runtimeHub, {
       dispatch: (port, data) =>
         this.portRouter.handle(port, { data } as MessageEvent),

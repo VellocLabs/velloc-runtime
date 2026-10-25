@@ -276,3 +276,22 @@ describe('useActiveSessionOnHost — the switch report follows the grant', () =>
     expect(activated(request)).toEqual(['s2'])
   })
 })
+
+describe('useActiveSessionOnHost — paused while another screen owns the tab view', () => {
+  it('sends nothing while paused and reports the session again on resume', async () => {
+    const { transport, request } = fakeHostTransport()
+    const onTabCounts = vi.fn()
+    const capabilities = queryFor(advertsForScope('full'))
+    const { rerender } = renderHook(
+      ({ paused }) =>
+        useActiveSessionOnHost(transport, 's1', capabilities, onTabCounts, undefined, paused),
+      { initialProps: { paused: false } },
+    )
+    await waitFor(() => expect(activated(request)).toEqual(['s1']))
+    rerender({ paused: true })
+    await settle()
+    expect(activated(request)).toEqual(['s1'])
+    rerender({ paused: false })
+    await waitFor(() => expect(activated(request)).toEqual(['s1', 's1']))
+  })
+})

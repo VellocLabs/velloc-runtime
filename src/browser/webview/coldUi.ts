@@ -12,6 +12,7 @@ const loadFilesPane = () => import('./panes/FilesPane')
 const loadTerminalPane = () => import('./terminal/TerminalPane')
 const loadCliSessionView = () => import('./terminal/CliSessionView')
 const loadImportDialog = () => import('./sessionImport/ImportDialog')
+const loadCustomizeScreen = () => import('./customize/CustomizeScreen')
 
 export const SettingsScreen = lazy(async () => {
   const module = await loadSettingsScreen()
@@ -43,6 +44,11 @@ export const ImportDialog = lazy(async () => {
   return { default: module.ImportDialog }
 })
 
+export const CustomizeScreen = lazy(async () => {
+  const module = await loadCustomizeScreen()
+  return { default: module.CustomizeScreen }
+})
+
 /**
  * Upper bound on how long the warm-up waits for an idle window. The shell is
  * mounted and interactive well before this; the timeout only guarantees the
@@ -65,6 +71,7 @@ export function prefetchColdUi(): () => void {
     void loadFilesPane()
     void loadTerminalPane()
     void loadImportDialog()
+    void loadCustomizeScreen()
   }
 
   if (typeof requestIdleCallback === 'function') {
@@ -84,5 +91,11 @@ export function prefetchColdUi(): () => void {
 
 /** Load every cold panel now; resolves once all chunks have evaluated. */
 export async function warmColdUi(): Promise<void> {
-  await Promise.all([loadSettingsScreen(), loadSidePanes(), loadFilesPane(), loadImportDialog()])
+  await Promise.all([
+    loadSettingsScreen(),
+    loadSidePanes(),
+    loadFilesPane(),
+    loadImportDialog(),
+    loadCustomizeScreen(),
+  ])
 }

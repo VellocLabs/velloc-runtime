@@ -269,6 +269,7 @@ import {
 // `coldUi.ts` for the measurement and for why the prefetch below is part of
 // the same change rather than an optimization on top of it.
 import {
+  CustomizeScreen,
   ImportDialog,
   SettingsScreen,
   prefetchColdUi,
@@ -1284,14 +1285,21 @@ export function MultiSessionShell({
   // Input and visibility postpone the runtime's render-cache purge.
   useClientActivityReport(sessionChannel)
 
+  // The Customize screen (F-35) takes the window like Settings and shows its
+  // utility tab in the native tab view; exclusive with Settings.
+  const [customizeOpen, setCustomizeOpen] = useState(false)
+
   // Mirror the active session to the HOST (boot + every switch), which seeds
-  // the map above. Not sent without `session.setActiveSession`.
+  // the map above. Not sent without `session.setActiveSession`. Paused while
+  // Customize owns the tab view; closing it sends again, which brings the
+  // session's tab back to the front.
   useActiveSessionOnHost(
     hostBridgeTransport,
     activeSessionId,
     runtimeCapabilities,
     mergeSessionTabCounts,
     setSessionTabList,
+    customizeOpen,
   )
 
   // Live per-session tab-count feed from the host's tab tracker.
@@ -3027,6 +3035,18 @@ export function MultiSessionShell({
     },
     [],
   )
+  // Settings and Customize never show together: opening Settings (also
+  // from a Customize row) closes Customize.
+  useEffect(() => {
+    if (settingsSection !== null) setCustomizeOpen(false)
+  }, [settingsSection])
+  const handleOpenCustomize = useCallback(() => {
+    setSettingsSection(null)
+    setCustomizeOpen(true)
+  }, [])
+  const handleCloseCustomize = useCallback(() => {
+    setCustomizeOpen(false)
+  }, [])
   const handleOpenProviderSettings = useCallback((providerId: string) => {
     setProviderSettingsRequest(prev => ({ providerId, seq: (prev?.seq ?? 0) + 1 }))
     setSettingsSection('models')
@@ -4244,7 +4264,7 @@ export function MultiSessionShell({
         onFocus={() => focusPane(kind)}
         className="h-full"
       >
-        <SessionAreaVisibleContext.Provider value={!settingsSection}>
+        <SessionAreaVisibleContext.Provider value={!settingsSection && !customizeOpen}>
         <RightPanelContentContext.Provider value={shellRightPanelContentValue}>
         <FilePathContext.Provider value={shellFilePathContextValue}>
         <Suspense fallback={null}>{body}</Suspense>
@@ -4332,7 +4352,7 @@ export function MultiSessionShell({
         </>,
         <div className="flex h-full min-h-0 flex-col">
           <BrowserAddressBar tab={activeTab} onNavigate={navigateBrowserTab} />
-          <WebviewArea active shell={shellChannel ?? null} />
+          <WebviewArea active={!customizeOpen} shell={shellChannel ?? null} />
         </div>,
         <Button
           type="button"
@@ -4405,7 +4425,7 @@ export function MultiSessionShell({
       <NexusTopBar
         // Settings takes the whole window: its header replaces the topbar as
         // the drag surface and caption reserve.
-        hidden={settingsSection !== null}
+        hidden={settingsSection !== null || customizeOpen}
         sessionTabs={sessionTabs}
         activeSessionId={activeSessionId}
         // Switching tab IS switching session — that is the whole feature.
@@ -4454,6 +4474,9 @@ export function MultiSessionShell({
         backgroundTaskCount={countRunning(activeSessionSubAgentRows)}
         importSources={activeCli ? undefined : topbarImportSources}
         onOpenImport={activeCli ? undefined : setImportDialogSource}
+        // Customize shows this window's native tab view: never on a remote
+        // client page, nor over a CLI session.
+        onOpenCustomize={activeCli || remoteHost !== undefined ? undefined : handleOpenCustomize}
         remoteDeviceCount={activeCli ? 0 : remoteDeviceCount}
         remoteHost={remoteHost}
         onRemoteLogOut={onRemoteLogOut}
@@ -4493,6 +4516,17 @@ export function MultiSessionShell({
               setImportDialogSource(null)
               handleSearchOpenSession(sessionId)
             }}
+          />
+        </Suspense>
+      ) : null}
+      {customizeOpen ? (
+        <Suspense fallback={null}>
+          <CustomizeScreen
+            runtimeConnection={runtimeConnection}
+            shell={shellChannel ?? null}
+            onClose={handleCloseCustomize}
+            onOpenSettings={handleOpenNexusSettings}
+            onDragRegionsChange={handleDragRegionsChange}
           />
         </Suspense>
       ) : null}
@@ -4539,7 +4573,7 @@ export function MultiSessionShell({
       /* Full-bleed below the topbar: no radius and no outer border. */
       // Hidden is not gone: keyboard listeners stay live under Settings, so the area's
       // visibility is published as one flag, `SessionAreaVisibleContext`.
-      <SessionAreaVisibleContext.Provider value={!settingsSection}>
+      <SessionAreaVisibleContext.Provider value={!settingsSection && !customizeOpen}>
       <div
         ref={sessionAreaRef}
         data-testid="nexus-session-area"
@@ -4548,7 +4582,7 @@ export function MultiSessionShell({
         // See the overlay note above: hidden — never unmounted — while settings
         // is open, so the mounted threads keep their pending-question and
         // attention state across an open→close.
-        style={settingsSection ? { display: 'none' } : undefined}
+        style={settingsSection || customizeOpen ? { display: 'none' } : undefined}
       >
         {/*
           Sidebar lives once at shell scope (lifted out of

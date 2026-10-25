@@ -1,5 +1,6 @@
 import * as React from "react";
 import {
+  BlocksIcon,
   CheckIcon,
   DownloadIcon,
   EllipsisVerticalIcon,
@@ -139,6 +140,12 @@ export type NexusTopBarProps = {
   }>;
   onOpenImport?: (source: ImportSource) => void;
   /**
+   * Opens the Customize screen (F-35). The button sits right after the
+   * import buttons; it needs this window's native tab view, so a client
+   * that cannot open a session tab gets no button.
+   */
+  onOpenCustomize?: () => void;
+  /**
    * Remote devices connected to this desktop through remote access (F-24).
    * Above 0 a link button with the count sits just before the search control
    * and opens Settings → Remote access. The shell passes 0 when that page is
@@ -203,6 +210,7 @@ export function NexusTopBar({
   hideModelPicker,
   importSources,
   onOpenImport,
+  onOpenCustomize,
   remoteDeviceCount,
   remoteHost,
   onRemoteLogOut,
@@ -237,6 +245,8 @@ export function NexusTopBar({
     : [];
   const showRemoteDevices = !remoteHost && !!remoteDeviceCount && remoteDeviceCount > 0;
   const importEntries = onOpenImport && importSources ? importSources : [];
+  const canCustomize = useCan("customizePage", "show");
+  const showCustomize = !!onOpenCustomize && canCustomize;
   // Fold units, first-to-fold first: right, the pane toggles from the end and
   // then the rail; left, plugin items, the devices link, then the imports.
   // Nothing folds without a More menu to fold into.
@@ -250,6 +260,7 @@ export function NexusTopBar({
     ? [
         ...(plugins?.items ?? []).map((item) => pluginFoldKey(item.id)).reverse(),
         ...(showRemoteDevices ? ["remote"] : []),
+        ...(showCustomize ? ["customize"] : []),
         ...importEntries.map((entry) => `import:${entry.source}`).reverse(),
       ]
     : [];
@@ -265,6 +276,7 @@ export function NexusTopBar({
   const railFolded = !!sessionOverview && folded.has("rail");
   const foldedImports = importEntries.filter((entry) => folded.has(`import:${entry.source}`));
   const remoteFolded = showRemoteDevices && folded.has("remote");
+  const customizeFolded = showCustomize && folded.has("customize");
   const foldedPlugins = (plugins?.items ?? []).filter((item) =>
     folded.has(pluginFoldKey(item.id)),
   );
@@ -394,6 +406,24 @@ export function NexusTopBar({
               </Tooltip>
             ))
           : null}
+        {showCustomize && !customizeFolded ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                data-testid="topbar-customize"
+                {...{ [FOLD_ATTR]: "customize" }}
+                aria-label={t("topbar.customize")}
+                onClick={onOpenCustomize}
+              >
+                <BlocksIcon className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{t("topbar.customize")}</TooltipContent>
+          </Tooltip>
+        ) : null}
         {/* Remote devices connected — only while there are some. Just before
             the search control, so its appearing and going never shifts the
             buttons to its left. */}
@@ -603,7 +633,7 @@ export function NexusTopBar({
                     </DropdownMenuPrimitive.CheckboxItem>
                   );
                 })}
-                {foldedImports.length > 0 || remoteFolded || foldedPlugins.length > 0 ? (
+                {foldedImports.length > 0 || customizeFolded || remoteFolded || foldedPlugins.length > 0 ? (
                   <DropdownMenuPrimitive.Separator className="-mx-1 my-1 h-px bg-border" />
                 ) : null}
                 {onOpenImport
@@ -625,6 +655,16 @@ export function NexusTopBar({
                       </DropdownMenuPrimitive.Item>
                     ))
                   : null}
+                {customizeFolded ? (
+                  <DropdownMenuPrimitive.Item
+                    onSelect={() => onOpenCustomize?.()}
+                    data-testid="topbar-folded-customize"
+                    className={MENU_ITEM_CLASS}
+                  >
+                    <BlocksIcon aria-hidden className="size-4 text-muted-foreground" />
+                    <span className="flex-1">{t("topbar.customize")}</span>
+                  </DropdownMenuPrimitive.Item>
+                ) : null}
                 {remoteFolded ? (
                   <DropdownMenuPrimitive.Item
                     onSelect={() => onOpenSettings("remoteAccess")}
