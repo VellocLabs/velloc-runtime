@@ -21,6 +21,7 @@ import {
 
 import { useT } from "../i18n";
 import { useCan } from "../useCan";
+import { currentUiChannel } from "../../../branding/updateChannels";
 import { isTeammateSessionId } from "../../../utils/sidechainStoragePaths";
 import type { SessionListItem } from "../SessionRows";
 import { SessionTabStrip } from "./SessionTabStrip";
@@ -246,7 +247,8 @@ export function NexusTopBar({
   const showRemoteDevices = !remoteHost && !!remoteDeviceCount && remoteDeviceCount > 0;
   const importEntries = onOpenImport && importSources ? importSources : [];
   const canCustomize = useCan("customizePage", "show");
-  const showCustomize = !!onOpenCustomize && canCustomize;
+  // Beta channel only for now (F-35).
+  const showCustomize = !!onOpenCustomize && canCustomize && currentUiChannel() === "beta";
   // Fold units, first-to-fold first: right, the pane toggles from the end and
   // then the rail; left, plugin items, the devices link, then the imports.
   // Nothing folds without a More menu to fold into.

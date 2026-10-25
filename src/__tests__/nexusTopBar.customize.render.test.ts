@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import type { ScopeMode } from '../browser/runtimeProtocol'
 import { NexusTopBar, type NexusTopBarProps } from '../browser/webview/topbar/NexusTopBar'
 import { RuntimeCapabilitiesContext } from '../browser/webview/useCan'
+import { __setUiChannelForTest } from '../branding/updateChannels'
 import { advertsForScope, queryFor } from './_helpers/capabilityQuery'
 
 const BASE: NexusTopBarProps = {
@@ -28,6 +29,17 @@ function button(html: string, testId: string): string {
 }
 
 describe('NexusTopBar Customize button', () => {
+  beforeEach(() => __setUiChannelForTest('beta'))
+  afterEach(() => __setUiChannelForTest(null))
+
+  it('is absent on the stable channel, button and folded row alike', () => {
+    __setUiChannelForTest('stable')
+    const html = markup({ onOpenCustomize: () => {} }, 'full')
+    expect(button(html, 'topbar-customize')).toBe('')
+    expect(html).not.toContain('topbar-folded-customize')
+    expect(html).not.toContain('data-topbar-fold="customize"')
+  })
+
   it('sits right after the import buttons, labelled', () => {
     const html = markup({
       onOpenCustomize: () => {},
