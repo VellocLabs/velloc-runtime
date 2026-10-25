@@ -21,11 +21,12 @@ export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
   // Figures a row leaves unset come from the catalog's Kimi Code records
   // (global, then China), then the open platform's.
   catalog: { keys: ['kimi-code-plan-global', 'kimi-code-plan-cn', 'moonshotai'] },
+  // Fast is the vendor's own moving alias (`kimi-for-coding`, a fixed id);
+  // balanced and best name the K and K Pro FAMILIES and follow their latest.
+  // Neither tier names a `-highspeed` twin: those trade quota for speed.
   fastModel: 'kimi-for-coding',
-  balancedModel: 'kimi-for-coding',
-  // Best names the K FAMILY and follows its latest; `kimi-for-coding` is the
-  // vendor's own moving alias (K2.7 Code → K2.8 Preview) — a fixed id.
-  bestModel: 'k*',
+  balancedModel: 'k*',
+  bestModel: 'k*-pro',
   // FAMILY rows (`family`, ../../types.ts): each speaks for every version of
   // its line inside `minVersion`..`maxVersion`, so the version the vendor
   // ships next — the `latest` the picker follows — reads the same figures

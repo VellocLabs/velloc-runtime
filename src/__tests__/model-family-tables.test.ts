@@ -562,7 +562,7 @@ describe('the tier ladder names families', () => {
       glm: ['glm-5.3-flash', 'glm-5.2', 'glm-5.3'],
       deepseek: ['deepseek-flash', 'deepseek-flash', 'deepseek-v4-pro'],
       google: ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-2.5-pro'],
-      kimi: ['kimi-for-coding', 'kimi-for-coding', 'k3'],
+      kimi: ['kimi-for-coding', 'k3', 'k3.1-pro'],
       minimax: ['MiniMax-M2.7', 'MiniMax-M2.7', 'MiniMax-M3'],
       qwen: ['qwen3.8-flash', 'qwen3.7-max', 'qwen3.8-max'],
     }

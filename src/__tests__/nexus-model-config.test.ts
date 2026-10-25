@@ -1072,11 +1072,13 @@ describe('nexus model config helpers', () => {
       // (2287df5), which is the wrong trade for background fast-model calls
       // (title naming, forks).
       fastModel: 'kimi-for-coding',
-      balancedModel: 'kimi-for-coding',
-      // Best names the K family and follows its latest (K3 today).
-      bestModel: 'k*',
+      // Balanced names the K family (K3 today), best the K Pro family
+      // (K3.1 Pro today); each follows its line's latest.
+      balancedModel: 'k*',
+      bestModel: 'k*-pro',
     })
-    expect(getTierModelForProvider('kimi', 'best')).toBe('k3')
+    expect(getTierModelForProvider('kimi', 'balanced')).toBe('k3')
+    expect(getTierModelForProvider('kimi', 'best')).toBe('k3.1-pro')
     // Effort vocabulary per the model page: low/high/max on every row but the
     // K2.7 highspeed one, default `high` on the K3.1 Pro and K3 rows and
     // `max` on the K2.8 row. The K3.1 Pro rows have NO `none` pill: the

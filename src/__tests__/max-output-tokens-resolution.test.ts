@@ -79,7 +79,7 @@ describe('per-model output-token resolution', () => {
     })
 
     it('returns 64_000 for Kimi K3 (top-tier default, thinking always on)', () => {
-      // K3 is the kimi provider's `bestModel` and always thinks with
+      // K3 is the kimi provider's balanced tier and always thinks with
       // `reasoning_effort: max`, so reasoning is billed out of the same
       // output envelope — it tracks the 64K Opus-tier default rather than
       // the 32K one. See providers/kimi/config.ts.
