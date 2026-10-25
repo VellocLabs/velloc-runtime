@@ -2788,13 +2788,6 @@ export function MultiSessionShell({
     seq: number
   } | null>(null)
 
-  // The model picker with no provider set up: Settings → Models with its
-  // "Add provider" menu open. Dropped like the provider request; the counter
-  // never resets, so a request after a drop is never mistaken for one the
-  // still-mounted page already handled.
-  const [addProviderRequest, setAddProviderRequest] = useState<number | null>(null)
-  const addProviderSeqRef = useRef(0)
-
   // A mod's icon above the prompt → Plugins & Mods, scrolled to that
   // plugin's row, which flashes. Same `seq` shape as the provider request;
   // any other way into or around Settings, and closing it, drops it.
@@ -2804,7 +2797,6 @@ export function MultiSessionShell({
   } | null>(null)
   const handleOpenPluginSettings = useCallback((plugin: string) => {
     setProviderSettingsRequest(null)
-    setAddProviderRequest(null)
     setPluginSettingsRequest(prev => ({ plugin, seq: (prev?.seq ?? 0) + 1 }))
     setSettingsSection('plugins')
   }, [])
@@ -3024,7 +3016,6 @@ export function MultiSessionShell({
   }, [readPaneRecord, togglePane, closePaneFor, openPaneFor, updatePaneRecord])
   const handleSettingsNavigate = useCallback((section: SettingsSectionId) => {
     setPluginSettingsRequest(null)
-    setAddProviderRequest(null)
     setSettingsSection(section)
   }, [])
 
@@ -3032,21 +3023,12 @@ export function MultiSessionShell({
     (section: SettingsSectionId = 'models') => {
       setProviderSettingsRequest(null)
       setPluginSettingsRequest(null)
-      setAddProviderRequest(null)
       setSettingsSection(section)
     },
     [],
   )
   const handleOpenProviderSettings = useCallback((providerId: string) => {
-    setAddProviderRequest(null)
     setProviderSettingsRequest(prev => ({ providerId, seq: (prev?.seq ?? 0) + 1 }))
-    setSettingsSection('models')
-  }, [])
-  const handleOpenAddProvider = useCallback(() => {
-    setProviderSettingsRequest(null)
-    setPluginSettingsRequest(null)
-    addProviderSeqRef.current += 1
-    setAddProviderRequest(addProviderSeqRef.current)
     setSettingsSection('models')
   }, [])
   // One host drag map at a time: the topbar's, or the settings header's while
@@ -4436,7 +4418,6 @@ export function MultiSessionShell({
         modelPickerOpenToken={modelPickerOpenToken}
         onOpenSettings={handleOpenNexusSettings}
         onOpenProviderSettings={handleOpenProviderSettings}
-        onOpenAddProvider={handleOpenAddProvider}
         onPressPluginItem={runtimeConnection && !activeCli ? handlePressPluginItem : undefined}
         sidebarCollapsed={sidebarCollapsed || sidebarHidden}
         onToggleSidebar={handleToggleSidebar}
@@ -4531,13 +4512,11 @@ export function MultiSessionShell({
             adoptDefaultAfterSettingsRef.current = true
             setProviderSettingsRequest(null)
             setPluginSettingsRequest(null)
-            setAddProviderRequest(null)
             setSettingsSection(null)
           }}
           catalog={orderedActiveCatalog}
           transport={hostBridgeTransport}
           openProviderRequest={providerSettingsRequest}
-          openAddProviderRequest={addProviderRequest}
           revealPluginRequest={pluginSettingsRequest}
           // Remote access reads `remote/state` and calls `remote.*` over
           // the page's one connection — never the host bridge directly (P-3).

@@ -40,9 +40,6 @@ export type NexusModelPickerProps = {
   onOpenSettings: () => void;
   /** Open one provider's settings page (its `⋯` → "Edit…"). */
   onOpenProviderSettings?: (providerId: string) => void;
-  /** Open Settings → Models with its "Add provider" menu open — what a
-   *  click on the trigger does while no provider is set up. */
-  onOpenAddProvider?: () => void;
   /** Programmatic-open signal: increment to open the popover. Used by the
    *  send gate when it adopts the catalog default for a session whose pinned
    *  model went away — the user must SEE the pick to be able to change it.
@@ -57,7 +54,6 @@ export type NexusModelPickerProps = {
 function NexusModelPickerImpl({
   onOpenSettings,
   onOpenProviderSettings,
-  onOpenAddProvider,
   ...props
 }: NexusModelPickerProps) {
   // The footer opens Settings → Models, a page built on `providers.*`
@@ -129,7 +125,7 @@ function NexusModelPickerImpl({
     <ModelQuickPicker
       {...props}
       onOpenSettings={canOpenProviderSettings ? onOpenSettings : undefined}
-      onNoProviders={canOpenProviderSettings ? onOpenAddProvider : undefined}
+      onNoProviders={canOpenProviderSettings ? onOpenSettings : undefined}
       providerMenu={providerMenu}
       publishE2eSurface
     />

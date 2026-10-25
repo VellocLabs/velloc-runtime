@@ -612,6 +612,26 @@
   animation: nexus-plugin-flash 0.6s ease-in-out 3;
 }
 
+@keyframes nexus-provider-guidance {
+  0%, 100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 65%, transparent);
+  }
+}
+
+.nexus-provider-guidance[data-state="open"] {
+  animation: nexus-provider-guidance 0.8s ease-in-out 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexus-provider-guidance[data-state="open"] {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--primary);
+  }
+}
+
 /* Conversation running-indicator: a currentColor orbit trio fused by an
  * alpha-only SVG goo filter (monochrome in both themes). A functional
  * indicator: no reduced-motion gate; re-asserted below. */

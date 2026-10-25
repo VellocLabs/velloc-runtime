@@ -130,8 +130,7 @@ describe('NexusModelPicker — no provider set up', () => {
       catalog,
       selection: null,
       onSelect: () => {},
-      onOpenSettings: () => {},
-      onOpenAddProvider: () => {
+      onOpenSettings: () => {
         count += 1
       },
     })

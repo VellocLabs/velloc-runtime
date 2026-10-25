@@ -2133,29 +2133,68 @@ describe('ModelsSection — the quick picker\'s "Edit…" deep link', () => {
   })
 })
 
-describe('ModelsSection — the quick picker\'s "add a provider" request', () => {
-  it('opens the Add menu with the built-ins on the home list; a pick opens that editor; only a new request reopens it', async () => {
+describe('ModelsSection — empty-provider guidance', () => {
+  const emptyCatalog = {
+    ...catalog,
+    providers: catalog.providers.map(provider => ({ ...provider, enabled: false })),
+  }
+
+  function setup(...args: [] | [BrowserLlmCatalog | null | undefined]) {
+    const initialCatalog = args.length ? args[0] : emptyCatalog
     const { transport, bridge } = makeHarness({})
-    const tree = (seq: number) =>
+    const tree = (value: BrowserLlmCatalog | null | undefined) =>
       createElement(
         SettingsBridgeContext.Provider,
         { value: bridge },
-        createElement(ModelsSection, { catalog, transport, openAddProviderRequest: seq }),
+        createElement(ModelsSection, { catalog: value, transport }),
       )
-    const view = render(tree(1))
-    // Open without a click on the trigger, and with the fixture's built-in listed.
-    const builtIn = catalog.providers[0]
-    const option = await screen.findByTestId(`models-provider-select-option-${builtIn.id}`)
+    return { ...render(tree(initialCatalog)), tree }
+  }
+
+  it('opens and highlights the menu on a normal visit; selecting a provider opens its editor', async () => {
+    setup()
+    const menu = await screen.findByTestId('models-add-provider-menu')
+    expect(menu.className).toContain('nexus-provider-guidance')
     expect(screen.getByTestId('models-add-custom-provider')).toBeTruthy()
+    fireEvent.click(screen.getByTestId(`models-provider-select-option-${catalog.providers[0].id}`))
+    expect((await screen.findByTestId('models-editing-provider')).textContent).toContain(catalog.providers[0].label)
+    expect(screen.queryByTestId('models-add-provider-menu')).toBeNull()
+  })
 
-    fireEvent.click(option)
-    expect((await screen.findByTestId('models-editing-provider')).textContent).toContain(builtIn.label)
+  it('does not reopen after dismissal or flash on manual reopen, but guides a fresh visit again', async () => {
+    const view = setup()
+    await screen.findByTestId('models-add-provider-menu')
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByTestId('models-add-provider-menu')).toBeNull())
+    view.rerender(view.tree({ ...emptyCatalog }))
+    expect(screen.queryByTestId('models-add-provider-menu')).toBeNull()
+    fireEvent.click(screen.getByTestId('models-add-provider'))
+    expect((await screen.findByTestId('models-add-provider-menu')).className).not.toContain('nexus-provider-guidance')
+    view.unmount()
+    setup()
+    expect((await screen.findByTestId('models-add-provider-menu')).className).toContain('nexus-provider-guidance')
+  })
 
-    fireEvent.click(screen.getByTestId('models-back-to-providers'))
+  it.each([null, undefined])('waits for the catalog instead of treating %s as empty', async value => {
+    const view = setup(value)
     await screen.findByTestId('models-provider-home')
-    view.rerender(tree(1))
-    expect(screen.queryByTestId('models-add-custom-provider')).toBeNull()
-    view.rerender(tree(2))
-    expect(await screen.findByTestId('models-add-custom-provider')).toBeTruthy()
+    expect(screen.queryByTestId('models-add-provider-menu')).toBeNull()
+    view.rerender(view.tree(emptyCatalog))
+    expect(await screen.findByTestId('models-add-provider-menu')).toBeTruthy()
+  })
+
+  it('does not guide a configured provider even when it has no models', async () => {
+    setup({ ...catalog, providers: catalog.providers.map(provider => ({ ...provider, models: [] })) })
+    await screen.findByTestId('models-provider-home')
+    expect(screen.queryByTestId('models-add-provider-menu')).toBeNull()
+  })
+
+  it('leaves an explicit provider editor deep link intact', async () => {
+    const { transport, bridge } = makeHarness({})
+    render(createElement(SettingsBridgeContext.Provider, { value: bridge },
+      createElement(ModelsSection, { catalog: emptyCatalog, transport, openProviderRequest: { providerId: catalog.providers[0].id, seq: 1 } }),
+    ))
+    expect((await screen.findByTestId('models-editing-provider')).textContent).toContain(catalog.providers[0].label)
+    expect(screen.queryByTestId('models-add-provider-menu')).toBeNull()
   })
 })
