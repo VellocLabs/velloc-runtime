@@ -695,7 +695,7 @@ describe('pageScript', () => {
     ])
   })
 
-  it('holds messages that arrive before the first listener, up to the limit', async () => {
+  it('holds messages that arrive while no listener is registered, up to the limit', async () => {
     const fake = make(() => ok({ channelId: 1 }), { capabilities: ['pageScript'], primitives: [] })
     await fake.primitives.pageScript.attach({ webWindowId: 1 })
     for (let i = 0; i < PAGE_SCRIPT_EARLY_MESSAGE_LIMIT + 5; i += 1) {

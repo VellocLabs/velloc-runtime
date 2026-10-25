@@ -156,7 +156,7 @@ export function base64ToBytes(base64: string): Uint8Array {
   return bytes
 }
 
-/** How many `pageScript.onMessage` events wait for the first listener. */
+/** How many `pageScript.onMessage` events wait while no listener is registered. */
 export const PAGE_SCRIPT_EARLY_MESSAGE_LIMIT = 100
 
 const SECRET_PLACEHOLDER = '{{secret:'
@@ -874,8 +874,8 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
   }
 
   // ---- pageScript (F-29): a script channel to a page -----------------------
-  // Messages that arrive before the first `onMessage` listener wait for it
-  // (at most `PAGE_SCRIPT_EARLY_MESSAGE_LIMIT`, oldest dropped).
+  // Messages that arrive while no `onMessage` listener is registered wait for
+  // the next one (at most `PAGE_SCRIPT_EARLY_MESSAGE_LIMIT`, oldest dropped).
   const earlyPageMessages: BridgePageScriptOnMessagePayload[] = []
   let pageMessageListeners = 0
   let earlyPageMessagesOff: (() => void) | null = null
@@ -936,9 +936,9 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
       requireCapability('pageScript')
       return (await send('pageScript', 'pageScript', 'removeInitScript', { channelId, scriptId })).ok
     },
-    /** Every message from any owned channel; `data` is parsed JSON. The
-     *  first listener also receives what arrived before it. Returns the
-     *  unsubscribe. */
+    /** Every message from any owned channel; `data` is parsed JSON. A
+     *  listener registered while none was also receives what arrived
+     *  meanwhile. Returns the unsubscribe. */
     onMessage(
       listener: (event: Omit<BridgePageScriptOnMessagePayload, 'data'> & { data: unknown }) => void,
     ): () => void {
