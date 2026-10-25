@@ -428,6 +428,8 @@ export const ja: Messages = {
   'customize.tab.skills': 'スキル',
   'customize.tab.connectors': 'コネクタ',
   'customize.tab.plugins': 'プラグイン',
+  'customize.unavailable': 'マーケットプレイスを現在このウィンドウで開けません。',
+  'customize.retry': '再試行',
   'topbar.remoteDevicesOne': 'リモートデバイス 1 台が接続中',
   'topbar.remoteDevices': 'リモートデバイス {count} 台が接続中',
   'import.title': '{source} からインポート',

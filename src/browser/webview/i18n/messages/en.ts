@@ -459,6 +459,8 @@ export const en = {
   'customize.tab.skills': 'Skills',
   'customize.tab.connectors': 'Connectors',
   'customize.tab.plugins': 'Plugins',
+  'customize.unavailable': 'The marketplace can\'t open in this window right now.',
+  'customize.retry': 'Try again',
   'topbar.remoteDevicesOne': '1 remote device connected',
   'topbar.remoteDevices': '{count} remote devices connected',
 

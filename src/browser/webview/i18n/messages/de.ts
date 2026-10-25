@@ -434,6 +434,8 @@ export const de: Messages = {
   'customize.tab.skills': 'Skills',
   'customize.tab.connectors': 'Konnektoren',
   'customize.tab.plugins': 'Plugins',
+  'customize.unavailable': 'Der Marktplatz kann in diesem Fenster gerade nicht geöffnet werden.',
+  'customize.retry': 'Erneut versuchen',
   'topbar.remoteDevicesOne': '1 Remote-Gerät verbunden',
   'topbar.remoteDevices': '{count} Remote-Geräte verbunden',
   'import.title': 'Aus {source} importieren',

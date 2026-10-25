@@ -435,6 +435,8 @@ export const fr: Messages = {
   'customize.tab.skills': 'Compétences',
   'customize.tab.connectors': 'Connecteurs',
   'customize.tab.plugins': 'Extensions',
+  'customize.unavailable': 'La place de marché ne peut pas s\'ouvrir dans cette fenêtre pour le moment.',
+  'customize.retry': 'Réessayer',
   'topbar.remoteDevicesOne': '1 appareil distant connecté',
   'topbar.remoteDevices': '{count} appareils distants connectés',
   'import.title': 'Importer depuis {source}',

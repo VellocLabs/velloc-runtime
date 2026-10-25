@@ -435,6 +435,8 @@ export const es: Messages = {
   'customize.tab.skills': 'Skills',
   'customize.tab.connectors': 'Conectores',
   'customize.tab.plugins': 'Complementos',
+  'customize.unavailable': 'El mercado no se puede abrir en esta ventana en este momento.',
+  'customize.retry': 'Reintentar',
   'topbar.remoteDevicesOne': '1 dispositivo remoto conectado',
   'topbar.remoteDevices': '{count} dispositivos remotos conectados',
   'import.title': 'Importar desde {source}',

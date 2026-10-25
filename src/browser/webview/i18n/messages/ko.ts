@@ -425,6 +425,8 @@ export const ko: Messages = {
   'customize.tab.skills': '스킬',
   'customize.tab.connectors': '커넥터',
   'customize.tab.plugins': '플러그인',
+  'customize.unavailable': '지금은 이 창에서 마켓플레이스를 열 수 없습니다.',
+  'customize.retry': '다시 시도',
   'topbar.remoteDevicesOne': '원격 디바이스 1대 연결됨',
   'topbar.remoteDevices': '원격 디바이스 {count}대 연결됨',
   'import.title': '{source}에서 가져오기',

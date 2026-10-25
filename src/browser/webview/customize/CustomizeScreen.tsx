@@ -51,7 +51,8 @@ const SEGMENT_LABEL: Record<CustomizeSegment, MessageKey> = {
  * The Customize screen (F-35): takes the window like Settings does. Left,
  * what is installed here (read-only; a row opens the Settings page that
  * manages it). Right, the marketplace pages in this window's `customize`
- * utility tab, which the native tab view paints over the placeholder.
+ * utility tab, which the native tab view paints over the placeholder; when
+ * the tab cannot show, a message and a retry take the placeholder's place.
  */
 export function CustomizeScreen({
   runtimeConnection,
@@ -173,7 +174,20 @@ export function CustomizeScreen({
               </Button>
             ))}
           </div>
-          <WebviewArea active shell={shell} />
+          {tab.unavailable ? (
+            <div
+              role="status"
+              data-testid="customize-unavailable"
+              className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center"
+            >
+              <p className="text-sm text-muted-foreground">{t('customize.unavailable')}</p>
+              <Button type="button" variant="outline" size="sm" data-testid="customize-retry" onClick={tab.retry}>
+                {t('customize.retry')}
+              </Button>
+            </div>
+          ) : (
+            <WebviewArea active shell={shell} />
+          )}
         </div>
       </div>
     </div>

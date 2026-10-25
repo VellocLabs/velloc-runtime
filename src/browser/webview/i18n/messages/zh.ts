@@ -423,6 +423,8 @@ export const zh: Messages = {
   'customize.tab.skills': '技能',
   'customize.tab.connectors': '连接器',
   'customize.tab.plugins': '插件',
+  'customize.unavailable': '市场暂时无法在此窗口中打开。',
+  'customize.retry': '重试',
   'topbar.remoteDevicesOne': '1 台远程设备已连接',
   'topbar.remoteDevices': '{count} 台远程设备已连接',
   'import.title': '从 {source} 导入',
