@@ -109,6 +109,7 @@ export const de: Messages = {
   'action.rewind': 'Hierher zurückspulen',
   'action.rewindConfirm':
     'Hierher zurückspulen? Nachrichten danach werden verworfen.',
+  'action.rewindConfirmAction': 'Zurückspulen',
   'action.refresh': 'Neu generieren',
   'action.more': 'Mehr',
   'action.edit': 'Bearbeiten',

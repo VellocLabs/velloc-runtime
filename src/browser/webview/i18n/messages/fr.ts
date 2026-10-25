@@ -106,6 +106,7 @@ export const fr: Messages = {
   'action.rewind': 'Revenir à ce point',
   'action.rewindConfirm':
     'Revenir à ce point ? Les messages suivants seront supprimés.',
+  'action.rewindConfirmAction': 'Revenir',
   'action.refresh': 'Regénérer',
   'action.more': 'Plus',
   'action.edit': 'Modifier',

@@ -106,6 +106,7 @@ export const ja: Messages = {
   'session.forkTitle': '{title}（フォーク）',
   'action.rewind': 'ここまで巻き戻す',
   'action.rewindConfirm': 'ここまで巻き戻しますか？これ以降のメッセージは破棄されます。',
+  'action.rewindConfirmAction': '巻き戻す',
   'action.refresh': '再生成',
   'action.more': 'その他',
   'action.edit': '編集',

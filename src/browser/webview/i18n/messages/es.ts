@@ -110,6 +110,7 @@ export const es: Messages = {
   'action.rewind': 'Retroceder hasta aquí',
   'action.rewindConfirm':
     '¿Retroceder hasta aquí? Se descartarán los mensajes posteriores.',
+  'action.rewindConfirmAction': 'Retroceder',
   'action.refresh': 'Regenerar',
   'action.more': 'Más',
   'action.edit': 'Editar',

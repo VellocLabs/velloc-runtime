@@ -107,6 +107,7 @@ export const zh: Messages = {
   'session.forkTitle': '{title}（分叉）',
   'action.rewind': '回退到这里',
   'action.rewindConfirm': '回退到这里？此后的消息将被丢弃。',
+  'action.rewindConfirmAction': '回退',
   'action.refresh': '重新生成',
   'action.more': '更多',
   'action.edit': '编辑',

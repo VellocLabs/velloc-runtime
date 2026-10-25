@@ -129,6 +129,7 @@ export const en = {
   'action.rewind': 'Rewind to here',
   'action.rewindConfirm':
     'Rewind to here? Messages after this point will be discarded.',
+  'action.rewindConfirmAction': 'Rewind',
   'action.refresh': 'Refresh',
   'action.more': 'More',
   'action.edit': 'Edit',

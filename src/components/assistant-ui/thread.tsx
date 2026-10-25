@@ -18,6 +18,7 @@ import { StaticMarkdown } from "@/components/assistant-ui/static-markdown";
 import type { TurnDiffMeta } from "@/utils/turnDiffs";
 import { NexusLoadingPage } from "@/components/assistant-ui/loading-page";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { RewindButton } from "@/components/assistant-ui/rewind-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PartLineProvider } from "@/components/assistant-ui/part-line-context";
 import {
@@ -59,7 +60,6 @@ import {
   FolderIcon,
   FolderOpenIcon,
   GitBranchIcon,
-  HistoryIcon,
   ListCollapseIcon,
   LockIcon,
   Minimize2Icon,
@@ -2821,28 +2821,13 @@ const UserMessage: FC = () => {
 // which copies the transcript prefix into a new session. Renders nothing when
 // no handler is wired (e.g. tests / storybook).
 // "Rewind to here" — restore the conversation to this point, discarding what
-// came after (destructive, so it confirms first). Implemented host-side as
+// came after (confirmed in `RewindButton`). Implemented host-side as
 // fork-to-cut + switch + delete-original; here it just calls the handler.
 const RewindAction: FC = () => {
-  const t = useT();
   const { onRewindToMessage } = useMessageActionsContext();
   const messageId = useAssistantState((s) => s.message.id);
   if (!onRewindToMessage || !messageId) return null;
-  return (
-    <TooltipIconButton
-      tooltip={t('action.rewind')}
-      onClick={() => {
-        if (
-          typeof window === "undefined" ||
-          window.confirm(t('action.rewindConfirm'))
-        ) {
-          onRewindToMessage(messageId);
-        }
-      }}
-    >
-      <HistoryIcon />
-    </TooltipIconButton>
-  );
+  return <RewindButton onRewind={() => onRewindToMessage(messageId)} />;
 };
 
 const ForkAction: FC = () => {

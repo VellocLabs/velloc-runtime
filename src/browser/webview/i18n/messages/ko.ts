@@ -105,6 +105,7 @@ export const ko: Messages = {
   'session.forkTitle': '{title} (포크)',
   'action.rewind': '여기로 되감기',
   'action.rewindConfirm': '여기로 되감을까요? 이후의 메시지는 버려집니다.',
+  'action.rewindConfirmAction': '되감기',
   'action.refresh': '다시 생성',
   'action.more': '더 보기',
   'action.edit': '편집',
