@@ -2189,6 +2189,52 @@ describe('ModelsSection — empty-provider guidance', () => {
     expect(screen.queryByTestId('models-add-provider-menu')).toBeNull()
   })
 
+  it.each(['apiKey', 'oauth', 'empty', 'unavailable'] as const)(
+    'waits for the initial broker registry before guiding a %s result', async outcome => {
+      const { transport, bridge } = makeHarness({})
+      let resolveRegistry!: (value: unknown) => void
+      let rejectRegistry!: (reason: Error) => void
+      const registry = new Promise((resolve, reject) => {
+        resolveRegistry = resolve
+        rejectRegistry = reject
+      })
+      vi.mocked(transport.request).mockImplementationOnce(
+        () => registry as ReturnType<BrowserBridgeTransport['request']>,
+      )
+      const provider = catalog.providers[0]
+      render(createElement(SettingsBridgeContext.Provider, { value: bridge },
+        createElement(ModelsSection, {
+          catalog: { providers: [{ ...provider, enabled: false, models: [] }] },
+          transport,
+        }),
+      ))
+      await screen.findByTestId('models-provider-list-empty')
+      expect(screen.queryByTestId('models-add-provider-menu')).toBeNull()
+      await act(async () => {
+        if (outcome === 'unavailable') {
+          rejectRegistry(new Error('Route unavailable'))
+        } else {
+          resolveRegistry({ ok: true, result: { providers: [{
+            id: provider.id,
+            name: provider.label,
+            type: 'cloud',
+            authMode: outcome === 'oauth' ? 'oauth' : 'apiKey',
+            hasStoredApiKey: outcome === 'apiKey',
+            isVerified: outcome === 'apiKey',
+            connected: outcome === 'oauth',
+          }] } })
+        }
+      })
+      if (outcome === 'apiKey' || outcome === 'oauth') {
+        await screen.findByTestId(`models-provider-row-${provider.id}`)
+        expect(screen.queryByTestId('models-add-provider-menu')).toBeNull()
+      } else {
+        expect((await screen.findByTestId('models-add-provider-menu')).className)
+          .toContain('nexus-provider-guidance')
+      }
+    },
+  )
+
   it('leaves an explicit provider editor deep link intact', async () => {
     const { transport, bridge } = makeHarness({})
     render(createElement(SettingsBridgeContext.Provider, { value: bridge },

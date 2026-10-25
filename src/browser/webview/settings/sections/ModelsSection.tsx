@@ -528,6 +528,7 @@ export function ModelsSection({
   const [registry, setRegistry] = React.useState<
     Record<string, ProviderAuthProviderInfo>
   >({});
+  const [registryLoaded, setRegistryLoaded] = React.useState(false);
   // OAuth device-code scratch state for the in-progress sign-in.
   const [oauth, setOAuth] = React.useState<{
     busy: boolean;
@@ -642,6 +643,8 @@ export function ModelsSection({
       setRegistry(map);
     } catch {
       /* route not in this binary — leave empty (no gating) */
+    } finally {
+      setRegistryLoaded(true);
     }
   }, [transport]);
 
@@ -930,12 +933,12 @@ export function ModelsSection({
   const [highlightAddMenu, setHighlightAddMenu] = React.useState(false);
   const guidedEmptyProviders = React.useRef(false);
   React.useEffect(() => {
-    if (!configsLoaded || !catalog || view !== "home" || openProviderRequest) return;
+    if (!configsLoaded || !registryLoaded || !catalog || view !== "home" || openProviderRequest) return;
     if (guidedEmptyProviders.current || addedRows.length > 0 || catalog.providers.some((p) => p.enabled)) return;
     guidedEmptyProviders.current = true;
     setHighlightAddMenu(true);
     setAddMenuOpen(true);
-  }, [configsLoaded, catalog, view, openProviderRequest, addedRows.length]);
+  }, [configsLoaded, registryLoaded, catalog, view, openProviderRequest, addedRows.length]);
 
   // A half-filled provider form — a built-in's key / URL, or a custom
   // provider's draft — lives only in this page: hold the background
