@@ -704,6 +704,7 @@ export function McpSection({
                   options={[
                     {
                       value: "stdio",
+                      triggerLabel: "stdio",
                       label: (
                         <span className="flex flex-col">
                           <span>stdio</span>
@@ -715,6 +716,7 @@ export function McpSection({
                     },
                     {
                       value: "http",
+                      triggerLabel: "http",
                       label: (
                         <span className="flex flex-col">
                           <span>http</span>

@@ -117,6 +117,8 @@ function SelectItem({
 export type PickerChoice = {
   value: string;
   label: React.ReactNode;
+  /** Shown in the closed trigger instead of `label` when the option is selected. */
+  triggerLabel?: React.ReactNode;
   disabled?: boolean;
 };
 
@@ -149,6 +151,7 @@ function Select({
    *  and pick an option (radix Select portals the listbox). */
   testId?: string;
 } & VariantProps<typeof selectTriggerVariants>) {
+  const triggerLabel = options.find((opt) => opt.value === value)?.triggerLabel;
   return (
     <SelectRoot value={value} onValueChange={onValueChange} disabled={disabled}>
       <SelectTrigger
@@ -157,7 +160,7 @@ function Select({
         className={className}
         {...(testId ? { "data-testid": testId } : {})}
       >
-        <SelectValue placeholder={placeholder} />
+        <SelectValue placeholder={placeholder}>{triggerLabel}</SelectValue>
       </SelectTrigger>
       <SelectContent align={align}>
         {options.map((opt) => (
