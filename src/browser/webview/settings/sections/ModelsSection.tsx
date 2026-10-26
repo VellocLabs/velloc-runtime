@@ -484,6 +484,8 @@ export function ModelsSection({
     /** The order at the press: a release on it writes nothing. */
     start: string[];
     preview: string[];
+    /** The row the last move swapped with, until the pointer is over the dragged row again. */
+    passed: string | null;
     /** Removes the drag's window listeners. */
     detach: () => void;
   } | null>(null);
@@ -1929,7 +1931,14 @@ export function ModelsSection({
             const drag = dragRef.current;
             if (!drag || ev.pointerId !== pointerId) return;
             const target = providerRowAt(ev.clientX, ev.clientY);
-            if (!target || target === drag.id) return;
+            if (!target || target === drag.id) {
+              drag.passed = null;
+              return;
+            }
+            // Moves can outrun the re-layout and hit the row just passed at
+            // its old place again; moving over it twice would undo the move.
+            if (target === drag.passed) return;
+            drag.passed = target;
             const next = moveId(drag.preview, drag.id, target);
             if (next === drag.preview) return;
             drag.preview = next;
@@ -1958,6 +1967,7 @@ export function ModelsSection({
             id: row.id,
             start: preview,
             preview,
+            passed: null,
             detach: () => {
               window.removeEventListener("pointermove", onMove);
               window.removeEventListener("pointerup", onUp);

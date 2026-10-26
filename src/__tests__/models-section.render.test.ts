@@ -1804,6 +1804,47 @@ describe('ModelsSection provider order', () => {
     expect(document.querySelector('[data-provider-dragging]')).toBeNull()
   })
 
+  it('moves a row once for several moves over the same row before the layout catches up', async () => {
+    // Under load several pointermoves can be dispatched before the list
+    // re-lays out, so each one hit-tests the same row at its old place.
+    const h = makeHomeHarness()
+    renderHome(h)
+    await screen.findByTestId(`models-provider-row-${CUSTOM_ID}`)
+    const [top, middle] = rowIds()
+
+    const grip = screen.getByTestId(`models-provider-grip-${top}`)
+    fireEvent.pointerDown(grip, { button: 0, pointerId: 1 })
+    const spy = pointerOver(middle!)
+    for (let i = 0; i < 4; i++) {
+      fireEvent.pointerMove(grip, { pointerId: 1, clientX: 5 + i, clientY: 50 })
+    }
+    expect(rowIds()).toEqual([middle, top, CUSTOM_ID])
+    fireEvent.pointerUp(grip, { pointerId: 1 })
+    spy.mockRestore()
+
+    await waitFor(() => expect(h.calls.setOrder).toEqual([[middle, top, CUSTOM_ID]]))
+  })
+
+  it('moves a row back over the row it passed once the pointer has been over its own row', async () => {
+    const h = makeHomeHarness()
+    renderHome(h)
+    await screen.findByTestId(`models-provider-row-${CUSTOM_ID}`)
+    const [top, middle] = rowIds()
+
+    const grip = screen.getByTestId(`models-provider-grip-${top}`)
+    fireEvent.pointerDown(grip, { button: 0, pointerId: 1 })
+    for (const [over, y] of [[middle!, 50], [top!, 50], [middle!, 5]] as const) {
+      const spy = pointerOver(over)
+      fireEvent.pointerMove(grip, { pointerId: 1, clientX: 5, clientY: y })
+      spy.mockRestore()
+    }
+    expect(rowIds()).toEqual([top, middle, CUSTOM_ID])
+    fireEvent.pointerUp(grip, { pointerId: 1 })
+
+    await new Promise(r => setTimeout(r, 0))
+    expect(h.calls.setOrder).toEqual([])
+  })
+
   it('does not pick a row up from anywhere but its grip', async () => {
     const h = makeHomeHarness()
     renderHome(h)
