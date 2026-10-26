@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 /**
  * The Customize screen (F-35): the utility tab's show / unavailable cycle,
- * the left list of the directory and the marketplaces, the top bar's status
- * and Add for the item the page shows, and a marketplace's plugin list.
+ * the left list of the directory and the marketplaces, the top bar's page
+ * Home / Back and the status and Add for the item the page shows, the dialog
+ * the page's own add button opens, and a marketplace's plugins as cards and
+ * detail pages.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { createElement } from 'react'
@@ -20,8 +22,11 @@ afterEach(() => cleanup())
 const STATUS = 'customizePage/status'
 type Handler = (event: { type?: string; payload: unknown }) => void
 
-/** A connection whose `show` answers come from `answers`, in order; the last one repeats. */
-function fakeConnection(answers: Array<'ok' | 'fail'>) {
+/**
+ * A connection whose `show` answers come from `answers`, in order; the last
+ * one repeats. `described` is what `describeMarketplace` answers.
+ */
+function fakeConnection(answers: Array<'ok' | 'fail'>, described: Record<string, unknown> = {}) {
   const handlers = new Map<string, Handler>()
   const shows: unknown[] = []
   const answered: string[] = []
@@ -34,6 +39,7 @@ function fakeConnection(answers: Array<'ok' | 'fail'>) {
     request: async (route: string, payload: unknown) => {
       if (route !== 'customizePage.show') {
         answered.push(`${route} ${JSON.stringify(payload)}`)
+        if (route === 'customizePage.describeMarketplace') return { plugins: described }
         return { ok: true }
       }
       shows.push(payload)
@@ -421,5 +427,235 @@ describe('CustomizeScreen — a marketplace', () => {
   it('one that cannot be read says so', async () => {
     const { view } = await opened({ manifests: {} })
     expect((await view.findByTestId('customize-market-failed')).textContent).toBe(EN_MESSAGES['customize.market.loadFailed'])
+  })
+})
+
+describe('CustomizeScreen — the page controls', () => {
+  it('Home and Back sit in the centre of the top bar; Back follows whether the page can go back', async () => {
+    const fake = fakeConnection(['ok'])
+    const view = screen(fake.getConnection)
+    await waitFor(() => expect(fake.subscribed()).toBe(true))
+    act(() => fake.status({ available: true, tabId: 7, path: '/directory', canGoBack: false }))
+    const center = view.getByTestId('customize-center')
+    const home = view.getByTestId('customize-page-home')
+    const back = view.getByTestId('customize-page-back') as HTMLButtonElement
+    expect(center.contains(home) && center.contains(back)).toBe(true)
+    expect(home.getAttribute('aria-label')).toBe(EN_MESSAGES['customize.page.home'])
+    expect(back.getAttribute('aria-label')).toBe(EN_MESSAGES['customize.page.back'])
+    expect(back.disabled).toBe(true)
+
+    act(() => fake.status({ available: true, tabId: 7, path: '/directory/slack', canGoBack: true }))
+    expect(back.disabled).toBe(false)
+    fireEvent.click(back)
+    fireEvent.click(home)
+    await waitFor(() => expect(fake.answered).toHaveLength(2))
+    expect(fake.answered).toEqual([
+      'customizePage.back {}',
+      `customizePage.navigate ${JSON.stringify({ url: directoryUrl() })}`,
+    ])
+  })
+
+  it('the item status shares the centre with them, and a marketplace hides both', async () => {
+    const fake = fakeConnection(['ok'])
+    const { bridge } = fakeBridge({ marketplaces: [{ name: 'team-tools' }], manifests: { 'team-tools': { plugins: [] } } })
+    const view = screen(fake.getConnection, { bridge })
+    await waitFor(() => expect(fake.subscribed()).toBe(true))
+    act(() => fake.status({ available: true, tabId: 7, pageItem: { id: 4, kind: 'connector', phase: 'resolving' } }))
+    expect(view.getByTestId('customize-center').contains(view.getByTestId('customize-item'))).toBe(true)
+    fireEvent.click(await view.findByTestId('customize-market'))
+    expect(view.queryByTestId('customize-page-home')).toBeNull()
+    expect(view.queryByTestId('customize-item')).toBeNull()
+  })
+})
+
+describe('CustomizeScreen — the page asks to add', () => {
+  const ready = {
+    id: 4,
+    kind: 'plugin',
+    phase: 'ready',
+    installable: true,
+    alreadyInstalled: false,
+    details: {
+      name: 'code-review',
+      publisher: 'Acme',
+      summary: 'Reviews pull requests',
+      verified: true,
+      components: [{ type: 'command', name: '/code-review', description: 'Review a PR' }],
+    },
+  }
+
+  async function asked() {
+    const fake = fakeConnection(['ok'])
+    const settings: string[] = []
+    const view = screen(fake.getConnection, { onOpenSettings: section => settings.push(section) })
+    await waitFor(() => expect(fake.subscribed()).toBe(true))
+    act(() => fake.status({ available: true, tabId: 7, pageItem: ready }))
+    return { fake, view, settings }
+  }
+
+  it('an ask standing when the screen subscribed opens nothing', async () => {
+    const fake = fakeConnection(['ok'])
+    const view = screen(fake.getConnection)
+    await waitFor(() => expect(fake.subscribed()).toBe(true))
+    act(() => fake.status({ available: true, tabId: 7, pageItem: ready, addRequest: { seq: 3, itemId: 4 } }))
+    expect(view.queryByTestId('customize-add-dialog')).toBeNull()
+    act(() => fake.status({ available: true, tabId: 7, pageItem: ready, addRequest: { seq: 4, itemId: 4 } }))
+    expect(view.queryByTestId('customize-add-dialog')).not.toBeNull()
+  })
+
+  it('a new ask confirms what will be added, hides the page under the dialog, and Add installs it', async () => {
+    const { fake, view } = await asked()
+    expect(view.queryByTestId('webview-area')).not.toBeNull()
+    act(() => fake.status({ available: true, tabId: 7, pageItem: ready, addRequest: { seq: 1, itemId: 4 } }))
+    const dialog = await view.findByTestId('customize-add-dialog')
+    expect(view.getByTestId('customize-add-dialog-title').textContent).toBe('Add code-review to Velloc?')
+    expect(dialog.textContent).toContain('Reviews pull requests')
+    expect(dialog.textContent).toContain(EN_MESSAGES['customize.addDialog.whatPlugin'])
+    expect(dialog.textContent).toContain('/code-review')
+    expect(dialog.textContent).toContain(EN_MESSAGES['customize.detail.verified'])
+    expect(view.queryByTestId('webview-area')).toBeNull()
+    expect(view.queryByTestId('customize-page-held')).not.toBeNull()
+
+    fireEvent.click(view.getByTestId('customize-add-dialog-confirm'))
+    await waitFor(() => expect(fake.answered).toContain('customizePage.addPageItem {"id":4}'))
+    act(() =>
+      fake.status({ available: true, tabId: 7, pageItem: { ...ready, phase: 'installing' }, addRequest: { seq: 1, itemId: 4 } }),
+    )
+    expect(view.getByTestId('customize-add-dialog-confirm').textContent).toBe(EN_MESSAGES['customize.item.adding'])
+    act(() =>
+      fake.status({
+        available: true,
+        tabId: 7,
+        pageItem: { ...ready, phase: 'installed', installedAs: 'code-review@market' },
+        addRequest: { seq: 1, itemId: 4 },
+      }),
+    )
+    expect(view.getByTestId('customize-add-dialog-title').textContent).toBe('code-review is added')
+    expect(view.getByTestId('customize-add-dialog').textContent).toContain('Installed as code-review@market.')
+    fireEvent.click(view.getByTestId('customize-add-dialog-done'))
+    await waitFor(() => expect(view.queryByTestId('customize-add-dialog')).toBeNull())
+    expect(view.queryByTestId('webview-area')).not.toBeNull()
+  })
+
+  it('Cancel installs nothing, and the same ask does not come back', async () => {
+    const { fake, view } = await asked()
+    act(() => fake.status({ available: true, tabId: 7, pageItem: ready, addRequest: { seq: 1, itemId: 4 } }))
+    fireEvent.click(await view.findByTestId('customize-add-dialog-cancel'))
+    await waitFor(() => expect(view.queryByTestId('customize-add-dialog')).toBeNull())
+    act(() => fake.status({ available: true, tabId: 7, pageItem: ready, addRequest: { seq: 1, itemId: 4 } }))
+    expect(view.queryByTestId('customize-add-dialog')).toBeNull()
+    expect(fake.answered.filter(a => a.startsWith('customizePage.addPageItem'))).toEqual([])
+  })
+
+  it('an item this computer cannot add explains why and offers no Add', async () => {
+    const { fake, view, settings } = await asked()
+    const blocked = { ...ready, installable: false }
+    act(() => fake.status({ available: true, tabId: 7, pageItem: blocked, addRequest: { seq: 1, itemId: 4 } }))
+    const dialog = await view.findByTestId('customize-add-dialog')
+    expect(dialog.textContent).toContain(EN_MESSAGES['customize.addDialog.noMarketplace'])
+    expect(view.queryByTestId('customize-add-dialog-confirm')).toBeNull()
+    fireEvent.click(view.getByText(EN_MESSAGES['customize.addDialog.openMarketplaces']))
+    expect(settings).toEqual(['plugins'])
+  })
+
+  it('an item still being looked up waits with Add disabled', async () => {
+    const { fake, view } = await asked()
+    act(() =>
+      fake.status({ available: true, tabId: 7, pageItem: { id: 5, kind: 'connector', phase: 'resolving' }, addRequest: { seq: 1, itemId: 5 } }),
+    )
+    expect((await view.findByTestId('customize-add-dialog-title')).textContent).toBe(EN_MESSAGES['customize.addDialog.lookingUp'])
+    expect((view.getByTestId('customize-add-dialog-confirm') as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('CustomizeScreen — a marketplace plugin\'s detail page', () => {
+  const described = {
+    lint: {
+      name: 'Lint',
+      summary: 'Finds problems',
+      description: 'Checks every file you change.',
+      publisher: 'Acme Inc',
+      iconUrl: 'https://cdn.example/lint.png',
+      verified: true,
+      screenshots: ['https://cdn.example/shot.png'],
+      components: [
+        { type: 'skill', name: 'lint-rules', description: 'Knows the rules' },
+        { type: 'command', name: '/lint' },
+      ],
+      links: { documentation: 'https://docs.example/lint' },
+      updatedTime: '2026-10-23T22:41:42Z',
+      pagePath: `/customize/plugins/id/b2be6e33-a55f-45ca-9453-3dabeb179a53@plugin-directory`,
+    },
+  }
+
+  async function opened() {
+    const fake = fakeConnection(['ok'], described)
+    const b = fakeBridge({
+      marketplaces: [{ name: 'team-tools' }],
+      manifests: {
+        'team-tools': {
+          plugins: [
+            { name: 'lint', description: 'Lints things', version: '1.2.0', author: { name: 'Acme' }, installed: false },
+            { name: 'docs', description: 'Writes docs', installed: true },
+          ],
+        },
+      },
+    })
+    const view = screen(fake.getConnection, { bridge: b.bridge })
+    fireEvent.click(await view.findByTestId('customize-market'))
+    await view.findAllByTestId('customize-market-plugin')
+    await waitFor(() => expect(view.getAllByTestId('customize-market-plugin')[0]!.textContent).toContain('Finds problems'))
+    return { fake, view, requests: b.requests }
+  }
+
+  it('cards show the directory\'s icon, publisher, summary and parts, and the listing for the rest', async () => {
+    const { fake, view } = await opened()
+    expect(fake.answered).toContain('customizePage.describeMarketplace {"marketplace":"team-tools"}')
+    const [lint, docs] = view.getAllByTestId('customize-market-plugin')
+    expect(lint!.textContent).toContain('By Acme Inc')
+    expect(lint!.textContent).toContain(EN_MESSAGES['customize.detail.verified'])
+    expect(lint!.textContent).toContain(`${EN_MESSAGES['customize.detail.parts.skills']} · 1`)
+    expect(lint!.querySelector('img')?.getAttribute('src')).toBe('https://cdn.example/lint.png')
+    expect(docs!.textContent).toContain('Writes docs')
+  })
+
+  it('a card opens its detail page with everything known, and back returns to the cards', async () => {
+    const { view } = await opened()
+    fireEvent.click(view.getAllByTestId('customize-market-open')[0]!)
+    const detail = await view.findByTestId('customize-market-detail')
+    expect(detail.textContent).toContain('Finds problems')
+    expect(view.getByTestId('customize-detail-description').textContent).toBe('Checks every file you change.')
+    expect(view.getByTestId('customize-included').textContent).toContain('lint-rules')
+    expect(view.getByTestId('customize-screenshots').querySelector('img')?.getAttribute('src')).toBe('https://cdn.example/shot.png')
+    const facts = view.getByTestId('customize-facts').textContent
+    expect(facts).toContain('1.2.0')
+    expect(facts).toContain('team-tools')
+    expect(facts).toContain(EN_MESSAGES['customize.detail.links.documentation'])
+    fireEvent.click(view.getByTestId('customize-market-detail-back'))
+    expect(await view.findAllByTestId('customize-market-plugin')).toHaveLength(2)
+  })
+
+  it('Add on the detail page installs it; View in directory shows its directory page', async () => {
+    const { fake, view, requests } = await opened()
+    fireEvent.click(view.getAllByTestId('customize-market-open')[0]!)
+    await view.findByTestId('customize-market-detail')
+    fireEvent.click(view.getByTestId('customize-market-add'))
+    await waitFor(() => expect(requests).toContain('plugins.install {"identifier":"lint@team-tools","refreshFirst":false}'))
+    fireEvent.click(view.getByTestId('customize-market-in-directory'))
+    await waitFor(() =>
+      expect(fake.answered).toContain(
+        `customizePage.navigate ${JSON.stringify({ url: directoryUrl().replace(/\/directory$/, described.lint.pagePath) })}`,
+      ),
+    )
+    expect(view.getByTestId('customize-market-directory').getAttribute('aria-current')).toBe('page')
+  })
+
+  it('a plugin the directory does not carry still has a detail page from its listing', async () => {
+    const { view } = await opened()
+    fireEvent.click(view.getAllByTestId('customize-market-open')[1]!)
+    const detail = await view.findByTestId('customize-market-detail')
+    expect(detail.textContent).toContain('Writes docs')
+    expect(view.getByTestId('customize-detail-not-listed').textContent).toBe(EN_MESSAGES['customize.detail.notInDirectory'])
+    expect(view.queryByTestId('customize-market-in-directory')).toBeNull()
   })
 })

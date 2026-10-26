@@ -14,3 +14,8 @@ function directoryOrigin(): string {
 export function directoryUrl(): string {
   return `${directoryOrigin()}${DIRECTORY_HOME_PATH}`
 }
+
+/** A page of the directory site by its path; anything but a single-slash path is the start page. */
+export function directoryPageUrl(path: string): string {
+  return path.startsWith('/') && !path.startsWith('//') ? `${directoryOrigin()}${path}` : directoryUrl()
+}

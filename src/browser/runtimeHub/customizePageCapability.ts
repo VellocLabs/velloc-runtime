@@ -1,7 +1,8 @@
 /**
  * The Customize page on the runtime protocol: topic `customizePage/status`,
- * `customizePage.show` / `customizePage.navigate`, and
- * `customizePage.addPageItem` for the plugin or connector the page shows; shapes and scopes in
+ * `customizePage.show` / `customizePage.navigate` / `customizePage.back`,
+ * `customizePage.addPageItem` for the plugin or connector the page shows, and
+ * `customizePage.describeMarketplace` for a marketplace's plugins; shapes and scopes in
  * `customize/customizePageProtocol.ts` (F-35). The tab and its page channel
  * are the runtime's: every host call goes over the runtime's own port.
  */
@@ -12,6 +13,8 @@ import {
   CUSTOMIZE_PAGE_STATUS_EVENT,
   CUSTOMIZE_PAGE_STATUS_TOPIC,
   CUSTOMIZE_PAGE_TOPIC_SCOPE,
+  isCustomizeMarketplacePayload,
+  isCustomizePageEmptyPayload,
   isCustomizePageItemPayload,
   isCustomizePageUrlPayload,
 } from '../../customize/customizePageProtocol'
@@ -51,7 +54,12 @@ export function registerCustomizePageCapability(
     actions: {
       show: { scope: CUSTOMIZE_PAGE_ACTION_SCOPES.show, guard: isCustomizePageUrlPayload },
       navigate: { scope: CUSTOMIZE_PAGE_ACTION_SCOPES.navigate, guard: isCustomizePageUrlPayload },
+      back: { scope: CUSTOMIZE_PAGE_ACTION_SCOPES.back, guard: isCustomizePageEmptyPayload },
       addPageItem: { scope: CUSTOMIZE_PAGE_ACTION_SCOPES.addPageItem, guard: isCustomizePageItemPayload },
+      describeMarketplace: {
+        scope: CUSTOMIZE_PAGE_ACTION_SCOPES.describeMarketplace,
+        guard: isCustomizeMarketplacePayload,
+      },
     },
     handle: async request => {
       try {
@@ -60,6 +68,10 @@ export function registerCustomizePageCapability(
         if (act === 'navigate') {
           await service.navigate((request.payload as { url: string }).url)
           return { ok: true }
+        }
+        if (act === 'back') return { ok: await service.back() }
+        if (act === 'describeMarketplace') {
+          return await service.describeMarketplace((request.payload as { marketplace: string }).marketplace)
         }
         if (act === 'addPageItem') {
           await service.addPageItem((request.payload as { id: number }).id)

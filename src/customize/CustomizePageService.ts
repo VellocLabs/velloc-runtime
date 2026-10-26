@@ -7,13 +7,18 @@
  */
 import {
   CUSTOMIZE_TAB_KEY,
+  DIRECTORY_HOME_PATH,
   DIRECTORY_PAGE_SCRIPT,
-  readRouteReport,
+  readPageMessage,
+  type CustomizeAddRequest,
+  type CustomizeMarketplaceDescription,
   type CustomizePageShowResult,
   type CustomizePageState,
+  type DirectoryPageMessage,
 } from './customizePageProtocol'
 import {
   DirectoryLookupError,
+  describeMarketplacePlugins,
   installDirectoryTarget,
   parseDirectoryIntent,
   resolveDirectoryIntent,
@@ -42,9 +47,18 @@ export type CustomizePageHost = {
   navigateUtilityTab(tabId: number, url: string): Promise<void>
   /** Null on a host without the page channel: the tab still works, the path stays unknown. */
   pageScript: CustomizePageScript | null
+  /** Opens `url` in a window of its own; null on a host without web windows. */
+  openWindow: ((url: string) => Promise<void>) | null
 }
 
 export type CustomizePageErrorCode = 'host_unavailable' | 'not_shown' | 'no_item'
+
+const MARKETPLACE_DESCRIPTION_TTL_MS = 10 * 60_000
+
+const intentKey = (intent: DirectoryIntent) =>
+  intent.kind === 'plugin' ? `plugin:${intent.manifestName}` : `connector:${intent.slug}`
+
+const isWebUrl = (url: URL) => url.protocol === 'http:' || url.protocol === 'https:'
 
 /**
  * Security: the listing a page item is looked up in, for the page origin the
@@ -79,10 +93,19 @@ export class CustomizePageService {
   private tabId: number | null = null
   private channel: number | null = null
   private path: string | undefined
+  private canGoBack: boolean | undefined
+  /** The origin the tab was shown at, and the last address the page reported on it. */
+  private pageOrigin: string | null = null
+  private pageHref: string | null = null
   private apiOrigin: string | null = null
   private pageItem: DirectoryPageItem | undefined
   private pageItemKey: string | null = null
   private target: DirectoryInstallTarget | null = null
+  private addRequest: CustomizeAddRequest | undefined
+  private addSeq = 0
+  /** An add asked for an item the page is being taken to; asked again once it shows. */
+  private pendingAddKey: string | null = null
+  private readonly descriptions = new Map<string, { at: number; value: Promise<CustomizeMarketplaceDescription> }>()
   private nextItemId = 1
   private queue: Promise<unknown> = Promise.resolve()
   private readonly listeners = new Set<() => void>()
@@ -96,9 +119,17 @@ export class CustomizePageService {
   getState(): CustomizePageState {
     const host = this.getHost()
     if (!host) return { available: false }
-    const item = this.pageItem ? { pageItem: this.pageItem } : {}
+    const item = this.pageItem
+      ? { pageItem: this.pageItem, ...(this.addRequest ? { addRequest: this.addRequest } : {}) }
+      : {}
     if (host !== this.host || this.tabId === null) return { available: true, ...item }
-    return { available: true, tabId: this.tabId, ...(this.path !== undefined ? { path: this.path } : {}), ...item }
+    return {
+      available: true,
+      tabId: this.tabId,
+      ...(this.path !== undefined ? { path: this.path } : {}),
+      ...(this.canGoBack !== undefined ? { canGoBack: this.canGoBack } : {}),
+      ...item,
+    }
   }
 
   onStateChange(listener: () => void): () => void {
@@ -114,11 +145,11 @@ export class CustomizePageService {
       const host = this.bind()
       const opened = await host.openUtilityTab(CUSTOMIZE_TAB_KEY, url)
       this.apiOrigin = directoryApiOriginFor(url)
+      this.pageOrigin = new URL(url).origin
       if (opened.tabId !== this.tabId) {
         this.tabId = opened.tabId
         this.channel = null
-        this.path = undefined
-        this.forgetPageItem()
+        this.forgetPage()
       }
       if (this.channel === null && host.pageScript) await this.attach(host.pageScript, opened.tabId)
       this.emit()
@@ -133,6 +164,37 @@ export class CustomizePageService {
       if (this.tabId === null) throw new CustomizePageError('not_shown', 'the Customize page is not open')
       await host.navigateUtilityTab(this.tabId, url)
     })
+  }
+
+  /** Takes the page one entry back in its own history; false when it has no channel to do it with. */
+  back(): Promise<boolean> {
+    return this.serial(async () => {
+      const host = this.bind()
+      if (this.tabId === null) throw new CustomizePageError('not_shown', 'the Customize page is not open')
+      if (this.channel === null || !host.pageScript) return false
+      await host.pageScript.executeScript(this.channel, 'history.back()')
+      return true
+    })
+  }
+
+  /**
+   * The directory's details for each plugin `marketplace` lists (kept ten
+   * minutes per marketplace). Empty without lookup calls or before a show
+   * names the listing's origin; a failed read is not kept.
+   */
+  describeMarketplace(marketplace: string): Promise<CustomizeMarketplaceDescription> {
+    const offers = this.offers
+    const origin = this.apiOrigin
+    if (!offers || !origin) return Promise.resolve({ plugins: {} })
+    const key = `${origin} ${marketplace}`
+    const kept = this.descriptions.get(key)
+    if (kept && Date.now() - kept.at < MARKETPLACE_DESCRIPTION_TTL_MS) return kept.value
+    const value = describeMarketplacePlugins(marketplace, offers, origin).then(plugins => ({ plugins }))
+    this.descriptions.set(key, { at: Date.now(), value })
+    value.catch(() => {
+      if (this.descriptions.get(key)?.value === value) this.descriptions.delete(key)
+    })
+    return value
   }
 
   /**
@@ -167,17 +229,110 @@ export class CustomizePageService {
    */
   private follow(path: string): void {
     const intent = this.offers && this.apiOrigin ? parseDirectoryIntent(path) : null
-    const key = intent ? (intent.kind === 'plugin' ? `plugin:${intent.manifestName}` : `connector:${intent.slug}`) : null
+    const key = intent ? intentKey(intent) : null
     if (key === this.pageItemKey) return
     this.pageItemKey = key
     this.target = null
+    this.addRequest = undefined
     if (!intent || !this.offers || !this.apiOrigin) {
       this.pageItem = undefined
       return
     }
     const id = this.nextItemId++
     this.pageItem = { id, kind: intent.kind, phase: 'resolving' }
+    if (key === this.pendingAddKey) {
+      this.pendingAddKey = null
+      this.addRequest = { seq: ++this.addSeq, itemId: id }
+    }
     void this.resolve(id, intent, this.apiOrigin, this.offers)
+  }
+
+  private onPageMessage(message: DirectoryPageMessage): void {
+    if (message.type === 'route') {
+      if (message.href !== undefined && this.leaveForeignPage(message.href)) return
+      if (message.href !== undefined) this.pageHref = message.href
+      const moved = message.path !== this.path
+      if (!moved && message.canGoBack === this.canGoBack) return
+      this.path = message.path
+      if (message.canGoBack !== undefined) this.canGoBack = message.canGoBack
+      if (moved) this.follow(message.path)
+      this.emit()
+      return
+    }
+    if (message.type === 'add') {
+      this.requestAdd(message.returnTo)
+      return
+    }
+    this.openElsewhere(message.url)
+  }
+
+  /**
+   * The page's own add button stopped at sign-in. `returnTo` naming another
+   * item takes the page there and asks once that item shows; otherwise the
+   * item on the page is asked for. A page with no item asks nothing.
+   */
+  private requestAdd(returnTo: string): void {
+    const origin = this.pageOrigin
+    let returnPath: string | null = null
+    if (origin && returnTo) {
+      try {
+        const url = new URL(returnTo, origin)
+        if (url.origin === origin) returnPath = url.pathname + url.search
+      } catch {
+        returnPath = null
+      }
+    }
+    const intent = returnPath ? parseDirectoryIntent(returnPath) : null
+    const key = intent ? intentKey(intent) : this.pageItemKey
+    if (!key || !this.offers || !this.apiOrigin) return
+    if (key === this.pageItemKey && this.pageItem) {
+      this.addRequest = { seq: ++this.addSeq, itemId: this.pageItem.id }
+      this.emit()
+      return
+    }
+    if (!returnPath || !origin) return
+    this.pendingAddKey = key
+    this.navigate(origin + returnPath).catch(() => {
+      if (this.pendingAddKey === key) this.pendingAddKey = null
+    })
+  }
+
+  /** Opens a page the tab must not leave its site for in a window of its own. */
+  private openElsewhere(href: string): void {
+    let url: URL
+    try {
+      url = new URL(href)
+    } catch {
+      return
+    }
+    if (!isWebUrl(url)) return
+    const host = this.host
+    if (!host) return
+    const tabId = this.tabId
+    const opened = host.openWindow
+      ? host.openWindow(url.href)
+      : tabId !== null ? host.navigateUtilityTab(tabId, url.href) : Promise.resolve()
+    opened.catch(() => undefined)
+  }
+
+  /**
+   * Security: a document of another origin that landed in the tab anyway
+   * (a redirect, a navigation that could not be stopped) opens in a window
+   * of its own, and the tab goes back to the last page it showed on its site.
+   */
+  private leaveForeignPage(href: string): boolean {
+    const origin = this.pageOrigin
+    let url: URL
+    try {
+      url = new URL(href)
+    } catch {
+      return false
+    }
+    if (!origin || url.origin === origin) return false
+    this.openElsewhere(href)
+    const back = this.pageHref ?? origin + DIRECTORY_HOME_PATH
+    this.navigate(back).catch(() => undefined)
+    return true
   }
 
   private async resolve(id: number, intent: DirectoryIntent, origin: string, deps: DirectoryOfferDeps) {
@@ -224,19 +379,15 @@ export class CustomizePageService {
       this.unsubscribe.push(
         script.onMessage(event => {
           if (event.channelId !== this.channel) return
-          const path = readRouteReport(event.data)
-          if (path === null || path === this.path) return
-          this.path = path
-          this.follow(path)
-          this.emit()
+          const message = readPageMessage(event.data)
+          if (message) this.onPageMessage(message)
         }),
         script.onDetached(event => {
           if (event.channelId !== this.channel) return
           this.channel = null
           if (event.reason === 'target_gone') {
             this.tabId = null
-            this.path = undefined
-            this.forgetPageItem()
+            this.forgetPage()
           }
           this.emit()
         }),
@@ -270,14 +421,19 @@ export class CustomizePageService {
     this.host = null
     this.tabId = null
     this.channel = null
-    this.path = undefined
-    this.forgetPageItem()
+    this.forgetPage()
   }
 
-  private forgetPageItem(): void {
+  /** Everything the tab's page told: its place, its history, its item. */
+  private forgetPage(): void {
+    this.path = undefined
+    this.canGoBack = undefined
+    this.pageHref = null
+    this.pendingAddKey = null
     this.pageItem = undefined
     this.pageItemKey = null
     this.target = null
+    this.addRequest = undefined
   }
 
   private emit(): void {

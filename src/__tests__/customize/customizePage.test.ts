@@ -10,9 +10,12 @@ import {
   CUSTOMIZE_PAGE_TOPIC_SCOPE,
   CUSTOMIZE_TAB_KEY,
   DIRECTORY_PAGE_SCRIPT,
+  isCustomizeMarketplacePayload,
+  isCustomizePageEmptyPayload,
   isCustomizePageItemPayload,
   isCustomizePageUrlPayload,
   readCustomizePageState,
+  readPageMessage,
   readRouteReport,
   type CustomizePageState,
 } from '../../customize/customizePageProtocol'
@@ -28,7 +31,7 @@ import type { NexusMcpServerConfig } from '../../settings/settingsTypes'
 
 const PAGE = 'http://127.0.0.1:4100/directory'
 
-function fakeHost(options: { pageScript?: boolean; tabId?: number } = {}) {
+function fakeHost(options: { pageScript?: boolean; tabId?: number; webWindow?: boolean } = {}) {
   const calls: string[] = []
   const messageListeners = new Set<(e: { channelId: number; data: unknown }) => void>()
   const detachListeners = new Set<(e: { channelId: number; reason: string }) => void>()
@@ -45,7 +48,7 @@ function fakeHost(options: { pageScript?: boolean; tabId?: number } = {}) {
       return 's1'
     },
     executeScript: async (channelId, code) => {
-      calls.push(`run ${channelId} ${code === DIRECTORY_PAGE_SCRIPT}`)
+      calls.push(`run ${channelId} ${code === DIRECTORY_PAGE_SCRIPT ? true : code}`)
       return { value: null }
     },
     onMessage: listener => {
@@ -72,6 +75,12 @@ function fakeHost(options: { pageScript?: boolean; tabId?: number } = {}) {
       calls.push(`navigate ${id} ${url}`)
     },
     pageScript: options.pageScript === false ? null : script,
+    openWindow:
+      options.webWindow === false
+        ? null
+        : async url => {
+            calls.push(`window ${url}`)
+          },
   }
   return {
     host,
@@ -100,7 +109,7 @@ function rig(getHost: () => CustomizePageHost | null, offers?: DirectoryOfferDep
     { conn: conn(), send: evt => events.push((evt as unknown as { payload: CustomizePageState }).payload), bufferedBytes: () => 0 },
     CUSTOMIZE_PAGE_STATUS_TOPIC,
   )
-  const call = (act: 'show' | 'navigate' | 'addPageItem', payload: unknown) => {
+  const call = (act: 'show' | 'navigate' | 'back' | 'addPageItem' | 'describeMarketplace', payload: unknown) => {
     const entry = registry.resolve('customizePage', act)!
     expect(entry.spec.guard?.(payload, conn(), {} as never) ?? true).toBe(true)
     return entry.handle({ id: '1', route: { cap: 'customizePage', act }, payload, conn: conn() } as never, {} as never)
@@ -115,11 +124,13 @@ describe('customizePage protocol', () => {
     expect(CUSTOMIZE_PAGE_ACTION_SCOPES).toEqual({
       show: 'full',
       navigate: 'full',
+      back: 'full',
       addPageItem: 'full',
+      describeMarketplace: 'full',
     })
     expect(CUSTOMIZE_PAGE_TOPIC_SCOPE).toBe('full')
     const { registry } = rig(() => null)
-    for (const act of ['show', 'navigate', 'addPageItem']) {
+    for (const act of ['show', 'navigate', 'back', 'addPageItem', 'describeMarketplace']) {
       expect(registry.resolve('customizePage', act)!.spec.scope).toBe('full')
     }
   })
@@ -130,6 +141,17 @@ describe('customizePage protocol', () => {
     expect(isCustomizePageItemPayload({ id: '3' })).toBe(false)
     expect(isCustomizePageItemPayload({ id: 3, install: true })).toBe(false)
     expect(isCustomizePageItemPayload(null)).toBe(false)
+  })
+
+  it('back takes an empty object; describeMarketplace exactly one marketplace name', () => {
+    expect(isCustomizePageEmptyPayload({})).toBe(true)
+    expect(isCustomizePageEmptyPayload({ steps: 2 })).toBe(false)
+    expect(isCustomizePageEmptyPayload(null)).toBe(false)
+    expect(isCustomizePageEmptyPayload([])).toBe(false)
+    expect(isCustomizeMarketplacePayload({ marketplace: 'official-market' })).toBe(true)
+    expect(isCustomizeMarketplacePayload({ marketplace: '' })).toBe(false)
+    expect(isCustomizeMarketplacePayload({ marketplace: 'x'.repeat(201) })).toBe(false)
+    expect(isCustomizeMarketplacePayload({ marketplace: 'm', origin: 'https://evil.example' })).toBe(false)
   })
 
   it('lookups go to the live listing for the live site and from a loopback page itself, never elsewhere', () => {
@@ -152,12 +174,22 @@ describe('customizePage protocol', () => {
     expect(isCustomizePageUrlPayload(null)).toBe(false)
   })
 
-  it('the channel carries route reports and nothing else', () => {
+  it('the channel carries route reports, add asks and other-site opens, and nothing else', () => {
     expect(readRouteReport({ type: 'route', path: '/customize/skills' })).toBe('/customize/skills')
     expect(readRouteReport({ type: 'route', path: 7 })).toBeNull()
     expect(readRouteReport({ type: 'openSettings', section: 'mcp' })).toBeNull()
     expect(readRouteReport('route')).toBeNull()
     expect(readRouteReport(null)).toBeNull()
+    expect(readPageMessage({ type: 'route', path: '/d', href: 'http://h/d', canGoBack: true }))
+      .toEqual({ type: 'route', path: '/d', href: 'http://h/d', canGoBack: true })
+    expect(readPageMessage({ type: 'route', path: '/d', canGoBack: 'yes' })).toEqual({ type: 'route', path: '/d' })
+    expect(readPageMessage({ type: 'add', returnTo: '/directory/slack' }))
+      .toEqual({ type: 'add', returnTo: '/directory/slack' })
+    expect(readPageMessage({ type: 'add' })).toEqual({ type: 'add', returnTo: '' })
+    expect(readPageMessage({ type: 'external', url: 'https://x.example' }))
+      .toEqual({ type: 'external', url: 'https://x.example' })
+    expect(readPageMessage({ type: 'external' })).toBeNull()
+    expect(readPageMessage({ type: 'install', id: 'x' })).toBeNull()
   })
 
   it('reads the published state and refuses other shapes', () => {
@@ -171,6 +203,10 @@ describe('customizePage protocol', () => {
     expect(readCustomizePageState({ available: true, pageItem: { ...pageItem, details: { name: 4 } } })).toBeNull()
     expect(readCustomizePageState({ available: true, pageItem: { ...pageItem, installedAs: 1 } })).toBeNull()
     expect(readCustomizePageState({ tabId: 4 })).toBeNull()
+    expect(readCustomizePageState({ available: true, canGoBack: true, pageItem, addRequest: { seq: 2, itemId: 2 } }))
+      .toEqual({ available: true, canGoBack: true, pageItem, addRequest: { seq: 2, itemId: 2 } })
+    expect(readCustomizePageState({ available: true, canGoBack: 1 })).toBeNull()
+    expect(readCustomizePageState({ available: true, addRequest: { seq: 'a', itemId: 2 } })).toBeNull()
   })
 })
 
@@ -263,6 +299,62 @@ describe('customizePage service', () => {
     expect(r.service.getState()).toEqual({ available: true, tabId: 9 })
   })
 
+  it('publishes whether the page can go back, and back steps the page through its channel', async () => {
+    const fake = fakeHost()
+    const r = rig(() => fake.host)
+    await expect(r.call('back', {})).rejects.toMatchObject({ code: 'conflict' })
+    await r.call('show', { url: PAGE })
+    fake.report(1, { type: 'route', path: '/directory', href: PAGE, canGoBack: false })
+    expect(r.events.at(-1)).toEqual({ available: true, tabId: 7, path: '/directory', canGoBack: false })
+    fake.report(1, { type: 'route', path: '/directory', href: PAGE, canGoBack: true })
+    expect(r.events.at(-1)).toMatchObject({ canGoBack: true })
+    await expect(r.call('back', {})).resolves.toEqual({ ok: true })
+    expect(fake.calls.at(-1)).toBe('run 1 history.back()')
+  })
+
+  it('back on a host without the page channel answers ok: false', async () => {
+    const fake = fakeHost({ pageScript: false })
+    const r = rig(() => fake.host)
+    await r.call('show', { url: PAGE })
+    await expect(r.call('back', {})).resolves.toEqual({ ok: false })
+  })
+
+  it('a page on another site opens in a window of its own; without web windows it loads in the tab', async () => {
+    const fake = fakeHost()
+    const r = rig(() => fake.host)
+    await r.call('show', { url: PAGE })
+    fake.report(1, { type: 'external', url: 'https://docs.example/start' })
+    fake.report(1, { type: 'external', url: 'file:///C:/secret' })
+    fake.report(1, { type: 'external', url: 'javascript:alert(1)' })
+    await settle()
+    expect(fake.calls.filter(c => c.startsWith('window') || c.startsWith('navigate'))).toEqual([
+      'window https://docs.example/start',
+    ])
+
+    const bare = fakeHost({ webWindow: false })
+    const b = rig(() => bare.host)
+    await b.call('show', { url: PAGE })
+    bare.report(1, { type: 'external', url: 'https://docs.example/start' })
+    await settle()
+    expect(bare.calls.at(-1)).toBe('navigate 7 https://docs.example/start')
+  })
+
+  it('a document of another site that lands in the tab opens elsewhere and the tab returns to its last page', async () => {
+    const fake = fakeHost()
+    const r = rig(() => fake.host)
+    await r.call('show', { url: PAGE })
+    fake.report(1, { type: 'route', path: '/directory/slack', href: 'http://127.0.0.1:4100/directory/slack?x=1' })
+    const before = r.events.length
+    fake.report(1, { type: 'route', path: '/landing', href: 'https://partner.example/landing' })
+    await settle()
+    expect(fake.calls.slice(-2)).toEqual([
+      'window https://partner.example/landing',
+      'navigate 7 http://127.0.0.1:4100/directory/slack?x=1',
+    ])
+    expect(r.events.length).toBe(before)
+    expect(r.service.getState().path).toBe('/directory/slack')
+  })
+
   it('dispose releases the channel listeners', async () => {
     const fake = fakeHost()
     const r = rig(() => fake.host)
@@ -321,6 +413,7 @@ const NOTION = {
 const NOTION_ID = 'b2be6e33-a55f-45ca-9453-3dabeb179a53'
 const SLACK_FILTER = "slug == 'slack'"
 const NOTION_FILTER = `manifest_name == '${NOTION_ID}'`
+const NOTION_REPO_FILTER = "source.repository.url in ['https://github.com/makenotion/notion-plugin']"
 
 describe('customizePage service — the page item', () => {
   async function shown(offers: DirectoryOfferDeps | undefined, page = PAGE) {
@@ -349,6 +442,7 @@ describe('customizePage service — the page item', () => {
         summary: 'Chat',
         publisher: 'Slack',
         iconUrl: 'https://www.google.com/s2/favicons?sz=64&domain=slack.com',
+        pagePath: '/directory/slack',
       },
       alreadyInstalled: false,
       installable: true,
@@ -463,6 +557,52 @@ describe('customizePage service — the page item', () => {
     await settle()
     fake.detach(1, 'target_gone')
     expect(itemOf(r)).toBeUndefined()
+  })
+
+  it('the page\'s own add button asks to add the item it shows, once per press', async () => {
+    const o = fakeOffers({ records: { [SLACK_FILTER]: [SLACK] } })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    fake.report(1, { type: 'add', returnTo: '/directory/slack' })
+    expect(r.events.at(-1)).toMatchObject({
+      pageItem: { id: 1, phase: 'resolving' },
+      addRequest: { seq: 1, itemId: 1 },
+    })
+    fake.report(1, { type: 'add', returnTo: '' })
+    expect(r.service.getState().addRequest).toEqual({ seq: 2, itemId: 1 })
+    expect(o.calls.some(c => c.startsWith('upsert'))).toBe(false)
+    fake.report(1, { type: 'route', path: '/directory' })
+    expect(r.service.getState().addRequest).toBeUndefined()
+  })
+
+  it('an add naming another item takes the page there and asks once it shows; a list page asks nothing', async () => {
+    const o = fakeOffers({ records: { [SLACK_FILTER]: [SLACK] } })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: '/directory' })
+    fake.report(1, { type: 'add', returnTo: '/directory' })
+    fake.report(1, { type: 'add', returnTo: 'https://evil.example/directory/slack' })
+    await settle()
+    expect(r.service.getState().addRequest).toBeUndefined()
+    expect(fake.calls.filter(c => c.startsWith('navigate'))).toEqual([])
+
+    fake.report(1, { type: 'add', returnTo: '/directory/slack?from=card' })
+    await settle()
+    expect(fake.calls.at(-1)).toBe('navigate 7 http://127.0.0.1:4100/directory/slack?from=card')
+    expect(r.service.getState().addRequest).toBeUndefined()
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    expect(r.service.getState()).toMatchObject({ pageItem: { id: 1 }, addRequest: { seq: 1, itemId: 1 } })
+  })
+
+  it('describeMarketplace answers the directory\'s details per plugin, and nothing before a show', async () => {
+    const o = fakeOffers({ records: { [NOTION_REPO_FILTER]: [{ ...NOTION, summary: 'Notes' }] } })
+    const fake = fakeHost()
+    const r = rig(() => fake.host, o.deps)
+    await expect(r.call('describeMarketplace', { marketplace: 'official-market' })).resolves.toEqual({ plugins: {} })
+    await r.call('show', { url: PAGE })
+    const answer = await r.call('describeMarketplace', { marketplace: 'official-market' })
+    expect(answer).toMatchObject({ plugins: { notion: { name: 'notion', summary: 'Notes' } } })
+    await r.call('describeMarketplace', { marketplace: 'official-market' })
+    expect(o.calls.filter(c => c.startsWith('fetch'))).toHaveLength(1)
   })
 
   it('without lookup calls a page never has an item', async () => {

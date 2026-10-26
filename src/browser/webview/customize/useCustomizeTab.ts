@@ -6,9 +6,11 @@ import {
   CUSTOMIZE_PAGE_CAPABILITY,
   CUSTOMIZE_PAGE_STATUS_TOPIC,
   readCustomizePageState,
+  type CustomizeAddRequest,
+  type CustomizeMarketplaceDescription,
 } from '../../../customize/customizePageProtocol'
 import type { DirectoryPageItem } from '../../../customize/directoryOffer'
-import { directoryUrl } from './customizeRoutes'
+import { directoryPageUrl, directoryUrl } from './customizeRoutes'
 
 export type CustomizeTabState = {
   /** The utility tab, once the runtime has opened or found it. */
@@ -20,8 +22,20 @@ export type CustomizeTabState = {
   unavailable: boolean
   /** The plugin or connector the page shows, as the runtime publishes it. */
   pageItem: DirectoryPageItem | null
+  /** Whether the page has an earlier entry of its own to go back to. */
+  canGoBack: boolean
+  /** The page's own add button asking to add the page item; a new `seq` is a new ask. */
+  addRequest: CustomizeAddRequest | null
   /** Installs the page item `id`. */
   addPageItem: (id: number) => void
+  /** One entry back in the page's own history. */
+  goBack: () => void
+  /** The directory's start page. */
+  goHome: () => void
+  /** A page of the directory site, by path. */
+  openPage: (path: string) => void
+  /** The directory's details for a marketplace's plugins; empty when it cannot say. */
+  describeMarketplace: (marketplace: string) => Promise<CustomizeMarketplaceDescription>
   /** Asks the runtime to show the tab again, from a fresh connection. */
   retry: () => void
 }
@@ -47,6 +61,8 @@ export function useCustomizeTab(
   const [hostMissing, setHostMissing] = React.useState(false)
   const [attempt, setAttempt] = React.useState(0)
   const [pageItem, setPageItem] = React.useState<DirectoryPageItem | null>(null)
+  const [canGoBack, setCanGoBack] = React.useState(false)
+  const [addRequest, setAddRequest] = React.useState<CustomizeAddRequest | null>(null)
 
   React.useEffect(() => {
     if (!open) return
@@ -57,6 +73,7 @@ export function useCustomizeTab(
     let live = true
     let unsubscribe: (() => void) | null = null
     let missing = false
+    let staleSeq: number | null = null
     let connected: RuntimeConnection | null = null
     const onVisibility = () => {
       if (live && connected && document.visibilityState === 'visible') void show(connected)
@@ -84,6 +101,12 @@ export function useCustomizeTab(
           setHostMissing(missing)
           setTabId(state.tabId ?? null)
           setPageItem(state.pageItem ?? null)
+          setCanGoBack(state.canGoBack ?? false)
+          // An ask already standing when the screen subscribed was made to a
+          // screen that is gone; only later asks are shown.
+          if (staleSeq === null) staleSeq = state.addRequest?.seq ?? 0
+          const ask = state.addRequest && state.addRequest.seq > staleSeq ? state.addRequest : null
+          setAddRequest(current => (ask && current?.seq === ask.seq ? current : ask))
           if (back) void show(conn)
         })
         return show(conn)
@@ -99,6 +122,8 @@ export function useCustomizeTab(
       setTabId(null)
       setHostMissing(false)
       setPageItem(null)
+      setCanGoBack(false)
+      setAddRequest(null)
     }
   }, [runtimeConnection, open, attempt])
 
@@ -112,10 +137,47 @@ export function useCustomizeTab(
     [runtimeConnection],
   )
 
+  const send = React.useCallback(
+    (action: 'navigate' | 'back', payload: Record<string, unknown>) => {
+      if (!runtimeConnection) return
+      void runtimeConnection()
+        .then(conn => conn.request(`${CUSTOMIZE_PAGE_CAPABILITY}.${action}` as RouteKey, payload))
+        .catch(ignore)
+    },
+    [runtimeConnection],
+  )
+  const goBack = React.useCallback(() => send('back', {}), [send])
+  const goHome = React.useCallback(() => send('navigate', { url: directoryUrl() }), [send])
+  const openPage = React.useCallback((path: string) => send('navigate', { url: directoryPageUrl(path) }), [send])
+
+  const describeMarketplace = React.useCallback(
+    async (marketplace: string): Promise<CustomizeMarketplaceDescription> => {
+      if (!runtimeConnection) return { plugins: {} }
+      const conn = await runtimeConnection()
+      const result = (await conn.request(`${CUSTOMIZE_PAGE_CAPABILITY}.describeMarketplace` as RouteKey, {
+        marketplace,
+      })) as Partial<CustomizeMarketplaceDescription> | undefined
+      return { plugins: result?.plugins && typeof result.plugins === 'object' ? result.plugins : {} }
+    },
+    [runtimeConnection],
+  )
+
   const retry = React.useCallback(() => {
     setShowFailed(false)
     setAttempt(n => n + 1)
   }, [])
 
-  return { tabId, unavailable: showFailed || hostMissing, pageItem, addPageItem, retry }
+  return {
+    tabId,
+    unavailable: showFailed || hostMissing,
+    pageItem,
+    canGoBack,
+    addRequest,
+    addPageItem,
+    goBack,
+    goHome,
+    openPage,
+    describeMarketplace,
+    retry,
+  }
 }

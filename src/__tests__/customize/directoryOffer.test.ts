@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  describeDirectoryRecord,
+  describeMarketplacePlugins,
   directoryIconUrl,
   directoryLookupUrl,
   installDirectoryTarget,
@@ -128,7 +130,7 @@ describe('resolveDirectoryIntent — plugins', () => {
       ]),
     )
     expect(resolved).toEqual({
-      details: { name: 'Sales' },
+      details: { name: 'Sales', links: { repository: 'https://github.com/acme/work-plugins' } },
       alreadyInstalled: true,
       installedAs: 'sales@work',
       target: { kind: 'plugin', identifier: 'sales@work' },
@@ -152,7 +154,7 @@ describe('resolveDirectoryIntent — plugins', () => {
   it('a plugin no marketplace here lists cannot be installed', async () => {
     const record = { name: 'Remotion', source: { repository: { url: 'https://github.com/remotion-dev/video-plugin' } } }
     const resolved = await resolveDirectoryIntent(plugin, deps(record, [{ name: 'official', source: KWP, listings: [] }]))
-    expect(resolved).toEqual({ details: { name: 'Remotion' }, alreadyInstalled: false, target: null })
+    expect(resolved).toEqual({ details: { name: 'Remotion', links: { repository: 'https://github.com/remotion-dev/video-plugin' } }, alreadyInstalled: false, target: null })
   })
 })
 
@@ -198,5 +200,128 @@ describe('installDirectoryTarget', () => {
       installDirectoryTarget({ kind: 'connector', id: 'acme', config: { transport: 'http', url: 'https://mcp.acme.test' } }, d),
     ).resolves.toBe('acme')
     expect(calls).toEqual(['install sales@work', 'upsert acme https://mcp.acme.test'])
+  })
+})
+
+describe('describeDirectoryRecord', () => {
+  it('keeps what a detail page shows, with https links only and parts by kind', () => {
+    const details = describeDirectoryRecord({
+      name: 'code-review',
+      manifest_name: ID.toUpperCase(),
+      summary: 'Reviews pull requests',
+      description: 'Runs several reviewers.',
+      verified_tier: 'partner',
+      added_time: '2025-11-20T19:47:24Z',
+      updated_time: '2026-10-23T22:41:42Z',
+      publisher: { name: 'Acme', url: 'http://acme.example' },
+      media: {
+        icons: [{ url: 'https://cdn.example/icon.png' }],
+        screenshots: [{ url: 'https://cdn.example/1.png' }, 'https://cdn.example/2.png', { url: 'javascript:alert(1)' }],
+      },
+      links: { documentation: 'https://docs.example', support: 'ftp://support.example', privacy_policy: 'nope' },
+      taxonomy: { object_acted_on: ['code', 'pull-requests'], work_department: 'engineering', junk: 'Not A Tag' },
+      source: { marketplace_slug: 'plugin-directory', repository: { url: 'https://github.com/acme/plugins' } },
+      components: [
+        { type: 'command', name: 'code-review', slash_command: '/code-review', description: 'Review a PR' },
+        { type: 'mcp_server', name: 'Tracker', tools: [{ name: 'a' }, { name: 'b' }] },
+        { type: 'lsp', name: 'clangd' },
+        { type: 'skill' },
+      ],
+    })
+    expect(details).toEqual({
+      name: 'code-review',
+      summary: 'Reviews pull requests',
+      description: 'Runs several reviewers.',
+      publisher: 'Acme',
+      iconUrl: 'https://cdn.example/icon.png',
+      addedTime: '2025-11-20T19:47:24Z',
+      updatedTime: '2026-10-23T22:41:42Z',
+      pagePath: `/customize/plugins/id/${ID}@plugin-directory`,
+      verified: true,
+      screenshots: ['https://cdn.example/1.png', 'https://cdn.example/2.png'],
+      components: [
+        { type: 'command', name: '/code-review', description: 'Review a PR' },
+        { type: 'mcp_server', name: 'Tracker', toolCount: 2 },
+        { type: 'other', name: 'clangd' },
+      ],
+      links: { documentation: 'https://docs.example', repository: 'https://github.com/acme/plugins' },
+      categories: ['code', 'pull-requests', 'engineering'],
+    })
+  })
+
+  it('a connector record links to its own directory page; a bare record keeps only its name', () => {
+    expect(describeDirectoryRecord({ name: 'Slack', slug: 'slack', source: { type: 'directory' } } as never))
+      .toEqual({ name: 'Slack', pagePath: '/directory/slack' })
+    expect(describeDirectoryRecord({ slug: 'acme/plugins/x', source: { repository: { url: 'https://g.example/a/b' } } }))
+      .toEqual({ name: 'acme/plugins/x', links: { repository: 'https://g.example/a/b' } })
+  })
+})
+
+describe('describeMarketplacePlugins', () => {
+  function rig(records: unknown[], listings: Listing[], options: { pages?: boolean } = {}) {
+    const urls: string[] = []
+    const d: DirectoryOfferDeps = {
+      ...deps(null, [{ name: 'work', source: KWP, listings }]),
+      fetchJson: async url => {
+        urls.push(url)
+        const page = new URL(url).searchParams.get('page')
+        if (options.pages && !page) return { data: records.slice(0, 1), next_page: 'p2' }
+        return { data: options.pages ? records.slice(1) : records }
+      },
+    }
+    return { d, urls }
+  }
+
+  it('asks the listing once for the repositories the marketplace lists and matches each plugin by name', async () => {
+    const { d, urls } = rig(
+      [
+        { name: 'Sales', summary: 'Pipeline', source: { repository: { url: 'https://github.com/acme/work-plugins' } } },
+        { name: 'Finance', source: { repository: { url: 'https://github.com/acme/work-plugins', path: 'finance' } } },
+        { name: 'Notes', source: { repository: { url: 'https://github.com/Other/Notes' } } },
+        { name: 'stranger', source: { repository: { url: 'https://github.com/x/y' } } },
+      ],
+      [
+        { name: 'sales', source: { source: 'local', path: './sales' }, installed: false },
+        { name: 'finance', source: { source: 'local', path: './finance' }, installed: false },
+        { name: 'legal', source: { source: 'local', path: './legal' }, installed: false },
+        { name: 'notes', source: { source: 'url', url: 'https://github.com/Other/Notes.git' }, installed: true },
+      ],
+    )
+    const described = await describeMarketplacePlugins('work', d, 'http://127.0.0.1:4100')
+    expect(Object.keys(described).sort()).toEqual(['finance', 'notes', 'sales'])
+    expect(described.sales).toMatchObject({ name: 'Sales', summary: 'Pipeline' })
+    expect(urls).toHaveLength(1)
+    const query = new URL(urls[0]!)
+    expect(query.origin + query.pathname).toBe('http://127.0.0.1:4100/api/directory/plugins')
+    expect(query.searchParams.get('filter')).toBe(
+      "source.repository.url in ['https://github.com/acme/work-plugins', " +
+        "'https://github.com/Other/Notes', 'https://github.com/other/notes']",
+    )
+  })
+
+  it('follows the listing to its next page, and an unknown marketplace asks nothing', async () => {
+    const { d, urls } = rig(
+      [
+        { name: 'sales', source: { repository: { url: 'https://github.com/acme/work-plugins' } } },
+        { name: 'finance', source: { repository: { url: 'https://github.com/acme/work-plugins' } } },
+      ],
+      [
+        { name: 'sales', source: { source: 'local', path: './sales' }, installed: false },
+        { name: 'finance', source: { source: 'local', path: './finance' }, installed: false },
+      ],
+      { pages: true },
+    )
+    expect(Object.keys(await describeMarketplacePlugins('work', d))).toEqual(['sales', 'finance'])
+    expect(new URL(urls[1]!).searchParams.get('page')).toBe('p2')
+    expect(await describeMarketplacePlugins('missing', d)).toEqual({})
+    expect(urls).toHaveLength(2)
+  })
+
+  it('a quote in a repository address cannot end the filter string', async () => {
+    const { d, urls } = rig([], [
+      { name: 'odd', source: { source: 'url', url: "https://github.com/a/b'] || true" }, installed: false },
+    ])
+    await describeMarketplacePlugins('work', d)
+    expect(new URL(urls[0]!).searchParams.get('filter')).toContain("'https://github.com/a/b\\'] || true'")
   })
 })

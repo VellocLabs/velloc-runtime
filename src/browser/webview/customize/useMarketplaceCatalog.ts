@@ -1,5 +1,7 @@
 import * as React from 'react'
 
+import type { CustomizeMarketplaceDescription } from '../../../customize/customizePageProtocol'
+import type { DirectoryItemDetails } from '../../../customize/directoryOffer'
 import type { PluginAvailableUiEntry, PluginMarketplaceUiEntry } from '../../bridge/protocol/plugins'
 import type { NexusSettingsBridge } from '../nexusSettingsBridge'
 import {
@@ -144,4 +146,31 @@ export function useMarketplacePlugins(
   }, [bridge, marketplace, read])
 
   return { status, plugins, installing, installFailed, downloading, install, download }
+}
+
+/**
+ * The directory's details for `marketplace`'s plugins (F-35), keyed by
+ * plugin name; empty while they are read and when they cannot be. Read once
+ * per selected marketplace.
+ */
+export function useMarketplaceDetails(
+  describe: (marketplace: string) => Promise<CustomizeMarketplaceDescription>,
+  marketplace: string | null,
+): Record<string, DirectoryItemDetails> {
+  const [details, setDetails] = React.useState<Record<string, DirectoryItemDetails>>({})
+  React.useEffect(() => {
+    setDetails({})
+    if (!marketplace) return
+    let live = true
+    describe(marketplace).then(
+      result => {
+        if (live) setDetails(result.plugins)
+      },
+      () => undefined,
+    )
+    return () => {
+      live = false
+    }
+  }, [describe, marketplace])
+  return details
 }

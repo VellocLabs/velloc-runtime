@@ -1,6 +1,7 @@
 /**
  * The Customize page's host calls over the runtime's own port (F-35): the
- * `ui` utility-tab actions and the native `pageScript` primitive. One host
+ * `ui` utility-tab actions, the native `pageScript` primitive and
+ * `webWindow.open` for pages off the directory's site. One host
  * object per transport, so the service can tell a replaced port.
  */
 import type { BrowserBridgeTransport, BrowserHostManifest } from '../browser/bridge/browserBridgeProtocol'
@@ -33,16 +34,20 @@ export function createCustomizePageHostSource(options: CustomizePageHostSourceOp
       return response.result
     }
     const servesPageScript = !manifest || manifest.capabilities.includes('pageScript')
+    const servesWebWindow = !!manifest?.capabilities.includes('webWindow')
+    const primitives = createNativePrimitives({ transport, createRequestId: options.createRequestId, manifest })
     const host: CustomizePageHost = {
       openUtilityTab: async (key, url) =>
         (await request('openUtilityTab', { key, url })) as { tabId: number; created: boolean },
       navigateUtilityTab: async (tabId, url) => {
         await request('navigateUtilityTab', { tabId, url })
       },
-      pageScript:
-        servesPageScript && transport.subscribeEvents
-          ? createNativePrimitives({ transport, createRequestId: options.createRequestId, manifest }).pageScript
-          : null,
+      pageScript: servesPageScript && transport.subscribeEvents ? primitives.pageScript : null,
+      openWindow: servesWebWindow
+        ? async url => {
+            await primitives.webWindow.open(url)
+          }
+        : null,
     }
     cached = { transport, host }
     return host
