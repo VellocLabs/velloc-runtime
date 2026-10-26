@@ -7,6 +7,7 @@
  * written the same two ways.
  */
 import {
+  applyDiskOnlyActivity,
   applyDiskOnlyAiTitle,
   applyDiskOnlyMetadataPatch,
   SESSION_META_FILE_SCHEMA_VERSION,
@@ -23,6 +24,7 @@ export type CliConversationEntry = {
     getSessionMetadata(): Promise<BrowserSessionMetadata | undefined>
     updateSessionMetadata(patch: Partial<BrowserSessionMetadata>): Promise<unknown>
     storeAutoTitle(aiTitle: string): Promise<unknown>
+    storeActivity(at: number): Promise<unknown>
   }
   templateType?: string
   projectRoot?: string
@@ -108,6 +110,18 @@ export function createCliConversationStore(deps: CliConversationStoreDeps): CliC
         if (!storage) return
         await deps.ensureRouting()
         if (!(await applyDiskOnlyAiTitle(storage, sessionId, title, (deps.now ?? Date.now)()))) return
+      }
+      await deps.refreshSummary(sessionId)
+    },
+    touch: async (sessionId, at) => {
+      const bound = deps.entry(sessionId)?.conversationStore
+      if (bound) {
+        await bound.storeActivity(at)
+      } else {
+        const storage = deps.storage()
+        if (!storage) return
+        await deps.ensureRouting()
+        if (!(await applyDiskOnlyActivity(storage, sessionId, at))) return
       }
       await deps.refreshSummary(sessionId)
     },

@@ -542,3 +542,21 @@ describe('terminal-state write under a locked meta store', () => {
     })
   })
 })
+
+describe('BrowserConversationStore activity time', () => {
+  it('storeActivity moves meta.json updatedAt forward, logs nothing, and never moves it back', async () => {
+    const backend = new TestBackend()
+    const store = makeStore(backend)
+    await store.saveTranscriptRows([userText('hello')])
+    const before = backend.metas.get(SID)?.updatedAt ?? 0
+    const logged = backend.entries.get(SID)?.length
+    await store.storeActivity(before + 5_000)
+    expect(backend.metas.get(SID)?.updatedAt).toBe(before + 5_000)
+    expect(backend.entries.get(SID)?.length).toBe(logged)
+    const writes = backend.metaWrites
+    await store.storeActivity(before + 1_000)
+    expect(backend.metas.get(SID)?.updatedAt).toBe(before + 5_000)
+    expect(backend.metaWrites).toBe(writes)
+  })
+})
+

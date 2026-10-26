@@ -879,6 +879,29 @@ export function applyDiskOnlyAiTitle(
   })
 }
 
+// Moves the activity time of a session that is not loaded forward to `at`.
+// Returns false when no sidecar exists or `at` is not later.
+export function applyDiskOnlyActivity(
+  backend: Pick<
+    BrowserConversationStorageBackend,
+    'readSessionMeta' | 'writeSessionMeta' | 'migrateLegacySessionMeta'
+  >,
+  sessionId: string,
+  at: number,
+): Promise<boolean> {
+  return serializeDiskOnlyMeta(sessionId, async () => {
+    const existing =
+      (await backend.readSessionMeta(sessionId)) ??
+      (await backend.migrateLegacySessionMeta?.(sessionId)) ??
+      null
+    if (!existing || at <= existing.updatedAt) {
+      return false
+    }
+    await backend.writeSessionMeta(sessionId, { ...existing, updatedAt: at })
+    return true
+  })
+}
+
 function forkCreationAndPin(
   source: BrowserSessionMetadata | undefined,
   now: number,
@@ -2785,6 +2808,14 @@ export class BrowserConversationStore implements ConversationStore {
         updatedAt: this.runtimeConfig.now(),
       })
     }
+    await this.persistSessionMeta()
+  }
+
+  /** Moves the session's activity time forward to `at`; an earlier time changes nothing. */
+  async storeActivity(at: number): Promise<void> {
+    await this.ensureLoaded()
+    if (at <= this.currentUpdatedAt) return
+    this.currentUpdatedAt = at
     await this.persistSessionMeta()
   }
 

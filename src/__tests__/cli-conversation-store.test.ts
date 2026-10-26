@@ -98,6 +98,7 @@ describe('CLI conversation store', () => {
             metadata = { ...metadata, ...patch }
           },
           storeAutoTitle: async () => {},
+          storeActivity: async () => {},
         },
       },
     })
@@ -116,6 +117,7 @@ describe('CLI conversation store', () => {
         metadata = { ...metadata, ...patch }
       },
       storeAutoTitle: async () => {},
+      storeActivity: async () => {},
     }
     const pending = r.store.record('s1', { cli: 'codex', id: CONVERSATION })
     entry.conversationStore = bindDuringWrite
@@ -175,11 +177,44 @@ describe('CLI conversation store', () => {
           storeAutoTitle: async title => {
             titles.push(title)
           },
+          storeActivity: async () => {},
         },
       },
     })
     await bound.store.retitle?.('s1', 'Review the diff')
     expect(titles).toEqual(['Review the diff'])
+    expect(bound.calls).toEqual(['summary s1'])
+  })
+
+  it('touch moves the activity time of a stored session forward only, and refreshes the row', async () => {
+    const r = rig({ meta: { s1: { ...existing({ templateType: 'cli-codex' }), updatedAt: 100 } } })
+    await r.store.touch?.('s1', 50)
+    expect(r.meta.s1?.updatedAt).toBe(100)
+    expect(r.calls).toEqual(['route'])
+    await r.store.touch?.('s1', 200)
+    expect(r.meta.s1).toMatchObject({ updatedAt: 200, customTitle: 'Mine', metadata: { templateType: 'cli-codex' } })
+    expect(r.calls).toEqual(['route', 'route', 'write s1', 'summary s1'])
+  })
+
+  it('touch writes nothing for a session with no meta.json, and goes through a bound store', async () => {
+    const r = rig()
+    await r.store.touch?.('s1', 200)
+    expect(r.calls).toEqual(['route'])
+    const times: number[] = []
+    const bound = rig({
+      entry: {
+        conversationStore: {
+          getSessionMetadata: async () => ({}),
+          updateSessionMetadata: async () => {},
+          storeAutoTitle: async () => {},
+          storeActivity: async at => {
+            times.push(at)
+          },
+        },
+      },
+    })
+    await bound.store.touch?.('s1', 200)
+    expect(times).toEqual([200])
     expect(bound.calls).toEqual(['summary s1'])
   })
 })

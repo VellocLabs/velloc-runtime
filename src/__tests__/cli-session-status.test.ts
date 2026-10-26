@@ -5,7 +5,7 @@
  * idle.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CliBusyTracker, cliTitleGlyph } from '../terminal/cliTitles'
+import { CliActivityClock, CliBusyTracker, cliTitleGlyph } from '../terminal/cliTitles'
 import { TerminalService, type CliConversationRecord, type TerminalServiceEvent } from '../terminal/TerminalService'
 import { SessionFeedPublisher, type FeedSessionView, type SessionFeedHost } from '../browser/worker/SessionFeedPublisher'
 import { TaskRegistry } from '../browser/worker/TaskRegistry'
@@ -129,6 +129,74 @@ describe('TerminalService reporting a CLI at work', () => {
     r.exit(r.spawned[0]!, 0)
     await settle()
     expect(r.service.cliBusy('c1')).toBe(false)
+  })
+})
+
+describe('a working CLI as session activity', () => {
+  it('touches when work starts, every interval while it lasts, and when it stops', () => {
+    vi.useFakeTimers()
+    const touched: string[] = []
+    const clock = new CliActivityClock(sessionId => touched.push(sessionId), 1_000)
+    clock.busy('c1', true)
+    expect(touched).toEqual(['c1'])
+    clock.busy('c1', true)
+    vi.advanceTimersByTime(2_500)
+    expect(touched).toEqual(['c1', 'c1', 'c1'])
+    clock.busy('c1', false)
+    clock.busy('c1', false)
+    vi.advanceTimersByTime(5_000)
+    expect(touched).toEqual(['c1', 'c1', 'c1', 'c1'])
+    clock.busy('c2', true)
+    clock.dispose()
+    vi.advanceTimersByTime(5_000)
+    expect(touched).toEqual(['c1', 'c1', 'c1', 'c1', 'c2'])
+  })
+
+  it('the terminal service moves a CLI session forward while its CLI works, not a shell session', async () => {
+    const fake = fakePtyHost()
+    const touches: Array<[string, number]> = []
+    let clock = 1_000
+    const service = new TerminalService({
+      host: () => fake.host(),
+      createRequestId: () => `r-${clock}`,
+      sessionCwd: () => '/proj',
+      coalesceWindowMs: 1,
+      cliBusyHoldMs: 30,
+      cliActivityIntervalMs: 20,
+      now: () => clock,
+      probeClis: async () => ['codex'],
+      cliConversations: {
+        read: async () => undefined,
+        record: async () => {},
+        touch: async (sessionId, at) => {
+          touches.push([sessionId, at])
+        },
+      },
+    })
+    service.refreshHost()
+    await settle()
+    await service.create({ sessionId: 'c1', cli: { id: 'codex', start: 'new' }, cols: 80, rows: 24 })
+    await service.create({ sessionId: 's1', cols: 80, rows: 24 })
+    await settle()
+    fake.output(fake.spawned[1]!, ']2;◐ npm]2;◑ npm')
+    fake.output(fake.spawned[0]!, ']0;✳ Review')
+    fake.output(fake.spawned[0]!, ']0;◐ Review')
+    await settle()
+    expect(touches).toEqual([['c1', 1_000]])
+    clock = 2_000
+    fake.output(fake.spawned[0]!, ']0;◑ Review')
+    await new Promise(resolve => setTimeout(resolve, 25))
+    expect(touches.length).toBeGreaterThanOrEqual(2)
+    expect(touches.at(-1)).toEqual(['c1', 2_000])
+    clock = 3_000
+    fake.exit(fake.spawned[0]!, 0)
+    await settle()
+    expect(touches.at(-1)).toEqual(['c1', 3_000])
+    expect(touches.every(([sessionId]) => sessionId === 'c1')).toBe(true)
+    const count = touches.length
+    await new Promise(resolve => setTimeout(resolve, 60))
+    expect(touches.length).toBe(count)
+    service.dispose()
   })
 })
 

@@ -50,7 +50,7 @@ import {
   type TerminalShellId,
 } from './shells'
 import { TitleSequenceScanner } from './titleScanner'
-import { CliBusyTracker, CliTitleFollower } from './cliTitles'
+import { CliActivityClock, CliBusyTracker, CliTitleFollower } from './cliTitles'
 import { createBridgeCliLogEraser, type CliLogEraser } from './cliLogErase'
 import { CliLogFollower, createBridgeCliLogReader, type CliLogReader } from './cliLogs'
 import {
@@ -84,6 +84,8 @@ export type TerminalServiceDeps = {
   cliTitleSettleMs?: number
   /** How long a CLI counts as working after its title glyph last changed; default `CLI_BUSY_HOLD_MS`. */
   cliBusyHoldMs?: number
+  /** How often a working CLI's session records activity; default `CLI_ACTIVITY_INTERVAL_MS`. */
+  cliActivityIntervalMs?: number
   /** Reads the CLIs' own conversation logs; default over the host's `fs` bridge. */
   cliLogs?: CliLogReader
   /** Removes a deleted CLI session's conversation from its CLI's logs; default over the host's `fs` bridge. */
@@ -107,6 +109,8 @@ export type CliConversationStore = {
   record(sessionId: string, record: CliConversationRecord): Promise<void>
   /** Sets the session's automatic title from its CLI's terminal title; without it titles are not followed. */
   retitle?(sessionId: string, title: string): Promise<void>
+  /** Moves the session's activity time forward to `at`; without it a working CLI does not move it. */
+  touch?(sessionId: string, at: number): Promise<void>
 }
 
 export type TerminalServiceEvent =
@@ -195,6 +199,7 @@ export class TerminalService {
   private disposed = false
   private readonly cliTitles: CliTitleFollower | null
   private readonly cliWork: CliBusyTracker
+  private readonly cliActivity: CliActivityClock | null
   private readonly cliLogs: CliLogFollower | null
 
   constructor(private readonly deps: TerminalServiceDeps) {
@@ -203,7 +208,14 @@ export class TerminalService {
     this.cliTitles = retitle
       ? new CliTitleFollower((sessionId, title) => retitle(sessionId, title), deps.cliTitleSettleMs)
       : null
+    const touch = store?.touch
+    this.cliActivity = touch
+      ? new CliActivityClock(sessionId => {
+          void touch(sessionId, (deps.now ?? Date.now)()).catch(() => undefined)
+        }, deps.cliActivityIntervalMs)
+      : null
     this.cliWork = new CliBusyTracker((sessionId, busy) => {
+      this.cliActivity?.busy(sessionId, busy)
       this.emit({ kind: 'cliBusy', sessionId, busy })
       if (!busy) this.cliLogs?.poke(sessionId)
     }, deps.cliBusyHoldMs)
@@ -449,6 +461,7 @@ export class TerminalService {
     this.probeToken += 1
     this.cliTitles?.dispose()
     this.cliWork.dispose()
+    this.cliActivity?.dispose()
     this.cliLogs?.dispose()
     for (const record of Array.from(this.records.values())) this.forget(record)
     this.listeners.clear()

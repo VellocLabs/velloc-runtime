@@ -18,6 +18,8 @@ const EXECUTABLE_SUFFIX = /\.(exe|cmd|bat|ps1)$/i
 
 /** How long after the glyph last changed the CLI still counts as working. */
 export const CLI_BUSY_HOLD_MS = 2_000
+/** How often a working CLI's session records activity. */
+export const CLI_ACTIVITY_INTERVAL_MS = 60_000
 
 /** The status glyph ahead of a terminal title's text; '' when there is none. */
 export function cliTitleGlyph(raw: string): string {
@@ -149,5 +151,47 @@ export class CliBusyTracker {
     for (const handle of this.idleTimers.values()) this.timers.clearTimeout(handle)
     this.idleTimers.clear()
     this.lastGlyph.clear()
+  }
+}
+
+/**
+ * A working CLI is its session's activity: `touch` hears a session when its
+ * CLI starts working, every `intervalMs` while it works, and when it stops.
+ */
+export class CliActivityClock {
+  private readonly ticking = new Map<string, unknown>()
+
+  constructor(
+    private readonly touch: (sessionId: string) => void,
+    private readonly intervalMs = CLI_ACTIVITY_INTERVAL_MS,
+    private readonly timers: CliTitleTimers = DEFAULT_TIMERS,
+  ) {}
+
+  /** `sessionId`'s CLI started (`true`) or stopped (`false`) working. */
+  busy(sessionId: string, busy: boolean): void {
+    const ticking = this.ticking.has(sessionId)
+    if (busy === ticking) return
+    if (busy) {
+      this.schedule(sessionId)
+    } else {
+      this.timers.clearTimeout(this.ticking.get(sessionId))
+      this.ticking.delete(sessionId)
+    }
+    this.touch(sessionId)
+  }
+
+  dispose(): void {
+    for (const handle of this.ticking.values()) this.timers.clearTimeout(handle)
+    this.ticking.clear()
+  }
+
+  private schedule(sessionId: string): void {
+    this.ticking.set(
+      sessionId,
+      this.timers.setTimeout(() => {
+        this.schedule(sessionId)
+        this.touch(sessionId)
+      }, this.intervalMs),
+    )
   }
 }
