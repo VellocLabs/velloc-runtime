@@ -539,10 +539,14 @@ describe('CustomizeScreen — the marketplaces\' start page', () => {
     expect(view.getAllByTestId('customize-market-installed')).toHaveLength(2)
   })
 
-  it('a section shows ten cards and Show all, which lists every plugin and returns to the start page', async () => {
+  it('a section shows nine cards in at most three columns, and Show all lists every plugin and returns to the start page', async () => {
     const plugins = Array.from({ length: 12 }, (_, i) => ({ name: `p${String(i).padStart(2, '0')}`, installed: false }))
     const { view } = await opened({ manifests: { 'team-tools': { plugins } } })
-    await waitFor(() => expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(10))
+    await waitFor(() => expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(9))
+    const grid = view.getByTestId('customize-market-plugins').className
+    expect(grid).toContain('grid-cols-3')
+    expect(grid).not.toMatch(/grid-cols-([4-9]|\[)/)
+    expect(view.getByTestId('customize-browse').firstElementChild!.className).toContain('max-w-[64rem]')
     const showAll = view.getByTestId('customize-market-show-all')
     expect(showAll.textContent).toContain(EN_MESSAGES['customize.browse.showAll'].replace('{count}', '12'))
 
@@ -553,14 +557,37 @@ describe('CustomizeScreen — the marketplaces\' start page', () => {
 
     fireEvent.click(view.getByTestId('customize-market-all-back'))
     expect(view.getByTestId('customize-browse')).not.toBeNull()
-    expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(10)
+    expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(9)
   })
 
-  it('ten or fewer plugins offer no Show all', async () => {
-    const plugins = Array.from({ length: 10 }, (_, i) => ({ name: `p${i}`, installed: false }))
+  it('nine or fewer plugins offer no Show all', async () => {
+    const plugins = Array.from({ length: 9 }, (_, i) => ({ name: `p${i}`, installed: false }))
     const { view } = await opened({ manifests: { 'team-tools': { plugins } } })
-    await waitFor(() => expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(10))
+    await waitFor(() => expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(9))
     expect(view.queryByTestId('customize-market-show-all')).toBeNull()
+  })
+
+  it('a card shows its GitHub publisher\'s avatar, its category, and a tinted initial when it names no GitHub account', async () => {
+    const { view } = await opened({
+      manifests: {
+        'team-tools': {
+          plugins: [
+            {
+              name: 'lint',
+              category: 'quality',
+              source: { source: 'url', url: 'https://github.com/acme-labs/lint.git' },
+              installed: false,
+            },
+            { name: 'docs', source: './plugins/docs', installed: false },
+          ],
+        },
+      },
+    })
+    const rows = await view.findAllByTestId('customize-market-plugin')
+    expect(rows[0]!.querySelector('img')!.getAttribute('src')).toBe('https://github.com/acme-labs.png?size=96')
+    expect(rows[0]!.querySelector('[data-testid="customize-market-category"]')!.textContent).toBe('quality')
+    expect(rows[1]!.querySelector('img')).toBeNull()
+    expect(rows[1]!.querySelector('[data-testid="item-avatar-initial"]')!.textContent).toBe('d')
   })
 
   it('a fetch under way shows Checking for updates on its section, gone once it ends', async () => {
