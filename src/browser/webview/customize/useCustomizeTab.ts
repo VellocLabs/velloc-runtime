@@ -34,8 +34,8 @@ const ignore = () => {
  * asked to show this window's `customize` tab (opened, or reused where it
  * is), and `customizePage/status` moves the control when the page's own
  * navigation changes its path. A pick on the control navigates the tab.
- * When the host port comes back after `available: false`, the tab is shown
- * again without a retry.
+ * It is shown again when the host port returns and when the page turns
+ * visible (a window reopened from the tray has none of the old tabs).
  */
 export function useCustomizeTab(
   runtimeConnection: (() => Promise<RuntimeConnection>) | undefined,
@@ -58,6 +58,10 @@ export function useCustomizeTab(
     let live = true
     let unsubscribe: (() => void) | null = null
     let missing = false
+    let connected: RuntimeConnection | null = null
+    const onVisibility = () => {
+      if (live && connected && document.visibilityState === 'visible') void show(connected)
+    }
     const show = (conn: RuntimeConnection) =>
       conn
         .request(`${CUSTOMIZE_PAGE_CAPABILITY}.show` as RouteKey, { url: customizeUrl(segmentRef.current) })
@@ -72,6 +76,7 @@ export function useCustomizeTab(
     void runtimeConnection()
       .then(conn => {
         if (!live) return
+        connected = conn
         unsubscribe = conn.subscribe<unknown>(CUSTOMIZE_PAGE_STATUS_TOPIC as TopicId, event => {
           const state = readCustomizePageState(event.payload)
           if (!state || !live) return
@@ -88,8 +93,10 @@ export function useCustomizeTab(
       .catch(() => {
         if (live) setShowFailed(true)
       })
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       live = false
+      document.removeEventListener('visibilitychange', onVisibility)
       unsubscribe?.()
       setTabId(null)
       setHostMissing(false)

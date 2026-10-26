@@ -12,6 +12,7 @@ import { act, cleanup, fireEvent, render, renderHook, waitFor } from '@testing-l
 import type { RuntimeConnection } from '../browser/runtimeClient/RuntimeConnection'
 import { useCustomizeTab } from '../browser/webview/customize/useCustomizeTab'
 import { CustomizeScreen } from '../browser/webview/customize/CustomizeScreen'
+import { customizeUrl } from '../browser/webview/customize/customizeRoutes'
 import { EMPTY_INVENTORY, buildInstalledRows } from '../browser/webview/customize/installedRows'
 import { en as EN_MESSAGES } from '../browser/webview/i18n/messages/en'
 
@@ -115,6 +116,45 @@ describe('useCustomizeTab — the host port', () => {
     await waitFor(() => expect(fake.subscribed()).toBe(true))
     act(() => fake.status({ available: true }))
     act(() => fake.status({ available: true, tabId: 7 }))
+    await act(async () => {})
+    expect(fake.shows).toHaveLength(1)
+  })
+})
+
+/** Flips `document.visibilityState` and fires `visibilitychange`, as a parked page does. */
+function setVisibility(state: 'visible' | 'hidden') {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state })
+  document.dispatchEvent(new Event('visibilitychange'))
+}
+
+describe('useCustomizeTab — the page turning visible again', () => {
+  afterEach(() => setVisibility('visible'))
+
+  it('a page reopened from the tray shows the tab again, at the segment it was on', async () => {
+    const fake = fakeConnection(['ok'])
+    renderHook(() => useCustomizeTab(fake.getConnection, true))
+    await waitFor(() => expect(fake.subscribed()).toBe(true))
+    act(() => fake.status({ available: true, tabId: 7, path: '/customize/plugins' }))
+    expect(fake.shows).toHaveLength(1)
+
+    act(() => setVisibility('hidden'))
+    await act(async () => {})
+    expect(fake.shows).toHaveLength(1)
+
+    act(() => setVisibility('visible'))
+    await waitFor(() => expect(fake.shows).toHaveLength(2))
+    expect(fake.shows[1]).toEqual({ url: customizeUrl('plugins') })
+  })
+
+  it('a closed screen does not show the tab when the page turns visible', async () => {
+    const fake = fakeConnection(['ok'])
+    const { rerender } = renderHook(({ open }) => useCustomizeTab(fake.getConnection, open), {
+      initialProps: { open: true },
+    })
+    await waitFor(() => expect(fake.shows).toHaveLength(1))
+    rerender({ open: false })
+    act(() => setVisibility('hidden'))
+    act(() => setVisibility('visible'))
     await act(async () => {})
     expect(fake.shows).toHaveLength(1)
   })
