@@ -14,7 +14,7 @@ import {
   type DirectoryPluginSpec,
 } from '../pluginHost/directoryInstall'
 import { DIRECTORY_CATALOG_KEY, loadDirectoryPlugins } from '../pluginHost/directoryListings'
-import { setupPlugin } from '../pluginHost/installSteps'
+import { setupPlugin, teardownPlugin } from '../pluginHost/installSteps'
 import { forgetRegistryFile, loadInstalledPlugins } from '../pluginHost/installedRegistry'
 import { marketplaceNameProblem } from '../pluginHost/marketplaceNaming'
 import { addMarketplace, forgetCatalogs } from '../pluginHost/marketplaces'
@@ -185,6 +185,16 @@ describe('installFromDirectory', () => {
     await expect(
       installFromDirectory(ctx, r.fs, spec({ repositoryUrl: 'https://github.com/other/tools' }), { fetchImpl: r.fetchImpl, nowIso: NOW }),
     ).rejects.toThrow()
+  })
+
+  it('keeps the record only for a plugin that is installed', async () => {
+    const r = await rig()
+    await expect(installFromDirectory(ctx, r.fs, spec({ commit: 'c3c3c3c' }), { fetchImpl: r.fetchImpl, nowIso: NOW })).rejects.toThrow()
+    expect(await loadDirectoryPlugins(ctx, r.fs)).toEqual({})
+
+    await installFromDirectory(ctx, r.fs, spec(), { fetchImpl: r.fetchImpl, nowIso: NOW })
+    await teardownPlugin(ctx, ctx, r.fs, 'lint@plugin-directory')
+    expect(await loadDirectoryPlugins(ctx, r.fs)).toEqual({})
   })
 
   it('setupPlugin reinstalls a directory install from its stored record; one never installed is refused', async () => {

@@ -54,6 +54,10 @@ export type CustomizePageHost = {
 export type CustomizePageErrorCode = 'host_unavailable' | 'not_shown' | 'no_item'
 
 const MARKETPLACE_DESCRIPTION_TTL_MS = 10 * 60_000
+/** The same address opens in a window at most once in this long. */
+const OPEN_ELSEWHERE_REPEAT_MS = 5_000
+/** Landings on another site counted together when sending the tab back. */
+const BOUNCE_WINDOW_MS = 10_000
 
 const intentKey = (intent: DirectoryIntent) =>
   intent.kind === 'plugin' ? `plugin:${intent.manifestName}` : `connector:${intent.slug}`
@@ -106,6 +110,10 @@ export class CustomizePageService {
   /** An add asked for an item the page is being taken to; asked again once it shows. */
   private pendingAddKey: string | null = null
   private readonly descriptions = new Map<string, { at: number; value: Promise<CustomizeMarketplaceDescription> }>()
+  /** When each address last opened in a window. */
+  private readonly openedAt = new Map<string, number>()
+  /** When the tab last landed on another site, within `BOUNCE_WINDOW_MS`. */
+  private bounces: number[] = []
   private nextItemId = 1
   private queue: Promise<unknown> = Promise.resolve()
   private readonly listeners = new Set<() => void>()
@@ -310,6 +318,10 @@ export class CustomizePageService {
     if (!isWebUrl(url)) return
     const host = this.host
     if (!host) return
+    const now = Date.now()
+    for (const [address, at] of this.openedAt) if (now - at >= OPEN_ELSEWHERE_REPEAT_MS) this.openedAt.delete(address)
+    if (this.openedAt.has(url.href)) return
+    this.openedAt.set(url.href, now)
     const tabId = this.tabId
     const opened = host.openWindow
       ? host.openWindow(url.href)
@@ -321,6 +333,9 @@ export class CustomizePageService {
    * Security: a document of another origin that landed in the tab anyway
    * (a redirect, a navigation that could not be stopped) opens in a window
    * of its own, and the tab goes back to the last page it showed on its site.
+   * A page that sends it off-site again is left for the directory's start
+   * page once; a third landing within `BOUNCE_WINDOW_MS` leaves the tab where
+   * it is, so a redirecting page cannot open windows without end.
    */
   private leaveForeignPage(href: string): boolean {
     const origin = this.pageOrigin
@@ -332,8 +347,14 @@ export class CustomizePageService {
     }
     if (!origin || url.origin === origin) return false
     this.openElsewhere(href)
-    const back = this.pageHref ?? origin + DIRECTORY_HOME_PATH
-    this.navigate(back).catch(() => undefined)
+    const now = Date.now()
+    this.bounces = [...this.bounces.filter(at => now - at < BOUNCE_WINDOW_MS), now]
+    const home = origin + DIRECTORY_HOME_PATH
+    const back =
+      this.bounces.length === 1 ? (this.pageHref ?? home)
+      : this.bounces.length === 2 && this.pageHref !== null && this.pageHref !== home ? home
+      : null
+    if (back) this.navigate(back).catch(() => undefined)
     return true
   }
 
@@ -432,6 +453,7 @@ export class CustomizePageService {
     this.path = undefined
     this.canGoBack = undefined
     this.pageHref = null
+    this.bounces = []
     this.pendingAddKey = null
     this.pageItem = undefined
     this.pageItemKey = null

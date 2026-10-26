@@ -102,10 +102,11 @@ export async function installFromDirectory(
   if (heldCode && !sameCode(heldCode, code)) {
     throw new Error(`[installFromDirectory] another plugin from the directory is already installed as '${name}'`)
   }
+  const outcome = await placePlugin(ctx, fs, DIRECTORY_CATALOG_KEY, name, listing, fetched, { nowIso: options.nowIso })
   await updateDirectoryPlugins(ctx, fs, plugins => {
     plugins[name] = { listing, manifestName: spec.manifestName.toLowerCase(), apiOrigin }
   })
-  return placePlugin(ctx, fs, DIRECTORY_CATALOG_KEY, name, listing, fetched, { nowIso: options.nowIso })
+  return outcome
 }
 
 type ListedRecord = {

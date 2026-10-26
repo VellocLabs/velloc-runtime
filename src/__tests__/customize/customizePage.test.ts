@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { CapabilityRegistry } from '../../browser/runtimeHub/CapabilityRegistry'
 import { TopicBroker } from '../../browser/runtimeHub/TopicBroker'
@@ -353,6 +353,50 @@ describe('customizePage service', () => {
     ])
     expect(r.events.length).toBe(before)
     expect(r.service.getState().path).toBe('/directory/slack')
+  })
+
+  it('a page that keeps sending the tab off-site opens one window and stops sending it back', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+    try {
+      const fake = fakeHost()
+      const r = rig(() => fake.host)
+      await r.call('show', { url: PAGE })
+      fake.report(1, { type: 'route', path: '/directory/moved', href: 'http://127.0.0.1:4100/directory/moved' })
+      const start = fake.calls.length
+      const bounce = async () => {
+        fake.report(1, { type: 'route', path: '/landing', href: 'https://partner.example/landing' })
+        await settle()
+      }
+      for (let i = 0; i < 5; i++) await bounce()
+      expect(fake.calls.slice(start)).toEqual([
+        'window https://partner.example/landing',
+        'navigate 7 http://127.0.0.1:4100/directory/moved',
+        'navigate 7 http://127.0.0.1:4100/directory',
+      ])
+
+      clock.mockReturnValue(1_000_000 + 11_000)
+      await bounce()
+      expect(fake.calls.slice(-2)).toEqual([
+        'window https://partner.example/landing',
+        'navigate 7 http://127.0.0.1:4100/directory/moved',
+      ])
+    } finally {
+      clock.mockRestore()
+    }
+  })
+
+  it('the same address asked for twice in a row opens one window', async () => {
+    const fake = fakeHost()
+    const r = rig(() => fake.host)
+    await r.call('show', { url: PAGE })
+    fake.report(1, { type: 'external', url: 'https://docs.example/start' })
+    fake.report(1, { type: 'external', url: 'https://docs.example/start' })
+    fake.report(1, { type: 'external', url: 'https://docs.example/other' })
+    await settle()
+    expect(fake.calls.filter(c => c.startsWith('window'))).toEqual([
+      'window https://docs.example/start',
+      'window https://docs.example/other',
+    ])
   })
 
   it('dispose releases the channel listeners', async () => {

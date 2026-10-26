@@ -14,13 +14,13 @@ import {
   dropPluginRecord,
 } from './installedRegistry'
 import { codeSourceOf } from './codeSource'
-import { DIRECTORY_CATALOG_KEY, readDirectoryListing } from './directoryListings'
+import { DIRECTORY_CATALOG_KEY, readDirectoryListing, updateDirectoryPlugins } from './directoryListings'
 import {
   findCatalogPlugin,
   fetchCatalog,
   loadKnownMarketplaces,
 } from './marketplaces'
-import { joinPluginRef } from './pluginRef'
+import { joinPluginRef, splitPluginRef } from './pluginRef'
 import {
   getMarketplaceContentDir,
   getPluginVersionCacheDir,
@@ -378,6 +378,12 @@ export async function teardownPlugin(
     return { registryHadEntry: false }
   }
   await dropPluginRecord(pluginCtx, fs, identifier)
+  const { name, marketplace } = splitPluginRef(identifier)
+  if (marketplace === DIRECTORY_CATALOG_KEY) {
+    await updateDirectoryPlugins(pluginCtx, fs, plugins => {
+      delete plugins[name]
+    })
+  }
   if (clearEnabledOverride) {
     await applyEnabledPluginsPatch(settingsCtx, fs, { [identifier]: null })
   }

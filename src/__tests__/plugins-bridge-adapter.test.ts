@@ -21,6 +21,7 @@ import { __setPluginBlocklistForTests } from '../pluginHost/blocklist'
 import { registerBuiltinMod, unregisterBuiltinMod } from '../mods/builtinMods'
 import { wipeSettingsMemos } from '../settings/settingsStore'
 import { MARKETPLACE_MANIFEST_FILE_NAME, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
+import { loadDirectoryPlugins } from '../pluginHost/directoryListings'
 
 // --- shared fs + tar fixtures (parallel to other plugins-install tests) --
 
@@ -932,5 +933,6 @@ describe('pluginsHandlers.installFromDirectory', () => {
       restore()
     }
     expect((await pluginsHandlers.listInstalled(ctx)).plugins).toEqual([])
+    expect(await loadDirectoryPlugins({ homeDir: ctx.homeDir }, fs)).toEqual({})
   })
 })
