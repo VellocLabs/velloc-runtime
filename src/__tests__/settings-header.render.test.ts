@@ -13,8 +13,9 @@ import {
 } from '../browser/webview/topbar/useWindowDragRegions'
 
 /**
- * Settings replaces the topbar (F-18): its header closes settings from the
- * back arrow or the title, and is the window's drag surface.
+ * Settings replaces the topbar (F-18): its header closes settings from one
+ * back control holding the arrow and the title, and is the window's drag
+ * surface.
  */
 function makeTransport(): BrowserBridgeTransport {
   return {
@@ -47,29 +48,32 @@ afterEach(() => {
 })
 
 describe('settings header', () => {
-  it('closes from the back arrow and from the title', () => {
+  it('closes from one back control that holds the arrow and the title', () => {
     const { onClose } = renderSettings()
-    fireEvent.click(screen.getByTestId('settings-back'))
+    const back = screen.getByTestId('settings-back')
+    expect(back.tagName).toBe('BUTTON')
+    expect(back.contains(screen.getByTestId('settings-title'))).toBe(true)
+    expect(screen.getByTestId('settings-header').querySelectorAll('button')).toHaveLength(1)
+    fireEvent.click(back)
     expect(onClose).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByTestId('settings-title'))
     expect(onClose).toHaveBeenCalledTimes(2)
   })
 
-  it('drags the window from the header, except over the two close controls', () => {
+  it('drags the window from the header, except over the back control', () => {
     renderSettings()
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
       this: Element,
     ) {
       const id = this.getAttribute('data-testid')
-      const x = id === 'settings-back' ? 12 : id === 'settings-title' ? 48 : 0
-      const width = id === 'settings-header' ? 800 : 30
+      const x = id === 'settings-back' ? 12 : 0
+      const width = id === 'settings-header' ? 800 : 90
       return { left: x, top: 0, width, height: 56 } as DOMRect
     })
     const regions = computeRegions(screen.getByTestId('settings-header'))
     expect(regions).toEqual([
       { x: 0, y: 0, width: 800, height: 56, draggable: true },
-      { x: 12, y: 0, width: 30, height: 56, draggable: false },
-      { x: 48, y: 0, width: 30, height: 56, draggable: false },
+      { x: 12, y: 0, width: 90, height: 56, draggable: false },
     ])
   })
 

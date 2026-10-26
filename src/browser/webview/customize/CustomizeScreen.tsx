@@ -118,18 +118,19 @@ export function CustomizeScreen({
         <div className="flex min-w-0 items-center gap-2">
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="sm"
             data-testid="customize-back"
             data-app-region="no-drag"
             aria-label={t('customize.back')}
             title={t('customize.back')}
             onClick={onClose}
+            className="min-w-0 font-semibold text-base text-foreground"
           >
             <ArrowLeftIcon className="size-4" />
+            <span data-testid="customize-title" className="truncate">
+              {t(onDirectory ? 'customize.directory.title' : 'customize.browse.title')}
+            </span>
           </Button>
-          <span data-testid="customize-title" className="truncate px-1 font-semibold text-base text-foreground">
-            {t(onDirectory ? 'customize.directory.title' : 'customize.browse.title')}
-          </span>
         </div>
         <div data-testid="customize-center" className="flex min-w-0 max-w-[min(44rem,60vw)] items-center gap-3">
           {showDirectory ? (

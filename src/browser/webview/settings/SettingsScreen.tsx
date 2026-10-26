@@ -216,7 +216,7 @@ export function SettingsScreen({
     >
       {/* Settings replaces the topbar: this header is the window's drag
           surface, and on the desktop it reserves the OS caption strip. The
-          back arrow and the title both close settings. */}
+          back arrow and the title form one control that closes settings. */}
       <header
         ref={headerRef}
         data-testid="settings-header"
@@ -224,25 +224,19 @@ export function SettingsScreen({
       >
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="sm"
           data-testid="settings-back"
           data-app-region="no-drag"
           aria-label={t("settings.close")}
           title={t("settings.close")}
           onClick={onClose}
+          className="min-w-0 font-semibold text-base text-foreground"
         >
           <ArrowLeftIcon className="size-4" />
+          <span data-testid="settings-title" className="truncate">
+            {t("settings.title")}
+          </span>
         </Button>
-        <button
-          type="button"
-          data-testid="settings-title"
-          data-app-region="no-drag"
-          title={t("settings.close")}
-          onClick={onClose}
-          className="rounded-md px-1 font-semibold text-base text-foreground hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {t("settings.title")}
-        </button>
         {remoteClient ? null : (
           <div
             aria-hidden

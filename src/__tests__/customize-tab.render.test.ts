@@ -246,7 +246,11 @@ function fakeBridge(
 
 function screen(
   getConnection: () => Promise<RuntimeConnection>,
-  options: { bridge?: NexusSettingsBridge; onOpenSettings?: (section: string) => void } = {},
+  options: {
+    bridge?: NexusSettingsBridge
+    onOpenSettings?: (section: string) => void
+    onClose?: () => void
+  } = {},
 ) {
   return render(
     createElement(
@@ -255,12 +259,26 @@ function screen(
       createElement(CustomizeScreen, {
         runtimeConnection: getConnection,
         shell: null,
-        onClose: () => {},
+        onClose: options.onClose ?? (() => {}),
         onOpenSettings: options.onOpenSettings ?? (() => {}),
       }),
     ),
   )
 }
+
+describe('CustomizeScreen — the header', () => {
+  it('closes from one back control that holds the arrow and the title', () => {
+    let closed = 0
+    const view = screen(fakeConnection(['ok']).getConnection, { onClose: () => { closed++ } })
+    const back = view.getByTestId('customize-back')
+    expect(back.tagName).toBe('BUTTON')
+    expect(back.contains(view.getByTestId('customize-title'))).toBe(true)
+    fireEvent.click(view.getByTestId('customize-title'))
+    expect(closed).toBe(1)
+    fireEvent.click(back)
+    expect(closed).toBe(2)
+  })
+})
 
 describe('CustomizeScreen — the unavailable state', () => {
   it('replaces the placeholder with a message and a retry, and the retry brings the placeholder back', async () => {
