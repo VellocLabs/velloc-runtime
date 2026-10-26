@@ -64,7 +64,7 @@ export type DirectoryItemDetails = DirectoryItemSummary & {
   pagePath?: string
 }
 
-export type DirectoryItemFailure = 'not_found' | 'lookup_failed' | 'install_failed'
+export type DirectoryItemFailure = 'not_found' | 'lookup_failed' | 'install_failed' | 'remove_failed'
 
 /**
  * Contract: the published state of the item the page shows. `resolving`
@@ -72,12 +72,15 @@ export type DirectoryItemFailure = 'not_found' | 'lookup_failed' | 'install_fail
  * already here (`alreadyInstalled`, with `installedAs`: the plugin
  * identifier or the MCP server id) or can be installed at all
  * (`installable`); `installing` → `installed` (with `installedAs`) or
- * `failed` after the person presses Add. A page on another item replaces it.
+ * `failed` after the person presses Add. An installed item goes `removing`
+ * on Uninstall, then is looked up again; a removal that fails keeps it
+ * installed with `failure: 'remove_failed'`. A page on another item
+ * replaces it.
  */
 export type DirectoryPageItem = {
   id: number
   kind: DirectoryItemKind
-  phase: 'resolving' | 'ready' | 'installing' | 'installed' | 'failed'
+  phase: 'resolving' | 'ready' | 'installing' | 'installed' | 'removing' | 'failed'
   details?: DirectoryItemDetails
   alreadyInstalled?: boolean
   installable?: boolean
@@ -119,6 +122,9 @@ export type DirectoryOfferDeps = {
   startSignIn?(url: string): void
   /** Whether a connector's server can be connected from here (F-10). */
   checkConnector?(url: string): Promise<'supported' | 'needs_registered_client' | 'unknown'>
+  /** Uninstalls the plugin `identifier` (`name@marketplace`). */
+  uninstallPlugin(identifier: string): Promise<void>
+  removeMcpServer(id: string): Promise<void>
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -509,6 +515,16 @@ export class DirectoryLookupError extends Error {
 }
 
 /** Installs `target`; resolves to what it is installed as (the plugin identifier or the MCP server id). */
+/** Removes what `installedAs` names: a plugin identifier, or a connector's MCP server id. */
+export async function removeDirectoryItem(
+  kind: DirectoryItemKind,
+  installedAs: string,
+  deps: DirectoryOfferDeps,
+): Promise<void> {
+  if (kind === 'plugin') await deps.uninstallPlugin(installedAs)
+  else await deps.removeMcpServer(installedAs)
+}
+
 export async function installDirectoryTarget(target: DirectoryInstallTarget, deps: DirectoryOfferDeps): Promise<string> {
   if (target.kind === 'plugin') return deps.installFromDirectory(target.spec)
   await deps.upsertMcpServer(target.id, target.config)

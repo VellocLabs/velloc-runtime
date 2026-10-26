@@ -110,6 +110,8 @@ function deps(
     installFromDirectory: async spec => `${spec.fallbackName}@plugin-directory`,
     listMcpServers: async () => ({}),
     upsertMcpServer: async () => {},
+    uninstallPlugin: async () => {},
+    removeMcpServer: async () => {},
   }
 }
 

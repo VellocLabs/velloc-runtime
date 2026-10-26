@@ -109,7 +109,10 @@ function rig(getHost: () => CustomizePageHost | null, offers?: DirectoryOfferDep
     { conn: conn(), send: evt => events.push((evt as unknown as { payload: CustomizePageState }).payload), bufferedBytes: () => 0 },
     CUSTOMIZE_PAGE_STATUS_TOPIC,
   )
-  const call = (act: 'show' | 'navigate' | 'back' | 'addPageItem' | 'describeMarketplace', payload: unknown) => {
+  const call = (
+    act: 'show' | 'navigate' | 'back' | 'addPageItem' | 'removePageItem' | 'describeMarketplace',
+    payload: unknown,
+  ) => {
     const entry = registry.resolve('customizePage', act)!
     expect(entry.spec.guard?.(payload, conn(), {} as never) ?? true).toBe(true)
     return entry.handle({ id: '1', route: { cap: 'customizePage', act }, payload, conn: conn() } as never, {} as never)
@@ -126,11 +129,12 @@ describe('customizePage protocol', () => {
       navigate: 'full',
       back: 'full',
       addPageItem: 'full',
+      removePageItem: 'full',
       describeMarketplace: 'full',
     })
     expect(CUSTOMIZE_PAGE_TOPIC_SCOPE).toBe('full')
     const { registry } = rig(() => null)
-    for (const act of ['show', 'navigate', 'back', 'addPageItem', 'describeMarketplace']) {
+    for (const act of ['show', 'navigate', 'back', 'addPageItem', 'removePageItem', 'describeMarketplace']) {
       expect(registry.resolve('customizePage', act)!.spec.scope).toBe('full')
     }
   })
@@ -414,10 +418,13 @@ function fakeOffers(options: {
   fail?: boolean
   servers?: Record<string, NexusMcpServerConfig>
   installFails?: boolean
+  removeFails?: boolean
   installed?: Array<{ identifier: string; codeSource?: { repo: string; path: string; sha?: string }; gitCommitSha?: string }>
   support?: 'supported' | 'needs_registered_client' | 'unknown' | 'never'
 } = {}) {
   const calls: string[] = []
+  const servers = { ...options.servers }
+  let installed = [...(options.installed ?? [])]
   const deps: DirectoryOfferDeps = {
     fetchJson: async url => {
       calls.push(`fetch ${url}`)
@@ -431,15 +438,26 @@ function fakeOffers(options: {
     listMarketplaceListings: async () => [
       { name: 'notion', source: { source: 'url', url: 'https://github.com/makenotion/notion-plugin.git' }, installed: false },
     ],
-    listInstalledPlugins: async () => options.installed ?? [],
+    listInstalledPlugins: async () => installed,
     installFromDirectory: async spec => {
       calls.push(`install ${spec.repositoryUrl}@${spec.commit}`)
       if (options.installFails) throw new Error('blocked')
       return `${spec.fallbackName}@plugin-directory`
     },
-    listMcpServers: async () => options.servers ?? {},
+    listMcpServers: async () => servers,
     upsertMcpServer: async (id, config) => {
       calls.push(`upsert ${id} ${config.url}`)
+      servers[id] = config
+    },
+    uninstallPlugin: async identifier => {
+      calls.push(`uninstall ${identifier}`)
+      if (options.removeFails) throw new Error('locked')
+      installed = installed.filter(p => p.identifier !== identifier)
+    },
+    removeMcpServer: async id => {
+      calls.push(`remove ${id}`)
+      if (options.removeFails) throw new Error('locked')
+      delete servers[id]
     },
     ...(options.support
       ? {
@@ -510,6 +528,56 @@ describe('customizePage service — the page item', () => {
     expect(o.calls.at(-1)).toBe('upsert slack https://mcp.slack.com/mcp')
     expect(itemOf(r)).toMatchObject({ phase: 'installed', installedAs: 'slack' })
     expect(r.events.map(e => e.pageItem?.phase)).toContain('installing')
+  })
+
+  it('Uninstall removes an installed connector and the item turns addable again', async () => {
+    const o = fakeOffers({
+      records: { [SLACK_FILTER]: [SLACK] },
+      servers: { chat: { transport: 'http', url: 'https://mcp.slack.com/mcp' } },
+    })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    await settle()
+    expect(itemOf(r)).toMatchObject({ phase: 'ready', alreadyInstalled: true, installedAs: 'chat' })
+    await expect(r.call('removePageItem', { id: 1 })).resolves.toEqual({ ok: true })
+    expect(o.calls).toContain('remove chat')
+    expect(r.events.map(e => e.pageItem?.phase)).toContain('removing')
+    expect(itemOf(r)).toMatchObject({ id: 1, phase: 'ready', alreadyInstalled: false, installable: true })
+    expect(itemOf(r)?.installedAs).toBeUndefined()
+    await r.call('addPageItem', { id: 1 })
+    expect(itemOf(r)).toMatchObject({ phase: 'installed', installedAs: 'slack' })
+  })
+
+  it('Uninstall removes a plugin just added by its identifier', async () => {
+    const o = fakeOffers({ records: { [NOTION_FILTER]: [NOTION] } })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: PLUGIN_PATH })
+    await settle()
+    await r.call('addPageItem', { id: 1 })
+    await r.call('removePageItem', { id: 1 })
+    expect(o.calls).toContain('uninstall notion-plugin@plugin-directory')
+    expect(itemOf(r)).toMatchObject({ phase: 'ready', alreadyInstalled: false })
+  })
+
+  it('a failed Uninstall keeps the item installed and says so; nothing installed is refused', async () => {
+    const o = fakeOffers({
+      records: { [SLACK_FILTER]: [SLACK] },
+      servers: { slack: { transport: 'http', url: 'https://mcp.slack.com/mcp' } },
+      removeFails: true,
+    })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    await settle()
+    await r.call('removePageItem', { id: 1 })
+    expect(itemOf(r)).toMatchObject({ phase: 'ready', alreadyInstalled: true, failure: 'remove_failed' })
+    await expect(r.call('removePageItem', { id: 2 })).rejects.toMatchObject({ code: 'conflict' })
+
+    const fresh = fakeOffers({ records: { [SLACK_FILTER]: [SLACK] } })
+    const other = await shown(fresh.deps)
+    other.fake.report(1, { type: 'route', path: '/directory/slack' })
+    await settle()
+    await expect(other.r.call('removePageItem', { id: 1 })).rejects.toMatchObject({ code: 'conflict' })
+    expect(fresh.calls.some(c => c.startsWith('remove '))).toBe(false)
   })
 
   it('Add installs a plugin page\'s reviewed commit straight from its repository', async () => {

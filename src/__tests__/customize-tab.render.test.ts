@@ -250,6 +250,8 @@ function screen(
     bridge?: NexusSettingsBridge
     onOpenSettings?: (section: string) => void
     onClose?: () => void
+    onOpenPluginSettings?: (name: string) => void
+    onOpenMcpServerSettings?: (id: string) => void
   } = {},
 ) {
   return render(
@@ -261,6 +263,8 @@ function screen(
         shell: null,
         onClose: options.onClose ?? (() => {}),
         onOpenSettings: options.onOpenSettings ?? (() => {}),
+        onOpenPluginSettings: options.onOpenPluginSettings,
+        onOpenMcpServerSettings: options.onOpenMcpServerSettings,
       }),
     ),
   )
@@ -403,10 +407,14 @@ describe('CustomizeScreen — the item the page shows', () => {
     expect(view.getByTestId('customize-item-add').textContent).toBe(EN_MESSAGES['customize.item.adding'])
   })
 
-  it('an installed item shows where it is installed and Manage opens its Settings page', async () => {
+  it('an installed item shows Installed with icon-only Manage and Uninstall; Manage reveals its Settings row', async () => {
     const fake = fakeConnection(['ok'])
     const opened: string[] = []
-    const view = screen(fake.getConnection, { onOpenSettings: section => opened.push(section) })
+    const view = screen(fake.getConnection, {
+      onOpenSettings: section => opened.push(section),
+      onOpenPluginSettings: name => opened.push(`plugin ${name}`),
+      onOpenMcpServerSettings: id => opened.push(`mcp ${id}`),
+    })
     await waitFor(() => expect(fake.subscribed()).toBe(true))
     act(() =>
       fake.status({
@@ -414,18 +422,44 @@ describe('CustomizeScreen — the item the page shows', () => {
         pageItem: { id: 5, kind: 'connector', phase: 'ready', details, alreadyInstalled: true, installable: true, installedAs: 'chat' },
       }),
     )
-    expect(view.getByTestId('customize-item-installed').textContent).toBe('Installed as chat')
+    expect(view.getByTestId('customize-item-installed').textContent).toBe(EN_MESSAGES['customize.item.installed'])
     expect(view.queryByTestId('customize-item-add')).toBeNull()
-    fireEvent.click(view.getByTestId('customize-item-manage'))
+    const manage = view.getByTestId('customize-item-manage')
+    const remove = view.getByTestId('customize-item-remove')
+    expect(manage.textContent).toBe('')
+    expect(remove.textContent).toBe('')
+    expect(manage.getAttribute('title')).toBe(EN_MESSAGES['customize.item.manage'])
+    expect(remove.getAttribute('title')).toBe(EN_MESSAGES['customize.item.uninstall'])
+    fireEvent.click(manage)
     act(() =>
       fake.status({
         available: true,
         pageItem: { id: 6, kind: 'plugin', phase: 'installed', details, installedAs: 'slack@market' },
       }),
     )
-    expect(view.getByTestId('customize-item-installed').textContent).toBe('Installed as slack@market')
     fireEvent.click(view.getByTestId('customize-item-manage'))
-    expect(opened).toEqual(['mcp', 'plugins'])
+    expect(opened).toEqual(['mcp chat', 'plugin slack'])
+    fireEvent.click(view.getByTestId('customize-item-remove'))
+    await waitFor(() => expect(fake.answered).toEqual(['customizePage.removePageItem {"id":6}']))
+  })
+
+  it('an Uninstall in progress shows a spinner, and one that failed says so beside Installed', async () => {
+    const fake = fakeConnection(['ok'])
+    const view = screen(fake.getConnection)
+    await waitFor(() => expect(fake.subscribed()).toBe(true))
+    act(() =>
+      fake.status({ available: true, pageItem: { id: 6, kind: 'plugin', phase: 'removing', details, installedAs: 'slack@market' } }),
+    )
+    expect(view.getByTestId('customize-item-busy').textContent).toBe(EN_MESSAGES['customize.item.removing'])
+    expect(view.queryByTestId('customize-item-remove')).toBeNull()
+    act(() =>
+      fake.status({
+        available: true,
+        pageItem: { id: 6, kind: 'plugin', phase: 'installed', details, installedAs: 'slack@market', failure: 'remove_failed' },
+      }),
+    )
+    expect(view.getByTestId('customize-item-failed').textContent).toBe(EN_MESSAGES['customize.item.failed.remove'])
+    expect(view.getByTestId('customize-item-remove')).not.toBeNull()
   })
 
   it('an item that cannot be added here and a failure say why; only a failed install offers Add again', async () => {
@@ -724,15 +758,21 @@ describe('CustomizeScreen — removing a marketplace', () => {
 })
 
 describe('CustomizeScreen — the page controls', () => {
-  it('Home and Back sit in the centre of the top bar; Back follows whether the page can go back', async () => {
+  it('Home and Back open the right column\'s bar, past a start as wide as the list; Back follows the page', async () => {
     const fake = fakeConnection(['ok'])
     const view = screen(fake.getConnection)
     await waitFor(() => expect(fake.subscribed()).toBe(true))
     act(() => fake.status({ available: true, tabId: 7, path: '/directory', canGoBack: false }))
-    const center = view.getByTestId('customize-center')
+    const start = view.getByTestId('customize-header-start')
+    const nav = view.getByTestId('customize-page-nav')
     const home = view.getByTestId('customize-page-home')
     const back = view.getByTestId('customize-page-back') as HTMLButtonElement
-    expect(center.contains(home) && center.contains(back)).toBe(true)
+    expect(start.className).toContain('w-64')
+    expect(view.getByTestId('customize-markets').className).toContain('w-64')
+    expect(start.contains(view.getByTestId('customize-title'))).toBe(true)
+    expect(nav.contains(home) && nav.contains(back)).toBe(true)
+    expect(start.nextElementSibling?.firstElementChild).toBe(nav)
+    expect(view.getByTestId('customize-center').contains(home)).toBe(false)
     expect(home.getAttribute('aria-label')).toBe(EN_MESSAGES['customize.page.home'])
     expect(back.getAttribute('aria-label')).toBe(EN_MESSAGES['customize.page.back'])
     expect(back.disabled).toBe(true)
@@ -748,7 +788,7 @@ describe('CustomizeScreen — the page controls', () => {
     ])
   })
 
-  it('the item status shares the centre with them, and a marketplace hides both', async () => {
+  it('the item status takes the centre, and a marketplace hides it and them', async () => {
     const fake = fakeConnection(['ok'])
     const { bridge } = fakeBridge({ marketplaces: [{ name: 'team-tools' }], manifests: { 'team-tools': { plugins: [] } } })
     const view = screen(fake.getConnection, { bridge })

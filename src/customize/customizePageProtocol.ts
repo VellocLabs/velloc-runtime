@@ -1,11 +1,10 @@
 /**
  * The Customize page on the runtime protocol (F-35). The runtime owns this
  * window's `customize` utility tab and a page-script channel to it; a client
- * asks `customizePage.show` / `customizePage.navigate`, installs the item the
- * page shows with `customizePage.addPageItem`, and reads topic
- * `customizePage/status` for where the page is and that item. All are
- * `full`: they drive this window's own tab strip and native view and install
- * onto this machine, which a remote client does not reach.
+ * asks `show` / `navigate`, installs or removes the item the page shows with
+ * `addPageItem` / `removePageItem`, and reads topic `customizePage/status`.
+ * All are `full`: they drive this window's own tab strip and native view and
+ * change this machine, which a remote client does not reach.
  */
 import type { ScopeMode } from '../browser/runtimeProtocol'
 import type { DirectoryItemDetails, DirectoryPageItem } from './directoryOffer'
@@ -28,6 +27,7 @@ export const CUSTOMIZE_PAGE_ACTION_SCOPES = {
   navigate: 'full',
   back: 'full',
   addPageItem: 'full',
+  removePageItem: 'full',
   describeMarketplace: 'full',
 } as const satisfies Record<string, ScopeMode>
 export type CustomizePageAction = keyof typeof CUSTOMIZE_PAGE_ACTION_SCOPES
@@ -71,7 +71,7 @@ export function isCustomizePageUrlPayload(value: unknown): value is { url: strin
   }
 }
 
-/** `addPageItem` takes exactly `{ id }`, the page item's id. */
+/** `addPageItem` and `removePageItem` take exactly `{ id }`, the page item's id. */
 export function isCustomizePageItemPayload(value: unknown): value is { id: number } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
@@ -99,7 +99,7 @@ export function isCustomizeMarketplacePayload(value: unknown): value is { market
 export type CustomizeMarketplaceDescription = { plugins: Record<string, DirectoryItemDetails> }
 
 const ITEM_KINDS = new Set(['plugin', 'connector'])
-const ITEM_PHASES = new Set(['resolving', 'ready', 'installing', 'installed', 'failed'])
+const ITEM_PHASES = new Set(['resolving', 'ready', 'installing', 'installed', 'removing', 'failed'])
 
 function readPageItem(value: unknown): DirectoryPageItem | null {
   if (!value || typeof value !== 'object') return null

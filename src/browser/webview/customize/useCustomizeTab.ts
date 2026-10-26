@@ -28,6 +28,8 @@ export type CustomizeTabState = {
   addRequest: CustomizeAddRequest | null
   /** Installs the page item `id`. */
   addPageItem: (id: number) => void
+  /** Uninstalls the page item `id`. */
+  removePageItem: (id: number) => void
   /** One entry back in the page's own history. */
   goBack: () => void
   /** The directory's start page. */
@@ -127,15 +129,17 @@ export function useCustomizeTab(
     }
   }, [runtimeConnection, open, attempt])
 
-  const addPageItem = React.useCallback(
-    (id: number) => {
+  const itemAction = React.useCallback(
+    (action: 'addPageItem' | 'removePageItem', id: number) => {
       if (!runtimeConnection) return
       void runtimeConnection()
-        .then(conn => conn.request(`${CUSTOMIZE_PAGE_CAPABILITY}.addPageItem` as RouteKey, { id }))
+        .then(conn => conn.request(`${CUSTOMIZE_PAGE_CAPABILITY}.${action}` as RouteKey, { id }))
         .catch(ignore)
     },
     [runtimeConnection],
   )
+  const addPageItem = React.useCallback((id: number) => itemAction('addPageItem', id), [itemAction])
+  const removePageItem = React.useCallback((id: number) => itemAction('removePageItem', id), [itemAction])
 
   const send = React.useCallback(
     (action: 'navigate' | 'back', payload: Record<string, unknown>) => {
@@ -174,6 +178,7 @@ export function useCustomizeTab(
     canGoBack,
     addRequest,
     addPageItem,
+    removePageItem,
     goBack,
     goHome,
     openPage,

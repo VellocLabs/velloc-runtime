@@ -22,6 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useUnsavedEditsGate } from "@/glic/unsavedEditsGate";
+import { cn } from "@/lib/utils";
 
 import type { NexusMcpServerConfig } from "../../../../settings/settingsTypes";
 import type { PluginMcpServerListing } from "../../../bridge/protocol";
@@ -199,8 +200,11 @@ function SignInBadge({
 
 export function McpSection({
   runtimeConnection,
+  revealServerRequest,
 }: {
   runtimeConnection?: () => Promise<RuntimeConnection>;
+  /** Scroll to this server's row and flash it three times; a new `seq` is a new ask. */
+  revealServerRequest?: { server: string; seq: number } | null;
 }) {
   const t = useT();
   const bridge = useSettingsBridge();
@@ -237,6 +241,22 @@ export function McpSection({
   // An open add/edit form is unsaved page-local state — hold the background
   // updater's reload while it is open (glic/unsavedEditsGate.ts).
   useUnsavedEditsGate(form !== null);
+  // The reveal: the row named by the request is scrolled to and flashed
+  // (`nexus-plugin-flash`, globals.css) until its animation ends.
+  const rowElements = React.useRef(new Map<string, HTMLDivElement>());
+  const revealedSeq = React.useRef<number | null>(null);
+  const [flashing, setFlashing] = React.useState<{ id: string; seq: number } | null>(null);
+  React.useEffect(() => {
+    if (!revealServerRequest || revealedSeq.current === revealServerRequest.seq) return;
+    const element = rowElements.current.get(revealServerRequest.server);
+    if (!element) return;
+    revealedSeq.current = revealServerRequest.seq;
+    element.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    const next = { id: revealServerRequest.server, seq: revealServerRequest.seq };
+    setFlashing(null);
+    const timer = window.setTimeout(() => setFlashing(next), 0);
+    return () => window.clearTimeout(timer);
+  }, [revealServerRequest, servers]);
 
   const reload = React.useCallback(async () => {
     if (!bridge) return;
@@ -511,8 +531,19 @@ export function McpSection({
             return (
               <div
                 key={id}
+                ref={(element) => {
+                  if (element) rowElements.current.set(id, element);
+                  else rowElements.current.delete(id);
+                }}
                 data-testid={`mcp-server-row-${id}`}
-                className="rounded-xl border border-border/70 bg-card p-4"
+                data-flashing={flashing?.id === id ? "true" : undefined}
+                onAnimationEnd={(event) => {
+                  if (event.target === event.currentTarget) setFlashing(null);
+                }}
+                className={cn(
+                  "rounded-xl border border-border/70 bg-card p-4",
+                  flashing?.id === id && "nexus-plugin-flash",
+                )}
               >
                 <div className="flex items-center justify-between gap-3">
                   <button

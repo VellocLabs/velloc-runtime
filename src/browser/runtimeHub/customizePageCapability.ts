@@ -56,6 +56,7 @@ export function registerCustomizePageCapability(
       navigate: { scope: CUSTOMIZE_PAGE_ACTION_SCOPES.navigate, guard: isCustomizePageUrlPayload },
       back: { scope: CUSTOMIZE_PAGE_ACTION_SCOPES.back, guard: isCustomizePageEmptyPayload },
       addPageItem: { scope: CUSTOMIZE_PAGE_ACTION_SCOPES.addPageItem, guard: isCustomizePageItemPayload },
+      removePageItem: { scope: CUSTOMIZE_PAGE_ACTION_SCOPES.removePageItem, guard: isCustomizePageItemPayload },
       describeMarketplace: {
         scope: CUSTOMIZE_PAGE_ACTION_SCOPES.describeMarketplace,
         guard: isCustomizeMarketplacePayload,
@@ -75,6 +76,10 @@ export function registerCustomizePageCapability(
         }
         if (act === 'addPageItem') {
           await service.addPageItem((request.payload as { id: number }).id)
+          return { ok: true }
+        }
+        if (act === 'removePageItem') {
+          await service.removePageItem((request.payload as { id: number }).id)
           return { ok: true }
         }
       } catch (error) {

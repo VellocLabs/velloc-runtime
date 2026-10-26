@@ -1,12 +1,11 @@
 import type { ReactNode } from 'react'
-import { CheckIcon, Loader2Icon } from 'lucide-react'
+import { CheckIcon, Loader2Icon, Settings2Icon, Trash2Icon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 
 import type { DirectoryPageItem } from '../../../customize/directoryOffer'
 import { useT } from '../i18n'
 import type { MessageKey } from '../i18n/messages/en'
-import type { SettingsSectionId } from '../settings/settingsNav'
 import { ItemAvatar } from './ItemAvatar'
 
 const KIND_LABEL: Record<DirectoryPageItem['kind'], MessageKey> = {
@@ -14,39 +13,37 @@ const KIND_LABEL: Record<DirectoryPageItem['kind'], MessageKey> = {
   connector: 'customize.item.kind.connector',
 }
 
-const KIND_SECTION: Record<DirectoryPageItem['kind'], SettingsSectionId> = {
-  plugin: 'plugins',
-  connector: 'mcp',
-}
-
 const FAILURE_LABEL: Record<NonNullable<DirectoryPageItem['failure']>, MessageKey> = {
   not_found: 'customize.item.failed.notFound',
   lookup_failed: 'customize.item.failed.lookup',
   install_failed: 'customize.item.failed.install',
+  remove_failed: 'customize.item.failed.remove',
 }
 
 export type DirectoryItemStatusProps = {
   item: DirectoryPageItem
   onAdd: (id: number) => void
-  onOpenSettings: (section: SettingsSectionId) => void
+  onRemove: (id: number) => void
+  /** Opens the Settings page that manages the installed `item`. */
+  onManage: (item: DirectoryPageItem) => void
 }
 
 /**
- * The top bar's right side while the directory page shows a plugin or a
+ * The top bar's centre while the directory page shows a plugin or a
  * connector (F-35): who it is, and Add when it can be installed here, or
- * where it is installed with a link to the Settings page that manages it.
+ * Installed with icon buttons to manage it in Settings and to uninstall it.
  */
-export function DirectoryItemStatus({ item, onAdd, onOpenSettings }: DirectoryItemStatusProps) {
+export function DirectoryItemStatus({ item, onAdd, onRemove, onManage }: DirectoryItemStatusProps) {
   const t = useT()
   const details = item.details
   const installed = item.phase === 'installed' || (item.phase === 'ready' && item.alreadyInstalled)
 
   let action: ReactNode
-  if (item.phase === 'resolving') {
+  if (item.phase === 'resolving' || item.phase === 'removing') {
     action = (
-      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span data-testid="customize-item-busy" className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Loader2Icon className="size-3.5 animate-spin" />
-        {t('customize.item.resolving')}
+        {t(item.phase === 'resolving' ? 'customize.item.resolving' : 'customize.item.removing')}
       </span>
     )
   } else if (installed) {
@@ -54,22 +51,44 @@ export function DirectoryItemStatus({ item, onAdd, onOpenSettings }: DirectoryIt
       <>
         <span data-testid="customize-item-installed" className="flex items-center gap-1 text-xs text-muted-foreground">
           <CheckIcon className="size-3.5" />
-          {item.installedAs ? t('customize.item.installedAs', { name: item.installedAs }) : t('customize.item.installed')}
+          {t('customize.item.installed')}
         </span>
         {item.updateAvailable ? (
           <span data-testid="customize-item-update" className="text-xs font-medium text-primary">
             {t('customize.item.updateAvailable')}
           </span>
         ) : null}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          data-testid="customize-item-manage"
-          onClick={() => onOpenSettings(KIND_SECTION[item.kind])}
-        >
-          {t('customize.item.manage')}
-        </Button>
+        {item.failure === 'remove_failed' ? (
+          <span data-testid="customize-item-failed" className="text-xs text-destructive">
+            {t(FAILURE_LABEL.remove_failed)}
+          </span>
+        ) : null}
+        <div className="flex items-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            data-testid="customize-item-manage"
+            aria-label={t('customize.item.manage')}
+            title={t('customize.item.manage')}
+            onClick={() => onManage(item)}
+          >
+            <Settings2Icon className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="hover:text-destructive"
+            data-testid="customize-item-remove"
+            aria-label={t('customize.item.uninstall')}
+            title={t('customize.item.uninstall')}
+            disabled={!item.installedAs}
+            onClick={() => onRemove(item.id)}
+          >
+            <Trash2Icon className="size-4" />
+          </Button>
+        </div>
       </>
     )
   } else if (item.phase === 'installing') {

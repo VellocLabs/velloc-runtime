@@ -62,6 +62,7 @@ function SectionContent({
   onProviderConnected,
   openProviderRequest,
   revealPluginRequest,
+  revealMcpServerRequest,
   remoteState,
   remoteConn,
   runtimeConnection,
@@ -75,6 +76,7 @@ function SectionContent({
   runtimeConnection?: () => Promise<RuntimeConnection>;
   openProviderRequest?: { providerId: string; seq: number } | null;
   revealPluginRequest?: { plugin: string; seq: number } | null;
+  revealMcpServerRequest?: { server: string; seq: number } | null;
   /** Models was reached by way of Session models (a deep link or a
    *  remembered selection): scroll its embedded group into view. */
   focusSessionModels: boolean;
@@ -113,7 +115,7 @@ function SectionContent({
     case "features":
       return <FeaturesSection />;
     case "mcp":
-      return <McpSection runtimeConnection={runtimeConnection} />;
+      return <McpSection runtimeConnection={runtimeConnection} revealServerRequest={revealMcpServerRequest} />;
     case "instructions":
       return <InstructionsSection />;
     case "sessionModels":
@@ -154,6 +156,7 @@ export function SettingsScreen({
   onProviderConnected,
   openProviderRequest,
   revealPluginRequest,
+  revealMcpServerRequest,
   runtimeConnection,
   remoteClient = false,
   onDragRegionsChange,
@@ -170,6 +173,9 @@ export function SettingsScreen({
   /** Forwarded to PluginsSection — scroll to one plugin's row and flash it
    *  (a click on a mod's icon above the prompt). */
   revealPluginRequest?: { plugin: string; seq: number } | null;
+  /** Forwarded to McpSection — scroll to one server's row and flash it
+   *  (Manage on an installed connector in Customize). */
+  revealMcpServerRequest?: { server: string; seq: number } | null;
   /**
    * The page's runtime connection. Its `remote/state` view (the shared
    * store) gates the Remote access nav entry on `access.supported` (the
@@ -287,6 +293,7 @@ export function SettingsScreen({
             onProviderConnected={onProviderConnected}
             openProviderRequest={openProviderRequest}
             revealPluginRequest={revealPluginRequest}
+            revealMcpServerRequest={revealMcpServerRequest}
             onOpenModels={() => onNavigate("models")}
             remoteState={remoteState}
             runtimeConnection={runtimeConnection}

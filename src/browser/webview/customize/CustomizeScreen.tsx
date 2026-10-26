@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import type { WindowDragRect } from '../../bridge/protocol/ui'
 import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { ShellChannel } from '../../runtimeClient/shellChannel'
+import type { DirectoryPageItem } from '../../../customize/directoryOffer'
 import { useT } from '../i18n'
 import { useSettingsBridge } from '../nexusSettingsBridge'
 import type { SettingsSectionId } from '../settings/settingsNav'
@@ -27,6 +28,10 @@ export type CustomizeScreenProps = {
   shell: ShellChannel | null
   onClose: () => void
   onOpenSettings: (section: SettingsSectionId) => void
+  /** Settings → Plugins, scrolled to the plugin `name`'s row, which flashes. */
+  onOpenPluginSettings?: (name: string) => void
+  /** Settings → MCP, scrolled to the server `id`'s row, which flashes. */
+  onOpenMcpServerSettings?: (id: string) => void
   onDragRegionsChange?: (regions: WindowDragRect[]) => void
 }
 
@@ -40,17 +45,19 @@ const DIRECTORY: Selection = { kind: 'directory' }
 
 /**
  * The Customize screen (F-35): takes the window like Settings does. Left,
- * the directory and the marketplaces added here, with add and remove. Right,
- * the directory page in this window's `customize` utility tab (painted by
- * the native tab view), or those marketplaces' start page. The top bar
- * centres the page's Home / Back and its item's status; the page's own add
- * button opens a dialog that confirms and installs that item.
+ * the directory and the marketplaces added here. Right, the directory page
+ * in this window's `customize` utility tab (painted by the native tab view),
+ * or those marketplaces' start page. Over the right column the top bar
+ * holds the page's Home / Back at its left edge and the page item's status
+ * in its centre; the page's own add button opens a confirming dialog.
  */
 export function CustomizeScreen({
   runtimeConnection,
   shell,
   onClose,
   onOpenSettings,
+  onOpenPluginSettings,
+  onOpenMcpServerSettings,
   onDragRegionsChange,
 }: CustomizeScreenProps) {
   const t = useT()
@@ -99,6 +106,16 @@ export function CustomizeScreen({
     setSelection(DIRECTORY)
     tab.openPage(path)
   }
+  const managePlugin = (name: string) =>
+    onOpenPluginSettings ? onOpenPluginSettings(name) : onOpenSettings('plugins')
+  const manageItem = (item: DirectoryPageItem) => {
+    const name = item.installedAs
+    if (item.kind === 'plugin') {
+      if (name) managePlugin(name.split('@')[0]!)
+      else onOpenSettings('plugins')
+    } else if (name && onOpenMcpServerSettings) onOpenMcpServerSettings(name)
+    else onOpenSettings('mcp')
+  }
 
   return (
     <div
@@ -110,12 +127,9 @@ export function CustomizeScreen({
       <header
         ref={headerRef}
         data-testid="customize-header"
-        className={cn(
-          'grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b px-3',
-          TOP_BAR_HEIGHT_CLASS,
-        )}
+        className={cn('flex shrink-0 items-center border-b', TOP_BAR_HEIGHT_CLASS)}
       >
-        <div className="flex min-w-0 items-center gap-2">
+        <div data-testid="customize-header-start" className="flex w-64 min-w-0 shrink-0 items-center gap-2 px-3">
           <Button
             variant="ghost"
             size="sm"
@@ -132,52 +146,61 @@ export function CustomizeScreen({
             </span>
           </Button>
         </div>
-        <div data-testid="customize-center" className="flex min-w-0 max-w-[min(44rem,60vw)] items-center gap-3">
-          {showDirectory ? (
+        <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 self-stretch px-2">
+          <div data-testid="customize-page-nav" className="flex min-w-0 items-center">
+            {showDirectory ? (
+              <div
+                role="group"
+                aria-label={t('customize.page.navAria')}
+                data-app-region="no-drag"
+                className="flex shrink-0 items-center rounded-md border"
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-e-none"
+                  data-testid="customize-page-home"
+                  aria-label={t('customize.page.home')}
+                  title={t('customize.page.home')}
+                  onClick={tab.goHome}
+                >
+                  <HomeIcon className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-s-none border-s"
+                  data-testid="customize-page-back"
+                  aria-label={t('customize.page.back')}
+                  title={t('customize.page.back')}
+                  disabled={!tab.canGoBack}
+                  onClick={tab.goBack}
+                >
+                  <ChevronLeftIcon className="size-4" />
+                </Button>
+              </div>
+            ) : null}
+          </div>
+          <div data-testid="customize-center" className="flex min-w-0 max-w-[min(44rem,50vw)] items-center justify-center">
+            {showDirectory && tab.pageItem ? (
+              <DirectoryItemStatus
+                item={tab.pageItem}
+                onAdd={tab.addPageItem}
+                onRemove={tab.removePageItem}
+                onManage={manageItem}
+              />
+            ) : null}
+          </div>
+          <div className="flex min-w-0 items-center justify-end self-stretch">
             <div
-              role="group"
-              aria-label={t('customize.page.navAria')}
-              data-app-region="no-drag"
-              className="flex shrink-0 items-center rounded-md border"
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="rounded-e-none"
-                data-testid="customize-page-home"
-                aria-label={t('customize.page.home')}
-                title={t('customize.page.home')}
-                onClick={tab.goHome}
-              >
-                <HomeIcon className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="rounded-s-none border-s"
-                data-testid="customize-page-back"
-                aria-label={t('customize.page.back')}
-                title={t('customize.page.back')}
-                disabled={!tab.canGoBack}
-                onClick={tab.goBack}
-              >
-                <ChevronLeftIcon className="size-4" />
-              </Button>
-            </div>
-          ) : null}
-          {showDirectory && tab.pageItem ? (
-            <DirectoryItemStatus item={tab.pageItem} onAdd={tab.addPageItem} onOpenSettings={onOpenSettings} />
-          ) : null}
-        </div>
-        <div className="flex min-w-0 items-center justify-end self-stretch">
-          <div
-            aria-hidden
-            data-testid="customize-caption-inset"
-            className="shrink-0 self-stretch"
-            style={{ width: 'var(--nexus-caption-inset, 0px)' }}
-          />
+              aria-hidden
+              data-testid="customize-caption-inset"
+              className="shrink-0 self-stretch"
+              style={{ width: 'var(--nexus-caption-inset, 0px)' }}
+            />
+          </div>
         </div>
       </header>
 
@@ -249,6 +272,7 @@ export function CustomizeScreen({
               onAdd={bridge ? () => setAddingMarket(true) : undefined}
               onOpenInDirectory={openInDirectory}
               onOpenSettings={onOpenSettings}
+              onManagePlugin={managePlugin}
             />
           ) : tab.unavailable ? (
             <div

@@ -59,5 +59,11 @@ export function createDirectoryOfferDeps(options: DirectoryOfferHostOptions): Di
     },
     startSignIn: url => startInstallSignIns([url]),
     checkConnector: async url => (await currentMcpOAuthService()?.connectorSupport(url)) ?? 'unknown',
+    uninstallPlugin: async identifier => {
+      await call('plugins', 'uninstall', { identifier })
+    },
+    removeMcpServer: async id => {
+      await call('mcpSettings', 'remove', { id })
+    },
   }
 }

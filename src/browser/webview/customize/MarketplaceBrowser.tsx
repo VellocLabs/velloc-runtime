@@ -32,6 +32,8 @@ export type MarketplaceBrowserProps = {
   /** Shows a directory page (by path) in the plugin directory. */
   onOpenInDirectory: (path: string) => void
   onOpenSettings: (section: SettingsSectionId) => void
+  /** Manage on an installed plugin: its row in Settings → Plugins. */
+  onManagePlugin?: (name: string) => void
 }
 
 type Route =
@@ -369,6 +371,7 @@ function PluginDetail({
   onBack,
   onOpenInDirectory,
   onOpenSettings,
+  onManagePlugin,
 }: MarketplaceBrowserProps & {
   marketplace: string
   plugin: PluginAvailableUiEntry
@@ -423,7 +426,12 @@ function PluginDetail({
             </Button>
           ) : null}
           {plugin.installed ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => onOpenSettings('plugins')}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => (onManagePlugin ? onManagePlugin(plugin.name) : onOpenSettings('plugins'))}
+            >
               {t('customize.item.manage')}
             </Button>
           ) : null}

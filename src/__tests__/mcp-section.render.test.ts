@@ -325,3 +325,54 @@ describe('McpSection sign-in (F-10)', () => {
     expect(runtime.request).not.toHaveBeenCalled()
   })
 })
+
+describe('McpSection reveal', () => {
+  it('scrolls to the requested server row and flashes it until its animation ends; a new seq flashes again', async () => {
+    const bridge = {
+      request: vi.fn(async (route: { action: string }) => {
+        if (route.action === 'list') {
+          return {
+            servers: {
+              chat: { transport: 'http', url: 'https://chat.example/mcp' },
+              docs: { transport: 'http', url: 'https://docs.example/mcp' },
+            },
+          }
+        }
+        return { servers: [] }
+      }),
+      subscribeEvents: () => () => {},
+    } as unknown as NexusSettingsBridge
+    const scrolled: string[] = []
+    const scroll = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(function (this: HTMLElement) {
+        scrolled.push(this.dataset.testid ?? '')
+      })
+    const view = render(
+      createElement(
+        SettingsBridgeContext.Provider,
+        { value: bridge },
+        createElement(McpSection, { revealServerRequest: { server: 'docs', seq: 1 } }),
+      ),
+    )
+    const row = await screen.findByTestId('mcp-server-row-docs')
+    await waitFor(() => expect(row.getAttribute('data-flashing')).toBe('true'))
+    expect(row.className).toContain('nexus-plugin-flash')
+    expect(scrolled).toEqual(['mcp-server-row-docs'])
+    expect(screen.getByTestId('mcp-server-row-chat').getAttribute('data-flashing')).toBeNull()
+
+    fireEvent.animationEnd(row)
+    expect(row.getAttribute('data-flashing')).toBeNull()
+
+    view.rerender(
+      createElement(
+        SettingsBridgeContext.Provider,
+        { value: bridge },
+        createElement(McpSection, { revealServerRequest: { server: 'docs', seq: 2 } }),
+      ),
+    )
+    await waitFor(() => expect(row.getAttribute('data-flashing')).toBe('true'))
+    expect(scrolled).toHaveLength(2)
+    scroll.mockRestore()
+  })
+})

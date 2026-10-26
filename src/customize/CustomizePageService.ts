@@ -21,6 +21,7 @@ import {
   describeMarketplacePlugins,
   installDirectoryTarget,
   parseDirectoryIntent,
+  removeDirectoryItem,
   resolveDirectoryIntent,
   type DirectoryInstallTarget,
   type DirectoryIntent,
@@ -104,6 +105,7 @@ export class CustomizePageService {
   private apiOrigin: string | null = null
   private pageItem: DirectoryPageItem | undefined
   private pageItemKey: string | null = null
+  private pageIntent: DirectoryIntent | null = null
   private target: DirectoryInstallTarget | null = null
   private addRequest: CustomizeAddRequest | undefined
   private addSeq = 0
@@ -227,6 +229,28 @@ export class CustomizePageService {
     }
   }
 
+  /**
+   * Uninstalls the page item `id`; `no_item` unless it is the current,
+   * installed one. On success the item is looked up again, so it shows as
+   * addable; on failure it stays installed with `remove_failed`.
+   */
+  async removePageItem(id: number): Promise<void> {
+    const item = this.pageItem
+    const intent = this.pageIntent
+    const installed = item?.phase === 'installed' || (item?.phase === 'ready' && item.alreadyInstalled)
+    if (!item || item.id !== id || !installed || !item.installedAs || !intent || !this.offers || !this.apiOrigin) {
+      throw new CustomizePageError('no_item', 'there is nothing to remove on this page')
+    }
+    this.setPageItem({ ...withoutFailure(item), phase: 'removing' })
+    try {
+      await removeDirectoryItem(item.kind, item.installedAs, this.offers)
+    } catch {
+      if (this.pageItem?.id === id) this.setPageItem({ ...item, failure: 'remove_failed' })
+      return
+    }
+    if (this.pageItem?.id === id) await this.resolve(id, intent, this.apiOrigin, this.offers)
+  }
+
   dispose(): void {
     this.release()
     this.listeners.clear()
@@ -242,6 +266,7 @@ export class CustomizePageService {
     const key = intent ? intentKey(intent) : null
     if (key === this.pageItemKey) return
     this.pageItemKey = key
+    this.pageIntent = intent
     this.target = null
     this.addRequest = undefined
     if (!intent || !this.offers || !this.apiOrigin) {
@@ -460,6 +485,7 @@ export class CustomizePageService {
     this.pendingAddKey = null
     this.pageItem = undefined
     this.pageItemKey = null
+    this.pageIntent = null
     this.target = null
     this.addRequest = undefined
   }

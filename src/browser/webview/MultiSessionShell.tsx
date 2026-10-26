@@ -2805,8 +2805,21 @@ export function MultiSessionShell({
   } | null>(null)
   const handleOpenPluginSettings = useCallback((plugin: string) => {
     setProviderSettingsRequest(null)
+    setMcpSettingsRequest(null)
     setPluginSettingsRequest(prev => ({ plugin, seq: (prev?.seq ?? 0) + 1 }))
     setSettingsSection('plugins')
+  }, [])
+  // Manage on an installed connector in Customize → MCP, scrolled to that
+  // server's row, which flashes; dropped like the plugin request.
+  const [mcpSettingsRequest, setMcpSettingsRequest] = useState<{
+    server: string
+    seq: number
+  } | null>(null)
+  const handleOpenMcpServerSettings = useCallback((server: string) => {
+    setProviderSettingsRequest(null)
+    setPluginSettingsRequest(null)
+    setMcpSettingsRequest(prev => ({ server, seq: (prev?.seq ?? 0) + 1 }))
+    setSettingsSection('mcp')
   }, [])
 
   // Mods' panes dock in the Plugins side pane (F-25; `placement: 'dock'`),
@@ -3024,6 +3037,7 @@ export function MultiSessionShell({
   }, [readPaneRecord, togglePane, closePaneFor, openPaneFor, updatePaneRecord])
   const handleSettingsNavigate = useCallback((section: SettingsSectionId) => {
     setPluginSettingsRequest(null)
+    setMcpSettingsRequest(null)
     setSettingsSection(section)
   }, [])
 
@@ -3031,6 +3045,7 @@ export function MultiSessionShell({
     (section: SettingsSectionId = 'models') => {
       setProviderSettingsRequest(null)
       setPluginSettingsRequest(null)
+      setMcpSettingsRequest(null)
       setSettingsSection(section)
     },
     [],
@@ -4526,6 +4541,8 @@ export function MultiSessionShell({
             shell={shellChannel ?? null}
             onClose={handleCloseCustomize}
             onOpenSettings={handleOpenNexusSettings}
+            onOpenPluginSettings={handleOpenPluginSettings}
+            onOpenMcpServerSettings={handleOpenMcpServerSettings}
             onDragRegionsChange={handleDragRegionsChange}
           />
         </Suspense>
@@ -4546,12 +4563,14 @@ export function MultiSessionShell({
             adoptDefaultAfterSettingsRef.current = true
             setProviderSettingsRequest(null)
             setPluginSettingsRequest(null)
+            setMcpSettingsRequest(null)
             setSettingsSection(null)
           }}
           catalog={orderedActiveCatalog}
           transport={hostBridgeTransport}
           openProviderRequest={providerSettingsRequest}
           revealPluginRequest={pluginSettingsRequest}
+          revealMcpServerRequest={mcpSettingsRequest}
           // Remote access reads `remote/state` and calls `remote.*` over
           // the page's one connection — never the host bridge directly (P-3).
           runtimeConnection={runtimeConnection}
