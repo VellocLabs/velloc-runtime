@@ -126,6 +126,13 @@ export type TerminalServiceEvent =
 const DEFAULT_COALESCE_WINDOW_MS = 16
 const DEFAULT_COALESCE_MAX_UNITS = 64 * 1024
 
+const FOCUS_REPORTS = /\u001b\[[IO]/g
+
+/** `data` without the focus-in / focus-out reports an emulator sends. */
+function withoutFocusReports(data: string): string {
+  return data.replace(FOCUS_REPORTS, '')
+}
+
 /** `pwsh` missing on the host: the same two codes the PowerShell tool falls back on. */
 const POWERSHELL_FALLBACK_CODES = new Set(['BINARY_NOT_FOUND', 'COMMAND_NOT_ALLOWED'])
 
@@ -384,10 +391,15 @@ export class TerminalService {
     return id
   }
 
-  /** Keystrokes to the shell; nothing while it is not running. */
+  /**
+   * Keystrokes to the shell; nothing while it is not running. A CLI is never
+   * told its terminal lost or regained focus: a CLI out of focus stops
+   * updating its title, which its working state is read from (F-34).
+   */
   async write(id: string, data: string): Promise<void> {
     const record = this.require(id)
     const child = record.child
+    if (record.cli) data = withoutFocusReports(data)
     if (!child || data.length === 0) return
     if (record.cli) this.cliLogs?.typed(record.sessionId, data, (this.deps.now ?? Date.now)())
     try {

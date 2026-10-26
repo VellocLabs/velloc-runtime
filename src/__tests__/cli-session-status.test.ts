@@ -200,6 +200,45 @@ describe('a working CLI as session activity', () => {
   })
 })
 
+describe('focus reports and a CLI', () => {
+  const written = (fake: ReturnType<typeof fakePtyHost>, streamId: string): string =>
+    fake
+      .shellRequests('writeStdin')
+      .map(request => request.payload as { streamId: string; data?: Uint8Array; dataBase64?: string })
+      .filter(payload => payload.streamId === streamId)
+      .map(payload =>
+        payload.data !== undefined
+          ? new TextDecoder().decode(payload.data)
+          : atob(payload.dataBase64 ?? ''),
+      )
+      .join('')
+
+  it('a CLI never hears focus in or out, so its title keeps reporting its work; a shell still does', async () => {
+    const fake = fakePtyHost()
+    const service = new TerminalService({
+      host: () => fake.host(),
+      createRequestId: () => 'r',
+      sessionCwd: () => '/proj',
+      coalesceWindowMs: 1,
+      probeClis: async () => ['codex'],
+      cliConversations: { read: async () => undefined, record: async () => {} },
+    })
+    service.refreshHost()
+    await settle()
+    const cli = await service.create({ sessionId: 'c1', cli: { id: 'codex', start: 'new' }, cols: 80, rows: 24 })
+    const shell = await service.create({ sessionId: 's1', cols: 80, rows: 24 })
+    await settle()
+    await service.write(cli, '\u001b[O')
+    await service.write(cli, 'ls\r\u001b[I')
+    await service.write(cli, '\u001b[A')
+    await service.write(shell, '\u001b[O')
+    expect(written(fake, fake.spawned[0]!)).toBe('ls\r\u001b[A')
+    expect(written(fake, fake.spawned[1]!)).toBe('\u001b[O')
+    expect(fake.shellRequests('writeStdin')).toHaveLength(3)
+    service.dispose()
+  })
+})
+
 describe('the session summary', () => {
   it('a CLI session reads as running while its CLI works, live or disk-resident', () => {
     const busy = new Set(['c1', 'c2'])
