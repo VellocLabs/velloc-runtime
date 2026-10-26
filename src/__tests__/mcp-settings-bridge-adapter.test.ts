@@ -439,13 +439,13 @@ describe('mcpSettings credentials', () => {
       ctx,
     )
     const before = persistedServer(files, 'gh')
-    vi.mocked(fs.writeFile).mockRejectedValueOnce(new Error('EBUSY'))
+    vi.mocked(fs.writeFile).mockRejectedValueOnce(new Error('EACCES'))
     await expect(
       mcpSettingsHandlers.upsert(
         { id: 'gh', config: { transport: 'http', url: URL_A, headers: { Authorization: 'Bearer new' } } },
         ctx,
       ),
-    ).rejects.toThrow('EBUSY')
+    ).rejects.toThrow('EACCES')
     expect(persistedServer(files, 'gh')).toEqual(before)
     expect(Array.from(store.keys())).toEqual(['mcp:gh/header/authorization'])
     expect(store.get('mcp:gh/header/authorization')).toMatchObject({ value: 'Bearer old' })

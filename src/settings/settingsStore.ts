@@ -848,9 +848,33 @@ function cloneLoadResult(value: LoadResult): LoadResult {
   }
 }
 
+/** Waits before each retry of a write that met a file held open elsewhere (~1.5 s in all). */
+const BUSY_WRITE_RETRY_DELAYS_MS = [50, 100, 200, 400, 800]
+
+/**
+ * Runs `write`, retrying while it fails with the host's `EBUSY` (Windows: an
+ * editor, indexer or sync client has the file open). Any other failure, or
+ * `EBUSY` past the last delay, is thrown.
+ */
+async function writeRetryingBusy(write: () => Promise<void>): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await write()
+      return
+    } catch (error) {
+      const delay = BUSY_WRITE_RETRY_DELAYS_MS[attempt]
+      if (delay === undefined || !/\bEBUSY\b/.test(error instanceof Error ? error.message : String(error))) {
+        throw error
+      }
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+}
+
 /**
  * Write a source's settings file, creating `${homeDir}/.velloc/` if needed. Not
  * atomic; a torn write is recoverable because a parse failure loads defaults.
+ * A file held open elsewhere is retried briefly (`writeRetryingBusy`).
  */
 export async function setSettingsForSource(
   source: SettingsLayer,
@@ -875,7 +899,7 @@ export async function setSettingsForSource(
 
   const path = layerFilePath(source, ctx)
   const body = `${JSON.stringify(settings, null, 2)}\n`
-  await fs.writeFile(path, body, { encoding: 'utf-8' })
+  await writeRetryingBusy(() => fs.writeFile(path, body, { encoding: 'utf-8' }))
 
   // Invalidate the cache so the next read sees the just-written values.
   wipeSettingsMemos()
@@ -1370,35 +1394,37 @@ export async function updateMemorySettingsInSource(
   fs: RuntimeFs,
   patch: MemorySettingsPatch,
 ): Promise<NexusSettingsV1> {
-  const { settings } = await readLayerFresh(source, ctx, fs)
-  const next: NexusSettingsV1 = { ...settings, version: NEXUS_SETTINGS_VERSION }
+  return enqueueSettingsUpdate(layerFilePath(source, ctx), async () => {
+    const { settings } = await readLayerFresh(source, ctx, fs)
+    const next: NexusSettingsV1 = { ...settings, version: NEXUS_SETTINGS_VERSION }
 
-  for (const k of [
-    'autoMemoryEnabled',
-    'autoExtractEnabled',
-    'memoryRecallEnabled',
-  ] as const) {
-    if (!(k in patch)) continue
-    const v = patch[k]
-    if (typeof v === 'boolean') next[k] = v
-    else if (v === null) delete next[k]
-  }
-  if ('memoryMaintenance' in patch) {
-    const v = patch.memoryMaintenance
-    if (isMemoryMaintenanceMode(v)) next.memoryMaintenance = v
-    else if (v === null) delete next.memoryMaintenance
-  }
-  if ('autoMemoryDirectory' in patch) {
-    const v = patch.autoMemoryDirectory
-    if (typeof v === 'string' && v.length > 0) next.autoMemoryDirectory = v
-    else if (v === null || v === '') delete next.autoMemoryDirectory
-  }
+    for (const k of [
+      'autoMemoryEnabled',
+      'autoExtractEnabled',
+      'memoryRecallEnabled',
+    ] as const) {
+      if (!(k in patch)) continue
+      const v = patch[k]
+      if (typeof v === 'boolean') next[k] = v
+      else if (v === null) delete next[k]
+    }
+    if ('memoryMaintenance' in patch) {
+      const v = patch.memoryMaintenance
+      if (isMemoryMaintenanceMode(v)) next.memoryMaintenance = v
+      else if (v === null) delete next.memoryMaintenance
+    }
+    if ('autoMemoryDirectory' in patch) {
+      const v = patch.autoMemoryDirectory
+      if (typeof v === 'string' && v.length > 0) next.autoMemoryDirectory = v
+      else if (v === null || v === '') delete next.autoMemoryDirectory
+    }
 
-  if (jsonEquals(settings, next)) {
-    return settings
-  }
-  await setSettingsForSource(source, ctx, fs, next)
-  return next
+    if (jsonEquals(settings, next)) {
+      return settings
+    }
+    await setSettingsForSource(source, ctx, fs, next)
+    return next
+  })
 }
 
 /** Read-modify-write the flat auto-memory keys in `userSettings`. */
@@ -1434,36 +1460,38 @@ export async function updateSessionModelSettingsInSource(
   fs: RuntimeFs,
   patch: SessionModelSettingsPatch,
 ): Promise<NexusSettingsV1> {
-  const { settings } = await readLayerFresh(source, ctx, fs)
-  const next: NexusSettingsV1 = { ...settings, version: NEXUS_SETTINGS_VERSION }
+  return enqueueSettingsUpdate(layerFilePath(source, ctx), async () => {
+    const { settings } = await readLayerFresh(source, ctx, fs)
+    const next: NexusSettingsV1 = { ...settings, version: NEXUS_SETTINGS_VERSION }
 
-  if (patch.modelTiers) {
-    const merged: Record<string, unknown> = { ...settings.modelTiers }
-    for (const [slot, pin] of Object.entries(patch.modelTiers)) {
-      if (pin === null) delete merged[slot]
-      else if (pin !== undefined) merged[slot] = pin
+    if (patch.modelTiers) {
+      const merged: Record<string, unknown> = { ...settings.modelTiers }
+      for (const [slot, pin] of Object.entries(patch.modelTiers)) {
+        if (pin === null) delete merged[slot]
+        else if (pin !== undefined) merged[slot] = pin
+      }
+      const normalized = normalizeModelTiers(merged)
+      if (normalized) next.modelTiers = normalized
+      else delete next.modelTiers
     }
-    const normalized = normalizeModelTiers(merged)
-    if (normalized) next.modelTiers = normalized
-    else delete next.modelTiers
-  }
 
-  if (patch.sessionModelPolicy) {
-    const merged: Record<string, unknown> = { ...settings.sessionModelPolicy }
-    for (const [kind, policy] of Object.entries(patch.sessionModelPolicy)) {
-      if (policy === null) delete merged[kind]
-      else if (policy !== undefined) merged[kind] = policy
+    if (patch.sessionModelPolicy) {
+      const merged: Record<string, unknown> = { ...settings.sessionModelPolicy }
+      for (const [kind, policy] of Object.entries(patch.sessionModelPolicy)) {
+        if (policy === null) delete merged[kind]
+        else if (policy !== undefined) merged[kind] = policy
+      }
+      const normalized = normalizeSessionModelPolicy(merged)
+      if (normalized) next.sessionModelPolicy = normalized
+      else delete next.sessionModelPolicy
     }
-    const normalized = normalizeSessionModelPolicy(merged)
-    if (normalized) next.sessionModelPolicy = normalized
-    else delete next.sessionModelPolicy
-  }
 
-  if (jsonEquals(settings, next)) {
-    return settings
-  }
-  await setSettingsForSource(source, ctx, fs, next)
-  return next
+    if (jsonEquals(settings, next)) {
+      return settings
+    }
+    await setSettingsForSource(source, ctx, fs, next)
+    return next
+  })
 }
 
 /**
@@ -1478,21 +1506,23 @@ export async function updateUserModelAutoCompactWindow(
   modelId: string,
   tokens: number | null,
 ): Promise<NexusSettingsV1> {
-  const ctx = { homeDir }
-  const { settings } = await readLayerFresh('userSettings', ctx, fs)
-  const models = { ...settings.modelSettings }
-  const entry = { ...models[modelId] }
-  if (tokens === null) delete entry.autoCompactWindow
-  else entry.autoCompactWindow = tokens
-  if (Object.keys(entry).length > 0) models[modelId] = entry
-  else delete models[modelId]
-  const next: NexusSettingsV1 = { ...settings, version: NEXUS_SETTINGS_VERSION }
-  const normalized = normalizeModelSettings(models)
-  if (normalized) next.modelSettings = normalized
-  else delete next.modelSettings
-  if (jsonEquals(settings, next)) return settings
-  await setSettingsForSource('userSettings', ctx, fs, next)
-  return next
+  return enqueueSettingsUpdate(layerFilePath('userSettings', { homeDir }), async () => {
+    const ctx = { homeDir }
+    const { settings } = await readLayerFresh('userSettings', ctx, fs)
+    const models = { ...settings.modelSettings }
+    const entry = { ...models[modelId] }
+    if (tokens === null) delete entry.autoCompactWindow
+    else entry.autoCompactWindow = tokens
+    if (Object.keys(entry).length > 0) models[modelId] = entry
+    else delete models[modelId]
+    const next: NexusSettingsV1 = { ...settings, version: NEXUS_SETTINGS_VERSION }
+    const normalized = normalizeModelSettings(models)
+    if (normalized) next.modelSettings = normalized
+    else delete next.modelSettings
+    if (jsonEquals(settings, next)) return settings
+    await setSettingsForSource('userSettings', ctx, fs, next)
+    return next
+  })
 }
 
 /** Read-modify-write the sub-session model-routing settings in `userSettings`. */
