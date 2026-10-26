@@ -3,8 +3,8 @@
  * The Customize screen (F-35): the utility tab's show / unavailable cycle,
  * the left list of the directory and the marketplaces, the top bar's page
  * Home / Back and the status and Add for the item the page shows, the dialog
- * the page's own add button opens, and a marketplace's plugins as cards and
- * detail pages.
+ * the page's own add button opens, the marketplaces' start page with cards
+ * and detail pages, and adding and removing a marketplace.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { createElement } from 'react'
@@ -168,45 +168,80 @@ describe('useCustomizeTab — the page turning visible again', () => {
 
 type Route = { capability: string; action: string }
 
-/** A settings bridge with one marketplace list; every request is recorded. */
+type FakeMarket = { name: string; isOfficial?: boolean; isBuiltin?: boolean }
+type AddAnswer = Record<string, unknown> | Error
+
+/**
+ * A settings bridge with one marketplace list; every request is recorded.
+ * A refresh keeps what a marketplace lists (a never-downloaded one becomes
+ * empty) unless `refreshFails`; `holdRefresh` keeps refreshes pending until
+ * `release()`. `addAnswers` answer `addMarketplace` in order; an `added`
+ * answer joins the list.
+ */
 function fakeBridge(
   options: {
-    marketplaces?: Array<{ name: string; isOfficial?: boolean }>
+    marketplaces?: FakeMarket[]
     manifests?: Record<string, { plugins: Array<Record<string, unknown>> } | null>
     installFails?: boolean
+    refreshFails?: boolean
+    holdRefresh?: boolean
+    addAnswers?: AddAnswer[]
+    removeFails?: boolean
   } = {},
 ) {
   const requests: string[] = []
   const manifests = { ...(options.manifests ?? {}) }
+  const markets: FakeMarket[] = [...(options.marketplaces ?? [])]
+  const control = { refreshFails: options.refreshFails ?? false }
+  let release: () => void = () => {}
+  const held = options.holdRefresh ? new Promise<void>(resolve => (release = resolve)) : Promise.resolve()
+  const addAnswers = [...(options.addAnswers ?? [])]
   const bridge = {
     request: async (route: Route, payload: Record<string, unknown>) => {
       const key = `${route.capability}.${route.action}`
       requests.push(`${key} ${JSON.stringify(payload)}`)
       switch (key) {
         case 'plugins.listMarketplaces':
-          return {
-            marketplaces: (options.marketplaces ?? []).map(m => ({ isOfficial: false, isBuiltin: false, ...m })),
-          }
+          return { marketplaces: markets.map(m => ({ isOfficial: false, isBuiltin: false, ...m })) }
         case 'plugins.listMarketplacePlugins': {
           const manifest = manifests[payload.marketplace as string]
           if (manifest === undefined) throw new Error('unknown marketplace')
           return { marketplace: payload.marketplace, manifest: manifest && { name: payload.marketplace, ...manifest } }
         }
-        case 'plugins.refreshMarketplace':
-          manifests[payload.name as string] = { plugins: [] }
+        case 'plugins.refreshMarketplace': {
+          await held
+          if (control.refreshFails) throw new Error('offline')
+          const name = payload.name as string
+          if (manifests[name] === null) manifests[name] = { plugins: [] }
           return { ok: true, pluginCount: 0, manifest: null }
+        }
         case 'plugins.install': {
           if (options.installFails) throw new Error('blocked')
           const [name, market] = (payload.identifier as string).split('@')
           for (const plugin of manifests[market!]?.plugins ?? []) if (plugin.name === name) plugin.installed = true
           return { ok: true }
         }
+        case 'plugins.addMarketplace': {
+          const answer = addAnswers.shift() ?? new Error('no answer')
+          if (answer instanceof Error) throw answer
+          if (answer.status === 'added') {
+            markets.push({ name: answer.name as string })
+            manifests[answer.name as string] = { plugins: [{ name: 'fresh', installed: false }] }
+          }
+          return answer
+        }
+        case 'plugins.removeMarketplace': {
+          if (options.removeFails) throw new Error('disk full')
+          const at = markets.findIndex(m => m.name === payload.name)
+          if (at >= 0) markets.splice(at, 1)
+          return { ok: true, removed: at >= 0 }
+        }
         default:
           throw new Error(`unexpected ${key}`)
       }
     },
   } as unknown as NexusSettingsBridge
-  return { bridge, requests }
+  return { bridge, requests, control, release: () => release() }
 }
 
 function screen(
@@ -248,39 +283,71 @@ describe('CustomizeScreen — the unavailable state', () => {
 })
 
 describe('CustomizeScreen — the left list', () => {
-  it('lists the directory first, then the marketplaces with the official ones first, and no segmented control', async () => {
+  it('lists the directory first, then the marketplaces added here by name; official and built-in ones are left out', async () => {
     const fake = fakeConnection(['ok'])
     const { bridge } = fakeBridge({
-      marketplaces: [{ name: 'team-tools' }, { name: 'official-market', isOfficial: true }],
+      marketplaces: [
+        { name: 'team-tools' },
+        { name: 'official-market', isOfficial: true },
+        { name: 'product-builtin', isBuiltin: true },
+        { name: 'alpha' },
+      ],
+      manifests: { 'team-tools': { plugins: [] }, alpha: { plugins: [] } },
     })
     const view = screen(fake.getConnection, { bridge })
     await waitFor(() => expect(view.getAllByTestId('customize-market')).toHaveLength(2))
     const directory = view.getByTestId('customize-market-directory')
     expect(directory.getAttribute('aria-current')).toBe('page')
     expect(directory.textContent).toContain(EN_MESSAGES['customize.directory.title'])
-    expect(view.getAllByTestId('customize-market').map(row => row.getAttribute('data-name'))).toEqual([
-      'official-market',
-      'team-tools',
-    ])
-    expect(view.getAllByTestId('customize-market')[0]!.textContent).toContain(EN_MESSAGES['customize.markets.official'])
+    expect(view.getAllByTestId('customize-market').map(row => row.getAttribute('data-name'))).toEqual(['alpha', 'team-tools'])
     expect(view.getByTestId('customize-title').textContent).toBe(EN_MESSAGES['customize.directory.title'])
     expect(view.queryByRole('tablist')).toBeNull()
     expect(fake.shows).toEqual([{ url: directoryUrl() }])
   })
 
-  it('a marketplace takes the page area, and choosing the directory again shows the tab again', async () => {
+  it('with nothing added, the list says so and still offers Add', async () => {
     const fake = fakeConnection(['ok'])
-    const { bridge } = fakeBridge({ marketplaces: [{ name: 'team-tools' }], manifests: { 'team-tools': { plugins: [] } } })
+    const { bridge } = fakeBridge({ marketplaces: [{ name: 'official-market', isOfficial: true }] })
     const view = screen(fake.getConnection, { bridge })
-    await waitFor(() => expect(fake.shows).toHaveLength(1))
-    fireEvent.click(await view.findByTestId('customize-market'))
-    expect(view.queryByTestId('webview-area')).toBeNull()
-    expect(view.getByTestId('customize-title').textContent).toBe('team-tools')
-    expect((await view.findByTestId('customize-market-empty')).textContent).toBe(EN_MESSAGES['customize.market.empty'])
+    expect((await view.findByTestId('customize-markets-none')).textContent).toBe(EN_MESSAGES['customize.markets.none'])
+    expect(view.getByTestId('customize-market-add-open').getAttribute('aria-label')).toBe(EN_MESSAGES['customize.addMarket.open'])
+  })
 
-    fireEvent.click(view.getByTestId('customize-market-directory'))
-    expect(view.queryByTestId('webview-area')).not.toBeNull()
-    await waitFor(() => expect(fake.shows).toHaveLength(2))
+  it('a marketplace shows the start page scrolled to its section; the directory shows the tab again', async () => {
+    const scrolled: string[] = []
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.getAttribute('data-marketplace') ?? '')
+    }
+    try {
+      const fake = fakeConnection(['ok'])
+      const { bridge } = fakeBridge({
+        marketplaces: [{ name: 'alpha' }, { name: 'team-tools' }],
+        manifests: { alpha: { plugins: [] }, 'team-tools': { plugins: [] } },
+      })
+      const view = screen(fake.getConnection, { bridge })
+      await waitFor(() => expect(fake.shows).toHaveLength(1))
+      await waitFor(() => expect(view.getAllByTestId('customize-market')).toHaveLength(2))
+      fireEvent.click(view.getAllByTestId('customize-market')[1]!)
+      expect(view.queryByTestId('webview-area')).toBeNull()
+      expect(view.getByTestId('customize-title').textContent).toBe(EN_MESSAGES['customize.browse.title'])
+      expect(view.getAllByTestId('customize-market-section').map(s => s.getAttribute('data-marketplace'))).toEqual([
+        'alpha',
+        'team-tools',
+      ])
+      expect(scrolled).toEqual(['team-tools'])
+      expect(view.getAllByTestId('customize-market')[1]!.getAttribute('aria-current')).toBe('page')
+
+      // Choosing it again scrolls to it again.
+      fireEvent.click(view.getAllByTestId('customize-market')[1]!)
+      expect(scrolled).toEqual(['team-tools', 'team-tools'])
+
+      fireEvent.click(view.getByTestId('customize-market-directory'))
+      expect(view.queryByTestId('webview-area')).not.toBeNull()
+      await waitFor(() => expect(fake.shows).toHaveLength(2))
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
   })
 })
 
@@ -373,16 +440,32 @@ describe('CustomizeScreen — the item the page shows', () => {
   })
 })
 
-describe('CustomizeScreen — a marketplace', () => {
+describe('CustomizeScreen — the marketplaces\' start page', () => {
   async function opened(bridgeOptions: Parameters<typeof fakeBridge>[0]) {
     const fake = fakeConnection(['ok'])
     const b = fakeBridge({ marketplaces: [{ name: 'team-tools' }], ...bridgeOptions })
     const view = screen(fake.getConnection, { bridge: b.bridge })
-    fireEvent.click(await view.findByTestId('customize-market'))
-    return { view, requests: b.requests }
+    fireEvent.click((await view.findAllByTestId('customize-market'))[0]!)
+    return { view, fake, ...b }
   }
 
-  it('lists its plugins, Add installs one by identifier and the list then reads Installed', async () => {
+  it('each opening fetches every list from its source, reads it again, then asks the directory about it', async () => {
+    const { fake, requests } = await opened({
+      marketplaces: [{ name: 'alpha' }, { name: 'team-tools' }],
+      manifests: { alpha: { plugins: [] }, 'team-tools': { plugins: [] } },
+    })
+    await waitFor(() => expect(fake.answered.filter(a => a.startsWith('customizePage.describeMarketplace'))).toHaveLength(2))
+    for (const name of ['alpha', 'team-tools']) {
+      const reads = requests.filter(r => r === `plugins.listMarketplacePlugins ${JSON.stringify({ marketplace: name })}`)
+      expect(reads).toHaveLength(2)
+      expect(requests).toContain(`plugins.refreshMarketplace ${JSON.stringify({ name })}`)
+      expect(requests.indexOf(`plugins.refreshMarketplace ${JSON.stringify({ name })}`)).toBeLessThan(
+        requests.lastIndexOf(`plugins.listMarketplacePlugins ${JSON.stringify({ marketplace: name })}`),
+      )
+    }
+  })
+
+  it('lists its plugins, Add installs one by identifier and the card then reads Installed', async () => {
     const { view, requests } = await opened({
       manifests: {
         'team-tools': {
@@ -397,13 +480,70 @@ describe('CustomizeScreen — a marketplace', () => {
     expect(rows.map(row => row.getAttribute('data-name'))).toEqual(['lint', 'docs'])
     expect(rows[0]!.textContent).toContain('By Acme')
     expect(rows[1]!.textContent).toContain(EN_MESSAGES['customize.item.installed'])
+    expect(view.getByTestId('customize-market-section').textContent).toContain('2 plugins')
     fireEvent.click(view.getByTestId('customize-market-add'))
     await waitFor(() => expect(view.queryByTestId('customize-market-add')).toBeNull())
     expect(requests).toContain('plugins.install {"identifier":"lint@team-tools","refreshFirst":false}')
     expect(view.getAllByTestId('customize-market-installed')).toHaveLength(2)
   })
 
-  it('a failed install says so on its row and keeps Add', async () => {
+  it('a section shows ten cards and Show all, which lists every plugin and returns to the start page', async () => {
+    const plugins = Array.from({ length: 12 }, (_, i) => ({ name: `p${String(i).padStart(2, '0')}`, installed: false }))
+    const { view } = await opened({ manifests: { 'team-tools': { plugins } } })
+    await waitFor(() => expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(10))
+    const showAll = view.getByTestId('customize-market-show-all')
+    expect(showAll.textContent).toContain(EN_MESSAGES['customize.browse.showAll'].replace('{count}', '12'))
+
+    fireEvent.click(showAll)
+    expect(view.getByTestId('customize-market-all')).not.toBeNull()
+    expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(12)
+    expect(view.queryByTestId('customize-market-show-all')).toBeNull()
+
+    fireEvent.click(view.getByTestId('customize-market-all-back'))
+    expect(view.getByTestId('customize-browse')).not.toBeNull()
+    expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(10)
+  })
+
+  it('ten or fewer plugins offer no Show all', async () => {
+    const plugins = Array.from({ length: 10 }, (_, i) => ({ name: `p${i}`, installed: false }))
+    const { view } = await opened({ manifests: { 'team-tools': { plugins } } })
+    await waitFor(() => expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(10))
+    expect(view.queryByTestId('customize-market-show-all')).toBeNull()
+  })
+
+  it('a fetch under way shows Checking for updates on its section, gone once it ends', async () => {
+    const { view, release } = await opened({
+      manifests: { 'team-tools': { plugins: [{ name: 'lint', installed: false }] } },
+      holdRefresh: true,
+    })
+    const updating = await view.findByTestId('customize-market-refreshing')
+    expect(updating.textContent).toBe(EN_MESSAGES['customize.browse.updating'])
+    expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(1)
+    release()
+    await waitFor(() => expect(view.queryByTestId('customize-market-refreshing')).toBeNull())
+  })
+
+  it('one never downloaded is downloaded at once, saying so, then shows its list', async () => {
+    const { view, release } = await opened({ manifests: { 'team-tools': null }, holdRefresh: true })
+    await waitFor(() =>
+      expect(view.getByTestId('customize-market-not-fetched').textContent).toContain(EN_MESSAGES['customize.browse.downloading']),
+    )
+    expect(view.queryByTestId('customize-market-download')).toBeNull()
+    release()
+    expect((await view.findByTestId('customize-market-empty')).textContent).toBe(EN_MESSAGES['customize.market.empty'])
+  })
+
+  it('a download that fails offers Download, which tries again', async () => {
+    const { view, requests, control } = await opened({ manifests: { 'team-tools': null }, refreshFails: true })
+    const download = await view.findByTestId('customize-market-download')
+    expect(view.getByTestId('customize-market-not-fetched').textContent).toContain(EN_MESSAGES['customize.market.notFetched'])
+    control.refreshFails = false
+    fireEvent.click(download)
+    await view.findByTestId('customize-market-empty')
+    expect(requests.filter(r => r === 'plugins.refreshMarketplace {"name":"team-tools"}')).toHaveLength(2)
+  })
+
+  it('a failed install says so on its card and keeps Add', async () => {
     const { view } = await opened({
       manifests: { 'team-tools': { plugins: [{ name: 'lint', installed: false }] } },
       installFails: true,
@@ -415,18 +555,153 @@ describe('CustomizeScreen — a marketplace', () => {
     expect((view.getByTestId('customize-market-add') as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('one never downloaded offers Download, which fetches it and reads it again', async () => {
-    const { view, requests } = await opened({ manifests: { 'team-tools': null } })
-    const note = await view.findByTestId('customize-market-not-fetched')
-    expect(note.textContent).toContain(EN_MESSAGES['customize.market.notFetched'])
-    fireEvent.click(view.getByTestId('customize-market-download'))
-    await view.findByTestId('customize-market-empty')
-    expect(requests).toContain('plugins.refreshMarketplace {"name":"team-tools"}')
-  })
-
   it('one that cannot be read says so', async () => {
     const { view } = await opened({ manifests: {} })
     expect((await view.findByTestId('customize-market-failed')).textContent).toBe(EN_MESSAGES['customize.market.loadFailed'])
+  })
+})
+
+describe('CustomizeScreen — adding a marketplace', () => {
+  async function opened(bridgeOptions: Parameters<typeof fakeBridge>[0]) {
+    const fake = fakeConnection(['ok'])
+    const b = fakeBridge(bridgeOptions)
+    const view = screen(fake.getConnection, { bridge: b.bridge })
+    await waitFor(() => expect(fake.shows).toHaveLength(1))
+    fireEvent.click(await view.findByTestId('customize-market-add-open'))
+    const input = view.getByTestId('customize-add-market-input') as HTMLInputElement
+    const type = (text: string) => fireEvent.change(input, { target: { value: text } })
+    const confirm = () => fireEvent.click(view.getByTestId('customize-add-market-confirm'))
+    return { view, fake, type, confirm, ...b }
+  }
+
+  it('opening it over the directory holds the page; text that is no repository is refused without a request', async () => {
+    const { view, type, confirm, requests } = await opened({})
+    expect(view.getByTestId('customize-add-market-dialog').textContent).toContain(EN_MESSAGES['customize.addMarket.description'])
+    expect(view.queryByTestId('webview-area')).toBeNull()
+    expect(view.getByTestId('customize-page-held')).not.toBeNull()
+    expect((view.getByTestId('customize-add-market-confirm') as HTMLButtonElement).disabled).toBe(true)
+
+    type('not a repository')
+    confirm()
+    const hint = view.getByTestId('customize-add-market-hint')
+    expect(hint.textContent).toBe(EN_MESSAGES['customize.addMarket.invalid'])
+    expect(view.getByTestId('customize-add-market-input').getAttribute('aria-invalid')).toBe('true')
+    expect(requests.some(r => r.startsWith('plugins.addMarketplace'))).toBe(false)
+
+    type('acme/too')
+    expect(hint.textContent).toBe(EN_MESSAGES['customize.addMarket.hint'])
+  })
+
+  it('an added marketplace joins the list, the dialog closes, and the start page shows its section', async () => {
+    const { view, type, confirm, requests } = await opened({
+      addAnswers: [{ ok: true, status: 'added', name: 'acme-market', pluginCount: 1 }],
+    })
+    type('acme/tools')
+    confirm()
+    await waitFor(() => expect(view.queryByTestId('customize-add-market-dialog')).toBeNull())
+    expect(requests).toContain('plugins.addMarketplace {"source":"acme/tools"}')
+    const row = view.getAllByTestId('customize-market').find(r => r.getAttribute('data-name') === 'acme-market')!
+    expect(row.getAttribute('aria-current')).toBe('page')
+    expect(view.getByTestId('customize-title').textContent).toBe(EN_MESSAGES['customize.browse.title'])
+    await waitFor(() => expect(view.getByTestId('customize-market-plugin').getAttribute('data-name')).toBe('fresh'))
+  })
+
+  it('a repository already added says under which name, and Show it goes there', async () => {
+    const { view, type, confirm } = await opened({
+      marketplaces: [{ name: 'acme-market' }],
+      manifests: { 'acme-market': { plugins: [] } },
+      addAnswers: [{ ok: true, status: 'alreadyAdded', name: 'acme-market' }],
+    })
+    type('https://github.com/acme/tools')
+    confirm()
+    const already = await view.findByTestId('customize-add-market-already')
+    expect(already.textContent).toContain(EN_MESSAGES['customize.addMarket.already'].replace('{name}', 'acme-market'))
+    fireEvent.click(view.getByTestId('customize-add-market-show'))
+    await waitFor(() => expect(view.queryByTestId('customize-add-market-dialog')).toBeNull())
+    expect(view.getByTestId('customize-market').getAttribute('aria-current')).toBe('page')
+  })
+
+  it('a repository that cannot be read says so with the reason, and the dialog stays to try again', async () => {
+    const { view, type, confirm, requests } = await opened({
+      addAnswers: [
+        { ok: true, status: 'failed', stage: 'fetch', error: 'HTTP 404' },
+        { ok: true, status: 'added', name: 'acme-market', pluginCount: 1 },
+      ],
+    })
+    type('acme/missing')
+    confirm()
+    const failed = await view.findByTestId('customize-add-market-failed')
+    expect(failed.textContent).toContain(EN_MESSAGES['customize.addMarket.fetchFailed'])
+    expect(failed.textContent).toContain('HTTP 404')
+    expect(view.queryAllByTestId('customize-market')).toHaveLength(0)
+
+    confirm()
+    await waitFor(() => expect(view.queryByTestId('customize-add-market-dialog')).toBeNull())
+    expect(requests.filter(r => r.startsWith('plugins.addMarketplace'))).toHaveLength(2)
+  })
+
+  it('a refused request is a save failure', async () => {
+    const { view, type, confirm } = await opened({ addAnswers: [new Error('not allowed')] })
+    type('acme/tools')
+    confirm()
+    expect((await view.findByTestId('customize-add-market-failed')).textContent).toContain(
+      EN_MESSAGES['customize.addMarket.saveFailed'],
+    )
+  })
+})
+
+describe('CustomizeScreen — removing a marketplace', () => {
+  async function opened(bridgeOptions: Parameters<typeof fakeBridge>[0] = {}) {
+    const fake = fakeConnection(['ok'])
+    const b = fakeBridge({
+      marketplaces: [{ name: 'alpha' }, { name: 'team-tools' }],
+      manifests: { alpha: { plugins: [] }, 'team-tools': { plugins: [] } },
+      ...bridgeOptions,
+    })
+    const view = screen(fake.getConnection, { bridge: b.bridge })
+    await view.findAllByTestId('customize-market')
+    return { view, ...b }
+  }
+
+  it('each row has a remove button that asks first, says what removing does, and Remove takes it off the list', async () => {
+    const { view, requests } = await opened()
+    const removes = view.getAllByTestId('customize-market-remove')
+    expect(removes).toHaveLength(2)
+    expect(removes[1]!.getAttribute('aria-label')).toBe(EN_MESSAGES['customize.removeMarket.open'].replace('{name}', 'team-tools'))
+    fireEvent.click(removes[1]!)
+    const dialog = view.getByTestId('customize-remove-market-dialog')
+    expect(dialog.textContent).toContain(EN_MESSAGES['customize.removeMarket.title'].replace('{name}', 'team-tools'))
+    expect(dialog.textContent).toContain(EN_MESSAGES['customize.removeMarket.description'])
+    expect(view.queryByTestId('webview-area')).toBeNull()
+
+    fireEvent.click(view.getByTestId('customize-remove-market-confirm'))
+    await waitFor(() => expect(view.queryByTestId('customize-remove-market-dialog')).toBeNull())
+    expect(requests).toContain('plugins.removeMarketplace {"name":"team-tools"}')
+    expect(view.getAllByTestId('customize-market').map(r => r.getAttribute('data-name'))).toEqual(['alpha'])
+    expect(view.queryByTestId('webview-area')).not.toBeNull()
+  })
+
+  it('a failed remove says so and keeps the marketplace', async () => {
+    const { view } = await opened({ removeFails: true })
+    fireEvent.click(view.getAllByTestId('customize-market-remove')[0]!)
+    fireEvent.click(view.getByTestId('customize-remove-market-confirm'))
+    await waitFor(() =>
+      expect(view.getByTestId('customize-remove-market-dialog').textContent).toContain(
+        EN_MESSAGES['customize.removeMarket.failed'],
+      ),
+    )
+    expect(view.getAllByTestId('customize-market')).toHaveLength(2)
+  })
+
+  it('removing the last one while browsing leaves the start page empty, offering Add', async () => {
+    const { view } = await opened({ marketplaces: [{ name: 'alpha' }], manifests: { alpha: { plugins: [] } } })
+    fireEvent.click(view.getByTestId('customize-market'))
+    fireEvent.click(view.getByTestId('customize-market-remove'))
+    fireEvent.click(view.getByTestId('customize-remove-market-confirm'))
+    const empty = await view.findByTestId('customize-browse-empty')
+    expect(empty.textContent).toContain(EN_MESSAGES['customize.browse.empty'])
+    fireEvent.click(view.getByTestId('customize-browse-add'))
+    expect(view.getByTestId('customize-add-market-dialog')).not.toBeNull()
   })
 })
 

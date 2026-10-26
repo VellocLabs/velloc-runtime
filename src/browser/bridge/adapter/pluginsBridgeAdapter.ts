@@ -36,7 +36,9 @@ import {
   listingsVisibleOn,
   loadKnownMarketplaces,
   parseMarketplaceManifest,
+  removeMarketplace,
 } from '../../../pluginHost/marketplaces'
+import { githubRepoOf, parseMarketplaceSource, registerMarketplaceSource } from '../../../pluginHost/marketplaceRegister'
 import { isBuiltinMarketplace } from '../../../pluginHost/builtinMarketplace'
 import { currentTemplateChannel, type UpdateChannel } from '../../../branding/updateChannels'
 import { pluginBlockReason } from '../../../pluginHost/blocklist'
@@ -453,6 +455,45 @@ async function handleSetSettings(
   return { ok: true, missing: (await missingSettingsOf(ctx, plugin, paths)).missing }
 }
 
+/**
+ * `plugins/addMarketplace` — registers a typed source. A repository that is
+ * already registered is reported under its name and not fetched again.
+ */
+async function handleAddMarketplace(
+  payload: PluginsBridgeActionMap['addMarketplace']['payload'],
+  ctx: PluginsAdapterContext,
+): Promise<PluginsBridgeActionMap['addMarketplace']['result']> {
+  const source = typeof payload?.source === 'string' ? parseMarketplaceSource(payload.source) : null
+  if (!source) return { ok: true, status: 'invalidSource' }
+  const pathCtx = pathContextOf(ctx)
+  const nowIso = nowOf(ctx)
+  const repo = githubRepoOf(source)
+  const { registry } = await loadKnownMarketplaces(pathCtx, ctx.fs, nowIso)
+  for (const [name, entry] of Object.entries(registry)) {
+    const known = entry.source
+    if (known.source !== 'github' && known.source !== 'url') continue
+    if (repo !== null && githubRepoOf(known) === repo) return { ok: true, status: 'alreadyAdded', name }
+  }
+  const outcome = await registerMarketplaceSource(pathCtx, ctx.fs, source, nowIso, pickFetch(ctx))
+  if (outcome.ok) return { ok: true, status: 'added', name: outcome.name, pluginCount: outcome.pluginCount }
+  const error = outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
+  return { ok: true, status: 'failed', stage: outcome.stage, error }
+}
+
+/** `plugins/removeMarketplace` — official and built-in names throw. */
+async function handleRemoveMarketplace(
+  payload: PluginsBridgeActionMap['removeMarketplace']['payload'],
+  ctx: PluginsAdapterContext,
+): Promise<PluginsBridgeActionMap['removeMarketplace']['result']> {
+  const name = typeof payload?.name === 'string' ? payload.name : ''
+  const pathCtx = pathContextOf(ctx)
+  const nowIso = nowOf(ctx)
+  const { registry } = await loadKnownMarketplaces(pathCtx, ctx.fs, nowIso)
+  const present = name.trim() in registry
+  await removeMarketplace(pathCtx, ctx.fs, name, nowIso)
+  return { ok: true, removed: present }
+}
+
 /** Exported map so tests can call individual handlers directly without
  *  constructing a bridge envelope. */
 export const pluginsHandlers = {
@@ -467,6 +508,8 @@ export const pluginsHandlers = {
   setLocalEnabled: handleSetLocalEnabled,
   setEnabled: handleSetEnabled,
   refreshMarketplace: handleRefreshMarketplace,
+  addMarketplace: handleAddMarketplace,
+  removeMarketplace: handleRemoveMarketplace,
   requiredSettings: handleRequiredSettings,
   setSettings: handleSetSettings,
 }
@@ -541,6 +584,18 @@ export async function handlePluginsBridgeRequest(
       case 'refreshMarketplace':
         result = await handleRefreshMarketplace(
           request.payload as PluginsBridgeActionMap['refreshMarketplace']['payload'],
+          ctx,
+        )
+        break
+      case 'addMarketplace':
+        result = await handleAddMarketplace(
+          request.payload as PluginsBridgeActionMap['addMarketplace']['payload'],
+          ctx,
+        )
+        break
+      case 'removeMarketplace':
+        result = await handleRemoveMarketplace(
+          request.payload as PluginsBridgeActionMap['removeMarketplace']['payload'],
           ctx,
         )
         break

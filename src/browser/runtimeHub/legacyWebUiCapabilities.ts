@@ -88,6 +88,10 @@ export const LEGACY_WEBUI_CAPABILITIES = {
     // Deletes a directory plugin's folder from the host's disk.
     removeLocal: 'full',
     refreshMarketplace: 'full',
+    // A marketplace added here is a source installs and updates fetch code
+    // from; removing one stops its updates.
+    addMarketplace: 'full',
+    removeMarketplace: 'full',
     // Which declared settings are unset (names and text, never values), and
     // their write, which reloads every session's plugins — as
     // `providers.modOptions` / `setModOptions`.

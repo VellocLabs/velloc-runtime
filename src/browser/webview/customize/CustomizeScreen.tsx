@@ -1,7 +1,6 @@
 import * as React from 'react'
-import { ArrowLeftIcon, ChevronLeftIcon, GlobeIcon, HomeIcon, StoreIcon } from 'lucide-react'
+import { ArrowLeftIcon, ChevronLeftIcon, GlobeIcon, HomeIcon, PlusIcon, StoreIcon, Trash2Icon } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -16,9 +15,11 @@ import { useWindowDragRegions } from '../topbar/useWindowDragRegions'
 import { WebviewArea } from '../WebviewArea'
 import { AddItemDialog } from './AddItemDialog'
 import { DirectoryItemStatus } from './DirectoryItemStatus'
-import { MarketplacePluginList } from './MarketplacePluginList'
+import { pluginsAddMarketplace, pluginsRemoveMarketplace } from '../settings/clients'
+import { MarketplaceBrowser } from './MarketplaceBrowser'
+import { AddMarketplaceDialog, RemoveMarketplaceDialog } from './MarketplaceDialogs'
 import { useCustomizeTab } from './useCustomizeTab'
-import { useMarketplaceDetails, useMarketplaceList, useMarketplacePlugins } from './useMarketplaceCatalog'
+import { useMarketplaceList, useMarketplaceShelves } from './useMarketplaceCatalog'
 
 export type CustomizeScreenProps = {
   runtimeConnection?: () => Promise<RuntimeConnection>
@@ -29,18 +30,21 @@ export type CustomizeScreenProps = {
   onDragRegionsChange?: (regions: WindowDragRect[]) => void
 }
 
-/** The left list's selection: the directory page, or a marketplace by name. */
-type Selection = { kind: 'directory' } | { kind: 'marketplace'; name: string }
+/**
+ * The left list's selection: the directory page, or the marketplaces' start
+ * page scrolled to the one last chosen (a new `nonce` scrolls to it again).
+ */
+type Selection = { kind: 'directory' } | { kind: 'browse'; focus: { name: string; nonce: number } | null }
 
 const DIRECTORY: Selection = { kind: 'directory' }
 
 /**
  * The Customize screen (F-35): takes the window like Settings does. Left,
- * the directory and the marketplaces registered here. Right, the directory
- * page in this window's `customize` utility tab (painted by the native tab
- * view), or the selected marketplace's plugins. The top bar centres the
- * page's Home / Back and its item's status; the page's own add button opens
- * a dialog that confirms and installs that item.
+ * the directory and the marketplaces added here, with add and remove. Right,
+ * the directory page in this window's `customize` utility tab (painted by
+ * the native tab view), or those marketplaces' start page. The top bar
+ * centres the page's Home / Back and its item's status; the page's own add
+ * button opens a dialog that confirms and installs that item.
  */
 export function CustomizeScreen({
   runtimeConnection,
@@ -57,15 +61,40 @@ export function CustomizeScreen({
   const tab = useCustomizeTab(runtimeConnection, onDirectory)
   const bridge = useSettingsBridge()
   const list = useMarketplaceList(bridge)
-  const marketName = selection.kind === 'marketplace' ? selection.name : null
-  const market = useMarketplacePlugins(bridge, marketName)
-  const marketDetails = useMarketplaceDetails(tab.describeMarketplace, marketName)
+  const names = React.useMemo(() => (list.marketplaces ?? []).map(m => m.name), [list.marketplaces])
+  const shelves = useMarketplaceShelves(bridge, names, tab.describeMarketplace)
+  const [addingMarket, setAddingMarket] = React.useState(false)
+  const [removing, setRemoving] = React.useState<string | null>(null)
+  const nonce = React.useRef(0)
+  const browse = React.useCallback((name: string | null) => {
+    nonce.current += 1
+    setSelection({ kind: 'browse', focus: name === null ? null : { name, nonce: nonce.current } })
+  }, [])
+  const addMarket = React.useCallback(
+    async (source: string) => {
+      if (!bridge) throw new Error('')
+      const result = await pluginsAddMarketplace(bridge, source)
+      if (result.status === 'added') await list.reload()
+      return result
+    },
+    [bridge, list],
+  )
+  const removeMarket = React.useCallback(
+    async (name: string) => {
+      if (!bridge) throw new Error('')
+      await pluginsRemoveMarketplace(bridge, name)
+      await list.reload()
+    },
+    [bridge, list],
+  )
   const [answeredSeq, setAnsweredSeq] = React.useState(0)
   const ask = tab.addRequest
   const askedItem =
     onDirectory && ask && ask.seq > answeredSeq && tab.pageItem?.id === ask.itemId ? tab.pageItem : null
   const closeAsk = React.useCallback(() => setAnsweredSeq(seq => Math.max(seq, ask?.seq ?? seq)), [ask])
   const showDirectory = !tab.unavailable && onDirectory
+  // The native view paints above the guest; it gives way while a dialog asks.
+  const holdPage = askedItem !== null || addingMarket || removing !== null
   const openInDirectory = (path: string) => {
     setSelection(DIRECTORY)
     tab.openPage(path)
@@ -99,7 +128,7 @@ export function CustomizeScreen({
             <ArrowLeftIcon className="size-4" />
           </Button>
           <span data-testid="customize-title" className="truncate px-1 font-semibold text-base text-foreground">
-            {onDirectory ? t('customize.directory.title') : selection.name}
+            {t(onDirectory ? 'customize.directory.title' : 'customize.browse.title')}
           </span>
         </div>
         <div data-testid="customize-center" className="flex min-w-0 max-w-[min(44rem,60vw)] items-center gap-3">
@@ -165,18 +194,41 @@ export function CustomizeScreen({
             detail={t('customize.markets.directoryDetail')}
             onSelect={() => setSelection(DIRECTORY)}
           />
+          <div className="mt-3 flex items-center gap-1 px-2 pb-1">
+            <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
+              {t('customize.markets.yours')}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="size-6"
+              data-testid="customize-market-add-open"
+              aria-label={t('customize.addMarket.open')}
+              title={t('customize.addMarket.open')}
+              disabled={!bridge}
+              onClick={() => setAddingMarket(true)}
+            >
+              <PlusIcon className="size-4" />
+            </Button>
+          </div>
           {list.marketplaces === null ? (
             <p className="px-2 py-1 text-sm text-muted-foreground">{t('customize.loading')}</p>
+          ) : list.marketplaces.length === 0 ? (
+            <p data-testid="customize-markets-none" className="px-2 py-1 text-xs text-muted-foreground">
+              {t('customize.markets.none')}
+            </p>
           ) : (
             list.marketplaces.map(m => (
               <MarketRow
                 key={m.name}
                 testId="customize-market"
                 name={m.name}
-                selected={selection.kind === 'marketplace' && selection.name === m.name}
+                selected={selection.kind === 'browse' && selection.focus?.name === m.name}
                 icon={<StoreIcon className="size-4" />}
-                badge={m.isOfficial ? t('customize.markets.official') : undefined}
-                onSelect={() => setSelection({ kind: 'marketplace', name: m.name })}
+                onSelect={() => browse(m.name)}
+                onRemove={() => setRemoving(m.name)}
+                removeLabel={t('customize.removeMarket.open', { name: m.name })}
               />
             ))
           )}
@@ -188,11 +240,12 @@ export function CustomizeScreen({
         </nav>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {selection.kind === 'marketplace' ? (
-            <MarketplacePluginList
-              marketplace={selection.name}
-              view={market}
-              details={marketDetails}
+          {selection.kind === 'browse' ? (
+            <MarketplaceBrowser
+              marketplaces={names}
+              view={shelves}
+              focus={selection.focus}
+              onAdd={bridge ? () => setAddingMarket(true) : undefined}
               onOpenInDirectory={openInDirectory}
               onOpenSettings={onOpenSettings}
             />
@@ -207,8 +260,7 @@ export function CustomizeScreen({
                 {t('customize.retry')}
               </Button>
             </div>
-          ) : askedItem ? (
-            // The native view paints above the guest; it gives way while the dialog asks.
+          ) : holdPage ? (
             <div data-testid="customize-page-held" aria-hidden className="min-h-0 flex-1 bg-muted/20" />
           ) : (
             <WebviewArea active shell={shell} />
@@ -216,49 +268,77 @@ export function CustomizeScreen({
         </div>
       </div>
       <AddItemDialog item={askedItem} onAdd={tab.addPageItem} onOpenSettings={onOpenSettings} onClose={closeAsk} />
+      <AddMarketplaceDialog
+        open={addingMarket}
+        onAdd={addMarket}
+        onShow={browse}
+        onClose={() => setAddingMarket(false)}
+      />
+      <RemoveMarketplaceDialog name={removing} onRemove={removeMarket} onClose={() => setRemoving(null)} />
     </div>
   )
 }
 
+/** A row of the left list; with `onRemove`, a remove button shows on hover, focus, or selection. */
 function MarketRow({
   testId,
   name,
   detail,
-  badge,
   icon,
   selected,
   onSelect,
+  onRemove,
+  removeLabel,
 }: {
   testId: string
   name: string
   detail?: string
-  badge?: string
   icon: React.ReactNode
   selected: boolean
   onSelect: () => void
+  onRemove?: () => void
+  removeLabel?: string
 }) {
   return (
-    <button
-      type="button"
-      data-testid={testId}
+    <div
+      data-testid={`${testId}-row`}
       data-name={name}
-      aria-current={selected ? 'page' : undefined}
-      onClick={onSelect}
-      className={cn(
-        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        selected && 'bg-accent',
-      )}
+      className={cn('group relative flex items-center rounded-md hover:bg-accent', selected && 'bg-accent')}
     >
-      <span className="shrink-0 text-muted-foreground">{icon}</span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm text-foreground">{name}</span>
-        {detail ? <span className="truncate text-xs text-muted-foreground">{detail}</span> : null}
-      </span>
-      {badge ? (
-        <Badge variant="secondary" className="shrink-0">
-          {badge}
-        </Badge>
+      <button
+        type="button"
+        data-testid={testId}
+        data-name={name}
+        aria-current={selected ? 'page' : undefined}
+        onClick={onSelect}
+        className={cn(
+          'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          onRemove && 'pe-9',
+        )}
+      >
+        <span className="shrink-0 text-muted-foreground">{icon}</span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm text-foreground">{name}</span>
+          {detail ? <span className="truncate text-xs text-muted-foreground">{detail}</span> : null}
+        </span>
+      </button>
+      {onRemove ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          data-testid="customize-market-remove"
+          aria-label={removeLabel}
+          title={removeLabel}
+          onClick={onRemove}
+          className={cn(
+            'absolute end-1 size-7 text-muted-foreground opacity-0 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100',
+            selected && 'opacity-100',
+          )}
+        >
+          <Trash2Icon className="size-3.5" />
+        </Button>
       ) : null}
-    </button>
+    </div>
   )
 }

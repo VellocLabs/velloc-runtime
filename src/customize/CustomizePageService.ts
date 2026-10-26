@@ -180,9 +180,11 @@ export class CustomizePageService {
   /**
    * The directory's details for each plugin `marketplace` lists (kept ten
    * minutes per marketplace). Empty without lookup calls or before a show
-   * names the listing's origin; a failed read is not kept.
+   * names the listing's origin; a failed read is not kept. A show already
+   * under way is waited for.
    */
-  describeMarketplace(marketplace: string): Promise<CustomizeMarketplaceDescription> {
+  async describeMarketplace(marketplace: string): Promise<CustomizeMarketplaceDescription> {
+    await this.queue
     const offers = this.offers
     const origin = this.apiOrigin
     if (!offers || !origin) return Promise.resolve({ plugins: {} })

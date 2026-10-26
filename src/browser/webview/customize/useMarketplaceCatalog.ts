@@ -12,165 +12,187 @@ import {
 } from '../settings/clients'
 
 export type MarketplaceListView = {
-  /** Official marketplaces first; null until the first read answers. */
+  /** The marketplaces the screen browses; null until the first read answers. */
   marketplaces: PluginMarketplaceUiEntry[] | null
   failed: boolean
+  /** Reads the list again (after an add or a remove). */
+  reload: () => Promise<void>
 }
 
-/** The marketplaces registered here (F-35), read once per mount. */
+/**
+ * The marketplaces added here that the screen browses (F-35), by name.
+ * Official marketplaces are left out (the plugin directory already shows
+ * their plugins), and so is the built-in one.
+ */
 export function useMarketplaceList(bridge: NexusSettingsBridge | null): MarketplaceListView {
-  const [view, setView] = React.useState<MarketplaceListView>({ marketplaces: null, failed: false })
-  React.useEffect(() => {
+  const [state, setState] = React.useState<Omit<MarketplaceListView, 'reload'>>({
+    marketplaces: null,
+    failed: false,
+  })
+  const live = React.useRef(true)
+  const reload = React.useCallback(async () => {
     if (!bridge) {
-      setView({ marketplaces: [], failed: false })
+      if (live.current) setState({ marketplaces: [], failed: false })
       return
     }
-    let live = true
-    pluginsListMarketplaces(bridge).then(
-      result => {
-        if (!live) return
-        const marketplaces = [...result.marketplaces].sort(
-          (a, b) => Number(b.isOfficial) - Number(a.isOfficial) || a.name.localeCompare(b.name),
-        )
-        setView({ marketplaces, failed: false })
-      },
-      () => {
-        if (live) setView({ marketplaces: [], failed: true })
-      },
-    )
-    return () => {
-      live = false
+    try {
+      const result = await pluginsListMarketplaces(bridge)
+      const marketplaces = result.marketplaces
+        .filter(m => !m.isOfficial && !m.isBuiltin)
+        .sort((x, y) => x.name.localeCompare(y.name))
+      if (live.current) setState({ marketplaces, failed: false })
+    } catch {
+      if (live.current) setState(prev => ({ marketplaces: prev.marketplaces ?? [], failed: true }))
     }
   }, [bridge])
-  return view
+  React.useEffect(() => {
+    live.current = true
+    void reload()
+    return () => {
+      live.current = false
+    }
+  }, [reload])
+  return { ...state, reload }
 }
 
-export type MarketplacePluginsView = {
-  /** `notFetched`: the marketplace was added but has no local copy yet. */
+/** One marketplace's plugins as the screen shows them. */
+export type MarketplaceShelf = {
+  /** `notFetched`: added, with no local copy yet. */
   status: 'loading' | 'ready' | 'notFetched' | 'failed'
   plugins: PluginAvailableUiEntry[]
-  /** Plugin names whose install is running. */
+  /** Fetching the latest list from the marketplace's source. */
+  refreshing: boolean
+  /** The directory's details per plugin name, for the plugins it carries. */
+  details: Record<string, DirectoryItemDetails>
+}
+
+export type MarketplaceShelvesView = {
+  shelves: Record<string, MarketplaceShelf>
+  /** `<plugin>@<marketplace>` keys whose install is running / whose last install failed. */
   installing: ReadonlySet<string>
-  /** Plugin names whose last install failed. */
   installFailed: ReadonlySet<string>
-  downloading: boolean
-  install: (plugin: string) => void
-  download: () => void
+  install: (marketplace: string, plugin: string) => void
+  /** Fetches a marketplace's list from its source and reads it again. */
+  refresh: (marketplace: string) => void
 }
 
 const NONE: ReadonlySet<string> = new Set()
+const LOADING: MarketplaceShelf = { status: 'loading', plugins: [], refreshing: false, details: {} }
+
+export const installKey = (marketplace: string, plugin: string) => `${plugin}@${marketplace}`
 
 /**
- * One marketplace's plugins (F-35) from its local copy, never fetched on
- * read; `download` fetches it, and `install` installs `<plugin>@<marketplace>`
- * and re-reads the list.
+ * Every browsed marketplace's plugins (F-35). Each is read from its local
+ * copy at once, then fetched from its source in the background — every time
+ * the screen mounts, and when it joins the list — and read again; the
+ * directory's details for its plugins follow. `install` installs
+ * `<plugin>@<marketplace>` and reads that list again.
  */
-export function useMarketplacePlugins(
+export function useMarketplaceShelves(
   bridge: NexusSettingsBridge | null,
-  marketplace: string | null,
-): MarketplacePluginsView {
-  const [status, setStatus] = React.useState<MarketplacePluginsView['status']>('loading')
-  const [plugins, setPlugins] = React.useState<PluginAvailableUiEntry[]>([])
+  names: readonly string[],
+  describe: (marketplace: string) => Promise<CustomizeMarketplaceDescription>,
+): MarketplaceShelvesView {
+  const [shelves, setShelves] = React.useState<Record<string, MarketplaceShelf>>({})
   const [installing, setInstalling] = React.useState<ReadonlySet<string>>(NONE)
   const [installFailed, setInstallFailed] = React.useState<ReadonlySet<string>>(NONE)
-  const [downloading, setDownloading] = React.useState(false)
-  const current = React.useRef(marketplace)
-  current.current = marketplace
+  const live = React.useRef(true)
+  React.useEffect(() => {
+    live.current = true
+    return () => {
+      live.current = false
+    }
+  }, [])
+
+  const patch = React.useCallback((name: string, change: Partial<MarketplaceShelf>) => {
+    if (!live.current) return
+    setShelves(all => (name in all ? { ...all, [name]: { ...all[name]!, ...change } } : all))
+  }, [])
 
   const read = React.useCallback(
     (name: string) => {
       if (!bridge) return Promise.resolve()
       return pluginsListMarketplacePlugins(bridge, name).then(
-        result => {
-          if (current.current !== name) return
-          setPlugins(result.manifest?.plugins ?? [])
-          setStatus(result.manifest ? 'ready' : 'notFetched')
-        },
-        () => {
-          if (current.current === name) setStatus('failed')
-        },
+        result =>
+          patch(name, {
+            plugins: result.manifest?.plugins ?? [],
+            status: result.manifest ? 'ready' : 'notFetched',
+          }),
+        () => patch(name, { status: 'failed' }),
       )
     },
-    [bridge],
+    [bridge, patch],
   )
 
-  React.useEffect(() => {
-    setPlugins([])
-    setInstalling(NONE)
-    setInstallFailed(NONE)
-    setDownloading(false)
-    if (!marketplace) return
-    if (!bridge) {
-      setStatus('failed')
-      return
-    }
-    setStatus('loading')
-    void read(marketplace)
-  }, [bridge, marketplace, read])
-
-  const install = React.useCallback(
-    (plugin: string) => {
-      const name = marketplace
-      if (!bridge || !name) return
-      const without = (set: ReadonlySet<string>) => new Set([...set].filter(p => p !== plugin))
-      setInstalling(set => new Set(set).add(plugin))
-      setInstallFailed(without)
-      pluginsInstall(bridge, `${plugin}@${name}`)
+  const fetchLatest = React.useCallback(
+    (name: string): Promise<void> => {
+      if (!bridge) return Promise.resolve()
+      patch(name, { refreshing: true })
+      return pluginsRefreshMarketplace(bridge, name)
         .then(
           () => read(name),
+          () => undefined,
+        )
+        .finally(() => patch(name, { refreshing: false }))
+    },
+    [bridge, patch, read],
+  )
+  const refresh = React.useCallback((name: string) => void fetchLatest(name), [fetchLatest])
+
+  // The names already started, per bridge: a name joining the list starts on
+  // its own, without reading the others again.
+  const started = React.useRef<{ bridge: NexusSettingsBridge | null; names: Set<string> }>({
+    bridge: null,
+    names: new Set(),
+  })
+  const key = names.join('\n')
+  React.useEffect(() => {
+    const list = key ? key.split('\n') : []
+    if (!bridge) {
+      setShelves(Object.fromEntries(list.map(n => [n, { ...LOADING, status: 'failed' as const }])))
+      return
+    }
+    if (started.current.bridge !== bridge) started.current = { bridge, names: new Set() }
+    const seen = started.current.names
+    const fresh = list.filter(n => !seen.has(n))
+    for (const name of seen) if (!list.includes(name)) seen.delete(name)
+    for (const name of fresh) seen.add(name)
+    setShelves(all => {
+      const next: Record<string, MarketplaceShelf> = {}
+      for (const name of list) next[name] = fresh.includes(name) ? LOADING : (all[name] ?? LOADING)
+      return next
+    })
+    for (const name of fresh) {
+      void read(name)
+        .then(() => fetchLatest(name))
+        .then(() => describe(name))
+        .then(
+          result => patch(name, { details: result.plugins }),
+          () => undefined,
+        )
+    }
+  }, [bridge, key, read, fetchLatest, describe, patch])
+
+  const install = React.useCallback(
+    (marketplace: string, plugin: string) => {
+      if (!bridge) return
+      const id = installKey(marketplace, plugin)
+      const without = (set: ReadonlySet<string>) => new Set([...set].filter(k => k !== id))
+      setInstalling(set => new Set(set).add(id))
+      setInstallFailed(without)
+      pluginsInstall(bridge, id)
+        .then(
+          () => read(marketplace),
           () => {
-            if (current.current === name) setInstallFailed(set => new Set(set).add(plugin))
+            if (live.current) setInstallFailed(set => new Set(set).add(id))
           },
         )
         .finally(() => {
-          if (current.current === name) setInstalling(without)
+          if (live.current) setInstalling(without)
         })
     },
-    [bridge, marketplace, read],
+    [bridge, read],
   )
 
-  const download = React.useCallback(() => {
-    const name = marketplace
-    if (!bridge || !name) return
-    setDownloading(true)
-    pluginsRefreshMarketplace(bridge, name)
-      .then(
-        () => read(name),
-        () => {
-          if (current.current === name) setStatus('failed')
-        },
-      )
-      .finally(() => {
-        if (current.current === name) setDownloading(false)
-      })
-  }, [bridge, marketplace, read])
-
-  return { status, plugins, installing, installFailed, downloading, install, download }
-}
-
-/**
- * The directory's details for `marketplace`'s plugins (F-35), keyed by
- * plugin name; empty while they are read and when they cannot be. Read once
- * per selected marketplace.
- */
-export function useMarketplaceDetails(
-  describe: (marketplace: string) => Promise<CustomizeMarketplaceDescription>,
-  marketplace: string | null,
-): Record<string, DirectoryItemDetails> {
-  const [details, setDetails] = React.useState<Record<string, DirectoryItemDetails>>({})
-  React.useEffect(() => {
-    setDetails({})
-    if (!marketplace) return
-    let live = true
-    describe(marketplace).then(
-      result => {
-        if (live) setDetails(result.plugins)
-      },
-      () => undefined,
-    )
-    return () => {
-      live = false
-    }
-  }, [describe, marketplace])
-  return details
+  return { shelves, installing, installFailed, install, refresh }
 }

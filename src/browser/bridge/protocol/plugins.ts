@@ -203,6 +203,26 @@ export type PluginsBridgeActionMap = {
       } | null
     }
   }
+  /** Register a marketplace from what a person typed (`owner/repo` or a
+   *  GitHub URL), fetch it, and file it under the name its marketplace.json
+   *  declares. Every expected failure is a `status`, not a thrown error. */
+  addMarketplace: {
+    payload: { source: string }
+    result:
+      | { ok: true; status: 'added'; name: string; pluginCount: number }
+      /** The same repository is already registered, under `name`. */
+      | { ok: true; status: 'alreadyAdded'; name: string }
+      | { ok: true; status: 'invalidSource' }
+      /** `fetch`: the source could not be read as a marketplace (nothing is
+       *  left registered); `register` / `rename`: the registry write failed. */
+      | { ok: true; status: 'failed'; stage: 'register' | 'fetch' | 'rename'; error: string }
+  }
+  /** Unregister a marketplace. Plugins installed from it stay installed and
+   *  stop getting updates. Official and built-in marketplaces are refused. */
+  removeMarketplace: {
+    payload: { name: string }
+    result: { ok: true; removed: boolean }
+  }
   /** The settings a plugin declares `required: true` that hold no value yet
    *  (its `userConfig` and its providers' settings), asked for when it is
    *  turned on. `plugin` is its id (`<name>@<marketplace>`, `<name>@inline`);

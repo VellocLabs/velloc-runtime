@@ -314,6 +314,20 @@ export function pluginsRefreshMarketplace(
   return bridge.request(createBridgeRoute('plugins', 'refreshMarketplace'), { name })
 }
 
+export function pluginsAddMarketplace(
+  bridge: NexusSettingsBridge,
+  source: string,
+): Promise<BrowserBridgeResult<'plugins', 'addMarketplace'>> {
+  return bridge.request(createBridgeRoute('plugins', 'addMarketplace'), { source })
+}
+
+export function pluginsRemoveMarketplace(
+  bridge: NexusSettingsBridge,
+  name: string,
+): Promise<BrowserBridgeResult<'plugins', 'removeMarketplace'>> {
+  return bridge.request(createBridgeRoute('plugins', 'removeMarketplace'), { name })
+}
+
 /** The required settings a plugin still lacks (`target.path`: a directory
  *  plugin's folder). */
 export function pluginsRequiredSettings(

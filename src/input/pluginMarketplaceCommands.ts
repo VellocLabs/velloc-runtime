@@ -22,7 +22,6 @@ import {
   loadInstalledPlugins,
 } from '../pluginHost/installedRegistry'
 import {
-  addMarketplace,
   findCatalogPlugin as resolvePluginInMarketplace,
   fetchCatalog as refreshMarketplace,
   listingsVisibleOn,
@@ -35,7 +34,7 @@ import type {
   CatalogRecord as KnownMarketplaceEntry,
   PluginSetupRecord as InstalledPluginEntry,
 } from '../pluginHost/registryFormats'
-import { marketplaceNameProblem, reservedNameSourceProblem } from '../pluginHost/marketplaceNaming'
+import { githubRepoOf, parseMarketplaceSource, registerMarketplaceSource } from '../pluginHost/marketplaceRegister'
 import type { PluginInstallPathContext } from '../pluginHost/pluginDirs'
 import { resolveSettingsHomeDir } from '../settings/settingsStore'
 import {
@@ -59,6 +58,8 @@ import {
 // Silence unused-import warning — applyEnabledPluginsPatch may be needed
 // by future commands but isn't called directly in this file.
 void _applyEnabledPluginsPatch
+
+export { parseMarketplaceSource }
 
 /** Translatable-parts payload a slash handler returns. The caller wraps it
  *  in a localized system message and a `ProcessUserInputResult`. */
@@ -487,54 +488,29 @@ async function registerMarketplace(
   ctx: PluginCommandContext,
   source: ParsedMarketplaceOrigin,
 ): Promise<RegisterOutcome> {
-  const pathCtx = buildPathContext(ctx)
-  const nowIso = nowIsoOf(ctx)
   const fetchImpl = ctx.fetchImpl ?? globalThis.fetch.bind(globalThis)
-  // Registered under a name derived from the URL first; the fetched
-  // marketplace.json supplies the real one.
-  const placeholderName = deriveMarketplaceNameFromSource(source)
-  try {
-    await addMarketplace(pathCtx, ctx.fs, placeholderName, source, nowIso)
-  } catch (e) {
-    return { ok: false, parts: [key('slash.out.marketplace.add.registerFailed', { error: formatError(e) })] }
-  }
-  let manifest
-  try {
-    manifest = (await refreshMarketplace(pathCtx, ctx.fs, placeholderName, nowIso, fetchImpl)).marketplace
-  } catch (e) {
-    try {
-      await removeMarketplace(pathCtx, ctx.fs, placeholderName, nowIso)
-    } catch {
-      /* best-effort cleanup */
-    }
-    return {
-      ok: false,
-      parts: [
-        key('slash.out.marketplace.add.fetchFailed', {
-          source: describeSource({ source } as KnownMarketplaceEntry),
-          error: formatError(e),
-        }),
-      ],
-    }
-  }
-  if (manifest.name !== placeholderName) {
-    try {
-      await addMarketplace(pathCtx, ctx.fs, manifest.name, source, nowIso)
-      await removeMarketplace(pathCtx, ctx.fs, placeholderName, nowIso)
-      await refreshMarketplace(pathCtx, ctx.fs, manifest.name, nowIso, fetchImpl)
-    } catch (e) {
+  const outcome = await registerMarketplaceSource(buildPathContext(ctx), ctx.fs, source, nowIsoOf(ctx), fetchImpl)
+  if (outcome.ok) return outcome
+  const error = formatError(outcome.error)
+  switch (outcome.stage) {
+    case 'register':
+      return { ok: false, parts: [key('slash.out.marketplace.add.registerFailed', { error })] }
+    case 'fetch':
       return {
         ok: false,
         parts: [
-          key('slash.out.marketplace.add.renameCleanupFailed', {
-            name: manifest.name,
-            error: formatError(e),
+          key('slash.out.marketplace.add.fetchFailed', {
+            source: describeSource({ source } as KnownMarketplaceEntry),
+            error,
           }),
         ],
       }
-    }
+    case 'rename':
+      return {
+        ok: false,
+        parts: [key('slash.out.marketplace.add.renameCleanupFailed', { name: outcome.name, error })],
+      }
   }
-  return { ok: true, name: manifest.name, pluginCount: manifest.plugins.length }
 }
 
 function addedLines(name: string, source: ParsedMarketplaceOrigin, pluginCount: number): SystemMessagePart[] {
@@ -598,13 +574,6 @@ async function resolveMarketplaceArg(
     name: added.name,
     parts: [...addedLines(added.name, source, added.pluginCount), text('\n\n')],
   }
-}
-
-/** `owner/repo`, lower-cased, of a GitHub source; `null` for any other host. */
-function githubRepoOf(source: { source: 'github'; repo: string } | { source: 'url'; url: string }): string | null {
-  if (source.source === 'github') return source.repo.replace(/\.git$/, '').toLowerCase()
-  const match = source.url.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/)
-  return match ? `${match[1]}/${match[2]}`.toLowerCase() : null
 }
 
 async function runMarketplaceRemove(
@@ -772,62 +741,6 @@ function formatError(e: unknown): string {
  */
 function englishOf(k: MessageKey, params?: Record<string, string | number>): string {
   return renderPartsEnglish([key(k, params)])
-}
-
-/**
- * Parse a `/marketplace add` arg: `owner/repo` (github) or
- * `https://github.com/...` (url); `null` when unparseable. Not validated until
- * fetch.
- */
-export function parseMarketplaceSource(
-  raw: string,
-): { source: 'github'; repo: string } | { source: 'url'; url: string } | null {
-  const trimmed = raw.trim()
-  if (!trimmed) return null
-  // owner/repo shorthand.
-  if (/^[\w.-]+\/[\w.-]+$/.test(trimmed)) {
-    return { source: 'github', repo: trimmed }
-  }
-  // Full HTTPS URL.
-  if (/^https:\/\/(?:www\.)?github\.com\//.test(trimmed)) {
-    // Strip trailing `/` or `.git` for the canonical github URL — the
-    // url-source's URL field is what `resolveSourceFetchUrl` translates.
-    const normalised = trimmed.replace(/\.git\/?$/, '').replace(/\/$/, '')
-    return { source: 'url', url: `${normalised}.git` }
-  }
-  return null
-}
-
-/**
- * Placeholder registry key (the repo basename) until the fetched
- * marketplace.json supplies the canonical name; a collision is last-write-wins.
- */
-function deriveMarketplaceNameFromSource(
-  source: { source: 'github'; repo: string } | { source: 'url'; url: string },
-): string {
-  let owner = ''
-  let base: string
-  if (source.source === 'github') {
-    const slash = source.repo.lastIndexOf('/')
-    owner = slash >= 0 ? source.repo.slice(0, slash) : ''
-    base = slash >= 0 ? source.repo.slice(slash + 1) : source.repo
-  } else {
-    const match = source.url.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/)
-    owner = match?.[1] ?? ''
-    base = match?.[2] ?? 'unknown-marketplace'
-  }
-  // The placeholder is transient — replaced by the marketplace.json `name` on
-  // the post-fetch rename — but `addMarketplace` runs the reserved-official-name
-  // guard on it. A fork whose REPO basename collides with a reserved name (e.g.
-  // `axisrow/claude-plugins-official` → "claude-plugins-official") would be
-  // rejected before we ever read its real, non-reserved name. If the basename
-  // trips the guard for this source, prefix it with the owner so the transient
-  // key is unique AND non-reserved; the canonical name takes over post-fetch.
-  if (owner && reservedNameSourceProblem(base, source) !== null) {
-    const prefixed = `${owner}-${base}`
-    return marketplaceNameProblem(prefixed) === null ? prefixed : `${owner}-marketplace`
-  }
-  return base
 }
 
 function formatIsoTime(iso: string): string {

@@ -20,6 +20,7 @@ import {
 import { __setPluginBlocklistForTests } from '../pluginHost/blocklist'
 import { registerBuiltinMod, unregisterBuiltinMod } from '../mods/builtinMods'
 import { wipeSettingsMemos } from '../settings/settingsStore'
+import { MARKETPLACE_MANIFEST_FILE_NAME, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
 
 // --- shared fs + tar fixtures (parallel to other plugins-install tests) --
 
@@ -746,6 +747,103 @@ describe('pluginsHandlers.refreshMarketplace (returns manifest inline)', () => {
       .toBe(true)
     expect(result.manifest!.plugins.find(p => p.name === 'beta')!.installed)
       .toBe(false)
+  })
+})
+
+describe('pluginsHandlers.addMarketplace + removeMarketplace', () => {
+  async function catalogTar(name: string) {
+    return buildGitHubTarball('acme-tools-abc', [{
+      name: `${PLUGIN_MANIFEST_DIR_NAME}/${MARKETPLACE_MANIFEST_FILE_NAME}`,
+      content: JSON.stringify({
+        name,
+        plugins: [
+          { name: 'alpha', source: { source: 'github', repo: 'acme/alpha' } },
+          { name: 'beta', source: { source: 'github', repo: 'acme/beta' } },
+        ],
+      }),
+    }])
+  }
+
+  it('adds owner/repo under the name its marketplace.json declares, with its plugin count', async () => {
+    const { fs } = makeMemoryFs()
+    const tar = await catalogTar('acme-market')
+    const ctx = makeCtx({ fs, fetchImpl: vi.fn(async () => new Response(new Uint8Array(tar), { status: 200 })) })
+
+    const result = await pluginsHandlers.addMarketplace({ source: ' acme/tools ' }, ctx)
+
+    expect(result).toEqual({ ok: true, status: 'added', name: 'acme-market', pluginCount: 2 })
+    const names = (await pluginsHandlers.listMarketplaces(ctx)).marketplaces.map(m => m.name)
+    expect(names).toContain('acme-market')
+    expect(names).not.toContain('tools')
+    const listed = await pluginsHandlers.listMarketplacePlugins({ marketplace: 'acme-market' }, ctx)
+    expect(listed.manifest!.plugins.map(p => p.name)).toEqual(['alpha', 'beta'])
+  })
+
+  it('a repository already added, by either spelling, is named and not fetched again', async () => {
+    const { fs } = makeMemoryFs()
+    await addMarketplace({ homeDir: '/home/user' }, fs, 'acme-market', { source: 'github', repo: 'Acme/Tools' }, NOW_ISO)
+    const fetchImpl = vi.fn(async () => new Response('', { status: 500 }))
+    const ctx = makeCtx({ fs, fetchImpl })
+
+    expect(await pluginsHandlers.addMarketplace({ source: 'https://github.com/acme/tools.git' }, ctx)).toEqual({
+      ok: true,
+      status: 'alreadyAdded',
+      name: 'acme-market',
+    })
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('text that names no GitHub repository is invalidSource, with nothing fetched', async () => {
+    const { fs } = makeMemoryFs()
+    const fetchImpl = vi.fn(async () => new Response('', { status: 500 }))
+    const ctx = makeCtx({ fs, fetchImpl })
+    for (const source of ['', 'just text', 'https://gitlab.com/a/b', 42]) {
+      expect(await pluginsHandlers.addMarketplace({ source } as { source: string }, ctx)).toEqual({
+        ok: true,
+        status: 'invalidSource',
+      })
+    }
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('a source that cannot be fetched is a fetch failure and leaves nothing registered', async () => {
+    const { fs } = makeMemoryFs()
+    const ctx = makeCtx({ fs, fetchImpl: vi.fn(async () => new Response('missing', { status: 404 })) })
+    const before = (await pluginsHandlers.listMarketplaces(ctx)).marketplaces.map(m => m.name)
+
+    const result = await pluginsHandlers.addMarketplace({ source: 'acme/missing' }, ctx)
+
+    expect(result.status).toBe('failed')
+    expect(result.status === 'failed' && result.stage).toBe('fetch')
+    expect(result.status === 'failed' && result.error.length > 0).toBe(true)
+    expect((await pluginsHandlers.listMarketplaces(ctx)).marketplaces.map(m => m.name)).toEqual(before)
+  })
+
+  it('remove unregisters an added marketplace and says whether it was there', async () => {
+    const { fs } = makeMemoryFs()
+    await addMarketplace({ homeDir: '/home/user' }, fs, 'acme-market', { source: 'github', repo: 'acme/tools' }, NOW_ISO)
+    const ctx = makeCtx({ fs })
+
+    expect(await pluginsHandlers.removeMarketplace({ name: 'acme-market' }, ctx)).toEqual({ ok: true, removed: true })
+    expect((await pluginsHandlers.listMarketplaces(ctx)).marketplaces.map(m => m.name)).not.toContain('acme-market')
+    expect(await pluginsHandlers.removeMarketplace({ name: 'acme-market' }, ctx)).toEqual({ ok: true, removed: false })
+  })
+
+  it('an official or the built-in marketplace cannot be removed', async () => {
+    const { fs } = makeMemoryFs()
+    const ctx = makeCtx({ fs })
+    const listed = (await pluginsHandlers.listMarketplaces(ctx)).marketplaces
+    const official = listed.find(m => m.isOfficial)!.name
+    const builtin = listed.find(m => m.isBuiltin)!.name
+    for (const name of [official, builtin]) {
+      const response = await handlePluginsBridgeRequest(
+        { id: name, route: { namespace: 'nexus', capability: 'plugins', action: 'removeMarketplace' }, payload: { name } } as unknown as BrowserBridgeRequest,
+        ctx,
+      )
+      expect(response.ok).toBe(false)
+    }
+    const after = (await pluginsHandlers.listMarketplaces(ctx)).marketplaces.map(m => m.name)
+    expect(after).toEqual(expect.arrayContaining([official, builtin]))
   })
 })
 
