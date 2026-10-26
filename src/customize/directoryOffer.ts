@@ -85,6 +85,9 @@ export type DirectoryPageItem = {
   /** Installed, and the directory has reviewed a newer commit of it. */
   updateAvailable?: boolean
   failure?: DirectoryItemFailure
+  /** A connector this runtime cannot connect: it signs in only with a client
+   *  registered in advance with its provider (F-10). Not installable. */
+  unsupported?: 'needs_registered_client'
 }
 
 /** What Add installs. Kept in the runtime, never published. */
@@ -114,6 +117,8 @@ export type DirectoryOfferDeps = {
   upsertMcpServer(id: string, config: NexusMcpServerConfig): Promise<void>
   /** Starts the sign-in of an installed http server that asks for one (F-10). */
   startSignIn?(url: string): void
+  /** Whether a connector's server can be connected from here (F-10). */
+  checkConnector?(url: string): Promise<'supported' | 'needs_registered_client' | 'unknown'>
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

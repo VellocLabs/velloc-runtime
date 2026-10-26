@@ -113,6 +113,11 @@ function waitForTurn(previous: Promise<void>, signal?: AbortSignal): Promise<voi
 }
 
 /** `config` with a sign-in's headers laid over its own. */
+/** The config carries its own `Authorization` header (an API key or token). */
+function carriesAuthorization(headers: Record<string, string> | undefined): boolean {
+  return Object.keys(headers ?? {}).some(name => name.toLowerCase() === 'authorization')
+}
+
 function withSignInHeaders(
   config: NexusMcpServerLaunchConfig,
   auth: McpConnectAuth | undefined,
@@ -299,6 +304,7 @@ export class MCPPool {
     return this.connectOnce(name, async () => {
       const server = await this.withSignIn(
         config.type === 'http' ? config.url : undefined,
+        config.type === 'http' && carriesAuthorization(config.headers),
         auth => connectMCPServer({ cwd: this.cwd, name, config, fs: this.fs, ...(auth ? { auth } : {}) }),
         () => ({ name, config, status: 'needs-auth', tools: [], error: mcpSignInRequiredMessage(name) }),
       )
@@ -395,6 +401,7 @@ export class MCPPool {
     return this.connectOnce(name, async () => {
       const server = await this.withSignIn(
         launchTransportKind(config) === 'http' ? config.url : undefined,
+        carriesAuthorization(config.headers),
         auth => this.connectNativeAttempt(bridge, name, config, auth),
         () => ({
           name,
@@ -459,11 +466,19 @@ export class MCPPool {
    */
   private async withSignIn(
     url: string | undefined,
+    ownCredentials: boolean,
     attempt: (auth: McpConnectAuth | undefined) => Promise<LiveServerLink>,
     placeholder: () => LiveServerLink,
   ): Promise<LiveServerLink> {
     const service = url ? currentMcpOAuthService() : null
     if (!url || !service) return attempt(undefined)
+    if (ownCredentials) {
+      // The person's own credential replaces any sign-in the server waited for.
+      const server = await attempt(undefined)
+      if (server.status === 'connected') await service.clearRequired(url).catch(() => {})
+      else if (server.status === 'needs-auth') await service.markRequired(url).catch(() => {})
+      return server
+    }
     const auth = await service.connectAuth(url).catch(() => null)
     if (auth === 'required') return placeholder()
     let server = await attempt(auth ?? undefined)

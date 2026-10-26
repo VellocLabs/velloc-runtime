@@ -362,14 +362,17 @@ export class CustomizePageService {
     try {
       const resolved = await resolveDirectoryIntent(intent, deps, origin)
       if (this.pageItem?.id !== id) return
-      this.target = resolved.alreadyInstalled ? null : resolved.target
+      const unsupported = resolved.alreadyInstalled ? undefined : await connectorUnsupported(resolved.target, deps)
+      if (this.pageItem?.id !== id) return
+      this.target = resolved.alreadyInstalled || unsupported ? null : resolved.target
       this.setPageItem({
         id,
         kind: intent.kind,
         phase: 'ready',
         details: resolved.details,
         alreadyInstalled: resolved.alreadyInstalled,
-        installable: resolved.alreadyInstalled || resolved.target !== null,
+        installable: resolved.alreadyInstalled || this.target !== null,
+        ...(unsupported ? { unsupported } : {}),
         ...(resolved.installedAs ? { installedAs: resolved.installedAs } : {}),
         ...(resolved.updateAvailable ? { updateAvailable: true } : {}),
       })
@@ -469,4 +472,27 @@ export class CustomizePageService {
 function withoutFailure(item: DirectoryPageItem): DirectoryPageItem {
   const { failure: _failure, ...rest } = item
   return rest
+}
+
+/** How long Add waits on a connector's support check before offering it anyway. */
+const CONNECTOR_CHECK_MS = 10_000
+
+/** Why a connector target cannot be added here, if it cannot (F-10). */
+async function connectorUnsupported(
+  target: DirectoryInstallTarget | null,
+  deps: DirectoryOfferDeps,
+): Promise<'needs_registered_client' | undefined> {
+  if (target?.kind !== 'connector' || target.config.transport !== 'http' || !target.config.url || !deps.checkConnector) {
+    return undefined
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<'unknown'>(resolve => {
+    timer = setTimeout(() => resolve('unknown'), CONNECTOR_CHECK_MS)
+  })
+  try {
+    const support = await Promise.race([deps.checkConnector(target.config.url).catch(() => 'unknown' as const), timeout])
+    return support === 'needs_registered_client' ? support : undefined
+  } finally {
+    clearTimeout(timer)
+  }
 }

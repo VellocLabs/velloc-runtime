@@ -10,6 +10,7 @@ import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { BridgeSecretName } from '../../browser/bridge/protocol/secrets'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import type { McpAuthServerState, McpAuthSignInPayload, McpAuthState } from './mcpAuthProtocol'
+import { MCP_OAUTH_CLIENT_METADATA_URL, probeMcpServer, type McpServerChallenge } from './discovery'
 import { mcpOAuthKey, mcpOAuthSecretNames, normalizeMcpServerUrl, secretPlaceholder } from './oauthKeys'
 import {
   readMcpOAuthRecords,
@@ -70,6 +71,9 @@ export type McpOAuthProtocolHelpers = {
   startAuthorization: typeof import('@modelcontextprotocol/sdk/client/auth.js').startAuthorization
 }
 
+/** What `connectorSupport` finds out about a server before it is added. */
+export type McpConnectorSupport = 'supported' | 'needs_registered_client' | 'unknown'
+
 /** What a connect sends: auth headers and the fetch that fills them. */
 export type McpConnectAuth = { headers: Record<string, string>; fetch: FetchLike }
 
@@ -81,6 +85,11 @@ type TokenResponse = {
 }
 
 type Flow = { controller: AbortController }
+
+type Discovered = {
+  challenge: McpServerChallenge | null
+  info: Awaited<ReturnType<McpOAuthProtocolHelpers['discoverOAuthServerInfo']>>
+}
 
 function originOf(url: string): string {
   return new URL(url).origin
@@ -134,6 +143,8 @@ export class McpOAuthService {
   private readonly flows = new Map<string, Flow>()
   private readonly refreshing = new Map<string, Promise<boolean>>()
   private readonly needsClient = new Set<string>()
+  private readonly needsCredentials = new Set<string>()
+  private readonly classified = new Set<string>()
   private readonly lastErrors = new Map<string, string>()
   private readonly stateListeners = new Set<(state: McpAuthState) => void>()
   private readonly authListeners = new Set<(url: string, signedIn: boolean) => void>()
@@ -154,7 +165,9 @@ export class McpOAuthService {
         url: record.url,
         phase: signingIn ? 'signing-in' : record.tokens ? 'signed-in' : 'needs-sign-in',
       }
-      if (!signingIn && !record.tokens && this.needsClient.has(key)) {
+      if (!signingIn && !record.tokens && this.needsCredentials.has(key)) {
+        server.needsCredentials = true
+      } else if (!signingIn && !record.tokens && this.needsClient.has(key)) {
         server.needsClient = true
         server.redirectUri = MCP_OAUTH_REDIRECT_URI
       }
@@ -260,10 +273,84 @@ export class McpOAuthService {
   /** Records that `rawUrl` asks for a sign-in (it answered 401). */
   async markRequired(rawUrl: string): Promise<void> {
     const found = await this.recordFor(rawUrl)
-    if (!found || found.record.required) return
+    if (!found) return
+    void this.classify(found.key, found.url)
+    if (found.record.required) return
     this.put(found.key, { ...found.record, required: true })
     await this.save()
     this.publish()
+  }
+
+  /**
+   * Whether this runtime can connect `rawUrl` without help it cannot get:
+   * `needs_registered_client` when it signs in only with a client registered
+   * in advance (no dynamic registration, no client ID metadata documents);
+   * `unknown` when the server could not be asked.
+   */
+  async connectorSupport(rawUrl: string): Promise<McpConnectorSupport> {
+    const url = normalizeMcpServerUrl(rawUrl)
+    const host = url ? this.options.host(url) : null
+    if (!url || !host) return 'unknown'
+    try {
+      const helpers = this.options.oauth ?? (await defaultHelpers())
+      const { challenge, info } = await this.discover(url, host, helpers)
+      if (!challenge) return 'unknown'
+      const metadata = info.authorizationServerMetadata
+      if (challenge.status !== 401 && !info.resourceMetadata) return 'supported'
+      if (!metadata) return 'supported'
+      if (metadata.registration_endpoint || metadata.client_id_metadata_document_supported === true) return 'supported'
+      return 'needs_registered_client'
+    } catch {
+      return 'unknown'
+    }
+  }
+
+  /** `rawUrl` connected without a sign-in: it no longer waits for one. */
+  async clearRequired(rawUrl: string): Promise<void> {
+    const found = await this.recordFor(rawUrl)
+    if (!found || found.record.tokens || !found.record.required) return
+    const { required: _cleared, ...rest } = found.record
+    this.put(found.key, rest)
+    this.needsCredentials.delete(found.key)
+    this.needsClient.delete(found.key)
+    this.classified.delete(found.key)
+    this.lastErrors.delete(found.key)
+    await this.save()
+    this.publish()
+  }
+
+  /** Once per server: a 401 with no OAuth metadata wants credentials, not a sign-in. */
+  private async classify(key: string, url: string): Promise<void> {
+    if (this.classified.has(key) || this.records?.[key]?.tokens) return
+    const host = this.options.host(url)
+    if (!host) return
+    this.classified.add(key)
+    try {
+      const helpers = this.options.oauth ?? (await defaultHelpers())
+      const { info } = await this.discover(url, host, helpers)
+      if (info.authorizationServerMetadata || this.flows.has(key)) return
+      this.needsCredentials.add(key)
+      this.publish()
+    } catch {
+      this.classified.delete(key)
+    }
+  }
+
+  /**
+   * Security: the challenge's `resource_metadata` is followed, and the
+   * protected-resource metadata it leads to must name this server's origin.
+   */
+  private async discover(url: string, host: McpOAuthHost, helpers: McpOAuthProtocolHelpers): Promise<Discovered> {
+    const challenge = await probeMcpServer(url, host.fetch).catch(() => null)
+    const info = await helpers.discoverOAuthServerInfo(url, {
+      fetchFn: host.fetch,
+      ...(challenge?.resourceMetadataUrl ? { resourceMetadataUrl: new URL(challenge.resourceMetadataUrl) } : {}),
+    })
+    const resource = info.resourceMetadata?.resource
+    if (resource && originOf(resource) !== originOf(url)) {
+      throw new Error("The server's sign-in metadata names a different server.")
+    }
+    return { challenge, info }
   }
 
   /**
@@ -338,11 +425,25 @@ export class McpOAuthService {
     const host = this.options.host(found?.url)
     if (!found || !host || found.record.tokens || this.flows.has(found.key)) return
     const helpers = this.options.oauth ?? (await defaultHelpers())
+    let discovered: Discovered
     try {
-      await helpers.discoverOAuthProtectedResourceMetadata(found.url, {}, host.fetch)
+      discovered = await this.discover(found.url, host, helpers)
     } catch {
       return
     }
+    const { challenge, info } = discovered
+    const unauthorized = challenge?.status === 401
+    if (!info.authorizationServerMetadata) {
+      if (!unauthorized) return
+      this.classified.add(found.key)
+      this.needsCredentials.add(found.key)
+      await this.markRequired(found.url)
+      this.publish()
+      return
+    }
+    // An open server that only shares a host with an authorization server
+    // needs no sign-in.
+    if (!unauthorized && !info.resourceMetadata) return
     await this.markRequired(found.url)
     await this.signIn({ url: found.url })
   }
@@ -356,9 +457,16 @@ export class McpOAuthService {
   ): Promise<void> {
     const signal = flow.controller.signal
     const helpers = this.options.oauth ?? (await defaultHelpers())
-    const info = await helpers.discoverOAuthServerInfo(url, { fetchFn: host.fetch })
+    const { challenge, info } = await this.discover(url, host, helpers)
     const metadata = info.authorizationServerMetadata
-    if (!metadata) throw new Error('The server does not publish where to sign in.')
+    this.classified.add(key)
+    if (!metadata) {
+      this.needsCredentials.add(key)
+      this.put(key, { ...(await this.recordFor(url))!.record, required: true })
+      await this.save()
+      return
+    }
+    this.needsCredentials.delete(key)
     signal.throwIfAborted()
     const names = mcpOAuthSecretNames(key)
     const tokenOrigin = originOf(metadata.token_endpoint)
@@ -372,6 +480,8 @@ export class McpOAuthService {
         clientId: payload.clientId,
         ...(payload.clientSecret ? { hasSecret: true } : {}),
       }
+    } else if (!client && metadata.client_id_metadata_document_supported === true) {
+      client = { authServer: info.authorizationServerUrl, clientId: MCP_OAUTH_CLIENT_METADATA_URL, metadataDocument: true }
     } else if (!client) {
       if (!metadata.registration_endpoint) {
         this.needsClient.add(key)
@@ -404,7 +514,7 @@ export class McpOAuthService {
     await this.save()
     signal.throwIfAborted()
 
-    const scopes = info.resourceMetadata?.scopes_supported
+    const scopes = challenge?.scope ? challenge.scope.split(' ') : info.resourceMetadata?.scopes_supported
     const resource = new URL(info.resourceMetadata?.resource ?? url)
     const state = crypto.randomUUID()
     const { authorizationUrl, codeVerifier } = await helpers.startAuthorization(info.authorizationServerUrl, {

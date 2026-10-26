@@ -179,6 +179,11 @@ function SignInBadge({
   const state = url ? auth.serverState(url) : undefined;
   if (!state) return null;
   const signedIn = state.phase === "signed-in";
+  const label = signedIn
+    ? t("mcpServers.signedIn")
+    : state.needsCredentials
+      ? t("mcpServers.needsCredentials")
+      : t("mcpServers.needsAuth");
   return (
     <Badge
       variant={signedIn ? "success" : "warning"}
@@ -187,7 +192,7 @@ function SignInBadge({
       data-testid="mcp-row-sign-in-status"
       data-phase={state.phase}
     >
-      {signedIn ? t("mcpServers.signedIn") : t("mcpServers.needsAuth")}
+      {label}
     </Badge>
   );
 }

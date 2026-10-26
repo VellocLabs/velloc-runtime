@@ -415,6 +415,7 @@ function fakeOffers(options: {
   servers?: Record<string, NexusMcpServerConfig>
   installFails?: boolean
   installed?: Array<{ identifier: string; codeSource?: { repo: string; path: string; sha?: string }; gitCommitSha?: string }>
+  support?: 'supported' | 'needs_registered_client' | 'unknown' | 'never'
 } = {}) {
   const calls: string[] = []
   const deps: DirectoryOfferDeps = {
@@ -440,6 +441,16 @@ function fakeOffers(options: {
     upsertMcpServer: async (id, config) => {
       calls.push(`upsert ${id} ${config.url}`)
     },
+    ...(options.support
+      ? {
+          checkConnector: (url: string) => {
+            calls.push(`check ${url}`)
+            return options.support === 'never'
+              ? new Promise<never>(() => {})
+              : Promise.resolve(options.support as 'supported' | 'needs_registered_client' | 'unknown')
+          },
+        }
+      : {}),
   }
   return { deps, calls }
 }
@@ -521,6 +532,41 @@ describe('customizePage service — the page item', () => {
     fake.report(1, { type: 'route', path: PLUGIN_PATH })
     await settle()
     expect(itemOf(r)).toMatchObject({ alreadyInstalled: true, installedAs: 'notion@plugin-directory', updateAvailable: true })
+  })
+
+  it('a connector that signs in only with a client registered in advance is not offered', async () => {
+    const o = fakeOffers({ records: { [SLACK_FILTER]: [SLACK] }, support: 'needs_registered_client' })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    await settle()
+    expect(o.calls).toContain('check https://mcp.slack.com/mcp')
+    expect(itemOf(r)).toMatchObject({ phase: 'ready', installable: false, unsupported: 'needs_registered_client' })
+    await expect(r.call('addPageItem', { id: 1 })).rejects.toMatchObject({ code: 'conflict' })
+    expect(o.calls.some(c => c.startsWith('upsert'))).toBe(false)
+  })
+
+  it('a connector this runtime can connect, or could not ask, is offered', async () => {
+    for (const support of ['supported', 'unknown'] as const) {
+      const o = fakeOffers({ records: { [SLACK_FILTER]: [SLACK] }, support })
+      const { fake, r } = await shown(o.deps)
+      fake.report(1, { type: 'route', path: '/directory/slack' })
+      await settle()
+      expect(itemOf(r)).toMatchObject({ phase: 'ready', installable: true })
+      expect(itemOf(r)?.unsupported).toBeUndefined()
+    }
+  })
+
+  it('a support check that never answers stops waiting and offers Add', async () => {
+    vi.useFakeTimers()
+    try {
+      const o = fakeOffers({ records: { [SLACK_FILTER]: [SLACK] }, support: 'never' })
+      const { fake, r } = await shown(o.deps)
+      fake.report(1, { type: 'route', path: '/directory/slack' })
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(itemOf(r)).toMatchObject({ phase: 'ready', installable: true })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('an item already here says where, and Add is refused', async () => {

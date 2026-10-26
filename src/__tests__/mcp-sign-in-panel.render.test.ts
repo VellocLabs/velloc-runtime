@@ -70,6 +70,13 @@ describe('McpSignInPanel', () => {
     expect(auth.signIn).toHaveBeenCalledWith({ url: URL_, clientId: 'my-client', clientSecret: 'shh' })
   })
 
+  it('tells a server wanting an API key to take a header, with no Sign in', () => {
+    panel(controls({ url: URL_, phase: 'needs-sign-in', needsCredentials: true, lastError: 'ignored' }))
+    expect(screen.getByTestId('mcp-sign-in-credentials').textContent).toBe(en['mcpAuth.needsCredentials'])
+    expect(screen.queryByTestId('mcp-sign-in')).toBeNull()
+    expect(screen.queryByTestId('mcp-sign-in-error')).toBeNull()
+  })
+
   it('shows the last error, and the notes for no host or no grant', () => {
     panel(controls({ url: URL_, phase: 'needs-sign-in', lastError: 'access_denied' }))
     expect(screen.getByTestId('mcp-sign-in-error').textContent).toBe(

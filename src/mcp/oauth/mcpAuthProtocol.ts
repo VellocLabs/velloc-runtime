@@ -32,6 +32,9 @@ export type McpAuthServerState = {
    *  id the person registered, with `redirectUri` as its redirect. */
   needsClient?: boolean
   redirectUri?: string
+  /** It answered 401 but publishes no OAuth metadata: it wants an API key or
+   *  token in its headers, not a sign-in. */
+  needsCredentials?: boolean
   /** Why the last sign-in did not finish, one line. */
   lastError?: string
 }
@@ -88,6 +91,7 @@ export function readMcpAuthState(value: unknown): McpAuthState | null {
     if (typeof raw.phase !== 'string' || !(MCP_AUTH_PHASES as readonly string[]).includes(raw.phase)) return null
     const server: McpAuthServerState = { url: raw.url, phase: raw.phase as McpAuthPhase }
     if (raw.needsClient === true) server.needsClient = true
+    if (raw.needsCredentials === true) server.needsCredentials = true
     if (typeof raw.redirectUri === 'string') server.redirectUri = raw.redirectUri
     if (typeof raw.lastError === 'string') server.lastError = raw.lastError
     servers.push(server)

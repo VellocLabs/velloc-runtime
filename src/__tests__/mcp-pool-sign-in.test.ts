@@ -22,6 +22,7 @@ type FakeService = {
   markRequired: ReturnType<typeof vi.fn>
   handleUnauthorized: ReturnType<typeof vi.fn>
   signInIfRequired: ReturnType<typeof vi.fn>
+  clearRequired: ReturnType<typeof vi.fn>
   onAuthChanged: (listener: (url: string, signedIn: boolean) => void) => () => void
   announce: (url: string, signedIn: boolean) => void
 }
@@ -41,6 +42,9 @@ function fakeService(initial: McpConnectAuth | 'required' | null): FakeService {
       return false
     }),
     signInIfRequired: vi.fn(async () => {}),
+    clearRequired: vi.fn(async () => {
+      if (service.auth === 'required') service.auth = null
+    }),
     onAuthChanged: listener => {
       listeners.add(listener)
       return () => listeners.delete(listener)
@@ -62,12 +66,12 @@ function bridge(overrides: Partial<McpBridgeOperations> = {}): McpBridgeOperatio
   }
 }
 
-function pool(nativeBridge: McpBridgeOperations) {
+function pool(nativeBridge: McpBridgeOperations, config: NexusMcpServerLaunchConfig = HTTP) {
   installProcessFs(unconfiguredFs)
   return new MCPPool({
     cwd: '/w',
     nativeBridge,
-    loadNativeServers: vi.fn(async () => [{ id: 'notion', config: HTTP }]),
+    loadNativeServers: vi.fn(async () => [{ id: 'notion', config }]),
   })
 }
 
@@ -147,6 +151,29 @@ describe('MCPPool sign-in', () => {
     await p.init()
     await expect(p.callTool('notion', 'search', {})).rejects.toThrow(/needs the person to sign in/)
     expect(p.getServer('notion')?.status).toBe('needs-auth')
+  })
+})
+
+describe("MCPPool with the person's own credential", () => {
+  const KEYED: NexusMcpServerLaunchConfig = { ...HTTP, headers: { Authorization: '{{secret:mcp:notion/header/authorization}}' } }
+
+  it('connects a server waiting for a sign-in once it carries an Authorization header, and clears the wait', async () => {
+    const service = fakeService('required')
+    const b = bridge()
+    const p = pool(b, KEYED)
+    await p.init()
+    expect(b.connect).toHaveBeenCalledWith('notion', KEYED)
+    expect(p.getServer('notion')?.status).toBe('connected')
+    expect(service.clearRequired).toHaveBeenCalledWith(URL_)
+  })
+
+  it('a 401 for its own credential still reads as needing one', async () => {
+    const service = fakeService(null)
+    const p = pool(bridge({ connect: vi.fn(async () => ({ ok: false, tools: [], error: 'HTTP 401' })) }), KEYED)
+    await p.init()
+    expect(p.getServer('notion')?.status).toBe('needs-auth')
+    expect(service.markRequired).toHaveBeenCalledWith(URL_)
+    expect(service.clearRequired).not.toHaveBeenCalled()
   })
 })
 

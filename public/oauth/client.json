@@ -1,0 +1,10 @@
+{
+  "client_id": "https://app.velloc.app/oauth/client.json",
+  "client_name": "Velloc",
+  "client_uri": "https://app.velloc.app",
+  "logo_uri": "https://app.velloc.app/product_logo_128.png",
+  "redirect_uris": ["http://127.0.0.1:47643/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}

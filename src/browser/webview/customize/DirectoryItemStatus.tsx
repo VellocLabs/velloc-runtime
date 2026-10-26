@@ -98,6 +98,16 @@ export function DirectoryItemStatus({ item, onAdd, onOpenSettings }: DirectoryIt
         {t('customize.item.add')}
       </Button>
     )
+  } else if (item.unsupported) {
+    action = (
+      <span
+        data-testid="customize-item-unsupported"
+        title={t('customize.item.unsupported.hint')}
+        className="text-xs text-muted-foreground"
+      >
+        {t('customize.item.unsupported.connector')}
+      </span>
+    )
   } else {
     action = (
       <span data-testid="customize-item-unavailable" className="text-xs text-muted-foreground">

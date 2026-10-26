@@ -318,6 +318,8 @@ function CardStack({
             <ul className="mt-1 flex flex-col" data-testid="session-card-connectors-list">
               {[...connected, ...waiting].map((name) => {
                 const needsAuth = waiting.includes(name);
+                const signInUrl = servers.find((server) => server.name === name)?.signInUrl;
+                const wantsCredentials = needsAuth && auth?.serverState(signInUrl)?.needsCredentials === true;
                 return (
                   <li key={name}>
                     <button
@@ -331,7 +333,9 @@ function CardStack({
                       <PlugIcon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
                       <span className="truncate">{name}</span>
                       {needsAuth ? (
-                        <span className="ms-auto shrink-0 text-warning text-xs">{t("mcpServers.needsAuth")}</span>
+                        <span className="ms-auto shrink-0 text-warning text-xs">
+                          {t(wantsCredentials ? "mcpServers.needsCredentials" : "mcpServers.needsAuth")}
+                        </span>
                       ) : null}
                     </button>
                   </li>

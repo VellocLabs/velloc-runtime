@@ -32,6 +32,12 @@ export function McpSignInPanel({ url, auth }: { url: string; auth?: McpAuthContr
   let body: React.ReactNode;
   if (!auth?.state?.available) {
     body = <p className="text-muted-foreground text-sm">{t("mcpAuth.unavailable")}</p>;
+  } else if (phase !== "signed-in" && server?.needsCredentials) {
+    body = (
+      <p className="text-sm" data-testid="mcp-sign-in-credentials">
+        {t("mcpAuth.needsCredentials")}
+      </p>
+    );
   } else if (phase === "signing-in") {
     body = (
       <div className="flex items-center justify-between gap-3">
@@ -114,7 +120,8 @@ export function McpSignInPanel({ url, auth }: { url: string; auth?: McpAuthContr
     );
   }
 
-  const error = requestError ?? (phase !== "signing-in" ? server?.lastError : undefined);
+  const error =
+    requestError ?? (phase !== "signing-in" && !server?.needsCredentials ? server?.lastError : undefined);
   return (
     <section
       data-testid="mcp-sign-in-panel"

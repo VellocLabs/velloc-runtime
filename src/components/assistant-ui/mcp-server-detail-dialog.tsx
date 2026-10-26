@@ -198,7 +198,11 @@ function DetailBody({
                     )}
                   />
                   {needsAuth
-                    ? t("mcpServers.needsAuth")
+                    ? t(
+                        auth?.serverState(server.signInUrl)?.needsCredentials
+                          ? "mcpServers.needsCredentials"
+                          : "mcpServers.needsAuth",
+                      )
                     : failed
                       ? t("mcpServers.failed")
                       : t("mcpServers.connected")}

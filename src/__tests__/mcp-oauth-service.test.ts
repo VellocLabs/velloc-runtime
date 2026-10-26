@@ -33,6 +33,14 @@ type Options = {
   issuer?: string
   window?: (url: URL, state: string) => string | Error
   tokenAnswer?: { status: number; body: string }
+  /** The answer to the unauthenticated probe; default 401 with no challenge. */
+  probe?: { status: number; wwwAuthenticate?: string }
+  /** No OAuth metadata anywhere (an API-key server). */
+  noMetadata?: boolean
+  /** No protected-resource metadata (a legacy server). */
+  noResourceMetadata?: boolean
+  cimd?: boolean
+  resource?: string
 }
 
 function rig(options: Options = {}) {
@@ -44,7 +52,13 @@ function rig(options: Options = {}) {
   const opened: string[] = []
   const tokenAnswers: Array<{ status: number; body: string }> = []
   const host: McpOAuthHost = {
-    fetch: vi.fn(async () => new Response('{}')),
+    fetch: vi.fn(async () => {
+      const probe = options.probe ?? { status: 401 }
+      return new Response('{}', {
+        status: probe.status,
+        headers: probe.wwwAuthenticate ? { 'WWW-Authenticate': probe.wwwAuthenticate } : {},
+      })
+    }),
     postForm: vi.fn(async (url, form) => {
       forms.push({ url, form })
       return (
@@ -73,14 +87,20 @@ function rig(options: Options = {}) {
   const oauth: McpOAuthProtocolHelpers = {
     discoverOAuthServerInfo: vi.fn(async () => ({
       authorizationServerUrl: AUTH,
-      authorizationServerMetadata: {
-        issuer,
-        authorization_endpoint: `${AUTH}/authorize`,
-        token_endpoint: TOKEN_ENDPOINT,
-        response_types_supported: ['code'],
-        ...(options.registration === false ? {} : { registration_endpoint: `${AUTH}/register` }),
-      },
-      resourceMetadata: { resource: SERVER_NORMALIZED, scopes_supported: ['read', 'write'] },
+      authorizationServerMetadata: options.noMetadata
+        ? undefined
+        : {
+            issuer,
+            authorization_endpoint: `${AUTH}/authorize`,
+            token_endpoint: TOKEN_ENDPOINT,
+            response_types_supported: ['code'],
+            ...(options.registration === false ? {} : { registration_endpoint: `${AUTH}/register` }),
+            ...(options.cimd ? { client_id_metadata_document_supported: true } : {}),
+          },
+      resourceMetadata:
+        options.noMetadata || options.noResourceMetadata
+          ? undefined
+          : { resource: options.resource ?? SERVER_NORMALIZED, scopes_supported: ['read', 'write'] },
     })) as never,
     discoverOAuthProtectedResourceMetadata: vi.fn(async () => ({ resource: SERVER_NORMALIZED })) as never,
     registerClient: vi.fn(async () => ({ client_id: 'dyn-client', redirect_uris: [MCP_OAUTH_REDIRECT_URI] })) as never,
@@ -339,7 +359,7 @@ describe('McpOAuthService tokens', () => {
 })
 
 describe('McpOAuthService install-time sign-in', () => {
-  it('starts a sign-in when the server publishes resource metadata', async () => {
+  it('starts a sign-in when the server answers 401 and publishes OAuth metadata', async () => {
     const r = rig()
     await r.service.signInIfRequired(SERVER)
     await settled(r)
@@ -347,13 +367,141 @@ describe('McpOAuthService install-time sign-in', () => {
     expect(r.phase()?.phase).toBe('signed-in')
   })
 
-  it('leaves a server without metadata alone', async () => {
-    const r = rig()
-    vi.mocked(r.oauth.discoverOAuthProtectedResourceMetadata).mockRejectedValueOnce(new Error('404'))
+  it('starts a sign-in for an open server that publishes resource metadata', async () => {
+    const r = rig({ probe: { status: 200 } })
+    await r.service.signInIfRequired(SERVER)
+    await settled(r)
+    expect(r.opened).toHaveLength(1)
+  })
+
+  it('leaves an open server without resource metadata alone', async () => {
+    const r = rig({ probe: { status: 200 }, noResourceMetadata: true })
     await r.service.signInIfRequired(SERVER)
     expect(r.opened).toEqual([])
     expect(r.service.getState().servers).toEqual([])
     expect(await r.service.connectAuth(SERVER)).toBeNull()
+  })
+
+  it('marks a 401 server with no OAuth metadata as wanting credentials, with no window', async () => {
+    const r = rig({ noMetadata: true })
+    await r.service.signInIfRequired(SERVER)
+    expect(r.opened).toEqual([])
+    expect(r.phase()).toEqual({ url: SERVER_NORMALIZED, phase: 'needs-sign-in', needsCredentials: true })
+  })
+})
+
+describe('McpOAuthService discovery', () => {
+  it("follows the 401 challenge's resource_metadata and asks for its scope", async () => {
+    const r = rig({
+      probe: {
+        status: 401,
+        wwwAuthenticate: 'Bearer error="invalid_token", resource_metadata="https://meta.example.test/prm", scope="notes:read notes:write"',
+      },
+    })
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.oauth.discoverOAuthServerInfo).toHaveBeenCalledWith(
+      SERVER_NORMALIZED,
+      expect.objectContaining({ resourceMetadataUrl: new URL('https://meta.example.test/prm') }),
+    )
+    expect(r.oauth.startAuthorization).toHaveBeenCalledWith(
+      AUTH,
+      expect.objectContaining({ scope: 'notes:read notes:write' }),
+    )
+    expect(r.phase()?.phase).toBe('signed-in')
+  })
+
+  it('refuses resource metadata that names another server', async () => {
+    const r = rig({ resource: 'https://elsewhere.example.test/mcp' })
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.phase()?.lastError).toMatch(/different server/)
+    expect(r.opened).toEqual([])
+  })
+
+  it('uses the client ID metadata document where the server accepts one, before registering', async () => {
+    const { MCP_OAUTH_CLIENT_METADATA_URL } = await import('../mcp/oauth/discovery')
+    const r = rig({ cimd: true })
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.oauth.registerClient).not.toHaveBeenCalled()
+    expect(r.oauth.startAuthorization).toHaveBeenCalledWith(
+      AUTH,
+      expect.objectContaining({ clientInformation: { client_id: MCP_OAUTH_CLIENT_METADATA_URL } }),
+    )
+    expect(r.forms[0]!.form.client_id).toBe(MCP_OAUTH_CLIENT_METADATA_URL)
+    expect(r.phase()?.phase).toBe('signed-in')
+  })
+
+  it('a sign-in that finds no OAuth metadata reports credentials, not an error', async () => {
+    const r = rig({ noMetadata: true })
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.phase()).toEqual({ url: SERVER_NORMALIZED, phase: 'needs-sign-in', needsCredentials: true })
+  })
+
+  it('a server that connects without a sign-in stops waiting for one', async () => {
+    const r = rig({ noMetadata: true })
+    await r.service.markRequired(SERVER)
+    await vi.waitFor(() => expect(r.phase()?.needsCredentials).toBe(true))
+    await r.service.clearRequired(SERVER)
+    expect(r.service.getState().servers).toEqual([])
+    expect(await r.service.connectAuth(SERVER)).toBeNull()
+  })
+
+  it('classifies a server once it is first marked required', async () => {
+    const r = rig({ noMetadata: true })
+    await r.service.markRequired(SERVER)
+    await vi.waitFor(() => expect(r.phase()?.needsCredentials).toBe(true))
+    await r.service.markRequired(SERVER)
+    expect(r.oauth.discoverOAuthServerInfo).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('McpOAuthService connector support', () => {
+  it('can connect a server with dynamic registration, client metadata documents, an API key, or no sign-in', async () => {
+    expect(await rig().service.connectorSupport(SERVER)).toBe('supported')
+    expect(await rig({ registration: false, cimd: true }).service.connectorSupport(SERVER)).toBe('supported')
+    expect(await rig({ noMetadata: true }).service.connectorSupport(SERVER)).toBe('supported')
+    expect(await rig({ probe: { status: 200 }, noResourceMetadata: true }).service.connectorSupport(SERVER)).toBe('supported')
+  })
+
+  it('cannot connect one that signs in only with a client registered in advance', async () => {
+    expect(await rig({ registration: false }).service.connectorSupport(SERVER)).toBe('needs_registered_client')
+  })
+
+  it('reports unknown when the server cannot be asked', async () => {
+    const r = rig()
+    vi.mocked(r.host.fetch).mockRejectedValueOnce(new Error('offline'))
+    expect(await r.service.connectorSupport(SERVER)).toBe('unknown')
+    r.dropHost()
+    expect(await r.service.connectorSupport(SERVER)).toBe('unknown')
+  })
+})
+
+describe('WWW-Authenticate parsing', () => {
+  it('reads the Bearer parameters and stops at the next scheme', async () => {
+    const { parseBearerChallenge } = await import('../mcp/oauth/discovery')
+    expect(parseBearerChallenge('Bearer realm="mcp", resource_metadata="https://a.test/x", scope="a b"')).toEqual({
+      realm: 'mcp',
+      resource_metadata: 'https://a.test/x',
+      scope: 'a b',
+    })
+    expect(parseBearerChallenge('Basic realm="x", Bearer error=invalid_token, DPoP algs="ES256"')).toEqual({
+      error: 'invalid_token',
+    })
+    expect(parseBearerChallenge('Bearer error_description="say \\"hi\\""')).toEqual({ error_description: 'say "hi"' })
+    expect(parseBearerChallenge('Basic realm="x"')).toBeNull()
+    expect(parseBearerChallenge(null)).toBeNull()
+  })
+
+  it('the published client metadata document names itself and the sign-in redirect', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { MCP_OAUTH_CLIENT_METADATA_URL } = await import('../mcp/oauth/discovery')
+    const doc = JSON.parse(readFileSync('public/oauth/client.json', 'utf-8')) as Record<string, unknown>
+    expect(doc.client_id).toBe(MCP_OAUTH_CLIENT_METADATA_URL)
+    expect(doc.redirect_uris).toEqual([MCP_OAUTH_REDIRECT_URI])
+    expect(doc.token_endpoint_auth_method).toBe('none')
   })
 })
 

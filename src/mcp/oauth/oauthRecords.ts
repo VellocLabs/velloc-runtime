@@ -16,6 +16,8 @@ export type McpOAuthClientRecord = {
   hasSecret?: boolean
   /** Registered by the runtime (dynamic registration), not typed by the person. */
   registered?: boolean
+  /** The client id is the client ID metadata document's URL. */
+  metadataDocument?: boolean
 }
 
 export type McpOAuthTokenRecord = {

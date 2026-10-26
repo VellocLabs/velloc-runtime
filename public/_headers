@@ -12,6 +12,11 @@
 /velloc.icon
   ! Cache-Control
   Cache-Control: public, max-age=86400
+# The client ID metadata document authorization servers fetch for MCP sign-in (F-10).
+/oauth/client.json
+  ! Cache-Control
+  Cache-Control: public, max-age=3600
+  Content-Type: application/json
 
 # index.html and every other non-asset path (incl. each /v<N>/index.html,
 # which deliberately falls through here — see scripts/stage_deploy.mjs).

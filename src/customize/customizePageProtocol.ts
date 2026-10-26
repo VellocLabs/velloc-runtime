@@ -112,6 +112,7 @@ function readPageItem(value: unknown): DirectoryPageItem | null {
     return null
   }
   if (v.installedAs !== undefined && typeof v.installedAs !== 'string') return null
+  if (v.unsupported !== undefined && v.unsupported !== 'needs_registered_client') return null
   return value as DirectoryPageItem
 }
 
