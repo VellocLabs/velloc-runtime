@@ -1,9 +1,11 @@
 /**
  * Contract: marketplace plugin update service (F-14). Covers user-scope plugins
- * installed from a registered marketplace; project and local scopes, folder
- * plugins and provider plugins (their own consent flow, F-27) are left out.
+ * installed from a registered marketplace or straight from the plugin
+ * directory (F-35); project and local scopes, folder plugins and provider
+ * plugins (their own consent flow, F-27) are left out.
  *
- * `check` refreshes each marketplace that has a covered plugin and records an
+ * `check` refreshes each marketplace that has a covered plugin — for
+ * directory installs, their records' reviewed commits — and records an
  * offer where the listing is newer than the installed record. `update`
  * installs the offered version into its own version directory and switches
  * `installed_plugins.json` to it; the old directory is kept as the rollback
@@ -20,6 +22,8 @@ import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { joinRuntimePath } from '../utils/runtimePaths'
 import { pluginBlockReason } from './blocklist'
 import { getEnabledPluginsMap } from './enabledPlugins'
+import { refreshDirectoryListings } from './directoryInstall'
+import { DIRECTORY_CATALOG_KEY } from './directoryListings'
 import { setupPlugin } from './installSteps'
 import { loadInstalledPlugins, recordPluginSetup } from './installedRegistry'
 import { fetchCatalog, loadKnownMarketplaces } from './marketplaces'
@@ -222,7 +226,7 @@ export function createPluginUpdateService(deps: PluginUpdateServiceDeps): Plugin
     const out: Covered[] = []
     for (const [identifier, records] of Object.entries(registry.plugins)) {
       const { name, marketplace } = splitPluginRef(identifier)
-      if (!marketplace || !(marketplace in known)) continue
+      if (!marketplace || !(marketplace in known || marketplace === DIRECTORY_CATALOG_KEY)) continue
       const record = records.find(entry => entry.scope === 'user')
       if (!record) continue
       if (manifestDeclaresProviders(await readJson(fs, getPluginManifestPath(record.installPath)))) continue
@@ -279,7 +283,9 @@ export function createPluginUpdateService(deps: PluginUpdateServiceDeps): Plugin
       try {
         listings = scope.listings && marketplace === scope.marketplace
           ? scope.listings
-          : (await fetchCatalog(ctx, fs, marketplace, now(), deps.fetchImpl())).marketplace.plugins
+          : marketplace === DIRECTORY_CATALOG_KEY
+            ? await refreshDirectoryListings(ctx, fs, members.map(member => member.name), deps.fetchImpl())
+            : (await fetchCatalog(ctx, fs, marketplace, now(), deps.fetchImpl())).marketplace.plugins
       } catch (error) {
         unreachable.push({ marketplace, reason: errorText(error) })
         continue

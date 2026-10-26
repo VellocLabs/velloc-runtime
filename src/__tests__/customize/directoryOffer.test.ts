@@ -91,9 +91,12 @@ describe('directory lookups', () => {
 
 type Listing = CatalogListing & { installed: boolean }
 
+type Installed = { identifier: string; codeSource?: { repo: string; path: string; sha?: string }; gitCommitSha?: string }
+
 function deps(
   record: unknown,
   marketplaces: Array<{ name: string; source: PluginOrigin; isOfficial?: boolean; listings: Listing[] | 'broken' }>,
+  installed: Installed[] = [],
 ): DirectoryOfferDeps {
   return {
     fetchJson: async () => ({ data: record ? [record] : [] }),
@@ -103,7 +106,8 @@ function deps(
       if (listings === 'broken') throw new Error('no manifest')
       return listings
     },
-    installPlugin: async () => {},
+    listInstalledPlugins: async () => installed,
+    installFromDirectory: async spec => `${spec.fallbackName}@plugin-directory`,
     listMcpServers: async () => ({}),
     upsertMcpServer: async () => {},
   }
@@ -113,48 +117,85 @@ const KWP = { source: 'github', repo: 'acme/work-plugins' } as const
 
 describe('resolveDirectoryIntent — plugins', () => {
   const plugin = { kind: 'plugin', manifestName: ID } as const
+  const COMMIT = '8ca22dba9a94f28898bbce59f2537ff4d87c747d'
+  const sales = {
+    name: 'Sales',
+    slug: 'acme/work-plugins/sales',
+    manifest_name: ID,
+    source: { repository: { url: 'https://github.com/acme/work-plugins', path: './sales/', reviewed_commit: COMMIT } },
+  }
+  const salesCode = { repo: 'github.com/acme/work-plugins', path: 'sales' }
 
-  it('a repository with several plugins is told apart by name, and a local listing uses its marketplace repo', async () => {
-    const record = { name: 'Sales', slug: 'sales', source: { repository: { url: 'https://github.com/acme/work-plugins' } } }
+  it('Add installs the reviewed commit of the record\'s folder, with what finds the record again', async () => {
+    const resolved = await resolveDirectoryIntent(plugin, deps(sales, []), 'https://api.example')
+    expect(resolved.alreadyInstalled).toBe(false)
+    expect(resolved.target).toEqual({
+      kind: 'plugin',
+      spec: {
+        manifestName: ID,
+        apiOrigin: 'https://api.example',
+        repositoryUrl: 'https://github.com/acme/work-plugins',
+        path: './sales/',
+        commit: COMMIT,
+        fallbackName: 'sales',
+      },
+    })
+  })
+
+  it('an installed plugin with the same repository and folder is it, whatever it is called; another commit is an update', async () => {
+    const same = await resolveDirectoryIntent(
+      plugin,
+      deps(sales, [], [
+        { identifier: 'finance@work', codeSource: { repo: 'github.com/acme/work-plugins', path: 'finance', sha: COMMIT } },
+        { identifier: 'deals@team', codeSource: { ...salesCode, sha: COMMIT.slice(0, 12) } },
+      ]),
+    )
+    expect(same).toMatchObject({ alreadyInstalled: true, installedAs: 'deals@team', updateAvailable: false })
+
+    const older = await resolveDirectoryIntent(
+      plugin,
+      deps(sales, [], [{ identifier: 'sales@plugin-directory', codeSource: salesCode, gitCommitSha: '1111111111aa' }]),
+    )
+    expect(older).toMatchObject({ alreadyInstalled: true, installedAs: 'sales@plugin-directory', updateAvailable: true })
+
+    const elsewhere = await resolveDirectoryIntent(
+      plugin,
+      deps(sales, [], [{ identifier: 'finance@work', codeSource: { repo: 'github.com/acme/work-plugins', path: 'finance' } }]),
+    )
+    expect(elsewhere.alreadyInstalled).toBe(false)
+  })
+
+  it('an install whose record names no code is matched through its marketplace listing; a broken marketplace is skipped', async () => {
     const resolved = await resolveDirectoryIntent(
       plugin,
-      deps(record, [
+      deps(sales, [
+        { name: 'broken', source: KWP, listings: 'broken' },
         {
           name: 'work',
           source: KWP,
           listings: [
-            { name: 'finance', source: { source: 'local', path: './finance' }, installed: false },
+            { name: 'finance', source: { source: 'local', path: './finance' }, installed: true },
             { name: 'sales', source: { source: 'local', path: './sales' }, installed: true },
           ],
         },
       ]),
     )
-    expect(resolved).toEqual({
-      details: { name: 'Sales', links: { repository: 'https://github.com/acme/work-plugins' } },
-      alreadyInstalled: true,
-      installedAs: 'sales@work',
-      target: { kind: 'plugin', identifier: 'sales@work' },
-    })
+    expect(resolved).toMatchObject({ alreadyInstalled: true, installedAs: 'sales@work' })
+    expect(resolved.target).not.toBeNull()
   })
 
-  it('official marketplaces come first, and a broken one is skipped', async () => {
-    const record = { name: 'Superpowers', slug: 'obra/superpowers', source: { repository: { url: 'https://github.com/obra/superpowers' } } }
-    const listing: Listing = { name: 'superpowers', source: { source: 'url', url: 'https://github.com/obra/superpowers.git' }, installed: false }
-    const resolved = await resolveDirectoryIntent(
-      plugin,
-      deps(record, [
-        { name: 'community', source: KWP, listings: [listing] },
-        { name: 'broken', source: KWP, isOfficial: true, listings: 'broken' },
-        { name: 'official', source: KWP, isOfficial: true, listings: [listing] },
-      ]),
-    )
-    expect(resolved.target).toEqual({ kind: 'plugin', identifier: 'superpowers@official' })
-  })
-
-  it('a plugin no marketplace here lists cannot be installed', async () => {
-    const record = { name: 'Remotion', source: { repository: { url: 'https://github.com/remotion-dev/video-plugin' } } }
-    const resolved = await resolveDirectoryIntent(plugin, deps(record, [{ name: 'official', source: KWP, listings: [] }]))
-    expect(resolved).toEqual({ details: { name: 'Remotion', links: { repository: 'https://github.com/remotion-dev/video-plugin' } }, alreadyInstalled: false, target: null })
+  it('a record without a reviewed commit, on another host, or with a dot segment in its folder cannot be installed', async () => {
+    const variants = [
+      { url: 'https://github.com/acme/work-plugins', path: 'sales' },
+      { url: 'https://gitlab.com/acme/work-plugins', path: 'sales', reviewed_commit: COMMIT },
+      { url: 'https://github.com/acme/work-plugins', path: '../sales', reviewed_commit: COMMIT },
+    ]
+    for (const repository of variants) {
+      const record = { ...sales, source: { repository } }
+      expect((await resolveDirectoryIntent(plugin, deps(record, []))).target).toBeNull()
+    }
+    const unnamed = { ...sales, manifest_name: undefined }
+    expect((await resolveDirectoryIntent(plugin, deps(unnamed, []))).target).toBeNull()
   })
 })
 
@@ -193,13 +234,23 @@ describe('installDirectoryTarget', () => {
   it('answers what the item is installed as', async () => {
     const calls: string[] = []
     const d = deps(null, [])
-    d.installPlugin = async id => void calls.push(`install ${id}`)
+    d.installFromDirectory = async spec => {
+      calls.push(`install ${spec.repositoryUrl} ${spec.commit}`)
+      return 'sales@plugin-directory'
+    }
     d.upsertMcpServer = async (id, config) => void calls.push(`upsert ${id} ${config.url}`)
-    await expect(installDirectoryTarget({ kind: 'plugin', identifier: 'sales@work' }, d)).resolves.toBe('sales@work')
+    const spec = {
+      manifestName: ID,
+      apiOrigin: 'https://api.example',
+      repositoryUrl: 'https://github.com/acme/work-plugins',
+      commit: 'abcdef1',
+      fallbackName: 'sales',
+    }
+    await expect(installDirectoryTarget({ kind: 'plugin', spec }, d)).resolves.toBe('sales@plugin-directory')
     await expect(
       installDirectoryTarget({ kind: 'connector', id: 'acme', config: { transport: 'http', url: 'https://mcp.acme.test' } }, d),
     ).resolves.toBe('acme')
-    expect(calls).toEqual(['install sales@work', 'upsert acme https://mcp.acme.test'])
+    expect(calls).toEqual(['install https://github.com/acme/work-plugins abcdef1', 'upsert acme https://mcp.acme.test'])
   })
 })
 

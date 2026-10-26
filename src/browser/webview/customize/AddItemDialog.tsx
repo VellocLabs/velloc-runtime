@@ -65,7 +65,7 @@ export function AddItemDialog({ item, onAdd, onOpenSettings, onClose }: AddItemD
     tone = 'done'
   } else if (!item.installable) {
     title = t('customize.addDialog.cannotAddNamed', { name })
-    body = item.kind === 'plugin' ? 'customize.addDialog.noMarketplace' : 'customize.addDialog.noAddress'
+    body = item.kind === 'plugin' ? 'customize.addDialog.noSource' : 'customize.addDialog.noAddress'
     tone = 'error'
   } else {
     title = t('customize.addDialog.title', { name })
@@ -119,18 +119,6 @@ export function AddItemDialog({ item, onAdd, onOpenSettings, onClose }: AddItemD
   } else {
     actions = (
       <>
-        {item.kind === 'plugin' && item.phase === 'ready' ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              onClose()
-              onOpenSettings('plugins')
-            }}
-          >
-            {t('customize.addDialog.openMarketplaces')}
-          </Button>
-        ) : null}
         <Button type="button" data-testid="customize-add-dialog-close" onClick={onClose}>
           {t('customize.addDialog.close')}
         </Button>
@@ -174,6 +162,11 @@ export function AddItemDialog({ item, onAdd, onOpenSettings, onClose }: AddItemD
               {body ? (
                 <p className={tone === 'error' ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>
                   {t(body, { name: item?.installedAs ?? name })}
+                </p>
+              ) : null}
+              {installed && item?.updateAvailable ? (
+                <p data-testid="customize-add-dialog-update" className="text-sm text-foreground">
+                  {t('customize.addDialog.updateAvailable')}
                 </p>
               ) : null}
               {item?.phase === 'failed' && item.failure === 'install_failed' ? (

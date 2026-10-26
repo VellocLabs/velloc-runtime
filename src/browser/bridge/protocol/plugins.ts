@@ -118,6 +118,26 @@ export type PluginsBridgeActionMap = {
       fileCount: number
     }
   }
+  /** Install a plugin-directory record's reviewed commit as
+   *  `<name>@plugin-directory` (F-35): GitHub repository, folder, commit and
+   *  the record's `manifest_name` and listing origin, so updates can read
+   *  the record again. */
+  installFromDirectory: {
+    payload: {
+      manifestName: string
+      apiOrigin: string
+      repositoryUrl: string
+      path?: string
+      commit: string
+      fallbackName: string
+    }
+    result: {
+      ok: true
+      identifier: string
+      entry: PluginInstalledUiEntry
+      fileCount: number
+    }
+  }
   uninstall: {
     payload: {
       identifier: string

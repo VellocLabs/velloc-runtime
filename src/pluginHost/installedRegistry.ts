@@ -116,6 +116,17 @@ function normalizeEntry(raw: unknown): PluginSetupRecord | null {
       }
     }
   }
+  const code = (raw as { codeSource?: unknown }).codeSource
+  if (code && typeof code === 'object') {
+    const c = code as { repo?: unknown; path?: unknown; sha?: unknown }
+    if (typeof c.repo === 'string' && c.repo && typeof c.path === 'string') {
+      entry.codeSource = {
+        repo: c.repo,
+        path: c.path,
+        ...(typeof c.sha === 'string' && c.sha ? { sha: c.sha } : {}),
+      }
+    }
+  }
   return entry
 }
 

@@ -874,3 +874,63 @@ describe('pluginsHandlers.listBuiltin', () => {
     }
   })
 })
+
+describe('pluginsHandlers.installFromDirectory', () => {
+  const COMMIT = 'c0ffee1c0ffee1c0ffee1c0ffee1c0ffee1c0ffe'
+  const payload = {
+    manifestName: 'b2be6e33-a55f-45ca-9453-3dabeb179a53',
+    apiOrigin: 'https://api.example',
+    repositoryUrl: 'https://github.com/me/tools',
+    path: 'lint',
+    commit: COMMIT,
+    fallbackName: 'lint-slug',
+  }
+
+  async function served(name: string) {
+    const tar = await buildGitHubTarball('me-tools-c0ffee1', [
+      { name: `lint/${PLUGIN_MANIFEST_DIR_NAME}/plugin.json`, content: JSON.stringify({ name, version: '1.0.0' }) },
+      { name: 'lint/README.md', content: 'lint\n' },
+    ])
+    return vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === `https://codeload.github.com/me/tools/tar.gz/${COMMIT}`) return new Response(new Uint8Array(tar))
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+  }
+
+  it('installs the record\'s folder under its manifest\'s name and reloads every session', async () => {
+    const { fs } = makeMemoryFs()
+    const reloadPluginsOnAllSessions = vi.fn()
+    const ctx = { ...makeCtx({ fs, fetchImpl: await served('lint') }), reloadPluginsOnAllSessions }
+    const result = await pluginsHandlers.installFromDirectory(payload, ctx)
+    expect(result).toMatchObject({ ok: true, identifier: 'lint@plugin-directory', entry: { name: 'lint', marketplace: 'plugin-directory', enabled: true } })
+    expect(result.entry.codeSource).toMatchObject({ repo: 'github.com/me/tools', path: 'lint', sha: COMMIT })
+    expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a payload that names no reviewed commit, and a blocklisted name before fetching', async () => {
+    const { fs } = makeMemoryFs()
+    const fetchImpl = await served('lint')
+    const ctx = makeCtx({ fs, fetchImpl })
+    await expect(pluginsHandlers.installFromDirectory({ ...payload, commit: 'main' }, ctx)).rejects.toThrow()
+    const restore = __setPluginBlocklistForTests(['lint-slug@plugin-directory'])
+    try {
+      await expect(pluginsHandlers.installFromDirectory(payload, ctx)).rejects.toThrow(/blocklist/i)
+    } finally {
+      restore()
+    }
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('removes a plugin whose manifest names a blocklisted plugin', async () => {
+    const { fs } = makeMemoryFs()
+    const ctx = makeCtx({ fs, fetchImpl: await served('evil') })
+    const restore = __setPluginBlocklistForTests(['evil@plugin-directory'])
+    try {
+      await expect(pluginsHandlers.installFromDirectory(payload, ctx)).rejects.toThrow(/blocklist/i)
+    } finally {
+      restore()
+    }
+    expect((await pluginsHandlers.listInstalled(ctx)).plugins).toEqual([])
+  })
+})

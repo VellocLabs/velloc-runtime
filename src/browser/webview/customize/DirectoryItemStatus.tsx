@@ -56,6 +56,11 @@ export function DirectoryItemStatus({ item, onAdd, onOpenSettings }: DirectoryIt
           <CheckIcon className="size-3.5" />
           {item.installedAs ? t('customize.item.installedAs', { name: item.installedAs }) : t('customize.item.installed')}
         </span>
+        {item.updateAvailable ? (
+          <span data-testid="customize-item-update" className="text-xs font-medium text-primary">
+            {t('customize.item.updateAvailable')}
+          </span>
+        ) : null}
         <Button
           type="button"
           variant="outline"

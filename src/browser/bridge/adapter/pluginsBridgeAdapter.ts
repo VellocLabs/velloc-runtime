@@ -39,6 +39,8 @@ import {
   removeMarketplace,
 } from '../../../pluginHost/marketplaces'
 import { githubRepoOf, parseMarketplaceSource, registerMarketplaceSource } from '../../../pluginHost/marketplaceRegister'
+import { installFromDirectory } from '../../../pluginHost/directoryInstall'
+import { DIRECTORY_CATALOG_KEY } from '../../../pluginHost/directoryListings'
 import { isBuiltinMarketplace } from '../../../pluginHost/builtinMarketplace'
 import { currentTemplateChannel, type UpdateChannel } from '../../../branding/updateChannels'
 import { pluginBlockReason } from '../../../pluginHost/blocklist'
@@ -247,6 +249,43 @@ async function handleInstall(
       mergeEnabledForUi(payload.identifier, result.entry, enabledMap),
       ctx.fs,
     ),
+    fileCount: result.fileCount,
+  }
+}
+
+/**
+ * `plugins/installFromDirectory` — the record's reviewed commit, straight
+ * from its repository. The blocklist is asked for the name the record gives
+ * before anything is fetched, and for the installed name before it is used.
+ */
+async function handleInstallFromDirectory(
+  payload: PluginsBridgeActionMap['installFromDirectory']['payload'],
+  ctx: PluginsAdapterContext,
+): Promise<PluginsBridgeActionMap['installFromDirectory']['result']> {
+  const text = (value: unknown) => (typeof value === 'string' ? value : '')
+  const spec = {
+    manifestName: text(payload?.manifestName),
+    apiOrigin: text(payload?.apiOrigin),
+    repositoryUrl: text(payload?.repositoryUrl),
+    ...(text(payload?.path) ? { path: text(payload?.path) } : {}),
+    commit: text(payload?.commit),
+    fallbackName: text(payload?.fallbackName),
+  }
+  const early = pluginBlockReason(joinPluginRef(spec.fallbackName, DIRECTORY_CATALOG_KEY))
+  if (early) throw new Error(early)
+  const pathCtx = pathContextOf(ctx)
+  const result = await installFromDirectory(pathCtx, ctx.fs, spec, { fetchImpl: pickFetch(ctx), nowIso: nowOf(ctx) })
+  const blocked = pluginBlockReason(result.identifier)
+  if (blocked) {
+    await teardownPlugin(pathCtx, { homeDir: ctx.homeDir }, ctx.fs, result.identifier)
+    throw new Error(blocked)
+  }
+  const enabledMap = await getEnabledPluginsMap({ homeDir: ctx.homeDir }, ctx.fs)
+  ctx.reloadPluginsOnAllSessions?.()
+  return {
+    ok: true,
+    identifier: result.identifier,
+    entry: await withPluginFacts(mergeEnabledForUi(result.identifier, result.entry, enabledMap), ctx.fs),
     fileCount: result.fileCount,
   }
 }
@@ -501,6 +540,7 @@ export const pluginsHandlers = {
   listMarketplaces: handleListMarketplaces,
   listMarketplacePlugins: handleListMarketplacePlugins,
   install: handleInstall,
+  installFromDirectory: handleInstallFromDirectory,
   uninstall: handleUninstall,
   removeLocal: handleRemoveLocal,
   listLocal: handleListLocal,
@@ -545,6 +585,12 @@ export async function handlePluginsBridgeRequest(
       case 'install':
         result = await handleInstall(
           request.payload as PluginsBridgeActionMap['install']['payload'],
+          ctx,
+        )
+        break
+      case 'installFromDirectory':
+        result = await handleInstallFromDirectory(
+          request.payload as PluginsBridgeActionMap['installFromDirectory']['payload'],
           ctx,
         )
         break

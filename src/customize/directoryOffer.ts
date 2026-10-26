@@ -6,7 +6,16 @@
  */
 import type { NexusMcpServerConfig } from '../settings/settingsTypes'
 import type { CatalogListing, PluginOrigin } from '../pluginHost/registryFormats'
-import { DIRECTORY_API_ORIGIN } from './directorySite'
+import {
+  codeSourceOf,
+  normalizeCodePath,
+  normalizeRepoUrl,
+  sameCode,
+  sameCommit,
+  type PluginCodeSource,
+} from '../pluginHost/codeSource'
+import { directoryListingSource, type DirectoryPluginSpec } from '../pluginHost/directoryInstall'
+import { DIRECTORY_API_ORIGIN, DIRECTORY_LIST_PATH } from './directorySite'
 
 /** What a directory page path names. */
 export type DirectoryIntent =
@@ -73,12 +82,14 @@ export type DirectoryPageItem = {
   alreadyInstalled?: boolean
   installable?: boolean
   installedAs?: string
+  /** Installed, and the directory has reviewed a newer commit of it. */
+  updateAvailable?: boolean
   failure?: DirectoryItemFailure
 }
 
 /** What Add installs. Kept in the runtime, never published. */
 export type DirectoryInstallTarget =
-  | { kind: 'plugin'; identifier: string }
+  | { kind: 'plugin'; spec: DirectoryPluginSpec }
   | { kind: 'connector'; id: string; config: NexusMcpServerConfig }
 
 export type DirectoryResolution = {
@@ -86,6 +97,7 @@ export type DirectoryResolution = {
   alreadyInstalled: boolean
   /** When already installed: the plugin identifier or the MCP server id. */
   installedAs?: string
+  updateAvailable?: boolean
   target: DirectoryInstallTarget | null
 }
 
@@ -94,12 +106,13 @@ export type DirectoryOfferDeps = {
   fetchJson(url: string): Promise<unknown>
   listMarketplaces(): Promise<Array<{ name: string; source: PluginOrigin; isOfficial?: boolean }>>
   listMarketplaceListings(marketplace: string): Promise<Array<CatalogListing & { installed: boolean }>>
-  installPlugin(identifier: string): Promise<void>
+  /** Every installed plugin, with the code it came from when its record says. */
+  listInstalledPlugins(): Promise<Array<{ identifier: string; codeSource?: PluginCodeSource; gitCommitSha?: string }>>
+  /** Installs a record's reviewed commit; answers the identifier it is installed as. */
+  installFromDirectory(spec: DirectoryPluginSpec): Promise<string>
   listMcpServers(): Promise<Record<string, NexusMcpServerConfig>>
   upsertMcpServer(id: string, config: NexusMcpServerConfig): Promise<void>
 }
-
-const DIRECTORY_LIST_PATH = '/api/directory/plugins'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const SLUG = /^[a-z0-9][a-z0-9-]{0,99}$/
@@ -154,7 +167,7 @@ type DirectoryRecord = {
   media?: { icons?: Array<{ url?: unknown }>; screenshots?: Array<{ url?: unknown } | string> }
   links?: { documentation?: unknown; support?: unknown; privacy_policy?: unknown }
   taxonomy?: Record<string, unknown>
-  source?: { marketplace_slug?: unknown; repository?: { url?: unknown; path?: unknown } }
+  source?: { marketplace_slug?: unknown; repository?: { url?: unknown; path?: unknown; reviewed_commit?: unknown } }
   components?: Array<{
     type?: unknown
     name?: unknown
@@ -271,14 +284,7 @@ export function describeDirectoryRecord(record: DirectoryRecord): DirectoryItemD
   return details
 }
 
-/** A git URL or GitHub repo reduced to `host/owner/repo`, lowercase. */
-export function normalizeRepoUrl(url: string | undefined): string | null {
-  if (!url) return null
-  const trimmed = url.trim().toLowerCase().replace(/^git@github\.com:/, 'https://github.com/')
-  const match = /^(?:https?:\/\/)?([^/]+)\/([^/]+)\/([^/#?]+)/.exec(trimmed)
-  if (!match) return null
-  return `${match[1]}/${match[2]}/${match[3]!.replace(/\.git$/, '')}`
-}
+export { normalizeRepoUrl }
 
 function originRepo(source: PluginOrigin): string | null {
   if (source.source === 'github') return normalizeRepoUrl(`https://github.com/${source.repo}`)
@@ -295,36 +301,67 @@ function listingRepo(listing: CatalogListing, marketplaceRepo: string | null): s
 
 const nameKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
+/** What Add installs a plugin record with; null when its code cannot be installed here. */
+export function directoryPluginSpec(record: DirectoryRecord, apiOrigin: string): DirectoryPluginSpec | null {
+  const repository = record.source?.repository
+  const spec: DirectoryPluginSpec = {
+    manifestName: str(record.manifest_name) ?? '',
+    apiOrigin,
+    repositoryUrl: str(repository?.url) ?? '',
+    ...(str(repository?.path) ? { path: str(repository?.path) } : {}),
+    commit: str(repository?.reviewed_commit) ?? '',
+    fallbackName: str(record.slug)?.split('/').pop() ?? str(record.name) ?? '',
+  }
+  return UUID.test(spec.manifestName) && directoryListingSource(spec) ? spec : null
+}
+
+/** The repository and folder a record names. */
+function recordCode(record: DirectoryRecord): PluginCodeSource | null {
+  const repo = normalizeRepoUrl(str(record.source?.repository?.url))
+  const path = normalizeCodePath(str(record.source?.repository?.path))
+  return repo && path !== null ? { repo, path } : null
+}
+
 /**
- * The marketplace listing that is this directory plugin: same repository,
- * and — when the repository holds several plugins — the same name. Official
- * marketplaces are searched first.
+ * A plugin record here: installed when an installed plugin's code is the
+ * record's repository and folder (an install whose record names no code is
+ * matched through the marketplace listing it came from), with an update when
+ * the directory reviewed another commit. Add installs the reviewed commit.
  */
-async function findPluginListing(
+async function resolvePlugin(
   record: DirectoryRecord,
   deps: DirectoryOfferDeps,
-): Promise<{ identifier: string; installed: boolean } | null> {
-  const repo = normalizeRepoUrl(str(record.source?.repository?.url))
-  if (!repo) return null
-  const names = new Set(
-    [str(record.name), str(record.slug)?.split('/').pop()].filter((v): v is string => !!v).map(nameKey),
-  )
-  const marketplaces = [...(await deps.listMarketplaces())].sort(
-    (a, b) => Number(b.isOfficial === true) - Number(a.isOfficial === true),
-  )
-  for (const marketplace of marketplaces) {
+  apiOrigin: string,
+): Promise<Omit<DirectoryResolution, 'details'>> {
+  const spec = directoryPluginSpec(record, apiOrigin)
+  const target: DirectoryInstallTarget | null = spec ? { kind: 'plugin', spec } : null
+  const code = recordCode(record)
+  if (!code) return { alreadyInstalled: false, target }
+  const commit = str(record.source?.repository?.reviewed_commit)
+  for (const plugin of await deps.listInstalledPlugins()) {
+    if (!plugin.codeSource || !sameCode(plugin.codeSource, code)) continue
+    const have = plugin.codeSource.sha ?? plugin.gitCommitSha
+    return {
+      alreadyInstalled: true,
+      installedAs: plugin.identifier,
+      updateAvailable: !!commit && !!have && !sameCommit(have, commit),
+      target,
+    }
+  }
+  for (const marketplace of await deps.listMarketplaces()) {
     let listings: Array<CatalogListing & { installed: boolean }>
     try {
       listings = await deps.listMarketplaceListings(marketplace.name)
     } catch {
       continue
     }
-    const marketplaceRepo = originRepo(marketplace.source)
-    const sameRepo = listings.filter(listing => listingRepo(listing, marketplaceRepo) === repo)
-    const match = sameRepo.length === 1 ? sameRepo[0] : sameRepo.find(listing => names.has(nameKey(listing.name)))
-    if (match) return { identifier: `${match.name}@${marketplace.name}`, installed: match.installed }
+    const match = listings.find(listing => {
+      const listed = listing.installed ? codeSourceOf(listing.source, marketplace.source) : null
+      return !!listed && sameCode(listed, code)
+    })
+    if (match) return { alreadyInstalled: true, installedAs: `${match.name}@${marketplace.name}`, target }
   }
-  return null
+  return { alreadyInstalled: false, target }
 }
 
 const sameUrl = (a: string | undefined, b: string) => !!a && a.replace(/\/+$/, '') === b.replace(/\/+$/, '')
@@ -366,12 +403,7 @@ export async function resolveDirectoryIntent(
   const details = describeDirectoryRecord(record)
   try {
     if (intent.kind === 'connector') return { details, ...(await resolveConnector(record, intent.slug, deps)) }
-    const listing = await findPluginListing(record, deps)
-    if (!listing) return { details, alreadyInstalled: false, target: null }
-    const target: DirectoryInstallTarget = { kind: 'plugin', identifier: listing.identifier }
-    return listing.installed
-      ? { details, alreadyInstalled: true, installedAs: listing.identifier, target }
-      : { details, alreadyInstalled: false, target }
+    return { details, ...(await resolvePlugin(record, deps, origin)) }
   } catch (error) {
     throw new DirectoryLookupError('lookup_failed', error)
   }
@@ -471,10 +503,7 @@ export class DirectoryLookupError extends Error {
 
 /** Installs `target`; resolves to what it is installed as (the plugin identifier or the MCP server id). */
 export async function installDirectoryTarget(target: DirectoryInstallTarget, deps: DirectoryOfferDeps): Promise<string> {
-  if (target.kind === 'plugin') {
-    await deps.installPlugin(target.identifier)
-    return target.identifier
-  }
+  if (target.kind === 'plugin') return deps.installFromDirectory(target.spec)
   await deps.upsertMcpServer(target.id, target.config)
   return target.id
 }

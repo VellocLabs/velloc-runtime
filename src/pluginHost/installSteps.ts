@@ -13,9 +13,12 @@ import {
   getInstalledPlugin,
   dropPluginRecord,
 } from './installedRegistry'
+import { codeSourceOf } from './codeSource'
+import { DIRECTORY_CATALOG_KEY, readDirectoryListing } from './directoryListings'
 import {
   findCatalogPlugin,
   fetchCatalog,
+  loadKnownMarketplaces,
 } from './marketplaces'
 import { joinPluginRef } from './pluginRef'
 import {
@@ -27,6 +30,7 @@ import type {
   PluginSetupRecord,
   CatalogListing,
   InstallScope,
+  PluginOrigin,
 } from './registryFormats'
 import { pickCacheVersion } from './cacheVersion'
 import { holdProviderPluginForConsent } from './providerPluginConsent'
@@ -116,7 +120,11 @@ export type PluginSetupOutcome = {
   heldForConsent: boolean
 }
 
-/** Installs one plugin from a marketplace entry at user scope. */
+/**
+ * Installs one plugin at user scope from its catalog's listing: a
+ * marketplace's, or — for `plugin-directory` — the one it was installed
+ * from the directory with (never downloaded again).
+ */
 export async function setupPlugin(
   ctx: PluginInstallPathContext,
   fs: RuntimeFs,
@@ -127,6 +135,13 @@ export async function setupPlugin(
   const nowIso = options.nowIso ?? isoNow()
   const fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis)
   const identifier = joinPluginRef(pluginName, catalogKey)
+
+  if (catalogKey === DIRECTORY_CATALOG_KEY) {
+    const listing = await readDirectoryListing(ctx, fs, pluginName)
+    if (!listing) throw new Error(`[installPlugin] '${identifier}' was not installed from the plugin directory.`)
+    const fetched = await fetchListingFiles(ctx, fs, catalogKey, listing, identifier, fetchImpl)
+    return placePlugin(ctx, fs, catalogKey, pluginName, listing, fetched, { nowIso })
+  }
 
   let entry: CatalogListing | null = options.refreshFirst
     ? await refreshAndLookup(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl)
@@ -143,9 +158,30 @@ export async function setupPlugin(
     )
   }
 
-  const { files, sha: fetchedSha } = await fetchListingFiles(
-    ctx, fs, catalogKey, entry, identifier, fetchImpl,
-  )
+  const fetched = await fetchListingFiles(ctx, fs, catalogKey, entry, identifier, fetchImpl)
+  const marketplaceSource = entry.source.source === 'local'
+    ? (await loadKnownMarketplaces(ctx, fs, nowIso)).registry[catalogKey]?.source
+    : undefined
+  return placePlugin(ctx, fs, catalogKey, pluginName, entry, fetched, { nowIso, marketplaceSource })
+}
+
+/**
+ * Writes fetched plugin files into the version cache and records the install
+ * at user scope, with the code source they came from. A plugin that adds
+ * model providers is held off until the person consents.
+ */
+export async function placePlugin(
+  ctx: PluginInstallPathContext,
+  fs: RuntimeFs,
+  catalogKey: string,
+  pluginName: string,
+  entry: CatalogListing,
+  fetched: { files: ExtractedFile[]; sha?: string },
+  options: { nowIso: string; marketplaceSource?: PluginOrigin },
+): Promise<PluginSetupOutcome> {
+  const { nowIso } = options
+  const identifier = joinPluginRef(pluginName, catalogKey)
+  const { files, sha: fetchedSha } = fetched
 
   const manifestEntry = files.find(
     f => f.path === '.claude-plugin/plugin.json',
@@ -190,12 +226,14 @@ export async function setupPlugin(
   }
 
   const scope: InstallScope = 'user'
+  const codeSource = codeSourceOf(entry.source, options.marketplaceSource, fetchedSha)
   const recorded: PluginSetupRecord = {
     scope,
     installPath,
     version,
     installedAt: nowIso,
     ...(fetchedSha ? { gitCommitSha: fetchedSha } : {}),
+    ...(codeSource ? { codeSource } : {}),
   }
   await recordPluginSetup(ctx, fs, identifier, recorded)
   // A plugin that adds model providers starts OFF: the person turns it on

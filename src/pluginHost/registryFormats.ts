@@ -64,6 +64,8 @@ export type PluginSetupRecord = {
   gitCommitSha?: string
   /** Where an `https` install came from: the archive URL and the digest of its bytes. */
   origin?: { source: 'https'; url: string; sha256?: string }
+  /** The repository and folder its code came from, and the commit (F-35). */
+  codeSource?: { repo: string; path: string; sha?: string }
 }
 
 /** `installed_plugins.json`; one entry per scope a plugin is installed in. */

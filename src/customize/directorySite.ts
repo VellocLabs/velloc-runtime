@@ -11,6 +11,9 @@ export const DIRECTORY_SITE_ORIGIN = `https://${DIRECTORY_SITE_HOST}`
 /** Origin of the site's public listing (`/api/directory/plugins`, no sign-in, CORS `*`). */
 export const DIRECTORY_API_ORIGIN = 'https://api.anthropic.com'
 
+/** The directory's public listing, on its API origin. */
+export const DIRECTORY_LIST_PATH = '/api/directory/plugins'
+
 /** The site's cookie-preference cookie and the value that turns optional cookies off. */
 export const DIRECTORY_CONSENT_COOKIE = 'anthropic-consent-preferences'
 export const DIRECTORY_CONSENT_REFUSED = '{"analytics":false,"marketing":false}'

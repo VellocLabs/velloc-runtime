@@ -370,6 +370,7 @@ function fakeOffers(options: {
   fail?: boolean
   servers?: Record<string, NexusMcpServerConfig>
   installFails?: boolean
+  installed?: Array<{ identifier: string; codeSource?: { repo: string; path: string; sha?: string }; gitCommitSha?: string }>
 } = {}) {
   const calls: string[] = []
   const deps: DirectoryOfferDeps = {
@@ -385,9 +386,11 @@ function fakeOffers(options: {
     listMarketplaceListings: async () => [
       { name: 'notion', source: { source: 'url', url: 'https://github.com/makenotion/notion-plugin.git' }, installed: false },
     ],
-    installPlugin: async id => {
-      calls.push(`install ${id}`)
+    listInstalledPlugins: async () => options.installed ?? [],
+    installFromDirectory: async spec => {
+      calls.push(`install ${spec.repositoryUrl}@${spec.commit}`)
       if (options.installFails) throw new Error('blocked')
+      return `${spec.fallbackName}@plugin-directory`
     },
     listMcpServers: async () => options.servers ?? {},
     upsertMcpServer: async (id, config) => {
@@ -405,12 +408,13 @@ const SLACK = {
   media: { icons: [{ url: 'https://slack.com' }] },
   components: [{ type: 'mcp_server', endpoint: { type: 'fixed', url: 'https://mcp.slack.com/mcp' } }],
 }
+const NOTION_ID = 'b2be6e33-a55f-45ca-9453-3dabeb179a53'
 const NOTION = {
   name: 'notion',
   slug: 'makenotion/notion-plugin',
-  source: { repository: { url: 'https://github.com/makenotion/notion-plugin' } },
+  manifest_name: NOTION_ID,
+  source: { repository: { url: 'https://github.com/makenotion/notion-plugin', reviewed_commit: 'abc1234' } },
 }
-const NOTION_ID = 'b2be6e33-a55f-45ca-9453-3dabeb179a53'
 const SLACK_FILTER = "slug == 'slack'"
 const NOTION_FILTER = `manifest_name == '${NOTION_ID}'`
 const NOTION_REPO_FILTER = "source.repository.url in ['https://github.com/makenotion/notion-plugin']"
@@ -453,15 +457,26 @@ describe('customizePage service — the page item', () => {
     expect(r.events.map(e => e.pageItem?.phase)).toContain('installing')
   })
 
-  it('a plugin page is matched to its marketplace listing and Add installs it by identifier', async () => {
+  it('Add installs a plugin page\'s reviewed commit straight from its repository', async () => {
     const o = fakeOffers({ records: { [NOTION_FILTER]: [NOTION] } })
     const { fake, r } = await shown(o.deps)
     fake.report(1, { type: 'route', path: PLUGIN_PATH })
     await settle()
     expect(itemOf(r)).toMatchObject({ kind: 'plugin', phase: 'ready', installable: true, alreadyInstalled: false })
     await r.call('addPageItem', { id: 1 })
-    expect(o.calls.at(-1)).toBe('install notion@official-market')
-    expect(itemOf(r)).toMatchObject({ phase: 'installed', installedAs: 'notion@official-market' })
+    expect(o.calls.at(-1)).toBe('install https://github.com/makenotion/notion-plugin@abc1234')
+    expect(itemOf(r)).toMatchObject({ phase: 'installed', installedAs: 'notion-plugin@plugin-directory' })
+  })
+
+  it('a plugin installed from the same code at another commit shows an update', async () => {
+    const o = fakeOffers({
+      records: { [NOTION_FILTER]: [NOTION] },
+      installed: [{ identifier: 'notion@plugin-directory', codeSource: { repo: 'github.com/makenotion/notion-plugin', path: '' }, gitCommitSha: '9999999' }],
+    })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: PLUGIN_PATH })
+    await settle()
+    expect(itemOf(r)).toMatchObject({ alreadyInstalled: true, installedAs: 'notion@plugin-directory', updateAvailable: true })
   })
 
   it('an item already here says where, and Add is refused', async () => {
@@ -505,9 +520,12 @@ describe('customizePage service — the page item', () => {
     await settle()
     await r.call('addPageItem', { id: 1 })
     expect(itemOf(r)).toMatchObject({ phase: 'failed', failure: 'install_failed' })
-    o.deps.installPlugin = async id => void o.calls.push(`install ${id}`)
+    o.deps.installFromDirectory = async spec => {
+      o.calls.push(`install ${spec.repositoryUrl}`)
+      return 'notion@plugin-directory'
+    }
     await r.call('addPageItem', { id: 1 })
-    expect(itemOf(r)).toMatchObject({ phase: 'installed', installedAs: 'notion@official-market' })
+    expect(itemOf(r)).toMatchObject({ phase: 'installed', installedAs: 'notion@plugin-directory' })
     expect(itemOf(r)?.failure).toBeUndefined()
     expect(o.calls.filter(c => c.startsWith('install'))).toHaveLength(2)
   })

@@ -1,4 +1,5 @@
 import { COMMUNITY_MARKETPLACE_NAME, CURATED_CATALOG_KEY } from './defaultMarketplace'
+import { DIRECTORY_CATALOG_KEY } from './directoryListings'
 
 /** Catalog names only the publisher's own GitHub organisation may register. */
 export const RESERVED_MARKETPLACE_NAMES: ReadonlySet<string> = new Set([
@@ -58,7 +59,7 @@ export function marketplaceNameProblem(name: string): string | null {
     return `'${name}' is too close to a reserved marketplace name (impersonation is not allowed).`
   }
   const lower = name.toLowerCase()
-  if (lower === 'inline' || lower === 'builtin') {
+  if (lower === 'inline' || lower === 'builtin' || lower === DIRECTORY_CATALOG_KEY) {
     return `'${lower}' is used internally and cannot name a marketplace.`
   }
   return null

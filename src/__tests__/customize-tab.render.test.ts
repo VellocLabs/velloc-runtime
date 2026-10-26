@@ -823,14 +823,23 @@ describe('CustomizeScreen — the page asks to add', () => {
   })
 
   it('an item this computer cannot add explains why and offers no Add', async () => {
-    const { fake, view, settings } = await asked()
+    const { fake, view } = await asked()
     const blocked = { ...ready, installable: false }
     act(() => fake.status({ available: true, tabId: 7, pageItem: blocked, addRequest: { seq: 1, itemId: 4 } }))
     const dialog = await view.findByTestId('customize-add-dialog')
-    expect(dialog.textContent).toContain(EN_MESSAGES['customize.addDialog.noMarketplace'])
+    expect(dialog.textContent).toContain(EN_MESSAGES['customize.addDialog.noSource'])
     expect(view.queryByTestId('customize-add-dialog-confirm')).toBeNull()
-    fireEvent.click(view.getByText(EN_MESSAGES['customize.addDialog.openMarketplaces']))
-    expect(settings).toEqual(['plugins'])
+  })
+
+  it('an installed item with a newer reviewed version says where to update it', async () => {
+    const { fake, view } = await asked()
+    const installed = { ...ready, alreadyInstalled: true, installedAs: 'code-review@plugin-directory', updateAvailable: true }
+    act(() => fake.status({ available: true, tabId: 7, pageItem: installed, addRequest: { seq: 1, itemId: 4 } }))
+    expect((await view.findByTestId('customize-add-dialog-update')).textContent).toBe(
+      EN_MESSAGES['customize.addDialog.updateAvailable'],
+    )
+    act(() => fake.status({ available: true, tabId: 7, pageItem: { ...installed, updateAvailable: false }, addRequest: { seq: 1, itemId: 4 } }))
+    expect(view.queryByTestId('customize-add-dialog-update')).toBeNull()
   })
 
   it('an item still being looked up waits with Add disabled', async () => {

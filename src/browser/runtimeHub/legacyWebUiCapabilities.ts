@@ -84,6 +84,7 @@ export const LEGACY_WEBUI_CAPABILITIES = {
     listLocal: 'manager',
     // Installing fetches code and writes it to the host's disk.
     install: 'full',
+    installFromDirectory: 'full',
     uninstall: 'full',
     // Deletes a directory plugin's folder from the host's disk.
     removeLocal: 'full',

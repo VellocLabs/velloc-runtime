@@ -41,9 +41,16 @@ export function createDirectoryOfferDeps(options: DirectoryOfferHostOptions): Di
     listMarketplaceListings: async marketplace =>
       (await call<{ manifest: { plugins: never[] } | null }>('plugins', 'listMarketplacePlugins', { marketplace }))
         .manifest?.plugins ?? [],
-    installPlugin: async identifier => {
-      await call('plugins', 'install', { identifier })
-    },
+    listInstalledPlugins: async () =>
+      (await call<{ plugins: Array<{ name: string; marketplace: string; codeSource?: never; gitCommitSha?: string }> }>(
+        'plugins', 'listInstalled', {},
+      )).plugins.map(plugin => ({
+        identifier: `${plugin.name}@${plugin.marketplace}`,
+        ...(plugin.codeSource ? { codeSource: plugin.codeSource } : {}),
+        ...(plugin.gitCommitSha ? { gitCommitSha: plugin.gitCommitSha } : {}),
+      })),
+    installFromDirectory: async spec =>
+      (await call<{ identifier: string }>('plugins', 'installFromDirectory', spec)).identifier,
     listMcpServers: async () => (await call<{ servers: Record<string, never> }>('mcpSettings', 'list', {})).servers,
     upsertMcpServer: async (id, config) => {
       await call('mcpSettings', 'upsert', { id, config })

@@ -350,6 +350,7 @@ export class CustomizePageService {
         alreadyInstalled: resolved.alreadyInstalled,
         installable: resolved.alreadyInstalled || resolved.target !== null,
         ...(resolved.installedAs ? { installedAs: resolved.installedAs } : {}),
+        ...(resolved.updateAvailable ? { updateAvailable: true } : {}),
       })
     } catch (error) {
       if (this.pageItem?.id !== id) return
