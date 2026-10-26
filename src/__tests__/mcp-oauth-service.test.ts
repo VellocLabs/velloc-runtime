@@ -419,9 +419,36 @@ describe('McpOAuthService discovery', () => {
     expect(r.opened).toEqual([])
   })
 
-  it('uses the client ID metadata document where the server accepts one, before registering', async () => {
-    const { MCP_OAUTH_CLIENT_METADATA_URL } = await import('../mcp/oauth/discovery')
+  it('registers a client when the server offers both registration and client metadata documents', async () => {
     const r = rig({ cimd: true })
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.oauth.registerClient).toHaveBeenCalledTimes(1)
+    expect(r.forms[0]!.form.client_id).toBe('dyn-client')
+    expect(r.phase()?.phase).toBe('signed-in')
+  })
+
+  it('does not reuse a stored client metadata document client once registration is offered', async () => {
+    const before = rig({ cimd: true, registration: false })
+    await before.service.signIn({ url: SERVER })
+    await settled(before)
+    const [path, text] = [...before.files.entries()].find(([name]) => name.endsWith('mcp-oauth.json'))!
+    const stored = JSON.parse(text) as { servers: Record<string, Record<string, unknown>> }
+    for (const server of Object.values(stored.servers)) {
+      expect(server.client).toMatchObject({ metadataDocument: true })
+      delete server.tokens
+    }
+    const r = rig({ cimd: true })
+    r.files.set(path, JSON.stringify(stored))
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.oauth.registerClient).toHaveBeenCalledTimes(1)
+    expect(r.forms[0]!.form.client_id).toBe('dyn-client')
+  })
+
+  it('uses the client ID metadata document where the server accepts one and offers no registration', async () => {
+    const { MCP_OAUTH_CLIENT_METADATA_URL } = await import('../mcp/oauth/discovery')
+    const r = rig({ cimd: true, registration: false })
     await r.service.signIn({ url: SERVER })
     await settled(r)
     expect(r.oauth.registerClient).not.toHaveBeenCalled()

@@ -472,7 +472,11 @@ export class McpOAuthService {
     const tokenOrigin = originOf(metadata.token_endpoint)
 
     let record = (await this.recordFor(url))!.record
-    let client = record.client?.authServer === info.authorizationServerUrl ? record.client : undefined
+    // A metadata-document client id is chosen afresh each time, never reused.
+    let client =
+      record.client?.authServer === info.authorizationServerUrl && !record.client.metadataDocument
+        ? record.client
+        : undefined
     if (payload.clientId) {
       if (payload.clientSecret) await host.setSecret(names.clientSecret, payload.clientSecret, tokenOrigin)
       client = {
@@ -480,15 +484,15 @@ export class McpOAuthService {
         clientId: payload.clientId,
         ...(payload.clientSecret ? { hasSecret: true } : {}),
       }
-    } else if (!client && metadata.client_id_metadata_document_supported === true) {
-      client = { authServer: info.authorizationServerUrl, clientId: MCP_OAUTH_CLIENT_METADATA_URL, metadataDocument: true }
-    } else if (!client) {
-      if (!metadata.registration_endpoint) {
+    } else if (!client && !metadata.registration_endpoint) {
+      if (metadata.client_id_metadata_document_supported !== true) {
         this.needsClient.add(key)
         this.put(key, { ...record, required: true })
         await this.save()
         return
       }
+      client = { authServer: info.authorizationServerUrl, clientId: MCP_OAUTH_CLIENT_METADATA_URL, metadataDocument: true }
+    } else if (!client) {
       const registered = await helpers.registerClient(info.authorizationServerUrl, {
         metadata,
         clientMetadata: {
