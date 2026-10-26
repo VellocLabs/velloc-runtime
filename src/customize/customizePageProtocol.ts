@@ -293,19 +293,30 @@ export const DIRECTORY_PAGE_SCRIPT = `(() => {
     g.navigation.addEventListener('navigate', event => {
       if (!event.cancelable) return;
       const login = loginOf(event.destination.url);
-      if (login) { event.preventDefault(); askToAdd(login); return; }
+      if (login) {
+        event.preventDefault();
+        askToAdd(login);
+        // A route rendered before its URL was refused leaves the sign-in view
+        // on this address; the page is loaded again.
+        const title = document.title;
+        setTimeout(() => { if (document.title !== title) location.replace(location.href); }, 300);
+        return;
+      }
       const foreign = foreignOf(event.destination.url);
       if (foreign) { event.preventDefault(); openElsewhere(foreign); }
     });
   }
+  // The page's router renders a route before it commits the URL, so a link it
+  // must not follow is stopped at the click, before the page's own handler.
+  const swallow = event => { event.preventDefault(); event.stopImmediatePropagation(); };
   const onLink = event => {
     if (event.defaultPrevented || (event.button !== 0 && event.button !== 1)) return;
     const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
     if (!link) return;
     const login = loginOf(link.href);
-    if (login) { event.preventDefault(); askToAdd(login); return; }
+    if (login) { swallow(event); askToAdd(login); return; }
     const foreign = foreignOf(link.href);
-    if (foreign) { event.preventDefault(); openElsewhere(foreign); }
+    if (foreign) { swallow(event); openElsewhere(foreign); }
   };
   addEventListener('click', onLink, true);
   addEventListener('auxclick', onLink, true);

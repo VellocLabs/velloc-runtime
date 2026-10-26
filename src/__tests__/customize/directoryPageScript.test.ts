@@ -190,6 +190,38 @@ describe('directory page script', () => {
     expect(sent.filter(m => m.type === 'external')).toHaveLength(3)
   })
 
+  it('a sign-in link is stopped before the page handles the click, so its router cannot render the sign-in view', () => {
+    run('http://127.0.0.1:4100/directory')
+    const routed: string[] = []
+    const router = (event: Event) => routed.push((event.target as Element).closest('a')!.getAttribute('href')!)
+    document.addEventListener('click', router, true)
+    document.addEventListener('click', router)
+    try {
+      expect(clickLink('/login?returnTo=%2Fdirectory').defaultPrevented).toBe(true)
+      expect(clickLink('https://elsewhere.example/first').defaultPrevented).toBe(true)
+      clickLink('/directory/new')
+      expect(routed).toEqual(['/directory/new', '/directory/new'])
+    } finally {
+      document.removeEventListener('click', router, true)
+      document.removeEventListener('click', router)
+    }
+  })
+
+  it('a stopped sign-in navigation whose view was rendered anyway loads the page again', () => {
+    const { navigate } = fakeNavigation()
+    run('http://127.0.0.1:4100/directory')
+    document.title = 'Directory'
+    navigate('http://127.0.0.1:4100/login?returnTo=%2Fdirectory')
+    document.title = 'Log in'
+    vi.advanceTimersByTime(300)
+    expect(replaced).toEqual(['http://127.0.0.1:4100/directory'])
+
+    replaced.length = 0
+    navigate('http://127.0.0.1:4100/login?returnTo=%2Fdirectory')
+    vi.advanceTimersByTime(300)
+    expect(replaced).toEqual([])
+  })
+
   it('a click on a link to another site, in any target, opens it elsewhere; a sign-in link asks to add', () => {
     run('http://127.0.0.1:4100/directory/slack')
     sent.length = 0
