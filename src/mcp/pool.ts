@@ -112,12 +112,12 @@ function waitForTurn(previous: Promise<void>, signal?: AbortSignal): Promise<voi
   })
 }
 
-/** `config` with a sign-in's headers laid over its own. */
 /** The config carries its own `Authorization` header (an API key or token). */
 function carriesAuthorization(headers: Record<string, string> | undefined): boolean {
   return Object.keys(headers ?? {}).some(name => name.toLowerCase() === 'authorization')
 }
 
+/** `config` with a sign-in's headers laid over its own. */
 function withSignInHeaders(
   config: NexusMcpServerLaunchConfig,
   auth: McpConnectAuth | undefined,

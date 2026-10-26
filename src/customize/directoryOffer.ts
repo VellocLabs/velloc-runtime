@@ -514,7 +514,6 @@ export class DirectoryLookupError extends Error {
   }
 }
 
-/** Installs `target`; resolves to what it is installed as (the plugin identifier or the MCP server id). */
 /** Removes what `installedAs` names: a plugin identifier, or a connector's MCP server id. */
 export async function removeDirectoryItem(
   kind: DirectoryItemKind,
@@ -525,6 +524,7 @@ export async function removeDirectoryItem(
   else await deps.removeMcpServer(installedAs)
 }
 
+/** Installs `target`; resolves to what it is installed as (the plugin identifier or the MCP server id). */
 export async function installDirectoryTarget(target: DirectoryInstallTarget, deps: DirectoryOfferDeps): Promise<string> {
   if (target.kind === 'plugin') return deps.installFromDirectory(target.spec)
   await deps.upsertMcpServer(target.id, target.config)
