@@ -845,6 +845,9 @@ export function McpSection({
                 ...(detail.tools
                   ? { status: "connected" as const, tools: detail.tools }
                   : {}),
+                ...(servers[detail.id].transport === "http" && servers[detail.id].url
+                  ? { signInUrl: servers[detail.id].url }
+                  : {}),
                 ...(detail.instructions
                   ? { instructions: detail.instructions }
                   : {}),

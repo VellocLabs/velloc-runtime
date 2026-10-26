@@ -112,4 +112,35 @@ describe('McpServerDetailDialog for a server needing a sign-in', () => {
     expect(document.body.textContent).toContain(en['mcpServers.needsAuth'])
     expect(screen.getByTestId('mcp-sign-in-panel')).toBeTruthy()
   })
+
+  it('a server that answered without a sign-in still shows the pending sign-in, not Connected', () => {
+    const tools = [{ name: 'list_events', description: 'Lists events.' }]
+    render(
+      createElement(McpServerDetailDialog, {
+        open: true,
+        onOpenChange: () => {},
+        server: { name: 'calendar', status: 'connected', tools, signInUrl: URL_ },
+        auth: controls({ url: URL_, phase: 'needs-sign-in' }),
+      }),
+    )
+    expect(screen.getByTestId('mcp-server-detail-status').getAttribute('data-status')).toBe('needs-auth')
+    expect(document.body.textContent).toContain(en['mcpServers.needsAuth'])
+    expect(document.body.textContent).not.toContain(en['mcpServers.connected'])
+    expect(screen.getByTestId('mcp-sign-in-panel')).toBeTruthy()
+    cleanup()
+
+    for (const auth of [controls({ url: URL_, phase: 'signed-in' }), controls(undefined)]) {
+      render(
+        createElement(McpServerDetailDialog, {
+          open: true,
+          onOpenChange: () => {},
+          server: { name: 'calendar', status: 'connected', tools, signInUrl: URL_ },
+          auth,
+        }),
+      )
+      expect(screen.getByTestId('mcp-server-detail-status').getAttribute('data-status')).toBe('connected')
+      expect(screen.queryByTestId('mcp-sign-in-panel')).toBeNull()
+      cleanup()
+    }
+  })
 })

@@ -30,6 +30,8 @@ export type McpServerDetail = {
   name: string;
   /** `needs-auth`: it waits for a sign-in (F-10), offered with `signInUrl`. */
   status?: "connected" | "failed" | "needs-auth";
+  /** An http server's URL. A sign-in still pending for it in `auth` shows
+   *  as `needs-auth` even when the server answered without one. */
   signInUrl?: string;
   origin?: McpServerOrigin;
   transport?: string;
@@ -150,7 +152,12 @@ function DetailBody({
 }) {
   const [query, setQuery] = React.useState("");
   const [openTool, setOpenTool] = React.useState<string | null>(null);
-  const needsAuth = server.status === "needs-auth";
+  const signIn = auth?.serverState(server.signInUrl);
+  // Some servers list their tools to anyone and refuse only the calls.
+  const needsAuth =
+    server.status === "needs-auth" ||
+    (server.status === "connected" && signIn !== undefined && signIn.phase !== "signed-in");
+  const status = needsAuth ? "needs-auth" : server.status;
   // A server waiting for a sign-in has no tools to list, like a failed one.
   const failed = server.status === "failed" || needsAuth;
   const origin = originLabel(server.origin, t);
@@ -182,12 +189,12 @@ function DetailBody({
               >
                 {server.name}
               </DialogTitle>
-              {server.status ? (
+              {status ? (
                 <Badge
                   variant={needsAuth ? "warning" : failed ? "destructive" : "success"}
                   size="sm"
                   data-testid="mcp-server-detail-status"
-                  data-status={server.status}
+                  data-status={status}
                   className="shrink-0 gap-1"
                 >
                   <span
@@ -199,7 +206,7 @@ function DetailBody({
                   />
                   {needsAuth
                     ? t(
-                        auth?.serverState(server.signInUrl)?.needsCredentials
+                        signIn?.needsCredentials
                           ? "mcpServers.needsCredentials"
                           : "mcpServers.needsAuth",
                       )
