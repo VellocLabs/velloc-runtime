@@ -101,6 +101,9 @@ import {
 import { wireError } from '../runtimeProtocol'
 import { CustomizePageService } from '../../customize/CustomizePageService'
 import { createCustomizePageHostSource } from '../../customize/customizePageHost'
+import { createDirectoryOfferDeps } from '../../customize/directoryOfferHost'
+import { getWebUiBridgeHandler } from './webUiBridge/registry'
+import { initBuiltinWebUiBridgeHandlers } from './webUiBridge/initBuiltinHandlers'
 import { composeSessionInit, hostEnvironmentOf } from './sessionOpenComposer'
 import { NEXUS_INTERFACE_VERSION } from '../bridge/protocol/interfaceVersion'
 import { setTeammateSpawner } from '../../team/teammateSpawner'
@@ -872,15 +875,26 @@ export class SharedWorkerSessionManager {
         return { cwd, ...(projectRoot ? { projectRoot } : {}) }
       },
     }, this.fsxSearch)
-    // `customizePage` (F-35): this window's Customize tab and its page channel.
+    // `customizePage` (F-35): this window's Customize tab, its page channel,
+    // the plugin or connector the page shows, looked up and installed on Add.
     registerCustomizePageCapability(
       this.runtimeHub.registry,
       this.runtimeHub.broker,
-      new CustomizePageService(createCustomizePageHostSource({
-        getTransport: () => this.bridgeRouter.getDirectTransport(),
-        getManifest: () => this.hostEnvironment?.hostManifest ?? this.lastInitTemplate?.hostManifest ?? undefined,
-        createRequestId: () => this.generateBridgeRequestId(),
-      })),
+      new CustomizePageService(
+        createCustomizePageHostSource({
+          getTransport: () => this.bridgeRouter.getDirectTransport(),
+          getManifest: () => this.hostEnvironment?.hostManifest ?? this.lastInitTemplate?.hostManifest ?? undefined,
+          createRequestId: () => this.generateBridgeRequestId(),
+        }),
+        createDirectoryOfferDeps({
+          getContext: () => this.runtimeHub.context.webUiBridge,
+          getHandler: capability => {
+            initBuiltinWebUiBridgeHandlers()
+            return getWebUiBridgeHandler(capability)
+          },
+          createRequestId: () => this.generateBridgeRequestId(),
+        }),
+      ),
     )
     this.runtimeSessionSurface = installSessionSurface(this.runtimeHub, {
       dispatch: (port, data) =>

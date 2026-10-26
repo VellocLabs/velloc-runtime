@@ -1,6 +1,7 @@
 /**
- * The Customize page on the runtime protocol: topic `customizePage/status` and
- * `customizePage.show` / `customizePage.navigate`; shapes and scopes in
+ * The Customize page on the runtime protocol: topic `customizePage/status`,
+ * `customizePage.show` / `customizePage.navigate`, and
+ * `customizePage.addPageItem` for the plugin or connector the page shows; shapes and scopes in
  * `customize/customizePageProtocol.ts` (F-35). The tab and its page channel
  * are the runtime's: every host call goes over the runtime's own port.
  */
@@ -11,6 +12,7 @@ import {
   CUSTOMIZE_PAGE_STATUS_EVENT,
   CUSTOMIZE_PAGE_STATUS_TOPIC,
   CUSTOMIZE_PAGE_TOPIC_SCOPE,
+  isCustomizePageItemPayload,
   isCustomizePageUrlPayload,
 } from '../../customize/customizePageProtocol'
 import { CustomizePageError, type CustomizePageService } from '../../customize/CustomizePageService'
@@ -20,7 +22,7 @@ import type { SnapshotPage, TopicProvider } from './types'
 
 function asWireError(error: unknown): WireError {
   if (error instanceof CustomizePageError) {
-    return wireError(error.code === 'not_shown' ? 'conflict' : 'host_unavailable', `customizePage: ${error.message}`)
+    return wireError(error.code === 'host_unavailable' ? 'host_unavailable' : 'conflict', `customizePage: ${error.message}`)
   }
   return wireError('host_unavailable', `customizePage: ${error instanceof Error ? error.message : String(error)}`)
 }
@@ -49,13 +51,18 @@ export function registerCustomizePageCapability(
     actions: {
       show: { scope: CUSTOMIZE_PAGE_ACTION_SCOPES.show, guard: isCustomizePageUrlPayload },
       navigate: { scope: CUSTOMIZE_PAGE_ACTION_SCOPES.navigate, guard: isCustomizePageUrlPayload },
+      addPageItem: { scope: CUSTOMIZE_PAGE_ACTION_SCOPES.addPageItem, guard: isCustomizePageItemPayload },
     },
     handle: async request => {
-      const { url } = request.payload as { url: string }
       try {
-        if (request.route.act === 'show') return await service.show(url)
-        if (request.route.act === 'navigate') {
-          await service.navigate(url)
+        const act = request.route.act
+        if (act === 'show') return await service.show((request.payload as { url: string }).url)
+        if (act === 'navigate') {
+          await service.navigate((request.payload as { url: string }).url)
+          return { ok: true }
+        }
+        if (act === 'addPageItem') {
+          await service.addPageItem((request.payload as { id: number }).id)
           return { ok: true }
         }
       } catch (error) {

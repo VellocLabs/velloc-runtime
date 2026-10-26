@@ -7,11 +7,10 @@ import {
   CUSTOMIZE_PAGE_STATUS_TOPIC,
   readCustomizePageState,
 } from '../../../customize/customizePageProtocol'
-import { customizeUrl, segmentOfPath, type CustomizeSegment } from './customizeRoutes'
+import type { DirectoryPageItem } from '../../../customize/directoryOffer'
+import { directoryUrl } from './customizeRoutes'
 
 export type CustomizeTabState = {
-  /** The page the segmented control shows as current. */
-  segment: CustomizeSegment
   /** The utility tab, once the runtime has opened or found it. */
   tabId: number | null
   /**
@@ -19,8 +18,10 @@ export type CustomizeTabState = {
    * reports no host port. Clears on a successful `show`.
    */
   unavailable: boolean
-  /** A pick on the segmented control: shows it and loads its page in the tab. */
-  selectSegment: (segment: CustomizeSegment) => void
+  /** The plugin or connector the page shows, as the runtime publishes it. */
+  pageItem: DirectoryPageItem | null
+  /** Installs the page item `id`. */
+  addPageItem: (id: number) => void
   /** Asks the runtime to show the tab again, from a fresh connection. */
   retry: () => void
 }
@@ -31,23 +32,21 @@ const ignore = () => {
 
 /**
  * The Customize screen's utility tab (F-35). While `open`, the runtime is
- * asked to show this window's `customize` tab (opened, or reused where it
- * is), and `customizePage/status` moves the control when the page's own
- * navigation changes its path. A pick on the control navigates the tab.
- * It is shown again when the host port returns and when the page turns
- * visible (a window reopened from the tray has none of the old tabs).
+ * asked to show this window's `customize` tab at the directory's start page
+ * (opened, or reused where it is), and `customizePage/status` carries the
+ * item the page shows. It is shown again on each open, when the host port
+ * returns and when the page turns visible (a window reopened from the tray
+ * has none of the old tabs).
  */
 export function useCustomizeTab(
   runtimeConnection: (() => Promise<RuntimeConnection>) | undefined,
   open: boolean,
 ): CustomizeTabState {
-  const [segment, setSegment] = React.useState<CustomizeSegment>('skills')
   const [tabId, setTabId] = React.useState<number | null>(null)
   const [showFailed, setShowFailed] = React.useState(false)
   const [hostMissing, setHostMissing] = React.useState(false)
   const [attempt, setAttempt] = React.useState(0)
-  const segmentRef = React.useRef(segment)
-  segmentRef.current = segment
+  const [pageItem, setPageItem] = React.useState<DirectoryPageItem | null>(null)
 
   React.useEffect(() => {
     if (!open) return
@@ -64,7 +63,7 @@ export function useCustomizeTab(
     }
     const show = (conn: RuntimeConnection) =>
       conn
-        .request(`${CUSTOMIZE_PAGE_CAPABILITY}.show` as RouteKey, { url: customizeUrl(segmentRef.current) })
+        .request(`${CUSTOMIZE_PAGE_CAPABILITY}.show` as RouteKey, { url: directoryUrl() })
         .then(
           () => {
             if (live) setShowFailed(false)
@@ -84,8 +83,7 @@ export function useCustomizeTab(
           missing = !state.available
           setHostMissing(missing)
           setTabId(state.tabId ?? null)
-          const next = state.path !== undefined ? segmentOfPath(state.path) : null
-          if (next) setSegment(next)
+          setPageItem(state.pageItem ?? null)
           if (back) void show(conn)
         })
         return show(conn)
@@ -100,17 +98,15 @@ export function useCustomizeTab(
       unsubscribe?.()
       setTabId(null)
       setHostMissing(false)
+      setPageItem(null)
     }
   }, [runtimeConnection, open, attempt])
 
-  const selectSegment = React.useCallback(
-    (next: CustomizeSegment) => {
-      setSegment(next)
+  const addPageItem = React.useCallback(
+    (id: number) => {
       if (!runtimeConnection) return
       void runtimeConnection()
-        .then(conn =>
-          conn.request(`${CUSTOMIZE_PAGE_CAPABILITY}.navigate` as RouteKey, { url: customizeUrl(next) }),
-        )
+        .then(conn => conn.request(`${CUSTOMIZE_PAGE_CAPABILITY}.addPageItem` as RouteKey, { id }))
         .catch(ignore)
     },
     [runtimeConnection],
@@ -121,5 +117,5 @@ export function useCustomizeTab(
     setAttempt(n => n + 1)
   }, [])
 
-  return { segment, tabId, unavailable: showFailed || hostMissing, selectSegment, retry }
+  return { tabId, unavailable: showFailed || hostMissing, pageItem, addPageItem, retry }
 }

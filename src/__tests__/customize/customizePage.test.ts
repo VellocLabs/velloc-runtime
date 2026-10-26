@@ -9,19 +9,24 @@ import {
   CUSTOMIZE_PAGE_STATUS_TOPIC,
   CUSTOMIZE_PAGE_TOPIC_SCOPE,
   CUSTOMIZE_TAB_KEY,
+  DIRECTORY_PAGE_SCRIPT,
+  isCustomizePageItemPayload,
   isCustomizePageUrlPayload,
   readCustomizePageState,
   readRouteReport,
-  ROUTE_REPORT_SCRIPT,
   type CustomizePageState,
 } from '../../customize/customizePageProtocol'
 import {
   CustomizePageService,
+  directoryApiOriginFor,
   type CustomizePageHost,
   type CustomizePageScript,
 } from '../../customize/CustomizePageService'
+import type { DirectoryOfferDeps } from '../../customize/directoryOffer'
+import { DIRECTORY_API_ORIGIN, DIRECTORY_SITE_HOST, DIRECTORY_SITE_ORIGIN } from '../../customize/directorySite'
+import type { NexusMcpServerConfig } from '../../settings/settingsTypes'
 
-const PAGE = 'http://127.0.0.1:4100/customize/skills'
+const PAGE = 'http://127.0.0.1:4100/directory'
 
 function fakeHost(options: { pageScript?: boolean; tabId?: number } = {}) {
   const calls: string[] = []
@@ -36,11 +41,11 @@ function fakeHost(options: { pageScript?: boolean; tabId?: number } = {}) {
       return nextChannel++
     },
     addInitScript: async (channelId, source) => {
-      calls.push(`init ${channelId} ${source === ROUTE_REPORT_SCRIPT}`)
+      calls.push(`init ${channelId} ${source === DIRECTORY_PAGE_SCRIPT}`)
       return 's1'
     },
     executeScript: async (channelId, code) => {
-      calls.push(`run ${channelId} ${code === ROUTE_REPORT_SCRIPT}`)
+      calls.push(`run ${channelId} ${code === DIRECTORY_PAGE_SCRIPT}`)
       return { value: null }
     },
     onMessage: listener => {
@@ -85,17 +90,17 @@ function fakeHost(options: { pageScript?: boolean; tabId?: number } = {}) {
 const conn = (mode: 'observe' | 'manager' | 'full' = 'full') =>
   ({ connectionId: 'c', clientId: 'c', kind: 'cli', scope: { mode, sessions: 'all' }, transport: 'message-port' }) as ConnectionInfo
 
-function rig(getHost: () => CustomizePageHost | null) {
+function rig(getHost: () => CustomizePageHost | null, offers?: DirectoryOfferDeps) {
   const registry = new CapabilityRegistry()
   const broker = new TopicBroker()
-  const service = new CustomizePageService(getHost)
+  const service = new CustomizePageService(getHost, offers)
   const reg = registerCustomizePageCapability(registry, broker, service)
   const events: CustomizePageState[] = []
   broker.subscribe(
     { conn: conn(), send: evt => events.push((evt as unknown as { payload: CustomizePageState }).payload), bufferedBytes: () => 0 },
     CUSTOMIZE_PAGE_STATUS_TOPIC,
   )
-  const call = (act: 'show' | 'navigate', payload: unknown) => {
+  const call = (act: 'show' | 'navigate' | 'addPageItem', payload: unknown) => {
     const entry = registry.resolve('customizePage', act)!
     expect(entry.spec.guard?.(payload, conn(), {} as never) ?? true).toBe(true)
     return entry.handle({ id: '1', route: { cap: 'customizePage', act }, payload, conn: conn() } as never, {} as never)
@@ -107,11 +112,33 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 0))
 
 describe('customizePage protocol', () => {
   it('every action and the topic are full scope', () => {
-    expect(CUSTOMIZE_PAGE_ACTION_SCOPES).toEqual({ show: 'full', navigate: 'full' })
+    expect(CUSTOMIZE_PAGE_ACTION_SCOPES).toEqual({
+      show: 'full',
+      navigate: 'full',
+      addPageItem: 'full',
+    })
     expect(CUSTOMIZE_PAGE_TOPIC_SCOPE).toBe('full')
     const { registry } = rig(() => null)
-    expect(registry.resolve('customizePage', 'show')!.spec.scope).toBe('full')
-    expect(registry.resolve('customizePage', 'navigate')!.spec.scope).toBe('full')
+    for (const act of ['show', 'navigate', 'addPageItem']) {
+      expect(registry.resolve('customizePage', act)!.spec.scope).toBe('full')
+    }
+  })
+
+  it('an addPageItem payload is exactly one integer id', () => {
+    expect(isCustomizePageItemPayload({ id: 3 })).toBe(true)
+    expect(isCustomizePageItemPayload({ id: 1.5 })).toBe(false)
+    expect(isCustomizePageItemPayload({ id: '3' })).toBe(false)
+    expect(isCustomizePageItemPayload({ id: 3, install: true })).toBe(false)
+    expect(isCustomizePageItemPayload(null)).toBe(false)
+  })
+
+  it('lookups go to the live listing for the live site and from a loopback page itself, never elsewhere', () => {
+    expect(directoryApiOriginFor(`${DIRECTORY_SITE_ORIGIN}/directory`)).toBe(DIRECTORY_API_ORIGIN)
+    expect(directoryApiOriginFor('http://127.0.0.1:4100/directory')).toBe('http://127.0.0.1:4100')
+    expect(directoryApiOriginFor('http://localhost:4100/directory')).toBe('http://localhost:4100')
+    expect(directoryApiOriginFor(`http://${DIRECTORY_SITE_HOST}/directory`)).toBeNull()
+    expect(directoryApiOriginFor('https://evil.example/directory')).toBeNull()
+    expect(directoryApiOriginFor('https://127.0.0.1/directory')).toBeNull()
   })
 
   it('a url payload is exactly one http(s) url', () => {
@@ -138,6 +165,11 @@ describe('customizePage protocol', () => {
       .toEqual({ available: true, tabId: 4, path: '/customize/skills' })
     expect(readCustomizePageState({ available: false })).toEqual({ available: false })
     expect(readCustomizePageState({ available: true, tabId: '4' })).toBeNull()
+    const pageItem = { id: 2, kind: 'plugin', phase: 'ready', details: { name: 'notion' }, installable: true }
+    expect(readCustomizePageState({ available: true, pageItem })).toEqual({ available: true, pageItem })
+    expect(readCustomizePageState({ available: true, pageItem: { ...pageItem, phase: 'gone' } })).toBeNull()
+    expect(readCustomizePageState({ available: true, pageItem: { ...pageItem, details: { name: 4 } } })).toBeNull()
+    expect(readCustomizePageState({ available: true, pageItem: { ...pageItem, installedAs: 1 } })).toBeNull()
     expect(readCustomizePageState({ tabId: 4 })).toBeNull()
   })
 })
@@ -150,7 +182,7 @@ describe('customizePage service', () => {
     await expect(r.call('show', { url: PAGE })).rejects.toMatchObject({ code: 'host_unavailable' })
   })
 
-  it('show opens the tab, attaches one channel and starts the route watcher in it', async () => {
+  it('show opens the tab, attaches one channel and starts the page script in it', async () => {
     const fake = fakeHost()
     const r = rig(() => fake.host)
     await expect(r.call('show', { url: PAGE })).resolves.toEqual({ tabId: 7, created: true })
@@ -178,12 +210,12 @@ describe('customizePage service', () => {
     const fake = fakeHost()
     const r = rig(() => fake.host)
     await r.call('show', { url: PAGE })
-    fake.report(1, { type: 'route', path: '/customize/plugins' })
-    expect(r.events.at(-1)).toEqual({ available: true, tabId: 7, path: '/customize/plugins' })
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    expect(r.events.at(-1)).toEqual({ available: true, tabId: 7, path: '/directory/slack' })
     const count = r.events.length
     fake.report(2, { type: 'route', path: '/elsewhere' })
     fake.report(1, { type: 'other' })
-    fake.report(1, { type: 'route', path: '/customize/plugins' })
+    fake.report(1, { type: 'route', path: '/directory/slack' })
     expect(r.events.length).toBe(count)
   })
 
@@ -192,15 +224,15 @@ describe('customizePage service', () => {
     const r = rig(() => fake.host)
     await expect(r.call('navigate', { url: PAGE })).rejects.toMatchObject({ code: 'conflict' })
     await r.call('show', { url: PAGE })
-    await expect(r.call('navigate', { url: 'http://127.0.0.1:4100/customize/connectors' })).resolves.toEqual({ ok: true })
-    expect(fake.calls.at(-1)).toBe('navigate 7 http://127.0.0.1:4100/customize/connectors')
+    await expect(r.call('navigate', { url: 'http://127.0.0.1:4100/directory/new' })).resolves.toEqual({ ok: true })
+    expect(fake.calls.at(-1)).toBe('navigate 7 http://127.0.0.1:4100/directory/new')
   })
 
   it('a closed tab is forgotten, and the next show opens and attaches again', async () => {
     const fake = fakeHost()
     const r = rig(() => fake.host)
     await r.call('show', { url: PAGE })
-    fake.report(1, { type: 'route', path: '/customize/plugins' })
+    fake.report(1, { type: 'route', path: '/directory/slack' })
     fake.detach(1, 'target_gone')
     expect(r.events.at(-1)).toEqual({ available: true })
     fake.calls.length = 0
@@ -227,7 +259,7 @@ describe('customizePage service', () => {
     await r.call('show', { url: PAGE })
     expect(first.listenerCount()).toBe(0)
     expect(second.calls).toContain('attach 9')
-    first.report(1, { type: 'route', path: '/customize/plugins' })
+    first.report(1, { type: 'route', path: '/directory/slack' })
     expect(r.service.getState()).toEqual({ available: true, tabId: 9 })
   })
 
@@ -237,5 +269,205 @@ describe('customizePage service', () => {
     await r.call('show', { url: PAGE })
     r.reg.dispose()
     expect(fake.listenerCount()).toBe(0)
+  })
+})
+
+/** Directory listing and local lists for the page-item tests; every call is recorded. */
+function fakeOffers(options: {
+  records?: Record<string, unknown[]>
+  fail?: boolean
+  servers?: Record<string, NexusMcpServerConfig>
+  installFails?: boolean
+} = {}) {
+  const calls: string[] = []
+  const deps: DirectoryOfferDeps = {
+    fetchJson: async url => {
+      calls.push(`fetch ${url}`)
+      if (options.fail) throw new Error('offline')
+      const filter = new URL(url).searchParams.get('filter') ?? ''
+      return { data: options.records?.[filter] ?? [] }
+    },
+    listMarketplaces: async () => [
+      { name: 'official-market', source: { source: 'github', repo: 'acme/market' }, isOfficial: true },
+    ],
+    listMarketplaceListings: async () => [
+      { name: 'notion', source: { source: 'url', url: 'https://github.com/makenotion/notion-plugin.git' }, installed: false },
+    ],
+    installPlugin: async id => {
+      calls.push(`install ${id}`)
+      if (options.installFails) throw new Error('blocked')
+    },
+    listMcpServers: async () => options.servers ?? {},
+    upsertMcpServer: async (id, config) => {
+      calls.push(`upsert ${id} ${config.url}`)
+    },
+  }
+  return { deps, calls }
+}
+
+const SLACK = {
+  name: 'Slack',
+  slug: 'slack',
+  summary: 'Chat',
+  publisher: { name: 'Slack' },
+  media: { icons: [{ url: 'https://slack.com' }] },
+  components: [{ type: 'mcp_server', endpoint: { type: 'fixed', url: 'https://mcp.slack.com/mcp' } }],
+}
+const NOTION = {
+  name: 'notion',
+  slug: 'makenotion/notion-plugin',
+  source: { repository: { url: 'https://github.com/makenotion/notion-plugin' } },
+}
+const NOTION_ID = 'b2be6e33-a55f-45ca-9453-3dabeb179a53'
+const SLACK_FILTER = "slug == 'slack'"
+const NOTION_FILTER = `manifest_name == '${NOTION_ID}'`
+
+describe('customizePage service — the page item', () => {
+  async function shown(offers: DirectoryOfferDeps | undefined, page = PAGE) {
+    const fake = fakeHost()
+    const r = rig(() => fake.host, offers)
+    await r.call('show', { url: page })
+    return { fake, r }
+  }
+  const itemOf = (r: { service: CustomizePageService }) => r.service.getState().pageItem
+  const PLUGIN_PATH = `/customize/plugins/id/${NOTION_ID}%40plugin-directory`
+
+  it('a connector page is looked up and Add installs it as an http server', async () => {
+    const o = fakeOffers({ records: { [SLACK_FILTER]: [SLACK] } })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    expect(itemOf(r)).toEqual({ id: 1, kind: 'connector', phase: 'resolving' })
+    expect(r.events.at(-1)).toMatchObject({ path: '/directory/slack', pageItem: { phase: 'resolving' } })
+    await settle()
+    expect(o.calls[0]).toContain('fetch http://127.0.0.1:4100/api/directory/plugins?')
+    expect(itemOf(r)).toEqual({
+      id: 1,
+      kind: 'connector',
+      phase: 'ready',
+      details: {
+        name: 'Slack',
+        summary: 'Chat',
+        publisher: 'Slack',
+        iconUrl: 'https://www.google.com/s2/favicons?sz=64&domain=slack.com',
+      },
+      alreadyInstalled: false,
+      installable: true,
+    })
+    await expect(r.call('addPageItem', { id: 1 })).resolves.toEqual({ ok: true })
+    expect(o.calls.at(-1)).toBe('upsert slack https://mcp.slack.com/mcp')
+    expect(itemOf(r)).toMatchObject({ phase: 'installed', installedAs: 'slack' })
+    expect(r.events.map(e => e.pageItem?.phase)).toContain('installing')
+  })
+
+  it('a plugin page is matched to its marketplace listing and Add installs it by identifier', async () => {
+    const o = fakeOffers({ records: { [NOTION_FILTER]: [NOTION] } })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: PLUGIN_PATH })
+    await settle()
+    expect(itemOf(r)).toMatchObject({ kind: 'plugin', phase: 'ready', installable: true, alreadyInstalled: false })
+    await r.call('addPageItem', { id: 1 })
+    expect(o.calls.at(-1)).toBe('install notion@official-market')
+    expect(itemOf(r)).toMatchObject({ phase: 'installed', installedAs: 'notion@official-market' })
+  })
+
+  it('an item already here says where, and Add is refused', async () => {
+    const o = fakeOffers({
+      records: { [SLACK_FILTER]: [SLACK] },
+      servers: { chat: { transport: 'http', url: 'https://mcp.slack.com/mcp/' } },
+    })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    await settle()
+    expect(itemOf(r)).toMatchObject({ phase: 'ready', alreadyInstalled: true, installedAs: 'chat' })
+    await expect(r.call('addPageItem', { id: 1 })).rejects.toMatchObject({ code: 'conflict' })
+    expect(o.calls.some(c => c.startsWith('upsert'))).toBe(false)
+  })
+
+  it('an unknown item, a failed lookup and a failed install end as failed', async () => {
+    const missing = fakeOffers()
+    const a = await shown(missing.deps)
+    a.fake.report(1, { type: 'route', path: '/directory/nothing-here' })
+    await settle()
+    expect(itemOf(a.r)).toMatchObject({ phase: 'failed', failure: 'not_found' })
+
+    const offline = fakeOffers({ fail: true })
+    const b = await shown(offline.deps)
+    b.fake.report(1, { type: 'route', path: '/directory/slack' })
+    await settle()
+    expect(itemOf(b.r)).toMatchObject({ phase: 'failed', failure: 'lookup_failed' })
+
+    const refused = fakeOffers({ records: { [NOTION_FILTER]: [NOTION] }, installFails: true })
+    const c = await shown(refused.deps)
+    c.fake.report(1, { type: 'route', path: PLUGIN_PATH })
+    await settle()
+    await c.r.call('addPageItem', { id: 1 })
+    expect(itemOf(c.r)).toMatchObject({ phase: 'failed', failure: 'install_failed', details: { name: 'notion' } })
+  })
+
+  it('after a failed install Add can try again', async () => {
+    const o = fakeOffers({ records: { [NOTION_FILTER]: [NOTION] }, installFails: true })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: PLUGIN_PATH })
+    await settle()
+    await r.call('addPageItem', { id: 1 })
+    expect(itemOf(r)).toMatchObject({ phase: 'failed', failure: 'install_failed' })
+    o.deps.installPlugin = async id => void o.calls.push(`install ${id}`)
+    await r.call('addPageItem', { id: 1 })
+    expect(itemOf(r)).toMatchObject({ phase: 'installed', installedAs: 'notion@official-market' })
+    expect(itemOf(r)?.failure).toBeUndefined()
+    expect(o.calls.filter(c => c.startsWith('install'))).toHaveLength(2)
+  })
+
+  it('a failed lookup cannot be added', async () => {
+    const o = fakeOffers({ fail: true })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    await settle()
+    await expect(r.call('addPageItem', { id: 1 })).rejects.toMatchObject({ code: 'conflict' })
+  })
+
+  it('list pages, other channels and pages with no listing have no item', async () => {
+    const o = fakeOffers({ records: { [SLACK_FILTER]: [SLACK] } })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: '/directory' })
+    fake.report(1, { type: 'route', path: '/directory/trending' })
+    fake.report(1, { type: 'route', path: '/directory/category-design' })
+    fake.report(2, { type: 'route', path: '/directory/slack' })
+    expect(itemOf(r)).toBeUndefined()
+
+    const elsewhere = await shown(o.deps, 'https://pages.example/directory')
+    elsewhere.fake.report(1, { type: 'route', path: '/directory/slack' })
+    expect(itemOf(elsewhere.r)).toBeUndefined()
+    expect(o.calls).toEqual([])
+  })
+
+  it('the same item is looked up once; leaving it clears it, and a stale id cannot add', async () => {
+    const o = fakeOffers({ records: { [SLACK_FILTER]: [SLACK] } })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    await settle()
+    fake.report(1, { type: 'route', path: '/directory' })
+    expect(itemOf(r)).toBeUndefined()
+    expect(r.events.at(-1)).toEqual({ available: true, tabId: 7, path: '/directory' })
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    await settle()
+    expect(itemOf(r)?.id).toBe(2)
+    expect(o.calls.filter(c => c.startsWith('fetch'))).toHaveLength(2)
+    await expect(r.call('addPageItem', { id: 1 })).rejects.toMatchObject({ code: 'conflict' })
+  })
+
+  it('a closed tab forgets the item', async () => {
+    const o = fakeOffers({ records: { [SLACK_FILTER]: [SLACK] } })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    await settle()
+    fake.detach(1, 'target_gone')
+    expect(itemOf(r)).toBeUndefined()
+  })
+
+  it('without lookup calls a page never has an item', async () => {
+    const { fake, r } = await shown(undefined)
+    fake.report(1, { type: 'route', path: '/directory/slack' })
+    expect(itemOf(r)).toBeUndefined()
   })
 })

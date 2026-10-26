@@ -1,6 +1,7 @@
 import * as React from 'react'
-import { ArrowLeftIcon } from 'lucide-react'
+import { ArrowLeftIcon, GlobeIcon, StoreIcon } from 'lucide-react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -8,15 +9,15 @@ import type { WindowDragRect } from '../../bridge/protocol/ui'
 import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { ShellChannel } from '../../runtimeClient/shellChannel'
 import { useT } from '../i18n'
-import type { MessageKey } from '../i18n/messages/en'
+import { useSettingsBridge } from '../nexusSettingsBridge'
 import type { SettingsSectionId } from '../settings/settingsNav'
 import { TOP_BAR_HEIGHT_CLASS } from '../topbar/barHeight'
 import { useWindowDragRegions } from '../topbar/useWindowDragRegions'
 import { WebviewArea } from '../WebviewArea'
-import { CUSTOMIZE_SEGMENTS, type CustomizeSegment } from './customizeRoutes'
-import { GROUP_SETTINGS_SECTION, INSTALLED_GROUPS, type InstalledGroup } from './installedRows'
+import { DirectoryItemStatus } from './DirectoryItemStatus'
+import { MarketplacePluginList } from './MarketplacePluginList'
 import { useCustomizeTab } from './useCustomizeTab'
-import { useInstalledInventory } from './useInstalledInventory'
+import { useMarketplaceList, useMarketplacePlugins } from './useMarketplaceCatalog'
 
 export type CustomizeScreenProps = {
   runtimeConnection?: () => Promise<RuntimeConnection>
@@ -27,32 +28,18 @@ export type CustomizeScreenProps = {
   onDragRegionsChange?: (regions: WindowDragRect[]) => void
 }
 
-const GROUP_LABEL: Record<InstalledGroup, MessageKey> = {
-  plugins: 'customize.group.plugins',
-  mods: 'customize.group.mods',
-  skills: 'customize.group.skills',
-  mcp: 'customize.group.mcp',
-}
+/** The left list's selection: the directory page, or a marketplace by name. */
+type Selection = { kind: 'directory' } | { kind: 'marketplace'; name: string }
 
-const GROUP_EMPTY: Record<InstalledGroup, MessageKey> = {
-  plugins: 'customize.empty.plugins',
-  mods: 'customize.empty.mods',
-  skills: 'customize.empty.skills',
-  mcp: 'customize.empty.mcp',
-}
-
-const SEGMENT_LABEL: Record<CustomizeSegment, MessageKey> = {
-  skills: 'customize.tab.skills',
-  connectors: 'customize.tab.connectors',
-  plugins: 'customize.tab.plugins',
-}
+const DIRECTORY: Selection = { kind: 'directory' }
 
 /**
  * The Customize screen (F-35): takes the window like Settings does. Left,
- * what is installed here (read-only; a row opens the Settings page that
- * manages it). Right, the marketplace pages in this window's `customize`
- * utility tab, which the native tab view paints over the placeholder; when
- * the tab cannot show, a message and a retry take the placeholder's place.
+ * the plugin directory and the marketplaces registered here. Right, the
+ * directory page in this window's `customize` utility tab (the native tab
+ * view paints it over the placeholder), or the selected marketplace's
+ * plugins. The top bar holds Back and, while the page shows a plugin or a
+ * connector, its status and Add.
  */
 export function CustomizeScreen({
   runtimeConnection,
@@ -64,13 +51,16 @@ export function CustomizeScreen({
   const t = useT()
   const headerRef = React.useRef<HTMLElement | null>(null)
   useWindowDragRegions(headerRef, onDragRegionsChange)
-  const inventory = useInstalledInventory(runtimeConnection, true)
-  const tab = useCustomizeTab(runtimeConnection, true)
+  const [selection, setSelection] = React.useState<Selection>(DIRECTORY)
+  const onDirectory = selection.kind === 'directory'
+  const tab = useCustomizeTab(runtimeConnection, onDirectory)
+  const bridge = useSettingsBridge()
+  const list = useMarketplaceList(bridge)
+  const market = useMarketplacePlugins(bridge, selection.kind === 'marketplace' ? selection.name : null)
 
   return (
     <div
       data-testid="nexus-customize"
-      data-segment={tab.segment}
       className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-background"
     >
       {/* Replaces the topbar: the window's drag surface and caption reserve
@@ -91,90 +81,62 @@ export function CustomizeScreen({
         >
           <ArrowLeftIcon className="size-4" />
         </Button>
-        <button
-          type="button"
-          data-testid="customize-title"
-          data-app-region="no-drag"
-          title={t('customize.back')}
-          onClick={onClose}
-          className="rounded-md px-1 font-semibold text-base text-foreground hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {t('customize.title')}
-        </button>
+        <span data-testid="customize-title" className="truncate px-1 font-semibold text-base text-foreground">
+          {onDirectory ? t('customize.directory.title') : selection.name}
+        </span>
+        <div className="ms-auto flex min-w-0 items-center">
+          {onDirectory && tab.pageItem && !tab.unavailable ? (
+            <DirectoryItemStatus item={tab.pageItem} onAdd={tab.addPageItem} onOpenSettings={onOpenSettings} />
+          ) : null}
+        </div>
         <div
           aria-hidden
           data-testid="customize-caption-inset"
-          className="ms-auto shrink-0 self-stretch"
+          className="shrink-0 self-stretch"
           style={{ width: 'var(--nexus-caption-inset, 0px)' }}
         />
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <aside
-          aria-label={t('customize.installedAria')}
-          data-testid="customize-installed"
-          data-loading={inventory.loading || undefined}
-          className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-r p-3"
+        <nav
+          aria-label={t('customize.markets.aria')}
+          data-testid="customize-markets"
+          className="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto border-r p-2"
         >
-          {INSTALLED_GROUPS.map(group => {
-            const rows = inventory.rows[group]
-            return (
-              <section key={group} data-testid={`customize-group-${group}`} className="flex flex-col gap-1">
-                <h2 className="flex items-baseline justify-between px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <span>{t(GROUP_LABEL[group])}</span>
-                  <span data-testid={`customize-count-${group}`} className="font-normal tabular-nums">
-                    {rows.length}
-                  </span>
-                </h2>
-                {rows.length === 0 ? (
-                  <p className="px-1 text-sm text-muted-foreground">
-                    {inventory.loading && group !== 'mods' ? t('customize.loading') : t(GROUP_EMPTY[group])}
-                  </p>
-                ) : (
-                  <ul className="flex flex-col">
-                    {rows.map(row => (
-                      <li key={row.id}>
-                        <button
-                          type="button"
-                          data-testid="customize-row"
-                          data-group={group}
-                          data-id={row.id}
-                          title={t('customize.openInSettings')}
-                          onClick={() => onOpenSettings(GROUP_SETTINGS_SECTION[group])}
-                          className="flex w-full flex-col items-start rounded-md px-2 py-1.5 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <span className="w-full truncate text-sm text-foreground">{row.name}</span>
-                          {row.detail ? (
-                            <span className="w-full truncate text-xs text-muted-foreground">{row.detail}</span>
-                          ) : null}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            )
-          })}
-        </aside>
+          <MarketRow
+            testId="customize-market-directory"
+            selected={onDirectory}
+            icon={<GlobeIcon className="size-4" />}
+            name={t('customize.directory.title')}
+            detail={t('customize.markets.directoryDetail')}
+            onSelect={() => setSelection(DIRECTORY)}
+          />
+          {list.marketplaces === null ? (
+            <p className="px-2 py-1 text-sm text-muted-foreground">{t('customize.loading')}</p>
+          ) : (
+            list.marketplaces.map(m => (
+              <MarketRow
+                key={m.name}
+                testId="customize-market"
+                name={m.name}
+                selected={selection.kind === 'marketplace' && selection.name === m.name}
+                icon={<StoreIcon className="size-4" />}
+                badge={m.isOfficial ? t('customize.markets.official') : undefined}
+                onSelect={() => setSelection({ kind: 'marketplace', name: m.name })}
+              />
+            ))
+          )}
+          {list.failed ? (
+            <p role="status" className="px-2 py-1 text-sm text-destructive">
+              {t('customize.markets.loadFailed')}
+            </p>
+          ) : null}
+        </nav>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div role="tablist" data-testid="customize-segments" className="flex shrink-0 items-center gap-1 border-b px-3 py-2">
-            {CUSTOMIZE_SEGMENTS.map(segment => (
-              <Button
-                key={segment}
-                type="button"
-                role="tab"
-                variant={segment === tab.segment ? 'secondary' : 'ghost'}
-                size="sm"
-                data-testid={`customize-segment-${segment}`}
-                aria-selected={segment === tab.segment}
-                onClick={() => tab.selectSegment(segment)}
-              >
-                {t(SEGMENT_LABEL[segment])}
-              </Button>
-            ))}
-          </div>
-          {tab.unavailable ? (
+          {selection.kind === 'marketplace' ? (
+            <MarketplacePluginList marketplace={selection.name} view={market} />
+          ) : tab.unavailable ? (
             <div
               role="status"
               data-testid="customize-unavailable"
@@ -191,5 +153,48 @@ export function CustomizeScreen({
         </div>
       </div>
     </div>
+  )
+}
+
+function MarketRow({
+  testId,
+  name,
+  detail,
+  badge,
+  icon,
+  selected,
+  onSelect,
+}: {
+  testId: string
+  name: string
+  detail?: string
+  badge?: string
+  icon: React.ReactNode
+  selected: boolean
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      data-name={name}
+      aria-current={selected ? 'page' : undefined}
+      onClick={onSelect}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        selected && 'bg-accent',
+      )}
+    >
+      <span className="shrink-0 text-muted-foreground">{icon}</span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm text-foreground">{name}</span>
+        {detail ? <span className="truncate text-xs text-muted-foreground">{detail}</span> : null}
+      </span>
+      {badge ? (
+        <Badge variant="secondary" className="shrink-0">
+          {badge}
+        </Badge>
+      ) : null}
+    </button>
   )
 }
