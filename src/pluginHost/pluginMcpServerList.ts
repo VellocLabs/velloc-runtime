@@ -18,6 +18,13 @@ export type PluginMcpServerListing = {
   name: string
   plugin: string
   transport?: McpServerTransportKind
+  /** An http server's URL, for its sign-in (F-10); absent while it names a
+   *  plugin option, so no option value is returned. */
+  url?: string
+}
+
+function listedUrl(url: string | undefined): { url: string } | Record<string, never> {
+  return url && !url.includes('${') ? { url } : {}
 }
 
 /** The loader reads environment variables only to find a home; it is given. */
@@ -30,11 +37,21 @@ export function pluginMcpServerListings(
   const listings: PluginMcpServerListing[] = []
   for (const plugin of plugins) {
     for (const [name, config] of Object.entries(plugin.mcpServers ?? {})) {
-      listings.push({ name, plugin: plugin.name, transport: config.type })
+      listings.push({
+        name,
+        plugin: plugin.name,
+        transport: config.type,
+        ...(config.type === 'http' ? listedUrl(config.url) : {}),
+      })
     }
     for (const [name, config] of Object.entries(plugin.nativeMcpServers ?? {})) {
       const transport = launchTransportKind(config)
-      listings.push({ name, plugin: plugin.name, ...(transport ? { transport } : {}) })
+      listings.push({
+        name,
+        plugin: plugin.name,
+        ...(transport ? { transport } : {}),
+        ...(transport === 'http' ? listedUrl(config.url) : {}),
+      })
     }
   }
   const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)

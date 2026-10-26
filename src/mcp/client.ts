@@ -2,7 +2,8 @@ import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { traceLine } from '../utils/debugLog'
 import { cleanMcpInstructions } from './instructions'
-import { createTransport } from './transport'
+import { createTransport, type CreateTransportOptions } from './transport'
+import { isMcpUnauthorized } from './unauthorized'
 import type {
   LiveServerLink,
   MCPServerConfig,
@@ -26,6 +27,8 @@ export type ConnectOptions = {
   fs?: RuntimeFs
   /** Connect bound; defaults to MCP_CLIENT_CONNECT_TIMEOUT_MS. */
   connectTimeoutMs?: number
+  /** A sign-in to send (F-10); see `CreateTransportOptions.auth`. */
+  auth?: CreateTransportOptions['auth']
 }
 
 export async function connectMCPServer(
@@ -49,6 +52,7 @@ export async function connectMCPServer(
       serverName: name,
       config,
       fs: options.fs,
+      ...(options.auth ? { auth: options.auth } : {}),
     })
     const client = new Client(
       { name: CLIENT_NAME, version: CLIENT_VERSION },
@@ -101,7 +105,7 @@ export async function connectMCPServer(
     )
     return connected
   } catch (err) {
-    connected.status = 'failed'
+    connected.status = isMcpUnauthorized(err) ? 'needs-auth' : 'failed'
     connected.error = err instanceof Error ? err.message : String(err)
     console.warn(`[mcp] Connection to "${name}" failed:`, err)
     return connected

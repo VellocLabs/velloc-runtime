@@ -266,7 +266,10 @@ export type LoadedSkillSummary = {
 /** One MCP server of a session, as the page sees it. */
 export type SessionMcpServerView = {
   name: string
-  status: 'connected' | 'failed'
+  /** `needs-auth`: it waits for the person to sign in (F-10). */
+  status: 'connected' | 'failed' | 'needs-auth'
+  /** The URL a sign-in belongs to, while it needs one. */
+  signInUrl?: string
   /** Where it is configured; absent when the runtime publishes no origins. */
   origin?: McpServerOrigin
   transport?: McpServerTransportKind

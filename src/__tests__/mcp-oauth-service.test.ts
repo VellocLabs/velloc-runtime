@@ -1,0 +1,371 @@
+import { describe, expect, it, vi } from 'vitest'
+import {
+  MCP_OAUTH_REDIRECT_URI,
+  McpOAuthService,
+  McpSignInClosedError,
+  type McpOAuthHost,
+  type McpOAuthProtocolHelpers,
+} from '../mcp/oauth/McpOAuthService'
+import { mcpOAuthKey, mcpOAuthSecretNames, normalizeMcpServerUrl } from '../mcp/oauth/oauthKeys'
+import type { RuntimeFs } from '../utils/fs/runtimeFs'
+
+const SERVER = 'https://MCP.example.test/mcp/'
+const SERVER_NORMALIZED = 'https://mcp.example.test/mcp'
+const AUTH = 'https://auth.example.test'
+const TOKEN_ENDPOINT = `${AUTH}/token`
+
+function memoryFs(files = new Map<string, string>()): RuntimeFs {
+  return {
+    readFile: async (path: string) => {
+      const text = files.get(path)
+      if (text === undefined) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+      return text
+    },
+    writeFile: async (path: string, text: string) => {
+      files.set(path, text)
+    },
+    mkdir: async () => {},
+  } as unknown as RuntimeFs
+}
+
+type Options = {
+  registration?: boolean
+  issuer?: string
+  window?: (url: URL, state: string) => string | Error
+  tokenAnswer?: { status: number; body: string }
+}
+
+function rig(options: Options = {}) {
+  const files = new Map<string, string>()
+  const secrets = new Map<string, { value: string; origin: string }>()
+  let now = 1_000_000
+  let lastState = ''
+  const forms: Array<{ url: string; form: Record<string, string> }> = []
+  const opened: string[] = []
+  const tokenAnswers: Array<{ status: number; body: string }> = []
+  const host: McpOAuthHost = {
+    fetch: vi.fn(async () => new Response('{}')),
+    postForm: vi.fn(async (url, form) => {
+      forms.push({ url, form })
+      return (
+        tokenAnswers.shift() ??
+        options.tokenAnswer ?? {
+          status: 200,
+          body: JSON.stringify({ access_token: 'tok-access', refresh_token: 'tok-refresh', expires_in: 3600 }),
+        }
+      )
+    }),
+    setSecret: vi.fn(async (name, value, origin) => {
+      secrets.set(name, { value, origin })
+    }),
+    deleteSecret: vi.fn(async name => {
+      secrets.delete(name)
+    }),
+    openSignInWindow: vi.fn(async (url: string, redirectUri: string) => {
+      opened.push(url)
+      const answer = options.window?.(new URL(url), lastState) ?? `${redirectUri}?code=the-code&state=${lastState}`
+      if (answer instanceof Error) throw answer
+      return answer
+    }),
+    transportFetch: () => vi.fn() as never,
+  }
+  const issuer = options.issuer ?? AUTH
+  const oauth: McpOAuthProtocolHelpers = {
+    discoverOAuthServerInfo: vi.fn(async () => ({
+      authorizationServerUrl: AUTH,
+      authorizationServerMetadata: {
+        issuer,
+        authorization_endpoint: `${AUTH}/authorize`,
+        token_endpoint: TOKEN_ENDPOINT,
+        response_types_supported: ['code'],
+        ...(options.registration === false ? {} : { registration_endpoint: `${AUTH}/register` }),
+      },
+      resourceMetadata: { resource: SERVER_NORMALIZED, scopes_supported: ['read', 'write'] },
+    })) as never,
+    discoverOAuthProtectedResourceMetadata: vi.fn(async () => ({ resource: SERVER_NORMALIZED })) as never,
+    registerClient: vi.fn(async () => ({ client_id: 'dyn-client', redirect_uris: [MCP_OAUTH_REDIRECT_URI] })) as never,
+    startAuthorization: vi.fn(async (_server: unknown, args: { state?: string }) => {
+      lastState = args.state ?? ''
+      return {
+        authorizationUrl: new URL(`${AUTH}/authorize?state=${lastState}`),
+        codeVerifier: 'the-verifier',
+      }
+    }) as never,
+  }
+  let hostPresent = true
+  const service = new McpOAuthService({
+    homeDir: () => '/home/u',
+    fs: () => memoryFs(files),
+    host: () => (hostPresent ? host : null),
+    now: () => now,
+    oauth,
+  })
+  const authChanges: Array<[string, boolean]> = []
+  service.onAuthChanged((url, signedIn) => authChanges.push([url, signedIn]))
+  const key = mcpOAuthKey(SERVER)!
+  return {
+    service,
+    host,
+    oauth,
+    files,
+    secrets,
+    forms,
+    opened,
+    tokenAnswers,
+    authChanges,
+    names: mcpOAuthSecretNames(key),
+    advance: (ms: number) => {
+      now += ms
+    },
+    dropHost: () => {
+      hostPresent = false
+    },
+    phase: () => service.getState().servers.find(server => server.url === SERVER_NORMALIZED),
+  }
+}
+
+async function settled(r: ReturnType<typeof rig>): Promise<void> {
+  await vi.waitFor(() => expect(r.phase()?.phase).not.toBe('signing-in'))
+}
+
+describe('MCP server URL keys', () => {
+  it('normalizes the host case and trailing slash, and refuses non-http URLs', () => {
+    expect(normalizeMcpServerUrl(SERVER)).toBe(SERVER_NORMALIZED)
+    expect(normalizeMcpServerUrl('https://mcp.example.test/mcp?x=1')).toBe(SERVER_NORMALIZED)
+    expect(normalizeMcpServerUrl('file:///etc/passwd')).toBeNull()
+    expect(mcpOAuthKey(SERVER)).toBe(mcpOAuthKey(SERVER_NORMALIZED))
+    expect(mcpOAuthKey(SERVER)).toMatch(/^[0-9a-f]{16}$/)
+  })
+})
+
+describe('McpOAuthService sign-in', () => {
+  it('registers a client, captures the code and keeps the tokens only in host secrets', async () => {
+    const r = rig()
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+
+    expect(r.oauth.registerClient).toHaveBeenCalledWith(
+      AUTH,
+      expect.objectContaining({
+        clientMetadata: expect.objectContaining({
+          redirect_uris: [MCP_OAUTH_REDIRECT_URI],
+          token_endpoint_auth_method: 'none',
+        }),
+      }),
+    )
+    expect(r.oauth.startAuthorization).toHaveBeenCalledWith(
+      AUTH,
+      expect.objectContaining({ scope: 'read write', redirectUrl: MCP_OAUTH_REDIRECT_URI }),
+    )
+    expect(r.forms).toEqual([
+      {
+        url: TOKEN_ENDPOINT,
+        form: {
+          grant_type: 'authorization_code',
+          code: 'the-code',
+          redirect_uri: MCP_OAUTH_REDIRECT_URI,
+          code_verifier: 'the-verifier',
+          client_id: 'dyn-client',
+          resource: SERVER_NORMALIZED,
+        },
+      },
+    ])
+    expect(r.secrets.get(r.names.access)).toEqual({ value: 'tok-access', origin: 'https://mcp.example.test' })
+    expect(r.secrets.get(r.names.refresh)).toEqual({ value: 'tok-refresh', origin: AUTH })
+    expect(r.phase()).toEqual({ url: SERVER_NORMALIZED, phase: 'signed-in' })
+    expect(r.authChanges).toEqual([[SERVER_NORMALIZED, true]])
+
+    const stored = [...r.files.values()].join('\n')
+    expect(stored).toContain('dyn-client')
+    expect(stored).not.toContain('tok-access')
+    expect(stored).not.toContain('tok-refresh')
+
+    const auth = await r.service.connectAuth(SERVER)
+    expect(auth).not.toBe('required')
+    expect((auth as { headers: Record<string, string> }).headers).toEqual({
+      Authorization: `Bearer {{secret:${r.names.access}}}`,
+    })
+  })
+
+  it('asks for a client when the authorization server registers none, then uses the one given', async () => {
+    const r = rig({ registration: false })
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.phase()).toEqual({
+      url: SERVER_NORMALIZED,
+      phase: 'needs-sign-in',
+      needsClient: true,
+      redirectUri: MCP_OAUTH_REDIRECT_URI,
+    })
+    expect(r.opened).toEqual([])
+    expect(await r.service.connectAuth(SERVER)).toBe('required')
+
+    await r.service.signIn({ url: SERVER, clientId: 'my-client', clientSecret: 'my-secret' })
+    await settled(r)
+    expect(r.phase()?.phase).toBe('signed-in')
+    expect(r.secrets.get(r.names.clientSecret)).toEqual({ value: 'my-secret', origin: AUTH })
+    expect(r.forms[0]!.form.client_id).toBe('my-client')
+    expect(r.forms[0]!.form.client_secret).toBe(`{{secret:${r.names.clientSecret}}}`)
+    expect(JSON.stringify([...r.files.values()])).not.toContain('my-secret')
+  })
+
+  it('asks the Google issuer for an offline grant', async () => {
+    const r = rig({ issuer: 'https://accounts.google.com' })
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    const opened = new URL(r.opened[0]!)
+    expect(opened.searchParams.get('access_type')).toBe('offline')
+    expect(opened.searchParams.get('prompt')).toBe('consent')
+  })
+
+  it('refuses an answer for another sign-in', async () => {
+    const r = rig({ window: () => `${MCP_OAUTH_REDIRECT_URI}?code=x&state=forged` })
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.phase()?.phase).toBe('needs-sign-in')
+    expect(r.phase()?.lastError).toMatch(/did not match/)
+    expect(r.forms).toEqual([])
+    expect(r.secrets.has(r.names.access)).toBe(false)
+  })
+
+  it('reports the provider refusal and treats a closed window as no error', async () => {
+    const refused = rig({
+      window: (_url, state) => `${MCP_OAUTH_REDIRECT_URI}?error=access_denied&state=${state}`,
+    })
+    await refused.service.signIn({ url: SERVER })
+    await settled(refused)
+    expect(refused.phase()?.lastError).toBe('access_denied')
+
+    const closed = rig({ window: () => new McpSignInClosedError() })
+    await closed.service.signIn({ url: SERVER })
+    await settled(closed)
+    expect(closed.phase()).toEqual({ url: SERVER_NORMALIZED, phase: 'needs-sign-in' })
+  })
+
+  it('cancel aborts the window and leaves no error', async () => {
+    const r = rig()
+    let release: (value: string) => void = () => {}
+    vi.mocked(r.host.openSignInWindow).mockImplementationOnce(
+      (_url, _redirect, signal) =>
+        new Promise<string>((resolve, reject) => {
+          release = resolve
+          signal.addEventListener('abort', () => reject(new McpSignInClosedError()))
+        }),
+    )
+    await r.service.signIn({ url: SERVER })
+    await vi.waitFor(() => expect(r.opened.length + vi.mocked(r.host.openSignInWindow).mock.calls.length).toBeGreaterThan(0))
+    expect(r.phase()?.phase).toBe('signing-in')
+    await r.service.cancel(SERVER)
+    await settled(r)
+    release('ignored')
+    expect(r.phase()).toEqual({ url: SERVER_NORMALIZED, phase: 'needs-sign-in' })
+  })
+
+  it('reports itself unavailable without a host', async () => {
+    const r = rig()
+    r.dropHost()
+    expect(r.service.getState().available).toBe(false)
+    await expect(r.service.signIn({ url: SERVER })).rejects.toThrow()
+  })
+})
+
+describe('McpOAuthService tokens', () => {
+  async function signedIn(options: Options = {}) {
+    const r = rig(options)
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    r.forms.length = 0
+    return r
+  }
+
+  it('refreshes a token near expiry with the refresh token as a placeholder', async () => {
+    const r = await signedIn()
+    r.tokenAnswers.push({ status: 200, body: JSON.stringify({ access_token: 'tok-access-2', expires_in: 3600 }) })
+    r.advance(3600 * 1000 - 30_000)
+    const auth = await r.service.connectAuth(SERVER)
+    expect(auth).not.toBe('required')
+    expect(r.forms).toEqual([
+      {
+        url: TOKEN_ENDPOINT,
+        form: {
+          grant_type: 'refresh_token',
+          refresh_token: `{{secret:${r.names.refresh}}}`,
+          client_id: 'dyn-client',
+          resource: SERVER_NORMALIZED,
+        },
+      },
+    ])
+    expect(r.secrets.get(r.names.access)?.value).toBe('tok-access-2')
+  })
+
+  it('a 401 with a refusing refresh drops the sign-in and announces it', async () => {
+    const r = await signedIn()
+    r.tokenAnswers.push({ status: 400, body: JSON.stringify({ error: 'invalid_grant' }) })
+    expect(await r.service.handleUnauthorized(SERVER)).toBe(false)
+    expect(r.secrets.has(r.names.access)).toBe(false)
+    expect(r.secrets.has(r.names.refresh)).toBe(false)
+    expect(r.authChanges.at(-1)).toEqual([SERVER_NORMALIZED, false])
+    expect(r.phase()?.phase).toBe('needs-sign-in')
+    expect(r.phase()?.lastError).toMatch(/invalid_grant/)
+    expect(await r.service.connectAuth(SERVER)).toBe('required')
+  })
+
+  it('a 401 with a working refresh asks for one retry', async () => {
+    const r = await signedIn()
+    expect(await r.service.handleUnauthorized(SERVER)).toBe(true)
+    expect(r.forms[0]!.form.grant_type).toBe('refresh_token')
+  })
+
+  it('sign-out deletes the secrets and announces it', async () => {
+    const r = await signedIn()
+    await r.service.signOut(SERVER)
+    expect(r.secrets.size).toBe(0)
+    expect(r.authChanges.at(-1)).toEqual([SERVER_NORMALIZED, false])
+    expect(r.phase()?.phase).toBe('needs-sign-in')
+  })
+
+  it('a reloaded service keeps the sign-in from the records file', async () => {
+    const r = await signedIn()
+    const reloaded = new McpOAuthService({
+      homeDir: () => '/home/u',
+      fs: () => memoryFs(r.files),
+      host: () => r.host,
+      now: () => 1_000_000,
+      oauth: r.oauth,
+    })
+    await reloaded.load()
+    expect(reloaded.getState().servers).toEqual([{ url: SERVER_NORMALIZED, phase: 'signed-in' }])
+  })
+})
+
+describe('McpOAuthService install-time sign-in', () => {
+  it('starts a sign-in when the server publishes resource metadata', async () => {
+    const r = rig()
+    await r.service.signInIfRequired(SERVER)
+    await settled(r)
+    expect(r.opened).toHaveLength(1)
+    expect(r.phase()?.phase).toBe('signed-in')
+  })
+
+  it('leaves a server without metadata alone', async () => {
+    const r = rig()
+    vi.mocked(r.oauth.discoverOAuthProtectedResourceMetadata).mockRejectedValueOnce(new Error('404'))
+    await r.service.signInIfRequired(SERVER)
+    expect(r.opened).toEqual([])
+    expect(r.service.getState().servers).toEqual([])
+    expect(await r.service.connectAuth(SERVER)).toBeNull()
+  })
+})
+
+describe('private-network reach of a sign-in', () => {
+  it('is granted only to a server written as a loopback or private literal', async () => {
+    const { privateSignInHost } = await import('../mcp/oauth/bridgeMcpOAuthHost')
+    expect(privateSignInHost('http://127.0.0.1:8123/mcp')).toBe('127.0.0.1')
+    expect(privateSignInHost('http://localhost:3000/mcp')).toBe('localhost')
+    expect(privateSignInHost('http://192.168.1.20/mcp')).toBe('192.168.1.20')
+    expect(privateSignInHost('http://172.32.0.1/mcp')).toBeNull()
+    expect(privateSignInHost('https://mcp.notion.com/mcp')).toBeNull()
+    expect(privateSignInHost('https://8.8.8.8/mcp')).toBeNull()
+    expect(privateSignInHost(undefined)).toBeNull()
+  })
+})

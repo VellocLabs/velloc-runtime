@@ -22,6 +22,8 @@ import { installStockSkills } from '../../../skillLibrary/builtin/catalog'
 import { listSessionMCPPools } from '../../../mcp/sessionPools'
 import { getMcpHost, hostServesWorkerMcp } from '../../../mcp/mcpHost'
 import { createWorkerMcpOperations } from '../../../mcp/workerServers'
+import { probeWithHeldSignIn } from '../../../mcp/oauth/mcpOAuthHolder'
+import { pluginServerUrls, startInstallSignIns } from '../../../mcp/oauth/signInAfterInstall'
 import { createNativePrimitives } from '../../bridge/nativePrimitives'
 import { getRoutineRegistry } from '../../../routines/RoutineRegistry'
 import { reconcileNightlyTidyCron } from '../../../routines/nightlyTidyCron'
@@ -402,10 +404,12 @@ export function initBuiltinWebUiBridgeHandlers(): void {
       testConnect:
         mcpHost && hostServesWorkerMcp(mcpHost.manifest)
           ? config =>
-              createWorkerMcpOperations({
-                resolveHost: getMcpHost,
-                createRequestId,
-              }).testConnect(config)
+              probeWithHeldSignIn(config, signed =>
+                createWorkerMcpOperations({
+                  resolveHost: getMcpHost,
+                  createRequestId,
+                }).testConnect(signed),
+              )
           : undefined,
       broadcastChanged: payload => {
         // The action map declares request/response actions only.
@@ -443,7 +447,7 @@ export function initBuiltinWebUiBridgeHandlers(): void {
   // commands. Downloads go through `network.httpGet` via `directBridge` (the worker's CSP blocks fetch).
   registerWebUiBridgeHandler('plugins', async (request, ctx) => {
     const settingsRoot = await resolveSettingsRoot(ctx, ctx.directBridge)
-    return handlePluginsBridgeRequest(request, {
+    const response = await handlePluginsBridgeRequest(request, {
       homeDir: settingsRoot,
       fs: ctx.fs,
       directBridge: ctx.directBridge,
@@ -452,6 +456,17 @@ export function initBuiltinWebUiBridgeHandlers(): void {
       // fan-out — the enabled map is still written for the next boot.
       reloadPluginsOnAllSessions: () => ctx.reloadPluginsOnAllSessions?.(),
     })
+    const action = request.route.action
+    if (response.ok && (action === 'install' || action === 'installFromDirectory')) {
+      const installed = (response.result as { entry?: { name?: string } }).entry?.name
+      if (installed) {
+        void listPluginMcpServers({ homeDir: settingsRoot, fs: ctx.fs }).then(
+          listings => startInstallSignIns(pluginServerUrls(listings, installed)),
+          () => undefined,
+        )
+      }
+    }
+    return response
   })
 
   // ---- skills ---------------------------------------------------------

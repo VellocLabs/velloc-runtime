@@ -38,6 +38,13 @@ export type BridgeWebWindowOnTitleChangedPayload = {
   title: string
 }
 
+/** The window's first main-frame navigation to its `captureRedirect` URL,
+ *  with the query; the navigation was cancelled and the window closes next. */
+export type BridgeWebWindowOnRedirectCapturedPayload = {
+  windowId: number
+  url: string
+}
+
 /** `api`: closed by `close`; `user`: by the person or the page. */
 export type BridgeWebWindowOnClosedPayload = {
   windowId: number
@@ -51,7 +58,16 @@ type WindowAction<R = { ok: boolean }> = {
 
 export type WebWindowBridgeActionMap = {
   open: {
-    payload: { url: string; state?: BridgeWebWindowState; focus?: boolean } & BridgeWebWindowBounds
+    payload: {
+      url: string
+      state?: BridgeWebWindowState
+      focus?: boolean
+      /** A loopback http URL (localhost / 127.0.0.1 / [::1], explicit port):
+       *  a navigation to it (same scheme, host, port and path) is cancelled
+       *  before any request and reported as `onRedirectCaptured`. Manifest
+       *  primitive `webWindow.captureRedirect`. */
+      captureRedirect?: string
+    } & BridgeWebWindowBounds
     result: { windowId: number }
   }
   close: WindowAction
@@ -80,4 +96,5 @@ export type WebWindowBridgeActionMap = {
   onNavigated: { payload: BridgeWebWindowOnNavigatedPayload; result: never }
   onTitleChanged: { payload: BridgeWebWindowOnTitleChangedPayload; result: never }
   onClosed: { payload: BridgeWebWindowOnClosedPayload; result: never }
+  onRedirectCaptured: { payload: BridgeWebWindowOnRedirectCapturedPayload; result: never }
 }

@@ -17,6 +17,7 @@ import type {
 import type { PendingApproval } from '../../runtime/RuntimeTypes'
 import type { LiveServerLink } from '../../mcp/types'
 import { summarizeMcpTools, type McpToolSummary } from '../../mcp/toolSummary'
+import { mcpSignInUrl } from '../../mcp/unauthorized'
 import {
   mcpServerOrigin,
   mcpServerTransport,
@@ -73,7 +74,7 @@ export function sessionMcpServerViews(
 ): SessionMcpServerView[] {
   const views: SessionMcpServerView[] = []
   for (const server of servers) {
-    if (server.status !== 'connected' && server.status !== 'failed') continue
+    if (server.status !== 'connected' && server.status !== 'failed' && server.status !== 'needs-auth') continue
     const view: SessionMcpServerView = { name: server.name, status: server.status }
     if (origins) view.origin = mcpServerOrigin(server, origins)
     if (server.status === 'connected' && offered && !offered.has(server.name) && view.origin?.kind === 'plugin') continue
@@ -85,6 +86,10 @@ export function sessionMcpServerViews(
     }
     if (server.status === 'connected' && server.instructions) view.instructions = server.instructions
     if (server.status === 'failed' && server.error) view.error = server.error
+    if (server.status === 'needs-auth') {
+      const signInUrl = mcpSignInUrl(server)
+      if (signInUrl) view.signInUrl = signInUrl
+    }
     views.push(view)
   }
   return views.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))

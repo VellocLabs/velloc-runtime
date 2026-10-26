@@ -1187,6 +1187,8 @@ export async function createBrowserRuntime(
     const kept = (coreState.options.commands ?? []).filter(command => !previous.has(command.name))
     coreState.options.commands = applySkillAllowlist([...kept, ...mcpOffering.commands]).allowed
   }
+  // A server that waited for a sign-in connects with one (F-10): its tools join this session.
+  if (mcpLease) undoWhenScopeEnds(mcpPool.onServersAuthorized(offerLaunchedMcpServer), options.runtimeScopeSignal)
   // A background FORK keeps the parent's EXACT tool pool (no sub-agent strip),
   // so its serialized tools array stays aligned with the parent's for prompt-
   // cache reuse; a named/general-purpose sub-agent gets the scoped set.

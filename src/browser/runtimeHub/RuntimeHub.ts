@@ -66,6 +66,7 @@ import { resolveHostHome } from './hostFs'
 import { currentTemplateChannel } from '../../branding/updateChannels'
 import { registerCatalogCapability } from './catalogCapability'
 import { registerAppUpdateCapability } from './appUpdateCapability'
+import { registerMcpAuthCapability } from './mcpAuthCapability'
 import { registerRenderCacheCapability } from './renderCacheCapability'
 import { registerProviderLoginCapability } from './providerLoginCapability'
 import { registerProviderUsageCapability } from './providerUsageCapability'
@@ -348,6 +349,9 @@ export class RuntimeHub {
     // Client auto-update (F-30): `appUpdate/status` (`observe`) and
     // `appUpdate.relaunch` (`full`); the service comes from `appUpdate/appUpdateHolder.ts`.
     registerAppUpdateCapability(this.registry, this.broker)
+    // MCP server sign-in (F-10): `mcpAuth/status` (`manager`), `mcpAuth.signIn`
+    // (`full`), `cancel` / `signOut` (`manager`); the service comes from `mcp/oauth/mcpOAuthHolder.ts`.
+    registerMcpAuthCapability(this.registry, this.broker)
     // Render-cache purge (P-3): `renderCache/status` (`observe`) and
     // `renderCache.purgeNow` (`manager`); `presence.reportActivity` re-arms the idle purge.
     this.renderCache = registerRenderCacheCapability(this.registry, this.broker, this.presence)

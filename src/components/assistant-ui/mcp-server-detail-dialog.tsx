@@ -16,6 +16,8 @@ import { useT, type TranslateFn } from "@/browser/webview/i18n";
 import { cn } from "@/lib/utils";
 import type { McpServerOrigin } from "@/mcp/serverOrigin";
 import type { McpToolSummary } from "@/mcp/toolSummary";
+import type { McpAuthControls } from "@/browser/webview/mcpAuthView";
+import { McpSignInPanel } from "./mcp-sign-in-panel";
 
 /**
  * One MCP server in detail (F-9, F-10): its status, origin, transport and
@@ -26,7 +28,9 @@ import type { McpToolSummary } from "@/mcp/toolSummary";
 
 export type McpServerDetail = {
   name: string;
-  status?: "connected" | "failed";
+  /** `needs-auth`: it waits for a sign-in (F-10), offered with `signInUrl`. */
+  status?: "connected" | "failed" | "needs-auth";
+  signInUrl?: string;
   origin?: McpServerOrigin;
   transport?: string;
   version?: string;
@@ -67,6 +71,7 @@ export function McpServerDetailDialog({
   toolsError,
   onRetry,
   onManage,
+  auth,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -77,6 +82,8 @@ export function McpServerDetailDialog({
   toolsError?: string;
   onRetry?: () => void;
   onManage?: () => void;
+  /** Server sign-in; the panel shows while the server needs one. */
+  auth?: McpAuthControls;
 }) {
   const t = useT();
   return (
@@ -97,6 +104,7 @@ export function McpServerDetailDialog({
             toolsLoading={toolsLoading}
             toolsError={toolsError}
             onRetry={onRetry}
+            auth={auth}
             t={t}
           />
         ) : null}
@@ -130,17 +138,21 @@ function DetailBody({
   toolsLoading,
   toolsError,
   onRetry,
+  auth,
   t,
 }: {
   server: McpServerDetail;
   toolsLoading?: boolean;
   toolsError?: string;
   onRetry?: () => void;
+  auth?: McpAuthControls;
   t: TranslateFn;
 }) {
   const [query, setQuery] = React.useState("");
   const [openTool, setOpenTool] = React.useState<string | null>(null);
-  const failed = server.status === "failed";
+  const needsAuth = server.status === "needs-auth";
+  // A server waiting for a sign-in has no tools to list, like a failed one.
+  const failed = server.status === "failed" || needsAuth;
   const origin = originLabel(server.origin, t);
   const tools = server.tools ?? [];
   const count = server.tools ? tools.length : server.toolCount;
@@ -172,14 +184,24 @@ function DetailBody({
               </DialogTitle>
               {server.status ? (
                 <Badge
-                  variant={failed ? "destructive" : "success"}
+                  variant={needsAuth ? "warning" : failed ? "destructive" : "success"}
                   size="sm"
                   data-testid="mcp-server-detail-status"
                   data-status={server.status}
                   className="shrink-0 gap-1"
                 >
-                  <span aria-hidden className={cn("size-1.5 rounded-full", failed ? "bg-destructive" : "bg-success")} />
-                  {failed ? t("mcpServers.failed") : t("mcpServers.connected")}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      needsAuth ? "bg-warning" : failed ? "bg-destructive" : "bg-success",
+                    )}
+                  />
+                  {needsAuth
+                    ? t("mcpServers.needsAuth")
+                    : failed
+                      ? t("mcpServers.failed")
+                      : t("mcpServers.connected")}
                 </Badge>
               ) : null}
             </div>
@@ -211,7 +233,8 @@ function DetailBody({
       </DialogHeader>
 
       <div className="min-h-0 overflow-y-auto px-5 py-4">
-        {error ? <ErrorPanel message={error} onRetry={failed ? undefined : onRetry} t={t} /> : null}
+        {needsAuth && server.signInUrl ? <McpSignInPanel url={server.signInUrl} auth={auth} /> : null}
+        {error && !needsAuth ? <ErrorPanel message={error} onRetry={failed ? undefined : onRetry} t={t} /> : null}
 
         {!failed && server.instructions ? (
           <InstructionsSection text={server.instructions} spaced={Boolean(error)} t={t} />

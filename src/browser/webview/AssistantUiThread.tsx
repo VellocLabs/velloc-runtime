@@ -5,6 +5,7 @@ import {
 } from '../../components/assistant-ui/session-card-stack'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useCan } from './useCan'
+import { useMcpAuth } from './mcpAuthView'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
 import type {
   AppendMessage,
@@ -1428,12 +1429,14 @@ function InteractiveAssistantUiThread({
         : undefined,
     [openSettings],
   )
+  const mcpAuth = useMcpAuth(runtimeConnection)
   const sessionConnectors = useMemo(
     () => ({
       servers: JSON.parse(sessionConnectorsKey) as SessionMcpServerView[],
       ...(openMcpSettings ? { openMcpSettings } : {}),
+      auth: mcpAuth,
     }),
-    [sessionConnectorsKey, openMcpSettings],
+    [sessionConnectorsKey, openMcpSettings, mcpAuth],
   )
   // Handle for the conversation's Read/Edit tool cards to open a file or diff in
   // the global Right Panel (Files / Diff views), provided via

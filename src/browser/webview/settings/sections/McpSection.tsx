@@ -2,6 +2,13 @@ import * as React from "react";
 import { PencilIcon, Trash2Icon } from "lucide-react";
 
 import { McpServerDetailDialog } from "@/components/assistant-ui/mcp-server-detail-dialog";
+import { McpSignInPanel } from "@/components/assistant-ui/mcp-sign-in-panel";
+import type { RuntimeConnection } from "@/browser/runtimeClient/RuntimeConnection";
+import {
+  useMcpAuth,
+  type McpAuthControls,
+} from "@/browser/webview/mcpAuthView";
+import { isMcpUnauthorized } from "@/mcp/unauthorized";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -144,9 +151,55 @@ function configToForm(id: string, config: NexusMcpServerConfig): FormState {
   };
 }
 
-export function McpSection() {
+/** The sign-in an http server holds or waits for (F-10), under its row. */
+function RowSignIn({
+  url,
+  auth,
+}: {
+  url: string | undefined;
+  auth: McpAuthControls;
+}) {
+  const state = url ? auth.serverState(url) : undefined;
+  if (!url || !state) return null;
+  return (
+    <div className="mt-2" data-testid="mcp-row-sign-in">
+      <McpSignInPanel url={url} auth={auth} />
+    </div>
+  );
+}
+
+function SignInBadge({
+  url,
+  auth,
+}: {
+  url: string | undefined;
+  auth: McpAuthControls;
+}) {
+  const t = useT();
+  const state = url ? auth.serverState(url) : undefined;
+  if (!state) return null;
+  const signedIn = state.phase === "signed-in";
+  return (
+    <Badge
+      variant={signedIn ? "success" : "warning"}
+      size="sm"
+      className="shrink-0"
+      data-testid="mcp-row-sign-in-status"
+      data-phase={state.phase}
+    >
+      {signedIn ? t("mcpServers.signedIn") : t("mcpServers.needsAuth")}
+    </Badge>
+  );
+}
+
+export function McpSection({
+  runtimeConnection,
+}: {
+  runtimeConnection?: () => Promise<RuntimeConnection>;
+}) {
   const t = useT();
   const bridge = useSettingsBridge();
+  const auth = useMcpAuth(runtimeConnection);
   const [servers, setServers] = React.useState<
     Record<string, NexusMcpServerConfig>
   >({});
@@ -167,6 +220,8 @@ export function McpSection() {
     version?: string;
     instructions?: string;
     error?: string;
+    /** The probe met 401: the server waits for a sign-in. */
+    unauthorized?: boolean;
   } | null>(null);
   const detailRequest = React.useRef(0);
   const [form, setForm] = React.useState<FormState | null>(null);
@@ -284,9 +339,22 @@ export function McpSection() {
       // and capture its version + tool count. A host that cannot run MCP
       // servers errors, and the catch falls back to a name-required save.
       let toolCount: number | undefined;
+      let signInUrl: string | undefined;
       try {
         const test = await mcpSettingsTestConnect(bridge, config);
-        if (!test.ok) {
+        // A 401 with no credential typed in: the server waits for a sign-in
+        // (F-10), so it is saved and the sign-in starts.
+        const awaitsSignIn =
+          !test.ok &&
+          isMcpUnauthorized(test.error) &&
+          !!config.url &&
+          auth.state?.available === true &&
+          !Object.keys(config.headers ?? {}).some(
+            (name) => name.toLowerCase() === "authorization",
+          );
+        if (awaitsSignIn) {
+          signInUrl = config.url;
+        } else if (!test.ok) {
           setFormError(
             test.error
               ? t("settings.mcp.connectFailed", { error: test.error })
@@ -294,7 +362,7 @@ export function McpSection() {
           );
           return;
         }
-        toolCount = test.toolCount;
+        if (test.ok) toolCount = test.toolCount;
         if (!id && test.serverName) id = test.serverName.trim();
         // Persist the display metadata alongside the launch config —
         // `NexusMcpServerConfig.version/toolCount` exist for exactly this
@@ -314,6 +382,12 @@ export function McpSection() {
         return;
       }
       await mcpSettingsUpsert(bridge, id, config);
+      if (signInUrl) {
+        const url = signInUrl;
+        void auth.signIn({ url }).catch(() => {
+          // The row's sign-in panel offers it again.
+        });
+      }
       if (toolCount !== undefined) {
         const savedId = id;
         setToolCounts((t) => ({ ...t, [savedId]: toolCount }));
@@ -349,6 +423,7 @@ export function McpSection() {
         : {
             id,
             loading: false,
+            ...(isMcpUnauthorized(test.error) ? { unauthorized: true } : {}),
             error: test.error
               ? t("settings.mcp.connectFailed", { error: test.error })
               : t("settings.mcp.connectFailedGeneric"),
@@ -358,7 +433,11 @@ export function McpSection() {
         setToolCounts((counts) => ({ ...counts, [id]: toolCount }));
       }
     } catch (e) {
-      next = { id, loading: false, error: t("settings.mcp.connectFailed", { error: errMsg(e) }) };
+      next = {
+        id,
+        loading: false,
+        error: t("settings.mcp.connectFailed", { error: errMsg(e) }),
+      };
     }
     if (request === detailRequest.current) setDetail(next);
   };
@@ -428,53 +507,57 @@ export function McpSection() {
               <div
                 key={id}
                 data-testid={`mcp-server-row-${id}`}
-                className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-card p-4"
+                className="rounded-xl border border-border/70 bg-card p-4"
               >
-                <button
-                  type="button"
-                  data-testid={`mcp-server-details-${id}`}
-                  title={t("settings.mcp.details")}
-                  aria-label={t("settings.mcp.detailsAria", { id })}
-                  onClick={() => void openDetail(id)}
-                  className="-m-2 min-w-0 flex-1 rounded-lg p-2 text-start outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <div className="flex min-w-0 items-center gap-2 font-medium text-sm">
-                    <span className="truncate">{id}</span>
-                    <Badge variant="muted" size="sm" className="shrink-0">
-                      {(config.transport ?? "stdio").toUpperCase()}
-                    </Badge>
-                  </div>
-                  {count !== undefined ? (
-                    <div className="mt-1 text-muted-foreground text-xs">
-                      {count}{" "}
-                      {t(
-                        count === 1
-                          ? "settings.mcp.toolSingular"
-                          : "settings.mcp.toolPlural",
-                      )}
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    data-testid={`mcp-server-details-${id}`}
+                    title={t("settings.mcp.details")}
+                    aria-label={t("settings.mcp.detailsAria", { id })}
+                    onClick={() => void openDetail(id)}
+                    className="-m-2 min-w-0 flex-1 rounded-lg p-2 text-start outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <div className="flex min-w-0 items-center gap-2 font-medium text-sm">
+                      <span className="truncate">{id}</span>
+                      <Badge variant="muted" size="sm" className="shrink-0">
+                        {(config.transport ?? "stdio").toUpperCase()}
+                      </Badge>
+                      <SignInBadge url={config.url} auth={auth} />
                     </div>
-                  ) : null}
-                </button>
-                <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    title={t("settings.mcp.edit")}
-                    aria-label={t("settings.mcp.editAria", { id })}
-                    onClick={() => startEdit(id)}
-                  >
-                    <PencilIcon className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    title={t("settings.mcp.remove")}
-                    aria-label={t("settings.mcp.removeAria", { id })}
-                    onClick={() => void remove(id)}
-                  >
-                    <Trash2Icon className="size-4" />
-                  </Button>
+                    {count !== undefined ? (
+                      <div className="mt-1 text-muted-foreground text-xs">
+                        {count}{" "}
+                        {t(
+                          count === 1
+                            ? "settings.mcp.toolSingular"
+                            : "settings.mcp.toolPlural",
+                        )}
+                      </div>
+                    ) : null}
+                  </button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title={t("settings.mcp.edit")}
+                      aria-label={t("settings.mcp.editAria", { id })}
+                      onClick={() => startEdit(id)}
+                    >
+                      <PencilIcon className="size-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title={t("settings.mcp.remove")}
+                      aria-label={t("settings.mcp.removeAria", { id })}
+                      onClick={() => void remove(id)}
+                    >
+                      <Trash2Icon className="size-4" />
+                    </Button>
+                  </div>
                 </div>
+                <RowSignIn url={config.url} auth={auth} />
               </div>
             );
           })
@@ -485,7 +568,9 @@ export function McpSection() {
             data-testid="mcp-plugin-servers"
             className="flex flex-col gap-2 pt-2"
           >
-            <SettingsGroupLabel>{t("settings.mcp.pluginServers")}</SettingsGroupLabel>
+            <SettingsGroupLabel>
+              {t("settings.mcp.pluginServers")}
+            </SettingsGroupLabel>
             <p className={settingsText.description}>
               {t("settings.mcp.pluginServersHint")}
             </p>
@@ -495,7 +580,7 @@ export function McpSection() {
                 data-testid={`mcp-plugin-server-row-${server.name}`}
                 className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-card p-4"
               >
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 font-medium text-sm">
                     <span className="truncate">{server.name}</span>
                     {server.transport ? (
@@ -503,10 +588,12 @@ export function McpSection() {
                         {server.transport.toUpperCase()}
                       </Badge>
                     ) : null}
+                    <SignInBadge url={server.url} auth={auth} />
                   </div>
                   <div className="mt-1 text-muted-foreground text-xs">
                     {t("settings.mcp.fromPlugin", { plugin: server.plugin })}
                   </div>
+                  <RowSignIn url={server.url} auth={auth} />
                 </div>
               </div>
             ))}
@@ -535,7 +622,9 @@ export function McpSection() {
                   ? t("settings.mcp.editServerTitle", { id: form.id })
                   : t("settings.mcp.addServer")}
               </DialogTitle>
-              <DialogDescription>{t("settings.mcp.infoBanner")}</DialogDescription>
+              <DialogDescription>
+                {t("settings.mcp.infoBanner")}
+              </DialogDescription>
             </DialogHeader>
             <div className="-mx-6 flex min-h-0 flex-col gap-3 overflow-y-auto px-6">
               {!editingExisting && clipboardReadable ? (
@@ -551,7 +640,9 @@ export function McpSection() {
                 </div>
               ) : null}
               <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">{t("settings.mcp.serverName")}</span>
+                <span className="font-medium">
+                  {t("settings.mcp.serverName")}
+                </span>
                 <Input
                   data-testid="mcp-server-id"
                   value={form.id}
@@ -565,7 +656,9 @@ export function McpSection() {
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">{t("settings.mcp.transport")}</span>
+                <span className="font-medium">
+                  {t("settings.mcp.transport")}
+                </span>
                 <Select
                   testId="mcp-transport"
                   value={form.transport}
@@ -614,11 +707,15 @@ export function McpSection() {
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-sm">
-                    <span className="font-medium">{t("settings.mcp.args")}</span>
+                    <span className="font-medium">
+                      {t("settings.mcp.args")}
+                    </span>
                     <Input
                       data-testid="mcp-args"
                       value={form.args}
-                      onChange={(e) => setForm({ ...form, args: e.target.value })}
+                      onChange={(e) =>
+                        setForm({ ...form, args: e.target.value })
+                      }
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-sm">
@@ -626,7 +723,9 @@ export function McpSection() {
                     <textarea
                       data-testid="mcp-env"
                       value={form.env}
-                      onChange={(e) => setForm({ ...form, env: e.target.value })}
+                      onChange={(e) =>
+                        setForm({ ...form, env: e.target.value })
+                      }
                       rows={3}
                       className="rounded-md border bg-transparent px-3 py-2 font-mono text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     />
@@ -639,7 +738,9 @@ export function McpSection() {
                     <Input
                       data-testid="mcp-url"
                       value={form.url}
-                      onChange={(e) => setForm({ ...form, url: e.target.value })}
+                      onChange={(e) =>
+                        setForm({ ...form, url: e.target.value })
+                      }
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-sm">
@@ -660,7 +761,10 @@ export function McpSection() {
                 </>
               )}
               {formError ? (
-                <p data-testid="mcp-form-error" className="text-destructive text-xs">
+                <p
+                  data-testid="mcp-form-error"
+                  className="text-destructive text-xs"
+                >
                   {formError}
                 </p>
               ) : null}
@@ -680,9 +784,7 @@ export function McpSection() {
                 disabled={saving}
                 onClick={() => void save()}
               >
-                {saving
-                  ? t("settings.mcp.testing")
-                  : t("settings.mcp.save")}
+                {saving ? t("settings.mcp.testing") : t("settings.mcp.save")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -700,12 +802,24 @@ export function McpSection() {
                 origin: { kind: "settings" },
                 transport: servers[detail.id].transport ?? "stdio",
                 version: detail.version ?? servers[detail.id].version,
-                toolCount: toolCounts[detail.id] ?? servers[detail.id].toolCount,
-                ...(detail.tools ? { status: "connected" as const, tools: detail.tools } : {}),
-                ...(detail.instructions ? { instructions: detail.instructions } : {}),
+                toolCount:
+                  toolCounts[detail.id] ?? servers[detail.id].toolCount,
+                ...(detail.tools
+                  ? { status: "connected" as const, tools: detail.tools }
+                  : {}),
+                ...(detail.instructions
+                  ? { instructions: detail.instructions }
+                  : {}),
+                ...(detail.unauthorized && servers[detail.id].url
+                  ? {
+                      status: "needs-auth" as const,
+                      signInUrl: servers[detail.id].url,
+                    }
+                  : {}),
               }
             : null
         }
+        auth={auth}
         toolsLoading={detail?.loading}
         toolsError={detail?.error}
         onRetry={detail ? () => void openDetail(detail.id) : undefined}

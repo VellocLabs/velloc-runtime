@@ -161,7 +161,7 @@ function CardStack({
   const { runningTaskCount } = useBackgroundTasksContext();
   const [prefs, writePrefs] = useSessionCardPrefs();
   const [connectorsOpen, setConnectorsOpen] = React.useState(false);
-  const { servers, openMcpSettings } = useSessionConnectors();
+  const { servers, openMcpSettings, auth } = useSessionConnectors();
   // The detail is open exactly while its server is listed.
   const detailServer =
     detailName === null ? null : (servers.find((server) => server.name === detailName) ?? null);
@@ -173,6 +173,11 @@ function CardStack({
   }, [detailName, detailServer]);
   const connected = React.useMemo(
     () => servers.filter((server) => server.status === "connected").map((server) => server.name),
+    [servers],
+  );
+  // Servers waiting for a sign-in (F-10) are listed too, after the connected ones.
+  const waiting = React.useMemo(
+    () => servers.filter((server) => server.status === "needs-auth").map((server) => server.name),
     [servers],
   );
   const [outputsOpen, setOutputsOpen] = React.useState(true);
@@ -188,7 +193,7 @@ function CardStack({
   const hasContent: Record<SessionCardId, boolean> = {
     outputs: figures.createdFiles.length > 0,
     changes: figures.plusLines > 0 || figures.minusLines > 0,
-    connectors: connected.length > 0,
+    connectors: connected.length > 0 || waiting.length > 0,
     tasks: runningTasks > 0,
   };
   const shown = prefs.order.filter((id) => hasContent[id] && !prefs.hidden.includes(id));
@@ -302,27 +307,36 @@ function CardStack({
           expanded={connectorsOpen}
           onActivate={() => setConnectorsOpen((open) => !open)}
           summary={
-            connected.length === 1
-              ? t("sessionCards.connectorsConnectedOne")
-              : t("sessionCards.connectorsConnected", { count: connected.length })
+            connected.length === 0
+              ? t("sessionCards.connectorsNeedSignIn", { count: waiting.length })
+              : connected.length === 1
+                ? t("sessionCards.connectorsConnectedOne")
+                : t("sessionCards.connectorsConnected", { count: connected.length })
           }
         >
           {connectorsOpen ? (
             <ul className="mt-1 flex flex-col" data-testid="session-card-connectors-list">
-              {connected.map((name) => (
-                <li key={name}>
-                  <button
-                    type="button"
-                    title={name}
-                    data-testid="session-card-connector"
-                    onClick={() => setDetailName(name)}
-                    className="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <PlugIcon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{name}</span>
-                  </button>
-                </li>
-              ))}
+              {[...connected, ...waiting].map((name) => {
+                const needsAuth = waiting.includes(name);
+                return (
+                  <li key={name}>
+                    <button
+                      type="button"
+                      title={name}
+                      data-testid="session-card-connector"
+                      data-status={needsAuth ? "needs-auth" : "connected"}
+                      onClick={() => setDetailName(name)}
+                      className="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <PlugIcon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{name}</span>
+                      {needsAuth ? (
+                        <span className="ms-auto shrink-0 text-warning text-xs">{t("mcpServers.needsAuth")}</span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           ) : null}
         </InfoCard>
@@ -428,6 +442,7 @@ function CardStack({
         if (!open) setDetailName(null);
       }}
       server={detailServer}
+      auth={auth}
       onManage={
         openMcpSettings
           ? () => {

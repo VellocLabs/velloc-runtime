@@ -35,6 +35,7 @@ import type {
   BridgeWebWindowInfo,
   BridgeWebWindowOnClosedPayload,
   BridgeWebWindowOnNavigatedPayload,
+  BridgeWebWindowOnRedirectCapturedPayload,
   BridgeWebWindowOnTitleChangedPayload,
   BridgeWebWindowState,
   BridgePageScriptExecuteResult,
@@ -643,6 +644,21 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
       await send('network.streamOpen', 'network', 'streamCancel', { streamId })
     },
 
+    /** A POST whose x-www-form-urlencoded body the host builds from
+     *  `formParams`; their values may carry `{{secret:NAME}}` for the URL's
+     *  origin. Never follows a redirect. */
+    async postForm(payload: {
+      url: string
+      formParams: Record<string, string>
+      headers?: Record<string, string>
+      timeoutMs?: number
+      allowPrivateNetwork?: boolean
+    }): Promise<BrowserBridgeResult<'network', 'httpRequest'>> {
+      requireListed('network.secretFormBody')
+      secretsGate([payload.headers, payload.formParams])
+      return send('network.secretFormBody', 'network', 'httpRequest', { ...payload, method: 'POST' })
+    },
+
     /** The secrets gate for `network.httpRequest`: callers that put a
      *  `{{secret:NAME}}` in headers or queryParams check here first. */
     assertSecretTemplatesSupported(): void {
@@ -803,9 +819,10 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
   const webWindow = {
     async open(
       url: string,
-      options: { state?: BridgeWebWindowState; focus?: boolean } & BridgeWebWindowBounds = {},
+      options: { state?: BridgeWebWindowState; focus?: boolean; captureRedirect?: string } & BridgeWebWindowBounds = {},
     ): Promise<number> {
       requireCapability('webWindow')
+      if (options.captureRedirect !== undefined) requireListed('webWindow.captureRedirect')
       return (await send('webWindow', 'webWindow', 'open', { url, ...options })).windowId
     },
     async close(windowId: number): Promise<void> {
@@ -868,6 +885,15 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
       return subscribe(
         event => isRoute(event, 'webWindow', 'onClosed'),
         event => listener(event.payload as BridgeWebWindowOnClosedPayload),
+        'webWindow',
+      )
+    },
+    /** A navigation to an owned window's `captureRedirect` URL. Returns the unsubscribe. */
+    onRedirectCaptured(listener: (event: BridgeWebWindowOnRedirectCapturedPayload) => void): () => void {
+      requireCapability('webWindow')
+      return subscribe(
+        event => isRoute(event, 'webWindow', 'onRedirectCaptured'),
+        event => listener(event.payload as BridgeWebWindowOnRedirectCapturedPayload),
         'webWindow',
       )
     },

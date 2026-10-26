@@ -258,3 +258,70 @@ describe('McpSection server detail', () => {
     expect(exists('mcp-server-detail-error')).toBe(false)
   })
 })
+
+describe('McpSection sign-in (F-10)', () => {
+  function signInRuntime() {
+    const request = vi.fn(async () => ({ ok: true }))
+    const conn = {
+      request,
+      subscribe: (_topic: string, listener: (event: { payload: unknown }) => void) => {
+        listener({ payload: { available: true, servers: [] } })
+        return () => {}
+      },
+    }
+    return { request, runtimeConnection: async () => conn as never }
+  }
+
+  function probeBridge(error: string) {
+    const upserts: unknown[] = []
+    const bridge = {
+      request: vi.fn(async (route: { action: string }, payload: unknown) => {
+        if (route.action === 'list') return { servers: {} }
+        if (route.action === 'testConnect') return { ok: false, error }
+        if (route.action === 'upsert') {
+          upserts.push(payload)
+          return { ok: true }
+        }
+        throw new Error(`unexpected mcpSettings.${route.action}`)
+      }),
+      subscribeEvents: () => () => {},
+    } as unknown as NexusSettingsBridge
+    return { bridge, upserts }
+  }
+
+  async function addHttp(bridge: NexusSettingsBridge, runtimeConnection: () => Promise<never>, headers?: string) {
+    render(
+      createElement(
+        SettingsBridgeContext.Provider,
+        { value: bridge },
+        createElement(McpSection, { runtimeConnection }),
+      ),
+    )
+    fireEvent.click(await screen.findByTestId('mcp-add-server'))
+    fireEvent.change(await screen.findByTestId('mcp-server-id'), { target: { value: 'notes' } })
+    await pickTransport('http')
+    fireEvent.change(await screen.findByTestId('mcp-url'), { target: { value: 'https://mcp.notes.test/mcp' } })
+    if (headers) fireEvent.change(screen.getByTestId('mcp-headers'), { target: { value: headers } })
+    fireEvent.click(screen.getByTestId('mcp-save'))
+  }
+
+  it('saves a server answering 401 with no credential typed and starts its sign-in', async () => {
+    const runtime = signInRuntime()
+    const { bridge, upserts } = probeBridge('HTTP 401: Unauthorized')
+    await addHttp(bridge, runtime.runtimeConnection)
+    await waitFor(() => expect(upserts).toHaveLength(1))
+    await waitFor(() =>
+      expect(runtime.request).toHaveBeenCalledWith('mcpAuth.signIn', { url: 'https://mcp.notes.test/mcp' }),
+    )
+    expect(exists('mcp-form-error')).toBe(false)
+  })
+
+  it('a 401 for a typed Authorization header stays an error and saves nothing', async () => {
+    const runtime = signInRuntime()
+    const { bridge, upserts } = probeBridge('HTTP 401: Unauthorized')
+    await addHttp(bridge, runtime.runtimeConnection, 'Authorization: Bearer wrong')
+    expect((await screen.findByTestId('mcp-form-error')).textContent).toContain('HTTP 401')
+    expect(upserts).toEqual([])
+    expect(runtime.request).not.toHaveBeenCalled()
+  })
+})

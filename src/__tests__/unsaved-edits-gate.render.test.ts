@@ -21,7 +21,6 @@ import { EditableField } from '../browser/webview/settings/EditableField'
 import { McpSection } from '../browser/webview/settings/sections/McpSection'
 import { SettingsBridgeContext } from '../browser/webview/nexusSettingsBridge'
 import type { NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
-import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
 import {
   ProjectFolderDialog,
   ProviderMissingDialog,
@@ -100,9 +99,7 @@ describe('registration points', () => {
       createElement(
         SettingsBridgeContext.Provider,
         { value: bridge },
-        createElement(McpSection, {
-          transport: {} as BrowserBridgeTransport,
-        }),
+        createElement(McpSection, {}),
       ),
     )
     fireEvent.click(await screen.findByTestId('mcp-add-server'))

@@ -52,7 +52,8 @@ export type McpResourceDescriptor = {
   server: string
 }
 
-export type MCPServerStatus = 'connecting' | 'connected' | 'failed' | 'closed'
+/** `needs-auth`: the server answered 401 or holds no sign-in it asked for (F-10). */
+export type MCPServerStatus = 'connecting' | 'connected' | 'failed' | 'needs-auth' | 'closed'
 
 export type LiveServerLink = {
   name: string

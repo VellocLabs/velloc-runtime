@@ -113,7 +113,7 @@ function SectionContent({
     case "features":
       return <FeaturesSection />;
     case "mcp":
-      return <McpSection />;
+      return <McpSection runtimeConnection={runtimeConnection} />;
     case "instructions":
       return <InstructionsSection />;
     case "sessionModels":

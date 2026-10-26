@@ -1,3 +1,4 @@
+import { installRuntimeMcpOAuth } from '../../mcp/oauth/mcpOAuthHolder'
 import type { DirectPortBridgeTransport } from '../bridge/DirectPortBridgeTransport'
 import type { BrowserHostManifest } from '../bridge/protocol/manifest'
 import { createBridgeRoute } from '../bridge/protocol/core'
@@ -145,6 +146,8 @@ export class ManagerBootServices {
     void this.installAppUpdate()
     // The render-cache purge policy needs the port and the manifest too.
     this.installRenderCache()
+    // MCP server sign-in (F-10): its availability follows the manifest.
+    this.installMcpOAuth()
     // …and the terminals: availability follows the manifest's primitives and the
     // shell list is asked of each new port.
     this.terminals.refreshHost()
@@ -161,6 +164,7 @@ export class ManagerBootServices {
     if (!this.host.getDirectBridgeTransport()) return
     void this.installAppUpdate()
     this.installRenderCache()
+    this.installMcpOAuth()
   }
 
   /** The host port went away: the streams it carried died with it. */
@@ -258,6 +262,17 @@ export class ManagerBootServices {
       },
     })
     if (skipped) this.host.trace('render_cache.skipped', { reason: skipped })
+  }
+
+  /** Once a home is known; later calls republish availability for a new port or manifest. */
+  private installMcpOAuth(): void {
+    if (!this.host.getHomeDir()) return
+    const service = installRuntimeMcpOAuth({
+      homeDir: () => this.host.getHomeDir(),
+      fs: () => this.createTransportResolvingFs(),
+      createRequestId: () => this.host.createBridgeRequestId(),
+    })
+    void service.load().catch(() => {})
   }
 
   private async installAppUpdate(): Promise<void> {

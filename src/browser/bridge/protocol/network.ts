@@ -41,6 +41,11 @@ export type BridgeHttpRequestPayload = {
   /** Appended after the URL is validated. Values may carry
    *  `{{secret:NAME}}` (manifest primitive `network.secretTemplates`). */
   queryParams?: Record<string, string>
+  /** An x-www-form-urlencoded body the host builds (Content-Type set unless
+   *  given). Values may carry `{{secret:NAME}}` for the URL's origin; refused
+   *  with `body`, on GET / HEAD, and — when a secret went in — with
+   *  `followRedirects`. Manifest primitive `network.secretFormBody`. */
+  formParams?: Record<string, string>
   /** An OAuth-backed provider (chatgpt-pro, github-copilot, qwen-code) whose
    *  `{{oauth:access_token}}` / `{{oauth:account_id}}` header / query values
    *  this request uses: the host refreshes / exchanges the token first, the

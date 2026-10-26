@@ -10,6 +10,10 @@ import {
   type McpBridgeOperations,
   type NexusMcpServerLaunchConfig,
 } from './nativeBridge'
+import { currentMcpOAuthService, onMcpOAuthServiceChanged } from './oauth/mcpOAuthHolder'
+import type { McpConnectAuth } from './oauth/McpOAuthService'
+import { normalizeMcpServerUrl } from './oauth/oauthKeys'
+import { isMcpUnauthorized, mcpSignInRequiredMessage, mcpSignInUrl } from './unauthorized'
 import type {
   LiveServerLink,
   McpResourceDescriptor,
@@ -108,6 +112,15 @@ function waitForTurn(previous: Promise<void>, signal?: AbortSignal): Promise<voi
   })
 }
 
+/** `config` with a sign-in's headers laid over its own. */
+function withSignInHeaders(
+  config: NexusMcpServerLaunchConfig,
+  auth: McpConnectAuth | undefined,
+): NexusMcpServerLaunchConfig {
+  if (!auth) return config
+  return { ...config, headers: { ...(config.headers ?? {}), ...auth.headers } }
+}
+
 /** The host's in-band answer for a server its port service never connected. */
 function isNativeServerNotConnected(error: string | undefined): boolean {
   return typeof error === 'string' && error.startsWith('MCP server is not connected')
@@ -140,6 +153,8 @@ export class MCPPool {
   /** Tail of each server's exclusive-call queue. Never rejects. */
   private readonly exclusiveTails = new Map<string, Promise<void>>()
   private readonly serversChangedListeners = new Set<() => void>()
+  private readonly authorizedListeners = new Set<() => void>()
+  private readonly unwatchSignIns: () => void
 
   constructor(options: MCPPoolOptions) {
     this.cwd = options.cwd
@@ -147,6 +162,7 @@ export class MCPPool {
     this.extraServers = options.extraServers ?? []
     this.nativeBridge = options.nativeBridge
     this.loadNativeServers = options.loadNativeServers
+    this.unwatchSignIns = this.watchSignIns()
   }
 
   /**
@@ -281,12 +297,11 @@ export class MCPPool {
   private connect(entry: MCPServerConfigWithName): Promise<void> {
     const { name, ...config } = entry
     return this.connectOnce(name, async () => {
-      const server = await connectMCPServer({
-        cwd: this.cwd,
-        name,
-        config,
-        fs: this.fs,
-      })
+      const server = await this.withSignIn(
+        config.type === 'http' ? config.url : undefined,
+        auth => connectMCPServer({ cwd: this.cwd, name, config, fs: this.fs, ...(auth ? { auth } : {}) }),
+        () => ({ name, config, status: 'needs-auth', tools: [], error: mcpSignInRequiredMessage(name) }),
+      )
       if (this.closed) {
         await disconnectMCPServer(server)
         return
@@ -378,39 +393,201 @@ export class MCPPool {
     config: NexusMcpServerLaunchConfig,
   ): Promise<void> {
     return this.connectOnce(name, async () => {
-      const server: LiveServerLink = {
-        name,
-        nativeServerId: name,
-        nativeConfig: config,
-        status: 'connecting',
-        tools: [],
-      }
-      try {
-        const result = await bridge.connect(name, config)
-        if (result.ok) {
-          server.status = 'connected'
-          server.tools = result.tools
-          if (result.instructions !== undefined) server.instructions = result.instructions
-          this.lastActiveAt.set(name, Date.now())
-        } else {
-          server.status = 'failed'
-          server.error = result.error ?? 'connect failed'
-          console.warn(
-            `[mcp] Native server "${name}" connect failed:`,
-            server.error,
-          )
-        }
-      } catch (err) {
-        server.status = 'failed'
-        server.error = err instanceof Error ? err.message : String(err)
-        console.warn(`[mcp] Native server "${name}" connect threw:`, err)
-      }
+      const server = await this.withSignIn(
+        launchTransportKind(config) === 'http' ? config.url : undefined,
+        auth => this.connectNativeAttempt(bridge, name, config, auth),
+        () => ({
+          name,
+          nativeServerId: name,
+          nativeConfig: config,
+          status: 'needs-auth',
+          tools: [],
+          error: mcpSignInRequiredMessage(name),
+        }),
+      )
       if (this.closed) {
         if (server.status === 'connected') await this.disconnectQuietly(bridge, name)
         return
       }
       this.servers.set(name, server)
     })
+  }
+
+  /** One connect of a settings-configured server; `nativeConfig` stays the
+   *  config without the sign-in, which is added per connect. */
+  private async connectNativeAttempt(
+    bridge: McpBridgeOperations,
+    name: string,
+    config: NexusMcpServerLaunchConfig,
+    auth: McpConnectAuth | undefined,
+  ): Promise<LiveServerLink> {
+    const server: LiveServerLink = {
+      name,
+      nativeServerId: name,
+      nativeConfig: config,
+      status: 'connecting',
+      tools: [],
+    }
+    try {
+      const result = await bridge.connect(name, withSignInHeaders(config, auth))
+      if (result.ok) {
+        server.status = 'connected'
+        server.tools = result.tools
+        if (result.instructions !== undefined) server.instructions = result.instructions
+        this.lastActiveAt.set(name, Date.now())
+      } else {
+        server.status = isMcpUnauthorized(result.error) ? 'needs-auth' : 'failed'
+        server.error = result.error ?? 'connect failed'
+        console.warn(
+          `[mcp] Native server "${name}" connect failed:`,
+          server.error,
+        )
+      }
+    } catch (err) {
+      server.status = 'failed'
+      server.error = err instanceof Error ? err.message : String(err)
+      console.warn(`[mcp] Native server "${name}" connect threw:`, err)
+    }
+    return server
+  }
+
+  /**
+   * Runs `attempt` with the sign-in `url` holds (F-10). A sign-in the server
+   * asked for but that is missing gives `placeholder()` without connecting; a
+   * 401 with a sign-in that a refresh renews is tried once more; a 401 without
+   * one records that the server asks for a sign-in.
+   */
+  private async withSignIn(
+    url: string | undefined,
+    attempt: (auth: McpConnectAuth | undefined) => Promise<LiveServerLink>,
+    placeholder: () => LiveServerLink,
+  ): Promise<LiveServerLink> {
+    const service = url ? currentMcpOAuthService() : null
+    if (!url || !service) return attempt(undefined)
+    const auth = await service.connectAuth(url).catch(() => null)
+    if (auth === 'required') return placeholder()
+    let server = await attempt(auth ?? undefined)
+    if (server.status !== 'needs-auth') return server
+    if (!auth) {
+      await service.markRequired(url)
+      return server
+    }
+    if (await service.handleUnauthorized(url)) {
+      const renewed = await service.connectAuth(url).catch(() => null)
+      if (renewed && renewed !== 'required') server = await attempt(renewed)
+    }
+    return server
+  }
+
+  /** The launch config with the current sign-in's headers, if it has one. */
+  private async signedInConfig(config: NexusMcpServerLaunchConfig): Promise<NexusMcpServerLaunchConfig> {
+    const service = currentMcpOAuthService()
+    if (!service || !config.url || launchTransportKind(config) !== 'http') return config
+    const auth = await service.connectAuth(config.url).catch(() => null)
+    return auth && auth !== 'required' ? withSignInHeaders(config, auth) : config
+  }
+
+  /** Follows the realm's sign-in service: a server signed in to reconnects
+   *  with it, one signed out of stops and waits for a new sign-in (F-10). */
+  private watchSignIns(): () => void {
+    let off: (() => void) | null = null
+    const attach = (): void => {
+      off?.()
+      off = currentMcpOAuthService()?.onAuthChanged((url, signedIn) => {
+        void this.followSignIn(url, signedIn).catch(err =>
+          console.warn('[mcp] following a sign-in failed:', err),
+        )
+      }) ?? null
+    }
+    const offHolder = onMcpOAuthServiceChanged(attach)
+    attach()
+    return () => {
+      offHolder()
+      off?.()
+    }
+  }
+
+  private async followSignIn(url: string, signedIn: boolean): Promise<void> {
+    if (this.closed) return
+    const target = normalizeMcpServerUrl(url)
+    const matches = Array.from(this.servers.values()).filter(server => {
+      const own = mcpSignInUrl(server)
+      return own !== undefined && normalizeMcpServerUrl(own) === target
+    })
+    if (signedIn) {
+      await Promise.all(matches.map(server => this.reconnectSignedIn(server)))
+      if (matches.some(server => this.servers.get(server.name)?.status === 'connected')) {
+        this.notifyAuthorized()
+      }
+      return
+    }
+    await Promise.all(
+      matches.filter(server => server.status === 'connected').map(server => this.parkNeedingSignIn(server)),
+    )
+  }
+
+  /** Connect `server` again with the current sign-in, while it is still this pool's entry. */
+  private async reconnectSignedIn(server: LiveServerLink): Promise<void> {
+    if (this.closed || this.servers.get(server.name) !== server) return
+    if (server.nativeServerId !== undefined) {
+      if (!this.nativeBridge || !server.nativeConfig) return
+      if (server.status === 'connected') await this.disconnectQuietly(this.nativeBridge, server.nativeServerId)
+      await this.connectNative(this.nativeBridge, server.name, server.nativeConfig)
+      return
+    }
+    if (!server.config) return
+    if (server.status === 'connected') await disconnectMCPServer(server)
+    await this.connect({ name: server.name, ...server.config })
+  }
+
+  /** Stop `server` and list it as needing a sign-in. */
+  private async parkNeedingSignIn(server: LiveServerLink): Promise<void> {
+    if (this.servers.get(server.name) !== server) return
+    if (server.nativeServerId !== undefined) {
+      if (this.nativeBridge && server.status === 'connected') {
+        await this.disconnectQuietly(this.nativeBridge, server.nativeServerId)
+      }
+    } else if (server.client) {
+      await disconnectMCPServer(server)
+    }
+    server.status = 'needs-auth'
+    server.error = mcpSignInRequiredMessage(server.name)
+    this.notifyServersChanged()
+  }
+
+  /** A call met 401: true once a renewed sign-in reconnected the server;
+   *  otherwise the server is listed as needing a sign-in. */
+  private async recoverFromUnauthorized(server: LiveServerLink): Promise<boolean> {
+    const url = mcpSignInUrl(server)
+    const service = url ? currentMcpOAuthService() : null
+    if (url && service && (await service.handleUnauthorized(url))) {
+      await this.reconnectSignedIn(server)
+      return this.servers.get(server.name)?.status === 'connected'
+    }
+    if (url && service) await service.markRequired(url)
+    await this.parkNeedingSignIn(server)
+    return false
+  }
+
+  /**
+   * Hear a server that needed a sign-in connect with one, so a runtime can
+   * offer its tools mid-session (F-10). Returns the unsubscribe.
+   */
+  onServersAuthorized(listener: () => void): () => void {
+    this.authorizedListeners.add(listener)
+    return () => {
+      this.authorizedListeners.delete(listener)
+    }
+  }
+
+  private notifyAuthorized(): void {
+    for (const listener of Array.from(this.authorizedListeners)) {
+      try {
+        listener()
+      } catch (err) {
+        console.warn('[mcp] servers-authorized listener threw:', err)
+      }
+    }
   }
 
   /**
@@ -783,6 +960,7 @@ export class MCPPool {
           `MCP server "${serverName}" is native but no native bridge is available.`,
         )
       }
+      if (server.status === 'needs-auth') throw new Error(mcpSignInRequiredMessage(serverName))
       if (server.status !== 'connected') {
         throw new Error(
           `MCP server "${serverName}" is not connected (status: ${server.status}).`,
@@ -805,12 +983,27 @@ export class MCPPool {
         }
         out = await nativeBridge.callTool(nativeServerId, toolName, args, signal)
       }
+      if (!out.ok && isMcpUnauthorized(out.error)) {
+        if (!(await this.recoverFromUnauthorized(server))) {
+          throw new Error(mcpSignInRequiredMessage(serverName))
+        }
+        out = await nativeBridge.callTool(nativeServerId, toolName, args, signal)
+      }
       if (!out.ok) {
         throw new Error(out.error ?? `MCP tool "${toolName}" failed.`)
       }
       return out.result
     }
-    return invokeServerTool(server, toolName, args, signal)
+    if (server.status === 'needs-auth') throw new Error(mcpSignInRequiredMessage(serverName))
+    try {
+      return await invokeServerTool(server, toolName, args, signal)
+    } catch (err) {
+      if (!isMcpUnauthorized(err)) throw err
+      if (!(await this.recoverFromUnauthorized(server))) {
+        throw new Error(mcpSignInRequiredMessage(serverName))
+      }
+      return invokeServerTool(this.servers.get(serverName)!, toolName, args, signal)
+    }
   }
 
   /**
@@ -827,7 +1020,7 @@ export class MCPPool {
     if (!live()) return Promise.resolve()
     const run = (async () => {
       const result = server.nativeConfig !== undefined
-        ? await bridge.connect(server.nativeServerId!, server.nativeConfig)
+        ? await bridge.connect(server.nativeServerId!, await this.signedInConfig(server.nativeConfig))
         : { ok: false as const, tools: [], error: `MCP server "${server.name}" has no launch config.` }
       if (!live()) return
       if (result.ok) {
@@ -915,6 +1108,7 @@ export class MCPPool {
 
   async shutdown(): Promise<void> {
     this.closed = true
+    this.unwatchSignIns()
     const servers = Array.from(this.servers.values())
     this.servers.clear()
     this.lastActiveAt.clear()

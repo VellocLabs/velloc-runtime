@@ -197,13 +197,18 @@ describe('assemblePluginAt', () => {
         {
           name: 'alpha',
           mcpServers: { web: { type: 'http', url: 'https://w' } },
-          nativeMcpServers: { api: { transport: 'http', url: 'https://a' }, odd: {} },
+          nativeMcpServers: {
+            api: { transport: 'http', url: 'https://a' },
+            odd: {},
+            opt: { transport: 'http', url: 'https://${user_config.host}/mcp' },
+          },
         },
       ]),
     ).toEqual([
-      { name: 'api', plugin: 'alpha', transport: 'http' },
+      { name: 'api', plugin: 'alpha', transport: 'http', url: 'https://a' },
       { name: 'odd', plugin: 'alpha' },
-      { name: 'web', plugin: 'alpha', transport: 'http' },
+      { name: 'opt', plugin: 'alpha', transport: 'http' },
+      { name: 'web', plugin: 'alpha', transport: 'http', url: 'https://w' },
       { name: 'run', plugin: 'zeta', transport: 'stdio' },
     ])
   })

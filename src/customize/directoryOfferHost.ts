@@ -7,6 +7,7 @@
 import type { BrowserBridgeRequest, BrowserBridgeRoute } from '../browser/bridge/protocol/core'
 import type { WebUiBridgeContext, WebUiBridgeHandler } from '../browser/worker/webUiBridge/registry'
 import type { DirectoryOfferDeps } from './directoryOffer'
+import { startInstallSignIns } from '../mcp/oauth/signInAfterInstall'
 
 export type DirectoryOfferHostOptions = {
   getContext: () => WebUiBridgeContext
@@ -55,5 +56,6 @@ export function createDirectoryOfferDeps(options: DirectoryOfferHostOptions): Di
     upsertMcpServer: async (id, config) => {
       await call('mcpSettings', 'upsert', { id, config })
     },
+    startSignIn: url => startInstallSignIns([url]),
   }
 }

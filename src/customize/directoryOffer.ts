@@ -112,6 +112,8 @@ export type DirectoryOfferDeps = {
   installFromDirectory(spec: DirectoryPluginSpec): Promise<string>
   listMcpServers(): Promise<Record<string, NexusMcpServerConfig>>
   upsertMcpServer(id: string, config: NexusMcpServerConfig): Promise<void>
+  /** Starts the sign-in of an installed http server that asks for one (F-10). */
+  startSignIn?(url: string): void
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -505,5 +507,6 @@ export class DirectoryLookupError extends Error {
 export async function installDirectoryTarget(target: DirectoryInstallTarget, deps: DirectoryOfferDeps): Promise<string> {
   if (target.kind === 'plugin') return deps.installFromDirectory(target.spec)
   await deps.upsertMcpServer(target.id, target.config)
+  if (target.config.transport === 'http' && target.config.url) deps.startSignIn?.(target.config.url)
   return target.id
 }

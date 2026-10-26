@@ -23,6 +23,18 @@ describe('sessionMcpServerViews', () => {
     ])
   })
 
+  it('keeps a server waiting on a sign-in, with the URL its sign-in belongs to', () => {
+    expect(
+      sessionMcpServerViews([
+        { name: 'notion', status: 'needs-auth', nativeServerId: 'notion', nativeConfig: { transport: 'http', url: 'https://mcp.notion.test/mcp' }, tools: [] },
+        { name: 'local', status: 'needs-auth', nativeServerId: 'local', nativeConfig: { command: 'uvx' }, tools: [] },
+      ]),
+    ).toEqual([
+      { name: 'local', status: 'needs-auth', transport: 'stdio' },
+      { name: 'notion', status: 'needs-auth', transport: 'http', signInUrl: 'https://mcp.notion.test/mcp' },
+    ])
+  })
+
   it('is empty for a pool with no servers', () => {
     expect(sessionMcpServerViews([])).toEqual([])
   })
