@@ -1421,6 +1421,7 @@ export const de: Messages = {
   // ── Einstellungen — MCP ────────────────────────────────────────────────
   'settings.mcp.title': 'MCP-Server',
   'settings.mcp.addServer': 'Server hinzufügen',
+  'settings.mcp.editServerTitle': '{id} bearbeiten',
   'settings.mcp.infoBanner':
     'Änderungen an MCP-Servern wirken sich in einer neuen Sitzung aus.',
   'settings.mcp.none': 'Keine MCP-Server konfiguriert.',

@@ -4,6 +4,14 @@ import { PencilIcon, Trash2Icon } from "lucide-react";
 import { McpServerDetailDialog } from "@/components/assistant-ui/mcp-server-detail-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useUnsavedEditsGate } from "@/glic/unsavedEditsGate";
@@ -387,16 +395,14 @@ export function McpSection() {
     <SettingsSubpageLayout
       title={t("settings.mcp.title")}
       actions={
-        !form ? (
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="mcp-add-server"
-            onClick={startAdd}
-          >
-            {t("settings.mcp.addServer")}
-          </Button>
-        ) : null
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="mcp-add-server"
+          onClick={startAdd}
+        >
+          {t("settings.mcp.addServer")}
+        </Button>
       }
     >
       <SettingsNotice testId="mcp-info-banner">
@@ -409,7 +415,7 @@ export function McpSection() {
             {loadError}
           </p>
         ) : null}
-        {entries.length === 0 && pluginServers.length === 0 && !form ? (
+        {entries.length === 0 && pluginServers.length === 0 ? (
           <p className="text-muted-foreground text-sm">
             {t("settings.mcp.none")}
           </p>
@@ -474,157 +480,6 @@ export function McpSection() {
           })
         )}
 
-        {form ? (
-          <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-muted/30 p-4">
-            {!editingExisting && clipboardReadable ? (
-              <div className="border-b pb-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  data-testid="mcp-import"
-                  onClick={() => void importFromClipboard()}
-                >
-                  {t("settings.mcp.import")}
-                </Button>
-              </div>
-            ) : null}
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">{t("settings.mcp.serverName")}</span>
-              <Input
-                data-testid="mcp-server-id"
-                value={form.id}
-                disabled={editingExisting}
-                onChange={(e) => setForm({ ...form, id: e.target.value })}
-                placeholder={
-                  editingExisting
-                    ? undefined
-                    : t("settings.mcp.serverNamePlaceholder")
-                }
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">{t("settings.mcp.transport")}</span>
-              <Select
-                testId="mcp-transport"
-                value={form.transport}
-                onValueChange={(v) =>
-                  setForm({ ...form, transport: v as Transport })
-                }
-                options={[
-                  {
-                    value: "stdio",
-                    label: (
-                      <span className="flex flex-col">
-                        <span>stdio</span>
-                        <span className="text-muted-foreground text-xs">
-                          {t("settings.mcp.stdioDesc")}
-                        </span>
-                      </span>
-                    ),
-                  },
-                  {
-                    value: "http",
-                    label: (
-                      <span className="flex flex-col">
-                        <span>http</span>
-                        <span className="text-muted-foreground text-xs">
-                          {t("settings.mcp.httpDesc")}
-                        </span>
-                      </span>
-                    ),
-                  },
-                ]}
-                className="w-full"
-              />
-            </label>
-            {form.transport === "stdio" ? (
-              <>
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium">
-                    {t("settings.mcp.command")}
-                  </span>
-                  <Input
-                    data-testid="mcp-command"
-                    value={form.command}
-                    onChange={(e) =>
-                      setForm({ ...form, command: e.target.value })
-                    }
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium">{t("settings.mcp.args")}</span>
-                  <Input
-                    data-testid="mcp-args"
-                    value={form.args}
-                    onChange={(e) => setForm({ ...form, args: e.target.value })}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium">{t("settings.mcp.env")}</span>
-                  <textarea
-                    data-testid="mcp-env"
-                    value={form.env}
-                    onChange={(e) => setForm({ ...form, env: e.target.value })}
-                    rows={3}
-                    className="rounded-md border bg-transparent px-3 py-2 font-mono text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  />
-                </label>
-              </>
-            ) : (
-              <>
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium">{t("settings.mcp.url")}</span>
-                  <Input
-                    data-testid="mcp-url"
-                    value={form.url}
-                    onChange={(e) => setForm({ ...form, url: e.target.value })}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium">
-                    {t("settings.mcp.headers")}
-                  </span>
-                  <textarea
-                    data-testid="mcp-headers"
-                    value={form.headers}
-                    onChange={(e) =>
-                      setForm({ ...form, headers: e.target.value })
-                    }
-                    rows={3}
-                    placeholder={t("settings.mcp.headersPlaceholder")}
-                    className="rounded-md border bg-transparent px-3 py-2 font-mono text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  />
-                </label>
-              </>
-            )}
-            {formError ? (
-              <p data-testid="mcp-form-error" className="text-destructive text-xs">
-                {formError}
-              </p>
-            ) : null}
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                data-testid="mcp-cancel"
-                onClick={cancel}
-              >
-                {t("settings.mcp.cancel")}
-              </Button>
-              <Button
-                size="sm"
-                data-testid="mcp-save"
-                disabled={saving}
-                onClick={() => void save()}
-              >
-                {saving
-                  ? t("settings.mcp.testing")
-                  : t("settings.mcp.save")}
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
         {pluginServers.length > 0 ? (
           <section
             data-testid="mcp-plugin-servers"
@@ -663,6 +518,176 @@ export function McpSection() {
           {t("settings.mcp.footer")}
         </p>
       </div>
+      <Dialog
+        open={form !== null}
+        onOpenChange={(open) => {
+          if (!open && !saving) cancel();
+        }}
+      >
+        {form ? (
+          <DialogContent
+            data-testid="mcp-server-form"
+            className="flex max-h-[85vh] max-w-lg flex-col gap-4"
+          >
+            <DialogHeader className="text-start">
+              <DialogTitle>
+                {editingExisting
+                  ? t("settings.mcp.editServerTitle", { id: form.id })
+                  : t("settings.mcp.addServer")}
+              </DialogTitle>
+              <DialogDescription>{t("settings.mcp.infoBanner")}</DialogDescription>
+            </DialogHeader>
+            <div className="-mx-6 flex min-h-0 flex-col gap-3 overflow-y-auto px-6">
+              {!editingExisting && clipboardReadable ? (
+                <div className="border-b pb-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid="mcp-import"
+                    onClick={() => void importFromClipboard()}
+                  >
+                    {t("settings.mcp.import")}
+                  </Button>
+                </div>
+              ) : null}
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">{t("settings.mcp.serverName")}</span>
+                <Input
+                  data-testid="mcp-server-id"
+                  value={form.id}
+                  disabled={editingExisting}
+                  onChange={(e) => setForm({ ...form, id: e.target.value })}
+                  placeholder={
+                    editingExisting
+                      ? undefined
+                      : t("settings.mcp.serverNamePlaceholder")
+                  }
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">{t("settings.mcp.transport")}</span>
+                <Select
+                  testId="mcp-transport"
+                  value={form.transport}
+                  onValueChange={(v) =>
+                    setForm({ ...form, transport: v as Transport })
+                  }
+                  options={[
+                    {
+                      value: "stdio",
+                      label: (
+                        <span className="flex flex-col">
+                          <span>stdio</span>
+                          <span className="text-muted-foreground text-xs">
+                            {t("settings.mcp.stdioDesc")}
+                          </span>
+                        </span>
+                      ),
+                    },
+                    {
+                      value: "http",
+                      label: (
+                        <span className="flex flex-col">
+                          <span>http</span>
+                          <span className="text-muted-foreground text-xs">
+                            {t("settings.mcp.httpDesc")}
+                          </span>
+                        </span>
+                      ),
+                    },
+                  ]}
+                  className="w-full"
+                />
+              </label>
+              {form.transport === "stdio" ? (
+                <>
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="font-medium">
+                      {t("settings.mcp.command")}
+                    </span>
+                    <Input
+                      data-testid="mcp-command"
+                      value={form.command}
+                      onChange={(e) =>
+                        setForm({ ...form, command: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="font-medium">{t("settings.mcp.args")}</span>
+                    <Input
+                      data-testid="mcp-args"
+                      value={form.args}
+                      onChange={(e) => setForm({ ...form, args: e.target.value })}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="font-medium">{t("settings.mcp.env")}</span>
+                    <textarea
+                      data-testid="mcp-env"
+                      value={form.env}
+                      onChange={(e) => setForm({ ...form, env: e.target.value })}
+                      rows={3}
+                      className="rounded-md border bg-transparent px-3 py-2 font-mono text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    />
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="font-medium">{t("settings.mcp.url")}</span>
+                    <Input
+                      data-testid="mcp-url"
+                      value={form.url}
+                      onChange={(e) => setForm({ ...form, url: e.target.value })}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="font-medium">
+                      {t("settings.mcp.headers")}
+                    </span>
+                    <textarea
+                      data-testid="mcp-headers"
+                      value={form.headers}
+                      onChange={(e) =>
+                        setForm({ ...form, headers: e.target.value })
+                      }
+                      rows={3}
+                      placeholder={t("settings.mcp.headersPlaceholder")}
+                      className="rounded-md border bg-transparent px-3 py-2 font-mono text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    />
+                  </label>
+                </>
+              )}
+              {formError ? (
+                <p data-testid="mcp-form-error" className="text-destructive text-xs">
+                  {formError}
+                </p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                size="sm"
+                data-testid="mcp-cancel"
+                onClick={cancel}
+              >
+                {t("settings.mcp.cancel")}
+              </Button>
+              <Button
+                size="sm"
+                data-testid="mcp-save"
+                disabled={saving}
+                onClick={() => void save()}
+              >
+                {saving
+                  ? t("settings.mcp.testing")
+                  : t("settings.mcp.save")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
       <McpServerDetailDialog
         open={detail !== null}
         onOpenChange={(open) => {

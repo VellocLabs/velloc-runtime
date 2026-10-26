@@ -1398,6 +1398,7 @@ export const ja: Messages = {
   // ── 設定 — MCP ────────────────────────────────────────────────────────
   'settings.mcp.title': 'MCP サーバー',
   'settings.mcp.addServer': 'サーバーを追加',
+  'settings.mcp.editServerTitle': '{id} を編集',
   'settings.mcp.infoBanner': 'MCP サーバーの変更は新しいセッションから有効になります。',
   'settings.mcp.none': 'MCP サーバーが設定されていません。',
   'settings.mcp.pluginServers': 'プラグインから',

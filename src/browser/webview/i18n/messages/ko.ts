@@ -1395,6 +1395,7 @@ export const ko: Messages = {
   // ── 설정 — MCP ────────────────────────────────────────────────────────
   'settings.mcp.title': 'MCP 서버',
   'settings.mcp.addServer': '서버 추가',
+  'settings.mcp.editServerTitle': '{id} 편집',
   'settings.mcp.infoBanner': 'MCP 서버 변경사항은 새 세션부터 적용됩니다.',
   'settings.mcp.none': '설정된 MCP 서버가 없습니다.',
   'settings.mcp.pluginServers': '플러그인 제공',

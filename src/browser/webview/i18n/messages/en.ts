@@ -1457,6 +1457,7 @@ export const en = {
   // ── Settings — MCP ─────────────────────────────────────────────────────
   'settings.mcp.title': 'MCP Servers',
   'settings.mcp.addServer': 'Add server',
+  'settings.mcp.editServerTitle': 'Edit {id}',
   'settings.mcp.infoBanner': 'MCP server changes take effect in a new session.',
   'settings.mcp.none': 'No MCP servers configured.',
   'settings.mcp.pluginServers': 'From plugins',

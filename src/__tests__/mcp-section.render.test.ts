@@ -15,15 +15,16 @@ import type { NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge
 import { en } from '../browser/webview/i18n/messages/en'
 
 /**
- * McpSection add form (F-10): the transport select swaps the conditional
- * fields, a transport's required field is checked before any connection
- * test, and Cancel closes the form without writing anything.
+ * McpSection add form (F-10): the form opens in a dialog, the transport
+ * select swaps the conditional fields, a transport's required field is
+ * checked before any connection test, and Cancel closes the form without
+ * writing anything.
  */
 
-function makeBridge() {
+function makeBridge(servers: Record<string, unknown> = {}) {
   const bridge = {
     request: vi.fn(async (route: { action: string }) => {
-      if (route.action === 'list') return { servers: {} }
+      if (route.action === 'list') return { servers }
       throw new Error(`unexpected mcpSettings.${route.action}`)
     }),
     subscribeEvents: () => () => {},
@@ -114,6 +115,45 @@ describe('McpSection add form', () => {
     fireEvent.click(screen.getByTestId('mcp-cancel'))
     await waitFor(() => expect(exists('mcp-save')).toBe(false))
     expect(screen.queryAllByTestId(/^mcp-server-row-/)).toHaveLength(0)
+    expect(requestedActions(bridge).filter((a) => a !== 'list')).toEqual([])
+  })
+})
+
+describe('McpSection form dialog', () => {
+  it('Add server opens the form in a dialog, not in the page', async () => {
+    const bridge = makeBridge()
+    const { container } = renderSection(bridge)
+    fireEvent.click(await screen.findByTestId('mcp-add-server'))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.getAttribute('data-testid')).toBe('mcp-server-form')
+    expect(dialog.textContent).toContain(en['settings.mcp.addServer'])
+    expect(dialog.contains(screen.getByTestId('mcp-server-id'))).toBe(true)
+    expect(dialog.contains(screen.getByTestId('mcp-save'))).toBe(true)
+    expect(container.contains(screen.getByTestId('mcp-server-id'))).toBe(false)
+  })
+
+  it('Edit opens the dialog titled with the server, its name locked', async () => {
+    const bridge = makeBridge({ github: { transport: 'stdio', command: 'gh-mcp' } })
+    renderSection(bridge)
+    fireEvent.click(await screen.findByRole('button', { name: en['settings.mcp.editAria'].replace('{id}', 'github') }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toContain(en['settings.mcp.editServerTitle'].replace('{id}', 'github'))
+    const name = screen.getByTestId('mcp-server-id') as HTMLInputElement
+    expect(name.value).toBe('github')
+    expect(name.disabled).toBe(true)
+    expect((screen.getByTestId('mcp-command') as HTMLInputElement).value).toBe('gh-mcp')
+  })
+
+  it('Escape closes the dialog and writes nothing', async () => {
+    const bridge = makeBridge()
+    renderSection(bridge)
+    fireEvent.click(await screen.findByTestId('mcp-add-server'))
+    const dialog = await screen.findByRole('dialog')
+
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(requestedActions(bridge).filter((a) => a !== 'list')).toEqual([])
   })
 })

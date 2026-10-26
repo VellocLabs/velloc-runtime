@@ -1375,6 +1375,7 @@ export const zh: Messages = {
   // ── 设置 — MCP ────────────────────────────────────────────────────────
   'settings.mcp.title': 'MCP 服务器',
   'settings.mcp.addServer': '添加服务器',
+  'settings.mcp.editServerTitle': '编辑 {id}',
   'settings.mcp.infoBanner': 'MCP 服务器的更改在新会话中生效。',
   'settings.mcp.none': '尚未配置 MCP 服务器。',
   'settings.mcp.pluginServers': '来自插件',
