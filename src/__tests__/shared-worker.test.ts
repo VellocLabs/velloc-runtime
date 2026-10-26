@@ -4252,6 +4252,31 @@ describe('SharedWorkerSessionManager', () => {
       internals().sessions.delete('s')
     })
 
+    it('a CLI session’s store that overwrote its recorded conversation id before binding gets it back on bind (F-34)', async () => {
+      installStorage()
+      const record = { cli: 'codex', id: '0b7f3c2e-9a41-4d6b-8f0e-5c2d1a3b4e6f' }
+      internals().sessions.set('s', {
+        templateType: 'cli-codex',
+        background: true,
+        worker: { receiveFrame: vi.fn(async () => {}), getSnapshot: () => ({ messageCount: 0, messages: [] }) },
+        ports: new Set(),
+      })
+      const store = (manager as unknown as { cliConversationStore(): CliConversationStore }).cliConversationStore()
+      await store.record('s', record as never)
+      // The worker's store, loaded before the record, persists its own metadata ahead of its bind.
+      metas.set('s', {
+        schemaVersion: 1,
+        sessionId: 's',
+        updatedAt: 10,
+        metadata: { templateType: 'cli-codex', createdAt: 5 },
+      })
+      const updateSessionMetadata = vi.fn(async () => ({}))
+      const stale = { getSessionMetadata: async () => ({ templateType: 'cli-codex', createdAt: 5 }), updateSessionMetadata }
+      await manager.bindSessionRuntime('s', stale as never, { templateType: 'cli-codex' })
+      expect(updateSessionMetadata).toHaveBeenCalledWith(expect.objectContaining({ cliConversation: record }))
+      internals().sessions.delete('s')
+    })
+
     it('a CLI session’s automatic title reaches the session list and is not a rename (F-34)', async () => {
       installStorage()
       const cli: Record<string, unknown> = {

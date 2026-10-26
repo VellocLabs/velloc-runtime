@@ -397,6 +397,10 @@ export class SharedWorkerSessionManager {
   // row. Only titles from before `lifetimeStartedAt` — later ones still have
   // their registry record. Cleared on dispose.
   private readonly recoveredTitles = new Map<string, RecoveredTitleRow[]>()
+  // The conversation each CLI session recorded in this runtime (F-34): a
+  // worker's store persists its own metadata before it binds, which can
+  // overwrite the record on disk, so the bind restores it from here.
+  private readonly recordedCliConversations = new Map<string, CliConversationRecord>()
   private readonly lifetimeStartedAt = Date.now()
   // Sessions whose restart-recovered drawer rows have already been rebuilt this
   // lifetime — the LAZY gate. The transcript scan runs at most once per session,
@@ -1507,16 +1511,19 @@ export class SharedWorkerSessionManager {
       metadata = undefined
     }
     if (!isCurrentBind()) return false
-    // A CLI session's conversation id may have been written to disk after
-    // this store loaded; the identity write below must not drop it (F-34).
-    let diskCliConversation: unknown
+    // A CLI session's conversation id may have been recorded after this
+    // store loaded; the identity write below must not drop it (F-34).
+    let knownCliConversation: unknown
     if (cliOfTypeInAnyChannel(templateType) !== undefined && metadata?.cliConversation === undefined) {
-      try {
-        diskCliConversation = (await this.storage?.readSessionMeta(sessionId))?.metadata?.cliConversation
-      } catch {
-        diskCliConversation = undefined
+      knownCliConversation = this.recordedCliConversations.get(sessionId)
+      if (knownCliConversation === undefined) {
+        try {
+          knownCliConversation = (await this.storage?.readSessionMeta(sessionId))?.metadata?.cliConversation
+        } catch {
+          knownCliConversation = undefined
+        }
+        if (!isCurrentBind()) return false
       }
-      if (!isCurrentBind()) return false
     }
     const pendingPinned = entry.pendingPinned
     // CRITICAL merged identity write FIRST — the worker awaits this bind
@@ -1548,7 +1555,7 @@ export class SharedWorkerSessionManager {
         ? { teammateName: initMeta.teammateName }
         : {}),
       ...(pendingPinned !== undefined ? { pinned: pendingPinned } : {}),
-      ...(diskCliConversation !== undefined ? { cliConversation: diskCliConversation } : {}),
+      ...(knownCliConversation !== undefined ? { cliConversation: knownCliConversation } : {}),
     }
     let persisted = true
     if (!metadata || Object.keys(patch).length > 0) {
@@ -2844,6 +2851,9 @@ export class SharedWorkerSessionManager {
       },
       refreshSummary: sessionId => this.summaryRepo.refreshFsSummary(sessionId),
       writeNewSession: args => this.writeSessionBundle({ ...args, entries: [], toolDetails: [] }),
+      remember: (sessionId, record) => {
+        this.recordedCliConversations.set(sessionId, record)
+      },
     })
   }
 
@@ -2919,6 +2929,7 @@ export class SharedWorkerSessionManager {
       // dispose worker, remove entry).
       await this.disposeManagedSession(sessionId, { fireStop: true })
       if (cliLog) await this.bootServices.terminals.eraseCliConversation(cliLog.record, cliLog.cwd)
+      this.recordedCliConversations.delete(sessionId)
       this.sessionMeta.delete(sessionId)
       this.fsSummaries.delete(sessionId)
       this.forgetSkillEvents(sessionId)

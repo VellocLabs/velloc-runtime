@@ -43,6 +43,8 @@ export type CliConversationStoreDeps = {
     projectRoot?: string
     templateType?: string
   }): Promise<void>
+  /** Told of every record before it is written, so a later bind can restore it. */
+  remember?(sessionId: string, record: CliConversationRecord): void
   now?(): number
 }
 
@@ -64,6 +66,7 @@ export function createCliConversationStore(deps: CliConversationStoreDeps): CliC
       return parseCliConversation(metadata?.cliConversation)
     },
     record: async (sessionId, record) => {
+      deps.remember?.(sessionId, record)
       const storage = deps.storage()
       if (!storage) throw new Error('session storage is not available')
       const entry = deps.entry(sessionId)

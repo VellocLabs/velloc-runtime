@@ -124,6 +124,29 @@ describe('CLI conversation store', () => {
     expect(metadata.cliConversation).toEqual({ cli: 'codex', id: CONVERSATION })
   })
 
+  it('tells its owner of a record before writing it', async () => {
+    const order: string[] = []
+    const store = createCliConversationStore({
+      storage: () => ({
+        readSessionMeta: async () => null,
+        writeSessionMeta: async () => {},
+      }),
+      entry: () => undefined,
+      ensureRouting: async () => {
+        order.push('route')
+      },
+      refreshSummary: async () => {},
+      writeNewSession: async () => {
+        order.push('write')
+      },
+      remember: (sessionId, record) => {
+        order.push(`remember ${sessionId} ${record.id}`)
+      },
+    })
+    await store.record('s1', { cli: 'codex', id: CONVERSATION })
+    expect(order).toEqual([`remember s1 ${CONVERSATION}`, 'route', 'write'])
+  })
+
   it('reads nothing for a missing or malformed record, and refuses to record without storage', async () => {
     const r = rig({ meta: { s1: existing({ cliConversation: { cli: 'codex', id: '--resume x' } }) } })
     expect(await r.store.read('s1')).toBeUndefined()
