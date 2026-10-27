@@ -84,6 +84,14 @@ describe('McpSignInPanel', () => {
     expect(screen.queryByTestId('mcp-sign-in-error')).toBeNull()
   })
 
+  it('says a signed-in server whose renewal failed is still signed in', () => {
+    panel(controls({ url: URL_, phase: 'signed-in', lastError: 'HTTP 503' }))
+    expect(screen.getByTestId('mcp-sign-out')).toBeTruthy()
+    expect(screen.getByTestId('mcp-sign-in-error').textContent).toBe(
+      en['mcpAuth.renewFailed'].replace('{reason}', 'HTTP 503'),
+    )
+  })
+
   it('shows the last error, and the notes for no host or no grant', () => {
     panel(controls({ url: URL_, phase: 'needs-sign-in', lastError: 'access_denied' }))
     expect(screen.getByTestId('mcp-sign-in-error').textContent).toBe(

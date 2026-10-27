@@ -920,6 +920,7 @@ export const ja: Messages = {
   'mcpAuth.clientId': 'クライアント ID',
   'mcpAuth.clientSecret': 'クライアントシークレット（任意）',
   'mcpAuth.failed': 'ログインに失敗しました：{reason}',
+  'mcpAuth.renewFailed': 'ログインを更新できませんでした：{reason}。ログイン状態は保持されています。次回の接続時に再試行します。',
   'mcpAuth.unavailable': 'このバージョンの {product} は MCP サーバーにログインできません。{product} を更新してからもう一度お試しください。',
   'mcpAuth.notAllowed': '{product} を実行しているコンピューターでログインしてください。',
   'mcpServers.toolsOne': '1 個のツール',

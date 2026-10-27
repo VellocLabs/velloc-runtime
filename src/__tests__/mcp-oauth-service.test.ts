@@ -3,6 +3,7 @@ import {
   MCP_OAUTH_REDIRECT_URI,
   McpOAuthService,
   McpSignInClosedError,
+  McpSignInRenewalError,
   type McpOAuthHost,
   type McpOAuthProtocolHelpers,
   type McpSignInCapture,
@@ -239,6 +240,47 @@ describe('McpOAuthService sign-in', () => {
     expect(JSON.stringify([...r.files.values()])).not.toContain('my-secret')
   })
 
+  it('a typed client refused at the code exchange is forgotten and asked for again', async () => {
+    const r = rig({ registration: false })
+    r.tokenAnswers.push({ status: 401, body: JSON.stringify({ error: 'invalid_client', error_description: 'Unknown client' }) })
+    await r.service.signIn({ url: SERVER, clientId: 'typo-client', clientSecret: 'my-secret' })
+    await settled(r)
+    expect(r.phase()).toMatchObject({
+      phase: 'needs-sign-in',
+      needsClient: true,
+      lastError: expect.stringMatching(/Unknown client/),
+    })
+    expect(r.secrets.has(r.names.clientSecret)).toBe(false)
+    expect([...r.files.values()].join('\n')).not.toContain('typo-client')
+
+    await r.service.signIn({ url: SERVER, clientId: 'my-client' })
+    await settled(r)
+    expect(r.phase()?.phase).toBe('signed-in')
+    expect(r.forms.at(-1)!.form.client_id).toBe('my-client')
+  })
+
+  it('a registered client the authorization page does not know is registered afresh next time', async () => {
+    const r = rig({
+      window: (_url, state) => `${MCP_OAUTH_REDIRECT_URI}?error=unauthorized_client&state=${state}`,
+    })
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.phase()).toMatchObject({ phase: 'needs-sign-in', lastError: 'unauthorized_client' })
+    expect(r.phase()?.needsClient).toBeUndefined()
+    expect([...r.files.values()].join('\n')).not.toContain('dyn-client')
+
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.oauth.registerClient).toHaveBeenCalledTimes(2)
+  })
+
+  it('a provider refusal that is not about the client keeps the client', async () => {
+    const r = rig({ window: (_url, state) => `${MCP_OAUTH_REDIRECT_URI}?error=access_denied&state=${state}` })
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect([...r.files.values()].join('\n')).toContain('dyn-client')
+  })
+
   it('opens the window with the asking client\'s title, and none without one', async () => {
     const titled = rig()
     await titled.service.signIn({ url: SERVER, windowTitle: 'Sign in to notion' })
@@ -391,6 +433,137 @@ describe('McpOAuthService tokens', () => {
     expect(r.phase()?.phase).toBe('needs-sign-in')
     expect(r.phase()?.lastError).toMatch(/invalid_grant/)
     expect(await r.service.connectAuth(SERVER)).toBe('required')
+  })
+
+  it('a refresh that cannot reach the token endpoint keeps the sign-in and tries again', async () => {
+    const r = await signedIn()
+    vi.mocked(r.host.postForm).mockRejectedValueOnce(new Error('net::ERR_INTERNET_DISCONNECTED'))
+    r.advance(3600 * 1000 - 30_000)
+    const early = await r.service.connectAuth(SERVER)
+    expect((early as { headers: Record<string, string> }).headers).toEqual({
+      Authorization: `Bearer {{secret:${r.names.access}}}`,
+    })
+    expect(r.secrets.get(r.names.access)?.value).toBe('tok-access')
+    expect(r.secrets.get(r.names.refresh)?.value).toBe('tok-refresh')
+    expect(r.phase()).toEqual({
+      url: SERVER_NORMALIZED,
+      phase: 'signed-in',
+      lastError: 'net::ERR_INTERNET_DISCONNECTED',
+    })
+    expect(r.authChanges.at(-1)).toEqual([SERVER_NORMALIZED, true])
+
+    r.advance(60_000)
+    vi.mocked(r.host.postForm).mockRejectedValueOnce(new Error('net::ERR_NAME_NOT_RESOLVED'))
+    await expect(r.service.connectAuth(SERVER)).rejects.toBeInstanceOf(McpSignInRenewalError)
+    expect(r.secrets.has(r.names.refresh)).toBe(true)
+    expect([...r.files.values()].join('\n')).toContain('"tokens"')
+
+    r.tokenAnswers.push({ status: 200, body: JSON.stringify({ access_token: 'tok-access-2', expires_in: 3600 }) })
+    const renewed = await r.service.connectAuth(SERVER)
+    expect(renewed).not.toBe('required')
+    expect(r.secrets.get(r.names.access)?.value).toBe('tok-access-2')
+    expect(r.phase()).toEqual({ url: SERVER_NORMALIZED, phase: 'signed-in' })
+  })
+
+  it('a token endpoint answering 5xx keeps the sign-in, with or without an OAuth error', async () => {
+    for (const answer of [
+      { status: 503, body: 'Service Unavailable' },
+      { status: 503, body: JSON.stringify({ error: 'temporarily_unavailable' }) },
+      { status: 500, body: JSON.stringify({ error: 'server_error' }) },
+    ]) {
+      const r = await signedIn()
+      r.tokenAnswers.push(answer)
+      await expect(r.service.handleUnauthorized(SERVER)).rejects.toBeInstanceOf(McpSignInRenewalError)
+      expect(r.secrets.has(r.names.access)).toBe(true)
+      expect(r.secrets.has(r.names.refresh)).toBe(true)
+      expect(r.phase()?.phase).toBe('signed-in')
+      expect(r.phase()?.lastError).toBeTruthy()
+      expect(r.authChanges.at(-1)).toEqual([SERVER_NORMALIZED, true])
+    }
+  })
+
+  it('invalid_grant near expiry drops the sign-in but keeps the client', async () => {
+    const r = await signedIn()
+    r.tokenAnswers.push({ status: 400, body: JSON.stringify({ error: 'invalid_grant' }) })
+    r.advance(3600 * 1000 - 30_000)
+    expect(await r.service.connectAuth(SERVER)).toBe('required')
+    expect(r.secrets.has(r.names.access)).toBe(false)
+    expect(r.secrets.has(r.names.refresh)).toBe(false)
+    expect(r.authChanges.at(-1)).toEqual([SERVER_NORMALIZED, false])
+
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.oauth.registerClient).toHaveBeenCalledTimes(1)
+    expect(r.phase()?.phase).toBe('signed-in')
+  })
+
+  it('a refresh refused with invalid_client discards the registered client, so the next sign-in registers again', async () => {
+    const r = await signedIn()
+    r.tokenAnswers.push({ status: 401, body: JSON.stringify({ error: 'invalid_client' }) })
+    expect(await r.service.handleUnauthorized(SERVER)).toBe(false)
+    expect(r.secrets.has(r.names.refresh)).toBe(false)
+    expect([...r.files.values()].join('\n')).not.toContain('dyn-client')
+
+    vi.mocked(r.oauth.registerClient).mockResolvedValueOnce({
+      client_id: 'dyn-client-2',
+      redirect_uris: [MCP_OAUTH_REDIRECT_URI],
+    } as never)
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.oauth.registerClient).toHaveBeenCalledTimes(2)
+    expect(r.forms.at(-1)!.form.client_id).toBe('dyn-client-2')
+    expect(r.phase()?.phase).toBe('signed-in')
+  })
+
+  it('a refresh refused with unauthorized_client asks again for a typed client and drops its secret', async () => {
+    const r = rig({ registration: false })
+    await r.service.signIn({ url: SERVER, clientId: 'my-client', clientSecret: 'my-secret' })
+    await settled(r)
+    expect(r.phase()?.phase).toBe('signed-in')
+    r.tokenAnswers.push({ status: 400, body: JSON.stringify({ error: 'unauthorized_client' }) })
+    expect(await r.service.handleUnauthorized(SERVER)).toBe(false)
+    expect(r.secrets.has(r.names.clientSecret)).toBe(false)
+
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.phase()).toMatchObject({ phase: 'needs-sign-in', needsClient: true })
+  })
+
+  it('sign-out during a refresh in flight stays signed out', async () => {
+    const r = await signedIn()
+    let answer: ((value: { status: number; body: string }) => void) | undefined
+    vi.mocked(r.host.postForm).mockImplementationOnce(() => new Promise(resolve => (answer = resolve)))
+    r.advance(3600 * 1000 - 30_000)
+    const connecting = r.service.connectAuth(SERVER)
+    await vi.waitFor(() => expect(answer).toBeTypeOf('function'))
+
+    await r.service.signOut(SERVER)
+    answer!({
+      status: 200,
+      body: JSON.stringify({ access_token: 'tok-late', refresh_token: 'tok-late-refresh', expires_in: 3600 }),
+    })
+    expect(await connecting).toBe('required')
+    expect(r.secrets.has(r.names.access)).toBe(false)
+    expect(r.secrets.has(r.names.refresh)).toBe(false)
+    expect(r.phase()?.phase).toBe('needs-sign-in')
+    expect([...r.files.values()].join('\n')).not.toContain('"tokens"')
+  })
+
+  it('a refresh that lands after a new sign-in leaves the new tokens alone', async () => {
+    const r = await signedIn()
+    let answer: ((value: { status: number; body: string }) => void) | undefined
+    vi.mocked(r.host.postForm).mockImplementationOnce(() => new Promise(resolve => (answer = resolve)))
+    r.advance(3600 * 1000 - 30_000)
+    const connecting = r.service.connectAuth(SERVER)
+    await vi.waitFor(() => expect(answer).toBeTypeOf('function'))
+
+    r.tokenAnswers.push({ status: 200, body: JSON.stringify({ access_token: 'tok-new', expires_in: 3600 }) })
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    answer!({ status: 200, body: JSON.stringify({ access_token: 'tok-late', expires_in: 3600 }) })
+    expect(await connecting).not.toBe('required')
+    expect(r.secrets.get(r.names.access)?.value).toBe('tok-new')
+    expect(r.phase()?.phase).toBe('signed-in')
   })
 
   it('a 401 with a working refresh asks for one retry', async () => {

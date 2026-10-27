@@ -143,7 +143,9 @@ export function McpSignInPanel({
       </div>
       {error ? (
         <p role="alert" data-testid="mcp-sign-in-error" className="text-destructive text-xs">
-          {t("mcpAuth.failed", { reason: error })}
+          {requestError === null && phase === "signed-in"
+            ? t("mcpAuth.renewFailed", { reason: error })
+            : t("mcpAuth.failed", { reason: error })}
         </p>
       ) : null}
     </section>

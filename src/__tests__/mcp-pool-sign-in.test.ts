@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MCPPool } from '../mcp/pool'
 import type { McpBridgeOperations, NexusMcpServerLaunchConfig } from '../mcp/nativeBridge'
 import { configureMcpOAuthService } from '../mcp/oauth/mcpOAuthHolder'
-import type { McpConnectAuth, McpOAuthService } from '../mcp/oauth/McpOAuthService'
+import { McpSignInRenewalError, type McpConnectAuth, type McpOAuthService } from '../mcp/oauth/McpOAuthService'
 import { isMcpUnauthorized, mcpSignInUrl } from '../mcp/unauthorized'
 import { pluginServerUrls, startInstallSignIns } from '../mcp/oauth/signInAfterInstall'
 import { installDirectoryTarget, type DirectoryOfferDeps } from '../customize/directoryOffer'
@@ -151,6 +151,32 @@ describe('MCPPool sign-in', () => {
     await p.init()
     await expect(p.callTool('notion', 'search', {})).rejects.toThrow(/needs the person to sign in/)
     expect(p.getServer('notion')?.status).toBe('needs-auth')
+  })
+
+  it('a sign-in that cannot be renewed yet leaves the server failed, not waiting for a sign-in', async () => {
+    const service = fakeService(SIGNED_IN)
+    service.connectAuth.mockRejectedValueOnce(new McpSignInRenewalError('HTTP 503'))
+    const b = bridge()
+    const p = pool(b)
+    await p.init()
+    expect(b.connect).not.toHaveBeenCalled()
+    expect(p.getServer('notion')?.status).toBe('failed')
+    expect(p.getServer('notion')?.error).toMatch(/could not be renewed: HTTP 503/)
+    expect(service.markRequired).not.toHaveBeenCalled()
+
+    await p.refresh()
+    expect(p.getServer('notion')?.status).toBe('connected')
+  })
+
+  it('a call answering 401 whose renewal cannot run yet fails the server and keeps the sign-in', async () => {
+    const service = fakeService(SIGNED_IN)
+    service.handleUnauthorized.mockRejectedValueOnce(new McpSignInRenewalError('offline'))
+    const p = pool(bridge({ callTool: vi.fn(async () => ({ ok: false, error: 'HTTP 401' })) }))
+    await p.init()
+    await expect(p.callTool('notion', 'search', {})).rejects.toThrow()
+    expect(p.getServer('notion')?.status).toBe('failed')
+    expect(p.getServer('notion')?.error).toMatch(/could not be renewed: offline/)
+    expect(service.markRequired).not.toHaveBeenCalled()
   })
 })
 

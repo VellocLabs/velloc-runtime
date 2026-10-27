@@ -934,6 +934,7 @@ export const fr: Messages = {
   'mcpAuth.clientId': 'ID client',
   'mcpAuth.clientSecret': 'Secret client (facultatif)',
   'mcpAuth.failed': 'Échec de la connexion : {reason}',
+  'mcpAuth.renewFailed': 'Impossible de renouveler la connexion : {reason}. Vous restez connecté ; une nouvelle tentative aura lieu à la prochaine connexion.',
   'mcpAuth.unavailable': 'Cette version de {product} ne peut pas se connecter aux serveurs MCP. Mettez {product} à jour et réessayez.',
   'mcpAuth.notAllowed': 'Connectez-vous depuis {product} sur l’ordinateur où il s’exécute.',
   'mcpServers.toolsOne': '1 outil',

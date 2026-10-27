@@ -36,16 +36,40 @@ export class McpSignInClosedError extends Error {
 }
 
 /** A sign-in the authorization server refused; `serverReason` is its own
- *  words (`error_description`, else `error`). */
+ *  words (`error_description`, else `error`), `oauthError` its OAuth `error`
+ *  code when it sent one. */
 export class McpSignInRefusedError extends Error {
   constructor(
     message: string,
     readonly serverReason: string,
+    readonly oauthError?: string,
   ) {
     super(message)
     this.name = 'McpSignInRefusedError'
   }
 }
+
+/** A held sign-in whose expired access token could not be renewed for a
+ *  reason that may pass (network, a server error). The sign-in is kept and
+ *  the next connect tries the renewal again. */
+export class McpSignInRenewalError extends Error {
+  constructor(readonly reason: string) {
+    super(`The sign-in could not be renewed: ${reason}`)
+    this.name = 'McpSignInRenewalError'
+  }
+}
+
+/** OAuth error codes by which an authorization server disowns the client. */
+const UNKNOWN_CLIENT_ERRORS = new Set(['invalid_client', 'unauthorized_client'])
+
+function oauthErrorOf(error: unknown): string | undefined {
+  return error instanceof McpSignInRefusedError ? error.oauthError : undefined
+}
+
+/** How a refresh ended: a new access token, the sign-in gone, a failure
+ *  that left the sign-in in place, or a sign-out or new sign-in that
+ *  replaced the tokens it was renewing. */
+type RefreshOutcome = 'renewed' | 'dropped' | 'failed' | 'superseded'
 
 /** The captured redirect of a sign-in window, and the window's last word. */
 export type McpSignInCapture = {
@@ -141,7 +165,7 @@ function parseTokenResponse(status: number, body: string): TokenResponse {
           : `HTTP ${status}`
     const message = `The token endpoint refused the request: ${reason}`
     if (typeof parsed.error_description === 'string' || typeof parsed.error === 'string') {
-      throw new McpSignInRefusedError(message, reason)
+      throw new McpSignInRefusedError(message, reason, typeof parsed.error === 'string' ? parsed.error : undefined)
     }
     throw new Error(message)
   }
@@ -169,7 +193,10 @@ export class McpOAuthService {
   private loading: Promise<McpOAuthRecords> | null = null
   private writeTail: Promise<void> = Promise.resolve()
   private readonly flows = new Map<string, Flow>()
-  private readonly refreshing = new Map<string, Promise<boolean>>()
+  private readonly refreshing = new Map<string, Promise<RefreshOutcome>>()
+  /** Bumped whenever a server's tokens are replaced or dropped; a refresh
+   *  that started under an older value writes nothing. */
+  private readonly generations = new Map<string, number>()
   private readonly needsClient = new Set<string>()
   private readonly needsCredentials = new Set<string>()
   private readonly classified = new Set<string>()
@@ -278,7 +305,9 @@ export class McpOAuthService {
   /**
    * What a connect to `rawUrl` sends: auth headers once signed in (refreshed
    * first when near expiry), `'required'` when the server wants a sign-in
-   * that is missing, null when nothing is known about it.
+   * that is missing, null when nothing is known about it. Throws
+   * `McpSignInRenewalError` when the access token has expired and its renewal
+   * failed for a reason that may pass; the sign-in is kept.
    */
   async connectAuth(rawUrl: string): Promise<McpConnectAuth | 'required' | null> {
     const found = await this.recordFor(rawUrl)
@@ -289,7 +318,12 @@ export class McpOAuthService {
     if (!host) return null
     const expiresAt = record.tokens.expiresAt
     if (expiresAt !== undefined && this.now() >= expiresAt - REFRESH_SKEW_MS) {
-      if (!(await this.refresh(key))) return 'required'
+      const outcome = await this.refresh(key)
+      if (!this.records?.[key]?.tokens) return 'required'
+      // A token still inside its lifetime is used while its renewal waits.
+      if (outcome === 'failed' && this.now() >= expiresAt) {
+        throw new McpSignInRenewalError(this.lastErrors.get(key) ?? 'unknown error')
+      }
     }
     const names = mcpOAuthSecretNames(key)
     return {
@@ -384,14 +418,24 @@ export class McpOAuthService {
   /**
    * `rawUrl` answered 401 to a request that carried its sign-in. True when a
    * refresh renewed the token (worth one retry); otherwise the sign-in is
-   * dropped and the server needs a new one.
+   * dropped and the server needs a new one. Throws `McpSignInRenewalError`,
+   * keeping the sign-in, when the refresh failed for a reason that may pass.
    */
   async handleUnauthorized(rawUrl: string): Promise<boolean> {
     const found = await this.recordFor(rawUrl)
     if (!found) return false
-    if (found.record.tokens?.hasRefresh && (await this.refresh(found.key))) return true
-    if (found.record.tokens || !found.record.required) {
-      await this.dropTokens(found.key, true)
+    const { key } = found
+    if (found.record.tokens?.hasRefresh) {
+      const outcome = await this.refresh(key)
+      if (outcome === 'renewed') return true
+      if (outcome === 'superseded') return this.records?.[key]?.tokens !== undefined
+      if (outcome === 'failed' && this.records?.[key]?.tokens) {
+        throw new McpSignInRenewalError(this.lastErrors.get(key) ?? 'unknown error')
+      }
+    }
+    const current = this.records?.[key] ?? found.record
+    if (current.tokens || !current.required) {
+      await this.dropTokens(key, true)
       this.announce(found.url, false)
     }
     return false
@@ -578,6 +622,12 @@ export class McpOAuthService {
     } catch (error) {
       if (signal.aborted) capture.close()
       else capture.finish({ ok: false, ...(error instanceof McpSignInRefusedError ? { reason: error.serverReason } : {}) })
+      if (!signal.aborted && UNKNOWN_CLIENT_ERRORS.has(oauthErrorOf(error) ?? '')) {
+        await this.discardClient(key, client)
+        if (!metadata.registration_endpoint && metadata.client_id_metadata_document_supported !== true) {
+          this.needsClient.add(key)
+        }
+      }
       throw error
     }
     capture.finish({ ok: true })
@@ -611,7 +661,7 @@ export class McpOAuthService {
     const refused = captured.searchParams.get('error')
     if (refused) {
       const reason = captured.searchParams.get('error_description') ?? refused
-      throw new McpSignInRefusedError(reason, reason)
+      throw new McpSignInRefusedError(reason, reason, refused)
     }
     const code = captured.searchParams.get('code')
     if (!code) throw new Error('The sign-in answer carried no authorization code.')
@@ -630,6 +680,7 @@ export class McpOAuthService {
     signal.throwIfAborted()
 
     const accessOrigin = originOf(url)
+    this.bumpGeneration(key)
     await host.setSecret(names.access, token.access_token, accessOrigin)
     if (token.refresh_token) await host.setSecret(names.refresh, token.refresh_token, tokenOrigin)
     this.put(key, {
@@ -653,8 +704,13 @@ export class McpOAuthService {
 
   // ---- refresh -------------------------------------------------------------
 
-  /** Renews the access token; false (and the sign-in dropped) when it cannot. */
-  private refresh(key: string): Promise<boolean> {
+  /**
+   * Renews the access token. The sign-in is dropped only when the
+   * authorization server refuses the refresh grant (`invalid_grant`) or the
+   * client (`invalid_client`, `unauthorized_client`, which also discards the
+   * stored client); any other failure keeps it and records the error.
+   */
+  private refresh(key: string): Promise<RefreshOutcome> {
     const running = this.refreshing.get(key)
     if (running) return running
     const run = this.runRefresh(key).finally(() => this.refreshing.delete(key))
@@ -662,47 +718,87 @@ export class McpOAuthService {
     return run
   }
 
-  private async runRefresh(key: string): Promise<boolean> {
+  private async runRefresh(key: string): Promise<RefreshOutcome> {
     const record = this.records?.[key]
     const tokens = record?.tokens
     const host = this.options.host(record?.url)
-    if (!record || !tokens || !host) return false
+    if (!record || !tokens || !host) return 'failed'
     if (!tokens.hasRefresh || !record.client) {
       await this.dropTokens(key, true)
       this.announce(record.url, false)
-      return false
+      return 'dropped'
     }
+    const generation = this.generationOf(key)
+    const current = () => this.generationOf(key) === generation
+    const client = record.client
     const names = mcpOAuthSecretNames(key)
     const form: Record<string, string> = {
       grant_type: 'refresh_token',
       refresh_token: secretPlaceholder(names.refresh),
-      client_id: record.client.clientId,
+      client_id: client.clientId,
     }
     if (tokens.resource) form.resource = tokens.resource
-    if (record.client.hasSecret) form.client_secret = secretPlaceholder(names.clientSecret)
+    if (client.hasSecret) form.client_secret = secretPlaceholder(names.clientSecret)
+    let token: TokenResponse
     try {
       const answer = await host.postForm(tokens.tokenEndpoint, form)
-      const token = parseTokenResponse(answer.status, answer.body)
-      await host.setSecret(names.access, token.access_token, tokens.accessOrigin)
-      if (token.refresh_token) {
-        await host.setSecret(names.refresh, token.refresh_token, originOf(tokens.tokenEndpoint))
-      }
-      const next = { ...tokens }
-      if (token.expires_in) next.expiresAt = this.now() + token.expires_in * 1000
-      else delete next.expiresAt
-      if (token.scope) next.scope = token.scope
-      this.put(key, { ...record, tokens: next })
-      await this.save()
-      return true
+      token = parseTokenResponse(answer.status, answer.body)
     } catch (error) {
+      if (!current()) return 'superseded'
       this.lastErrors.set(key, oneLine(error))
-      await this.dropTokens(key, true)
-      this.announce(record.url, false)
-      return false
+      const code = oauthErrorOf(error)
+      if (code === 'invalid_grant' || UNKNOWN_CLIENT_ERRORS.has(code ?? '')) {
+        if (code !== 'invalid_grant') await this.discardClient(key, client)
+        await this.dropTokens(key, true)
+        this.announce(record.url, false)
+        return 'dropped'
+      }
+      this.publish()
+      return 'failed'
     }
+    if (!current()) return 'superseded'
+    await host.setSecret(names.access, token.access_token, tokens.accessOrigin)
+    if (token.refresh_token) {
+      if (!current()) return 'superseded'
+      await host.setSecret(names.refresh, token.refresh_token, originOf(tokens.tokenEndpoint))
+    }
+    const latest = this.records?.[key]
+    if (!current() || !latest?.tokens) return 'superseded'
+    const next = { ...latest.tokens }
+    if (token.expires_in) next.expiresAt = this.now() + token.expires_in * 1000
+    else delete next.expiresAt
+    if (token.scope) next.scope = token.scope
+    this.put(key, { ...latest, tokens: next })
+    const hadError = this.lastErrors.delete(key)
+    await this.save()
+    if (hadError) this.publish()
+    return 'renewed'
+  }
+
+  private generationOf(key: string): number {
+    return this.generations.get(key) ?? 0
+  }
+
+  private bumpGeneration(key: string): void {
+    this.generations.set(key, this.generationOf(key) + 1)
+  }
+
+  /** Forgets `client` (and its secret) when it is still the one stored, so the
+   *  next sign-in registers a client again or asks the person for one. */
+  private async discardClient(key: string, client: NonNullable<McpOAuthRecord['client']>): Promise<void> {
+    const record = this.records?.[key]
+    const stored = record?.client
+    if (!record || !stored || stored.authServer !== client.authServer || stored.clientId !== client.clientId) return
+    if (stored.hasSecret) {
+      await this.options.host(record.url)?.deleteSecret(mcpOAuthSecretNames(key).clientSecret).catch(() => {})
+    }
+    const { client: _discarded, ...rest } = this.records?.[key] ?? record
+    this.put(key, rest)
+    await this.save()
   }
 
   private async dropTokens(key: string, publish: boolean): Promise<void> {
+    this.bumpGeneration(key)
     const record = this.records?.[key]
     if (!record) return
     const names = mcpOAuthSecretNames(key)
@@ -711,7 +807,7 @@ export class McpOAuthService {
       await host.deleteSecret(names.access).catch(() => {})
       if (record.tokens.hasRefresh) await host.deleteSecret(names.refresh).catch(() => {})
     }
-    const { tokens: _dropped, ...rest } = record
+    const { tokens: _dropped, ...rest } = this.records?.[key] ?? record
     this.put(key, { ...rest, required: true })
     await this.save()
     if (publish) this.publish()

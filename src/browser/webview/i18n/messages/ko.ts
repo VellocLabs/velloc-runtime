@@ -916,6 +916,7 @@ export const ko: Messages = {
   'mcpAuth.clientId': '클라이언트 ID',
   'mcpAuth.clientSecret': '클라이언트 시크릿(선택 사항)',
   'mcpAuth.failed': '로그인 실패: {reason}',
+  'mcpAuth.renewFailed': '로그인을 갱신하지 못했습니다: {reason}. 로그인 상태는 유지되며, 다음 연결 시 다시 시도합니다.',
   'mcpAuth.unavailable': '이 버전의 {product}에서는 MCP 서버에 로그인할 수 없습니다. {product}를 업데이트한 후 다시 시도하세요.',
   'mcpAuth.notAllowed': '{product}가 실행 중인 컴퓨터에서 로그인하세요.',
   'mcpServers.toolsOne': '도구 1개',

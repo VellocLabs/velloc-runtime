@@ -931,6 +931,7 @@ export const de: Messages = {
   'mcpAuth.clientId': 'Client-ID',
   'mcpAuth.clientSecret': 'Client-Secret (optional)',
   'mcpAuth.failed': 'Anmeldung fehlgeschlagen: {reason}',
+  'mcpAuth.renewFailed': 'Die Anmeldung konnte nicht erneuert werden: {reason}. Du bleibst angemeldet; beim nächsten Verbinden wird es erneut versucht.',
   'mcpAuth.unavailable': 'Diese Version von {product} kann sich nicht bei MCP-Servern anmelden. Aktualisiere {product} und versuche es erneut.',
   'mcpAuth.notAllowed': 'Melde dich in {product} auf dem Computer an, auf dem es läuft.',
   'mcpServers.toolsOne': '1 Tool',

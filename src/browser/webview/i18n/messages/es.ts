@@ -934,6 +934,7 @@ export const es: Messages = {
   'mcpAuth.clientId': 'ID de cliente',
   'mcpAuth.clientSecret': 'Secreto de cliente (opcional)',
   'mcpAuth.failed': 'No se pudo iniciar sesión: {reason}',
+  'mcpAuth.renewFailed': 'No se pudo renovar el inicio de sesión: {reason}. Sigues con la sesión iniciada; se volverá a intentar en la próxima conexión.',
   'mcpAuth.unavailable': 'Esta versión de {product} no puede iniciar sesión en servidores MCP. Actualiza {product} y vuelve a intentarlo.',
   'mcpAuth.notAllowed': 'Inicia sesión desde {product} en el equipo donde se ejecuta.',
   'mcpServers.toolsOne': '1 herramienta',

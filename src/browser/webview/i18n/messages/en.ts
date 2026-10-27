@@ -971,6 +971,7 @@ export const en = {
   'mcpAuth.clientId': 'Client ID',
   'mcpAuth.clientSecret': 'Client secret (optional)',
   'mcpAuth.failed': 'Sign-in failed: {reason}',
+  'mcpAuth.renewFailed': 'Couldn\'t renew the sign-in: {reason}. You are still signed in; it is tried again on the next connect.',
   'mcpAuth.unavailable': 'This version of {product} cannot sign in to MCP servers. Update {product} and try again.',
   'mcpAuth.notAllowed': 'Sign in from {product} on the computer it runs on.',
   'mcpServers.toolsOne': '1 tool',

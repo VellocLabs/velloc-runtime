@@ -908,6 +908,7 @@ export const zh: Messages = {
   'mcpAuth.clientId': '客户端 ID',
   'mcpAuth.clientSecret': '客户端密钥（可选）',
   'mcpAuth.failed': '登录失败：{reason}',
+  'mcpAuth.renewFailed': '无法续期登录：{reason}。你仍处于登录状态，下次连接时会重试。',
   'mcpAuth.unavailable': '此版本的 {product} 无法登录 MCP 服务器。请更新 {product} 后重试。',
   'mcpAuth.notAllowed': '请在运行 {product} 的电脑上登录。',
   'mcpServers.toolsOne': '1 个工具',

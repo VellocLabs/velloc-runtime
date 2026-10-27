@@ -11,7 +11,7 @@ import {
   type NexusMcpServerLaunchConfig,
 } from './nativeBridge'
 import { currentMcpOAuthService, onMcpOAuthServiceChanged } from './oauth/mcpOAuthHolder'
-import type { McpConnectAuth } from './oauth/McpOAuthService'
+import { McpSignInRenewalError, type McpConnectAuth } from './oauth/McpOAuthService'
 import { normalizeMcpServerUrl } from './oauth/oauthKeys'
 import { isMcpUnauthorized, mcpSignInRequiredMessage, mcpSignInUrl } from './unauthorized'
 import type {
@@ -462,7 +462,9 @@ export class MCPPool {
    * Runs `attempt` with the sign-in `url` holds (F-10). A sign-in the server
    * asked for but that is missing gives `placeholder()` without connecting; a
    * 401 with a sign-in that a refresh renews is tried once more; a 401 without
-   * one records that the server asks for a sign-in.
+   * one records that the server asks for a sign-in. A sign-in whose renewal
+   * failed for a reason that may pass leaves the server `failed`, still signed
+   * in, so a later refresh tries again.
    */
   private async withSignIn(
     url: string | undefined,
@@ -479,7 +481,16 @@ export class MCPPool {
       else if (server.status === 'needs-auth') await service.markRequired(url).catch(() => {})
       return server
     }
-    const auth = await service.connectAuth(url).catch(() => null)
+    const renewalFailed = (err: unknown, link: LiveServerLink): LiveServerLink | null =>
+      err instanceof McpSignInRenewalError ? { ...link, status: 'failed', error: err.message } : null
+    let auth: McpConnectAuth | 'required' | null
+    try {
+      auth = await service.connectAuth(url)
+    } catch (err) {
+      const failed = renewalFailed(err, placeholder())
+      if (failed) return failed
+      auth = null
+    }
     if (auth === 'required') return placeholder()
     let server = await attempt(auth ?? undefined)
     if (server.status !== 'needs-auth') return server
@@ -487,9 +498,15 @@ export class MCPPool {
       await service.markRequired(url)
       return server
     }
-    if (await service.handleUnauthorized(url)) {
-      const renewed = await service.connectAuth(url).catch(() => null)
-      if (renewed && renewed !== 'required') server = await attempt(renewed)
+    try {
+      if (await service.handleUnauthorized(url)) {
+        const renewed = await service.connectAuth(url).catch(() => null)
+        if (renewed && renewed !== 'required') server = await attempt(renewed)
+      }
+    } catch (err) {
+      const failed = renewalFailed(err, server)
+      if (!failed) throw err
+      server = failed
     }
     return server
   }
@@ -555,8 +572,9 @@ export class MCPPool {
     await this.connect({ name: server.name, ...server.config })
   }
 
-  /** Stop `server` and list it as needing a sign-in. */
-  private async parkNeedingSignIn(server: LiveServerLink): Promise<void> {
+  /** Stop `server` and list it as needing a sign-in, or as `failed` with
+   *  `failure` when its sign-in is kept but could not be renewed. */
+  private async parkNeedingSignIn(server: LiveServerLink, failure?: string): Promise<void> {
     if (this.servers.get(server.name) !== server) return
     if (server.nativeServerId !== undefined) {
       if (this.nativeBridge && server.status === 'connected') {
@@ -565,8 +583,8 @@ export class MCPPool {
     } else if (server.client) {
       await disconnectMCPServer(server)
     }
-    server.status = 'needs-auth'
-    server.error = mcpSignInRequiredMessage(server.name)
+    server.status = failure === undefined ? 'needs-auth' : 'failed'
+    server.error = failure ?? mcpSignInRequiredMessage(server.name)
     this.notifyServersChanged()
   }
 
@@ -575,7 +593,15 @@ export class MCPPool {
   private async recoverFromUnauthorized(server: LiveServerLink): Promise<boolean> {
     const url = mcpSignInUrl(server)
     const service = url ? currentMcpOAuthService() : null
-    if (url && service && (await service.handleUnauthorized(url))) {
+    let renewed = false
+    try {
+      renewed = !!url && !!service && (await service.handleUnauthorized(url))
+    } catch (err) {
+      if (!(err instanceof McpSignInRenewalError)) throw err
+      await this.parkNeedingSignIn(server, err.message)
+      return false
+    }
+    if (renewed) {
       await this.reconnectSignedIn(server)
       return this.servers.get(server.name)?.status === 'connected'
     }
