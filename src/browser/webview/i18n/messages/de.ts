@@ -460,7 +460,7 @@ export const de: Messages = {
   'customize.removeMarket.confirm': 'Entfernen',
   'customize.item.aria': 'Eintrag auf dieser Seite',
   'customize.item.kind.plugin': 'Plugin',
-  'customize.item.kind.connector': 'Konnektor (MCP-Server)',
+  'customize.item.kind.connector': 'MCP-Konnektor',
   'customize.item.byPublisher': 'Von {publisher}',
   'customize.item.resolving': 'Wird nachgeschlagen …',
   'customize.item.add': 'Hinzufügen',
@@ -470,6 +470,12 @@ export const de: Messages = {
   'customize.item.manage': 'Verwalten',
   'customize.item.uninstall': 'Deinstallieren',
   'customize.item.removing': 'Wird deinstalliert …',
+  'customize.item.uninstallDialog.title': '{name} deinstallieren?',
+  'customize.item.uninstallDialog.plugin':
+    'Ab deiner nächsten Nachricht sind seine Skills, Befehle und weiteren Bestandteile nicht mehr verfügbar. Du kannst es auf dieser Seite wieder hinzufügen.',
+  'customize.item.uninstallDialog.connector':
+    'Sein MCP-Server wird aus deinen Einstellungen entfernt, und seine Tools sind nicht mehr verfügbar. Du kannst ihn auf dieser Seite wieder hinzufügen.',
+  'customize.item.uninstallDialog.cancel': 'Abbrechen',
   'customize.item.notInstallable.plugin': 'Sein Code kann hier nicht installiert werden',
   'customize.item.notInstallable.connector': 'Keine feste Adresse zum Hinzufügen',
   'customize.item.unsupported.connector': 'In {product} nicht unterstützt',

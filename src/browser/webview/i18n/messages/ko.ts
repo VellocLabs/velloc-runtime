@@ -451,7 +451,7 @@ export const ko: Messages = {
   'customize.removeMarket.confirm': '제거',
   'customize.item.aria': '이 페이지의 항목',
   'customize.item.kind.plugin': '플러그인',
-  'customize.item.kind.connector': '커넥터(MCP 서버)',
+  'customize.item.kind.connector': 'MCP 커넥터',
   'customize.item.byPublisher': '게시자: {publisher}',
   'customize.item.resolving': '확인하는 중…',
   'customize.item.add': '추가',
@@ -461,6 +461,12 @@ export const ko: Messages = {
   'customize.item.manage': '관리',
   'customize.item.uninstall': '제거',
   'customize.item.removing': '제거하는 중…',
+  'customize.item.uninstallDialog.title': '{name}을(를) 제거할까요?',
+  'customize.item.uninstallDialog.plugin':
+    '다음 메시지부터 이 플러그인의 스킬, 명령어 및 기타 구성 요소를 사용할 수 없습니다. 이 페이지에서 다시 추가할 수 있습니다.',
+  'customize.item.uninstallDialog.connector':
+    '이 커넥터의 MCP 서버가 설정에서 제거되고 도구를 더 이상 사용할 수 없습니다. 이 페이지에서 다시 추가할 수 있습니다.',
+  'customize.item.uninstallDialog.cancel': '취소',
   'customize.item.notInstallable.plugin': '이 코드는 여기에 설치할 수 없습니다',
   'customize.item.notInstallable.connector': '추가할 고정 주소 없음',
   'customize.item.unsupported.connector': '{product}에서 지원되지 않음',

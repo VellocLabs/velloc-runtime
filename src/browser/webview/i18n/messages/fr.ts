@@ -461,7 +461,7 @@ export const fr: Messages = {
   'customize.removeMarket.confirm': 'Retirer',
   'customize.item.aria': 'Élément de cette page',
   'customize.item.kind.plugin': 'Extension',
-  'customize.item.kind.connector': 'Connecteur (serveur MCP)',
+  'customize.item.kind.connector': 'Connecteur MCP',
   'customize.item.byPublisher': 'Par {publisher}',
   'customize.item.resolving': 'Recherche…',
   'customize.item.add': 'Ajouter',
@@ -471,6 +471,12 @@ export const fr: Messages = {
   'customize.item.manage': 'Gérer',
   'customize.item.uninstall': 'Désinstaller',
   'customize.item.removing': 'Désinstallation…',
+  'customize.item.uninstallDialog.title': 'Désinstaller {name} ?',
+  'customize.item.uninstallDialog.plugin':
+    'Ses compétences, commandes et autres éléments ne seront plus disponibles à partir de votre prochain message. Vous pourrez l’ajouter à nouveau depuis cette page.',
+  'customize.item.uninstallDialog.connector':
+    'Son serveur MCP sera retiré de vos paramètres et ses outils ne seront plus disponibles. Vous pourrez l’ajouter à nouveau depuis cette page.',
+  'customize.item.uninstallDialog.cancel': 'Annuler',
   'customize.item.notInstallable.plugin': 'Son code ne peut pas être installé ici',
   'customize.item.notInstallable.connector': 'Aucune adresse fixe à ajouter',
   'customize.item.unsupported.connector': 'Non pris en charge dans {product}',

@@ -454,7 +454,7 @@ export const ja: Messages = {
   'customize.removeMarket.confirm': '削除',
   'customize.item.aria': 'このページの項目',
   'customize.item.kind.plugin': 'プラグイン',
-  'customize.item.kind.connector': 'コネクタ（MCP サーバー）',
+  'customize.item.kind.connector': 'MCP コネクタ',
   'customize.item.byPublisher': '提供元：{publisher}',
   'customize.item.resolving': '確認しています…',
   'customize.item.add': '追加',
@@ -464,6 +464,12 @@ export const ja: Messages = {
   'customize.item.manage': '管理',
   'customize.item.uninstall': 'アンインストール',
   'customize.item.removing': 'アンインストールしています…',
+  'customize.item.uninstallDialog.title': '{name} をアンインストールしますか？',
+  'customize.item.uninstallDialog.plugin':
+    '次のメッセージから、スキル・コマンドなどの機能が使えなくなります。このページからもう一度追加できます。',
+  'customize.item.uninstallDialog.connector':
+    'MCP サーバーが設定から削除され、そのツールは使えなくなります。このページからもう一度追加できます。',
+  'customize.item.uninstallDialog.cancel': 'キャンセル',
   'customize.item.notInstallable.plugin': 'このコードはここではインストールできません',
   'customize.item.notInstallable.connector': '追加できる固定アドレスがありません',
   'customize.item.unsupported.connector': '{product} では未対応',

@@ -407,7 +407,7 @@ describe('CustomizeScreen — the item the page shows', () => {
     expect(view.getByTestId('customize-item-add').textContent).toBe(EN_MESSAGES['customize.item.adding'])
   })
 
-  it('an installed item shows Installed with icon-only Manage and Uninstall; Manage reveals its Settings row', async () => {
+  it('an installed item shows an Installed badge by its name, a labelled Manage and an icon-only Uninstall; Manage reveals its Settings row', async () => {
     const fake = fakeConnection(['ok'])
     const opened: string[] = []
     const view = screen(fake.getConnection, {
@@ -422,14 +422,19 @@ describe('CustomizeScreen — the item the page shows', () => {
         pageItem: { id: 5, kind: 'connector', phase: 'ready', details, alreadyInstalled: true, installable: true, installedAs: 'chat' },
       }),
     )
-    expect(view.getByTestId('customize-item-installed').textContent).toBe(EN_MESSAGES['customize.item.installed'])
+    const installed = view.getByTestId('customize-item-installed')
+    expect(installed.textContent).toBe(EN_MESSAGES['customize.item.installed'])
+    expect(view.getByTestId('customize-item-name').parentElement?.contains(installed)).toBe(true)
+    expect(view.getByTestId('customize-item-meta').textContent).toBe(
+      `${EN_MESSAGES['customize.item.kind.connector']} · By Slack`,
+    )
     expect(view.queryByTestId('customize-item-add')).toBeNull()
     const manage = view.getByTestId('customize-item-manage')
     const remove = view.getByTestId('customize-item-remove')
-    expect(manage.textContent).toBe('')
+    expect(manage.textContent).toBe(EN_MESSAGES['customize.item.manage'])
     expect(remove.textContent).toBe('')
-    expect(manage.getAttribute('title')).toBe(EN_MESSAGES['customize.item.manage'])
     expect(remove.getAttribute('title')).toBe(EN_MESSAGES['customize.item.uninstall'])
+    expect(remove.getAttribute('aria-label')).toBe(EN_MESSAGES['customize.item.uninstall'])
     fireEvent.click(manage)
     act(() =>
       fake.status({
@@ -439,8 +444,45 @@ describe('CustomizeScreen — the item the page shows', () => {
     )
     fireEvent.click(view.getByTestId('customize-item-manage'))
     expect(opened).toEqual(['mcp chat', 'plugin slack'])
+  })
+
+  it('Uninstall asks first, says what it removes, and only the confirm asks the runtime', async () => {
+    const fake = fakeConnection(['ok'])
+    const view = screen(fake.getConnection)
+    await waitFor(() => expect(fake.subscribed()).toBe(true))
+    const plugin = { id: 6, kind: 'plugin', phase: 'installed', details, installedAs: 'slack@market' }
+    act(() => fake.status({ available: true, pageItem: plugin }))
+
     fireEvent.click(view.getByTestId('customize-item-remove'))
+    const dialog = await view.findByTestId('customize-item-uninstall-dialog')
+    expect(dialog.textContent).toContain(EN_MESSAGES['customize.item.uninstallDialog.title'].replace('{name}', 'Slack'))
+    expect(dialog.textContent).toContain(EN_MESSAGES['customize.item.uninstallDialog.plugin'])
+    fireEvent.click(view.getByRole('button', { name: EN_MESSAGES['customize.item.uninstallDialog.cancel'] }))
+    await waitFor(() => expect(view.queryByTestId('customize-item-uninstall-dialog')).toBeNull())
+    expect(fake.answered).toEqual([])
+
+    act(() => fake.status({ available: true, pageItem: { ...plugin, kind: 'connector', installedAs: 'chat' } }))
+    fireEvent.click(view.getByTestId('customize-item-remove'))
+    expect((await view.findByTestId('customize-item-uninstall-dialog')).textContent).toContain(
+      EN_MESSAGES['customize.item.uninstallDialog.connector'],
+    )
+    fireEvent.click(view.getByTestId('customize-item-uninstall-confirm'))
     await waitFor(() => expect(fake.answered).toEqual(['customizePage.removePageItem {"id":6}']))
+    await waitFor(() => expect(view.queryByTestId('customize-item-uninstall-dialog')).toBeNull())
+  })
+
+  it('an open Uninstall question closes when the page moves to another item', async () => {
+    const fake = fakeConnection(['ok'])
+    const view = screen(fake.getConnection)
+    await waitFor(() => expect(fake.subscribed()).toBe(true))
+    const first = { id: 6, kind: 'plugin', phase: 'installed', details, installedAs: 'slack@market' }
+    act(() => fake.status({ available: true, pageItem: first }))
+    fireEvent.click(view.getByTestId('customize-item-remove'))
+    await view.findByTestId('customize-item-uninstall-dialog')
+
+    act(() => fake.status({ available: true, pageItem: { ...first, id: 7, installedAs: 'other@market' } }))
+    await waitFor(() => expect(view.queryByTestId('customize-item-uninstall-dialog')).toBeNull())
+    expect(fake.answered).toEqual([])
   })
 
   it('an Uninstall in progress shows a spinner, and one that failed says so beside Installed', async () => {
@@ -821,7 +863,11 @@ describe('CustomizeScreen — the page controls', () => {
     const view = screen(fake.getConnection, { bridge })
     await waitFor(() => expect(fake.subscribed()).toBe(true))
     act(() => fake.status({ available: true, tabId: 7, pageItem: { id: 4, kind: 'connector', phase: 'resolving' } }))
-    expect(view.getByTestId('customize-center').contains(view.getByTestId('customize-item'))).toBe(true)
+    const item = view.getByTestId('customize-item')
+    expect(view.getByTestId('customize-center').contains(item)).toBe(true)
+    // One width in every phase: the item fills a fixed centre track.
+    expect(item.className).toContain('w-full')
+    expect(view.getByTestId('customize-center').parentElement?.className).toContain('minmax(0,44rem)')
     fireEvent.click(await view.findByTestId('customize-market'))
     expect(view.queryByTestId('customize-page-home')).toBeNull()
     expect(view.queryByTestId('customize-item')).toBeNull()

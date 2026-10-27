@@ -449,7 +449,7 @@ export const zh: Messages = {
   'customize.removeMarket.confirm': '删除',
   'customize.item.aria': '本页的项目',
   'customize.item.kind.plugin': '插件',
-  'customize.item.kind.connector': '连接器（MCP 服务器）',
+  'customize.item.kind.connector': 'MCP 连接器',
   'customize.item.byPublisher': '发布者：{publisher}',
   'customize.item.resolving': '正在查询…',
   'customize.item.add': '添加',
@@ -459,6 +459,12 @@ export const zh: Messages = {
   'customize.item.manage': '管理',
   'customize.item.uninstall': '卸载',
   'customize.item.removing': '正在卸载…',
+  'customize.item.uninstallDialog.title': '卸载 {name}？',
+  'customize.item.uninstallDialog.plugin':
+    '从你的下一条消息起，它的技能、命令和其他组件将不再可用。你可以在此页面重新添加。',
+  'customize.item.uninstallDialog.connector':
+    '它的 MCP 服务器将从你的设置中移除，其工具将不再可用。你可以在此页面重新添加。',
+  'customize.item.uninstallDialog.cancel': '取消',
   'customize.item.notInstallable.plugin': '它的代码无法在这里安装',
   'customize.item.notInstallable.connector': '没有可添加的固定地址',
   'customize.item.unsupported.connector': '{product} 暂不支持',

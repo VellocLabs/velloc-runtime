@@ -146,7 +146,9 @@ export function CustomizeScreen({
             </span>
           </Button>
         </div>
-        <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 self-stretch px-2">
+        {/* The centre track keeps one width whatever the item's phase, and
+            gives way before the page nav or the caption reserve do. */}
+        <div className="grid min-w-0 flex-1 grid-cols-[minmax(max-content,1fr)_minmax(0,44rem)_minmax(max-content,1fr)] items-center gap-3 self-stretch px-2">
           <div data-testid="customize-page-nav" className="flex min-w-0 items-center">
             {showDirectory ? (
               <div
@@ -183,7 +185,7 @@ export function CustomizeScreen({
               </div>
             ) : null}
           </div>
-          <div data-testid="customize-center" className="flex min-w-0 max-w-[min(44rem,50vw)] items-center justify-center">
+          <div data-testid="customize-center" className="flex min-w-0 items-center justify-center">
             {showDirectory && tab.pageItem ? (
               <DirectoryItemStatus
                 item={tab.pageItem}

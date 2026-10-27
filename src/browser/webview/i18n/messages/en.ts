@@ -485,7 +485,7 @@ export const en = {
   'customize.removeMarket.confirm': 'Remove',
   'customize.item.aria': 'Item on this page',
   'customize.item.kind.plugin': 'Plugin',
-  'customize.item.kind.connector': 'Connector (MCP server)',
+  'customize.item.kind.connector': 'MCP connector',
   'customize.item.byPublisher': 'By {publisher}',
   'customize.item.resolving': 'Looking it up…',
   'customize.item.add': 'Add',
@@ -495,6 +495,12 @@ export const en = {
   'customize.item.manage': 'Manage',
   'customize.item.uninstall': 'Uninstall',
   'customize.item.removing': 'Uninstalling…',
+  'customize.item.uninstallDialog.title': 'Uninstall {name}?',
+  'customize.item.uninstallDialog.plugin':
+    'Its skills, commands and other parts stop being available from your next message. You can add it again from this page.',
+  'customize.item.uninstallDialog.connector':
+    'Its MCP server is removed from your settings, and its tools stop being available. You can add it again from this page.',
+  'customize.item.uninstallDialog.cancel': 'Cancel',
   'customize.item.notInstallable.plugin': 'Its code can\'t be installed here',
   'customize.item.notInstallable.connector': 'No fixed address to add',
   'customize.item.unsupported.connector': 'Not supported in {product}',
