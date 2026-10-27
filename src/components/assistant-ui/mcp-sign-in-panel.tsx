@@ -11,10 +11,19 @@ import { useCan } from "@/browser/webview/useCan";
  * Sign-in for one MCP server (F-10), read from `mcpAuth/status`: a Sign in
  * button, the "finish in the window" wait with Cancel, the client id form
  * when the server's authorization service registers no apps, the last error,
- * and Sign out once signed in.
+ * and Sign out once signed in. `serverName` titles the sign-in window.
  */
-export function McpSignInPanel({ url, auth }: { url: string; auth?: McpAuthControls }) {
+export function McpSignInPanel({
+  url,
+  serverName,
+  auth,
+}: {
+  url: string;
+  serverName: string;
+  auth?: McpAuthControls;
+}) {
   const t = useT();
+  const windowTitle = t("mcpAuth.windowTitle", { server: serverName });
   const canSignIn = useCan("mcpAuth", "signIn");
   const [clientId, setClientId] = React.useState("");
   const [clientSecret, setClientSecret] = React.useState("");
@@ -63,7 +72,7 @@ export function McpSignInPanel({ url, auth }: { url: string; auth?: McpAuthContr
       const id = clientId.trim();
       const secret = clientSecret.trim();
       if (!id) return;
-      run(() => auth.signIn({ url, clientId: id, ...(secret ? { clientSecret: secret } : {}) }));
+      run(() => auth.signIn({ url, windowTitle, clientId: id, ...(secret ? { clientSecret: secret } : {}) }));
     };
     body = (
       <form
@@ -113,7 +122,7 @@ export function McpSignInPanel({ url, auth }: { url: string; auth?: McpAuthContr
     body = (
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm">{t("mcpAuth.needsSignIn")}</p>
-        <Button size="sm" data-testid="mcp-sign-in" onClick={() => run(() => auth.signIn({ url }))}>
+        <Button size="sm" data-testid="mcp-sign-in" onClick={() => run(() => auth.signIn({ url, windowTitle }))}>
           {t("mcpAuth.signIn")}
         </Button>
       </div>

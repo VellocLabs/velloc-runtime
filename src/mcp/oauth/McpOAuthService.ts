@@ -44,10 +44,11 @@ export type McpOAuthHost = {
   postForm(url: string, form: Record<string, string>): Promise<{ status: number; body: string }>
   setSecret(name: BridgeSecretName, value: string, origin: string): Promise<void>
   deleteSecret(name: BridgeSecretName): Promise<void>
-  /** Opens `url` in a window and resolves with the URL of the first navigation
-   *  to `redirectUri`; rejects `McpSignInClosedError` when the window closes
-   *  first. Aborting `signal` closes the window. */
-  openSignInWindow(url: string, redirectUri: string, signal: AbortSignal): Promise<string>
+  /** Opens `url` in a window titled `title` (when given) and resolves with
+   *  the URL of the first navigation to `redirectUri`; rejects
+   *  `McpSignInClosedError` when the window closes first. Aborting `signal`
+   *  closes the window. */
+  openSignInWindow(url: string, redirectUri: string, signal: AbortSignal, title?: string): Promise<string>
   /** The fetch an MCP transport uses when its headers carry placeholders. */
   transportFetch(): FetchLike
 }
@@ -535,7 +536,9 @@ export class McpOAuthService {
       authorizationUrl.searchParams.set('prompt', 'consent')
     }
 
-    const captured = new URL(await host.openSignInWindow(authorizationUrl.href, MCP_OAUTH_REDIRECT_URI, signal))
+    const captured = new URL(
+      await host.openSignInWindow(authorizationUrl.href, MCP_OAUTH_REDIRECT_URI, signal, payload.windowTitle),
+    )
     signal.throwIfAborted()
     if (captured.searchParams.get('state') !== state) throw new Error('The sign-in answer did not match this sign-in.')
     const refused = captured.searchParams.get('error')

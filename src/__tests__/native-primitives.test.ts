@@ -579,6 +579,18 @@ describe('webWindow', () => {
     ])
   })
 
+  it('sends a fixed title only to a host that lists webWindow.title', async () => {
+    const older = make(() => ok({ windowId: 1 }), { capabilities: ['webWindow'], primitives: [] })
+    await expect(older.primitives.webWindow.open('https://a.example/', { title: 'T' })).rejects.toSatisfy(
+      isNativePrimitiveUnsupported,
+    )
+    expect(older.requests).toHaveLength(0)
+
+    const titled = make(() => ok({ windowId: 2 }), { capabilities: ['webWindow'], primitives: ['webWindow.title'] })
+    expect(await titled.primitives.webWindow.open('https://a.example/', { title: 'T' })).toBe(2)
+    expect(titled.requests[0]!.payload).toEqual({ url: 'https://a.example/', title: 'T' })
+  })
+
   it('surfaces a host refusal with its code', async () => {
     const { primitives } = make(
       () => ({ ok: false, error: { code: 'url_not_allowed', message: 'only http, https and file URLs can be opened' } }),

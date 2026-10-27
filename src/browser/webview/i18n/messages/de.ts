@@ -913,6 +913,7 @@ export const de: Messages = {
   'mcpAuth.needsSignIn': 'Melde dich bei diesem Server an, bevor du seine Tools verwendest.',
   'mcpAuth.needsCredentials': 'Dieser Server verwendet keine Anmeldung. Er braucht einen API-Schlüssel oder ein Token: Bearbeite den Server und füge es als Header hinzu, zum Beispiel Authorization: Bearer <token>.',
   'mcpAuth.signIn': 'Anmelden',
+  'mcpAuth.windowTitle': 'Bei {server} anmelden',
   'mcpAuth.signingIn': 'Schließe die Anmeldung im geöffneten Fenster ab.',
   'mcpAuth.cancel': 'Abbrechen',
   'mcpAuth.signedIn': 'Du bist bei diesem Server angemeldet.',

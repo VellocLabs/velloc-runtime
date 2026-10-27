@@ -916,6 +916,7 @@ export const fr: Messages = {
   'mcpAuth.needsSignIn': 'Vous devez vous connecter à ce serveur avant de pouvoir utiliser ses outils.',
   'mcpAuth.needsCredentials': 'Ce serveur n’utilise pas de connexion. Il lui faut une clé d’API ou un jeton : modifiez le serveur et ajoutez-le en en-tête, par exemple Authorization: Bearer <token>.',
   'mcpAuth.signIn': 'Se connecter',
+  'mcpAuth.windowTitle': 'Se connecter à {server}',
   'mcpAuth.signingIn': 'Terminez la connexion dans la fenêtre qui s’est ouverte.',
   'mcpAuth.cancel': 'Annuler',
   'mcpAuth.signedIn': 'Vous êtes connecté à ce serveur.',

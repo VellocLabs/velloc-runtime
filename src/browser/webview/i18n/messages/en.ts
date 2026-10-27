@@ -953,6 +953,7 @@ export const en = {
   'mcpAuth.needsSignIn': 'This server needs you to sign in before its tools can be used.',
   'mcpAuth.needsCredentials': 'This server doesn\'t use sign-in. It needs an API key or token: edit the server and add it as a header, for example Authorization: Bearer <token>.',
   'mcpAuth.signIn': 'Sign in',
+  'mcpAuth.windowTitle': 'Sign in to {server}',
   'mcpAuth.signingIn': 'Finish signing in in the window that opened.',
   'mcpAuth.cancel': 'Cancel',
   'mcpAuth.signedIn': 'You are signed in to this server.',

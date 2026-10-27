@@ -155,16 +155,18 @@ function configToForm(id: string, config: NexusMcpServerConfig): FormState {
 /** The sign-in an http server holds or waits for (F-10), under its row. */
 function RowSignIn({
   url,
+  serverName,
   auth,
 }: {
   url: string | undefined;
+  serverName: string;
   auth: McpAuthControls;
 }) {
   const state = url ? auth.serverState(url) : undefined;
   if (!url || !state) return null;
   return (
     <div className="mt-2" data-testid="mcp-row-sign-in">
-      <McpSignInPanel url={url} auth={auth} />
+      <McpSignInPanel url={url} serverName={serverName} auth={auth} />
     </div>
   );
 }
@@ -409,7 +411,7 @@ export function McpSection({
       await mcpSettingsUpsert(bridge, id, config);
       if (signInUrl) {
         const url = signInUrl;
-        void auth.signIn({ url }).catch(() => {
+        void auth.signIn({ url, windowTitle: t("mcpAuth.windowTitle", { server: id }) }).catch(() => {
           // The row's sign-in panel offers it again.
         });
       }
@@ -593,7 +595,7 @@ export function McpSection({
                     </Button>
                   </div>
                 </div>
-                <RowSignIn url={config.url} auth={auth} />
+                <RowSignIn url={config.url} serverName={id} auth={auth} />
               </div>
             );
           })
@@ -629,7 +631,7 @@ export function McpSection({
                   <div className="mt-1 text-muted-foreground text-xs">
                     {t("settings.mcp.fromPlugin", { plugin: server.plugin })}
                   </div>
-                  <RowSignIn url={server.url} auth={auth} />
+                  <RowSignIn url={server.url} serverName={server.name} auth={auth} />
                 </div>
               </div>
             ))}

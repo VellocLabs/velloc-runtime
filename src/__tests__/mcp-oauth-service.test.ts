@@ -229,6 +229,18 @@ describe('McpOAuthService sign-in', () => {
     expect(JSON.stringify([...r.files.values()])).not.toContain('my-secret')
   })
 
+  it('opens the window with the asking client\'s title, and none without one', async () => {
+    const titled = rig()
+    await titled.service.signIn({ url: SERVER, windowTitle: 'Sign in to notion' })
+    await settled(titled)
+    expect(vi.mocked(titled.host.openSignInWindow).mock.calls[0]![3]).toBe('Sign in to notion')
+
+    const plain = rig()
+    await plain.service.signIn({ url: SERVER })
+    await settled(plain)
+    expect(vi.mocked(plain.host.openSignInWindow).mock.calls[0]![3]).toBeUndefined()
+  })
+
   it('asks the Google issuer for an offline grant', async () => {
     const r = rig({ issuer: 'https://accounts.google.com' })
     await r.service.signIn({ url: SERVER })

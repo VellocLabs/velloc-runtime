@@ -244,7 +244,7 @@ function DetailBody({
       </DialogHeader>
 
       <div className="min-h-0 overflow-y-auto px-5 py-4">
-        {needsAuth && server.signInUrl ? <McpSignInPanel url={server.signInUrl} auth={auth} /> : null}
+        {needsAuth && server.signInUrl ? <McpSignInPanel url={server.signInUrl} serverName={server.name} auth={auth} /> : null}
         {error && !needsAuth ? <ErrorPanel message={error} onRetry={failed ? undefined : onRetry} t={t} /> : null}
 
         {!failed && server.instructions ? (

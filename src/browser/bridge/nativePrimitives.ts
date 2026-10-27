@@ -819,10 +819,17 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
   const webWindow = {
     async open(
       url: string,
-      options: { state?: BridgeWebWindowState; focus?: boolean; captureRedirect?: string } & BridgeWebWindowBounds = {},
+      options: {
+        state?: BridgeWebWindowState
+        focus?: boolean
+        captureRedirect?: string
+        /** A fixed window title the page cannot change (1-120 characters). */
+        title?: string
+      } & BridgeWebWindowBounds = {},
     ): Promise<number> {
       requireCapability('webWindow')
       if (options.captureRedirect !== undefined) requireListed('webWindow.captureRedirect')
+      if (options.title !== undefined) requireListed('webWindow.title')
       return (await send('webWindow', 'webWindow', 'open', { url, ...options })).windowId
     },
     async close(windowId: number): Promise<void> {

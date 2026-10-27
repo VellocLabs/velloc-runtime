@@ -29,7 +29,9 @@ function controls(server: McpAuthServerState | undefined, available = true): Mcp
   }
 }
 
-const panel = (auth: McpAuthControls) => render(createElement(McpSignInPanel, { url: URL_, auth }))
+const panel = (auth: McpAuthControls) =>
+  render(createElement(McpSignInPanel, { url: URL_, serverName: 'notion', auth }))
+const WINDOW_TITLE = en['mcpAuth.windowTitle'].replace('{server}', 'notion')
 
 afterEach(() => cleanup())
 
@@ -40,7 +42,7 @@ describe('McpSignInPanel', () => {
     expect(screen.getByTestId('mcp-sign-in-panel').getAttribute('data-phase')).toBe('needs-sign-in')
     expect(screen.getByTestId('mcp-sign-in-panel').textContent).toContain(en['mcpAuth.needsSignIn'])
     fireEvent.click(screen.getByTestId('mcp-sign-in'))
-    expect(auth.signIn).toHaveBeenCalledWith({ url: URL_ })
+    expect(auth.signIn).toHaveBeenCalledWith({ url: URL_, windowTitle: WINDOW_TITLE })
   })
 
   it('shows the wait with Cancel, then Sign out once signed in', () => {
@@ -67,7 +69,12 @@ describe('McpSignInPanel', () => {
     fireEvent.change(screen.getByTestId('mcp-sign-in-client-id'), { target: { value: ' my-client ' } })
     fireEvent.change(screen.getByTestId('mcp-sign-in-client-secret'), { target: { value: 'shh' } })
     fireEvent.submit(screen.getByTestId('mcp-sign-in-client'))
-    expect(auth.signIn).toHaveBeenCalledWith({ url: URL_, clientId: 'my-client', clientSecret: 'shh' })
+    expect(auth.signIn).toHaveBeenCalledWith({
+      url: URL_,
+      windowTitle: WINDOW_TITLE,
+      clientId: 'my-client',
+      clientSecret: 'shh',
+    })
   })
 
   it('tells a server wanting an API key to take a header, with no Sign in', () => {
@@ -92,7 +99,11 @@ describe('McpSignInPanel', () => {
       createElement(
         RuntimeCapabilitiesContext.Provider,
         { value: { can: (cap: string, act?: string) => !(cap === 'mcpAuth' && act === 'signIn') } },
-        createElement(McpSignInPanel, { url: URL_, auth: controls({ url: URL_, phase: 'needs-sign-in' }) }),
+        createElement(McpSignInPanel, {
+          url: URL_,
+          serverName: 'notion',
+          auth: controls({ url: URL_, phase: 'needs-sign-in' }),
+        }),
       ),
     )
     expect(screen.queryByTestId('mcp-sign-in')).toBeNull()

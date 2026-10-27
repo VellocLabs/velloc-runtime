@@ -49,7 +49,9 @@ export type McpAuthState = {
   servers: McpAuthServerState[]
 }
 
-export type McpAuthSignInPayload = { url: string; clientId?: string; clientSecret?: string }
+/** `windowTitle`: the sign-in window's title, already in the asking client's
+ *  language (the runtime never translates). */
+export type McpAuthSignInPayload = { url: string; clientId?: string; clientSecret?: string; windowTitle?: string }
 export type McpAuthServerPayload = { url: string }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -62,14 +64,16 @@ function onlyKeys(value: Record<string, unknown>, allowed: readonly string[]): b
 
 const MAX_URL_CHARS = 2000
 const MAX_CLIENT_FIELD_CHARS = 4096
+const MAX_WINDOW_TITLE_CHARS = 1000
 
 function isBoundedString(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= max
 }
 
 export function isMcpAuthSignInPayload(value: unknown): value is McpAuthSignInPayload {
-  if (!isPlainObject(value) || !onlyKeys(value, ['url', 'clientId', 'clientSecret'])) return false
+  if (!isPlainObject(value) || !onlyKeys(value, ['url', 'clientId', 'clientSecret', 'windowTitle'])) return false
   if (!isBoundedString(value.url, MAX_URL_CHARS)) return false
+  if (value.windowTitle !== undefined && !isBoundedString(value.windowTitle, MAX_WINDOW_TITLE_CHARS)) return false
   if (value.clientId !== undefined && !isBoundedString(value.clientId, MAX_CLIENT_FIELD_CHARS)) return false
   if (value.clientSecret !== undefined) {
     if (!isBoundedString(value.clientSecret, MAX_CLIENT_FIELD_CHARS)) return false

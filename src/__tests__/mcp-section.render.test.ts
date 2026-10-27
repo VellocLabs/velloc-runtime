@@ -311,7 +311,10 @@ describe('McpSection sign-in (F-10)', () => {
     await addHttp(bridge, runtime.runtimeConnection)
     await waitFor(() => expect(upserts).toHaveLength(1))
     await waitFor(() =>
-      expect(runtime.request).toHaveBeenCalledWith('mcpAuth.signIn', { url: 'https://mcp.notes.test/mcp' }),
+      expect(runtime.request).toHaveBeenCalledWith('mcpAuth.signIn', {
+        url: 'https://mcp.notes.test/mcp',
+        windowTitle: en['mcpAuth.windowTitle'].replace('{server}', 'notes'),
+      }),
     )
     expect(exists('mcp-form-error')).toBe(false)
   })

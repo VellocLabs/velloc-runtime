@@ -916,6 +916,7 @@ export const es: Messages = {
   'mcpAuth.needsSignIn': 'Debes iniciar sesión en este servidor antes de usar sus herramientas.',
   'mcpAuth.needsCredentials': 'Este servidor no usa inicio de sesión. Necesita una clave de API o un token: edita el servidor y añádelo como encabezado, por ejemplo Authorization: Bearer <token>.',
   'mcpAuth.signIn': 'Iniciar sesión',
+  'mcpAuth.windowTitle': 'Iniciar sesión en {server}',
   'mcpAuth.signingIn': 'Termina de iniciar sesión en la ventana que se abrió.',
   'mcpAuth.cancel': 'Cancelar',
   'mcpAuth.signedIn': 'Has iniciado sesión en este servidor.',

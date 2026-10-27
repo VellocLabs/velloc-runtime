@@ -18,6 +18,23 @@ export const MCP_OAUTH_PRIMITIVES = [
 export const MCP_OAUTH_CAPABILITIES = ['secrets', 'webWindow'] as const
 
 const SIGN_IN_WINDOW = { width: 520, height: 720 }
+/** The longest window title the host accepts, in UTF-16 units. */
+const MAX_WINDOW_TITLE = 120
+
+/**
+ * `title` as the host takes it: whitespace runs collapsed, ends trimmed, cut
+ * to the host's limit with an ellipsis. Null when nothing is left, so a blank
+ * title never fails the sign-in.
+ */
+export function signInWindowTitle(title: string | undefined): string | null {
+  const collapsed = title?.replace(/\s+/g, ' ').trim() ?? ''
+  if (!collapsed) return null
+  if (collapsed.length <= MAX_WINDOW_TITLE) return collapsed
+  let cut = collapsed.slice(0, MAX_WINDOW_TITLE - 1)
+  // Never leave half a surrogate pair before the ellipsis.
+  if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1)
+  return `${cut.trimEnd()}\u2026`
+}
 
 /** Whether `host` can run a sign-in. */
 export function hostServesMcpOAuth(host: McpHostAccess | null): boolean {
@@ -94,7 +111,9 @@ export function createBridgeMcpOAuthHost(
     async deleteSecret(name) {
       await primitives.secrets.delete(name)
     },
-    openSignInWindow(url, redirectUri, signal) {
+    openSignInWindow(url, redirectUri, signal, title) {
+      // An older host has no fixed titles; it shows the page's own.
+      const fixedTitle = host.manifest?.primitives?.includes('webWindow.title') ? signInWindowTitle(title) : null
       return new Promise<string>((resolve, reject) => {
         let windowId: number | null = null
         let settled = false
@@ -128,7 +147,11 @@ export function createBridgeMcpOAuthHost(
         }
         signal.addEventListener('abort', onAbort)
         primitives.webWindow
-          .open(url, { captureRedirect: redirectUri, ...SIGN_IN_WINDOW })
+          .open(url, {
+            captureRedirect: redirectUri,
+            ...SIGN_IN_WINDOW,
+            ...(fixedTitle !== null ? { title: fixedTitle } : {}),
+          })
           .then(id => {
             windowId = id
             if (settled) {
