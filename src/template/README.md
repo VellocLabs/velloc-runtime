@@ -158,6 +158,7 @@ lines allowed. (Name / title / icon are NOT here — they live in `index.md`.)
 | `tools` | string[] | The **eager-visible** allowlist — tool GROUPS and/or individual tool names. Omitting a group excludes it. |
 | `deferredTools` | string[] | Groups/skills **loaded but hidden** until `Skill()`/`ToolSearch` activates them. |
 | `skills` | `all` \| string[] | Which SKILLS this type may use — `all` (default) or an exact allowlist of stable ids. See *The `skills:` allowlist*. |
+| `agents` | `all` \| string[] | Which sub-agent types the Agent tool offers — `all` (default) or an exact list of agent names (`Explore`, `acme:dev`). A sub-agent runs on this type's own template, so this narrows the offer, not the tool boundary; a name outside the list is unknown to `subagent_type`, built-in or not; `fork` is never listed. Required with `mcp: plugin` when the `subagent` group is on. |
 | `mcp` | `all` \| `plugin` | Which MCP sources the session takes — `all` (default: settings, project, every plugin in effect) or `plugin` (only the owning plugin's servers and registered tools; **plugin templates only**). See *Templates from plugins*. |
 | `model` | string | Optional model override for the type (rarely set). |
 

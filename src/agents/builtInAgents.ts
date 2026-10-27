@@ -208,7 +208,12 @@ export type SubagentRoute =
 export function resolveSubagentRoute(
   requestedKind: string | undefined,
   activeAgents: readonly AgentProfile[],
-  opts?: { depth?: number },
+  opts?: {
+    depth?: number
+    /** `activeAgents` is the whole offer (a type's `agents:` list): no
+     *  built-in fallback. */
+    rosterOnly?: boolean
+  },
 ): SubagentRoute {
   const requestedType = requestedKind ?? DEFAULT_WORKER_AGENT.name
   if (requestedType === FORK_ROUTE_KIND) {
@@ -219,7 +224,7 @@ export function resolveSubagentRoute(
   }
   const agent =
     findAgentDefinition(activeAgents, requestedType) ??
-    BUILT_IN_AGENTS.find(a => a.name === requestedType)
+    (opts?.rosterOnly ? undefined : BUILT_IN_AGENTS.find(a => a.name === requestedType))
   if (!agent) {
     const available = activeAgents
       .map(a => a.name)

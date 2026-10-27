@@ -219,6 +219,33 @@ export function templateAllowsSkill(
 }
 
 /**
+ * The agents of `roster` this type offers as `subagent_type`s: every one
+ * without an `agents:` list, else those the list names, by exact name.
+ */
+export function templateAgentRoster<T extends { name?: unknown }>(
+  config: TemplateConfig | undefined,
+  roster: readonly T[],
+): T[] {
+  const allowlist = config?.agents
+  if (allowlist === undefined || allowlist === 'all') return [...roster]
+  return roster.filter(agent => typeof agent.name === 'string' && allowlist.includes(agent.name))
+}
+
+/**
+ * `agents:` validation stage two: listed names matching no agent of the
+ * roster, returned for the caller to report, not thrown.
+ */
+export function unresolvedAgentNames(
+  config: TemplateConfig | undefined,
+  roster: readonly { name?: unknown }[],
+): string[] {
+  const allowlist = config?.agents
+  if (allowlist === undefined || allowlist === 'all') return []
+  const names = new Set(roster.map(agent => agent.name).filter((name): name is string => typeof name === 'string'))
+  return allowlist.filter(name => !names.has(name))
+}
+
+/**
  * `skills:` validation stage two: allowlisted ids matching no loaded skill,
  * returned for the caller to report, not thrown.
  */

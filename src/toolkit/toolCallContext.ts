@@ -40,6 +40,10 @@ import type { ToolContractList } from './toolContract'
 export type AgentRoster = {
   enabledAgents: AgentProfile[]
   allAgents: AgentProfile[]
+  /** The session type names its agents (`agents:`): `enabledAgents` is the
+   *  whole offer, and a `subagent_type` outside it is unknown, built-in or
+   *  not. */
+  restricted?: boolean
 }
 
 export type ToolCallContext = {

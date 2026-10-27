@@ -89,6 +89,7 @@ import {
   resolveDeferrableSkills,
   templateAllowsMcp,
   templateWantsFileSnapshots,
+  unresolvedAgentNames,
   unresolvedSkillIds,
   templateWantsWorkspaceDiffTool,
 } from '../../prompting/templateRegistry'
@@ -1171,6 +1172,18 @@ export async function createBrowserRuntime(
     }
   }
   reportUnresolvedSkills(allCommands)
+  // The same stage for `agents:`: a listed name no agent of the roster bears.
+  const reportUnresolvedAgents = (roster: readonly { name?: unknown }[]) => {
+    const unresolved = unresolvedAgentNames(sessionTemplate?.config, roster)
+    if (unresolved.length > 0) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[createAgentRuntime] template "${templateType}" offers agents that are ` +
+          `not loaded in this session: ${unresolved.join(', ')}. They grant ` +
+          'nothing; remove them from `agents:` or install the agent.',
+      )
+    }
+  }
   // Per-agent tool scope for a background sub-agent. Applied here,
   // AFTER dynamic C++/MCP tools are in the set, because a read-only agent's
   // denylist (Explore/Plan) targets exactly those post-boot tools. No-op for a
@@ -1251,6 +1264,8 @@ export async function createBrowserRuntime(
     appState = { ...appState, activeSkills: [AGENT_TEAMS_SKILL_NAME] }
   }
 
+  const sessionAgents = withBuiltInAgents(resolvedOptions.agents ?? localAgents)
+  reportUnresolvedAgents(sessionAgents)
   const coreState = {
     autoCompactWindows,
     options: {
@@ -1263,7 +1278,7 @@ export async function createBrowserRuntime(
       // name collision (so a custom "Explore" overrides the built-in). An
       // explicit `options.agents` from the caller takes precedence over
       // filesystem discovery. See agents/builtInAgents.ts.
-      agents: withBuiltInAgents(resolvedOptions.agents ?? localAgents),
+      agents: sessionAgents,
     },
     usedSandboxProjectRoot,
     runtimeConfig,
@@ -1525,6 +1540,7 @@ export async function createBrowserRuntime(
     const { allowed: allowedReloaded, deniedNames: deniedReloaded } =
       applySkillAllowlist(reloadedCommands)
     reportUnresolvedSkills(reloadedCommands)
+    reportUnresolvedAgents(reloadedAgents)
     coreState.options.commands = allowedReloaded
     coreState.options.agents = reloadedAgents
     return {
@@ -2304,6 +2320,8 @@ ${teammateAddendum}`
     onModToolsChanged: registered => publishModSlotTools(resolvedSessionId, registered, ownSlot),
     // Security: registered tools outside the type's MCP scope are not listed (F-25).
     modToolScope: mcpScope,
+    // The sub-agent types the Agent tool offers, when the type names them.
+    ...(Array.isArray(sessionTemplate?.config.agents) ? { agentAllowlist: sessionTemplate.config.agents } : {}),
     // `/mcp` jumps to the host MCP settings page via the `ui.openNexusSettings`
     // bridge action (declared in api/declarations/ui/openNexusSettings.api.json).
     // The worker transport reaches `ui.*` routes (same path the session-state

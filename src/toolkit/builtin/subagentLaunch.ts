@@ -381,7 +381,7 @@ export const SpawnAgentTool: ToolContract<SpawnArgs, AgentToolOutput> = declareT
       const preRoute = resolveSubagentRoute(
         input.subagent_type,
         context.options.agentDefinitions.enabledAgents,
-        { depth: context.turnChain?.depth },
+        { depth: context.turnChain?.depth, rosterOnly: context.options.agentDefinitions.restricted },
       )
       if (preRoute.kind === 'error') {
         return { data: preRoute.message }
@@ -422,6 +422,7 @@ export const SpawnAgentTool: ToolContract<SpawnArgs, AgentToolOutput> = declareT
             e.model,
             resolveSubagentRoute(e.subagentType, context.options.agentDefinitions.enabledAgents, {
               depth: context.turnChain?.depth,
+              rosterOnly: context.options.agentDefinitions.restricted,
             }),
           ),
         }),
@@ -455,7 +456,7 @@ export const SpawnAgentTool: ToolContract<SpawnArgs, AgentToolOutput> = declareT
     const route = resolveSubagentRoute(
       input.subagent_type,
       context.options.agentDefinitions.enabledAgents,
-      { depth: context.turnChain?.depth },
+      { depth: context.turnChain?.depth, rosterOnly: context.options.agentDefinitions.restricted },
     )
     if (route.kind === 'error') {
       return { data: route.message }

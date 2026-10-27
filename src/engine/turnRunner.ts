@@ -33,6 +33,7 @@ import {
   TERMINAL_STOP_HOOK_PREVENTED,
 } from '../runtime/VercelModelConstants'
 import type { SubmitTurnOptions } from './engineConfig'
+import { agentRosterOf } from './callContextFactory'
 import type { SessionLedger } from './sessionLedger'
 import type { TranscriptWriter } from './transcriptWriter'
 import type { SessionTitler } from './autoTitle'
@@ -106,11 +107,11 @@ async function commands(
   const commanded = submitted.dropped ? undefined : await passCommandHooks(ledger, submitted.prompt, callContext, options)
   // Tools and agents an extension registered while loading count from this
   // turn on: the context was made before the wait.
-  if (config.mods && (callContext.options.tools !== config.tools || callContext.options.agentDefinitions.enabledAgents !== config.agents)) {
+  if (config.mods && (callContext.options.tools !== config.tools || callContext.options.agentDefinitions.allAgents !== config.agents)) {
     callContext.options = {
       ...callContext.options,
       tools: config.tools,
-      agentDefinitions: { ...callContext.options.agentDefinitions, enabledAgents: config.agents, allAgents: config.agents },
+      agentDefinitions: agentRosterOf(config),
     }
   }
   const result = submitted.dropped ?? commanded ?? (await intakeUserInput(ledger, submitted.prompt, callContext, options))

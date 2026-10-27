@@ -18,6 +18,22 @@ export type SharedHolders = {
   readonly postCompactReads: ReadFileLedger
 }
 
+/**
+ * The roster the Agent tool reads: `enabledAgents` is the session's agents
+ * narrowed to the type's `agents:` list (when it has one), `allAgents` the
+ * whole list. The one place the list is narrowed, so the tool's description,
+ * its route resolution and the permission gate agree.
+ */
+export function agentRosterOf(
+  config: Pick<ConversationEngineConfig, 'agents' | 'agentAllowlist'>,
+): ToolCallContext['options']['agentDefinitions'] {
+  const allowlist = config.agentAllowlist
+  const enabledAgents = allowlist
+    ? config.agents.filter(agent => typeof agent.name === 'string' && allowlist.includes(agent.name))
+    : config.agents
+  return allowlist ? { enabledAgents, allAgents: config.agents, restricted: true } : { enabledAgents, allAgents: config.agents }
+}
+
 function optionsFor(config: ConversationEngineConfig, model: string): ToolCallContext['options'] {
   return {
     commands: config.commands,
@@ -48,7 +64,7 @@ function optionsFor(config: ConversationEngineConfig, model: string): ToolCallCo
     mcpClients: config.mcpClients,
     mcpResources: {},
     isNonInteractiveSession: true,
-    agentDefinitions: { enabledAgents: config.agents, allAgents: config.agents },
+    agentDefinitions: agentRosterOf(config),
     maxBudgetUsd: config.spendCapUsd,
     customSystemPrompt: config.promptOverride,
     appendSystemPrompt: config.promptSuffix,

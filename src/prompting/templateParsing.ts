@@ -46,6 +46,63 @@ function parseMcpAccess(
   return value
 }
 
+/** The `agents:` frontmatter value: every agent the session would see, or an
+ *  exact list of agent names (the `subagent_type` the model asks for). */
+export type AgentAllowlist = 'all' | readonly string[]
+
+const AGENT_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/
+
+/**
+ * Parse `agents:`, stage one (syntax). A name is matched exactly against the
+ * roster — the identity `subagent_type` resolves — so `fork` (the route that
+ * reuses this session's own tools) is never listed and never denied. Stage
+ * two (does the agent exist) runs when the roster is built. Throws on a
+ * malformed entry; absent / `all` ⇒ undefined.
+ */
+function parseAgentAllowlist(value: unknown, type: string): AgentAllowlist | undefined {
+  if (value === undefined) return undefined
+  if (value === null) {
+    throw new Error(
+      `template "${type}": agents: has no value — write [] to deny every sub-agent type, ` +
+        `all to allow every one, or remove the key`,
+    )
+  }
+  if (value === 'all') return undefined
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (typeof entry !== 'string' || !AGENT_NAME_RE.test(entry)) {
+        throw new Error(`template "${type}": agents: ${JSON.stringify(entry)} is not an agent name`)
+      }
+      if (entry === 'fork') {
+        throw new Error(`template "${type}": agents: "fork" is the session's own route, not an agent type; leave it out`)
+      }
+    }
+    return [...new Set(value as string[])]
+  }
+  throw new Error(
+    `template "${type}": agents: must be "all" or a list of agent names, got ${JSON.stringify(value)}`,
+  )
+}
+
+/**
+ * Security: with `mcp: plugin`, a type that offers the Agent tool must say
+ * which agent types it offers — the roster is otherwise every built-in and
+ * every loaded agent, each described to the model with tools this type does
+ * not carry.
+ */
+function checkMcpPluginAgents(
+  type: string,
+  mcp: TemplateMcpAccess | undefined,
+  tools: readonly string[] | undefined,
+  agents: AgentAllowlist | undefined,
+): void {
+  if (mcp !== 'plugin' || agents !== undefined) return
+  const offersAgents = (tools ?? []).some(entry => entry === 'subagent' || entry === 'Agent')
+  if (offersAgents) {
+    throw new Error(`template "${type}": mcp: plugin with the subagent group requires an exact agents: list`)
+  }
+}
+
 /** The namespaces a stable skill id may name — `ChromiumSkillSource`. */
 export const SKILL_ID_NAMESPACES = ['bundled', 'project', 'user', 'plugin'] as const
 
@@ -136,6 +193,11 @@ export interface TemplateConfig {
    *  `$skill_listing`, `Skill()` and `/name`, enforced where the command list is
    *  built. Not the Skill tool itself, nor `Skill('mcp__<server>')`. */
   skills?: SkillAllowlist
+  /** Which sub-agent types the Agent tool offers: absent (every one) or an
+   *  exact list of agent names. A sub-agent runs on this type's own template,
+   *  so this narrows the roster the model is shown, not the tool boundary.
+   *  Applied where the engine's call context lists `enabledAgents`. */
+  agents?: AgentAllowlist
   /** This session type records per-turn file snapshots (session-scoped
    *  before/after images of every mutated file — the git replacement for
    *  types without a shell). Read in two places, both in
@@ -391,10 +453,14 @@ export function parseManifest(fallbackType: string, raw: string): ParsedTemplate
   const type = typeof fm.type === 'string' && fm.type.trim() ? fm.type.trim() : fallbackType
   const noExecution = headerFlag(fm.noExecution)
   const skills = parseSkillAllowlist(fm.skills, type)
+  const tools = toStringArray(fm.tools)
+  const mcp = parseMcpAccess(fm.mcp, type, { isPluginType: type.includes(':'), noExecution, skills })
+  const agents = parseAgentAllowlist(fm.agents, type)
+  checkMcpPluginAgents(type, mcp, tools, agents)
   const config: TemplateConfig = {
     type,
     description: typeof fm.description === 'string' ? fm.description : undefined,
-    tools: toStringArray(fm.tools),
+    tools,
     deferredTools: toStringArray(fm.deferredTools),
     sealedTools: toStringArray(fm.sealedTools),
     // Strict `true` only — the same `headerFlag` every other
@@ -404,8 +470,9 @@ export function parseManifest(fallbackType: string, raw: string): ParsedTemplate
     // `noExecution === true` rather than trusting the manifest text.
     noExecution,
     // Throws on anything but the two literals or on a widening combination —
-    // see `parseMcpAccess`. A plugin type is one whose id carries `:`.
-    mcp: parseMcpAccess(fm.mcp, type, { isPluginType: type.includes(':'), noExecution, skills }),
+    // see `parseMcpAccess` and `checkMcpPluginAgents`.
+    mcp,
+    agents,
     // Same strict-`true` rule as `noExecution` (and pinned the same way in
     // templateRegistry.test.ts): a typo reads as `false` — no recorder — so
     // the manifest text is not trusted, the parsed value is.

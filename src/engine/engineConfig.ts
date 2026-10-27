@@ -101,7 +101,6 @@ export type ReloadedPluginSet = {
   agents: AgentProfile[]
   plugins: PluginInitSummary[]
 }
-
 export type ConversationEngineConfig = {
   cwd: string
   /** The session's project directory. Memory and instruction files are
@@ -123,6 +122,10 @@ export type ConversationEngineConfig = {
    *  error; read at every prompt render, so a reconnect drops it (F-10). */
   mcpServerFailures?: () => ReadonlyArray<{ name: string; reason: string }>
   agents: AgentProfile[]
+  /** The agent names the session type's `agents:` list offers as sub-agent
+   *  types; absent ⇒ the whole roster. Applied where the call context lists
+   *  `enabledAgents` (`agentRosterOf`), so every Agent-tool read agrees. */
+  agentAllowlist?: readonly string[]
   /** Loaded plugins, listed in the session-init row. */
   plugins?: PluginInitSummary[]
   /** Re-runs plugin discovery for the given allow-list (none: read it again
