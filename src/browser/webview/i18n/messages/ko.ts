@@ -899,6 +899,7 @@ export const ko: Messages = {
   'mcpAuth.needsCredentials': '이 서버는 로그인을 사용하지 않습니다. API 키나 토큰이 필요합니다. 서버를 편집해 Authorization: Bearer <token>처럼 헤더로 추가하세요.',
   'mcpAuth.signIn': '로그인',
   'mcpAuth.windowTitle': '{server}에 로그인',
+  'signIn.toast': '{name}에 로그인했습니다',
   'mcpAuth.signingIn': '열린 창에서 로그인을 완료하세요.',
   'mcpAuth.cancel': '취소',
   'mcpAuth.signedIn': '이 서버에 로그인되어 있습니다.',

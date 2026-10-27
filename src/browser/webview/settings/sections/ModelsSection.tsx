@@ -1365,6 +1365,13 @@ export function ModelsSection({
           const st = await providerAuthOAuthStatus(transport, selectedId);
           if (st.connected) {
             setOAuth({ busy: false });
+            setAddedNotice(
+              t("signIn.toast", {
+                name: selectedProvider?.mod
+                  ? modProviderName(selectedProvider, locale)
+                  : (selectedProvider?.label ?? selectedId),
+              }),
+            );
             await loadRegistry();
             await reload();
             // OAuth connection state lives in the C++ broker, not settings.json,

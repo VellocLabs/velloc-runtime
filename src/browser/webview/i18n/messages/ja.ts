@@ -903,6 +903,7 @@ export const ja: Messages = {
   'mcpAuth.needsCredentials': 'このサーバーはログインを使いません。API キーまたはトークンが必要です。サーバーを編集して、Authorization: Bearer <token> のようにヘッダーとして追加してください。',
   'mcpAuth.signIn': 'ログイン',
   'mcpAuth.windowTitle': '{server} にログイン',
+  'signIn.toast': '{name} にログインしました',
   'mcpAuth.signingIn': '開いたウィンドウでログインを完了してください。',
   'mcpAuth.cancel': 'キャンセル',
   'mcpAuth.signedIn': 'このサーバーにログインしています。',

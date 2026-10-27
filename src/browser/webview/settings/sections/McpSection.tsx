@@ -5,9 +5,11 @@ import { McpServerDetailDialog } from "@/components/assistant-ui/mcp-server-deta
 import { McpSignInPanel } from "@/components/assistant-ui/mcp-sign-in-panel";
 import type { RuntimeConnection } from "@/browser/runtimeClient/RuntimeConnection";
 import {
+  newlySignedIn,
   useMcpAuth,
   type McpAuthControls,
 } from "@/browser/webview/mcpAuthView";
+import { normalizeMcpServerUrl } from "@/mcp/oauth/oauthKeys";
 import { isMcpUnauthorized } from "@/mcp/unauthorized";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +31,7 @@ import type { PluginMcpServerListing } from "../../../bridge/protocol";
 import type { McpToolSummary } from "../../../../mcp/toolSummary";
 import { useT } from "../../i18n";
 import { useSettingsBridge } from "../../nexusSettingsBridge";
+import { useSettingsToast } from "../useSettingsToast";
 import {
   mcpSettingsList,
   mcpSettingsRemove,
@@ -214,6 +217,10 @@ export function McpSection({
   const [servers, setServers] = React.useState<
     Record<string, NexusMcpServerConfig>
   >({});
+  // A sign-in window closes itself on success; this says what it did.
+  const toast = useSettingsToast();
+  const lastAuthState = React.useRef(auth.state);
+  const serverNames = React.useRef<(url: string) => string>((url) => url);
   // Tool counts learned from the pre-save connection test (mcp.testConnect),
   // keyed by server id; shown as "N tools" when known.
   const [toolCounts, setToolCounts] = React.useState<Record<string, number>>(
@@ -223,6 +230,18 @@ export function McpSection({
   const [pluginServers, setPluginServers] = React.useState<
     PluginMcpServerListing[]
   >([]);
+  serverNames.current = (url) => {
+    const named = (each: string | undefined) =>
+      !!each && normalizeMcpServerUrl(each) === url;
+    const own = Object.entries(servers).find(([, config]) => named(config.url));
+    return own?.[0] ?? pluginServers.find((each) => named(each.url))?.name ?? url;
+  };
+  React.useEffect(() => {
+    for (const url of newlySignedIn(lastAuthState.current, auth.state)) {
+      toast.show(t("signIn.toast", { name: serverNames.current(url) }));
+    }
+    lastAuthState.current = auth.state;
+  }, [auth.state, toast.show, t]);
   // The server whose detail view is open, with its tools from a live probe.
   const [detail, setDetail] = React.useState<{
     id: string;
@@ -867,6 +886,7 @@ export function McpSection({
         toolsError={detail?.error}
         onRetry={detail ? () => void openDetail(detail.id) : undefined}
       />
+      {toast.node}
     </SettingsSubpageLayout>
   );
 }

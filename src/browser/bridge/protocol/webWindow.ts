@@ -67,8 +67,23 @@ export type WebWindowBridgeActionMap = {
        *  before any request and reported as `onRedirectCaptured`. Manifest
        *  primitive `webWindow.captureRedirect`. */
       captureRedirect?: string
+      /** A fixed window title the page cannot change. Manifest primitive
+       *  `webWindow.title`. */
+      title?: string
+      /** With `captureRedirect`: after the capture the window stays open on
+       *  the host's "Finishing sign-in" page until `showSignInResult`.
+       *  Manifest primitive `webWindow.signInResult`. */
+      awaitSignInResult?: boolean
     } & BridgeWebWindowBounds
     result: { windowId: number }
+  }
+  /** The outcome of an `awaitSignInResult` window's captured sign-in: `ok`
+   *  shows the host's success page and closes the window 1.5 s later; not
+   *  `ok` shows its failure page with `message` and leaves the window open.
+   *  Once per capture. Manifest primitive `webWindow.signInResult`. */
+  showSignInResult: {
+    payload: { windowId: number; ok: boolean; message?: string }
+    result: { ok: boolean }
   }
   close: WindowAction
   list: {

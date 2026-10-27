@@ -49,6 +49,19 @@ export function holdMcpAuthStatus(connection: Pick<RuntimeConnection, 'subscribe
   }
 }
 
+/**
+ * The servers whose sign-in finished between `previous` and `next`: their
+ * phase went from `signing-in` to `signed-in`. A server first seen signed in
+ * (the page opened after the sign-in) is not one.
+ */
+export function newlySignedIn(previous: McpAuthState | null, next: McpAuthState | null): string[] {
+  if (!previous || !next) return []
+  const before = new Map(previous.servers.map(server => [server.url, server.phase]))
+  return next.servers
+    .filter(server => server.phase === 'signed-in' && before.get(server.url) === 'signing-in')
+    .map(server => server.url)
+}
+
 /** What a page can see and ask about MCP server sign-ins. */
 export type McpAuthControls = {
   /** Latest published state; null until the topic answers. */

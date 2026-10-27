@@ -2,6 +2,7 @@
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -317,6 +318,36 @@ describe('McpSection sign-in (F-10)', () => {
       }),
     )
     expect(exists('mcp-form-error')).toBe(false)
+  })
+
+  it('says so when a sign-in finishes, not for a server already signed in', async () => {
+    let publish: (payload: unknown) => void = () => {}
+    const conn = {
+      request: vi.fn(async () => ({ ok: true })),
+      subscribe: (_topic: string, listener: (event: { payload: unknown }) => void) => {
+        publish = payload => listener({ payload })
+        return () => {}
+      },
+    }
+    const url = 'https://mcp.notes.test/mcp'
+    render(
+      createElement(
+        SettingsBridgeContext.Provider,
+        { value: makeBridge({ notes: { type: 'http', url } }) },
+        createElement(McpSection, { runtimeConnection: async () => conn as never }),
+      ),
+    )
+    await screen.findByText('notes')
+    const state = (phase: string) => ({ available: true, servers: [{ url, phase }] })
+    act(() => publish(state('signed-in')))
+    act(() => publish(state('signed-in')))
+    expect(exists('settings-toast')).toBe(false)
+
+    act(() => publish(state('signing-in')))
+    act(() => publish(state('signed-in')))
+    expect((await screen.findByTestId('settings-toast')).textContent).toBe(
+      en['signIn.toast'].replace('{name}', 'notes'),
+    )
   })
 
   it('a 401 for a typed Authorization header stays an error and saves nothing', async () => {

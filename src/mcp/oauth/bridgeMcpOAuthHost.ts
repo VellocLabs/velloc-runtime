@@ -6,7 +6,7 @@
 import { createNativePrimitives } from '../../browser/bridge/nativePrimitives'
 import type { McpHostAccess } from '../mcpHost'
 import { createPrimitiveFetch } from '../primitiveTransports'
-import { McpSignInClosedError, type McpOAuthHost } from './McpOAuthService'
+import { McpSignInClosedError, type McpOAuthHost, type McpSignInCapture } from './McpOAuthService'
 
 /** Everything a sign-in needs from the host, by manifest entry. */
 export const MCP_OAUTH_PRIMITIVES = [
@@ -112,9 +112,32 @@ export function createBridgeMcpOAuthHost(
       await primitives.secrets.delete(name)
     },
     openSignInWindow(url, redirectUri, signal, title) {
+      const listed = (name: string): boolean => host.manifest?.primitives?.includes(name) === true
       // An older host has no fixed titles; it shows the page's own.
-      const fixedTitle = host.manifest?.primitives?.includes('webWindow.title') ? signInWindowTitle(title) : null
-      return new Promise<string>((resolve, reject) => {
+      const fixedTitle = listed('webWindow.title') ? signInWindowTitle(title) : null
+      // An older host closes the window on the capture; it has no result pages.
+      const awaitResult = listed('webWindow.signInResult')
+      const captured = (windowId: number, capturedUrl: string): McpSignInCapture => {
+        let done = false
+        const once = (run: () => Promise<void>): void => {
+          if (done || !awaitResult) return
+          done = true
+          void run().catch(() => {})
+        }
+        return {
+          url: capturedUrl,
+          finish: outcome =>
+            once(() =>
+              primitives.webWindow.showSignInResult(
+                windowId,
+                outcome.ok,
+                !outcome.ok && outcome.reason ? outcome.reason : undefined,
+              ),
+            ),
+          close: () => once(() => primitives.webWindow.close(windowId)),
+        }
+      }
+      return new Promise<McpSignInCapture>((resolve, reject) => {
         let windowId: number | null = null
         let settled = false
         const offs: Array<() => void> = []
@@ -134,7 +157,7 @@ export function createBridgeMcpOAuthHost(
         offs.push(
           primitives.webWindow.onRedirectCaptured(event => {
             if (windowId === null) early.push({ windowId: event.windowId, url: event.url })
-            else if (event.windowId === windowId) finish(() => resolve(event.url))
+            else if (event.windowId === windowId) finish(() => resolve(captured(event.windowId, event.url)))
           }),
           primitives.webWindow.onClosed(event => {
             if (windowId === null) early.push({ windowId: event.windowId })
@@ -151,6 +174,7 @@ export function createBridgeMcpOAuthHost(
             captureRedirect: redirectUri,
             ...SIGN_IN_WINDOW,
             ...(fixedTitle !== null ? { title: fixedTitle } : {}),
+            ...(awaitResult ? { awaitSignInResult: true } : {}),
           })
           .then(id => {
             windowId = id
@@ -160,7 +184,7 @@ export function createBridgeMcpOAuthHost(
             }
             for (const event of early) {
               if (event.windowId !== id) continue
-              if (event.url !== undefined) finish(() => resolve(event.url!))
+              if (event.url !== undefined) finish(() => resolve(captured(id, event.url!)))
               else finish(() => reject(new McpSignInClosedError()))
             }
           })

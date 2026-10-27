@@ -35,6 +35,29 @@ export class McpSignInClosedError extends Error {
   }
 }
 
+/** A sign-in the authorization server refused; `serverReason` is its own
+ *  words (`error_description`, else `error`). */
+export class McpSignInRefusedError extends Error {
+  constructor(
+    message: string,
+    readonly serverReason: string,
+  ) {
+    super(message)
+    this.name = 'McpSignInRefusedError'
+  }
+}
+
+/** The captured redirect of a sign-in window, and the window's last word. */
+export type McpSignInCapture = {
+  /** The full redirect URL, query included. */
+  url: string
+  /** Shows the outcome in the window: success closes it shortly after,
+   *  failure leaves it open with `reason` (shown as given). Never throws. */
+  finish(outcome: { ok: true } | { ok: false; reason?: string }): void
+  /** Closes the window without a result (the sign-in was cancelled). */
+  close(): void
+}
+
 /** The host calls a sign-in needs, all made on the runtime's own port. */
 export type McpOAuthHost = {
   /** Plain requests for discovery and client registration; no secret rides them. */
@@ -45,10 +68,10 @@ export type McpOAuthHost = {
   setSecret(name: BridgeSecretName, value: string, origin: string): Promise<void>
   deleteSecret(name: BridgeSecretName): Promise<void>
   /** Opens `url` in a window titled `title` (when given) and resolves with
-   *  the URL of the first navigation to `redirectUri`; rejects
-   *  `McpSignInClosedError` when the window closes first. Aborting `signal`
+   *  the first navigation to `redirectUri`; rejects `McpSignInClosedError`
+   *  when the window closes first. Aborting `signal` before the capture
    *  closes the window. */
-  openSignInWindow(url: string, redirectUri: string, signal: AbortSignal, title?: string): Promise<string>
+  openSignInWindow(url: string, redirectUri: string, signal: AbortSignal, title?: string): Promise<McpSignInCapture>
   /** The fetch an MCP transport uses when its headers carry placeholders. */
   transportFetch(): FetchLike
 }
@@ -116,7 +139,11 @@ function parseTokenResponse(status: number, body: string): TokenResponse {
         : typeof parsed.error === 'string'
           ? parsed.error
           : `HTTP ${status}`
-    throw new Error(`The token endpoint refused the request: ${reason}`)
+    const message = `The token endpoint refused the request: ${reason}`
+    if (typeof parsed.error_description === 'string' || typeof parsed.error === 'string') {
+      throw new McpSignInRefusedError(message, reason)
+    }
+    throw new Error(message)
   }
   const token: TokenResponse = { access_token: parsed.access_token }
   if (typeof parsed.refresh_token === 'string' && parsed.refresh_token) token.refresh_token = parsed.refresh_token
@@ -536,13 +563,56 @@ export class McpOAuthService {
       authorizationUrl.searchParams.set('prompt', 'consent')
     }
 
-    const captured = new URL(
-      await host.openSignInWindow(authorizationUrl.href, MCP_OAUTH_REDIRECT_URI, signal, payload.windowTitle),
-    )
+    const capture = await host.openSignInWindow(authorizationUrl.href, MCP_OAUTH_REDIRECT_URI, signal, payload.windowTitle)
+    try {
+      await this.finishSignIn(key, url, record, flow, host, capture.url, {
+        state,
+        codeVerifier,
+        clientId: client.clientId,
+        hasClientSecret: client.hasSecret === true,
+        tokenEndpoint: metadata.token_endpoint,
+        resource,
+        tokenOrigin,
+        names,
+      })
+    } catch (error) {
+      if (signal.aborted) capture.close()
+      else capture.finish({ ok: false, ...(error instanceof McpSignInRefusedError ? { reason: error.serverReason } : {}) })
+      throw error
+    }
+    capture.finish({ ok: true })
+  }
+
+  /** The sign-in after its redirect: checks the answer, exchanges the code
+   *  and stores the tokens. */
+  private async finishSignIn(
+    key: string,
+    url: string,
+    record: McpOAuthRecord,
+    flow: Flow,
+    host: McpOAuthHost,
+    capturedUrl: string,
+    exchange: {
+      state: string
+      codeVerifier: string
+      clientId: string
+      hasClientSecret: boolean
+      tokenEndpoint: string
+      resource: URL
+      tokenOrigin: string
+      names: ReturnType<typeof mcpOAuthSecretNames>
+    },
+  ): Promise<void> {
+    const signal = flow.controller.signal
+    const { names, resource, tokenOrigin } = exchange
+    const captured = new URL(capturedUrl)
     signal.throwIfAborted()
-    if (captured.searchParams.get('state') !== state) throw new Error('The sign-in answer did not match this sign-in.')
+    if (captured.searchParams.get('state') !== exchange.state) throw new Error('The sign-in answer did not match this sign-in.')
     const refused = captured.searchParams.get('error')
-    if (refused) throw new Error(captured.searchParams.get('error_description') ?? refused)
+    if (refused) {
+      const reason = captured.searchParams.get('error_description') ?? refused
+      throw new McpSignInRefusedError(reason, reason)
+    }
     const code = captured.searchParams.get('code')
     if (!code) throw new Error('The sign-in answer carried no authorization code.')
 
@@ -550,12 +620,12 @@ export class McpOAuthService {
       grant_type: 'authorization_code',
       code,
       redirect_uri: MCP_OAUTH_REDIRECT_URI,
-      code_verifier: codeVerifier,
-      client_id: client.clientId,
+      code_verifier: exchange.codeVerifier,
+      client_id: exchange.clientId,
       resource: resource.href,
     }
-    if (client.hasSecret) form.client_secret = secretPlaceholder(names.clientSecret)
-    const answer = await host.postForm(metadata.token_endpoint, form)
+    if (exchange.hasClientSecret) form.client_secret = secretPlaceholder(names.clientSecret)
+    const answer = await host.postForm(exchange.tokenEndpoint, form)
     const token = parseTokenResponse(answer.status, answer.body)
     signal.throwIfAborted()
 
@@ -565,7 +635,7 @@ export class McpOAuthService {
     this.put(key, {
       ...record,
       tokens: {
-        tokenEndpoint: metadata.token_endpoint,
+        tokenEndpoint: exchange.tokenEndpoint,
         accessOrigin,
         resource: resource.href,
         ...(token.scope ? { scope: token.scope } : {}),

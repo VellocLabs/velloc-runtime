@@ -5,6 +5,7 @@ import {
   McpSignInClosedError,
   type McpOAuthHost,
   type McpOAuthProtocolHelpers,
+  type McpSignInCapture,
 } from '../mcp/oauth/McpOAuthService'
 import { mcpOAuthKey, mcpOAuthSecretNames, normalizeMcpServerUrl } from '../mcp/oauth/oauthKeys'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
@@ -50,6 +51,13 @@ function rig(options: Options = {}) {
   let lastState = ''
   const forms: Array<{ url: string; form: Record<string, string> }> = []
   const opened: string[] = []
+  /** What each captured window was last told: its result, or 'closed'. */
+  const outcomes: Array<{ ok: true } | { ok: false; reason?: string } | 'closed'> = []
+  const capture = (url: string): McpSignInCapture => ({
+    url,
+    finish: outcome => outcomes.push(outcome),
+    close: () => outcomes.push('closed'),
+  })
   const tokenAnswers: Array<{ status: number; body: string }> = []
   const host: McpOAuthHost = {
     fetch: vi.fn(async () => {
@@ -79,7 +87,7 @@ function rig(options: Options = {}) {
       opened.push(url)
       const answer = options.window?.(new URL(url), lastState) ?? `${redirectUri}?code=the-code&state=${lastState}`
       if (answer instanceof Error) throw answer
-      return answer
+      return capture(answer)
     }),
     transportFetch: () => vi.fn() as never,
   }
@@ -131,6 +139,8 @@ function rig(options: Options = {}) {
     secrets,
     forms,
     opened,
+    outcomes,
+    capture,
     tokenAnswers,
     authChanges,
     names: mcpOAuthSecretNames(key),
@@ -276,10 +286,10 @@ describe('McpOAuthService sign-in', () => {
 
   it('cancel aborts the window and leaves no error', async () => {
     const r = rig()
-    let release: (value: string) => void = () => {}
+    let release: (value: McpSignInCapture) => void = () => {}
     vi.mocked(r.host.openSignInWindow).mockImplementationOnce(
       (_url, _redirect, signal) =>
-        new Promise<string>((resolve, reject) => {
+        new Promise<McpSignInCapture>((resolve, reject) => {
           release = resolve
           signal.addEventListener('abort', () => reject(new McpSignInClosedError()))
         }),
@@ -289,8 +299,49 @@ describe('McpOAuthService sign-in', () => {
     expect(r.phase()?.phase).toBe('signing-in')
     await r.service.cancel(SERVER)
     await settled(r)
-    release('ignored')
+    release(r.capture('ignored'))
     expect(r.phase()).toEqual({ url: SERVER_NORMALIZED, phase: 'needs-sign-in' })
+  })
+
+  it('tells the window it signed in once the tokens are stored', async () => {
+    const r = rig()
+    await r.service.signIn({ url: SERVER })
+    await settled(r)
+    expect(r.phase()?.phase).toBe('signed-in')
+    await vi.waitFor(() => expect(r.outcomes).toEqual([{ ok: true }]))
+  })
+
+  it("shows the server's own words in the window, and none of the runtime's", async () => {
+    const refused = rig({
+      window: (_url, state) =>
+        `${MCP_OAUTH_REDIRECT_URI}?error=access_denied&error_description=The+user+said+no&state=${state}`,
+    })
+    await refused.service.signIn({ url: SERVER })
+    await settled(refused)
+    await vi.waitFor(() => expect(refused.outcomes).toEqual([{ ok: false, reason: 'The user said no' }]))
+
+    const token = rig({ tokenAnswer: { status: 400, body: JSON.stringify({ error: 'invalid_grant' }) } })
+    await token.service.signIn({ url: SERVER })
+    await settled(token)
+    await vi.waitFor(() => expect(token.outcomes).toEqual([{ ok: false, reason: 'invalid_grant' }]))
+
+    const mismatch = rig({ window: () => `${MCP_OAUTH_REDIRECT_URI}?code=c&state=another` })
+    await mismatch.service.signIn({ url: SERVER })
+    await settled(mismatch)
+    await vi.waitFor(() => expect(mismatch.outcomes).toEqual([{ ok: false }]))
+  })
+
+  it('closes the window without a result when the sign-in is cancelled during the exchange', async () => {
+    const r = rig()
+    let answer: (value: { status: number; body: string }) => void = () => {}
+    vi.mocked(r.host.postForm).mockImplementationOnce(() => new Promise(resolve => (answer = resolve)))
+    await r.service.signIn({ url: SERVER })
+    await vi.waitFor(() => expect(vi.mocked(r.host.postForm).mock.calls.length).toBe(1))
+    await r.service.cancel(SERVER)
+    answer({ status: 200, body: JSON.stringify({ access_token: 'late' }) })
+    await settled(r)
+    await vi.waitFor(() => expect(r.outcomes).toEqual(['closed']))
+    expect(r.phase()?.phase).not.toBe('signed-in')
   })
 
   it('reports itself unavailable without a host', async () => {

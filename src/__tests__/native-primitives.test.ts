@@ -591,6 +591,34 @@ describe('webWindow', () => {
     expect(titled.requests[0]!.payload).toEqual({ url: 'https://a.example/', title: 'T' })
   })
 
+  it('asks for a sign-in result only of a host that lists webWindow.signInResult', async () => {
+    const older = make(() => ok({ windowId: 1 }), { capabilities: ['webWindow'], primitives: ['webWindow.captureRedirect'] })
+    await expect(
+      older.primitives.webWindow.open('https://a.example/', {
+        captureRedirect: 'http://localhost:1/cb',
+        awaitSignInResult: true,
+      }),
+    ).rejects.toSatisfy(isNativePrimitiveUnsupported)
+    await expect(older.primitives.webWindow.showSignInResult(1, true)).rejects.toSatisfy(isNativePrimitiveUnsupported)
+    expect(older.requests).toHaveLength(0)
+
+    const current = make(() => ok({ windowId: 2, ok: true }), {
+      capabilities: ['webWindow'],
+      primitives: ['webWindow.captureRedirect', 'webWindow.signInResult'],
+    })
+    await current.primitives.webWindow.open('https://a.example/', {
+      captureRedirect: 'http://localhost:1/cb',
+      awaitSignInResult: true,
+    })
+    await current.primitives.webWindow.showSignInResult(2, false, 'denied')
+    await current.primitives.webWindow.showSignInResult(2, true)
+    expect(current.requests.map(r => [r.route.action, r.payload])).toEqual([
+      ['open', { url: 'https://a.example/', captureRedirect: 'http://localhost:1/cb', awaitSignInResult: true }],
+      ['showSignInResult', { windowId: 2, ok: false, message: 'denied' }],
+      ['showSignInResult', { windowId: 2, ok: true }],
+    ])
+  })
+
   it('surfaces a host refusal with its code', async () => {
     const { primitives } = make(
       () => ({ ok: false, error: { code: 'url_not_allowed', message: 'only http, https and file URLs can be opened' } }),

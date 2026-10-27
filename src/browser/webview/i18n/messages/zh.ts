@@ -891,6 +891,7 @@ export const zh: Messages = {
   'mcpAuth.needsCredentials': '此服务器不使用登录，而是需要 API 密钥或令牌：请编辑该服务器，将其添加为请求头，例如 Authorization: Bearer <token>。',
   'mcpAuth.signIn': '登录',
   'mcpAuth.windowTitle': '登录 {server}',
+  'signIn.toast': '已登录 {name}',
   'mcpAuth.signingIn': '请在打开的窗口中完成登录。',
   'mcpAuth.cancel': '取消',
   'mcpAuth.signedIn': '你已登录此服务器。',

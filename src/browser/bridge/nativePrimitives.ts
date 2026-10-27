@@ -825,12 +825,27 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
         captureRedirect?: string
         /** A fixed window title the page cannot change (1-120 characters). */
         title?: string
+        /** With `captureRedirect`: keep the window on the host's
+         *  "Finishing sign-in" page until `showSignInResult`. */
+        awaitSignInResult?: boolean
       } & BridgeWebWindowBounds = {},
     ): Promise<number> {
       requireCapability('webWindow')
       if (options.captureRedirect !== undefined) requireListed('webWindow.captureRedirect')
       if (options.title !== undefined) requireListed('webWindow.title')
+      if (options.awaitSignInResult !== undefined) requireListed('webWindow.signInResult')
       return (await send('webWindow', 'webWindow', 'open', { url, ...options })).windowId
+    },
+    /** Reports an `awaitSignInResult` window's sign-in outcome; `message` is
+     *  shown as given on the failure page. */
+    async showSignInResult(windowId: number, ok: boolean, message?: string): Promise<void> {
+      requireCapability('webWindow')
+      requireListed('webWindow.signInResult')
+      await send('webWindow', 'webWindow', 'showSignInResult', {
+        windowId,
+        ok,
+        ...(message !== undefined ? { message } : {}),
+      })
     },
     async close(windowId: number): Promise<void> {
       requireCapability('webWindow')

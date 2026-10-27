@@ -796,6 +796,8 @@ describe('ModelsSection auto-connect', () => {
     }
 
     expect(onProviderConnected).toHaveBeenCalledTimes(1)
+    // The sign-in window closed itself; the page says what happened.
+    expect(screen.getByTestId('custom-provider-added-notice').textContent).toBe(`Signed in to ${oauthCatalog.providers[0]!.label}`)
   })
 })
 
