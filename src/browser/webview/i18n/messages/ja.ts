@@ -1463,7 +1463,7 @@ export const ja: Messages = {
   'settings.mcp.save': '保存して接続',
   'settings.mcp.testing': '接続をテスト中…',
   'settings.mcp.footer':
-    '{product} は stdio サーバーをこの端末で実行し、HTTP サーバーには Model Context Protocol 経由で接続します。ここに入力した秘密情報はブラウザ内に留まり、エージェントランタイムには決して渡されません。',
+    'stdio サーバーはこの端末で実行され、HTTP サーバーには Model Context Protocol 経由で接続します。ここに入力した秘密情報はこの端末の安全なストレージに保存され、エージェントには決して渡されません。',
   'settings.mcp.clipboardEmpty':
     'クリップボードが空です。先に mcpServers の JSON 設定をコピーしてください。',
   'settings.mcp.clipboardInvalid':

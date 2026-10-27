@@ -1496,7 +1496,7 @@ export const fr: Messages = {
   'settings.mcp.save': 'Enregistrer et connecter',
   'settings.mcp.testing': 'Test de la connexion…',
   'settings.mcp.footer':
-    '{product} exécute les serveurs stdio en local et joint les serveurs HTTP via le Model Context Protocol. Les secrets saisis ici restent dans le navigateur et ne sont jamais exposés au moteur d’exécution de l’agent.',
+    'Les serveurs stdio s’exécutent sur cet appareil et les serveurs HTTP sont joints via le Model Context Protocol. Les secrets saisis ici sont conservés dans le stockage sécurisé de cet appareil et ne sont jamais exposés à l’agent.',
   'settings.mcp.clipboardEmpty':
     'Le presse-papiers est vide. Copiez d’abord une configuration JSON mcpServers.',
   'settings.mcp.clipboardInvalid':

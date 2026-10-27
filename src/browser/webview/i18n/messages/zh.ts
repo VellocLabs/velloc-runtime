@@ -1440,7 +1440,7 @@ export const zh: Messages = {
   'settings.mcp.save': '保存并连接',
   'settings.mcp.testing': '正在测试连接…',
   'settings.mcp.footer':
-    '{product} 在本机运行 stdio 服务器，并通过 Model Context Protocol 访问 HTTP 服务器。在这里填写的机密只保存在浏览器中，绝不会暴露给智能体运行时。',
+    'stdio 服务器在本机运行，HTTP 服务器通过 Model Context Protocol 访问。在这里填写的机密保存在本机的安全存储中，绝不会暴露给智能体。',
   'settings.mcp.clipboardEmpty': '剪贴板为空。请先复制一段 mcpServers JSON 配置。',
   'settings.mcp.clipboardInvalid':
     '剪贴板中没有有效的 MCP 配置。请先复制一段 JSON 配置（例如一个 { "mcpServers": { … } } 块），然后再导入。',

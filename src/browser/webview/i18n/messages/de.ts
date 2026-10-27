@@ -1489,7 +1489,7 @@ export const de: Messages = {
   'settings.mcp.save': 'Speichern & verbinden',
   'settings.mcp.testing': 'Verbindung wird getestet …',
   'settings.mcp.footer':
-    '{product} führt stdio-Server lokal aus und erreicht HTTP-Server über das Model Context Protocol. Hier eingegebene Geheimnisse bleiben im Browser und werden der Agent-Laufzeit nie offengelegt.',
+    'stdio-Server laufen auf diesem Gerät, HTTP-Server werden über das Model Context Protocol erreicht. Hier eingegebene Geheimnisse liegen im sicheren Speicher dieses Geräts und werden dem Agenten nie offengelegt.',
   'settings.mcp.clipboardEmpty':
     'Die Zwischenablage ist leer. Kopiere zuerst eine mcpServers-JSON-Konfiguration.',
   'settings.mcp.clipboardInvalid':

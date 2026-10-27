@@ -1460,7 +1460,7 @@ export const ko: Messages = {
   'settings.mcp.save': '저장하고 연결',
   'settings.mcp.testing': '연결을 테스트하는 중…',
   'settings.mcp.footer':
-    '{product}은(는) stdio 서버를 이 기기에서 실행하고, HTTP 서버에는 Model Context Protocol로 연결합니다. 여기에 입력한 비밀 정보는 브라우저 안에만 남으며 에이전트 런타임에는 절대 노출되지 않습니다.',
+    'stdio 서버는 이 기기에서 실행되고, HTTP 서버에는 Model Context Protocol로 연결합니다. 여기에 입력한 비밀 정보는 이 기기의 보안 저장소에 보관되며 에이전트에는 절대 노출되지 않습니다.',
   'settings.mcp.clipboardEmpty':
     '클립보드가 비어 있습니다. 먼저 mcpServers JSON 설정을 복사하세요.',
   'settings.mcp.clipboardInvalid':

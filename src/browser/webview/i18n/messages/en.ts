@@ -1525,7 +1525,7 @@ export const en = {
   'settings.mcp.save': 'Save & connect',
   'settings.mcp.testing': 'Testing connection…',
   'settings.mcp.footer':
-    '{product} runs stdio servers locally and reaches HTTP servers over the Model Context Protocol. Secrets entered here stay in the browser and are never exposed to the agent runtime.',
+    'Stdio servers run on this device, and HTTP servers are reached over the Model Context Protocol. Secrets entered here are kept in this device\'s secure store and are never exposed to the agent.',
   'settings.mcp.clipboardEmpty':
     'Clipboard is empty. Copy an mcpServers JSON config first.',
   'settings.mcp.clipboardInvalid':
