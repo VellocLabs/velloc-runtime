@@ -11,6 +11,41 @@ import {
 /** The `skills:` frontmatter value: every skill, or an exact id allowlist. */
 export type SkillAllowlist = 'all' | readonly string[]
 
+/** The `mcp:` frontmatter value: every MCP source the session would see, or
+ *  only the servers and registered tools of the plugin that owns the type. */
+export type TemplateMcpAccess = 'all' | 'plugin'
+
+/**
+ * Parse `mcp:`. Security: `plugin` is a capability boundary (F-25), so every
+ * combination that would widen it fails closed — a bundled type (no owning
+ * plugin), `noExecution` (already no MCP), or a `skills:` that is not an exact
+ * list (a skill body's inline shell is local execution).
+ */
+function parseMcpAccess(
+  value: unknown,
+  type: string,
+  context: { isPluginType: boolean; noExecution: boolean; skills: SkillAllowlist | undefined },
+): TemplateMcpAccess | undefined {
+  if (value === undefined) return undefined
+  if (value !== 'all' && value !== 'plugin') {
+    throw new Error(
+      `template "${type}": mcp: must be "all" or "plugin", got ${JSON.stringify(value)}`,
+    )
+  }
+  if (value === 'plugin') {
+    if (!context.isPluginType) {
+      throw new Error(`template "${type}": mcp: plugin is only for a plugin's template (<plugin>:<key>)`)
+    }
+    if (context.noExecution) {
+      throw new Error(`template "${type}": mcp: plugin and noExecution: true cannot both be set`)
+    }
+    if (context.skills === undefined || context.skills === 'all') {
+      throw new Error(`template "${type}": mcp: plugin requires an exact skills: list (a skill body may run shell)`)
+    }
+  }
+  return value
+}
+
 /** The namespaces a stable skill id may name — `ChromiumSkillSource`. */
 export const SKILL_ID_NAMESPACES = ['bundled', 'project', 'user', 'plugin'] as const
 
@@ -90,6 +125,12 @@ export interface TemplateConfig {
    *  the `tools:` allowlist and stdio servers spawn processes. Not passed to
    *  tools: `run_js` runs in the hardened realm either way. */
   noExecution?: boolean
+  /** Security: which MCP sources this type takes. Absent / `all` ⇒ every
+   *  source (settings, project, every plugin in effect). `plugin` ⇒ only the
+   *  owning plugin's servers and `$.tool.register` tools, and no inline shell
+   *  in skill bodies; plugin types only. Read through `templateMcpScope`
+   *  (templateRegistry.ts). */
+  mcp?: TemplateMcpAccess
   /** Security: SKILLS this type may use: `'all'` (default) or an exact list of
    *  `<source>:<name>` ids (empty = deny-all). A capability boundary over
    *  `$skill_listing`, `Skill()` and `/name`, enforced where the command list is
@@ -347,8 +388,11 @@ function parseSkeleton(lines: string[]): PromptElement[] {
 export function parseManifest(fallbackType: string, raw: string): ParsedTemplate {
   const { frontmatter, content } = readMarkdownHeader(raw)
   const fm = frontmatter as Record<string, unknown>
+  const type = typeof fm.type === 'string' && fm.type.trim() ? fm.type.trim() : fallbackType
+  const noExecution = headerFlag(fm.noExecution)
+  const skills = parseSkillAllowlist(fm.skills, type)
   const config: TemplateConfig = {
-    type: typeof fm.type === 'string' && fm.type.trim() ? fm.type.trim() : fallbackType,
+    type,
     description: typeof fm.description === 'string' ? fm.description : undefined,
     tools: toStringArray(fm.tools),
     deferredTools: toStringArray(fm.deferredTools),
@@ -358,17 +402,17 @@ export function parseManifest(fallbackType: string, raw: string): ParsedTemplate
     // A typo therefore reads as `false` (executes like every other type), which
     // is why `templateRegistry.test.ts` asserts safe_code parses with
     // `noExecution === true` rather than trusting the manifest text.
-    noExecution: headerFlag(fm.noExecution),
+    noExecution,
+    // Throws on anything but the two literals or on a widening combination —
+    // see `parseMcpAccess`. A plugin type is one whose id carries `:`.
+    mcp: parseMcpAccess(fm.mcp, type, { isPluginType: type.includes(':'), noExecution, skills }),
     // Same strict-`true` rule as `noExecution` (and pinned the same way in
     // templateRegistry.test.ts): a typo reads as `false` — no recorder — so
     // the manifest text is not trusted, the parsed value is.
     fileSnapshots: headerFlag(fm.fileSnapshots),
     // `all` / absent ⇒ undefined (every skill); a list ⇒ the exact allowlist.
     // Throws on a malformed id — see `parseSkillAllowlist`.
-    skills: parseSkillAllowlist(
-      fm.skills,
-      typeof fm.type === 'string' && fm.type.trim() ? fm.type.trim() : fallbackType,
-    ),
+    skills,
     model: typeof fm.model === 'string' && fm.model.trim() ? fm.model.trim() : undefined,
   }
   return {

@@ -12,12 +12,20 @@ import type { ActivePlugin } from './pluginModel'
 export type PluginRequires = {
   /** Keys of this plugin's `providers`. */
   providers?: string[]
-  /** `requires` words this Velloc does not serve; any one keeps the plugin waiting. */
+  /** Velloc features the plugin's components need, each one this Velloc has. */
+  features?: string[]
+  /** `requires` words this Velloc does not serve (`features:<name>` for a
+   *  feature it lacks); any one keeps the plugin waiting. */
   unknown?: string[]
 }
 
 /** The `requires` words this Velloc reads. */
-export const REQUIRES_WORDS = ['providers'] as const
+export const REQUIRES_WORDS = ['providers', 'features'] as const
+
+/** The `requires.features` names this Velloc has. A plugin naming another
+ *  waits, so a template or component that needs the feature never runs on a
+ *  Velloc that would read it as something weaker. */
+export const KNOWN_FEATURES = ['template-mcp-scope'] as const
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -53,7 +61,21 @@ export function checkRequires(
       out.providers = [...new Set(list as string[])]
     }
   }
-  return out.providers || out.unknown ? out : undefined
+  if (value.features !== undefined) {
+    const list = value.features
+    if (!Array.isArray(list) || list.length === 0 || !list.every(name => typeof name === 'string' && name !== '')) {
+      errors.push('requires.features: expected a non-empty list of feature names')
+      out.unknown = [...(out.unknown ?? []), 'features']
+    } else {
+      const names = [...new Set(list as string[])]
+      const missing = names.filter(name => !(KNOWN_FEATURES as readonly string[]).includes(name))
+      for (const name of missing) errors.push(`requires.features: this Velloc does not have "${name}"; the plugin stays waiting`)
+      if (missing.length > 0) out.unknown = [...(out.unknown ?? []), ...missing.map(name => `features:${name}`)]
+      const known = names.filter(name => !missing.includes(name))
+      if (known.length > 0) out.features = known
+    }
+  }
+  return out.providers || out.features || out.unknown ? out : undefined
 }
 
 /** What the gate reads about one provider. */

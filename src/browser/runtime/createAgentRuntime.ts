@@ -126,6 +126,13 @@ import {
 } from '../../mcp'
 import { MCPPool } from '../../mcp/pool'
 import { settingsMcpServerIds, type McpServerOriginSources } from '../../mcp/serverOrigin'
+import {
+  modToolsInScope,
+  pluginMcpOwnersInScope,
+  pluginMcpServersInScope,
+  pluginNativeMcpServersInScope,
+  sessionMcpScopeOf,
+} from '../../mcp/sessionMcpScope'
 import { getMcpHost, hostServesWorkerMcp } from '../../mcp/mcpHost'
 import { createNativePrimitives } from '../bridge/nativePrimitives'
 import { loadLocalAgents } from '../../agents/agentRegistry'
@@ -908,9 +915,18 @@ export async function createBrowserRuntime(
       return null
     }
   })()
+  // Security: the MCP sources this type takes (F-25). `plugin` confines the
+  // session to the plugin that owns its type: that plugin's servers and
+  // registered tools alone, no settings.json server, no project server file,
+  // no other plugin's server. Decided here, where the root pool is built, so
+  // the loops under the session inherit the same pool.
+  const mcpScope = sessionMcpScopeOf(templateType, sessionTemplate?.config)
   // Shared by every runtime reading this settings home: a pool outlives the
   // runtime that created it, and that runtime's bridge still asks this set.
-  const userConfiguredMcpServerIds = settingsMcpServerIds(settingsHomeDir ?? '')
+  // A plugin-scoped session never reads settings.json, so its set stays empty
+  // and none of its servers reaches loopback or the LAN.
+  const userConfiguredMcpServerIds =
+    mcpScope.kind === 'plugin' ? new Set<string>() : settingsMcpServerIds(settingsHomeDir ?? '')
   const sessionMcpHost = {
     transport: resolvedOptions.bridgeTransport,
     manifest: resolvedOptions.hostManifest,
@@ -930,7 +946,11 @@ export async function createBrowserRuntime(
   // `~/.velloc/settings.json` (mcp.servers section); each server's full
   // config travels inline through `connect()`. The plugin list follows
   // plugin reloads.
-  let pluginNativeMcpServers = pluginContributions.nativeMcpServers
+  let pluginNativeMcpServers = pluginNativeMcpServersInScope(
+    mcpScope,
+    pluginContributions.nativeMcpServers,
+    pluginContributions.mcpServerPlugins,
+  )
   const mergePluginNativeMcpServers = (
     settingsEntries: typeof pluginContributions.nativeMcpServers,
   ) => {
@@ -949,7 +969,9 @@ export async function createBrowserRuntime(
     return [...settingsEntries, ...pluginEntries]
   }
   const loadNativeMcpServers = async () => {
-    if (!settingsHomeDir) return mergePluginNativeMcpServers([])
+    // Security: a plugin-scoped session lists its owner's stdio servers only;
+    // settings.json is not read.
+    if (!settingsHomeDir || mcpScope.kind === 'plugin') return mergePluginNativeMcpServers([])
     try {
       // This callback's contract is "re-read the LATEST disk state"
       // (see MCPPoolOptions.loadNativeServers): the pool-refresh
@@ -1011,7 +1033,12 @@ export async function createBrowserRuntime(
         parentSessionId: mcpParentSessionId,
         cwd: resolvedCwd,
         fs: installedFs,
-        extraServers: pluginContributions.mcpServers,
+        extraServers: pluginMcpServersInScope(
+          mcpScope,
+          pluginContributions.mcpServers,
+          pluginContributions.mcpServerPlugins,
+        ),
+        projectServers: mcpScope.kind !== 'plugin',
         nativeBridge: nativeMcpBridge,
         loadNativeServers: loadNativeMcpServers,
       })
@@ -1020,7 +1047,7 @@ export async function createBrowserRuntime(
   const mcpPool = mcpLease?.pool ?? new MCPPool({ cwd: resolvedCwd, fs: installedFs })
   const mcpOrigins: McpServerOriginSources = {
     settingsIds: userConfiguredMcpServerIds,
-    pluginServers: pluginContributions.mcpServerPlugins,
+    pluginServers: pluginMcpOwnersInScope(mcpScope, pluginContributions.mcpServerPlugins),
     projectNames: mcpPool.projectServerNames,
   }
   // The session's MCP offering (F-10): the pool's connected servers as tool contracts, deferral
@@ -1417,10 +1444,18 @@ export async function createBrowserRuntime(
     }
     const changedMcpSecrets = await storeMcpSecrets(reloadContributions)
     if (mcpLease && mcpLease.topLevelSessionId === resolvedSessionId) {
-      pluginNativeMcpServers = reloadContributions.nativeMcpServers
-      mcpOrigins.pluginServers = reloadContributions.mcpServerPlugins
+      // The reloaded set, under the same scope the pool was built with.
+      pluginNativeMcpServers = pluginNativeMcpServersInScope(
+        mcpScope,
+        reloadContributions.nativeMcpServers,
+        reloadContributions.mcpServerPlugins,
+      )
+      mcpOrigins.pluginServers = pluginMcpOwnersInScope(mcpScope, reloadContributions.mcpServerPlugins)
       try {
-        await mcpPool.followPluginReload(reloadContributions.mcpServers, changedMcpSecrets)
+        await mcpPool.followPluginReload(
+          pluginMcpServersInScope(mcpScope, reloadContributions.mcpServers, reloadContributions.mcpServerPlugins),
+          changedMcpSecrets,
+        )
       } catch (err) {
         console.warn('[mcp] plugin server reload failed:', err)
       }
@@ -2267,6 +2302,8 @@ ${teammateAddendum}`
         : {}),
     // The tools this session's mods register, for the loops under it.
     onModToolsChanged: registered => publishModSlotTools(resolvedSessionId, registered, ownSlot),
+    // Security: registered tools outside the type's MCP scope are not listed (F-25).
+    modToolScope: mcpScope,
     // `/mcp` jumps to the host MCP settings page via the `ui.openNexusSettings`
     // bridge action (declared in api/declarations/ui/openNexusSettings.api.json).
     // The worker transport reaches `ui.*` routes (same path the session-state
@@ -2366,11 +2403,12 @@ ${teammateAddendum}`
   engineForMods = engine
   for (const entry of earlyRegistrations.splice(0)) entry.apply(engine)
   // A loop under a slot lists the tools the slot's mods registered, scoped
-  // as its own tools are (none for a type that takes no MCP tools); its call
-  // of one is the slot's `tool.call` (F-25).
+  // as its own tools are (none for a type that takes no MCP tools, its
+  // owner's for a plugin-scoped type); its call of one is the slot's
+  // `tool.call` (F-25).
   if (agentLoopMods && allowsMcp) {
     const inheritSlotTools = () => {
-      const registered = [...modSlotToolsFor(resolvedSessionId)]
+      const registered = modToolsInScope(modSlotToolsFor(resolvedSessionId), mcpScope)
       engine.inheritModTools(
         subAgentScope.forkExactTools
           ? registered

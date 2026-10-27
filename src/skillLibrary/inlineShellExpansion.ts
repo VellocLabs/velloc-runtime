@@ -2,6 +2,7 @@
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import { createBashHookCommandRunner } from '../lifecycleHooks/hookCommandRunner'
 import { isLocalAccessConfined } from '../permissions/chatLocalAccess'
+import { getTemplate, templateAllowsInlineShell } from '../prompting/templateRegistry'
 
 export type PromptShellRunner = (
   command: string,
@@ -60,7 +61,8 @@ export async function expandShellSnippets(
 }
 
 // Expands shell snippets in a skill body. Skipped in plan mode, in a chat
-// session, and when no shell runner is available, leaving the body as written.
+// session, in a session type that does not take every MCP source, and when
+// no shell runner is available, leaving the body as written.
 export async function expandSkillBodyShell(
   body: string,
   context: ToolCallContext,
@@ -74,6 +76,13 @@ export async function expandSkillBodyShell(
   }
 
   if (isLocalAccessConfined(context.options.templateType)) {
+    return body
+  }
+
+  // Security: a snippet runs on this machine through the host shell, outside
+  // the type's `tools:` allowlist; only a type open to every MCP source may
+  // run one (F-25).
+  if (!templateAllowsInlineShell(getTemplate(context.options.templateType ?? '')?.config)) {
     return body
   }
 

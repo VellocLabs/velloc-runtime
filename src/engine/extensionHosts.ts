@@ -14,6 +14,7 @@ import { tierFromEffort } from '../config/nexusModelConfig/providers/shared/list
 import { isAssistantMessage } from '../runtime/VercelModelConstants'
 import { extractAssistantText } from '../models/fastModelCall'
 import { ModRegisteredTools, isModRegisteredTool, modToolFullName, type ModRegisteredTool } from '../mods/modRegisteredTools'
+import { modToolsInScope } from '../mcp/sessionMcpScope'
 import { mcpServerSkillName } from '../mcp/toolAdapter'
 import { registerExtensionToolUnits } from '../toolkit/run/deferredTools'
 import {
@@ -438,21 +439,27 @@ export class ExtensionHosts {
   constructor(private readonly ledger: SessionLedger, writer: TranscriptWriter) {
     const { config } = ledger
     // Each change rebuilds the session's list: its own entries plus the
-    // registered ones, replaced by name, each its own deferral unit.
-    const listRegistered = (registered: readonly ModRegisteredTool[]) => {
-      const names = new Set(registered.map(tool => tool.name))
-      config.tools = [...config.tools.filter(tool => !isModRegisteredTool(tool) && !names.has(tool.name)), ...registered]
+    // registered ones in the session's scope, replaced by name, each its own
+    // deferral unit. Security: a tool outside `modToolScope` is not listed
+    // and not published to the loops under the session (F-25).
+    const listRegistered = (registered: readonly ModRegisteredTool[]): ModRegisteredTool[] => {
+      const listed = modToolsInScope(registered, config.modToolScope)
+      const names = new Set(listed.map(tool => tool.name))
+      config.tools = [...config.tools.filter(tool => !isModRegisteredTool(tool) && !names.has(tool.name)), ...listed]
       registerExtensionToolUnits(
-        new Map(registered.map(tool => [tool.name, tool.modDeferred])),
+        new Map(listed.map(tool => [tool.name, tool.modDeferred])),
         config.runtimeConfig,
         config.tools,
       )
+      return listed
     }
     const modTools = new ModRegisteredTools(registered => {
-      listRegistered(registered)
-      config.onModToolsChanged?.(registered)
+      const listed = listRegistered(registered)
+      config.onModToolsChanged?.(listed)
     })
-    this.inheritRegisteredTools = listRegistered
+    this.inheritRegisteredTools = tools => {
+      listRegistered(tools)
+    }
     this.registeredAgents = new ModRegisteredAgents(registered => {
       const names = new Set(registered.map(agent => agent.name))
       config.agents = [

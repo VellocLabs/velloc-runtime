@@ -28,6 +28,7 @@ import type {
 } from '../runtime/RuntimeTypes'
 import type { PermissionDecider } from '../toolkit/permissionVerdict'
 import type { ModRegisteredTool } from '../mods/modRegisteredTools'
+import type { SessionMcpScope } from '../mcp/sessionMcpScope'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { ToolContractList } from '../toolkit/toolContract'
 import type { ResolvedMemorySettings } from '../memory/memoryPaths'
@@ -135,6 +136,9 @@ export type ConversationEngineConfig = {
   /** Told the tools the session's extensions registered (`$.tool.register`),
    *  at each change, for the loops under it to list. */
   onModToolsChanged?: (tools: readonly ModRegisteredTool[]) => void
+  /** Security: which plugins' registered tools the session lists (F-25).
+   *  Absent reads as every plugin's. */
+  modToolScope?: SessionMcpScope
   decidePermission: PermissionDecider
   readAppState: () => WorkingState
   writeAppState: (f: (prev: WorkingState) => WorkingState) => void

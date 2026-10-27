@@ -135,6 +135,27 @@ describe('requires', () => {
     expect(errors).toHaveLength(3)
   })
 
+  it('reads features; one this Velloc lacks is reported and keeps the plugin waiting', () => {
+    const errors: string[] = []
+    expect(checkRequires({ features: ['template-mcp-scope', 'template-mcp-scope'] }, [], errors)).toEqual({
+      features: ['template-mcp-scope'],
+    })
+    expect(errors).toEqual([])
+    expect(checkRequires({ features: ['template-mcp-scope', 'warp-drive'] }, [], errors)).toEqual({
+      features: ['template-mcp-scope'],
+      unknown: ['features:warp-drive'],
+    })
+    expect(checkRequires({ features: [] }, [], errors)).toEqual({ unknown: ['features'] })
+    expect(errors).toHaveLength(2)
+    // A met feature list alone gates nothing; a missing one is an unmet requirement.
+    const met = plugin({ features: ['template-mcp-scope'] })
+    expect(splitByRequirements([met], owned('mod.neb.main')).effective).toEqual([met])
+    const lacking = plugin({ features: ['template-mcp-scope'], unknown: ['features:warp-drive'] })
+    expect(splitByRequirements([lacking], owned('mod.neb.main')).waiting[0]?.unmet).toEqual([
+      { kind: 'unknown', word: 'features:warp-drive' },
+    ])
+  })
+
   it('is met only once the plugin\'s own provider is set up by this install', () => {
     const p = plugin({ providers: ['main'] })
     expect(splitByRequirements([p], owned('mod.neb.main')).effective).toEqual([p])

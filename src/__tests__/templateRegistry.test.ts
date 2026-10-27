@@ -20,7 +20,9 @@ import {
   hasTemplate,
   registerPluginType,
   resolveDeferrableSkills,
+  templateAllowsInlineShell,
   templateAllowsMcp,
+  templateMcpScope,
   templateWantsFileSnapshots,
   templateWantsWorkspaceDiffTool,
   templateWriteToolName,
@@ -215,6 +217,57 @@ describe('templateRegistry — manifest parse', () => {
     }
     // Absent config (a type with no manifest) keeps today's behaviour.
     expect(templateAllowsMcp(undefined)).toBe(true)
+  })
+
+  it('mcp: parses the two literals; absent is all; anything else throws', () => {
+    const plugin = (fm: string) => parseManifest('acme:x', `---\ntype: acme:x\n${fm}\n---\n`).config
+    expect(plugin('').mcp).toBeUndefined()
+    expect(plugin('mcp: all').mcp).toBe('all')
+    expect(plugin('mcp: plugin\nskills: []').mcp).toBe('plugin')
+    expect(() => plugin('mcp: own\nskills: []')).toThrow(/mcp: must be "all" or "plugin"/)
+    expect(() => plugin('mcp: true\nskills: []')).toThrow(/mcp: must be/)
+  })
+
+  it('mcp: plugin fails closed on every widening combination', () => {
+    // A bundled type has no owning plugin to confine to.
+    expect(() => parseManifest('x', '---\ntype: x\nmcp: plugin\nskills: []\n---\n')).toThrow(
+      /only for a plugin's template/,
+    )
+    // noExecution already takes no MCP; the two together are a contradiction, not a narrowing.
+    expect(() =>
+      parseManifest('acme:x', '---\ntype: acme:x\nmcp: plugin\nnoExecution: true\nskills: []\n---\n'),
+    ).toThrow(/cannot both be set/)
+    // A skill body may carry inline shell, so the skill set must be exact.
+    expect(() => parseManifest('acme:x', '---\ntype: acme:x\nmcp: plugin\n---\n')).toThrow(
+      /requires an exact skills: list/,
+    )
+    expect(() => parseManifest('acme:x', '---\ntype: acme:x\nmcp: plugin\nskills: all\n---\n')).toThrow(
+      /requires an exact skills: list/,
+    )
+    expect(
+      parseManifest('acme:x', '---\ntype: acme:x\nmcp: plugin\nskills: [plugin:acme:setup]\n---\n').config.mcp,
+    ).toBe('plugin')
+  })
+
+  it('templateMcpScope: none for noExecution, plugin for mcp: plugin, all otherwise — and the two predicates follow it', () => {
+    const scoped = parseManifest('acme:x', '---\ntype: acme:x\nmcp: plugin\nskills: []\n---\n').config
+    expect(templateMcpScope(getTemplate('safe_code')!.config)).toBe('none')
+    expect(templateMcpScope(scoped)).toBe('plugin')
+    for (const type of ['chat', 'code', 'agent']) expect(templateMcpScope(getTemplate(type)!.config), type).toBe('all')
+    expect(templateMcpScope(undefined)).toBe('all')
+    // The pool is open to every scope but none; inline shell only to all.
+    expect(templateAllowsMcp(scoped)).toBe(true)
+    expect(templateAllowsInlineShell(scoped)).toBe(false)
+    expect(templateAllowsInlineShell(getTemplate('safe_code')!.config)).toBe(false)
+    expect(templateAllowsInlineShell(getTemplate('code')!.config)).toBe(true)
+    expect(templateAllowsInlineShell(undefined)).toBe(true)
+  })
+
+  it('no bundled type declares mcp:', () => {
+    for (const type of ['chat', 'code', 'agent', 'safe_code', 'team']) {
+      const tmpl = getTemplate(type)
+      if (tmpl) expect(tmpl.config.mcp, type).toBeUndefined()
+    }
   })
 
   it('launcherHidden: safe_code is launcher-hidden in index.md; every other listed type is visible', () => {

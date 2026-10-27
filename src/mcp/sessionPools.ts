@@ -67,6 +67,9 @@ export type AcquireSessionMCPPoolOptions = {
   cwd: string
   fs?: RuntimeFs
   extraServers?: MCPServerConfigWithName[]
+  /** Security: `false` keeps the project's server file out of the pool
+   *  (`MCPPoolOptions.projectServers`); read when the pool is created. */
+  projectServers?: boolean
   nativeBridge?: McpBridgeOperations
   loadNativeServers?: () => Promise<Array<{
     id: string
@@ -114,6 +117,7 @@ export async function acquireSessionMCPPool(
         cwd: options.cwd,
         fs: options.fs,
         extraServers: options.extraServers,
+        projectServers: options.projectServers,
         nativeBridge: options.nativeBridge,
         loadNativeServers: options.loadNativeServers,
       }),

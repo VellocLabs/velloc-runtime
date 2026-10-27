@@ -150,12 +150,36 @@ export function __setTemplateChannelForTest(channel: UpdateChannel | null): void
 }
 
 /**
+ * Which MCP sources a type takes: `all` (settings, project, every plugin in
+ * effect), `plugin` (the owning plugin's servers and registered tools only),
+ * `none` (`noExecution`). MCP tools join after the `tools:` allowlist and a
+ * stdio server spawns a process, so this is decided once, where the session's
+ * pool and tool list are built (F-25).
+ */
+export type TemplateMcpScope = 'all' | 'plugin' | 'none'
+
+export function templateMcpScope(config: TemplateConfig | undefined): TemplateMcpScope {
+  if (config?.noExecution === true) return 'none'
+  if (config?.mcp === 'plugin') return 'plugin'
+  return 'all'
+}
+
+/**
  * Security: may this type use the MCP pool (tools, resource tools,
  * `Skill('mcp__<server>')`)? Not for `noExecution`: MCP tools join after
  * the allowlist, and stdio servers spawn processes.
  */
 export function templateAllowsMcp(config: TemplateConfig | undefined): boolean {
-  return config?.noExecution !== true
+  return templateMcpScope(config) !== 'none'
+}
+
+/**
+ * Security: may a skill body's `!`cmd`` / ```! blocks run on this machine for
+ * this type? Only when the type takes every MCP source: a type that confines
+ * itself to one plugin's servers has promised nothing else runs locally.
+ */
+export function templateAllowsInlineShell(config: TemplateConfig | undefined): boolean {
+  return templateMcpScope(config) === 'all'
 }
 
 /**

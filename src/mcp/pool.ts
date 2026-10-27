@@ -78,6 +78,12 @@ export type MCPPoolOptions = {
    *  wins and the plugin server is skipped. */
   extraServers?: MCPServerConfigWithName[]
   /**
+   * Security: whether the pool reads the project's server file under `cwd`.
+   * `false` for a session type confined to one plugin's servers (F-25); the
+   * file is then never read. Default `true`.
+   */
+  projectServers?: boolean
+  /**
    * How the settings-configured ("native") servers are driven — in the
    * worker, over the host's primitives (`createWorkerMcpOperations`,
    * workerServers.ts). Absent (mock host, browser mode) → the pool is
@@ -135,6 +141,7 @@ export class MCPPool {
   private readonly cwd: string
   private fs?: RuntimeFs
   private extraServers: MCPServerConfigWithName[]
+  private readonly projectServers: boolean
   private readonly projectNames = new Set<string>()
   private readonly nativeBridge?: McpBridgeOperations
   private loadNativeServers?: NonNullable<MCPPoolOptions['loadNativeServers']>
@@ -165,6 +172,7 @@ export class MCPPool {
     this.cwd = options.cwd
     this.fs = options.fs
     this.extraServers = options.extraServers ?? []
+    this.projectServers = options.projectServers ?? true
     this.nativeBridge = options.nativeBridge
     this.loadNativeServers = options.loadNativeServers
     this.unwatchSignIns = this.watchSignIns()
@@ -265,7 +273,7 @@ export class MCPPool {
   }
 
   private async runInit(): Promise<void> {
-    const configs = await loadMCPConfig(this.cwd, this.fs)
+    const configs = this.projectServers ? await loadMCPConfig(this.cwd, this.fs) : []
     if (this.closed) return
     const names = new Set(configs.map(entry => entry.name))
     for (const name of names) this.projectNames.add(name)

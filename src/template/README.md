@@ -158,6 +158,7 @@ lines allowed. (Name / title / icon are NOT here — they live in `index.md`.)
 | `tools` | string[] | The **eager-visible** allowlist — tool GROUPS and/or individual tool names. Omitting a group excludes it. |
 | `deferredTools` | string[] | Groups/skills **loaded but hidden** until `Skill()`/`ToolSearch` activates them. |
 | `skills` | `all` \| string[] | Which SKILLS this type may use — `all` (default) or an exact allowlist of stable ids. See *The `skills:` allowlist*. |
+| `mcp` | `all` \| `plugin` | Which MCP sources the session takes — `all` (default: settings, project, every plugin in effect) or `plugin` (only the owning plugin's servers and registered tools; **plugin templates only**). See *Templates from plugins*. |
 | `model` | string | Optional model override for the type (rarely set). |
 
 ### `tools`, `deferredTools` — the tool set
@@ -488,6 +489,22 @@ one. Its launcher comes from the runtime's `mods/contributions` topic, after
 the bundled list, which never waits for it; the session registers the type
 when it starts (`registerPluginType`). Its own `includes/` are looked up
 first, then the bundled holders by name; never another plugin's (F-25).
+
+**`mcp: plugin`** confines the type's MCP to the plugin that owns it: the
+session's pool holds only that plugin's `.mcp.json` servers, its `config.tools`
+takes only that plugin's `$.tool.register` tools (in sub-agents too), and no
+settings.json, project `.mcp.json` or other plugin's server is started for it.
+Skill bodies are not shell-expanded (`` !`cmd` `` stays text) — a skill is the
+one remaining way to run something locally. The value is a capability
+boundary, so the parser fails closed on every combination that would widen
+it: a bundled type (no owning plugin), `noExecution: true` (already no MCP),
+or a `skills:` that is not an exact list. A type that pairs it with
+`tools: [read, plan, superedit, skills]` is a non-executing session whose
+execution happens wherever the plugin's servers run — a remote sandbox, for
+instance. A plugin shipping such a type declares
+`"requires": { "features": ["template-mcp-scope"] }`, so a Velloc without the
+key keeps the plugin waiting instead of reading the template as `all`
+(`templateMcpScope` in `prompting/templateRegistry.ts`).
 
 ---
 

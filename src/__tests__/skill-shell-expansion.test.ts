@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   expandShellSnippets,
   expandSkillBodyShell,
   type PromptShellRunner,
 } from '../skillLibrary/inlineShellExpansion'
+import { __resetPluginTypesForTest, registerPluginType } from '../prompting/templateRegistry'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 
 function runner(
@@ -106,5 +107,47 @@ describe('expandSkillBodyShell — plan-mode shell gating', () => {
   it('no markers → unchanged regardless of mode', async () => {
     const body = 'Plain skill body.'
     expect(await expandSkillBodyShell(body, ctx('default'))).toBe(body)
+  })
+})
+
+// A session type that does not take every MCP source (an `mcp: plugin` type,
+// or a `noExecution` one) runs no inline shell either: the body stays as
+// written and the host shell is never asked. An `all` type still expands.
+describe('expandSkillBodyShell — session-type shell gating', () => {
+  afterEach(() => {
+    __resetPluginTypesForTest()
+  })
+
+  function ctx(templateType: string) {
+    const callTool = vi.fn(async () => ({ output: 'main', exit_code: 0 }))
+    const context = {
+      platformCapabilities: { browser: { callTool } },
+      options: { mainLoopModel: 'm', sessionId: 's', mainLoopProviderId: 'p', templateType },
+      readAppState: () => ({ permissionRules: { mode: 'default' } }),
+    } as unknown as ToolCallContext
+    return { context, callTool }
+  }
+  const body = 'On branch !`git branch --show-current` now.'
+
+  it('an mcp: plugin type leaves the body verbatim and never reaches the shell', async () => {
+    await registerPluginType('acme:x', [
+      ['acme:x/template.md', '---\ntype: acme:x\nmcp: plugin\nskills: []\ntools: [read]\n---\n\n## prompt\nX\n'],
+    ])
+    const { context, callTool } = ctx('acme:x')
+    expect(await expandSkillBodyShell(body, context)).toBe(body)
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
+  it('a noExecution type leaves the body verbatim and never reaches the shell', async () => {
+    const { context, callTool } = ctx('safe_code')
+    expect(await expandSkillBodyShell(body, context)).toBe(body)
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
+  it('an all type asks the shell and substitutes', async () => {
+    const { context, callTool } = ctx('agent')
+    const out = await expandSkillBodyShell(body, context)
+    expect(callTool).toHaveBeenCalledTimes(1)
+    expect(out).not.toBe(body)
   })
 })
