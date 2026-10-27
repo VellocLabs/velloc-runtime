@@ -56,7 +56,7 @@ import {
   READ_TOOL_ID,
   WRITE_TOOL_ID,
 } from '../../prompting/fileToolNames'
-import { deriveSnapshotTurnInfo } from '../../utils/turnDiffs'
+import { snapshotTurnForCall } from '../../utils/turnDiffs'
 
 export type SuperEditInput = {
   code?: string
@@ -607,7 +607,7 @@ async function captureSnapshotForOp(
 ): Promise<void> {
   const recorder = context.options.fileSnapshotRecorder
   if (!recorder) return
-  const turn = deriveSnapshotTurnInfo(context.messages ?? [])
+  const turn = snapshotTurnForCall(context)
   const trackRemovalOrMutation = async (path: string): Promise<void> => {
     let isDirectory = false
     try {

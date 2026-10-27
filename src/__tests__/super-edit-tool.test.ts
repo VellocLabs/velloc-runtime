@@ -89,6 +89,7 @@ import { OverlayFs } from '../browser/runJs/overlayFs'
 import type { RunJsFsOp } from '../browser/runJs/runJsProtocol'
 import { getPlanFilePathForSession } from '../utils/planFiles'
 import { dirnameRuntimePath } from '../utils/runtimePaths'
+import { deriveChildToolContext } from '../agents/forkedRun'
 import {
   setSideTaskSink,
   type RunJsTaskFinish,
@@ -1135,6 +1136,25 @@ describe('commitOverlay — file-snapshot capture (fileSnapshots templates)', ()
     )
     expect(outcome.status).toBe('ok')
     expect(order).toEqual(['capture', 'write'])
+    expect(calls.tracked).toEqual([{ path: '/proj/a.txt', seq: 2 }])
+  })
+
+  it('a forked run’s write lands on the spawning session’s turn, not on its own message count', async () => {
+    const { recorder, calls } = fakeRecorder()
+    statMock.mockRejectedValue(NF())
+    writeFileMock.mockResolvedValue(undefined)
+    const child = deriveChildToolContext(snapContext(recorder), {
+      messages: [
+        { type: 'user', uuid: 'c1', message: { content: 'child task' } },
+      ] as unknown as Message[],
+    })
+    // The child loop replaces its messages each step; the inherited turn stays.
+    const stepped = { ...child, messages: [...child.messages] }
+    const outcome = await scriptThenCommit(
+      [['writeFile', { path: 'a.txt', bytes: new Uint8Array([1]) }]],
+      stepped,
+    )
+    expect(outcome.status).toBe('ok')
     expect(calls.tracked).toEqual([{ path: '/proj/a.txt', seq: 2 }])
   })
 

@@ -197,6 +197,18 @@ export function deriveSnapshotTurnInfo(messages: readonly Message[]): {
   }
 }
 
+/**
+ * The turn a tool call's file snapshots belong to: the turn a forked run
+ * inherited from the session that spawned it, else the turn derived from the
+ * call's own messages.
+ */
+export function snapshotTurnForCall(context: {
+  snapshotTurn?: { seq: number; uuid?: string; preview: string }
+  messages?: readonly Message[]
+}): { seq: number; uuid?: string; preview: string } {
+  return context.snapshotTurn ?? deriveSnapshotTurnInfo(context.messages ?? [])
+}
+
 /** Edit/Write calls in messages[start, end), in order, deduped by id. */
 function collectEditCallsInRange(
   messages: readonly Message[],

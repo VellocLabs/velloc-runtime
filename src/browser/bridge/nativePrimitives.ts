@@ -924,16 +924,24 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
   // ---- pageScript (F-29): a script channel to a page -----------------------
   // Messages that arrive while no `onMessage` listener is registered wait for
   // the next one (at most `PAGE_SCRIPT_EARLY_MESSAGE_LIMIT`, oldest dropped).
+  // The holding subscription exists only from the first attach on, and only
+  // while no listener is registered.
   const earlyPageMessages: BridgePageScriptOnMessagePayload[] = []
   let pageMessageListeners = 0
+  let pageScriptAttached = false
   let earlyPageMessagesOff: (() => void) | null = null
   const bufferEarlyPageMessages = () => {
+    if (!pageScriptAttached || pageMessageListeners > 0) return
     if (earlyPageMessagesOff || !transport.subscribeEvents) return
     earlyPageMessagesOff = transport.subscribeEvents(event => {
-      if (pageMessageListeners > 0 || !isRoute(event, 'pageScript', 'onMessage')) return
+      if (!isRoute(event, 'pageScript', 'onMessage')) return
       earlyPageMessages.push(event.payload as BridgePageScriptOnMessagePayload)
       if (earlyPageMessages.length > PAGE_SCRIPT_EARLY_MESSAGE_LIMIT) earlyPageMessages.shift()
     })
+  }
+  const stopBufferingPageMessages = () => {
+    earlyPageMessagesOff?.()
+    earlyPageMessagesOff = null
   }
   const pageScript = {
     /** Opens a channel to a window this connection opened or a tab in this
@@ -943,6 +951,7 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
       options: { exposeToPage?: boolean } = {},
     ): Promise<number> {
       requireCapability('pageScript')
+      pageScriptAttached = true
       bufferEarlyPageMessages()
       const result = await send('pageScript', 'pageScript', 'attach', {
         ...target,
@@ -1006,11 +1015,16 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
         'pageScript',
       )
       pageMessageListeners += 1
+      stopBufferingPageMessages()
       const early = earlyPageMessages.splice(0)
       for (const payload of early) deliver(payload)
+      let active = true
       return () => {
+        if (!active) return
+        active = false
         pageMessageListeners -= 1
         off()
+        bufferEarlyPageMessages()
       }
     },
     onDetached(listener: (event: BridgePageScriptOnDetachedPayload) => void): () => void {

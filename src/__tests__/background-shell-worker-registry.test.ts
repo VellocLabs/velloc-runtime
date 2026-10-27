@@ -22,6 +22,11 @@ import {
 import { TaskRegistry } from '../browser/worker/TaskRegistry'
 import { NativePrimitiveError } from '../browser/bridge/nativePrimitives'
 import type { BridgeShellPersistentRecord } from '../browser/bridge/browserBridgeProtocol'
+import {
+  heldShellMutationProbeCount,
+  holdShellMutationProbe,
+  resetHeldShellMutationProbes,
+} from '../sessions/fileSnapshots/shellMutationProbe'
 
 const TASK = 'b1234abcd'
 const LOG = `C:/Users/me/.velloc/projects/p/sess-1/tasks/${TASK}.output`
@@ -304,6 +309,39 @@ describe('BackgroundShellCoordinator — deadlines, evicted records and adoption
     expect(h.bridge.killPersistent).toHaveBeenCalledWith(shellId)
     expect(h.finished(shellId)?.summary).toContain('Command timed out.')
     expect(h.delivered).toHaveLength(1)
+  })
+})
+
+describe('BackgroundShellCoordinator — the shell write capture of a background command', () => {
+  const heldProbe = () => ({ tracked: ['/r/out.txt'], settle: vi.fn(async () => {}) })
+
+  it('settles the probe held for the task once the command has ended', async () => {
+    resetHeldShellMutationProbes()
+    const h = harness()
+    const probe = heldProbe()
+    const { shellId } = await h.coordinator.spawn({ tool: 'Bash', command: 'echo x > out.txt', cwd: '/r', logPath: LOG })
+    holdShellMutationProbe(TASK, probe, 'sess-1')
+    h.coordinator.register({ shellId, taskId: TASK, command: 'echo x > out.txt', spawnerSessionId: 'sess-1', outputFilePath: LOG })
+    await tick()
+    expect(probe.settle).not.toHaveBeenCalled()
+    h.exit(shellId, { exitCode: 0, durationMs: 5 })
+    await tick(250)
+    expect(h.finished(shellId)?.status).toBe('success')
+    expect(probe.settle).toHaveBeenCalledTimes(1)
+    expect(heldShellMutationProbeCount()).toBe(0)
+  })
+
+  it('lets go of a closed session’s probes, and only that session’s', async () => {
+    resetHeldShellMutationProbes()
+    const h = harness()
+    const mine = heldProbe()
+    const other = heldProbe()
+    holdShellMutationProbe('bmine0001', mine, 'sess-1')
+    holdShellMutationProbe('bother001', other, 'sess-2')
+    h.coordinator.stopChildren('sess-1')
+    expect(heldShellMutationProbeCount()).toBe(1)
+    expect(mine.settle).not.toHaveBeenCalled()
+    resetHeldShellMutationProbes()
   })
 })
 

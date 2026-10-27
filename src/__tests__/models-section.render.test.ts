@@ -1955,6 +1955,43 @@ describe('ModelsSection provider order', () => {
     expect(settleEchoedOrder(written, b)).toBe(true)
   })
 
+  it('shows no order a write of this page has not settled, until its echo arrives', () => {
+    const a = ['a', 'b', 'c']
+    const stored = ['c', 'b', 'a']
+    const written = [a]
+    // A change of something else carries the stored order from before the write.
+    expect(settleEchoedOrder(written, stored)).toBe(false)
+    expect(written).toEqual([a])
+    expect(settleEchoedOrder(written, a)).toBe(true)
+    expect(settleEchoedOrder(written, stored)).toBe(true)
+  })
+
+  it('keeps a drop on screen when another change lands before its echo', async () => {
+    const h = makeHomeHarness()
+    renderHome(h)
+    const [idA, idB] = homeCatalog.providers.map(p => p.id)
+    await screen.findByTestId(`models-provider-row-${idB}`)
+    const before = [idA, idB, CUSTOM_ID]
+    expect(rowIds()).toEqual(before)
+
+    const grip = screen.getByTestId(`models-provider-grip-${idB}`)
+    fireEvent.pointerDown(grip, { button: 0, pointerId: 1 })
+    const spy = pointerOver(idA)
+    fireEvent.pointerMove(grip, { pointerId: 1, clientX: 5, clientY: 5 })
+    spy.mockRestore()
+    fireEvent.pointerUp(grip, { pointerId: 1 })
+    const dropped = [idB, idA, CUSTOM_ID]
+    await waitFor(() => expect(h.calls.setOrder).toEqual([dropped]))
+
+    // A config save elsewhere fans out the order stored before the drop.
+    act(() => h.emitChanged({ order: before }))
+    expect(rowIds()).toEqual(dropped)
+    act(() => h.emitChanged({ order: dropped, reason: 'order' }))
+    expect(rowIds()).toEqual(dropped)
+    act(() => h.emitChanged({ order: before, reason: 'order' }))
+    expect(rowIds()).toEqual(before)
+  })
+
   // H5: holding or tapping an arrow is one gesture — one write, not one per
   // keypress (each write fans `providers.changed` out to every surface).
   it('writes an arrow-key gesture once, when the keys go still', async () => {

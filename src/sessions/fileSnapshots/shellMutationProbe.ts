@@ -111,24 +111,44 @@ export async function beginShellMutationProbe(args: ShellMutationProbeArgs): Pro
   }
 }
 
-const heldProbes = new Map<string, ShellMutationProbe>()
+type HeldProbe = { probe: ShellMutationProbe; sessionId: string }
 
-/** Keep a background command's probe until {@link settleHeldShellMutationProbe}. */
-export function holdShellMutationProbe(taskId: string, probe: ShellMutationProbe): void {
+const heldProbes = new Map<string, HeldProbe>()
+
+/**
+ * Keep a background command's probe until {@link settleHeldShellMutationProbe}
+ * (the task ended) or {@link releaseHeldShellMutationProbes} (its session
+ * closed). Past the cap the oldest is let go unsettled: settling it early
+ * could drop the capture of a file its command has yet to write.
+ */
+export function holdShellMutationProbe(taskId: string, probe: ShellMutationProbe, sessionId = ''): void {
   if (probe.tracked.length === 0) return
+  heldProbes.delete(taskId)
   if (heldProbes.size >= MAX_HELD_PROBES) {
     const oldest = heldProbes.keys().next().value
     if (oldest !== undefined) heldProbes.delete(oldest)
   }
-  heldProbes.set(taskId, probe)
+  heldProbes.set(taskId, { probe, sessionId })
 }
 
 /** Settle the probe held for `taskId`, if any. Never throws. */
 export async function settleHeldShellMutationProbe(taskId: string): Promise<void> {
-  const probe = heldProbes.get(taskId)
-  if (!probe) return
+  const held = heldProbes.get(taskId)
+  if (!held) return
   heldProbes.delete(taskId)
-  await probe.settle()
+  await held.probe.settle()
+}
+
+/** Let go of every probe held for `sessionId`'s commands, unsettled. */
+export function releaseHeldShellMutationProbes(sessionId: string): void {
+  for (const [taskId, held] of heldProbes) {
+    if (held.sessionId === sessionId) heldProbes.delete(taskId)
+  }
+}
+
+/** Number of probes held. Test seam. */
+export function heldShellMutationProbeCount(): number {
+  return heldProbes.size
 }
 
 /** Test seam: forget every held probe. */

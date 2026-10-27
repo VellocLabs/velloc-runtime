@@ -25,7 +25,10 @@ import type {
 } from '../runtime/RuntimeTypes'
 import type { AgentLoopState } from '../engine/loop/agentLoopState'
 import type { AutocompactFn, ModelCallFn } from '../engine/turn/modelCallTypes'
-import type { FileSnapshotRecorder } from '../sessions/fileSnapshots/snapshotRecorder'
+import type {
+  FileSnapshotRecorder,
+  SnapshotTurnInfo,
+} from '../sessions/fileSnapshots/snapshotRecorder'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import type { SidechainTranscriptStore } from '../utils/sidechainTranscripts'
 import type { ResolvedMemorySettings } from '../memory/memoryPaths'
@@ -165,6 +168,11 @@ export type ToolCallContext = {
   noteAttribution: (updater: (prev: unknown) => unknown) => void
   reportHostStatus?: (status: SDKStatus) => void
   messages: Message[]
+  /** The spawning session's turn that file snapshots taken in this run belong
+   *  to. Set on a forked run's context, whose own messages do not count the
+   *  session's turns; absent in the main agent, which derives it from
+   *  `messages`. */
+  snapshotTurn?: SnapshotTurnInfo
   agentId?: string
   /** An extension's own tool call in flight: which extension raised it, so
    *  checks inside the call can name it. */

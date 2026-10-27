@@ -50,6 +50,54 @@ export function paneShortcutFor(event: ShortcutKeyEvent): PaneShortcut | null {
   }
 }
 
+/** What a session's panes look like when a pane shortcut is pressed. */
+export interface PaneShortcutScene {
+  /** The open panes, in layout order. */
+  panes: readonly SidePaneKind[]
+  /** The pane that last had focus, if it is still open. */
+  focused?: SidePaneKind
+  maximized: SidePaneKind | null
+  lastClosed?: SidePaneKind
+  /** The panes this session can show; absent: every pane. */
+  offered?: readonly SidePaneKind[]
+}
+
+/** The change a pane shortcut makes. */
+export type PaneShortcutStep =
+  | { do: 'toggle'; kind: SidePaneKind }
+  | { do: 'close'; kind: SidePaneKind }
+  | { do: 'maximize'; kind: SidePaneKind | null }
+  | { do: 'open'; kind: SidePaneKind }
+
+/**
+ * The change `shortcut` makes in `scene`, or null when it would change
+ * nothing (no pane to close or expand, nothing to reopen, a pane the session
+ * does not offer). The Files tree toggle is decided by focus, not here.
+ */
+export function paneShortcutStep(
+  shortcut: Exclude<PaneShortcut, { action: 'toggle-files-tree' }>,
+  scene: PaneShortcutScene,
+): PaneShortcutStep | null {
+  const offered = (kind: SidePaneKind) => !scene.offered || scene.offered.includes(kind)
+  const target =
+    scene.focused && scene.panes.includes(scene.focused)
+      ? scene.focused
+      : scene.panes[scene.panes.length - 1]
+  switch (shortcut.action) {
+    case 'toggle':
+      return offered(shortcut.kind) ? { do: 'toggle', kind: shortcut.kind } : null
+    case 'close-focused':
+      return target ? { do: 'close', kind: target } : null
+    case 'expand-focused':
+      if (scene.maximized !== null) return { do: 'maximize', kind: null }
+      return target ? { do: 'maximize', kind: target } : null
+    case 'reopen-closed': {
+      const kind = scene.lastClosed
+      return kind && !scene.panes.includes(kind) && offered(kind) ? { do: 'open', kind } : null
+    }
+  }
+}
+
 /** The shortcut shown in a pane's tooltip or menu row, if it has one. */
 export function paneShortcutLabel(kind: SidePaneKind): string | null {
   switch (kind) {

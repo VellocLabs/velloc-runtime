@@ -22,6 +22,7 @@ import {
   notifyForkStarted,
 } from '../backgroundTasks/sideTaskSink'
 import { serializeSystemPromptForDisplay } from '../utils/systemPromptDisplay'
+import { snapshotTurnForCall } from '../utils/turnDiffs'
 import { runSubagentStartHooks } from '../lifecycleHooks/sessionLifecycleHooks'
 import {
   createSidechainAgentId,
@@ -179,6 +180,9 @@ export function deriveChildToolContext(
     noteAttribution: () => {},
 
     messages: overrides.messages ?? outerToolContext.messages,
+
+    // File snapshots of the child's writes land on the turn that spawned it.
+    snapshotTurn: snapshotTurnForCall(outerToolContext),
 
     agentId: overrides.agentId ?? createSidechainAgentId('subagent'),
 

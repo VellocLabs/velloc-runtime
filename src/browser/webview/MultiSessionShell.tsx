@@ -87,7 +87,7 @@ import {
 import { createQuotedAttachmentPrefix } from './BrowserComposerAttachmentAdapter'
 import type { FilesBulkClose } from './panes/FilesPane'
 import { createSessionLayoutsStore, useSessionLayouts, type SessionLayoutsStore } from './layout/sessionLayouts'
-import { paneShortcutFor } from './layout/paneShortcuts'
+import { paneShortcutFor, paneShortcutStep } from './layout/paneShortcuts'
 import { toggleFilesTreeVisible } from './panes/filesTreePrefs'
 import { PaneArea } from './panes/PaneArea'
 import { PaneFrame } from './panes/PaneFrame'
@@ -2999,8 +2999,6 @@ export function MultiSessionShell({
       if (event.defaultPrevented || settingsOpenRef.current) return
       const shortcut = paneShortcutFor(event)
       if (!shortcut) return
-      // A CLI session's toggle of a pane it does not offer leaves the key to the terminal.
-      if (activeCliRef.current && shortcut.action === 'toggle' && !CLI_SESSION_PANES.includes(shortcut.kind)) return
       if (shortcut.action === 'toggle-files-tree') {
         const focused = document.activeElement
         if (!(focused instanceof Element) || !focused.closest('[data-pane="files"]')) return
@@ -3010,27 +3008,35 @@ export function MultiSessionShell({
       }
       const id = activeSessionIdRef.current
       if (!id) return
-      event.preventDefault()
+      const cli = activeCliRef.current
       const record = readPaneRecord(id)
-      const panes = panesIn(record.layout)
-      const focused = focusedPaneRef.current.get(id)
-      const target = focused && panes.includes(focused) ? focused : panes[panes.length - 1]
-      switch (shortcut.action) {
+      const step = paneShortcutStep(shortcut, {
+        panes: panesIn(record.layout),
+        focused: focusedPaneRef.current.get(id),
+        maximized: record.maximized,
+        lastClosed: lastClosedPaneRef.current.get(id),
+        offered: cli ? CLI_SESSION_PANES : undefined,
+      })
+      // In a CLI session a shortcut that changes nothing is the CLI's key
+      // (Ctrl+\ is its quit signal).
+      if (!step && cli) return
+      event.preventDefault()
+      if (!step) return
+      switch (step.do) {
         case 'toggle':
-          togglePane(shortcut.kind)
+          togglePane(step.kind)
           break
-        case 'close-focused':
-          if (target) closePaneFor(target)
+        case 'close':
+          closePaneFor(step.kind)
           break
-        case 'expand-focused':
-          if (record.maximized !== null) updatePaneRecord(r => setMaximized(r, null))
-          else if (target) updatePaneRecord(r => setMaximized(r, target))
-          break
-        case 'reopen-closed': {
-          const kind = lastClosedPaneRef.current.get(id)
-          if (kind && !panes.includes(kind)) openPaneFor(kind)
+        case 'maximize': {
+          const kind = step.kind
+          updatePaneRecord(r => setMaximized(r, kind))
           break
         }
+        case 'open':
+          openPaneFor(step.kind)
+          break
       }
     }
     document.addEventListener('keydown', onKey, true)

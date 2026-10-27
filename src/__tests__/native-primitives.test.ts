@@ -753,6 +753,34 @@ describe('pageScript', () => {
     expect(seen[seen.length - 1]).toBe('live')
     off()
   })
+
+  it('a second unsubscribe is a no-op: a later listener gets each message once, live', async () => {
+    const fake = make(() => ok({ channelId: 1 }), { capabilities: ['pageScript'], primitives: [] })
+    await fake.primitives.pageScript.attach({ webWindowId: 1 })
+    const off = fake.primitives.pageScript.onMessage(() => {})
+    off()
+    off()
+    const seen: unknown[] = []
+    const offLater = fake.primitives.pageScript.onMessage(e => seen.push(e.data))
+    fake.emit('pageScript', 'onMessage', { channelId: 1, data: '1', origin: '', frameUrl: '', world: 'isolated' })
+    offLater()
+    fake.emit('pageScript', 'onMessage', { channelId: 1, data: '2', origin: '', frameUrl: '', world: 'isolated' })
+    const again: unknown[] = []
+    fake.primitives.pageScript.onMessage(e => again.push(e.data))
+    expect(seen).toEqual([1])
+    expect(again).toEqual([2])
+  })
+
+  it('holds a transport subscription for waiting messages only while no listener is registered', async () => {
+    const fake = make(() => ok({ channelId: 1 }), { capabilities: ['pageScript'], primitives: [] })
+    expect(fake.handlerCount()).toBe(0)
+    await fake.primitives.pageScript.attach({ webWindowId: 1 })
+    expect(fake.handlerCount()).toBe(1)
+    const off = fake.primitives.pageScript.onMessage(() => {})
+    expect(fake.handlerCount()).toBe(1)
+    off()
+    expect(fake.handlerCount()).toBe(1)
+  })
 })
 
 describe('base64', () => {

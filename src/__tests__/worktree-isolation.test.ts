@@ -19,6 +19,11 @@ import {
   type BackgroundShellLaunch,
   type BackgroundShellSpawnRequest,
 } from '../toolkit/run/backgroundShellSink'
+import {
+  heldShellMutationProbeCount,
+  releaseHeldShellMutationProbes,
+  resetHeldShellMutationProbes,
+} from '../sessions/fileSnapshots/shellMutationProbe'
 
 function ctx(
   cwd: string,
@@ -800,6 +805,56 @@ describe('hosted-tool dispatch wiring — converts cwd + fs paths before browser
     expect(data.message).toContain('moved to the background')
     // Not acknowledged → the manager delivers it exactly once later (no dup).
     expect(ack).not.toHaveBeenCalled()
+  })
+
+  describe('shell write capture across the middle layer', () => {
+    function probedCtx(spy: (req: unknown) => Promise<unknown>) {
+      installProcessFs({
+        stat: async () => ({ isDirectory: () => false, isFile: () => true, size: 1 }),
+      } as never)
+      const recorder = {
+        probeBeforeMutation: vi.fn(async () => true),
+        trackBeforeDirectoryRemoval: vi.fn(async () => {}),
+        discardUnchangedProbe: vi.fn(async () => true),
+      }
+      const c = dispatchCtx('/ws', spy)
+      ;(c.options as unknown as Record<string, unknown>).fileSnapshotRecorder = recorder
+      return { c, recorder }
+    }
+
+    it('settles the probe when the wait for the command throws', async () => {
+      resetHeldShellMutationProbes()
+      const waitForCompletion = vi.fn(async () => {
+        throw new Error('controller gone')
+      })
+      setSubAgentController(fakeController({ waitForCompletion }))
+      const spy = vi.fn(async () => ({ shell_id: 'shell-t', status: 'running' }))
+      const { c, recorder } = probedCtx(spy)
+      await expect((hostedTool('Bash').call as CallFn)({ command: 'echo x > out.txt' }, c)).rejects.toThrow('controller gone')
+      expect(recorder.probeBeforeMutation).toHaveBeenCalled()
+      expect(recorder.discardUnchangedProbe).toHaveBeenCalledTimes(1)
+      expect(heldShellMutationProbeCount()).toBe(0)
+    })
+
+    it('holds the probe of a command handed to the background under its session', async () => {
+      resetHeldShellMutationProbes()
+      const waitForCompletion = vi.fn(async () => ({
+        sessionId: 'shell-h',
+        status: 'running' as const,
+        description: 'x',
+        taskType: 'local_bash' as const,
+        output: '',
+        startedAt: 0,
+      }))
+      setSubAgentController(fakeController({ waitForCompletion }))
+      const spy = vi.fn(async () => ({ shell_id: 'shell-h', status: 'running' }))
+      const { c, recorder } = probedCtx(spy)
+      await (hostedTool('Bash').call as CallFn)({ command: 'echo x > out.txt' }, c)
+      expect(recorder.discardUnchangedProbe).not.toHaveBeenCalled()
+      expect(heldShellMutationProbeCount()).toBe(1)
+      releaseHeldShellMutationProbes('s1')
+      expect(heldShellMutationProbeCount()).toBe(0)
+    })
   })
 
   it('the in-process display-command Symbol labels the drawer task and never reaches the host (SuperShell)', async () => {

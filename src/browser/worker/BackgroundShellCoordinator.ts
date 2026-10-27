@@ -19,6 +19,10 @@ import {
 } from './shellFormatting'
 import type { TaskRegistry } from './TaskRegistry'
 import type { BackgroundShellSpawnRequest } from '../../toolkit/run/backgroundShellSink'
+import {
+  releaseHeldShellMutationProbes,
+  settleHeldShellMutationProbe,
+} from '../../sessions/fileSnapshots/shellMutationProbe'
 
 // --- Types ---
 
@@ -716,6 +720,9 @@ export class BackgroundShellCoordinator {
       finishedAt: Date.now(),
     }
     this.registry.recordFinished(shellId, record)
+    // The command has ended: its shell write capture can let go of the files
+    // it named but left unchanged (F-6).
+    void settleHeldShellMutationProbe(run.taskId)
     // SuperShell steps and the shells the model ran itself are capped apart: a
     // script's many steps must not evict the model's own shells.
     const isStep = (r: { superShellTaskId?: string }): boolean => Boolean(r.superShellTaskId)
@@ -949,6 +956,7 @@ export class BackgroundShellCoordinator {
         this.acknowledged.delete(rec.shellId)
       }
     }
+    releaseHeldShellMutationProbes(spawnerSessionId)
   }
 
   // --- Lifecycle ---

@@ -35,7 +35,7 @@ import { getLiveCwd, interceptBashCd, type BashCommandArgs } from '../glic/bashC
 import { nativizeForHost } from '../../../utils/hostPathForm'
 import { resolveRuntimePath } from '../../../utils/runtimePaths'
 import { fsForContext } from '../../../utils/fs/runtimeFs'
-import { deriveSnapshotTurnInfo } from '../../../utils/turnDiffs'
+import { snapshotTurnForCall } from '../../../utils/turnDiffs'
 import {
   beginShellMutationProbe,
   holdShellMutationProbe,
@@ -155,7 +155,7 @@ async function beginShellProbeForCall(args: {
     return await beginShellMutationProbe({
       recorder,
       fs: fsForContext(args.context),
-      turn: deriveSnapshotTurnInfo(args.context.messages ?? []),
+      turn: snapshotTurnForCall(args.context),
       command: args.command,
       shell: args.toolName === PWSH_TOOL_ID ? 'powershell' : 'bash',
       cwd,
@@ -445,10 +445,12 @@ function buildHostTool(
         throw err
       }
       let shellProbeHeld = false
+      let data: ReturnType<typeof renderHostResult>
       const agentMeta = extractAgentMeta(rawResult)
+      try {
       // The host answers with data; the sentences the model reads are the
       // runtime's (resultText.ts).
-      let data = renderHostResult(definition.name, unwrapData(rawResult))
+      data = renderHostResult(definition.name, unwrapData(rawResult))
       // A background shell result carries a `shell_id`: surface it as a `local_bash`
       // background task. A host-only shell is never a task (nothing in the worker
       // watches it).
@@ -553,7 +555,7 @@ function buildHostTool(
               data = buildForegroundShellResult(snap, taskId)
             } else {
               if (shellProbe) {
-                holdShellMutationProbe(taskId, shellProbe)
+                holdShellMutationProbe(taskId, shellProbe, context.options.sessionId)
                 shellProbeHeld = true
               }
               // Still running → it's already a background task; hand off. The
@@ -567,7 +569,7 @@ function buildHostTool(
             // Model asked for background explicitly (or no manager present):
             // fire-and-forget, return the running ack immediately.
             if (shellProbe) {
-              holdShellMutationProbe(taskId, shellProbe)
+              holdShellMutationProbe(taskId, shellProbe, context.options.sessionId)
               shellProbeHeld = true
             }
             const message =
@@ -583,7 +585,9 @@ function buildHostTool(
           }
         }
       }
-      if (shellProbe && !shellProbeHeld) await shellProbe.settle()
+      } finally {
+        if (shellProbe && !shellProbeHeld) await shellProbe.settle()
+      }
       // Conditional-rules trigger: a successful Read adds its path to
       // `nestedMemoryAttachmentTriggers`. Record the read file path so the query
       // loop can inject any `.velloc/rules` / `.claude/rules` whose `paths:`

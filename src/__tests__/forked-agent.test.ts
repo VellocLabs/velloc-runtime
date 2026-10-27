@@ -304,6 +304,21 @@ describe('deriveChildToolContext — isolation', () => {
     expect(fork.skillsFound!.has('parent-skill')).toBe(false)
     expect(fork.skillsFound!.size).toBe(0)
   })
+
+  it('carries the spawning turn for file snapshots, through nested forks', () => {
+    const user = (text: string, uuid: string) =>
+      ({ type: 'user', uuid, message: { content: text } }) as unknown as Message
+    const assistant = { type: 'assistant', message: { content: [] } } as unknown as Message
+    const parent = createMockToolUseContext({
+      messages: [user('one', 'u1'), assistant, user('two', 'u2'), assistant, user('three', 'u3')],
+    })
+    const fork = deriveChildToolContext(parent, { messages: [user('child task', 'c1')] })
+    expect(fork.snapshotTurn).toEqual({ seq: 3, uuid: 'u3', preview: 'three' })
+    const nested = deriveChildToolContext(fork, {
+      messages: [user('grandchild', 'g1'), assistant, user('again', 'g2')],
+    })
+    expect(nested.snapshotTurn).toEqual({ seq: 3, uuid: 'u3', preview: 'three' })
+  })
 })
 
 describe('deriveChildToolContext — abort signal chaining', () => {
