@@ -282,6 +282,10 @@ describe('CustomizeScreen — the header', () => {
     fireEvent.click(back)
     expect(closed).toBe(2)
   })
+  it('paints the header with the topbar background, so the OS caption buttons stay legible', () => {
+    const view = screen(fakeConnection(['ok']).getConnection)
+    expect(view.getByTestId('customize-header').className.split(/\s+/)).toContain('bg-toolbar')
+  })
 })
 
 describe('CustomizeScreen — the unavailable state', () => {

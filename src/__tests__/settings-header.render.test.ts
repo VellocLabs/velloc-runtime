@@ -60,6 +60,11 @@ describe('settings header', () => {
     expect(onClose).toHaveBeenCalledTimes(2)
   })
 
+  it('paints the header with the topbar background, so the OS caption buttons stay legible', () => {
+    renderSettings()
+    expect(screen.getByTestId('settings-header').className.split(/\s+/)).toContain('bg-toolbar')
+  })
+
   it('drags the window from the header, except over the back control', () => {
     renderSettings()
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (

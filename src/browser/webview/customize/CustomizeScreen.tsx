@@ -128,7 +128,7 @@ export function CustomizeScreen({
       <header
         ref={headerRef}
         data-testid="customize-header"
-        className={cn('flex shrink-0 items-center border-b', TOP_BAR_HEIGHT_CLASS)}
+        className={cn('flex shrink-0 items-center border-b bg-toolbar', TOP_BAR_HEIGHT_CLASS)}
       >
         <div data-testid="customize-header-start" className="flex w-64 min-w-0 shrink-0 items-center gap-2 px-3">
           <Button

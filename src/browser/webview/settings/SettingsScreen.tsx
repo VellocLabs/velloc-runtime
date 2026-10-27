@@ -226,7 +226,7 @@ export function SettingsScreen({
       <header
         ref={headerRef}
         data-testid="settings-header"
-        className={cn("flex shrink-0 items-center gap-2 border-b px-3", TOP_BAR_HEIGHT_CLASS)}
+        className={cn("flex shrink-0 items-center gap-2 border-b bg-toolbar px-3", TOP_BAR_HEIGHT_CLASS)}
       >
         <Button
           variant="ghost"
