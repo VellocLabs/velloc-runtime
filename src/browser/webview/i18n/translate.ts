@@ -57,7 +57,7 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
     'Compact the conversation now (optional: /compact <instructions>)',
   'slash.builtin.autocompact':
     'Set the auto-compact window for the current model (/autocompact <size>|auto)',
-  'slash.builtin.status': 'Show session info (browser, tabs, locale)',
+  'slash.builtin.status': 'Show session info (host, tabs, locale)',
   'slash.builtin.plan':
     'Enter plan mode — read/search only, design before coding',
   'slash.builtin.exit-plan': 'Exit plan mode (optional: /exit-plan <plan text>)',
@@ -77,14 +77,14 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
   'slash.builtin.permissions': 'Show the permission mode and the rules in force',
   'slash.builtin.debug':
     'Diagnose the {product} runtime; subcommands: transcript, log [on|off], verbose [on|off], trace [on|off], inspect [on|off]',
-  'slash.out.unknownCommand': 'Unknown browser slash command: /{command}',
+  'slash.out.unknownCommand': 'Unknown slash command: /{command}',
   'slash.out.availableCommands': 'Available: {commands}',
   'slash.out.helpHeader': '{product} slash commands',
   'slash.out.helpHiddenHeading': 'Hidden commands',
   'slash.out.helpHiddenNote':
     'These run when you type the full name, but stay out of the command picker so it is not cluttered.',
   'slash.out.helpFooter': 'Type a message to send a prompt to {product}.',
-  'slash.out.statusBrowser': 'Browser: {browser}',
+  'slash.out.statusBrowser': 'Host: {browser}',
   'slash.out.statusTabs': 'Tabs: {count}',
   'slash.out.statusActiveTab': 'Active tab: {id}',
   'slash.out.statusLocale': 'Locale: {locale}',

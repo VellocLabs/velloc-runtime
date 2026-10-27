@@ -2062,7 +2062,7 @@ export const de: Messages = {
     'Unterhaltung jetzt verdichten (optional: /compact <instructions>)',
   'slash.builtin.autocompact': 'Fenster der automatischen Verdichtung für das aktuelle Modell festlegen (/autocompact <size>|auto)',
   'slash.builtin.status':
-    'Sitzungsinfos anzeigen (Browser, Tabs, Gebietsschema)',
+    'Sitzungsinfos anzeigen (Host, Tabs, Gebietsschema)',
   'slash.builtin.plan':
     'Planungsmodus starten — nur Lesen/Suchen, erst entwerfen, dann programmieren',
   'slash.builtin.exit-plan':
@@ -2090,7 +2090,7 @@ export const de: Messages = {
     '{product}-Runtime diagnostizieren; Unterbefehle: transcript, log [on|off], verbose [on|off], trace [on|off], inspect [on|off]',
 
   // ── Slash-Befehle — Ausgabe der Befehle ───────────────────────────────
-  'slash.out.unknownCommand': 'Unbekannter Browser-Slash-Befehl: /{command}',
+  'slash.out.unknownCommand': 'Unbekannter Slash-Befehl: /{command}',
   'slash.out.availableCommands': 'Verfügbar: {commands}',
   'slash.out.helpHeader': '{product}-Slash-Befehle',
   'slash.out.helpHiddenHeading': 'Versteckte Befehle',
@@ -2098,7 +2098,7 @@ export const de: Messages = {
     'Sie laufen, wenn du den vollständigen Namen eingibst, tauchen aber nicht in der Befehlsauswahl auf, damit sie übersichtlich bleibt.',
   'slash.out.helpFooter':
     'Schreib eine Nachricht, um einen Prompt an {product} zu senden.',
-  'slash.out.statusBrowser': 'Browser: {browser}',
+  'slash.out.statusBrowser': 'Host: {browser}',
   'slash.out.statusTabs': 'Tabs: {count}',
   'slash.out.statusActiveTab': 'Aktiver Tab: {id}',
   'slash.out.statusLocale': 'Gebietsschema: {locale}',

@@ -2068,7 +2068,7 @@ export const es: Messages = {
     'Compactar la conversación ahora (opcional: /compact <instructions>)',
   'slash.builtin.autocompact': 'Define la ventana de compactación automática del modelo actual (/autocompact <size>|auto)',
   'slash.builtin.status':
-    'Mostrar información de la sesión (navegador, pestañas, configuración regional)',
+    'Mostrar información de la sesión (host, pestañas, configuración regional)',
   'slash.builtin.plan':
     'Entrar en modo de planificación — solo lectura y búsqueda, diseñar antes de programar',
   'slash.builtin.exit-plan':
@@ -2104,7 +2104,7 @@ export const es: Messages = {
     'Se ejecutan al escribir el nombre completo, pero no aparecen en el selector de comandos para no recargarlo.',
   'slash.out.helpFooter':
     'Escriba un mensaje para enviar un prompt a {product}.',
-  'slash.out.statusBrowser': 'Navegador: {browser}',
+  'slash.out.statusBrowser': 'Host: {browser}',
   'slash.out.statusTabs': 'Pestañas: {count}',
   'slash.out.statusActiveTab': 'Pestaña activa: {id}',
   'slash.out.statusLocale': 'Configuración regional: {locale}',

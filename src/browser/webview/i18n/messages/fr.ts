@@ -2071,7 +2071,7 @@ export const fr: Messages = {
     'Compacter la conversation maintenant (facultatif : /compact <instructions>)',
   'slash.builtin.autocompact': 'Définir la fenêtre de compactage automatique du modèle actuel (/autocompact <size>|auto)',
   'slash.builtin.status':
-    'Afficher les informations de session (navigateur, onglets, langue)',
+    'Afficher les informations de session (hôte, onglets, langue)',
   'slash.builtin.plan':
     'Passer en mode planification — lecture/recherche uniquement, concevoir avant de coder',
   'slash.builtin.exit-plan':
@@ -2107,7 +2107,7 @@ export const fr: Messages = {
     'Elles s’exécutent lorsque vous saisissez le nom complet, mais restent absentes du sélecteur de commandes pour ne pas l’encombrer.',
   'slash.out.helpFooter':
     'Saisissez un message pour envoyer un prompt à {product}.',
-  'slash.out.statusBrowser': 'Navigateur : {browser}',
+  'slash.out.statusBrowser': 'Hôte : {browser}',
   'slash.out.statusTabs': 'Onglets : {count}',
   'slash.out.statusActiveTab': 'Onglet actif : {id}',
   'slash.out.statusLocale': 'Langue : {locale}',

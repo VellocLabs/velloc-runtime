@@ -253,7 +253,7 @@ describe('processUserInput — slash skill dispatch', () => {
         (m as { type?: string }).type === 'system',
     )
     expect(system).toBeDefined()
-    expect(system!.message).toContain('Unknown browser slash command: /nope')
+    expect(system!.message).toContain('Unknown slash command: /nope')
   })
 
   it('does not shadow a built-in slash command with a same-named skill', async () => {

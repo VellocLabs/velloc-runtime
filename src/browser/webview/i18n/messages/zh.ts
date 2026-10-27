@@ -1958,7 +1958,7 @@ export const zh: Messages = {
   'slash.builtin.model': '为下一轮切换服务商/模型',
   'slash.builtin.compact': '立即压缩对话（可选：/compact <instructions>）',
   'slash.builtin.autocompact': '设置当前模型的自动压缩窗口（/autocompact <size>|auto）',
-  'slash.builtin.status': '显示会话信息（浏览器、标签页、语言环境）',
+  'slash.builtin.status': '显示会话信息（宿主环境、标签页、语言环境）',
   'slash.builtin.plan': '进入计划模式 —— 只读/搜索，先设计再编码',
   'slash.builtin.exit-plan': '退出计划模式（可选：/exit-plan <plan text>）',
   'slash.builtin.plugins':
@@ -1978,14 +1978,14 @@ export const zh: Messages = {
     '诊断 {product} 运行时；子命令：transcript、log [on|off]、verbose [on|off]、trace [on|off]、inspect [on|off]',
 
   // ── 斜杠命令 —— 命令输出 ────────────────────────────────────────────────
-  'slash.out.unknownCommand': '未知的浏览器斜杠命令：/{command}',
+  'slash.out.unknownCommand': '未知的斜杠命令：/{command}',
   'slash.out.availableCommands': '可用命令：{commands}',
   'slash.out.helpHeader': '{product} 斜杠命令',
   'slash.out.helpHiddenHeading': '隐藏命令',
   'slash.out.helpHiddenNote':
     '输入完整名称即可运行，但它们不会出现在命令选择器中，以免占用篇幅。',
   'slash.out.helpFooter': '输入消息即可向 {product} 发送提示词。',
-  'slash.out.statusBrowser': '浏览器：{browser}',
+  'slash.out.statusBrowser': '宿主环境：{browser}',
   'slash.out.statusTabs': '标签页：{count}',
   'slash.out.statusActiveTab': '当前标签页：{id}',
   'slash.out.statusLocale': '语言环境：{locale}',

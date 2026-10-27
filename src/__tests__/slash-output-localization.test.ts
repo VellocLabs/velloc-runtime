@@ -105,7 +105,7 @@ describe('slash output — the model-facing half stays English', () => {
     // Pinned by slash-skill-dispatch.test.ts too — this is the wire text.
     const message = await systemMessage('/nope', ['help'])
 
-    expect(message.message).toContain('Unknown browser slash command: /nope')
+    expect(message.message).toContain('Unknown slash command: /nope')
     expect(message.message).toContain('Available: /help')
   })
 
@@ -131,7 +131,7 @@ describe('slash output — the user-facing half follows the locale', () => {
     expect(zhText).toContain('/nope')
     // Command names are protocol: the listing stays ASCII in every locale.
     expect(zhText).toContain('/help')
-    expect(zhText).not.toContain('Unknown browser slash command')
+    expect(zhText).not.toContain('Unknown slash command')
   })
 
   it('translates /help prose but never the command names', async () => {
@@ -204,7 +204,7 @@ describe('slash output — the user-facing half follows the locale', () => {
     const message = await systemMessage('/status', ['status'])
     const zhText = rendered(message, 'zh')
 
-    expect(zhText).toContain('浏览器：Chrome 140.0')
+    expect(zhText).toContain('宿主环境：Chrome 140.0')
     expect(zhText).toContain('标签页：3')
     expect(zhText).toContain('当前标签页：tab-7')
     // A timezone id is data, not prose.

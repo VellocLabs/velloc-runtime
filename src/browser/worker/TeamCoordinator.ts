@@ -1616,7 +1616,7 @@ export class TeamCoordinator {
       )
       if (gone) {
         return (
-          `"${gone.name}" is no longer running: it was lost when the browser restarted ` +
+          `"${gone.name}" is no longer running: it was lost when the app restarted ` +
           `(teammates do not survive a restart — this is not a provider failure). ` +
           `Its transcript is kept read-only and its tasks were released; spawn a new teammate to continue.`
         )

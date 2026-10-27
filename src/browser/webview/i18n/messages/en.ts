@@ -2100,7 +2100,7 @@ export const en = {
     'Compact the conversation now (optional: /compact <instructions>)',
   'slash.builtin.autocompact':
     'Set the auto-compact window for the current model (/autocompact <size>|auto)',
-  'slash.builtin.status': 'Show session info (browser, tabs, locale)',
+  'slash.builtin.status': 'Show session info (host, tabs, locale)',
   'slash.builtin.plan':
     'Enter plan mode — read/search only, design before coding',
   'slash.builtin.exit-plan': 'Exit plan mode (optional: /exit-plan <plan text>)',
@@ -2127,14 +2127,14 @@ export const en = {
   // what the MODEL reads: slash output rides into the next request as a
   // `role:"system"` turn, rendered from the English catalog in the worker.
   // Command names, ids and syntax inside `{}` placeholders stay verbatim.
-  'slash.out.unknownCommand': 'Unknown browser slash command: /{command}',
+  'slash.out.unknownCommand': 'Unknown slash command: /{command}',
   'slash.out.availableCommands': 'Available: {commands}',
   'slash.out.helpHeader': '{product} slash commands',
   'slash.out.helpHiddenHeading': 'Hidden commands',
   'slash.out.helpHiddenNote':
     'These run when you type the full name, but stay out of the command picker so it is not cluttered.',
   'slash.out.helpFooter': 'Type a message to send a prompt to {product}.',
-  'slash.out.statusBrowser': 'Browser: {browser}',
+  'slash.out.statusBrowser': 'Host: {browser}',
   'slash.out.statusTabs': 'Tabs: {count}',
   'slash.out.statusActiveTab': 'Active tab: {id}',
   'slash.out.statusLocale': 'Locale: {locale}',

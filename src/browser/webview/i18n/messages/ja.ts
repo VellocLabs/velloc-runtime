@@ -2013,7 +2013,7 @@ export const ja: Messages = {
   'slash.builtin.model': '次のターンのプロバイダ/モデルを切り替え',
   'slash.builtin.compact': '会話をすぐに圧縮（任意：/compact <instructions>）',
   'slash.builtin.autocompact': '現在のモデルの自動圧縮ウィンドウを設定します（/autocompact <size>|auto）',
-  'slash.builtin.status': 'セッション情報を表示（ブラウザ、タブ、ロケール）',
+  'slash.builtin.status': 'セッション情報を表示（ホスト、タブ、ロケール）',
   'slash.builtin.plan': '計画モードに入る — 読み取り/検索のみ、コーディング前に設計',
   'slash.builtin.exit-plan': '計画モードを終了（任意：/exit-plan <plan text>）',
   'slash.builtin.plugins':
@@ -2034,14 +2034,14 @@ export const ja: Messages = {
     '{product} ランタイムを診断。サブコマンド：transcript、log [on|off]、verbose [on|off]、trace [on|off]、inspect [on|off]',
 
   // ── スラッシュコマンド — コマンド出力 ─────────────────────────────────
-  'slash.out.unknownCommand': '不明なブラウザのスラッシュコマンド：/{command}',
+  'slash.out.unknownCommand': '不明なスラッシュコマンド：/{command}',
   'slash.out.availableCommands': '利用可能：{commands}',
   'slash.out.helpHeader': '{product} のスラッシュコマンド',
   'slash.out.helpHiddenHeading': '非表示のコマンド',
   'slash.out.helpHiddenNote':
     'フルネームを入力すれば実行できますが、コマンドピッカーが煩雑にならないよう一覧には表示されません。',
   'slash.out.helpFooter': 'メッセージを入力すると {product} にプロンプトを送信します。',
-  'slash.out.statusBrowser': 'ブラウザ：{browser}',
+  'slash.out.statusBrowser': 'ホスト：{browser}',
   'slash.out.statusTabs': 'タブ：{count}',
   'slash.out.statusActiveTab': 'アクティブなタブ：{id}',
   'slash.out.statusLocale': 'ロケール：{locale}',

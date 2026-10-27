@@ -92,9 +92,9 @@ function renderError(container: HTMLElement, error: unknown): void {
       <section style="max-width:760px;width:100%;padding:24px 28px;border-radius:24px;background:var(--card);border:1px solid color-mix(in oklab, var(--destructive) 35%, transparent);box-shadow:0 16px 48px oklch(0 0 0 / 8%);display:grid;gap:12px;">
         <div style="font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--destructive);">Boot Failed</div>
         <h1 style="margin:0;font-size:clamp(2rem,5vw,3.25rem);line-height:1.05;">Real bridge host not attached</h1>
-        <div style="color:var(--muted-foreground);line-height:1.6;">This page is meant to run inside the real browser webview host. The host must send <code>nexus-init</code>, then a <code>nexus-bridge-bootstrap</code> with the SharedWorker port pair so bridge requests can flow.</div>
+        <div style="color:var(--muted-foreground);line-height:1.6;">This page is meant to run inside the app's webview host. The host must send <code>nexus-init</code>, then a <code>nexus-bridge-bootstrap</code> with the SharedWorker port pair so bridge requests can flow.</div>
         <pre style="margin:0;padding:16px;border-radius:16px;background:var(--muted);color:var(--foreground);white-space:pre-wrap;word-break:break-word;font-size:13px;">${message.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
-        <div style="color:var(--muted-foreground);line-height:1.6;">For local browser-only testing, use <code>/</code>. For the real host, load <code>/</code> (i.e. <code>index.html</code>) inside the browser webview instead of opening it in a normal tab.</div>
+        <div style="color:var(--muted-foreground);line-height:1.6;">For local browser-only testing, use <code>/</code>. For the real host, load <code>/</code> (i.e. <code>index.html</code>) inside the app's webview instead of opening it in a normal tab.</div>
       </section>
     </main>
   `
@@ -116,7 +116,7 @@ function renderVersionBlock(
       <section style="max-width:760px;width:100%;padding:24px 28px;border-radius:24px;background:var(--card);border:1px solid color-mix(in oklab, var(--warning) 35%, transparent);box-shadow:0 16px 48px oklch(0 0 0 / 8%);display:grid;gap:12px;">
         <div style="font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--warning-emphasis);">Version Mismatch</div>
         <h1 style="margin:0;font-size:clamp(2rem,5vw,3.25rem);line-height:1.05;">${productName} needs an update</h1>
-        <div style="color:var(--muted-foreground);line-height:1.6;">The browser requested bridge interface <strong>v${mismatch.pathVersion}</strong> (from the page path), but this web build speaks <strong>v${mismatch.guestVersion}</strong>. To avoid silent misbehavior the app will not start across mismatched versions.</div>
+        <div style="color:var(--muted-foreground);line-height:1.6;">The app requested bridge interface <strong>v${mismatch.pathVersion}</strong> (from the page path), but this web build speaks <strong>v${mismatch.guestVersion}</strong>. To avoid silent misbehavior the app will not start across mismatched versions.</div>
         <div style="color:var(--muted-foreground);line-height:1.6;">Update ${productName} to the latest version, then reload this panel. If you self-host the web app, redeploy so the <code>/v${mismatch.pathVersion}/</code> path serves the matching build.</div>
       </section>
     </main>

@@ -2004,7 +2004,7 @@ export const ko: Messages = {
   'slash.builtin.model': '다음 턴에 사용할 제공업체/모델 전환',
   'slash.builtin.compact': '지금 대화 압축(선택: /compact <instructions>)',
   'slash.builtin.autocompact': '현재 모델의 자동 압축 창 설정 (/autocompact <size>|auto)',
-  'slash.builtin.status': '세션 정보 표시(브라우저, 탭, 로캘)',
+  'slash.builtin.status': '세션 정보 표시(호스트, 탭, 로캘)',
   'slash.builtin.plan': '계획 모드 시작 — 읽기/검색만, 코딩 전에 설계',
   'slash.builtin.exit-plan': '계획 모드 종료(선택: /exit-plan <plan text>)',
   'slash.builtin.plugins':
@@ -2025,14 +2025,14 @@ export const ko: Messages = {
     '{product} 런타임 진단. 하위 명령: transcript, log [on|off], verbose [on|off], trace [on|off], inspect [on|off]',
 
   // ── 슬래시 명령어 — 명령 출력 ──────────────────────────────────────────
-  'slash.out.unknownCommand': '알 수 없는 브라우저 슬래시 명령어: /{command}',
+  'slash.out.unknownCommand': '알 수 없는 슬래시 명령어: /{command}',
   'slash.out.availableCommands': '사용 가능: {commands}',
   'slash.out.helpHeader': '{product} 슬래시 명령어',
   'slash.out.helpHiddenHeading': '숨겨진 명령어',
   'slash.out.helpHiddenNote':
     '전체 이름을 입력하면 실행되지만, 명령어 선택기가 복잡해지지 않도록 목록에는 표시되지 않습니다.',
   'slash.out.helpFooter': '메시지를 입력하면 {product}에 프롬프트를 보냅니다.',
-  'slash.out.statusBrowser': '브라우저: {browser}',
+  'slash.out.statusBrowser': '호스트: {browser}',
   'slash.out.statusTabs': '탭: {count}',
   'slash.out.statusActiveTab': '활성 탭: {id}',
   'slash.out.statusLocale': '로캘: {locale}',

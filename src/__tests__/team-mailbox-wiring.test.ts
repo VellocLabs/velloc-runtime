@@ -1355,10 +1355,10 @@ describe('TeamCoordinator — teammates lost to a restart', () => {
     ])
     const sent = h.coord.deliver({ team: TEAM, to: 'Reviewer', from: 'team-lead', body: 'x' })
     expect(sent.ok).toBe(false)
-    expect((sent as { reason: string }).reason).toContain('lost when the browser restarted')
+    expect((sent as { reason: string }).reason).toContain('lost when the app restarted')
     expect((sent as { reason: string }).reason).toContain('not a provider failure')
     const stop = h.coord.shutdownMember({ team: TEAM, name: 'reviewer' })
-    expect((stop as { reason: string }).reason).toContain('lost when the browser restarted')
+    expect((stop as { reason: string }).reason).toContain('lost when the app restarted')
     h.coord.dispose()
   })
 
@@ -1421,7 +1421,7 @@ describe('TeamCoordinator — teammates lost to a restart', () => {
       body: 'x',
     })
     expect(sent.ok).toBe(false)
-    expect((sent as { reason: string }).reason).toContain('lost when the browser restarted')
+    expect((sent as { reason: string }).reason).toContain('lost when the app restarted')
     // Nothing is re-written: the marker is already on disk.
     expect(next.marked).toEqual([])
     next.coord.dispose()
@@ -1464,7 +1464,7 @@ describe('TeamCoordinator — teammates lost to a restart', () => {
     expect(h.coord.listTeammatesOf('lead-1').filter(t => t.status === 'lost')).toEqual([])
     const sent = h.coord.deliver({ team: TEAM, to: 'Reviewer', from: 'team-lead', body: 'x' })
     expect(sent.ok).toBe(false)
-    expect((sent as { reason: string }).reason).not.toContain('lost when the browser restarted')
+    expect((sent as { reason: string }).reason).not.toContain('lost when the app restarted')
     h.coord.dispose()
   })
 
