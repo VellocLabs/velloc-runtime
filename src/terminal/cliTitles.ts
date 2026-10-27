@@ -180,6 +180,13 @@ export class CliActivityClock {
     this.touch(sessionId)
   }
 
+  /** Stops `sessionId`'s ticking without a last touch: its CLI's terminal is gone. */
+  stop(sessionId: string): void {
+    if (!this.ticking.has(sessionId)) return
+    this.timers.clearTimeout(this.ticking.get(sessionId))
+    this.ticking.delete(sessionId)
+  }
+
   dispose(): void {
     for (const handle of this.ticking.values()) this.timers.clearTimeout(handle)
     this.ticking.clear()

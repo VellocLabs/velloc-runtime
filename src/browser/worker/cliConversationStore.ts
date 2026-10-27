@@ -33,7 +33,7 @@ export type CliConversationEntry = {
 export type CliConversationStoreDeps = {
   storage(): Pick<
     BrowserConversationStorageBackend,
-    'readSessionMeta' | 'writeSessionMeta' | 'migrateLegacySessionMeta'
+    'readSessionMeta' | 'writeSessionMeta' | 'migrateLegacySessionMeta' | 'listSessions'
   > | null
   entry(sessionId: string): CliConversationEntry | undefined
   ensureRouting(): Promise<void>
@@ -47,8 +47,15 @@ export type CliConversationStoreDeps = {
   }): Promise<void>
   /** Told of every record before it is written, so a later bind can restore it. */
   remember?(sessionId: string, record: CliConversationRecord): void
+  /** The records told to `remember` that are still held. */
+  remembered?(): Iterable<CliConversationRecord>
+  /** False for a session known not to be a CLI session, whose metadata `recordedIds` then skips. */
+  mayBeCliSession?(sessionId: string): boolean
   now?(): number
 }
+
+/** Session metadata files `recordedIds` reads at once. */
+const RECORDED_READ_BATCH = 16
 
 export function createCliConversationStore(deps: CliConversationStoreDeps): CliConversationStore {
   // A store that bound while the disk write ran holds metadata loaded before
@@ -112,6 +119,23 @@ export function createCliConversationStore(deps: CliConversationStoreDeps): CliC
         if (!(await applyDiskOnlyAiTitle(storage, sessionId, title, (deps.now ?? Date.now)()))) return
       }
       await deps.refreshSummary(sessionId)
+    },
+    recordedIds: async () => {
+      const ids = new Set<string>()
+      for (const record of deps.remembered?.() ?? []) if (record.id) ids.add(record.id)
+      const storage = deps.storage()
+      if (!storage?.listSessions) return ids
+      const sessionIds = (await storage.listSessions()).filter(id => deps.mayBeCliSession?.(id) ?? true)
+      for (let at = 0; at < sessionIds.length; at += RECORDED_READ_BATCH) {
+        const metas = await Promise.all(
+          sessionIds.slice(at, at + RECORDED_READ_BATCH).map(id => storage.readSessionMeta(id).catch(() => null)),
+        )
+        for (const meta of metas) {
+          const id = parseCliConversation(meta?.metadata?.cliConversation)?.id
+          if (id) ids.add(id)
+        }
+      }
+      return ids
     },
     touch: async (sessionId, at) => {
       const bound = deps.entry(sessionId)?.conversationStore

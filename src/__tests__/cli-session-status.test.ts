@@ -198,6 +198,41 @@ describe('a working CLI as session activity', () => {
     expect(touches.length).toBe(count)
     service.dispose()
   })
+
+  it('closing a working CLI’s terminal, as a session delete does, writes no activity', async () => {
+    const fake = fakePtyHost()
+    const touches: string[] = []
+    const service = new TerminalService({
+      host: () => fake.host(),
+      createRequestId: () => 'r',
+      sessionCwd: () => '/proj',
+      coalesceWindowMs: 1,
+      cliBusyHoldMs: 1_000,
+      cliActivityIntervalMs: 20,
+      probeClis: async () => ['codex'],
+      cliConversations: {
+        read: async () => undefined,
+        record: async () => {},
+        touch: async sessionId => {
+          touches.push(sessionId)
+        },
+      },
+    })
+    service.refreshHost()
+    await settle()
+    await service.create({ sessionId: 'c1', cli: { id: 'codex', start: 'new' }, cols: 80, rows: 24 })
+    await settle()
+    fake.output(fake.spawned[0]!, '\u001b]0;✳ Review\u0007')
+    fake.output(fake.spawned[0]!, '\u001b]0;◐ Review\u0007')
+    await settle()
+    expect(service.cliBusy('c1')).toBe(true)
+    expect(touches).toEqual(['c1'])
+    service.closeForSession('c1')
+    expect(service.cliBusy('c1')).toBe(false)
+    await new Promise(resolve => setTimeout(resolve, 60))
+    expect(touches).toEqual(['c1'])
+    service.dispose()
+  })
 })
 
 describe('focus reports and a CLI', () => {

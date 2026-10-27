@@ -10,6 +10,7 @@ import { sourceRoot } from '../browser/bridge/adapter/sessionImportBridgeAdapter
 import type { ImportSessionLiteRow } from '../sessionImport/protocol'
 import { CLI_AGENT_IDS } from '../terminal/cliAgents'
 import {
+  CLI_LOG_HEAD_BYTES,
   CliLogFollower,
   cliLogDayFolders,
   cliLogSource,
@@ -20,7 +21,7 @@ import {
   type FoundConversation,
 } from '../terminal/cliLogs'
 import { CliTypedLines, lineMatchesPromptTitle } from '../terminal/cliTypedLines'
-import { TerminalService, type CliConversationRecord } from '../terminal/TerminalService'
+import { TerminalService, type CliConversationRecord, type CliConversationStore } from '../terminal/TerminalService'
 import { projectFolderKey } from '../utils/conversationStoragePaths'
 import { fakePtyHost, ok, fail, PTY_MANIFEST, routeOf, settle } from './_helpers/fakePtyHost'
 
@@ -102,7 +103,8 @@ function logHost(files: Record<string, { text: string; mtimeMs: number }>) {
         case 'fs.readRange': {
           const file = table.get(norm(payload.path!))
           if (!file) return fail('NOT_FOUND')
-          const data = new TextEncoder().encode(file.text).slice(0, payload.length)
+          const offset = payload.offset ?? 0
+          const data = new TextEncoder().encode(file.text).slice(offset, offset + payload.length!)
           return ok({ data, bytesRead: data.byteLength })
         }
         default:
@@ -175,6 +177,72 @@ describe('the bridge log reader', () => {
     expect(await reader.findConversations(OTHER_CLI, { cwd: 'D:\\work\\api', startedAt: START, taken: new Set() })).toEqual([])
   })
 
+  it('finds a log whose opening record is longer than the head, with its first prompt', async () => {
+    const dir = `${sourceRoot(home, cliLogSource('codex'))}/${day(START)}`
+    const at = '2026-10-23T10:00:03Z'
+    const opening = JSON.stringify({
+      timestamp: at,
+      type: 'session_meta',
+      payload: { id: ID_A, timestamp: at, cwd: 'D:\\work\\api', instructions: 'x'.repeat(CLI_LOG_HEAD_BYTES + 10_000) },
+    })
+    const rest = rollout(ID_A, 'D:\\work\\api', at, 'Fix the login bug').split('\n').slice(1)
+    const fake = logHost({
+      [`${dir}/rollout-2026-10-23T10-00-03-${ID_A}.jsonl`]: { text: [opening, ...rest].join('\n'), mtimeMs: START + 3_000 },
+    })
+    const reader = createBridgeCliLogReader(fake.host, () => 'r', () => START + 10_000)
+    const found = await reader.findConversations('codex', { cwd: 'D:\\work\\api', startedAt: START, taken: new Set() })
+    expect(found.map(f => [f.id, f.prompt])).toEqual([[ID_A, 'Fix the login bug']])
+  })
+
+  it('a later look reads again only a log of the folder still without its first prompt that changed', async () => {
+    const dir = `${sourceRoot(home, cliLogSource('codex'))}/${day(START)}`
+    const at = '2026-10-23T10:00:03Z'
+    const name = (id: string) => `${dir}/rollout-2026-10-23T10-00-03-${id}.jsonl`
+    const unprompted = rollout(ID_C, 'D:\\work\\api', at, 'Write the docs').split('\n').slice(0, 2).join('\n')
+    const files = {
+      [name(ID_A)]: { text: rollout(ID_A, 'D:\\work\\api', at, 'Fix the login bug'), mtimeMs: START + 3_000 },
+      [name(ID_B)]: { text: rollout(ID_B, 'D:\\work\\web', at, 'Elsewhere'), mtimeMs: START + 3_000 },
+      [name(ID_C)]: { text: unprompted, mtimeMs: START + 3_000 },
+    }
+    const fake = logHost(files)
+    const reads = () => fake.requests.filter(r => routeOf(r) === 'fs.readRange').map(r => (r.payload as { path: string }).path)
+    const reader = createBridgeCliLogReader(fake.host, () => 'r', () => START + 10_000)
+    const where = { cwd: 'D:\\work\\api', startedAt: START, taken: new Set<string>() }
+    expect((await reader.findConversations('codex', where)).map(f => [f.id, f.prompt])).toEqual([
+      [ID_A, 'Fix the login bug'],
+      [ID_C, null],
+    ])
+    const first = reads().length
+    expect(first).toBe(3)
+    await reader.findConversations('codex', where)
+    expect(reads().length).toBe(first)
+    // Each log changes; only the one of this folder still without its first prompt is read again.
+    files[name(ID_A)]!.mtimeMs += 1_000
+    files[name(ID_B)]!.mtimeMs += 1_000
+    Object.assign(files[name(ID_C)]!, { text: rollout(ID_C, 'D:\\work\\api', at, 'Write the docs'), mtimeMs: START + 4_000 })
+    const again = await reader.findConversations('codex', where)
+    expect(again.map(f => [f.id, f.prompt])).toEqual([
+      [ID_A, 'Fix the login bug'],
+      [ID_C, 'Write the docs'],
+    ])
+    expect(reads().slice(first).filter(path => !path.includes(ID_C))).toEqual([])
+  })
+
+  it('a log a session already took is not read', async () => {
+    const dir = `${sourceRoot(home, cliLogSource('codex'))}/${day(START)}`
+    const fake = logHost({
+      [`${dir}/rollout-2026-10-23T10-00-03-${ID_A}.jsonl`]: {
+        text: rollout(ID_A, 'D:\\work\\api', '2026-10-23T10:00:03Z', 'Fix the login bug'),
+        mtimeMs: START + 3_000,
+      },
+    })
+    const reader = createBridgeCliLogReader(fake.host, () => 'r', () => START + 10_000)
+    expect(
+      await reader.findConversations('codex', { cwd: 'D:\\work\\api', startedAt: START, taken: new Set([ID_A]) }),
+    ).toEqual([])
+    expect(fake.requests.some(r => routeOf(r) === 'fs.readRange')).toBe(false)
+  })
+
   it('reads nothing on a host without shell.env', async () => {
     const fake = fakePtyHost()
     const reader = createBridgeCliLogReader(() => fake.host(), () => 'r')
@@ -206,7 +274,7 @@ describe('CliLogFollower', () => {
     await vi.advanceTimersByTimeAsync(10)
     expect(found).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(20)
-    expect(found).toHaveBeenCalledWith('s1', ID_A)
+    expect(found).toHaveBeenCalledWith('s1', ID_A, false)
     expect(reader.title).toHaveBeenCalledWith('codex', { cwd: '/w', id: ID_A, log: '/l/a.jsonl' })
     expect(retitle).toHaveBeenCalledWith('s1', 'From the log')
     await vi.advanceTimersByTimeAsync(1_000)
@@ -244,9 +312,106 @@ describe('CliLogFollower', () => {
     await settle()
     follower.poke('s2')
     await settle()
-    expect(found.mock.calls).toEqual([['s1', ID_A]])
+    expect(found.mock.calls).toEqual([['s1', ID_A, false]])
     expect(reader.findConversations.mock.calls[1]![1].taken.has(ID_A)).toBe(true)
     follower.dispose()
+  })
+
+  describe('one session waiting in its folder', () => {
+    // A conversation started in the same folder outside Velloc, just after the session.
+    const outside: FoundConversation = { id: ID_A, log: '/l/a', at: START + 3_000, prompt: 'Summarize the repo' }
+
+    function lone(listed: FoundConversation[], recorded?: () => Promise<Iterable<string>>) {
+      const found = vi.fn(async () => {})
+      const reader = {
+        findConversations: vi.fn<CliLogReader['findConversations']>(async (_cli, where) =>
+          listed.filter(l => !where.taken.has(l.id)),
+        ),
+        title: async () => null,
+      }
+      const follower = new CliLogFollower({
+        reader,
+        found,
+        hasTerminalTitle: () => false,
+        retryMs: [60_000],
+        ...(recorded ? { recorded } : {}),
+      })
+      follower.start('s1', { cli: 'codex', cwd: '/w', startedAt: START, id: null, fresh: false })
+      return { found, follower, reader }
+    }
+
+    it('after submitting a prompt it takes only the log of that prompt, confirmed', async () => {
+      const own: FoundConversation = { id: ID_B, log: '/l/b', at: START + 6_000, prompt: 'Fix the login bug' }
+      const { found, follower } = lone([outside, own])
+      follower.typed('s1', 'Fix the login bug\r', START + 5_000)
+      follower.poke('s1')
+      await settle()
+      expect(found.mock.calls).toEqual([['s1', ID_B, true]])
+      follower.dispose()
+    })
+
+    it('after submitting a prompt it leaves a log of another prompt alone', async () => {
+      const { found, follower } = lone([outside])
+      follower.typed('s1', 'Fix the login bug\r', START + 5_000)
+      follower.poke('s1')
+      await settle()
+      expect(found).not.toHaveBeenCalled()
+      follower.dispose()
+    })
+
+    it('with nothing submitted it takes the earliest log, unconfirmed', async () => {
+      const { found, follower } = lone([outside])
+      follower.poke('s1')
+      await settle()
+      expect(found.mock.calls).toEqual([['s1', ID_A, false]])
+      follower.dispose()
+    })
+
+    it('never takes a conversation a session already recorded; the recorded ids are read once', async () => {
+      const recorded = vi.fn(async () => [ID_A])
+      const later: FoundConversation = { id: ID_B, log: '/l/b', at: START + 4_000, prompt: null }
+      const { found, follower } = lone([outside, later], recorded)
+      follower.poke('s1')
+      await settle()
+      expect(found.mock.calls).toEqual([['s1', ID_B, false]])
+      follower.start('s2', { cli: 'codex', cwd: '/w', startedAt: START, id: null, fresh: false })
+      follower.poke('s2')
+      await settle()
+      expect(found).toHaveBeenCalledTimes(1)
+      expect(recorded).toHaveBeenCalledTimes(1)
+      follower.dispose()
+    })
+
+    it('settle waits for the look in progress, then looks once more', async () => {
+      const gates: Array<() => void> = []
+      let listed: FoundConversation[] = []
+      const reader = {
+        findConversations: vi.fn<CliLogReader['findConversations']>(async () => {
+          const now = listed
+          await new Promise<void>(resolve => gates.push(resolve))
+          return now
+        }),
+        title: async () => null,
+      }
+      const found = vi.fn(async () => {})
+      const follower = new CliLogFollower({ reader, found, hasTerminalTitle: () => false, retryMs: [60_000] })
+      follower.start('s1', { cli: 'codex', cwd: '/w', startedAt: START, id: null, fresh: false })
+      follower.poke('s1')
+      await settle()
+      listed = [log(ID_A, '/l/a')]
+      let done = false
+      const settled = follower.settle('s1').then(() => {
+        done = true
+      })
+      gates.shift()!()
+      await settle()
+      expect(found).not.toHaveBeenCalled()
+      expect(done).toBe(false)
+      gates.shift()!()
+      await settled
+      expect(found.mock.calls).toEqual([['s1', ID_A, false]])
+      follower.dispose()
+    })
   })
 
   describe('two sessions waiting in one folder', () => {
@@ -275,14 +440,14 @@ describe('CliLogFollower', () => {
       follower.typed('b', 'aky test\r', START + 19_500)
       follower.poke('a')
       await settle()
-      expect(found.mock.calls).toEqual([['b', ID_B]])
+      expect(found.mock.calls).toEqual([['b', ID_B, true]])
       follower.typed('a', '\u001b[200~Write the\ndocs\u001b[201~\r', START + 29_000)
       listed = [logB, logA]
       follower.poke('a')
       await settle()
       expect(found.mock.calls).toEqual([
-        ['b', ID_B],
-        ['a', ID_A],
+        ['b', ID_B, true],
+        ['a', ID_A, true],
       ])
       follower.dispose()
     })
@@ -294,7 +459,7 @@ describe('CliLogFollower', () => {
       follower.typed('b', 'something\r', START + 19_000)
       follower.poke('a')
       await settle()
-      expect(found.mock.calls).toEqual([['b', ID_B]])
+      expect(found.mock.calls).toEqual([['b', ID_B, false]])
       follower.dispose()
     })
 
@@ -302,7 +467,7 @@ describe('CliLogFollower', () => {
       const { found, follower } = pair(() => [logB])
       follower.poke('a')
       await settle()
-      expect(found.mock.calls).toEqual([['a', ID_B]])
+      expect(found.mock.calls).toEqual([['a', ID_B, false]])
       follower.dispose()
     })
   })
@@ -331,7 +496,7 @@ describe('CliTypedLines', () => {
 })
 
 describe('TerminalService and the CLI logs', () => {
-  function rig(reader: CliLogReader) {
+  function rig(reader: CliLogReader, store: Partial<CliConversationStore> = {}) {
     const fake = fakePtyHost()
     const recorded: Record<string, CliConversationRecord> = {}
     const titles: Array<[string, string]> = []
@@ -353,6 +518,7 @@ describe('TerminalService and the CLI logs', () => {
         retitle: async (sessionId, title) => {
           titles.push([sessionId, title])
         },
+        ...store,
       },
     })
     return { ...fake, service, recorded, titles }
@@ -377,6 +543,79 @@ describe('TerminalService and the CLI logs', () => {
     await settle()
     const spawns = r.shellRequests('spawn')
     expect((spawns[1]!.payload as { args: string[] }).args).toEqual(['resume', ID_A])
+    r.service.dispose()
+  })
+
+  it('a restart after an exit that came before the log was found looks once more and resumes', async () => {
+    let written = false
+    const r = rig({
+      findConversations: async () => (written ? [{ id: ID_A, log: '/l/a.jsonl', at: Date.now(), prompt: null }] : []),
+      title: async () => null,
+    })
+    r.service.refreshHost()
+    await settle()
+    const id = await r.service.create({ sessionId: 'c1', cli: { id: 'codex', start: 'new' }, cols: 80, rows: 24 })
+    await settle()
+    r.exit(r.spawned[0]!, 0)
+    await settle(20)
+    expect(r.recorded.c1).toEqual({ cli: 'codex', id: null })
+    written = true
+    await r.service.restart(id)
+    await settle()
+    expect(r.recorded.c1).toEqual({ cli: 'codex', id: ID_A })
+    expect((r.shellRequests('spawn')[1]!.payload as { args: string[] }).args).toEqual(['resume', ID_A])
+    r.service.dispose()
+  })
+
+  it('New after a run that followed its terminal title lets the new conversation take its log title', async () => {
+    const logs: FoundConversation[] = [
+      { id: ID_A, log: '/l/a', at: Date.now(), prompt: null },
+      { id: ID_B, log: '/l/b', at: Date.now(), prompt: null },
+    ]
+    const r = rig({
+      findConversations: async (_cli, where) => logs.filter(l => !where.taken.has(l.id)),
+      title: async (_cli, where) => (where.id === ID_B ? 'Second task' : 'First task'),
+    })
+    r.service.refreshHost()
+    await settle()
+    const first = await r.service.create({ sessionId: 'c1', cli: { id: 'codex', start: 'new' }, cols: 80, rows: 24 })
+    await settle()
+    r.output(r.spawned[0]!, '\u001b]2;Refactor auth\u0007')
+    await settle(20)
+    r.exit(r.spawned[0]!, 0)
+    await settle(20)
+    expect(r.recorded.c1).toEqual({ cli: 'codex', id: ID_A })
+    r.service.close(first)
+    await r.service.create({ sessionId: 'c1', cli: { id: 'codex', start: 'new' }, cols: 80, rows: 24 })
+    await settle()
+    r.exit(r.spawned[1]!, 0)
+    await settle(20)
+    expect(r.recorded.c1).toEqual({ cli: 'codex', id: ID_B })
+    expect(r.titles).toEqual([
+      ['c1', 'Refactor auth'],
+      ['c1', 'Second task'],
+    ])
+    r.service.dispose()
+  })
+
+  it('a log whose conversation another session recorded is never found for this one', async () => {
+    const r = rig(
+      {
+        findConversations: async (_cli, where) =>
+          [ID_A, ID_B]
+            .filter(id => !where.taken.has(id))
+            .map(id => ({ id, log: `/l/${id}`, at: Date.now(), prompt: null })),
+        title: async () => null,
+      },
+      { recordedIds: async () => [ID_A] },
+    )
+    r.service.refreshHost()
+    await settle()
+    await r.service.create({ sessionId: 'c1', cli: { id: 'codex', start: 'new' }, cols: 80, rows: 24 })
+    await settle()
+    r.exit(r.spawned[0]!, 0)
+    await settle(20)
+    expect(r.recorded.c1).toEqual({ cli: 'codex', id: ID_B })
     r.service.dispose()
   })
 
@@ -411,7 +650,7 @@ describe('TerminalService and the CLI logs', () => {
     expect(r.recorded.c1).toEqual({ cli: 'codex', id: null })
     r.exit(r.spawned[1]!, 0)
     await settle(20)
-    expect(r.recorded.c2).toEqual({ cli: 'codex', id: ID_B })
+    expect(r.recorded.c2).toEqual({ cli: 'codex', id: ID_B, confirmed: true })
     r.service.dispose()
   })
 })

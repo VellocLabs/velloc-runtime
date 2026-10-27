@@ -22,6 +22,14 @@ import type { TerminalHost } from './TerminalService'
 /** Bytes read from the start of a log: enough for its opening records and first prompt. */
 export const CLI_LOG_HEAD_BYTES = 256 * 1024
 
+/** How far a log is read for the end of an opening record longer than the head. */
+export const CLI_LOG_OPENING_MAX_BYTES = 4 * 1024 * 1024
+
+/** Logs a reader remembers between looks; the oldest is dropped past this. */
+const KNOWN_LOGS_LIMIT = 2_048
+
+const CONVERSATION_ID_IN_NAME = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
+
 /** A log may be stamped this much before the start the runtime recorded. */
 const START_SLACK_MS = 5_000
 
@@ -86,6 +94,41 @@ export function startedConversations(
   return found.sort((a, b) => a.at - b.at)
 }
 
+/**
+ * A Codex log's opening `session_meta` record cut to its id, time and folder,
+ * read from a prefix of it (the record runs past what was read); null when
+ * the prefix is not one or lacks the time or folder.
+ */
+export function openingRecordFields(prefix: string): string | null {
+  const payloadAt = prefix.indexOf('"payload"')
+  if (payloadAt < 0 || !/"type"\s*:\s*"session_meta"/.test(prefix.slice(0, payloadAt))) return null
+  const payload = prefix.slice(payloadAt)
+  const field = (text: string, name: string): string | null => {
+    const match = new RegExp(`"${name}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`).exec(text)
+    if (!match) return null
+    try {
+      return JSON.parse(`"${match[1]}"`) as string
+    } catch {
+      return null
+    }
+  }
+  const id = field(payload, 'id')
+  const timestamp = field(payload, 'timestamp')
+  const cwd = field(payload, 'cwd')
+  if (!timestamp || !cwd) return null
+  return JSON.stringify({
+    timestamp: field(prefix.slice(0, payloadAt), 'timestamp') ?? timestamp,
+    type: 'session_meta',
+    payload: { ...(id ? { id } : {}), timestamp, cwd },
+  })
+}
+
+/** Whether what a parsed log gives for a find can no longer change: its folder is another, or its first prompt is in. */
+function settledFor(row: ImportSessionLiteRow | undefined, folder: string): boolean {
+  if (!row?.projectPath || !row.createdAt) return false
+  return comparablePath(row.projectPath) !== folder || row.title !== null
+}
+
 /** Reads the logs over the host's `fs` bridge; the home folder is read once per host port. */
 export function createBridgeCliLogReader(
   host: () => TerminalHost,
@@ -114,22 +157,49 @@ export function createBridgeCliLogReader(
     })
     return response.ok ? (response.result as T) : null
   }
-  const readHead = async (
+  const readBytes = async (
     transport: BrowserBridgeTransport,
     path: string,
-  ): Promise<string | null> => {
+    offset: number,
+  ): Promise<Uint8Array | null> => {
     const read = await request<{ data?: Uint8Array; bytesRead?: number }>(transport, 'readRange', {
       path,
-      offset: 0,
+      offset,
       length: CLI_LOG_HEAD_BYTES,
     })
     const data = read?.data
     if (!data || data.byteLength === 0) return null
-    const bytes = data.subarray(0, Math.min(read.bytesRead ?? data.byteLength, data.byteLength))
-    return new TextDecoder('utf-8').decode(bytes)
+    return data.subarray(0, Math.min(read.bytesRead ?? data.byteLength, data.byteLength))
+  }
+  const decode = (bytes: Uint8Array) => new TextDecoder('utf-8').decode(bytes)
+  const readHead = async (transport: BrowserBridgeTransport, path: string): Promise<string | null> => {
+    const bytes = await readBytes(transport, path, 0)
+    return bytes ? decode(bytes) : null
+  }
+  /** A Codex log's head; an opening record longer than the head is cut to the fields a find reads, the records after it kept. */
+  const readLogHead = async (transport: BrowserBridgeTransport, path: string): Promise<string | null> => {
+    const first = await readBytes(transport, path, 0)
+    if (!first) return null
+    if (first.byteLength < CLI_LOG_HEAD_BYTES || first.includes(0x0a)) return decode(first)
+    const opening = openingRecordFields(decode(first))
+    if (opening === null) return decode(first)
+    for (let offset = first.byteLength; offset < CLI_LOG_OPENING_MAX_BYTES; ) {
+      const chunk = await readBytes(transport, path, offset)
+      if (!chunk) break
+      const newline = chunk.indexOf(0x0a)
+      if (newline >= 0) {
+        const rest = await readBytes(transport, path, offset + newline + 1)
+        return rest ? `${opening}\n${decode(rest)}` : opening
+      }
+      if (chunk.byteLength < CLI_LOG_HEAD_BYTES) break
+      offset += chunk.byteLength
+    }
+    return opening
   }
   const parse = (cli: CliAgentId, path: string, head: string, size: number, mtimeMs: number) =>
     getImportSource(cliLogSource(cli)).parseLite([{ path, head, tail: '', size, mtimeMs }])[0]
+  // What each log gave, so a later look reads again only a log of the folder still without its first prompt that changed.
+  const known = new Map<string, { size: number; mtimeMs: number; row: ImportSessionLiteRow | undefined }>()
 
   return {
     async findConversations(cli, where) {
@@ -138,20 +208,32 @@ export function createBridgeCliLogReader(
       const homeDir = transport ? await home(transport) : null
       if (!transport || !homeDir) return []
       const root = sourceRoot(homeDir, cliLogSource(cli))
+      const folder = comparablePath(where.cwd)
       const rows: ImportSessionLiteRow[] = []
-      for (const folder of cliLogDayFolders(where.startedAt, now())) {
-        const dir = joinRuntimePath(root, ...folder.split('/'))
+      for (const day of cliLogDayFolders(where.startedAt, now())) {
+        const dir = joinRuntimePath(root, ...day.split('/'))
         const listed = await request<{ entries?: BridgeFsTreeEntry[] }>(transport, 'readdirTree', {
           path: dir,
           maxDepth: 1,
         }).catch(() => null)
         for (const entry of listed?.entries ?? []) {
           if (entry.isDirectory || entry.size <= 0 || !entry.path.endsWith('.jsonl')) continue
-          if ((entry.mtimeMs ?? 0) < where.startedAt - START_SLACK_MS) continue
+          const mtimeMs = entry.mtimeMs ?? 0
+          if (mtimeMs < where.startedAt - START_SLACK_MS) continue
+          const named = CONVERSATION_ID_IN_NAME.exec(entry.path)?.[1]?.toLowerCase()
+          if (named && where.taken.has(named)) continue
           const path = joinRuntimePath(dir, entry.path)
-          const head = await readHead(transport, path).catch(() => null)
-          const row = head === null ? undefined : parse(cli, path, head, entry.size, entry.mtimeMs ?? 0)
-          if (row) rows.push(row)
+          let seen = known.get(path)
+          const unchanged = seen?.size === entry.size && seen.mtimeMs === mtimeMs
+          if (!seen || (!unchanged && !settledFor(seen.row, folder))) {
+            const head = await readLogHead(transport, path).catch(() => null)
+            if (head === null) continue
+            seen = { size: entry.size, mtimeMs, row: parse(cli, path, head, entry.size, mtimeMs) }
+            known.delete(path)
+            known.set(path, seen)
+            if (known.size > KNOWN_LOGS_LIMIT) known.delete(known.keys().next().value!)
+          }
+          if (seen.row) rows.push(seen.row)
         }
       }
       return startedConversations(rows, where)
@@ -190,12 +272,23 @@ type FollowedLog = {
   timer: unknown
   looking: boolean
   again: boolean
+  /** Told when the look in progress ends. */
+  lookEnded: Array<() => void>
 }
+
+/** Who a found log belongs to; `confirmed` when its first prompt is a line submitted to that session. */
+type LogOwner = { sessionId: string; confirmed: boolean }
 
 export type CliLogFollowerDeps = {
   reader: CliLogReader
-  /** Records the conversation found for `sessionId`, so it can be continued. */
-  found(sessionId: string, id: string): Promise<void>
+  /**
+   * Records the conversation found for `sessionId`, so it can be continued.
+   * `confirmed`: the log's first prompt is a line submitted to that session;
+   * otherwise the log was taken because nothing else could claim it.
+   */
+  found(sessionId: string, id: string, confirmed: boolean): Promise<void>
+  /** The conversation ids sessions have already recorded; read once, and none of them is taken again. */
+  recorded?(): Promise<Iterable<string>>
   /** Sets the session's automatic title from its log; without it no title is read. */
   retitle?(sessionId: string, title: string): Promise<void>
   /** True once the session follows a title of its CLI's terminal, which then wins. */
@@ -218,6 +311,7 @@ export class CliLogFollower {
   private readonly logs = new Map<string, FollowedLog>()
   /** Conversations already found, so two starts in one folder never take the same one. */
   private readonly claimed = new Set<string>()
+  private seeded: Promise<void> | null = null
   private readonly timers: CliTitleTimers
   private readonly retryMs: readonly number[]
 
@@ -246,8 +340,25 @@ export class CliLogFollower {
       timer: undefined,
       looking: false,
       again: false,
+      lookEnded: [],
     })
     this.schedule(sessionId)
+  }
+
+  /**
+   * Looks once more for a session whose conversation is not known yet, after
+   * any look in progress, and resolves when that look ends: what a restart
+   * waits on before choosing between resuming and starting anew.
+   */
+  async settle(sessionId: string): Promise<void> {
+    const log = this.logs.get(sessionId)
+    while (log && this.logs.get(sessionId) === log && log.id === null) {
+      if (!log.looking) {
+        await this.look(sessionId)
+        return
+      }
+      await new Promise<void>(resolve => log.lookEnded.push(resolve))
+    }
   }
 
   /** Keystrokes sent to the session's CLI at `at`; what was submitted tells its log from another's. */
@@ -266,6 +377,7 @@ export class CliLogFollower {
     if (!log) return
     if (log.timer !== undefined) this.timers.clearTimeout(log.timer)
     this.logs.delete(sessionId)
+    this.endLook(log)
   }
 
   dispose(): void {
@@ -293,6 +405,7 @@ export class CliLogFollower {
     log.looking = true
     try {
       if (log.id === null) {
+        await this.seed()
         const candidates = await this.deps.reader.findConversations(log.cli, {
           cwd: log.cwd,
           startedAt: log.startedAt,
@@ -302,15 +415,16 @@ export class CliLogFollower {
           if (this.logs.get(sessionId) !== log) break
           if (this.claimed.has(found.id)) continue
           const owner = this.ownerOf(found, sessionId, log)
-          if (owner !== sessionId) {
+          if (owner === null) continue
+          if (owner.sessionId !== sessionId) {
             // Another session in the folder submitted this prompt: leave the log to it.
-            void this.look(owner)
+            void this.look(owner.sessionId)
             continue
           }
           this.claimed.add(found.id)
           log.id = found.id
           log.log = found.log
-          await this.deps.found(sessionId, found.id)
+          await this.deps.found(sessionId, found.id, owner.confirmed)
           break
         }
       }
@@ -326,6 +440,7 @@ export class CliLogFollower {
       // A failed read is retried on the next look.
     } finally {
       log.looking = false
+      this.endLook(log)
     }
     if (this.logs.get(sessionId) !== log) return
     if (log.id !== null && !log.wantsTitle) {
@@ -340,12 +455,33 @@ export class CliLogFollower {
     if (log.timer === undefined) this.schedule(sessionId)
   }
 
+  /** Adds the ids sessions already recorded to the claimed ones, once; a failed read is tried again on the next look. */
+  private seed(): Promise<void> {
+    const recorded = this.deps.recorded
+    if (!recorded) return Promise.resolve()
+    this.seeded ??= recorded().then(
+      ids => {
+        for (const id of ids) this.claimed.add(id)
+      },
+      () => {
+        this.seeded = null
+      },
+    )
+    return this.seeded
+  }
+
+  private endLook(log: FollowedLog): void {
+    for (const resolve of log.lookEnded.splice(0)) resolve()
+  }
+
   /**
-   * Which session still looking in the folder a log belongs to: the one that
-   * submitted its first prompt, else the one whose last submit came nearest
-   * before it was created, else `sessionId`, the one looking.
+   * Which session still looking in the folder a log belongs to, or null when
+   * none may take it. A session that submitted lines takes a log with a first
+   * prompt only when one of its lines is that prompt (confirmed). Otherwise:
+   * the one whose last submit came nearest before the log was created, else
+   * `sessionId`, the one looking, when it may take it.
    */
-  private ownerOf(found: FoundConversation, sessionId: string, log: FollowedLog): string {
+  private ownerOf(found: FoundConversation, sessionId: string, log: FollowedLog): LogOwner | null {
     const folder = comparablePath(log.cwd)
     let waiting = Array.from(this.logs).filter(
       ([, other]) =>
@@ -354,13 +490,18 @@ export class CliLogFollower {
         comparablePath(other.cwd) === folder &&
         found.at >= other.startedAt - START_SLACK_MS,
     )
-    if (waiting.length < 2) return sessionId
+    let confirmed = false
     const prompt = found.prompt
     if (prompt) {
       const typedIt = waiting.filter(([, other]) => other.typed.lines.some(line => lineMatchesPromptTitle(line.text, prompt)))
-      if (typedIt.length === 1) return typedIt[0]![0]
-      if (typedIt.length > 1) waiting = typedIt
+      if (typedIt.length > 0) {
+        waiting = typedIt
+        confirmed = true
+      } else {
+        waiting = waiting.filter(([, other]) => other.typed.lines.length === 0)
+      }
     }
+    if (waiting.length === 1) return { sessionId: waiting[0]![0], confirmed }
     let owner: string | null = null
     let ownerAt = Number.NEGATIVE_INFINITY
     let tied = false
@@ -377,6 +518,7 @@ export class CliLogFollower {
         tied = true
       }
     }
-    return owner !== null && ownerAt > Number.NEGATIVE_INFINITY && !tied ? owner : sessionId
+    if (owner !== null && ownerAt > Number.NEGATIVE_INFINITY && !tied) return { sessionId: owner, confirmed }
+    return waiting.some(([id]) => id === sessionId) ? { sessionId, confirmed } : null
   }
 }

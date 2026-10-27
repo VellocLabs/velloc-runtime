@@ -4230,6 +4230,37 @@ describe('SharedWorkerSessionManager', () => {
       erase.mockRestore()
     })
 
+    it('deleting a CLI session before its store binds erases the conversation it recorded, though disk lost it (F-34)', async () => {
+      installStorage()
+      const record = { cli: 'codex', id: '0b7f3c2e-9a41-4d6b-8f0e-5c2d1a3b4e6f', confirmed: true }
+      internals().sessions.set('s', {
+        templateType: 'cli-codex',
+        projectRoot: 'D:/work/api',
+        worker: {
+          receiveFrame: vi.fn(async () => {}),
+          getSnapshot: () => ({ messageCount: 0, messages: [] }),
+          dispose: vi.fn(async () => {}),
+        },
+        ports: new Set(),
+      })
+      const store = (manager as unknown as { cliConversationStore(): CliConversationStore }).cliConversationStore()
+      await store.record('s', record as never)
+      // The worker's store persists its own metadata ahead of its bind, without the record.
+      metas.set('s', {
+        schemaVersion: 1,
+        sessionId: 's',
+        updatedAt: 10,
+        metadata: { templateType: 'cli-codex', projectRoot: 'D:/work/api', createdAt: 5 },
+      })
+      const terminals = (manager as unknown as { bootServices: { terminals: TerminalService } }).bootServices.terminals
+      const erase = vi.spyOn(terminals, 'eraseCliConversation').mockImplementation(async () => [])
+      const port = createMockPort()
+      manager.handleConnect(port)
+      port._simulateMessage({ type: 'session.delete', sessionId: 's' })
+      await vi.waitFor(() => expect(erase).toHaveBeenCalledWith(record, 'D:/work/api'))
+      erase.mockRestore()
+    })
+
     it('a CLI session’s store that loaded before its conversation id was written keeps the id on bind (F-34)', async () => {
       installStorage()
       const record = { cli: 'codex', id: '0b7f3c2e-9a41-4d6b-8f0e-5c2d1a3b4e6f' }

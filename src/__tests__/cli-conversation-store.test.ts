@@ -13,7 +13,14 @@ import {
 
 const CONVERSATION = '0b7f3c2e-9a41-4d6b-8f0e-5c2d1a3b4e6f'
 
-function rig(options: { meta?: Record<string, SessionMetaFile>; entry?: CliConversationEntry; storage?: boolean } = {}) {
+function rig(
+  options: {
+    meta?: Record<string, SessionMetaFile>
+    entry?: CliConversationEntry
+    storage?: boolean
+    extra?: Partial<CliConversationStoreDeps>
+  } = {},
+) {
   const meta: Record<string, SessionMetaFile> = { ...options.meta }
   const calls: string[] = []
   const created: Array<Parameters<CliConversationStoreDeps['writeNewSession']>[0]> = []
@@ -23,6 +30,7 @@ function rig(options: { meta?: Record<string, SessionMetaFile>; entry?: CliConve
         ? null
         : {
             readSessionMeta: async id => meta[id] ?? null,
+            listSessions: async () => Object.keys(meta),
             writeSessionMeta: async (id, next) => {
               calls.push(`write ${id}`)
               meta[id] = next
@@ -40,6 +48,7 @@ function rig(options: { meta?: Record<string, SessionMetaFile>; entry?: CliConve
       created.push(args)
     },
     now: () => 42,
+    ...options.extra,
   })
   return { store, meta, calls, created }
 }
@@ -184,6 +193,28 @@ describe('CLI conversation store', () => {
     await bound.store.retitle?.('s1', 'Review the diff')
     expect(titles).toEqual(['Review the diff'])
     expect(bound.calls).toEqual(['summary s1'])
+  })
+
+  it('recordedIds lists the conversation ids every session recorded, and those its owner still holds', async () => {
+    const other = '0b7f3c2e-9a41-4d6b-8f0e-5c2d1a3b4e70'
+    const held = '0b7f3c2e-9a41-4d6b-8f0e-5c2d1a3b4e71'
+    const read: string[] = []
+    const r = rig({
+      meta: {
+        s1: existing({ templateType: 'cli-codex', cliConversation: { cli: 'codex', id: CONVERSATION } }),
+        s2: existing({ templateType: 'cli-codex', cliConversation: { cli: 'codex', id: null } }),
+        s3: existing({ templateType: 'code', cliConversation: { cli: 'codex', id: other } }),
+      },
+      extra: {
+        remembered: () => [{ cli: 'codex', id: held }],
+        mayBeCliSession: id => {
+          read.push(id)
+          return id !== 's3'
+        },
+      },
+    })
+    expect(new Set(await r.store.recordedIds!())).toEqual(new Set([held, CONVERSATION]))
+    expect(read.sort()).toEqual(['s1', 's2', 's3'])
   })
 
   it('touch moves the activity time of a stored session forward only, and refreshes the row', async () => {

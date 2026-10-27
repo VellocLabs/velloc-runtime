@@ -158,10 +158,10 @@ export async function probeCliAgents(
 /** A stored `cliConversation` metadata value, or undefined when it is not one. */
 export function parseCliConversation(
   value: unknown,
-): { cli: CliAgentId; id: string | null } | undefined {
+): { cli: CliAgentId; id: string | null; confirmed?: boolean } | undefined {
   if (typeof value !== 'object' || value === null) return undefined
-  const { cli, id } = value as { cli?: unknown; id?: unknown }
+  const { cli, id, confirmed } = value as { cli?: unknown; id?: unknown; confirmed?: unknown }
   if (!isCliAgentId(cli)) return undefined
   if (id !== null && !isConversationId(id)) return undefined
-  return { cli, id }
+  return { cli, id, ...(id !== null && confirmed === true ? { confirmed } : {}) }
 }

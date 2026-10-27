@@ -100,8 +100,12 @@ export type TerminalServiceDeps = {
   newId?(): string
 }
 
-/** A CLI session's recorded conversation (F-34): `id` is null until it is known. */
-export type CliConversationRecord = { cli: CliAgentId; id: string | null }
+/**
+ * A CLI session's recorded conversation (F-34): `id` is null until it is
+ * known. `confirmed` marks a found id whose log's first prompt was submitted
+ * to this session; an id the runtime assigned needs no mark.
+ */
+export type CliConversationRecord = { cli: CliAgentId; id: string | null; confirmed?: boolean }
 
 /** Reads and writes the conversation a CLI session started, in that session's metadata. */
 export type CliConversationStore = {
@@ -111,6 +115,8 @@ export type CliConversationStore = {
   retitle?(sessionId: string, title: string): Promise<void>
   /** Moves the session's activity time forward to `at`; without it a working CLI does not move it. */
   touch?(sessionId: string, at: number): Promise<void>
+  /** Every conversation id the sessions have recorded, so a log one of them holds is never found for another. */
+  recordedIds?(): Promise<Iterable<string>>
 }
 
 export type TerminalServiceEvent =
@@ -229,7 +235,8 @@ export class TerminalService {
     this.cliLogs = store
       ? new CliLogFollower({
           reader: deps.cliLogs ?? createBridgeCliLogReader(deps.host, deps.createRequestId),
-          found: (sessionId, id) => this.cliConversationFound(sessionId, id),
+          found: (sessionId, id, confirmed) => this.cliConversationFound(sessionId, id, confirmed),
+          ...(store.recordedIds ? { recorded: () => store.recordedIds!() } : {}),
           ...(retitle ? { retitle } : {}),
           hasTerminalTitle: sessionId => this.cliTitles?.hasTitle(sessionId) ?? false,
           ...(deps.cliLogRetryMs ? { retryMs: deps.cliLogRetryMs } : {}),
@@ -439,10 +446,15 @@ export class TerminalService {
     // A restarted terminal starts afresh: the old shell's output does not carry over.
     record.screen.dispose()
     record.screen = this.newScreen(record.cols, record.rows)
-    // A CLI restarted after its first run continues the conversation it started.
-    if (record.cli?.conversation) record.cli.conversation = { ...record.cli.conversation, resume: true }
     this.setTitle(record, record.shell)
     this.setState(record, { kind: 'starting' })
+    // A CLI whose conversation is not known yet looks for its log once more first.
+    if (record.cli && !record.cli.conversation) {
+      await this.cliLogs?.settle(record.sessionId)
+      if (record.spawn !== null || !this.records.has(id)) return
+    }
+    // A CLI restarted after its first run continues the conversation it started.
+    if (record.cli?.conversation) record.cli.conversation = { ...record.cli.conversation, resume: true }
     await this.spawn(record)
   }
 
@@ -452,9 +464,14 @@ export class TerminalService {
     this.forget(record)
   }
 
-  /** A deleted CLI session's conversation leaves its CLI's own logs; call after `closeForSession`. Never throws. */
+  /**
+   * A deleted CLI session's conversation leaves its CLI's own logs; call
+   * after `closeForSession`. Never throws. Only an id known to be the
+   * session's is erased: one the runtime assigned, or a found one `confirmed`.
+   */
   async eraseCliConversation(record: CliConversationRecord, cwd: string): Promise<string[]> {
     if (!isConversationId(record.id)) return []
+    if (!CLI_ASSIGNS_CONVERSATION_ID[record.cli] && record.confirmed !== true) return []
     const eraser = this.deps.cliLogEraser ?? createBridgeCliLogEraser(this.deps.host, this.deps.createRequestId)
     return eraser.erase(record.cli, { cwd, id: record.id }).catch(() => [])
   }
@@ -498,14 +515,14 @@ export class TerminalService {
   }
 
   /** The CLI's log names the conversation it started: record it, so a restart and Continue resume it. */
-  private async cliConversationFound(sessionId: string, id: string): Promise<void> {
+  private async cliConversationFound(sessionId: string, id: string, confirmed: boolean): Promise<void> {
     let cli: CliAgentId | null = null
     for (const record of this.records.values()) {
       if (record.sessionId !== sessionId || !record.cli || record.cli.conversation) continue
       record.cli.conversation = { id, resume: false }
       cli = record.cli.id
     }
-    if (cli) await this.deps.cliConversations?.record(sessionId, { cli, id })
+    if (cli) await this.deps.cliConversations?.record(sessionId, { cli, id, ...(confirmed ? { confirmed } : {}) })
   }
 
   /** Validates a CLI start and settles the conversation it names, recording a new one first. */
@@ -529,6 +546,8 @@ export class TerminalService {
     if (request.start !== 'new') {
       throw wireError('bad_payload', "terminal: cli start must be 'new' or 'continue'")
     }
+    // A new conversation takes its own title, whatever the last one's terminal showed.
+    this.cliTitles?.forget(sessionId)
     const conversationId = CLI_ASSIGNS_CONVERSATION_ID[cliId] ? newConversationId() : null
     await store.record(sessionId, { cli: cliId, id: conversationId })
     return {
@@ -686,7 +705,11 @@ export class TerminalService {
 
   private forget(record: TerminalRecord): void {
     if (!this.records.delete(record.id)) return
-    if (record.cli) this.cliWork.end(record.sessionId)
+    // A closed terminal is not activity: its session may be going, and a write now would race its removal.
+    if (record.cli) {
+      this.cliActivity?.stop(record.sessionId)
+      this.cliWork.end(record.sessionId)
+    }
     record.spawn = null
     record.coalescer.dispose()
     record.screen.dispose()

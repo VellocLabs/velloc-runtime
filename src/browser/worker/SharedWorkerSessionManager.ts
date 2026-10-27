@@ -2854,6 +2854,11 @@ export class SharedWorkerSessionManager {
       remember: (sessionId, record) => {
         this.recordedCliConversations.set(sessionId, record)
       },
+      remembered: () => this.recordedCliConversations.values(),
+      mayBeCliSession: sessionId => {
+        const summary = this.fsSummaries.peek(sessionId)
+        return summary === undefined || cliOfTypeInAnyChannel(summary.templateType) !== undefined
+      },
     })
   }
 
@@ -2862,7 +2867,12 @@ export class SharedWorkerSessionManager {
     sessionId: string,
   ): Promise<{ record: CliConversationRecord; cwd: string } | undefined> {
     try {
-      const record = await this.cliConversationStore().read(sessionId)
+      // What this runtime recorded wins: a store write ahead of its bind can have overwritten it on disk.
+      const record =
+        this.recordedCliConversations.get(sessionId) ??
+        (await this.cliConversationStore()
+          .read(sessionId)
+          .catch(() => undefined))
       if (!record?.id) return undefined
       // The folder the CLI started in keys its log: the worktree when it runs in one.
       const cwd =

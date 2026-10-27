@@ -102,7 +102,7 @@ describe('erasing a deleted CLI session’s conversation', () => {
     expect(fake.requests.some(r => routeOf(r) === 'fs.rm' || routeOf(r) === 'fs.readdirTree')).toBe(false)
   })
 
-  it('the terminal service erases through its eraser only for a recorded id', async () => {
+  it('the terminal service erases through its eraser only an id known to be the session’s', async () => {
     const erased: unknown[] = []
     const service = new TerminalService({
       host: () => fakePtyHost().host(),
@@ -116,8 +116,15 @@ describe('erasing a deleted CLI session’s conversation', () => {
       },
     })
     await service.eraseCliConversation({ cli: 'codex', id: null }, 'D:\\work\\api')
+    // A found id whose log's prompt was never matched to the session may be another's conversation.
     await service.eraseCliConversation({ cli: 'codex', id: ID_A }, 'D:\\work\\api')
-    expect(erased).toEqual([{ cli: 'codex', cwd: 'D:\\work\\api', id: ID_A }])
+    await service.eraseCliConversation({ cli: 'codex', id: ID_A, confirmed: true }, 'D:\\work\\api')
+    // An id the runtime assigned is the session's.
+    await service.eraseCliConversation({ cli: OTHER_CLI, id: ID_B }, 'D:\\work\\api')
+    expect(erased).toEqual([
+      { cli: 'codex', cwd: 'D:\\work\\api', id: ID_A },
+      { cli: OTHER_CLI, cwd: 'D:\\work\\api', id: ID_B },
+    ])
     service.dispose()
   })
 })
