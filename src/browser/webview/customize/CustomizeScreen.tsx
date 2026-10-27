@@ -101,7 +101,8 @@ export function CustomizeScreen({
   const closeAsk = React.useCallback(() => setAnsweredSeq(seq => Math.max(seq, ask?.seq ?? seq)), [ask])
   const showDirectory = !tab.unavailable && onDirectory
   // The native view paints above the guest; it gives way while a dialog asks.
-  const holdPage = askedItem !== null || addingMarket || removing !== null
+  const [askingUninstall, setAskingUninstall] = React.useState(false)
+  const holdPage = askedItem !== null || addingMarket || removing !== null || (onDirectory && askingUninstall)
   const openInDirectory = (path: string) => {
     setSelection(DIRECTORY)
     tab.openPage(path)
@@ -192,6 +193,7 @@ export function CustomizeScreen({
                 onAdd={tab.addPageItem}
                 onRemove={tab.removePageItem}
                 onManage={manageItem}
+                onAskingChange={setAskingUninstall}
               />
             ) : null}
           </div>

@@ -30,10 +30,12 @@ import { DIRECTORY_API_ORIGIN, DIRECTORY_SITE_HOST, DIRECTORY_SITE_ORIGIN } from
 import type { NexusMcpServerConfig } from '../../settings/settingsTypes'
 
 const PAGE = 'http://127.0.0.1:4100/directory'
+const PAGE_ORIGIN = 'http://127.0.0.1:4100'
+const PARTNER = 'https://partner.example'
 
 function fakeHost(options: { pageScript?: boolean; tabId?: number; webWindow?: boolean } = {}) {
   const calls: string[] = []
-  const messageListeners = new Set<(e: { channelId: number; data: unknown }) => void>()
+  const messageListeners = new Set<(e: { channelId: number; data: unknown; origin: string }) => void>()
   const detachListeners = new Set<(e: { channelId: number; reason: string }) => void>()
   let nextChannel = 1
   let open = false
@@ -81,12 +83,15 @@ function fakeHost(options: { pageScript?: boolean; tabId?: number; webWindow?: b
         : async url => {
             calls.push(`window ${url}`)
           },
+    openUrl: async url => {
+      calls.push(`browser ${url}`)
+    },
   }
   return {
     host,
     calls,
-    report: (channelId: number, data: unknown) => {
-      for (const l of Array.from(messageListeners)) l({ channelId, data })
+    report: (channelId: number, data: unknown, origin = PAGE_ORIGIN) => {
+      for (const l of Array.from(messageListeners)) l({ channelId, data, origin })
     },
     detach: (channelId: number, reason: string) => {
       if (reason === 'target_gone') open = false
@@ -323,7 +328,7 @@ describe('customizePage service', () => {
     await expect(r.call('back', {})).resolves.toEqual({ ok: false })
   })
 
-  it('a page on another site opens in a window of its own; without web windows it loads in the tab', async () => {
+  it('a page on another site opens in a window of its own; without web windows in a browser tab, never in this tab', async () => {
     const fake = fakeHost()
     const r = rig(() => fake.host)
     await r.call('show', { url: PAGE })
@@ -340,7 +345,8 @@ describe('customizePage service', () => {
     await b.call('show', { url: PAGE })
     bare.report(1, { type: 'external', url: 'https://docs.example/start' })
     await settle()
-    expect(bare.calls.at(-1)).toBe('navigate 7 https://docs.example/start')
+    expect(bare.calls.at(-1)).toBe('browser https://docs.example/start')
+    expect(bare.calls.filter(c => c.startsWith('navigate'))).toEqual([])
   })
 
   it('a document of another site that lands in the tab opens elsewhere and the tab returns to its last page', async () => {
@@ -349,7 +355,7 @@ describe('customizePage service', () => {
     await r.call('show', { url: PAGE })
     fake.report(1, { type: 'route', path: '/directory/slack', href: 'http://127.0.0.1:4100/directory/slack?x=1' })
     const before = r.events.length
-    fake.report(1, { type: 'route', path: '/landing', href: 'https://partner.example/landing' })
+    fake.report(1, { type: 'route', path: '/landing', href: 'https://partner.example/landing' }, PARTNER)
     await settle()
     expect(fake.calls.slice(-2)).toEqual([
       'window https://partner.example/landing',
@@ -368,7 +374,7 @@ describe('customizePage service', () => {
       fake.report(1, { type: 'route', path: '/directory/moved', href: 'http://127.0.0.1:4100/directory/moved' })
       const start = fake.calls.length
       const bounce = async () => {
-        fake.report(1, { type: 'route', path: '/landing', href: 'https://partner.example/landing' })
+        fake.report(1, { type: 'route', path: '/landing', href: 'https://partner.example/landing' }, PARTNER)
         await settle()
       }
       for (let i = 0; i < 5; i++) await bounce()
@@ -384,6 +390,44 @@ describe('customizePage service', () => {
         'window https://partner.example/landing',
         'navigate 7 http://127.0.0.1:4100/directory/moved',
       ])
+    } finally {
+      clock.mockRestore()
+    }
+  })
+
+  it('a page left off-site that keeps moving opens no window past the landing bound', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(2_000_000)
+    try {
+      const fake = fakeHost()
+      const r = rig(() => fake.host)
+      await r.call('show', { url: PAGE })
+      fake.report(1, { type: 'route', path: '/directory/moved', href: 'http://127.0.0.1:4100/directory/moved' })
+      for (let i = 1; i <= 6; i++) {
+        fake.report(1, { type: 'route', path: `/${i}`, href: `https://partner.example/${i}` }, PARTNER)
+      }
+      await settle()
+      expect(fake.calls.filter(c => c.startsWith('window'))).toEqual([
+        'window https://partner.example/1',
+        'window https://partner.example/2',
+      ])
+    } finally {
+      clock.mockRestore()
+    }
+  })
+
+  it('windows opened for other sites are capped per minute, whatever their addresses', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(3_000_000)
+    try {
+      const fake = fakeHost()
+      const r = rig(() => fake.host)
+      await r.call('show', { url: PAGE })
+      for (let i = 1; i <= 12; i++) fake.report(1, { type: 'external', url: `https://docs.example/${i}` })
+      await settle()
+      expect(fake.calls.filter(c => c.startsWith('window'))).toHaveLength(10)
+      clock.mockReturnValue(3_000_000 + 61_000)
+      fake.report(1, { type: 'external', url: 'https://docs.example/later' })
+      await settle()
+      expect(fake.calls.at(-1)).toBe('window https://docs.example/later')
     } finally {
       clock.mockRestore()
     }
@@ -767,6 +811,26 @@ describe('customizePage service — the page item', () => {
     expect(r.service.getState().addRequest).toBeUndefined()
     fake.report(1, { type: 'route', path: '/directory/slack' })
     expect(r.service.getState()).toMatchObject({ pageItem: { id: 1 }, addRequest: { seq: 1, itemId: 1 } })
+  })
+
+  it('a document of another origin is heard only as a landing: its add and open asks do nothing', async () => {
+    const o = fakeOffers({ records: { [SLACK_FILTER]: [SLACK] } })
+    const { fake, r } = await shown(o.deps)
+    fake.report(1, { type: 'route', path: '/directory/slack', href: 'http://127.0.0.1:4100/directory/slack' })
+    await settle()
+    const item = r.service.getState().pageItem
+    const before = fake.calls.length
+    const asks = r.service.getState().addRequest
+    fake.report(1, { type: 'add', returnTo: '/customize/plugins/id/x' }, PARTNER)
+    fake.report(1, { type: 'add', returnTo: '' }, PARTNER)
+    fake.report(1, { type: 'external', url: 'https://evil.example/popup' }, PARTNER)
+    fake.report(1, { type: 'route', path: '/directory/notion', href: 'http://127.0.0.1:4100/directory/notion' }, 'null')
+    await settle()
+    expect(fake.calls.slice(before)).toEqual(['navigate 7 http://127.0.0.1:4100/directory/slack'])
+    expect(r.service.getState().addRequest).toEqual(asks)
+    expect(r.service.getState().path).toBe('/directory/slack')
+    expect(r.service.getState().pageItem?.id).toBe(item?.id)
+    expect(o.calls.some(c => c.startsWith('upsert'))).toBe(false)
   })
 
   it('describeMarketplace answers the directory\'s details per plugin, and nothing before a show', async () => {

@@ -453,12 +453,16 @@ describe('CustomizeScreen — the item the page shows', () => {
     const plugin = { id: 6, kind: 'plugin', phase: 'installed', details, installedAs: 'slack@market' }
     act(() => fake.status({ available: true, pageItem: plugin }))
 
+    expect(view.queryByTestId('customize-page-held')).toBeNull()
     fireEvent.click(view.getByTestId('customize-item-remove'))
     const dialog = await view.findByTestId('customize-item-uninstall-dialog')
     expect(dialog.textContent).toContain(EN_MESSAGES['customize.item.uninstallDialog.title'].replace('{name}', 'Slack'))
     expect(dialog.textContent).toContain(EN_MESSAGES['customize.item.uninstallDialog.plugin'])
+    expect(view.queryByTestId('webview-area')).toBeNull()
+    expect(view.getByTestId('customize-page-held')).not.toBeNull()
     fireEvent.click(view.getByRole('button', { name: EN_MESSAGES['customize.item.uninstallDialog.cancel'] }))
     await waitFor(() => expect(view.queryByTestId('customize-item-uninstall-dialog')).toBeNull())
+    expect(view.queryByTestId('customize-page-held')).toBeNull()
     expect(fake.answered).toEqual([])
 
     act(() => fake.status({ available: true, pageItem: { ...plugin, kind: 'connector', installedAs: 'chat' } }))
@@ -480,9 +484,17 @@ describe('CustomizeScreen — the item the page shows', () => {
     fireEvent.click(view.getByTestId('customize-item-remove'))
     await view.findByTestId('customize-item-uninstall-dialog')
 
+    expect(view.getByTestId('customize-page-held')).not.toBeNull()
+
     act(() => fake.status({ available: true, pageItem: { ...first, id: 7, installedAs: 'other@market' } }))
     await waitFor(() => expect(view.queryByTestId('customize-item-uninstall-dialog')).toBeNull())
+    expect(view.queryByTestId('customize-page-held')).toBeNull()
     expect(fake.answered).toEqual([])
+
+    fireEvent.click(view.getByTestId('customize-item-remove'))
+    await view.findByTestId('customize-item-uninstall-dialog')
+    act(() => fake.status({ available: true }))
+    await waitFor(() => expect(view.queryByTestId('customize-page-held')).toBeNull())
   })
 
   it('an Uninstall in progress shows a spinner, and one that failed says so beside Installed', async () => {
@@ -1073,6 +1085,32 @@ describe('CustomizeScreen — a marketplace plugin\'s detail page', () => {
     expect(facts).toContain(EN_MESSAGES['customize.detail.links.documentation'])
     fireEvent.click(view.getByTestId('customize-market-detail-back'))
     expect(await view.findAllByTestId('customize-market-plugin')).toHaveLength(2)
+  })
+
+  it('a listing author address links the publisher only when it is https', async () => {
+    for (const [url, linked] of [
+      ['search-ms:query=report', false],
+      ['https://docs.example/team', true],
+    ] as const) {
+      const fake = fakeConnection(['ok'], described)
+      const b = fakeBridge({
+        marketplaces: [{ name: 'team-tools' }],
+        manifests: {
+          'team-tools': {
+            plugins: [{ name: 'docs', description: 'Writes docs', author: { name: 'Docs Co', url }, installed: false }],
+          },
+        },
+      })
+      const view = screen(fake.getConnection, { bridge: b.bridge })
+      fireEvent.click(await view.findByTestId('customize-market'))
+      fireEvent.click((await view.findAllByTestId('customize-market-open'))[0]!)
+      const facts = (await view.findByTestId('customize-facts')) as HTMLElement
+      expect(facts.textContent).toContain('Docs Co')
+      const hrefs = Array.from(facts.querySelectorAll('a')).map(a => a.getAttribute('href'))
+      expect(hrefs.includes(url)).toBe(linked)
+      expect(hrefs.some(h => !/^https:\/\//i.test(h ?? ''))).toBe(false)
+      view.unmount()
+    }
   })
 
   it('Add on the detail page installs it; View in directory shows its directory page', async () => {

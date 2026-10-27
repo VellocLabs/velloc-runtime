@@ -132,6 +132,11 @@ export function useFormatDate(): (iso: string | undefined) => string | null {
 
 export type FactRow = { label: MessageKey; value: string | null | undefined; href?: string }
 
+/** Security: a listing's own address is linked only when it is https; any other scheme could start an outside handler. */
+export function httpsLink(url: string | undefined): string | undefined {
+  return url && /^https:\/\//i.test(url) ? url : undefined
+}
+
 /** A side column of facts (label: value) and the item's links. */
 export function FactsAndLinks({
   facts,
@@ -144,10 +149,9 @@ export function FactsAndLinks({
 }) {
   const t = useT()
   const shown = facts.filter(f => f.value)
+  const homepageLink = httpsLink(homepage)
   const links = [
-    ...(homepage && /^https:\/\//i.test(homepage)
-      ? [{ label: 'customize.detail.links.homepage' as MessageKey, href: homepage }]
-      : []),
+    ...(homepageLink ? [{ label: 'customize.detail.links.homepage' as MessageKey, href: homepageLink }] : []),
     ...LINK_LABELS.flatMap(l => (details?.links?.[l.key] ? [{ label: l.label, href: details.links[l.key]! }] : [])),
   ]
   return (

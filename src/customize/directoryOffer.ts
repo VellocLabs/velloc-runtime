@@ -386,13 +386,19 @@ async function resolveConnector(
 ): Promise<Omit<DirectoryResolution, 'details'>> {
   const server = record.components?.find(component => component.type === 'mcp_server')
   const url = server?.endpoint?.type === 'fixed' ? str(server.endpoint.url) : undefined
-  const servers = await deps.listMcpServers()
-  const installedAs = slug in servers
-    ? slug
-    : url ? Object.entries(servers).find(([, config]) => sameUrl(config.url, url))?.[0] : undefined
+  const servers = new Map(Object.entries(await deps.listMcpServers()))
+  const matching = url ? [...servers].filter(([, config]) => sameUrl(config.url, url)).map(([id]) => id) : []
+  const installedAs = matching.includes(slug) ? slug : matching[0]
   const installed = installedAs !== undefined ? { alreadyInstalled: true, installedAs } : { alreadyInstalled: false }
   if (!url || !/^https:\/\//i.test(url)) return { ...installed, target: null }
-  return { ...installed, target: { kind: 'connector', id: slug, config: { transport: 'http', url } } }
+  return { ...installed, target: { kind: 'connector', id: freeServerId(slug, servers), config: { transport: 'http', url } } }
+}
+
+/** `slug`, or `slug-2`, `slug-3`, … when a server of another address already has that id. */
+function freeServerId(slug: string, servers: Map<string, unknown>): string {
+  let id = slug
+  for (let n = 2; servers.has(id); n++) id = `${slug}-${n}`
+  return id
 }
 
 /**

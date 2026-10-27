@@ -215,11 +215,34 @@ describe('resolveDirectoryIntent — connectors', () => {
     }
   })
 
-  it('a server already configured under the same id counts as installed', async () => {
-    const record = { name: 'Acme', components: [{ type: 'mcp_server', endpoint: { type: 'fixed', url: 'https://mcp.acme.test' } }] }
-    const d = deps(record, [])
-    d.listMcpServers = async () => ({ acme: { command: 'node' } })
+  const acme = { name: 'Acme', components: [{ type: 'mcp_server', endpoint: { type: 'fixed', url: 'https://mcp.acme.test' } }] }
+
+  it('a server at the connector address counts as installed, preferring the one under its id', async () => {
+    const d = deps(acme, [])
+    d.listMcpServers = async () => ({
+      mine: { transport: 'http', url: 'https://mcp.acme.test/' },
+      acme: { transport: 'http', url: 'https://mcp.acme.test' },
+    })
     expect(await resolveDirectoryIntent(connector, d)).toMatchObject({ alreadyInstalled: true, installedAs: 'acme' })
+  })
+
+  it('a server of another address under the same id is not it, and Add takes a free id', async () => {
+    const d = deps(acme, [])
+    d.listMcpServers = async () => ({
+      acme: { command: 'node' },
+      'acme-2': { transport: 'http', url: 'https://self-hosted.example/mcp' },
+    })
+    const resolved = await resolveDirectoryIntent(connector, d)
+    expect(resolved).toMatchObject({ alreadyInstalled: false })
+    expect(resolved.installedAs).toBeUndefined()
+    expect(resolved.target).toEqual({ kind: 'connector', id: 'acme-3', config: { transport: 'http', url: 'https://mcp.acme.test' } })
+  })
+
+  it('an inherited property name is no server', async () => {
+    const record = { ...acme, slug: 'constructor' }
+    const resolved = await resolveDirectoryIntent({ kind: 'connector', slug: 'constructor' }, deps(record, []))
+    expect(resolved).toMatchObject({ alreadyInstalled: false })
+    expect(resolved.target).toMatchObject({ id: 'constructor' })
   })
 
   it('no record is not_found; a listing that cannot be read is lookup_failed', async () => {

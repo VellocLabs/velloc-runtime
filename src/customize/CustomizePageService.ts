@@ -35,7 +35,8 @@ export type CustomizePageScript = {
   attach(target: { tabId: number }): Promise<number>
   addInitScript(channelId: number, source: string): Promise<string>
   executeScript(channelId: number, code: string): Promise<unknown>
-  onMessage(listener: (event: { channelId: number; data: unknown }) => void): () => void
+  /** `origin` is the sending document's own origin, as the host reports it. */
+  onMessage(listener: (event: { channelId: number; data: unknown; origin: string }) => void): () => void
   onDetached(listener: (event: { channelId: number; reason: string }) => void): () => void
 }
 
@@ -50,6 +51,8 @@ export type CustomizePageHost = {
   pageScript: CustomizePageScript | null
   /** Opens `url` in a window of its own; null on a host without web windows. */
   openWindow: ((url: string) => Promise<void>) | null
+  /** Opens `url` in a tab of a normal browser window, never in the utility tab. */
+  openUrl: (url: string) => Promise<void>
 }
 
 export type CustomizePageErrorCode = 'host_unavailable' | 'not_shown' | 'no_item'
@@ -57,13 +60,26 @@ export type CustomizePageErrorCode = 'host_unavailable' | 'not_shown' | 'no_item
 const MARKETPLACE_DESCRIPTION_TTL_MS = 10 * 60_000
 /** The same address opens in a window at most once in this long. */
 const OPEN_ELSEWHERE_REPEAT_MS = 5_000
+/** At most this many pages open elsewhere within `OPEN_ELSEWHERE_LIMIT_MS`, whatever their addresses. */
+const OPEN_ELSEWHERE_LIMIT = 10
+const OPEN_ELSEWHERE_LIMIT_MS = 60_000
 /** Landings on another site counted together when sending the tab back. */
 const BOUNCE_WINDOW_MS = 10_000
+/** Landings within `BOUNCE_WINDOW_MS` past this many open nothing and leave the tab where it is. */
+const BOUNCE_LIMIT = 2
 
 const intentKey = (intent: DirectoryIntent) =>
   intent.kind === 'plugin' ? `plugin:${intent.manifestName}` : `connector:${intent.slug}`
 
 const isWebUrl = (url: URL) => url.protocol === 'http:' || url.protocol === 'https:'
+
+function originOf(href: string): string | null {
+  try {
+    return new URL(href).origin
+  } catch {
+    return null
+  }
+}
 
 /**
  * Security: the listing a page item is looked up in, for the page origin the
@@ -114,6 +130,7 @@ export class CustomizePageService {
   private readonly descriptions = new Map<string, { at: number; value: Promise<CustomizeMarketplaceDescription> }>()
   /** When each address last opened in a window. */
   private readonly openedAt = new Map<string, number>()
+  private openedTimes: number[] = []
   /** When the tab last landed on another site, within `BOUNCE_WINDOW_MS`. */
   private bounces: number[] = []
   private nextItemId = 1
@@ -282,9 +299,26 @@ export class CustomizePageService {
     void this.resolve(id, intent, this.apiOrigin, this.offers)
   }
 
-  private onPageMessage(message: DirectoryPageMessage): void {
+  /**
+   * Security: only a document of the origin the tab was shown at is heard.
+   * A document of any other origin is a foreign landing: its route report
+   * sends the tab back (its address opening elsewhere), and its add and
+   * open asks are dropped.
+   */
+  private onPageMessage(message: DirectoryPageMessage, sender: string): void {
+    const origin = this.pageOrigin
+    if (!origin) return
+    if (sender !== origin) {
+      if (message.type === 'route') {
+        this.leaveForeignPage(message.href !== undefined && originOf(message.href) === sender ? message.href : null)
+      }
+      return
+    }
     if (message.type === 'route') {
-      if (message.href !== undefined && this.leaveForeignPage(message.href)) return
+      if (message.href !== undefined && originOf(message.href) !== origin) {
+        this.leaveForeignPage(null)
+        return
+      }
       if (message.href !== undefined) this.pageHref = message.href
       const moved = message.path !== this.path
       if (!moved && message.canGoBack === this.canGoBack) return
@@ -346,41 +380,36 @@ export class CustomizePageService {
     const now = Date.now()
     for (const [address, at] of this.openedAt) if (now - at >= OPEN_ELSEWHERE_REPEAT_MS) this.openedAt.delete(address)
     if (this.openedAt.has(url.href)) return
+    this.openedTimes = this.openedTimes.filter(at => now - at < OPEN_ELSEWHERE_LIMIT_MS)
+    if (this.openedTimes.length >= OPEN_ELSEWHERE_LIMIT) return
     this.openedAt.set(url.href, now)
-    const tabId = this.tabId
-    const opened = host.openWindow
-      ? host.openWindow(url.href)
-      : tabId !== null ? host.navigateUtilityTab(tabId, url.href) : Promise.resolve()
+    this.openedTimes.push(now)
+    const opened = host.openWindow ? host.openWindow(url.href) : host.openUrl(url.href)
     opened.catch(() => undefined)
   }
 
   /**
    * Security: a document of another origin that landed in the tab anyway
-   * (a redirect, a navigation that could not be stopped) opens in a window
-   * of its own, and the tab goes back to the last page it showed on its site.
-   * A page that sends it off-site again is left for the directory's start
-   * page once; a third landing within `BOUNCE_WINDOW_MS` leaves the tab where
-   * it is, so a redirecting page cannot open windows without end.
+   * (a redirect, a navigation that could not be stopped) opens elsewhere
+   * (`href`, when it is known) and the tab goes back to the last page it
+   * showed on its site. A page that sends it off-site again is left for the
+   * directory's start page once; past `BOUNCE_LIMIT` landings within
+   * `BOUNCE_WINDOW_MS` nothing opens and the tab stays where it is, so a
+   * page that keeps navigating cannot open windows without end.
    */
-  private leaveForeignPage(href: string): boolean {
+  private leaveForeignPage(href: string | null): void {
     const origin = this.pageOrigin
-    let url: URL
-    try {
-      url = new URL(href)
-    } catch {
-      return false
-    }
-    if (!origin || url.origin === origin) return false
-    this.openElsewhere(href)
+    if (!origin) return
     const now = Date.now()
     this.bounces = [...this.bounces.filter(at => now - at < BOUNCE_WINDOW_MS), now]
+    if (this.bounces.length > BOUNCE_LIMIT) return
+    if (href !== null) this.openElsewhere(href)
     const home = origin + DIRECTORY_HOME_PATH
     const back =
       this.bounces.length === 1 ? (this.pageHref ?? home)
-      : this.bounces.length === 2 && this.pageHref !== null && this.pageHref !== home ? home
+      : this.pageHref !== null && this.pageHref !== home ? home
       : null
     if (back) this.navigate(back).catch(() => undefined)
-    return true
   }
 
   private async resolve(id: number, intent: DirectoryIntent, origin: string, deps: DirectoryOfferDeps) {
@@ -432,7 +461,7 @@ export class CustomizePageService {
         script.onMessage(event => {
           if (event.channelId !== this.channel) return
           const message = readPageMessage(event.data)
-          if (message) this.onPageMessage(message)
+          if (message) this.onPageMessage(message, event.origin)
         }),
         script.onDetached(event => {
           if (event.channelId !== this.channel) return

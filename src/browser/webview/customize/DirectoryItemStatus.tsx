@@ -41,6 +41,8 @@ export type DirectoryItemStatusProps = {
   onRemove: (id: number) => void
   /** Opens the Settings page that manages the installed `item`. */
   onManage: (item: DirectoryPageItem) => void
+  /** True while the Uninstall question is open, false once it closes or this unmounts. */
+  onAskingChange?: (asking: boolean) => void
 }
 
 /**
@@ -49,12 +51,18 @@ export type DirectoryItemStatusProps = {
  * action on the right — Add when it can be installed here, or an Installed
  * badge with Manage (Settings) and Uninstall, which asks before it removes.
  */
-export function DirectoryItemStatus({ item, onAdd, onRemove, onManage }: DirectoryItemStatusProps) {
+export function DirectoryItemStatus({ item, onAdd, onRemove, onManage, onAskingChange }: DirectoryItemStatusProps) {
   const t = useT()
   const details = item.details
   const installed = item.phase === 'installed' || (item.phase === 'ready' && item.alreadyInstalled)
   // Keyed by id so a dialog opened for one item never confirms the next one.
   const [confirmId, setConfirmId] = React.useState<number | null>(null)
+  const asking = confirmId === item.id && installed
+  React.useEffect(() => {
+    if (!asking || !onAskingChange) return
+    onAskingChange(true)
+    return () => onAskingChange(false)
+  }, [asking, onAskingChange])
 
   let action: ReactNode
   if (item.phase === 'resolving' || item.phase === 'removing') {
@@ -182,7 +190,7 @@ export function DirectoryItemStatus({ item, onAdd, onRemove, onManage }: Directo
       </div>
       <div className="flex min-w-0 shrink-0 items-center gap-1">{action}</div>
       <Dialog
-        open={confirmId === item.id && installed}
+        open={asking}
         onOpenChange={next => {
           if (!next) setConfirmId(null)
         }}

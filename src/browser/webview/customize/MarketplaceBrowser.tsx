@@ -15,6 +15,7 @@ import {
   PartCounts,
   Screenshots,
   VerifiedMark,
+  httpsLink,
   useFormatDate,
 } from './ItemDetailsSections'
 import { installKey, type MarketplaceShelf, type MarketplaceShelvesView } from './useMarketplaceCatalog'
@@ -404,7 +405,7 @@ function PluginDetail({
   const t = useT()
   const formatDate = useFormatDate()
   const publisher = details?.publisher ?? plugin.author?.name
-  const publisherUrl = details?.publisherUrl ?? plugin.author?.url
+  const publisherUrl = details?.publisherUrl ?? httpsLink(plugin.author?.url)
   const summary = details?.summary ?? plugin.description
   const description = details?.description ?? (details?.summary ? plugin.description : undefined)
   const failed = view.installFailed.has(installKey(marketplace, plugin.name))
