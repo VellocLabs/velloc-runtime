@@ -276,6 +276,26 @@ describe('TerminalService size, exit and restart', () => {
     await expect(r.service.resize(id, 0, 30)).rejects.toSatisfy(e => codeOf(e) === 'bad_payload')
   })
 
+  it('a resize while the host is still starting the console reaches the console once it exists', async () => {
+    let release!: () => void
+    const r = await ready({
+      answer: request =>
+        routeOf(request) === 'shell.spawn'
+          ? new Promise(resolve => {
+              release = () => resolve(ok({ streamId: 'late' }))
+            })
+          : undefined,
+    })
+    const creating = r.service.create({ sessionId: 's1', cols: 80, rows: 24 })
+    await settle(0)
+    await r.service.resize('term_1', 170, 40)
+    expect(r.shellRequests('resize')).toEqual([])
+    release()
+    await creating
+    await settle(0)
+    expect(r.shellRequests('resize').map(req => req.payload)).toEqual([{ streamId: 'late', cols: 170, rows: 40 }])
+  })
+
   it('exit flushes pending output first, then reports exited with the code (none for -1)', async () => {
     const r = await ready({ coalesceWindowMs: 10_000 })
     const id = await r.service.create({ sessionId: 's1', cols: 80, rows: 24 })

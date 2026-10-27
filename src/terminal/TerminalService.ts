@@ -606,17 +606,20 @@ export class TerminalService {
         if (record.spawn === spawn) this.onExit(record, exit)
       },
     }
-    const start = (shell: TerminalShellId | CliAgentId) =>
-      primitives.shell.spawnPty(
+    let spawnedSize = { cols: record.cols, rows: record.rows }
+    const start = (shell: TerminalShellId | CliAgentId) => {
+      spawnedSize = { cols: record.cols, rows: record.rows }
+      return primitives.shell.spawnPty(
         {
           ...(record.cli
             ? cliAgentArgv(record.cli.id, record.cli.conversation)
             : TERMINAL_SHELL_ARGV[shell as TerminalShellId]),
           cwd: record.cwd,
         },
-        { cols: record.cols, rows: record.rows },
+        spawnedSize,
         handlers,
       )
+    }
     let child: NativePtyChild
     try {
       try {
@@ -641,6 +644,10 @@ export class TerminalService {
     // A child that already exited (its exit was replayed by the spawn) keeps that state.
     if (record.state.kind === 'exited') return
     record.child = child
+    // A resize that arrived while the host was starting the console was only recorded.
+    if (record.cols !== spawnedSize.cols || record.rows !== spawnedSize.rows) {
+      void child.resize(record.cols, record.rows).catch(() => {})
+    }
     this.setState(record, { kind: 'running' })
     if (record.cli) {
       this.cliLogs?.start(record.sessionId, {
