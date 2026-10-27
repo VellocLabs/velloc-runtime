@@ -1,9 +1,14 @@
 /**
  * MCP tool summaries for the server detail view (F-9): bounded descriptions,
- * required parameters first, a capped parameter list.
+ * required parameters first, a capped parameter list, a capped tool list.
  */
 import { describe, expect, it } from 'vitest'
-import { MCP_TOOL_DESCRIPTION_MAX, MCP_TOOL_PARAMS_MAX, summarizeMcpTools } from '../mcp/toolSummary'
+import {
+  MCP_TOOL_DESCRIPTION_MAX,
+  MCP_TOOL_PARAMS_MAX,
+  MCP_TOOL_SUMMARIES_MAX,
+  summarizeMcpTools,
+} from '../mcp/toolSummary'
 
 describe('summarizeMcpTools', () => {
   it('keeps name, description, read-only and parameters with type and required flag, required first', () => {
@@ -49,6 +54,14 @@ describe('summarizeMcpTools', () => {
     const [summary] = summarizeMcpTools([{ name: 'wide', inputSchema: { type: 'object', properties } }])
     expect(summary!.params).toHaveLength(MCP_TOOL_PARAMS_MAX)
     expect(summary!.paramsOmitted).toBe(3)
+  })
+
+  it('summarizes at most a fixed number of tools, the first ones in server order', () => {
+    const tools = Array.from({ length: MCP_TOOL_SUMMARIES_MAX + 40 }, (_, i) => ({ name: `t${i}`, description: 'd'.repeat(500) }))
+    const summaries = summarizeMcpTools(tools)
+    expect(summaries).toHaveLength(MCP_TOOL_SUMMARIES_MAX)
+    expect(summaries[0]!.name).toBe('t0')
+    expect(summaries.at(-1)!.name).toBe(`t${MCP_TOOL_SUMMARIES_MAX - 1}`)
   })
 
   it('treats a blank description and a schema without properties as absent', () => {

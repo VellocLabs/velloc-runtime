@@ -1,12 +1,14 @@
 /**
  * Which MCP servers are offered inline (F-10): a connected server that sent no
  * instructions and whose tool definitions fit the budget has its tools listed
- * from the first request; any other server is deferred behind its Skill.
+ * from the first request, while all inline servers together fit their own
+ * budget; any other server is deferred behind its Skill.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { LiveServerLink, MCPPool, MCPToolDescriptor } from '../mcp'
 import {
   MCP_INLINE_SCHEMA_BUDGET_CHARS,
+  MCP_INLINE_TOTAL_BUDGET_CHARS,
   buildMCPSkillCommands,
   buildMCPToolsForServer,
   isMcpServerInline,
@@ -92,6 +94,17 @@ describe('the session offering', () => {
     expect(hidden(pool, web)).toEqual([false])
     expect(hidden(pool, box)).toEqual([true])
     expect(hidden(pool, big)).toEqual([true])
+  })
+
+  it('offers inline servers in name order while their summed definitions fit; the rest are deferred', () => {
+    const per = Math.floor(MCP_INLINE_SCHEMA_BUDGET_CHARS * 0.9)
+    const count = Math.floor(MCP_INLINE_TOTAL_BUDGET_CHARS / per) + 2
+    const servers = Array.from({ length: count }, (_, i) => server(`w${i}`, [toolOfSize('t', per)]))
+    const deferred = mcpSessionOffering(poolWith(...[...servers].reverse())).skillNames.sort()
+    const inline = Math.floor(MCP_INLINE_TOTAL_BUDGET_CHARS / per)
+    expect(deferred).toEqual(servers.slice(inline).map(s => `mcp__${s.name}`))
+    // Reordering the pool does not change the split.
+    expect(mcpSessionOffering(poolWith(...servers)).skillNames.sort()).toEqual(deferred)
   })
 
   it('still defers an inline-eligible server the template names in deferredTools', () => {

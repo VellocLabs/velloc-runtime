@@ -32,8 +32,10 @@ export {
   mcpServerSkillDescription,
   buildMCPSkillCommands,
   isMcpServerInline,
+  mcpInlineServerNames,
   mcpServerSchemaChars,
   MCP_INLINE_SCHEMA_BUDGET_CHARS,
+  MCP_INLINE_TOTAL_BUDGET_CHARS,
 } from './toolAdapter'
 export {
   mcpServerFailuresFromPool,
@@ -45,7 +47,9 @@ export {
 export {
   cleanMcpInstructions,
   summarizeMcpInstructions,
+  mcpInstructionsInPrompt,
   MCP_INSTRUCTIONS_MAX_CHARS,
+  MCP_INSTRUCTIONS_TOTAL_MAX_CHARS,
 } from './instructions'
 export {
   buildMcpResourceToolsFromPool,

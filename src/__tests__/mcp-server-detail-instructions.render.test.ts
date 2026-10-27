@@ -5,12 +5,14 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { McpServerDetailDialog, type McpServerDetail } from '../components/assistant-ui/mcp-server-detail-dialog'
 import { en } from '../browser/webview/i18n/messages/en'
+import { MCP_TOOL_SUMMARIES_MAX } from '../mcp/toolSummary'
 
 /**
  * The MCP server detail's Instructions section (F-10): shown for a connected
  * server that sent instructions, as plain text; a long text starts clamped
  * and Show more / Show less expands and collapses it; a short one has no
- * toggle; none, or a failed server, shows no section.
+ * toggle; none, or a failed server, shows no section. A tool list cut at the
+ * summary cap says how many tools it leaves out.
  */
 
 function renderDetail(server: McpServerDetail) {
@@ -74,5 +76,24 @@ describe('McpServerDetailDialog instructions', () => {
     cleanup()
     renderDetail({ name: 'down', status: 'failed', error: 'refused', instructions: 'stale' })
     expect(exists('mcp-server-detail-instructions')).toBe(false)
+  })
+})
+
+describe('McpServerDetailDialog tool list past the summary cap', () => {
+  const capped = Array.from({ length: MCP_TOOL_SUMMARIES_MAX }, (_, i) => ({ name: `t${i}` }))
+
+  it('counts every tool and says how many are not listed', () => {
+    renderDetail({ name: 'big', status: 'connected', tools: capped, toolCount: MCP_TOOL_SUMMARIES_MAX + 25 })
+    expect(screen.getByTestId('mcp-server-detail-count').textContent).toBe(
+      en['mcpServers.toolsMany'].replace('{count}', String(MCP_TOOL_SUMMARIES_MAX + 25)),
+    )
+    expect(screen.getByTestId('mcp-server-detail-unlisted').textContent).toBe(
+      en['mcpServers.moreTools'].replace('{count}', '25'),
+    )
+  })
+
+  it('says nothing more when every tool is listed', () => {
+    renderDetail({ name: 'small', status: 'connected', tools: [{ name: 'a' }, { name: 'b' }], toolCount: 2 })
+    expect(exists('mcp-server-detail-unlisted')).toBe(false)
   })
 })

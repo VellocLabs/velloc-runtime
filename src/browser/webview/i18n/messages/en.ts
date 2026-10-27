@@ -994,6 +994,7 @@ export const en = {
   'mcpServers.noParameters': 'No parameters',
   'mcpServers.required': 'required',
   'mcpServers.moreParameters': '+{count} more',
+  'mcpServers.moreTools': '{count} more tools not listed',
   'sessionCards.empty': 'Nothing to show for this session yet',
 
   // ── Transcript dividers + provider-error banner ────────────────────────

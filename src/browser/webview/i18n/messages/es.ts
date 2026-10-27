@@ -957,6 +957,7 @@ export const es: Messages = {
   'mcpServers.noParameters': 'Sin parámetros',
   'mcpServers.required': 'obligatorio',
   'mcpServers.moreParameters': '+{count} más',
+  'mcpServers.moreTools': '{count} herramientas más sin listar',
   'sessionCards.empty': 'Esta sesión aún no tiene nada que mostrar',
 
   // ── Separadores de la conversación y aviso de error del proveedor ──────

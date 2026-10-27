@@ -943,6 +943,7 @@ export const ja: Messages = {
   'mcpServers.noParameters': 'パラメーターなし',
   'mcpServers.required': '必須',
   'mcpServers.moreParameters': 'ほか {count} 件',
+  'mcpServers.moreTools': 'ほか {count} 個のツールは一覧にありません',
   'sessionCards.empty': 'このセッションにはまだ表示する内容がありません',
 
   // ── 会話の区切りとプロバイダエラーのバナー ────────────────────────────

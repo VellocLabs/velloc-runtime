@@ -15,7 +15,7 @@ import {
 import { useT, type TranslateFn } from "@/browser/webview/i18n";
 import { cn } from "@/lib/utils";
 import type { McpServerOrigin } from "@/mcp/serverOrigin";
-import type { McpToolSummary } from "@/mcp/toolSummary";
+import { MCP_TOOL_SUMMARIES_MAX, type McpToolSummary } from "@/mcp/toolSummary";
 import type { McpAuthControls } from "@/browser/webview/mcpAuthView";
 import { McpSignInPanel } from "./mcp-sign-in-panel";
 
@@ -162,7 +162,9 @@ function DetailBody({
   const failed = server.status === "failed" || needsAuth;
   const origin = originLabel(server.origin, t);
   const tools = server.tools ?? [];
-  const count = server.tools ? tools.length : server.toolCount;
+  const count = server.tools ? Math.max(tools.length, server.toolCount ?? 0) : server.toolCount;
+  // Summaries stop at a cap; the count says how many tools that leaves out.
+  const unlisted = tools.length >= MCP_TOOL_SUMMARIES_MAX && count !== undefined ? count - tools.length : 0;
   const needle = query.trim().toLowerCase();
   const visible = needle
     ? tools.filter(
@@ -308,6 +310,11 @@ function DetailBody({
                 ))}
               </ul>
             )}
+            {!toolsLoading && unlisted > 0 ? (
+              <p data-testid="mcp-server-detail-unlisted" className="text-center text-muted-foreground text-xs">
+                {t("mcpServers.moreTools", { count: unlisted })}
+              </p>
+            ) : null}
           </section>
         ) : null}
       </div>

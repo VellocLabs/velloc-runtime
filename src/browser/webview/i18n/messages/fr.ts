@@ -957,6 +957,7 @@ export const fr: Messages = {
   'mcpServers.noParameters': 'Aucun paramètre',
   'mcpServers.required': 'obligatoire',
   'mcpServers.moreParameters': '+{count} de plus',
+  'mcpServers.moreTools': '{count} outils de plus non listés',
   'sessionCards.empty': 'Rien à afficher pour cette session pour l\'instant',
 
   // ── Séparateurs de conversation et bandeau d'erreur fournisseur ────────

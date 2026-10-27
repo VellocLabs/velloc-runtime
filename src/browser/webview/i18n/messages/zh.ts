@@ -931,6 +931,7 @@ export const zh: Messages = {
   'mcpServers.noParameters': '无参数',
   'mcpServers.required': '必填',
   'mcpServers.moreParameters': '另有 {count} 个',
+  'mcpServers.moreTools': '另有 {count} 个工具未列出',
   'sessionCards.empty': '此会话暂无可显示的内容',
 
   // ── 对话分隔条与服务商错误提示 ────────────────────────────────────────

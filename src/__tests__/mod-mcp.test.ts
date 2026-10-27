@@ -338,6 +338,82 @@ describe('poolModMcp over native (stdio) servers', () => {
   })
 })
 
+describe('MCPPool.launchNativeServer while settings remove the server', () => {
+  const shell = { transport: 'stdio' as const, command: 'node', args: ['s.js'] }
+
+  /** A pool over a settings list the test edits; `hold` parks the next bridge `kind` call until `release`. */
+  async function racePool(first: 'ok' | 'fail') {
+    const natives: Array<{ id: string; config: typeof shell }> = [{ id: 'shell', config: shell }]
+    const launches: string[] = []
+    const stops: string[] = []
+    const held: { kind?: 'connect' | 'disconnect'; release?: () => void } = {}
+    const park = async (kind: 'connect' | 'disconnect') => {
+      if (held.kind !== kind) return
+      held.kind = undefined
+      await new Promise<void>(resolve => { held.release = resolve })
+    }
+    let calls = 0
+    const nativeBridge: McpBridgeOperations = {
+      async connect(id) {
+        launches.push(id)
+        const outcome = calls++ === 0 ? first : 'ok'
+        await park('connect')
+        return outcome === 'ok' ? { ok: true, tools: [{ name: 'run' }] } : { ok: false, tools: [], error: 'uv not found' }
+      },
+      async callTool() {
+        return { ok: true, result: {} }
+      },
+      async disconnect(id) {
+        stops.push(id)
+        await park('disconnect')
+      },
+    }
+    const pool = new MCPPool({ cwd: '/work', nativeBridge, loadNativeServers: async () => natives })
+    await pool.init()
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+    return { pool, natives, launches, stops, held, settle }
+  }
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('a connect arriving while the removed server stops is not a relaunch, and the server stays gone', async () => {
+    const { pool, natives, launches, held, settle } = await racePool('ok')
+    natives.length = 0
+    held.kind = 'disconnect'
+    const refresh = pool.refreshNativeServers()
+    await settle()
+    expect(pool.getServer('shell')).toMatchObject({ status: 'closed' })
+    const answer = await pool.launchNativeServer('shell', shell)
+    expect(answer).toMatchObject({ status: 'closed' })
+    held.release!()
+    await refresh
+    expect(launches).toEqual(['shell'])
+    expect(pool.hasServer('shell')).toBe(false)
+  })
+
+  it('a launch already under way when settings remove the server is stopped and dropped with it', async () => {
+    const { pool, natives, launches, stops, held, settle } = await racePool('fail')
+    expect(pool.getServer('shell')).toMatchObject({ status: 'failed' })
+    held.kind = 'connect'
+    const launch = pool.launchNativeServer('shell', shell)
+    await settle()
+    expect(launches).toEqual(['shell', 'shell'])
+    natives.length = 0
+    const refresh = pool.refreshNativeServers()
+    await settle()
+    held.release!()
+    await Promise.all([launch, refresh])
+    expect(pool.hasServer('shell')).toBe(false)
+    // One stop from the launch replacing the failed child, one from the eviction after it.
+    expect(stops).toEqual(['shell', 'shell'])
+  })
+})
+
 describe('$.mcp through the runtime', () => {
   let uniq = 0
   function world(modules: Record<string, string>, host: Partial<ModNounHost> = {}) {

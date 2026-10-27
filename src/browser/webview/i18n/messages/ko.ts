@@ -939,6 +939,7 @@ export const ko: Messages = {
   'mcpServers.noParameters': '매개변수 없음',
   'mcpServers.required': '필수',
   'mcpServers.moreParameters': '외 {count}개',
+  'mcpServers.moreTools': '목록에 없는 도구 {count}개',
   'sessionCards.empty': '이 세션에는 아직 표시할 내용이 없습니다',
 
   // ── 대화 구분선과 제공업체 오류 배너 ──────────────────────────────────

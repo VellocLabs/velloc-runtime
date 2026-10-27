@@ -23,6 +23,9 @@ export type McpToolSummary = {
 export const MCP_TOOL_DESCRIPTION_MAX = 600
 /** Most parameters listed per tool. */
 export const MCP_TOOL_PARAMS_MAX = 24
+/** Most tools summarized per server; the rest are counted by the view's
+ *  `toolCount`, which stays the server's full count. */
+export const MCP_TOOL_SUMMARIES_MAX = 100
 
 function boundedDescription(raw: string | undefined): string | undefined {
   const text = raw?.replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
@@ -45,9 +48,9 @@ function schemaType(prop: unknown): string | undefined {
   return undefined
 }
 
-/** The summaries of `tools`, in server order. */
+/** The summaries of the first `MCP_TOOL_SUMMARIES_MAX` of `tools`, in server order. */
 export function summarizeMcpTools(tools: readonly MCPToolDescriptor[]): McpToolSummary[] {
-  return tools.map((tool) => {
+  return tools.slice(0, MCP_TOOL_SUMMARIES_MAX).map((tool) => {
     const summary: McpToolSummary = { name: tool.name }
     const description = boundedDescription(tool.description)
     if (description) summary.description = description

@@ -954,6 +954,7 @@ export const de: Messages = {
   'mcpServers.noParameters': 'Keine Parameter',
   'mcpServers.required': 'erforderlich',
   'mcpServers.moreParameters': '+{count} weitere',
+  'mcpServers.moreTools': '{count} weitere Tools nicht aufgeführt',
   'sessionCards.empty': 'Für diese Sitzung gibt es noch nichts anzuzeigen',
 
   // ── Verlaufstrenner + Anbieter-Fehlerbanner ────────────────────────────

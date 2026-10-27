@@ -762,9 +762,19 @@ export class MCPPool {
     server: LiveServerLink,
   ): Promise<void> {
     if (server.nativeServerId === undefined) return
-    // Closed first: a call arriving while the child stops must not relaunch it.
+    // Marked first: a call arriving while the child stops must not relaunch it.
     server.status = 'closed'
+    this.evicting.add(server)
     await this.reconnecting.get(server.name)
+    // A launch already under way settles first; the entry it registered goes too.
+    await this.launching.get(server.name)
+    const current = this.servers.get(server.name)
+    const launched =
+      current !== server && current?.nativeServerId === server.nativeServerId ? current : undefined
+    if (launched) {
+      launched.status = 'closed'
+      this.evicting.add(launched)
+    }
     try {
       await bridge.disconnect(server.nativeServerId)
     } catch (err) {
@@ -773,7 +783,8 @@ export class MCPPool {
         err instanceof Error ? err.message : err,
       )
     }
-    this.servers.delete(server.name)
+    const held = this.servers.get(server.name)
+    if (held !== undefined && (held === server || held === launched)) this.servers.delete(server.name)
     this.notifyServersChanged()
   }
 
@@ -817,10 +828,13 @@ export class MCPPool {
 
   /** In-flight `launchNativeServer` runs, by name — see `launchNativeServer`. */
   private readonly launching = new Map<string, Promise<LiveServerLink | undefined>>()
+  /** Native entries `disconnectAndEvict` is stopping; never relaunched. */
+  private readonly evicting = new WeakSet<LiveServerLink>()
 
   /**
    * Launch one native server after `init` (`$.mcp.connect`): a failed or
-   * closed native entry under `name` with the same config is relaunched, a
+   * closed native entry under `name` with the same config is relaunched
+   * unless it is being evicted, a
    * name the pool does not hold is launched. Any other registered entry is
    * answered as it is. Concurrent calls share one launch. Undefined without a
    * native bridge, or once the pool is shut down. Never rejects.
@@ -835,6 +849,7 @@ export class MCPPool {
       existing !== undefined
       && existing.nativeServerId !== undefined
       && (existing.status === 'failed' || existing.status === 'closed')
+      && !this.evicting.has(existing)
       && configsEqual(existing.nativeConfig, config)
     if (existing && !retry) return Promise.resolve(existing)
     const run = (async () => {
