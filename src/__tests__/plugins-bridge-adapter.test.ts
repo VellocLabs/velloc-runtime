@@ -9,7 +9,10 @@ import {
 import {
   addMarketplace,
   forgetCatalogs,
+  loadKnownMarketplaces,
 } from '../pluginHost/marketplaces'
+import { registerMarketplaceSource } from '../pluginHost/marketplaceRegister'
+import { CURATED_CATALOG_KEY } from '../pluginHost/defaultMarketplace'
 import {
   forgetRegistryFile,
   recordInstalledPlugin,
@@ -20,7 +23,7 @@ import {
 import { __setPluginBlocklistForTests } from '../pluginHost/blocklist'
 import { registerBuiltinMod, unregisterBuiltinMod } from '../mods/builtinMods'
 import { wipeSettingsMemos } from '../settings/settingsStore'
-import { MARKETPLACE_MANIFEST_FILE_NAME, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
+import { getMarketplaceContentDir, MARKETPLACE_MANIFEST_FILE_NAME, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
 import { loadDirectoryPlugins } from '../pluginHost/directoryListings'
 
 // --- shared fs + tar fixtures (parallel to other plugins-install tests) --
@@ -923,7 +926,21 @@ describe('pluginsHandlers.installFromDirectory', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
-  it('removes a plugin whose manifest names a blocklisted plugin', async () => {
+  it('refuses a blocklisted name before fetching when the record spells it the way the install normalizes it', async () => {
+    const { fs } = makeMemoryFs()
+    const fetchImpl = await served('lint')
+    const ctx = makeCtx({ fs, fetchImpl })
+    const restore = __setPluginBlocklistForTests(['lint-slug@plugin-directory'])
+    try {
+      await expect(pluginsHandlers.installFromDirectory({ ...payload, fallbackName: 'Lint Slug' }, ctx)).rejects.toThrow(/blocklist/i)
+    } finally {
+      restore()
+    }
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(fs.writeFile).not.toHaveBeenCalled()
+  })
+
+  it('refuses a plugin whose manifest names a blocklisted plugin before writing any of it', async () => {
     const { fs } = makeMemoryFs()
     const ctx = makeCtx({ fs, fetchImpl: await served('evil') })
     const restore = __setPluginBlocklistForTests(['evil@plugin-directory'])
@@ -932,7 +949,100 @@ describe('pluginsHandlers.installFromDirectory', () => {
     } finally {
       restore()
     }
+    expect(fs.writeFile).not.toHaveBeenCalled()
     expect((await pluginsHandlers.listInstalled(ctx)).plugins).toEqual([])
     expect(await loadDirectoryPlugins({ homeDir: ctx.homeDir }, fs)).toEqual({})
+  })
+})
+
+describe('adding a marketplace whose name another source holds', () => {
+  const pathCtx = { homeDir: '/home/user' }
+  const acme = { source: 'github', repo: 'acme/tools' } as const
+
+  async function catalogTar(name: string) {
+    return buildGitHubTarball('repo-abc', [{
+      name: `${PLUGIN_MANIFEST_DIR_NAME}/${MARKETPLACE_MANIFEST_FILE_NAME}`,
+      content: JSON.stringify({ name, plugins: [{ name: 'x', source: { source: 'github', repo: 'someone/x' } }] }),
+    }])
+  }
+
+  /** `tools` registered from acme/tools, with downloaded content and `x@tools` installed. */
+  async function acmeHoldsTools(fetchImpl: typeof fetch) {
+    const { fs, files } = makeMemoryFs()
+    await addMarketplace(pathCtx, fs, 'tools', acme, NOW_ISO)
+    const acmeManifest = `${getMarketplaceContentDir(pathCtx, 'tools')}/${PLUGIN_MANIFEST_DIR_NAME}/${MARKETPLACE_MANIFEST_FILE_NAME}`
+    await fs.writeFile(acmeManifest, JSON.stringify({ name: 'tools', plugins: [] }))
+    await recordInstalledPlugin(pathCtx, fs, 'x@tools', { scope: 'user', version: '1.0', installedAt: NOW_ISO, installPath: '/p' })
+    const ctx = makeCtx({ fs, fetchImpl })
+    const acmeContent = () => new TextDecoder().decode(files.get(acmeManifest))
+    return { fs, ctx, acmeContent }
+  }
+
+  async function registry(fs: RuntimeFs) {
+    return (await loadKnownMarketplaces(pathCtx, fs, NOW_ISO)).registry
+  }
+
+  it('refuses a marketplace.json that declares a name registered from another repository, and changes nothing', async () => {
+    const tar = await catalogTar('tools')
+    const { fs, ctx, acmeContent } = await acmeHoldsTools(vi.fn(async () => new Response(new Uint8Array(tar))))
+
+    const result = await pluginsHandlers.addMarketplace({ source: 'evil/whatever' }, ctx)
+
+    expect(result).toMatchObject({ ok: true, status: 'failed', stage: 'nameTaken', name: 'tools' })
+    const after = await registry(fs)
+    expect(after.tools!.source).toEqual(acme)
+    expect(Object.keys(after).filter(name => name.startsWith('adding-marketplace-'))).toEqual([])
+    expect(JSON.parse(acmeContent())).toEqual({ name: 'tools', plugins: [] })
+  })
+
+  it('a repository whose basename is a registered name never touches that registration, when its fetch fails', async () => {
+    const { fs, ctx, acmeContent } = await acmeHoldsTools(vi.fn(async () => new Response('', { status: 404 })))
+
+    const result = await pluginsHandlers.addMarketplace({ source: 'other/tools' }, ctx)
+
+    expect(result).toMatchObject({ ok: true, status: 'failed', stage: 'fetch', name: 'tools' })
+    const after = await registry(fs)
+    expect(after.tools!.source).toEqual(acme)
+    expect(Object.keys(after).filter(name => name.startsWith('adding-marketplace-'))).toEqual([])
+    expect(JSON.parse(acmeContent())).toEqual({ name: 'tools', plugins: [] })
+  })
+
+  it('a repository whose basename is a registered name is added under its own declared name, leaving the other alone', async () => {
+    const tar = await catalogTar('other-tools')
+    const { fs, ctx, acmeContent } = await acmeHoldsTools(vi.fn(async () => new Response(new Uint8Array(tar))))
+
+    const result = await pluginsHandlers.addMarketplace({ source: 'other/tools' }, ctx)
+
+    expect(result).toEqual({ ok: true, status: 'added', name: 'other-tools', pluginCount: 1 })
+    const after = await registry(fs)
+    expect(after.tools!.source).toEqual(acme)
+    expect(after['other-tools']!.source).toEqual({ source: 'github', repo: 'other/tools' })
+    expect(Object.keys(after).filter(name => name.startsWith('adding-marketplace-'))).toEqual([])
+    expect(JSON.parse(acmeContent())).toEqual({ name: 'tools', plugins: [] })
+  })
+
+  it('re-adding the repository that holds the name refreshes it', async () => {
+    const tar = await catalogTar('tools')
+    const { fs } = await acmeHoldsTools(vi.fn())
+
+    const outcome = await registerMarketplaceSource(
+      pathCtx, fs, { source: 'github', repo: 'Acme/Tools' }, NOW_ISO,
+      vi.fn(async () => new Response(new Uint8Array(tar))),
+    )
+
+    expect(outcome).toEqual({ ok: true, name: 'tools', pluginCount: 1 })
+    expect(Object.keys(await registry(fs)).filter(name => name.startsWith('adding-marketplace-'))).toEqual([])
+  })
+
+  it('a declared name reserved for another publisher is refused by name, with nothing left registered', async () => {
+    const tar = await catalogTar(CURATED_CATALOG_KEY)
+    const { fs } = makeMemoryFs()
+    const before = Object.keys(await registry(fs)).sort()
+    const ctx = makeCtx({ fs, fetchImpl: vi.fn(async () => new Response(new Uint8Array(tar))) })
+
+    const result = await pluginsHandlers.addMarketplace({ source: 'someone/plugins' }, ctx)
+
+    expect(result).toMatchObject({ ok: true, status: 'failed', stage: 'nameRefused', name: CURATED_CATALOG_KEY })
+    expect(Object.keys(await registry(fs)).sort()).toEqual(before)
   })
 })

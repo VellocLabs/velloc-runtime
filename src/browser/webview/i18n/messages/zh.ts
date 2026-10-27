@@ -439,6 +439,9 @@ export const zh: Messages = {
   'customize.addMarket.show': '查看',
   'customize.addMarket.fetchFailed': '无法从这个仓库读取插件列表。请确认仓库存在、是公开的，并且发布了市场。',
   'customize.addMarket.saveFailed': '无法保存这个市场。',
+  'customize.addMarket.nameTaken': '这个仓库的插件列表名为 {name}，而另一个市场已经在使用这个名称。如果想改为添加这个仓库，请先删除 {name}。',
+  'customize.addMarket.nameRefused': '这个仓库的插件列表名为 {name}，这个名称是保留名称，或者不能用作市场名称。',
+  'customize.market.errorDetail': '详细信息：{detail}',
   'customize.addMarket.cancel': '取消',
   'customize.addMarket.confirm': '添加',
   'customize.addMarket.confirming': '正在添加…',
@@ -2207,6 +2210,8 @@ export const zh: Messages = {
     '已拉取 {source}，但无法加载 marketplace.json：{error}',
   'slash.out.marketplace.add.renameCleanupFailed':
     '已重命名为“{name}”，但清理失败：{error}',
+  'slash.out.marketplace.add.nameTaken': '未添加：它的 marketplace.json 名为“{name}”，而另一个市场已经在使用这个名称。请先删除“{name}”，再添加这个市场。',
+  'slash.out.marketplace.add.nameRefused': '未添加：它的 marketplace.json 名为“{name}”，这个名称不能用作市场名称：{error}',
   'slash.out.marketplace.add.success': '已添加市场“{name}”',
   'slash.out.marketplace.add.sourceLine': '来源：{source}',
   'slash.out.marketplace.add.pluginsAvailable': '可用插件：{count} 个',

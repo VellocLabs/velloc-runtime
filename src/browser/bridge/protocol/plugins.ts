@@ -234,8 +234,18 @@ export type PluginsBridgeActionMap = {
       | { ok: true; status: 'alreadyAdded'; name: string }
       | { ok: true; status: 'invalidSource' }
       /** `fetch`: the source could not be read as a marketplace (nothing is
-       *  left registered); `register` / `rename`: the registry write failed. */
-      | { ok: true; status: 'failed'; stage: 'register' | 'fetch' | 'rename'; error: string }
+       *  left registered); `register` / `rename`: the registry write failed;
+       *  `nameTaken`: its marketplace.json declares `name`, which another
+       *  source already holds; `nameRefused`: `name` may not be registered
+       *  from this source. `name` is the declared name once it is known,
+       *  the repository's basename before. */
+      | {
+        ok: true
+        status: 'failed'
+        stage: 'register' | 'fetch' | 'rename' | 'nameTaken' | 'nameRefused'
+        name: string
+        error: string
+      }
   }
   /** Unregister a marketplace. Plugins installed from it stay installed and
    *  stop getting updates. Official and built-in marketplaces are refused. */

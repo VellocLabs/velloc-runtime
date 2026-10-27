@@ -451,6 +451,9 @@ export const es: Messages = {
   'customize.addMarket.show': 'Mostrarlo',
   'customize.addMarket.fetchFailed': 'No se pudo leer una lista de complementos de este repositorio. Comprueba que existe, es público y publica un mercado.',
   'customize.addMarket.saveFailed': 'No se pudo guardar el mercado.',
+  'customize.addMarket.nameTaken': 'La lista de complementos de este repositorio lleva el nombre {name}, que otro mercado ya usa. Para añadir este en su lugar, primero hay que quitar {name}.',
+  'customize.addMarket.nameRefused': 'La lista de complementos de este repositorio lleva el nombre {name}, que está reservado o no se permite para un mercado.',
+  'customize.market.errorDetail': 'Detalles: {detail}',
   'customize.addMarket.cancel': 'Cancelar',
   'customize.addMarket.confirm': 'Añadir',
   'customize.addMarket.confirming': 'Añadiendo…',
@@ -2335,6 +2338,8 @@ export const es: Messages = {
     'Se obtuvo {source}, pero no se pudo cargar marketplace.json: {error}',
   'slash.out.marketplace.add.renameCleanupFailed':
     'Se renombró a «{name}», pero la limpieza falló: {error}',
+  'slash.out.marketplace.add.nameTaken': 'No se añadió: su marketplace.json lleva el nombre «{name}», que otro mercado ya usa. Para añadir este, primero hay que quitar «{name}».',
+  'slash.out.marketplace.add.nameRefused': 'No se añadió: su marketplace.json lleva el nombre «{name}», que no se puede usar para un mercado: {error}',
   'slash.out.marketplace.add.success': 'Se añadió el mercado «{name}»',
   'slash.out.marketplace.add.sourceLine': 'origen: {source}',
   'slash.out.marketplace.add.pluginsAvailable': 'complementos disponibles: {count}',

@@ -510,6 +510,10 @@ async function registerMarketplace(
         ok: false,
         parts: [key('slash.out.marketplace.add.renameCleanupFailed', { name: outcome.name, error })],
       }
+    case 'nameTaken':
+      return { ok: false, parts: [key('slash.out.marketplace.add.nameTaken', { name: outcome.name })] }
+    case 'nameRefused':
+      return { ok: false, parts: [key('slash.out.marketplace.add.nameRefused', { name: outcome.name, error })] }
   }
 }
 

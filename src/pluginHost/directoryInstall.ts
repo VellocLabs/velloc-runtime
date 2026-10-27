@@ -63,6 +63,12 @@ export function listingApiOrigin(origin: string): string | null {
   }
 }
 
+/** The name a record installs under when its plugin's manifest names none: `fallbackName` as a folder-safe slug. */
+export function directoryFallbackName(fallbackName: string): string {
+  const slug = fallbackName.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+/, '')
+  return slug || 'plugin'
+}
+
 function manifestNameOf(files: ReadonlyArray<{ path: string; content: Uint8Array }>): string | undefined {
   const manifest = files.find(file => file.path === `${PLUGIN_MANIFEST_DIR_NAME}/plugin.json`)
   if (!manifest) return undefined
@@ -78,23 +84,26 @@ function manifestNameOf(files: ReadonlyArray<{ path: string; content: Uint8Array
  * Installs the record's reviewed commit as `<name>@plugin-directory`, `name`
  * from the plugin's manifest. Refused when another plugin's code already
  * holds that name here.
+ * Security: `options.refuse` is asked for that identifier once the manifest
+ * is read and before anything is written; a non-null answer is thrown.
  */
 export async function installFromDirectory(
   ctx: PluginInstallPathContext,
   fs: RuntimeFs,
   spec: DirectoryPluginSpec,
-  options: { fetchImpl: typeof fetch; nowIso: string },
+  options: { fetchImpl: typeof fetch; nowIso: string; refuse?: (identifier: string) => string | null },
 ): Promise<PluginSetupOutcome> {
   const source = directoryListingSource(spec)
   const apiOrigin = listingApiOrigin(spec.apiOrigin)
   if (!source) throw new Error('[installFromDirectory] the record names no GitHub repository, folder and reviewed commit')
   if (!apiOrigin || !UUID.test(spec.manifestName)) throw new Error('[installFromDirectory] the record cannot be found again')
-  const fallback = spec.fallbackName.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+/, '')
-  const provisional: CatalogListing = { name: fallback || 'plugin', source }
+  const provisional: CatalogListing = { name: directoryFallbackName(spec.fallbackName), source }
   const fetched = await fetchListingFiles(
     ctx, fs, DIRECTORY_CATALOG_KEY, provisional, joinPluginRef(provisional.name, DIRECTORY_CATALOG_KEY), options.fetchImpl,
   )
   const name = manifestNameOf(fetched.files) ?? provisional.name
+  const refusal = options.refuse?.(joinPluginRef(name, DIRECTORY_CATALOG_KEY)) ?? null
+  if (refusal !== null) throw new Error(refusal)
   const listing: CatalogListing = { name, source }
   const code = codeSourceOf(source)!
   const held = await getInstalledPlugin(ctx, fs, joinPluginRef(name, DIRECTORY_CATALOG_KEY))

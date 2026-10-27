@@ -441,6 +441,9 @@ export const ko: Messages = {
   'customize.addMarket.show': '보기',
   'customize.addMarket.fetchFailed': '이 저장소에서 플러그인 목록을 읽지 못했습니다. 저장소가 존재하고 공개되어 있으며 마켓플레이스를 게시하는지 확인하세요.',
   'customize.addMarket.saveFailed': '마켓플레이스를 저장하지 못했습니다.',
+  'customize.addMarket.nameTaken': '이 저장소의 플러그인 목록 이름은 {name}인데, 다른 마켓플레이스가 이미 이 이름을 사용하고 있습니다. 대신 이 저장소를 추가하려면 먼저 {name}을(를) 제거하세요.',
+  'customize.addMarket.nameRefused': '이 저장소의 플러그인 목록 이름은 {name}인데, 이 이름은 예약되어 있거나 마켓플레이스 이름으로 사용할 수 없습니다.',
+  'customize.market.errorDetail': '세부 정보: {detail}',
   'customize.addMarket.cancel': '취소',
   'customize.addMarket.confirm': '추가',
   'customize.addMarket.confirming': '추가하는 중…',
@@ -2256,6 +2259,8 @@ export const ko: Messages = {
     '{source}에서 가져왔지만 marketplace.json을 불러오지 못했습니다: {error}',
   'slash.out.marketplace.add.renameCleanupFailed':
     '"{name}"(으)로 이름을 변경했지만 정리에 실패했습니다: {error}',
+  'slash.out.marketplace.add.nameTaken': '추가되지 않음: marketplace.json의 이름 "{name}"은(는) 다른 마켓플레이스가 이미 사용하고 있습니다. 이 마켓플레이스를 추가하려면 먼저 "{name}"을(를) 제거하세요.',
+  'slash.out.marketplace.add.nameRefused': '추가되지 않음: marketplace.json의 이름 "{name}"은(는) 마켓플레이스 이름으로 사용할 수 없습니다: {error}',
   'slash.out.marketplace.add.success': '마켓플레이스 "{name}"을(를) 추가했습니다',
   'slash.out.marketplace.add.sourceLine': '출처: {source}',
   'slash.out.marketplace.add.pluginsAvailable': '사용 가능한 플러그인: {count}개',

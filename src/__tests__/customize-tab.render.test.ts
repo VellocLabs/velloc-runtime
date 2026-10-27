@@ -761,13 +761,38 @@ describe('CustomizeScreen — adding a marketplace', () => {
     expect(requests.filter(r => r.startsWith('plugins.addMarketplace'))).toHaveLength(2)
   })
 
-  it('a refused request is a save failure', async () => {
+  it('a refused request is a save failure, its reason shown as a labelled detail', async () => {
     const { view, type, confirm } = await opened({ addAnswers: [new Error('not allowed')] })
     type('acme/tools')
     confirm()
     expect((await view.findByTestId('customize-add-market-failed')).textContent).toContain(
       EN_MESSAGES['customize.addMarket.saveFailed'],
     )
+    expect(view.getByTestId('customize-market-error-detail').textContent).toBe(
+      EN_MESSAGES['customize.market.errorDetail'].replace('{detail}', 'not allowed'),
+    )
+  })
+
+  it('a declared name another marketplace holds, or one that is refused, is said by name with no technical detail', async () => {
+    const { view, type, confirm } = await opened({
+      addAnswers: [
+        { ok: true, status: 'failed', stage: 'nameTaken', name: 'tools', error: "addMarketplace: 'tools' is taken" },
+        { ok: true, status: 'failed', stage: 'nameRefused', name: 'look-alike', error: 'addMarketplace: reserved' },
+      ],
+    })
+    type('evil/whatever')
+    confirm()
+    const taken = await view.findByTestId('customize-add-market-failed')
+    expect(taken.textContent).toBe(EN_MESSAGES['customize.addMarket.nameTaken'].replaceAll('{name}', 'tools'))
+    expect(view.queryByTestId('customize-market-error-detail')).toBeNull()
+
+    confirm()
+    await waitFor(() =>
+      expect(view.getByTestId('customize-add-market-failed').textContent).toBe(
+        EN_MESSAGES['customize.addMarket.nameRefused'].replace('{name}', 'look-alike'),
+      ),
+    )
+    expect(view.queryByTestId('customize-market-error-detail')).toBeNull()
   })
 })
 

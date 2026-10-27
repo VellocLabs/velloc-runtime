@@ -450,6 +450,9 @@ export const de: Messages = {
   'customize.addMarket.show': 'Anzeigen',
   'customize.addMarket.fetchFailed': 'Aus diesem Repository konnte keine Plugin-Liste gelesen werden. Prüfe, ob es existiert, öffentlich ist und einen Marktplatz veröffentlicht.',
   'customize.addMarket.saveFailed': 'Der Marktplatz konnte nicht gespeichert werden.',
+  'customize.addMarket.nameTaken': 'Die Plugin-Liste dieses Repositorys heißt {name}, und ein anderer Marktplatz verwendet diesen Namen bereits. Entferne zuerst {name}, wenn du stattdessen diesen hinzufügen möchtest.',
+  'customize.addMarket.nameRefused': 'Die Plugin-Liste dieses Repositorys heißt {name} – ein Name, der reserviert oder für einen Marktplatz nicht erlaubt ist.',
+  'customize.market.errorDetail': 'Details: {detail}',
   'customize.addMarket.cancel': 'Abbrechen',
   'customize.addMarket.confirm': 'Hinzufügen',
   'customize.addMarket.confirming': 'Wird hinzugefügt …',
@@ -2335,6 +2338,8 @@ export const de: Messages = {
     '{source} abgerufen, aber marketplace.json konnte nicht geladen werden: {error}',
   'slash.out.marketplace.add.renameCleanupFailed':
     'In „{name}“ umbenannt, aber das Aufräumen ist fehlgeschlagen: {error}',
+  'slash.out.marketplace.add.nameTaken': 'Nicht hinzugefügt: Die marketplace.json heißt „{name}“, und ein anderer Marktplatz verwendet diesen Namen bereits. Entferne zuerst „{name}“, um diesen hinzuzufügen.',
+  'slash.out.marketplace.add.nameRefused': 'Nicht hinzugefügt: Die marketplace.json heißt „{name}“ – dieser Name kann nicht für einen Marktplatz verwendet werden: {error}',
   'slash.out.marketplace.add.success': 'Marktplatz „{name}“ hinzugefügt',
   'slash.out.marketplace.add.sourceLine': 'Quelle: {source}',
   'slash.out.marketplace.add.pluginsAvailable': 'verfügbare Plugins: {count}',

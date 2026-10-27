@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { parseMarketplaceSource } from '../../../pluginHost/marketplaceSource'
 import type { PluginsBridgeActionMap } from '../../bridge/protocol/plugins'
 import { useT } from '../i18n'
+import type { MessageKey } from '../i18n/messages/en'
 
 export type AddMarketplaceResult = PluginsBridgeActionMap['addMarketplace']['result']
 
@@ -31,7 +32,21 @@ type AddState =
   | { step: 'editing'; invalid: boolean }
   | { step: 'adding' }
   | { step: 'already'; name: string }
-  | { step: 'failed'; reason: 'fetch' | 'save'; error: string }
+  | { step: 'failed'; reason: FailedReason; name: string; error: string }
+
+type FailedReason = 'fetch' | 'save' | 'nameTaken' | 'nameRefused'
+
+const FAILED_HEADLINE = {
+  fetch: 'customize.addMarket.fetchFailed',
+  save: 'customize.addMarket.saveFailed',
+  nameTaken: 'customize.addMarket.nameTaken',
+  nameRefused: 'customize.addMarket.nameRefused',
+} as const satisfies Record<FailedReason, MessageKey>
+
+/** The failure an add's result names; a registry write failure is a save failure. */
+function failedReasonOf(stage: Extract<AddMarketplaceResult, { status: 'failed' }>['stage']): FailedReason {
+  return stage === 'register' || stage === 'rename' ? 'save' : stage
+}
 
 const EDITING: AddState = { step: 'editing', invalid: false }
 
@@ -74,7 +89,7 @@ export function AddMarketplaceDialog({ open, onAdd, onShow, onClose }: AddMarket
     try {
       result = await onAdd(text.trim())
     } catch (error) {
-      if (live.current) setState({ step: 'failed', reason: 'save', error: messageOf(error) })
+      if (live.current) setState({ step: 'failed', reason: 'save', name: '', error: messageOf(error) })
       return
     }
     if (!live.current) return
@@ -90,7 +105,7 @@ export function AddMarketplaceDialog({ open, onAdd, onShow, onClose }: AddMarket
         setState({ step: 'editing', invalid: true })
         return
       case 'failed':
-        setState({ step: 'failed', reason: result.stage === 'fetch' ? 'fetch' : 'save', error: result.error })
+        setState({ step: 'failed', reason: failedReasonOf(result.stage), name: result.name, error: result.error })
     }
   }
 
@@ -164,11 +179,9 @@ export function AddMarketplaceDialog({ open, onAdd, onShow, onClose }: AddMarket
           ) : null}
           {state.step === 'failed' ? (
             <div role="alert" data-testid="customize-add-market-failed" className="flex flex-col gap-1">
-              <p className="text-sm text-destructive">
-                {t(state.reason === 'fetch' ? 'customize.addMarket.fetchFailed' : 'customize.addMarket.saveFailed')}
-              </p>
-              {state.error ? (
-                <p className="break-words font-mono text-xs text-muted-foreground">{state.error}</p>
+              <p className="text-sm text-destructive">{t(FAILED_HEADLINE[state.reason], { name: state.name })}</p>
+              {(state.reason === 'fetch' || state.reason === 'save') && state.error ? (
+                <ErrorDetail detail={state.error} />
               ) : null}
             </div>
           ) : null}
@@ -245,7 +258,7 @@ export function RemoveMarketplaceDialog({ name, onRemove, onClose }: RemoveMarke
         {error !== null ? (
           <div role="alert" className="flex flex-col gap-1">
             <p className="text-sm text-destructive">{t('customize.removeMarket.failed')}</p>
-            {error ? <p className="break-words font-mono text-xs text-muted-foreground">{error}</p> : null}
+            {error ? <ErrorDetail detail={error} /> : null}
           </div>
         ) : null}
         <DialogFooter>
@@ -265,6 +278,16 @@ export function RemoveMarketplaceDialog({ name, onRemove, onClose }: RemoveMarke
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** The untranslated technical reason of a failure nothing more specific explains, labelled as such. */
+function ErrorDetail({ detail }: { detail: string }) {
+  const t = useT()
+  return (
+    <p data-testid="customize-market-error-detail" className="break-words font-mono text-xs text-muted-foreground">
+      {t('customize.market.errorDetail', { detail })}
+    </p>
   )
 }
 

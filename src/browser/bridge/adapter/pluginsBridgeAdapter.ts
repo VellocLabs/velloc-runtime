@@ -39,7 +39,7 @@ import {
   removeMarketplace,
 } from '../../../pluginHost/marketplaces'
 import { githubRepoOf, parseMarketplaceSource, registerMarketplaceSource } from '../../../pluginHost/marketplaceRegister'
-import { installFromDirectory } from '../../../pluginHost/directoryInstall'
+import { directoryFallbackName, installFromDirectory } from '../../../pluginHost/directoryInstall'
 import { DIRECTORY_CATALOG_KEY } from '../../../pluginHost/directoryListings'
 import { isBuiltinMarketplace } from '../../../pluginHost/builtinMarketplace'
 import { currentTemplateChannel, type UpdateChannel } from '../../../branding/updateChannels'
@@ -255,8 +255,9 @@ async function handleInstall(
 
 /**
  * `plugins/installFromDirectory` — the record's reviewed commit, straight
- * from its repository. The blocklist is asked for the name the record gives
- * before anything is fetched, and for the installed name before it is used.
+ * from its repository. The blocklist is asked for the name the record's
+ * fallback installs under before anything is fetched, and for the name the
+ * manifest gives before anything is written.
  */
 async function handleInstallFromDirectory(
   payload: PluginsBridgeActionMap['installFromDirectory']['payload'],
@@ -271,15 +272,14 @@ async function handleInstallFromDirectory(
     commit: text(payload?.commit),
     fallbackName: text(payload?.fallbackName),
   }
-  const early = pluginBlockReason(joinPluginRef(spec.fallbackName, DIRECTORY_CATALOG_KEY))
+  const early = pluginBlockReason(joinPluginRef(directoryFallbackName(spec.fallbackName), DIRECTORY_CATALOG_KEY))
   if (early) throw new Error(early)
   const pathCtx = pathContextOf(ctx)
-  const result = await installFromDirectory(pathCtx, ctx.fs, spec, { fetchImpl: pickFetch(ctx), nowIso: nowOf(ctx) })
-  const blocked = pluginBlockReason(result.identifier)
-  if (blocked) {
-    await teardownPlugin(pathCtx, { homeDir: ctx.homeDir }, ctx.fs, result.identifier)
-    throw new Error(blocked)
-  }
+  const result = await installFromDirectory(pathCtx, ctx.fs, spec, {
+    fetchImpl: pickFetch(ctx),
+    nowIso: nowOf(ctx),
+    refuse: pluginBlockReason,
+  })
   const enabledMap = await getEnabledPluginsMap({ homeDir: ctx.homeDir }, ctx.fs)
   ctx.reloadPluginsOnAllSessions?.()
   return {
@@ -516,7 +516,7 @@ async function handleAddMarketplace(
   const outcome = await registerMarketplaceSource(pathCtx, ctx.fs, source, nowIso, pickFetch(ctx))
   if (outcome.ok) return { ok: true, status: 'added', name: outcome.name, pluginCount: outcome.pluginCount }
   const error = outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
-  return { ok: true, status: 'failed', stage: outcome.stage, error }
+  return { ok: true, status: 'failed', stage: outcome.stage, name: outcome.name, error }
 }
 
 /** `plugins/removeMarketplace` — official and built-in names throw. */

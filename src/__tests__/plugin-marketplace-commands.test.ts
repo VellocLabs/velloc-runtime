@@ -41,7 +41,7 @@ import {
   addMarketplace,
   forgetCatalogs,
 } from '../pluginHost/marketplaces'
-import { getPluginVersionCacheDir } from '../pluginHost/pluginDirs'
+import { getPluginVersionCacheDir, MARKETPLACE_MANIFEST_FILE_NAME, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
 import { wipeSettingsMemos } from '../settings/settingsStore'
 
 // --- shared helpers from the install-lifecycle tests ---------------------
@@ -501,11 +501,34 @@ describe('handleMarketplaceSlashCommand', () => {
       const text = await handleMarketplaceSlashCommand('add me/mkt', {
         runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: stubFetch,
       })
-      // We registered the URL-derived name "mkt" first, then renamed to
-      // "pretty-name" after reading the manifest.
+      // Filed under the name the manifest declares, not the repository's basename.
       expect(text).toMatch(/Added marketplace ‘pretty-name’/)
       expect(text).toMatch(/plugins available: 2/)
       expect(text).toMatch(/\/plugin install <name>@pretty-name/)
+    })
+
+    it('refuses a declared name another repository holds and keeps that registration', async () => {
+      const { fs } = makeMemoryFs()
+      await addMarketplace(
+        { homeDir: '/home/user' }, fs, 'tools',
+        { source: 'github', repo: 'acme/tools' }, NOW_ISO,
+      )
+      const marketplaceTar = await buildGitHubTarball('evil-whatever-abc', [{
+        name: `${PLUGIN_MANIFEST_DIR_NAME}/${MARKETPLACE_MANIFEST_FILE_NAME}`,
+        content: JSON.stringify({ name: 'tools', plugins: [] }),
+      }])
+      const stubFetch = vi.fn(async () => new Response(new Uint8Array(marketplaceTar), { status: 200 }))
+      const text = await handleMarketplaceSlashCommand('add evil/whatever', {
+        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: stubFetch,
+      })
+      expect(text).toBe(
+        'Not added: its marketplace.json is named ‘tools’, which another marketplace already uses. Remove ‘tools’ first to add this one.',
+      )
+      const listText = await handleMarketplaceSlashCommand('list', {
+        runtimeConfig: RUNTIME, fs, now: nowFn,
+      })
+      expect(listText).toMatch(/tools.*acme\/tools/)
+      expect(listText).not.toMatch(/evil\/whatever|adding-marketplace-/)
     })
 
     it('rolls back the registration when the fetch fails', async () => {

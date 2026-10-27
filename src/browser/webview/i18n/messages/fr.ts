@@ -451,6 +451,9 @@ export const fr: Messages = {
   'customize.addMarket.show': 'L\'afficher',
   'customize.addMarket.fetchFailed': 'Impossible de lire une liste d\'extensions depuis ce dépôt. Vérifiez qu\'il existe, qu\'il est public et qu\'il publie une place de marché.',
   'customize.addMarket.saveFailed': 'Impossible d\'enregistrer la place de marché.',
+  'customize.addMarket.nameTaken': 'La liste d\'extensions de ce dépôt s\'appelle {name}, et une autre place de marché utilise déjà ce nom. Retirez d\'abord {name} si vous voulez ajouter celle-ci à la place.',
+  'customize.addMarket.nameRefused': 'La liste d\'extensions de ce dépôt s\'appelle {name}, un nom réservé ou non autorisé pour une place de marché.',
+  'customize.market.errorDetail': 'Détails : {detail}',
   'customize.addMarket.cancel': 'Annuler',
   'customize.addMarket.confirm': 'Ajouter',
   'customize.addMarket.confirming': 'Ajout…',
@@ -2356,6 +2359,8 @@ export const fr: Messages = {
     '{source} récupéré, mais impossible de charger marketplace.json : {error}',
   'slash.out.marketplace.add.renameCleanupFailed':
     'Renommée en « {name} », mais le nettoyage a échoué : {error}',
+  'slash.out.marketplace.add.nameTaken': 'Non ajoutée : son marketplace.json s\'appelle « {name} », et une autre place de marché utilise déjà ce nom. Retirez d\'abord « {name} » pour ajouter celle-ci.',
+  'slash.out.marketplace.add.nameRefused': 'Non ajoutée : son marketplace.json s\'appelle « {name} », un nom qui ne peut pas être utilisé pour une place de marché : {error}',
   'slash.out.marketplace.add.success': 'Place de marché « {name} » ajoutée',
   'slash.out.marketplace.add.sourceLine': 'source : {source}',
   'slash.out.marketplace.add.pluginsAvailable': 'extensions disponibles : {count}',

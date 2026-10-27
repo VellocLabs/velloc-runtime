@@ -444,6 +444,9 @@ export const ja: Messages = {
   'customize.addMarket.show': '表示',
   'customize.addMarket.fetchFailed': 'このリポジトリからプラグイン一覧を読み込めませんでした。リポジトリが存在し、公開されていて、マーケットプレイスを公開しているか確認してください。',
   'customize.addMarket.saveFailed': 'マーケットプレイスを保存できませんでした。',
+  'customize.addMarket.nameTaken': 'このリポジトリのプラグイン一覧の名前は {name} ですが、この名前はすでに別のマーケットプレイスが使用しています。代わりにこちらを追加するには、先に {name} を削除してください。',
+  'customize.addMarket.nameRefused': 'このリポジトリのプラグイン一覧の名前は {name} ですが、この名前は予約されているか、マーケットプレイス名として使用できません。',
+  'customize.market.errorDetail': '詳細：{detail}',
   'customize.addMarket.cancel': 'キャンセル',
   'customize.addMarket.confirm': '追加',
   'customize.addMarket.confirming': '追加しています…',
@@ -2267,6 +2270,8 @@ export const ja: Messages = {
     '{source} の取得には成功しましたが、marketplace.json を読み込めませんでした：{error}',
   'slash.out.marketplace.add.renameCleanupFailed':
     '「{name}」に名前を変更しましたが、後始末に失敗しました：{error}',
+  'slash.out.marketplace.add.nameTaken': '追加されませんでした：marketplace.json の名前「{name}」は、すでに別のマーケットプレイスが使用しています。こちらを追加するには、先に「{name}」を削除してください。',
+  'slash.out.marketplace.add.nameRefused': '追加されませんでした：marketplace.json の名前「{name}」は、マーケットプレイス名として使用できません：{error}',
   'slash.out.marketplace.add.success': 'マーケットプレイス「{name}」を追加しました',
   'slash.out.marketplace.add.sourceLine': 'ソース：{source}',
   'slash.out.marketplace.add.pluginsAvailable': '利用可能なプラグイン：{count} 件',

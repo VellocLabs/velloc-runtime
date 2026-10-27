@@ -302,6 +302,8 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
     'Fetched {source} but couldn’t load marketplace.json: {error}',
   'slash.out.marketplace.add.renameCleanupFailed':
     'Renamed to ‘{name}’ but cleanup failed: {error}',
+  'slash.out.marketplace.add.nameTaken': 'Not added: its marketplace.json is named ‘{name}’, which another marketplace already uses. Remove ‘{name}’ first to add this one.',
+  'slash.out.marketplace.add.nameRefused': 'Not added: its marketplace.json is named ‘{name}’, which cannot be used for a marketplace: {error}',
   'slash.out.marketplace.add.success': 'Added marketplace ‘{name}’',
   'slash.out.marketplace.add.sourceLine': 'source: {source}',
   'slash.out.marketplace.add.pluginsAvailable': 'plugins available: {count}',
