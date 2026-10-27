@@ -11,12 +11,14 @@ import type { CapabilityQuery } from '../useCan'
 export function useTranscriptSearchGate(
   searchCapable: boolean,
   capabilities: CapabilityQuery,
+  /** Whether Ctrl+K opens the search; false leaves the key to the page. */
+  shortcut = true,
 ): { enabled: boolean; openToken: number } {
   const enabled = searchCapable && capabilities.can('search', 'queryTranscripts')
   const [openToken, setOpenToken] = useState(0)
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !shortcut) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (
         (event.ctrlKey || event.metaKey) &&
@@ -31,7 +33,7 @@ export function useTranscriptSearchGate(
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [enabled])
+  }, [enabled, shortcut])
 
   return { enabled, openToken }
 }

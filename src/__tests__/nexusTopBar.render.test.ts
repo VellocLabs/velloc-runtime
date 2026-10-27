@@ -80,22 +80,41 @@ describe('NexusTopBar render', () => {
     expect(html.slice(settings, toggle).match(/<button/g)?.length).toBe(2)
   })
 
-  it('in a CLI session shows Settings, the sidebar toggle and only the Terminal and Browser panes (F-34)', () => {
-    // What the shell passes while a CLI session is active: no model picker,
-    // no rail, search, imports or plugin items; two panes.
+  it('in a CLI session keeps the left group and puts an inert session-kind chip where the model picker sits (F-34)', () => {
+    // What the shell passes while a CLI session is active: the session's
+    // kind instead of a model, no rail, and two panes.
     const html = markup({
-      hideModelPicker: true,
+      sessionKindLabel: 'Example CLI',
       sidebarCollapsed: false,
       onToggleSidebar: () => {},
       onTogglePane: () => {},
       paneKinds: ['browser', 'terminal'],
       openPanes: ['terminal'],
       hasModPanes: true,
+      importSources: [{ source: 'codex', label: 'Example' }],
+      onOpenImport: () => {},
+      searchSlot: createElement('span', { 'data-testid': 'search-slot' }),
     })
     const buttons = [...html.matchAll(/<button[^>]*data-testid="([^"]+)"/g)].map(match => match[1])
-    expect(buttons).toEqual(['topbar-settings', 'topbar-sidebar-toggle', 'topbar-pane-terminal', 'topbar-pane-browser', 'topbar-more-panes'])
+    expect(buttons).toEqual([
+      'topbar-settings',
+      'topbar-sidebar-toggle',
+      'topbar-import-codex',
+      'topbar-pane-terminal',
+      'topbar-pane-browser',
+      'topbar-more-panes',
+    ])
     expect(tag(html, 'topbar-pane-terminal')).toContain('aria-pressed="true"')
     expect(html).not.toContain('nexus-model-picker-trigger')
+    expect(html).toContain('data-testid="search-slot"')
+    // The chip stands between Settings and the sidebar toggle, is no control, and names the session's kind.
+    const chip = /<div[^>]*data-testid="topbar-session-kind"[\s\S]*?<\/div>/.exec(html)?.[0] ?? ''
+    expect(chip).toContain('Example CLI')
+    expect(chip).not.toMatch(/<button|tabindex|role=/)
+    expect(chip).toContain('aria-description=')
+    const at = (testId: string) => html.indexOf(`data-testid="${testId}"`)
+    expect(at('topbar-session-kind')).toBeGreaterThan(at('topbar-settings'))
+    expect(at('topbar-session-kind')).toBeLessThan(at('topbar-sidebar-toggle'))
   })
 
   describe('the right column', () => {

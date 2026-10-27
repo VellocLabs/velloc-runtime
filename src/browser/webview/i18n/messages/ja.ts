@@ -265,6 +265,7 @@ export const ja: Messages = {
   'transcriptSearch.badPattern': 'その正規表現は正しくありません。{detail}',
   'transcriptSearch.searchFailed': '検索に失敗しました。もう一度お試しください。',
   'topbar.settings': '設定',
+  'topbar.sessionKindHint': 'このセッションは独自の CLI を実行しており、モデルはその CLI が決めます。ここでは変更できません。',
   'topbar.pane.tasks': 'タスク',
   'topbar.pane.diff': '差分',
   'topbar.pane.browser': 'ブラウザ',

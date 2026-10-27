@@ -271,6 +271,7 @@ export const de: Messages = {
   'transcriptSearch.badPattern': 'Dieser reguläre Ausdruck ist ungültig. {detail}',
   'transcriptSearch.searchFailed': 'Die Suche ist fehlgeschlagen. Bitte versuche es erneut.',
   'topbar.settings': 'Einstellungen',
+  'topbar.sessionKindHint': 'Diese Sitzung führt ihre eigene CLI aus, die das Modell wählt. Hier lässt es sich nicht ändern.',
   'topbar.pane.tasks': 'Aufgaben',
   'topbar.pane.diff': 'Diff',
   'topbar.pane.browser': 'Browser',

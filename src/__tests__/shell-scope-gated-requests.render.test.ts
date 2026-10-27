@@ -138,6 +138,14 @@ describe('useTranscriptSearchGate — the topbar search follows the grant', () =
     expect(result.current.openToken).toBe(0)
   })
 
+  it('renders with the shortcut off, and Ctrl+K is left to the page', () => {
+    const { result } = renderHook(() => useTranscriptSearchGate(true, ALLOW_ALL, false))
+    expect(result.current.enabled).toBe(true)
+    const event = pressCtrlK()
+    expect(event.defaultPrevented).toBe(false)
+    expect(result.current.openToken).toBe(0)
+  })
+
   it('still renders while the grant is unknown (it is a control)', () => {
     const { result } = renderHook(() => useTranscriptSearchGate(true, PENDING_GRANT))
     expect(result.current.enabled).toBe(true)

@@ -1976,7 +1976,8 @@ export function MultiSessionShell({
     }
     return out
   }, [sessions])
-  const activeCli = activeSessionId ? cliSessions.get(activeSessionId)?.cli : undefined
+  const activeCliSession = activeSessionId ? cliSessions.get(activeSessionId) : undefined
+  const activeCli = activeCliSession?.cli
   const activeCliRef = useRef(activeCli)
   activeCliRef.current = activeCli
   const storedPaneRecord = activeSessionId ? sessionLayouts.records.get(activeSessionId) : undefined
@@ -3827,9 +3828,11 @@ export function MultiSessionShell({
   // --- Global transcript search (Ctrl+K + the topbar control) --------------
   // Gated on the host advertising the `search` bridge capability AND on the
   // grant holding `search.queryTranscripts` (useTranscriptSearchGate).
+  // Ctrl+K stands down over a CLI session so the key reaches its terminal.
   const transcriptSearch = useTranscriptSearchGate(
-    (searchCapable ?? false) && !activeCli,
+    searchCapable ?? false,
     runtimeCapabilities,
+    !activeCli,
   )
 
   // The ONE search gesture that moves the user, in two forms: a HIT arms
@@ -4449,15 +4452,15 @@ export function MultiSessionShell({
         selection={activeSelection}
         defaultSelection={globalDefaultSelection ?? browserDefaultSelection}
         onSelectModel={handleTopbarSelectModel}
-        hideModelPicker={activeCli !== undefined}
+        sessionKindLabel={activeCliSession ? getTemplateTitle(activeCliSession.type) : undefined}
         modelPickerOpenToken={modelPickerOpenToken}
         onOpenSettings={handleOpenNexusSettings}
         onOpenProviderSettings={handleOpenProviderSettings}
-        onPressPluginItem={runtimeConnection && !activeCli ? handlePressPluginItem : undefined}
+        onPressPluginItem={runtimeConnection ? handlePressPluginItem : undefined}
         sidebarCollapsed={sidebarCollapsed || sidebarHidden}
         onToggleSidebar={handleToggleSidebar}
         searchSlot={
-          transcriptSearch.enabled && !activeCli ? (
+          transcriptSearch.enabled ? (
             <TopbarSearch
               transport={hostBridgeTransport}
               resolveHomeDir={resolveSearchHomeDir}
@@ -4487,12 +4490,11 @@ export function MultiSessionShell({
         }
         onResetLayout={handleResetLayout}
         backgroundTaskCount={countRunning(activeSessionSubAgentRows)}
-        importSources={activeCli ? undefined : topbarImportSources}
-        onOpenImport={activeCli ? undefined : setImportDialogSource}
-        // Customize shows this window's native tab view: never on a remote
-        // client page, nor over a CLI session.
-        onOpenCustomize={activeCli || remoteHost !== undefined ? undefined : handleOpenCustomize}
-        remoteDeviceCount={activeCli ? 0 : remoteDeviceCount}
+        importSources={topbarImportSources}
+        onOpenImport={setImportDialogSource}
+        // Customize shows this window's native tab view: never on a remote client page.
+        onOpenCustomize={remoteHost !== undefined ? undefined : handleOpenCustomize}
+        remoteDeviceCount={remoteDeviceCount}
         remoteHost={remoteHost}
         onRemoteLogOut={onRemoteLogOut}
       />

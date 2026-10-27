@@ -293,6 +293,7 @@ export const en = {
   'transcriptSearch.badPattern': 'That regular expression is not valid. {detail}',
   'transcriptSearch.searchFailed': 'Search failed. Please try again.',
   'topbar.settings': 'Settings',
+  'topbar.sessionKindHint': 'This session runs its own CLI, which chooses the model. It can\'t be changed here.',
   // Side panes: the topbar toggles, the More menu and the pane frame.
   'topbar.pane.tasks': 'Tasks',
   'topbar.pane.diff': 'Diff',

@@ -272,6 +272,7 @@ export const fr: Messages = {
   'transcriptSearch.badPattern': 'Cette expression régulière n’est pas valide. {detail}',
   'transcriptSearch.searchFailed': 'La recherche a échoué. Veuillez réessayer.',
   'topbar.settings': 'Paramètres',
+  'topbar.sessionKindHint': 'Cette session exécute sa propre CLI, qui choisit le modèle. Il ne peut pas être modifié ici.',
   'topbar.pane.tasks': 'Tâches',
   'topbar.pane.diff': 'Différences',
   'topbar.pane.browser': 'Navigateur',

@@ -272,6 +272,7 @@ export const es: Messages = {
   'transcriptSearch.badPattern': 'Esa expresión regular no es válida. {detail}',
   'transcriptSearch.searchFailed': 'La búsqueda falló. Inténtelo de nuevo.',
   'topbar.settings': 'Configuración',
+  'topbar.sessionKindHint': 'Esta sesión ejecuta su propia CLI, que elige el modelo. No se puede cambiar aquí.',
   'topbar.pane.tasks': 'Tareas',
   'topbar.pane.diff': 'Diferencias',
   'topbar.pane.browser': 'Navegador',

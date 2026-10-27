@@ -262,6 +262,7 @@ export const ko: Messages = {
   'transcriptSearch.badPattern': '정규 표현식이 올바르지 않습니다. {detail}',
   'transcriptSearch.searchFailed': '검색에 실패했습니다. 다시 시도하세요.',
   'topbar.settings': '설정',
+  'topbar.sessionKindHint': '이 세션은 자체 CLI를 실행하며 모델은 해당 CLI가 정합니다. 여기서는 변경할 수 없습니다.',
   'topbar.pane.tasks': '작업',
   'topbar.pane.diff': '차이',
   'topbar.pane.browser': '브라우저',

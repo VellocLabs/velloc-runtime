@@ -85,8 +85,9 @@ export type NexusTopBarProps = {
    *  override does not hide what new sessions will get. */
   defaultSelection?: BrowserLlmSelection | null;
   onSelectModel: (selection: BrowserLlmSelection) => void;
-  /** No model picker: the active session runs no Velloc model (a CLI session, F-34). */
-  hideModelPicker?: boolean;
+  /** The active session runs no Velloc model (a CLI session, F-34): this
+   *  label, in an inert chip styled like the model picker, takes its place. */
+  sessionKindLabel?: string;
   onOpenSettings: (section?: SettingsSectionId) => void;
   /** Open one provider's settings page (the model picker's `⋯` → "Edit…"). */
   onOpenProviderSettings?: (providerId: string) => void;
@@ -170,6 +171,20 @@ export type NexusTopBarProps = {
   hidden?: boolean;
 };
 
+/** The model picker's box, inert: the active session's kind in its place. */
+function SessionKindChip({ label, hint }: { label: string; hint: string }) {
+  return (
+    <div
+      data-testid="topbar-session-kind"
+      title={hint}
+      aria-description={hint}
+      className="inline-flex h-8 max-w-[16rem] cursor-default items-center gap-1.5 rounded-md border bg-background px-2.5 text-sm"
+    >
+      <span className="min-w-0 truncate font-medium">{label}</span>
+    </div>
+  );
+}
+
 /** A pane's tooltip or menu row text: its name, and its shortcut when it has one. */
 function PaneLabel({ kind, verb }: { kind: SidePaneKind; verb?: "show" | "hide" }) {
   const t = useT();
@@ -208,7 +223,7 @@ export function NexusTopBar({
   sessionOverview,
   onResetLayout,
   backgroundTaskCount,
-  hideModelPicker,
+  sessionKindLabel,
   importSources,
   onOpenImport,
   onOpenCustomize,
@@ -338,7 +353,9 @@ export function NexusTopBar({
           </TooltipTrigger>
           <TooltipContent side="bottom">{t("topbar.settings")}</TooltipContent>
         </Tooltip>
-        {hideModelPicker ? null : <NexusModelPicker
+        {sessionKindLabel !== undefined ? (
+          <SessionKindChip label={sessionKindLabel} hint={t("topbar.sessionKindHint")} />
+        ) : <NexusModelPicker
           catalog={catalog}
           selection={selection}
           defaultSelection={defaultSelection}

@@ -260,6 +260,7 @@ export const zh: Messages = {
   'transcriptSearch.badPattern': '正则表达式无效。{detail}',
   'transcriptSearch.searchFailed': '搜索失败，请重试。',
   'topbar.settings': '设置',
+  'topbar.sessionKindHint': '此会话运行自己的 CLI，模型由该 CLI 决定，无法在此更改。',
   'topbar.pane.tasks': '任务',
   'topbar.pane.diff': '差异',
   'topbar.pane.browser': '浏览器',
