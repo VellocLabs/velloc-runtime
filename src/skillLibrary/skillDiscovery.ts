@@ -321,17 +321,16 @@ async function loadPluginCommandsTree(params: {
     const name = [params.pluginName, ...segments].join(':')
     try {
       const content = await fs.readFile(fullPath, { encoding: 'utf-8' })
-      commands.push(
-        toCommand(
-          name,
-          fullPath,
-          dirnameRuntimePath(fullPath),
-          params.source,
-          params.loadedFrom,
-          content,
-          params.pluginName,
-        ),
+      const command = toCommand(
+        name,
+        fullPath,
+        dirnameRuntimePath(fullPath),
+        params.source,
+        params.loadedFrom,
+        content,
+        params.pluginName,
       )
+      commands.push(SKILL_FILE_RE.test(base) ? command : { ...command, fromCommandFolder: true })
     } catch {
       continue
     }

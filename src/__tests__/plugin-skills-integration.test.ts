@@ -140,6 +140,8 @@ describe('loadLocalPromptCommands with plugin skill dirs', () => {
     const names = commands.map(c => c.name)
 
     expect(names).toContain('alpha:research:deep-dive')
+    // A skill folder inside commands/ is still a skill, so not marked.
+    expect(commands.find(c => c.name === 'alpha:research:deep-dive')?.fromCommandFolder).toBeUndefined()
     expect(names.filter(n => n.includes('notes'))).toEqual([])
     expect(names.filter(n => n.includes('extra'))).toEqual([])
   })
@@ -176,5 +178,7 @@ describe('loadLocalPromptCommands with plugin skill dirs', () => {
     expect(commands.find(c => c.name === 'beta:deploy')?.description).toBe(
       'Beta deploy',
     )
+    // A flat command file is a command, not a skill folder.
+    expect(commands.find(c => c.name === 'alpha:deploy')?.fromCommandFolder).toBe(true)
   })
 })

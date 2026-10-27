@@ -12,7 +12,11 @@ import {
   assertUntrustedReadAllowed,
   untrustedReadDeniedMessage,
 } from '../../../permissions/untrustedReadBoundary'
-import { isAbsoluteRuntimePath, resolveRuntimePath } from '../../../utils/runtimePaths'
+import {
+  absoluteGlobBaseDirectory,
+  isAbsoluteRuntimePath,
+  resolveRuntimePath,
+} from '../../../utils/runtimePaths'
 import { nativizeForHost } from '../../../utils/hostPathForm'
 
 // Worktree isolation (SpawnAgentTool `isolation:'worktree'`). A fork whose
@@ -27,24 +31,6 @@ const WORKTREE_FS_PATH_ARGS: Record<string, readonly string[]> = {
   Edit: ['file_path'],
   Glob: ['path'],
   Grep: ['path'],
-}
-
-/**
- * The static base directory of an ABSOLUTE glob pattern — the directory the
- * host searches from (mirrors file_tool.cc `ExtractGlobBaseDirectory`):
- * separators normalized to '/', everything before the first glob
- * metacharacter, cut back to its last separator. A literal pattern's base is
- * its dirname. Empty when there is no separator to cut at.
- */
-export function absoluteGlobBaseDirectory(pattern: string): string {
-  const p = pattern.replace(/\\/g, '/')
-  const globPos = p.search(/[*?[{]/)
-  const lastSep =
-    globPos === -1 ? p.lastIndexOf('/') : p.lastIndexOf('/', globPos)
-  if (lastSep < 0) return ''
-  const base = lastSep === 0 ? '/' : p.slice(0, lastSep)
-  // `C:` alone names the drive's current directory, not its root.
-  return /^[A-Za-z]:$/.test(base) ? `${base}/` : base
 }
 
 /** Exported for unit testing — see __tests__/worktree-isolation.test.ts. */

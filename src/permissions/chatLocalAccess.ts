@@ -1,6 +1,12 @@
 import { READ_TOOL_ID } from '../prompting/fileToolNames'
 import { RUNTIME_DIR_NAME } from '../branding/runtimeDir'
-import { joinRuntimePath, relativeRuntimePath, resolveRuntimePath } from '../utils/runtimePaths'
+import {
+  absoluteGlobBaseDirectory,
+  isAbsoluteRuntimePath,
+  joinRuntimePath,
+  relativeRuntimePath,
+  resolveRuntimePath,
+} from '../utils/runtimePaths'
 import { extractFilePath } from './filePathRuleMatching'
 
 // Security: a chat session never reaches the user's own files. Its file tools
@@ -21,7 +27,7 @@ export type ConfinedRoots = {
   cwd: string
   /** Read + write. Absent: no memory folder resolved, so no writes at all. */
   memoryDir?: string
-  /** Read-only: loaded skill directories. */
+  /** Read-only: loaded skill directories (never a plugin command's folder). */
   skillRoots: readonly string[]
 }
 
@@ -38,9 +44,25 @@ function isInside(target: string, root: string, cwd: string): boolean {
 }
 
 /**
+ * The directory a confined file tool call reaches, or undefined when it cannot
+ * be checked. Glob / Grep without a `path` search the cwd. Glob's `pattern` is
+ * a second path: the host searches from an absolute pattern's static base and
+ * ignores `path`, so that base is the target; a pattern with no static base or
+ * with a `..` segment is refused. Grep's `glob` only filters the walk under
+ * `path` and needs no check of its own.
+ */
+function confinedTarget(toolName: string, input: Record<string, unknown>, cwd: string): string | undefined {
+  const target = extractFilePath(input) ?? cwd
+  if (toolName !== 'Glob' || typeof input.pattern !== 'string') return target
+  const pattern = input.pattern
+  if (pattern.split(/[\\/]/).includes('..')) return undefined
+  if (!isAbsoluteRuntimePath(pattern)) return target
+  return absoluteGlobBaseDirectory(pattern) || undefined
+}
+
+/**
  * Contract: the denial message for a file tool call a confined session may not
  * make, or null when the call stays inside its roots or is not a file tool.
- * Glob / Grep without a `path` search the cwd, which is outside every root.
  */
 export function confinedFileAccessDenial(
   toolName: string,
@@ -49,14 +71,17 @@ export function confinedFileAccessDenial(
 ): string | null {
   const reads = READ_ONLY_FILE_TOOLS.has(toolName)
   if (!reads && !WRITING_FILE_TOOLS.has(toolName)) return null
-  const target = extractFilePath(input) ?? roots.cwd
-  const inMemory = roots.memoryDir !== undefined && isInside(target, roots.memoryDir, roots.cwd)
-  if (inMemory) return null
-  if (reads) {
-    const readRoots = [...roots.skillRoots, uploadsDirOf(roots.cwd)]
-    if (readRoots.some(root => isInside(target, root, roots.cwd))) return null
+  const target = confinedTarget(toolName, input, roots.cwd)
+  if (target !== undefined) {
+    const inMemory = roots.memoryDir !== undefined && isInside(target, roots.memoryDir, roots.cwd)
+    if (inMemory) return null
+    if (reads) {
+      const readRoots = [...roots.skillRoots, uploadsDirOf(roots.cwd)]
+      if (readRoots.some(root => isInside(target, root, roots.cwd))) return null
+    }
   }
-  return `${toolName} is not available for ${target} in a chat session: chat can only use its memory folder${
+  const named = target ?? String(input.pattern)
+  return `${toolName} is not available for ${named} in a chat session: chat can only use its memory folder${
     reads ? ', loaded skills and attached files' : ''
   }. Local files and commands need a Code session.`
 }

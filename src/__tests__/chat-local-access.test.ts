@@ -11,6 +11,7 @@ import { decideToolPermission } from '../toolkit/run/toolPermissionGate'
 import { getMemoryDir } from '../memory/memoryPaths'
 import { confinedFileAccessDenial, uploadsDirOf } from '../permissions/chatLocalAccess'
 import { expandSkillBodyShell } from '../skillLibrary/inlineShellExpansion'
+import { resolveWebFetchDeps } from '../toolkit/builtin/webFetch/fetchHelpers'
 import {
   NoopPlatformCapabilities,
   createEmptyAppState,
@@ -20,6 +21,7 @@ import {
 const SANDBOX = '/home/u/.velloc/sandbox/chat'
 const HOME = '/home/u'
 const SKILL_DIR = '/home/u/.velloc/skills/notes-helper'
+const PLUGIN_COMMANDS_DIR = '/home/u/.velloc/plugins/alpha/commands'
 const runtimeConfig = { getEnv: () => undefined } as unknown as RuntimeConfig
 const memoryDir = getMemoryDir(SANDBOX, runtimeConfig, { projectRoot: SANDBOX, homeDir: HOME })
 
@@ -46,7 +48,10 @@ function contextFor(templateType: string, mode: WorkingState['permissionRules'][
     cwd: SANDBOX,
     projectRoot: SANDBOX,
     sessionId: 'sess-chat-confined',
-    commands: [{ name: 'notes-helper', baseDir: SKILL_DIR } as never],
+    commands: [
+      { name: 'notes-helper', baseDir: SKILL_DIR } as never,
+      { name: 'alpha:deploy', baseDir: PLUGIN_COMMANDS_DIR, fromCommandFolder: true } as never,
+    ],
   })
   context.readAppState = () => appState
   context.options.templateType = templateType
@@ -104,6 +109,39 @@ describe('chat session local-file confinement', () => {
     expect((await decide('Read', { file_path: upload })).decision).toBe('allow')
     expect((await decide('Write', { file_path: `${SKILL_DIR}/SKILL.md`, content: 'x' })).decision).toBe('deny')
     expect((await decide('Write', { file_path: upload, content: 'x' })).decision).toBe('deny')
+  })
+
+  it("refuses a Glob whose absolute pattern reaches outside, whatever its path", async () => {
+    for (const pattern of ['C:/Users/me/**/*', '/home/u/projects/**/*.ts', 'C:\\Users\\me\\*']) {
+      const verdict = await decide('Glob', { path: memoryDir, pattern })
+      expect(verdict.decision, pattern).toBe('deny')
+    }
+  })
+
+  it('lets a Glob whose absolute pattern stays in memory run without a path', async () => {
+    expect((await decide('Glob', { pattern: `${memoryDir}/**/*.md` })).decision).toBe('allow')
+  })
+
+  it('refuses a Glob pattern that climbs out with ..', async () => {
+    expect((await decide('Glob', { path: memoryDir, pattern: '../../**' })).decision).toBe('deny')
+    expect((await decide('Glob', { path: memoryDir, pattern: 'notes/..\\..\\*' })).decision).toBe('deny')
+  })
+
+  it('does not treat a plugin command folder as a skill root', async () => {
+    expect((await decide('Read', { file_path: `${PLUGIN_COMMANDS_DIR}/deploy.md` })).decision).toBe('deny')
+  })
+
+  it("saves a WebFetch copy where the chat session can read it back", async () => {
+    const tool = makeTool('Read')
+    const chat = contextFor('chat', 'bypassPermissions', tool)
+    const network = { httpGet: async () => ({}) } as never
+    chat.platformCapabilities = { ...chat.platformCapabilities, network }
+    const saved = `${resolveWebFetchDeps(chat).runtimeCwd}/webfetch/webfetch-1-abc.md`
+    expect((await decideToolPermission(tool, { file_path: saved }, chat)).decision).toBe('allow')
+
+    const code = contextFor('code', 'default', tool)
+    code.platformCapabilities = { ...code.platformCapabilities, network }
+    expect(resolveWebFetchDeps(code).runtimeCwd).toBe(SANDBOX)
   })
 
   it('leaves a code session untouched', async () => {

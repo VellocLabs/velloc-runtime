@@ -244,15 +244,11 @@ function planModeGate({ tool, rawInput, callContext, ruleSet }: GateInputs): Too
   }
 }
 
-/**
- * The file read / write pipeline for a file tool: a verdict to return, or
- * the allow it settled on (`settled`), or nothing decided. Bypass modes skip
- * its non-safety asks.
- */
 /** A chat session's file tools stay inside its memory, skill and upload roots, in every mode. */
 function confinedSessionGate({ tool, rawInput, callContext }: GateInputs): ToolPermissionVerdict | null {
   if (!isLocalAccessConfined(callContext.options.templateType)) return null
   const skillRoots = callContext.options.commands
+    .filter(command => !command.fromCommandFolder)
     .map(command => command.baseDir)
     .filter((dir): dir is string => typeof dir === 'string' && dir.length > 0)
   const message = confinedFileAccessDenial(tool.name, rawInput, {
@@ -269,6 +265,11 @@ function confinedSessionGate({ tool, rawInput, callContext }: GateInputs): ToolP
   }
 }
 
+/**
+ * The file read / write pipeline for a file tool: a verdict to return, or
+ * the allow it settled on (`settled`), or nothing decided. Bypass modes skip
+ * its non-safety asks.
+ */
 async function fileToolGate(
   inputs: GateInputs,
 ): Promise<{ verdict: ToolPermissionVerdict } | { settled: ToolPermissionResult } | null> {

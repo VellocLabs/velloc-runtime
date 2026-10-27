@@ -45,6 +45,9 @@ export type ChromiumPromptCommand = {
    *  to the model as a "Base directory" header and substituted into the
    *  body for `${CLAUDE_SKILL_DIR}`. */
   baseDir?: string
+  /** True for a flat `.md` file from a plugin's `commands/` folder: a command,
+   *  not a skill, so its `baseDir` is not a skill root. */
+  fromCommandFolder?: boolean
   /** Named positional argument labels parsed from the frontmatter
    *  `arguments` field. Maps positional `$name` placeholders in the body
    *  onto the same index in the parsed argv. */

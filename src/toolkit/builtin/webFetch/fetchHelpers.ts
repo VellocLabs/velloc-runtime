@@ -14,6 +14,7 @@ import {
   type RuntimeFs,
 } from '../../../utils/fs/runtimeFs'
 import type { BrowserNetworkOperations } from '../../../utils/BrowserNetworkOperations'
+import { isLocalAccessConfined, uploadsDirOf } from '../../../permissions/chatLocalAccess'
 
 import { isAutoAllowedFetch } from './autoAllowedSites'
 import { pageQuestionBrief } from './fetchPrompt'
@@ -25,8 +26,9 @@ export type WebFetchDeps = {
   network: BrowserNetworkOperations
   /**
    * The runtime's project root (`resolvedProjectRoot` — the model's working
-   * directory, e.g. `<install>/.velloc/shared-workspace/<type>/`).
-   * Persisted artifacts land under `<runtimeCwd>/webfetch/`.
+   * directory, e.g. `<install>/.velloc/shared-workspace/<type>/`), or the
+   * uploads dir in a confined session. Persisted artifacts land under
+   * `<runtimeCwd>/webfetch/`.
    */
   runtimeCwd: string
   /**
@@ -50,9 +52,14 @@ export function resolveWebFetchDeps(context: ToolCallContext): WebFetchDeps {
         "runtime's host bridge (context.platformCapabilities.network).",
     )
   }
+  // A confined (chat) session can read back only its read roots, so its saved
+  // copies go under the uploads dir rather than the cwd. (F-13)
+  const runtimeCwd = isLocalAccessConfined(context.options.templateType)
+    ? uploadsDirOf(context.options.cwd)
+    : context.options.projectRoot ?? context.options.cwd ?? ''
   return {
     network,
-    runtimeCwd: context.options.projectRoot ?? context.options.cwd ?? '',
+    runtimeCwd,
     fs: fsForContext(context),
   }
 }

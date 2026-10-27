@@ -274,6 +274,24 @@ export function extnameRuntimePath(targetPath: string): string {
   return basename.slice(extensionIndex)
 }
 
+/**
+ * The static base directory of an ABSOLUTE glob pattern — the directory the
+ * host searches from (mirrors file_tool.cc `ExtractGlobBaseDirectory`):
+ * separators normalized to '/', everything before the first glob
+ * metacharacter, cut back to its last separator. A literal pattern's base is
+ * its dirname. Empty when there is no separator to cut at.
+ */
+export function absoluteGlobBaseDirectory(pattern: string): string {
+  const p = pattern.replace(/\\/g, '/')
+  const globPos = p.search(/[*?[{]/)
+  const lastSep =
+    globPos === -1 ? p.lastIndexOf('/') : p.lastIndexOf('/', globPos)
+  if (lastSep < 0) return ''
+  const base = lastSep === 0 ? '/' : p.slice(0, lastSep)
+  // `C:` alone names the drive's current directory, not its root.
+  return /^[A-Za-z]:$/.test(base) ? `${base}/` : base
+}
+
 export function sanitizePathSegment(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'session'
 }
