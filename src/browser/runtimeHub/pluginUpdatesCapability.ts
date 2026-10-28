@@ -38,6 +38,7 @@ import type { UpdateChannel } from '../../branding/updateChannels'
 import { readLayerFresh, updateSectionInSource } from '../../settings/settingsStore'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import type { BrowserBridgeTransport } from '../bridge/protocol/core'
+import { createBridgeRoute } from '../bridge/protocol/core'
 import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
 import type { TopicBroker } from './TopicBroker'
 import type { SnapshotPage, TopicProvider } from './types'
@@ -255,6 +256,18 @@ export function registerPluginUpdatesCapability(
         }) as typeof fetch
       },
       channel: job.channel,
+      clientVersion: async () => {
+        const transport = options.context().directBridge
+        if (!transport) return undefined
+        const response = await transport.request({
+          id: `builtin-marketplace-version-${Date.now().toString(36)}`,
+          route: createBridgeRoute('appInfo', 'getVersionInfo'),
+          payload: {},
+        })
+        if (!response.ok) return undefined
+        const { appVersion } = response.result as { appVersion?: unknown }
+        return typeof appVersion === 'string' && appVersion.length > 0 ? appVersion : undefined
+      },
       autoInstall:
         job.autoInstall ??
         (async () =>

@@ -418,6 +418,57 @@ describe('later boots', () => {
     expect(state!.buildId).toBe('b1')
   })
 
+  it('a client upgrade asks the origin at once, whatever the clock says, and records the version', async () => {
+    const r = await rig()
+    await r.run({ clientVersion: async () => '1.0.0' })
+    await setPluginEnabled(ctx, r.fs, id('on-plugin'), true)
+    expect((await readBuiltinSeedState(ctx, r.fs))!.clientVersion).toBe('1.0.0')
+    r.fetchImpl.calls.length = 0
+    r.advance(HOUR)
+    await r.run({ clientVersion: async () => '1.0.0' })
+    expect(r.fetchImpl.calls).toEqual([])
+    await r.publish(
+      [
+        { name: 'on-plugin', version: '1.1.0' },
+        { name: 'off-plugin', version: '1.0.0', onByDefault: false },
+        { name: 'beta-plugin', version: '1.0.0', betaOnly: true },
+      ],
+      'b2',
+    )
+    const outcome = await r.run({ clientVersion: async () => '1.0.1' })
+    expect(outcome.fetched).toBe(true)
+    expect(r.indexFetches()).toBe(1)
+    expect(r.tarballFetches()).toBe(1)
+    expect(outcome.updated).toEqual([id('on-plugin')])
+    expect(await r.installedVersion('on-plugin')).toBe('1.1.0')
+    expect(await readBuiltinSeedState(ctx, r.fs)).toMatchObject({ buildId: 'b2', clientVersion: '1.0.1' })
+  })
+
+  it('a client upgrade whose check cannot reach the origin is tried again at the next run', async () => {
+    const r = await rig()
+    await r.run({ clientVersion: async () => '1.0.0' })
+    r.advance(HOUR)
+    const down = servedFetch(new Map())
+    await r.run({ clientVersion: async () => '1.0.1', fetchImpl: () => down })
+    expect((await readBuiltinSeedState(ctx, r.fs))!.clientVersion).toBe('1.0.0')
+    r.fetchImpl.calls.length = 0
+    const outcome = await r.run({ clientVersion: async () => '1.0.1' })
+    expect(outcome.fetched).toBe(false)
+    expect(r.indexFetches()).toBe(1)
+    expect((await readBuiltinSeedState(ctx, r.fs))!.clientVersion).toBe('1.0.1')
+  })
+
+  it('a host that names no version keeps the daily rhythm', async () => {
+    const r = await rig()
+    await r.run({ clientVersion: async () => '1.0.0' })
+    r.fetchImpl.calls.length = 0
+    r.advance(HOUR)
+    const outcome = await r.run({ clientVersion: async () => undefined })
+    expect(outcome.fetched).toBe(false)
+    expect(r.fetchImpl.calls).toEqual([])
+    expect((await readBuiltinSeedState(ctx, r.fs))!.clientVersion).toBe('1.0.0')
+  })
+
   it('retries the check at the next run when the origin is unreachable', async () => {
     const r = await rig()
     await r.run()

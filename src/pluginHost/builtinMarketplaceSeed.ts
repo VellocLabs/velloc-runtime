@@ -1,14 +1,16 @@
 /**
  * Contract: the built-in marketplace job (F-14). Runs once per runtime boot
  * and then daily, never awaited by boot. Content: a missing marketplace
- * folder is downloaded; otherwise, at most once per 24 h, the origin's
- * `index.json` is read and the tarball is downloaded again only when its
- * `buildId` changed, after which the installed built-in plugins are upgraded
- * through the update service. Reconcile: every listing the channel shows
- * that was never seeded is installed, disabled when `onByDefault` is false;
- * a provider plugin left on is consented to at that install through
- * `consentProviders` and stays off without it (F-27); a listing already
- * installed by hand is only recorded. A seeded id is never
+ * folder is downloaded; otherwise the origin's `index.json` is read at most
+ * once per 24 h, and at once when the client version differs from the one
+ * recorded at the last read (an upgrade installed over the profile; a host
+ * without a version keeps the daily rhythm). The tarball is downloaded again
+ * only when its `buildId` changed, after which the installed built-in
+ * plugins are upgraded through the update service. Reconcile: every listing
+ * the channel shows that was never seeded is installed, disabled when
+ * `onByDefault` is false; a provider plugin left on is consented to at that
+ * install through `consentProviders` and stays off without it (F-27); a
+ * listing already installed by hand is only recorded. A seeded id is never
  * installed again, so an uninstall sticks. Every failure is reported and
  * retried at the next run. A profile with the `features` flag
  * `builtinMarketplace.autoInstall` set to false runs nothing.
@@ -53,6 +55,8 @@ export type BuiltinSeedState = {
   buildId?: string
   /** When `index.json` was last read successfully. */
   lastCheckedAt?: string
+  /** The client version at the last successful `index.json` read. */
+  clientVersion?: string
   seeded: Record<string, BuiltinSeedRecord>
 }
 
@@ -73,6 +77,8 @@ export type BuiltinSeedDeps = {
   /** Records the consent baseline of a provider plugin this job installed on
    *  and registers its providers. Absent: such a plugin stays held off. */
   consentProviders?: (pluginId: string) => Promise<void>
+  /** The host's own version; absent, or failing, when the host has none. */
+  clientVersion?: () => Promise<string | undefined>
   now?: () => string
   report?: (line: string) => void
 }
@@ -122,6 +128,7 @@ export async function readBuiltinSeedState(
       version: 1,
       ...(typeof parsed.buildId === 'string' ? { buildId: parsed.buildId } : {}),
       ...(typeof parsed.lastCheckedAt === 'string' ? { lastCheckedAt: parsed.lastCheckedAt } : {}),
+      ...(typeof parsed.clientVersion === 'string' ? { clientVersion: parsed.clientVersion } : {}),
       seeded,
     }
   } catch {
@@ -194,9 +201,15 @@ export async function seedBuiltinMarketplace(deps: BuiltinSeedDeps): Promise<Bui
     return outcome
   }
   const indexUrl = builtinMarketplaceIndexUrl(entry.source)
+  const clientVersion = await currentClientVersion(deps)
+  const clientChanged = clientVersion !== undefined && clientVersion !== state.clientVersion
+  const stampCheck = () => {
+    state.lastCheckedAt = now()
+    if (clientVersion !== undefined) state.clientVersion = clientVersion
+  }
 
-  // Content: download when absent; otherwise ask the origin daily whether
-  // its build changed.
+  // Content: download when absent; otherwise ask the origin daily, or at
+  // once after a client upgrade, whether its build changed.
   let manifest = await readCachedManifest(ctx, fs)
   let contentChanged = false
   if (manifest === null) {
@@ -219,10 +232,10 @@ export async function seedBuiltinMarketplace(deps: BuiltinSeedDeps): Promise<Bui
     outcome.fetched = true
     if (index) {
       state.buildId = index.buildId
-      state.lastCheckedAt = now()
+      stampCheck()
     }
     await writeBuiltinSeedState(ctx, fs, state)
-  } else if (indexUrl && isStale(state.lastCheckedAt, now())) {
+  } else if (indexUrl && (clientChanged || isStale(state.lastCheckedAt, now()))) {
     let index: BuiltinMarketplaceIndex
     try {
       index = await readBuiltinMarketplaceIndex(indexUrl, deps.fetchImpl())
@@ -232,7 +245,7 @@ export async function seedBuiltinMarketplace(deps: BuiltinSeedDeps): Promise<Bui
     }
     if (index.buildId !== '') {
       if (index.buildId === state.buildId) {
-        state.lastCheckedAt = now()
+        stampCheck()
         await writeBuiltinSeedState(ctx, fs, state)
       } else {
         try {
@@ -242,7 +255,7 @@ export async function seedBuiltinMarketplace(deps: BuiltinSeedDeps): Promise<Bui
           outcome.fetched = true
           contentChanged = true
           state.buildId = index.buildId
-          state.lastCheckedAt = now()
+          stampCheck()
           await writeBuiltinSeedState(ctx, fs, state)
         } catch (error) {
           report(`the new marketplace build could not be downloaded: ${errorText(error)}`)
@@ -334,6 +347,16 @@ async function consentAtInstall(
   } catch (error) {
     report(`'${id}' stays off until it is approved: ${errorText(error)}`)
     await setPluginEnabled(settingsCtx, fs, id, false).catch(() => {})
+  }
+}
+
+async function currentClientVersion(deps: BuiltinSeedDeps): Promise<string | undefined> {
+  if (!deps.clientVersion) return undefined
+  try {
+    const version = await deps.clientVersion()
+    return typeof version === 'string' && version.length > 0 ? version : undefined
+  } catch {
+    return undefined
   }
 }
 
