@@ -45,6 +45,7 @@ import {
   settingsText,
 } from "../SettingsSubpageLayout";
 import { canReadClipboard, readClipboard } from "../../../../utils/clipboard";
+import { centerInScrollParent } from "../../scrollWithinParent";
 
 /**
  * MCP servers — CRUD over the
@@ -272,7 +273,7 @@ export function McpSection({
     const element = rowElements.current.get(revealServerRequest.server);
     if (!element) return;
     revealedSeq.current = revealServerRequest.seq;
-    element.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    centerInScrollParent(element);
     const next = { id: revealServerRequest.server, seq: revealServerRequest.seq };
     setFlashing(null);
     const timer = window.setTimeout(() => setFlashing(next), 0);

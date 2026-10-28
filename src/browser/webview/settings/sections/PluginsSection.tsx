@@ -88,6 +88,7 @@ import {
   SettingsSection,
   SettingsSubpageLayout,
 } from "../SettingsSubpageLayout";
+import { centerInScrollParent } from "../../scrollWithinParent";
 
 /**
  * Plugins & Mods (F-25): one installed list of plugins and mods, then per-marketplace
@@ -867,7 +868,7 @@ export function PluginsSection({
     const element = rowElements.current.get(revealPluginRequest.plugin);
     if (!element) return;
     revealedSeq.current = revealPluginRequest.seq;
-    element.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    centerInScrollParent(element);
     // Off, then on a tick later: a repeat click during a flash restarts it
     // (the class must leave the element for the animation to run again).
     const next = { name: revealPluginRequest.plugin, seq: revealPluginRequest.seq };
