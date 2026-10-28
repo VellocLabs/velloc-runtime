@@ -6,11 +6,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 
 // @ts-expect-error — plain .mjs build script, no types
-import { DEFAULT_RATIO, directoryBytes, planPrune } from '../../scripts/prune_artifacts.mjs'
+import { DEFAULT_RATIO, directoryBytes, planKeepOnly, planPrune } from '../../scripts/prune_artifacts.mjs'
 
 /**
  * Candidate storage pruning (G-3): before Workflow A uploads a candidate, the
- * oldest candidates are deleted once storage would pass 70% of the quota.
+ * oldest candidates are deleted once storage would pass 70% of the quota; after
+ * beta serves the new candidate, every older one is deleted.
  */
 
 const MB = 1_000_000
@@ -105,6 +106,26 @@ describe('planPrune', () => {
   })
 })
 
+describe('planKeepOnly', () => {
+  it('deletes every live candidate outside the kept runs, oldest first', () => {
+    const later = artifact(7, 200)
+    const orphan = artifact(3, 200, { workflow_run: null })
+    const kept = artifact(9, 200)
+    const report = artifact(1, 50, { name: 'test-report' })
+    const gone = artifact(2, 200, { expired: true })
+    const plan = planKeepOnly({
+      artifacts: [later, kept, report, orphan, gone],
+      keepRunIds: [String(kept.workflow_run!.id)],
+    })
+    expect(ids(plan.deletions)).toEqual([orphan.id, later.id])
+  })
+
+  it('refuses to run without a kept run, so it can never delete every candidate', () => {
+    expect(() => planKeepOnly({ artifacts: [artifact(1, 10)], keepRunIds: [] })).toThrow(/--keep-run/)
+    expect(() => planKeepOnly({ artifacts: [artifact(1, 10)], keepRunIds: [''] })).toThrow(/--keep-run/)
+  })
+})
+
 describe('directoryBytes', () => {
   let tmp: string
   beforeAll(() => {
@@ -146,5 +167,33 @@ describe('Workflow A prunes storage before the upload', () => {
     const baseline = pack.steps.find(s => s.id === 'beta_baseline')!
     expect(baseline.run).toContain('echo "run_id=$BRUN" >> "$GITHUB_OUTPUT"')
     expect(pack.permissions).toEqual({ contents: 'read', actions: 'write' })
+  })
+
+  it('defaults the quota to the Free plan when the repository variable is unset', () => {
+    const prune = pack.steps.find(s => /prune_artifacts/.test(s.run ?? ''))!
+    expect(prune.env?.QUOTA).toBe("${{ vars.ARTIFACT_QUOTA_BYTES || '500000000' }}")
+  })
+})
+
+describe('Workflow A retires superseded candidates after the beta deploy', () => {
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+  const doc = parse(readFileSync(join(repoRoot, '.github', 'workflows', 'build-beta.yml'), 'utf8'))
+  const retire = doc.jobs.retire as {
+    needs: string[]
+    permissions: Record<string, string>
+    steps: Array<{ uses?: string, run?: string, with?: Record<string, string>, 'continue-on-error'?: boolean }>
+  }
+
+  it('runs only after deploy, on the commit `source` resolved', () => {
+    expect([retire.needs].flat().sort()).toEqual(['deploy', 'source'])
+    const checkout = retire.steps.find(s => s.uses?.startsWith('actions/checkout@'))
+    expect(checkout?.with?.ref).toBe('${{ needs.source.outputs.commit }}')
+    expect(retire.permissions).toEqual({ contents: 'read', actions: 'write' })
+  })
+
+  it('keeps only this run\'s candidate, and a failure there cannot fail the run', () => {
+    const step = retire.steps.find(s => /prune_artifacts/.test(s.run ?? ''))!
+    expect(step.run).toBe('node scripts/prune_artifacts.mjs --keep-only --keep-run "$GITHUB_RUN_ID"')
+    expect(step['continue-on-error']).toBe(true)
   })
 })

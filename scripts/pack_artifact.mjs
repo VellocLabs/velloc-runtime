@@ -48,7 +48,7 @@ export function parseArgs(argv) {
 
 // Normalise a possibly-repeated flag to a list. Scalar → [scalar], array →
 // itself, missing/true → [].
-function asList(value) {
+export function asList(value) {
   if (value === undefined || value === true) return []
   return Array.isArray(value) ? value : [value]
 }

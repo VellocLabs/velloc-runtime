@@ -1,27 +1,34 @@
-// Frees Actions artifact storage before a candidate upload (G-3): when this
-// repository's live artifacts plus the incoming one exceed a share of the
-// storage quota, deletes the oldest `candidate` artifacts until they fit.
-// The newest candidate and every artifact of a --keep-run run are never
-// deleted. Other artifact names count toward the total but are left alone.
-// Flags: --quota-bytes <N> [--ratio <0..1>] [--incoming <dir>]
+// Frees Actions artifact storage by deleting `candidate` artifacts (G-3).
+// Quota mode (before an upload) deletes the oldest until storage fits a share
+// of the quota; --keep-only (after a beta deploy) deletes all but the kept runs.
+// Flags: --quota-bytes <N> [--ratio <0..1>] [--incoming <dir>] | --keep-only
 //   [--keep-run <id>]... [--name <artifact>] [--dry-run]
 // Env: GH_TOKEN (needs `actions: write`), GITHUB_REPOSITORY, GITHUB_API_URL.
 import fs from 'node:fs'
 import path from 'node:path'
 
 import { isMainModule } from './lib/isMainModule.mjs'
-import { parseArgs } from './pack_artifact.mjs'
+import { asList, parseArgs } from './pack_artifact.mjs'
 
 export const DEFAULT_RATIO = 0.7
 
+// Thrown, not exited: exiting with a fetch still open aborts Node on Windows.
 function fail(message) {
-  console.error(`prune_artifacts: ${message}`)
-  process.exit(1)
+  throw new Error(message)
 }
 
-function asList(value) {
-  if (value === undefined || value === true) return []
-  return Array.isArray(value) ? value : [value]
+/**
+ * Every live artifact called `name` whose run id is not in `keepRunIds`,
+ * oldest first. Throws when no run id is kept, so a missing id can never
+ * delete every candidate.
+ */
+export function planKeepOnly({ artifacts, keepRunIds, name = 'candidate' }) {
+  const keep = new Set(keepRunIds.map(String).filter(Boolean))
+  if (keep.size === 0) throw new Error('keep-only needs at least one --keep-run')
+  const deletions = artifacts
+    .filter(a => !a.expired && a.name === name && !keep.has(String(a.workflow_run?.id ?? '')))
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id - b.id)
+  return { deletions }
 }
 
 /**
@@ -103,27 +110,27 @@ async function listArtifacts(repo) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2))
+  const keepOnly = args['keep-only'] === true
   const quotaBytes = Number(args['quota-bytes'])
   const ratio = args.ratio === undefined ? DEFAULT_RATIO : Number(args.ratio)
   const repo = process.env.GITHUB_REPOSITORY
   if (!repo) fail('GITHUB_REPOSITORY is not set')
   if (!process.env.GH_TOKEN) fail('GH_TOKEN is not set')
   const incomingBytes = typeof args.incoming === 'string' ? directoryBytes(args.incoming) : 0
+  const keepRunIds = asList(args['keep-run'])
+  const name = typeof args.name === 'string' ? args.name : 'candidate'
 
-  let plan
-  try {
-    plan = planPrune({
-      artifacts: await listArtifacts(repo),
-      quotaBytes, ratio, incomingBytes,
-      keepRunIds: asList(args['keep-run']),
-      name: typeof args.name === 'string' ? args.name : 'candidate',
-    })
-  } catch (error) {
-    fail(error.message)
+  const artifacts = await listArtifacts(repo)
+  const plan = keepOnly
+    ? planKeepOnly({ artifacts, keepRunIds, name })
+    : planPrune({ artifacts, quotaBytes, ratio, incomingBytes, keepRunIds, name })
+
+  if (keepOnly) {
+    console.log(`keeping only the ${name} artifacts of run(s) ${keepRunIds.filter(Boolean).join(', ')}`)
+  } else {
+    console.log(`artifact storage: ${mb(plan.liveBytes)} live + ${mb(incomingBytes)} incoming, ` +
+      `budget ${mb(plan.budgetBytes)} (${Math.round(ratio * 100)}% of ${mb(quotaBytes)})`)
   }
-
-  console.log(`artifact storage: ${mb(plan.liveBytes)} live + ${mb(incomingBytes)} incoming, ` +
-    `budget ${mb(plan.budgetBytes)} (${Math.round(ratio * 100)}% of ${mb(quotaBytes)})`)
   for (const artifact of plan.deletions) {
     const run = artifact.workflow_run?.id ?? 'no run'
     console.log(`${args['dry-run'] ? 'would delete' : 'deleting'} artifact ${artifact.id} ` +
@@ -137,5 +144,10 @@ async function main() {
 }
 
 if (isMainModule(import.meta.url)) {
-  await main()
+  try {
+    await main()
+  } catch (error) {
+    console.error(`prune_artifacts: ${error.message}`)
+    process.exitCode = 1
+  }
 }

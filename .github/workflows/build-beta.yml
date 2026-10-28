@@ -366,11 +366,12 @@ jobs:
       # 70% of it, the oldest candidates go first; the newest candidate and the
       # one beta serves are kept. A deleted candidate can no longer be promoted,
       # exactly like an expired one. ARTIFACT_QUOTA_BYTES (a repository
-      # variable) is the plan's artifact storage; 1 GB when unset.
+      # variable) is the plan's artifact storage; 500 MB (the Free plan) when
+      # unset.
       - name: Free artifact storage
         env:
           GH_TOKEN: ${{ github.token }}
-          QUOTA: ${{ vars.ARTIFACT_QUOTA_BYTES || '1000000000' }}
+          QUOTA: ${{ vars.ARTIFACT_QUOTA_BYTES || '500000000' }}
           BETA_RUN: ${{ steps.beta_baseline.outputs.run_id }}
         run: |
           set -euo pipefail
@@ -620,3 +621,29 @@ jobs:
             echo "so pinning a specific candidate means either the command above or typing"
             echo "\`candidate_run_id = $GITHUB_RUN_ID\` into the form.</sub>"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Once beta serves this candidate, every older one is superseded: promote
+  # defaults to beta's candidate, and the next build's baselines read only
+  # beta and production. Deleting them leaves one candidate in storage between
+  # builds. Best-effort: a failed deletion must not fail the run, or promote
+  # would refuse the candidate beta now serves.
+  retire:
+    needs: [source, deploy]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.source.outputs.commit }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Delete superseded candidates
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/prune_artifacts.mjs --keep-only --keep-run "$GITHUB_RUN_ID"
