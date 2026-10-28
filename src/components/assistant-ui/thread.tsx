@@ -1462,7 +1462,7 @@ const ThreadSuggestions: FC<{ templateType?: string }> = ({ templateType }) => {
           {welcome.greeting}
         </h2>
       )}
-      <div className="aui-thread-welcome-suggestions grid w-full gap-2 @md:grid-cols-2">
+      <div className="aui-thread-welcome-suggestions grid w-full gap-4 @md:grid-cols-2">
         {visible.map((suggestion, index) => (
           <ThreadPrimitive.Suggestion
             key={index}
