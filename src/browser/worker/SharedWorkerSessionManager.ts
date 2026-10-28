@@ -177,6 +177,7 @@ import {
 import { BridgeRequestRouter } from './BridgeRequestRouter'
 import { ManagerBootServices } from './ManagerBootServices'
 import { endProviderSessions } from '../../mods/provider/providerSessionEnd'
+import { modContributionsState } from '../../mods/ui/contributionsState'
 import { closeSessionMCPPool } from '../../mcp/sessionPools'
 import { SessionInitOrchestrator } from './SessionInitOrchestrator'
 import { setMcpHostProvider, type McpHostAccess } from '../../mcp/mcpHost'
@@ -3227,6 +3228,7 @@ export class SharedWorkerSessionManager {
         ...(summary?.projectRoot ? { projectRoot: summary.projectRoot } : {}),
         ...(summary?.templateType ? { templateType: summary.templateType } : {}),
       },
+      pluginTemplates: modContributionsState().templates,
     })
     if (!composed.payload) {
       throw wireError('host_unavailable', composed.reason)

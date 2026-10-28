@@ -38,6 +38,8 @@ export type ContributedTemplate = {
   description?: ContributionText
   icon?: ContributionIcon
   launcher: 'both' | 'sidebar' | 'menu' | 'hidden'
+  /** `required`: the session must be bound to a project folder, as `code`. */
+  projectFolder?: 'required'
   /** Welcome chips by locale (`''` = the default file). */
   welcome?: Record<string, ContributionWelcome>
 }

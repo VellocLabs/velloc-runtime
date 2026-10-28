@@ -49,6 +49,22 @@ describe('templates in the manifest', () => {
     })
   })
 
+  it('takes projectFolder "required" and drops an entry with any other value', () => {
+    const errors: string[] = []
+    const out = checkTemplateDecls(
+      'acme',
+      {
+        safe: { title: 'Safe', projectFolder: 'required' },
+        loose: { title: 'Loose', projectFolder: true },
+      },
+      errors,
+    )
+    expect(out).toEqual({
+      safe: { title: 'Safe', launcher: 'both', projectFolder: 'required', path: './templates/safe' },
+    })
+    expect(errors).toEqual(['templates.loose.projectFolder: expected "required"'])
+  })
+
   it('drops a bad entry whole with a reason per problem, and keeps the others', () => {
     const errors: string[] = []
     const out = checkTemplateDecls(
@@ -378,10 +394,19 @@ describe('a plugin template session', () => {
   it('registers the type from the plugin\'s files, its own holders first, then the bundled ones', async () => {
     const { host } = rig(FILES)
     await host.sync({ enabled: [acme()] })
-    await expect(openPluginTemplate('acme:review', host)).resolves.toEqual({ owner: 'acme@mkt' })
+    await expect(openPluginTemplate('acme:review', host)).resolves.toEqual({ owner: 'acme@mkt', requiresProjectFolder: false })
     expect(getTemplate('acme:review')!.config.tools).toEqual(['read'])
     expect(getHolderProse('review_intro', { type: 'acme:review' })).toBe('You review diffs.')
     expect(getHolderProse('agent_intro', { type: 'acme:review' })).toBe(getHolderProse('agent_intro', { type: 'agent' }))
+  })
+
+  it('a type whose manifest requires a project folder publishes it and opens as folder-bound', async () => {
+    const { host } = rig(FILES)
+    const plugin = acme()
+    plugin.templates![0]!.decl.projectFolder = 'required'
+    await host.sync({ enabled: [plugin] })
+    expect(host.state().templates[0]).toMatchObject({ type: 'acme:review', projectFolder: 'required' })
+    await expect(openPluginTemplate('acme:review', host)).resolves.toEqual({ owner: 'acme@mkt', requiresProjectFolder: true })
   })
 
   it('refuses with a code the page shows: plugin off, provider not set up, another install', async () => {

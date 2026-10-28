@@ -296,15 +296,28 @@ export const FORCED_FOLDER_TEMPLATE_TYPES: ReadonlySet<string> = new Set([
   'team',
 ])
 
+/** A plugin template as its manifest declares its folder (F-25). */
+export type PluginTemplateFolderDecl = {
+  readonly type: string
+  readonly projectFolder?: 'required'
+}
+
 /**
  * True when `templateType` is one of the forced-folder types (must bind a real
- * project folder rather than get a per-type sandbox). Type guard so call sites
- * can pass the narrowed value straight to `writeLastFolderForType` etc.
+ * project folder rather than get a per-type sandbox): a bundled one, or a
+ * plugin type in `pluginTemplates` whose manifest says `projectFolder:
+ * "required"`. Type guard so call sites can pass the narrowed value straight
+ * to `writeLastFolderForType` etc.
  */
 export function isForcedFolderTemplateType(
   templateType: string | undefined,
+  pluginTemplates: readonly PluginTemplateFolderDecl[] = [],
 ): templateType is string {
-  return templateType !== undefined && FORCED_FOLDER_TEMPLATE_TYPES.has(templateType)
+  if (templateType === undefined) return false
+  if (FORCED_FOLDER_TEMPLATE_TYPES.has(templateType)) return true
+  return pluginTemplates.some(
+    template => template.type === templateType && template.projectFolder === 'required',
+  )
 }
 
 // A safe single path segment: lowercase alphanumeric + dashes, starting

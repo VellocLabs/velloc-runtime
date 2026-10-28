@@ -1035,6 +1035,7 @@ describe('AgentRuntimeWorker — resume projectRoot restore', () => {
       },
       hostBridge: { getModelCatalog: vi.fn(async () => null) },
       tools: [],
+      requiresProjectFolder: true,
       usedSandboxProjectRoot: false,
       options: {
         cwd: projectRoot ?? '/workspace',
@@ -1192,6 +1193,38 @@ describe('AgentRuntimeWorker — resume projectRoot restore', () => {
     expect(worker.getSnapshot().projectBranch).toBe('main')
   })
 
+  it('resolves the branch for a plugin type whose manifest requires a project folder', async () => {
+    const loadSessionSummary = vi.fn(async () => ({
+      sessionId: 'resume-1',
+      projectRoot: '/home/me/projA',
+    }))
+    const callTool = vi.fn(async () => 'main\n')
+    const worker = new AgentRuntimeWorker({
+      emit: () => {},
+      conversationStorageBackend: { loadSessionSummary } as never,
+    })
+    vi.mocked(createAgentRuntime).mockImplementationOnce(
+      async (opts: { projectRoot?: string }) => {
+        const rt = fakeRuntime(opts.projectRoot)
+        rt.options.templateType = 'acme:safe'
+        rt.hostBridge = { ...rt.hostBridge, browser: { callTool } } as never
+        return rt as never
+      },
+    )
+
+    await worker.receiveFrame({
+      type: 'worker.init',
+      payload: {
+        sessionId: 'resume-1',
+        cwd: '/workspace',
+        templateType: 'acme:safe',
+      } as never,
+    })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(callTool).toHaveBeenCalled()
+    expect(worker.getSnapshot().projectBranch).toBe('main')
+  })
+
   it('does not resolve a branch for a type that never binds a folder (chat)', async () => {
     const loadSessionSummary = vi.fn(async () => ({
       sessionId: 'resume-1',
@@ -1206,6 +1239,7 @@ describe('AgentRuntimeWorker — resume projectRoot restore', () => {
       async (opts: { projectRoot?: string }) => {
         const rt = fakeRuntime(opts.projectRoot)
         rt.options.templateType = 'chat'
+        rt.requiresProjectFolder = false
         rt.hostBridge = { ...rt.hostBridge, browser: { callTool } } as never
         return rt as never
       },

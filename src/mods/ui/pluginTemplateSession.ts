@@ -8,6 +8,7 @@
  */
 
 import { registerPluginType } from '../../prompting/templateRegistry'
+import { isForcedFolderTemplateType } from '../../utils/conversationStoragePaths'
 import { getModUiContributionsHost, type ModUiContributionsHost } from './contributionsHost'
 
 export type PluginTemplateErrorCode =
@@ -25,11 +26,12 @@ export class PluginTemplateUnavailableError extends Error {
   }
 }
 
-/** Register `type` from the plugin in effect that offers it; its owner. */
+/** Register `type` from the plugin in effect that offers it; its owner, and
+ *  whether its manifest has it bound to a project folder. */
 export async function openPluginTemplate(
   type: string,
   host: ModUiContributionsHost = getModUiContributionsHost(),
-): Promise<{ owner: string }> {
+): Promise<{ owner: string; requiresProjectFolder: boolean }> {
   await host.whenSynced()
   const status = host.templateStatus(type)
   if (status.state === 'absent') {
@@ -45,7 +47,10 @@ export async function openPluginTemplate(
     )
   }
   await registerPluginType(type, await host.readTemplateFiles(status.source))
-  return { owner: status.source.owner }
+  return {
+    owner: status.source.owner,
+    requiresProjectFolder: isForcedFolderTemplateType(type, host.state().templates),
+  }
 }
 
 /** Refuse a session whose recorded owner is not the install offering its type now. */

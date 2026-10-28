@@ -313,6 +313,7 @@ export class ModUiContributionsHost {
           ...(template.decl.description ? { description: template.decl.description } : {}),
           ...(icon ? { icon } : {}),
           launcher: template.decl.launcher,
+          ...(template.decl.projectFolder ? { projectFolder: template.decl.projectFolder } : {}),
           ...(welcome ? { welcome } : {}),
         })
       }

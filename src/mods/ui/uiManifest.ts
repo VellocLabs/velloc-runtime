@@ -24,6 +24,9 @@ export type PluginTemplateDecl = {
   description?: LocalizedText
   icon?: ModUiIconDecl
   launcher: TemplateLauncherPlace
+  /** `required`: a session of this type works in a project folder the person
+   *  picks, as `code` does, never in the shared workspace. */
+  projectFolder?: 'required'
   /** Plugin-relative folder holding `template.md`, `./`-prefixed. */
   path: string
 }
@@ -169,6 +172,9 @@ export function checkTemplateDecls(
       if ((TEMPLATE_LAUNCHER_PLACES as readonly unknown[]).includes(raw.launcher)) launcher = raw.launcher as TemplateLauncherPlace
       else bad(`${label}.launcher: expected one of ${TEMPLATE_LAUNCHER_PLACES.join(', ')}`)
     }
+    if (raw.projectFolder !== undefined && raw.projectFolder !== 'required') {
+      bad(`${label}.projectFolder: expected "required"`)
+    }
     let path = `./templates/${key}`
     if (raw.path !== undefined) {
       if (typeof raw.path === 'string' && insidePlugin(raw.path)) path = raw.path.replace(/\/+$/, '')
@@ -180,6 +186,7 @@ export function checkTemplateDecls(
       ...(description ? { description } : {}),
       ...(icon ? { icon } : {}),
       launcher,
+      ...(raw.projectFolder === 'required' ? { projectFolder: 'required' as const } : {}),
       path,
     }
   }

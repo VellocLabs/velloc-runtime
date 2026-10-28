@@ -72,6 +72,19 @@ describe('composeSessionInit', () => {
       expect(compose({ open: { sessionId: 's', templateType: 'safe_code' } })).toMatchObject({ needsLastFolderFor: 'safe_code' })
     })
 
+    it('a plugin type inherits the last folder only when its manifest requires a project folder', () => {
+      const pluginTemplates = [
+        { type: 'acme:safe', projectFolder: 'required' as const },
+        { type: 'acme:notes' },
+      ]
+      expect(compose({ open: { sessionId: 's', templateType: 'acme:safe' }, pluginTemplates }))
+        .toMatchObject({ needsLastFolderFor: 'acme:safe' })
+      expect(compose({ open: { sessionId: 's', templateType: 'acme:notes' }, pluginTemplates }))
+        .toMatchObject({ needsLastFolderFor: null })
+      expect(compose({ open: { sessionId: 's', templateType: 'acme:safe' } }))
+        .toMatchObject({ needsLastFolderFor: null })
+    })
+
     // Regression (the "agent session opened blank" bug): only a forced-folder
     // type may inherit a folder. An agent/chat session inheriting one was routed
     // into that folder's project dir and wrote an empty stub there while its

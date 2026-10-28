@@ -4,7 +4,10 @@
  * any at `full`, below it a known project in the runtime's spelling — else the persisted binding, else
  * the last folder of a forced-folder type). Per-session keys never leak from a lower layer.
  */
-import { isForcedFolderTemplateType } from '../../utils/conversationStoragePaths'
+import {
+  isForcedFolderTemplateType,
+  type PluginTemplateFolderDecl,
+} from '../../utils/conversationStoragePaths'
 import {
   hostEnvironmentOf,
   type HostEnvironment,
@@ -21,6 +24,8 @@ export type ComposeSessionInitInput = {
   lastInitTemplate: AgentRuntimeWorkerInitPayload | null
   /** What the session's persisted summary says, when the manager has it at hand. */
   persisted?: { projectRoot?: string; templateType?: string }
+  /** The plugin templates in effect, for which of them require a folder (F-25). */
+  pluginTemplates?: readonly PluginTemplateFolderDecl[]
 }
 
 export type ComposedSessionInit =
@@ -60,9 +65,11 @@ export function composeSessionInit(input: ComposeSessionInitInput): ComposedSess
     ...(open.reinit || init.forceReinit ? { forceReinit: true } : {}),
     ...(init.traceId ? { traceId: init.traceId } : {}),
   }
-  // Only a forced-folder type (`code` / `safe_code`) inherits a folder; every
-  // other type opens in its per-type shared workspace. Applying it to other
-  // types is the "agent session opened blank" bug.
-  const needsLastFolderFor = !explicitRoot && isForcedFolderTemplateType(templateType) ? templateType! : null
+  // Only a forced-folder type (`code` / `safe_code`, or a plugin type that
+  // requires a folder) inherits a folder; every other type opens in its
+  // per-type shared workspace. Applying it to other types is the "agent
+  // session opened blank" bug.
+  const needsLastFolderFor =
+    !explicitRoot && isForcedFolderTemplateType(templateType, input.pluginTemplates) ? templateType : null
   return { payload, needsLastFolderFor }
 }

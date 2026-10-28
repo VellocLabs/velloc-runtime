@@ -360,9 +360,12 @@ export async function createBrowserRuntime(
   // A plugin's type (`<plugin>:<key>`, F-25): registered from the plugin in
   // effect that offers it, or the session does not start.
   let pluginTemplateOwner: string | undefined
+  let pluginRequiresProjectFolder = false
   if (isPluginTemplateId(templateType)) {
     const { openPluginTemplate } = await import('../../mods/ui/pluginTemplateSession')
-    pluginTemplateOwner = (await openPluginTemplate(templateType)).owner
+    const opened = await openPluginTemplate(templateType)
+    pluginTemplateOwner = opened.owner
+    pluginRequiresProjectFolder = opened.requiresProjectFolder
   }
   const sessionTemplate = getTemplate(templateType)
   // Precedence: explicit option → host-mode default. (With a host manifest the
@@ -454,17 +457,18 @@ export async function createBrowserRuntime(
     }
   }
 
-  // A forced-folder session (`code`/`safe_code`) whose `projectRoot` override is
-  // absent/invalid fell back to the shared sandbox workspace — it is NOT bound
-  // to a real project folder. The UI surfaces this (snapshot `needsProjectFolder`,
-  // AND-ed with host capability in `getSnapshot`) to force the project-folder
-  // picker. Only the forced-folder types are gated; `agent`/`chat` are happy in
-  // the sandbox. Computed here, where the RAW override is still visible — once
-  // resolved, `options.projectRoot` always points at a valid path (sandbox or
-  // bound) and the distinction is lost.
+  // A forced-folder session (`code`/`safe_code`, or a plugin type declared
+  // `projectFolder: "required"`) with an absent/invalid `projectRoot` override
+  // fell back to the shared sandbox workspace — NOT bound to a real folder. The
+  // UI surfaces this (snapshot `needsProjectFolder`, AND-ed with host
+  // capability in `getSnapshot`) to force the folder picker; `agent`/`chat` are
+  // happy in the sandbox. Computed here, where the RAW override is still
+  // visible — once resolved, `options.projectRoot` always points at a valid
+  // path (sandbox or bound) and the distinction is lost.
+  const requiresProjectFolder =
+    isForcedFolderTemplateType(templateType) || pluginRequiresProjectFolder
   const usedSandboxProjectRoot =
-    isForcedFolderTemplateType(templateType) &&
-    projectRootIsSandbox(options.projectRoot)
+    requiresProjectFolder && projectRootIsSandbox(options.projectRoot)
 
   // WebFetch resolves its deps from its tool-use context at call() time (this runtime's scoped
   // `network`, and `projectRoot` for artifacts), never from a module-global slot.
@@ -1280,6 +1284,7 @@ export async function createBrowserRuntime(
       // filesystem discovery. See agents/builtInAgents.ts.
       agents: sessionAgents,
     },
+    requiresProjectFolder,
     usedSandboxProjectRoot,
     runtimeConfig,
     hostBridge,

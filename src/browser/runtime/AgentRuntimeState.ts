@@ -118,6 +118,12 @@ export type BrowserRuntimeOptions = {
 export type BrowserRuntimeCoreState = {
   options: BrowserRuntimeOptions
   /**
+   * True for a type that must be bound to a project folder: the bundled
+   * forced-folder types, and a plugin type whose manifest declares
+   * `projectFolder: "required"` (F-25).
+   */
+  requiresProjectFolder: boolean
+  /**
    * True when a `code` session fell back to the shared sandbox workspace
    * because it had no valid `projectRoot` override — i.e. it is not bound to a
    * real project folder. Surfaced (AND-ed with host folder-picker capability)

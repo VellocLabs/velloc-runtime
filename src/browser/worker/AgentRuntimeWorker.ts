@@ -33,7 +33,6 @@ import type {
 import type { OwnerRuntimeGlobals } from './taskTypes'
 import { readProjectBranch } from '../../utils/projectBranch'
 import { streamEventMovesGitHead } from '../../utils/branchSwitchDetect'
-import { isForcedFolderTemplateType } from '../../utils/conversationStoragePaths'
 import type { AgentRuntimeWorkerInitPayload } from './workerProtocol'
 import { buildWorkerSnapshot } from './workerSnapshot'
 import { isAutoCompactWindow } from '../../settings/modelSettings'
@@ -1478,13 +1477,9 @@ export class AgentRuntimeWorker {
     const runtime = this.runtime
     if (!runtime) return true
     // Every type that BINDS a real folder gets the branch chip — the same set
-    // `isForcedFolderTemplateType` drives the folder picker with (code,
-    // safe_code, review). Keying on the literal `'code'` here left the other
-    // folder-bound types picking a repository and never showing its branch.
-    if (
-      !isForcedFolderTemplateType(runtime.options.templateType) ||
-      runtime.usedSandboxProjectRoot
-    ) {
+    // that drives the folder picker (`requiresProjectFolder`: the bundled
+    // forced-folder types and a plugin type that requires a folder).
+    if (!runtime.requiresProjectFolder || runtime.usedSandboxProjectRoot) {
       return true
     }
     const callTool = runtime.hostBridge?.browser?.callTool

@@ -96,6 +96,17 @@ describe('per-type-shared default project roots', () => {
     expect(isForcedFolderTemplateType(undefined)).toBe(false)
   })
 
+  it('a plugin type is forced-folder only when its manifest says projectFolder "required"', () => {
+    const plugins = [
+      { type: 'nebius:safecode', projectFolder: 'required' as const },
+      { type: 'acme:notes' },
+    ]
+    expect(isForcedFolderTemplateType('nebius:safecode', plugins)).toBe(true)
+    expect(isForcedFolderTemplateType('acme:notes', plugins)).toBe(false)
+    expect(isForcedFolderTemplateType('nebius:safecode')).toBe(false)
+    expect(isForcedFolderTemplateType('code', plugins)).toBe(true)
+  })
+
   it('isPerTypeSharedTemplateType: any safe-named non-forced type → true (rule, not a list)', () => {
     // The live types: agent/chat get a per-type shared root; code/safe_code do not.
     expect(isPerTypeSharedTemplateType('agent')).toBe(true)

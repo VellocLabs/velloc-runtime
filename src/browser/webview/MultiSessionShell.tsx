@@ -314,7 +314,11 @@ import {
   writeStoredActiveSessionId,
 } from './bootSessionPointer'
 import { useT } from './i18n'
-import { useAttachModContributions, useContributionsSnapshot } from './mods/modContributionsView'
+import {
+  getModContributions,
+  useAttachModContributions,
+  useContributionsSnapshot,
+} from './mods/modContributionsView'
 import type { ModsPressTopbarResult } from '../runtimeProtocol/modContributions'
 import {
   getBootDiagnosticTraceId,
@@ -4023,15 +4027,15 @@ export function MultiSessionShell({
         if (!bound) return
         addRecentFolder(trimmed)
         // Remember this folder as the default for a NEW session of the SAME
-        // forced-folder type (`code`/`safe_code`) — the only types that inherit
-        // their last-bound folder (`isForcedFolderTemplateType`; the runtime's
-        // `session.open` composer), each in its OWN bucket. We
-        // deliberately do NOT record for other types: binding a folder to an
-        // agent/chat session must not leak into the bucket that new sessions
-        // read, and defaulting an unknown type to `'agent'` here is exactly how
-        // the `'agent'` bucket got polluted and opened agent sessions blank.
+        // forced-folder type (`code`/`safe_code`, or a plugin type that
+        // requires a folder) — the only types that inherit their last-bound
+        // folder (`isForcedFolderTemplateType`; the runtime's `session.open`
+        // composer), each in its OWN bucket. Never for other types: an
+        // agent/chat bind must not leak into the bucket new sessions read, and
+        // defaulting an unknown type to `'agent'` here is exactly how the
+        // `'agent'` bucket got polluted and opened agent sessions blank.
         const boundType = getSessionTemplateType(sessionId)
-        if (isForcedFolderTemplateType(boundType)) {
+        if (isForcedFolderTemplateType(boundType, getModContributions().templates)) {
           writeLastFolderForType(boundType, trimmed)
         }
         // Authoritative persist (worker → conversation store → fs). On resume /
