@@ -312,10 +312,19 @@ export class ProviderModHost {
 
     // Register what is new or changed.
     const adopted: Array<[string, string | undefined, string]> = []
+    const reclaimed: Array<[string, string | undefined, string]> = []
     for (const [name, plugin] of wanted) {
       const signature = signatureOf(plugin)
       const previous = this.entries.get(name)
-      if (previous?.signature === signature) continue
+      if (previous?.signature === signature) {
+        // An entry that lost its owner (a write from a copy without it) is
+        // this registrant's again, as at registration (F-14 `requires` reads it).
+        const ownerOf = options.ownerOf ?? modProviderOwner
+        for (const provider of plugin.providers!) {
+          if (ownerOf(provider.id) === undefined) reclaimed.push([provider.id, previous.version, pluginConfigId(plugin)])
+        }
+        continue
+      }
       const providers = plugin.providers!
       let runtime: ProviderModRuntime
       try {
@@ -393,7 +402,7 @@ export class ProviderModHost {
     // configs, and needs the providers it names to be in the catalog.
     if (changed) reapplyProviderCatalog()
     const adopt = options.adopt ?? adoptModProvider
-    for (const [id, version, owner] of adopted) await adopt(id, version, owner)
+    for (const [id, version, owner] of [...adopted, ...reclaimed]) await adopt(id, version, owner)
 
     const hasStored = (options.hasStoredConfigs ?? hasStoredModProviderConfigs)()
     if (changed || (first && hasStored)) {

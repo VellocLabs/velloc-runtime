@@ -39,6 +39,7 @@ import {
   adoptModProvider,
   configureRuntimeProviders,
   isProviderSetUp,
+  modProviderOwner,
   publishModProvidersChanged,
   refreshConfiguredRuntimeProviderModels,
   resetRuntimeProviders,
@@ -430,6 +431,22 @@ describe('ownership of the stored entry', () => {
     expect((await host.sync({ enabled: [plugin('opencode', { zen: provider() }, { version: '1.4.1' })], disabled: [] })).registered).toEqual([ZEN])
   })
 
+  it('an unchanged registration whose entry lost its owner is adopted again at the next sync, and only then', async () => {
+    const owners: Record<string, string | undefined> = {}
+    const { host, adopt } = rig({ ownerOf: id => owners[id] })
+    await host.sync({ enabled: [plugin()], disabled: [] })
+    expect(adopt).toHaveBeenCalledTimes(1)
+    owners[ZEN] = 'opencode@inline'
+    await host.sync({ enabled: [plugin()], disabled: [] })
+    expect(adopt).toHaveBeenCalledTimes(1)
+    // A key saved from a copy of the entry without its owner.
+    owners[ZEN] = undefined
+    const result = await host.sync({ enabled: [plugin()], disabled: [] })
+    expect(result.registered).toEqual([])
+    expect(adopt).toHaveBeenCalledTimes(2)
+    expect(adopt).toHaveBeenLastCalledWith(ZEN, '1.4.0', 'opencode@inline')
+  })
+
   it('a plugin registered before settings.json was read is judged again once it is', async () => {
     const { host } = rig({ adopt: undefined })
     runtimeHost()
@@ -791,6 +808,21 @@ describe('the settings.json entry', () => {
     await adoptModProvider(ZEN, '1.4.0', 'opencode@other')
     await adoptModProvider(ZEN, '1.4.0', 'opencode@shop')
     expect(writes).toHaveLength(1)
+  })
+
+  it('an owner a key save dropped is written back by the next sync, the key kept', async () => {
+    const { host } = rig({ adopt: undefined })
+    const { writes } = runtimeHost()
+    setRuntimeProviderConfigs({})
+    await host.sync({ enabled: [plugin()], disabled: [] })
+    await vi.waitFor(() => expect(modProviderOwner(ZEN)).toBe('opencode@inline'))
+    setRuntimeProviderConfigs({ [ZEN]: { source: 'mod', modVersion: '1.4.0', apiKey: 'sealed' } })
+    expect(modProviderOwner(ZEN)).toBeUndefined()
+    writes.length = 0
+    await host.sync({ enabled: [plugin()], disabled: [] })
+    await vi.waitFor(() => expect(writes).toEqual([[ZEN, { source: 'mod', modVersion: '1.4.0', modOwner: 'opencode@inline' }]]))
+    expect(modProviderOwner(ZEN)).toBe('opencode@inline')
+    expect(isProviderSetUp(ZEN)).toBe(true)
   })
 
   it('survives a failed write', async () => {
