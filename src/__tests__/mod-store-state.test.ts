@@ -270,6 +270,47 @@ describe('$.store', () => {
     expect(await new FileModStore({ path: '/m/p/store.json', dir: '/m/p', fs: d }).keys()).toEqual(['k', 'z', 'y'])
   })
 
+  /** One runtime's fs over `d`: once `dispose()`d, every call fails as a sealed bridge scope does. */
+  function runtimeFs(d: ReturnType<typeof disk>): ModStoreFs & { dispose(): void } {
+    let disposed = false
+    const live = <T>(call: () => Promise<T>): Promise<T> =>
+      disposed ? Promise.reject(new Error('Runtime scope was disposed.')) : call()
+    return {
+      readFile: (path, options) => live(() => d.readFile(path, options)),
+      writeFile: (path, data, options) => live(() => d.writeFile(path, data, options)),
+      ensureDir: dir => live(() => d.ensureDir(dir)),
+      dispose: () => {
+        disposed = true
+      },
+    }
+  }
+
+  it('a runtime that opens the store after the first one ended still writes to disk', async () => {
+    const d = disk()
+    const first = runtimeFs(d)
+    const a = fileModStore('/m', 'p', first)
+    await a.set('k', 1)
+    first.dispose()
+    const b = fileModStore('/m', 'p', runtimeFs(d))
+    await b.set('k', 2)
+    expect(await b.get('k')).toBe(2)
+    expect(parseModStoreFile(d.files.get('/m/p/store.json')!)?.entries).toEqual([['k', 2]])
+    await expect(a.set('k', 3)).rejects.toThrow('Runtime scope was disposed.')
+    expect(await b.get('k')).toBe(2)
+  })
+
+  it('a read through an ended runtime is not taken for an empty store', async () => {
+    const d = disk()
+    d.files.set('/m/p/store.json', JSON.stringify({ version: 1, entries: [['kept', 1]] }))
+    const first = runtimeFs(d)
+    first.dispose()
+    await expect(fileModStore('/m', 'p', first).keys()).rejects.toThrow('Runtime scope was disposed.')
+    const b = fileModStore('/m', 'p', runtimeFs(d))
+    await b.set('added', 2)
+    expect(await b.keys()).toEqual(['kept', 'added'])
+    expect(parseModStoreFile(d.files.get('/m/p/store.json')!)?.entries).toEqual([['kept', 1], ['added', 2]])
+  })
+
   it('a corrupt file reads as empty and is reported; a missing one is empty', async () => {
     const d = disk()
     d.files.set('/m/p/store.json', '{not json')

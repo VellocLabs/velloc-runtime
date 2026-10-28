@@ -2,9 +2,11 @@
  * `$.store`: a plugin's key-value file across sessions, `mods/<plugin>/store.json`,
  * capped at 4 MiB of JSON text; values round-trip through JSON; an entry list keeps
  * insertion order. One shared `FileModStore` per file; writes are serialized and
- * whole-file. On-disk contract (D-1).
+ * whole-file. Each opener reads and writes through its own fs, so a runtime that
+ * ended never strands the others (F-25). On-disk contract (D-1).
  */
 
+import { isFsNotFoundError } from '../utils/fsTransportFailure'
 import { toJsonData } from './modState'
 
 export type ModStoreHost = {
@@ -60,7 +62,7 @@ const encoder = new TextEncoder()
 
 export class FileModStore implements ModStoreHost {
   private values: Map<string, unknown> | undefined
-  private loading: Promise<Map<string, unknown>> | undefined
+  private loading: { fs: ModStoreFs; values: Promise<Map<string, unknown>> } | undefined
   /** The write in flight; the next one waits for it. */
   private queue: Promise<void> = Promise.resolve()
 
@@ -74,27 +76,37 @@ export class FileModStore implements ModStoreHost {
     },
   ) {}
 
-  private load(): Promise<Map<string, unknown>> {
-    if (this.values) return Promise.resolve(this.values)
-    if (!this.loading) {
-      this.loading = (async () => {
-        const values = new Map<string, unknown>()
-        let text: string | null = null
-        try {
-          text = await this.options.fs.readFile(this.options.path, { encoding: 'utf-8' })
-        } catch {
-          text = null
-        }
-        if (text !== null && text !== '') {
-          const parsed = parseModStoreFile(text)
-          if (parsed) for (const [key, value] of parsed.entries) values.set(key, value)
-          else this.options.report?.(`mods: ${this.options.path} could not be read; the store starts empty`)
-        }
-        this.values = values
-        return values
-      })()
+  /** The values as the disk holds them, read once. Only an absent file is an
+   *  empty store: any other failed read rejects and is not kept, and a caller
+   *  whose fs did not make the failed read tries again through its own. */
+  private async load(fs: ModStoreFs): Promise<Map<string, unknown>> {
+    for (;;) {
+      if (this.values) return this.values
+      const loading = (this.loading ??= { fs, values: this.read(fs) })
+      try {
+        return await loading.values
+      } catch (error) {
+        if (this.loading === loading) this.loading = undefined
+        if (loading.fs === fs) throw error
+      }
     }
-    return this.loading
+  }
+
+  private async read(fs: ModStoreFs): Promise<Map<string, unknown>> {
+    const values = new Map<string, unknown>()
+    let text: string | null = null
+    try {
+      text = await fs.readFile(this.options.path, { encoding: 'utf-8' })
+    } catch (error) {
+      if (!isFsNotFoundError(error)) throw error
+    }
+    if (text !== null && text !== '') {
+      const parsed = parseModStoreFile(text)
+      if (parsed) for (const [key, value] of parsed.entries) values.set(key, value)
+      else this.options.report?.(`mods: ${this.options.path} could not be read; the store starts empty`)
+    }
+    this.values = values
+    return values
   }
 
   private serialize(values: Map<string, unknown>): string {
@@ -107,10 +119,10 @@ export class FileModStore implements ModStoreHost {
    *  write that lands replaces the values `get` reads. A change that throws,
    *  or a write that fails, leaves memory and disk as they were — and a
    *  change queued behind it starts from them, not from the failed one. */
-  private commit(change: (next: Map<string, unknown>) => boolean): Promise<void> {
+  private commit(fs: ModStoreFs, change: (next: Map<string, unknown>) => boolean): Promise<void> {
     const run = this.queue.then(async () => {
       if (this.closed) throw new Error('$.store: the store was closed; the change was not written')
-      const next = new Map(await this.load())
+      const next = new Map(await this.load(fs))
       if (!change(next)) return
       const text = this.serialize(next)
       const bytes = encoder.encode(text).length
@@ -120,8 +132,8 @@ export class FileModStore implements ModStoreHost {
           `$.store.set: the store would hold ${bytes} bytes of JSON text, over its ${cap}-byte cap`,
         )
       }
-      await this.options.fs.ensureDir(this.options.dir)
-      await this.options.fs.writeFile(this.options.path, text, { encoding: 'utf-8' })
+      await fs.ensureDir(this.options.dir)
+      await fs.writeFile(this.options.path, text, { encoding: 'utf-8' })
       this.values = next
     })
     // The queue goes on whatever this change did.
@@ -138,24 +150,38 @@ export class FileModStore implements ModStoreHost {
     return this.queue
   }
 
-  async get(key: string): Promise<unknown> {
-    return (await this.load()).get(key)
+  /** This store's values and write queue, read and written through `fs`. */
+  through(fs: ModStoreFs): ModStoreHost {
+    return {
+      get: async key => (await this.load(fs)).get(key),
+      set: async (key, value) => {
+        const data = toJsonData(value, '$.store.set')
+        await this.commit(fs, next => {
+          next.set(key, data)
+          return true
+        })
+      },
+      delete: async key => {
+        await this.commit(fs, next => next.delete(key))
+      },
+      keys: async () => [...(await this.load(fs)).keys()],
+    }
   }
 
-  async set(key: string, value: unknown): Promise<void> {
-    const data = toJsonData(value, '$.store.set')
-    await this.commit(next => {
-      next.set(key, data)
-      return true
-    })
+  get(key: string): Promise<unknown> {
+    return this.through(this.options.fs).get(key)
   }
 
-  async delete(key: string): Promise<void> {
-    await this.commit(next => next.delete(key))
+  set(key: string, value: unknown): Promise<void> {
+    return this.through(this.options.fs).set(key, value)
   }
 
-  async keys(): Promise<string[]> {
-    return [...(await this.load()).keys()]
+  delete(key: string): Promise<void> {
+    return this.through(this.options.fs).delete(key)
+  }
+
+  keys(): Promise<string[]> {
+    return this.through(this.options.fs).keys()
   }
 }
 
@@ -192,14 +218,15 @@ export class MemoryModStore implements ModStoreHost {
 /** The stores open in this realm, by file path: one in-memory copy per file. */
 const openStores = new Map<string, FileModStore>()
 
-/** The plugin's store under `modsDir` (`~/.velloc/mods`): opened once per
- *  realm, shared by every slot that asks for it. */
+/** The plugin's store under `modsDir` (`~/.velloc/mods`): one per realm,
+ *  shared by every slot that asks for it, each reading and writing through
+ *  the `fs` it passed. */
 export function fileModStore(
   modsDir: string,
   plugin: string,
   fs: ModStoreFs,
   options: { report?: (line: string) => void; capBytes?: number } = {},
-): FileModStore {
+): ModStoreHost {
   const safe = pluginDirName(plugin)
   const dir = modsDir.endsWith('/') ? `${modsDir}${safe}` : `${modsDir}/${safe}`
   const path = `${dir}/${MOD_STORE_FILE_NAME}`
@@ -208,7 +235,7 @@ export function fileModStore(
     store = new FileModStore({ path, dir, fs, ...options })
     openStores.set(path, store)
   }
-  return store
+  return store.through(fs)
 }
 
 /** A plugin's name as a directory: the characters a path cannot carry are
