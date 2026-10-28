@@ -623,13 +623,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Once beta serves this candidate, every older one is superseded: promote
-  # defaults to beta's candidate, and the next build's baselines read only
-  # beta and production. Deleting them leaves one candidate in storage between
-  # builds. Best-effort: a failed deletion must not fail the run, or promote
-  # would refuse the candidate beta now serves.
+  # resolves the newest successful run, which is this one, and the next build's
+  # baselines read only beta and production. Deleting them leaves one candidate
+  # in storage between builds. Best-effort at the job level: no failure here,
+  # in any step, may fail the run, or promote would refuse the candidate beta
+  # now serves.
   retire:
     needs: [source, deploy]
     runs-on: ubuntu-latest
+    continue-on-error: true
     permissions:
       contents: read
       actions: write
@@ -643,7 +645,6 @@ jobs:
           node-version: 22
 
       - name: Delete superseded candidates
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/prune_artifacts.mjs --keep-only --keep-run "$GITHUB_RUN_ID"

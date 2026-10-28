@@ -180,8 +180,9 @@ describe('Workflow A retires superseded candidates after the beta deploy', () =>
   const doc = parse(readFileSync(join(repoRoot, '.github', 'workflows', 'build-beta.yml'), 'utf8'))
   const retire = doc.jobs.retire as {
     needs: string[]
+    'continue-on-error'?: boolean
     permissions: Record<string, string>
-    steps: Array<{ uses?: string, run?: string, with?: Record<string, string>, 'continue-on-error'?: boolean }>
+    steps: Array<{ uses?: string, run?: string, with?: Record<string, string> }>
   }
 
   it('runs only after deploy, on the commit `source` resolved', () => {
@@ -191,9 +192,9 @@ describe('Workflow A retires superseded candidates after the beta deploy', () =>
     expect(retire.permissions).toEqual({ contents: 'read', actions: 'write' })
   })
 
-  it('keeps only this run\'s candidate, and a failure there cannot fail the run', () => {
+  it('keeps only this run\'s candidate, and no failure in the job can fail the run', () => {
     const step = retire.steps.find(s => /prune_artifacts/.test(s.run ?? ''))!
     expect(step.run).toBe('node scripts/prune_artifacts.mjs --keep-only --keep-run "$GITHUB_RUN_ID"')
-    expect(step['continue-on-error']).toBe(true)
+    expect(retire['continue-on-error']).toBe(true)
   })
 })
