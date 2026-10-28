@@ -24,7 +24,7 @@ import {
 } from '../../pluginHost/pluginRequirements'
 import { parseWelcome } from '../../prompting/templateParsing'
 import { safeIconSvg } from '../provider/modProviderDefinition'
-import { publishModContributions, setTopbarResolver } from './contributionsState'
+import { publishModContributions, setModContributionsSyncGate, setTopbarResolver } from './contributionsState'
 import { modUiId, type ModUiIconDecl } from './uiManifest'
 
 export type ContributingPlugin = Pick<
@@ -90,6 +90,7 @@ export class ModUiContributionsHost {
 
   configure(options: ContributionsHostOptions): void {
     this.options = options
+    setModContributionsSyncGate(() => this.whenSynced())
     setTopbarResolver(id => {
       const target = this.topbarTarget(id)
       if (target === 'waiting') return { kind: 'waiting' }

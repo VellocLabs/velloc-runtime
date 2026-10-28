@@ -62,6 +62,7 @@ import {
   modContributionsState,
   onModContributionsChanged,
   resolveTopbarItem,
+  whenModContributionsSynced,
   type TopbarResolution,
 } from '../../mods/ui/contributionsState'
 import {
@@ -161,15 +162,21 @@ export function modsUiTopicProvider(
 
 /**
  * `mods/contributions` â€” the launchers and topbar items of the person's
- * plugins (F-25). Not session-bound: every `observe` connection sees it.
+ * plugins (F-25). Not session-bound: every `observe` connection sees it. The
+ * snapshot is withheld until the first plugin scan is judged: the pre-scan
+ * state is empty, and a page reading it as "no plugin offers anything" would
+ * hide every plugin-type session at boot. A delta published meanwhile waits
+ * behind the snapshot (the broker's order), so nothing is lost by waiting.
  */
 export function modsContributionsTopicProvider(
   getState: () => ModContributionsState = modContributionsState,
+  whenSynced: () => Promise<void> = whenModContributionsSynced,
 ): TopicProvider {
   return {
     matches: (id: TopicId) => id === MODS_CONTRIBUTIONS_TOPIC,
     authorize: (_id, conn) => scopeAllows(conn.scope.mode, 'observe'),
     async *snapshot(): AsyncIterable<SnapshotPage> {
+      await whenSynced()
       yield { type: MODS_CONTRIBUTIONS_EVENT, payload: getState() }
     },
   }
@@ -208,6 +215,8 @@ export function registerModsCapability(
     /** The published contributions; defaults to the realm's. */
     contributions?: () => ModContributionsState
     onContributionsChanged?: (listener: (state: ModContributionsState) => void) => () => void
+    /** Settles when the contributions may be read; defaults to the realm's first judged scan. */
+    contributionsSynced?: () => Promise<void>
     resolveTopbar?: (id: string) => TopbarResolution
   } = {},
 ): { publish(): void; dispose(): void } {
@@ -370,7 +379,7 @@ export function registerModsCapability(
   })
   broker.registerProvider(modsStateTopicProvider(getState))
   broker.registerProvider(modsUiTopicProvider())
-  broker.registerProvider(modsContributionsTopicProvider(getContributions))
+  broker.registerProvider(modsContributionsTopicProvider(getContributions, options.contributionsSynced))
   const unsubscribeContributions = (options.onContributionsChanged ?? onModContributionsChanged)(state =>
     broker.publish(MODS_CONTRIBUTIONS_TOPIC, state, { type: MODS_CONTRIBUTIONS_EVENT }),
   )

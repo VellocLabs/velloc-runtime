@@ -18,6 +18,8 @@ export type TopbarResolution =
 let state: ModContributionsState = EMPTY_MOD_CONTRIBUTIONS
 const listeners = new Set<(next: ModContributionsState) => void>()
 let resolver: ((id: string) => TopbarResolution) | undefined
+let syncGate: (() => Promise<void>) | undefined
+let gateWaiters: Array<() => void> = []
 
 export function modContributionsState(): ModContributionsState {
   return state
@@ -37,6 +39,26 @@ export function setTopbarResolver(next: ((id: string) => TopbarResolution) | und
   resolver = next
 }
 
+/** The host sets it when configured: settles once the first scan is judged. */
+export function setModContributionsSyncGate(gate: (() => Promise<void>) | undefined): void {
+  syncGate = gate
+  if (!gate) return
+  const waiters = gateWaiters
+  gateWaiters = []
+  for (const waiter of waiters) waiter()
+}
+
+/**
+ * Settles once the first plugin scan is taken and judged, so a reader does not
+ * take the pre-scan empty state for "no plugin offers anything". Waits for the
+ * host to be configured first: a page that subscribes before the scan starts
+ * gets its first state when the scan has spoken, not before.
+ */
+export async function whenModContributionsSynced(): Promise<void> {
+  if (!syncGate) await new Promise<void>(resolve => gateWaiters.push(resolve))
+  await syncGate!()
+}
+
 export function resolveTopbarItem(id: string): TopbarResolution {
   return resolver?.(id) ?? { kind: 'unknown' }
 }
@@ -46,4 +68,6 @@ export function resetModContributionsState(): void {
   state = EMPTY_MOD_CONTRIBUTIONS
   listeners.clear()
   resolver = undefined
+  syncGate = undefined
+  gateWaiters = []
 }

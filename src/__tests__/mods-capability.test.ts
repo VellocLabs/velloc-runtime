@@ -38,7 +38,12 @@ import {
   type ModSlot,
   type ModSlotStatus,
 } from '../mods/modSlotRegistry'
-import { modsUiTopicProvider } from '../browser/runtimeHub/modsCapability'
+import { modsContributionsTopicProvider, modsUiTopicProvider } from '../browser/runtimeHub/modsCapability'
+import {
+  resetModContributionsState,
+  setModContributionsSyncGate,
+  whenModContributionsSynced,
+} from '../mods/ui/contributionsState'
 import { MODS_UI_STATE_EVENT, MODS_UI_TOAST_EVENT, TOPICS_SUBSCRIBE_ROUTE as SUBSCRIBE, topic } from '../browser/runtimeProtocol'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 
@@ -697,6 +702,7 @@ describe('mods/contributions and mods.pressTopbar', () => {
     const submitted: Array<{ sessionId: string; payload: Record<string, unknown> }> = []
     const rig = makeRig({
       contributions: () => current,
+      contributionsSynced: () => Promise.resolve(),
       onContributionsChanged: listener => {
         listeners.add(listener as never)
         return () => listeners.delete(listener as never)
@@ -762,5 +768,84 @@ describe('mods/contributions and mods.pressTopbar', () => {
     expect(res.ok && res.result).toEqual({ ok: false, reason: 'no-session' })
     const bad = await gone.client.request('mods.pressTopbar', { sessionId: 's1' })
     expect(!bad.ok && bad.error.code).toBe('bad_payload')
+  })
+})
+
+describe('mods/contributions: the snapshot waits for the first judged scan', () => {
+  const PRE_SCAN = { templates: [], topbar: [], icons: {}, waiting: [] }
+  const SCANNED = {
+    templates: [{ type: 'acme:review', plugin: 'acme', owner: 'acme@mkt', title: 'Review', launcher: 'both' as const }],
+    topbar: [],
+    icons: {},
+    waiting: [],
+  }
+
+  afterEach(() => resetModContributionsState())
+
+  /** Drain the provider's snapshot into `pages`; `done` flips when it has yielded. */
+  function drain(provider: ReturnType<typeof modsContributionsTopicProvider>) {
+    const pages: unknown[] = []
+    const done = { value: false }
+    const run = (async () => {
+      for await (const page of provider.snapshot('mods/contributions' as never, {} as never)) pages.push(page.payload)
+      done.value = true
+    })()
+    return { pages, done, run }
+  }
+
+  it('a subscriber before the host is configured gets no page; configured but unjudged, still none; judged, the state of that moment', async () => {
+    let state: typeof PRE_SCAN | typeof SCANNED = PRE_SCAN
+    const provider = modsContributionsTopicProvider(() => state)
+    const { pages, done, run } = drain(provider)
+    await flush()
+    expect(pages, 'nothing before the host is configured').toEqual([])
+    expect(done.value).toBe(false)
+
+    let judged!: () => void
+    setModContributionsSyncGate(() => new Promise<void>(resolve => { judged = resolve }))
+    await flush()
+    expect(pages, 'nothing while the first scan is unjudged').toEqual([])
+
+    state = SCANNED
+    judged()
+    await run
+    expect(pages, 'the judged state, not the pre-scan one').toEqual([SCANNED])
+  })
+
+  it('a gate already settled yields at once', async () => {
+    setModContributionsSyncGate(() => Promise.resolve())
+    const { pages, run } = drain(modsContributionsTopicProvider(() => SCANNED))
+    await run
+    expect(pages).toEqual([SCANNED])
+  })
+
+  it('the realm default is the gate: a page subscribing through the hub sees the snapshot only once synced', async () => {
+    let judged!: () => void
+    const synced = new Promise<void>(resolve => { judged = resolve })
+    const { client } = makeRig({ contributions: () => SCANNED, contributionsSynced: () => synced })
+    await client.hello({ scopeCeiling: 'observe' })
+    // The subscribe ack waits for the snapshot (the broker's contract), so it is not awaited yet.
+    const subscribed = client.request(SUBSCRIBE, { topics: [{ topic: 'mods/contributions' }] })
+    await flush()
+    expect(client.events.filter(e => e.topic === 'mods/contributions'), 'held back').toEqual([])
+    judged()
+    await subscribed
+    const [snapshot] = await client.eventsFor('mods/contributions', 1)
+    expect(snapshot!.form).toBe('snapshot')
+    expect(snapshot!.payload).toEqual(SCANNED)
+  })
+
+  it('whenModContributionsSynced waits for a gate, then for it to settle', async () => {
+    let settled = false
+    void whenModContributionsSynced().then(() => { settled = true })
+    await flush()
+    expect(settled).toBe(false)
+    let judged!: () => void
+    setModContributionsSyncGate(() => new Promise<void>(resolve => { judged = resolve }))
+    await flush()
+    expect(settled).toBe(false)
+    judged()
+    await flush()
+    expect(settled).toBe(true)
   })
 })

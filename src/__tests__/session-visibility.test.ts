@@ -9,13 +9,33 @@ import {
   withoutHiddenKeys,
 } from '../browser/webview/sessionVisibility'
 import { useSessionManager } from '../browser/webview/useSessionManager'
+import { clearModContributions, setModContributions } from '../browser/webview/mods/modContributionsView'
 import { __setTemplateChannelForTest } from '../prompting/templateRegistry'
+import type { ModContributionsState } from '../browser/runtimeProtocol/modContributions'
 
 // A session whose type the current channel's launcher catalog does not list is
 // hidden, and its teammates with it. `team` is the live case: `index-beta.md`
-// lists it, `index.md` does not.
+// lists it, `index.md` does not. A plugin type is hidden once the contributions
+// snapshot says no plugin in effect offers it.
 
-afterEach(() => __setTemplateChannelForTest(null))
+afterEach(() => {
+  __setTemplateChannelForTest(null)
+  clearModContributions()
+})
+
+/** A snapshot with `types` contributed; `[]` is a real snapshot that offers nothing. */
+const contributing = (...types: string[]): ModContributionsState => ({
+  templates: types.map(type => ({
+    type,
+    plugin: type.slice(0, type.indexOf(':')),
+    owner: 'acme@mkt',
+    title: type,
+    launcher: 'both',
+  })),
+  topbar: [],
+  icons: {},
+  waiting: [],
+})
 
 const lead = { sessionId: 'lead', templateType: 'team' }
 const mate = { sessionId: 'mate', templateType: 'code', spawnerSessionId: 'lead' }
@@ -53,13 +73,69 @@ describe('isSessionTypeOffered', () => {
 })
 
 describe('isSessionTypeOffered — plugin types', () => {
-  it("a plugin type's sessions stay listed whatever the plugin's state", () => {
+  const mine = { sessionId: 'mine', templateType: 'acme:review' }
+
+  it('before the first contributions snapshot every plugin type is shown', () => {
     __setTemplateChannelForTest('stable')
     expect(isSessionTypeOffered('acme:review')).toBe(true)
-    expect(hiddenSessionIds([code, plain, { sessionId: 'mine', templateType: 'acme:review' }]).size).toBe(0)
+    expect(hiddenSessionIds([code, plain, mine]).size).toBe(0)
+    expect(isSessionTypeOffered('acme:')).toBe(false)
+    // `null` is the explicit spelling of "no snapshot yet".
+    expect(isSessionTypeOffered('acme:review', null)).toBe(true)
+    expect(hiddenSessionIds([mine], null).size).toBe(0)
+  })
+
+  it('a snapshot is known by having been taken, not by its contents: an empty one hides, the topic released shows again', () => {
+    __setTemplateChannelForTest('stable')
+    // The topic delivers a structured clone, a fresh empty object and never
+    // the module's constant, and that is a real "nothing offered".
+    setModContributions({ templates: [], topbar: [], icons: {}, waiting: [] })
+    expect(isSessionTypeOffered('acme:review')).toBe(false)
+    expect(hiddenSessionIds([mine]).has('mine')).toBe(true)
+    // The topic released (the worker restarted): nothing is known until the
+    // next snapshot, and the rows are back meanwhile.
+    clearModContributions()
+    expect(isSessionTypeOffered('acme:review')).toBe(true)
+    expect(hiddenSessionIds([mine]).size).toBe(0)
+  })
+
+  it('a plugin type is shown while a plugin in effect contributes it', () => {
+    __setTemplateChannelForTest('stable')
+    setModContributions(contributing('acme:review', 'acme:plan'))
+    expect(isSessionTypeOffered('acme:review')).toBe(true)
+    expect(hiddenSessionIds([code, plain, mine]).size).toBe(0)
+  })
+
+  it('a plugin type no plugin offers now is hidden: off, removed, or waiting for its provider', () => {
+    __setTemplateChannelForTest('stable')
+    // A real snapshot that offers nothing: the plugin is off, gone, or its
+    // required provider is not set up (its templates are then not contributed).
+    setModContributions(contributing())
+    expect(isSessionTypeOffered('acme:review')).toBe(false)
+    expect([...hiddenSessionIds([code, plain, mine])]).toEqual(['mine'])
+    // Another plugin's type does not stand in for it.
+    setModContributions(contributing('acme:plan'))
+    expect(isSessionTypeOffered('acme:review')).toBe(false)
+    // Bundled types are judged by the catalog as before.
+    expect(isSessionTypeOffered('code')).toBe(true)
     expect(isSessionTypeOffered('team')).toBe(false)
     expect(isSessionTypeOffered('removed_type')).toBe(false)
-    expect(isSessionTypeOffered('acme:')).toBe(false)
+  })
+
+  it('a snapshot passed explicitly beats the store, so the shell re-judges on each one', () => {
+    __setTemplateChannelForTest('stable')
+    setModContributions(contributing('acme:review'))
+    expect(isSessionTypeOffered('acme:review', contributing())).toBe(false)
+    expect(hiddenSessionIds([mine], contributing()).has('mine')).toBe(true)
+    expect(hiddenSessionIds([mine], contributing('acme:review')).has('mine')).toBe(false)
+  })
+
+  it('a teammate of a hidden plugin-type lead goes with it', () => {
+    __setTemplateChannelForTest('stable')
+    setModContributions(contributing())
+    const pluginLead = { sessionId: 'plead', templateType: 'acme:team' }
+    const child = { sessionId: 'pchild', templateType: 'code', spawnerSessionId: 'plead' }
+    expect([...hiddenSessionIds([pluginLead, child, code])].sort()).toEqual(['pchild', 'plead'])
   })
 })
 

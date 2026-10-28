@@ -1,10 +1,13 @@
 /**
  * Which sessions this channel shows: a bundled type the channel's launcher catalog does not list is
- * hidden, and a teammate follows its lead. UI only: nothing is deleted or stopped. Untyped sessions and
- * plugin types (`<plugin>:<key>`, F-25) are always shown: a person's history stays when a plugin is off.
+ * hidden, as is a plugin type (`<plugin>:<key>`, F-25) no plugin in effect offers now (off, gone, or
+ * waiting for its provider), and a teammate follows its lead. UI only: nothing is deleted or stopped.
+ * Untyped sessions are always shown; so is every plugin type until the first contributions snapshot.
  */
 import { getLauncherMeta } from '../../prompting/templateCatalog'
 import { isPluginTemplateId } from '../../mods/ui/uiManifest'
+import type { ModContributionsState } from '../runtimeProtocol/modContributions'
+import { getContributionsSnapshot } from './mods/modContributionsView'
 import { pinnedFirst } from './sessionPinning'
 
 /** The fields the rule reads — satisfied by both `SessionListItem` and
@@ -15,13 +18,21 @@ export type VisibilityEntry = {
   spawnerSessionId?: string
 }
 
-/** Whether this channel shows sessions of `templateType`. */
-export function isSessionTypeOffered(templateType: string | undefined): boolean {
-  return (
-    templateType === undefined ||
-    getLauncherMeta(templateType) !== undefined ||
-    isPluginTemplateId(templateType)
-  )
+/**
+ * Whether this channel shows sessions of `templateType`. A plugin type is shown while some plugin in
+ * effect contributes it. `contributions` null means no snapshot has been taken yet (the runtime
+ * withholds it until the first plugin scan is judged): nothing is known, so every plugin type is shown.
+ */
+export function isSessionTypeOffered(
+  templateType: string | undefined,
+  contributions: ModContributionsState | null = getContributionsSnapshot(),
+): boolean {
+  if (templateType === undefined) return true
+  if (isPluginTemplateId(templateType)) {
+    if (contributions === null) return true
+    return contributions.templates.some(template => template.type === templateType)
+  }
+  return getLauncherMeta(templateType) !== undefined
 }
 
 /**
@@ -30,13 +41,14 @@ export function isSessionTypeOffered(templateType: string | undefined): boolean 
  */
 export function hiddenSessionIds(
   entries: readonly VisibilityEntry[],
+  contributions: ModContributionsState | null = getContributionsSnapshot(),
 ): ReadonlySet<string> {
   const byId = new Map(entries.map(entry => [entry.sessionId, entry] as const))
   const hidden = new Set<string>()
   for (const entry of entries) {
     const lead = entry.spawnerSessionId ? byId.get(entry.spawnerSessionId) : undefined
     const judged = lead ?? entry
-    if (!isSessionTypeOffered(judged.templateType)) hidden.add(entry.sessionId)
+    if (!isSessionTypeOffered(judged.templateType, contributions)) hidden.add(entry.sessionId)
   }
   return hidden
 }

@@ -18,6 +18,8 @@ import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import { cn } from '../../../lib/utils'
 
 let state: ModContributionsState = EMPTY_MOD_CONTRIBUTIONS
+/** Whether a state has been taken since the last attach: the empty state before one means "unknown". */
+let received = false
 const listeners = new Set<() => void>()
 let modIcon: typeof import('./ModIcon') | null = null
 let iconLoad: Promise<void> | null = null
@@ -87,6 +89,12 @@ export function getModContributions(): ModContributionsState {
   return state
 }
 
+/** The state once one has been taken, else null: for readers that must not
+ *  mistake "nothing yet" for "nothing contributed" (`sessionVisibility.ts`). */
+export function getContributionsSnapshot(): ModContributionsState | null {
+  return received ? state : null
+}
+
 export function subscribeModContributions(listener: () => void): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)
@@ -94,9 +102,19 @@ export function subscribeModContributions(listener: () => void): () => void {
 
 /** Take a new state (the topic, tests). */
 export function setModContributions(next: ModContributionsState): void {
-  if (next === state) return
+  if (next === state && received) return
   state = next
+  received = true
   modIcon?.releaseModIconUrls(next.icons)
+  for (const listener of [...listeners]) listener()
+}
+
+/** Back to nothing known (the topic released, tests). */
+export function clearModContributions(): void {
+  if (!received && state === EMPTY_MOD_CONTRIBUTIONS) return
+  state = EMPTY_MOD_CONTRIBUTIONS
+  received = false
+  modIcon?.releaseModIconUrls(state.icons)
   for (const listener of [...listeners]) listener()
 }
 
@@ -111,12 +129,16 @@ export function attachModContributions(connection: Pick<RuntimeConnection, 'subs
   })
   return () => {
     unsubscribe()
-    setModContributions(EMPTY_MOD_CONTRIBUTIONS)
+    clearModContributions()
   }
 }
 
 export function useModContributions(): ModContributionsState {
   return React.useSyncExternalStore(subscribeModContributions, getModContributions, getModContributions)
+}
+
+export function useContributionsSnapshot(): ModContributionsState | null {
+  return React.useSyncExternalStore(subscribeModContributions, getContributionsSnapshot, getContributionsSnapshot)
 }
 
 /** Attach the store for as long as the shell holds a connection that may read it. */

@@ -314,7 +314,7 @@ import {
   writeStoredActiveSessionId,
 } from './bootSessionPointer'
 import { useT } from './i18n'
-import { useAttachModContributions } from './mods/modContributionsView'
+import { useAttachModContributions, useContributionsSnapshot } from './mods/modContributionsView'
 import type { ModsPressTopbarResult } from '../runtimeProtocol/modContributions'
 import {
   getBootDiagnosticTraceId,
@@ -3456,11 +3456,14 @@ export function MultiSessionShell({
   )
 
   // Sessions this channel does not show: a type its launcher catalog does not
-  // list (a `team` created on beta, opened on stable), plus that session's
-  // teammates. See `sessionVisibility.ts`.
+  // list (a `team` created on beta, opened on stable), a plugin type no plugin
+  // offers now, plus that session's teammates. See `sessionVisibility.ts`.
+  // Re-judged when a plugin is switched, removed, or its provider comes back;
+  // null until the first snapshot, which hides no plugin type.
+  const modContributions = useContributionsSnapshot()
   const hiddenIds = useMemo(
-    () => hiddenSessionIds(allSessionItems),
-    [allSessionItems],
+    () => hiddenSessionIds(allSessionItems, modContributions),
+    [allSessionItems, modContributions],
   )
 
   // THE one place teammates and channel-hidden sessions are dropped.
