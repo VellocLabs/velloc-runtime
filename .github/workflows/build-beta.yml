@@ -105,6 +105,11 @@ jobs:
   pack:
     needs: source
     runs-on: ubuntu-latest
+    # `actions: write` lets the prune step delete old candidates; a job-level
+    # block replaces the workflow's, so `contents: read` is restated.
+    permissions:
+      contents: read
+      actions: write
     outputs:
       interface_version: ${{ steps.id.outputs.interface_version }}
       source_commit: ${{ steps.id.outputs.source_commit }}
@@ -234,6 +239,8 @@ jobs:
                  "beta-only entries will not be retained."
             exit 0
           fi
+          # The prune step never deletes the candidate beta serves.
+          echo "run_id=$BRUN" >> "$GITHUB_OUTPUT"
           # gh's own error goes into the warning, so a permission failure is not
           # mistaken for an expired artifact. The unzip is guarded: a corrupt or
           # runtime.zip-less artifact means one baseline fewer, and a partial
@@ -354,6 +361,22 @@ jobs:
             ARGS+=(--legacy "$L")
           done
           node scripts/pack_artifact.mjs "${ARGS[@]}"
+
+      # Storage is a per-account quota and a full quota fails the upload. Over
+      # 70% of it, the oldest candidates go first; the newest candidate and the
+      # one beta serves are kept. A deleted candidate can no longer be promoted,
+      # exactly like an expired one. ARTIFACT_QUOTA_BYTES (a repository
+      # variable) is the plan's artifact storage; 1 GB when unset.
+      - name: Free artifact storage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUOTA: ${{ vars.ARTIFACT_QUOTA_BYTES || '1000000000' }}
+          BETA_RUN: ${{ steps.beta_baseline.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          ARGS=(--quota-bytes "$QUOTA" --incoming artifact/)
+          if [ -n "$BETA_RUN" ]; then ARGS+=(--keep-run "$BETA_RUN"); fi
+          node scripts/prune_artifacts.mjs "${ARGS[@]}"
 
       # Security: uploaded before the gates finish, so a run whose gates fail
       # still holds a `candidate`; promote accepts only a successful run, pinned
