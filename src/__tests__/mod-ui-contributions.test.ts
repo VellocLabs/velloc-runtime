@@ -161,6 +161,10 @@ describe('requires', () => {
       features: ['template-mcp-scope'],
       unknown: ['features:warp-drive'],
     })
+    // `session-type`: `$.session.type()` and `$.session.memoryDir()` are served.
+    expect(checkRequires({ features: ['template-mcp-scope', 'session-type'] }, [], errors)).toEqual({
+      features: ['template-mcp-scope', 'session-type'],
+    })
     expect(checkRequires({ features: [] }, [], errors)).toEqual({ unknown: ['features'] })
     expect(errors).toHaveLength(2)
     // A met feature list alone gates nothing; a missing one is an unmet requirement.

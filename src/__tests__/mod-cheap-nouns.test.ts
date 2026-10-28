@@ -77,7 +77,7 @@ const logging = (expr: string): string => `
 describe('the nouns are listed as raised events', () => {
   it('every cheap noun is implemented and raised', () => {
     for (const noun of [
-      'session.root', 'session.model', 'session.turns', 'session.version',
+      'session.root', 'session.type', 'session.memoryDir', 'session.scratchpadDir', 'session.model', 'session.turns', 'session.version',
       'session.surfaces', 'session.surface', 'session.repo',
       'env.get', 'env.set', 'settings.read', 'clock.after', 'clock.every',
     ]) {
@@ -195,6 +195,51 @@ describe('$.session', () => {
     await runtime.ready
     await runtime.promptSubmit('hi')
     expect(reports).toEqual(['p: {"version":"velloc/1","builtAt":"2026-10-03T00:00:00Z"}'])
+  })
+
+  it('type is the session type id; refused by name where the host has none', async () => {
+    const a = world({ p: logging('$.session.type()') }, { type: () => 'nebius:safecode' })
+    await a.runtime.ready
+    await a.runtime.promptSubmit('hi')
+    expect(a.reports).toEqual(['p: "nebius:safecode"'])
+    const b = world({ p: logging('$.session.type()') })
+    await b.runtime.ready
+    await b.runtime.promptSubmit('hi')
+    expect(b.reports).toEqual(['p: ERR NotSupportedError: $.session.type is not available: this session does not supply it'])
+  })
+
+  it('memoryDir is the host\'s directory, read on each call; null when memory is off', async () => {
+    let dir: string | null = '/home/u/.velloc/projects/work-project/memory/'
+    const { runtime, reports } = world({ p: logging('$.session.memoryDir()') }, { memoryDir: async () => dir })
+    await runtime.ready
+    await runtime.promptSubmit('hi')
+    dir = null
+    await runtime.promptSubmit('hi')
+    expect(reports).toEqual(['p: "/home/u/.velloc/projects/work-project/memory/"', 'p: null'])
+  })
+
+  it('scratchpadDir is the host directory; null where the session has none', async () => {
+    const a = world({ p: logging('$.session.scratchpadDir()') }, { scratchpadDir: () => '/home/u/.velloc/projects/p/sess-cheap/scratch' })
+    await a.runtime.ready
+    await a.runtime.promptSubmit('hi')
+    expect(a.reports).toEqual(['p: "/home/u/.velloc/projects/p/sess-cheap/scratch"'])
+    const b = world({ p: logging('$.session.scratchpadDir()') }, { scratchpadDir: () => null })
+    await b.runtime.ready
+    await b.runtime.promptSubmit('hi')
+    expect(b.reports).toEqual(['p: null'])
+  })
+
+  it('a hook above may answer session.type for core', async () => {
+    const { runtime, reports } = world(
+      {
+        guard: `on('session.type', () => ({ value: 'code' }))`,
+        p: logging('$.session.type()'),
+      },
+      { type: () => 'nebius:safecode' },
+    )
+    await runtime.ready
+    await runtime.promptSubmit('hi')
+    expect(reports).toEqual(['p: "code"'])
   })
 
   it('surfaces is [desktop] and surface is desktop', async () => {

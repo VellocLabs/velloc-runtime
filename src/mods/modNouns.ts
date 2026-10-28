@@ -178,6 +178,14 @@ export type ModNounHost = {
   cwd(): string
   /** The project root, absolute — `$.session.root()`. Defaults to `cwd`. */
   root?(): string
+  /** The session's type id (`code`, `<plugin>:<key>`, …) — `$.session.type()`. */
+  type?(): string
+  /** The memory directory this session reads and writes, absolute, or null
+   *  when memory is off — `$.session.memoryDir()`. */
+  memoryDir?(): Promise<string | null>
+  /** The session's scratchpad directory, absolute, or null where it has none
+   *  — `$.session.scratchpadDir()`. */
+  scratchpadDir?(): string | null
   /** "The main loop's model, as `/model` shows it" — `$.session.model()`. */
   model?(): string
   /** "How many prompts the user has sent this session" — `$.session.turns()`. */
@@ -347,7 +355,7 @@ function notSupported(message: string): never {
 }
 
 /** A host method that is optional: refused by name when the host lacks it. */
-function hostMethod<K extends 'model' | 'turns' | 'version' | 'repo' | 'settings'>(
+function hostMethod<K extends 'model' | 'turns' | 'version' | 'repo' | 'settings' | 'type' | 'memoryDir' | 'scratchpadDir'>(
   session: ModNounHost,
   method: K,
   noun: string,
@@ -405,6 +413,16 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
     // "The session's project root, absolute: where it started, or where
     // `/cd` … took it." Velloc's project root; the cwd where none is set.
     root: { run: (_e: unknown, { session }: NounContext) => session.root?.() ?? session.cwd() },
+    type: { run: (_e: unknown, { session }: NounContext) => hostMethod(session, 'type', 'session.type')() },
+    // `null` is an answer: memory is off for this session.
+    memoryDir: {
+      run: (_e: unknown, { session }: NounContext) => hostMethod(session, 'memoryDir', 'session.memoryDir')(),
+      accepts: (result: unknown) => result === null || typeof result === 'string',
+    },
+    scratchpadDir: {
+      run: (_e: unknown, { session }: NounContext) => hostMethod(session, 'scratchpadDir', 'session.scratchpadDir')(),
+      accepts: (result: unknown) => result === null || typeof result === 'string',
+    },
     model: { run: (_e: unknown, { session }: NounContext) => hostMethod(session, 'model', 'session.model')() },
     turns: { run: (_e: unknown, { session }: NounContext) => hostMethod(session, 'turns', 'session.turns')() },
     version: {

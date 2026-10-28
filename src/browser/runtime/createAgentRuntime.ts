@@ -53,7 +53,7 @@ import {
 } from '../../memory/resolveMemorySettings'
 import { setSessionModelSettingsSnapshot } from '../../models/tierSettingsSnapshot'
 import type { ResolvedMemorySettings } from '../../memory/memoryPaths'
-import { checkNotesDir } from '../../memory/memoryPaths'
+import { checkNotesDir, isMemoryEnabled, resolveMemoryDir } from '../../memory/memoryPaths'
 import { createBrowserFsOperations } from '../../utils/BrowserFsOperations'
 import { openNexusSettings } from '../webview/nexusBridgeActions'
 import type { NexusSettingsSection } from '../bridge/browserBridgeProtocol'
@@ -73,8 +73,10 @@ import {
 } from '../../utils/resolveProjectRoot'
 import {
   getConversationSessionDirectoryPath,
+  getScratchpadDirectoryPath,
   isForcedFolderTemplateType,
   projectsHome,
+  resolveSessionStorageBase,
 } from '../../utils/conversationStoragePaths'
 import { resolveHomeDirViaBridge } from '../../utils/resolveHomeDirViaBridge'
 import {
@@ -1929,6 +1931,25 @@ ${teammateAddendum}`
         id: () => resolvedSessionId,
         cwd: () => resolvedCwd,
         root: () => resolvedProjectRoot,
+        type: () => templateType,
+        // The directory the engine's memory section names, resolved the same way.
+        memoryDir: () =>
+          isMemoryEnabled(runtimeConfig, resolvedMemory)
+            ? resolveMemoryDir(coreState.options.cwd ?? resolvedCwd, runtimeConfig, installedFs, {
+                projectRoot: coreState.options.projectRoot,
+                homeDir,
+                memorySettings: resolvedMemory,
+              })
+            : Promise.resolve(null),
+        // The directory the engine's scratchpad section names.
+        scratchpadDir: () => {
+          const base = resolveSessionStorageBase({
+            storageBase: typeof options.sessionStoragePath === 'string' && options.sessionStoragePath.length > 0 ? options.sessionStoragePath : undefined,
+            homeDir,
+            projectRoot: coreState.options.projectRoot,
+          })
+          return base ? getScratchpadDirectoryPath(base, resolvedSessionId) : null
+        },
         // `$.session.model` / `.turns`: the engine's, bound late like `tools`.
         model: () => modEngine('$.session.model').getCurrentModel(),
         turns: () => modEngine('$.session.turns').countUserTurns(),

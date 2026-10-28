@@ -25,7 +25,7 @@ export const REQUIRES_WORDS = ['providers', 'features'] as const
 /** The `requires.features` names this Velloc has. A plugin naming another
  *  waits, so a template or component that needs the feature never runs on a
  *  Velloc that would read it as something weaker. */
-export const KNOWN_FEATURES = ['template-mcp-scope'] as const
+export const KNOWN_FEATURES = ['template-mcp-scope', 'session-type'] as const
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
