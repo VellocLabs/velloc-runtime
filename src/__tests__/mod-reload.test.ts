@@ -529,16 +529,21 @@ describe('the session follows its plugin set (source pin)', () => {
     expect(source).not.toMatch(/engineForMods\.config\b/)
   })
 
-  it('onReloadPlugins hands the new plugin servers to the pool only from the session that keys it', () => {
+  it('onReloadPlugins hands the new plugin servers to the pool only from the session that keys it, under the scope the pool was built with', () => {
     const source = read('browser/runtime/createAgentRuntime.ts')
     const reload = source.indexOf('const onReloadPlugins = async')
     const stored = source.indexOf('const changedMcpSecrets = await storeMcpSecrets(reloadContributions)', reload)
     const gate = source.indexOf('if (mcpLease && mcpLease.topLevelSessionId === resolvedSessionId) {', stored)
-    const followed = source.indexOf('mcpPool.followPluginReload(reloadContributions.mcpServers, changedMcpSecrets)', gate)
+    const followed = source.indexOf('await mcpPool.followPluginReload(', gate)
+    const handed = source.indexOf('changedMcpSecrets,', followed)
     expect(stored).toBeGreaterThan(reload)
     expect(gate).toBeGreaterThan(stored)
     expect(followed).toBeGreaterThan(gate)
-    expect(source.slice(gate, followed)).toContain('pluginNativeMcpServers = reloadContributions.nativeMcpServers')
+    expect(handed).toBeGreaterThan(followed)
+    const gated = source.slice(gate, followed)
+    expect(gated).toContain('pluginNativeMcpServers = pluginNativeMcpServersInScope(')
+    expect(gated).toContain('reloadContributions.nativeMcpServers')
+    expect(source.slice(followed, handed)).toContain('pluginMcpServersInScope(mcpScope, reloadContributions.mcpServers')
   })
 
   it('a runtime built by a reload loads the list it was given, not the list the session booted with; reloads are serialized', () => {
