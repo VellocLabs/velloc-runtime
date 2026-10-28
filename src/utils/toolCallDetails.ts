@@ -37,6 +37,7 @@ import {
 } from '../skillLibrary/skillInvocationTags'
 import { SKILL_TOOL_NAME } from '../prompting/skillToolName'
 import { clonePlain } from './clonePlain'
+import { toolResultParts, toolResultText } from './toolResultParts'
 
 // A defensive copy that shares strings (immutable) — see clonePlain.ts.
 function cloneValue<T>(value: T): T {
@@ -709,18 +710,6 @@ export function sanitizeMessageForUi(message: Message): Message {
   })
 }
 
-export function serializeToolDetailResultContent(result: unknown): string {
-  if (typeof result === 'string') {
-    return result
-  }
-
-  if (result === undefined || result === null) {
-    return ''
-  }
-
-  return JSON.stringify(result)
-}
-
 function sanitizeStreamEvent(event: Record<string, unknown>): Record<string, unknown> {
   const eventType = typeof event.type === 'string' ? event.type : null
   if (eventType === STREAM_CONTENT_BLOCK_START) {
@@ -869,14 +858,15 @@ export function hydrateMessageToolPayloads(
         return part
       }
 
-      const resultContent = serializeToolDetailResultContent(detail.result)
+      // Same shape the live call sent: an image stays an image part, never
+      // base64 inside the text.
       if (primaryResultContent === null) {
-        primaryResultContent = resultContent
+        primaryResultContent = toolResultText(detail.result)
       }
 
       return {
         ...record,
-        result: resultContent,
+        result: toolResultParts(detail.result),
       }
     }),
   }

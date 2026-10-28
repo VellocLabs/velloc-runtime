@@ -139,6 +139,45 @@ describe('BrowserConversationStore.releaseToolPayloads', () => {
     expect(withoutLines(await reopened.hydrateMessagesForModel())).toStrictEqual(withoutLines(before))
   })
 
+  it('an image result comes back as an image part after the release, not as base64 text', async () => {
+    const fs = fakeFs()
+    const live = new BrowserConversationStore({ runtimeConfig: runtimeConfig(), sessionId: 'S', storageBackend: fs.backend() })
+    const image = 'IMAGE-BYTES-' + 'A'.repeat(4096)
+    const args = { file_path: '/shots/frame.jpg' }
+    const data = {
+      message: 'Media file read: /shots/frame.jpg',
+      content_parts: [
+        { type: 'text', text: 'Image file read: /shots/frame.jpg' },
+        { type: 'image', image, mimeType: 'image/jpeg' },
+      ],
+    }
+    const sent = [
+      { type: 'text', text: 'Image file read: /shots/frame.jpg' },
+      { type: 'image', image, mimeType: 'image/jpeg' },
+    ]
+    const turn = [
+      { type: 'assistant', uuid: 'ia', timestamp: T0, message: { id: 'im', role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'i0', toolName: 'Read', args }] } },
+      {
+        type: 'user', uuid: 'iu', timestamp: T0,
+        message: { role: 'user', content: [{ type: 'tool-result', toolCallId: 'i0', result: sent }] },
+        toolUseResult: data.message,
+        toolCallDetailRef: { toolCallId: 'i0', toolName: 'Read' },
+        toolCallDetail: { toolCallId: 'i0', toolName: 'Read', args, result: data },
+      },
+    ] as unknown as Message[]
+    await live.saveTranscriptRows([prompt('go'), ...turn])
+    await live.hydrateMessagesForModel()
+
+    expect(live.releaseToolPayloads()).toBe(true)
+    const after = await live.hydrateMessagesForModel()
+    const row = after.find(message => message.uuid === 'iu') as unknown as {
+      message: { content: Array<{ result?: unknown }> }
+      toolUseResult?: unknown
+    }
+    expect(row.message.content[0].result).toEqual(sent)
+    expect(row.toolUseResult).toBe(data.message)
+  })
+
   it('a detail stored for a released id merges with the file, never over it', async () => {
     // After a release the record is on disk in full and out of memory. The
     // transcript service rebuilds a detail from the (now stubbed) messages
