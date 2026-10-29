@@ -68,6 +68,33 @@ export function applyWorktreeIsolation(
 }
 
 /**
+ * Hosted fs-tool path args (`file_path`, `path`) made absolute against the
+ * session `cwd`, the same base the permission checks resolve against, so the
+ * path that was vetted is the path the host opens (the host accepts absolute
+ * paths only). Absolute, empty and `~`-prefixed values, and calls without an
+ * absolute `cwd`, are left as sent. Runs AFTER applyWorktreeIsolation.
+ */
+export function resolveRelativeFsPathArgs(
+  toolName: string,
+  args: Record<string, unknown>,
+  cwd: string | undefined,
+): Record<string, unknown> {
+  const pathArgs = WORKTREE_FS_PATH_ARGS[toolName]
+  if (!pathArgs || !cwd || !isAbsoluteRuntimePath(cwd)) return args
+  let out: Record<string, unknown> | undefined
+  for (const name of pathArgs) {
+    const value = args[name]
+    if (typeof value !== 'string' || value.length === 0) continue
+    // The host does not expand `~`; joining it onto cwd would name a wrong file.
+    if (value.startsWith('~')) continue
+    if (isAbsoluteRuntimePath(value)) continue
+    out = out ?? { ...args }
+    out[name] = resolveRuntimePath(cwd, value)
+  }
+  return out ?? args
+}
+
+/**
  * A per-call `cwd` in host-native form (a Windows host rejects a git-bash `/c/…`
  * cwd). No-op on POSIX hosts, for native paths, and without `cwd`.
  * `hostReference` is the session cwd.

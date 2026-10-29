@@ -2,7 +2,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { HostedToolDefinition } from '../browser/bridge/browserBridgeProtocol'
 import { installProcessFs, resetProcessFs } from '../utils/fs/runtimeFs'
-import { applyReadContextWindow, applyWorktreeIsolation, normalizeCwdArgForHost, normalizeFsPathArgsForHost, stripNonPdfReadPagesArg, coerceReadRangeArgsForHost } from '../toolkit/builtin/host/pathArgs'
+import { applyReadContextWindow, applyWorktreeIsolation, normalizeCwdArgForHost, normalizeFsPathArgsForHost, resolveRelativeFsPathArgs, stripNonPdfReadPagesArg, coerceReadRangeArgsForHost } from '../toolkit/builtin/host/pathArgs'
 import { maybeBuildPostCompactReadStub } from '../toolkit/builtin/host/readState'
 import { SHELL_NO_TIMEOUT_CAP_SENTINEL_MS } from '../toolkit/builtin/host/shellArgs'
 import { buildHostTools } from '../toolkit/builtin/host/hostTools'
@@ -139,6 +139,43 @@ describe('hosted tool cwd normalization — normalizeCwdArgForHost', () => {
     const args = { command: 'ls' }
     expect(normalizeCwdArgForHost(args, WIN_HOST)).toBe(args)
     expect(normalizeCwdArgForHost({ cwd: '' }, WIN_HOST)).toEqual({ cwd: '' })
+  })
+})
+
+describe('relative fs path args — resolveRelativeFsPathArgs', () => {
+  const WIN_CWD = 'C:\\Users\\me\\project'
+
+  it('makes a relative file_path / path absolute against the session cwd', () => {
+    expect(
+      resolveRelativeFsPathArgs('Read', { file_path: 'README.md' }, WIN_CWD),
+    ).toEqual({ file_path: 'C:\\Users\\me\\project\\README.md' })
+    expect(
+      resolveRelativeFsPathArgs('Edit', { file_path: 'src/a.ts' }, REPO),
+    ).toEqual({ file_path: '/repo/src/a.ts' })
+    expect(
+      resolveRelativeFsPathArgs('Grep', { pattern: 'x', path: 'docs' }, REPO),
+    ).toEqual({ pattern: 'x', path: '/repo/docs' })
+  })
+
+  it('leaves absolute, empty, omitted and ~ paths as sent', () => {
+    const abs = { file_path: 'D:\\other\\a.txt' }
+    expect(resolveRelativeFsPathArgs('Read', abs, WIN_CWD)).toBe(abs)
+    const posixAbs = { file_path: '/c/shift/x.ts' }
+    expect(resolveRelativeFsPathArgs('Read', posixAbs, WIN_CWD)).toBe(posixAbs)
+    const empty = { file_path: '' }
+    expect(resolveRelativeFsPathArgs('Write', empty, WIN_CWD)).toBe(empty)
+    const omitted = { pattern: '*.ts' }
+    expect(resolveRelativeFsPathArgs('Glob', omitted, WIN_CWD)).toBe(omitted)
+    const home = { file_path: '~/.velloc/settings.json' }
+    expect(resolveRelativeFsPathArgs('Read', home, WIN_CWD)).toBe(home)
+  })
+
+  it('is a no-op without an absolute cwd and for non-fs tools', () => {
+    const rel = { file_path: 'a.ts' }
+    expect(resolveRelativeFsPathArgs('Read', rel, undefined)).toBe(rel)
+    expect(resolveRelativeFsPathArgs('Read', rel, 'relative/cwd')).toBe(rel)
+    const ps = { command: 'dir', cwd: 'sub' }
+    expect(resolveRelativeFsPathArgs('PowerShell', ps, WIN_CWD)).toBe(ps)
   })
 })
 
@@ -619,6 +656,24 @@ describe('hosted-tool dispatch wiring — converts cwd + fs paths before browser
       expect.objectContaining({
         name: 'PowerShell',
         args: expect.objectContaining({ cwd: 'C:\\shift' }),
+      }),
+    )
+  })
+
+  it('resolves a relative Read file_path against the main session cwd at the dispatch site', async () => {
+    // Guards the resolveRelativeFsPathArgs wiring: the host rejects relative paths.
+    const spy = vi.fn(async () => ({ output: '' }))
+    const tool = hostedTool('Read')
+    await (tool.call as CallFn)(
+      { file_path: 'README.md' },
+      dispatchCtx('C:\\Users\\me\\project', spy),
+    )
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Read',
+        args: expect.objectContaining({
+          file_path: 'C:\\Users\\me\\project\\README.md',
+        }),
       }),
     )
   })

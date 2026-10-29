@@ -47,6 +47,7 @@ import {
   coerceReadRangeArgsForHost,
   normalizeCwdArgForHost,
   normalizeFsPathArgsForHost,
+  resolveRelativeFsPathArgs,
   stripNonPdfReadPagesArg,
   untrustedReadRefusal,
 } from './pathArgs'
@@ -359,7 +360,11 @@ function buildHostTool(
             normalizeFsPathArgsForHost(
               definition.name,
               normalizeCwdArgForHost(
-                applyWorktreeIsolation(definition.name, effectiveInput, context),
+                resolveRelativeFsPathArgs(
+                  definition.name,
+                  applyWorktreeIsolation(definition.name, effectiveInput, context),
+                  hostRef,
+                ),
                 hostRef,
               ),
               hostRef,
