@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { writeClipboard } from '@/utils/clipboard'
+import { fileOpenKind } from '@/utils/fileOpenKind'
 import { baseName } from '@/utils/paths'
 
 import { FilePanel, type FilePanelHandle } from '../FilePanel'
@@ -63,6 +64,8 @@ export type FilesPaneProps = {
   editingLocked?: boolean
   /** Opens a file from the tree or a search result (at `line` for a content hit), as a path link does. */
   onOpen: (path: string, line?: number) => void
+  /** Shows a media file in the host's viewer window; a media file's tab offers it on its notice. */
+  onOpenInWindow?: (path: string) => void
   /** Lists a folder for the tree; absent while the session has no runtime to ask. */
   listDir?: FilesListDir
   /** Searches file names and contents for the filter box; absent with no runtime to ask. */
@@ -229,6 +232,7 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
       void writeClipboard(text)
       return
     }
+    if (fileOpenKind(path) !== 'text') return
     void readFileText?.(path).then(read => {
       if (typeof read === 'string') void writeClipboard(read)
     })
@@ -375,6 +379,7 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
                 writeFileText={props.writeFileText}
                 editingLocked={props.editingLocked}
                 onDirtyChange={props.onDirtyChange}
+                onOpenInWindow={props.onOpenInWindow ? () => props.onOpenInWindow?.(path) : undefined}
                 reveal={
                   props.fileReveal && props.fileReveal.path === path
                     ? { line: props.fileReveal.line, nonce: props.fileReveal.nonce }

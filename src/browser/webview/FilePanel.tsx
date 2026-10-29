@@ -27,6 +27,10 @@ import type { RightPanelFileTarget } from "@/components/assistant-ui/right-panel
 // Type-only: erased at build, so importing it never pulls the `@codemirror/*`
 // stack onto the boot bundle (the editor stays behind the lazy import below).
 import type { CodeMirrorApi } from "@/components/assistant-ui/CodeMirrorView";
+import { isRuntimeRequestError } from "../runtimeClient/RuntimeConnection";
+import { isFsxNotTextData, type FsxNotTextData } from "../runtimeProtocol";
+import { fileOpenKind } from "@/utils/fileOpenKind";
+import { Button } from "@/components/ui/button";
 import { useT } from "./i18n";
 import type { FilesListDir } from "./panes/FilesBrowse";
 import { FilesPathBar } from "./panes/FilesPathBar";
@@ -51,7 +55,19 @@ type LoadState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "ready"; content: string }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string }
+  /**
+   * A notice instead of the editor: read and found binary or too large, or never read —
+   * a media file (it opens in the viewer window) or a file of no listed kind.
+   */
+  | { status: "notText"; reason: FsxNotTextData["reason"] | "media" | "unsupported" };
+
+const NOT_TEXT_MESSAGE = {
+  binary: "filePanel.binaryFile",
+  tooLarge: "filePanel.fileTooLarge",
+  media: "filePanel.mediaFile",
+  unsupported: "filePanel.unsupportedFile",
+} as const;
 
 const MARKDOWN_FILE = /\.(md|markdown)$/i;
 
@@ -271,8 +287,11 @@ export function FilePanel({
   root,
   listDir,
   onOpen,
+  onOpenInWindow,
 }: {
   target: RightPanelFileTarget | null;
+  /** Shows this media file in the viewer window: offered on its notice when present. */
+  onOpenInWindow?: () => void;
   /** Resolves `null` when no client can read right now (no active session
    *  client) — NOT an empty file. Treated as an unavailable read everywhere. */
   readFileText?: (path: string) => Promise<string | null>;
@@ -383,6 +402,12 @@ export function FilePanel({
       setState({ status: "idle" });
       return;
     }
+    // Security: only a file of a listed text kind is ever read; any other stays unread.
+    const kind = fileOpenKind(path);
+    if (kind !== "text") {
+      setState({ status: "notText", reason: kind });
+      return;
+    }
     if (!readFileText) {
       setState({
         status: "error",
@@ -405,6 +430,10 @@ export function FilePanel({
       })
       .catch((error: unknown) => {
         if (cancelled) return;
+        if (isRuntimeRequestError(error) && isFsxNotTextData(error.data)) {
+          setState({ status: "notText", reason: error.data.reason });
+          return;
+        }
         setState({
           status: "error",
           message:
@@ -613,6 +642,25 @@ export function FilePanel({
         ) : state.status === "error" ? (
           <div className="px-1 py-2 text-destructive text-body">
             {state.message}
+          </div>
+        ) : state.status === "notText" ? (
+          <div
+            data-testid="file-panel-not-text"
+            data-reason={state.reason}
+            className="flex flex-col items-start gap-2 px-1 py-2 text-muted-foreground text-body"
+          >
+            <span>{t(NOT_TEXT_MESSAGE[state.reason])}</span>
+            {state.reason === "media" && onOpenInWindow ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="file-panel-open-in-window"
+                onClick={onOpenInWindow}
+              >
+                {t("filePanel.openInWindow")}
+              </Button>
+            ) : null}
           </div>
         ) : state.status === "ready" ? (
           isMarkdown && view === "rendered" ? (

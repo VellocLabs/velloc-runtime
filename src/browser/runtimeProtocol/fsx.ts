@@ -27,6 +27,8 @@ export const FSX_ACTION_SCOPES = {
   searchText: 'observe',
   cancelSearch: 'observe',
   writeText: 'manager',
+  // Opens a window on the host's own desktop, which only the desktop may ask for.
+  openInWindow: 'full',
   commitUpload: 'control',
 } as const satisfies Record<string, ScopeMode>
 
@@ -45,7 +47,27 @@ export type FsxStatBatchResult = FsxStatEntry[]
 
 export type FsxReadPayload = { sessionId: string; path: string }
 export type FsxReadTextResult = { text: string }
+/** Largest file `readText` decodes; a bigger one is refused before any byte is read. */
+export const FSX_READ_TEXT_MAX_BYTES = 5 * 1024 * 1024
+/** Leading bytes `readText` checks for a NUL; one there marks the file binary. */
+export const FSX_TEXT_SNIFF_BYTES = 8000
+/**
+ * Contract: the `data` of `readText`'s `conflict` when the file is not text to show —
+ * larger than `FSX_READ_TEXT_MAX_BYTES` (`tooLarge`) or with a NUL in its leading bytes (`binary`).
+ */
+export type FsxNotTextData = { reason: 'binary' | 'tooLarge'; size: number }
+
+export function isFsxNotTextData(value: unknown): value is FsxNotTextData {
+  if (typeof value !== 'object' || value === null) return false
+  const data = value as Record<string, unknown>
+  return (data.reason === 'binary' || data.reason === 'tooLarge') && typeof data.size === 'number'
+}
 export type FsxReadBlobResult = { blob: BlobRef }
+/**
+ * `openInWindow` takes an `FsxReadPayload` and answers nothing: the file, a `media` name
+ * (`fileOpenKind`) on a local path, loads in the runtime's viewer window. Another name or a
+ * network path is `bad_payload`; a missing file, or a host with no viewer, `not_found`.
+ */
 
 export type FsxWriteTextPayload = { sessionId: string; path: string; text: string }
 

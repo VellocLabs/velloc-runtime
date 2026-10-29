@@ -116,6 +116,8 @@ import {
   __resetUnsavedFileDraftsForTests,
 } from "../browser/webview/FilePanel";
 import { I18nProvider } from "../browser/webview/i18n";
+import { RuntimeRequestError } from "../browser/runtimeClient/RuntimeConnection";
+import { wireError } from "../browser/runtimeProtocol";
 
 afterEach(() => {
   cleanup();
@@ -385,6 +387,55 @@ describe("FilePanel", () => {
     expect(
       document.querySelector('[data-slot="file-panel-view-toggle"]'),
     ).toBeNull();
+  });
+
+  it.each([
+    ["binary", "This file is binary, so it isn't shown here."],
+    ["tooLarge", "This file is too large to show here."],
+  ] as const)("shows a %s file as a notice, with no editor and no Save", async (reason, text) => {
+    const readFileText = vi.fn(async (): Promise<string> => {
+      throw new RuntimeRequestError(wireError("conflict", "not text", { reason, size: 9 }), "fsx.readText");
+    });
+    render(
+      createElement(FilePanel, {
+        target: { path: "/repo/huge.log" },
+        readFileText,
+        writeFileText: vi.fn(async () => true),
+      }),
+    );
+    const notice = await screen.findByTestId("file-panel-not-text");
+    expect(notice.getAttribute("data-reason")).toBe(reason);
+    expect(notice.textContent).toBe(text);
+    expect(screen.queryByTestId("cm-view")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("never reads a media file: its notice offers the viewer window when the owner can", async () => {
+    const readFileText = vi.fn(async () => "never");
+    const onOpenInWindow = vi.fn();
+    const { unmount } = render(
+      createElement(FilePanel, { target: { path: "/repo/clip.mp4" }, readFileText, onOpenInWindow }),
+    );
+    const notice = await screen.findByTestId("file-panel-not-text");
+    expect(notice.getAttribute("data-reason")).toBe("media");
+    fireEvent.click(screen.getByRole("button", { name: "Open in window" }));
+    expect(onOpenInWindow).toHaveBeenCalledTimes(1);
+    unmount();
+
+    render(createElement(FilePanel, { target: { path: "/repo/clip.mp4" }, readFileText }));
+    await screen.findByTestId("file-panel-not-text");
+    expect(screen.queryByRole("button", { name: "Open in window" })).toBeNull();
+    expect(readFileText).not.toHaveBeenCalled();
+  });
+
+  it("never reads a file of no listed kind, and says it does not open it", async () => {
+    const readFileText = vi.fn(async () => "never");
+    render(createElement(FilePanel, { target: { path: "/repo/setup.exe" }, readFileText }));
+    const notice = await screen.findByTestId("file-panel-not-text");
+    expect(notice.getAttribute("data-reason")).toBe("unsupported");
+    expect(notice.textContent).toContain("doesn't open this kind of file.");
+    expect(screen.queryByTestId("cm-view")).toBeNull();
+    expect(readFileText).not.toHaveBeenCalled();
   });
 
   it("keeps the header copy button always visible (not hover-revealed)", async () => {

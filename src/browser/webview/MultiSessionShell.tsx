@@ -208,6 +208,7 @@ import {
 } from './nexusBridgeActions'
 import type { SessionTabEntry } from '../bridge/protocol/session'
 import { WebviewArea } from './WebviewArea'
+import { fileOpenKind } from '@/utils/fileOpenKind'
 import { BrowserAddressBar, BrowserTabStrip } from './panes/BrowserPaneChrome'
 import { postMainContentsLayout } from './useMainContentsLayout'
 import {
@@ -1411,6 +1412,7 @@ export function MultiSessionShell({
     requestTurnDiffHistory,
     loadBundledSkillBody,
     readFileText,
+    openFileInWindow,
     listDir,
     startFileSearch,
     statFilePaths,
@@ -2276,9 +2278,31 @@ export function MultiSessionShell({
     }
     presentRightPanel({ type: 'personOpen', view: 'files' })
   }, [updatePaneRecord, sessionLayoutsStore, focusPane, updatePaneUi])
+  // Every file open goes by its kind (`fileOpenKind`): text becomes a Files tab, media loads in
+  // the host's viewer window. A media file the viewer cannot take, and a file of no listed kind,
+  // become a Files tab whose notice says so; neither is read.
+  const openFile = useCallback(
+    (target: RightPanelFileTarget) => {
+      if (fileOpenKind(target.path) !== 'media' || !runtimeCapabilities.can('fsx', 'openInWindow')) {
+        openFileInPanel(target)
+        return
+      }
+      openFileInWindow(target.path).then(
+        opened => {
+          if (!opened) openFileInPanel(target)
+        },
+        () => openFileInPanel(target),
+      )
+    },
+    [openFileInPanel, openFileInWindow, runtimeCapabilities],
+  )
   const openFileFromTree = useCallback(
-    (path: string, line?: number) => openFileInPanel(line === undefined ? { path } : { path, line }),
-    [openFileInPanel],
+    (path: string, line?: number) => openFile(line === undefined ? { path } : { path, line }),
+    [openFile],
+  )
+  const openFileTabInWindow = useCallback(
+    (path: string) => void openFileInWindow(path).catch(() => {}),
+    [openFileInWindow],
   )
   // The Files tree's roots: the session's working folder, once the session has reported one.
   const hasActiveSnapshot = activeState.snapshot != null
@@ -2359,11 +2383,11 @@ export function MultiSessionShell({
   // `.md` preview) — same handlers the transcript uses.
   const shellRightPanelContentValue = useMemo(
     () => ({
-      openFile: openFileInPanel,
+      openFile,
       openDiff: openDiffInPanel,
       openSkill: openSkillInPanel,
     }),
-    [openFileInPanel, openDiffInPanel, openSkillInPanel],
+    [openFile, openDiffInPanel, openSkillInPanel],
   )
 
 
@@ -4347,6 +4371,7 @@ export function MultiSessionShell({
             // may be writing the same files); editing re-enables when it ends.
             editingLocked={runningSessionIds.has(activeSessionId)}
             onOpen={openFileFromTree}
+            onOpenInWindow={runtimeCapabilities.can('fsx', 'openInWindow') ? openFileTabInWindow : undefined}
             listDir={listDir}
             search={startFileSearch}
             roots={filesTreeRoots}
@@ -4426,7 +4451,7 @@ export function MultiSessionShell({
         turnDiffHistory={activeState.turnDiffHistory ?? null}
         loadTurnDiffDetail={loadTurnDiffDetail}
         requestTurnDiffHistory={requestTurnDiffHistory}
-        onOpenFile={openFileInPanel}
+        onOpenFile={openFile}
       />,
     )
   }
@@ -4754,7 +4779,7 @@ export function MultiSessionShell({
                   onStopBackgroundTask={handleStopSubAgent}
                   onOpenBackgroundTasksList={handleOpenBackgroundTasksList}
                   onOpenPlanPanel={() => openPaneFor('plan')}
-                  onOpenFileInPanel={openFileInPanel}
+                  onOpenFileInPanel={openFile}
                   statFilePaths={statFilePaths}
                   onOpenDiffInPanel={openDiffInPanel}
                   onOpenSkillInPanel={openSkillInPanel}

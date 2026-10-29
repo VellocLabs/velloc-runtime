@@ -795,6 +795,11 @@ export const zh: Messages = {
   'filePanel.noContent': '没有内容。',
   'filePanel.readUnavailable': '此宿主环境不支持读取文件。',
   'filePanel.readFailed': '读取文件失败。',
+  'filePanel.binaryFile': '此文件是二进制文件，不在此处显示。',
+  'filePanel.fileTooLarge': '此文件过大，无法在此处显示。',
+  'filePanel.mediaFile': '此文件会在单独的窗口中打开。',
+  'filePanel.unsupportedFile': '{product} 不打开此类文件。',
+  'filePanel.openInWindow': '在窗口中打开',
   'filePanel.saveFailed': '保存文件失败。',
   'filePanel.saveUnavailable': '此宿主环境不支持保存文件。',
   'filePanel.noFileOpen':

@@ -1622,6 +1622,15 @@ export class BrowserRuntimeClient {
   }
 
   /**
+   * Show a video, audio, image or PDF file in the host's viewer window, over
+   * `fsx.openInWindow`. Rejects like `readFileText`, and for any other file.
+   */
+  async openFileInWindow(path: string): Promise<void> {
+    await this.startOnce()
+    await this.requireFiles().openInWindow(this.fileSessionId(), path)
+  }
+
+  /**
    * A directory's entries over `fsx.listDir` (the Files pane's browse state). A relative
    * `path` resolves against the session's cwd. Rejects like `readFileText`.
    */

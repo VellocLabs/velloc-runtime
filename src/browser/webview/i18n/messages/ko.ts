@@ -799,6 +799,11 @@ export const ko: Messages = {
   'filePanel.noContent': '내용이 없습니다.',
   'filePanel.readUnavailable': '이 호스트에서는 파일을 읽을 수 없습니다.',
   'filePanel.readFailed': '파일을 읽지 못했습니다.',
+  'filePanel.binaryFile': '이 파일은 바이너리 파일이라 여기에 표시되지 않습니다.',
+  'filePanel.fileTooLarge': '이 파일은 너무 커서 여기에 표시할 수 없습니다.',
+  'filePanel.mediaFile': '이 파일은 별도의 창에서 열립니다.',
+  'filePanel.unsupportedFile': '{product}에서는 이 종류의 파일을 열 수 없습니다.',
+  'filePanel.openInWindow': '창에서 열기',
   'filePanel.saveFailed': '파일을 저장하지 못했습니다.',
   'filePanel.saveUnavailable': '이 호스트에서는 저장할 수 없습니다.',
   'filePanel.noFileOpen':

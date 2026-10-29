@@ -16,6 +16,7 @@
  */
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { checkWithinRoot } from '../../permissions/untrustedReadBoundary'
+import { fileOpenKind, localFileUrl } from '../../utils/fileOpenKind'
 import { getNexusWorkspaceDir } from '../../utils/conversationStoragePaths'
 import {
   basenameRuntimePath,
@@ -30,9 +31,11 @@ import {
   FSX_CAPABILITY,
   FSX_FIND_MAX_LIMIT,
   FSX_LIST_MAX_ENTRIES,
+  FSX_READ_TEXT_MAX_BYTES,
   FSX_SEARCH_QUERY_MAX_LENGTH,
   FSX_SEARCH_TEXT_MAX_LIMIT,
   FSX_STAT_BATCH_MAX_PATHS,
+  FSX_TEXT_SNIFF_BYTES,
   FSX_TREE_DEFAULT_DEPTH,
   FSX_TREE_MAX_DEPTH,
   FSX_TREE_MAX_ENTRIES,
@@ -47,6 +50,7 @@ import {
   type FsxListDirResult,
   type FsxListTreePayload,
   type FsxListTreeResult,
+  type FsxNotTextData,
   type FsxReadBlobResult,
   type FsxReadPayload,
   type FsxReadTextResult,
@@ -69,6 +73,8 @@ export type FsxSessionRoots = { cwd: string; projectRoot?: string }
 export type FsxHost = {
   /** The session's cwd and project root, or `null` for a session this runtime does not hold. */
   sessionRoots(sessionId: string): FsxSessionRoots | null
+  /** Loads a `file:` URL in the runtime's viewer window; absent where the host has none. */
+  showInViewer?: (url: string) => Promise<void>
 }
 
 type Dict = Record<string, unknown>
@@ -561,6 +567,37 @@ async function searchRoot(
   return { abs, search }
 }
 
+/**
+ * `abs` decoded as UTF-8. A file past `FSX_READ_TEXT_MAX_BYTES` is refused from its stat, unread;
+ * one with a NUL in its leading bytes is refused as binary. Both are `conflict` with `FsxNotTextData`.
+ */
+async function readTextFile(host: HostBridge, abs: string): Promise<string> {
+  const stat = await callHostFs<StatResult>(host, 'stat', { path: abs }).catch(() => null)
+  if (stat && typeof stat.size === 'number' && stat.size > FSX_READ_TEXT_MAX_BYTES) {
+    const data: FsxNotTextData = { reason: 'tooLarge', size: stat.size }
+    throw wireError('conflict', `'${abs}' is too large to read as text`, data)
+  }
+  const bytes = await callHostFs<Uint8Array>(host, 'readFile', { path: abs })
+  if (bytes.subarray(0, FSX_TEXT_SNIFF_BYTES).includes(0)) {
+    const data: FsxNotTextData = { reason: 'binary', size: bytes.byteLength }
+    throw wireError('conflict', `'${abs}' is binary`, data)
+  }
+  return new TextDecoder().decode(bytes)
+}
+
+/** Security: only a `media` name on a local path reaches the viewer (the `openInWindow` contract in `runtimeProtocol/fsx.ts`). */
+async function openInWindow(host: HostBridge, abs: string, fsxHost: FsxHost): Promise<void> {
+  if (fileOpenKind(abs) !== 'media') {
+    throw wireError('bad_payload', `'${abs}' is not a video, audio, image or PDF file`)
+  }
+  const url = localFileUrl(abs)
+  if (!url) throw wireError('bad_payload', `'${abs}' is not a local path`)
+  if (!fsxHost.showInViewer) throw wireError('not_found', 'this host has no viewer window')
+  const stat = await callHostFs<StatResult>(host, 'stat', { path: abs }).catch(() => null)
+  if (!stat?.isFile) throw wireError('not_found', `no file '${abs}'`)
+  await fsxHost.showInViewer(url)
+}
+
 async function commitUpload(
   request: HandlerRequest<FsxCommitUploadPayload>,
   ctx: RuntimeContext,
@@ -606,6 +643,7 @@ export function registerFsxCapability(
       searchText: spec('searchText', isSearchTextPayload),
       cancelSearch: { scope: FSX_ACTION_SCOPES.cancelSearch, guard: isCancelSearchPayload },
       writeText: spec('writeText', isWriteTextPayload),
+      openInWindow: spec('openInWindow', isReadPayload),
       commitUpload: spec('commitUpload', isCommitUploadPayload),
     },
     handle: async (request, ctx) => {
@@ -617,8 +655,7 @@ export function registerFsxCapability(
         case 'readText': {
           const { sessionId, path } = request.payload as FsxReadPayload
           const { abs, host } = await resolveForConnection(request, ctx, fsxHost, sessionId, path)
-          const bytes = await callHostFs<Uint8Array>(host, 'readFile', { path: abs })
-          return { text: new TextDecoder().decode(bytes) } satisfies FsxReadTextResult
+          return { text: await readTextFile(host, abs) } satisfies FsxReadTextResult
         }
         case 'readBlob': {
           const { sessionId, path } = request.payload as FsxReadPayload
@@ -651,6 +688,12 @@ export function registerFsxCapability(
           const { sessionId, path, text } = request.payload as FsxWriteTextPayload
           const { abs, host } = await resolveForConnection(request, ctx, fsxHost, sessionId, path)
           await callHostFs(host, 'writeFile', { path: abs, content: new TextEncoder().encode(text) })
+          return undefined
+        }
+        case 'openInWindow': {
+          const { sessionId, path } = request.payload as FsxReadPayload
+          const { abs, host } = await resolveForConnection(request, ctx, fsxHost, sessionId, path)
+          await openInWindow(host, abs, fsxHost)
           return undefined
         }
         case 'commitUpload':

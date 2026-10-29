@@ -812,6 +812,11 @@ export const de: Messages = {
   'filePanel.readUnavailable':
     'Das Lesen von Dateien ist auf diesem Host nicht verfügbar.',
   'filePanel.readFailed': 'Die Datei konnte nicht gelesen werden.',
+  'filePanel.binaryFile': 'Diese Datei ist binär und wird hier nicht angezeigt.',
+  'filePanel.fileTooLarge': 'Diese Datei ist zu groß, um hier angezeigt zu werden.',
+  'filePanel.mediaFile': 'Diese Datei wird in einem eigenen Fenster geöffnet.',
+  'filePanel.unsupportedFile': '{product} öffnet diese Art von Datei nicht.',
+  'filePanel.openInWindow': 'In Fenster öffnen',
   'filePanel.saveFailed': 'Die Datei konnte nicht gespeichert werden.',
   'filePanel.saveUnavailable':
     'Das Speichern ist auf diesem Host nicht verfügbar.',

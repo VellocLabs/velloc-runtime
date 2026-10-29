@@ -843,6 +843,11 @@ export const en = {
   'filePanel.noContent': 'No content.',
   'filePanel.readUnavailable': 'File reading is unavailable on this host.',
   'filePanel.readFailed': 'Failed to read file.',
+  'filePanel.binaryFile': "This file is binary, so it isn't shown here.",
+  'filePanel.fileTooLarge': 'This file is too large to show here.',
+  'filePanel.mediaFile': 'This file opens in its own window.',
+  'filePanel.unsupportedFile': "{product} doesn't open this kind of file.",
+  'filePanel.openInWindow': 'Open in window',
   'filePanel.saveFailed': 'Failed to save file.',
   'filePanel.saveUnavailable': 'Saving is unavailable on this host.',
   'filePanel.noFileOpen':

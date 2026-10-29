@@ -101,6 +101,7 @@ import {
 import { wireError } from '../runtimeProtocol'
 import { CustomizePageService } from '../../customize/CustomizePageService'
 import { createCustomizePageHostSource } from '../../customize/customizePageHost'
+import { createFileViewerWindow } from '../runtimeHub/fileViewerWindow'
 import { createDirectoryOfferDeps } from '../../customize/directoryOfferHost'
 import { getWebUiBridgeHandler } from './webUiBridge/registry'
 import { initBuiltinWebUiBridgeHandlers } from './webUiBridge/initBuiltinHandlers'
@@ -879,6 +880,16 @@ export class SharedWorkerSessionManager {
         const projectRoot = snapshot?.projectRoot ?? entry.projectRoot
         return { cwd, ...(projectRoot ? { projectRoot } : {}) }
       },
+      showInViewer: createFileViewerWindow(() => {
+        const transport = this.bridgeRouter.getDirectTransport()
+        const manifest = this.hostEnvironment?.hostManifest ?? this.lastInitTemplate?.hostManifest ?? undefined
+        if (!transport || !manifest?.capabilities.includes('webWindow')) return null
+        return createNativePrimitives({
+          transport,
+          createRequestId: () => this.generateBridgeRequestId(),
+          manifest,
+        }).webWindow
+      }),
     }, this.fsxSearch)
     // `customizePage` (F-35): this window's Customize tab, its page channel,
     // the plugin or connector the page shows, looked up and installed on Add.

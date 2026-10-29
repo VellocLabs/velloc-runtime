@@ -319,6 +319,9 @@ export type MultiSessionClientsResult = {
   /** Read a file's full UTF-8 contents from the host fs bridge (right-panel
    *  Files view). Resolves null when no active client; rejects on bridge error. */
   readFileText: (path: string) => Promise<string | null>
+  /** Shows a media or PDF file in the host's viewer window (`fsx.openInWindow`).
+   *  Resolves false when no active client; rejects on a runtime error. */
+  openFileInWindow: (path: string) => Promise<boolean>
   /** A directory's entries for the Files pane's browse state (`fsx.listDir`).
    *  Resolves null when no active client; rejects on a runtime error. */
   listDir: (path: string) => Promise<FsxListDirResult | null>
@@ -782,6 +785,12 @@ export function useMultiSessionClients(
     if (!client) return null
     return client.readFileText(path)
   }, [])
+  const openFileInWindow = useCallback(async (path: string) => {
+    const client = clientsRef.current.get(optionsRef.current.activeSessionId)
+    if (!client) return false
+    await client.openFileInWindow(path)
+    return true
+  }, [])
 
   // Directory listings for the Files pane's browse state, through the ACTIVE
   // session's client like the read above. Rejections propagate so the pane can
@@ -1021,6 +1030,7 @@ export function useMultiSessionClients(
     requestTurnDiffHistory,
     loadBundledSkillBody,
     readFileText,
+    openFileInWindow,
     listDir,
     listTree,
     startFileSearch,

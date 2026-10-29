@@ -802,6 +802,11 @@ export const ja: Messages = {
   'filePanel.noContent': '内容がありません。',
   'filePanel.readUnavailable': 'このホストではファイルを読み取れません。',
   'filePanel.readFailed': 'ファイルを読み取れませんでした。',
+  'filePanel.binaryFile': 'このファイルはバイナリのため、ここには表示されません。',
+  'filePanel.fileTooLarge': 'このファイルは大きすぎるため、ここには表示できません。',
+  'filePanel.mediaFile': 'このファイルは専用のウィンドウで開きます。',
+  'filePanel.unsupportedFile': '{product} はこの種類のファイルを開きません。',
+  'filePanel.openInWindow': 'ウィンドウで開く',
   'filePanel.saveFailed': 'ファイルを保存できませんでした。',
   'filePanel.saveUnavailable': 'このホストでは保存できません。',
   'filePanel.noFileOpen':

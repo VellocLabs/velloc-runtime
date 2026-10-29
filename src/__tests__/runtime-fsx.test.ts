@@ -10,6 +10,7 @@ import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { RUNTIME_DIR_NAME } from '../branding/runtimeDir'
 import {
   FSX_LIST_MAX_ENTRIES,
+  FSX_READ_TEXT_MAX_BYTES,
   FSX_TREE_MAX_ENTRIES,
   SYS_PUT_BLOB_ROUTE,
   type BlobRef,
@@ -139,6 +140,7 @@ function makeServer(
   disk: ReturnType<typeof fakeDisk>,
   roots = { cwd: PROJECT, projectRoot: PROJECT },
   homeDir = HOME,
+  showInViewer?: (url: string) => Promise<void>,
 ) {
   const registry = new CapabilityRegistry()
   const broker = new TopicBroker()
@@ -158,7 +160,10 @@ function makeServer(
     bootstrap: () => ({ homeDir: HOME, platform: 'test', pathSep: '/' }),
   })
   for (const spec of hostProxySpecs()) registry.registerHostProxy(spec)
-  registerFsxCapability(registry, { sessionRoots: id => (id === SESSION ? roots : null) })
+  registerFsxCapability(registry, {
+    sessionRoots: id => (id === SESSION ? roots : null),
+    ...(showInViewer ? { showInViewer } : {}),
+  })
   return { registry, hub }
 }
 
@@ -242,6 +247,51 @@ describe('fsx — the desktop (`full`)', () => {
     const files = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk, undefined, ''), 'observe')) })
     await expect(files.userHome()).rejects.toMatchObject({ code: 'not_found' })
     expect(disk.calls).toEqual(['fs.userHome'])
+  })
+
+  it('readText refuses a binary file, and an oversized one before reading it', async () => {
+    const disk = fakeDisk()
+    disk.files.set(`${PROJECT}/clip.mp4`, new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70]))
+    disk.files.set(`${PROJECT}/huge.log`, new Uint8Array(FSX_READ_TEXT_MAX_BYTES + 1).fill(0x61))
+    disk.text(`${PROJECT}/ok.txt`, 'plain')
+    const files = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk))) })
+
+    await expect(files.readText(SESSION, 'clip.mp4')).rejects.toMatchObject({
+      code: 'conflict',
+      data: { reason: 'binary', size: 8 },
+    })
+    await expect(files.readText(SESSION, 'huge.log')).rejects.toMatchObject({
+      code: 'conflict',
+      data: { reason: 'tooLarge', size: FSX_READ_TEXT_MAX_BYTES + 1 },
+    })
+    expect(disk.reads).not.toContain(`${PROJECT}/huge.log`)
+    expect(await files.readText(SESSION, 'ok.txt')).toBe('plain')
+    // The bytes stay readable for a client that wants them.
+    expect((await files.readBytes(SESSION, 'clip.mp4')).byteLength).toBe(8)
+  })
+
+  it('openInWindow shows only a media file, as a file URL in the viewer, and only to the desktop', async () => {
+    const disk = fakeDisk()
+    disk.files.set(`${PROJECT}/clips/a b.mp4`, new Uint8Array([0, 0, 0, 0x18]))
+    disk.text(`${PROJECT}/notes.txt`, 'text')
+    const shown: string[] = []
+    const server = makeServer(disk, undefined, HOME, async url => {
+      shown.push(url)
+    })
+    const files = createRuntimeFileAccess({ connection: once(() => connect(server)) })
+
+    await files.openInWindow(SESSION, 'clips/a b.mp4')
+    expect(shown).toEqual([`file://${PROJECT}/clips/a%20b.mp4`])
+    // Never read: the viewer loads the file itself.
+    expect(disk.reads).toEqual([])
+    expect(await codeOf(files.openInWindow(SESSION, 'notes.txt'))).toBe('bad_payload')
+    expect(await codeOf(files.openInWindow(SESSION, 'missing.mp4'))).toBe('not_found')
+    expect(shown).toHaveLength(1)
+
+    const control = createRuntimeFileAccess({ connection: once(() => connect(server, 'control')) })
+    expect(await codeOf(control.openInWindow(SESSION, 'clips/a b.mp4'))).toBe('forbidden_scope')
+    const bare = createRuntimeFileAccess({ connection: once(() => connect(makeServer(disk))) })
+    expect(await codeOf(bare.openInWindow(SESSION, 'clips/a b.mp4'))).toBe('not_found')
   })
 
   it('an unknown session is not_found, before any host call', async () => {
@@ -781,7 +831,7 @@ describe('R7 guards', () => {
     const full = registry.advertise({ mode: 'full', sessions: 'all' })
     expect(full.find(entry => entry.cap === 'fs')).toBeUndefined()
     expect(full.find(entry => entry.cap === 'fsx')?.acts.slice().sort()).toEqual(
-      ['cancelSearch', 'commitUpload', 'findFiles', 'listDir', 'listTree', 'readBlob', 'readText', 'searchText', 'statBatch', 'userHome', 'writeText'],
+      ['cancelSearch', 'commitUpload', 'findFiles', 'listDir', 'listTree', 'openInWindow', 'readBlob', 'readText', 'searchText', 'statBatch', 'userHome', 'writeText'],
     )
     const control = registry.advertise({ mode: 'control', sessions: 'all' })
     expect(control.find(entry => entry.cap === 'fsx')?.acts.slice().sort()).toEqual(

@@ -61,6 +61,8 @@ export interface RuntimeFileAccess {
   /** End a search this connection started; unknown ids are ignored. */
   cancelSearch(searchId: string): Promise<void>
   writeText(sessionId: string, path: string, text: string): Promise<void>
+  /** Shows a video, audio, image or PDF file in the host's viewer window (`full` only). */
+  openInWindow(sessionId: string, path: string): Promise<void>
   /** Store bytes as a session upload; resolves with the host path the runtime chose. */
   upload(sessionId: string, name: string, bytes: Uint8Array, mime?: string): Promise<string>
 }
@@ -164,6 +166,9 @@ export function createRuntimeFileAccess(options: RuntimeFileAccessOptions): Runt
     },
     async writeText(sessionId, path, text) {
       await call<undefined>('writeText', { sessionId, path, text })
+    },
+    async openInWindow(sessionId, path) {
+      await call<undefined>('openInWindow', { sessionId, path })
     },
     async upload(sessionId, name, bytes, mime) {
       const connection = await options.connection()
