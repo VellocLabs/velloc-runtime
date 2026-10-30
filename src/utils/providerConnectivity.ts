@@ -4,6 +4,7 @@
 // so this pulls no webview module into the worker bundle and cannot arm an
 // import cycle.
 import type { MessageKey } from '../browser/webview/i18n/messages/en'
+import { storedKeyProblemOf } from './storedKeyProblem'
 
 export type ProviderApiErrorKind =
   | 'authentication_failed'
@@ -219,6 +220,24 @@ export function classifyProviderConnectivityIssue(
   const typed = getProviderErrorFields(value)
   const status = typed.httpStatus ?? extractStatus(detail)
   const retryAfterMs = typed.retryAfterMs ?? parseRetryAfterMs(detail) ?? undefined
+
+  // The host refused to send: the provider has no usable stored key. Nothing
+  // reached the provider, and resending cannot help until the key is entered.
+  const keyProblem = storedKeyProblemOf(detail)
+  if (keyProblem) {
+    const unreadable = keyProblem === 'unreadable'
+    return {
+      kind: 'credentials',
+      error: 'authentication_failed',
+      titleKey: unreadable ? 'providerIssue.storedKeyUnreadable.title' : 'providerIssue.storedKeyUnavailable.title',
+      summaryKey: unreadable ? 'providerIssue.storedKeyUnreadable.summary' : 'providerIssue.storedKeyUnavailable.summary',
+      retryable: false,
+      settingsRecommended: true,
+      detail,
+      status,
+      retryAfterMs,
+    }
+  }
 
   // Provider-side loop guards (observed on Qwen/DashScope: "Repetitive tool
   // calls detected in the conversation history…") reject the request based on

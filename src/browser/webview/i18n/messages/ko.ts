@@ -158,6 +158,12 @@ export const ko: Messages = {
   'providerIssue.credentials.title': '자격 증명 확인 필요',
   'providerIssue.credentials.summary':
     '제공업체가 구성된 API 키 또는 로그인 토큰을 거부했습니다. {product}은(는) 로그인 경로를 재시도한 후 API 오류를 표시합니다.',
+  'providerIssue.storedKeyUnavailable.title': '사용할 수 있는 API 키 없음',
+  'providerIssue.storedKeyUnavailable.summary':
+    '이 제공업체에 사용할 수 있는 API 키가 저장되어 있지 않아 {product}이(가) 요청을 보내지 않았습니다. 설정에서 키를 입력한 다음(이전에 저장했더라도 다시 입력) 다시 시도를 선택하세요.',
+  'providerIssue.storedKeyUnreadable.title': '저장된 API 키를 읽을 수 없음',
+  'providerIssue.storedKeyUnreadable.summary':
+    '이 제공업체에 저장된 API 키를 이 컴퓨터에서 복호화할 수 없습니다. 다른 사용자 계정, 브라우저 프로필 또는 다른 컴퓨터에서 저장되었을 가능성이 높습니다. 설정에서 키를 다시 입력한 다음 다시 시도를 선택하세요.',
   'providerIssue.queued.title': '제공업체 혼잡 — 요청 대기 중',
   'providerIssue.queued.summary':
     '요청이 제공업체 동시 실행 대기열에서 기한이 지날 때까지 대기했으며 제공업체에 도달하지 못했습니다. {product}은(는) 자동으로 재시도한 후 API 오류를 표시합니다.',
@@ -968,6 +974,8 @@ export const ko: Messages = {
     '{product}은(는) 재시도하지 않았습니다. 제공업체가 이 요청을 바로 거부했으므로, 변경 없이 다시 보내도 같은 방식으로 실패합니다.',
   'thread.providerBillingNoRetrySummary':
     '{product}은(는) 재시도하지 않았습니다. 계정의 크레딧이 부족하여 제공업체가 이 요청을 거부했으며, 이는 자동 재시도로 해결할 수 없습니다.',
+  'thread.providerStoredKeyNoRetrySummary':
+    '{product}이(가) 이 요청을 보내지 않았습니다. 제공업체에 사용할 수 있는 API 키가 없으므로 그대로 다시 보내도 같은 이유로 실패합니다.',
   'thread.providerBillingHint':
     '제공업체 계정에 크레딧을 충전하세요. 요청 비용은 계정 잔액에서 지불됩니다. API 키의 크레딧 한도는 그 키가 잔액에서 쓸 수 있는 금액을 제한할 뿐이므로, 키 한도가 남아 있어도 계정 잔액이 비어 있으면 실패합니다. 충전한 뒤 다시 시도를 선택하세요.',
   'thread.providerRefusalHint':

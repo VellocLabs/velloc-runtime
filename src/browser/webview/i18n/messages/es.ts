@@ -166,6 +166,12 @@ export const es: Messages = {
   'providerIssue.credentials.title': 'Las credenciales requieren atención',
   'providerIssue.credentials.summary':
     'El proveedor rechazó la clave de API o el token de inicio de sesión configurados. {product} reintenta la ruta de inicio de sesión antes de mostrar el error de API.',
+  'providerIssue.storedKeyUnavailable.title': 'No hay una clave de API utilizable',
+  'providerIssue.storedKeyUnavailable.summary':
+    'Este proveedor no tiene guardada ninguna clave de API utilizable, así que {product} no envió la solicitud. Introduzca la clave en Configuración —de nuevo si ya había guardado una— y luego seleccione Reintentar.',
+  'providerIssue.storedKeyUnreadable.title': 'No se puede leer la clave de API guardada',
+  'providerIssue.storedKeyUnreadable.summary':
+    'La clave de API guardada para este proveedor no se puede descifrar en este equipo; probablemente se guardó con otra cuenta de usuario, otro perfil del navegador u otro equipo. Vuelva a introducir la clave en Configuración y luego seleccione Reintentar.',
   'providerIssue.queued.title': 'Proveedor ocupado: solicitud en cola',
   'providerIssue.queued.summary':
     'La solicitud esperó en la cola de concurrencia del proveedor hasta agotar su plazo y nunca llegó al proveedor. {product} reintenta automáticamente antes de mostrar el error de API.',
@@ -986,6 +992,8 @@ export const es: Messages = {
     '{product} no reintentó: el proveedor rechazó esta solicitud de plano, así que reenviarla sin cambios fallaría de la misma manera.',
   'thread.providerBillingNoRetrySummary':
     '{product} no reintentó: el proveedor rechazó esta solicitud porque la cuenta se ha quedado sin crédito, algo que ningún reintento automático puede resolver.',
+  'thread.providerStoredKeyNoRetrySummary':
+    '{product} no envió esta solicitud: el proveedor no tiene una clave de API utilizable, así que reenviarla sin cambios fallaría de la misma forma.',
   'thread.providerBillingHint':
     'Añada créditos a la cuenta del proveedor: es el saldo de la cuenta lo que paga las solicitudes. El límite de crédito de una clave de API solo limita cuánto de ese saldo puede gastar la clave, así que una clave con límite disponible sigue fallando mientras la cuenta esté vacía. Después, seleccione Reintentar.',
   'thread.providerRefusalHint':

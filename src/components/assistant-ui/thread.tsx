@@ -146,6 +146,7 @@ import { VirtualizedThreadMessages } from "@/components/assistant-ui/virtualized
 import { compactCount } from "@/utils/humanize/compactCount";
 import { timeAgoLabel } from "@/utils/humanize/timeAgoLabel";
 import { writeClipboard } from "@/utils/clipboard";
+import { storedKeyProblemOf } from "@/utils/storedKeyProblem";
 import {
   SlashCommandPicker,
   slashCommandDescription,
@@ -2333,8 +2334,13 @@ const ProviderApiErrorCard: FC = () => {
   // generic "resending it unchanged would fail the same way" is wrong advice
   // there: once the user tops up, the unchanged resend is exactly the fix.
   const billingHint = kind === "billing_error";
+  // The host refused to send for want of a usable stored key: the provider
+  // never saw the request, so "the provider rejected it" would mislead.
+  const storedKeyProblem = storedKeyProblemOf(details);
   const retrySummary =
-    billingHint && retryCount === 0
+    storedKeyProblem && retryCount === 0
+      ? t("thread.providerStoredKeyNoRetrySummary")
+      : billingHint && retryCount === 0
       ? t("thread.providerBillingNoRetrySummary")
       : retryCount > 0
       ? t(
@@ -2396,6 +2402,19 @@ const ProviderApiErrorCard: FC = () => {
                 data-testid="provider-api-error-loop-guard-hint"
               >
                 {t("thread.providerLoopGuardHint")}
+              </div>
+            ) : null}
+            {storedKeyProblem ? (
+              <div
+                className="text-xs text-muted-foreground"
+                data-testid="provider-api-error-stored-key-hint"
+                data-problem={storedKeyProblem}
+              >
+                {t(
+                  storedKeyProblem === "unreadable"
+                    ? "providerIssue.storedKeyUnreadable.summary"
+                    : "providerIssue.storedKeyUnavailable.summary",
+                )}
               </div>
             ) : null}
             {billingHint ? (

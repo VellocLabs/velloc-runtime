@@ -189,6 +189,12 @@ export const en = {
   'providerIssue.credentials.title': 'Credentials need attention',
   'providerIssue.credentials.summary':
     'The provider rejected the configured API key or sign-in token. {product} retries the sign-in path before surfacing the API error.',
+  'providerIssue.storedKeyUnavailable.title': 'No usable API key',
+  'providerIssue.storedKeyUnavailable.summary':
+    'This provider has no usable API key saved, so {product} did not send the request. Enter the key in Settings — again if you saved one before — then select Try again.',
+  'providerIssue.storedKeyUnreadable.title': 'Saved API key cannot be read',
+  'providerIssue.storedKeyUnreadable.summary':
+    'The API key saved for this provider cannot be decrypted on this computer — it was probably saved under another user account, browser profile or computer. Enter the key again in Settings, then select Try again.',
   'providerIssue.queued.title': 'Provider busy — request queued',
   'providerIssue.queued.summary':
     'The request waited in the provider concurrency queue until its deadline and never reached the provider. {product} retries automatically before surfacing the API error.',
@@ -1023,6 +1029,8 @@ export const en = {
     '{product} did not retry — the provider rejected this request outright, so resending it unchanged would fail the same way.',
   'thread.providerBillingNoRetrySummary':
     '{product} did not retry — the provider declined this request because the account has run out of credit, which no automatic retry can fix.',
+  'thread.providerStoredKeyNoRetrySummary':
+    '{product} did not send this request — the provider has no usable API key, so resending it unchanged would fail the same way.',
   'thread.providerBillingHint':
     'Add credits to your provider account — the account balance is what pays for requests. An API key\'s credit limit only caps how much of that balance the key may spend, so a key with limit left still fails while the account is empty. Then select Try again.',
   'thread.providerRefusalHint':

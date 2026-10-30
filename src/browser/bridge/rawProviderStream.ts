@@ -43,6 +43,8 @@ export class RawProviderStreamError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    /** The refusal's structured detail (`error.data`), when the host sent one. */
+    readonly data?: Readonly<Record<string, unknown>>,
   ) {
     super(`${code}: ${message}`)
     this.name = 'RawProviderStreamError'
@@ -89,10 +91,15 @@ async function send<T>(
     payload: payload as never,
   })) as { ok: true; result: T } | {
     ok: false
-    error: { code: string; message: string }
+    error: { code: string; message: string; data?: unknown }
   }
   if (!response.ok) {
-    throw new RawProviderStreamError(response.error.code, response.error.message)
+    const { data } = response.error
+    throw new RawProviderStreamError(
+      response.error.code,
+      response.error.message,
+      data && typeof data === 'object' ? (data as Record<string, unknown>) : undefined,
+    )
   }
   return response.result
 }

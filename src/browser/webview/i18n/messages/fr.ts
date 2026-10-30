@@ -163,6 +163,12 @@ export const fr: Messages = {
   'providerIssue.credentials.title': 'Les identifiants nécessitent votre attention',
   'providerIssue.credentials.summary':
     'Le fournisseur a rejeté la clé API ou le jeton de connexion configurés. {product} réessaie le parcours de connexion avant d’afficher l’erreur d’API.',
+  'providerIssue.storedKeyUnavailable.title': 'Aucune clé API utilisable',
+  'providerIssue.storedKeyUnavailable.summary':
+    'Aucune clé API utilisable n’est enregistrée pour ce fournisseur : {product} n’a donc pas envoyé la requête. Saisissez la clé dans les Paramètres — à nouveau si vous en aviez déjà enregistré une — puis sélectionnez Réessayer.',
+  'providerIssue.storedKeyUnreadable.title': 'Impossible de lire la clé API enregistrée',
+  'providerIssue.storedKeyUnreadable.summary':
+    'La clé API enregistrée pour ce fournisseur ne peut pas être déchiffrée sur cet ordinateur — elle a probablement été enregistrée sous un autre compte utilisateur, un autre profil de navigateur ou sur un autre ordinateur. Saisissez de nouveau la clé dans les Paramètres, puis sélectionnez Réessayer.',
   'providerIssue.queued.title':
     'Fournisseur occupé — requête mise en file d’attente',
   'providerIssue.queued.summary':
@@ -986,6 +992,8 @@ export const fr: Messages = {
     '{product} n’a pas réessayé : le fournisseur a rejeté cette requête d’emblée, la renvoyer telle quelle échouerait de la même façon.',
   'thread.providerBillingNoRetrySummary':
     '{product} n’a pas réessayé : le fournisseur a refusé cette requête car le compte n’a plus de crédit, ce qu’aucune nouvelle tentative automatique ne peut corriger.',
+  'thread.providerStoredKeyNoRetrySummary':
+    '{product} n’a pas envoyé cette requête : le fournisseur n’a aucune clé API utilisable, donc la renvoyer telle quelle échouerait de la même façon.',
   'thread.providerBillingHint':
     'Ajoutez des crédits au compte du fournisseur : c’est le solde du compte qui paie les requêtes. La limite de crédit d’une clé d’API plafonne seulement la part de ce solde que la clé peut dépenser ; une clé à qui il reste de la limite échoue donc tant que le compte est vide. Sélectionnez ensuite Réessayer.',
   'thread.providerRefusalHint':

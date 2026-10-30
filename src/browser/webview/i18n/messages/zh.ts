@@ -158,6 +158,12 @@ export const zh: Messages = {
   'providerIssue.credentials.title': '凭据需要处理',
   'providerIssue.credentials.summary':
     '服务商拒绝了已配置的 API 密钥或登录令牌。{product} 会先重试登录流程，然后再显示该 API 错误。',
+  'providerIssue.storedKeyUnavailable.title': '没有可用的 API 密钥',
+  'providerIssue.storedKeyUnavailable.summary':
+    '该服务商没有保存可用的 API 密钥，因此 {product} 没有发送这个请求。请在设置中输入密钥（之前保存过的也请重新输入），然后选择“重试”。',
+  'providerIssue.storedKeyUnreadable.title': '无法读取已保存的 API 密钥',
+  'providerIssue.storedKeyUnreadable.summary':
+    '为该服务商保存的 API 密钥无法在这台电脑上解密——它很可能是在另一个用户账户、浏览器配置文件或另一台电脑上保存的。请在设置中重新输入密钥，然后选择“重试”。',
   'providerIssue.queued.title': '服务商繁忙——请求已排队',
   'providerIssue.queued.summary':
     '该请求在服务商的并发队列中一直等到超过截止时间，从未到达服务商。{product} 会先自动重试，然后再显示该 API 错误。',
@@ -960,6 +966,8 @@ export const zh: Messages = {
     '{product} 没有重试——服务商直接拒绝了该请求，原样重发只会以同样的方式失败。',
   'thread.providerBillingNoRetrySummary':
     '{product} 没有重试——服务商因账户额度不足拒绝了该请求，自动重试无法解决这一问题。',
+  'thread.providerStoredKeyNoRetrySummary':
+    '{product} 没有发送这个请求——该服务商没有可用的 API 密钥，原样重发也会以同样的方式失败。',
   'thread.providerBillingHint':
     '请给服务商账户充值——支付请求的是账户余额。API Key 的额度上限只限制该密钥最多能花掉多少余额，并不是余额本身；账户余额为零时，即使密钥还有额度也会失败。充值后再点击“重试”。',
   'thread.providerRefusalHint':

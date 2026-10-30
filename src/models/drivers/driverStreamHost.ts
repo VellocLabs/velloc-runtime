@@ -28,6 +28,7 @@ import {
   type ProviderRequestSeam,
 } from './providerRequestSeam'
 import { sessionWorkingDirOf } from './sessionWorkingDirs'
+import { storedKeyProblemFromReason, withStoredKeyMarker } from '../../utils/storedKeyProblem'
 
 // A non-2xx body is read whole for the error message; cap it.
 const MAX_ERROR_BODY_BYTES = 64 * 1024
@@ -403,6 +404,7 @@ const ZERO_USAGE = { promptTokens: 0, completionTokens: 0 } as const
  * reads the same sentence on either path.
  */
 const OAUTH_UNAVAILABLE = 'OAUTH_UNAVAILABLE'
+const SECRET_UNAVAILABLE = 'SECRET_UNAVAILABLE'
 export const OAUTH_SIGN_IN_MESSAGE = 'Sign in to this provider in Settings to continue'
 
 /**
@@ -425,6 +427,11 @@ function withHostFinishUsage(event: DriverStreamEvent): DriverStreamEvent {
 function errorText(error: unknown): string {
   if (error instanceof RawProviderStreamError) {
     if (error.code === OAUTH_UNAVAILABLE) return OAUTH_SIGN_IN_MESSAGE
+    // A refused secret carries its stored-key marker (utils/storedKeyProblem.ts).
+    if (error.code === SECRET_UNAVAILABLE) {
+      const problem = storedKeyProblemFromReason(error.data?.reason)
+      if (problem) return withStoredKeyMarker(problem, error.message.slice(`${SECRET_UNAVAILABLE}: `.length))
+    }
     return error.code === 'NETWORK_ERROR'
       ? `Stream network error: ${error.message.slice('NETWORK_ERROR: '.length)}`
       : error.message

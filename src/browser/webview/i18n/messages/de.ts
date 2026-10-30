@@ -165,6 +165,12 @@ export const de: Messages = {
   'providerIssue.credentials.title': 'Zugangsdaten erfordern Aufmerksamkeit',
   'providerIssue.credentials.summary':
     'Der Anbieter hat den konfigurierten API-Schlüssel oder das Anmelde-Token abgelehnt. {product} versucht den Anmeldepfad erneut, bevor der API-Fehler angezeigt wird.',
+  'providerIssue.storedKeyUnavailable.title': 'Kein verwendbarer API-Schlüssel',
+  'providerIssue.storedKeyUnavailable.summary':
+    'Für diesen Anbieter ist kein verwendbarer API-Schlüssel gespeichert, daher hat {product} die Anfrage nicht gesendet. Gib den Schlüssel in den Einstellungen ein — erneut, falls du schon einen gespeichert hattest — und wähle dann Erneut versuchen.',
+  'providerIssue.storedKeyUnreadable.title': 'Gespeicherter API-Schlüssel nicht lesbar',
+  'providerIssue.storedKeyUnreadable.summary':
+    'Der für diesen Anbieter gespeicherte API-Schlüssel kann auf diesem Computer nicht entschlüsselt werden — vermutlich wurde er unter einem anderen Benutzerkonto, Browserprofil oder auf einem anderen Computer gespeichert. Gib den Schlüssel in den Einstellungen erneut ein und wähle dann Erneut versuchen.',
   'providerIssue.queued.title': 'Anbieter ausgelastet — Anfrage in der Warteschlange',
   'providerIssue.queued.summary':
     'Die Anfrage hat in der Nebenläufigkeits-Warteschlange des Anbieters bis zum Ablauf ihrer Frist gewartet und den Anbieter nie erreicht. {product} versucht es automatisch erneut, bevor der API-Fehler angezeigt wird.',
@@ -983,6 +989,8 @@ export const de: Messages = {
     '{product} hat es nicht erneut versucht — der Anbieter hat diese Anfrage direkt abgelehnt, unverändert erneut gesendet würde sie genauso fehlschlagen.',
   'thread.providerBillingNoRetrySummary':
     '{product} hat es nicht erneut versucht — der Anbieter hat diese Anfrage abgelehnt, weil das Konto kein Guthaben mehr hat, und das kann kein automatischer erneuter Versuch beheben.',
+  'thread.providerStoredKeyNoRetrySummary':
+    '{product} hat diese Anfrage nicht gesendet — der Anbieter hat keinen verwendbaren API-Schlüssel, daher würde ein unverändertes erneutes Senden genauso fehlschlagen.',
   'thread.providerBillingHint':
     'Lade Guthaben auf dein Anbieterkonto — bezahlt werden Anfragen aus dem Kontoguthaben. Das Kreditlimit eines API-Schlüssels begrenzt nur, wie viel von diesem Guthaben der Schlüssel ausgeben darf; ein Schlüssel mit verbleibendem Limit scheitert also trotzdem, solange das Konto leer ist. Wähle dann Erneut versuchen.',
   'thread.providerRefusalHint':

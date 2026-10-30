@@ -161,6 +161,12 @@ export const ja: Messages = {
   'providerIssue.credentials.title': '認証情報の確認が必要',
   'providerIssue.credentials.summary':
     'プロバイダが、設定された API キーまたはサインイン用のトークンを拒否しました。{product} はサインイン経路を再試行してから、API エラーを表示します。',
+  'providerIssue.storedKeyUnavailable.title': '使用できる API キーがありません',
+  'providerIssue.storedKeyUnavailable.summary':
+    'このプロバイダには使用できる API キーが保存されていないため、{product} はリクエストを送信しませんでした。設定でキーを入力し（以前に保存していた場合も再入力してください）、「再試行」を選択してください。',
+  'providerIssue.storedKeyUnreadable.title': '保存された API キーを読み取れません',
+  'providerIssue.storedKeyUnreadable.summary':
+    'このプロバイダに保存された API キーは、このコンピュータでは復号できません。別のユーザーアカウント、ブラウザプロファイル、または別のコンピュータで保存された可能性があります。設定でキーを再入力し、「再試行」を選択してください。',
   'providerIssue.queued.title': 'プロバイダが混雑中 — リクエストはキュー待ち',
   'providerIssue.queued.summary':
     'リクエストはプロバイダの同時実行キューで期限まで待機し、プロバイダに届きませんでした。{product} は自動的に再試行してから、API エラーを表示します。',
@@ -972,6 +978,8 @@ export const ja: Messages = {
     '{product} は再試行していません。プロバイダがこのリクエストをそのまま拒否したため、変更せずに再送しても同じように失敗します。',
   'thread.providerBillingNoRetrySummary':
     '{product} は再試行していません。アカウントのクレジットが不足しているためプロバイダがこのリクエストを拒否しました。これは自動再試行では解消できません。',
+  'thread.providerStoredKeyNoRetrySummary':
+    '{product} はこのリクエストを送信していません。プロバイダに使用できる API キーがないため、そのまま再送しても同じように失敗します。',
   'thread.providerBillingHint':
     'プロバイダのアカウントにクレジットを追加してください。リクエストの支払いに使われるのはアカウントの残高です。API キーのクレジット上限は、そのキーが残高から使える額を制限するだけなので、キーの上限が残っていてもアカウントの残高が空なら失敗します。追加したら「再試行」を選択してください。',
   'thread.providerRefusalHint':
