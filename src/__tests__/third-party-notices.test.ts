@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   COMPILED_IN,
   collectNotices,
+  licenseFromText,
   packageOfModule,
   renderNotices,
   repositoryRoot,
@@ -102,6 +103,20 @@ describe('collectNotices', () => {
     expect(renderNotices(notices, {})).toContain('licence text is the one listed under @m/core 1.0.0')
   })
 
+  it('labels a package whose manifest names no licence by its licence file, saying so', () => {
+    const named = writePackage('named', {}, { license: 'The MIT License (MIT)\n\nCopyright (c) K' })
+    const odd = writePackage('odd', {}, { LICENSE: 'Some bespoke terms' })
+    const declared = writePackage('declared', { license: 'ISC' }, { LICENSE: 'MIT License\n' })
+
+    const byName = Object.fromEntries(
+      collectNotices([named, odd, declared].map(dir => path.join(dir, 'i.js'))).map(n => [n.name, n.license]),
+    )
+
+    expect(byName.named).toBe('MIT (from license; package.json names no licence)')
+    expect(byName.odd).toBe('UNKNOWN')
+    expect(byName.declared).toBe('ISC')
+  })
+
   it('fails loudly when a package has no manifest', () => {
     mkdirSync(path.join(tmp, 'node_modules', 'ghost'), { recursive: true })
     expect(() => collectNotices([path.join(tmp, 'node_modules', 'ghost', 'x.js')])).toThrow(/cannot read .*package\.json/)
@@ -131,6 +146,15 @@ describe('renderNotices', () => {
     const graphviz = COMPILED_IN['@viz-js/viz']!.find(c => c.name === 'Graphviz')!
     expect(graphviz.license).toBe('EPL-1.0')
     expect(readFileSync(path.join(NOTICES_DIR, graphviz.file), 'utf8')).toMatch(/^Eclipse Public License - v 1\.0/)
+  })
+})
+
+describe('licenseFromText', () => {
+  it('names MIT, ISC and Apache-2.0 from the opening line only', () => {
+    expect(licenseFromText('\n  The MIT License (MIT)\nCopyright')).toBe('MIT')
+    expect(licenseFromText('ISC License\n\nCopyright')).toBe('ISC')
+    expect(licenseFromText('                                 Apache License\n                           Version 2.0, January 2004')).toBe('Apache-2.0')
+    expect(licenseFromText('Copyright (c) X\n\nPermission is hereby granted ... MIT License')).toBeNull()
   })
 })
 

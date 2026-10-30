@@ -84,6 +84,32 @@ function licenseOf(manifest: Record<string, unknown>): string {
   return 'UNKNOWN'
 }
 
+const LICENSE_TEXT_HEADINGS: Array<[RegExp, string]> = [
+  [/^(the )?mit license\b/i, 'MIT'],
+  [/^isc license\b/i, 'ISC'],
+  [/^apache license\s+version 2\.0\b/i, 'Apache-2.0'],
+]
+
+/** The licence a licence file's opening line names (MIT, ISC, Apache-2.0), or null. */
+export function licenseFromText(text: string): string | null {
+  const opening = text.trimStart().replace(/\s+/g, ' ')
+  for (const [heading, id] of LICENSE_TEXT_HEADINGS) {
+    if (heading.test(opening)) return id
+  }
+  return null
+}
+
+/** The manifest's licence; failing that, the one a shipped licence file names, marked as read from that file. */
+function resolveLicense(manifest: Record<string, unknown>, files: NoticeFile[]): string {
+  const declared = licenseOf(manifest)
+  if (declared !== 'UNKNOWN') return declared
+  for (const file of files) {
+    const id = licenseFromText(file.text)
+    if (id) return `${id} (from ${file.fileName}; package.json names no licence)`
+  }
+  return declared
+}
+
 function repositoryOf(manifest: Record<string, unknown>): string | null {
   const repo = manifest.repository
   const url = typeof repo === 'string' ? repo : (repo as { url?: unknown } | undefined)?.url
@@ -100,7 +126,7 @@ export function readPackageNotice(dir: string): PackageNotice {
   } catch (error) {
     throw new Error(`third-party-notices: cannot read ${manifestPath}: ${(error as Error).message}`)
   }
-  const entries: Dirent[] =fs.readdirSync(dir, { withFileTypes: true })
+  const entries: Dirent[] = fs.readdirSync(dir, { withFileTypes: true })
   const files = entries
     .filter(entry => entry.isFile() && NOTICE_FILE_NAME.test(entry.name))
     .map(entry => entry.name)
@@ -109,7 +135,7 @@ export function readPackageNotice(dir: string): PackageNotice {
   return {
     name: String(manifest.name ?? path.basename(dir)),
     version: String(manifest.version ?? ''),
-    license: licenseOf(manifest),
+    license: resolveLicense(manifest, files),
     repository: repositoryOf(manifest),
     files,
   }
