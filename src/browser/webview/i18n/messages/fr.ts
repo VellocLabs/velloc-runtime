@@ -1918,6 +1918,7 @@ export const fr: Messages = {
     'Recharge le runtime en contournant les ressources mises en cache.',
   'settings.about.licenseValue': '{product} est un logiciel open source.',
   'settings.about.copyright': '© {year} VellocLabs.',
+  'settings.about.thirdPartyNotices': 'Licences tierces',
 
   // ── Paramètres — Modèles de session (niveaux + routage) ────────────────
   'settings.sessionModels.title': 'Modèles de session',

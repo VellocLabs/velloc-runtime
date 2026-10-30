@@ -1873,6 +1873,7 @@ export const ja: Messages = {
     'キャッシュされたリソースを使わずにランタイムを再読み込みします。',
   'settings.about.licenseValue': '{product} はオープンソースです。',
   'settings.about.copyright': '© {year} VellocLabs.',
+  'settings.about.thirdPartyNotices': 'サードパーティライセンス',
 
   // ── 設定 — セッションモデル（ティア辞書 + 機能ルーティング） ───────────
   'settings.sessionModels.title': 'セッションモデル',

@@ -1867,6 +1867,7 @@ export const ko: Messages = {
     '캐시된 리소스를 건너뛰고 런타임을 다시 불러옵니다.',
   'settings.about.licenseValue': '{product}은(는) 오픈소스입니다.',
   'settings.about.copyright': '© {year} VellocLabs.',
+  'settings.about.thirdPartyNotices': '타사 라이선스',
 
   // ── 설정 — 세션 모델(등급 사전 + 기능 라우팅) ─────────────────────────
   'settings.sessionModels.title': '세션 모델',

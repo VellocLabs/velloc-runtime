@@ -99,3 +99,6 @@ Issues and pull requests are welcome. The house rules:
 
 Apache License 2.0. See [LICENSE](LICENSE). Text adapted from other projects
 is listed with its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+A production build also emits `third-party-licenses.txt` beside `index.html`:
+the licence and notice text of every npm package the bundle ships, linked from
+Settings → About.

@@ -7,10 +7,13 @@ import { SettingsBridgeContext } from '../browser/webview/nexusSettingsBridge'
 import type { NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
 import { getProductName } from '../branding/productName'
+import { THIRD_PARTY_NOTICES_FILE } from '../branding/thirdPartyNotices'
+import { en } from '../browser/webview/i18n/messages/en'
 
 /**
  * About page: the tagline names an open-source AI coding agent, and the footer states the license and the
- * copyright on one line: "{product} is open source. © <year> VellocLabs."
+ * copyright on one line: "{product} is open source. © <year> VellocLabs.", followed by a link to the
+ * third-party notices.
  */
 
 // Isolate the section from the host bridge routes it fetches on mount.
@@ -82,5 +85,14 @@ describe('AboutSection licensing copy', () => {
     // One paragraph, not two — the copyright must not wrap onto its own line.
     expect(screen.queryByText(`© ${year} VellocLabs.`, { exact: true })).toBeNull()
     expect(document.body.textContent).not.toContain('Proprietary')
+  })
+
+  it('links the footer to the third-party notices the build ships beside index.html', () => {
+    renderAbout()
+
+    const link = screen.getByTestId('about-third-party-notices') as HTMLAnchorElement
+    expect(link.getAttribute('href')).toBe(`${import.meta.env.BASE_URL}${THIRD_PARTY_NOTICES_FILE}`)
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.textContent).toBe(en['settings.about.thirdPartyNotices'])
   })
 })

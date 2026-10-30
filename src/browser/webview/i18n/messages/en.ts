@@ -1937,6 +1937,7 @@ export const en = {
   'settings.about.reloadHint': 'Reload the runtime and bypass cached resources.',
   'settings.about.licenseValue': '{product} is open source.',
   'settings.about.copyright': '© {year} VellocLabs.',
+  'settings.about.thirdPartyNotices': 'Third-party licenses',
 
   // ── Settings — Session models (tier dictionary + feature routing) ──────
   'settings.sessionModels.title': 'Session Models',

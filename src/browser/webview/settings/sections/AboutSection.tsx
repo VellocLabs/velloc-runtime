@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { getBuildTime, formatBuildTime } from "@/branding/buildInfo";
+import { THIRD_PARTY_NOTICES_FILE } from "@/branding/thirdPartyNotices";
 import {
   channelForUrl,
   channelServesThisVersion,
@@ -686,10 +687,22 @@ export function AboutSection({
         </div>
       </section>
 
-      {/* One line: the licensing statement followed by the copyright. */}
-      <p className="mt-6 flex items-center gap-2 text-muted-foreground text-xs">
+      {/* One line: the licensing statement, the copyright, and the notices of
+          the third-party packages this bundle ships (emitted at build time). */}
+      <p className="mt-6 flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
         <ShieldCheckIcon className="size-3.5 shrink-0" />
-        {`${t("settings.about.licenseValue")} ${t("settings.about.copyright", { year })}`}
+        <span>
+          {`${t("settings.about.licenseValue")} ${t("settings.about.copyright", { year })}`}
+        </span>
+        <a
+          href={`${import.meta.env.BASE_URL}${THIRD_PARTY_NOTICES_FILE}`}
+          target="_blank"
+          rel="noreferrer"
+          className="underline underline-offset-2 hover:text-foreground"
+          data-testid="about-third-party-notices"
+        >
+          {t("settings.about.thirdPartyNotices")}
+        </a>
       </p>
     </SettingsSubpageLayout>
   );

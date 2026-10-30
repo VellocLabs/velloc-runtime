@@ -1913,6 +1913,7 @@ export const es: Messages = {
     'Recarga el runtime sin usar los recursos en caché.',
   'settings.about.licenseValue': '{product} es de código abierto.',
   'settings.about.copyright': '© {year} VellocLabs.',
+  'settings.about.thirdPartyNotices': 'Licencias de terceros',
 
   // ── Configuración — Modelos de sesión (niveles + enrutado) ─────────────
   'settings.sessionModels.title': 'Modelos de sesión',

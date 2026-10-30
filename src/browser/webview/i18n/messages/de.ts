@@ -1909,6 +1909,7 @@ export const de: Messages = {
     'Lädt die Runtime neu und umgeht zwischengespeicherte Ressourcen.',
   'settings.about.licenseValue': '{product} ist quelloffen.',
   'settings.about.copyright': '© {year} VellocLabs.',
+  'settings.about.thirdPartyNotices': 'Lizenzen von Drittanbietern',
 
   // ── Einstellungen — Sitzungsmodelle (Stufen + Funktions-Routing) ───────
   'settings.sessionModels.title': 'Sitzungsmodelle',

@@ -14,6 +14,7 @@ import { localeAssetsPlugin } from './vite/localeAssetsPlugin'
 import { devCatalogSnapshotPlugin } from './vite/devCatalogSnapshotPlugin'
 import { devServerWatch } from './vite/devServerWatch'
 import { xtermHeadlessWorkerPlugin } from './vite/xtermHeadlessWorkerPlugin'
+import { thirdPartyNotices } from './vite/thirdPartyNoticesPlugin'
 import { NEXUS_INTERFACE_VERSION } from './src/browser/bridge/protocol/interfaceVersion'
 import { BUILD_TIME_META_NAME, buildTimeFromCommit } from './src/branding/buildInfo'
 
@@ -277,6 +278,10 @@ function resolveBuildTime(): string {
 // 8.3) is the one the watcher reports — __dirname is the config's real path.
 const devWatch = devServerWatch(__dirname)
 
+// One collector per worker build feeds the page build's plugin, which emits
+// third-party-licenses.txt once every graph is known.
+const notices = thirdPartyNotices(__dirname)
+
 export default defineConfig(({ mode }) => ({
   base: resolvePagesBasePath(),
   plugins: [
@@ -292,6 +297,7 @@ export default defineConfig(({ mode }) => ({
     devCatalogSnapshotPlugin(__dirname),
     assetManifestPlugin(),
     buildTimeMetaPlugin(),
+    notices.plugin,
   ],
   define: {
     'process.env.NODE_ENV': JSON.stringify(mode),
@@ -311,7 +317,12 @@ export default defineConfig(({ mode }) => ({
     // here too — the worker imports `templateRegistry` (via createBrowserRuntime).
     // So must `virtual:builtin-mods`: the session boot registers the built-in
     // mods there.
-    plugins: () => [bundledTemplateRegistryPlugin(), builtinModsPlugin(), xtermHeadlessWorkerPlugin()],
+    plugins: () => [
+      bundledTemplateRegistryPlugin(),
+      builtinModsPlugin(),
+      xtermHeadlessWorkerPlugin(),
+      notices.collector(),
+    ],
   },
   server: {
     watch: {

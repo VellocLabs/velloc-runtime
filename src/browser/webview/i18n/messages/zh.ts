@@ -1832,6 +1832,7 @@ export const zh: Messages = {
   'settings.about.reloadHint': '重新加载运行时并绕过缓存资源。',
   'settings.about.licenseValue': '{product} 是开源软件。',
   'settings.about.copyright': '© {year} VellocLabs。',
+  'settings.about.thirdPartyNotices': '第三方许可',
 
   // ── 设置 — 会话模型（层级字典 + 功能路由） ────────────────────────────
   'settings.sessionModels.title': '会话模型',

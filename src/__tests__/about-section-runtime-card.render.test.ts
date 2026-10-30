@@ -131,7 +131,7 @@ describe('AboutSection runtime card', () => {
 
     // No override is set, so the row displays the built-in default — and the
     // link must point at what it displays, not at some other URL.
-    const link = await screen.findByRole('link')
+    const link = await screen.findByRole('link', { name: /localhost:5173\/index\.html/ })
     expect(link.getAttribute('href')).toBe('http://localhost:5173/index.html')
     expect(link.textContent).toContain('http://localhost:5173/index.html')
     // Opened by the guest's capture-phase interceptor as a real browser tab;
@@ -162,7 +162,7 @@ describe('AboutSection runtime card', () => {
 
     // … and inside EditableField (URL ↔ pencil), where the className override
     // must survive the tailwind-merge with the default gap-1.
-    const link = await screen.findByRole('link')
+    const link = await screen.findByRole('link', { name: /localhost:5173\/index\.html/ })
     const fieldWrapper = link.parentElement!
     expect(fieldWrapper.className).toContain('gap-3')
     expect(fieldWrapper.className).not.toMatch(/\bgap-1\b/)
