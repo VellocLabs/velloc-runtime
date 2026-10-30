@@ -842,12 +842,16 @@ export class MCPPool {
   /**
    * Launch one native server after `init` (`$.mcp.connect`): a failed or
    * closed native entry under `name` with the same config is relaunched
-   * unless it is being evicted, a
-   * name the pool does not hold is launched. Any other registered entry is
-   * answered as it is. Concurrent calls share one launch. Undefined without a
-   * native bridge, or once the pool is shut down. Never rejects.
+   * unless it is being evicted — with any config when the caller, having
+   * checked the name is its own, passes `replaceConfig`; a name the pool does
+   * not hold is launched. Any other entry is answered as it is. Concurrent
+   * calls share one launch. Undefined without a bridge or after shutdown.
    */
-  launchNativeServer(name: string, config: NexusMcpServerLaunchConfig): Promise<LiveServerLink | undefined> {
+  launchNativeServer(
+    name: string,
+    config: NexusMcpServerLaunchConfig,
+    options: { replaceConfig?: boolean } = {},
+  ): Promise<LiveServerLink | undefined> {
     const inFlight = this.launching.get(name)
     if (inFlight) return inFlight
     const bridge = this.nativeBridge
@@ -858,7 +862,7 @@ export class MCPPool {
       && existing.nativeServerId !== undefined
       && (existing.status === 'failed' || existing.status === 'closed')
       && !this.evicting.has(existing)
-      && configsEqual(existing.nativeConfig, config)
+      && (options.replaceConfig === true || configsEqual(existing.nativeConfig, config))
     if (existing && !retry) return Promise.resolve(existing)
     const run = (async () => {
       // The failed entry stays listed, with its reason, until the launch settles.

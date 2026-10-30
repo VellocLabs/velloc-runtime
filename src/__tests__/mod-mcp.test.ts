@@ -5,7 +5,8 @@
  * `ModRuntime`, including a guard denying another plugin's call.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { McpBridgeOperations } from '../mcp/nativeBridge'
+import type { McpBridgeOperations, NexusMcpServerLaunchConfig } from '../mcp/nativeBridge'
+import type { McpServerOriginSources } from '../mcp/serverOrigin'
 import type { MCPServerConfig, MCPServerConfigWithName } from '../mcp/types'
 
 const configured: { servers: MCPServerConfigWithName[] } = { servers: [] }
@@ -235,8 +236,18 @@ describe('poolModMcp over native (stdio) servers', () => {
   }
   const manifestServer = (plugin: string, key: string) => manifests[plugin]?.[key]
 
+  /** The session's view of who holds each native id: `docs` owns `shell` and `later` unless `origins` says otherwise. */
+  const docsOwns: McpServerOriginSources = {
+    settingsIds: new Set(),
+    pluginServers: [{ name: 'shell', plugin: 'docs', track: 'native' }, { name: 'later', plugin: 'docs', track: 'native' }],
+  }
+
   /** A pool whose session started `natives`; each bridge connect takes the next outcome (the last repeats). */
-  async function nativePool(outcomes: Array<'ok' | 'fail'>, natives: Array<{ id: string; config: typeof shell }>) {
+  async function nativePool(
+    outcomes: Array<'ok' | 'fail'>,
+    natives: Array<{ id: string; config: NexusMcpServerLaunchConfig }>,
+    origins: McpServerOriginSources = docsOwns,
+  ) {
     const launches: string[] = []
     const stops: string[] = []
     let i = 0
@@ -257,7 +268,7 @@ describe('poolModMcp over native (stdio) servers', () => {
     const built = new MCPPool({ cwd: '/work', nativeBridge, loadNativeServers: async () => natives })
     await built.init()
     const offered: string[] = []
-    const mcp = poolModMcp({ pool: () => built, manifestServer, onNativeLaunched: name => offered.push(name) })
+    const mcp = poolModMcp({ pool: () => built, manifestServer, onNativeLaunched: name => offered.push(name), origins: () => origins })
     return { pool: built, launches, stops, offered, mcp }
   }
 
@@ -276,6 +287,39 @@ describe('poolModMcp over native (stdio) servers', () => {
     expect(stops).toEqual(['shell'])
     expect(p.getServer('shell')).toMatchObject({ status: 'connected', nativeConfig: shell, tools: [{ name: 'run' }] })
     expect(offered).toEqual(['shell'])
+  })
+
+  const stale = { transport: 'stdio' as const, command: 'uvx', args: ['contree-mcp'], env: { KEY: '' } }
+
+  it('a server that failed with one config is launched again with the manifest\'s current one, and offered', async () => {
+    const { pool: p, launches, stops, offered, mcp } = await nativePool(['fail', 'ok'], [{ id: 'shell', config: stale }])
+    expect(p.getServer('shell')).toMatchObject({ status: 'failed', nativeConfig: stale })
+    expect(await mcp.connect('docs', 'shell')).toEqual({ isConnected: true, server: 'shell' })
+    expect(launches).toEqual(['shell', 'shell'])
+    expect(stops).toEqual(['shell'])
+    expect(p.getServer('shell')).toMatchObject({ status: 'connected', nativeConfig: shell })
+    expect(offered).toEqual(['shell'])
+  })
+
+  it('a failed entry under the id that settings or another plugin holds is not launched with the caller\'s config', async () => {
+    const refused = { isConnected: false, reason: 'failed', message: '"shell" is another MCP server\'s name in this session' }
+    const settings = await nativePool(['fail', 'ok'], [{ id: 'shell', config: stale }], { settingsIds: new Set(['shell']), pluginServers: [] })
+    expect(await settings.mcp.connect('docs', 'shell')).toEqual(refused)
+    expect(settings.launches).toEqual(['shell'])
+    expect(settings.stops).toEqual([])
+    expect(settings.pool.getServer('shell')).toMatchObject({ status: 'failed', nativeConfig: stale })
+    expect(settings.offered).toEqual([])
+    const other = await nativePool(['fail', 'ok'], [{ id: 'shell', config: stale }], { settingsIds: new Set(), pluginServers: [{ name: 'shell', plugin: 'other', track: 'native' }] })
+    expect(await other.mcp.connect('docs', 'shell')).toEqual(refused)
+    expect(other.launches).toEqual(['shell'])
+    const unknown = await nativePool(['fail', 'ok'], [{ id: 'shell', config: stale }], { settingsIds: new Set(), pluginServers: [] })
+    expect(await unknown.mcp.connect('docs', 'shell')).toEqual(refused)
+    expect(unknown.launches).toEqual(['shell'])
+    const blind = new MCPPool({ cwd: '/work', nativeBridge: { async connect() { return { ok: true, tools: [] } }, async callTool() { return { ok: true, result: {} } }, async disconnect() {} }, loadNativeServers: async () => [{ id: 'shell', config: stale }] })
+    await blind.init()
+    blind.getServer('shell')!.status = 'failed'
+    const noOrigins = poolModMcp({ pool: () => blind, manifestServer })
+    expect(await noOrigins.connect('docs', 'shell')).toEqual(refused)
   })
 
   it('a launch that fails again answers failed with the new error and offers nothing', async () => {

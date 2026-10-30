@@ -8,6 +8,7 @@
 
 import type { NexusMcpServerLaunchConfig } from '../mcp/nativeBridge'
 import { sameMCPServerConfig, type MCPPool } from '../mcp/pool'
+import { mcpServerOrigin, type McpServerOriginSources } from '../mcp/serverOrigin'
 import { sanitizeSegment } from '../mcp/toolAdapter'
 import type { LiveServerLink, MCPServerConfigWithName } from '../mcp/types'
 
@@ -165,11 +166,14 @@ function failed(message: string): ModMcpConnectResult {
  * server under `key` in that plugin's own manifest, or undefined.
  * `onNativeLaunched(name)` runs once for each stdio server `connect` brought
  * up, after it connected — the session offers its tools from then on.
+ * `origins` says whose each pool entry is: only a failed stdio entry under
+ * the plugin's own id is launched again with the manifest's current config.
  */
 export function poolModMcp(options: {
   pool: () => ModMcpPool | null
   manifestServer: (plugin: string, key: string) => ModMcpManifestServer | undefined
   onNativeLaunched?: (name: string) => void
+  origins?: () => McpServerOriginSources
 }): ModMcpHost {
   const poolOrThrow = (): ModMcpPool => {
     const pool = options.pool()
@@ -182,14 +186,23 @@ export function poolModMcp(options: {
   }
   /** In-flight stdio launches by name; concurrent connects share one. */
   const launches = new Map<string, Promise<LiveServerLink | undefined>>()
+  /** Whether the native entry under `name` is `plugin`'s own: the pool keeps the first
+   *  holder of an id, so the origin of the name decides, never the config. */
+  const ownsNative = (plugin: string, name: string): boolean => {
+    const sources = options.origins?.()
+    if (!sources) return false
+    const origin = mcpServerOrigin({ name, nativeServerId: name }, sources)
+    return origin.kind === 'plugin' && origin.plugin === plugin
+  }
   const launchNative = (
     pool: ModMcpPool,
     name: string,
     server: Extract<StartableManifestServer, { kind: 'native' }>,
+    replaceConfig: boolean,
   ): Promise<LiveServerLink | undefined> => {
     const inFlight = launches.get(name)
     if (inFlight) return inFlight
-    const run = pool.launchNativeServer(name, server.config).then(link => {
+    const run = pool.launchNativeServer(name, server.config, { replaceConfig }).then(link => {
       if (link?.status === 'connected' && isSameServer(link, server)) {
         try {
           options.onNativeLaunched?.(link.name)
@@ -223,11 +236,14 @@ export function poolModMcp(options: {
       // "The same server run under another name answers with that name."
       if (connected) return { isConnected: true, server: connected.name }
       // A stdio server that failed, or that the session never started, is
-      // launched again under the name it holds, else its manifest id.
+      // launched again under the name it holds, else its manifest id. A
+      // failed entry under the plugin's own id whose config has since changed
+      // (a runtime installed, a key saved) is replaced by the current one;
+      // one another owner holds under that id is answered as it is.
       const name = server.kind === 'native' ? running[0]?.name ?? server.id : server.entry.name
       try {
         const added = server.kind === 'native'
-          ? await launchNative(pool, name, server)
+          ? await launchNative(pool, name, server, running.length === 0 && ownsNative(plugin, name))
           : await pool.addServer(server.entry)
         if (!added) return failed(`"${key}" was not connected: this session cannot start stdio servers`)
         if (!isSameServer(added, server)) {

@@ -2137,6 +2137,7 @@ ${teammateAddendum}`
                     : undefined
                 },
                 onNativeLaunched: () => offerLaunchedMcpServer(),
+                origins: () => mcpOrigins,
               }),
             }
           : {}),
