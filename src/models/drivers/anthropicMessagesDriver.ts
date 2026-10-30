@@ -16,6 +16,7 @@ import {
 import {
   HostDouble,
   HostInt,
+  OrderedHostDict,
   findBool,
   findDict,
   findDouble,
@@ -146,7 +147,20 @@ function sanitizeNode(schema: HostDict): boolean {
     }
     schema.set(combinator, kept)
   }
+  if (nullable) dropNullAdvice(schema)
   return nullable
+}
+
+// Advice to pass `null` no longer holds once null has left the type.
+const NULL_ADVICE = /\s*Use null\b[^.]*\.?/g
+
+function dropNullAdvice(schema: HostDict): void {
+  const description = findString(schema, 'description')
+  if (description === undefined) return
+  const kept = description.replace(NULL_ADVICE, '').trim()
+  if (kept === description) return
+  if (kept) schema.set('description', kept)
+  else schema.delete('description')
 }
 
 /** SanitizeStrictSchemaForAnthropic: OpenAI-strict dialect → Anthropic. */
@@ -360,6 +374,22 @@ function hasCallerMark(messages: HostList): boolean {
   )
 }
 
+/**
+ * The schema with every object in its declared key order. Strict tool use samples
+ * properties in the order the schema lists them, so a sorted `properties` would
+ * fix an alphabetical argument order and drop what the model writes after a later
+ * key (`path` after `pattern`).
+ */
+function inDeclaredOrder(value: HostValue): HostValue {
+  if (isHostList(value)) return value.map(inDeclaredOrder)
+  if (isHostDict(value)) {
+    const out = new OrderedHostDict()
+    for (const [k, v] of value) out.set(k, inDeclaredOrder(v))
+    return out
+  }
+  return value
+}
+
 /** TranslateTools (anthropic_provider.cc:1272). */
 function translateTools(tools: HostList, autoMark: boolean): HostList {
   const result: HostDict[] = []
@@ -375,6 +405,8 @@ function translateTools(tools: HostList, autoMark: boolean): HostList {
     if (params) {
       d.set('input_schema', strict ? sanitizeStrictSchemaForAnthropic(params) : cloneHost(params))
     }
+    const schema = d.get('input_schema')
+    if (schema !== undefined) d.set('input_schema', inDeclaredOrder(schema))
     if (strict !== undefined) d.set('strict', strict)
     const examples = findList(toolValue, 'inputExamples')
     if (examples) d.set('input_examples', cloneHost(examples))

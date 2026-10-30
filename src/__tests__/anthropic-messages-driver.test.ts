@@ -15,8 +15,10 @@ import {
 } from '../models/drivers/anthropicMessagesDriver'
 import { HostRequestError } from '../models/drivers/hostCallOptions'
 import {
+  OrderedHostDict,
   hostValueFromJs,
   hostValueToJs,
+  writeHostJson,
   type HostDict,
 } from '../models/drivers/hostValue'
 import type { DriverStreamEvent } from '../models/drivers/driverTypes'
@@ -250,10 +252,13 @@ describe('anthropic-messages buildRequest', () => {
           type: 'function',
           name: 'Loose',
           strict: false,
-          parameters: { type: 'object', properties: { n: { type: ['string', 'null'] } } },
+          parameters: { type: 'object', properties: { n: { type: ['string', 'null'] }, a: { type: 'string' } } },
         },
       ],
     })
+    // Strict sampling follows the schema's property order: declared, never sorted.
+    expect(Object.keys(b.tools[0].input_schema.properties)).toEqual(['pattern', 'path', 'limit'])
+    expect(Object.keys(b.tools[1].input_schema.properties)).toEqual(['n', 'a'])
     expect(b.tools[0]).toEqual({
       name: 'Grep',
       description: 'search',
@@ -269,7 +274,7 @@ describe('anthropic-messages buildRequest', () => {
     // strict:false never survives the host hop; non-strict schemas pass through.
     expect(b.tools[1]).toEqual({
       name: 'Loose',
-      input_schema: { type: 'object', properties: { n: { type: ['string', 'null'] } } },
+      input_schema: { type: 'object', properties: { n: { type: ['string', 'null'] }, a: { type: 'string' } } },
       cache_control: { type: 'ephemeral' },
     })
     expect(b.tool_choice).toEqual({ type: 'auto' })
@@ -478,6 +483,15 @@ describe('anthropic-messages errorFromResponse', () => {
   })
 })
 
+describe('writeHostJson key order', () => {
+  it('writes an OrderedHostDict in insertion order and a plain dict sorted', () => {
+    const inner: HostDict = new Map([['pattern', 'x'], ['path', 'y']])
+    const ordered = new OrderedHostDict([['pattern', inner], ['path', 'p']])
+    expect(writeHostJson(ordered)).toBe('{"pattern":{"path":"y","pattern":"x"},"path":"p"}')
+    expect(writeHostJson(inner)).toBe('{"path":"y","pattern":"x"}')
+  })
+})
+
 // ── Cases from the C++ unit tests──────────────────────────────────────
 
 function sanitize(schema: unknown): any {
@@ -504,6 +518,27 @@ describe('schema sanitizer (cases of anthropic_schema_sanitizer_unittest.cc)', (
     expect(out.required).toEqual(['pattern'])
     expect(out.additionalProperties).toBe(false)
     expect(Object.keys(out.properties)).toHaveLength(4)
+  })
+
+  it('drops "Use null" advice from a description once null leaves the type', () => {
+    const out = sanitize({
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'Regular expression. Use null never applies here.' },
+        path: {
+          type: ['string', 'null'],
+          description: 'File or directory to search. The working directory unless set. Use null to select the default.',
+        },
+        type: { type: ['string', 'null'], description: 'Use null when no type filter is needed.' },
+        glob: { type: ['string', 'null'], description: 'No filter unless set. Use null when not needed. Several may be listed.' },
+      },
+      required: ['pattern', 'path', 'type', 'glob'],
+      additionalProperties: false,
+    })
+    expect(out.properties.pattern.description).toBe('Regular expression. Use null never applies here.')
+    expect(out.properties.path.description).toBe('File or directory to search. The working directory unless set.')
+    expect(out.properties.type).toEqual({ type: 'string' })
+    expect(out.properties.glob.description).toBe('No filter unless set. Several may be listed.')
   })
 
   it('StripsNullFromEnums', () => {

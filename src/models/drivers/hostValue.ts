@@ -18,6 +18,10 @@ export type HostDict = Map<string, HostValue>
 export type HostList = HostValue[]
 export type HostValue = null | boolean | string | HostInt | HostDouble | HostList | HostDict
 
+/** A dict `writeHostJson` writes in insertion order instead of sorted byte
+ *  order: for a JSON object whose key order carries meaning to its reader. */
+export class OrderedHostDict extends Map<string, HostValue> {}
+
 const INT32_MIN = -2147483648
 const INT32_MAX = 2147483647
 // base/json/json_common.h kAbsoluteMaxDepth.
@@ -189,9 +193,10 @@ export function writeHostJson(value: HostValue): string {
   if (value instanceof HostInt) return String(value.value)
   if (value instanceof HostDouble) return writeDouble(value.value)
   if (Array.isArray(value)) return '[' + value.map(writeHostJson).join(',') + ']'
+  const entries = value instanceof OrderedHostDict ? [...value.entries()] : sortedEntries(value)
   return (
     '{'
-    + sortedEntries(value)
+    + entries
       .map(([k, v]) => escapeJsonString(k) + ':' + writeHostJson(v))
       .join(',')
     + '}'
