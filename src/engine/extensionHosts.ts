@@ -341,9 +341,10 @@ function conversationHost(parts: HostParts): ModConversationHost {
           callContext: ledger.callContext(),
           raise,
         })
+        // Appended, never replacing: the page and the store keep every row,
+        // and a request slices at the boundary on its way to the model (F-3).
         const kept = await writer.appendRows(rows)
-        if (didCompact) ledger.rows = kept
-        else ledger.rows.push(...kept)
+        ledger.rows.push(...kept)
         await writer.persist()
         rewritten()
         if (settled && 'skip' in settled) return { skip: settled.skip }

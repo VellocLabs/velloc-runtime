@@ -146,8 +146,12 @@ function systemTexts(messages: unknown[]): string[] {
     .filter((m): m is string => typeof m === 'string')
 }
 
+function hasBoundaryRow(row: Message): boolean {
+  return (row as { subtype?: string }).subtype === 'compact_boundary'
+}
+
 function hasBoundary(rows: readonly Message[]): boolean {
-  return rows.some(m => (m as { subtype?: string }).subtype === 'compact_boundary')
+  return rows.some(hasBoundaryRow)
 }
 
 function contentOf(row: Message): unknown {
@@ -221,6 +225,34 @@ describe('/compact — PreCompact (8-3-2)', () => {
 })
 
 describe('/compact — after the summary (8-3-2)', () => {
+  it('the rows before the boundary stay in the transcript: the typed command, the boundary and the summary are appended after them', async () => {
+    const { engine } = world()
+    await submit(engine, 'hello', 'u1')
+    const before = engine.transcriptRows().map(m => m.uuid)
+    expect(before).toContain('u1')
+    await submit(engine, '/compact', 'u2')
+    const after = engine.transcriptRows().map(m => m.uuid)
+    // A replacement would leave only the command, the boundary and the summary.
+    expect(after.slice(0, before.length)).toEqual(before)
+    expect(after.slice(before.length)).toEqual(['u2', 'b1', 'sum1'])
+  })
+
+  it('the turn after `/compact` builds on the same whole transcript: one boundary, nothing repeated', async () => {
+    const { engine } = world()
+    await submit(engine, 'hello', 'u1')
+    await submit(engine, '/compact', 'u2')
+    const compacted = engine.transcriptRows().map(m => m.uuid)
+    await submit(engine, 'more', 'u3')
+    const rows = engine.transcriptRows()
+    const uuids = rows.map(m => m.uuid)
+    // The store's reload at the next turn must agree with what the engine held,
+    // or the page sees the old rows come back in a different place.
+    expect(uuids.slice(0, compacted.length)).toEqual(compacted)
+    expect(uuids.filter(id => id === 'u1')).toHaveLength(1)
+    expect(rows.filter(hasBoundaryRow)).toHaveLength(1)
+    expect(uuids).toContain('u3')
+  })
+
   it('PostCompact runs with trigger `manual` and the summary; SessionStart runs with source `compact`', async () => {
     const { engine, hook, classicCalls } = world({ classic: true })
     const post = hook('PostCompact', 'manual', true)

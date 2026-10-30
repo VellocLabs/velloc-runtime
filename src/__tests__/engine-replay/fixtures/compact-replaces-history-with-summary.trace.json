@@ -156,7 +156,7 @@
       "messages": [
         {
           "role": "user",
-          "content": "user: /compact keep it short\nuser: next question\nassistant: Continuing."
+          "content": "user: first question\nassistant: First answer.\nuser: /compact keep it short\nuser: next question\nassistant: Continuing."
         }
       ],
       "systemPrompt": {
@@ -296,7 +296,7 @@
           }
         }
       ],
-      "total": 3
+      "total": 5
     },
     {
       "op": "record",
@@ -309,7 +309,7 @@
           "content": "next question"
         }
       ],
-      "total": 4
+      "total": 6
     },
     {
       "op": "record",
@@ -327,7 +327,7 @@
           "stop_reason": "end_turn"
         }
       ],
-      "total": 5
+      "total": 7
     },
     {
       "op": "terminal",

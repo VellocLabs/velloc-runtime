@@ -1715,7 +1715,9 @@ describe('QueryEngine — $.session.compact / send / append (modConversation)', 
     expect(seen).toEqual([{ trigger: 'plugin', instructions: 'the plan', rows: 2, plugin: 'lab' }])
     expect(forced).toEqual(['the plan'])
     expect(answer).toEqual({ messages: [{ role: 'user', text: 'SUMMARY', toolUses: [] }], tokensBefore: 10 })
-    expect(engine.transcriptRows().map(m => m.uuid)).toEqual(['b1', 'sum1'])
+    // Appended after the history, never in its place: the page keeps every row.
+    expect(engine.transcriptRows().map(m => m.uuid).slice(-2)).toEqual(['b1', 'sum1'])
+    expect(engine.transcriptRows().map(m => m.uuid)).toContain('u1')
     expect(rewritten).toBe(1)
   })
 

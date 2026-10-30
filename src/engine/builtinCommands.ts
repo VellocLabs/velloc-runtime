@@ -78,8 +78,8 @@ async function rowsAfterSummary(ledger: SessionLedger, context: ToolCallContext,
  * extension's own call: for `/compact` the `PreCompact` hooks, then the
  * extensions' `session.compact` around the summarizer, then the boundary,
  * the summary, the `PostCompact` hooks' note and what follows it, or the
- * notice saying why not. With `didCompact` the rows replace the
- * conversation; otherwise they join it.
+ * notice saying why not. The rows join the conversation either way; with
+ * `didCompact` the boundary among them is where the next request starts.
  */
 export async function compactTranscriptNow(ledger: SessionLedger, request: CompactRequest): Promise<CompactOutcome> {
   const { config } = ledger
@@ -168,9 +168,10 @@ async function* compactCommand(ctx: CommandContext): AsyncGenerator<Message, voi
     instructions: result.compactInstructions,
     callContext: ctx.callContext,
   })
-  const kept = await ctx.writer.appendRows([...result.messages, ...rows])
-  if (didCompact) ledger.rows = kept
-  else ledger.rows.push(...kept)
+  // Appended, never replacing: the transcript stays whole (the page and the
+  // store keep every row), and a request slices at the boundary on its way
+  // to the model (F-3).
+  ledger.rows.push(...(await ctx.writer.appendRows([...result.messages, ...rows])))
   result.messages = []
   for (const row of rows) yield row
 }
