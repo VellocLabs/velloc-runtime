@@ -11,6 +11,7 @@ import {
 } from '@testing-library/react'
 
 import { McpSection } from '../browser/webview/settings/sections/McpSection'
+import * as scrollWithinParent from '../browser/webview/scrollWithinParent'
 import { SettingsBridgeContext } from '../browser/webview/nexusSettingsBridge'
 import type { NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
 import { en } from '../browser/webview/i18n/messages/en'
@@ -377,10 +378,12 @@ describe('McpSection reveal', () => {
       subscribeEvents: () => () => {},
     } as unknown as NexusSettingsBridge
     const scrolled: string[] = []
+    // The reveal centres the row in the page's own list (never an outer
+    // shell); the test observes the helper, not scrollIntoView.
     const scroll = vi
-      .spyOn(HTMLElement.prototype, 'scrollIntoView')
-      .mockImplementation(function (this: HTMLElement) {
-        scrolled.push(this.dataset.testid ?? '')
+      .spyOn(scrollWithinParent, 'centerInScrollParent')
+      .mockImplementation((element: HTMLElement) => {
+        scrolled.push(element.dataset.testid ?? '')
       })
     const view = render(
       createElement(

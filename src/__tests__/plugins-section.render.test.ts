@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { CapabilityAdvert } from '../browser/runtimeProtocol'
 import { SettingsBridgeContext } from '../browser/webview/nexusSettingsBridge'
 import { PluginsSection } from '../browser/webview/settings/sections/PluginsSection'
+import * as scrollWithinParent from '../browser/webview/scrollWithinParent'
 import {
   RuntimeCapabilitiesContext,
   type CapabilityQuery,
@@ -818,10 +819,13 @@ describe('PluginsSection — revealPluginRequest scrolls to a plugin and flashes
 
   it('waits for the row (the mods list lands late), scrolls to it, flashes it three times, and clears on animation end', async () => {
     const scrolled: string[] = []
-    const original = HTMLElement.prototype.scrollIntoView
-    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
-      scrolled.push(this.dataset.testid ?? '')
-    }
+    // The reveal centres the row in the page's own list (never an outer
+    // shell); the test observes the helper, not scrollIntoView.
+    const scroll = vi
+      .spyOn(scrollWithinParent, 'centerInScrollParent')
+      .mockImplementation((element: HTMLElement) => {
+        scrolled.push(element.dataset.testid ?? '')
+      })
     try {
       const { rerender } = renderRevealing({ plugin: 'typed', seq: 1 })
       const row = await screen.findByTestId('mod-row-typed')
@@ -843,7 +847,7 @@ describe('PluginsSection — revealPluginRequest scrolls to a plugin and flashes
       expect(beta.classList).toContain('nexus-plugin-flash')
       expect(scrolled).toEqual(['mod-row-typed', 'installed-plugin-beta'])
     } finally {
-      HTMLElement.prototype.scrollIntoView = original
+      scroll.mockRestore()
     }
   })
 })
