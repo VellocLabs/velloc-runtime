@@ -22,6 +22,9 @@ import {
   type HostDict,
 } from '../models/drivers/hostValue'
 import type { DriverStreamEvent } from '../models/drivers/driverTypes'
+import { HOST_TOOL_DEFINITIONS } from '../toolkit/builtin/host'
+import { SpawnTeammateTool } from '../toolkit/builtin/spawnTeammate'
+import { ChecklistTool } from '../toolkit/builtin/todoWrite'
 
 const context = { providerId: 'anthropic', baseUrl: 'https://api.anthropic.com', model: 'claude-x' }
 
@@ -649,4 +652,56 @@ describe('stop-reason translation (cases of anthropic_stop_reason_unittest.cc)',
     expect(normalizeAnthropicStopDetails(new Map())).toBeUndefined()
     expect(normalizeAnthropicStopDetails(hostValueFromJs({ category: '' }))).toBeUndefined()
   })
+})
+
+/** Every tool that ships a strict schema reaches the wire with its properties
+ *  in declared order, at every nesting level (F-21). Strict sampling follows
+ *  that order; a sorted schema makes a later-declared optional argument
+ *  unreachable once the model has emitted an earlier one. */
+describe('strict tool schemas keep declared property order', () => {
+  type StrictTool = { name: string; schema: Record<string, unknown> }
+  const strictTools: StrictTool[] = [
+    ...HOST_TOOL_DEFINITIONS.flatMap((d) =>
+      d.parametersStrict ? [{ name: d.name, schema: d.parametersStrict as Record<string, unknown> }] : [],
+    ),
+    { name: ChecklistTool.name, schema: ChecklistTool.inputJSONSchemaStrict as Record<string, unknown> },
+    { name: SpawnTeammateTool.name, schema: SpawnTeammateTool.inputJSONSchemaStrict as Record<string, unknown> },
+  ]
+
+  /** The key order of every `properties` object in `node`, outermost first. */
+  function propertyOrders(node: unknown, out: string[][] = []): string[][] {
+    if (Array.isArray(node)) {
+      for (const item of node) propertyOrders(item, out)
+    } else if (node && typeof node === 'object') {
+      const record = node as Record<string, unknown>
+      const properties = record.properties
+      if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
+        out.push(Object.keys(properties as object))
+      }
+      for (const value of Object.values(record)) propertyOrders(value, out)
+    }
+    return out
+  }
+
+  it('covers the strict tools this build ships', () => {
+    expect(strictTools.map((t) => t.name).sort()).toEqual(
+      ['Bash', 'Edit', 'Grep', 'PowerShell', 'Read', SpawnTeammateTool.name, ChecklistTool.name, 'Write'].sort(),
+    )
+  })
+
+  for (const tool of strictTools) {
+    it(`${tool.name}: wire order equals declared order at every level`, () => {
+      const wire = body({
+        messages: [{ role: 'user', content: 'x' }],
+        tools: [{ type: 'function', name: tool.name, description: 'd', strict: true, parameters: tool.schema }],
+      }).tools[0]
+      expect(wire.strict).toBe(true)
+      const declared = propertyOrders(tool.schema)
+      expect(declared.length).toBeGreaterThan(0)
+      expect(propertyOrders(wire.input_schema)).toEqual(declared)
+      // A sorted wire order would still equal the declared order when every
+      // level happens to be alphabetical; at least one level must not be.
+      expect(declared.some((keys) => keys.join() !== [...keys].sort().join())).toBe(true)
+    })
+  }
 })
