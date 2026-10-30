@@ -1201,6 +1201,8 @@ export const fr: Messages = {
   'settings.models.apiKeySaved': 'Enregistrée',
   'settings.models.apiKeyStoredHint': 'Stockée de manière sécurisée sur cet appareil.',
   'settings.models.apiKeyReplaced': 'Nouvelle clé enregistrée.',
+  'settings.models.apiKeySaving': 'Enregistrement…',
+  'settings.models.apiKeyUpdated': 'Mise à jour',
   'settings.models.openrouterManagementKey': 'Clé de gestion (facultative)',
   'settings.models.openrouterManagementKeyHint':
     'Permet à {product} d’afficher le solde de votre compte OpenRouter : une clé d’API ne peut lire que sa propre limite de dépenses. Créez-en une sur openrouter.ai, dans Settings → Management Keys ; elle sert uniquement à lire le solde.',

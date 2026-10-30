@@ -432,16 +432,26 @@ describe('ModelsSection auto-connect', () => {
     )
     await openProviderSettings('openai')
     const keyInput = await screen.findByTestId('models-api-key')
+    const keyState = () => screen.getByTestId('models-api-key-state')
     expect(screen.queryByTestId('models-api-key-replaced')).toBeNull()
+    expect(keyState().textContent).toBe('Saved')
 
+    // The key row moves at the first keystroke, not only once the save lands.
     fireEvent.change(keyInput, { target: { value: 'sk-new' } })
     expect(screen.queryByTestId('models-api-key-replaced')).toBeNull()
+    expect(keyState().textContent).toBe('Saving…')
+    expect(keyState().dataset.state).toBe('saving')
     await waitFor(() => expect(calls.setActive).toBeGreaterThan(0), { timeout: 3000 })
     const notice = await screen.findByTestId('models-api-key-replaced')
     expect(notice.textContent).toBe('New key saved.')
+    expect(keyState().textContent).toBe('Updated')
+    expect(keyState().dataset.state).toBe('updated')
+    expect(keyInput.dataset.state).toBe('updated')
 
     fireEvent.change(keyInput, { target: { value: 'sk-n' } })
     expect(screen.queryByTestId('models-api-key-replaced')).toBeNull()
+    expect(keyState().textContent).toBe('Saving…')
+    expect(keyInput.dataset.state).toBeUndefined()
   })
 
   it('says nothing about a replacement key the probe rejected', async () => {
@@ -474,6 +484,7 @@ describe('ModelsSection auto-connect', () => {
     fireEvent.change(await screen.findByTestId('models-api-key'), { target: { value: 'sk-bad' } })
     await waitFor(() => expect(calls.runtimeVerify).toBeGreaterThan(0), { timeout: 3000 })
     await waitFor(() => expect(calls.upsert).toBeGreaterThan(0))
+    await waitFor(() => expect(screen.getByTestId('models-api-key-state').dataset.state).toBe('saved'))
     expect(screen.queryByTestId('models-api-key-replaced')).toBeNull()
   })
 
@@ -1602,7 +1613,7 @@ describe('ModelsSection home page', () => {
 
     // A stored key is said ONCE: "Saved" beside the label, a replace
     // placeholder, one plain hint — and never "verified".
-    expect(screen.getByTestId('models-api-key-saved').textContent).toBe('Saved')
+    expect(screen.getByTestId('models-api-key-state').textContent).toBe('Saved')
     expect(
       (screen.getByTestId('models-api-key') as HTMLInputElement).placeholder,
     ).toBe('Enter a new key to replace the saved key')
@@ -1621,7 +1632,7 @@ describe('ModelsSection home page', () => {
     ).toContain('Gemini')
     await screen.findByTestId('models-api-key')
     // No key stored for it yet: no "Saved" marker.
-    expect(screen.queryByTestId('models-api-key-saved')).toBeNull()
+    expect(screen.queryByTestId('models-api-key-state')).toBeNull()
   })
 
   it('removes a built-in from the list: broker reset + settings removal, and it is offered again', async () => {

@@ -1176,6 +1176,8 @@ export const ko: Messages = {
   'settings.models.apiKeySaved': '저장됨',
   'settings.models.apiKeyStoredHint': '이 기기에 안전하게 저장되어 있습니다.',
   'settings.models.apiKeyReplaced': '새 키를 저장했습니다.',
+  'settings.models.apiKeySaving': '저장 중…',
+  'settings.models.apiKeyUpdated': '업데이트됨',
   'settings.models.openrouterManagementKey': '관리 키(선택 사항)',
   'settings.models.openrouterManagementKeyHint':
     '{product}이(가) OpenRouter 계정 잔액을 표시할 수 있게 합니다. API 키로는 해당 키의 지출 한도만 읽을 수 있습니다. openrouter.ai의 Settings → Management Keys에서 만드세요. 잔액을 읽는 데만 사용됩니다.',

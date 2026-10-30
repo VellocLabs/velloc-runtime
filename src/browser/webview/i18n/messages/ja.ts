@@ -1180,6 +1180,8 @@ export const ja: Messages = {
   'settings.models.apiKeySaved': '保存済み',
   'settings.models.apiKeyStoredHint': 'このデバイスに安全に保存されています。',
   'settings.models.apiKeyReplaced': '新しいキーを保存しました。',
+  'settings.models.apiKeySaving': '保存中…',
+  'settings.models.apiKeyUpdated': '更新しました',
   'settings.models.openrouterManagementKey': '管理キー（任意）',
   'settings.models.openrouterManagementKeyHint':
     '{product} が OpenRouter アカウントの残高を表示できるようにします。API キーが読み取れるのは自身の支出上限だけです。openrouter.ai の Settings → Management Keys で作成してください。残高の読み取りにのみ使われます。',

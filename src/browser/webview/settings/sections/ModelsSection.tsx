@@ -3,6 +3,7 @@ import {
   ArrowLeftIcon,
   CheckIcon,
   GripVerticalIcon,
+  Loader2Icon,
   MoreHorizontalIcon,
   PlusIcon,
   SettingsIcon,
@@ -282,23 +283,42 @@ type TestState =
  * says "saved", never "verified": the host only knows the last probe with
  * this key succeeded, and "verified" reads as the vendor vouching for it.
  */
-function ApiKeyLabel({ saved, testId }: { saved: boolean; testId: string }) {
+function ApiKeyLabel({ state, testId }: { state: ApiKeyRowState | null; testId: string }) {
   const t = useT();
   return (
     <span className="flex items-center justify-between gap-2">
       <span className="font-medium">{t("settings.models.apiKey")}</span>
-      {saved ? (
+      {state === "saving" ? (
+        <span
+          className="flex items-center gap-1 text-muted-foreground text-xs"
+          data-testid={testId}
+          data-state={state}
+          role="status"
+        >
+          {t("settings.models.apiKeySaving")}
+          <Loader2Icon className="size-3.5 animate-spin" />
+        </span>
+      ) : state ? (
         <span
           className="flex items-center gap-1 text-success text-xs"
           data-testid={testId}
+          data-state={state}
+          role={state === "updated" ? "status" : undefined}
         >
-          {t("settings.models.apiKeySaved")}
+          {t(state === "updated" ? "settings.models.apiKeyUpdated" : "settings.models.apiKeySaved")}
           <CheckIcon className="size-3.5" />
         </span>
       ) : null}
     </span>
   );
 }
+
+/**
+ * The key row's state: `saving` from the first keystroke of a typed key until
+ * its save settles, `updated` once a typed key was stored, `saved` for a key
+ * stored before.
+ */
+type ApiKeyRowState = "saving" | "updated" | "saved";
 
 /** One row in the "Configured models" list. */
 function ModelRow({
@@ -1021,6 +1041,15 @@ export function ModelsSection({
   // A key is stored for this provider — in settings.json or only in the
   // broker pref (launch prefs / the legacy path).
   const hasStoredKey = !!(saved?.hasApiKey || info?.hasStoredApiKey);
+  // A rejected typed key falls back to the stored state; the status card says why.
+  const keyRowState: ApiKeyRowState | null =
+    (form.apiKey ?? "").trim() !== "" && !verifyError
+      ? "saving"
+      : hasStoredKey && keyStoredFor === selectedId && !form.apiKey
+        ? "updated"
+        : hasStoredKey
+          ? "saved"
+          : null;
   const secretFields = providerSecretFields(selectedId);
   // Provider note — mirrors the original `getProviderNote_` (the Ollama hint).
   const providerNote =
@@ -2386,7 +2415,7 @@ export function ModelsSection({
 
         <label className="flex flex-col gap-1 text-sm">
           <ApiKeyLabel
-            saved={!!selectedRecord?.hasApiKey}
+            state={selectedRecord?.hasApiKey ? "saved" : null}
             testId="custom-provider-api-key-saved"
           />
           <Input
@@ -2718,9 +2747,11 @@ export function ModelsSection({
 
           {supportsApiKey ? (
             <div className="flex flex-col gap-1 text-sm">
-              <ApiKeyLabel saved={hasStoredKey} testId="models-api-key-saved" />
+              <ApiKeyLabel state={keyRowState} testId="models-api-key-state" />
               <Input
                 data-testid="models-api-key"
+                data-state={keyRowState === "updated" ? "updated" : undefined}
+                className={keyRowState === "updated" ? "border-success" : undefined}
                 type="password"
                 aria-label={t("settings.models.apiKey")}
                 value={form.apiKey ?? ""}
@@ -2735,7 +2766,7 @@ export function ModelsSection({
                 }
                 autoComplete="off"
               />
-              {hasStoredKey && keyStoredFor === selectedId && !form.apiKey ? (
+              {keyRowState === "updated" ? (
                 <span
                   className="text-success text-xs"
                   data-testid="models-api-key-replaced"
