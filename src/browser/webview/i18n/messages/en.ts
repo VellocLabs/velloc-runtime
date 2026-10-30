@@ -1226,6 +1226,7 @@ export const en = {
   'settings.models.apiKeySealedPlaceholder': 'Enter a new key to replace the saved key',
   'settings.models.apiKeySaved': 'Saved',
   'settings.models.apiKeyStoredHint': 'Stored securely on this device.',
+  'settings.models.apiKeyReplaced': 'New key saved.',
   'settings.models.openrouterManagementKey': 'Management key (optional)',
   'settings.models.openrouterManagementKeyHint':
     'Lets {product} show your OpenRouter account balance — an API key can only read its own spending limit. Create one on openrouter.ai under Settings → Management Keys; it is used only to read the balance.',

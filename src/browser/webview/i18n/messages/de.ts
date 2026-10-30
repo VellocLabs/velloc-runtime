@@ -1187,6 +1187,7 @@ export const de: Messages = {
   'settings.models.apiKeySealedPlaceholder': 'Gib einen neuen Schlüssel ein, um den gespeicherten zu ersetzen',
   'settings.models.apiKeySaved': 'Gespeichert',
   'settings.models.apiKeyStoredHint': 'Sicher auf diesem Gerät gespeichert.',
+  'settings.models.apiKeyReplaced': 'Neuer Schlüssel gespeichert.',
   'settings.models.openrouterManagementKey': 'Management-Schlüssel (optional)',
   'settings.models.openrouterManagementKeyHint':
     'Damit kann {product} dein OpenRouter-Kontoguthaben anzeigen — ein API-Schlüssel kann nur sein eigenes Ausgabenlimit lesen. Erstelle einen auf openrouter.ai unter Settings → Management Keys; er wird nur zum Lesen des Guthabens verwendet.',

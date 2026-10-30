@@ -1152,6 +1152,7 @@ export const zh: Messages = {
   'settings.models.apiKeySealedPlaceholder': '输入新密钥以替换已保存的密钥',
   'settings.models.apiKeySaved': '已保存',
   'settings.models.apiKeyStoredHint': '已安全地保存在此设备上。',
+  'settings.models.apiKeyReplaced': '新密钥已保存。',
   'settings.models.openrouterManagementKey': '管理密钥（可选）',
   'settings.models.openrouterManagementKeyHint':
     '用于让 {product} 显示你的 OpenRouter 账户余额——API 密钥只能读取它自身的消费限额。可在 openrouter.ai 的 Settings → Management Keys 中创建；它只用于读取余额。',

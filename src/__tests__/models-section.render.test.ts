@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import {
   act,
   cleanup,
@@ -158,6 +158,23 @@ function makeHarness(initialConfigs: Record<string, NexusProviderConfig> = {}) {
   } as unknown as NexusSettingsBridge
 
   return { calls, upserts, order, transport, bridge, emitProvidersChanged }
+}
+
+type BridgeRequestMock = Mock<(route: { action: string }, payload: unknown) => Promise<any>>
+
+/** Answer with keys sealed, as the worker adapter does: a stored key reads back as `hasApiKey` only. */
+function sealKeysInResponses(bridge: NexusSettingsBridge) {
+  const request = bridge.request as unknown as BridgeRequestMock
+  const inner = request.getMockImplementation()!
+  request.mockImplementation(async (route, payload) => {
+    const res = await inner(route, payload)
+    if (!res?.configs) return res
+    const configs: Record<string, NexusProviderConfig> = {}
+    for (const [id, { apiKey, ...rest }] of Object.entries(res.configs as Record<string, NexusProviderConfig>)) {
+      configs[id] = apiKey ? { ...rest, hasApiKey: true } : rest
+    }
+    return { ...res, configs }
+  })
 }
 
 afterEach(() => {
@@ -390,6 +407,74 @@ describe('ModelsSection auto-connect', () => {
     const saved = upserts.find(u => u.config.baseUrl === 'https://api.openai.com/v2')!
     // Absent key = keep the stored one; `""` would clear it.
     expect(saved.config.apiKey).toBeUndefined()
+  })
+
+  /**
+   * A connected provider already reads "Connected" and "Saved"; once a replacement key is stored the field
+   * empties, so the page says the new key landed — until the next keystroke or another provider.
+   */
+  it('confirms a replacement key once it is stored, and drops the note on the next edit', async () => {
+    const { calls, transport, bridge } = makeHarness({
+      openai: {
+        hasApiKey: true,
+        baseUrl: 'https://api.openai.com/v1',
+        trust: 'trusted',
+        lastVerification: { providerId: 'openai', verifiedAtMs: 1 },
+      },
+    })
+    sealKeysInResponses(bridge)
+    render(
+      createElement(
+        SettingsBridgeContext.Provider,
+        { value: bridge },
+        createElement(ModelsSection, { catalog, transport }),
+      ),
+    )
+    await openProviderSettings('openai')
+    const keyInput = await screen.findByTestId('models-api-key')
+    expect(screen.queryByTestId('models-api-key-replaced')).toBeNull()
+
+    fireEvent.change(keyInput, { target: { value: 'sk-new' } })
+    expect(screen.queryByTestId('models-api-key-replaced')).toBeNull()
+    await waitFor(() => expect(calls.setActive).toBeGreaterThan(0), { timeout: 3000 })
+    const notice = await screen.findByTestId('models-api-key-replaced')
+    expect(notice.textContent).toBe('New key saved.')
+
+    fireEvent.change(keyInput, { target: { value: 'sk-n' } })
+    expect(screen.queryByTestId('models-api-key-replaced')).toBeNull()
+  })
+
+  it('says nothing about a replacement key the probe rejected', async () => {
+    const { calls, transport, bridge } = makeHarness({
+      openai: {
+        hasApiKey: true,
+        baseUrl: 'https://api.openai.com/v1',
+        trust: 'trusted',
+        lastVerification: { providerId: 'openai', verifiedAtMs: 1 },
+      },
+    })
+    const request = bridge.request as unknown as BridgeRequestMock
+    const passThrough = request.getMockImplementation()!
+    request.mockImplementation(async (route, payload) => {
+      if (route.action === 'verify') {
+        calls.runtimeVerify += 1
+        return { ok: false, errorCode: 'auth_invalid_key' }
+      }
+      return passThrough(route, payload)
+    })
+    sealKeysInResponses(bridge)
+    render(
+      createElement(
+        SettingsBridgeContext.Provider,
+        { value: bridge },
+        createElement(ModelsSection, { catalog, transport }),
+      ),
+    )
+    await openProviderSettings('openai')
+    fireEvent.change(await screen.findByTestId('models-api-key'), { target: { value: 'sk-bad' } })
+    await waitFor(() => expect(calls.runtimeVerify).toBeGreaterThan(0), { timeout: 3000 })
+    await waitFor(() => expect(calls.upsert).toBeGreaterThan(0))
+    expect(screen.queryByTestId('models-api-key-replaced')).toBeNull()
   })
 
   /**

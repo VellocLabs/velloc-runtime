@@ -519,6 +519,9 @@ export function ModelsSection({
   const [configsLoaded, setConfigsLoaded] = React.useState(false);
   const [form, setForm] = React.useState<NexusProviderConfig>({});
   const [saving, setSaving] = React.useState(false);
+  // The provider whose typed key the last save stored: the field empties
+  // after a save, so this is the only sign a replacement key landed.
+  const [keyStoredFor, setKeyStoredFor] = React.useState<string | null>(null);
   // Verify error code (set by `providerAuth.verify`); drives the "error"
   // status state + the reset-confirm dialog.
   const [verifyError, setVerifyError] = React.useState<string | null>(null);
@@ -833,6 +836,7 @@ export function ModelsSection({
   React.useEffect(() => {
     setVerifyError(null);
     setOAuth({ busy: false });
+    setKeyStoredFor(null);
   }, [selectedId]);
 
   // Auto-dismiss the "<name> added." confirmation.
@@ -1113,6 +1117,8 @@ export function ModelsSection({
     savingRef.current = true;
     setSaving(true);
     setVerifyError(null);
+    setKeyStoredFor(null);
+    const keyTyped = (form.apiKey ?? "").trim() !== "";
     try {
       // A provider verified in the runtime — a runtime-only gateway, or a
       // built-in on its ModelProvider (openai, anthropic, kimi) — has its key
@@ -1136,6 +1142,7 @@ export function ModelsSection({
         }
         await providersSetActive(bridge, selectedId).catch(() => {});
         await reload();
+        if (keyTyped) setKeyStoredFor(selectedId);
         return;
       }
       // Live verify probe (providerAuth.verify) — a transient connection test
@@ -1174,6 +1181,7 @@ export function ModelsSection({
            the upsert above is the fallback */
       });
       await reload();
+      if (keyTyped) setKeyStoredFor(selectedId);
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -2716,7 +2724,10 @@ export function ModelsSection({
                 type="password"
                 aria-label={t("settings.models.apiKey")}
                 value={form.apiKey ?? ""}
-                onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+                onChange={(e) => {
+                  setKeyStoredFor(null);
+                  setForm({ ...form, apiKey: e.target.value });
+                }}
                 placeholder={
                   hasStoredKey && !form.apiKey
                     ? t("settings.models.apiKeySealedPlaceholder")
@@ -2724,11 +2735,21 @@ export function ModelsSection({
                 }
                 autoComplete="off"
               />
-              <span className="text-muted-foreground text-xs">
-                {hasStoredKey
-                  ? t("settings.models.apiKeyStoredHint")
-                  : t("settings.models.enterKeyHint")}
-              </span>
+              {hasStoredKey && keyStoredFor === selectedId && !form.apiKey ? (
+                <span
+                  className="text-success text-xs"
+                  data-testid="models-api-key-replaced"
+                  role="status"
+                >
+                  {t("settings.models.apiKeyReplaced")}
+                </span>
+              ) : (
+                <span className="text-muted-foreground text-xs">
+                  {hasStoredKey
+                    ? t("settings.models.apiKeyStoredHint")
+                    : t("settings.models.enterKeyHint")}
+                </span>
+              )}
             </div>
           ) : null}
 

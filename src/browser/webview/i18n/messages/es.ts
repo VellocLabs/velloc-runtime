@@ -1192,6 +1192,7 @@ export const es: Messages = {
   'settings.models.apiKeySealedPlaceholder': 'Introduzca una clave nueva para reemplazar la guardada',
   'settings.models.apiKeySaved': 'Guardada',
   'settings.models.apiKeyStoredHint': 'Se guarda de forma segura en este dispositivo.',
+  'settings.models.apiKeyReplaced': 'Clave nueva guardada.',
   'settings.models.openrouterManagementKey': 'Clave de administración (opcional)',
   'settings.models.openrouterManagementKeyHint':
     'Permite que {product} muestre el saldo de su cuenta de OpenRouter: una clave de API solo puede leer su propio límite de gasto. Créela en openrouter.ai, en Settings → Management Keys; solo se usa para leer el saldo.',
