@@ -473,6 +473,92 @@ describe('AgentRuntimeWorker', () => {
     ).toBeUndefined()
   })
 
+  it('a message parked on an init that a newer init supersedes waits for the newer one', async () => {
+    // A project-folder bind re-inits while the boot init is still building. A
+    // message parked on the boot init must not wake to the half-built newer
+    // scope and fail with worker_not_initialized.
+    const emitted: Array<{ type: string; payload?: unknown }> = []
+    const worker = new AgentRuntimeWorker({
+      emit: message => {
+        emitted.push(message as { type: string; payload?: unknown })
+      },
+    })
+    const engineSetModelSelection = vi.fn()
+    const runtimeFor = (sessionId: string) => ({
+      conversationStore: {
+        getSessionMetadata: vi.fn(async () => ({
+          llmSelection: { providerId: 'demo', modelId: 'demo-model' },
+        })),
+        updateSessionMetadata: vi.fn(async () => ({})),
+      },
+      engine: {
+        boundSessionId: () => sessionId,
+        getCurrentModel: () => 'demo-model',
+        getCurrentProviderId: () => 'demo',
+        getCurrentThinkingTier: () => undefined,
+        transcriptRows: () => [],
+        setModelSelection: engineSetModelSelection,
+      },
+      hostBridge: { getModelCatalog: vi.fn(async () => null) },
+      tools: [],
+      options: {
+        cwd: '/workspace',
+        userSpecifiedProviderId: 'demo',
+        userSpecifiedModel: 'demo-model',
+      },
+    })
+    let resolveFirst!: (runtime: unknown) => void
+    let resolveSecond!: (runtime: unknown) => void
+    vi.mocked(createAgentRuntime)
+      .mockImplementationOnce(
+        () => new Promise(resolve => { resolveFirst = resolve }) as Promise<never>,
+      )
+      .mockImplementationOnce(
+        () => new Promise(resolve => { resolveSecond = resolve }) as Promise<never>,
+      )
+
+    const callsBefore = vi.mocked(createAgentRuntime).mock.calls.length
+    const firstInit = worker.receiveFrame({
+      type: 'worker.init',
+      payload: { sessionId: 'boot', cwd: '/workspace' } as never,
+    })
+    const selectionDone = worker.receiveFrame({
+      type: 'worker.setModelSelection',
+      payload: { selection: { providerId: 'demo', modelId: 'demo-model' } },
+    })
+    await vi.waitFor(() =>
+      expect(vi.mocked(createAgentRuntime).mock.calls.length).toBe(callsBefore + 1))
+    const secondInit = worker.receiveFrame({
+      type: 'worker.init',
+      payload: { sessionId: 'bound', cwd: '/project' } as never,
+    })
+    await vi.waitFor(() =>
+      expect(vi.mocked(createAgentRuntime).mock.calls.length).toBe(callsBefore + 2))
+
+    // The boot init finishes as superseded while the bind is still building.
+    resolveFirst(runtimeFor('boot'))
+    await firstInit
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(
+      emitted.some(
+        m =>
+          m.type === 'worker.error' &&
+          (m.payload as { code?: string })?.code === 'worker_not_initialized',
+      ),
+    ).toBe(false)
+
+    resolveSecond(runtimeFor('bound'))
+    await Promise.all([secondInit, selectionDone])
+    expect(engineSetModelSelection).toHaveBeenCalled()
+    expect(
+      emitted.some(
+        m =>
+          m.type === 'worker.error' &&
+          (m.payload as { code?: string })?.code === 'worker_not_initialized',
+      ),
+    ).toBe(false)
+  })
+
   // A never-resolving catalog fetch must not wedge the first submit: the model gate's wait is bounded
   // (MODEL_INIT_SUBMIT_GRACE_MS) and the submit falls through on the engine's default model.
   it('first submit is not wedged by a never-resolving model catalog fetch', async () => {

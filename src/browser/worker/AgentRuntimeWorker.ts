@@ -1010,12 +1010,18 @@ export class AgentRuntimeWorker {
    * already-resolved-promise microtask.
    */
   private async waitForInit(): Promise<void> {
-    if (!this.initPromise) return
-    try {
-      await this.initPromise
-    } catch {
-      // init failed — let the caller see `this.runtime === null` and
-      // emit the existing `worker_not_initialized` error.
+    // A newer init can replace the awaited one mid-flight (a project-folder
+    // bind during boot); the superseded one settles with the newer scope still
+    // building, so wait until the latest init is the one that settled.
+    let awaited: Promise<void> | null = null
+    while (this.initPromise && this.initPromise !== awaited) {
+      awaited = this.initPromise
+      try {
+        await awaited
+      } catch {
+        // init failed — let the caller see `this.runtime === null` and
+        // emit the existing `worker_not_initialized` error.
+      }
     }
   }
 
