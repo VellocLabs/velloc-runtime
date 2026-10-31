@@ -310,14 +310,16 @@ export function SessionRowList({
                       // popover. Preview text + the relative timestamp
                       // were dropped from the visible row; preview is
                       // preserved screen-reader-only below.
-                      'relative flex w-full items-center rounded-lg px-3 text-start text-body transition-[background-color,padding] hover:bg-muted',
+                      'relative flex w-full items-center rounded-lg px-3 text-start text-body transition-[background-color,padding]',
                       SIDEBAR_ROW_HEIGHT,
                       // Reserve right-side space for the absolutely-
                       // positioned actions (⋯) button on hover so the
                       // title shrinks instead of being overlapped.
                       hasRowActions && 'group-hover:pr-8',
                       indented && 'pl-7',
-                      isActive && 'bg-muted',
+                      // The selected tint also holds under the pointer;
+                      // the hover tint is for the other rows.
+                      isActive ? 'bg-sidebar-row-selected' : 'hover:bg-sidebar-row-hover',
                     )}
                     data-active={isActive || undefined}
                     data-running={isRunning || undefined}
@@ -558,7 +560,7 @@ export function SessionRowList({
             setVisibleCount(revealNextPage(sessions.length, effectiveCount))
           }
           className={cn(
-            'flex w-full shrink-0 items-center rounded-lg px-3 text-start text-caption text-muted-foreground/70 transition-colors hover:bg-muted hover:text-muted-foreground',
+            'flex w-full shrink-0 items-center rounded-lg px-3 text-start text-caption text-muted-foreground/70 transition-colors hover:bg-sidebar-row-hover hover:text-muted-foreground',
             SIDEBAR_ROW_HEIGHT,
             indented && 'pl-7',
           )}
