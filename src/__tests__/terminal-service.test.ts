@@ -518,6 +518,21 @@ describe('TerminalService run', () => {
 })
 
 describe('the shells probe', () => {
+  it('offers pwsh only when the host does not say Windows PowerShell is its only PowerShell', async () => {
+    const only51 = await ready({ powershellEdition: 'powershell' })
+    expect(only51.service.list().shells.map(s => s.id)).toEqual(['powershell', 'cmd', 'bash'])
+    const running = only51.service.run({ sessionId: 's1', command: 'dir' })
+    await settle()
+    expect(only51.shellRequests('spawn')[0]!.payload).toMatchObject({ file: 'powershell' })
+    only51.output(only51.spawned[0]!, 'PS C:\\p> ')
+    await running
+
+    const core = await ready({ powershellEdition: 'pwsh' })
+    expect(core.service.list().shells.map(s => s.id)).toEqual(['pwsh', 'powershell', 'cmd', 'bash'])
+    const unknown = await ready()
+    expect(unknown.service.list().shells.map(s => s.id)).toEqual(['pwsh', 'powershell', 'cmd', 'bash'])
+  })
+
   it('skips exec.listShells on a host that does not serve exec', async () => {
     const r = rig({ manifest: { capabilities: ['fs', 'shell'], primitives: ['shell.spawn.pty'] } })
     r.service.refreshHost()

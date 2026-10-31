@@ -27,6 +27,8 @@ export type FakePtyHostOptions = {
   shells?: { bash: boolean; powershell: boolean }
   /** `fs.systemInfo`'s platform; default `win32`. */
   platform?: string
+  /** `fs.systemInfo`'s `powershell`; absent by default, as on an older host. */
+  powershellEdition?: string
   /** Override any route's answer; return undefined to take the default. */
   answer?: (request: BrowserBridgeRequest) => Reply | Promise<Reply> | undefined
 }
@@ -58,7 +60,12 @@ export function fakePtyHost(options: FakePtyHostOptions = {}): FakePtyHost {
       case 'exec.listShells':
         return ok(options.shells ?? { bash: true, powershell: true })
       case 'fs.systemInfo':
-        return ok({ platform: options.platform ?? 'win32', osVersion: 'test', shell: 'pwsh' })
+        return ok({
+          platform: options.platform ?? 'win32',
+          osVersion: 'test',
+          shell: 'pwsh',
+          ...(options.powershellEdition === undefined ? {} : { powershell: options.powershellEdition }),
+        })
       case 'shell.spawn': {
         const streamId = `stream-${++streams}`
         spawned.push(streamId)

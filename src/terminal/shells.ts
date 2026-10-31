@@ -46,22 +46,28 @@ export function runShellIds(shells: readonly TerminalShellInfo[]): TerminalShell
 /** What the host says about its shells: `exec.listShells` plus `fs.systemInfo`'s platform. */
 export type HostShellReport = {
   bash: boolean
-  /** `pwsh` or Windows PowerShell — the host does not say which. */
+  /** `pwsh` or Windows PowerShell — `exec.listShells` does not say which. */
   powershell: boolean
+  /**
+   * `fs.systemInfo`'s `powershell`: `pwsh` when PowerShell 7+ is on the
+   * PATH, `powershell` when only Windows PowerShell is; empty when unknown.
+   */
+  powershellEdition: string
   /** `win32`, `darwin`, `linux`, or empty when unknown. */
   platform: string
 }
 
 /**
- * The topic's `shells` from the host's report. The report has one bit for
- * PowerShell, so both ids are offered when it is set and a `pwsh` start that
- * the host cannot resolve falls back to `powershell` (`TerminalService`).
+ * The topic's `shells` from the host's report. `pwsh` is offered unless the
+ * host says only Windows PowerShell is installed; a `pwsh` start the host
+ * cannot resolve still falls back to `powershell` (`TerminalService`).
  * `cmd` is every Windows host's. Versions are not reported by the host yet.
  */
 export function shellsFromHostReport(report: HostShellReport): TerminalShellInfo[] {
   const shells: TerminalShellInfo[] = []
   if (report.powershell) {
-    shells.push({ id: 'pwsh', version: null }, { id: 'powershell', version: null })
+    if (report.powershellEdition !== 'powershell') shells.push({ id: 'pwsh', version: null })
+    shells.push({ id: 'powershell', version: null })
   }
   if (report.platform === 'win32') shells.push({ id: 'cmd', version: null })
   if (report.bash) shells.push({ id: 'bash', version: null })

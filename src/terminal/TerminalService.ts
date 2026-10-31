@@ -221,7 +221,7 @@ export async function probeHostShells(
 ): Promise<TerminalShellInfo[]> {
   const transport = host.transport
   if (!transport) return []
-  const report: HostShellReport = { bash: false, powershell: false, platform: '' }
+  const report: HostShellReport = { bash: false, powershell: false, powershellEdition: '', platform: '' }
   if (host.manifest?.capabilities.includes('exec') ?? true) {
     const shells = await transport.request({
       id: createRequestId(),
@@ -239,6 +239,7 @@ export async function probeHostShells(
     payload: {},
   })
   if (info.ok && typeof info.result.platform === 'string') report.platform = info.result.platform
+  if (info.ok && typeof info.result.powershell === 'string') report.powershellEdition = info.result.powershell
   return shellsFromHostReport(report)
 }
 
