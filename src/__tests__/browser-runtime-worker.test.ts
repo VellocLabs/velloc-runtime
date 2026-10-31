@@ -511,10 +511,10 @@ describe('AgentRuntimeWorker', () => {
     let resolveSecond!: (runtime: unknown) => void
     vi.mocked(createAgentRuntime)
       .mockImplementationOnce(
-        () => new Promise(resolve => { resolveFirst = resolve }) as Promise<never>,
+        () => new Promise<unknown>(resolve => { resolveFirst = resolve }) as Promise<never>,
       )
       .mockImplementationOnce(
-        () => new Promise(resolve => { resolveSecond = resolve }) as Promise<never>,
+        () => new Promise<unknown>(resolve => { resolveSecond = resolve }) as Promise<never>,
       )
 
     const callsBefore = vi.mocked(createAgentRuntime).mock.calls.length
