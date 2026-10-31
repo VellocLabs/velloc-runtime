@@ -38,8 +38,10 @@ const MAX_FINISHED_PLUGIN_TASKS = 100
 
 export interface PluginTaskHost extends KindTaskHost {
   mintTaskHandle(): string
-  /** Best-effort write of the task's file (`pluginTaskFileOf`). Never awaited. */
-  persist(spawnerSessionId: string, taskId: string, json: string): void
+  /** Best-effort write of the task's file (`pluginTaskFileOf`); settles when
+   *  the write has landed or failed. The coordinator issues one task's writes
+   *  one at a time, in order. */
+  persist(spawnerSessionId: string, taskId: string, json: string): Promise<void> | void
   /** `task.stop` on the owning session's mod slot. */
   raiseStop(spawnerSessionId: string, e: PluginTaskStopEvent): void
   /** Stop a subagent the task adopted. */
@@ -125,6 +127,8 @@ export class PluginTaskCoordinator extends KindTaskCoordinator<
   FinishedPluginTaskRecord
 > {
   private readonly stopTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** The last write issued per task file; the next write waits for it. */
+  private readonly fileWrites = new Map<string, Promise<void>>()
   private readonly pluginHost: PluginTaskHost
 
   constructor(registry: TaskRegistry<NexusTaskState, NexusFinishedTaskRecord>, host: PluginTaskHost) {
@@ -282,7 +286,8 @@ export class PluginTaskCoordinator extends KindTaskCoordinator<
       finishedAt: Date.now(),
       children: run.children,
     }
-    // Recorded before it is delivered: the file is the record a restart reads.
+    // Queued before it is delivered, behind the start write, so the terminal
+    // record is the one left on disk for a restart to read.
     this.persist(rec)
     const summary =
       resultText.length > PLUGIN_TASK_DELIVERY_SUMMARY_MAX
@@ -316,12 +321,22 @@ export class PluginTaskCoordinator extends KindTaskCoordinator<
     throw refusal('NotFoundError', `$.task: ${taskId} is not one of this plugin's tasks`)
   }
 
+  /** Issues the task file's write once the previous write to that file has
+   *  settled; a first write is issued at once. Never throws: a failed write
+   *  only degrades a restart. */
   private persist(task: PluginTaskRunState | FinishedPluginTaskRecord): void {
-    try {
-      this.pluginHost.persist(task.spawnerSessionId, task.taskId, JSON.stringify(pluginTaskFileOf(task)))
-    } catch {
-      /* best-effort: a failed write only degrades a restart */
-    }
+    const { taskId, spawnerSessionId } = task
+    const json = JSON.stringify(pluginTaskFileOf(task))
+    const write = () => this.pluginHost.persist(spawnerSessionId, taskId, json)
+    const previous = this.fileWrites.get(taskId)
+    const issued: Promise<void> = previous
+      ? previous.then(write)
+      : new Promise<void>(resolve => resolve(write()))
+    const settled = issued.catch(() => {})
+    this.fileWrites.set(taskId, settled)
+    void settled.then(() => {
+      if (this.fileWrites.get(taskId) === settled) this.fileWrites.delete(taskId)
+    })
   }
 }
 

@@ -23,10 +23,12 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function setup() {
+type PersistFn = (parent: string, taskId: string, json: string) => Promise<void> | void
+
+function setup(persistOverride?: PersistFn) {
   const registry = new TaskRegistry<NexusTaskState, NexusFinishedTaskRecord>()
   const delivered: Array<{ parent: string; result: NexusTaskDeliveryResult }> = []
-  const files: Array<{ parent: string; taskId: string; json: string; deliveredBefore: number }> = []
+  const files: Array<{ parent: string; taskId: string; json: string }> = []
   const stops: Array<{ parent: string; e: PluginTaskStopEvent }> = []
   const stoppedAgents: string[] = []
   let seq = 0
@@ -36,7 +38,10 @@ function setup() {
     deliverResult: (parent, result) => delivered.push({ parent, result }),
     dropPendingResult: () => {},
     evictFinishedOverCap: (kind, cap) => registry.evictFinishedOverCap(kind, cap),
-    persist: (parent, taskId, json) => files.push({ parent, taskId, json, deliveredBefore: delivered.length }),
+    persist: (parent, taskId, json) => {
+      files.push({ parent, taskId, json })
+      return persistOverride?.(parent, taskId, json)
+    },
     raiseStop: (parent, e) => stops.push({ parent, e }),
     stopAgent: agentId => stoppedAgents.push(agentId),
   })
@@ -181,14 +186,13 @@ describe('PluginTaskCoordinator', () => {
     expect(stops.map(s => s.e.taskId)).toEqual([mine])
   })
 
-  it('the record is written at start and at finish, before it is delivered; a file left running comes back stopped and interrupted', () => {
+  it('the record is written at start and at finish; a file left running comes back stopped and interrupted', async () => {
     const { coordinator, delivered, files, start } = setup()
     const taskId = start({ toolUseId: 'call-1' })
     expect(JSON.parse(files[0]!.json)).toMatchObject({ schemaVersion: 1, taskId, toolCallId: 'call-1', status: 'running', plugin: 'flow' })
     coordinator.finish('sess-A', 'flow', taskId, { result: 'ok' })
-    expect(files).toHaveLength(2)
-    expect(files[1]!.deliveredBefore).toBe(0)
     expect(delivered).toHaveLength(1)
+    await vi.waitFor(() => expect(files).toHaveLength(2))
     expect(JSON.parse(files[1]!.json)).toMatchObject({ status: 'success', resultText: 'ok' })
 
     const restored = pluginTaskRecordFromFile(files[0]!.json, 99)
@@ -196,6 +200,71 @@ describe('PluginTaskCoordinator', () => {
     expect(pluginTaskRecordFromFile(files.at(-1)!.json, 99)).toMatchObject({ status: 'success', resultText: 'ok' })
     expect(pluginTaskRecordFromFile('{"schemaVersion":2}', 99)).toBeNull()
     expect(pluginTaskRecordFromFile('not json', 99)).toBeNull()
+  })
+
+  it('one task file is written one write at a time, so the terminal record lands last however slowly writes settle', async () => {
+    // A disk where a write lands only when its request settles, settled here
+    // newest-first: concurrent writes would leave the running record on disk.
+    const pending: Array<{ taskId: string; json: string; settle: (ok: boolean) => void }> = []
+    const disk = new Map<string, string>()
+    const { coordinator, delivered, files, start } = setup(
+      (_parent, taskId, json) =>
+        new Promise<void>((resolve, reject) => {
+          pending.push({
+            taskId,
+            json,
+            settle: ok => {
+              if (!ok) return reject(new Error('sharing violation'))
+              disk.set(taskId, json)
+              resolve()
+            },
+          })
+        }),
+    )
+    const flush = async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve()
+    }
+    const settleNewestFirst = async () => {
+      while (pending.length) {
+        pending.pop()!.settle(true)
+        await flush()
+      }
+    }
+
+    const quick = start()
+    coordinator.finish('sess-A', 'flow', quick, { result: 'done fast' })
+    // The finish is delivered at once, but its write waits for the start write.
+    expect(delivered).toHaveLength(1)
+    expect(files.map(f => JSON.parse(f.json).status)).toEqual(['running'])
+    await settleNewestFirst()
+    expect(files.map(f => JSON.parse(f.json).status)).toEqual(['running', 'success'])
+    expect(JSON.parse(disk.get(quick)!)).toMatchObject({ status: 'success', resultText: 'done fast' })
+
+    // A failed start write still lets the terminal write through.
+    const failing = start()
+    coordinator.finish('sess-A', 'flow', failing, { result: 'oops', isError: true })
+    expect(pending).toHaveLength(1)
+    pending.pop()!.settle(false)
+    await flush()
+    expect(pending.map(p => JSON.parse(p.json).status)).toEqual(['error'])
+    await settleNewestFirst()
+    expect(JSON.parse(disk.get(failing)!)).toMatchObject({ status: 'error' })
+
+    // Two tasks do not wait on each other.
+    const a = start()
+    const b = start()
+    expect(pending.map(p => p.taskId)).toEqual([a, b])
+    await settleNewestFirst()
+  })
+
+  it('a persist host that throws breaks neither start nor finish, and the finish write is still tried', async () => {
+    const { coordinator, delivered, files, start } = setup(() => {
+      throw new Error('no storage')
+    })
+    const taskId = start()
+    expect(() => coordinator.finish('sess-A', 'flow', taskId, { result: 'ok' })).not.toThrow()
+    expect(delivered).toHaveLength(1)
+    await vi.waitFor(() => expect(files.map(f => JSON.parse(f.json).status)).toEqual(['running', 'success']))
   })
 
   it('list answers the plugin its own tasks of the session, restored ones included', () => {

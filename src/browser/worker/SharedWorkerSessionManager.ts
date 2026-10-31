@@ -1142,14 +1142,13 @@ export class SharedWorkerSessionManager {
         this.deliverTaskResult(spawnerSessionId, result),
       dropPendingResult: (pred) => this.dropPendingTaskResult(pred),
       evictFinishedOverCap: (kind, cap) => this.evictFinishedOverCap(kind, cap),
-      persist: (spawnerSessionId, taskId, json) => {
-        void this.storageCoordinator.writeSubAgentTaskFile(
+      persist: (spawnerSessionId, taskId, json) =>
+        this.storageCoordinator.writeSubAgentTaskFile(
           spawnerSessionId,
           PLUGIN_TASK_DIR,
           `${taskId}.json`,
           json,
-        )
-      },
+        ),
       raiseStop: (spawnerSessionId, e) => modSlotFor(spawnerSessionId)?.taskStop?.(e),
       stopAgent: (agentId) => {
         this.stopSubAgent(agentId)
