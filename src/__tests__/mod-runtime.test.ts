@@ -403,6 +403,7 @@ describe('ModRuntime — $', () => {
       'agent.list',
       'agent.register',
       'agent.spawn',
+      'agent.wait',
       'audio.play',
       'audio.speak',
       'clock.after',

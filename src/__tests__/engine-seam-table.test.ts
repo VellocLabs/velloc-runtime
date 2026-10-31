@@ -31,6 +31,7 @@ const RAISED_ELSEWHERE: Record<string, string> = {
   'session.detach': 'the client roster',
   'skill.prompt': 'the skill expansion',
   'agent.offer': 'the Agent tool, an agent type offered',
+  'agent.complete': "the subagent coordinator, a run's terminal record",
   'config.describe': 'the /config menu',
   'classic.SubagentStart': 'the forked agent run (agents/forkedRun.ts)',
 }

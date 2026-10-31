@@ -2092,6 +2092,7 @@ ${teammateAddendum}`
           // `$.ui.view`'s lookup: no agent to find before the engine binds.
           viewTarget: agentId => engineForMods?.modAgents.viewTarget?.(agentId),
           spawn: (args, raise) => modEngine('$.agent').modAgents.spawn(args, raise),
+          wait: (agentId, options) => modEngine('$.agent').modAgents.wait(agentId, options),
         },
         // `$.prompt.submit`: `prompt.submit` raised by the slot's mod
         // runtime with the caller's context, core the worker's turn queue;

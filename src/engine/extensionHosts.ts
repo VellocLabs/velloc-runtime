@@ -19,8 +19,8 @@ import { mcpServerSkillName } from '../mcp/toolAdapter'
 import { registerExtensionToolUnits } from '../toolkit/run/deferredTools'
 import {
   ModRegisteredAgents,
-  agentIdOfLaunch,
   agentInfoOf,
+  agentOutcomeOf,
   agentToolInputOf,
   denialOfLaunch,
   isModRegisteredAgent,
@@ -95,7 +95,7 @@ function toolHost({ ledger, modTools }: HostParts): ModToolHost {
       return modTools.register(spec, plugin)
     },
     forget: plugin => modTools.forget(plugin),
-    call: async (input, raise) => {
+    call: async (input, raise, options) => {
       const mods = config.mods
       if (!mods?.toolCall || !mods.hasToolCallHooks) {
         throw refusal('NotSupportedError', '$.tool.call is not available: this session has no mod runtime')
@@ -103,6 +103,7 @@ function toolHost({ ledger, modTools }: HostParts): ModToolHost {
       const { controller, dispose } = linkedToScope(ledger, raise.signal)
       try {
         const context = ledger.callContext(undefined, controller)
+        if (options?.onSubAgentLaunched) context.onSubAgentLaunched = options.onSubAgentLaunched
         const confirm = context.requestToolUseConfirm
         const asksPerson = mods.whileAskingPerson?.bind(mods)
         // While the permission dialog is open the person is being waited
@@ -275,17 +276,76 @@ function agentHost({ ledger }: HostParts, registeredAgents: ModRegisteredAgents,
     // A spawn is the plugin's own Agent tool call, in the background: it
     // resolves once the subagent started.
     spawn: async (args, raise) => {
-      const answer = (await tools.call(agentToolInputOf(args), raise)) as { result?: unknown; text?: unknown } | undefined
+      let agentId: string | undefined
+      const answer = (await tools.call(agentToolInputOf(args), raise, {
+        onSubAgentLaunched: taskId => {
+          agentId = taskId
+        },
+      })) as { result?: unknown; text?: unknown } | undefined
       const text = typeof answer?.text === 'string' ? answer.text : answer?.result
       const denied = denialOfLaunch(text)
       if (denied !== undefined) return { deny: denied }
-      const agentId = agentIdOfLaunch(text)
       if (agentId === undefined) {
         return { deny: typeof text === 'string' ? text.trim().split('\n')[0] ?? fallbackDenial : fallbackDenial }
       }
       return { model: ledger.activeModel(), agentId }
     },
+    wait: async (agentId, { signal }) => {
+      const controller = getSubAgentController()
+      if (!controller) throw refusal('NotSupportedError', '$.agent.wait is not available: this session runs no subagents')
+      if (!controller.list(ledger.sessionId()).some(entry => entry.sessionId === agentId)) {
+        throw refusal('NotFoundError', `$.agent.wait: ${agentId} is not one of this session's agents`)
+      }
+      // Held before the run can end, so its notification is never queued
+      // while the wait is in flight; the wait never passes its signal on,
+      // since aborting a controller wait stops the subagent.
+      const release = controller.holdResult?.(agentId)
+      let consumed = false
+      try {
+        for (;;) {
+          signal?.throwIfAborted()
+          const snapshot = await untilAborted(controller.waitForCompletion(agentId, AGENT_WAIT_SLICE_MS), signal)
+          if (!snapshot) throw refusal('NotFoundError', `$.agent.wait: ${agentId} is no longer known`)
+          if (snapshot.status === 'running') continue
+          consumed = true
+          controller.acknowledgeResult?.(agentId)
+          return agentOutcomeOf({
+            agentId,
+            status: snapshot.status,
+            text: snapshot.output,
+            description: snapshot.description,
+            ...(snapshot.agentType !== undefined ? { agentType: snapshot.agentType } : {}),
+          })
+        }
+      } finally {
+        release?.(consumed)
+      }
+    },
   }
+}
+
+/** One controller wait of `$.agent.wait`; it waits again until the run ends. */
+const AGENT_WAIT_SLICE_MS = 60_000
+
+/** `work`, or an `AbortError` as soon as `signal` aborts; `work` is left to
+ *  settle on its own. */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return work
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason ?? refusal('AbortError', 'aborted'))
+    if (signal.aborted) return onAbort()
+    signal.addEventListener('abort', onAbort, { once: true })
+    work.then(
+      value => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      error => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
 }
 
 function transcriptHost({ ledger }: HostParts, startedAt: number): Required<ModTranscriptHost> {

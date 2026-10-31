@@ -20,6 +20,78 @@ export type ModAgentHost = {
     args: ModAgentSpawnArgs,
     raise: { context: DispatchContext; signal?: AbortSignal },
   ): Promise<{ model: string; agentId: string } | { deny: string }>
+  /** `$.agent.wait`: resolves when the session's subagent `agentId` ends,
+   *  with its outcome; the parent is then not told of that result again.
+   *  `signal` abandons the wait and leaves the subagent running. */
+  wait(agentId: string, options: { signal?: AbortSignal }): Promise<ModAgentOutcome>
+}
+
+/** How a subagent run ended, as `$.agent.wait` answers and `agent.complete`
+ *  carries it. `text` is the run's final answer, or its partial output when
+ *  it was stopped. */
+export type ModAgentOutcome = {
+  agentId: string
+  status: 'completed' | 'failed' | 'killed'
+  text: string
+  description: string
+  type: string
+}
+
+/** The engine's terminal statuses as the declaration spells them. */
+export function agentStatusOf(status: string): string {
+  return status === 'success' ? 'completed' : status === 'error' ? 'failed' : status === 'stopped' ? 'killed' : status
+}
+
+/** A terminal controller snapshot or finished record as a `ModAgentOutcome`. */
+export function agentOutcomeOf(run: {
+  agentId: string
+  status: 'success' | 'error' | 'stopped'
+  text: string
+  description: string
+  agentType?: string
+}): ModAgentOutcome {
+  return {
+    agentId: run.agentId,
+    status: agentStatusOf(run.status) as ModAgentOutcome['status'],
+    text: run.text,
+    description: run.description,
+    type: run.agentType ?? 'general-purpose',
+  }
+}
+
+/** `agent.complete`'s `e` from the coordinator's finished record, keyed by
+ *  the public task id the plugin's spawn answered. */
+export function agentCompletionOf(record: {
+  taskId: string
+  status: 'success' | 'error' | 'stopped'
+  summary: string
+  description: string
+  agentType?: string
+}): ModAgentOutcome {
+  return agentOutcomeOf({
+    agentId: record.taskId,
+    status: record.status,
+    text: record.summary,
+    description: record.description,
+    ...(record.agentType !== undefined ? { agentType: record.agentType } : {}),
+  })
+}
+
+export function isModAgentOutcome(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.agentId === 'string' &&
+    (value.status === 'completed' || value.status === 'failed' || value.status === 'killed') &&
+    typeof value.text === 'string'
+  )
+}
+
+/** `$.agent.wait(agentId)`'s argument, checked. */
+export function modAgentWaitArgsOf(value: unknown): { agentId: string } {
+  if (typeof value !== 'string' || value === '') {
+    throw new TypeError('$.agent.wait(agentId): agentId must be a non-empty string')
+  }
+  return { agentId: value }
 }
 
 const NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
@@ -171,6 +243,9 @@ export type ModAgentSpawnArgs = {
   model?: string
   name?: string
   cwd?: string
+  /** `'worktree'`: the subagent works in its own git worktree when the
+   *  project is a repository, as the Agent tool's `isolation`. */
+  isolation?: 'worktree'
 }
 
 export function modAgentSpawnArgsOf(value: unknown): ModAgentSpawnArgs {
@@ -184,13 +259,17 @@ export function modAgentSpawnArgsOf(value: unknown): ModAgentSpawnArgs {
     if (typeof given !== 'string' || given === '') throw new TypeError(`$.agent.spawn: input.${field} must be a string`)
     out[field] = given
   }
+  if (value.isolation !== undefined) {
+    if (value.isolation !== 'worktree') throw new TypeError("$.agent.spawn: input.isolation must be 'worktree'")
+    out.isolation = 'worktree'
+  }
   return out
 }
 
 /** The Agent tool's input for a plugin's spawn: in the background, so the
- *  call resolves once the subagent started and its answer is the subagent's
- *  own `turn.complete`. A `description` the plugin left out is the prompt's
- *  first words. */
+ *  call resolves once the subagent started; its answer comes through
+ *  `$.agent.wait` or `agent.complete`. A `description` the plugin left out
+ *  is the prompt's first words. */
 export function agentToolInputOf(args: ModAgentSpawnArgs): Record<string, unknown> {
   const description = args.description ?? args.prompt.trim().split(/\s+/).slice(0, 5).join(' ')
   return {
@@ -199,17 +278,9 @@ export function agentToolInputOf(args: ModAgentSpawnArgs): Record<string, unknow
     description,
     ...(args.subagentType !== undefined ? { subagent_type: args.subagentType } : {}),
     ...(args.model !== undefined ? { model: args.model } : {}),
+    ...(args.isolation !== undefined ? { isolation: args.isolation } : {}),
     run_in_background: true,
   }
-}
-
-/** The subagent's id off the Agent tool's launch acknowledgement ("Launched
- *  background sub-agent … (task id <sessionId>)"), or undefined when the tool
- *  answered something else (a refusal, no spawner). */
-export function agentIdOfLaunch(text: unknown): string | undefined {
-  if (typeof text !== 'string') return undefined
-  const match = /\(task id ([^)\s]+)\)/.exec(text)
-  return match?.[1]
 }
 
 /** The tool's text when the Agent tool refused to start: "Agent could not
@@ -236,8 +307,7 @@ export type ModAgentInfo = {
  *  spelled as the declaration's (`success` → `completed`, `error` →
  *  `failed`, `stopped` → `killed`). */
 export function agentInfoOf(entry: SubAgentListEntry, spawnedBy?: string): ModAgentInfo {
-  const status =
-    entry.status === 'success' ? 'completed' : entry.status === 'error' ? 'failed' : entry.status === 'stopped' ? 'killed' : entry.status
+  const status = agentStatusOf(entry.status)
   return {
     id: entry.sessionId,
     description: entry.description,

@@ -36,7 +36,7 @@ import {
 } from './modConfig'
 import { modToolSpecOf } from './modRegisteredTools'
 import { checkCallInput, checkConnectServer, mcpCallInput, mcpConnectInput, type ModMcpHost } from './modMcp'
-import { modAgentSpawnArgsOf, modAgentSpecOf, type ModAgentHost, type ModAgentSpawnArgs, type ModAgentSpec } from './modAgents'
+import { isModAgentOutcome, modAgentSpawnArgsOf, modAgentSpecOf, modAgentWaitArgsOf, type ModAgentHost, type ModAgentSpawnArgs, type ModAgentSpec } from './modAgents'
 import {
   classifyWith,
   modelClassifyInput,
@@ -1093,6 +1093,18 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
           context: call.context,
           ...(call.signal ? { signal: call.signal } : {}),
         }),
+    },
+    // An op event: a plugin above sees which subagent another plugin waits
+    // on. The wait itself is a `$` call, so a waiting noun method spends
+    // none of its own time.
+    wait: {
+      input: (args: readonly unknown[]) => modAgentWaitArgsOf(args[0]),
+      run: (e: unknown, { call, session }: NounContext) => {
+        return agentsHost(session).wait(modAgentWaitArgsOf((e as { agentId?: unknown }).agentId).agentId, {
+          ...(call.signal ? { signal: call.signal } : {}),
+        })
+      },
+      accepts: isModAgentOutcome,
     },
   }),
   // `$.script`: `script.run` is an op event — a plugin above sees the code

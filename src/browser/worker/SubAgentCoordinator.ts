@@ -151,12 +151,20 @@ export interface SubAgentHost {
     sessionId: string,
     json: string,
   ): void
+  /** A sub-agent reached its terminal record (finished or stopped). Called
+   *  once per run, after its waiters were resolved. Optional. */
+  subAgentFinished?(record: FinishedSubAgentRecord): void
 }
 
 // --- Coordinator ---
 
 export class SubAgentCoordinator {
   private readonly waiters = new Map<string, WaiterResolver[]>()
+  /** Live runs a waiter holds the result of (`holdResult`), by native id. */
+  private readonly holds = new Map<
+    string,
+    { count: number; consumed: boolean; withheld?: { spawnerSessionId: string; result: NexusTaskDeliveryResult } }
+  >()
   // Per-sub-agent abort controllers. Aborting one fires a
   // `worker.interrupt` at the sub-agent's worker; used by `TaskStop` and the
   // parent-close cascade to stop orphaned in-flight sub-agents. Removed on
@@ -767,7 +775,7 @@ export class SubAgentCoordinator {
     // so it already knows); success/error deliver as before.
     const deliver = opts.deliver ?? status !== 'stopped'
     if (deliver) {
-      this.host.deliverTaskResult(state.spawnerSessionId, {
+      const result: NexusTaskDeliveryResult = {
         type: 'local_agent',
         // Carry the PUBLIC `a…` taskId so the delivery turn (and the dedup + the
         // `acknowledgeSubAgentResult` filter) key on what the model sees, letting
@@ -778,7 +786,41 @@ export class SubAgentCoordinator {
         agentType: state.agentType,
         status: status === 'error' ? 'error' : 'success',
         summary,
-      })
+      }
+      // A held result waits for its waiter: delivered only if no waiter
+      // consumed it (`releaseResult`).
+      const hold = this.holds.get(sessionId)
+      if (hold) hold.withheld = { spawnerSessionId: state.spawnerSessionId, result }
+      else this.host.deliverTaskResult(state.spawnerSessionId, result)
+    }
+  }
+
+  /**
+   * Hold the result of a LIVE run for a waiter (`$.agent.wait`); false when
+   * the run is not live. Each hold is paired with one `releaseResult`.
+   */
+  holdResult(sessionId: string): boolean {
+    if (!this.agentTask(sessionId)) return false
+    const hold = this.holds.get(sessionId) ?? { count: 0, consumed: false }
+    hold.count += 1
+    this.holds.set(sessionId, hold)
+    return true
+  }
+
+  /**
+   * Release one hold. `consumed`: this waiter read the terminal result, so
+   * the parent is not told again. The last release of a result no waiter
+   * consumed delivers it, so an abandoned wait loses nothing.
+   */
+  releaseResult(sessionId: string, consumed: boolean): void {
+    const hold = this.holds.get(sessionId)
+    if (!hold) return
+    if (consumed) hold.consumed = true
+    hold.count -= 1
+    if (hold.count > 0) return
+    this.holds.delete(sessionId)
+    if (hold.withheld && !hold.consumed) {
+      this.host.deliverTaskResult(hold.withheld.spawnerSessionId, hold.withheld.result)
     }
   }
 
@@ -932,6 +974,7 @@ export class SubAgentCoordinator {
     // bar's rows; push it (UI-F1). Single point for both finalize and stop.
     this.host.scheduleSummary()
     this.resolveWaiters(record.sessionId)
+    this.host.subAgentFinished?.(record)
   }
 
   // --- Live-run emit interception ---

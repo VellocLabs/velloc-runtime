@@ -416,6 +416,7 @@ export const SpawnAgentTool: ToolContract<SpawnArgs, AgentToolOutput> = declareT
             : {}),
           background: input.run_in_background === true || input.isolation === 'worktree',
           fork: preRoute.kind === 'fork',
+          ...(input.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}),
         },
         e => ({
           model: modelFor(
@@ -694,6 +695,8 @@ export const SpawnAgentTool: ToolContract<SpawnArgs, AgentToolOutput> = declareT
           'Sub-agent spawn deferred: the runtime needs at least one active UI session, or the maximum sub-agent nesting depth was reached. Continue with other work, or perform the task directly.',
       }
     }
+
+    context.onSubAgentLaunched?.(sessionId)
 
     // Wait a bounded time for a foreground result; past that it reports as background.
     if (useMiddleLayer) {

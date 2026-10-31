@@ -140,6 +140,8 @@ export type ModSlot = ToolCallMods &
     clientAttached?(client: ModRosterClient): void
     /** A client left it (`session.detach`, reason `detach`). */
     clientDetached?(clientId: string): void
+    /** A subagent of the session reached its terminal state (`agent.complete`). */
+    agentComplete?(e: import('./modAgents').ModAgentOutcome): void
   }
 
 /** The slot of `sessionId`, for the hub's drawing actions; undefined when
@@ -356,6 +358,12 @@ function slotSessionOf(sessionId: string): string | undefined {
 /** The mod runtime `sessionId` runs under: its own, or its nearest
  *  ancestor's. */
 export function findModSlot(sessionId: string): ToolCallMods | undefined {
+  return modSlotFor(sessionId)
+}
+
+/** The whole slot `sessionId` runs under, for the hub's raises that are
+ *  not tool-path ones (`agent.complete`). */
+export function modSlotFor(sessionId: string): ModSlot | undefined {
   const owner = slotSessionOf(sessionId)
   return owner === undefined ? undefined : slots.get(owner)
 }

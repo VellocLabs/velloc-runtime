@@ -1525,24 +1525,31 @@ describe('$.agent through the engine', () => {
     hasToolCallHooks: () => false,
     toolCall: async (e, core) => ({ settled: true, result: await core(e, new AbortController().signal) }),
   })
-  /** An Agent tool stand-in: answers the launch ack, or a refusal for `nope`. */
+  /** An Agent tool stand-in: reports the launched id through the call
+   *  context, answers a refusal for `nope`, and for `mute` answers an ack
+   *  whose text names an id it never reports. */
   const agentTool = declareTool({
     name: 'Agent',
     argsSchema: { type: 'object' as const, properties: {} },
     description: async () => 'Spawns',
-    call: async (args: Record<string, unknown>) => ({
-      data:
-        args.subagent_type === 'nope'
-          ? 'Agent could not start: the agent type "nope" is not offered in this session.'
-          : `Launched background sub-agent "${String(args.description)}" (${String(args.subagent_type ?? 'general-purpose')}) (task id subagent-42). It runs in its own isolated context.`,
-    }),
+    call: async (args: Record<string, unknown>, context: { onSubAgentLaunched?: (taskId: string) => void }) => {
+      if (args.subagent_type === 'nope') {
+        return { data: 'Agent could not start: the agent type "nope" is not offered in this session.' }
+      }
+      if (args.subagent_type !== 'mute') context.onSubAgentLaunched?.('a00000042')
+      return { data: `Launched background sub-agent "${String(args.description)}" (task id a99999999). It runs in its own isolated context.` }
+    },
   }) as unknown as ToolContract
 
-  it('a spawn is the plugin\'s own background Agent call: the id off the ack, a refusal as deny; the list is empty without a controller; a type registered rides over a plugin reload', async () => {
+  it('a spawn is the plugin\'s own background Agent call: the id the launch reports, a refusal as deny; the list is empty without a controller; a type registered rides over a plugin reload', async () => {
     const { engine } = makeEngine(passThrough(), true, undefined, [agentTool])
     expect(await engine.modAgents.spawn({ prompt: 'Read README.md.', subagentType: 'Explore' }, { context: ROOT_DISPATCH_CONTEXT })).toEqual({
       model: 'inherit',
-      agentId: 'subagent-42',
+      agentId: 'a00000042',
+    })
+    // An id only in the tool's text is not taken: the launch did not report one.
+    expect(await engine.modAgents.spawn({ prompt: 'x', subagentType: 'mute' }, { context: ROOT_DISPATCH_CONTEXT })).toEqual({
+      deny: 'Launched background sub-agent "x" (task id a99999999). It runs in its own isolated context.',
     })
     expect(await engine.modAgents.spawn({ prompt: 'x', subagentType: 'nope' }, { context: ROOT_DISPATCH_CONTEXT })).toEqual({
       deny: 'the agent type "nope" is not offered in this session.',
@@ -1554,6 +1561,73 @@ describe('$.agent through the engine', () => {
     engine.modAgents.forget('nobody')
     engine.modAgents.forget('lab')
     expect(engine.modAgents.register({ name: 'runner', description: 'Runs', prompt: 'P' }, 'lab')).toBe('lab:runner')
+  })
+
+  /** A controller whose one subagent `a1` ends when `finish` is called. */
+  function oneSubagent(own: string) {
+    const calls: string[] = []
+    let status: 'running' | 'success' | 'error' | 'stopped' = 'running'
+    const waiters: Array<() => void> = []
+    const snapshot = () => ({ sessionId: 'a1', status, description: 'scan', agentType: 'Explore', output: status === 'running' ? '' : 'found 3', startedAt: 0 })
+    const controller = {
+      list: (spawner: string) => (spawner === own ? [snapshot()] : []),
+      holdResult: (id: string) => {
+        calls.push(`hold ${id}`)
+        return status === 'running' ? (consumed: boolean) => calls.push(`release ${consumed}`) : undefined
+      },
+      waitForCompletion: (_id: string, _ms: number, signal?: AbortSignal) => {
+        if (signal) calls.push('signal passed on')
+        return status === 'running' ? new Promise(resolve => waiters.push(() => resolve(snapshot()))) : Promise.resolve(snapshot())
+      },
+      acknowledgeResult: (id: string) => calls.push(`ack ${id}`),
+    }
+    setSubAgentController(controller as unknown as SubAgentController)
+    return {
+      calls,
+      finish(to: 'success' | 'error' | 'stopped') {
+        status = to
+        for (const wake of waiters.splice(0)) wake()
+      },
+    }
+  }
+
+  it('$.agent.wait: holds the result first, resolves with the outcome when the run ends, and acknowledges it', async () => {
+    const { engine } = makeEngine(passThrough())
+    const run = oneSubagent(engine.boundSessionId())
+    try {
+      const waiting = engine.modAgents.wait!('a1', {})
+      await new Promise(resolve => setTimeout(resolve, 0))
+      run.finish('success')
+      expect(await waiting).toEqual({ agentId: 'a1', status: 'completed', text: 'found 3', description: 'scan', type: 'Explore' })
+      expect(run.calls).toEqual(['hold a1', 'ack a1', 'release true'])
+    } finally {
+      setSubAgentController(null)
+    }
+  })
+
+  it('$.agent.wait: an abandoned wait rejects AbortError, releases unconsumed, and never passes its signal to the controller', async () => {
+    const { engine } = makeEngine(passThrough())
+    const run = oneSubagent(engine.boundSessionId())
+    try {
+      const abort = new AbortController()
+      const waiting = engine.modAgents.wait!('a1', { signal: abort.signal })
+      await new Promise(resolve => setTimeout(resolve, 0))
+      abort.abort()
+      await expect(waiting).rejects.toMatchObject({ name: 'AbortError' })
+      expect(run.calls).toEqual(['hold a1', 'release false'])
+    } finally {
+      setSubAgentController(null)
+    }
+  })
+
+  it("$.agent.wait: an id that is not one of this session's agents is NotFoundError", async () => {
+    const { engine } = makeEngine(passThrough())
+    oneSubagent('someone-else')
+    try {
+      await expect(engine.modAgents.wait!('a1', {})).rejects.toMatchObject({ name: 'NotFoundError' })
+    } finally {
+      setSubAgentController(null)
+    }
   })
 
   it("$.ui.view's lookup: a subagent of this session by its task id or its loop id, a teammate by its session, anything else undefined", () => {

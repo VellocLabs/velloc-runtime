@@ -802,6 +802,18 @@ export class TaskControlSurface {
     return result
   }
 
+  /** Hold a live sub-agent's result for a waiter (`SubAgentController.holdResult`). */
+  holdResult(publicId: string): ((consumed: boolean) => void) | undefined {
+    const id = this.resolveNative(publicId)
+    if (!this.subAgents.holdResult(id)) return undefined
+    let released = false
+    return consumed => {
+      if (released) return
+      released = true
+      this.subAgents.releaseResult(id, consumed)
+    }
+  }
+
   acknowledgeResult(publicId: string): void {
     const id = this.resolveNative(publicId)
     if (this.finishedAgent(id)) {

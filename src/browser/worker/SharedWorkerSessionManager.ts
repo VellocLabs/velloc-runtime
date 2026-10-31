@@ -179,6 +179,8 @@ import { BridgeRequestRouter } from './BridgeRequestRouter'
 import { ManagerBootServices } from './ManagerBootServices'
 import { endProviderSessions } from '../../mods/provider/providerSessionEnd'
 import { modContributionsState } from '../../mods/ui/contributionsState'
+import { modSlotFor } from '../../mods/modSlotRegistry'
+import { agentCompletionOf } from '../../mods/modAgents'
 import { closeSessionMCPPool } from '../../mcp/sessionPools'
 import { SessionInitOrchestrator } from './SessionInitOrchestrator'
 import { setMcpHostProvider, type McpHostAccess } from '../../mcp/mcpHost'
@@ -1201,6 +1203,10 @@ export class SharedWorkerSessionManager {
           json,
         )
       },
+      // `agent.complete` on the mod slot the parent belongs to.
+      subAgentFinished: (record) => {
+        modSlotFor(record.spawnerSessionId)?.agentComplete?.(agentCompletionOf(record))
+      },
     })
     this.taskControl = new TaskControlSurface(
       this.taskRegistry,
@@ -1348,6 +1354,7 @@ export class SharedWorkerSessionManager {
       resume: (id, prompt) => this.resumeSubAgent(id, prompt),
       list: (spawnerSessionId) => this.listSubAgents(spawnerSessionId),
       acknowledgeResult: (id) => this.acknowledgeSubAgentResult(id),
+      holdResult: (id) => this.taskControl.holdResult(id),
     })
     // Register the team messenger (Phases D/E) — SendMessage / Shutdown
     // tools reach the mailbox + teammate lifecycle through this leaf.

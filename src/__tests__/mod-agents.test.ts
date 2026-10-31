@@ -1,7 +1,7 @@
 /**
  * `$.agent` (F-25): the spec checked into the Agent tool's definition (`<plugin>:<name>`, `source: 'plugin'`), the
- * spawn arguments and Agent tool input, the agent id and a denial read off the tool's text; through a real
- * `ModRuntime`: register at `session.start`, a guard rewriting the description, spawn/list over a fake host, and
+ * spawn arguments and Agent tool input, a denial read off the tool's text; through a real `ModRuntime`: register
+ * at `session.start`, a guard rewriting the description, spawn/list/wait over a fake host, `agent.complete`, and
  * the refusals.
  */
 import { afterEach, describe, expect, it } from 'vitest'
@@ -10,7 +10,6 @@ import { installModWorkerHost } from '../mods/ModWorkerHost'
 import type { ModNounHost } from '../mods/modNouns'
 import {
   ModRegisteredAgents,
-  agentIdOfLaunch,
   agentInfoOf,
   agentToolInputOf,
   buildModAgentDefinition,
@@ -19,7 +18,10 @@ import {
   modAgentFullName,
   modAgentSpawnArgsOf,
   modAgentSpecOf,
+  modAgentWaitArgsOf,
+  agentCompletionOf,
   type ModAgentHost,
+  type ModAgentOutcome,
 } from '../mods/modAgents'
 
 const open: MessagePort[] = []
@@ -113,9 +115,20 @@ describe('a spawn and the list', () => {
       subagent_type: 'Explore',
       run_in_background: true,
     })
-    expect(agentIdOfLaunch('Launched background sub-agent "x" (Explore) (task id subagent-abc-1). It runs…')).toBe('subagent-abc-1')
-    expect(agentIdOfLaunch('(task id s-9)\n\nthe output')).toBe('s-9')
-    expect(agentIdOfLaunch('Agent could not start: GUARD refused')).toBeUndefined()
+    expect(modAgentSpawnArgsOf({ prompt: 'x', isolation: 'worktree' })).toEqual({ prompt: 'x', isolation: 'worktree' })
+    expect(() => modAgentSpawnArgsOf({ prompt: 'x', isolation: 'remote' })).toThrow(/isolation/)
+    expect(agentToolInputOf({ prompt: 'one two', isolation: 'worktree' })).toEqual({
+      tool: 'Agent',
+      prompt: 'one two',
+      description: 'one two',
+      isolation: 'worktree',
+      run_in_background: true,
+    })
+    expect(modAgentWaitArgsOf('a1')).toEqual({ agentId: 'a1' })
+    expect(() => modAgentWaitArgsOf('')).toThrow(/agentId/)
+    expect(
+      agentCompletionOf({ taskId: 'a9', status: 'error', summary: 'boom', description: 'd', agentType: 'Explore' }),
+    ).toEqual({ agentId: 'a9', status: 'failed', text: 'boom', description: 'd', type: 'Explore' })
     expect(denialOfLaunch('Agent could not start: GUARD refused')).toBe('GUARD refused')
     expect(denialOfLaunch('Launched background sub-agent')).toBeUndefined()
   })
@@ -166,6 +179,9 @@ describe('$.agent through the runtime', () => {
         spawned.push(args)
         return args.subagentType === 'nope' ? { deny: 'no such type' } : { model: 'm-1', agentId: 'subagent-7' }
       },
+      wait: async () => {
+        throw new Error('unused')
+      },
     }
     const { runtime, reports } = world(
       {
@@ -209,6 +225,76 @@ describe('$.agent through the runtime', () => {
     ])
     await runtime.reconcile([{ plugin: 'guard', path: '/plugins/guard/hooks/register.js' }])
     expect(forgotten).toEqual(['lab'])
+  })
+
+  it('$.agent.wait answers the outcome, is an op event a guard can deny, and its signal reaches the host while the subagent is left alone', async () => {
+    const outcome: ModAgentOutcome = { agentId: 'a1', status: 'completed', text: 'found 3', description: 'scan', type: 'Explore' }
+    const waits: Array<{ agentId: string; aborted: () => boolean }> = []
+    const agents: ModAgentHost = {
+      register: () => '',
+      forget: () => {},
+      list: () => [],
+      spawn: async () => ({ deny: 'unused' }),
+      wait: (agentId, { signal }) => {
+        waits.push({ agentId, aborted: () => signal?.aborted ?? false })
+        if (agentId !== 'slow') return Promise.resolve(outcome)
+        return new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(Object.assign(new Error('gone'), { name: 'AbortError' }))))
+      },
+    }
+    const { runtime, reports } = world(
+      {
+        guard: `
+          export function register(on) {
+            on('agent.wait', ($, e, next) => e.agentId === 'secret' ? { deny: 'not that one' } : next(e));
+          }
+        `,
+        lab: `
+          export function register(on) {
+            on('prompt.submit', async ($, e, next) => {
+              const done = await $.agent.wait('a1');
+              const denied = await $.agent.wait('secret').catch(err => err.name + ': ' + err.message);
+              const controller = new AbortController();
+              const pending = $.agent.wait('slow', { signal: controller.signal }).catch(err => err.name);
+              setTimeout(() => controller.abort(), 10);
+              const abandoned = await pending;
+              const bad = await $.agent.wait('').catch(err => err.name);
+              await $.ui.log(JSON.stringify({ done, denied, abandoned, bad }));
+              return next(e);
+            });
+          }
+        `,
+      },
+      { agents },
+    )
+    await runtime.ready
+    await runtime.promptSubmit('go')
+    const line = reports.find(r => r.startsWith('lab: {'))!
+    expect(JSON.parse(line.slice('lab: '.length))).toEqual({
+      done: outcome,
+      denied: 'DeniedError: not that one',
+      abandoned: 'AbortError',
+      bad: 'TypeError',
+    })
+    expect(waits.map(w => w.agentId)).toEqual(['a1', 'slow'])
+    expect(waits[1]!.aborted()).toBe(true)
+  })
+
+  it('agent.complete reaches a hook once per run, observe-only', async () => {
+    const { runtime, reports } = world({
+      watcher: `
+        export function register(on) {
+          on('agent.complete', async ($, e, next) => {
+            await $.ui.log(e.agentId + ' ' + e.status + ' ' + e.text);
+            return next({ ...e, text: 'rewritten' });
+          });
+        }
+      `,
+    })
+    await runtime.ready
+    runtime.agentComplete({ agentId: 'a1', status: 'completed', text: 'found 3', description: 'scan', type: 'Explore' })
+    runtime.agentComplete({ agentId: 'a2', status: 'killed', text: 'partial', description: 'other', type: 'general-purpose' })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(reports).toEqual(['watcher: a1 completed found 3', 'watcher: a2 killed partial'])
   })
 
   it('a host without an Agent tool refuses the noun by name', async () => {

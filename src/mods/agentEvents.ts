@@ -31,6 +31,9 @@ export type AgentSpawnInput = {
   fork: boolean
   name?: string
   cwd?: string
+  /** `'worktree'` when the call asked for its own checkout. Seen, not
+   *  rewritten: the tool does not read it back. */
+  isolation?: 'worktree'
 }
 
 /** What the tool reads back after the chain: the content a hook may have

@@ -122,6 +122,7 @@ import { MOD_BAND_ID, ModPageBridge, copyEverywhere, type ModClipboardHost, type
 import { PausableDeadline } from '../browser/workerKernel/pausableDeadline'
 import { runProgram, type RunProgramOptions, type RunProgramResult } from '../browser/runJs/runProgram'
 import { createModScriptHost, type ModScriptCaller } from './modScript'
+import type { ModAgentOutcome } from './modAgents'
 import { ModPaneRegistry, type ModPane, type ModPaneOpenArgs, type ModPaneSeat } from './modPanes'
 import type { PluginUserConfigField } from '../pluginHost/pluginModel'
 import {
@@ -508,6 +509,8 @@ export class ModRuntime implements TurnExtensions {
   /** The roster's events, one after another, so a detach never overtakes
    *  its attach. */
   private rosterChain: Promise<void> = Promise.resolve()
+  /** `agent.complete` raises, one at a time. */
+  private agentChain: Promise<void> = Promise.resolve()
   /** The host the nouns are served with: the session's, with `env`, `state`
    *  and `store` defaulted where it supplies none. */
   private readonly nounHost: ModNounHost
@@ -3916,6 +3919,19 @@ export class ModRuntime implements TurnExtensions {
     if (this.rosterOpen || this.disposed) return
     this.rosterOpen = true
     for (const client of this.roster.values()) this.raiseRoster('session.attach', client)
+  }
+
+  /** `agent.complete`: observe-only, raised once per subagent run that
+   *  reached a terminal state, in the order the runs ended. Never rejects. */
+  agentComplete(e: ModAgentOutcome): void {
+    this.agentChain = this.agentChain.then(async () => {
+      if (this.disposed || !this.dispatcher.hasHooksFor('agent.complete')) return
+      try {
+        await this.dispatcher.dispatch('agent.complete', e, () => ({ agentId: e.agentId }), { accepts: isRecord })
+      } catch (error) {
+        this.options.report(`mods: agent.complete failed: ${errorMessage(error)}`)
+      }
+    })
   }
 
   private raiseRoster(event: 'session.attach' | 'session.detach', client: ModRosterClient): void {

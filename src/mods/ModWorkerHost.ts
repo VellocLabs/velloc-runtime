@@ -606,6 +606,28 @@ export function installModWorkerHost(
   /** `$.script.run`: the noun tables' functions stay here, under a run-scoped
    *  noun; the call carries their names and the run's token. `signal` does not
    *  cross — it abandons the call, which stops the script. */
+  /** `$.agent`: `wait(agentId, { signal })` keeps `signal` here — it
+   *  abandons the call, never the subagent. Every other method is a plain
+   *  call. */
+  const makeAgent = (invocation: Invocation | undefined): unknown => {
+    const agent = {
+      wait: (agentId: unknown, options?: unknown): Promise<unknown> => {
+        const signal = options && typeof options === 'object' ? (options as { signal?: unknown }).signal : undefined
+        const own = signal instanceof AbortSignal ? signal : undefined
+        return callRuntime(invocation, 'agent', 'wait', [agentId], own)
+      },
+    }
+    return new Proxy(Object.freeze(agent), {
+      get: (target, method) => {
+        if (typeof method !== 'string' || method === 'then') return undefined
+        if (Object.prototype.hasOwnProperty.call(target, method)) {
+          return target[method as keyof typeof target]
+        }
+        return (...args: unknown[]) => callRuntime(invocation, 'agent', method, args)
+      },
+    })
+  }
+
   const makeScript = (invocation: Invocation | undefined): unknown => {
     const script = {
       run: (options: unknown): Promise<unknown> => {
@@ -681,6 +703,8 @@ export function installModWorkerHost(
                     ? makeProcess(invocation)
                   : noun === 'script'
                     ? makeScript(invocation)
+                  : noun === 'agent'
+                    ? makeAgent(invocation)
                     : new Proxy(Object.freeze({}), {
                   get: (_target, method) =>
                     // `then`: so that `await $.fs` does not treat the noun as a promise.

@@ -108,6 +108,14 @@ export type SubAgentController = {
    * mock controllers needn't implement it. No-op if nothing is pending.
    */
   acknowledgeResult?(sessionId: string): void
+  /**
+   * Hold a LIVE sub-agent's result for a waiter: when it finishes while held,
+   * its `<task-notification>` is kept back instead of queued. The returned
+   * release takes whether the waiter consumed the result; the last release
+   * of an unconsumed held result delivers it after all. Undefined when the
+   * sub-agent is not live (nothing to hold). Optional for mocks.
+   */
+  holdResult?(sessionId: string): ((consumed: boolean) => void) | undefined
 }
 
 let controller: SubAgentController | null = null

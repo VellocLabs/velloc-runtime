@@ -209,6 +209,7 @@ export type ModToolHost = {
   call(
     input: Record<string, unknown>,
     raise: { context: DispatchContext; signal?: AbortSignal },
+    options?: { onSubAgentLaunched?: (taskId: string) => void },
   ): Promise<unknown>
   /** `$.tool.check({ tool, input })`: the engine's verdict for that call
    *  through the chain, nothing run, no dialog opened. Rejects when no tool

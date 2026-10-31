@@ -69,6 +69,8 @@ import {
 } from '../browser/webview/backgroundSubAgents'
 import type { NexusTaskSummaryRow } from '../browser/bridge/protocol/ui'
 import { SharedWorkerSessionManager } from '../browser/worker/SharedWorkerSessionManager'
+import { registerModSlot, type ModSlot } from '../mods/modSlotRegistry'
+import type { ModAgentOutcome } from '../mods/modAgents'
 import { formatTaskNotifications } from '../browser/worker/taskProjection'
 import {
   processFs,
@@ -1823,6 +1825,66 @@ describe('SharedWorkerSessionManager — background sub-agent delivery', () => {
     manager.markStreamEnd('parent-ack')
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(parent.submits).toHaveLength(0)
+  })
+
+  it('a held result is not delivered to an idle parent; the waiter that consumes it leaves nothing to deliver', async () => {
+    const { manager, subWorker, drive } = setup()
+    const parent = makeFakeWorker()
+    seedParentSession(manager, 'parent-held', parent.worker, false)
+    const sid = manager.spawnSubAgentSession({ spawnerSessionId: 'parent-held', prompt: 'p', description: 'held task' })!
+    const release = getSubAgentController()!.holdResult!(sid)
+    expect(release).toBeTypeOf('function')
+    drive({ type: 'worker.stream', payload: { event: assistantTextEvent('HELD_TOKEN') } } as unknown as AgentWorkerOutboundMessage)
+    drive({ type: 'worker.completed', payload: {} } as unknown as AgentWorkerOutboundMessage)
+    await settleSubmit(subWorker)
+    expect(parent.submits).toHaveLength(0)
+    expect(getSubAgentController()!.getSnapshot(sid)).toMatchObject({ status: 'success', output: 'HELD_TOKEN' })
+    release!(true)
+    release!(false)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(parent.submits).toHaveLength(0)
+  })
+
+  it('a held result no waiter consumed is delivered once, when the last hold is released', async () => {
+    const { manager, subWorker, drive } = setup()
+    const parent = makeFakeWorker()
+    seedParentSession(manager, 'parent-dropped', parent.worker, false)
+    const sid = manager.spawnSubAgentSession({ spawnerSessionId: 'parent-dropped', prompt: 'p', description: 'dropped task' })!
+    const first = getSubAgentController()!.holdResult!(sid)!
+    const second = getSubAgentController()!.holdResult!(sid)!
+    drive({ type: 'worker.stream', payload: { event: assistantTextEvent('DROPPED_TOKEN') } } as unknown as AgentWorkerOutboundMessage)
+    drive({ type: 'worker.completed', payload: {} } as unknown as AgentWorkerOutboundMessage)
+    await settleSubmit(subWorker)
+    first(false)
+    expect(parent.submits).toHaveLength(0)
+    second(false)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(parent.submits).toHaveLength(1)
+    expect(parent.submits[0]).toContain('DROPPED_TOKEN')
+    // A finished run has nothing left to hold.
+    expect(getSubAgentController()!.holdResult!(sid)).toBeUndefined()
+  })
+
+  it("raises agent.complete once on the parent's mod slot, for a finished run and a stopped one", async () => {
+    const { manager, subWorker, drive } = setup()
+    const parent = makeFakeWorker()
+    seedParentSession(manager, 'parent-mods', parent.worker, false)
+    const seen: ModAgentOutcome[] = []
+    const unregister = registerModSlot('parent-mods', { agentComplete: (e: ModAgentOutcome) => seen.push(e) } as unknown as ModSlot)
+    try {
+      const done = manager.spawnSubAgentSession({ spawnerSessionId: 'parent-mods', prompt: 'p', description: 'done task', agentType: 'Explore' })!
+      drive({ type: 'worker.stream', payload: { event: assistantTextEvent('DONE_TOKEN') } } as unknown as AgentWorkerOutboundMessage)
+      drive({ type: 'worker.completed', payload: {} } as unknown as AgentWorkerOutboundMessage)
+      await settleSubmit(subWorker)
+      const stopped = manager.spawnSubAgentSession({ spawnerSessionId: 'parent-mods', prompt: 'p', description: 'stopped task' })!
+      getSubAgentController()!.stop(stopped)
+      expect(seen).toEqual([
+        { agentId: done, status: 'completed', text: 'DONE_TOKEN', description: 'done task', type: 'Explore' },
+        expect.objectContaining({ agentId: stopped, status: 'killed', description: 'stopped task', type: 'general-purpose' }),
+      ])
+    } finally {
+      unregister()
+    }
   })
 
   it('keeps background sub-agent sessions out of the user-facing list/summary (F3)', () => {
