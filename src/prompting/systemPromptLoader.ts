@@ -13,6 +13,7 @@ import {
   type PromptSectionName,
 } from './sections/promptSectionRenderer'
 import type { PromptProfile } from './promptProfile'
+import type { Platform } from '../utils/hostPlatform'
 
 export type { SystemPromptVariant } from './systemPromptLoader.types'
 export { PromptUnavailableError } from './systemPromptFetcher'
@@ -138,6 +139,23 @@ export function applyToolLineGates(
   )
   // Holder prose arrives trimmed, so a dropped LAST line would leave the
   // newline that preceded it dangling.
+  return text.endsWith('\n') ? gated : gated.replace(/\r?\n$/, '')
+}
+
+// `{{IF_PLATFORM:win32}}` / `{{IF_PLATFORM:!win32}}` — a LINE gate on the
+// host platform, at the very start of the line like `{{IF_TOOL:…}}`. The line
+// is kept (marker stripped) when the platform matches — or, negated, does not
+// — and dropped whole otherwise. An unknown platform matches no plain gate and
+// every negated one.
+const IF_PLATFORM_LINE = /^\{\{IF_PLATFORM:(!?)(win32|darwin|linux)\}\}(.*(?:\r?\n|$))/gm
+
+export function applyPlatformLineGates(text: string, platform: Platform | undefined): string {
+  if (!text.includes('{{IF_PLATFORM:')) return text
+  const gated = text.replace(
+    IF_PLATFORM_LINE,
+    (_line, negated: string, gate: string, rest: string) =>
+      (gate === platform) !== (negated === '!') ? rest : '',
+  )
   return text.endsWith('\n') ? gated : gated.replace(/\r?\n$/, '')
 }
 

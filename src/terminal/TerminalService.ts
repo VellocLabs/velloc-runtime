@@ -52,6 +52,7 @@ import { ScreenMirror } from './screenMirror'
 import {
   defaultTerminalShell,
   isTerminalShellId,
+  runShellIds,
   sameShells,
   shellsFromHostReport,
   TERMINAL_SHELL_ARGV,
@@ -504,18 +505,27 @@ export class TerminalService {
   }
 
   /**
-   * Type `command` and Enter into the session's newest running shell — first
-   * starting the default shell and waiting for its start-up output to go
-   * quiet when it has none. Any run still followed on that terminal ends.
+   * Type `command` and Enter into the session's newest running Run shell
+   * (`runShellIds`: PowerShell on Windows, bash elsewhere) — first starting
+   * one and waiting for its start-up output to go quiet when it has none.
+   * Any run still followed on that terminal ends.
    */
   async run(input: TerminalRunPayload): Promise<TerminalRunResult> {
     this.requireAvailable()
     if (!isRunnableCommand(input.command)) {
       throw wireError('bad_payload', 'terminal: a run takes one non-blank line without control characters')
     }
-    let record = this.shellFor(input.sessionId)
+    const runShells = runShellIds(this.shellList)
+    let record = this.shellFor(input.sessionId, runShells)
     if (!record) {
-      const started = this.require(await this.create({ sessionId: input.sessionId, cols: RUN_COLS, rows: RUN_ROWS }))
+      const started = this.require(
+        await this.create({
+          sessionId: input.sessionId,
+          cols: RUN_COLS,
+          rows: RUN_ROWS,
+          ...(runShells.length > 0 ? { shell: runShells[0] } : {}),
+        }),
+      )
       if (started.state.kind !== 'running') {
         throw wireError('host_unavailable', `terminal: ${started.shell} did not start`)
       }
@@ -794,11 +804,15 @@ export class TerminalService {
     }
   }
 
-  /** The session's newest shell that is running; CLI terminals are not shells. */
-  private shellFor(sessionId: string): TerminalRecord | null {
+  /**
+   * The session's newest running shell whose id is in `shells` (empty ⇒ any
+   * shell); CLI terminals are not shells.
+   */
+  private shellFor(sessionId: string, shells: readonly string[]): TerminalRecord | null {
     let found: TerminalRecord | null = null
     for (const record of this.records.values()) {
-      if (record.sessionId === sessionId && !record.cli && record.state.kind === 'running') found = record
+      if (record.sessionId !== sessionId || record.cli || record.state.kind !== 'running') continue
+      if (shells.length === 0 || shells.includes(record.shell)) found = record
     }
     return found
   }

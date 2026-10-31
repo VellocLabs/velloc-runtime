@@ -14,17 +14,19 @@ import {
   resetEntryResolutions,
 } from '../config/nexusModelConfig/modelEntryResolution'
 import { gatherSystemPromptSources } from '../engine/systemPromptSources'
+import { applyPlatformLineGates } from '../prompting/systemPromptLoader'
+import { getHolderProse } from '../prompting/templateRegistry'
 
 // The minimal host the prompt path touches: one context snapshot (the shape
 // production produces — nullable slots are `null`, never absent; see
 // `BrowserContextSnapshot` in bridge/protocol) and no `catalog` capability
 // (so the `{{system-prompt-tools}}` slot renders empty).
-function fakeHostBridge(): BrowserHostBridge {
+function fakeHostBridge(platform: 'win32' | 'linux' | 'unknown' = 'win32'): BrowserHostBridge {
   const snapshot: BrowserContextSnapshot = {
     session: {
       browserName: 'velloc',
       tabCount: 0,
-      platform: 'win32',
+      platform: platform === 'unknown' ? undefined : platform,
       osVersion: '10.0',
       shell: 'powershell',
     },
@@ -183,5 +185,66 @@ describe('fetchSystemPromptParts — the environment block names the concrete mo
     expect(await environmentLine('claude-fable-5-1')).toBe(
       '- Model running this session: claude-fable-5-1',
     )
+  })
+})
+
+describe('platform line gates', () => {
+  const text = ['a', '{{IF_PLATFORM:win32}}windows', '{{IF_PLATFORM:!win32}}elsewhere', 'b'].join('\n')
+
+  it('keeps the matching line, marker stripped, and drops the other whole', () => {
+    expect(applyPlatformLineGates(text, 'win32')).toBe('a\nwindows\nb')
+    expect(applyPlatformLineGates(text, 'linux')).toBe('a\nelsewhere\nb')
+  })
+
+  it('an unknown platform keeps only the negated lines', () => {
+    expect(applyPlatformLineGates(text, undefined)).toBe('a\nelsewhere\nb')
+  })
+
+  it('a dropped last line leaves no trailing newline', () => {
+    expect(applyPlatformLineGates('a\n{{IF_PLATFORM:darwin}}mac', 'win32')).toBe('a')
+  })
+})
+
+describe('fetchSystemPromptParts — the run-block rule names the platform shell', () => {
+  const runRule = async (platform: 'win32' | 'linux' | 'unknown') => {
+    const { defaultSystemPrompt } = await gatherSystemPromptSources(
+      {
+        tools: [] as unknown as ToolContractList,
+        mainLoopModel: 'relay-model',
+        extraWorkspaceRoots: [],
+        mcpClients: [],
+        cwd: 'D:\\proj',
+        providerId: 'custom-relay',
+        templateType: 'code',
+      },
+      { hostBridge: fakeHostBridge(platform), sessionStartDate: '2026-09-03' },
+    )
+    const prompt = defaultSystemPrompt.join('\n')
+    expect(prompt).not.toContain('{{IF_PLATFORM:')
+    return prompt.split('\n').filter(line => line.includes('Run button'))
+  }
+
+  const expectPlatformRule = (windows: string[], linux: string[]) => {
+    expect(windows).toHaveLength(1)
+    expect(windows[0]).toContain('tagged `powershell`')
+    expect(windows[0]).not.toContain('`bash`')
+    expect(linux).toHaveLength(1)
+    expect(linux[0]).toContain('tagged `bash`')
+    expect(linux[0]).not.toContain('powershell')
+  }
+
+  it('a Windows session is told PowerShell only, any other bash only', async () => {
+    const linux = await runRule('linux')
+    expectPlatformRule(await runRule('win32'), linux)
+    expect(await runRule('unknown')).toEqual(linux)
+  })
+
+  it('the lean holder carries the same per-platform rule', () => {
+    const lean = getHolderProse('code_tone_and_style', { type: 'code', profile: 'lean' })!
+    const rule = (platform: 'win32' | 'linux') =>
+      applyPlatformLineGates(lean, platform)
+        .split('\n')
+        .filter(line => line.includes('Run button'))
+    expectPlatformRule(rule('win32'), rule('linux'))
   })
 })

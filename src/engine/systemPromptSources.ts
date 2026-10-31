@@ -8,7 +8,7 @@ import type {
 import type { Message } from '../runtime/RuntimeTypes'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { ToolContractList } from '../toolkit/toolContract'
-import { loadSystemPromptSections } from '../prompting/systemPromptLoader'
+import { applyPlatformLineGates, loadSystemPromptSections } from '../prompting/systemPromptLoader'
 import { resolvePromptProfile } from '../prompting/promptProfile'
 import { BrowserHostBridge } from '../browser/bridge/BrowserHostBridge'
 import {
@@ -137,7 +137,13 @@ export async function gatherSystemPromptSources(
     mainLoopModel: resolveModelId(params.providerId, params.mainLoopModel),
   })
 
-  const sections = envBlock !== null ? [...basePrompt, { name: 'env_info', text: envBlock }] : basePrompt
+  // The base prompt is loaded beside the snapshot, so its platform line gates
+  // are applied here, once the host's platform is known.
+  const gatedPrompt = basePrompt.map(section => ({
+    ...section,
+    text: applyPlatformLineGates(section.text, snapshot.session.platform),
+  }))
+  const sections = envBlock !== null ? [...gatedPrompt, { name: 'env_info', text: envBlock }] : gatedPrompt
   const defaultSystemPrompt: SystemPromptPart[] = sections.map(section => section.text)
 
   return {

@@ -437,15 +437,41 @@ describe('TerminalService run', () => {
     expect(await settled(r, runId)).toMatchObject({ status: 'done', output: 'fatal: not a git repository' })
   })
 
-  it('types into the newest running shell of the session', async () => {
+  it('on Windows types into the newest running PowerShell of the session, never a newer cmd or bash', async () => {
     const r = await ready()
-    const first = await r.service.create({ sessionId: 's1', shell: 'cmd', cols: 80, rows: 24 })
-    const second = await r.service.create({ sessionId: 's1', shell: 'pwsh', cols: 80, rows: 24 })
+    const older = await r.service.create({ sessionId: 's1', shell: 'pwsh', cols: 80, rows: 24 })
+    const newer = await r.service.create({ sessionId: 's1', shell: 'powershell', cols: 80, rows: 24 })
+    await r.service.create({ sessionId: 's1', shell: 'cmd', cols: 80, rows: 24 })
+    await r.service.create({ sessionId: 's1', shell: 'bash', cols: 80, rows: 24 })
     await r.service.create({ sessionId: 's2', shell: 'pwsh', cols: 80, rows: 24 })
-    expect((await r.service.run({ sessionId: 's1', command: 'dir' })).id).toBe(second)
+    expect((await r.service.run({ sessionId: 's1', command: 'dir' })).id).toBe(newer)
     r.exit(r.spawned[1]!, 0)
-    expect((await r.service.run({ sessionId: 's1', command: 'dir' })).id).toBe(first)
-    expect(r.shellRequests('spawn')).toHaveLength(3)
+    expect((await r.service.run({ sessionId: 's1', command: 'dir' })).id).toBe(older)
+    expect(r.shellRequests('spawn')).toHaveLength(5)
+  })
+
+  it('on Windows starts a PowerShell for a run when the session has only cmd and bash', async () => {
+    const r = await ready({ runSettleMs: 5 })
+    await r.service.create({ sessionId: 's1', shell: 'cmd', cols: 80, rows: 24 })
+    await r.service.create({ sessionId: 's1', shell: 'bash', cols: 80, rows: 24 })
+    const running = r.service.run({ sessionId: 's1', command: 'dir' })
+    await settle()
+    expect(r.shellRequests('spawn')[2]!.payload).toMatchObject({ file: 'pwsh', pty: { cols: 120, rows: 30 } })
+    r.output(r.spawned[2]!, 'PS C:\\p> ')
+    expect((await running).id).toBe('term_3')
+  })
+
+  it('off Windows types into bash, and starts bash for a run when the session has none', async () => {
+    const r = await ready({ platform: 'linux', runSettleMs: 5 })
+    await r.service.create({ sessionId: 's1', shell: 'pwsh', cols: 80, rows: 24 })
+    const running = r.service.run({ sessionId: 's1', command: 'ls' })
+    await settle()
+    expect(r.shellRequests('spawn')[1]!.payload).toMatchObject({ file: 'bash', args: ['--login', '-i'] })
+    r.output(r.spawned[1]!, 'user@host:~$ ')
+    const bash = (await running).id
+    expect(bash).toBe('term_2')
+    await r.service.create({ sessionId: 's1', shell: 'pwsh', cols: 80, rows: 24 })
+    expect((await r.service.run({ sessionId: 's1', command: 'ls' })).id).toBe(bash)
   })
 
   it('a new run ends the one before it, and an exit ends a run with the output it printed last', async () => {

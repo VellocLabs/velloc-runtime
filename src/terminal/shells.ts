@@ -33,6 +33,16 @@ export function defaultTerminalShell(shells: readonly TerminalShellInfo[]): stri
   return shells[0]?.id
 }
 
+/**
+ * The shells a chat Run types into, best first: PowerShell on a Windows host
+ * (the one host that lists `cmd`), bash elsewhere — the shell the code prompt
+ * tells the model to write for (F-31). Only ids the host has; empty ⇒ any shell.
+ */
+export function runShellIds(shells: readonly TerminalShellInfo[]): TerminalShellId[] {
+  const family: TerminalShellId[] = shells.some(shell => shell.id === 'cmd') ? ['pwsh', 'powershell'] : ['bash']
+  return family.filter(id => shells.some(shell => shell.id === id))
+}
+
 /** What the host says about its shells: `exec.listShells` plus `fs.systemInfo`'s platform. */
 export type HostShellReport = {
   bash: boolean
