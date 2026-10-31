@@ -499,6 +499,40 @@ export type ComposerSendGateDecision =
   | { kind: 'adopt-default'; selection: BrowserLlmSelection }
   /** No usable provider at all — the set-up-a-provider dialog. */
   | { kind: 'provider-missing' }
+  /** The model catalog has not loaded yet; see `resolveComposerSendGateOnceCatalogLoads`. */
+  | { kind: 'awaiting-catalog' }
+
+/** How long a send waits for the model catalog before going to the runtime regardless. */
+export const COMPOSER_CATALOG_WAIT_MS = 3_000
+
+/**
+ * The send gate, re-run as snapshots arrive while the catalog is still loading.
+ * Never returns `awaiting-catalog`: past `timeoutMs` the send goes to the
+ * runtime, which holds a first submit for the catalog itself.
+ * `waitForSnapshot(ms)` resolves on the next snapshot or after `ms`.
+ */
+export async function resolveComposerSendGateOnceCatalogLoads(params: {
+  readSnapshot: () => AgentRuntimeWorkerSnapshot | null | undefined
+  waitForSnapshot: (ms: number) => Promise<void>
+  activeSessionId?: string
+  canAdoptDefault: boolean
+  timeoutMs?: number
+  now?: () => number
+}): Promise<Exclude<ComposerSendGateDecision, { kind: 'awaiting-catalog' }>> {
+  const now = params.now ?? Date.now
+  const deadline = now() + (params.timeoutMs ?? COMPOSER_CATALOG_WAIT_MS)
+  for (;;) {
+    const decision = resolveComposerSendGate({
+      snapshot: params.readSnapshot(),
+      activeSessionId: params.activeSessionId,
+      canAdoptDefault: params.canAdoptDefault,
+    })
+    if (decision.kind !== 'awaiting-catalog') return decision
+    const remaining = deadline - now()
+    if (remaining <= 0) return { kind: 'send' }
+    await params.waitForSnapshot(remaining)
+  }
+}
 
 /**
  * Pure send gate. `wrong-session` guards against validating THIS thread's snapshot while
@@ -519,9 +553,8 @@ export function resolveComposerSendGate(params: {
   }
   if (snapshot.needsProjectFolder) return { kind: 'needs-project-folder' }
   // A loaded catalog lists every registered provider, so `null` means it has
-  // not arrived yet: no grounds to say a provider is missing. The worker holds
-  // the first submit for the catalog itself.
-  if (snapshot.modelCatalog == null) return { kind: 'send' }
+  // not arrived yet: no grounds yet to say a provider is missing.
+  if (snapshot.modelCatalog == null) return { kind: 'awaiting-catalog' }
   const catalog = createConfiguredModelCatalog(snapshot.modelCatalog)
   if (!isSelectionEnabled(catalog, snapshot.currentSelection)) {
     // `createConfiguredModelCatalog` only keeps `defaultSelection` when it
@@ -1092,6 +1125,25 @@ function InteractiveAssistantUiThread({
 
   const snapshotRef = useRef(state.snapshot)
   snapshotRef.current = state.snapshot
+  // Resolvers for `waitForSnapshot`, released by the next snapshot.
+  const snapshotWaitersRef = useRef<Array<() => void>>([])
+  useEffect(() => {
+    const waiters = snapshotWaitersRef.current
+    snapshotWaitersRef.current = []
+    for (const release of waiters) release()
+  }, [state.snapshot])
+  const waitForSnapshot = useCallback(
+    (ms: number) =>
+      new Promise<void>(resolve => {
+        const timer = setTimeout(release, ms)
+        function release() {
+          clearTimeout(timer)
+          resolve()
+        }
+        snapshotWaitersRef.current.push(release)
+      }),
+    [],
+  )
   // `isRuntimeBusy` as of the last render, for `onNew` (declared above it).
   const runtimeBusyRef = useRef(false)
 
@@ -1205,8 +1257,9 @@ function InteractiveAssistantUiThread({
       const delivery = nextDeliveryRef.current
       nextDeliveryRef.current = undefined
       if (readOnly) return
-      const decision = resolveComposerSendGate({
-        snapshot: snapshotRef.current,
+      const decision = await resolveComposerSendGateOnceCatalogLoads({
+        readSnapshot: () => snapshotRef.current,
+        waitForSnapshot,
         activeSessionId,
         canAdoptDefault: onAdoptDefaultSelection != null,
       })
@@ -1274,6 +1327,7 @@ function InteractiveAssistantUiThread({
       activeSessionId,
       onSendInForkedSession,
       state.transcriptMessages,
+      waitForSnapshot,
     ],
   )
 

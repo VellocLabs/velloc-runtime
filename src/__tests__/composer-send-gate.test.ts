@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { resolveComposerSendGate } from '../browser/webview/AssistantUiThread'
+import {
+  resolveComposerSendGate,
+  resolveComposerSendGateOnceCatalogLoads,
+} from '../browser/webview/AssistantUiThread'
 import {
   canCompactSession,
   continueReasonMessageKey,
@@ -175,10 +178,8 @@ describe('resolveComposerSendGate', () => {
     ).toEqual({ kind: 'provider-missing' })
   })
 
-  it('sends before the model catalog has loaded instead of claiming no provider is set up', () => {
-    // `null` is "not fetched yet": the worker holds the first submit for it.
-    // A refusal here would show the set-up-a-provider dialog to a user whose
-    // provider is configured and only slow to load.
+  it('waits for the model catalog instead of claiming no provider is set up', () => {
+    // `null` is "not fetched yet": neither a send nor the provider dialog yet.
     for (const modelCatalog of [null, undefined]) {
       expect(
         resolveComposerSendGate({
@@ -191,8 +192,93 @@ describe('resolveComposerSendGate', () => {
           activeSessionId: 'session-a',
           canAdoptDefault: true,
         }),
-      ).toEqual({ kind: 'send' })
+      ).toEqual({ kind: 'awaiting-catalog' })
     }
+  })
+})
+
+describe('resolveComposerSendGateOnceCatalogLoads', () => {
+  const unloaded = snapshot({
+    activeModelId: 'inherit',
+    currentProviderId: undefined,
+    currentSelection: undefined,
+    modelCatalog: null,
+  })
+  const noUsableProvider = snapshot({
+    activeModelId: 'inherit',
+    currentProviderId: undefined,
+    currentSelection: undefined,
+    modelCatalog: {
+      providers: [
+        {
+          id: 'demo',
+          name: 'Demo',
+          enabled: false,
+          models: [{ id: 'demo-model', name: 'Demo Model', enabled: true }],
+        },
+      ],
+    } as unknown as AgentRuntimeWorkerSnapshot['modelCatalog'],
+  })
+
+  it('opens the provider dialog when the catalog arrives with no usable provider', async () => {
+    let current = unloaded
+    const waitForSnapshot = vi.fn(async () => {
+      current = noUsableProvider
+    })
+    await expect(
+      resolveComposerSendGateOnceCatalogLoads({
+        readSnapshot: () => current,
+        waitForSnapshot,
+        activeSessionId: 'session-a',
+        canAdoptDefault: true,
+      }),
+    ).resolves.toEqual({ kind: 'provider-missing' })
+    expect(waitForSnapshot).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends once the catalog arrives with a usable provider', async () => {
+    let current = unloaded
+    await expect(
+      resolveComposerSendGateOnceCatalogLoads({
+        readSnapshot: () => current,
+        waitForSnapshot: async () => {
+          current = snapshot()
+        },
+        activeSessionId: 'session-a',
+        canAdoptDefault: true,
+      }),
+    ).resolves.toEqual({ kind: 'send' })
+  })
+
+  it('sends anyway when the catalog never arrives, so the message is not lost', async () => {
+    let clock = 0
+    const waitForSnapshot = vi.fn(async (ms: number) => {
+      clock += ms
+    })
+    await expect(
+      resolveComposerSendGateOnceCatalogLoads({
+        readSnapshot: () => unloaded,
+        waitForSnapshot,
+        activeSessionId: 'session-a',
+        canAdoptDefault: true,
+        timeoutMs: 3_000,
+        now: () => clock,
+      }),
+    ).resolves.toEqual({ kind: 'send' })
+    expect(waitForSnapshot).toHaveBeenCalledWith(3_000)
+  })
+
+  it('does not wait when the catalog is already loaded', async () => {
+    const waitForSnapshot = vi.fn(async () => {})
+    await expect(
+      resolveComposerSendGateOnceCatalogLoads({
+        readSnapshot: () => noUsableProvider,
+        waitForSnapshot,
+        activeSessionId: 'session-a',
+        canAdoptDefault: true,
+      }),
+    ).resolves.toEqual({ kind: 'provider-missing' })
+    expect(waitForSnapshot).not.toHaveBeenCalled()
   })
 })
 
