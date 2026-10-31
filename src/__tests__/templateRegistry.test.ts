@@ -1439,6 +1439,27 @@ describe('code template — prompt profiles (lean vs standard)', () => {
     expect(autonomy).toContain('A long context or session is no reason to stop')
   })
 
+  it('the shared system holder describes the chat surface and the local machine in both profiles', () => {
+    for (const profile of ['standard', 'lean'] as const) {
+      const system = base('system', profile)!
+      expect(system).toContain('desktop app')
+      expect(system).toContain('chat pane')
+      expect(system).toContain('busy with something else')
+      expect(system).toContain('permission request')
+      expect(system).toContain('waits until they get to it')
+      expect(system).toContain("the user's own computer")
+      expect(system).toContain('no separate copy in between')
+      // Whether the directory is a git repository is the `# Environment` block's to say.
+      expect(system).not.toMatch(/\bgit\b/)
+    }
+    // Every type that references `!system` carries the bullets.
+    for (const type of ['code', 'agent', 'chat', 'team']) {
+      expect(
+        getTemplate(type)!.prompt.some(e => e.kind === 'holder' && e.name === 'system'),
+      ).toBe(true)
+    }
+  })
+
   it('the autonomy holders sit right after delivering_work in the skeleton', () => {
     const names = getTemplate('code')!.prompt.map(e => ('name' in e ? e.name : e.text))
     expect(names.indexOf('autonomy')).toBe(names.indexOf('delivering_work') + 1)
