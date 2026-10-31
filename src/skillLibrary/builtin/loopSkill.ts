@@ -10,6 +10,7 @@ import { SCHEDULE_ADD_TOOL_ID } from '../../toolkit/builtin/cronCreate'
 import { SCHEDULE_DROP_TOOL_ID } from '../../toolkit/builtin/cronDelete'
 import { SCHEDULE_LIST_TOOL_ID } from '../../toolkit/builtin/cronList'
 import { SCHEDULE_CRON_TOOL_NAME } from '../../toolkit/builtin/scheduleCron'
+import { DEFERRED_LOADER_TOOL_NAME } from '../../toolkit/builtin/toolSearch/searchTool'
 
 const LOOP_FALLBACK_CADENCE = '10m'
 
@@ -68,6 +69,7 @@ Each fire runs as a hidden turn inside this very conversation, with all of its c
 
 ## Register, confirm, run once
 
+0. If ${SCHEDULE_ADD_TOOL_ID} is not in your tool list, it is deferred in this session: load it first with ${DEFERRED_LOADER_TOOL_NAME} using the query \`select:${SCHEDULE_ADD_TOOL_ID}\`. If that loads nothing, this session type has no scheduling: tell the user that \`/loop\` needs a session type with scheduling, and stop.
 1. Call ${SCHEDULE_ADD_TOOL_ID} with:
    - \`name\`: kebab-case derived from the prompt, prefixed \`loop-\`, 1–64 characters, only \`[a-z0-9_-]\`, unique among existing routines (add a short suffix on collision);
    - \`schedule\`: the cron expression from the table;

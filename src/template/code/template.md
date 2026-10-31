@@ -1,9 +1,9 @@
 ---
 type: code
-description: Coding agent — read/edit/shell + planning + sub-agents + web docs; no UI or scheduling.
+description: Coding agent — read/edit/shell + planning + sub-agents + web docs; browser, UI and scheduling deferred.
 # Launcher name/title/icon for this type live in `src/template/index.md`.
-# Full file/shell + plan + tasks + sub-agents + web (docs). Excludes `schedule`
-# (routines) — not a coding concern. Browser deferred (test web apps on demand);
+# Full file/shell + plan + tasks + sub-agents + web (docs). Browser deferred
+# (test web apps on demand); `schedule` deferred (routines, for `/loop`);
 # a2ui / agent-teams deferred too.
 tools:
   - read
@@ -16,7 +16,7 @@ tools:
   - skills
   - superedit
   - misc
-deferredTools: [browser, a2ui, agent-teams]
+deferredTools: [browser, schedule, a2ui, agent-teams]
 ---
 
 ## prompt

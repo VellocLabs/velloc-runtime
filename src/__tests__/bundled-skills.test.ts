@@ -620,6 +620,20 @@ describe('loop bundled skill', () => {
     expect(body).toContain('## Raw input\n\n5m check the build')
   })
 
+  it('body loads a deferred CronCreate through ToolSearch before calling it', async () => {
+    const body = await getBundledSkillDynamicContent('loop')!(
+      '1m review handoffs',
+      {} as ToolCallContext,
+    )
+    expect(body).toContain('load it first with ToolSearch using the query `select:CronCreate`')
+    // The load step precedes the call step.
+    expect(body.indexOf('select:CronCreate')).toBeLessThan(
+      body.indexOf('Call CronCreate with:'),
+    )
+    // A session type with no scheduling at all stops with an explanation.
+    expect(body).toContain('`/loop` needs a session type with scheduling')
+  })
+
   it('body targets the nexus CronCreate schema (`name` + `schedule`)', async () => {
     const body = await getBundledSkillDynamicContent('loop')!(
       'check the deploy',

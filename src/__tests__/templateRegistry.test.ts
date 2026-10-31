@@ -149,8 +149,19 @@ describe('templateRegistry — manifest parse', () => {
     for (const t of ['Write', 'Edit', 'NotebookEdit']) {
       expect(code, `code dropped the edit group, so ${t} must be absent`).not.toContain(t)
     }
-    expect(code, 'code excludes schedule').not.toContain('CronCreate')
-    expect(deferredOf('code')).toEqual(['browser', 'a2ui', 'agent-teams'])
+    expect(code, 'code keeps schedule out of the eager set').not.toContain('CronCreate')
+    expect(deferredOf('code')).toEqual(['browser', 'schedule', 'a2ui', 'agent-teams'])
+  })
+
+  it('code defers the schedule group, so `/loop` can load CronCreate on demand', () => {
+    const units = resolveDeferrableSkills([], getTemplate('code')!.config)
+    const schedule = units.find((u) => u.name === 'schedule')
+    expect(schedule, 'code must defer the schedule group').toBeDefined()
+    expect(schedule!.defaultDeferred).toBe(true)
+    expect(schedule!.sealed).toBeUndefined()
+    expect(schedule!.toolNames).toEqual(
+      expect.arrayContaining(['CronCreate', 'CronList', 'CronDelete']),
+    )
   })
 
   it('safe_code registers Inspect + Modify and nothing that can run', () => {
