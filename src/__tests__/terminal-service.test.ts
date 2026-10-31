@@ -1,7 +1,8 @@
 /**
  * TerminalService over a fake host port (F-31): a terminal's life from create
  * to close, the decoded and coalesced output, the capped scrollback, the title
- * sequences, the exit and restart transitions, and the per-session close.
+ * sequences, the exit and restart transitions, the per-session close, and
+ * a command `run` followed until its prompt is back.
  */
 import { describe, expect, it } from 'vitest'
 import type { BrowserBridgeRequest } from '../browser/bridge/browserBridgeProtocol'
@@ -15,6 +16,8 @@ type RigOptions = FakePtyHostOptions & {
   sessions?: Record<string, string>
   historyLines?: number
   coalesceWindowMs?: number
+  runSettleMs?: number
+  runStartMaxMs?: number
 }
 
 function rig(options: RigOptions = {}) {
@@ -31,6 +34,8 @@ function rig(options: RigOptions = {}) {
     coalesceWindowMs: options.coalesceWindowMs ?? 1,
     historyLines: options.historyLines,
     newId: () => `${++ids}`,
+    runSettleMs: options.runSettleMs ?? 5,
+    runStartMaxMs: options.runStartMaxMs,
   })
   service.subscribe(event => events.push(event))
   const setHost = (host: TerminalHost) => {
@@ -397,6 +402,92 @@ describe('TerminalService close', () => {
     expect(r.shellRequests('streamKill')).toHaveLength(1)
     expect(r.service.available).toBe(false)
     expect(r.service.list().terminals).toEqual([])
+  })
+})
+
+describe('TerminalService run', () => {
+  const typed = (r: Awaited<ReturnType<typeof ready>>) =>
+    r.shellRequests('writeStdin').map(req => new TextDecoder().decode((req.payload as { data: Uint8Array }).data))
+  /** Wait until `check` holds: each read of a run waits for the screen to parse. */
+  const until = async (check: () => boolean) => {
+    for (let i = 0; i < 100 && !check(); i += 1) await settle(2)
+  }
+  const settled = async (r: Awaited<ReturnType<typeof ready>>, runId: string) => {
+    await until(() => r.service.runState(runId)?.status !== 'running')
+    return r.service.runState(runId)
+  }
+
+  it('starts the default shell when the session has none and types the command once its prompt shows and output is quiet', async () => {
+    const r = await ready({ runSettleMs: 20 })
+    const running = r.service.run({ sessionId: 's1', command: 'git status' })
+    await settle()
+    expect(r.shellRequests('spawn')[0]!.payload).toMatchObject({ file: 'pwsh', cwd: '/proj/s1', pty: { cols: 120, rows: 30 } })
+    // The console's start-up modes arrive at once; quiet with no prompt yet is not ready.
+    r.output(r.spawned[0]!, '\u001b[?9001h\u001b[?1004h')
+    await settle(100)
+    expect(typed(r)).toEqual([])
+    r.output(r.spawned[0]!, 'PS C:\\p> ')
+    const { id, runId } = await running
+    expect(id).toBe('term_1')
+    expect(typed(r)).toEqual(['git status\r'])
+    expect(r.service.runState(runId)).toEqual({ terminalId: id, command: 'git status', status: 'running', output: '', truncated: false })
+    expect(r.events).toContainEqual({ kind: 'run', runId })
+
+    r.output(r.spawned[0]!, 'git status\r\nfatal: not a git repository\r\nPS C:\\p> ')
+    expect(await settled(r, runId)).toMatchObject({ status: 'done', output: 'fatal: not a git repository' })
+  })
+
+  it('types into the newest running shell of the session', async () => {
+    const r = await ready()
+    const first = await r.service.create({ sessionId: 's1', shell: 'cmd', cols: 80, rows: 24 })
+    const second = await r.service.create({ sessionId: 's1', shell: 'pwsh', cols: 80, rows: 24 })
+    await r.service.create({ sessionId: 's2', shell: 'pwsh', cols: 80, rows: 24 })
+    expect((await r.service.run({ sessionId: 's1', command: 'dir' })).id).toBe(second)
+    r.exit(r.spawned[1]!, 0)
+    expect((await r.service.run({ sessionId: 's1', command: 'dir' })).id).toBe(first)
+    expect(r.shellRequests('spawn')).toHaveLength(3)
+  })
+
+  it('a new run ends the one before it, and an exit ends a run with the output it printed last', async () => {
+    const r = await ready()
+    const id = await r.service.create({ sessionId: 's1', cols: 80, rows: 24 })
+    const stream = r.spawned[0]!
+    r.output(stream, 'PS C:\\p> ')
+    await settle()
+    const one = await r.service.run({ sessionId: 's1', command: 'ping host' })
+    r.output(stream, 'ping host\r\nreply 1\r\n')
+    await until(() => r.service.runState(one.runId)?.output === 'reply 1')
+    const two = await r.service.run({ sessionId: 's1', command: 'exit' })
+    expect(r.service.runState(one.runId)).toMatchObject({ status: 'ended', output: 'reply 1' })
+
+    r.output(stream, 'exit\r\nbye')
+    r.exit(stream, 0)
+    expect(await settled(r, two.runId)).toMatchObject({ terminalId: id, status: 'ended', output: 'bye' })
+  })
+
+  it('refuses a command of several lines or with control characters, and an unknown session', async () => {
+    const r = await ready()
+    await r.service.create({ sessionId: 's1', cols: 80, rows: 24 })
+    for (const command of ['ls\rrm x', 'ls\nrm x', 'ls\u001b[A', '']) {
+      await expect(r.service.run({ sessionId: 's1', command })).rejects.toSatisfy(e => codeOf(e) === 'bad_payload')
+    }
+    await expect(r.service.run({ sessionId: 'nope', command: 'ls' })).rejects.toSatisfy(e => codeOf(e) === 'not_found')
+    expect(typed(r)).toEqual([])
+  })
+
+  it('a closed terminal ends its run, which keeps its output until the session closes', async () => {
+    const r = await ready()
+    const id = await r.service.create({ sessionId: 's1', cols: 80, rows: 24 })
+    r.output(r.spawned[0]!, '$ ')
+    await settle()
+    const { runId } = await r.service.run({ sessionId: 's1', command: 'tail -f log' })
+    r.output(r.spawned[0]!, 'tail -f log\r\nline\r\n')
+    await until(() => r.service.runState(runId)?.output === 'line')
+    r.service.close(id)
+    expect(r.service.runState(runId)).toMatchObject({ status: 'ended', output: 'line' })
+    r.service.closeForSession('s1')
+    expect(r.service.hasRun(runId)).toBe(false)
+    expect(r.events).toContainEqual({ kind: 'runGone', runId })
   })
 })
 

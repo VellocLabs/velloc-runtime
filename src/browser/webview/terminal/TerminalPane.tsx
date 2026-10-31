@@ -52,6 +52,7 @@ import {
   type TerminalCursorStyle,
 } from './terminalPrefs'
 import { useResolvedConnection, useTerminalPrefs, useTerminalsState } from './useTerminals'
+import { clearTerminalFocus, pendingTerminalFocus, subscribeTerminalFocus } from './terminalFocus'
 
 const XtermHost = lazy(() => import('./XtermHost'))
 
@@ -130,6 +131,19 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
     },
     [sessionId],
   )
+
+  // A terminal brought forward from outside the pane (a chat card ran a command in it) becomes the active tab.
+  const focusRequest = useSyncExternalStore(
+    subscribeTerminalFocus,
+    () => (sessionId ? pendingTerminalFocus(sessionId) : undefined),
+    () => undefined,
+  )
+  const focusTabPresent = focusRequest !== undefined && tabs.some(tab => tab.key === focusRequest)
+  useEffect(() => {
+    if (!sessionId || focusRequest === undefined || !focusTabPresent) return
+    activate(focusRequest)
+    clearTerminalFocus(sessionId, focusRequest)
+  }, [sessionId, focusRequest, focusTabPresent, activate])
 
   const request = useCallback(
     (act: string, payload: unknown): Promise<unknown> =>

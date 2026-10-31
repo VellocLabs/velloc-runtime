@@ -95,6 +95,9 @@ import {
   type RightPanelSkillTarget,
   type RightPanelFileTarget,
 } from '@/components/assistant-ui/right-panel-content-context'
+import { ShellCommandContext, type ShellCommandContextValue } from '@/components/assistant-ui/shell-command'
+import { TERMINAL_CAPABILITY, type TerminalRunResult } from '@/terminal/protocol'
+import { useResolvedConnection, useTerminalsState } from './terminal/useTerminals'
 import {
   FilePathContext,
   createFilePathProbe,
@@ -397,6 +400,8 @@ export type AssistantUiThreadProps = {
    *  `RightPanelContentContext`; consumed by the Read/Edit tool cards' path
    *  headers. Absent on embeds without a panel host. */
   onOpenFileInPanel?: (target: RightPanelFileTarget) => void
+  /** Bring the Terminal pane forward on one of `sessionId`'s terminals: a chat Run card ran a command in it. */
+  onOpenTerminalInPanel?: (sessionId: string, terminalId: string) => void
   /** Batched existence check for file paths the transcript auto-detects.
    *  Absent on hosts without an fs bridge — paths then stay plain text. */
   statFilePaths?: (paths: string[]) => Promise<readonly FilePathStat[]>
@@ -621,6 +626,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   onStopBackgroundTask,
   onOpenBackgroundTasksList,
   onOpenFileInPanel,
+  onOpenTerminalInPanel,
   statFilePaths,
   onOpenDiffInPanel,
   onOpenSkillInPanel,
@@ -680,6 +686,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
       onStopBackgroundTask={readOnly ? undefined : onStopBackgroundTask}
       onOpenBackgroundTasksList={onOpenBackgroundTasksList}
       onOpenFileInPanel={onOpenFileInPanel}
+      onOpenTerminalInPanel={onOpenTerminalInPanel}
       statFilePaths={statFilePaths}
       onOpenDiffInPanel={onOpenDiffInPanel}
       onOpenSkillInPanel={onOpenSkillInPanel}
@@ -739,6 +746,7 @@ function InteractiveAssistantUiThread({
   onStopBackgroundTask,
   onOpenBackgroundTasksList,
   onOpenFileInPanel,
+  onOpenTerminalInPanel,
   statFilePaths,
   onOpenDiffInPanel,
   onOpenSkillInPanel,
@@ -1482,6 +1490,36 @@ function InteractiveAssistantUiThread({
     }),
     [onOpenFileInPanel, onOpenDiffInPanel, onOpenSkillInPanel, onOpenWorkspaceDiff],
   )
+  // One-line shell blocks run in this session's terminal (F-31): offered only
+  // with the `terminal.run` grant, on a host that has terminals, in a thread
+  // that can act.
+  const shellConnection = useResolvedConnection(runtimeConnection)
+  const terminalsAvailable = useTerminalsState(shellConnection)?.available === true
+  const shellSessionId = state.snapshot?.sessionId ?? null
+  const shellCommandValue = useMemo<ShellCommandContextValue>(() => {
+    const canRun =
+      !readOnly &&
+      shellConnection !== null &&
+      shellSessionId !== null &&
+      terminalsAvailable &&
+      shellConnection.can(TERMINAL_CAPABILITY, 'run')
+    return {
+      connection: shellConnection,
+      sessionId: shellSessionId,
+      ...(canRun
+        ? {
+            run: (command: string) =>
+              shellConnection.request<TerminalRunResult>(`${TERMINAL_CAPABILITY}.run`, {
+                sessionId: shellSessionId,
+                command,
+              }),
+          }
+        : {}),
+      ...(onOpenTerminalInPanel && shellSessionId !== null
+        ? { openTerminal: (terminalId: string) => onOpenTerminalInPanel(shellSessionId, terminalId) }
+        : {}),
+    }
+  }, [readOnly, shellConnection, shellSessionId, terminalsAvailable, onOpenTerminalInPanel])
   // Auto-detected file paths in the transcript: the project root is the ONE
   // base a relative mention is resolved against (no searching), and the probe
   // is the batched existence check that decides whether a path becomes an
@@ -1959,6 +1997,7 @@ function InteractiveAssistantUiThread({
       <BackgroundTasksContext.Provider value={backgroundTasksValue}>
       <SessionConnectorsContext.Provider value={sessionConnectors}>
       <RightPanelContentContext.Provider value={rightPanelContentValue}>
+      <ShellCommandContext.Provider value={shellCommandValue}>
       <FilePathContext.Provider value={filePathContextValue}>
       <ComposerDraftSync
         initialComposerDraft={initialComposerDraft}
@@ -2213,6 +2252,7 @@ function InteractiveAssistantUiThread({
         </TooltipProvider>
       </ToolCallDetailProvider>
       </FilePathContext.Provider>
+      </ShellCommandContext.Provider>
       </RightPanelContentContext.Provider>
       </SessionConnectorsContext.Provider>
       </BackgroundTasksContext.Provider>

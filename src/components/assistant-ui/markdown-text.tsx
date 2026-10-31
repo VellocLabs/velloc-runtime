@@ -14,6 +14,11 @@ import { TURN_SETTLED_KEY } from "@/browser/webview/turnSettled";
 import { remarkFilePaths } from "@/components/assistant-ui/remarkFilePaths";
 import { MermaidDiagram } from "@/components/assistant-ui/mermaid-diagram";
 import { GraphvizDiagram } from "@/components/assistant-ui/graphviz-diagram";
+import {
+  ShellCodeHeader,
+  ShellSyntaxHighlighter,
+} from "@/components/assistant-ui/shell-command-block";
+import { SHELL_FENCE_LANGUAGES } from "@/components/assistant-ui/shell-command";
 import { usePartLineAttrs, useRevealSelf } from "./part-line-context";
 
 // ```mermaid / ```dot / ```graphviz fences render as SVG diagrams. The
@@ -35,10 +40,17 @@ const diagramLanguage = (SyntaxHighlighter: typeof MermaidSyntaxHighlighter) => 
   SyntaxHighlighter,
   CodeHeader: NullCodeHeader,
 });
+// A shell fence holding one runnable line renders as a Run card (F-31); the
+// header drops out for it and stays for a longer script.
+const shellLanguage = {
+  SyntaxHighlighter: ShellSyntaxHighlighter,
+  CodeHeader: ShellCodeHeader,
+};
 const componentsByLanguage = {
   mermaid: diagramLanguage(MermaidSyntaxHighlighter),
   dot: diagramLanguage(GraphvizSyntaxHighlighter),
   graphviz: diagramLanguage(GraphvizSyntaxHighlighter),
+  ...Object.fromEntries(SHELL_FENCE_LANGUAGES.map((language) => [language, shellLanguage])),
 };
 
 // Smooth typing animates only while the turn runs in a visible page; rAF stops in hidden

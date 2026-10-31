@@ -42,6 +42,8 @@ const EXEMPT: ReadonlySet<string> = new Set([
   'onOpenFileInPanel',
   'onOpenDiffInPanel',
   'onOpenSkillInPanel',
+  // Opens the Terminal pane; the Run that types into a shell is gated inside the thread.
+  'onOpenTerminalInPanel',
   'onSwitchThread',
   'onDeleteThread',
   'onRenameThread',

@@ -1,7 +1,7 @@
 /**
  * The `terminal` capability's wire shapes (F-31): what the runtime publishes
- * on the `terminals` and `terminal/<id>` topics and what the six actions
- * take and answer. Shared by the runtime (publisher) and the pane (client);
+ * on the `terminals`, `terminal/<id>` and `terminal-run/<runId>` topics and
+ * what the seven actions take and answer. Shared by the runtime (publisher) and the pane (client);
  * pure types and constants, no behaviour.
  *
  * Security: every action and both topics are `full` scope — a terminal runs
@@ -10,7 +10,7 @@
 
 export const TERMINAL_CAPABILITY = 'terminal'
 
-export const TERMINAL_ACTIONS = ['create', 'write', 'resize', 'restart', 'close', 'rescanClis'] as const
+export const TERMINAL_ACTIONS = ['create', 'write', 'resize', 'restart', 'close', 'rescanClis', 'run'] as const
 export type TerminalAction = (typeof TERMINAL_ACTIONS)[number]
 
 /** Every action is `full`: each one starts, drives or ends a program running on the host as the person. */
@@ -21,6 +21,7 @@ export const TERMINAL_ACTION_SCOPES: Record<TerminalAction, 'full'> = {
   restart: 'full',
   close: 'full',
   rescanClis: 'full',
+  run: 'full',
 }
 
 /** The host manifest primitive that covers `shell.spawn`'s `pty` input and `shell.resize`. */
@@ -31,6 +32,10 @@ export const TERMINAL_WRITE_MAX_BYTES = 64 * 1024
 /** Console size bounds, inclusive, for `create` and `resize`. */
 export const TERMINAL_SIZE_MIN = 1
 export const TERMINAL_SIZE_MAX = 1000
+/** `terminal.run` refuses a longer command line. */
+export const TERMINAL_RUN_COMMAND_MAX = 4096
+/** Output lines a run keeps; older lines are dropped and the run says it was cut. */
+export const TERMINAL_RUN_OUTPUT_MAX_LINES = 2000
 /** History lines the runtime's mirror of a terminal's screen keeps above it, in memory. */
 export const TERMINAL_HISTORY_LINES = 5_000
 
@@ -105,6 +110,43 @@ export type TerminalWritePayload = { id: string; data: string }
 export type TerminalResizePayload = { id: string; cols: number; rows: number }
 export type TerminalRestartPayload = { id: string }
 export type TerminalClosePayload = { id: string }
+
+/** Run one command line in the session's terminal, starting the default shell when it has none. */
+export type TerminalRunPayload = { sessionId: string; command: string }
+/** `id` is the terminal it was typed into; `runId` names its `terminal-run/<runId>` topic. */
+export type TerminalRunResult = { id: string; runId: string }
+
+/**
+ * The `terminal-run/<runId>` topic: snapshot and every `state` delta carry
+ * the whole object. `running` until the shell's prompt is back (`done`), or
+ * until the terminal exits, closes, clears its history or takes another run
+ * (`ended`). `output` is the screen's text below the typed command, without
+ * the returned prompt.
+ */
+export type TerminalRunState = {
+  terminalId: string
+  command: string
+  status: 'running' | 'done' | 'ended'
+  output: string
+  /** Lines were dropped from the start of `output`. */
+  truncated: boolean
+}
+
+/**
+ * A command line `terminal.run` accepts: one line, non-blank, within
+ * TERMINAL_RUN_COMMAND_MAX, and no control characters.
+ *
+ * Security: the text typed into the shell is exactly the text the person saw
+ * and clicked; a control character could press keys the card never showed.
+ */
+export function isRunnableCommand(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim().length > 0 &&
+    value.length <= TERMINAL_RUN_COMMAND_MAX &&
+    !/[\u0000-\u001f\u007f-\u009f]/.test(value)
+  )
+}
 
 export function isTerminalState(value: unknown): value is TerminalState {
   if (typeof value !== 'object' || value === null) return false

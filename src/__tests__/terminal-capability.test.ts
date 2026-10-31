@@ -1,8 +1,9 @@
 /**
  * The `terminal` capability on the protocol (F-31), driven through a real
  * ConnectionHub over a real TerminalService on a fake host port: full-only
- * actions and topics, the payload guards, the `terminals` list and the
- * `terminal/<id>` snapshot-then-deltas stream across two connections.
+ * actions and topics, the payload guards, the `terminals` list, the
+ * `terminal/<id>` snapshot-then-deltas stream across two connections, and a
+ * `terminal.run` followed on its `terminal-run/<runId>` topic.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { renderSnapshot } from './_helpers/renderTerminalSnapshot'
@@ -26,7 +27,9 @@ import type { FrameTransport, Unsubscribe } from '../browser/runtimeTransport'
 import {
   TERMINAL_ACTION_SCOPES,
   TERMINAL_ACTIONS,
+  TERMINAL_RUN_COMMAND_MAX,
   TERMINAL_WRITE_MAX_BYTES,
+  type TerminalRunState,
   type TerminalSnapshot,
   type TerminalsState,
 } from '../terminal/protocol'
@@ -219,7 +222,15 @@ const CREATE = { sessionId: 's1', cols: 80, rows: 24 }
 describe('terminal capability scope', () => {
   it('declares every action full', async () => {
     const r = await rig()
-    expect(TERMINAL_ACTION_SCOPES).toEqual({ create: 'full', write: 'full', resize: 'full', restart: 'full', close: 'full', rescanClis: 'full' })
+    expect(TERMINAL_ACTION_SCOPES).toEqual({
+      create: 'full',
+      write: 'full',
+      resize: 'full',
+      restart: 'full',
+      close: 'full',
+      rescanClis: 'full',
+      run: 'full',
+    })
     for (const action of TERMINAL_ACTIONS) expect(r.registry.resolve('terminal', action)!.spec.scope).toBe('full')
   })
 
@@ -238,6 +249,7 @@ describe('terminal capability scope', () => {
       restart: { id },
       close: { id },
       rescanClis: {},
+      run: { sessionId: 's1', command: 'ls' },
     }
     for (const action of TERMINAL_ACTIONS) {
       expect(errorCode(await lesser.request(`terminal.${action}`, payloads[action])), action).toBe('forbidden_scope')
@@ -286,6 +298,15 @@ describe('terminal capability payload guards', () => {
       ['terminal.restart', { id: 'term_one', force: true }],
       ['terminal.close', {}],
       ['terminal.close', { id: 'term_one', all: true }],
+      ['terminal.run', { sessionId: 's1', command: 'ls\rrm -r x' }],
+      ['terminal.run', { sessionId: 's1', command: 'ls\nrm -r x' }],
+      ['terminal.run', { sessionId: 's1', command: 'ls\u001b[A' }],
+      ['terminal.run', { sessionId: 's1', command: 'ls\u0003' }],
+      ['terminal.run', { sessionId: 's1', command: '   ' }],
+      ['terminal.run', { sessionId: 's1', command: 'x'.repeat(TERMINAL_RUN_COMMAND_MAX + 1) }],
+      ['terminal.run', { sessionId: 's1', command: 'ls', id: 'term_one' }],
+      ['terminal.run', { sessionId: '', command: 'ls' }],
+      ['terminal.run', { command: 'ls' }],
     ]
     for (const [route, payload] of bad) {
       expect(errorCode(await client.request(route, payload)), `${route} ${JSON.stringify(payload)?.slice(0, 40)}`).toBe('bad_payload')
@@ -391,6 +412,53 @@ describe('terminal topics', () => {
     expect(errorCode(await b.subscribe(topic.terminal(id)))).toBe('not_found')
     const final = a.on(topic.terminals()).at(-1)
     expect(final === undefined || (final.payload as TerminalsState).terminals.length === 0).toBe(true)
+  })
+
+  it('terminal-run/<runId>: a run types its command and the topic follows the output until the prompt is back', async () => {
+    const r = await rig()
+    const a = await r.connect('a')
+    const id = (await a.request('terminal.create', CREATE) as { result: { id: string } }).result.id
+    const stream = r.fake.spawned[0]!
+    r.fake.output(stream, 'PS C:\\p> ')
+    await settle()
+
+    const ran = await a.request('terminal.run', { sessionId: 's1', command: 'git status' })
+    expect(ran).toMatchObject({ ok: true, result: { id, runId: 'run_one' } })
+    const [typed] = r.fake.shellRequests('writeStdin')
+    expect(new TextDecoder().decode((typed!.payload as { data: Uint8Array }).data)).toBe('git status\r')
+
+    const runTopic = topic.terminalRun('run_one')
+    expect((await a.subscribe(runTopic)).ok).toBe(true)
+    const [snapshot] = await a.eventsFor(runTopic, 1)
+    expect(snapshot).toMatchObject({ form: 'snapshot', type: TERMINALS_STATE_EVENT })
+    expect(snapshot!.payload).toEqual({
+      terminalId: id,
+      command: 'git status',
+      status: 'running',
+      output: '',
+      truncated: false,
+    } satisfies TerminalRunState)
+
+    r.fake.output(stream, 'git status\r\nOn branch main\r\n')
+    await settle()
+    r.fake.output(stream, 'nothing to commit\r\n\r\nPS C:\\p> ')
+    // Each read of the screen waits for the emulator to parse what came before it.
+    for (let i = 0; i < 50 && (a.on(runTopic).at(-1)!.payload as TerminalRunState).status === 'running'; i += 1) await settle(2)
+    const last = a.on(runTopic).at(-1)!
+    expect(last).toMatchObject({ form: 'delta', type: TERMINALS_STATE_EVENT })
+    expect(last.payload).toMatchObject({ status: 'done', output: 'On branch main\nnothing to commit' })
+
+    // A lesser connection may not follow a run.
+    const observer = await r.connect('observer', 'manager')
+    expect(errorCode(await observer.subscribe(runTopic))).toBe('forbidden_scope')
+
+    // The run outlives its terminal and goes with its session.
+    r.service.close(id)
+    expect(r.service.runState('run_one')).toMatchObject({ status: 'done', output: 'On branch main\nnothing to commit' })
+    r.service.closeForSession('s1')
+    await settle(2)
+    expect(r.broker.subscribersOf(runTopic)).toEqual([])
+    expect(errorCode(await a.subscribe(runTopic))).toBe('not_found')
   })
 
   it('a resume whose since fell out of the replay ring gets a fresh snapshot, never a gap', async () => {

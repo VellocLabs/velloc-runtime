@@ -1,13 +1,14 @@
 /**
- * `terminal` — the runtime's terminals on the protocol (F-31): the actions create / write / resize /
- * restart / close, the topic `terminals` (the list; snapshot and `state` deltas carry the whole object)
- * and `terminal/<id>` (size, title, state and scrollback, then `output` / `resize` / `title` / `state`
- * deltas). The service owns the terminals; this file only translates.
- * Security: every action and both topics are `full` — a terminal runs programs on the host as the person
- * and shows whatever they print. Guards refuse unknown fields, oversized writes, bad sizes, unknown shells.
+ * `terminal` on the protocol (F-31): actions create / write / resize / restart / close / run; topics
+ * `terminals` and `terminal-run/<runId>` (the whole object per `state` delta) and `terminal/<id>` (size,
+ * title, state, scrollback, then output / resize / title / state deltas). This file only translates.
+ * Security: every action and topic is `full` — a terminal runs programs on the host as the person and
+ * shows whatever they print. Guards refuse unknown fields, oversized writes, bad sizes, unknown shells,
+ * and a run's command of more than one line or with a control character.
  */
 import { parseTopic, topic, wireError, type TopicId } from '../runtimeProtocol'
 import {
+  isRunnableCommand,
   isTerminalSize,
   TERMINAL_ACTION_SCOPES,
   TERMINAL_ACTIONS,
@@ -18,6 +19,7 @@ import {
   type TerminalCreatePayload,
   type TerminalResizePayload,
   type TerminalRestartPayload,
+  type TerminalRunPayload,
   type TerminalWritePayload,
   type TerminalsState,
 } from '../../terminal/protocol'
@@ -26,7 +28,7 @@ import type { CapabilityRegistry } from './CapabilityRegistry'
 import type { TopicBroker } from './TopicBroker'
 import type { ActionSpec, ConnectionInfo, SnapshotPage, TopicProvider } from './types'
 
-/** The `terminals` topic's `state` delta type. */
+/** The `terminals` and `terminal-run/<runId>` topics' `state` delta type. */
 export const TERMINALS_STATE_EVENT = 'state'
 
 const NO_TERMINALS: TerminalsState = { available: false, shells: [], clis: [], terminals: [] }
@@ -80,6 +82,12 @@ function guardsFor(service: TerminalService | null): Record<TerminalAction, (pay
     restart: payload => isDict(payload) && onlyKeys(payload, ['id']) && isString(payload.id),
     close: payload => isDict(payload) && onlyKeys(payload, ['id']) && isString(payload.id),
     rescanClis: payload => isDict(payload) && onlyKeys(payload, []),
+    run: payload =>
+      isDict(payload) &&
+      onlyKeys(payload, ['sessionId', 'command']) &&
+      isString(payload.sessionId) &&
+      payload.sessionId.length > 0 &&
+      isRunnableCommand(payload.command),
   }
 }
 
@@ -121,8 +129,28 @@ export function terminalTopicProvider(service: TerminalService | null): TopicPro
   }
 }
 
+/** `terminal-run/<runId>`: the run's whole state as the snapshot and in every `state` delta. */
+export function terminalRunTopicProvider(service: TerminalService | null): TopicProvider {
+  const runIdOf = (id: TopicId): string | null => {
+    const parsed = parseTopic(id)
+    return parsed?.family === 'terminalRun' ? parsed.runId : null
+  }
+  return {
+    matches: id => {
+      const runId = runIdOf(id)
+      return runId !== null && (service?.hasRun(runId) ?? false)
+    },
+    authorize: fullOnly,
+    async *snapshot(id): AsyncIterable<SnapshotPage> {
+      const runId = runIdOf(id)
+      const state = runId === null ? undefined : service?.runState(runId)
+      if (state) yield { type: TERMINALS_STATE_EVENT, payload: state }
+    },
+  }
+}
+
 /**
- * Register the capability and both topics on one runtime's registry and
+ * Register the capability and its topics on one runtime's registry and
  * broker; the service's events become topic deltas. Without a service the
  * list says unavailable and every action answers `host_unavailable`.
  */
@@ -134,6 +162,7 @@ export function registerTerminalCapability(
   const { service } = options
   broker.registerProvider(terminalsTopicProvider(service))
   broker.registerProvider(terminalTopicProvider(service))
+  broker.registerProvider(terminalRunTopicProvider(service))
 
   const guards = guardsFor(service)
   const actions = Object.fromEntries(
@@ -171,6 +200,8 @@ export function registerTerminalCapability(
         case 'rescanClis':
           await service.rescanClis()
           return undefined
+        case 'run':
+          return await service.run(payload as TerminalRunPayload)
         default:
           throw wireError('unknown_route', `terminal has no action '${request.route.act}'`)
       }
@@ -199,6 +230,14 @@ export function registerTerminalCapability(
         return
       case 'cliBusy':
         // The session list carries it, as the row's `running`.
+        return
+      case 'run': {
+        const state = service?.runState(event.runId)
+        if (state) broker.publish(topic.terminalRun(event.runId), state, { type: TERMINALS_STATE_EVENT })
+        return
+      }
+      case 'runGone':
+        broker.dropTopic(topic.terminalRun(event.runId))
         return
     }
   }

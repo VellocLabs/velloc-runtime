@@ -9,11 +9,14 @@
  * so a snapshot and the deltas after it never overlap. Listeners hear every change
  * as a `TerminalServiceEvent`; the `terminal` capability turns them into topic
  * deltas. An unknown id throws `not_found`; a host without `shell.spawn.pty`,
- * or none at all, throws `host_unavailable`.
+ * or none at all, throws `host_unavailable`. `run` types one command line
+ * into a session's shell and follows what it prints on the screen mirror
+ * until the prompt is back; the last MAX_RUNS runs are kept, in memory.
  *
  * Security: `create` takes a shell id from the resolved list, never a path or
  * command line, and the cwd is the session's own folder as the runtime knows
- * it — a client never sends one. Output stays in memory: nothing here writes
+ * it — a client never sends one. `run` types a command line only as the
+ * person's keystrokes into a shell they could type into themselves. Output stays in memory: nothing here writes
  * to disk or reaches the model.
  */
 import {
@@ -26,14 +29,20 @@ import {
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
 import { createBridgeRoute } from '../browser/bridge/browserBridgeProtocol'
 import type { BrowserHostManifest } from '../browser/bridge/protocol/manifest'
+import type { IMarker } from '@xterm/headless'
 import { wireError } from '../browser/runtimeProtocol'
 import { OutputCoalescer } from './outputCoalescer'
 import {
+  isRunnableCommand,
   isTerminalSize,
   TERMINAL_PTY_PRIMITIVE,
   TERMINAL_HISTORY_LINES,
+  TERMINAL_RUN_OUTPUT_MAX_LINES,
   type TerminalCreatePayload,
   type TerminalRow,
+  type TerminalRunPayload,
+  type TerminalRunResult,
+  type TerminalRunState,
   type TerminalShellInfo,
   type TerminalSnapshot,
   type TerminalState,
@@ -98,6 +107,10 @@ export type TerminalServiceDeps = {
   coalesceMaxUnits?: number
   historyLines?: number
   newId?(): string
+  /** How long a shell `run` started must show a prompt and print nothing before the command is typed; default ~400 ms. */
+  runSettleMs?: number
+  /** The longest a `run` waits for a new shell's prompt; default 15 s. */
+  runStartMaxMs?: number
 }
 
 /**
@@ -128,9 +141,20 @@ export type TerminalServiceEvent =
   | { kind: 'closed'; id: string }
   /** A CLI session started or stopped working (F-34); read `cliBusy`. */
   | { kind: 'cliBusy'; sessionId: string; busy: boolean }
+  /** A run started or changed; read `runState`. */
+  | { kind: 'run'; runId: string }
+  /** A run was dropped: its session ended, or newer runs pushed it out. */
+  | { kind: 'runGone'; runId: string }
 
 const DEFAULT_COALESCE_WINDOW_MS = 16
 const DEFAULT_COALESCE_MAX_UNITS = 64 * 1024
+const DEFAULT_RUN_SETTLE_MS = 400
+const DEFAULT_RUN_START_MAX_MS = 15_000
+/** Runs kept; past it the oldest finished one goes. */
+const MAX_RUNS = 50
+/** The size a shell `run` starts is created at; a view refits it when it shows. */
+const RUN_COLS = 120
+const RUN_ROWS = 30
 
 const FOCUS_REPORTS = /\u001b\[[IO]/g
 
@@ -160,6 +184,23 @@ type TerminalRecord = {
   child: NativePtyChild | null
   /** Identifies the spawn whose events are current; an older spawn's are dropped. */
   spawn: object | null
+  /** The current spawn has printed something. */
+  outputSeen: boolean
+  /** Called after each piece of output reaches the screen. */
+  outputTaps: Set<() => void>
+}
+
+/** One `run`: its published state and where on its terminal's screen it began. */
+type RunRecord = {
+  id: string
+  sessionId: string
+  state: TerminalRunState
+  marker: IMarker
+  prompt: string
+  /** A capture is in flight; `again` asks for one more after it, `final` ends the run with it. */
+  capturing: boolean
+  again: boolean
+  final: boolean
 }
 
 function randomId(): string {
@@ -202,6 +243,7 @@ export async function probeHostShells(
 
 export class TerminalService {
   private readonly records = new Map<string, TerminalRecord>()
+  private readonly runs = new Map<string, RunRecord>()
   private readonly listeners = new Set<(event: TerminalServiceEvent) => void>()
   private readonly encoder = new TextEncoder()
   private shellList: TerminalShellInfo[] = []
@@ -391,6 +433,8 @@ export class TerminalService {
       decoder: new TextDecoder('utf-8'),
       child: null,
       spawn: null,
+      outputSeen: false,
+      outputTaps: new Set(),
     }
     this.records.set(id, record)
     this.emit({ kind: 'list' })
@@ -446,6 +490,7 @@ export class TerminalService {
     // A restarted terminal starts afresh: the old shell's output does not carry over.
     record.screen.dispose()
     record.screen = this.newScreen(record.cols, record.rows)
+    record.outputSeen = false
     this.setTitle(record, record.shell)
     this.setState(record, { kind: 'starting' })
     // A CLI whose conversation is not known yet looks for its log once more first.
@@ -456,6 +501,57 @@ export class TerminalService {
     // A CLI restarted after its first run continues the conversation it started.
     if (record.cli?.conversation) record.cli.conversation = { ...record.cli.conversation, resume: true }
     await this.spawn(record)
+  }
+
+  /**
+   * Type `command` and Enter into the session's newest running shell — first
+   * starting the default shell and waiting for its start-up output to go
+   * quiet when it has none. Any run still followed on that terminal ends.
+   */
+  async run(input: TerminalRunPayload): Promise<TerminalRunResult> {
+    this.requireAvailable()
+    if (!isRunnableCommand(input.command)) {
+      throw wireError('bad_payload', 'terminal: a run takes one non-blank line without control characters')
+    }
+    let record = this.shellFor(input.sessionId)
+    if (!record) {
+      const started = this.require(await this.create({ sessionId: input.sessionId, cols: RUN_COLS, rows: RUN_ROWS }))
+      if (started.state.kind !== 'running') {
+        throw wireError('host_unavailable', `terminal: ${started.shell} did not start`)
+      }
+      await this.startSettled(started)
+      record = this.require(started.id)
+    }
+    for (const run of this.runs.values()) {
+      if (run.state.terminalId === record.id) this.endRun(run)
+    }
+    const mark = await record.screen.mark()
+    if (!mark || this.records.get(record.id) !== record) {
+      throw wireError('not_found', `terminal: '${record.id}' closed before the command was typed`)
+    }
+    const run: RunRecord = {
+      id: `run_${(this.deps.newId ?? randomId)()}`,
+      sessionId: record.sessionId,
+      state: { terminalId: record.id, command: input.command, status: 'running', output: '', truncated: false },
+      marker: mark.marker,
+      prompt: mark.prompt,
+      capturing: false,
+      again: false,
+      final: false,
+    }
+    this.runs.set(run.id, run)
+    this.evictRuns()
+    this.emit({ kind: 'run', runId: run.id })
+    await this.write(record.id, `${input.command}\r`)
+    return { id: record.id, runId: run.id }
+  }
+
+  hasRun(runId: string): boolean {
+    return this.runs.has(runId)
+  }
+
+  runState(runId: string): TerminalRunState | undefined {
+    return this.runs.get(runId)?.state
   }
 
   /** Kill the shell and forget the terminal. */
@@ -476,12 +572,15 @@ export class TerminalService {
     return eraser.erase(record.cli, { cwd, id: record.id }).catch(() => [])
   }
 
-  /** The session ended: its terminals die with it. */
+  /** The session ended: its terminals and runs die with it. */
   closeForSession(sessionId: string): void {
     this.cliTitles?.forget(sessionId)
     this.cliLogs?.forget(sessionId)
     for (const record of Array.from(this.records.values())) {
       if (record.sessionId === sessionId) this.forget(record)
+    }
+    for (const run of Array.from(this.runs.values())) {
+      if (run.sessionId === sessionId) this.dropRun(run)
     }
   }
 
@@ -493,6 +592,8 @@ export class TerminalService {
     this.cliActivity?.dispose()
     this.cliLogs?.dispose()
     for (const record of Array.from(this.records.values())) this.forget(record)
+    for (const run of this.runs.values()) run.marker.dispose()
+    this.runs.clear()
     this.listeners.clear()
   }
 
@@ -685,7 +786,112 @@ export class TerminalService {
     const record = this.records.get(id)
     if (!record) return
     record.screen.write(data)
+    record.outputSeen = true
     this.emit({ kind: 'output', id, data })
+    for (const tap of Array.from(record.outputTaps)) tap()
+    for (const run of this.runs.values()) {
+      if (run.state.terminalId === id && run.state.status === 'running') this.captureRun(run, false)
+    }
+  }
+
+  /** The session's newest shell that is running; CLI terminals are not shells. */
+  private shellFor(sessionId: string): TerminalRecord | null {
+    let found: TerminalRecord | null = null
+    for (const record of this.records.values()) {
+      if (record.sessionId === sessionId && !record.cli && record.state.kind === 'running') found = record
+    }
+    return found
+  }
+
+  /**
+   * Resolves once a new shell shows a prompt — text left of the cursor — and
+   * has printed nothing for the settle window, or at the start limit. Quiet
+   * alone is not enough: the console's own start-up sequences arrive at
+   * once, and the shell may print its prompt seconds later.
+   */
+  private startSettled(record: TerminalRecord): Promise<void> {
+    const settleMs = this.deps.runSettleMs ?? DEFAULT_RUN_SETTLE_MS
+    return new Promise(resolve => {
+      let quiet: ReturnType<typeof setTimeout> | undefined
+      let done = false
+      const finish = (): void => {
+        if (done) return
+        done = true
+        clearTimeout(quiet)
+        clearTimeout(limit)
+        record.outputTaps.delete(onOutput)
+        resolve()
+      }
+      const onQuiet = (): void => {
+        void record.screen.textBeforeCursor().then(text => {
+          if (text === null || text.trim() !== '') finish()
+        })
+      }
+      const onOutput = (): void => {
+        clearTimeout(quiet)
+        quiet = setTimeout(onQuiet, settleMs)
+      }
+      const limit = setTimeout(finish, this.deps.runStartMaxMs ?? DEFAULT_RUN_START_MAX_MS)
+      record.outputTaps.add(onOutput)
+      if (record.outputSeen) onOutput()
+    })
+  }
+
+  /** Read the run's output off its terminal's screen; `final` ends it after this read. */
+  private captureRun(run: RunRecord, final: boolean): void {
+    if (final) run.final = true
+    if (run.capturing) {
+      run.again = true
+      return
+    }
+    const record = this.records.get(run.state.terminalId)
+    if (!record) {
+      this.endRun(run)
+      return
+    }
+    run.capturing = true
+    void record.screen.capture(run.marker, run.prompt, TERMINAL_RUN_OUTPUT_MAX_LINES).then(captured => {
+      run.capturing = false
+      if (run.state.status !== 'running' || this.runs.get(run.id) !== run) return
+      if (captured) {
+        const status = captured.promptBack ? 'done' : 'running'
+        this.setRunState(run, { ...run.state, output: captured.output, truncated: captured.truncated, status })
+      }
+      if (!captured || (run.final && !run.again)) {
+        this.endRun(run)
+      } else if (run.again && run.state.status === 'running') {
+        run.again = false
+        this.captureRun(run, false)
+      }
+    })
+  }
+
+  private setRunState(run: RunRecord, state: TerminalRunState): void {
+    const before = run.state
+    if (before.status === state.status && before.output === state.output && before.truncated === state.truncated) return
+    run.state = state
+    if (state.status !== 'running') run.marker.dispose()
+    this.emit({ kind: 'run', runId: run.id })
+  }
+
+  /** Stop following a run that is still running; it keeps the output read so far. */
+  private endRun(run: RunRecord): void {
+    if (run.state.status !== 'running') return
+    this.setRunState(run, { ...run.state, status: 'ended' })
+  }
+
+  private dropRun(run: RunRecord): void {
+    if (!this.runs.delete(run.id)) return
+    run.marker.dispose()
+    this.emit({ kind: 'runGone', runId: run.id })
+  }
+
+  /** Keep at most MAX_RUNS: the oldest finished runs go first, then the oldest. */
+  private evictRuns(): void {
+    while (this.runs.size > MAX_RUNS) {
+      const all = Array.from(this.runs.values())
+      this.dropRun(all.find(run => run.state.status !== 'running') ?? all[0]!)
+    }
   }
 
   private setTitle(record: TerminalRecord, title: string): void {
@@ -701,6 +907,12 @@ export class TerminalService {
 
   private setState(record: TerminalRecord, state: TerminalState): void {
     record.state = state
+    // A shell that stopped ends its run once the output it printed last is read.
+    if (state.kind === 'exited' || state.kind === 'failed') {
+      for (const run of this.runs.values()) {
+        if (run.state.terminalId === record.id && run.state.status === 'running') this.captureRun(run, true)
+      }
+    }
     // A CLI that stopped is not working, whatever its last title showed.
     if (record.cli && (state.kind === 'exited' || state.kind === 'failed')) {
       this.cliWork.end(record.sessionId)
@@ -712,6 +924,9 @@ export class TerminalService {
 
   private forget(record: TerminalRecord): void {
     if (!this.records.delete(record.id)) return
+    for (const run of this.runs.values()) {
+      if (run.state.terminalId === record.id) this.endRun(run)
+    }
     // A closed terminal is not activity: its session may be going, and a write now would race its removal.
     if (record.cli) {
       this.cliActivity?.stop(record.sessionId)

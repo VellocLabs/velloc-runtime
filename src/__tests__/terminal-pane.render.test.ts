@@ -2,7 +2,8 @@
 /**
  * The Terminal pane (F-31) over a fake runtime connection: the session's
  * terminals from the `terminals` topic, the automatic first shell, tabs
- * for several, close and restart, and the unavailable host.
+ * for several, close and restart, the unavailable host, and a terminal
+ * brought forward from outside the pane.
  */
 import { createElement, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -18,6 +19,7 @@ import {
   loadTerminalLayout,
   resetTerminalSlotsForTests,
 } from '@/browser/webview/terminal/terminalLayout'
+import { pendingTerminalFocus, requestTerminalFocus, resetTerminalFocusForTests } from '@/browser/webview/terminal/terminalFocus'
 
 vi.mock('@/browser/webview/terminal/XtermHost', () => ({
   default: (props: { terminalId: string }) =>
@@ -183,6 +185,31 @@ describe('TerminalPane', () => {
     expect(screen.getByTestId('pane-terminal-close:term_b').getAttribute('aria-label')).toBe('Close Terminal 2')
     // The shell's own title is the tab's tooltip.
     expect(screen.getByTestId('pane-terminal-tab:term_b').getAttribute('title')).toBe('vim')
+  })
+
+  it('a terminal brought forward from outside becomes the active tab, also when its row lands later', async () => {
+    resetTerminalFocusForTests()
+    const fake = fakeConnection()
+    renderPane(fake.conn)
+    await flush()
+    fake.publish('terminals', state([running('term_a', 's1'), running('term_b', 's1')]))
+    await flush()
+    expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_b')
+
+    act(() => requestTerminalFocus('s1', 'term_a'))
+    await flush()
+    expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_a')
+    expect(pendingTerminalFocus('s1')).toBeUndefined()
+
+    // The run started a shell the topic has not listed yet: the request waits for its tab.
+    act(() => requestTerminalFocus('s1', 'term_c'))
+    await flush()
+    expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_a')
+    expect(pendingTerminalFocus('s1')).toBe('term_c')
+    fake.publish('terminals', state([running('term_a', 's1'), running('term_b', 's1'), running('term_c', 's1')]), 'delta', 'state')
+    await flush()
+    expect(screen.getByTestId('xterm-stub').getAttribute('data-terminal')).toBe('term_c')
+    expect(pendingTerminalFocus('s1')).toBeUndefined()
   })
 
   it('an exited terminal keeps its screen, says the code and restarts in place', async () => {

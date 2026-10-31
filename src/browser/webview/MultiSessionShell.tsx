@@ -281,6 +281,7 @@ import {
 } from './coldUi'
 import { useResolvedConnection, useTerminalsState } from './terminal/useTerminals'
 import { markCliSessionFresh } from './terminal/freshCliSessions'
+import { requestTerminalFocus } from './terminal/terminalFocus'
 import { cliOfTemplateType, getLauncherCatalog, getTemplateTitle } from '../../prompting/templateCatalog'
 import { TERMINAL_CAPABILITY } from '../../terminal/protocol'
 import { WorkspaceProjectFolderDialog } from './ThreadDialogs'
@@ -2295,6 +2296,14 @@ export function MultiSessionShell({
       )
     },
     [openFileInPanel, openFileInWindow, runtimeCapabilities],
+  )
+  // A chat Run card ran a command (F-31): the Terminal pane opens on that terminal's tab.
+  const openTerminalInPanel = useCallback(
+    (sessionId: string, terminalId: string) => {
+      requestTerminalFocus(sessionId, terminalId)
+      openPaneFor('terminal')
+    },
+    [openPaneFor],
   )
   const openFileFromTree = useCallback(
     (path: string, line?: number) => openFile(line === undefined ? { path } : { path, line }),
@@ -4780,6 +4789,7 @@ export function MultiSessionShell({
                   onOpenBackgroundTasksList={handleOpenBackgroundTasksList}
                   onOpenPlanPanel={() => openPaneFor('plan')}
                   onOpenFileInPanel={openFile}
+                  onOpenTerminalInPanel={openTerminalInPanel}
                   statFilePaths={statFilePaths}
                   onOpenDiffInPanel={openDiffInPanel}
                   onOpenSkillInPanel={openSkillInPanel}
