@@ -157,6 +157,8 @@ export const RAISED_EVENTS: readonly string[] = Object.freeze([
   'agent.list',
   'mcp.call',
   'mcp.connect',
+  // `$.script.run` (modScript.ts)
+  'script.run',
   // the person's edit in the page's prompt box (modPromptEdit.ts), the rows
   // a mod adds to its typeahead, and its text changing without an edit
   // (promptBoxEvents.ts)

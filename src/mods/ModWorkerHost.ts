@@ -23,7 +23,7 @@ import type {
   ModToWorker,
   WireError,
 } from './modWire'
-import { MAX_HANDED_DEPTH, nestsDeeperThan } from './modWire'
+import { MAX_HANDED_DEPTH, nestsDeeperThan, scriptNounKey } from './modWire'
 import { isEngineTable, type EngineTable } from './modEngineTable'
 import { MOD_DEFAULT_LOCALE, normalizeModLocale } from './modLocale'
 import { DESKTOP_ELEMENTS, RENDER_SURFACE } from './modRender'
@@ -174,6 +174,9 @@ export function installModWorkerHost(
   /** The nouns this module's `engine.create` step added to `$`: each
    *  method a function of the plugin's own, run here on `mod.serve`. */
   const provided = new Map<string, Record<string, (...args: unknown[]) => unknown>>()
+  /** The noun tables of the `$.script.run` calls in flight, by the run-scoped
+   *  noun each is served under (`scriptNounKey`); dropped when the call settles. */
+  const scriptTables = new Map<string, Record<string, (...args: unknown[]) => unknown>>()
   const invocations = new Map<string, Invocation>()
   const pendingNext = new Map<string, Pending & { invocation: Invocation }>()
   /** A streaming hook's read of a stream beneath, waiting for its
@@ -600,6 +603,55 @@ export function installModWorkerHost(
       },
     })
 
+  /** `$.script.run`: the noun tables' functions stay here, under a run-scoped
+   *  noun; the call carries their names and the run's token. `signal` does not
+   *  cross — it abandons the call, which stops the script. */
+  const makeScript = (invocation: Invocation | undefined): unknown => {
+    const script = {
+      run: (options: unknown): Promise<unknown> => {
+        if (!options || typeof options !== 'object') {
+          return Promise.reject(new TypeError('$.script.run takes { code, nouns, inputs?, prelude?, deterministic?, timeoutMs?, signal? }'))
+        }
+        const { nouns, signal, ...rest } = options as Record<string, unknown>
+        if (!nouns || typeof nouns !== 'object') {
+          return Promise.reject(new TypeError('$.script.run: nouns must be an object of noun tables'))
+        }
+        const token = `r${++seq}`
+        const keys: string[] = []
+        const names: Record<string, string[]> = {}
+        for (const [noun, table] of Object.entries(nouns as Record<string, unknown>)) {
+          const fns: Record<string, (...args: unknown[]) => unknown> = {}
+          if (table && typeof table === 'object') {
+            for (const [method, fn] of Object.entries(table)) {
+              if (typeof fn === 'function') fns[method] = fn as (...args: unknown[]) => unknown
+            }
+          }
+          if (Object.keys(fns).length === 0) {
+            for (const key of keys) scriptTables.delete(key)
+            return Promise.reject(new TypeError(`$.script.run: nouns.${noun} holds no method`))
+          }
+          const key = scriptNounKey(token, noun)
+          scriptTables.set(key, fns)
+          keys.push(key)
+          names[noun] = Object.keys(fns)
+        }
+        const own = signal instanceof AbortSignal ? signal : undefined
+        return callRuntime(invocation, 'script', 'run', [{ ...rest, nouns: names, token }], own).finally(() => {
+          for (const key of keys) scriptTables.delete(key)
+        })
+      },
+    }
+    return new Proxy(Object.freeze(script), {
+      get: (target, method) => {
+        if (typeof method !== 'string' || method === 'then') return undefined
+        if (Object.prototype.hasOwnProperty.call(target, method)) {
+          return target[method as keyof typeof target]
+        }
+        return (...args: unknown[]) => callRuntime(invocation, 'script', method, args)
+      },
+    })
+  }
+
   /** The tables behind `$`, one per noun, made once per `$`. */
   const makeNounTables = (invocation: Invocation | undefined): ((noun: string) => unknown) => {
     const nouns = new Map<string, unknown>()
@@ -627,6 +679,8 @@ export function installModWorkerHost(
                     ? makeAudio(invocation)
                   : noun === 'process'
                     ? makeProcess(invocation)
+                  : noun === 'script'
+                    ? makeScript(invocation)
                     : new Proxy(Object.freeze({}), {
                   get: (_target, method) =>
                     // `then`: so that `await $.fs` does not treat the noun as a promise.
@@ -766,7 +820,7 @@ export function installModWorkerHost(
 
   /** `mod.serve`: a method of a noun this module provides, run here. */
   const serve = async (msg: ModServeMessage): Promise<void> => {
-    const fns = provided.get(msg.noun)
+    const fns = provided.get(msg.noun) ?? scriptTables.get(msg.noun)
     const fn = fns?.[msg.method]
     if (!fns || !fn) {
       post({

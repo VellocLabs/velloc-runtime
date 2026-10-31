@@ -2,19 +2,26 @@
  * run_js worker core, apart from `runJs.worker.ts` so it unit-tests with an
  * explicit `peer`. `edit` mode (SuperEdit) gets the `workspace`/`getDirectory`
  * facade, the file helpers and `console`; `shell` mode (SuperShell) gets `bash`
- * and `console`, no filesystem; neither has a tool proxy. Everything flows out
- * over `peer` via kernelWorkerClient: `k.log`, `k.call`, `k.done`, `k.error`.
+ * and `console`, no filesystem; `program` mode gets `console` and the nouns its
+ * caller named (`runProgramInWorker`). None has a tool proxy. Everything flows
+ * out over `peer` via kernelWorkerClient: `k.log`, `k.call`, `k.done`, `k.error`.
  */
 
 import {
   createKernelWorkerClient,
   type KernelPeer,
+  type KernelWorkerClient,
 } from '../workerKernel/kernelWorkerClient'
+import type { KernelErrorMessage } from '../workerKernel/kernelProtocol'
 import {
+  isProgramIdentifier,
+  programNounProblem,
   RUN_JS_FS_NOUN,
+  RUN_JS_PRELUDE_SOURCE_URL,
   RUN_JS_SHELL_NOUN,
   type RunJsFsOp,
   type RunJsMode,
+  type RunJsScriptInit,
   type RunJsShellOp,
 } from './runJsProtocol'
 import { createFileHelpers } from './fileHelpers'
@@ -125,21 +132,8 @@ export function serializeResult(value: unknown): string | null {
   }
 }
 
-/**
- * Run one script to completion, reporting everything over `peer`. Never throws —
- * a script error is reported as a `k.error` message.
- */
-export function runScriptInWorker(
-  code: string,
-  peer: RunJsPeer,
-  workspaceName?: string,
-  inputs?: Record<string, unknown>,
-  mode: RunJsMode = 'edit',
-): void {
-  // The kernel's worker side: the one `call` primitive every facade below is
-  // sugar over, plus `started` / `log` / `done` / `error`.
-  const kernel = createKernelWorkerClient(peer)
-
+/** The script's `console`: every level becomes a `k.log` line. */
+function captureConsole(kernel: KernelWorkerClient): Console {
   const record = (level: string) => (...args: unknown[]): void => {
     const text = args
       .map(a => {
@@ -159,6 +153,24 @@ export function runScriptInWorker(
   captured.warn = record('warn')
   captured.error = record('error')
   captured.debug = record('debug')
+  return captured
+}
+
+/**
+ * Run one script to completion, reporting everything over `peer`. Never throws —
+ * a script error is reported as a `k.error` message.
+ */
+export function runScriptInWorker(
+  code: string,
+  peer: RunJsPeer,
+  workspaceName?: string,
+  inputs?: Record<string, unknown>,
+  mode: RunJsMode = 'edit',
+): void {
+  // The kernel's worker side: the one `call` primitive every facade below is
+  // sugar over, plus `started` / `log` / `done` / `error`.
+  const kernel = createKernelWorkerClient(peer)
+  const captured = captureConsole(kernel)
 
   // `workspace` — the FileSystemDirectoryHandle-shaped facade; every
   // primitive round-trips to the broker, which permission-gates and executes
@@ -287,6 +299,163 @@ export function runScriptInWorker(
           ? new Error('run_js finished before this command resolved')
           : new Error('run_js finished before this filesystem call resolved'),
       )
+    }
+  })()
+}
+
+/** Error thrown by a deterministic shadow. */
+function nondeterministic(what: string): never {
+  const err = new Error(
+    `${what} is not available in this script: a run must make the same calls each time it is replayed. Pass times or seeds in through inputs.`,
+  )
+  err.name = 'NotSupportedError'
+  throw err
+}
+
+/** `Date` and `Math` with the clock and the random source taken out. `Date`
+ *  still constructs from arguments, parses and formats; its instances are
+ *  ordinary `Date`s. */
+function deterministicShadows(): { Date: DateConstructor; Math: Math } {
+  const RealDate = Date
+  const ShadowDate = function (this: unknown, ...args: unknown[]): unknown {
+    if (!new.target) nondeterministic('Date()')
+    if (args.length === 0) nondeterministic('new Date()')
+    return Reflect.construct(RealDate, args, new.target)
+  } as unknown as DateConstructor
+  Object.setPrototypeOf(ShadowDate, RealDate)
+  Object.defineProperty(ShadowDate, 'prototype', { value: RealDate.prototype })
+  Object.defineProperty(ShadowDate, 'now', { value: () => nondeterministic('Date.now()') })
+  const ShadowMath = Object.create(Math, {
+    random: { value: () => nondeterministic('Math.random()') },
+  }) as Math
+  return { Date: Object.freeze(ShadowDate), Math: Object.freeze(ShadowMath) }
+}
+
+/**
+ * Contract: run one `program`-mode script. Its parameters, in order: `console`,
+ * one frozen object per noun of `init.programNouns` (each method round-trips
+ * `k.call(noun, method, { args })` and rejects with an `Error` carrying the
+ * handler's error name), `inputs`, `Date`, `Math` (deterministic shadows when
+ * `init.deterministic`), then each export of `init.prelude`. The prelude runs
+ * on the execution clock after `k.started`, under its own `sourceURL`, so the
+ * script's line numbers are its own. The return value crosses as JSON text
+ * (`k.done`), null for `undefined`; a value JSON cannot hold is a `TypeError`.
+ * Never throws — every failure is a `k.error`.
+ */
+export function runProgramInWorker(init: RunJsScriptInit, peer: RunJsPeer): void {
+  const kernel = createKernelWorkerClient(peer)
+  const captured = captureConsole(kernel)
+  const report = (
+    err: unknown,
+    extra: Partial<Omit<KernelErrorMessage, 'type'>> = {},
+  ): void => {
+    kernel.error({
+      message: err instanceof Error ? err.message : String(err),
+      ...(err instanceof Error && err.name ? { name: err.name } : {}),
+      stack: err instanceof Error ? err.stack : undefined,
+      ...extra,
+    })
+  }
+  const drainAndReport = async (): Promise<void> => {
+    const atReturn = await kernel.drain()
+    if (atReturn > 0) {
+      kernel.log(
+        'warn',
+        `program: ${atReturn} nested call(s) were still in flight when the script returned (missing await?) — waited for them to complete.`,
+      )
+    }
+  }
+  const rejectLeftovers = (): void =>
+    kernel.rejectPending(noun => new Error(`program finished before this ${noun} call resolved`))
+
+  void (async () => {
+    kernel.started()
+    const nouns = init.programNouns ?? {}
+    for (const [noun, methods] of Object.entries(nouns)) {
+      const problem = programNounProblem(noun, methods)
+      if (problem) {
+        report(new TypeError(`program: ${problem}`))
+        return
+      }
+    }
+    const nounNames = Object.keys(nouns)
+    const nounObjects = nounNames.map(noun =>
+      Object.freeze(
+        Object.fromEntries(
+          nouns[noun]!.map(method => [
+            method,
+            Object.freeze((...args: unknown[]): Promise<unknown> =>
+              kernel.call(noun, method, { args }, error => {
+                const err = new Error(error.message ?? `${noun}.${method} failed`)
+                err.name = error.name ?? 'Error'
+                return err
+              }),
+            ),
+          ]),
+        ),
+      ),
+    )
+    const shadows = init.deterministic ? deterministicShadows() : { Date, Math }
+    const baseNames = ['console', ...nounNames, 'inputs', 'Date', 'Math']
+    const baseValues: unknown[] = [captured, ...nounObjects, init.inputs ?? {}, shadows.Date, shadows.Math]
+
+    const exportNames: string[] = []
+    const exportValues: unknown[] = []
+    if (init.prelude) {
+      let prelude: (...args: unknown[]) => Promise<unknown>
+      try {
+        prelude = new AsyncFunction(...baseNames, `${init.prelude}\n//# sourceURL=${RUN_JS_PRELUDE_SOURCE_URL}`)
+      } catch (err) {
+        report(err, { message: `program prelude did not parse: ${err instanceof Error ? err.message : String(err)}` })
+        return
+      }
+      try {
+        const exported = await prelude(...baseValues)
+        if (exported !== undefined && (exported === null || typeof exported !== 'object')) {
+          throw new TypeError('it must return an object of the names it adds')
+        }
+        for (const [name, value] of Object.entries((exported ?? {}) as Record<string, unknown>)) {
+          if (!isProgramIdentifier(name) || baseNames.includes(name)) {
+            throw new TypeError(`it exports "${name}", which is not a name the run can bind`)
+          }
+          exportNames.push(name)
+          exportValues.push(value)
+        }
+      } catch (err) {
+        await drainAndReport()
+        report(err, { message: `program prelude failed: ${err instanceof Error ? err.message : String(err)}` })
+        rejectLeftovers()
+        return
+      }
+    }
+
+    const globals = [...baseNames, ...exportNames]
+    const wrapperOffset = await deriveWrapperLineOffset(globals)
+    let fn: (...args: unknown[]) => Promise<unknown>
+    try {
+      fn = new AsyncFunction(...globals, init.code)
+    } catch (err) {
+      report(err, { parseFailed: true })
+      return
+    }
+    try {
+      const value = await fn(...baseValues, ...exportValues)
+      await drainAndReport()
+      let text: string | undefined
+      try {
+        text = value === undefined ? undefined : JSON.stringify(value)
+      } catch (err) {
+        throw new TypeError(
+          `the script's return value is not plain data: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+      kernel.done(text ?? null)
+    } catch (err) {
+      await drainAndReport()
+      const location = extractScriptLocation(err, wrapperOffset)
+      report(err, location ? { line: location.line, column: location.column } : {})
+    } finally {
+      rejectLeftovers()
     }
   })()
 }

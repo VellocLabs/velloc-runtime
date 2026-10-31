@@ -21,10 +21,55 @@ export const RUN_JS_WORKER_KIND = 'runjs'
 export const RUN_JS_FS_NOUN = 'fs'
 export const RUN_JS_SHELL_NOUN = 'shell'
 
-/** The two script surfaces a runJs worker can build. They are disjoint on
+/** The script surfaces a runJs worker can build. They are disjoint on
  *  purpose: `edit` (SuperEdit) gets the workspace facade and no command
- *  execution; `shell` (SuperShell) gets `bash` and no workspace facade. */
-export type RunJsMode = 'edit' | 'shell'
+ *  execution; `shell` (SuperShell) gets `bash` and no workspace facade;
+ *  `program` gets neither — only the nouns its caller names in
+ *  `programNouns`, each served by that caller (F-21 `program` mode). */
+export type RunJsMode = 'edit' | 'shell' | 'program'
+
+/** Contract: the nouns of a `program`-mode run — noun name → method names.
+ *  The worker builds one frozen object per noun, each method a call that
+ *  round-trips to the caller's handler; the script receives the object as a
+ *  parameter of that name. Names are identifiers that are not reserved
+ *  (`RUN_JS_PROGRAM_RESERVED_NAMES`). */
+export type RunJsProgramNouns = Record<string, readonly string[]>
+
+/** Names a `program`-mode run binds itself, so no noun or prelude export may
+ *  take them: `console` and `inputs` as in every mode, `Date` and `Math`
+ *  for the deterministic shadows. */
+export const RUN_JS_PROGRAM_RESERVED_NAMES: readonly string[] = Object.freeze([
+  'console',
+  'inputs',
+  'Date',
+  'Math',
+])
+
+/** The `sourceURL` the prelude is compiled under, so a frame inside it never
+ *  reads as the script's own `<anonymous>` line. */
+export const RUN_JS_PRELUDE_SOURCE_URL = 'velloc-program-prelude.js'
+
+const PROGRAM_IDENTIFIER = /^[A-Za-z_$][\w$]*$/
+
+/** Whether `name` can be bound as a parameter of a `program`-mode script. */
+export function isProgramIdentifier(name: string): boolean {
+  return PROGRAM_IDENTIFIER.test(name)
+}
+
+/** Why `noun` with `methods` cannot be granted to a `program`-mode script, or
+ *  null. Checked by the broker before a worker is spent and again in the
+ *  worker. */
+export function programNounProblem(noun: string, methods: readonly unknown[]): string | null {
+  if (!isProgramIdentifier(noun)) return `noun "${noun}" is not an identifier`
+  if (RUN_JS_PROGRAM_RESERVED_NAMES.includes(noun)) return `noun "${noun}" is a name the run binds itself`
+  if (!Array.isArray(methods) || methods.length === 0) return `noun "${noun}" names no method`
+  for (const method of methods) {
+    if (typeof method !== 'string' || !isProgramIdentifier(method)) {
+      return `noun "${noun}": method "${String(method)}" is not an identifier`
+    }
+  }
+  return null
+}
 
 /**
  * The profile's `init` — what a run_js worker is told to run. It travels by
@@ -46,6 +91,18 @@ export type RunJsScriptInit = {
    *  fails fast with `bash is not defined` rather than gaining a filesystem it
    *  was never meant to have. */
   mode?: RunJsMode
+  /** `program` mode only: the caller's nouns (`RunJsProgramNouns`). */
+  programNouns?: RunJsProgramNouns
+  /** `program` mode only: JavaScript evaluated before the script with the
+   *  nouns, `console`, `inputs`, `Date` and `Math` in scope. It returns an
+   *  object; each own property whose name is an identifier becomes one more
+   *  parameter of the script. */
+  prelude?: string
+  /** `program` mode only: `Date.now()`, `Math.random()`, `Date()` and
+   *  `new Date()` with no argument throw in the prelude and the script — the
+   *  shadows are parameters, so the names in scope are covered and
+   *  `globalThis.Date` is not. */
+  deterministic?: boolean
 }
 
 // ── the `fs` noun: workspace facade ops ──

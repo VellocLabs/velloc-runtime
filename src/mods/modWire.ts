@@ -337,6 +337,13 @@ export type ModToRuntime =
   | ModErrorMessage
   | ModHandleResultMessage
 
+/** The noun a `$.script.run` method is served under in the worker that
+ *  started the run (`mod.serve`). The `:` keeps it apart from every noun
+ *  `engine.create` can add. */
+export function scriptNounKey(token: string, noun: string): string {
+  return `script:${token}:${noun}`
+}
+
 /** How deep a value a hook hands back (its result, a chunk, `next(e)`'s `e`, a
  *  `$` call's argument, a served noun's result) may nest; deeper is refused. */
 export const MAX_HANDED_DEPTH = 28_000

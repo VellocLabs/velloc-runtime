@@ -376,10 +376,11 @@ export class ModInstance {
   }
 
   /**
-   * A `$` wait made outside a live hook — a method's or a handler's, which
-   * the worker cannot tag with its run — stops the bound of every run already
-   * in flight when it began (one begun later cannot have made it). Each such
-   * wait is bounded where it is served. (F-25)
+   * A `$` wait stops the bound of every run already in flight when it began
+   * (one begun later cannot have made it): the worker cannot tag a method's or
+   * a handler's wait with its run, and a method may wait through a live hook's
+   * `$` — a `$.script.run` noun method uses the `$` of the hook that started
+   * the script. Each such wait is bounded where it is served. (F-25)
    */
   private whileRunsWait<T>(work: () => Promise<T>): Promise<T> {
     const paused = [...this.runClocks]
@@ -806,7 +807,7 @@ export class ModInstance {
           msg.noun === 'clock'
             ? Promise.resolve().then(serve)
             : invocation
-              ? invocation.call.whileWaiting(serve)
+              ? invocation.call.whileWaiting(() => this.whileRunsWait(serve))
               : this.whileRunsWait(serve)
         served.then(
           value => {
@@ -883,7 +884,9 @@ export class ModInstance {
         // A read made while the calling hook still runs stops its clock.
         const invocation = open.invocationId ? this.live.get(open.invocationId) : undefined
         const pull = (): Promise<IteratorResult<unknown, unknown>> => open.stream.next()
-        const read = invocation ? invocation.call.whileWaiting(pull) : this.whileRunsWait(pull)
+        const read = invocation
+          ? invocation.call.whileWaiting(() => this.whileRunsWait(pull))
+          : this.whileRunsWait(pull)
         read.then(
           step => reply({ ok: true, done: step.done === true, value: step.value }),
           error => reply({ ok: false, error: wireError(error) }),

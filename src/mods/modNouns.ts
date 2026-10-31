@@ -56,6 +56,7 @@ import {
 } from './modState'
 import type { ModStoreHost } from './modStore'
 import { modCommandSpecOf, type ModCommandInfo, type ModCommandSpec } from './modCommands'
+import { isScriptRunResult, scriptRunInputOf, scriptTokenOf, type ModScriptHost, type ModScriptRunInput } from './modScript'
 import { uiAskArgsOf, type ModUiAskArgs, type ModUiState } from './modUi'
 import {
   uiCopy,
@@ -271,6 +272,10 @@ export type ModNounHost = {
    *  plugin's module calls `$.prompt.read`, as scanned — the box a fill hands
    *  back goes to such a plugin alone. Absent: answered as headless. */
   composer?: ModComposerHost & { readsBox?(plugin: string): boolean }
+  /** `$.script.run` — a script in the kernel's `program` mode, its nouns
+   *  served by the calling worker (`modScript.ts`); supplied by `ModRuntime`.
+   *  Absent: the noun is refused. */
+  scripts?: ModScriptHost
 }
 
 /** What `$.turn` needs: "cancels the running model turn: the one whose id
@@ -1090,6 +1095,22 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
         }),
     },
   }),
+  // `$.script`: `script.run` is an op event — a plugin above sees the code
+  // and the noun names another plugin hands a script, and may rewrite or
+  // deny. The run token is the worker's and stays off `e`.
+  script: Object.assign(Object.create(null), {
+    run: {
+      input: (args: readonly unknown[]) => scriptRunInputOf(args[0]),
+      run: (e: unknown, { call, session }: NounContext) =>
+        scriptsHost(session).run(scriptRunInputOf(e) satisfies ModScriptRunInput, {
+          plugin: call.plugin,
+          token: scriptTokenOf(call.args[0]),
+          ...(call.seat !== undefined ? { seat: call.seat } : {}),
+          ...(call.signal ? { signal: call.signal } : {}),
+        }),
+      accepts: isScriptRunResult,
+    },
+  }),
   // `$.mcp`: `mcp.call` and `mcp.connect` are op events — a plugin
   // above denies another plugin's call by its server and tool. No permission
   // prompt: "the plugin's call, seen by the hooks above it, is the grant".
@@ -1577,6 +1598,11 @@ function transcriptHost(session: ModNounHost, method: string): ModTranscriptHost
 function agentsHost(session: ModNounHost): ModAgentHost {
   if (!session.agents) notSupported('$.agent is not available: this session has no Agent tool')
   return session.agents!
+}
+
+function scriptsHost(session: ModNounHost): ModScriptHost {
+  if (!session.scripts) notSupported('$.script is not available: this session runs no scripts')
+  return session.scripts!
 }
 
 function mcpHost(session: ModNounHost): ModMcpHost {

@@ -436,6 +436,7 @@ describe('ModRuntime — $', () => {
       'prompt.read',
       'prompt.submit',
       'prompt.suggest',
+      'script.run',
       'session.append',
       'session.compact',
       'session.cwd',

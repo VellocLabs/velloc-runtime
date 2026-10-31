@@ -2,14 +2,14 @@
  * run_js DedicatedWorker entry, bundled standalone and spawned per run from a
  * `data:` URL by the kernel's sandboxed frame (opaque origin, that frame's CSP);
  * torn down when the run settles. Hands `worker.init` and `event.ports[0]` to
- * `runScriptInWorker`. The CSP's `'unsafe-eval'` is only for runJsWorkerCore's
- * AsyncFunction eval.
+ * `runScriptInWorker` (`runProgramInWorker` for `program` mode). The CSP's
+ * `'unsafe-eval'` is only for runJsWorkerCore's AsyncFunction eval.
  */
 
 import type { WorkerInitMessage } from '../workerKernel/kernelProtocol'
 import type { RunJsScriptInit } from './runJsProtocol'
 import { hardenWorkerRealm } from './hardenWorkerRealm'
-import { runScriptInWorker } from './runJsWorkerCore'
+import { runProgramInWorker, runScriptInWorker } from './runJsWorkerCore'
 
 const scope = self as unknown as {
   addEventListener(
@@ -30,5 +30,9 @@ scope.addEventListener('message', (event: MessageEvent) => {
   const peer = event.ports?.[0]
   if (!peer) return
   const init = msg.init as RunJsScriptInit
+  if (init.mode === 'program') {
+    runProgramInWorker(init, peer)
+    return
+  }
   runScriptInWorker(init.code, peer, init.workspaceName, init.inputs, init.mode)
 })

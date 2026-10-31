@@ -120,6 +120,8 @@ import type { WindowAudioPlayer } from '../browser/workerKernel/windowAudio'
 import type { ModAudioHost } from './modAudio'
 import { MOD_BAND_ID, ModPageBridge, copyEverywhere, type ModClipboardHost, type ModPageAnswer } from './modPage'
 import { PausableDeadline } from '../browser/workerKernel/pausableDeadline'
+import { runProgram, type RunProgramOptions, type RunProgramResult } from '../browser/runJs/runProgram'
+import { createModScriptHost, type ModScriptCaller } from './modScript'
 import { ModPaneRegistry, type ModPane, type ModPaneOpenArgs, type ModPaneSeat } from './modPanes'
 import type { PluginUserConfigField } from '../pluginHost/pluginModel'
 import {
@@ -290,6 +292,9 @@ export type ModRuntimeOptions = {
   /** The bound on a plugin-noun method or a press handler run in a worker.
    *  Default `MOD_SERVE_TIMEOUT_MS`. */
   serveTimeoutMs?: number
+  /** Runs a `$.script.run` script. Default the kernel's `runProgram`; a
+   *  test passes one that needs no window. */
+  runProgram?: (opts: RunProgramOptions) => Promise<RunProgramResult>
   /** The slot's `$.state`, when it outlives this runtime: the idle unload
    *  builds a new runtime over the same values. Never disposed here.
    *  Absent: a store of this runtime's own. */
@@ -634,6 +639,12 @@ export class ModRuntime implements TurnExtensions {
               },
             }
           : {}),
+        scripts:
+          options.session.scripts ??
+          createModScriptHost({
+            runProgram: options.runProgram ?? runProgram,
+            serve: (by, noun, method, args) => this.serveScriptNoun(by, noun, method, args),
+          }),
         page: options.session.page ?? {
           copy: (text: string, signal?: AbortSignal) =>
             copyEverywhere(
@@ -1519,6 +1530,19 @@ export class ModRuntime implements TurnExtensions {
         }
         return settled.value
       })
+  }
+
+  /** A method of a `$.script.run` noun, served by the worker that started
+   *  the run — the seat that called, else the plugin's loaded one. */
+  private serveScriptNoun(by: ModScriptCaller, noun: string, method: string, args: unknown[]): Promise<unknown> {
+    const seat =
+      this.seats.find(s => s.key === by.seat && s.ref.plugin === by.plugin) ??
+      this.seats.find(s => s.ref.plugin === by.plugin && s.loaded)
+    const loaded = seat?.loaded
+    if (!loaded) {
+      return Promise.reject(new Error(`$.script.run: ${by.plugin}, whose script this is, is no longer loaded`))
+    }
+    return loaded.instance.serve(noun, method, args, by.plugin, by.signal)
   }
 
   private seatOfLink(linkId: string): Seat | undefined {
