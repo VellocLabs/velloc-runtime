@@ -898,6 +898,7 @@ export const en = {
   'backgroundTasks.category.shell': 'Shell',
   'backgroundTasks.category.superShell': 'Super Shell',
   'backgroundTasks.category.runJs': 'Super Edit',
+  'backgroundTasks.category.plugin': 'Plugins',
   'backgroundTasks.category.running': 'Running',
   'backgroundTasks.runJsFallbackTitle': 'Super Edit …{id}',
   'backgroundTasks.superShellFallbackTitle': 'Super Shell …{id}',

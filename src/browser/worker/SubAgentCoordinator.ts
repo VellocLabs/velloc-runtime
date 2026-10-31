@@ -52,7 +52,7 @@ export type SubAgentSnapshot = {
   sessionId: string
   status: 'running' | 'success' | 'error' | 'stopped'
   description: string
-  taskType?: 'local_agent' | 'local_bash' | 'local_supershell'
+  taskType?: 'local_agent' | 'local_bash' | 'local_supershell' | 'local_plugin'
   output: string
   exitCode?: number | null
   startedAt: number

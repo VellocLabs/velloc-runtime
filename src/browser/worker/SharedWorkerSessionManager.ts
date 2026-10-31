@@ -145,6 +145,12 @@ import type { RestartWorkInputs } from '../runtimeHub/restartReadiness'
 import type { DeliverRoutineToSession } from '../../routines/SessionDeliveryRunner'
 import { BackgroundShellCoordinator } from './BackgroundShellCoordinator'
 import { SuperShellTaskCoordinator } from './SuperShellTaskCoordinator'
+import {
+  PLUGIN_TASK_DIR,
+  PluginTaskCoordinator,
+  pluginTaskRecordFromFile,
+} from './PluginTaskCoordinator'
+import { setPluginTaskController } from '../../backgroundTasks/pluginTaskController'
 import { setSuperShellTaskSink } from '../../backgroundTasks/superShellTaskSink'
 import { BackgroundShellHostBridge } from './BackgroundShellHostBridge'
 import { SubAgentCoordinator } from './SubAgentCoordinator'
@@ -661,6 +667,10 @@ export class SharedWorkerSessionManager {
   // Background shell lifecycle is owned by the BackgroundShellCoordinator.
   private readonly shells: BackgroundShellCoordinator
   private readonly superShells: SuperShellTaskCoordinator
+  private readonly pluginTasks: PluginTaskCoordinator
+  /** Per owning session: the read of its plugin task files, once per
+   *  lifetime (`restorePluginTasksFromDisk`). */
+  private readonly pluginTaskRestores = new Map<string, Promise<void>>()
   // Sub-agent waiter management + queries are owned by the SubAgentCoordinator.
   private readonly subAgents: SubAgentCoordinator
   // Task delivery now owned by TaskDeliveryQueue. Flushed (injected as
@@ -1125,6 +1135,26 @@ export class SharedWorkerSessionManager {
       dropPendingResult: (pred) => this.dropPendingTaskResult(pred),
       evictFinishedOverCap: (kind, cap) => this.evictFinishedOverCap(kind, cap),
     })
+    this.pluginTasks = new PluginTaskCoordinator(this.taskRegistry, {
+      scheduleSummary: () => this.feed.scheduleSummary(),
+      mintTaskHandle: () => mintTaskHandle('local_plugin'),
+      deliverResult: (spawnerSessionId, result) =>
+        this.deliverTaskResult(spawnerSessionId, result),
+      dropPendingResult: (pred) => this.dropPendingTaskResult(pred),
+      evictFinishedOverCap: (kind, cap) => this.evictFinishedOverCap(kind, cap),
+      persist: (spawnerSessionId, taskId, json) => {
+        void this.storageCoordinator.writeSubAgentTaskFile(
+          spawnerSessionId,
+          PLUGIN_TASK_DIR,
+          `${taskId}.json`,
+          json,
+        )
+      },
+      raiseStop: (spawnerSessionId, e) => modSlotFor(spawnerSessionId)?.taskStop?.(e),
+      stopAgent: (agentId) => {
+        this.stopSubAgent(agentId)
+      },
+    })
     this.routines = new RoutineCoordinator(this.taskRegistry, {
       getInitTemplate: () => this.lastInitTemplate,
       prepareWorkerStorage: (sessionId, payload) =>
@@ -1229,7 +1259,7 @@ export class SharedWorkerSessionManager {
           this.loadRecoveredShellDetail(toolCallId),
         loadRecoveredTitle: taskId => this.loadRecoveredTitle(taskId),
       },
-      this.superShells,
+      [this.superShells, this.pluginTasks],
     )
     this.teams = new TeamCoordinator({
       getInitTemplate: () => this.lastInitTemplate,
@@ -1382,6 +1412,20 @@ export class SharedWorkerSessionManager {
     setSuperShellTaskSink({
       started: (start) => this.superShells.register(start),
       finished: (finish) => this.superShells.finish(finish),
+    })
+    // A session's mods drive `local_plugin` tasks through this leaf (`$.task`).
+    setPluginTaskController({
+      start: (start) => this.pluginTasks.start(start),
+      progress: (spawner, plugin, taskId, update) =>
+        this.pluginTasks.progress(spawner, plugin, taskId, update),
+      finish: (spawner, plugin, taskId, outcome) =>
+        this.pluginTasks.finish(spawner, plugin, taskId, outcome),
+      adoptChild: (spawner, plugin, taskId, agentId) =>
+        this.pluginTasks.adoptChild(spawner, plugin, taskId, agentId),
+      list: async (spawner, plugin) => {
+        await this.restorePluginTasksFromDisk(spawner)
+        return this.pluginTasks.list(spawner, plugin)
+      },
     })
     setBackgroundShellResultAcknowledger((shellId) =>
       this.acknowledgeBackgroundShellResult(shellId),
@@ -3694,12 +3738,41 @@ export class SharedWorkerSessionManager {
     })
   }
 
+  /**
+   * Read a session's plugin task files back into the registry, once per
+   * session per lifetime; a task that was running when the app closed comes
+   * back stopped and interrupted. A failed read is retried on the next call.
+   */
+  private restorePluginTasksFromDisk(spawnerSessionId: string): Promise<void> {
+    if (isSubAgentSessionId(spawnerSessionId)) return Promise.resolve()
+    const known = this.pluginTaskRestores.get(spawnerSessionId)
+    if (known) return known
+    const restore = (async () => {
+      const names = await this.storageCoordinator.listSubAgentFiles(spawnerSessionId, PLUGIN_TASK_DIR)
+      const now = Date.now()
+      let seeded = 0
+      for (const name of names) {
+        if (!name.endsWith('.json')) continue
+        const text = await this.storageCoordinator.readSubAgentFile(spawnerSessionId, PLUGIN_TASK_DIR, name)
+        const record = text ? pluginTaskRecordFromFile(text, now) : null
+        if (!record || record.spawnerSessionId !== spawnerSessionId) continue
+        if (this.pluginTasks.seedRestored(record)) seeded++
+      }
+      if (seeded > 0) this.feed.scheduleSummary()
+    })().catch(() => {
+      this.pluginTaskRestores.delete(spawnerSessionId)
+    })
+    this.pluginTaskRestores.set(spawnerSessionId, restore)
+    return restore
+  }
+
   private notifySessionUpserted(sessionId: string): void {
     // A session upsert fires (among other places) when an init commits -- the
     // first moment the parent's storage routing is known, which is what the
     // sub-agent restart-restore needs. Guarded + idempotent, so the extra
     // firings are cheap no-ops.
     void this.restoreFinishedSubAgentsFromDisk(sessionId)
+    void this.restorePluginTasksFromDisk(sessionId)
     const session = this.buildSessionInfo(sessionId)
     if (!session) return
     const message = {

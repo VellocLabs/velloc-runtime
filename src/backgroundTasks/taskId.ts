@@ -23,6 +23,8 @@ const KIND_LETTER: Record<NexusTaskKind, string> = {
   // Not `s`: native sub-agent ids start `subagent-`, and `taskKindFromId` is
   // prefix-only.
   local_supershell: 'h',
+  // A plugin's task (`$.task`).
+  local_plugin: 'p',
 }
 
 // Case-insensitive-safe alphabet (digits + lowercase).

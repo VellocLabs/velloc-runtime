@@ -32,6 +32,7 @@ const RAISED_ELSEWHERE: Record<string, string> = {
   'skill.prompt': 'the skill expansion',
   'agent.offer': 'the Agent tool, an agent type offered',
   'agent.complete': "the subagent coordinator, a run's terminal record",
+  'task.stop': 'the plugin task coordinator, a stop asked of a task',
   'config.describe': 'the /config menu',
   'classic.SubagentStart': 'the forked agent run (agents/forkedRun.ts)',
 }

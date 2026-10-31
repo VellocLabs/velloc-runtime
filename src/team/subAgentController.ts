@@ -13,7 +13,7 @@ export type SubAgentSnapshot = {
   /** 3-5 word task label from the original spawn, or shell command. */
   description: string
   /** Task backend type. Each kind keeps its own registry; all share one task-control surface. */
-  taskType?: 'local_agent' | 'local_bash' | 'local_supershell'
+  taskType?: 'local_agent' | 'local_bash' | 'local_supershell' | 'local_plugin'
   /** Resolved `subagent_type`, when the run used a named agent. */
   agentType?: string
   /** Final assistant text when terminal; best-effort partial text when running. */

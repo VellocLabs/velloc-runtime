@@ -849,6 +849,7 @@ export const ko: Messages = {
   'backgroundTasks.category.shell': 'Shell',
   'backgroundTasks.category.superShell': 'Super Shell',
   'backgroundTasks.category.runJs': 'Super Edit',
+  'backgroundTasks.category.plugin': '플러그인',
   'backgroundTasks.category.running': '실행 중',
   'backgroundTasks.runJsFallbackTitle': 'Super Edit …{id}',
   'backgroundTasks.superShellFallbackTitle': 'Super Shell …{id}',

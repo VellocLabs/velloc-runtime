@@ -224,9 +224,11 @@ export function formatTaskNotifications(
             }`
           : r.type === 'local_supershell'
             ? `SuperShell script "${r.description}" ${status}${r.summary ? `\n${r.summary}` : ''}`
-            : r.agentType
-              ? `${r.description} (${r.agentType}): ${r.summary}`
-              : `${r.description}: ${r.summary}`
+            : r.type === 'local_plugin'
+              ? `${r.description} (${r.plugin}): ${r.summary}`
+              : r.agentType
+                ? `${r.description} (${r.agentType}): ${r.summary}`
+                : `${r.description}: ${r.summary}`
       return (
         `<task-notification>\n` +
         `<task-id>${escapeTaskXml(r.taskId)}</task-id>\n` +

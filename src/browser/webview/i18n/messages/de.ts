@@ -864,6 +864,7 @@ export const de: Messages = {
   'backgroundTasks.category.shell': 'Shell',
   'backgroundTasks.category.superShell': 'Super Shell',
   'backgroundTasks.category.runJs': 'Super Edit',
+  'backgroundTasks.category.plugin': 'Plugins',
   'backgroundTasks.category.running': 'Läuft',
   'backgroundTasks.runJsFallbackTitle': 'Super Edit …{id}',
   'backgroundTasks.superShellFallbackTitle': 'Super Shell …{id}',

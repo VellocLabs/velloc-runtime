@@ -142,6 +142,8 @@ export type ModSlot = ToolCallMods &
     clientDetached?(clientId: string): void
     /** A subagent of the session reached its terminal state (`agent.complete`). */
     agentComplete?(e: import('./modAgents').ModAgentOutcome): void
+    /** A stop was asked of one of the session's plugin tasks (`task.stop`). */
+    taskStop?(e: import('../browser/worker/PluginTaskCoordinator').PluginTaskStopEvent): void
   }
 
 /** The slot of `sessionId`, for the hub's drawing actions; undefined when

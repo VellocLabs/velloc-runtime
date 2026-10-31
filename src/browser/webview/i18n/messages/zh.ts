@@ -844,6 +844,7 @@ export const zh: Messages = {
   'backgroundTasks.category.shell': 'Shell',
   'backgroundTasks.category.superShell': 'Super Shell',
   'backgroundTasks.category.runJs': 'Super Edit',
+  'backgroundTasks.category.plugin': '插件',
   'backgroundTasks.category.running': '运行中',
   'backgroundTasks.runJsFallbackTitle': 'Super Edit …{id}',
   'backgroundTasks.superShellFallbackTitle': 'Super Shell …{id}',

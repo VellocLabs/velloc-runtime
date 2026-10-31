@@ -642,6 +642,38 @@ export class SessionFeedPublisher {
         })
       }
     }
+    // local_plugin tasks (`$.task`): running rows, then the finished tail,
+    // filed under Plugins. `agentType` names the plugin and its kind of work;
+    // each progress report is the row's liveness, so a task that stopped
+    // reporting reads as quiet in the drawer.
+    for (const run of this.registry.liveByType('local_plugin')) {
+      rows.push({
+        sessionId: run.toolCallId ?? run.taskId,
+        spawnerSessionId: run.spawnerSessionId,
+        status: 'running',
+        type: 'local_plugin',
+        description: run.description,
+        agentType: `${run.plugin}:${run.kind}`,
+        startedAt: run.startedAt,
+        updates: run.updates,
+        ...(run.lastActivityAt !== undefined ? { lastActivityAt: run.lastActivityAt } : {}),
+      })
+    }
+    const recentFinishedPluginTasks = [...this.registry.finishedByType('local_plugin')]
+      .sort((a, b) => b.finishedAt - a.finishedAt)
+      .slice(0, MAX_SUBAGENT_SUMMARY_FINISHED)
+    for (const rec of recentFinishedPluginTasks) {
+      rows.push({
+        sessionId: rec.toolCallId ?? rec.taskId,
+        spawnerSessionId: rec.spawnerSessionId,
+        status: rec.status,
+        type: 'local_plugin',
+        description: rec.description,
+        agentType: `${rec.plugin}:${rec.kind}`,
+        startedAt: rec.startedAt,
+        finishedAt: rec.finishedAt,
+      })
+    }
     // local_js tasks (run_js executions). A synchronous run is usually a brief
     // flash while running; the finished tail is the useful record. The row's
     // sessionId is the tool call id (== the public task id), so the conversation

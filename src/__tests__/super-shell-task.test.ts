@@ -48,7 +48,7 @@ function setup() {
     routines,
     delivery,
     { getStorage: () => null, dropSessionRouting: () => {}, scheduleSummary: () => {} },
-    coordinator,
+    [coordinator],
   )
   return { registry, coordinator, surface, delivered, dropPredicates }
 }

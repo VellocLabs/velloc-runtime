@@ -246,6 +246,9 @@ export type ModAgentSpawnArgs = {
   /** `'worktree'`: the subagent works in its own git worktree when the
    *  project is a repository, as the Agent tool's `isolation`. */
   isolation?: 'worktree'
+  /** A running `$.task` of the plugin's that the subagent works for: the
+   *  task's stop stops it too (`children: 'stop'`). */
+  task?: string
 }
 
 export function modAgentSpawnArgsOf(value: unknown): ModAgentSpawnArgs {
@@ -262,6 +265,10 @@ export function modAgentSpawnArgsOf(value: unknown): ModAgentSpawnArgs {
   if (value.isolation !== undefined) {
     if (value.isolation !== 'worktree') throw new TypeError("$.agent.spawn: input.isolation must be 'worktree'")
     out.isolation = 'worktree'
+  }
+  if (value.task !== undefined) {
+    if (typeof value.task !== 'string' || value.task === '') throw new TypeError('$.agent.spawn: input.task must be a task id')
+    out.task = value.task
   }
   return out
 }

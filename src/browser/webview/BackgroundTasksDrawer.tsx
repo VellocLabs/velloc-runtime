@@ -16,6 +16,7 @@ import {
   GitForkIcon,
   Loader2Icon,
   MoreHorizontalIcon,
+  PuzzleIcon,
   RotateCcwIcon,
   ScrollTextIcon,
   SquareIcon,
@@ -728,7 +729,7 @@ export function BackgroundTasksDrawer({
                   // the outer detail column owns the only scrollbar.
                   <div data-testid="background-tasks-detail-output" className="flex flex-col">
                     <p className="mb-0.5 font-semibold">
-                      {info.type === 'local_js' || info.type === 'local_supershell'
+                      {info.type === 'local_js' || info.type === 'local_supershell' || info.type === 'local_plugin'
                         ? t('backgroundTasks.resultHeader')
                         : 'Output'}
                     </p>
@@ -786,7 +787,8 @@ export function BackgroundTasksDrawer({
               info?.type === 'local_bash' ||
               info?.type === 'local_fast' ||
               info?.type === 'local_js' ||
-              info?.type === 'local_supershell' ? null : (
+              info?.type === 'local_supershell' ||
+              info?.type === 'local_plugin' ? null : (
                 <div className="px-2 py-10 text-center text-xs text-muted-foreground">
                   {t("backgroundTasks.noMessages")}
                 </div>
@@ -957,7 +959,9 @@ export function BackgroundTasksDrawer({
                                 ? ClockIcon
                                 : kind === 'local_js'
                                   ? BracesIcon
-                                  : null
+                                  : kind === 'local_plugin'
+                                    ? PuzzleIcon
+                                    : null
                       const labelKey = taskRowLabelKey(item)
                       const primaryLabel = isBash
                         ? item.command ?? item.description

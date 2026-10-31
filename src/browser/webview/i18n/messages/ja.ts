@@ -853,6 +853,7 @@ export const ja: Messages = {
   'backgroundTasks.category.shell': 'Shell',
   'backgroundTasks.category.superShell': 'Super Shell',
   'backgroundTasks.category.runJs': 'Super Edit',
+  'backgroundTasks.category.plugin': 'プラグイン',
   'backgroundTasks.category.running': '実行中',
   'backgroundTasks.runJsFallbackTitle': 'Super Edit …{id}',
   'backgroundTasks.superShellFallbackTitle': 'Super Shell …{id}',

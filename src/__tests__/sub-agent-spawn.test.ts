@@ -70,6 +70,7 @@ import {
 import type { NexusTaskSummaryRow } from '../browser/bridge/protocol/ui'
 import { SharedWorkerSessionManager } from '../browser/worker/SharedWorkerSessionManager'
 import { registerModSlot, type ModSlot } from '../mods/modSlotRegistry'
+import { getPluginTaskController } from '../backgroundTasks/pluginTaskController'
 import type { ModAgentOutcome } from '../mods/modAgents'
 import { formatTaskNotifications } from '../browser/worker/taskProjection'
 import {
@@ -1881,6 +1882,42 @@ describe('SharedWorkerSessionManager — background sub-agent delivery', () => {
       expect(seen).toEqual([
         { agentId: done, status: 'completed', text: 'DONE_TOKEN', description: 'done task', type: 'Explore' },
         expect.objectContaining({ agentId: stopped, status: 'killed', description: 'stopped task', type: 'general-purpose' }),
+      ])
+    } finally {
+      unregister()
+    }
+  })
+
+  it('a plugin task shows as a Plugins row while it runs, is delivered once to an idle parent, and its stop reaches the slot', async () => {
+    const { manager } = setup()
+    const parent = makeFakeWorker()
+    seedParentSession(manager, 'parent-task', parent.worker, false)
+    const stops: unknown[] = []
+    const unregister = registerModSlot('parent-task', { taskStop: (e: unknown) => stops.push(e) } as unknown as ModSlot)
+    const rows = () =>
+      (manager as unknown as { feed: { buildSummaryPayload(): { subAgents: Array<{ sessionId: string; type: string; status: string; agentType?: string }> } } })
+        .feed.buildSummaryPayload().subAgents.filter(row => row.type === 'local_plugin')
+    try {
+      const tasks = getPluginTaskController()!
+      const done = tasks.start({ spawnerSessionId: 'parent-task', plugin: 'flow', kind: 'review', title: 'Review the diff' })
+      tasks.progress('parent-task', 'flow', done, { text: 'reading' })
+      expect(rows()).toEqual([expect.objectContaining({ sessionId: done, status: 'running', agentType: 'flow:review' })])
+      tasks.finish('parent-task', 'flow', done, { result: 'PLUGIN_RESULT_TOKEN' })
+      await settleSubmit(parent)
+      expect(parent.submits).toHaveLength(1)
+      expect(parent.submits[0]).toContain('<task-type>local_plugin</task-type>')
+      expect(parent.submits[0]).toContain('PLUGIN_RESULT_TOKEN')
+      expect(rows()).toEqual([expect.objectContaining({ sessionId: done, status: 'success' })])
+
+      const stopped = tasks.start({ spawnerSessionId: 'parent-task', plugin: 'flow', kind: 'review', title: 'Second' })
+      getSubAgentController()!.stop(stopped)
+      expect(stops).toEqual([{ taskId: stopped, plugin: 'flow', kind: 'review' }])
+      tasks.finish('parent-task', 'flow', stopped, { result: 'cut short' })
+      await settleSubmit(parent)
+      expect(parent.submits).toHaveLength(1)
+      expect(await tasks.list('parent-task', 'flow')).toEqual([
+        expect.objectContaining({ taskId: stopped, status: 'killed' }),
+        expect.objectContaining({ taskId: done, status: 'completed' }),
       ])
     } finally {
       unregister()

@@ -36,6 +36,7 @@ import {
 } from './modConfig'
 import { modToolSpecOf } from './modRegisteredTools'
 import { checkCallInput, checkConnectServer, mcpCallInput, mcpConnectInput, type ModMcpHost } from './modMcp'
+import { modTaskFinishArgsOf, modTaskProgressArgsOf, modTaskStartArgsOf, type ModTaskHost } from './modTasks'
 import { isModAgentOutcome, modAgentSpawnArgsOf, modAgentSpecOf, modAgentWaitArgsOf, type ModAgentHost, type ModAgentSpawnArgs, type ModAgentSpec } from './modAgents'
 import {
   classifyWith,
@@ -255,6 +256,9 @@ export type ModNounHost = {
    *  session's subagents, a spawn of the plugin's own (`modAgents.ts`);
    *  bound late like `tools`. */
   agents?: ModAgentHost
+  /** `$.task` — the plugin's background tasks (`modTasks.ts`). Absent: the
+   *  noun is refused. */
+  tasks?: ModTaskHost
   /** `$.session.messages` / `.usage` — the engine's transcript and the
    *  status line's figures (`sessionNouns.ts`); bound late like `tools`. */
   transcript?: ModTranscriptHost
@@ -1088,11 +1092,24 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
     spawn: {
       raisesItself: true as const,
       input: (args: readonly unknown[]) => modAgentSpawnArgsOf(args[0]),
-      run: (e: unknown, { call, session }: NounContext) =>
-        agentsHost(session).spawn(e as ModAgentSpawnArgs, {
+      run: async (e: unknown, { call, session }: NounContext) => {
+        const args = e as ModAgentSpawnArgs
+        // A task named is checked before anything launches.
+        if (args.task !== undefined) {
+          const mine = await tasksHost(session).list(call.plugin)
+          if (!mine.some(task => task.taskId === args.task && task.status === 'running')) {
+            throw nounRefusal('NotFoundError', `$.agent.spawn: ${args.task} is not a running task of this plugin`)
+          }
+        }
+        const result = await agentsHost(session).spawn(args, {
           context: call.context,
           ...(call.signal ? { signal: call.signal } : {}),
-        }),
+        })
+        if (args.task !== undefined && 'agentId' in result) {
+          tasksHost(session).adoptChild(args.task, result.agentId, call.plugin)
+        }
+        return result
+      },
     },
     // An op event: a plugin above sees which subagent another plugin waits
     // on. The wait itself is a `$` call, so a waiting noun method spends
@@ -1105,6 +1122,38 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
         })
       },
       accepts: isModAgentOutcome,
+    },
+  }),
+  // `$.task`: each call is an op event — a plugin above sees another
+  // plugin's tasks start, report and finish. The record is the platform's;
+  // a plugin addresses only its own tasks.
+  task: Object.assign(Object.create(null), {
+    start: {
+      input: (args: readonly unknown[]) => modTaskStartArgsOf(args[0]),
+      run: (e: unknown, { call, session }: NounContext) => tasksHost(session).start(modTaskStartArgsOf(e), call.plugin),
+      accepts: (result: unknown) => isRecord(result) && typeof result.taskId === 'string',
+    },
+    progress: {
+      input: (args: readonly unknown[]) => modTaskProgressArgsOf(args),
+      run: (e: unknown, { call, session }: NounContext) => {
+        const { taskId, update } = e as ReturnType<typeof modTaskProgressArgsOf>
+        tasksHost(session).progress(taskId, update, call.plugin)
+        return null
+      },
+      accepts: (result: unknown) => result === null,
+    },
+    finish: {
+      input: (args: readonly unknown[]) => modTaskFinishArgsOf(args),
+      run: (e: unknown, { call, session }: NounContext) => {
+        const { taskId, outcome } = e as ReturnType<typeof modTaskFinishArgsOf>
+        tasksHost(session).finish(taskId, outcome, call.plugin)
+        return null
+      },
+      accepts: (result: unknown) => result === null,
+    },
+    list: {
+      run: (_e: unknown, { call, session }: NounContext) => tasksHost(session).list(call.plugin),
+      accepts: Array.isArray,
     },
   }),
   // `$.script`: `script.run` is an op event — a plugin above sees the code
@@ -1605,6 +1654,17 @@ async function promptSuggest(args: PromptSuggestArgs, { call, session, dispatche
 function transcriptHost(session: ModNounHost, method: string): ModTranscriptHost {
   if (!session.transcript) notSupported(`$.session.${method} is not available: this session has no transcript to read`)
   return session.transcript!
+}
+
+function tasksHost(session: ModNounHost): ModTaskHost {
+  if (!session.tasks) notSupported('$.task is not available: this session keeps no background tasks')
+  return session.tasks!
+}
+
+function nounRefusal(name: string, message: string): Error {
+  const error = new Error(message)
+  error.name = name
+  return error
 }
 
 function agentsHost(session: ModNounHost): ModAgentHost {

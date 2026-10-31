@@ -160,6 +160,12 @@ export const RAISED_EVENTS: readonly string[] = Object.freeze([
   // `$.agent.wait`, and the end of each subagent run (modAgents.ts)
   'agent.wait',
   'agent.complete',
+  // `$.task`, and a stop asked of one (modTasks.ts)
+  'task.start',
+  'task.progress',
+  'task.finish',
+  'task.list',
+  'task.stop',
   // `$.script.run` (modScript.ts)
   'script.run',
   // the person's edit in the page's prompt box (modPromptEdit.ts), the rows

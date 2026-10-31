@@ -13,6 +13,7 @@ import {
   CircleUserRoundIcon,
   ClockIcon,
   GitForkIcon,
+  PuzzleIcon,
   TerminalIcon,
   UserPenIcon,
   ZapIcon,
@@ -95,13 +96,15 @@ export function filterSubAgentRowsBySession(
 /**
  * A drawer list category. Running work of any kind is `running` (pinned open); settled work is filed
  * by kind: `subagent` (`local_agent`, the session-title namer), `shell` (`local_bash`), `supershell`
- * (`local_supershell`; its steps are not listed again), `run_js` (`local_js`).
+ * (`local_supershell`; its steps are not listed again), `run_js` (`local_js`), `plugin`
+ * (`local_plugin`).
  */
 export type SubAgentCategory =
   | 'subagent'
   | 'shell'
   | 'supershell'
   | 'run_js'
+  | 'plugin'
   | 'running'
 
 /** A category and the sub-agent rows in it. */
@@ -122,7 +125,7 @@ const SESSION_TITLE_QUERY_SOURCE = 'rename_generate_name'
  * orchestrates, Super Edit).
  */
 export const SUB_AGENT_CATEGORY_ORDER: readonly SubAgentCategory[] =
-  ['running', 'subagent', 'shell', 'supershell', 'run_js']
+  ['running', 'subagent', 'shell', 'supershell', 'run_js', 'plugin']
 
 /** Category header label. */
 export const SUB_AGENT_CATEGORY_LABEL_KEY: Record<
@@ -133,6 +136,7 @@ export const SUB_AGENT_CATEGORY_LABEL_KEY: Record<
   shell: 'backgroundTasks.category.shell',
   supershell: 'backgroundTasks.category.superShell',
   run_js: 'backgroundTasks.category.runJs',
+  plugin: 'backgroundTasks.category.plugin',
   running: 'backgroundTasks.category.running',
 }
 
@@ -145,6 +149,7 @@ export const SUB_AGENT_CATEGORY_ICON: Record<SubAgentCategory, LucideIcon> = {
   shell: TerminalIcon,
   supershell: TerminalIcon,
   run_js: UserPenIcon,
+  plugin: PuzzleIcon,
   running: ActivityIcon,
 }
 
@@ -164,6 +169,7 @@ export const SUB_AGENT_CATEGORY_DEFAULT_EXPANDED: Record<
   shell: false,
   supershell: false,
   run_js: false,
+  plugin: false,
 }
 
 /**
@@ -183,6 +189,7 @@ export function categorizeSubAgentRow(
   }
   if (kind === 'local_supershell') return 'supershell'
   if (kind === 'local_js') return 'run_js'
+  if (kind === 'local_plugin') return 'plugin'
   if (kind === 'local_agent') return 'subagent'
   if (kind === 'local_fast' && row.querySource === SESSION_TITLE_QUERY_SOURCE) {
     return 'subagent'
@@ -266,6 +273,7 @@ export const TASK_KIND_ICON: Record<NexusTaskKind, LucideIcon> = {
   local_fast: ZapIcon,
   local_routine: ClockIcon,
   local_js: BracesIcon,
+  local_plugin: PuzzleIcon,
 }
 
 /** At most this many running tasks show before Show more. */

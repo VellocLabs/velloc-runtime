@@ -23,7 +23,7 @@ import {
 import type { RoutineCoordinator } from './RoutineCoordinator'
 import type { SideTaskCoordinator } from './SideTaskCoordinator'
 import type { SubAgentCoordinator } from './SubAgentCoordinator'
-import type { SuperShellTaskCoordinator } from './SuperShellTaskCoordinator'
+import type { TaskKindCoordinator } from './KindTaskCoordinator'
 import type { TaskDeliveryQueue } from './TaskDeliveryQueue'
 import type { TaskRegistry } from './TaskRegistry'
 import { SESSION_TITLE_QUERY_SOURCE } from './recoverTitleRows'
@@ -154,10 +154,16 @@ export class TaskControlSurface {
     private readonly routines: RoutineCoordinator,
     private readonly taskDelivery: TaskDeliveryQueue<NexusTaskDeliveryResult>,
     private readonly host: TaskControlSurfaceHost,
-    /** SuperShell invocations (`local_supershell`). Optional so hosts that
-     *  never run SuperShell (tests, older wiring) need not supply it. */
-    private readonly superShells?: SuperShellTaskCoordinator,
+    /** The kinds whose lifecycle a `KindTaskCoordinator` owns — SuperShell
+     *  invocations (`local_supershell`), plugin tasks (`local_plugin`). Empty
+     *  for hosts that run neither. */
+    private readonly kinds: readonly TaskKindCoordinator[] = [],
   ) {}
+
+  /** The kind coordinator that knows `id`, if any. */
+  private kindOwning(id: string): TaskKindCoordinator | undefined {
+    return this.kinds.find(kind => kind.owns(id))
+  }
 
   async loadTranscript(
     publicId: string,
@@ -187,8 +193,9 @@ export class TaskControlSurface {
       // source + result carried on NexusTaskInfo (see loadInfo).
       return []
     }
-    if (this.superShells?.owns(id)) {
-      // Nor does a SuperShell invocation: script, inputs and progress/result.
+    if (this.kindOwning(id)) {
+      // Nor does a SuperShell invocation or a plugin task: their detail is
+      // the header info.
       return []
     }
     const routine = this.routines.get(id)
@@ -310,9 +317,9 @@ export class TaskControlSurface {
         outputText: recoveredTitle.title,
       }
     }
-    const superShellInfo = this.superShells?.loadInfo(id)
-    if (superShellInfo) {
-      return superShellInfo
+    for (const kind of this.kinds) {
+      const info = kind.loadInfo(id)
+      if (info) return info
     }
     const runJs = this.liveRunJs(id)
     if (runJs) {
@@ -483,8 +490,9 @@ export class TaskControlSurface {
       void this.stopAndWait(message.sessionId).then(result => reply(result.status))
       return
     }
-    if (this.superShells?.owns(id)) {
-      reply(this.superShells.stop(id).status)
+    const kindForStop = this.kindOwning(id)
+    if (kindForStop) {
+      reply(kindForStop.stop(id).status)
       return
     }
     if (this.liveFork(id)) {
@@ -581,7 +589,7 @@ export class TaskControlSurface {
     if (finishedShell) {
       return finishedShellToSnapshot(finishedShell)
     }
-    return this.superShells?.getSnapshot(id) ?? null
+    return this.kindOwning(id)?.getSnapshot(id) ?? null
   }
 
   list(spawnerSessionId: string): SubAgentListEntry[] {
@@ -679,8 +687,9 @@ export class TaskControlSurface {
     ) {
       return this.shells.waitForCompletion(id, timeoutMs, signal)
     }
-    if (this.superShells?.owns(id)) {
-      return this.superShells.waitForCompletion(id, timeoutMs, signal)
+    const kindForWait = this.kindOwning(id)
+    if (kindForWait) {
+      return kindForWait.waitForCompletion(id, timeoutMs, signal)
     }
     const finished = this.finishedAgent(id)
     if (finished) {
@@ -780,8 +789,9 @@ export class TaskControlSurface {
         description: finishedShell.command,
       }
     }
-    if (this.superShells?.owns(id)) {
-      return this.superShells.stop(id)
+    const kindForTaskStop = this.kindOwning(id)
+    if (kindForTaskStop) {
+      return kindForTaskStop.stop(id)
     }
     const finishedAgent = this.finishedAgent(id)
     return finishedAgent
@@ -822,8 +832,9 @@ export class TaskControlSurface {
       )
       return
     }
-    if (this.superShells?.owns(id)) {
-      this.superShells.acknowledgeResult(id)
+    const kindForAck = this.kindOwning(id)
+    if (kindForAck) {
+      kindForAck.acknowledgeResult(id)
       return
     }
     this.shells.acknowledgeResult(id)
@@ -851,7 +862,7 @@ export class TaskControlSurface {
         this.sideTasks.stopFork(fork.agentId)
       }
     }
-    this.superShells?.stopChildren(spawnerSessionId)
+    for (const kind of this.kinds) kind.stopChildren(spawnerSessionId)
   }
 
   cascadeOnParentClose(spawnerSessionId: string): Promise<void> {
@@ -885,7 +896,7 @@ export class TaskControlSurface {
       this.subAgents.resolveWaiters(id)
     }
     this.taskDelivery.dropParent(spawnerSessionId)
-    this.superShells?.stopChildren(spawnerSessionId)
+    for (const kind of this.kinds) kind.stopChildren(spawnerSessionId)
     this.shells.stopChildren(spawnerSessionId)
     return Promise.allSettled(teardowns).then(() => {})
   }

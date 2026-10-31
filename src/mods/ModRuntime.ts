@@ -123,6 +123,7 @@ import { PausableDeadline } from '../browser/workerKernel/pausableDeadline'
 import { runProgram, type RunProgramOptions, type RunProgramResult } from '../browser/runJs/runProgram'
 import { createModScriptHost, type ModScriptCaller } from './modScript'
 import type { ModAgentOutcome } from './modAgents'
+import type { PluginTaskStopEvent } from '../browser/worker/PluginTaskCoordinator'
 import { ModPaneRegistry, type ModPane, type ModPaneOpenArgs, type ModPaneSeat } from './modPanes'
 import type { PluginUserConfigField } from '../pluginHost/pluginModel'
 import {
@@ -509,7 +510,7 @@ export class ModRuntime implements TurnExtensions {
   /** The roster's events, one after another, so a detach never overtakes
    *  its attach. */
   private rosterChain: Promise<void> = Promise.resolve()
-  /** `agent.complete` raises, one at a time. */
+  /** `agent.complete` and `task.stop` raises, one at a time. */
   private agentChain: Promise<void> = Promise.resolve()
   /** The host the nouns are served with: the session's, with `env`, `state`
    *  and `store` defaulted where it supplies none. */
@@ -3930,6 +3931,20 @@ export class ModRuntime implements TurnExtensions {
         await this.dispatcher.dispatch('agent.complete', e, () => ({ agentId: e.agentId }), { accepts: isRecord })
       } catch (error) {
         this.options.report(`mods: agent.complete failed: ${errorMessage(error)}`)
+      }
+    })
+  }
+
+  /** `task.stop`: observe-only, raised once per stop asked of a plugin
+   *  task; the owning plugin ends its work and finishes the task. Never
+   *  rejects. */
+  taskStop(e: PluginTaskStopEvent): void {
+    this.agentChain = this.agentChain.then(async () => {
+      if (this.disposed || !this.dispatcher.hasHooksFor('task.stop')) return
+      try {
+        await this.dispatcher.dispatch('task.stop', e, () => ({ taskId: e.taskId }), { accepts: isRecord })
+      } catch (error) {
+        this.options.report(`mods: task.stop failed: ${errorMessage(error)}`)
       }
     })
   }

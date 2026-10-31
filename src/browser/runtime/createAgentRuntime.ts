@@ -99,6 +99,7 @@ import { SessionSnapshotStore } from '../../sessions/fileSnapshots/snapshotStore
 import { FileSnapshotRecorder } from '../../sessions/fileSnapshots/snapshotRecorder'
 import { WorkspaceDiffTool } from '../../toolkit/builtin/workspaceDiff'
 import { isPluginTemplateId } from '../../mods/ui/uiManifest'
+import { pluginTasksForSession } from '../../mods/modTasks'
 import { runtimeProviderGate } from '../../pluginHost/providerGate'
 import { registerMemoryExtractor } from '../../memory/extract/extractionRunner'
 import { registerMemoryConsolidator } from '../../memory/consolidate/consolidationRunner'
@@ -2094,6 +2095,8 @@ ${teammateAddendum}`
           spawn: (args, raise) => modEngine('$.agent').modAgents.spawn(args, raise),
           wait: (agentId, options) => modEngine('$.agent').modAgents.wait(agentId, options),
         },
+        // `$.task`: the session's plugin tasks, kept by the session manager.
+        tasks: pluginTasksForSession(resolvedSessionId),
         // `$.prompt.submit`: `prompt.submit` raised by the slot's mod
         // runtime with the caller's context, core the worker's turn queue;
         // `$.prompt.compose`: the engine's render, bound late like `tools`.

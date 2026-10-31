@@ -165,9 +165,9 @@ describe('no hard-coded user-visible strings in the webview UI', () => {
       ...Object.values(SUB_AGENT_CATEGORY_LABEL_KEY),
       ...Object.values(SUB_AGENT_STATUS_LABEL_KEY),
     ]
-    // 5 kind categories (subagent / shell / supershell / run_js / running) + 4
-    // per-row statuses.
-    expect(keys.length).toBe(9)
+    // 6 kind categories (subagent / shell / supershell / run_js / plugin /
+    // running) + 4 per-row statuses.
+    expect(keys.length).toBe(10)
     const unresolved = keys.filter(k => !(k in en))
     expect(unresolved).toEqual([])
   })

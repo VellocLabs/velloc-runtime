@@ -184,6 +184,10 @@ export type NexusTaskKind =
   // continues in the background and is read with TaskOutput, stopped with
   // TaskStop, and delivered as a `<task-notification>` like a background shell.
   | 'local_supershell'
+  // A plugin's own long-running work (`$.task`, F-25): started, updated and
+  // finished by the plugin; read with TaskOutput, stopped with TaskStop, and
+  // delivered once as a `<task-notification>`.
+  | 'local_plugin'
 
 /**
  * A background TASK row for the human-facing surface (G2/G5) — today an `Agent`

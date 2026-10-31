@@ -582,6 +582,25 @@ export class SessionStorageCoordinator {
     return names.filter(name => name.startsWith('subagent-'))
   }
 
+  /** The file names (no directories) under `<subagents dir>/<subdir>/`. */
+  async listSubAgentFiles(spawnerSessionId: string, subdir: string): Promise<string[]> {
+    const dir = this.getSubAgentsDirForParent(spawnerSessionId)
+    const transport = this.host.getDirectBridgeTransport()
+    if (!dir || !transport) return []
+    try {
+      const response = await transport.request({
+        id: globalThis.crypto?.randomUUID?.() ?? `readdir-${subdir}`,
+        route: createBridgeRoute('fs', 'readdir'),
+        payload: { path: joinRuntimePath(dir, subdir) },
+      })
+      if (!response.ok) return []
+      const entries = response.result as Array<{ name: string; isDirectory?: boolean }>
+      return entries.filter(e => !e.isDirectory).map(e => e.name)
+    } catch {
+      return []
+    }
+  }
+
   /** Read one file under `<subagents dir>/<subagentSessionId>/` as UTF-8 text;
    *  null when missing/unreadable. */
   async readSubAgentFile(

@@ -117,6 +117,18 @@ export type NexusTaskDeliveryResult =
   | SubAgentResult
   | BackgroundShellDeliveryResult
   | SuperShellDeliveryResult
+  | PluginTaskDeliveryResult
+
+/** A plugin task's result, queued for delivery. `<description> (<plugin>):
+ *  <summary>`. */
+export type PluginTaskDeliveryResult = {
+  type: 'local_plugin'
+  taskId: string
+  description: string
+  plugin: string
+  status: 'success' | 'error'
+  summary: string
+}
 
 /** A finished background SuperShell invocation's result, queued for delivery.
  *  Formatted like an agent result (`<description>: <summary>`). */
@@ -396,6 +408,70 @@ export type FinishedSuperShellRecord = {
   finishedAt: number
 }
 
+// ---------- Plugin task (`local_plugin`) types ----------
+
+/** One line of a plugin task's progress, shown in the drawer detail. */
+export type PluginTaskItem = { id: string; label: string; status: string; phase?: string }
+
+/** What a plugin last reported of a running task (`$.task.progress`). */
+export type PluginTaskProgress = {
+  text?: string
+  items?: PluginTaskItem[]
+  /** Any JSON the plugin keeps on the task; TaskOutput reads it. */
+  data?: unknown
+  /** Set when `text` or `items` were cut to their caps. */
+  truncated?: boolean
+}
+
+/**
+ * A running plugin task (`PluginTaskCoordinator`). The native id is the minted
+ * public id (`p…`). `plugin` owns it: only that plugin may update or finish it.
+ */
+export type PluginTaskRunState = {
+  type: 'local_plugin'
+  taskId: string
+  /** The tool call the task belongs to, when the plugin named one. */
+  toolCallId?: string
+  spawnerSessionId: string
+  /** The task's title. */
+  description: string
+  plugin: string
+  /** The plugin's own name for this kind of work (`workflow`). */
+  kind: string
+  startedAt: number
+  progress: PluginTaskProgress
+  /** Progress reports so far, and the time of the last: the drawer's
+   *  liveness. */
+  updates: number
+  lastActivityAt?: number
+  /** What a stop does to the subagents the task adopted. */
+  children: 'stop' | 'abandon'
+  childAgentIds: string[]
+  /** Set once a stop was asked for; the task then has a grace period to
+   *  finish before it is recorded stopped. */
+  stopRequestedAt?: number
+}
+
+/** Terminal record of a plugin task. `interrupted`: it was running when the
+ *  app closed, and was restored from its file as stopped. */
+export type FinishedPluginTaskRecord = {
+  type: 'local_plugin'
+  taskId: string
+  toolCallId?: string
+  spawnerSessionId: string
+  description: string
+  plugin: string
+  kind: string
+  status: 'success' | 'error' | 'stopped'
+  resultText: string
+  progress: PluginTaskProgress
+  startedAt: number
+  finishedAt: number
+  interrupted?: boolean
+  /** The task's children policy; absent on a record read back from disk. */
+  children?: 'stop' | 'abandon'
+}
+
 // The finished-`local_js` FIFO cap lives with the other SideTaskCoordinator-owned
 // caps (MAX_FINISHED_FORKS / MAX_FINISHED_FAST_CALLS) in SideTaskCoordinator.ts,
 // not here — only the Manager-owned kinds (sub-agent, routine) cap from this file.
@@ -474,6 +550,7 @@ export type NexusTaskState =
   | FastCallRunState
   | RunJsRunState
   | SuperShellRunState
+  | PluginTaskRunState
 export type NexusFinishedTaskRecord =
   | FinishedSubAgentRecord
   | FinishedBackgroundShellRecord
@@ -482,3 +559,4 @@ export type NexusFinishedTaskRecord =
   | FinishedRoutineRecord
   | FinishedRunJsRecord
   | FinishedSuperShellRecord
+  | FinishedPluginTaskRecord
