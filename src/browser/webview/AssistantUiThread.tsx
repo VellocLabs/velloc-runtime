@@ -518,6 +518,10 @@ export function resolveComposerSendGate(params: {
     return { kind: 'awaiting-confirm' }
   }
   if (snapshot.needsProjectFolder) return { kind: 'needs-project-folder' }
+  // A loaded catalog lists every registered provider, so `null` means it has
+  // not arrived yet: no grounds to say a provider is missing. The worker holds
+  // the first submit for the catalog itself.
+  if (snapshot.modelCatalog == null) return { kind: 'send' }
   const catalog = createConfiguredModelCatalog(snapshot.modelCatalog)
   if (!isSelectionEnabled(catalog, snapshot.currentSelection)) {
     // `createConfiguredModelCatalog` only keeps `defaultSelection` when it

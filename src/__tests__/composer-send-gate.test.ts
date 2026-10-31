@@ -157,13 +157,42 @@ describe('resolveComposerSendGate', () => {
     expect(
       resolveComposerSendGate({
         snapshot: snapshot({
-          currentSelection: { providerId: 'demo', modelId: 'retired-model' },
-          modelCatalog: null,
+          currentSelection: { providerId: 'demo', modelId: 'demo-model' },
+          modelCatalog: {
+            providers: [
+              {
+                id: 'demo',
+                name: 'Demo',
+                enabled: false,
+                models: [{ id: 'demo-model', name: 'Demo Model', enabled: true }],
+              },
+            ],
+          } as unknown as AgentRuntimeWorkerSnapshot['modelCatalog'],
         }),
         activeSessionId: 'session-a',
         canAdoptDefault: true,
       }),
     ).toEqual({ kind: 'provider-missing' })
+  })
+
+  it('sends before the model catalog has loaded instead of claiming no provider is set up', () => {
+    // `null` is "not fetched yet": the worker holds the first submit for it.
+    // A refusal here would show the set-up-a-provider dialog to a user whose
+    // provider is configured and only slow to load.
+    for (const modelCatalog of [null, undefined]) {
+      expect(
+        resolveComposerSendGate({
+          snapshot: snapshot({
+            activeModelId: 'inherit',
+            currentProviderId: undefined,
+            currentSelection: undefined,
+            modelCatalog,
+          }),
+          activeSessionId: 'session-a',
+          canAdoptDefault: true,
+        }),
+      ).toEqual({ kind: 'send' })
+    }
   })
 })
 
