@@ -3,6 +3,7 @@ import { useAssistantState } from "@assistant-ui/react";
 import { ListChecksIcon } from "lucide-react";
 import { InkRipple } from "./ink-ripple";
 import { useT } from "@/browser/webview/i18n";
+import { countRunningWork } from "@/browser/webview/backgroundSubAgents";
 import { useBackgroundTasksContext } from "./background-tasks-context";
 
 /**
@@ -12,9 +13,10 @@ import { useBackgroundTasksContext } from "./background-tasks-context";
  */
 export const BackgroundTasksFooterControl: FC = () => {
   const t = useT();
-  const { openTasksDrawer, runningTaskCount } = useBackgroundTasksContext();
+  const { openTasksDrawer, runningTaskCount, taskRows } = useBackgroundTasksContext();
   const isRunning = useAssistantState((s) => s.thread.isRunning);
-  const count = runningTaskCount ?? 0;
+  // A loop timer only waits for its next fire (F-15): it is not work still running.
+  const count = taskRows ? countRunningWork(taskRows) : (runningTaskCount ?? 0);
   if (isRunning || count <= 0) return null;
 
   return (

@@ -508,6 +508,9 @@ export class ManagerBootServices {
         notificationSinks: this.buildNotificationSinks(),
         logEvent: (event, data) => this.host.trace(event, data),
       })
+      // Loop timers ride the summary feed (F-15): re-publish on every registry change.
+      this.routineRuntimeHandle.registry.onChange(() => this.host.scheduleSummary())
+      this.host.scheduleSummary()
       try {
         const registry = getRoutineRegistry()
         const homeDir = this.host.getHomeDir()

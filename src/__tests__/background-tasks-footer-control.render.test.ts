@@ -10,6 +10,7 @@ import {
 } from '@assistant-ui/react'
 import { BackgroundTasksFooterControl } from '../components/assistant-ui/background-tasks-footer-control'
 import { BackgroundTasksContext } from '../components/assistant-ui/background-tasks-context'
+import type { NexusTaskSummaryRow } from '../browser/bridge/protocol/ui'
 
 /**
  * The composer-footer "session still working" indicator: a settled turn with
@@ -28,6 +29,7 @@ function makeHarness(
   contextValue: {
     openTasksDrawer?: (id?: string) => void
     runningTaskCount?: number
+    taskRows?: NexusTaskSummaryRow[]
   },
 ): FC {
   const AssistantMessage: FC = () => null
@@ -108,5 +110,21 @@ describe('BackgroundTasksFooterControl', () => {
     cleanup()
     render(createElement(makeHarness(false, {})))
     expect(control()).toBeNull()
+  })
+
+  it('a loop timer waiting for its next fire is not work still running', () => {
+    const timer: NexusTaskSummaryRow = {
+      sessionId: 'rt_1',
+      spawnerSessionId: 'P',
+      status: 'running',
+      type: 'local_timer',
+      description: 'loop-check-deploy',
+    }
+    render(createElement(makeHarness(false, { runningTaskCount: 1, taskRows: [timer] })))
+    expect(control()).toBeNull()
+    cleanup()
+    const shell: NexusTaskSummaryRow = { ...timer, sessionId: 'b1', type: 'local_bash' }
+    render(createElement(makeHarness(false, { runningTaskCount: 2, taskRows: [timer, shell] })))
+    expect(control()!.textContent).toContain('1 background task still running')
   })
 })

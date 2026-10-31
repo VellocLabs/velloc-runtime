@@ -143,6 +143,8 @@ import { SideTaskCoordinator } from './SideTaskCoordinator'
 import { RoutineCoordinator } from './RoutineCoordinator'
 import type { RestartWorkInputs } from '../runtimeHub/restartReadiness'
 import type { DeliverRoutineToSession } from '../../routines/SessionDeliveryRunner'
+import { getRoutineRegistry } from '../../routines/RoutineRegistry'
+import { listSessionTimers } from '../../routines/sessionTimers'
 import { BackgroundShellCoordinator } from './BackgroundShellCoordinator'
 import { SuperShellTaskCoordinator } from './SuperShellTaskCoordinator'
 import {
@@ -1060,6 +1062,7 @@ export class SharedWorkerSessionManager {
         this.maybeNotifyTurnEnd(sessionId, prevPhase, nextPhase),
       getFsSummaries: () => this.fsSummaries,
       routineTasks: () => this.routines.all(),
+      sessionTimers: () => listSessionTimers(getRoutineRegistry()?.list() ?? []),
       recoveredRunJsRows: () => this.recoveredRunJs.entries(),
       recoveredBashRows: () => this.recoveredBash.entries(),
       recoveredSuperShellRows: () => this.recoveredSuperShell.entries(),

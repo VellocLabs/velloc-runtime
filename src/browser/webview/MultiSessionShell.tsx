@@ -247,6 +247,7 @@ import {
   filterSubAgentRowsBySession,
   subAgentsEqual,
 } from './backgroundSubAgents'
+import { loopTimerStopRequest } from './loopTimers'
 import { resolvePlanApproval } from '@/permissions/planApproval'
 import { createPlanAutoOpenGate } from './planAutoOpenGate'
 import { snapshotNeedsAnswer } from '@/utils/sessionNeedsAnswer'
@@ -1406,6 +1407,7 @@ export function MultiSessionShell({
     submitActionMessage,
     continueConversation,
     submitComposerMessage,
+    submitPromptToSession,
     submitComposerMessageToSession,
     submitToolResult,
     loadToolCallDetail,
@@ -2424,6 +2426,19 @@ export function MultiSessionShell({
       return rows
     }
   }, [subAgentRows])
+  // A loop timer stops by asking its session to delete the routine (F-15);
+  // every other task stops through the runtime. Rows read through a ref so the
+  // handler keeps one identity across feed updates.
+  const subAgentRowsRef = useRef(subAgentRows)
+  subAgentRowsRef.current = subAgentRows
+  const handleStopBackgroundTask = useCallback((taskId: string) => {
+    const timerStop = loopTimerStopRequest(subAgentRowsRef.current, taskId)
+    if (timerStop) {
+      void submitPromptToSession(timerStop.sessionId, timerStop.prompt)
+      return
+    }
+    handleStopSubAgent(taskId)
+  }, [handleStopSubAgent, submitPromptToSession])
   // LAZY restart-recovery of the Background Tasks drawer rows: only when the
   // drawer is actually OPEN do we ask the worker to rebuild this session's
   // recovered shell + run_js rows from its persisted transcript
@@ -4447,7 +4462,7 @@ export function MultiSessionShell({
         taskListRequest={backgroundTaskListRequest}
         onTaskFocusConsumed={handleTaskFocusConsumed}
         onCloseTasks={() => closePaneFor('tasks')}
-        onTaskStop={handleStopSubAgent}
+        onTaskStop={handleStopBackgroundTask}
         onTaskResume={handleResumeSubAgent}
         loadTaskTranscript={handleLoadSubAgentTranscript}
         diffTarget={rightPanelDiffTarget}
@@ -4785,7 +4800,7 @@ export function MultiSessionShell({
                   // "still working" indicator.
                   runningBackgroundTaskCount={countRunning(subAgentRowsForSession(sessionId))}
                   backgroundTaskRows={subAgentRowsForSession(sessionId)}
-                  onStopBackgroundTask={handleStopSubAgent}
+                  onStopBackgroundTask={handleStopBackgroundTask}
                   onOpenBackgroundTasksList={handleOpenBackgroundTasksList}
                   onOpenPlanPanel={() => openPaneFor('plan')}
                   onOpenFileInPanel={openFile}

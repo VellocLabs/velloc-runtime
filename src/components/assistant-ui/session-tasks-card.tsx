@@ -4,6 +4,7 @@ import { CheckCheckIcon, Loader2Icon, SquareIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { durationLabel } from "@/utils/humanize/durationLabel";
 import { useT } from "@/browser/webview/i18n";
+import { loopTimerCountdown } from "@/browser/webview/loopTimers";
 import type { NexusTaskSummaryRow } from "@/browser/bridge/protocol/ui";
 import {
   SESSION_TASKS_RUNNING_LIMIT,
@@ -18,6 +19,8 @@ import { useBackgroundTasksContext } from "./background-tasks-context";
  * shells and subagents — at most five until Show more — each with its
  * elapsed time and a stop button, then how many finished. A running row opens
  * its detail in the side panel's Tasks view; the finished row opens the list.
+ * A loop timer (F-15) shows the countdown to its next fire in place of an
+ * elapsed time.
  */
 
 const ROW_CLASS =
@@ -70,7 +73,11 @@ export function SessionTasksList() {
             >
               <Icon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
               <span className={cn("min-w-0 flex-1 truncate", kind === "local_bash" && "font-mono text-[12px]")}>{label}</span>
-              {row.startedAt !== undefined ? (
+              {kind === "local_timer" ? (
+                <span data-testid="session-card-task-countdown" className="shrink-0 text-muted-foreground text-[12px] tabular-nums">
+                  {loopTimerCountdown(row.nextFireAt, now, t)}
+                </span>
+              ) : row.startedAt !== undefined ? (
                 <span data-testid="session-card-task-elapsed" className="shrink-0 text-muted-foreground text-[12px] tabular-nums">
                   {durationLabel(Math.max(0, now - row.startedAt))}
                 </span>

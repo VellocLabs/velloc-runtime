@@ -9,6 +9,7 @@
 
 import {
   ActivityIcon,
+  AlarmClockIcon,
   BracesIcon,
   CircleUserRoundIcon,
   ClockIcon,
@@ -45,7 +46,9 @@ export function subAgentsEqual(
       x.superShellTaskId !== y.superShellTaskId ||
       x.agentType !== y.agentType ||
       x.querySource !== y.querySource ||
-      x.updates !== y.updates
+      x.updates !== y.updates ||
+      x.schedule !== y.schedule ||
+      x.nextFireAt !== y.nextFireAt
     ) {
       return false
     }
@@ -76,6 +79,17 @@ export function countRunning(
   if (!rows) return 0
   let n = 0
   for (const r of rows) if (r.status === 'running') n++
+  return n
+}
+
+/** Running rows that are doing work now: every running row but a loop timer,
+ *  which only waits for its next fire (F-15). */
+export function countRunningWork(
+  rows: readonly NexusTaskSummaryRow[] | undefined,
+): number {
+  if (!rows) return 0
+  let n = 0
+  for (const r of rows) if (r.status === 'running' && r.type !== 'local_timer') n++
   return n
 }
 
@@ -274,6 +288,7 @@ export const TASK_KIND_ICON: Record<NexusTaskKind, LucideIcon> = {
   local_routine: ClockIcon,
   local_js: BracesIcon,
   local_plugin: PuzzleIcon,
+  local_timer: AlarmClockIcon,
 }
 
 /** At most this many running tasks show before Show more. */

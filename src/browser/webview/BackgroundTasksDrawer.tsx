@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import {
+  AlarmClockIcon,
   ArrowLeftIcon,
   BracesIcon,
   CheckIcon,
@@ -46,6 +47,7 @@ import {
   taskRowLabelKey,
   type SubAgentCategory,
 } from './backgroundSubAgents'
+import { loopTimerCountdown, loopTimerScheduleText } from './loopTimers'
 import { useT } from "./i18n";
 import { useSessionAreaVisible } from './sessionAreaVisibility'
 
@@ -261,6 +263,68 @@ function formatStartedDate(ms: number): string {
     : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`
 }
 
+/**
+ * A loop timer (F-15) in the Running section: name, schedule in words and the
+ * countdown to its next fire, with the stop button on the row. A timer has no
+ * transcript, so the row opens nothing.
+ */
+function LoopTimerRow({
+  item,
+  now,
+  pending,
+  focused,
+  onStop,
+}: {
+  item: NexusTaskSummaryRow
+  now: number
+  pending: boolean
+  focused: boolean
+  onStop: () => void
+}): ReactElement {
+  const t = useT()
+  const scrollIntoView = useCallback((el: HTMLLIElement | null) => {
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [])
+  const meta = [loopTimerScheduleText(item.schedule ?? '', t)]
+  const countdown = loopTimerCountdown(item.nextFireAt, now, t)
+  if (countdown) meta.push(countdown)
+  return (
+    <li
+      ref={focused ? scrollIntoView : undefined}
+      data-task-kind="local_timer"
+      data-testid="subagent-timer-row"
+      data-focused={focused || undefined}
+      className={cn(
+        'flex items-center gap-1.5 rounded-md border bg-card px-2 py-1.5 text-xs',
+        focused && 'ring-1 ring-ring',
+      )}
+    >
+      <AlarmClockIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1" title={`${item.description} · ${item.sessionId}`}>
+        <div className="truncate font-medium text-foreground/90">{item.description}</div>
+        <div data-testid="subagent-timer-meta" className="truncate text-[11px] tabular-nums text-muted-foreground">
+          {meta.join(' · ')}
+        </div>
+      </div>
+      <button
+        type="button"
+        data-testid="subagent-timer-stop"
+        aria-label={t('sessionCards.stopTask', { task: item.description })}
+        title={t('sessionCards.stopTaskHint')}
+        disabled={pending}
+        onClick={onStop}
+        className="flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-60"
+      >
+        {pending ? (
+          <Loader2Icon aria-hidden className="size-3.5 animate-spin" />
+        ) : (
+          <SquareIcon aria-hidden strokeWidth={1.75} className="size-3" />
+        )}
+      </button>
+    </li>
+  )
+}
+
 /** Dropdown menu item styling (mirrors the sidebar row-actions menu). */
 const MENU_ITEM_CLASS =
   'flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 ' +
@@ -344,13 +408,17 @@ export function BackgroundTasksDrawer({
   // row is actually running (ages render only for running rows), so the detail
   // view and an all-finished list don't re-render the drawer every 5s for nothing.
   const hasRunningRows = rows.some((r) => r.status === 'running')
+  // A loop timer's countdown (F-15) ticks every second.
+  const hasTimerRows = rows.some((r) => r.type === 'local_timer')
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (view.kind !== 'list' || !hasRunningRows) return
     setNow(Date.now()) // refresh immediately so a re-armed ticker isn't stale
-    const id = window.setInterval(() => setNow(Date.now()), 5000)
+    const id = window.setInterval(() => setNow(Date.now()), hasTimerRows ? 1000 : 5000)
     return () => window.clearInterval(id)
-  }, [view.kind, hasRunningRows])
+  }, [view.kind, hasRunningRows, hasTimerRows])
+  // The timer a focus request named: a timer has no detail, so the list shows it.
+  const [focusedTimerId, setFocusedTimerId] = useState<string | null>(null)
 
   const loadDetail = useCallback(
     (sessionId: string, opts?: { silent?: boolean }) => {
@@ -412,7 +480,14 @@ export function BackgroundTasksDrawer({
     if (consumedFocusRef.current === focusSessionId) return
     consumedFocusRef.current = focusSessionId
     onFocusConsumed?.()
-    if (rows.some((r) => r.sessionId === focusSessionId)) {
+    const focusedRow = rows.find((r) => r.sessionId === focusSessionId)
+    if (focusedRow?.type === 'local_timer') {
+      detailReqRef.current = null
+      setView({ kind: 'list' })
+      setFocusedTimerId(focusSessionId)
+      return
+    }
+    if (focusedRow) {
       openDetail(focusSessionId)
       return
     }
@@ -515,8 +590,11 @@ export function BackgroundTasksDrawer({
     }
   }, [detailSessionId, detailStatus, detailActivityAt, loadDetail])
 
-  const markPending = (id: string, action: PendingAction) => {
+  const markPending = (id: string, action: PendingAction, untilFeed = false) => {
     setPending((prev) => new Map(prev).set(id, action))
+    // A loop timer's stop is a turn of its session, which may wait on a
+    // permission prompt: it stays pending until the feed drops the row.
+    if (untilFeed) return
     // Safety net: never leave a row spinning if the feed never reflects the
     // action (e.g. a no-op resume that returns 'unavailable').
     window.setTimeout(() => {
@@ -530,7 +608,8 @@ export function BackgroundTasksDrawer({
   }
 
   const handleStop = (id: string) => {
-    markPending(id, 'stop')
+    const isTimer = rows.some((r) => r.sessionId === id && r.type === 'local_timer')
+    markPending(id, 'stop', isTimer)
     onStop(id)
   }
 
@@ -916,6 +995,18 @@ export function BackgroundTasksDrawer({
                     {group.items.map((item) => {
                       const isRunning = item.status === 'running'
                       const isPending = pending.has(item.sessionId)
+                      if (item.type === 'local_timer') {
+                        return (
+                          <LoopTimerRow
+                            key={item.sessionId}
+                            item={item}
+                            now={now}
+                            pending={isPending}
+                            focused={item.sessionId === focusedTimerId}
+                            onStop={() => handleStop(item.sessionId)}
+                          />
+                        )
+                      }
                       const meta: string[] = [
                         t(SUB_AGENT_STATUS_LABEL_KEY[item.status]),
                       ]

@@ -1480,3 +1480,75 @@ describe('BackgroundTasksDrawer Super Shell section', () => {
     expect(document.body.textContent).not.toContain('Sub-agent')
   })
 })
+
+describe('BackgroundTasksDrawer — loop timers', () => {
+  function timerRow(over: Partial<NexusTaskSummaryRow> = {}): NexusTaskSummaryRow {
+    return {
+      sessionId: 'rt_loop_1',
+      spawnerSessionId: 'P',
+      status: 'running',
+      type: 'local_timer',
+      description: 'loop-check-deploy',
+      schedule: '* * * * *',
+      nextFireAt: Date.now() + 46_000,
+      ...over,
+    }
+  }
+
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+  })
+
+  it('lists a timer under Running with its schedule and a per-second countdown', () => {
+    vi.useFakeTimers({ now: NOW })
+    render(createElement(BackgroundTasksDrawer, drawerProps({ rows: [timerRow({ nextFireAt: NOW + 46_000 })] })))
+    const rows = rowsInSection('subagent-category-running')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.getAttribute('data-task-kind')).toBe('local_timer')
+    expect(rows[0]!.textContent).toContain('loop-check-deploy')
+    const meta = () => document.querySelector('[data-testid="subagent-timer-meta"]')!.textContent
+    expect(meta()).toBe('Every minute · Next 46s')
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(meta()).toBe('Every minute · Next 45s')
+  })
+
+  it('stop calls onStop and stays pending until the feed drops the row', () => {
+    vi.useFakeTimers({ now: NOW })
+    const onStop = vi.fn()
+    const { rerender } = render(
+      createElement(BackgroundTasksDrawer, drawerProps({ rows: [timerRow()], onStop })),
+    )
+    const stop = () => document.querySelector<HTMLButtonElement>('[data-testid="subagent-timer-stop"]')
+    act(() => {
+      stop()!.click()
+    })
+    expect(onStop).toHaveBeenCalledWith('rt_loop_1')
+    expect(stop()!.disabled).toBe(true)
+    // No safety timeout: the session's turn may wait on a permission prompt.
+    act(() => {
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(stop()!.disabled).toBe(true)
+    rerender(createElement(BackgroundTasksDrawer, drawerProps({ rows: [], onStop })))
+    expect(stop()).toBeNull()
+  })
+
+  it('a focus request on a timer shows the list with that timer marked, not a detail', async () => {
+    const onFocusConsumed = vi.fn()
+    const loadTranscript = vi.fn(async () => null)
+    render(
+      createElement(
+        BackgroundTasksDrawer,
+        drawerProps({ rows: [timerRow(), runningRow()], focusSessionId: 'rt_loop_1', onFocusConsumed, loadTranscript }),
+      ),
+    )
+    await waitFor(() => expect(onFocusConsumed).toHaveBeenCalledTimes(1))
+    expect(detailEl()).toBeNull()
+    expect(loadTranscript).not.toHaveBeenCalled()
+    const timer = document.querySelector('[data-testid="subagent-timer-row"]')!
+    expect(timer.getAttribute('data-focused')).toBe('true')
+  })
+})

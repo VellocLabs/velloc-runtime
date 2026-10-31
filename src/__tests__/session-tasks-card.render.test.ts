@@ -113,4 +113,35 @@ describe('SessionTasksList', () => {
     expect(screen.queryByTestId('session-card-task-stop')).toBeNull()
     expect(screen.getByTestId('session-card-tasks-finished').textContent).toBe('1 finished')
   })
+
+  it('a loop timer shows its countdown, ticks each second, and stops through stopTask', () => {
+    vi.useFakeTimers({ now: NOW })
+    const stopTask = vi.fn()
+    const openTasksDrawer = vi.fn()
+    draw({
+      taskRows: [row('rt_1', 'running', { type: 'local_timer', description: 'loop-check-deploy', schedule: '* * * * *', nextFireAt: NOW + 46_000 })],
+      runningTaskCount: 1,
+      stopTask,
+      openTasksDrawer,
+    })
+    const task = screen.getByTestId('session-card-task')
+    expect(task.getAttribute('data-task-kind')).toBe('local_timer')
+    expect(task.querySelector('svg.lucide-alarm-clock')).not.toBeNull()
+    expect(screen.getByTestId('session-card-task-countdown').textContent).toBe('Next 46s')
+    expect(screen.queryByTestId('session-card-task-elapsed')).toBeNull()
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(screen.getByTestId('session-card-task-countdown').textContent).toBe('Next 45s')
+    act(() => {
+      vi.advanceTimersByTime(45_000)
+    })
+    expect(screen.getByTestId('session-card-task-countdown').textContent).toBe('Due')
+
+    fireEvent.click(screen.getByTestId('session-card-task-open'))
+    expect(openTasksDrawer).toHaveBeenCalledWith('rt_1')
+    fireEvent.click(screen.getByTestId('session-card-task-stop'))
+    expect(stopTask).toHaveBeenCalledWith('rt_1')
+    expect((screen.getByTestId('session-card-task-stop') as HTMLButtonElement).disabled).toBe(true)
+  })
 })

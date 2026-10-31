@@ -24,6 +24,7 @@ import type {
   BrowserSessionMetadata,
   BrowserSessionSummary,
 } from '../../sessions/sessionStore'
+import type { SessionTimer } from '../../routines/sessionTimers'
 import {
   MAX_SUBAGENT_SUMMARY_FINISHED,
   ZERO_COUNTERS,
@@ -78,6 +79,8 @@ export interface SessionFeedHost {
   getFsSummaries(): Pick<LruMap<string, BrowserSessionSummary>, 'keys' | 'peek'>
   /** Live headless routine runs (RoutineCoordinator's own live map). */
   routineTasks(): Iterable<HeadlessRunState>
+  /** Registered loop timers (F-15). Optional for hosts with no routine registry. */
+  sessionTimers?(): Iterable<SessionTimer>
   /** RECOVERED run_js rows per loaded session (Manager's transcript-derived
    *  map — restart recovery for the drawer's "Super Edit" section). The
    *  publisher skips any call id the registry still knows: a registry
@@ -757,6 +760,18 @@ export class SessionFeedPublisher {
         finishedAt: rec.finishedAt,
       })
     }
+    // Loop timers: running while registered, scoped to the session they fire into.
+    for (const timer of this.host.sessionTimers?.() ?? []) {
+      rows.push({
+        sessionId: timer.id,
+        spawnerSessionId: timer.sessionId,
+        status: 'running',
+        type: 'local_timer',
+        description: timer.name,
+        schedule: timer.schedule,
+        ...(timer.nextFireAt !== null ? { nextFireAt: timer.nextFireAt } : {}),
+      })
+    }
     return rows
   }
 
@@ -890,7 +905,9 @@ function summariesEqual(
       x.querySource !== y.querySource ||
       x.updates !== y.updates ||
       x.startedAt !== y.startedAt ||
-      x.lastActivityAt !== y.lastActivityAt
+      x.lastActivityAt !== y.lastActivityAt ||
+      x.schedule !== y.schedule ||
+      x.nextFireAt !== y.nextFireAt
     ) {
       return false
     }

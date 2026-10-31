@@ -900,6 +900,14 @@ export const en = {
   'backgroundTasks.category.runJs': 'Super Edit',
   'backgroundTasks.category.plugin': 'Plugins',
   'backgroundTasks.category.running': 'Running',
+  // Loop timers (F-15): a schedule in words and the countdown to the next fire.
+  'backgroundTasks.timer.everyMinute': 'Every minute',
+  'backgroundTasks.timer.everyMinutes': 'Every {count} minutes',
+  'backgroundTasks.timer.everyHour': 'Every hour',
+  'backgroundTasks.timer.everyHours': 'Every {count} hours',
+  'backgroundTasks.timer.everyDayAt': 'Every day at {time}',
+  'backgroundTasks.timer.next': 'Next {time}',
+  'backgroundTasks.timer.due': 'Due',
   'backgroundTasks.runJsFallbackTitle': 'Super Edit …{id}',
   'backgroundTasks.superShellFallbackTitle': 'Super Shell …{id}',
   // One-shot fast-model calls (`local_fast` rows), named by the side-channel

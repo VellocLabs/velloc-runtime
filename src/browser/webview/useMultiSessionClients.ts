@@ -294,6 +294,8 @@ export type MultiSessionClientsResult = {
     message: AppendMessage,
     options?: { delivery?: SubmitDelivery },
   ) => Promise<void>
+  /** A plain prompt into a named session, as the user; queued while it is busy. */
+  submitPromptToSession: (sessionId: string, prompt: string) => Promise<void>
   /** `submitComposerMessage` into a named session (not necessarily active). */
   submitComposerMessageToSession: (
     sessionId: string,
@@ -723,6 +725,10 @@ export function useMultiSessionClients(
     await client?.submitComposerMessage(message, options)
   }, [])
 
+  const submitPromptToSession = useCallback(async (sessionId: string, prompt: string) => {
+    await getOrCreateClient(sessionId).submitMessage(prompt)
+  }, [getOrCreateClient])
+
   // Submit into a NAMED session rather than the active one — a fork-send lands
   // in the new copy before (or while) the switch mounts it. Creates the client
   // when the mount has not yet; the mount then reuses it.
@@ -1023,6 +1029,7 @@ export function useMultiSessionClients(
     submitActionMessage,
     continueConversation,
     submitComposerMessage,
+    submitPromptToSession,
     submitComposerMessageToSession,
     submitToolResult,
     loadToolCallDetail,

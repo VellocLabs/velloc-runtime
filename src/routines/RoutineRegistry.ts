@@ -61,6 +61,27 @@ export class RoutineRegistry {
     private readonly unpersistedZones: Set<string> = new Set(),
   ) {}
 
+  private readonly changeListeners = new Set<() => void>()
+
+  /** Calls `listener` after every create / update / delete has been applied.
+   *  Returns the unsubscribe. A throwing listener never fails the mutation. */
+  onChange(listener: () => void): () => void {
+    this.changeListeners.add(listener)
+    return () => {
+      this.changeListeners.delete(listener)
+    }
+  }
+
+  private notifyChange(): void {
+    for (const listener of this.changeListeners) {
+      try {
+        listener()
+      } catch {
+        // A listener's failure is its own.
+      }
+    }
+  }
+
   /**
    * Load (and replay) the on-disk log. Creates the routines directory
    * if it doesn't exist. Tolerates a missing log file (returns an empty
@@ -161,6 +182,7 @@ export class RoutineRegistry {
     const entry: RoutineLogEntry = { type: 'routine', routine: stamped }
     await this.appendLogEntry(entry)
     applyEntry(this.state, this.byName, entry)
+    this.notifyChange()
   }
 
   /**
@@ -193,6 +215,7 @@ export class RoutineRegistry {
     await this.appendLogEntry(entry)
     this.unpersistedZones.delete(id)
     applyEntry(this.state, this.byName, entry)
+    this.notifyChange()
   }
 
   async delete(id: string): Promise<void> {
@@ -207,6 +230,7 @@ export class RoutineRegistry {
     }
     await this.appendLogEntry(entry)
     applyEntry(this.state, this.byName, entry)
+    this.notifyChange()
   }
 
   private async appendLogEntry(entry: RoutineLogEntry): Promise<void> {

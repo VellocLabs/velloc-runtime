@@ -7,8 +7,11 @@
 
 import type { NexusTaskKind } from '../browser/bridge/protocol/ui'
 
+/** The kinds whose ids are minted here; a loop timer's id is its routine's id. */
+type MintedTaskKind = Exclude<NexusTaskKind, 'local_timer'>
+
 /** One-char id prefix per kind (extensible — future kinds add an entry). */
-const KIND_LETTER: Record<NexusTaskKind, string> = {
+const KIND_LETTER: Record<MintedTaskKind, string> = {
   local_agent: 'a',
   local_bash: 'b',
   local_fork: 'f',
@@ -48,7 +51,7 @@ export const TASK_ID_PATTERN = `${TASK_ID_PREFIX_CLASS}[0-9a-z]{${TASK_ID_RANDOM
 
 /** The id prefix for a kind; `x` for an unknown kind (defensive). */
 export function kindLetterOf(kind: NexusTaskKind): string {
-  return KIND_LETTER[kind] ?? 'x'
+  return (KIND_LETTER as Partial<Record<NexusTaskKind, string>>)[kind] ?? 'x'
 }
 
 /** Fill `out` with random bytes via the platform CSPRNG, else `Math.random`. */
@@ -77,7 +80,7 @@ export function mintTaskHandle(kind: NexusTaskKind): string {
 /** Recover the kind from a task id's prefix; null if it matches no known kind. */
 export function taskKindFromId(id: string): NexusTaskKind | null {
   const prefix = id.charAt(0)
-  for (const kind of Object.keys(KIND_LETTER) as NexusTaskKind[]) {
+  for (const kind of Object.keys(KIND_LETTER) as MintedTaskKind[]) {
     if (KIND_LETTER[kind] === prefix) return kind
   }
   return null

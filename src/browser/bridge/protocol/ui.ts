@@ -188,6 +188,10 @@ export type NexusTaskKind =
   // finished by the plugin; read with TaskOutput, stopped with TaskStop, and
   // delivered once as a `<task-notification>`.
   | 'local_plugin'
+  // A recurring routine delivered into a session (`/loop`, F-15): running for
+  // as long as it is registered. Its `sessionId` is the routine id and its
+  // `spawnerSessionId` the session it fires into.
+  | 'local_timer'
 
 /**
  * A background TASK row for the human-facing surface (G2/G5) — today an `Agent`
@@ -232,6 +236,11 @@ export type NexusTaskSummaryRow = {
   /** Unix ms when a terminal run finished — with `startedAt`, drives the
    *  "took …" span on finished rows. Absent while running. */
   finishedAt?: number
+  /** For a 'local_timer' row: the cron expression it fires on. */
+  schedule?: string
+  /** For a 'local_timer' row: Unix ms of its next fire (in the past while a
+   *  due fire is held back); absent when the schedule has no next slot. */
+  nextFireAt?: number
 }
 
 /**
