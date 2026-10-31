@@ -603,9 +603,6 @@ export function installModWorkerHost(
       },
     })
 
-  /** `$.script.run`: the noun tables' functions stay here, under a run-scoped
-   *  noun; the call carries their names and the run's token. `signal` does not
-   *  cross — it abandons the call, which stops the script. */
   /** `$.agent`: `wait(agentId, { signal })` keeps `signal` here — it
    *  abandons the call, never the subagent. Every other method is a plain
    *  call. */
@@ -628,6 +625,9 @@ export function installModWorkerHost(
     })
   }
 
+  /** `$.script.run`: the noun tables' functions stay here, under a run-scoped
+   *  noun; the call carries their names and the run's token. `signal` does not
+   *  cross — it abandons the call, which stops the script. */
   const makeScript = (invocation: Invocation | undefined): unknown => {
     const script = {
       run: (options: unknown): Promise<unknown> => {
