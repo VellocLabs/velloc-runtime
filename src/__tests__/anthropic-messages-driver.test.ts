@@ -544,6 +544,17 @@ describe('schema sanitizer (cases of anthropic_schema_sanitizer_unittest.cc)', (
     expect(out.properties.glob.description).toBe('No filter unless set. Several may be listed.')
   })
 
+  it('leaves a nullable description without "Use null" advice byte-identical', () => {
+    const description = 'What the command does.\n\nExamples:\n- npm test → "Run the test suite"\n'
+    const out = sanitize({
+      type: 'object',
+      properties: { description: { type: ['string', 'null'], description } },
+      required: ['description'],
+      additionalProperties: false,
+    })
+    expect(out.properties.description).toEqual({ type: 'string', description })
+  })
+
   it('StripsNullFromEnums', () => {
     const out = sanitize({
       type: 'object',

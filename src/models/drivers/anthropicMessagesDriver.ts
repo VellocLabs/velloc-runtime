@@ -157,8 +157,10 @@ const NULL_ADVICE = /\s*Use null\b[^.]*\.?/g
 function dropNullAdvice(schema: HostDict): void {
   const description = findString(schema, 'description')
   if (description === undefined) return
-  const kept = description.replace(NULL_ADVICE, '').trim()
-  if (kept === description) return
+  const dropped = description.replace(NULL_ADVICE, '')
+  // A description without the advice stays byte-identical.
+  if (dropped === description) return
+  const kept = dropped.trim()
   if (kept) schema.set('description', kept)
   else schema.delete('description')
 }
