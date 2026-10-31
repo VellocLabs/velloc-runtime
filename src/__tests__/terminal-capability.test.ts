@@ -29,6 +29,7 @@ import {
   TERMINAL_ACTIONS,
   TERMINAL_RUN_COMMAND_MAX,
   TERMINAL_WRITE_MAX_BYTES,
+  isRunnableCommand,
   type TerminalRunState,
   type TerminalSnapshot,
   type TerminalsState,
@@ -318,6 +319,32 @@ describe('terminal capability payload guards', () => {
     const full = await client.request('terminal.write', { id: 'term_one', data: '€'.repeat(Math.floor(TERMINAL_WRITE_MAX_BYTES / 3)) })
     expect(full.ok).toBe(true)
     expect(r.fake.shellRequests('writeStdin')).toHaveLength(1)
+  })
+
+  it('terminal.run refuses format characters and line/paragraph separators, so the typed text is the text shown', async () => {
+    const r = await rig()
+    const client = await r.connect('c')
+    const hidden: Array<[command: string, what: string]> = [
+      ['echo \u202e hi', 'right-to-left override'],
+      ['echo \u202a hi', 'left-to-right embedding'],
+      ['echo \u2067x\u2069 hi', 'right-to-left isolate … pop isolate'],
+      ['echo \u200f hi', 'right-to-left mark'],
+      ['rm\u200b -rf x', 'zero-width space'],
+      ['echo \u200d hi', 'zero-width joiner'],
+      ['echo \u2060 hi', 'word joiner'],
+      ['\ufeffls', 'byte order mark'],
+      ['ls\u2028rm -r x', 'line separator'],
+      ['ls\u2029rm -r x', 'paragraph separator'],
+      ['ls\u0085rm -r x', 'next line (C1)'],
+    ]
+    for (const [command, what] of hidden) {
+      expect(isRunnableCommand(command), what).toBe(false)
+      expect(errorCode(await client.request('terminal.run', { sessionId: 's1', command })), what).toBe('bad_payload')
+    }
+    expect(r.fake.shellRequests('spawn')).toHaveLength(0)
+    // Visible non-ASCII text stays runnable.
+    expect(isRunnableCommand('echo héllo 世界 привет')).toBe(true)
+    expect(isRunnableCommand('git commit -m "مرحبا"')).toBe(true)
   })
 
   it('an unknown terminal id is not_found on every action and on its topic', async () => {

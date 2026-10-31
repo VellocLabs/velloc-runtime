@@ -51,18 +51,18 @@ export const ShellSyntaxHighlighter: FC<SyntaxHighlighterProps> = ({
       </Pre>
     );
   }
-  return <ShellCommandCard command={command} />;
+  return <ShellCommandCard command={command} at={node?.position?.start.offset ?? null} />;
 };
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function ShellCommandCard({ command }: { command: string }) {
+export function ShellCommandCard({ command, at = null }: { command: string; at?: number | null }) {
   const t = useT();
   const { run, openTerminal, connection, sessionId } = useShellCommand();
   const messageId = useAssistantState((s) => s.message.id);
-  const key = shellRunKey(sessionId, messageId, command);
+  const key = shellRunKey(sessionId, messageId, command, at);
   const runId = useShellRun(key);
   const runState = useTerminalRun(connection, runId);
   const { isCopied, copyToClipboard } = useCopyToClipboard();

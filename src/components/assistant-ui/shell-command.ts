@@ -49,9 +49,17 @@ export function useShellCommand(): ShellCommandContextValue {
 const runsByCard = new Map<string, string>();
 const listeners = new Set<() => void>();
 
-/** One card: a command in one message of one session. */
-export function shellRunKey(sessionId: string | null, messageId: string, command: string): string {
-  return `${sessionId ?? ""}\u0000${messageId}\u0000${command}`;
+/**
+ * One card: a command at one place in one message of one session. `at` is the
+ * block's offset in the message text, so two identical blocks keep separate runs.
+ */
+export function shellRunKey(
+  sessionId: string | null,
+  messageId: string,
+  command: string,
+  at: number | null = null,
+): string {
+  return `${sessionId ?? ""}\u0000${messageId}\u0000${at ?? ""}\u0000${command}`;
 }
 
 export function rememberShellRun(key: string, runId: string): void {

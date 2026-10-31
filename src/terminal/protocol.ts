@@ -133,18 +133,20 @@ export type TerminalRunState = {
 }
 
 /**
- * A command line `terminal.run` accepts: one line, non-blank, within
- * TERMINAL_RUN_COMMAND_MAX, and no control characters.
- *
- * Security: the text typed into the shell is exactly the text the person saw
- * and clicked; a control character could press keys the card never showed.
+ * Security: the command line `terminal.run` accepts — one line, non-blank,
+ * within TERMINAL_RUN_COMMAND_MAX, and no control (Cc), format (Cf) or line /
+ * paragraph separator (Zl, Zp) characters — so the text typed into the shell
+ * is exactly the text the person saw and clicked: a control character could
+ * press keys the card never showed, and a format character (bidi override or
+ * isolate, zero-width) could make the card show one order of text while the
+ * shell receives another.
  */
 export function isRunnableCommand(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.trim().length > 0 &&
     value.length <= TERMINAL_RUN_COMMAND_MAX &&
-    !/[\u0000-\u001f\u007f-\u009f]/.test(value)
+    !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(value)
   )
 }
 

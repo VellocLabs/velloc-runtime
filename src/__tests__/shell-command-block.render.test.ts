@@ -111,6 +111,11 @@ describe('runnableShellCommand', () => {
     expect(runnableShellCommand('cd src\nnpm test\n')).toBeNull()
     expect(runnableShellCommand('\n')).toBeNull()
     expect(runnableShellCommand('echo \u001b[31m')).toBeNull()
+    expect(runnableShellCommand('echo \u202e hi')).toBeNull()
+    expect(runnableShellCommand('echo \u2067x\u2069 hi')).toBeNull()
+    expect(runnableShellCommand('rm\u200b -rf x')).toBeNull()
+    expect(runnableShellCommand('ls\u2029rm -r x')).toBeNull()
+    expect(runnableShellCommand('echo héllo')).toBe('echo héllo')
   })
 })
 
@@ -125,6 +130,16 @@ describe('shell blocks in chat messages', () => {
     // Only the script keeps its language header.
     expect(document.querySelectorAll('.aui-code-header-root')).toHaveLength(1)
     expect(document.querySelector('pre > code')!.textContent).toContain('npm test')
+  })
+
+  it('a one-line block with a bidi override, an isolate or a zero-width character stays a code block without Run', () => {
+    const run = vi.fn()
+    const blocks = ['echo \u202e hi', 'echo \u2066x\u2069 hi', 'rm\u200b -rf x', 'ls\u2028rm -r x']
+    const text = blocks.map(line => '```bash\n' + line + '\n```').join('\n\n')
+    render(createElement(harness(text, { run, connection: null, sessionId: 's1' })))
+    expect(document.querySelector('[data-shell-command]')).toBeNull()
+    expect(document.querySelector('[data-shell-command-run]')).toBeNull()
+    expect(document.querySelectorAll('pre > code')).toHaveLength(blocks.length)
   })
 
   it('without a terminal to run in, the card has Copy only', () => {
@@ -158,6 +173,19 @@ describe('shell blocks in chat messages', () => {
     openTerminal.mockClear()
     fireEvent.click(output()!.querySelector('button')!)
     expect(openTerminal).toHaveBeenCalledWith('term_1')
+  })
+
+  it('two identical blocks in one message keep separate runs', async () => {
+    const fake = fakeConnection()
+    const run = vi.fn(async () => ({ id: 'term_1', runId: 'run_1' }))
+    render(createElement(harness('```bash\ngit status\n```\n\nagain:\n\n```bash\ngit status\n```', { run, connection: fake.conn, sessionId: 's1' })))
+    const cards = () => Array.from(document.querySelectorAll('[data-shell-command]'))
+    expect(cards()).toHaveLength(2)
+    fireEvent.click(cards()[1]!.querySelector('[data-shell-command-run]')!)
+    await flush()
+    fake.publish('terminal-run/run_1', runState({ output: 'On branch main' }), 'snapshot')
+    expect(cards()[0]!.querySelector('[data-shell-command-output]')).toBeNull()
+    expect(cards()[1]!.querySelector('[data-shell-command-output]')).not.toBeNull()
   })
 
   it('a run the runtime refuses says why under the card', async () => {
