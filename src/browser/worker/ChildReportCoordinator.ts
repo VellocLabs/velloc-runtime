@@ -94,6 +94,9 @@ export interface ChildReportHost {
 type OpenTurn = {
   uuidAtStart?: string
   interrupted: boolean
+  /** Who stopped the turn: a session's id when its model asked, `''` for a
+   *  person. */
+  stoppedBy: Set<string>
   closed: boolean
 }
 
@@ -188,16 +191,20 @@ export class ChildReportCoordinator {
     this.turns.set(sessionId, {
       uuidAtStart: this.host.finalAssistant(sessionId).uuid,
       interrupted: false,
+      stoppedBy: new Set(),
       closed: false,
     })
   }
 
-  /** A Stop reached the session: a person's, or its parent's stop of it.
-   *  During a child's start this is a cancellation: it leaves no note and
-   *  wakes nothing. */
-  interruptRequested(sessionId: string): void {
+  /** A Stop reached the session: a person's, or the stop `by` a session's
+   *  model asked for. During a child's start this is a cancellation: it
+   *  leaves no note and wakes nothing. */
+  interruptRequested(sessionId: string, by?: string): void {
     const turn = this.turns.get(sessionId)
-    if (turn && !turn.closed) turn.interrupted = true
+    if (turn && !turn.closed) {
+      turn.interrupted = true
+      turn.stoppedBy.add(by ?? '')
+    }
     if (this.host.activity(sessionId).starting) this.startCancelled.add(sessionId)
   }
 
@@ -301,7 +308,8 @@ export class ChildReportCoordinator {
     else ending = 'finished'
     // A turn that finished without a new answer has nothing to report.
     if (ending === 'finished' && !fresh) return
-    void this.reportTurnEnd(sessionId, ending, fresh ? final.text : '', false).catch(err => {
+    const stoppedBy = ending === 'stopped' ? turn.stoppedBy : undefined
+    void this.reportTurnEnd(sessionId, ending, fresh ? final.text : '', false, stoppedBy).catch(err => {
       this.host.trace('nexus_child_report_failed', {
         sessionId,
         error: err instanceof Error ? err.message : String(err),
@@ -314,6 +322,7 @@ export class ChildReportCoordinator {
     ending: ChildReportEnding,
     rawText: string,
     quiet: boolean,
+    stoppedBy?: ReadonlySet<string>,
   ): Promise<void> {
     // A session listed with no relation at all is top-level: nothing to read.
     const listed = this.host.relationOf(childId)
@@ -330,6 +339,9 @@ export class ChildReportCoordinator {
     index.set(childId, meta)
     const target = reportTargetOf(childId, index, id => this.host.sessionExists(id))
     if (!target) return
+    // A parent that stopped its own child already knows: the report is data
+    // for its next turn, never a reason to wake it.
+    const stoppedByTarget = stoppedBy !== undefined && stoppedBy.size > 0 && [...stoppedBy].every(id => id === target)
     // Strictly increasing per child: a report is told from a consumed one by
     // its time.
     const at = Math.max(this.host.now(), (this.lastReportAt.get(childId) ?? 0) + 1)
@@ -339,7 +351,7 @@ export class ChildReportCoordinator {
       ending,
       text: rawText,
       at,
-      ...(quiet ? { quiet: true as const } : {}),
+      ...(quiet || stoppedByTarget ? { quiet: true as const } : {}),
     })
   }
 

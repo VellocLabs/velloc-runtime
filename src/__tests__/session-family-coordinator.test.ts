@@ -37,6 +37,7 @@ class FakeHost implements SessionFamilyHost {
   readonly sessions = new Map<string, FakeSession>()
   readonly turns: Array<{ sessionId: string; prompt: string }> = []
   readonly interrupted: string[] = []
+  readonly stoppedBy: string[] = []
   readonly events: string[] = []
   tracer = {
     event: (name: string) => {
@@ -101,8 +102,9 @@ class FakeHost implements SessionFamilyHost {
     this.turns.push({ sessionId: id, prompt })
     return true
   }
-  interrupt(id: string) {
+  interrupt(id: string, by: string) {
     this.interrupted.push(id)
+    this.stoppedBy.push(by)
   }
   trustOf(id: string) {
     return this.sessions.get(id)?.trust ?? 'trusted'
@@ -430,6 +432,7 @@ describe('StopSession', () => {
     expect(await coord.stop('p', 'c1')).toEqual({ ok: true, result: 'interrupted' })
     expect(await coord.stop('p', 'g')).toEqual({ ok: true, result: 'interrupted' })
     expect(host.interrupted).toEqual(['c1', 'g'])
+    expect(host.stoppedBy).toEqual(['p', 'p'])
     host.sessions.get('c1')!.needsAnswer = true
     expect(await coord.stop('p', 'c1')).toMatchObject({ ok: false, code: 'waiting_user' })
     host.sessions.get('c2')!.starting = true
@@ -437,6 +440,7 @@ describe('StopSession', () => {
     expect(await coord.stop('p', 'nope')).toMatchObject({ ok: false, code: 'unknown' })
     expect(await coord.stop('p', 'self')).toMatchObject({ ok: false, code: 'self' })
     expect(host.interrupted).toEqual(['c1', 'g'])
+    expect(host.stoppedBy).toEqual(['p', 'p'])
     // Nothing was deleted or archived by a stop.
     expect(host.sessions.get('c1')!.metadata.archived).toBeUndefined()
   })

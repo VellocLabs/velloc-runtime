@@ -1537,7 +1537,7 @@ export class SharedWorkerSessionManager {
         )
         return true
       },
-      interrupt: sessionId => this.interruptSessionTurn(sessionId),
+      interrupt: (sessionId, by) => this.interruptSessionTurn(sessionId, by),
       trustOf: sessionId => this.getSessionTrust(sessionId),
       tracer: this.tracer,
     })
@@ -3779,7 +3779,7 @@ export class SharedWorkerSessionManager {
   }
 
   /** What a Stop on a session halts besides its own turn. */
-  private interruptCascade(sessionId: string): void {
+  private interruptCascade(sessionId: string, by?: string): void {
     this.taskDelivery.suppressParent(sessionId)
     this.stopRunningSubAgentsForParent(sessionId)
     // Teammates too (team feature): Stop on a lead interrupts every
@@ -3787,18 +3787,19 @@ export class SharedWorkerSessionManager {
     // outlives a turn and parks on its mailbox for the next brief; only
     // Shutdown / deleting the lead removes one (`abortTeammatesOf`).
     this.teams.interruptTeammatesOf(sessionId)
-    this.childReports.interruptRequested(sessionId)
+    this.childReports.interruptRequested(sessionId, by)
   }
 
   /** Stop a session's turn the way the user's Stop does: the worker interrupt
-   *  and its cascade. Nothing without a live worker. */
-  private interruptSessionTurn(sessionId: string): void {
+   *  and its cascade. `by`: the session whose model asked. Nothing without a
+   *  live worker. */
+  private interruptSessionTurn(sessionId: string, by?: string): void {
     const session = this.sessions.get(sessionId)
     if (!session) return
     void session.worker
       .receiveFrame({ type: 'worker.interrupt', sessionId } as SessionWorkerInboundMessage)
       .catch(() => {})
-    this.interruptCascade(sessionId)
+    this.interruptCascade(sessionId, by)
   }
 
   /** A sub-agent, shell or other task the session started is still running. */

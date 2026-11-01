@@ -85,8 +85,9 @@ export interface SessionFamilyHost {
   hasLiveWork(sessionId: string): boolean
   /** Queue `prompt` as the session's next turn; false without a live worker. */
   enqueueTurn(sessionId: string, prompt: string): boolean
-  /** Stop the session's current turn the way the user's Stop does. */
-  interrupt(sessionId: string): void
+  /** Stop the session's current turn the way the user's Stop does; `by` is
+   *  the session whose model asked. */
+  interrupt(sessionId: string, by: string): void
   trustOf(sessionId: string): TeamMessageTrust
   tracer: SessionTracer
 }
@@ -436,7 +437,7 @@ export class SessionFamilyCoordinator implements SessionDirectory {
       return { ok: false, code: 'waiting_user', reason: 'the session is waiting on the user (a question or permission card); that is the user\'s to answer, not the model\'s to stop.' }
     }
     if (!this.host.isLive(target) || !this.host.isBusy(target)) return { ok: true, result: 'idle' }
-    this.host.interrupt(target)
+    this.host.interrupt(target, callerSessionId)
     return { ok: true, result: 'interrupted' }
   }
 

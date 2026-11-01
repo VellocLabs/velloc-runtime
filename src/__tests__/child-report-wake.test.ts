@@ -518,6 +518,38 @@ describe('child reports: not-started notes', () => {
     expect(block).toContain('session A) failed.')
   })
 
+  it('a child its parent stopped reports as data and never wakes that parent; a person\'s Stop or another session\'s still does', async () => {
+    const stopTurn = (h: Harness, id: string, by?: string) => {
+      const sim = h.sims.get(id)!
+      h.clock.now += 1
+      sim.busy = true
+      h.coord.turnStarted(id)
+      h.coord.interruptRequested(id, by)
+      sim.final = { text: `cut short by ${by ?? 'a person'}`, uuid: `${id}-u${++uuidSeq}`, error: false }
+      sim.busy = false
+      h.coord.streamEnded(id)
+      h.coord.observe(id, { type: 'worker.completed', payload: {} } as unknown as AgentWorkerOutboundMessage)
+    }
+    const byParent = family(['A'])
+    stopTurn(byParent, 'A', 'P')
+    await settle()
+    expect(queued(byParent)).toMatchObject([{ sessionId: 'A', ending: 'stopped', quiet: true }])
+    expect(byParent.wakes).toEqual([])
+    expect(await byParent.coord.takeForTurn('P', { autoContinuation: false })).toContain('cut short by P')
+
+    const byPerson = family(['A'])
+    stopTurn(byPerson, 'A')
+    await settle()
+    expect(byPerson.wakes).toEqual(['P'])
+
+    // A session above the parent stopped it: the parent did not, so it wakes.
+    const byAncestor = family(['A'])
+    stopTurn(byAncestor, 'A', 'G')
+    await settle()
+    expect(queued(byAncestor)[0]?.quiet).toBeUndefined()
+    expect(byAncestor.wakes).toEqual(['P'])
+  })
+
   it('a start a person stopped or removed leaves no note and wakes nothing', async () => {
     for (const cancel of ['stop', 'delete'] as const) {
       const h = family(['A', 'B'])
