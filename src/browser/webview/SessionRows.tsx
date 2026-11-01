@@ -33,6 +33,7 @@ import {
   SESSION_PAGE_SIZE,
 } from './sessionListPaging'
 import { cn } from '@/lib/utils'
+import type { SessionLineageKind } from '../../sessions/sessionLineage'
 
 /** The one height every sidebar row shares — a session row, a project row
  *  (`ProjectSection`) and the "show more" row — so the tree reads as one
@@ -75,6 +76,16 @@ export type SessionListItem = {
   spawnerSessionId?: string
   /** This teammate's member name within its lead's team — the tab label. */
   teammateName?: string
+  /**
+   * The session this one is listed under, and the relation: a child session
+   * is nested under its parent's row. Absent for a top-level session. (F-36)
+   */
+  parentSessionId?: string
+  lineageKind?: SessionLineageKind
+  /** This session's short name within its family. (F-36) */
+  familyName?: string
+  /** Had a parent and was taken out from under it: listed top-level. (F-36) */
+  detached?: boolean
   shutdown?: boolean
   shutdownAt?: number
   /**

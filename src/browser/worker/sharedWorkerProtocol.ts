@@ -13,6 +13,7 @@ import type {
   NexusTaskInfo,
   NexusTaskTranscriptEntry,
 } from '../bridge/protocol/ui'
+import type { SessionLineageKind } from '../../sessions/sessionLineage'
 
 export type SessionWorkerInboundMessage = AgentWorkerInboundMessage & {
   sessionId: string
@@ -211,6 +212,14 @@ export type SessionCard = {
   spawnerSessionId?: string
   /** This teammate's member name within its lead's team. */
   teammateName?: string
+  /** The session this one is listed under, and the relation; absent for a
+   *  top-level session. (F-36) */
+  parentSessionId?: string
+  lineageKind?: SessionLineageKind
+  /** This session's short name within its family. (F-36) */
+  familyName?: string
+  /** Had a parent and was taken out from under it. (F-36) */
+  detached?: boolean
   /** True when a teammate was torn down and retained as a read-only transcript. */
   shutdown?: boolean
   shutdownAt?: number

@@ -24,6 +24,7 @@ import { dirnameRuntimePath } from '../../utils/runtimePaths'
 // any worker/services dependency). Sub-agent rows live in the same DB but must
 // never surface in the sidebar list (`listAll`).
 import { isSubAgentSessionId } from '../../utils/sidechainStoragePaths'
+import { isSessionOrigin } from '../../sessions/sessionLineage'
 
 /**
  * Contract: the ONE global SQLite store of every session's `SessionMetaFile`, one typed-column row
@@ -131,6 +132,10 @@ const COLUMNS = [
   'teammate_name',
   'shutdown',
   'shutdown_at',
+  // Child sessions (F-36): the stored origin as JSON, the fork cut, the detach flag.
+  'spawned_from',
+  'forked_at_message_uuid',
+  'lineage_detached',
 ] as const
 
 /** SQLite column type per `COLUMNS` entry, used to build the CREATE TABLE and
@@ -167,6 +172,9 @@ const COLUMN_DEFS: Record<(typeof COLUMNS)[number], string> = {
   teammate_name: 'TEXT',
   shutdown: 'INTEGER',
   shutdown_at: 'INTEGER',
+  spawned_from: 'TEXT',
+  forked_at_message_uuid: 'TEXT',
+  lineage_detached: 'INTEGER',
 }
 
 /**
@@ -197,6 +205,9 @@ const COLUMN_METADATA_KEYS: ReadonlySet<string> = new Set([
   'teammateName',
   'shutdown',
   'shutdownAt',
+  'spawnedFrom',
+  'forkedAtMessageUuid',
+  'lineageDetached',
 ])
 
 /** Position of `project_dir` in `COLUMNS` — read out of a positional row
@@ -207,6 +218,9 @@ const PARENT_SESSION_ID_INDEX = COLUMNS.indexOf('parent_session_id')
 const TEAMMATE_NAME_INDEX = COLUMNS.indexOf('teammate_name')
 const SHUTDOWN_INDEX = COLUMNS.indexOf('shutdown')
 const SHUTDOWN_AT_INDEX = COLUMNS.indexOf('shutdown_at')
+const SPAWNED_FROM_INDEX = COLUMNS.indexOf('spawned_from')
+const FORKED_AT_MESSAGE_UUID_INDEX = COLUMNS.indexOf('forked_at_message_uuid')
+const LINEAGE_DETACHED_INDEX = COLUMNS.indexOf('lineage_detached')
 
 const COLUMN_LIST = COLUMNS.join(', ')
 const PLACEHOLDERS = COLUMNS.map(() => '?').join(', ')
@@ -738,6 +752,9 @@ export class SqliteSessionMetaStore {
       toText(m.teammateName),
       m.shutdown === true ? 1 : null,
       toInt(m.shutdownAt),
+      toText(isSessionOrigin(m.spawnedFrom) ? JSON.stringify(m.spawnedFrom) : undefined),
+      toText(m.forkedAtMessageUuid),
+      m.lineageDetached === true ? 1 : null,
     ]
     return { row, extraJsonFailed }
   }
@@ -790,6 +807,17 @@ export class SqliteSessionMetaStore {
     set('teammateName', readText(row[TEAMMATE_NAME_INDEX]))
     if (readInt(row[SHUTDOWN_INDEX]) === 1) metadata.shutdown = true
     set('shutdownAt', readInt(row[SHUTDOWN_AT_INDEX]))
+    const spawnedFromRaw = readText(row[SPAWNED_FROM_INDEX])
+    if (spawnedFromRaw) {
+      try {
+        const parsed: unknown = JSON.parse(spawnedFromRaw)
+        if (isSessionOrigin(parsed)) metadata.spawnedFrom = parsed
+      } catch {
+        // a torn origin reads as none; the row's other fields still stand
+      }
+    }
+    set('forkedAtMessageUuid', readText(row[FORKED_AT_MESSAGE_UUID_INDEX]))
+    if (readInt(row[LINEAGE_DETACHED_INDEX]) === 1) metadata.lineageDetached = true
 
     const providerId = readText(row[18])
     const modelId = readText(row[19])

@@ -47,6 +47,12 @@ import {
   isUserMessage,
   isAssistantMessage,
 } from '../runtime/VercelModelConstants'
+import {
+  resolveLineage,
+  type ChildReport,
+  type SessionLineageKind,
+  type SessionOrigin,
+} from './sessionLineage'
 
 function createFallbackUUID(): string {
   return `conversation-${Math.random().toString(16).slice(2)}-${Date.now().toString(16)}`
@@ -88,6 +94,19 @@ export type BrowserSessionMetadata = Record<string, unknown> & {
   llmSelection?: BrowserLlmSelection | null
   permissionMode?: string
   forkedFromSessionId?: string
+  /** The message a fork was cut at. (F-36) */
+  forkedAtMessageUuid?: string
+  /** The session that started this one, and why. (F-36) */
+  spawnedFrom?: SessionOrigin
+  /** Set when this session was taken out from under its origin; the origin
+   *  stays on record. (F-36) */
+  lineageDetached?: boolean
+  /** Finished turns of this session's children not yet read by its model,
+   *  one per child at most. (F-36) */
+  childReports?: ChildReport[]
+  /** Turns this session's model has taken on its children's reports alone
+   *  since a person last wrote to it. (F-36) */
+  autoWakeCount?: number
   spawnerSessionId?: string
   teammateName?: string
   shutdown?: boolean
@@ -124,6 +143,14 @@ export type BrowserSessionSummary = {
   projectDir?: string
   spawnerSessionId?: string
   teammateName?: string
+  /** The session this one is listed under, and the relation; absent for a
+   *  top-level session. (F-36) */
+  parentSessionId?: string
+  lineageKind?: SessionLineageKind
+  /** This session's short name within its family. (F-36) */
+  familyName?: string
+  /** Had a parent and was taken out from under it. (F-36) */
+  detached?: boolean
   shutdown?: boolean
   shutdownAt?: number
   composerDraft?: string
@@ -697,6 +724,14 @@ export function buildSessionSummaryFromMetadata(
     metadata.teammateName.length > 0
       ? metadata.teammateName
       : undefined
+  const lineage = metadata ? resolveLineage(metadata) : null
+  const familyName =
+    typeof metadata?.spawnedFrom?.name === 'string' && metadata.spawnedFrom.name.length > 0
+      ? metadata.spawnedFrom.name
+      : teammateName
+  const detached =
+    metadata?.lineageDetached === true &&
+    (metadata.spawnedFrom !== undefined || spawnerSessionId !== undefined)
 
   const label = firstPrompt || previewText
   return {
@@ -710,6 +745,9 @@ export function buildSessionSummaryFromMetadata(
     ...(projectRoot !== undefined ? { projectRoot } : {}),
     ...(spawnerSessionId !== undefined ? { spawnerSessionId } : {}),
     ...(teammateName !== undefined ? { teammateName } : {}),
+    ...(lineage ? { parentSessionId: lineage.sessionId, lineageKind: lineage.kind } : {}),
+    ...(familyName !== undefined ? { familyName } : {}),
+    ...(detached ? { detached: true } : {}),
     ...(metadata?.shutdown === true ? { shutdown: true } : {}),
     ...(typeof metadata?.shutdownAt === 'number' ? { shutdownAt: metadata.shutdownAt } : {}),
     ...(composerDraft !== undefined ? { composerDraft } : {}),

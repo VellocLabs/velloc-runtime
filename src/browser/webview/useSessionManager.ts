@@ -4,6 +4,7 @@ import { hiddenSessionIds, pickNeighborSession } from './sessionVisibility'
 import { cliOfTemplateType } from '../../prompting/templateCatalog'
 import { randomUuid } from '../../utils/randomUuid'
 import type { ForkRetarget } from '../worker/sharedWorkerProtocol'
+import type { SessionLineageKind } from '../../sessions/sessionLineage'
 
 function createFallbackSessionId(): string {
   return randomUuid()
@@ -57,6 +58,11 @@ export type LocalSessionEntry = {
   spawnerSessionId?: string
   /** This teammate's member name within its lead's team. */
   teammateName?: string
+  /** The session this one is listed under, and the relation (F-36). */
+  parentSessionId?: string
+  lineageKind?: SessionLineageKind
+  familyName?: string
+  detached?: boolean
   shutdown?: boolean
   shutdownAt?: number
   /**
@@ -94,6 +100,10 @@ export type RemoteSessionSummary = {
   projectRoot?: string
   spawnerSessionId?: string
   teammateName?: string
+  parentSessionId?: string
+  lineageKind?: SessionLineageKind
+  familyName?: string
+  detached?: boolean
   shutdown?: boolean
   shutdownAt?: number
   previewText?: string
@@ -237,6 +247,10 @@ function entryFromSummary(
       ? { spawnerSessionId: summary.spawnerSessionId }
       : {}),
     ...(summary.teammateName ? { teammateName: summary.teammateName } : {}),
+    ...(summary.parentSessionId ? { parentSessionId: summary.parentSessionId } : {}),
+    ...(summary.lineageKind ? { lineageKind: summary.lineageKind } : {}),
+    ...(summary.familyName ? { familyName: summary.familyName } : {}),
+    ...(summary.detached ? { detached: true } : {}),
     ...(summary.shutdown ? { shutdown: true } : {}),
     ...(typeof summary.shutdownAt === 'number'
       ? { shutdownAt: summary.shutdownAt }
@@ -376,6 +390,20 @@ export function mergeSessions(
       ...((summary.teammateName ?? local?.teammateName)
         ? { teammateName: summary.teammateName ?? local?.teammateName }
         : {}),
+      // The relation is the runtime's: a summary that carries it wins, and a
+      // summary that says the session is detached clears a local parent.
+      ...(summary.parentSessionId
+        ? { parentSessionId: summary.parentSessionId }
+        : summary.detached || !local?.parentSessionId
+          ? {}
+          : { parentSessionId: local.parentSessionId }),
+      ...((summary.lineageKind ?? local?.lineageKind) && !summary.detached
+        ? { lineageKind: summary.lineageKind ?? local?.lineageKind }
+        : {}),
+      ...((summary.familyName ?? local?.familyName)
+        ? { familyName: summary.familyName ?? local?.familyName }
+        : {}),
+      ...((summary.detached ?? local?.detached) ? { detached: true } : {}),
       ...((summary.shutdown ?? local?.shutdown)
         ? { shutdown: summary.shutdown ?? local?.shutdown }
         : {}),
