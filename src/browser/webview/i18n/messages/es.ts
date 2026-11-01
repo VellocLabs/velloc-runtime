@@ -138,6 +138,7 @@ export const es: Messages = {
   'messageMenu.attachMessage': 'Adjuntar mensaje como contexto',
   'messageMenu.attachShortcut': '{modifier}+Shift+L',
   'messageMenu.forkStreaming': 'Disponible cuando termine esta respuesta',
+  'messageMenu.forkNotSaved': 'Disponible cuando se guarde la conversación',
   'messageMenu.copied': 'Copiado',
   'messageMenu.copyFailed': 'No se pudo copiar al portapapeles',
   'passage.label': 'Extracto',

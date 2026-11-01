@@ -20,7 +20,7 @@ import {
   type ComposerDelivery,
 } from '../../components/assistant-ui/inject-message-context'
 import { resolveForkSendPlan } from './forkSend'
-import { createPassageDraftStore, serializePassagePrompt } from './capturedPassages'
+import { composerSendText, createPassageDraftStore, serializePassagePrompt } from './capturedPassages'
 import { resolveAfterResponseCut } from './messageContextMenuModel'
 import { ComposerPassagesProvider } from '@/components/assistant-ui/composer-passages'
 import {
@@ -907,21 +907,19 @@ function InteractiveAssistantUiThread({
   const runtimeMessagesRef = useRef<readonly ThreadMessageLike[]>([])
   const transcriptMessagesRef = useRef(state.transcriptMessages)
   transcriptMessagesRef.current = state.transcriptMessages
-  const handleForkAfterResponse = useCallback(
-    (responseRowId: string) => {
-      if (!onForkAfterMessage) return
-      const rows = runtimeMessagesRef.current.flatMap(row =>
-        typeof row.id === 'string' ? [{ id: row.id, role: row.role }] : [],
-      )
-      const cut = resolveAfterResponseCut(rows, transcriptMessagesRef.current, responseRowId)
-      if (cut) onForkAfterMessage(cut)
-    },
-    [onForkAfterMessage],
-  )
+  const resolveForkAfterResponse = useCallback((responseRowId: string) => {
+    const rows = runtimeMessagesRef.current.flatMap(row => {
+      if (typeof row.id !== 'string') return []
+      const sourceType = (row.metadata as { custom?: { sourceType?: unknown } } | undefined)?.custom?.sourceType
+      return [{ id: row.id, role: row.role, ...(typeof sourceType === 'string' ? { sourceType } : {}) }]
+    })
+    return resolveAfterResponseCut(rows, transcriptMessagesRef.current, responseRowId)
+  }, [])
   const messageActionsValue = useMemo(
     () => ({
       onForkFromMessage: readOnly ? undefined : onForkFromMessage,
-      onForkAfterResponse: readOnly || !onForkAfterMessage ? undefined : handleForkAfterResponse,
+      resolveForkAfterResponse: readOnly || !onForkAfterMessage ? undefined : resolveForkAfterResponse,
+      onForkAfterResponse: readOnly ? undefined : onForkAfterMessage,
       onRewindToMessage: readOnly ? undefined : onRewindToMessage,
       onStartSideChat: readOnly ? undefined : onStartSideChat,
       onRetryProviderApiError: readOnly ? undefined : handleRetryProviderApiError,
@@ -933,7 +931,7 @@ function InteractiveAssistantUiThread({
       readOnly,
       onForkFromMessage,
       onForkAfterMessage,
-      handleForkAfterResponse,
+      resolveForkAfterResponse,
       onRewindToMessage,
       handleRetryProviderApiError,
       onContinueInCode,
@@ -1308,7 +1306,7 @@ function InteractiveAssistantUiThread({
       if (readOnly) return
       // The cards leave the composer with its own send, like its text; every
       // path below that hands the text back hands them back too.
-      const takenPassages = passageStore.takeForSend()
+      const takenPassages = passageStore.takeForSend(composerSendText(rawMessage.content))
       const message: AppendMessage =
         takenPassages.length === 0
           ? rawMessage

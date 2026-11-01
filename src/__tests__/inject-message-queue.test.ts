@@ -373,6 +373,26 @@ describe('AgentTurnController inject queue — no tool round: merged into the ne
     ])
   })
 
+  it('merged sends with quote cards become one prompt, every card ahead of the words (F-22)', () => {
+    const rec = makeRecorder()
+    busy(rec)
+    const a = '[Quoted context 1]\n> a\n\n[User message]\none'
+    const b = '[Quoted context 1]\n> b\n\n[User message]\ntwo'
+    rec.controller.submitUserMessage(submit(a, 'u-a', 'next'))
+    rec.controller.submitUserMessage(submit('plain', 'u-p', 'inject'))
+    rec.controller.submitUserMessage(submit(b, 'u-b', 'next'))
+    const merged = '[Quoted context 1]\n> a\n\n[Quoted context 2]\n> b\n\n[User message]\none\nplain\ntwo'
+    expect(rec.controller.getPendingMessage()).toBe(
+      '[Quoted context 1]\n> a\n\n[Quoted context 2]\n> b\n\n[User message]\none\ntwo',
+    )
+    finishTurn(rec)
+
+    expect(rec.turns[0]!.message.payload).toMatchObject({ prompt: merged, promptUuid: 'u-a' })
+    expect(rec.pending.at(-1)?.extra).toMatchObject({
+      consumed: { text: '[Quoted context 1]\n> a\n\n[Quoted context 2]\n> b\n\n[User message]\none\ntwo' },
+    })
+  })
+
   it('an attachment inject entry is its own turn; every merged turn is reported landed at the consume', () => {
     const rec = makeRecorder()
     busy(rec)

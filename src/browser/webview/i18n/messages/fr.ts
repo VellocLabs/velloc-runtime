@@ -134,6 +134,7 @@ export const fr: Messages = {
   'messageMenu.attachMessage': 'Joindre le message comme contexte',
   'messageMenu.attachShortcut': '{modifier}+Shift+L',
   'messageMenu.forkStreaming': 'Disponible une fois cette réponse terminée',
+  'messageMenu.forkNotSaved': 'Disponible une fois la conversation enregistrée',
   'messageMenu.copied': 'Copié',
   'messageMenu.copyFailed': 'Impossible de copier dans le presse-papiers',
   'passage.label': 'Extrait',

@@ -22,6 +22,7 @@ import {
   restoreNextMessageIntoComposer,
   splitPendingMessages,
 } from '../components/assistant-ui/next-message-strip'
+import { createPassageDraftStore } from '../browser/webview/capturedPassages'
 
 // The strip reads its strings through i18n; echo the key so assertions can
 // match it. Real catalogs translate 'composer.nextMessage' → 'Next message'.
@@ -107,6 +108,14 @@ describe('NextMessageStrip', () => {
     expect(summary.className).toContain('whitespace-nowrap')
     // A single queued message needs no count badge.
     expect(screen.queryByTestId('next-message-count')).toBeNull()
+  })
+
+  it('shows a queued send with quote cards as its words, never the markers (F-22)', () => {
+    const wire = '[Quoted context 1]\n> claim\n\n[User message]\nwhy?'
+    render(createElement(Harness, { pendingMessage: wire, pendingEntries: [wire, '[Quoted context 1]\n> just a card'] }))
+    const summary = screen.getByTestId('next-message-text')
+    expect(summary.textContent).toBe('why?')
+    expect(summary.getAttribute('title')).toBe('why?\njust a card')
   })
 
   // The strip is a fixed-height status line, not a growing list. Rendering every
@@ -428,6 +437,18 @@ describe('restoreNextMessageIntoComposer', () => {
     const composer = fakeComposer('first line')
     restoreNextMessageIntoComposer(composer, 'second line')
     expect(composer.read()).toBe('first line\nsecond line')
+  })
+
+  it('gives quote cards back to the cards, ahead of any there, and only the words to the box (F-22)', () => {
+    const composer = fakeComposer('draft')
+    const store = createPassageDraftStore()
+    store.add({ body: 'mine', method: 'range', anchors: [] })
+    restoreNextMessageIntoComposer(composer, '[Quoted context 1]\n> claim\n\n[User message]\nwhy?', store)
+    expect(composer.read()).toBe('draft\nwhy?')
+    expect(store.getPassages().map(p => p.payload.body)).toEqual(['claim', 'mine'])
+    restoreNextMessageIntoComposer(composer, '[Quoted context 1]\n> alone', store)
+    expect(composer.read()).toBe('draft\nwhy?')
+    expect(store.getPassages()).toHaveLength(3)
   })
 
   it.each([null, undefined, ''])(

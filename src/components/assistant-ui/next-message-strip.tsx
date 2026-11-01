@@ -10,6 +10,9 @@ import { useComposerRuntime } from "@assistant-ui/react";
 import { CornerDownRightIcon, XIcon } from "lucide-react";
 import { useT } from "@/browser/webview/i18n";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { useComposerPassages } from "@/components/assistant-ui/composer-passages";
+import { handBackPrompt, type PassageDraftStore } from "@/browser/webview/capturedPassages";
+import { quotedPromptLabel } from "@/browser/webview/replyQuote";
 
 // The session's saved "next message" (a plain-text submit made while the agent
 // was busy, accumulated by the SharedWorker and broadcast in FULL). `null` =
@@ -45,14 +48,18 @@ type RestoreTargetComposer = {
  * Give the session's saved "next message" back to THIS WebView's composer, appended
  * after the draft; no-op with no pending text. Used by the strip's × and by Stop, so
  * typed text never vanishes. Composer text is per-WebView, so only the acting one restores.
+ * Its quote cards go back to `passages`, ahead of any there (F-22).
  */
 export function restoreNextMessageIntoComposer(
   composer: RestoreTargetComposer,
   pendingMessage: string | null | undefined,
+  passages?: PassageDraftStore | null,
 ): void {
   if (!pendingMessage) return;
+  const words = handBackPrompt(passages, pendingMessage);
+  if (!words) return;
   const current = composer.getState().text;
-  composer.setText(current ? current + "\n" + pendingMessage : pendingMessage);
+  composer.setText(current ? current + "\n" + words : words);
 }
 
 /**
@@ -108,6 +115,7 @@ export const NextMessageStrip: FC = () => {
   const pendingMessage = useContext(PendingMessageContext);
   const pendingEntries = useContext(PendingMessageEntriesContext);
   const onClear = useContext(ClearPendingMessageContext);
+  const passages = useComposerPassages()?.store;
 
   const queued = pendingMessage
     ? resolveQueuedMessages(pendingMessage, pendingEntries)
@@ -168,7 +176,7 @@ export const NextMessageStrip: FC = () => {
     // Restore the displayed text into THIS WebView's composer, then clear in
     // the worker — the client hides the strip optimistically and ignores stale
     // updates until the clear confirms.
-    restoreNextMessageIntoComposer(composer, pendingMessage);
+    restoreNextMessageIntoComposer(composer, pendingMessage, passages);
     onClear?.();
   };
 
@@ -217,9 +225,9 @@ export const NextMessageStrip: FC = () => {
           className="min-w-0 flex-1 truncate whitespace-nowrap text-foreground"
           // Hover still reveals EVERY queued message, not just the shown one —
           // the badge says which one is showing, this says what they all are.
-          title={queued.join("\n")}
+          title={queued.map(quotedPromptLabel).join("\n")}
         >
-          {shownMessage}
+          {quotedPromptLabel(shownMessage)}
         </span>
         <TooltipIconButton
           data-testid="next-message-clear"

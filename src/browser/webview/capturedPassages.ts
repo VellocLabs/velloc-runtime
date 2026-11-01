@@ -8,6 +8,7 @@
  */
 
 import { randomUuid } from '../../utils/randomUuid'
+import { utf8ByteLength } from '../../utils/utf8ByteLength'
 
 /** Where a passage was taken from; local only, never sent. */
 export type PassageAnchor = {
@@ -45,25 +46,6 @@ export const PASSAGE_EXCERPT_GRAPHEMES = 240
 export const ATTACH_MIN_UTF16 = 2
 
 export type PassageRefusal = 'too-short' | 'too-long' | 'too-many' | 'draft-too-large'
-
-export function utf8ByteLength(text: string): number {
-  let bytes = 0
-  for (let i = 0; i < text.length; i++) {
-    const code = text.charCodeAt(i)
-    if (code < 0x80) bytes += 1
-    else if (code < 0x800) bytes += 2
-    else if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
-      const next = text.charCodeAt(i + 1)
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        bytes += 4
-        i++
-        continue
-      }
-      bytes += 3
-    } else bytes += 3
-  }
-  return bytes
-}
 
 /** Whether a selection is long enough to attach: two UTF-16 units once trimmed. */
 export function isAttachableSelection(text: string): boolean {
@@ -140,13 +122,16 @@ function splitGraphemes(text: string): string[] {
  * ellipsis. Display only — the body is never changed.
  */
 export function passageExcerpt(body: string, maxGraphemes: number = PASSAGE_EXCERPT_GRAPHEMES): string {
-  const folded = body.replace(LAYOUT_CONTROL_RE, '').replace(/\s+/g, ' ').trim()
-  // Only a bounded prefix is segmented: a 100k-unit body must not be walked
-  // whole for a 240-cluster card.
-  const head = folded.slice(0, maxGraphemes * 16)
-  const graphemes = splitGraphemes(head)
-  if (graphemes.length <= maxGraphemes && head.length === folded.length) return folded
-  return `${graphemes.slice(0, maxGraphemes).join('')}…`
+  // Only a bounded prefix is read: a 100k-unit body is never walked whole for
+  // a 240-cluster card.
+  const limit = maxGraphemes * 32
+  const cut = body.length > limit
+  const folded = body.slice(0, limit).replace(LAYOUT_CONTROL_RE, '').replace(/\s+/g, ' ').trim()
+  const graphemes = splitGraphemes(folded)
+  if (!cut && graphemes.length <= maxGraphemes) return folded
+  // A cut prefix may end inside a cluster (or a surrogate pair): its last one is never shown.
+  const whole = cut ? graphemes.slice(0, -1) : graphemes
+  return `${whole.slice(0, maxGraphemes).join('')}…`
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +202,36 @@ export function splitPassagePrompt(text: string): { passages: string[]; words: s
   return { passages, words: lines.slice(index + 1).join('\n') }
 }
 
+/**
+ * Several prompts sent as one turn: every passage, in order, ahead of every
+ * prompt's words joined by newlines. Prompts with no passages join unchanged.
+ */
+export function joinPassagePrompts(prompts: readonly string[]): string {
+  const split = prompts.map(splitPassagePrompt)
+  if (split.every(part => part.passages.length === 0)) return prompts.join('\n')
+  return serializePassagePrompt(
+    split.flatMap(part => part.passages),
+    split.map(part => part.words).filter(words => words.length > 0).join('\n'),
+  )
+}
+
+/**
+ * Gives a sent prompt back to a composer: its passages go to `store` as
+ * cards, ahead of any already there; returns the words for the text box.
+ * With no store the prompt comes back whole.
+ */
+export function handBackPrompt(store: PassageDraftStore | null | undefined, prompt: string): string {
+  if (!store) return prompt
+  const { passages, words } = splitPassagePrompt(prompt)
+  store.prepend(passages)
+  return words
+}
+
+/** The text a send carries, as `markComposerSend` / `takeForSend` compare it: its text parts, newline-joined. */
+export function composerSendText(content: readonly { type: string; text?: string }[]): string {
+  return content.flatMap(part => (part.type === 'text' && typeof part.text === 'string' ? [part.text] : [])).join('\n')
+}
+
 // ---------------------------------------------------------------------------
 // Draft store
 // ---------------------------------------------------------------------------
@@ -229,13 +244,14 @@ export type PassageDraftStore = {
   remove: (passageKey: string) => void
   /** Replaces every passage (a draft restore). */
   replace: (bodies: readonly string[]) => void
-  /** Marks the next `takeForSend` as the composer's own send. */
-  markComposerSend: () => void
+  /** Marks the composer's own send of `text` (its text parts, newline-joined). */
+  markComposerSend: (text: string) => void
   /**
-   * Empties the draft's passages and returns them when the send was marked by
-   * the composer; any other send (a slash command, an answer) takes nothing.
+   * Empties the draft's passages and returns them when the composer marked a
+   * send of exactly `text`; any other send (a slash command, an answer, an
+   * append after a send that never arrived) takes nothing. Clears the mark.
    */
-  takeForSend: () => CapturedPassage[]
+  takeForSend: (text: string) => CapturedPassage[]
   /** Empties the draft's passages and returns them. */
   take: () => CapturedPassage[]
   /**
@@ -243,11 +259,13 @@ export type PassageDraftStore = {
    * already present (same key) is not doubled.
    */
   restore: (taken: readonly CapturedPassage[]) => void
+  /** Adds passages read back from a prompt ahead of any present. */
+  prepend: (bodies: readonly string[]) => void
 }
 
 export function createPassageDraftStore(): PassageDraftStore {
   let passages: readonly CapturedPassage[] = []
-  let composerSend = false
+  let composerSend: string | null = null
   const listeners = new Set<() => void>()
   const set = (next: readonly CapturedPassage[]) => {
     passages = next
@@ -276,13 +294,13 @@ export function createPassageDraftStore(): PassageDraftStore {
       if (bodies.length === 0 && passages.length === 0) return
       set(bodies.map(body => createPassage({ body, method: 'range', anchors: [] })))
     },
-    markComposerSend() {
-      composerSend = true
+    markComposerSend(text) {
+      composerSend = text
     },
-    takeForSend() {
+    takeForSend(text) {
       const marked = composerSend
-      composerSend = false
-      return marked ? this.take() : []
+      composerSend = null
+      return marked === text ? this.take() : []
     },
     take() {
       const taken = [...passages]
@@ -295,6 +313,10 @@ export function createPassageDraftStore(): PassageDraftStore {
       const back = taken.filter(passage => !present.has(passage.passageKey))
       if (back.length === 0) return
       set([...back, ...passages])
+    },
+    prepend(bodies) {
+      if (bodies.length === 0) return
+      set([...bodies.map(body => createPassage({ body, method: 'range', anchors: [] })), ...passages])
     },
   }
 }

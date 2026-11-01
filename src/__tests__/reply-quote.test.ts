@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   passagesOfMetadata,
+  quotedPromptLabel,
   splitQuotedPrompt,
   splitQuotePrefix,
 } from '../browser/webview/replyQuote'
@@ -23,6 +24,12 @@ describe('quotes read off a prompt', () => {
     expect(splitQuotePrefix('hello\n> a\n\nb')).toEqual({ quote: null, text: 'hello\n> a\n\nb' })
     expect(splitQuotePrefix('>\n\nb')).toEqual({ quote: null, text: '>\n\nb' })
     expect(splitQuotePrefix('plain')).toEqual({ quote: null, text: 'plain' })
+  })
+
+  it('labels a prompt by its words, else its first quote, never the markers', () => {
+    expect(quotedPromptLabel('[Quoted context 1]\n> a\n\n[User message]\nwhy?')).toBe('why?')
+    expect(quotedPromptLabel('[Quoted context 1]\n> first  card\n\n[Quoted context 2]\n> b')).toBe('first card')
+    expect(quotedPromptLabel('plain words')).toBe('plain words')
   })
 
   it('prefers the numbered passage form, then the single block', () => {

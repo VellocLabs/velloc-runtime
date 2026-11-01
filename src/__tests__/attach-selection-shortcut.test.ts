@@ -118,9 +118,42 @@ describe('owner registry', () => {
     press(document.getElementById('field')!)
     const dialog = document.createElement('div')
     dialog.setAttribute('role', 'dialog')
+    dialog.setAttribute('aria-modal', 'true')
     document.body.appendChild(dialog)
     press()
     expect(b).not.toHaveBeenCalled()
+  })
+
+  it('leaves the keys to a menu or list box holding the focus', () => {
+    const { b } = mount()
+    select('pb')
+    const menu = document.createElement('div')
+    menu.setAttribute('role', 'menu')
+    const item = document.createElement('button')
+    menu.appendChild(item)
+    document.body.appendChild(menu)
+    item.focus()
+    press(item)
+    expect(b).not.toHaveBeenCalled()
+  })
+
+  it('still attaches while a list box is mounted elsewhere in the document', () => {
+    const { b } = mount()
+    const listbox = document.createElement('div')
+    listbox.setAttribute('role', 'listbox')
+    listbox.innerHTML = '<div role="option">A side chat</div>'
+    document.body.appendChild(listbox)
+    const hiddenModal = document.createElement('div')
+    hiddenModal.setAttribute('aria-modal', 'true')
+    hiddenModal.hidden = true
+    document.body.appendChild(hiddenModal)
+    select('pb')
+    press()
+    expect(b).toHaveBeenCalledWith('Beta text')
+  })
+
+  it('ignores a keydown with no key', () => {
+    expect(isAttachSelectionChord(chord({ code: '', key: undefined as unknown as string }), false)).toBe(false)
   })
 
   it('stops listening once the last owner leaves', () => {

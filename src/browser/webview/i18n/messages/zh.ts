@@ -136,6 +136,7 @@ export const zh: Messages = {
   'messageMenu.attachMessage': '附加消息作为上下文',
   'messageMenu.attachShortcut': '{modifier}+Shift+L',
   'messageMenu.forkStreaming': '回复完成后可用',
+  'messageMenu.forkNotSaved': '对话保存后可用',
   'messageMenu.copied': '已复制',
   'messageMenu.copyFailed': '无法复制到剪贴板',
   'passage.label': '引用',

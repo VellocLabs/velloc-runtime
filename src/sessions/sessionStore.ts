@@ -58,6 +58,9 @@ import {
 } from './sessionLineage'
 import type { PeerInboxEntry } from './sessionFamilyRules'
 import type { ChildProposal } from './childProposals'
+import { splitPassagePrompt, serializePassagePrompt } from '../browser/webview/capturedPassages'
+import { quotedPromptLabel } from '../browser/webview/replyQuote'
+import { splitUploadedAttachmentPrefix } from '../browser/webview/pastedTextAttachment'
 
 function createFallbackUUID(): string {
   return `conversation-${Math.random().toString(16).slice(2)}-${Date.now().toString(16)}`
@@ -523,6 +526,30 @@ function getMessageTextContent(message: Message): string {
   return texts.join(' ').replace(/\s+/g, ' ').trim()
 }
 
+/** A user prompt as one label line: its words without quote cards or their markers (F-22). */
+function userPromptLabelText(message: Message): string {
+  const container =
+    typeof message.message === 'object' && message.message !== null
+      ? (message.message as { content?: unknown })
+      : undefined
+  const text = extractTextFromContent(container?.content).join('\n')
+  const uploads = splitUploadedAttachmentPrefix(text)
+  const label = quotedPromptLabel(uploads.text)
+  return (label === uploads.text ? text : label).replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * A sent prompt as a composer draft. Upload mentions move behind the quote
+ * cards, into the words, so a prompt sent with both reopens with its cards (F-22).
+ */
+function promptAsComposerDraft(text: string): string {
+  const uploads = splitUploadedAttachmentPrefix(text)
+  if (uploads.attachments.length === 0) return text
+  const { passages, words } = splitPassagePrompt(uploads.text)
+  if (passages.length === 0) return text
+  return serializePassagePrompt(passages, text.slice(0, text.length - uploads.text.length) + words)
+}
+
 function extractComposerDraftText(message: Message): string {
   if (!isUserMessage(message)) return ''
   if ((message as { isMeta?: unknown }).isMeta === true) return ''
@@ -531,7 +558,7 @@ function extractComposerDraftText(message: Message): string {
     typeof message.message === 'object' && message.message !== null
       ? (message.message as { content?: unknown })
       : undefined
-  return extractTextFromContent(container?.content).join('\n').trim()
+  return promptAsComposerDraft(extractTextFromContent(container?.content).join('\n').trim())
 }
 
 function truncateSessionText(value: string): string {
@@ -560,7 +587,7 @@ function openingTopicText(messages: readonly Message[]): string {
       continue
     }
 
-    const text = getMessageTextContent(message)
+    const text = userPromptLabelText(message)
     if (text && !NON_TOPIC_OPENER_RE.test(text)) {
       return truncateSessionText(text)
     }
@@ -587,7 +614,8 @@ function extractPreviewText(messages: readonly Message[]): string {
       continue
     }
 
-    const text = getMessageTextContent(message)
+    const text =
+      message.type === MSG_TYPE_USER ? userPromptLabelText(message) : getMessageTextContent(message)
     if (text) {
       return truncateSessionText(text)
     }

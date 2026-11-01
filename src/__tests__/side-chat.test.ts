@@ -109,13 +109,13 @@ describe('a side-chat fork', () => {
   it('records the cut, the flag and the quote waiting in its composer', () => {
     const res = buildForkedTranscriptEntries(source, 'a1', 'new', 1000, undefined, 'src', {
       sideChat: true,
-      composerDraft: '> one\n\n',
+      composerDraft: '[Quoted context 1]\n> one',
     })
     expect(res?.meta.metadata).toMatchObject({
       forkedFromSessionId: 'src',
       forkedAtMessageUuid: 'a1',
       sideChat: true,
-      composerDraft: '> one\n\n',
+      composerDraft: '[Quoted context 1]\n> one',
     })
   })
 

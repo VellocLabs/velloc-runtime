@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import {
   buildMenuChoices,
   codeTargetOf,
+  contextMenuAnchor,
   createChoiceLedger,
   groupMenuChoices,
   messageRowOf,
@@ -88,11 +89,16 @@ export const MessageContextMenu: FC<{
       let fork: MenuTargetFacts["fork"] = null;
       if (message.role === "user" && actions.onForkFromMessage && userMessageOffersCutActions(custom)) {
         fork = { kind: "enabled", cut: { side: "before-entry", entryKey: messageId } };
-      } else if (message.role === "assistant" && actions.onForkAfterResponse) {
-        fork =
-          message.status?.type === "running"
-            ? { kind: "disabled", explanationKey: "messageMenu.forkStreaming" }
-            : { kind: "enabled", cut: { side: "after-response", responseKey: messageId } };
+      } else if (message.role === "assistant" && actions.resolveForkAfterResponse) {
+        if (message.status?.type === "running") {
+          fork = { kind: "disabled", explanationKey: "messageMenu.forkStreaming" };
+        } else {
+          const cutKey = actions.resolveForkAfterResponse(messageId);
+          fork =
+            cutKey === null
+              ? { kind: "disabled", explanationKey: "messageMenu.forkNotSaved" }
+              : { kind: "enabled", cut: { side: "after-response", responseKey: messageId, cutKey } };
+        }
       }
       const choices = buildMenuChoices({
         threadKey: sessionId ?? "",
@@ -106,15 +112,13 @@ export const MessageContextMenu: FC<{
       });
       if (choices.length === 0) return;
       event.preventDefault();
-      // The menu key and Shift+F10 carry no pointer position: anchor on the row.
-      const fromKeyboard = event.button !== 2 || (event.clientX === 0 && event.clientY === 0);
-      const rect = row.getBoundingClientRect();
+      const anchor = contextMenuAnchor(event, row.getBoundingClientRect());
       menuTokenCounter += 1;
       capturedRef.current = false;
       setMenu({
         token: `menu-${menuTokenCounter}`,
-        x: fromKeyboard ? rect.left + 16 : event.clientX,
-        y: fromKeyboard ? rect.top + 16 : event.clientY,
+        x: anchor.x,
+        y: anchor.y,
         choices,
         returnFocus: doc.activeElement instanceof HTMLElement ? doc.activeElement : null,
         row,
@@ -169,7 +173,7 @@ export const MessageContextMenu: FC<{
       case "thread.derive": {
         const cut = operation.cut;
         if (cut.side === "before-entry") actions.onForkFromMessage?.(cut.entryKey);
-        else actions.onForkAfterResponse?.(cut.responseKey);
+        else actions.onForkAfterResponse?.(cut.cutKey);
         return;
       }
     }

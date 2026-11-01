@@ -1,4 +1,5 @@
 import { createContext } from "react";
+import { handBackPrompt, type PassageDraftStore } from "@/browser/webview/capturedPassages";
 
 /**
  * Mid-turn input contexts. `ComposerDeliveryContext`: the composer names how the next
@@ -61,15 +62,19 @@ const appliedRestoreFileIds = new Set<string>();
  * inject messages were sent earlier in intent). Null when this restore was
  * already applied (a remount re-reads the same state), or carries no text (an
  * attachment-only send: its files come back through `takeInjectRestoreFiles`).
+ * Quote cards go back to `passages`, ahead of any there (F-22).
  */
 export function applyInjectRestore(
   current: string,
   restore: InjectRestore | null | undefined,
+  passages?: PassageDraftStore | null,
 ): string | null {
   if (!restore || appliedRestoreIds.has(restore.id)) return null;
   appliedRestoreIds.add(restore.id);
   if (!restore.text) return null;
-  return current ? `${restore.text}\n${current}` : restore.text;
+  const words = handBackPrompt(passages, restore.text);
+  if (!words) return null;
+  return current ? `${words}\n${current}` : words;
 }
 
 /**

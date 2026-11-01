@@ -134,6 +134,7 @@ export const ko: Messages = {
   'messageMenu.attachMessage': '메시지를 컨텍스트로 첨부',
   'messageMenu.attachShortcut': '{modifier}+Shift+L',
   'messageMenu.forkStreaming': '답변이 끝나면 사용할 수 있습니다',
+  'messageMenu.forkNotSaved': '대화가 저장되면 사용할 수 있습니다',
   'messageMenu.copied': '복사했습니다',
   'messageMenu.copyFailed': '클립보드에 복사할 수 없습니다',
   'passage.label': '발췌',

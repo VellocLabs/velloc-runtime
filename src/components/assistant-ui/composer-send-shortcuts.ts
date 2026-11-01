@@ -5,6 +5,7 @@
  * the key still sends as an ordinary send.
  */
 import type { SlashCommandSummary } from "@/browser/worker/workerProtocol";
+import { isMacPlatform } from "@/browser/webview/attachSelectionShortcut";
 
 export type ComposerSendShortcutId = "send" | "queue" | "fork";
 
@@ -51,7 +52,7 @@ export function composerShortcutModifiers(platform: string | undefined): {
   modifier: string;
   alt: string;
 } {
-  return platform && /Mac|iPhone|iPad/.test(platform)
+  return isMacPlatform(platform)
     ? { modifier: "⌘", alt: "⌥" }
     : { modifier: "Ctrl", alt: "Alt" };
 }

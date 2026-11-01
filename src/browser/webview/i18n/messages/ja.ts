@@ -135,6 +135,7 @@ export const ja: Messages = {
   'messageMenu.attachMessage': 'メッセージをコンテキストとして添付',
   'messageMenu.attachShortcut': '{modifier}+Shift+L',
   'messageMenu.forkStreaming': '返信が完了すると使用できます',
+  'messageMenu.forkNotSaved': '会話が保存されると使用できます',
   'messageMenu.copied': 'コピーしました',
   'messageMenu.copyFailed': 'クリップボードにコピーできませんでした',
   'passage.label': '抜粋',

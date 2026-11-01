@@ -10,10 +10,13 @@ export type MessageActionsContextValue = {
   /** Fork the conversation at the given message uuid into a new session. */
   onForkFromMessage?: (cutUuid: string) => void
   /**
-   * Fork after the reply in the given row: the copy keeps that whole turn and
-   * nothing after it; its composer starts empty (F-22).
+   * The transcript cut for forking after the reply in the given row: the copy
+   * keeps that whole turn and nothing after it (F-22). Null while the next
+   * turn is not stored yet.
    */
-  onForkAfterResponse?: (responseRowId: string) => void
+  resolveForkAfterResponse?: (responseRowId: string) => string | null
+  /** Fork at a cut `resolveForkAfterResponse` returned; the copy's composer starts empty. */
+  onForkAfterResponse?: (cutUuid: string) => void
   /**
    * Rewind the conversation to the given message uuid — restore to that point
    * and discard everything after (destructive). Implemented as fork-to-cut +

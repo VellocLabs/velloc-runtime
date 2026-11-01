@@ -80,13 +80,12 @@ export function focusComposerNear(from: Element | null | undefined): void {
   input?.focus({ preventScroll: true });
 }
 
-/** Provides the composer's cards; with no store (a read-only thread) nothing takes passages. */
+/**
+ * Provides the composer's cards; with no store (a read-only thread) nothing
+ * takes passages. One element either way, so a store coming or going never
+ * remounts the thread beneath it.
+ */
 export const ComposerPassagesProvider: FC<{ store: PassageDraftStore | null; children?: ReactNode }> = ({
-  store,
-  children,
-}) => (store ? <PassagesProvider store={store}>{children}</PassagesProvider> : <>{children}</>);
-
-const PassagesProvider: FC<{ store: PassageDraftStore; children: ReactNode }> = ({
   store,
   children,
 }) => {
@@ -99,6 +98,7 @@ const PassagesProvider: FC<{ store: PassageDraftStore; children: ReactNode }> = 
   }, []);
   const capture = useCallback(
     (request: CaptureRequest, from?: Element | null) => {
+      if (!store) return false;
       const result = store.add(request);
       nonce.current += 1;
       if (!result.ok) {
@@ -118,7 +118,7 @@ const PassagesProvider: FC<{ store: PassageDraftStore; children: ReactNode }> = 
     return () => clearTimeout(timer);
   }, [refusal]);
   const value = useMemo(
-    () => ({ store, capture, announcement, announce, refusal }),
+    () => (store ? { store, capture, announcement, announce, refusal } : null),
     [store, capture, announcement, announce, refusal],
   );
   return <ComposerPassagesContext.Provider value={value}>{children}</ComposerPassagesContext.Provider>;

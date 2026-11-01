@@ -3829,7 +3829,7 @@ describe('SharedWorkerSessionManager', () => {
       cutUuid: 'u1',
       requestId: 'side-chat-1',
       sideChat: true,
-      initialDraft: '> hello\n\n',
+      initialDraft: '[Quoted context 1]\n> hello',
     })
     await new Promise(resolve => setTimeout(resolve, 10))
 
@@ -3848,7 +3848,7 @@ describe('SharedWorkerSessionManager', () => {
       forkedFromSessionId: 'source-session',
       forkedAtMessageUuid: 'u1',
       sideChat: true,
-      composerDraft: '> hello\n\n',
+      composerDraft: '[Quoted context 1]\n> hello',
       projectRoot: '/repo',
     })
     expect(metaWrites[0]!.metadata.spawnedFrom).toBeUndefined()

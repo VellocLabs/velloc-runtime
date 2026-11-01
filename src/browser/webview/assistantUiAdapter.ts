@@ -84,7 +84,7 @@ import {
 } from './assistantUiAdapterCards'
 import { parseTeamMessageEnvelope } from '../../team/parseTeamFrame'
 import { withoutPluginPromptFrame } from '../../mods/promptNouns'
-import { passagesOfMetadata } from './replyQuote'
+import { passagesOfMetadata, splitQuotedPrompt } from './replyQuote'
 import { serializePassagePrompt } from './capturedPassages'
 
 function findPreviousVisibleUserPrompt(
@@ -1632,11 +1632,12 @@ function queuedUserInputThreadMessage(message: Message): ThreadMessageLike | nul
       ? attachment.source_uuid
       : (message as { uuid?: unknown }).uuid
   if (typeof id !== 'string' || id === '') return null
-  const { content, attachments } = convertUserContentWithAttachments(
+  const { content, attachments, quotes } = convertUserContentWithAttachments(
     attachment.prompt,
   )
   if (
     attachments.length === 0 &&
+    quotes === undefined &&
     ((typeof content === 'string' && content.trim() === '') ||
       (Array.isArray(content) && content.length === 0))
   ) {
@@ -1648,7 +1649,7 @@ function queuedUserInputThreadMessage(message: Message): ThreadMessageLike | nul
     role: 'user',
     content,
     ...(attachments.length > 0 ? { attachments } : {}),
-    metadata: { custom: { injectLanded: true } },
+    metadata: { custom: { injectLanded: true, ...(quotes !== undefined ? { quotes } : {}) } },
   }
 }
 
@@ -1693,12 +1694,14 @@ function isInjectBubbleThreadMessage(message: ThreadMessageLike): boolean {
 
 /** A plain-Enter message not yet rendered from the stream / transcript. */
 function injectBubbleThreadMessage(bubble: InjectBubble): ThreadMessageLike {
+  const { quotes, text } = splitQuotedPrompt(bubble.text)
   return {
     id: bubble.uuid,
     role: 'user',
-    content: bubble.text,
+    content: quotes.length > 0 ? text : bubble.text,
     metadata: {
       custom: {
+        ...(quotes.length > 0 ? { quotes } : {}),
         injectState: bubble.state,
         injectUuid: bubble.uuid,
         ...(bubble.hasAttachments ? { injectHasAttachments: true } : {}),
@@ -1744,7 +1747,7 @@ export function combineThreadMessages(
           : {
               id: state.preSplitPromptId,
               role: 'user',
-              content: state.preSplitPrompt,
+              ...pendingPromptContent(state.preSplitPrompt),
             },
       )
     }

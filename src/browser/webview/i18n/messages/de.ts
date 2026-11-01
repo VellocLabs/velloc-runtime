@@ -137,6 +137,7 @@ export const de: Messages = {
   'messageMenu.attachMessage': 'Nachricht als Kontext anhängen',
   'messageMenu.attachShortcut': '{modifier}+Shift+L',
   'messageMenu.forkStreaming': 'Verfügbar, sobald diese Antwort fertig ist',
+  'messageMenu.forkNotSaved': 'Verfügbar, sobald die Unterhaltung gespeichert ist',
   'messageMenu.copied': 'Kopiert',
   'messageMenu.copyFailed': 'Kopieren in die Zwischenablage fehlgeschlagen',
   'passage.label': 'Auszug',

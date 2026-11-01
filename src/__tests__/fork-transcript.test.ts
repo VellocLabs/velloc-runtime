@@ -211,6 +211,22 @@ describe('buildForkedTranscriptEntries', () => {
     expect(meta.leafUuid).toBeNull()
   })
 
+  it('a cut prompt with uploads and quote cards opens with its cards, the uploads in the words (F-22)', () => {
+    const prompt = '@"/w/.velloc/uploads/0123abcd-a.png" [Quoted context 1]\n> claim\n\n[User message]\nwhy?'
+    const res = buildForkedTranscriptEntries(
+      [msg('u1', 'user', 'first prompt', 0), msg('a1', 'assistant', 'reply one', 1), msg('u2', 'user', prompt, 2)],
+      'u2',
+      'new',
+      1000,
+      undefined,
+      undefined,
+      { moveCutMessageToDraft: true },
+    )
+    expect(forkMeta(res!).composerDraft).toBe(
+      '[Quoted context 1]\n> claim\n\n[User message]\n@"/w/.velloc/uploads/0123abcd-a.png" why?',
+    )
+  })
+
   it('keeps the inclusive cut when the cut message has no text to move', () => {
     // A media-only prompt has nothing to put in the composer, so dropping it
     // would destroy content — those fall back to the inclusive cut.

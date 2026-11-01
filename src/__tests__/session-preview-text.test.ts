@@ -29,6 +29,21 @@ const COMPACT_SUMMARY_BODY =
   'that grew too large for context. NEXUS_E2E_COMPACT_SUMMARY_MARKER'
 
 describe('deriveSessionMetadataFromMessages — preview text', () => {
+  it('names a prompt sent with quote cards by its words, else its first card, never the markers (F-22)', () => {
+    const withWords = deriveSessionMetadataFromMessages(
+      [userMessage('[Quoted context 1]\n> the claim\n\n[User message]\nwhy is that?')],
+      null,
+    )
+    expect(withWords.firstPrompt).toBe('why is that?')
+    expect(withWords.previewText).toBe('why is that?')
+    const cardsOnly = deriveSessionMetadataFromMessages(
+      [userMessage('@"/w/.velloc/uploads/0123abcd-a.png" [Quoted context 1]\n> the  claim')],
+      null,
+    )
+    expect(cardsOnly.firstPrompt).toBe('the claim')
+    expect(cardsOnly.previewText).toBe('the claim')
+  })
+
   it('skips the isMeta compaction summary so it never becomes the preview', () => {
     const messages: Message[] = [
       userMessage('hello there'),

@@ -5,7 +5,7 @@
  * quotes it was sent with.
  */
 
-import { splitPassagePrompt } from './capturedPassages'
+import { passageExcerpt, splitPassagePrompt } from './capturedPassages'
 
 const QUOTE_LINE_PREFIX = '> '
 
@@ -51,4 +51,14 @@ export function passagesOfMetadata(metadata: unknown): string[] {
   const list = (metadata as { custom?: { passages?: unknown } } | undefined)?.custom?.passages
   if (!Array.isArray(list)) return []
   return list.filter((body): body is string => typeof body === 'string' && body.trim().length > 0)
+}
+
+/**
+ * A prompt as a label (a strip row, a bubble, a session title): the words
+ * without their quotes, or the first quote's excerpt when there are no words.
+ */
+export function quotedPromptLabel(text: string): string {
+  const split = splitQuotedPrompt(text)
+  if (split.quotes.length === 0) return text
+  return split.text.trim() ? split.text : passageExcerpt(split.quotes[0] ?? '')
 }

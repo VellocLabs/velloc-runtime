@@ -17,6 +17,7 @@ import {
   takeInjectRestoreFiles,
   userMessageOffersCutActions,
 } from '../components/assistant-ui/inject-message-context'
+import { createPassageDraftStore } from '../browser/webview/capturedPassages'
 
 /**
  * The page side of mid-turn input: a plain-Enter send while the agent runs
@@ -435,6 +436,111 @@ describe('BrowserRuntimeClient — an inject message hands its attachments back'
       text: 'look at this',
       files: [file],
     })
+  })
+
+  it('Stop and x hand back an image send\'s quote cards with its words (F-22)', async () => {
+    const { client, emit, posted } = fakeWorker()
+    await client.start()
+    const file = screenshot()
+    const message = { ...(imageMessage(file, 'why?') as object), metadata: { custom: { passages: ['claim'] } } }
+    await client.submitComposerMessage(message as never, { delivery: 'inject' })
+    const uuid = lastSubmit(posted).payload.promptUuid!
+
+    const removed = client.removeInjectMessage(uuid)
+    const request = posted.filter(m => m.type === 'worker.removeInjectMessage').pop() as Extract<
+      AgentWorkerInboundMessage,
+      { type: 'worker.removeInjectMessage' }
+    >
+    emit({ type: 'worker.injectMessageRemoved', payload: { uuid, requestId: request.payload.requestId, ok: true, text: 'screenshot.png' } })
+    const result = await removed
+    expect(result).toMatchObject({ ok: true, files: [file] })
+    const store = createPassageDraftStore()
+    expect(applyInjectRestore('', { id: 'r-x-card', text: (result as { text: string }).text }, store)).toBe('why?')
+    expect(store.getPassages().map(p => p.payload.body)).toEqual(['claim'])
+  })
+})
+
+describe('quote cards on inject rows (F-22)', () => {
+  const wire = '[Quoted context 1]\n> claim\n\n[User message]\nwhy?'
+  const cardsOnly = '[Quoted context 1]\n> claim'
+  const custom = (message: { metadata?: unknown } | undefined) =>
+    (message?.metadata as { custom?: Record<string, unknown> } | undefined)?.custom
+
+  it('a landed cards-only inject keeps its row and its cards', () => {
+    const converted = convertBrowserRuntimeStateToThreadMessages(
+      baseState({
+        liveEvents: [
+          {
+            type: 'attachment',
+            uuid: 'att-card',
+            attachment: { type: 'queued_command', commandMode: 'prompt', prompt: cardsOnly, source_uuid: 'u-card' },
+          },
+        ] as never,
+      }),
+    )
+    const row = converted.find(m => m.id === 'u-card')
+    expect(row).toBeDefined()
+    expect(custom(row)).toMatchObject({ injectLanded: true, quotes: ['claim'] })
+  })
+
+  it('a landed inject with words shows the words and the cards, not the markers', () => {
+    const converted = convertBrowserRuntimeStateToThreadMessages(
+      baseState({
+        liveEvents: [
+          {
+            type: 'attachment',
+            uuid: 'att-words',
+            attachment: { type: 'queued_command', commandMode: 'prompt', prompt: wire, source_uuid: 'u-words' },
+          },
+        ] as never,
+      }),
+    )
+    const row = converted.find(m => m.id === 'u-words')
+    expect(row?.content).toBe('why?')
+    expect(custom(row)).toMatchObject({ quotes: ['claim'] })
+  })
+
+  it('a pending bubble and a pre-split prompt show the words, with the cards as quotes', () => {
+    const converted = convertBrowserRuntimeStateToThreadMessages(
+      baseState({
+        injectBubbles: [bubble({ uuid: 'u-b', text: wire })],
+        preSplitPrompt: wire,
+        preSplitPromptId: 'u-pre',
+      } as Partial<BrowserRuntimeClientState>),
+    )
+    for (const id of ['u-b', 'u-pre']) {
+      const row = converted.find(m => m.id === id)
+      expect(JSON.stringify(row?.content)).not.toContain('[Quoted context')
+      expect(custom(row)).toMatchObject({ quotes: ['claim'] })
+    }
+    expect(custom(converted.find(m => m.id === 'u-b'))).toMatchObject({ injectState: 'pending' })
+  })
+
+  it('Stop\'s restore puts the cards back ahead of the draft\'s and the words in the box', () => {
+    const store = createPassageDraftStore()
+    store.add({ body: 'already here', method: 'range', anchors: [] })
+    expect(applyInjectRestore('draft', { id: 'r-card', text: wire }, store)).toBe('why?\ndraft')
+    expect(store.getPassages().map(p => p.payload.body)).toEqual(['claim', 'already here'])
+    // Cards alone: nothing for the text box, the card still comes back.
+    expect(applyInjectRestore('draft', { id: 'r-card-only', text: cardsOnly }, store)).toBeNull()
+    expect(store.getPassages()).toHaveLength(3)
+  })
+
+  it('two dropped card sends restore as one block, every card ahead', async () => {
+    const { client, emit } = fakeWorker()
+    await client.start()
+    await client.interrupt()
+    const a = '[Quoted context 1]\n> a\n\n[User message]\none'
+    const b = '[Quoted context 1]\n> b\n\n[User message]\ntwo'
+    emit({ type: 'worker.injectMessagesCleared', payload: { entries: [
+      { uuid: 'u-1', text: a, hasAttachments: false },
+      { uuid: 'u-2', text: b, hasAttachments: false },
+    ] } })
+    await tick()
+    const store = createPassageDraftStore()
+    const text = applyInjectRestore('', client.getState().injectRestore, store)
+    expect(text).toBe('one\ntwo')
+    expect(store.getPassages().map(p => p.payload.body)).toEqual(['a', 'b'])
   })
 })
 

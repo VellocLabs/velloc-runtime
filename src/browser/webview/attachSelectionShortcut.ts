@@ -27,18 +27,26 @@ export type AttachShortcutKey = {
 /** The exact chord for `mac` / not `mac`; a repeat, an IME composition or a claimed event never matches. */
 export function isAttachSelectionChord(event: AttachShortcutKey, mac: boolean): boolean {
   if (event.repeat || event.isComposing || event.defaultPrevented) return false
-  if (event.code !== 'KeyL' && event.key.toLowerCase() !== 'l') return false
+  if (event.code !== 'KeyL' && (event.key ?? '').toLowerCase() !== 'l') return false
   if (!event.shiftKey || event.altKey) return false
   return mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
 }
 
 const OWN_KEYS_SELECTOR =
-  'input, textarea, select, [contenteditable=""], [contenteditable="true"], canvas, iframe, embed, object'
+  'input, textarea, select, [contenteditable=""], [contenteditable="true"], canvas, iframe, embed, object, ' +
+  '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]'
 
-/** A focused field, embedded content, or an open dialog / menu / list box keeps the keys to itself. */
+/**
+ * A field, embedded content, or a dialog / menu / list box holding the key's
+ * target or the focus keeps the keys to itself, as does an open modal anywhere.
+ * A list box merely mounted elsewhere in the document does not.
+ */
 export function attachShortcutBlocked(target: EventTarget | null, doc: Document): boolean {
   if (target instanceof Element && target.closest(OWN_KEYS_SELECTOR)) return true
-  return doc.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]') !== null
+  if (doc.activeElement?.closest(OWN_KEYS_SELECTOR)) return true
+  return Array.from(doc.querySelectorAll('[aria-modal="true"]')).some(
+    modal => !modal.closest('[hidden], [inert], [aria-hidden="true"]'),
+  )
 }
 
 export type AttachSelectionOwner = {

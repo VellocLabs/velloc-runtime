@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
-import { createElement } from 'react'
+import { createElement, useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 
-import { createPassageDraftStore, type PassageDraftStore } from '../browser/webview/capturedPassages'
+import { composerSendText, createPassageDraftStore, type PassageDraftStore } from '../browser/webview/capturedPassages'
 import {
   COMPOSER_DRAFT_DEBOUNCE_MS,
   useComposerDraftSync,
@@ -11,6 +11,10 @@ import {
   type ComposerDraftRuntime,
 } from '../browser/webview/useComposerDraftSync'
 import { ComposerPassagesProvider, ComposerPassageStrip, useComposerPassages } from '../components/assistant-ui/composer-passages'
+import { AssistantRuntimeProvider, useExternalStoreRuntime, type ThreadMessageLike } from '@assistant-ui/react'
+import { I18nProvider } from '../browser/webview/i18n'
+import { Composer, SnapshotNeedsAnswerProvider } from '../components/assistant-ui/thread'
+import { TooltipProvider } from '../components/ui/tooltip'
 
 /**
  * The composer's quote cards (F-22): a card is a text-only blockquote with a
@@ -100,6 +104,71 @@ describe('quote cards', () => {
     })
     expect(store.getPassages()).toHaveLength(1)
     expect(screen.getByTestId('passage-refusal').textContent).toContain('too long')
+  })
+})
+
+describe('the provider', () => {
+  it('never remounts the thread beneath it when the store comes or goes', () => {
+    let mounts = 0
+    function Child() {
+      useEffect(() => {
+        mounts++
+      }, [])
+      captureFrom = useComposerPassages()
+      return null
+    }
+    const store = createPassageDraftStore()
+    const view = render(createElement(ComposerPassagesProvider, { store }, createElement(Child)))
+    expect(captureFrom?.store).toBe(store)
+    view.rerender(createElement(ComposerPassagesProvider, { store: null }, createElement(Child)))
+    expect(captureFrom).toBeNull()
+    view.rerender(createElement(ComposerPassagesProvider, { store }, createElement(Child)))
+    expect(mounts).toBe(1)
+  })
+})
+
+describe('every composer submit carries the cards', () => {
+  function Harness({ store, sent }: { store: PassageDraftStore; sent: string[][] }) {
+    const runtime = useExternalStoreRuntime<ThreadMessageLike>({
+      messages: [],
+      convertMessage: m => m,
+      isRunning: false,
+      onNew: async message => {
+        sent.push(store.takeForSend(composerSendText(message.content)).map(p => p.payload.body))
+      },
+    })
+    return createElement(
+      TooltipProvider,
+      null,
+      createElement(
+        I18nProvider,
+        { locale: 'en' as const },
+        createElement(
+          AssistantRuntimeProvider,
+          { runtime },
+          createElement(
+            SnapshotNeedsAnswerProvider,
+            { value: true },
+            createElement(ComposerPassagesProvider, { store }, createElement(Composer)),
+          ),
+        ),
+      ),
+    )
+  }
+
+  it('an Enter during a plan-approval halt sends the cards with the words', async () => {
+    const store = createPassageDraftStore()
+    add(store, 'claim')
+    const sent: string[][] = []
+    const { container } = render(createElement(Harness, { store, sent }))
+    const input = container.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')!
+    fireEvent.change(input, { target: { value: 'why?' } })
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+      await Promise.resolve()
+    })
+    expect(sent).toEqual([['claim']])
+    expect(store.getPassages()).toHaveLength(0)
   })
 })
 

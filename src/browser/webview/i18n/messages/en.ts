@@ -157,6 +157,7 @@ export const en = {
   'messageMenu.attachMessage': 'Attach message as context',
   'messageMenu.attachShortcut': '{modifier}+Shift+L',
   'messageMenu.forkStreaming': 'Available once this reply finishes',
+  'messageMenu.forkNotSaved': 'Available once the conversation is saved',
   'messageMenu.copied': 'Copied',
   'messageMenu.copyFailed': 'Couldn\'t copy to the clipboard',
   // The quote cards above the composer and their full-text preview (F-22).

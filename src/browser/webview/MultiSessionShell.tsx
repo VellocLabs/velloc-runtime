@@ -4240,8 +4240,6 @@ export function MultiSessionShell({
     [forkSession, hostBridgeTransport],
   )
 
-  // The sidebar's Fork: copy the whole conversation; the `session.forked` ack
-  // switches to the copy.
   // The message menu's "Fork from here" on a reply: an inclusive cut, the
   // copy's composer empty (F-22).
   const handleForkAfterMessage = useCallback(
@@ -4251,6 +4249,8 @@ export function MultiSessionShell({
     [forkSession],
   )
 
+  // The sidebar's Fork: copy the whole conversation; the `session.forked` ack
+  // switches to the copy.
   const handleForkThread = useCallback(
     (sessionId: string) => {
       forkSession(sessionId, undefined, { keepCutMessage: true })

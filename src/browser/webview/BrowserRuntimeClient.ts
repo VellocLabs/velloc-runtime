@@ -38,6 +38,8 @@ import {
   buildPromptFromAppendMessage,
   extractTextFromAppendMessage,
 } from './assistantUiAdapter'
+import { joinPassagePrompts, serializePassagePrompt } from './capturedPassages'
+import { passagesOfMetadata } from './replyQuote'
 import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
 import type { BundledSkillBodyResult } from '../../skillLibrary/builtinSkillBody'
 import type { TurnDiffMeta, TurnFileChange } from '../../utils/turnDiffs'
@@ -705,7 +707,13 @@ export class BrowserRuntimeClient {
     )
     const restoreDraft: InjectRestoreDraft | undefined =
       files.length > 0
-        ? { text: extractTextFromAppendMessage(message), files }
+        ? {
+            text: serializePassagePrompt(
+              passagesOfMetadata(message.metadata),
+              extractTextFromAppendMessage(message),
+            ),
+            files,
+          }
         : undefined
 
     if (typeof prompt === 'string') {
@@ -1831,7 +1839,7 @@ export class BrowserRuntimeClient {
       !this.state.pendingMessage &&
       !this.state.pendingClearInFlight
     ) {
-      patch.pendingMessage = snapshot.nextMessages.join('\n')
+      patch.pendingMessage = joinPassagePrompts(snapshot.nextMessages)
       patch.pendingMessageEntries = [...snapshot.nextMessages]
     }
     return patch
@@ -2000,10 +2008,11 @@ export class BrowserRuntimeClient {
         const drafts = message.payload.entries.map(entry =>
           this.injectDrafts.get(entry.uuid),
         )
-        const restoreText = message.payload.entries
-          .map((entry, index) => drafts[index]?.text ?? entry.text)
-          .filter(text => text.length > 0)
-          .join('\n')
+        const restoreText = joinPassagePrompts(
+          message.payload.entries
+            .map((entry, index) => drafts[index]?.text ?? entry.text)
+            .filter(text => text.length > 0),
+        )
         const restoreFiles = drafts.flatMap(draft => draft?.files ?? [])
         this.state = {
           ...this.state,

@@ -8,6 +8,9 @@
  */
 import { adaptDocument } from './modelsDevAdapter'
 import type { CatalogProviderRecords } from './types'
+import { utf8ByteLength } from '../utils/utf8ByteLength'
+
+export { utf8ByteLength }
 
 /** Decoded response cap: the document is about 5.3 MB today. */
 export const MAX_DOCUMENT_BYTES = 8 * 1024 * 1024
@@ -91,28 +94,6 @@ export async function fetchSlimmed(opts: {
   }
   const out = slim(res.body, opts.cachedModelCount, opts.parse ?? JSON.parse)
   return { kind: 'ok', etag: res.etag, ...out }
-}
-
-/**
- * UTF-8 size of `text` without encoding it (no second copy of a document
- * that is several megabytes). A lone surrogate counts as the 3-byte
- * replacement character, as an encoder would write it.
- */
-export function utf8ByteLength(text: string): number {
-  let bytes = 0
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i)
-    if (c < 0x80) bytes += 1
-    else if (c < 0x800) bytes += 2
-    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
-      const next = text.charCodeAt(i + 1)
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        bytes += 4
-        i++
-      } else bytes += 3
-    } else bytes += 3
-  }
-  return bytes
 }
 
 /** Small non-cryptographic hash (two FNV-1a lanes), hex. */

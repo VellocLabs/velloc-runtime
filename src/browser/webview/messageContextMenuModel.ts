@@ -19,7 +19,7 @@ export type CopyMaterial =
 
 export type HistoryCut =
   | { side: 'before-entry'; entryKey: string }
-  | { side: 'after-response'; responseKey: string }
+  | { side: 'after-response'; responseKey: string; cutKey: string }
 
 export type MenuOperation =
   | { command: 'clipboard.write'; material: CopyMaterial }
@@ -73,6 +73,19 @@ export function messageRowOf(target: EventTarget | null, list: Element): HTMLEle
   if (target.closest(NATIVE_MENU_SELECTOR)) return null
   const row = target.closest<HTMLElement>('[data-message-id]')
   return row && list.contains(row) ? row : null
+}
+
+/**
+ * Where the menu opens: at the pointer for a mouse, pen or touch open (any
+ * button, a macOS Control-click included), else on the row's visible top-left
+ * (the menu key and Shift+F10 carry no position).
+ */
+export function contextMenuAnchor(
+  event: { clientX: number; clientY: number },
+  row: { left: number; top: number },
+): { x: number; y: number } {
+  if (event.clientX !== 0 || event.clientY !== 0) return { x: event.clientX, y: event.clientY }
+  return { x: Math.max(row.left, 0) + 16, y: Math.max(row.top, 0) + 16 }
 }
 
 /**
@@ -146,17 +159,21 @@ export function buildMenuChoices(facts: MenuTargetFacts): ActionChoice[] {
     })
   }
   if (facts.entryText.trim().length > 0) {
-    choices.push(
-      {
-        choiceKey: 'copy-message',
-        section: 'entry',
-        labelKey: 'messageMenu.copyMessage',
-        availability: 'enabled',
-        operation: {
-          command: 'clipboard.write',
-          material: { scope: 'entry', body: facts.entryText, output: 'rich' },
-        },
+    // A prompt is shown as typed, not as Markdown: it copies as plain text only.
+    const prompt = facts.role === 'user'
+    choices.push({
+      choiceKey: 'copy-message',
+      section: 'entry',
+      labelKey: 'messageMenu.copyMessage',
+      availability: 'enabled',
+      operation: {
+        command: 'clipboard.write',
+        material: { scope: 'entry', body: facts.entryText, output: prompt ? 'plain' : 'rich' },
       },
+    })
+  }
+  if (facts.entryText.trim().length > 0 && facts.role !== 'user') {
+    choices.push(
       {
         choiceKey: 'copy-message-markdown',
         section: 'entry',
@@ -242,22 +259,45 @@ export function createChoiceLedger() {
   }
 }
 
+/** A thread row as the fork-after cut reads it; `sourceType` is the row's `metadata.custom.sourceType`. */
+export type ForkCutRow = { id: string; role: string; sourceType?: string }
+
+/** Rows drawn as replies that still open a new turn: a teammate's message, background results. */
+const TURN_OPENING_SOURCES = new Set(['team_message', 'background_results'])
+
+/**
+ * The stored entry a row was read from: its own uuid, a landed mid-turn
+ * message's `queued_command` entry (the row carries the bubble's uuid), or the
+ * original of a `:duplicate-N` row. -1 when the row is not stored yet.
+ */
+function transcriptIndexOfRow(transcriptMessages: readonly Message[], rowId: string): number {
+  const id = rowId.replace(/:duplicate-\d+$/, '')
+  return transcriptMessages.findIndex(
+    message =>
+      message.uuid === id ||
+      (message as { attachment?: { source_uuid?: unknown } }).attachment?.source_uuid === id,
+  )
+}
+
 /**
  * The cut for forking after the reply in `responseRowId`: the transcript entry
- * just before the next prompt row, so the copy keeps the whole turn (its tool
- * calls and results) and nothing after it. With no later prompt, the whole
- * conversation. Null when the cut cannot be found in the transcript.
+ * just before the next turn (a prompt, a teammate's message or background
+ * results), so the copy keeps the whole turn (its tool calls and results) and
+ * nothing after it. With no later turn, the whole conversation. Null when the
+ * next turn is not stored yet, so the menu can say so instead of doing nothing.
  */
 export function resolveAfterResponseCut(
-  rows: readonly { id: string; role: string }[],
+  rows: readonly ForkCutRow[],
   transcriptMessages: readonly Message[],
   responseRowId: string,
 ): string | null {
   const rowIndex = rows.findIndex(row => row.id === responseRowId)
   if (rowIndex < 0) return null
-  const nextPrompt = rows.slice(rowIndex + 1).find(row => row.role === 'user')
-  if (!nextPrompt) return resolveForkSendCutUuid(transcriptMessages)
-  const promptIndex = transcriptMessages.findIndex(message => message.uuid === nextPrompt.id)
-  if (promptIndex <= 0) return null
-  return resolveForkSendCutUuid(transcriptMessages.slice(0, promptIndex))
+  const nextTurn = rows
+    .slice(rowIndex + 1)
+    .find(row => row.role === 'user' || (row.sourceType !== undefined && TURN_OPENING_SOURCES.has(row.sourceType)))
+  if (!nextTurn) return resolveForkSendCutUuid(transcriptMessages)
+  const turnIndex = transcriptIndexOfRow(transcriptMessages, nextTurn.id)
+  if (turnIndex <= 0) return null
+  return resolveForkSendCutUuid(transcriptMessages.slice(0, turnIndex))
 }

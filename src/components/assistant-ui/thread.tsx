@@ -39,7 +39,6 @@ import {
   AuiIf,
   ComposerPrimitive,
   SelectionToolbarPrimitive,
-  useMessageQuote,
   ErrorPrimitive,
   MessagePartPrimitive,
   MessagePrimitive,
@@ -90,7 +89,7 @@ import { useModComposer } from "./use-mod-composer";
 import { MessageContextMenu } from "./message-context-menu";
 import { ComposerPassageStrip, useComposerPassages, usePassageList } from "./composer-passages";
 import { registerAttachSelectionOwner } from "@/browser/webview/attachSelectionShortcut";
-import { isAttachableSelection } from "@/browser/webview/capturedPassages";
+import { isAttachableSelection, type PassageDraftStore } from "@/browser/webview/capturedPassages";
 import { ModPromptVirtualText } from "./mod-prompt-virtual-text";
 import { ComposerTokenUsage } from "@/browser/webview/TokenUsageIndicator";
 import { REASONING_ONLY_ROW_KEY } from "@/browser/webview/showReasoning";
@@ -1658,7 +1657,11 @@ export function resolveComposerActionDisabled(params: {
  * attachments, so a send of cards alone appends an empty prompt, which the
  * host fills with the cards (F-22).
  */
-function useComposerSend(): { hasPassages: boolean; send: () => void } {
+function useComposerSend(): {
+  hasPassages: boolean;
+  send: () => void;
+  passages: PassageDraftStore | null;
+} {
   const composer = useComposerRuntime();
   const thread = useThreadRuntime();
   const store = useComposerPassages()?.store;
@@ -1670,14 +1673,14 @@ function useComposerSend(): { hasPassages: boolean; send: () => void } {
       composer.send();
       return;
     }
-    store?.markComposerSend();
+    store?.markComposerSend(blank ? "" : state.text);
     if (blank) {
       void thread.append({ role: "user", content: [] });
       return;
     }
     composer.send();
   }, [composer, thread, store, hasPassages]);
-  return { hasPassages, send };
+  return { hasPassages, send, passages: store ?? null };
 }
 
 // Exported for `remote-client-can-trimming.render.test.ts`, which mounts it to
@@ -1715,7 +1718,7 @@ export const Composer: FC = () => {  const t = useT();
   // Mirrors the button's gate exactly, and only fires in the case assistant-ui
   // declines to handle — idle Enter still goes through the primitive.
   const composer = useComposerRuntime();
-  const { hasPassages, send: sendComposer } = useComposerSend();
+  const { hasPassages, send: sendComposer, passages } = useComposerSend();
   const snapshotNeedsAnswer = useContext(SnapshotNeedsAnswerContext);
   const sendBlocked = usePendingQuestionCount() > 0 || snapshotNeedsAnswer;
   const isRunning = useAssistantState((s) => s.thread.isRunning);
@@ -1728,9 +1731,9 @@ export const Composer: FC = () => {  const t = useT();
   // (`injectMessagesCleared`) — one drained into the model in the same
   // instant must not also return to the composer.
   useEffect(() => {
-    const next = applyInjectRestore(composer.getState().text, injectRestore);
+    const next = applyInjectRestore(composer.getState().text, injectRestore, passages);
     if (next !== null) composer.setText(next);
-  }, [composer, injectRestore]);
+  }, [composer, injectRestore, passages]);
   // The session's mods read, fill and suggest into this box (F-25):
   // `$.prompt.read` / `.fill` / `.suggest`. A suggestion shows dim in the
   // empty box; Tab or → takes it.
@@ -1782,7 +1785,7 @@ export const Composer: FC = () => {  const t = useT();
       onCancel
     ) {
       e.preventDefault();
-      restoreNextMessageIntoComposer(composer, pendingMessage);
+      restoreNextMessageIntoComposer(composer, pendingMessage, passages);
       onCancel();
       return;
     }
@@ -1801,26 +1804,7 @@ export const Composer: FC = () => {  const t = useT();
       sendComposer();
       return;
     }
-    if (!shouldSendOnRunningEnter(keyParams)) {
-      // Idle Enter is the primitive's, which neither carries the quote cards
-      // nor sends a box holding only cards: claim it whenever there are cards.
-      if (
-        e.key === "Enter" &&
-        !e.shiftKey &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey &&
-        !e.defaultPrevented &&
-        !e.nativeEvent.isComposing &&
-        !isRunning &&
-        !sendBlocked &&
-        hasPassages
-      ) {
-        e.preventDefault();
-        sendComposer();
-      }
-      return;
-    }
+    if (!shouldSendOnRunningEnter(keyParams)) return;
     // Claim the key so the primitive's own (no-op while running) handler is
     // skipped, then send — plain Enter adds the message to the RUNNING turn.
     e.preventDefault();
@@ -1828,7 +1812,17 @@ export const Composer: FC = () => {  const t = useT();
     sendComposer();
   };
   return (
-    <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
+    <ComposerPrimitive.Root
+      className="aui-composer-root relative flex w-full flex-col"
+      // Every submit the primitive makes (idle Enter, a halt's Enter) goes
+      // through the composer's send while there are cards: the library send
+      // neither carries them nor sends a box holding only cards (F-22).
+      onSubmit={(e) => {
+        if (!hasPassages) return;
+        e.preventDefault();
+        sendComposer();
+      }}
+    >
       <PlanModeBanner />
       <SlashCommandPicker commands={slashCommands}>
         <ComposerPrimitive.AttachmentDropzone asChild>
@@ -2203,7 +2197,7 @@ export const ComposerAction: FC = () => {
   const hasAttachments = useAssistantState((s) => s.composer.attachments.length > 0);
   const isRunning = useAssistantState((s) => s.thread.isRunning);
   const composer = useComposerRuntime();
-  const { hasPassages, send: sendComposer } = useComposerSend();
+  const { hasPassages, send: sendComposer, passages } = useComposerSend();
   const pendingMessage = useContext(PendingMessageContext);
   const hasContent = hasText || hasAttachments || hasPassages;
   // Resume affordance. When the session stopped in a resumable state (aborted
@@ -2262,7 +2256,7 @@ export const ComposerAction: FC = () => {
     if (cancelDisabled) return;
     // Inject texts come back via the worker's `injectMessagesCleared`
     // (applied by the Composer), not from local bubbles.
-    restoreNextMessageIntoComposer(composer, pendingMessage);
+    restoreNextMessageIntoComposer(composer, pendingMessage, passages);
     setPendingCancel(true);
     onCancel?.();
   };
@@ -2735,12 +2729,11 @@ function userMessageHasNonTextParts(content: unknown): boolean {
 }
 
 /**
- * The toolbar over a text selection inside one transcript row: Reply puts the
- * selection in the composer as a quote (F-36). The primitive validates the
- * selection, positions a portal by it, and clears it once quoted.
+ * The toolbar over a text selection inside one transcript row: Reply adds the
+ * selection to the composer as a quote card (F-22, F-36). The primitive
+ * validates the selection and positions a portal by it.
  */
 const ReplySelectionToolbar: FC = () => {
-  const t = useT();
   return (
     <SelectionToolbarPrimitive.Root
       data-testid="selection-toolbar"
@@ -2833,12 +2826,11 @@ const StartSideChatButton: FC = () => {
 
 /** The quotes a sent prompt carried, drawn above the person's words in the bubble, in order. */
 const UserMessageQuote: FC = () => {
-  const quote = useMessageQuote();
   const quotes = useAssistantState((s) => {
     const list = (s.message.metadata as { custom?: { quotes?: unknown } } | undefined)?.custom?.quotes;
     return Array.isArray(list) ? (list as unknown[]) : null;
   });
-  const texts = (quotes ?? (quote ? [quote.text] : [])).filter(
+  const texts = (quotes ?? []).filter(
     (text): text is string => typeof text === "string" && text.trim().length > 0,
   );
   if (texts.length === 0) return null;
@@ -2888,10 +2880,13 @@ const UserMessage: FC = () => {
   // The THREAD composer: inside a message, `useComposerRuntime()` is that
   // message's edit composer, and the text would vanish into it.
   const threadRuntime = useThreadRuntime();
+  const passages = useComposerPassages();
   const handleRemoveInject = () => {
     if (!inject || !removeInjectMessage) return;
     void removeInjectMessage(inject.uuid).then((result) => {
-      if (result.ok) restoreNextMessageIntoComposer(threadRuntime.composer, result.text ?? null);
+      if (result.ok) {
+        restoreNextMessageIntoComposer(threadRuntime.composer, result.text ?? null, passages?.store);
+      }
     });
   };
 

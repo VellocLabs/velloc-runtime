@@ -5,15 +5,18 @@ import {
   PASSAGE_EXCERPT_GRAPHEMES,
   PASSAGE_MAX_UTF16,
   admitPassage,
+  composerSendText,
   createPassage,
   createPassageDraftStore,
+  handBackPrompt,
   isAttachableSelection,
+  joinPassagePrompts,
   isCopyableSelection,
   passageExcerpt,
   serializePassagePrompt,
   splitPassagePrompt,
-  utf8ByteLength,
 } from '../browser/webview/capturedPassages'
+import { utf8ByteLength } from '../utils/utf8ByteLength'
 
 /**
  * Quote cards (F-22): the attach and copy thresholds, the size limits (refused
@@ -70,6 +73,17 @@ describe('card excerpt', () => {
     const excerpt = passageExcerpt(long)
     expect(excerpt.endsWith('…')).toBe(true)
     expect(excerpt.slice(0, -1)).toBe(family.repeat(PASSAGE_EXCERPT_GRAPHEMES))
+  })
+
+  it('never ends inside a cluster or a surrogate pair when the read prefix cuts one', () => {
+    // Two clusters of 41 units; a 2-cluster card reads 64 units, cutting the second.
+    const cluster = `e${'́'.repeat(40)}`
+    expect(passageExcerpt(cluster + cluster, 2)).toBe(`${cluster}…`)
+    // A 63-unit cluster, then an emoji whose pair the 64-unit prefix splits.
+    const long = `e${'́'.repeat(62)}`
+    const excerpt = passageExcerpt(`${long}😀tail`, 2)
+    expect(excerpt).toBe(`${long}…`)
+    expect(/[\uD800-\uDFFF]/.test(excerpt)).toBe(false)
   })
 
   it('leaves a short body whole and never changes the body itself', () => {
@@ -148,13 +162,24 @@ describe('draft store', () => {
   it('a send takes the cards only when the composer marked it, and only once', () => {
     const store = createPassageDraftStore()
     store.add(request('kept'))
-    expect(store.takeForSend()).toEqual([])
+    expect(store.takeForSend('')).toEqual([])
     expect(store.getPassages()).toHaveLength(1)
-    store.markComposerSend()
-    expect(store.takeForSend().map(p => p.payload.body)).toEqual(['kept'])
+    store.markComposerSend('why?')
+    expect(store.takeForSend('why?').map(p => p.payload.body)).toEqual(['kept'])
     store.add(request('later'))
-    expect(store.takeForSend()).toEqual([])
+    expect(store.takeForSend('why?')).toEqual([])
     expect(store.getPassages().map(p => p.payload.body)).toEqual(['later'])
+  })
+
+  it('a send that never arrived leaves no mark for the next append to take the cards with', () => {
+    const store = createPassageDraftStore()
+    store.add(request('kept'))
+    // The composer marked "why?", but its send failed before reaching the thread.
+    store.markComposerSend('why?')
+    expect(store.takeForSend(composerSendText([{ type: 'text', text: '/compact' }]))).toEqual([])
+    expect(store.getPassages()).toHaveLength(1)
+    store.markComposerSend('')
+    expect(store.takeForSend(composerSendText([{ type: 'image' }])).map(p => p.payload.body)).toEqual(['kept'])
   })
 
   it('notifies on change and replaces from a restored draft', () => {
@@ -166,5 +191,28 @@ describe('draft store', () => {
     off()
     store.replace([])
     expect(calls).toBe(1)
+  })
+})
+
+describe('several prompts as one, and a prompt handed back', () => {
+  it('merges every card ahead of every prompt\'s words; plain prompts join unchanged', () => {
+    const a = serializePassagePrompt(['a'], 'one')
+    const b = serializePassagePrompt(['b'], 'two')
+    expect(joinPassagePrompts([a, 'plain', b])).toBe(serializePassagePrompt(['a', 'b'], 'one\nplain\ntwo'))
+    expect(splitPassagePrompt(joinPassagePrompts([a, b]))).toEqual({ passages: ['a', 'b'], words: 'one\ntwo' })
+    expect(joinPassagePrompts([serializePassagePrompt(['c'], ''), serializePassagePrompt(['d'], '')])).toBe(
+      serializePassagePrompt(['c', 'd'], ''),
+    )
+    expect(joinPassagePrompts(['x', 'y'])).toBe('x\ny')
+  })
+
+  it('hands a prompt\'s cards to the store ahead of any there and returns the words', () => {
+    const store = createPassageDraftStore()
+    store.add({ body: 'mine', method: 'range', anchors: [] })
+    expect(handBackPrompt(store, serializePassagePrompt(['a', 'b'], 'why?'))).toBe('why?')
+    expect(store.getPassages().map(p => p.payload.body)).toEqual(['a', 'b', 'mine'])
+    expect(handBackPrompt(store, 'just words')).toBe('just words')
+    expect(store.getPassages()).toHaveLength(3)
+    expect(handBackPrompt(null, serializePassagePrompt(['a'], 'w'))).toBe(serializePassagePrompt(['a'], 'w'))
   })
 })

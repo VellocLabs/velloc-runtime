@@ -9,6 +9,7 @@
 import { submitCarriesToolResult } from '../../utils/sessionNeedsAnswer'
 import type { AgentSessionPhase, AgentSessionToolInfo, AgentToolKind } from './AgentTurnState'
 import type { AgentWorkerInboundMessage } from './workerProtocol'
+import { joinPassagePrompts } from '../webview/capturedPassages'
 import {
   isHaltSafeSlashCommandPrompt,
   isSlashCommandPrompt,
@@ -644,9 +645,9 @@ export class AgentTurnController {
       .filter(text => text.length > 0)
   }
 
-  /** The strip's text: every parked entry's label, newline-joined. */
+  /** The strip's text: every parked entry's label, newline-joined, quote cards merged ahead (F-22). */
   private pendingText(): string {
-    return this.pendingEntryTexts().join('\n')
+    return joinPassagePrompts(this.pendingEntryTexts())
   }
 
   private pendingPromptUuids(): string[] {
@@ -718,7 +719,7 @@ export class AgentTurnController {
         message: {
           type: 'worker.submitMessage',
           payload: {
-            prompt: textRun.map(e => e.message.payload.prompt as string).join('\n'),
+            prompt: joinPassagePrompts(textRun.map(e => e.message.payload.prompt as string)),
             ...(textRun[0]!.message.payload.promptUuid !== undefined
               ? { promptUuid: textRun[0]!.message.payload.promptUuid }
               : {}),
@@ -755,10 +756,9 @@ export class AgentTurnController {
       const first = turns.find(turn => turn.hasStrip)?.message
       this.options.onPendingMessageChanged('', 'consumed', {
         consumed: {
-          text: strip
-            .map(entry => entry.text)
-            .filter(text => text.length > 0)
-            .join('\n'),
+          text: joinPassagePrompts(
+            strip.map(entry => entry.text).filter(text => text.length > 0),
+          ),
           ...(first?.payload.promptUuid !== undefined
             ? { promptUuid: first.payload.promptUuid }
             : {}),
