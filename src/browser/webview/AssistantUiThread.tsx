@@ -4,6 +4,8 @@ import {
   SessionChangeFiguresContext,
 } from '../../components/assistant-ui/session-card-stack'
 import { useSessionModUi } from './mods/useSessionModUi'
+import { useSessionProposals } from './proposalsView'
+import { SessionProposalsContext } from '../../components/assistant-ui/session-proposals-context'
 import { useCan } from './useCan'
 import { useMcpAuth } from './mcpAuthView'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
@@ -816,6 +818,9 @@ function InteractiveAssistantUiThread({
   // the prompt), and the icon's jump to the Plugins page.
   const canListMods = useCan('mods', 'list')
   const modSessionId = state.snapshot?.sessionId
+  // The session's child-session proposal cards (F-36).
+  const canAnswerProposals = useCan('proposals', 'start') && !readOnly
+  const sessionProposals = useSessionProposals(runtimeConnection, modSessionId, canAnswerProposals)
   const modUi = useSessionModUi(runtimeConnection, modSessionId, {
     canListMods,
     onOpenPluginSettings,
@@ -2182,6 +2187,7 @@ function InteractiveAssistantUiThread({
                     value={state.snapshot?.commandNames ?? []}
                   >
                   <ModUiContext.Provider value={modUi}>
+                  <SessionProposalsContext.Provider value={sessionProposals}>
                   <SessionCardsPopoverContext.Provider value={sessionCardsPopover}>
                   <SessionChangeFiguresContext.Provider value={state.sessionChangeFigures ?? null}>
                   <ComposerAttachmentPickerProvider
@@ -2234,6 +2240,7 @@ function InteractiveAssistantUiThread({
                   </ComposerAttachmentPickerProvider>
                   </SessionChangeFiguresContext.Provider>
                   </SessionCardsPopoverContext.Provider>
+                  </SessionProposalsContext.Provider>
                   </ModUiContext.Provider>
                   </SlashCommandsProvider>
                   </PermissionAskContext.Provider>

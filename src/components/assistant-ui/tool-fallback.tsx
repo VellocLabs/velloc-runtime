@@ -64,6 +64,8 @@ import {
 import { useToolLabelArgs } from "@/components/assistant-ui/use-tool-label-args";
 import { useT } from "@/browser/webview/i18n";
 import { TeammateSpawnCard } from "@/components/assistant-ui/teammate-spawn-card";
+import { SessionProposalCard } from "@/components/assistant-ui/session-proposal-card";
+import { PROPOSE_SESSION_TOOL_NAME } from "@/sessions/childProposals";
 import { StaticMarkdown } from "@/components/assistant-ui/static-markdown";
 import { requestTeammateJump } from "@/browser/webview/teammateJumpRequests";
 import { ModToolResultSite, ModToolUseSite, modToolUseProps } from "@/components/assistant-ui/mod-render";
@@ -1135,6 +1137,15 @@ const ToolFallbackRouted: ToolCallMessagePartComponent = (props) => {
   if (isTeammateSpawnTool(props.toolName)) {
     const spawn = classifyTeammateSpawn(props.args, props.result);
     if (spawn) return <TeammateSpawnCard spawn={spawn} />;
+  }
+  if (props.toolName === PROPOSE_SESSION_TOOL_NAME) {
+    return (
+      <SessionProposalCard
+        toolCallId={props.toolCallId}
+        args={props.args}
+        result={props.result}
+      />
+    );
   }
   // A mod hooking `ToolUse` (F-25) draws the card through `ui.render`;
   // a rewritten input / output reaches the title as the card's own args.
