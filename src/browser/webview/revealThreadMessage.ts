@@ -368,6 +368,87 @@ export async function revealRowForPart(
   return false
 }
 
+/** Where a row walk ended: the row as it stands after the walk, and the line it reached (if asked for one). */
+type RowLanding = { settledRow: HTMLElement; found: HTMLElement | null }
+
+/**
+ * Mounts row `index`, brings it on screen (`align`), and with `ordinal` descends to that line, opening
+ * cards on the way. Null when superseded or when the row never mounts.
+ */
+async function landOnRow(
+  root: HTMLElement,
+  index: number,
+  ordinal: number | undefined,
+  align: ScrollLogicalPosition,
+  superseded: () => boolean,
+): Promise<RowLanding | null> {
+  const deadline = Date.now() + REVEAL_BUDGET_MS
+  const viewport =
+    root.querySelector<HTMLElement>('.aui-thread-viewport') ??
+    root.querySelector<HTMLElement>('[data-slot="thread-viewport"]')
+  // Mount the target row before anything else. Virtualization culls
+  // distant rows to spacers, so the row a hit lives in usually has no DOM
+  // node when this starts — and then there is nothing to walk into,
+  // nothing to expand, and nothing to flash. Scrolling toward it is not a
+  // reliable way to mount it (the viewport fights back, re-segmentation
+  // is async); pinning is the mechanism the virtualizer already uses to
+  // keep interacted-with rows alive.
+  requestRowPin(index, root)
+  if (viewport) releaseStickToBottom(viewport)
+
+  for (let attempt = 0; attempt < MAX_REVEAL_ATTEMPTS; attempt++) {
+    if (superseded()) return null
+    const row = root.querySelector<HTMLElement>(
+      `[data-message-index="${index}"]`,
+    )
+    if (!row) {
+      await nextFrame()
+      continue
+    }
+    // Bring the row on screen before walking into it: a distant row
+    // carries `content-visibility: auto`, so its contents are not laid
+    // out and every rect inside it is stale.
+    row.scrollIntoView({ block: align })
+    await nextFrame()
+    await nextFrame()
+
+    const found =
+      ordinal === undefined
+        ? null
+        : await descendToOrdinal(row, ordinal, deadline)
+    if (superseded()) return null
+    // Re-resolve the row: expanding a card re-renders the subtree, and
+    // the element captured before the walk can be detached by now.
+    // Marking a detached node marks nothing at all — the reveal reports
+    // success while the user sees no landing.
+    const settledRow =
+      root.querySelector<HTMLElement>(`[data-message-index="${index}"]`) ?? row
+    return { settledRow, found: found && found.isConnected ? found : null }
+  }
+  return null
+}
+
+/**
+ * What to flash for a walk that ended on `found`: `found` itself when it fits the cap, else the smallest
+ * part showing `term`, else its heading line. Past the cap, the element is still marked when it IS line
+ * `ordinal` (it carries the ordinal; it is not a container standing for a range): a plain-text element
+ * with no children to pick from — a long user message in a short window. Null when nothing can be
+ * justified.
+ */
+function flashTargetIn(found: HTMLElement, ordinal: number | undefined, term?: string): HTMLElement | null {
+  if (flashableHeight(found) > 0) return found
+  return (
+    (term ? partShowing(found, term) : null) ??
+    firstFlashableWithin(found) ??
+    (ordinal !== undefined && found.dataset.lineOrdinal === String(ordinal) ? found : null)
+  )
+}
+
+/** The newest reveal's token; a caller compares it after a reveal to tell "superseded" from "failed". */
+export function currentRevealGeneration(): number {
+  return revealGeneration
+}
+
 export async function revealThreadMessage(
   root: HTMLElement,
   index: number,
@@ -382,98 +463,45 @@ export async function revealThreadMessage(
 ): Promise<boolean> {
   const generation = ++revealGeneration
   const superseded = () => generation !== revealGeneration
-  const deadline = Date.now() + REVEAL_BUDGET_MS
-  const viewport =
-    root.querySelector<HTMLElement>('.aui-thread-viewport') ??
-    root.querySelector<HTMLElement>('[data-slot="thread-viewport"]')
   markOutcome(root, 'running')
-  // Mount the target row before anything else. Virtualization culls
-  // distant rows to spacers, so the row a hit lives in usually has no DOM
-  // node when this starts — and then there is nothing to walk into,
-  // nothing to expand, and nothing to flash. Scrolling toward it is not a
-  // reliable way to mount it (the viewport fights back, re-segmentation
-  // is async); pinning is the mechanism the virtualizer already uses to
-  // keep interacted-with rows alive.
-  requestRowPin(index, root)
-  if (viewport) releaseStickToBottom(viewport)
-
-  for (let attempt = 0; attempt < MAX_REVEAL_ATTEMPTS; attempt++) {
-    if (superseded()) return false
-    const row = root.querySelector<HTMLElement>(
-      `[data-message-index="${index}"]`,
-    )
-    if (!row) {
-      await nextFrame()
-      continue
-    }
-    // Bring the row on screen before walking into it: a distant row
-    // carries `content-visibility: auto`, so its contents are not laid
-    // out and every rect inside it is stale.
-    row.scrollIntoView({ block: 'center' })
-    await nextFrame()
-    await nextFrame()
-
-    const found =
-      ordinal === undefined
-        ? null
-        : await descendToOrdinal(row, ordinal, deadline)
-    const flashable = found
-      ? flashableHeight(found) > 0
-        ? found
-        : ((term ? partShowing(found, term) : null) ??
-          firstFlashableWithin(found) ??
-          // Nothing smaller inside can be justified — but when the walk
-          // ended ON the line itself (the element carries the ordinal, it
-          // is not a container standing for a range), the leaf IS the hit
-          // and marking it is never wrong, only bigger than the cap. That
-          // is a plain-text element with no children to pick from — a
-          // long user message in a short window. Going quiet here left
-          // the user with a click that did nothing visible.
-          (found.dataset.lineOrdinal === String(ordinal) ? found : null))
-      : null
-    // Marked AFTER the walk, not before: expanding several levels takes
-    // time, and a marker set up front can expire while the walk is still
-    // going — leaving a finished reveal that looks like it never ran.
-    if (superseded()) return false
-    // Re-resolve the row: expanding a card re-renders the subtree, and
-    // the element captured before the walk can be detached by now.
-    // Marking a detached node marks nothing at all — the reveal reports
-    // success while the user sees no landing.
-    const settledRow =
-      root.querySelector<HTMLElement>(`[data-message-index="${index}"]`) ?? row
-    markTargetRow(settledRow)
-    const settle =
-      flashable && flashable.isConnected
-        ? flashable
-        : found && found.isConnected
-          ? found
-          : settledRow
-    settle.scrollIntoView({ block: 'center' })
-    await nextFrame()
-    if (flashable && flashable.isConnected) {
-      flashElement(flashable, term)
-      markOutcome(root, 'line')
-    } else {
-      // Landed in the right row but could not justify a line. Say so
-      // rather than flashing something arbitrary: pointing at the wrong
-      // line is worse than pointing at nothing, and it is what made every
-      // hit in a row look identical.
-      markOutcome(root, 'quiet')
-    }
-    return true
+  const landing = await landOnRow(root, index, ordinal, 'center', superseded)
+  if (superseded()) return false
+  if (!landing) {
+    markOutcome(root, 'missing')
+    return false
   }
-  if (!superseded()) markOutcome(root, 'missing')
-  return false
+  const { settledRow, found } = landing
+  const flashable = found ? flashTargetIn(found, ordinal, term) : null
+  // Marked AFTER the walk, not before: expanding several levels takes
+  // time, and a marker set up front can expire while the walk is still
+  // going — leaving a finished reveal that looks like it never ran.
+  markTargetRow(settledRow)
+  const settle =
+    flashable && flashable.isConnected ? flashable : (found ?? settledRow)
+  settle.scrollIntoView({ block: 'center' })
+  await nextFrame()
+  if (flashable && flashable.isConnected) {
+    flashElement(flashable, term)
+    markOutcome(root, 'line')
+  } else {
+    // Landed in the right row but could not justify a line. Say so
+    // rather than flashing something arbitrary: pointing at the wrong
+    // line is worse than pointing at nothing, and it is what made every
+    // hit in a row look identical.
+    markOutcome(root, 'quiet')
+  }
+  return true
 }
 
-/** What the last chapter reveal did, stamped on the thread root as `data-chapter-reveal`. */
-export type ChapterRevealOutcome = 'running' | 'landed' | 'missing'
+/** Clears the last chapter landing's markers early, when a newer one lands first. */
+let clearChapterLanding: (() => void) | null = null
 
 /**
  * Brings a chapter mark into view (F-37): row `index` lands at the top of the viewport; with `ordinal` (a
  * segment of a merged row) the walk descends to that line, opening cards on the way, and centres it. The
- * landing is marked with `data-chapter-hit` for a few seconds. Shares the generation with search, so a
- * newer reveal of either kind supersedes an older one.
+ * landing is marked with `data-chapter-target` on the row and `data-chapter-hit` on what search would
+ * flash there, for a few seconds; the outcome is `data-chapter-reveal` on `root`. Resolves true once it
+ * landed. Shares the generation with search, so a newer reveal of either kind supersedes an older one.
  */
 export async function revealChapterRow(
   root: HTMLElement,
@@ -482,40 +510,28 @@ export async function revealChapterRow(
 ): Promise<boolean> {
   const generation = ++revealGeneration
   const superseded = () => generation !== revealGeneration
-  const deadline = Date.now() + REVEAL_BUDGET_MS
   root.setAttribute('data-chapter-reveal', 'running')
-  requestRowPin(index, root)
-  const viewport =
-    root.querySelector<HTMLElement>('.aui-thread-viewport') ??
-    root.querySelector<HTMLElement>('[data-slot="thread-viewport"]')
-  if (viewport) releaseStickToBottom(viewport)
-
-  for (let attempt = 0; attempt < MAX_REVEAL_ATTEMPTS; attempt++) {
-    if (superseded()) return false
-    const row = root.querySelector<HTMLElement>(`[data-message-index="${index}"]`)
-    if (!row) {
-      await nextFrame()
-      continue
-    }
-    row.scrollIntoView({ block: 'start' })
-    await nextFrame()
-    await nextFrame()
-    const found = ordinal === undefined ? null : await descendToOrdinal(row, ordinal, deadline)
-    if (superseded()) return false
-    const settledRow =
-      root.querySelector<HTMLElement>(`[data-message-index="${index}"]`) ?? row
-    const landing = found && found.isConnected ? found : settledRow
-    if (landing === settledRow) settledRow.scrollIntoView({ block: 'start' })
-    else landing.scrollIntoView({ block: 'center' })
-    settledRow.setAttribute('data-chapter-target', 'true')
-    landing.setAttribute('data-chapter-hit', 'true')
-    setTimeout(() => {
-      settledRow.removeAttribute('data-chapter-target')
-      landing.removeAttribute('data-chapter-hit')
-    }, SEARCH_HIT_FLASH_MS)
-    root.setAttribute('data-chapter-reveal', 'landed')
-    return true
+  const landing = await landOnRow(root, index, ordinal, 'start', superseded)
+  if (superseded()) return false
+  if (!landing) {
+    root.setAttribute('data-chapter-reveal', 'missing')
+    return false
   }
-  if (!superseded()) root.setAttribute('data-chapter-reveal', 'missing')
-  return false
+  const { settledRow, found } = landing
+  if (found) found.scrollIntoView({ block: 'center' })
+  else settledRow.scrollIntoView({ block: 'start' })
+  const hit = flashTargetIn(found ?? settledRow, ordinal)
+  clearChapterLanding?.()
+  settledRow.setAttribute('data-chapter-target', 'true')
+  hit?.setAttribute('data-chapter-hit', 'true')
+  const clear = () => {
+    clearTimeout(timer)
+    settledRow.removeAttribute('data-chapter-target')
+    hit?.removeAttribute('data-chapter-hit')
+    if (clearChapterLanding === clear) clearChapterLanding = null
+  }
+  const timer = setTimeout(clear, SEARCH_HIT_FLASH_MS)
+  clearChapterLanding = clear
+  root.setAttribute('data-chapter-reveal', 'landed')
+  return true
 }

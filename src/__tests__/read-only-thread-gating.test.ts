@@ -122,4 +122,14 @@ describe('AssistantUiThread read-only gating (shutdown tab)', () => {
     const handler = THREAD.slice(handlerStart, handlerEnd)
     expect(handler).toContain('if (readOnly) return')
   })
+
+  it('shows chapter marks on a thread without a snapshot, and never lets it change them (F-37)', () => {
+    // A shut-down teammate's thread has no snapshot: the marks are read by the session id the shell
+    // hands down, and marking stays off.
+    const SHELL = readFileSync(join(SRC, 'browser', 'webview', 'MultiSessionShell.tsx'), 'utf8')
+    expect(SHELL).toMatch(/readOnly=\{shutdownSessionIds\.has\(sessionId\)\}\s+threadSessionId=\{sessionId\}/)
+    expect(interactivePropsBlock()).toContain('threadSessionId={threadSessionId}')
+    expect(THREAD).toMatch(/useSessionChapters\(\s*runtimeConnection,\s*modSessionId \?\? threadSessionId,\s*canMarkChapters,?\s*\)/)
+    expect(THREAD).toContain("const canMarkChapters = useCan('chapters', 'mark') && !readOnly")
+  })
 })

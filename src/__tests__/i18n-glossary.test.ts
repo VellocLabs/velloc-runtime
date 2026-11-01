@@ -444,6 +444,20 @@ const RULES: Rule[] = [
       ko: /분기|포크/,
     },
   },
+  {
+    // A chapter mark (F-37). ja's 章 is ruled over チャプター; ko's 챕터 over 장.
+    term: 'chapter',
+    en: /\bchapters?\b/i,
+    expect: {
+      zh: /章节/,
+      es: /capítulo/i,
+      fr: /chapitre/i,
+      de: /Kapitel/,
+      ja: /章/,
+      ko: /챕터/,
+    },
+    forbid: { ja: /チャプター/ },
+  },
 ]
 
 const enKeys = Object.keys(en) as MessageKey[]

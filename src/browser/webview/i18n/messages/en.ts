@@ -168,8 +168,9 @@ export const en = {
   'chapters.markFailed': 'Couldn\'t pin this chapter',
   'chapters.title': 'Chapters',
   'chapters.open': 'Chapters ({count})',
-  'chapters.untitled': 'Untitled step',
+  'chapters.untitled': 'Untitled chapter',
   'chapters.unavailable': 'No longer in this conversation',
+  'chapters.jumpFailed': 'Couldn\'t reach this chapter',
   'chapters.loading': 'Loading…',
   'chapters.badge': 'Chapter: {title}',
   // The quote cards above the composer and their full-text preview (F-22).

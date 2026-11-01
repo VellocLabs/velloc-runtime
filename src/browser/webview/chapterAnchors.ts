@@ -88,14 +88,26 @@ export function chapterEntriesOf(
   return live.length === 0 ? transcript : [...transcript, ...(live as readonly AnchorEntry[])]
 }
 
+/** The entry a row id names: its uuid, or the pending-bubble id a landed mid-turn prompt carries. */
+function entryNamedBy(rowId: string, entries: readonly AnchorEntry[]): AnchorEntry | undefined {
+  const id = rowId.replace(/:duplicate-\d+$/, '')
+  return entries.find(
+    entry =>
+      entry.uuid === id ||
+      (entry as { attachment?: { source_uuid?: unknown } }).attachment?.source_uuid === id,
+  )
+}
+
 /**
- * The uuid of the first transcript entry behind `row`: its id when that is an entry's uuid, else the
- * entry on the first line of its range (the conversation's closing reply renders under a turn-derived
- * id). Null for a row with neither — a live turn that is not written yet.
+ * The uuid of the first transcript entry behind `row`: the entry its id names (a repeated row's
+ * `:duplicate-N` suffix dropped; a landed mid-turn prompt by the id it was sent under), else the entry on
+ * the first line of its range (the conversation's closing reply renders under a turn-derived id). Null for
+ * a row with neither — a live turn that is not written yet.
  */
 export function entryKeyOfRow(row: AnchorRow | undefined, entries: readonly AnchorEntry[]): string | null {
   if (!row) return null
-  if (typeof row.id === 'string' && entries.some(entry => entry.uuid === row.id)) return row.id
+  const named = typeof row.id === 'string' ? entryNamedBy(row.id, entries) : undefined
+  if (typeof named?.uuid === 'string') return named.uuid
   const from = lineRangeOf(row)?.from
   if (from === undefined) return null
   const uuid = entries.find(entry => entry.transcriptLine === from)?.uuid

@@ -4303,6 +4303,72 @@ describe('SharedWorkerSessionManager', () => {
       internals().sessions.delete('s')
     })
 
+    it('chapter marks made before the store binds are stashed and written by the bind (F-37)', async () => {
+      installStorage()
+      const chapters = manager as unknown as {
+        readChapterMarks(id: string): Promise<unknown>
+        writeChapterMarks(id: string, marks: unknown[]): Promise<void>
+      }
+      const marks = [{ id: 'c1', entryKey: 'u1', title: 'First', createdAt: 1 }]
+      const entry: Record<string, unknown> = { templateType: 'code', background: true }
+      internals().sessions.set('s', entry)
+      await chapters.writeChapterMarks('s', marks)
+      // Not on disk: the store about to bind loaded the sidecar already, and its next save would drop it.
+      expect(metaWrites).toHaveLength(0)
+      expect(entry.pendingChapterMarks).toEqual(marks)
+      expect(await chapters.readChapterMarks('s')).toEqual(marks)
+
+      const updateSessionMetadata = vi.fn(async () => {})
+      const store = { getSessionMetadata: vi.fn(async () => ({})), updateSessionMetadata }
+      expect(await manager.bindSessionRuntime('s', store as never)).toBe(true)
+      expect(updateSessionMetadata).toHaveBeenCalledWith(expect.objectContaining({ chapterMarks: marks }))
+      expect(entry.pendingChapterMarks).toBeUndefined()
+
+      // Once bound, a change goes through the store.
+      const next = [...marks, { id: 'c2', entryKey: 'u2', title: null, createdAt: 2 }]
+      await chapters.writeChapterMarks('s', next)
+      expect(updateSessionMetadata).toHaveBeenLastCalledWith({ chapterMarks: next })
+      expect(metaWrites).toHaveLength(0)
+      internals().sessions.delete('s')
+    })
+
+    it('a chapter-mark write with nowhere to land throws instead of reporting success (F-37)', async () => {
+      installStorage()
+      const chapters = manager as unknown as {
+        writeChapterMarks(id: string, marks: unknown[]): Promise<void>
+      }
+      const marks = [{ id: 'c1', entryKey: 'u1', title: null, createdAt: 1 }]
+      await expect(chapters.writeChapterMarks('unknown', marks)).rejects.toThrow()
+      await chapters.writeChapterMarks('s', marks)
+      expect(metas.get('s')!.metadata).toMatchObject({ chapterMarks: marks })
+    })
+
+    it('reading chapter marks brings session storage up first, so a stored list is never read as empty (F-37)', async () => {
+      installStorage()
+      const stored = [{ id: 'c1', entryKey: 'u1', title: 'Stored', createdAt: 1 }]
+      metas.set('s', { schemaVersion: 1, sessionId: 's', updatedAt: 10, metadata: { chapterMarks: stored } })
+      const internalsOf = manager as unknown as {
+        hostEnvironment: { sessionStoragePath: string } | null
+        storageCoordinator: { storage: unknown; ensureStorage: (path: string) => Promise<void> }
+        readChapterMarks(id: string): Promise<unknown>
+      }
+      const storage = internalsOf.storageCoordinator.storage
+      const ensureStorage = internalsOf.storageCoordinator.ensureStorage
+      const hostEnvironment = internalsOf.hostEnvironment
+      internalsOf.storageCoordinator.storage = null
+      internalsOf.hostEnvironment = { sessionStoragePath: 'C:/sessions' }
+      internalsOf.storageCoordinator.ensureStorage = vi.fn(async () => {
+        internalsOf.storageCoordinator.storage = storage
+      })
+      try {
+        expect(await internalsOf.readChapterMarks('s')).toEqual(stored)
+        expect(internalsOf.storageCoordinator.ensureStorage).toHaveBeenCalledWith('C:/sessions')
+      } finally {
+        internalsOf.storageCoordinator.ensureStorage = ensureStorage
+        internalsOf.hostEnvironment = hostEnvironment
+      }
+    })
+
     it('a pin the bound store fails to save is not acked', async () => {
       installStorage()
       const entry: Record<string, unknown> = {

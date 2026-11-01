@@ -6,7 +6,8 @@
  * - operations on one session run one at a time: a mark or unmark reads, changes and writes the list
  *   across awaits, and a second one waits for the first
  * - a mark is checked against the session's transcript: its entry (and segment) must exist; the title is
- *   derived here from that entry's text, never taken from a client
+ *   derived here from that entry's text (for a whole message whose first step has none, the reply's next
+ *   text), never taken from a client
  * - the list is kept in conversation order; marking the same place twice returns the existing mark
  * Runs in the SharedWorker; the clock and ids are injected for tests.
  */
@@ -15,8 +16,8 @@ import { randomUuid } from '../utils/randomUuid'
 import {
   CHAPTER_MARKS_MAX,
   chapterMarksFromStorage,
-  chapterTitle,
-  entryText,
+  entryTitle,
+  isPromptEntry,
   type ChapterMark,
 } from './chapterMarks'
 
@@ -60,7 +61,9 @@ export class ChapterBook {
     return this.serial(sessionId, () => this.load(sessionId))
   }
 
-  mark(sessionId: string, entryKey: string, segmentKey?: string): Promise<MarkResult> {
+  /** Marks a message, or one entry folded into it; a segment naming the message's own entry is the message. */
+  mark(sessionId: string, entryKey: string, segment?: string): Promise<MarkResult> {
+    const segmentKey = segment === entryKey ? undefined : segment
     return this.serial(sessionId, async () => {
       const marks = await this.load(sessionId)
       const same = marks.find(m => m.entryKey === entryKey && m.segmentKey === segmentKey)
@@ -68,13 +71,13 @@ export class ChapterBook {
       if (marks.length >= CHAPTER_MARKS_MAX) return { ok: false, reason: 'limit' }
       const entries = await this.options.storage.entries(sessionId)
       const position = positions(entries)
-      const titled = entries[position.get(segmentKey ?? entryKey) ?? -1]
-      if (!position.has(entryKey) || titled === undefined) return { ok: false, reason: 'unknown-entry' }
+      const titledAt = position.get(segmentKey ?? entryKey)
+      if (!position.has(entryKey) || titledAt === undefined) return { ok: false, reason: 'unknown-entry' }
       const mark: ChapterMark = {
         id: this.newId(),
         entryKey,
         ...(segmentKey !== undefined ? { segmentKey } : {}),
-        title: chapterTitle(entryText(titled)),
+        title: segmentKey === undefined ? messageTitle(entries, titledAt) : entryTitle(entries[titledAt]),
         createdAt: this.now(),
       }
       const next = inConversationOrder([...marks, mark], position)
@@ -110,6 +113,21 @@ export class ChapterBook {
     })
     return next
   }
+}
+
+/**
+ * The title of a mark on the message starting at `entries[at]`: that entry's, or for a reply step with no
+ * text (a tool call), the first entry with text later in the same reply, stopping at the next prompt.
+ */
+function messageTitle(entries: readonly unknown[], at: number): string | null {
+  const own = entryTitle(entries[at])
+  if (own !== null || isPromptEntry(entries[at])) return own
+  for (let index = at + 1; index < entries.length; index++) {
+    if (isPromptEntry(entries[index])) return null
+    const title = entryTitle(entries[index])
+    if (title !== null) return title
+  }
+  return null
 }
 
 function positions(entries: readonly unknown[]): Map<string, number> {

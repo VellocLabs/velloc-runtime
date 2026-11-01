@@ -461,7 +461,8 @@
 
 /* A chapter landing (F-37): the same inner tint as a search hit, once, and
    a steady tint instead of the pulse when motion is reduced. Search hits
-   and the arrow hold still under reduced motion too. */
+   hold still under reduced motion too, and so does the arrow (below its
+   own rules, which it must follow to win). */
 [data-chapter-hit='true'] {
   border-radius: 0.375rem;
   animation: nexus-search-hit-box 5s ease-out;
@@ -473,10 +474,6 @@
   [data-chapter-hit='true'] {
     animation: none;
     background-color: color-mix(in srgb, var(--primary) 18%, transparent);
-  }
-  .nexus-search-arrow,
-  .nexus-search-arrow--leaving {
-    animation: none;
   }
 }
 
@@ -548,6 +545,13 @@
   to {
     opacity: 0;
     transform: translate(0.5rem, -50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexus-search-arrow,
+  .nexus-search-arrow--leaving {
+    animation: none;
   }
 }
 

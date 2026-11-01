@@ -286,6 +286,9 @@ type SessionEntry = {
   // A pin/unpin that arrived in the same pre-bind window; written with the
   // identity patch at bind, for the same reason as `pendingRename`.
   pendingPinned?: boolean
+  // A chapter-mark list written in the same pre-bind window (the whole list);
+  // written with the identity patch at bind (F-37).
+  pendingChapterMarks?: ChapterMark[]
   // Persisted to `meta.json` at bind so the sidebar icon/title survive
   // reload.
   templateType?: string
@@ -901,6 +904,9 @@ export class SharedWorkerSessionManager {
         : {}),
       ...(previous?.pendingPinned !== undefined
         ? { pendingPinned: previous.pendingPinned }
+        : {}),
+      ...(previous?.pendingChapterMarks !== undefined
+        ? { pendingChapterMarks: previous.pendingChapterMarks }
         : {}),
     }
     this.sessions.set(sessionId, entry)
@@ -1784,6 +1790,7 @@ export class SharedWorkerSessionManager {
       }
     }
     const pendingPinned = entry.pendingPinned
+    const pendingChapterMarks = entry.pendingChapterMarks
     // CRITICAL merged identity write FIRST — the worker awaits this bind
     // before worker.ready and the force-reinit stub deletion rides the
     // returned persist outcome (P-1). projectRoot writes
@@ -1813,6 +1820,7 @@ export class SharedWorkerSessionManager {
         ? { teammateName: initMeta.teammateName }
         : {}),
       ...(pendingPinned !== undefined ? { pinned: pendingPinned } : {}),
+      ...(pendingChapterMarks !== undefined ? { chapterMarks: pendingChapterMarks } : {}),
       ...(knownCliConversation !== undefined ? { cliConversation: knownCliConversation } : {}),
     }
     let persisted = true
@@ -1821,6 +1829,9 @@ export class SharedWorkerSessionManager {
         await store.updateSessionMetadata(patch)
         if (entry.pendingPinned === pendingPinned) {
           entry.pendingPinned = undefined
+        }
+        if (entry.pendingChapterMarks === pendingChapterMarks) {
+          entry.pendingChapterMarks = undefined
         }
       } catch {
         // The in-memory entry still drives the UI, but the caller must
@@ -2213,16 +2224,7 @@ export class SharedWorkerSessionManager {
    * unwritten session reads as [].
    */
   private async readPersistedEntries(sessionId: string): Promise<unknown[]> {
-    // A client that may not open sessions can be the runtime's first reader.
-    if (!this.storage && this.hostEnvironment?.sessionStoragePath) {
-      await this.storageCoordinator.ensureStorage(this.hostEnvironment.sessionStoragePath)
-    }
-    const storage = this.storage
-    if (!storage) {
-      throw new Error('session storage is not available')
-    }
-    // Grouped storage answers EMPTY from the default dir until the session is routed.
-    await this.groupedStorage?.routeSessionFromMeta(sessionId)
+    const storage = await this.routedStorageFor(sessionId)
     const payload = await storage.load(sessionId)
     if (Array.isArray(payload)) return payload
     const wrapped = (payload as { messages?: unknown } | null)?.messages
@@ -3059,6 +3061,13 @@ export class SharedWorkerSessionManager {
         .then(persisted => {
           if (!persisted) this.dropPinnedOverlay(sessionId)
         })
+    }
+    const pendingChapterMarks = entry.pendingChapterMarks
+    if (pendingChapterMarks !== undefined && this.storage) {
+      entry.pendingChapterMarks = undefined
+      void applyDiskOnlyMetadataPatch(this.storage, sessionId, {
+        chapterMarks: pendingChapterMarks,
+      }).catch(() => false)
     }
     const pendingRename = entry.pendingRename
     if (pendingRename === undefined || !this.storage) return
@@ -4449,22 +4458,53 @@ export class SharedWorkerSessionManager {
     return this.childReports.record(parentSessionId, report)
   }
 
-  /** A session's stored chapter marks: from its live store when it has one,
-   *  else from disk (F-37). */
+  /** A session's stored chapter marks: from its live store when it has one, a
+   *  list stashed for a store about to bind, else from disk (F-37). */
   private async readChapterMarks(sessionId: string): Promise<unknown> {
-    const store = this.sessions.get(sessionId)?.conversationStore
-    if (store) return (await store.getSessionMetadata())?.chapterMarks
-    return (await this.storage?.readSessionMeta(sessionId))?.metadata.chapterMarks
+    const entry = this.sessions.get(sessionId)
+    if (entry?.conversationStore) return (await entry.conversationStore.getSessionMetadata())?.chapterMarks
+    if (entry?.pendingChapterMarks !== undefined) return entry.pendingChapterMarks
+    const storage = await this.routedStorageFor(sessionId)
+    return (await storage.readSessionMeta(sessionId))?.metadata.chapterMarks
   }
 
+  /** Writes a session's chapter marks where they will last: its bound store, the
+   *  pre-bind stash (the bind writes it, so the store's next save keeps it), or
+   *  disk. Throws when nothing was written (F-37). */
   private async writeChapterMarks(sessionId: string, chapterMarks: ChapterMark[]): Promise<void> {
-    const store = this.sessions.get(sessionId)?.conversationStore
-    if (store) {
-      await store.updateSessionMetadata({ chapterMarks })
+    const entry = this.sessions.get(sessionId)
+    if (entry?.conversationStore) {
+      entry.pendingChapterMarks = undefined
+      await entry.conversationStore.updateSessionMetadata({ chapterMarks })
       return
     }
-    if (!this.storage) throw new Error('session storage is not available')
-    await applyDiskOnlyMetadataPatch(this.storage, sessionId, { chapterMarks })
+    if (entry && this.awaitsStoreBind(entry)) {
+      entry.pendingChapterMarks = chapterMarks
+      return
+    }
+    const storage = await this.routedStorageFor(sessionId)
+    if (!(await applyDiskOnlyMetadataPatch(storage, sessionId, { chapterMarks }))) {
+      throw new Error(`no stored session ${sessionId}`)
+    }
+    // A runtime that opened during the write loaded the sidecar without this
+    // list; hand it over so its own next save keeps it.
+    const opened = this.sessions.get(sessionId)
+    if (opened?.conversationStore) await opened.conversationStore.updateSessionMetadata({ chapterMarks })
+    else if (opened && this.awaitsStoreBind(opened)) opened.pendingChapterMarks = chapterMarks
+  }
+
+  /** Session storage brought up and routed for `sessionId`, for a disk read or
+   *  write made without a live store. */
+  private async routedStorageFor(sessionId: string) {
+    // A client that may not open sessions can be the runtime's first reader.
+    if (!this.storage && this.hostEnvironment?.sessionStoragePath) {
+      await this.storageCoordinator.ensureStorage(this.hostEnvironment.sessionStoragePath)
+    }
+    const storage = this.storage
+    if (!storage) throw new Error('session storage is not available')
+    // Grouped storage answers EMPTY from the default dir until the session is routed.
+    await this.groupedStorage?.routeSessionFromMeta(sessionId)
+    return storage
   }
 
   /** The transcript a mark is checked against: the live store's (the disk copy

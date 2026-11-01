@@ -4586,6 +4586,7 @@ export function MultiSessionShell({
                 <AssistantUiThread
                   state={state}
                   readOnly={shutdownSessionIds.has(sessionId)}
+                  threadSessionId={sessionId}
                   submitPrompt={bound?.submitPrompt ?? submitPrompt}
                   submitActionMessage={bound?.submitActionMessage ?? submitActionMessage}
                   continueConversation={bound?.continueConversation ?? continueConversation}

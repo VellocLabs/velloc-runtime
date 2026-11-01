@@ -5,6 +5,11 @@
  * when it is made, from that entry's text. Stored in the session's metadata (`chapterMarks`).
  */
 
+import { passageExcerpt } from '../browser/webview/capturedPassages'
+import { splitUploadedAttachmentPrefix } from '../browser/webview/pastedTextAttachment'
+import { quotedPromptLabel } from '../browser/webview/replyQuote'
+import { isImageSourceNoteText } from '../utils/images/imageSourceNote'
+
 export type ChapterMark = {
   id: string
   entryKey: string
@@ -18,7 +23,6 @@ export const CHAPTER_MARKS_MAX = 100
 export const CHAPTER_TITLE_GRAPHEMES = 40
 
 const MAX_KEY_LENGTH = 200
-const ELLIPSIS = '…'
 
 export function isChapterKey(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= MAX_KEY_LENGTH
@@ -46,47 +50,75 @@ export function chapterMarksFromStorage(value: unknown): ChapterMark[] {
   return marks
 }
 
-/** The plain text of a transcript entry's message, its text blocks joined; '' when it has none. */
+/** The prompt a landed mid-turn message carries (a prompt-mode `queued_command` attachment), if any. */
+function queuedPromptOf(entry: unknown): { prompt: unknown } | null {
+  const attachment = (entry as { attachment?: { type?: unknown; commandMode?: unknown; prompt?: unknown } } | null)
+    ?.attachment
+  return attachment?.type === 'queued_command' && attachment.commandMode === 'prompt'
+    ? { prompt: attachment.prompt }
+    : null
+}
+
+/** True for a prompt the person sent: a user entry that is not a tool result, or a landed mid-turn prompt. */
+export function isPromptEntry(entry: unknown): boolean {
+  if (queuedPromptOf(entry)) return true
+  const e = entry as { type?: unknown; message?: { content?: unknown } } | null
+  if (e?.type !== 'user') return false
+  const content = e.message?.content
+  return !Array.isArray(content) || !content.some(block => (block as { type?: unknown })?.type === 'tool_result')
+}
+
+/**
+ * The plain text of a transcript entry, its text blocks joined; '' when it has none. A landed mid-turn
+ * prompt is read from its attachment. Image source notes are not text the person wrote and are skipped.
+ */
 export function entryText(entry: unknown): string {
-  const content = (entry as { message?: { content?: unknown } } | null)?.message?.content
+  const queued = queuedPromptOf(entry)
+  const content = queued ? queued.prompt : (entry as { message?: { content?: unknown } } | null)?.message?.content
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
   return content
     .map(block => {
       const b = block as { type?: unknown; text?: unknown }
-      return b.type === 'text' && typeof b.text === 'string' ? b.text : ''
+      return b.type === 'text' && typeof b.text === 'string' && !isImageSourceNoteText(b.text) ? b.text : ''
     })
     .filter(text => text.length > 0)
     .join('\n')
 }
 
-const USER_WORDS_HEADER = '\n[User message]\n'
+function firstLine(text: string): string {
+  const start = text.search(/\S/)
+  if (start < 0) return ''
+  const end = text.indexOf('\n', start)
+  return text.slice(start, end < 0 ? undefined : end)
+}
 
-function graphemes(text: string): string[] {
-  const Segmenter = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter
-  if (typeof Segmenter === 'function') {
-    return Array.from(new Segmenter(undefined, { granularity: 'grapheme' }).segment(text), s => s.segment)
-  }
-  return Array.from(text)
+function cutTitle(text: string): string | null {
+  const title = passageExcerpt(firstLine(text), CHAPTER_TITLE_GRAPHEMES)
+  return title.length > 0 ? title : null
 }
 
 /**
- * A mark's title: the first non-blank line of `text`, whitespace folded, cut at
- * `CHAPTER_TITLE_GRAPHEMES` graphemes with an ellipsis. A prompt sent with quoted context is titled by
- * the person's own words when it has any. Null when nothing is left.
+ * A mark's title: the first non-blank line of `text`, whitespace folded and control characters dropped,
+ * cut at `CHAPTER_TITLE_GRAPHEMES` graphemes with an ellipsis. Null when nothing is left.
  */
 export function chapterTitle(text: string): string | null {
-  const wordsAt = text.indexOf(USER_WORDS_HEADER)
-  const source = text.startsWith('[Quoted context ') && wordsAt >= 0
-    ? text.slice(wordsAt + USER_WORDS_HEADER.length)
-    : text
-  const line = source
-    .split(/\r?\n/)
-    .map(each => each.replace(/\s+/g, ' ').trim())
-    .find(each => each.length > 0)
-  if (!line) return null
-  const parts = graphemes(line)
-  return parts.length <= CHAPTER_TITLE_GRAPHEMES
-    ? line
-    : parts.slice(0, CHAPTER_TITLE_GRAPHEMES).join('').trimEnd() + ELLIPSIS
+  return cutTitle(text)
+}
+
+/**
+ * A prompt's title, read as its label is: uploaded-file mentions and quote cards set aside, the person's
+ * words first, else the first quote, else the uploaded files' names. Null when nothing is left.
+ */
+export function promptTitle(text: string): string | null {
+  const uploads = splitUploadedAttachmentPrefix(text)
+  const words = cutTitle(quotedPromptLabel(uploads.text))
+  if (words !== null) return words
+  return cutTitle(uploads.attachments.map(each => each.name).join(', '))
+}
+
+/** The title of a mark on `entry`: a prompt's by `promptTitle`, anything else's by `chapterTitle`. */
+export function entryTitle(entry: unknown): string | null {
+  const text = entryText(entry)
+  return isPromptEntry(entry) ? promptTitle(text) : chapterTitle(text)
 }

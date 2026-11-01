@@ -137,7 +137,6 @@ import {
   combineThreadMessagesDeps,
   convertTranscriptToThreadMessages,
   extractTextFromAppendMessage,
-  isTurnAnchoredMessageId,
   PROVIDER_API_ERROR_RESUME_PROMPT,
   resolveProviderApiErrorRetryAction,
   shouldShowLoadingSkeleton,
@@ -214,6 +213,7 @@ import {
   subscribePendingMessageJump,
 } from './pendingMessageJumpStore'
 import {
+  currentRevealGeneration,
   revealChapterRow,
   revealRowForPart,
   revealThreadMessage,
@@ -269,6 +269,8 @@ const GENERATIVE_TOOL_NAMES = new Set([
 export type AssistantUiThreadProps = {
   state: BrowserRuntimeClientState
   readOnly?: boolean
+  /** The session this thread shows, for reads that must work without a snapshot (a read-only thread has none). */
+  threadSessionId?: string
   submitPrompt: (prompt: string) => Promise<void>
   /**
    * Submit a hidden, model-only "meta" turn — used by A2UI surface actions
@@ -660,6 +662,7 @@ const readOnlyNoop = async (): Promise<void> => {}
 export const AssistantUiThread = memo(function AssistantUiThread({
   state,
   readOnly = false,
+  threadSessionId,
   submitPrompt,
   submitActionMessage,
   continueConversation,
@@ -721,6 +724,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
     <InteractiveAssistantUiThread
       state={state}
       readOnly={readOnly}
+      threadSessionId={threadSessionId}
       submitPrompt={readOnly ? readOnlyNoop : submitPrompt}
       submitActionMessage={readOnly ? undefined : submitActionMessage}
       continueConversation={readOnly ? undefined : continueConversation}
@@ -784,6 +788,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
 function InteractiveAssistantUiThread({
   state,
   readOnly = false,
+  threadSessionId,
   submitPrompt,
   submitActionMessage,
   continueConversation,
@@ -850,9 +855,13 @@ function InteractiveAssistantUiThread({
   // The session's child-session proposal cards (F-36).
   const canAnswerProposals = useCan('proposals', 'start') && !readOnly
   const sessionProposals = useSessionProposals(runtimeConnection, modSessionId, canAnswerProposals)
-  // The session's chapter marks (F-37).
+  // The session's chapter marks (F-37); a read-only thread shows them too.
   const canMarkChapters = useCan('chapters', 'mark') && !readOnly
-  const sessionChapters = useSessionChapters(runtimeConnection, modSessionId, canMarkChapters)
+  const sessionChapters = useSessionChapters(
+    runtimeConnection,
+    modSessionId ?? threadSessionId,
+    canMarkChapters,
+  )
   const modUi = useSessionModUi(runtimeConnection, modSessionId, {
     canListMods,
     onOpenPluginSettings,
@@ -1229,18 +1238,16 @@ function InteractiveAssistantUiThread({
       mark: sessionChapters.mark,
       unmark: sessionChapters.unmark,
       targetFor: (rowId, line) => chapterTargetFor(rowOf(rowId), line, entries()),
-      entryKeyOf: rowId =>
-        isTurnAnchoredMessageId(rowId) ? entryKeyOfRow(rowOf(rowId), entries()) : rowId,
+      entryKeyOf: rowId => entryKeyOfRow(rowOf(rowId), entries()),
       statusOf: mark => {
         const anchor = resolveChapterAnchor(runtimeMessagesRef.current, entries(), mark)
         return anchor.kind === 'row' ? 'ready' : anchor.kind
       },
-      reveal: mark => {
+      reveal: async mark => {
         const root = threadRootRef.current
         const anchor = resolveChapterAnchor(runtimeMessagesRef.current, entries(), mark)
         if (!root || anchor.kind !== 'row') return false
-        void revealChapterRow(root, anchor.index, anchor.ordinal)
-        return true
+        return revealChapterRow(root, anchor.index, anchor.ordinal)
       },
     }
   }, [sessionChapters])
@@ -1898,10 +1905,15 @@ function InteractiveAssistantUiThread({
     // Only ONE of the two runs. The DOM walk alongside a self-revealing
     // part is not just redundant: it expands and re-queries while React
     // re-renders the subtree that just opened, and neither finishes.
-    void (servedByPart
+    const reveal = servedByPart
       ? revealRowForPart(root, index)
       : revealThreadMessage(root, index, jump.lineOrdinal, jump.term)
-    ).then(revealed => {
+    // Taken right after the call: the reveal claims its generation before its first await.
+    const generation = currentRevealGeneration()
+    void reveal.then(revealed => {
+      // A newer reveal (another hit, or a chapter jump) took over: this
+      // one did not fail, and re-arming it would pull the view back.
+      if (currentRevealGeneration() !== generation) return
       // Re-arm rather than lose it: the rows for this hit may still be
       // mounting, and the next render will try again. BOUNDED, because
       // re-arming unconditionally is an infinite loop when the reveal

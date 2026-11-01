@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { COLLAPSIBLE_CARD_TRIGGER_SLOTS } from '../browser/webview/collapsibleCardSlots'
 import {
   containerClaiming,
+  currentRevealGeneration,
   descendToOrdinal,
   expandAllWithin,
   expandContainer,
@@ -598,6 +599,45 @@ describe('revealChapterRow', () => {
     expect(await revealChapterRow(root, 7)).toBe(false)
     expect(pinned).toEqual([[7, root]])
     expect(root.getAttribute('data-chapter-reveal')).toBe('missing')
+  })
+
+  it('a reply taller than the flash cap tints its first line, not the whole row', async () => {
+    const tall = Math.round(window.innerHeight * (MAX_FLASH_VIEWPORT_RATIO + 0.3))
+    const root = thread(`<div data-message-index="0" class="row"></div>`, { '.row': tall })
+    const row = root.querySelector<HTMLElement>('.row')!
+    const head = document.createElement('p')
+    head.id = 'head'
+    stubHeight(head, 20)
+    row.appendChild(head)
+
+    expect(await revealChapterRow(root, 0)).toBe(true)
+    const hits = root.querySelectorAll('[data-chapter-hit="true"]')
+    expect(hits).toHaveLength(1)
+    expect(hits[0]?.id).toBe('head')
+    expect(row.getAttribute('data-chapter-target')).toBe('true')
+  })
+
+  it('a second jump clears the first landing’s marks at once', async () => {
+    const root = thread(`<div data-message-index="0" class="row"></div><div data-message-index="1" class="row2"></div>`, {
+      '.row': 200,
+      '.row2': 200,
+    })
+    expect(await revealChapterRow(root, 0)).toBe(true)
+    expect(await revealChapterRow(root, 1)).toBe(true)
+    expect(root.querySelector('.row')!.hasAttribute('data-chapter-hit')).toBe(false)
+    expect(root.querySelector('.row')!.hasAttribute('data-chapter-target')).toBe(false)
+    expect(root.querySelector('.row2')!.getAttribute('data-chapter-hit')).toBe('true')
+  })
+
+  it('a superseded reveal leaves a newer generation behind, so its caller does not retry it', async () => {
+    const root = thread(`<div data-message-index="1" class="row2"></div>`, { '.row2': 200 })
+    const search = revealThreadMessage(root, 5, 20)
+    const searchGeneration = currentRevealGeneration()
+    const chapter = revealChapterRow(root, 1)
+    expect(await search).toBe(false)
+    expect(currentRevealGeneration()).not.toBe(searchGeneration)
+    expect(await chapter).toBe(true)
+    expect(root.getAttribute('data-chapter-reveal')).toBe('landed')
   })
 
   it('a newer search reveal supersedes a chapter jump', async () => {

@@ -12,9 +12,12 @@ import {
   chapterMarksFromStorage,
   chapterTitle,
   entryText,
+  entryTitle,
+  isPromptEntry,
   type ChapterMark,
 } from '../sessions/chapterMarks'
 import { ChapterBook, inConversationOrder, marksWithin } from '../sessions/chapterBook'
+import { serializePassagePrompt } from '../browser/webview/capturedPassages'
 import {
   buildForkedTranscriptEntries,
   type BrowserTranscriptEntry,
@@ -23,9 +26,11 @@ import {
 // Chapter marks (F-37): where a mark lands in the rendered thread, its title, the stored list, the
 // runtime's book, and which marks a rewind keeps.
 
+// A `u…` uuid is a prompt, anything else a reply step.
 const entry = (uuid: string, transcriptLine: number, text = `text of ${uuid}`) => ({
   uuid,
   transcriptLine,
+  type: uuid.startsWith('u') ? 'user' : 'assistant',
   message: { content: [{ type: 'text', text }] },
 })
 
@@ -92,6 +97,22 @@ describe('chapterTargetFor', () => {
     expect(resolveChapterAnchor([{ id: 'u1' }, closing], entries, { entryKey: 'a1' })).toEqual({ kind: 'row', index: 1 })
   })
 
+  it('names a repeated row by its entry, and a landed mid-turn prompt by its attachment entry', () => {
+    const landed = {
+      uuid: 'q1',
+      transcriptLine: 3,
+      attachment: { type: 'queued_command', commandMode: 'prompt', prompt: 'more', source_uuid: 'pending-1' },
+    }
+    const all = [...entries, landed]
+    expect(entryKeyOfRow({ id: 'a1:duplicate-2' }, all)).toBe('a1')
+    expect(entryKeyOfRow({ id: 'pending-1' }, all)).toBe('q1')
+    expect(chapterTargetFor({ id: 'pending-1' }, null, all)).toEqual({ entryKey: 'q1' })
+    expect(resolveChapterAnchor([{ id: 'u1' }, merged('pending-1', 3, 3)], all, { entryKey: 'q1' })).toEqual({
+      kind: 'row',
+      index: 1,
+    })
+  })
+
   it('is null for a row that is not a saved entry yet', () => {
     expect(chapterTargetFor({ id: 'turn:u1:live-stream' }, null, entries)).toBeNull()
     expect(chapterTargetFor(undefined, null, entries)).toBeNull()
@@ -125,14 +146,13 @@ describe('chapterTitle', () => {
     expect(title).toBe(family.repeat(40) + '…')
   })
 
-  it('titles a quoted-context prompt by the person’s own words', () => {
-    const prompt = '[Quoted context 1]\n> some quoted reply\n[User message]\nWhy does this fail?'
-    expect(chapterTitle(prompt)).toBe('Why does this fail?')
-  })
-
   it('is null when there is no text', () => {
     expect(chapterTitle('')).toBeNull()
     expect(chapterTitle('  \n\t\n')).toBeNull()
+  })
+
+  it('drops direction and control characters', () => {
+    expect(chapterTitle('\u202eevil\u202c name\u0007')).toBe('evil name')
   })
 
   it('reads an entry’s text blocks, joined', () => {
@@ -142,6 +162,60 @@ describe('chapterTitle', () => {
     ).toBe('a\nb')
     expect(entryText({ message: { content: [{ type: 'tool_use' }] } })).toBe('')
     expect(entryText(null)).toBe('')
+  })
+})
+
+describe('entryTitle', () => {
+  const upload = '@"C:/work/.velloc/uploads/1a2b3c4d-notes.txt" '
+  const carded = (words: string) => serializePassagePrompt(['some quoted reply'], words)
+  const prompt = (text: string, extra: unknown[] = []) => ({
+    type: 'user',
+    message: { content: [...extra, { type: 'text', text }] },
+  })
+
+  it('titles a prompt with quote cards by the person’s own words', () => {
+    expect(entryTitle(prompt(carded('Why does this fail?')))).toBe('Why does this fail?')
+  })
+
+  it('sets uploaded-file mentions aside', () => {
+    expect(entryTitle(prompt(`${upload}Summarise this`))).toBe('Summarise this')
+    expect(entryTitle(prompt(upload + carded('And this?')))).toBe('And this?')
+  })
+
+  it('a prompt of only quote cards is titled by the first quote', () => {
+    expect(entryTitle(prompt(carded('')))).toBe('some quoted reply')
+  })
+
+  it('a prompt of only uploads is titled by the files’ names', () => {
+    expect(entryTitle(prompt(upload.trimEnd()))).toBe('notes.txt')
+  })
+
+  it('skips an image’s source note: an image-only prompt has no title', () => {
+    const image = prompt('[Image source: C:/shots/screen.png]', [{ type: 'image', source: {} }])
+    expect(entryText(image)).toBe('')
+    expect(entryTitle(image)).toBeNull()
+    expect(entryTitle(prompt('Look at this', [{ type: 'text', text: '[Image source: C:/shots/a.png]' }]))).toBe(
+      'Look at this',
+    )
+  })
+
+  it('reads a landed mid-turn prompt from its attachment', () => {
+    const landed = {
+      type: 'attachment',
+      uuid: 'q1',
+      attachment: { type: 'queued_command', commandMode: 'prompt', prompt: `${upload}Also check the tests`, source_uuid: 'p1' },
+    }
+    expect(isPromptEntry(landed)).toBe(true)
+    expect(entryTitle(landed)).toBe('Also check the tests')
+    const other = { type: 'attachment', attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: 'x' } }
+    expect(isPromptEntry(other)).toBe(false)
+    expect(entryText(other)).toBe('')
+  })
+
+  it('a reply is titled by its text as written, a leading quote included', () => {
+    expect(entryTitle({ type: 'assistant', message: { content: [{ type: 'text', text: '> quoted\n\nthen' }] } })).toBe(
+      '> quoted',
+    )
   })
 })
 
@@ -192,9 +266,30 @@ describe('ChapterBook', () => {
     entry('u1', 0, 'First question\nmore'),
     entry('a1', 1, 'The reply'),
     entry('a2', 2, 'A later part'),
-    { uuid: 't1', transcriptLine: 3, message: { content: [{ type: 'tool_use' }] } },
+    { uuid: 't1', transcriptLine: 3, type: 'assistant', message: { content: [{ type: 'tool_use' }] } },
     entry('u2', 4, 'Second question'),
   ]
+
+  it('a whole reply whose first step is a tool call takes the reply’s next text; a segment keeps its own', async () => {
+    const reply = [
+      entry('u1', 0, 'Question'),
+      { uuid: 't0', transcriptLine: 1, type: 'assistant', message: { content: [{ type: 'tool_use' }] } },
+      { uuid: 'r0', transcriptLine: 2, type: 'user', message: { content: [{ type: 'tool_result', content: 'ok' }] } },
+      entry('a1', 3, 'Here is what I found'),
+      entry('u2', 4, 'Next question'),
+    ]
+    const { book } = makeBook(reply)
+    expect(await book.mark('s1', 't0')).toMatchObject({ ok: true, mark: { title: 'Here is what I found' } })
+    expect(await book.mark('s1', 'u1', 't0')).toMatchObject({ ok: true, mark: { segmentKey: 't0', title: null } })
+  })
+
+  it('a segment naming the message’s own entry marks the message', async () => {
+    const { book } = makeBook(entries)
+    const whole = await book.mark('s1', 'a1')
+    const same = await book.mark('s1', 'a1', 'a1')
+    expect(same).toEqual({ ok: true, created: false, mark: whole.ok && whole.mark })
+    expect(whole.ok && 'segmentKey' in whole.mark).toBe(false)
+  })
 
   it('marks a place with a title from its own text and tells the topic', async () => {
     const { book, onChange } = makeBook(entries)

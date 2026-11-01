@@ -43,6 +43,7 @@ const { ESTIMATED_MESSAGE_HEIGHT_PX, MAX_SYNC_REWINDOW_PASSES, MESSAGE_TAIL_KEEP
 const { HistoryContentWindowContext } = await import(
   '../browser/webview/historyContentWindow'
 )
+const { requestRowPin } = await import('../browser/webview/rowPinRequests')
 
 // Every row list the virtualizer published, in order.
 let published: number[][] = []
@@ -260,6 +261,23 @@ describe('VirtualizedThreadMessages', () => {
       viewport.querySelector<HTMLElement>('[data-message-index="3"]')?.dataset
         .slotState,
     ).toBe('dormant')
+  })
+
+  it('mounts a culled row for a reveal in its own thread, and ignores one aimed at another thread', () => {
+    const mine = document.createElement('div')
+    const other = document.createElement('div')
+    document.body.append(mine, other)
+    mine.append(viewport)
+    mountList(100)
+    scrollTo(80 * ROW_HEIGHT)
+    expect(renderedIndices()).not.toContain(3)
+
+    act(() => requestRowPin(3, other))
+    expect(renderedIndices()).not.toContain(3)
+    act(() => requestRowPin(3, mine))
+    expect(renderedIndices()).toContain(3)
+    mine.remove()
+    other.remove()
   })
 
   it('freezes the window while the thread is in the background', () => {
