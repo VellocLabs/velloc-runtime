@@ -149,6 +149,12 @@ export function resolveLineage(meta: SessionLineageInput): SessionLineage | null
   return null
 }
 
+/** The origin a person's fork of `sourceSessionId` records: the person's
+ *  relation, so its reports reach the source but never wake it alone. */
+export function personForkOrigin(sourceSessionId: string): SessionOrigin {
+  return { sessionId: sourceSessionId, taskId: '', kind: 'side_session', initiator: 'user', userFork: true }
+}
+
 /** The session this one is shown under, or null. */
 export function effectiveParentId(meta: SessionLineageInput): string | null {
   return resolveLineage(meta)?.sessionId ?? null

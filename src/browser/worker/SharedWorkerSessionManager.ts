@@ -54,10 +54,12 @@ import {
 import {
   familyOf,
   lineageInputFromRelationFields,
+  personForkOrigin,
   type ChildReport,
   type ChildStartState,
   type SessionLineageInput,
 } from '../../sessions/sessionLineage'
+import { CHILD_SESSION_TEMPLATE_TYPES } from '../../sessions/childSessionSpec'
 import {
   setChildSessionSpawner,
   type ChildSessionSpawnParams,
@@ -4151,6 +4153,7 @@ export class SharedWorkerSessionManager {
         replacesSource,
         retarget,
         sideChat,
+        personFork: true,
       })
       if (!forked) return
       port.postMessage({
@@ -4179,6 +4182,8 @@ export class SharedWorkerSessionManager {
       retarget?: ForkRetarget
       sideChat?: { enabled: boolean; initialDraft?: string }
       metadataPatch?: Partial<BrowserSessionMetadata>
+      /** A person's own fork: it records the person as its origin (F-36). */
+      personFork?: boolean
     },
   ): Promise<{ newSessionId: string } | null> {
     const storage = this.storage
@@ -4227,10 +4232,23 @@ export class SharedWorkerSessionManager {
         console.warn('[nexus] fork skipped: no message to cut at', fromSessionId)
         return null
       }
-      if (opts.metadataPatch) {
+      // A plain fork of a session that can have children reports its turns
+      // to the source as the person's relation; a rewind or a retarget is a
+      // replacement, not a child, and a side chat records no origin.
+      const personOrigin =
+        opts.personFork === true &&
+        !replacesSource &&
+        !retarget &&
+        sideChat?.enabled !== true &&
+        templateChannel() === 'beta' &&
+        CHILD_SESSION_TEMPLATE_TYPES.includes(sourceMetadata?.templateType ?? '')
+          ? { spawnedFrom: personForkOrigin(fromSessionId) }
+          : undefined
+      const patch = { ...personOrigin, ...opts.metadataPatch }
+      if (Object.keys(patch).length > 0) {
         built.meta = {
           ...built.meta,
-          metadata: { ...built.meta.metadata, ...opts.metadataPatch },
+          metadata: { ...built.meta.metadata, ...patch },
         }
       }
       // Tool details are lazy-loaded per session by toolCallId; copy the
