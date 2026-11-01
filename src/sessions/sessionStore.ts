@@ -182,6 +182,8 @@ export type BrowserSessionSummary = {
   archived?: boolean
   /** A side chat of its parent. (F-36) */
   sideChat?: boolean
+  /** The stored terminal reason of the last turn; the summary's turn ending reads it. (F-36) */
+  lastTerminalReason?: string
   shutdown?: boolean
   shutdownAt?: number
   composerDraft?: string
@@ -783,6 +785,9 @@ export function buildSessionSummaryFromMetadata(
     ...(startFailed ? { startFailed } : {}),
     ...(metadata?.archived === true ? { archived: true } : {}),
     ...(metadata?.sideChat === true ? { sideChat: true } : {}),
+    ...(typeof metadata?.lastTerminalReason === 'string' && metadata.lastTerminalReason.length > 0
+      ? { lastTerminalReason: metadata.lastTerminalReason }
+      : {}),
     ...(metadata?.shutdown === true ? { shutdown: true } : {}),
     ...(typeof metadata?.shutdownAt === 'number' ? { shutdownAt: metadata.shutdownAt } : {}),
     ...(composerDraft !== undefined ? { composerDraft } : {}),

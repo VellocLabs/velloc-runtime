@@ -8,6 +8,8 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { PathChip } from "@/components/assistant-ui/file-path-link";
 import { FILE_PATH_TAG } from "@/components/assistant-ui/remarkFilePaths";
+import { SessionLinkChip } from "@/components/assistant-ui/session-link-chip";
+import { sessionIdOfLink } from "@/sessions/sessionLink";
 import { cn } from "@/lib/utils";
 import { asWholeFilePath } from "@/utils/filePathDetection";
 import { writeClipboard } from "@/utils/clipboard";
@@ -156,16 +158,23 @@ export const sharedMarkdownComponents = {
     // eslint-disable-next-line jsx-a11y/alt-text -- alt comes from the markdown source via props
     <img loading={loading ?? "lazy"} decoding={decoding ?? "async"} {...props} />
   ),
-  a: ({ className, ...props }: React.ComponentPropsWithoutRef<"a">) => (
-    <a
-      className={cn(
-        "aui-md-a text-primary underline underline-offset-2 hover:text-primary/80",
-        className,
-      )}
-      rel="noopener noreferrer"
-      {...props}
-    />
-  ),
+  a: ({ className, ...props }: React.ComponentPropsWithoutRef<"a">) => {
+    // `[title](#session/<id>)` names a session: drawn as its chip (F-36).
+    const linkedSession = sessionIdOfLink(props.href);
+    if (linkedSession) {
+      return <SessionLinkChip sessionId={linkedSession}>{props.children}</SessionLinkChip>;
+    }
+    return (
+      <a
+        className={cn(
+          "aui-md-a text-primary underline underline-offset-2 hover:text-primary/80",
+          className,
+        )}
+        rel="noopener noreferrer"
+        {...props}
+      />
+    );
+  },
   blockquote: ({
     className,
     ...props

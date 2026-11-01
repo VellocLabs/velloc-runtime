@@ -72,6 +72,7 @@ import { AssistantText } from "./assistant-text";
 import { Reasoning, ReasoningGroup } from "./reasoning";
 import { SPAWN_TOOL_ID, classifyTeammateSpawn, ToolFallback } from "./tool-fallback";
 import { isTeammateSpawnTool } from "@/utils/toolLabels";
+import { SPAWN_SESSION_TOOL_NAME } from "@/sessions/childSessionSpec";
 import { ToolGroup } from "./tool-group";
 import { PartLineProvider } from "./part-line-context";
 import {
@@ -140,7 +141,9 @@ type PartView = {
 function isStandalonePart(view: PartView): boolean {
   return (
     view.type === "tool-call" &&
-    (isUngroupableToolName(view.toolName) || view.teammateSpawn === true)
+    (isUngroupableToolName(view.toolName) ||
+      view.teammateSpawn === true ||
+      view.toolName === SPAWN_SESSION_TOOL_NAME)
   );
 }
 

@@ -13,6 +13,7 @@ import {
   CHILD_BRIEFING_MIN_CHARS,
   SPAWN_SESSION_TOOL_NAME,
   checkChildSessionRequest,
+  childSessionNotStartedAckText,
   childSessionRegisteredText,
   type ChildSessionCallerContext,
   type ChildSessionRequest,
@@ -461,9 +462,11 @@ async function startChildSession(
       ok: true,
       sessionId: outcome.sessionId,
       name: outcome.name,
-      text:
-        `Child session "${outcome.name}" (session ${outcome.sessionId}) is registered but did not start: ${outcome.startFailed} ` +
-        'It stays listed as not started with that reason; nothing was shared or run. Fix the cause and start it again, or do the work here.',
+      text: childSessionNotStartedAckText({
+        name: outcome.name,
+        sessionId: outcome.sessionId,
+        reason: outcome.startFailed,
+      }),
     }
   }
   const text = options.registeredText
@@ -471,6 +474,7 @@ async function startChildSession(
     : childSessionRegisteredText({
         sessionId: outcome.sessionId,
         name: outcome.name,
+        title: request.title,
         from: request.from,
         sharedCheckout: outcome.sharedCheckout,
         ...(outcome.cwd ? { cwd: outcome.cwd } : {}),

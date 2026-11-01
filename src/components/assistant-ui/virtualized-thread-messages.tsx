@@ -28,6 +28,7 @@ import {
   rangesEqual,
 } from "@/browser/webview/messageVirtualization";
 import { subscribeRowPin } from "@/browser/webview/rowPinRequests";
+import { ThreadForegroundContext } from "./thread-foreground";
 import {
   HistoryContentWindowContext,
   stubRowsKey,
@@ -555,7 +556,7 @@ export const VirtualizedThreadMessages: FC<VirtualizedThreadMessagesProps> = ({
   if (count === 0) return null;
 
   return (
-    <>
+    <ThreadForegroundContext.Provider value={isForeground}>
       {segments.map((segment) =>
         segment.kind === "spacer" ? (
           <MessageSpacer
@@ -576,6 +577,6 @@ export const VirtualizedThreadMessages: FC<VirtualizedThreadMessagesProps> = ({
           />
         ),
       )}
-    </>
+    </ThreadForegroundContext.Provider>
   );
 };

@@ -59,6 +59,7 @@ import {
 import { BackgroundTaskJumpButton } from "./background-task-jump";
 import { PanelJumpChevron } from "./panel-jump-chevron";
 import { TeammateSpawnCard } from "./teammate-spawn-card";
+import { ChildSessionCard, classifyChildSpawn } from "./child-session-card";
 import { AssistantText } from "./assistant-text";
 import { Reasoning } from "./reasoning";
 import { rememberNarration } from "./planNarrationMemory";
@@ -863,6 +864,19 @@ const ToolPlanStreamPart = memo(function ToolPlanStreamPart({
         <PartLineProvider line={partLine} isRevealTarget={isRevealTarget}>
           <li data-slot="plan-tool-row" className="list-none">
             <TeammateSpawnCard spawn={spawn} />
+          </li>
+        </PartLineProvider>
+      );
+    }
+  }
+
+  if (row.kind === "tool-call") {
+    const childSpawn = classifyChildSpawn(row.toolName, row.args, row.result);
+    if (childSpawn) {
+      return (
+        <PartLineProvider line={partLine} isRevealTarget={isRevealTarget}>
+          <li data-slot="plan-tool-row" className="list-none">
+            <ChildSessionCard spawn={childSpawn} />
           </li>
         </PartLineProvider>
       );

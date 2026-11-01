@@ -293,6 +293,8 @@ type SessionEntry = {
   model: BrowserLlmSelection | null
   counters: BrowserSessionCounters
   needsAnswer: boolean
+  // The last terminal reason a full snapshot carried: the summary's turn ending (F-36).
+  lastTerminalReason?: string
   // Init failed → the next worker.init must re-dispatch instead of reusing a
   // runtime-less worker (P-1).
   initFailed?: boolean
@@ -4133,7 +4135,8 @@ export class SharedWorkerSessionManager {
    * Track the halted-on-ask flag from a full-snapshot emission. A flip
    * re-broadcasts the summary — the moment an ask appears is otherwise NOT
    * a phase transition (the tool stays in flight, waiting), so nothing else
-   * would flush and the sidebar dot would lag until an unrelated bump.
+   * would flush and the sidebar dot would lag until an unrelated bump. The
+   * terminal reason is cached the same way for the summary's turn ending.
    */
   private trackNeedsAnswerFromSnapshot(
     sessionId: string,
@@ -4144,6 +4147,10 @@ export class SharedWorkerSessionManager {
       const needsAnswer = snapshotNeedsAnswer(snapshot)
       if (needsAnswer !== entry.needsAnswer) {
         entry.needsAnswer = needsAnswer
+        this.feed.scheduleSummary()
+      }
+      if (snapshot.lastTerminalReason !== entry.lastTerminalReason) {
+        entry.lastTerminalReason = snapshot.lastTerminalReason
         this.feed.scheduleSummary()
       }
     }

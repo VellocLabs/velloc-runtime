@@ -273,6 +273,7 @@ describe('childSessionRegisteredText — registered is not delivered', () => {
     const text = childSessionRegisteredText({
       sessionId: 's-1',
       name: 'login-fix',
+      title: 'Fix login',
       from: 'fresh',
       sharedCheckout: true,
       cwd: 'D:/repo',
@@ -289,6 +290,7 @@ describe('childSessionRegisteredText — registered is not delivered', () => {
     const text = childSessionRegisteredText({
       sessionId: 's-2',
       name: 'fork-1',
+      title: 'Fork one',
       from: 'fork',
       sharedCheckout: false,
       cwd: 'D:/repo/.velloc/worktrees/fork-1',

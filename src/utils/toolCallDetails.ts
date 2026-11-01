@@ -202,6 +202,10 @@ export const INLINE_TOOL_DETAIL_TOOL_NAMES = new Set([
   // render for a persisted call. Inline literal: SPAWN_TEAMMATE_TOOL_NAME in
   // toolkit/builtin/spawnTeammate.ts.
   'SpawnTeammate',
+  // The child-session start card, likewise: classified from the
+  // acknowledgement and, before it, from `args.title`. Inline literal:
+  // SPAWN_SESSION_TOOL_NAME in sessions/childSessionSpec.ts. (F-36)
+  'SpawnSession',
 ])
 
 export type BrowserToolCallDetailRef = {

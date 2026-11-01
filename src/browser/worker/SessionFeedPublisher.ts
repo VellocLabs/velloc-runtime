@@ -47,6 +47,7 @@ import {
   type RecoveredTitleRow,
 } from './recoverTitleRows'
 import { superShellDisplayLabel } from './SuperShellTaskCoordinator'
+import { activitiesEqual, sessionActivityOf, turnEndingOf } from './sessionActivity'
 
 const SUMMARY_COALESCE_MS = 100
 
@@ -60,6 +61,8 @@ export type FeedSessionView = {
   model: BrowserLlmSelection | null
   counters: BrowserSessionCounters
   needsAnswer: boolean
+  /** The last terminal reason a full snapshot carried (F-36). */
+  lastTerminalReason?: string
 }
 
 export interface SessionFeedHost {
@@ -318,6 +321,18 @@ export class SessionFeedPublisher {
     return false
   }
 
+  /** The activity and turn ending of a live session (F-36). */
+  private activityFields(
+    entry: FeedSessionView,
+  ): Pick<NexusSessionsSummaryRow, 'activity' | 'ending'> {
+    const activity = sessionActivityOf(entry.worker.getPhase())
+    const ending = turnEndingOf(entry.lastTerminalReason)
+    return {
+      ...(activity ? { activity } : {}),
+      ...(ending ? { ending } : {}),
+    }
+  }
+
   buildSummaryPayload(): NexusSessionsSummaryPayload {
     const seen = new Set<string>()
     const rows: NexusSessionsSummaryRow[] = []
@@ -341,6 +356,7 @@ export class SessionFeedPublisher {
         // Halted-on-ask flag (cached from worker.state by the Manager) —
         // the sidebar dot's client-independent source.
         needsAnswer: entry.needsAnswer,
+        ...this.activityFields(entry),
         tool: entry.counters.tool,
         toolFail: entry.counters.toolFail,
         mcp: entry.counters.mcp,
@@ -354,9 +370,11 @@ export class SessionFeedPublisher {
       if (seen.has(sessionId) || isSubAgentSessionId(sessionId)) continue
       const summary = fsSummaries.peek(sessionId)
       const c = summary?.counters
+      const ending = turnEndingOf(summary?.lastTerminalReason)
       rows.push({
         sessionId,
         running: this.host.isCliBusy?.(sessionId) ?? false,
+        ...(ending ? { ending } : {}),
         tool: c?.tool ?? 0,
         toolFail: c?.toolFail ?? 0,
         mcp: c?.mcp ?? 0,
@@ -893,6 +911,8 @@ function summariesEqual(
       // not a phase transition, so nothing else changes) would be judged
       // "equal" and deduped — the flag would never reach the sidebar.
       x.needsAnswer !== y.needsAnswer ||
+      !activitiesEqual(x.activity, y.activity) ||
+      x.ending !== y.ending ||
       x.tool !== y.tool ||
       x.toolFail !== y.toolFail ||
       x.mcp !== y.mcp ||

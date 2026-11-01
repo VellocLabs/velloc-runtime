@@ -66,6 +66,7 @@ import { useT } from "@/browser/webview/i18n";
 import { TeammateSpawnCard } from "@/components/assistant-ui/teammate-spawn-card";
 import { SessionProposalCard } from "@/components/assistant-ui/session-proposal-card";
 import { PROPOSE_SESSION_TOOL_NAME } from "@/sessions/childProposals";
+import { ChildSessionCard, classifyChildSpawn } from "@/components/assistant-ui/child-session-card";
 import { StaticMarkdown } from "@/components/assistant-ui/static-markdown";
 import { requestTeammateJump } from "@/browser/webview/teammateJumpRequests";
 import { ModToolResultSite, ModToolUseSite, modToolUseProps } from "@/components/assistant-ui/mod-render";
@@ -1130,8 +1131,8 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
 };
 
 /**
- * A teammate spawn never renders as a tool row: it is routed to its own card here, the
- * one place a tool part is rendered.
+ * A teammate spawn and a child-session start never render as tool rows: each is routed
+ * to its own card here, the one place a tool part is rendered.
  */
 const ToolFallbackRouted: ToolCallMessagePartComponent = (props) => {
   if (isTeammateSpawnTool(props.toolName)) {
@@ -1147,6 +1148,8 @@ const ToolFallbackRouted: ToolCallMessagePartComponent = (props) => {
       />
     );
   }
+  const childSpawn = classifyChildSpawn(props.toolName, props.args, props.result);
+  if (childSpawn) return <ChildSessionCard spawn={childSpawn} />;
   // A mod hooking `ToolUse` (F-25) draws the card through `ui.render`;
   // a rewritten input / output reaches the title as the card's own args.
   return (

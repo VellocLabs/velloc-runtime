@@ -148,6 +148,12 @@ import {
 import { readSectionCollapsed, readSessionListView } from './sessionListView'
 import { sidebarRowOrder } from './sessionPinning'
 import { subscribeTeammateJump } from './teammateJumpRequests'
+import { publishSessionStatuses } from './sessionStatusStore'
+import {
+  sessionActivityFromSummary,
+  sessionStatusEntries,
+  type SessionActivityById,
+} from './sessionStatusEntries'
 import {
   ATTENTION_SECTION_ATTR,
   revealAttentionSource,
@@ -255,11 +261,13 @@ import { snapshotNeedsAnswer } from '@/utils/sessionNeedsAnswer'
 import { writeClipboard } from '@/utils/clipboard'
 import { randomUuid } from '@/utils/randomUuid'
 import type {
+  NexusSessionActivity,
   NexusSessionSkillRow,
   NexusTaskDetail,
   NexusTaskInfo,
   NexusTaskSummaryRow,
   NexusTaskTranscriptEntry,
+  NexusTurnEnding,
   WindowDragRect,
 } from '../bridge/protocol/ui'
 import {
@@ -901,6 +909,11 @@ export function MultiSessionShell({
   const [summaryNeedsAnswerIds, setSummaryNeedsAnswerIds] = useState<
     ReadonlySet<string>
   >(() => new Set())
+  // Each session's activity and last turn ending from the same summary, for
+  // the transcript's start cards and session chips (F-36).
+  const [sessionActivity, setSessionActivity] = useState<SessionActivityById>(
+    () => new Map(),
+  )
 
   // Per-session "has an unanswered AskUserQuestion" flag, reported up from each
   // mounted thread's pending-questions store (that state doesn't ride the
@@ -1228,6 +1241,8 @@ export function MultiSessionShell({
             sessionId: string
             running?: boolean
             needsAnswer?: boolean
+            activity?: NexusSessionActivity
+            ending?: NexusTurnEnding
           }>
           subAgents?: NexusTaskSummaryRow[]
           skills?: NexusSessionSkillRow[]
@@ -1247,6 +1262,7 @@ export function MultiSessionShell({
             }
             if (row.needsAnswer) nextNeedsAnswer.add(row.sessionId)
           }
+          setSessionActivity(prev => sessionActivityFromSummary(prev, payload.sessions!))
           setRunningSessionIds(prev => {
             // Preserve referential identity when nothing changed — most
             // updates are counter bumps that don't flip the running set.
@@ -3604,6 +3620,12 @@ export function MultiSessionShell({
       })),
     [sessions, runningSessionIds, needsAnswerSessionIds, sideChatParentsNeedingAnswer],
   )
+
+  // The transcript's start cards and session chips read what the runtime
+  // published about a session from this index, never from the runtime.
+  useEffect(() => {
+    publishSessionStatuses(sessionStatusEntries(allSessionItems, sessionActivity))
+  }, [allSessionItems, sessionActivity])
 
   // Sessions this channel does not show: a type its launcher catalog does not
   // list (a `team` created on beta, opened on stable), a plugin type no plugin

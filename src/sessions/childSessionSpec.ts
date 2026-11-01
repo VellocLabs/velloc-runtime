@@ -6,6 +6,7 @@
  */
 
 import { coerceSessionMode, type SessionMode } from '../permissions/sessionModes'
+import { sessionLinkMarkdown } from './sessionLink'
 
 export const SPAWN_SESSION_TOOL_NAME = 'SpawnSession'
 
@@ -278,6 +279,10 @@ export function buildChildFirstMessage(args: { briefing?: string; task: string }
   return parts.join('\n\n')
 }
 
+const CHILD_ACK_FORK_ORIGIN =
+  'It starts from a copy of this conversation up to the last answered message; your uncommitted file changes are not copied.'
+const CHILD_ACK_SHARED = 'It works in the SHARED directory'
+
 /**
  * The parent's acknowledgement. It says the session is registered and
  * starting, never that the task reached a model; the shared directory is
@@ -286,24 +291,68 @@ export function buildChildFirstMessage(args: { briefing?: string; task: string }
 export function childSessionRegisteredText(args: {
   sessionId: string
   name: string
+  title: string
   from: ChildSessionSource
   sharedCheckout: boolean
   cwd?: string
 }): string {
   const where = args.sharedCheckout
-    ? `It works in the SHARED directory ${args.cwd ?? 'of this session'}: the same files you edit, so touch only this step's files there, or stop if its work could overlap yours.`
+    ? `${CHILD_ACK_SHARED} ${args.cwd ?? 'of this session'}: the same files you edit, so touch only this step's files there, or stop if its work could overlap yours.`
     : args.cwd
       ? `It works in its own worktree at ${args.cwd}.`
       : 'It works in its own worktree.'
   const origin = args.from === 'fork'
-    ? 'It starts from a copy of this conversation up to the last answered message; your uncommitted file changes are not copied.'
+    ? CHILD_ACK_FORK_ORIGIN
     : 'It starts from your briefing only; it has not seen this conversation.'
   return (
     `Registered child session "${args.name}" (session ${args.sessionId}). ` +
     `Registered means the session exists and is starting; it does not mean the task has been delivered to or read by its model. ` +
     `${origin} ${where} ` +
+    `To point the user at it, write the link ${sessionLinkMarkdown(args.title, args.sessionId)}; it shows the session's live state. ` +
     `Do not wait or poll for it: end your turn, and its report arrives as a later turn in this session.`
   )
+}
+
+/** The parent's acknowledgement for a session that is registered but did not start. */
+export function childSessionNotStartedAckText(args: { sessionId: string; name: string; reason: string }): string {
+  return (
+    `Child session "${args.name}" (session ${args.sessionId}) is registered but did not start: ${args.reason} ` +
+    'It stays listed as not started with that reason; nothing was shared or run. Fix the cause and start it again, or do the work here.'
+  )
+}
+
+/** What the page reads back from a `SpawnSession` result: the session it registered and where it works. */
+export type ChildSessionAck = {
+  sessionId: string
+  name: string
+  from: ChildSessionSource
+  sharedCheckout: boolean
+  startFailed: boolean
+}
+
+const REGISTERED_ACK = /^Registered child session "(.+?)" \(session ([^)\s]+)\)\./
+const PROPOSAL_START_LEAD = /^Started proposal task_[a-z0-9]{8}\. /
+const NOT_STARTED_ACK = /^Child session "(.+?)" \(session ([^)\s]+)\) is registered but did not start: /
+
+/** Reads one of the two acknowledgements above; null for a refusal or any other text. */
+export function parseChildSessionAck(text: string): ChildSessionAck | null {
+  // A start from a proposal leads with the proposal it started.
+  const trimmed = text.trim().replace(PROPOSAL_START_LEAD, '')
+  const registered = REGISTERED_ACK.exec(trimmed)
+  if (registered) {
+    return {
+      name: registered[1]!,
+      sessionId: registered[2]!,
+      from: trimmed.includes(CHILD_ACK_FORK_ORIGIN) ? 'fork' : 'fresh',
+      sharedCheckout: trimmed.includes(CHILD_ACK_SHARED),
+      startFailed: false,
+    }
+  }
+  const failed = NOT_STARTED_ACK.exec(trimmed)
+  if (failed) {
+    return { name: failed[1]!, sessionId: failed[2]!, from: 'fresh', sharedCheckout: false, startFailed: true }
+  }
+  return null
 }
 
 /** The one reminder a parent gets when a child it started never started. */

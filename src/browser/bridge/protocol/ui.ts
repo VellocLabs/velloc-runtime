@@ -158,11 +158,24 @@ export type NexusSessionsSummaryRow = {
    * absence means "unknown", and the UI unions it with its client-derived signal.
    */
   needsAnswer?: boolean
+  /** What a running session is doing now; absent when idle or unknown (F-36). */
+  activity?: NexusSessionActivity
+  /** How its last turn ended; absent before any turn ended or while it waits on the user (F-36). */
+  ending?: NexusTurnEnding
   tool: number
   toolFail: number
   mcp: number
   mcpFail: number
 }
+
+/** A running session's current activity: its top in-flight tool by name, a provider retry, or the reply streaming. */
+export type NexusSessionActivity =
+  | { kind: 'responding' }
+  | { kind: 'retrying' }
+  | { kind: 'tool'; tool: string }
+
+/** A finished turn's ending: it completed, it ended on an error, or it was stopped. */
+export type NexusTurnEnding = 'finished' | 'failed' | 'stopped'
 
 /**
  * Discriminates a background task by KIND; the Background Tasks drawer renders +
