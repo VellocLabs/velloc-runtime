@@ -38,10 +38,12 @@ import {
   SIDEBAR_ROW_HEIGHT,
   SessionRowList,
   type SessionListItem,
+  type SessionNesting,
   type SessionRowEditing,
 } from './SessionRows'
 import { ungroupedView } from './sessionListView'
 import { pinnedFirst } from './sessionPinning'
+import { nestSessions } from './sessionTree'
 
 export type ProjectSectionProps = {
   sessions: SessionListItem[]
@@ -66,6 +68,9 @@ export type ProjectSectionProps = {
   /** Inline-rename state, shared with Recents so both copies of a session agree. */
   editing?: SessionRowEditing
   onEditingChange?: (next: SessionRowEditing) => void
+  /** Parent rows whose children are hidden, shared with the Recents list. (F-36) */
+  collapsedParents?: ReadonlySet<string>
+  onToggleChildren?: (parentSessionId: string) => void
 }
 
 export function ProjectSection({
@@ -86,6 +91,8 @@ export function ProjectSection({
   onForkThread,
   editing,
   onEditingChange,
+  collapsedParents,
+  onToggleChildren,
 }: ProjectSectionProps) {
   const t = useT()
   // Two controls here act on the HOST machine, not the runtime: "+" opens the
@@ -230,6 +237,8 @@ export function ProjectSection({
             onForkThread={onForkThread}
             editing={editing}
             onEditingChange={onEditingChange}
+            collapsedParents={collapsedParents}
+            onToggleChildren={onToggleChildren}
           />
         ))}
 
@@ -244,6 +253,8 @@ export function ProjectSection({
     </div>
   )
 }
+
+const EMPTY_SET: ReadonlySet<string> = new Set()
 
 type ProjectRowProps = {
   node: ProjectNode<SessionListItem>
@@ -262,6 +273,8 @@ type ProjectRowProps = {
   onForkThread?: (sessionId: string) => void
   editing?: SessionRowEditing
   onEditingChange?: (next: SessionRowEditing) => void
+  collapsedParents?: ReadonlySet<string>
+  onToggleChildren?: (parentSessionId: string) => void
 }
 
 function ProjectRow({
@@ -281,9 +294,19 @@ function ProjectRow({
   onForkThread,
   editing,
   onEditingChange,
+  collapsedParents,
+  onToggleChildren,
 }: ProjectRowProps) {
   const t = useT()
   const locale = useLocale()
+  // A child nests under its parent only when both sit in this folder; a child
+  // bound elsewhere is a top-level row of its own folder, which is grouping,
+  // not a missing parent, so it is not reported.
+  const nodeTree = useMemo(() => nestSessions(node.sessions), [node.sessions])
+  const nesting = useMemo<SessionNesting>(
+    () => ({ tree: nodeTree, collapsed: collapsedParents ?? EMPTY_SET, onToggle: onToggleChildren }),
+    [nodeTree, collapsedParents, onToggleChildren],
+  )
   const FolderGlyph = expanded ? FolderOpenIcon : FolderIcon
   // Tracked so the hover actions stay on screen while the ⋯ menu is open. The
   // menu is portal'd, so moving the pointer from the trigger onto a menu item
@@ -525,7 +548,7 @@ function ProjectRow({
         >
           {node.sessions.length > 0 ? (
             <SessionRowList
-              groups={ungroupedView(pinnedFirst(node.sessions))}
+              groups={ungroupedView(pinnedFirst(nodeTree.roots))}
               activeSessionId={activeSessionId}
               onSwitchThread={onSwitchThread}
               onDeleteThread={onDeleteThread}
@@ -534,6 +557,7 @@ function ProjectRow({
               onForkThread={onForkThread}
               editing={editing}
               onEditingChange={onEditingChange}
+              nesting={nesting}
               indented
               scope={`project:${node.path}`}
             />

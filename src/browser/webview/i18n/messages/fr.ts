@@ -39,6 +39,9 @@ export const fr: Messages = {
   'sidebar.needsAnswer': 'Attend votre réponse',
   'sidebar.sessionStarting': 'Démarrage…',
   'sidebar.sessionStartFailed': 'N’a pas démarré',
+  'sidebar.forkOf': 'Fork de {title}',
+  'sidebar.collapseChildrenAria': 'Masquer les sessions sous {title} ({count})',
+  'sidebar.expandChildrenAria': 'Afficher les sessions sous {title} ({count})',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} est prêt',
   'appUpdate.restart': 'Redémarrer pour mettre à jour',

@@ -5,6 +5,7 @@ import {
   type SessionGroup,
   type SessionListView,
 } from './sessionListView'
+import { flattenSessionTree, nestSessions, type TreeableSession } from './sessionTree'
 
 /**
  * Pinned sessions list above unpinned ones. The partition is stable, so each
@@ -19,26 +20,29 @@ export function pinnedFirst<T extends { pinned?: boolean }>(
 }
 
 /**
- * The docked sidebar's top-level rows in display order: the Pinned section in
- * the view's order, then Recents in the view's grouping and order. A section
+ * The docked sidebar's rows in display order: the Pinned section in the view's
+ * order, then Recents in the view's grouping and order, each top-level row
+ * followed by its children unless its id is in `collapsedParents`. A section
  * listed in `collapsed` contributes no rows (they are not on screen). (F-17)
  */
 export function sidebarRowOrder<
-  T extends ListableSession & { pinned?: boolean },
+  T extends ListableSession & TreeableSession & { pinned?: boolean },
 >(
   sessions: readonly T[],
   view: SessionListView,
   now: number,
   collapsed: { pinned?: boolean; recents?: boolean } = {},
+  collapsedParents: ReadonlySet<string> = new Set(),
 ): T[] {
+  const tree = nestSessions(orderSessions(sessions, view.field, view.direction))
   const pinned = collapsed.pinned
     ? []
-    : orderSessions(sessions.filter(session => session.pinned), view.field, view.direction)
+    : orderSessions(tree.roots.filter(session => session.pinned), view.field, view.direction)
   const recents = collapsed.recents
     ? []
-    : buildSessionListView(sessions.filter(session => !session.pinned), view, now)
+    : buildSessionListView(tree.roots.filter(session => !session.pinned), view, now)
         .flatMap(group => group.sessions)
-  return [...pinned, ...recents]
+  return flattenSessionTree([...pinned, ...recents], tree.childrenOf, collapsedParents)
 }
 
 /**

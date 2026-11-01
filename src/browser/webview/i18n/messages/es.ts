@@ -43,6 +43,9 @@ export const es: Messages = {
   'sidebar.needsAnswer': 'Espera su respuesta',
   'sidebar.sessionStarting': 'Iniciando…',
   'sidebar.sessionStartFailed': 'No se inició',
+  'sidebar.forkOf': 'Fork de {title}',
+  'sidebar.collapseChildrenAria': 'Ocultar las sesiones bajo {title} ({count})',
+  'sidebar.expandChildrenAria': 'Mostrar las sesiones bajo {title} ({count})',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} está listo',
   'appUpdate.restart': 'Reiniciar para actualizar',

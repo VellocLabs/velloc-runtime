@@ -40,6 +40,9 @@ export const ja: Messages = {
   'sidebar.needsAnswer': '返答を待っています',
   'sidebar.sessionStarting': '起動中…',
   'sidebar.sessionStartFailed': '起動できませんでした',
+  'sidebar.forkOf': '{title} のフォーク',
+  'sidebar.collapseChildrenAria': '{title} の下のセッションを隠す（{count}）',
+  'sidebar.expandChildrenAria': '{title} の下のセッションを表示（{count}）',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} の準備ができました',
   'appUpdate.restart': '再起動して更新',

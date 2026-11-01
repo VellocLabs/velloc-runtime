@@ -44,6 +44,10 @@ export const en = {
   // Child sessions (F-36): the row state while another session starts this one.
   'sidebar.sessionStarting': 'Starting…',
   'sidebar.sessionStartFailed': 'Did not start',
+  // Child sessions nested under their parent's row (F-36).
+  'sidebar.forkOf': 'Fork of {title}',
+  'sidebar.collapseChildrenAria': 'Hide the sessions under {title} ({count})',
+  'sidebar.expandChildrenAria': 'Show the sessions under {title} ({count})',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} is ready',
   'appUpdate.restart': 'Restart to update',

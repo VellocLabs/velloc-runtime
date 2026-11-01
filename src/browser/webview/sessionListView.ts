@@ -280,3 +280,29 @@ export function writeSectionCollapsed(section: SidebarSection, collapsed: boolea
     // Storage unavailable: the state lasts for this page only.
   }
 }
+
+const CHILDREN_COLLAPSED_KEY = 'nexus:sidebar:childrenCollapsed'
+
+/** The parent rows whose children are hidden in this window; none when unknown. (F-36) */
+export function readCollapsedParents(): Set<string> {
+  try {
+    const raw = globalThis.localStorage?.getItem(CHILDREN_COLLAPSED_KEY)
+    if (!raw) return new Set()
+    const parsed: unknown = JSON.parse(raw)
+    return new Set(
+      Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [],
+    )
+  } catch {
+    return new Set()
+  }
+}
+
+/** Remember which parent rows are collapsed in this window. */
+export function writeCollapsedParents(ids: ReadonlySet<string>): void {
+  try {
+    if (ids.size === 0) globalThis.localStorage?.removeItem(CHILDREN_COLLAPSED_KEY)
+    else globalThis.localStorage?.setItem(CHILDREN_COLLAPSED_KEY, JSON.stringify([...ids]))
+  } catch {
+    // Storage unavailable: the state lasts for this page only.
+  }
+}

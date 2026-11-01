@@ -20,8 +20,10 @@ import {
   SessionRowList,
   sessionDisplayTitle,
   type SessionListItem,
+  type SessionNesting,
   type SessionRowEditing,
 } from './SessionRows'
+import { nestSessions, reportSessionTreeFallbacks } from './sessionTree'
 import { ProjectSection } from './ProjectSection'
 import { SessionListMenu } from './SessionListMenu'
 import {
@@ -29,9 +31,11 @@ import {
   clearSessionListView,
   DEFAULT_SESSION_LIST_VIEW,
   orderSessions,
+  readCollapsedParents,
   readSectionCollapsed,
   readSessionListView,
   ungroupedView,
+  writeCollapsedParents,
   writeSectionCollapsed,
   writeSessionListView,
   type SessionListView,
@@ -76,6 +80,24 @@ function useCollapsedSection(
     [section],
   )
   return [collapsed, applyCollapsed]
+}
+
+/**
+ * Which parent rows have their children hidden, remembered for this window.
+ * Defaults expanded. Layout only: a collapsed parent's children keep running
+ * and stay addressable by id. (F-36)
+ */
+function useCollapsedParents(): [ReadonlySet<string>, (parentSessionId: string) => void] {
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(readCollapsedParents)
+  const toggle = useCallback((parentSessionId: string) => {
+    setCollapsed(previous => {
+      const next = new Set(previous)
+      if (!next.delete(parentSessionId)) next.add(parentSessionId)
+      writeCollapsedParents(next)
+      return next
+    })
+  }, [])
+  return [collapsed, toggle]
 }
 
 /**
@@ -202,6 +224,9 @@ type SessionListBodyProps = SidebarProjectProps & {
    * node and the Recents header — the popover stays chrome-free.
    */
   titlesOnly?: boolean
+  /** Parent rows whose children are hidden, and the toggle; shared with the rail. */
+  collapsedParents: ReadonlySet<string>
+  onToggleChildren: (parentSessionId: string) => void
 }
 
 /**
@@ -227,6 +252,8 @@ export function SessionListBody({
   onReset,
   now,
   titlesOnly = false,
+  collapsedParents,
+  onToggleChildren,
   addedProjectPaths,
   addedProjectOrder,
   onAddProject,
@@ -251,28 +278,40 @@ export function SessionListBody({
     () => orderSessions(sessions ?? [], view.field, view.direction),
     [sessions, view.field, view.direction],
   )
+  // Child sessions nest under their parent's row; the sections, groups and
+  // paging below see only the top-level rows, so a child's activity never
+  // moves its parent and a pinned child stays under its (unpinned) parent.
+  // Siblings keep the view's order.
+  const tree = useMemo(() => nestSessions(orderedSessions), [orderedSessions])
+  useEffect(() => {
+    reportSessionTreeFallbacks(tree.fallbackIds, tree.byId)
+  }, [tree])
+  const nesting = useMemo<SessionNesting>(
+    () => ({ tree, collapsed: collapsedParents, onToggle: onToggleChildren }),
+    [tree, collapsedParents, onToggleChildren],
+  )
   // The docked sidebar lists a pinned session under "Pinned", a section beside
   // "Recents", in the view's order and not under Recents. The narrow popover
   // lists bare titles in one list: pinned rows first, no group headers.
   const pinnedGroups = useMemo(
     () =>
-      titlesOnly ? [] : ungroupedView(orderedSessions.filter(s => s.pinned)),
-    [orderedSessions, titlesOnly],
+      titlesOnly ? [] : ungroupedView(tree.roots.filter(s => s.pinned)),
+    [tree, titlesOnly],
   )
   const recentGroups = useMemo(
     () =>
       titlesOnly
         ? buildPinnedFirstView(
-            sessions ?? [],
+            tree.roots,
             { ...view, groupBy: 'none' },
             now,
           )
         : buildSessionListView(
-            (sessions ?? []).filter(s => !s.pinned),
+            tree.roots.filter(s => !s.pinned),
             view,
             now,
           ),
-    [sessions, view, now, titlesOnly],
+    [tree, view, now, titlesOnly],
   )
 
   const showProjects = !titlesOnly && hasMultiSession
@@ -341,6 +380,8 @@ export function SessionListBody({
             onForkThread={onForkThread}
             editing={editing}
             onEditingChange={setEditing}
+            collapsedParents={collapsedParents}
+            onToggleChildren={onToggleChildren}
           />
         )}
 
@@ -372,6 +413,7 @@ export function SessionListBody({
                 scope="pinned"
                 editing={editing}
                 onEditingChange={setEditing}
+                nesting={nesting}
               />
             )}
           </>
@@ -404,6 +446,7 @@ export function SessionListBody({
               scope="recents"
               editing={editing}
               onEditingChange={setEditing}
+              nesting={nesting}
             />
           )
         ) : (
@@ -448,6 +491,7 @@ function SidebarIconRail({
   onSwitchThread,
   view,
   now,
+  collapsedParents,
 }: {
   sessionId: string
   activeSessionId?: string
@@ -459,6 +503,8 @@ function SidebarIconRail({
   onSwitchThread?: (sessionId: string) => void
   view: SessionListView
   now: number
+  /** Parent rows whose children the expanded list hides; the rail hides them too. */
+  collapsedParents: ReadonlySet<string>
 }) {
   const t = useT()
   const locale = useLocale()
@@ -468,7 +514,7 @@ function SidebarIconRail({
   // page the expanded list opens on. Without a cap it would render one icon per
   // session — unbounded on a large profile, in a 56px column.
   const railSessions = sessions
-    ? sidebarRowOrder(sessions, view, now).slice(0, SESSION_PAGE_SIZE)
+    ? sidebarRowOrder(sessions, view, now, {}, collapsedParents).slice(0, SESSION_PAGE_SIZE)
     : undefined
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center px-1.5 py-2">
@@ -634,6 +680,7 @@ export function Sidebar({
     setView(DEFAULT_SESSION_LIST_VIEW)
   }, [])
   const now = useDayClock()
+  const [collapsedParents, toggleChildren] = useCollapsedParents()
   const asideWidth = showRail ? SIDEBAR_RAIL_WIDTH_PX : restingWidth
   return (
     <aside
@@ -656,6 +703,7 @@ export function Sidebar({
           onSwitchThread={onSwitchThread}
           view={view}
           now={now}
+          collapsedParents={collapsedParents}
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col py-2">
@@ -676,6 +724,8 @@ export function Sidebar({
             onViewChange={applyView}
             onReset={resetView}
             now={now}
+            collapsedParents={collapsedParents}
+            onToggleChildren={toggleChildren}
             {...projectProps}
           />
         </div>

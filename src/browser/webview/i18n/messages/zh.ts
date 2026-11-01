@@ -43,6 +43,9 @@ export const zh: Messages = {
   'sidebar.needsAnswer': '等待你回应',
   'sidebar.sessionStarting': '正在启动…',
   'sidebar.sessionStartFailed': '未能启动',
+  'sidebar.forkOf': '{title} 的分叉',
+  'sidebar.collapseChildrenAria': '隐藏 {title} 下的会话（{count}）',
+  'sidebar.expandChildrenAria': '显示 {title} 下的会话（{count}）',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} 已就绪',
   'appUpdate.restart': '重启以更新',
