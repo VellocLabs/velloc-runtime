@@ -6,6 +6,7 @@ import type { NexusSessionActivity } from '../bridge/protocol/ui'
 import type { TranslateFn } from './i18n'
 import type { SessionStatusEntry } from './sessionStatusStore'
 import { toolDisplayName } from '../../utils/toolLabels'
+import { firstSentence } from '../../sessions/replyExcerpt'
 
 export type ChildSessionState =
   | 'unknown'
@@ -29,14 +30,7 @@ export type ChildSessionStatus = {
   lastReply?: string
 }
 
-/** The first sentence of a reply, at most 140 characters. */
-export function firstSentence(text: string | undefined): string | undefined {
-  const flat = (text ?? '').replace(/\s+/g, ' ').trim()
-  if (!flat) return undefined
-  const end = flat.search(/[.!?。！？](\s|$)/)
-  const sentence = end >= 0 ? flat.slice(0, end + 1) : flat
-  return sentence.length > 140 ? `${sentence.slice(0, 139).trimEnd()}…` : sentence
-}
+export { firstSentence }
 
 /**
  * Precedence: not listed, did not start, starting, archived, waiting on the
@@ -47,7 +41,8 @@ export function childSessionStatus(entry: SessionStatusEntry | undefined): Child
   if (!entry) return { state: 'unknown' }
   if (entry.startFailed) return { state: 'startFailed', reason: entry.startFailed }
   if (entry.starting) return { state: 'starting' }
-  const lastReply = firstSentence(entry.previewText)
+  // The runtime's last reply; a preview only for a session it has no turn of.
+  const lastReply = entry.lastReply ?? firstSentence(entry.previewText)
   const settled = (state: ChildSessionState): ChildSessionStatus =>
     lastReply ? { state, lastReply } : { state }
   if (entry.archived) return settled('archived')

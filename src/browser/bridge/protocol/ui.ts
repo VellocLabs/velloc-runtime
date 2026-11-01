@@ -162,6 +162,9 @@ export type NexusSessionsSummaryRow = {
   activity?: NexusSessionActivity
   /** How its last turn ended; absent before any turn ended or while it waits on the user (F-36). */
   ending?: NexusTurnEnding
+  /** After a turn ended: the first sentence of the session's last reply,
+   *  at most 140 characters (F-36). */
+  lastReply?: string
   tool: number
   toolFail: number
   mcp: number

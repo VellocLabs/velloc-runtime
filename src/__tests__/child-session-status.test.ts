@@ -114,6 +114,12 @@ describe('the sessions summary carries activity and ending', () => {
     const settled = feed.buildSummaryPayload().sessions.find(r => r.sessionId === 'child')!
     expect(settled.activity).toBeUndefined()
     expect(settled.ending).toBe('finished')
+    // The reply the turn ended on rides the row with its ending, and only then.
+    expect(settled.lastReply).toBeUndefined()
+    entries.set('child', { ...live(phase, 'completed'), lastReply: 'Found it.' })
+    expect(feed.buildSummaryPayload().sessions.find(r => r.sessionId === 'child')!.lastReply).toBe('Found it.')
+    entries.set('child', { ...live(phase), lastReply: 'Found it.' })
+    expect(feed.buildSummaryPayload().sessions.find(r => r.sessionId === 'child')!.lastReply).toBeUndefined()
   })
 
   it('a change of activity alone is broadcast, not deduplicated as equal', () => {
@@ -197,6 +203,8 @@ describe('childSessionStatus', () => {
     expect(childSessionStatus(entry({ ending: 'failed' })).state).toBe('failed')
     expect(childSessionStatus(entry({ ending: 'stopped' })).state).toBe('stopped')
     expect(childSessionStatus(entry({ ending: 'finished', previewText: 'Done. Three files changed.' }))).toEqual({ state: 'finished', lastReply: 'Done.' })
+    // The runtime's last reply wins over a preview.
+    expect(childSessionStatus(entry({ ending: 'finished', previewText: 'please check', lastReply: 'Checked.' }))).toEqual({ state: 'finished', lastReply: 'Checked.' })
     expect(childSessionStatus(entry({})).state).toBe('idle')
   })
 

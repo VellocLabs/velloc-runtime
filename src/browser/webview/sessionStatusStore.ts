@@ -26,6 +26,8 @@ export type SessionStatusEntry = {
   updatedAt?: number
   activity?: NexusSessionActivity
   ending?: NexusTurnEnding
+  /** The first sentence of its last reply, from the runtime. */
+  lastReply?: string
 }
 
 type Listener = () => void
@@ -33,7 +35,7 @@ type Listener = () => void
 const FIELDS: readonly (keyof SessionStatusEntry)[] = [
   'title', 'templateType', 'projectRoot', 'parentSessionId', 'lineageKind',
   'familyName', 'starting', 'startFailed', 'archived', 'running',
-  'needsAnswer', 'previewText', 'updatedAt', 'ending',
+  'needsAnswer', 'previewText', 'updatedAt', 'ending', 'lastReply',
 ]
 
 function entriesEqual(a: SessionStatusEntry, b: SessionStatusEntry): boolean {

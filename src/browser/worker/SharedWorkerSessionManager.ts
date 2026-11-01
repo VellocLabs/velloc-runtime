@@ -144,6 +144,7 @@ import { setTeamMessenger } from '../../team/teamMessenger'
 import { TeamCoordinator } from './TeamCoordinator'
 import { ChildSessionCoordinator } from './ChildSessionCoordinator'
 import { SessionFamilyCoordinator } from './SessionFamilyCoordinator'
+import { firstSentence } from '../../sessions/replyExcerpt'
 import { setSessionDirectory } from '../../sessions/sessionDirectory'
 import { ChildReportCoordinator, type ChildReportHost } from './ChildReportCoordinator'
 import type { SpawnTeammateParams } from '../../team/teamTypes'
@@ -295,6 +296,9 @@ type SessionEntry = {
   needsAnswer: boolean
   // The last terminal reason a full snapshot carried: the summary's turn ending (F-36).
   lastTerminalReason?: string
+  // When that turn ended, and the first sentence of the reply it ended on (F-36).
+  lastTerminalAt?: number
+  lastReply?: string
   // Init failed → the next worker.init must re-dispatch instead of reusing a
   // runtime-less worker (P-1).
   initFailed?: boolean
@@ -4165,7 +4169,8 @@ export class SharedWorkerSessionManager {
    * re-broadcasts the summary — the moment an ask appears is otherwise NOT
    * a phase transition (the tool stays in flight, waiting), so nothing else
    * would flush and the sidebar dot would lag until an unrelated bump. The
-   * terminal reason is cached the same way for the summary's turn ending.
+   * terminal reason is cached the same way for the summary's turn ending,
+   * with the first sentence of the reply the turn ended on.
    */
   private trackNeedsAnswerFromSnapshot(
     sessionId: string,
@@ -4178,8 +4183,13 @@ export class SharedWorkerSessionManager {
         entry.needsAnswer = needsAnswer
         this.feed.scheduleSummary()
       }
-      if (snapshot.lastTerminalReason !== entry.lastTerminalReason) {
+      if (
+        snapshot.lastTerminalReason !== entry.lastTerminalReason ||
+        snapshot.lastTerminalTimestamp !== entry.lastTerminalAt
+      ) {
         entry.lastTerminalReason = snapshot.lastTerminalReason
+        entry.lastTerminalAt = snapshot.lastTerminalTimestamp
+        entry.lastReply = firstSentence(entry.worker.getFinalAssistantText?.())
         this.feed.scheduleSummary()
       }
     }

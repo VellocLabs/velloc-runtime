@@ -63,6 +63,8 @@ export type FeedSessionView = {
   needsAnswer: boolean
   /** The last terminal reason a full snapshot carried (F-36). */
   lastTerminalReason?: string
+  /** The first sentence of the reply that turn ended on (F-36). */
+  lastReply?: string
 }
 
 export interface SessionFeedHost {
@@ -324,12 +326,13 @@ export class SessionFeedPublisher {
   /** The activity and turn ending of a live session (F-36). */
   private activityFields(
     entry: FeedSessionView,
-  ): Pick<NexusSessionsSummaryRow, 'activity' | 'ending'> {
+  ): Pick<NexusSessionsSummaryRow, 'activity' | 'ending' | 'lastReply'> {
     const activity = sessionActivityOf(entry.worker.getPhase())
     const ending = turnEndingOf(entry.lastTerminalReason)
     return {
       ...(activity ? { activity } : {}),
       ...(ending ? { ending } : {}),
+      ...(ending && entry.lastReply ? { lastReply: entry.lastReply } : {}),
     }
   }
 
@@ -913,6 +916,7 @@ function summariesEqual(
       x.needsAnswer !== y.needsAnswer ||
       !activitiesEqual(x.activity, y.activity) ||
       x.ending !== y.ending ||
+      x.lastReply !== y.lastReply ||
       x.tool !== y.tool ||
       x.toolFail !== y.toolFail ||
       x.mcp !== y.mcp ||

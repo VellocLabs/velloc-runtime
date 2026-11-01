@@ -1254,6 +1254,7 @@ export function MultiSessionShell({
             needsAnswer?: boolean
             activity?: NexusSessionActivity
             ending?: NexusTurnEnding
+            lastReply?: string
           }>
           subAgents?: NexusTaskSummaryRow[]
           skills?: NexusSessionSkillRow[]

@@ -4235,6 +4235,27 @@ describe('SharedWorkerSessionManager', () => {
 
     const cardOf = (sessionId: string) =>
       (manager as unknown as { buildSessionInfo(id: string): { archived?: boolean } | null }).buildSessionInfo(sessionId)
+    it('a turn end caches the first sentence of the reply it ended on, per turn (F-36)', () => {
+      let reply = 'Found the redirect. It points at the old page.'
+      const entry: Record<string, unknown> = {
+        needsAnswer: false,
+        worker: { getFinalAssistantText: () => reply },
+      }
+      internals().sessions.set('s', entry)
+      const track = (snapshot: Record<string, unknown>) =>
+        (manager as unknown as { trackNeedsAnswerFromSnapshot(id: string, s: unknown): void })
+          .trackNeedsAnswerFromSnapshot('s', snapshot)
+      track({ lastTerminalReason: 'completed', lastTerminalTimestamp: 1 })
+      expect(entry.lastReply).toBe('Found the redirect.')
+      // The same ending a turn later is a new turn: its reply is read again.
+      reply = 'Fixed it.'
+      track({ lastTerminalReason: 'completed', lastTerminalTimestamp: 1 })
+      expect(entry.lastReply).toBe('Found the redirect.')
+      track({ lastTerminalReason: 'completed', lastTerminalTimestamp: 2 })
+      expect(entry.lastReply).toBe('Fixed it.')
+      internals().sessions.delete('s')
+    })
+
     it('session.archive writes the flag on a session, the card carries it, and unarchive clears it (F-36)', async () => {
       installStorage()
       await (manager as unknown as { summaryRepo: { refreshFsSummary(id: string): Promise<void> } })

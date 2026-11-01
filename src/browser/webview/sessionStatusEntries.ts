@@ -6,14 +6,18 @@ import type { NexusSessionActivity, NexusTurnEnding } from '../bridge/protocol/u
 import type { SessionListItem } from './SessionRows'
 import type { SessionStatusEntry } from './sessionStatusStore'
 
-export type SessionActivityFacts = { activity?: NexusSessionActivity; ending?: NexusTurnEnding }
+export type SessionActivityFacts = {
+  activity?: NexusSessionActivity
+  ending?: NexusTurnEnding
+  lastReply?: string
+}
 export type SessionActivityById = ReadonlyMap<string, SessionActivityFacts>
 
 function activityKey(facts: SessionActivityFacts | undefined): string {
   if (!facts) return ''
   const a = facts.activity
   const activity = !a ? '' : a.kind === 'tool' ? `tool:${a.tool}` : a.kind
-  return `${activity}|${facts.ending ?? ''}`
+  return `${activity}|${facts.ending ?? ''}|${facts.lastReply ?? ''}`
 }
 
 /** The summary's per-session facts; `prev` itself when nothing changed. */
@@ -23,10 +27,11 @@ export function sessionActivityFromSummary(
 ): SessionActivityById {
   const next = new Map<string, SessionActivityFacts>()
   for (const row of rows) {
-    if (!row.activity && !row.ending) continue
+    if (!row.activity && !row.ending && !row.lastReply) continue
     next.set(row.sessionId, {
       ...(row.activity ? { activity: row.activity } : {}),
       ...(row.ending ? { ending: row.ending } : {}),
+      ...(row.lastReply ? { lastReply: row.lastReply } : {}),
     })
   }
   if (next.size !== prev.size) return next
@@ -60,6 +65,7 @@ export function sessionStatusEntries(
       ...(item.updatedAt ? { updatedAt: item.updatedAt } : {}),
       ...(facts?.activity ? { activity: facts.activity } : {}),
       ...(facts?.ending ? { ending: facts.ending } : {}),
+      ...(facts?.lastReply ? { lastReply: facts.lastReply } : {}),
     }
   })
 }
