@@ -11,18 +11,8 @@ import {
   ensurePlanDirectoryExists,
   planDocPath,
   planFileExists,
+  isNotFoundError,
 } from '../utils/planFiles'
-
-function isENOENTError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') {
-    return false
-  }
-  const err = error as { code?: unknown; message?: unknown }
-  if (err.code === 'ENOENT') {
-    return true
-  }
-  return typeof err.message === 'string' && /\bENOENT\b/.test(err.message)
-}
 
 /**
  * Resolve the plan text to present for approval. If the model passed `plan`
@@ -47,7 +37,7 @@ export async function resolvePlanText(
     try {
       return await fs.readFile(planFilePath, { encoding: 'utf-8' })
     } catch (error) {
-      if (isENOENTError(error)) {
+      if (isNotFoundError(error)) {
         return ''
       }
       throw error

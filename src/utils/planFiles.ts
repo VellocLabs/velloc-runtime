@@ -9,6 +9,18 @@ import { RUNTIME_DIR_NAME } from '../branding/runtimeDir'
 
 const DEFAULT_PLAN_DIR = `${RUNTIME_DIR_NAME}/plans`
 
+/** True for a "no such file" error from any fs: by code, or by the message when the code is lost. */
+export function isNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+  const err = error as { code?: unknown; message?: unknown }
+  if (err.code === 'ENOENT') {
+    return true
+  }
+  return typeof err.message === 'string' && /\bENOENT\b/.test(err.message)
+}
+
 /**
  * Plan-file path for an explicit cwd + sessionId — the context-free core of
  * `planDocPath`, so callers without a `ToolUseContext` (e.g. the fork
@@ -55,11 +67,15 @@ export async function copyPlanFileForFork(
   } catch {
     return false // no source plan — nothing to carry over
   }
+  // Copy only when the destination is known to be absent. Any other stat
+  // failure may hide a plan the fork wrote since; never write over it.
   try {
     await fs.stat(dstPath)
-    return false // destination already has a plan — never clobber
-  } catch {
-    // destination absent — proceed
+    return false
+  } catch (error) {
+    if (!isNotFoundError(error)) {
+      return false
+    }
   }
   await fs.mkdir(dirnameRuntimePath(dstPath), { mode: 0o755 }).catch(() => {})
   await fs.writeFile(dstPath, content, { encoding: 'utf-8' })

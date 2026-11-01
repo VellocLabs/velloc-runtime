@@ -183,8 +183,11 @@ export class AgentRuntimeRecovery {
   }
 
   /**
-   * Copy a forked session's plan file from its source on first init (plan files are keyed by
-   * sessionId). Best-effort, idempotent, never clobbers; clears the `forkedFromSessionId` marker after.
+   * Copy a forked session's plan file from its source on init (plan files are keyed by
+   * sessionId). Best-effort and idempotent: a later init copies nothing when the fork
+   * already has a plan, when its plan cannot be checked, or when the source has none.
+   * `forkedFromSessionId` is the fork's permanent copy source, read by the session
+   * list's lineage (F-36); it is never cleared here.
    */
   async copyForkedPlanIfNeeded(): Promise<void> {
     // Capture locally: `reset()` nulls `this.runtime` on scope
@@ -211,12 +214,6 @@ export class AgentRuntimeRecovery {
         toSessionId,
         runtime.installedFs,
       )
-      // One-shot — clear the marker so later reloads don't re-run the copy.
-      // (Even if the clear is a no-op, copyPlanFileForFork never clobbers an
-      // existing destination plan, so re-running stays safe.)
-      await runtime.conversationStore.updateSessionMetadata?.({
-        forkedFromSessionId: undefined,
-      })
     } catch {
       // best-effort — a missing plan / fs hiccup just means no carry-over
     }
