@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react'
 
 import { registerUnsavedEdits } from '../../glic/unsavedEditsGate'
+import {
+  serializePassagePrompt,
+  splitPassagePrompt,
+  type PassageDraftStore,
+} from './capturedPassages'
 
 /**
  * The slice of assistant-ui's `ComposerRuntime` this hook needs. Declared
@@ -11,6 +16,56 @@ export type ComposerDraftRuntime = {
   getState: () => { text: string; attachments?: readonly unknown[] }
   setText: (text: string) => void
   subscribe: (listener: () => void) => () => void
+}
+
+/**
+ * The composer seen with its quote cards: the draft text is the prompt it
+ * would send — the cards in their wire form ahead of the typed words — so a
+ * saved draft, and a prompt a fork moves into the composer, restore as cards
+ * plus words (F-22). A restore notifies once, after both halves are set.
+ */
+export function withPassageDraft(
+  composer: ComposerDraftRuntime,
+  passages: PassageDraftStore,
+): ComposerDraftRuntime {
+  let muted = false
+  const listeners = new Set<() => void>()
+  return {
+    getState: () => {
+      const state = composer.getState()
+      return {
+        text: serializePassagePrompt(
+          passages.getPassages().map(passage => passage.payload.body),
+          state.text,
+        ),
+        ...(state.attachments ? { attachments: state.attachments } : {}),
+      }
+    },
+    setText: draft => {
+      const split = splitPassagePrompt(draft)
+      muted = true
+      try {
+        passages.replace(split.passages)
+        composer.setText(split.words)
+      } finally {
+        muted = false
+      }
+      for (const listener of listeners) listener()
+    },
+    subscribe: listener => {
+      const relay = () => {
+        if (!muted) listener()
+      }
+      listeners.add(listener)
+      const offComposer = composer.subscribe(relay)
+      const offPassages = passages.subscribe(relay)
+      return () => {
+        listeners.delete(listener)
+        offComposer()
+        offPassages()
+      }
+    },
+  }
 }
 
 /** How long typing must pause before a draft is persisted. */

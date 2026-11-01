@@ -11,6 +11,8 @@ export type SessionMessageCallbacks = {
   onContinueInCode?: (cutUuid: string, folder: ContinueInCodeFolder) => Promise<boolean>
   /** Open a side chat cut at a message, quoting the selection (F-36). */
   onStartSideChat?: (cutUuid: string, selection: string) => void
+  /** Fork a new session inclusively at a message, its composer empty (F-22). */
+  onForkAfter?: (cutUuid: string) => void
 }
 
 /** A folder path, or `pick` to ask the host's folder dialog. */
@@ -35,6 +37,7 @@ export function createSessionMessageCallbackFactory(
     folder: ContinueInCodeFolder,
   ) => Promise<boolean>,
   startSideChat?: (sessionId: string, cutUuid: string, selection: string) => void,
+  forkAfter?: (sessionId: string, cutUuid: string) => void,
 ): (sessionId: string) => SessionMessageCallbacks {
   const cache = new Map<string, SessionMessageCallbacks>()
   return (sessionId: string) => {
@@ -60,6 +63,9 @@ export function createSessionMessageCallbackFactory(
               onStartSideChat: (cutUuid: string, selection: string) =>
                 startSideChat(sessionId, cutUuid, selection),
             }
+          : {}),
+        ...(forkAfter
+          ? { onForkAfter: (cutUuid: string) => forkAfter(sessionId, cutUuid) }
           : {}),
       }
       cache.set(sessionId, entry)

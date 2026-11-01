@@ -1,41 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createQuotePrefix,
-  isQuotableText,
-  quoteOfMetadata,
+  passagesOfMetadata,
+  splitQuotedPrompt,
   splitQuotePrefix,
-  withQuotePrefix,
 } from '../browser/webview/replyQuote'
 import { convertUserContentWithAttachments } from '../browser/webview/assistantUiAdapterContent'
 import { buildPromptFromAppendMessage } from '../browser/webview/assistantUiAdapter'
 import type { AppendMessage } from '@assistant-ui/react'
 
-// Reply puts selected transcript text in the composer as a quote; the prompt
-// carries it ahead of the person's words, and a stored row reads it back.
+// The composer's quote cards ride the prompt ahead of the person's words, and a
+// stored row reads them back; a single leading `> ` block still reads as one quote.
 
-describe('quote prefix', () => {
-  it('prefixes every line and closes with a blank line', () => {
-    expect(createQuotePrefix('one\ntwo')).toBe('> one\n> two\n\n')
-    expect(createQuotePrefix('  spaced  \r\nnext\r\n')).toBe('> spaced\n> next\n\n')
-    expect(createQuotePrefix('a\n\nb')).toBe('> a\n>\n> b\n\n')
-  })
-
-  it('carries nothing for a blank quote', () => {
-    expect(createQuotePrefix('   ')).toBe('')
-    expect(withQuotePrefix('hello', '  ')).toBe('hello')
-    expect(withQuotePrefix('hello', undefined)).toBe('hello')
-    expect(isQuotableText(' \n ')).toBe(false)
-  })
-
-  it('goes ahead of the text, or stands alone without a trailing blank line', () => {
-    expect(withQuotePrefix('why?', 'claim')).toBe('> claim\n\nwhy?')
-    expect(withQuotePrefix('', 'claim')).toBe('> claim')
-  })
-
-  it('round-trips through the split', () => {
-    const sent = withQuotePrefix('why?', 'first\nsecond')
-    expect(splitQuotePrefix(sent)).toEqual({ quote: 'first\nsecond', text: 'why?' })
-    expect(splitQuotePrefix(withQuotePrefix('', 'alone'))).toEqual({ quote: 'alone', text: '' })
+describe('quotes read off a prompt', () => {
+  it('reads a single leading > block closed by a blank line', () => {
+    expect(splitQuotePrefix('> first\n> second\n\nwhy?')).toEqual({ quote: 'first\nsecond', text: 'why?' })
+    expect(splitQuotePrefix('> alone')).toEqual({ quote: 'alone', text: '' })
     expect(splitQuotePrefix('> a\n>\n> b\n\nrest')).toEqual({ quote: 'a\n\nb', text: 'rest' })
   })
 
@@ -46,48 +25,67 @@ describe('quote prefix', () => {
     expect(splitQuotePrefix('plain')).toEqual({ quote: null, text: 'plain' })
   })
 
-  it('reads the quote a composer send carries, and nothing else', () => {
-    expect(quoteOfMetadata({ custom: { quote: { text: 'q', messageId: 'm' } } })).toBe('q')
-    expect(quoteOfMetadata({ custom: { quote: { text: '  ', messageId: 'm' } } })).toBeUndefined()
-    expect(quoteOfMetadata({ custom: {} })).toBeUndefined()
-    expect(quoteOfMetadata(undefined)).toBeUndefined()
+  it('prefers the numbered passage form, then the single block', () => {
+    expect(splitQuotedPrompt('[Quoted context 1]\n> a\n\n[Quoted context 2]\n> b\n\n[User message]\nwhy?')).toEqual({
+      quotes: ['a', 'b'],
+      text: 'why?',
+    })
+    expect(splitQuotedPrompt('> claim\n\nwhy?')).toEqual({ quotes: ['claim'], text: 'why?' })
+    expect(splitQuotedPrompt('why?')).toEqual({ quotes: [], text: 'why?' })
+  })
+
+  it('reads the passages a composer send carries, and nothing else', () => {
+    expect(passagesOfMetadata({ custom: { passages: ['a', '  ', 3, 'b'] } })).toEqual(['a', 'b'])
+    expect(passagesOfMetadata({ custom: {} })).toEqual([])
+    expect(passagesOfMetadata(undefined)).toEqual([])
   })
 })
 
 describe('the prompt and the row', () => {
-  const appendMessage = (text: string, quote?: string): AppendMessage =>
+  const appendMessage = (text: string, passages?: string[]): AppendMessage =>
     ({
       role: 'user',
-      content: [{ type: 'text', text }],
+      content: text ? [{ type: 'text', text }] : [],
       attachments: [],
       parentId: null,
       sourceId: null,
       runConfig: {},
-      ...(quote === undefined ? {} : { metadata: { custom: { quote: { text: quote, messageId: 'src' } } } }),
+      ...(passages === undefined ? {} : { metadata: { custom: { passages } } }),
     }) as unknown as AppendMessage
 
-  it('sends the quote ahead of the words, and no quote when none was set', async () => {
-    expect(await buildPromptFromAppendMessage(appendMessage('why?', 'claim'), async () => null)).toBe(
-      '> claim\n\nwhy?',
+  it('sends the cards ahead of the words, in order, and plain words when there are none', async () => {
+    expect(await buildPromptFromAppendMessage(appendMessage('why?', ['one\ntwo', 'three']), async () => null)).toBe(
+      '[Quoted context 1]\n> one\n> two\n\n[Quoted context 2]\n> three\n\n[User message]\nwhy?',
     )
     expect(await buildPromptFromAppendMessage(appendMessage('why?'), async () => null)).toBe('why?')
   })
 
-  it('reads a stored row back into its quote and its words', () => {
+  it('sends cards alone when there are no words', async () => {
+    expect(await buildPromptFromAppendMessage(appendMessage('', ['claim']), async () => null)).toBe(
+      '[Quoted context 1]\n> claim',
+    )
+  })
+
+  it('reads a stored row back into its quotes and its words', () => {
+    expect(convertUserContentWithAttachments('[Quoted context 1]\n> claim\n\n[User message]\nwhy?')).toEqual({
+      content: 'why?',
+      attachments: [],
+      quotes: ['claim'],
+    })
     expect(convertUserContentWithAttachments('> claim\n\nwhy?')).toEqual({
       content: 'why?',
       attachments: [],
-      quote: 'claim',
+      quotes: ['claim'],
     })
     expect(convertUserContentWithAttachments('why?')).toEqual({ content: 'why?', attachments: [] })
   })
 
-  it('reads the quote off the text block of a content-array row', () => {
+  it('reads the quotes off the text block of a content-array row', () => {
     const row = convertUserContentWithAttachments([
       { type: 'image', image: 'AA==', mimeType: 'image/png' },
-      { type: 'text', text: '> claim\n\nwhy?' },
+      { type: 'text', text: '[Quoted context 1]\n> claim\n\n[User message]\nwhy?' },
     ])
-    expect(row.quote).toBe('claim')
+    expect(row.quotes).toEqual(['claim'])
     const text = (row.content as Array<{ type: string; text?: string }>).find(part => part.type === 'text')
     expect(text?.text).toBe('why?')
   })

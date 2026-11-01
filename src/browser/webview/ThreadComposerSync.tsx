@@ -4,9 +4,10 @@ import {
   useComposerRuntime,
 } from '@assistant-ui/react'
 
-import { Suspense, lazy, useEffect, useRef } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef } from 'react'
 
-import { useComposerDraftSync } from './useComposerDraftSync'
+import type { PassageDraftStore } from './capturedPassages'
+import { useComposerDraftSync, withPassageDraft } from './useComposerDraftSync'
 
 // Static import on purpose: a lazy() Thread suspends on cold load for its chunk and its
 // markdown chunk (P-2).
@@ -14,20 +15,24 @@ import { Thread } from '@/components/assistant-ui/thread'
 
 /**
  * Hydrates an empty composer with the parent's draft on mount, debounces `onComposerEdit`
- * (500 ms), and flushes a pending change on unmount.
+ * (500 ms), and flushes a pending change on unmount. With `passages`, the draft also holds
+ * the composer's quote cards (F-22).
  */
 export function ComposerDraftSync({
   initialComposerDraft,
   onComposerEdit,
+  passages,
 }: {
   initialComposerDraft?: string
   onComposerEdit?: (composerDraft: string, editedAt: number) => void
+  passages?: PassageDraftStore
 }) {
-  useComposerDraftSync(
-    useComposerRuntime(),
-    initialComposerDraft,
-    onComposerEdit,
+  const composer = useComposerRuntime()
+  const draft = useMemo(
+    () => (passages ? withPassageDraft(composer, passages) : composer),
+    [composer, passages],
   )
+  useComposerDraftSync(draft, initialComposerDraft, onComposerEdit)
   return null
 }
 

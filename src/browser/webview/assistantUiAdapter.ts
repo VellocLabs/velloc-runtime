@@ -84,7 +84,8 @@ import {
 } from './assistantUiAdapterCards'
 import { parseTeamMessageEnvelope } from '../../team/parseTeamFrame'
 import { withoutPluginPromptFrame } from '../../mods/promptNouns'
-import { quoteOfMetadata, withQuotePrefix } from './replyQuote'
+import { passagesOfMetadata } from './replyQuote'
+import { serializePassagePrompt } from './capturedPassages'
 
 function findPreviousVisibleUserPrompt(
   messages: readonly Message[],
@@ -292,7 +293,7 @@ function convertTranscriptMessage(
         })
       }
 
-      const { content, attachments, quote } = convertUserContentWithAttachments(
+      const { content, attachments, quotes } = convertUserContentWithAttachments(
         displayedUserContent(userMessage),
       )
       // Nothing legitimate produces a visible empty user turn — the composer
@@ -304,6 +305,7 @@ function convertTranscriptMessage(
       // empty: its cards are the message.
       if (
         attachments.length === 0 &&
+        quotes === undefined &&
         ((typeof content === 'string' && content.trim() === '') ||
           (Array.isArray(content) && content.length === 0))
       ) {
@@ -318,14 +320,14 @@ function convertTranscriptMessage(
         ...(attachments.length > 0 ? { attachments } : {}),
         // The plugin that sent a `$.prompt.submit` turn: a mod's
         // `UserMessage` site reads it as `origin` (F-25).
-        ...(userMessage.pluginPrompt || quote !== undefined
+        ...(userMessage.pluginPrompt || quotes !== undefined
           ? {
               metadata: {
                 custom: {
                   ...(userMessage.pluginPrompt ? { pluginPrompt: { ...userMessage.pluginPrompt } } : {}),
-                  // What `useMessageQuote` reads: the quoted text; the source
-                  // row is not kept in the transcript.
-                  ...(quote !== undefined ? { quote: { text: quote, messageId: '' } } : {}),
+                  // The quoted texts, in order; the source rows are not kept
+                  // in the transcript.
+                  ...(quotes !== undefined ? { quotes } : {}),
                 },
               },
             }
@@ -898,11 +900,11 @@ export async function buildPromptFromAppendMessage(
     attachment: CompleteAttachment,
   ) => Promise<string | null>,
 ): Promise<string | Array<ContentBlockParam>> {
-  // The quote a Reply put in the composer goes ahead of the person's words;
-  // uploaded attachments' paths go ahead of both.
-  const text = withQuotePrefix(
+  // The composer's quote cards go ahead of the person's words; uploaded
+  // attachments' paths go ahead of both.
+  const text = serializePassagePrompt(
+    passagesOfMetadata(message.metadata),
     extractTextFromAppendMessage(message),
-    quoteOfMetadata(message.metadata),
   )
   const attachments = message.attachments ?? []
   if (attachments.length === 0) {
@@ -1677,9 +1679,9 @@ function displayedUserContent(userMessage: {
 function pendingPromptContent(
   prompt: string,
 ): Pick<ThreadMessageLike, 'content' | 'attachments' | 'metadata'> {
-  const { content, attachments, quote } = convertUserContentWithAttachments(prompt)
-  const metadata = quote === undefined ? {} : { metadata: { custom: { quote: { text: quote, messageId: '' } } } }
-  return attachments.length > 0 || quote !== undefined
+  const { content, attachments, quotes } = convertUserContentWithAttachments(prompt)
+  const metadata = quotes === undefined ? {} : { metadata: { custom: { quotes } } }
+  return attachments.length > 0 || quotes !== undefined
     ? { content, ...(attachments.length > 0 ? { attachments } : {}), ...metadata }
     : { content: prompt }
 }

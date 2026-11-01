@@ -20,6 +20,9 @@ import {
   type ComposerDelivery,
 } from '../../components/assistant-ui/inject-message-context'
 import { resolveForkSendPlan } from './forkSend'
+import { createPassageDraftStore, serializePassagePrompt } from './capturedPassages'
+import { resolveAfterResponseCut } from './messageContextMenuModel'
+import { ComposerPassagesProvider } from '@/components/assistant-ui/composer-passages'
 import {
   HistoryContentWindowContext,
   mergeWantedRows,
@@ -365,6 +368,12 @@ export type AssistantUiThreadProps = {
    */
   onForkFromMessage?: (cutUuid: string) => void
   /**
+   * Fork the conversation INCLUSIVELY at a transcript uuid, the composer left
+   * empty: the message menu's "Fork from here" on a reply (F-22). Bound to
+   * this thread's session by MultiSessionShell.
+   */
+  onForkAfterMessage?: (cutUuid: string) => void
+  /**
    * Send a composer message into a forked copy of this session (the
    * composer's Ctrl/Cmd+Alt+Enter), cut inclusively at `cutUuid`. Resolves
    * `false` when the fork never happened, so the text goes back into the
@@ -660,6 +669,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   clearPlanApproval,
   onOpenPlanPanel,
   onForkFromMessage,
+  onForkAfterMessage,
   onSendInForkedSession,
   onContinueInCode,
   onRewindToMessage,
@@ -721,6 +731,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
       clearPlanApproval={readOnly ? undefined : clearPlanApproval}
       onOpenPlanPanel={readOnly ? undefined : onOpenPlanPanel}
       onForkFromMessage={readOnly ? undefined : onForkFromMessage}
+      onForkAfterMessage={readOnly ? undefined : onForkAfterMessage}
       onSendInForkedSession={readOnly ? undefined : onSendInForkedSession}
       onContinueInCode={readOnly ? undefined : onContinueInCode}
       onRewindToMessage={readOnly ? undefined : onRewindToMessage}
@@ -782,6 +793,7 @@ function InteractiveAssistantUiThread({
   clearPlanApproval,
   onOpenPlanPanel,
   onForkFromMessage,
+  onForkAfterMessage,
   onSendInForkedSession,
   onContinueInCode,
   onRewindToMessage,
@@ -891,9 +903,25 @@ function InteractiveAssistantUiThread({
     },
     [continueInCodeCall, onContinueInCode, state.transcriptMessages],
   )
+  // The thread's rows, for a reply's fork cut; set once the rows are built below.
+  const runtimeMessagesRef = useRef<readonly ThreadMessageLike[]>([])
+  const transcriptMessagesRef = useRef(state.transcriptMessages)
+  transcriptMessagesRef.current = state.transcriptMessages
+  const handleForkAfterResponse = useCallback(
+    (responseRowId: string) => {
+      if (!onForkAfterMessage) return
+      const rows = runtimeMessagesRef.current.flatMap(row =>
+        typeof row.id === 'string' ? [{ id: row.id, role: row.role }] : [],
+      )
+      const cut = resolveAfterResponseCut(rows, transcriptMessagesRef.current, responseRowId)
+      if (cut) onForkAfterMessage(cut)
+    },
+    [onForkAfterMessage],
+  )
   const messageActionsValue = useMemo(
     () => ({
       onForkFromMessage: readOnly ? undefined : onForkFromMessage,
+      onForkAfterResponse: readOnly || !onForkAfterMessage ? undefined : handleForkAfterResponse,
       onRewindToMessage: readOnly ? undefined : onRewindToMessage,
       onStartSideChat: readOnly ? undefined : onStartSideChat,
       onRetryProviderApiError: readOnly ? undefined : handleRetryProviderApiError,
@@ -904,6 +932,8 @@ function InteractiveAssistantUiThread({
     [
       readOnly,
       onForkFromMessage,
+      onForkAfterMessage,
+      handleForkAfterResponse,
       onRewindToMessage,
       handleRetryProviderApiError,
       onContinueInCode,
@@ -1267,11 +1297,35 @@ function InteractiveAssistantUiThread({
     [],
   )
 
+  // The composer's quote cards; one store per mounted thread (threads are
+  // keyed by session).
+  const [passageStore] = useState(() => createPassageDraftStore())
+
   const onNew = useCallback(
-    async (message: AppendMessage) => {
+    async (rawMessage: AppendMessage) => {
       const delivery = nextDeliveryRef.current
       nextDeliveryRef.current = undefined
       if (readOnly) return
+      // The cards leave the composer with its own send, like its text; every
+      // path below that hands the text back hands them back too.
+      const takenPassages = passageStore.takeForSend()
+      const message: AppendMessage =
+        takenPassages.length === 0
+          ? rawMessage
+          : {
+              ...rawMessage,
+              metadata: {
+                ...rawMessage.metadata,
+                custom: {
+                  ...rawMessage.metadata?.custom,
+                  passages: takenPassages.map(passage => passage.payload.body),
+                },
+              },
+            }
+      const handBack = (text: string) => {
+        passageStore.restore(takenPassages)
+        setRestoreComposerText(text)
+      }
       const decision = await resolveComposerSendGateOnceCatalogLoads({
         readSnapshot: () => snapshotRef.current,
         waitForSnapshot,
@@ -1287,10 +1341,11 @@ function InteractiveAssistantUiThread({
         // its dialog owns the restore and puts the text back on close, so
         // restoring here too would clobber anything typed while it was open.)
         if (decision.kind === 'provider-missing') {
+          passageStore.restore(takenPassages)
           setProviderPrompt(extractTextFromAppendMessage(message))
           return
         }
-        setRestoreComposerText(extractTextFromAppendMessage(message))
+        handBack(extractTextFromAppendMessage(message))
         if (decision.kind === 'adopt-default') {
           onAdoptDefaultSelection?.(decision.selection)
         }
@@ -1308,13 +1363,13 @@ function InteractiveAssistantUiThread({
           runtimeBusyRef.current,
         )
         if (plan.kind === 'refuse') {
-          setRestoreComposerText(extractTextFromAppendMessage(message))
+          handBack(extractTextFromAppendMessage(message))
           return
         }
         if (plan.kind === 'fork' && onSendInForkedSession) {
           const forked = await onSendInForkedSession(plan.cutUuid, message)
           if (!forked) {
-            setRestoreComposerText(extractTextFromAppendMessage(message))
+            handBack(extractTextFromAppendMessage(message))
           }
           return
         }
@@ -1324,18 +1379,28 @@ function InteractiveAssistantUiThread({
 
       engageConversationLockToBottom(lockToBottomRef, findViewport())
       if (submitComposerMessage) {
-        await submitComposerMessage(
-          message,
-          submitDelivery ? { delivery: submitDelivery } : undefined,
-        )
+        try {
+          await submitComposerMessage(
+            message,
+            submitDelivery ? { delivery: submitDelivery } : undefined,
+          )
+        } catch (error) {
+          // Never accepted: the cards go back to the composer.
+          passageStore.restore(takenPassages)
+          throw error
+        }
         return
       }
 
-      const prompt = extractTextFromAppendMessage(message).trim()
+      const prompt = serializePassagePrompt(
+        takenPassages.map(passage => passage.payload.body),
+        extractTextFromAppendMessage(message),
+      ).trim()
       if (!prompt) return
       await submitPrompt(prompt)
     },
     [
+      passageStore,
       submitComposerMessage,
       submitPrompt,
       onAdoptDefaultSelection,
@@ -1960,6 +2025,7 @@ function InteractiveAssistantUiThread({
     [messages, wantedRows, showReasoning],
   )
 
+  runtimeMessagesRef.current = runtimeMessages
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages: runtimeMessages,
     convertMessage: message => message,
@@ -2072,9 +2138,11 @@ function InteractiveAssistantUiThread({
       <RightPanelContentContext.Provider value={rightPanelContentValue}>
       <ShellCommandContext.Provider value={shellCommandValue}>
       <FilePathContext.Provider value={filePathContextValue}>
+      <ComposerPassagesProvider store={readOnly ? null : passageStore}>
       <ComposerDraftSync
         initialComposerDraft={initialComposerDraft}
         onComposerEdit={handleComposerEdit}
+        passages={readOnly ? undefined : passageStore}
       />
       <ToolCallDetailProvider
         key={sessionId}
@@ -2328,6 +2396,7 @@ function InteractiveAssistantUiThread({
           )}
         </TooltipProvider>
       </ToolCallDetailProvider>
+      </ComposerPassagesProvider>
       </FilePathContext.Provider>
       </ShellCommandContext.Provider>
       </RightPanelContentContext.Provider>

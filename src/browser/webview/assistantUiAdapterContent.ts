@@ -11,7 +11,7 @@ import {
 import type { ReadonlyJSONObject } from 'assistant-stream/utils'
 import type { ThreadMessageLike } from '@assistant-ui/react'
 import { splitUploadedAttachmentPrefix } from './pastedTextAttachment'
-import { splitQuotePrefix } from './replyQuote'
+import { splitQuotedPrompt } from './replyQuote'
 import { SKILL_TOOL_NAME } from '../../prompting/skillToolName'
 import {
   LAZY_DETAIL_FINISHED_SENTINEL,
@@ -299,18 +299,18 @@ export type UserMessageAttachments = NonNullable<ThreadMessageLike['attachments'
 export function convertUserContentWithAttachments(content: unknown): {
   content: string | ThreadPart[]
   attachments: UserMessageAttachments
-  /** The text the prompt was sent quoting, when it carried one (F-36). */
-  quote?: string
+  /** The texts the prompt was sent quoting, in order, when it carried any (F-22, F-36). */
+  quotes?: string[]
 } {
   const converted = convertUserContent(content)
   if (typeof converted === 'string') {
     const split = splitUploadedAttachmentPrefix(converted)
     const body = split.attachments.length > 0 ? split.text : converted
-    const quoted = splitQuotePrefix(body)
+    const quoted = splitQuotedPrompt(body)
     return {
-      content: quoted.quote === null ? body : quoted.text,
+      content: quoted.quotes.length === 0 ? body : quoted.text,
       attachments: split.attachments.map(uploadMentionToAttachment),
-      ...(quoted.quote === null ? {} : { quote: quoted.quote }),
+      ...(quoted.quotes.length === 0 ? {} : { quotes: quoted.quotes }),
     }
   }
   // Content-array prompts (images present) carry the prefix on the one text
@@ -321,9 +321,9 @@ export function convertUserContentWithAttachments(content: unknown): {
     return { content: converted, attachments: [] }
   }
   const split = splitUploadedAttachmentPrefix(textPart.text)
-  const quoted = splitQuotePrefix(split.text)
-  const quote = quoted.quote === null ? {} : { quote: quoted.quote }
-  if (split.attachments.length === 0 && quoted.quote === null) {
+  const quoted = splitQuotedPrompt(split.text)
+  const quote = quoted.quotes.length === 0 ? {} : { quotes: quoted.quotes }
+  if (split.attachments.length === 0 && quoted.quotes.length === 0) {
     return { content: converted, attachments: [] }
   }
   const parts = [...converted]

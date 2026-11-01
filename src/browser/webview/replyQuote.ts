@@ -1,37 +1,13 @@
 /**
- * Reply with a quote: text selected in a transcript row goes into the composer
- * as a quote, and the next prompt carries it ahead of the person's words as a
- * block of `> ` lines closed by a blank line. The transcript keeps that text,
- * so a reloaded row is read back the same way it was sent. (F-36)
+ * Reading quotes back off a sent prompt: the numbered passage form the
+ * composer's quote cards send (F-22), or a single leading `> ` block (F-36).
+ * The transcript keeps the prompt text, so a reloaded row shows the same
+ * quotes it was sent with.
  */
+
+import { splitPassagePrompt } from './capturedPassages'
 
 const QUOTE_LINE_PREFIX = '> '
-
-/** Whether the quote is worth carrying: anything but whitespace. */
-export function isQuotableText(text: string): boolean {
-  return text.trim().length > 0
-}
-
-/**
- * The quote as the prompt carries it: every line of the (trimmed) quote
- * prefixed, then one blank line. Empty for a blank quote.
- */
-export function createQuotePrefix(quote: string): string {
-  const trimmed = quote.replace(/\r\n?/g, '\n').trim()
-  if (!trimmed) return ''
-  return `${trimmed
-    .split('\n')
-    .map(line => line.trimEnd())
-    .map(line => (line === '' ? '>' : `${QUOTE_LINE_PREFIX}${line}`))
-    .join('\n')}\n\n`
-}
-
-/** `text` with `quote` ahead of it; `text` alone when the quote is blank. */
-export function withQuotePrefix(text: string, quote: string | undefined): string {
-  const prefix = quote === undefined ? '' : createQuotePrefix(quote)
-  if (!prefix) return text
-  return text ? `${prefix}${text}` : prefix.trimEnd()
-}
 
 /**
  * Splits a prompt into the quote it was sent with and the rest. A quote is a
@@ -59,9 +35,20 @@ export function splitQuotePrefix(text: string): { quote: string | null; text: st
   return { quote, text: rest }
 }
 
-/** The quote a composer send carries, read off the message's metadata. */
-export function quoteOfMetadata(metadata: unknown): string | undefined {
-  const custom = (metadata as { custom?: { quote?: { text?: unknown } } } | undefined)?.custom
-  const text = custom?.quote?.text
-  return typeof text === 'string' && isQuotableText(text) ? text : undefined
+/**
+ * Splits a prompt into the quotes it was sent with and the person's words:
+ * the numbered passage form first (F-22), else a single leading `> ` block.
+ */
+export function splitQuotedPrompt(text: string): { quotes: string[]; text: string } {
+  const passages = splitPassagePrompt(text)
+  if (passages.passages.length > 0) return { quotes: passages.passages, text: passages.words }
+  const single = splitQuotePrefix(text)
+  return single.quote === null ? { quotes: [], text } : { quotes: [single.quote], text: single.text }
+}
+
+/** The passages a composer send carries (`metadata.custom.passages`), in order. */
+export function passagesOfMetadata(metadata: unknown): string[] {
+  const list = (metadata as { custom?: { passages?: unknown } } | undefined)?.custom?.passages
+  if (!Array.isArray(list)) return []
+  return list.filter((body): body is string => typeof body === 'string' && body.trim().length > 0)
 }

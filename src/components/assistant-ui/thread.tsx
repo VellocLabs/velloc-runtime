@@ -63,7 +63,6 @@ import {
   FolderOpenIcon,
   GitBranchIcon,
   ReplyIcon,
-  QuoteIcon,
   MessagesSquareIcon,
   
   ListCollapseIcon,
@@ -88,6 +87,10 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useModComposer } from "./use-mod-composer";
+import { MessageContextMenu } from "./message-context-menu";
+import { ComposerPassageStrip, useComposerPassages, usePassageList } from "./composer-passages";
+import { registerAttachSelectionOwner } from "@/browser/webview/attachSelectionShortcut";
+import { isAttachableSelection } from "@/browser/webview/capturedPassages";
 import { ModPromptVirtualText } from "./mod-prompt-virtual-text";
 import { ComposerTokenUsage } from "@/browser/webview/TokenUsageIndicator";
 import { REASONING_ONLY_ROW_KEY } from "@/browser/webview/showReasoning";
@@ -747,6 +750,24 @@ export const Thread: FC<{
   );
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  // The message rows only (not the footer): the context menu's and the
+  // attach shortcut's notion of "inside the conversation".
+  const messageListRef = useRef<HTMLDivElement | null>(null);
+  const passages = useComposerPassages();
+  const passagesRef = useRef(passages);
+  passagesRef.current = passages;
+  const takesPassages = passages !== null;
+  useEffect(() => {
+    if (!takesPassages) return;
+    return registerAttachSelectionOwner(document, {
+      list: () => messageListRef.current,
+      attach: (text) =>
+        passagesRef.current?.capture(
+          { body: text, method: "range", anchors: [] },
+          messageListRef.current,
+        ) ?? false,
+    });
+  }, [takesPassages]);
   const userScrollIntentRef = useRef(false);
   // The one owner of every programmatic scrollTop write (lock snaps + the
   // virtualizer's height repair) and of the guard that keeps those writes from
@@ -1051,6 +1072,7 @@ export const Thread: FC<{
       {/* The page's clipboard, focus ring and windows, for `$.ui.copy` / `.focus` / `.scroll`. */}
       <ModPageResponder />
       <ReplySelectionToolbar />
+      <MessageContextMenu listRef={messageListRef} sessionId={sessionId} isForeground={isForeground} />
       {/* Whole-pane drop target. The composer has its own dropzone, but the
           conversation area is the larger, more natural place to drop a file —
           dropping anywhere here adds it as a composer attachment (resolves the
@@ -1084,12 +1106,14 @@ export const Thread: FC<{
             unchanged: `TRANSCRIPT_MESSAGE_COMPONENTS` decides which
             component renders a message, exactly as the former
             `ThreadPrimitive.Messages` render prop did. */}
-        <VirtualizedThreadMessages
-          viewportRef={viewportRef}
-          isForeground={isForeground === true}
-          compensateScroll={compensateScroll}
-          components={TRANSCRIPT_MESSAGE_COMPONENTS}
-        />
+        <div ref={messageListRef} data-slot="message-list" className="contents">
+          <VirtualizedThreadMessages
+            viewportRef={viewportRef}
+            isForeground={isForeground === true}
+            compensateScroll={compensateScroll}
+            components={TRANSCRIPT_MESSAGE_COMPONENTS}
+          />
+        </div>
 
         {/* The live run status (blob + progress text), or why the composer offers
             Continue, as the conversation's last row. Scrolled out of view, the
@@ -1628,6 +1652,34 @@ export function resolveComposerActionDisabled(params: {
   };
 }
 
+/**
+ * The composer's send with its quote cards counted: only this send carries
+ * the cards, and the library's `send()` ignores a box with no text and no
+ * attachments, so a send of cards alone appends an empty prompt, which the
+ * host fills with the cards (F-22).
+ */
+function useComposerSend(): { hasPassages: boolean; send: () => void } {
+  const composer = useComposerRuntime();
+  const thread = useThreadRuntime();
+  const store = useComposerPassages()?.store;
+  const hasPassages = usePassageList().length > 0;
+  const send = useCallback(() => {
+    const state = composer.getState();
+    const blank = !state.text.trim() && state.attachments.length === 0;
+    if (!hasPassages) {
+      composer.send();
+      return;
+    }
+    store?.markComposerSend();
+    if (blank) {
+      void thread.append({ role: "user", content: [] });
+      return;
+    }
+    composer.send();
+  }, [composer, thread, store, hasPassages]);
+  return { hasPassages, send };
+}
+
 // Exported for `remote-client-can-trimming.render.test.ts`, which mounts it to
 // pin that the runtime gate EXPLAINS itself (`remote.composer.disabled`) rather
 // than just going inert. Not part of the public surface — Thread renders it.
@@ -1663,6 +1715,7 @@ export const Composer: FC = () => {  const t = useT();
   // Mirrors the button's gate exactly, and only fires in the case assistant-ui
   // declines to handle — idle Enter still goes through the primitive.
   const composer = useComposerRuntime();
+  const { hasPassages, send: sendComposer } = useComposerSend();
   const snapshotNeedsAnswer = useContext(SnapshotNeedsAnswerContext);
   const sendBlocked = usePendingQuestionCount() > 0 || snapshotNeedsAnswer;
   const isRunning = useAssistantState((s) => s.thread.isRunning);
@@ -1716,7 +1769,7 @@ export const Composer: FC = () => {  const t = useT();
       defaultPrevented: e.defaultPrevented,
       isRunning,
       sendBlocked,
-      hasContent: state.text.trim().length > 0 || state.attachments.length > 0,
+      hasContent: state.text.trim().length > 0 || state.attachments.length > 0 || hasPassages,
     };
     // Esc while running stops the turn like the Stop button, never via assistant-ui's
     // cancelRun (`cancelOnEscape` is off below), which deletes the trailing user message.
@@ -1738,24 +1791,41 @@ export const Composer: FC = () => {  const t = useT();
     if (shouldSendInForkOnModAltEnter(keyParams)) {
       e.preventDefault();
       setNextDelivery("fork");
-      composer.send();
+      sendComposer();
       return;
     }
     // Ctrl/Cmd+Enter while running → queue for the NEXT turn (the strip).
     if (shouldQueueOnRunningModEnter(keyParams)) {
       e.preventDefault();
       setNextDelivery("next");
-      composer.send();
+      sendComposer();
       return;
     }
     if (!shouldSendOnRunningEnter(keyParams)) {
+      // Idle Enter is the primitive's, which neither carries the quote cards
+      // nor sends a box holding only cards: claim it whenever there are cards.
+      if (
+        e.key === "Enter" &&
+        !e.shiftKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !e.defaultPrevented &&
+        !e.nativeEvent.isComposing &&
+        !isRunning &&
+        !sendBlocked &&
+        hasPassages
+      ) {
+        e.preventDefault();
+        sendComposer();
+      }
       return;
     }
     // Claim the key so the primitive's own (no-op while running) handler is
     // skipped, then send — plain Enter adds the message to the RUNNING turn.
     e.preventDefault();
     setNextDelivery("inject");
-    composer.send();
+    sendComposer();
   };
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
@@ -1776,7 +1846,7 @@ export const Composer: FC = () => {  const t = useT();
                 box's top edge, passive text that belongs to the prompt —
                 apart from the interactive band outside the box above. */}
             <ModComposerStatus />
-            <ComposerQuote />
+            <ComposerPassageStrip />
             <ComposerAttachments />
             <ComposerPrimitive.Input
               ref={composerInput}
@@ -2133,8 +2203,9 @@ export const ComposerAction: FC = () => {
   const hasAttachments = useAssistantState((s) => s.composer.attachments.length > 0);
   const isRunning = useAssistantState((s) => s.thread.isRunning);
   const composer = useComposerRuntime();
+  const { hasPassages, send: sendComposer } = useComposerSend();
   const pendingMessage = useContext(PendingMessageContext);
-  const hasContent = hasText || hasAttachments;
+  const hasContent = hasText || hasAttachments || hasPassages;
   // Resume affordance. When the session stopped in a resumable state (aborted
   // mid-stream, hit the output-token cap, or simply settled), the empty-idle
   // composer shows "Continue" in place of the disabled Send button instead of
@@ -2176,11 +2247,11 @@ export const ComposerAction: FC = () => {
   const handleSend = () => {
     if (sendDisabled) return;
     const text = composer.getState().text;
-    if (!text.trim() && composer.getState().attachments.length === 0) return;
+    if (!text.trim() && composer.getState().attachments.length === 0 && !hasPassages) return;
     setPendingSend(true);
     // The send button is plain Enter: while running it adds to this turn.
     if (isRunning) setNextDelivery("inject");
-    composer.send();
+    sendComposer();
   };
 
   // Stop drops the session's saved next message, so hand that text back to this
@@ -2675,15 +2746,38 @@ const ReplySelectionToolbar: FC = () => {
       data-testid="selection-toolbar"
       className="aui-selection-toolbar z-30 flex items-center gap-0.5 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
     >
-      <SelectionToolbarPrimitive.Quote
-        data-testid="selection-reply"
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
-      >
-        <ReplyIcon className="size-3.5" aria-hidden="true" />
-        {t("selection.reply")}
-      </SelectionToolbarPrimitive.Quote>
+      <ReplyButton />
       <StartSideChatButton />
     </SelectionToolbarPrimitive.Root>
+  );
+};
+
+/** Reply: the selection becomes a quote card in the composer (F-22, F-36). */
+const ReplyButton: FC = () => {
+  const t = useT();
+  const passages = useComposerPassages();
+  if (!passages) return null;
+  return (
+    <button
+      type="button"
+      data-testid="selection-reply"
+      className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+      onClick={() => {
+        const selection = window.getSelection();
+        const text = selection?.toString() ?? "";
+        const messageId = selection ? selectionMessageId(selection) : null;
+        if (!messageId || !isAttachableSelection(text)) return;
+        const row = selection?.anchorNode?.parentElement ?? null;
+        const added = passages.capture(
+          { body: text.trim(), method: "range", anchors: [{ threadKey: "", entryKey: messageId }] },
+          row,
+        );
+        if (added) selection?.removeAllRanges();
+      }}
+    >
+      <ReplyIcon className="size-3.5" aria-hidden="true" />
+      {t("selection.reply")}
+    </button>
   );
 };
 
@@ -2737,38 +2831,29 @@ const StartSideChatButton: FC = () => {
   );
 };
 
-/** The quote the next send carries, shown in the composer with a remove button; nothing when there is none. */
-const ComposerQuote: FC = () => {
-  const t = useT();
-  return (
-    <ComposerPrimitive.Quote
-      data-testid="composer-quote"
-      className="aui-composer-quote flex items-start gap-2 rounded-xl border-l-2 border-primary/60 bg-muted/60 py-1.5 pr-1.5 pl-3 text-sm text-muted-foreground"
-    >
-      <QuoteIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-      <ComposerPrimitive.QuoteText className="line-clamp-3 min-w-0 flex-1 whitespace-pre-wrap break-words" />
-      <ComposerPrimitive.QuoteDismiss
-        data-testid="composer-quote-dismiss"
-        aria-label={t("composer.quoteDismiss")}
-        className="flex size-5 shrink-0 items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground"
-      >
-        <XIcon className="size-3.5" aria-hidden="true" />
-      </ComposerPrimitive.QuoteDismiss>
-    </ComposerPrimitive.Quote>
-  );
-};
-
-/** The quote a sent prompt carried, drawn above the person's words in the bubble. */
+/** The quotes a sent prompt carried, drawn above the person's words in the bubble, in order. */
 const UserMessageQuote: FC = () => {
   const quote = useMessageQuote();
-  if (!quote || !quote.text.trim()) return null;
+  const quotes = useAssistantState((s) => {
+    const list = (s.message.metadata as { custom?: { quotes?: unknown } } | undefined)?.custom?.quotes;
+    return Array.isArray(list) ? (list as unknown[]) : null;
+  });
+  const texts = (quotes ?? (quote ? [quote.text] : [])).filter(
+    (text): text is string => typeof text === "string" && text.trim().length > 0,
+  );
+  if (texts.length === 0) return null;
   return (
-    <blockquote
-      data-testid="user-message-quote"
-      className="aui-user-message-quote mb-1.5 border-l-2 border-primary/60 pl-2.5 text-sm text-muted-foreground whitespace-pre-wrap break-words"
-    >
-      {quote.text}
-    </blockquote>
+    <>
+      {texts.map((text, index) => (
+        <blockquote
+          key={index}
+          data-testid="user-message-quote"
+          className="aui-user-message-quote mb-1.5 border-l-2 border-primary/60 pl-2.5 text-sm text-muted-foreground whitespace-pre-wrap break-words"
+        >
+          {text}
+        </blockquote>
+      ))}
+    </>
   );
 };
 

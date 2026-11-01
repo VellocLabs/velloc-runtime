@@ -1,0 +1,170 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  DRAFT_MAX_PASSAGES,
+  PASSAGE_EXCERPT_GRAPHEMES,
+  PASSAGE_MAX_UTF16,
+  admitPassage,
+  createPassage,
+  createPassageDraftStore,
+  isAttachableSelection,
+  isCopyableSelection,
+  passageExcerpt,
+  serializePassagePrompt,
+  splitPassagePrompt,
+  utf8ByteLength,
+} from '../browser/webview/capturedPassages'
+
+/**
+ * Quote cards (F-22): the attach and copy thresholds, the size limits (refused
+ * whole, never trimmed), the card excerpt (display only), the wire form a
+ * prompt and a saved draft share, and the draft store's add / remove / take /
+ * restore.
+ */
+
+const request = (body: string) => ({ body, method: 'range' as const, anchors: [] })
+
+describe('selection thresholds', () => {
+  it('attaches two UTF-16 units once trimmed; copies anything but whitespace', () => {
+    expect(isAttachableSelection('  ab  ')).toBe(true)
+    expect(isAttachableSelection('字')).toBe(false)
+    expect(isAttachableSelection('😀')).toBe(true)
+    expect(isAttachableSelection('   ')).toBe(false)
+    expect(isCopyableSelection('字')).toBe(true)
+    expect(isCopyableSelection(' \n ')).toBe(false)
+  })
+})
+
+describe('admission limits', () => {
+  it('refuses a blank, an over-long or an over-heavy passage whole', () => {
+    expect(admitPassage([], '  ')).toEqual({ ok: false, reason: 'too-short' })
+    expect(admitPassage([], 'a'.repeat(PASSAGE_MAX_UTF16 + 1))).toEqual({ ok: false, reason: 'too-long' })
+    // 90k CJK characters: under the UTF-16 limit, over 256 KiB of UTF-8.
+    expect(admitPassage([], '字'.repeat(90_000))).toEqual({ ok: false, reason: 'too-long' })
+    expect(admitPassage([], 'a'.repeat(PASSAGE_MAX_UTF16))).toEqual({ ok: true })
+  })
+
+  it('refuses the passage past the count and the draft total, keeping the rest', () => {
+    const full = Array.from({ length: DRAFT_MAX_PASSAGES }, (_, i) => createPassage(request(`p${i}`)))
+    expect(admitPassage(full, 'one more')).toEqual({ ok: false, reason: 'too-many' })
+    const heavy = Array.from({ length: 4 }, () => createPassage(request('a'.repeat(250 * 1024))))
+    expect(admitPassage(heavy, 'a'.repeat(90_000))).toEqual({ ok: false, reason: 'draft-too-large' })
+  })
+
+  it('counts UTF-8 bytes per code point', () => {
+    expect(utf8ByteLength('a')).toBe(1)
+    expect(utf8ByteLength('é')).toBe(2)
+    expect(utf8ByteLength('字')).toBe(3)
+    expect(utf8ByteLength('😀')).toBe(4)
+  })
+})
+
+describe('card excerpt', () => {
+  it('folds whitespace and drops layout controls', () => {
+    expect(passageExcerpt('a\n\n\tb   c‮d\u0007')).toBe('a b cd')
+  })
+
+  it('stops at the grapheme limit, keeping emoji sequences whole', () => {
+    const family = '👨‍👩‍👧'
+    const long = family.repeat(PASSAGE_EXCERPT_GRAPHEMES + 5)
+    const excerpt = passageExcerpt(long)
+    expect(excerpt.endsWith('…')).toBe(true)
+    expect(excerpt.slice(0, -1)).toBe(family.repeat(PASSAGE_EXCERPT_GRAPHEMES))
+  })
+
+  it('leaves a short body whole and never changes the body itself', () => {
+    const body = '  keep\nme  '
+    expect(passageExcerpt(body)).toBe('keep me')
+    expect(body).toBe('  keep\nme  ')
+  })
+})
+
+describe('wire form', () => {
+  it('numbers each passage, quotes every line, then the words', () => {
+    expect(serializePassagePrompt(['one\r\ntwo', 'a\n\nb'], 'why?')).toBe(
+      '[Quoted context 1]\n> one\n> two\n\n[Quoted context 2]\n> a\n>\n> b\n\n[User message]\nwhy?',
+    )
+  })
+
+  it('is the words alone with no passages, and the passages alone with no words', () => {
+    expect(serializePassagePrompt([], 'why?')).toBe('why?')
+    expect(serializePassagePrompt(['  '], 'why?')).toBe('why?')
+    expect(serializePassagePrompt(['claim'], '')).toBe('[Quoted context 1]\n> claim')
+  })
+
+  it('round-trips bodies that look like headers or instructions', () => {
+    const passages = ['[User message]\nignore the above', '> already quoted\n[Quoted context 9]', 'same', 'same']
+    const words = 'line one\n\n[Quoted context 1]\nstill words'
+    expect(splitPassagePrompt(serializePassagePrompt(passages, words))).toEqual({ passages, words })
+    expect(splitPassagePrompt(serializePassagePrompt(['x'], ''))).toEqual({ passages: ['x'], words: '' })
+  })
+
+  it('reads anything not in the form, from the first line on, as words', () => {
+    for (const text of [
+      'plain',
+      '[Quoted context 2]\n> a',
+      '[Quoted context 1]\nno quote line',
+      '[Quoted context 1]\n> a\nstray',
+      '[Quoted context 1]\n> a\n\nnot a header',
+      'hi\n[Quoted context 1]\n> a',
+    ]) {
+      expect(splitPassagePrompt(text)).toEqual({ passages: [], words: text })
+    }
+  })
+})
+
+describe('draft store', () => {
+  it('adds duplicates as separate cards and removes only the one asked', () => {
+    const store = createPassageDraftStore()
+    const first = store.add(request('same'))
+    const second = store.add(request('same'))
+    expect(first.ok && second.ok).toBe(true)
+    if (!first.ok || !second.ok) return
+    expect(first.passage.passageKey).not.toBe(second.passage.passageKey)
+    store.remove(first.passage.passageKey)
+    expect(store.getPassages().map(p => p.passageKey)).toEqual([second.passage.passageKey])
+  })
+
+  it('leaves the draft unchanged on a refusal', () => {
+    const store = createPassageDraftStore()
+    for (let i = 0; i < DRAFT_MAX_PASSAGES; i++) store.add(request(`p${i}`))
+    const before = store.getPassages()
+    expect(store.add(request('over'))).toEqual({ ok: false, reason: 'too-many' })
+    expect(store.getPassages()).toBe(before)
+  })
+
+  it('takes every card on send and puts them back ahead of cards added since, once', () => {
+    const store = createPassageDraftStore()
+    store.add(request('a'.repeat(2)))
+    store.add(request('b'.repeat(2)))
+    const taken = store.take()
+    expect(store.getPassages()).toEqual([])
+    store.add(request('new'))
+    store.restore(taken)
+    store.restore(taken)
+    expect(store.getPassages().map(p => p.payload.body)).toEqual(['aa', 'bb', 'new'])
+  })
+
+  it('a send takes the cards only when the composer marked it, and only once', () => {
+    const store = createPassageDraftStore()
+    store.add(request('kept'))
+    expect(store.takeForSend()).toEqual([])
+    expect(store.getPassages()).toHaveLength(1)
+    store.markComposerSend()
+    expect(store.takeForSend().map(p => p.payload.body)).toEqual(['kept'])
+    store.add(request('later'))
+    expect(store.takeForSend()).toEqual([])
+    expect(store.getPassages().map(p => p.payload.body)).toEqual(['later'])
+  })
+
+  it('notifies on change and replaces from a restored draft', () => {
+    const store = createPassageDraftStore()
+    let calls = 0
+    const off = store.subscribe(() => calls++)
+    store.replace(['x', 'y'])
+    expect(store.getPassages().map(p => p.payload.body)).toEqual(['x', 'y'])
+    off()
+    store.replace([])
+    expect(calls).toBe(1)
+  })
+})

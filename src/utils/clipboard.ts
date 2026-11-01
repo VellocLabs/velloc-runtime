@@ -59,6 +59,30 @@ export function writeClipboard(text: string): Promise<boolean> {
 }
 
 /**
+ * Writes `plain` as text/plain and `html` as text/html. The write starts
+ * inside the caller's gesture; the HTML may still be rendering. Falls back to
+ * plain text alone when rich writes are unavailable or refused; false only when
+ * that also fails.
+ */
+export async function writeRichClipboard(plain: string, html: Promise<string>): Promise<boolean> {
+  const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined
+  if (clipboard?.write && typeof ClipboardItem === 'function') {
+    try {
+      const item = new ClipboardItem({
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
+        'text/html': html.then(markup => new Blob([markup], { type: 'text/html' })),
+      })
+      await clipboard.write([item])
+      return true
+    } catch {
+      // Rich write refused: the text alone below.
+    }
+  }
+  html.catch(() => {})
+  return writeClipboard(plain)
+}
+
+/**
  * The clipboard API once the document has the focus: `writeText` rejects in
  * a document without it, and a copy no gesture started (a mod's
  * `$.ui.copy`) can arrive while the person is in another window. Waits up to

@@ -316,7 +316,7 @@ import { useSessionManager } from './useSessionManager'
 import { useMultiSessionClients } from './useMultiSessionClients'
 import { isTurnAnchoredMessageId, shouldDismissBootWelcome, sideChatCutForRow } from './assistantUiAdapter'
 import { createSessionMessageCallbackFactory } from './sessionMessageCallbacks'
-import { createQuotePrefix } from './replyQuote'
+import { serializePassagePrompt } from './capturedPassages'
 import {
   mountedWithSideChat,
   parentsNeedingAnswer,
@@ -3716,7 +3716,7 @@ export function MultiSessionShell({
       forkSession(fromSessionId, cut.cutUuid, {
         keepCutMessage: true,
         sideChat: true,
-        initialDraft: createQuotePrefix(selection),
+        initialDraft: serializePassagePrompt([selection.trim()], ''),
       })
     },
     [forkSession],
@@ -4242,6 +4242,15 @@ export function MultiSessionShell({
 
   // The sidebar's Fork: copy the whole conversation; the `session.forked` ack
   // switches to the copy.
+  // The message menu's "Fork from here" on a reply: an inclusive cut, the
+  // copy's composer empty (F-22).
+  const handleForkAfterMessage = useCallback(
+    (sessionId: string, cutUuid: string) => {
+      forkSession(sessionId, cutUuid, { keepCutMessage: true })
+    },
+    [forkSession],
+  )
+
   const handleForkThread = useCallback(
     (sessionId: string) => {
       forkSession(sessionId, undefined, { keepCutMessage: true })
@@ -4257,6 +4266,7 @@ export function MultiSessionShell({
         handleSendInForkedSession,
         handleContinueInCode,
         handleStartSideChat,
+        handleForkAfterMessage,
       ),
     [
       forkSession,
@@ -4264,6 +4274,7 @@ export function MultiSessionShell({
       handleSendInForkedSession,
       handleContinueInCode,
       handleStartSideChat,
+      handleForkAfterMessage,
     ],
   )
 
@@ -4610,6 +4621,7 @@ export function MultiSessionShell({
                   onDeleteThread={handleDeleteThread}
                   onRenameThread={retitleSession}
                   onForkFromMessage={messageCallbacks.onFork}
+                  onForkAfterMessage={messageCallbacks.onForkAfter}
                   onSendInForkedSession={messageCallbacks.onSendInFork}
                   onContinueInCode={messageCallbacks.onContinueInCode}
                   onRewindToMessage={messageCallbacks.onRewind}
