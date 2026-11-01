@@ -240,7 +240,8 @@ describe('session surface over the hub', () => {
     const connection = await connect(rig)
     const caps = connection.welcome!.server.capabilities
     expect(caps.find(c => c.cap === 'session')?.acts).toEqual(expect.arrayContaining(['open', 'submitMessage', 'list', 'getToolDetail', 'fork']))
-    expect(caps.find(c => c.cap === 'task')?.acts).toEqual(['stop', 'resume', 'transcript', 'recoverBackground'])
+    expect(caps.find(c => c.cap === 'task')?.acts).toEqual(['stop', 'resume', 'transcript', 'recoverBackground', 'turnDiff'])
+    expect(rig.registry.advertise({ mode: 'observe', sessions: 'all' }).find(c => c.cap === 'task')?.acts).toEqual(['transcript', 'recoverBackground', 'turnDiff'])
     expect(caps.find(c => c.cap === 'diag')?.acts).toEqual(['traceFlush'])
     expect(rig.registry.advertise({ mode: 'observe', sessions: 'all' }).find(c => c.cap === 'session')?.acts).toEqual([
       'getMessages', 'getMessagesSince', 'getState', 'getToolCallDetail', 'getTurnDiffDetail', 'getTurnDiffHistory', 'getSkillBody', 'list', 'getToolDetail', 'transcript',

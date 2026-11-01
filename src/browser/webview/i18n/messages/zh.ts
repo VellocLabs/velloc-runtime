@@ -835,6 +835,10 @@ export const zh: Messages = {
   'diff.backToChanges': '返回变更列表',
   'diff.noChangesYet': '暂无变更。',
   'diff.wholeSession': '整个会话',
+  'diff.thisSession': '本会话',
+  'diff.subAgents': '子智能体',
+  'diff.agentSectionAria': '{name} 的变更',
+  'diff.agentWorkDir': '工作目录：{path}',
   'diff.externalChangeWarning':
     '包含在本会话之外做出的更改（在第 {from} 轮和第 {to} 轮之间）。',
 
@@ -878,6 +882,7 @@ export const zh: Messages = {
   'backgroundTasks.startedAt': '开始于 {when}',
   'backgroundTasks.resumeDefaultText': '继续。',
   'backgroundTasks.category.subagent': '子智能体',
+  'backgroundTasks.viaAgent': '来自 {name}',
   'backgroundTasks.category.shell': 'Shell',
   'backgroundTasks.category.superShell': 'Super Shell',
   'backgroundTasks.category.runJs': 'Super Edit',

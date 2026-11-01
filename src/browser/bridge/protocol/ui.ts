@@ -1,4 +1,5 @@
 import type { BrowserLlmSelection } from './nexus_llm'
+import type { TurnDiffMeta } from '../../../utils/turnDiffs'
 
 export type NexusSettingsSection = 'models' | 'webapp' | 'mcp'
 
@@ -194,6 +195,22 @@ export type NexusTaskKind =
   | 'local_timer'
 
 /**
+ * One background sub-agent's file changes, published on its owning session's
+ * diff topic beside that session's own history (F-2). `turns` carry no hunks;
+ * `task.turnDiff` fetches one turn's.
+ */
+export type NexusAgentChangeSection = {
+  /** The sub-agent's public task id. */
+  taskId: string
+  description: string
+  agentType?: string
+  status: 'running' | 'success' | 'error' | 'stopped'
+  /** The directory it edits in: its worktree, else its project root. */
+  workDir?: string
+  turns: TurnDiffMeta[]
+}
+
+/**
  * A background TASK row for the human-facing surface (G2/G5) — today an `Agent`
  * sub-agent (`run_in_background`) or a background shell. Carried on the sessions
  * summary so the webview can show, per launching session, what is running in the
@@ -208,6 +225,15 @@ export type NexusTaskSummaryRow = {
   sessionId: string
   /** The session that launched it — used to scope the UI to the active thread. */
   spawnerSessionId: string
+  /** Set when `spawnerSessionId` is a background sub-agent: the user-facing
+   *  session the sub-agent chain was started from. The UI scopes by this
+   *  first, so a sub-agent's own tasks show in its parent's thread (F-2). */
+  ownerSessionId?: string
+  /** With `ownerSessionId`: the public task id, description and agent type of
+   *  the sub-agent that launched this task directly — the row's origin label. */
+  viaTaskId?: string
+  viaDescription?: string
+  viaAgentType?: string
   status: 'running' | 'success' | 'error' | 'stopped'
   /** Task kind. Absent ⇒ treat as 'local_agent' (the historical rows). */
   type?: NexusTaskKind

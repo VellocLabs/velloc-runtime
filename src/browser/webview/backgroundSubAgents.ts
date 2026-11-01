@@ -39,6 +39,10 @@ export function subAgentsEqual(
     if (
       x.sessionId !== y.sessionId ||
       x.spawnerSessionId !== y.spawnerSessionId ||
+      x.ownerSessionId !== y.ownerSessionId ||
+      x.viaTaskId !== y.viaTaskId ||
+      x.viaDescription !== y.viaDescription ||
+      x.viaAgentType !== y.viaAgentType ||
       x.status !== y.status ||
       x.type !== y.type ||
       x.description !== y.description ||
@@ -54,6 +58,16 @@ export function subAgentsEqual(
     }
   }
   return true
+}
+
+/** The sub-agent a rolled-up task row came from (F-2), as the origin label
+ *  names it: its description, else its agent type. Null for a row the session
+ *  launched itself. */
+export function taskRowOriginName(
+  row: Pick<NexusTaskSummaryRow, 'ownerSessionId' | 'viaDescription' | 'viaAgentType'>,
+): string | null {
+  if (!row.ownerSessionId) return null
+  return row.viaDescription?.trim() || row.viaAgentType || null
 }
 
 /** Short headline for the bar, e.g. "2 background tasks running". */
@@ -94,7 +108,8 @@ export function countRunningWork(
 }
 
 /**
- * Sub-agent rows launched by one session (F-9): a new array, incoming order kept. `local_routine` rows
+ * Task rows that belong to one session (F-9): the ones it launched, and the ones a sub-agent it
+ * started launched (`ownerSessionId`, F-2). A new array, incoming order kept. `local_routine` rows
  * have no parent session and show in every session's drawer.
  */
 export function filterSubAgentRowsBySession(
@@ -103,7 +118,8 @@ export function filterSubAgentRowsBySession(
 ): NexusTaskSummaryRow[] {
   if (!rows || !sessionId) return []
   return rows.filter(
-    (r) => r.spawnerSessionId === sessionId || r.type === 'local_routine',
+    (r) =>
+      (r.ownerSessionId ?? r.spawnerSessionId) === sessionId || r.type === 'local_routine',
   )
 }
 

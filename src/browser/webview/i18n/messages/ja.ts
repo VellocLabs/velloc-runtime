@@ -842,6 +842,10 @@ export const ja: Messages = {
   'diff.backToChanges': '変更一覧に戻る',
   'diff.noChangesYet': 'まだ変更はありません。',
   'diff.wholeSession': 'セッション全体',
+  'diff.thisSession': 'このセッション',
+  'diff.subAgents': 'サブエージェント',
+  'diff.agentSectionAria': '{name} による変更',
+  'diff.agentWorkDir': '作業ディレクトリ: {path}',
   'diff.externalChangeWarning':
     'このセッション外で行われた変更を含みます（ターン {from} とターン {to} の間）。',
 
@@ -887,6 +891,7 @@ export const ja: Messages = {
   'backgroundTasks.startedAt': '{when} に開始',
   'backgroundTasks.resumeDefaultText': '続けてください。',
   'backgroundTasks.category.subagent': 'サブエージェント',
+  'backgroundTasks.viaAgent': '{name} から',
   'backgroundTasks.category.shell': 'Shell',
   'backgroundTasks.category.superShell': 'Super Shell',
   'backgroundTasks.category.runJs': 'Super Edit',

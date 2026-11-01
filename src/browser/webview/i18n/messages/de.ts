@@ -851,6 +851,10 @@ export const de: Messages = {
   'diff.backToChanges': 'Zurück zu den Änderungen',
   'diff.noChangesYet': 'Noch keine Änderungen.',
   'diff.wholeSession': 'Gesamte Sitzung',
+  'diff.thisSession': 'Diese Sitzung',
+  'diff.subAgents': 'Sub-Agenten',
+  'diff.agentSectionAria': 'Änderungen von {name}',
+  'diff.agentWorkDir': 'Arbeitsverzeichnis: {path}',
   'diff.externalChangeWarning':
     'Enthält Änderungen von außerhalb dieser Sitzung (zwischen Zug {from} und Zug {to}).',
 
@@ -898,6 +902,7 @@ export const de: Messages = {
   'backgroundTasks.startedAt': 'gestartet {when}',
   'backgroundTasks.resumeDefaultText': 'Mach weiter.',
   'backgroundTasks.category.subagent': 'Sub-Agenten',
+  'backgroundTasks.viaAgent': 'über {name}',
   'backgroundTasks.category.shell': 'Shell',
   'backgroundTasks.category.superShell': 'Super Shell',
   'backgroundTasks.category.runJs': 'Super Edit',

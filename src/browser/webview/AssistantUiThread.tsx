@@ -1,5 +1,6 @@
 import { ModUiContext } from '../../components/assistant-ui/mod-ui-context'
 import {
+  AgentChangesContext,
   SessionCardsPopoverContext,
   SessionChangeFiguresContext,
 } from '../../components/assistant-ui/session-card-stack'
@@ -62,7 +63,7 @@ import type {
   ProviderMissingPrompt,
 } from '../bridge/browserBridgeProtocol'
 import type { AgentRuntimeWorkerSnapshot, SessionMcpServerView } from '../worker/workerProtocol'
-import type { NexusTaskSummaryRow } from '../bridge/protocol/ui'
+import type { NexusAgentChangeSection, NexusTaskSummaryRow } from '../bridge/protocol/ui'
 import {
   deriveSessionMetadataFromMessages,
   isConversationResumable,
@@ -216,6 +217,9 @@ import { ProviderMissingDialog, WorkspaceProjectFolderDialog } from './ThreadDia
  * reveal that cannot succeed would loop for as long as the session stays open.
  */
 const MAX_JUMP_ATTEMPTS = 2
+
+/** One empty list, so a session without sub-agent changes keeps a stable value. */
+const NO_AGENT_CHANGES: readonly NexusAgentChangeSection[] = []
 
 function bootTracer() {
   return installSessionTracer({ context: 'ui' })
@@ -2196,6 +2200,7 @@ function InteractiveAssistantUiThread({
                   <SessionProposalsContext.Provider value={sessionProposals}>
                   <SessionCardsPopoverContext.Provider value={sessionCardsPopover}>
                   <SessionChangeFiguresContext.Provider value={state.sessionChangeFigures ?? null}>
+                  <AgentChangesContext.Provider value={state.agentChanges ?? NO_AGENT_CHANGES}>
                   <ComposerAttachmentPickerProvider
                     value={
                       // Only the real chromium host implements the native picker (`canPickProjectFolder`);
@@ -2244,6 +2249,7 @@ function InteractiveAssistantUiThread({
                       </ContinueConversationProvider>
                     )}
                   </ComposerAttachmentPickerProvider>
+                  </AgentChangesContext.Provider>
                   </SessionChangeFiguresContext.Provider>
                   </SessionCardsPopoverContext.Provider>
                   </SessionProposalsContext.Provider>

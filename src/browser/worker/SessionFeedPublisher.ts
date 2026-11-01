@@ -35,6 +35,8 @@ import {
 import {
   fastCallDisplayLabel,
   isSubAgentSessionId,
+  resolveTaskOrigin,
+  type TaskOriginLink,
   runJsDisplayLabel,
 } from './taskProjection'
 import type { RecoveredRunJsRow } from './recoverRunJsRows'
@@ -772,7 +774,19 @@ export class SessionFeedPublisher {
         ...(timer.nextFireAt !== null ? { nextFireAt: timer.nextFireAt } : {}),
       })
     }
-    return rows
+    return this.attributeSubAgentTasks(rows)
+  }
+
+  /** Stamps every row a sub-agent launched with the user-facing session it
+   *  belongs to and the sub-agent it came from (F-2). */
+  private attributeSubAgentTasks(rows: NexusTaskSummaryRow[]): NexusTaskSummaryRow[] {
+    const lookup = (nativeSessionId: string): TaskOriginLink | undefined =>
+      this.registry.getLiveByType(nativeSessionId, 'local_agent') ??
+      this.registry.getFinishedByType(nativeSessionId, 'local_agent')
+    return rows.map(row => {
+      const origin = resolveTaskOrigin(row.spawnerSessionId, lookup)
+      return origin ? { ...row, ...origin } : row
+    })
   }
 
   private flushSummary(): void {
@@ -896,6 +910,10 @@ function summariesEqual(
     if (
       x.sessionId !== y.sessionId ||
       x.spawnerSessionId !== y.spawnerSessionId ||
+      x.ownerSessionId !== y.ownerSessionId ||
+      x.viaTaskId !== y.viaTaskId ||
+      x.viaDescription !== y.viaDescription ||
+      x.viaAgentType !== y.viaAgentType ||
       x.status !== y.status ||
       x.type !== y.type ||
       x.description !== y.description ||

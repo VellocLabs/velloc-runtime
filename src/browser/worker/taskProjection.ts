@@ -6,6 +6,7 @@ import type { NexusTaskTranscriptEntry } from '../bridge/protocol/ui'
 import type { SubAgentSnapshot } from '../../team/subAgentController'
 import type { ForkTaskStart } from '../../backgroundTasks/sideTaskSink'
 import type { FinishedSubAgentRecord, NexusTaskDeliveryResult } from './taskTypes'
+import { isSubAgentSessionId } from '../../utils/sidechainStoragePaths'
 
 /**
  * The last assistant-message text in a StreamRecord list (block-array or top-level `text` shapes), or ''.
@@ -240,6 +241,55 @@ export function formatTaskNotifications(
       )
     })
     .join('\n')
+}
+
+/** The launching sub-agent of a task, as {@link resolveTaskOrigin} reads it. */
+export type TaskOriginLink = {
+  spawnerSessionId: string
+  taskId: string
+  description: string
+  agentType?: string
+}
+
+/** Where a task launched from a sub-agent belongs (F-2). */
+export type TaskOrigin = {
+  ownerSessionId: string
+  viaTaskId: string
+  viaDescription: string
+  viaAgentType?: string
+}
+
+/** Upper bound on the sub-agent links walked; a cycle stops here. */
+const MAX_ORIGIN_LINKS = 8
+
+/**
+ * The user-facing session a task belongs to when its spawner is a sub-agent:
+ * walks `lookup` (native sub-agent session id → its run or record) up to the
+ * first spawner that is not a sub-agent. The `via…` fields name the sub-agent
+ * that launched the task directly. Null when `spawnerSessionId` is not a
+ * sub-agent, or the chain cannot be resolved to a user-facing session.
+ */
+export function resolveTaskOrigin(
+  spawnerSessionId: string,
+  lookup: (nativeSessionId: string) => TaskOriginLink | undefined,
+): TaskOrigin | null {
+  if (!isSubAgentSessionId(spawnerSessionId)) return null
+  const direct = lookup(spawnerSessionId)
+  if (!direct) return null
+  let link: TaskOriginLink | undefined = direct
+  for (let hops = 0; link && hops < MAX_ORIGIN_LINKS; hops++) {
+    if (!isSubAgentSessionId(link.spawnerSessionId)) {
+      if (!link.spawnerSessionId) return null
+      return {
+        ownerSessionId: link.spawnerSessionId,
+        viaTaskId: direct.taskId,
+        viaDescription: direct.description,
+        ...(direct.agentType ? { viaAgentType: direct.agentType } : {}),
+      }
+    }
+    link = lookup(link.spawnerSessionId)
+  }
+  return null
 }
 
 /**

@@ -19,6 +19,7 @@ export type SessionListRoute =
   | 'task.stop'
   | 'task.resume'
   | 'task.transcript'
+  | 'task.turnDiff'
   | 'task.recoverBackground'
   | 'presence.setViewing'
   | 'presence.reportActivity'

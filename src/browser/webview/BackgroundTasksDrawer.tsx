@@ -45,6 +45,7 @@ import {
   SUB_AGENT_STATUS_LABEL_KEY,
   groupSubAgentsByCategory,
   taskRowLabelKey,
+  taskRowOriginName,
   type SubAgentCategory,
 } from './backgroundSubAgents'
 import { loopTimerCountdown, loopTimerScheduleText } from './loopTimers'
@@ -675,6 +676,9 @@ export function BackgroundTasksDrawer({
                   ? t(SUB_AGENT_STATUS_LABEL_KEY[detailRow.status])
                   : t('backgroundTasks.status.unknown')}
                 {detailRow?.agentType ? ` · ${detailRow.agentType}` : ''}
+                {detailRow && taskRowOriginName(detailRow)
+                  ? ` · ${t('backgroundTasks.viaAgent', { name: taskRowOriginName(detailRow)! })}`
+                  : ''}
               </div>
             </div>
             {/* Reload only makes sense for a RUNNING task (streaming transcript
@@ -1010,6 +1014,8 @@ export function BackgroundTasksDrawer({
                       const meta: string[] = [
                         t(SUB_AGENT_STATUS_LABEL_KEY[item.status]),
                       ]
+                      const originName = taskRowOriginName(item)
+                      if (originName) meta.push(t('backgroundTasks.viaAgent', { name: originName }))
                       // Every row shows WHEN it started; a running row adds the
                       // live age + last-activity hint, a finished row adds the
                       // total span it took.

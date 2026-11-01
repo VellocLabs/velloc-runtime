@@ -1,6 +1,7 @@
 import * as React from "react";
 import { ContextMenu as ContextMenuPrimitive } from "radix-ui";
 import {
+  BotIcon,
   CheckIcon,
   ChevronRightIcon,
   CodeXmlIcon,
@@ -40,6 +41,7 @@ import { useSessionConnectors } from "./session-connectors-context";
 import { McpServerDetailDialog } from "./mcp-server-detail-dialog";
 import { SessionTasksList } from "./session-tasks-card";
 import { useRightPanelContent } from "./right-panel-content-context";
+import type { NexusAgentChangeSection } from "@/browser/bridge/protocol/ui";
 
 /**
  * The session card stack (F-9) at the transcript's top right: information
@@ -56,6 +58,30 @@ export const SessionCardsPopoverContext = React.createContext<SessionCardsPopove
 /** The session's stored change figures (F-9): what the Outputs and Changes
  *  cards draw until the computed history arrives. */
 export const SessionChangeFiguresContext = React.createContext<SessionChangeFigures | null>(null);
+
+/** The session's background sub-agents that changed files (F-2): the Changes
+ *  card lists each under the session's own figures. */
+export const AgentChangesContext = React.createContext<readonly NexusAgentChangeSection[]>([]);
+
+/** A sub-agent's line in the Changes card: its name and summed counts. */
+export type AgentChangeLine = { taskId: string; name: string; plusLines: number; minusLines: number };
+
+/** One line per sub-agent section with changed lines, in section order. */
+export function agentChangeLines(sections: readonly NexusAgentChangeSection[]): AgentChangeLine[] {
+  const lines: AgentChangeLine[] = [];
+  for (const section of sections) {
+    let plusLines = 0;
+    let minusLines = 0;
+    for (const turn of section.turns) {
+      plusLines += turn.stats.plusLines;
+      minusLines += turn.stats.minusLines;
+    }
+    if (plusLines === 0 && minusLines === 0) continue;
+    const name = section.description.trim() || section.agentType || section.taskId;
+    lines.push({ taskId: section.taskId, name, plusLines, minusLines });
+  }
+  return lines;
+}
 
 const OUTPUT_ICON: Record<OutputFileKind, LucideIcon> = {
   code: CodeXmlIcon,
@@ -189,10 +215,12 @@ function CardStack({
     [history, storedFigures],
   );
   const runningTasks = runningTaskCount ?? 0;
+  const agentSections = React.useContext(AgentChangesContext);
+  const agentLines = React.useMemo(() => agentChangeLines(agentSections), [agentSections]);
 
   const hasContent: Record<SessionCardId, boolean> = {
     outputs: figures.createdFiles.length > 0,
-    changes: figures.plusLines > 0 || figures.minusLines > 0,
+    changes: figures.plusLines > 0 || figures.minusLines > 0 || agentLines.length > 0,
     connectors: connected.length > 0 || waiting.length > 0,
     tasks: runningTasks > 0,
   };
@@ -294,7 +322,33 @@ function CardStack({
               {figures.minusLines > 0 ? <span className="text-diff-removed">−{figures.minusLines}</span> : null}
             </span>
           }
-        />
+        >
+          {agentLines.length > 0 ? (
+            <ul className="mt-1 flex flex-col" data-testid="session-card-changes-agents">
+              {agentLines.map((line) => (
+                <li key={line.taskId}>
+                  <button
+                    type="button"
+                    title={line.name}
+                    disabled={!openDiff}
+                    data-testid="session-card-changes-agent"
+                    aria-label={t("diff.agentSectionAria", { name: line.name })}
+                    onClick={() => openDiff?.({ kind: "turnHistory" })}
+                    className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent"
+                  >
+                    <BotIcon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">{line.name}</span>
+                    <span className="shrink-0 text-[12px] tabular-nums">
+                      {line.plusLines > 0 ? <span className="text-diff-added">+{line.plusLines}</span> : null}
+                      {line.plusLines > 0 && line.minusLines > 0 ? " " : null}
+                      {line.minusLines > 0 ? <span className="text-diff-removed">−{line.minusLines}</span> : null}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </InfoCard>
       );
     }
     if (id === "connectors") {

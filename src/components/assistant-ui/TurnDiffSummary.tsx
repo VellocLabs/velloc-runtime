@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { StructuredPatchHunk } from "diff";
 import {
   ArrowLeftIcon,
+  BotIcon,
   ChevronDownIcon,
   LoaderIcon,
   TriangleAlertIcon,
@@ -18,6 +19,8 @@ import { DiffHunks } from "./edit-tool-diff";
 import { FilePathHeader, PathLabel } from "./file-content-view";
 import type { RightPanelFileTarget } from "./right-panel-content-context";
 import { useT } from "@/browser/webview/i18n";
+import type { NexusAgentChangeSection } from "@/browser/bridge/protocol/ui";
+import { SUB_AGENT_STATUS_LABEL_KEY } from "@/browser/webview/backgroundSubAgents";
 
 /**
  * The "Changes this turn" control. The history is computed in the SharedWorker for the
@@ -29,8 +32,31 @@ export type LoadTurnDiffDetail = (
   turnIndex: number,
 ) => Promise<TurnFileChange[] | null>;
 
-/** The file the detail view is showing — a turn + a path within it. */
-type SelectedFile = { turnIndex: number; filePath: string };
+/** One turn's files of a background sub-agent, by its public task id (F-2). */
+export type LoadAgentTurnDiffDetail = (
+  taskId: string,
+  turnIndex: number,
+) => Promise<TurnFileChange[] | null>;
+
+/** The file the detail view is showing — a turn + a path within it, and the
+ *  sub-agent whose turn it is (absent for the session's own). */
+type SelectedFile = { turnIndex: number; filePath: string; taskId?: string };
+
+/** `path` relative to `root` when it lies inside it, else `path` unchanged.
+ *  Separators and letter case are compared loosely, as Windows paths are. */
+export function pathWithinRoot(path: string, root: string | undefined): string {
+  if (!root) return path;
+  const norm = (value: string) => value.replace(/\\/g, "/").replace(/\/+$/, "");
+  const base = norm(root);
+  const full = path.replace(/\\/g, "/");
+  if (base && full.toLowerCase().startsWith(`${base.toLowerCase()}/`)) {
+    return full.slice(base.length + 1);
+  }
+  return path;
+}
+
+/** Open-state key of one turn row: its owner and its index. */
+const turnKey = (turnIndex: number, taskId?: string): string => `${taskId ?? ""}:${turnIndex}`;
 
 /** The turn row's leading label: the turn's START time (locale-formatted), since
  *  `turnIndex` renumbers across compaction. A missing/unparseable timestamp returns ""
@@ -77,10 +103,14 @@ function StatPills({ added, removed }: { added: number; removed: number }) {
 function TurnFileItem({
   file,
   turnIndex,
+  taskId,
+  workDir,
   onSelect,
 }: {
   file: TurnDiffFileMeta;
   turnIndex: number;
+  taskId?: string;
+  workDir?: string;
   onSelect: (file: SelectedFile) => void;
 }) {
   const t = useT()
@@ -92,11 +122,11 @@ function TurnFileItem({
         data-testid="turn-diff-file"
         aria-label={t("diff.openDiffAria", { path: file.filePath })}
         title={t("diff.viewDiff")}
-        onClick={() => onSelect({ turnIndex, filePath: file.filePath })}
+        onClick={() => onSelect({ turnIndex, filePath: file.filePath, ...(taskId ? { taskId } : {}) })}
         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted/40"
       >
         <PathLabel
-          path={file.filePath}
+          path={pathWithinRoot(file.filePath, workDir)}
           className="min-w-0 flex-1 font-mono text-muted-foreground"
         />
         {file.fileWasCreated && (
@@ -135,11 +165,15 @@ function TurnFileItem({
 /** One turn in the history → its changed-file list (collapsible). */
 function TurnRow({
   turn,
+  taskId,
+  workDir,
   onSelectFile,
   open,
   onToggle,
 }: {
   turn: TurnDiffMeta;
+  taskId?: string;
+  workDir?: string;
   onSelectFile: (file: SelectedFile) => void;
   open: boolean;
   onToggle: () => void;
@@ -187,11 +221,121 @@ function TurnRow({
               key={file.filePath}
               file={file}
               turnIndex={turn.turnIndex}
+              taskId={taskId}
+              workDir={workDir}
               onSelect={onSelectFile}
             />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** A group heading in the history list: the session's own turns, or its sub-agents'. */
+function GroupHeading({ label }: { label: string }) {
+  return (
+    <div
+      data-testid="turn-diff-group-heading"
+      className="px-3 pt-2 pb-1 font-medium text-[0.7rem] text-muted-foreground uppercase tracking-wide"
+    >
+      {label}
+    </div>
+  );
+}
+
+/**
+ * One background sub-agent's changes (F-2): a header naming the agent, its
+ * status and the directory it edits in, then its turns, each file path shown
+ * relative to that directory. Collapsible; a running agent starts open.
+ */
+function AgentChangesSection({
+  section,
+  open,
+  onToggle,
+  openTurns,
+  onToggleTurn,
+  onSelectFile,
+}: {
+  section: NexusAgentChangeSection;
+  open: boolean;
+  onToggle: () => void;
+  openTurns: ReadonlyMap<string, boolean>;
+  onToggleTurn: (key: string, open: boolean) => void;
+  onSelectFile: (file: SelectedFile) => void;
+}) {
+  const t = useT();
+  let plusLines = 0;
+  let minusLines = 0;
+  const files = new Set<string>();
+  for (const turn of section.turns) {
+    plusLines += turn.stats.plusLines;
+    minusLines += turn.stats.minusLines;
+    for (const file of turn.files) files.add(file.filePath);
+  }
+  const name = section.description.trim() || section.agentType || section.taskId;
+  return (
+    <div
+      data-testid="turn-diff-agent-section"
+      data-task-id={section.taskId}
+      className="flex flex-col"
+    >
+      <button
+        type="button"
+        data-testid="turn-diff-agent-trigger"
+        aria-expanded={open}
+        aria-label={t("diff.agentSectionAria", { name })}
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted/40"
+      >
+        <ChevronDownIcon
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground transition-transform",
+            !open && "-rotate-90",
+          )}
+        />
+        <BotIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate font-medium" title={name}>
+          {name}
+        </span>
+        <span className="shrink-0 text-muted-foreground">
+          {t(SUB_AGENT_STATUS_LABEL_KEY[section.status])}
+        </span>
+        <span className="shrink-0 text-muted-foreground">
+          {files.size === 1
+            ? t("diff.fileCountOne", { n: files.size })
+            : t("diff.fileCount", { n: files.size })}
+        </span>
+        <StatPills added={plusLines} removed={minusLines} />
+      </button>
+      {open ? (
+        <div className="ml-4 flex flex-col border-l border-muted/60">
+          {section.workDir ? (
+            <div
+              data-testid="turn-diff-agent-workdir"
+              title={section.workDir}
+              className="truncate px-3 py-1 font-mono text-[0.7rem] text-muted-foreground"
+            >
+              {t("diff.agentWorkDir", { path: section.workDir })}
+            </div>
+          ) : null}
+          {section.turns.map((turn, idx) => {
+            const key = turnKey(turn.turnIndex, section.taskId);
+            const turnOpen = openTurns.get(key) ?? idx === 0;
+            return (
+              <TurnRow
+                key={key}
+                turn={turn}
+                taskId={section.taskId}
+                workDir={section.workDir}
+                onSelectFile={onSelectFile}
+                open={turnOpen}
+                onToggle={() => onToggleTurn(key, !turnOpen)}
+              />
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -344,19 +488,34 @@ function DiffFileDetail({
 export function TurnDiffHistoryView({
   history,
   loadDetail,
+  agents,
+  loadAgentDetail,
   onOpenFile,
 }: {
   history: TurnDiffMeta[] | null;
   loadDetail?: LoadTurnDiffDetail;
+  /** The session's background sub-agents that changed files (F-2). */
+  agents?: readonly NexusAgentChangeSection[];
+  loadAgentDetail?: LoadAgentTurnDiffDetail;
   onOpenFile?: (target: RightPanelFileTarget) => void;
 }) {
   const t = useT();
   const [selected, setSelected] = useState<SelectedFile | null>(null);
-  // Turns the user opened or closed, by turn index; unlisted turns follow the
-  // default (the latest open). Survives the detail view, unlike row state.
-  const [openTurns, setOpenTurns] = useState<ReadonlyMap<number, boolean>>(
+  // Turns the user opened or closed, by owner and turn index; unlisted turns
+  // follow the default (the latest open). Survives the detail view.
+  const [openTurns, setOpenTurns] = useState<ReadonlyMap<string, boolean>>(
     () => new Map(),
   );
+  // Sub-agent sections the user opened or closed; unlisted ones start open
+  // while their agent runs.
+  const [openAgents, setOpenAgents] = useState<ReadonlyMap<string, boolean>>(
+    () => new Map(),
+  );
+  const selectedTaskId = selected?.taskId;
+  const selectedLoader = useMemo<LoadTurnDiffDetail | undefined>(() => {
+    if (!selectedTaskId) return loadDetail;
+    return loadAgentDetail ? (turnIndex) => loadAgentDetail(selectedTaskId, turnIndex) : undefined;
+  }, [selectedTaskId, loadDetail, loadAgentDetail]);
   const listRef = useRef<HTMLDivElement>(null);
   const listScrollTop = useRef(0);
   useLayoutEffect(() => {
@@ -365,7 +524,9 @@ export function TurnDiffHistoryView({
     }
   }, [selected]);
 
-  if (!history || history.length === 0) {
+  const agentSections = agents ?? [];
+  const ownTurns = history ?? [];
+  if (ownTurns.length === 0 && agentSections.length === 0) {
     return (
       <div className="flex h-full items-center justify-center px-4 text-center text-muted-foreground text-xs">
         {t("diff.noChangesYet")}
@@ -374,7 +535,10 @@ export function TurnDiffHistoryView({
   }
 
   if (selected) {
-    const meta = history
+    const turns = selected.taskId
+      ? agentSections.find((section) => section.taskId === selected.taskId)?.turns ?? []
+      : ownTurns;
+    const meta = turns
       .find((turn) => turn.turnIndex === selected.turnIndex)
       ?.files.find((file) => file.filePath === selected.filePath);
     return (
@@ -387,7 +551,7 @@ export function TurnDiffHistoryView({
         <DiffFileDetail
           selected={selected}
           meta={meta}
-          loadDetail={loadDetail}
+          loadDetail={selectedLoader}
           onBack={() => setSelected(null)}
           onOpenFile={onOpenFile}
         />
@@ -406,17 +570,42 @@ export function TurnDiffHistoryView({
         listScrollTop.current = event.currentTarget.scrollTop;
       }}
     >
-      {history.map((turn, idx) => {
-        const open = openTurns.get(turn.turnIndex) ?? idx === 0;
+      {agentSections.length > 0 && ownTurns.length > 0 ? (
+        <GroupHeading label={t("diff.thisSession")} />
+      ) : null}
+      {ownTurns.map((turn, idx) => {
+        const key = turnKey(turn.turnIndex);
+        const open = openTurns.get(key) ?? idx === 0;
         return (
           <TurnRow
-            key={turn.turnIndex}
+            key={key}
             turn={turn}
             onSelectFile={setSelected}
             open={open}
             onToggle={() =>
-              setOpenTurns((prev) => new Map(prev).set(turn.turnIndex, !open))
+              setOpenTurns((prev) => new Map(prev).set(key, !open))
             }
+          />
+        );
+      })}
+      {agentSections.length > 0 ? (
+        <GroupHeading label={t("diff.subAgents")} />
+      ) : null}
+      {agentSections.map((section) => {
+        const open = openAgents.get(section.taskId) ?? section.status === "running";
+        return (
+          <AgentChangesSection
+            key={section.taskId}
+            section={section}
+            open={open}
+            onToggle={() =>
+              setOpenAgents((prev) => new Map(prev).set(section.taskId, !open))
+            }
+            openTurns={openTurns}
+            onToggleTurn={(key, next) =>
+              setOpenTurns((prev) => new Map(prev).set(key, next))
+            }
+            onSelectFile={setSelected}
           />
         );
       })}

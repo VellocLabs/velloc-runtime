@@ -9,9 +9,11 @@ import type {
 import {
   DiffDetailFrame,
   TurnDiffHistoryView,
+  type LoadAgentTurnDiffDetail,
   type LoadTurnDiffDetail,
 } from "@/components/assistant-ui/TurnDiffSummary";
 import type { TurnDiffMeta } from "@/utils/turnDiffs";
+import type { NexusAgentChangeSection } from "@/browser/bridge/protocol/ui";
 
 /**
  * Right-panel Diff view. Its entry is the live per-session "Changes this turn"
@@ -25,11 +27,16 @@ export function DiffPanel({
   turnDiffHistory,
   loadTurnDiffDetail,
   requestTurnDiffHistory,
+  agentChanges,
+  loadAgentTurnDiffDetail,
   onOpenFile,
 }: {
   target: RightPanelDiffTarget | null;
   turnDiffHistory?: TurnDiffMeta[] | null;
   loadTurnDiffDetail?: LoadTurnDiffDetail;
+  /** The session's sub-agents that changed files, listed under its own turns. */
+  agentChanges?: readonly NexusAgentChangeSection[];
+  loadAgentTurnDiffDetail?: LoadAgentTurnDiffDetail;
   /** Asked while the history view shows and the history has not arrived. */
   requestTurnDiffHistory?: () => void;
   onOpenFile?: (target: RightPanelFileTarget) => void;
@@ -55,6 +62,8 @@ export function DiffPanel({
         <TurnDiffHistoryView
           history={turnDiffHistory ?? null}
           loadDetail={loadTurnDiffDetail}
+          agents={agentChanges}
+          loadAgentDetail={loadAgentTurnDiffDetail}
           onOpenFile={onOpenFile}
         />
       </div>

@@ -6,10 +6,12 @@ import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
 import type { TraceRecord } from '../../utils/sessionTrace'
 import type { Message } from '../../runtime/RuntimeTypes'
 import type { WorkerLogEntry } from '../../utils/workerLogBuffer'
+import type { TurnFileChange } from '../../utils/turnDiffs'
 import type {
   MainContentsLayoutPayload,
   NexusCurrentSessionPayload,
   NexusSessionsSummaryPayload,
+  NexusAgentChangeSection,
   NexusTaskInfo,
   NexusTaskTranscriptEntry,
 } from '../bridge/protocol/ui'
@@ -86,6 +88,14 @@ export type SharedWorkerInboundMessage =
       type: 'task.transcript'
       sessionId: string
       requestId: string
+    }
+  | {
+      // One turn's file changes of a background sub-agent (by its public task
+      // id), for the parent's Diff pane (F-2). Replied with `task.turnDiff`.
+      type: 'task.turnDiff'
+      sessionId: string
+      requestId: string
+      turnIndex: number
     }
   | {
       // Lazily rebuild a session's restart-recovered Background Tasks drawer
@@ -376,6 +386,24 @@ export type SharedWorkerOutboundMessage =
         entries: NexusTaskTranscriptEntry[] | null
         info: NexusTaskInfo | null
       }
+    }
+  | {
+      // Reply to `task.turnDiff`: the turn's files with hunks, or null when
+      // the sub-agent or the turn is unknown.
+      type: 'task.turnDiff'
+      payload: {
+        sessionId: string
+        requestId: string
+        turnIndex: number
+        files: TurnFileChange[] | null
+      }
+    }
+  | {
+      // Sub-agent file-change sections of one session, the whole state each
+      // time; filed on that session's diff topic (F-2).
+      type: 'worker.agentChanges'
+      sessionId: string
+      payload: { agents: NexusAgentChangeSection[] }
     }
   | {
       // Pushed to every subscriber of this toolCallId whenever the detail

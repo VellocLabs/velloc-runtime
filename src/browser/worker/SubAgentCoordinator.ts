@@ -36,6 +36,7 @@ import {
 import {
   MAX_SUBAGENT_DEPTH,
   MAX_FINISHED_SUBAGENTS,
+  MAX_SUBAGENT_CHANGE_DETAILS,
   type SubAgentRunState,
   type FinishedSubAgentRecord,
   type OwnerRuntimeGlobals,
@@ -43,8 +44,18 @@ import {
 } from './taskTypes'
 import {
   extractFinalAssistantText,
+  isSubAgentSessionId,
   projectSubAgentTranscript,
+  resolveTaskOrigin,
+  type TaskOriginLink,
 } from './taskProjection'
+import type { NexusAgentChangeSection } from '../bridge/protocol/ui'
+import {
+  byTurnStartDesc,
+  toTurnDiffMeta,
+  type TurnFileChange,
+  type TurnFullDiff,
+} from '../../utils/turnDiffs'
 
 // --- Types ---
 
@@ -154,6 +165,8 @@ export interface SubAgentHost {
   /** A sub-agent reached its terminal record (finished or stopped). Called
    *  once per run, after its waiters were resolved. Optional. */
   subAgentFinished?(record: FinishedSubAgentRecord): void
+  /** The file changes of a sub-agent owned by `ownerSessionId` changed. */
+  agentChangesChanged?(ownerSessionId: string): void
 }
 
 // --- Coordinator ---
@@ -472,6 +485,7 @@ export class SubAgentCoordinator {
       projectRoot: boundProjectRoot,
       routineOriginId,
       onCleanup,
+      ...((boundCwd ?? boundProjectRoot) ? { workDir: boundCwd ?? boundProjectRoot } : {}),
     }
     this.launchWorker(sessionId, initPayload, state)
     return taskId
@@ -766,6 +780,8 @@ export class SubAgentCoordinator {
       disallowTools: state.disallowTools,
       projectRoot: state.projectRoot,
       routineOriginId: state.routineOriginId,
+      ...(state.workDir ? { workDir: state.workDir } : {}),
+      ...(state.changes ? { changes: state.changes } : {}),
     })
     // Worktree cleanup (G7): remove the sub-agent's worktree if it has no
     // changes (the closure, built by SpawnAgentTool with a git-capable context,
@@ -862,6 +878,8 @@ export class SubAgentCoordinator {
       disallowTools: run.disallowTools,
       projectRoot: run.projectRoot,
       routineOriginId: run.routineOriginId,
+      ...(run.workDir ? { workDir: run.workDir } : {}),
+      ...(run.changes ? { changes: run.changes } : {}),
     }
     // Restore the owner runtime's process globals BEFORE the parent's turn
     // continues (TaskStop returns synchronously, so the parent's very next
@@ -963,6 +981,7 @@ export class SubAgentCoordinator {
   private recordFinishedSubAgent(record: FinishedSubAgentRecord): void {
     this.registry.recordFinished(record.sessionId, record)
     this.registry.evictFinishedOverCap('local_agent', MAX_FINISHED_SUBAGENTS)
+    this.dropOldChangeHunks()
     // Restart-restore seed: flip the on-disk `task.json` from `running` to the
     // terminal record (status/summary/finishedAt). Best-effort.
     this.host.persistSubAgentTaskFile(
@@ -975,6 +994,74 @@ export class SubAgentCoordinator {
     this.host.scheduleSummary()
     this.resolveWaiters(record.sessionId)
     this.host.subAgentFinished?.(record)
+    if (record.changes?.length) this.notifyChanges(record.spawnerSessionId)
+  }
+
+  // --- File changes rolled up to the owning session (F-2) ---
+
+  /** The user-facing session a sub-agent launched from `spawnerSessionId`
+   *  belongs to, or null when the chain is broken. */
+  ownerSessionOf(spawnerSessionId: string): string | null {
+    if (!isSubAgentSessionId(spawnerSessionId)) return spawnerSessionId || null
+    return resolveTaskOrigin(spawnerSessionId, id => this.originLink(id))?.ownerSessionId ?? null
+  }
+
+  /** The file-change sections of every sub-agent `ownerSessionId` owns that
+   *  changed a file: newest-started first, each turn newest first, no hunks. */
+  changeSections(ownerSessionId: string): NexusAgentChangeSection[] {
+    const sections: Array<NexusAgentChangeSection & { startedAt: number }> = []
+    const add = (
+      run: ChangeSource,
+      status: NexusAgentChangeSection['status'],
+    ): void => {
+      const turns = run.changes?.filter(turn => turn.files.length > 0) ?? []
+      if (turns.length === 0) return
+      if (this.ownerSessionOf(run.spawnerSessionId) !== ownerSessionId) return
+      sections.push({
+        taskId: run.taskId,
+        description: run.description,
+        ...(run.agentType ? { agentType: run.agentType } : {}),
+        status,
+        ...(run.workDir ? { workDir: run.workDir } : {}),
+        turns: turns.map(toTurnDiffMeta).sort(byTurnStartDesc),
+        startedAt: run.startedAt,
+      })
+    }
+    for (const run of this.registry.liveByType('local_agent')) add(run, 'running')
+    for (const rec of this.registry.finishedByType('local_agent')) add(rec, rec.status)
+    sections.sort((a, b) => b.startedAt - a.startedAt)
+    return sections.map(({ startedAt: _startedAt, ...section }) => section)
+  }
+
+  /** One turn's file changes (with hunks, when kept) of a sub-agent by its
+   *  public task id; null when the agent or the turn is unknown. */
+  turnDiffFiles(taskId: string, turnIndex: number): TurnFileChange[] | null {
+    const id = this.registry.resolveNative(taskId)
+    const changes = (this.agentTask(id) ?? this.finishedAgent(id))?.changes
+    return changes?.find(turn => turn.turnIndex === turnIndex)?.files ?? null
+  }
+
+  private originLink(nativeSessionId: string): TaskOriginLink | undefined {
+    return this.agentTask(nativeSessionId) ?? this.finishedAgent(nativeSessionId)
+  }
+
+  private notifyChanges(spawnerSessionId: string): void {
+    const owner = this.ownerSessionOf(spawnerSessionId)
+    if (owner) this.host.agentChangesChanged?.(owner)
+  }
+
+  /** Keeps the hunks of the newest {@link MAX_SUBAGENT_CHANGE_DETAILS}
+   *  finished records that have changes; older ones keep counts only. */
+  private dropOldChangeHunks(): void {
+    // Newest recorded first; reversed before the stable sort so runs that
+    // finished in the same millisecond keep the later-recorded one.
+    const withHunks: FinishedSubAgentRecord[] = [...this.registry.finishedByType('local_agent')]
+      .reverse()
+      .filter(rec => rec.changes?.some(hasHunks))
+      .sort((a, b) => b.finishedAt - a.finishedAt)
+    for (const rec of withHunks.slice(MAX_SUBAGENT_CHANGE_DETAILS)) {
+      rec.changes = rec.changes!.map(withoutHunks)
+    }
   }
 
   // --- Live-run emit interception ---
@@ -1004,6 +1091,12 @@ export class SubAgentCoordinator {
         // Background Tasks drawer (UI-F1) — coalesced by scheduleSummary, so
         // a burst of stream events flushes at most once per SUMMARY_COALESCE_MS.
         this.host.scheduleSummary()
+      }
+    } else if (message.type === 'worker.turnDiffHistory') {
+      const full = message.payload.full
+      if (full) {
+        subAgentState.changes = full
+        this.notifyChanges(subAgentState.spawnerSessionId)
       }
     } else if (message.type === 'worker.completed') {
       // Mark only — the submitAndWait resolution path
@@ -1036,4 +1129,19 @@ export class SubAgentCoordinator {
   hasAbort(sessionId: string): boolean {
     return this.aborts.has(sessionId)
   }
+}
+
+/** What a change section is built from: a live run or a finished record. */
+type ChangeSource = Pick<
+  FinishedSubAgentRecord,
+  'taskId' | 'spawnerSessionId' | 'description' | 'agentType' | 'workDir' | 'changes' | 'startedAt'
+>
+
+function hasHunks(turn: TurnFullDiff): boolean {
+  return turn.files.some(file => file.hunks.length > 0)
+}
+
+/** A turn's changes with the hunks dropped and the counts kept. */
+function withoutHunks(turn: TurnFullDiff): TurnFullDiff {
+  return { ...turn, files: turn.files.map(file => ({ ...file, hunks: [] })) }
 }

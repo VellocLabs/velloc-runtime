@@ -853,6 +853,10 @@ export const es: Messages = {
   'diff.backToChanges': 'Volver a los cambios',
   'diff.noChangesYet': 'Aún no hay cambios.',
   'diff.wholeSession': 'Sesión completa',
+  'diff.thisSession': 'Esta sesión',
+  'diff.subAgents': 'Subagentes',
+  'diff.agentSectionAria': 'Cambios de {name}',
+  'diff.agentWorkDir': 'Directorio de trabajo: {path}',
   'diff.externalChangeWarning':
     'Incluye cambios realizados fuera de esta sesión (entre el turno {from} y el turno {to}).',
 
@@ -900,6 +904,7 @@ export const es: Messages = {
   'backgroundTasks.startedAt': 'iniciado {when}',
   'backgroundTasks.resumeDefaultText': 'Continúa.',
   'backgroundTasks.category.subagent': 'Subagentes',
+  'backgroundTasks.viaAgent': 'vía {name}',
   'backgroundTasks.category.shell': 'Shell',
   'backgroundTasks.category.superShell': 'Super Shell',
   'backgroundTasks.category.runJs': 'Super Edit',

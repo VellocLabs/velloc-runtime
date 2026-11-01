@@ -839,6 +839,10 @@ export const ko: Messages = {
   'diff.backToChanges': '변경 목록으로 돌아가기',
   'diff.noChangesYet': '아직 변경사항이 없습니다.',
   'diff.wholeSession': '전체 세션',
+  'diff.thisSession': '이 세션',
+  'diff.subAgents': '하위 에이전트',
+  'diff.agentSectionAria': '{name}의 변경사항',
+  'diff.agentWorkDir': '작업 디렉터리: {path}',
   'diff.externalChangeWarning':
     '이 세션 외부에서 변경된 내용이 포함되어 있습니다(턴 {from}과 턴 {to} 사이).',
 
@@ -883,6 +887,7 @@ export const ko: Messages = {
   'backgroundTasks.startedAt': '{when}에 시작',
   'backgroundTasks.resumeDefaultText': '계속하세요.',
   'backgroundTasks.category.subagent': '하위 에이전트',
+  'backgroundTasks.viaAgent': '{name}에서',
   'backgroundTasks.category.shell': 'Shell',
   'backgroundTasks.category.superShell': 'Super Shell',
   'backgroundTasks.category.runJs': 'Super Edit',

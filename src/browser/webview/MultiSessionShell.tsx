@@ -333,6 +333,7 @@ import {
   useContributionsSnapshot,
 } from './mods/modContributionsView'
 import type { ModsPressTopbarResult } from '../runtimeProtocol/modContributions'
+import type { TurnFileChange } from '../../utils/turnDiffs'
 import {
   getBootDiagnosticTraceId,
   installSessionTracer,
@@ -765,6 +766,31 @@ export function MultiSessionShell({
           sessionId: subAgentSessionId,
           requestId,
         })
+      })
+    },
+    [],
+  )
+
+  // Pending `task.turnDiff` requests (a sub-agent turn's hunks for the Diff
+  // pane, F-2), keyed by requestId; null on no reply within 10 s.
+  const agentTurnDiffWaitersRef = useRef<
+    Map<string, (files: TurnFileChange[] | null) => void>
+  >(new Map())
+  const loadAgentTurnDiffDetail = useCallback(
+    (taskId: string, turnIndex: number): Promise<TurnFileChange[] | null> => {
+      const channel = sessionChannelRef.current
+      if (!channel) return Promise.resolve(null)
+      const requestId = randomUuid()
+      return new Promise((resolve) => {
+        const waiters = agentTurnDiffWaitersRef.current
+        const timer = window.setTimeout(() => {
+          if (waiters.delete(requestId)) resolve(null)
+        }, 10_000)
+        waiters.set(requestId, (files) => {
+          window.clearTimeout(timer)
+          resolve(files)
+        })
+        channel.request('task.turnDiff', { sessionId: taskId, requestId, turnIndex })
       })
     },
     [],
@@ -1269,6 +1295,16 @@ export function MultiSessionShell({
         ;(globalThis as unknown as {
           __NEXUS_LAST_TASK_STOP__?: unknown
         }).__NEXUS_LAST_TASK_STOP__ = data.payload
+      }
+      if (data.type === 'task.turnDiff') {
+        const payload = data.payload as { requestId?: string; files?: TurnFileChange[] | null } | null
+        const requestId = payload?.requestId
+        const resolve = requestId ? agentTurnDiffWaitersRef.current.get(requestId) : undefined
+        if (requestId && resolve) {
+          agentTurnDiffWaitersRef.current.delete(requestId)
+          resolve(payload?.files ?? null)
+        }
+        return
       }
       if (data.type === 'task.transcript') {
         // Reply to a drawer detail-view request — resolve the pending promise
@@ -4724,6 +4760,8 @@ export function MultiSessionShell({
         turnDiffHistory={activeState.turnDiffHistory ?? null}
         loadTurnDiffDetail={loadTurnDiffDetail}
         requestTurnDiffHistory={requestTurnDiffHistory}
+        agentChanges={activeState.agentChanges}
+        loadAgentTurnDiffDetail={loadAgentTurnDiffDetail}
         onOpenFile={openFile}
       />,
     )

@@ -11,6 +11,7 @@ import {
   TASK_KIND_ICON,
   sessionTaskCardRows,
   taskRowLabelKey,
+  taskRowOriginName,
 } from "@/browser/webview/backgroundSubAgents";
 import { useBackgroundTasksContext } from "./background-tasks-context";
 
@@ -58,6 +59,8 @@ export function SessionTasksList() {
         const kind = row.type ?? "local_agent";
         const Icon = TASK_KIND_ICON[kind];
         const label = labelOf(row);
+        const originName = taskRowOriginName(row);
+        const origin = originName ? t("backgroundTasks.viaAgent", { name: originName }) : null;
         const isStopping = stopping.has(row.sessionId);
         // A fast call is one in-flight request: nothing to stop.
         const canStop = stopTask !== undefined && kind !== "local_fast";
@@ -65,7 +68,7 @@ export function SessionTasksList() {
           <div key={row.sessionId} className="flex min-w-0 items-center" data-testid="session-card-task" data-task-kind={kind}>
             <button
               type="button"
-              title={label}
+              title={origin ? `${label} · ${origin}` : label}
               disabled={!openTasksDrawer}
               data-testid="session-card-task-open"
               onClick={() => openTasksDrawer?.(row.sessionId)}
@@ -73,6 +76,11 @@ export function SessionTasksList() {
             >
               <Icon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
               <span className={cn("min-w-0 flex-1 truncate", kind === "local_bash" && "font-mono text-[12px]")}>{label}</span>
+              {origin ? (
+                <span data-testid="session-card-task-origin" className="min-w-0 max-w-[40%] shrink truncate text-muted-foreground text-[12px]">
+                  {origin}
+                </span>
+              ) : null}
               {kind === "local_timer" ? (
                 <span data-testid="session-card-task-countdown" className="shrink-0 text-muted-foreground text-[12px] tabular-nums">
                   {loopTimerCountdown(row.nextFireAt, now, t)}

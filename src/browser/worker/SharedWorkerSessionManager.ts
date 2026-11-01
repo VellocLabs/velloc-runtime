@@ -643,6 +643,18 @@ export class SharedWorkerSessionManager {
     handleTaskResume: (port, message) => this.handleTaskResume(port, message),
     handleTaskTranscript: (port, message) =>
       this.handleTaskTranscript(port, message),
+    handleTaskTurnDiff: (port, message) => {
+      const { sessionId, requestId, turnIndex } = message
+      port.postMessage({
+        type: 'task.turnDiff',
+        payload: {
+          sessionId,
+          requestId,
+          turnIndex,
+          files: this.subAgents.turnDiffFiles(sessionId, turnIndex),
+        },
+      })
+    },
     handleSessionTranscript: (port, message) =>
       this.handleSessionTranscript(port, message),
     handleRecoverBackground: message =>
@@ -985,6 +997,7 @@ export class SharedWorkerSessionManager {
       unsubscribeSessionList: port => this.portHub.unsubscribe(port, true, []),
       getSessionSnapshot: sessionId =>
         this.sessions.get(sessionId)?.worker.getSnapshot() ?? null,
+      getAgentChanges: sessionId => this.subAgents.changeSections(sessionId),
       buildSessionInfoList: () => this.buildSessionInfoList(),
       loadToolDetail: (sessionId, toolCallId) =>
         this.loadToolDetailForRuntime(sessionId, toolCallId),
@@ -1284,6 +1297,7 @@ export class SharedWorkerSessionManager {
       subAgentFinished: (record) => {
         modSlotFor(record.spawnerSessionId)?.agentComplete?.(agentCompletionOf(record))
       },
+      agentChangesChanged: ownerSessionId => this.publishAgentChanges(ownerSessionId),
     })
     this.taskControl = new TaskControlSurface(
       this.taskRegistry,
@@ -2271,6 +2285,19 @@ export class SharedWorkerSessionManager {
 
   /** `task.transcript` (Background Tasks drawer detail view): header info +
    *  transcript projection ride one async reply. */
+  /** Sends `ownerSessionId`'s sub-agent change sections to its ports, where the
+   *  hub files them on the session's diff topic (F-2). */
+  private publishAgentChanges(ownerSessionId: string): void {
+    const session = this.sessions.get(ownerSessionId)
+    if (!session) return
+    const message = {
+      type: 'worker.agentChanges',
+      sessionId: ownerSessionId,
+      payload: { agents: this.subAgents.changeSections(ownerSessionId) },
+    }
+    for (const port of session.ports) port.postMessage(message)
+  }
+
   private handleTaskTranscript(
     port: MessagePort,
     message: Extract<SharedWorkerInboundMessage, { type: 'task.transcript' }>,

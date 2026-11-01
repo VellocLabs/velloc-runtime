@@ -537,6 +537,7 @@ export class AgentRuntimeWorker {
       transcript: new AgentTranscriptService({
         emit: m => this.emit(m),
         isBusy: () => this.isBusy(),
+        includeHunks: () => payload.isSubAgent === true,
       }),
       projectBranch: undefined,
     }

@@ -156,7 +156,7 @@ import {
   type BrowserSlashCommand,
 } from '../../input/slashCommandCatalog'
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
-import { joinRuntimePath } from '../../utils/runtimePaths'
+import { dirnameRuntimePath, joinRuntimePath } from '../../utils/runtimePaths'
 import { NEXUS_INTERFACE_VERSION } from '../bridge/protocol/interfaceVersion.gen'
 import { getBuildTime } from '../../branding/buildInfo'
 import {
@@ -337,6 +337,13 @@ function hostedSkillToCommand(
     source: 'bundled',
     permittedTools: skill.toolNames,
   }
+}
+
+/** The project's session-storage dir: a sub-agent's path is `<project>/<parent>/subagents`. */
+function sessionStorageRootOf(sessionStoragePath: string, isSubAgent: boolean): string {
+  return isSubAgent
+    ? dirnameRuntimePath(dirnameRuntimePath(sessionStoragePath))
+    : sessionStoragePath
 }
 
 /**
@@ -608,13 +615,13 @@ export async function createBrowserRuntime(
     if (recorded === undefined) await conversationStore.updateSessionMetadata({ templateOwner: pluginTemplateOwner })
   }
 
-  // File-snapshot recorder (`fileSnapshots: true` templates) in the session dir. Main interactive
-  // runtime only (the store is single-writer); no storage path ⇒ no recorder and no WorkspaceDiff.
+  // File-snapshot recorder (`fileSnapshots: true` templates) in the session dir; one writer per
+  // store. A background sub-agent records into its own nested dir (F-6). No storage path ⇒ no
+  // recorder and no WorkspaceDiff.
   const fileSnapshotRecorder =
     templateWantsFileSnapshots(sessionTemplate?.config) &&
     typeof options.sessionStoragePath === 'string' &&
     options.sessionStoragePath.length > 0 &&
-    options.isSubAgent !== true &&
     options.bridgeTransport
       ? new FileSnapshotRecorder({
           store: new SessionSnapshotStore({
@@ -629,7 +636,7 @@ export async function createBrowserRuntime(
           fs: installedFs,
           // Never capture the session-storage tree itself (our own blobs/DB
           // would recurse; sibling sessions' transcripts aren't workspace).
-          excludeRoots: [options.sessionStoragePath],
+          excludeRoots: [sessionStorageRootOf(options.sessionStoragePath, options.isSubAgent === true)],
         })
       : undefined
   // Read the persisted transcript early for `onUiReady`; reused later as `initialMessages`. Skipped

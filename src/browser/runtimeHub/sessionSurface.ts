@@ -10,6 +10,7 @@ import type {
   AgentWorkerInboundMessage,
 } from '../worker/workerProtocol'
 import type { SessionCard } from '../worker/sharedWorkerProtocol'
+import type { NexusAgentChangeSection } from '../bridge/protocol/ui'
 import {
   parseTopic,
   topic,
@@ -97,6 +98,8 @@ export type SessionSurfaceHost = {
   subscribeSessionList(port: MessagePort): void
   unsubscribeSessionList(port: MessagePort): void
   getSessionSnapshot(sessionId: string): AgentRuntimeWorkerSnapshot | null
+  /** The session's sub-agent file-change sections: the diff topic's snapshot. */
+  getAgentChanges?(sessionId: string): NexusAgentChangeSection[]
   buildSessionInfoList(): SessionCard[]
   /** The tool-detail sidecar (cache, then disk across candidate sessions), or null. */
   loadToolDetail(sessionId: string, toolCallId: string): Promise<unknown>
@@ -147,6 +150,7 @@ export type ClassifiedMessage = {
 const STREAM_TYPES = new Set(['worker.stream'])
 const TRANSCRIPT_TYPES = new Set(['worker.messages'])
 const DIFF_TYPES = new Set([
+  'worker.agentChanges',
   'worker.turnDiffHistory',
   'worker.turnDiffDetail',
   'worker.sessionChangeFigures',
@@ -158,7 +162,7 @@ const SESSIONS_TYPES = new Set([
   'session.forked',
   'session.summary',
 ])
-const TASK_TYPES = new Set(['task.stopped', 'task.resumed', 'task.transcript'])
+const TASK_TYPES = new Set(['task.stopped', 'task.resumed', 'task.transcript', 'task.turnDiff'])
 const DIAG_STREAM_TYPES = new Set(['trace.record', 'worker.log'])
 
 /**
@@ -286,6 +290,8 @@ export const TASK_ACTION_SCOPES = {
   resume: 'control',
   transcript: 'observe',
   recoverBackground: 'observe',
+  // Reads a sub-agent's diff hunks, like the session's own getTurnDiffDetail.
+  turnDiff: 'observe',
 } as const satisfies Record<string, ScopeMode>
 
 // ---- what a session-bound connection may see -------------------------------------------
@@ -472,7 +478,13 @@ export function installSessionSurface(
     },
     async *snapshot(id) {
       const parsed = parseTopic(id)
-      if (parsed?.family !== 'session' || parsed.kind !== 'state') return
+      if (parsed?.family !== 'session') return
+      if (parsed.kind === 'diff') {
+        const agents = host.getAgentChanges?.(parsed.sessionId) ?? []
+        if (agents.length > 0) yield { type: 'worker.agentChanges', payload: { payload: { agents } } }
+        return
+      }
+      if (parsed.kind !== 'state') return
       const snapshot = host.getSessionSnapshot(parsed.sessionId)
       if (snapshot) yield { type: 'worker.state', payload: { payload: snapshot } }
     },

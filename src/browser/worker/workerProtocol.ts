@@ -16,7 +16,7 @@ import type {
 } from '../bridge/browserBridgeProtocol'
 import type { ToolSetName } from '../../toolkit/toolRegistry'
 import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
-import type { TurnDiffMeta, TurnFileChange } from '../../utils/turnDiffs'
+import type { TurnDiffMeta, TurnFileChange, TurnFullDiff } from '../../utils/turnDiffs'
 import type { SessionChangeFigures } from '../../utils/sessionChangeDigest'
 import type { TraceLoggerEntry } from '../../engine/turn/modelTrace'
 import type { RuleEdit } from '../../permissions/ruleUpdates'
@@ -788,6 +788,9 @@ export type AgentWorkerOutboundMessage =
       type: 'worker.turnDiffHistory'
       payload: {
         turns: TurnDiffMeta[]
+        /** A background sub-agent's history with its hunks; only its manager
+         *  interceptor reads it, so it never reaches a client. */
+        full?: TurnFullDiff[]
       }
     }
   | {

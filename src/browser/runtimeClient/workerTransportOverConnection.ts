@@ -191,8 +191,9 @@ export function createWorkerTransportOverConnection(
       sessionUnsubscribes.push(
         conn.subscribe(topic.session(sessionId, kind), event => {
           // The first snapshot of a subscription is skipped: the client drives
-          // its own open. A later one is a recovery.
-          if (event.form === 'snapshot') {
+          // its own open. A later one is a recovery. Sub-agent changes have no
+          // request of their own, so their snapshot always passes (F-2).
+          if (event.form === 'snapshot' && event.type !== 'worker.agentChanges') {
             if (event.resync) onSessionResync(conn, kind, event)
             return
           }
@@ -443,6 +444,7 @@ export function createWorkerTransportOverConnection(
         case 'task.stop':
         case 'task.resume':
         case 'task.transcript':
+        case 'task.turnDiff':
         case 'task.recoverBackground': {
           withConnection(conn => {
             holdManagerTopic(conn, topic.tasks(), false)

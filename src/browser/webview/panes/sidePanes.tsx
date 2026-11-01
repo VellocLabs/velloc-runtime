@@ -8,10 +8,10 @@ import type {
 } from '@/components/assistant-ui/right-panel-content-context'
 import type { BrowserToolCallDetailRecord } from '@/utils/toolCallDetails'
 import type { BundledSkillBodyResult } from '@/skillLibrary/builtinSkillBody'
-import type { LoadTurnDiffDetail } from '@/components/assistant-ui/TurnDiffSummary'
+import type { LoadAgentTurnDiffDetail, LoadTurnDiffDetail } from '@/components/assistant-ui/TurnDiffSummary'
 import type { TurnDiffMeta } from '@/utils/turnDiffs'
 
-import type { NexusTaskDetail, NexusTaskSummaryRow } from '../../bridge/protocol/ui'
+import type { NexusAgentChangeSection, NexusTaskDetail, NexusTaskSummaryRow } from '../../bridge/protocol/ui'
 import { BackgroundTasksDrawer } from '../BackgroundTasksDrawer'
 import { DiffPanel } from '../DiffPanel'
 import { useT } from '../i18n'
@@ -44,6 +44,8 @@ export type SidePaneContentProps = {
   turnDiffHistory?: TurnDiffMeta[] | null
   loadTurnDiffDetail?: LoadTurnDiffDetail
   requestTurnDiffHistory?: () => void
+  agentChanges?: readonly NexusAgentChangeSection[]
+  loadAgentTurnDiffDetail?: LoadAgentTurnDiffDetail
   onOpenFile?: (target: RightPanelFileTarget) => void
 }
 
@@ -96,6 +98,8 @@ export function SidePaneBody({
           turnDiffHistory={props.turnDiffHistory}
           loadTurnDiffDetail={props.loadTurnDiffDetail}
           requestTurnDiffHistory={props.requestTurnDiffHistory}
+          agentChanges={props.agentChanges}
+          loadAgentTurnDiffDetail={props.loadAgentTurnDiffDetail}
           onOpenFile={props.onOpenFile}
         />
       )

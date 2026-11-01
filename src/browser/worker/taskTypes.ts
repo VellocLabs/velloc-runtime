@@ -10,6 +10,7 @@ import type {
 import type { getActiveSidechainStore } from '../../utils/sidechainTranscripts'
 import type { NexusTaskTranscriptEntry } from '../bridge/protocol/ui'
 import type { HeadlessRunResult } from '../../routines/HeadlessRunner'
+import type { TurnFullDiff } from '../../utils/turnDiffs'
 import type {
   BackgroundShellRunState,
   FinishedBackgroundShellRecord,
@@ -75,6 +76,11 @@ export type SubAgentRunState = {
   routineOriginId?: string
   /** Worktree-cleanup callback (G7); invoked once on finalize/stop. */
   onCleanup?: () => void | Promise<void>
+  /** The directory the run edits in: its worktree, else its project root. */
+  workDir?: string
+  /** The run's file changes with hunks, as its worker last computed them;
+   *  shown under the parent session's Diff pane (F-2). */
+  changes?: TurnFullDiff[]
   /** A `worker.error` the emit interceptor observed mid-run; consumed by the
    *  single terminal authority (`runSubAgentTurn`) — first error wins. The
    *  emit path never finalizes. */
@@ -186,6 +192,10 @@ export type FinishedSubAgentRecord = {
   /** Routine origin of the finished run (see SubAgentRunState) — `AgentResume`
    *  re-stamps it so a resumed routine-originated sub-agent stays guarded. */
   routineOriginId?: string
+  /** See SubAgentRunState.workDir / .changes. `changes` of an older record
+   *  keeps its file list and counts but drops the hunks. */
+  workDir?: string
+  changes?: TurnFullDiff[]
 }
 
 /** Hard cap on background sub-agent nesting (a sub-agent spawning a sub-agent,
@@ -197,6 +207,9 @@ export const MAX_SUBAGENT_DEPTH = 3
  *  across a long session; `TaskOutput`/`AgentResume` on an evicted id degrade
  *  gracefully (the result was also delivered as a turn). */
 export const MAX_FINISHED_SUBAGENTS = 100
+
+/** Finished sub-agent records, newest first, whose `changes` keep their hunks. */
+export const MAX_SUBAGENT_CHANGE_DETAILS = 20
 
 /** Bound on the finished sub-agent tail carried in the sessions-summary
  *  broadcast (G2 human-facing) — recent completions are useful context, but the

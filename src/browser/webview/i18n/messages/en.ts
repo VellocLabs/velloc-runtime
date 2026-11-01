@@ -884,6 +884,10 @@ export const en = {
   'diff.noChangesYet': 'No changes yet.',
   // Label of the synthetic "Whole session" total row at the top of the history.
   'diff.wholeSession': 'Whole session',
+  'diff.thisSession': 'This session',
+  'diff.subAgents': 'Sub-agents',
+  'diff.agentSectionAria': 'Changes by {name}',
+  'diff.agentWorkDir': 'Working dir: {path}',
   // Warning on a Whole-session file whose changes are not all from this session.
   // {from}/{to} are turn numbers, NOT translated.
   'diff.externalChangeWarning':
@@ -934,6 +938,7 @@ export const en = {
   // "Super Shell" and "Super Edit" are coined tool labels — verbatim in every
   // locale (G-1).
   'backgroundTasks.category.subagent': 'Sub-agents',
+  'backgroundTasks.viaAgent': 'via {name}',
   'backgroundTasks.category.shell': 'Shell',
   'backgroundTasks.category.superShell': 'Super Shell',
   'backgroundTasks.category.runJs': 'Super Edit',

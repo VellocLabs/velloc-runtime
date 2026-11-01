@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import {
+  AgentChangesContext,
   SessionCardStack,
   SessionCardsPopoverContext,
   SessionChangeFiguresContext,
@@ -530,5 +531,39 @@ describe('SessionCardStack — popover (the chat too narrow to dock)', () => {
     render(tree({ popover: { open: true, onClose: () => {} } }))
     expect(screen.getByTestId('session-card-stack')).toBeTruthy()
     expect(screen.queryByTestId('session-card-popover')).toBeNull()
+  })
+})
+
+describe('SessionCardStack — sub-agent changes (F-2)', () => {
+  it('shows the Changes card for a sub-agent\'s changes alone, one line per sub-agent', () => {
+    const openDiff = vi.fn()
+    render(
+      createElement(
+        AgentChangesContext.Provider,
+        {
+          value: [
+            {
+              taskId: 'a1',
+              description: 'Refactor the parser',
+              status: 'success',
+              turns: [
+                {
+                  turnIndex: 1,
+                  promptPreview: 'go',
+                  stats: { touchedFiles: 1, plusLines: 9, minusLines: 2 },
+                  files: [{ filePath: '/w/parser.ts', fileWasCreated: false, plusLines: 9, minusLines: 2 }],
+                },
+              ],
+            },
+          ],
+        },
+        tree({ history: [], content: { openDiff } }),
+      ),
+    )
+    expect(cardIds()).toEqual(['session-card-changes'])
+    const lines = screen.getAllByTestId('session-card-changes-agent')
+    expect(lines.map(line => line.textContent)).toEqual(['Refactor the parser+9 −2'])
+    fireEvent.click(lines[0]!)
+    expect(openDiff).toHaveBeenCalledWith({ kind: 'turnHistory' })
   })
 })

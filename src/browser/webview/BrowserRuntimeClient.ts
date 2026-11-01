@@ -41,6 +41,7 @@ import {
 import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
 import type { BundledSkillBodyResult } from '../../skillLibrary/builtinSkillBody'
 import type { TurnDiffMeta, TurnFileChange } from '../../utils/turnDiffs'
+import type { NexusAgentChangeSection } from '../bridge/protocol/ui'
 import type { SessionChangeFigures } from '../../utils/sessionChangeDigest'
 import type { BrowserSessionMetadata } from '../../sessions/sessionStore'
 import {
@@ -58,8 +59,18 @@ import { isTraceLogUrlFlagEnabled } from '../../utils/traceLogGate'
  */
 export type WorkerStreamGapMessage = { type: 'worker.streamGap' }
 
+/** The session's sub-agent file-change sections, from its diff topic (F-2).
+ *  Sent by the runtime's manager, not by the session's worker. */
+export type AgentChangesMessage = {
+  type: 'worker.agentChanges'
+  payload: { agents: NexusAgentChangeSection[] }
+}
+
 /** Union delivered to client message listeners. */
-export type BrowserWorkerClientInboundMessage = AgentWorkerOutboundMessage | WorkerStreamGapMessage
+export type BrowserWorkerClientInboundMessage =
+  | AgentWorkerOutboundMessage
+  | WorkerStreamGapMessage
+  | AgentChangesMessage
 
 // Optional handler installed by `nexusBoot` when the model-upload
 // trace gate is on. Kept as a runtime reference (no static import of
@@ -341,6 +352,9 @@ export type BrowserRuntimeClientState = {
    * Read only while `turnDiffHistory` is null. `null` = none sent.
    */
   sessionChangeFigures?: SessionChangeFigures | null
+  /** File changes of the background sub-agents this session started, one
+   *  section per sub-agent, newest first (F-2). */
+  agentChanges?: NexusAgentChangeSection[]
   /**
    * The session's saved "next message" (a plain-text submit made while the
    * agent was busy, accumulated by the manager and broadcast in FULL). `null`
@@ -2273,6 +2287,11 @@ export class BrowserRuntimeClient {
           ...this.state,
           turnDiffHistory: message.payload.turns,
         }
+        this.emitState()
+        return
+
+      case 'worker.agentChanges':
+        this.state = { ...this.state, agentChanges: message.payload.agents }
         this.emitState()
         return
 

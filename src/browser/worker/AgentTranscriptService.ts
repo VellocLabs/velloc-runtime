@@ -82,6 +82,9 @@ export interface AgentTranscriptServiceHost {
   emit(message: AgentWorkerOutboundMessage): void
   /** Whether a turn is running; the change digest is stored only between turns. */
   isBusy?(): boolean
+  /** True for a background sub-agent: its history also carries the hunks, which
+   *  the manager keeps for the parent's Diff pane after this worker is gone. */
+  includeHunks?(): boolean
 }
 
 export class AgentTranscriptService {
@@ -380,7 +383,10 @@ export class AgentTranscriptService {
       this.computedMetas = metas
       this.host.emit({
         type: 'worker.turnDiffHistory',
-        payload: { turns: metas },
+        payload: {
+          turns: metas,
+          ...(this.host.includeHunks?.() ? { full: this.turnDiffHistoryFull } : {}),
+        },
       })
       void this.storeDigest(runtime, fingerprint, metas, settled && idle)
     }

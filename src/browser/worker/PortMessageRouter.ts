@@ -67,6 +67,10 @@ export interface PortMessageRouterHost {
     port: MessagePort,
     message: Extract<SharedWorkerInboundMessage, { type: 'task.transcript' }>,
   ): void
+  handleTaskTurnDiff(
+    port: MessagePort,
+    message: Extract<SharedWorkerInboundMessage, { type: 'task.turnDiff' }>,
+  ): void
   handleSessionTranscript(
     port: MessagePort,
     message: Extract<SharedWorkerInboundMessage, { type: 'session.transcript' }>,
@@ -247,6 +251,11 @@ export class PortMessageRouter {
         return
       }
 
+      case 'task.turnDiff': {
+        this.host.handleTaskTurnDiff(port, message)
+        return
+      }
+
       case 'session.transcript': {
         this.host.handleSessionTranscript(port, message)
         return
@@ -408,6 +417,13 @@ function validateInboundShape(
     case 'task.transcript':
     case 'task.recoverBackground':
       return isSafeSessionId(m.sessionId) ? null : badId('sessionId')
+
+    case 'task.turnDiff':
+      if (!isSafeSessionId(m.sessionId)) return badId('sessionId')
+      if (typeof m.turnIndex !== 'number' || !Number.isInteger(m.turnIndex) || m.turnIndex < 1) {
+        return badField('turnIndex', 'a positive integer')
+      }
+      return null
 
     case 'session.rename':
       if (!isSafeSessionId(m.sessionId)) return badId('sessionId')
