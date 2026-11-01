@@ -135,6 +135,8 @@ import {
 import { setTeamMessenger } from '../../team/teamMessenger'
 import { TeamCoordinator } from './TeamCoordinator'
 import { ChildSessionCoordinator } from './ChildSessionCoordinator'
+import { SessionFamilyCoordinator } from './SessionFamilyCoordinator'
+import { setSessionDirectory } from '../../sessions/sessionDirectory'
 import type { SpawnTeammateParams } from '../../team/teamTypes'
 import {
   raiseDesktopAlert,
@@ -668,6 +670,9 @@ export class SharedWorkerSessionManager {
   /** The start state of each session another session is starting, for the
    *  list projection; cleared once the first turn is queued, kept on failure. */
   private readonly startStates = new Map<string, ChildStartState>()
+  // The sessions of this runtime as a model sees them (F-36): list, describe,
+  // read, message, stop, archive, detach. Assigned in the constructor.
+  private readonly family: SessionFamilyCoordinator
   // The two coalesced UI feeds — `session.currentState` (topbar pill,
   // composer gate) + `session.summary` (sidebar rows, Background Tasks
   // drawer) — live on the SessionFeedPublisher, which
@@ -1473,6 +1478,43 @@ export class SharedWorkerSessionManager {
       shutdownMember: (args) => this.teams.shutdownMember(args),
       listMembers: (headSessionId) => this.teams.listTeammatesOf(headSessionId),
     })
+    this.family = new SessionFamilyCoordinator({
+      allSessionIds: () => {
+        const ids = new Set<string>([...this.sessions.keys(), ...this.fsSummaries.keys()])
+        return [...ids].filter(id => !isSubAgentSessionId(id))
+      },
+      summaryOf: sessionId => this.fsSummaries.peek(sessionId),
+      cardOf: sessionId => this.buildSessionInfo(sessionId),
+      readMeta: async sessionId => (await this.storage?.readSessionMeta(sessionId)) ?? null,
+      patchMeta: (sessionId, patch) => this.patchSessionRecord(sessionId, patch),
+      loadTranscript: async sessionId => (await this.storage?.load(sessionId)) ?? null,
+      isLive: sessionId => this.sessions.has(sessionId),
+      isBusy: sessionId => this.sessions.get(sessionId)?.worker.isBusy() ?? false,
+      isStarting: sessionId => this.startStates.get(sessionId)?.state === 'starting',
+      needsAnswer: sessionId => {
+        const session = this.sessions.get(sessionId)
+        return session ? snapshotNeedsAnswer(session.worker.getSnapshot()) : false
+      },
+      isDeliverySuppressed: sessionId => this.taskDelivery.isSuppressed(sessionId),
+      hasLiveWork: sessionId => this.hasLiveWorkFor(sessionId),
+      enqueueTurn: (sessionId, prompt) => {
+        const session = this.sessions.get(sessionId)
+        if (!session) return false
+        session.worker.enqueueSubmit(
+          {
+            type: 'worker.submitMessage',
+            sessionId,
+            payload: { prompt },
+          } as SessionWorkerInboundMessage,
+          SUBMIT_PRIORITY.mailbox,
+        )
+        return true
+      },
+      interrupt: sessionId => this.interruptSessionTurn(sessionId),
+      trustOf: sessionId => this.getSessionTrust(sessionId),
+      tracer: this.tracer,
+    })
+    setSessionDirectory(this.family)
     // Register the background-shell sink — the Bash tool (in-process, no manager
     // handle) notifies this leaf when a `run_in_background` launch returns a
     // shell_id, so the manager can mirror it as a `local_bash` task in the
@@ -1737,6 +1779,8 @@ export class SharedWorkerSessionManager {
         void this.reconcileLostTeammates(sessionId)
       }
     }
+    // Messages kept on the record while the session had no runtime (F-36).
+    void this.family.onSessionBound(sessionId).catch(() => {})
     this.feed.scheduleSummary()
     return persisted
   }
@@ -1835,6 +1879,7 @@ export class SharedWorkerSessionManager {
     // viewed-session turn-end hook: a lead the user is not looking at still
     // reaches its boundaries, and its reports must not wait for a click.
     this.teams.maybeDrainLeadInbox(sessionId)
+    this.family.maybeDrain(sessionId)
   }
 
   markToolStart(
@@ -1899,6 +1944,7 @@ export class SharedWorkerSessionManager {
     // Cross-session: deliver deferred background-task results on idle.
     this.maybeFlushTaskResults(sessionId)
     this.teams.maybeDrainLeadInbox(sessionId)
+    this.family.maybeDrain(sessionId)
   }
 
   /**
@@ -2000,6 +2046,7 @@ export class SharedWorkerSessionManager {
     // next turn at this idle boundary. Teammates drain via their own idle
     // loop; only the lead needs this hook (it has no TeammateRunner).
     this.teams.maybeDrainLeadInbox(sessionId)
+    this.family.maybeDrain(sessionId)
     // NOTE: background sub-agent result delivery is NOT hooked here —
     // maybeNotifyTurnEnd only fires for a session some client is VIEWING
     // (`SessionFeedHost.isViewed`), which would strand results for a parent
@@ -3086,6 +3133,7 @@ export class SharedWorkerSessionManager {
       this.sessionMeta.delete(sessionId)
       this.fsSummaries.delete(sessionId)
       this.startStates.delete(sessionId)
+      this.family.forget(sessionId)
       this.forgetSkillEvents(sessionId)
       // Written on every `session.open`; this is its only removal.
       this.panelOfSession.delete(sessionId)
@@ -3466,13 +3514,7 @@ export class SharedWorkerSessionManager {
       // the flag to suppress results that finalize during the stopping window.
       // Both clear on the next genuine user submit.
       // Suppression is now owned by TaskDeliveryQueue.
-      this.taskDelivery.suppressParent(sessionId)
-      this.stopRunningSubAgentsForParent(sessionId)
-      // Teammates too (team feature): Stop on a lead interrupts every
-      // teammate turn in flight. They are NOT shut down — a teammate
-      // outlives a turn and parks on its mailbox for the next brief; only
-      // Shutdown / deleting the lead removes one (`abortTeammatesOf`).
-      this.teams.interruptTeammatesOf(sessionId)
+      this.interruptCascade(sessionId)
     }
   }
 
@@ -3642,8 +3684,7 @@ export class SharedWorkerSessionManager {
   drainMidTurnTeamMessages(
     sessionId: string,
   ): Array<{ prompt: string; enqueuedAt: number }> {
-    return this.teams
-      .takeMidTurnMessages(sessionId)
+    return [...this.teams.takeMidTurnMessages(sessionId), ...this.family.takeMidTurn(sessionId)]
       .map(entry => ({ prompt: entry.prompt, enqueuedAt: entry.enqueuedAt }))
   }
 
@@ -3671,6 +3712,69 @@ export class SharedWorkerSessionManager {
    */
   private stopRunningSubAgentsForParent(spawnerSessionId: string): void {
     this.taskControl.stopRunningForParent(spawnerSessionId)
+  }
+
+  /** What a Stop on a session halts besides its own turn. */
+  private interruptCascade(sessionId: string): void {
+    this.taskDelivery.suppressParent(sessionId)
+    this.stopRunningSubAgentsForParent(sessionId)
+    // Teammates too (team feature): Stop on a lead interrupts every
+    // teammate turn in flight. They are NOT shut down — a teammate
+    // outlives a turn and parks on its mailbox for the next brief; only
+    // Shutdown / deleting the lead removes one (`abortTeammatesOf`).
+    this.teams.interruptTeammatesOf(sessionId)
+  }
+
+  /** Stop a session's turn the way the user's Stop does: the worker interrupt
+   *  and its cascade. Nothing without a live worker. */
+  private interruptSessionTurn(sessionId: string): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    void session.worker
+      .receiveFrame({ type: 'worker.interrupt', sessionId } as SessionWorkerInboundMessage)
+      .catch(() => {})
+    this.interruptCascade(sessionId)
+  }
+
+  /** A sub-agent, shell or other task the session started is still running. */
+  private hasLiveWorkFor(sessionId: string): boolean {
+    for (const task of this.taskRegistry.allLive()) {
+      if ((task as { spawnerSessionId?: string }).spawnerSessionId === sessionId) return true
+    }
+    return false
+  }
+
+  /**
+   * Merge `patch` into a session's record: through its live store when one
+   * is bound (that store owns the record), else on disk; then republish its
+   * summary.
+   */
+  private async patchSessionRecord(
+    sessionId: string,
+    patch: Partial<BrowserSessionMetadata>,
+  ): Promise<void> {
+    const live = this.sessions.get(sessionId)
+    if (live?.conversationStore) {
+      await live.worker.receiveFrame({
+        type: 'worker.updateSessionMetadata',
+        sessionId,
+        payload: { metadata: patch },
+      } as SessionWorkerInboundMessage)
+    } else {
+      const storage = this.storage
+      if (!storage) return
+      const current = await storage.readSessionMeta(sessionId)
+      if (!current) return
+      await storage.writeSessionMeta(sessionId, {
+        ...current,
+        metadata: { ...current.metadata, ...patch },
+      })
+    }
+    try {
+      await this.summaryRepo.refreshFsSummary(sessionId)
+    } catch {
+      // the next list scan picks it up
+    }
   }
 
   // ===========================================================================

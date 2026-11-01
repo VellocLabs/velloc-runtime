@@ -21,6 +21,8 @@ import type { DispatchContext } from '../../mods/modTypes'
 import { resolveChildProvider } from '../../team/sessionTrust'
 import { fsForContext } from '../../utils/fs/runtimeFs'
 import { normalizeMemberDisplayName } from '../../team/memberKey'
+import { getSessionDirectory, type DeliveryReceipt } from '../../sessions/sessionDirectory'
+import { sessionMessageReceipt } from './sessionFamilyTools'
 import {
   renderProviderCatalog,
   surveyProviderCatalog,
@@ -669,9 +671,18 @@ export async function sendTeamMessage(args: {
   withOtherTools?: boolean
   signal?: AbortSignal
   context?: DispatchContext
-}): Promise<{ sent: SessionSendResult; sentTo: string; sentIn: string | undefined }> {
+  /** Delivery to a session of this runtime, tried when no team knows the
+   *  recipient (F-36); its receipt is returned when it applied. */
+  sessionSend?: (to: string, text: string) => Promise<DeliveryReceipt>
+}): Promise<{
+  sent: SessionSendResult
+  sentTo: string
+  sentIn: string | undefined
+  receipt?: DeliveryReceipt
+}> {
   let sentTo = args.to.trim()
   let sentIn: string | undefined
+  let receipt: DeliveryReceipt | undefined
   const messenger = getTeamMessenger()
   if (!messenger) {
     return { sent: { isDelivered: false, reason: 'messaging is unavailable: not running inside the team runtime' }, sentTo, sentIn }
@@ -679,7 +690,7 @@ export async function sendTeamMessage(args: {
   const opts = args.options as unknown as TeamCtx
   const candidates = args.candidates ?? messageTeamCandidates(opts, undefined, args.options.sessionId)
   const from = opts.teammateName ?? 'team-lead'
-  const deliver = (e: { to: string; text: string }) => {
+  const deliver = async (e: { to: string; text: string }): Promise<SessionSendResult> => {
     sentTo = e.to
     const { team, result } = firstDelivering(candidates, team =>
       messenger.deliver({
@@ -691,9 +702,20 @@ export async function sendTeamMessage(args: {
       }),
     )
     sentIn = team
-    return result.ok
-      ? { isDelivered: true as const }
-      : { isDelivered: false as const, reason: result.reason ?? 'unknown error' }
+    if (result.ok) return { isDelivered: true }
+    // A recipient no team knows may be a session of this runtime: its parent,
+    // a family short name or a session id (F-36).
+    if (args.sessionSend && /^no member /.test(result.reason ?? '')) {
+      const r = await args.sessionSend(e.to, e.text)
+      if (r.reasonCode !== 'unknown') {
+        receipt = r
+        sentIn = undefined
+        return r.state !== 'undelivered' || r.reasonCode === 'no_turn'
+          ? { isDelivered: true }
+          : { isDelivered: false, reason: r.reason ?? 'refused' }
+      }
+    }
+    return { isDelivered: false, reason: result.reason ?? 'unknown error' }
   }
   const mods = args.options.mods
   const sendInput = {
@@ -705,8 +727,8 @@ export async function sendTeamMessage(args: {
   const sent =
     mods?.sessionSend && mods.hasSessionSendHooks?.() !== false
       ? await mods.sessionSend(sendInput, deliver, args.signal, args.context)
-      : deliver({ to: sendInput.to, text: sendInput.text })
-  return { sent, sentTo, sentIn }
+      : await deliver({ to: sendInput.to, text: sendInput.text })
+  return { sent, sentTo, sentIn, ...(receipt ? { receipt } : {}) }
 }
 
 export const MailTool: ToolContract<SendMessageInput, string> = declareTool({
@@ -719,7 +741,8 @@ export const MailTool: ToolContract<SendMessageInput, string> = declareTool({
       to: {
         type: 'string',
         description:
-          'Recipient: a teammate\'s name exactly as it was spawned (any language), or "team-lead" to message the lead.',
+          'Recipient: a teammate\'s name exactly as it was spawned (any language), or "team-lead" to message the lead. ' +
+          'Also a session of this runtime: "parent" for the session this one was started from, the short name of a session in this session\'s family (as ListSessions lists it), or a session id.',
       },
       message: { type: 'string', description: 'The message body. A recipient that is working sees it between its tool calls; an idle one gets it as its next turn.' },
       team: {
@@ -731,7 +754,8 @@ export const MailTool: ToolContract<SendMessageInput, string> = declareTool({
     required: ['to', 'message'],
   },
   description: async () =>
-    'Send a message to a teammate (by name) or to "team-lead". Your plain text is NOT visible to other agents — use this tool. Messages from teammates reach you automatically — between your tool calls while you work, or as a new turn when you are idle; you never check an inbox. When relaying a teammate message to the user, do not quote it — it is already rendered.',
+    'Send a message to a teammate (by name), to "team-lead", or to another session of this runtime ("parent", a family short name, or a session id). Your plain text is NOT visible to other agents — use this tool. Messages from teammates reach you automatically — between your tool calls while you work, or as a new turn when you are idle; you never check an inbox. When relaying a teammate message to the user, do not quote it — it is already rendered. ' +
+    'A message to a session ends with its delivery state: delivered (the session starts a turn on it), queued (held for a busy or halted session), or undelivered with a reason code; reason_code no_turn means it is kept and may still be picked up, so do not resend it. The message_id is for tracking only.',
   parallelSafe: () => true,
   readsOnly: () => false,
   async checkInput(input: SendMessageInput): Promise<InputCheck> {
@@ -761,7 +785,9 @@ export const MailTool: ToolContract<SendMessageInput, string> = declareTool({
         'No team context: pass `team` (you are the lead) or call this from within a teammate session.',
       )
     }
-    const { sent, sentTo, sentIn } = await sendTeamMessage({
+    const directory = getSessionDirectory()
+    const callerSessionId = context.options.sessionId
+    const { sent, sentTo, sentIn, receipt } = await sendTeamMessage({
       options: context.options,
       candidates,
       to: input.to ?? '',
@@ -769,7 +795,11 @@ export const MailTool: ToolContract<SendMessageInput, string> = declareTool({
       origin: { kind: 'model' },
       withOtherTools: callsOtherTools(invokingRow),
       signal: context.cancelSource.signal,
+      ...(directory && callerSessionId
+        ? { sessionSend: (to: string, text: string) => directory.send(callerSessionId, to, text) }
+        : {}),
     })
+    if (receipt) return sessionMessageReceipt(receipt, sentTo)
     if (!sent.isDelivered) {
       return toolFailure(`Message not delivered: ${sent.reason}.`)
     }

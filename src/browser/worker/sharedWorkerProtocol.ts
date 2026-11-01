@@ -224,6 +224,8 @@ export type SessionCard = {
   starting?: boolean
   /** Another session started this one and it never started; the reason. (F-36) */
   startFailed?: string
+  /** Out of the active list. (F-36) */
+  archived?: boolean
   /** True when a teammate was torn down and retained as a read-only transcript. */
   shutdown?: boolean
   shutdownAt?: number

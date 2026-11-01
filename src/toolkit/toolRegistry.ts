@@ -52,6 +52,7 @@ import {
 } from './builtin/teamTools'
 import { SpawnTeammateTool } from './builtin/spawnTeammate'
 import { SpawnSessionTool } from './builtin/spawnSession'
+import { SESSION_FAMILY_TOOLS } from './builtin/sessionFamilyTools'
 import { A2UI_TOOLS } from './builtin/a2ui/A2uiTools'
 import { buildHostTools } from './builtin/host/hostTools'
 
@@ -157,8 +158,9 @@ const TEAM_TOOLS: ToolContractList = [
   SpawnTeammateTool,
 ]
 
-// Child sessions: a full session started under this one (F-36).
-const CHILD_SESSION_TOOLS: ToolContractList = [SpawnSessionTool]
+// Child sessions (F-36): start one, and the sessions of this runtime as
+// the model sees them.
+const CHILD_SESSION_TOOLS: ToolContractList = [SpawnSessionTool, ...SESSION_FAMILY_TOOLS]
 
 // Every script-side tool, for manifests that ask for tools by name only.
 const NAMED_TOOL_POOL = firstOfEachName([

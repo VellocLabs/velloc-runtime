@@ -43,6 +43,7 @@ import { loadSystemPromptHolders } from '../prompting/systemPromptLoader'
 import type { ToolContract, ToolContractList } from '../toolkit/toolContract'
 import { BROWSER_SYSTEM_PROMPT_CATALOG } from '../toolkit/builtin/glic/browserSkillCatalog'
 import { expandGroups, TOOL_GROUPS } from '../toolkit/builtin/toolGroups'
+import { SESSION_FAMILY_TOOL_NAMES } from '../toolkit/builtin/sessionFamilyTools'
 import { CLI_AGENT_IDS } from '../terminal/cliAgents'
 
 // intro / tone_and_style / final_reminder moved into agent/includes/ (as
@@ -1791,9 +1792,10 @@ describe('templateRegistry — tool resolution helpers', () => {
     // Absent from `agent` on purpose: `exec` (subsumed by agent's real Bash), `SuperEdit` (agent edits through hosted
     // Write/Edit), `SuperShell` (registered only by a manifest listing `supershell`; none is bundled), and
     // `ContinueInCode` (a chat's offer to move into a Code session; meaningless elsewhere).
-    // `SpawnSession` (child sessions, F-36) is offered by the beta manifests
-    // (`template-beta.md`) of `code` and `agent` only; stable lists it nowhere.
-    const agentExempt = new Set(['Exec', 'SuperEdit', 'SuperShell', 'ContinueInCode', 'SpawnSession'])
+    // `SpawnSession` and the session-family tools (`sessions` group, F-36)
+    // are offered by the beta manifests of `code` and `agent` only; stable
+    // lists the group nowhere.
+    const agentExempt = new Set(['Exec', 'SuperEdit', 'SuperShell', 'ContinueInCode', 'SpawnSession', ...SESSION_FAMILY_TOOL_NAMES])
     for (const tool of allBundledTools('default')) {
       if (agentExempt.has(tool.name)) continue
       const isDeferredSkillTool =

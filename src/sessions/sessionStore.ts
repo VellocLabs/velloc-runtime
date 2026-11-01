@@ -55,6 +55,7 @@ import {
   type SessionLineageKind,
   type SessionOrigin,
 } from './sessionLineage'
+import type { PeerInboxEntry } from './sessionFamilyRules'
 
 function createFallbackUUID(): string {
   return `conversation-${Math.random().toString(16).slice(2)}-${Date.now().toString(16)}`
@@ -112,6 +113,11 @@ export type BrowserSessionMetadata = Record<string, unknown> & {
   /** Set when another session started this one and it never started: the
    *  reason, kept for the row and the detail view. (F-36) */
   startFailed?: ChildStartFailure
+  /** Out of the active list, by a person or a model; nothing else changes. (F-36) */
+  archived?: boolean
+  archivedAt?: number
+  /** Messages sent to this session while it had no runtime to take them. (F-36) */
+  peerInbox?: PeerInboxEntry[]
   spawnerSessionId?: string
   teammateName?: string
   shutdown?: boolean
@@ -158,6 +164,8 @@ export type BrowserSessionSummary = {
   detached?: boolean
   /** Started by another session and never started. (F-36) */
   startFailed?: ChildStartFailure
+  /** Out of the active list. (F-36) */
+  archived?: boolean
   shutdown?: boolean
   shutdownAt?: number
   composerDraft?: string
@@ -757,6 +765,7 @@ export function buildSessionSummaryFromMetadata(
     ...(familyName !== undefined ? { familyName } : {}),
     ...(detached ? { detached: true } : {}),
     ...(startFailed ? { startFailed } : {}),
+    ...(metadata?.archived === true ? { archived: true } : {}),
     ...(metadata?.shutdown === true ? { shutdown: true } : {}),
     ...(typeof metadata?.shutdownAt === 'number' ? { shutdownAt: metadata.shutdownAt } : {}),
     ...(composerDraft !== undefined ? { composerDraft } : {}),

@@ -105,6 +105,7 @@ export function projectSessionInfo(args: {
     ...(fs?.detached ? { detached: true } : {}),
     ...(start?.state === 'starting' ? { starting: true } : {}),
     ...(startFailed ? { startFailed } : {}),
+    ...(fs?.archived ? { archived: true } : {}),
     ...(shutdown ? { shutdown: true } : {}),
     ...(typeof shutdownAt === 'number' ? { shutdownAt } : {}),
     ...(previewText ? { previewText } : {}),
