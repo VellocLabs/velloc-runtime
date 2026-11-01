@@ -220,6 +220,10 @@ export type SessionCard = {
   familyName?: string
   /** Had a parent and was taken out from under it. (F-36) */
   detached?: boolean
+  /** Another session is starting this one: registered, no first turn yet. (F-36) */
+  starting?: boolean
+  /** Another session started this one and it never started; the reason. (F-36) */
+  startFailed?: string
   /** True when a teammate was torn down and retained as a read-only transcript. */
   shutdown?: boolean
   shutdownAt?: number

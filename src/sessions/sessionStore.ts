@@ -50,6 +50,8 @@ import {
 import {
   resolveLineage,
   type ChildReport,
+  type ChildStartFailure,
+  isChildStartFailure,
   type SessionLineageKind,
   type SessionOrigin,
 } from './sessionLineage'
@@ -107,6 +109,9 @@ export type BrowserSessionMetadata = Record<string, unknown> & {
   /** Turns this session's model has taken on its children's reports alone
    *  since a person last wrote to it. (F-36) */
   autoWakeCount?: number
+  /** Set when another session started this one and it never started: the
+   *  reason, kept for the row and the detail view. (F-36) */
+  startFailed?: ChildStartFailure
   spawnerSessionId?: string
   teammateName?: string
   shutdown?: boolean
@@ -151,6 +156,8 @@ export type BrowserSessionSummary = {
   familyName?: string
   /** Had a parent and was taken out from under it. (F-36) */
   detached?: boolean
+  /** Started by another session and never started. (F-36) */
+  startFailed?: ChildStartFailure
   shutdown?: boolean
   shutdownAt?: number
   composerDraft?: string
@@ -732,6 +739,7 @@ export function buildSessionSummaryFromMetadata(
   const detached =
     metadata?.lineageDetached === true &&
     (metadata.spawnedFrom !== undefined || spawnerSessionId !== undefined)
+  const startFailed = isChildStartFailure(metadata?.startFailed) ? metadata.startFailed : undefined
 
   const label = firstPrompt || previewText
   return {
@@ -748,6 +756,7 @@ export function buildSessionSummaryFromMetadata(
     ...(lineage ? { parentSessionId: lineage.sessionId, lineageKind: lineage.kind } : {}),
     ...(familyName !== undefined ? { familyName } : {}),
     ...(detached ? { detached: true } : {}),
+    ...(startFailed ? { startFailed } : {}),
     ...(metadata?.shutdown === true ? { shutdown: true } : {}),
     ...(typeof metadata?.shutdownAt === 'number' ? { shutdownAt: metadata.shutdownAt } : {}),
     ...(composerDraft !== undefined ? { composerDraft } : {}),
@@ -1087,6 +1096,90 @@ export function resolvePromptCutForToolCall(
   return null
 }
 
+/**
+ * The tool calls of the last assistant message at or before `cutUuid` that the
+ * transcript never answers: not within the prefix, and not in the answer rows
+ * that an inclusive cut would carry (`takeAnswersToOpenToolCalls`). Empty when
+ * the cut is clean or `cutUuid` is not a message. (F-36)
+ */
+export function openToolCallsAtCut(
+  sourceEntries: readonly BrowserTranscriptEntry[],
+  cutUuid: string,
+): string[] {
+  const prefix: BrowserTranscriptMessage[] = []
+  let cutIndex = -1
+  for (const [index, entry] of sourceEntries.entries()) {
+    if (!isMessageLike(entry)) continue
+    const message = entry as BrowserTranscriptMessage
+    prefix.push(message)
+    if (message.uuid === cutUuid) {
+      cutIndex = index
+      break
+    }
+  }
+  if (cutIndex < 0) return []
+  const answered = new Set<string>()
+  for (const taken of takeAnswersToOpenToolCalls(prefix, sourceEntries, cutIndex)) {
+    for (const id of toolPartIds(taken, 'result')) answered.add(id)
+  }
+  const open: string[] = []
+  for (let i = prefix.length - 1; i >= 0; i--) {
+    const message = prefix[i]
+    if (message?.type === MSG_TYPE_ASSISTANT) {
+      for (const id of toolPartIds(message, 'call')) {
+        if (!answered.has(id)) open.push(id)
+      }
+      break
+    }
+    for (const id of toolPartIds(message, 'result')) answered.add(id)
+  }
+  return open
+}
+
+export type ModelForkCut =
+  | { ok: true; cutUuid: string }
+  | { ok: false; reason: string }
+
+/**
+ * Where a model's own fork of its session is cut: inclusive at the current end
+ * of the transcript. The assistant message that carries the fork call itself
+ * is still unanswered on disk, so when the end has open tool calls the cut
+ * moves to the message before that assistant message, once. A cut that still
+ * ends in an unanswered tool call is refused, before anything is created. (F-36)
+ */
+export function modelForkCut(sourceEntries: readonly BrowserTranscriptEntry[]): ModelForkCut {
+  const messages = sourceEntries.filter(
+    (entry): entry is BrowserTranscriptMessage =>
+      isMessageLike(entry) && typeof (entry as BrowserTranscriptMessage).uuid === 'string',
+  )
+  if (messages.length === 0) {
+    return { ok: false, reason: 'the session has no saved messages to fork.' }
+  }
+  const last = messages[messages.length - 1]!
+  if (openToolCallsAtCut(sourceEntries, last.uuid).length === 0) {
+    return { ok: true, cutUuid: last.uuid }
+  }
+  let lastAssistant = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.type === MSG_TYPE_ASSISTANT) {
+      lastAssistant = i
+      break
+    }
+  }
+  const before = lastAssistant > 0 ? messages[lastAssistant - 1] : undefined
+  if (!before) {
+    return { ok: false, reason: 'the only message before the current turn is an unanswered tool call.' }
+  }
+  const stillOpen = openToolCallsAtCut(sourceEntries, before.uuid)
+  if (stillOpen.length > 0) {
+    return {
+      ok: false,
+      reason: `the transcript ends in a tool call with no recorded answer (${stillOpen.join(', ')}); a fork would start from an incomplete exchange.`,
+    }
+  }
+  return { ok: true, cutUuid: before.uuid }
+}
+
 // Copies the transcript up to `cutUuid` (the whole conversation when it is
 // undefined) into a new session. Returns null when the cut message is not
 // found.
@@ -1176,7 +1269,7 @@ export function buildForkedTranscriptEntries(
       forkedMessages.map(stripTranscriptFields),
       parentUuid,
     ),
-    ...(fromSessionId ? { forkedFromSessionId: fromSessionId } : {}),
+    ...(fromSessionId ? { forkedFromSessionId: fromSessionId, forkedAtMessageUuid: cut } : {}),
     ...(composerDraft
       ? { composerDraft, lastComposerEditAt: now }
       : {}),

@@ -3494,6 +3494,8 @@ export function MultiSessionShell({
         lineageKind: s.lineageKind,
         familyName: s.familyName,
         detached: s.detached,
+        starting: s.starting,
+        startFailed: s.startFailed,
         shutdown: s.shutdown,
         shutdownAt: s.shutdownAt,
         previewText: s.previewText,

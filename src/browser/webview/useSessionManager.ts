@@ -63,6 +63,9 @@ export type LocalSessionEntry = {
   lineageKind?: SessionLineageKind
   familyName?: string
   detached?: boolean
+  /** Another session is starting this one / started it and it never started (F-36). */
+  starting?: boolean
+  startFailed?: string
   shutdown?: boolean
   shutdownAt?: number
   /**
@@ -104,6 +107,8 @@ export type RemoteSessionSummary = {
   lineageKind?: SessionLineageKind
   familyName?: string
   detached?: boolean
+  starting?: boolean
+  startFailed?: string
   shutdown?: boolean
   shutdownAt?: number
   previewText?: string
@@ -251,6 +256,8 @@ function entryFromSummary(
     ...(summary.lineageKind ? { lineageKind: summary.lineageKind } : {}),
     ...(summary.familyName ? { familyName: summary.familyName } : {}),
     ...(summary.detached ? { detached: true } : {}),
+    ...(summary.starting ? { starting: true } : {}),
+    ...(summary.startFailed ? { startFailed: summary.startFailed } : {}),
     ...(summary.shutdown ? { shutdown: true } : {}),
     ...(typeof summary.shutdownAt === 'number'
       ? { shutdownAt: summary.shutdownAt }
@@ -404,6 +411,10 @@ export function mergeSessions(
         ? { familyName: summary.familyName ?? local?.familyName }
         : {}),
       ...((summary.detached ?? local?.detached) ? { detached: true } : {}),
+      // The start state is the runtime's alone: a summary without it means
+      // the session has started (or never was starting).
+      ...(summary.starting ? { starting: true } : {}),
+      ...(summary.startFailed ? { startFailed: summary.startFailed } : {}),
       ...((summary.shutdown ?? local?.shutdown)
         ? { shutdown: summary.shutdown ?? local?.shutdown }
         : {}),

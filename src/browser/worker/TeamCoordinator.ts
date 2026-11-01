@@ -17,6 +17,7 @@ import { installProcessFs } from '../../utils/fs/runtimeFs'
 import { setActiveSidechainStore } from '../../utils/sidechainTranscripts'
 import { teammateSpawnTimeFromId } from '../../utils/sidechainStoragePaths'
 import type { OwnerRuntimeGlobals } from './taskTypes'
+import { deriveChildInitPayload } from './childInitPayload'
 import type { SpawnTeammateParams } from '../../team/teamTypes'
 import { implicitTeamIdFor } from '../../team/teamTypes'
 import type {
@@ -698,59 +699,29 @@ export class TeamCoordinator {
     // inherit the lead's.
     const boundTemplateType = params.templateType ?? parent?.templateType
 
+    // The shared derivation (binding from the lead, provider stamping, the
+    // lead-prepared directory else the lead's own worktree, cleared trace
+    // fields, inherited routine provenance); the read boundary is deliberately
+    // NOT `isSubAgent`, which turns off file snapshots and rewrites maxTurns.
     const initPayload: AgentRuntimeWorkerInitPayload = {
-      ...template,
-      sessionId,
+      ...deriveChildInitPayload(template, {
+        sessionId,
+        parent,
+        projectRoot: boundProjectRoot,
+        templateType: boundTemplateType,
+        providerId: params.providerId,
+        model,
+        thinkingTier: params.thinkingTier,
+        cwd: params.cwd,
+        untrustedReadRoot: params.untrustedReadRoot,
+        routineOriginId: params.routineOriginId,
+      }),
       isTeammate: true,
       teamName,
       teammateName,
       // Identity: nests the storage AND persists into the session meta at
       // bind, which is what hides the child from the sidebar after a reload.
       ...(spawnerSessionId ? { spawnerSessionId } : {}),
-      // With a live lead these OVERRIDE the template's (possibly foreign)
-      // values — `undefined` included, so an unbound lead's teammate does not
-      // inherit another session's folder or type.
-      ...(parent
-        ? { projectRoot: boundProjectRoot, templateType: boundTemplateType }
-        : {
-            ...(boundProjectRoot ? { projectRoot: boundProjectRoot } : {}),
-            ...(boundTemplateType ? { templateType: boundTemplateType } : {}),
-          }),
-      // Security: the provider is stamped whenever resolved (it is what isolation was decided for);
-      // without a model, the template's model is CLEARED, not inherited.
-      ...(params.providerId
-        ? {
-            userSpecifiedProviderId: params.providerId,
-            userSpecifiedModel: model,
-            ...(params.thinkingTier
-              ? { userSpecifiedThinkingTier: params.thinkingTier }
-              : {}),
-          }
-        : model
-          ? { userSpecifiedModel: model }
-          : {}),
-      // The lead-prepared directory, else — for a lead that is itself
-      // worktree-isolated — the lead's own working dir, so the child does not
-      // land in the template's `cwd` (another session's) either.
-      ...(params.cwd
-        ? { cwdOverride: params.cwd }
-        : parent?.cwd
-          ? { cwdOverride: parent.cwd }
-          : {}),
-      // The read boundary. Deliberately NOT `isSubAgent` — that flag turns
-      // off file snapshots and rewrites maxTurns, neither of which a real
-      // child session wants.
-      ...(params.untrustedReadRoot
-        ? { untrustedReadRoot: params.untrustedReadRoot }
-        : {}),
-      // Own trace lineage; not a routine run.
-      traceId: undefined,
-      isHeadless: undefined,
-      routineId: undefined,
-      // Routine PROVENANCE is inherited though — a teammate spawned by
-      // routine-driven work is still routine-driven, and the recursion guard
-      // reads this (same reasoning as SubAgentCoordinator.spawn).
-      routineOriginId: params.routineOriginId,
     }
 
     const teammateBackend = this.host.prepareWorkerStorage(

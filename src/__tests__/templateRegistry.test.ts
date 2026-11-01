@@ -39,6 +39,8 @@ import {
   filterLaunchers,
 } from '../browser/webview/threadLaunchers'
 import { allBundledTools } from '../toolkit/toolRegistry'
+import { loadSystemPromptHolders } from '../prompting/systemPromptLoader'
+import type { ToolContract, ToolContractList } from '../toolkit/toolContract'
 import { BROWSER_SYSTEM_PROMPT_CATALOG } from '../toolkit/builtin/glic/browserSkillCatalog'
 import { expandGroups, TOOL_GROUPS } from '../toolkit/builtin/toolGroups'
 import { CLI_AGENT_IDS } from '../terminal/cliAgents'
@@ -1039,34 +1041,77 @@ describe('templateRegistry — beta variants (index-beta.md, template-beta.md)',
     expect(getTemplate('acme:variant')!.config.tools).toEqual(['read', 'shell'])
   })
 
-  it('no bundled type ships a beta manifest: beta serves every template.md as-is', () => {
-    // The code/template-beta.md SuperShell trial was retired (SuperShell itself
-    // stays registered-capable for any manifest that lists `supershell`), so
-    // every bundled type — code included — resolves to the SAME manifest on
-    // both channels. Adding a bundled template-beta.md again is deliberate:
-    // update this test, and add its -beta goldens and e2e cases.
+  it('only code and agent ship a beta manifest, and it adds child sessions alone (F-36)', () => {
+    // A bundled template-beta.md is deliberate: it carries its own -beta
+    // goldens and e2e cases. Today `code` and `agent` have one, offering the
+    // `sessions` tool group (`SpawnSession`) and the `child_sessions` holder;
+    // every other bundled type resolves to the SAME manifest on both channels.
     __setTemplateChannelForTest('beta')
     // A CLI session type (`kind: terminal`, F-34) has no manifest on either channel.
     const types = getLauncherCatalog()
       .filter(m => m.kind !== 'terminal')
       .map(m => m.type)
     expect(types).toContain('code')
-    const beta = new Map(types.map(t => [t, getTemplate(t)]))
+    expect(types).toContain('agent')
+    const beta = new Map(types.map(t => [t, getTemplate(t)!]))
     __setTemplateChannelForTest('stable')
     for (const type of types) {
       expect(beta.get(type), `${type} on beta`).toBeDefined()
-      expect(beta.get(type), `${type} has a bundled beta manifest`).toBe(getTemplate(type))
+      const stable = getTemplate(type)!
+      if (type !== 'code' && type !== 'agent') {
+        expect(beta.get(type), `${type} has a bundled beta manifest`).toBe(stable)
+        continue
+      }
+      const variant = beta.get(type)!
+      expect(variant, `${type} has no beta manifest`).not.toBe(stable)
+      // The tool set differs by the `sessions` group only.
+      expect(variant.config.tools).toEqual([...(stable.config.tools ?? []), 'sessions'])
+      expect(variant.config.deferredTools).toEqual(stable.config.deferredTools)
+      expect(variant.config.sealedTools ?? []).toEqual(stable.config.sealedTools ?? [])
+      expect(expandGroups(variant.config.tools ?? [])).toContain('SpawnSession')
+      expect(expandGroups(stable.config.tools ?? [])).not.toContain('SpawnSession')
+      // The prompt differs by the `child_sessions` holder only, placed right
+      // after the type's tools block.
+      const holdersOf = (t: typeof variant) => t.prompt.filter(e => e.kind === 'holder').map(e => e.name)
+      const betaHolders = holdersOf(variant)
+      const stableHolders = holdersOf(stable)
+      expect(betaHolders.filter(h => h !== 'child_sessions')).toEqual(stableHolders)
+      expect(stableHolders).not.toContain('child_sessions')
+      expect(betaHolders[betaHolders.indexOf('child_sessions') - 1]).toBe(`${type}_using_your_tools`)
     }
-    // code on beta is stable's: the raw shell eager, no SuperShell, stable's
-    // tool block.
+    // code on beta keeps stable's shell: the raw shell eager, no SuperShell.
     const code = beta.get('code')!
     const eager = expandGroups(code.config.tools ?? [])
     expect(eager).toContain('Bash')
     expect(eager).not.toContain('SuperShell')
-    expect(code.config.sealedTools ?? []).toEqual([])
-    const holders = code.prompt.filter(e => e.kind === 'holder').map(e => e.name)
-    expect(holders).toContain('code_using_your_tools')
-    expect(holders).not.toContain('code_supershell_tools')
+  })
+
+  it('the child_sessions holder gates every line on the SpawnSession tool', () => {
+    // Rendered only where the tool is offered: a deny rule that removes the
+    // tool for a turn removes the section with it.
+    const prose = getHolderProse('child_sessions', { type: 'code' })!
+    for (const line of prose.split(/\r?\n/)) {
+      expect(line.startsWith('{{IF_TOOL:SpawnSession}}'), line).toBe(true)
+    }
+    expect(prose).toContain('# Child sessions')
+    expect(prose).toContain('`SpawnSession`')
+    expect(prose).toContain('`Agent`')
+  })
+
+  it('renders the child-sessions section only when SpawnSession is offered, and never as an empty part', async () => {
+    __setTemplateChannelForTest('beta')
+    const stub = (name: string) => ({ name }) as unknown as ToolContract
+    const tools = [stub('Read'), stub('SpawnSession')] as unknown as ToolContractList
+    const offered = await loadSystemPromptHolders({ tools, visibleToolNames: ['Read', 'SpawnSession'], templateType: 'code' })
+    const section = offered.find(part => part.startsWith('# Child sessions'))
+    expect(section).toBeDefined()
+    expect(section).toContain('`SpawnSession`')
+    expect(section).not.toContain('{{IF_TOOL')
+    // A deny rule for the turn: the tool is in the set but not visible.
+    const withheld = await loadSystemPromptHolders({ tools, visibleToolNames: ['Read'], templateType: 'code' })
+    expect(withheld.some(part => part.includes('Child sessions'))).toBe(false)
+    expect(withheld.some(part => part.trim() === '')).toBe(false)
+    expect(withheld).toHaveLength(offered.length - 1)
   })
 
   it('a plugin template.md with no beta manifest replaces the beta one too', async () => {
@@ -1746,7 +1791,9 @@ describe('templateRegistry — tool resolution helpers', () => {
     // Absent from `agent` on purpose: `exec` (subsumed by agent's real Bash), `SuperEdit` (agent edits through hosted
     // Write/Edit), `SuperShell` (registered only by a manifest listing `supershell`; none is bundled), and
     // `ContinueInCode` (a chat's offer to move into a Code session; meaningless elsewhere).
-    const agentExempt = new Set(['Exec', 'SuperEdit', 'SuperShell', 'ContinueInCode'])
+    // `SpawnSession` (child sessions, F-36) is offered by the beta manifests
+    // (`template-beta.md`) of `code` and `agent` only; stable lists it nowhere.
+    const agentExempt = new Set(['Exec', 'SuperEdit', 'SuperShell', 'ContinueInCode', 'SpawnSession'])
     for (const tool of allBundledTools('default')) {
       if (agentExempt.has(tool.name)) continue
       const isDeferredSkillTool =

@@ -37,6 +37,8 @@ export const fr: Messages = {
   'sidebar.pinnedSection': 'Épinglées',
   'sidebar.renameInputAria': 'Champ de renommage : {title}',
   'sidebar.needsAnswer': 'Attend votre réponse',
+  'sidebar.sessionStarting': 'Démarrage…',
+  'sidebar.sessionStartFailed': 'N’a pas démarré',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} est prêt',
   'appUpdate.restart': 'Redémarrer pour mettre à jour',

@@ -40,6 +40,8 @@ export const de: Messages = {
   'sidebar.pinnedSection': 'Angeheftet',
   'sidebar.renameInputAria': 'Eingabefeld zum Umbenennen: {title}',
   'sidebar.needsAnswer': 'Wartet auf deine Antwort',
+  'sidebar.sessionStarting': 'Wird gestartet…',
+  'sidebar.sessionStartFailed': 'Nicht gestartet',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} ist bereit',
   'appUpdate.restart': 'Neu starten zum Aktualisieren',

@@ -6,6 +6,7 @@ import type { AgentRuntimeWorkerSnapshot } from './workerProtocol'
 import type { SessionCard } from './sharedWorkerProtocol'
 import type { LiveMeta } from './SessionSummaryRepository'
 import type { BrowserSessionSummary } from '../../sessions/sessionStore'
+import type { ChildStartState } from '../../sessions/sessionLineage'
 
 /** The live-entry fields the projection reads (a SessionEntry view). */
 export type SessionInfoLiveView = {
@@ -21,9 +22,13 @@ export function projectSessionInfo(args: {
   entry: SessionInfoLiveView | undefined
   live: LiveMeta | undefined
   fs: BrowserSessionSummary | undefined
+  /** The start state the manager holds for a session another session is
+   *  starting; the persisted summary carries a failure across a reload. */
+  start?: ChildStartState | undefined
 }): SessionCard | null {
-  const { sessionId, entry, live, fs } = args
+  const { sessionId, entry, live, fs, start } = args
   if (!entry && !fs) return null
+  const startFailed = start?.state === 'failed' ? start.reason : fs?.startFailed?.reason
 
   // Manual rename (`customTitle`) wins over any derived title, from
   // either the live overlay or the persisted summary — so a streamed
@@ -92,6 +97,14 @@ export function projectSessionInfo(args: {
     ...(projectRoot ? { projectRoot } : {}),
     ...(spawnerSessionId ? { spawnerSessionId } : {}),
     ...(teammateName ? { teammateName } : {}),
+    // The relation is persisted with the session; the summary is its only
+    // source here (a live entry carries the teammate identity above).
+    ...(fs?.parentSessionId ? { parentSessionId: fs.parentSessionId } : {}),
+    ...(fs?.lineageKind ? { lineageKind: fs.lineageKind } : {}),
+    ...(fs?.familyName ? { familyName: fs.familyName } : {}),
+    ...(fs?.detached ? { detached: true } : {}),
+    ...(start?.state === 'starting' ? { starting: true } : {}),
+    ...(startFailed ? { startFailed } : {}),
     ...(shutdown ? { shutdown: true } : {}),
     ...(typeof shutdownAt === 'number' ? { shutdownAt } : {}),
     ...(previewText ? { previewText } : {}),

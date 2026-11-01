@@ -49,7 +49,20 @@ import {
   applyDiskOnlyRename,
   buildForkedTranscriptEntries,
   isMessageLike,
+  modelForkCut,
 } from '../../sessions/sessionStore'
+import {
+  familyOf,
+  lineageInputFromRelationFields,
+  type ChildReport,
+  type ChildStartState,
+  type SessionLineageInput,
+} from '../../sessions/sessionLineage'
+import {
+  setChildSessionSpawner,
+  type ChildSessionSpawnParams,
+} from '../../sessions/childSessionSpawner'
+import { matchKnownProjectRoot } from '../runtimeHub/knownProjects'
 import type { CliConversationRecord, CliConversationStore } from '../../terminal/TerminalService'
 import { createCliConversationStore } from './cliConversationStore'
 import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
@@ -121,6 +134,7 @@ import {
 } from '../../team/subAgentController'
 import { setTeamMessenger } from '../../team/teamMessenger'
 import { TeamCoordinator } from './TeamCoordinator'
+import { ChildSessionCoordinator } from './ChildSessionCoordinator'
 import type { SpawnTeammateParams } from '../../team/teamTypes'
 import {
   raiseDesktopAlert,
@@ -648,6 +662,12 @@ export class SharedWorkerSessionManager {
   // shutdown/teardown + lead inbox drain) is owned by the TeamCoordinator.
   // Assigned in the constructor (it needs the worker factory).
   private readonly teams: TeamCoordinator
+  // Child sessions (F-36): a session another session starts, fresh or forked.
+  // Assigned in the constructor beside the teams.
+  private readonly childSessions: ChildSessionCoordinator
+  /** The start state of each session another session is starting, for the
+   *  list projection; cleared once the first turn is queued, kept on failure. */
+  private readonly startStates = new Map<string, ChildStartState>()
   // The two coalesced UI feeds — `session.currentState` (topbar pill,
   // composer gate) + `session.summary` (sidebar rows, Background Tasks
   // drawer) — live on the SessionFeedPublisher, which
@@ -1368,6 +1388,64 @@ export class SharedWorkerSessionManager {
     // avoidance — see team/teammateSpawner.ts).
     setTeammateSpawner((params: SpawnTeammateParams) =>
       this.spawnTeammateSession(params),
+    )
+    this.childSessions = new ChildSessionCoordinator({
+      getInitTemplate: () => this.lastInitTemplate,
+      // A child is routed by its own project, never nested under its parent.
+      prepareWorkerStorage: (sessionId, payload) =>
+        this.storageCoordinator.prepareWorkerStorage(sessionId, payload),
+      createWorker: (sessionId, backend) => this.workerFactory.create(sessionId, backend),
+      registerSessionEntry: (sessionId, worker, instanceId, binding) => {
+        this.registerSessionEntry(sessionId, {
+          worker,
+          instanceId,
+          background: true,
+          ...(binding.templateType ? { templateType: binding.templateType } : {}),
+          ...(binding.projectRoot ? { projectRoot: binding.projectRoot } : {}),
+        })
+      },
+      getSessionWorker: sessionId => this.sessions.get(sessionId)?.worker,
+      disposeManagedSession: (sessionId, opts) => this.disposeManagedSession(sessionId, opts),
+      notifySessionUpserted: sessionId => this.notifySessionUpserted(sessionId),
+      getParentSessionBinding: parentSessionId => this.getSessionBinding(parentSessionId),
+      familyNamesOf: parentSessionId => this.familyNamesOf(parentSessionId),
+      isTrustedProjectFolder: path => this.isTrustedProjectFolder(path),
+      writeChildMeta: (sessionId, meta) =>
+        this.writeSessionBundle({
+          sessionId,
+          entries: [],
+          meta,
+          toolDetails: [],
+          projectRoot: meta.metadata.projectRoot,
+          templateType: meta.metadata.templateType,
+        }),
+      patchSessionMeta: (sessionId, patch) => this.patchDiskSessionMeta(sessionId, patch),
+      setStartState: (sessionId, state) => {
+        if (state) this.startStates.set(sessionId, state)
+        else this.startStates.delete(sessionId)
+      },
+      submitFirstTurn: (sessionId, prompt) => {
+        const session = this.sessions.get(sessionId)
+        if (!session) return false
+        session.worker.enqueueSubmit(
+          {
+            type: 'worker.submitMessage',
+            sessionId,
+            payload: { prompt },
+          } as SessionWorkerInboundMessage,
+          SUBMIT_PRIORITY.user,
+        )
+        return true
+      },
+      recordChildReport: (parentSessionId, report) =>
+        this.recordChildReport(parentSessionId, report),
+      planModelFork: parentSessionId => this.planModelFork(parentSessionId),
+      forkForChild: (parentSessionId, cutUuid, patch, title) =>
+        this.forkForChild(parentSessionId, cutUuid, patch, title),
+      tracer: this.tracer,
+    })
+    setChildSessionSpawner((params: ChildSessionSpawnParams) =>
+      this.childSessions.spawn(params),
     )
     // Register the background sub-agent spawner (worker-hosted Agent tool) on
     // the same leaf pattern — the Agent tool reaches it via getSubAgentSpawner()
@@ -3007,6 +3085,7 @@ export class SharedWorkerSessionManager {
       this.recordedCliConversations.delete(sessionId)
       this.sessionMeta.delete(sessionId)
       this.fsSummaries.delete(sessionId)
+      this.startStates.delete(sessionId)
       this.forgetSkillEvents(sessionId)
       // Written on every `session.open`; this is its only removal.
       this.panelOfSession.delete(sessionId)
@@ -3818,6 +3897,7 @@ export class SharedWorkerSessionManager {
         : undefined,
       live: this.sessionMeta.get(sessionId),
       fs: this.fsSummaries.get(sessionId),
+      start: this.startStates.get(sessionId),
     })
   }
 
@@ -3884,18 +3964,54 @@ export class SharedWorkerSessionManager {
     replacesSource?: boolean,
     retarget?: ForkRetarget,
   ): Promise<void> {
-    const storage = this.storage
-    if (!storage) return
     if (retarget && !hasTemplate(retarget.templateType)) {
       console.warn('[nexus] fork skipped: unknown template type', retarget.templateType)
       return
     }
     try {
+      const forked = await this.forkSessionCore(fromSessionId, cutUuid, {
+        moveCutMessageToDraft,
+        title,
+        replacesSource,
+        retarget,
+      })
+      if (!forked) return
+      port.postMessage({
+        type: 'session.forked' as const,
+        payload: { fromSessionId, newSessionId: forked.newSessionId, requestId },
+      })
+    } catch (error) {
+      // No ack means no fork happened.
+      console.warn('[nexus] fork failed', fromSessionId, error)
+    }
+  }
+
+  /**
+   * The fork itself: copy the prefix, the sidecars and the carried config into
+   * a NEW session and publish it. `metadataPatch` is written into the copy's
+   * record (a child session's origin). Null when there is nothing to copy;
+   * throws when the write fails.
+   */
+  private async forkSessionCore(
+    fromSessionId: string,
+    cutUuid: string | undefined,
+    opts: {
+      moveCutMessageToDraft?: boolean
+      title?: string
+      replacesSource?: boolean
+      retarget?: ForkRetarget
+      metadataPatch?: Partial<BrowserSessionMetadata>
+    },
+  ): Promise<{ newSessionId: string } | null> {
+    const storage = this.storage
+    if (!storage) return null
+    const { moveCutMessageToDraft, title, replacesSource, retarget } = opts
+    {
       const payload = await storage.load(fromSessionId)
       const sourceEntries = Array.isArray(payload) ? payload : []
       if (sourceEntries.length === 0) {
         console.warn('[nexus] fork skipped: the source has no saved messages', fromSessionId)
-        return
+        return null
       }
       const newSessionId =
         globalThis.crypto?.randomUUID?.() ??
@@ -3925,7 +4041,13 @@ export class SharedWorkerSessionManager {
       )
       if (!built) {
         console.warn('[nexus] fork skipped: no message to cut at', fromSessionId)
-        return
+        return null
+      }
+      if (opts.metadataPatch) {
+        built.meta = {
+          ...built.meta,
+          metadata: { ...built.meta.metadata, ...opts.metadataPatch },
+        }
       }
       // Tool details are lazy-loaded per session by toolCallId; copy the
       // referenced sidecars so the fork's tool cards don't get stuck loading.
@@ -3954,14 +4076,130 @@ export class SharedWorkerSessionManager {
         projectRoot: sourceMetadata?.projectRoot,
         templateType: sourceMetadata?.templateType,
       })
-      port.postMessage({
-        type: 'session.forked' as const,
-        payload: { fromSessionId, newSessionId, requestId },
-      })
-    } catch (error) {
-      // No ack means no fork happened.
-      console.warn('[nexus] fork failed', fromSessionId, error)
+      return { newSessionId }
     }
+  }
+
+  /** Where a model's fork of `parentSessionId` would be cut (F-36). */
+  private async planModelFork(
+    parentSessionId: string,
+  ): Promise<{ ok: true; cutUuid: string } | { ok: false; reason: string }> {
+    const storage = this.storage
+    if (!storage) return { ok: false, reason: 'session storage is not available.' }
+    const payload = await storage.load(parentSessionId)
+    const sourceEntries = Array.isArray(payload) ? payload : []
+    return modelForkCut(sourceEntries)
+  }
+
+  /** A child session forked from `parentSessionId` at `cutUuid`, its record
+   *  carrying `patch` (F-36). */
+  private async forkForChild(
+    parentSessionId: string,
+    cutUuid: string,
+    patch: Partial<BrowserSessionMetadata>,
+    title: string,
+  ): Promise<{ ok: true; sessionId: string } | { ok: false; reason: string }> {
+    try {
+      const forked = await this.forkSessionCore(parentSessionId, cutUuid, {
+        title,
+        metadataPatch: patch,
+      })
+      return forked
+        ? { ok: true, sessionId: forked.newSessionId }
+        : { ok: false, reason: 'the cut message is not in the saved transcript.' }
+    } catch (error) {
+      return { ok: false, reason: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
+  /**
+   * The short names taken in a session's family, read off the persisted
+   * summaries (archived members included): what a new child's name is
+   * allocated against (F-36).
+   */
+  private familyNamesOf(sessionId: string): ReadonlySet<string> {
+    const index = new Map<string, SessionLineageInput>()
+    const names = new Map<string, string>()
+    for (const id of this.fsSummaries.keys()) {
+      const summary = this.fsSummaries.peek(id)
+      if (!summary) continue
+      index.set(id, lineageInputFromRelationFields(summary))
+      if (summary.familyName) names.set(id, summary.familyName)
+    }
+    if (!index.has(sessionId)) index.set(sessionId, {})
+    const taken = new Set<string>()
+    for (const member of familyOf(sessionId, index)) {
+      const name = names.get(member)
+      if (name) taken.add(name)
+    }
+    return taken
+  }
+
+  /** Security: whether `path` is a project folder the workspace or a session
+   *  of this runtime already knows (`runtimeHub/knownProjects.ts`). */
+  private async isTrustedProjectFolder(path: string): Promise<boolean> {
+    try {
+      const known = await this.runtimeHub.knownProjectRoots('all')
+      return matchKnownProjectRoot(path, known) !== null
+    } catch {
+      return false
+    }
+  }
+
+  /** Merge `patch` into a session's record on disk and republish its summary.
+   *  For a session with no live runtime; a live one owns its own record. */
+  private async patchDiskSessionMeta(
+    sessionId: string,
+    patch: Partial<BrowserSessionMetadata>,
+  ): Promise<void> {
+    const storage = this.storage
+    if (!storage) return
+    const current = await storage.readSessionMeta(sessionId)
+    if (!current) return
+    await storage.writeSessionMeta(sessionId, {
+      ...current,
+      updatedAt: Math.max(current.updatedAt, Date.now()),
+      metadata: { ...current.metadata, ...patch },
+    })
+    try {
+      await this.summaryRepo.refreshFsSummary(sessionId)
+    } catch {
+      /* the next list scan picks it up */
+    }
+  }
+
+  /** Cap on a parent's queue of unread child reports. */
+  private static readonly CHILD_REPORTS_MAX = 32
+
+  /**
+   * Hand a parent one report about a child, one per child at most and the
+   * queue capped: through the parent's live store when it has one (the live
+   * store owns the record), else written to disk (F-36).
+   */
+  private async recordChildReport(parentSessionId: string, report: ChildReport): Promise<void> {
+    const storage = this.storage
+    if (!storage) return
+    const current = await storage.readSessionMeta(parentSessionId)
+    const existing = Array.isArray(current?.metadata.childReports)
+      ? current.metadata.childReports.filter(r => r.sessionId !== report.sessionId)
+      : []
+    const childReports = [...existing, report].slice(
+      -SharedWorkerSessionManager.CHILD_REPORTS_MAX,
+    )
+    const live = this.sessions.get(parentSessionId)
+    if (live) {
+      await live.worker.receiveFrame({
+        type: 'worker.updateSessionMetadata',
+        sessionId: parentSessionId,
+        payload: { metadata: { childReports } },
+      } as SessionWorkerInboundMessage)
+      return
+    }
+    if (!current) return
+    await storage.writeSessionMeta(parentSessionId, {
+      ...current,
+      metadata: { ...current.metadata, childReports },
+    })
   }
 
   /**

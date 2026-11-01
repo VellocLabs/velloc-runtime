@@ -246,8 +246,12 @@ export async function loadSystemPromptSections(
           type: p.templateType,
           profile: el.render ?? p.promptProfile,
         })
-        // No prose file for this holder under this profile → no section.
-        if (prose !== undefined) parts.push({ name: el.name, text: substitute(prose) })
+        // No prose file for this holder under this profile → no section; nor
+        // when every line of it was gated out for this turn.
+        if (prose !== undefined) {
+          const text = substitute(prose)
+          if (text.trim()) parts.push({ name: el.name, text })
+        }
       } else if (el.kind === 'dynamic') {
         if (el.name === 'skill_catalogs') {
           parts.push(...skillCatalogHolders)

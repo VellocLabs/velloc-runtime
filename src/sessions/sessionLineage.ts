@@ -53,6 +53,23 @@ export type ChildReport = {
   at: number
 }
 
+/** Why a session another session started never started. */
+export type ChildStartFailure = {
+  reason: string
+  at: number
+}
+
+export function isChildStartFailure(value: unknown): value is ChildStartFailure {
+  if (typeof value !== 'object' || value === null) return false
+  const v = value as Record<string, unknown>
+  return typeof v.reason === 'string' && typeof v.at === 'number' && Number.isFinite(v.at)
+}
+
+/** The row state of a session another session is starting. */
+export type ChildStartState =
+  | { state: 'starting'; since: number }
+  | { state: 'failed'; reason: string; at: number }
+
 /** The metadata fields the relation is computed from. */
 export type SessionLineageInput = {
   spawnedFrom?: SessionOrigin
@@ -303,4 +320,33 @@ function randomNameSuffix(): string {
     out += SUFFIX_ALPHABET[Math.floor(Math.random() * SUFFIX_ALPHABET.length)]
   }
   return out
+}
+
+/** The list-entry relation fields a session is known by once summarized. */
+export type SessionRelationFields = {
+  parentSessionId?: string
+  lineageKind?: SessionLineageKind
+  familyName?: string
+  detached?: boolean
+}
+
+/**
+ * A lineage input rebuilt from a session's list-entry fields, for walking a
+ * family over summaries alone: a model-started relation reads as an origin, a
+ * person's fork as a copy source, a suggested task as a user-started origin.
+ * A detached entry keeps the flag and nothing else.
+ */
+export function lineageInputFromRelationFields(fields: SessionRelationFields): SessionLineageInput {
+  if (fields.detached) return { lineageDetached: true }
+  const parent = fields.parentSessionId
+  if (!parent || !fields.lineageKind) return {}
+  const name = fields.familyName ? { name: fields.familyName } : {}
+  switch (fields.lineageKind) {
+    case 'fork':
+      return { forkedFromSessionId: parent }
+    case 'suggested_task':
+      return { spawnedFrom: { sessionId: parent, taskId: '', kind: 'side_session', initiator: 'user', userFork: true, ...name } }
+    default:
+      return { spawnedFrom: { sessionId: parent, taskId: '', kind: fields.lineageKind, initiator: 'model', ...name } }
+  }
 }

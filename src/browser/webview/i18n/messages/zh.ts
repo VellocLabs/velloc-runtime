@@ -41,6 +41,8 @@ export const zh: Messages = {
   'sidebar.pinnedSection': '置顶',
   'sidebar.renameInputAria': '重命名输入框：{title}',
   'sidebar.needsAnswer': '等待你回应',
+  'sidebar.sessionStarting': '正在启动…',
+  'sidebar.sessionStartFailed': '未能启动',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} 已就绪',
   'appUpdate.restart': '重启以更新',

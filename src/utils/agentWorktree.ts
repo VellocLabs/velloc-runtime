@@ -19,6 +19,13 @@ function shellPath(p: string): string {
   return `"${p.replace(/\\/g, '/')}"`
 }
 
+/** Security: a single-quoted shell word for a ref name chosen outside this
+ *  module. Single quotes stop every expansion; a quote inside the value is
+ *  closed, escaped and reopened, so the argument always arrives as one word. */
+function shellWord(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
 /** Branch / directory slug derived from the (already-safe) sidechain agentId.
  *  The id from `createSidechainAgentId` is `<label≤32>_<rand>_<ts>`; uniqueness
  *  lives in the trailing two segments. A blind `slice(0, N)` would drop them for
@@ -131,6 +138,57 @@ export async function openAgentCheckout(
     `git -C ${shellPath(checkoutDir)} rev-parse HEAD`,
   )
   return { checkoutDir, branch, baseCommit: head.ok ? head.stdout.trim() : '' }
+}
+
+export type NamedCheckoutResult =
+  | { ok: true; worktree: AgentWorktree }
+  | { ok: false; reason: string }
+
+/**
+ * Create a worktree at `checkoutDir` on a new branch `branch` cut from `base`
+ * (a branch, a commit, or `HEAD` of `repoRoot`). Unlike `openAgentCheckout`
+ * the branch is the caller's name and must not exist yet, and a failure
+ * reports git's own words so the caller can record why. (F-36)
+ */
+export async function openNamedCheckout(
+  context: ToolCallContext,
+  repoRoot: string,
+  args: { checkoutDir: string; branch: string; base: string },
+): Promise<NamedCheckoutResult> {
+  const add = await runGit(
+    context,
+    `git -C ${shellPath(repoRoot)} worktree add -b ${shellWord(args.branch)} ${shellPath(
+      args.checkoutDir,
+    )} ${shellWord(args.base)}`,
+  )
+  if (!add.ok) {
+    return { ok: false, reason: add.stdout.trim() || 'git worktree add failed' }
+  }
+  const head = await runGit(
+    context,
+    `git -C ${shellPath(args.checkoutDir)} rev-parse HEAD`,
+  )
+  return {
+    ok: true,
+    worktree: {
+      checkoutDir: args.checkoutDir,
+      branch: args.branch,
+      baseCommit: head.ok ? head.stdout.trim() : '',
+    },
+  }
+}
+
+/** The commit a checkout is at, or null. */
+export async function checkoutHead(context: ToolCallContext, dir: string): Promise<string | null> {
+  const head = await runGit(context, `git -C ${shellPath(dir)} rev-parse HEAD`)
+  const sha = head.ok ? head.stdout.trim() : ''
+  return /^[0-9a-f]{7,40}$/i.test(sha) ? sha : null
+}
+
+/** Worktree directory for a child session, under `<repoRoot>/.velloc/worktrees/`. */
+export function childCheckoutDir(repoRoot: string, name: string): string {
+  const safe = name.replace(/[^A-Za-z0-9._-]/g, '-').replace(/^-+|-+$/g, '') || 'session'
+  return joinPath(repoRoot, RUNTIME_DIR_NAME, 'worktrees', safe)
 }
 
 /**

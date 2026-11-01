@@ -51,6 +51,7 @@ import {
   TeamProvidersTool,
 } from './builtin/teamTools'
 import { SpawnTeammateTool } from './builtin/spawnTeammate'
+import { SpawnSessionTool } from './builtin/spawnSession'
 import { A2UI_TOOLS } from './builtin/a2ui/A2uiTools'
 import { buildHostTools } from './builtin/host/hostTools'
 
@@ -156,12 +157,16 @@ const TEAM_TOOLS: ToolContractList = [
   SpawnTeammateTool,
 ]
 
+// Child sessions: a full session started under this one (F-36).
+const CHILD_SESSION_TOOLS: ToolContractList = [SpawnSessionTool]
+
 // Every script-side tool, for manifests that ask for tools by name only.
 const NAMED_TOOL_POOL = firstOfEachName([
   ...WORKSPACE_TOOLS,
   ...SESSION_TOOLS,
   ...SCHEDULE_TOOLS,
   ...TEAM_TOOLS,
+  ...CHILD_SESSION_TOOLS,
   ...A2UI_TOOLS,
 ])
 
@@ -178,6 +183,7 @@ function setMembers(preset: ToolSetName = 'default'): ToolContractList {
         ...SESSION_TOOLS,
         ...SCHEDULE_TOOLS,
         ...TEAM_TOOLS,
+        ...CHILD_SESSION_TOOLS,
         ...A2UI_TOOLS,
       ]
   }
@@ -208,6 +214,7 @@ export function getToolsForHostManifest(
         ...SESSION_TOOLS,
         ...SCHEDULE_TOOLS,
         ...TEAM_TOOLS,
+        ...CHILD_SESSION_TOOLS,
         ...A2UI_TOOLS,
       ]),
       emptyPermissionRuleSet(),

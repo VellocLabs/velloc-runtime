@@ -41,6 +41,8 @@ export const es: Messages = {
   'sidebar.pinnedSection': 'Fijados',
   'sidebar.renameInputAria': 'Campo para cambiar el nombre: {title}',
   'sidebar.needsAnswer': 'Espera su respuesta',
+  'sidebar.sessionStarting': 'Iniciando…',
+  'sidebar.sessionStartFailed': 'No se inició',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} está listo',
   'appUpdate.restart': 'Reiniciar para actualizar',

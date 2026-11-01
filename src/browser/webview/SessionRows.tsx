@@ -86,6 +86,10 @@ export type SessionListItem = {
   familyName?: string
   /** Had a parent and was taken out from under it: listed top-level. (F-36) */
   detached?: boolean
+  /** Another session is starting this one: registered, no first turn yet. (F-36) */
+  starting?: boolean
+  /** Another session started this one and it never started; the reason. (F-36) */
+  startFailed?: string
   shutdown?: boolean
   shutdownAt?: number
   /**
@@ -392,6 +396,24 @@ export function SessionRowList({
                           </span>
                         )}
                       </span>
+                      {session.startFailed ? (
+                        <span
+                          data-slot="session-row-start-state"
+                          data-start-state="failed"
+                          className="shrink-0 text-[10px] leading-tight text-destructive"
+                          title={session.startFailed}
+                        >
+                          {t('sidebar.sessionStartFailed')}
+                        </span>
+                      ) : session.starting ? (
+                        <span
+                          data-slot="session-row-start-state"
+                          data-start-state="starting"
+                          className="shrink-0 text-[10px] leading-tight text-muted-foreground"
+                        >
+                          {t('sidebar.sessionStarting')}
+                        </span>
+                      ) : null}
                     </span>
                     {isPinned && (
                       <PinIcon

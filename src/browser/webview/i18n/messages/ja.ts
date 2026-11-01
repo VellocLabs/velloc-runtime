@@ -38,6 +38,8 @@ export const ja: Messages = {
   'sidebar.pinnedSection': 'ピン留め',
   'sidebar.renameInputAria': '名前の入力欄：{title}',
   'sidebar.needsAnswer': '返答を待っています',
+  'sidebar.sessionStarting': '起動中…',
+  'sidebar.sessionStartFailed': '起動できませんでした',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} の準備ができました',
   'appUpdate.restart': '再起動して更新',

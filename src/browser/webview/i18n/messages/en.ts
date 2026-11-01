@@ -41,6 +41,9 @@ export const en = {
   'sidebar.pinnedSection': 'Pinned',
   'sidebar.renameInputAria': 'Rename input: {title}',
   'sidebar.needsAnswer': 'Needs your response',
+  // Child sessions (F-36): the row state while another session starts this one.
+  'sidebar.sessionStarting': 'Starting…',
+  'sidebar.sessionStartFailed': 'Did not start',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} is ready',
   'appUpdate.restart': 'Restart to update',

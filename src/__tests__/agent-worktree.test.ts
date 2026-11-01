@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import {
   openAgentCheckout,
+  openNamedCheckout,
   closeAgentCheckout,
   worktreeBranchFor,
   worktreeHasChanges,
@@ -178,5 +179,41 @@ describe('agentWorktree — closeAgentCheckout', () => {
     expect(commands.some(c => c.includes('branch -D nexus-agent-idX'))).toBe(
       true,
     )
+  })
+})
+
+describe('agentWorktree — openNamedCheckout', () => {
+  // Security: the branch and base are chosen outside this module (a child
+  // session's request); they must reach git as single quoted words, so that a
+  // caller who skipped the name check still cannot hand the shell a command.
+  it('emits the branch and base as single-quoted arguments and the paths double-quoted', async () => {
+    const { callTool, commands } = recorder(cmd =>
+      cmd.includes('rev-parse HEAD') ? 'cafe0001\n' : '',
+    )
+    const made = await openNamedCheckout(ctx(callTool), 'D:\\repo', {
+      checkoutDir: 'D:\\repo\\.velloc\\worktrees\\wt',
+      branch: 'session/wt',
+      base: 'main',
+    })
+    expect(made).toEqual({
+      ok: true,
+      worktree: { checkoutDir: 'D:\\repo\\.velloc\\worktrees\\wt', branch: 'session/wt', baseCommit: 'cafe0001' },
+    })
+    expect(commands[0]).toBe(
+      `git -C "D:/repo" worktree add -b 'session/wt' "D:/repo/.velloc/worktrees/wt" 'main'`,
+    )
+  })
+
+  it('keeps a hostile value inside one quoted word', async () => {
+    const { callTool, commands } = recorder(() => '')
+    await openNamedCheckout(ctx(callTool), '/r', { checkoutDir: '/r/w', branch: "x;calc'$(id)", base: 'a|b' })
+    expect(commands[0]).toBe(String.raw`git -C "/r" worktree add -b 'x;calc'\''$(id)' "/r/w" 'a|b'`)
+  })
+
+  it('reports git\'s own words when the add fails, and runs nothing else', async () => {
+    const { callTool, commands } = recorder(() => new Error("fatal: a branch named 'wt' already exists"))
+    const made = await openNamedCheckout(ctx(callTool), '/r', { checkoutDir: '/r/w', branch: 'wt', base: 'HEAD' })
+    expect(made).toEqual({ ok: false, reason: expect.stringContaining("a branch named 'wt' already exists") })
+    expect(commands).toHaveLength(1)
   })
 })

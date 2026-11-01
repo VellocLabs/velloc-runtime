@@ -38,6 +38,8 @@ export const ko: Messages = {
   'sidebar.pinnedSection': '고정됨',
   'sidebar.renameInputAria': '이름 입력란: {title}',
   'sidebar.needsAnswer': '답변을 기다리는 중',
+  'sidebar.sessionStarting': '시작 중…',
+  'sidebar.sessionStartFailed': '시작되지 않음',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} 준비 완료',
   'appUpdate.restart': '다시 시작하여 업데이트',
