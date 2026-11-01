@@ -160,6 +160,18 @@ export const en = {
   'messageMenu.forkNotSaved': 'Available once the conversation is saved',
   'messageMenu.copied': 'Copied',
   'messageMenu.copyFailed': 'Couldn\'t copy to the clipboard',
+  // Chapter marks: the message menu items, the composer chip and its list (F-37).
+  'chapters.mark': 'Pin as chapter',
+  'chapters.unmark': 'Remove chapter',
+  'chapters.notYet': 'Available once this reply is saved',
+  'chapters.marked': 'Pinned as chapter',
+  'chapters.markFailed': 'Couldn\'t pin this chapter',
+  'chapters.title': 'Chapters',
+  'chapters.open': 'Chapters ({count})',
+  'chapters.untitled': 'Untitled step',
+  'chapters.unavailable': 'No longer in this conversation',
+  'chapters.loading': 'Loading…',
+  'chapters.badge': 'Chapter: {title}',
   // The quote cards above the composer and their full-text preview (F-22).
   'passage.label': 'Excerpt',
   'passage.accessibleName': 'Excerpt: {excerpt}',

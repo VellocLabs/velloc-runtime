@@ -70,6 +70,12 @@ import {
   notifyProposalsChanged,
   setProposalBoard,
 } from '../../sessions/proposalBoard'
+import {
+  ChapterBook,
+  notifyChaptersChanged,
+  setChapterBook,
+} from '../../sessions/chapterBook'
+import type { ChapterMark } from '../../sessions/chapterMarks'
 import { matchKnownProjectRoot } from '../runtimeHub/knownProjects'
 import type { CliConversationRecord, CliConversationStore } from '../../terminal/TerminalService'
 import { createCliConversationStore } from './cliConversationStore'
@@ -707,6 +713,8 @@ export class SharedWorkerSessionManager {
   private readonly childReports: ChildReportCoordinator
   /** Child-session proposals (F-36): each session's cards, runtime-owned. */
   private readonly proposals: ProposalBoard
+  /** Chapter marks (F-37): each session's marked places, runtime-owned. */
+  private readonly chapters: ChapterBook
   /** The start state of each session another session is starting, for the
    *  list projection; cleared once the first turn is queued, kept on failure. */
   private readonly startStates = new Map<string, ChildStartState>()
@@ -1504,6 +1512,15 @@ export class SharedWorkerSessionManager {
       onChange: sessionId => notifyProposalsChanged(sessionId),
     })
     setProposalBoard(this.proposals)
+    this.chapters = new ChapterBook({
+      storage: {
+        read: sessionId => this.readChapterMarks(sessionId),
+        write: (sessionId, chapterMarks) => this.writeChapterMarks(sessionId, chapterMarks),
+        entries: sessionId => this.readChapterEntries(sessionId),
+      },
+      onChange: sessionId => notifyChaptersChanged(sessionId),
+    })
+    setChapterBook(this.chapters)
     // Register the background sub-agent spawner (worker-hosted Agent tool) on
     // the same leaf pattern — the Agent tool reaches it via getSubAgentSpawner()
     // without importing this manager. See team/subAgentSpawner.ts.
@@ -4430,6 +4447,32 @@ export class SharedWorkerSessionManager {
    *  parent's live store when it has one, one chain per parent. */
   private recordChildReport(parentSessionId: string, report: ChildReport): Promise<void> {
     return this.childReports.record(parentSessionId, report)
+  }
+
+  /** A session's stored chapter marks: from its live store when it has one,
+   *  else from disk (F-37). */
+  private async readChapterMarks(sessionId: string): Promise<unknown> {
+    const store = this.sessions.get(sessionId)?.conversationStore
+    if (store) return (await store.getSessionMetadata())?.chapterMarks
+    return (await this.storage?.readSessionMeta(sessionId))?.metadata.chapterMarks
+  }
+
+  private async writeChapterMarks(sessionId: string, chapterMarks: ChapterMark[]): Promise<void> {
+    const store = this.sessions.get(sessionId)?.conversationStore
+    if (store) {
+      await store.updateSessionMetadata({ chapterMarks })
+      return
+    }
+    if (!this.storage) throw new Error('session storage is not available')
+    await applyDiskOnlyMetadataPatch(this.storage, sessionId, { chapterMarks })
+  }
+
+  /** The transcript a mark is checked against: the live store's (the disk copy
+   *  can lag appends in flight), else the persisted one (F-37). */
+  private async readChapterEntries(sessionId: string): Promise<readonly unknown[]> {
+    const store = this.sessions.get(sessionId)?.conversationStore
+    if (store) return store.getRecordedMessages()
+    return this.readPersistedEntries(sessionId)
   }
 
   /** A session's stored proposals: from its live store when it has one (the

@@ -62,6 +62,7 @@ import { TopicBroker } from './TopicBroker'
 import { registerWorkspaceCapability, type WorkspaceStateStore } from './workspaceCapability'
 import { registerProviderUpdatesCapability } from './providerUpdatesCapability'
 import { registerProposalsCapability } from './proposalsCapability'
+import { registerChaptersCapability } from './chaptersCapability'
 import { registerPluginUpdatesCapability } from './pluginUpdatesCapability'
 import { resolveHostHome } from './hostFs'
 import { currentTemplateChannel } from '../../branding/updateChannels'
@@ -325,6 +326,10 @@ export class RuntimeHub {
     // `proposals/<sessionId>` and the start / dismiss / choose answers, all
     // `control`: they act on that session's conversation like a message.
     registerProposalsCapability(this.registry, this.broker)
+    // Chapter marks (F-37): one session's marks on `chapters/<sessionId>`
+    // and the mark / unmark actions, `control`: they write that session's
+    // stored record.
+    registerChaptersCapability(this.registry, this.broker)
     // Marketplace plugin updates (F-14): `plugins/updates` and the
     // check / update / rollback / setAutoUpdate actions, all `full`; the
     // background schedule installs only while `pluginAutoUpdate` is on.

@@ -458,19 +458,21 @@ export const VirtualizedThreadMessages: FC<VirtualizedThreadMessagesProps> = ({
     updateRange();
   }, [isForeground, updateRange]);
 
-  // A search jump asks for its target row to be mounted. Same pin table as
-  // the interaction pins below — the row then exists no matter where the
+  // A reveal (a search hit, a chapter) asks for its target row to be mounted; a request scoped to
+  // another thread is ignored. Same pin table as the interaction pins below — the row then exists no matter where the
   // viewport is, which is the only reliable way to look inside a row that
   // virtualization has culled. Scrolling toward it is not: the viewport
   // is pinned to the bottom and re-segmentation is asynchronous.
   useEffect(
     () =>
-      subscribeRowPin((index) => {
+      subscribeRowPin((index, within) => {
+        const viewport = viewportRef.current;
+        if (within && (!viewport || !within.contains(viewport))) return;
         if (pinMessageRow(pinnedRef.current, index)) {
           setPinnedRevision((revision) => revision + 1);
         }
       }),
-    [],
+    [viewportRef],
   );
 
   // Pin any row the user interacts with (`pointerdown`, `click`, `focusin`, in capture

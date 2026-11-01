@@ -6,6 +6,12 @@ import {
 } from '../../components/assistant-ui/session-card-stack'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useSessionProposals } from './proposalsView'
+import { useSessionChapters } from './chaptersView'
+import { chapterEntriesOf, chapterTargetFor, entryKeyOfRow, resolveChapterAnchor } from './chapterAnchors'
+import {
+  ChapterMarksProvider,
+  type ChapterMarksValue,
+} from '../../components/assistant-ui/chapter-marks'
 import { SessionProposalsContext } from '../../components/assistant-ui/session-proposals-context'
 import { useCan } from './useCan'
 import { useMcpAuth } from './mcpAuthView'
@@ -131,6 +137,7 @@ import {
   combineThreadMessagesDeps,
   convertTranscriptToThreadMessages,
   extractTextFromAppendMessage,
+  isTurnAnchoredMessageId,
   PROVIDER_API_ERROR_RESUME_PROMPT,
   resolveProviderApiErrorRetryAction,
   shouldShowLoadingSkeleton,
@@ -207,6 +214,7 @@ import {
   subscribePendingMessageJump,
 } from './pendingMessageJumpStore'
 import {
+  revealChapterRow,
   revealRowForPart,
   revealThreadMessage,
 } from './revealThreadMessage'
@@ -842,6 +850,9 @@ function InteractiveAssistantUiThread({
   // The session's child-session proposal cards (F-36).
   const canAnswerProposals = useCan('proposals', 'start') && !readOnly
   const sessionProposals = useSessionProposals(runtimeConnection, modSessionId, canAnswerProposals)
+  // The session's chapter marks (F-37).
+  const canMarkChapters = useCan('chapters', 'mark') && !readOnly
+  const sessionChapters = useSessionChapters(runtimeConnection, modSessionId, canMarkChapters)
   const modUi = useSessionModUi(runtimeConnection, modSessionId, {
     canListMods,
     onOpenPluginSettings,
@@ -915,6 +926,8 @@ function InteractiveAssistantUiThread({
     })
     return resolveAfterResponseCut(rows, transcriptMessagesRef.current, responseRowId)
   }, [])
+  const liveEventsRef = useRef(state.liveEvents)
+  liveEventsRef.current = state.liveEvents
   const messageActionsValue = useMemo(
     () => ({
       onForkFromMessage: readOnly ? undefined : onForkFromMessage,
@@ -1204,6 +1217,33 @@ function InteractiveAssistantUiThread({
   // session, MultiSessionShell reorders `mountedSessionIds` one commit late, so
   // the visible session isn't the first viewport in document order for a beat.
   const threadRootRef = useRef<HTMLDivElement | null>(null)
+  // Chapter marks resolve against the rows and entries at the moment they are
+  // read, so a streaming token does not rebuild the value. (F-37)
+  const chapterMarksValue = useMemo<ChapterMarksValue>(() => {
+    const entries = () =>
+      chapterEntriesOf(transcriptMessagesRef.current, liveEventsRef.current)
+    const rowOf = (rowId: string) =>
+      runtimeMessagesRef.current.find(row => row.id === rowId)
+    return {
+      marks: sessionChapters.marks,
+      mark: sessionChapters.mark,
+      unmark: sessionChapters.unmark,
+      targetFor: (rowId, line) => chapterTargetFor(rowOf(rowId), line, entries()),
+      entryKeyOf: rowId =>
+        isTurnAnchoredMessageId(rowId) ? entryKeyOfRow(rowOf(rowId), entries()) : rowId,
+      statusOf: mark => {
+        const anchor = resolveChapterAnchor(runtimeMessagesRef.current, entries(), mark)
+        return anchor.kind === 'row' ? 'ready' : anchor.kind
+      },
+      reveal: mark => {
+        const root = threadRootRef.current
+        const anchor = resolveChapterAnchor(runtimeMessagesRef.current, entries(), mark)
+        if (!root || anchor.kind !== 'row') return false
+        void revealChapterRow(root, anchor.index, anchor.ordinal)
+        return true
+      },
+    }
+  }, [sessionChapters])
   const findViewport = useCallback(
     (): HTMLElement | null => {
       return findConversationViewport(threadRootRef.current ?? document)
@@ -2137,6 +2177,7 @@ function InteractiveAssistantUiThread({
       <ShellCommandContext.Provider value={shellCommandValue}>
       <FilePathContext.Provider value={filePathContextValue}>
       <ComposerPassagesProvider store={readOnly ? null : passageStore}>
+      <ChapterMarksProvider value={chapterMarksValue}>
       <ComposerDraftSync
         initialComposerDraft={initialComposerDraft}
         onComposerEdit={handleComposerEdit}
@@ -2394,6 +2435,7 @@ function InteractiveAssistantUiThread({
           )}
         </TooltipProvider>
       </ToolCallDetailProvider>
+      </ChapterMarksProvider>
       </ComposerPassagesProvider>
       </FilePathContext.Provider>
       </ShellCommandContext.Provider>

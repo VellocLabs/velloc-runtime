@@ -340,7 +340,7 @@ export async function revealRowForPart(
   const generation = ++revealGeneration
   const superseded = () => generation !== revealGeneration
   markOutcome(root, 'running')
-  requestRowPin(index)
+  requestRowPin(index, root)
   const viewport =
     root.querySelector<HTMLElement>('.aui-thread-viewport') ??
     root.querySelector<HTMLElement>('[data-slot="thread-viewport"]')
@@ -394,7 +394,7 @@ export async function revealThreadMessage(
   // reliable way to mount it (the viewport fights back, re-segmentation
   // is async); pinning is the mechanism the virtualizer already uses to
   // keep interacted-with rows alive.
-  requestRowPin(index)
+  requestRowPin(index, root)
   if (viewport) releaseStickToBottom(viewport)
 
   for (let attempt = 0; attempt < MAX_REVEAL_ATTEMPTS; attempt++) {
@@ -463,5 +463,59 @@ export async function revealThreadMessage(
     return true
   }
   if (!superseded()) markOutcome(root, 'missing')
+  return false
+}
+
+/** What the last chapter reveal did, stamped on the thread root as `data-chapter-reveal`. */
+export type ChapterRevealOutcome = 'running' | 'landed' | 'missing'
+
+/**
+ * Brings a chapter mark into view (F-37): row `index` lands at the top of the viewport; with `ordinal` (a
+ * segment of a merged row) the walk descends to that line, opening cards on the way, and centres it. The
+ * landing is marked with `data-chapter-hit` for a few seconds. Shares the generation with search, so a
+ * newer reveal of either kind supersedes an older one.
+ */
+export async function revealChapterRow(
+  root: HTMLElement,
+  index: number,
+  ordinal?: number,
+): Promise<boolean> {
+  const generation = ++revealGeneration
+  const superseded = () => generation !== revealGeneration
+  const deadline = Date.now() + REVEAL_BUDGET_MS
+  root.setAttribute('data-chapter-reveal', 'running')
+  requestRowPin(index, root)
+  const viewport =
+    root.querySelector<HTMLElement>('.aui-thread-viewport') ??
+    root.querySelector<HTMLElement>('[data-slot="thread-viewport"]')
+  if (viewport) releaseStickToBottom(viewport)
+
+  for (let attempt = 0; attempt < MAX_REVEAL_ATTEMPTS; attempt++) {
+    if (superseded()) return false
+    const row = root.querySelector<HTMLElement>(`[data-message-index="${index}"]`)
+    if (!row) {
+      await nextFrame()
+      continue
+    }
+    row.scrollIntoView({ block: 'start' })
+    await nextFrame()
+    await nextFrame()
+    const found = ordinal === undefined ? null : await descendToOrdinal(row, ordinal, deadline)
+    if (superseded()) return false
+    const settledRow =
+      root.querySelector<HTMLElement>(`[data-message-index="${index}"]`) ?? row
+    const landing = found && found.isConnected ? found : settledRow
+    if (landing === settledRow) settledRow.scrollIntoView({ block: 'start' })
+    else landing.scrollIntoView({ block: 'center' })
+    settledRow.setAttribute('data-chapter-target', 'true')
+    landing.setAttribute('data-chapter-hit', 'true')
+    setTimeout(() => {
+      settledRow.removeAttribute('data-chapter-target')
+      landing.removeAttribute('data-chapter-hit')
+    }, SEARCH_HIT_FLASH_MS)
+    root.setAttribute('data-chapter-reveal', 'landed')
+    return true
+  }
+  if (!superseded()) root.setAttribute('data-chapter-reveal', 'missing')
   return false
 }

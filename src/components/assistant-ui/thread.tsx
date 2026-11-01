@@ -88,6 +88,7 @@ import {
 import { useModComposer } from "./use-mod-composer";
 import { MessageContextMenu } from "./message-context-menu";
 import { ComposerPassageStrip, useComposerPassages, usePassageList } from "./composer-passages";
+import { ChapterMarkBadge, ChapterMarksChip } from "./chapter-marks";
 import { registerAttachSelectionOwner } from "@/browser/webview/attachSelectionShortcut";
 import { isAttachableSelection, type PassageDraftStore } from "@/browser/webview/capturedPassages";
 import { ModPromptVirtualText } from "./mod-prompt-virtual-text";
@@ -1171,6 +1172,7 @@ export const Thread: FC<{
               the row hugs its bottom edge. */}
           <div className="flex items-center gap-1.5 pr-1 -mb-2.5 md:-mb-[18px]">
             <CurrentProjectFolderChip />
+            <ChapterMarksChip />
             <div className="ml-auto flex items-center gap-1">
               {/* This session's model (read-only) + effort — a pick here is
                   per-session; the topbar sets the global default. */}
@@ -2580,6 +2582,7 @@ const ReplyRow: FC = () => {
       )}
       data-role="assistant"
     >
+      <ChapterMarkBadge messageId={messageId} className="absolute -left-5 top-3.5" />
       {/* `group` wraps ONLY the content (the footer is absolute, so the group's
           box = the message text). The action bar's visibility is driven by
           group-hover on THIS box, NOT the whole padded row — so when the cursor
@@ -2980,6 +2983,7 @@ const UserMessage: FC = () => {
         onMouseEnter={() => setActionsOpen(true)}
         onMouseLeave={() => setActionsOpen(false)}
       >
+        <ChapterMarkBadge messageId={messageId} className="absolute -left-5 top-2.5" />
         <UserMessageAttachments />
         {/* The bubble declares the line so the reveal lands ON it: a short
             message flashes as one box, with the arrow at its left edge. The

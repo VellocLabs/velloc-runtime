@@ -19,6 +19,7 @@ import { markdownToClipboardHtml } from "@/browser/webview/richClipboard";
 import { useT } from "@/browser/webview/i18n";
 import type { MessageKey } from "@/browser/webview/i18n/messages/en";
 import { writeClipboard, writeRichClipboard } from "@/utils/clipboard";
+import { markAt, useChapterMarks } from "./chapter-marks";
 import { composerShortcutModifiers } from "./composer-send-shortcuts";
 import { focusComposerNear, useComposerPassages } from "./composer-passages";
 import { userMessageOffersCutActions } from "./inject-message-context";
@@ -64,14 +65,15 @@ export const MessageContextMenu: FC<{
   const thread = useThreadRuntime();
   const passages = useComposerPassages();
   const actions = useMessageActionsContext();
+  const chapters = useChapterMarks();
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const ledger = useMemo(() => createChoiceLedger(), []);
   const capturedRef = useRef(false);
 
   // Read at open time through refs, so the listener is bound once.
-  const factsRef = useRef({ thread, passages, actions, sessionId });
-  factsRef.current = { thread, passages, actions, sessionId };
+  const factsRef = useRef({ thread, passages, actions, chapters, sessionId });
+  factsRef.current = { thread, passages, actions, chapters, sessionId };
 
   useEffect(() => {
     const list = listRef.current;
@@ -81,7 +83,7 @@ export const MessageContextMenu: FC<{
       const row = messageRowOf(event.target, list);
       const messageId = row?.getAttribute("data-message-id");
       if (!row || !messageId) return;
-      const { thread, passages, actions, sessionId } = factsRef.current;
+      const { thread, passages, actions, chapters, sessionId } = factsRef.current;
       const message = thread.getState().messages.find((m) => m.id === messageId);
       if (!message || (message.role !== "user" && message.role !== "assistant")) return;
       const doc = list.ownerDocument;
@@ -100,6 +102,19 @@ export const MessageContextMenu: FC<{
               : { kind: "enabled", cut: { side: "after-response", responseKey: messageId, cutKey } };
         }
       }
+      let chapter: MenuTargetFacts["chapter"] = null;
+      if (chapters?.mark) {
+        // The part under the pointer names the segment: its transcript line.
+        const lineHost = (event.target as Element | null)?.closest?.("[data-line-ordinal]");
+        const line = lineHost && row.contains(lineHost) ? Number(lineHost.getAttribute("data-line-ordinal")) : NaN;
+        const target = chapters.targetFor(messageId, Number.isInteger(line) ? line : null);
+        const existing = target ? markAt(chapters.marks, target) : undefined;
+        chapter = !target
+          ? { kind: "disabled", explanationKey: "chapters.notYet" }
+          : existing
+            ? { kind: "unmark", markId: existing.id }
+            : { kind: "mark", target };
+      }
       const choices = buildMenuChoices({
         threadKey: sessionId ?? "",
         entryKey: messageId,
@@ -109,6 +124,7 @@ export const MessageContextMenu: FC<{
         entryText: entryTextOf(message),
         canAttach: passages !== null,
         fork,
+        chapter,
       });
       if (choices.length === 0) return;
       event.preventDefault();
@@ -143,9 +159,9 @@ export const MessageContextMenu: FC<{
   }, [feedback]);
 
   const run = (open: OpenMenu, operation: MenuOperation) => {
-    const show = (ok: boolean) =>
+    const say = (key: MessageKey) =>
       setFeedback((previous) => ({
-        key: ok ? "messageMenu.copied" : "messageMenu.copyFailed",
+        key,
         x: open.x,
         y: open.y,
         nonce: (previous?.nonce ?? 0) + 1,
@@ -157,7 +173,21 @@ export const MessageContextMenu: FC<{
           material.scope === "entry" && material.output === "rich"
             ? writeRichClipboard(material.body, markdownToClipboardHtml(material.body))
             : writeClipboard(material.body);
-        void write.then(show, () => show(false));
+        void write.then(
+          (ok) => say(ok ? "messageMenu.copied" : "messageMenu.copyFailed"),
+          () => say("messageMenu.copyFailed"),
+        );
+        return;
+      }
+      case "chapter.mark": {
+        void chapters?.mark?.(operation.target).then(
+          () => say("chapters.marked"),
+          () => say("chapters.markFailed"),
+        );
+        return;
+      }
+      case "chapter.unmark": {
+        void chapters?.unmark?.(operation.markId).catch(() => undefined);
         return;
       }
       case "context.capture": {

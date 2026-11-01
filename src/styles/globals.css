@@ -459,6 +459,27 @@
   }
 }
 
+/* A chapter landing (F-37): the same inner tint as a search hit, once, and
+   a steady tint instead of the pulse when motion is reduced. Search hits
+   and the arrow hold still under reduced motion too. */
+[data-chapter-hit='true'] {
+  border-radius: 0.375rem;
+  animation: nexus-search-hit-box 5s ease-out;
+  scroll-margin-block: 25vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-search-hit='true'],
+  [data-chapter-hit='true'] {
+    animation: none;
+    background-color: color-mix(in srgb, var(--primary) 18%, transparent);
+  }
+  .nexus-search-arrow,
+  .nexus-search-arrow--leaving {
+    animation: none;
+  }
+}
+
 /* ---------------------------------------------------------------------------
  * Search-jump arrow: `———▶` pointing at the found line from its left.
  *

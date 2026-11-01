@@ -295,3 +295,28 @@ describe('fork after a reply', () => {
     expect(resolveAfterResponseCut(dupRows, transcript, 'a1')).toBe('a1-end')
   })
 })
+
+describe('chapter mark (F-37)', () => {
+  it('sits before fork in the thread section: mark, remove, or not yet', () => {
+    const marking = buildMenuChoices(facts({ chapter: { kind: 'mark', target: { entryKey: 'm1', segmentKey: 'm2' } } }))
+    expect(marking.map(c => c.choiceKey).slice(-2)).toEqual(['chapter', 'fork'])
+    expect(marking.at(-2)).toMatchObject({
+      section: 'thread',
+      labelKey: 'chapters.mark',
+      availability: 'enabled',
+      operation: { command: 'chapter.mark', target: { entryKey: 'm1', segmentKey: 'm2' } },
+    })
+    const removing = buildMenuChoices(facts({ chapter: { kind: 'unmark', markId: 'c1' } }))
+    expect(removing.at(-2)).toMatchObject({
+      labelKey: 'chapters.unmark',
+      operation: { command: 'chapter.unmark', markId: 'c1' },
+    })
+    const notYet = buildMenuChoices(facts({ chapter: { kind: 'disabled', explanationKey: 'chapters.notYet' } }))
+    expect(notYet.at(-2)).toMatchObject({ availability: 'disabled', explanationKey: 'chapters.notYet' })
+  })
+
+  it('is absent when the thread may not mark', () => {
+    expect(keys(facts({ chapter: null }))).not.toContain('chapter')
+    expect(keys(facts())).not.toContain('chapter')
+  })
+})

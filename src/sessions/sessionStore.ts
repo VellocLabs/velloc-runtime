@@ -61,6 +61,8 @@ import type { ChildProposal } from './childProposals'
 import { splitPassagePrompt, serializePassagePrompt } from '../browser/webview/capturedPassages'
 import { quotedPromptLabel } from '../browser/webview/replyQuote'
 import { splitUploadedAttachmentPrefix } from '../browser/webview/pastedTextAttachment'
+import { chapterMarksFromStorage, type ChapterMark } from './chapterMarks'
+import { marksWithin } from './chapterBook'
 
 function createFallbackUUID(): string {
   return `conversation-${Math.random().toString(16).slice(2)}-${Date.now().toString(16)}`
@@ -150,6 +152,8 @@ export type BrowserSessionMetadata = Record<string, unknown> & {
   createdAt?: number
   /** Pinned to the top of the session list by the user. */
   pinned?: boolean
+  /** Places in the conversation a person marked; the runtime's chapter book owns them. (F-37) */
+  chapterMarks?: ChapterMark[]
 }
 
 export type BrowserSessionCounters = {
@@ -1021,6 +1025,18 @@ function forkCreationAndPin(
   }
 }
 
+/** A rewind replaces its source, so it keeps the source's chapter marks that sit in the copied part; a
+ *  fork or an import starts with none. (F-37) */
+function rewindChapterMarks(
+  source: BrowserSessionMetadata | undefined,
+  copied: readonly unknown[],
+  as: 'rewind' | 'import' | undefined,
+): Partial<BrowserSessionMetadata> {
+  if (as !== 'rewind') return {}
+  const kept = marksWithin(chapterMarksFromStorage(source?.chapterMarks), copied)
+  return kept.length > 0 ? { chapterMarks: kept } : {}
+}
+
 function pickForkCarryOverMetadata(
   source: BrowserSessionMetadata | undefined,
 ): Partial<BrowserSessionMetadata> {
@@ -1339,6 +1355,7 @@ export function buildForkedTranscriptEntries(
       ? { composerDraft, lastComposerEditAt: now }
       : {}),
     ...forkCreationAndPin(sourceMetadata, now, options?.as),
+    ...rewindChapterMarks(sourceMetadata, forkedMessages, options?.as),
   }
   const entries: BrowserTranscriptWriteEntry[] = [...forkedMessages]
   if (inheritedTitle) {

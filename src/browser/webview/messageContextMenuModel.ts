@@ -4,6 +4,7 @@ import {
   isCopyableSelection,
   type CaptureRequest,
 } from './capturedPassages'
+import type { ChapterTarget } from './chapterAnchors'
 import { resolveForkSendCutUuid } from './forkSend'
 
 /**
@@ -25,6 +26,8 @@ export type MenuOperation =
   | { command: 'clipboard.write'; material: CopyMaterial }
   | { command: 'context.capture'; material: CaptureRequest }
   | { command: 'thread.derive'; cut: HistoryCut }
+  | { command: 'chapter.mark'; target: ChapterTarget }
+  | { command: 'chapter.unmark'; markId: string }
 
 export type MenuSection = 'target' | 'entry' | 'thread'
 
@@ -59,6 +62,12 @@ export type MenuTargetFacts = {
   /** How this message can be forked; null hides the item. */
   fork:
     | { kind: 'enabled'; cut: HistoryCut }
+    | { kind: 'disabled'; explanationKey: string }
+    | null
+  /** The chapter-mark item (F-37): mark this place, remove its mark, or not yet; null hides it. */
+  chapter?:
+    | { kind: 'mark'; target: ChapterTarget }
+    | { kind: 'unmark'; markId: string }
     | { kind: 'disabled'; explanationKey: string }
     | null
 }
@@ -212,6 +221,34 @@ export function buildMenuChoices(facts: MenuTargetFacts): ActionChoice[] {
         },
       })
     }
+  }
+  if (facts.chapter) {
+    const chapter = facts.chapter
+    choices.push(
+      chapter.kind === 'mark'
+        ? {
+            choiceKey: 'chapter',
+            section: 'thread',
+            labelKey: 'chapters.mark',
+            availability: 'enabled',
+            operation: { command: 'chapter.mark', target: chapter.target },
+          }
+        : chapter.kind === 'unmark'
+          ? {
+              choiceKey: 'chapter',
+              section: 'thread',
+              labelKey: 'chapters.unmark',
+              availability: 'enabled',
+              operation: { command: 'chapter.unmark', markId: chapter.markId },
+            }
+          : {
+              choiceKey: 'chapter',
+              section: 'thread',
+              labelKey: 'chapters.mark',
+              availability: 'disabled',
+              explanationKey: chapter.explanationKey,
+            },
+    )
   }
   if (facts.fork) {
     choices.push(

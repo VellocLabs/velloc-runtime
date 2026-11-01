@@ -8,9 +8,10 @@ import {
   expandAllWithin,
   expandContainer,
   MAX_FLASH_VIEWPORT_RATIO,
+  revealChapterRow,
   revealThreadMessage,
 } from '../browser/webview/revealThreadMessage'
-import { resetRowPinRequestsForTests } from '../browser/webview/rowPinRequests'
+import { requestRowPin, resetRowPinRequestsForTests, subscribeRowPin } from '../browser/webview/rowPinRequests'
 
 /**
  * happy-dom reports every rect as 0×0, and the reveal deliberately
@@ -548,5 +549,83 @@ describe('revealThreadMessage', () => {
     expect(await revealThreadMessage(root, 0, 72)).toBe(true)
     expect(root.querySelectorAll('[data-search-hit="true"]')).toHaveLength(0)
     expect(root.getAttribute('data-search-reveal')).toBe('quiet')
+  })
+})
+
+describe('revealChapterRow', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+    resetRowPinRequestsForTests()
+  })
+
+  function thread(rowHtml: string, heights: Record<string, number>) {
+    return build(
+      `<div class="thread"><div class="aui-thread-viewport">${rowHtml}</div></div>`,
+      heights,
+    )
+  }
+
+  it('lands on the row and marks it', async () => {
+    const root = thread(`<div data-message-index="0" class="row"></div><div data-message-index="1" class="row2"></div>`, {
+      '.row': 200,
+      '.row2': 200,
+    })
+    expect(await revealChapterRow(root, 1)).toBe(true)
+    const row = root.querySelector('.row2')!
+    expect(row.getAttribute('data-chapter-target')).toBe('true')
+    expect(row.getAttribute('data-chapter-hit')).toBe('true')
+    expect(root.getAttribute('data-chapter-reveal')).toBe('landed')
+    expect(root.querySelector('[data-search-hit]')).toBeNull()
+  })
+
+  it('a segment opens its card and lands on its own line', async () => {
+    const root = thread(`<div data-message-index="0" class="row"></div>`, { '.row': 300 })
+    const row = root.querySelector<HTMLElement>('.row')!
+    row.appendChild(line(9, 'nine'))
+    row.appendChild(collapsedCard('card', 10, 49, held => held.appendChild(line(34, 'the segment'))))
+
+    expect(await revealChapterRow(root, 0, 34)).toBe(true)
+    const hits = root.querySelectorAll('[data-chapter-hit="true"]')
+    expect(hits).toHaveLength(1)
+    expect(hits[0]?.textContent).toBe('the segment')
+    expect(row.getAttribute('data-chapter-target')).toBe('true')
+  })
+
+  it('asks only its own thread to mount the row, and reports missing when it never does', async () => {
+    const root = thread('', {})
+    const pinned: Array<[number, Element | null]> = []
+    subscribeRowPin((index, within) => pinned.push([index, within]))
+    expect(await revealChapterRow(root, 7)).toBe(false)
+    expect(pinned).toEqual([[7, root]])
+    expect(root.getAttribute('data-chapter-reveal')).toBe('missing')
+  })
+
+  it('a newer search reveal supersedes a chapter jump', async () => {
+    const root = thread(
+      `<div data-message-index="0" class="row"></div>
+       <div data-message-index="1" class="row2"></div>`,
+      { '.row': 200, '.row2': 200 },
+    )
+    root.querySelector<HTMLElement>('.row2')!.appendChild(line(20, 'newer'))
+    const chapter = revealChapterRow(root, 0)
+    const search = revealThreadMessage(root, 1, 20)
+    expect(await search).toBe(true)
+    expect(await chapter).toBe(false)
+    expect(root.querySelector('[data-chapter-target]')).toBeNull()
+  })
+})
+
+describe('requestRowPin', () => {
+  beforeEach(() => resetRowPinRequestsForTests())
+
+  it('passes the requesting thread, or null for every thread; ignores a bad index', () => {
+    const seen: Array<[number, Element | null]> = []
+    subscribeRowPin((index, within) => seen.push([index, within]))
+    const root = document.createElement('div')
+    requestRowPin(3, root)
+    requestRowPin(4)
+    requestRowPin(-1, root)
+    requestRowPin(1.5)
+    expect(seen).toEqual([[3, root], [4, null]])
   })
 })
