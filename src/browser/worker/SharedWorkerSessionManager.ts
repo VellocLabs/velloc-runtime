@@ -3169,6 +3169,7 @@ export class SharedWorkerSessionManager {
       this.fsSummaries.delete(sessionId)
       this.startStates.delete(sessionId)
       this.family.forget(sessionId)
+      this.proposals.forget(sessionId)
       this.forgetSkillEvents(sessionId)
       // Written on every `session.open`; this is its only removal.
       this.panelOfSession.delete(sessionId)

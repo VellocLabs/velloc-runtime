@@ -38,6 +38,7 @@ const request: ProposedRequest = {
 type Internals = {
   sessions: Map<string, unknown>
   handleSessionMessage(port: MessagePort, message: unknown): void
+  handleSessionDelete(port: MessagePort, sessionId: string): Promise<void>
 }
 
 afterEach(() => {
@@ -61,5 +62,20 @@ describe('SharedWorkerSessionManager — proposals', () => {
     expect(await waiting).toBe('superseded')
     expect((await board.get('S1', mine.taskId))!.state).toBe('superseded')
     expect((await board.get('S2', theirs.taskId))!.state).toBe('proposed')
+  })
+
+  it('the proposals of a deleted session go with it: its records are forgotten and a waiting offer ends', async () => {
+    const manager = new SharedWorkerSessionManager({ createWorker: makeWorker })
+    const board = getProposalBoard()!
+    const internals = manager as unknown as Internals
+    const gone = await board.propose('S1', { mode: 'suggest', request })
+    const offer = await board.propose('S1', { mode: 'offer', request })
+    const kept = await board.propose('S2', { mode: 'suggest', request })
+    const waiting = board.awaitOffer('S1', offer.taskId)
+    const port = { postMessage() {} } as unknown as MessagePort
+    await internals.handleSessionDelete(port, 'S1').catch(() => {})
+    expect(await board.get('S1', gone.taskId)).toBeUndefined()
+    expect(await waiting).toBe('stopped')
+    expect(await board.get('S2', kept.taskId)).toBeDefined()
   })
 })
