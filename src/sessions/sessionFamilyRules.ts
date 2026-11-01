@@ -17,7 +17,7 @@ import {
   type SessionLineageInput,
   type SessionLineageIndex,
 } from './sessionLineage'
-import type { BrowserSessionSummary, BrowserTranscriptEntry } from './sessionStore'
+import type { BrowserTranscriptEntry } from './sessionStore'
 import { isMessageLike } from './sessionStore'
 import type { DeliveryReceipt, SessionEventRow } from './sessionDirectory'
 import { PART_TEXT, PART_TOOL_CALL, PART_TOOL_RESULT, PART_TOOL_RESULT_CANONICAL, PART_TOOL_USE } from '../runtime/VercelModelConstants'
@@ -59,27 +59,6 @@ export function checkFamilyToolCaller(caller: FamilyCaller): CallerCheck {
     return { ok: false, reason: 'this turn has no session id to act from.' }
   }
   return { ok: true, sessionId: caller.sessionId }
-}
-
-/**
- * A lineage input rebuilt from a list summary, for walking a family over the
- * summaries alone: a model-started relation and a person's started task read
- * as an attached origin, a person's fork as a copy source (a family
- * boundary), a detached entry as the flag alone.
- */
-export function lineageInputOfSummary(summary: BrowserSessionSummary): SessionLineageInput {
-  if (summary.detached) return { lineageDetached: true }
-  const parent = summary.parentSessionId
-  if (!parent || !summary.lineageKind) return {}
-  const name = summary.familyName ? { name: summary.familyName } : {}
-  switch (summary.lineageKind) {
-    case 'fork':
-      return { forkedFromSessionId: parent }
-    case 'suggested_task':
-      return { spawnedFrom: { sessionId: parent, taskId: '', kind: 'side_session', initiator: 'user', userFork: true, ...name } }
-    default:
-      return { spawnedFrom: { sessionId: parent, taskId: '', kind: summary.lineageKind, initiator: 'model', ...name } }
-  }
 }
 
 /** The session `sessionId` is shown under, from its metadata; null when none. */

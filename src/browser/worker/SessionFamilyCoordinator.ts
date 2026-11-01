@@ -23,6 +23,7 @@ import type {
 import {
   familyOf,
   isDetached,
+  lineageInputFromRelationFields,
   originOf,
   resolveLineage,
   type SessionLineageInput,
@@ -38,7 +39,6 @@ import {
   controlDecision,
   detachDecision,
   isPeerInboxEntry,
-  lineageInputOfSummary,
   pageTranscript,
   resolveRecipient,
   type PeerInboxEntry,
@@ -114,7 +114,7 @@ export class SessionFamilyCoordinator implements SessionDirectory {
     const index = new Map<string, SessionLineageInput>()
     for (const id of this.host.allSessionIds()) {
       const summary = this.host.summaryOf(id)
-      index.set(id, summary ? lineageInputOfSummary(summary) : {})
+      index.set(id, summary ? lineageInputFromRelationFields(summary) : {})
     }
     return index
   }

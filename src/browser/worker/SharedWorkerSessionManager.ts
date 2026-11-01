@@ -1441,7 +1441,7 @@ export class SharedWorkerSessionManager {
           projectRoot: meta.metadata.projectRoot,
           templateType: meta.metadata.templateType,
         }),
-      patchSessionMeta: (sessionId, patch) => this.patchDiskSessionMeta(sessionId, patch),
+      patchSessionMeta: (sessionId, patch) => this.patchSessionRecord(sessionId, patch, { touch: true }),
       setStartState: (sessionId, state) => {
         if (state) this.startStates.set(sessionId, state)
         else this.startStates.delete(sessionId)
@@ -3816,11 +3816,12 @@ export class SharedWorkerSessionManager {
   /**
    * Merge `patch` into a session's record: through its live store when one
    * is bound (that store owns the record), else on disk; then republish its
-   * summary.
+   * summary. `touch` moves a disk record's `updatedAt` to now.
    */
   private async patchSessionRecord(
     sessionId: string,
     patch: Partial<BrowserSessionMetadata>,
+    opts: { touch?: boolean } = {},
   ): Promise<void> {
     const live = this.sessions.get(sessionId)
     if (live?.conversationStore) {
@@ -3836,6 +3837,7 @@ export class SharedWorkerSessionManager {
       if (!current) return
       await storage.writeSessionMeta(sessionId, {
         ...current,
+        ...(opts.touch ? { updatedAt: Math.max(current.updatedAt, Date.now()) } : {}),
         metadata: { ...current.metadata, ...patch },
       })
     }
@@ -4328,28 +4330,6 @@ export class SharedWorkerSessionManager {
     }
   }
 
-  /** Merge `patch` into a session's record on disk and republish its summary.
-   *  For a session with no live runtime; a live one owns its own record. */
-  private async patchDiskSessionMeta(
-    sessionId: string,
-    patch: Partial<BrowserSessionMetadata>,
-  ): Promise<void> {
-    const storage = this.storage
-    if (!storage) return
-    const current = await storage.readSessionMeta(sessionId)
-    if (!current) return
-    await storage.writeSessionMeta(sessionId, {
-      ...current,
-      updatedAt: Math.max(current.updatedAt, Date.now()),
-      metadata: { ...current.metadata, ...patch },
-    })
-    try {
-      await this.summaryRepo.refreshFsSummary(sessionId)
-    } catch {
-      /* the next list scan picks it up */
-    }
-  }
-
   /** Hand a parent one report about a child (F-36): queued through the
    *  parent's live store when it has one, one chain per parent. */
   private recordChildReport(parentSessionId: string, report: ChildReport): Promise<void> {
@@ -4397,7 +4377,7 @@ export class SharedWorkerSessionManager {
       liveStore: sessionId => this.sessions.get(sessionId)?.conversationStore ?? null,
       readStoredMeta: async sessionId =>
         (await this.storage?.readSessionMeta(sessionId))?.metadata ?? null,
-      patchStoredMeta: (sessionId, patch) => this.patchDiskSessionMeta(sessionId, patch),
+      patchStoredMeta: (sessionId, patch) => this.patchSessionRecord(sessionId, patch, { touch: true }),
       relationIndex: () => {
         const index = new Map<string, SessionLineageInput>()
         for (const id of this.fsSummaries.keys()) {

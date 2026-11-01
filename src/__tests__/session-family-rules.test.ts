@@ -6,13 +6,17 @@ import {
   clampLimit,
   controlDecision,
   detachDecision,
-  lineageInputOfSummary,
   pageTranscript,
   receiptTail,
   resolveRecipient,
   PEER_INBOX_MAX,
 } from '../sessions/sessionFamilyRules'
-import { FAMILY_DEPTH_LIMIT, type SessionLineageInput, type SessionOrigin } from '../sessions/sessionLineage'
+import {
+  FAMILY_DEPTH_LIMIT,
+  lineageInputFromRelationFields,
+  type SessionLineageInput,
+  type SessionOrigin,
+} from '../sessions/sessionLineage'
 import { buildSessionSummaryFromMetadata } from '../sessions/sessionStore'
 
 // The session-family rules (F-36): who a recipient name means, who controls
@@ -182,18 +186,18 @@ describe('archiveDecision', () => {
   })
 })
 
-describe('lineageInputOfSummary', () => {
+describe('lineageInputFromRelationFields', () => {
   it('rebuilds the relation the summary was built from', () => {
     const origin: SessionOrigin = { sessionId: 'p', taskId: 't', kind: 'hand_off', initiator: 'model', name: 'x' }
     const s1 = buildSessionSummaryFromMetadata('c', 1, { spawnedFrom: origin })!
-    expect(lineageInputOfSummary(s1)).toEqual({ spawnedFrom: { sessionId: 'p', taskId: '', kind: 'hand_off', initiator: 'model', name: 'x' } })
+    expect(lineageInputFromRelationFields(s1)).toEqual({ spawnedFrom: { sessionId: 'p', taskId: '', kind: 'hand_off', initiator: 'model', name: 'x' } })
     const s2 = buildSessionSummaryFromMetadata('f', 1, { forkedFromSessionId: 'p' })!
-    expect(lineageInputOfSummary(s2)).toEqual({ forkedFromSessionId: 'p' })
+    expect(lineageInputFromRelationFields(s2)).toEqual({ forkedFromSessionId: 'p' })
     const s3 = buildSessionSummaryFromMetadata('d', 1, { spawnedFrom: origin, lineageDetached: true })!
-    expect(lineageInputOfSummary(s3)).toEqual({ lineageDetached: true })
+    expect(lineageInputFromRelationFields(s3)).toEqual({ lineageDetached: true })
     const s4 = buildSessionSummaryFromMetadata('t', 1, { spawnedFrom: { ...origin, initiator: 'user', userFork: true } })!
-    expect(lineageInputOfSummary(s4).spawnedFrom).toMatchObject({ sessionId: 'p', initiator: 'user', userFork: true })
-    expect(lineageInputOfSummary(buildSessionSummaryFromMetadata('s', 1, {})!)).toEqual({})
+    expect(lineageInputFromRelationFields(s4).spawnedFrom).toMatchObject({ sessionId: 'p', initiator: 'user', userFork: true })
+    expect(lineageInputFromRelationFields(buildSessionSummaryFromMetadata('s', 1, {})!)).toEqual({})
   })
   it('the summary carries the archived flag', () => {
     expect(buildSessionSummaryFromMetadata('a', 1, { archived: true })?.archived).toBe(true)
