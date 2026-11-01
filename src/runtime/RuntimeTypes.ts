@@ -250,8 +250,16 @@ export type QueuedCommandAttachment =
       source_uuid: string
     }
 
+/** A parent's queued child-session reports, read once at the start of its
+ *  turn: the block as the model reads it (F-36). */
+export type ChildReportsAttachment = {
+  type: 'child_reports'
+  text: string
+}
+
 export type AttachmentPayload =
   | QueuedCommandAttachment
+  | ChildReportsAttachment
   | BrowserContextAttachment
   | TextFileAttachment
   | PdfPointer
@@ -283,11 +291,12 @@ export type UserRow = Message & {
   }
   isMeta?: boolean
   /**
-   * Who submitted this turn when not the user: `'mailbox'` = a peer's team frame.
+   * Who submitted this turn when not the user: `'mailbox'` = a peer's team frame,
+   * `'auto_continuation'` = the runtime woke the model to read child reports.
    * Security: set by the runtime from the queue source, never from a client
    * payload; read only by the transcript view; never sent to the model.
    */
-  origin?: 'mailbox'
+  origin?: 'mailbox' | 'auto_continuation'
   /**
    * A plugin's `$.prompt.submit` (F-25): which plugin sent this turn,
    * and whether it asked to be read as the user's own (`asUser`). Set by the

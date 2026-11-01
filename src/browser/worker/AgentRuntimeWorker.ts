@@ -169,6 +169,12 @@ export interface AgentRuntimeWorkerHost {
   drainMidTurnTeamMessages?(
     sessionId: string,
   ): Array<{ prompt: string; enqueuedAt: number }>
+  /** Turn start: the session's queued child reports as one block, taken
+   *  once (F-36). Optional. */
+  takeChildReports?(
+    sessionId: string,
+    opts: { autoContinuation: boolean },
+  ): Promise<string | null>
   /** Every session reloads its plugins — after a plugin's stored
    *  `userConfig` value changed (`$.config.set`). Optional: without it only
    *  this session's engine reloads. */
@@ -1211,6 +1217,14 @@ export class AgentRuntimeWorker {
                 ? (this.host?.drainMidTurnTeamMessages?.(sessionId) ?? [])
                 : []
           : undefined,
+        // Child reports at a turn's start (F-36). Scope-guarded: a
+        // superseded build must not consume them.
+        takeChildReports: this.host?.takeChildReports
+          ? (sessionId, opts) =>
+              this.isCurrentScope(scope)
+                ? (this.host?.takeChildReports?.(sessionId, opts) ?? Promise.resolve(null))
+                : Promise.resolve(null)
+          : undefined,
         // Mid-turn user input (plain Enter while busy): the inject queue lives
         // in this worker's own turn controller, so no host hop. Scope-guarded
         // like the notification drain.
@@ -1758,6 +1772,16 @@ export class AgentRuntimeWorker {
     return extractFinalAssistantMessage(runtime.engine.transcriptRows())?.uuid
   }
 
+  /** Whether the message `getFinalAssistantText` reads is a model error. */
+  finalAssistantIsError(): boolean {
+    const rows = this.runtime?.engine.transcriptRows() ?? []
+    for (let i = rows.length - 1; i >= 0; i -= 1) {
+      const row = rows[i] as { type?: string; isApiErrorMessage?: boolean } | undefined
+      if (row?.type === 'assistant') return row.isApiErrorMessage === true
+    }
+    return false
+  }
+
   /** Whether the session is executing a turn (streaming, tools, or retry). */
   isBusy(): boolean {
     return this.turns.isBusy()
@@ -1831,10 +1855,11 @@ export class AgentRuntimeWorker {
   enqueueSubmit(
     message: AgentWorkerInboundMessage,
     priority: number,
+    origin?: 'auto_continuation',
   ): void {
     this.turns.enqueueExternalTurn(
       message as Extract<AgentWorkerInboundMessage, { type: 'worker.submitMessage' }>,
-      priority === 1 ? 'mailbox' : 'task_delivery',
+      origin === 'auto_continuation' ? origin : priority === 1 ? 'mailbox' : 'task_delivery',
     )
   }
 
@@ -1983,6 +2008,7 @@ export class AgentRuntimeWorker {
           // mailbox turn. The transcript renders the team-message card only
           // for a marked turn (see UserMessage.origin).
           ...(source === 'mailbox' ? { origin: 'mailbox' as const } : {}),
+          ...(source === 'auto_continuation' ? { origin: 'auto_continuation' as const } : {}),
           // `session.receive` (F-25): which delivery this turn is, from the
           // queue source alone.
           ...(source === 'mailbox'

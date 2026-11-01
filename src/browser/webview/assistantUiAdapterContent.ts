@@ -460,6 +460,9 @@ export function attachmentToText(message: ContextRow): string {
     case 'todo_reminder':
       return `Todo reminder (${attachment.itemCount} item${attachment.itemCount === 1 ? '' : 's'}).`
 
+    case 'child_reports':
+      return attachment.text
+
     case 'queued_command':
       return typeof attachment.prompt === 'string'
         ? attachment.prompt

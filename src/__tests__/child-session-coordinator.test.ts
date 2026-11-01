@@ -297,6 +297,7 @@ describe('ChildSessionCoordinator — a start that fails', () => {
           ending: 'failed',
           text: expect.stringMatching(/^Child session "wt" \(.*\) did not start: the worktree could not be created/),
           at: expect.any(Number),
+          notStarted: true,
         },
       },
     ])

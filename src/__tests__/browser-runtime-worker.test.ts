@@ -3185,6 +3185,33 @@ describe('bridge generation ownership + sidecar best-effort', () => {
     await worker.dispose()
   })
 
+  it('marks a runtime-made continuation with origin auto_continuation at mailbox priority (F-36)', async () => {
+    const seen: Array<{ origin?: unknown; isMeta?: unknown } | undefined> = []
+    const runtime = makeRound8Runtime({
+      submitTurn: async function* (_prompt?: unknown, options?: { origin?: unknown; isMeta?: unknown }) {
+        seen.push(options)
+        yield { type: 'assistant', message: { content: [] } }
+      },
+    })
+    const worker = new AgentRuntimeWorker({ emit: () => {} })
+    vi.mocked(createAgentRuntime).mockResolvedValueOnce(runtime as never)
+    await worker.reinitialize({ sessionId: 'round8-test', cwd: '/workspace' } as never)
+
+    worker.enqueueSubmit(
+      { type: 'worker.submitMessage', payload: { prompt: 'continue', isMeta: true } } as never,
+      1,
+      'auto_continuation',
+    )
+    await vi.waitFor(() => expect(seen).toHaveLength(1))
+    // A client's submit, whatever its payload, is never a continuation.
+    await worker.submitAndWait(
+      { type: 'worker.submitMessage', payload: { prompt: 'continue', origin: 'auto_continuation' } } as never,
+    )
+    expect(seen.map(options => options?.origin)).toEqual(['auto_continuation', undefined])
+    expect(seen[0]?.isMeta).toBe(true)
+    await worker.dispose()
+  })
+
   it('publishes a settled (not busy) snapshot to its clients', async () => {
     // Red-without: the only non-busy snapshot a client ever gets for a turn
     // is `worker.completed`. A turn that failed AFTER its stream had ended

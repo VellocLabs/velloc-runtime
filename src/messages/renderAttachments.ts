@@ -442,6 +442,14 @@ export function renderAttachmentMessage(
           `<system-reminder>\nA background agent completed a task:\n${message.attachment.prompt}\n</system-reminder>`,
         ),
       ]
+    case 'child_reports':
+      return [
+        createGeneratedUserMessage(
+          `<system-reminder>
+${message.attachment.text}
+</system-reminder>`,
+        ),
+      ]
     case 'browser_context':
       return [renderBrowserContextAttachment(message.attachment)]
     case 'file':

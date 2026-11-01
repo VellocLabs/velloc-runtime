@@ -110,6 +110,12 @@ export type BrowserSessionMetadata = Record<string, unknown> & {
   /** Turns this session's model has taken on its children's reports alone
    *  since a person last wrote to it. (F-36) */
   autoWakeCount?: number
+  /** Child reports pushed out of the full queue since the model last read
+   *  it. (F-36) */
+  childReportsDropped?: number
+  /** Per child, the time of the newest report the model consumed; an older
+   *  or equal one is never queued again. (F-36) */
+  childReportsReadAt?: Record<string, number>
   /** Set when another session started this one and it never started: the
    *  reason, kept for the row and the detail view. (F-36) */
   startFailed?: ChildStartFailure

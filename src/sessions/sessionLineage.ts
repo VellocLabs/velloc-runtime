@@ -51,6 +51,11 @@ export type ChildReport = {
   ending: ChildReportEnding
   text: string
   at: number
+  /** The child never started; this is the one note its parent gets. */
+  notStarted?: true
+  /** Queued for the parent to read, but never a reason to wake it: a person
+   *  stopped or removed the child while it was starting or running. */
+  quiet?: true
 }
 
 /** Why a session another session started never started. */

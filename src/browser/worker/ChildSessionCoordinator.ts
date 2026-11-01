@@ -285,6 +285,7 @@ export class ChildSessionCoordinator {
         ending: 'failed',
         text: childNotStartedText({ name, sessionId, reason }),
         at,
+        notStarted: true,
       })
     } catch {
       // the child's own record carries the reason

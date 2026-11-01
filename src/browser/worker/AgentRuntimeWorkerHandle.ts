@@ -28,7 +28,9 @@ export interface AgentRuntimeWorkerHandle {
   fireSessionDeletedStop?(): Promise<void>
   /** The session's `Notification` hooks, for a notification about it. */
   fireNotificationHooks?(notification: HookNotification): Promise<void>
-  enqueueSubmit(message: AgentWorkerInboundMessage, priority: number): void
+  /** `origin` marks a runtime-made automatic continuation (F-36); a
+   *  client's submit never reaches this path. */
+  enqueueSubmit(message: AgentWorkerInboundMessage, priority: number, origin?: 'auto_continuation'): void
   consumePendingAsNextSubmit(): void
   pumpSubmits(): void
   isBusy(): boolean
@@ -57,6 +59,8 @@ export interface AgentRuntimeWorkerHandle {
    *  there is none. The teammate turn-end report reads it: a locked-down
    *  child has no SendMessage, so this is its only upward channel. */
   getFinalAssistantText?(): string
+  /** Whether the message `getFinalAssistantText` reads is a model error. */
+  finalAssistantIsError?(): boolean
   /** The uuid of the message `getFinalAssistantText` reads, or undefined
    *  when there is none (or it carries no uuid). The turn-end report keys
    *  its dedup on this, so a new turn with the same words still reports. */

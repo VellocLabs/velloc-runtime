@@ -1148,6 +1148,12 @@ export class TeamCoordinator {
     return { ok: true }
   }
 
+  /** Whether team frames are queued for `sessionId`'s next boundary: they go
+   *  first, so a child-report continuation (F-36) waits behind them. */
+  hasQueuedFrames(sessionId: string): boolean {
+    return this.mailbox.hasPending(sessionId)
+  }
+
   /** A tool started in `sessionId` (every tool — see `reportTurnEnd`). */
   noteToolStart(sessionId: string): void {
     const tm = this.teammates.get(sessionId)

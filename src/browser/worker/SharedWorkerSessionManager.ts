@@ -90,7 +90,7 @@ import type {
   ForkRetarget,
 } from './sharedWorkerProtocol'
 import { hasTemplate } from '../../prompting/templateRegistry'
-import { cliOfTypeInAnyChannel } from '../../prompting/templateCatalog'
+import { cliOfTypeInAnyChannel, templateChannel } from '../../prompting/templateCatalog'
 import type { BrowserLlmSelection } from '../bridge/protocol/nexus_llm'
 import type {
   NexusCurrentSessionPhase,
@@ -137,6 +137,7 @@ import { TeamCoordinator } from './TeamCoordinator'
 import { ChildSessionCoordinator } from './ChildSessionCoordinator'
 import { SessionFamilyCoordinator } from './SessionFamilyCoordinator'
 import { setSessionDirectory } from '../../sessions/sessionDirectory'
+import { ChildReportCoordinator, type ChildReportHost } from './ChildReportCoordinator'
 import type { SpawnTeammateParams } from '../../team/teamTypes'
 import {
   raiseDesktopAlert,
@@ -569,6 +570,8 @@ export class SharedWorkerSessionManager {
       this.routines.interceptEmit(sessionId, message),
     interceptSubAgentEmit: (sessionId, message) =>
       this.subAgents.interceptEmit(sessionId, message),
+    observeSessionEvent: (sessionId, message) =>
+      this.childReports.observe(sessionId, message),
     routeBridgeRequest: (sessionId, payload) =>
       this.routeBridgeRequest(sessionId, payload),
     recordPersistedToolDetail: (toolCallId, detail) => {
@@ -667,6 +670,9 @@ export class SharedWorkerSessionManager {
   // Child sessions (F-36): a session another session starts, fresh or forked.
   // Assigned in the constructor beside the teams.
   private readonly childSessions: ChildSessionCoordinator
+  // A child's turn ends as a report to its parent, and the parent's model
+  // is woken to read reports when it is safe to (F-36).
+  private readonly childReports: ChildReportCoordinator
   /** The start state of each session another session is starting, for the
    *  list projection; cleared once the first turn is queued, kept on failure. */
   private readonly startStates = new Map<string, ChildStartState>()
@@ -1428,6 +1434,7 @@ export class SharedWorkerSessionManager {
       setStartState: (sessionId, state) => {
         if (state) this.startStates.set(sessionId, state)
         else this.startStates.delete(sessionId)
+        this.childReports.noteSession(sessionId)
       },
       submitFirstTurn: (sessionId, prompt) => {
         const session = this.sessions.get(sessionId)
@@ -1452,6 +1459,7 @@ export class SharedWorkerSessionManager {
     setChildSessionSpawner((params: ChildSessionSpawnParams) =>
       this.childSessions.spawn(params),
     )
+    this.childReports = new ChildReportCoordinator(this.childReportHost())
     // Register the background sub-agent spawner (worker-hosted Agent tool) on
     // the same leaf pattern — the Agent tool reaches it via getSubAgentSpawner()
     // without importing this manager. See team/subAgentSpawner.ts.
@@ -1845,6 +1853,7 @@ export class SharedWorkerSessionManager {
     if (!entry) return
     this.legacyStreamEndedSessions.delete(sessionId)
     entry.worker.markStreamStart()
+    this.childReports.turnStarted(sessionId)
     this.feed.emitStatus(sessionId)
     this.feed.scheduleSummary()
   }
@@ -1880,6 +1889,7 @@ export class SharedWorkerSessionManager {
     // reaches its boundaries, and its reports must not wait for a click.
     this.teams.maybeDrainLeadInbox(sessionId)
     this.family.maybeDrain(sessionId)
+    this.childReports.streamEnded(sessionId)
   }
 
   markToolStart(
@@ -1945,6 +1955,7 @@ export class SharedWorkerSessionManager {
     this.maybeFlushTaskResults(sessionId)
     this.teams.maybeDrainLeadInbox(sessionId)
     this.family.maybeDrain(sessionId)
+    this.childReports.noteSession(sessionId)
   }
 
   /**
@@ -2909,6 +2920,11 @@ export class SharedWorkerSessionManager {
     sessionId: string,
     opts: { fireStop?: boolean } = {},
   ): Promise<void> {
+    try {
+      this.childReports.sessionGone(sessionId, { byPerson: this.deletingSessions.has(sessionId) })
+    } catch (err) {
+      console.warn('[SharedWorker] child report on disposal failed', err)
+    }
     this.taskDelivery.dropParent(sessionId)
     this.dirtySessionCounters.delete(sessionId)
     this.legacyStreamEndedSessions.delete(sessionId)
@@ -3466,6 +3482,7 @@ export class SharedWorkerSessionManager {
     // Suppression is now owned by TaskDeliveryQueue.
     if (message.type === 'worker.submitMessage') {
       this.taskDelivery.resumeParent(sessionId)
+      this.childReports.personWrote(sessionId, message.payload.prompt)
     }
 
     // submitMessage and clearPendingMessage are handled internally
@@ -3723,6 +3740,7 @@ export class SharedWorkerSessionManager {
     // outlives a turn and parks on its mailbox for the next brief; only
     // Shutdown / deleting the lead removes one (`abortTeammatesOf`).
     this.teams.interruptTeammatesOf(sessionId)
+    this.childReports.interruptRequested(sessionId)
   }
 
   /** Stop a session's turn the way the user's Stop does: the worker interrupt
@@ -4275,38 +4293,97 @@ export class SharedWorkerSessionManager {
     }
   }
 
-  /** Cap on a parent's queue of unread child reports. */
-  private static readonly CHILD_REPORTS_MAX = 32
+  /** Hand a parent one report about a child (F-36): queued through the
+   *  parent's live store when it has one, one chain per parent. */
+  private recordChildReport(parentSessionId: string, report: ChildReport): Promise<void> {
+    return this.childReports.record(parentSessionId, report)
+  }
 
   /**
-   * Hand a parent one report about a child, one per child at most and the
-   * queue capped: through the parent's live store when it has one (the live
-   * store owns the record), else written to disk (F-36).
+   * Worker host: the child-report block a session's turn starts with, taken
+   * from its queue in the same write that marks it consumed; null when none.
+   * An automatic continuation that finds none is dropped by the caller.
    */
-  private async recordChildReport(parentSessionId: string, report: ChildReport): Promise<void> {
-    const storage = this.storage
-    if (!storage) return
-    const current = await storage.readSessionMeta(parentSessionId)
-    const existing = Array.isArray(current?.metadata.childReports)
-      ? current.metadata.childReports.filter(r => r.sessionId !== report.sessionId)
-      : []
-    const childReports = [...existing, report].slice(
-      -SharedWorkerSessionManager.CHILD_REPORTS_MAX,
-    )
-    const live = this.sessions.get(parentSessionId)
-    if (live) {
-      await live.worker.receiveFrame({
-        type: 'worker.updateSessionMetadata',
-        sessionId: parentSessionId,
-        payload: { metadata: { childReports } },
-      } as SessionWorkerInboundMessage)
-      return
+  takeChildReports(sessionId: string, opts: { autoContinuation: boolean }): Promise<string | null> {
+    return this.childReports.takeForTurn(sessionId, opts)
+  }
+
+  /** The session state and storage the child-report queue and the wake read
+   *  (F-36). */
+  private childReportHost(): ChildReportHost {
+    const summaryRelation = (sessionId: string): SessionLineageInput | undefined => {
+      const summary = this.fsSummaries.peek(sessionId)
+      return summary ? lineageInputFromRelationFields(summary) : undefined
     }
-    if (!current) return
-    await storage.writeSessionMeta(parentSessionId, {
-      ...current,
-      metadata: { ...current.metadata, childReports },
-    })
+    return {
+      wakeGateOpen: () => templateChannel() === 'beta',
+      liveStore: sessionId => this.sessions.get(sessionId)?.conversationStore ?? null,
+      readStoredMeta: async sessionId =>
+        (await this.storage?.readSessionMeta(sessionId))?.metadata ?? null,
+      patchStoredMeta: (sessionId, patch) => this.patchDiskSessionMeta(sessionId, patch),
+      relationIndex: () => {
+        const index = new Map<string, SessionLineageInput>()
+        for (const id of this.fsSummaries.keys()) {
+          const relation = summaryRelation(id)
+          if (relation) index.set(id, relation)
+        }
+        return index
+      },
+      relationOf: summaryRelation,
+      sessionExists: sessionId => {
+        const summary = this.fsSummaries.peek(sessionId)
+        return (
+          summary !== undefined &&
+          (summary as { archived?: unknown }).archived !== true &&
+          !this.deletingSessions.has(sessionId)
+        )
+      },
+      familyNameOf: sessionId => this.fsSummaries.peek(sessionId)?.familyName,
+      activity: sessionId => {
+        const entry = this.sessions.get(sessionId)
+        return {
+          busy: entry?.worker.isBusy() ?? false,
+          needsAnswer: entry?.needsAnswer ?? false,
+          starting: this.startStates.get(sessionId)?.state === 'starting',
+        }
+      },
+      parentHold: sessionId => {
+        const entry = this.sessions.get(sessionId)
+        if (!entry) return 'not_live'
+        if (entry.worker.isBusy()) return 'busy'
+        if (this.taskDelivery.isSuppressed(sessionId)) return 'stopped'
+        if (snapshotNeedsAnswer(entry.worker.getSnapshot())) return 'needs_answer'
+        if (this.deletingSessions.has(sessionId)) return 'deleting'
+        if (this.teams.hasQueuedFrames(sessionId)) return 'queued'
+        return null
+      },
+      finalAssistant: sessionId => {
+        const worker = this.sessions.get(sessionId)?.worker
+        return {
+          text: worker?.getFinalAssistantText?.() ?? '',
+          uuid: worker?.getFinalAssistantMessageUuid?.(),
+          error: worker?.finalAssistantIsError?.() ?? false,
+        }
+      },
+      enqueueWake: (sessionId, prompt) => {
+        const session = this.sessions.get(sessionId)
+        if (!session) return false
+        session.worker.enqueueSubmit(
+          {
+            type: 'worker.submitMessage',
+            sessionId,
+            payload: { prompt, isMeta: true },
+          } as SessionWorkerInboundMessage,
+          SUBMIT_PRIORITY.mailbox,
+          'auto_continuation',
+        )
+        return true
+      },
+      now: () => Date.now(),
+      setTimer: (fn, ms) => setTimeout(fn, ms),
+      clearTimer: handle => clearTimeout(handle as ReturnType<typeof setTimeout>),
+      trace: (event, attrs) => this.tracer.event(event, { attrs }),
+    }
   }
 
   /**

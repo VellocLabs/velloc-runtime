@@ -43,6 +43,9 @@ export type WorkerEventRouterHost = {
     sessionId: string,
     message: AgentWorkerOutboundMessage,
   ): boolean
+  /** Every current-instance event, after the needsAnswer and status
+   *  bookkeeping: child-session turn ends and status changes (F-36). */
+  observeSessionEvent?(sessionId: string, message: AgentWorkerOutboundMessage): void
   /** Route a worker bridge request onto the runtime's host port. */
   routeBridgeRequest(sessionId: string, payload: unknown): void
   /** Record a proactively persisted tool-call detail and wake waiters. */
@@ -111,6 +114,8 @@ export class WorkerEventRouter {
       )
       this.host.refreshSessionStatus(sessionId)
     }
+
+    this.host.observeSessionEvent?.(sessionId, message)
 
     // Retry countdowns: retry phase is owned by the Worker's
     // AgentTurnController. The Worker detects `api_error` events in its

@@ -16,7 +16,7 @@ import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import type { ContentBlockParam, Message } from '../runtime/RuntimeTypes'
 import { BrowserHostBridge } from '../browser/bridge/BrowserHostBridge'
 import { collectInitialAttachmentMessages } from '../messages/contextAttachments'
-import { makeUserRow } from '../messages/messageFactories'
+import { makeContextRow, makeUserRow } from '../messages/messageFactories'
 import type { PluginScan } from '../pluginHost/pluginModel'
 import { dispatchCommandInput } from './runSlashCommand'
 
@@ -41,7 +41,12 @@ export type BrowserUserInputPipelineOptions = {
    *  adapter here. Omitted in mock-host / test contexts (falls back to
    *  `globalThis.fetch`). */
   marketplaceFetch?: typeof fetch
+  /** This session's queued child reports as one block, taken once; null
+   *  when none (F-36). */
+  takeChildReports?: TakeChildReports
 }
+
+export type TakeChildReports = (opts: { autoContinuation: boolean }) => Promise<string | null>
 
 export type SubmitContext = ToolCallContext
 
@@ -78,6 +83,7 @@ export async function processUserInput(
     rescanPlugins?: () => Promise<PluginScan>
     settingsHomeDir?: string
     marketplaceFetch?: typeof fetch
+    takeChildReports?: TakeChildReports
   } = {},
 ): Promise<ProcessUserInputResult> {
   if (options.userInputPipeline) {
@@ -144,6 +150,25 @@ export async function processUserInput(
     }
   }
 
+  // A turn the model takes reads its child reports first; a slash command
+  // (above) never takes them. A continuation that finds none was overtaken
+  // by a turn that took them, and does not run.
+  const autoContinuation = params.origin === 'auto_continuation'
+  let reports: string | null = null
+  if (options.takeChildReports) {
+    try {
+      reports = await options.takeChildReports({ autoContinuation })
+    } catch {
+      reports = null
+    }
+  }
+  if (autoContinuation && reports === null) {
+    return { messages: [], shouldQuery: false }
+  }
+  if (reports !== null) {
+    messages.push(makeContextRow(options.runtimeConfig, { type: 'child_reports', text: reports }))
+  }
+
   messages.push(
     makeUserRow(
       options.runtimeConfig,
@@ -172,6 +197,7 @@ export class BrowserUserInputPipeline implements UserInputPipeline {
   private readonly rescanPlugins?: () => Promise<PluginScan>
   private readonly settingsHomeDir?: string
   private readonly marketplaceFetch?: typeof fetch
+  private readonly takeChildReports?: TakeChildReports
 
   constructor(options: BrowserUserInputPipelineOptions) {
     this.hostBridge = options.hostBridge
@@ -181,6 +207,7 @@ export class BrowserUserInputPipeline implements UserInputPipeline {
     this.rescanPlugins = options.rescanPlugins
     this.settingsHomeDir = options.settingsHomeDir
     this.marketplaceFetch = options.marketplaceFetch
+    this.takeChildReports = options.takeChildReports
   }
 
   /** Refresh the plugin snapshot shown by `/plugins` after a live reload. */
@@ -199,6 +226,7 @@ export class BrowserUserInputPipeline implements UserInputPipeline {
       rescanPlugins: this.rescanPlugins,
       settingsHomeDir: this.settingsHomeDir,
       marketplaceFetch: this.marketplaceFetch,
+      takeChildReports: this.takeChildReports,
     })
   }
 }

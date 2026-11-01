@@ -37,7 +37,7 @@ type SubmitMessage = Extract<
 
 export type QueuedTurn = {
   message: SubmitMessage
-  source: 'user' | 'mailbox' | 'task_delivery' | 'plugin'
+  source: 'user' | 'mailbox' | 'task_delivery' | 'plugin' | 'auto_continuation'
   /** A `plugin` turn's prompt as `prompt.submit` let it in (F-25). */
   plugin?: import('../../mods/promptNouns').PluginPromptTurn
   priority: number
@@ -489,9 +489,9 @@ export class AgentTurnController {
 
   enqueueExternalTurn(
     message: Extract<AgentWorkerInboundMessage, { type: 'worker.submitMessage' }>,
-    source: 'mailbox' | 'task_delivery',
+    source: 'mailbox' | 'task_delivery' | 'auto_continuation',
   ): void {
-    const priority = source === 'mailbox' ? 1 : 2
+    const priority = source === 'task_delivery' ? 2 : 1
     this.enqueue(message, source, priority)
   }
 

@@ -267,6 +267,12 @@ export type CreateBrowserRuntimeOptions = BrowserRuntimeOptions & {
   drainTeamMessages?: (
     sessionId: string,
   ) => Array<{ prompt: string; enqueuedAt: number }>
+  /** A turn's start: this session's queued child reports as one block, taken
+   *  once (F-36). Unset → no child reports. */
+  takeChildReports?: (
+    sessionId: string,
+    opts: { autoContinuation: boolean },
+  ) => Promise<string | null>
   /**
    * Aborts when the runtime scope this build belongs to is disposed (the
    * worker's `RuntimeScope.abortController`). Published on
@@ -789,9 +795,13 @@ export async function createBrowserRuntime(
     errors: pluginContributions.errors,
   }
 
+  const takeChildReports = options.takeChildReports
   const userInputPipeline = new BrowserUserInputPipeline({
     hostBridge,
     runtimeConfig,
+    ...(takeChildReports
+      ? { takeChildReports: (opts: { autoContinuation: boolean }) => takeChildReports(resolvedSessionId, opts) }
+      : {}),
     supportedSlashCommands,
     pluginLoadResult,
     // `/plugins enable <name>` of a folder copied in after this session
