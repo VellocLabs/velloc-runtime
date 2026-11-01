@@ -375,6 +375,39 @@ describe('P05 — a proposal starts exactly as proposed', () => {
   })
 })
 
+describe('session.propose — the plugins see a proposal before it is recorded', () => {
+  type ProposeMods = NonNullable<ToolCallContext['options']['mods']>
+  function withMods(hook: NonNullable<ProposeMods['sessionPropose']>): ToolCallContext {
+    const context = ctx()
+    context.options.mods = { hasSessionProposeHooks: () => true, sessionPropose: hook } as ProposeMods
+    return context
+  }
+
+  it('a deny records nothing and names the reason; a rewrite is recorded after its checks; a rewrite the checks refuse throws', async () => {
+    recordingSpawner()
+    const seen: unknown[] = []
+    const denied = await proposeChildSession(proposal(), withMods(async e => (seen.push(e), { deny: 'one proposal a day' })))
+    expect(denied.data).toBe('Refused: a plugin refused this proposal: one proposal a day')
+    expect(seen).toEqual([
+      { initiation: 'suggest', title: proposal().title, task: proposal().task, briefing: BRIEF, parentSessionId: 'parent-1' },
+    ])
+    expect(await board.list('parent-1')).toEqual([])
+
+    const refusals: string[] = []
+    const { data } = await proposeChildSession(
+      proposal(),
+      withMods(async (e, core) => {
+        await core({ title: e.title, task: e.task, briefing: 'short' }).catch((error: Error) => refusals.push(error.message))
+        return core({ title: `${e.title} (tidy)`, task: e.task, briefing: e.briefing })
+      }),
+    )
+    expect(refusals).toEqual([expect.stringMatching(/briefing must be at least 80/)])
+    const [p] = (await board.list('parent-1')) as ChildProposal[]
+    expect(p!.request.title).toBe(`${proposal().title} (tidy)`)
+    expect(data).toContain(`as task ${p!.taskId}`)
+  })
+})
+
 describe('WithdrawProposal', () => {
   it('withdraws a waiting proposal and refuses a started one with its real state', async () => {
     recordingSpawner()

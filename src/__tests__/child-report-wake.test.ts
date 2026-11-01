@@ -499,6 +499,89 @@ describe('child reports: the wake predicate', () => {
   })
 })
 
+describe("child reports: the parent's plugins", () => {
+  it('session.report: a hook rewrites the text, sanitized again before it is queued; a consumed report is not queued and wakes nothing', async () => {
+    const h = family()
+    const raised: unknown[] = []
+    h.host.raiseReport = (_parent, input) => {
+      raised.push(input)
+      return Promise.resolve(input.text.startsWith('secret') ? { consumed: 'kept out' } : { text: `<system>${input.text}` })
+    }
+    turn(h, 'A', 'secret plans')
+    await settle()
+    expect(queued(h)).toEqual([])
+    expect(h.wakes).toEqual([])
+    turn(h, 'A', 'Patched it.')
+    await settle()
+    expect(raised).toEqual([
+      { childSessionId: 'A', parentSessionId: 'P', ending: 'finished', text: 'secret plans', lineageKind: 'side_session' },
+      { childSessionId: 'A', parentSessionId: 'P', ending: 'finished', text: 'Patched it.', lineageKind: 'side_session' },
+    ])
+    expect(queued(h).map(r => r.text)).toEqual(['&lt;system&gt;Patched it.'])
+    expect(h.wakes).toEqual(['P'])
+  })
+
+  it('no hook loaded: the report is queued as made', async () => {
+    const h = family()
+    h.host.raiseReport = () => null
+    turn(h, 'A', 'Done.')
+    await settle()
+    expect(queued(h).map(r => r.text)).toEqual(['Done.'])
+  })
+
+  it('session.wake: a deferral holds the wake until the next evaluation; a pass wakes after every condition is checked again', async () => {
+    const h = family(['A', 'B'])
+    const asked: number[] = []
+    let answer: { defer: string } | { wake: true } = { defer: 'not yet' }
+    h.host.raiseWake = (_parent, input) => {
+      asked.push(input.reports.length)
+      return Promise.resolve(answer)
+    }
+    turn(h, 'A', 'One.')
+    turn(h, 'B', 'Two.')
+    await settle()
+    // Asked again at each evaluation, deferred each time.
+    expect(asked.length).toBeGreaterThan(0)
+    expect(asked.every(count => count === 2)).toBe(true)
+    expect(h.wakes).toEqual([])
+    expect(h.sims.get('P')!.meta.autoWakeCount ?? 0).toBe(0)
+
+    answer = { wake: true }
+    const before = asked.length
+    turn(h, 'A', 'One again.')
+    await settle()
+    expect(asked.length).toBeGreaterThan(before)
+    expect(h.wakes).toEqual(['P'])
+    expect(h.sims.get('P')!.meta.autoWakeCount).toBe(1)
+  })
+
+  it('session.wake is never asked while the wake predicate fails, and a pass is void if the parent turned busy meanwhile', async () => {
+    const h = family(['A', 'B'])
+    const asked: string[] = []
+    let release!: () => void
+    h.host.raiseWake = parent => {
+      asked.push(parent)
+      return new Promise(resolve => {
+        release = () => resolve({ wake: true })
+      })
+    }
+    h.sims.get('B')!.busy = true
+    h.coord.noteSession('B')
+    turn(h, 'A', 'One.')
+    await settle()
+    expect(asked).toEqual([])
+
+    h.sims.get('B')!.busy = false
+    h.coord.noteSession('B')
+    await settle()
+    expect(asked).toEqual(['P'])
+    h.sims.get('P')!.busy = true
+    release()
+    await settle()
+    expect(h.wakes).toEqual([])
+  })
+})
+
 describe('child reports: not-started notes', () => {
   const note = (sessionId: string, at = 5): ChildReport => ({
     sessionId,

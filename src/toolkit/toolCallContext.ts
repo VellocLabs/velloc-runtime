@@ -185,6 +185,9 @@ export type ToolCallContext = {
    *  call, so an extension's spawn gets the id without reading the tool's
    *  text. */
   onSubAgentLaunched?: (taskId: string) => void
+  /** Told the session SpawnSession registered in this call, so an
+   *  extension's spawn gets it without reading the tool's text. */
+  onChildSessionRegistered?: (registered: { sessionId: string; name: string; started: boolean }) => void
   /** Overrides for the tool-run path: the settings-hook executors the call
    *  stages use and the gates nested steps pass. Absent: production ones. */
   toolRunSeams?: ToolRunSeams

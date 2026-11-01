@@ -37,6 +37,12 @@ import {
   type ParkedChild,
 } from '../../sessions/childReports'
 import { snapshotHaltedOnUser } from '../../utils/sessionNeedsAnswer'
+import type {
+  SessionReportInput,
+  SessionReportSettlement,
+  SessionWakeInput,
+  SessionWakeSettlement,
+} from '../../mods/sessionFamilyEvents'
 
 /** The two calls a live session's conversation store answers. */
 export interface ChildReportStore {
@@ -89,6 +95,12 @@ export interface ChildReportHost {
   setTimer(fn: () => void, ms: number): unknown
   clearTimer(handle: unknown): void
   trace(event: string, attrs: Record<string, unknown>): void
+  /** `session.report` on the parent's plugins; null when none hooks it.
+   *  Optional: absent, reports raise nothing. */
+  raiseReport?(parentId: string, input: SessionReportInput): Promise<SessionReportSettlement> | null
+  /** `session.wake` on the parent's plugins; null when none hooks it.
+   *  Optional: absent, a wake raises nothing. */
+  raiseWake?(parentId: string, input: SessionWakeInput): Promise<SessionWakeSettlement> | null
 }
 
 type OpenTurn = {
@@ -125,6 +137,11 @@ export class ChildReportCoordinator {
   private readonly scheduled = new Set<string>()
   private readonly parkTimers = new Map<string, unknown>()
   private readonly lastReportAt = new Map<string, number>()
+  /** Parents whose `session.wake` hooks are being asked. */
+  private readonly wakeAsking = new Set<string>()
+  /** Parents whose hooks let the wake through: the next evaluation wakes
+   *  without asking again, if every condition still holds. */
+  private readonly wakeCleared = new Set<string>()
 
   constructor(private readonly host: ChildReportHost) {}
 
@@ -342,6 +359,22 @@ export class ChildReportCoordinator {
     // A parent that stopped its own child already knows: the report is data
     // for its next turn, never a reason to wake it.
     const stoppedByTarget = stoppedBy !== undefined && stoppedBy.size > 0 && [...stoppedBy].every(id => id === target)
+    let text = sanitizeChildReportText(rawText)
+    const raised = this.host.raiseReport?.(target, {
+      childSessionId: childId,
+      parentSessionId: target,
+      ending,
+      text,
+      lineageKind: resolveLineage(meta)?.kind ?? origin.kind,
+    })
+    if (raised) {
+      const settled = await raised
+      if ('consumed' in settled) {
+        this.host.trace('nexus_child_report_consumed', { childId, parentId: target })
+        return
+      }
+      text = settled.text
+    }
     // Strictly increasing per child: a report is told from a consumed one by
     // its time.
     const at = Math.max(this.host.now(), (this.lastReportAt.get(childId) ?? 0) + 1)
@@ -349,7 +382,7 @@ export class ChildReportCoordinator {
     await this.record(target, {
       sessionId: childId,
       ending,
-      text: rawText,
+      text,
       at,
       ...(quiet || stoppedByTarget ? { quiet: true as const } : {}),
     })
@@ -373,6 +406,7 @@ export class ChildReportCoordinator {
 
   /** The wake predicate, stated once (F-36). Runs inside the parent's chain. */
   private async evaluate(parentId: string): Promise<void> {
+    const cleared = this.wakeCleared.delete(parentId)
     if (!this.host.wakeGateOpen()) return
     if (this.inFlight.has(parentId) || this.clearing.has(parentId)) return
     if (this.host.parentHold(parentId) !== null) return
@@ -407,6 +441,7 @@ export class ChildReportCoordinator {
 
     // Re-read the live state: the metadata read above yielded.
     if (this.inFlight.has(parentId) || this.host.parentHold(parentId) !== null) return
+    if (!cleared && this.askWakeHooks(parentId, { parentSessionId: parentId, reports: queue.reports, count })) return
     this.inFlight.add(parentId)
     if (!this.host.enqueueWake(parentId, AUTO_CONTINUATION_PROMPT)) {
       this.inFlight.delete(parentId)
@@ -414,6 +449,34 @@ export class ChildReportCoordinator {
     }
     await this.writeMeta(parentId, { autoWakeCount: count + 1 })
     this.host.trace('nexus_child_wake', { parentId, count: count + 1, reports: queue.reports.length })
+  }
+
+  /**
+   * Ask the parent's `session.wake` hooks, outside its chain. True while
+   * they are asked: the wake waits, and goes through a fresh evaluation
+   * once they let it, never on their word alone. A deferral holds it until
+   * the next evaluation; a chain that fails lets it through.
+   */
+  private askWakeHooks(parentId: string, input: SessionWakeInput): boolean {
+    if (this.wakeAsking.has(parentId)) return true
+    const raised = this.host.raiseWake?.(parentId, input)
+    if (!raised) return false
+    this.wakeAsking.add(parentId)
+    void raised
+      .then(
+        settled => ('defer' in settled ? settled.defer : null),
+        () => null,
+      )
+      .then(deferred => {
+        this.wakeAsking.delete(parentId)
+        if (deferred !== null) {
+          this.host.trace('nexus_child_wake_deferred', { parentId })
+          return
+        }
+        this.wakeCleared.add(parentId)
+        this.scheduleEvaluate(parentId)
+      })
+    return true
   }
 
   private armParkTimer(parentId: string, delayMs: number): void {

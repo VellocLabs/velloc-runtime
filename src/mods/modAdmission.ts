@@ -16,9 +16,10 @@ import {
   isProviderPattern,
   refuseProviderModuleCall,
 } from './provider/providerEvents'
+import { PROPOSED_SESSION_FAMILY_EVENTS } from './sessionFamilyEvents'
 
 /** The compatibility level a refusal names. */
-export const MODS_ABI = 'Velloc mods ABI 0.2'
+export const MODS_ABI = 'Velloc mods ABI 0.3'
 
 /**
  * The events this engine RAISES — the ones a hook registered by name can ever
@@ -74,6 +75,11 @@ export const RAISED_EVENTS: readonly string[] = Object.freeze([
   // a message leaving for another agent, a delivery reaching the session
   'session.send',
   'session.receive',
+  // the child sessions, proposed in ABI 0.3: a session about to start, a
+  // proposal about to be recorded, a child's report reaching its parent, a
+  // parent about to be woken, a session leaving its parent, and
+  // `$.session.family` / `$.session.spawn` (sessionFamilyEvents.ts)
+  ...PROPOSED_SESSION_FAMILY_EVENTS,
   // a tool's description for the model, a command's for the picker
   'tool.describe',
   'command.describe',
@@ -183,6 +189,18 @@ export const RAISED_EVENTS: readonly string[] = Object.freeze([
   'telemetry.log',
   'telemetry.mark',
 ])
+
+/**
+ * The raised events whose shapes are proposed, not frozen: a module may hook
+ * them, and is told at load that they may still change.
+ */
+export const PROPOSED_EVENTS: readonly string[] = PROPOSED_SESSION_FAMILY_EVENTS
+
+/** The proposed events `hooks` names by name, each once. */
+export function proposedEventsHooked(hooks: readonly HookRegistration[]): string[] {
+  const named = hooks.map(hook => hook.pattern).filter(pattern => PROPOSED_EVENTS.includes(pattern))
+  return [...new Set(named)]
+}
 
 /**
  * The reason a module's SOURCE cannot be evaluated, or null: an unlisted suffix, or

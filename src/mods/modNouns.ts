@@ -109,6 +109,14 @@ import { isUiNotifyResult, uiNotifyArgsOf, uiNotifyCore, type ModNotifyHost } fr
 import { isUiViewResult, uiViewArgsOf, uiViewCore } from './modAgentView'
 import { isSessionIdentity, promptMediaArgsOf, promptMediaOf, sessionIdentityOf, type PromptMediaArgs } from './modManagedReads'
 import {
+  sessionFamilyArgsOf,
+  sessionSpawnArgsOf,
+  spawnSessionThroughTool,
+  type SessionSpawnArgs,
+} from './sessionFamilyEvents'
+import { getSessionDirectory } from '../sessions/sessionDirectory'
+import { LIST_SESSIONS_MAX_LIMIT } from '../sessions/sessionFamilyRules'
+import {
   pluginPromptArgsOf,
   promptComposeArgsOf,
   type ModPromptHost,
@@ -510,6 +518,34 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
       input: (args: readonly unknown[]) => sessionAppendArgsOf(args[0]),
       run: (e: unknown, { call, session }: NounContext) =>
         conversationHost(session, 'append').append(e as SessionAppendArgs, raiseOf(call)),
+    },
+    // An op event: the rows ListSessions answers with linked=true, this
+    // session left out. `e` is `{ includeArchived? }`.
+    family: {
+      input: (args: readonly unknown[]) => sessionFamilyArgsOf(args[0]),
+      run: async (e: unknown, { session }: NounContext) => {
+        const directory = getSessionDirectory()
+        if (!directory) notSupported('$.session.family is not available: this runtime has no session directory')
+        const { includeArchived } = sessionFamilyArgsOf(e)
+        return directory!.list({
+          callerSessionId: session.id(),
+          linked: true,
+          limit: LIST_SESSIONS_MAX_LIMIT,
+          ...(includeArchived !== undefined ? { includeArchived } : {}),
+        })
+      },
+      accepts: Array.isArray,
+    },
+    // The plugin's own SpawnSession call, through `tool.call` like the
+    // model's, so other plugins' guards apply; `session.spawn` is raised
+    // inside it. Resolves `{ sessionId, name, started }` or `{ deny }`.
+    spawn: {
+      raisesItself: true as const,
+      input: (args: readonly unknown[]) => sessionSpawnArgsOf(args[0]),
+      run: (e: unknown, { call, session }: NounContext) => {
+        if (!session.tools) notSupported('$.session.spawn is not available: this session has no tools to run')
+        return spawnSessionThroughTool(session.tools!, e as SessionSpawnArgs, raiseOf(call))
+      },
     },
   }),
   ui: Object.assign(Object.create(null), {

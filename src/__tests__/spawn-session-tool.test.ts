@@ -302,6 +302,95 @@ describe('SpawnSession — forwarding and acknowledgement', () => {
   })
 })
 
+describe('SpawnSession — session.spawn', () => {
+  type SpawnMods = NonNullable<ToolCallContext['options']['mods']>
+  /** Mods whose one `session.spawn` hook is `hook`, handed the event, core and context. */
+  function modsWith(hook: NonNullable<SpawnMods['sessionSpawn']>, hooked = true): SpawnMods {
+    return { hasSessionSpawnHooks: () => hooked, sessionSpawn: hook } as SpawnMods
+  }
+
+  it('raises the checked request with its resolved pins; a deny names the reason and starts nothing', async () => {
+    const calls = fakeSpawner({ ok: true, sessionId: 'c', name: 'n', sharedCheckout: true })
+    const seen: unknown[] = []
+    const mods = modsWith(async e => {
+      seen.push(e)
+      return { deny: 'no child sessions after hours' }
+    })
+    const { data } = await spawnChildSession(input({ model: TIERED_MODEL, effort: 'high' }), ctx({ mods }))
+    expect(data).toBe('Refused: a plugin refused this session: no child sessions after hours')
+    expect(calls).toHaveLength(0)
+    expect(seen).toEqual([
+      {
+        from: 'fresh',
+        kind: 'side_session',
+        initiation: 'asked',
+        title: 'Fix the login redirect',
+        task: 'Land the redirect fix.',
+        briefing: BRIEF,
+        name: '',
+        isolation: 'shared',
+        model: TIERED_MODEL,
+        effort: 'high',
+        permissionMode: 'default',
+        cwd: '',
+        parentSessionId: 'parent-1',
+        origin: { kind: 'model' },
+      },
+    ])
+  })
+
+  it('core starts the rewrite after checking it again: a lower effort and new text pass; a raised effort, a model not enabled or an empty title throws', async () => {
+    const calls = fakeSpawner({ ok: true, sessionId: 'child-9', name: 'redirect', sharedCheckout: true, cwd: '/repo' })
+    const refusals: string[] = []
+    const mods = modsWith(async (e, core) => {
+      const base = { title: e.title, task: e.task, briefing: e.briefing, name: e.name, model: e.model, effort: e.effort }
+      for (const bad of [{ effort: 'max' }, { model: 'not-enabled' }, { title: '' }]) {
+        await core({ ...base, ...bad }).then(
+          () => refusals.push('started'),
+          (error: Error) => refusals.push(error.message),
+        )
+      }
+      return core({ ...base, title: 'Fix the redirect', name: 'redirect', effort: 'low' })
+    })
+    const { data } = await spawnChildSession(input({ model: TIERED_MODEL, effort: 'high' }), ctx({ mods }))
+    expect(refusals).toHaveLength(3)
+    expect(refusals[0]).toMatch(/effort/)
+    expect(refusals[1]).toMatch(/not-enabled/)
+    expect(refusals[2]).toMatch(/title/)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ thinkingTier: 'low', request: { title: 'Fix the redirect', name: 'redirect', effort: 'low' } })
+    expect(data).toMatch(/^Registered child session "redirect" \(session child-9\)\./)
+  })
+
+  it("a plugin's own call names the plugin, and is told the session it registered", async () => {
+    fakeSpawner({ ok: true, sessionId: 'child-4', name: 'lab', sharedCheckout: true })
+    const origins: unknown[] = []
+    const contexts: unknown[] = []
+    const mods = modsWith(async (e, core, _signal, context) => {
+      origins.push(e.origin)
+      contexts.push(context)
+      return core({ title: e.title, task: e.task, briefing: e.briefing, name: e.name, model: e.model, effort: e.effort })
+    })
+    const registered: unknown[] = []
+    const modCallContext = { origin: { plugin: 'lab', tier: 'user' as const }, depth: 1 }
+    const context = ctx({ mods })
+    context.modCallContext = modCallContext
+    context.onChildSessionRegistered = r => registered.push(r)
+    await spawnChildSession(input(), context)
+    expect(origins).toEqual([{ kind: 'plugin', name: 'lab' }])
+    expect(contexts).toEqual([modCallContext])
+    expect(registered).toEqual([{ sessionId: 'child-4', name: 'lab', started: true }])
+  })
+
+  it('with no hook loaded nothing is raised and the request starts as made', async () => {
+    const calls = fakeSpawner({ ok: true, sessionId: 'c', name: 'n', sharedCheckout: true })
+    const hook = vi.fn()
+    await spawnChildSession(input(), ctx({ mods: modsWith(hook, false) }))
+    expect(hook).not.toHaveBeenCalled()
+    expect(calls).toHaveLength(1)
+  })
+})
+
 describe('SpawnSession — in the tool pool', () => {
   it('is a default-set tool, and stays in the pool under a hosted catalog', () => {
     expect(getBrowserTools().map(t => t.name)).toContain('SpawnSession')

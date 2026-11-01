@@ -17,7 +17,14 @@ import {
   type ConfigValue,
 } from './modConfig'
 import { ModInstance, type ModCall } from './ModInstance'
-import { RAISED_EVENTS, refuseModuleSource, refuseRegistrations, unraisedRenderSites } from './modAdmission'
+import {
+  MODS_ABI,
+  RAISED_EVENTS,
+  proposedEventsHooked,
+  refuseModuleSource,
+  refuseRegistrations,
+  unraisedRenderSites,
+} from './modAdmission'
 import { needsCompiler } from './modCompilerSurface'
 import { implementedNouns, isOpResult, serveNoun, serveNounStream, type ModEnvHost, type ModNounHost } from './modNouns'
 import { HEADLESS_COMPOSER, ModComposerBridge, type DecoratedPromptBox, type ModComposerAnswer } from './modComposer'
@@ -84,6 +91,33 @@ import {
   type SessionSendInput,
   type SessionSendResult,
 } from './sessionMessageEvents'
+import {
+  isLineageDetachResult,
+  isSessionProposeResult,
+  isSessionReportResult,
+  isSessionSpawnResult,
+  isSessionWakeResult,
+  lineageDetachInputProblem,
+  sessionProposeInputProblem,
+  sessionProposeRewriteOf,
+  sessionReportInputProblem,
+  sessionSpawnInputProblem,
+  sessionSpawnRewriteOf,
+  sessionWakeInputProblem,
+  type LineageDetachInput,
+  type LineageDetachSettlement,
+  type SessionProposeCore,
+  type SessionProposeInput,
+  type SessionProposeSettlement,
+  type SessionReportInput,
+  type SessionReportSettlement,
+  type SessionSpawnCore,
+  type SessionSpawnInput,
+  type SessionSpawnLaunched,
+  type SessionSpawnSettlement,
+  type SessionWakeInput,
+  type SessionWakeSettlement,
+} from './sessionFamilyEvents'
 import {
   commandDescribeProblem,
   isCommandDescribeResult,
@@ -1229,6 +1263,10 @@ export class ModRuntime implements TurnExtensions {
       }
       for (const site of new Set(unraisedRenderSites(hooks))) {
         this.options.report(`${ref.plugin}: its hook on ui.render for ${site} never runs: this surface does not draw ${site}`)
+      }
+      const proposed = proposedEventsHooked(hooks)
+      if (proposed.length > 0) {
+        this.options.report(`${ref.plugin}: it hooks ${proposed.join(', ')}, proposed in ${MODS_ABI}: their shapes may still change`)
       }
       // `uses.events`: "the patterns its `on(...)` registrations name, in
       // registration order, each once" — the registrations themselves, which
@@ -2604,6 +2642,218 @@ export class ModRuntime implements TurnExtensions {
       if (signal?.aborted) throw error
       this.options.report(`mods: agent.spawn (${input.subagentType}) failed: ${errorMessage(error)}; the subagent starts as decided`)
       return spawnDecisionOf(input)
+    }
+  }
+
+  hasSessionSpawnHooks(): boolean {
+    return !this.disposed && this.dispatcher.hasHooksFor('session.spawn')
+  }
+
+  /**
+   * `session.spawn`: a child session about to start, its checks passed.
+   * `next(e)` starts it with `title`, `task`, `briefing`, `name`, `model` or
+   * `effort` rewritten and resolves `{ sessionId, name }`; `{ deny: reason }`
+   * refuses it, nothing created. Every other field is pinned. `core` re-checks
+   * a rewrite and throws on one the request's own checks refuse. A chain that
+   * fails starts the request as made. Never rejects but on abort.
+   */
+  async sessionSpawn(
+    input: SessionSpawnInput,
+    core: SessionSpawnCore,
+    signal?: AbortSignal,
+    /** A plugin's own `$.session.spawn`: who raised it. */
+    context?: DispatchContext,
+  ): Promise<SessionSpawnSettlement> {
+    const own = (): Promise<SessionSpawnLaunched> => core(sessionSpawnRewriteOf(input, input))
+    if (this.disposed || !this.dispatcher.hasHooksFor('session.spawn')) return own()
+    let ran: SessionSpawnLaunched | undefined
+    try {
+      const result = (await this.dispatcher.dispatch(
+        'session.spawn',
+        input,
+        async (e: unknown) => {
+          const problem = sessionSpawnInputProblem(input, e)
+          if (problem) throw new Error(`the rewritten event is refused: ${problem}`)
+          ran = await core(sessionSpawnRewriteOf(input, e))
+          return ran
+        },
+        {
+          ...(signal ? { signal } : {}),
+          ...(context ? { context } : {}),
+          accepts: isSessionSpawnResult,
+          refusal: reason => ({ deny: reason }),
+        },
+      )) as { deny?: string }
+      // A session that started is reported as started, whatever a hook
+      // answered after its `next`.
+      if (ran) return ran
+      if (typeof result.deny === 'string') return { deny: result.deny }
+      return { deny: 'a hook answered without starting the session' }
+    } catch (error) {
+      if (ran) return ran
+      if (signal?.aborted) throw error
+      this.options.report(`mods: session.spawn (${input.title}) failed: ${errorMessage(error)}; the session starts as requested`)
+      return own()
+    }
+  }
+
+  hasSessionProposeHooks(): boolean {
+    return !this.disposed && this.dispatcher.hasHooksFor('session.propose')
+  }
+
+  /**
+   * `session.propose`: a proposal about to be recorded. `next(e)` records it
+   * with `title`, `task` or `briefing` rewritten and resolves `{ taskId }`;
+   * `{ deny: reason }` records nothing. A chain that fails records it as made.
+   * Never rejects but on abort.
+   */
+  async sessionPropose(
+    input: SessionProposeInput,
+    core: SessionProposeCore,
+    signal?: AbortSignal,
+  ): Promise<SessionProposeSettlement> {
+    const own = (): Promise<{ taskId: string }> => core(sessionProposeRewriteOf(input, input))
+    if (this.disposed || !this.dispatcher.hasHooksFor('session.propose')) return own()
+    let ran: { taskId: string } | undefined
+    try {
+      const result = (await this.dispatcher.dispatch(
+        'session.propose',
+        input,
+        async (e: unknown) => {
+          const problem = sessionProposeInputProblem(input, e)
+          if (problem) throw new Error(`the rewritten event is refused: ${problem}`)
+          ran = await core(sessionProposeRewriteOf(input, e))
+          return ran
+        },
+        { ...(signal ? { signal } : {}), accepts: isSessionProposeResult, refusal: reason => ({ deny: reason }) },
+      )) as { deny?: string }
+      if (ran) return ran
+      if (typeof result.deny === 'string') return { deny: result.deny }
+      return { deny: 'a hook answered without recording the proposal' }
+    } catch (error) {
+      if (ran) return ran
+      if (signal?.aborted) throw error
+      this.options.report(`mods: session.propose (${input.title}) failed: ${errorMessage(error)}; the proposal is recorded as made`)
+      return own()
+    }
+  }
+
+  hasSessionReportHooks(): boolean {
+    return !this.disposed && this.dispatcher.hasHooksFor('session.report')
+  }
+
+  /**
+   * `session.report`: a child's turn report about to be queued on its parent.
+   * `next({ ...e, text })` rewrites the text, `{ consumed: reason }` takes it:
+   * nothing is queued and it wakes nobody. Whatever text a hook hands back
+   * goes through `sanitize` again. A chain that fails queues it as made.
+   * Never rejects.
+   */
+  async sessionReport(
+    input: SessionReportInput,
+    sanitize: (text: string) => string,
+    signal?: AbortSignal,
+  ): Promise<SessionReportSettlement> {
+    if (this.disposed || !this.dispatcher.hasHooksFor('session.report')) return { text: input.text }
+    let handed: string | undefined
+    try {
+      const result = (await this.dispatcher.dispatch(
+        'session.report',
+        input,
+        (e: unknown) => {
+          const problem = sessionReportInputProblem(input, e)
+          if (problem) throw new Error(`the rewritten event is refused: ${problem}`)
+          const text = (e as Partial<SessionReportInput>).text
+          handed = sanitize(typeof text === 'string' ? text : input.text)
+          return { text: handed }
+        },
+        { ...(signal ? { signal } : {}), accepts: isSessionReportResult },
+      )) as { text?: string; consumed?: string }
+      if (typeof result.consumed === 'string') {
+        this.options.report(`mods: session.report (${input.childSessionId}) consumed by a hook: ${result.consumed}`)
+        return { consumed: result.consumed }
+      }
+      return { text: typeof result.text === 'string' ? sanitize(result.text) : (handed ?? input.text) }
+    } catch (error) {
+      this.options.report(
+        `mods: session.report (${input.childSessionId}) failed: ${errorMessage(error)}; the report is queued as made`,
+      )
+      return { text: input.text }
+    }
+  }
+
+  hasSessionWakeHooks(): boolean {
+    return !this.disposed && this.dispatcher.hasHooksFor('session.wake')
+  }
+
+  /**
+   * `session.wake`: every condition of a parent's wake held. `next(e)`
+   * resolves `{ wake: true }`; `{ defer: reason }` holds the wake until the
+   * reports are weighed again. A hook only defers or watches: it is raised
+   * for a wake the runtime decided, never asked for one. A chain that fails
+   * wakes. Never rejects.
+   */
+  async sessionWake(input: SessionWakeInput, signal?: AbortSignal): Promise<SessionWakeSettlement> {
+    if (this.disposed || !this.dispatcher.hasHooksFor('session.wake')) return { wake: true }
+    try {
+      const result = (await this.dispatcher.dispatch(
+        'session.wake',
+        input,
+        (e: unknown) => {
+          const problem = sessionWakeInputProblem(input, e)
+          if (problem) throw new Error(`the rewritten event is refused: ${problem}`)
+          return { wake: true }
+        },
+        { ...(signal ? { signal } : {}), accepts: isSessionWakeResult },
+      )) as { defer?: string }
+      if (typeof result.defer === 'string') {
+        this.options.report(`mods: session.wake (${input.parentSessionId}) deferred by a hook: ${result.defer}`)
+        return { defer: result.defer }
+      }
+      return { wake: true }
+    } catch (error) {
+      this.options.report(`mods: session.wake (${input.parentSessionId}) failed: ${errorMessage(error)}; the parent wakes`)
+      return { wake: true }
+    }
+  }
+
+  hasLineageDetachHooks(): boolean {
+    return !this.disposed && this.dispatcher.hasHooksFor('lineage.detach')
+  }
+
+  /**
+   * `lineage.detach`: a session about to leave its parent. `next(e)` resolves
+   * `{ detached: true }`; `{ deny: reason }` keeps it under its parent when
+   * the model asked for the detach. A person's detach is theirs: a deny of
+   * it is reported and the detach goes ahead. A chain that fails detaches.
+   * Never rejects.
+   */
+  async lineageDetach(input: LineageDetachInput, signal?: AbortSignal): Promise<LineageDetachSettlement> {
+    if (this.disposed || !this.dispatcher.hasHooksFor('lineage.detach')) return { detached: true }
+    try {
+      const result = (await this.dispatcher.dispatch(
+        'lineage.detach',
+        input,
+        (e: unknown) => {
+          const problem = lineageDetachInputProblem(input, e)
+          if (problem) throw new Error(`the rewritten event is refused: ${problem}`)
+          return { detached: true }
+        },
+        {
+          ...(signal ? { signal } : {}),
+          accepts: isLineageDetachResult,
+          ...(input.initiator === 'model' ? { refusal: (reason: string) => ({ deny: reason }) } : {}),
+        },
+      )) as { deny?: string }
+      if (typeof result.deny !== 'string') return { detached: true }
+      if (input.initiator === 'user') {
+        this.options.report(`mods: lineage.detach (${input.sessionId}): a hook's deny is ignored for the person's own detach: ${result.deny}`)
+        return { detached: true }
+      }
+      return { deny: result.deny }
+    } catch (error) {
+      this.options.report(`mods: lineage.detach (${input.sessionId}) failed: ${errorMessage(error)}; the session is detached`)
+      return { detached: true }
     }
   }
 

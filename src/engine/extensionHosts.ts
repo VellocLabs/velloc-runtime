@@ -104,6 +104,7 @@ function toolHost({ ledger, modTools }: HostParts): ModToolHost {
       try {
         const context = ledger.callContext(undefined, controller)
         if (options?.onSubAgentLaunched) context.onSubAgentLaunched = options.onSubAgentLaunched
+        if (options?.onChildSessionRegistered) context.onChildSessionRegistered = options.onChildSessionRegistered
         const confirm = context.requestToolUseConfirm
         const asksPerson = mods.whileAskingPerson?.bind(mods)
         // While the permission dialog is open the person is being waited

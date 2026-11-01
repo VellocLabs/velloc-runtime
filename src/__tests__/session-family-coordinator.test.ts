@@ -540,4 +540,28 @@ describe('DetachSession', () => {
     expect(host.sessions.get('c2')!.metadata.lineageDetached).toBeUndefined()
     expect(host.sessions.get('f')!.metadata.lineageDetached).toBeUndefined()
   })
+
+  it("lineage.detach is raised on the caller's plugins after the checks pass: a deny keeps the child; none hooked detaches", async () => {
+    const host = family()
+    const raised: Array<{ caller: string; input: unknown }> = []
+    let answer: { deny: string } | { detached: true } | null = { deny: 'children stay attached' }
+    const hooked = Object.assign(host, {
+      raiseDetach: (caller: string, input: unknown) => {
+        raised.push({ caller, input })
+        return answer ? Promise.resolve(answer) : null
+      },
+    })
+    const coord = new SessionFamilyCoordinator(hooked)
+    expect(await coord.detach('p', 'f')).toMatchObject({ ok: false, code: 'user_fork' })
+    expect(raised).toEqual([])
+    expect(await coord.detach('p', 'c1')).toEqual({
+      ok: false,
+      code: 'plugin_denied',
+      reason: 'a plugin refused the detach: children stay attached',
+    })
+    expect(raised).toEqual([{ caller: 'p', input: { sessionId: 'c1', parentSessionId: 'p', initiator: 'model' } }])
+    expect(host.sessions.get('c1')!.metadata.lineageDetached).toBeUndefined()
+    answer = null
+    expect(await coord.detach('p', 'c1')).toEqual({ ok: true, changed: true })
+  })
 })

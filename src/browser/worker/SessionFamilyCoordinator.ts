@@ -57,6 +57,7 @@ import { TeamMailbox, type MailboxEntry } from '../../team/TeamMailbox'
 import { renderPeerSessionFrame } from '../../team/renderPeerSessionFrame'
 import type { TeamMessageTrust } from '../../team/teamTypes'
 import type { installSessionTracer } from '../../utils/sessionTrace'
+import type { LineageDetachInput, LineageDetachSettlement } from '../../mods/sessionFamilyEvents'
 
 type SessionTracer = ReturnType<typeof installSessionTracer>
 
@@ -90,6 +91,9 @@ export interface SessionFamilyHost {
   interrupt(sessionId: string, by: string): void
   trustOf(sessionId: string): TeamMessageTrust
   tracer: SessionTracer
+  /** `lineage.detach` on `callerSessionId`'s plugins; null when none hooks
+   *  it. Optional: absent, a detach raises nothing. */
+  raiseDetach?(callerSessionId: string, input: LineageDetachInput): Promise<LineageDetachSettlement> | null
 }
 
 function newMessageId(): string {
@@ -468,7 +472,11 @@ export class SessionFamilyCoordinator implements SessionDirectory {
     return { ok: true, changed: true }
   }
 
-  async detach(callerSessionId: string, target: string): Promise<FamilyOutcome<{ changed: boolean }>> {
+  async detach(
+    callerSessionId: string,
+    target: string,
+    initiator: 'model' | 'user' = 'model',
+  ): Promise<FamilyOutcome<{ changed: boolean }>> {
     const sessionId = target === 'self' ? callerSessionId : target
     if (!this.knows(sessionId)) return { ok: false, code: 'unknown', reason: 'no session with that id in this runtime.' }
     const meta = await this.host.readMeta(sessionId)
@@ -476,6 +484,15 @@ export class SessionFamilyCoordinator implements SessionDirectory {
     const decision = detachDecision(callerSessionId, sessionId, meta.metadata)
     if (!decision.ok) return decision
     if (meta.metadata.lineageDetached === true) return { ok: true, changed: false }
+    const raised = this.host.raiseDetach?.(callerSessionId, {
+      sessionId,
+      parentSessionId: resolveLineage(meta.metadata)?.sessionId ?? '',
+      initiator,
+    })
+    if (raised) {
+      const settled = await raised
+      if ('deny' in settled) return { ok: false, code: 'plugin_denied', reason: `a plugin refused the detach: ${settled.deny}` }
+    }
     await this.host.patchMeta(sessionId, { lineageDetached: true })
     return { ok: true, changed: true }
   }

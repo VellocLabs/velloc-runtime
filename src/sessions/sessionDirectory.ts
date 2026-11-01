@@ -120,7 +120,12 @@ export interface SessionDirectory {
     target: string,
     archived: boolean,
   ): Promise<FamilyOutcome<{ changed: boolean }>>
-  detach(callerSessionId: string, target: string): Promise<FamilyOutcome<{ changed: boolean }>>
+  /** `initiator`: who asked for the detach; absent is the model. */
+  detach(
+    callerSessionId: string,
+    target: string,
+    initiator?: 'model' | 'user',
+  ): Promise<FamilyOutcome<{ changed: boolean }>>
 }
 
 let directory: SessionDirectory | null = null

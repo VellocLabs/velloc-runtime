@@ -60,6 +60,7 @@ import {
   type SessionLineageInput,
 } from '../../sessions/sessionLineage'
 import { CHILD_SESSION_TEMPLATE_TYPES } from '../../sessions/childSessionSpec'
+import { sanitizeChildReportText } from '../../sessions/childReports'
 import {
   setChildSessionSpawner,
   type ChildSessionSpawnParams,
@@ -1542,6 +1543,10 @@ export class SharedWorkerSessionManager {
       interrupt: (sessionId, by) => this.interruptSessionTurn(sessionId, by),
       trustOf: sessionId => this.getSessionTrust(sessionId),
       tracer: this.tracer,
+      raiseDetach: (callerSessionId, input) => {
+        const slot = modSlotFor(callerSessionId)
+        return slot?.lineageDetach && slot.hasLineageDetachHooks?.() ? slot.lineageDetach(input) : null
+      },
     })
     setSessionDirectory(this.family)
     // Register the background-shell sink — the Bash tool (in-process, no manager
@@ -4458,6 +4463,16 @@ export class SharedWorkerSessionManager {
       setTimer: (fn, ms) => setTimeout(fn, ms),
       clearTimer: handle => clearTimeout(handle as ReturnType<typeof setTimeout>),
       trace: (event, attrs) => this.tracer.event(event, { attrs }),
+      raiseReport: (parentId, input) => {
+        const slot = modSlotFor(parentId)
+        return slot?.sessionReport && slot.hasSessionReportHooks?.()
+          ? slot.sessionReport(input, sanitizeChildReportText)
+          : null
+      },
+      raiseWake: (parentId, input) => {
+        const slot = modSlotFor(parentId)
+        return slot?.sessionWake && slot.hasSessionWakeHooks?.() ? slot.sessionWake(input) : null
+      },
     }
   }
 

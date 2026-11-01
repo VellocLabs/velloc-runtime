@@ -34,6 +34,11 @@ import {
   type ProposalLauncher,
 } from '../../sessions/proposalBoard'
 import { allocateFamilyName } from '../../sessions/sessionLineage'
+import {
+  effortNotRaised,
+  type SessionSpawnInput as SessionSpawnEvent,
+  type SessionSpawnRewrite,
+} from '../../mods/sessionFamilyEvents'
 import { templateChannel } from '../../prompting/templateCatalog'
 import { enabledModelsFor, resolveChildProvider } from '../../team/sessionTrust'
 import { getAvailableThinkingTiersForModel } from '../../engine/contextWindow'
@@ -322,6 +327,107 @@ export async function launchChildSession(
     }
   }
 
+  const start = (chosen: ChildSessionRequest, chosenProvider: string | undefined): Promise<ProposalLaunch> =>
+    startChildSession(spawn, parentSessionId, chosen, chosenProvider, context, options)
+  const mods = context.options.mods
+  if (!mods?.sessionSpawn || mods.hasSessionSpawnHooks?.() === false) return start(request, providerId)
+
+  // The plugins' hooks see the start once its checks passed: a rewrite is
+  // checked again as the model's own request would be, a deny creates nothing.
+  let launched: ProposalLaunch | undefined
+  const kind = options.kind ?? 'side_session'
+  let settled: Awaited<ReturnType<NonNullable<typeof mods.sessionSpawn>>>
+  try {
+    settled = await mods.sessionSpawn(
+      sessionSpawnEventOf(request, parentSessionId, kind, context),
+      async rewrite => {
+        const chosen = await rewrittenChildRequest(input, request, providerId, rewrite, context)
+        launched = await start(chosen.request, chosen.providerId)
+        return launched.ok ? { sessionId: launched.sessionId, name: launched.name } : { refused: launched.reason }
+      },
+      context.cancelSource.signal,
+      context.modCallContext,
+    )
+  } catch (error) {
+    if (launched) return launched
+    return refused(`the start was cancelled: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  if (launched) return launched
+  if ('deny' in settled) return refused(`a plugin refused this session: ${settled.deny}`)
+  return refused('a plugin answered without starting the session.')
+}
+
+/** `session.spawn`'s `e` for a checked request. */
+function sessionSpawnEventOf(
+  request: ChildSessionRequest,
+  parentSessionId: string,
+  kind: 'side_session' | 'hand_off',
+  context: ToolCallContext,
+): SessionSpawnEvent {
+  const plugin = context.modCallContext?.origin.plugin
+  return {
+    from: request.from,
+    kind,
+    initiation: request.initiation,
+    title: request.title,
+    task: request.task,
+    briefing: request.briefing ?? '',
+    name: request.name ?? '',
+    isolation: request.isolation,
+    model: request.model ?? '',
+    effort: request.effort ?? '',
+    permissionMode: request.permissionMode,
+    cwd: request.cwd ?? '',
+    parentSessionId,
+    origin: plugin !== undefined ? { kind: 'plugin', name: plugin } : { kind: 'model' },
+  }
+}
+
+/**
+ * The request a `session.spawn` rewrite asks for, through the same checks as
+ * the model's own: a model enabled on this session's provider, an effort the
+ * model publishes and no higher than the one requested. Throws the reason on
+ * a rewrite the checks refuse, so the hook counts as absent.
+ */
+async function rewrittenChildRequest(
+  input: SpawnSessionInput,
+  request: ChildSessionRequest,
+  providerId: string | undefined,
+  rewrite: SessionSpawnRewrite,
+  context: ToolCallContext,
+): Promise<{ request: ChildSessionRequest; providerId: string | undefined }> {
+  const unchanged =
+    rewrite.title === request.title &&
+    rewrite.task === request.task &&
+    rewrite.briefing === (request.briefing ?? '') &&
+    rewrite.name === (request.name ?? '') &&
+    rewrite.model === (request.model ?? '') &&
+    rewrite.effort === (request.effort ?? '')
+  if (unchanged) return { request, providerId }
+  const checked = checkChildSessionRequest({ ...input, ...rewrite }, childCallerContext(context))
+  if (!checked.ok) throw new Error(checked.reason)
+  const model = await checkChildModelChoice(checked.request, context)
+  if (!model.ok) throw new Error(model.reason)
+  if (rewrite.effort !== (request.effort ?? '')) {
+    const tiers = model.providerId && rewrite.model
+      ? (getAvailableThinkingTiersForModel(rewrite.model, model.providerId) ?? [])
+      : []
+    if (!effortNotRaised(request.effort ?? '', rewrite.effort, tiers)) {
+      throw new Error(`effort "${rewrite.effort}" is above the effort requested ("${request.effort ?? ''}")`)
+    }
+  }
+  return { request: checked.request, providerId: model.providerId }
+}
+
+/** Start a checked request: the spawner registers it, then it is started. */
+async function startChildSession(
+  spawn: NonNullable<ReturnType<typeof getChildSessionSpawner>>,
+  parentSessionId: string,
+  request: ChildSessionRequest,
+  providerId: string | undefined,
+  context: ToolCallContext,
+  options: ChildLaunchOptions,
+): Promise<ProposalLaunch> {
   const outcome = await spawn({
     parentSessionId,
     request,
@@ -338,6 +444,7 @@ export async function launchChildSession(
     return refused('the runtime cannot start a session yet (no session has booted). Try again in a moment.')
   }
   if (!outcome.ok) return refused(outcome.reason)
+  context.onChildSessionRegistered?.({ sessionId: outcome.sessionId, name: outcome.name, started: !outcome.startFailed })
   if (outcome.startFailed) {
     return {
       ok: true,

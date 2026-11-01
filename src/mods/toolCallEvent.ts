@@ -22,6 +22,21 @@ import type {
   SessionSendInput,
   SessionSendResult,
 } from './sessionMessageEvents'
+import type {
+  ChildSessionRegistered,
+  LineageDetachInput,
+  LineageDetachSettlement,
+  SessionProposeCore,
+  SessionProposeInput,
+  SessionProposeSettlement,
+  SessionReportInput,
+  SessionReportSettlement,
+  SessionSpawnCore,
+  SessionSpawnInput,
+  SessionSpawnSettlement,
+  SessionWakeInput,
+  SessionWakeSettlement,
+} from './sessionFamilyEvents'
 
 /**
  * The keys `e` carries beside the tool's own arguments. `tool`, `tool_use_id`
@@ -181,6 +196,29 @@ export type ToolCallMods = Partial<ClassicMods> & {
     core: (e: AgentSpawnInput) => Promise<{ model: string }> | { model: string },
     signal?: AbortSignal,
   ): Promise<AgentSpawnSettlement>
+  /** The child-session events around SpawnSession, ProposeSession, a
+   *  child's report, a parent's wake and a detach. Optional: a holder
+   *  without them acts as if no hook were loaded. */
+  hasSessionSpawnHooks?(): boolean
+  sessionSpawn?(
+    input: SessionSpawnInput,
+    core: SessionSpawnCore,
+    signal?: AbortSignal,
+    /** A plugin's own `$.session.spawn`. */
+    context?: DispatchContext,
+  ): Promise<SessionSpawnSettlement>
+  hasSessionProposeHooks?(): boolean
+  sessionPropose?(input: SessionProposeInput, core: SessionProposeCore, signal?: AbortSignal): Promise<SessionProposeSettlement>
+  hasSessionReportHooks?(): boolean
+  sessionReport?(
+    input: SessionReportInput,
+    sanitize: (text: string) => string,
+    signal?: AbortSignal,
+  ): Promise<SessionReportSettlement>
+  hasSessionWakeHooks?(): boolean
+  sessionWake?(input: SessionWakeInput, signal?: AbortSignal): Promise<SessionWakeSettlement>
+  hasLineageDetachHooks?(): boolean
+  lineageDetach?(input: LineageDetachInput, signal?: AbortSignal): Promise<LineageDetachSettlement>
   /** `skill.prompt` over a skill's expanded body. Optional: a holder
    *  without it sends the text as computed. */
   hasSkillPromptHooks?(): boolean
@@ -209,7 +247,10 @@ export type ModToolHost = {
   call(
     input: Record<string, unknown>,
     raise: { context: DispatchContext; signal?: AbortSignal },
-    options?: { onSubAgentLaunched?: (taskId: string) => void },
+    options?: {
+      onSubAgentLaunched?: (taskId: string) => void
+      onChildSessionRegistered?: (registered: ChildSessionRegistered) => void
+    },
   ): Promise<unknown>
   /** `$.tool.check({ tool, input })`: the engine's verdict for that call
    *  through the chain, nothing run, no dialog opened. Rejects when no tool
@@ -354,6 +395,21 @@ export type SkillPromptMods = Pick<ToolCallMods, 'hasSkillPromptHooks' | 'skillP
 
 /** What the Agent tool and the agent listing hold of the mods. */
 export type AgentEventMods = Pick<ToolCallMods, 'hasAgentOfferHooks' | 'agentOffer' | 'hasAgentSpawnHooks' | 'agentSpawn'>
+
+/** What the child-session sites hold of the mods. */
+export type SessionFamilyMods = Pick<
+  ToolCallMods,
+  | 'hasSessionSpawnHooks'
+  | 'sessionSpawn'
+  | 'hasSessionProposeHooks'
+  | 'sessionPropose'
+  | 'hasSessionReportHooks'
+  | 'sessionReport'
+  | 'hasSessionWakeHooks'
+  | 'sessionWake'
+  | 'hasLineageDetachHooks'
+  | 'lineageDetach'
+>
 
 /** What a message site holds of the mods (the SendMessage tool, the drains). */
 export type SessionMessageMods = Pick<

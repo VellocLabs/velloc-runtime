@@ -35,6 +35,10 @@ const RAISED_ELSEWHERE: Record<string, string> = {
   'task.stop': 'the plugin task coordinator, a stop asked of a task',
   'config.describe': 'the /config menu',
   'classic.SubagentStart': 'the forked agent run (agents/forkedRun.ts)',
+  'session.propose': 'the ProposeSession tool, a proposal about to be recorded',
+  'session.report': "the child-report coordinator, a child's report on its parent's plugins",
+  'session.wake': "the child-report coordinator, a parent's wake on its plugins",
+  'lineage.detach': "the session-family coordinator, a detach on the caller's plugins",
 }
 
 describe('seam table', () => {

@@ -191,11 +191,49 @@ export async function proposeChildSession(
   }
   board.setLauncher(sessionId, proposalLauncherFor(context))
   const toolCallId = proposalToolCallIdOf(invokingRow, PROPOSE_SESSION_TOOL_NAME, input)
-  const proposal = await board.propose(sessionId, {
-    mode: mode as ProposalMode,
-    request,
-    ...(toolCallId ? { toolCallId } : {}),
-  })
+  const record = (chosen: ProposedRequest) =>
+    board.propose(sessionId, {
+      mode: mode as ProposalMode,
+      request: chosen,
+      ...(toolCallId ? { toolCallId } : {}),
+    })
+  let proposal: Awaited<ReturnType<typeof record>> | undefined
+  const mods = context.options.mods
+  if (!mods?.sessionPropose || mods.hasSessionProposeHooks?.() === false) {
+    proposal = await record(request)
+  } else {
+    // A rewrite is checked again as the model's own proposal would be; a
+    // deny records nothing.
+    let settled: Awaited<ReturnType<NonNullable<typeof mods.sessionPropose>>> | undefined
+    try {
+      settled = await mods.sessionPropose(
+        { initiation: mode, title: request.title, task: request.task, briefing: request.briefing, parentSessionId: sessionId },
+        async rewrite => {
+          const chosen: ProposedRequest = {
+            ...request,
+            title: rewrite.title.trim(),
+            task: rewrite.task.trim(),
+            briefing: rewrite.briefing.trim(),
+          }
+          const recheck = checkChildSessionRequest(
+            { ...chosen, initiation: 'asked', proposalId: '' },
+            childCallerContext(context),
+            { briefLater: mode === 'offer' },
+          )
+          if (!recheck.ok) throw new Error(recheck.reason)
+          proposal = await record(chosen)
+          return { taskId: proposal.taskId }
+        },
+        context.cancelSource?.signal,
+      )
+    } catch (error) {
+      if (!proposal) return { data: `Refused: the proposal was cancelled: ${error instanceof Error ? error.message : String(error)}` }
+    }
+    if (!proposal) {
+      const reason = settled && 'deny' in settled ? settled.deny : 'a plugin answered without recording it'
+      return { data: `Refused: a plugin refused this proposal: ${reason}` }
+    }
+  }
   if (mode === 'suggest') return { data: suggestionRecordedText(proposal) }
 
   const outcome = await board.awaitOffer(sessionId, proposal.taskId, context.cancelSource?.signal)
