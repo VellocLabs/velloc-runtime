@@ -1,13 +1,9 @@
 /**
- * Proposals for child sessions: a card in the transcript that starts a child
- * only when a person (or the model, on the person's word) says so. Pure: the
- * record, its state machine, expiry, the start-as-proposed rule, and the
- * texts the proposal tools answer the model with. (F-36)
- *
- * States: `proposed` → `starting` → `started`; `proposed` → `dismissed` /
- * `expired`; an offer `proposed` → `accepted_awaiting_brief` → `starting`;
- * an open offer → `superseded`. A failed start goes back to where it came
- * from with the reason.
+ * Proposals for child sessions (F-36): a card in the transcript that starts a
+ * child only when a person, or the model on the person's word, says so. Pure:
+ * the record, its state machine (`applyProposalEvent`), expiry, the
+ * start-as-proposed rule, and the texts the proposal tools answer the model
+ * with.
  */
 
 import type { SpawnSessionInput } from './childSessionSpec'
