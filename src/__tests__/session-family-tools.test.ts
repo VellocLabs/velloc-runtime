@@ -203,6 +203,23 @@ describe('SendMessage to a session', () => {
     }
   })
 
+  it('a session recipient is offered only where the session tools are: a stable lead, a chat session, a teammate and a sub-agent keep the team failure and never reach the directory', async () => {
+    setTeamMessenger(noMember)
+    const dir = stubDirectory()
+    setSessionDirectory(dir)
+    const teamFailure = { isError: true, data: 'Message not delivered: no member "x" in team "y".' }
+    setTemplateChannelForTest('stable')
+    expect(await MailTool.call({ to: 'parent', message: 'hi' }, ctx(), ALLOW, PARENT)).toMatchObject(teamFailure)
+    setTemplateChannelForTest('beta')
+    expect(await MailTool.call({ to: 'parent', message: 'hi' }, ctx({ templateType: 'chat' }), ALLOW, PARENT)).toMatchObject(teamFailure)
+    expect(await MailTool.call({ to: 'parent', message: 'hi' }, ctx({ teammateName: 'ada', teamName: 'team-1' }, 'teammate-7'), ALLOW, PARENT)).toMatchObject(teamFailure)
+    expect(await MailTool.call({ to: 'c1', message: 'hi' }, ctx({}, 'subagent-9'), ALLOW, PARENT)).toMatchObject(teamFailure)
+    expect(dir.calls).toEqual([])
+    // The same call from a beta code session reaches the directory.
+    expect(await MailTool.call({ to: 'parent', message: 'hi' }, ctx(), ALLOW, PARENT)).toMatchObject({ data: /delivery: delivered/ })
+    expect(dir.calls).toEqual([['send', 'caller-1', 'parent', 'hi']])
+  })
+
   it('a recipient neither a team nor the directory knows keeps the team failure text', async () => {
     setTeamMessenger(noMember)
     setSessionDirectory(stubDirectory({ send: async () => ({ messageId: 'msg_9', state: 'undelivered', reasonCode: 'unknown', reason: 'nobody.' }) }))

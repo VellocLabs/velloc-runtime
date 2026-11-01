@@ -3741,6 +3741,9 @@ export class SharedWorkerSessionManager {
     for (const task of this.taskRegistry.allLive()) {
       if ((task as { spawnerSessionId?: string }).spawnerSessionId === sessionId) return true
     }
+    for (const teammate of this.teams.listTeammatesOf(sessionId)) {
+      if (teammate.status === 'active' || teammate.status === 'idle') return true
+    }
     return false
   }
 

@@ -7,6 +7,7 @@
  */
 
 import {
+  FAMILY_DEPTH_LIMIT,
   RESERVED_FAMILY_NAMES,
   familyOf,
   familyRootOf,
@@ -131,6 +132,62 @@ export function resolveRecipient(
   return { kind: 'unknown' }
 }
 
+export type ControlAction = 'stop' | 'archive' | 'unarchive'
+
+export type ControlDecision = { ok: true } | { ok: false; code: 'self' | 'team' | 'not_delegated'; reason: string }
+
+/**
+ * Security: whether `callerSessionId` is delegated over `targetSessionId`:
+ * the target's model-started relation leads to the caller, directly or
+ * through a chain of such relations. A detached link, a person's fork or
+ * task, and a team relation end the chain. Knowing an id, or sharing a
+ * family, grants nothing here.
+ */
+export function isDelegatedOver(
+  callerSessionId: string,
+  targetSessionId: string,
+  index: SessionLineageIndex,
+): boolean {
+  let current = targetSessionId
+  for (let depth = 0; depth < FAMILY_DEPTH_LIMIT; depth++) {
+    const meta = index.get(current)
+    if (!meta) return false
+    const lineage = resolveLineage(meta)
+    if (!lineage || lineage.initiator !== 'model' || lineage.kind === 'team') return false
+    if (lineage.sessionId === callerSessionId) return true
+    current = lineage.sessionId
+  }
+  return false
+}
+
+/** Whether the caller may stop, archive or unarchive the target: only a
+ *  session it is delegated over. A teammate is its team's. */
+export function controlDecision(
+  callerSessionId: string,
+  targetSessionId: string,
+  index: SessionLineageIndex,
+  action: ControlAction,
+): ControlDecision {
+  if (targetSessionId === callerSessionId) {
+    return { ok: false, code: 'self', reason: `a session does not ${action} itself with this tool.` }
+  }
+  const lineage = resolveLineage(index.get(targetSessionId) ?? {})
+  if (lineage?.kind === 'team' && lineage.sessionId === callerSessionId) {
+    return {
+      ok: false,
+      code: 'team',
+      reason:
+        action === 'stop'
+          ? 'a teammate is its team\'s; end it with Shutdown instead.'
+          : 'a teammate is its team\'s; it is not archived on its own.',
+    }
+  }
+  if (!isDelegatedOver(callerSessionId, targetSessionId, index)) {
+    return { ok: false, code: 'not_delegated', reason: `only a person can ${action} that session.` }
+  }
+  return { ok: true }
+}
+
 export type DetachDecision = { ok: true } | { ok: false; code: string; reason: string }
 
 /**
@@ -163,12 +220,12 @@ export function detachDecision(
   if (!origin) {
     return { ok: false, code: 'top_level', reason: 'the session is top-level; there is no parent to detach it from.' }
   }
+  if (targetSessionId !== callerSessionId && origin.sessionId !== callerSessionId) {
+    return { ok: false, code: 'not_delegated', reason: 'the session is not a child this session started; only its parent or the session itself may detach it.' }
+  }
   if (meta.lineageDetached === true) return { ok: true }
   if (!isDelegated(meta)) {
     return { ok: false, code: 'not_delegated', reason: 'the session is not under a model\'s control.' }
-  }
-  if (targetSessionId !== callerSessionId && origin.sessionId !== callerSessionId) {
-    return { ok: false, code: 'not_delegated', reason: 'the session is not a child this session started; only its parent or the session itself may detach it.' }
   }
   if (origin.sharedCheckout) {
     return {

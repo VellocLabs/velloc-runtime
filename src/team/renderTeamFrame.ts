@@ -22,12 +22,12 @@ const NEUTRALISED_CLOSING_TAG = '</team​-message>'
 /** The member key: ASCII, as `memberKey.ts` derives it (a space is allowed
  *  only for frames written before keys existed, whose `name` was a raw
  *  display name). */
-function sanitizeKey(name: string): string {
+export function sanitizeKey(name: string): string {
   return name.replace(/[^A-Za-z0-9_\- ]/g, '').slice(0, 64) || 'unknown'
 }
 
 /** The display name: any language, minus the header's structural characters. */
-function sanitizeDisplay(name: string): string {
+export function sanitizeDisplay(name: string): string {
   return (
     name
       // eslint-disable-next-line no-control-regex
@@ -46,7 +46,7 @@ function senderHeader(frame: TeamMessageFrame): { key: string; display: string }
   return { key, display: display && display !== key ? display : '' }
 }
 
-function clampBody(body: string): string {
+export function clampBody(body: string): string {
   if (body.length <= MAX_TEAM_MESSAGE_BODY_CHARS) return body
   return `${body.slice(0, MAX_TEAM_MESSAGE_BODY_CHARS)}\n[truncated — the message was longer than ${MAX_TEAM_MESSAGE_BODY_CHARS} characters]`
 }

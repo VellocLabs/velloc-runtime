@@ -22,7 +22,7 @@ import { resolveChildProvider } from '../../team/sessionTrust'
 import { fsForContext } from '../../utils/fs/runtimeFs'
 import { normalizeMemberDisplayName } from '../../team/memberKey'
 import { getSessionDirectory, type DeliveryReceipt } from '../../sessions/sessionDirectory'
-import { sessionMessageReceipt } from './sessionFamilyTools'
+import { checkSessionFamilyCaller, sessionMessageReceipt } from './sessionFamilyTools'
 import {
   renderProviderCatalog,
   surveyProviderCatalog,
@@ -785,8 +785,10 @@ export const MailTool: ToolContract<SendMessageInput, string> = declareTool({
         'No team context: pass `team` (you are the lead) or call this from within a teammate session.',
       )
     }
+    // Security: a session recipient is offered exactly where the session
+    // tools are; elsewhere the team answer stands.
     const directory = getSessionDirectory()
-    const callerSessionId = context.options.sessionId
+    const sessionCaller = checkSessionFamilyCaller(context)
     const { sent, sentTo, sentIn, receipt } = await sendTeamMessage({
       options: context.options,
       candidates,
@@ -795,8 +797,8 @@ export const MailTool: ToolContract<SendMessageInput, string> = declareTool({
       origin: { kind: 'model' },
       withOtherTools: callsOtherTools(invokingRow),
       signal: context.cancelSource.signal,
-      ...(directory && callerSessionId
-        ? { sessionSend: (to: string, text: string) => directory.send(callerSessionId, to, text) }
+      ...(directory && sessionCaller.ok
+        ? { sessionSend: (to: string, text: string) => directory.send(sessionCaller.sessionId, to, text) }
         : {}),
     })
     if (receipt) return sessionMessageReceipt(receipt, sentTo)

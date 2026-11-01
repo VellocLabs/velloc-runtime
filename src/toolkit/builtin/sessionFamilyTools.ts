@@ -18,6 +18,7 @@ import {
   READ_EVENTS_MAX_LIMIT,
   checkFamilyToolCaller,
   receiptTail,
+  type CallerCheck,
 } from '../../sessions/sessionFamilyRules'
 
 export const LIST_SESSIONS_TOOL_NAME = 'ListSessions'
@@ -55,13 +56,20 @@ function isNestedCaller(context: ToolCallContext): boolean {
   )
 }
 
-function gate(context: ToolCallContext): Gate {
-  const checked = checkFamilyToolCaller({
+/** Security: the caller gate of the session tools, shared with SendMessage's
+ *  session addressing so a session recipient is offered exactly where the
+ *  tools are. */
+export function checkSessionFamilyCaller(context: ToolCallContext): CallerCheck {
+  return checkFamilyToolCaller({
     channel: templateChannel(),
     templateType: context.options.templateType,
     nested: isNestedCaller(context),
     sessionId: context.options.sessionId,
   })
+}
+
+function gate(context: ToolCallContext): Gate {
+  const checked = checkSessionFamilyCaller(context)
   if (!checked.ok) return { ok: false, outcome: { data: `Refused: ${checked.reason}` } }
   const directory = getSessionDirectory()
   if (!directory) {

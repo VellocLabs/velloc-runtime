@@ -19,9 +19,11 @@ export type ParsedTeamMessage = {
 
 const KINDS: readonly string[] = ['message', 'turn_end', 'shutdown', 'system']
 
-/** `renderTeamFrame`'s untrusted envelope: an opening tag, four instruction
- *  lines addressed to the model, `---`, the body, `---`, the closing tag. */
-const UNTRUSTED = /^<team-message from="([^"]*)"(?: display="([^"]*)")? trust="untrusted" kind="([a-z_]+)">\n([\s\S]*?)\n---\n([\s\S]*)\n---\n<\/team-message>$/
+/** The envelope: an opening tag, instruction lines addressed to the model,
+ *  `---`, the body, `---`, the closing tag. `renderTeamFrame` writes it for
+ *  an untrusted teammate; a message from another session
+ *  (`renderPeerSessionFrame`) is always in it, with either trust. */
+const ENVELOPE = /^<team-message from="([^"]*)"(?: display="([^"]*)")? trust="(trusted|untrusted)" kind="([a-z_]+)">\n([\s\S]*?)\n---\n([\s\S]*)\n---\n<\/team-message>$/
 
 /**
  * The trusted form: `[message from <key>]: body`, or
@@ -42,16 +44,16 @@ const TRUSTED = /^\[message from ([^\]\n]{1,64}?)(?: \(([A-Za-z0-9_\- ]{1,64})\)
 export function parseTeamMessageEnvelope(text: string): ParsedTeamMessage | null {
   const trimmed = text.trim()
   if (trimmed.startsWith('<team-message ')) {
-    const match = UNTRUSTED.exec(trimmed)
+    const match = ENVELOPE.exec(trimmed)
     if (!match) return null
-    const kind = match[3]
+    const kind = match[4]
     const from = match[1] || 'unknown'
     return {
       from,
       fromDisplay: match[2] || from,
-      trust: 'untrusted',
+      trust: match[3] as TeamMessageTrust,
       kind: (KINDS.includes(kind) ? kind : 'message') as TeamMessageKind,
-      body: match[5],
+      body: match[6],
     }
   }
   if (trimmed.startsWith('[message from ')) {

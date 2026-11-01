@@ -4,6 +4,7 @@ import {
   archiveDecision,
   checkFamilyToolCaller,
   clampLimit,
+  controlDecision,
   detachDecision,
   lineageInputOfSummary,
   pageTranscript,
@@ -14,8 +15,9 @@ import {
 import { FAMILY_DEPTH_LIMIT, type SessionLineageInput, type SessionOrigin } from '../sessions/sessionLineage'
 import { buildSessionSummaryFromMetadata } from '../sessions/sessionStore'
 
-// The session-family rules (F-36): who a recipient name means, who may detach
-// whom, what may be archived, how a transcript pages, and the caller gate.
+// The session-family rules (F-36): who a recipient name means, who controls
+// whom, who may detach whom, what may be archived, how a transcript pages,
+// and the caller gate.
 
 function child(parent: string, extra: Partial<SessionOrigin> = {}): SessionLineageInput {
   return { spawnedFrom: { sessionId: parent, taskId: 't', kind: 'side_session', initiator: 'model', ...extra } }
@@ -103,6 +105,50 @@ describe('resolveRecipient', () => {
   })
 })
 
+describe('controlDecision', () => {
+  const index = indexOf({
+    p: {},
+    c: child('p'),
+    g: child('c'),
+    s: child('p'),
+    f: { forkedFromSessionId: 'c' },
+    d: { ...child('p'), lineageDetached: true },
+    t: child('p', { initiator: 'user', userFork: true }),
+    tm: { spawnerSessionId: 'p', teammateName: 'ada' },
+    x: {},
+  })
+
+  it('a session controls the children its model started and their delegated descendants', () => {
+    expect(controlDecision('p', 'c', index, 'stop')).toEqual({ ok: true })
+    expect(controlDecision('p', 'g', index, 'archive')).toEqual({ ok: true })
+    expect(controlDecision('c', 'g', index, 'unarchive')).toEqual({ ok: true })
+  })
+
+  it('family membership grants nothing: a parent, a sibling, a stranger, a fork, a detached link, a user task', () => {
+    const refused = { ok: false, code: 'not_delegated', reason: 'only a person can stop that session.' }
+    expect(controlDecision('c', 'p', index, 'stop')).toEqual(refused)
+    expect(controlDecision('g', 'p', index, 'stop')).toEqual(refused)
+    expect(controlDecision('c', 's', index, 'stop')).toEqual(refused)
+    expect(controlDecision('x', 'c', index, 'stop')).toEqual(refused)
+    expect(controlDecision('c', 'f', index, 'stop')).toEqual(refused)
+    expect(controlDecision('p', 'd', index, 'stop')).toEqual(refused)
+    expect(controlDecision('p', 't', index, 'stop')).toEqual(refused)
+    expect(controlDecision('p', 'nope', index, 'stop')).toEqual(refused)
+    expect(controlDecision('p', 'c', index, 'archive')).toEqual({ ok: true })
+    expect(controlDecision('c', 'p', index, 'archive')).toMatchObject({ reason: 'only a person can archive that session.' })
+    expect(controlDecision('c', 'p', index, 'unarchive')).toMatchObject({ reason: 'only a person can unarchive that session.' })
+    expect(controlDecision('p', 'p', index, 'archive')).toMatchObject({ ok: false, code: 'self' })
+  })
+
+  it('a teammate is its team\'s: the lead is pointed at Shutdown, anyone else refused; a cycle terminates', () => {
+    expect(controlDecision('p', 'tm', index, 'stop')).toMatchObject({ ok: false, code: 'team', reason: /Shutdown/ })
+    expect(controlDecision('p', 'tm', index, 'archive')).toMatchObject({ ok: false, code: 'team' })
+    expect(controlDecision('x', 'tm', index, 'stop')).toMatchObject({ ok: false, code: 'not_delegated' })
+    const loop = indexOf({ a: child('b'), b: child('a') })
+    expect(controlDecision('z', 'a', loop, 'stop')).toMatchObject({ ok: false, code: 'not_delegated' })
+  })
+})
+
 describe('detachDecision', () => {
   it('lets a parent detach a child its model started, and a model-started child detach itself', () => {
     expect(detachDecision('p', 'c', child('p'))).toEqual({ ok: true })
@@ -117,6 +163,8 @@ describe('detachDecision', () => {
   })
   it('refuses a session that is not the caller\'s child, a top-level session and a shared checkout', () => {
     expect(detachDecision('other', 'c', child('p'))).toMatchObject({ ok: false, code: 'not_delegated' })
+    // Already detached: a stranger is still refused, not told it was done.
+    expect(detachDecision('other', 'c', { ...child('p'), lineageDetached: true })).toMatchObject({ ok: false, code: 'not_delegated' })
     expect(detachDecision('p', 'p', {})).toMatchObject({ ok: false, code: 'top_level' })
     expect(detachDecision('p', 'c', child('p', { sharedCheckout: true }))).toMatchObject({ ok: false, code: 'shared_checkout' })
   })

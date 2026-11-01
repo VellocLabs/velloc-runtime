@@ -8,6 +8,9 @@
  *   in memory while the session has a runtime, on its record otherwise
  * - a human gate (a question or permission card) is never acted around: no
  *   stop, no archive while the session waits on the user
+ * - control follows delegation: a session stops, archives or detaches only a
+ *   session its model started (or one reached through such links); family
+ *   membership grants reading, never control
  * - archiving never cascades; detaching keeps the origin on record
  */
 import type { SessionCard } from './sharedWorkerProtocol'
@@ -31,6 +34,7 @@ import {
   appendPeerInbox,
   archiveDecision,
   clampLimit,
+  controlDecision,
   detachDecision,
   isPeerInboxEntry,
   lineageInputOfSummary,
@@ -49,7 +53,7 @@ import type {
   StopResult,
 } from '../../sessions/sessionDirectory'
 import { TeamMailbox, type MailboxEntry } from '../../team/TeamMailbox'
-import { renderTeamFrame } from '../../team/renderTeamFrame'
+import { renderPeerSessionFrame } from '../../team/renderPeerSessionFrame'
 import type { TeamMessageTrust } from '../../team/teamTypes'
 import type { installSessionTracer } from '../../utils/sessionTrace'
 
@@ -96,6 +100,9 @@ function newMessageId(): string {
 export class SessionFamilyCoordinator implements SessionDirectory {
   /** Messages for sessions with a runtime that cannot take a turn now. */
   private readonly mailbox = new TeamMailbox()
+  /** One writer at a time per session record, so a kept message is never
+   *  overwritten by another written at the same moment. */
+  private readonly recordLocks = new Map<string, Promise<unknown>>()
 
   constructor(private readonly host: SessionFamilyHost) {}
 
@@ -247,8 +254,33 @@ export class SessionFamilyCoordinator implements SessionDirectory {
     return resolution.kind !== 'unknown'
   }
 
+  /** Run `work` after every earlier write to the same session's record. */
+  private withRecordLock<T>(sessionId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.recordLocks.get(sessionId) ?? Promise.resolve()
+    const run = previous.then(work, work)
+    const settled = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    this.recordLocks.set(sessionId, settled)
+    void settled.then(() => {
+      if (this.recordLocks.get(sessionId) === settled) this.recordLocks.delete(sessionId)
+    })
+    return run
+  }
+
+  /** Append a message to a closed session's record; false when the record is gone. */
+  private keepOnRecord(sessionId: string, entry: PeerInboxEntry): Promise<boolean> {
+    return this.withRecordLock(sessionId, async () => {
+      const current = await this.host.readMeta(sessionId)
+      if (!current) return false
+      await this.host.patchMeta(sessionId, { peerInbox: appendPeerInbox(current.metadata.peerInbox, entry) })
+      return true
+    })
+  }
+
   private renderPeerMessage(entry: PeerInboxEntry, toSessionId: string): string {
-    return renderTeamFrame(
+    return renderPeerSessionFrame(
       {
         v: 1,
         id: entry.messageId,
@@ -324,10 +356,9 @@ export class SessionFamilyCoordinator implements SessionDirectory {
     }
     const addressee = this.addressee(target)
     if (!this.host.isLive(target)) {
-      const current = await this.host.readMeta(target)
-      await this.host.patchMeta(target, {
-        peerInbox: appendPeerInbox(current?.metadata.peerInbox, entry),
-      })
+      if (!(await this.keepOnRecord(target, entry))) {
+        return refused('unknown', 'the session has no record to keep the message on.', target)
+      }
       this.host.tracer.event('nexus_session_message_kept', { attrs: { to: target, messageId } })
       return {
         messageId,
@@ -373,10 +404,13 @@ export class SessionFamilyCoordinator implements SessionDirectory {
   /** A session's runtime is bound: the messages kept on its record move to
    *  its mailbox, and the first becomes a turn if it can take one. */
   async onSessionBound(sessionId: string): Promise<void> {
-    const meta = await this.host.readMeta(sessionId)
-    const kept = Array.isArray(meta?.metadata.peerInbox) ? meta.metadata.peerInbox.filter(isPeerInboxEntry) : []
+    const kept = await this.withRecordLock(sessionId, async () => {
+      const meta = await this.host.readMeta(sessionId)
+      const entries = Array.isArray(meta?.metadata.peerInbox) ? meta.metadata.peerInbox.filter(isPeerInboxEntry) : []
+      if (entries.length > 0) await this.host.patchMeta(sessionId, { peerInbox: [] })
+      return entries
+    })
     if (kept.length === 0) return
-    await this.host.patchMeta(sessionId, { peerInbox: [] })
     for (const entry of kept) this.mailbox.enqueue(sessionId, this.renderPeerMessage(entry, sessionId))
     this.maybeDrain(sessionId)
   }
@@ -393,9 +427,8 @@ export class SessionFamilyCoordinator implements SessionDirectory {
       return { ok: false, code: 'self', reason: 'a session does not stop itself with this tool; end your turn instead.' }
     }
     if (!this.knows(target)) return { ok: false, code: 'unknown', reason: 'no session with that id in this runtime.' }
-    if (!this.inFamily(callerSessionId, target)) {
-      return { ok: false, code: 'unreachable', reason: 'the session is not in this session\'s family; only a family member can be stopped.' }
-    }
+    const control = controlDecision(callerSessionId, target, this.lineageIndex(), 'stop')
+    if (!control.ok) return control
     if (this.host.isStarting(target)) return { ok: true, result: 'starting' }
     if (this.host.needsAnswer(target)) {
       return { ok: false, code: 'waiting_user', reason: 'the session is waiting on the user (a question or permission card); that is the user\'s to answer, not the model\'s to stop.' }
@@ -411,14 +444,13 @@ export class SessionFamilyCoordinator implements SessionDirectory {
     archived: boolean,
   ): Promise<FamilyOutcome<{ changed: boolean }>> {
     if (!this.knows(target)) return { ok: false, code: 'unknown', reason: 'no session with that id in this runtime.' }
+    const control = controlDecision(callerSessionId, target, this.lineageIndex(), archived ? 'archive' : 'unarchive')
+    if (!control.ok) return control
     const current = await this.isArchived(target)
     if (!archived) {
       if (!current) return { ok: true, changed: false }
       await this.host.patchMeta(target, { archived: false })
       return { ok: true, changed: true }
-    }
-    if (target === callerSessionId) {
-      return { ok: false, code: 'running', reason: 'this session is the one running this turn; it cannot archive itself.' }
     }
     const decision = archiveDecision({
       archived: current,
