@@ -102,6 +102,9 @@ export const ja: Messages = {
   'action.send': 'メッセージを送信',
   'action.stop': '生成を停止',
   'action.copy': 'コピー',
+  // The toolbar over selected transcript text, and the quote it puts in the composer (F-36).
+  'selection.reply': '返信',
+  'composer.quoteDismiss': '引用を削除',
   'action.fork': 'ここから分岐',
   'session.forkTitle': '{title}（フォーク）',
   'action.rewind': 'ここまで巻き戻す',

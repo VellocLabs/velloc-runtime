@@ -121,6 +121,9 @@ export const en = {
   'action.send': 'Send message',
   'action.stop': 'Stop generating',
   'action.copy': 'Copy',
+  // The toolbar over selected transcript text, and the quote it puts in the composer (F-36).
+  'selection.reply': 'Reply',
+  'composer.quoteDismiss': 'Remove quote',
   'action.fork': 'Fork from here',
   // The title a "Fork from here" copy gets: the source's displayed title
   // plus a marker, so the two are telling apart in the sidebar. Rewind

@@ -101,6 +101,9 @@ export const ko: Messages = {
   'action.send': '메시지 보내기',
   'action.stop': '생성 중지',
   'action.copy': '복사',
+  // The toolbar over selected transcript text, and the quote it puts in the composer (F-36).
+  'selection.reply': '답장',
+  'composer.quoteDismiss': '인용 제거',
   'action.fork': '여기서 분기',
   'session.forkTitle': '{title} (포크)',
   'action.rewind': '여기로 되감기',

@@ -103,6 +103,9 @@ export const zh: Messages = {
   'action.send': '发送消息',
   'action.stop': '停止生成',
   'action.copy': '复制',
+  // The toolbar over selected transcript text, and the quote it puts in the composer (F-36).
+  'selection.reply': '回复',
+  'composer.quoteDismiss': '移除引用',
   'action.fork': '从这里分叉',
   'session.forkTitle': '{title}（分叉）',
   'action.rewind': '回退到这里',

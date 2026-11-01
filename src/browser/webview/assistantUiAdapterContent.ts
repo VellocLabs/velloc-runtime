@@ -11,6 +11,7 @@ import {
 import type { ReadonlyJSONObject } from 'assistant-stream/utils'
 import type { ThreadMessageLike } from '@assistant-ui/react'
 import { splitUploadedAttachmentPrefix } from './pastedTextAttachment'
+import { splitQuotePrefix } from './replyQuote'
 import { SKILL_TOOL_NAME } from '../../prompting/skillToolName'
 import {
   LAZY_DETAIL_FINISHED_SENTINEL,
@@ -298,13 +299,18 @@ export type UserMessageAttachments = NonNullable<ThreadMessageLike['attachments'
 export function convertUserContentWithAttachments(content: unknown): {
   content: string | ThreadPart[]
   attachments: UserMessageAttachments
+  /** The text the prompt was sent quoting, when it carried one (F-36). */
+  quote?: string
 } {
   const converted = convertUserContent(content)
   if (typeof converted === 'string') {
     const split = splitUploadedAttachmentPrefix(converted)
+    const body = split.attachments.length > 0 ? split.text : converted
+    const quoted = splitQuotePrefix(body)
     return {
-      content: split.attachments.length > 0 ? split.text : converted,
+      content: quoted.quote === null ? body : quoted.text,
       attachments: split.attachments.map(uploadMentionToAttachment),
+      ...(quoted.quote === null ? {} : { quote: quoted.quote }),
     }
   }
   // Content-array prompts (images present) carry the prefix on the one text
@@ -315,18 +321,21 @@ export function convertUserContentWithAttachments(content: unknown): {
     return { content: converted, attachments: [] }
   }
   const split = splitUploadedAttachmentPrefix(textPart.text)
-  if (split.attachments.length === 0) {
+  const quoted = splitQuotePrefix(split.text)
+  const quote = quoted.quote === null ? {} : { quote: quoted.quote }
+  if (split.attachments.length === 0 && quoted.quote === null) {
     return { content: converted, attachments: [] }
   }
   const parts = [...converted]
-  if (split.text.trim()) {
-    parts[textIndex] = { ...textPart, text: split.text }
+  if (quoted.text.trim()) {
+    parts[textIndex] = { ...textPart, text: quoted.text }
   } else {
     parts.splice(textIndex, 1)
   }
   return {
     content: parts,
     attachments: split.attachments.map(uploadMentionToAttachment),
+    ...quote,
   }
 }
 

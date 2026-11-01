@@ -105,6 +105,9 @@ export const es: Messages = {
   'action.send': 'Enviar mensaje',
   'action.stop': 'Detener la generación',
   'action.copy': 'Copiar',
+  // The toolbar over selected transcript text, and the quote it puts in the composer (F-36).
+  'selection.reply': 'Responder',
+  'composer.quoteDismiss': 'Quitar cita',
   'action.fork': 'Bifurcar desde aquí',
   'session.forkTitle': '{title} (fork)',
   'action.rewind': 'Retroceder hasta aquí',

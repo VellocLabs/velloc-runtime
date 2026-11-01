@@ -38,6 +38,8 @@ import {
   ActionBarPrimitive,
   AuiIf,
   ComposerPrimitive,
+  SelectionToolbarPrimitive,
+  useMessageQuote,
   ErrorPrimitive,
   MessagePartPrimitive,
   MessagePrimitive,
@@ -60,6 +62,9 @@ import {
   FolderIcon,
   FolderOpenIcon,
   GitBranchIcon,
+  ReplyIcon,
+  QuoteIcon,
+  
   ListCollapseIcon,
   LockIcon,
   Minimize2Icon,
@@ -1044,6 +1049,7 @@ export const Thread: FC<{
       </div>
       {/* The page's clipboard, focus ring and windows, for `$.ui.copy` / `.focus` / `.scroll`. */}
       <ModPageResponder />
+      <ReplySelectionToolbar />
       {/* Whole-pane drop target. The composer has its own dropzone, but the
           conversation area is the larger, more natural place to drop a file —
           dropping anywhere here adds it as a composer attachment (resolves the
@@ -1769,6 +1775,7 @@ export const Composer: FC = () => {  const t = useT();
                 box's top edge, passive text that belongs to the prompt —
                 apart from the interactive band outside the box above. */}
             <ModComposerStatus />
+            <ComposerQuote />
             <ComposerAttachments />
             <ComposerPrimitive.Input
               ref={composerInput}
@@ -2655,6 +2662,64 @@ function userMessageHasNonTextParts(content: unknown): boolean {
   return Array.isArray(content) && content.some((part) => (part as { type?: unknown } | null)?.type !== "text");
 }
 
+/**
+ * The toolbar over a text selection inside one transcript row: Reply puts the
+ * selection in the composer as a quote (F-36). The primitive validates the
+ * selection, positions a portal by it, and clears it once quoted.
+ */
+const ReplySelectionToolbar: FC = () => {
+  const t = useT();
+  return (
+    <SelectionToolbarPrimitive.Root
+      data-testid="selection-toolbar"
+      className="aui-selection-toolbar z-30 flex items-center gap-0.5 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
+    >
+      <SelectionToolbarPrimitive.Quote
+        data-testid="selection-reply"
+        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+      >
+        <ReplyIcon className="size-3.5" aria-hidden="true" />
+        {t("selection.reply")}
+      </SelectionToolbarPrimitive.Quote>
+    </SelectionToolbarPrimitive.Root>
+  );
+};
+
+/** The quote the next send carries, shown in the composer with a remove button; nothing when there is none. */
+const ComposerQuote: FC = () => {
+  const t = useT();
+  return (
+    <ComposerPrimitive.Quote
+      data-testid="composer-quote"
+      className="aui-composer-quote flex items-start gap-2 rounded-xl border-l-2 border-primary/60 bg-muted/60 py-1.5 pr-1.5 pl-3 text-sm text-muted-foreground"
+    >
+      <QuoteIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+      <ComposerPrimitive.QuoteText className="line-clamp-3 min-w-0 flex-1 whitespace-pre-wrap break-words" />
+      <ComposerPrimitive.QuoteDismiss
+        data-testid="composer-quote-dismiss"
+        aria-label={t("composer.quoteDismiss")}
+        className="flex size-5 shrink-0 items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground"
+      >
+        <XIcon className="size-3.5" aria-hidden="true" />
+      </ComposerPrimitive.QuoteDismiss>
+    </ComposerPrimitive.Quote>
+  );
+};
+
+/** The quote a sent prompt carried, drawn above the person's words in the bubble. */
+const UserMessageQuote: FC = () => {
+  const quote = useMessageQuote();
+  if (!quote || !quote.text.trim()) return null;
+  return (
+    <blockquote
+      data-testid="user-message-quote"
+      className="aui-user-message-quote mb-1.5 border-l-2 border-primary/60 pl-2.5 text-sm text-muted-foreground whitespace-pre-wrap break-words"
+    >
+      {quote.text}
+    </blockquote>
+  );
+};
+
 const UserMessage: FC = () => {
   const collapsibleText = useAssistantState((s) =>
     getCollapsibleUserMessageText(s.message.content),
@@ -2731,6 +2796,7 @@ const UserMessage: FC = () => {
   );
   const userBubbleBody = (rewrite?: { text: string }) => (
     <PartLineProvider line={line}>
+      <UserMessageQuote />
       {rewrite ? (
         <>
           <CollapsibleUserMessageText text={rewrite.text} expanded={expanded} onExpandedChange={setExpanded} />

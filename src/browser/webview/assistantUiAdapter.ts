@@ -84,6 +84,7 @@ import {
 } from './assistantUiAdapterCards'
 import { parseTeamMessageEnvelope } from '../../team/parseTeamFrame'
 import { withoutPluginPromptFrame } from '../../mods/promptNouns'
+import { quoteOfMetadata, withQuotePrefix } from './replyQuote'
 
 function findPreviousVisibleUserPrompt(
   messages: readonly Message[],
@@ -291,7 +292,7 @@ function convertTranscriptMessage(
         })
       }
 
-      const { content, attachments } = convertUserContentWithAttachments(
+      const { content, attachments, quote } = convertUserContentWithAttachments(
         displayedUserContent(userMessage),
       )
       // Nothing legitimate produces a visible empty user turn — the composer
@@ -317,8 +318,17 @@ function convertTranscriptMessage(
         ...(attachments.length > 0 ? { attachments } : {}),
         // The plugin that sent a `$.prompt.submit` turn: a mod's
         // `UserMessage` site reads it as `origin` (F-25).
-        ...(userMessage.pluginPrompt
-          ? { metadata: { custom: { pluginPrompt: { ...userMessage.pluginPrompt } } } }
+        ...(userMessage.pluginPrompt || quote !== undefined
+          ? {
+              metadata: {
+                custom: {
+                  ...(userMessage.pluginPrompt ? { pluginPrompt: { ...userMessage.pluginPrompt } } : {}),
+                  // What `useMessageQuote` reads: the quoted text; the source
+                  // row is not kept in the transcript.
+                  ...(quote !== undefined ? { quote: { text: quote, messageId: '' } } : {}),
+                },
+              },
+            }
           : {}),
       }
     }
@@ -888,7 +898,12 @@ export async function buildPromptFromAppendMessage(
     attachment: CompleteAttachment,
   ) => Promise<string | null>,
 ): Promise<string | Array<ContentBlockParam>> {
-  const text = extractTextFromAppendMessage(message)
+  // The quote a Reply put in the composer goes ahead of the person's words;
+  // uploaded attachments' paths go ahead of both.
+  const text = withQuotePrefix(
+    extractTextFromAppendMessage(message),
+    quoteOfMetadata(message.metadata),
+  )
   const attachments = message.attachments ?? []
   if (attachments.length === 0) {
     return text
@@ -1627,9 +1642,12 @@ function displayedUserContent(userMessage: {
 
 function pendingPromptContent(
   prompt: string,
-): Pick<ThreadMessageLike, 'content' | 'attachments'> {
-  const { content, attachments } = convertUserContentWithAttachments(prompt)
-  return attachments.length > 0 ? { content, attachments } : { content: prompt }
+): Pick<ThreadMessageLike, 'content' | 'attachments' | 'metadata'> {
+  const { content, attachments, quote } = convertUserContentWithAttachments(prompt)
+  const metadata = quote === undefined ? {} : { metadata: { custom: { quote: { text: quote, messageId: '' } } } }
+  return attachments.length > 0 || quote !== undefined
+    ? { content, ...(attachments.length > 0 ? { attachments } : {}), ...metadata }
+    : { content: prompt }
 }
 
 function isInjectBubbleThreadMessage(message: ThreadMessageLike): boolean {
