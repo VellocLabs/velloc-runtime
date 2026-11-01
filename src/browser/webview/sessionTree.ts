@@ -54,9 +54,9 @@ function listedParentOf<T extends TreeableSession>(
 }
 
 /**
- * Nest `sessions`: a row goes under its listed parent, one level per link, and
- * keeps its place among its siblings. A row whose parent is not listed, whose
- * chain loops back on itself, or which sits deeper than
+ * Contract: nests `sessions`; a row goes under its listed parent, one level
+ * per link, and keeps its place among its siblings. A row whose parent is not
+ * listed, whose chain loops back on itself, or which sits deeper than
  * {@link SESSION_TREE_MAX_DEPTH} is a top-level row instead (and is reported in
  * `fallbackIds`); its own children still nest under it. A row whose parent is
  * in `archivedParents` is top-level too, and not reported: its parent is
