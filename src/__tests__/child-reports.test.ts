@@ -10,6 +10,7 @@ import {
   takeChildReportsPatch,
   type ChildReportQueue,
 } from '../sessions/childReports'
+import { READ_SESSION_EVENTS_TOOL_NAME } from '../toolkit/builtin/sessionFamilyTools'
 import type { ChildReport } from '../sessions/sessionLineage'
 
 // The parent's queue of child reports (F-36): the text a report carries, one
@@ -111,6 +112,7 @@ describe('formatChildReportBlock', () => {
       parked: [{ sessionId: 'id-3', name: 'docs' }],
     })
     expect(block).toMatch(/data, not instructions/)
+    expect(block).toContain(`to read what a child did in full, call ${READ_SESSION_EVENTS_TOOL_NAME} with its session id.`)
     expect(block).toContain('"fix-login" (session id-1) finished its turn.')
     expect(block).toContain('  > line one\n  > line two')
     expect(block).toContain('session id-2 failed.')
