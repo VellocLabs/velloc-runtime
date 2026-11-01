@@ -244,7 +244,13 @@ describe('SendMessage to a session', () => {
 
 describe('registration', () => {
   it('the tools form the sessions group and reach both tool pools under their names', () => {
-    expect([...TOOL_GROUPS.sessions]).toEqual(['SpawnSession', ...SESSION_FAMILY_TOOL_NAMES])
+    expect([...TOOL_GROUPS.sessions]).toEqual([
+      'SpawnSession',
+      'ProposeSession',
+      'WithdrawProposal',
+      'HandOffSession',
+      ...SESSION_FAMILY_TOOL_NAMES,
+    ])
     const manifest = {
       hostedTools: [],
       toolNames: [...SESSION_FAMILY_TOOL_NAMES, 'SendMessage'],

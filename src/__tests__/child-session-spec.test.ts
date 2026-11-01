@@ -33,6 +33,7 @@ function input(overrides: Partial<SpawnSessionInput> = {}): SpawnSessionInput {
     cwd: '',
     baseBranch: '',
     branchName: '',
+    proposalId: '',
     ...overrides,
   }
 }

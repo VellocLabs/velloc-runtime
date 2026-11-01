@@ -51,6 +51,7 @@ function input(overrides: Partial<SpawnSessionInput> = {}): SpawnSessionInput {
     cwd: '',
     baseBranch: '',
     branchName: '',
+    proposalId: '',
     ...overrides,
   }
 }
@@ -140,7 +141,7 @@ describe('SpawnSession — schema', () => {
     expect(SpawnSessionTool.strict).toBe(true)
     expect(schema.additionalProperties).toBe(false)
     expect(schema.required.sort()).toEqual(Object.keys(schema.properties).sort())
-    expect(schema.required).toHaveLength(13)
+    expect(schema.required).toHaveLength(14)
   })
 
   it('checkInput refuses a non-string field by name', async () => {
@@ -399,5 +400,92 @@ describe('SpawnSession — the worktree carries the allocated family name', () =
     const refused = await spawnChildSession(input({ isolation: 'worktree', branchName: 'feat;rm' }), gitCtx(callTool))
     expect(refused.data).toMatch(/^Refused: branchName .* is not a valid git branch name/)
     expect(commands.filter(c => c.includes('worktree add'))).toHaveLength(1)
+  })
+
+  /** The settings and `.git` of `installSettings`, plus directory listings. */
+  function installRepoFs(listings: Record<string, string[]>): void {
+    const settings = JSON.stringify({ version: 1, providers: { activeProviderId: PROVIDER, configs: { [PROVIDER]: { apiKey: 'k' } } } })
+    const missing = () => {
+      const err = new Error('ENOENT') as Error & { code?: string }
+      err.code = 'ENOENT'
+      return err
+    }
+    installProcessFs({
+      readFile: async (path: string) => {
+        if (path === `${HOME}/.velloc/${NEXUS_SETTINGS_FILE_NAME}`) return settings
+        throw missing()
+      },
+      writeFile: async () => {},
+      mkdir: async () => {},
+      stat: async (path: string) => {
+        if (path === '/repo/.git') return { isDirectory: () => true, isFile: () => false }
+        throw missing()
+      },
+      readdir: async (path: string) => {
+        const names = listings[path]
+        if (!names) throw missing()
+        return names.map(name => ({ name, isFile: () => false, isDirectory: () => true, isSymbolicLink: () => false }))
+      },
+    } as never)
+    wipeSettingsMemos()
+  }
+
+  /** Git that already holds `branches` (full names) and answers a sha to HEAD. */
+  function repoGit(branches: string[]) {
+    const commands: string[] = []
+    const callTool = async ({ args }: { args: Record<string, unknown> }) => {
+      const command = String(args.command ?? '')
+      commands.push(command)
+      if (command.includes('rev-parse HEAD')) return 'cafe0001\n'
+      if (command.includes('for-each-ref')) return branches.filter(b => b.startsWith('session/')).join('\n')
+      const verify = command.match(/rev-parse --verify --quiet 'refs\/heads\/([^']+)'/)
+      if (verify) {
+        if (branches.includes(verify[1]!)) return 'beef0002\n'
+        throw new Error('exit 1')
+      }
+      return ''
+    }
+    return { commands, callTool }
+  }
+
+  it('a second family in one repository gets a suffixed branch and directory instead of colliding', async () => {
+    // Another family's child already took `session/session` and its directory.
+    installRepoFs({ '/repo/.velloc/worktrees': ['session'] })
+    allocatingSpawner(['session'])
+    const { commands, callTool } = repoGit(['main', 'session/session'])
+    const { data } = await spawnChildSession(input({ isolation: 'worktree' }), gitCtx(callTool))
+    const add = commands.find(c => c.includes('worktree add'))
+    expect(add).toBe(`git -C "/repo" worktree add -b 'session/session-2' "/repo/.velloc/worktrees/session-2" 'cafe0001'`)
+    expect(data).toContain('own worktree at /repo/.velloc/worktrees/session-2')
+  })
+
+  it('a leftover directory or a branch alone is enough to move to the next free name', async () => {
+    installRepoFs({ '/repo/.velloc/worktrees': ['docs', 'docs-2'] })
+    allocatingSpawner(['docs', 'notes'])
+    const { commands, callTool } = repoGit(['session/notes'])
+    await spawnChildSession(input({ isolation: 'worktree' }), gitCtx(callTool))
+    await spawnChildSession(input({ isolation: 'worktree' }), gitCtx(callTool))
+    const adds = commands.filter(c => c.includes('worktree add'))
+    expect(adds[0]).toContain(`-b 'session/docs-3' "/repo/.velloc/worktrees/docs-3"`)
+    expect(adds[1]).toContain(`-b 'session/notes-2' "/repo/.velloc/worktrees/notes-2"`)
+  })
+
+  it('an explicit branchName that exists is refused with the field named, before anything is created', async () => {
+    installRepoFs({})
+    const calls = fakeSpawner({ ok: true, sessionId: 'c', name: 'n', sharedCheckout: false })
+    const { commands, callTool } = repoGit(['feat/docs'])
+    const { data } = await spawnChildSession(input({ isolation: 'worktree', branchName: 'feat/docs' }), gitCtx(callTool))
+    expect(data).toMatch(/^Refused: branchName "feat\/docs" already exists in \/repo/)
+    expect(calls).toEqual([])
+    expect(commands.some(c => c.includes('worktree add'))).toBe(false)
+  })
+
+  it('an explicit new branchName keeps its name while the directory moves past a taken one', async () => {
+    installRepoFs({ '/repo/.velloc/worktrees': ['api-docs'] })
+    allocatingSpawner(['api-docs'])
+    const { commands, callTool } = repoGit([])
+    await spawnChildSession(input({ isolation: 'worktree', branchName: 'feat/docs' }), gitCtx(callTool))
+    const add = commands.find(c => c.includes('worktree add'))
+    expect(add).toBe(`git -C "/repo" worktree add -b 'feat/docs' "/repo/.velloc/worktrees/api-docs-2" 'cafe0001'`)
   })
 })

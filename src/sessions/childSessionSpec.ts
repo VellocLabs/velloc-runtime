@@ -35,6 +35,8 @@ export type SpawnSessionInput = {
   cwd: string
   baseBranch: string
   branchName: string
+  /** A proposal to start as proposed; `""` for a direct start. */
+  proposalId: string
 }
 
 /** A request the checks accepted. Absent fields were `""`. */
@@ -134,6 +136,7 @@ export function defaultChildIsolation(parentInWorktree: boolean): ChildSessionIs
 export function checkChildSessionRequest(
   input: Partial<SpawnSessionInput> | undefined,
   caller: ChildSessionCallerContext,
+  options: { briefLater?: boolean } = {},
 ): ChildSessionCheck {
   if (caller.channel !== 'beta') {
     return { ok: false, reason: 'child sessions are not available on this release channel.' }
@@ -166,11 +169,13 @@ export function checkChildSessionRequest(
   if (title.length > 120) return { ok: false, reason: 'title must be at most 120 characters.' }
   if (hasControlCharacters(title)) return { ok: false, reason: 'title must not contain control characters.' }
 
+  // An offer is checked before its brief exists: the task and briefing come
+  // once the person accepts it, and are checked then.
   const task = trimmed(input.task)
-  if (!task) return { ok: false, reason: 'task is required: what the child session is to do.' }
+  if (!task && !options.briefLater) return { ok: false, reason: 'task is required: what the child session is to do.' }
 
   const briefing = trimmed(input.briefing)
-  if (from === 'fresh' && briefing.length < CHILD_BRIEFING_MIN_CHARS) {
+  if (from === 'fresh' && !options.briefLater && briefing.length < CHILD_BRIEFING_MIN_CHARS) {
     return {
       ok: false,
       reason: `briefing must be at least ${CHILD_BRIEFING_MIN_CHARS} characters for a fresh session: it is all the child knows (got ${briefing.length}).`,

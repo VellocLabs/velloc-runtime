@@ -1,0 +1,420 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  ProposeSessionTool,
+  WithdrawProposalTool,
+  proposalToolCallIdOf,
+  proposeChildSession,
+  withdrawProposal,
+  type ProposeSessionInput,
+} from '../toolkit/builtin/proposeSession'
+import { HandOffSessionTool, handOffChildSession } from '../toolkit/builtin/handOffSession'
+import { spawnChildSession } from '../toolkit/builtin/spawnSession'
+import type { SpawnSessionInput } from '../sessions/childSessionSpec'
+import {
+  setChildSessionSpawner,
+  type ChildSessionSpawnOutcome,
+  type ChildSessionSpawnParams,
+} from '../sessions/childSessionSpawner'
+import { ProposalBoard, setProposalBoard } from '../sessions/proposalBoard'
+import { PROPOSAL_TTL_MS, type ChildProposal } from '../sessions/childProposals'
+import { setTemplateChannelForTest } from '../prompting/templateCatalog'
+import { installProcessFs, resetProcessFs } from '../utils/fs/runtimeFs'
+import { NEXUS_SETTINGS_FILE_NAME, wipeSettingsMemos } from '../settings/settingsStore'
+import {
+  NoopPlatformCapabilities,
+  createEmptyAppState,
+  createNoopToolUseContext,
+} from '../runtime/testing/noopAdapters'
+import type { ToolCallContext } from '../toolkit/toolCallContext'
+import type { Message } from '../runtime/RuntimeTypes'
+
+// Proposals and hand-off (F-36): P01–P05 and H01 at the tool layer, over a
+// real proposal board and a recording spawner.
+
+const HOME = '/home/test'
+const PROVIDER = 'minimax'
+const BRIEF = 'Everything the child needs: the goal, the files, what was ruled out, and what done looks like.'
+
+function proposal(overrides: Partial<ProposeSessionInput> = {}): ProposeSessionInput {
+  return {
+    mode: 'suggest',
+    title: 'Tidy the importer',
+    task: 'Remove the dead branches in the importer.',
+    briefing: BRIEF,
+    from: 'fresh',
+    name: '',
+    isolation: '',
+    model: '',
+    effort: '',
+    permissionMode: '',
+    cwd: '',
+    baseBranch: '',
+    branchName: '',
+    ...overrides,
+  }
+}
+
+function spawnInput(overrides: Partial<SpawnSessionInput> = {}): SpawnSessionInput {
+  return {
+    initiation: 'asked',
+    title: '',
+    task: '',
+    briefing: '',
+    from: '',
+    name: '',
+    isolation: '',
+    model: '',
+    effort: '',
+    permissionMode: '',
+    cwd: '',
+    baseBranch: '',
+    branchName: '',
+    proposalId: '',
+    ...overrides,
+  }
+}
+
+function ctx(sessionId = 'parent-1', abortController?: AbortController): ToolCallContext {
+  const base = createNoopToolUseContext({
+    tools: [],
+    platformCapabilities: new NoopPlatformCapabilities(),
+    appState: createEmptyAppState(),
+    setAppState: () => {},
+    sessionId,
+    cwd: '/repo',
+    projectRoot: '/repo',
+    ...(abortController ? { abortController } : {}),
+  })
+  Object.assign(base.options, { homeDir: HOME, templateType: 'code', userSpecifiedProviderId: PROVIDER })
+  return base
+}
+
+function row(calls: Array<{ id: string; name: string; args: unknown }>): Message {
+  return {
+    type: 'assistant',
+    uuid: 'a-1',
+    message: {
+      role: 'assistant',
+      content: calls.map(c => ({ type: 'tool-call', toolCallId: c.id, toolName: c.name, args: c.args })),
+    },
+  } as unknown as Message
+}
+
+let board: ProposalBoard
+let stored: Map<string, unknown>
+let now: number
+
+function recordingSpawner(outcome: (params: ChildSessionSpawnParams) => ChildSessionSpawnOutcome = params => ({
+  ok: true,
+  sessionId: `child-${params.taskId ?? 'direct'}`,
+  name: 'tidy',
+  sharedCheckout: true,
+  cwd: '/repo',
+})) {
+  const calls: ChildSessionSpawnParams[] = []
+  setChildSessionSpawner(async params => {
+    calls.push(params)
+    return outcome(params)
+  })
+  return calls
+}
+
+beforeEach(() => {
+  setTemplateChannelForTest('beta')
+  installProcessFs({
+    readFile: async (path: string) => {
+      if (path === `${HOME}/.velloc/${NEXUS_SETTINGS_FILE_NAME}`) {
+        return JSON.stringify({ version: 1, providers: { activeProviderId: PROVIDER, configs: { [PROVIDER]: { apiKey: 'k' } } } })
+      }
+      const err = new Error('ENOENT') as Error & { code?: string }
+      err.code = 'ENOENT'
+      throw err
+    },
+    writeFile: async () => {},
+    mkdir: async () => {},
+    stat: async () => {
+      const err = new Error('ENOENT') as Error & { code?: string }
+      err.code = 'ENOENT'
+      throw err
+    },
+  } as never)
+  wipeSettingsMemos()
+  now = 1_000_000
+  stored = new Map()
+  board = new ProposalBoard({
+    storage: {
+      read: async id => stored.get(id),
+      write: async (id, list) => {
+        stored.set(id, list)
+      },
+    },
+    now: () => now,
+  })
+  setProposalBoard(board)
+})
+
+afterEach(() => {
+  setTemplateChannelForTest(null)
+  setChildSessionSpawner(null)
+  setProposalBoard(null)
+  resetProcessFs()
+  wipeSettingsMemos()
+})
+
+describe('ProposeSession — schema', () => {
+  it('is strict, every field required, and refuses a non-string field by name', async () => {
+    const schema = ProposeSessionTool.inputJSONSchemaStrict as unknown as { required: string[]; properties: Record<string, unknown>; additionalProperties: boolean }
+    expect(ProposeSessionTool.strict).toBe(true)
+    expect(schema.additionalProperties).toBe(false)
+    expect(schema.required.sort()).toEqual(Object.keys(schema.properties).sort())
+    const bad = { ...proposal(), cwd: undefined } as unknown as ProposeSessionInput
+    expect(await ProposeSessionTool.checkInput!(bad, ctx())).toMatchObject({ result: false, message: expect.stringMatching(/^cwd is required/) })
+    expect((WithdrawProposalTool.inputJSONSchemaStrict as unknown as { required: string[] }).required).toEqual(['taskId'])
+    expect((HandOffSessionTool.inputJSONSchemaStrict as unknown as { required: string[] }).required).toEqual(['title', 'remainingPlan'])
+  })
+
+  it('finds its own call id on the invoking row: the only call, else the one with its mode and title', () => {
+    expect(proposalToolCallIdOf(row([{ id: 'tc-1', name: 'ProposeSession', args: {} }]), 'ProposeSession', {})).toBe('tc-1')
+    const two = row([
+      { id: 'tc-1', name: 'ProposeSession', args: { mode: 'suggest', title: 'A' } },
+      { id: 'tc-2', name: 'ProposeSession', args: { mode: 'suggest', title: 'B' } },
+      { id: 'tc-3', name: 'Read', args: {} },
+    ])
+    expect(proposalToolCallIdOf(two, 'ProposeSession', { mode: 'suggest', title: 'B' })).toBe('tc-2')
+    expect(proposalToolCallIdOf(undefined, 'ProposeSession', {})).toBeUndefined()
+  })
+})
+
+describe('P01 — a suggestion is only a card with a task id', () => {
+  it('records a proposal, starts nothing, and answers its task id', async () => {
+    const spawns = recordingSpawner()
+    const { data } = await proposeChildSession(proposal(), ctx(), row([{ id: 'tc-7', name: 'ProposeSession', args: proposal() }]))
+    const [p] = (await board.list('parent-1')) as ChildProposal[]
+    expect(p).toMatchObject({ mode: 'suggest', state: 'proposed', toolCallId: 'tc-7', expiresAt: now + PROPOSAL_TTL_MS })
+    expect(p!.taskId).toMatch(/^task_[a-z0-9]{8}$/)
+    expect(data).toContain(`as task ${p!.taskId}`)
+    expect(data).toContain('Nothing has started')
+    expect(spawns).toEqual([])
+  })
+
+  it('is checked like a start: a short briefing, a raised mode or a nested caller is refused, recording nothing', async () => {
+    expect((await proposeChildSession(proposal({ briefing: 'short' }), ctx())).data).toMatch(/^Refused: briefing must be at least 80/)
+    expect((await proposeChildSession(proposal({ permissionMode: 'bypassPermissions' }), ctx())).data).toMatch(/never raise/)
+    expect((await proposeChildSession(proposal({ mode: 'later' }), ctx())).data).toMatch(/^Refused: mode must be "suggest" or "offer"/)
+    const nested = ctx()
+    nested.agentId = 'agent-1'
+    expect((await proposeChildSession(proposal(), nested)).data).toMatch(/sub-agent or teammate/)
+    expect(await board.list('parent-1')).toEqual([])
+  })
+
+  it('the model starts it on the person\'s word exactly as proposed, once, with the proposal as origin', async () => {
+    const spawns = recordingSpawner()
+    await proposeChildSession(proposal(), ctx())
+    const [p] = await board.list('parent-1')
+    const { data } = await spawnChildSession(spawnInput({ proposalId: p!.taskId }), ctx())
+    expect(data).toMatch(new RegExp(`^Started proposal ${p!.taskId}\\. Registered child session "tidy"`))
+    expect(spawns).toHaveLength(1)
+    expect(spawns[0]).toMatchObject({ taskId: p!.taskId, request: { title: 'Tidy the importer', task: 'Remove the dead branches in the importer.', briefing: BRIEF, from: 'fresh' } })
+    expect(spawns[0]!.kind).toBeUndefined()
+    expect(await board.get('parent-1', p!.taskId)).toMatchObject({ state: 'started', childSessionId: `child-${p!.taskId}` })
+    const again = await spawnChildSession(spawnInput({ proposalId: p!.taskId }), ctx())
+    expect(again.data).toMatch(/already started as session child-task_/)
+    expect(spawns).toHaveLength(1)
+  })
+
+  it('a person\'s Start runs through the proposing turn\'s launcher', async () => {
+    const spawns = recordingSpawner()
+    await proposeChildSession(proposal(), ctx())
+    const [p] = await board.list('parent-1')
+    const result = await board.startByPerson('parent-1', p!.taskId)
+    expect(result).toMatchObject({ ok: true, proposal: { state: 'started' } })
+    expect(spawns).toHaveLength(1)
+    expect(spawns[0]!.taskId).toBe(p!.taskId)
+  })
+
+  it('an expired card cannot be started, and a dismissed one is reported as dismissed', async () => {
+    const spawns = recordingSpawner()
+    await proposeChildSession(proposal(), ctx())
+    await proposeChildSession(proposal({ title: 'Second' }), ctx())
+    const [a, b] = await board.list('parent-1')
+    await board.dismiss('parent-1', b!.taskId)
+    now += PROPOSAL_TTL_MS
+    expect((await spawnChildSession(spawnInput({ proposalId: a!.taskId }), ctx())).data).toMatch(/is expired; it cannot be started/)
+    expect((await spawnChildSession(spawnInput({ proposalId: b!.taskId }), ctx())).data).toMatch(/is dismissed; it cannot be started/)
+    expect(spawns).toEqual([])
+  })
+})
+
+describe('P02 — an offer waits for "New session" or "Do it here"', () => {
+  it('"Do it here" creates nothing and tells the model to carry on here', async () => {
+    const spawns = recordingSpawner()
+    const pending = proposeChildSession(proposal({ mode: 'offer', task: '', briefing: '', from: '' }), ctx())
+    await vi.waitFor(async () => expect(await board.list('parent-1')).toHaveLength(1))
+    const [p] = await board.list('parent-1')
+    expect(p).toMatchObject({ mode: 'offer', state: 'proposed', request: { from: 'fresh' } })
+    await board.choose('parent-1', p!.taskId, 'here')
+    expect((await pending).data).toMatch(/chose to do "Tidy the importer" here\. No session was created/)
+    expect(spawns).toEqual([])
+    expect(await board.get('parent-1', p!.taskId)).toMatchObject({ state: 'dismissed', keptHere: true })
+  })
+
+  it('"New session" waits for the brief, then the model\'s SpawnSession with the proposal starts it', async () => {
+    const spawns = recordingSpawner()
+    const pending = proposeChildSession(proposal({ mode: 'offer', task: '', briefing: '' }), ctx())
+    await vi.waitFor(async () => expect(await board.list('parent-1')).toHaveLength(1))
+    const [p] = await board.list('parent-1')
+    // Before the person answers, a start is refused.
+    expect((await spawnChildSession(spawnInput({ proposalId: p!.taskId, task: 'T', briefing: BRIEF }), ctx())).data)
+      .toMatch(/has not chosen yet/)
+    await board.choose('parent-1', p!.taskId, 'new')
+    const answer = (await pending).data
+    expect(answer).toContain(`proposalId "${p!.taskId}"`)
+    // The real intermediate state: accepted, nothing running.
+    expect(await board.get('parent-1', p!.taskId)).toMatchObject({ state: 'accepted_awaiting_brief' })
+    expect(spawns).toEqual([])
+    // A brief that is too short is refused and leaves it waiting for a better one.
+    expect((await spawnChildSession(spawnInput({ proposalId: p!.taskId, task: 'Do it.', briefing: 'short' }), ctx())).data)
+      .toMatch(/^Refused: briefing must be at least 80/)
+    expect(await board.get('parent-1', p!.taskId)).toMatchObject({ state: 'accepted_awaiting_brief' })
+    const { data } = await spawnChildSession(spawnInput({ proposalId: p!.taskId, task: 'Do it.', briefing: BRIEF }), ctx())
+    expect(data).toMatch(/^Started proposal/)
+    expect(spawns).toHaveLength(1)
+    expect(spawns[0]).toMatchObject({ taskId: p!.taskId, request: { task: 'Do it.', briefing: BRIEF, title: 'Tidy the importer' } })
+  })
+
+  it('a Stop while it waits closes it without a choice', async () => {
+    const abort = new AbortController()
+    const pending = proposeChildSession(proposal({ mode: 'offer', task: '', briefing: '' }), ctx('parent-1', abort))
+    await vi.waitFor(async () => expect(await board.list('parent-1')).toHaveLength(1))
+    abort.abort()
+    expect((await pending).data).toMatch(/closed without a choice/)
+  })
+})
+
+describe('P03 — a new message passes an open offer', () => {
+  it('closes it as superseded, ends the wait, and refuses the model\'s later brief', async () => {
+    const spawns = recordingSpawner()
+    const pending = proposeChildSession(proposal({ mode: 'offer', task: '', briefing: '' }), ctx())
+    await vi.waitFor(async () => expect(await board.list('parent-1')).toHaveLength(1))
+    const [p] = await board.list('parent-1')
+    board.supersedeOpenOffers('parent-1')
+    expect((await pending).data).toMatch(/sent a new message before choosing/)
+    const late = await spawnChildSession(spawnInput({ proposalId: p!.taskId, task: 'T', briefing: BRIEF }), ctx())
+    expect(late.data).toMatch(/closed: the user sent a new message before choosing; it cannot be started/)
+    expect(spawns).toEqual([])
+  })
+
+  it('also closes an accepted offer still waiting for its brief', async () => {
+    recordingSpawner()
+    const pending = proposeChildSession(proposal({ mode: 'offer', task: '', briefing: '' }), ctx())
+    await vi.waitFor(async () => expect(await board.list('parent-1')).toHaveLength(1))
+    const [p] = await board.list('parent-1')
+    await board.choose('parent-1', p!.taskId, 'new')
+    await pending
+    board.supersedeOpenOffers('parent-1')
+    expect(await board.get('parent-1', p!.taskId)).toMatchObject({ state: 'superseded' })
+  })
+})
+
+describe('P04 — concurrent starts', () => {
+  it('a Start click and the model\'s start of one proposal create one child', async () => {
+    let release!: () => void
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const calls: ChildSessionSpawnParams[] = []
+    setChildSessionSpawner(async params => {
+      calls.push(params)
+      await gate
+      return { ok: true, sessionId: 'child-1', name: 'tidy', sharedCheckout: true }
+    })
+    await proposeChildSession(proposal(), ctx())
+    const [p] = await board.list('parent-1')
+    const click = board.startByPerson('parent-1', p!.taskId)
+    const model = spawnChildSession(spawnInput({ proposalId: p!.taskId }), ctx())
+    await vi.waitFor(() => expect(calls).toHaveLength(1))
+    release()
+    const [clicked, modelled] = await Promise.all([click, model])
+    expect(calls).toHaveLength(1)
+    expect([clicked.ok, modelled.data.startsWith('Started')].filter(Boolean)).toHaveLength(1)
+    expect(await board.get('parent-1', p!.taskId)).toMatchObject({ state: 'started', childSessionId: 'child-1' })
+  })
+})
+
+describe('P05 — a proposal starts exactly as proposed', () => {
+  it('a changed task, briefing, from or target is refused and nothing starts', async () => {
+    const spawns = recordingSpawner()
+    await proposeChildSession(proposal(), ctx())
+    const [p] = await board.list('parent-1')
+    for (const changed of [
+      { task: 'Something else entirely.' },
+      { briefing: `${BRIEF} And one more thing.` },
+      { from: 'fork' },
+      { cwd: '/other' },
+      { isolation: 'worktree' },
+    ]) {
+      const { data } = await spawnChildSession(spawnInput({ proposalId: p!.taskId, ...changed }), ctx())
+      expect(data, JSON.stringify(changed)).toMatch(new RegExp(`^Refused: ${Object.keys(changed)[0]} differs`))
+    }
+    expect((await spawnChildSession(spawnInput({ proposalId: 'task_notthere' }), ctx())).data).toMatch(/no proposal task_notthere/)
+    expect((await spawnChildSession(spawnInput({ proposalId: 'not-an-id' }), ctx())).data).toMatch(/proposalId must be a task id/)
+    expect(spawns).toEqual([])
+    expect(await board.get('parent-1', p!.taskId)).toMatchObject({ state: 'proposed' })
+  })
+
+  it('an accepted offer\'s brief is the one exception, and its target still cannot change', async () => {
+    const spawns = recordingSpawner()
+    const pending = proposeChildSession(proposal({ mode: 'offer', task: '', briefing: '' }), ctx())
+    await vi.waitFor(async () => expect(await board.list('parent-1')).toHaveLength(1))
+    const [p] = await board.list('parent-1')
+    await board.choose('parent-1', p!.taskId, 'new')
+    await pending
+    const moved = await spawnChildSession(spawnInput({ proposalId: p!.taskId, task: 'T', briefing: BRIEF, cwd: '/other' }), ctx())
+    expect(moved.data).toMatch(/^Refused: cwd differs/)
+    expect(spawns).toEqual([])
+  })
+})
+
+describe('WithdrawProposal', () => {
+  it('withdraws a waiting proposal and refuses a started one with its real state', async () => {
+    recordingSpawner()
+    await proposeChildSession(proposal(), ctx())
+    await proposeChildSession(proposal({ title: 'Second' }), ctx())
+    const [a, b] = await board.list('parent-1')
+    expect((await withdrawProposal({ taskId: a!.taskId }, ctx())).data).toMatch(/^Withdrew proposal task_/)
+    expect(await board.get('parent-1', a!.taskId)).toMatchObject({ state: 'dismissed' })
+    await spawnChildSession(spawnInput({ proposalId: b!.taskId }), ctx())
+    expect((await withdrawProposal({ taskId: b!.taskId }, ctx())).data).toMatch(/is already started as session child-task_\w+; only a proposal still waiting/)
+    expect((await withdrawProposal({ taskId: 'task_notthere' }, ctx())).data).toMatch(/no proposal task_notthere/)
+    expect((await withdrawProposal({ taskId: 'x' }, ctx())).data).toMatch(/taskId must be a task id/)
+  })
+})
+
+describe('H01 — hand-off', () => {
+  it('forks with the remaining plan as the first task, records a hand_off origin, and stops nothing', async () => {
+    const spawns = recordingSpawner(() => ({ ok: true, sessionId: 'child-h', name: 'finish-migration', sharedCheckout: true }))
+    const abort = new AbortController()
+    const context = ctx('parent-1', abort)
+    const { data } = await handOffChildSession({ title: 'Finish the migration', remainingPlan: '1. Port the last two tables.\n2. Run the tests.' }, context)
+    expect(spawns).toHaveLength(1)
+    expect(spawns[0]).toMatchObject({
+      kind: 'hand_off',
+      request: { from: 'fork', title: 'Finish the migration', task: '1. Port the last two tables.\n2. Run the tests.' },
+    })
+    expect(spawns[0]!.taskId).toBeUndefined()
+    // The parent's turn is not interrupted; the text asks it to stop the task and answer.
+    expect(abort.signal.aborted).toBe(false)
+    expect(data).toContain('Handed off "Finish the migration" to child session "finish-migration" (session child-h)')
+    expect(data).toContain('Stop working on that task here')
+    expect(data).toContain('this session keeps running, so answer the user\'s latest message')
+  })
+
+  it('refuses an empty plan, and a nested caller, creating nothing', async () => {
+    const spawns = recordingSpawner()
+    expect((await handOffChildSession({ title: 'X', remainingPlan: '  ' }, ctx())).data).toMatch(/^Refused: remainingPlan is required/)
+    const nested = ctx()
+    nested.agentId = 'agent-1'
+    expect((await handOffChildSession({ title: 'X', remainingPlan: 'Plan.' }, nested)).data).toMatch(/sub-agent or teammate/)
+    expect(spawns).toEqual([])
+  })
+})

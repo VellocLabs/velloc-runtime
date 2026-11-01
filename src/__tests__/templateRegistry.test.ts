@@ -43,7 +43,6 @@ import { loadSystemPromptHolders } from '../prompting/systemPromptLoader'
 import type { ToolContract, ToolContractList } from '../toolkit/toolContract'
 import { BROWSER_SYSTEM_PROMPT_CATALOG } from '../toolkit/builtin/glic/browserSkillCatalog'
 import { expandGroups, TOOL_GROUPS } from '../toolkit/builtin/toolGroups'
-import { SESSION_FAMILY_TOOL_NAMES } from '../toolkit/builtin/sessionFamilyTools'
 import { CLI_AGENT_IDS } from '../terminal/cliAgents'
 
 // intro / tone_and_style / final_reminder moved into agent/includes/ (as
@@ -1087,12 +1086,19 @@ describe('templateRegistry — beta variants (index-beta.md, template-beta.md)',
     expect(eager).not.toContain('SuperShell')
   })
 
-  it('the child_sessions holder gates every line on the SpawnSession tool', () => {
+  it('the child_sessions holder gates every line on a tool of the sessions group', () => {
     // Rendered only where the tool is offered: a deny rule that removes the
-    // tool for a turn removes the section with it.
+    // tool for a turn removes the section with it, and each proposal or
+    // hand-off line goes with its own tool.
     const prose = getHolderProse('child_sessions', { type: 'code' })!
-    for (const line of prose.split(/\r?\n/)) {
-      expect(line.startsWith('{{IF_TOOL:SpawnSession}}'), line).toBe(true)
+    const gates = [...expandGroups(['sessions'])].map(name => `{{IF_TOOL:${name}}}`)
+    const lines = prose.split(/\r?\n/)
+    for (const line of lines) {
+      expect(gates.some(gate => line.startsWith(gate)), line).toBe(true)
+    }
+    expect(lines[0]!.startsWith('{{IF_TOOL:SpawnSession}}# Child sessions')).toBe(true)
+    for (const name of ['ProposeSession', 'WithdrawProposal', 'HandOffSession']) {
+      expect(prose).toContain(`{{IF_TOOL:${name}}}`)
     }
     expect(prose).toContain('# Child sessions')
     expect(prose).toContain('`SpawnSession`')
@@ -1792,10 +1798,9 @@ describe('templateRegistry — tool resolution helpers', () => {
     // Absent from `agent` on purpose: `exec` (subsumed by agent's real Bash), `SuperEdit` (agent edits through hosted
     // Write/Edit), `SuperShell` (registered only by a manifest listing `supershell`; none is bundled), and
     // `ContinueInCode` (a chat's offer to move into a Code session; meaningless elsewhere).
-    // `SpawnSession` and the session-family tools (`sessions` group, F-36)
-    // are offered by the beta manifests of `code` and `agent` only; stable
-    // lists the group nowhere.
-    const agentExempt = new Set(['Exec', 'SuperEdit', 'SuperShell', 'ContinueInCode', 'SpawnSession', ...SESSION_FAMILY_TOOL_NAMES])
+    // The `sessions` group (child sessions, F-36) is offered by the beta
+    // manifests of `code` and `agent` only; stable lists it nowhere.
+    const agentExempt = new Set(['Exec', 'SuperEdit', 'SuperShell', 'ContinueInCode', ...expandGroups(['sessions'])])
     for (const tool of allBundledTools('default')) {
       if (agentExempt.has(tool.name)) continue
       const isDeferredSkillTool =

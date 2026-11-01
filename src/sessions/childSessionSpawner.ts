@@ -26,6 +26,11 @@ export type ChildSessionSpawnParams = {
   prepareWorktree?: ChildWorktreePrepare
   /** Routine provenance carried across the start (see `SubAgentSpawnParams`). */
   routineOriginId?: string
+  /** The proposal this start comes from; absent for a direct start, which
+   *  gets a task id of its own. */
+  taskId?: string
+  /** The relation recorded on the child; absent is `side_session`. */
+  kind?: 'side_session' | 'hand_off'
 }
 
 export type ChildSessionSpawnOutcome =

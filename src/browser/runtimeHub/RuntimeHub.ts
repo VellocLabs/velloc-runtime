@@ -61,6 +61,7 @@ import {
 import { TopicBroker } from './TopicBroker'
 import { registerWorkspaceCapability, type WorkspaceStateStore } from './workspaceCapability'
 import { registerProviderUpdatesCapability } from './providerUpdatesCapability'
+import { registerProposalsCapability } from './proposalsCapability'
 import { registerPluginUpdatesCapability } from './pluginUpdatesCapability'
 import { resolveHostHome } from './hostFs'
 import { currentTemplateChannel } from '../../branding/updateChannels'
@@ -320,6 +321,10 @@ export class RuntimeHub {
     // baseline actions - all `full`: they switch which code serves a model
     // provider, so no remote client reaches them.
     registerProviderUpdatesCapability(this.registry, this.broker)
+    // Child-session proposals (F-36): one session's cards on
+    // `proposals/<sessionId>` and the start / dismiss / choose answers, all
+    // `control`: they act on that session's conversation like a message.
+    registerProposalsCapability(this.registry, this.broker)
     // Marketplace plugin updates (F-14): `plugins/updates` and the
     // check / update / rollback / setAutoUpdate actions, all `full`; the
     // background schedule installs only while `pluginAutoUpdate` is on.

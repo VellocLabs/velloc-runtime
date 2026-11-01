@@ -144,8 +144,8 @@ export class ChildSessionCoordinator {
     )
     const origin: SessionOrigin = {
       sessionId: parentSessionId,
-      taskId: newTaskId(),
-      kind: 'side_session',
+      taskId: params.taskId ?? newTaskId(),
+      kind: params.kind ?? 'side_session',
       initiator: 'model',
       sharedCheckout,
       name,

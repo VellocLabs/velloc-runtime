@@ -191,6 +191,44 @@ export function childCheckoutDir(repoRoot: string, name: string): string {
   return joinPath(repoRoot, RUNTIME_DIR_NAME, 'worktrees', safe)
 }
 
+/** The directory child-session worktrees are made under. */
+export function childCheckoutParent(repoRoot: string): string {
+  return joinPath(repoRoot, RUNTIME_DIR_NAME, 'worktrees')
+}
+
+/** Whether `branch` names an existing local branch of `repoRoot`. A failed
+ *  lookup reads as absent; `git worktree add -b` refuses a real clash anyway. */
+export async function localBranchExists(
+  context: ToolCallContext,
+  repoRoot: string,
+  branch: string,
+): Promise<boolean> {
+  const found = await runGit(
+    context,
+    `git -C ${shellPath(repoRoot)} rev-parse --verify --quiet ${shellWord(`refs/heads/${branch}`)}`,
+  )
+  return found.ok && /^[0-9a-f]{7,40}$/i.test(found.stdout.trim())
+}
+
+/** The local branch names of `repoRoot` under `prefix` (for example
+ *  `session/`), without the prefix. Empty when git cannot list them. */
+export async function localBranchesUnder(
+  context: ToolCallContext,
+  repoRoot: string,
+  prefix: string,
+): Promise<string[]> {
+  const listed = await runGit(
+    context,
+    `git -C ${shellPath(repoRoot)} for-each-ref ${shellWord('--format=%(refname:short)')} ${shellWord(`refs/heads/${prefix}`)}`,
+  )
+  if (!listed.ok) return []
+  return listed.stdout
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line.startsWith(prefix) && line.length > prefix.length)
+    .map(line => line.slice(prefix.length))
+}
+
 /**
  * True if the worktree has uncommitted changes or new commits since `baseCommit`.
  * Fails closed: an inspection error or a missing `baseCommit` reports `true`, so

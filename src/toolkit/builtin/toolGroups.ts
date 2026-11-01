@@ -54,10 +54,13 @@ export const TOOL_GROUPS = {
    *  permission gate — SafeCode's Execute lane. Requires the Bash tool in the
    *  runtime set (visible, deferred, or sealed) to dispatch through. */
   exec: ['Exec'],
-  /** Sessions of this runtime: start a child session, list, describe, read,
-   *  message, stop, archive, detach (F-36). */
+  /** Sessions of this runtime: start, propose or hand off a child session,
+   *  list, describe, read, message, stop, archive, detach (F-36). */
   sessions: [
     'SpawnSession',
+    'ProposeSession',
+    'WithdrawProposal',
+    'HandOffSession',
     'ListSessions',
     'DescribeSession',
     'ReadSessionEvents',

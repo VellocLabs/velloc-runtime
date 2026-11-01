@@ -56,6 +56,7 @@ import {
   type SessionOrigin,
 } from './sessionLineage'
 import type { PeerInboxEntry } from './sessionFamilyRules'
+import type { ChildProposal } from './childProposals'
 
 function createFallbackUUID(): string {
   return `conversation-${Math.random().toString(16).slice(2)}-${Date.now().toString(16)}`
@@ -116,6 +117,9 @@ export type BrowserSessionMetadata = Record<string, unknown> & {
   /** Per child, the time of the newest report the model consumed; an older
    *  or equal one is never queued again. (F-36) */
   childReportsReadAt?: Record<string, number>
+  /** The child sessions this session's model proposed, with their card
+   *  state; the runtime's proposal board owns them. (F-36) */
+  childProposals?: ChildProposal[]
   /** Set when another session started this one and it never started: the
    *  reason, kept for the row and the detail view. (F-36) */
   startFailed?: ChildStartFailure

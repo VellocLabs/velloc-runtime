@@ -62,6 +62,11 @@ import {
   setChildSessionSpawner,
   type ChildSessionSpawnParams,
 } from '../../sessions/childSessionSpawner'
+import {
+  ProposalBoard,
+  notifyProposalsChanged,
+  setProposalBoard,
+} from '../../sessions/proposalBoard'
 import { matchKnownProjectRoot } from '../runtimeHub/knownProjects'
 import type { CliConversationRecord, CliConversationStore } from '../../terminal/TerminalService'
 import { createCliConversationStore } from './cliConversationStore'
@@ -673,6 +678,8 @@ export class SharedWorkerSessionManager {
   // A child's turn ends as a report to its parent, and the parent's model
   // is woken to read reports when it is safe to (F-36).
   private readonly childReports: ChildReportCoordinator
+  /** Child-session proposals (F-36): each session's cards, runtime-owned. */
+  private readonly proposals: ProposalBoard
   /** The start state of each session another session is starting, for the
    *  list projection; cleared once the first turn is queued, kept on failure. */
   private readonly startStates = new Map<string, ChildStartState>()
@@ -1460,6 +1467,14 @@ export class SharedWorkerSessionManager {
       this.childSessions.spawn(params),
     )
     this.childReports = new ChildReportCoordinator(this.childReportHost())
+    this.proposals = new ProposalBoard({
+      storage: {
+        read: sessionId => this.readChildProposals(sessionId),
+        write: (sessionId, childProposals) => this.writeChildProposals(sessionId, childProposals),
+      },
+      onChange: sessionId => notifyProposalsChanged(sessionId),
+    })
+    setProposalBoard(this.proposals)
     // Register the background sub-agent spawner (worker-hosted Agent tool) on
     // the same leaf pattern — the Agent tool reaches it via getSubAgentSpawner()
     // without importing this manager. See team/subAgentSpawner.ts.
@@ -3483,6 +3498,8 @@ export class SharedWorkerSessionManager {
     if (message.type === 'worker.submitMessage') {
       this.taskDelivery.resumeParent(sessionId)
       this.childReports.personWrote(sessionId, message.payload.prompt)
+      // A person's new message closes the session's open offers (F-36).
+      this.proposals.supersedeOpenOffers(sessionId)
     }
 
     // submitMessage and clearPendingMessage are handled internally
@@ -4297,6 +4314,26 @@ export class SharedWorkerSessionManager {
    *  parent's live store when it has one, one chain per parent. */
   private recordChildReport(parentSessionId: string, report: ChildReport): Promise<void> {
     return this.childReports.record(parentSessionId, report)
+  }
+
+  /** A session's stored proposals: from its live store when it has one (the
+   *  live store owns the record), else from disk (F-36). */
+  private async readChildProposals(sessionId: string): Promise<unknown> {
+    const store = this.sessions.get(sessionId)?.conversationStore
+    if (store) return (await store.getSessionMetadata())?.childProposals
+    return (await this.storage?.readSessionMeta(sessionId))?.metadata.childProposals
+  }
+
+  private async writeChildProposals(
+    sessionId: string,
+    childProposals: NonNullable<BrowserSessionMetadata['childProposals']>,
+  ): Promise<void> {
+    const store = this.sessions.get(sessionId)?.conversationStore
+    if (store) {
+      await store.updateSessionMetadata({ childProposals })
+      return
+    }
+    if (this.storage) await applyDiskOnlyMetadataPatch(this.storage, sessionId, { childProposals })
   }
 
   /**

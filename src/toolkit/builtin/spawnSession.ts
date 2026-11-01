@@ -3,7 +3,7 @@
  * as a fork of this transcript (F-36). Strict schema, every field required,
  * `""` for none. The checks run in the runtime and fail closed; the
  * acknowledgement says the session is registered, never that the task was
- * delivered.
+ * delivered. With `proposalId` it starts a proposal exactly as proposed.
  */
 
 import type { ToolContract, InputCheck, ToolArgsJsonShape } from '../toolContract'
@@ -14,13 +14,26 @@ import {
   SPAWN_SESSION_TOOL_NAME,
   checkChildSessionRequest,
   childSessionRegisteredText,
+  type ChildSessionCallerContext,
   type ChildSessionRequest,
   type SpawnSessionInput,
 } from '../../sessions/childSessionSpec'
 import {
   getChildSessionSpawner,
+  type ChildSessionSpawnOutcome,
   type ChildWorktreePrepare,
 } from '../../sessions/childSessionSpawner'
+import {
+  isProposalTaskId,
+  proposalStartMismatch,
+  proposalStateWords,
+} from '../../sessions/childProposals'
+import {
+  getProposalBoard,
+  type ProposalLaunch,
+  type ProposalLauncher,
+} from '../../sessions/proposalBoard'
+import { allocateFamilyName } from '../../sessions/sessionLineage'
 import { templateChannel } from '../../prompting/templateCatalog'
 import { enabledModelsFor, resolveChildProvider } from '../../team/sessionTrust'
 import { getAvailableThinkingTiersForModel } from '../../engine/contextWindow'
@@ -30,10 +43,16 @@ import { mainRepoRoot } from '../../utils/gitInfo'
 import {
   checkoutHead,
   childCheckoutDir,
+  childCheckoutParent,
+  localBranchExists,
+  localBranchesUnder,
   openNamedCheckout,
 } from '../../utils/agentWorktree'
 
 export { SPAWN_SESSION_TOOL_NAME }
+
+/** The prefix of a worktree child's default branch. */
+const CHILD_BRANCH_PREFIX = 'session/'
 
 const DESCRIPTION =
   'Start a CHILD SESSION: a full session of its own, listed under this one, with ' +
@@ -44,16 +63,18 @@ const DESCRIPTION =
   'alone (it has not seen this conversation; the briefing must say everything, ' +
   `at least ${CHILD_BRIEFING_MIN_CHARS} characters); from="fork" copies this ` +
   'conversation up to the last answered message and then gives it the task. ' +
-  'Every field is required; "" means none. The result says the session is ' +
-  'registered, not that the task was delivered: end your turn, its report ' +
-  'arrives as a later turn.'
+  'With proposalId it starts a proposal of yours exactly as proposed: leave ' +
+  'every other field "" (an offer the user accepted takes its task and ' +
+  'briefing now). Every field is required; "" means none. The result says the ' +
+  'session is registered, not that the task was delivered: end your turn, its ' +
+  'report arrives as a later turn.'
 
 const SCHEMA: ToolArgsJsonShape = {
   type: 'object',
   properties: {
     initiation: {
       type: 'string',
-      description: 'How this start was decided. "asked": the user asked in words for this work to run in its own session. No other value is accepted yet.',
+      description: 'How this start was decided. "asked": the user asked in words for this work to run in its own session, or told you to start a proposal. No other value is accepted yet.',
     },
     title: {
       type: 'string',
@@ -101,7 +122,11 @@ const SCHEMA: ToolArgsJsonShape = {
     },
     branchName: {
       type: 'string',
-      description: 'For isolation "worktree": the new branch\'s name; "" derives one from the session name.',
+      description: 'For isolation "worktree": the new branch\'s name, which must not exist yet; "" derives an unused one from the session name.',
+    },
+    proposalId: {
+      type: 'string',
+      description: 'The task id of a proposal of yours (ProposeSession) to start, "task_" and eight letters or digits; "" for a direct start.',
     },
   },
   required: [
@@ -118,6 +143,7 @@ const SCHEMA: ToolArgsJsonShape = {
     'cwd',
     'baseBranch',
     'branchName',
+    'proposalId',
   ],
   additionalProperties: false,
 }
@@ -144,36 +170,66 @@ function callerInWorktree(context: ToolCallContext): boolean {
   return typeof cwd === 'string' && typeof projectRoot === 'string' && cwd !== '' && cwd !== projectRoot
 }
 
+/** What the request checks need to know about the calling turn. */
+export function childCallerContext(context: ToolCallContext): ChildSessionCallerContext {
+  return {
+    channel: templateChannel(),
+    templateType: context.options.templateType,
+    nested: isNestedCaller(context),
+    parentPermissionMode: context.readAppState().permissionRules.mode,
+    parentInWorktree: callerInWorktree(context),
+  }
+}
+
+/** The repository a worktree child is cut from, or undefined outside git. */
+async function childRepoRoot(context: ToolCallContext, request: ChildSessionRequest): Promise<string | undefined> {
+  const anchor = request.cwd ?? context.options.cwd
+  try {
+    return await mainRepoRoot(anchor, fsForContext(context), { homeDir: context.options.homeDir })
+  } catch {
+    return undefined
+  }
+}
+
+/** Every child-worktree directory name already present in `repoRoot`. */
+async function takenCheckoutDirs(context: ToolCallContext, repoRoot: string): Promise<string[]> {
+  try {
+    const entries = await fsForContext(context).readdir(childCheckoutParent(repoRoot))
+    return entries.map(entry => entry.name)
+  } catch {
+    return []
+  }
+}
+
 /** The worktree maker for a `worktree` child, over this turn's git. `name`
- *  is the family name the runtime allocated: the default branch
- *  `session/<name>` and the directory carry it, so they agree with the name
- *  the parent and the list address the child by. */
+ *  is the family name the runtime allocated. The default branch
+ *  `session/<name>` and the directory carry it, suffixed like a family name
+ *  when the repository already has that branch or directory, so two families
+ *  in one repository never collide. */
 function worktreePreparer(
   context: ToolCallContext,
   request: ChildSessionRequest,
 ): ChildWorktreePrepare {
   return async (name: string) => {
-    const anchor = request.cwd ?? context.options.cwd
-    let repoRoot: string | undefined
-    try {
-      repoRoot = await mainRepoRoot(anchor, fsForContext(context), {
-        homeDir: context.options.homeDir,
-      })
-    } catch {
-      repoRoot = undefined
-    }
+    const repoRoot = await childRepoRoot(context, request)
     if (!repoRoot) {
+      const anchor = request.cwd ?? context.options.cwd
       return { ok: false, reason: `${anchor} is not inside a git repository, so no worktree can be made.` }
     }
     const base = request.baseBranch ?? (await checkoutHead(context, context.options.cwd)) ?? 'HEAD'
-    const branch = request.branchName ?? `session/${name}`
+    const taken = new Set(await takenCheckoutDirs(context, repoRoot))
+    if (!request.branchName) {
+      for (const branch of await localBranchesUnder(context, repoRoot, CHILD_BRANCH_PREFIX)) taken.add(branch)
+    }
+    const checkoutName = allocateFamilyName(name, taken)
+    const branch = request.branchName ?? `${CHILD_BRANCH_PREFIX}${checkoutName}`
     // Security: these git commands run on the host without a permission
     // prompt, so every argument is runtime-chosen or allow-listed (the branch
     // and base passed `isGitBranchNameSafe`, the paths are the runtime's) and
     // quoted as one shell word each. Not a surface for arbitrary commands,
     // the same stance a worktree-isolated sub-agent takes.
     const made = await openNamedCheckout(context, repoRoot, {
-      checkoutDir: childCheckoutDir(repoRoot, name),
+      checkoutDir: childCheckoutDir(repoRoot, checkoutName),
       branch,
       base,
     })
@@ -182,32 +238,18 @@ function worktreePreparer(
   }
 }
 
-export async function spawnChildSession(
-  input: SpawnSessionInput,
+/** A refusal: nothing was created. */
+function refused(reason: string): Extract<ProposalLaunch, { ok: false }> {
+  return { ok: false, reason, text: `Refused: ${reason}` }
+}
+
+/** The model and effort a request names, checked against this session's
+ *  provider: the model enabled by the user, the effort one it publishes. The
+ *  provider itself is inherited, never chosen here. */
+export async function checkChildModelChoice(
+  request: Pick<ChildSessionRequest, 'model' | 'effort'>,
   context: ToolCallContext,
-): Promise<{ data: string }> {
-  const checked = checkChildSessionRequest(input, {
-    channel: templateChannel(),
-    templateType: context.options.templateType,
-    nested: isNestedCaller(context),
-    parentPermissionMode: context.readAppState().permissionRules.mode,
-    parentInWorktree: callerInWorktree(context),
-  })
-  if (!checked.ok) return { data: `Refused: ${checked.reason}` }
-  const { request } = checked
-
-  const spawn = getChildSessionSpawner()
-  if (!spawn) {
-    return { data: 'Refused: child sessions are unavailable here (no session manager in this runtime).' }
-  }
-  const parentSessionId = context.options.sessionId
-  if (!parentSessionId) {
-    return { data: 'Refused: this turn has no session id to start a child from.' }
-  }
-
-  // The model, when named, must be one the user enabled on this session's
-  // provider; the effort, one the model publishes. The provider itself is
-  // inherited, never chosen here.
+): Promise<{ ok: true; providerId?: string } | { ok: false; reason: string }> {
   const homeDir = context.options.homeDir
   const provider = await resolveChildProvider(
     homeDir,
@@ -220,7 +262,8 @@ export async function spawnChildSession(
     const enabled = await enabledModelsFor(homeDir, providerId, fsForContext(context))
     if (enabled && enabled.length > 0 && !enabled.includes(request.model)) {
       return {
-        data: `Refused: model "${request.model}" is not enabled on provider "${providerId}". Enabled: ${enabled.join(', ')}.`,
+        ok: false,
+        reason: `model "${request.model}" is not enabled on provider "${providerId}". Enabled: ${enabled.join(', ')}.`,
       }
     }
   }
@@ -228,10 +271,54 @@ export async function spawnChildSession(
     const tiers = providerId ? (getAvailableThinkingTiersForModel(request.model, providerId) ?? []) : []
     if (!tiers.includes(request.effort)) {
       return {
-        data: tiers.length === 0
-          ? `Refused: model "${request.model}" publishes no effort tiers; leave effort empty.`
-          : `Refused: effort "${request.effort}" is not one model "${request.model}" accepts. Accepted: ${tiers.join(', ')}.`,
+        ok: false,
+        reason: tiers.length === 0
+          ? `model "${request.model}" publishes no effort tiers; leave effort empty.`
+          : `effort "${request.effort}" is not one model "${request.model}" accepts. Accepted: ${tiers.join(', ')}.`,
       }
+    }
+  }
+  return { ok: true, ...(providerId ? { providerId } : {}) }
+}
+
+export type ChildLaunchOptions = {
+  /** The proposal the start comes from. */
+  taskId?: string
+  /** The relation recorded on the child; absent is `side_session`. */
+  kind?: 'side_session' | 'hand_off'
+  /** The acknowledgement for a registered child, replacing the default. */
+  registeredText?: (outcome: Extract<ChildSessionSpawnOutcome, { ok: true }>, request: ChildSessionRequest) => string
+}
+
+/**
+ * Check a request and start the child: the one path every start takes (a
+ * direct start, a proposal's, a hand-off). A refusal created nothing; a
+ * registered child is on record, started or not.
+ */
+export async function launchChildSession(
+  input: SpawnSessionInput,
+  context: ToolCallContext,
+  options: ChildLaunchOptions = {},
+): Promise<ProposalLaunch> {
+  const checked = checkChildSessionRequest(input, childCallerContext(context))
+  if (!checked.ok) return refused(checked.reason)
+  const { request } = checked
+
+  const spawn = getChildSessionSpawner()
+  if (!spawn) return refused('child sessions are unavailable here (no session manager in this runtime).')
+  const parentSessionId = context.options.sessionId
+  if (!parentSessionId) return refused('this turn has no session id to start a child from.')
+
+  const model = await checkChildModelChoice(request, context)
+  if (!model.ok) return refused(model.reason)
+  const { providerId } = model
+
+  // An explicit branch must be new: refused with the field named before
+  // anything is created, rather than a child that did not start.
+  if (request.isolation === 'worktree' && request.branchName) {
+    const repoRoot = await childRepoRoot(context, request)
+    if (repoRoot && (await localBranchExists(context, repoRoot, request.branchName))) {
+      return refused(`branchName "${request.branchName}" already exists in ${repoRoot}; pass a new name, or "" for an unused one.`)
     }
   }
 
@@ -244,27 +331,92 @@ export async function spawnChildSession(
       ? { prepareWorktree: worktreePreparer(context, request) }
       : {}),
     routineOriginId: routineOriginIdOf(context.options),
+    ...(options.taskId ? { taskId: options.taskId } : {}),
+    ...(options.kind ? { kind: options.kind } : {}),
   })
   if (outcome === null) {
-    return { data: 'Refused: the runtime cannot start a session yet (no session has booted). Try again in a moment.' }
+    return refused('the runtime cannot start a session yet (no session has booted). Try again in a moment.')
   }
-  if (!outcome.ok) return { data: `Refused: ${outcome.reason}` }
+  if (!outcome.ok) return refused(outcome.reason)
   if (outcome.startFailed) {
     return {
-      data:
+      ok: true,
+      sessionId: outcome.sessionId,
+      name: outcome.name,
+      text:
         `Child session "${outcome.name}" (session ${outcome.sessionId}) is registered but did not start: ${outcome.startFailed} ` +
         'It stays listed as not started with that reason; nothing was shared or run. Fix the cause and start it again, or do the work here.',
     }
   }
-  return {
-    data: childSessionRegisteredText({
-      sessionId: outcome.sessionId,
-      name: outcome.name,
-      from: request.from,
-      sharedCheckout: outcome.sharedCheckout,
-      ...(outcome.cwd ? { cwd: outcome.cwd } : {}),
-    }),
+  const text = options.registeredText
+    ? options.registeredText(outcome, request)
+    : childSessionRegisteredText({
+        sessionId: outcome.sessionId,
+        name: outcome.name,
+        from: request.from,
+        sharedCheckout: outcome.sharedCheckout,
+        ...(outcome.cwd ? { cwd: outcome.cwd } : {}),
+      })
+  return { ok: true, sessionId: outcome.sessionId, name: outcome.name, text }
+}
+
+/** Starts a proposal's request through `context`, the turn it is bound to. */
+export function proposalLauncherFor(context: ToolCallContext): ProposalLauncher {
+  return (input, taskId) => launchChildSession(input, context, { taskId })
+}
+
+/**
+ * The model starts one of its proposals: exactly as proposed (P05), once
+ * (the board's claim), and only from a state that allows it: a suggestion
+ * still waiting, or an offer the user accepted.
+ */
+async function startProposedChild(
+  proposalId: string,
+  input: SpawnSessionInput,
+  context: ToolCallContext,
+): Promise<string> {
+  if (!isProposalTaskId(proposalId)) {
+    return 'Refused: proposalId must be a task id: "task_" and eight lowercase letters or digits.'
   }
+  const initiation = typeof input.initiation === 'string' ? input.initiation.trim() : ''
+  if (initiation && initiation !== 'asked') {
+    return `Refused: initiation must be "asked" or "" with a proposalId (got ${JSON.stringify(initiation)}).`
+  }
+  const board = getProposalBoard()
+  const sessionId = context.options.sessionId
+  if (!board || !sessionId) return 'Refused: proposals are unavailable here (no session manager in this runtime).'
+  const proposal = await board.get(sessionId, proposalId)
+  if (!proposal) return `Refused: this session has no proposal ${proposalId}.`
+  if (proposal.mode === 'offer' && proposal.state === 'proposed') {
+    return `Refused: the user has not chosen yet for proposal ${proposalId}; nothing can start before they do.`
+  }
+  const startable =
+    (proposal.mode === 'suggest' && proposal.state === 'proposed') ||
+    (proposal.mode === 'offer' && proposal.state === 'accepted_awaiting_brief')
+  if (!startable) {
+    return `Refused: proposal ${proposalId} is ${proposalStateWords(proposal)}; it cannot be started.`
+  }
+  const mismatch = proposalStartMismatch(proposal, input)
+  if (mismatch) return `Refused: ${mismatch}`
+
+  const launcher = proposalLauncherFor(context)
+  board.setLauncher(sessionId, launcher)
+  const result = await board.start(sessionId, proposalId, launcher, input)
+  if (result.ok) return `Started proposal ${proposalId}. ${result.launch.text}`
+  if (result.text) return result.text
+  const now = await board.get(sessionId, proposalId)
+  return now
+    ? `Refused: proposal ${proposalId} is ${proposalStateWords(now)}; it cannot be started.`
+    : `Refused: ${result.reason}`
+}
+
+export async function spawnChildSession(
+  input: SpawnSessionInput,
+  context: ToolCallContext,
+): Promise<{ data: string }> {
+  const proposalId = typeof input?.proposalId === 'string' ? input.proposalId.trim() : ''
+  if (proposalId) return { data: await startProposedChild(proposalId, input, context) }
+  return { data: (await launchChildSession(input, context)).text }
 }
 
 export const SpawnSessionTool: ToolContract<SpawnSessionInput, string> = declareTool({
