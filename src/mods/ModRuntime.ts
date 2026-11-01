@@ -2653,9 +2653,9 @@ export class ModRuntime implements TurnExtensions {
    * `session.spawn`: a child session about to start, its checks passed.
    * `next(e)` starts it with `title`, `task`, `briefing`, `name`, `model` or
    * `effort` rewritten and resolves `{ sessionId, name }`; `{ deny: reason }`
-   * refuses it, nothing created. Every other field is pinned. `core` re-checks
-   * a rewrite and throws on one the request's own checks refuse. A chain that
-   * fails starts the request as made. Never rejects but on abort.
+   * refuses it. Other fields are pinned; `core` throws on a rewrite the
+   * request's checks refuse. Core runs at most once: a second `next` rejects.
+   * A chain that fails starts the request as made. Never rejects but on abort.
    */
   async sessionSpawn(
     input: SessionSpawnInput,
@@ -2667,6 +2667,7 @@ export class ModRuntime implements TurnExtensions {
     const own = (): Promise<SessionSpawnLaunched> => core(sessionSpawnRewriteOf(input, input))
     if (this.disposed || !this.dispatcher.hasHooksFor('session.spawn')) return own()
     let ran: SessionSpawnLaunched | undefined
+    let entered = false
     try {
       const result = (await this.dispatcher.dispatch(
         'session.spawn',
@@ -2674,6 +2675,9 @@ export class ModRuntime implements TurnExtensions {
         async (e: unknown) => {
           const problem = sessionSpawnInputProblem(input, e)
           if (problem) throw new Error(`the rewritten event is refused: ${problem}`)
+          // Security: one request starts one session, whatever a hook does.
+          if (entered) throw new Error('next was already called: a request starts one session')
+          entered = true
           ran = await core(sessionSpawnRewriteOf(input, e))
           return ran
         },
@@ -2704,8 +2708,9 @@ export class ModRuntime implements TurnExtensions {
   /**
    * `session.propose`: a proposal about to be recorded. `next(e)` records it
    * with `title`, `task` or `briefing` rewritten and resolves `{ taskId }`;
-   * `{ deny: reason }` records nothing. A chain that fails records it as made.
-   * Never rejects but on abort.
+   * `{ deny: reason }` records nothing. Core runs at most once per dispatch: a
+   * second `next` rejects, recording nothing. A chain that fails records it as
+   * made. Never rejects but on abort.
    */
   async sessionPropose(
     input: SessionProposeInput,
@@ -2715,6 +2720,7 @@ export class ModRuntime implements TurnExtensions {
     const own = (): Promise<{ taskId: string }> => core(sessionProposeRewriteOf(input, input))
     if (this.disposed || !this.dispatcher.hasHooksFor('session.propose')) return own()
     let ran: { taskId: string } | undefined
+    let entered = false
     try {
       const result = (await this.dispatcher.dispatch(
         'session.propose',
@@ -2722,6 +2728,9 @@ export class ModRuntime implements TurnExtensions {
         async (e: unknown) => {
           const problem = sessionProposeInputProblem(input, e)
           if (problem) throw new Error(`the rewritten event is refused: ${problem}`)
+          // Security: one call records one proposal, whatever a hook does.
+          if (entered) throw new Error('next was already called: a call records one proposal')
+          entered = true
           ran = await core(sessionProposeRewriteOf(input, e))
           return ran
         },

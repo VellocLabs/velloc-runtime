@@ -335,6 +335,7 @@ export async function launchChildSession(
   // The plugins' hooks see the start once its checks passed: a rewrite is
   // checked again as the model's own request would be, a deny creates nothing.
   let launched: ProposalLaunch | undefined
+  let entered = false
   const kind = options.kind ?? 'side_session'
   let settled: Awaited<ReturnType<NonNullable<typeof mods.sessionSpawn>>>
   try {
@@ -342,7 +343,17 @@ export async function launchChildSession(
       sessionSpawnEventOf(request, parentSessionId, kind, context),
       async rewrite => {
         const chosen = await rewrittenChildRequest(input, request, providerId, rewrite, context)
-        launched = await start(chosen.request, chosen.providerId)
+        // Security: one request starts one session, however often core is
+        // asked; a rewrite the checks refused started nothing.
+        if (entered) throw new Error('this request has already been started')
+        entered = true
+        // Past the checks nothing throws: a failed launch is a refusal, never
+        // a hook absent that would start the request again.
+        try {
+          launched = await start(chosen.request, chosen.providerId)
+        } catch (error) {
+          launched = refused(`the session could not be started: ${error instanceof Error ? error.message : String(error)}`)
+        }
         return launched.ok ? { sessionId: launched.sessionId, name: launched.name } : { refused: launched.reason }
       },
       context.cancelSource.signal,

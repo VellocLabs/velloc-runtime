@@ -237,6 +237,34 @@ describe('session.spawn', () => {
     expect(reports.some(line => /^boom: session\.spawn .*boom/.test(line))).toBe(true)
   })
 
+  it('a hook that calls next twice, one after the other or at once, starts one session; the second next is refused', async () => {
+    const { runtime, reports } = world({
+      'twice/hooks/register.js': `
+        export function register(on) {
+          on('session.spawn', async ($, e, next) => {
+            if (e.title === 'together') {
+              const both = await Promise.allSettled([next(e), next({ ...e, title: 'second' })]);
+              await $.ui.log('together ' + both.map(r => r.status).sort().join(','));
+              return both.find(r => r.status === 'fulfilled').value;
+            }
+            const first = await next(e);
+            const second = await next({ ...e, title: 'second' }).then(() => 'started', err => 'refused: ' + err.message);
+            await $.ui.log('again ' + second);
+            return first;
+          });
+        }
+      `,
+    })
+    await runtime.ready
+    const { core, handed } = spawnCore()
+    expect(await runtime.sessionSpawn(SPAWN, core)).toEqual({ sessionId: 'child-1', name: 'survey' })
+    expect(handed).toEqual([AS_ASKED])
+    expect(reports).toContainEqual(expect.stringMatching(/^twice: again refused: .*next was already called: a request starts one session/))
+    expect(await runtime.sessionSpawn({ ...SPAWN, title: 'together' }, core)).toEqual({ sessionId: 'child-1', name: 'survey' })
+    expect(handed).toEqual([AS_ASKED, { ...AS_ASKED, title: 'together' }])
+    expect(reports).toContain('twice: together fulfilled,rejected')
+  })
+
   it('an answer that starts nothing and is no deny is a refusal', async () => {
     const { runtime } = world({
       'liar/hooks/register.js': `
@@ -294,6 +322,36 @@ describe('session.propose', () => {
     expect(reports).toContain(
       'mods: session.propose (pin) failed: the rewritten event is refused: initiation is pinned; the proposal is recorded as made',
     )
+  })
+})
+
+describe('session.propose, next twice', () => {
+  it('a hook that calls next twice records one proposal; the second next is refused', async () => {
+    const { runtime, reports } = world({
+      'twice/hooks/register.js': `
+        export function register(on) {
+          on('session.propose', async ($, e, next) => {
+            const first = await next(e);
+            const second = await next({ ...e, title: 'second' }).then(() => 'recorded', err => 'refused: ' + err.message);
+            await $.ui.log('again ' + second);
+            return first;
+          });
+        }
+      `,
+    })
+    await runtime.ready
+    const recorded: unknown[] = []
+    const core = async (rewrite: unknown) => (recorded.push(rewrite), { taskId: `task_${recorded.length}` })
+    const input: SessionProposeInput = {
+      initiation: 'suggest',
+      title: 'Tidy the parser',
+      task: 'Remove dead branches.',
+      briefing: 'The parser has three unused branches.',
+      parentSessionId: 'parent-1',
+    }
+    expect(await runtime.sessionPropose(input, core)).toEqual({ taskId: 'task_1' })
+    expect(recorded).toHaveLength(1)
+    expect(reports).toContainEqual(expect.stringMatching(/^twice: again refused: .*next was already called: a call records one proposal/))
   })
 })
 

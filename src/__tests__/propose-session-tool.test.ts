@@ -408,6 +408,25 @@ describe('session.propose — the plugins see a proposal before it is recorded',
   })
 })
 
+describe('session.propose — one record per call', () => {
+  it('a second run of core is refused: one proposal is recorded', async () => {
+    recordingSpawner()
+    const context = ctx()
+    const again: string[] = []
+    context.options.mods = {
+      hasSessionProposeHooks: () => true,
+      sessionPropose: async (e, core) => {
+        const first = await core({ title: e.title, task: e.task, briefing: e.briefing })
+        await core({ title: 'Second', task: e.task, briefing: e.briefing }).catch((error: Error) => again.push(error.message))
+        return first
+      },
+    } as NonNullable<ToolCallContext['options']['mods']>
+    await proposeChildSession(proposal(), context)
+    expect(again).toEqual(['this proposal has already been recorded'])
+    expect(await board.list('parent-1')).toHaveLength(1)
+  })
+})
+
 describe('WithdrawProposal', () => {
   it('withdraws a waiting proposal and refuses a started one with its real state', async () => {
     recordingSpawner()

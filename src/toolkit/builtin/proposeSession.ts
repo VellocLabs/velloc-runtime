@@ -205,6 +205,7 @@ export async function proposeChildSession(
     // A rewrite is checked again as the model's own proposal would be; a
     // deny records nothing.
     let settled: Awaited<ReturnType<NonNullable<typeof mods.sessionPropose>>> | undefined
+    let entered = false
     try {
       settled = await mods.sessionPropose(
         { initiation: mode, title: request.title, task: request.task, briefing: request.briefing, parentSessionId: sessionId },
@@ -221,6 +222,10 @@ export async function proposeChildSession(
             { briefLater: mode === 'offer' },
           )
           if (!recheck.ok) throw new Error(recheck.reason)
+          // Security: one call records one proposal, however often core is
+          // asked; a rewrite the checks refused recorded nothing.
+          if (entered) throw new Error('this proposal has already been recorded')
+          entered = true
           proposal = await record(chosen)
           return { taskId: proposal.taskId }
         },

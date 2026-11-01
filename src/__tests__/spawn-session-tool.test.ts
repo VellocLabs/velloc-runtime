@@ -382,6 +382,31 @@ describe('SpawnSession — session.spawn', () => {
     expect(registered).toEqual([{ sessionId: 'child-4', name: 'lab', started: true }])
   })
 
+  it('core starts the request once: a second call is refused, and a launch that throws is a refusal, never a retry', async () => {
+    const calls = fakeSpawner({ ok: true, sessionId: 'child-1', name: 'n', sharedCheckout: true })
+    const again: string[] = []
+    const mods = modsWith(async (e, core) => {
+      const rewrite = { title: e.title, task: e.task, briefing: e.briefing, name: e.name, model: e.model, effort: e.effort }
+      const first = await core(rewrite)
+      await core({ ...rewrite, title: 'Second' }).catch((error: Error) => again.push(error.message))
+      return first
+    })
+    const { data } = await spawnChildSession(input(), ctx({ mods }))
+    expect(calls).toHaveLength(1)
+    expect(again).toEqual(['this request has already been started'])
+    expect(data).toMatch(/^Registered child session "n"/)
+
+    setChildSessionSpawner(async () => {
+      throw new Error('disk full')
+    })
+    const failing = modsWith(async (e, core) =>
+      core({ title: e.title, task: e.task, briefing: e.briefing, name: e.name, model: e.model, effort: e.effort }),
+    )
+    expect((await spawnChildSession(input(), ctx({ mods: failing }))).data).toBe(
+      'Refused: the session could not be started: disk full',
+    )
+  })
+
   it('with no hook loaded nothing is raised and the request starts as made', async () => {
     const calls = fakeSpawner({ ok: true, sessionId: 'c', name: 'n', sharedCheckout: true })
     const hook = vi.fn()
