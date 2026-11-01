@@ -14,6 +14,8 @@ export type TreeableSession = {
   detached?: boolean
   running?: boolean
   needsAnswer?: boolean
+  /** Out of the active list: listed apart, never nested. */
+  archived?: boolean
 }
 
 /** A chain longer than this is drawn flat from where it exceeds the cap. */
@@ -56,11 +58,14 @@ function listedParentOf<T extends TreeableSession>(
  * keeps its place among its siblings. A row whose parent is not listed, whose
  * chain loops back on itself, or which sits deeper than
  * {@link SESSION_TREE_MAX_DEPTH} is a top-level row instead (and is reported in
- * `fallbackIds`); its own children still nest under it. Both the roots and
- * each children list keep the input order, so ordering is the caller's.
+ * `fallbackIds`); its own children still nest under it. A row whose parent is
+ * in `archivedParents` is top-level too, and not reported: its parent is
+ * listed apart. Both the roots and each children list keep the input order,
+ * so ordering is the caller's.
  */
 export function nestSessions<T extends TreeableSession>(
   sessions: readonly T[],
+  archivedParents: ReadonlySet<string> = new Set(),
 ): SessionTree<T> {
   const byId = new Map<string, T>()
   for (const session of sessions) byId.set(session.sessionId, session)
@@ -76,7 +81,13 @@ export function nestSessions<T extends TreeableSession>(
     const parentId = listedParentOf(row, byId)
     let depth: number
     if (parentId === undefined) {
-      depth = row.parentSessionId && !row.detached && row.lineageKind !== 'team' ? FALLBACK : 0
+      depth =
+        row.parentSessionId &&
+        !row.detached &&
+        row.lineageKind !== 'team' &&
+        !archivedParents.has(row.parentSessionId)
+          ? FALLBACK
+          : 0
     } else if (visiting.has(parentId)) {
       depth = FALLBACK
     } else {
@@ -108,6 +119,20 @@ export function nestSessions<T extends TreeableSession>(
     else childrenOf.set(parentId, [session])
   }
   return { roots, childrenOf, depthOf, byId, fallbackIds }
+}
+
+/**
+ * `sessions` split into the rows the list nests and the archived rows it lists
+ * apart, each in the input order, plus the archived ids for
+ * {@link nestSessions}. (F-36)
+ */
+export function partitionArchived<T extends TreeableSession>(
+  sessions: readonly T[],
+): { live: T[]; archived: T[]; archivedIds: ReadonlySet<string> } {
+  const live: T[] = []
+  const archived: T[] = []
+  for (const session of sessions) (session.archived ? archived : live).push(session)
+  return { live, archived, archivedIds: new Set(archived.map(s => s.sessionId)) }
 }
 
 /**

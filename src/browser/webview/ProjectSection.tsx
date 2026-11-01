@@ -65,6 +65,8 @@ export type ProjectSectionProps = {
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
   onForkThread?: (sessionId: string) => void
+  /** Archive or unarchive a session: a failed start's dismiss. (F-36) */
+  onArchiveThread?: (sessionId: string, archived: boolean) => void
   /** Inline-rename state, shared with Recents so both copies of a session agree. */
   editing?: SessionRowEditing
   onEditingChange?: (next: SessionRowEditing) => void
@@ -89,6 +91,7 @@ export function ProjectSection({
   onRenameThread,
   onPinThread,
   onForkThread,
+  onArchiveThread,
   editing,
   onEditingChange,
   collapsedParents,
@@ -235,6 +238,7 @@ export function ProjectSection({
             onRenameThread={onRenameThread}
             onPinThread={onPinThread}
             onForkThread={onForkThread}
+            onArchiveThread={onArchiveThread}
             editing={editing}
             onEditingChange={onEditingChange}
             collapsedParents={collapsedParents}
@@ -271,6 +275,7 @@ type ProjectRowProps = {
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
   onForkThread?: (sessionId: string) => void
+  onArchiveThread?: (sessionId: string, archived: boolean) => void
   editing?: SessionRowEditing
   onEditingChange?: (next: SessionRowEditing) => void
   collapsedParents?: ReadonlySet<string>
@@ -292,6 +297,7 @@ function ProjectRow({
   onRenameThread,
   onPinThread,
   onForkThread,
+  onArchiveThread,
   editing,
   onEditingChange,
   collapsedParents,
@@ -555,6 +561,7 @@ function ProjectRow({
               onRenameThread={onRenameThread}
               onPinThread={onPinThread}
               onForkThread={onForkThread}
+              onArchiveThread={onArchiveThread}
               editing={editing}
               onEditingChange={onEditingChange}
               nesting={nesting}

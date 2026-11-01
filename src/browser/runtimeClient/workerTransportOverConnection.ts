@@ -428,6 +428,7 @@ export function createWorkerTransportOverConnection(
         case 'session.rename':
         case 'session.pin':
         case 'session.detachLineage':
+        case 'session.archive':
         case 'session.fork': {
           withConnection(conn => {
             holdManagerTopic(conn, topic.sessions(), false)

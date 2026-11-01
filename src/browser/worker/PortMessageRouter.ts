@@ -43,6 +43,12 @@ export interface PortMessageRouterHost {
     requestId: string | undefined,
   ): void
   detachSession(port: MessagePort, sessionId: string, requestId: string | undefined): void
+  archiveSession(
+    port: MessagePort,
+    sessionId: string,
+    archived: boolean,
+    requestId: string | undefined,
+  ): void
   forkSession(
     port: MessagePort,
     fromSessionId: string,
@@ -211,6 +217,11 @@ export class PortMessageRouter {
 
       case 'session.detachLineage': {
         this.host.detachSession(port, message.sessionId, message.requestId)
+        return
+      }
+
+      case 'session.archive': {
+        this.host.archiveSession(port, message.sessionId, message.archived, message.requestId)
         return
       }
 
@@ -437,6 +448,11 @@ function validateInboundShape(
 
     case 'session.detachLineage':
       if (!isSafeSessionId(m.sessionId)) return badId('sessionId')
+      return null
+
+    case 'session.archive':
+      if (!isSafeSessionId(m.sessionId)) return badId('sessionId')
+      if (typeof m.archived !== 'boolean') return badField('archived', 'a boolean')
       return null
 
     case 'session.fork':

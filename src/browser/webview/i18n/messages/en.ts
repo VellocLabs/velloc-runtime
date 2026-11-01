@@ -44,6 +44,11 @@ export const en = {
   // Child sessions (F-36): the row state while another session starts this one.
   'sidebar.sessionStarting': 'Starting…',
   'sidebar.sessionStartFailed': 'Did not start',
+  'sidebar.dismissStartAria': 'Dismiss {title} (moves it to Archived)',
+  'sidebar.archivedSection': 'Archived',
+  'sidebar.archivedFrom': 'from {title}',
+  'sidebar.unarchive': 'Unarchive',
+  'sidebar.unarchiveThreadAria': 'Unarchive {title}',
   // Child sessions nested under their parent's row (F-36).
   'sidebar.forkOf': 'Fork of {title}',
   'sidebar.collapseChildrenAria': 'Hide the sessions under {title} ({count})',

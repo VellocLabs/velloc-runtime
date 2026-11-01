@@ -256,20 +256,31 @@ export function writeSessionListView(view: SessionListView): void {
 }
 
 /** A collapsible section of the docked session list. */
-export type SidebarSection = 'pinned' | 'recents'
+export type SidebarSection = 'pinned' | 'recents' | 'archived'
 
 const SECTION_COLLAPSED_KEYS: Record<SidebarSection, string> = {
   pinned: 'nexus:sidebar:pinnedCollapsed',
   recents: 'nexus:sidebar:recentsCollapsed',
+  archived: 'nexus:sidebar:archivedCollapsed',
 }
 
-/** Whether `section` is collapsed in this window; expanded when unknown. */
+/** Collapsed when nothing is remembered: only Archived. */
+const SECTION_COLLAPSED_BY_DEFAULT: Record<SidebarSection, boolean> = {
+  pinned: false,
+  recents: false,
+  archived: true,
+}
+
+/** Whether `section` is collapsed in this window; its default when unknown. */
 export function readSectionCollapsed(section: SidebarSection): boolean {
   try {
-    return globalThis.localStorage?.getItem(SECTION_COLLAPSED_KEYS[section]) === '1'
+    const stored = globalThis.localStorage?.getItem(SECTION_COLLAPSED_KEYS[section])
+    if (stored === '1') return true
+    if (stored === '0') return false
   } catch {
-    return false
+    // Storage unavailable: the default.
   }
+  return SECTION_COLLAPSED_BY_DEFAULT[section]
 }
 
 /** Remember whether `section` is collapsed in this window. */

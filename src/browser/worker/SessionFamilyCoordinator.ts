@@ -453,6 +453,26 @@ export class SessionFamilyCoordinator implements SessionDirectory {
     if (!this.knows(target)) return { ok: false, code: 'unknown', reason: 'no session with that id in this runtime.' }
     const control = controlDecision(callerSessionId, target, this.lineageIndex(), archived ? 'archive' : 'unarchive')
     if (!control.ok) return control
+    return this.applyArchived(target, archived)
+  }
+
+  /**
+   * The person's archive / unarchive from the session list: no delegation
+   * check (the person controls every session), the same state rule as the
+   * tool's.
+   */
+  async setArchivedByUser(
+    target: string,
+    archived: boolean,
+  ): Promise<FamilyOutcome<{ changed: boolean }>> {
+    if (!this.knows(target)) return { ok: false, code: 'unknown', reason: 'no session with that id in this runtime.' }
+    return this.applyArchived(target, archived)
+  }
+
+  private async applyArchived(
+    target: string,
+    archived: boolean,
+  ): Promise<FamilyOutcome<{ changed: boolean }>> {
     const current = await this.isArchived(target)
     if (!archived) {
       if (!current) return { ok: true, changed: false }

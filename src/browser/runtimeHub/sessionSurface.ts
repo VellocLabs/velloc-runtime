@@ -279,6 +279,8 @@ export const SESSION_MANAGER_ACTION_SCOPES = {
   pin: 'control',
   // Takes a child out from under its parent: one metadata flag, like `pin` (F-36).
   detachLineage: 'control',
+  // The person's archive / unarchive: one flag, refused while the session works. (F-36)
+  archive: 'control',
   fork: 'control',
   delete: 'control',
   getToolDetail: 'observe',
@@ -585,6 +587,11 @@ export function installSessionSurface(
     sessionOf: sessionIdOf,
     guard: hasSessionId,
   }
+  sessionActions.archive = {
+    scope: SESSION_MANAGER_ACTION_SCOPES.archive,
+    sessionOf: sessionIdOf,
+    guard: p => hasSessionId(p) && typeof (p as { archived?: unknown }).archived === 'boolean',
+  }
   sessionActions.fork = {
     scope: SESSION_MANAGER_ACTION_SCOPES.fork,
     sessionOf: forkSourceOf,
@@ -681,6 +688,7 @@ export function installSessionSurface(
         case 'rename':
         case 'pin':
         case 'detachLineage':
+        case 'archive':
         case 'delete':
           host.dispatch(port, managerMessage(`session.${act}`, payload))
           return undefined

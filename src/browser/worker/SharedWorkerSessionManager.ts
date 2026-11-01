@@ -619,6 +619,8 @@ export class SharedWorkerSessionManager {
       void this.handleSessionPin(port, sessionId, pinned, requestId),
     detachSession: (port, sessionId, requestId) =>
       void this.handleSessionDetach(port, sessionId, requestId),
+    archiveSession: (port, sessionId, archived, requestId) =>
+      void this.handleSessionArchive(port, sessionId, archived, requestId),
     forkSession: (
       port,
       fromSessionId,
@@ -3394,6 +3396,33 @@ export class SharedWorkerSessionManager {
         })
       }
     }
+  }
+
+  /**
+   * The person archives or unarchives a session from the list (F-36). The
+   * family coordinator applies the archive rule and writes the flag; the list
+   * learns it from the summary refresh. A refusal leaves the row where it is;
+   * the asking port gets the unchanged card back.
+   */
+  private async handleSessionArchive(
+    port: MessagePort,
+    sessionId: string,
+    archived: boolean,
+    requestId?: string,
+  ): Promise<void> {
+    if (this.deletingSessions.has(sessionId)) return
+    let refused: string | undefined
+    try {
+      const outcome = await this.family.setArchivedByUser(sessionId, archived)
+      if (!outcome.ok) refused = `${outcome.code}: ${outcome.reason}`
+    } catch (error) {
+      refused = error instanceof Error ? error.message : String(error)
+    }
+    if (refused === undefined) return
+    console.warn(`[SharedWorkerSessionManager] archive of ${sessionId} refused: ${refused}`)
+    if (!requestId) return
+    const session = this.buildSessionInfo(sessionId)
+    if (session) port.postMessage({ type: 'session.updated' as const, payload: { session } })
   }
 
   /**

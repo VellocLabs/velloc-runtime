@@ -135,6 +135,15 @@ export type SharedWorkerInboundMessage =
       requestId?: string
     }
   | {
+      // The person archives or unarchives a session (a failed start's
+      // dismiss, Archived's Unarchive): `archived` in its metadata, refused
+      // while it starts, runs, has live work or waits on the person. (F-36)
+      type: 'session.archive'
+      sessionId: string
+      archived: boolean
+      requestId?: string
+    }
+  | {
       // Fork a session AT a message: copy the transcript prefix up to and
       // including `cutUuid` into a NEW session (rewriting sessionId +
       // parentUuid, copying tool-detail sidecars), then reply `session.forked`

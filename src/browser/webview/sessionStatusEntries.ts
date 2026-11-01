@@ -53,6 +53,7 @@ export function sessionStatusEntries(
       ...(item.familyName ? { familyName: item.familyName } : {}),
       ...(item.starting ? { starting: true } : {}),
       ...(item.startFailed ? { startFailed: item.startFailed } : {}),
+      ...(item.archived ? { archived: true } : {}),
       ...(item.running ? { running: true } : {}),
       ...(item.needsAnswer ? { needsAnswer: true } : {}),
       ...(item.previewText ? { previewText: item.previewText } : {}),

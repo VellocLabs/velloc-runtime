@@ -4233,6 +4233,35 @@ describe('SharedWorkerSessionManager', () => {
         (msg: unknown) => (msg as SharedWorkerOutboundMessage).type === 'session.updated',
       )
 
+    const cardOf = (sessionId: string) =>
+      (manager as unknown as { buildSessionInfo(id: string): { archived?: boolean } | null }).buildSessionInfo(sessionId)
+    it('session.archive writes the flag on a session, the card carries it, and unarchive clears it (F-36)', async () => {
+      installStorage()
+      await (manager as unknown as { summaryRepo: { refreshFsSummary(id: string): Promise<void> } })
+        .summaryRepo.refreshFsSummary('s')
+      const port = createMockPort()
+      manager.handleConnect(port)
+      // A session still starting is refused, and its card comes back unchanged.
+      const starts = (manager as unknown as { startStates: Map<string, { state: string }> }).startStates
+      starts.set('s', { state: 'starting' })
+      port._simulateMessage({ type: 'session.archive', sessionId: 's', archived: true, requestId: 'a0' })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(metas.get('s')!.metadata.archived).toBeUndefined()
+      starts.delete('s')
+      port._simulateMessage({ type: 'session.archive', sessionId: 's', archived: true, requestId: 'a1' })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(metas.get('s')!.metadata).toMatchObject({ archived: true })
+      expect(cardOf('s')?.archived).toBe(true)
+      port._simulateMessage({ type: 'session.archive', sessionId: 's', archived: false })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(metas.get('s')!.metadata.archived).toBe(false)
+      expect(cardOf('s')?.archived).toBeUndefined()
+      // A flag that is not a boolean is refused before it reaches the manager.
+      port._simulateMessage({ type: 'session.archive', sessionId: 's', archived: 'yes' })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(metas.get('s')!.metadata.archived).toBe(false)
+    })
+
     it('a pin through the bound store supersedes the pre-bind stash', async () => {
       installStorage()
       // The fake entry leaves before the summary refresh reads its runtime.
@@ -5112,6 +5141,7 @@ describe('SharedWorkerSessionManager', () => {
       ['session.detach', { type: 'session.detach', sessionId: '..' }],
       ['session.rename', { type: 'session.rename', sessionId: 'has space', title: 'x' }],
       ['session.pin', { type: 'session.pin', sessionId: '../x', pinned: true }],
+      ['session.archive', { type: 'session.archive', sessionId: '../x', archived: true }],
       ['session.fork', { type: 'session.fork', fromSessionId: 'C:\\evil', cutUuid: 'u' }],
       ['task.stop', { type: 'task.stop', sessionId: '' }],
       ['task.resume', { type: 'task.resume', sessionId: 42, prompt: 'p' }],

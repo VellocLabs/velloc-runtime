@@ -493,6 +493,25 @@ describe('ArchiveSession / UnarchiveSession', () => {
     expect(await coord.setArchived('p', 'nope', true)).toMatchObject({ ok: false, code: 'unknown' })
   })
 
+  it('the person archives any session from the list, with no delegation, under the same state rule (F-36)', async () => {
+    const host = family()
+    const coord = new SessionFamilyCoordinator(host)
+    // A top-level session, a parent and an unrelated one: no delegation asked.
+    expect(await coord.setArchivedByUser('p', true)).toEqual({ ok: true, changed: true })
+    expect(await coord.setArchivedByUser('x', true)).toEqual({ ok: true, changed: true })
+    expect(host.summaryOf('x')?.archived).toBe(true)
+    expect(await coord.setArchivedByUser('x', true)).toEqual({ ok: true, changed: false })
+    expect(await coord.setArchivedByUser('x', false)).toEqual({ ok: true, changed: true })
+    expect(host.sessions.get('x')!.metadata.archived).toBe(false)
+    host.sessions.get('c1')!.busy = true
+    expect(await coord.setArchivedByUser('c1', true)).toMatchObject({ ok: false, code: 'running' })
+    host.sessions.get('c1')!.busy = false
+    host.sessions.get('c2')!.starting = true
+    expect(await coord.setArchivedByUser('c2', true)).toMatchObject({ ok: false, code: 'starting' })
+    expect(await coord.setArchivedByUser('nope', true)).toMatchObject({ ok: false, code: 'unknown' })
+    for (const id of ['c1', 'c2']) expect(host.sessions.get(id)!.metadata.archived).toBeUndefined()
+  })
+
   it('archiving and unarchiving need delegation: never self, a parent, a sibling or an unrelated session', async () => {
     const host = family()
     const coord = new SessionFamilyCoordinator(host)

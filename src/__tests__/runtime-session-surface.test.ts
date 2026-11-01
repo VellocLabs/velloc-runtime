@@ -458,6 +458,31 @@ describe('session surface over the hub', () => {
     b.close()
   })
 
+  it('session.archive is a control action bound to its session: dispatched as the manager message, refused to an observer, and bound to the session it names (F-36)', async () => {
+    const rig = makeRig()
+    const code = (p: Promise<unknown>) => p.then(() => 'ok', (e: { code?: string }) => e.code ?? String(e))
+    const spec = rig.registry.resolve('session', 'archive')!.spec
+    expect(spec.scope).toBe('control')
+    expect(spec.sessionOf!({ sessionId: 's2', archived: true })).toBe('s2')
+    expect(rig.registry.advertise({ mode: 'observe', sessions: 'all' }).find(c => c.cap === 'session')?.acts).not.toContain('archive')
+    expect(rig.registry.advertise({ mode: 'control', sessions: 'all' }).find(c => c.cap === 'session')?.acts).toContain('archive')
+
+    const connection = await connect(rig)
+    await connection.request('session.archive', { sessionId: 's1', archived: true, requestId: 'r1' })
+    expect(rig.manager.dispatched.at(-1)).toEqual({ type: 'session.archive', sessionId: 's1', archived: true, requestId: 'r1' })
+    await connection.request('session.archive', { sessionId: 's1', archived: false })
+    expect(rig.manager.dispatched.at(-1)).toEqual({ type: 'session.archive', sessionId: 's1', archived: false })
+    expect(await code(connection.request('session.archive', { sessionId: 's1', archived: 'yes' }))).toBe('bad_payload')
+    expect(await code(connection.request('session.archive', { archived: true }))).toBe('bad_payload')
+    connection.close()
+
+    const observer = await connect(rig, 'observe')
+    const before = rig.manager.dispatched.length
+    expect(await code(observer.request('session.archive', { sessionId: 's1', archived: true }))).not.toBe('ok')
+    expect(rig.manager.dispatched).toHaveLength(before)
+    observer.close()
+  })
+
   it('a connection bound to a list of sessions sees only those sessions: the list snapshot, its deltas, session.list and the task events', async () => {
     const rig = makeRig()
     rig.manager.buildSessionInfoList = () =>

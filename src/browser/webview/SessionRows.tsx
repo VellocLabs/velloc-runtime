@@ -5,15 +5,18 @@
  * A child session's row sits under its parent's, one indent level per depth. (F-36)
  */
 import {
+  ArchiveRestoreIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   GitForkIcon,
+  Loader2Icon,
   MoreHorizontalIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
   RotateCcwIcon,
   Trash2Icon,
+  XIcon,
 } from 'lucide-react'
 import { InkRipple } from '@/components/assistant-ui/ink-ripple'
 import { SessionAttentionDot } from '@/components/assistant-ui/session-attention-dot'
@@ -102,6 +105,8 @@ export type SessionListItem = {
   starting?: boolean
   /** Another session started this one and it never started; the reason. (F-36) */
   startFailed?: string
+  /** Out of the active list: listed under Archived, never nested. (F-36) */
+  archived?: boolean
   shutdown?: boolean
   shutdownAt?: number
   /**
@@ -183,6 +188,13 @@ export type SessionRowListProps = {
   /** Copy the session's whole conversation into a new session and open it. */
   onForkThread?: (sessionId: string) => void
   /**
+   * Archive (`true`) or unarchive a session: a failed start's dismiss, and
+   * Unarchive on an archived row. (F-36)
+   */
+  onArchiveThread?: (sessionId: string, archived: boolean) => void
+  /** Every listed session by id: names an archived row's parent. */
+  parentLookup?: ReadonlyMap<string, SessionListItem>
+  /**
    * Extra left inset for rows nested under a project node, so the tree reads as
    * a hierarchy in a 256px-wide panel.
    */
@@ -211,6 +223,8 @@ export function SessionRowList({
   onRenameThread,
   onPinThread,
   onForkThread,
+  onArchiveThread,
+  parentLookup,
   indented = false,
   scope,
   editing = null,
@@ -250,6 +264,8 @@ export function SessionRowList({
     onRenameThread,
     onPinThread,
     onForkThread,
+    onArchiveThread,
+    parentLookup,
     indented,
     scope,
     editing,
@@ -369,6 +385,8 @@ function SessionRow({
   onRenameThread,
   onPinThread,
   onForkThread,
+  onArchiveThread,
+  parentLookup,
   indented = false,
   scope,
   editing = null,
@@ -410,7 +428,21 @@ function SessionRow({
     canRename && !!session.renamed && cliOfTemplateType(session.templateType) !== undefined
   const canFork = !!onForkThread && session.messageCount !== 0
   const canDelete = !!onDeleteThread
-  const hasRowActions = canPin || canRename || canFork || canDelete
+  const canUnarchive = !!session.archived && !!onArchiveThread
+  const hasRowActions = canPin || canRename || canFork || canUnarchive || canDelete
+  // A failed start is dismissed by archiving it: the record stays, under Archived.
+  const canDismissStart = !!session.startFailed && !session.archived && !!onArchiveThread
+  const startFailedLine = session.startFailed
+    ? t('childSession.startFailedReason', { reason: session.startFailed })
+    : undefined
+  // An archived row is listed apart from its parent, so it names it.
+  const archivedParent =
+    session.archived && session.parentSessionId
+      ? parentLookup?.get(session.parentSessionId)
+      : undefined
+  const archivedFromLine = archivedParent
+    ? t('sidebar.archivedFrom', { title: displayTitle(archivedParent) })
+    : undefined
   // A fork's row says which session it was copied from.
   const forkSource =
     session.lineageKind === 'fork' && depth > 0 && session.parentSessionId
@@ -434,7 +466,9 @@ function SessionRow({
       row.querySelector<HTMLElement>('[data-slot="session-row-title"]'),
       displayTitle(session),
     )
-    const tooltip = [clipped, secondaryLine].filter(Boolean).join('\n')
+    const tooltip = [clipped, secondaryLine, archivedFromLine, startFailedLine]
+      .filter(Boolean)
+      .join('\n')
     if (tooltip) row.setAttribute('title', tooltip)
     else row.removeAttribute('title')
   }
@@ -503,7 +537,9 @@ function SessionRow({
               // Reserve right-side space for the absolutely-
               // positioned actions (⋯) button on hover so the
               // title shrinks instead of being overlapped.
-              hasRowActions && 'group-hover:pr-8',
+              canDismissStart
+                ? cn('pr-8', hasRowActions && 'group-hover:pr-14')
+                : hasRowActions && 'group-hover:pr-8',
               indented && 'pl-7',
               // The selected tint also holds under the pointer;
               // the hover tint is for the other rows.
@@ -514,6 +550,7 @@ function SessionRow({
             data-needs-answer-below={(collapsed && below.needsAnswer) || undefined}
             data-running-below={(collapsed && below.running) || undefined}
             data-pinned={isPinned || undefined}
+            data-archived={session.archived || undefined}
             aria-current={isActive || undefined}
             onClick={() => {
               if (!isActive) onSwitchThread?.(session.sessionId)
@@ -539,6 +576,12 @@ function SessionRow({
                   <InkRipple
                     data-slot="session-row-running-icon"
                     className="shrink-0 text-primary"
+                  />
+                ) : session.starting && !session.startFailed ? (
+                  <Loader2Icon
+                    aria-hidden
+                    data-slot="session-row-starting-icon"
+                    className="size-3.5 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none"
                   />
                 ) : (
                   <RowIcon
@@ -576,7 +619,7 @@ function SessionRow({
                   data-slot="session-row-start-state"
                   data-start-state="failed"
                   className="shrink-0 text-[10px] leading-tight text-destructive"
-                  title={session.startFailed}
+                  title={startFailedLine}
                 >
                   {t('sidebar.sessionStartFailed')}
                 </span>
@@ -590,6 +633,17 @@ function SessionRow({
                 </span>
               ) : null}
             </span>
+            {archivedFromLine && (
+              <span
+                data-slot="session-row-archived-parent"
+                className="ms-1 max-w-[45%] shrink-0 truncate text-[10px] leading-tight text-muted-foreground"
+              >
+                {archivedFromLine}
+              </span>
+            )}
+            {startFailedLine && (
+              <span className="sr-only">{startFailedLine}</span>
+            )}
             {hasChildren && (
               // How many sessions sit under this one, at every depth.
               // The toggle's label reads the count for assistive tech.
@@ -651,6 +705,25 @@ function SessionRow({
               ) : (
                 <ChevronDownIcon aria-hidden className="size-3" />
               )}
+            </button>
+          )}
+          {canDismissStart && (
+            <button
+              type="button"
+              data-testid="sidebar-dismiss-start"
+              data-session-id={session.sessionId}
+              aria-label={t('sidebar.dismissStartAria', { title: displayTitle(session) })}
+              title={t('sidebar.dismissStartAria', { title: displayTitle(session) })}
+              onClick={e => {
+                e.stopPropagation()
+                onArchiveThread?.(session.sessionId, true)
+              }}
+              className={cn(
+                'absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground',
+                hasRowActions && 'group-hover:right-7',
+              )}
+            >
+              <XIcon aria-hidden className="size-3.5" />
             </button>
           )}
           {hasRowActions && (
@@ -761,7 +834,25 @@ function SessionRow({
                       </button>
                     </DropdownMenuPrimitive.Item>
                   )}
-                  {canDelete && (canPin || canRename || canFork) && (
+                  {canUnarchive && (
+                    <DropdownMenuPrimitive.Item
+                      asChild
+                      onSelect={() => onArchiveThread?.(session.sessionId, false)}
+                    >
+                      <button
+                        type="button"
+                        data-testid="sidebar-unarchive-thread"
+                        aria-label={t('sidebar.unarchiveThreadAria', {
+                          title: session.title,
+                        })}
+                        className="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-start text-body outline-none hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted"
+                      >
+                        <ArchiveRestoreIcon className="size-4" />
+                        {t('sidebar.unarchive')}
+                      </button>
+                    </DropdownMenuPrimitive.Item>
+                  )}
+                  {canDelete && (canPin || canRename || canFork || canUnarchive) && (
                     <DropdownMenuPrimitive.Separator
                       data-testid="sidebar-row-actions-separator"
                       className="-mx-1 my-1 h-px bg-border"

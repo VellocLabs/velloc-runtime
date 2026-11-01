@@ -67,6 +67,8 @@ export type LocalSessionEntry = {
   starting?: boolean
   startFailed?: string
   sideChat?: boolean
+  /** Out of the active list; the sidebar lists it under Archived (F-36). */
+  archived?: boolean
   shutdown?: boolean
   shutdownAt?: number
   /**
@@ -111,6 +113,7 @@ export type RemoteSessionSummary = {
   starting?: boolean
   startFailed?: string
   sideChat?: boolean
+  archived?: boolean
   shutdown?: boolean
   shutdownAt?: number
   previewText?: string
@@ -268,6 +271,7 @@ function entryFromSummary(
     ...(summary.starting ? { starting: true } : {}),
     ...(summary.startFailed ? { startFailed: summary.startFailed } : {}),
     ...(summary.sideChat ? { sideChat: true } : {}),
+    ...(summary.archived ? { archived: true } : {}),
     ...(summary.shutdown ? { shutdown: true } : {}),
     ...(typeof summary.shutdownAt === 'number'
       ? { shutdownAt: summary.shutdownAt }
@@ -426,6 +430,7 @@ export function mergeSessions(
       ...(summary.starting ? { starting: true } : {}),
       ...(summary.startFailed ? { startFailed: summary.startFailed } : {}),
       ...((summary.sideChat ?? local?.sideChat) ? { sideChat: true } : {}),
+      ...(summary.archived ? { archived: true } : {}),
       ...((summary.shutdown ?? local?.shutdown)
         ? { shutdown: summary.shutdown ?? local?.shutdown }
         : {}),

@@ -243,5 +243,9 @@ describe('the page status index', () => {
     expect(sessionStatusEntries(items, facts)).toEqual([
       { sessionId: 'a', title: 'A', parentSessionId: 'p', lineageKind: 'side_session', running: true, updatedAt: 5, activity: { kind: 'tool', tool: 'Read' } },
     ])
+    // An archived row carries the flag, so a card or chip for it reads Archived.
+    const archived = sessionStatusEntries([{ sessionId: 'z', title: 'Z', previewText: '', updatedAt: 1, archived: true }], empty)
+    expect(archived[0]).toMatchObject({ sessionId: 'z', archived: true })
+    expect(childSessionStatus(archived[0]).state).toBe('archived')
   })
 })

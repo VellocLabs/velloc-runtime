@@ -112,9 +112,10 @@ const ALLOWLIST: Record<string, Row> = {
       'nexus:sidebar:sessionListView',
       'nexus:sidebar:pinnedCollapsed',
       'nexus:sidebar:recentsCollapsed',
+      'nexus:sidebar:archivedCollapsed',
     ],
     kind: 'view',
-    why: "how this client groups and orders its session list (group by, sort field, direction), and which of its Pinned / Recents sections are collapsed; another device lists its own way",
+    why: "how this client groups and orders its session list (group by, sort field, direction), and which of its Pinned / Recents / Archived sections are collapsed; another device lists its own way",
   },
   'browser/webview/settings/sections/PluginsSection.tsx': {
     keys: ['nexus.plugins.marketplaceListings.v1'],

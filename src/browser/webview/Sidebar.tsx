@@ -23,7 +23,7 @@ import {
   type SessionNesting,
   type SessionRowEditing,
 } from './SessionRows'
-import { nestSessions, reportSessionTreeFallbacks } from './sessionTree'
+import { nestSessions, partitionArchived, reportSessionTreeFallbacks } from './sessionTree'
 import { ProjectSection } from './ProjectSection'
 import { SessionListMenu } from './SessionListMenu'
 import {
@@ -212,6 +212,8 @@ type SessionListBodyProps = SidebarProjectProps & {
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
   onForkThread?: (sessionId: string) => void
+  /** Archive or unarchive a session: a failed start's dismiss, Archived's Unarchive. (F-36) */
+  onArchiveThread?: (sessionId: string, archived: boolean) => void
   /** How the rows are grouped and ordered: this window's view preference. */
   view: SessionListView
   onViewChange: (next: SessionListView) => void
@@ -247,6 +249,7 @@ export function SessionListBody({
   onRenameThread,
   onPinThread,
   onForkThread,
+  onArchiveThread,
   view,
   onViewChange,
   onReset,
@@ -269,20 +272,32 @@ export function SessionListBody({
   const resolvedActiveSessionId = activeSessionId ?? sessionId
   const [recentsCollapsed, applyRecentsCollapsed] = useCollapsedSection('recents')
   const [pinnedCollapsed, applyPinnedCollapsed] = useCollapsedSection('pinned')
+  const [archivedCollapsed, applyArchivedCollapsed] = useCollapsedSection('archived')
   // Inline-rename state, owned HERE rather than inside each list, so the two
   // copies of a session (its Recents row and its project row) agree on it. Every
   // other piece of row state already syncs for free — title, running animation
   // and deletion all come from the one `sessions` array.
   const [editing, setEditing] = useState<SessionRowEditing>(null)
-  const orderedSessions = useMemo(
-    () => orderSessions(sessions ?? [], view.field, view.direction),
-    [sessions, view.field, view.direction],
-  )
+  // An archived session leaves every section but Archived, where it is listed
+  // flat, by itself, naming its parent; its listed children are top-level.
+  const { orderedSessions, archivedSessions, archivedIds, sessionsById } = useMemo(() => {
+    const all = orderSessions(sessions ?? [], view.field, view.direction)
+    const { live, archived, archivedIds } = partitionArchived(all)
+    return {
+      orderedSessions: live,
+      archivedSessions: archived,
+      archivedIds,
+      sessionsById: new Map(all.map(s => [s.sessionId, s] as const)),
+    }
+  }, [sessions, view.field, view.direction])
   // Child sessions nest under their parent's row; the sections, groups and
   // paging below see only the top-level rows, so a child's activity never
   // moves its parent and a pinned child stays under its (unpinned) parent.
   // Siblings keep the view's order.
-  const tree = useMemo(() => nestSessions(orderedSessions), [orderedSessions])
+  const tree = useMemo(
+    () => nestSessions(orderedSessions, archivedIds),
+    [orderedSessions, archivedIds],
+  )
   useEffect(() => {
     reportSessionTreeFallbacks(tree.fallbackIds, tree.byId)
   }, [tree])
@@ -312,6 +327,10 @@ export function SessionListBody({
             now,
           ),
     [tree, view, now, titlesOnly],
+  )
+  const archivedGroups = useMemo(
+    () => (titlesOnly ? [] : ungroupedView(archivedSessions)),
+    [archivedSessions, titlesOnly],
   )
 
   const showProjects = !titlesOnly && hasMultiSession
@@ -378,6 +397,7 @@ export function SessionListBody({
             onRenameThread={onRenameThread}
             onPinThread={onPinThread}
             onForkThread={onForkThread}
+            onArchiveThread={onArchiveThread}
             editing={editing}
             onEditingChange={setEditing}
             collapsedParents={collapsedParents}
@@ -410,6 +430,7 @@ export function SessionListBody({
                 onRenameThread={onRenameThread}
                 onPinThread={onPinThread}
                 onForkThread={onForkThread}
+                onArchiveThread={onArchiveThread}
                 scope="pinned"
                 editing={editing}
                 onEditingChange={setEditing}
@@ -443,6 +464,7 @@ export function SessionListBody({
               onRenameThread={onRenameThread}
               onPinThread={onPinThread}
               onForkThread={onForkThread}
+              onArchiveThread={onArchiveThread}
               scope="recents"
               editing={editing}
               onEditingChange={setEditing}
@@ -465,6 +487,34 @@ export function SessionListBody({
               <span className="px-3 pt-1 font-mono text-[0.65rem] text-muted-foreground break-all">
                 {sessionId}
               </span>
+            )}
+          </>
+        )}
+
+        {/* Archived: out of the active list, collapsed until opened. Rows
+            are flat; a child names the session it was listed under. */}
+        {hasMultiSession && archivedGroups.length > 0 && (
+          <>
+            <div className="group/section relative flex shrink-0 items-center">
+              <SessionSectionToggle
+                testId="sidebar-archived-toggle"
+                label={t('sidebar.archivedSection')}
+                collapsed={archivedCollapsed}
+                onCollapsedChange={applyArchivedCollapsed}
+              />
+            </div>
+            {!archivedCollapsed && (
+              <SessionRowList
+                groups={archivedGroups}
+                activeSessionId={resolvedActiveSessionId}
+                onSwitchThread={onSwitchThread}
+                onDeleteThread={onDeleteThread}
+                onArchiveThread={onArchiveThread}
+                parentLookup={sessionsById}
+                scope="archived"
+                editing={editing}
+                onEditingChange={setEditing}
+              />
             )}
           </>
         )}
@@ -621,6 +671,7 @@ export function Sidebar({
   onRenameThread,
   onPinThread,
   onForkThread,
+  onArchiveThread,
   width,
   isResizing,
   runtimeConnection,
@@ -646,6 +697,8 @@ export function Sidebar({
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
   onForkThread?: (sessionId: string) => void
+  /** Archive or unarchive a session (a failed start's dismiss, Unarchive). (F-36) */
+  onArchiveThread?: (sessionId: string, archived: boolean) => void
   /**
    * Resting width in px when not collapsed. Driven by MultiSessionShell's
    * draggable splitter. Falls back to 256 (matches the previous `w-64`).
@@ -720,6 +773,7 @@ export function Sidebar({
             onRenameThread={onRenameThread}
             onPinThread={onPinThread}
             onForkThread={onForkThread}
+            onArchiveThread={onArchiveThread}
             view={view}
             onViewChange={applyView}
             onReset={resetView}

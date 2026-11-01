@@ -688,6 +688,17 @@ export function MultiSessionShell({
     })
   }, [])
 
+  // Archived state is the runtime's too: the row moves to (or out of)
+  // Archived once the list carries the flag. A failed start's dismiss is an
+  // archive. (F-36)
+  const handleArchiveThread = useCallback((sessionId: string, archived: boolean) => {
+    sessionChannelRef.current?.request('session.archive', {
+      sessionId,
+      archived,
+      requestId: randomUuid(),
+    })
+  }, [])
+
   // "Fork from here" stops BEFORE the cut message and returns its text to the new composer;
   // the fork is titled "<title> (fork)". Rewind posts the same message without the flag or a
   // title (it replaces the original). "Send in a forked session" (`keepCutMessage`) copies
@@ -3603,6 +3614,7 @@ export function MultiSessionShell({
         starting: s.starting,
         startFailed: s.startFailed,
         sideChat: s.sideChat,
+        archived: s.archived,
         shutdown: s.shutdown,
         shutdownAt: s.shutdownAt,
         previewText: s.previewText,
@@ -5012,6 +5024,7 @@ export function MultiSessionShell({
           onDeleteThread={handleDeleteThread}
           onRenameThread={retitleSession}
           onPinThread={handlePinThread}
+          onArchiveThread={handleArchiveThread}
           onForkThread={handleForkThread}
           width={sidebarWidth}
           isResizing={isResizingSidebar || railPeekClosing}
