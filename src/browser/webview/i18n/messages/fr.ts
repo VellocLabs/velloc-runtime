@@ -109,6 +109,7 @@ export const fr: Messages = {
   // The toolbar over selected transcript text, and the quote it puts in the composer (F-36).
   'selection.reply': 'Répondre',
   'selection.sideChat': 'Ouvrir une conversation parallèle',
+  'selection.sideChatStreaming': 'Attendez la fin de la réponse',
   'sideChat.add': 'Nouvelle conversation parallèle',
   'sideChat.empty': 'Aucune conversation parallèle pour l’instant. Sélectionnez du texte dans la conversation et choisissez Ouvrir une conversation parallèle, ou appuyez sur +.',
   'sideChat.sharedFolder': 'Partage le dossier de la conversation principale',

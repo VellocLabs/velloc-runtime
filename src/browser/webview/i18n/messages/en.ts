@@ -131,6 +131,7 @@ export const en = {
   // The toolbar over selected transcript text, and the quote it puts in the composer (F-36).
   'selection.reply': 'Reply',
   'selection.sideChat': 'Start a side chat',
+  'selection.sideChatStreaming': 'Wait for the reply to finish',
   'sideChat.add': 'New side chat',
   'sideChat.empty': 'No side chats yet. Select text in the conversation and choose Start a side chat, or press +.',
   'sideChat.sharedFolder': 'Shares the main conversation\'s folder',

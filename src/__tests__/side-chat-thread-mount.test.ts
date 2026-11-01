@@ -3,7 +3,13 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveComposerSendGate } from '../browser/webview/AssistantUiThread'
 import { threadMount } from '../browser/webview/sideChat'
-import { isTurnAnchoredMessageId } from '../browser/webview/assistantUiAdapter'
+import {
+  convertBrowserRuntimeStateToThreadMessages,
+  isTurnAnchoredMessageId,
+  sideChatCutForRow,
+  sideChatCutForThreadRow,
+} from '../browser/webview/assistantUiAdapter'
+import type { BrowserRuntimeClientState } from '../browser/webview/BrowserRuntimeClient'
 import type { AgentRuntimeWorkerSnapshot } from '../browser/worker/workerProtocol'
 
 // A side chat's conversation in the pane is its own foreground session: a send
@@ -40,6 +46,71 @@ describe('the row a side chat is cut at', () => {
     expect(isTurnAnchoredMessageId('turn:3f2a-user-uuid:assistant')).toBe(true)
     expect(isTurnAnchoredMessageId('3f2a-user-uuid')).toBe(false)
     expect(isTurnAnchoredMessageId('turn:3f2a:live-stream')).toBe(false)
+  })
+
+  it('a running row has no cut; the closing reply cuts at the end; any other row at itself', () => {
+    expect(sideChatCutForRow('turn:3f2a:assistant', true)).toBeNull()
+    expect(sideChatCutForRow('turn:3f2a:assistant', false)).toEqual({ cutUuid: undefined })
+    expect(sideChatCutForRow('9c1d-row-uuid', false)).toEqual({ cutUuid: '9c1d-row-uuid' })
+  })
+
+  it('the streaming closing reply keeps its turn-anchored id, and has no cut until the turn ends', () => {
+    const running = {
+      status: 'submitting',
+      snapshot: null,
+      transcriptMessages: [
+        { type: 'user', uuid: 'u-1', timestamp: '2026-04-03T12:00:00.000Z', message: { role: 'user', content: 'first' } },
+        { type: 'assistant', uuid: 'a-1', timestamp: '2026-04-03T12:00:01.000Z', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] } },
+        { type: 'user', uuid: 'u-2', timestamp: '2026-04-03T12:00:02.000Z', message: { role: 'user', content: 'second' } },
+      ],
+      liveEvents: [
+        { type: 'stream_request_start' },
+        { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'half an answer' } } },
+      ],
+      lastError: null,
+      pendingPrompt: 'second',
+      pendingPromptId: 'u-2',
+    } as unknown as BrowserRuntimeClientState
+    const rows = convertBrowserRuntimeStateToThreadMessages(running)
+    const trailing = rows[rows.length - 1]! as { id: string; status?: { type: string } }
+    expect(trailing.id).toBe('turn:u-2:assistant')
+    expect(trailing.status?.type).toBe('running')
+    expect(sideChatCutForThreadRow(rows, trailing.id)).toBeNull()
+    expect(sideChatCutForThreadRow(rows, 'a-1')).toEqual({ cutUuid: 'a-1' })
+
+    const idle = {
+      ...running,
+      status: 'idle',
+      liveEvents: [],
+      pendingPrompt: null,
+      pendingPromptId: null,
+      transcriptMessages: [
+        ...running.transcriptMessages,
+        { type: 'assistant', uuid: 'a-2', timestamp: '2026-04-03T12:00:03.000Z', message: { role: 'assistant', content: [{ type: 'text', text: 'half an answer, whole' }] } },
+      ],
+    } as unknown as BrowserRuntimeClientState
+    const settled = convertBrowserRuntimeStateToThreadMessages(idle)
+    const closing = settled[settled.length - 1]! as { id: string }
+    expect(closing.id).toBe(trailing.id)
+    expect(sideChatCutForThreadRow(settled, closing.id)).toEqual({ cutUuid: undefined })
+    expect(sideChatCutForThreadRow(settled, 'not-a-row')).toBeNull()
+  })
+
+  it('the shell gate reads the session state through a ref, so the callback keeps its identity across stream updates', () => {
+    const shell = readFileSync(join(__dirname, '..', 'browser', 'webview', 'MultiSessionShell.tsx'), 'utf8')
+    const start = shell.indexOf('const handleStartSideChat = useCallback(')
+    const handler = shell.slice(start, shell.indexOf('[forkSession', start) + 40)
+    expect(handler).toContain('sessionStatesRef.current.get(fromSessionId)')
+    expect(handler).toMatch(/\[forkSession\],/)
+    expect(handler).not.toContain('[forkSession, sessionStates]')
+  })
+
+  it('the toolbar button subscribes to the rows, so it re-enables when the reply ends', () => {
+    const thread = readFileSync(join(__dirname, '..', 'components', 'assistant-ui', 'thread.tsx'), 'utf8')
+    const button = thread.slice(thread.indexOf('const StartSideChatButton'), thread.indexOf('const ComposerQuote'))
+    expect(button).toContain('useAssistantState((s) => s.thread.messages)')
+    expect(button).toContain('sideChatCutForThreadRow(messages, currentRow)')
+    expect(button).not.toContain(' disabled={streaming}')
   })
 })
 

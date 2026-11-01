@@ -306,7 +306,7 @@ import {
 import { NEXUS_MODEL_CONFIG } from '../../config/nexusModelConfig'
 import { useSessionManager } from './useSessionManager'
 import { useMultiSessionClients } from './useMultiSessionClients'
-import { shouldDismissBootWelcome, isTurnAnchoredMessageId } from './assistantUiAdapter'
+import { isTurnAnchoredMessageId, shouldDismissBootWelcome, sideChatCutForRow } from './assistantUiAdapter'
 import { createSessionMessageCallbackFactory } from './sessionMessageCallbacks'
 import { createQuotePrefix } from './replyQuote'
 import {
@@ -3668,10 +3668,17 @@ export function MultiSessionShell({
   }, [forkSession])
   // The selection toolbar: a side chat cut at the selected row, the selection
   // quoted in its composer.
+  // Read through a ref: the states map changes on every stream delta, and the
+  // callback's identity keys every mounted thread's memo.
+  const sessionStatesRef = useRef(sessionStates)
+  sessionStatesRef.current = sessionStates
   const handleStartSideChat = useCallback(
     (fromSessionId: string, cutUuid: string, selection: string) => {
-      // The closing assistant row has no uuid of its own: cut at the end.
-      forkSession(fromSessionId, isTurnAnchoredMessageId(cutUuid) ? undefined : cutUuid, {
+      // A cut at the closing reply while the turn runs would miss its text.
+      const running = sessionStatesRef.current.get(fromSessionId)?.status === 'submitting'
+      const cut = sideChatCutForRow(cutUuid, running && isTurnAnchoredMessageId(cutUuid))
+      if (!cut) return
+      forkSession(fromSessionId, cut.cutUuid, {
         keepCutMessage: true,
         sideChat: true,
         initialDraft: createQuotePrefix(selection),

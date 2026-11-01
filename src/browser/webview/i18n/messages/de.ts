@@ -112,6 +112,7 @@ export const de: Messages = {
   // The toolbar over selected transcript text, and the quote it puts in the composer (F-36).
   'selection.reply': 'Antworten',
   'selection.sideChat': 'Nebengespräch starten',
+  'selection.sideChatStreaming': 'Warten, bis die Antwort fertig ist',
   'sideChat.add': 'Neues Nebengespräch',
   'sideChat.empty': 'Noch keine Nebengespräche. Markiere Text in der Unterhaltung und wähle „Nebengespräch starten“, oder drücke +.',
   'sideChat.sharedFolder': 'Teilt den Ordner der Hauptunterhaltung',

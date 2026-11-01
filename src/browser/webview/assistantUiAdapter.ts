@@ -1152,14 +1152,6 @@ function stampPriorTodos(merged: ThreadMessageLike[]): void {
 }
 
 /**
- * After merging, overwrite the trailing assistant message's id with a stable
- * turn-derived id. The assistant that closes the current turn is the one most
- * likely to flip identity during live → transcript (uuid swap, fallback ids,
- * merge reshuffling). Anchoring it to the user's uuid keeps React's key
- * stable across that boundary so the message doesn't replay its mount
- * animation when the worker persists results.
- */
-/**
  * Whether a row id is the turn-anchored one `stabilizeTrailingAssistantId`
  * gives the conversation's closing assistant message, rather than a transcript
  * uuid. A cut at that row is a cut at the conversation's end.
@@ -1168,6 +1160,39 @@ export function isTurnAnchoredMessageId(messageId: string): boolean {
   return messageId.startsWith('turn:') && messageId.endsWith(':assistant')
 }
 
+/**
+ * Where a side chat started from a row is cut (F-36): at that row's uuid; at
+ * the conversation's end for the turn-anchored closing reply; nowhere (null)
+ * while the row is still running, since its text is not yet in the
+ * transcript. Running is the row's state, not its id: the streaming reply
+ * already carries the turn-anchored id.
+ */
+export function sideChatCutForRow(
+  messageId: string,
+  running: boolean,
+): { cutUuid: string | undefined } | null {
+  if (running) return null
+  return { cutUuid: isTurnAnchoredMessageId(messageId) ? undefined : messageId }
+}
+
+/** `sideChatCutForRow` for a row of the thread, by id; null when the row is not there. */
+export function sideChatCutForThreadRow(
+  messages: readonly Pick<ThreadMessageLike, 'id' | 'status'>[],
+  messageId: string,
+): { cutUuid: string | undefined } | null {
+  const row = messages.find((message) => message.id === messageId)
+  if (!row) return null
+  return sideChatCutForRow(messageId, row.status?.type === 'running')
+}
+
+/**
+ * After merging, overwrite the trailing assistant message's id with a stable
+ * turn-derived id. The assistant that closes the current turn is the one most
+ * likely to flip identity during live → transcript (uuid swap, fallback ids,
+ * merge reshuffling). Anchoring it to the user's uuid keeps React's key
+ * stable across that boundary so the message doesn't replay its mount
+ * animation when the worker persists results.
+ */
 function stabilizeTrailingAssistantId(
   merged: ThreadMessageLike[],
   anchor: string,

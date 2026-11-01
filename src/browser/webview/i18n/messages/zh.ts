@@ -111,6 +111,7 @@ export const zh: Messages = {
   // The toolbar over selected transcript text, and the quote it puts in the composer (F-36).
   'selection.reply': '回复',
   'selection.sideChat': '开始旁支对话',
+  'selection.sideChatStreaming': '等回复完成后再开始',
   'sideChat.add': '新建旁支对话',
   'sideChat.empty': '还没有旁支对话。在对话中选中文字并选择“开始旁支对话”，或点击 +。',
   'sideChat.sharedFolder': '与主对话共享目录',

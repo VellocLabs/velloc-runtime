@@ -1,6 +1,6 @@
 import { AssistantMessageBody } from "@/components/assistant-ui/assistant-message-body";
 import { ToolLineRangeProvider } from "@/components/assistant-ui/tool-line-range-context";
-import { TOOL_LINE_RANGES_KEY } from "@/browser/webview/assistantUiAdapter";
+import { TOOL_LINE_RANGES_KEY, sideChatCutForThreadRow } from "@/browser/webview/assistantUiAdapter";
 import { useSessionAreaVisible } from "@/browser/webview/sessionAreaVisibility";
 import {
   providerApiErrorKindLabel,
@@ -2707,17 +2707,26 @@ function selectionMessageId(selection: Selection): string | null {
 const StartSideChatButton: FC = () => {
   const t = useT();
   const { onStartSideChat } = useMessageActionsContext();
+  // Subscribing to the rows re-renders the button when the selected reply
+  // finishes, so a selection in a reply still streaming re-enables itself.
+  const messages = useAssistantState((s) => s.thread.messages);
   if (!onStartSideChat) return null;
+  const current = window.getSelection();
+  const currentRow = current ? selectionMessageId(current) : null;
+  const streaming = currentRow !== null && sideChatCutForThreadRow(messages, currentRow) === null;
   return (
     <button
       type="button"
       data-testid="selection-side-chat"
-      className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+      data-streaming={streaming || undefined}
+      aria-disabled={streaming || undefined}
+      title={streaming ? t("selection.sideChatStreaming") : undefined}
+      className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent"
       onClick={() => {
         const selection = window.getSelection();
         const text = selection?.toString().trim() ?? "";
         const messageId = selection ? selectionMessageId(selection) : null;
-        if (!text || !messageId) return;
+        if (!text || !messageId || !sideChatCutForThreadRow(messages, messageId)) return;
         onStartSideChat(messageId, text);
         selection?.removeAllRanges();
       }}

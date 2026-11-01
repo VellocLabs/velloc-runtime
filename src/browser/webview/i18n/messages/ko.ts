@@ -109,6 +109,7 @@ export const ko: Messages = {
   // The toolbar over selected transcript text, and the quote it puts in the composer (F-36).
   'selection.reply': '답장',
   'selection.sideChat': '사이드 채팅 시작',
+  'selection.sideChatStreaming': '답변이 완료될 때까지 기다리세요',
   'sideChat.add': '새 사이드 채팅',
   'sideChat.empty': '아직 사이드 채팅이 없습니다. 대화에서 텍스트를 선택하고 사이드 채팅 시작을 누르거나 + 를 누르세요.',
   'sideChat.sharedFolder': '메인 대화의 폴더를 공유합니다',

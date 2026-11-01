@@ -110,6 +110,7 @@ export const ja: Messages = {
   // The toolbar over selected transcript text, and the quote it puts in the composer (F-36).
   'selection.reply': '返信',
   'selection.sideChat': 'サイドチャットを開始',
+  'selection.sideChatStreaming': '返信が完了するまでお待ちください',
   'sideChat.add': '新しいサイドチャット',
   'sideChat.empty': 'サイドチャットはまだありません。会話内のテキストを選択して「サイドチャットを開始」を選ぶか、+ を押してください。',
   'sideChat.sharedFolder': 'メイン会話のフォルダーを共有',
