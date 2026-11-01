@@ -61,7 +61,7 @@ import { TOP_BAR_HEIGHT_CLASS } from "./barHeight";
  */
 
 /** The pane kinds with a toggle of their own in the bar, in bar order. */
-const BAR_PANE_KINDS: readonly SidePaneKind[] = ["terminal", "diff", "browser", "files", "mods"];
+const BAR_PANE_KINDS: readonly SidePaneKind[] = ["terminal", "diff", "browser", "files", "mods", "sidechat"];
 /** The pane kinds listed as rows of the More menu, in menu order. */
 const MENU_PANE_KINDS: readonly SidePaneKind[] = ["tasks", "plan", "skill"];
 
@@ -126,6 +126,8 @@ export type NexusTopBarProps = {
   sessionOverview?: { shown: boolean; onToggle: () => void };
   /** The More menu's *Reset layout* row: the active session back to the default arrangement. */
   onResetLayout?: () => void;
+  /** The pane kinds whose toggle carries an attention mark: something inside waits for the person (F-36). */
+  paneAttention?: ReadonlySet<SidePaneKind>;
   /** Number of in-flight background sub-agents — the badge on the More button. */
   backgroundTaskCount?: number;
   /** Import sources detected on this machine (Claude Code first). One
@@ -219,6 +221,7 @@ export function NexusTopBar({
   hasModPanes,
   terminalAvailable,
   onTogglePane,
+  paneAttention,
   paneKinds,
   sessionOverview,
   onResetLayout,
@@ -567,8 +570,16 @@ export function NexusTopBar({
                   aria-pressed={pressed}
                   aria-label={t(pressed ? "topbar.pane.hide" : "topbar.pane.show", { pane: name })}
                   onClick={() => onTogglePane(kind)}
+                  className="relative"
                 >
                   <Icon className="size-4" />
+                  {paneAttention?.has(kind) ? (
+                    <span
+                      aria-hidden
+                      data-testid={`topbar-pane-${kind}-attention`}
+                      className="absolute right-1 top-1 size-1.5 rounded-full bg-destructive"
+                    />
+                  ) : null}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">

@@ -268,6 +268,29 @@ describe('useSessionManager pin, fork and delete', () => {
       'Plan',
       true,
       undefined,
+      undefined,
+    )
+  })
+
+  it('a side chat is untitled and carries its opening draft', () => {
+    const { result, onRequestFork } = mount()
+    act(() => {
+      result.current.applyRemoteList([
+        summary('a', 3_000, { customTitle: 'Plan' }),
+      ])
+    })
+    flushMerge()
+    act(() => {
+      result.current.forkSession('a', 'cut-1', { keepCutMessage: true, sideChat: true, initialDraft: '> quoted' })
+    })
+    expect(onRequestFork).toHaveBeenCalledWith(
+      'a',
+      'cut-1',
+      expect.any(String),
+      undefined,
+      true,
+      undefined,
+      { initialDraft: '> quoted' },
     )
   })
 
@@ -283,6 +306,7 @@ describe('useSessionManager pin, fork and delete', () => {
       undefined,
       undefined,
       { templateType: 'code', projectRoot: '/work/app' },
+      undefined,
     )
   })
 

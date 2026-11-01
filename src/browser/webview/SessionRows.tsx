@@ -94,6 +94,8 @@ export type SessionListItem = {
   lineageKind?: SessionLineageKind
   /** This session's short name within its family. (F-36) */
   familyName?: string
+  /** A side chat of its parent: listed in the parent's side panel, not here. (F-36) */
+  sideChat?: boolean
   /** Had a parent and was taken out from under it: listed top-level. (F-36) */
   detached?: boolean
   /** Another session is starting this one: registered, no first turn yet. (F-36) */
@@ -116,6 +118,12 @@ export type SessionListItem = {
    * active row since its control is already on screen.
    */
   needsAnswer?: boolean
+  /**
+   * A side chat of this session waits for the person (F-36). Shown on the
+   * row even while the session is active: the side chat's control is in the
+   * pane, which may be closed.
+   */
+  sideChatNeedsAnswer?: boolean
   /** Pinned by the user (runtime-owned metadata): listed above the unpinned rows. */
   pinned?: boolean
   /** The title is a manual rename (`customTitle`), not the automatic one. */
@@ -384,7 +392,8 @@ function SessionRow({
   const isRunning = !!session.running || below.running
   // "Needs your response" dot — suppressed on the active row (its
   // control is already on screen there).
-  const needsAnswer = (!!session.needsAnswer || below.needsAnswer) && !isActive
+  const needsAnswer =
+    ((!!session.needsAnswer || below.needsAnswer) && !isActive) || !!session.sideChatNeedsAnswer
   // This copy owns the editor only if the rename was opened HERE; the
   // other copy of the same session stays a plain row (see
   // `SessionRowEditing`).

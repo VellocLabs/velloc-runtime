@@ -378,6 +378,8 @@ export type AssistantUiThreadProps = {
   onContinueInCode?: (cutUuid: string, folder: ContinueInCodeFolder) => Promise<boolean>
   /** Rewind the conversation to a message uuid (restore + discard after). */
   onRewindToMessage?: (cutUuid: string) => void
+  /** Open a side chat cut at a message, quoting the selection (F-36). */
+  onStartSideChat?: (cutUuid: string, selection: string) => void
   /**
    * Session list props (mirror the Sidebar prop shape) — threaded through
    * to the thread body for session-scoped actions.
@@ -657,6 +659,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   onSendInForkedSession,
   onContinueInCode,
   onRewindToMessage,
+  onStartSideChat,
   sessions,
   activeSessionId,
   onOpenBackgroundTasks,
@@ -717,6 +720,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
       onSendInForkedSession={readOnly ? undefined : onSendInForkedSession}
       onContinueInCode={readOnly ? undefined : onContinueInCode}
       onRewindToMessage={readOnly ? undefined : onRewindToMessage}
+      onStartSideChat={readOnly ? undefined : onStartSideChat}
       sessions={sessions}
       activeSessionId={activeSessionId}
       onOpenBackgroundTasks={onOpenBackgroundTasks}
@@ -777,6 +781,7 @@ function InteractiveAssistantUiThread({
   onSendInForkedSession,
   onContinueInCode,
   onRewindToMessage,
+  onStartSideChat,
   sessions,
   activeSessionId,
   onOpenBackgroundTasks,
@@ -886,6 +891,7 @@ function InteractiveAssistantUiThread({
     () => ({
       onForkFromMessage: readOnly ? undefined : onForkFromMessage,
       onRewindToMessage: readOnly ? undefined : onRewindToMessage,
+      onStartSideChat: readOnly ? undefined : onStartSideChat,
       onRetryProviderApiError: readOnly ? undefined : handleRetryProviderApiError,
       onRequestContinueInCode:
         readOnly || !onContinueInCode ? undefined : handleRequestContinueInCode,

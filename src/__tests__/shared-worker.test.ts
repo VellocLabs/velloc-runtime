@@ -3782,6 +3782,83 @@ describe('SharedWorkerSessionManager', () => {
     expect(metaWrites[0]!.metadata.composerDraft).toBe('hello')
   })
 
+  it('a side-chat fork keeps the cut message, flags the copy and seeds its composer with the quote (F-36)', async () => {
+    const metaWrites: SessionMetaFile[] = []
+    const storage = {
+      append: vi.fn(async () => {}),
+      readSessionMeta: vi.fn(async () => null),
+      writeSessionMeta: vi.fn(async (_sessionId: string, meta: SessionMetaFile) => {
+        metaWrites.push(meta)
+      }),
+      load: vi.fn(async (): Promise<BrowserConversationStoragePayload> => [
+        {
+          type: 'user',
+          uuid: 'u1',
+          sessionId: 'source-session',
+          parentUuid: null,
+          timestamp: '2026-01-01T00:00:00.000Z',
+          message: { role: 'user', content: [{ type: 'text', text: 'hello' }] },
+        } as unknown as BrowserTranscriptEntry,
+      ]),
+      flush: vi.fn(async () => {}),
+      loadSessionMetadata: vi.fn(
+        async (): Promise<BrowserSessionMetadata> => ({ templateType: 'agent', projectRoot: '/repo' }),
+      ),
+      // The copy's summary is read back from the projection the fork wrote.
+      loadSessionSummary: vi.fn(async (sessionId: string) => {
+        const written = metaWrites.find(meta => meta.sessionId === sessionId)
+        return written
+          ? buildSessionSummaryFromMeta(written)
+          : { sessionId, updatedAt: 1, messageCount: 0, firstPrompt: '', previewText: '' }
+      }),
+      loadToolCallDetail: vi.fn(async () => null),
+      saveToolCallDetail: vi.fn(async () => {}),
+    }
+    const m = (
+      manager as unknown as {
+        storageCoordinator: { storage: BrowserConversationStorageBackend }
+      }
+    ).storageCoordinator
+    m.storage = storage as unknown as BrowserConversationStorageBackend
+
+    const port = createMockPort()
+    manager.handleConnect(port)
+    port._simulateMessage({
+      type: 'session.fork',
+      fromSessionId: 'source-session',
+      cutUuid: 'u1',
+      requestId: 'side-chat-1',
+      sideChat: true,
+      initialDraft: '> hello\n\n',
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    const ack = port._posted.find(
+      (msg: unknown) =>
+        (msg as SharedWorkerOutboundMessage).type === 'session.forked',
+    ) as
+      | Extract<SharedWorkerOutboundMessage, { type: 'session.forked' }>
+      | undefined
+    expect(ack?.payload.requestId).toBe('side-chat-1')
+    expect(metaWrites).toHaveLength(1)
+    // The copy shares the source's folder, carries the cut and the flag, and
+    // the quote waits in its composer; the summary read back from that
+    // projection lists it under the source as a side chat.
+    expect(metaWrites[0]!.metadata).toMatchObject({
+      forkedFromSessionId: 'source-session',
+      forkedAtMessageUuid: 'u1',
+      sideChat: true,
+      composerDraft: '> hello\n\n',
+      projectRoot: '/repo',
+    })
+    expect(metaWrites[0]!.metadata.spawnedFrom).toBeUndefined()
+    expect(buildSessionSummaryFromMeta(metaWrites[0]!)).toMatchObject({
+      sideChat: true,
+      parentSessionId: 'source-session',
+      lineageKind: 'fork',
+    })
+  })
+
   it('names a "Fork from here" copy with the title the page sends', async () => {
     // The page localizes "<source title> (fork)" and posts it; the manager
     // persists it as the fork's own custom-title action + meta.json title, so
@@ -4052,6 +4129,68 @@ describe('SharedWorkerSessionManager', () => {
     expect(metaWrites.at(-1)!.metadata.pinned).toBe(false)
     expect(lastCard()?.sessionId).toBe('closed-session')
     expect(lastCard()?.pinned).toBeUndefined()
+  })
+
+  it('disk-only detach: writes `lineageDetached` into meta.json and acks a card with no parent (F-36)', async () => {
+    const metaWrites: SessionMetaFile[] = []
+    const metas = new Map<string, SessionMetaFile>([
+      [
+        'side-chat-closed',
+        {
+          schemaVersion: 1,
+          sessionId: 'side-chat-closed',
+          updatedAt: 10,
+          metadata: { forkedFromSessionId: 'parent', forkedAtMessageUuid: 'u1', sideChat: true },
+        },
+      ],
+    ])
+    const storage = {
+      append: vi.fn(async () => {}),
+      readSessionMeta: vi.fn(async (sessionId: string) => metas.get(sessionId) ?? null),
+      writeSessionMeta: vi.fn(async (sessionId: string, meta: SessionMetaFile) => {
+        metaWrites.push(meta)
+        metas.set(sessionId, meta)
+      }),
+      load: vi.fn(async (): Promise<BrowserConversationStoragePayload> => null),
+      flush: vi.fn(async () => {}),
+      listSessions: vi.fn(async () => ['side-chat-closed']),
+      loadSessionSummary: vi.fn(async (sessionId: string) => {
+        const meta = metas.get(sessionId)
+        return meta ? buildSessionSummaryFromMeta(meta) : null
+      }),
+      loadToolCallDetail: vi.fn(async () => null),
+      saveToolCallDetail: vi.fn(async () => {}),
+    }
+    const m = (
+      manager as unknown as {
+        storageCoordinator: { storage: BrowserConversationStorageBackend }
+      }
+    ).storageCoordinator
+    m.storage = storage as unknown as BrowserConversationStorageBackend
+
+    const port = createMockPort()
+    manager.handleConnect(port)
+    port._simulateMessage({
+      type: 'session.detachLineage',
+      sessionId: 'side-chat-closed',
+      requestId: 'detach-1',
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(storage.append).not.toHaveBeenCalled()
+    expect(metaWrites).toHaveLength(1)
+    expect(metaWrites[0]!.metadata).toMatchObject({
+      lineageDetached: true,
+      forkedFromSessionId: 'parent',
+      sideChat: true,
+    })
+    const card = (
+      port._posted.filter(
+        (msg: unknown) => (msg as SharedWorkerOutboundMessage).type === 'session.updated',
+      ) as Array<{ payload: { session: { sessionId: string; sideChat?: boolean; parentSessionId?: string } } }>
+    ).at(-1)?.payload.session
+    expect(card?.sessionId).toBe('side-chat-closed')
+    expect(card?.sideChat).toBe(true)
+    expect(card?.parentSessionId).toBeUndefined()
   })
 
   describe('session.pin persistence', () => {

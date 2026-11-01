@@ -63,7 +63,7 @@ function EmptyState({ label }: { label: string }): ReactElement {
 export function SidePaneBody({
   kind,
   ...props
-}: SidePaneContentProps & { kind: Exclude<SidePaneKind, 'files' | 'browser' | 'mods' | 'terminal'> }): ReactElement {
+}: SidePaneContentProps & { kind: Exclude<SidePaneKind, 'files' | 'browser' | 'mods' | 'terminal' | 'sidechat'> }): ReactElement {
   const t = useT()
   switch (kind) {
     case 'tasks':

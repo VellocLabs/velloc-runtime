@@ -66,6 +66,7 @@ export type LocalSessionEntry = {
   /** Another session is starting this one / started it and it never started (F-36). */
   starting?: boolean
   startFailed?: string
+  sideChat?: boolean
   shutdown?: boolean
   shutdownAt?: number
   /**
@@ -109,6 +110,7 @@ export type RemoteSessionSummary = {
   detached?: boolean
   starting?: boolean
   startFailed?: string
+  sideChat?: boolean
   shutdown?: boolean
   shutdownAt?: number
   previewText?: string
@@ -152,6 +154,8 @@ export type SessionManagerOptions = {
     keepCutMessage?: boolean,
     /** The copy's own type and folder ("Continue in Code"). */
     retarget?: ForkRetarget,
+    /** The copy opens as a side chat of the source, `initialDraft` in its composer (F-36). */
+    sideChat?: { initialDraft?: string },
   ) => void
 }
 
@@ -175,7 +179,12 @@ export type SessionManagerState = {
     fromSessionId: string,
     /** Absent = copy the whole conversation. */
     cutUuid: string | undefined,
-    options?: { keepCutMessage?: boolean; retarget?: ForkRetarget },
+    options?: {
+      keepCutMessage?: boolean
+      retarget?: ForkRetarget
+      sideChat?: boolean
+      initialDraft?: string
+    },
   ) => string
   updateSessionMeta: (
     sessionId: string,
@@ -258,6 +267,7 @@ function entryFromSummary(
     ...(summary.detached ? { detached: true } : {}),
     ...(summary.starting ? { starting: true } : {}),
     ...(summary.startFailed ? { startFailed: summary.startFailed } : {}),
+    ...(summary.sideChat ? { sideChat: true } : {}),
     ...(summary.shutdown ? { shutdown: true } : {}),
     ...(typeof summary.shutdownAt === 'number'
       ? { shutdownAt: summary.shutdownAt }
@@ -415,6 +425,7 @@ export function mergeSessions(
       // the session has started (or never was starting).
       ...(summary.starting ? { starting: true } : {}),
       ...(summary.startFailed ? { startFailed: summary.startFailed } : {}),
+      ...((summary.sideChat ?? local?.sideChat) ? { sideChat: true } : {}),
       ...((summary.shutdown ?? local?.shutdown)
         ? { shutdown: summary.shutdown ?? local?.shutdown }
         : {}),
@@ -734,7 +745,12 @@ export function useSessionManager(
   const forkSession = useCallback((
     fromSessionId: string,
     cutUuid: string | undefined,
-    options?: { keepCutMessage?: boolean; retarget?: ForkRetarget },
+    options?: {
+      keepCutMessage?: boolean
+      retarget?: ForkRetarget
+      sideChat?: boolean
+      initialDraft?: string
+    },
   ): string => {
     const requestId = randomUuid()
     // The source's REAL title — a user rename or the AI title, i.e. the
@@ -752,10 +768,13 @@ export function useSessionManager(
       fromSessionId,
       cutUuid,
       requestId,
-      // A retargeted copy is a new piece of work, not "<title> (fork)".
-      options?.retarget ? undefined : sourceTitle || undefined,
+      // A retargeted copy or a side chat is a new piece of work, not "<title> (fork)".
+      options?.retarget || options?.sideChat ? undefined : sourceTitle || undefined,
       options?.keepCutMessage,
       options?.retarget,
+      options?.sideChat
+        ? { ...(options.initialDraft ? { initialDraft: options.initialDraft } : {}) }
+        : undefined,
     )
     return requestId
   }, [])

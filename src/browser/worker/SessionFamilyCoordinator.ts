@@ -22,6 +22,7 @@ import type {
 } from '../../sessions/sessionStore'
 import {
   familyOf,
+  isDetached,
   originOf,
   resolveLineage,
   type SessionLineageInput,
@@ -211,7 +212,8 @@ export class SessionFamilyCoordinator implements SessionDirectory {
       ...(summary?.familyName ?? origin?.name ? { name: summary?.familyName ?? origin?.name } : {}),
       effectiveParentId: lineage?.sessionId ?? null,
       ...(lineage ? { lineageKind: lineage.kind, initiator: lineage.initiator } : {}),
-      detached: metadata.lineageDetached === true && origin !== undefined,
+      detached: isDetached(metadata),
+      ...(metadata.sideChat === true ? { sideChat: true } : {}),
       ...(originKnown ? { originSessionId: origin.sessionId, originKind: origin.kind } : {}),
       ...(origin?.sharedCheckout ? { sharedCheckout: true } : {}),
       ...(typeof metadata.forkedFromSessionId === 'string' && this.knows(metadata.forkedFromSessionId)

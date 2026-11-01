@@ -136,6 +136,7 @@ const COLUMNS = [
   'spawned_from',
   'forked_at_message_uuid',
   'lineage_detached',
+  'side_chat',
 ] as const
 
 /** SQLite column type per `COLUMNS` entry, used to build the CREATE TABLE and
@@ -175,6 +176,7 @@ const COLUMN_DEFS: Record<(typeof COLUMNS)[number], string> = {
   spawned_from: 'TEXT',
   forked_at_message_uuid: 'TEXT',
   lineage_detached: 'INTEGER',
+  side_chat: 'INTEGER',
 }
 
 /**
@@ -208,6 +210,7 @@ const COLUMN_METADATA_KEYS: ReadonlySet<string> = new Set([
   'spawnedFrom',
   'forkedAtMessageUuid',
   'lineageDetached',
+  'sideChat',
 ])
 
 /** Position of `project_dir` in `COLUMNS` — read out of a positional row
@@ -221,6 +224,7 @@ const SHUTDOWN_AT_INDEX = COLUMNS.indexOf('shutdown_at')
 const SPAWNED_FROM_INDEX = COLUMNS.indexOf('spawned_from')
 const FORKED_AT_MESSAGE_UUID_INDEX = COLUMNS.indexOf('forked_at_message_uuid')
 const LINEAGE_DETACHED_INDEX = COLUMNS.indexOf('lineage_detached')
+const SIDE_CHAT_INDEX = COLUMNS.indexOf('side_chat')
 
 const COLUMN_LIST = COLUMNS.join(', ')
 const PLACEHOLDERS = COLUMNS.map(() => '?').join(', ')
@@ -755,6 +759,7 @@ export class SqliteSessionMetaStore {
       toText(isSessionOrigin(m.spawnedFrom) ? JSON.stringify(m.spawnedFrom) : undefined),
       toText(m.forkedAtMessageUuid),
       m.lineageDetached === true ? 1 : null,
+      m.sideChat === true ? 1 : null,
     ]
     return { row, extraJsonFailed }
   }
@@ -818,6 +823,7 @@ export class SqliteSessionMetaStore {
     }
     set('forkedAtMessageUuid', readText(row[FORKED_AT_MESSAGE_UUID_INDEX]))
     if (readInt(row[LINEAGE_DETACHED_INDEX]) === 1) metadata.lineageDetached = true
+    if (readInt(row[SIDE_CHAT_INDEX]) === 1) metadata.sideChat = true
 
     const providerId = readText(row[18])
     const modelId = readText(row[19])

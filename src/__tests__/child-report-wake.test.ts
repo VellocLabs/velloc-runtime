@@ -347,6 +347,22 @@ describe('child reports: the wake predicate', () => {
     expect(await h.coord.takeForTurn('P', { autoContinuation: false })).toContain('fork result')
   })
 
+  it('S05: a side chat queues no report and wakes nobody, even built like a person\'s fork', async () => {
+    const h = family([])
+    addSession(h, 'S', {
+      meta: {
+        spawnedFrom: origin('P', { initiator: 'user', userFork: true }),
+        forkedFromSessionId: 'P',
+        sideChat: true,
+      },
+    })
+    turn(h, 'S', 'aside result')
+    await settle()
+    expect(queued(h)).toEqual([])
+    expect(h.wakes).toEqual([])
+    expect(await h.coord.takeForTurn('P', { autoContinuation: false })).toBeNull()
+  })
+
   it('R07: a Stop, a parked question, a pending clear, an archived parent, a closed gate each hold the wake', async () => {
     const holds: Array<[string, (h: Harness) => void]> = [
       ['stop', h => { h.sims.get('P')!.hold = 'stopped' }],

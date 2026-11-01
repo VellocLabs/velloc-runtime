@@ -58,6 +58,8 @@ export type SessionDescription = {
   sharedCheckout?: boolean
   forkedFromSessionId?: string
   forkedAtMessageUuid?: string
+  /** A fork the person opened beside its parent (F-36). */
+  sideChat?: boolean
 }
 
 /** One transcript row of `ReadSessionEvents`: data, never a summary. */

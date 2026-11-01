@@ -117,6 +117,14 @@ export type SharedWorkerInboundMessage =
       requestId?: string
     }
   | {
+      // Take a session out from under its parent (F-36): persist
+      // `lineageDetached` (live or disk-only, like `session.pin`) and
+      // broadcast `session.updated`. The origin record stays.
+      type: 'session.detachLineage'
+      sessionId: string
+      requestId?: string
+    }
+  | {
       // Fork a session AT a message: copy the transcript prefix up to and
       // including `cutUuid` into a NEW session (rewriting sessionId +
       // parentUuid, copying tool-detail sidecars), then reply `session.forked`
@@ -145,6 +153,10 @@ export type SharedWorkerInboundMessage =
       // instead of carrying the source's. Both or neither. Set by "Continue in
       // Code" (F-17).
       retarget?: ForkRetarget
+      // The copy opens as a side chat of the source, with `initialDraft`
+      // waiting in its composer (F-36).
+      sideChat?: boolean
+      initialDraft?: string
     }
   | {
       type: 'session.subscribe'
@@ -226,6 +238,8 @@ export type SessionCard = {
   startFailed?: string
   /** Out of the active list. (F-36) */
   archived?: boolean
+  /** A side chat of its parent: shown in the parent's side panel. (F-36) */
+  sideChat?: boolean
   /** True when a teammate was torn down and retained as a read-only transcript. */
   shutdown?: boolean
   shutdownAt?: number

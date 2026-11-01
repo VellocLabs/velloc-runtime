@@ -162,10 +162,14 @@ export function isDelegated(meta: SessionLineageInput): boolean {
   return lineage !== null && lineage.initiator === 'model'
 }
 
-/** Whether a session with an origin has been detached from it. A session
- *  that never had an origin is not "detached", it is top-level. */
+/** Whether a session that had a relation (an origin, or the session it was
+ *  forked from) has been detached from it. A session that never had one is
+ *  not "detached", it is top-level. */
 export function isDetached(meta: SessionLineageInput): boolean {
-  return meta.lineageDetached === true && originOf(meta) !== undefined
+  return (
+    meta.lineageDetached === true &&
+    (originOf(meta) !== undefined || isNonEmptyString(meta.forkedFromSessionId))
+  )
 }
 
 /** Guard on walking a chain of origins: deeper than this is a cycle or a

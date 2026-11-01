@@ -612,6 +612,8 @@ export class SharedWorkerSessionManager {
       void this.handleSessionRename(port, sessionId, title, requestId),
     pinSession: (port, sessionId, pinned, requestId) =>
       void this.handleSessionPin(port, sessionId, pinned, requestId),
+    detachSession: (port, sessionId, requestId) =>
+      void this.handleSessionDetach(port, sessionId, requestId),
     forkSession: (
       port,
       fromSessionId,
@@ -621,6 +623,7 @@ export class SharedWorkerSessionManager {
       title,
       replacesSource,
       retarget,
+      sideChat,
     ) =>
       void this.handleSessionFork(
         port,
@@ -631,6 +634,7 @@ export class SharedWorkerSessionManager {
         title,
         replacesSource,
         retarget,
+        sideChat,
       ),
     handleTaskStop: (port, message) => this.handleTaskStop(port, message),
     handleTaskResume: (port, message) => this.handleTaskResume(port, message),
@@ -3428,6 +3432,31 @@ export class SharedWorkerSessionManager {
   }
 
   /**
+   * Take a session out from under its parent: persist `lineageDetached` on the
+   * live store or in meta.json, refresh the summary, ack with the card. (F-36)
+   */
+  private async handleSessionDetach(
+    port: MessagePort,
+    sessionId: string,
+    requestId?: string,
+  ): Promise<void> {
+    if (this.deletingSessions.has(sessionId)) return
+    try {
+      await this.summaryRepo.ensureSessionRouting()
+      await this.patchSessionRecord(sessionId, { lineageDetached: true })
+    } catch (error) {
+      console.warn(`[SharedWorkerSessionManager] detach of ${sessionId} not persisted`, error)
+      return
+    }
+    if (requestId) {
+      const session = this.buildSessionInfo(sessionId)
+      if (session) {
+        port.postMessage({ type: 'session.updated' as const, payload: { session } })
+      }
+    }
+  }
+
+  /**
    * `session.open`: build the session's init payload here — from the published
    * host environment, the desktop's own fields when it sent them, the
    * session's persisted binding and, for a forced-folder type with no folder,
@@ -4105,6 +4134,7 @@ export class SharedWorkerSessionManager {
     title?: string,
     replacesSource?: boolean,
     retarget?: ForkRetarget,
+    sideChat?: { enabled: boolean; initialDraft?: string },
   ): Promise<void> {
     if (retarget && !hasTemplate(retarget.templateType)) {
       console.warn('[nexus] fork skipped: unknown template type', retarget.templateType)
@@ -4116,6 +4146,7 @@ export class SharedWorkerSessionManager {
         title,
         replacesSource,
         retarget,
+        sideChat,
       })
       if (!forked) return
       port.postMessage({
@@ -4142,12 +4173,13 @@ export class SharedWorkerSessionManager {
       title?: string
       replacesSource?: boolean
       retarget?: ForkRetarget
+      sideChat?: { enabled: boolean; initialDraft?: string }
       metadataPatch?: Partial<BrowserSessionMetadata>
     },
   ): Promise<{ newSessionId: string } | null> {
     const storage = this.storage
     if (!storage) return null
-    const { moveCutMessageToDraft, title, replacesSource, retarget } = opts
+    const { moveCutMessageToDraft, title, replacesSource, retarget, sideChat } = opts
     {
       const payload = await storage.load(fromSessionId)
       const sourceEntries = Array.isArray(payload) ? payload : []
@@ -4179,7 +4211,13 @@ export class SharedWorkerSessionManager {
         // fork's composer, and names the copy after the source ("<title>
         // (fork)", localized by the page); rewind keeps the inclusive cut and
         // the source's exact title.
-        { moveCutMessageToDraft, title, ...(replacesSource ? { as: 'rewind' as const } : {}) },
+        {
+          moveCutMessageToDraft,
+          title,
+          ...(replacesSource ? { as: 'rewind' as const } : {}),
+          ...(sideChat?.enabled ? { sideChat: true } : {}),
+          ...(sideChat?.initialDraft ? { composerDraft: sideChat.initialDraft } : {}),
+        },
       )
       if (!built) {
         console.warn('[nexus] fork skipped: no message to cut at', fromSessionId)

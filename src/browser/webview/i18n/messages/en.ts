@@ -130,6 +130,13 @@ export const en = {
   'action.copy': 'Copy',
   // The toolbar over selected transcript text, and the quote it puts in the composer (F-36).
   'selection.reply': 'Reply',
+  'selection.sideChat': 'Start a side chat',
+  'sideChat.add': 'New side chat',
+  'sideChat.empty': 'No side chats yet. Select text in the conversation and choose Start a side chat, or press +.',
+  'sideChat.sharedFolder': 'Shares the main conversation\'s folder',
+  'sideChat.detach': 'Move to the sidebar',
+  'sideChat.waiting': 'Waiting for you',
+  'sideChat.working': 'Working',
   'composer.quoteDismiss': 'Remove quote',
   'action.fork': 'Fork from here',
   // The title a "Fork from here" copy gets: the source's displayed title
@@ -319,6 +326,7 @@ export const en = {
   'topbar.pane.files': 'Files',
   'topbar.pane.plan': 'Plan',
   'topbar.pane.skill': 'Skills',
+  'topbar.pane.sidechat': 'Side chats',
   'topbar.pane.show': 'Show {pane}',
   'topbar.pane.hide': 'Hide {pane}',
   'topbar.morePanes': 'More panes',

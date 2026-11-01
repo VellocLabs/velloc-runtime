@@ -199,6 +199,7 @@ describe('DescribeSession', () => {
   it('shows a detached session with its origin, a fork with its cut, and hides an origin the runtime lost', async () => {
     const host = family()
     host.add('orphan', { metadata: { spawnedFrom: origin('gone') } })
+    host.add('s', { metadata: { forkedFromSessionId: 'p', forkedAtMessageUuid: 'u3', sideChat: true }, title: 'Aside' })
     const coord = new SessionFamilyCoordinator(host)
     expect(await coord.describe('p', 'd')).toMatchObject({
       ok: true,
@@ -208,6 +209,11 @@ describe('DescribeSession', () => {
       ok: true,
       session: { effectiveParentId: 'c1', lineageKind: 'fork', initiator: 'user', forkedFromSessionId: 'c1', forkedAtMessageUuid: 'u9' },
     })
+    expect(await coord.describe('p', 's')).toMatchObject({
+      ok: true,
+      session: { effectiveParentId: 'p', lineageKind: 'fork', sideChat: true },
+    })
+    expect((await coord.describe('p', 'f') as { session: Record<string, unknown> }).session.sideChat).toBeUndefined()
     const orphan = await coord.describe('p', 'orphan')
     expect(orphan).toMatchObject({ ok: true, session: { effectiveParentId: 'gone', detached: false } })
     expect((orphan as { session: Record<string, unknown> }).session.originSessionId).toBeUndefined()

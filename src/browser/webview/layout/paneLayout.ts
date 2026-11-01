@@ -6,7 +6,16 @@
  */
 
 /** The utility views that can be panes beside the chat. */
-export type SidePaneKind = 'tasks' | 'diff' | 'browser' | 'plan' | 'skill' | 'files' | 'terminal' | 'mods'
+export type SidePaneKind =
+  | 'tasks'
+  | 'diff'
+  | 'browser'
+  | 'plan'
+  | 'skill'
+  | 'files'
+  | 'terminal'
+  | 'mods'
+  | 'sidechat'
 
 export const SIDE_PANE_KINDS: readonly SidePaneKind[] = [
   'tasks',
@@ -17,6 +26,7 @@ export const SIDE_PANE_KINDS: readonly SidePaneKind[] = [
   'files',
   'terminal',
   'mods',
+  'sidechat',
 ]
 
 /** A leaf of the tree: the chat, or one side pane. */
@@ -61,7 +71,7 @@ export const CHAT_WEIGHT = 2
 /** Reading panes open at chat:pane 2:3; the rest at 2:1. */
 export const WIDE_PANE_WEIGHT = 3
 export const NARROW_PANE_WEIGHT = 1
-const WIDE_PANE_KINDS: ReadonlySet<SidePaneKind> = new Set(['diff', 'browser', 'files'])
+const WIDE_PANE_KINDS: ReadonlySet<SidePaneKind> = new Set(['diff', 'browser', 'files', 'sidechat'])
 
 export function isSidePaneKind(value: unknown): value is SidePaneKind {
   return typeof value === 'string' && (SIDE_PANE_KINDS as readonly string[]).includes(value)

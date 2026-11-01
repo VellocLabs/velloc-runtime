@@ -273,6 +273,8 @@ export const SESSION_MANAGER_ACTION_SCOPES = {
   rename: 'control',
   // Writes one flag into the session's metadata, like `rename`.
   pin: 'control',
+  // Takes a child out from under its parent: one metadata flag, like `pin` (F-36).
+  detachLineage: 'control',
   fork: 'control',
   delete: 'control',
   getToolDetail: 'observe',
@@ -566,6 +568,11 @@ export function installSessionSurface(
     sessionOf: sessionIdOf,
     guard: p => hasSessionId(p) && typeof (p as { pinned?: unknown }).pinned === 'boolean',
   }
+  sessionActions.detachLineage = {
+    scope: SESSION_MANAGER_ACTION_SCOPES.detachLineage,
+    sessionOf: sessionIdOf,
+    guard: hasSessionId,
+  }
   sessionActions.fork = {
     scope: SESSION_MANAGER_ACTION_SCOPES.fork,
     sessionOf: forkSourceOf,
@@ -661,6 +668,7 @@ export function installSessionSurface(
         }
         case 'rename':
         case 'pin':
+        case 'detachLineage':
         case 'delete':
           host.dispatch(port, managerMessage(`session.${act}`, payload))
           return undefined

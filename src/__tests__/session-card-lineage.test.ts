@@ -33,6 +33,12 @@ describe('the session card carries the relation', () => {
     expect(fork?.detached).toBeUndefined()
   })
 
+  it('a side chat is a fork under its parent and says so', () => {
+    const side = card(meta({ metadata: { forkedFromSessionId: 'source', forkedAtMessageUuid: 'cut', sideChat: true } }))
+    expect(side).toMatchObject({ parentSessionId: 'source', lineageKind: 'fork', sideChat: true })
+    expect(card(meta({ metadata: { templateType: 'agent' } }))).not.toHaveProperty('sideChat')
+  })
+
   it('a model-started child carries its origin, kind and family name, live or not', () => {
     const metadata = {
       spawnedFrom: { sessionId: 'parent', taskId: 'task-1', kind: 'side_session', initiator: 'model', name: 'parser-review' },

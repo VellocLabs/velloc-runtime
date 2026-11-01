@@ -274,6 +274,24 @@ export type MultiSessionClientsOptions = {
   ) => void
 }
 
+/** The per-thread actions, each aimed at one session instead of the active one. */
+export type SessionBoundActions = Pick<
+  MultiSessionClientsResult,
+  | 'submitPrompt'
+  | 'submitActionMessage'
+  | 'continueConversation'
+  | 'submitComposerMessage'
+  | 'submitToolResult'
+  | 'loadToolCallDetail'
+  | 'setPermissionMode'
+  | 'setSkipDangerousMode'
+  | 'clearPendingMessage'
+  | 'removeInjectMessage'
+  | 'resolveToolUseConfirm'
+  | 'clearPlanApproval'
+  | 'interrupt'
+>
+
 export type MultiSessionClientsResult = {
   /** Current state of the active session — convenience accessor. */
   activeState: BrowserRuntimeClientState
@@ -428,6 +446,12 @@ export type MultiSessionClientsResult = {
     projectRoot: string,
   ) => Promise<boolean>
   interrupt: () => Promise<void>
+  /**
+   * The composer and approval actions bound to a NAMED mounted session, for a
+   * thread drawn somewhere other than the active slot (a side chat's pane).
+   * Stable per session id.
+   */
+  sessionActionsFor: (sessionId: string) => SessionBoundActions
   /**
    * Persist a partial metadata patch (composer draft, edit time, ...)
    * to a specific session's fs entry. Targets a session by id rather
@@ -598,12 +622,14 @@ export function useMultiSessionClients(
     [emitSessionStateChange],
   )
 
+  const boundActionsRef = useRef(new Map<string, SessionBoundActions>())
   const disposeClient = useCallback((sessionId: string) => {
     const unsubscribe = unsubscribersRef.current.get(sessionId)
     unsubscribe?.()
     unsubscribersRef.current.delete(sessionId)
     summaryDigestsRef.current.delete(sessionId)
     derivedMetadataRef.current.delete(sessionId)
+    boundActionsRef.current.delete(sessionId)
 
     const client = clientsRef.current.get(sessionId)
     if (client) {
@@ -980,6 +1006,54 @@ export function useMultiSessionClients(
     await client?.interrupt()
   }, [])
 
+  const sessionActionsFor = useCallback((sessionId: string): SessionBoundActions => {
+    const cached = boundActionsRef.current.get(sessionId)
+    if (cached) return cached
+    const client = () => clientsRef.current.get(sessionId)
+    const actions: SessionBoundActions = {
+      submitPrompt: async prompt => {
+        await client()?.submitMessage(prompt)
+      },
+      submitActionMessage: async prompt => {
+        await client()?.submitActionMessage(prompt)
+      },
+      continueConversation: async () => {
+        await client()?.continueConversation()
+      },
+      submitComposerMessage: async (message, options) => {
+        await client()?.submitComposerMessage(message, options)
+      },
+      submitToolResult: async submission => {
+        await client()?.submitToolResult(submission)
+      },
+      loadToolCallDetail: async toolCallId => (await client()?.loadToolCallDetail(toolCallId)) ?? null,
+      setPermissionMode: async mode => {
+        await client()?.setPermissionMode(mode)
+      },
+      setSkipDangerousMode: async value => {
+        await client()?.setSkipDangerousMode(value)
+      },
+      clearPendingMessage: () => {
+        client()?.clearPendingMessage()
+      },
+      removeInjectMessage: async uuid => {
+        const target = client()
+        return target ? target.removeInjectMessage(uuid) : { ok: false }
+      },
+      resolveToolUseConfirm: async params => {
+        await client()?.resolveToolUseConfirm(params)
+      },
+      clearPlanApproval: async toolCallId => {
+        await client()?.clearPlanApproval(toolCallId)
+      },
+      interrupt: async () => {
+        await client()?.interrupt()
+      },
+    }
+    boundActionsRef.current.set(sessionId, actions)
+    return actions
+  }, [])
+
   const updateSessionMetadata = useCallback(
     async (
       sessionId: string,
@@ -1061,6 +1135,7 @@ export function useMultiSessionClients(
     restartRuntime,
     rebindProjectFolder,
     interrupt,
+    sessionActionsFor,
     updateSessionMetadata,
     disposeClient,
   }

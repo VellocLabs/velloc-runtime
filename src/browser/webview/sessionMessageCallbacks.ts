@@ -9,6 +9,8 @@ export type SessionMessageCallbacks = {
   onSendInFork?: (cutUuid: string, message: AppendMessage) => Promise<boolean>
   /** Continue the conversation in a new Code session bound to `folder` (or the one the user picks). */
   onContinueInCode?: (cutUuid: string, folder: ContinueInCodeFolder) => Promise<boolean>
+  /** Open a side chat cut at a message, quoting the selection (F-36). */
+  onStartSideChat?: (cutUuid: string, selection: string) => void
 }
 
 /** A folder path, or `pick` to ask the host's folder dialog. */
@@ -32,6 +34,7 @@ export function createSessionMessageCallbackFactory(
     cutUuid: string,
     folder: ContinueInCodeFolder,
   ) => Promise<boolean>,
+  startSideChat?: (sessionId: string, cutUuid: string, selection: string) => void,
 ): (sessionId: string) => SessionMessageCallbacks {
   const cache = new Map<string, SessionMessageCallbacks>()
   return (sessionId: string) => {
@@ -50,6 +53,12 @@ export function createSessionMessageCallbackFactory(
           ? {
               onContinueInCode: (cutUuid: string, folder: ContinueInCodeFolder) =>
                 continueInCode(sessionId, cutUuid, folder),
+            }
+          : {}),
+        ...(startSideChat
+          ? {
+              onStartSideChat: (cutUuid: string, selection: string) =>
+                startSideChat(sessionId, cutUuid, selection),
             }
           : {}),
       }

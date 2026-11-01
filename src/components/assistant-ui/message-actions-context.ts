@@ -15,6 +15,11 @@ export type MessageActionsContextValue = {
    * switch + delete-original.
    */
   onRewindToMessage?: (cutUuid: string) => void
+  /**
+   * Open a side chat cut at the given message uuid, with the selected text
+   * quoted in its composer (F-36). Absent in a side chat itself.
+   */
+  onStartSideChat?: (cutUuid: string, selection: string) => void
   /** Retry a final provider API-error turn from its previous visible prompt. */
   onRetryProviderApiError?: (prompt: string) => void | Promise<void>
   /** Open the folder chooser that continues this chat in a Code session. */

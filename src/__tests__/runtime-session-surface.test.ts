@@ -380,6 +380,9 @@ describe('session surface over the hub', () => {
     await connection.request('session.pin', { sessionId: 's1', pinned: true, requestId: 'r1' })
     expect(rig.manager.dispatched.at(-1)).toEqual({ type: 'session.pin', sessionId: 's1', pinned: true, requestId: 'r1' })
     await expect(connection.request('session.pin', { sessionId: 's1', pinned: 'yes' })).rejects.toMatchObject({ code: 'bad_payload' })
+    await connection.request('session.detachLineage', { sessionId: 's1', requestId: 'r2' })
+    expect(rig.manager.dispatched.at(-1)).toEqual({ type: 'session.detachLineage', sessionId: 's1', requestId: 'r2' })
+    await expect(connection.request('session.detachLineage', { sessionId: '' })).rejects.toMatchObject({ code: 'bad_payload' })
     // A fork that names no cut copies the whole conversation.
     await connection.request('session.fork', { fromSessionId: 's1' })
     expect(rig.manager.dispatched.at(-1)).toEqual({ type: 'session.fork', fromSessionId: 's1' })

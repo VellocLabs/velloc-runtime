@@ -95,6 +95,8 @@ describe('resolveLineage', () => {
     expect(originOf(meta)?.sessionId).toBe('A')
     // A top-level session with the flag set is not "detached": nothing to detach from.
     expect(isDetached({ lineageDetached: true })).toBe(false)
+    // A person's fork had a relation too: detaching it is a detach.
+    expect(isDetached({ lineageDetached: true, forkedFromSessionId: 'p' })).toBe(true)
   })
 
   it('ignores a malformed stored origin', () => {

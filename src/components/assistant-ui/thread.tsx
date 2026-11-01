@@ -64,6 +64,7 @@ import {
   GitBranchIcon,
   ReplyIcon,
   QuoteIcon,
+  MessagesSquareIcon,
   
   ListCollapseIcon,
   LockIcon,
@@ -2681,7 +2682,49 @@ const ReplySelectionToolbar: FC = () => {
         <ReplyIcon className="size-3.5" aria-hidden="true" />
         {t("selection.reply")}
       </SelectionToolbarPrimitive.Quote>
+      <StartSideChatButton />
     </SelectionToolbarPrimitive.Root>
+  );
+};
+
+/** The transcript row a selection sits in, by its message id; null when it spans rows or none. */
+function selectionMessageId(selection: Selection): string | null {
+  const idOf = (node: Node | null): string | null => {
+    let el = node instanceof HTMLElement ? node : (node?.parentElement ?? null);
+    while (el) {
+      const id = el.getAttribute("data-message-id");
+      if (id) return id;
+      el = el.parentElement;
+    }
+    return null;
+  };
+  const anchor = idOf(selection.anchorNode);
+  const focus = idOf(selection.focusNode);
+  return anchor && anchor === focus ? anchor : null;
+}
+
+/** Opens a side chat cut at the selected row, quoting the selection (F-36); nothing in a side chat. */
+const StartSideChatButton: FC = () => {
+  const t = useT();
+  const { onStartSideChat } = useMessageActionsContext();
+  if (!onStartSideChat) return null;
+  return (
+    <button
+      type="button"
+      data-testid="selection-side-chat"
+      className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+      onClick={() => {
+        const selection = window.getSelection();
+        const text = selection?.toString().trim() ?? "";
+        const messageId = selection ? selectionMessageId(selection) : null;
+        if (!text || !messageId) return;
+        onStartSideChat(messageId, text);
+        selection?.removeAllRanges();
+      }}
+    >
+      <MessagesSquareIcon className="size-3.5" aria-hidden="true" />
+      {t("selection.sideChat")}
+    </button>
   );
 };
 

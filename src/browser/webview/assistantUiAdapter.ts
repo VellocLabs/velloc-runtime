@@ -1159,6 +1159,15 @@ function stampPriorTodos(merged: ThreadMessageLike[]): void {
  * stable across that boundary so the message doesn't replay its mount
  * animation when the worker persists results.
  */
+/**
+ * Whether a row id is the turn-anchored one `stabilizeTrailingAssistantId`
+ * gives the conversation's closing assistant message, rather than a transcript
+ * uuid. A cut at that row is a cut at the conversation's end.
+ */
+export function isTurnAnchoredMessageId(messageId: string): boolean {
+  return messageId.startsWith('turn:') && messageId.endsWith(':assistant')
+}
+
 function stabilizeTrailingAssistantId(
   merged: ThreadMessageLike[],
   anchor: string,

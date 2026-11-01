@@ -54,6 +54,7 @@ import {
   isChildStartFailure,
   type SessionLineageKind,
   type SessionOrigin,
+  isDetached,
 } from './sessionLineage'
 import type { PeerInboxEntry } from './sessionFamilyRules'
 import type { ChildProposal } from './childProposals'
@@ -100,6 +101,9 @@ export type BrowserSessionMetadata = Record<string, unknown> & {
   forkedFromSessionId?: string
   /** The message a fork was cut at. (F-36) */
   forkedAtMessageUuid?: string
+  /** A fork opened beside its source as a side chat: listed in the source's
+   *  side panel, not the sidebar; never reports to the source. (F-36) */
+  sideChat?: boolean
   /** The session that started this one, and why. (F-36) */
   spawnedFrom?: SessionOrigin
   /** Set when this session was taken out from under its origin; the origin
@@ -176,6 +180,8 @@ export type BrowserSessionSummary = {
   startFailed?: ChildStartFailure
   /** Out of the active list. (F-36) */
   archived?: boolean
+  /** A side chat of its parent. (F-36) */
+  sideChat?: boolean
   shutdown?: boolean
   shutdownAt?: number
   composerDraft?: string
@@ -755,8 +761,8 @@ export function buildSessionSummaryFromMetadata(
       ? metadata.spawnedFrom.name
       : teammateName
   const detached =
-    metadata?.lineageDetached === true &&
-    (metadata.spawnedFrom !== undefined || spawnerSessionId !== undefined)
+    metadata !== undefined &&
+    (isDetached(metadata) || (metadata.lineageDetached === true && spawnerSessionId !== undefined))
   const startFailed = isChildStartFailure(metadata?.startFailed) ? metadata.startFailed : undefined
 
   const label = firstPrompt || previewText
@@ -776,6 +782,7 @@ export function buildSessionSummaryFromMetadata(
     ...(detached ? { detached: true } : {}),
     ...(startFailed ? { startFailed } : {}),
     ...(metadata?.archived === true ? { archived: true } : {}),
+    ...(metadata?.sideChat === true ? { sideChat: true } : {}),
     ...(metadata?.shutdown === true ? { shutdown: true } : {}),
     ...(typeof metadata?.shutdownAt === 'number' ? { shutdownAt: metadata.shutdownAt } : {}),
     ...(composerDraft !== undefined ? { composerDraft } : {}),
@@ -1212,6 +1219,10 @@ export function buildForkedTranscriptEntries(
   options?: {
     moveCutMessageToDraft?: boolean
     title?: string
+    /** The copy is a side chat of its source. */
+    sideChat?: boolean
+    /** Text waiting in the copy's composer; ignored when the cut message moves there. */
+    composerDraft?: string
     /**
      * `rewind`: the copy replaces the source, so it keeps the source's pin and
      * creation time. `import`: an imported conversation's creation time is
@@ -1256,6 +1267,7 @@ export function buildForkedTranscriptEntries(
   }
   if (!composerDraft) {
     prefix.push(...takeAnswersToOpenToolCalls(prefix, sourceEntries, cutIndex))
+    composerDraft = options?.composerDraft ?? ''
   }
 
   const forkedMessages: BrowserTranscriptMessage[] = []
@@ -1289,6 +1301,7 @@ export function buildForkedTranscriptEntries(
       parentUuid,
     ),
     ...(fromSessionId ? { forkedFromSessionId: fromSessionId, forkedAtMessageUuid: cut } : {}),
+    ...(options?.sideChat ? { sideChat: true } : {}),
     ...(composerDraft
       ? { composerDraft, lastComposerEditAt: now }
       : {}),

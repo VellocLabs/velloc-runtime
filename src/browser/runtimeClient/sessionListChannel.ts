@@ -14,6 +14,7 @@ export type SessionListRoute =
   | 'session.rename'
   | 'session.pin'
   | 'session.fork'
+  | 'session.detachLineage'
   | 'session.delete'
   | 'task.stop'
   | 'task.resume'

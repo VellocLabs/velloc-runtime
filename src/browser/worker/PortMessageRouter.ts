@@ -42,6 +42,7 @@ export interface PortMessageRouterHost {
     pinned: boolean,
     requestId: string | undefined,
   ): void
+  detachSession(port: MessagePort, sessionId: string, requestId: string | undefined): void
   forkSession(
     port: MessagePort,
     fromSessionId: string,
@@ -51,6 +52,7 @@ export interface PortMessageRouterHost {
     title?: string,
     replacesSource?: boolean,
     retarget?: ForkRetarget,
+    sideChat?: { enabled: boolean; initialDraft?: string },
   ): void
   // Background Tasks drawer control surface.
   handleTaskStop(
@@ -203,6 +205,11 @@ export class PortMessageRouter {
         return
       }
 
+      case 'session.detachLineage': {
+        this.host.detachSession(port, message.sessionId, message.requestId)
+        return
+      }
+
       case 'session.fork': {
         this.host.forkSession(
           port,
@@ -213,6 +220,9 @@ export class PortMessageRouter {
           message.title,
           message.replacesSource === true,
           message.retarget,
+          message.sideChat === true
+            ? { enabled: true, ...(message.initialDraft ? { initialDraft: message.initialDraft } : {}) }
+            : undefined,
         )
         return
       }
@@ -409,10 +419,20 @@ function validateInboundShape(
       if (typeof m.pinned !== 'boolean') return badField('pinned', 'a boolean')
       return null
 
+    case 'session.detachLineage':
+      if (!isSafeSessionId(m.sessionId)) return badId('sessionId')
+      return null
+
     case 'session.fork':
       if (!isSafeSessionId(m.fromSessionId)) return badId('fromSessionId')
       if (m.cutUuid !== undefined && typeof m.cutUuid !== 'string') {
         return badField('cutUuid', 'a string')
+      }
+      if (m.sideChat !== undefined && typeof m.sideChat !== 'boolean') {
+        return badField('sideChat', 'a boolean')
+      }
+      if (m.initialDraft !== undefined && typeof m.initialDraft !== 'string') {
+        return badField('initialDraft', 'a string')
       }
       if (m.retarget !== undefined && !isForkRetarget(m.retarget)) {
         return badField('retarget', 'a {templateType, projectRoot} pair of non-empty strings')

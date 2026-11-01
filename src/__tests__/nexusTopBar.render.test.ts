@@ -40,6 +40,13 @@ describe('NexusTopBar render', () => {
     ).toThrow(/TooltipProvider/)
   })
 
+  it('a pane toggle carries the attention mark only for the kinds named (F-36)', () => {
+    const html = markup({ onTogglePane: () => {}, paneAttention: new Set(['sidechat']) })
+    expect(html).toContain('data-testid="topbar-pane-sidechat-attention"')
+    expect(html).not.toContain('data-testid="topbar-pane-diff-attention"')
+    expect(markup({ onTogglePane: () => {} })).not.toContain('-attention"')
+  })
+
   it('renders standalone (no TooltipProvider ancestor) without throwing', () => {
     expect(() =>
       markup({ sidebarCollapsed: false, onToggleSidebar: () => {}, onTogglePane: () => {} }),

@@ -105,6 +105,7 @@ import {
 } from './layout/modsPane'
 import { loadModPanesAsked, saveModPanesAsked } from './layout/layoutStorage'
 import { ModsPane } from './panes/ModsPane'
+import { SideChatPane } from './panes/SideChatPane'
 import { useModCellWidth } from '@/components/assistant-ui/mod-render'
 import type { ModUiSeatPlaces } from '@/components/assistant-ui/mod-ui-context'
 import { useSessionModUi } from './mods/useSessionModUi'
@@ -305,8 +306,17 @@ import {
 import { NEXUS_MODEL_CONFIG } from '../../config/nexusModelConfig'
 import { useSessionManager } from './useSessionManager'
 import { useMultiSessionClients } from './useMultiSessionClients'
-import { shouldDismissBootWelcome } from './assistantUiAdapter'
+import { shouldDismissBootWelcome, isTurnAnchoredMessageId } from './assistantUiAdapter'
 import { createSessionMessageCallbackFactory } from './sessionMessageCallbacks'
+import { createQuotePrefix } from './replyQuote'
+import {
+  mountedWithSideChat,
+  parentsNeedingAnswer,
+  pickSideChat,
+  sideChatsOf,
+  threadMount,
+  withoutListedSideChats,
+} from './sideChat'
 import { createForkSendRegistry, deliverForkSend } from './forkSend'
 import type { ForkRetarget } from '../worker/sharedWorkerProtocol'
 import type { ContinueInCodeFolder } from './sessionMessageCallbacks'
@@ -684,13 +694,18 @@ export function MultiSessionShell({
       sourceTitle?: string,
       keepCutMessage?: boolean,
       retarget?: ForkRetarget,
+      sideChat?: { initialDraft?: string },
     ) => {
       ownForkRequestsRef.current.add(requestId)
+      if (sideChat) ownSideChatForksRef.current.set(requestId, fromSessionId)
       sessionChannelRef.current?.request('session.fork', {
         fromSessionId,
         ...(cutUuid !== undefined ? { cutUuid } : {}),
         requestId,
         ...(retarget ? { retarget } : {}),
+        ...(sideChat
+          ? { sideChat: true, ...(sideChat.initialDraft ? { initialDraft: sideChat.initialDraft } : {}) }
+          : {}),
         ...(keepCutMessage ? {} : { moveCutMessageToDraft: true }),
         ...(sourceTitle
           ? { title: t('session.forkTitle', { title: sourceTitle }) }
@@ -823,6 +838,20 @@ export function MultiSessionShell({
   const [mountedSessionIds, setMountedSessionIds] = useState<string[]>(
     () => [resolvedInitialSessionId],
   )
+  // The side chat the active session's pane shows (F-36), settled once the
+  // list and the layout are known; it keeps a client while shown. Per parent,
+  // the side chat last chosen; and the side-chat forks this window asked for,
+  // request id to parent, whose ack opens the pane instead of switching.
+  const [shownSideChatId, setShownSideChatId] = useState<string | null>(null)
+  const mountedWithPaneIds = useMemo(
+    () => mountedWithSideChat(mountedSessionIds, shownSideChatId),
+    [mountedSessionIds, shownSideChatId],
+  )
+  const [sideChatSelection, setSideChatSelection] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  )
+  const ownSideChatForksRef = useRef<Map<string, string>>(new Map())
+  const openSideChatPaneForRef = useRef<(parentId: string) => void>(() => {})
 
   // Per-session "is the agent currently doing something" flag. Sourced
   // from the SharedWorker's `session.summary` broadcast (which derives
@@ -1137,6 +1166,15 @@ export function MultiSessionShell({
           if (rewoundFrom && rewoundFrom !== payload.newSessionId) {
             handleDeleteThread(rewoundFrom)
           }
+          // A side chat opens in its parent's pane; the view stays on the parent.
+          const sideChatParent = rid ? ownSideChatForksRef.current.get(rid) : undefined
+          if (sideChatParent) {
+            if (rid) ownSideChatForksRef.current.delete(rid)
+            const newSideChatId = payload.newSessionId
+            setSideChatSelection(prev => new Map(prev).set(sideChatParent, newSideChatId))
+            openSideChatPaneForRef.current(sideChatParent)
+            return
+          }
           focusSession(payload.newSessionId)
           // A fork-send: the copy exists and is now active — send the
           // composer's message into it. Its client is created here if the
@@ -1441,12 +1479,13 @@ export function MultiSessionShell({
     restartRuntime,
     rebindProjectFolder,
     interrupt,
+    sessionActionsFor,
     updateSessionMetadata,
     disposeClient,
   } = useMultiSessionClients({
     activeSessionId,
     shutdownSessionIds,
-    mountedSessionIds,
+    mountedSessionIds: mountedWithPaneIds,
     createWorkerTransport,
     hostBridgeTransport,
     files,
@@ -2060,6 +2099,16 @@ export function MultiSessionShell({
     },
     [updatePaneRecord, sessionLayoutsStore, focusPane],
   )
+  openSideChatPaneForRef.current = (parentId: string) => {
+    if (activeSessionIdRef.current === parentId) {
+      openPaneFor('sidechat')
+      return
+    }
+    updatePaneRecord(
+      r => openPane(r, 'sidechat', sessionLayoutsStore.getSnapshot().weights),
+      parentId,
+    )
+  }
   // The tab count a session's browser pane was closed at: the pane returns
   // on new tab activity (another count), not for the state it was closed in.
   // Transient, like the dismissal it replaces.
@@ -3478,6 +3527,11 @@ export function MultiSessionShell({
     return keys
   }, [sessionStates])
 
+  // A listed side chat waiting for the person marks its parent's row too.
+  const sideChatParentsNeedingAnswer = useMemo(
+    () => parentsNeedingAnswer(sessions, needsAnswerSessionIds),
+    [sessions, needsAnswerSessionIds],
+  )
   const allSessionItems: SessionListItem[] = useMemo(
     () =>
       sessions.map(s => ({
@@ -3496,6 +3550,7 @@ export function MultiSessionShell({
         detached: s.detached,
         starting: s.starting,
         startFailed: s.startFailed,
+        sideChat: s.sideChat,
         shutdown: s.shutdown,
         shutdownAt: s.shutdownAt,
         previewText: s.previewText,
@@ -3509,8 +3564,9 @@ export function MultiSessionShell({
         messageCount: s.messageCount,
         running: runningSessionIds.has(s.sessionId),
         needsAnswer: needsAnswerSessionIds.has(s.sessionId),
+        ...(sideChatParentsNeedingAnswer.has(s.sessionId) ? { sideChatNeedsAnswer: true } : {}),
       })),
-    [sessions, runningSessionIds, needsAnswerSessionIds],
+    [sessions, runningSessionIds, needsAnswerSessionIds, sideChatParentsNeedingAnswer],
   )
 
   // Sessions this channel does not show: a type its launcher catalog does not
@@ -3529,17 +3585,70 @@ export function MultiSessionShell({
   // filtered array, so no component has to know what a team or a channel is;
   // the unfiltered array above exists only for the tab strip, which is where a
   // teammate becomes reachable.
+  // A side chat stays in its parent's pane (F-36): neither the sidebar nor the
+  // tab strip lists it while the parent is listed.
   const sessionItems: SessionListItem[] = useMemo(
     () =>
-      allSessionItems.filter(s => !s.spawnerSessionId && !hiddenIds.has(s.sessionId)),
+      withoutListedSideChats(allSessionItems).filter(
+        s => !s.spawnerSessionId && !hiddenIds.has(s.sessionId),
+      ),
     [allSessionItems, hiddenIds],
   )
   // The tab strip reads every visible session, teammates included — a hidden
   // lead takes its whole family out of it.
   const tabSessionItems: SessionListItem[] = useMemo(
-    () => allSessionItems.filter(s => !hiddenIds.has(s.sessionId)),
+    () => withoutListedSideChats(allSessionItems).filter(s => !hiddenIds.has(s.sessionId)),
     [allSessionItems, hiddenIds],
   )
+  // The active session's side chats, the one its pane shows, and the pane's
+  // attention mark (F-36). The shown id settles through state so the mounted
+  // set below the hook can follow it.
+  const activeSideChats = useMemo(
+    () => sideChatsOf(allSessionItems, activeSessionId),
+    [allSessionItems, activeSessionId],
+  )
+  const wantedSideChatId = openPanes.includes('sidechat')
+    ? pickSideChat(activeSideChats, sideChatSelection.get(activeSessionId))
+    : null
+  useEffect(() => {
+    setShownSideChatId(wantedSideChatId)
+  }, [wantedSideChatId])
+  const sideChatPaneAttention = useMemo(
+    () => new Set<SidePaneKind>(activeSideChats.some(item => item.needsAnswer) ? ['sidechat'] : []),
+    [activeSideChats],
+  )
+  const canAddSideChat =
+    (sessions.find(s => s.sessionId === activeSessionId)?.messageCount ?? 0) > 0
+  const handleSelectSideChat = useCallback((sideChatId: string) => {
+    const parent = activeSessionIdRef.current
+    if (!parent) return
+    setSideChatSelection(prev => new Map(prev).set(parent, sideChatId))
+  }, [])
+  // `+`: a side chat cut at the conversation's end, nothing in its composer.
+  const handleAddSideChat = useCallback(() => {
+    const parent = activeSessionIdRef.current
+    if (!parent) return
+    forkSession(parent, undefined, { keepCutMessage: true, sideChat: true })
+  }, [forkSession])
+  // The selection toolbar: a side chat cut at the selected row, the selection
+  // quoted in its composer.
+  const handleStartSideChat = useCallback(
+    (fromSessionId: string, cutUuid: string, selection: string) => {
+      // The closing assistant row has no uuid of its own: cut at the end.
+      forkSession(fromSessionId, isTurnAnchoredMessageId(cutUuid) ? undefined : cutUuid, {
+        keepCutMessage: true,
+        sideChat: true,
+        initialDraft: createQuotePrefix(selection),
+      })
+    },
+    [forkSession],
+  )
+  const handleDetachSideChat = useCallback((sideChatId: string) => {
+    sessionChannelRef.current?.request('session.detachLineage', {
+      sessionId: sideChatId,
+      requestId: randomUuid(),
+    })
+  }, [])
   const sessionTabs = useMemo(
     () => deriveSessionTabs(tabSessionItems, activeSessionId),
     [tabSessionItems, activeSessionId],
@@ -3943,7 +4052,8 @@ export function MultiSessionShell({
   sessionItemsRef.current = sessionItems
   const handleDeleteThread = useCallback(
     (sessionId: string) => {
-      // The runtime deletes a lead's teammates with it, so their threads go too.
+      // The runtime deletes a lead's teammates with it, so their threads go too;
+      // a session's side chats go with it as well (F-36).
       const doomed = new Set([
         sessionId,
         ...sessionsRef.current
@@ -4063,8 +4173,15 @@ export function MultiSessionShell({
         handleRewindFromMessage,
         handleSendInForkedSession,
         handleContinueInCode,
+        handleStartSideChat,
       ),
-    [forkSession, handleRewindFromMessage, handleSendInForkedSession, handleContinueInCode],
+    [
+      forkSession,
+      handleRewindFromMessage,
+      handleSendInForkedSession,
+      handleContinueInCode,
+      handleStartSideChat,
+    ],
   )
 
   // Re-bind a code session to a known recent folder (chip dropdown pick). The
@@ -4331,6 +4448,115 @@ export function MultiSessionShell({
     [runtimeCapabilities, hostBridgeTransport],
   )
 
+  // One session's conversation: in the chat slot (shown when active, kept
+  // mounted hidden otherwise) or in the Side chats pane (`inPane`), where its
+  // actions are bound to it rather than to the active session (F-36).
+  const renderSessionThread = (sessionId: string, inPane: boolean): ReactNode => {
+    const isActive = inPane || sessionId === activeSessionId
+    const bound = inPane ? sessionActionsFor(sessionId) : null
+    const mount = threadMount(sessionId, inPane, activeSessionId)
+          const state = sessionStates.get(sessionId) ?? activeState
+          const messageCallbacks = getSessionMessageCallbacks(sessionId)
+          const cliSession = cliSessions.get(sessionId)
+          return (
+            <section
+              key={sessionId}
+              // Scope for the attention reveal: every mounted thread is in the
+              // DOM at once, so the reveal must find THIS session's control.
+              data-session-section={sessionId}
+              style={{
+                height: '100%',
+                flex: isActive ? 1 : undefined,
+                // A maximized Right Panel covers the conversation: hide it the
+                // same way an inactive session is hidden (display none keeps
+                // the thread mounted, so restoring is a paint toggle).
+                display: isActive ? 'flex' : 'none',
+                // A row-flex item: without it the section cannot narrow below a
+                // terminal's drawn width, and the emulator refits a few columns at a time.
+                minWidth: 0,
+              }}
+            >
+              <div className="flex h-full min-w-0 flex-1">
+              {cliSession ? (
+                <Suspense fallback={null}>
+                  <CliSessionView
+                    sessionId={sessionId}
+                    cli={cliSession.cli}
+                    name={getTemplateTitle(cliSession.type)}
+                    runtimeConnection={runtimeConnection}
+                    openLink={openTerminalLink}
+                  />
+                </Suspense>
+              ) : (
+              <ThreadErrorBoundary sessionId={sessionId} t={t}>
+                <AssistantUiThread
+                  state={state}
+                  readOnly={shutdownSessionIds.has(sessionId)}
+                  submitPrompt={bound?.submitPrompt ?? submitPrompt}
+                  submitActionMessage={bound?.submitActionMessage ?? submitActionMessage}
+                  continueConversation={bound?.continueConversation ?? continueConversation}
+                  submitComposerMessage={bound?.submitComposerMessage ?? submitComposerMessage}
+                  onPickAttachmentFiles={pickComposerAttachmentFiles}
+                  submitToolResult={bound?.submitToolResult ?? submitToolResult}
+                  loadToolCallDetail={bound?.loadToolCallDetail ?? loadToolCallDetail}
+                  loadTurnDiffDetail={loadTurnDiffDetail}
+                  interrupt={bound?.interrupt ?? interrupt}
+                  setPermissionMode={bound?.setPermissionMode ?? setPermissionMode}
+                  setSkipDangerousMode={bound?.setSkipDangerousMode ?? setSkipDangerousMode}
+                  onClearPendingMessage={bound?.clearPendingMessage ?? clearPendingMessage}
+                  onRemoveInjectMessage={bound?.removeInjectMessage ?? removeInjectMessage}
+                  resolveToolUseConfirm={bound?.resolveToolUseConfirm ?? resolveToolUseConfirm}
+                  clearPlanApproval={bound?.clearPlanApproval ?? clearPlanApproval}
+                  sessions={sessionItems}
+                  activeSessionId={mount.foregroundSessionId}
+                  onOpenBackgroundTasks={handleOpenBackgroundTasks}
+                  // THIS session's running background tasks (not the active
+                  // session's) — each mounted thread shows its own footer
+                  // "still working" indicator.
+                  runningBackgroundTaskCount={countRunning(subAgentRowsForSession(sessionId))}
+                  backgroundTaskRows={subAgentRowsForSession(sessionId)}
+                  onStopBackgroundTask={handleStopBackgroundTask}
+                  onOpenBackgroundTasksList={handleOpenBackgroundTasksList}
+                  onOpenPlanPanel={() => openPaneFor('plan')}
+                  onOpenFileInPanel={openFile}
+                  onOpenTerminalInPanel={openTerminalInPanel}
+                  statFilePaths={statFilePaths}
+                  onOpenDiffInPanel={openDiffInPanel}
+                  onOpenSkillInPanel={openSkillInPanel}
+                  onSwitchThread={focusSession}
+                  onDeleteThread={handleDeleteThread}
+                  onRenameThread={retitleSession}
+                  onForkFromMessage={messageCallbacks.onFork}
+                  onSendInForkedSession={messageCallbacks.onSendInFork}
+                  onContinueInCode={messageCallbacks.onContinueInCode}
+                  onRewindToMessage={messageCallbacks.onRewind}
+                  onStartSideChat={inPane ? undefined : messageCallbacks.onStartSideChat}
+                  onPendingQuestionsChange={handlePendingQuestionsChange}
+                  onNewThread={openNewSession}
+                  openSettings={mount.lightControls ? undefined : handleOpenSettings}
+                  onOpenPluginSettings={handleOpenPluginSettings}
+                  modPanesDocked={modPanesDocked}
+                  sessionCardsDocked={sessionCardsDocked}
+                  sessionCardsPopoverOpen={!inPane && isActive && !sessionCardsFit && sessionCardsPopoverOpen}
+                  onSessionCardsPopoverClose={closeSessionCardsPopover}
+                  runtimeConnection={runtimeConnection}
+                  loadProviderMissingPrompt={handleLoadProviderMissingPrompt}
+                  onAdoptDefaultSelection={handleAdoptDefaultSelection}
+                  onSelectSessionModel={mount.lightControls ? undefined : handleSessionSelectModel}
+                  onSetAutoCompactWindow={handleSetAutoCompactWindow}
+                  onSelectProjectFolder={mount.lightControls ? undefined : handleSelectProjectFolder}
+                  onOpenProjectFolder={mount.lightControls ? undefined : handleOpenProjectFolder}
+                  onRevealProjectFolder={mount.lightControls ? undefined : handleRevealProjectFolder}
+                  initialComposerDraft={sessionDraftBySessionId.get(sessionId)}
+                  composerInsert={composerInsert?.sessionId === sessionId ? composerInsert : null}
+                  onComposerEdit={handleComposerEdit}
+                />
+              </ThreadErrorBoundary>
+              )}
+              </div>
+            </section>
+          )
+  }
   // One pane's frame and body (F-9). The panes render outside the thread
   // providers, so each brings the handles the deep cards need.
   const renderSidePane = (kind: SidePaneKind): ReactNode => {
@@ -4365,6 +4591,23 @@ export function MultiSessionShell({
           onCloseTab={handleCloseModTab}
           frame={({ title, body }) => frame(title, body)}
         />
+      )
+    }
+    if (kind === 'sidechat') {
+      return (
+        <SideChatPane
+          items={activeSideChats}
+          selectedId={shownSideChatId}
+          onSelect={handleSelectSideChat}
+          onAdd={canAddSideChat ? handleAddSideChat : undefined}
+          onDetach={handleDetachSideChat}
+          onDelete={handleDeleteThread}
+          frame={({ title, actions, body }) => frame(title, body, actions)}
+        >
+          {shownSideChatId && shownSideChatId !== activeSessionId
+            ? renderSessionThread(shownSideChatId, true)
+            : null}
+        </SideChatPane>
       )
     }
     if (kind === 'terminal') {
@@ -4545,6 +4788,7 @@ export function MultiSessionShell({
         hasModPanes={modPanesDocked && shellModUi.panes.length > 0}
         terminalAvailable={terminalsState?.available ?? true}
         onTogglePane={togglePane}
+        paneAttention={sideChatPaneAttention}
         paneKinds={activeCli ? CLI_SESSION_PANES : undefined}
         sessionOverview={
           activeCli
@@ -4744,109 +4988,9 @@ export function MultiSessionShell({
           onPaneMove={commitPaneMove}
           chat={
           <>
-        {mountedSessionIds.map(sessionId => {
-          const isActive = sessionId === activeSessionId
-          const state = sessionStates.get(sessionId) ?? activeState
-          const messageCallbacks = getSessionMessageCallbacks(sessionId)
-          const cliSession = cliSessions.get(sessionId)
-          return (
-            <section
-              key={sessionId}
-              // Scope for the attention reveal: every mounted thread is in the
-              // DOM at once, so the reveal must find THIS session's control.
-              data-session-section={sessionId}
-              style={{
-                height: '100%',
-                flex: isActive ? 1 : undefined,
-                // A maximized Right Panel covers the conversation: hide it the
-                // same way an inactive session is hidden (display none keeps
-                // the thread mounted, so restoring is a paint toggle).
-                display: isActive ? 'flex' : 'none',
-                // A row-flex item: without it the section cannot narrow below a
-                // terminal's drawn width, and the emulator refits a few columns at a time.
-                minWidth: 0,
-              }}
-            >
-              <div className="flex h-full min-w-0 flex-1">
-              {cliSession ? (
-                <Suspense fallback={null}>
-                  <CliSessionView
-                    sessionId={sessionId}
-                    cli={cliSession.cli}
-                    name={getTemplateTitle(cliSession.type)}
-                    runtimeConnection={runtimeConnection}
-                    openLink={openTerminalLink}
-                  />
-                </Suspense>
-              ) : (
-              <ThreadErrorBoundary sessionId={sessionId} t={t}>
-                <AssistantUiThread
-                  state={state}
-                  readOnly={shutdownSessionIds.has(sessionId)}
-                  submitPrompt={submitPrompt}
-                  submitActionMessage={submitActionMessage}
-                  continueConversation={continueConversation}
-                  submitComposerMessage={submitComposerMessage}
-                  onPickAttachmentFiles={pickComposerAttachmentFiles}
-                  submitToolResult={submitToolResult}
-                  loadToolCallDetail={loadToolCallDetail}
-                  loadTurnDiffDetail={loadTurnDiffDetail}
-                  interrupt={interrupt}
-                  setPermissionMode={setPermissionMode}
-                  setSkipDangerousMode={setSkipDangerousMode}
-                  onClearPendingMessage={clearPendingMessage}
-                  onRemoveInjectMessage={removeInjectMessage}
-                  resolveToolUseConfirm={resolveToolUseConfirm}
-                  clearPlanApproval={clearPlanApproval}
-                  sessions={sessionItems}
-                  activeSessionId={activeSessionId}
-                  onOpenBackgroundTasks={handleOpenBackgroundTasks}
-                  // THIS session's running background tasks (not the active
-                  // session's) — each mounted thread shows its own footer
-                  // "still working" indicator.
-                  runningBackgroundTaskCount={countRunning(subAgentRowsForSession(sessionId))}
-                  backgroundTaskRows={subAgentRowsForSession(sessionId)}
-                  onStopBackgroundTask={handleStopBackgroundTask}
-                  onOpenBackgroundTasksList={handleOpenBackgroundTasksList}
-                  onOpenPlanPanel={() => openPaneFor('plan')}
-                  onOpenFileInPanel={openFile}
-                  onOpenTerminalInPanel={openTerminalInPanel}
-                  statFilePaths={statFilePaths}
-                  onOpenDiffInPanel={openDiffInPanel}
-                  onOpenSkillInPanel={openSkillInPanel}
-                  onSwitchThread={focusSession}
-                  onDeleteThread={handleDeleteThread}
-                  onRenameThread={retitleSession}
-                  onForkFromMessage={messageCallbacks.onFork}
-                  onSendInForkedSession={messageCallbacks.onSendInFork}
-                  onContinueInCode={messageCallbacks.onContinueInCode}
-                  onRewindToMessage={messageCallbacks.onRewind}
-                  onPendingQuestionsChange={handlePendingQuestionsChange}
-                  onNewThread={openNewSession}
-                  openSettings={handleOpenSettings}
-                  onOpenPluginSettings={handleOpenPluginSettings}
-                  modPanesDocked={modPanesDocked}
-                  sessionCardsDocked={sessionCardsDocked}
-                  sessionCardsPopoverOpen={isActive && !sessionCardsFit && sessionCardsPopoverOpen}
-                  onSessionCardsPopoverClose={closeSessionCardsPopover}
-                  runtimeConnection={runtimeConnection}
-                  loadProviderMissingPrompt={handleLoadProviderMissingPrompt}
-                  onAdoptDefaultSelection={handleAdoptDefaultSelection}
-                  onSelectSessionModel={handleSessionSelectModel}
-                  onSetAutoCompactWindow={handleSetAutoCompactWindow}
-                  onSelectProjectFolder={handleSelectProjectFolder}
-                  onOpenProjectFolder={handleOpenProjectFolder}
-                  onRevealProjectFolder={handleRevealProjectFolder}
-                  initialComposerDraft={sessionDraftBySessionId.get(sessionId)}
-                  composerInsert={composerInsert?.sessionId === sessionId ? composerInsert : null}
-                  onComposerEdit={handleComposerEdit}
-                />
-              </ThreadErrorBoundary>
-              )}
-              </div>
-            </section>
-          )
-        })}
+        {mountedWithPaneIds
+          .filter(id => id !== shownSideChatId || id === activeSessionId)
+          .map(sessionId => renderSessionThread(sessionId, false))}
           </>
           }
         />

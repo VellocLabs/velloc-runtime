@@ -320,6 +320,9 @@ export class ChildReportCoordinator {
     if (listed && !listed.spawnedFrom && !listed.forkedFromSessionId && !listed.spawnerSessionId) return
     const meta = await this.readMeta(childId)
     if (!meta) return
+    // A side chat is the person's aside: it queues no report and wakes no
+    // parent; what it has to say it sends as a message (F-36).
+    if (meta.sideChat === true) return
     const origin = originOf(meta)
     // A teammate reports through its lead's inbox (F-20).
     if (!origin || origin.kind === 'team') return
