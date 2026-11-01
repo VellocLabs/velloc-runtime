@@ -143,6 +143,8 @@ export const en = {
   'sideChat.detach': 'Move to the sidebar',
   'sideChat.waiting': 'Waiting for you',
   'sideChat.working': 'Working',
+  'sideChat.archive': 'Archive',
+  'sideChat.archiveBusy': 'Archive once it stops working or waiting for you',
   'composer.quoteDismiss': 'Remove quote',
   'action.fork': 'Fork from here',
   // The title a "Fork from here" copy gets: the source's displayed title

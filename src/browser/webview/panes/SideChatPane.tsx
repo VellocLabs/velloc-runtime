@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
-import { FolderSyncIcon, PanelLeftOpenIcon, PlusIcon, Trash2Icon } from 'lucide-react'
+import { ArchiveIcon, FolderSyncIcon, PanelLeftOpenIcon, PlusIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -22,7 +22,9 @@ export type SideChatPaneProps = {
   /** Absent while the conversation has no message to fork from. */
   onAdd?: () => void
   onDetach: (sessionId: string) => void
-  onDelete: (sessionId: string) => void
+  /** Closes a side chat: archives it. Offered only while it neither starts,
+   *  works nor waits for the person, which the runtime refuses. */
+  onArchive: (sessionId: string) => void
   frame: (parts: { title: ReactNode; actions: ReactNode; body: ReactNode }) => ReactNode
   /** The selected side chat's mounted conversation. */
   children?: ReactNode
@@ -34,7 +36,7 @@ export function SideChatPane({
   onSelect,
   onAdd,
   onDetach,
-  onDelete,
+  onArchive,
   frame,
   children,
 }: SideChatPaneProps): ReactElement {
@@ -80,6 +82,8 @@ export function SideChatPane({
             {items.map(item => {
               const selected = item.sessionId === selectedId
               const label = sessionDisplayTitle(item, t)
+              const busy = !!(item.starting || item.running || item.needsAnswer)
+              const archiveLabel = t(busy ? 'sideChat.archiveBusy' : 'sideChat.archive')
               return (
                 <li
                   key={item.sessionId}
@@ -128,13 +132,14 @@ export function SideChatPane({
                   </button>
                   <button
                     type="button"
-                    aria-label={t('sidebar.delete')}
-                    title={t('sidebar.delete')}
-                    data-testid={`side-chat-delete-${item.sessionId}`}
-                    onClick={() => onDelete(item.sessionId)}
-                    className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+                    aria-label={archiveLabel}
+                    title={archiveLabel}
+                    data-testid={`side-chat-archive-${item.sessionId}`}
+                    disabled={busy}
+                    onClick={() => onArchive(item.sessionId)}
+                    className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:text-foreground focus:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed disabled:hover:text-muted-foreground"
                   >
-                    <Trash2Icon className="size-3.5" />
+                    <ArchiveIcon className="size-3.5" />
                   </button>
                 </li>
               )

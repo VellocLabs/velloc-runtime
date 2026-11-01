@@ -3727,6 +3727,11 @@ export function MultiSessionShell({
       requestId: randomUuid(),
     })
   }, [])
+  // Closing a side chat archives it; Archived lists it, naming its parent.
+  const handleArchiveSideChat = useCallback(
+    (sideChatId: string) => handleArchiveThread(sideChatId, true),
+    [handleArchiveThread],
+  )
   const sessionTabs = useMemo(
     () => deriveSessionTabs(tabSessionItems, activeSessionId),
     [tabSessionItems, activeSessionId],
@@ -4679,7 +4684,7 @@ export function MultiSessionShell({
           onSelect={handleSelectSideChat}
           onAdd={canAddSideChat ? handleAddSideChat : undefined}
           onDetach={handleDetachSideChat}
-          onDelete={handleDeleteThread}
+          onArchive={handleArchiveSideChat}
           frame={({ title, actions, body }) => frame(title, body, actions)}
         >
           {shownSideChatId && shownSideChatId !== activeSessionId

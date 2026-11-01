@@ -124,6 +124,8 @@ export const de: Messages = {
   'sideChat.detach': 'In die Seitenleiste verschieben',
   'sideChat.waiting': 'Wartet auf dich',
   'sideChat.working': 'Arbeitet',
+  'sideChat.archive': 'Archivieren',
+  'sideChat.archiveBusy': 'Archivieren, sobald es nicht mehr arbeitet oder auf dich wartet',
   'composer.quoteDismiss': 'Zitat entfernen',
   'action.fork': 'Ab hier verzweigen',
   'session.forkTitle': '{title} (Fork)',

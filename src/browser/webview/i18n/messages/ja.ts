@@ -122,6 +122,8 @@ export const ja: Messages = {
   'sideChat.detach': 'サイドバーへ移動',
   'sideChat.waiting': '返答を待っています',
   'sideChat.working': '作業中',
+  'sideChat.archive': 'アーカイブ',
+  'sideChat.archiveBusy': '作業中や返答待ちが終わるとアーカイブできます',
   'composer.quoteDismiss': '引用を削除',
   'action.fork': 'ここから分岐',
   'session.forkTitle': '{title}（フォーク）',

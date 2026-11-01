@@ -123,6 +123,8 @@ export const zh: Messages = {
   'sideChat.detach': '移到侧边栏',
   'sideChat.waiting': '等待你回应',
   'sideChat.working': '进行中',
+  'sideChat.archive': '归档',
+  'sideChat.archiveBusy': '等它不再进行或等待你时才能归档',
   'composer.quoteDismiss': '移除引用',
   'action.fork': '从这里分叉',
   'session.forkTitle': '{title}（分叉）',

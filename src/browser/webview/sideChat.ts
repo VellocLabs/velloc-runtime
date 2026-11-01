@@ -3,8 +3,9 @@ import type { SessionListItem } from './SessionRows'
 /**
  * Side chats (F-36): forks a person opens beside a conversation. A side chat
  * is listed in its parent's side panel, never in the sidebar or the tab
- * strip, until it is detached or its parent is gone. Pure helpers over the
- * session list.
+ * strip, until it is detached or its parent is gone. Closing one archives it:
+ * it leaves the panel and lists under Archived until unarchived. Pure helpers
+ * over the session list.
  */
 
 /** The fields the relation is read from. */
@@ -12,6 +13,7 @@ export type SideChatRelation = {
   sessionId: string
   sideChat?: boolean
   detached?: boolean
+  archived?: boolean
   parentSessionId?: string
 }
 
@@ -20,14 +22,14 @@ export function isSideChatUnderParent(item: SideChatRelation): boolean {
   return item.sideChat === true && item.detached !== true && typeof item.parentSessionId === 'string'
 }
 
-/** The side chats shown under `parentId`, newest first. */
+/** The side chats shown under `parentId`, newest first; archived ones are not. */
 export function sideChatsOf(
   items: readonly SessionListItem[],
   parentId: string | null | undefined,
 ): SessionListItem[] {
   if (!parentId) return []
   return items
-    .filter(item => isSideChatUnderParent(item) && item.parentSessionId === parentId)
+    .filter(item => isSideChatUnderParent(item) && item.archived !== true && item.parentSessionId === parentId)
     .sort((a, b) => (b.createdAt ?? b.updatedAt) - (a.createdAt ?? a.updatedAt))
 }
 
@@ -35,12 +37,15 @@ export function sideChatsOf(
  * The rows the sidebar and the tab strip list: a side chat stays in its
  * parent's panel while the parent is in the list; one whose parent is gone
  * (deleted, or not loaded) is a session of its own and lists like any other,
- * so deleting a parent never deletes or hides what was said beside it.
+ * so deleting a parent never deletes or hides what was said beside it. An
+ * archived side chat lists under Archived like any archived session.
  */
 export function withoutListedSideChats<T extends SideChatRelation>(items: readonly T[]): T[] {
   const ids = new Set(items.map(item => item.sessionId))
   return items.filter(
-    item => !(isSideChatUnderParent(item) && ids.has(item.parentSessionId as string)),
+    item =>
+      item.archived === true ||
+      !(isSideChatUnderParent(item) && ids.has(item.parentSessionId as string)),
   )
 }
 

@@ -28,6 +28,7 @@ const newer = item({ sessionId: 'c2', sideChat: true, parentSessionId: 'p', crea
 const detached = item({ sessionId: 'c3', sideChat: true, parentSessionId: 'p', detached: true, createdAt: 3 })
 const plainFork = item({ sessionId: 'f', parentSessionId: 'p', lineageKind: 'fork', createdAt: 4 })
 const orphan = item({ sessionId: 'o', sideChat: true, parentSessionId: 'gone', createdAt: 5 })
+const archived = item({ sessionId: 'c4', sideChat: true, parentSessionId: 'p', archived: true, createdAt: 6 })
 
 describe('side chats in the list', () => {
   it('belong to a parent while not detached', () => {
@@ -43,6 +44,14 @@ describe('side chats in the list', () => {
       'c1',
     ])
     expect(sideChatsOf([parent, older], null)).toEqual([])
+  })
+
+  it('an archived one leaves the pane and lists in the sidebar, where Archived takes it (F-36)', () => {
+    expect(sideChatsOf([parent, older, archived], 'p').map(s => s.sessionId)).toEqual(['c1'])
+    expect(withoutListedSideChats([parent, older, archived]).map(s => s.sessionId)).toEqual(['p', 'c4'])
+    const unarchived = { ...archived, archived: false }
+    expect(sideChatsOf([parent, unarchived], 'p').map(s => s.sessionId)).toEqual(['c4'])
+    expect(withoutListedSideChats([parent, unarchived]).map(s => s.sessionId)).toEqual(['p'])
   })
 
   it("a detached side chat's summary names no parent and says detached", () => {

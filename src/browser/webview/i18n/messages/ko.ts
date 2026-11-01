@@ -121,6 +121,8 @@ export const ko: Messages = {
   'sideChat.detach': '사이드바로 이동',
   'sideChat.waiting': '답변을 기다리는 중',
   'sideChat.working': '작업 중',
+  'sideChat.archive': '보관',
+  'sideChat.archiveBusy': '작업이나 응답 대기가 끝나면 보관할 수 있습니다',
   'composer.quoteDismiss': '인용 제거',
   'action.fork': '여기서 분기',
   'session.forkTitle': '{title} (포크)',

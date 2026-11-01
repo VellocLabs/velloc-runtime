@@ -125,6 +125,8 @@ export const es: Messages = {
   'sideChat.detach': 'Mover a la barra lateral',
   'sideChat.waiting': 'Espera tu respuesta',
   'sideChat.working': 'Trabajando',
+  'sideChat.archive': 'Archivar',
+  'sideChat.archiveBusy': 'Se puede archivar cuando deje de trabajar o de esperarte',
   'composer.quoteDismiss': 'Quitar cita',
   'action.fork': 'Bifurcar desde aquí',
   'session.forkTitle': '{title} (fork)',
