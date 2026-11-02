@@ -305,6 +305,7 @@ export const es: Messages = {
   'chapters.jumpFailed': 'No se pudo ir a este capítulo',
   'chapters.loading': 'Cargando…',
   'chapters.badge': 'Capítulo: {title}',
+  'chapters.start': 'Inicio de la sesión',
   'passage.label': 'Extracto',
   'passage.replyLabel': 'Respuesta',
   'passage.accessibleName': 'Extracto: {excerpt}',

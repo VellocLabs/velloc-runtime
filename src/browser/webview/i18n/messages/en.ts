@@ -325,6 +325,7 @@ export const en = {
   'chapters.jumpFailed': 'Couldn\'t reach this chapter',
   'chapters.loading': 'Loading…',
   'chapters.badge': 'Chapter: {title}',
+  'chapters.start': 'Session start',
   // The quote cards above the composer and their full-text preview (F-22).
   'passage.label': 'Excerpt',
   'passage.replyLabel': 'Reply',

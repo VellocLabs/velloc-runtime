@@ -302,6 +302,7 @@ export const ja: Messages = {
   'chapters.jumpFailed': 'この章に移動できませんでした',
   'chapters.loading': '読み込み中…',
   'chapters.badge': '章：{title}',
+  'chapters.start': 'セッションの開始',
   'passage.label': '抜粋',
   'passage.replyLabel': '返信',
   'passage.accessibleName': '抜粋: {excerpt}',

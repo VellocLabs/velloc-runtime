@@ -301,6 +301,7 @@ export const ko: Messages = {
   'chapters.jumpFailed': '이 챕터로 이동할 수 없습니다',
   'chapters.loading': '불러오는 중…',
   'chapters.badge': '챕터: {title}',
+  'chapters.start': '세션 시작',
   'passage.label': '발췌',
   'passage.replyLabel': '답장',
   'passage.accessibleName': '발췌: {excerpt}',

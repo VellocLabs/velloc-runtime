@@ -303,6 +303,7 @@ export const zh: Messages = {
   'chapters.jumpFailed': '无法跳转到此章节',
   'chapters.loading': '正在加载…',
   'chapters.badge': '章节：{title}',
+  'chapters.start': '会话开始',
   'passage.label': '引用',
   'passage.replyLabel': '回复',
   'passage.accessibleName': '引用：{excerpt}',

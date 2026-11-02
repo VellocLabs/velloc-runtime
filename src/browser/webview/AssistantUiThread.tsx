@@ -1244,11 +1244,20 @@ function InteractiveAssistantUiThread({
         const anchor = resolveChapterAnchor(runtimeMessagesRef.current, entries(), mark)
         return anchor.kind === 'row' ? 'ready' : anchor.kind
       },
+      indexOf: mark => {
+        const anchor = resolveChapterAnchor(runtimeMessagesRef.current, entries(), mark)
+        return anchor.kind === 'row' ? anchor.index : null
+      },
       reveal: async mark => {
         const root = threadRootRef.current
         const anchor = resolveChapterAnchor(runtimeMessagesRef.current, entries(), mark)
         if (!root || anchor.kind !== 'row') return false
         return revealChapterRow(root, anchor.index, anchor.ordinal)
+      },
+      revealStart: async () => {
+        const root = threadRootRef.current
+        if (!root || runtimeMessagesRef.current.length === 0) return false
+        return revealChapterRow(root, 0)
       },
     }
   }, [sessionChapters])

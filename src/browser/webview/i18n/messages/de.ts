@@ -304,6 +304,7 @@ export const de: Messages = {
   'chapters.jumpFailed': 'Kapitel konnte nicht angezeigt werden',
   'chapters.loading': 'Wird geladen…',
   'chapters.badge': 'Kapitel: {title}',
+  'chapters.start': 'Sitzungsbeginn',
   'passage.label': 'Auszug',
   'passage.replyLabel': 'Antwort',
   'passage.accessibleName': 'Auszug: {excerpt}',

@@ -92,7 +92,7 @@ import { createPortal } from "react-dom";
 import { useModComposer } from "./use-mod-composer";
 import { MessageContextMenu } from "./message-context-menu";
 import { ComposerPassageStrip, useComposerPassages, usePassageList } from "./composer-passages";
-import { ChapterMarkBadge, ChapterMarksChip } from "./chapter-marks";
+import { ChapterMarkBadge, ChapterRail } from "./chapter-marks";
 import { registerAttachSelectionOwner } from "@/browser/webview/attachSelectionShortcut";
 import {
   isAttachableSelection,
@@ -1096,6 +1096,7 @@ export const Thread: FC<{
       {/* `autoScroll={false}` and the assistant-ui scroll triggers are disabled:
           AssistantUiThread's controller owns lock-to-bottom (locks on first foreground
           entry, send and manual bottom scroll; releases when the user scrolls away). */}
+      <ChapterRail viewportRef={viewportRef} isForeground={isForeground !== false} />
       <ThreadPrimitive.Viewport
         ref={setViewportRef}
         autoScroll={false}
@@ -1185,7 +1186,6 @@ export const Thread: FC<{
               the row hugs its bottom edge. */}
           <div className="flex items-center gap-1.5 pr-1 -mb-2.5 md:-mb-[18px]">
             <CurrentProjectFolderChip />
-            <ChapterMarksChip isForeground={isForeground !== false} />
             <div className="ml-auto flex items-center gap-1">
               {/* This session's model (read-only) + effort — a pick here is
                   per-session; the topbar sets the global default. */}

@@ -301,6 +301,7 @@ export const fr: Messages = {
   'chapters.jumpFailed': 'Impossible d\'atteindre ce chapitre',
   'chapters.loading': 'Chargement…',
   'chapters.badge': 'Chapitre : {title}',
+  'chapters.start': 'Début de la session',
   'passage.label': 'Extrait',
   'passage.replyLabel': 'Réponse',
   'passage.accessibleName': 'Extrait : {excerpt}',
