@@ -242,7 +242,7 @@ export async function resolveLocalReviewScope(options: ScopeResolverOptions, tar
       if (signal?.aborted) throw new GitAdapterError('cancelled')
       const before = tree.get(path)
       let status: DiffFile['status'] | undefined
-      if (files.length >= (options.maxFiles ?? 1000) || options.skipPath?.(path)) status = 'skipped'
+      if (files.length >= (options.maxFiles ?? 1000)) status = 'skipped'
       if (before?.mode === '120000' || before?.mode === '160000' || ['120000', '160000'].includes(indexModes.get(path) ?? '') || conflicted.has(path)) status = 'skipped'
       if (status) { files.push({ path, status, patch: '', anchors: [] }); continue }
       const current: WorkspaceRead = tracked.has(path) || paths.includes(path)
@@ -275,6 +275,7 @@ export async function resolveLocalReviewScope(options: ScopeResolverOptions, tar
       const modeChanged = !!before && !!afterMode && before.mode !== afterMode
       snapshotParts.push(`${path}\0${current.kind}\0${afterHash}\0${afterMode ?? 'unknown'}`)
       if (beforeHash === afterHash && (!!before === (current.kind === 'file')) && !modeChanged) continue
+      if (options.skipPath?.(path)) { files.push({ path, status: 'skipped', patch: '', anchors: [] }); continue }
       const beforeText = utf8(beforeBytes), afterText = utf8(afterBytes)
       if (beforeText === undefined || afterText === undefined) { files.push({ path, status: 'binary', patch: '', anchors: [] }); continue }
       const result = structuredPatch(path, path, beforeText, afterText, '', '', { context: 3 })

@@ -7,6 +7,8 @@ import type { Messages } from './en'
 // Register: informal 你 throughout (never 您). Chinese punctuation in prose,
 // ASCII punctuation inside code, ids and URLs.
 export const zh: Messages = {
+  "reviewCard.localNotPushed": "本地修改尚未推送到此变更请求。",
+  "reviewCard.verificationWarning": "此本地应用可能访问其配置的服务。仅批准使用测试数据的这次交互；不要仅为验证而向生产环境或外部服务写入数据。",
   "reviewCard.discussions": "发布为行讨论",
   "reviewCard.exportJson": "查看报告 JSON",
   "reviewCard.output.json": "JSON",

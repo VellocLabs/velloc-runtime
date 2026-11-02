@@ -7,6 +7,8 @@
 // key-name autocomplete + type-checking with zero template-literal-type
 // machinery. `{name}` placeholders are interpolated by the `t()` function.
 export const en = {
+  "reviewCard.localNotPushed": "Local edits have not been pushed to this change request.",
+  "reviewCard.verificationWarning": "This local application may contact its configured services. Approve only this interaction using test data; do not perform production or external writes solely for verification.",
   "reviewCard.discussions": "Publish as line discussions",
   "reviewCard.exportJson": "View report JSON",
   "reviewCard.output.json": "JSON",

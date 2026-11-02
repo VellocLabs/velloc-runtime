@@ -10,7 +10,7 @@ type Registry = { version: 1; receipts: PublicationReceipt[]; identities: Array<
 const owners = new WeakMap<object, ReceiptActor>()
 const digest = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 const id = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,300}$/.test(value)
-const reasons = new Set(['head-changed', 'head-check-failed', 'publication-denied', 'write-outcome-unknown', 'recovered-remote-write', 'confirmed-absent', 'absence-not-authoritative', 'recovery-page-limit', 'recovery-inconclusive', 'recovery-store-unavailable', 'receipt-missing', 'retry-authorization-required', 'summary-update-authorization-required', 'publication-conflict'])
+const reasons = new Set(['head-changed', 'head-check-failed', 'publication-denied', 'write-outcome-unknown', 'recovered-remote-write', 'confirmed-absent', 'absence-not-authoritative', 'recovery-page-limit', 'recovery-inconclusive', 'recovery-store-unavailable', 'receipt-missing', 'retry-authorization-required', 'summary-update-authorization-required', 'publication-conflict', 'invalid-publication', 'binary-context', 'response-limit', 'target-mismatch', 'invalid-target', 'invalid-response', 'http-failed', 'redirect-refused', 'secret-origin'])
 const fail = (): never => { throw new Error('invalid-publication-receipt') }
 const object = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fail()

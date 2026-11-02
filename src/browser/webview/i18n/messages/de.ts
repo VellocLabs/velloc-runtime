@@ -6,6 +6,8 @@ import type { Messages } from './en'
 // Register: informal *du* throughout — matches the German .xtb on the C++
 // surface. Keep labels short; German runs long and the chrome is fixed-width.
 export const de: Messages = {
+  "reviewCard.localNotPushed": "Lokale Änderungen wurden nicht in diese Änderungsanfrage gepusht.",
+  "reviewCard.verificationWarning": "Diese lokale Anwendung kann ihre konfigurierten Dienste kontaktieren. Genehmige nur diese Interaktion mit Testdaten; schreibe nicht allein zur Überprüfung in Produktionssysteme oder externe Dienste.",
   "reviewCard.discussions": "Als Zeilendiskussionen veröffentlichen",
   "reviewCard.exportJson": "Bericht als JSON anzeigen",
   "reviewCard.output.json": "JSON",

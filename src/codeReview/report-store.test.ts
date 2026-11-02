@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { ReviewReportStore, type ReportCandidateInput, type ReportPolicy, type ReportStorageAdapter } from './report-store'
 import { presentReviewJson, presentReviewTerminal, projectReviewReport } from './presenter'
+import { createReviewTools } from './tools'
+import type { Message } from '../runtime/RuntimeTypes'
 
 function fixture() {
   const data = new Map<string, string>()
@@ -229,7 +231,7 @@ describe('review report store', () => {
     await expect(store.settlePublication(id, result.operation.id, { state: 'applied' as 'succeeded' })).rejects.toThrow('invalid-enum')
   })
 
-  it('deduplicates unchanged root causes across report runs and requires query-confirmed retries', async () => {
+  it('keeps publication operations run-owned and requires query-confirmed retries', async () => {
     const { store, run } = fixture()
     const first = await run({}, true)
     const second = await run({}, true)
@@ -241,8 +243,12 @@ describe('review report store', () => {
       return { id, request: { grantId, diagnosticIds, remoteHead: 'head', kind: 'inline' as const, normalizedContent: 'Same issue' } }
     }))
     const results = await Promise.all(requests.map(item => store.beginPublication(item.id, item.request)))
-    expect(results.filter(item => item.shouldSend)).toHaveLength(1)
-    const owner = results.findIndex(item => item.shouldSend)
+    expect(results.filter(item => item.shouldSend)).toHaveLength(2)
+    expect(results[0].operation.id).not.toBe(results[1].operation.id)
+    await expect(store.settlePublication(requests[1].id, results[0].operation.id, { state: 'succeeded', externalRef: 'remote-42' })).rejects.toThrow('unknown-publication')
+    await store.settlePublication(requests[1].id, results[1].operation.id, { state: 'succeeded', externalRef: 'remote-42' })
+    expect((await store.getSnapshot(requests[1].id)).actions.at(-1)).toMatchObject({ state: 'succeeded', externalRef: 'remote-42' })
+    const owner = 0
     const operationId = results[owner].operation.id
     await store.settlePublication(requests[owner].id, operationId, { state: 'uncertain' })
     await expect(store.retryPublication(requests[owner].id, operationId, requests[owner].request.grantId, 'head', false)).rejects.toThrow('publication-retry-not-safe')
@@ -609,6 +615,101 @@ describe('review report store', () => {
     await store.endActionPhase(id, newEpoch)
   })
 
+  it('reconciles a confirmed ordinary edit once, preserves findings, and never creates an edit grant', async () => {
+    const { store, run, adapter, options } = fixture()
+    const { id, anchorKey } = await run()
+    await populate(store, id, anchorKey)
+    await store.finish(id, 'finished')
+    const before = await store.getSnapshot(id)
+    const diagnosticId = before.retainedIds[0]
+    const receipt = { ref: 'ordinary-edit', runId: id, workspaceKey: 'workspace', headRevision: 'head', paths: ['src/a.ts'],
+      beforeDigest: 'before', afterDigest: 'after', expectedSequence: before.events.at(-1)!.sequence,
+      evidence: [{ path: 'src/a.ts', revision: 'after', excerpt: 'if (!value) return; read(value)' }], verifyCurrent: async () => true }
+    const updates = [{ diagnosticId, outcome: 'resolved' as const, explanation: 'The new guard prevents absent input reaching read', mutationRefs: [receipt.ref], evidence: [{ path: 'src/a.ts', quote: 'if (!value) return;', relevance: 'Corrects absent-input mechanism' }] }]
+    const actions = await store.reconcileExternalEdit(id, receipt, updates)
+    expect(actions).toMatchObject([{ kind: 'repair', state: 'applied', verification: 'not-run', executionRef: 'ordinary-edit' }])
+    expect(await store.reconcileExternalEdit(id, receipt, updates)).toEqual(actions)
+    const after = await store.getSnapshot(id)
+    expect(after.actions).toHaveLength(1)
+    expect(after.diagnostics).toEqual(before.diagnostics)
+    expect(after.assessments).toEqual(before.assessments)
+    expect(after.retainedIds).toEqual(before.retainedIds)
+    expect(after.evidence.at(-1)?.source).toEqual({ path: 'src/a.ts', revision: 'after', toolCallKey: 'ordinary-edit' })
+    expect(after.run.progress.status).toBe('finished')
+    expect(after.verifications).toEqual([])
+    await expect(store.beginActionPhase(id, receipt.ref)).rejects.toThrow('action-not-authorized')
+    const restored = new ReviewReportStore(adapter, options)
+    expect(await restored.reconcileExternalEdit(id, receipt, updates)).toEqual(actions)
+    await expect(store.reconcileExternalEdit(id, { ...receipt, afterDigest: 'different' }, updates)).rejects.toThrow('external-edit-receipt-conflict')
+  })
+
+  it('rejects stale current code, foreign runs, unrelated paths and unsupported resolutions atomically', async () => {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    await populate(store, id, anchorKey)
+    await store.finish(id, 'finished')
+    const before = await store.getSnapshot(id)
+    const receipt = { ref: 'ordinary-edit', runId: id, workspaceKey: 'workspace', headRevision: 'head', paths: ['src/a.ts'],
+      beforeDigest: 'before', afterDigest: 'after', expectedSequence: before.events.at(-1)!.sequence,
+      evidence: [{ path: 'src/a.ts', revision: 'after', excerpt: 'if (!value) return' }], verifyCurrent: async () => true }
+    const updates = [{ diagnosticId: before.retainedIds[0], outcome: 'resolved' as const, explanation: 'Guard prevents failure', mutationRefs: [receipt.ref], evidence: [{ path: 'src/a.ts', quote: 'if (!value) return', relevance: 'Guard' }] }]
+    await expect(store.reconcileExternalEdit(id, { ...receipt, verifyCurrent: async () => false }, updates)).rejects.toThrow('external-edit-stale-evidence')
+    await expect(store.reconcileExternalEdit(id, { ...receipt, runId: 'other' }, updates)).rejects.toThrow('external-edit-run-mismatch')
+    await expect(store.reconcileExternalEdit(id, { ...receipt, workspaceKey: 'other' }, updates)).rejects.toThrow('external-edit-scope-mismatch')
+    await expect(store.reconcileExternalEdit(id, { ...receipt, expectedSequence: 0 }, updates)).rejects.toThrow('external-edit-stale-report')
+    await expect(store.reconcileExternalEdit(id, { ...receipt, paths: ['src/unrelated.ts'] }, updates)).rejects.toThrow('edit-diagnostic-mismatch')
+    await expect(store.reconcileExternalEdit(id, receipt, [{ ...updates[0], evidence: [] }])).rejects.toThrow('invalid-reassessment')
+    await expect(store.reconcileExternalEdit(id, receipt, [{ ...updates[0], mutationRefs: ['invented'] }])).rejects.toThrow('invalid-reassessment')
+    expect(await store.getSnapshot(id)).toEqual(before)
+    const uncertain = [{ ...updates[0], outcome: 'unknown' as const, explanation: 'Cannot establish mechanism correction', evidence: [] }]
+    expect(await store.reconcileExternalEdit(id, receipt, uncertain)).toMatchObject([{ state: 'skipped', verification: 'not-run' }])
+  })
+
+  it('reconciles a changed supporting caller only with matching dependency evidence and a real receipt ref', async () => {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    await store.registerEvidenceSource(id, { path: 'src/caller.ts', revision: 'caller-before', excerpt: 'read(value)' })
+    const input = candidate(anchorKey)
+    input.support.push({ path: 'src/caller.ts', quote: 'read(value)', relevance: 'Caller passes absent input into the diagnostic path' })
+    await store.submitLedger(id, 'caller-candidate', { operation: 'append-candidates', candidates: [input] })
+    await store.submitRecord(id, 'caller-record', await store.expectedRecord(id))
+    await store.finish(id, 'partial')
+    const before = await store.getSnapshot(id)
+    const diagnosticId = before.retainedIds[0]
+    const receipt = { ref: 'caller-edit', runId: id, workspaceKey: 'workspace', headRevision: 'head', paths: ['src/caller.ts'],
+      beforeDigest: 'caller-before', afterDigest: 'caller-after', expectedSequence: before.events.at(-1)!.sequence,
+      evidence: [
+        { path: 'src/caller.ts', revision: 'caller-after', excerpt: 'if (!value) return; read(value)' },
+        { path: 'src/a.ts', revision: 'unchanged-callee', excerpt: 'return value.name' },
+      ], verifyCurrent: async () => true }
+    const update = { diagnosticId, outcome: 'resolved' as const, explanation: 'The caller now rejects absent input before reaching the unchanged callee', mutationRefs: [receipt.ref],
+      evidence: [{ path: 'src/caller.ts', quote: 'if (!value) return;', relevance: 'Corrects the saved trigger at the recorded caller' }] }
+    await expect(store.reconcileExternalEdit(id, receipt, [{ ...update, mutationRefs: ['forged-caller-edit'] }])).rejects.toThrow('invalid-reassessment')
+    await expect(store.reconcileExternalEdit(id, receipt, [{ ...update, evidence: [{ path: 'src/a.ts', quote: 'return value.name', relevance: 'Unchanged anchor is insufficient' }] }])).rejects.toThrow('invalid-reassessment')
+    await expect(store.reconcileExternalEdit(id, { ...receipt, paths: ['src/unrelated.ts'] }, [update])).rejects.toThrow('edit-diagnostic-mismatch')
+    expect(await store.getSnapshot(id)).toEqual(before)
+    expect(await store.reconcileExternalEdit(id, receipt, [update])).toMatchObject([{ kind: 'repair', state: 'applied', diagnosticIds: [diagnosticId], executionRef: 'caller-edit', verification: 'not-run' }])
+    const after = await store.getSnapshot(id)
+    expect(after.diagnostics).toEqual(before.diagnostics)
+    expect(after.evidence.at(-1)?.source).toEqual({ path: 'src/caller.ts', revision: 'caller-after', toolCallKey: 'caller-edit' })
+  })
+
+  it('requires terminal structured local reports for ordinary-edit receipts', async () => {
+    const { store, run } = fixture()
+    for (const remote of [false, true]) {
+      const { id, anchorKey } = await run({}, remote)
+      await populate(store, id, anchorKey)
+      const snapshot = await store.getSnapshot(id)
+      const receipt = { ref: 'edit', runId: id, workspaceKey: 'workspace', headRevision: 'head', paths: ['src/a.ts'], beforeDigest: 'before', afterDigest: 'after',
+        expectedSequence: snapshot.events.at(-1)!.sequence, evidence: [{ path: 'src/a.ts', revision: 'after', excerpt: 'guard' }], verifyCurrent: async () => true }
+      await expect(store.reconcileExternalEdit(id, receipt, [])).rejects.toThrow('external-edit-terminal-required')
+      if (remote) {
+        await store.finish(id, 'finished')
+        await expect(store.reconcileExternalEdit(id, receipt, [])).rejects.toThrow('external-edit-local-required')
+      }
+    }
+  })
+
   it('does not publish unpersisted state when a save fails', async () => {
     const { store, run, adapter } = fixture()
     const { id, anchorKey } = await run()
@@ -619,5 +720,159 @@ describe('review report store', () => {
     adapter.save = save
     await store.submitLedger(id, 'retryable', { operation: 'append-candidates', candidates: [candidate(anchorKey)] })
     expect((await store.getSnapshot(id)).diagnostics).toHaveLength(1)
+  })
+})
+
+
+describe('explicit semantic duplicate merges', () => {
+  const proof = [{ path: 'src/a.ts', quote: 'read(value)', relevance: 'Both claims describe the same absent-input dereference and trigger' }]
+  const merge = (keepId: string, duplicateIds: string[]) => ({ operation: 'merge-duplicates', groups: [{ keepId, duplicateIds, reason: 'Same absent-input dereference despite different wording', support: proof }] })
+  async function pair(policy: Partial<ReportPolicy> = {}) {
+    const f = fixture(); const run = await f.run(policy)
+    const first = candidate(run.anchorKey, 1, 'Absent input is dereferenced before validation')
+    first.location.endLine = 3
+    const second = candidate(run.anchorKey, 2, 'No null check protects access to the supplied value')
+    second.support = [{ quote: 'value.member', relevance: 'The same null access' }]
+    const result = await f.store.submitLedger(run.id, 'pair', { operation: 'append-candidates', candidates: [first, second] })
+    return { ...f, ...run, first, second, ids: result.accepted.map(item => item.diagnosticId) }
+  }
+  it('keeps paraphrases and distinct mechanisms separate unless explicitly merged', async () => {
+    const h = await pair()
+    await h.store.submitLedger(h.id, 'distinct', { operation: 'append-candidates', candidates: [candidate(h.anchorKey, 2, 'Null is handled but a race discards concurrent writes')] })
+    const snapshot = await h.store.getSnapshot(h.id)
+    expect(snapshot.diagnostics).toHaveLength(3); expect(snapshot.retainedIds).toHaveLength(3)
+    expect(snapshot.duplicateIds).toBeUndefined()
+    await h.store.submitLedger(h.id, 'merge', merge(h.ids[0], [h.ids[1]]))
+    const after = await h.store.getSnapshot(h.id)
+    expect(after.retainedIds).toHaveLength(2)
+    expect(after.retainedIds).toContain(snapshot.diagnostics[2].id)
+    expect(after.diagnostics).toHaveLength(3)
+  })
+  it('merges paraphrases before the cap and preserves original facts and exact final support', async () => {
+    const h = await pair({ reportLimit: 2 })
+    const other = await h.store.submitLedger(h.id, 'distinct', { operation: 'append-candidates', candidates: [candidate(h.anchorKey, 20, 'Independent race')] })
+    const before = await h.store.getSnapshot(h.id)
+    expect(before.run.progress.omittedByLimit).toBe(1)
+    const result = await h.store.submitLedger(h.id, 'merge', merge(h.ids[0], [h.ids[1]]))
+    expect(result.accepted).toEqual([{ index: 0, diagnosticId: h.ids[0] }])
+    const after = await h.store.getSnapshot(h.id)
+    expect(after.duplicateIds).toEqual({ [h.ids[1]]: h.ids[0] })
+    expect(after.retainedIds).toEqual([h.ids[0], other.accepted[0].diagnosticId])
+    expect(after.run.progress.omittedByLimit).toBe(0)
+    expect(after.run.progress.verifiedCandidates).toBe(0)
+    expect(after.diagnostics.map(item => ({ ...item, evidenceKeys: [] }))).toEqual(before.diagnostics.map(item => ({ ...item, evidenceKeys: [] })))
+    expect(after.assessments).toEqual(before.assessments)
+    expect(after.evidence).toEqual(expect.arrayContaining(before.evidence))
+    const expected = await h.store.expectedRecord(h.id)
+    expect(expected.candidates[0].support).toEqual([...h.first.support, ...h.second.support, ...proof])
+    await expect(h.store.submitRecord(h.id, 'missing-merged-support', { ...expected, candidates: [{ ...expected.candidates[0], support: h.first.support }, expected.candidates[1]] })).rejects.toThrow('ledger-mismatch')
+    await h.store.submitRecord(h.id, 'final', expected)
+    expect((await h.store.getSnapshot(h.id)).structured).toBe(true)
+    const restored = new ReviewReportStore(h.adapter, h.options)
+    expect((await restored.getSnapshot(h.id)).duplicateIds).toEqual(after.duplicateIds)
+    expect((await restored.expectedRecord(h.id)).candidates).toEqual(expected.candidates)
+  })
+  it('is idempotent through modelWrite and persists the merge rationale', async () => {
+    const h = await pair(); const input = merge(h.ids[0], [h.ids[1]])
+    const results = await Promise.all(Array.from({ length: 4 }, () => h.store.submitLedger(h.id, 'same-merge', input)))
+    expect(results.every(result => JSON.stringify(result) === JSON.stringify(results[0]))).toBe(true)
+    const snapshot = await h.store.getSnapshot(h.id)
+    expect(snapshot.events.filter(event => event.type === 'duplicates-merged')).toHaveLength(1)
+    expect(JSON.parse(h.data.get(h.id)!).duplicateMerges).toEqual(input.groups)
+    await expect(h.store.submitLedger(h.id, 'same-merge', merge(h.ids[1], [h.ids[0]]))).rejects.toThrow('tool-call-conflict')
+    await h.store.finish(h.id, 'partial')
+    expect(await h.store.submitLedger(h.id, 'same-merge', input)).toEqual(results[0])
+    await expect(h.store.submitLedger(h.id, 'late-merge', input)).rejects.toThrow('run-not-active')
+  })
+  it.each(['nonoverlap', 'before-revision', 'other-path', 'other-kind', 'no-span', 'foreign-id'] as const)('rejects %s without changing ledger facts', async kind => {
+    const h = await pair()
+    let key = h.anchorKey
+    if (kind === 'before-revision') key = await h.store.registerAnchor(h.id, { path: 'src/a.ts', revision: 'base', side: 'before', span: { start: 1, end: 10 } })
+    if (kind === 'other-path') key = await h.store.registerAnchor(h.id, { path: 'src/b.ts', revision: 'head', side: 'after', span: { start: 1, end: 10 } })
+    const input = candidate(key, kind === 'nonoverlap' ? 10 : 1, 'Another wording')
+    if (kind === 'other-path') input.location.path = 'src/b.ts'
+    if (kind === 'other-kind') input.kind = 'security'
+    if (kind === 'no-span') delete input.location.line
+    let duplicate: string
+    if (kind === 'foreign-id') {
+      const foreign = await h.run()
+      duplicate = (await h.store.submitLedger(foreign.id, 'foreign', { operation: 'append-candidates', candidates: [candidate(foreign.anchorKey)] })).accepted[0].diagnosticId
+    } else duplicate = (await h.store.submitLedger(h.id, 'other', { operation: 'append-candidates', candidates: [input] })).accepted[0].diagnosticId
+    const before = await h.store.getSnapshot(h.id)
+    await expect(h.store.submitLedger(h.id, 'invalid-merge', merge(h.ids[0], [duplicate]))).rejects.toThrow(kind === 'foreign-id' ? 'unknown-diagnostic' : 'duplicate-anchor-mismatch')
+    const after = await h.store.getSnapshot(h.id)
+    expect(after.diagnostics).toEqual(before.diagnostics); expect(after.evidence).toEqual(before.evidence)
+    expect(after.assessments).toEqual(before.assessments); expect(after.retainedIds).toEqual(before.retainedIds)
+    expect(after.duplicateIds).toBeUndefined()
+  })
+  it('rejects malformed, evidence-free and cyclic groups atomically', async () => {
+    const h = await pair(); const group = merge(h.ids[0], [h.ids[1]]).groups[0]
+    const cases = [
+      { ...group, duplicateIds: [] }, { ...group, duplicateIds: [h.ids[0]] }, { ...group, duplicateIds: [h.ids[1], h.ids[1]] },
+      { ...group, reason: '' }, { ...group, support: [] }, { ...group, support: [{ quote: '', relevance: 'same' }] },
+      { ...group, support: [{ path: 'private.ts', quote: 'x', relevance: 'same' }] }, { ...group, keepId: 'forged' }, { ...group, disposition: 'dismissed' },
+    ]
+    for (const [index, invalid] of cases.entries()) {
+      await expect(h.store.submitLedger(h.id, `invalid-${index}`, { operation: 'merge-duplicates', groups: [group, invalid] })).rejects.toThrow()
+      expect((await h.store.getSnapshot(h.id)).duplicateIds).toBeUndefined()
+    }
+    await expect(h.store.submitLedger(h.id, 'empty-groups', { operation: 'merge-duplicates', groups: [] })).rejects.toThrow('invalid-duplicate-group')
+    await expect(h.store.submitLedger(h.id, 'too-many-groups', { operation: 'merge-duplicates', groups: Array(33).fill(group) })).rejects.toThrow('invalid-array')
+    await h.store.submitLedger(h.id, 'valid', { operation: 'merge-duplicates', groups: [group] })
+    await expect(h.store.submitLedger(h.id, 'cycle', merge(h.ids[1], [h.ids[0]]))).rejects.toThrow('duplicate-merge-conflict')
+  })
+  it('keeps all IDs independently assessable and propagates later duplicate evidence without changing the kept assessment', async () => {
+    const h = await pair()
+    await h.store.submitLedger(h.id, 'merge', merge(h.ids[0], [h.ids[1]]))
+    const extra = [{ quote: 'caller(undefined)', relevance: 'Independent verifier observed the trigger' }]
+    await h.store.submitLedger(h.id, 'verify-duplicate', { operation: 'assess', assessments: [{ candidateId: h.ids[1], disposition: 'proven', reason: 'Actual missing input', support: extra }] })
+    for (const diagnosticId of h.ids) {
+      const snapshot = await h.store.getSnapshot(h.id)
+      const assessment = snapshot.assessments.filter(item => item.diagnosticId === diagnosticId).at(-1)!
+      await h.store.noteIndependentVerification(h.id, { ref: `verify-${diagnosticId}`, diagnosticId, assessmentId: assessment.id, finderTaskKey: 'finder', verifierTaskKey: `verifier-${diagnosticId}` })
+    }
+    const snapshot = await h.store.getSnapshot(h.id)
+    expect(snapshot.run.progress.verifiedCandidates).toBe(2)
+    expect(snapshot.retainedIds).toEqual([h.ids[0]])
+    expect((await h.store.expectedRecord(h.id)).candidates[0].assessment.disposition).toBe('plausible')
+    expect((await h.store.expectedRecord(h.id)).candidates[0].support).toEqual(expect.arrayContaining(extra))
+    const later = { ...h.second, support: [{ quote: 'another caller', relevance: 'Further support for the duplicate' }] }
+    expect((await h.store.submitLedger(h.id, 'repeat-duplicate', { operation: 'append-candidates', candidates: [later] })).accepted[0].diagnosticId).toBe(h.ids[1])
+    expect((await h.store.expectedRecord(h.id)).candidates[0].support).toEqual(expect.arrayContaining(later.support))
+    expect((await h.store.getSnapshot(h.id)).diagnostics).toHaveLength(2)
+  })
+  it('rejects merging representatives or reassigning duplicate ownership', async () => {
+    const h = await pair()
+    const third = (await h.store.submitLedger(h.id, 'third', { operation: 'append-candidates', candidates: [candidate(h.anchorKey, 2, 'Third paraphrase')] })).accepted[0].diagnosticId
+    await h.store.submitLedger(h.id, 'merge', merge(h.ids[0], [h.ids[1]]))
+    await expect(h.store.submitLedger(h.id, 'reparent', merge(third, [h.ids[0]]))).rejects.toThrow('duplicate-merge-conflict')
+    await expect(h.store.submitLedger(h.id, 'reassign', merge(third, [h.ids[1]]))).rejects.toThrow('duplicate-merge-conflict')
+  })
+  it('rejects merges whose combined support cannot fit a final record', async () => {
+    const h = await pair()
+    const support = Array.from({ length: 128 }, (_, index) => ({ quote: `proof-${index}`, relevance: 'Shared mechanism' }))
+    const before = await h.store.getSnapshot(h.id)
+    await expect(h.store.submitLedger(h.id, 'too-much-support', { operation: 'merge-duplicates', groups: [{ ...merge(h.ids[0], [h.ids[1]]).groups[0], support }] })).rejects.toThrow('evidence-limit')
+    const after = await h.store.getSnapshot(h.id)
+    expect(after.evidence).toEqual(before.evidence)
+    expect(after.duplicateIds).toBeUndefined()
+  })
+  it('never implicitly combines identical wording across classification kinds', async () => {
+    const h = fixture(); const { id, anchorKey } = await h.run()
+    const first = candidate(anchorKey)
+    await h.store.submitLedger(id, 'kinds', { operation: 'append-candidates', candidates: [first, { ...first, kind: 'security' }] })
+    expect((await h.store.getSnapshot(id)).diagnostics).toHaveLength(2)
+  })
+  it('exposes semantic merge while preserving independent-assessment tool restrictions', async () => {
+    const h = await pair()
+    const tool = createReviewTools({ runId: h.id, store: h.store, signal: new AbortController().signal, read: async () => ({}), changed: () => {}, allowOutput: true, independentAssessments: true }).find(tool => tool.name === 'ReviewLedger')!
+    const invoke = (input: Record<string, unknown>, id: string) => tool.call(input, undefined as never, undefined as never, { type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'ReviewLedger', input }] } } as unknown as Message)
+    expect(JSON.stringify(tool.argsSchema)).toContain('merge-duplicates')
+    for (const disposition of ['proven', 'dismissed']) {
+      await expect(invoke({ operation: 'append-candidates', candidates: [{ ...h.first, assessment: { disposition, reason: 'Coordinator assertion' } }] }, disposition)).rejects.toThrow('independent-verifier-required')
+    }
+    await expect(invoke({ operation: 'assess', assessments: [] }, 'assess')).rejects.toThrow('independent-verifier-required')
+    await invoke(merge(h.ids[0], [h.ids[1]]), 'tool-merge')
+    expect((await h.store.getSnapshot(h.id)).retainedIds).toEqual([h.ids[0]])
   })
 })

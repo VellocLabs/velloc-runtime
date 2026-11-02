@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { bindChangeRequestTarget, createReviewPlatformPublisher, createReviewPlatformReader, parseReviewRemote, type PublicationReceipt, type PublicationReceiptStore, type PublicationWrite, type ReviewHttpRequest } from './platform-adapter'
+import { bindChangeRequestTarget, createReviewPlatformPublisher, createReviewPlatformReader, parseReviewRemote, reviewSuggestionOriginal, type PublicationReceipt, type PublicationReceiptStore, type PublicationWrite, type ReviewHttpRequest } from './platform-adapter'
 const base = 'a'.repeat(40), head = 'b'.repeat(40), start = 'c'.repeat(40)
 const patch = 'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n'
 const target = bindChangeRequestTarget(['git@github.com:owner/repo.git'], 12)
@@ -14,6 +14,7 @@ function harness(platform: 'github' | 'gitlab' = 'github') {
       body = { id: platform === 'github' ? 123 : 'note123' }
     } else if (request.url.includes('/compare/')) body = { merge_base_commit: { sha: base } }
     else if (request.url.includes('?per_page=')) body = []
+    else if (request.headers?.Accept === 'application/vnd.github.raw') body = 'new\n'
     else if (request.headers?.Accept === 'application/vnd.github.diff') body = patch
     else if (request.url.endsWith('/changes')) body = { overflow: false, changes: [{ old_path: 'a.ts', new_path: 'a.ts', diff: '@@ -1 +1 @@\n-old\n+new\n' }] }
     else body = platform === 'github' ? { number: 12, changed_files: 1, base: { sha: base, repo: { html_url: 'https://github.com/owner/repo' } }, head: { sha: currentHead } } : { iid: 12, web_url: 'https://gitlab.com/group/repo/-/merge_requests/12', diff_refs: { base_sha: base, head_sha: currentHead, start_sha: start } }
@@ -290,4 +291,104 @@ describe('remote revision context', () => {
     await expect(reader.readContext(snapshot, 'a.ts', 'after', abort.signal)).rejects.toThrow()
     expect(h.httpRequest.mock.calls).toHaveLength(count)
   })
+})
+
+
+describe('GitHub complete-fix suggestion publication', () => {
+  it('appends one fenced suggestion before the stable retry marker and digest', async () => {
+    const h = harness(); const snapshot = await createReviewPlatformReader(h.options).read(); h.failWrite()
+    const authorize = vi.fn(async (_write: PublicationWrite) => true)
+    const publisher = createReviewPlatformPublisher({ ...h.options, receipts: h.receipts, authorize, confirmAbsent: async () => true })
+    const write = { ...inline(snapshot.manifest.anchors[1].anchorKey), suggestion: { original: 'new', replacement: 'fixed' } }
+    const first = await publisher.publish(snapshot, write)
+    expect(first.state).toBe('uncertain')
+    expect(await publisher.recover(snapshot, write)).toMatchObject({ key: first.key, state: 'failed' })
+    const retry = await publisher.publish(snapshot, { ...write, body: '  A concrete issue.\r\n' })
+    expect(retry).toMatchObject({ key: first.key, contentDigest: first.contentDigest, attempt: 2 })
+    const posts = h.httpRequest.mock.calls.filter(call => call[0].method === 'POST')
+    expect(posts).toHaveLength(2)
+    const bodies = posts.map(call => JSON.parse(new TextDecoder().decode(call[0].body)))
+    expect(bodies[0]).toEqual(bodies[1])
+    expect(bodies[0].body).toBe(`A concrete issue.\n\n\`\`\`suggestion\nfixed\n\`\`\`\n\n<!-- velloc-review:${first.key} -->`)
+    expect(h.httpRequest.mock.calls.filter(call => call[0].headers?.Accept === 'application/vnd.github.raw')).toHaveLength(2)
+    expect(authorize.mock.calls[0][0]).toMatchObject({ suggestion: write.suggestion, body: 'A concrete issue.' })
+    const other = harness(); const otherSnapshot = await createReviewPlatformReader(other.options).read()
+    const otherPublisher = createReviewPlatformPublisher({ ...other.options, receipts: other.receipts, authorize: async () => true })
+    const plain = await otherPublisher.publish(otherSnapshot, inline(otherSnapshot.manifest.anchors[1].anchorKey))
+    expect(first.contentDigest).not.toBe(plain.contentDigest)
+  })
+  it('supports ten-line after-side spans and emits the exact start/end range', async () => {
+    const h = harness(); const snapshot = await createReviewPlatformReader(h.options).read()
+    snapshot.manifest.anchors[1].span = { start: 1, end: 10 }
+    const source = Array.from({ length: 10 }, (_, i) => `line${i}`).join('\n')
+    const original = h.httpRequest.getMockImplementation()!
+    h.httpRequest.mockImplementation(async (request, options) => request.headers?.Accept === 'application/vnd.github.raw'
+      ? { status: 200, statusText: 'OK', finalUrl: request.url, headers: {}, body: new TextEncoder().encode(source + '\n') } : original(request, options))
+    const publisher = createReviewPlatformPublisher({ ...h.options, receipts: h.receipts, authorize: async () => true })
+    const write = inline(snapshot.manifest.anchors[1].anchorKey)
+    write.location!.endLine = 10; write.suggestion = { original: source, replacement: '' }
+    expect(await publisher.publish(snapshot, write)).toMatchObject({ state: 'succeeded' })
+    const post = h.httpRequest.mock.calls.find(call => call[0].method === 'POST')![0]
+    expect(JSON.parse(new TextDecoder().decode(post.body))).toMatchObject({ start_line: 1, line: 10, start_side: 'RIGHT', side: 'RIGHT' })
+    expect(h.httpRequest.mock.calls.find(call => call[0].headers?.Accept === 'application/vnd.github.raw')![0].url).toBe(`https://api.github.com/repos/owner/repo/contents/a.ts?ref=${head}`)
+  })
+  it.each(['before', 'summary', 'gitlab', 'oversize', 'fence', 'backtick', 'body-fence', 'too-many-lines', 'unchanged', 'binary'] as const)('rejects %s suggestions before network writes', async kind => {
+    const h = harness(kind === 'gitlab' ? 'gitlab' : 'github'); const snapshot = await createReviewPlatformReader(h.options).read()
+    const write = { ...inline(snapshot.manifest.anchors[kind === 'before' ? 0 : 1].anchorKey), suggestion: { original: 'new', replacement: 'fixed' } }
+    if (kind === 'summary') write.kind = 'summary'
+    if (kind === 'gitlab') write.kind = 'discussion'
+    if (kind === 'oversize') write.suggestion.replacement = 'é'.repeat(2049)
+    if (kind === 'fence') write.suggestion.replacement = '```suggestion\nescape\n```'
+    if (kind === 'backtick') write.suggestion.replacement = '`template`'
+    if (kind === 'body-fence') write.body += '\n```open'
+    if (kind === 'too-many-lines') write.suggestion.replacement = 'x\n'.repeat(10)
+    if (kind === 'unchanged') write.suggestion.replacement = 'new'
+    if (kind === 'binary') write.suggestion.replacement = 'a\u0000'
+    const publisher = createReviewPlatformPublisher({ ...h.options, receipts: h.receipts, authorize: async () => true })
+    await expect(publisher.publish(snapshot, write)).rejects.toThrow('invalid-publication')
+    expect(h.httpRequest.mock.calls.every(call => call[0].method === 'GET')).toBe(true)
+  })
+  it('rejects eleven-line anchors even with a short replacement', async () => {
+    const h = harness(); const snapshot = await createReviewPlatformReader(h.options).read()
+    snapshot.manifest.anchors[1].span = { start: 1, end: 11 }
+    const write = inline(snapshot.manifest.anchors[1].anchorKey); write.location!.endLine = 11
+    write.suggestion = { original: Array.from({ length: 11 }, () => 'new').join('\n'), replacement: 'fixed' }
+    const publisher = createReviewPlatformPublisher({ ...h.options, receipts: h.receipts, authorize: async () => true })
+    await expect(publisher.publish(snapshot, write)).rejects.toThrow('invalid-publication')
+    expect(h.httpRequest.mock.calls.every(call => call[0].method === 'GET')).toBe(true)
+  })
+  it.each(['mismatch', 'stale', 'binary', 'cancelled', 'changed-during-read'] as const)('blocks %s before publication', async kind => {
+    const h = harness(); const snapshot = await createReviewPlatformReader(h.options).read()
+    const write = { ...inline(snapshot.manifest.anchors[1].anchorKey), suggestion: { original: kind === 'mismatch' ? 'invented' : 'new', replacement: 'fixed' } }
+    const controller = new AbortController()
+    if (kind === 'stale') h.setHead(start)
+    if (kind === 'cancelled') controller.abort()
+    const original = h.httpRequest.getMockImplementation()!
+    h.httpRequest.mockImplementation(async (request, options) => {
+      const response = await original(request, options)
+      if (request.headers?.Accept === 'application/vnd.github.raw') {
+        if (kind === 'binary') response.body = new Uint8Array([0])
+        if (kind === 'changed-during-read') h.setHead(start)
+      }
+      return response
+    })
+    const publisher = createReviewPlatformPublisher({ ...h.options, receipts: h.receipts, authorize: async () => true })
+    expect(await publisher.publish(snapshot, write, controller.signal)).toMatchObject({ state: 'blocked' })
+    expect(h.httpRequest.mock.calls.every(call => call[0].method === 'GET')).toBe(true)
+  })
+  it('does not fetch suggestion source or post without authorization', async () => {
+    const h = harness(); const snapshot = await createReviewPlatformReader(h.options).read()
+    const publisher = createReviewPlatformPublisher({ ...h.options, receipts: h.receipts, authorize: async () => false })
+    await expect(publisher.publish(snapshot, { ...inline(snapshot.manifest.anchors[1].anchorKey), suggestion: { original: 'new', replacement: 'fixed' } })).rejects.toThrow('publication-denied')
+    expect(h.httpRequest.mock.calls.some(call => call[0].headers?.Accept === 'application/vnd.github.raw' || call[0].method === 'POST')).toBe(false)
+  })
+})
+
+
+it('extracts exact remote span text without normalizing internal line endings', () => {
+  expect(reviewSuggestionOriginal('one\r\ntwo\r\nthree\r\n', 1, 2)).toBe('one\r\ntwo')
+  expect(reviewSuggestionOriginal('one\ntwo', 2, 2)).toBe('two')
+  expect(reviewSuggestionOriginal('one\n\n', 2, 2)).toBe('')
+  for (const [start, end] of [[0, 1], [1, 11], [2, 1], [1.5, 2], [2, 2]]) expect(() => reviewSuggestionOriginal('one\n', start, end)).toThrow('invalid-publication')
+  expect(() => reviewSuggestionOriginal('one\u0000', 1, 1)).toThrow('invalid-publication')
 })

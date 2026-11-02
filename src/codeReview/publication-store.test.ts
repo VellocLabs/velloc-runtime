@@ -1,4 +1,4 @@
-import { bindChangeRequestTarget, createReviewPlatformPublisher, type ChangeRequestSnapshot, type PublicationWrite, type ReviewHttpRequest } from './platform-adapter'
+import { bindChangeRequestTarget, createReviewPlatformPublisher, createReviewPlatformReader, type ChangeRequestSnapshot, type PublicationWrite, type ReviewHttpRequest } from './platform-adapter'
 import { describe, expect, it, vi } from 'vitest'
 import { createPublicationReceiptStore, type PublicationReceiptStorage } from './publication-store'
 import type { PublicationReceipt } from './platform-adapter'
@@ -172,4 +172,63 @@ it('does not reacquire a reservation when storage committed but its acknowledgme
   const result = await store.reserve(pending())
   expect(result.acquired).toBe(false)
   expect(result.receipt.state).toBe('uncertain')
+})
+
+
+async function suggestionFixture() {
+  const disk = storage(), owner = {}
+  const target = bindChangeRequestTarget(['https://github.com/owner/repo'], 12)
+  const base = 'a'.repeat(40), head = 'b'.repeat(40)
+  let raw = 'new\n'
+  let failWrite = false
+  let posted: Record<string, unknown> | undefined
+  const httpRequest = vi.fn<ReviewHttpRequest>(async request => {
+    let body: unknown
+    if (request.method === 'POST') {
+      posted = JSON.parse(new TextDecoder().decode(request.body))
+      if (failWrite) throw new Error('timeout')
+      body = { id: 123 }
+    } else if (request.url.includes('?per_page=')) body = posted ? [{ ...posted, id: 123 }] : []
+    else if (request.headers?.Accept === 'application/vnd.github.raw') body = raw
+    else if (request.headers?.Accept === 'application/vnd.github.diff') body = 'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n'
+    else if (request.url.includes('/compare/')) body = { merge_base_commit: { sha: base } }
+    else body = { number: 12, changed_files: 1, base: { sha: base, repo: { html_url: 'https://github.com/owner/repo' } }, head: { sha: head } }
+    return { status: 200, statusText: 'OK', finalUrl: request.url, headers: {}, body: new TextEncoder().encode(typeof body === 'string' ? body : JSON.stringify(body)) }
+  })
+  const options = { httpRequest, target, workspaceKey: 'w' }
+  const snapshot = await createReviewPlatformReader(options).read()
+  const write: PublicationWrite = { kind: 'inline', body: 'Concrete finding', diagnosticIds: ['diagnostic-1'], reportRevision: 1, rootCauseFingerprint: 'mechanism',
+    location: { anchorKey: snapshot.manifest.anchors[1].anchorKey, path: 'a.ts', line: 1 }, suggestion: { original: 'new', replacement: 'fixed' } }
+  const make = (maxContextBytes?: number) => createReviewPlatformPublisher({ ...options, maxContextBytes, receipts: createPublicationReceiptStore(disk.io, owner), authorize: async () => true })
+  return { disk, owner, snapshot, write, httpRequest, make, setRaw: (value: string) => { raw = value }, timeout: () => { failWrite = true } }
+}
+it.each(['invalid-publication', 'binary-context', 'response-limit'] as const)('persists blocked suggestion %s with the real durable store', async reason => {
+  const h = await suggestionFixture()
+  if (reason === 'invalid-publication') h.setRaw('different\n')
+  if (reason === 'binary-context') h.setRaw('new\u0000')
+  const publisher = h.make(reason === 'response-limit' ? 1 : undefined)
+  const result = await publisher.publish(h.snapshot, h.write)
+  expect(result).toMatchObject({ state: 'blocked', reason })
+  expect(h.httpRequest.mock.calls.every(([request]) => request.method === 'GET')).toBe(true)
+  const restored = createPublicationReceiptStore(h.disk.io, {})
+  expect(await restored.get(result.key)).toEqual(result)
+  expect(JSON.parse(h.disk.bytes()!).receipts[0].state).toBe('blocked')
+})
+it('deduplicates separate reports through shared durable publisher identity', async () => {
+  const h = await suggestionFixture()
+  const first = await h.make().publish(h.snapshot, h.write)
+  const second = await h.make().publish(h.snapshot, { ...h.write, body: 'Updated presentation of the same mechanism', diagnosticIds: ['another-report-diagnostic'], reportRevision: 2 })
+  expect(second).toEqual(first)
+  expect(second).toMatchObject({ state: 'succeeded', externalId: '123' })
+  expect(h.httpRequest.mock.calls.filter(([request]) => request.method === 'POST')).toHaveLength(1)
+})
+it('recovers an uncertain suggestion from an exact persisted write without another POST', async () => {
+  const h = await suggestionFixture(); h.timeout()
+  const frozen = JSON.stringify(h.write)
+  const first = await h.make().publish(h.snapshot, h.write)
+  expect(first.state).toBe('uncertain')
+  const restoredWrite: PublicationWrite = JSON.parse(frozen)
+  const recovered = await h.make().recover(h.snapshot, restoredWrite)
+  expect(recovered).toMatchObject({ key: first.key, contentDigest: first.contentDigest, state: 'succeeded', externalId: '123' })
+  expect(h.httpRequest.mock.calls.filter(([request]) => request.method === 'POST')).toHaveLength(1)
 })

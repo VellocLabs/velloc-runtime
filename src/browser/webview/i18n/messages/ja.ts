@@ -4,6 +4,8 @@ import type { Messages } from './en'
 // noun phrases for labels; Japanese punctuation in prose, ASCII inside code, ids, URLs.
 // Long vowels follow Chrome's Japanese UI (G-1): サーバー・ユーザー keep ー, ブラウザ・フォルダ drop it.
 export const ja: Messages = {
+  "reviewCard.localNotPushed": "ローカルの変更はこの変更リクエストにプッシュされていません。",
+  "reviewCard.verificationWarning": "このローカルアプリは設定されたサービスに接続する場合があります。テストデータを使う今回の操作のみを承認し、検証だけのために本番環境や外部サービスへの書き込みを行わないでください。",
   "reviewCard.discussions": "行単位のディスカッションとして公開",
   "reviewCard.exportJson": "レポート JSON を表示",
   "reviewCard.output.json": "JSON",

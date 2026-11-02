@@ -3,6 +3,22 @@ import type {
   ReviewEvidence, ReviewRun, ReviewScope,
 } from './contracts'
 
+import { reassessmentTouches, validateReassessmentUpdates, type ReassessmentEvidence, type ReassessmentUpdate } from './reassessment'
+
+export interface ExternalEditReceipt {
+  ref: string
+  runId: string
+  workspaceKey: string
+  headRevision: string
+  paths: string[]
+  beforeDigest: string
+  afterDigest: string
+  expectedSequence: number
+  evidence: ReassessmentEvidence[]
+  /** Security: host closure re-reads the authorized code and checks afterDigest immediately before saving. */
+  verifyCurrent: () => Promise<boolean>
+}
+
 export type ReportDisposition = Assessment['disposition']
 export type ReportKind = Diagnostic['classification']['kind']
 export type ReportImpact = Diagnostic['classification']['impact']
@@ -26,6 +42,12 @@ export interface ReportVerification {
   sequence: number; time: number; checkedThroughSequence: number; afterLatestEdit: boolean
   command?: string; codeRevision?: string; evidence: ReportSupport[]; missingCases: string[]
 }
+export interface ReportDuplicateMerge {
+  keepId: string
+  duplicateIds: string[]
+  reason: string
+  support: ReportSupport[]
+}
 export interface ReportSnapshot {
   run: ReportRun
   diagnostics: ReportDiagnostic[]
@@ -33,6 +55,8 @@ export interface ReportSnapshot {
   assessments: ReportAssessment[]
   actions: ReportActionReceipt[]
   retainedIds: string[]
+  /** Duplicate diagnostic ID to its explicitly selected representative; original ledger facts remain intact. */
+  duplicateIds?: Record<string, string>
   coverage: ReportCoverage
   events: ReportEvent[]
   structured: boolean
@@ -111,6 +135,8 @@ interface RunState extends Omit<ReportSnapshot, 'verifications'> {
   usedActionGrants?: string[]
   independentVerifications?: IndependentVerificationReceipt[]
   evidenceSources?: ReportEvidenceSource[]
+  externalEdits?: Array<{ ref: string; fingerprint: string; actionIds: string[] }>
+  duplicateMerges?: ReportDuplicateMerge[]
 }
 export class ReportStoreError extends Error {
   constructor(readonly code: string) { super(code); this.name = 'ReportStoreError' }
@@ -176,7 +202,7 @@ function lastAssessment(state: RunState, id: string): ReportAssessment {
 function rank(state: RunState): string[] {
   const impact = { critical: 0, major: 1, minor: 2 }
   const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0
-  return state.diagnostics.filter(d => lastAssessment(state, d.id).disposition !== 'dismissed').sort((a, b) => {
+  return state.diagnostics.filter(d => !Object.hasOwn(state.duplicateIds ?? {}, d.id) && lastAssessment(state, d.id).disposition !== 'dismissed').sort((a, b) => {
     const category = (d: ReportDiagnostic) => ['correctness', 'security'].includes(d.classification.kind) ? 0 : 1
     return category(a) - category(b) || impact[a.classification.impact] - impact[b.classification.impact]
       || compare(a.anchor.path, b.anchor.path) || (a.anchor.span?.start ?? 0) - (b.anchor.span?.start ?? 0)
@@ -216,7 +242,7 @@ export class ReviewReportStore {
   }
   private snapshot(state: RunState): ReportSnapshot {
     const { run, diagnostics, evidence, assessments, actions, retainedIds, events, structured } = state
-    return immutable(clone({ run, diagnostics, evidence, assessments, actions, retainedIds, events, structured, verifications: this.verifications(state), coverage: effectiveCoverage(state) }))
+    return immutable(clone({ run, diagnostics, evidence, assessments, actions, retainedIds, events, structured, ...(state.duplicateIds ? { duplicateIds: state.duplicateIds } : {}), verifications: this.verifications(state), coverage: effectiveCoverage(state) }))
   }
   private verifications(state: RunState): ReportVerification[] {
     return state.executions.filter(event => event.kind === 'verification').map(event => {
@@ -512,25 +538,56 @@ export class ReviewReportStore {
       return evidence.id
     })
   }
-  private assess(state: RunState, id: string, disposition: ReportDisposition, rationale: string, support: ReportSupport[], callId: string): void {
+  private mergeSupport(state: RunState, id: string, support: ReportSupport[], callId: string): string[] {
     const candidate = state.candidates.find(item => item.diagnosticId === id)
     if (!candidate) return fail('unknown-diagnostic')
     const evidenceKeys = this.addEvidence(state, id, support, callId)
+    const combined = [...candidate.input.support, ...support]
+    const merged = combined.filter((item, index) => combined.findIndex(other => canonical(item) === canonical(other)) === index)
+    if (merged.length > 128) return fail('evidence-limit')
+    candidate.input.support = merged
+    const keepId = Object.hasOwn(state.duplicateIds ?? {}, id) ? state.duplicateIds![id] : undefined
+    if (keepId) this.mergeSupport(state, keepId, support, callId)
+    return evidenceKeys
+  }
+  private mergeDuplicates(state: RunState, value: unknown, callId: string): string {
+    const item = object(value, ['keepId', 'duplicateIds', 'reason', 'support'])
+    const keepId = text(item.keepId), duplicateIds = array(item.duplicateIds, 32).map(text)
+    const reason = this.options.sanitizeExcerpt(text(item.reason)), support = this.support(state, item.support)
+    if (!duplicateIds.length || unique(duplicateIds).length !== duplicateIds.length || duplicateIds.includes(keepId)) return fail('invalid-duplicate-group')
+    if (!support.length || support.some(item => !item.quote.trim())) return fail('missing-evidence')
+    const kept = state.diagnostics.find(item => item.id === keepId)
+    if (!kept) return fail('unknown-diagnostic')
+    const mapping = state.duplicateIds ?? {}
+    if (Object.hasOwn(mapping, keepId)) return fail('duplicate-merge-conflict')
+    for (const id of duplicateIds) {
+      const diagnostic = state.diagnostics.find(item => item.id === id)
+      if (!diagnostic) return fail('unknown-diagnostic')
+      if ((Object.hasOwn(mapping, id) && mapping[id] !== keepId) || Object.values(mapping).includes(id)) return fail('duplicate-merge-conflict')
+      if (diagnostic.anchor.revision !== kept.anchor.revision || diagnostic.anchor.path !== kept.anchor.path || diagnostic.anchor.side !== kept.anchor.side ||
+          diagnostic.classification.kind !== kept.classification.kind || !diagnostic.anchor.span || !kept.anchor.span || !overlap(diagnostic.anchor, kept.anchor)) return fail('duplicate-anchor-mismatch')
+    }
+    this.mergeSupport(state, keepId, [...duplicateIds.flatMap(id => state.candidates.find(item => item.diagnosticId === id)!.input.support), ...support], callId)
+    state.duplicateIds = Object.fromEntries([...Object.entries(mapping), ...duplicateIds.map(id => [id, keepId])])
+    state.duplicateMerges = [...state.duplicateMerges ?? [], { keepId, duplicateIds, reason, support }]
+    this.event(state, 'duplicates-merged')
+    return keepId
+  }
+  private assess(state: RunState, id: string, disposition: ReportDisposition, rationale: string, support: ReportSupport[], callId: string): void {
+    const candidate = state.candidates.find(item => item.diagnosticId === id)
+    if (!candidate) return fail('unknown-diagnostic')
+    const evidenceKeys = this.mergeSupport(state, id, support, callId)
     state.assessments.push({ id: this.id(), diagnosticId: id, disposition, rationale, evidenceKeys })
     candidate.input.assessment = { disposition, reason: rationale }
-    const merged = [...candidate.input.support, ...support]
-    candidate.input.support = merged.filter((item, index) => merged.findIndex(other => canonical(item) === canonical(other)) === index)
   }
   private append(state: RunState, input: ReportCandidateInput, callId: string): string {
     const trusted = state.anchors.find(item => item.key === input.location.anchorKey)!.anchor
     const anchor: ReportAnchor = { ...trusted, span: input.location.line === undefined ? undefined : { start: input.location.line, end: input.location.endLine! } }
     const mechanism = canonical([anchor.revision, anchor.path, anchor.side, normalized(input.statement.details)])
-    const existing = state.candidates.find(candidate => candidate.mechanism === mechanism
+    const existing = state.candidates.find(candidate => candidate.mechanism === mechanism && candidate.input.kind === input.kind
       && overlap(state.diagnostics.find(item => item.id === candidate.diagnosticId)!.anchor, anchor))
     if (existing) {
-      this.addEvidence(state, existing.diagnosticId, input.support, callId)
-      const merged = [...existing.input.support, ...input.support]
-      existing.input.support = merged.filter((item, index) => merged.findIndex(other => canonical(other) === canonical(item)) === index)
+      this.mergeSupport(state, existing.diagnosticId, input.support, callId)
       return existing.diagnosticId
     }
     const id = text(this.id())
@@ -583,7 +640,7 @@ export class ReviewReportStore {
   async submitLedger(runId: string, toolCallId: string, input: unknown): Promise<ReportWriteResult> {
     const submitted = clone(input)
     return this.modelWrite(runId, toolCallId, submitted, state => {
-      const operation = object(submitted, ['operation', 'candidates', 'assessments', 'coverage'])
+      const operation = object(submitted, ['operation', 'candidates', 'assessments', 'coverage', 'groups'])
       const accepted: ReportWriteResult['accepted'] = []
       if (operation.operation === 'append-candidates') {
         object(submitted, ['operation', 'candidates'])
@@ -599,6 +656,11 @@ export class ReviewReportStore {
           this.assess(state, id, enumeration(item.disposition, dispositions), text(item.reason), support, toolCallId)
           accepted.push({ index, diagnosticId: id })
         })
+      } else if (operation.operation === 'merge-duplicates') {
+        object(submitted, ['operation', 'groups'])
+        const groups = array(operation.groups, 32)
+        if (!groups.length) return fail('invalid-duplicate-group')
+        groups.forEach((group, index) => accepted.push({ index, diagnosticId: this.mergeDuplicates(state, group, toolCallId) }))
       } else if (operation.operation === 'coverage') {
         object(submitted, ['operation', 'coverage'])
         const coverage = this.coverage(operation.coverage)
@@ -773,6 +835,62 @@ export class ReviewReportStore {
       if (input.kind === 'edit' || input.kind === 'verification') this.refreshRepairVerification(state)
     })
   }
+  /** Security: host-only; a receipt records an already authorized edit, never grants permission to edit. */
+  async reconcileExternalEdit(runId: string, receipt: ExternalEditReceipt, updates: readonly ReassessmentUpdate[]): Promise<ReportActionReceipt[]> {
+    const { verifyCurrent, ...data } = receipt
+    const input = clone(data)
+    const proposed = clone(updates)
+    text(input.ref); text(input.beforeDigest); text(input.afterDigest)
+    if (input.runId !== runId) return fail('external-edit-run-mismatch')
+    if (input.beforeDigest === input.afterDigest) return fail('external-edit-unchanged')
+    if (typeof verifyCurrent !== 'function') return fail('external-edit-verification-required')
+    if (!input.paths.length || input.paths.length > 128 || unique(input.paths).length !== input.paths.length) return fail('invalid-path')
+    input.paths.forEach(relativePath)
+    if (!input.evidence.length || input.evidence.length > 128) return fail('missing-evidence')
+    input.evidence.forEach(source => { relativePath(source.path); text(source.revision); text(source.excerpt) })
+    const fingerprint = await digest(canonical({ input, proposed }))
+    return this.serial(runId, async () => {
+      const state = clone(await this.load(runId))
+      const existing = state.externalEdits?.find(item => item.ref === input.ref)
+      if (existing) {
+        if (existing.fingerprint !== fingerprint) return fail('external-edit-receipt-conflict')
+        return immutable(clone(state.actions.filter(action => existing.actionIds.includes(action.id))))
+      }
+      if (!terminal(state.run.progress.status) || state.actionPhase) return fail('external-edit-terminal-required')
+      if (!state.structured) return fail('report-required')
+      if (!['workspace', 'paths'].includes(state.run.scope.kind)) return fail('external-edit-local-required')
+      if (state.run.scope.workspaceKey !== input.workspaceKey || state.run.scope.revision.head !== input.headRevision) return fail('external-edit-scope-mismatch')
+      if (input.expectedSequence !== (state.events.at(-1)?.sequence ?? 0)) return fail('external-edit-stale-report')
+      if (state.executions.some(item => item.ref === input.ref)) return fail('duplicate-execution-ref')
+      const affected = state.retainedIds.filter(id => reassessmentTouches(this.snapshot(state), id, input.paths))
+      if (!affected.length) return fail('edit-diagnostic-mismatch')
+      const validated = validateReassessmentUpdates(this.snapshot(state), [{ ref: input.ref, paths: input.paths }], input.evidence, proposed)
+      const support = validated.flatMap(update => update.evidence.map(item => ({ ...item,
+        quote: this.options.sanitizeExcerpt(item.quote), relevance: this.options.sanitizeExcerpt(item.relevance) })))
+      this.event(state, 'external-edit-observed')
+      state.executions.push({ ref: input.ref, kind: 'edit', diagnosticIds: affected, paths: input.paths, succeeded: true,
+        codeRevision: input.afterDigest, evidence: support, sequence: state.events.at(-1)!.sequence, time: this.now() })
+      const actions: ReportActionReceipt[] = []
+      for (const update of validated) {
+        for (const item of update.evidence) {
+          const source = input.evidence.find(source => source.path === item.path && source.excerpt.includes(item.quote))!
+          state.evidence.push({ id: this.id(), runId, diagnosticId: update.diagnosticId,
+            source: { path: item.path, revision: source.revision, toolCallKey: input.ref },
+            excerpt: this.options.sanitizeExcerpt(item.quote), reason: this.options.sanitizeExcerpt(item.relevance) })
+        }
+        const action: ReportActionReceipt = { id: this.id(), kind: 'repair', state: update.outcome === 'resolved' ? 'applied' : 'skipped',
+          diagnosticIds: [update.diagnosticId], executionRef: input.ref, verification: 'not-run', reason: this.options.sanitizeExcerpt(update.explanation) }
+        state.actions.push(action)
+        actions.push(action)
+      }
+      this.refreshRepairVerification(state)
+      state.externalEdits = [...state.externalEdits ?? [], { ref: input.ref, fingerprint, actionIds: actions.map(action => action.id) }]
+      this.event(state, 'repair-updated')
+      if (!await verifyCurrent()) return fail('external-edit-stale-evidence')
+      await this.save(state)
+      return immutable(clone(actions))
+    })
+  }
   async reconcile(runId: string, toolCallId: string, input: unknown, actionEpoch?: string): Promise<ReportWriteResult> {
     const submitted = clone(input)
     return this.modelWrite(runId, toolCallId, submitted, state => {
@@ -858,10 +976,6 @@ export class ReviewReportStore {
     const input = clone(request)
     const contentDigest = await digest(text(input.normalizedContent).trim().replace(/\r\n/g, '\n'))
     const reservation = this.publicationTail.catch(() => undefined).then(async () => {
-      const otherOperations: PublicationOperation[] = []
-      for (const id of await this.adapter.listRunIds()) {
-        if (id !== runId) otherOperations.push(...await this.getPublications(id))
-      }
       return this.mutate(runId, state => {
       if (!state.structured) return fail('report-required')
       this.diagnosticIds(state, input.diagnosticIds)
@@ -884,7 +998,7 @@ export class ReviewReportStore {
       })
       const key = canonical([...target, input.kind, contentDigest,
         input.kind === 'inline' || input.kind === 'discussion' ? rootKeys : [state.run.reportRevision, [...input.diagnosticIds].sort(), state.coverage]])
-      const allOperations = [...state.publications, ...otherOperations]
+      const allOperations = state.publications
       const existing = allOperations.find(item => item.key === key)
       if (existing) return { operation: existing, shouldSend: false }
       const duplicate = allOperations.find(item => item.state !== 'failed' && rootKeys.length > 0 && rootKeys.length === item.rootKeys.length && rootKeys.every(key => item.rootKeys.includes(key)))

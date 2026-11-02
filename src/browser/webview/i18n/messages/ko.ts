@@ -4,6 +4,8 @@ import type { Messages } from './en'
 // instructions, bare noun phrases for labels; ASCII inside code, ids and URLs.
 // Spacing follows 한글 맞춤법 (컨텍스트 창, but 사이드바) (G-1).
 export const ko: Messages = {
+  "reviewCard.localNotPushed": "로컬 변경사항은 이 변경 요청에 푸시되지 않았습니다.",
+  "reviewCard.verificationWarning": "이 로컬 앱은 설정된 서비스에 접속할 수 있습니다. 테스트 데이터를 사용하는 이번 작업만 승인하고, 검증만을 위해 운영 환경이나 외부 서비스에 데이터를 쓰지 마세요.",
   "reviewCard.discussions": "줄 단위 토론으로 게시",
   "reviewCard.exportJson": "보고서 JSON 보기",
   "reviewCard.output.json": "JSON",

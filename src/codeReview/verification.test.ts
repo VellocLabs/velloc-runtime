@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { planVerification, runVerification, type VerificationBindings, type VerificationPlanInput } from './verification'
+import { planVerification, runVerification, startVerificationServer, type VerificationBindings, type VerificationPlanInput } from './verification'
 import type { NativeStreamChild } from '../browser/bridge/nativePrimitives'
 
 const base: VerificationPlanInput = { workspace: 'D:/repo', files: ['src/a.ts'], guidance: '', runtimeChanged: true, uiChanged: false }
@@ -139,5 +139,171 @@ describe('permission-bound verification execution', () => {
   })
   it('propagates persistence failures rather than losing receipts silently', async () => {
     await expect(runVerification(plan(), bindings({ record: async () => { throw new Error('disk-full') } }))).rejects.toThrow('disk-full')
+  })
+})
+
+const startupInput: VerificationPlanInput = { ...base, uiChanged: true, existingDevUrl: 'http://localhost:3000/', guidance: 'Run `npm run dev` then visit http://localhost:3000/', packageManifest: { scripts: { dev: 'vite' } } }
+const startupCommand = () => planVerification(startupInput).startupCommand!
+const serverBindings = (overrides: Partial<VerificationBindings> = {}) => ({ ...bindings(overrides), workspace: base.workspace })
+
+describe('optional development server planning', () => {
+  it('plans only a documented existing script as fixed argv separate from checks', () => {
+    const p = planVerification(startupInput)
+    expect(p.startupCommand).toEqual({ file: 'npm', args: ['--ignore-scripts', 'run', 'dev'], purpose: 'startup', instruction: 'package.json:scripts.dev', script: 'vite' })
+    expect(p.commands).toEqual([])
+    expect(Object.isFrozen(p.startupCommand?.args)).toBe(true)
+    expect(planVerification({ ...startupInput, guidance: 'npm run start http://localhost:3000/', packageManifest: { scripts: { start: 'node server.js' } } }).startupCommand?.args).toEqual(['--ignore-scripts', 'run', 'start'])
+  })
+  it.each([
+    { uiChanged: false }, { runtimeChanged: false }, { existingDevUrl: undefined },
+    { guidance: 'npm run dev' }, { guidance: 'Existing app at http://localhost:3000/' },
+    { guidance: 'npm start http://localhost:3000/' },
+    { guidance: 'npm run development http://localhost:3000/' },
+    { packageManifest: { scripts: { test: 'vitest' } } },
+  ])('does not invent startup without prerequisites %j', overrides => {
+    expect(planVerification({ ...startupInput, ...overrides }).startupCommand).toBeUndefined()
+  })
+  it.each(['npm install && vite', 'npm run deploy', 'systemctl restart app', 'curl https://example.test', 'pnpm add library'])('rejects unsafe startup script %s', dev => {
+    const p = planVerification({ ...startupInput, packageManifest: { scripts: { dev } } })
+    expect(p.startupCommand).toBeUndefined()
+    expect(p.uncovered).toContain('unsafe-package-script:dev')
+  })
+  it.each(['predev', 'postdev'])('rejects lifecycle %s', lifecycle => {
+    expect(planVerification({ ...startupInput, packageManifest: { scripts: { dev: 'vite', [lifecycle]: 'node setup.js' } } }).startupCommand).toBeUndefined()
+  })
+  it('never copies shell guidance arguments into the command', () => {
+    expect(planVerification({ ...startupInput, guidance: 'npm run dev -- --host public.example; kill 123; http://localhost:3000/' }).startupCommand?.args).toEqual(['--ignore-scripts', 'run', 'dev'])
+  })
+  it('does not automatically execute startup, even if placed in commands', async () => {
+    const p = planVerification(startupInput)
+    const b = bindings()
+    await runVerification({ ...p, commands: [p.startupCommand!] }, b)
+    expect(b.spawn).not.toHaveBeenCalled()
+  })
+})
+
+describe('managed verification server', () => {
+  it('returns without process exit, authorizes exact argv, exposes bounded output, and stops idempotently', async () => {
+    const handle = child()
+    let events: Parameters<VerificationBindings['spawn']>[1] | undefined
+    const b = serverBindings({ spawn: vi.fn(async (_spec, handlers) => { events = handlers; return handle }) })
+    const server = await startVerificationServer(startupCommand(), b)
+    expect(b.authorize).toHaveBeenCalledWith({ workspace: base.workspace, command: startupCommand(), signal: b.signal })
+    expect(b.spawn).toHaveBeenCalledWith(expect.objectContaining({ file: 'npm', args: ['--ignore-scripts', 'run', 'dev'], cwd: base.workspace, env: expect.objectContaining({ npm_config_ignore_scripts: 'true', npm_config_offline: 'true' }) }), expect.any(Object))
+    events!.onOutput?.('stdout', new TextEncoder().encode('x'.repeat(40_000)))
+    expect(server.output).toBe('x'.repeat(32_000))
+    expect(server.outputTruncated).toBe(true)
+    const stopping = server.stop()
+    expect(server.stop()).toBe(stopping)
+    await stopping
+    await server.stop()
+    expect(handle.kill).toHaveBeenCalledOnce()
+    expect(handle.detach).toHaveBeenCalledOnce()
+    expect(b.record).not.toHaveBeenCalled()
+  })
+  it('does not spawn when approval is denied', async () => {
+    const b = serverBindings({ authorize: vi.fn(async () => false) })
+    await expect(startVerificationServer(startupCommand(), b)).rejects.toThrow('verification-denied')
+    expect(b.spawn).not.toHaveBeenCalled()
+  })
+  it('rejects unsupported or unsafe supplied commands before approval', async () => {
+    const b = serverBindings()
+    for (const command of [{ ...startupCommand(), script: 'npm install && vite' }, { ...startupCommand(), args: ['run', 'dev'] }, { ...startupCommand(), file: 'sh' }, { ...startupCommand(), purpose: 'tests' as const }]) {
+      await expect(startVerificationServer(command, b)).rejects.toThrow('invalid-verification-startup-command')
+    }
+    expect(b.authorize).not.toHaveBeenCalled()
+    expect(b.spawn).not.toHaveBeenCalled()
+  })
+  it('does not spawn after cancellation during approval', async () => {
+    const approved = Promise.withResolvers<boolean>()
+    const entered = Promise.withResolvers<void>()
+    const controller = new AbortController()
+    const b = serverBindings({ signal: controller.signal, authorize: async () => { entered.resolve(); return approved.promise } })
+    const running = startVerificationServer(startupCommand(), b)
+    await entered.promise
+    controller.abort()
+    await expect(running).rejects.toThrow('verification-cancelled')
+    approved.resolve(true)
+    await Promise.resolve(); await Promise.resolve()
+    expect(b.spawn).not.toHaveBeenCalled()
+  })
+  it('kills only the late spawned handle after cancellation', async () => {
+    const pending = Promise.withResolvers<NativeStreamChild>()
+    const entered = Promise.withResolvers<void>()
+    const controller = new AbortController()
+    const handle = child()
+    const running = startVerificationServer(startupCommand(), serverBindings({ signal: controller.signal, spawn: async () => { entered.resolve(); return pending.promise } }))
+    await entered.promise
+    controller.abort()
+    await expect(running).rejects.toThrow('verification-cancelled')
+    pending.resolve(handle)
+    await vi.waitFor(() => expect(handle.detach).toHaveBeenCalledOnce())
+    expect(handle.kill).toHaveBeenCalledOnce()
+  })
+  it('terminates a running server on abort and permits a later stop', async () => {
+    const controller = new AbortController()
+    const handle = child()
+    const server = await startVerificationServer(startupCommand(), serverBindings({ signal: controller.signal, spawn: async () => handle }))
+    controller.abort()
+    await server.stop()
+    expect(handle.kill).toHaveBeenCalledOnce()
+    expect(handle.detach).toHaveBeenCalledOnce()
+  })
+  it('rejects immediate exit instead of claiming a running server', async () => {
+    const handle = child()
+    await expect(startVerificationServer(startupCommand(), serverBindings({ spawn: async (_spec, events) => {
+      events.onExit?.({ exitCode: 1, killed: false, timedOut: false, durationMs: 0 })
+      return handle
+    } }))).rejects.toThrow('verification-startup-exited:1')
+    await vi.waitFor(() => expect(handle.detach).toHaveBeenCalledOnce())
+    expect(handle.kill).not.toHaveBeenCalled()
+  })
+  it('rejects spawn failures', async () => {
+    await expect(startVerificationServer(startupCommand(), serverBindings({ spawn: async () => { throw new Error('missing-executable') } }))).rejects.toThrow('missing-executable')
+  })
+  it('bounds pending spawn and kills its late handle on timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      const pending = Promise.withResolvers<NativeStreamChild>()
+      const handle = child()
+      const running = startVerificationServer(startupCommand(), serverBindings({ timeoutMs: 10, spawn: async () => pending.promise }))
+      const rejected = expect(running).rejects.toThrow('verification-startup-timeout')
+      await vi.advanceTimersByTimeAsync(11)
+      await rejected
+      pending.resolve(handle)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(handle.kill).toHaveBeenCalledOnce()
+      expect(handle.detach).toHaveBeenCalledOnce()
+    } finally { vi.useRealTimers() }
+  })
+})
+
+describe('verification server exit races', () => {
+  it('rejects an exit delivered just after spawn', async () => {
+    const handle = child()
+    await expect(startVerificationServer(startupCommand(), serverBindings({ spawn: async (_spec, events) => {
+      setTimeout(() => events.onExit?.({ exitCode: 0, killed: false, timedOut: false, durationMs: 1 }), 0)
+      return handle
+    } }))).rejects.toThrow('verification-startup-exited:0')
+    expect(handle.detach).toHaveBeenCalledOnce()
+    expect(handle.kill).not.toHaveBeenCalled()
+  })
+  it('does not kill an already exited server on stop', async () => {
+    const handle = child()
+    let events: Parameters<VerificationBindings['spawn']>[1] | undefined
+    const server = await startVerificationServer(startupCommand(), serverBindings({ spawn: async (_spec, handlers) => { events = handlers; return handle } }))
+    events!.onExit?.({ exitCode: 0, killed: false, timedOut: false, durationMs: 100 })
+    await server.stop()
+    await server.stop()
+    expect(handle.detach).toHaveBeenCalledOnce()
+    expect(handle.kill).not.toHaveBeenCalled()
+  })
+  it('does not authorize or spawn an already cancelled startup', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const b = serverBindings({ signal: controller.signal })
+    await expect(startVerificationServer(startupCommand(), b)).rejects.toThrow('verification-cancelled')
+    expect(b.authorize).not.toHaveBeenCalled()
+    expect(b.spawn).not.toHaveBeenCalled()
   })
 })

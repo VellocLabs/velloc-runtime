@@ -195,6 +195,23 @@ export interface PublicationWrite {
   reportRevision: number
   rootCauseFingerprint?: string
   location?: { anchorKey: string; path: string; line: number; endLine?: number }
+  suggestion?: { replacement: string; original: string }
+}
+
+/** Exact span text, excluding only the final line terminator. */
+export function reviewSuggestionOriginal(content: string, start: number, end: number): string {
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start || end - start >= 10 || /[\x00-\x08\x0b\x0c\x0e-\x1f\ufffd]/.test(content)) throw new PlatformAdapterError('invalid-publication')
+  const lines = content.split('\n')
+  if (content.endsWith('\n')) lines.pop()
+  if (end > lines.length) throw new PlatformAdapterError('invalid-publication')
+  const selected = lines.slice(start - 1, end).join('\n')
+  return selected.endsWith('\r') ? selected.slice(0, -1) : selected
+}
+export function validateReviewSuggestion(suggestion: NonNullable<PublicationWrite['suggestion']>): void {
+  if (!suggestion || typeof suggestion.original !== 'string' || typeof suggestion.replacement !== 'string' || suggestion.original === suggestion.replacement || suggestion.replacement.includes('\r')) throw new PlatformAdapterError('invalid-publication')
+  for (const text of [suggestion.original, suggestion.replacement]) {
+    if (new TextEncoder().encode(text).length > 4096 || text.split('\n').length > 10 || /[`\x00-\x08\x0b\x0c\x0e-\x1f\ufffd]|~~~/.test(text)) throw new PlatformAdapterError('invalid-publication')
+  }
 }
 export interface PublicationReceipt {
   key: string
@@ -269,8 +286,16 @@ export function createReviewPlatformPublisher(options: PlatformPublisherOptions)
       anchor = resolveReviewAnchor(snapshot.manifest.anchors, write.location.anchorKey, write.location.path, write.location.line, write.location.endLine)
       if (anchor.side === 'working-copy' || anchor.revision !== (anchor.side === 'before' ? snapshot.base : snapshot.head)) throw new PlatformAdapterError('invalid-publication')
     }
+    let humanBody = write.body
+    if (write.suggestion !== undefined) {
+      if (options.target.platform !== 'github' || write.kind !== 'inline' || anchor?.side !== 'after' || !anchor.span || anchor.span.end - anchor.span.start >= 10 || /```|~~~/.test(humanBody)) throw new PlatformAdapterError('invalid-publication')
+      validateReviewSuggestion(write.suggestion)
+      if (write.suggestion.original.split('\n').length !== anchor.span.end - anchor.span.start + 1) throw new PlatformAdapterError('invalid-publication')
+      humanBody += `\n\n\`\`\`suggestion\n${write.suggestion.replacement}\n\`\`\``
+      if (humanBody.length > 60_000) throw new PlatformAdapterError('invalid-publication')
+    }
     let path: string
-    const body: Record<string, unknown> = { body: write.body }
+    const body: Record<string, unknown> = { body: humanBody }
     if (options.target.platform === 'github') {
       if (write.kind === 'discussion') throw new PlatformAdapterError('invalid-publication')
       path = write.kind === 'summary' ? `/repos/${options.target.projectKey}/issues/${options.target.number}/comments` : io.endpoint + '/comments'
@@ -295,9 +320,9 @@ export function createReviewPlatformPublisher(options: PlatformPublisherOptions)
     const key = await reviewDigest(JSON.stringify([target, snapshot.head, write.kind, contentDigest, write.kind === 'summary' ? [...write.diagnosticIds].sort() : write.rootCauseFingerprint, write.kind === 'summary' ? write.reportRevision : null, write.kind === 'summary' ? snapshot.manifest.complete : null]))
     const identityKey = await reviewDigest(JSON.stringify(write.kind === 'summary'
       ? [target, write.kind, options.target.platform === 'gitlab' ? null : snapshot.head]
-      : [target, snapshot.head, write.kind, write.rootCauseFingerprint, anchor?.path, anchor?.side, anchor?.span, anchor?.contextDigest]))
+      : [target, snapshot.head, write.kind, write.rootCauseFingerprint, anchor?.path, anchor?.side, ...(write.rootCauseFingerprint?.startsWith('mechanism:') ? [] : [anchor?.span, anchor?.contextDigest])]))
     // The opaque marker binds recovery to an operation, without exposing diagnostic text or credentials.
-    body.body = `${write.body}\n\n<!-- velloc-review:${key} -->`
+    body.body = `${humanBody}\n\n<!-- velloc-review:${key} -->`
     return { snapshot, write, path, body, pending: { key, identityKey, contentDigest, state: 'pending', diagnosticIds: [...write.diagnosticIds], attempt: 1, operation: 'create' } }
   }
   async function authorized(p: PreparedPublication, action: PublicationAuthorization['action'], receipt = p.pending): Promise<boolean> {
@@ -308,6 +333,12 @@ export function createReviewPlatformPublisher(options: PlatformPublisherOptions)
       await reader.checkHead(p.snapshot, signal)
       if (!await authorized(p, action, receipt)) throw new PlatformAdapterError('publication-denied')
       if (receipt.operation === 'update' && (!receipt.externalId || !await options.authorizeUpdate?.(structuredClone(p.write), structuredClone(p.snapshot), receipt.externalId))) throw new PlatformAdapterError('publication-denied')
+      if (p.write.suggestion && p.write.location) {
+        const location = p.write.location
+        const content = await reader.readContext(p.snapshot, location.path, 'after', signal)
+        if (reviewSuggestionOriginal(content, location.line, location.endLine ?? location.line) !== p.write.suggestion.original) throw new PlatformAdapterError('invalid-publication')
+        await reader.checkHead(p.snapshot, signal)
+      }
     } catch (error) {
       const blocked: PublicationReceipt = { ...receipt, state: 'blocked', reason: error instanceof PlatformAdapterError ? error.code : 'head-check-failed' }
       await options.receipts.save(blocked); return blocked

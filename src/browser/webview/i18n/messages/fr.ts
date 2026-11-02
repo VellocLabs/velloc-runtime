@@ -3,6 +3,8 @@ import type { Messages } from './en'
 // French catalog, typed `Messages`. Register: formal *vous*. Apostrophe is always
 // ’ (U+2019); « … » for quoted user input; a PLAIN space before ` : ; ! ?`.
 export const fr: Messages = {
+  "reviewCard.localNotPushed": "Les modifications locales n’ont pas été poussées vers cette demande de modification.",
+  "reviewCard.verificationWarning": "Cette application locale peut contacter les services configurés. Autorisez uniquement cette interaction avec des données de test ; ne modifiez pas la production ni des services externes dans le seul but de vérifier.",
   "reviewCard.discussions": "Publier sous forme de discussions de ligne",
   "reviewCard.exportJson": "Afficher le JSON du rapport",
   "reviewCard.output.json": "JSON",

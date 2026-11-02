@@ -130,6 +130,17 @@ describe('local scope', () => {
     const result = await resolveLocalReviewScope(f.options, { kind: 'paths', paths: ['./a.ts'] })
     expect(result.status).toBe('empty'); expect(result.files).toEqual([])
   })
+  it('does not turn unchanged excluded paths into a partial review', async () => {
+    const f = fixture({ before: 'same\nnew\n' })
+    const result = await resolveLocalReviewScope({ ...f.options, skipPath: () => true }, { kind: 'paths', paths: ['a.ts'] })
+    expect(result.status).toBe('empty')
+    expect(result.files).toEqual([])
+  })
+  it('keeps changed excluded files visible as skipped coverage', async () => {
+    const result = await resolveLocalReviewScope({ ...fixture().options, skipPath: () => true })
+    expect(result.status).toBe('partial')
+    expect(result.files).toEqual([{ path: 'a.ts', status: 'skipped', patch: '', anchors: [] }])
+  })
   it('allows an explicit new file but does not enumerate unrelated untracked files', async () => {
     const f = fixture({ tracked: '', tree: '', files: { 'new.ts': { kind: 'file', bytes: encode('new\n') }, 'secret.env': { kind: 'file', bytes: encode('secret') } } })
     const result = await resolveLocalReviewScope(f.options, { kind: 'paths', paths: ['new.ts'] })

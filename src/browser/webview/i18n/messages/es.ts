@@ -7,6 +7,8 @@ import type { Messages } from './en'
 // *su configuración*). The pronoun *usted* itself is not spelled out, and
 // *tú* forms do not appear.
 export const es: Messages = {
+  "reviewCard.localNotPushed": "Los cambios locales no se han enviado a esta solicitud de cambio.",
+  "reviewCard.verificationWarning": "Esta aplicación local puede contactar con sus servicios configurados. Apruebe solo esta interacción con datos de prueba; no realice escrituras en producción ni en servicios externos únicamente para verificar.",
   "reviewCard.discussions": "Publicar como discusiones de línea",
   "reviewCard.exportJson": "Ver JSON del informe",
   "reviewCard.output.json": "JSON",

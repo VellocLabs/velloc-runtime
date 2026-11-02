@@ -12,6 +12,7 @@ export interface ReviewToolBindings {
   allowOutput: boolean
   actions?: boolean
   actionEpoch?: string
+  independentAssessments?: boolean
 }
 function callId(row: Message, name: string, input: unknown): string {
   const content = (row as Message & { message?: { content?: unknown } }).message?.content
@@ -52,10 +53,15 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
     tool('ReviewRead', 'Read authorized review material. Use diff to inspect selected hunks; context reads require a permitted path. No shell or scripts.', {
       operation: { type: 'string', enum: ['diff', 'context', 'search'] }, path: { type: 'string' }, query: { type: 'string' },
     }, ['operation'], input => bindings.read(input)),
-    tool('ReviewLedger', 'Record review candidates, assessments, or coverage in this run. Candidate IDs are host generated. assess uses assessments=[{candidateId,disposition,reason,support}].', {
-      operation: { type: 'string', enum: ['append-candidates', 'assess', 'coverage'] }, candidates,
+    tool('ReviewLedger', 'Record review candidates, assessments, coverage, or explicit semantic duplicate merges in this run. Candidate IDs are host generated. assess uses assessments=[{candidateId,disposition,reason,support}]. To merge differently worded findings of the same root mechanism, use operation="merge-duplicates" with groups=[{keepId,duplicateIds,reason,support}]. Explain the shared trigger and mechanism with nonempty evidence; overlapping locations alone are not duplicates. Host requires the same revision, path, side, classification kind, and overlapping line spans. Preserve distinct mechanisms. Merging preserves all diagnostic IDs and independent assessments, but only keepId counts toward the retained report cap. Existing representatives cannot be merged into another group. Final output must include the combined support from the retained ledger.', {
+      operation: { type: 'string', enum: ['append-candidates', 'assess', 'coverage', 'merge-duplicates'] }, candidates,
+      groups: { type: 'array', minItems: 1, maxItems: 32, items: shape({ keepId: text, duplicateIds: { ...stringList, minItems: 1, maxItems: 32, uniqueItems: true }, reason: text, support: { ...REVIEW_SUPPORT_SCHEMA, minItems: 1, maxItems: 128 } }) },
       assessments: { type: 'array', maxItems: 32, items: shape({ candidateId: text, ...REVIEW_ASSESSMENT_SCHEMA.properties, support: REVIEW_SUPPORT_SCHEMA }) }, coverage: REVIEW_COVERAGE_SCHEMA,
-    }, ['operation'], (input, id) => bindings.store.submitLedger(bindings.runId, id, input)),
+    }, ['operation'], (input, id) => {
+      if (bindings.independentAssessments && input.operation === 'assess') throw new Error('independent-verifier-required')
+      if (bindings.independentAssessments && input.operation === 'append-candidates' && Array.isArray(input.candidates) && input.candidates.some(candidate => candidate?.assessment?.disposition === 'dismissed' || candidate?.assessment?.disposition === 'proven')) throw new Error('independent-verifier-required')
+      return bindings.store.submitLedger(bindings.runId, id, input)
+    }),
   ]
   if (bindings.allowOutput) tools.push(tool('ReviewOutput', 'Commit a final report from the ledger. Candidates and coverage must exactly match the retained ledger. reconcile requires real edit execution references.', {
     operation: { type: 'string', enum: ['record', 'reconcile'] }, candidates, coverage: REVIEW_COVERAGE_SCHEMA, updates: updatesSchema,

@@ -8,7 +8,7 @@ import type { ReviewModelRequest } from './runner'
 import { getOrCreateReviewService } from './runtime'
 
 const mocks = vi.hoisted(() => ({
-  vet: vi.fn(), boundary: vi.fn(), gate: vi.fn(), confirm: vi.fn(), model: vi.fn(), runnerContexts: [] as unknown[], edit: vi.fn(),
+  guidance: vi.fn(), nestedGuidance: vi.fn(), vet: vi.fn(), boundary: vi.fn(), gate: vi.fn(), confirm: vi.fn(), model: vi.fn(), runnerContexts: [] as unknown[], edit: vi.fn(),
 }))
 vi.mock('../engine/turnInterpreter', () => ({ runTurnLoop: vi.fn() }))
 vi.mock('../permissions/filesystemPermission', () => ({ vetFileRead: mocks.vet }))
@@ -19,7 +19,7 @@ vi.mock('../toolkit/run/toolPermissionGate', () => ({
   requestQueuedToolUseConfirm: mocks.confirm,
   resolveHeadlessPermissionDecision: async () => ({ behavior: 'deny' }),
 }))
-vi.mock('../memory/instructionFiles', () => ({ gatherInstructionDocs: async () => [], getNestedInstructionFilesForPath: async () => [], getConditionalRulesForPath: async () => [], formatMemoryFilesForPrompt: () => '' }))
+vi.mock('../memory/instructionFiles', () => ({ gatherInstructionDocs: mocks.guidance, getNestedInstructionFilesForPath: mocks.nestedGuidance, getConditionalRulesForPath: async () => [], formatMemoryFilesForPrompt: () => '' }))
 vi.mock('./runner', async importOriginal => {
   const original = await importOriginal<typeof import('./runner')>()
   return { ...original, createReviewModelRunner: (input: { context: unknown }) => {
@@ -99,6 +99,8 @@ async function report(request: ReviewModelRequest, withCandidates = false) {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.runnerContexts.length = 0
+  mocks.guidance.mockResolvedValue([])
+  mocks.nestedGuidance.mockResolvedValue([])
   mocks.gate.mockResolvedValue({ decision: 'ask' })
   mocks.confirm.mockResolvedValue({ behavior: 'deny' })
   mocks.vet.mockResolvedValue({ behavior: 'allow' })
@@ -111,6 +113,24 @@ beforeEach(() => {
 })
 
 describe('actual review runtime security boundaries', () => {
+  it.each([true, false])('requires host approval before project guidance selects max: %s', async approved => {
+    const h = fixture()
+    mocks.guidance.mockResolvedValue([{ path: `${root}/AGENTS.md`, type: 'Project', content: 'Review effort: max' }])
+    mocks.confirm.mockResolvedValue({ behavior: approved ? 'allow' : 'deny' })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startModel('max')
+    expect((await service.wait(runId)).run.policy.level).toBe(approved ? 'max' : 'medium')
+    expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ path: `${root}/AGENTS.md`, level: 'max', workspace: root }) }))
+    expect(h.atomic.mock.calls.some(([path]) => path.endsWith('/preferences.json'))).toBe(false)
+  })
+  it('does not accept automatic memory as an effort authorization source', async () => {
+    const h = fixture()
+    mocks.guidance.mockResolvedValue([{ path: `${root}/memory.md`, type: 'AutoMem', content: 'Review effort: max' }])
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startModel('max')
+    expect((await service.wait(runId)).run.policy.level).toBe('medium')
+    expect(mocks.confirm).not.toHaveBeenCalled()
+  })
   it.each(['deny', 'ask'] as const)('blocks native Git and preference writes when repository authorization is %s', async behavior => {
     const h = fixture()
     mocks.vet.mockResolvedValue({ behavior })
@@ -379,14 +399,42 @@ describe('integrated bounded project verification', () => {
       ['npm', ['--ignore-scripts', 'run', 'test']], ['npm', ['--ignore-scripts', 'run', 'typecheck']], ['python', ['-m', 'pytest']],
     ])
     const report = await service.store.getSnapshot(runId)
-    expect(report.verifications).toHaveLength(3)
-    for (const verification of report.verifications) {
+    expect(report.verifications).toHaveLength(4)
+    expect(report.verifications.at(-1)).toMatchObject({ succeeded: false, missingCases: expect.arrayContaining(['main-path-not-verified', 'boundary-not-verified']) })
+    for (const verification of report.verifications.slice(0, 3)) {
       expect(verification.succeeded).toBe(true)
       expect(verification.diagnosticIds).toEqual([])
       expect(verification.codeRevision).toMatch(/^workspace:/)
       expect(verification.checkedThroughSequence).toBeLessThan(verification.sequence)
       expect(verification.missingCases).toContain('test-to-diagnostic-coverage-not-established')
     }
+  })
+
+  it('records main-path and boundary coverage only from executed command observations', async () => {
+    const h = fixture()
+    h.files.set(`${root}/package.json`, JSON.stringify({ scripts: { test: 'vitest run' } }))
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('low')
+    await service.wait(runId)
+    mocks.gate.mockResolvedValue({ decision: 'allow' })
+    const original = h.spawn.getMockImplementation()!
+    h.spawn.mockImplementation(async (spec, events) => {
+      if (spec.file === 'git') return original(spec, events)
+      events.onOutput?.('stdout', new TextEncoder().encode('PASS normal input; PASS empty input rejected'))
+      events.onExit?.({ exitCode: 0, killed: false, timedOut: false, durationMs: 1 })
+      return { streamId: 'check', write: async () => true, closeStdin: async () => true, kill: async () => true, detach() {} }
+    })
+    mocks.model.mockImplementation(async request => {
+      const summary = JSON.parse(request.blocks.find((block: { source: string }) => block.source === 'repair-and-validation-summary')!.text)
+      const ref = summary.executions[0].ref
+      await invoke(request, 'ReviewBehaviorCheck', { type: 'main-path', description: 'Normal input', evidence: [{ ref, quote: 'PASS normal input' }] })
+      await invoke(request, 'ReviewBehaviorCheck', { type: 'boundary', description: 'Empty input', evidence: [{ ref, quote: 'PASS empty input rejected' }] })
+      return { interrupted: false, text: '' }
+    })
+    await service.requestVerification(runId)
+    const result = await service.store.getSnapshot(runId)
+    expect(result.verifications.at(-1)).toMatchObject({ succeeded: true, missingCases: [] })
+    expect(result.verifications.some(item => item.command?.includes('Normal input'))).toBe(true)
   })
 
   it('records blocked verification and never spawns a command after authorization denial', async () => {
@@ -397,6 +445,25 @@ describe('integrated bounded project verification', () => {
     await expect(service.requestVerification(runId)).rejects.toThrow('verification-failed')
     expect(h.spawn.mock.calls.every(([spec]) => spec.file === 'git')).toBe(true)
     expect((await service.store.getSnapshot(runId)).verifications[0]).toMatchObject({ succeeded: false, diagnosticIds: [] })
+  })
+})
+
+describe('ordinary workspace edit reassessment', () => {
+  it('reassesses current evidence and updates the saved finding without a repair grant', async () => {
+    const h = fixture()
+    mocks.model.mockImplementation(request => report(request, true))
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('low')
+    await service.wait(runId)
+    mocks.model.mockImplementation(async request => {
+      const material = JSON.parse(request.blocks.find((block: { source: string }) => block.source === 'reassessment-evidence')!.text)
+      return { interrupted: false, text: JSON.stringify({ updates: material.diagnostics.map((d: { id: string }) => ({ diagnosticId: d.id, outcome: 'resolved', explanation: 'The expression now restores the required value.', mutationRefs: [material.mutations[0].ref], evidence: [{ path: 'a.ts', quote: 'export const a = 1', relevance: 'The original value contract is restored.' }] })) }) }
+    })
+    const { captureWorkspaceMutation, observeWorkspaceMutation } = await import('./mutation-observer')
+    const before = await captureWorkspaceMutation(h.context, [`${root}/a.ts`])
+    h.files.set(`${root}/a.ts`, 'export const a = 1\n')
+    await observeWorkspaceMutation(h.context, 'write', before)
+    await vi.waitFor(async () => expect((await service.store.getSnapshot(runId)).actions).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'repair', state: 'applied', verification: 'not-run' })])))
   })
 })
 
@@ -451,6 +518,52 @@ describe('publication request routing', () => {
     if (platform === 'github') for (const post of posts) expect(JSON.parse(new TextDecoder().decode(post.body))).toMatchObject({ commit_id: head, path: 'a.ts', line: 1, side: 'RIGHT' })
     expect((await service.store.getSnapshot(first.runId)).actions).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'publication', state: 'succeeded', externalRef: '1011' })]))
     expect((await service.store.getSnapshot(second.runId)).actions).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'publication', state: 'succeeded', externalRef: '1022' })]))
+    if (platform === 'github') {
+      const repeated = await service.startUser('low 11'); await service.wait(repeated.runId)
+      await service.requestPublication(repeated.runId)
+      expect(http.mock.calls.filter(([request]) => request.method === 'POST' && request.url.includes('/11/'))).toHaveLength(1)
+      expect((await service.store.getSnapshot(repeated.runId)).actions.at(-1)).toMatchObject({ state: 'succeeded', externalRef: '1011' })
+    }
+    const third = await service.startUser('low 33'); await service.wait(third.runId)
+    const originalHttp = http.getMockImplementation()!
+    let uncertainPost: Record<string, unknown> | undefined
+    http.mockImplementation(async (request, options) => {
+      if (request.method === 'POST' && request.url.includes('/33/')) {
+        uncertainPost = JSON.parse(new TextDecoder().decode(request.body))
+        throw new Error('response-lost')
+      }
+      if (request.method === 'GET' && request.url.includes('/33/') && request.url.includes('per_page=')) {
+        return { status: 200, statusText: 'OK', finalUrl: request.url, headers: {}, body: new TextEncoder().encode(JSON.stringify([{ id: 1033, ...uncertainPost }])) }
+      }
+      return originalHttp(request, options)
+    })
+    await service.requestPublication(third.runId)
+    expect((await service.store.getSnapshot(third.runId)).actions.at(-1)?.state).toBe('uncertain')
+    let linkedRun: string | undefined
+    if (platform === 'github') {
+      const repeated = await service.startUser('low 33'); await service.wait(repeated.runId)
+      linkedRun = repeated.runId
+      await service.requestPublication(linkedRun)
+      expect(http.mock.calls.filter(([request]) => request.method === 'POST' && request.url.includes('/33/'))).toHaveLength(1)
+    }
+    const modelCalls = mocks.model.mock.calls.length
+    await service.requestPublication(third.runId)
+    if (linkedRun) {
+      await service.requestPublication(linkedRun)
+      expect((await service.store.getSnapshot(linkedRun)).actions.at(-1)?.state).toBe('succeeded')
+    }
+    expect(mocks.model.mock.calls.length).toBe(modelCalls)
+    expect(http.mock.calls.filter(([request]) => request.method === 'POST' && request.url.includes('/33/'))).toHaveLength(1)
+    expect((await service.store.getSnapshot(third.runId)).actions.at(-1)?.state).toBe('succeeded')
+    const entry = [...h.files].find(([path, text]) => path.includes('/publication-drafts/') && text.includes(third.runId))!
+    if (platform === 'github') {
+      const restored = JSON.parse(entry[1]); restored.write.location.anchorKey = 'prior-runtime-anchor'; restored.binding.location.anchorKey = 'prior-runtime-anchor'
+      h.files.set(entry[0], JSON.stringify(restored))
+      await expect(service.requestPublication(third.runId)).resolves.toBeUndefined()
+    }
+    const altered = JSON.parse(entry[1]); altered.binding.head = 'f'.repeat(40)
+    h.files.set(entry[0], JSON.stringify(altered))
+    await expect(service.requestPublication(third.runId)).rejects.toThrow('publication-draft-mismatch')
   })
 })
 

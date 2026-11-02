@@ -1,6 +1,15 @@
+import { createMechanismCatalog } from './mechanism-catalog'
+import { proposeReviewSuggestion, prepareReviewPublicationBody } from './publication-content'
+import { createTranslate } from '../browser/webview/i18n/translate'
+import { reviewDetailMessage, reviewValueMessage } from './messages'
+import { registerWorkspaceMutationObserver, withSuppressedWorkspaceMutations } from './mutation-observer'
+import { reassessExternalEdit, reassessmentTouches, type ReassessmentEvidence } from './reassessment'
+import { runBehaviorVerification, type BehaviorExecution } from './behavior-verification'
+import { createVerificationBrowserTools } from './verification-browser'
+import { reviewEffortDirective } from './guidance'
 import { createPublicationReceiptStore } from './publication-store'
 import { parseReviewArguments, isReviewLevel } from './arguments'
-import { planVerification, runVerification } from './verification'
+import { planVerification, runVerification, startVerificationServer, type VerificationServerHandle } from './verification'
 import { presentReviewJson } from './presenter'
 import { findConfiguredModel } from '../config/nexusModelConfig/findConfiguredModel'
 import { resolveModelId } from '../config/nexusModelConfig/modelEntryResolution'
@@ -19,7 +28,7 @@ import { assertUntrustedReadAllowed } from '../permissions/untrustedReadBoundary
 import { isFsNotFoundError } from '../utils/fsTransportFailure'
 import { createGitArgvRunner, gitText, validateReviewPath, type GitStreamSpawner } from './git-adapter'
 import { resolveLocalReviewScope, reviewDigest, type WorkspaceRead, type LocalReviewTarget } from './scope'
-import { LocalReviewService, ReviewGatewayError } from './service'
+import { LocalReviewService, ReviewGatewayError, type ReviewServiceOptions } from './service'
 import { createReviewModelRunner } from './runner'
 import { registerReviewSession } from './review-channel'
 import type { ReviewReportView } from './review-protocol'
@@ -152,7 +161,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       return { kind: 'file', bytes: await fs!.readFileBytes(absolute, maxBytes) }
     } catch (error) { if (isFsNotFoundError(error)) return { kind: 'missing' }; throw error }
   }
-  const guidanceFor = async (paths: string[]) => {
+  const guidanceFor = async (paths: string[], authorizeEffort = false) => {
     if (!context.options.runtimeConfig) return { text: '', sources: [] as Array<{ path: string; revision: string; excerpt: string }> }
     const guardedFs = new Proxy(fs, { get(target, key) {
       if (key === 'readFile') return async (path: string, options: { encoding: string }) => { await authorizePath(path); return target.readFile(path, options) }
@@ -171,7 +180,20 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     const sources = await Promise.all(selected.filter(doc => below(normalized(doc.path), root) && !equal(normalized(doc.path), root)).map(async doc => ({
       path: normalized(doc.path).slice(root.length + 1), revision: `guidance:${await reviewDigest(doc.content)}`, excerpt: doc.content,
     })))
-    return { text: formatMemoryFilesForPrompt(selected), sources }
+    let authorizedGuidance: ReviewServiceOptions['guidance']
+    if (authorizeEffort) {
+      for (const doc of [...selected].reverse()) {
+        if (doc.type === 'AutoMem') continue
+        const level = reviewEffortDirective(doc.content)
+        if (!level) continue
+        const digest = await reviewDigest(doc.content)
+        if (await authorizeAction('ReviewGuidance', { path: doc.path, digest, level, workspace: root, paths, parent: doc.parent }, true)) {
+          authorizedGuidance = { level, trusted: true, appliesToProject: true }
+          break
+        }
+      }
+    }
+    return { text: formatMemoryFilesForPrompt(selected), sources, authorizedGuidance }
   }
   const scopeGit = async () => {
     const git = await createGitArgvRunner(runtime.spawnArgv, { authorizeRoot: async () => {
@@ -242,6 +264,11 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     async read() { const value = await readJson(receiptFile); return value ? JSON.stringify(value) : null },
     async writeAtomic(serialized) { await writeSerialized(receiptFile, serialized) },
   }, receiptOwner)
+  const mechanismPath = resolveRuntimePath(storageRoot, 'publication-mechanisms.json')
+  const mechanisms = createMechanismCatalog({
+    async read() { const value = await readJson(mechanismPath); return value === undefined ? null : JSON.stringify(value) },
+    writeAtomic: serialized => writeSerialized(mechanismPath, serialized),
+  }, receiptOwner)
   const currentCapabilities = () => {
     const rules = context.readAppState().permissionRules
     const agents = dropDeniedTools(context.options.tools, { denyRuleBook: rules.denyRuleBook ?? {} }).filter(tool => tool.name === 'Agent' && tool.offeredNow())
@@ -255,6 +282,13 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     scope.repository.projectKey, scope.request?.number, scope.revision.base, scope.revision.head, scope.request?.headRevision,
   ])
   const remoteSnapshots = new Map<string, ChangeRequestSnapshot>()
+  const verifiedVersions = new Set<string>()
+  const verificationVersion = async (snapshot: ReportSnapshot, signal?: AbortSignal) => {
+    if (!['workspace', 'paths'].includes(snapshot.run.scope.kind) || snapshot.run.scope.workspaceKey !== root) return undefined
+    const scope = await resolveLocalReviewScope({ git: await scopeGit(), workspaceKey: root, projectKey: root, readWorkspaceFile },
+      snapshot.run.scope.kind === 'paths' ? { kind: 'paths', paths: snapshot.run.scope.pathFilter } : { kind: 'workspace' }, signal)
+    return scope.complete ? JSON.stringify([scope.scope.revision, scope.scope.pathFilter]) : undefined
+  }
   const service = new LocalReviewService({
     conversationKey: context.options.sessionId, get modelId() { return resolveModelId(context.options.mainLoopProviderId, context.options.mainLoopModel) },
     get sessionLevel() { const level = context.options.reviewRuntime?.sessionLevel?.(); return level && isReviewLevel(level) ? level : undefined },
@@ -317,8 +351,8 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           remote.manifest.anchors = remote.manifest.files.flatMap(file => file.anchors)
           if (remote.manifest.files.some(file => file.status !== 'included')) { remote.manifest.complete = false; remote.manifest.status = 'partial' }
           remoteSnapshots.set(remoteKey(remote.manifest.scope), remote)
-          const guidance = await guidanceFor([])
-          return { manifest: remote.manifest, trustedGuidance: guidance.text, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {
+          const guidance = await guidanceFor(remote.manifest.files.map(file => file.path), true)
+          return { manifest: remote.manifest, trustedGuidance: guidance.text, authorizedGuidance: guidance.authorizedGuidance, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {
             if (input.operation === 'diff') return remote.manifest
             if (!selectedPlan.allowWholeFileReads) throw new ReviewGatewayError('whole-file-read-not-authorized')
             if (input.operation === 'search' && typeof input.query === 'string') return { files: remote.manifest.files.filter(file => file.patch.includes(input.query as string)), limitations: ['search-limited-to-remote-diff'] }
@@ -364,8 +398,8 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         if (read.kind !== 'file') throw new ReviewGatewayError('review-context-unavailable')
         return new TextDecoder().decode(read.bytes)
       }
-      const guidance = await guidanceFor(manifest.files.map(file => file.path))
-      return { manifest, trustedGuidance: guidance.text, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {
+      const guidance = await guidanceFor(manifest.files.map(file => file.path), true)
+      return { manifest, trustedGuidance: guidance.text, authorizedGuidance: guidance.authorizedGuidance, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {
         if (readSignal.aborted) throw new ReviewGatewayError('review-cancelled')
         if (input.operation === 'diff') return manifest
         if (!selectedPlan.allowWholeFileReads) throw new ReviewGatewayError('whole-file-read-not-authorized')
@@ -385,6 +419,11 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         return readContext(input.path, readSignal)
       } }
     },
+    async alreadyVerified(snapshot) {
+      if (!verifiedVersions.size) return false
+      const version = await verificationVersion(snapshot)
+      return version !== undefined && verifiedVersions.has(version)
+    },
     async verify(snapshot, signal, store, actionEpoch, verificationGrantId) {
       if (!['workspace', 'paths'].includes(snapshot.run.scope.kind) || snapshot.run.scope.workspaceKey !== root) throw new ReviewGatewayError('verification-workspace-mismatch')
       if (actionEpoch && !verificationGrantId) throw new ReviewGatewayError('verification-phase-grant-required')
@@ -400,6 +439,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       }
       const currentScope = await resolveLocalReviewScope({ git: await scopeGit(), workspaceKey: root, projectKey: root, readWorkspaceFile },
         snapshot.run.scope.kind === 'paths' ? { kind: 'paths', paths: snapshot.run.scope.pathFilter } : { kind: 'workspace' }, signal)
+      const initialVersion = currentScope.complete ? JSON.stringify([currentScope.scope.revision, currentScope.scope.pathFilter]) : undefined
       const files = [...new Set(currentScope.files.map(file => file.path).concat(snapshot.diagnostics.map(d => d.anchor.path)))]
       if (!currentScope.complete) instructionGaps.push('verification-scope-incomplete')
       const guidance = await guidanceFor(files)
@@ -426,22 +466,13 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         }))
         codeRevision = `workspace:${await reviewDigest(JSON.stringify({ head: current.run.scope.revision.head, hashes, checkedThroughSequence }))}`
       }
+      const executions = new Map<string, BehaviorExecution>()
       let executionSignal = signal
       const browser = context.platformCapabilities?.browser
       const browserTools = dropDeniedTools(context.options.tools, { denyRuleBook: context.readAppState().permissionRules.denyRuleBook ?? {} })
       const canProbe = browser && ['BrowserNavigate', 'BrowserReadPage'].every(name => browserTools.some(tool => tool.name === name && tool.offeredNow()))
-      const result = await runVerification(plan, {
+      const result = await runVerification({ ...plan, uiChanged: false }, {
         signal,
-        probeUi: canProbe ? async input => {
-          const common = { evaluation_previous_goal: 'No prior browser verification in this run.', memory: 'Read-only local review verification.', next_goal: 'Inspect the documented local application without submitting forms.' }
-          for (const [name, args] of [['BrowserNavigate', { ...common, url: input.url, new_tab: true }], ['BrowserReadPage', { ...common, include_observation: false }]] as const) {
-            if (input.signal.aborted) throw new ReviewGatewayError('verification-cancelled')
-            if (!await authorizeAction(name, args, true)) throw new ReviewGatewayError('verification-not-authorized')
-            const observation = await browser!.callTool({ name, args, executionContext: { sessionId: context.options.sessionId } })
-            if (name === 'BrowserReadPage') return { passed: true, output: sanitize(JSON.stringify(observation)), mainPaths: [], boundaries: [], uncovered: ['interactive-ui-paths-not-exercised'] }
-          }
-          throw new ReviewGatewayError('verification-failed')
-        } : undefined,
         authorize: async request => {
           executionSignal = request.signal
           if (request.signal.aborted || signal.aborted || request.workspace !== root) return false
@@ -460,14 +491,81 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           return runtime.spawnArgv(spec, handlers)
         },
         record: async receipt => {
-          await store.recordExecution(snapshot.run.id, { ref: crypto.randomUUID(), kind: 'verification', diagnosticIds: [], paths: [],
+          const ref = crypto.randomUUID()
+          executions.set(ref, { ref, kind: receipt.kind, succeeded: receipt.state === 'passed', observation: sanitize(receipt.output || receipt.state) })
+          await store.recordExecution(snapshot.run.id, { ref, kind: 'verification', diagnosticIds: [], paths: [],
             succeeded: receipt.state === 'passed', grantId, actionEpoch, checkedThroughSequence, codeRevision,
             command: JSON.stringify(receipt.command ? [receipt.command.file, ...receipt.command.args] : ['browser', receipt.url]),
             missingCases: [...plan.uncovered, ...instructionGaps, ...receipt.coverage.uncovered, 'test-to-diagnostic-coverage-not-established', ...(plan.uiChanged ? ['interactive-ui-not-verified'] : [])],
             evidence: [{ quote: sanitize(receipt.output || receipt.state), relevance: JSON.stringify({ state: receipt.state, exitCode: receipt.exitCode, reason: receipt.reason, outputTruncated: receipt.outputTruncated }) }] })
         },
       })
-      if (!result.receipts.length) {
+      let behaviorVerified = !runtimeChanged
+      if (runtimeChanged && !signal.aborted && !result.receipts.some(receipt => receipt.state === 'timed-out' || receipt.state === 'cancelled')) {
+        const currentTexts = new Map<string, string>()
+        const readTool = declareTool({ name: 'ReviewVerificationRead', description: async () => 'Read current authorized source or project instructions to design affected-path and boundary checks.',
+          argsSchema: { type: 'object' as const, properties: { path: { type: 'string' } }, required: ['path'], additionalProperties: false }, readsOnly: () => true,
+          call: async (args: { path: string }) => {
+            validateReviewPath(args.path)
+            const content = await readText(args.path)
+            if (content === undefined) throw new ReviewGatewayError('verification-context-unavailable')
+            currentTexts.set(args.path, await reviewDigest(content))
+            return { data: sanitize(content) }
+          } })
+        const behaviorTools: import('../toolkit/toolContract').ToolContract[] = [readTool]
+        let server: VerificationServerHandle | undefined
+        if (plan.startupCommand) behaviorTools.push(declareTool({ name: 'ReviewStartDevelopment', description: async () => 'Start only the documented development script if the local application is not already running. No install, restart or arbitrary command. The host stops this owned process after verification.',
+          argsSchema: { type: 'object' as const, properties: {}, additionalProperties: false }, readsOnly: () => false,
+          call: async (_args: Record<string, unknown>, callContext) => {
+            if (server) return { data: { started: true, output: sanitize(server.output) } }
+            server = await startVerificationServer(plan.startupCommand!, { workspace: root, spawn: runtime.spawnArgv, signal: callContext.cancelSource.signal,
+              authorize: async request => {
+                if (signal.aborted || request.signal.aborted) return false
+                const latestPackage = await readText('package.json')
+                if (!latestPackage || latestPackage !== packageText) throw new ReviewGatewayError('snapshot-changed')
+                await store.assertActionAuthorized(snapshot.run.id, grantId, 'verification', snapshot.retainedIds)
+                return await authorizeAction('ReviewVerification', { cwd: root, command: request.command, restrictions: ['no dependency installation', 'no service restart', 'no external writes'] }, true)
+              } })
+            return { data: { started: true, output: sanitize(server.output) } }
+          } }))
+        if (canProbe && plan.uiUrl) behaviorTools.push(...createVerificationBrowserTools({ url: plan.uiUrl, available: browserTools, signal,
+          authorize: async (name, args, approval) => {
+            const current = dropDeniedTools(context.options.tools, { denyRuleBook: context.readAppState().permissionRules.denyRuleBook ?? {} }).find(tool => tool.name === name && tool.offeredNow())
+            if (!current || signal.aborted || (await decideToolPermission(current, args, context)).decision === 'deny' || !await authorizeAction(name, { ...args, ...(approval ? { verificationTarget: approval } : {}), restrictions: ['local test data only', 'no external writes', 'no production endpoints'] }, true)) return false
+            if (!context.options.tools.some(tool => tool === current && tool.offeredNow()) || (await decideToolPermission(current, args, context)).decision === 'deny') return false
+            await store.assertActionAuthorized(snapshot.run.id, grantId, 'verification', snapshot.retainedIds)
+            await captureVersion()
+            return !signal.aborted
+          },
+          call: (name, args) => browser!.callTool({ name, args, executionContext: { sessionId: context.options.sessionId } }),
+          sanitize, record: async execution => { executions.set(execution.ref, execution) },
+        }))
+        let behavior: Awaited<ReturnType<typeof runBehaviorVerification>>
+        try { behavior = await runBehaviorVerification({ runner: request => createReviewModelRunner({ context, promptContextProvider: runtime.promptContextProvider, decidePermission, deps: runtime.deps })(request),
+          taskId: `${snapshot.run.id}-behavior`, scopeManifest: JSON.stringify(currentScope), guidance: guidance.text,
+          diff: JSON.stringify(currentScope.files), repairAndValidationSummary: JSON.stringify({ actions: snapshot.actions, executions: [...executions.values()] }),
+          approvedTools: behaviorTools, executions, signal, uiChanged: plan.uiChanged,
+          record: async check => {
+            await store.assertActionAuthorized(snapshot.run.id, grantId, 'verification', snapshot.retainedIds)
+            for (const [path, digest] of currentTexts) {
+              const content = await readText(path)
+              if (content === undefined || await reviewDigest(content) !== digest) throw new ReviewGatewayError('snapshot-changed')
+            }
+            if (initialVersion && initialVersion !== await verificationVersion(snapshot, signal)) throw new ReviewGatewayError('snapshot-changed')
+            await store.recordExecution(snapshot.run.id, { ref: crypto.randomUUID(), kind: 'verification', diagnosticIds: [], paths: [], succeeded: true,
+              grantId, actionEpoch, checkedThroughSequence, codeRevision, command: JSON.stringify({ check: check.type, description: check.description }),
+              missingCases: ['test-to-diagnostic-coverage-not-established'], evidence: check.evidence.map(item => ({ quote: item.quote, relevance: `${check.type}: ${check.description}; execution ${item.ref}` })) })
+          },
+        })
+        } finally { await server?.stop() }
+        behaviorVerified = behavior.behaviorVerified
+        instructionGaps.push(...behavior.uncovered)
+        if (behavior.state === 'cancelled' || behavior.state === 'timed-out') throw new ReviewGatewayError(behavior.state === 'cancelled' ? 'verification-cancelled' : 'verification-timed-out')
+        await store.recordExecution(snapshot.run.id, { ref: crypto.randomUUID(), kind: 'verification', diagnosticIds: [], paths: [], succeeded: behavior.behaviorVerified,
+          grantId, actionEpoch, checkedThroughSequence, codeRevision, missingCases: [...instructionGaps],
+          evidence: [{ quote: JSON.stringify(behavior.covered), relevance: 'Observed affected-path and boundary verification coverage.' }] })
+      }
+      if (!result.receipts.length && !behaviorVerified) {
         await store.recordExecution(snapshot.run.id, { ref: crypto.randomUUID(), kind: 'verification', diagnosticIds: [], paths: [], succeeded: false,
           grantId, actionEpoch, checkedThroughSequence, codeRevision, missingCases: [...result.uncovered, ...instructionGaps, ...(!runtimeChanged ? ['runtime-verification-not-applicable'] : [])],
           evidence: [{ quote: 'No runtime verification command was executed.', relevance: 'Existing project instructions did not provide an executable verification plan.' }] })
@@ -477,6 +575,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       if (result.receipts.some(receipt => receipt.state === 'cancelled')) throw new ReviewGatewayError('verification-cancelled')
       if (result.receipts.some(receipt => receipt.state === 'timed-out')) throw new ReviewGatewayError('verification-timed-out')
       if (result.receipts.some(receipt => receipt.state !== 'passed')) throw new ReviewGatewayError('verification-failed')
+      if (behaviorVerified && !instructionGaps.length && initialVersion && initialVersion === await verificationVersion(snapshot, signal)) verifiedVersions.add(initialVersion)
     },
     async publish(snapshot, grantId, signal, store, discussions = false) {
       const scope = snapshot.run.scope
@@ -487,30 +586,112 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       if (!secret) throw new ReviewGatewayError('publication-authentication-required')
       if (!await authorizeAction('ReviewPublication', { target: remote.target, head: remote.head }, true)) throw new ReviewGatewayError('publication-not-authorized')
       const retained = snapshot.diagnostics.filter(d => snapshot.retainedIds.includes(d.id))
-      const bodyFor = (ids: string[]) => JSON.stringify({ complete: snapshot.coverage.complete, limitations: snapshot.coverage.limitations,
-        findings: retained.filter(d => ids.includes(d.id)), actions: snapshot.actions.filter(a => a.diagnosticIds.some(id => ids.includes(id))), localEditsAreNotPushed: true })
-      const writes = (remote.target.platform === 'github' || discussions) && retained.length ? retained.map(d => {
+      const t = createTranslate('en')
+      const bodyFor = (ids: string[]) => sanitize(prepareReviewPublicationBody({ diagnostics: retained.filter(d => ids.includes(d.id)), actions: snapshot.actions.filter(action => action.kind !== 'publication'),
+        body: [t('reviewCard.title'), t('reviewCard.count', { count: ids.length, omitted: snapshot.run.progress.omittedByLimit }),
+          !snapshot.coverage.complete ? t('reviewCard.notice.incomplete') : !ids.length ? t('reviewCard.emptyComplete') : '',
+          ...snapshot.coverage.limitations.map(value => reviewDetailMessage(t, value)), t('reviewCard.localNotPushed')].filter(Boolean).join('\n\n'),
+        labels: {
+          finding: d => [`### ${d.claim.title}`, `${d.anchor.path}${d.anchor.span ? `:${d.anchor.span.start}-${d.anchor.span.end}` : ''}`, d.claim.explanation, d.claim.trigger].join('\n\n'),
+          action: a => [reviewValueMessage(t, a.kind), reviewValueMessage(t, a.state), a.verification ? reviewValueMessage(t, a.verification) : ''].filter(Boolean).join(' · '),
+        },
+      }))
+      const writes: import('./platform-adapter').PublicationWrite[] = (remote.target.platform === 'github' || discussions) && retained.length ? retained.map(d => {
         const anchor = remote.manifest.anchors.find(a => a.path === d.anchor.path && a.side === d.anchor.side && a.span && d.anchor.span && a.span.start <= d.anchor.span.start && a.span.end >= d.anchor.span.end)
         return { kind: anchor && d.anchor.span ? remote.target.platform === 'gitlab' ? 'discussion' as const : 'inline' as const : 'summary' as const,
           body: bodyFor([d.id]), diagnosticIds: [d.id], reportRevision: snapshot.run.reportRevision,
           rootCauseFingerprint: JSON.stringify([d.anchor.path, d.anchor.revision, d.claim.explanation]),
           ...(anchor && d.anchor.span ? { location: { anchorKey: anchor.anchorKey, path: d.anchor.path, line: d.anchor.span.start, endLine: d.anchor.span.end } } : {}) }
       }) : [{ kind: 'summary' as const, body: bodyFor(snapshot.retainedIds), diagnosticIds: snapshot.retainedIds, reportRevision: snapshot.run.reportRevision }]
-      for (const write of writes) {
+      const suggestionReader = createReviewPlatformReader({ httpRequest: runtime.httpRequest, target: remote.target, workspaceKey: root, secret })
+      for (const proposed of writes) {
+        const diagnostic = retained.find(item => proposed.diagnosticIds.length === 1 && proposed.diagnosticIds[0] === item.id)
+        if (diagnostic && proposed.kind !== 'summary') proposed.rootCauseFingerprint = `mechanism:${await mechanisms.resolve({
+          targetKey: JSON.stringify([remote.target.platform, remote.target.origin, remote.target.platform === 'github' ? remote.target.projectKey.toLowerCase() : remote.target.projectKey, remote.target.number]), head: remote.head,
+          diagnostic: { ...diagnostic, claim: { title: sanitize(diagnostic.claim.title), explanation: sanitize(diagnostic.claim.explanation), trigger: sanitize(diagnostic.claim.trigger) } },
+          evidence: snapshot.evidence.filter(item => item.diagnosticId === diagnostic.id).map(item => ({ ...item, excerpt: sanitize(item.excerpt), reason: sanitize(item.reason) })), signal,
+          runner: request => createReviewModelRunner({ context, promptContextProvider: runtime.promptContextProvider, decidePermission, deps: runtime.deps })(request),
+        })}`
+        const binding = { runId: snapshot.run.id, reportRevision: snapshot.run.reportRevision, discussions,
+          target: remote.target, base: remote.base, head: remote.head, kind: proposed.kind,
+          diagnosticIds: [...proposed.diagnosticIds].sort(), location: proposed.location, rootCauseFingerprint: proposed.rootCauseFingerprint,
+          anchorContext: proposed.location ? remote.manifest.anchors.find(anchor => anchor.anchorKey === proposed.location!.anchorKey)?.contextDigest : undefined,
+          anchorSide: diagnostic?.anchor.side, start: remote.start }
+        const draftKey = await reviewDigest(JSON.stringify([binding.runId, binding.reportRevision, binding.kind, binding.diagnosticIds, discussions]))
+        const draftPath = resolveRuntimePath(sessionDir, `publication-drafts/${draftKey}.json`)
+        type Envelope = { version: 1; binding: typeof binding; write: import('./platform-adapter').PublicationWrite; proposal?: import('./publication-content').ReviewSuggestionProposal }
+        const saved = await readJson(draftPath)
+        let envelope: Envelope
+        if (saved !== undefined) {
+          if (!saved || typeof saved !== 'object' || Array.isArray(saved)) throw new ReviewGatewayError('publication-draft-mismatch')
+          envelope = saved as Envelope
+        } else {
+          const write = structuredClone(proposed)
+          let proposal: Envelope['proposal']
+          if (write.kind === 'inline' && diagnostic && write.rootCauseFingerprint) {
+            proposal = await proposeReviewSuggestion({ snapshot: remote, diagnostic, rootCauseFingerprint: write.rootCauseFingerprint,
+              actions: snapshot.actions, taskId: `${snapshot.run.id}-${diagnostic.id}`, signal, reader: { checkHead: suggestionReader.checkHead, readContext: async (...args) => { await authorizePath(resolveRuntimePath(root, args[1])); return suggestionReader.readContext(...args) } },
+              runner: request => createReviewModelRunner({ context, promptContextProvider: runtime.promptContextProvider, decidePermission, deps: runtime.deps })(request) })
+            if (proposal) write.suggestion = { original: proposal.original, replacement: proposal.replacement }
+          }
+          envelope = { version: 1, binding, write, ...(proposal ? { proposal } : {}) }
+        }
+        const write = envelope.write
+        if (saved !== undefined && write?.location && proposed.location && envelope.binding?.location) {
+          const savedLocation = write.location
+          if (savedLocation.path === proposed.location.path && savedLocation.line === proposed.location.line && savedLocation.endLine === proposed.location.endLine &&
+              envelope.binding.location.path === savedLocation.path && envelope.binding.location.line === savedLocation.line && envelope.binding.location.endLine === savedLocation.endLine &&
+              envelope.binding.head === remote.head && envelope.binding.base === remote.base) {
+            write.location.anchorKey = proposed.location.anchorKey
+            envelope.binding.location.anchorKey = proposed.location.anchorKey
+            if (envelope.proposal) envelope.proposal.anchorKey = proposed.location.anchorKey
+          }
+        }
+        if (envelope.version !== 1 || JSON.stringify(envelope.binding) !== JSON.stringify(binding) ||
+            !write || typeof write !== 'object' || Array.isArray(write) || Object.keys(write).some(key => !['kind', 'body', 'diagnosticIds', 'reportRevision', 'rootCauseFingerprint', 'location', 'suggestion'].includes(key)) ||
+            write.kind !== proposed.kind || write.reportRevision !== snapshot.run.reportRevision ||
+            JSON.stringify(write.diagnosticIds) !== JSON.stringify(proposed.diagnosticIds) ||
+            JSON.stringify(write.location) !== JSON.stringify(proposed.location) || write.rootCauseFingerprint !== proposed.rootCauseFingerprint ||
+            typeof write.body !== 'string' || !write.body.trim() || write.body.length > 60_000) throw new ReviewGatewayError('publication-draft-mismatch')
+        if (write.suggestion !== undefined || envelope.proposal !== undefined) {
+          const proposal = envelope.proposal, location = write.location
+          if (remote.target.platform !== 'github' || write.kind !== 'inline' || !diagnostic || diagnostic.anchor.side !== 'after' || !location || !proposal || !write.suggestion ||
+              proposal.diagnosticId !== diagnostic.id || proposal.rootCauseFingerprint !== write.rootCauseFingerprint ||
+              proposal.path !== location.path || proposal.head !== remote.head || proposal.anchorKey !== location.anchorKey ||
+              proposal.start !== location.line || proposal.end !== (location.endLine ?? location.line) ||
+              proposal.original !== write.suggestion.original || proposal.replacement !== write.suggestion.replacement ||
+              typeof proposal.rationale !== 'string' || !proposal.rationale.trim() || proposal.rationale.length > 4000 ||
+              typeof proposal.verificationRationale !== 'string' || !proposal.verificationRationale.trim() || proposal.verificationRationale.length > 4000 ||
+              snapshot.actions.some(action => action.kind === 'repair' && action.diagnosticIds.includes(diagnostic.id) && ['requested', 'running', 'applied', 'unnecessary'].includes(action.state))) throw new ReviewGatewayError('publication-draft-mismatch')
+          const { validateReviewSuggestion } = await import('./platform-adapter')
+          validateReviewSuggestion(write.suggestion)
+        }
+        if (signal.aborted) throw new ReviewGatewayError('review-cancelled')
+        if (saved === undefined) await writeJson(draftPath, envelope)
         const reservation = await store.beginPublication(snapshot.run.id, { grantId, diagnosticIds: write.diagnosticIds, remoteHead: remote.head,
-          kind: write.kind, normalizedContent: write.body })
+          kind: write.kind, normalizedContent: JSON.stringify({ body: write.body, suggestion: write.suggestion }) })
         if (!reservation.shouldSend && reservation.operation.state !== 'uncertain' && reservation.operation.state !== 'pending') continue
         const publisher = createReviewPlatformPublisher({ httpRequest: runtime.httpRequest, target: remote.target, workspaceKey: root, secret,
           authorize: async () => {
             if (signal.aborted || Date.now() >= expires) return false
             await store.assertActionAuthorized(snapshot.run.id, grantId, 'publication', write.diagnosticIds)
-            return true
+            const permissionTool = declareTool({ name: 'ReviewPublication', description: async () => 'Publish the authorized review content.', readsOnly: () => false, call: async () => ({ data: null }) })
+            return (await decideToolPermission(permissionTool, { target: remote.target, head: remote.head, kind: write.kind }, context)).decision !== 'deny'
           },
           receipts: durableReceipts,
         })
         const expires = Date.now() + 60_000
         try {
-          const receipt = reservation.shouldSend ? await publisher.publish(remote, write, signal) : await publisher.recover(remote, write, signal)
+          const receiptLinkPath = resolveRuntimePath(sessionDir, `publication-links/${snapshot.run.id}-${reservation.operation.id}.json`)
+          const linked = await readJson(receiptLinkPath) as { key?: unknown; ownsEnvelope?: unknown } | undefined
+          const shared = typeof linked?.key === 'string' ? await durableReceipts.get?.(linked.key) : undefined
+          let receipt: import('./platform-adapter').PublicationReceipt
+          if (shared && linked?.ownsEnvelope === false) receipt = shared
+          else receipt = reservation.shouldSend ? await publisher.publish(remote, write, signal) : await publisher.recover(remote, write, signal)
+          if (!linked && receipt.key) {
+            const markerMatches = await publisher.recover(remote, write, signal)
+            await writeJson(receiptLinkPath, { key: receipt.key, ownsEnvelope: markerMatches.reason !== 'receipt-missing' })
+          }
           await store.settlePublication(snapshot.run.id, reservation.operation.id, { state: receipt.state === 'succeeded' ? 'succeeded' : receipt.state === 'uncertain' || receipt.state === 'pending' ? 'uncertain' : 'failed', externalRef: receipt.externalId, reason: receipt.reason })
         } catch (error) {
           await store.settlePublication(snapshot.run.id, reservation.operation.id, { state: 'uncertain', reason: error instanceof Error ? error.message : 'publication-failed' })
@@ -558,13 +739,68 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           if (key === 'cwd') return () => root
           return () => { throw new ReviewGatewayError('review-fs-operation-not-authorized') }
         } }) as RuntimeFs
-        const result = await SuperEditTool.call(input, { ...callContext, requestToolUseConfirm: context.requestToolUseConfirm,
-          options: { ...callContext.options, fsOperations: restricted } }, permission, row, progress)
+        const repairContext = { ...callContext, requestToolUseConfirm: context.requestToolUseConfirm,
+          options: { ...callContext.options, fsOperations: restricted } }
+        const result = await withSuppressedWorkspaceMutations(repairContext, () => SuperEditTool.call(input, repairContext, permission, row, progress))
         return { ...result, data: JSON.stringify({ result: result.data, executionRefs: refs }) }
       } }]
     },
   })
   services.set(identity, service)
+  const unregisterMutations = registerWorkspaceMutationObserver(context.options, async (mutation, mutationContext, signal) => {
+    if (mutationContext.options.sessionId !== context.options.sessionId) return
+    const paths: string[] = []
+    for (const path of mutation.paths) {
+      const absolute = normalized(resolveRuntimePath(root, path))
+      if (below(absolute, root) && !equal(absolute, root)) paths.push(absolute.slice(root.length + 1))
+    }
+    if (!paths.length || signal.aborted) return
+    const mutationCurrent = async () => {
+      for (const change of mutation.changes) {
+        const absolute = normalized(resolveRuntimePath(root, change.path))
+        if (!below(absolute, root)) return false
+        const read = await readWorkspaceFile(absolute.slice(root.length + 1), 128 * 1024, signal)
+        if (change.after.kind === 'missing' ? read.kind !== 'missing' : read.kind !== 'file' || await reviewDigest(read.bytes) !== change.after.digest) return false
+      }
+      return !signal.aborted
+    }
+    if (!await mutationCurrent()) return
+    const reports = (await service.snapshots()).reports
+    for (const snapshot of reports) {
+      if (signal.aborted || !snapshot.structured || ['active', 'queued'].includes(snapshot.run.progress.status) || !['workspace', 'paths'].includes(snapshot.run.scope.kind) || snapshot.run.scope.workspaceKey !== root) continue
+      const diagnostics = snapshot.diagnostics.filter(d => snapshot.retainedIds.includes(d.id) && reassessmentTouches(snapshot, d.id, paths))
+      if (!diagnostics.length) continue
+      const evidence: ReassessmentEvidence[] = []
+      const evidencePaths = [...new Set(diagnostics.flatMap(d => [d.anchor.path, ...snapshot.evidence.filter(item => item.diagnosticId === d.id && item.source.path).map(item => item.source.path!)]))].slice(0, 32)
+      for (const path of evidencePaths) {
+        const read = await readWorkspaceFile(path, 128 * 1024, signal)
+        if (read.kind !== 'file') continue
+        const excerpt = sanitize(new TextDecoder().decode(read.bytes))
+        if (excerpt.trim()) evidence.push({ path, revision: await reviewDigest(read.bytes), excerpt })
+      }
+      if (!evidence.length) continue
+      const head = await gitText(await scopeGit(), { kind: 'resolve', ref: 'HEAD' }, signal)
+      if (head.trim() !== snapshot.run.scope.revision.head) continue
+      const beforeDigest = await reviewDigest(JSON.stringify(mutation.changes.map(change => [change.path, change.before.kind, change.before.digest])))
+      const afterDigest = await reviewDigest(JSON.stringify(mutation.changes.map(change => [change.path, change.after.kind, change.after.digest])))
+      if (beforeDigest === afterDigest) continue
+      const updates = await reassessExternalEdit({ snapshot, mutations: [{ ref: mutation.ref, paths, changes: mutation.changes.map(change => ({ path: normalized(resolveRuntimePath(root, change.path)).slice(root.length + 1), before: { digest: change.before.digest, content: change.before.content ? sanitize(change.before.content) : undefined }, after: { digest: change.after.digest, content: change.after.content ? sanitize(change.after.content) : undefined } })) }], evidence, tools: [], signal,
+        runner: request => createReviewModelRunner({ context, promptContextProvider: runtime.promptContextProvider, decidePermission, deps: runtime.deps })(request) })
+      if (!updates.length || signal.aborted) continue
+      await service.store.reconcileExternalEdit(snapshot.run.id, { runId: snapshot.run.id, ref: mutation.ref, paths,
+        workspaceKey: root, headRevision: snapshot.run.scope.revision.head, beforeDigest, afterDigest, evidence,
+        expectedSequence: snapshot.events.at(-1)?.sequence ?? 0,
+        verifyCurrent: async () => {
+          if (signal.aborted || !await mutationCurrent()) return false
+          for (const source of evidence) {
+            const read = await readWorkspaceFile(source.path, 128 * 1024, signal)
+            if (read.kind !== 'file' || await reviewDigest(read.bytes) !== source.revision) return false
+          }
+          return !signal.aborted && (await gitText(await scopeGit(), { kind: 'resolve', ref: 'HEAD' }, signal)).trim() === snapshot.run.scope.revision.head
+        },
+      }, updates)
+    }
+  })
   const previews = new Map<string, string>()
   const restoredPresentations = new Map<string, NonNullable<ReturnType<LocalReviewService['presentation']>>>()
   const projection = (snapshot: ReportSnapshot): ReviewReportView => {
@@ -615,7 +851,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       return { path, line: diagnostic.anchor.span?.start }
     },
   })
-  context.options.runtimeScopeSignal?.addEventListener('abort', () => { unregister(); void service.snapshots().then(s => Promise.all(s.reports.map(r => service.cancel(r.run.id)))) }, { once: true })
+  context.options.runtimeScopeSignal?.addEventListener('abort', () => { unregister(); unregisterMutations(); void service.snapshots().then(s => Promise.all(s.reports.map(r => service.cancel(r.run.id)))) }, { once: true })
   try { const entries = await fs.readdir(sessionDir); await service.restore(entries.filter(e => e.isFile() && /^[A-Za-z0-9_-]+\.json$/.test(e.name)).map(e => e.name.slice(0, -5))) }
   catch (error) { if (!isFsNotFoundError(error)) throw error }
   return service

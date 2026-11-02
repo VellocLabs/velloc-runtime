@@ -69,6 +69,7 @@ import {
 } from './readState'
 import { buildHostEditDiff } from './editDiff'
 import { renderHostResult } from './resultText'
+import { captureWorkspaceMutation, observeWorkspaceMutation } from '../../../codeReview/mutation-observer'
 
 type HostedToolInput = Record<string, unknown>
 const BASH_OUTPUT_TOOL_NAME = 'BashOutput'
@@ -407,6 +408,9 @@ function buildHostTool(
       // finds the child's owner again.
       let workerShell: { taskId: string; outputFilePath: string } | null = null
       let rawResult: unknown
+      const mutationPath = (callArgs as Record<string, unknown>).file_path
+      const beforeMutation = (definition.name === EDIT_TOOL_ID || definition.name === WRITE_TOOL_ID) && typeof mutationPath === 'string'
+        ? await captureWorkspaceMutation(context, [mutationPath]) : undefined
       try {
       if (
         shellSpawner &&
@@ -448,6 +452,18 @@ function buildHostTool(
         // The command may have run before the failure: keep what changed.
         await shellProbe?.settle()
         throw err
+      }
+      if (definition.name === EDIT_TOOL_ID || definition.name === WRITE_TOOL_ID) {
+        const result = unwrapData(rawResult)
+        if (result && typeof result === 'object' && !Array.isArray(result)) {
+          const receipt = result as Record<string, unknown>
+          const path = (callArgs as Record<string, unknown>).file_path
+          const outcomes = definition.name === EDIT_TOOL_ID ? ['updated', 'updated_all'] : ['created', 'updated']
+          if (typeof path === 'string' && receipt.path === path && outcomes.includes(String(receipt.outcome))
+            && !('error' in receipt) && !('code' in receipt) && receipt.ok !== false && receipt.isError !== true) {
+            await observeWorkspaceMutation(context, 'write', beforeMutation)
+          }
+        }
       }
       let shellProbeHeld = false
       let data: ReturnType<typeof renderHostResult>

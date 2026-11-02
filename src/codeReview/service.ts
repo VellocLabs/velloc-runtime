@@ -13,6 +13,7 @@ export interface ReviewScopeAccess {
   manifest: ScopeManifest
   read(input: Record<string, unknown>, plan: ReviewPlan, signal: AbortSignal): Promise<unknown>
   trustedGuidance: string
+  authorizedGuidance?: ReviewServiceOptions['guidance']
   evidenceSources?: Array<{ path: string; revision: string; excerpt?: string }>
 }
 export interface ReviewServiceOptions {
@@ -29,6 +30,7 @@ export interface ReviewServiceOptions {
   repairTools?(snapshot: ReportSnapshot, grant: ReportGrant, signal: AbortSignal, store: ReviewReportStore, actionEpoch?: string): Promise<ToolContract[]>
   publish?(snapshot: ReportSnapshot, grantId: string, signal: AbortSignal, store: ReviewReportStore, discussions?: boolean): Promise<void>
   verify?(snapshot: ReportSnapshot, signal: AbortSignal, store: ReviewReportStore, actionEpoch?: string, verificationGrantId?: string): Promise<void>
+  alreadyVerified?(snapshot: ReportSnapshot): Promise<boolean>
   automaticVerificationPermitted?: boolean
   output?: OutputMode
   maxDurationMs?: number
@@ -75,9 +77,17 @@ export class LocalReviewService {
     const abort = () => controller.abort(signal?.reason)
     signal?.addEventListener('abort', abort, { once: true })
     if (signal?.aborted) abort()
-    const access = await this.options.resolveScope(parsed.arguments, plan, controller.signal)
+    let access = await this.options.resolveScope(parsed.arguments, plan, controller.signal)
+    const guidance = access.authorizedGuidance ?? this.options.guidance
+    const authorizedPlan = resolveReviewPolicy({ arguments: parsed.arguments, source, preferences, sessionLevel: this.options.sessionLevel, guidance,
+      canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal' })
+    if (authorizedPlan.blocked) throw new ReviewGatewayError('review-plan-blocked')
+    if (authorizedPlan.skipTestsAndFixtures !== plan.skipTestsAndFixtures) {
+      access = await this.options.resolveScope(parsed.arguments, authorizedPlan, controller.signal)
+      if (JSON.stringify(access.authorizedGuidance ?? this.options.guidance) !== JSON.stringify(guidance)) throw new ReviewGatewayError('review-guidance-changed')
+    }
     const changedLines = access.manifest.files.reduce((total, file) => total + file.patch.split('\n').filter(line => /^[+-]/.test(line) && !/^(?:---|\+\+\+)/.test(line)).length, 0)
-    plan = resolveReviewPolicy({ arguments: parsed.arguments, source, preferences, sessionLevel: this.options.sessionLevel, guidance: this.options.guidance,
+    plan = resolveReviewPolicy({ arguments: parsed.arguments, source, preferences, sessionLevel: this.options.sessionLevel, guidance,
       canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal', changedLines })
     const next = resolveReviewPreferences({ current: preferences, arguments: parsed.arguments, source, targetAuthorized: true })
     if (source === 'user' && JSON.stringify(preferences) !== JSON.stringify(next)) await this.options.preferences.save(next)
@@ -143,7 +153,7 @@ export class LocalReviewService {
         if (plan.agentMode === 'parallel') {
           const snapshot = await this.store.getSnapshot(runId)
           const missing = plan.angles.filter(angle => !live.completedAngles.has(angle))
-          const unverified = snapshot.retainedIds.filter(id => !live.verified.has(id) && !live.sweepIds.has(id))
+          const unverified = snapshot.diagnostics.map(diagnostic => diagnostic.id).filter(id => !live.verified.has(id) && !live.sweepIds.has(id))
           if (missing.length || plan.independentVerification && unverified.length || plan.sweep === 'independent' && !live.swept) {
             await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['independent-worker-coverage-incomplete'], complete: false } })
           }
@@ -153,7 +163,10 @@ export class LocalReviewService {
       await this.store.setStage(runId, 'report'); this.changed()
       if (plan.notices.length || access.manifest.notices.length) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage',
         coverage: { angles: [], limitations: [...plan.notices.map(notice => notice.code), ...access.manifest.notices], complete: (await this.store.getSnapshot(runId)).coverage.complete } })
-      if (live.args.fix && (await this.store.getSnapshot(runId)).retainedIds.length) await this.repairActive(runId, live)
+      if (live.args.fix && (await this.store.getSnapshot(runId)).retainedIds.length) {
+        try { await this.repairActive(runId, live) }
+        catch (error) { if (controller.signal.aborted) throw error }
+      }
       if (controller.signal.aborted) throw new ReviewGatewayError('review-cancelled')
       if (live.args.comment && access.manifest.scope.kind === 'change-request') {
         try { await this.publishActive(runId, live) }
@@ -161,7 +174,7 @@ export class LocalReviewService {
       }
       else if (live.args.comment) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['publication-target-required'], complete: (await this.store.getSnapshot(runId)).coverage.complete } })
       if (shouldRunAutomaticVerification(plan, { permitted: this.options.automaticVerificationPermitted === true,
-        adapterAvailable: !!this.options.verify, runtimeBehaviorChanged: access.manifest.files.some(f => !/(?:^|\/)(?:docs?|tests?|fixtures)\/|\.(?:md|txt)$|\.(?:test|spec)\./i.test(f.path)), alreadyVerified: false })) {
+        adapterAvailable: !!this.options.verify, runtimeBehaviorChanged: access.manifest.files.some(f => !/(?:^|\/)(?:docs?|tests?|fixtures)\/|\.(?:md|txt)$|\.(?:test|spec)\./i.test(f.path)), alreadyVerified: await this.options.alreadyVerified?.(await this.store.getSnapshot(runId)) ?? false })) {
         await this.store.setStage(runId, 'verify')
         await this.options.verify!(await this.store.getSnapshot(runId), controller.signal, this.store)
       }
@@ -258,6 +271,7 @@ export class LocalReviewService {
     }
     return createReviewTools({ runId, store: this.store, signal: live.controller.signal,
       read: input => this.read(runId, live, input), changed: this.changed,
+      independentAssessments: live.plan.independentVerification,
       allowOutput: live.plan.presentation === 'panel', launch: delegate && live.plan.agentMode === 'parallel' ? launch : undefined })
   }
   private async actionGrant(runId: string, kind: 'repair' | 'publication', ids?: string[]): Promise<ReportGrant> {
@@ -276,7 +290,14 @@ export class LocalReviewService {
       await this.store.setStage(runId, 'repair')
       const snapshot = await this.store.getSnapshot(runId)
       const editTools = await this.options.repairTools(snapshot, grant, live.controller.signal, this.store, epoch)
-      const tools = createReviewTools({ runId, store: this.store, signal: live.controller.signal, read: input => this.read(runId, live, input), changed: this.changed, allowOutput: live.plan.presentation === 'panel', actions: true, actionEpoch: epoch }).filter(t => t.name !== 'ReviewLedger')
+      const tools = createReviewTools({ runId, store: this.store, signal: live.controller.signal, read: async input => {
+        const material = await this.read(runId, live, input)
+        if (input.operation !== 'context' || typeof input.path !== 'string' || typeof material !== 'string' || !material.trim()) return material
+        const ref = crypto.randomUUID()
+        await this.store.recordExecution(runId, { ref, kind: 'evidence', diagnosticIds: grant.diagnosticIds, paths: [input.path], succeeded: true,
+          actionEpoch: epoch, evidence: [{ path: input.path, quote: material.slice(0, 4000), relevance: 'Fresh authorized context read during repair reassessment.' }] })
+        return { content: material, executionRef: ref }
+      }, changed: this.changed, allowOutput: live.plan.presentation === 'panel', actions: true, actionEpoch: epoch }).filter(t => t.name !== 'ReviewLedger')
       const result = await this.options.runModel({ blocks: [block('Repair only the selected saved diagnostics. Preserve concurrent user changes. Use actual execution references returned by edits in ReviewActionLog; do not claim tests, commits or remote updates.', 'authorized-repair'), block(JSON.stringify({ report: snapshot, diagnosticIds: grant.diagnosticIds }), 'saved-report')], tools: [...tools, ...editTools], signal: live.controller.signal, taskId: `${runId}-repair` })
       if (result.interrupted) throw new ReviewGatewayError('repair-interrupted')
       await this.store.reconcileObservedEdits(runId, grant.id, grant.diagnosticIds, epoch)
@@ -366,6 +387,6 @@ export class LocalReviewService {
     const quoted = target?.includes('"') ? `'${target}'` : `"${target ?? ''}"`
     if (target?.includes('"') && target.includes("'")) throw new ReviewGatewayError('review-target-needs-selection')
     const literal = live?.args.targetLiteral ?? await this.options.loadTargetLiteral?.(runId)
-    return this.start(`${snapshot.run.policy.level}${target ? ` ${literal ? '-- ' : ''}${quoted}` : ''}`, 'model', undefined, presentation)
+    return this.start(`${snapshot.run.policy.level}${target ? ` ${literal ? '-- ' : ''}${quoted}` : ''}`, 'user', undefined, presentation)
   }
 }
