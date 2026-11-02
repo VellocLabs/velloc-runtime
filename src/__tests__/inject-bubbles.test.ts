@@ -18,6 +18,8 @@ import {
   userMessageOffersCutActions,
 } from '../components/assistant-ui/inject-message-context'
 import { createPassageDraftStore } from '../browser/webview/capturedPassages'
+import { sanitizeSdkMessageForUi, sanitizeMessageForUi } from '../utils/toolCallDetails'
+import type { Message } from '../runtime/RuntimeTypes'
 
 /**
  * The page side of mid-turn input: a plain-Enter send while the agent runs
@@ -85,6 +87,77 @@ function lastSubmit(posted: AgentWorkerInboundMessage[]) {
   )
   return submits[submits.length - 1]!
 }
+
+describe('BrowserRuntimeClient — attachment refresh overlap', () => {
+  it.each(['shell', 'team'] as const)('keeps one %s card and the unpersisted tool suffix across a busy refresh', async kind => {
+    const { client, emit, posted } = fakeWorker()
+    await client.start()
+    try {
+      const user = { type: 'user', uuid: 'u', message: { role: 'user', content: 'work' } }
+      const tool = (id: string) => ({ type: 'assistant', uuid: id, message: {
+        role: 'assistant', content: [{ type: 'tool-call', toolCallId: id, toolName: 'Bash', args: { command: 'pwd' } }],
+      } })
+      const result = (id: string) => ({ type: 'user', uuid: `r-${id}`, message: {
+        role: 'user', content: [{ type: 'tool-result', toolCallId: id, result: 'ok' }],
+      } })
+      const notice = { type: 'attachment', uuid: 'notice', attachment: {
+        type: 'queued_command', commandMode: kind === 'team' ? 'team-message' : 'task-notification',
+        prompt: kind === 'team' ? '[message from reviewer]: checked the change' :
+          '<task-notification>\n<task-id>b12345678</task-id>\n<task-type>local_bash</task-type>\n<status>completed</status>\n<summary>Command completed</summary>\n</task-notification>',
+      } }
+      const rows = [user, tool('a'), result('a'), notice, tool('b'), result('b')]
+      const persisted = (count: number) => emit({ type: 'worker.messages', payload: {
+        messages: rows.slice(0, count).map(row => sanitizeMessageForUi(row as Message)),
+      } })
+      const view = () => convertBrowserRuntimeStateToThreadMessages(client.getState()).map(row => ({
+        id: row.id,
+        tools: Array.isArray(row.content) ? row.content.filter(part => part.type === 'tool-call').map(part => part.toolCallId) : [],
+        source: row.metadata?.custom?.sourceType,
+      }))
+      const assertView = () => {
+        const rendered = view()
+        expect(rendered.filter(row => row.id === 'notice' || row.id?.startsWith('notice:duplicate'))).toHaveLength(1)
+        expect(rendered.filter(row => row.tools.length).map(row => row.tools)).toEqual([['a'], ['b']])
+        expect(rendered.findIndex(row => row.tools.includes('a'))).toBeLessThan(rendered.findIndex(row => row.id === 'notice'))
+        expect(rendered.findIndex(row => row.id === 'notice')).toBeLessThan(rendered.findIndex(row => row.tools.includes('b')))
+      }
+      persisted(1)
+      for (const event of rows.slice(1)) emit({ type: 'worker.stream', payload: { event: sanitizeSdkMessageForUi(event as never) } })
+      assertView()
+      const refresh = client.requestMessages()
+      await tick()
+      expect(posted.at(-1)?.type).toMatch(/worker.getMessages/)
+      persisted(4)
+      await refresh
+      expect(client.getState().status).toBe('submitting')
+      assertView()
+      const partialToolRefresh = client.requestMessages()
+      await tick()
+      persisted(5)
+      await partialToolRefresh
+      assertView()
+      const toolB = convertBrowserRuntimeStateToThreadMessages(client.getState()).flatMap(row => Array.isArray(row.content) ? row.content : [])
+        .find(part => part.type === 'tool-call' && part.toolCallId === 'b')
+      expect(toolB && 'result' in toolB && toolB.result).toBeTruthy()
+      expect(JSON.stringify(toolB)).not.toContain('interrupted')
+      const fullRefresh = client.requestMessages()
+      await tick()
+      persisted(rows.length)
+      await fullRefresh
+      assertView()
+      emit({ type: 'worker.stream', payload: { event: { type: 'stream_event', event: {
+        type: 'content_block_delta', delta: { type: 'text_delta', text: 'New unpersisted answer' },
+      } } } })
+      expect(JSON.stringify(convertBrowserRuntimeStateToThreadMessages(client.getState()))).toContain('New unpersisted answer')
+      assertView()
+      emit({ type: 'worker.state', payload: snapshot({ isBusy: false }) })
+      persisted(rows.length)
+      assertView()
+    } finally {
+      await client.dispose()
+    }
+  })
+})
 
 describe('BrowserRuntimeClient — inject bubbles', () => {
   it('a busy plain-Enter send shows an optimistic pending bubble and posts delivery inject', async () => {

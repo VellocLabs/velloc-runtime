@@ -607,6 +607,7 @@ function createLiveAssistantMessages(
   idCounter: { value: number },
   turnAnchorUuid: string | null,
   retryPrompt: string | undefined,
+  persistedUuids: ReadonlySet<string>,
   /** Active-locale translator for slash output's `i18nContent`. */
   t?: TranslateFn,
 ): ThreadMessageLike[] {
@@ -642,7 +643,13 @@ function createLiveAssistantMessages(
   const liveMessages: ThreadMessageLike[] = []
   let liveIndex = 0
 
+  let lastPersistedEvent = -1
   for (const message of structuredMessages) {
+    // System boundaries retain their independent live lifecycle.
+    if (message.type !== 'system' && message.uuid && persistedUuids.has(message.uuid)) {
+      lastPersistedEvent = liveEvents.indexOf(message)
+      continue
+    }
     switch (message.type) {
       case 'attachment': {
         const attachment = convertTranscriptMessage(
@@ -746,7 +753,7 @@ function createLiveAssistantMessages(
 
   const parts: ThreadPart[] = []
 
-  for (const liveEvent of liveEvents) {
+  for (const liveEvent of liveEvents.slice(lastPersistedEvent + 1)) {
     const event = unwrapStreamEvent(liveEvent)
     if (!event) {
       continue
@@ -1721,10 +1728,33 @@ export function combineThreadMessages(
   t?: TranslateFn,
 ): ThreadMessageLike[] {
   const idCounter = { value: transcript.nextId }
+  const persistedUuids = new Set(state.transcriptMessages.flatMap(message =>
+    typeof message.uuid === 'string' && message.uuid.length > 0 ? [message.uuid] : [],
+  ))
   const anchor = findTurnAnchorUuid(state)
   // Copy: `transcript.messages` is reused across renders by the memoizing
   // caller, so it must never be mutated by the pushes below.
-  const messages = transcript.messages.slice()
+  const liveRows = state.liveEvents.filter((event): event is Message =>
+    event !== null && typeof event === 'object' && (event as { type?: unknown }).type === 'user',
+  )
+  const calls = collectToolCalls(state.transcriptMessages)
+  const liveResults = collectToolResults(liveRows, calls)
+  const updatedTools = new Map<string, ThreadPart>()
+  for (const message of state.transcriptMessages) {
+    if (message.type !== 'assistant') continue
+    const content = (message as ModelReplyRow).message.content
+    if (!Array.isArray(content)) continue
+    const matching = content.filter(block => block.type === 'tool-call' && typeof block.toolCallId === 'string' && liveResults.has(block.toolCallId))
+    for (const part of contentToAssistantParts(matching, liveResults, calls, idCounter)) {
+      if (part.type === 'tool-call' && typeof part.toolCallId === 'string' && liveResults.has(part.toolCallId)) updatedTools.set(part.toolCallId, part)
+    }
+  }
+  const messages = transcript.messages.map(message => !Array.isArray(message.content) ? message : {
+    ...message,
+    content: message.content.map(part => part.type === 'tool-call' && updatedTools.has(part.toolCallId)
+      ? { ...part, ...updatedTools.get(part.toolCallId) }
+      : part),
+  })
 
   // Pre-split events (finished turns not yet reconciled) render ahead of the re-armed bubble,
   // from `liveEventsTurnStart`. Anchor `null`: they carry their own persisted uuids.
@@ -1767,6 +1797,7 @@ export function combineThreadMessages(
         idCounter,
         null,
         undefined,
+        persistedUuids,
         t,
       ).map(message =>
         message.role === 'assistant' &&
@@ -1831,6 +1862,7 @@ export function combineThreadMessages(
     idCounter,
     anchor,
     state.pendingPrompt ?? undefined,
+    persistedUuids,
     t,
   )
   // The trailing message stays `running` until the transcript refetch (the composer must not
