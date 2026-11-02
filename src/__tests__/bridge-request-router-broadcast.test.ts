@@ -7,6 +7,7 @@ import {
   BridgeRequestRouter,
   isBroadcastHostEvent,
 } from '../browser/worker/BridgeRequestRouter'
+import { WorkerEventRouter } from '../browser/worker/WorkerEventRouter'
 import type { AgentWorkerInboundMessage } from '../browser/worker/workerProtocol'
 import type { BridgeEventEnvelope } from '../browser/bridge/browserBridgeProtocol'
 
@@ -61,6 +62,57 @@ describe('BridgeRequestRouter broadcast host events', () => {
         const event = (m as { payload: BridgeEventEnvelope }).payload
         return `${event.route.capability}.${String(event.route.action)}`
       })
+
+  it('delivers retired-instance stream releases to the host without a live worker', async () => {
+    const { router, host } = setup([])
+    const requests: { id: string; route: unknown; payload: unknown }[] = []
+    host.onmessage = event => {
+      const request = JSON.parse(event.data)
+      requests.push(request)
+      host.postMessage(JSON.stringify({
+        hostBridge: true,
+        direction: 'response',
+        id: request.id,
+        route: request.route,
+        ok: true,
+        result: {},
+      }))
+    }
+    const events = new WorkerEventRouter(
+      { updateSessionMeta: () => {}, refreshFsSummary: async () => {}, applyMetadataUpdate: () => {} } as never,
+      {
+        isCurrentInstance: () => false,
+        captureRuntimeGlobalsOnReady: () => {},
+        trackNeedsAnswerFromSnapshot: () => {},
+        refreshSessionStatus: () => {},
+        interceptHeadlessEmit: () => false,
+        interceptSubAgentEmit: () => false,
+        routeBridgeRequest: (sessionId, payload) => router.routeRequest(sessionId, payload),
+        recordPersistedToolDetail: () => {},
+        broadcastToSessionPorts: () => {},
+      },
+    )
+    for (const [capability, action] of [
+      ['model', 'rawStreamCancel'],
+      ['network', 'streamCancel'],
+      ['model', 'rawStreamOpen'],
+    ] as const) {
+      events.handle('deleted-session', 'retired-instance', {
+        type: 'worker.bridgeRequest',
+        payload: {
+          id: action,
+          route: { namespace: 'nexus', capability, action },
+          payload: { streamId: 'owned-stream' },
+        },
+      })
+    }
+    await expect.poll(() => requests.length).toBe(2)
+    expect(requests.map(({ id, route, payload }) => ({ id, route, payload }))).toEqual([
+      { id: 'rawStreamCancel', route: { namespace: 'nexus', capability: 'model', action: 'rawStreamCancel' }, payload: { streamId: 'owned-stream' } },
+      { id: 'streamCancel', route: { namespace: 'nexus', capability: 'network', action: 'streamCancel' }, payload: { streamId: 'owned-stream' } },
+    ])
+    router.getDirectTransport()?.dispose()
+  })
 
   it('fans every primitive event out to all sessions with no request in flight', async () => {
     const { host, received } = setup(['s1', 's2'])
