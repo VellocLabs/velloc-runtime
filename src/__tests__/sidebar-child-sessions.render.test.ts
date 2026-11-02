@@ -181,6 +181,17 @@ describe('collapse', () => {
     expect(onSwitch).not.toHaveBeenCalled()
   })
 
+  it.each([1, 2])('includes the visible summary in its computed accessible name for %s descendants', count => {
+    localStorage.setItem('nexus:sidebar:childrenCollapsed', JSON.stringify(['p']))
+    renderSidebar([item('p'), ...Array.from({ length: count }, (_, index) => item(`c${index}`, under('p')))])
+    const summary = screen.getByTestId('sidebar-children-summary')
+    const label = en[count === 1 ? 'sidebar.nestedSessionOne' : 'sidebar.nestedSessions'].replace('{count}', String(count))
+    expect(summary.textContent).toBe(label)
+    expect(screen.getByRole('button', { name: label })).toBe(summary)
+    expect(summary.getAttribute('aria-description')).toBe(en['sidebar.expandChildrenAria']
+      .replace('{title}', 'p').replace('{count}', String(count)))
+  })
+
   it('uses the singular summary for one child', () => {
     localStorage.setItem('nexus:sidebar:childrenCollapsed', JSON.stringify(['p']))
     renderSidebar([item('p'), item('c', under('p'))])

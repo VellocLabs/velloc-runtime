@@ -389,7 +389,7 @@ function SessionRowSubtree(props: SessionRowProps) {
                 type="button"
                 data-testid="sidebar-children-summary"
                 data-session-id={session.sessionId}
-                aria-label={t('sidebar.expandChildrenAria', {
+                aria-description={t('sidebar.expandChildrenAria', {
                   title: sessionDisplayTitle(session, t), count: childCount,
                 })}
                 onClick={() => nesting?.onToggle?.(session.sessionId)}
