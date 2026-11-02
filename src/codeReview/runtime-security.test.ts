@@ -114,6 +114,90 @@ beforeEach(() => {
 })
 
 describe('review execution admission', () => {
+  it('retries transient initialization failure for a live owner without caching a disposed service', async () => {
+    const { getReviewSession } = await import('./review-channel')
+    const h = fixture()
+    const owner = new AbortController()
+    h.context.options.runtimeScopeSignal = owner.signal
+    vi.mocked(h.fs.readdir).mockRejectedValueOnce(new Error('transient-storage-unavailable'))
+    await expect(getOrCreateReviewService(h.context, h.permission)).rejects.toThrow('transient-storage-unavailable')
+    expect(getReviewSession(h.context.options.sessionId)).toBeUndefined()
+    const [service, same] = await Promise.all([
+      getOrCreateReviewService(h.context, h.permission), getOrCreateReviewService(h.context, h.permission),
+    ])
+    expect(same).toBe(service)
+    expect(h.fs.readdir).toHaveBeenCalledTimes(2)
+    expect(getReviewSession(h.context.options.sessionId)).toBeDefined()
+    const { runId } = await service.startUser('low')
+    expect((await service.wait(runId)).run.progress.status).toBe('finished')
+    owner.abort()
+  })
+
+  it('does not reinitialize a cache whose owner aborted during initialization', async () => {
+    const { getReviewSession } = await import('./review-channel')
+    const h = fixture()
+    const owner = new AbortController()
+    h.context.options.runtimeScopeSignal = owner.signal
+    vi.mocked(h.fs.readdir).mockImplementationOnce(async () => { owner.abort(); throw new Error('transient-storage-unavailable') })
+    await expect(getOrCreateReviewService(h.context, h.permission)).rejects.toThrow('transient-storage-unavailable')
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    await expect(service.startUser('low')).rejects.toThrow('review-cancelled')
+    expect(h.fs.readdir).toHaveBeenCalledTimes(1)
+    expect(getReviewSession(h.context.options.sessionId)).toBeUndefined()
+  })
+
+  it.each(['test', 'typecheck', 'dev', 'instructions', 'denied-read', 'denied-execution', 'denied-startup'])('rejects %s inputs changed during the last validation read approval', async scenario => {
+    const name = scenario === 'denied-startup' ? 'dev' : ['instructions', 'denied-read', 'denied-execution'].includes(scenario) ? 'test' : scenario
+    const h = fixture()
+    h.files.set(`${root}/package.json`, JSON.stringify({ scripts: { [name]: name === 'dev' ? 'vite' : 'vitest run' } }))
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('low')
+    await service.wait(runId)
+    let approved = false, packageReads = 0, changed = false
+    const originalRead = vi.mocked(h.fs.readFileBytes).getMockImplementation()!
+    vi.mocked(h.fs.readFileBytes).mockImplementation(async (...args) => {
+      const result = await originalRead(...args)
+      if (approved && clean(args[0]) === `${root}/package.json`) packageReads++
+      return result
+    })
+    mocks.vet.mockImplementation(async (_tool, input) => ({ behavior: scenario === 'denied-read' && changed && clean(input.file_path) === `${root}/package.json` ? 'deny' : clean(input.file_path) === `${root}/go.mod` ? 'ask' : 'allow' }))
+    mocks.confirm.mockImplementation(async request => {
+      if (approved && packageReads >= 2 && request.tool.name === 'Read' && clean(request.input.file_path) === `${root}/go.mod`) {
+        changed = true
+        if (scenario === 'denied-read' || scenario === 'denied-execution' || scenario === 'denied-startup') return { behavior: 'allow' }
+        if (scenario === 'instructions') mocks.guidance.mockResolvedValue([{ path: `${root}/AGENTS.md`, type: 'Project', content: 'Changed execution instructions' }])
+        else h.files.set(`${root}/package.json`, JSON.stringify({ scripts: { [name]: 'node unapproved-script.js' } }))
+      }
+      if (request.tool.name === 'ReviewVerification') approved = true
+      return { behavior: 'allow' }
+    })
+    const originalGate = mocks.gate.getMockImplementation()!
+    mocks.gate.mockImplementation(async (...args) => (scenario === 'denied-execution' || scenario === 'denied-startup') && changed && args[0].name === 'ReviewVerification'
+      ? { decision: 'deny' } : originalGate(...args))
+    const originalSpawn = h.spawn.getMockImplementation()!
+    const executed: string[] = []
+    h.spawn.mockImplementation(async (spec, events) => {
+      if (spec.file === 'git') return originalSpawn(spec, name === 'dev' ? { ...events, onOutput: (stream, bytes) => events.onOutput?.(stream, new TextEncoder().encode(new TextDecoder().decode(bytes).replaceAll('a.ts', 'app.tsx'))) } : events)
+      executed.push(JSON.parse(h.files.get(`${root}/package.json`)!).scripts[name])
+      if (name !== 'dev') events.onExit?.({ exitCode: 0, killed: false, timedOut: false, durationMs: 1 })
+      return { streamId: 'observed', write: async () => true, closeStdin: async () => true, kill: async () => true, detach() {} }
+    })
+    mocks.model.mockResolvedValue({ text: '{}', interrupted: false })
+    if (name === 'dev') {
+      h.files.set(`${root}/app.tsx`, 'new\n')
+      mocks.formatGuidance.mockReturnValue('npm run dev at http://localhost:3000/')
+      mocks.model.mockImplementation(async request => {
+        const tool = request.tools.find((tool: { name: string }) => tool.name === 'ReviewStartDevelopment')!
+        await tool.call({}, { cancelSource: new AbortController() } as ToolCallContext, h.permission, {} as Message)
+        return { text: '{}', interrupted: false }
+      })
+    }
+    await service.requestVerification(runId).catch(() => {})
+    expect(changed).toBe(true)
+    expect(executed).toEqual([])
+    expect(mocks.confirm.mock.calls.filter(([request]) => request.tool.name === 'ReviewVerification')).toHaveLength(1)
+  })
+
   it.each(['test', 'typecheck'])('rejects changed %s scripts after approval and requires fresh approval', async name => {
     const h = fixture()
     const manifest = (script: string) => JSON.stringify({ scripts: { [name]: script } })

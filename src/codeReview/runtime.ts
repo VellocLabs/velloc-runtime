@@ -143,8 +143,15 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     return (await requestQueuedToolUseConfirm({ tool, input, message: verdict.message, metadata: verdict.metadata, callRef: crypto.randomUUID(),
       modelReply: { type: 'assistant', uuid: crypto.randomUUID(), message: { role: 'assistant', content: [] } }, callContext: context }))?.behavior === 'allow'
   }
-  const authorizePath = async (absolute: string) => {
+  const assertExecutionPermission = async (input: Record<string, unknown>) => {
     admit()
+    const tool = declareTool({ name: 'ReviewVerification', description: async () => 'ReviewVerification', readsOnly: () => false,
+      selfVerdict: async () => ({ behavior: 'ask' as const, updatedInput: input }), call: async () => ({ data: null }) })
+    if ((await decideToolPermission(tool, input, context)).decision === 'deny') throw new ReviewGatewayError('verification-not-authorized')
+  }
+  const authorizePath = async (absolute: string, approved?: ReadonlySet<string>) => {
+    admit()
+    if (approved && !approved.has(normalized(absolute))) throw new ReviewGatewayError('snapshot-changed')
     const hooks = await nestedToolGatesOf(context).preHooks('Read', { file_path: absolute }, crypto.randomUUID(), context)
     if (hooks.blocked) throw new ReviewGatewayError('review-read-not-authorized')
     const boundary = await assertUntrustedReadAllowed(absolute, context, fs)
@@ -152,10 +159,15 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     const result = await vetFileRead('Read', { file_path: absolute }, buildFilePermissionContext(context, context.readAppState().permissionRules))
     if (result.behavior === 'deny') throw new ReviewGatewayError('review-read-not-authorized')
     if (result.behavior === 'ask') {
-      if (!await authorizeAction('Read', { file_path: absolute })) throw new ReviewGatewayError('review-read-not-authorized')
+      if (approved) {
+        const input = { file_path: absolute }
+        const tool = declareTool({ name: 'Read', description: async () => 'Read', readsOnly: () => true,
+          selfVerdict: async () => ({ behavior: 'allow' as const, updatedInput: input }), call: async () => ({ data: null }) })
+        if ((await decideToolPermission(tool, input, context)).decision === 'deny') throw new ReviewGatewayError('review-read-not-authorized')
+      } else if (!await authorizeAction('Read', { file_path: absolute })) throw new ReviewGatewayError('review-read-not-authorized')
     }
   }
-  const readWorkspaceFile = async (path: string, maxBytes: number, signal?: AbortSignal): Promise<WorkspaceRead> => {
+  const readWorkspaceFile = async (path: string, maxBytes: number, signal?: AbortSignal, authorize = authorizePath): Promise<WorkspaceRead> => {
     validateReviewPath(path)
     admit(signal)
     const absolute = resolveRuntimePath(root, path)
@@ -163,7 +175,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     try { canonical = normalized(await fs!.realpath!(absolute, { resolveLinks: true })) }
     catch (error) { if (isFsNotFoundError(error)) return { kind: 'missing' }; throw error }
     if (!below(canonical, root) || !equal(canonical, normalized(absolute))) return { kind: 'symlink' }
-    await authorizePath(absolute)
+    await authorize(absolute)
     try {
       const stat = await fs!.stat(absolute)
       if (stat.isSymbolicLink()) return { kind: 'symlink' }
@@ -174,11 +186,11 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       return { kind: 'file', bytes: await fs!.readFileBytes(absolute, maxBytes) }
     } catch (error) { if (isFsNotFoundError(error)) return { kind: 'missing' }; throw error }
   }
-  const guidanceFor = async (paths: string[], authorizeEffort = false) => {
+  const guidanceFor = async (paths: string[], authorizeEffort = false, authorize = authorizePath) => {
     if (!context.options.runtimeConfig) return { text: '', sources: [] as Array<{ path: string; revision: string; excerpt: string }> }
     const guardedFs = new Proxy(fs, { get(target, key) {
-      if (key === 'readFile') return async (path: string, options: { encoding: string }) => { await authorizePath(path); return target.readFile(path, options) }
-      if (key === 'readdir') return async (path: string) => { await authorizePath(path); return target.readdir(path) }
+      if (key === 'readFile') return async (path: string, options: { encoding: string }) => { await authorize(path); return target.readFile(path, options) }
+      if (key === 'readdir') return async (path: string) => { await authorize(path); return target.readdir(path) }
       const value = target[key as keyof RuntimeFs]
       return typeof value === 'function' ? value.bind(target) : value
     } })
@@ -455,8 +467,8 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         headRevision: snapshot.run.scope.revision.head, diagnosticIds: snapshot.retainedIds, expiresAt: Date.now() + 600_000 })
       await store.assertActionAuthorized(snapshot.run.id, grantId, 'verification', snapshot.retainedIds)
       const instructionGaps: string[] = []
-      const readText = async (path: string) => {
-        const read = await readWorkspaceFile(path, 128 * 1024, signal)
+      const readText = async (path: string, authorize = authorizePath) => {
+        const read = await readWorkspaceFile(path, 128 * 1024, signal, authorize)
         if (read.kind === 'file') return new TextDecoder().decode(read.bytes)
         if (read.kind !== 'missing') instructionGaps.push(`verification-instruction-${read.kind}:${path}`)
         return undefined
@@ -477,11 +489,22 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       const manifests = { 'package.json': packageText, 'pyproject.toml': await readText('pyproject.toml'), 'Cargo.toml': await readText('Cargo.toml'), 'go.mod': await readText('go.mod') }
       const assertExecutionInputs = async () => {
         admit(signal)
-        const latestGuidance = await guidanceFor(files)
-        if (latestGuidance.text !== guidance.text || JSON.stringify(latestGuidance.sources) !== JSON.stringify(guidance.sources)) throw new ReviewGatewayError('snapshot-changed')
-        for (const [path, text] of Object.entries(manifests)) {
-          if (await readText(path) !== text) throw new ReviewGatewayError('snapshot-changed')
+        const approved = new Set<string>()
+        const collect = async (path: string) => { await authorizePath(path); approved.add(normalized(path)) }
+        await guidanceFor(files, false, collect)
+        for (const path of Object.keys(manifests)) await readText(path, collect)
+        let rejected = false
+        const sealed = async (path: string) => {
+          try { await authorizePath(path, approved) }
+          catch (error) { rejected = true; throw error }
         }
+        // All confirmations finish before any execution input is compared.
+        const latestGuidance = await guidanceFor(files, false, sealed)
+        if (rejected || latestGuidance.text !== guidance.text || JSON.stringify(latestGuidance.sources) !== JSON.stringify(guidance.sources)) throw new ReviewGatewayError('snapshot-changed')
+        for (const [path, text] of Object.entries(manifests)) {
+          if (await readText(path, sealed) !== text) throw new ReviewGatewayError('snapshot-changed')
+        }
+        if (rejected) throw new ReviewGatewayError('snapshot-changed')
         admit(signal)
       }
       const plan = planVerification({ workspace: root, files, guidance: guidance.text, runtimeChanged,
@@ -502,6 +525,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       }
       const executions = new Map<string, BehaviorExecution>()
       let executionSignal = signal
+      let executionInput: Record<string, unknown>
       const browser = context.platformCapabilities?.browser
       const browserTools = dropDeniedTools(context.options.tools, { denyRuleBook: context.readAppState().permissionRules.denyRuleBook ?? {} })
       const canProbe = browser && ['BrowserNavigate', 'BrowserReadPage'].every(name => browserTools.some(tool => tool.name === name && tool.offeredNow()))
@@ -513,6 +537,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           const input = { url: request.url, file: request.command?.file, args: request.command?.args, cwd: root, script: request.command?.script,
             instruction: request.command?.instruction, restrictions: ['no dependency installation', 'no service restart', 'no external writes'] }
           if (!await authorizeAction('ReviewVerification', input, true)) return false
+          executionInput = input
           if (request.signal.aborted || signal.aborted) return false
           await store.assertActionAuthorized(snapshot.run.id, grantId, 'verification', snapshot.retainedIds)
           await assertExecutionInputs()
@@ -523,6 +548,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           if (signal.aborted) throw new ReviewGatewayError('verification-cancelled')
           await store.assertActionAuthorized(snapshot.run.id, grantId, 'verification', snapshot.retainedIds)
           await assertExecutionInputs()
+          await assertExecutionPermission(executionInput)
           if (executionSignal.aborted || signal.aborted) throw new ReviewGatewayError('verification-cancelled')
           return runtime.spawnArgv(spec, handlers)
         },
@@ -560,6 +586,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
               spawn: async (spec, handlers) => {
                 await store.assertActionAuthorized(snapshot.run.id, grantId, 'verification', snapshot.retainedIds)
                 await assertExecutionInputs()
+                await assertExecutionPermission({ cwd: root, command: plan.startupCommand, restrictions: ['no dependency installation', 'no service restart', 'no external writes'] })
                 admit(startupSignal)
                 return runtime.spawnArgv(spec, handlers)
               },
@@ -907,7 +934,11 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     catch (error) { if (!isFsNotFoundError(error)) throw error }
     admit()
     return service
-  } catch (error) { dispose(); throw error }
+  } catch (error) {
+    dispose()
+    if (!ownerSignal?.aborted && services.get(identity) === service) services.delete(identity)
+    throw error
+  }
 }
 
 export async function invokeReviewModelSkill(raw: string, context: ToolCallContext, permission: PermissionDecider): Promise<string> {
