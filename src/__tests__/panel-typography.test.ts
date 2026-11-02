@@ -52,13 +52,12 @@ describe('panel and code surfaces carry the type-scale utilities', () => {
   })
 
   it('every sidebar row shares one height constant', () => {
-    // A session row, a project row and "show more" read as one list only if
-    // they are one height; a literal per site drifts one edit at a time.
+    // Session, project, collapsed-summary and show-more rows share one height.
     const count = (rel: string) => read(rel).split('h-[26px]').length - 1
     expect(count('browser/webview/SessionRows.tsx')).toBe(1) // the constant
     expect(count('browser/webview/ProjectSection.tsx')).toBe(0)
     expect(read('browser/webview/SessionRows.tsx')).toContain("export const SIDEBAR_ROW_HEIGHT = 'h-[26px]'")
-    expect(read('browser/webview/SessionRows.tsx').match(/SIDEBAR_ROW_HEIGHT,/g)).toHaveLength(2)
+    expect(read('browser/webview/SessionRows.tsx').match(/SIDEBAR_ROW_HEIGHT,/g)).toHaveLength(3)
     expect(read('browser/webview/ProjectSection.tsx')).toContain('SIDEBAR_ROW_HEIGHT,')
   })
 

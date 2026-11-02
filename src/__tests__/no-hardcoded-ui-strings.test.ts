@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+import ts from 'typescript'
 
 import { en } from '../browser/webview/i18n/messages/en'
 import {
@@ -104,8 +105,27 @@ type Hit = { file: string; line: number; text: string }
 
 function scan(file: string): Hit[] {
   const rel = relative(ROOT, file).split(sep).join('/')
+  return scanSource(rel, readFileSync(file, 'utf8'))
+}
+
+function scanSource(rel: string, source: string): Hit[] {
+  const parsed = ts.createSourceFile(rel, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const geometry: Array<[number, number]> = []
+  const visit = (node: ts.Node) => {
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText(parsed) === 'path') {
+      for (const attribute of node.attributes.properties) {
+        if (ts.isJsxAttribute(attribute) && attribute.name.getText(parsed) === 'd') {
+          geometry.push([attribute.getStart(parsed), attribute.end])
+        }
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(parsed)
+  for (const [start, end] of geometry.reverse()) {
+    source = source.slice(0, start) + source.slice(start, end).replace(/[^\r\n]/g, ' ') + source.slice(end)
+  }
   const hits: Hit[] = []
-  const source = readFileSync(file, 'utf8')
   const lines = source.split('\n')
   lines.forEach((line, i) => {
     const trimmed = line.trim()
@@ -146,6 +166,16 @@ describe('no hard-coded user-visible strings in the webview UI', () => {
 
   it('scans a non-trivial number of components (guard against a broken walk)', () => {
     expect(files.length).toBeGreaterThan(40)
+  })
+
+  it('ignores SVG path geometry without exempting visible labels or matching prose', () => {
+    const source = `<svg><path d={expanded ? 'M4 2 9 6 4 10Z' : 'M2 4 10 4 6 9Z'} aria-label="Show nested sessions" />
+<title>Show nested sessions</title></svg>`
+    const hits = scanSource('geometry.tsx', source)
+    expect(hits.map(hit => hit.text)).toEqual(['Show nested sessions', 'Show nested sessions'])
+    expect(hits.some(hit => hit.text.startsWith('M4 ') || hit.text.startsWith('M2 '))).toBe(false)
+    expect(scanSource('label.tsx', `<button aria-label={expanded ? 'M4 2 9 6 4 10Z' : 'Show nested sessions'} />`)
+      .map(hit => hit.text)).toContain('M4 2 9 6 4 10Z')
   })
 
   it('finds no literal outside the documented exclusions', () => {
