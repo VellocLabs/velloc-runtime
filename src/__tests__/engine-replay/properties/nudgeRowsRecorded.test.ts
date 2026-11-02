@@ -22,10 +22,13 @@ describe('nudge rows are recorded', () => {
     w = engineWorld({
       config: { isSubAgent: true, maxTurns: 4 },
       tools: [{ name: 'Act' }],
-      replies: [round(1), round(2), round(3), { label: 'done', text: 'Done.' }, { label: 'title', querySource: 'rename_generate_name', text: 'A title' }],
+      replies: [round(1), round(2), round(3), { label: 'done', text: 'Done.' }],
     })
     await w.submit('work')
     const trace = await w.finish()
+    expect(trace.modelRequests).toHaveLength(4)
+    expect(JSON.stringify(trace.modelRequests)).not.toContain('rename_generate_name')
+    expect(JSON.stringify(trace.sessionWrites)).not.toContain('aiTitle')
 
     const reloaded = await w.store.hydrateMessagesForModel()
     const nudges = reloaded.filter((row) => contentOf(row).includes('BUDGET WARNING'))

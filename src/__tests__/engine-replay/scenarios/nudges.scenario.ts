@@ -92,11 +92,16 @@ export const scenarios: Scenario[] = [
   {
     name: 'budget-warning-at-three-quarters',
     async run() {
-      const w = engineWorld({ ...subAgent(4), tools: [{ name: 'Act' }], replies: [...rounds(3), { label: 'done', text: 'Done.' }, title] })
+      const w = engineWorld({ ...subAgent(4), tools: [{ name: 'Act' }], replies: [...rounds(3), { label: 'done', text: 'Done.' }] })
       await w.submit('work')
       return w.finish()
     },
-    check: t => expect(requestsCarrying(t, 'BUDGET WARNING')).toEqual([3]),
+    check: t => {
+      expect(requestsCarrying(t, 'BUDGET WARNING')).toEqual([3])
+      expect(t.modelRequests).toHaveLength(4)
+      expect(JSON.stringify(t.modelRequests)).not.toContain('rename_generate_name')
+      expect(JSON.stringify(t.sessionWrites)).not.toContain('aiTitle')
+    },
   },
   {
     // Known quirk, kept: the last-step nudge needs the completed step count to
@@ -104,7 +109,7 @@ export const scenarios: Scenario[] = [
     // allowed request carries no nudge.
     name: 'last-step-request-carries-no-nudge',
     async run() {
-      const w = engineWorld({ ...subAgent(3), tools: [{ name: 'Act' }], replies: [...rounds(2), { label: 'final', text: 'Final answer.' }, title] })
+      const w = engineWorld({ ...subAgent(3), tools: [{ name: 'Act' }], replies: [...rounds(2), { label: 'final', text: 'Final answer.' }] })
       await w.submit('work')
       return w.finish()
     },
@@ -116,7 +121,7 @@ export const scenarios: Scenario[] = [
   {
     name: 'last-step-tool-call-reaches-max-turns-without-nudge',
     async run() {
-      const w = engineWorld({ ...subAgent(3), tools: [{ name: 'Act' }], replies: [...rounds(3), title] })
+      const w = engineWorld({ ...subAgent(3), tools: [{ name: 'Act' }], replies: [...rounds(3)] })
       await w.submit('work')
       return w.finish()
     },

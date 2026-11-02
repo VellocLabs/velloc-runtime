@@ -124,7 +124,6 @@ export const scenarios: Scenario[] = [
         replies: [
           { label: 'step-1', calls: [{ id: 's1', name: 'Step', args: { value: 's1' } }] },
           { label: 'step-2', calls: [{ id: 's2', name: 'Step', args: { value: 's2' } }] },
-          title,
         ],
       })
       await w.submit('keep going')

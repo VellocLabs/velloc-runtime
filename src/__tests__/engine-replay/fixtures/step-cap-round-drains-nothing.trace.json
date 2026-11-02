@@ -45,36 +45,6 @@
         "purpose": "turn",
         "querySource": "sdk"
       }
-    },
-    {
-      "action": "streamStart",
-      "messages": [
-        {
-          "role": "user",
-          "content": "user: go"
-        }
-      ],
-      "systemPrompt": {
-        "digest": "9bd7b777c9079cb499769cd5aa8912b6f7bd9fdeac5be66a155b74d4c4d07b5b",
-        "chars": 359
-      },
-      "userContext": "<same as previous request>",
-      "systemContext": "<same as previous request>",
-      "providerId": "anthropic",
-      "model": "claude-haiku-4-5",
-      "maxOutputTokens": 32000,
-      "tools": [],
-      "toolUseContext": {
-        "permissionMode": "default",
-        "querySource": "rename_generate_name",
-        "availableSkills": [],
-        "discoveredSkillNames": []
-      },
-      "requestContext": {
-        "sessionId": "session-replay",
-        "purpose": "title",
-        "querySource": "rename_generate_name"
-      }
     }
   ],
   "modelResponses": [
@@ -82,16 +52,9 @@
       "request": 1,
       "reply": "round-1",
       "querySource": "sdk"
-    },
-    {
-      "request": 2,
-      "reply": "title",
-      "querySource": "rename_generate_name"
     }
   ],
   "transport": [
-    "streamStart",
-    "streamRead",
     "streamStart",
     "streamRead"
   ],
@@ -188,10 +151,6 @@
     {
       "op": "terminal",
       "reason": "max_turns"
-    },
-    {
-      "op": "aiTitle",
-      "aiTitle": "A title"
     }
   ],
   "emitted": [

@@ -81,7 +81,7 @@ export const scenarios: Scenario[] = [
         config: { isSubAgent: true, maxTurns: 1 },
         tools: [{ name: 'Act' }],
         queued: { typed: () => [{ uuid: 'typed-1', prompt: 'never drained', enqueuedAt: 10 }] },
-        replies: [toolRound, title],
+        replies: [toolRound],
       })
       await w.submit('go')
       return w.finish()
