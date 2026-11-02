@@ -1,0 +1,15 @@
+diff --git a/node_modules/@assistant-ui/tap/dist/hooks/tap-effect-event.js b/node_modules/@assistant-ui/tap/dist/hooks/tap-effect-event.js
+--- a/node_modules/@assistant-ui/tap/dist/hooks/tap-effect-event.js
++++ b/node_modules/@assistant-ui/tap/dist/hooks/tap-effect-event.js
+@@ -35,1 +35,1 @@
+-    return callbackRef.current;
++    return tapCallback((...args) => callbackRef.current(...args), [callbackRef]);
+diff --git a/node_modules/@assistant-ui/tap/src/hooks/tap-effect-event.ts b/node_modules/@assistant-ui/tap/src/hooks/tap-effect-event.ts
+--- a/node_modules/@assistant-ui/tap/src/hooks/tap-effect-event.ts
++++ b/node_modules/@assistant-ui/tap/src/hooks/tap-effect-event.ts
+@@ -44,1 +44,4 @@
+-  return callbackRef.current;
++  return tapCallback(
++    ((...args: Parameters<T>) => callbackRef.current(...args)) as T,
++    [callbackRef],
++  );
