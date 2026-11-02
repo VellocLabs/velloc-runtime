@@ -111,6 +111,22 @@ describe('a SECRET_UNAVAILABLE refusal', () => {
     })
   })
 
+  it('keeps provider status errors containing too_many_streams provider-side', () => {
+    const body = '{"error":{"code":"too_many_streams"}}'
+    for (const error of [
+      Object.assign(new Error(body), { httpStatus: 429 }),
+      `HTTP 429: ${body}`,
+      Object.assign(new Error(body), { httpStatus: 503 }),
+    ]) {
+      const issue = classifyProviderConnectivityIssue(error)
+      expect(issue).not.toBeNull()
+      expect(issue?.error).not.toBe('local_stream_limit')
+      expect(issue?.retryable).toBe(true)
+    }
+    expect(classifyProviderConnectivityIssue(`Provider response: ${body}`)?.error)
+      .not.toBe('local_stream_limit')
+  })
+
   it('the error card does not blame the provider for a full host stream table', () => {
     // Red-without: the card's opening sentence was "the provider rejected
     // this request outright".

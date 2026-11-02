@@ -245,7 +245,7 @@ export function classifyProviderConnectivityIssue(
   // The host's table of open model streams is full: the request never left
   // the browser, whichever provider was chosen. Not retried in place; the
   // host frees an ended stream nobody reads within a minute.
-  if (/\btoo_many_streams\b/.test(text)) {
+  if (status === undefined && /^(?:provider_error:\s*)?too_many_streams:/.test(text)) {
     return {
       kind: 'configuration',
       error: 'local_stream_limit',
