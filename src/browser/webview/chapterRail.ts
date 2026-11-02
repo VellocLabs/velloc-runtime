@@ -11,12 +11,15 @@ export const CHAPTER_BOTTOM_SLACK_PX = 8
 /** The rail's own entry for the conversation's beginning, before any mark. */
 export const SESSION_START_ID = 'session-start'
 
-/** One rail entry's place: its row index, and its row's top relative to the viewport top when mounted. */
+/** One rail entry's place: its row index, and where it starts relative to the viewport top when mounted. */
 export type RailPlace = {
   id: string
   /** Row index in the thread; -1 for the session start (before every row). */
   index: number
-  /** Pixels from the viewport's top to the row's top; null when the row is not mounted. */
+  /**
+   * Pixels from the viewport's top to where the entry starts: its line inside the row for a segment
+   * mark, else the row's top. Null when the row is not mounted.
+   */
   top: number | null
 }
 

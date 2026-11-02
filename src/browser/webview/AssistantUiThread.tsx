@@ -1234,25 +1234,26 @@ function InteractiveAssistantUiThread({
       chapterEntriesOf(transcriptMessagesRef.current, liveEventsRef.current)
     const rowOf = (rowId: string) =>
       runtimeMessagesRef.current.find(row => row.id === rowId)
+    const anchorOf: ChapterMarksValue['anchorOf'] = mark => {
+      const anchor = resolveChapterAnchor(runtimeMessagesRef.current, entries(), mark)
+      if (anchor.kind !== 'row') return { status: anchor.kind }
+      return anchor.ordinal === undefined
+        ? { status: 'ready', index: anchor.index }
+        : { status: 'ready', index: anchor.index, ordinal: anchor.ordinal }
+    }
     return {
       marks: sessionChapters.marks,
       mark: sessionChapters.mark,
       unmark: sessionChapters.unmark,
       targetFor: (rowId, line) => chapterTargetFor(rowOf(rowId), line, entries()),
       entryKeyOf: rowId => entryKeyOfRow(rowOf(rowId), entries()),
-      statusOf: mark => {
-        const anchor = resolveChapterAnchor(runtimeMessagesRef.current, entries(), mark)
-        return anchor.kind === 'row' ? 'ready' : anchor.kind
-      },
-      indexOf: mark => {
-        const anchor = resolveChapterAnchor(runtimeMessagesRef.current, entries(), mark)
-        return anchor.kind === 'row' ? anchor.index : null
-      },
+      statusOf: mark => anchorOf(mark).status,
+      anchorOf,
       reveal: async mark => {
         const root = threadRootRef.current
-        const anchor = resolveChapterAnchor(runtimeMessagesRef.current, entries(), mark)
-        if (!root || anchor.kind !== 'row') return false
-        return revealChapterRow(root, anchor.index, anchor.ordinal)
+        const place = anchorOf(mark)
+        if (!root || place.status !== 'ready') return false
+        return revealChapterRow(root, place.index, place.ordinal)
       },
       revealStart: async () => {
         const root = threadRootRef.current

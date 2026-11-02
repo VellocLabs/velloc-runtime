@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -32,6 +33,10 @@ import { cn } from "@/lib/utils";
 
 export type ChapterStatus = "ready" | "loading" | "unavailable";
 
+export type ChapterPlace =
+  | { status: "ready"; index: number; ordinal?: number }
+  | { status: "loading" | "unavailable" };
+
 export type ChapterMarksValue = {
   marks: readonly ChapterMark[];
   /** Absent when this thread may not change marks. */
@@ -42,8 +47,8 @@ export type ChapterMarksValue = {
   /** The entry key marks name row `rowId` by; null for an unsaved row. */
   entryKeyOf: (rowId: string) => string | null;
   statusOf: (mark: ChapterMark) => ChapterStatus;
-  /** The row index the mark lands on, or null while it cannot be reached. */
-  indexOf: (mark: ChapterMark) => number | null;
+  /** Where the mark lands: its row index and, for a segment, its transcript line; else its status. */
+  anchorOf: (mark: ChapterMark) => ChapterPlace;
   /** Brings the mark into view; resolves true once it landed, false when it could not be reached. */
   reveal: (mark: ChapterMark) => Promise<boolean>;
   /** Brings the conversation's beginning into view; resolves true once it landed. */
@@ -95,20 +100,29 @@ function jumpButtons(list: HTMLElement | null): HTMLButtonElement[] {
   return Array.from(list?.querySelectorAll<HTMLButtonElement>("[data-chapter-jump]") ?? []);
 }
 
-/** Where each rail entry's row sits in `viewport` now, and the first mounted row at the read line. */
+/**
+ * Where each rail entry starts in `viewport` now, and the first mounted row at the read line. A segment
+ * mark is measured at its own line inside the row (`data-line-ordinal`), falling back to the row's top
+ * while that line is not rendered.
+ */
 function measure(viewport: HTMLElement, chapters: ChapterMarksValue): {
   places: RailPlace[];
   firstRowAtReadLine: number | null;
 } {
   const viewTop = viewport.getBoundingClientRect().top;
-  const topOf = (index: number): number | null => {
+  const topOf = (index: number, ordinal: number | undefined): number | null => {
     const row = viewport.querySelector<HTMLElement>(`[data-message-index="${index}"]`);
-    return row ? row.getBoundingClientRect().top - viewTop : null;
+    if (!row) return null;
+    const line =
+      ordinal === undefined ? null : row.querySelector<HTMLElement>(`[data-line-ordinal="${ordinal}"]`);
+    return (line ?? row).getBoundingClientRect().top - viewTop;
   };
   const places: RailPlace[] = [{ id: SESSION_START_ID, index: -1, top: null }];
   for (const mark of chapters.marks) {
-    const index = chapters.indexOf(mark);
-    if (index !== null) places.push({ id: mark.id, index, top: topOf(index) });
+    const place = chapters.anchorOf(mark);
+    if (place.status === "ready") {
+      places.push({ id: mark.id, index: place.index, top: topOf(place.index, place.ordinal) });
+    }
   }
   let firstRowAtReadLine: number | null = null;
   for (const row of Array.from(viewport.querySelectorAll<HTMLElement>("[data-message-index]"))) {
@@ -121,8 +135,9 @@ function measure(viewport: HTMLElement, chapters: ChapterMarksValue): {
 }
 
 /**
- * The id of the chapter being read in `viewport`, kept current through scrolling, resizing and mark
- * changes; one measurement per frame. Null while there is no viewport or the thread is hidden.
+ * The id of the chapter being read in `viewport`, kept current through scrolling, resizing (of the
+ * viewport or its content, so rows mounting and cards opening count) and mark changes; one measurement
+ * per frame. Null while there is no viewport or the thread is hidden.
  */
 function useActiveChapter(
   viewportRef: RefObject<HTMLElement | null>,
@@ -165,9 +180,14 @@ function useActiveChapter(
     viewport.addEventListener("scroll", schedule, { passive: true });
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     resize?.observe(viewport);
+    const content = viewport.firstElementChild;
+    if (content) resize?.observe(content);
+    const rows = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
+    rows?.observe(viewport, { childList: true, subtree: true });
     return () => {
       viewport.removeEventListener("scroll", schedule);
       resize?.disconnect();
+      rows?.disconnect();
       if (frame.current !== null) cancelAnimationFrame(frame.current);
       frame.current = null;
     };
@@ -179,8 +199,9 @@ function useActiveChapter(
 /**
  * The chapter rail (F-37): fixed at the thread's left edge while the session has marks, one short line
  * per entry (the conversation's start, then each mark in conversation order), evenly spaced. The line of
- * the chapter being read is longer and darker. Hovering the rail or focusing it opens the titled list;
- * leaving it closes the list. A ready entry jumps there; an unavailable one says so and can only be
+ * the chapter being read is longer and darker. Hovering the lines or focusing them opens the titled
+ * list; the pointer leaving the lines and the list closes it, unless the keyboard put focus inside;
+ * focus leaving closes it too. A ready entry jumps there; an unavailable one says so and can only be
  * removed. Closed while its thread is hidden (`isForeground` false).
  */
 export const ChapterRail: FC<{
@@ -191,7 +212,13 @@ export const ChapterRail: FC<{
   const chapters = useChapterMarks();
   const [open, setOpen] = useState(false);
   const railRef = useRef<HTMLElement>(null);
+  const linesRef = useRef<HTMLButtonElement>(null);
+  const listBoxRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const suppressFocusOpen = useRef(false);
+  // Whether focus inside the rail came from the keyboard: a press inside clears it, a key sets it.
+  const keyboardFocus = useRef(false);
+  const listId = useId();
   const hasMarks = (chapters?.marks.length ?? 0) > 0;
   const shown = !!chapters && hasMarks && isForeground;
   const active = useActiveChapter(viewportRef, chapters ?? EMPTY_CHAPTERS, shown);
@@ -208,8 +235,19 @@ export const ChapterRail: FC<{
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape" || !open) return;
     event.preventDefault();
+    suppressFocusOpen.current = true;
+    linesRef.current?.focus();
+    suppressFocusOpen.current = false;
     setOpen(false);
-    (railRef.current?.ownerDocument.activeElement as HTMLElement | null)?.blur();
+  };
+  const onPointerLeave = () => {
+    const focused = railRef.current?.ownerDocument.activeElement ?? null;
+    const keyboardFocusInside = keyboardFocus.current && !!focused && !!railRef.current?.contains(focused);
+    if (!keyboardFocusInside) setOpen(false);
+  };
+  const leftFor = (other: { current: HTMLElement | null }) => (event: { relatedTarget: EventTarget | null }) => {
+    const to = event.relatedTarget;
+    if (!(to instanceof Node && other.current?.contains(to))) onPointerLeave();
   };
 
   return (
@@ -221,20 +259,28 @@ export const ChapterRail: FC<{
       data-active-chapter={active ?? undefined}
       data-open={open ? "true" : undefined}
       hidden={!isForeground}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => {
-        if (!railRef.current?.contains(railRef.current.ownerDocument.activeElement)) setOpen(false);
+      onFocus={() => {
+        if (!suppressFocusOpen.current) setOpen(true);
       }}
-      onFocus={() => setOpen(true)}
       onBlur={onBlur}
+      onPointerDownCapture={() => {
+        keyboardFocus.current = false;
+      }}
+      onKeyDownCapture={() => {
+        keyboardFocus.current = true;
+      }}
       onKeyDown={onKeyDown}
-      className="absolute top-5 bottom-8 left-1 z-20 flex w-6 flex-col items-start"
+      className="pointer-events-none absolute top-5 bottom-8 left-1 z-20 flex w-6 flex-col items-start"
     >
       <button
+        ref={linesRef}
         type="button"
         data-testid="chapter-rail-lines"
         aria-label={t("chapters.open", { count: chapters.marks.length })}
         aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={leftFor(listBoxRef)}
         onClick={() => setOpen(true)}
         onKeyDown={(event) => {
           if (event.key !== "ArrowDown" && event.key !== "Enter") return;
@@ -244,24 +290,21 @@ export const ChapterRail: FC<{
           event.preventDefault();
           first.focus();
         }}
-        className="flex w-6 flex-col items-start rounded-sm py-1 ps-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="pointer-events-auto flex w-6 flex-col items-start rounded-sm py-1 ps-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         {ids.map((id) => (
           <span key={id} aria-hidden="true" data-rail-line={id} className="flex h-2 w-full items-center">
-            <span
-              data-current={id === active ? "true" : undefined}
-              className={cn(
-                "block h-0.5 rounded-full transition-[width,background-color] duration-200",
-                id === active ? "w-3.5 bg-foreground/70" : "w-[9px] bg-foreground/25",
-              )}
-            />
+            <RailLine current={id === active} animated />
           </span>
         ))}
       </button>
       {open && (
         <div
+          ref={listBoxRef}
+          id={listId}
           data-testid="chapter-marks-list"
-          className="absolute top-0 left-0 z-30 flex max-h-full w-80 max-w-[calc(100cqw-1rem)] flex-col rounded-xl border bg-popover p-1 text-popover-foreground shadow-md"
+          onMouseLeave={leftFor(linesRef)}
+          className="pointer-events-auto absolute top-0 left-0 z-30 flex max-h-full w-80 max-w-[calc(100cqw-1rem)] flex-col rounded-xl border bg-popover p-1 text-popover-foreground shadow-md"
         >
           <ChapterList
             chapters={chapters}
@@ -279,21 +322,34 @@ const EMPTY_CHAPTERS: ChapterMarksValue = {
   targetFor: () => null,
   entryKeyOf: () => null,
   statusOf: () => "unavailable",
-  indexOf: () => null,
+  anchorOf: () => ({ status: "unavailable" }),
   reveal: async () => false,
   revealStart: async () => false,
 };
 
-/** One line of the open list: the rail's line, then the entry's title and its note. */
-const EntryLine: FC<{ current: boolean }> = ({ current }) => (
-  <span aria-hidden="true" className="flex w-4 shrink-0 items-center">
-    <span
-      className={cn(
-        "block h-0.5 rounded-full",
-        current ? "w-3.5 bg-foreground/70" : "w-[9px] bg-foreground/25",
-      )}
-    />
-  </span>
+/** One rail line: long and dark for the chapter being read, short and light otherwise. */
+const RailLine: FC<{ current: boolean; animated?: boolean }> = ({ current, animated }) => (
+  <span
+    data-current={current ? "true" : undefined}
+    className={cn(
+      "block h-0.5 rounded-full",
+      animated && "transition-[width,background-color] duration-200",
+      current ? "w-3.5 bg-foreground/70" : "w-[9px] bg-foreground/25",
+    )}
+  />
+);
+
+/** One entry of the open list: the rail's line, the title, and a note under it when there is one. */
+const EntryBody: FC<{ current: boolean; title: string; note: string | null }> = ({ current, title, note }) => (
+  <>
+    <span aria-hidden="true" className="flex w-4 shrink-0 items-center">
+      <RailLine current={current} />
+    </span>
+    <span className="flex min-w-0 flex-col items-start">
+      <span className="w-full truncate">{title}</span>
+      {note !== null && <span className="text-muted-foreground text-xs">{note}</span>}
+    </span>
+  </>
 );
 
 /** The open list's body. Mounted only while the list is open, so a closed rail resolves no status. */
@@ -356,13 +412,11 @@ const ChapterList: FC<{
           onClick={() => void jumpToStart()}
           className={rowClass(active === SESSION_START_ID)}
         >
-          <EntryLine current={active === SESSION_START_ID} />
-          <span className="flex min-w-0 flex-col items-start">
-            <span className="w-full truncate">{t("chapters.start")}</span>
-            {failedId === SESSION_START_ID && (
-              <span className="text-muted-foreground text-xs">{t("chapters.jumpFailed")}</span>
-            )}
-          </span>
+          <EntryBody
+            current={active === SESSION_START_ID}
+            title={t("chapters.start")}
+            note={failedId === SESSION_START_ID ? t("chapters.jumpFailed") : null}
+          />
         </button>
       </li>
       {marks.map((mark) => {
@@ -394,11 +448,7 @@ const ChapterList: FC<{
               }}
               className={rowClass(current)}
             >
-              <EntryLine current={current} />
-              <span className="flex min-w-0 flex-col items-start">
-                <span className="w-full truncate">{title}</span>
-                {note !== null && <span className="text-muted-foreground text-xs">{note}</span>}
-              </span>
+              <EntryBody current={current} title={title} note={note} />
             </button>
             {unmark && (
               <button
