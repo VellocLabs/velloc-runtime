@@ -327,6 +327,7 @@ export const en = {
   'chapters.badge': 'Chapter: {title}',
   // The quote cards above the composer and their full-text preview (F-22).
   'passage.label': 'Excerpt',
+  'passage.replyLabel': 'Reply',
   'passage.accessibleName': 'Excerpt: {excerpt}',
   'passage.accessibleNameWithReply': 'Excerpt: {excerpt}. Reply: {reply}',
   'passage.open': 'View the full excerpt',

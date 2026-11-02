@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { createPassageDraftStore, type PassageDraftStore } from '../browser/webview/capturedPassages'
 import { I18nProvider } from '../browser/webview/i18n'
 import { ComposerPassagesProvider, ComposerPassageStrip } from '../components/assistant-ui/composer-passages'
-import { SelectionReplyBox, type PendingReply } from '../components/assistant-ui/thread'
+import { SelectionReplyBox, selectionInside, type PendingReply } from '../components/assistant-ui/thread'
 
 /**
  * Reply on a transcript selection (F-22): the reply box shows the selection and
@@ -100,5 +100,27 @@ describe('selection reply box', () => {
     fireEvent.keyUp(input, { key: 'Enter' })
     fireEvent.keyUp(input, { key: 'Enter' })
     expect(store.getPassages()).toHaveLength(0)
+  })
+})
+
+describe('which thread owns a selection', () => {
+  it('is the list holding both ends, never another mounted thread', () => {
+    const here = document.createElement('div')
+    const other = document.createElement('div')
+    here.innerHTML = '<p>alpha beta gamma</p>'
+    other.innerHTML = '<p>other session text</p>'
+    document.body.append(here, other)
+    const range = document.createRange()
+    range.selectNodeContents(here.querySelector('p')!)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+    expect(selectionInside(here, selection)).toBe(true)
+    expect(selectionInside(other, selection)).toBe(false)
+    expect(selectionInside(null, selection)).toBe(false)
+    selection.removeAllRanges()
+    expect(selectionInside(here, selection)).toBe(false)
+    here.remove()
+    other.remove()
   })
 })

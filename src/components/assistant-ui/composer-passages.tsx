@@ -171,27 +171,36 @@ export const PassageTile: FC<{
         className="absolute inset-0 z-0 rounded-lg outline-none hover:bg-accent/40"
         onClick={() => emit({ intent: "inspect", identity: model.identity })}
       />
-      <div className="pointer-events-none relative flex min-h-0 flex-1 gap-1.5 p-2 pb-0">
-        <span aria-hidden="true" className="w-[3px] shrink-0 rounded-full bg-primary/50" />
-        <blockquote
-          dir="auto"
-          className={cn(
-            "min-w-0 flex-1 text-xs leading-snug [overflow-wrap:anywhere]",
-            model.presentation.note ? "line-clamp-3" : "line-clamp-5",
-          )}
-        >
-          {model.presentation.excerpt}
-        </blockquote>
-      </div>
       {model.presentation.note ? (
-        <p
-          dir="auto"
-          data-testid="passage-note"
-          className="pointer-events-none relative line-clamp-2 px-2 pt-1 text-xs leading-snug text-foreground [overflow-wrap:anywhere]"
-        >
-          {model.presentation.note}
-        </p>
-      ) : null}
+        <div className="pointer-events-none relative flex min-h-0 flex-1 flex-col gap-1 p-2 pb-0">
+          <p
+            dir="auto"
+            data-testid="passage-note"
+            className="line-clamp-2 text-xs leading-snug text-foreground [overflow-wrap:anywhere]"
+          >
+            {model.presentation.note}
+          </p>
+          <div className="flex min-h-0 gap-1.5">
+            <span aria-hidden="true" className="w-[3px] shrink-0 rounded-full bg-primary/50" />
+            <blockquote
+              dir="auto"
+              className="line-clamp-3 min-w-0 flex-1 text-[11px] leading-snug [overflow-wrap:anywhere]"
+            >
+              {model.presentation.excerpt}
+            </blockquote>
+          </div>
+        </div>
+      ) : (
+        <div className="pointer-events-none relative flex min-h-0 flex-1 gap-1.5 p-2 pb-0">
+          <span aria-hidden="true" className="w-[3px] shrink-0 rounded-full bg-primary/50" />
+          <blockquote
+            dir="auto"
+            className="line-clamp-5 min-w-0 flex-1 text-xs leading-snug [overflow-wrap:anywhere]"
+          >
+            {model.presentation.excerpt}
+          </blockquote>
+        </div>
+      )}
       <span className="pointer-events-none relative px-2 py-1 text-[10px] font-medium tracking-wide uppercase opacity-70">
         {model.presentation.badgeText}
       </span>
@@ -236,7 +245,7 @@ export const ComposerPassageStrip: FC = () => {
           presentation: {
             excerpt: passageExcerpt(passage.payload.body),
             ...(note ? { note: passageExcerpt(note) } : {}),
-            badgeText: t("passage.label"),
+            badgeText: t(note ? "passage.replyLabel" : "passage.label"),
             accessibleName: note
               ? t("passage.accessibleNameWithReply", {
                   excerpt: short,

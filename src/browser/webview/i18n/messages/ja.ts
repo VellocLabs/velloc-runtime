@@ -303,6 +303,7 @@ export const ja: Messages = {
   'chapters.loading': '読み込み中…',
   'chapters.badge': '章：{title}',
   'passage.label': '抜粋',
+  'passage.replyLabel': '返信',
   'passage.accessibleName': '抜粋: {excerpt}',
   'passage.accessibleNameWithReply': '引用：{excerpt}。返信：{reply}',
   'passage.open': '抜粋全体を表示',

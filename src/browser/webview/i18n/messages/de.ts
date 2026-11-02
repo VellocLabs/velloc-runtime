@@ -305,6 +305,7 @@ export const de: Messages = {
   'chapters.loading': 'Wird geladen…',
   'chapters.badge': 'Kapitel: {title}',
   'passage.label': 'Auszug',
+  'passage.replyLabel': 'Antwort',
   'passage.accessibleName': 'Auszug: {excerpt}',
   'passage.accessibleNameWithReply': 'Auszug: {excerpt}. Antwort: {reply}',
   'passage.open': 'Ganzen Auszug anzeigen',

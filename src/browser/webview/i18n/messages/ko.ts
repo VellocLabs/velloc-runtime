@@ -302,6 +302,7 @@ export const ko: Messages = {
   'chapters.loading': '불러오는 중…',
   'chapters.badge': '챕터: {title}',
   'passage.label': '발췌',
+  'passage.replyLabel': '답장',
   'passage.accessibleName': '발췌: {excerpt}',
   'passage.accessibleNameWithReply': '인용: {excerpt}. 답장: {reply}',
   'passage.open': '발췌 전체 보기',

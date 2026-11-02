@@ -304,6 +304,7 @@ export const zh: Messages = {
   'chapters.loading': '正在加载…',
   'chapters.badge': '章节：{title}',
   'passage.label': '引用',
+  'passage.replyLabel': '回复',
   'passage.accessibleName': '引用：{excerpt}',
   'passage.accessibleNameWithReply': '引用：{excerpt}。回复：{reply}',
   'passage.open': '查看完整引用',

@@ -76,6 +76,7 @@ import {
   type FC,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  type RefObject,
   Fragment,
   createContext,
   useCallback,
@@ -1083,7 +1084,7 @@ export const Thread: FC<{
       </div>
       {/* The page's clipboard, focus ring and windows, for `$.ui.copy` / `.focus` / `.scroll`. */}
       <ModPageResponder />
-      <ReplySelectionToolbar />
+      <ReplySelectionToolbar listRef={messageListRef} />
       <MessageContextMenu listRef={messageListRef} sessionId={sessionId} isForeground={isForeground} />
       {/* Whole-pane drop target. The composer has its own dropzone, but the
           conversation area is the larger, more natural place to drop a file —
@@ -2773,20 +2774,55 @@ export type PendingReply = {
   rect: { top: number; left: number; width: number };
 };
 
+/** Whether the document's selection starts and ends inside `list`. */
+export function selectionInside(list: Element | null, selection: Selection | null): boolean {
+  if (!list || !selection || selection.rangeCount === 0 || selection.isCollapsed) return false;
+  const within = (node: Node | null) => node !== null && list.contains(node);
+  return within(selection.anchorNode) && within(selection.focusNode);
+}
+
 /**
- * The toolbar over a text selection inside one transcript row (F-22, F-36).
- * Reply opens a box for the person's reply; Enter adds the selection and the
- * reply to the composer as one quote card. The primitive validates the
- * selection and positions a portal by it; the box outlives the selection,
- * which collapses as soon as its field takes focus.
+ * Tracks whether the selection lies in `list`, on the same events the toolbar
+ * primitive reads. Every mounted thread (background sessions and the side-chat
+ * pane included) renders a toolbar, and the primitive itself accepts a
+ * selection in any thread, so only the owner may show one: otherwise stacked
+ * toolbars from other threads take the click.
  */
-const ReplySelectionToolbar: FC = () => {
+function useSelectionOwned(listRef: RefObject<HTMLElement | null>): boolean {
+  const [owned, setOwned] = useState(false);
+  useEffect(() => {
+    const check = () =>
+      requestAnimationFrame(() => setOwned(selectionInside(listRef.current, window.getSelection())));
+    document.addEventListener("mouseup", check);
+    document.addEventListener("keyup", check);
+    document.addEventListener("selectionchange", check);
+    return () => {
+      document.removeEventListener("mouseup", check);
+      document.removeEventListener("keyup", check);
+      document.removeEventListener("selectionchange", check);
+    };
+  }, [listRef]);
+  return owned;
+}
+
+/**
+ * The toolbar over a text selection inside one transcript row of this thread
+ * (F-22, F-36). Reply opens a box for the person's reply; confirming adds the
+ * selection and the reply to the composer as one quote card. The box outlives
+ * the selection, which collapses as soon as its field takes focus.
+ */
+export const ReplySelectionToolbar: FC<{ listRef: RefObject<HTMLElement | null> }> = ({ listRef }) => {
   const [pending, setPending] = useState<PendingReply | null>(null);
+  const owned = useSelectionOwned(listRef);
   if (pending) return <SelectionReplyBox pending={pending} onClose={() => setPending(null)} />;
   return (
     <SelectionToolbarPrimitive.Root
       data-testid="selection-toolbar"
-      className="aui-selection-toolbar z-30 flex items-center gap-0.5 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
+      aria-hidden={owned ? undefined : true}
+      className={cn(
+        "aui-selection-toolbar z-30 flex items-center gap-0.5 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md",
+        !owned && "hidden",
+      )}
     >
       <ReplyButton onReply={setPending} />
       <StartSideChatButton />
@@ -2810,6 +2846,7 @@ const ReplyButton: FC<{ onReply: (pending: PendingReply) => void }> = ({ onReply
         const messageId = selection ? selectionMessageId(selection) : null;
         if (!selection || !messageId || !isAttachableSelection(text) || selection.rangeCount === 0) return;
         const box = selection.getRangeAt(0).getBoundingClientRect();
+        selection.removeAllRanges();
         onReply({
           body: text.trim(),
           messageId,

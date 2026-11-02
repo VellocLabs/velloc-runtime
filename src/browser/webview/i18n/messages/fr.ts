@@ -302,6 +302,7 @@ export const fr: Messages = {
   'chapters.loading': 'Chargement…',
   'chapters.badge': 'Chapitre : {title}',
   'passage.label': 'Extrait',
+  'passage.replyLabel': 'Réponse',
   'passage.accessibleName': 'Extrait : {excerpt}',
   'passage.accessibleNameWithReply': 'Extrait : {excerpt}. Réponse : {reply}',
   'passage.open': 'Voir l’extrait complet',
