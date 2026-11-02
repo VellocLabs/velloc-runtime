@@ -27,7 +27,7 @@ import {
   type ComposerDelivery,
 } from '../../components/assistant-ui/inject-message-context'
 import { resolveForkSendPlan } from './forkSend'
-import { composerSendText, createPassageDraftStore, serializePassagePrompt } from './capturedPassages'
+import { composerSendText, createPassageDraftStore, passageAsQuoted, serializePassagePrompt } from './capturedPassages'
 import { resolveAfterResponseCut } from './messageContextMenuModel'
 import { ComposerPassagesProvider } from '@/components/assistant-ui/composer-passages'
 import {
@@ -1364,7 +1364,7 @@ function InteractiveAssistantUiThread({
                 ...rawMessage.metadata,
                 custom: {
                   ...rawMessage.metadata?.custom,
-                  passages: takenPassages.map(passage => passage.payload.body),
+                  passages: takenPassages.map(passageAsQuoted),
                 },
               },
             }
@@ -1439,7 +1439,7 @@ function InteractiveAssistantUiThread({
       }
 
       const prompt = serializePassagePrompt(
-        takenPassages.map(passage => passage.payload.body),
+        takenPassages.map(passageAsQuoted),
         extractTextFromAppendMessage(message),
       ).trim()
       if (!prompt) return

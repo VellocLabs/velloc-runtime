@@ -5,7 +5,13 @@
  * quotes it was sent with.
  */
 
-import { passageExcerpt, splitPassagePrompt } from './capturedPassages'
+import {
+  passageExcerpt,
+  quotedBody,
+  quotedNote,
+  splitPassagePrompt,
+  type QuotedPassage,
+} from './capturedPassages'
 
 const QUOTE_LINE_PREFIX = '> '
 
@@ -39,26 +45,41 @@ export function splitQuotePrefix(text: string): { quote: string | null; text: st
  * Splits a prompt into the quotes it was sent with and the person's words:
  * the numbered passage form first (F-22), else a single leading `> ` block.
  */
-export function splitQuotedPrompt(text: string): { quotes: string[]; text: string } {
+export function splitQuotedPrompt(text: string): { quotes: QuotedPassage[]; text: string } {
   const passages = splitPassagePrompt(text)
   if (passages.passages.length > 0) return { quotes: passages.passages, text: passages.words }
   const single = splitQuotePrefix(text)
   return single.quote === null ? { quotes: [], text } : { quotes: [single.quote], text: single.text }
 }
 
+/** One quote off row metadata, or null when it is not a non-blank quote. */
+export function readQuotedPassage(value: unknown): QuotedPassage | null {
+  if (typeof value === 'string') return value.trim().length > 0 ? value : null
+  if (value === null || typeof value !== 'object') return null
+  const { body, note } = value as { body?: unknown; note?: unknown }
+  if (typeof body !== 'string' || body.trim().length === 0) return null
+  return typeof note === 'string' && note.trim().length > 0 ? { body, note } : body
+}
+
 /** The passages a composer send carries (`metadata.custom.passages`), in order. */
-export function passagesOfMetadata(metadata: unknown): string[] {
+export function passagesOfMetadata(metadata: unknown): QuotedPassage[] {
   const list = (metadata as { custom?: { passages?: unknown } } | undefined)?.custom?.passages
   if (!Array.isArray(list)) return []
-  return list.filter((body): body is string => typeof body === 'string' && body.trim().length > 0)
+  return list.flatMap(value => {
+    const passage = readQuotedPassage(value)
+    return passage === null ? [] : [passage]
+  })
 }
 
 /**
  * A prompt as a label (a strip row, a bubble, a session title): the words
- * without their quotes, or the first quote's excerpt when there are no words.
+ * without their quotes; with no words, the first reply note, else the first
+ * quote's excerpt.
  */
 export function quotedPromptLabel(text: string): string {
   const split = splitQuotedPrompt(text)
   if (split.quotes.length === 0) return text
-  return split.text.trim() ? split.text : passageExcerpt(split.quotes[0] ?? '')
+  if (split.text.trim()) return split.text
+  const note = split.quotes.map(quotedNote).find(value => value !== null)
+  return note ?? passageExcerpt(quotedBody(split.quotes[0] ?? ''))
 }

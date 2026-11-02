@@ -64,6 +64,7 @@ import {
   GitBranchIcon,
   ReplyIcon,
   MessagesSquareIcon,
+  MessageCirclePlusIcon,
   
   ListCollapseIcon,
   LockIcon,
@@ -86,12 +87,21 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 import { useModComposer } from "./use-mod-composer";
 import { MessageContextMenu } from "./message-context-menu";
 import { ComposerPassageStrip, useComposerPassages, usePassageList } from "./composer-passages";
 import { ChapterMarkBadge, ChapterMarksChip } from "./chapter-marks";
 import { registerAttachSelectionOwner } from "@/browser/webview/attachSelectionShortcut";
-import { isAttachableSelection, type PassageDraftStore } from "@/browser/webview/capturedPassages";
+import {
+  isAttachableSelection,
+  passageExcerpt,
+  quotedBody,
+  quotedNote,
+  PASSAGE_NOTE_MAX_UTF16,
+  type PassageDraftStore,
+} from "@/browser/webview/capturedPassages";
+import { readQuotedPassage } from "@/browser/webview/replyQuote";
 import { ModPromptVirtualText } from "./mod-prompt-virtual-text";
 import { ComposerTokenUsage } from "@/browser/webview/TokenUsageIndicator";
 import { REASONING_ONLY_ROW_KEY } from "@/browser/webview/showReasoning";
@@ -2755,25 +2765,37 @@ function userMessageHasNonTextParts(content: unknown): boolean {
   return Array.isArray(content) && content.some((part) => (part as { type?: unknown } | null)?.type !== "text");
 }
 
+/** A selection held for the reply box: its text, row and on-screen box at the time Reply was pressed. */
+export type PendingReply = {
+  body: string;
+  messageId: string;
+  row: Element | null;
+  rect: { top: number; left: number; width: number };
+};
+
 /**
- * The toolbar over a text selection inside one transcript row: Reply adds the
- * selection to the composer as a quote card (F-22, F-36). The primitive
- * validates the selection and positions a portal by it.
+ * The toolbar over a text selection inside one transcript row (F-22, F-36).
+ * Reply opens a box for the person's reply; Enter adds the selection and the
+ * reply to the composer as one quote card. The primitive validates the
+ * selection and positions a portal by it; the box outlives the selection,
+ * which collapses as soon as its field takes focus.
  */
 const ReplySelectionToolbar: FC = () => {
+  const [pending, setPending] = useState<PendingReply | null>(null);
+  if (pending) return <SelectionReplyBox pending={pending} onClose={() => setPending(null)} />;
   return (
     <SelectionToolbarPrimitive.Root
       data-testid="selection-toolbar"
       className="aui-selection-toolbar z-30 flex items-center gap-0.5 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
     >
-      <ReplyButton />
+      <ReplyButton onReply={setPending} />
       <StartSideChatButton />
     </SelectionToolbarPrimitive.Root>
   );
 };
 
-/** Reply: the selection becomes a quote card in the composer (F-22, F-36). */
-const ReplyButton: FC = () => {
+/** Reply: holds the selection and opens the reply box over it. */
+const ReplyButton: FC<{ onReply: (pending: PendingReply) => void }> = ({ onReply }) => {
   const t = useT();
   const passages = useComposerPassages();
   if (!passages) return null;
@@ -2786,18 +2808,131 @@ const ReplyButton: FC = () => {
         const selection = window.getSelection();
         const text = selection?.toString() ?? "";
         const messageId = selection ? selectionMessageId(selection) : null;
-        if (!messageId || !isAttachableSelection(text)) return;
-        const row = selection?.anchorNode?.parentElement ?? null;
-        const added = passages.capture(
-          { body: text.trim(), method: "range", anchors: [{ threadKey: "", entryKey: messageId }] },
-          row,
-        );
-        if (added) selection?.removeAllRanges();
+        if (!selection || !messageId || !isAttachableSelection(text) || selection.rangeCount === 0) return;
+        const box = selection.getRangeAt(0).getBoundingClientRect();
+        onReply({
+          body: text.trim(),
+          messageId,
+          row: selection.anchorNode?.parentElement ?? null,
+          rect: { top: box.top, left: box.left, width: box.width },
+        });
       }}
     >
       <ReplyIcon className="size-3.5" aria-hidden="true" />
       {t("selection.reply")}
     </button>
+  );
+};
+
+/**
+ * The reply box: an excerpt of the selection and one line for the reply.
+ * Enter (or the add button) puts both in the composer as one card; an empty
+ * reply adds the plain quote. Escape, a click outside or a scroll closes it.
+ */
+export const SelectionReplyBox: FC<{ pending: PendingReply; onClose: () => void }> = ({ pending, onClose }) => {
+  const t = useT();
+  const passages = useComposerPassages();
+  const [note, setNote] = useState("");
+  // Submitting moves focus to the composer, so it waits for the Enter that
+  // asked for it to come up: otherwise the key's line break lands there.
+  const enterArmedRef = useRef(false);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    inputRef.current?.focus({ preventScroll: true });
+    window.getSelection()?.removeAllRanges();
+    const onPointerDown = (event: PointerEvent) => {
+      if (!boxRef.current?.contains(event.target as Node)) onCloseRef.current();
+    };
+    const onScroll = (event: Event) => {
+      if (!boxRef.current?.contains(event.target as Node)) onCloseRef.current();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("scroll", onScroll, true);
+    };
+  }, []);
+  if (!passages) return null;
+  const submit = () => {
+    const trimmed = note.trim();
+    const added = passages.capture(
+      {
+        body: pending.body,
+        ...(trimmed ? { note: trimmed } : {}),
+        method: "range",
+        anchors: [{ threadKey: "", entryKey: pending.messageId }],
+      },
+      pending.row,
+    );
+    if (added) onClose();
+  };
+  return createPortal(
+    <div
+      ref={boxRef}
+      data-testid="selection-reply-box"
+      role="dialog"
+      aria-label={t("selection.replyBoxLabel")}
+      style={{
+        position: "fixed",
+        top: `${Math.max(pending.rect.top - 8, 8)}px`,
+        left: `${pending.rect.left + pending.rect.width / 2}px`,
+        transform: "translate(-50%, -100%)",
+        zIndex: 50,
+      }}
+      className="aui-selection-reply-box flex w-[22rem] max-w-[calc(100vw-1rem)] flex-col gap-2 rounded-xl border bg-popover p-3 text-popover-foreground shadow-lg"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }}
+    >
+      <blockquote
+        dir="auto"
+        data-testid="selection-reply-quote"
+        className="line-clamp-2 border-l-2 border-muted-foreground/40 pl-2 text-xs text-muted-foreground [overflow-wrap:anywhere]"
+      >
+        {passageExcerpt(pending.body)}
+      </blockquote>
+      <div className="flex items-center gap-2">
+        <input
+          ref={inputRef}
+          data-testid="selection-reply-input"
+          value={note}
+          maxLength={PASSAGE_NOTE_MAX_UTF16}
+          placeholder={t("selection.replyPlaceholder")}
+          aria-label={t("selection.replyPlaceholder")}
+          className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground"
+          onChange={(event) => setNote(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            enterArmedRef.current = !event.shiftKey && !event.nativeEvent.isComposing && !event.repeat;
+            if (enterArmedRef.current) event.preventDefault();
+          }}
+          onKeyUp={(event) => {
+            if (event.key !== "Enter" || !enterArmedRef.current) return;
+            enterArmedRef.current = false;
+            event.preventDefault();
+            submit();
+          }}
+        />
+        <button
+          type="button"
+          data-testid="selection-reply-submit"
+          aria-label={t("selection.replyAdd")}
+          title={t("selection.replyAdd")}
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          onClick={submit}
+        >
+          <MessageCirclePlusIcon className="size-4" aria-hidden="true" />
+        </button>
+      </div>
+    </div>,
+    document.body,
   );
 };
 
@@ -2851,27 +2986,41 @@ const StartSideChatButton: FC = () => {
   );
 };
 
-/** The quotes a sent prompt carried, drawn above the person's words in the bubble, in order. */
+/** The quotes a sent prompt carried, each with its reply under it, drawn above the person's words, in order. */
 const UserMessageQuote: FC = () => {
   const quotes = useAssistantState((s) => {
     const list = (s.message.metadata as { custom?: { quotes?: unknown } } | undefined)?.custom?.quotes;
     return Array.isArray(list) ? (list as unknown[]) : null;
   });
-  const texts = (quotes ?? []).filter(
-    (text): text is string => typeof text === "string" && text.trim().length > 0,
-  );
-  if (texts.length === 0) return null;
+  const passages = (quotes ?? []).flatMap((value) => {
+    const passage = readQuotedPassage(value);
+    return passage === null ? [] : [passage];
+  });
+  if (passages.length === 0) return null;
   return (
     <>
-      {texts.map((text, index) => (
-        <blockquote
-          key={index}
-          data-testid="user-message-quote"
-          className="aui-user-message-quote mb-1.5 border-l-2 border-primary/60 pl-2.5 text-sm text-muted-foreground whitespace-pre-wrap break-words"
-        >
-          {text}
-        </blockquote>
-      ))}
+      {passages.map((passage, index) => {
+        const note = quotedNote(passage);
+        return (
+          <div key={index} className="mb-1.5">
+            <blockquote
+              data-testid="user-message-quote"
+              className="aui-user-message-quote border-l-2 border-primary/60 pl-2.5 text-sm text-muted-foreground whitespace-pre-wrap break-words"
+            >
+              {quotedBody(passage)}
+            </blockquote>
+            {note && (
+              <p
+                dir="auto"
+                data-testid="user-message-quote-note"
+                className="aui-user-message-quote-note mt-1 text-sm whitespace-pre-wrap break-words"
+              >
+                {note}
+              </p>
+            )}
+          </div>
+        );
+      })}
     </>
   );
 };

@@ -286,6 +286,9 @@ export const en = {
   'selection.reply': 'Reply',
   'selection.sideChat': 'Start a side chat',
   'selection.sideChatStreaming': 'Wait for the reply to finish',
+  'selection.replyPlaceholder': 'Reply',
+  'selection.replyAdd': 'Add to message',
+  'selection.replyBoxLabel': 'Reply to the selected text',
   'sideChat.add': 'New side chat',
   'sideChat.empty': 'No side chats yet. Select text in the conversation and choose Start a side chat, or press +.',
   'sideChat.sharedFolder': 'Shares the main conversation\'s folder',
@@ -325,6 +328,7 @@ export const en = {
   // The quote cards above the composer and their full-text preview (F-22).
   'passage.label': 'Excerpt',
   'passage.accessibleName': 'Excerpt: {excerpt}',
+  'passage.accessibleNameWithReply': 'Excerpt: {excerpt}. Reply: {reply}',
   'passage.open': 'View the full excerpt',
   'passage.remove': 'Remove excerpt',
   'passage.added': 'Excerpt added',

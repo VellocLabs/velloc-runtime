@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 
 import { registerUnsavedEdits } from '../../glic/unsavedEditsGate'
 import {
+  passageAsQuoted,
   serializePassagePrompt,
   splitPassagePrompt,
   type PassageDraftStore,
@@ -35,7 +36,7 @@ export function withPassageDraft(
       const state = composer.getState()
       return {
         text: serializePassagePrompt(
-          passages.getPassages().map(passage => passage.payload.body),
+          passages.getPassages().map(passageAsQuoted),
           state.text,
         ),
         ...(state.attachments ? { attachments: state.attachments } : {}),

@@ -12,6 +12,7 @@ import type { ReadonlyJSONObject } from 'assistant-stream/utils'
 import type { ThreadMessageLike } from '@assistant-ui/react'
 import { splitUploadedAttachmentPrefix } from './pastedTextAttachment'
 import { splitQuotedPrompt } from './replyQuote'
+import type { QuotedPassage } from './capturedPassages'
 import { SKILL_TOOL_NAME } from '../../prompting/skillToolName'
 import {
   LAZY_DETAIL_FINISHED_SENTINEL,
@@ -300,7 +301,7 @@ export function convertUserContentWithAttachments(content: unknown): {
   content: string | ThreadPart[]
   attachments: UserMessageAttachments
   /** The texts the prompt was sent quoting, in order, when it carried any (F-22, F-36). */
-  quotes?: string[]
+  quotes?: QuotedPassage[]
 } {
   const converted = convertUserContent(content)
   if (typeof converted === 'string') {

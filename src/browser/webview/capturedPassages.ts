@@ -18,7 +18,8 @@ export type PassageAnchor = {
 
 export type CapturedPassage = {
   passageKey: string
-  payload: { media: 'text/plain'; body: string }
+  /** `note`: the person's reply to this passage, one line, never blank when present. */
+  payload: { media: 'text/plain'; body: string; note?: string }
   capture: {
     method: 'range' | 'entry-content'
     at: number
@@ -28,8 +29,35 @@ export type CapturedPassage = {
 
 export type CaptureRequest = {
   body: string
+  note?: string
   method: CapturedPassage['capture']['method']
   anchors: PassageAnchor[]
+}
+
+/** A passage as the wire form carries it: the body alone, or the body with a reply note. */
+export type QuotedPassage = string | { body: string; note: string }
+
+export function quotedBody(passage: QuotedPassage): string {
+  return typeof passage === 'string' ? passage : passage.body
+}
+
+export function quotedNote(passage: QuotedPassage): string | null {
+  return typeof passage === 'string' ? null : passage.note
+}
+
+/** Longest reply note, in UTF-16 code units. */
+export const PASSAGE_NOTE_MAX_UTF16 = 4000
+
+/** A reply note as stored: line breaks folded to spaces, trimmed; null when blank. */
+export function normalizePassageNote(note: string | null | undefined): string | null {
+  const folded = (note ?? '').replace(/[\r\n]+/g, ' ').trim()
+  return folded ? folded.slice(0, PASSAGE_NOTE_MAX_UTF16) : null
+}
+
+/** A draft passage in its wire shape. */
+export function passageAsQuoted(passage: CapturedPassage): QuotedPassage {
+  const { body, note } = passage.payload
+  return note ? { body, note } : body
 }
 
 /** Longest passage, in UTF-16 code units. */
@@ -83,9 +111,10 @@ function newPassageKey(): string {
 }
 
 export function createPassage(request: CaptureRequest, at: number = Date.now()): CapturedPassage {
+  const note = normalizePassageNote(request.note)
   return {
     passageKey: newPassageKey(),
-    payload: { media: 'text/plain', body: request.body },
+    payload: { media: 'text/plain', body: request.body, ...(note ? { note } : {}) },
     capture: { method: request.method, at, anchors: [...request.anchors] },
   }
 }
@@ -140,6 +169,7 @@ export function passageExcerpt(body: string, maxGraphemes: number = PASSAGE_EXCE
 
 const PASSAGE_HEADER_RE = /^\[Quoted context (\d+)\]$/
 const WORDS_HEADER = '[User message]'
+const NOTE_PREFIX = '[Reply] '
 
 function passageHeader(index: number): string {
   return `[Quoted context ${index}]`
@@ -155,14 +185,19 @@ function quoteLines(body: string): string {
 
 /**
  * The text a prompt (or a saved draft) carries for `passages` and `words`:
- * each passage under a numbered header as `> ` lines, then the words under
- * their own header. No passages: the words alone, unchanged. Line breaks are
- * normalised to LF; nothing else in a body is rewritten.
+ * each passage under a numbered header as `> ` lines, its reply note (if any)
+ * on one `[Reply] ` line after them, then the words under their own header.
+ * No passages: the words alone, unchanged. Line breaks are normalised to LF;
+ * nothing else in a body is rewritten.
  */
-export function serializePassagePrompt(passages: readonly string[], words: string): string {
-  const bodies = passages.filter(body => body.trim().length > 0)
-  if (bodies.length === 0) return words
-  const blocks = bodies.map((body, index) => `${passageHeader(index + 1)}\n${quoteLines(body)}`)
+export function serializePassagePrompt(passages: readonly QuotedPassage[], words: string): string {
+  const kept = passages.filter(passage => quotedBody(passage).trim().length > 0)
+  if (kept.length === 0) return words
+  const blocks = kept.map((passage, index) => {
+    const note = normalizePassageNote(quotedNote(passage))
+    const quoted = `${passageHeader(index + 1)}\n${quoteLines(quotedBody(passage))}`
+    return note ? `${quoted}\n${NOTE_PREFIX}${note}` : quoted
+  })
   if (words.length > 0) blocks.push(`${WORDS_HEADER}\n${words}`)
   return blocks.join('\n\n')
 }
@@ -171,12 +206,12 @@ export function serializePassagePrompt(passages: readonly string[], words: strin
  * Reads {@link serializePassagePrompt}'s form back. Anything that does not
  * follow it exactly, from the first line on, is all words and no passages.
  */
-export function splitPassagePrompt(text: string): { passages: string[]; words: string } {
+export function splitPassagePrompt(text: string): { passages: QuotedPassage[]; words: string } {
   const none = { passages: [], words: text }
   const normalized = text.replace(/\r\n?/g, '\n')
   if (!normalized.startsWith(passageHeader(1))) return none
   const lines = normalized.split('\n')
-  const passages: string[] = []
+  const passages: QuotedPassage[] = []
   let index = 0
   while (index < lines.length) {
     const header = PASSAGE_HEADER_RE.exec(lines[index] ?? '')
@@ -191,7 +226,10 @@ export function splitPassagePrompt(text: string): { passages: string[]; words: s
       index++
     }
     if (body.length === 0) return none
-    passages.push(body.join('\n'))
+    const noteLine = lines[index] ?? ''
+    const note = noteLine.startsWith(NOTE_PREFIX) ? normalizePassageNote(noteLine.slice(NOTE_PREFIX.length)) : null
+    if (note !== null) index++
+    passages.push(note === null ? body.join('\n') : { body: body.join('\n'), note })
     if (index >= lines.length) return { passages, words: '' }
     if (lines[index] !== '') return none
     index++
@@ -243,7 +281,7 @@ export type PassageDraftStore = {
   add: (request: CaptureRequest) => { ok: true; passage: CapturedPassage } | { ok: false; reason: PassageRefusal }
   remove: (passageKey: string) => void
   /** Replaces every passage (a draft restore). */
-  replace: (bodies: readonly string[]) => void
+  replace: (bodies: readonly QuotedPassage[]) => void
   /** Marks the composer's own send of `text` (its text parts, newline-joined). */
   markComposerSend: (text: string) => void
   /**
@@ -260,7 +298,12 @@ export type PassageDraftStore = {
    */
   restore: (taken: readonly CapturedPassage[]) => void
   /** Adds passages read back from a prompt ahead of any present. */
-  prepend: (bodies: readonly string[]) => void
+  prepend: (bodies: readonly QuotedPassage[]) => void
+}
+
+function passageFromQuoted(passage: QuotedPassage): CapturedPassage {
+  const note = quotedNote(passage)
+  return createPassage({ body: quotedBody(passage), ...(note ? { note } : {}), method: 'range', anchors: [] })
 }
 
 export function createPassageDraftStore(): PassageDraftStore {
@@ -292,7 +335,7 @@ export function createPassageDraftStore(): PassageDraftStore {
     },
     replace(bodies) {
       if (bodies.length === 0 && passages.length === 0) return
-      set(bodies.map(body => createPassage({ body, method: 'range', anchors: [] })))
+      set(bodies.map(passageFromQuoted))
     },
     markComposerSend(text) {
       composerSend = text
@@ -316,7 +359,7 @@ export function createPassageDraftStore(): PassageDraftStore {
     },
     prepend(bodies) {
       if (bodies.length === 0) return
-      set([...bodies.map(body => createPassage({ body, method: 'range', anchors: [] })), ...passages])
+      set([...bodies.map(passageFromQuoted), ...passages])
     },
   }
 }

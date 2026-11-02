@@ -130,7 +130,7 @@ export const ComposerPassagesProvider: FC<{ store: PassageDraftStore | null; chi
 
 export type PassageTileModel = {
   identity: string;
-  presentation: { excerpt: string; badgeText: string; accessibleName: string };
+  presentation: { excerpt: string; note?: string; badgeText: string; accessibleName: string };
   interaction: { removable: boolean };
 };
 
@@ -175,11 +175,23 @@ export const PassageTile: FC<{
         <span aria-hidden="true" className="w-[3px] shrink-0 rounded-full bg-primary/50" />
         <blockquote
           dir="auto"
-          className="line-clamp-5 min-w-0 flex-1 text-xs leading-snug [overflow-wrap:anywhere]"
+          className={cn(
+            "min-w-0 flex-1 text-xs leading-snug [overflow-wrap:anywhere]",
+            model.presentation.note ? "line-clamp-3" : "line-clamp-5",
+          )}
         >
           {model.presentation.excerpt}
         </blockquote>
       </div>
+      {model.presentation.note ? (
+        <p
+          dir="auto"
+          data-testid="passage-note"
+          className="pointer-events-none relative line-clamp-2 px-2 pt-1 text-xs leading-snug text-foreground [overflow-wrap:anywhere]"
+        >
+          {model.presentation.note}
+        </p>
+      ) : null}
       <span className="pointer-events-none relative px-2 py-1 text-[10px] font-medium tracking-wide uppercase opacity-70">
         {model.presentation.badgeText}
       </span>
@@ -218,12 +230,19 @@ export const ComposerPassageStrip: FC = () => {
     () =>
       passages.map((passage) => {
         const short = passageExcerpt(passage.payload.body, ACCESSIBLE_EXCERPT_GRAPHEMES);
+        const note = passage.payload.note;
         return {
           identity: passage.passageKey,
           presentation: {
             excerpt: passageExcerpt(passage.payload.body),
+            ...(note ? { note: passageExcerpt(note) } : {}),
             badgeText: t("passage.label"),
-            accessibleName: t("passage.accessibleName", { excerpt: short }),
+            accessibleName: note
+              ? t("passage.accessibleNameWithReply", {
+                  excerpt: short,
+                  reply: passageExcerpt(note, ACCESSIBLE_EXCERPT_GRAPHEMES),
+                })
+              : t("passage.accessibleName", { excerpt: short }),
           },
           interaction: { removable: true },
         };
@@ -303,6 +322,7 @@ export const PassageInspector: FC<{ passage: CapturedPassage | null; onClose: ()
     setCopyState("idle");
   }, [passage?.passageKey]);
   const body = passage?.payload.body ?? "";
+  const note = passage?.payload.note ?? null;
   const count = body.length;
   return (
     <Dialog open={passage !== null} onOpenChange={(open) => !open && onClose()}>
@@ -323,6 +343,11 @@ export const PassageInspector: FC<{ passage: CapturedPassage | null; onClose: ()
           >
             {body}
           </blockquote>
+          {note && (
+            <p dir="auto" data-testid="passage-inspector-note" className="text-sm whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {note}
+            </p>
+          )}
           <div className="flex items-center justify-end gap-2">
             {copyState !== "idle" && (
               <span role="status" className={cn("text-xs", copyState === "failed" && "text-destructive")}>

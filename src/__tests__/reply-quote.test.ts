@@ -32,6 +32,16 @@ describe('quotes read off a prompt', () => {
     expect(quotedPromptLabel('plain words')).toBe('plain words')
   })
 
+  it('labels a cards-only prompt by its first reply before any excerpt', () => {
+    expect(quotedPromptLabel('[Quoted context 1]\n> a\n\n[Quoted context 2]\n> b\n[Reply] why b?')).toBe('why b?')
+  })
+
+  it('reads a quote with its reply off send metadata, dropping a blank reply', () => {
+    expect(
+      passagesOfMetadata({ custom: { passages: [{ body: 'a', note: 'why?' }, { body: 'b', note: '  ' }, { note: 'x' }] } }),
+    ).toEqual([{ body: 'a', note: 'why?' }, 'b'])
+  })
+
   it('prefers the numbered passage form, then the single block', () => {
     expect(splitQuotedPrompt('[Quoted context 1]\n> a\n\n[Quoted context 2]\n> b\n\n[User message]\nwhy?')).toEqual({
       quotes: ['a', 'b'],

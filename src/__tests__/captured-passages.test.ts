@@ -13,6 +13,7 @@ import {
   joinPassagePrompts,
   isCopyableSelection,
   passageExcerpt,
+  normalizePassageNote,
   serializePassagePrompt,
   splitPassagePrompt,
 } from '../browser/webview/capturedPassages'
@@ -124,6 +125,51 @@ describe('wire form', () => {
     ]) {
       expect(splitPassagePrompt(text)).toEqual({ passages: [], words: text })
     }
+  })
+})
+
+describe('reply notes', () => {
+  it('writes a note on one line after its passage and reads it back', () => {
+    const text = serializePassagePrompt(['claim\nsecond', { body: 'other', note: 'is this right?' }], 'why?')
+    expect(text).toBe(
+      '[Quoted context 1]\n> claim\n> second\n\n[Quoted context 2]\n> other\n[Reply] is this right?\n\n[User message]\nwhy?',
+    )
+    expect(splitPassagePrompt(text)).toEqual({
+      passages: ['claim\nsecond', { body: 'other', note: 'is this right?' }],
+      words: 'why?',
+    })
+  })
+
+  it('round-trips a cards-only prompt whose last card has a note', () => {
+    const passages = [{ body: 'a', note: 'please replay it' }]
+    expect(splitPassagePrompt(serializePassagePrompt(passages, ''))).toEqual({ passages, words: '' })
+  })
+
+  it('folds a note to one line and drops a blank one', () => {
+    expect(normalizePassageNote('  one\r\ntwo\n ')).toBe('one two')
+    expect(normalizePassageNote('   ')).toBeNull()
+    expect(serializePassagePrompt([{ body: 'a', note: ' \n ' }], '')).toBe('[Quoted context 1]\n> a')
+  })
+
+  it('keeps the note through the draft store and a hand-back', () => {
+    const store = createPassageDraftStore()
+    expect(store.add({ ...request('quoted'), note: 'why?' }).ok).toBe(true)
+    expect(store.getPassages()[0]!.payload.note).toBe('why?')
+    const words = handBackPrompt(store, '[Quoted context 1]\n> back\n[Reply] again\n\n[User message]\nhi')
+    expect(words).toBe('hi')
+    expect(store.getPassages().map(p => p.payload)).toEqual([
+      { media: 'text/plain', body: 'back', note: 'again' },
+      { media: 'text/plain', body: 'quoted', note: 'why?' },
+    ])
+  })
+
+  it('joins queued prompts with every note kept', () => {
+    const a = serializePassagePrompt([{ body: 'a', note: 'n1' }], 'one')
+    const b = serializePassagePrompt(['b'], 'two')
+    expect(splitPassagePrompt(joinPassagePrompts([a, b]))).toEqual({
+      passages: [{ body: 'a', note: 'n1' }, 'b'],
+      words: 'one\ntwo',
+    })
   })
 })
 
