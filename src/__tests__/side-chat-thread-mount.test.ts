@@ -98,9 +98,12 @@ describe('the row a side chat is cut at', () => {
 
   it('the shell gate reads the session state through a ref, so the callback keeps its identity across stream updates', () => {
     const shell = readFileSync(join(__dirname, '..', 'browser', 'webview', 'MultiSessionShell.tsx'), 'utf8')
-    const start = shell.indexOf('const handleStartSideChat = useCallback(')
+    const start = shell.indexOf('const handleStartSideChat = useMemo(')
     const handler = shell.slice(start, shell.indexOf('[forkSession', start) + 40)
-    expect(handler).toContain('sessionStatesRef.current.get(fromSessionId)')
+    const factoryStart = shell.indexOf('function createShellHandleStartSideChat(')
+    const factory = shell.slice(factoryStart, shell.indexOf('\nfunction ', factoryStart + 1))
+    expect(handler).toContain('createShellHandleStartSideChat(sessionStatesRef, forkSession)')
+    expect(factory).toContain('sessionStatesRef.current.get(fromSessionId)')
     expect(handler).toMatch(/\[forkSession\],/)
     expect(handler).not.toContain('[forkSession, sessionStates]')
   })
