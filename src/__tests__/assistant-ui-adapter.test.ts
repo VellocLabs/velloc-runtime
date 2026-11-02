@@ -345,7 +345,7 @@ describe('assistantUiAdapter', () => {
     })
   })
 
-  it('renders a team frame taken MID-TURN as the same team-message card', () => {
+  it.each([false, true])('renders a mid-turn team-message card (live: %s)', live => {
     // A frame a running turn took between two tool rounds is persisted as a
     // `queued_command` attachment (`commandMode:'team-message'`). Attachments
     // render nothing by default, so the message would sit in the model's
@@ -385,7 +385,12 @@ describe('assistantUiAdapter', () => {
       pendingPromptId: null,
     }
 
-    const converted = convertBrowserRuntimeStateToThreadMessages(state)
+    const converted = convertBrowserRuntimeStateToThreadMessages(live ? {
+      ...state,
+      status: 'submitting',
+      transcriptMessages: [],
+      liveEvents: state.transcriptMessages,
+    } : state)
 
     expect(converted).toHaveLength(1)
     expect(converted[0]).toMatchObject({
@@ -442,6 +447,70 @@ describe('assistantUiAdapter', () => {
       },
     })
   })
+
+  it.each(['shell', 'subagent'] as const)(
+    'keeps live %s completion boundaries stable after transcript reconciliation',
+    kind => {
+      const toolMessage = (uuid: string) => ({
+        type: 'assistant' as const,
+        uuid,
+        timestamp: '2026-11-02T12:00:00.000Z',
+        message: {
+          role: 'assistant' as const,
+          content: [{
+            type: 'tool-call' as const,
+            toolCallId: `tool-${uuid}`,
+            toolName: 'Bash',
+            args: { command: 'echo working' },
+          }],
+        },
+      })
+      const rows = [
+        toolMessage('before-completion'),
+        {
+          type: 'attachment' as const,
+          uuid: 'live-completion',
+          timestamp: '2026-11-02T12:00:01.000Z',
+          attachment: {
+            type: 'queued_command',
+            commandMode: 'task-notification',
+            prompt: `<task-notification>\n<task-id>${kind === 'shell' ? 'b12345678' : 'agent-review'}</task-id>\n<status>completed</status>\n<summary>${kind === 'shell' ? 'Background command "echo done" completed' : 'Agent "Review changes" finished'}</summary>\n</task-notification>`,
+          },
+        },
+        toolMessage('after-completion'),
+      ]
+      const state: BrowserRuntimeClientState = {
+        status: 'submitting',
+        snapshot: null,
+        transcriptMessages: [],
+        liveEvents: rows as never,
+        lastError: null,
+        pendingPrompt: null,
+        pendingPromptId: null,
+      }
+      const live = convertBrowserRuntimeStateToThreadMessages(state)
+      const settled = convertBrowserRuntimeStateToThreadMessages({
+        ...state,
+        status: 'idle',
+        liveEvents: [],
+        transcriptMessages: rows as never,
+      })
+
+      expect(live).toHaveLength(3)
+      expect(live[1]).toMatchObject({
+        id: 'live-completion',
+        metadata: { custom: { sourceType: 'background_results', backgroundResultKind: kind } },
+      })
+      const toolIds = (messages: typeof live) => messages.map(message =>
+        Array.isArray(message.content)
+          ? message.content.filter(part => part.type === 'tool-call').map(part => part.toolCallId)
+          : [],
+      )
+      expect(toolIds(live)).toEqual([['tool-before-completion'], [], ['tool-after-completion']])
+      expect(toolIds(settled)).toEqual(toolIds(live))
+      expect(settled[1]).toEqual(live[1])
+    },
+  )
 
   it('renders an imported slash-command pill as /name args, not raw tags', () => {
     // An imported session can store a slash-command invocation as a non-meta

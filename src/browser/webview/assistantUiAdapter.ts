@@ -645,12 +645,16 @@ function createLiveAssistantMessages(
   for (const message of structuredMessages) {
     switch (message.type) {
       case 'attachment': {
-        // Plain-Enter input drained into THIS turn: it renders where it
-        // reached the model, between the tool round it followed and the reply
-        // that answers it (the transcript copy renders the same id later).
-        const userInput = queuedUserInputThreadMessage(message)
-        if (userInput) {
-          liveMessages.push(userInput)
+        const attachment = convertTranscriptMessage(
+          message,
+          toolResults,
+          toolCalls,
+          idCounter,
+          retryPrompt,
+          t,
+        )
+        if (attachment) {
+          liveMessages.push(attachment)
           liveIndex++
         }
         break
