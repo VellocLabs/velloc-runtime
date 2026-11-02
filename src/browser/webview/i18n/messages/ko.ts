@@ -48,6 +48,8 @@ export const ko: Messages = {
   'sidebar.forkOf': '{title}의 포크',
   'sidebar.collapseChildrenAria': '{title} 아래 세션 숨기기 ({count})',
   'sidebar.expandChildrenAria': '{title} 아래 세션 표시 ({count})',
+  'sidebar.nestedSessionOne': '하위 세션 {count}개',
+  'sidebar.nestedSessions': '하위 세션 {count}개',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} 준비 완료',
   'appUpdate.restart': '다시 시작하여 업데이트',

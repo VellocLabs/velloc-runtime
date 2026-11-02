@@ -50,6 +50,8 @@ export const de: Messages = {
   'sidebar.forkOf': 'Fork von {title}',
   'sidebar.collapseChildrenAria': 'Die Sitzungen unter {title} ausblenden ({count})',
   'sidebar.expandChildrenAria': 'Die Sitzungen unter {title} anzeigen ({count})',
+  'sidebar.nestedSessionOne': '{count} Untersitzung',
+  'sidebar.nestedSessions': '{count} Untersitzungen',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} ist bereit',
   'appUpdate.restart': 'Neu starten zum Aktualisieren',

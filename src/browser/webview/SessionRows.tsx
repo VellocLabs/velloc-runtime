@@ -6,8 +6,6 @@
  */
 import {
   ArchiveRestoreIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
   GitForkIcon,
   Loader2Icon,
   MoreHorizontalIcon,
@@ -347,28 +345,64 @@ type SessionRowProps = Omit<SessionRowListProps, 'groups'> & {
 
 /** A row followed by its children (recursively) unless the row is collapsed. */
 function SessionRowSubtree(props: SessionRowProps) {
-  const { session, depth, nesting } = props
+  const { session, depth, nesting, indented } = props
+  const t = useT()
   const children = nesting?.tree.childrenOf.get(session.sessionId)
   const expanded = !nesting?.collapsed.has(session.sessionId)
+  const childCount = nesting ? countDescendants(session.sessionId, nesting.tree.childrenOf) : 0
+  const connectorLeft = (indented ? 28 : 12) + depth * SESSION_ROW_INDENT_PX + 6
   return (
     <>
       <SessionRow {...props} />
-      {children && expanded && (
-        // Collapsing is layout only: a hidden child keeps its session, its
-        // subscriptions and its place; only its row leaves the DOM.
+      {children && childCount > 0 && (
         <div
           data-testid="sidebar-children"
           data-parent-session-id={session.sessionId}
           className="flex flex-col gap-1"
         >
-          {children.map(child => (
-            <SessionRowSubtree
-              key={child.sessionId}
-              {...props}
-              session={child}
-              depth={depth + 1}
-            />
-          ))}
+          {expanded ? children.map((child, index) => (
+            <div key={child.sessionId} className="relative">
+              <span
+                aria-hidden
+                style={{ left: connectorLeft }}
+                className={cn(
+                  'pointer-events-none absolute -top-1 border-l border-border',
+                  index === children.length - 1
+                    ? 'h-[17px] w-2 rounded-bl-lg border-b'
+                    : '-bottom-1',
+                )}
+              />
+              <SessionRowSubtree
+                {...props}
+                session={child}
+                depth={depth + 1}
+              />
+            </div>
+          )) : (
+            <div className="relative">
+              <span
+                aria-hidden
+                style={{ left: connectorLeft }}
+                className="pointer-events-none absolute -top-1 h-[17px] w-2 rounded-bl-lg border-b border-l border-border"
+              />
+              <button
+                type="button"
+                data-testid="sidebar-children-summary"
+                data-session-id={session.sessionId}
+                aria-label={t('sidebar.expandChildrenAria', {
+                  title: sessionDisplayTitle(session, t), count: childCount,
+                })}
+                onClick={() => nesting?.onToggle?.(session.sessionId)}
+                style={{ paddingLeft: connectorLeft + SESSION_ROW_INDENT_PX }}
+                className={cn(
+                  'w-full truncate rounded-lg pr-3 text-start text-body text-muted-foreground hover:bg-sidebar-row-hover hover:text-foreground',
+                  SIDEBAR_ROW_HEIGHT,
+                )}
+              >
+                {t(childCount === 1 ? 'sidebar.nestedSessionOne' : 'sidebar.nestedSessions', { count: childCount })}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </>
@@ -453,8 +487,9 @@ function SessionRow({
     : undefined
   // The row's leading edge: the base inset, plus one indent level per depth.
   const baseInsetPx = indented ? 28 : 12
-  const insetPx = baseInsetPx + depth * SESSION_ROW_INDENT_PX
-  const rowStyle = depth > 0 ? { paddingLeft: insetPx } : undefined
+  const rowStyle = depth > 0
+    ? { paddingLeft: baseInsetPx + depth * SESSION_ROW_INDENT_PX }
+    : undefined
   // A row whose title does not fit shows it as a native tooltip, measured on `pointerover`
   // and again on `transitionend` (the hover padding narrows the title). A fork's
   // tooltip always carries its source line.
@@ -474,7 +509,13 @@ function SessionRow({
   }
   return (
     <div
-      className="group relative"
+      className={cn(
+        'group relative flex items-center rounded-lg',
+        isActive ? 'bg-sidebar-row-selected' : 'hover:bg-sidebar-row-hover',
+        hasChildren && (canDismissStart
+          ? cn('pr-8', hasRowActions && 'hover:pr-14')
+          : hasRowActions && 'hover:pr-8'),
+      )}
       data-renaming={isRenaming || undefined}
     >
       {isEditing ? (
@@ -532,18 +573,17 @@ function SessionRow({
               // sidebar and the narrow popover. Preview text + the relative timestamp
               // were dropped from the visible row; preview is
               // preserved screen-reader-only below.
-              'relative flex w-full items-center rounded-lg px-3 text-start text-body transition-[background-color,padding]',
+              'flex min-w-0 items-center rounded-lg px-3 text-start text-body transition-[background-color,padding] after:absolute after:inset-0 after:rounded-lg',
+              hasChildren ? 'max-w-full pr-0' : 'w-full',
               SIDEBAR_ROW_HEIGHT,
               // Reserve right-side space for the absolutely-
               // positioned actions (⋯) button on hover so the
               // title shrinks instead of being overlapped.
-              canDismissStart
+              !hasChildren && (canDismissStart
                 ? cn('pr-8', hasRowActions && 'group-hover:pr-14')
-                : hasRowActions && 'group-hover:pr-8',
+                : hasRowActions && 'group-hover:pr-8'),
               indented && 'pl-7',
-              // The selected tint also holds under the pointer;
-              // the hover tint is for the other rows.
-              isActive ? 'bg-sidebar-row-selected' : 'hover:bg-sidebar-row-hover',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             )}
             data-active={isActive || undefined}
             data-running={isRunning || undefined}
@@ -644,17 +684,6 @@ function SessionRow({
             {startFailedLine && (
               <span className="sr-only">{startFailedLine}</span>
             )}
-            {hasChildren && (
-              // How many sessions sit under this one, at every depth.
-              // The toggle's label reads the count for assistive tech.
-              <span
-                aria-hidden
-                data-slot="session-row-child-count"
-                className="ms-1 shrink-0 text-caption leading-none text-muted-foreground/60"
-              >
-                {childCount}
-              </span>
-            )}
             {isPinned && (
               <PinIcon
                 role="img"
@@ -680,10 +709,6 @@ function SessionRow({
             )}
           </button>
           {hasChildren && (
-            // The children toggle sits in the row's left gutter (the
-            // inset every row already has), so a parent's title stays
-            // aligned with its siblings'. A sibling of the row button,
-            // not inside it: one button never nests in another.
             <button
               type="button"
               data-testid="sidebar-children-toggle"
@@ -693,18 +718,15 @@ function SessionRow({
                 collapsed ? 'sidebar.expandChildrenAria' : 'sidebar.collapseChildrenAria',
                 { title: displayTitle(session), count: childCount },
               )}
-              style={{ left: insetPx - 12 }}
               onClick={e => {
                 e.stopPropagation()
                 nesting?.onToggle?.(session.sessionId)
               }}
-              className="absolute top-1/2 flex size-3 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground/60 hover:text-foreground"
+              className="relative z-10 ms-1 me-2 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {collapsed ? (
-                <ChevronRightIcon aria-hidden className="size-3" />
-              ) : (
-                <ChevronDownIcon aria-hidden className="size-3" />
-              )}
+              <svg aria-hidden viewBox="0 0 12 12" className="size-3 fill-current">
+                <path d={collapsed ? 'M4 2 9 6 4 10Z' : 'M2 4 10 4 6 9Z'} />
+              </svg>
             </button>
           )}
           {canDismissStart && (
@@ -719,7 +741,7 @@ function SessionRow({
                 onArchiveThread?.(session.sessionId, true)
               }}
               className={cn(
-                'absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground',
+                'absolute right-1.5 top-1/2 z-10 -translate-y-1/2 rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground',
                 hasRowActions && 'group-hover:right-7',
               )}
             >
@@ -736,7 +758,7 @@ function SessionRow({
                     title: session.title,
                   })}
                   onClick={e => e.stopPropagation()}
-                  className="absolute right-1.5 top-1/2 hidden -translate-y-1/2 rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground group-hover:block data-[state=open]:block"
+                  className="absolute right-1.5 top-1/2 z-10 hidden -translate-y-1/2 rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground group-hover:block data-[state=open]:block"
                 >
                   <MoreHorizontalIcon className="size-3.5" />
                 </button>

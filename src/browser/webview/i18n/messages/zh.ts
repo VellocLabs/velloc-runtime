@@ -51,6 +51,8 @@ export const zh: Messages = {
   'sidebar.forkOf': '{title} 的分叉',
   'sidebar.collapseChildrenAria': '隐藏 {title} 下的会话（{count}）',
   'sidebar.expandChildrenAria': '显示 {title} 下的会话（{count}）',
+  'sidebar.nestedSessionOne': '{count} 个子会话',
+  'sidebar.nestedSessions': '{count} 个子会话',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} 已就绪',
   'appUpdate.restart': '重启以更新',

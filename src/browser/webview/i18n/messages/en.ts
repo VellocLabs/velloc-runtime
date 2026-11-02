@@ -53,6 +53,8 @@ export const en = {
   'sidebar.forkOf': 'Fork of {title}',
   'sidebar.collapseChildrenAria': 'Hide the sessions under {title} ({count})',
   'sidebar.expandChildrenAria': 'Show the sessions under {title} ({count})',
+  'sidebar.nestedSessionOne': '{count} nested session',
+  'sidebar.nestedSessions': '{count} nested sessions',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} is ready',
   'appUpdate.restart': 'Restart to update',

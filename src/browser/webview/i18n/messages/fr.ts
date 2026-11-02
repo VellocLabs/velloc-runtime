@@ -47,6 +47,8 @@ export const fr: Messages = {
   'sidebar.forkOf': 'Fork de {title}',
   'sidebar.collapseChildrenAria': 'Masquer les sessions sous {title} ({count})',
   'sidebar.expandChildrenAria': 'Afficher les sessions sous {title} ({count})',
+  'sidebar.nestedSessionOne': '{count} sous-session',
+  'sidebar.nestedSessions': '{count} sous-sessions',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} est prêt',
   'appUpdate.restart': 'Redémarrer pour mettre à jour',

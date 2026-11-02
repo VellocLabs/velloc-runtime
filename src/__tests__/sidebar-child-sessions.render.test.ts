@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { Sidebar, type SessionListItem } from '../browser/webview/Sidebar'
 import { resetSessionTreeFallbackReports } from '../browser/webview/sessionTree'
+import { en } from '../browser/webview/i18n/messages/en'
 
 // Child session rows nest under their parent's row in the sidebar: indented,
 // collapsible per parent, with the parent standing in for a collapsed subtree's
@@ -161,6 +162,32 @@ describe('snapshot order', () => {
 })
 
 describe('collapse', () => {
+  it('shows a descendant summary only when collapsed and expands it without switching sessions', () => {
+    const onSwitch = vi.fn()
+    render(createElement(Sidebar, {
+      title: 'Conversation', sessionId: 'c', activeSessionId: 'c',
+      sessions: [item('p'), item('c', under('p')), item('g', under('c'))],
+      onSwitchThread: onSwitch,
+    }))
+    expect(screen.queryByTestId('sidebar-children-summary')).toBeNull()
+    expect(rowOf('p').contains(toggleOf('p'))).toBe(false)
+    fireEvent.click(toggleOf('p')!)
+    const summary = screen.getByTestId('sidebar-children-summary')
+    expect(summary.textContent).toBe(en['sidebar.nestedSessions'].replace('{count}', '2'))
+    expect(screen.queryByTestId('sidebar-row-c')).toBeNull()
+    fireEvent.click(summary)
+    expect(screen.queryByTestId('sidebar-children-summary')).toBeNull()
+    expect(rowOf('c').dataset.active).toBe('true')
+    expect(onSwitch).not.toHaveBeenCalled()
+  })
+
+  it('uses the singular summary for one child', () => {
+    localStorage.setItem('nexus:sidebar:childrenCollapsed', JSON.stringify(['p']))
+    renderSidebar([item('p'), item('c', under('p'))])
+    expect(screen.getByTestId('sidebar-children-summary').textContent)
+      .toBe(en['sidebar.nestedSessionOne'].replace('{count}', '1'))
+  })
+
   it('a parent gets a labelled toggle; collapsing hides the rows below it and is remembered', () => {
     renderSidebar([item('p'), item('c', under('p')), item('g', under('c'))])
     const toggle = toggleOf('p')!
