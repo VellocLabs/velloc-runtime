@@ -48,10 +48,17 @@ export function quotedNote(passage: QuotedPassage): string | null {
 /** Longest reply note, in UTF-16 code units. */
 export const PASSAGE_NOTE_MAX_UTF16 = 4000
 
-/** A reply note as stored: line breaks folded to spaces, trimmed; null when blank. */
+/**
+ * A reply note as stored: layout and bidi controls dropped, line breaks folded
+ * to spaces, trimmed, cut to `PASSAGE_NOTE_MAX_UTF16` on a code-point
+ * boundary; null when blank.
+ */
 export function normalizePassageNote(note: string | null | undefined): string | null {
-  const folded = (note ?? '').replace(/[\r\n]+/g, ' ').trim()
-  return folded ? folded.slice(0, PASSAGE_NOTE_MAX_UTF16) : null
+  const folded = (note ?? '').replace(/[\r\n]+/g, ' ').replace(LAYOUT_CONTROL_RE, '').trim()
+  if (!folded) return null
+  let cut = folded.slice(0, PASSAGE_NOTE_MAX_UTF16)
+  if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1)
+  return cut.trim() || null
 }
 
 /** A draft passage in its wire shape. */
@@ -86,20 +93,24 @@ export function isCopyableSelection(text: string): boolean {
 }
 
 /**
- * Whether `body` may join a draft already holding `existing`. Never trims or
- * shortens: an oversized passage is refused whole.
+ * Whether `body` (with its reply `note`) may join a draft already holding
+ * `existing`. Never trims or shortens: an oversized passage is refused whole.
+ * The draft total counts every card's body and note.
  */
 export function admitPassage(
   existing: readonly CapturedPassage[],
   body: string,
+  note?: string | null,
 ): { ok: true } | { ok: false; reason: PassageRefusal } {
   if (body.trim().length === 0) return { ok: false, reason: 'too-short' }
   if (body.length > PASSAGE_MAX_UTF16) return { ok: false, reason: 'too-long' }
-  const bytes = utf8ByteLength(body)
-  if (bytes > PASSAGE_MAX_UTF8_BYTES) return { ok: false, reason: 'too-long' }
+  const bodyBytes = utf8ByteLength(body)
+  if (bodyBytes > PASSAGE_MAX_UTF8_BYTES) return { ok: false, reason: 'too-long' }
   if (existing.length >= DRAFT_MAX_PASSAGES) return { ok: false, reason: 'too-many' }
-  const held = existing.reduce((sum, passage) => sum + utf8ByteLength(passage.payload.body), 0)
-  if (held + bytes > DRAFT_MAX_PASSAGE_BYTES) return { ok: false, reason: 'draft-too-large' }
+  const cardBytes = (passageBody: string, passageNote: string | null | undefined) =>
+    utf8ByteLength(passageBody) + (passageNote ? utf8ByteLength(passageNote) : 0)
+  const held = existing.reduce((sum, passage) => sum + cardBytes(passage.payload.body, passage.payload.note), 0)
+  if (held + cardBytes(body, note) > DRAFT_MAX_PASSAGE_BYTES) return { ok: false, reason: 'draft-too-large' }
   return { ok: true }
 }
 
@@ -323,7 +334,7 @@ export function createPassageDraftStore(): PassageDraftStore {
       }
     },
     add(request) {
-      const verdict = admitPassage(passages, request.body)
+      const verdict = admitPassage(passages, request.body, normalizePassageNote(request.note))
       if (!verdict.ok) return verdict
       const passage = createPassage(request)
       set([...passages, passage])

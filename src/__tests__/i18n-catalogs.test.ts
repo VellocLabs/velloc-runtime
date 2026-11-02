@@ -165,3 +165,12 @@ describe('resolveLocale', () => {
     expect(resolveLocale(null)).toBe('en')
   })
 })
+
+describe('quote card accessible names', () => {
+  it('name the excerpt with the same word and punctuation, with or without a reply', () => {
+    for (const [locale, catalog] of Object.entries(ALL)) {
+      const plain = catalog['passage.accessibleName'].split('{excerpt}')[0]!
+      expect(catalog['passage.accessibleNameWithReply'].startsWith(plain), locale).toBe(true)
+    }
+  })
+})

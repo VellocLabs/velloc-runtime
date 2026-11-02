@@ -1084,7 +1084,7 @@ export const Thread: FC<{
       </div>
       {/* The page's clipboard, focus ring and windows, for `$.ui.copy` / `.focus` / `.scroll`. */}
       <ModPageResponder />
-      <ReplySelectionToolbar listRef={messageListRef} />
+      <ReplySelectionToolbar listRef={messageListRef} isForeground={isForeground} />
       <MessageContextMenu listRef={messageListRef} sessionId={sessionId} isForeground={isForeground} />
       {/* Whole-pane drop target. The composer has its own dropzone, but the
           conversation area is the larger, more natural place to drop a file —
@@ -2771,8 +2771,51 @@ export type PendingReply = {
   body: string;
   messageId: string;
   row: Element | null;
-  rect: { top: number; left: number; width: number };
+  rect: { top: number; left: number; width: number; height: number };
 };
+
+/**
+ * Holds `selection` for the reply box and clears it. The row is read before
+ * the ranges are removed: afterwards the selection has no anchor. Null when
+ * the selection is not one attachable run inside one message row.
+ */
+export function holdSelectionForReply(selection: Selection | null): PendingReply | null {
+  if (!selection || selection.rangeCount === 0) return null;
+  const text = selection.toString();
+  const messageId = selectionMessageId(selection);
+  if (!messageId || !isAttachableSelection(text)) return null;
+  const anchor = selection.anchorNode;
+  const row = anchor instanceof Element ? anchor : (anchor?.parentElement ?? null);
+  const box = selection.getRangeAt(0).getBoundingClientRect();
+  selection.removeAllRanges();
+  return {
+    body: text.trim(),
+    messageId,
+    row,
+    rect: { top: box.top, left: box.left, width: box.width, height: box.height },
+  };
+}
+
+const REPLY_BOX_MARGIN = 8;
+
+/**
+ * Where the reply box goes: above the selection when it fits, else below it,
+ * always inside the viewport by `REPLY_BOX_MARGIN`.
+ */
+export function placeReplyBox(
+  rect: PendingReply["rect"],
+  box: { width: number; height: number },
+  viewport: { width: number; height: number },
+): { top: number; left: number } {
+  const m = REPLY_BOX_MARGIN;
+  const clamp = (value: number, max: number) => Math.max(m, Math.min(value, max));
+  const above = rect.top - m - box.height;
+  const top = above >= m ? above : clamp(rect.top + rect.height + m, viewport.height - box.height - m);
+  const left = clamp(rect.left + rect.width / 2 - box.width / 2, viewport.width - box.width - m);
+  return { top, left };
+}
+
+const SCROLL_KEYS = new Set(["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown", " "]);
 
 /** Whether the document's selection starts and ends inside `list`. */
 export function selectionInside(list: Element | null, selection: Selection | null): boolean {
@@ -2788,15 +2831,23 @@ export function selectionInside(list: Element | null, selection: Selection | nul
  * selection in any thread, so only the owner may show one: otherwise stacked
  * toolbars from other threads take the click.
  */
-function useSelectionOwned(listRef: RefObject<HTMLElement | null>): boolean {
+export function useSelectionOwned(listRef: RefObject<HTMLElement | null>): boolean {
   const [owned, setOwned] = useState(false);
   useEffect(() => {
-    const check = () =>
-      requestAnimationFrame(() => setOwned(selectionInside(listRef.current, window.getSelection())));
+    let frame = 0;
+    const check = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const next = selectionInside(listRef.current, window.getSelection());
+        setOwned((prev) => (prev === next ? prev : next));
+      });
+    };
     document.addEventListener("mouseup", check);
     document.addEventListener("keyup", check);
     document.addEventListener("selectionchange", check);
     return () => {
+      if (frame) cancelAnimationFrame(frame);
       document.removeEventListener("mouseup", check);
       document.removeEventListener("keyup", check);
       document.removeEventListener("selectionchange", check);
@@ -2811,10 +2862,15 @@ function useSelectionOwned(listRef: RefObject<HTMLElement | null>): boolean {
  * selection and the reply to the composer as one quote card. The box outlives
  * the selection, which collapses as soon as its field takes focus.
  */
-export const ReplySelectionToolbar: FC<{ listRef: RefObject<HTMLElement | null> }> = ({ listRef }) => {
+export const ReplySelectionToolbar: FC<{ listRef: RefObject<HTMLElement | null>; isForeground?: boolean }> = ({
+  listRef,
+  isForeground,
+}) => {
   const [pending, setPending] = useState<PendingReply | null>(null);
   const owned = useSelectionOwned(listRef);
-  if (pending) return <SelectionReplyBox pending={pending} onClose={() => setPending(null)} />;
+  if (pending) {
+    return <SelectionReplyBox pending={pending} isForeground={isForeground} onClose={() => setPending(null)} />;
+  }
   return (
     <SelectionToolbarPrimitive.Root
       data-testid="selection-toolbar"
@@ -2841,18 +2897,8 @@ const ReplyButton: FC<{ onReply: (pending: PendingReply) => void }> = ({ onReply
       data-testid="selection-reply"
       className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
       onClick={() => {
-        const selection = window.getSelection();
-        const text = selection?.toString() ?? "";
-        const messageId = selection ? selectionMessageId(selection) : null;
-        if (!selection || !messageId || !isAttachableSelection(text) || selection.rangeCount === 0) return;
-        const box = selection.getRangeAt(0).getBoundingClientRect();
-        selection.removeAllRanges();
-        onReply({
-          body: text.trim(),
-          messageId,
-          row: selection.anchorNode?.parentElement ?? null,
-          rect: { top: box.top, left: box.left, width: box.width },
-        });
+        const pending = holdSelectionForReply(window.getSelection());
+        if (pending) onReply(pending);
       }}
     >
       <ReplyIcon className="size-3.5" aria-hidden="true" />
@@ -2864,9 +2910,15 @@ const ReplyButton: FC<{ onReply: (pending: PendingReply) => void }> = ({ onReply
 /**
  * The reply box: an excerpt of the selection and one line for the reply.
  * Enter (or the add button) puts both in the composer as one card; an empty
- * reply adds the plain quote. Escape, a click outside or a scroll closes it.
+ * reply adds the plain quote. Escape, a click outside, the person scrolling
+ * outside it, or its thread leaving the foreground closes it; scrolling the
+ * page does for itself (a streaming answer) does not.
  */
-export const SelectionReplyBox: FC<{ pending: PendingReply; onClose: () => void }> = ({ pending, onClose }) => {
+export const SelectionReplyBox: FC<{ pending: PendingReply; isForeground?: boolean; onClose: () => void }> = ({
+  pending,
+  isForeground,
+  onClose,
+}) => {
   const t = useT();
   const passages = useComposerPassages();
   const [note, setNote] = useState("");
@@ -2877,23 +2929,39 @@ export const SelectionReplyBox: FC<{ pending: PendingReply; onClose: () => void 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const [size, setSize] = useState({ width: 352, height: 112 });
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    if (width > 0 && height > 0) setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+  }, []);
+  useEffect(() => {
+    if (isForeground === false) onCloseRef.current();
+  }, [isForeground]);
   useEffect(() => {
     inputRef.current?.focus({ preventScroll: true });
     window.getSelection()?.removeAllRanges();
-    const onPointerDown = (event: PointerEvent) => {
-      if (!boxRef.current?.contains(event.target as Node)) onCloseRef.current();
+    const outside = (event: Event) => !boxRef.current?.contains(event.target as Node);
+    const closeOutside = (event: Event) => {
+      if (outside(event)) onCloseRef.current();
     };
-    const onScroll = (event: Event) => {
-      if (!boxRef.current?.contains(event.target as Node)) onCloseRef.current();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (SCROLL_KEYS.has(event.key) && outside(event)) onCloseRef.current();
     };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("scroll", onScroll, true);
+    document.addEventListener("pointerdown", closeOutside, true);
+    document.addEventListener("wheel", closeOutside, { capture: true, passive: true });
+    document.addEventListener("touchmove", closeOutside, { capture: true, passive: true });
+    document.addEventListener("keydown", onKeyDown, true);
     return () => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("scroll", onScroll, true);
+      document.removeEventListener("pointerdown", closeOutside, true);
+      document.removeEventListener("wheel", closeOutside, true);
+      document.removeEventListener("touchmove", closeOutside, true);
+      document.removeEventListener("keydown", onKeyDown, true);
     };
   }, []);
-  if (!passages) return null;
+  if (!passages || isForeground === false) return null;
+  const place = placeReplyBox(pending.rect, size, { width: window.innerWidth, height: window.innerHeight });
   const submit = () => {
     const trimmed = note.trim();
     const added = passages.capture(
@@ -2915,9 +2983,8 @@ export const SelectionReplyBox: FC<{ pending: PendingReply; onClose: () => void 
       aria-label={t("selection.replyBoxLabel")}
       style={{
         position: "fixed",
-        top: `${Math.max(pending.rect.top - 8, 8)}px`,
-        left: `${pending.rect.left + pending.rect.width / 2}px`,
-        transform: "translate(-50%, -100%)",
+        top: `${place.top}px`,
+        left: `${place.left}px`,
         zIndex: 50,
       }}
       className="aui-selection-reply-box flex w-[22rem] max-w-[calc(100vw-1rem)] flex-col gap-2 rounded-xl border bg-popover p-3 text-popover-foreground shadow-lg"

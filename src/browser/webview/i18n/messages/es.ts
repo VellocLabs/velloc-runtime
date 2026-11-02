@@ -308,7 +308,7 @@ export const es: Messages = {
   'passage.label': 'Extracto',
   'passage.replyLabel': 'Respuesta',
   'passage.accessibleName': 'Extracto: {excerpt}',
-  'passage.accessibleNameWithReply': 'Fragmento: {excerpt}. Respuesta: {reply}',
+  'passage.accessibleNameWithReply': 'Extracto: {excerpt}. Respuesta: {reply}',
   'passage.open': 'Ver el extracto completo',
   'passage.remove': 'Quitar extracto',
   'passage.added': 'Extracto añadido',

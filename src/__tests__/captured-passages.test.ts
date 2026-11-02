@@ -55,6 +55,21 @@ describe('admission limits', () => {
     expect(admitPassage(heavy, 'a'.repeat(90_000))).toEqual({ ok: false, reason: 'draft-too-large' })
   })
 
+  it('counts reply notes toward the draft total, held and new', () => {
+    // Four held cards of 255,000 body bytes plus a 4000-byte note: 1,036,000 of 1,048,576 bytes.
+    const note = 'n'.repeat(4000)
+    const held = Array.from({ length: 4 }, () => createPassage({ ...request('字'.repeat(85_000)), note }))
+    expect(admitPassage(held, 'x'.repeat(10_000))).toEqual({ ok: true })
+    expect(admitPassage(held, 'x'.repeat(13_000)), 'held notes count').toEqual({ ok: false, reason: 'draft-too-large' })
+    expect(admitPassage(held, 'x'.repeat(10_000), note), 'the new note counts').toEqual({
+      ok: false,
+      reason: 'draft-too-large',
+    })
+    const store = createPassageDraftStore()
+    for (const passage of held) expect(store.add({ ...request(passage.payload.body), note }).ok).toBe(true)
+    expect(store.add({ ...request('x'.repeat(10_000)), note })).toEqual({ ok: false, reason: 'draft-too-large' })
+  })
+
   it('counts UTF-8 bytes per code point', () => {
     expect(utf8ByteLength('a')).toBe(1)
     expect(utf8ByteLength('é')).toBe(2)
@@ -149,6 +164,15 @@ describe('reply notes', () => {
     expect(normalizePassageNote('  one\r\ntwo\n ')).toBe('one two')
     expect(normalizePassageNote('   ')).toBeNull()
     expect(serializePassagePrompt([{ body: 'a', note: ' \n ' }], '')).toBe('[Quoted context 1]\n> a')
+  })
+
+  it('cuts a long note on a code-point boundary and drops layout and bidi controls', () => {
+    const cut = normalizePassageNote(`${'a'.repeat(3999)}😀tail`)!
+    expect(cut).toBe('a'.repeat(3999))
+    expect(/[\uD800-\uDFFF]/.test(cut)).toBe(false)
+    expect(normalizePassageNote('ok\u202Eevil\u2066x\u2069\u0007')).toBe('okevilx')
+    expect(normalizePassageNote('\u202E\u0007')).toBeNull()
+    expect(normalizePassageNote('👨‍👩‍👧')).toBe('👨‍👩‍👧')
   })
 
   it('keeps the note through the draft store and a hand-back', () => {

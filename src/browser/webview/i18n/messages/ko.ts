@@ -304,7 +304,7 @@ export const ko: Messages = {
   'passage.label': '발췌',
   'passage.replyLabel': '답장',
   'passage.accessibleName': '발췌: {excerpt}',
-  'passage.accessibleNameWithReply': '인용: {excerpt}. 답장: {reply}',
+  'passage.accessibleNameWithReply': '발췌: {excerpt}. 답장: {reply}',
   'passage.open': '발췌 전체 보기',
   'passage.remove': '발췌 제거',
   'passage.added': '발췌를 추가했습니다',

@@ -305,7 +305,7 @@ export const ja: Messages = {
   'passage.label': '抜粋',
   'passage.replyLabel': '返信',
   'passage.accessibleName': '抜粋: {excerpt}',
-  'passage.accessibleNameWithReply': '引用：{excerpt}。返信：{reply}',
+  'passage.accessibleNameWithReply': '抜粋: {excerpt}。返信: {reply}',
   'passage.open': '抜粋全体を表示',
   'passage.remove': '抜粋を削除',
   'passage.added': '抜粋を追加しました',
