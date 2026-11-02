@@ -214,7 +214,7 @@ const PlanCardImpl: FC<PlanCardProps> = ({
               )}
             />
             {headerDescription && (
-              <span className="col-span-full min-w-0 text-right">
+              <span className="col-span-full min-w-0 text-left">
                 {headerDescription}
               </span>
             )}
