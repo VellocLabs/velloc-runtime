@@ -1739,6 +1739,7 @@ export function combineThreadMessages(
   )
   const calls = collectToolCalls(state.transcriptMessages)
   const liveResults = collectToolResults(liveRows, calls)
+  for (const id of collectToolResults(state.transcriptMessages, calls).keys()) liveResults.delete(id)
   const updatedTools = new Map<string, ThreadPart>()
   for (const message of state.transcriptMessages) {
     if (message.type !== 'assistant') continue

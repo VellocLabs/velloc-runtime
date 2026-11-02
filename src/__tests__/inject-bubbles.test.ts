@@ -145,6 +145,12 @@ describe('BrowserRuntimeClient — attachment refresh overlap', () => {
       persisted(rows.length)
       await fullRefresh
       assertView()
+      const fullState = client.getState()
+      const settledParts = convertBrowserRuntimeStateToThreadMessages({ ...fullState, liveEvents: [] })
+        .flatMap(row => Array.isArray(row.content) ? row.content : []).filter(part => part.type === 'tool-call')
+      const busyParts = convertBrowserRuntimeStateToThreadMessages(fullState)
+        .flatMap(row => Array.isArray(row.content) ? row.content : []).filter(part => part.type === 'tool-call')
+      expect(busyParts).toEqual(settledParts)
       emit({ type: 'worker.stream', payload: { event: { type: 'stream_event', event: {
         type: 'content_block_delta', delta: { type: 'text_delta', text: 'New unpersisted answer' },
       } } } })
