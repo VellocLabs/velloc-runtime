@@ -92,7 +92,7 @@ function lastSubmit(posted: AgentWorkerInboundMessage[]) {
 }
 
 describe('BrowserRuntimeClient — Skill reference refresh overlap', () => {
-  it.each([2, 3])('retains the live body reference when a busy refresh persists %s rows', async prefix => {
+  it.each([2, 3, 'body-before-result'] as const)('retains the live body reference when a busy refresh persists %s rows', async prefix => {
     const { client, emit } = fakeWorker()
     await client.start()
     try {
@@ -106,7 +106,7 @@ describe('BrowserRuntimeClient — Skill reference refresh overlap', () => {
       const body = createSkillInvocationMessage({ name: 'writing-plans', description: 'Write plans', path: '/skills/writing-plans/SKILL.md', userCallable: true } as ChromiumCommandMetadata,
         undefined, '# Write plans\n\nInspect the project first.')
       body.sourceToolAssistantUUID = 'skill-call'
-      const rows = [user, call, result, body]
+      const rows = prefix === 'body-before-result' ? [user, call, body] : [user, call, result, body]
       const persist = (count: number) => emit({ type: 'worker.messages', payload: {
         messages: rows.slice(0, count).map(row => sanitizeMessageForUi(row as Message)),
       } })
@@ -122,7 +122,7 @@ describe('BrowserRuntimeClient — Skill reference refresh overlap', () => {
       expect(reference?.detailId !== null || reference?.inlineBody !== null).toBe(true)
       const refresh = client.requestMessages()
       await tick()
-      persist(prefix)
+      persist(prefix === 'body-before-result' ? rows.length : prefix)
       await refresh
       expect(client.getState().status).toBe('submitting')
       expect(skillParts()).toEqual(expected)

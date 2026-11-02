@@ -1755,7 +1755,7 @@ export function combineThreadMessages(
     state.status === 'submitting'
       ? [...collectToolCalls(state.liveEvents.slice(state.liveEventsTurnStart ?? 0)
           .filter((event): event is Message => event.type === 'assistant')).keys()]
-          .filter(id => !persistedResults.has(id) && !liveResults.has(id))
+          .filter(id => !persistedResults.has(id) && !liveResults.has(id) && !persistedRefs.byToolCallId.has(id))
       : [],
   )
   for (const id of persistedResults.keys()) liveResults.delete(id)
