@@ -152,8 +152,10 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
   const authorizePath = async (absolute: string, approved?: ReadonlySet<string>) => {
     admit()
     if (approved && !approved.has(normalized(absolute))) throw new ReviewGatewayError('snapshot-changed')
-    const hooks = await nestedToolGatesOf(context).preHooks('Read', { file_path: absolute }, crypto.randomUUID(), context)
-    if (hooks.blocked) throw new ReviewGatewayError('review-read-not-authorized')
+    if (!approved) {
+      const hooks = await nestedToolGatesOf(context).preHooks('Read', { file_path: absolute }, crypto.randomUUID(), context)
+      if (hooks.blocked) throw new ReviewGatewayError('review-read-not-authorized')
+    }
     const boundary = await assertUntrustedReadAllowed(absolute, context, fs)
     if (!boundary.ok) throw new ReviewGatewayError('review-read-not-authorized')
     const result = await vetFileRead('Read', { file_path: absolute }, buildFilePermissionContext(context, context.readAppState().permissionRules))
