@@ -34,7 +34,9 @@ export type ProcessUserInputResult = {
    * `'open-settings'` (`settingsSection`), `'rename'` (`renameTitle`, applied
    * before the confirmation is recorded).
    */
-  action?: 'clear' | 'compact' | 'reload-plugins' | 'open-settings' | 'rename'
+  action?: 'clear' | 'compact' | 'reload-plugins' | 'open-settings' | 'rename' | 'code-review'
+  reviewArguments?: string
+  reviewPresentation?: import('../../codeReview/contracts').OutputMode
   compactInstructions?: string
   /** New session title for the `'rename'` action. */
   renameTitle?: string

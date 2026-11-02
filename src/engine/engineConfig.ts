@@ -190,6 +190,7 @@ export type ConversationEngineConfig = {
     yieldedSystemMsg: Message,
     store: Message[],
   ) => { messages: Message[]; executed: boolean } | undefined
+  reviewRuntime?: import('../codeReview/runtime').ReviewRuntimeDependencies
   promptContextProvider: PromptContextProvider
   conversationStore: ConversationStore
   userInputPipeline: UserInputPipeline

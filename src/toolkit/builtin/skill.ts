@@ -128,6 +128,10 @@ export const SkillRunTool: ToolContract<SkillToolInput, SkillToolOutput> = decla
     canUseTool: PermissionDecider,
   ) => {
     const requested = normalizeSkillName(input.skill ?? '')
+    if (['code-review', 'review', 'ultrareview'].includes(requested)) {
+      const { invokeReviewModelSkill } = await import('../../codeReview/runtime')
+      return { data: await invokeReviewModelSkill(requested === 'ultrareview' ? '/ultrareview' : input.args ?? '', context, canUseTool) }
+    }
     const command = findCommandByName(
       getSkillCommands(context.options.commands),
       requested,

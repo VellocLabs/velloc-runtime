@@ -255,10 +255,10 @@ describe('installStockSkills', () => {
     expect(getBundledSkillCommands().length).toBe(firstCount)
   })
 
-  it('registers init, review, security-review and commit as slash-only skills', () => {
+  it('registers init, security-review and commit as slash-only skills', () => {
     installStockSkills()
     const byName = new Map(getBundledSkillCommands().map(c => [c.name, c]))
-    for (const name of ['init', 'review', 'security-review', 'commit']) {
+    for (const name of ['init', 'security-review', 'commit']) {
       const cmd = byName.get(name)
       expect(cmd, `bundled skill "${name}" should be registered`).toBeDefined()
       // These commands are user-typed: slash-only, so the model can't invoke them.
@@ -276,8 +276,13 @@ describe('installStockSkills', () => {
     expect(byName.get('security-review')!.content).toContain(
       '!`git diff origin/HEAD...`',
     )
-    // /review takes a PR number via the standard $ARGUMENTS substitution.
-    expect(byName.get('review')!.content).toContain('$ARGUMENTS')
+    for (const name of ['review', 'code-review']) {
+      const skill = byName.get(name)!
+      expect(skill.userCallable).toBe(true)
+      expect(skill.hiddenFromModel).toBe(false)
+      expect(skill.content).not.toContain('!`')
+      expect(getBundledSkillDynamicContent(name)).toBeUndefined()
+    }
   })
 })
 

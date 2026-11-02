@@ -76,6 +76,7 @@ function optionsFor(config: ConversationEngineConfig, model: string): ToolCallCo
     autoCompactWindows: config.queryRuntimeDeps?.autoCompactWindows,
     fileSnapshotRecorder: config.fileSnapshotRecorder,
     fsOperations: config.fsOperations,
+    reviewRuntime: config.reviewRuntime,
     sidechainStore: config.sidechainStore,
     runtimeScopeSignal: config.runtimeScopeSignal,
     hasPendingInjectMessages: config.hasPendingInjectMessages,

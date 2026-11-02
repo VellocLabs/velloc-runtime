@@ -402,6 +402,7 @@ export class SharedWorkerSessionManager {
     },
     runtimeVersion: `interface-${NEXUS_INTERFACE_VERSION}`,
     resolveHomeDir: () => this.storageCoordinator.resolveHomeDir(),
+    readStoredReviewSnapshot: sessionId => this.readStoredReviewSnapshot(sessionId),
     // A client started viewing a session: it needs that session's full status,
     // not a delta against a state it never saw.
     onPresenceChanged: change => {
@@ -4479,6 +4480,18 @@ export class SharedWorkerSessionManager {
 
   /** A session's stored chapter marks: a list stashed for a bind that has not
    *  written it yet, else its live store, else disk (F-37). */
+  private async readStoredReviewSnapshot(sessionId: string): Promise<import('../../codeReview/review-protocol').ReviewSessionSnapshot | undefined> {
+    if (!/^[A-Za-z0-9_-]{1,300}$/.test(sessionId)) throw new Error('invalid-review-session')
+    const storage = await this.routedStorageFor(sessionId)
+    const meta = await storage.readSessionMeta(sessionId)
+    if (!meta) return undefined
+    if (meta.sessionId !== sessionId) throw new Error('review-session-mismatch')
+    const base = this.groupedStorage ? this.groupedStorage.projectRouteOf(sessionId) : storage.getBasePath?.()
+    if (!base) return undefined
+    const { readStoredReviewSnapshot } = await import('../../codeReview/stored-snapshot')
+    return readStoredReviewSnapshot({ fs: this.runtimeHub.context.fs, sessionBase: base, sessionId })
+  }
+
   private async readChapterMarks(sessionId: string): Promise<unknown> {
     const entry = this.sessions.get(sessionId)
     if (entry?.pendingChapterMarks !== undefined) return entry.pendingChapterMarks

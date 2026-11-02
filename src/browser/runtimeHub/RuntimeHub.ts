@@ -63,6 +63,7 @@ import { registerWorkspaceCapability, type WorkspaceStateStore } from './workspa
 import { registerProviderUpdatesCapability } from './providerUpdatesCapability'
 import { registerProposalsCapability } from './proposalsCapability'
 import { registerChaptersCapability } from './chaptersCapability'
+import { registerReviewCapability } from './reviewCapability'
 import { registerPluginUpdatesCapability } from './pluginUpdatesCapability'
 import { resolveHostHome } from './hostFs'
 import { currentTemplateChannel } from '../../branding/updateChannels'
@@ -92,6 +93,7 @@ import type {
 } from './types'
 
 export type RuntimeHubHost = {
+  readStoredReviewSnapshot?(sessionId: string): Promise<import('../../codeReview/review-protocol').ReviewSessionSnapshot | undefined>
   /** Read lazily — the direct bridge may connect after construction. */
   getDirectBridgeTransport(): DirectPortBridgeTransport | null
   /** Bridge request-id factory, shared with the Manager's own direct-bridge calls. */
@@ -220,6 +222,7 @@ export class RuntimeHub {
   private relayErrorText: string | undefined
   private readonly pluginUpdates: { dispose(): void }
   private readonly renderCache: { dispose(): void }
+  private readonly review: { dispose(): void }
   /** The ISO build stamp of the page that started this runtime (first-writer-wins). */
   private _bootBuild: string | null = null
   /** The in-flight `host.resolveHomeDir`, shared by every request waiting on it. */
@@ -330,6 +333,7 @@ export class RuntimeHub {
     // and the mark / unmark actions, `control`: they write that session's
     // stored record.
     registerChaptersCapability(this.registry, this.broker)
+    this.review = registerReviewCapability(this.registry, this.broker, { readStoredSnapshot: sessionId => host.readStoredReviewSnapshot?.(sessionId) ?? Promise.resolve(undefined) })
     // Marketplace plugin updates (F-14): `plugins/updates` and the
     // check / update / rollback / setAutoUpdate actions, all `full`; the
     // background schedule installs only while `pluginAutoUpdate` is on.
@@ -647,6 +651,7 @@ export class RuntimeHub {
   dispose(code: ByeCode = 'shutting_down'): void {
     this.pluginUpdates.dispose()
     this.renderCache.dispose()
+    this.review.dispose()
     this.connections.dispose(code)
   }
 

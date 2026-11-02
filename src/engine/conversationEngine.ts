@@ -34,6 +34,11 @@ export class ConversationEngine {
     )
     this.hosts = new ExtensionHosts(this.ledger, writer)
     this.parts = { ledger: this.ledger, writer, titler: this.titler, hosts: this.hosts }
+    if (config.reviewRuntime && config.fsOperations) {
+      void import('../codeReview/runtime').then(({ getOrCreateReviewService }) =>
+        getOrCreateReviewService(this.ledger.callContext(), config.decidePermission),
+      ).catch(error => console.warn('[review] restore unavailable', error))
+    }
   }
 
   // Turns

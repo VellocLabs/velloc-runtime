@@ -1,3 +1,4 @@
+import { CodeReviewMessage } from './code-review-card';
 import { AssistantMessageBody } from "@/components/assistant-ui/assistant-message-body";
 import { ToolLineRangeProvider } from "@/components/assistant-ui/tool-line-range-context";
 import { TOOL_LINE_RANGES_KEY, sideChatCutForThreadRow } from "@/browser/webview/assistantUiAdapter";
@@ -3249,6 +3250,7 @@ const HistoryRow: FC = () => {
       />
     );
   }
+  if (sourceType === "code-review") return <CodeReviewMessage />;
   if (sourceType === "team_message") return <TeamMessage />;
   if (sourceType === "background_results") return <BackgroundResultsMessage />;
   if (sourceType === "compact_progress") {

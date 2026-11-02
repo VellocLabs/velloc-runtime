@@ -14,6 +14,7 @@ import { useAuiState, useComposerRuntime } from "@assistant-ui/react";
 import type { SlashCommandSummary } from "../../browser/worker/workerProtocol";
 import type { ModsPromptSuggestion } from "../../browser/runtimeProtocol";
 import { takeAutocompleteRow } from "../../mods/promptBoxEvents";
+import { completeReviewArguments, type ReviewArgumentCompletion } from "../../codeReview/completion";
 import { autocompleteQueryAt, autocompleteQueryKey } from "./mod-prompt-box";
 import { useModUi } from "./mod-ui-context";
 import {
@@ -74,6 +75,12 @@ function completeSlashToken(text: string, token: SlashToken, name: string): stri
   const after = text.slice(token.end);
   const gap = /^\s/.test(after) ? "" : " ";
   return `${text.slice(0, token.start)}/${name}${gap}${after}`;
+}
+
+function completeReviewToken(text: string, completion: ReviewArgumentCompletion): string {
+  const { start, end } = completion.replace;
+  const tail = text.slice(end).replace(/^\S*/, '');
+  return text.slice(0, start) + completion.value + (/^\s/.test(tail) ? '' : ' ') + tail;
 }
 
 /** Query-only convenience wrapper (the popover's open/filter condition). */
@@ -142,6 +149,7 @@ function rankCommands(
 // Exported for unit tests.
 export const __testing = {
   completeSlashToken,
+  completeReviewToken,
   detectSlashQuery,
   detectSlashToken,
   rankCommands,
@@ -150,6 +158,7 @@ export const __testing = {
 /** One row of the picker: a command, or a row a mod added. */
 type PickerRow =
   | { kind: "command"; key: string; item: SlashCommandSummary }
+  | { kind: "review-argument"; key: string; completion: ReviewArgumentCompletion }
   | { kind: "mod"; key: string; row: ModsPromptSuggestion };
 
 const NO_ROWS: readonly ModsPromptSuggestion[] = [];
@@ -269,12 +278,15 @@ const SlashCommandPickerSurface: FC<{
     [commands, token, describe],
   );
   const modRows = useModAutocompleteRows(text, effectiveCaret);
+  const reviewArguments = useMemo(() => /^\/(?:code-review|review)\s/.test(text) && commands.some(command => command.name === 'code-review')
+    ? completeReviewArguments(text, effectiveCaret).items : [], [text, effectiveCaret, commands]);
   const items = useMemo<PickerRow[]>(
     () => [
       ...commandItems.map(item => ({ kind: "command" as const, key: `c:${item.name}`, item })),
+      ...reviewArguments.map(completion => ({ kind: "review-argument" as const, key: `r:${completion.value}`, completion })),
       ...modRows.rows.map((row, index) => ({ kind: "mod" as const, key: `m:${index}:${row.text}`, row })),
     ],
-    [commandItems, modRows.rows],
+    [commandItems, reviewArguments, modRows.rows],
   );
   const [highlight, setHighlight] = useState(0);
   // Escape dismisses the popover for the composer text as it stands; any further edit
@@ -294,6 +306,12 @@ const SlashCommandPickerSurface: FC<{
       if (!row) return;
       if (row.kind === "command") {
         if (token) composerRuntime.setText(completeSlashToken(text, token, row.item.name));
+        return;
+      }
+      if (row.kind === "review-argument") {
+        const completed = completeReviewToken(text, row.completion);
+        composerRuntime.setText(completed);
+        setDismissedText(completed);
         return;
       }
       const query = modRows.query;
@@ -377,7 +395,13 @@ const SlashCommandPickerSurface: FC<{
         ref={listRef}
         className="aui-slash-popover-list flex flex-col py-1"
       >
-        {items.map((entry, index) => entry.kind === "mod" ? (
+        {items.map((entry, index) => entry.kind === "review-argument" ? (
+          <button key={entry.key} type="button" data-slot="review-argument-item" data-highlighted={index === highlight || undefined}
+            className="aui-slash-popover-item px-3 py-2 text-left font-mono text-sm hover:bg-accent data-[highlighted]:bg-accent"
+            onMouseEnter={() => setHighlight(index)} onMouseDown={event => event.preventDefault()} onClick={() => selectByIndex(index)}>
+            {entry.completion.value}
+          </button>
+        ) : entry.kind === "mod" ? (
           <button
             key={entry.key}
             type="button"

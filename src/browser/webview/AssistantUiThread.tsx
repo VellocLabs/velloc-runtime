@@ -6,6 +6,7 @@ import {
 } from '../../components/assistant-ui/session-card-stack'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useSessionProposals } from './proposalsView'
+import { CodeReviewProvider } from '@/components/assistant-ui/code-review-card'
 import { useSessionChapters } from './chaptersView'
 import { chapterEntriesOf, chapterTargetFor, entryKeyOfRow, resolveChapterAnchor } from './chapterAnchors'
 import {
@@ -2316,6 +2317,7 @@ function InteractiveAssistantUiThread({
                     value={state.snapshot?.commandNames ?? []}
                   >
                   <ModUiContext.Provider value={modUi}>
+                  <CodeReviewProvider value={{ connection: runtimeConnection, sessionId: modSessionId ?? threadSessionId, readOnly }}>
                   <SessionProposalsContext.Provider value={sessionProposals}>
                   <SessionCardsPopoverContext.Provider value={sessionCardsPopover}>
                   <SessionChangeFiguresContext.Provider value={state.sessionChangeFigures ?? null}>
@@ -2372,6 +2374,7 @@ function InteractiveAssistantUiThread({
                   </SessionChangeFiguresContext.Provider>
                   </SessionCardsPopoverContext.Provider>
                   </SessionProposalsContext.Provider>
+                  </CodeReviewProvider>
                   </ModUiContext.Provider>
                   </SlashCommandsProvider>
                   </PermissionAskContext.Provider>

@@ -475,3 +475,13 @@ describe('buildSlashCommandSummaries — mod commands (F-25 $.command.register)'
     expect(summaries.find(entry => entry.name === 'help')!.kind).toBe('builtin')
   })
 })
+
+
+describe('review argument insertion', () => {
+  it('replaces the entire argument under the caret without changing the target', () => {
+    expect(__testing.completeReviewToken('/review hi ./src', { value: 'high', kind: 'level', replace: { start: 8, end: 9 } })).toBe('/review high ./src')
+  })
+  it('adds a trailing gap for the next argument', () => {
+    expect(__testing.completeReviewToken('/review --ma', { value: '--max-findings', kind: 'switch', replace: { start: 8, end: 12 } })).toBe('/review --max-findings ')
+  })
+})

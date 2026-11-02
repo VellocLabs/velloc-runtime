@@ -54,6 +54,13 @@ export async function dispatchSkillSlashCommand(params: {
   context: ToolCallContext
   runtimeConfig: RuntimeConfig
 }): Promise<ProcessUserInputResult | null> {
+  if (['code-review', 'review', 'ultrareview'].includes(params.command.replace(/^\//, ''))) {
+    if (isSkillDeniedByTemplate(params.context, params.command)) return {
+      messages: [createLocalizedSystemMessage(params.runtimeConfig, [key('slash.out.skillDenied', { name: normalizeSkillName(params.command) })])],
+      shouldQuery: false, resultText: params.rawInput,
+    }
+    return { messages: [], shouldQuery: false, action: 'code-review', reviewArguments: params.rawInput, resultText: params.rawInput }
+  }
   const commands = getSkillCommands(params.context.options.commands)
   const skill = findCommandByName(commands, params.command)
   // Both refusals below are USER-facing: a `shouldQuery: false` turn never

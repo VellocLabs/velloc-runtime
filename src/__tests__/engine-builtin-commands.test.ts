@@ -17,7 +17,7 @@ async function run(generator: AsyncGenerator<unknown, void, unknown>): Promise<u
 
 describe('builtin command table', () => {
   it('has one entry per built-in action', () => {
-    expect(Object.keys(builtinCommands).sort()).toEqual(['clear', 'compact', 'open-settings', 'reload-plugins', 'rename'])
+    expect(Object.keys(builtinCommands).sort()).toEqual(['clear', 'code-review', 'compact', 'open-settings', 'reload-plugins', 'rename'])
   })
 
   it('resolves an action to its entry and nothing else', () => {
@@ -85,4 +85,22 @@ describe('builtin command table', () => {
     expect(ledger.sessionStartSource).toBe('clear')
     expect(skillsFound.size).toBe(0)
   })
+})
+
+
+it('persists a rejected review command without constructing a model context', async () => {
+  const { BrowserRuntimeConfig } = await import('../config/BrowserRuntimeConfig')
+  const appendRows = vi.fn(async (rows: unknown[]) => rows)
+  const rows: unknown[] = []
+  const ctx = {
+    ledger: { rows, config: { runtimeConfig: new BrowserRuntimeConfig() } },
+    writer: { appendRows },
+    result: processed({ action: 'code-review', reviewArguments: '/code-review --max-findings=0' }),
+  } as unknown as CommandContext
+  const output = await run(builtinCommands['code-review'](ctx))
+  expect(output).toHaveLength(1)
+  expect(rows).toEqual(output)
+  expect(appendRows).toHaveBeenCalledOnce()
+  expect(ctx.result.messages).toEqual([])
+  expect(output[0]).toMatchObject({ type: 'system' })
 })

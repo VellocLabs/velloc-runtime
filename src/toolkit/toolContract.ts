@@ -228,7 +228,7 @@ export function dropDeniedTools<
     name: string
     mcpInfo?: { serverName: string; toolName: string }
   },
->(tools: readonly T[], ruleSet: PermissionRuleSet): T[] {
+>(tools: readonly T[], ruleSet: Pick<PermissionRuleSet, 'denyRuleBook'>): T[] {
   const blanket = new Set<string>()
   for (const rules of Object.values(ruleSet.denyRuleBook)) {
     for (const rule of rules ?? []) {

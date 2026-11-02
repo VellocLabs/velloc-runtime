@@ -2459,6 +2459,22 @@ ${teammateAddendum}`
     // sibling runtime clobbering/disposing that slot (SuperEdit's commit)
     // resolve the scope-correct implementation.
     fsOperations: coreState.installedFs,
+    reviewRuntime: { sessionLevel: () => coreState.options.userSpecifiedThinkingTier, spawnArgv: (spec, handlers) => {
+      const host = getMcpHost()
+      const primitives = host ? createNativePrimitives({ transport: host.transport,
+        createRequestId: () => coreState.runtimeConfig.createUUID(), manifest: host.manifest ?? resolvedOptions.hostManifest,
+      }) : coreState.hostBridge.primitives
+      return primitives.shell.spawnArgvStream(spec, handlers)
+    }, httpRequest: coreState.hostBridge.network.httpRequest,
+      platformSecret: async origin => {
+        const secrets = await coreState.hostBridge.primitives.secrets.listNames('mcp')
+        const matching = secrets.filter(secret => secret.origin === origin)
+        return matching.length === 1 ? { name: matching[0]!.name, origin } : undefined
+      },
+      atomicWrite: async (path, content) => {
+        const response = await options.bridgeTransport.request({ id: crypto.randomUUID(), route: { namespace: 'nexus', capability: 'fs', action: 'writeFile' }, payload: { path, content: new TextEncoder().encode(content), atomic: true } })
+        if (!response.ok) throw new Error(response.error.code)
+      }, promptContextProvider: coreState.promptContextProvider, deps: coreState.queryRuntimeDeps },
     // ...and the sidechain store built over that fs, for the same reason:
     // fork call sites (SpawnAgentTool, forked skills, agent hooks) must not read
     // the realm-shared active-store slot.

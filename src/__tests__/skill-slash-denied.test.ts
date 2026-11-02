@@ -128,3 +128,12 @@ describe('dispatchSkillSlashCommand — refusals the user can see', () => {
     }
   })
 })
+
+
+describe('local review invocation gates', () => {
+  it.each(['review', 'code-review'])('does not bypass a session deny for %s', async name => {
+    const out = await dispatchSkillSlashCommand({ command: name, args: '', rawInput: `/${name}`, context: context([], [name]), runtimeConfig })
+    expect(out?.action).toBeUndefined()
+    expect(localized(out!.messages[0]).keys).toContain('slash.out.skillDenied')
+  })
+})

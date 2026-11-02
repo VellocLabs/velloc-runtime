@@ -1,0 +1,371 @@
+import { parseReviewArguments } from './arguments'
+import { resolveReviewPolicy, resolveReviewPreferences, shouldRunAutomaticVerification } from './recipes'
+import { composeReviewPrompt, composeFinderPrompt, composeVerifierPrompt, composeSweeperPrompt, type ReviewPromptBlock } from './composer'
+import type { ReviewArguments, ReviewCapabilities, ReviewPlan, ReviewPreferences, OutputMode } from './contracts'
+import type { ScopeManifest } from './scope'
+import { ReviewReportStore, type ReportSnapshot, type ReportStorageAdapter, type ReportGrant } from './report-store'
+import { createReviewTools, REVIEW_RESULT_SCHEMA, REVIEW_ASSESSMENT_SCHEMA, REVIEW_SUPPORT_SCHEMA } from './tools'
+import { ReviewWorkerPool, type ReviewModelRunner } from './runner'
+import type { ToolContract } from '../toolkit/toolContract'
+
+export interface ReviewPreferencesStorage { load(): Promise<ReviewPreferences>; save(value: ReviewPreferences): Promise<void> }
+export interface ReviewScopeAccess {
+  manifest: ScopeManifest
+  read(input: Record<string, unknown>, plan: ReviewPlan, signal: AbortSignal): Promise<unknown>
+  trustedGuidance: string
+  evidenceSources?: Array<{ path: string; revision: string; excerpt?: string }>
+}
+export interface ReviewServiceOptions {
+  conversationKey: string
+  modelId: string
+  sessionLevel?: import('./contracts').ReviewLevel
+  guidance?: { level: import('./contracts').ReviewLevel; trusted: boolean; appliesToProject: boolean }
+  capabilities: ReviewCapabilities
+  preferences: ReviewPreferencesStorage
+  storage: ReportStorageAdapter
+  sanitizeExcerpt(text: string): string
+  resolveScope(args: ReviewArguments, plan: ReviewPlan, signal: AbortSignal): Promise<ReviewScopeAccess>
+  runModel: ReviewModelRunner
+  repairTools?(snapshot: ReportSnapshot, grant: ReportGrant, signal: AbortSignal, store: ReviewReportStore, actionEpoch?: string): Promise<ToolContract[]>
+  publish?(snapshot: ReportSnapshot, grantId: string, signal: AbortSignal, store: ReviewReportStore, discussions?: boolean): Promise<void>
+  verify?(snapshot: ReportSnapshot, signal: AbortSignal, store: ReviewReportStore, actionEpoch?: string, verificationGrantId?: string): Promise<void>
+  automaticVerificationPermitted?: boolean
+  output?: OutputMode
+  maxDurationMs?: number
+  savePresentation?(runId: string, value: { notices: ReviewPlan['notices']; emptyScope: boolean; target?: string }): Promise<void>
+  saveTarget?(runId: string, target: string | undefined, targetLiteral?: true): Promise<void>
+  loadTargetLiteral?(runId: string): Promise<true | undefined>
+  loadTarget?(runId: string): Promise<string | undefined>
+}
+interface LiveRun { access: ReviewScopeAccess; plan: ReviewPlan; args: ReviewArguments; controller: AbortController; done: Promise<void>; source: 'user' | 'model'; completedAngles: Set<string>; finderTasks: Map<string, string>; verified: Set<string>; sweepIds: Set<string>; swept: boolean }
+export class ReviewGatewayError extends Error { constructor(readonly code: string) { super(code) } }
+const block = (text: string, source: string): ReviewPromptBlock => ({ type: 'text', text, source, provenance: 'trusted-task' })
+
+/** Invocation provenance is selected by separate host entry points, never by model JSON. */
+export class LocalReviewService {
+  readonly store: ReviewReportStore
+  private readonly live = new Map<string, LiveRun>()
+  private readonly listeners = new Set<() => void>()
+  private readonly known = new Set<string>()
+  private sequence = 0
+  private readonly actionsInFlight = new Set<string>()
+  constructor(private readonly options: ReviewServiceOptions) {
+    this.store = new ReviewReportStore(options.storage, { sanitizeExcerpt: options.sanitizeExcerpt, onChange: () => this.changed() })
+  }
+  subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener) }
+  changed = (): void => { this.sequence++; for (const listener of this.listeners) listener() }
+  presentation(runId: string): { notices: ReviewPlan['notices']; emptyScope: boolean; target?: string } | undefined {
+    const live = this.live.get(runId)
+    return live ? { notices: live.plan.notices, emptyScope: live.access.manifest.status === 'empty', target: live.args.target } : undefined
+  }
+  preload(): { command: string; aliases: string[]; levels: string[] } {
+    return { command: 'code-review', aliases: ['review'], levels: ['low', 'medium', 'high', 'xhigh', 'max'] }
+  }
+  startUser(raw: string, signal?: AbortSignal, presentation?: OutputMode): Promise<{ runId: string }> { return this.start(raw, 'user', signal, presentation) }
+  startModel(raw: string, signal?: AbortSignal): Promise<{ runId: string }> { return this.start(raw, 'model', signal) }
+  private async start(raw: string, source: 'user' | 'model', signal?: AbortSignal, presentation?: OutputMode): Promise<{ runId: string }> {
+    const parsed = parseReviewArguments(raw)
+    if (!parsed.ok) throw new ReviewGatewayError(parsed.error.code)
+    if (source === 'model' && (parsed.arguments.fix || parsed.arguments.comment)) throw new ReviewGatewayError('action-not-authorized')
+    const preferences = await this.options.preferences.load()
+    let plan = resolveReviewPolicy({ arguments: parsed.arguments, source, preferences,
+      sessionLevel: this.options.sessionLevel, guidance: this.options.guidance, canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal' })
+    if (plan.blocked) throw new ReviewGatewayError('review-plan-blocked')
+    const controller = new AbortController()
+    const abort = () => controller.abort(signal?.reason)
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) abort()
+    const access = await this.options.resolveScope(parsed.arguments, plan, controller.signal)
+    const changedLines = access.manifest.files.reduce((total, file) => total + file.patch.split('\n').filter(line => /^[+-]/.test(line) && !/^(?:---|\+\+\+)/.test(line)).length, 0)
+    plan = resolveReviewPolicy({ arguments: parsed.arguments, source, preferences, sessionLevel: this.options.sessionLevel, guidance: this.options.guidance,
+      canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal', changedLines })
+    const next = resolveReviewPreferences({ current: preferences, arguments: parsed.arguments, source, targetAuthorized: true })
+    if (source === 'user' && JSON.stringify(preferences) !== JSON.stringify(next)) await this.options.preferences.save(next)
+    const runId = await this.store.createRun({ conversationKey: this.options.conversationKey, scope: access.manifest.scope,
+      policy: plan, expectedAngles: access.manifest.status === 'empty' ? [] : [...plan.angles] })
+    await this.options.saveTarget?.(runId, parsed.arguments.target, parsed.arguments.targetLiteral)
+    await this.options.savePresentation?.(runId, { notices: plan.notices, emptyScope: access.manifest.status === 'empty', target: parsed.arguments.target })
+    for (const anchor of access.manifest.anchors) {
+      const revision = anchor.side === 'working-copy' ? access.manifest.scope.revision.workingCopyDigest! : anchor.revision
+      anchor.anchorKey = await this.store.registerAnchor(runId, { ...anchor, revision })
+      anchor.revision = revision
+    }
+    const live: LiveRun = { access, plan, args: parsed.arguments, controller, done: Promise.resolve(), source, completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false }
+    this.live.set(runId, live); this.known.add(runId)
+    live.done = this.execute(runId, live).finally(() => signal?.removeEventListener('abort', abort))
+    return { runId }
+  }
+  async wait(runId: string): Promise<ReportSnapshot> { await this.live.get(runId)?.done; return this.store.getSnapshot(runId) }
+  async restore(runIds: string[]): Promise<void> { for (const id of runIds) { await this.store.getSnapshot(id); this.known.add(id) }; this.changed() }
+  async snapshots(): Promise<{ sequence: number; reports: ReportSnapshot[] }> {
+    return { sequence: this.sequence, reports: await Promise.all([...this.known].map(id => this.store.getSnapshot(id))) }
+  }
+  async cancel(runId: string): Promise<{ accepted: boolean }> {
+    const live = this.live.get(runId)
+    if (!live || !['queued', 'active'].includes((await this.store.getSnapshot(runId)).run.progress.status)) return { accepted: false }
+    live.controller.abort(); this.changed(); return { accepted: true }
+  }
+  private async execute(runId: string, live: LiveRun): Promise<void> {
+    const { plan, access, controller } = live
+    let budgetExpired = false
+    let unstructured = false
+    const timer = setTimeout(() => { budgetExpired = true; controller.abort() }, this.options.maxDurationMs ?? 600_000)
+    try {
+      await this.store.start(runId); this.changed()
+      for (const source of access.evidenceSources ?? []) await this.store.registerEvidenceSource(runId, source)
+      if (access.manifest.status === 'empty') {
+        await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: access.manifest.notices, complete: true } })
+        await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
+      } else {
+        const tools = this.tools(runId, live, true)
+        const blocks = composeReviewPrompt(plan, {
+          run_summary: JSON.stringify({ runId, plan }), scope_manifest: JSON.stringify(access.manifest),
+          trusted_guidance: access.trustedGuidance, capability_text: tools.map(t => t.name).join(', '),
+          budget_text: JSON.stringify({ concurrency: plan.workerConcurrency, maxTurns: 32, maxDurationMs: this.options.maxDurationMs ?? 600_000 }),
+          verification_contract: 'Runtime verification is a separate permission boundary; do not run tests during static review.',
+        }, { repair: false, publication: false })
+        if (plan.coordinatorWorkerRequired) await this.store.noteWorker(runId, 'started')
+        let result: Awaited<ReturnType<ReviewModelRunner>>
+        try {
+          result = await this.options.runModel({ blocks, tools, signal: controller.signal, taskId: plan.coordinatorWorkerRequired ? `${runId}-worker` : runId,
+            execution: plan.coordinatorWorkerRequired ? 'isolated' : plan.execution, reasoningLevel: plan.reasoningLevel })
+        } finally { if (plan.coordinatorWorkerRequired) await this.store.noteWorker(runId, 'finished') }
+        if (result.interrupted) throw new ReviewGatewayError('review-budget-or-model-interrupted')
+        if (plan.presentation !== 'panel') {
+          try { await this.store.submitFinalJson(runId, crypto.randomUUID(), result.text) }
+          catch {
+            const expected = await this.store.expectedRecord(runId)
+            const corrected = await this.options.runModel({ blocks: [block('Correct only the JSON format/selection. Return candidates and coverage exactly from the provided retained ledger; do not rerun the review.', 'format-correction'), block(JSON.stringify(expected), 'retained-ledger')], tools: [], signal: controller.signal, taskId: `${runId}-format`, maxTurns: 1 })
+            try { await this.store.submitFinalJson(runId, crypto.randomUUID(), corrected.text) }
+            catch (error) { unstructured = true; throw error }
+          }
+        }
+        if (plan.agentMode === 'parallel') {
+          const snapshot = await this.store.getSnapshot(runId)
+          const missing = plan.angles.filter(angle => !live.completedAngles.has(angle))
+          const unverified = snapshot.retainedIds.filter(id => !live.verified.has(id) && !live.sweepIds.has(id))
+          if (missing.length || plan.independentVerification && unverified.length || plan.sweep === 'independent' && !live.swept) {
+            await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['independent-worker-coverage-incomplete'], complete: false } })
+          }
+        }
+        if (!access.manifest.complete) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: access.manifest.notices.concat('scope-incomplete'), complete: false } })
+      }
+      await this.store.setStage(runId, 'report'); this.changed()
+      if (plan.notices.length || access.manifest.notices.length) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage',
+        coverage: { angles: [], limitations: [...plan.notices.map(notice => notice.code), ...access.manifest.notices], complete: (await this.store.getSnapshot(runId)).coverage.complete } })
+      if (live.args.fix && (await this.store.getSnapshot(runId)).retainedIds.length) await this.repairActive(runId, live)
+      if (controller.signal.aborted) throw new ReviewGatewayError('review-cancelled')
+      if (live.args.comment && access.manifest.scope.kind === 'change-request') {
+        try { await this.publishActive(runId, live) }
+        catch (error) { if (controller.signal.aborted) throw error }
+      }
+      else if (live.args.comment) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['publication-target-required'], complete: (await this.store.getSnapshot(runId)).coverage.complete } })
+      if (shouldRunAutomaticVerification(plan, { permitted: this.options.automaticVerificationPermitted === true,
+        adapterAvailable: !!this.options.verify, runtimeBehaviorChanged: access.manifest.files.some(f => !/(?:^|\/)(?:docs?|tests?|fixtures)\/|\.(?:md|txt)$|\.(?:test|spec)\./i.test(f.path)), alreadyVerified: false })) {
+        await this.store.setStage(runId, 'verify')
+        await this.options.verify!(await this.store.getSnapshot(runId), controller.signal, this.store)
+      }
+      await this.store.finish(runId, 'finished')
+    } catch (error) {
+      const snapshot = await this.store.getSnapshot(runId)
+      if (snapshot.run.progress.status === 'active') {
+        const reason = budgetExpired ? 'review-budget-exhausted' : controller.signal.aborted ? 'review-cancelled' : error instanceof Error ? error.message : 'review-failed'
+        await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: [reason], complete: false } })
+        if (!snapshot.structured && !unstructured) await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
+        await this.store.finish(runId, controller.signal.aborted && !budgetExpired ? 'cancelled' : 'partial')
+      }
+    } finally { clearTimeout(timer); this.changed() }
+  }
+  private async read(runId: string, live: LiveRun, input: Record<string, unknown>): Promise<unknown> {
+    const result = await live.access.read(input, live.plan, live.controller.signal)
+    const revision = live.access.manifest.scope.revision.workingCopyDigest ?? live.access.manifest.scope.revision.head
+    if (input.operation === 'context' && typeof input.path === 'string' && typeof result === 'string' && result.trim()) {
+      await this.store.registerEvidenceSource(runId, { path: input.path, revision, excerpt: result })
+    } else if (input.operation === 'search' && result && typeof result === 'object' && 'matches' in result && Array.isArray(result.matches)) {
+      for (const match of result.matches) if (match && typeof match.path === 'string' && typeof match.text === 'string' && match.text.trim()) {
+        await this.store.registerEvidenceSource(runId, { path: match.path, revision, excerpt: match.text })
+      }
+    }
+    return result
+  }
+  private tools(runId: string, live: LiveRun, delegate: boolean): ToolContract[] {
+    const pool = new ReviewWorkerPool(Math.min(4, live.plan.workerConcurrency))
+    let launched = 0
+    const launch = async (input: Record<string, unknown>) => {
+      const capabilities = this.options.capabilities
+      if (!capabilities.agentAvailable || !capabilities.agentPermitted || capabilities.remainingDepth <= 0) throw new ReviewGatewayError('agent-unavailable')
+      const role = input.role
+      if (!['finder', 'verifier', 'sweeper'].includes(String(role))) throw new ReviewGatewayError('invalid-worker-role')
+      if (role === 'verifier' && !live.plan.independentVerification || role === 'sweeper' && live.plan.sweep !== 'independent') throw new ReviewGatewayError('worker-role-not-authorized')
+      const angles = Array.isArray(input.angles) ? input.angles : []
+      if (role === 'finder' && (!angles.length || angles.some(a => !live.plan.angles.includes(a as never)))) throw new ReviewGatewayError('invalid-worker-angles')
+      if (++launched > 128) throw new ReviewGatewayError('review-task-budget')
+      return pool.run(live.controller.signal, async () => {
+        const taskId = crypto.randomUUID()
+        const snapshot = await this.store.getSnapshot(runId)
+        const candidate = snapshot.diagnostics.find(d => d.id === input.candidateId)
+        if (role === 'verifier' && !candidate) throw new ReviewGatewayError('unknown-candidate')
+        const common = { scope_manifest: JSON.stringify(live.access.manifest), review_material: JSON.stringify(live.access.manifest.files) }
+        const promptBlocks = role === 'finder' ? composeFinderPrompt({ ...common, trusted_guidance: live.access.trustedGuidance, assigned_angles: JSON.stringify(angles), candidatesPerAngle: live.plan.candidatesPerAngle })
+          : role === 'verifier' ? composeVerifierPrompt({ ...common, candidate: JSON.stringify(candidate) })
+          : composeSweeperPrompt({ ...common, existing_findings: JSON.stringify(snapshot.diagnostics) })
+        const blocks = [...promptBlocks, block(JSON.stringify(role === 'verifier' ? { type: 'object', properties: { ...REVIEW_ASSESSMENT_SCHEMA.properties, support: REVIEW_SUPPORT_SCHEMA, missingEvidence: { type: 'array', items: { type: 'string' } } }, required: ['disposition', 'reason', 'support'] } : REVIEW_RESULT_SCHEMA), 'required-json-schema')]
+        await this.store.noteWorker(runId, 'started'); this.changed()
+        try {
+          const result = await this.options.runModel({ blocks, tools: this.tools(runId, live, false).filter(t => t.name === 'ReviewRead'), signal: live.controller.signal, taskId, maxTurns: 16 })
+          if (result.interrupted) throw new ReviewGatewayError('worker-interrupted')
+          const value = JSON.parse(result.text)
+          if (role === 'verifier') {
+            const candidateId = String(input.candidateId)
+            const finderTaskKey = live.finderTasks.get(candidateId)
+            if (!finderTaskKey || live.verified.has(candidateId)) throw new ReviewGatewayError('verifier-assignment-not-authorized')
+            await this.store.submitLedger(runId, taskId, { operation: 'assess', assessments: [{ candidateId, disposition: value.disposition, reason: value.reason, support: value.support }] })
+            if (value.disposition !== 'unchecked') {
+              const assessment = (await this.store.getSnapshot(runId)).assessments.filter(a => a.diagnosticId === candidateId).at(-1)!
+              await this.store.noteIndependentVerification(runId, { ref: taskId, diagnosticId: candidateId, assessmentId: assessment.id, finderTaskKey, verifierTaskKey: taskId })
+              live.verified.add(candidateId)
+            }
+          } else {
+            if (!Array.isArray(value.candidates) || value.candidates.length > (role === 'sweeper' ? 8 : live.plan.candidatesPerAngle * angles.length)) throw new ReviewGatewayError('worker-candidate-limit')
+            const assigned = role === 'sweeper' ? [...live.plan.angles] : angles as string[]
+            const counts = new Map<string, number>()
+            for (const candidate of value.candidates) {
+              if (!assigned.includes(candidate.angle)) throw new ReviewGatewayError('worker-angle-not-assigned')
+              const count = (counts.get(candidate.angle) ?? 0) + 1
+              counts.set(candidate.angle, count)
+              if (count > live.plan.candidatesPerAngle) throw new ReviewGatewayError('worker-angle-candidate-limit')
+              if (candidate.assessment?.disposition === 'proven') candidate.assessment = { disposition: 'plausible', reason: candidate.assessment.reason }
+            }
+            const covered: string[] = value.coverage?.angles ?? []
+            if (covered.some(angle => !assigned.includes(angle))) throw new ReviewGatewayError('worker-angle-not-assigned')
+            for (let i = 0; i < value.candidates.length; i += 32) {
+              const accepted = await this.store.submitLedger(runId, `${taskId}-${i}`, { operation: 'append-candidates', candidates: value.candidates.slice(i, i + 32) })
+              for (const entry of accepted.accepted) {
+                if (!live.finderTasks.has(entry.diagnosticId)) {
+                  live.finderTasks.set(entry.diagnosticId, taskId)
+                  if (role === 'sweeper') live.sweepIds.add(entry.diagnosticId)
+                }
+              }
+            }
+            await this.store.submitLedger(runId, `${taskId}-coverage`, { operation: 'coverage', coverage: { angles: covered, limitations: value.coverage?.limitations ?? [], complete: false } })
+            if (role === 'finder') for (const angle of covered) live.completedAngles.add(angle)
+            else live.swept = true
+          }
+          await this.store.noteWorker(runId, 'finished'); this.changed()
+          return { taskId, result: value, ledger: await this.store.expectedRecord(runId) }
+        } catch (error) { await this.store.noteWorker(runId, 'finished', angles as string[]); this.changed(); throw error }
+      })
+    }
+    return createReviewTools({ runId, store: this.store, signal: live.controller.signal,
+      read: input => this.read(runId, live, input), changed: this.changed,
+      allowOutput: live.plan.presentation === 'panel', launch: delegate && live.plan.agentMode === 'parallel' ? launch : undefined })
+  }
+  private async actionGrant(runId: string, kind: 'repair' | 'publication', ids?: string[]): Promise<ReportGrant> {
+    const snapshot = await this.store.getSnapshot(runId)
+    const diagnosticIds = ids ?? snapshot.retainedIds
+    const grant = { kind, workspaceKey: snapshot.run.scope.workspaceKey, headRevision: snapshot.run.scope.revision.head,
+      diagnosticIds, paths: [...new Set(snapshot.diagnostics.filter(d => diagnosticIds.includes(d.id)).map(d => d.anchor.path))], expiresAt: Date.now() + 600_000 }
+    return { ...grant, id: await this.store.grantAction(runId, grant) }
+  }
+  private async repairActive(runId: string, live: LiveRun, ids?: string[], followup = false): Promise<void> {
+    const grant = await this.actionGrant(runId, 'repair', ids)
+    const epoch = followup ? await this.store.beginActionPhase(runId, grant.id) : undefined
+    try {
+      if (!this.options.repairTools) throw new ReviewGatewayError('repair-unavailable')
+      if (live.controller.signal.aborted) throw new ReviewGatewayError('review-cancelled')
+      await this.store.setStage(runId, 'repair')
+      const snapshot = await this.store.getSnapshot(runId)
+      const editTools = await this.options.repairTools(snapshot, grant, live.controller.signal, this.store, epoch)
+      const tools = createReviewTools({ runId, store: this.store, signal: live.controller.signal, read: input => this.read(runId, live, input), changed: this.changed, allowOutput: live.plan.presentation === 'panel', actions: true, actionEpoch: epoch }).filter(t => t.name !== 'ReviewLedger')
+      const result = await this.options.runModel({ blocks: [block('Repair only the selected saved diagnostics. Preserve concurrent user changes. Use actual execution references returned by edits in ReviewActionLog; do not claim tests, commits or remote updates.', 'authorized-repair'), block(JSON.stringify({ report: snapshot, diagnosticIds: grant.diagnosticIds }), 'saved-report')], tools: [...tools, ...editTools], signal: live.controller.signal, taskId: `${runId}-repair` })
+      if (result.interrupted) throw new ReviewGatewayError('repair-interrupted')
+      await this.store.reconcileObservedEdits(runId, grant.id, grant.diagnosticIds, epoch)
+      const after = await this.store.getSnapshot(runId)
+      for (const id of grant.diagnosticIds) if (!after.actions.some(a => a.kind === 'repair' && a.diagnosticIds.includes(id))) {
+        await this.store.reconcile(runId, crypto.randomUUID(), { operation: 'reconcile', updates: [{ diagnosticId: id, observation: 'left-open', explanation: 'No completed repair was observed.', executionRefs: [] }] }, epoch)
+      }
+    } catch (error) {
+      await this.store.reconcileObservedEdits(runId, grant.id, grant.diagnosticIds, epoch)
+      const snapshot = await this.store.getSnapshot(runId)
+      const unresolved = grant.diagnosticIds.filter(id => !snapshot.actions.some(action => action.kind === 'repair' && action.state === 'applied' && action.diagnosticIds.includes(id)))
+      if (unresolved.length) await this.store.recordActionReceipt(runId, { kind: 'repair', state: 'blocked', diagnosticIds: unresolved,
+        reason: error instanceof Error ? error.message : 'repair-unavailable', actionEpoch: epoch })
+      throw error
+    } finally { if (epoch) await this.store.endActionPhase(runId, epoch); this.changed() }
+  }
+  private async publishActive(runId: string, live: LiveRun): Promise<void> {
+    await this.store.setStage(runId, 'publish')
+    const grant = await this.actionGrant(runId, 'publication')
+    try {
+      if (!this.options.publish) throw new ReviewGatewayError('publication-unavailable')
+      if (live.controller.signal.aborted) throw new ReviewGatewayError('review-cancelled')
+      await this.options.publish(await this.store.getSnapshot(runId), grant.id, live.controller.signal, this.store)
+    } catch (error) {
+      await this.store.recordActionReceipt(runId, { kind: 'publication', state: 'blocked', diagnosticIds: grant.diagnosticIds, reason: error instanceof Error ? error.message : 'publication-failed' })
+      throw error
+    }
+  }
+  private async actionContext(runId: string): Promise<LiveRun> {
+    const existing = this.live.get(runId)
+    if (existing) { await existing.done.catch(() => {}); return existing }
+    const snapshot = await this.store.getSnapshot(runId)
+    const target = await this.options.loadTarget?.(runId)
+    if (!target && snapshot.run.scope.kind !== 'workspace') throw new ReviewGatewayError('review-target-needs-selection')
+    const args: ReviewArguments = { target, targetLiteral: await this.options.loadTargetLiteral?.(runId), level: snapshot.run.policy.level, fix: false, comment: false }
+    const plan = resolveReviewPolicy({ arguments: args, source: 'model', preferences: await this.options.preferences.load(),
+      canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: snapshot.run.policy.presentation })
+    const controller = new AbortController()
+    const access = await this.options.resolveScope(args, plan, controller.signal)
+    if (access.manifest.scope.repository.projectKey !== snapshot.run.scope.repository.projectKey || access.manifest.scope.revision.head !== snapshot.run.scope.revision.head) throw new ReviewGatewayError('snapshot-changed')
+    const live: LiveRun = { access, plan, args, controller, done: Promise.resolve(), source: 'model', completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false }
+    this.live.set(runId, live)
+    return live
+  }
+  private async followup(runId: string, task: (live: LiveRun) => Promise<void>): Promise<void> {
+    if (this.actionsInFlight.has(runId)) throw new ReviewGatewayError('review-action-in-progress')
+    this.actionsInFlight.add(runId)
+    try {
+      const live = await this.actionContext(runId)
+      live.controller = new AbortController()
+      live.done = task(live)
+      await live.done
+    } finally { this.actionsInFlight.delete(runId); this.changed() }
+  }
+  async requestRepair(runId: string, ids: string[]): Promise<void> {
+    await this.followup(runId, live => this.repairActive(runId, live, ids, true))
+  }
+  async requestVerification(runId: string): Promise<void> {
+    if (!this.options.verify) throw new ReviewGatewayError('verification-unavailable')
+    await this.followup(runId, async live => {
+      const snapshot = await this.store.getSnapshot(runId)
+      const grantId = await this.store.grantAction(runId, { kind: 'verification', workspaceKey: snapshot.run.scope.workspaceKey,
+        headRevision: snapshot.run.scope.revision.head, diagnosticIds: snapshot.retainedIds, expiresAt: Date.now() + 600_000 })
+      const epoch = await this.store.beginActionPhase(runId, grantId)
+      try {
+        await this.store.setStage(runId, 'verify')
+        await this.options.verify!(snapshot, live.controller.signal, this.store, epoch, grantId)
+      } finally { await this.store.endActionPhase(runId, epoch) }
+    })
+  }
+  async requestPublication(runId: string, discussions = false): Promise<void> {
+    await this.followup(runId, async live => {
+      const grant = await this.actionGrant(runId, 'publication')
+      const epoch = await this.store.beginActionPhase(runId, grant.id)
+      try {
+        await this.store.setStage(runId, 'publish')
+        if (!this.options.publish) throw new ReviewGatewayError('publication-unavailable')
+        await this.options.publish(await this.store.getSnapshot(runId), grant.id, live.controller.signal, this.store, discussions)
+      } finally { await this.store.endActionPhase(runId, epoch) }
+    })
+  }
+  async rerun(runId: string, presentation?: OutputMode): Promise<{ runId: string }> {
+    const snapshot = await this.store.getSnapshot(runId)
+    const live = this.live.get(runId)
+    const target = live?.args.target ?? await this.options.loadTarget?.(runId)
+    if (!live && !target && snapshot.run.scope.kind !== 'workspace') throw new ReviewGatewayError('review-target-needs-selection')
+    const quoted = target?.includes('"') ? `'${target}'` : `"${target ?? ''}"`
+    if (target?.includes('"') && target.includes("'")) throw new ReviewGatewayError('review-target-needs-selection')
+    const literal = live?.args.targetLiteral ?? await this.options.loadTargetLiteral?.(runId)
+    return this.start(`${snapshot.run.policy.level}${target ? ` ${literal ? '-- ' : ''}${quoted}` : ''}`, 'model', undefined, presentation)
+  }
+}

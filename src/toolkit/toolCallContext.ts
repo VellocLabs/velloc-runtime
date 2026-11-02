@@ -152,6 +152,7 @@ export type ToolCallContext = {
     /** Records file contents before a mutation, for templates that keep file
      *  snapshots; the workspace-diff tool reads from it. Absent: no capture. */
     fileSnapshotRecorder?: FileSnapshotRecorder
+    reviewRuntime?: import('../codeReview/runtime').ReviewRuntimeDependencies
   }
   cancelSource: AbortController
   fileReadLedger: ReadFileLedger

@@ -39,7 +39,7 @@ export type CommandContext = {
 
 export type BuiltinCommand = (ctx: CommandContext) => AsyncGenerator<Message, void, unknown>
 
-type BuiltinAction = 'clear' | 'compact' | 'reload-plugins' | 'open-settings' | 'rename'
+type BuiltinAction = 'clear' | 'compact' | 'reload-plugins' | 'open-settings' | 'rename' | 'code-review'
 
 export type CompactRequest = {
   trigger: 'manual' | 'plugin'
@@ -220,6 +220,35 @@ export const builtinCommands: Readonly<Record<BuiltinAction, BuiltinCommand>> = 
   'reload-plugins': reloadPluginsCommand,
   'open-settings': openSettingsCommand,
   rename: renameCommand,
+  'code-review': async function* (ctx) {
+    const { getOrCreateReviewService } = await import('../codeReview/runtime')
+    const { makeNoticeRow } = await import('../messages/messageFactories')
+    const { reviewMessage } = await import('../codeReview/messages')
+    const { createTranslate } = await import('../browser/webview/i18n/translate')
+    const translate = createTranslate('en')
+    const { parseReviewArguments } = await import('../codeReview/arguments')
+    const persist = async (row: Message) => {
+      ctx.ledger.rows.push(...await ctx.writer.appendRows([...ctx.result.messages, row]))
+      ctx.result.messages = []
+      return row
+    }
+    const parsed = parseReviewArguments(ctx.result.reviewArguments ?? '')
+    if (!parsed.ok) {
+      yield await persist(makeNoticeRow(ctx.ledger.config.runtimeConfig, reviewMessage(translate, parsed.error.code)))
+      return
+    }
+    try {
+      const service = await getOrCreateReviewService({ ...ctx.callContext, options: { ...ctx.callContext.options,
+        reviewRuntime: ctx.callContext.options.reviewRuntime ? { ...ctx.callContext.options.reviewRuntime,
+          promptContextProvider: ctx.ledger.config.promptContextProvider, deps: ctx.ledger.config.queryRuntimeDeps } : undefined,
+      } }, ctx.ledger.config.decidePermission)
+      const { runId } = await service.startUser(ctx.result.reviewArguments ?? '', ctx.callContext.cancelSource.signal, ctx.result.reviewPresentation)
+      yield await persist(Object.assign(createLocalizedSystemMessage(ctx.ledger.config.runtimeConfig, [key('reviewCard.value.active')]), { subtype: 'code-review', review: { runId } }))
+      await service.wait(runId)
+    } catch (error) {
+      yield await persist(makeNoticeRow(ctx.ledger.config.runtimeConfig, reviewMessage(translate, error instanceof Error ? error.message : 'review-failed')))
+    }
+  },
 }
 
 /** The table entry for the processed input's action, if it has one. */

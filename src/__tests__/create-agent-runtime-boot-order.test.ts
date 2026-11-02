@@ -13,6 +13,21 @@ const source = readFileSync(
 )
 
 describe('createBrowserRuntime boot order', () => {
+  it('binds review argv streams to the direct host event transport before launching', () => {
+    const start = source.indexOf('reviewRuntime: {')
+    expect(start).toBeGreaterThan(-1)
+    const end = source.indexOf('httpRequest:', start)
+    expect(end).toBeGreaterThan(start)
+    const spawner = source.slice(start, end)
+    const hostAt = spawner.indexOf('getMcpHost()')
+    const transportAt = spawner.indexOf('transport: host.transport')
+    const launchAt = spawner.indexOf('primitives.shell.spawnArgvStream(spec, handlers)')
+    expect(hostAt).toBeGreaterThan(-1)
+    expect(transportAt).toBeGreaterThan(hostAt)
+    expect(launchAt).toBeGreaterThan(transportAt)
+    expect(spawner).toContain('createNativePrimitives(')
+    expect(spawner).not.toContain('return coreState.hostBridge.primitives.shell.spawnArgvStream')
+  })
   it('seeds appState from settings.json before the boot-time loadLocalPromptCommands, and passes it', () => {
     const seedAt = source.indexOf('await seedAppStateFromSettings(')
     const loadAt = source.indexOf('await loadLocalPromptCommands({')

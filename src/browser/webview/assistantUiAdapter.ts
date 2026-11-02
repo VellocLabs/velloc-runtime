@@ -1,3 +1,4 @@
+import { reviewNoticeRunId } from '../../codeReview/review-protocol'
 import type {
   AppendMessage,
   CompleteAttachment,
@@ -61,7 +62,7 @@ import {
   skillBodyRefFromMessage,
   skillInvocationThreadMessage,
 } from './assistantUiAdapterParts'
-import type { TranslateFn } from './i18n/translate'
+import { createTranslate, type TranslateFn } from './i18n/translate'
 import { TURN_SETTLED_KEY } from './turnSettled'
 import {
   appendTextPart,
@@ -385,6 +386,15 @@ function convertTranscriptMessage(
     }
 
     case 'system': {
+      const reviewRunId = reviewNoticeRunId(message)
+      if (reviewRunId) return {
+        id: message.uuid ?? `review-${reviewRunId}`,
+        role: 'assistant',
+        content: [{ type: 'text', text: (t ?? createTranslate('en'))('reviewCard.title') }],
+        status: { type: 'complete', reason: 'stop' },
+        metadata: { custom: { sourceType: 'code-review', reviewRunId } },
+      }
+
       // `compact_boundary` is a transcript slice marker, not a status note.
       // Render it as a distinct message with its own sourceType so the
       // thread component can show a visible divider between pre-compact
@@ -698,6 +708,19 @@ function createLiveAssistantMessages(
       }
 
       case 'system': {
+        const reviewRunId = reviewNoticeRunId(message)
+        if (reviewRunId) {
+          liveMessages.push({
+            id: message.uuid ?? `review-${reviewRunId}`,
+            role: 'assistant',
+            content: [{ type: 'text', text: (t ?? createTranslate('en'))('reviewCard.title') }],
+            status: { type: 'complete', reason: 'stop' },
+            metadata: { custom: { sourceType: 'code-review', reviewRunId } },
+          })
+          liveIndex++
+          break
+        }
+
         if ((message as { subtype?: unknown }).subtype === SYSTEM_SUBTYPE_COMPACT_BOUNDARY) {
           liveMessages.push(compactBoundaryThreadMessage(message))
           liveIndex++
@@ -2065,6 +2088,7 @@ export function shouldShowLoadingSkeleton(
  */
 const NON_HYDRATING_SOURCE_TYPES: ReadonlySet<string> = new Set([
   'interrupt',
+  'code-review',
   'background_results',
   'compact_progress',
   'compact_boundary',
