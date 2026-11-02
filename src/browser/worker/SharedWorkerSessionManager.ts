@@ -4458,12 +4458,12 @@ export class SharedWorkerSessionManager {
     return this.childReports.record(parentSessionId, report)
   }
 
-  /** A session's stored chapter marks: from its live store when it has one, a
-   *  list stashed for a store about to bind, else from disk (F-37). */
+  /** A session's stored chapter marks: a list stashed for a bind that has not
+   *  written it yet, else its live store, else disk (F-37). */
   private async readChapterMarks(sessionId: string): Promise<unknown> {
     const entry = this.sessions.get(sessionId)
-    if (entry?.conversationStore) return (await entry.conversationStore.getSessionMetadata())?.chapterMarks
     if (entry?.pendingChapterMarks !== undefined) return entry.pendingChapterMarks
+    if (entry?.conversationStore) return (await entry.conversationStore.getSessionMetadata())?.chapterMarks
     const storage = await this.routedStorageFor(sessionId)
     return (await storage.readSessionMeta(sessionId))?.metadata.chapterMarks
   }
@@ -4474,8 +4474,18 @@ export class SharedWorkerSessionManager {
   private async writeChapterMarks(sessionId: string, chapterMarks: ChapterMark[]): Promise<void> {
     const entry = this.sessions.get(sessionId)
     if (entry?.conversationStore) {
-      entry.pendingChapterMarks = undefined
-      await entry.conversationStore.updateSessionMetadata({ chapterMarks })
+      // A stash still present means the bind has not written it: the new list
+      // replaces it until the store holds the list, so a bind that reads the
+      // stash later writes this list, not the older one.
+      const stashed = entry.pendingChapterMarks
+      if (stashed !== undefined) entry.pendingChapterMarks = chapterMarks
+      try {
+        await entry.conversationStore.updateSessionMetadata({ chapterMarks })
+      } catch (error) {
+        if (entry.pendingChapterMarks === chapterMarks) entry.pendingChapterMarks = stashed
+        throw error
+      }
+      if (entry.pendingChapterMarks === chapterMarks) entry.pendingChapterMarks = undefined
       return
     }
     if (entry && this.awaitsStoreBind(entry)) {

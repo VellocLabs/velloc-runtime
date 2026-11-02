@@ -4332,6 +4332,58 @@ describe('SharedWorkerSessionManager', () => {
       internals().sessions.delete('s')
     })
 
+    it('a chapter mark made while the store binds keeps the stashed marks (F-37)', async () => {
+      installStorage()
+      const chapters = manager as unknown as {
+        readChapterMarks(id: string): Promise<unknown>
+        writeChapterMarks(id: string, marks: unknown[]): Promise<void>
+      }
+      const first = { id: 'c1', entryKey: 'u1', title: 'First', createdAt: 1 }
+      const second = { id: 'c2', entryKey: 'u2', title: null, createdAt: 2 }
+      const entry: Record<string, unknown> = { templateType: 'code', background: true }
+      internals().sessions.set('s', entry)
+      await chapters.writeChapterMarks('s', [first])
+
+      let stored: Record<string, unknown> = {}
+      let openMetadata!: () => void
+      const metadataGate = new Promise<void>(resolve => { openMetadata = resolve })
+      const store = {
+        getSessionMetadata: vi.fn(async () => {
+          await metadataGate
+          return { ...stored }
+        }),
+        updateSessionMetadata: vi.fn(async (patch: Record<string, unknown>) => {
+          stored = { ...stored, ...patch }
+        }),
+      }
+      const bound = manager.bindSessionRuntime('s', store as never)
+      // The bind has the store but has not written the stash yet.
+      expect(await chapters.readChapterMarks('s')).toEqual([first])
+      await chapters.writeChapterMarks('s', [first, second])
+      openMetadata()
+      expect(await bound).toBe(true)
+      expect(stored.chapterMarks).toEqual([first, second])
+      expect(entry.pendingChapterMarks).toBeUndefined()
+      internals().sessions.delete('s')
+    })
+
+    it('a failed store write while the store binds leaves the stash as it was (F-37)', async () => {
+      installStorage()
+      const chapters = manager as unknown as {
+        writeChapterMarks(id: string, marks: unknown[]): Promise<void>
+      }
+      const first = { id: 'c1', entryKey: 'u1', title: 'First', createdAt: 1 }
+      const second = { id: 'c2', entryKey: 'u2', title: null, createdAt: 2 }
+      const entry: Record<string, unknown> = {
+        conversationStore: { updateSessionMetadata: vi.fn(async () => { throw new Error('disk full') }) },
+        pendingChapterMarks: [first],
+      }
+      internals().sessions.set('s', entry)
+      await expect(chapters.writeChapterMarks('s', [first, second])).rejects.toThrow('disk full')
+      expect(entry.pendingChapterMarks).toEqual([first])
+      internals().sessions.delete('s')
+    })
+
     it('a chapter-mark write with nowhere to land throws instead of reporting success (F-37)', async () => {
       installStorage()
       const chapters = manager as unknown as {
