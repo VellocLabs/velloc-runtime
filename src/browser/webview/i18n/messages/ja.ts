@@ -200,6 +200,7 @@ export const ja: Messages = {
   'statusBar.retryKind.server_error': 'プロバイダのサーバーエラー',
   'statusBar.retryKind.repetitive_tool_calls': 'ツール呼び出しの繰り返し',
   'statusBar.retryKind.refusal': '安全性による拒否',
+  'statusBar.retryKind.local_stream_limit': '開いているリクエストが多すぎます',
   'statusBar.retryKind.unknown': '接続エラー',
   'providerIssue.repetitiveToolCalls.title':
     'プロバイダが繰り返しのツール呼び出しをブロック',
@@ -233,6 +234,9 @@ export const ja: Messages = {
   'providerIssue.queued.title': 'プロバイダが混雑中 — リクエストはキュー待ち',
   'providerIssue.queued.summary':
     'リクエストはプロバイダの同時実行キューで期限まで待機し、プロバイダに届きませんでした。{product} は自動的に再試行してから、API エラーを表示します。',
+  'providerIssue.localStreamLimit.title': '開いているモデルリクエストが多すぎます',
+  'providerIssue.localStreamLimit.summary':
+    '開いているモデルリクエストが多すぎるため、{product} はこのリクエストを送信しませんでした。プロバイダのエラーではなく、プロバイダを切り替えても解決しません。実行中の他のセッションを完了または停止するか、1 分ほど待ってから「再試行」を選んでください。',
   'providerIssue.network.title': 'ネットワーク接続の問題',
   'providerIssue.network.summary':
     '{product} はプロバイダに安定して接続できませんでした。{product} は自動的に再試行してから、API エラーを表示します。',
@@ -1112,6 +1116,8 @@ export const ja: Messages = {
     '{product} は再試行していません。プロバイダがこのリクエストをそのまま拒否したため、変更せずに再送しても同じように失敗します。',
   'thread.providerBillingNoRetrySummary':
     '{product} は再試行していません。アカウントのクレジットが不足しているためプロバイダがこのリクエストを拒否しました。これは自動再試行では解消できません。',
+  'thread.providerLocalLimitNoRetrySummary':
+    '{product} はこのリクエストを送信しませんでした — {product} で開いているモデルリクエストが多すぎるため、プロバイダには届いていません。',
   'thread.providerStoredKeyNoRetrySummary':
     '{product} はこのリクエストを送信していません。プロバイダに使用できる API キーがないため、そのまま再送しても同じように失敗します。',
   'thread.providerBillingHint':

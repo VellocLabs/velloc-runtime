@@ -198,6 +198,7 @@ export const zh: Messages = {
   'statusBar.retryKind.server_error': '服务商服务器错误',
   'statusBar.retryKind.repetitive_tool_calls': '工具调用重复',
   'statusBar.retryKind.refusal': '安全拒绝',
+  'statusBar.retryKind.local_stream_limit': '打开的请求过多',
   'statusBar.retryKind.unknown': '连接错误',
   'providerIssue.repetitiveToolCalls.title': '服务商拦截了重复的工具调用',
   'providerIssue.repetitiveToolCalls.summary':
@@ -230,6 +231,9 @@ export const zh: Messages = {
   'providerIssue.queued.title': '服务商繁忙——请求已排队',
   'providerIssue.queued.summary':
     '该请求在服务商的并发队列中一直等到超过截止时间，从未到达服务商。{product} 会先自动重试，然后再显示该 API 错误。',
+  'providerIssue.localStreamLimit.title': '打开的模型请求过多',
+  'providerIssue.localStreamLimit.summary':
+    '{product} 没有发送这个请求，因为已打开的模型请求过多。这不是服务商的错误，切换服务商也无济于事。请结束或停止其他正在运行的会话，或等待一分钟，然后选择“重试”。',
   'providerIssue.network.title': '网络连接问题',
   'providerIssue.network.summary':
     '{product} 无法稳定地连接到服务商。{product} 会先自动重试，然后再显示该 API 错误。',
@@ -1100,6 +1104,8 @@ export const zh: Messages = {
     '{product} 没有重试——服务商直接拒绝了该请求，原样重发只会以同样的方式失败。',
   'thread.providerBillingNoRetrySummary':
     '{product} 没有重试——服务商因账户额度不足拒绝了该请求，自动重试无法解决这一问题。',
+  'thread.providerLocalLimitNoRetrySummary':
+    '{product} 没有发送这个请求——{product} 中已打开的模型请求过多，所以服务商根本没有收到它。',
   'thread.providerStoredKeyNoRetrySummary':
     '{product} 没有发送这个请求——该服务商没有可用的 API 密钥，原样重发也会以同样的方式失败。',
   'thread.providerBillingHint':

@@ -15,6 +15,9 @@ export type ProviderApiErrorKind =
   | 'billing_error'
   | 'server_error'
   | 'repetitive_tool_calls'
+  // The host refused to open another model stream: its table of open
+  // requests is full. The provider never saw the request.
+  | 'local_stream_limit'
   // A safety stop (`stop_reason: 'content_filter'`), not a transport failure:
   // minted by engine/turn/modelErrorMessages.ts `withRefusalApiError`, never by the
   // classifier below — a refused turn is an HTTP 200 and never enters the
@@ -233,6 +236,23 @@ export function classifyProviderConnectivityIssue(
       summaryKey: unreadable ? 'providerIssue.storedKeyUnreadable.summary' : 'providerIssue.storedKeyUnavailable.summary',
       retryable: false,
       settingsRecommended: true,
+      detail,
+      status,
+      retryAfterMs,
+    }
+  }
+
+  // The host's table of open model streams is full: the request never left
+  // the browser, whichever provider was chosen. Not retried in place; the
+  // host frees an ended stream nobody reads within a minute.
+  if (/\btoo_many_streams\b/.test(text)) {
+    return {
+      kind: 'configuration',
+      error: 'local_stream_limit',
+      titleKey: 'providerIssue.localStreamLimit.title',
+      summaryKey: 'providerIssue.localStreamLimit.summary',
+      retryable: false,
+      settingsRecommended: false,
       detail,
       status,
       retryAfterMs,

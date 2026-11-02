@@ -207,6 +207,10 @@ describe('providerApiErrorKindLabel', () => {
     )
     // A 402 used to have no slug of its own and read "invalid request".
     expect(providerApiErrorKindLabel(t, 'billing_error')).toBe('insufficient credits')
+    expect(providerApiErrorKindLabel(t, 'local_stream_limit')).toBe('too many open requests')
+    expect(providerApiErrorKindLabel(createTranslate('zh'), 'local_stream_limit')).toBe(
+      '打开的请求过多',
+    )
     expect(providerApiErrorKindLabel(createTranslate('zh'), 'billing_error')).toBe(
       '额度不足',
     )

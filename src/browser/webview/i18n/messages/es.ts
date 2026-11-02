@@ -204,6 +204,7 @@ export const es: Messages = {
   'statusBar.retryKind.server_error': 'error del servidor del proveedor',
   'statusBar.retryKind.repetitive_tool_calls': 'llamadas a herramientas repetidas',
   'statusBar.retryKind.refusal': 'rechazo por seguridad',
+  'statusBar.retryKind.local_stream_limit': 'demasiadas solicitudes abiertas',
   'statusBar.retryKind.unknown': 'error de conexión',
   'providerIssue.repetitiveToolCalls.title':
     'El proveedor bloqueó una llamada a herramientas repetida',
@@ -238,6 +239,9 @@ export const es: Messages = {
   'providerIssue.queued.title': 'Proveedor ocupado: solicitud en cola',
   'providerIssue.queued.summary':
     'La solicitud esperó en la cola de concurrencia del proveedor hasta agotar su plazo y nunca llegó al proveedor. {product} reintenta automáticamente antes de mostrar el error de API.',
+  'providerIssue.localStreamLimit.title': 'Demasiadas solicitudes al modelo abiertas',
+  'providerIssue.localStreamLimit.summary':
+    '{product} no envió esta solicitud porque ya hay demasiadas solicitudes al modelo abiertas. No es un error del proveedor y cambiar de proveedor no ayudará. Termina o detén otras sesiones en curso, o espera un minuto, y luego elige «Reintentar».',
   'providerIssue.network.title': 'Problema de conexión de red',
   'providerIssue.network.summary':
     '{product} no pudo comunicarse de forma fiable con el proveedor. {product} reintenta automáticamente antes de mostrar el error de API.',
@@ -1126,6 +1130,8 @@ export const es: Messages = {
     '{product} no reintentó: el proveedor rechazó esta solicitud de plano, así que reenviarla sin cambios fallaría de la misma manera.',
   'thread.providerBillingNoRetrySummary':
     '{product} no reintentó: el proveedor rechazó esta solicitud porque la cuenta se ha quedado sin crédito, algo que ningún reintento automático puede resolver.',
+  'thread.providerLocalLimitNoRetrySummary':
+    '{product} no envió esta solicitud: ya hay demasiadas solicitudes al modelo abiertas en {product}, así que el proveedor nunca la recibió.',
   'thread.providerStoredKeyNoRetrySummary':
     '{product} no envió esta solicitud: el proveedor no tiene una clave de API utilizable, así que reenviarla sin cambios fallaría de la misma forma.',
   'thread.providerBillingHint':

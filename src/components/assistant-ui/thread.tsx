@@ -146,6 +146,7 @@ import {
   shouldSendInForkOnModAltEnter,
 } from "./composer-send-shortcuts";
 import { useT, useLocale, type TranslateFn } from "@/browser/webview/i18n";
+import type { MessageKey } from "@/browser/webview/i18n/messages/en";
 import { getWelcome } from "@/prompting/templateCatalog";
 import { isPluginTemplateId } from "@/mods/ui/uiManifest";
 import { pluginWelcome, useModContributions } from "@/browser/webview/mods/modContributionsView";
@@ -1544,6 +1545,28 @@ const ConversationRunStatus: FC<{
 };
 
 /**
+ * The card's opening sentence. A refusal the host made before sending (no
+ * usable stored key, too many open model requests) must not say the provider
+ * rejected the request: the provider never saw it.
+ */
+export function providerErrorSummaryKey(params: {
+  kind: string;
+  details: string;
+  retryCount: number;
+}): MessageKey {
+  const { kind, details, retryCount } = params;
+  if (retryCount > 0) {
+    return retryCount === 1
+      ? "thread.providerRetriedSummaryOne"
+      : "thread.providerRetriedSummary";
+  }
+  if (storedKeyProblemOf(details)) return "thread.providerStoredKeyNoRetrySummary";
+  if (kind === "local_stream_limit") return "thread.providerLocalLimitNoRetrySummary";
+  if (kind === "billing_error") return "thread.providerBillingNoRetrySummary";
+  return "thread.providerNoRetrySummary";
+}
+
+/**
  * Why the composer offers "Continue" instead of "Send": maps `lastTerminalReason` to
  * the Continue button tooltip's catalog key. Unknown reasons fall back to the generic
  * "interrupted" line.
@@ -2412,19 +2435,11 @@ const ProviderApiErrorCard: FC = () => {
   // The host refused to send for want of a usable stored key: the provider
   // never saw the request, so "the provider rejected it" would mislead.
   const storedKeyProblem = storedKeyProblemOf(details);
-  const retrySummary =
-    storedKeyProblem && retryCount === 0
-      ? t("thread.providerStoredKeyNoRetrySummary")
-      : billingHint && retryCount === 0
-      ? t("thread.providerBillingNoRetrySummary")
-      : retryCount > 0
-      ? t(
-          retryCount === 1
-            ? "thread.providerRetriedSummaryOne"
-            : "thread.providerRetriedSummary",
-          { count: retryCount },
-        )
-      : t("thread.providerNoRetrySummary");
+  const localLimitHint = kind === "local_stream_limit";
+  const retrySummary = t(
+    providerErrorSummaryKey({ kind, details, retryCount }),
+    { count: retryCount },
+  );
   const loopGuardHint = kind === "repetitive_tool_calls";
   // A safety stop (`stop_reason: content_filter`): explain that the verdict
   // is about the request, not the transport, and name the provider's category
@@ -2490,6 +2505,14 @@ const ProviderApiErrorCard: FC = () => {
                     ? "providerIssue.storedKeyUnreadable.summary"
                     : "providerIssue.storedKeyUnavailable.summary",
                 )}
+              </div>
+            ) : null}
+            {localLimitHint ? (
+              <div
+                className="text-xs text-muted-foreground"
+                data-testid="provider-api-error-local-limit-hint"
+              >
+                {t("providerIssue.localStreamLimit.summary")}
               </div>
             ) : null}
             {billingHint ? (

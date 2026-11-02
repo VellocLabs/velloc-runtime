@@ -87,6 +87,7 @@ const RETRY_ERROR_KIND_KEYS: Record<string, MessageKey> = {
   billing_error: "statusBar.retryKind.billing_error",
   server_error: "statusBar.retryKind.server_error",
   repetitive_tool_calls: "statusBar.retryKind.repetitive_tool_calls",
+  local_stream_limit: "statusBar.retryKind.local_stream_limit",
   refusal: "statusBar.retryKind.refusal",
   unknown: "statusBar.retryKind.unknown",
 };

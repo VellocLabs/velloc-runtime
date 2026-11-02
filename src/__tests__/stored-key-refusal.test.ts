@@ -13,6 +13,7 @@ import { resolveProviderSpec } from '../models/drivers/driverRegistry'
 import '../models/drivers/builtinDrivers'
 import { classifyProviderConnectivityIssue } from '../utils/providerConnectivity'
 import { storedKeyProblemOf } from '../utils/storedKeyProblem'
+import { providerErrorSummaryKey } from '../components/assistant-ui/thread'
 
 const payload = {
   messages: [{ role: 'user', content: [{ type: 'text', text: 'q' }] }],
@@ -91,6 +92,38 @@ describe('a SECRET_UNAVAILABLE refusal', () => {
         settingsRecommended: true,
       })
     }
+  })
+
+  it('a full host stream table is a local refusal, not a provider or connection error', async () => {
+    const text = await streamErrorText({
+      code: 'TOO_MANY_STREAMS',
+      message: 'Too many raw streams are open.',
+    })
+    // Red-without: this classified as nothing, so the card read "the provider
+    // rejected this request" with the issue "connection error", and the user
+    // switched providers, which cannot help.
+    expect(classifyProviderConnectivityIssue(`provider_error: ${text}`)).toMatchObject({
+      error: 'local_stream_limit',
+      titleKey: 'providerIssue.localStreamLimit.title',
+      summaryKey: 'providerIssue.localStreamLimit.summary',
+      retryable: false,
+      settingsRecommended: false,
+    })
+  })
+
+  it('the error card does not blame the provider for a full host stream table', () => {
+    // Red-without: the card's opening sentence was "the provider rejected
+    // this request outright".
+    expect(providerErrorSummaryKey({ kind: 'local_stream_limit', details: 'TOO_MANY_STREAMS: Too many raw streams are open.', retryCount: 0 }))
+      .toBe('thread.providerLocalLimitNoRetrySummary')
+    expect(providerErrorSummaryKey({ kind: 'unknown', details: 'boom', retryCount: 0 }))
+      .toBe('thread.providerNoRetrySummary')
+    expect(providerErrorSummaryKey({ kind: 'billing_error', details: '', retryCount: 0 }))
+      .toBe('thread.providerBillingNoRetrySummary')
+    expect(providerErrorSummaryKey({ kind: 'unknown', details: 'stored_secret_unusable: x', retryCount: 0 }))
+      .toBe('thread.providerStoredKeyNoRetrySummary')
+    expect(providerErrorSummaryKey({ kind: 'local_stream_limit', details: '', retryCount: 2 }))
+      .toBe('thread.providerRetriedSummary')
   })
 
   it('a keystore not yet ready is not reported as a key problem', async () => {

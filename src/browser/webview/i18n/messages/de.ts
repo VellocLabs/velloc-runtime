@@ -203,6 +203,7 @@ export const de: Messages = {
   'statusBar.retryKind.server_error': 'Serverfehler beim Anbieter',
   'statusBar.retryKind.repetitive_tool_calls': 'sich wiederholende Tool-Aufrufe',
   'statusBar.retryKind.refusal': 'Sicherheitsablehnung',
+  'statusBar.retryKind.local_stream_limit': 'zu viele offene Anfragen',
   'statusBar.retryKind.unknown': 'Verbindungsfehler',
   'providerIssue.repetitiveToolCalls.title':
     'Anbieter hat einen wiederholten Tool-Aufruf blockiert',
@@ -237,6 +238,9 @@ export const de: Messages = {
   'providerIssue.queued.title': 'Anbieter ausgelastet — Anfrage in der Warteschlange',
   'providerIssue.queued.summary':
     'Die Anfrage hat in der Nebenläufigkeits-Warteschlange des Anbieters bis zum Ablauf ihrer Frist gewartet und den Anbieter nie erreicht. {product} versucht es automatisch erneut, bevor der API-Fehler angezeigt wird.',
+  'providerIssue.localStreamLimit.title': 'Zu viele offene Modellanfragen',
+  'providerIssue.localStreamLimit.summary':
+    '{product} hat diese Anfrage nicht gesendet, weil bereits zu viele Modellanfragen offen sind. Das ist kein Fehler des Anbieters, und ein Wechsel des Anbieters hilft nicht. Beenden oder stoppen Sie andere laufende Sitzungen oder warten Sie eine Minute, und wählen Sie dann „Erneut versuchen“.',
   'providerIssue.network.title': 'Problem mit der Netzwerkverbindung',
   'providerIssue.network.summary':
     '{product} konnte den Anbieter nicht zuverlässig erreichen. {product} versucht es automatisch erneut, bevor der API-Fehler angezeigt wird.',
@@ -1123,6 +1127,8 @@ export const de: Messages = {
     '{product} hat es nicht erneut versucht — der Anbieter hat diese Anfrage direkt abgelehnt, unverändert erneut gesendet würde sie genauso fehlschlagen.',
   'thread.providerBillingNoRetrySummary':
     '{product} hat es nicht erneut versucht — der Anbieter hat diese Anfrage abgelehnt, weil das Konto kein Guthaben mehr hat, und das kann kein automatischer erneuter Versuch beheben.',
+  'thread.providerLocalLimitNoRetrySummary':
+    '{product} hat diese Anfrage nicht gesendet — in {product} sind bereits zu viele Modellanfragen offen, daher hat der Anbieter sie nie erhalten.',
   'thread.providerStoredKeyNoRetrySummary':
     '{product} hat diese Anfrage nicht gesendet — der Anbieter hat keinen verwendbaren API-Schlüssel, daher würde ein unverändertes erneutes Senden genauso fehlschlagen.',
   'thread.providerBillingHint':

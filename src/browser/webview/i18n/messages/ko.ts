@@ -198,6 +198,7 @@ export const ko: Messages = {
   'statusBar.retryKind.server_error': '제공업체 서버 오류',
   'statusBar.retryKind.repetitive_tool_calls': '도구 호출 반복',
   'statusBar.retryKind.refusal': '안전상의 거부',
+  'statusBar.retryKind.local_stream_limit': '열린 요청이 너무 많음',
   'statusBar.retryKind.unknown': '연결 오류',
   'providerIssue.repetitiveToolCalls.title': '제공업체가 반복된 도구 호출을 차단함',
   'providerIssue.repetitiveToolCalls.summary':
@@ -230,6 +231,9 @@ export const ko: Messages = {
   'providerIssue.queued.title': '제공업체 혼잡 — 요청 대기 중',
   'providerIssue.queued.summary':
     '요청이 제공업체 동시 실행 대기열에서 기한이 지날 때까지 대기했으며 제공업체에 도달하지 못했습니다. {product}은(는) 자동으로 재시도한 후 API 오류를 표시합니다.',
+  'providerIssue.localStreamLimit.title': '열린 모델 요청이 너무 많음',
+  'providerIssue.localStreamLimit.summary':
+    '이미 열린 모델 요청이 너무 많아 {product}이(가) 이 요청을 보내지 않았습니다. 제공업체 오류가 아니며, 제공업체를 바꿔도 해결되지 않습니다. 실행 중인 다른 세션을 끝내거나 중지하거나 1분 정도 기다린 뒤 "다시 시도"를 선택하세요.',
   'providerIssue.network.title': '네트워크 연결 문제',
   'providerIssue.network.summary':
     '{product}이(가) 제공업체에 안정적으로 연결하지 못했습니다. {product}은(는) 자동으로 재시도한 후 API 오류를 표시합니다.',
@@ -1108,6 +1112,8 @@ export const ko: Messages = {
     '{product}은(는) 재시도하지 않았습니다. 제공업체가 이 요청을 바로 거부했으므로, 변경 없이 다시 보내도 같은 방식으로 실패합니다.',
   'thread.providerBillingNoRetrySummary':
     '{product}은(는) 재시도하지 않았습니다. 계정의 크레딧이 부족하여 제공업체가 이 요청을 거부했으며, 이는 자동 재시도로 해결할 수 없습니다.',
+  'thread.providerLocalLimitNoRetrySummary':
+    '{product}이(가) 이 요청을 보내지 않았습니다 — {product}에 이미 열린 모델 요청이 너무 많아 제공업체는 이 요청을 받지 못했습니다.',
   'thread.providerStoredKeyNoRetrySummary':
     '{product}이(가) 이 요청을 보내지 않았습니다. 제공업체에 사용할 수 있는 API 키가 없으므로 그대로 다시 보내도 같은 이유로 실패합니다.',
   'thread.providerBillingHint':

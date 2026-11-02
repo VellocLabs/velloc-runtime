@@ -358,6 +358,7 @@ export type ModelReplyRow = Message & {
     | 'invalid_request'
     | 'server_error'
     | 'repetitive_tool_calls'
+    | 'local_stream_limit'
     | 'refusal'
     | 'unknown'
     | 'max_output_tokens'

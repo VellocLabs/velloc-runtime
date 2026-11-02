@@ -202,6 +202,7 @@ export const fr: Messages = {
   'statusBar.retryKind.server_error': 'erreur serveur du fournisseur',
   'statusBar.retryKind.repetitive_tool_calls': 'appels d’outils répétitifs',
   'statusBar.retryKind.refusal': 'refus de sécurité',
+  'statusBar.retryKind.local_stream_limit': 'trop de requêtes ouvertes',
   'statusBar.retryKind.unknown': 'erreur de connexion',
   'providerIssue.repetitiveToolCalls.title':
     'Le fournisseur a bloqué un appel d’outils répété',
@@ -236,6 +237,9 @@ export const fr: Messages = {
     'Fournisseur occupé — requête mise en file d’attente',
   'providerIssue.queued.summary':
     'La requête est restée dans la file d’attente de concurrence du fournisseur jusqu’à l’expiration de son délai et n’a jamais atteint le fournisseur. {product} réessaie automatiquement avant d’afficher l’erreur d’API.',
+  'providerIssue.localStreamLimit.title': 'Trop de requêtes au modèle ouvertes',
+  'providerIssue.localStreamLimit.summary':
+    '{product} n’a pas envoyé cette requête, car trop de requêtes au modèle sont déjà ouvertes. Ce n’est pas une erreur du fournisseur, et changer de fournisseur n’y changera rien. Terminez ou arrêtez d’autres sessions en cours, ou patientez une minute, puis choisissez « Réessayer ».',
   'providerIssue.network.title': 'Problème de connexion réseau',
   'providerIssue.network.summary':
     '{product} n’a pas pu joindre le fournisseur de manière fiable. {product} réessaie automatiquement avant d’afficher l’erreur d’API.',
@@ -1126,6 +1130,8 @@ export const fr: Messages = {
     '{product} n’a pas réessayé : le fournisseur a rejeté cette requête d’emblée, la renvoyer telle quelle échouerait de la même façon.',
   'thread.providerBillingNoRetrySummary':
     '{product} n’a pas réessayé : le fournisseur a refusé cette requête car le compte n’a plus de crédit, ce qu’aucune nouvelle tentative automatique ne peut corriger.',
+  'thread.providerLocalLimitNoRetrySummary':
+    '{product} n’a pas envoyé cette requête — trop de requêtes au modèle sont déjà ouvertes dans {product}, le fournisseur ne l’a donc jamais reçue.',
   'thread.providerStoredKeyNoRetrySummary':
     '{product} n’a pas envoyé cette requête : le fournisseur n’a aucune clé API utilisable, donc la renvoyer telle quelle échouerait de la même façon.',
   'thread.providerBillingHint':

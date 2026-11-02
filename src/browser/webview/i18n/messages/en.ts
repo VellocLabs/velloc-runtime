@@ -230,6 +230,7 @@ export const en = {
   'statusBar.retryKind.server_error': 'provider server error',
   'statusBar.retryKind.repetitive_tool_calls': 'repetitive tool calls',
   'statusBar.retryKind.refusal': 'safety refusal',
+  'statusBar.retryKind.local_stream_limit': 'too many open requests',
   'statusBar.retryKind.unknown': 'connection error',
   // ── Provider connectivity verdicts (utils/providerConnectivity.ts) ─────
   // The classifier returns these KEYS; titles show in the retry status line (e2e
@@ -266,6 +267,9 @@ export const en = {
   'providerIssue.queued.title': 'Provider busy — request queued',
   'providerIssue.queued.summary':
     'The request waited in the provider concurrency queue until its deadline and never reached the provider. {product} retries automatically before surfacing the API error.',
+  'providerIssue.localStreamLimit.title': 'Too many open model requests',
+  'providerIssue.localStreamLimit.summary':
+    '{product} did not send this request because too many model requests are already open. This is not a provider error, and switching providers will not help. Finish or stop other running sessions, or wait a minute, then choose Try again.',
   'providerIssue.network.title': 'Network connection issue',
   'providerIssue.network.summary':
     '{product} could not reliably reach the provider. {product} retries automatically before surfacing the API error.',
@@ -1170,6 +1174,8 @@ export const en = {
     '{product} did not retry — the provider rejected this request outright, so resending it unchanged would fail the same way.',
   'thread.providerBillingNoRetrySummary':
     '{product} did not retry — the provider declined this request because the account has run out of credit, which no automatic retry can fix.',
+  'thread.providerLocalLimitNoRetrySummary':
+    '{product} did not send this request — too many model requests are already open in {product}, so the provider never saw it.',
   'thread.providerStoredKeyNoRetrySummary':
     '{product} did not send this request — the provider has no usable API key, so resending it unchanged would fail the same way.',
   'thread.providerBillingHint':
