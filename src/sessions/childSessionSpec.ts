@@ -286,22 +286,17 @@ export function checkChildSessionRequest(
   }
 }
 
-export const CHILD_BRIEFING_HEADING = '## Background'
-export const CHILD_TASK_HEADING = '## Task'
-
 /**
- * The child's first message: the briefing the parent wrote, then the task.
- * Nothing of the parent's conversation is in it; a fork carries its copy of
- * the transcript instead and may omit the briefing.
+ * The child's first message: the briefing the parent wrote, then the task,
+ * as plain paragraphs — it shows in the child's transcript as a user bubble,
+ * which renders text as written, so no markup. Nothing of the parent's
+ * conversation is in it; a fork carries its copy of the transcript instead
+ * and may omit the briefing.
  */
 export function buildChildFirstMessage(args: { briefing?: string; task: string }): string {
-  const parts: string[] = []
   const briefing = args.briefing?.trim()
-  if (briefing) {
-    parts.push(`${CHILD_BRIEFING_HEADING}\n\n${briefing}`)
-  }
-  parts.push(`${CHILD_TASK_HEADING}\n\n${args.task.trim()}`)
-  return parts.join('\n\n')
+  const task = args.task.trim()
+  return briefing ? `${briefing}\n\n${task}` : task
 }
 
 const CHILD_ACK_FORK_ORIGIN =

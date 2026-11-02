@@ -278,15 +278,16 @@ describe('defaultChildIsolation', () => {
   })
 })
 
-describe('buildChildFirstMessage — the two-part template', () => {
-  it('renders the briefing section then the task section, and nothing else', () => {
+describe('buildChildFirstMessage — plain text, briefing then task', () => {
+  it('puts the briefing then the task as plain paragraphs, with no headings', () => {
     const text = buildChildFirstMessage({ briefing: '  Context here.  ', task: ' Do the thing. ' })
-    expect(text).toBe('## Background\n\nContext here.\n\n## Task\n\nDo the thing.')
+    expect(text).toBe('Context here.\n\nDo the thing.')
+    expect(text).not.toMatch(/^#/m)
   })
 
-  it('omits the briefing section when there is no briefing (a fork)', () => {
-    expect(buildChildFirstMessage({ task: 'Do it.' })).toBe('## Task\n\nDo it.')
-    expect(buildChildFirstMessage({ briefing: '   ', task: 'Do it.' })).toBe('## Task\n\nDo it.')
+  it('is the task alone when there is no briefing (a fork)', () => {
+    expect(buildChildFirstMessage({ task: 'Do it.' })).toBe('Do it.')
+    expect(buildChildFirstMessage({ briefing: '   ', task: 'Do it.' })).toBe('Do it.')
   })
 })
 

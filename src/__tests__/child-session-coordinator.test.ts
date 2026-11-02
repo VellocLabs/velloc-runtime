@@ -210,7 +210,7 @@ describe('ChildSessionCoordinator — a fresh child', () => {
     }
   })
 
-  it('gives the child a two-part first message and nothing of the parent conversation', async () => {
+  it('gives the child the briefing then the task and nothing of the parent conversation', async () => {
     const fake = fakeHost()
     const outcome = await new ChildSessionCoordinator(fake.host).spawn({
       parentSessionId: 'parent-1',
@@ -220,7 +220,7 @@ describe('ChildSessionCoordinator — a fresh child', () => {
     expect(fake.firstTurns).toEqual([
       {
         sessionId: outcome?.ok ? outcome.sessionId : 'x',
-        prompt: '## Background\n\nEverything the child needs to know, written out in full for a reader who was not here.\n\n## Task\n\nDo the thing.',
+        prompt: 'Everything the child needs to know, written out in full for a reader who was not here.\n\nDo the thing.',
       },
     ])
   })
@@ -701,7 +701,7 @@ describe('ChildSessionCoordinator — a fork', () => {
     // No fresh record: the fork wrote its own.
     expect(fake.written.size).toBe(0)
     await settled()
-    expect(fake.firstTurns).toEqual([{ sessionId: 'forked-1', prompt: '## Task\n\nCarry on with the parser.' }])
+    expect(fake.firstTurns).toEqual([{ sessionId: 'forked-1', prompt: 'Carry on with the parser.' }])
     expect(fake.startStates.at(-1)).toEqual({ sessionId: 'forked-1', state: null })
   })
 
