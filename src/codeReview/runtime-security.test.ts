@@ -8,7 +8,7 @@ import type { ReviewModelRequest } from './runner'
 import { getOrCreateReviewService } from './runtime'
 
 const mocks = vi.hoisted(() => ({
-  guidance: vi.fn(), nestedGuidance: vi.fn(), vet: vi.fn(), boundary: vi.fn(), gate: vi.fn(), confirm: vi.fn(), model: vi.fn(), runnerContexts: [] as unknown[], edit: vi.fn(),
+  formatGuidance: vi.fn(), guidance: vi.fn(), nestedGuidance: vi.fn(), vet: vi.fn(), boundary: vi.fn(), gate: vi.fn(), confirm: vi.fn(), model: vi.fn(), runnerContexts: [] as unknown[], edit: vi.fn(),
 }))
 vi.mock('../engine/turnInterpreter', () => ({ runTurnLoop: vi.fn() }))
 vi.mock('../permissions/filesystemPermission', () => ({ vetFileRead: mocks.vet }))
@@ -19,7 +19,7 @@ vi.mock('../toolkit/run/toolPermissionGate', () => ({
   requestQueuedToolUseConfirm: mocks.confirm,
   resolveHeadlessPermissionDecision: async () => ({ behavior: 'deny' }),
 }))
-vi.mock('../memory/instructionFiles', () => ({ gatherInstructionDocs: mocks.guidance, getNestedInstructionFilesForPath: mocks.nestedGuidance, getConditionalRulesForPath: async () => [], formatMemoryFilesForPrompt: () => '' }))
+vi.mock('../memory/instructionFiles', () => ({ gatherInstructionDocs: mocks.guidance, getNestedInstructionFilesForPath: mocks.nestedGuidance, getConditionalRulesForPath: async () => [], formatMemoryFilesForPrompt: mocks.formatGuidance }))
 vi.mock('./runner', async importOriginal => {
   const original = await importOriginal<typeof import('./runner')>()
   return { ...original, createReviewModelRunner: (input: { context: unknown }) => {
@@ -99,6 +99,7 @@ async function report(request: ReviewModelRequest, withCandidates = false) {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.runnerContexts.length = 0
+  mocks.formatGuidance.mockReturnValue('')
   mocks.guidance.mockResolvedValue([])
   mocks.nestedGuidance.mockResolvedValue([])
   mocks.gate.mockResolvedValue({ decision: 'ask' })
@@ -109,6 +110,146 @@ beforeEach(() => {
   mocks.edit.mockImplementation(async (input: { path: string }, context: ToolCallContext) => {
     await context.options.fsOperations!.writeFile(input.path, 'edited')
     return { data: 'edited' }
+  })
+})
+
+describe('review execution admission', () => {
+  it.each(['test', 'typecheck'])('rejects changed %s scripts after approval and requires fresh approval', async name => {
+    const h = fixture()
+    const manifest = (script: string) => JSON.stringify({ scripts: { [name]: script } })
+    h.files.set(`${root}/package.json`, manifest('vitest run'))
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('low')
+    await service.wait(runId)
+    const original = h.spawn.getMockImplementation()!
+    const scripts: string[] = []
+    h.spawn.mockImplementation(async (spec, events) => {
+      if (spec.file === 'git') return original(spec, events)
+      scripts.push(JSON.parse(h.files.get(`${root}/package.json`)!).scripts[name])
+      events.onExit?.({ exitCode: 0, killed: false, timedOut: false, durationMs: 1 })
+      return { streamId: 'check', write: async () => true, closeStdin: async () => true, kill: async () => true, detach() {} }
+    })
+    mocks.model.mockResolvedValue({ text: '{}', interrupted: false })
+    mocks.confirm.mockImplementation(async () => {
+      h.files.set(`${root}/package.json`, manifest('node unapproved-script.js'))
+      return { behavior: 'allow' }
+    })
+    await service.requestVerification(runId).catch(() => {})
+    expect(scripts).toEqual([])
+    expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ script: 'vitest run' }) }))
+    mocks.confirm.mockResolvedValue({ behavior: 'allow' })
+    await service.requestVerification(runId).catch(() => {})
+    expect(scripts).toEqual(['node unapproved-script.js'])
+    expect(mocks.confirm).toHaveBeenLastCalledWith(expect.objectContaining({ input: expect.objectContaining({ script: 'node unapproved-script.js' }) }))
+  })
+
+  it.each(['manifest', 'instructions'])('rechecks %s at spawn admission after approval capture', async changed => {
+    const h = fixture()
+    h.files.set(`${root}/package.json`, JSON.stringify({ scripts: { test: 'vitest run' } }))
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('low')
+    await service.wait(runId)
+    const original = vi.mocked(h.fs.readFileBytes).getMockImplementation()!
+    let approved = false
+    mocks.confirm.mockImplementation(async () => { approved = true; return { behavior: 'allow' } })
+    vi.mocked(h.fs.readFileBytes).mockImplementation(async (...args) => {
+      const result = await original(...args)
+      if (approved && clean(args[0]) === `${root}/a.ts`) {
+        approved = false
+        if (changed === 'manifest') h.files.set(`${root}/package.json`, JSON.stringify({ scripts: { test: 'node unapproved-script.js' } }))
+        else mocks.guidance.mockResolvedValue([{ path: `${root}/AGENTS.md`, type: 'Project', content: 'Changed verification instructions' }])
+      }
+      return result
+    })
+    mocks.model.mockResolvedValue({ text: '{}', interrupted: false })
+    await service.requestVerification(runId).catch(() => {})
+    expect(h.spawn.mock.calls.every(([spec]) => spec.file === 'git')).toBe(true)
+  })
+
+  it.each(['manifest-approval', 'instructions-approval', 'manifest-admission'])('rejects changed startup inputs: %s', async changed => {
+    const h = fixture()
+    h.files.set(`${root}/package.json`, JSON.stringify({ scripts: { dev: 'vite' } }))
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('low')
+    await service.wait(runId)
+    mocks.formatGuidance.mockReturnValue('npm run dev at http://localhost:3000/')
+    const original = h.spawn.getMockImplementation()!
+    h.spawn.mockImplementation(async (spec, events) => {
+      return original(spec, { ...events, onOutput: (stream, bytes) => events.onOutput?.(stream, new TextEncoder().encode(new TextDecoder().decode(bytes).replaceAll('a.ts', 'app.tsx'))) })
+    })
+    h.files.set(`${root}/app.tsx`, 'new\n')
+    let approved = false
+    const assertGrant = service.store.assertActionAuthorized.bind(service.store)
+    vi.spyOn(service.store, 'assertActionAuthorized').mockImplementation(async (...args) => {
+      const grant = await assertGrant(...args)
+      if (approved && changed === 'manifest-admission') h.files.set(`${root}/package.json`, JSON.stringify({ scripts: { dev: 'node unapproved-script.js' } }))
+      return grant
+    })
+    mocks.confirm.mockImplementation(async request => {
+      if (request.input.command?.purpose === 'startup') {
+        approved = true
+        if (changed === 'manifest-approval') h.files.set(`${root}/package.json`, JSON.stringify({ scripts: { dev: 'node unapproved-script.js' } }))
+        else if (changed === 'instructions-approval') mocks.formatGuidance.mockReturnValue('Changed startup instructions')
+      }
+      return { behavior: 'allow' }
+    })
+    let attempted = false
+    mocks.model.mockImplementation(async request => {
+      const tool = request.tools.find((tool: { name: string }) => tool.name === 'ReviewStartDevelopment')
+      expect(tool).toBeDefined()
+      attempted = true
+      await expect(tool.call({}, { cancelSource: new AbortController() } as ToolCallContext, h.permission, {} as Message)).rejects.toThrow('snapshot-changed')
+      return { text: '{}', interrupted: false }
+    })
+    await service.requestVerification(runId).catch(() => {})
+    expect(attempted).toBe(true)
+    expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ command: expect.objectContaining({ purpose: 'startup', script: 'vite' }) }) }))
+    expect(h.spawn.mock.calls.every(([spec]) => spec.file === 'git')).toBe(true)
+  })
+
+  it.each(['start', 'cold-repair', 'cold-verify', 'cold-publish'])('closes pending scope preparation on owner disposal: %s', async action => {
+    const h = fixture()
+    const owner = new AbortController()
+    h.context.options.runtimeScopeSignal = owner.signal
+    let service = await getOrCreateReviewService(h.context, h.permission)
+    let runId = ''
+    if (action !== 'start') {
+      runId = (await service.startUser('low')).runId
+      await service.wait(runId)
+      const cold = { ...h.context, options: { ...h.context.options, runtimeConfig: {} } } as ToolCallContext
+      service = await getOrCreateReviewService(cold, h.permission)
+      await service.restore([runId])
+    }
+    let resume!: () => void
+    let entered!: () => void
+    const started = new Promise<void>(resolve => { entered = resolve })
+    mocks.guidance.mockImplementationOnce(async () => { entered(); await new Promise<void>(resolve => { resume = resolve }); return [] })
+    mocks.model.mockClear()
+    const pending = action === 'start' ? service.startUser('low') : action === 'cold-repair' ? service.requestRepair(runId, []) : action === 'cold-verify' ? service.requestVerification(runId) : service.requestPublication(runId)
+    const result = pending.then(value => ({ value }), error => ({ error }))
+    await started
+    owner.abort()
+    resume()
+    expect(await result).toMatchObject({ error: expect.objectContaining({ message: 'review-cancelled' }) })
+    expect(mocks.model).not.toHaveBeenCalled()
+    await expect(service.startUser('low')).rejects.toThrow('review-cancelled')
+    await expect(service.startModel('low')).rejects.toThrow('review-cancelled')
+    await expect(service.rerun(runId)).rejects.toThrow('review-cancelled')
+    await expect(service.requestVerification(runId)).rejects.toThrow('review-cancelled')
+    await expect(service.requestRepair(runId, [])).rejects.toThrow('review-cancelled')
+    await expect(service.requestPublication(runId)).rejects.toThrow('review-cancelled')
+  })
+
+  it.each(['already-aborted', 'during-init'])('does not initialize an ownerless service: %s', async timing => {
+    const h = fixture()
+    const owner = new AbortController()
+    h.context.options.runtimeScopeSignal = owner.signal
+    if (timing === 'already-aborted') owner.abort()
+    else vi.mocked(h.fs.realpath!).mockImplementationOnce(async path => { owner.abort(); return clean(path) })
+    await expect(getOrCreateReviewService(h.context, h.permission)).rejects.toThrow('review-cancelled')
+    expect(h.spawn).not.toHaveBeenCalled()
+    expect(mocks.model).not.toHaveBeenCalled()
+    expect(h.atomic).not.toHaveBeenCalled()
   })
 })
 

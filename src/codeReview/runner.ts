@@ -34,6 +34,7 @@ export function createReviewModelRunner(input: {
     request.signal.addEventListener('abort', abort, { once: true })
     if (request.signal.aborted) abort()
     try {
+      if (cancelSource.signal.aborted) throw new Error('review-cancelled')
       const options = { ...input.context.options, tools: request.tools, commands: [], refreshTools: () => request.tools }
       const context = request.execution === 'inline'
         ? { ...input.context, options, cancelSource, messages: [] }
@@ -48,6 +49,7 @@ export function createReviewModelRunner(input: {
         cwd: context.options.cwd, providerId: context.options.mainLoopProviderId,
         templateType: context.options.templateType,
       })
+      if (cancelSource.signal.aborted) throw new Error('review-cancelled')
       const opening = request.blocks.map(block => Object.assign(
         createGeneratedUserMessage([{ type: 'text' as const, text: JSON.stringify({ source: block.source, provenance: block.provenance, text: block.text }) }]),
         { reviewSource: { provenance: block.provenance, source: block.source } },

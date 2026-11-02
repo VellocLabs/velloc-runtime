@@ -17,6 +17,7 @@ export interface ReviewScopeAccess {
   evidenceSources?: Array<{ path: string; revision: string; excerpt?: string }>
 }
 export interface ReviewServiceOptions {
+  ownerSignal?: AbortSignal
   conversationKey: string
   modelId: string
   sessionLevel?: import('./contracts').ReviewLevel
@@ -51,10 +52,40 @@ export class LocalReviewService {
   private readonly known = new Set<string>()
   private sequence = 0
   private readonly actionsInFlight = new Set<string>()
+  private readonly controllers = new Set<AbortController>()
+  private disposed = false
+  dispose = (): void => {
+    if (this.disposed) return
+    this.disposed = true
+    this.options.ownerSignal?.removeEventListener('abort', this.dispose)
+    for (const controller of this.controllers) controller.abort()
+    this.controllers.clear()
+    this.listeners.clear()
+  }
+  private admit(signal?: AbortSignal): void {
+    if (this.disposed || this.options.ownerSignal?.aborted || signal?.aborted) throw new ReviewGatewayError('review-cancelled')
+  }
+  private operation(signal?: AbortSignal): { controller: AbortController; release(): void } {
+    this.admit(signal)
+    const controller = new AbortController()
+    const abort = () => controller.abort(signal?.reason)
+    signal?.addEventListener('abort', abort, { once: true })
+    this.controllers.add(controller)
+    return { controller, release: () => { this.controllers.delete(controller); signal?.removeEventListener('abort', abort) } }
+  }
+  private runModel: ReviewModelRunner = request => {
+    this.admit(request.signal)
+    return this.options.runModel({ ...request, tools: request.tools.map(tool => ({ ...tool, call: (...args) => {
+      this.admit(request.signal)
+      return tool.call(...args)
+    } })) })
+  }
   constructor(private readonly options: ReviewServiceOptions) {
     this.store = new ReviewReportStore(options.storage, { sanitizeExcerpt: options.sanitizeExcerpt, onChange: () => this.changed() })
+    options.ownerSignal?.addEventListener('abort', this.dispose, { once: true })
+    if (options.ownerSignal?.aborted) this.dispose()
   }
-  subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener) }
+  subscribe = (listener: () => void): (() => void) => { this.admit(); this.listeners.add(listener); return () => this.listeners.delete(listener) }
   changed = (): void => { this.sequence++; for (const listener of this.listeners) listener() }
   presentation(runId: string): { notices: ReviewPlan['notices']; emptyScope: boolean; target?: string } | undefined {
     const live = this.live.get(runId)
@@ -66,24 +97,31 @@ export class LocalReviewService {
   startUser(raw: string, signal?: AbortSignal, presentation?: OutputMode): Promise<{ runId: string }> { return this.start(raw, 'user', signal, presentation) }
   startModel(raw: string, signal?: AbortSignal): Promise<{ runId: string }> { return this.start(raw, 'model', signal) }
   private async start(raw: string, source: 'user' | 'model', signal?: AbortSignal, presentation?: OutputMode): Promise<{ runId: string }> {
+    const operation = this.operation(signal)
+    try {
+      const result = await this.prepare(raw, source, operation.controller, presentation)
+      void this.live.get(result.runId)!.done.then(operation.release, operation.release)
+      return result
+    } catch (error) { operation.release(); throw error }
+  }
+  private async prepare(raw: string, source: 'user' | 'model', controller: AbortController, presentation?: OutputMode): Promise<{ runId: string }> {
     const parsed = parseReviewArguments(raw)
     if (!parsed.ok) throw new ReviewGatewayError(parsed.error.code)
     if (source === 'model' && (parsed.arguments.fix || parsed.arguments.comment)) throw new ReviewGatewayError('action-not-authorized')
     const preferences = await this.options.preferences.load()
+    this.admit(controller.signal)
     let plan = resolveReviewPolicy({ arguments: parsed.arguments, source, preferences,
       sessionLevel: this.options.sessionLevel, guidance: this.options.guidance, canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal' })
     if (plan.blocked) throw new ReviewGatewayError('review-plan-blocked')
-    const controller = new AbortController()
-    const abort = () => controller.abort(signal?.reason)
-    signal?.addEventListener('abort', abort, { once: true })
-    if (signal?.aborted) abort()
     let access = await this.options.resolveScope(parsed.arguments, plan, controller.signal)
+    this.admit(controller.signal)
     const guidance = access.authorizedGuidance ?? this.options.guidance
     const authorizedPlan = resolveReviewPolicy({ arguments: parsed.arguments, source, preferences, sessionLevel: this.options.sessionLevel, guidance,
       canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal' })
     if (authorizedPlan.blocked) throw new ReviewGatewayError('review-plan-blocked')
     if (authorizedPlan.skipTestsAndFixtures !== plan.skipTestsAndFixtures) {
       access = await this.options.resolveScope(parsed.arguments, authorizedPlan, controller.signal)
+      this.admit(controller.signal)
       if (JSON.stringify(access.authorizedGuidance ?? this.options.guidance) !== JSON.stringify(guidance)) throw new ReviewGatewayError('review-guidance-changed')
     }
     const changedLines = access.manifest.files.reduce((total, file) => total + file.patch.split('\n').filter(line => /^[+-]/.test(line) && !/^(?:---|\+\+\+)/.test(line)).length, 0)
@@ -91,6 +129,7 @@ export class LocalReviewService {
       canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal', changedLines })
     const next = resolveReviewPreferences({ current: preferences, arguments: parsed.arguments, source, targetAuthorized: true })
     if (source === 'user' && JSON.stringify(preferences) !== JSON.stringify(next)) await this.options.preferences.save(next)
+    this.admit(controller.signal)
     const runId = await this.store.createRun({ conversationKey: this.options.conversationKey, scope: access.manifest.scope,
       policy: plan, expectedAngles: access.manifest.status === 'empty' ? [] : [...plan.angles] })
     await this.options.saveTarget?.(runId, parsed.arguments.target, parsed.arguments.targetLiteral)
@@ -102,7 +141,7 @@ export class LocalReviewService {
     }
     const live: LiveRun = { access, plan, args: parsed.arguments, controller, done: Promise.resolve(), source, completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false }
     this.live.set(runId, live); this.known.add(runId)
-    live.done = this.execute(runId, live).finally(() => signal?.removeEventListener('abort', abort))
+    live.done = this.execute(runId, live)
     return { runId }
   }
   async wait(runId: string): Promise<ReportSnapshot> { await this.live.get(runId)?.done; return this.store.getSnapshot(runId) }
@@ -122,6 +161,7 @@ export class LocalReviewService {
     const timer = setTimeout(() => { budgetExpired = true; controller.abort() }, this.options.maxDurationMs ?? 600_000)
     try {
       await this.store.start(runId); this.changed()
+      this.admit(controller.signal)
       for (const source of access.evidenceSources ?? []) await this.store.registerEvidenceSource(runId, source)
       if (access.manifest.status === 'empty') {
         await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: access.manifest.notices, complete: true } })
@@ -137,7 +177,7 @@ export class LocalReviewService {
         if (plan.coordinatorWorkerRequired) await this.store.noteWorker(runId, 'started')
         let result: Awaited<ReturnType<ReviewModelRunner>>
         try {
-          result = await this.options.runModel({ blocks, tools, signal: controller.signal, taskId: plan.coordinatorWorkerRequired ? `${runId}-worker` : runId,
+          result = await this.runModel({ blocks, tools, signal: controller.signal, taskId: plan.coordinatorWorkerRequired ? `${runId}-worker` : runId,
             execution: plan.coordinatorWorkerRequired ? 'isolated' : plan.execution, reasoningLevel: plan.reasoningLevel })
         } finally { if (plan.coordinatorWorkerRequired) await this.store.noteWorker(runId, 'finished') }
         if (result.interrupted) throw new ReviewGatewayError('review-budget-or-model-interrupted')
@@ -145,7 +185,7 @@ export class LocalReviewService {
           try { await this.store.submitFinalJson(runId, crypto.randomUUID(), result.text) }
           catch {
             const expected = await this.store.expectedRecord(runId)
-            const corrected = await this.options.runModel({ blocks: [block('Correct only the JSON format/selection. Return candidates and coverage exactly from the provided retained ledger; do not rerun the review.', 'format-correction'), block(JSON.stringify(expected), 'retained-ledger')], tools: [], signal: controller.signal, taskId: `${runId}-format`, maxTurns: 1 })
+            const corrected = await this.runModel({ blocks: [block('Correct only the JSON format/selection. Return candidates and coverage exactly from the provided retained ledger; do not rerun the review.', 'format-correction'), block(JSON.stringify(expected), 'retained-ledger')], tools: [], signal: controller.signal, taskId: `${runId}-format`, maxTurns: 1 })
             try { await this.store.submitFinalJson(runId, crypto.randomUUID(), corrected.text) }
             catch (error) { unstructured = true; throw error }
           }
@@ -176,8 +216,11 @@ export class LocalReviewService {
       if (shouldRunAutomaticVerification(plan, { permitted: this.options.automaticVerificationPermitted === true,
         adapterAvailable: !!this.options.verify, runtimeBehaviorChanged: access.manifest.files.some(f => !/(?:^|\/)(?:docs?|tests?|fixtures)\/|\.(?:md|txt)$|\.(?:test|spec)\./i.test(f.path)), alreadyVerified: await this.options.alreadyVerified?.(await this.store.getSnapshot(runId)) ?? false })) {
         await this.store.setStage(runId, 'verify')
-        await this.options.verify!(await this.store.getSnapshot(runId), controller.signal, this.store)
+        const snapshot = await this.store.getSnapshot(runId)
+        this.admit(controller.signal)
+        await this.options.verify!(snapshot, controller.signal, this.store)
       }
+      this.admit(controller.signal)
       await this.store.finish(runId, 'finished')
     } catch (error) {
       const snapshot = await this.store.getSnapshot(runId)
@@ -190,6 +233,7 @@ export class LocalReviewService {
     } finally { clearTimeout(timer); this.changed() }
   }
   private async read(runId: string, live: LiveRun, input: Record<string, unknown>): Promise<unknown> {
+    this.admit(live.controller.signal)
     const result = await live.access.read(input, live.plan, live.controller.signal)
     const revision = live.access.manifest.scope.revision.workingCopyDigest ?? live.access.manifest.scope.revision.head
     if (input.operation === 'context' && typeof input.path === 'string' && typeof result === 'string' && result.trim()) {
@@ -225,7 +269,7 @@ export class LocalReviewService {
         const blocks = [...promptBlocks, block(JSON.stringify(role === 'verifier' ? { type: 'object', properties: { ...REVIEW_ASSESSMENT_SCHEMA.properties, support: REVIEW_SUPPORT_SCHEMA, missingEvidence: { type: 'array', items: { type: 'string' } } }, required: ['disposition', 'reason', 'support'] } : REVIEW_RESULT_SCHEMA), 'required-json-schema')]
         await this.store.noteWorker(runId, 'started'); this.changed()
         try {
-          const result = await this.options.runModel({ blocks, tools: this.tools(runId, live, false).filter(t => t.name === 'ReviewRead'), signal: live.controller.signal, taskId, maxTurns: 16 })
+          const result = await this.runModel({ blocks, tools: this.tools(runId, live, false).filter(t => t.name === 'ReviewRead'), signal: live.controller.signal, taskId, maxTurns: 16 })
           if (result.interrupted) throw new ReviewGatewayError('worker-interrupted')
           const value = JSON.parse(result.text)
           if (role === 'verifier') {
@@ -289,6 +333,7 @@ export class LocalReviewService {
       if (live.controller.signal.aborted) throw new ReviewGatewayError('review-cancelled')
       await this.store.setStage(runId, 'repair')
       const snapshot = await this.store.getSnapshot(runId)
+      this.admit(live.controller.signal)
       const editTools = await this.options.repairTools(snapshot, grant, live.controller.signal, this.store, epoch)
       const tools = createReviewTools({ runId, store: this.store, signal: live.controller.signal, read: async input => {
         const material = await this.read(runId, live, input)
@@ -298,7 +343,7 @@ export class LocalReviewService {
           actionEpoch: epoch, evidence: [{ path: input.path, quote: material.slice(0, 4000), relevance: 'Fresh authorized context read during repair reassessment.' }] })
         return { content: material, executionRef: ref }
       }, changed: this.changed, allowOutput: live.plan.presentation === 'panel', actions: true, actionEpoch: epoch }).filter(t => t.name !== 'ReviewLedger')
-      const result = await this.options.runModel({ blocks: [block('Repair only the selected saved diagnostics. Preserve concurrent user changes. Use actual execution references returned by edits in ReviewActionLog; do not claim tests, commits or remote updates.', 'authorized-repair'), block(JSON.stringify({ report: snapshot, diagnosticIds: grant.diagnosticIds }), 'saved-report')], tools: [...tools, ...editTools], signal: live.controller.signal, taskId: `${runId}-repair` })
+      const result = await this.runModel({ blocks: [block('Repair only the selected saved diagnostics. Preserve concurrent user changes. Use actual execution references returned by edits in ReviewActionLog; do not claim tests, commits or remote updates.', 'authorized-repair'), block(JSON.stringify({ report: snapshot, diagnosticIds: grant.diagnosticIds }), 'saved-report')], tools: [...tools, ...editTools], signal: live.controller.signal, taskId: `${runId}-repair` })
       if (result.interrupted) throw new ReviewGatewayError('repair-interrupted')
       await this.store.reconcileObservedEdits(runId, grant.id, grant.diagnosticIds, epoch)
       const after = await this.store.getSnapshot(runId)
@@ -320,42 +365,51 @@ export class LocalReviewService {
     try {
       if (!this.options.publish) throw new ReviewGatewayError('publication-unavailable')
       if (live.controller.signal.aborted) throw new ReviewGatewayError('review-cancelled')
-      await this.options.publish(await this.store.getSnapshot(runId), grant.id, live.controller.signal, this.store)
+      const snapshot = await this.store.getSnapshot(runId)
+      this.admit(live.controller.signal)
+      await this.options.publish(snapshot, grant.id, live.controller.signal, this.store)
     } catch (error) {
       await this.store.recordActionReceipt(runId, { kind: 'publication', state: 'blocked', diagnosticIds: grant.diagnosticIds, reason: error instanceof Error ? error.message : 'publication-failed' })
       throw error
     }
   }
-  private async actionContext(runId: string): Promise<LiveRun> {
+  private async actionContext(runId: string, controller: AbortController): Promise<LiveRun> {
+    this.admit(controller.signal)
     const existing = this.live.get(runId)
-    if (existing) { await existing.done.catch(() => {}); return existing }
+    if (existing) { await existing.done.catch(() => {}); this.admit(controller.signal); return existing }
     const snapshot = await this.store.getSnapshot(runId)
     const target = await this.options.loadTarget?.(runId)
     if (!target && snapshot.run.scope.kind !== 'workspace') throw new ReviewGatewayError('review-target-needs-selection')
     const args: ReviewArguments = { target, targetLiteral: await this.options.loadTargetLiteral?.(runId), level: snapshot.run.policy.level, fix: false, comment: false }
     const plan = resolveReviewPolicy({ arguments: args, source: 'model', preferences: await this.options.preferences.load(),
       canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: snapshot.run.policy.presentation })
-    const controller = new AbortController()
+    this.admit(controller.signal)
     const access = await this.options.resolveScope(args, plan, controller.signal)
+    this.admit(controller.signal)
     if (access.manifest.scope.repository.projectKey !== snapshot.run.scope.repository.projectKey || access.manifest.scope.revision.head !== snapshot.run.scope.revision.head) throw new ReviewGatewayError('snapshot-changed')
     const live: LiveRun = { access, plan, args, controller, done: Promise.resolve(), source: 'model', completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false }
     this.live.set(runId, live)
     return live
   }
   private async followup(runId: string, task: (live: LiveRun) => Promise<void>): Promise<void> {
+    this.admit()
     if (this.actionsInFlight.has(runId)) throw new ReviewGatewayError('review-action-in-progress')
     this.actionsInFlight.add(runId)
+    const operation = this.operation()
     try {
-      const live = await this.actionContext(runId)
-      live.controller = new AbortController()
+      const live = await this.actionContext(runId, operation.controller)
+      this.admit(operation.controller.signal)
+      live.controller = operation.controller
       live.done = task(live)
       await live.done
-    } finally { this.actionsInFlight.delete(runId); this.changed() }
+      this.admit()
+    } finally { operation.release(); this.actionsInFlight.delete(runId); this.changed() }
   }
   async requestRepair(runId: string, ids: string[]): Promise<void> {
     await this.followup(runId, live => this.repairActive(runId, live, ids, true))
   }
   async requestVerification(runId: string): Promise<void> {
+    this.admit()
     if (!this.options.verify) throw new ReviewGatewayError('verification-unavailable')
     await this.followup(runId, async live => {
       const snapshot = await this.store.getSnapshot(runId)
@@ -364,6 +418,7 @@ export class LocalReviewService {
       const epoch = await this.store.beginActionPhase(runId, grantId)
       try {
         await this.store.setStage(runId, 'verify')
+        this.admit(live.controller.signal)
         await this.options.verify!(snapshot, live.controller.signal, this.store, epoch, grantId)
       } finally { await this.store.endActionPhase(runId, epoch) }
     })
@@ -375,11 +430,14 @@ export class LocalReviewService {
       try {
         await this.store.setStage(runId, 'publish')
         if (!this.options.publish) throw new ReviewGatewayError('publication-unavailable')
-        await this.options.publish(await this.store.getSnapshot(runId), grant.id, live.controller.signal, this.store, discussions)
+        const snapshot = await this.store.getSnapshot(runId)
+        this.admit(live.controller.signal)
+        await this.options.publish(snapshot, grant.id, live.controller.signal, this.store, discussions)
       } finally { await this.store.endActionPhase(runId, epoch) }
     })
   }
   async rerun(runId: string, presentation?: OutputMode): Promise<{ runId: string }> {
+    this.admit()
     const snapshot = await this.store.getSnapshot(runId)
     const live = this.live.get(runId)
     const target = live?.args.target ?? await this.options.loadTarget?.(runId)

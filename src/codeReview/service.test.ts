@@ -32,6 +32,72 @@ function setup(options: { empty?: boolean; args?: Partial<ReviewServiceOptions> 
   return { service, save, runModel, resolveScope, storage, invoke }
 }
 describe('local review runtime gateway', () => {
+  it('permanently disposes live model and tool admission without format retries', async () => {
+    const h = setup()
+    let request!: ReviewModelRequest
+    let resume!: () => void
+    h.runModel.mockImplementation(async value => {
+      request = value
+      await new Promise<void>(resolve => { resume = resolve })
+      return { text: 'invalid json', interrupted: false }
+    })
+    const { runId } = await h.service.startUser('low')
+    await vi.waitFor(() => expect(request).toBeDefined())
+    h.service.dispose()
+    h.service.dispose()
+    expect(request.signal.aborted).toBe(true)
+    await expect(h.invoke(request, 'ReviewRead', { operation: 'diff' })).rejects.toThrow('review-cancelled')
+    resume()
+    expect((await h.service.wait(runId)).run.progress.status).toBe('cancelled')
+    expect(h.runModel).toHaveBeenCalledTimes(1)
+    await expect(h.service.startUser('low')).rejects.toThrow('review-cancelled')
+    await expect(h.service.rerun(runId)).rejects.toThrow('review-cancelled')
+  })
+
+  it.each(['verify', 'publish'] as const)('aborts live %s follow-ups and rejects later actions', async action => {
+    let signal!: AbortSignal
+    let resume!: () => void
+    const adapter = vi.fn(async (_snapshot, ...args) => {
+      signal = args.find(value => value instanceof AbortSignal)!
+      await new Promise<void>(resolve => { resume = resolve })
+    })
+    const h = setup({ args: action === 'verify' ? { verify: adapter } : { publish: adapter } })
+    const { runId } = await h.service.startUser('low')
+    await h.service.wait(runId)
+    const pending = action === 'verify' ? h.service.requestVerification(runId) : h.service.requestPublication(runId)
+    await vi.waitFor(() => expect(adapter).toHaveBeenCalledTimes(1))
+    h.service.dispose()
+    expect(signal.aborted).toBe(true)
+    resume()
+    await expect(pending).rejects.toThrow('review-cancelled')
+    await expect(h.service.requestVerification(runId)).rejects.toThrow()
+    await expect(h.service.requestPublication(runId)).rejects.toThrow('review-cancelled')
+  })
+
+  it('tracks scope controllers before the first await and aborts caller-cancelled preparation', async () => {
+    const owner = new AbortController()
+    const h = setup({ args: { ownerSignal: owner.signal } })
+    let entered!: () => void
+    let resume!: () => void
+    let signal!: AbortSignal
+    const ready = new Promise<void>(resolve => { entered = resolve })
+    const access = await h.resolveScope()
+    h.resolveScope.mockImplementation(async (...args: unknown[]) => {
+      signal = args[2] as AbortSignal
+      entered()
+      await new Promise<void>(resolve => { resume = resolve })
+      return access
+    })
+    const pending = h.service.startUser('low')
+    const failed = expect(pending).rejects.toThrow('review-cancelled')
+    await ready
+    owner.abort()
+    expect(signal.aborted).toBe(true)
+    resume()
+    await failed
+    expect(h.runModel).not.toHaveBeenCalled()
+    expect(h.storage.size).toBe(0)
+  })
   it('rejects malformed and removed arguments before scope, model or preference writes', async () => {
     const h = setup()
     for (const raw of ['/ultrareview', 'ultra', '--post', '--max-findings=0']) await expect(h.service.startUser(raw)).rejects.toThrow()

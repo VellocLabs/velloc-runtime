@@ -70,10 +70,20 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
   const context = new Proxy(incomingContext, { get(_target, key) { return Reflect.get(contexts.get(identity)!, key) } })
   const existing = services.get(identity)
   if (existing) return existing
-  const runtime = context.options.reviewRuntime
+  const ownerSignal = incomingContext.options.runtimeScopeSignal
+  const admit = (signal?: AbortSignal) => {
+    if (ownerSignal?.aborted || signal?.aborted) throw new ReviewGatewayError('review-cancelled')
+  }
+  admit()
+  const suppliedRuntime = context.options.reviewRuntime
+  const runtime = suppliedRuntime && { ...suppliedRuntime,
+    spawnArgv: ((spec, handlers) => { admit(); return suppliedRuntime.spawnArgv(spec, handlers) }) as GitStreamSpawner,
+    httpRequest: suppliedRuntime.httpRequest && ((...args) => { admit(); return suppliedRuntime.httpRequest!(...args) }) as ReviewHttpRequest,
+  }
   const fs = context.options.fsOperations
   if (!runtime || !fs?.realpath) throw new ReviewGatewayError('review-runtime-unavailable')
   const root = normalized(await fs.realpath(context.options.projectRoot, { resolveLinks: true }))
+  admit()
   const configuredBase = context.options.sessionStorageBase ?? context.options.sessionStoragePath
   if (!configuredBase || !isAbsoluteRuntimePath(configuredBase) || !/^[A-Za-z0-9_-]+$/.test(context.options.sessionId)) throw new ReviewGatewayError('review-storage-unavailable')
   const storageBase = normalized(resolveRuntimePath(configuredBase, '.'))
@@ -119,6 +129,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
   }
   async function writeJson(path: string, value: unknown): Promise<void> { await writeSerialized(path, JSON.stringify(value)) }
   const authorizeAction = async (name: string, input: Record<string, unknown>, forceAsk = false) => {
+    admit()
     const tool = declareTool({ name, description: async () => name, readsOnly: () => name === 'Read',
       selfVerdict: async () => ({ behavior: forceAsk ? 'ask' as const : 'allow' as const, updatedInput: input }), call: async () => ({ data: null }) })
     const hooks = await nestedToolGatesOf(context).preHooks(name, input, crypto.randomUUID(), context)
@@ -133,6 +144,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       modelReply: { type: 'assistant', uuid: crypto.randomUUID(), message: { role: 'assistant', content: [] } }, callContext: context }))?.behavior === 'allow'
   }
   const authorizePath = async (absolute: string) => {
+    admit()
     const hooks = await nestedToolGatesOf(context).preHooks('Read', { file_path: absolute }, crypto.randomUUID(), context)
     if (hooks.blocked) throw new ReviewGatewayError('review-read-not-authorized')
     const boundary = await assertUntrustedReadAllowed(absolute, context, fs)
@@ -145,7 +157,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
   }
   const readWorkspaceFile = async (path: string, maxBytes: number, signal?: AbortSignal): Promise<WorkspaceRead> => {
     validateReviewPath(path)
-    if (signal?.aborted) throw new ReviewGatewayError('review-cancelled')
+    admit(signal)
     const absolute = resolveRuntimePath(root, path)
     let canonical: string
     try { canonical = normalized(await fs!.realpath!(absolute, { resolveLinks: true })) }
@@ -158,6 +170,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       if (stat.isDirectory()) return { kind: 'directory' }
       if (!stat.isFile()) return { kind: 'unreadable' }
       if (stat.size > maxBytes) return { kind: 'large' }
+      admit(signal)
       return { kind: 'file', bytes: await fs!.readFileBytes(absolute, maxBytes) }
     } catch (error) { if (isFsNotFoundError(error)) return { kind: 'missing' }; throw error }
   }
@@ -176,6 +189,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       docs.push(...await getNestedInstructionFilesForPath(resolveRuntimePath(root, path), params))
       docs.push(...await getConditionalRulesForPath(resolveRuntimePath(root, path), params))
     }
+    admit()
     const selected = docs.filter((doc, index) => docs.findIndex(other => other.path === doc.path) === index)
     const sources = await Promise.all(selected.filter(doc => below(normalized(doc.path), root) && !equal(normalized(doc.path), root)).map(async doc => ({
       path: normalized(doc.path).slice(root.length + 1), revision: `guidance:${await reviewDigest(doc.content)}`, excerpt: doc.content,
@@ -289,7 +303,17 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       snapshot.run.scope.kind === 'paths' ? { kind: 'paths', paths: snapshot.run.scope.pathFilter } : { kind: 'workspace' }, signal)
     return scope.complete ? JSON.stringify([scope.scope.revision, scope.scope.pathFilter]) : undefined
   }
+  admit()
+  const runModel: import('./runner').ReviewModelRunner = request => {
+    admit(request.signal)
+    const signal = ownerSignal ? AbortSignal.any([ownerSignal, request.signal]) : request.signal
+    const currentRuntime = context.options.reviewRuntime!
+    return createReviewModelRunner({ context, promptContextProvider: currentRuntime.promptContextProvider, decidePermission, deps: currentRuntime.deps })({ ...request, signal,
+      tools: request.tools.map(tool => ({ ...tool, call: (...args) => { admit(signal); return tool.call(...args) } })),
+    })
+  }
   const service = new LocalReviewService({
+    ownerSignal,
     conversationKey: context.options.sessionId, get modelId() { return resolveModelId(context.options.mainLoopProviderId, context.options.mainLoopModel) },
     get sessionLevel() { const level = context.options.reviewRuntime?.sessionLevel?.(); return level && isReviewLevel(level) ? level : undefined },
     savePresentation: (id, value) => writeJson(resolveRuntimePath(sessionDir, `presentation/${id}.json`), value),
@@ -321,7 +345,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       },
     },
     sanitizeExcerpt: sanitize,
-    runModel: request => createReviewModelRunner({ context, promptContextProvider: context.options.reviewRuntime!.promptContextProvider, decidePermission, deps: context.options.reviewRuntime!.deps })({ ...request,
+    runModel: request => runModel({ ...request,
       tools: request.tools.map(tool => tool.name !== 'Agent' ? tool : { ...tool, async call(input, callContext, permission, row, progress) {
         const caps = currentCapabilities()
         if (!caps.agentAvailable || !caps.agentPermitted || caps.remainingDepth < 1 || request.signal.aborted) throw new ReviewGatewayError('review-worker-not-authorized')
@@ -450,9 +474,19 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         catch { instructionGaps.push('invalid-package-manifest') }
       }
       const runtimeChanged = files.some(path => !/(?:^|\/)(?:docs?|__tests__|tests?|fixtures)\/|\.(?:md|txt)$|\.(?:test|spec)\./i.test(path))
+      const manifests = { 'package.json': packageText, 'pyproject.toml': await readText('pyproject.toml'), 'Cargo.toml': await readText('Cargo.toml'), 'go.mod': await readText('go.mod') }
+      const assertExecutionInputs = async () => {
+        admit(signal)
+        const latestGuidance = await guidanceFor(files)
+        if (latestGuidance.text !== guidance.text || JSON.stringify(latestGuidance.sources) !== JSON.stringify(guidance.sources)) throw new ReviewGatewayError('snapshot-changed')
+        for (const [path, text] of Object.entries(manifests)) {
+          if (await readText(path) !== text) throw new ReviewGatewayError('snapshot-changed')
+        }
+        admit(signal)
+      }
       const plan = planVerification({ workspace: root, files, guidance: guidance.text, runtimeChanged,
         uiChanged: files.some(path => /\.(?:tsx|jsx|vue|svelte|html|css|scss)$|(?:^|\/)(?:ui|webview|components)\//i.test(path)),
-        packageManifest, pyproject: await readText('pyproject.toml'), cargoManifest: await readText('Cargo.toml'), goManifest: await readText('go.mod'),
+        packageManifest, pyproject: manifests['pyproject.toml'], cargoManifest: manifests['Cargo.toml'], goManifest: manifests['go.mod'],
         existingDevUrl: guidance.text.match(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?\/[^\s`"'<>)]*/)?.[0],
       })
       let checkedThroughSequence = snapshot.events.at(-1)?.sequence ?? 0
@@ -481,12 +515,14 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           if (!await authorizeAction('ReviewVerification', input, true)) return false
           if (request.signal.aborted || signal.aborted) return false
           await store.assertActionAuthorized(snapshot.run.id, grantId, 'verification', snapshot.retainedIds)
+          await assertExecutionInputs()
           await captureVersion()
           return true
         },
         spawn: async (spec, handlers) => {
           if (signal.aborted) throw new ReviewGatewayError('verification-cancelled')
           await store.assertActionAuthorized(snapshot.run.id, grantId, 'verification', snapshot.retainedIds)
+          await assertExecutionInputs()
           if (executionSignal.aborted || signal.aborted) throw new ReviewGatewayError('verification-cancelled')
           return runtime.spawnArgv(spec, handlers)
         },
@@ -517,14 +553,24 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         if (plan.startupCommand) behaviorTools.push(declareTool({ name: 'ReviewStartDevelopment', description: async () => 'Start only the documented development script if the local application is not already running. No install, restart or arbitrary command. The host stops this owned process after verification.',
           argsSchema: { type: 'object' as const, properties: {}, additionalProperties: false }, readsOnly: () => false,
           call: async (_args: Record<string, unknown>, callContext) => {
+            admit(signal)
             if (server) return { data: { started: true, output: sanitize(server.output) } }
-            server = await startVerificationServer(plan.startupCommand!, { workspace: root, spawn: runtime.spawnArgv, signal: callContext.cancelSource.signal,
+            const startupSignal = AbortSignal.any([signal, callContext.cancelSource.signal])
+            server = await startVerificationServer(plan.startupCommand!, { workspace: root, signal: startupSignal,
+              spawn: async (spec, handlers) => {
+                await store.assertActionAuthorized(snapshot.run.id, grantId, 'verification', snapshot.retainedIds)
+                await assertExecutionInputs()
+                admit(startupSignal)
+                return runtime.spawnArgv(spec, handlers)
+              },
               authorize: async request => {
                 if (signal.aborted || request.signal.aborted) return false
-                const latestPackage = await readText('package.json')
-                if (!latestPackage || latestPackage !== packageText) throw new ReviewGatewayError('snapshot-changed')
+                await assertExecutionInputs()
                 await store.assertActionAuthorized(snapshot.run.id, grantId, 'verification', snapshot.retainedIds)
-                return await authorizeAction('ReviewVerification', { cwd: root, command: request.command, restrictions: ['no dependency installation', 'no service restart', 'no external writes'] }, true)
+                if (!await authorizeAction('ReviewVerification', { cwd: root, command: request.command, restrictions: ['no dependency installation', 'no service restart', 'no external writes'] }, true)) return false
+                await assertExecutionInputs()
+                admit(startupSignal)
+                return true
               } })
             return { data: { started: true, output: sanitize(server.output) } }
           } }))
@@ -537,11 +583,11 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
             await captureVersion()
             return !signal.aborted
           },
-          call: (name, args) => browser!.callTool({ name, args, executionContext: { sessionId: context.options.sessionId } }),
+          call: (name, args) => { admit(signal); return browser!.callTool({ name, args, executionContext: { sessionId: context.options.sessionId } }) },
           sanitize, record: async execution => { executions.set(execution.ref, execution) },
         }))
         let behavior: Awaited<ReturnType<typeof runBehaviorVerification>>
-        try { behavior = await runBehaviorVerification({ runner: request => createReviewModelRunner({ context, promptContextProvider: runtime.promptContextProvider, decidePermission, deps: runtime.deps })(request),
+        try { behavior = await runBehaviorVerification({ runner: runModel,
           taskId: `${snapshot.run.id}-behavior`, scopeManifest: JSON.stringify(currentScope), guidance: guidance.text,
           diff: JSON.stringify(currentScope.files), repairAndValidationSummary: JSON.stringify({ actions: snapshot.actions, executions: [...executions.values()] }),
           approvedTools: behaviorTools, executions, signal, uiChanged: plan.uiChanged,
@@ -610,7 +656,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           targetKey: JSON.stringify([remote.target.platform, remote.target.origin, remote.target.platform === 'github' ? remote.target.projectKey.toLowerCase() : remote.target.projectKey, remote.target.number]), head: remote.head,
           diagnostic: { ...diagnostic, claim: { title: sanitize(diagnostic.claim.title), explanation: sanitize(diagnostic.claim.explanation), trigger: sanitize(diagnostic.claim.trigger) } },
           evidence: snapshot.evidence.filter(item => item.diagnosticId === diagnostic.id).map(item => ({ ...item, excerpt: sanitize(item.excerpt), reason: sanitize(item.reason) })), signal,
-          runner: request => createReviewModelRunner({ context, promptContextProvider: runtime.promptContextProvider, decidePermission, deps: runtime.deps })(request),
+          runner: runModel,
         })}`
         const binding = { runId: snapshot.run.id, reportRevision: snapshot.run.reportRevision, discussions,
           target: remote.target, base: remote.base, head: remote.head, kind: proposed.kind,
@@ -631,7 +677,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           if (write.kind === 'inline' && diagnostic && write.rootCauseFingerprint) {
             proposal = await proposeReviewSuggestion({ snapshot: remote, diagnostic, rootCauseFingerprint: write.rootCauseFingerprint,
               actions: snapshot.actions, taskId: `${snapshot.run.id}-${diagnostic.id}`, signal, reader: { checkHead: suggestionReader.checkHead, readContext: async (...args) => { await authorizePath(resolveRuntimePath(root, args[1])); return suggestionReader.readContext(...args) } },
-              runner: request => createReviewModelRunner({ context, promptContextProvider: runtime.promptContextProvider, decidePermission, deps: runtime.deps })(request) })
+              runner: runModel })
             if (proposal) write.suggestion = { original: proposal.original, replacement: proposal.replacement }
           }
           envelope = { version: 1, binding, write, ...(proposal ? { proposal } : {}) }
@@ -726,6 +772,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
             await guard(path)
             const before = await targetFs.readFileBytes(path)
             const next = typeof data === 'string' ? new TextEncoder().encode(data) : data
+            admit(signal)
             await targetFs.writeFile(path, data, options)
             if (await reviewDigest(before) !== await reviewDigest(next)) {
               const relative = normalized(path).slice(root.length + 1)
@@ -785,7 +832,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       const afterDigest = await reviewDigest(JSON.stringify(mutation.changes.map(change => [change.path, change.after.kind, change.after.digest])))
       if (beforeDigest === afterDigest) continue
       const updates = await reassessExternalEdit({ snapshot, mutations: [{ ref: mutation.ref, paths, changes: mutation.changes.map(change => ({ path: normalized(resolveRuntimePath(root, change.path)).slice(root.length + 1), before: { digest: change.before.digest, content: change.before.content ? sanitize(change.before.content) : undefined }, after: { digest: change.after.digest, content: change.after.content ? sanitize(change.after.content) : undefined } })) }], evidence, tools: [], signal,
-        runner: request => createReviewModelRunner({ context, promptContextProvider: runtime.promptContextProvider, decidePermission, deps: runtime.deps })(request) })
+        runner: runModel })
       if (!updates.length || signal.aborted) continue
       await service.store.reconcileExternalEdit(snapshot.run.id, { runId: snapshot.run.id, ref: mutation.ref, paths,
         workspaceKey: root, headRevision: snapshot.run.scope.revision.head, beforeDigest, afterDigest, evidence,
@@ -851,10 +898,16 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       return { path, line: diagnostic.anchor.span?.start }
     },
   })
-  context.options.runtimeScopeSignal?.addEventListener('abort', () => { unregister(); unregisterMutations(); void service.snapshots().then(s => Promise.all(s.reports.map(r => service.cancel(r.run.id)))) }, { once: true })
-  try { const entries = await fs.readdir(sessionDir); await service.restore(entries.filter(e => e.isFile() && /^[A-Za-z0-9_-]+\.json$/.test(e.name)).map(e => e.name.slice(0, -5))) }
-  catch (error) { if (!isFsNotFoundError(error)) throw error }
-  return service
+  const dispose = () => { service.dispose(); unregister(); unregisterMutations(); ownerSignal?.removeEventListener('abort', dispose) }
+  ownerSignal?.addEventListener('abort', dispose, { once: true })
+  if (ownerSignal?.aborted) dispose()
+  try {
+    admit()
+    try { const entries = await fs.readdir(sessionDir); admit(); await service.restore(entries.filter(e => e.isFile() && /^[A-Za-z0-9_-]+\.json$/.test(e.name)).map(e => e.name.slice(0, -5))) }
+    catch (error) { if (!isFsNotFoundError(error)) throw error }
+    admit()
+    return service
+  } catch (error) { dispose(); throw error }
 }
 
 export async function invokeReviewModelSkill(raw: string, context: ToolCallContext, permission: PermissionDecider): Promise<string> {

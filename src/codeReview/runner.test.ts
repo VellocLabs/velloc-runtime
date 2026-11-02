@@ -33,6 +33,17 @@ describe('review worker admission', () => {
 })
 
 describe('isolated review model transport', () => {
+  it.each(['before', 'during'])('does not enter the model loop when cancelled %s prompt assembly', async timing => {
+    vi.mocked(runTurnLoop).mockClear()
+    const controller = new AbortController()
+    const parent = { options: { mainLoopModel: 'test', tools: [], commands: [], cwd: '/repo', projectRoot: '/repo', sessionId: 's' }, cancelSource: new AbortController(), fileReadLedger: new Map(), messages: [], readAppState: () => ({ permissionRules: { mode: 'default' } }) } as unknown as ToolCallContext
+    const gather = vi.fn(async () => { controller.abort(); return { defaultSystemPrompt: [], userContext: {}, systemContext: {} } })
+    const runner = createReviewModelRunner({ context: parent, promptContextProvider: { gatherSystemPromptSources: gather }, decidePermission: () => ({ behavior: 'allow' }) })
+    if (timing === 'before') controller.abort()
+    await expect(runner({ blocks: [], tools: [], signal: controller.signal, taskId: 'cancelled' })).rejects.toThrow('review-cancelled')
+    expect(runTurnLoop).not.toHaveBeenCalled()
+    expect(gather).toHaveBeenCalledTimes(timing === 'before' ? 0 : 1)
+  })
   it('does not restore parent tools through refresh after repository instructions request them', async () => {
     const inheritedTools = [{ name: 'Bash' }, { name: 'Edit' }, { name: 'Publish' }]
     const refreshParent = vi.fn(() => inheritedTools)
