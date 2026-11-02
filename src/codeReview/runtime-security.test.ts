@@ -114,6 +114,21 @@ beforeEach(() => {
 })
 
 describe('review execution admission', () => {
+  it('creates the guarded report directory before native restoration reads', async () => {
+    const h = fixture()
+    let created = false
+    const reportDir = `D:/review-storage/${h.context.options.sessionId}/code-review`
+    vi.mocked(h.fs.mkdir).mockImplementation(async path => { if (clean(path) === reportDir) created = true })
+    vi.mocked(h.fs.readdir).mockImplementation(async path => {
+      if (clean(path) === reportDir && !created) throw new Error('FS_ERROR: Path is not a directory')
+      return []
+    })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    expect(created).toBe(true)
+    const { runId } = await service.startUser('low')
+    expect((await service.wait(runId)).run.progress.status).toBe('finished')
+  })
+
   it('retries transient initialization failure for a live owner without caching a disposed service', async () => {
     const { getReviewSession } = await import('./review-channel')
     const h = fixture()

@@ -932,6 +932,10 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
   if (ownerSignal?.aborted) dispose()
   try {
     admit()
+    await guardStorage(sessionDir)
+    await fs.mkdir(sessionDir)
+    await guardStorage(sessionDir)
+    admit()
     try { const entries = await fs.readdir(sessionDir); admit(); await service.restore(entries.filter(e => e.isFile() && /^[A-Za-z0-9_-]+\.json$/.test(e.name)).map(e => e.name.slice(0, -5))) }
     catch (error) { if (!isFsNotFoundError(error)) throw error }
     admit()
