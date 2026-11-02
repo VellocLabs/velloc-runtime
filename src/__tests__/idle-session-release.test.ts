@@ -6,6 +6,20 @@ import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import type { Message } from '../runtime/RuntimeTypes'
 import { BrowserConversationStore } from '../sessions/sessionStore'
 import { sanitizeMessageForPersistence, sanitizeMessageForUi } from '../utils/toolCallDetails'
+import { ConversationEngine } from '../engine/conversationEngine'
+import { assembleTurnDependencies } from '../engine/turn/turnDependencies'
+import { ROOT_DISPATCH_CONTEXT } from '../mods/modTypes'
+import type { WorkingState } from '../runtime/RuntimeTypes'
+import {
+  DefaultRuntimeConfig,
+  NoopPlatformCapabilities,
+  NoopPromptContextProvider,
+  NoopSystemInitEmitter,
+  NoopUserInputPipeline,
+  createEmptyAppState,
+  createMemoryFileStateCache,
+} from '../runtime/testing/noopAdapters'
+import { MSG_TYPE_ASSISTANT, ROLE_ASSISTANT } from '../runtime/VercelModelConstants'
 
 vi.mock('../browser/runtime/createAgentRuntime', () => ({
   createAgentRuntime: vi.fn(),
@@ -307,5 +321,70 @@ describe('AgentRuntimeWorker idle payload release', () => {
     vi.advanceTimersByTime(IDLE_PAYLOAD_RELEASE_MS)
     expect(runtime.conversationStore.releaseToolPayloads).toHaveBeenCalledTimes(1)
     expect(runtime.engine.releaseToolPayloads).not.toHaveBeenCalled()
+  })
+})
+
+// ── Compaction after the release ─────────────────────────────────────────
+
+describe('a plugin compaction after the idle release', () => {
+  it('summarizes the whole tool results, not the stubs the release left', async () => {
+    const fs = fakeFs()
+    const config = new DefaultRuntimeConfig()
+    const store = new BrowserConversationStore({ runtimeConfig: config, sessionId: 'S', storageBackend: fs.backend() })
+    await store.saveTranscriptRows([prompt('go'), ...readTurn(0), ...bashTurn(1)])
+    let appState: WorkingState = createEmptyAppState()
+    const summarized: Message[][] = []
+    const engine = new ConversationEngine({
+      cwd: '/workspace',
+      projectRoot: '/workspace',
+      tools: [],
+      commands: [],
+      mcpClients: [],
+      agents: [],
+      decidePermission: async () => ({ behavior: 'allow' }),
+      readAppState: () => appState,
+      writeAppState: updater => {
+        appState = updater(appState)
+      },
+      fileReadSeed: createMemoryFileStateCache(),
+      platformCapabilities: new NoopPlatformCapabilities(),
+      queryRuntimeDeps: assembleTurnDependencies(config, {
+        callModel: async function* () {
+          yield { type: MSG_TYPE_ASSISTANT, uuid: 'reply', message: { role: ROLE_ASSISTANT, content: [{ type: 'text', text: 'ok' }] } } as Message
+        } as never,
+        forceCompact: async (params: { messages: Message[] }) => {
+          summarized.push(params.messages)
+          return {
+            boundaryMarker: { type: 'system', uuid: 'b1', subtype: 'compact_boundary', message: 'Conversation compacted', compactMetadata: { trigger: 'manual', preTokens: 10 } } as Message,
+            summaryMessages: [{ type: 'user', uuid: 'sum1', isMeta: true, message: { role: 'user', content: 'SUMMARY' } } as Message],
+          }
+        },
+      } as never),
+      promptContextProvider: new NoopPromptContextProvider(),
+      conversationStore: store,
+      userInputPipeline: new NoopUserInputPipeline(config, true),
+      systemInitEmitter: new NoopSystemInitEmitter(),
+      runtimeConfig: config,
+      mods: { ready: Promise.resolve(), promptSubmit: async (text: string) => ({ entered: true, text, context: [] }) } as never,
+    })
+    for await (const _ of engine.submitTurn('more' as never, { uuid: 'p2' } as never)) {
+      // drain
+    }
+
+    expect(store.releaseToolPayloads()).toBe(true)
+    engine.releaseToolPayloads()
+    expect(JSON.stringify(engine.transcriptRows())).not.toContain('PAYLOAD-0')
+
+    const raise = { context: { ...ROOT_DISPATCH_CONTEXT, origin: { plugin: 'idle', tier: 'user' as const } } }
+    await engine.modConversation.compact({}, raise)
+
+    expect(summarized).toHaveLength(1)
+    const results = summarized[0]!.flatMap(row => {
+      const content = (row as { message?: { content?: unknown } }).message?.content
+      return Array.isArray(content) ? content.filter(part => (part as { type?: string }).type === 'tool-result') : []
+    }) as Array<{ toolCallId: string; result?: unknown }>
+    expect(results.map(part => part.toolCallId)).toEqual(['t0', 'b1'])
+    for (const part of results) expect(part).toHaveProperty('result')
+    expect(JSON.stringify(results)).toContain(PAYLOAD(0))
   })
 })

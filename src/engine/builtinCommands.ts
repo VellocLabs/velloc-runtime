@@ -16,7 +16,7 @@ import {
   createPostCompactReadRestoreMessage,
 } from '../messages/contextAttachments'
 import { key } from '../input/systemMessageParts'
-import { storeUserTitle } from '../sessions/sessionStore'
+import { hydrateMessagesForModel, storeUserTitle } from '../sessions/sessionStore'
 import { runSessionEndHooks, runSessionStartHooks } from '../lifecycleHooks/sessionLifecycleHooks'
 import { runCompactionDoneHooks, runCompactionStartHooks } from '../lifecycleHooks/compactionHooks'
 import { assembleTurnDependencies } from './turn/turnDependencies'
@@ -73,6 +73,16 @@ async function rowsAfterSummary(ledger: SessionLedger, context: ToolCallContext,
   return rows
 }
 
+/** The ledger's rows with their tool payloads in place: between turns the
+ *  rows hold only stubs of them, and the store has the whole rows. A row the
+ *  store does not have is kept as it is. */
+async function rowsWithToolPayloads(ledger: SessionLedger): Promise<Message[]> {
+  const hydrated = await hydrateMessagesForModel(ledger.config.conversationStore)
+  if (!hydrated || hydrated.length === 0) return ledger.rows
+  const whole = new Map(hydrated.map(row => [row.uuid, row]))
+  return ledger.rows.map(row => whole.get(row.uuid) ?? row)
+}
+
 /**
  * One compaction of the main conversation, for `/compact` and for an
  * extension's own call: for `/compact` the `PreCompact` hooks, then the
@@ -109,7 +119,7 @@ export async function compactTranscriptNow(ledger: SessionLedger, request: Compa
     })
   const input = {
     ...(request.instructions !== undefined ? { instructions: request.instructions } : {}),
-    messages: ledger.rows,
+    messages: await rowsWithToolPayloads(ledger),
   }
   const settled: SessionCompactSettlement | undefined = config.mods?.sessionCompact
     ? await config.mods.sessionCompact(
