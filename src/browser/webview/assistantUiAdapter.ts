@@ -1917,6 +1917,19 @@ export function combineThreadMessages(
       : liveMessages),
   )
 
+  const trailingCard = messages.at(-1)
+  if (
+    state.status === 'submitting' &&
+    trailingCard &&
+    (isBackgroundResultsThreadMessage(trailingCard) || isTeamMessageThreadMessage(trailingCard)) &&
+    state.liveEvents.slice(liveTurnStart).some(event =>
+      event.type === 'attachment' && event.uuid === trailingCard.id,
+    )
+  ) {
+    // A completed task does not settle the parent turn waiting on its next reply.
+    messages[messages.length - 1] = { ...trailingCard, status: { type: 'running' } }
+  }
+
   // Pending inject messages (and mid-turn landings whose attachment has not
   // streamed in yet) are pinned at the very bottom, below whatever the turn is
   // producing: they have not reached the model, so nothing above answers them.

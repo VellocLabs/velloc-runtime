@@ -15,6 +15,8 @@ import {
 } from '../components/assistant-ui/thread'
 import { PendingMessageProvider } from '../components/assistant-ui/next-message-strip'
 import { TooltipProvider } from '../components/ui/tooltip'
+import { convertBrowserRuntimeStateToThreadMessages } from '../browser/webview/assistantUiAdapter'
+import type { BrowserRuntimeClientState } from '../browser/webview/BrowserRuntimeClient'
 
 // The composer's labels go through i18n; echo the key.
 vi.mock('../browser/webview/i18n', () => ({
@@ -37,10 +39,14 @@ const MESSAGES: ThreadMessageLike[] = [
 function Harness({
   onCancel,
   pendingMessage = null,
+  messages = MESSAGES,
+  isRunning = true,
   children,
 }: {
   onCancel: () => void
   pendingMessage?: string | null
+  messages?: ThreadMessageLike[]
+  isRunning?: boolean
   /** Extra controls rendered inside the composer (the upstream-contract test
    *  mounts a bare `ComposerPrimitive.Cancel` here). */
   children?: ReactNode
@@ -49,9 +55,9 @@ function Harness({
   // (`resolveComposerActionVisibility`), and it is the state a send-then-Stop
   // lands in.
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
-    messages: MESSAGES,
+    messages,
     convertMessage: m => m,
-    isRunning: true,
+    isRunning,
     onNew: async () => {},
     onCancel: async () => {
       onCancel()
@@ -104,6 +110,48 @@ function composerValue(container: HTMLElement): string {
 }
 
 describe('composer Stop button', () => {
+  it('stays available across a mid-turn completion and the next response boundary', async () => {
+    const onCancel = vi.fn()
+    const state = {
+      status: 'submitting', snapshot: null, lastError: null,
+      transcriptMessages: [], liveEvents: [],
+      pendingPrompt: 'work', pendingPromptId: 'user-1',
+    } as unknown as BrowserRuntimeClientState
+    const notice = { type: 'attachment', uuid: 'notice', attachment: {
+      type: 'queued_command', commandMode: 'task-notification',
+      prompt: '<task-notification>\n<task-id>b12345678</task-id>\n<task-type>local_bash</task-type>\n<status>completed</status>\n<summary>Finished</summary>\n</task-notification>',
+    } }
+    const events = [
+      { type: 'assistant', uuid: 'tool-a', message: { role: 'assistant', content: [
+        { type: 'tool-call', toolCallId: 'a', toolName: 'Bash', args: { command: 'pwd' } },
+      ] } },
+      notice,
+      { type: 'stream_request_start' },
+      { type: 'stream_event', event: { type: 'message_start', message: { usage: { input_tokens: 10 } } } },
+      { type: 'assistant', uuid: 'tool-b', message: { role: 'assistant', content: [
+        { type: 'tool-call', toolCallId: 'b', toolName: 'Bash', args: { command: 'pwd' } },
+      ] } },
+    ]
+    const element = () => createElement(Harness, {
+      onCancel, messages: convertBrowserRuntimeStateToThreadMessages(state),
+      isRunning: state.status === 'submitting',
+    })
+    const { container, rerender } = render(element())
+    for (const event of events) {
+      state.liveEvents = [...state.liveEvents, event as never]
+      rerender(element())
+      expect(container.querySelector('[data-testid="composer-cancel"]')).not.toBeNull()
+    }
+    state.status = 'ready'
+    state.liveEvents = []
+    state.transcriptMessages = [{ type: 'assistant', uuid: 'tool-b', message: {
+      role: 'assistant', content: [{ type: 'text', text: 'done' }],
+    } } as never]
+    state.pendingPrompt = null
+    rerender(element())
+    await waitFor(() => expect(container.querySelector('[data-testid="composer-cancel"]')).toBeNull())
+  })
+
   it('halts the turn without putting the sent message back in the composer', async () => {
     const onCancel = vi.fn()
     const { container } = render(createElement(Harness, { onCancel }))

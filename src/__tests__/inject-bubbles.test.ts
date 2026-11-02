@@ -174,7 +174,21 @@ describe('BrowserRuntimeClient — attachment refresh overlap', () => {
         expect(rendered.findIndex(row => row.id === 'notice')).toBeLessThan(rendered.findIndex(row => row.tools.includes('b')))
       }
       persisted(1)
-      for (const event of rows.slice(1, -1)) emit({ type: 'worker.stream', payload: { event: sanitizeSdkMessageForUi(event as never) } })
+      for (const event of rows.slice(1, 4)) emit({ type: 'worker.stream', payload: { event: sanitizeSdkMessageForUi(event as never) } })
+      const assertCardTail = () => {
+        const rendered = convertBrowserRuntimeStateToThreadMessages(client.getState())
+        expect(rendered.at(-1)?.id).toBe('notice')
+        expect(rendered.at(-1)?.status?.type).toBe('running')
+        expect(view().filter(row => row.id === 'notice')).toHaveLength(1)
+        expect(view().filter(row => row.tools.length).map(row => row.tools)).toEqual([['a']])
+        expect(convertBrowserRuntimeStateToThreadMessages({ ...client.getState(), status: 'ready' }).at(-1)?.status?.type).toBe('complete')
+      }
+      assertCardTail()
+      emit({ type: 'worker.stream', payload: { event: { type: 'stream_request_start' } } })
+      assertCardTail()
+      emit({ type: 'worker.stream', payload: { event: { type: 'stream_event', event: { type: 'message_start', message: { usage: { input_tokens: 10 } } } } } })
+      assertCardTail()
+      emit({ type: 'worker.stream', payload: { event: sanitizeSdkMessageForUi(rows[4] as never) } })
       assertView()
       expect(convertBrowserRuntimeStateToThreadMessages(client.getState()).at(-1)?.status?.type).toBe('running')
       const pendingToolRefresh = client.requestMessages()
