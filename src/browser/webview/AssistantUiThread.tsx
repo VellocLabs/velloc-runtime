@@ -8,10 +8,17 @@ import { useSessionModUi } from './mods/useSessionModUi'
 import { useSessionProposals } from './proposalsView'
 import { CodeReviewProvider } from '@/components/assistant-ui/code-review-card'
 import { useSessionChapters } from './chaptersView'
-import { chapterEntriesOf, chapterTargetFor, entryKeyOfRow, resolveChapterAnchor } from './chapterAnchors'
+import {
+  chapterEntriesOf,
+  chapterTargetFor,
+  entryKeyOfRow,
+  resolveChapterAnchor,
+  type ChapterAnchor,
+} from './chapterAnchors'
 import {
   ChapterMarksProvider,
   type ChapterMarksValue,
+  type ChapterPlace,
 } from '../../components/assistant-ui/chapter-marks'
 import { SessionProposalsContext } from '../../components/assistant-ui/session-proposals-context'
 import { useCan } from './useCan'
@@ -1234,12 +1241,13 @@ function InteractiveAssistantUiThread({
       chapterEntriesOf(transcriptMessagesRef.current, liveEventsRef.current)
     const rowOf = (rowId: string) =>
       runtimeMessagesRef.current.find(row => row.id === rowId)
-    const anchorOf: ChapterMarksValue['anchorOf'] = mark => {
-      const anchor = resolveChapterAnchor(runtimeMessagesRef.current, entries(), mark)
-      if (anchor.kind !== 'row') return { status: anchor.kind }
-      return anchor.ordinal === undefined
-        ? { status: 'ready', index: anchor.index }
-        : { status: 'ready', index: anchor.index, ordinal: anchor.ordinal }
+    const placeOf = (anchor: ChapterAnchor): ChapterPlace =>
+      anchor.kind !== 'row'
+        ? { status: anchor.kind }
+        : { status: 'ready', index: anchor.index, ...(anchor.ordinal === undefined ? {} : { ordinal: anchor.ordinal }) }
+    const anchorsOf: ChapterMarksValue['anchorsOf'] = marks => {
+      const loaded = entries()
+      return marks.map(mark => placeOf(resolveChapterAnchor(runtimeMessagesRef.current, loaded, mark)))
     }
     return {
       marks: sessionChapters.marks,
@@ -1247,12 +1255,11 @@ function InteractiveAssistantUiThread({
       unmark: sessionChapters.unmark,
       targetFor: (rowId, line) => chapterTargetFor(rowOf(rowId), line, entries()),
       entryKeyOf: rowId => entryKeyOfRow(rowOf(rowId), entries()),
-      statusOf: mark => anchorOf(mark).status,
-      anchorOf,
+      anchorsOf,
       reveal: async mark => {
         const root = threadRootRef.current
-        const place = anchorOf(mark)
-        if (!root || place.status !== 'ready') return false
+        const [place] = anchorsOf([mark])
+        if (!root || place?.status !== 'ready') return false
         return revealChapterRow(root, place.index, place.ordinal)
       },
       revealStart: async () => {

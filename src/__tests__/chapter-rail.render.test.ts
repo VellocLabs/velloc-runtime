@@ -7,7 +7,9 @@ import {
   ChapterMarkBadge,
   ChapterMarksProvider,
   ChapterRail,
+  focusCameFromKeyboard,
   type ChapterMarksValue,
+  type ChapterPlace,
   type ChapterStatus,
 } from '../components/assistant-ui/chapter-marks'
 import type { ChapterMark } from '../sessions/chapterMarks'
@@ -20,7 +22,10 @@ import type { ChapterMark } from '../sessions/chapterMarks'
  * why and only removes; keyboard use never deletes by accident.
  */
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 const marks: ChapterMark[] = [
   { id: 'c1', entryKey: 'u1', title: 'First question', createdAt: 1 },
@@ -53,19 +58,25 @@ function makeViewport(scrollTop = 0): HTMLDivElement {
   return el
 }
 
+/** A value whose marks resolve to `rowOf`, or to `status` when given (a non-ready status wins). */
+function anchorsFrom(status: Record<string, ChapterStatus> = {}): ChapterMarksValue['anchorsOf'] {
+  return list =>
+    list.map((mark): ChapterPlace => {
+      const s = status[mark.id]
+      if (s !== undefined && s !== 'ready') return { status: s }
+      const index = rowOf[mark.id]
+      return index === undefined ? { status: 'unavailable' } : { status: 'ready', index }
+    })
+}
+
 function valueWith(over: Partial<ChapterMarksValue> = {}): ChapterMarksValue {
-  const status: Record<string, ChapterStatus> = { c1: 'ready', c2: 'ready', c3: 'unavailable' }
   return {
     marks,
     mark: vi.fn(async () => {}),
     unmark: vi.fn(async () => {}),
     targetFor: () => null,
     entryKeyOf: rowId => (rowId === 'turn:u0:assistant' ? 'a1' : rowId),
-    statusOf: mark => status[mark.id] ?? 'loading',
-    anchorOf: mark => {
-      const index = rowOf[mark.id]
-      return index === undefined ? { status: 'unavailable' } : { status: 'ready', index }
-    },
+    anchorsOf: anchorsFrom(),
     reveal: vi.fn(async () => true),
     revealStart: vi.fn(async () => true),
     ...over,
@@ -168,6 +179,8 @@ describe('ChapterRail', () => {
   })
 
   it('after a mouse jump, the pointer leaving closes the list even though the entry has focus', async () => {
+    // happy-dom matches :focus-visible on every focus; a click in a browser does not.
+    vi.spyOn(focusCameFromKeyboard, 'test').mockReturnValue(false)
     mount()
     openRail()
     const entry = screen.getByTestId('chapter-jump-c2')
@@ -180,15 +193,33 @@ describe('ChapterRail', () => {
     expect(screen.queryByTestId('chapter-marks-list')).toBeNull()
   })
 
-  it('keyboard focus inside keeps the list open when the pointer leaves', () => {
+  it('focus tabbed in from outside keeps the list open when the pointer crosses and leaves', () => {
+    const keyboard = vi.spyOn(focusCameFromKeyboard, 'test').mockReturnValue(true)
+    mount()
+    const lines = screen.getByTestId('chapter-rail-lines')
+    lines.focus()
+    fireEvent.focus(lines)
+    fireEvent.mouseEnter(lines)
+    fireEvent.mouseLeave(lines, { relatedTarget: document.body })
+    expect(screen.getByTestId('chapter-marks-list'), 'no key was pressed inside the rail').toBeTruthy()
+    keyboard.mockRestore()
+  })
+
+  it('after a key inside, a later mouse visit still closes the list when the pointer leaves', () => {
+    const keyboard = vi.spyOn(focusCameFromKeyboard, 'test').mockReturnValue(true)
     mount()
     const lines = screen.getByTestId('chapter-rail-lines')
     lines.focus()
     fireEvent.focus(lines)
     fireEvent.keyDown(lines, { key: 'ArrowDown' })
-    expect(document.activeElement).toBe(screen.getByTestId('chapter-jump-start'))
+    keyboard.mockReturnValue(false)
+    const entry = screen.getByTestId('chapter-jump-c1')
+    fireEvent.pointerDown(entry)
+    entry.focus()
+    fireEvent.click(entry)
     fireEvent.mouseLeave(screen.getByTestId('chapter-marks-list'), { relatedTarget: document.body })
-    expect(screen.getByTestId('chapter-marks-list')).toBeTruthy()
+    expect(screen.queryByTestId('chapter-marks-list')).toBeNull()
+    keyboard.mockRestore()
   })
 
   it('Escape closes the list and returns focus to the lines without reopening it', () => {
@@ -220,8 +251,7 @@ describe('ChapterRail', () => {
     }
     const value = valueWith({
       marks: segMarks,
-      statusOf: () => 'ready',
-      anchorOf: mark => ({ status: 'ready', index: 3, ordinal: ordinals[mark.id]! }),
+      anchorsOf: list => list.map(mark => ({ status: 'ready', index: 3, ordinal: ordinals[mark.id]! })),
     })
     view = render(createElement(ChapterMarksProvider, { value }, rail()))
     const railEl = screen.getByTestId('chapter-rail')
@@ -251,12 +281,82 @@ describe('ChapterRail', () => {
     await waitFor(() => expect(railEl.getAttribute('data-active-chapter')).toBe('c1'))
   })
 
-  it('resolves no status while the list is closed', () => {
-    const statusOf = vi.fn((): ChapterStatus => 'ready')
-    mount({ statusOf })
-    expect(statusOf).not.toHaveBeenCalled()
-    openRail()
-    expect(statusOf).toHaveBeenCalled()
+  it('watches each mounted row for size, including rows mounted later, and drops removed ones', async () => {
+    const observed = new Set<Element>()
+    class FakeResizeObserver {
+      constructor(_cb: ResizeObserverCallback) {}
+      observe(el: Element) {
+        observed.add(el)
+      }
+      unobserve(el: Element) {
+        observed.delete(el)
+      }
+      disconnect() {
+        observed.clear()
+      }
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+    mount()
+    const rows = Array.from(viewport.querySelectorAll('[data-message-index]'))
+    expect(rows.every(row => observed.has(row)), 'every mounted row has a box to watch').toBe(true)
+    const later = document.createElement('div')
+    later.setAttribute('data-message-index', '10')
+    await act(async () => {
+      viewport.appendChild(later)
+    })
+    await act(async () => {})
+    expect(observed.has(later)).toBe(true)
+    await act(async () => {
+      rows[0]!.remove()
+    })
+    await act(async () => {})
+    expect(observed.has(rows[0]!)).toBe(false)
+    vi.unstubAllGlobals()
+  })
+
+  it('resolves every mark in one call per measurement', async () => {
+    const anchorsOf = vi.fn(anchorsFrom())
+    mount({ anchorsOf })
+    anchorsOf.mockClear()
+    viewport.scrollTop = 250
+    await act(async () => {
+      viewport.dispatchEvent(new Event('scroll'))
+    })
+    await nextFrame()
+    expect(anchorsOf).toHaveBeenCalledTimes(1)
+    expect(anchorsOf.mock.calls[0]![0]).toEqual(marks)
+  })
+
+  it('a segment line inside a collapsed card is measured at the card, not at the row top', async () => {
+    const segMarks: ChapterMark[] = [{ id: 's1', entryKey: 'a1', segmentKey: 'x1', title: 'Inside a card', createdAt: 1 }]
+    viewport = makeViewport(0)
+    const row = viewport.querySelector<HTMLElement>('[data-message-index="3"]')!
+    const card = document.createElement('div')
+    card.setAttribute('data-line-from', '20')
+    card.setAttribute('data-line-to', '30')
+    card.getBoundingClientRect = () => {
+      const top = 300 + 250 - viewport.scrollTop
+      return { top, bottom: top + 30, height: 30, left: 0, right: 600, width: 600, x: 0, y: top, toJSON() {} } as DOMRect
+    }
+    row.appendChild(card)
+    const value = valueWith({
+      marks: segMarks,
+      anchorsOf: list => list.map(() => ({ status: 'ready', index: 3, ordinal: 25 })),
+    })
+    view = render(createElement(ChapterMarksProvider, { value }, rail()))
+    const railEl = screen.getByTestId('chapter-rail')
+    viewport.scrollTop = 280
+    await act(async () => {
+      viewport.dispatchEvent(new Event('scroll'))
+    })
+    await nextFrame()
+    expect(railEl.getAttribute('data-active-chapter'), 'the row top has passed, the card has not').toBe('session-start')
+    viewport.scrollTop = 520
+    await act(async () => {
+      viewport.dispatchEvent(new Event('scroll'))
+    })
+    await nextFrame()
+    expect(railEl.getAttribute('data-active-chapter')).toBe('s1')
   })
 
   it('says so when a jump does not land', async () => {
@@ -280,7 +380,7 @@ describe('ChapterRail', () => {
 
   it('opens on focus; ArrowDown from the lines enters the list on an entry, never a remove button', () => {
     const status: Record<string, ChapterStatus> = { c1: 'loading', c2: 'ready', c3: 'unavailable' }
-    mount({ statusOf: mark => status[mark.id]! })
+    mount({ anchorsOf: anchorsFrom(status) })
     const lines = screen.getByTestId('chapter-rail-lines')
     lines.focus()
     fireEvent.focus(lines)
@@ -292,7 +392,7 @@ describe('ChapterRail', () => {
 
   it('without the session start, ArrowDown from the lines skips an entry that cannot be jumped to', () => {
     const status: Record<string, ChapterStatus> = { c1: 'loading', c2: 'ready', c3: 'unavailable' }
-    mount({ statusOf: mark => status[mark.id]! })
+    mount({ anchorsOf: anchorsFrom(status) })
     const lines = screen.getByTestId('chapter-rail-lines')
     lines.focus()
     fireEvent.focus(lines)

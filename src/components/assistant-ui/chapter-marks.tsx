@@ -15,6 +15,7 @@ import {
 } from "react";
 
 import type { ChapterTarget } from "@/browser/webview/chapterAnchors";
+import { containerClaiming } from "@/browser/webview/revealThreadMessage";
 import {
   CHAPTER_READ_LINE_PX,
   SESSION_START_ID,
@@ -46,9 +47,11 @@ export type ChapterMarksValue = {
   targetFor: (rowId: string, line: number | null) => ChapterTarget | null;
   /** The entry key marks name row `rowId` by; null for an unsaved row. */
   entryKeyOf: (rowId: string) => string | null;
-  statusOf: (mark: ChapterMark) => ChapterStatus;
-  /** Where the mark lands: its row index and, for a segment, its transcript line; else its status. */
-  anchorOf: (mark: ChapterMark) => ChapterPlace;
+  /**
+   * Where each mark lands, in the order given: its row index and, for a segment, its transcript line;
+   * else its status. Resolves all of them against one read of the loaded entries.
+   */
+  anchorsOf: (marks: readonly ChapterMark[]) => ChapterPlace[];
   /** Brings the mark into view; resolves true once it landed, false when it could not be reached. */
   reveal: (mark: ChapterMark) => Promise<boolean>;
   /** Brings the conversation's beginning into view; resolves true once it landed. */
@@ -100,10 +103,19 @@ function jumpButtons(list: HTMLElement | null): HTMLButtonElement[] {
   return Array.from(list?.querySelectorAll<HTMLButtonElement>("[data-chapter-jump]") ?? []);
 }
 
+/** The status of one mark. */
+export function chapterStatusOf(chapters: ChapterMarksValue, mark: ChapterMark): ChapterStatus {
+  return chapters.anchorsOf([mark])[0]?.status ?? "unavailable";
+}
+
+/** Whether focus on `el` was put there by the keyboard; the browser's own `:focus-visible` judgement. */
+export const focusCameFromKeyboard = { test: (el: Element): boolean => el.matches(":focus-visible") };
+
 /**
  * Where each rail entry starts in `viewport` now, and the first mounted row at the read line. A segment
- * mark is measured at its own line inside the row (`data-line-ordinal`), falling back to the row's top
- * while that line is not rendered.
+ * mark is measured at its own line inside the row (`data-line-ordinal`); while that line is not
+ * rendered, at the innermost container whose declared line range covers it (a collapsed card); else at
+ * the row's top.
  */
 function measure(viewport: HTMLElement, chapters: ChapterMarksValue): {
   places: RailPlace[];
@@ -114,16 +126,19 @@ function measure(viewport: HTMLElement, chapters: ChapterMarksValue): {
     const row = viewport.querySelector<HTMLElement>(`[data-message-index="${index}"]`);
     if (!row) return null;
     const line =
-      ordinal === undefined ? null : row.querySelector<HTMLElement>(`[data-line-ordinal="${ordinal}"]`);
+      ordinal === undefined
+        ? null
+        : (row.querySelector<HTMLElement>(`[data-line-ordinal="${ordinal}"]`) ?? containerClaiming(row, ordinal));
     return (line ?? row).getBoundingClientRect().top - viewTop;
   };
   const places: RailPlace[] = [{ id: SESSION_START_ID, index: -1, top: null }];
-  for (const mark of chapters.marks) {
-    const place = chapters.anchorOf(mark);
-    if (place.status === "ready") {
+  const anchors = chapters.anchorsOf(chapters.marks);
+  chapters.marks.forEach((mark, i) => {
+    const place = anchors[i];
+    if (place?.status === "ready") {
       places.push({ id: mark.id, index: place.index, top: topOf(place.index, place.ordinal) });
     }
-  }
+  });
   let firstRowAtReadLine: number | null = null;
   for (const row of Array.from(viewport.querySelectorAll<HTMLElement>("[data-message-index]"))) {
     if (row.getBoundingClientRect().bottom - viewTop > CHAPTER_READ_LINE_PX) {
@@ -135,9 +150,10 @@ function measure(viewport: HTMLElement, chapters: ChapterMarksValue): {
 }
 
 /**
- * The id of the chapter being read in `viewport`, kept current through scrolling, resizing (of the
- * viewport or its content, so rows mounting and cards opening count) and mark changes; one measurement
- * per frame. Null while there is no viewport or the thread is hidden.
+ * The id of the chapter being read in `viewport`, kept current through scrolling, resizing of the
+ * viewport or of any mounted row (a card opening, an image loading, rewrapping), rows mounting or
+ * unmounting, and mark changes; one measurement per frame. Null while there is no viewport or the
+ * thread is hidden.
  */
 function useActiveChapter(
   viewportRef: RefObject<HTMLElement | null>,
@@ -180,9 +196,29 @@ function useActiveChapter(
     viewport.addEventListener("scroll", schedule, { passive: true });
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     resize?.observe(viewport);
-    const content = viewport.firstElementChild;
-    if (content) resize?.observe(content);
-    const rows = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
+    // Rows have boxes; the list wrapping them is `display: contents` and reports no size.
+    const observed = new Set<Element>();
+    const observeRows = () => {
+      if (!resize) return;
+      for (const row of Array.from(viewport.querySelectorAll("[data-message-index]"))) {
+        if (observed.has(row)) continue;
+        observed.add(row);
+        resize.observe(row);
+      }
+      for (const row of Array.from(observed)) {
+        if (row.isConnected) continue;
+        observed.delete(row);
+        resize.unobserve(row);
+      }
+    };
+    observeRows();
+    const rows =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(() => {
+            observeRows();
+            schedule();
+          });
     rows?.observe(viewport, { childList: true, subtree: true });
     return () => {
       viewport.removeEventListener("scroll", schedule);
@@ -216,8 +252,6 @@ export const ChapterRail: FC<{
   const listBoxRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const suppressFocusOpen = useRef(false);
-  // Whether focus inside the rail came from the keyboard: a press inside clears it, a key sets it.
-  const keyboardFocus = useRef(false);
   const listId = useId();
   const hasMarks = (chapters?.marks.length ?? 0) > 0;
   const shown = !!chapters && hasMarks && isForeground;
@@ -242,7 +276,8 @@ export const ChapterRail: FC<{
   };
   const onPointerLeave = () => {
     const focused = railRef.current?.ownerDocument.activeElement ?? null;
-    const keyboardFocusInside = keyboardFocus.current && !!focused && !!railRef.current?.contains(focused);
+    const keyboardFocusInside =
+      !!focused && !!railRef.current?.contains(focused) && focusCameFromKeyboard.test(focused);
     if (!keyboardFocusInside) setOpen(false);
   };
   const leftFor = (other: { current: HTMLElement | null }) => (event: { relatedTarget: EventTarget | null }) => {
@@ -263,12 +298,6 @@ export const ChapterRail: FC<{
         if (!suppressFocusOpen.current) setOpen(true);
       }}
       onBlur={onBlur}
-      onPointerDownCapture={() => {
-        keyboardFocus.current = false;
-      }}
-      onKeyDownCapture={() => {
-        keyboardFocus.current = true;
-      }}
       onKeyDown={onKeyDown}
       className="pointer-events-none absolute top-5 bottom-8 left-1 z-20 flex w-6 flex-col items-start"
     >
@@ -321,8 +350,7 @@ const EMPTY_CHAPTERS: ChapterMarksValue = {
   marks: [],
   targetFor: () => null,
   entryKeyOf: () => null,
-  statusOf: () => "unavailable",
-  anchorOf: () => ({ status: "unavailable" }),
+  anchorsOf: (marks) => marks.map(() => ({ status: "unavailable" as const })),
   reveal: async () => false,
   revealStart: async () => false,
 };
@@ -352,7 +380,7 @@ const EntryBody: FC<{ current: boolean; title: string; note: string | null }> = 
   </>
 );
 
-/** The open list's body. Mounted only while the list is open, so a closed rail resolves no status. */
+/** The open list's body, mounted only while the list is open. */
 const ChapterList: FC<{
   chapters: ChapterMarksValue;
   active: string | null;
@@ -361,10 +389,11 @@ const ChapterList: FC<{
   const t = useT();
   const [failedId, setFailedId] = useState<string | null>(null);
   const { marks, unmark } = chapters;
+  const statuses = chapters.anchorsOf(marks).map((place) => place.status);
 
   const jump = async (mark: ChapterMark) => {
     setFailedId(null);
-    if (chapters.statusOf(mark) !== "ready") return;
+    if (chapterStatusOf(chapters, mark) !== "ready") return;
     if (!(await chapters.reveal(mark))) setFailedId(mark.id);
   };
   const jumpToStart = async () => {
@@ -419,8 +448,8 @@ const ChapterList: FC<{
           />
         </button>
       </li>
-      {marks.map((mark) => {
-        const status = chapters.statusOf(mark);
+      {marks.map((mark, i) => {
+        const status = statuses[i] ?? "unavailable";
         const title = mark.title ?? t("chapters.untitled");
         const current = active === mark.id;
         const note =
