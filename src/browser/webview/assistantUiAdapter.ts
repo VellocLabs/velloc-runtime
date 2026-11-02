@@ -1750,16 +1750,24 @@ export function combineThreadMessages(
   ]
   const missingRefs = collectSkillBodyRefs(combinedRows, calls)
   for (const id of persistedRefs.byToolCallId.keys()) missingRefs.byToolCallId.delete(id)
-  for (const id of collectToolResults(state.transcriptMessages, calls).keys()) liveResults.delete(id)
+  const persistedResults = collectToolResults(state.transcriptMessages, calls)
+  const pendingLiveCalls = new Set(
+    state.status === 'submitting'
+      ? [...collectToolCalls(state.liveEvents.slice(state.liveEventsTurnStart ?? 0)
+          .filter((event): event is Message => event.type === 'assistant')).keys()]
+          .filter(id => !persistedResults.has(id) && !liveResults.has(id))
+      : [],
+  )
+  for (const id of persistedResults.keys()) liveResults.delete(id)
   applySkillBodyRefs(liveResults, missingRefs)
   const updatedTools = new Map<string, ThreadPart>()
   for (const message of state.transcriptMessages) {
     if (message.type !== 'assistant') continue
     const content = (message as ModelReplyRow).message.content
     if (!Array.isArray(content)) continue
-    const matching = content.filter(block => block.type === 'tool-call' && typeof block.toolCallId === 'string' && liveResults.has(block.toolCallId))
+    const matching = content.filter(block => block.type === 'tool-call' && typeof block.toolCallId === 'string' && (liveResults.has(block.toolCallId) || pendingLiveCalls.has(block.toolCallId)))
     for (const part of contentToAssistantParts(matching, liveResults, calls, idCounter)) {
-      if (part.type === 'tool-call' && typeof part.toolCallId === 'string' && liveResults.has(part.toolCallId)) updatedTools.set(part.toolCallId, part)
+      if (part.type === 'tool-call' && typeof part.toolCallId === 'string' && (liveResults.has(part.toolCallId) || pendingLiveCalls.has(part.toolCallId))) updatedTools.set(part.toolCallId, part)
     }
   }
   const messages = transcript.messages.map(message => !Array.isArray(message.content) ? message : {
@@ -1878,6 +1886,18 @@ export function combineThreadMessages(
     persistedUuids,
     t,
   )
+  const trailingMessage = messages.at(-1)
+  if (
+    state.status === 'submitting' &&
+    liveMessages.length === 0 &&
+    trailingMessage?.role === 'assistant' &&
+    state.liveEvents.slice(liveTurnStart).some(event =>
+      event.type === 'assistant' && !!event.uuid && persistedUuids.has(event.uuid),
+    )
+  ) {
+    // Assistant-ui derives thread liveness from the trailing message's status.
+    messages[messages.length - 1] = { ...trailingMessage, status: { type: 'running' } }
+  }
   // The trailing message stays `running` until the transcript refetch (the composer must not
   // read idle), but its metadata says the turn is over so `MarkdownText` stops animating.
   const turnSettled = state.status !== 'submitting'
