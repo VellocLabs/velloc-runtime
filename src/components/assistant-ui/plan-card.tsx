@@ -115,6 +115,7 @@ export type PlanCardProps = {
   header: ReactNode;
   /** Right-aligned header adornment before the chevron (concurrent badge). */
   headerAdornment?: ReactNode;
+  headerDescription?: ReactNode;
   /** Green completion check shown outside the trigger when true. */
   showCompletionCheck?: boolean;
   /** Extra classes on the inner `Card` (e.g. the cancelled variant). */
@@ -138,6 +139,7 @@ const PlanCardImpl: FC<PlanCardProps> = ({
   leadingIcon,
   header,
   headerAdornment,
+  headerDescription,
   showCompletionCheck = false,
   cardClassName,
   beforeBody,
@@ -194,6 +196,7 @@ const PlanCardImpl: FC<PlanCardProps> = ({
             className={cn(
               `aui-${slotPrefix}-trigger group/trigger flex min-w-0 flex-1 gap-2`,
               "text-left text-body transition-colors",
+              headerDescription && "grid grid-cols-[auto_minmax(0,1fr)_auto_auto] gap-y-1",
               align === "start" ? "items-start" : "items-center",
             )}
           >
@@ -210,6 +213,11 @@ const PlanCardImpl: FC<PlanCardProps> = ({
                 align === "start" && "mt-1",
               )}
             />
+            {headerDescription && (
+              <span className="col-span-full min-w-0 text-right">
+                {headerDescription}
+              </span>
+            )}
           </CollapsibleTrigger>
           {showCompletionCheck && (
             <Check

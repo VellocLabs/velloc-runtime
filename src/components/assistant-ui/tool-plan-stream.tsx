@@ -591,24 +591,6 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
           </span>
         ) : null}
       </span>
-      {narration ? (
-        <span
-          data-slot="tool-plan-stream-current-update"
-          className={cn(
-            "aui-tool-plan-stream-current-update line-clamp-4 min-w-0 text-foreground leading-5",
-            "shimmer",
-          )}
-        >
-          {narrationIsReasoning ? (
-            <BrainIcon
-              data-slot="tool-plan-stream-reasoning-icon"
-              aria-hidden
-              className="mr-1.5 inline size-3.5 -translate-y-px align-middle text-muted-foreground"
-            />
-          ) : null}
-          {narration}
-        </span>
-      ) : null}
     </span>
   );
 
@@ -672,6 +654,24 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         <PlanStatusIcon status={discStatus} animated={isActive} />
       }
       header={header}
+      headerDescription={narration ? (
+        <span
+          data-slot="tool-plan-stream-current-update"
+          className={cn(
+            "aui-tool-plan-stream-current-update line-clamp-4 min-w-0 text-foreground leading-5",
+            "shimmer",
+          )}
+        >
+          {narrationIsReasoning ? (
+            <BrainIcon
+              data-slot="tool-plan-stream-reasoning-icon"
+              aria-hidden
+              className="mr-1.5 inline size-3.5 -translate-y-px align-middle text-muted-foreground"
+            />
+          ) : null}
+          {narration}
+        </span>
+      ) : undefined}
       headerAdornment={headerAdornment}
       showCompletionCheck={!isActive && !allCancelled && !hasError}
       cardClassName={cn(
