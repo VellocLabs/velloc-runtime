@@ -1739,7 +1739,19 @@ export function combineThreadMessages(
   )
   const calls = collectToolCalls(state.transcriptMessages)
   const liveResults = collectToolResults(liveRows, calls)
+  const persistedRefs = collectSkillBodyRefs(state.transcriptMessages, calls)
+  const combinedRows = [
+    ...state.transcriptMessages,
+    ...state.liveEvents.filter((event): event is Message =>
+      event !== null && typeof event === 'object' &&
+      ['assistant', 'user'].includes((event as { type: string }).type) &&
+      !(event.uuid && persistedUuids.has(event.uuid)),
+    ),
+  ]
+  const missingRefs = collectSkillBodyRefs(combinedRows, calls)
+  for (const id of persistedRefs.byToolCallId.keys()) missingRefs.byToolCallId.delete(id)
   for (const id of collectToolResults(state.transcriptMessages, calls).keys()) liveResults.delete(id)
+  applySkillBodyRefs(liveResults, missingRefs)
   const updatedTools = new Map<string, ThreadPart>()
   for (const message of state.transcriptMessages) {
     if (message.type !== 'assistant') continue

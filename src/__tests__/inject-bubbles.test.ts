@@ -20,6 +20,9 @@ import {
 import { createPassageDraftStore } from '../browser/webview/capturedPassages'
 import { sanitizeSdkMessageForUi, sanitizeMessageForUi } from '../utils/toolCallDetails'
 import type { Message } from '../runtime/RuntimeTypes'
+import type { ChromiumCommandMetadata } from '../runtime/CommandTypes'
+import { createSkillInvocationMessage } from '../skillLibrary/skillInvocationMessage'
+import { readSkillBodyRef } from '../browser/webview/assistantUiAdapterParts'
 
 /**
  * The page side of mid-turn input: a plain-Enter send while the agent runs
@@ -87,6 +90,55 @@ function lastSubmit(posted: AgentWorkerInboundMessage[]) {
   )
   return submits[submits.length - 1]!
 }
+
+describe('BrowserRuntimeClient — Skill reference refresh overlap', () => {
+  it.each([2, 3])('retains the live body reference when a busy refresh persists %s rows', async prefix => {
+    const { client, emit } = fakeWorker()
+    await client.start()
+    try {
+      const user = { type: 'user', uuid: 'skill-user', message: { role: 'user', content: 'use the skill' } }
+      const call = { type: 'assistant', uuid: 'skill-call', message: { role: 'assistant', content: [
+        { type: 'tool-call', toolCallId: 'skill-tool', toolName: 'Skill', args: { skill: 'writing-plans' } },
+      ] } }
+      const result = { type: 'user', uuid: 'skill-result', message: { role: 'user', content: [
+        { type: 'tool-result', toolCallId: 'skill-tool', result: 'Loaded skill' },
+      ] } }
+      const body = createSkillInvocationMessage({ name: 'writing-plans', description: 'Write plans', path: '/skills/writing-plans/SKILL.md', userCallable: true } as ChromiumCommandMetadata,
+        undefined, '# Write plans\n\nInspect the project first.')
+      body.sourceToolAssistantUUID = 'skill-call'
+      const rows = [user, call, result, body]
+      const persist = (count: number) => emit({ type: 'worker.messages', payload: {
+        messages: rows.slice(0, count).map(row => sanitizeMessageForUi(row as Message)),
+      } })
+      const skillParts = () => convertBrowserRuntimeStateToThreadMessages(client.getState())
+        .flatMap(row => Array.isArray(row.content) ? row.content : [])
+        .filter(part => part.type === 'tool-call' && part.toolName === 'Skill')
+      persist(1)
+      for (const event of rows.slice(1)) emit({ type: 'worker.stream', payload: { event: sanitizeSdkMessageForUi(event as never) } })
+      const expected = skillParts()
+      expect(expected).toHaveLength(1)
+      const reference = readSkillBodyRef(expected[0]!.result)
+      expect(reference?.detailId).toBe(`skill:${body.uuid}`)
+      expect(reference?.detailId !== null || reference?.inlineBody !== null).toBe(true)
+      const refresh = client.requestMessages()
+      await tick()
+      persist(prefix)
+      await refresh
+      expect(client.getState().status).toBe('submitting')
+      expect(skillParts()).toEqual(expected)
+      const fullRefresh = client.requestMessages()
+      await tick()
+      persist(rows.length)
+      await fullRefresh
+      expect(skillParts()).toEqual(expected)
+      emit({ type: 'worker.state', payload: snapshot({ isBusy: false }) })
+      persist(rows.length)
+      expect(skillParts()).toEqual(expected)
+    } finally {
+      await client.dispose()
+    }
+  })
+})
 
 describe('BrowserRuntimeClient — attachment refresh overlap', () => {
   it.each(['shell', 'team'] as const)('keeps one %s card and the unpersisted tool suffix across a busy refresh', async kind => {
