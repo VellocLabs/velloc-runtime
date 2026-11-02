@@ -42,6 +42,47 @@ describe('scope-bound bridge generations', () => {
     expect(transport.getPendingRequestIds()).toHaveLength(0)
   })
 
+  it('a host stream release still goes out after the scope is sealed', async () => {
+    const emitted: unknown[] = []
+    const transport = new AgentWorkerBridgeTransport(message => emitted.push(message))
+    const scoped = transport.bindGeneration(1)
+    transport.cancelGeneration(1)
+    const cancel = {
+      id: 'cancel-1',
+      route: { namespace: 'nexus', capability: 'model', action: 'rawStreamCancel' },
+      payload: { streamId: 'raw-abc12345' },
+    }
+    // Red-without: the cancel was refused like any other request, so a
+    // stream the deleted session left open held a host slot until restart.
+    await expect(scoped.request(cancel as never)).resolves.toMatchObject({ ok: true })
+    expect(emitted).toEqual([{ type: 'worker.bridgeRequest', payload: cancel }])
+    expect(transport.getPendingRequestIds()).toHaveLength(0)
+
+    // Anything else from the sealed scope is still refused and never sent.
+    await expect(
+      scoped.request({
+        id: 'open-1',
+        route: { namespace: 'nexus', capability: 'model', action: 'rawStreamOpen' },
+        payload: {},
+      } as never),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+    expect(emitted).toHaveLength(1)
+  })
+
+  it('a disposed transport still releases host streams', async () => {
+    const emitted: unknown[] = []
+    const transport = new AgentWorkerBridgeTransport(message => emitted.push(message))
+    transport.dispose()
+    await expect(
+      transport.request({
+        id: 'cancel-2',
+        route: { namespace: 'nexus', capability: 'network', action: 'streamCancel' },
+        payload: { streamId: 'stream-0001' },
+      } as never),
+    ).resolves.toMatchObject({ ok: true })
+    expect(emitted).toHaveLength(1)
+  })
+
   it('a disposed transport rejects new requests instead of parking them', async () => {
     const transport = new AgentWorkerBridgeTransport(() => {})
     transport.dispose()

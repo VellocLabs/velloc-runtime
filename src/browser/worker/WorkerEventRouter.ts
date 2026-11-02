@@ -9,7 +9,9 @@ import type {
   AgentWorkerOutboundMessage,
 } from './workerProtocol'
 import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
+import type { BrowserBridgeRequest } from '../bridge/browserBridgeProtocol'
 import type { SessionSummaryRepository } from './SessionSummaryRepository'
+import { isReleaseRequest } from './AgentWorkerBridgeTransport'
 
 /** The Manager-implemented branch bodies the router dispatches to. */
 export type WorkerEventRouterHost = {
@@ -73,7 +75,14 @@ export class WorkerEventRouter {
     message: AgentWorkerOutboundMessage,
   ): void {
     // Instance guard first — nothing below may see a stale instance's event.
-    if (!this.host.isCurrentInstance(sessionId, instanceId)) return
+    // A retired instance's host stream release still goes out: dropped, the
+    // host would hold the stream until the browser restarts.
+    if (!this.host.isCurrentInstance(sessionId, instanceId)) {
+      if (message.type === 'worker.bridgeRequest' && isReleaseRequest(message.payload as BrowserBridgeRequest)) {
+        this.host.routeBridgeRequest(sessionId, message.payload)
+      }
+      return
+    }
 
     // Globals capture on ready. Falls through to the normal routes
     // afterwards (the ready snapshot still reaches subscribers).

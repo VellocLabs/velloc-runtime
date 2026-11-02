@@ -21,6 +21,21 @@ function makeAbortError(message: string): Error {
   return new DOMException(message, 'AbortError')
 }
 
+/**
+ * Requests that only release a host resource the scope opened. They still go
+ * out after the scope is sealed: refused, the host would keep the stream (and
+ * its slot in a bounded table shared by every session) until the browser
+ * restarts. Sent fire-and-forget; the caller gets an immediate success.
+ */
+const RELEASE_ROUTES: ReadonlySet<string> = new Set([
+  'model.rawStreamCancel',
+  'network.streamCancel',
+])
+
+export function isReleaseRequest(request: { route: { capability: string; action: string } }): boolean {
+  return RELEASE_ROUTES.has(`${request.route.capability}.${request.route.action}`)
+}
+
 export class AgentWorkerBridgeTransport {
   private readonly awaitingReplies = new Map<
     string,
@@ -83,6 +98,14 @@ export class AgentWorkerBridgeTransport {
     // sweep, which for a request issued from inside that scope's own
     // dispose callbacks never comes.
     if (this.disposed || this.cancelledGenerations.has(boundGeneration)) {
+      if (isReleaseRequest(request)) {
+        try {
+          this.emit({ type: 'worker.bridgeRequest', payload: request })
+        } catch {
+          // best-effort: the host also reclaims ended streams no one reads
+        }
+        return { id: request.id, route: request.route, ok: true, result: { ok: true } } as unknown as BrowserBridgeResponse<C, A>
+      }
       throw makeAbortError('Runtime scope was disposed.')
     }
     // A duplicate id must not silently orphan the first

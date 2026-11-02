@@ -769,4 +769,32 @@ describe('WorkerEventRouter → child reports', () => {
     router.handle('s1', 'stale', { type: 'worker.completed', payload: {} } as unknown as AgentWorkerOutboundMessage)
     expect(order).toEqual(['needsAnswer', 'observe:worker.completed'])
   })
+
+  it('routes only host stream releases from a retired instance', () => {
+    const routed: unknown[] = []
+    const router = new WorkerEventRouter(
+      { updateSessionMeta: () => {}, refreshFsSummary: async () => {}, applyMetadataUpdate: () => {} } as never,
+      {
+        isCurrentInstance: () => false,
+        captureRuntimeGlobalsOnReady: () => {},
+        trackNeedsAnswerFromSnapshot: () => {},
+        refreshSessionStatus: () => {},
+        interceptHeadlessEmit: () => false,
+        interceptSubAgentEmit: () => false,
+        routeBridgeRequest: (_s, payload) => routed.push(payload),
+        recordPersistedToolDetail: () => {},
+        broadcastToSessionPorts: () => {},
+      },
+    )
+    const request = (capability: string, action: string) => ({
+      type: 'worker.bridgeRequest',
+      payload: { id: action, route: { namespace: 'nexus', capability, action }, payload: {} },
+    }) as unknown as AgentWorkerOutboundMessage
+    router.handle('gone', 'stale', request('model', 'rawStreamCancel'))
+    router.handle('gone', 'stale', request('model', 'rawStreamOpen'))
+    router.handle('gone', 'stale', request('fs', 'cwd'))
+    // Red-without: a deleted session's cancel was dropped here, so the host
+    // kept the stream (and its slot) until the browser restarted.
+    expect(routed).toEqual([(request('model', 'rawStreamCancel') as { payload: unknown }).payload])
+  })
 })
