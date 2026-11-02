@@ -1515,8 +1515,8 @@ export class SharedWorkerSessionManager {
       recordChildReport: (parentSessionId, report) =>
         this.recordChildReport(parentSessionId, report),
       planModelFork: parentSessionId => this.planModelFork(parentSessionId),
-      forkForChild: (parentSessionId, cutUuid, patch, title) =>
-        this.forkForChild(parentSessionId, cutUuid, patch, title),
+      forkForChild: (parentSessionId, cutUuid, patch, title, resolvePermissionMode) =>
+        this.forkForChild(parentSessionId, cutUuid, patch, title, resolvePermissionMode),
       tracer: this.tracer,
     })
     setChildSessionSpawner((params: ChildSessionSpawnParams) =>
@@ -4299,6 +4299,7 @@ export class SharedWorkerSessionManager {
       retarget?: ForkRetarget
       sideChat?: { enabled: boolean; initialDraft?: string }
       metadataPatch?: Partial<BrowserSessionMetadata>
+      resolvePermissionMode?: () => SessionMode
       /** A person's own fork: it records the person as its origin (F-36). */
       personFork?: boolean
     },
@@ -4385,6 +4386,9 @@ export class SharedWorkerSessionManager {
       // The fork is written BEFORE the new session's worker.init runs, so it
       // is routed to the source's project dir (else the effective one for its
       // type/folder) up front — see `writeSessionBundle`.
+      if (opts.resolvePermissionMode) {
+        built.meta.metadata.permissionMode = opts.resolvePermissionMode()
+      }
       await this.writeSessionBundle({
         sessionId: newSessionId,
         entries: built.entries,
@@ -4417,11 +4421,13 @@ export class SharedWorkerSessionManager {
     cutUuid: string,
     patch: Partial<BrowserSessionMetadata>,
     title: string,
+    resolvePermissionMode: () => SessionMode,
   ): Promise<{ ok: true; sessionId: string } | { ok: false; reason: string }> {
     try {
       const forked = await this.forkSessionCore(parentSessionId, cutUuid, {
         title,
         metadataPatch: patch,
+        resolvePermissionMode,
       })
       return forked
         ? { ok: true, sessionId: forked.newSessionId }

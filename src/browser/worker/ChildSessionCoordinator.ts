@@ -96,6 +96,7 @@ export interface ChildSessionHost {
     cutUuid: string,
     patch: Partial<BrowserSessionMetadata>,
     title: string,
+    resolvePermissionMode: () => SessionMode,
   ): Promise<{ ok: true; sessionId: string } | { ok: false; reason: string }>
   tracer: SessionTracer
 }
@@ -127,13 +128,21 @@ export class ChildSessionCoordinator {
     if (!parent) {
       return { ok: false, reason: 'this session is not a live session the runtime can start a child from.' }
     }
-    const liveMode = this.host.getParentPermissionMode(parentSessionId)
-    if (!liveMode) {
-      return { ok: false, reason: 'this session has no resolved permission mode to start a child with.' }
+    const resolvePermissionMode = (): SessionMode => {
+      const liveMode = this.host.getParentPermissionMode(parentSessionId)
+      if (!liveMode) {
+        throw new Error('this session has no resolved permission mode to start a child with.')
+      }
+      const mode = request.permissionModeRequested === false ? liveMode : request.permissionMode
+      if (!permissionNotRaised(mode, liveMode)) {
+        throw new Error('the child permission mode is more permissive than the parent current mode; retry with the current permission ceiling.')
+      }
+      return mode
     }
-    const permissionMode = request.permissionModeRequested === false ? liveMode : request.permissionMode
-    if (!permissionNotRaised(permissionMode, liveMode)) {
-      return { ok: false, reason: 'the child permission mode is more permissive than the parent current mode; retry with the current permission ceiling.' }
+    try {
+      resolvePermissionMode()
+    } catch (error) {
+      return { ok: false, reason: messageOf(error) }
     }
     const liveSelection = this.host.getParentModelSelection(parentSessionId)
     if (!liveSelection?.providerId.trim() || !liveSelection.modelId.trim()) {
@@ -186,6 +195,18 @@ export class ChildSessionCoordinator {
       sharedCheckout,
       name,
     }
+    let cutUuid: string | undefined
+    if (request.from === 'fork') {
+      const plan = await this.host.planModelFork(parentSessionId)
+      if (!plan.ok) return { ok: false, reason: `the fork was refused: ${plan.reason}` }
+      cutUuid = plan.cutUuid
+    }
+    let permissionMode: SessionMode
+    try {
+      permissionMode = resolvePermissionMode()
+    } catch (error) {
+      return { ok: false, reason: messageOf(error) }
+    }
     const patch: Partial<BrowserSessionMetadata> = {
       spawnedFrom: origin,
       permissionMode,
@@ -193,10 +214,8 @@ export class ChildSessionCoordinator {
     }
 
     let sessionId: string
-    if (request.from === 'fork') {
-      const plan = await this.host.planModelFork(parentSessionId)
-      if (!plan.ok) return { ok: false, reason: `the fork was refused: ${plan.reason}` }
-      const forked = await this.host.forkForChild(parentSessionId, plan.cutUuid, patch, request.title)
+    if (cutUuid !== undefined) {
+      const forked = await this.host.forkForChild(parentSessionId, cutUuid, patch, request.title, resolvePermissionMode)
       if (!forked.ok) return { ok: false, reason: `the fork failed: ${forked.reason}` }
       sessionId = forked.sessionId
     } else {

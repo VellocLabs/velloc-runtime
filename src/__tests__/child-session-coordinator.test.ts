@@ -316,6 +316,61 @@ describe('ChildSessionCoordinator — launch permission ceiling', () => {
     expect(worktree).not.toHaveBeenCalled()
   })
 
+  it.each((['trust', 'fork-plan', 'fork-copy'] as const).flatMap(boundary =>
+    [false, true].map(permissionModeRequested => ({ boundary, permissionModeRequested })),
+  ))(
+    'rechecks permissions after awaited $boundary validation, explicit $permissionModeRequested', async ({ boundary, permissionModeRequested }) => {
+      const fake = fakeHost()
+      let mode: SessionMode = 'bypassPermissions'
+      fake.host.getParentPermissionMode = () => mode
+      let release!: () => void
+      const paused = new Promise<void>(resolve => { release = resolve })
+      let entered!: () => void
+      const waiting = new Promise<void>(resolve => { entered = resolve })
+      const pause = async () => { entered(); await paused }
+      if (boundary === 'trust') {
+        fake.host.isTrustedProjectFolder = async () => { await pause(); return true }
+      } else if (boundary === 'fork-plan') {
+        fake.host.planModelFork = async () => { await pause(); return { ok: true, cutUuid: 'u-9' } }
+      }
+      let copiedMode: SessionMode | undefined
+      fake.host.forkForChild = async (...args) => {
+        if (boundary === 'fork-copy') await pause()
+        try {
+          copiedMode = args[4]?.() ?? args[2].permissionMode as SessionMode
+          return { ok: true, sessionId: 'forked-1' }
+        } catch (error) {
+          return { ok: false, reason: (error as Error).message }
+        }
+      }
+      const pending = new ChildSessionCoordinator(fake.host).spawn({
+        parentSessionId: 'p',
+        request: request({
+          from: boundary === 'trust' ? 'fresh' : 'fork',
+          ...(boundary === 'trust' ? { cwd: '/other' } : {}),
+          permissionMode: mode,
+          permissionModeRequested,
+        }),
+      })
+      await waiting
+      mode = 'plan'
+      release()
+      const result = await pending
+      await settled()
+      if (permissionModeRequested) {
+        expect(result).toMatchObject({ ok: false, reason: expect.stringMatching(/more permissive/) })
+        expect(fake.written.size).toBe(0)
+        expect(fake.registered).toEqual([])
+        expect(fake.firstTurns).toEqual([])
+      } else {
+        expect(result?.ok).toBe(true)
+        if (!result?.ok) throw new Error('expected a child')
+        expect(boundary === 'trust' ? fake.written.get(result.sessionId)?.metadata.permissionMode : copiedMode).toBe('plan')
+        expect(fake.firstTurns).toHaveLength(1)
+      }
+    },
+  )
+
   it('accepts an explicitly lowered mode within the current ceiling', async () => {
     const fake = fakeHost()
     const result = await new ChildSessionCoordinator(fake.host).spawn({
@@ -641,6 +696,7 @@ describe('ChildSessionCoordinator — a fork', () => {
         llmSelection: PARENT_SELECTION,
       },
       'Fix the login redirect',
+      expect.any(Function),
     )
     // No fresh record: the fork wrote its own.
     expect(fake.written.size).toBe(0)

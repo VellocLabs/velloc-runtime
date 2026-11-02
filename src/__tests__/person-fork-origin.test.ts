@@ -10,6 +10,7 @@ import type {
 } from '../sessions/sessionStore'
 import { setTemplateChannelForTest } from '../prompting/templateCatalog'
 import { resolveLineage } from '../sessions/sessionLineage'
+import type { SessionMode } from '../permissions/sessionModes'
 
 // A fork a person makes of a child-capable session records where it came
 // from as the person's (F-36, R04): its turn ends report to the source, and
@@ -46,7 +47,11 @@ function mockPort() {
   }
 }
 
-async function forkOf(templateType: string, message: Record<string, unknown> = {}): Promise<BrowserSessionMetadata> {
+async function forkOf(
+  templateType: string,
+  message: Record<string, unknown> = {},
+  child?: { validate: () => Promise<void>; resolvePermissionMode: () => SessionMode },
+): Promise<BrowserSessionMetadata> {
   const manager = new SharedWorkerSessionManager({ createWorker: makeWorker })
   const metaWrites: SessionMetaFile[] = []
   const storage = {
@@ -66,7 +71,10 @@ async function forkOf(templateType: string, message: Record<string, unknown> = {
       } as unknown as BrowserTranscriptEntry,
     ]),
     flush: vi.fn(async () => {}),
-    loadSessionMetadata: vi.fn(async (): Promise<BrowserSessionMetadata> => ({ templateType })),
+    loadSessionMetadata: vi.fn(async (): Promise<BrowserSessionMetadata> => {
+      await child?.validate()
+      return { templateType, permissionMode: 'bypassPermissions' }
+    }),
     loadSessionSummary: vi.fn(async (sessionId: string) => ({ sessionId, updatedAt: 1, messageCount: 1 })),
     projectRouteOf: vi.fn(() => undefined),
     setSessionProjectDir: vi.fn(),
@@ -81,6 +89,17 @@ async function forkOf(templateType: string, message: Record<string, unknown> = {
   coordinator.storage = storage as unknown as BrowserConversationStorageBackend
   coordinator.groupedStorage = storage
   coordinator.homeDir = '/home/me'
+  if (child) {
+    const forked = await (manager as unknown as {
+      forkForChild: (parent: string, cut: string, patch: Partial<BrowserSessionMetadata>, title: string, resolve: () => SessionMode) => Promise<{ ok: boolean; reason?: string }>
+    }).forkForChild('source-session', 'u1', { permissionMode: 'bypassPermissions' }, 'Child', child.resolvePermissionMode)
+    if (!forked.ok) {
+      expect(metaWrites).toEqual([])
+      throw new Error(forked.reason)
+    }
+    expect(metaWrites).toHaveLength(1)
+    return metaWrites[0]!.metadata
+  }
   const { port, simulate, posted } = mockPort()
   manager.handleConnect(port)
   simulate({ type: 'session.fork', fromSessionId: 'source-session', cutUuid: 'u1', requestId: 'f1', ...message })
@@ -91,6 +110,28 @@ async function forkOf(templateType: string, message: Record<string, unknown> = {
 
 afterEach(() => {
   setTemplateChannelForTest(null)
+})
+
+describe('child fork persistence permission ceiling', () => {
+  it.each([false, true])('resolves permissions after loading source metadata, explicit %s', async explicit => {
+    let mode: SessionMode = 'bypassPermissions'
+    let release!: () => void
+    const paused = new Promise<void>(resolve => { release = resolve })
+    let entered!: () => void
+    const waiting = new Promise<void>(resolve => { entered = resolve })
+    const pending = forkOf('code', {}, {
+      validate: async () => { entered(); await paused },
+      resolvePermissionMode: () => {
+        if (explicit && mode !== 'bypassPermissions') throw new Error('more permissive than parent')
+        return mode
+      },
+    })
+    await waiting
+    mode = 'plan'
+    release()
+    if (explicit) await expect(pending).rejects.toThrow('more permissive than parent')
+    else expect((await pending).permissionMode).toBe('plan')
+  })
 })
 
 describe('a person\'s fork and its origin', () => {
