@@ -21,26 +21,46 @@ export type ChildSessionIsolation = 'shared' | 'worktree'
 /** How the start was decided. Only a start the person asked for exists yet. */
 export type ChildSessionInitiation = 'asked'
 
-/** The raw tool arguments: every field a string, `""` for "none". */
+/** The raw tool arguments: omit unused fields, or pass `""`. */
 export type SpawnSessionInput = {
-  initiation: string
-  title: string
-  task: string
-  briefing: string
-  from: string
-  name: string
-  isolation: string
-  model: string
-  effort: string
-  permissionMode: string
-  cwd: string
-  baseBranch: string
-  branchName: string
-  /** A proposal to start as proposed; `""` for a direct start. */
-  proposalId: string
+  initiation?: string
+  title?: string
+  task?: string
+  briefing?: string
+  from?: string
+  name?: string
+  isolation?: string
+  model?: string
+  effort?: string
+  permissionMode?: string
+  cwd?: string
+  baseBranch?: string
+  branchName?: string
+  /** A proposal to start as proposed; omit for a direct start. */
+  proposalId?: string
 }
 
-/** A request the checks accepted. Absent fields were `""`. */
+export const CHILD_SESSION_INPUT_FIELDS: readonly (keyof SpawnSessionInput)[] = [
+  'initiation', 'title', 'task', 'briefing', 'from', 'name', 'isolation',
+  'model', 'effort', 'permissionMode', 'cwd', 'baseBranch', 'branchName', 'proposalId',
+]
+
+export function checkChildStringFields(
+  input: unknown,
+  fields: readonly string[],
+  required: readonly string[] = [],
+): string | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return 'the arguments are missing.'
+  const values = input as Record<string, unknown>
+  for (const field of fields) {
+    if ((field in values || required.includes(field)) && typeof values[field] !== 'string') {
+      return `${field} must be a string.`
+    }
+  }
+  return undefined
+}
+
+/** A request the checks accepted. Unused fields are absent. */
 export type ChildSessionRequest = {
   initiation: ChildSessionInitiation
   title: string
@@ -57,6 +77,7 @@ export type ChildSessionRequest = {
   effort?: string
   /** The child's mode: the request's, else the parent's. */
   permissionMode: SessionMode
+  permissionModeRequested?: boolean
   cwd?: string
   baseBranch?: string
   branchName?: string
@@ -70,6 +91,7 @@ export type ChildSessionCallerContext = {
   /** Whether the call comes from a loop under the session (a sub-agent or a
    *  teammate), which may not start sessions. */
   nested: boolean
+  routineOrigin?: boolean
   parentPermissionMode: string
   /** Whether the parent itself works in a git worktree of its project. */
   parentInWorktree: boolean
@@ -142,6 +164,9 @@ export function checkChildSessionRequest(
   if (caller.channel !== 'beta') {
     return { ok: false, reason: 'child sessions are not available on this release channel.' }
   }
+  if (caller.routineOrigin) {
+    return { ok: false, reason: 'a routine turn cannot start or propose child sessions; message an existing worker instead.' }
+  }
   if (caller.nested) {
     return { ok: false, reason: 'a sub-agent or teammate cannot start a session. Finish the task with your own tools.' }
   }
@@ -151,31 +176,30 @@ export function checkChildSessionRequest(
       reason: `child sessions can be started from a ${CHILD_SESSION_TEMPLATE_TYPES.join(' or ')} session only.`,
     }
   }
-  if (!input || typeof input !== 'object') {
-    return { ok: false, reason: 'the arguments are missing.' }
-  }
+  const typeError = checkChildStringFields(input, CHILD_SESSION_INPUT_FIELDS)
+  if (typeError) return { ok: false, reason: typeError }
 
-  const initiation = trimmed(input.initiation)
+  const initiation = trimmed(input?.initiation)
   if (initiation !== 'asked') {
     return { ok: false, reason: `initiation must be "asked" (got ${JSON.stringify(initiation)}); other initiations are not available yet.` }
   }
 
-  const from = trimmed(input.from)
+  const from = trimmed(input?.from) || 'fresh'
   if (from !== 'fresh' && from !== 'fork') {
     return { ok: false, reason: `from must be "fresh" or "fork" (got ${JSON.stringify(from)}).` }
   }
 
-  const title = trimmed(input.title)
+  const title = trimmed(input?.title)
   if (!title) return { ok: false, reason: 'title is required.' }
   if (title.length > 120) return { ok: false, reason: 'title must be at most 120 characters.' }
   if (hasControlCharacters(title)) return { ok: false, reason: 'title must not contain control characters.' }
 
   // An offer is checked before its brief exists: the task and briefing come
   // once the person accepts it, and are checked then.
-  const task = trimmed(input.task)
+  const task = trimmed(input?.task)
   if (!task && !options.briefLater) return { ok: false, reason: 'task is required: what the child session is to do.' }
 
-  const briefing = trimmed(input.briefing)
+  const briefing = trimmed(input?.briefing)
   if (from === 'fresh' && !options.briefLater && briefing.length < CHILD_BRIEFING_MIN_CHARS) {
     return {
       ok: false,
@@ -183,21 +207,21 @@ export function checkChildSessionRequest(
     }
   }
 
-  const name = trimmed(input.name)
+  const name = trimmed(input?.name)
   if (name && (hasControlCharacters(name) || name.length > 64)) {
     return { ok: false, reason: 'name must be at most 64 characters without control characters.' }
   }
 
-  const isolation = trimmed(input.isolation)
+  const isolation = trimmed(input?.isolation)
   if (isolation && isolation !== 'shared' && isolation !== 'worktree') {
     return { ok: false, reason: `isolation must be "shared", "worktree" or "" (got ${JSON.stringify(isolation)}).` }
   }
   if (from === 'fork' && isolation) {
-    return { ok: false, reason: 'a fork takes no isolation: it follows the parent\'s checkout. Leave isolation empty.' }
+    return { ok: false, reason: 'a fork takes no isolation override: it inherits the parent\'s shared/worktree arrangement. Leave isolation empty.' }
   }
 
-  const model = trimmed(input.model)
-  const effort = trimmed(input.effort)
+  const model = trimmed(input?.model)
+  const effort = trimmed(input?.effort)
   if (effort && !model) {
     return { ok: false, reason: 'effort needs a model to apply to; pass model alongside it or leave effort empty.' }
   }
@@ -206,7 +230,7 @@ export function checkChildSessionRequest(
   }
 
   const parentMode = coerceSessionMode(caller.parentPermissionMode)
-  const requestedMode = trimmed(input.permissionMode)
+  const requestedMode = trimmed(input?.permissionMode)
   let permissionMode: SessionMode = parentMode
   if (requestedMode) {
     if (coerceSessionMode(requestedMode) !== requestedMode) {
@@ -221,13 +245,13 @@ export function checkChildSessionRequest(
     }
   }
 
-  const cwd = trimmed(input.cwd)
+  const cwd = trimmed(input?.cwd)
   if (cwd && hasControlCharacters(cwd)) {
     return { ok: false, reason: 'cwd must not contain control characters.' }
   }
 
-  const baseBranch = trimmed(input.baseBranch)
-  const branchName = trimmed(input.branchName)
+  const baseBranch = trimmed(input?.baseBranch)
+  const branchName = trimmed(input?.branchName)
   for (const [field, value] of [['baseBranch', baseBranch], ['branchName', branchName]] as const) {
     if (value && !isGitBranchNameSafe(value)) {
       return { ok: false, reason: `${field} ${JSON.stringify(value)} is not a valid git branch name.` }
@@ -254,6 +278,7 @@ export function checkChildSessionRequest(
       ...(model ? { model } : {}),
       ...(effort ? { effort } : {}),
       permissionMode,
+      permissionModeRequested: requestedMode.length > 0,
       ...(cwd ? { cwd } : {}),
       ...(baseBranch ? { baseBranch } : {}),
       ...(branchName ? { branchName } : {}),

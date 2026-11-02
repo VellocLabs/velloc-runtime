@@ -226,12 +226,13 @@ describe('host message translation (ConvertBridgeMessages → TranslateBridgeMes
 })
 
 describe('buildHostCallOptions', () => {
-  it('carries tools (strict only when true), auto tool choice, max tokens and the extension', () => {
+  it('preserves explicit strict flags, auto tool choice, max tokens and the extension', () => {
     const request = buildHostRequest(
       payload({
         tools: [
           { type: 'function', name: 'A', description: '', parameters: { type: 'object' }, strict: false },
           { type: 'function', name: 'B', parameters: { type: 'object' }, strict: true },
+          { type: 'function', name: 'C', parameters: { type: 'object' } },
         ],
         maxOutputTokens: '25' as never,
         providerBodyExtension: { x: 1 },
@@ -242,8 +243,9 @@ describe('buildHostCallOptions', () => {
     expect(options.maxTokens).toBe(25)
     expect(options.tool_choice).toBe('auto')
     expect(options.tools).toEqual([
-      { type: 'function', name: 'A', parameters: { type: 'object' } },
+      { type: 'function', name: 'A', parameters: { type: 'object' }, strict: false },
       { type: 'function', name: 'B', parameters: { type: 'object' }, strict: true },
+      { type: 'function', name: 'C', parameters: { type: 'object' } },
     ])
     expect(options.providerBodyExtension).toEqual({ x: 1 })
   })

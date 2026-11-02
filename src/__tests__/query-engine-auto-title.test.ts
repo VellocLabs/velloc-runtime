@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ConversationEngineConfig } from '../engine/engineConfig'
+import * as sideTaskSink from '../backgroundTasks/sideTaskSink'
+
 import { ConversationEngine } from '../engine/conversationEngine'
-import type { TitleServices } from '../engine/autoTitle'
 import { assembleTurnDependencies } from '../engine/turn/turnDependencies'
 import type { WorkingState, Message } from '../runtime/RuntimeTypes'
 import {
@@ -21,13 +23,15 @@ import { MSG_TYPE_ASSISTANT, PART_TEXT, ROLE_ASSISTANT } from '../runtime/Vercel
  * attempt in flight, and whose transport the attempt uses.
  */
 
+afterEach(() => vi.restoreAllMocks())
+
 type ModelCall = (...args: unknown[]) => AsyncGenerator<Message, void, unknown>
 
 function makeEngine(
   runtimeConfig: DefaultRuntimeConfig,
   store: MemoryConversationStore,
   callModel: ModelCall,
-  extra: { titleServices?: Partial<TitleServices>; runtimeScopeSignal?: AbortSignal } = {},
+  extra: Partial<ConversationEngineConfig> = {},
 ) {
   let appState: WorkingState = createEmptyAppState()
   return new ConversationEngine({
@@ -103,6 +107,67 @@ describe('session title: which turns start an attempt', () => {
     await drain(engine, 'user-ok')
     await letBackgroundRun()
     expect(generateName).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('session title: subagent runs', () => {
+  it.each([false, true])('never schedules a title for a subagent with seeded history: %s', async seeded => {
+    const generateName = vi.fn(async () => null)
+    const engine = makeEngine(
+      new DefaultRuntimeConfig(),
+      new MemoryConversationStore('subagent-title'),
+      async function* () {
+        yield reply('agent-answer', 'Task complete.')
+      },
+      {
+        isSubAgent: true,
+        spawnerSessionId: 'parent-session',
+        ...(seeded ? { seedTranscript: [reply('parent-answer', 'Prior exchange.')] } : {}),
+        titleServices: { generateName },
+      },
+    )
+    await drain(engine, 'agent-first-turn')
+    await drain(engine, 'agent-resumed-turn')
+    await letBackgroundRun()
+    expect(generateName).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { kind: 'subagent', isSubAgent: true, expectedCalls: 0 },
+    { kind: 'regular session', isSubAgent: false, expectedCalls: 1 },
+    { kind: 'child session', isSubAgent: false, spawnerSessionId: 'parent-session', expectedCalls: 1 },
+  ])('$kind makes $expectedCalls title fast calls and task registrations', async ({ isSubAgent, spawnerSessionId, expectedCalls }) => {
+    const started = vi.spyOn(sideTaskSink, 'notifyFastCallStarted')
+    const finished = vi.spyOn(sideTaskSink, 'notifyFastCallFinished')
+    const titleCalls = vi.fn()
+    const saveTitle = vi.fn(async () => undefined)
+    const engine = makeEngine(
+      new DefaultRuntimeConfig(),
+      new MemoryConversationStore('title-fast-call'),
+      (async function* (params: { querySource: string }) {
+        if (params.querySource === 'rename_generate_name') {
+          titleCalls()
+          yield reply('generated-title', 'Complete Project Task')
+        } else {
+          yield reply('task-answer', 'Task complete.')
+        }
+      }) as never,
+      {
+        isSubAgent,
+        spawnerSessionId,
+        titleServices: { readMetadata: async () => ({}), saveTitle, refreshSidebar: async () => undefined },
+      },
+    )
+    await drain(engine, 'task-turn')
+    await letBackgroundRun()
+    expect(titleCalls).toHaveBeenCalledTimes(expectedCalls)
+    expect(started).toHaveBeenCalledTimes(expectedCalls)
+    expect(finished).toHaveBeenCalledTimes(expectedCalls)
+    expect(saveTitle).toHaveBeenCalledTimes(expectedCalls)
+    if (expectedCalls) {
+      expect(started).toHaveBeenCalledWith(expect.objectContaining({ querySource: 'rename_generate_name' }))
+      expect(saveTitle).toHaveBeenCalledWith('Complete Project Task', expect.anything())
+    }
   })
 })
 

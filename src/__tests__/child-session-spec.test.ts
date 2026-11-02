@@ -69,6 +69,7 @@ describe('checkChildSessionRequest — the gate', () => {
       isolation: 'shared',
       isolationRequested: false,
       permissionMode: 'acceptEdits',
+      permissionModeRequested: false,
     })
   })
 
@@ -80,6 +81,27 @@ describe('checkChildSessionRequest — the gate', () => {
     expect(refusal({}, { templateType: undefined })).toMatch(/code or agent session/)
     // The channel is checked first: a nested caller on stable hears about the channel.
     expect(refusal({}, { channel: 'stable', nested: true })).toMatch(/release channel/)
+  })
+
+  it('defaults omitted and empty from to fresh while retaining required task and briefing checks', () => {
+    const minimal = { initiation: 'asked', title: 'Fix login', task: 'Fix it.', briefing: BRIEF }
+    for (const request of [minimal, { ...minimal, from: '' }]) {
+      expect(checkChildSessionRequest(request, caller())).toMatchObject({ ok: true, request: { from: 'fresh', permissionMode: 'acceptEdits' } })
+    }
+    expect(checkChildSessionRequest({ initiation: 'asked', title: 'Fix login', from: 'fork', task: 'Fix it.' }, caller()).ok).toBe(true)
+    expect(checkChildSessionRequest({ initiation: 'asked', title: 'Fix login', briefing: BRIEF }, caller())).toMatchObject({ ok: false, reason: expect.stringMatching(/^task is required/) })
+    expect(checkChildSessionRequest({ initiation: 'asked', title: 'Fix login', task: 'Fix it.' }, caller())).toMatchObject({ ok: false, reason: expect.stringMatching(/^briefing must/) })
+    expect(checkChildSessionRequest({ initiation: 'asked', title: 'Offer' }, caller(), { briefLater: true }).ok).toBe(true)
+    expect(checkChildSessionRequest({ ...minimal, permissionMode: 'bypassPermissions' }, caller())).toMatchObject({ ok: false, reason: expect.stringMatching(/never raise/) })
+  })
+
+  it('rejects malformed supplied fields before applying defaults', () => {
+    for (const field of Object.keys(input())) {
+      for (const value of [null, 42, undefined]) {
+        const bad = { ...input(), [field]: value } as unknown as SpawnSessionInput
+        expect(checkChildSessionRequest(bad, caller())).toEqual({ ok: false, reason: `${field} must be a string.` })
+      }
+    }
   })
 
   it('accepts an agent session too', () => {

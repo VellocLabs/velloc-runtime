@@ -69,8 +69,7 @@ export const HandOffSessionTool: ToolContract<HandOffSessionInput, string> = dec
   name: HAND_OFF_SESSION_TOOL_NAME,
   discoveryHint: 'move the task in progress into a child session forked from this conversation',
   argsSchema: SCHEMA,
-  inputJSONSchemaStrict: SCHEMA,
-  strict: true,
+  strict: false,
   description: async () =>
     'Move the task you are in the middle of into a CHILD SESSION of its own: a fork of this ' +
     'conversation whose first message is remainingPlan. Use it when the user, partway through, ' +

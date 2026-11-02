@@ -47,6 +47,20 @@ function sse(event: string, data: unknown): string {
 }
 
 describe('openaiResponsesDriver.buildRequest', () => {
+  it('preserves explicit non-strict tools without changing unspecified tools', () => {
+    const schema = { type: 'object', properties: { model: { type: 'string' } }, required: [] }
+    const result = body({ messages: [], tools: [
+      { type: 'function', name: 'Optional', parameters: schema, strict: false },
+      { type: 'function', name: 'Strict', parameters: schema, strict: true },
+      { type: 'function', name: 'Unspecified', parameters: schema },
+    ] } as BridgeModelRequestPayload)
+    expect(result.tools).toEqual([
+      { type: 'function', name: 'Optional', parameters: schema, strict: false },
+      { type: 'function', name: 'Strict', parameters: schema, strict: true },
+      { type: 'function', name: 'Unspecified', parameters: schema },
+    ])
+  })
+
   it('targets {base}/responses with placeholder auth and exact compact sorted JSON', () => {
     const req = openaiResponsesDriver.buildRequest(
       { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi <b>' }] }] },
@@ -197,7 +211,7 @@ describe('openaiResponsesDriver.buildRequest', () => {
     })
     expect(b.tools).toEqual([
       { type: 'function', name: 'Bash', description: 'run', parameters: { type: 'object' }, strict: true },
-      { type: 'function', name: 'Read', parameters: { type: 'object' } },
+      { type: 'function', name: 'Read', parameters: { type: 'object' }, strict: false },
     ])
     expect(b.tool_choice).toBe('auto')
   })

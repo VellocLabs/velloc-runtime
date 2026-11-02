@@ -454,7 +454,7 @@ export async function serializeToolsForModel(
 
   return Promise.all(
     visibleTools.map(async tool => {
-      const useStrict = modelStrictEligible && !!tool.inputJSONSchemaStrict
+      const useStrict = tool.strict !== false && modelStrictEligible && !!tool.inputJSONSchemaStrict
       const parameters = cloneToolInputSchema(
         useStrict
           ? (tool.inputJSONSchemaStrict as ToolArgsJsonShape)
@@ -490,7 +490,9 @@ export async function serializeToolsForModel(
         description,
         parameters,
       }
-      if (useStrict) {
+      if (tool.strict === false) {
+        definition.strict = false
+      } else if (useStrict) {
         definition.strict = true
       }
       // Forward optional canonical example calls. Surfaced on the wire

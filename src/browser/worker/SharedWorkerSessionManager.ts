@@ -63,6 +63,8 @@ import { CHILD_SESSION_TEMPLATE_TYPES } from '../../sessions/childSessionSpec'
 import { sanitizeChildReportText } from '../../sessions/childReports'
 import {
   setChildSessionSpawner,
+  setParentSelectionGetter,
+  setParentPermissionModeGetter,
   type ChildSessionSpawnParams,
 } from '../../sessions/childSessionSpawner'
 import {
@@ -106,6 +108,7 @@ import type {
 import { hasTemplate } from '../../prompting/templateRegistry'
 import { cliOfTypeInAnyChannel, templateChannel } from '../../prompting/templateCatalog'
 import type { BrowserLlmSelection } from '../bridge/protocol/nexus_llm'
+import { coerceSessionMode, type SessionMode } from '../../permissions/sessionModes'
 import type {
   NexusCurrentSessionPhase,
   NexusTaskInfo,
@@ -1450,8 +1453,18 @@ export class SharedWorkerSessionManager {
     setTeammateSpawner((params: SpawnTeammateParams) =>
       this.spawnTeammateSession(params),
     )
+    const getParentModelSelection = (sessionId: string): BrowserLlmSelection | null =>
+      this.sessions.get(sessionId)?.worker.getSnapshot().currentSelection ?? null
+    const getParentPermissionMode = (sessionId: string): SessionMode | null => {
+      const mode = this.sessions.get(sessionId)?.worker.getSnapshot().currentPermissionMode
+      return mode ? coerceSessionMode(mode) : null
+    }
+    setParentSelectionGetter(getParentModelSelection)
+    setParentPermissionModeGetter(getParentPermissionMode)
     this.childSessions = new ChildSessionCoordinator({
       getInitTemplate: () => this.lastInitTemplate,
+      getParentModelSelection,
+      getParentPermissionMode,
       // A child is routed by its own project, never nested under its parent.
       prepareWorkerStorage: (sessionId, payload) =>
         this.storageCoordinator.prepareWorkerStorage(sessionId, payload),

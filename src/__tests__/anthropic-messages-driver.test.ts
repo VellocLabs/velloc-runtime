@@ -5,7 +5,7 @@
  * provider's schema-sanitizer and stop-reason unit tests are repeated below as
  * fixtures.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { BridgeModelRequestPayload } from '../browser/bridge/browserBridgeProtocol'
 import {
   anthropicMessagesDriver,
@@ -25,6 +25,12 @@ import type { DriverStreamEvent } from '../models/drivers/driverTypes'
 import { HOST_TOOL_DEFINITIONS } from '../toolkit/builtin/host'
 import { SpawnTeammateTool } from '../toolkit/builtin/spawnTeammate'
 import { ChecklistTool } from '../toolkit/builtin/todoWrite'
+import { SpawnSessionTool } from '../toolkit/builtin/spawnSession'
+import { ProposeSessionTool, WithdrawProposalTool } from '../toolkit/builtin/proposeSession'
+import { HandOffSessionTool } from '../toolkit/builtin/handOffSession'
+import { serializeToolsForModel } from '../engine/turn/bridgeSerialization'
+import * as strictTools from '../utils/strictTools'
+import { createNoopToolUseContext, NoopPlatformCapabilities, createEmptyAppState } from '../runtime/testing/noopAdapters'
 
 const context = { providerId: 'anthropic', baseUrl: 'https://api.anthropic.com', model: 'claude-x' }
 
@@ -65,6 +71,29 @@ function splitEvery(bytes: Uint8Array, step: number): Uint8Array[] {
 }
 
 describe('anthropic-messages buildRequest', () => {
+  it('sends session tools without strict compilation and preserves optional arguments', async () => {
+    const callContext = createNoopToolUseContext({
+      tools: [SpawnSessionTool, ProposeSessionTool, WithdrawProposalTool, HandOffSessionTool],
+      platformCapabilities: new NoopPlatformCapabilities(),
+      appState: createEmptyAppState(),
+      setAppState: () => {},
+    })
+    const eligible = vi.spyOn(strictTools, 'modelSupportsStrictTools').mockReturnValue(true)
+    const tools = await serializeToolsForModel({
+      callContext,
+      modelOverride: context.model,
+      providerId: context.providerId,
+    }).finally(() => eligible.mockRestore())
+    const wire = body({ tools }).tools
+    expect(wire).toHaveLength(4)
+    for (const tool of wire) expect(tool.strict).toBe(false)
+    const spawn = wire.find((tool: { name: string }) => tool.name === 'SpawnSession')
+    expect(spawn.input_schema.required).toEqual([])
+    expect(spawn.input_schema.properties).toHaveProperty('model')
+    const propose = wire.find((tool: { name: string }) => tool.name === 'ProposeSession')
+    expect(propose.input_schema.required).toEqual(['mode', 'title'])
+  })
+
   it('targets /v1/messages with the C++ headers and a placeholder key', () => {
     const req = build({ messages: [{ role: 'user', content: 'hi' }] })
     expect(req.url).toBe('https://api.anthropic.com/v1/messages')
@@ -274,9 +303,9 @@ describe('anthropic-messages buildRequest', () => {
         additionalProperties: false,
       },
     })
-    // strict:false never survives the host hop; non-strict schemas pass through.
     expect(b.tools[1]).toEqual({
       name: 'Loose',
+      strict: false,
       input_schema: { type: 'object', properties: { n: { type: ['string', 'null'] }, a: { type: 'string' } } },
       cache_control: { type: 'ephemeral' },
     })

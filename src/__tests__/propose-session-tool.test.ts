@@ -8,10 +8,11 @@ import {
   type ProposeSessionInput,
 } from '../toolkit/builtin/proposeSession'
 import { HandOffSessionTool, handOffChildSession } from '../toolkit/builtin/handOffSession'
-import { spawnChildSession } from '../toolkit/builtin/spawnSession'
+import { SpawnSessionTool, spawnChildSession } from '../toolkit/builtin/spawnSession'
 import type { SpawnSessionInput } from '../sessions/childSessionSpec'
 import {
   setChildSessionSpawner,
+  setParentSelectionGetter,
   type ChildSessionSpawnOutcome,
   type ChildSessionSpawnParams,
 } from '../sessions/childSessionSpawner'
@@ -121,6 +122,7 @@ function recordingSpawner(outcome: (params: ChildSessionSpawnParams) => ChildSes
 
 beforeEach(() => {
   setTemplateChannelForTest('beta')
+  setParentSelectionGetter(() => ({ providerId: PROVIDER, modelId: 'MiniMax-M3' }))
   installProcessFs({
     readFile: async (path: string) => {
       if (path === `${HOME}/.velloc/${NEXUS_SETTINGS_FILE_NAME}`) {
@@ -156,21 +158,37 @@ beforeEach(() => {
 afterEach(() => {
   setTemplateChannelForTest(null)
   setChildSessionSpawner(null)
+  setParentSelectionGetter(null)
   setProposalBoard(null)
   resetProcessFs()
   wipeSettingsMemos()
 })
 
 describe('ProposeSession — schema', () => {
-  it('is strict, every field required, and refuses a non-string field by name', async () => {
-    const schema = ProposeSessionTool.inputJSONSchemaStrict as unknown as { required: string[]; properties: Record<string, unknown>; additionalProperties: boolean }
-    expect(ProposeSessionTool.strict).toBe(true)
-    expect(schema.additionalProperties).toBe(false)
-    expect(schema.required.sort()).toEqual(Object.keys(schema.properties).sort())
-    const bad = { ...proposal(), cwd: undefined } as unknown as ProposeSessionInput
-    expect(await ProposeSessionTool.checkInput!(bad, ctx())).toMatchObject({ result: false, message: expect.stringMatching(/^cwd is required/) })
-    expect((WithdrawProposalTool.inputJSONSchemaStrict as unknown as { required: string[] }).required).toEqual(['taskId'])
-    expect((HandOffSessionTool.inputJSONSchemaStrict as unknown as { required: string[] }).required).toEqual(['title', 'remainingPlan'])
+  it('requires mode and title only and keeps all child tools non-strict', async () => {
+    const schema = ProposeSessionTool.argsSchema as unknown as { required: string[]; properties: Record<string, unknown>; additionalProperties: boolean }
+    expect(schema.required).toEqual(['mode', 'title'])
+    for (const tool of [ProposeSessionTool, WithdrawProposalTool, HandOffSessionTool]) {
+      expect(tool.strict).not.toBe(true)
+      expect(tool.inputJSONSchemaStrict).toBeUndefined()
+      expect(tool.argsSchema!.additionalProperties).toBe(false)
+    }
+    expect(WithdrawProposalTool.argsSchema!.required).toEqual(['taskId'])
+    expect(HandOffSessionTool.argsSchema!.required).toEqual(['title', 'remainingPlan'])
+    expect(await ProposeSessionTool.checkInput!({ mode: 'offer', title: 'Tidy' }, ctx())).toEqual({ result: true })
+    for (const field of Object.keys(schema.properties)) {
+      for (const value of [null, 42, undefined]) {
+        const bad = { ...proposal(), [field]: value } as unknown as ProposeSessionInput
+        expect(await ProposeSessionTool.checkInput!(bad, ctx())).toMatchObject({ result: false, message: `${field} must be a string.` })
+        expect((await proposeChildSession(bad, ctx())).data).toBe(`Refused: ${field} must be a string.`)
+      }
+    }
+    for (const field of ['mode', 'title']) {
+      const bad = { mode: 'offer', title: 'Tidy' } as Record<string, unknown>
+      delete bad[field]
+      expect(await ProposeSessionTool.checkInput!(bad as ProposeSessionInput, ctx())).toMatchObject({ result: false })
+    }
+    expect(await board.list('parent-1')).toEqual([])
   })
 
   it('finds its own call id on the invoking row: the only call, else the one with its mode and title', () => {
@@ -186,6 +204,16 @@ describe('ProposeSession — schema', () => {
 })
 
 describe('P01 — a suggestion is only a card with a task id', () => {
+  it('refuses proposals and handoffs from routine-origin turns', async () => {
+    const spawns = recordingSpawner()
+    const context = ctx()
+    Object.assign(context.options, { isHeadless: true, routineId: 'routine-1' })
+    expect((await proposeChildSession(proposal(), context)).data).toContain('routine turn cannot start or propose')
+    expect((await handOffChildSession({ title: 'Continue', remainingPlan: 'Finish the checks.' }, context)).data).toContain('routine turn cannot start or propose')
+    expect(await board.list('parent-1')).toEqual([])
+    expect(spawns).toEqual([])
+  })
+
   it('records a proposal, starts nothing, and answers its task id', async () => {
     const spawns = recordingSpawner()
     const { data } = await proposeChildSession(proposal(), ctx(), row([{ id: 'tc-7', name: 'ProposeSession', args: proposal() }]))
@@ -195,6 +223,11 @@ describe('P01 — a suggestion is only a card with a task id', () => {
     expect(data).toContain(`as task ${p!.taskId}`)
     expect(data).toContain('Nothing has started')
     expect(spawns).toEqual([])
+  })
+
+  it('accepts a minimal fork suggestion without a briefing', async () => {
+    expect((await proposeChildSession({ mode: 'suggest', title: 'Tidy', task: 'Tidy it.', from: 'fork' }, ctx())).data).toMatch(/^Proposed/)
+    expect((await board.list('parent-1'))[0]!.request).toMatchObject({ from: 'fork', briefing: '' })
   })
 
   it('is checked like a start: a short briefing, a raised mode or a nested caller is refused, recording nothing', async () => {
@@ -209,9 +242,12 @@ describe('P01 — a suggestion is only a card with a task id', () => {
 
   it('the model starts it on the person\'s word exactly as proposed, once, with the proposal as origin', async () => {
     const spawns = recordingSpawner()
-    await proposeChildSession(proposal(), ctx())
+    await proposeChildSession({ mode: 'suggest', title: 'Tidy the importer', task: 'Remove the dead branches in the importer.', briefing: BRIEF }, ctx())
     const [p] = await board.list('parent-1')
-    const { data } = await spawnChildSession(spawnInput({ proposalId: p!.taskId }), ctx())
+    expect(p!.request.from).toBe('fresh')
+    expect(Object.values(p!.request).every(value => typeof value === 'string')).toBe(true)
+    expect(await SpawnSessionTool.checkInput!({ proposalId: p!.taskId }, ctx())).toEqual({ result: true })
+    const { data } = await spawnChildSession({ proposalId: p!.taskId }, ctx())
     expect(data).toMatch(new RegExp(`^Started proposal ${p!.taskId}\\. Registered child session "tidy"`))
     expect(spawns).toHaveLength(1)
     expect(spawns[0]).toMatchObject({ taskId: p!.taskId, request: { title: 'Tidy the importer', task: 'Remove the dead branches in the importer.', briefing: BRIEF, from: 'fresh' } })
@@ -232,6 +268,17 @@ describe('P01 — a suggestion is only a card with a task id', () => {
     expect(spawns[0]!.taskId).toBe(p!.taskId)
   })
 
+  it('a delayed Start checks the live parent provider, not the proposing turn', async () => {
+    const spawns = recordingSpawner()
+    await proposeChildSession(proposal(), ctx())
+    const [p] = await board.list('parent-1')
+    setParentSelectionGetter(() => ({ providerId: 'other-provider', modelId: 'other-model', thinkingTier: 'high' }))
+    expect(await board.startByPerson('parent-1', p!.taskId)).toMatchObject({ ok: true })
+    expect(spawns).toHaveLength(1)
+    expect(spawns[0]!.providerId).toBe('other-provider')
+    expect(spawns[0]!.request.model).toBeUndefined()
+  })
+
   it('an expired card cannot be started, and a dismissed one is reported as dismissed', async () => {
     const spawns = recordingSpawner()
     await proposeChildSession(proposal(), ctx())
@@ -248,7 +295,7 @@ describe('P01 — a suggestion is only a card with a task id', () => {
 describe('P02 — an offer waits for "New session" or "Do it here"', () => {
   it('"Do it here" creates nothing and tells the model to carry on here', async () => {
     const spawns = recordingSpawner()
-    const pending = proposeChildSession(proposal({ mode: 'offer', task: '', briefing: '', from: '' }), ctx())
+    const pending = proposeChildSession({ mode: 'offer', title: 'Tidy the importer' }, ctx())
     await vi.waitFor(async () => expect(await board.list('parent-1')).toHaveLength(1))
     const [p] = await board.list('parent-1')
     expect(p).toMatchObject({ mode: 'offer', state: 'proposed', request: { from: 'fresh' } })
@@ -358,6 +405,12 @@ describe('P05 — a proposal starts exactly as proposed', () => {
     }
     expect((await spawnChildSession(spawnInput({ proposalId: 'task_notthere' }), ctx())).data).toMatch(/no proposal task_notthere/)
     expect((await spawnChildSession(spawnInput({ proposalId: 'not-an-id' }), ctx())).data).toMatch(/proposalId must be a task id/)
+    for (const field of ['task', 'briefing', 'from', 'model', 'permissionMode', 'cwd']) {
+      for (const value of [null, 42]) {
+        const bad = { proposalId: p!.taskId, [field]: value } as unknown as SpawnSessionInput
+        expect((await spawnChildSession(bad, ctx())).data).toBe(`Refused: ${field} must be a string.`)
+      }
+    }
     expect(spawns).toEqual([])
     expect(await board.get('parent-1', p!.taskId)).toMatchObject({ state: 'proposed' })
   })

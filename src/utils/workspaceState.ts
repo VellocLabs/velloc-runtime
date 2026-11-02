@@ -5,7 +5,7 @@
  * sanitises whatever shape comes in rather than rejecting it.
  */
 import type { AddedProject, RecentFolder, WorkspaceState } from '../browser/runtimeProtocol/workspace'
-import { basenameRuntimePath } from './runtimePaths'
+import { basenameRuntimePath, normalizeRuntimePath } from './runtimePaths'
 
 export type { AddedProject, RecentFolder, WorkspaceState }
 
@@ -24,12 +24,20 @@ export const EMPTY_WORKSPACE_STATE: WorkspaceState = Object.freeze({
 })
 
 /**
- * A project's identity: trimmed, no trailing separator. Case is preserved on
- * purpose (the on-disk project dir name is case-sensitive). A tree node's path
- * is keyed the same way, so a delete passed back from the tree always matches.
+ * Project identity keeps directory-name case, canonicalises Windows separators
+ * and drive-letter case, and retains filesystem roots. The tree and workspace
+ * transitions use the same identity for grouping and removal.
  */
 export function normalizeProjectPath(path: string): string {
-  return path.trim().replace(/[\\/]+$/, '')
+  const trimmed = path.trim()
+  if (/^[A-Za-z]:[\\/]/.test(trimmed)) {
+    const normalized = normalizeRuntimePath(trimmed)
+    return normalized[0]!.toUpperCase() + normalized.slice(1)
+  }
+  if (/^(?:\\\\|\/\/)[^\\/]+[\\/][^\\/]+/.test(trimmed)) {
+    return normalizeRuntimePath(trimmed.replace(/\//g, '\\'))
+  }
+  return trimmed.replace(/\/+$/, '') || (trimmed.startsWith('/') ? '/' : '')
 }
 
 type Dict = Record<string, unknown>

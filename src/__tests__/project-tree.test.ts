@@ -5,6 +5,7 @@ import {
   normalizeProjectPath,
 } from '../browser/webview/projectTree'
 import { getNexusWorkspaceDirForType } from '../utils/conversationStoragePaths'
+import { nestSessions } from '../browser/webview/sessionTree'
 
 type Session = {
   sessionId: string
@@ -98,6 +99,41 @@ describe('buildProjectTree', () => {
     )
     expect(tree).toHaveLength(1)
     expect(tree[0].sessions.map(s => s.sessionId)).toEqual(['a', 'b'])
+  })
+
+  it('keeps a child under its actual parent across Windows path spellings', () => {
+    const parent = session('creator', 10, 'D:\\project\\velloc')
+    const child = {
+      ...session('landing', 20, 'd:/project/velloc/'),
+      parentSessionId: parent.sessionId,
+      lineageKind: 'side_session' as const,
+    }
+    const projects = buildProjectTree([child, parent], ['D:/project/velloc'])
+    expect(projects).toHaveLength(1)
+    expect(projects[0].sessions).toEqual([child, parent])
+
+    const tree = nestSessions(projects[0].sessions)
+    expect(tree.roots).toEqual([parent])
+    expect(tree.childrenOf.get(parent.sessionId)).toEqual([child])
+    expect(tree.depthOf.get(child.sessionId)).toBe(1)
+    expect(tree.byId.get(child.sessionId)).toBe(child)
+    expect(child.parentSessionId).toBe('creator')
+    expect(tree.fallbackIds).toEqual([])
+  })
+
+  it('groups equivalent UNC paths without collapsing distinct POSIX case', () => {
+    const tree = buildProjectTree(
+      [
+        session('unc-parent', 30, '\\\\server\\share\\repo'),
+        session('unc-child', 20, '//server/share/repo/'),
+        session('upper', 10, '/Repo'),
+        session('lower', 5, '/repo'),
+      ],
+      [],
+    )
+    expect(tree).toHaveLength(3)
+    expect(tree[0].sessions.map(s => s.sessionId)).toEqual(['unc-parent', 'unc-child'])
+    expect(tree.slice(1).map(n => n.path)).toEqual(['/Repo', '/repo'])
   })
 
   it('excludes unbound sessions living in the shared sandbox', () => {

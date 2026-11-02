@@ -10,7 +10,7 @@ import type { ToolContract, InputCheck, ToolArgsJsonShape } from '../toolContrac
 import type { ToolCallContext } from '../toolCallContext'
 import type { Message } from '../../runtime/RuntimeTypes'
 import { declareTool } from '../toolContract'
-import { checkChildSessionRequest } from '../../sessions/childSessionSpec'
+import { checkChildSessionRequest, checkChildStringFields } from '../../sessions/childSessionSpec'
 import {
   PROPOSE_SESSION_TOOL_NAME,
   WITHDRAW_PROPOSAL_TOOL_NAME,
@@ -29,19 +29,20 @@ import { checkChildModelChoice, childCallerContext, proposalLauncherFor } from '
 
 export { PROPOSE_SESSION_TOOL_NAME, WITHDRAW_PROPOSAL_TOOL_NAME }
 
-export type ProposeSessionInput = ProposedRequest & { mode: string }
+export type ProposeSessionInput = Partial<ProposedRequest> & { mode: string; title: string }
 
 const PROPOSE_DESCRIPTION =
   'PROPOSE a child session instead of starting one: nothing runs until the user ' +
   'answers a card in this conversation. mode="suggest" is for work you noticed ' +
   'yourself that the user has not asked for: the card offers Start and Dismiss, ' +
   'it expires after 7 days, and the result is its task id; a full task and ' +
-  'briefing are required, as for SpawnSession. mode="offer" is for a task the ' +
+  'briefing are required for a fresh suggestion; a fork needs only its task. ' +
+  'mode="offer" is for a task the ' +
   'user just gave you that might run in its own session: the card asks "New ' +
-  'session" or "Do it here", and this call waits for the answer. Only title is ' +
+  'session" or "Do it here", and this call waits for the answer. Only mode and title are ' +
   'required for an offer; when the user picks a new session, call SpawnSession ' +
-  'with its proposalId, a task and a briefing. Every field is required; "" ' +
-  'means none.'
+  'with its proposalId, a task and a briefing. Omit unused fields; "" is also ' +
+  'accepted. from defaults to "fresh".'
 
 const PROPOSE_SCHEMA: ToolArgsJsonShape = {
   type: 'object',
@@ -56,68 +57,54 @@ const PROPOSE_SCHEMA: ToolArgsJsonShape = {
     },
     task: {
       type: 'string',
-      description: 'What the child would do and what done looks like. Required for "suggest"; "" allowed for "offer", whose task comes once the user accepts.',
+      description: 'What the child would do and what done looks like. Required for "suggest"; omit for "offer", whose task comes once the user accepts.',
     },
     briefing: {
       type: 'string',
-      description: 'Everything a reader who has not seen this conversation needs. Required for a fresh "suggest" (at least 80 characters); "" allowed for "offer".',
+      description: 'Everything a reader who has not seen this conversation needs. Required for a fresh "suggest" (at least 80 characters); omit for "offer".',
     },
     from: {
       type: 'string',
-      description: '"fresh" or "fork", as for SpawnSession; "" for an offer means "fresh". It cannot change when the proposal starts.',
+      description: '"fresh" or "fork", as for SpawnSession; omit for "fresh". It cannot change when the proposal starts.',
     },
     name: {
       type: 'string',
-      description: 'A short name for the child, as for SpawnSession; "" derives one from the title.',
+      description: 'A short name for the child, as for SpawnSession; omit to derive one from the title.',
     },
     isolation: {
       type: 'string',
-      description: '"shared", "worktree" or "" for the default, as for SpawnSession. Must be "" for from="fork".',
+      description: '"shared" or "worktree", as for SpawnSession; omit for the default. Omit for from="fork".',
     },
     model: {
       type: 'string',
-      description: 'A model enabled on this session\'s provider, or "" to inherit.',
+      description: 'A model enabled on this session\'s provider; omit to inherit.',
     },
     effort: {
       type: 'string',
-      description: 'An effort tier of that model, or "". Needs model.',
+      description: 'An effort tier of that model. Needs model. Omit to inherit the parent tier for the same model, or use the chosen model\'s default when changing models.',
     },
     permissionMode: {
       type: 'string',
-      description: 'This session\'s mode or a less permissive one, or "" to inherit.',
+      description: 'This session\'s mode or a less permissive one; omit to inherit.',
     },
     cwd: {
       type: 'string',
-      description: 'A project folder the user has opened, or "" for this session\'s.',
+      description: 'A project folder the user has opened; omit for this session\'s.',
     },
     baseBranch: {
       type: 'string',
-      description: 'For isolation "worktree": what the worktree is cut from, or "".',
+      description: 'For isolation "worktree": what the worktree is cut from; omit for the target folder\'s current HEAD.',
     },
     branchName: {
       type: 'string',
-      description: 'For isolation "worktree": a new branch name, or "".',
+      description: 'For isolation "worktree": a new branch name; omit to derive an unused one.',
     },
   },
-  required: [
-    'mode',
-    'title',
-    'task',
-    'briefing',
-    'from',
-    'name',
-    'isolation',
-    'model',
-    'effort',
-    'permissionMode',
-    'cwd',
-    'baseBranch',
-    'branchName',
-  ],
+  required: ['mode', 'title'],
   additionalProperties: false,
 }
 
-const PROPOSE_FIELDS = PROPOSE_SCHEMA.required as readonly (keyof ProposeSessionInput)[]
+const PROPOSE_FIELDS = Object.keys(PROPOSE_SCHEMA.properties!)
 
 function trimmed(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -156,11 +143,13 @@ export async function proposeChildSession(
   context: ToolCallContext,
   invokingRow?: Message,
 ): Promise<{ data: string }> {
+  const typeError = checkChildStringFields(input, PROPOSE_FIELDS, ['mode', 'title'])
+  if (typeError) return { data: `Refused: ${typeError}` }
   const mode = trimmed(input?.mode)
   if (mode !== 'suggest' && mode !== 'offer') {
     return { data: `Refused: mode must be "suggest" or "offer" (got ${JSON.stringify(mode)}).` }
   }
-  const from = trimmed(input.from) || (mode === 'offer' ? 'fresh' : '')
+  const from = trimmed(input.from) || 'fresh'
   const checked = checkChildSessionRequest(
     { ...input, from, initiation: 'asked', proposalId: '' },
     childCallerContext(context),
@@ -258,18 +247,13 @@ export const ProposeSessionTool: ToolContract<ProposeSessionInput, string> = dec
   name: PROPOSE_SESSION_TOOL_NAME,
   discoveryHint: 'propose a child session as a card the user starts, dismisses, or answers new session / do it here',
   argsSchema: PROPOSE_SCHEMA,
-  inputJSONSchemaStrict: PROPOSE_SCHEMA,
-  strict: true,
+  strict: false,
   description: async () => PROPOSE_DESCRIPTION,
   parallelSafe: () => false,
   readsOnly: () => false,
   async checkInput(input: ProposeSessionInput): Promise<InputCheck> {
-    for (const [index, field] of PROPOSE_FIELDS.entries()) {
-      if (typeof (input as Record<string, unknown>)[field] !== 'string') {
-        return { result: false, message: `${field} is required: a string, or "" for none.`, errorCode: index + 1 }
-      }
-    }
-    return { result: true }
+    const typeError = checkChildStringFields(input, PROPOSE_FIELDS, ['mode', 'title'])
+    return typeError ? { result: false, message: typeError, errorCode: 1 } : { result: true }
   },
   async call(input: ProposeSessionInput, context: ToolCallContext, _canUseTool, invokingRow) {
     return proposeChildSession(input, context, invokingRow)
@@ -317,8 +301,7 @@ export const WithdrawProposalTool: ToolContract<WithdrawProposalInput, string> =
   name: WITHDRAW_PROPOSAL_TOOL_NAME,
   discoveryHint: 'withdraw a child-session proposal that has not started',
   argsSchema: WITHDRAW_SCHEMA,
-  inputJSONSchemaStrict: WITHDRAW_SCHEMA,
-  strict: true,
+  strict: false,
   description: async () =>
     'Withdraw a proposal of yours (ProposeSession) that is still waiting: before you do that work here ' +
     'yourself, or when it no longer applies. One that is starting or has started cannot be withdrawn; the ' +

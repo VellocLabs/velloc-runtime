@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SpawnSessionTool, spawnChildSession } from '../toolkit/builtin/spawnSession'
+import { beginRoutineFireTurn, endRoutineFireTurn } from '../routines/routineTurnScope'
 import type { SpawnSessionInput } from '../sessions/childSessionSpec'
 import {
   setChildSessionSpawner,
+  setParentSelectionGetter,
   type ChildSessionSpawnOutcome,
   type ChildSessionSpawnParams,
 } from '../sessions/childSessionSpawner'
@@ -29,9 +31,6 @@ vi.mock('../engine/contextWindow', async importOriginal => {
       modelId === 'm-tiered' ? ['low', 'high'] : actual.getAvailableThinkingTiersForModel(modelId, providerId),
   }
 })
-
-// The `SpawnSession` tool (F-36): a strict all-required schema, the runtime
-// gate, and an acknowledgement that says registered, never delivered.
 
 const HOME = '/home/test'
 const BRIEF = 'Everything the child needs: the goal, the files, what was ruled out, and what done looks like.'
@@ -111,6 +110,7 @@ const TIERED_MODEL = 'm-tiered'
 
 beforeEach(() => {
   setTemplateChannelForTest('beta')
+  setParentSelectionGetter(() => ({ providerId: PROVIDER, modelId: 'MiniMax-M3' }))
   installSettings({
     activeProviderId: PROVIDER,
     configs: { [PROVIDER]: { apiKey: 'k', enabledModels: [MODEL, OTHER_MODEL, TIERED_MODEL] } },
@@ -120,6 +120,7 @@ beforeEach(() => {
 afterEach(() => {
   setTemplateChannelForTest(null)
   setChildSessionSpawner(null)
+  setParentSelectionGetter(null)
   resetProcessFs()
   wipeSettingsMemos()
 })
@@ -135,19 +136,24 @@ function fakeSpawner(outcome: ChildSessionSpawnOutcome | null) {
 }
 
 describe('SpawnSession — schema', () => {
-  it('is strict with every field required and nothing extra', () => {
-    const schema = SpawnSessionTool.inputJSONSchemaStrict as unknown as { required: string[]; properties: Record<string, unknown>; additionalProperties: boolean }
+  it('allows omitted fields without strict mode or extra properties', () => {
+    const schema = SpawnSessionTool.argsSchema as unknown as { required: string[]; additionalProperties: boolean }
     expect(SpawnSessionTool.name).toBe('SpawnSession')
-    expect(SpawnSessionTool.strict).toBe(true)
+    expect(SpawnSessionTool.strict).not.toBe(true)
+    expect(SpawnSessionTool.inputJSONSchemaStrict).toBeUndefined()
     expect(schema.additionalProperties).toBe(false)
-    expect(schema.required.sort()).toEqual(Object.keys(schema.properties).sort())
-    expect(schema.required).toHaveLength(14)
+    expect(schema.required).toEqual([])
   })
 
-  it('checkInput refuses a non-string field by name', async () => {
-    const bad = { ...input(), model: undefined } as unknown as SpawnSessionInput
-    const check = await SpawnSessionTool.checkInput!(bad, ctx())
-    expect(check).toMatchObject({ result: false, message: expect.stringMatching(/^model is required/) })
+  it('accepts proposalId alone and rejects every supplied non-string field', async () => {
+    expect(await SpawnSessionTool.checkInput!({ proposalId: 'task_abcd1234' }, ctx())).toEqual({ result: true })
+    for (const field of Object.keys(SpawnSessionTool.argsSchema!.properties!)) {
+      for (const value of [null, 42, undefined]) {
+        const bad = { proposalId: 'task_abcd1234', [field]: value } as unknown as SpawnSessionInput
+        expect(await SpawnSessionTool.checkInput!(bad, ctx())).toMatchObject({ result: false, message: `${field} must be a string.` })
+        expect((await spawnChildSession(bad, ctx())).data).toBe(`Refused: ${field} must be a string.`)
+      }
+    }
     expect(await SpawnSessionTool.checkInput!(input(), ctx())).toEqual({ result: true })
   })
 
@@ -164,6 +170,53 @@ describe('SpawnSession — schema', () => {
 })
 
 describe('SpawnSession — the gate', () => {
+  it('does not infer worktree isolation from Windows path separator differences', async () => {
+    const calls = fakeSpawner({ ok: true, sessionId: 'c', name: 'n', sharedCheckout: true })
+    await spawnChildSession(input(), ctx({ cwd: 'D:/repo', projectRoot: 'D:\\repo' }))
+    expect(calls[0]!.request.isolation).toBe('shared')
+    expect(calls[0]!.prepareWorktree).toBeUndefined()
+  })
+
+  it('uses the live parent provider rather than changed global or captured defaults', async () => {
+    installSettings({ activeProviderId: 'other-provider', configs: {
+      'other-provider': { enabledModels: ['other-model'] },
+      [PROVIDER]: { enabledModels: [MODEL] },
+    } })
+    const calls = fakeSpawner({ ok: true, sessionId: 'c', name: 'n', sharedCheckout: true })
+    await spawnChildSession(input({ model: MODEL }), ctx({ userSpecifiedProviderId: 'other-provider' }))
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.providerId).toBe(PROVIDER)
+  })
+
+  it('refuses an unavailable live parent instead of using a global default', async () => {
+    setParentSelectionGetter(() => null)
+    const calls = fakeSpawner({ ok: true, sessionId: 'c', name: 'n', sharedCheckout: true })
+    expect((await spawnChildSession(input(), ctx())).data).toContain('no live model selection')
+    expect(calls).toHaveLength(0)
+  })
+
+  it('refuses headless and inherited routine origins, including proposal-only starts', async () => {
+    const calls = fakeSpawner({ ok: true, sessionId: 'c', name: 'n', sharedCheckout: true })
+    for (const options of [{ isHeadless: true }, { routineOriginId: 'routine-1' }]) {
+      expect((await spawnChildSession(input(), ctx(options))).data).toContain('routine turn cannot start')
+      expect((await spawnChildSession({ proposalId: 'task_abcdefgh' }, ctx(options))).data).toContain('routine turn cannot start')
+    }
+    expect(calls).toHaveLength(0)
+  })
+
+  it('blocks a session-delivered tick but permits the next ordinary user turn', async () => {
+    const calls = fakeSpawner({ ok: true, sessionId: 'c', name: 'n', sharedCheckout: true })
+    beginRoutineFireTurn('parent-1', 'routine-1')
+    try {
+      expect((await spawnChildSession(input(), ctx())).data).toContain('routine turn cannot start')
+      expect(calls).toHaveLength(0)
+    } finally {
+      endRoutineFireTurn('parent-1')
+    }
+    await spawnChildSession(input(), ctx())
+    expect(calls).toHaveLength(1)
+  })
+
   it('refuses on the stable channel before anything else, and calls no spawner', async () => {
     setTemplateChannelForTest('stable')
     const calls = fakeSpawner({ ok: true, sessionId: 'c', name: 'n', sharedCheckout: true })
@@ -218,6 +271,18 @@ describe('SpawnSession — the gate', () => {
 })
 
 describe('SpawnSession — forwarding and acknowledgement', () => {
+  it('starts minimal fresh and fork requests without unused fields', async () => {
+    const calls = fakeSpawner({ ok: true, sessionId: 'c', name: 'n', sharedCheckout: true })
+    const fresh = { initiation: 'asked', title: 'Fix login', task: 'Fix it.', briefing: BRIEF }
+    const fork = { initiation: 'asked', title: 'Fix parser', task: 'Fix it.', from: 'fork' }
+    for (const request of [fresh, fork]) {
+      expect(await SpawnSessionTool.checkInput!(request, ctx())).toEqual({ result: true })
+      expect((await spawnChildSession(request, ctx())).data).toMatch(/^Registered child session/)
+    }
+    expect(calls.map(c => c.request.from)).toEqual(['fresh', 'fork'])
+    expect(calls[0]!.request.permissionMode).toBe('default')
+  })
+
   it('forwards the checked request, the provider and the pinned tier, and says registered, not delivered', async () => {
     const calls = fakeSpawner({ ok: true, sessionId: 'child-1', name: 'login-fix', sharedCheckout: true, cwd: '/repo' })
     const { data } = await spawnChildSession(input({ name: 'login-fix', model: TIERED_MODEL, effort: 'low' }), ctx())
@@ -488,6 +553,21 @@ describe('SpawnSession — the worktree carries the allocated family name', () =
     const add = commands.find(c => c.includes('worktree add'))
     expect(add).toBe(`git -C "/repo" worktree add -b 'session/api-docs' "/repo/.velloc/worktrees/api-docs" 'cafe0001'`)
     expect(data).toContain('own worktree at /repo/.velloc/worktrees/api-docs')
+  })
+
+  it('resolves the default base from the alternate target folder, not the parent', async () => {
+    installSettings({ activeProviderId: PROVIDER, configs: { [PROVIDER]: { apiKey: 'k' } } }, ['/other/.git'])
+    allocatingSpawner(['target'])
+    const commands: string[] = []
+    const context = gitCtx(async ({ args }) => {
+      const command = String(args.command ?? '')
+      commands.push(command)
+      if (command.includes('rev-parse HEAD')) return command.includes('"/other"') ? 'beef0002\n' : 'cafe0001\n'
+      return ''
+    })
+    await spawnChildSession(input({ isolation: 'worktree', cwd: '/other' }), context)
+    expect(commands.find(c => c.includes('worktree add'))).toBe(`git -C "/other" worktree add -b 'session/target' "/other/.velloc/worktrees/target" 'beef0002'`)
+    expect(commands.some(c => c.includes('"/repo"') && c.includes('rev-parse HEAD'))).toBe(false)
   })
 
   it('two unnamed worktree children get distinct branches and directories', async () => {

@@ -55,7 +55,7 @@ export type HostTool = {
   name: string
   description?: string
   inputSchema: HostDict
-  strict: boolean
+  strict?: boolean
   inputExamples?: HostList
 }
 
@@ -402,7 +402,7 @@ export function buildHostRequest(payload: BridgeModelRequestPayload): HostReques
         name,
         ...(description ? { description } : {}),
         inputSchema: findDict(def, 'parameters') ?? new Map([['type', 'object']]),
-        strict: findBool(def, 'strict') ?? false,
+        ...(findBool(def, 'strict') !== undefined ? { strict: findBool(def, 'strict') } : {}),
         ...(examples ? { inputExamples: examples } : {}),
       })
     }
@@ -679,7 +679,7 @@ export function translateBridgeTools(tools: HostTool[]): HostList {
     ])
     if (tool.description) out.set('description', tool.description)
     out.set('parameters', tool.inputSchema)
-    if (tool.strict) out.set('strict', true)
+    if (tool.strict !== undefined) out.set('strict', tool.strict)
     if (tool.inputExamples) out.set('inputExamples', tool.inputExamples)
     translated.push(out)
   }

@@ -269,8 +269,8 @@ async function* loop(turn: Turn, prompt: Prompt, promptParts: SystemPromptParts)
     while (true) {
       const next = await iterator.next()
       if (next.done) {
-        // A turn that never reached the model has nothing worth a title.
-        if (isSuccessfulTerminal(next.value)) titler.start(turn.callContext)
+        // Subagents keep their task descriptions rather than generating session titles.
+        if (!config.isSubAgent && isSuccessfulTerminal(next.value)) titler.start(turn.callContext)
         return next.value
       }
       if (isStoredRow(next.value)) {

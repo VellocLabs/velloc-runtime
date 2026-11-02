@@ -1,7 +1,7 @@
 /**
  * `SpawnSession`: start a child session from this one, fresh from a briefing or
- * as a fork of this transcript (F-36). Strict schema, every field required,
- * `""` for none. The checks run in the runtime and fail closed; the
+ * as a fork of this transcript (F-36). Unused fields may be omitted.
+ * The checks run in the runtime and fail closed; the
  * acknowledgement says the session is registered, never that the task was
  * delivered. With `proposalId` it starts a proposal exactly as proposed.
  */
@@ -13,6 +13,8 @@ import {
   CHILD_BRIEFING_MIN_CHARS,
   SPAWN_SESSION_TOOL_NAME,
   checkChildSessionRequest,
+  checkChildStringFields,
+  CHILD_SESSION_INPUT_FIELDS,
   childSessionNotStartedAckText,
   childSessionRegisteredText,
   type ChildSessionCallerContext,
@@ -21,6 +23,8 @@ import {
 } from '../../sessions/childSessionSpec'
 import {
   getChildSessionSpawner,
+  getParentSelection,
+  getParentPermissionMode,
   type ChildSessionSpawnOutcome,
   type ChildWorktreePrepare,
 } from '../../sessions/childSessionSpawner'
@@ -41,11 +45,12 @@ import {
   type SessionSpawnRewrite,
 } from '../../mods/sessionFamilyEvents'
 import { templateChannel } from '../../prompting/templateCatalog'
-import { enabledModelsFor, resolveChildProvider } from '../../team/sessionTrust'
+import { enabledModelsFor } from '../../team/sessionTrust'
 import { getAvailableThinkingTiersForModel } from '../../engine/contextWindow'
 import { routineOriginIdOf } from '../../routines/routineOrigin'
 import { fsForContext } from '../../utils/fs/runtimeFs'
 import { mainRepoRoot } from '../../utils/gitInfo'
+import { relativeRuntimePath } from '../../utils/runtimePaths'
 import {
   checkoutHead,
   childCheckoutDir,
@@ -69,9 +74,10 @@ const DESCRIPTION =
   'alone (it has not seen this conversation; the briefing must say everything, ' +
   `at least ${CHILD_BRIEFING_MIN_CHARS} characters); from="fork" copies this ` +
   'conversation up to the last answered message and then gives it the task. ' +
-  'With proposalId it starts a proposal of yours exactly as proposed: leave ' +
-  'every other field "" (an offer the user accepted takes its task and ' +
-  'briefing now). Every field is required; "" means none. The result says the ' +
+  'With proposalId it starts a proposal of yours exactly as proposed: pass ' +
+  'only proposalId (an offer the user accepted also needs its task and ' +
+  'briefing now). Omit unused fields; "" is also accepted. from defaults to ' +
+  '"fresh". The result says the ' +
   'session is registered, not that the task was delivered: end your turn, its ' +
   'report arrives as a later turn.'
 
@@ -80,81 +86,64 @@ const SCHEMA: ToolArgsJsonShape = {
   properties: {
     initiation: {
       type: 'string',
-      description: 'How this start was decided. "asked": the user asked in words for this work to run in its own session, or told you to start a proposal. No other value is accepted yet.',
+      description: 'Required for a direct start. "asked": the user asked in words for this work to run in its own session, or told you to start a proposal. No other value is accepted yet.',
     },
     title: {
       type: 'string',
-      description: 'The session\'s title as the user will see it in the list: under 60 characters, naming the task.',
+      description: 'Required for a direct start. The session\'s title as the user will see it in the list: under 60 characters, naming the task.',
     },
     task: {
       type: 'string',
-      description: 'What the child is to do, and what done looks like. It becomes the task section of the child\'s first message.',
+      description: 'Required for a direct start: what the child is to do, and what done looks like. It becomes the task section of the child\'s first message.',
     },
     briefing: {
       type: 'string',
-      description: `Everything the child needs to know that you know: the files and area, what was ruled out, the constraints. Required for from="fresh" (at least ${CHILD_BRIEFING_MIN_CHARS} characters); "" allowed for from="fork", whose copy of this conversation is its briefing.`,
+      description: `Everything the child needs to know that you know: the files and area, what was ruled out, the constraints. Required for a fresh start (at least ${CHILD_BRIEFING_MIN_CHARS} characters); omit for from="fork", whose copy of this conversation is its briefing.`,
     },
     from: {
       type: 'string',
-      description: '"fresh": a new session that knows only the briefing and task. "fork": a copy of this conversation up to the last answered message, then the task.',
+      description: '"fresh": a new session that knows only the briefing and task. "fork": a copy of this conversation up to the last answered message, then the task. Omit for "fresh".',
     },
     name: {
       type: 'string',
-      description: 'A short name the family uses to address it (letters, digits, hyphens, at most 24 characters); "" derives one from the title.',
+      description: 'A short name the family uses to address it (letters, digits, hyphens, at most 24 characters); omit to derive one from the title.',
     },
     isolation: {
       type: 'string',
-      description: '"shared": the child edits the same checkout as this session. "worktree": the runtime creates a git worktree for it. "" takes the default: shared when this session works in a plain checkout, worktree when it works in one. Must be "" for from="fork".',
+      description: '"shared": the child edits the same checkout as this session. "worktree": the runtime creates a git worktree for it. Omitting it takes the default: shared when this session works in a plain checkout, worktree when it works in one. Omit for from="fork".',
     },
     model: {
       type: 'string',
-      description: 'An exact model id enabled on this session\'s provider for the child to run on; "" inherits this session\'s model.',
+      description: 'An exact model id enabled on this session\'s provider for the child to run on; omit to inherit this session\'s model.',
     },
     effort: {
       type: 'string',
-      description: 'A reasoning-effort tier the model publishes; "" for its default. Needs model.',
+      description: 'A reasoning-effort tier the model publishes. Needs model. Omit to inherit the parent tier for the same model, or use the chosen model\'s default when changing models.',
     },
     permissionMode: {
       type: 'string',
-      description: 'The child\'s permission mode: this session\'s mode or a less permissive one (plan, default, acceptEdits, dontAsk, bypassPermissions); "" inherits. It can never be raised.',
+      description: 'The child\'s permission mode: this session\'s mode or a less permissive one (plan, default, acceptEdits, dontAsk, bypassPermissions); omit to inherit. It can never be raised.',
     },
     cwd: {
       type: 'string',
-      description: 'The project folder the child binds to; "" for this session\'s. Must be a folder the user has already opened in this app.',
+      description: 'The project folder the child binds to; omit for this session\'s. Must be a folder the user has already opened in this app.',
     },
     baseBranch: {
       type: 'string',
-      description: 'For isolation "worktree": the branch or commit the worktree is cut from; "" for this session\'s current HEAD.',
+      description: 'For isolation "worktree": the branch or commit the worktree is cut from; omit for the target folder\'s current HEAD.',
     },
     branchName: {
       type: 'string',
-      description: 'For isolation "worktree": the new branch\'s name, which must not exist yet; "" derives an unused one from the session name.',
+      description: 'For isolation "worktree": the new branch\'s name, which must not exist yet; omit to derive an unused one from the session name.',
     },
     proposalId: {
       type: 'string',
-      description: 'The task id of a proposal of yours (ProposeSession) to start, "task_" and eight letters or digits; "" for a direct start.',
+      description: 'The task id of a proposal of yours (ProposeSession) to start, "task_" and eight letters or digits; omit for a direct start.',
     },
   },
-  required: [
-    'initiation',
-    'title',
-    'task',
-    'briefing',
-    'from',
-    'name',
-    'isolation',
-    'model',
-    'effort',
-    'permissionMode',
-    'cwd',
-    'baseBranch',
-    'branchName',
-    'proposalId',
-  ],
+  required: [],
   additionalProperties: false,
 }
-
-const FIELDS = SCHEMA.required as readonly (keyof SpawnSessionInput)[]
 
 /** Whether the call comes from a loop under the session (a sub-agent or a
  *  teammate), which may not start sessions. */
@@ -173,7 +162,7 @@ function isNestedCaller(context: ToolCallContext): boolean {
  *  working directory is not its project root. */
 function callerInWorktree(context: ToolCallContext): boolean {
   const { cwd, projectRoot } = context.options
-  return typeof cwd === 'string' && typeof projectRoot === 'string' && cwd !== '' && cwd !== projectRoot
+  return typeof cwd === 'string' && typeof projectRoot === 'string' && cwd !== '' && relativeRuntimePath(projectRoot, cwd) !== '.'
 }
 
 /** What the request checks need to know about the calling turn. */
@@ -182,7 +171,8 @@ export function childCallerContext(context: ToolCallContext): ChildSessionCaller
     channel: templateChannel(),
     templateType: context.options.templateType,
     nested: isNestedCaller(context),
-    parentPermissionMode: context.readAppState().permissionRules.mode,
+    routineOrigin: routineOriginIdOf(context.options) !== undefined,
+    parentPermissionMode: getParentPermissionMode(context.options.sessionId ?? '') ?? context.readAppState().permissionRules.mode,
     parentInWorktree: callerInWorktree(context),
   }
 }
@@ -222,7 +212,7 @@ function worktreePreparer(
       const anchor = request.cwd ?? context.options.cwd
       return { ok: false, reason: `${anchor} is not inside a git repository, so no worktree can be made.` }
     }
-    const base = request.baseBranch ?? (await checkoutHead(context, context.options.cwd)) ?? 'HEAD'
+    const base = request.baseBranch ?? (await checkoutHead(context, request.cwd ?? context.options.cwd)) ?? 'HEAD'
     const taken = new Set(await takenCheckoutDirs(context, repoRoot))
     if (!request.branchName) {
       for (const branch of await localBranchesUnder(context, repoRoot, CHILD_BRANCH_PREFIX)) taken.add(branch)
@@ -257,13 +247,9 @@ export async function checkChildModelChoice(
   context: ToolCallContext,
 ): Promise<{ ok: true; providerId?: string } | { ok: false; reason: string }> {
   const homeDir = context.options.homeDir
-  const provider = await resolveChildProvider(
-    homeDir,
-    undefined,
-    context.options.userSpecifiedProviderId,
-    fsForContext(context),
-  )
-  const providerId = provider.providerId
+  const parent = getParentSelection(context.options.sessionId ?? '')
+  if (!parent) return { ok: false, reason: 'the parent session has no live model selection.' }
+  const providerId = parent.providerId
   if (request.model && homeDir && providerId) {
     const enabled = await enabledModelsFor(homeDir, providerId, fsForContext(context))
     if (enabled && enabled.length > 0 && !enabled.includes(request.model)) {
@@ -536,7 +522,12 @@ export async function spawnChildSession(
   input: SpawnSessionInput,
   context: ToolCallContext,
 ): Promise<{ data: string }> {
-  const proposalId = typeof input?.proposalId === 'string' ? input.proposalId.trim() : ''
+  const typeError = checkChildStringFields(input, CHILD_SESSION_INPUT_FIELDS)
+  if (typeError) return { data: `Refused: ${typeError}` }
+  if (routineOriginIdOf(context.options) !== undefined) {
+    return { data: 'Refused: a routine turn cannot start child sessions; message an existing worker instead.' }
+  }
+  const proposalId = input.proposalId?.trim() ?? ''
   if (proposalId) return { data: await startProposedChild(proposalId, input, context) }
   return { data: (await launchChildSession(input, context)).text }
 }
@@ -545,23 +536,13 @@ export const SpawnSessionTool: ToolContract<SpawnSessionInput, string> = declare
   name: SPAWN_SESSION_TOOL_NAME,
   discoveryHint: 'start a child session of its own under this one, fresh from a briefing or forked from this conversation',
   argsSchema: SCHEMA,
-  inputJSONSchemaStrict: SCHEMA,
-  strict: true,
+  strict: false,
   description: async () => DESCRIPTION,
   parallelSafe: () => false,
   readsOnly: () => false,
   async checkInput(input: SpawnSessionInput, _context: ToolCallContext): Promise<InputCheck> {
-    for (const [index, field] of FIELDS.entries()) {
-      const value = (input as Record<string, unknown>)[field]
-      if (typeof value !== 'string') {
-        return {
-          result: false,
-          message: `${field} is required: a string, or "" for none.`,
-          errorCode: index + 1,
-        }
-      }
-    }
-    return { result: true }
+    const typeError = checkChildStringFields(input, CHILD_SESSION_INPUT_FIELDS)
+    return typeError ? { result: false, message: typeError, errorCode: 1 } : { result: true }
   },
   async call(input: SpawnSessionInput, context: ToolCallContext) {
     return spawnChildSession(input, context)

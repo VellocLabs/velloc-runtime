@@ -44,7 +44,7 @@ export const PROPOSALS_PER_SESSION_MAX = 50
 /** The request fields a proposal fixes, as the model wrote them (`""` for
  *  none). The same fields `SpawnSession` takes, without `initiation` and
  *  `proposalId`. */
-export type ProposedRequest = Omit<SpawnSessionInput, 'initiation' | 'proposalId'>
+export type ProposedRequest = Required<Omit<SpawnSessionInput, 'initiation' | 'proposalId'>>
 
 export const PROPOSED_REQUEST_FIELDS: readonly (keyof ProposedRequest)[] = [
   'title',
@@ -308,7 +308,7 @@ export function trimProposals(list: readonly ChildProposal[]): ChildProposal[] {
 
 /**
  * Why a start of `proposal` with `input` is not "as proposed", or null. Every
- * request field must be `""` or equal the proposed value. The one exception is
+ * supplied request field must be empty or equal the proposed value. The one exception is
  * the brief of an accepted offer: its task and briefing come now.
  */
 export function proposalStartMismatch(
@@ -320,7 +320,7 @@ export function proposalStartMismatch(
     if (briefNow && BRIEF_FIELDS.includes(field)) continue
     const given = typeof input[field] === 'string' ? (input[field] as string).trim() : ''
     if (given && given !== proposal.request[field].trim()) {
-      return `${field} differs from what proposal ${proposal.taskId} proposed; a proposal starts exactly as proposed. Pass "" for ${field}, or propose a new one.`
+      return `${field} differs from what proposal ${proposal.taskId} proposed; a proposal starts exactly as proposed. Omit ${field}, or propose a new one.`
     }
   }
   return null
@@ -368,7 +368,7 @@ export function suggestionRecordedText(p: ChildProposal): string {
   return (
     `Proposed "${p.request.title}" as task ${p.taskId}. Nothing has started: the user sees a card ` +
     'to start or dismiss it, and it expires in 7 days. Do not describe it as running. If the user ' +
-    `tells you to start it, call SpawnSession with proposalId "${p.taskId}" and every other field "".`
+    `tells you to start it, call SpawnSession with proposalId "${p.taskId}" and no other fields.`
   )
 }
 
@@ -380,7 +380,7 @@ export function offerAcceptedText(p: ChildProposal): string {
   return (
     `The user chose a new session for "${p.request.title}" (task ${p.taskId}). Nothing has started yet: ` +
     `call SpawnSession now with proposalId "${p.taskId}", a task, and a briefing written for a reader who ` +
-    'has not seen this conversation; leave the other fields "" to keep what you proposed.'
+    'has not seen this conversation; omit the other fields to keep what you proposed.'
   )
 }
 

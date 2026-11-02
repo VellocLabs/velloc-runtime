@@ -8,6 +8,7 @@
  * - a fork whose cut ends in an unanswered tool call creates nothing
  * - the parent is told once when a child it started did not start
  */
+import type { BrowserLlmSelection } from '../bridge/protocol/nexus_llm'
 import type { AgentRuntimeWorkerHandle } from './AgentRuntimeWorkerHandle'
 import type { AgentRuntimeWorkerInitPayload } from './workerProtocol'
 import type { SessionWorkerInboundMessage } from './sharedWorkerProtocol'
@@ -27,6 +28,7 @@ import {
 import {
   buildChildFirstMessage,
   childNotStartedText,
+  permissionNotRaised,
 } from '../../sessions/childSessionSpec'
 import type {
   ChildSessionSpawnOutcome,
@@ -34,6 +36,8 @@ import type {
 } from '../../sessions/childSessionSpawner'
 import { deriveChildInitPayload, type ParentSessionBinding } from './childInitPayload'
 import type { installSessionTracer } from '../../utils/sessionTrace'
+import type { SessionMode } from '../../permissions/sessionModes'
+import { relativeRuntimePath } from '../../utils/runtimePaths'
 
 type SessionTracer = ReturnType<typeof installSessionTracer>
 
@@ -62,6 +66,9 @@ export interface ChildSessionHost {
   notifySessionUpserted(sessionId: string): void
   /** The parent's own binding: the seed for the child's project and type. */
   getParentSessionBinding(parentSessionId: string): ParentSessionBinding | null
+  /** The parent's current worker selection; null until resolved. */
+  getParentModelSelection(parentSessionId: string): BrowserLlmSelection | null
+  getParentPermissionMode(parentSessionId: string): SessionMode | null
   /** Every short name taken in the parent's family, archived members included. */
   familyNamesOf(parentSessionId: string): ReadonlySet<string>
   /** Whether `path` is a project folder this runtime already trusts. */
@@ -120,11 +127,40 @@ export class ChildSessionCoordinator {
     if (!parent) {
       return { ok: false, reason: 'this session is not a live session the runtime can start a child from.' }
     }
+    const liveMode = this.host.getParentPermissionMode(parentSessionId)
+    if (!liveMode) {
+      return { ok: false, reason: 'this session has no resolved permission mode to start a child with.' }
+    }
+    const permissionMode = request.permissionModeRequested === false ? liveMode : request.permissionMode
+    if (!permissionNotRaised(permissionMode, liveMode)) {
+      return { ok: false, reason: 'the child permission mode is more permissive than the parent current mode; retry with the current permission ceiling.' }
+    }
+    const liveSelection = this.host.getParentModelSelection(parentSessionId)
+    if (!liveSelection?.providerId.trim() || !liveSelection.modelId.trim()) {
+      return { ok: false, reason: 'this session has no resolved model selection to start a child with.' }
+    }
+    const parentSelection = { ...liveSelection }
+    if (request.model && params.providerId && params.providerId !== parentSelection.providerId) {
+      return { ok: false, reason: 'the parent provider changed after the child model was checked; retry with the current provider.' }
+    }
+    const modelId = request.model ?? parentSelection.modelId
+    const selection: BrowserLlmSelection = {
+      providerId: parentSelection.providerId,
+      modelId,
+      thinkingTier: params.thinkingTier ?? request.effort ?? (
+        modelId === parentSelection.modelId ? parentSelection.thinkingTier : undefined
+      ),
+    }
     // Security: the child binds to a folder the runtime already trusts: its
     // parent's, or one the request names that the workspace or a session
     // already knows. A new path is never bound here.
     let projectRoot = parent.projectRoot
-    if (request.cwd) {
+    if (request.cwd && request.from === 'fork') {
+      const parentCwd = parent.cwd ?? parent.projectRoot
+      if (!parentCwd || relativeRuntimePath(parentCwd, request.cwd) !== '.') {
+        return { ok: false, reason: 'a fork must use its parent current checkout; use a fresh child for a different cwd.' }
+      }
+    } else if (request.cwd) {
       if (!(await this.host.isTrustedProjectFolder(request.cwd))) {
         return {
           ok: false,
@@ -152,7 +188,8 @@ export class ChildSessionCoordinator {
     }
     const patch: Partial<BrowserSessionMetadata> = {
       spawnedFrom: origin,
-      permissionMode: request.permissionMode,
+      permissionMode,
+      llmSelection: selection,
     }
 
     let sessionId: string
@@ -189,7 +226,9 @@ export class ChildSessionCoordinator {
 
     // The worktree: made now, after the record exists, so a failure is a
     // session that did not start, never one that quietly shares the tree.
-    let cwd = sharedCheckout ? (request.cwd ?? parent.cwd ?? projectRoot) : undefined
+    let cwd = sharedCheckout
+      ? (request.from === 'fork' ? parent.cwd ?? projectRoot : request.cwd ?? parent.cwd ?? projectRoot)
+      : undefined
     let worktreeRepoRoot: string | undefined
     if (params.prepareWorktree) {
       const made = await params.prepareWorktree(name)
@@ -208,12 +247,14 @@ export class ChildSessionCoordinator {
       // worktree-isolated sub-agent; only its working directory moves.
       projectRoot: worktreeRepoRoot ?? projectRoot,
       templateType: parent.templateType,
-      providerId: params.providerId,
-      model: request.model,
-      thinkingTier: params.thinkingTier,
       cwd,
       routineOriginId: params.routineOriginId,
     })
+    // Clear foreign template values, including an absent tier on a changed model.
+    payload.userSpecifiedProviderId = selection.providerId
+    payload.userSpecifiedModel = selection.modelId
+    payload.userSpecifiedThinkingTier = selection.thinkingTier
+    payload.modelFallbackSelection = parentSelection
     const prompt = buildChildFirstMessage({
       briefing: request.from === 'fresh' ? request.briefing : request.briefing ?? '',
       task: request.task,

@@ -30,10 +30,7 @@ export type ProjectNode<T extends ProjectTreeSession> = {
   isEmpty: boolean
 }
 
-/**
- * Normalise a project path as a grouping key: trailing separators removed. Case is preserved (the on-disk
- * dir name is case-sensitive).
- */
+/** Project grouping uses the same path identity as the workspace index. */
 export { normalizeProjectPath }
 
 /**
