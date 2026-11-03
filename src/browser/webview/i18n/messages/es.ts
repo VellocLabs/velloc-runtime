@@ -58,6 +58,7 @@ export const es: Messages = {
   "reviewCard.notice.removed": "Solo se admite la revisión local; esta opción no está disponible.",
   "reviewCard.notice.repairMismatch": "Las correcciones están bloqueadas porque el destino no corresponde a un espacio de trabajo editable autorizado.",
   "reviewCard.notice.skipped": "El contenido se excluyó por el alcance o el método.",
+  "reviewCard.notice.testsReviewed": "Solo cambiaron pruebas y fixtures, así que este método los revisó en lugar de excluirlos.",
   "reviewCard.notice.testsSkipped": "Este método excluye las diferencias en pruebas y fixtures.",
   "reviewCard.notice.unavailable": "Una capacidad necesaria no está disponible. La operación no se completó.",
   "reviewCard.notice.uncertain": "El resultado de la publicación es incierto. Compruebe los comentarios antes de reintentar.",

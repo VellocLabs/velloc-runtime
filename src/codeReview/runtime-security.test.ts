@@ -400,6 +400,28 @@ describe('actual review runtime security boundaries', () => {
     expect(h.atomic).not.toHaveBeenCalled()
   })
 
+  it('skips binary blobs in a range review search instead of failing the search', async () => {
+    const h = fixture()
+    const original = h.spawn.getMockImplementation()!
+    h.spawn.mockImplementation(async (spec, handlers) => {
+      if (!spec.args.includes('cat-file')) return original(spec, handlers)
+      handlers.onOutput?.('stdout', new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe]))
+      handlers.onExit?.({ exitCode: 0, timedOut: false, killed: false, durationMs: 1 })
+      return { streamId: 'blob', write: async () => true, closeStdin: async () => true, kill: async () => true, detach() {} }
+    })
+    let searched: unknown, context: unknown
+    mocks.model.mockImplementation(async request => {
+      searched = await invoke(request, 'ReviewRead', { operation: 'search', query: 'export' })
+      context = await invoke(request, 'ReviewRead', { operation: 'context', path: 'a.ts' }).catch(error => error)
+      return report(request)
+    })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('high main..HEAD')
+    await service.wait(runId)
+    expect(searched).toEqual({ data: { matches: [], truncated: false } })
+    expect(context).toMatchObject({ code: 'review-context-unavailable' })
+  })
+
   it('uses hardened native argv, preserves literal refs, and atomically persists reports and preferences', async () => {
     const h = fixture()
     const service = await getOrCreateReviewService(h.context, h.permission)

@@ -1,5 +1,5 @@
 import { parseReviewArguments } from './arguments'
-import { resolveReviewPolicy, resolveReviewPreferences, shouldRunAutomaticVerification } from './recipes'
+import { isTestOrFixturePath, resolveReviewPolicy, resolveReviewPreferences, reviewTimeBudgetMs, shouldRunAutomaticVerification } from './recipes'
 import { composeReviewPrompt, composeFinderPrompt, composeVerifierPrompt, composeSweeperPrompt, type ReviewPromptBlock } from './composer'
 import type { ReviewArguments, ReviewCapabilities, ReviewPlan, ReviewPreferences, OutputMode } from './contracts'
 import type { ScopeManifest } from './scope'
@@ -42,6 +42,8 @@ export interface ReviewServiceOptions {
 }
 interface LiveRun { access: ReviewScopeAccess; plan: ReviewPlan; args: ReviewArguments; controller: AbortController; done: Promise<void>; source: 'user' | 'model'; completedAngles: Set<string>; finderTasks: Map<string, string>; verified: Set<string>; sweepIds: Set<string>; swept: boolean }
 export class ReviewGatewayError extends Error { constructor(readonly code: string) { super(code) } }
+const onlyTestsSkipped = (manifest: ScopeManifest): boolean => !manifest.files.some(file => file.status === 'included') && manifest.files.some(file => file.status === 'skipped' && isTestOrFixturePath(file.path))
+const patchBytes = (manifest: ScopeManifest): number => manifest.files.reduce((total, file) => total + new TextEncoder().encode(file.patch).length, 0)
 const block = (text: string, source: string): ReviewPromptBlock => ({ type: 'text', text, source, provenance: 'trusted-task' })
 
 /** Invocation provenance is selected by separate host entry points, never by model JSON. */
@@ -124,9 +126,16 @@ export class LocalReviewService {
       this.admit(controller.signal)
       if (JSON.stringify(access.authorizedGuidance ?? this.options.guidance) !== JSON.stringify(guidance)) throw new ReviewGatewayError('review-guidance-changed')
     }
+    const testsOnly = authorizedPlan.skipTestsAndFixtures && onlyTestsSkipped(access.manifest)
+    if (testsOnly) {
+      access = await this.options.resolveScope(parsed.arguments, resolveReviewPolicy({ arguments: parsed.arguments, source, preferences, sessionLevel: this.options.sessionLevel, guidance,
+        canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal', testsOnly }), controller.signal)
+      this.admit(controller.signal)
+      if (JSON.stringify(access.authorizedGuidance ?? this.options.guidance) !== JSON.stringify(guidance)) throw new ReviewGatewayError('review-guidance-changed')
+    }
     const changedLines = access.manifest.files.reduce((total, file) => total + file.patch.split('\n').filter(line => /^[+-]/.test(line) && !/^(?:---|\+\+\+)/.test(line)).length, 0)
     plan = resolveReviewPolicy({ arguments: parsed.arguments, source, preferences, sessionLevel: this.options.sessionLevel, guidance,
-      canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal', changedLines })
+      canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal', changedLines, testsOnly })
     const next = resolveReviewPreferences({ current: preferences, arguments: parsed.arguments, source, targetAuthorized: true })
     if (source === 'user' && JSON.stringify(preferences) !== JSON.stringify(next)) await this.options.preferences.save(next)
     this.admit(controller.signal)
@@ -157,8 +166,8 @@ export class LocalReviewService {
   private async execute(runId: string, live: LiveRun): Promise<void> {
     const { plan, access, controller } = live
     let budgetExpired = false
-    let unstructured = false
-    const timer = setTimeout(() => { budgetExpired = true; controller.abort() }, this.options.maxDurationMs ?? 600_000)
+    const budgetMs = this.options.maxDurationMs ?? reviewTimeBudgetMs(plan, patchBytes(access.manifest))
+    const timer = setTimeout(() => { budgetExpired = true; controller.abort() }, budgetMs)
     try {
       await this.store.start(runId); this.changed()
       this.admit(controller.signal)
@@ -171,7 +180,7 @@ export class LocalReviewService {
         const blocks = composeReviewPrompt(plan, {
           run_summary: JSON.stringify({ runId, plan }), scope_manifest: JSON.stringify(access.manifest),
           trusted_guidance: access.trustedGuidance, capability_text: tools.map(t => t.name).join(', '),
-          budget_text: JSON.stringify({ concurrency: plan.workerConcurrency, maxTurns: 32, maxDurationMs: this.options.maxDurationMs ?? 600_000 }),
+          budget_text: JSON.stringify({ concurrency: plan.workerConcurrency, maxTurns: 32, maxDurationMs: budgetMs }),
           verification_contract: 'Runtime verification is a separate permission boundary; do not run tests during static review.',
         }, { repair: false, publication: false })
         if (plan.coordinatorWorkerRequired) await this.store.noteWorker(runId, 'started')
@@ -187,7 +196,10 @@ export class LocalReviewService {
             const expected = await this.store.expectedRecord(runId)
             const corrected = await this.runModel({ blocks: [block('Correct only the JSON format/selection. Return candidates and coverage exactly from the provided retained ledger; do not rerun the review.', 'format-correction'), block(JSON.stringify(expected), 'retained-ledger')], tools: [], signal: controller.signal, taskId: `${runId}-format`, maxTurns: 1 })
             try { await this.store.submitFinalJson(runId, crypto.randomUUID(), corrected.text) }
-            catch (error) { unstructured = true; throw error }
+            catch {
+              await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['invalid-response'], complete: false } })
+              await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
+            }
           }
         }
         if (plan.agentMode === 'parallel') {
@@ -227,7 +239,7 @@ export class LocalReviewService {
       if (snapshot.run.progress.status === 'active') {
         const reason = budgetExpired ? 'review-budget-exhausted' : controller.signal.aborted ? 'review-cancelled' : error instanceof Error ? error.message : 'review-failed'
         await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: [reason], complete: false } })
-        if (!snapshot.structured && !unstructured) await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
+        if (!snapshot.structured) await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
         await this.store.finish(runId, controller.signal.aborted && !budgetExpired ? 'cancelled' : 'partial')
       }
     } finally { clearTimeout(timer); this.changed() }
@@ -381,11 +393,17 @@ export class LocalReviewService {
     const target = await this.options.loadTarget?.(runId)
     if (!target && snapshot.run.scope.kind !== 'workspace') throw new ReviewGatewayError('review-target-needs-selection')
     const args: ReviewArguments = { target, targetLiteral: await this.options.loadTargetLiteral?.(runId), level: snapshot.run.policy.level, fix: false, comment: false }
-    const plan = resolveReviewPolicy({ arguments: args, source: 'model', preferences: await this.options.preferences.load(),
+    const preferences = await this.options.preferences.load()
+    let plan = resolveReviewPolicy({ arguments: args, source: 'model', preferences,
       canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: snapshot.run.policy.presentation })
     this.admit(controller.signal)
-    const access = await this.options.resolveScope(args, plan, controller.signal)
+    let access = await this.options.resolveScope(args, plan, controller.signal)
     this.admit(controller.signal)
+    if (plan.skipTestsAndFixtures && onlyTestsSkipped(access.manifest)) {
+      plan = resolveReviewPolicy({ arguments: args, source: 'model', preferences, canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: snapshot.run.policy.presentation, testsOnly: true })
+      access = await this.options.resolveScope(args, plan, controller.signal)
+      this.admit(controller.signal)
+    }
     if (access.manifest.scope.repository.projectKey !== snapshot.run.scope.repository.projectKey || access.manifest.scope.revision.head !== snapshot.run.scope.revision.head) throw new ReviewGatewayError('snapshot-changed')
     const live: LiveRun = { access, plan, args, controller, done: Promise.resolve(), source: 'model', completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false }
     this.live.set(runId, live)

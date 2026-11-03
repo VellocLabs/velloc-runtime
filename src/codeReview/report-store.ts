@@ -168,6 +168,32 @@ function text(value: unknown): string {
   if (typeof value !== 'string' || !value.trim() || value.length > 100_000 || value.includes('\0')) return fail('invalid-text')
   return value
 }
+// Contract: a host read excerpt may be as long as the 512 KiB context-read cap.
+function excerptText(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim() || value.length > 512 * 1024 || value.includes('\0')) return fail('invalid-text')
+  return value
+}
+/** The model's final object, also when wrapped in prose or a code fence. */
+function finalJsonObject(raw: string): unknown {
+  try { return JSON.parse(raw) } catch { /* fall through to wrapped forms */ }
+  const candidates = [...raw.matchAll(/```[a-z]*[ \t]*\r?\n([\s\S]*?)```/gi)].map(match => match[1])
+  let depth = 0, start = -1, quoted = false, escaped = false
+  for (let index = 0; index < raw.length; index++) {
+    const character = raw[index]
+    if (depth === 0) { if (character === '{') { depth = 1; start = index } continue }
+    if (quoted) { if (escaped) escaped = false; else if (character === '\\') escaped = true; else if (character === '"') quoted = false; continue }
+    if (character === '"') quoted = true
+    else if (character === '{') depth++
+    else if (character === '}' && --depth === 0) candidates.push(raw.slice(start, index + 1))
+  }
+  for (const candidate of candidates) {
+    try {
+      const value = JSON.parse(candidate)
+      if (value && typeof value === 'object' && !Array.isArray(value) && ('candidates' in value || 'coverage' in value)) return value
+    } catch { /* try the next candidate */ }
+  }
+  return fail('malformed-json')
+}
 function integer(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) return fail('invalid-integer')
   return value
@@ -466,7 +492,7 @@ export class ReviewReportStore {
     const value: ReportEvidenceSource = {
       path: relativePath(source.path), revision: text(source.revision),
       ...(source.toolCallKey === undefined ? {} : { toolCallKey: text(source.toolCallKey) }),
-      ...(source.excerpt === undefined ? {} : { excerpt: this.options.sanitizeExcerpt(text(source.excerpt)) }),
+      ...(source.excerpt === undefined ? {} : { excerpt: this.options.sanitizeExcerpt(excerptText(source.excerpt)) }),
     }
     return this.mutate(runId, state => {
       if (terminal(state.run.progress.status)) return fail('run-terminated')
@@ -690,7 +716,7 @@ export class ReviewReportStore {
   }
   async submitFinalJson(runId: string, toolCallId: string, raw: string): Promise<ReportWriteResult> {
     let value: Record<string, unknown>
-    try { value = object(JSON.parse(raw), ['candidates', 'coverage']) } catch (error) {
+    try { value = object(finalJsonObject(raw), ['candidates', 'coverage']) } catch (error) {
       const code = error instanceof ReportStoreError ? error.code : 'malformed-json'
       return this.modelWrite(runId, toolCallId, raw, () => fail(code))
     }
@@ -847,7 +873,7 @@ export class ReviewReportStore {
     if (!input.paths.length || input.paths.length > 128 || unique(input.paths).length !== input.paths.length) return fail('invalid-path')
     input.paths.forEach(relativePath)
     if (!input.evidence.length || input.evidence.length > 128) return fail('missing-evidence')
-    input.evidence.forEach(source => { relativePath(source.path); text(source.revision); text(source.excerpt) })
+    input.evidence.forEach(source => { relativePath(source.path); text(source.revision); excerptText(source.excerpt) })
     const fingerprint = await digest(canonical({ input, proposed }))
     return this.serial(runId, async () => {
       const state = clone(await this.load(runId))

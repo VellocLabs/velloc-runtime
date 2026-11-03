@@ -148,6 +148,23 @@ describe('review report store', () => {
     await store.submitFinalJson(id, 'corrected', JSON.stringify(json))
     expect((await store.getSnapshot(id)).run.reportRevision).toBe(2)
   })
+  it.each([
+    ['a code fence', (json: string) => `Here is the report:\n\n\`\`\`json\n${json}\n\`\`\`\nDone.`],
+    ['surrounding prose', (json: string) => `Review complete. ${json} Let me know if you need more.`],
+    ['prose that contains braces', (json: string) => `Checked {a} and {b}: ${json}`],
+  ])('extracts the final object from %s', async (_label, wrap) => {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    await populate(store, id, anchorKey)
+    const { operation: _, ...json } = await store.expectedRecord(id)
+    await store.submitFinalJson(id, 'wrapped', wrap(JSON.stringify(json)))
+    expect((await store.getSnapshot(id)).structured).toBe(true)
+  })
+  it('still rejects wrapped text that holds no report object', async () => {
+    const { store, run } = fixture()
+    const { id } = await run()
+    await expect(store.submitFinalJson(id, 'prose', 'I found {nothing} worth reporting.')).rejects.toThrow('malformed-json')
+  })
 
   it('never projects incomplete empty reports as clean and restores interrupted runs without replay', async () => {
     const { store, run, adapter, options } = fixture()

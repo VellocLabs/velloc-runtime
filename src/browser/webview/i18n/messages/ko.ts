@@ -55,6 +55,7 @@ export const ko: Messages = {
   "reviewCard.notice.removed": "로컬 검토만 지원하며 이 옵션은 사용할 수 없습니다.",
   "reviewCard.notice.repairMismatch": "검토 대상이 편집이 승인된 워크스페이스에 연결되지 않아 수정을 차단했습니다.",
   "reviewCard.notice.skipped": "검토 범위 또는 방법에 따라 내용을 제외했습니다.",
+  "reviewCard.notice.testsReviewed": "테스트 및 픽스처만 변경되어 이 검토 방법에서 제외하지 않고 검토했습니다.",
   "reviewCard.notice.testsSkipped": "이 검토 방법에서는 테스트 및 픽스처 차이를 제외합니다.",
   "reviewCard.notice.unavailable": "필수 검토 기능을 사용할 수 없어 작업이 완료되지 않았습니다.",
   "reviewCard.notice.uncertain": "게시 결과를 알 수 없습니다. 다시 시도하기 전에 기존 댓글을 확인하세요.",

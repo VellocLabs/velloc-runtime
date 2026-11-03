@@ -58,6 +58,7 @@ export const zh: Messages = {
   "reviewCard.notice.removed": "此版本只提供本地审查，不支持该参数。",
   "reviewCard.notice.repairMismatch": "审查目标未映射到获准编辑的工作区，修复已阻止。",
   "reviewCard.notice.skipped": "内容因审查范围或方法限制而跳过。",
+  "reviewCard.notice.testsReviewed": "仅测试和夹具发生了变更，因此此审查方法对其进行了审查，而没有跳过。",
   "reviewCard.notice.testsSkipped": "此审查方法跳过测试和夹具差异。",
   "reviewCard.notice.unavailable": "所需的审查能力不可用，操作未完成。",
   "reviewCard.notice.uncertain": "发布结果不确定。重试前请检查已有评论。",

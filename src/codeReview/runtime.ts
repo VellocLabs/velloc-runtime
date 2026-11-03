@@ -26,7 +26,8 @@ import { vetFileRead } from '../permissions/filesystemPermission'
 import { gatherInstructionDocs, getNestedInstructionFilesForPath, getConditionalRulesForPath, formatMemoryFilesForPrompt } from '../memory/instructionFiles'
 import { assertUntrustedReadAllowed } from '../permissions/untrustedReadBoundary'
 import { isFsNotFoundError } from '../utils/fsTransportFailure'
-import { createGitArgvRunner, gitText, validateReviewPath, type GitStreamSpawner } from './git-adapter'
+import { createGitArgvRunner, GitAdapterError, gitText, validateReviewPath, type GitStreamSpawner } from './git-adapter'
+import { isTestOrFixturePath } from './recipes'
 import { resolveLocalReviewScope, reviewDigest, type WorkspaceRead, type LocalReviewTarget } from './scope'
 import { LocalReviewService, ReviewGatewayError, type ReviewServiceOptions } from './service'
 import { createReviewModelRunner } from './runner'
@@ -53,6 +54,12 @@ const pendingServices = new WeakMap<object, Promise<LocalReviewService>>()
 const normalized = (path: string) => { const slashed = path.replace(/\\/g, '/'); return /^(?:[A-Za-z]:)?\/$/.test(slashed) ? slashed : slashed.replace(/\/$/, '') }
 const equal = (a: string, b: string) => /^[A-Za-z]:/.test(a) ? a.toLowerCase() === b.toLowerCase() : a === b
 const below = (path: string, root: string) => equal(path, root) || ( /^[A-Za-z]:/.test(root) ? path.toLowerCase().startsWith(root.toLowerCase() + '/') : path.startsWith(root + '/'))
+const CONTEXT_READ_BYTES = 512 * 1024
+/** Context text is UTF-8 within the read cap; binary or oversized content is unavailable, not an error. */
+function contextText(bytes: Uint8Array): string {
+  if (bytes.length > CONTEXT_READ_BYTES || bytes.includes(0)) throw new ReviewGatewayError('review-context-unavailable')
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes) } catch { throw new ReviewGatewayError('review-context-unavailable') }
+}
 const sanitize = (text: string) => text.replace(/((?:api[_-]?key|password|secret|token)\s*[:=]\s*["']?)[^\s"',;]+/gi, '$1[redacted]').replace(/(?:sk-|ghp_|github_pat_)[A-Za-z0-9_-]{16,}/g, '[redacted]')
 
 export async function getOrCreateReviewService(incomingContext: ToolCallContext, decidePermission: PermissionDecider): Promise<LocalReviewService> {
@@ -384,7 +391,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           const remote = await remoteReader.read(signal)
           for (const file of remote.manifest.files) {
             await authorizePath(resolveRuntimePath(root, file.path))
-            if (plan.skipTestsAndFixtures && /(?:^|\/)(?:__tests__|tests?|fixtures)(?:\/|$)|\.(?:test|spec)\./i.test(file.path)) { file.status = 'skipped'; file.patch = ''; file.anchors = [] }
+            if (plan.skipTestsAndFixtures && isTestOrFixturePath(file.path)) { file.status = 'skipped'; file.patch = ''; file.anchors = [] }
           }
           remote.manifest.anchors = remote.manifest.files.flatMap(file => file.anchors)
           if (remote.manifest.files.some(file => file.status !== 'included')) { remote.manifest.complete = false; remote.manifest.status = 'partial' }
@@ -417,7 +424,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         }
       }
       const manifest = await resolveLocalReviewScope({ git, workspaceKey: root, projectKey: root, readWorkspaceFile,
-        skipPath: path => plan.skipTestsAndFixtures && /(?:^|\/)(?:__tests__|tests?|fixtures)(?:\/|$)|\.(?:test|spec)\./i.test(path),
+        skipPath: path => plan.skipTestsAndFixtures && isTestOrFixturePath(path),
       }, target, signal)
       for (const file of manifest.files) await authorizePath(resolveRuntimePath(root, file.path))
       const treeText = manifest.semantics === 'working-copy' ? await gitText(git, { kind: 'tracked' }, signal) : await gitText(git, { kind: 'tree', oid: manifest.scope.revision.head }, signal)
@@ -430,11 +437,15 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           const row = treeText.split('\0').find(line => line.endsWith('\t' + path))
           const match = row && /^100[0-9]{3} blob ([a-f0-9]+)\t/.exec(row)
           if (!match) throw new ReviewGatewayError('review-context-unavailable')
-          return gitText(git, { kind: 'blob', oid: match[1] }, readSignal)
+          let blob: Awaited<ReturnType<typeof git.query>>
+          try { blob = await git.query({ kind: 'blob', oid: match[1] }, readSignal) }
+          catch (error) { if (error instanceof GitAdapterError && error.code === 'output-limit') throw new ReviewGatewayError('review-context-unavailable'); throw error }
+          if (blob.exitCode !== 0) throw new ReviewGatewayError('review-context-unavailable')
+          return contextText(blob.stdout)
         }
-        const read = await readWorkspaceFile(path, 512 * 1024, readSignal)
+        const read = await readWorkspaceFile(path, CONTEXT_READ_BYTES, readSignal)
         if (read.kind !== 'file') throw new ReviewGatewayError('review-context-unavailable')
-        return new TextDecoder().decode(read.bytes)
+        return contextText(read.bytes)
       }
       const guidance = await guidanceFor(manifest.files.map(file => file.path), true)
       return { manifest, trustedGuidance: guidance.text, authorizedGuidance: guidance.authorizedGuidance, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {
@@ -779,7 +790,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       const git = await scopeGit()
       const notices = service.presentation(snapshot.run.id)?.notices ?? (await readJson(resolveRuntimePath(sessionDir, `presentation/${snapshot.run.id}.json`)) as ReturnType<LocalReviewService['presentation']>)?.notices ?? []
       const currentScope = await resolveLocalReviewScope({ git, workspaceKey: root, projectKey: root, readWorkspaceFile,
-        skipPath: path => notices.some(notice => notice.code === 'tests-fixtures-skipped') && /(?:^|\/)(?:__tests__|tests?|fixtures)(?:\/|$)|\.(?:test|spec)\./i.test(path),
+        skipPath: path => notices.some(notice => notice.code === 'tests-fixtures-skipped') && isTestOrFixturePath(path),
       }, snapshot.run.scope.pathFilter.length ? { kind: 'paths', paths: snapshot.run.scope.pathFilter } : { kind: 'workspace' }, signal)
       if (currentScope.scope.revision.head !== snapshot.run.scope.revision.head || currentScope.scope.revision.workingCopyDigest !== snapshot.run.scope.revision.workingCopyDigest) throw new ReviewGatewayError('snapshot-changed')
       const allowed = new Set((grant.paths ?? []).map(path => normalized(resolveRuntimePath(root, path))))
@@ -919,7 +930,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       if (!diagnostic || diagnostic.anchor.side !== 'working-copy') throw new ReviewGatewayError('snapshot-changed')
       const git = await scopeGit()
       const current = await resolveLocalReviewScope({ git, workspaceKey: root, projectKey: root, readWorkspaceFile,
-        skipPath: path => (service.presentation(id)?.notices ?? restoredPresentations.get(id)?.notices ?? []).some(notice => notice.code === 'tests-fixtures-skipped') && /(?:^|\/)(?:__tests__|tests?|fixtures)(?:\/|$)|\.(?:test|spec)\./i.test(path),
+        skipPath: path => (service.presentation(id)?.notices ?? restoredPresentations.get(id)?.notices ?? []).some(notice => notice.code === 'tests-fixtures-skipped') && isTestOrFixturePath(path),
       }, snapshot.run.scope.pathFilter.length ? { kind: 'paths', paths: snapshot.run.scope.pathFilter } : { kind: 'workspace' })
       if (current.scope.revision.head !== snapshot.run.scope.revision.head || current.scope.revision.workingCopyDigest !== snapshot.run.scope.revision.workingCopyDigest) throw new ReviewGatewayError('snapshot-changed')
       const path = resolveRuntimePath(root, diagnostic.anchor.path)

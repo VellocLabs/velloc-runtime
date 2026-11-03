@@ -54,6 +54,7 @@ export const fr: Messages = {
   "reviewCard.notice.removed": "Seule la revue locale est prise en charge ; cette option est indisponible.",
   "reviewCard.notice.repairMismatch": "Les corrections sont bloquées car la cible ne correspond pas à un espace de travail modifiable autorisé.",
   "reviewCard.notice.skipped": "Le contenu a été exclu par le périmètre ou la méthode.",
+  "reviewCard.notice.testsReviewed": "Seuls des tests et des fixtures ont changé : cette méthode les a donc examinés au lieu de les exclure.",
   "reviewCard.notice.testsSkipped": "Cette méthode exclut les différences des tests et des fixtures.",
   "reviewCard.notice.unavailable": "Une fonction nécessaire est indisponible. L’opération n’a pas abouti.",
   "reviewCard.notice.uncertain": "Le résultat de la publication est incertain. Vérifiez les commentaires avant de réessayer.",

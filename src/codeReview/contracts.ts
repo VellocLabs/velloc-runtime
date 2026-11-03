@@ -41,7 +41,7 @@ export type PolicyNotice =
   | { code: 'panel-limit' | 'careful-pass-limit'; requested: ReportLimit; effective: number }
   | { code: 'quantity-ignored'; requested: FindingLimit }
   | { code: 'agent-unavailable' | 'agent-denied' | 'agent-depth-exhausted' }
-  | { code: 'tests-fixtures-skipped' }
+  | { code: 'tests-fixtures-skipped' | 'tests-fixtures-reviewed' }
   | { code: 'output-tool-unavailable' }
   | { code: 'coordinator-worker-required' | 'coordinator-worker-unavailable' }
   | { code: 'reasoning-mapped'; requested: ReviewLevel; effective: ReviewLevel }
@@ -59,6 +59,8 @@ export interface ReviewPolicyInput {
   output: OutputMode
   changedLines?: number
   changedLinesCommittedOnly?: boolean
+  /** The skipping recipe would leave nothing: every changed file is a test or fixture. */
+  testsOnly?: boolean
 }
 
 export interface ReviewPlan {

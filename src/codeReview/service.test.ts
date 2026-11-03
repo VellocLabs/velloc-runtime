@@ -183,4 +183,83 @@ describe('local review runtime gateway', () => {
     expect(h.runModel).toHaveBeenCalledTimes(1)
     expect((await h.service.snapshots()).reports).toHaveLength(1)
   })
+  it('sizes the default time budget so a ten-angle team run outlives ten minutes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const h = setup({ args: { capabilities: { agentAvailable: false, agentPermitted: false, remainingDepth: 0, outputToolAvailable: true } } })
+      let budget = 0
+      h.runModel.mockImplementation(async (request: ReviewModelRequest) => {
+        budget = JSON.parse(request.blocks.find(b => b.source === 'budget')!.text).maxDurationMs
+        await new Promise(resolve => setTimeout(resolve, 11 * 60_000))
+        const plan = JSON.parse(request.blocks.find(b => b.source === 'resolved-policy')!.text)
+        const coverage = { angles: plan.angles, limitations: [], complete: true }
+        await h.invoke(request, 'ReviewLedger', { operation: 'coverage', coverage })
+        return { text: JSON.stringify({ candidates: [], coverage }), interrupted: false }
+      })
+      const { runId } = await h.service.startUser('max')
+      await vi.waitFor(() => expect(budget).toBeGreaterThan(0))
+      await vi.advanceTimersByTimeAsync(11 * 60_000)
+      const report = await h.service.wait(runId)
+      expect(budget).toBeGreaterThan(600_000)
+      expect(report.coverage.limitations).not.toContain('review-budget-exhausted')
+      expect(report.coverage.angles).toHaveLength(10)
+    } finally { vi.useRealTimers() }
+  })
+  it('keeps and reports the angles a run finished before its budget ran out', async () => {
+    const h = setup({ args: { maxDurationMs: 50 } })
+    h.runModel.mockImplementation(async (request: ReviewModelRequest) => {
+      await h.invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: ['lines', 'removed'], limitations: [], complete: false } })
+      await new Promise<void>(resolve => request.signal.addEventListener('abort', () => resolve(), { once: true }))
+      return { text: '', interrupted: true }
+    })
+    const { runId } = await h.service.startUser('medium')
+    const report = await h.service.wait(runId)
+    expect(report.run.progress.status).toBe('partial')
+    expect(report.coverage.limitations).toContain('review-budget-exhausted')
+    expect(report.coverage.angles).toEqual(['lines', 'removed'])
+    expect(report.structured).toBe(true)
+  })
+  it('accepts whole-file reads longer than 100,000 characters as evidence sources', async () => {
+    const content = 'export const line = 1\n'.repeat(12_000)
+    expect(content.length).toBeGreaterThan(200_000)
+    let read: unknown
+    const h = setup({ args: { resolveScope: vi.fn(async () => ({ manifest: { scope: { kind: 'workspace', workspaceKey: '/repo', repository: { projectKey: '/repo' }, revision: { base: 'a', head: 'b', workingCopyDigest: 'w' }, pathFilter: [] },
+      files: [], anchors: [], status: 'reviewable', complete: true, notices: [], baseSource: 'main', semantics: 'working-copy' } as ScopeManifest, trustedGuidance: '', read: vi.fn(async () => content) })) } })
+    h.runModel.mockImplementation(async (request: ReviewModelRequest) => {
+      read = await h.invoke(request, 'ReviewRead', { operation: 'context', path: 'src/large.tsx' })
+      const plan = JSON.parse(request.blocks.find(b => b.source === 'resolved-policy')!.text)
+      const coverage = { angles: plan.angles, limitations: [], complete: true }
+      await h.invoke(request, 'ReviewLedger', { operation: 'coverage', coverage })
+      return { text: JSON.stringify({ candidates: [], coverage }), interrupted: false }
+    })
+    const { runId } = await h.service.startUser('medium')
+    const report = await h.service.wait(runId)
+    expect(read).toEqual({ data: content })
+    expect(report.run.progress.status).toBe('finished')
+  })
+  it('reviews test and fixture files at low when they are the only changes, with a notice', async () => {
+    const manifestFor = (skip: boolean): ScopeManifest => ({ scope: { kind: 'workspace', workspaceKey: '/repo', repository: { projectKey: '/repo' }, revision: { base: 'a', head: 'b', workingCopyDigest: 'w' }, pathFilter: [] },
+      files: [{ path: 'src/__tests__/a.test.ts', status: skip ? 'skipped' : 'included', patch: skip ? '' : '-old\n+new', anchors: [] }],
+      anchors: [], status: skip ? 'partial' : 'reviewable', complete: !skip, notices: [], baseSource: 'main', semantics: 'working-copy' })
+    const resolveScope = vi.fn(async (_args, plan: { skipTestsAndFixtures: boolean }) => ({ manifest: manifestFor(plan.skipTestsAndFixtures), trustedGuidance: '', read: vi.fn() }))
+    const h = setup({ args: { resolveScope } })
+    const { runId } = await h.service.startUser('low')
+    const report = await h.service.wait(runId)
+    const scope = JSON.parse(h.runModel.mock.calls[0]![0].blocks.find(b => b.source === 'scope-manifest')!.text)
+    expect(scope.files[0]).toMatchObject({ path: 'src/__tests__/a.test.ts', status: 'included' })
+    const plan = JSON.parse(h.runModel.mock.calls[0]![0].blocks.find(b => b.source === 'resolved-policy')!.text)
+    expect(plan.skipTestsAndFixtures).toBe(false)
+    expect(plan.notices).toContainEqual({ code: 'tests-fixtures-reviewed' })
+    expect(h.service.presentation(runId)?.notices).toContainEqual({ code: 'tests-fixtures-reviewed' })
+    expect(report.coverage.limitations).toContain('tests-fixtures-reviewed')
+    expect(report.run.progress.status).toBe('finished')
+  })
+  it('finishes a local run that covered every angle although nothing was independently verified', async () => {
+    const h = setup()
+    const { runId } = await h.service.startUser('high')
+    const report = await h.service.wait(runId)
+    expect(JSON.parse(h.runModel.mock.calls[0]![0].blocks.find(b => b.source === 'resolved-policy')!.text).independentVerification).toBe(false)
+    expect(report.run.progress.verifiedCandidates).toBe(0)
+    expect(report.run.progress.status).toBe('finished')
+  })
 })

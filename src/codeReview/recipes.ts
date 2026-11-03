@@ -6,6 +6,18 @@ export const RECIPE_REVISION = 2
 export const EIGHT_ANGLES: readonly ReviewAngle[] = Object.freeze(['lines', 'removed', 'calls', 'reuse', 'simplification', 'efficiency', 'root-cause', 'guidance'])
 export const TEN_ANGLES: readonly ReviewAngle[] = Object.freeze([...EIGHT_ANGLES, 'language', 'wrappers'])
 
+export function isTestOrFixturePath(path: string): boolean {
+  return /(?:^|\/)(?:__tests__|tests?|fixtures)(?:\/|$)|\.(?:test|spec)\./i.test(path)
+}
+
+/** Contract: wall-clock budget for one run, sized by angle rounds and included patch bytes; capped at 90 minutes. */
+export function reviewTimeBudgetMs(plan: Pick<ReviewPlan, 'angles' | 'agentMode' | 'workerConcurrency' | 'independentVerification' | 'sweep'>, patchBytes: number): number {
+  const lanes = plan.agentMode === 'parallel' ? Math.max(1, Math.min(4, plan.workerConcurrency)) : 1
+  const rounds = Math.ceil(plan.angles.length / lanes) + (plan.independentVerification ? 1 : 0) + (plan.sweep === 'none' ? 0 : 1)
+  const sizeSteps = Math.ceil(Math.max(0, patchBytes) / (64 * 1024))
+  return Math.min(90, 10 + rounds * 3 + sizeSteps * 2) * 60_000
+}
+
 export type RecipeRoute = { recipe: RecipeId; defaultLimit: ReportLimit }
 const route = (recipe: RecipeId, defaultLimit: ReportLimit): Readonly<RecipeRoute> => Object.freeze({ recipe, defaultLimit })
 export const RECIPE_ROUTES: Readonly<Record<CapabilityProfile, Readonly<Record<ReviewLevel, Readonly<RecipeRoute>>>>> = Object.freeze({
@@ -105,8 +117,10 @@ export function resolveReviewPolicy(input: ReviewPolicyInput): ReviewPlan {
   const quick = recipe === 'quick-hunks' || recipe === 'quick-expand'
   const fallbackReason = !team ? undefined : !caps.agentAvailable ? 'agent-unavailable' : !caps.agentPermitted ? 'agent-denied' : !(caps.remainingDepth > 0) ? 'agent-depth-exhausted' : undefined
   if (fallbackReason) notices.push({ code: fallbackReason })
-  const skipTestsAndFixtures = recipe === 'quick-hunks' || delegationLow
+  const skipsTests = recipe === 'quick-hunks' || delegationLow
+  const skipTestsAndFixtures = skipsTests && !input.testsOnly
   if (skipTestsAndFixtures) notices.push({ code: 'tests-fixtures-skipped' })
+  else if (skipsTests) notices.push({ code: 'tests-fixtures-reviewed' })
   let reasoningLevel: ReviewLevel = delegationLow ? 'medium' : level
   const supported = caps.supportedReasoningLevels
   if (supported?.length && !supported.includes(reasoningLevel)) {

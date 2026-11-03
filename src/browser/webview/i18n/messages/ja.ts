@@ -55,6 +55,7 @@ export const ja: Messages = {
   "reviewCard.notice.removed": "ローカルレビューのみ対応しており、このオプションは使えません。",
   "reviewCard.notice.repairMismatch": "レビュー対象が編集を許可されたワークスペースに対応していないため、修正できません。",
   "reviewCard.notice.skipped": "レビュー範囲または方法により内容を除外しました。",
+  "reviewCard.notice.testsReviewed": "変更はテストとフィクスチャのみだったため、このレビュー方法では除外せずにレビューしました。",
   "reviewCard.notice.testsSkipped": "このレビュー方法ではテストとフィクスチャの差分を除外します。",
   "reviewCard.notice.unavailable": "必要なレビュー機能が利用できず、操作は完了していません。",
   "reviewCard.notice.uncertain": "公開結果は不明です。再試行前に既存のコメントを確認してください。",

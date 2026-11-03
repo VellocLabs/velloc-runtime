@@ -58,6 +58,7 @@ export const en = {
   "reviewCard.notice.removed": "Only local review is supported; this option is unavailable.",
   "reviewCard.notice.repairMismatch": "Repairs are blocked because the reviewed target is not mapped to an authorized editable workspace.",
   "reviewCard.notice.skipped": "Content was excluded by the review scope or method.",
+  "reviewCard.notice.testsReviewed": "Only test and fixture files changed, so this review method reviewed them instead of excluding them.",
   "reviewCard.notice.testsSkipped": "Test and fixture differences are excluded by this review method.",
   "reviewCard.notice.unavailable": "A required review capability is unavailable. The operation was not completed.",
   "reviewCard.notice.uncertain": "The publication outcome is unknown. Check existing comments before retrying.",

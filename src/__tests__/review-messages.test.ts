@@ -8,7 +8,7 @@ const policy: PolicyNotice[] = [
   { code: 'level-reused', level: 'high' }, { code: 'max-not-authorized', level: 'medium' },
   { code: 'panel-limit', requested: 'unlimited', effective: 32 }, { code: 'careful-pass-limit', requested: 99, effective: 32 },
   { code: 'quantity-ignored', requested: 12 }, { code: 'agent-unavailable' }, { code: 'agent-denied' }, { code: 'agent-depth-exhausted' },
-  { code: 'tests-fixtures-skipped' }, { code: 'output-tool-unavailable' }, { code: 'coordinator-worker-required' }, { code: 'coordinator-worker-unavailable' },
+  { code: 'tests-fixtures-skipped' }, { code: 'tests-fixtures-reviewed' }, { code: 'output-tool-unavailable' }, { code: 'coordinator-worker-required' }, { code: 'coordinator-worker-unavailable' },
   { code: 'reasoning-mapped', requested: 'xhigh', effective: 'high' }, { code: 'committed-lines-only' },
 ]
 describe('review localization', () => {

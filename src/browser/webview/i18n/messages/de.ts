@@ -57,6 +57,7 @@ export const de: Messages = {
   "reviewCard.notice.removed": "Nur lokale Reviews werden unterstützt; diese Option ist nicht verfügbar.",
   "reviewCard.notice.repairMismatch": "Korrekturen sind blockiert, da das Ziel keinem autorisierten bearbeitbaren Arbeitsbereich zugeordnet ist.",
   "reviewCard.notice.skipped": "Inhalte wurden durch Prüfumfang oder Methode ausgeschlossen.",
+  "reviewCard.notice.testsReviewed": "Es wurden nur Tests und Fixtures geändert, daher hat diese Prüfmethode sie geprüft, statt sie auszuschließen.",
   "reviewCard.notice.testsSkipped": "Diese Prüfmethode schließt Diffs in Tests und Fixtures aus.",
   "reviewCard.notice.unavailable": "Eine erforderliche Review-Funktion ist nicht verfügbar. Die Aktion wurde nicht abgeschlossen.",
   "reviewCard.notice.uncertain": "Das Veröffentlichungsergebnis ist ungewiss. Prüfe vorhandene Kommentare vor einem erneuten Versuch.",

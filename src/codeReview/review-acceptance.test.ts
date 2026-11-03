@@ -254,14 +254,15 @@ it.each([
 })
 
 
-it('preserves unstructured output after one format-only correction fails', async () => {
+it('keeps the retained ledger as a partial report after one format-only correction fails', async () => {
   const model = vi.fn(async () => ({ text: 'not JSON', interrupted: false }))
   const f = fixture({ runModel: model })
   const { runId } = await f.service.startUser('low')
   const snapshot = await f.service.wait(runId)
   expect(model).toHaveBeenCalledTimes(2)
   expect(snapshot.run.progress.status).toBe('partial')
-  expect(snapshot.structured).toBe(false)
+  expect(snapshot.structured).toBe(true)
+  expect(snapshot.coverage.limitations).toContain('invalid-response')
   expect((await f.service.store.getRawResults(runId)).length).toBeGreaterThan(0)
 })
 

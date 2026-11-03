@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import gatewayModelIds from '../__tests__/fixtures/gateway-model-ids.json'
 import { REVIEW_LEVELS, type CapabilityProfile, type ReviewPolicyInput } from './contracts'
-import { EIGHT_ANGLES, TEN_ANGLES, resolveCapabilityProfile, resolveReviewLevel, resolveReviewPolicy, resolveReviewPreferences, selectReviewRecipe, shouldRunAutomaticVerification } from './recipes'
+import { EIGHT_ANGLES, TEN_ANGLES, resolveCapabilityProfile, resolveReviewLevel, resolveReviewPolicy, resolveReviewPreferences, reviewTimeBudgetMs, selectReviewRecipe, shouldRunAutomaticVerification } from './recipes'
 
 const base: ReviewPolicyInput = {
   arguments: { fix: false, comment: false },
@@ -120,6 +120,22 @@ describe('output limits, capabilities and budget', () => {
     const result = policy({ arguments: { ...base.arguments, level: 'max' }, capabilities: { ...base.capabilities, ...override } })
     expect(result).toMatchObject({ recipe: 'team-ten', angles: TEN_ANGLES, agentMode: 'sequential-fallback', fallbackReason: reason, independentVerification: false, sweep: 'same-context', candidatesPerAngle: 8, sweepCandidateLimit: 8 })
     expect(result.notices).toContainEqual({ code: reason })
+  })
+
+  it('skips tests at quick-hunks unless every changed file is a test or fixture', () => {
+    expect(policy({ arguments: { ...base.arguments, level: 'low' } })).toMatchObject({ skipTestsAndFixtures: true, notices: [{ code: 'tests-fixtures-skipped' }] })
+    expect(policy({ arguments: { ...base.arguments, level: 'low' }, testsOnly: true })).toMatchObject({ skipTestsAndFixtures: false, notices: [{ code: 'tests-fixtures-reviewed' }] })
+    expect(policy({ arguments: { ...base.arguments, level: 'medium' }, testsOnly: true }).notices).toEqual([])
+  })
+
+  it('sizes the time budget by angle rounds and patch bytes', () => {
+    const team = policy({ arguments: { ...base.arguments, level: 'max' } })
+    const local = policy({ arguments: { ...base.arguments, level: 'medium' } })
+    const quick = policy({ arguments: { ...base.arguments, level: 'low' } })
+    expect(reviewTimeBudgetMs(team, 0)).toBeGreaterThan(600_000)
+    expect(reviewTimeBudgetMs(local, 0)).toBeGreaterThan(reviewTimeBudgetMs(quick, 0))
+    expect(reviewTimeBudgetMs(local, 512 * 1024)).toBeGreaterThan(reviewTimeBudgetMs(local, 0))
+    expect(reviewTimeBudgetMs(team, 1e12)).toBe(90 * 60_000)
   })
 
   it('keeps local recipes free of verifier tasks', () => {

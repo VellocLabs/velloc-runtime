@@ -27,6 +27,7 @@ const groups = {
   patchUnavailable: ['remote-patch-unavailable'],
   fallback: ['agent-unavailable', 'agent-denied', 'agent-depth-exhausted'],
   testsSkipped: ['tests-fixtures-skipped'],
+  testsReviewed: ['tests-fixtures-reviewed'],
   outputUnavailable: ['output-tool-unavailable'],
   coordinator: ['coordinator-worker-required', 'coordinator-worker-unavailable'],
   committedOnly: ['committed-lines-only'],
