@@ -6,15 +6,21 @@ import { describe, expect, it } from 'vitest'
 
 const source = readFileSync(new URL('../browser/webview/MultiSessionShell.tsx', import.meta.url), 'utf8')
 
+type Binding =
+  | { kind: 'parameter' }
+  | { kind: 'function' }
+  | { kind: 'const'; declaration: ts.VariableDeclaration; element: ts.BindingElement | null }
+  | { kind: 'other' }
+
 type Analysed = {
   file: ts.SourceFile
   shell: ts.FunctionDeclaration
-  /** Names bound in the shell's own scope; nested functions' bindings are not. */
-  local: Map<string, ts.Node>
+  /** Names bound in the shell's own scope (not inside nested functions), by how they are bound. */
+  local: Map<string, Binding>
   /** Shell-scope names whose identity never changes: `useRef` objects, state setters, reducer dispatch. */
   stable: Set<string>
-  /** Shell-scope names bound to a function written in the render (an arrow, function expression or declaration). */
-  renderFunctions: Set<string>
+  /** Declarations, for the declared-before-read check. */
+  declaredAt: Map<string, ts.Node>
 }
 
 /** Parses `text` and returns its `MultiSessionShell` function, or throws when there is none. */
@@ -30,7 +36,7 @@ function shellOf(text: string): { file: ts.SourceFile; shell: ts.FunctionDeclara
 function unwrap(node: ts.Expression): ts.Expression {
   let current = node
   while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current) || ts.isNonNullExpression(current) ||
-    ts.isSatisfiesExpression(current)) current = current.expression
+    ts.isSatisfiesExpression(current) || ts.isTypeAssertionExpression(current)) current = current.expression
   return current
 }
 
@@ -43,27 +49,42 @@ const createsFunction = (node: ts.Node): boolean =>
   ts.isGetAccessorDeclaration(node) || ts.isSetAccessorDeclaration(node) || ts.isClassExpression(node) ||
   ts.isClassDeclaration(node)
 
+const analysed = new Map<string, Analysed>()
+
+/** One parse and binding table per source text. */
 function analyse(text: string): Analysed {
+  const cached = analysed.get(text)
+  if (cached) return cached
   const { file, shell } = shellOf(text)
-  const local = new Map<string, ts.Node>()
+  const local = new Map<string, Binding>()
   const stable = new Set<string>()
-  const renderFunctions = new Set<string>()
-  const bind = (name: ts.Node, declaration: ts.Node) => {
-    if (ts.isIdentifier(name)) local.set(name.text, declaration)
-    else ts.forEachChild(name, child => bind(child, declaration))
+  const declaredAt = new Map<string, ts.Node>()
+  const bindParameter = (name: ts.Node) => {
+    if (ts.isIdentifier(name)) local.set(name.text, { kind: 'parameter' })
+    else ts.forEachChild(name, bindParameter)
   }
-  for (const parameter of shell.parameters) bind(parameter.name, parameter)
+  for (const parameter of shell.parameters) bindParameter(parameter.name)
   const walk = (node: ts.Node) => {
     if (ts.isFunctionDeclaration(node) && node.name) {
-      local.set(node.name.text, node)
-      renderFunctions.add(node.name.text)
+      local.set(node.name.text, { kind: 'function' })
+      declaredAt.set(node.name.text, node)
       return
     }
     if (createsFunction(node)) return
     if (ts.isVariableDeclaration(node)) {
-      bind(node.name, node)
+      const isConst = (node.parent.flags & ts.NodeFlags.Const) !== 0 && ts.isVariableStatement(node.parent.parent)
+      const bind = (name: ts.BindingName, element: ts.BindingElement | null) => {
+        if (ts.isIdentifier(name)) {
+          local.set(name.text, isConst ? { kind: 'const', declaration: node, element } : { kind: 'other' })
+          declaredAt.set(name.text, node)
+          return
+        }
+        for (const child of name.elements) {
+          if (ts.isBindingElement(child)) bind(child.name, child)
+        }
+      }
+      bind(node.name, null)
       const init = node.initializer ? unwrap(node.initializer) : null
-      if (init && ts.isIdentifier(node.name) && createsFunction(init)) renderFunctions.add(node.name.text)
       const hook = init && ts.isCallExpression(init) ? hookName(init) : ''
       if (hook === 'useRef' && ts.isIdentifier(node.name)) stable.add(node.name.text)
       if ((hook === 'useState' || hook === 'useReducer') && ts.isArrayBindingPattern(node.name)) {
@@ -71,10 +92,22 @@ function analyse(text: string): Analysed {
         if (second && ts.isBindingElement(second) && ts.isIdentifier(second.name)) stable.add(second.name.text)
       }
     }
+    if ((ts.isCatchClause(node) && node.variableDeclaration) || ts.isForOfStatement(node) || ts.isForInStatement(node)) {
+      const declared = ts.isCatchClause(node) ? node.variableDeclaration!.name
+        : ts.isVariableDeclarationList(node.initializer) ? node.initializer.declarations[0]?.name : undefined
+      const mark = (name: ts.Node | undefined) => {
+        if (!name) return
+        if (ts.isIdentifier(name)) local.set(name.text, { kind: 'other' })
+        else ts.forEachChild(name, mark)
+      }
+      mark(declared)
+    }
     ts.forEachChild(node, walk)
   }
   if (shell.body) ts.forEachChild(shell.body, walk)
-  return { file, shell, local, stable, renderFunctions }
+  const result = { file, shell, local, stable, declaredAt }
+  analysed.set(text, result)
+  return result
 }
 
 /** The hook a call names, written bare (`useMemo`) or through a namespace (`React.useMemo`). */
@@ -161,24 +194,28 @@ function callbackBindings(callback: ts.Node): Set<string> {
 }
 
 /**
- * Functions a value memo may create in place: callbacks handed straight to these, which call them
- * during the memo and keep no reference. Anything else that creates a function inside a value memo is
- * a violation.
+ * Callbacks a memo or a render value may create in place: the first argument of these array methods,
+ * which call it during the expression and keep no reference, and the `mintSessionId` option of
+ * `resolveBootSession`, which it calls once. Any other function created in place is refused.
  */
 const CONSUMING_METHODS = new Set(['filter', 'map', 'flatMap', 'find', 'findIndex', 'findLast', 'some', 'every',
   'reduce', 'forEach', 'sort', 'toSorted'])
-const CONSUMING_FUNCTIONS = new Set(['resolveBootSession'])
+const CONSUMING_OPTIONS: Record<string, string> = { resolveBootSession: 'mintSessionId' }
 
-/** Whether `fn` is an argument of a consuming call, directly or as a property of an object argument. */
+/** Whether `fn` is a callback that is consumed in place (see `CONSUMING_METHODS`). */
 function isConsumedArgument(fn: ts.Node): boolean {
-  const inObject = ts.isPropertyAssignment(fn.parent) && fn.parent.initializer === fn &&
-    ts.isObjectLiteralExpression(fn.parent.parent)
-  const argument = inObject ? fn.parent.parent : fn
-  const call = argument.parent
-  if (!ts.isCallExpression(call) || !call.arguments.includes(argument as ts.Expression)) return false
-  const callee = call.expression
-  if (ts.isPropertyAccessExpression(callee)) return CONSUMING_METHODS.has(callee.name.text)
-  return ts.isIdentifier(callee) && CONSUMING_FUNCTIONS.has(callee.text)
+  const parent = fn.parent
+  if (ts.isCallExpression(parent)) {
+    return parent.arguments[0] === fn && ts.isPropertyAccessExpression(parent.expression) &&
+      CONSUMING_METHODS.has(parent.expression.name.text)
+  }
+  if (ts.isPropertyAssignment(parent) && parent.initializer === fn && ts.isIdentifier(parent.name) &&
+    ts.isObjectLiteralExpression(parent.parent) && ts.isCallExpression(parent.parent.parent)) {
+    const call = parent.parent.parent
+    return call.arguments[0] === parent.parent && ts.isIdentifier(call.expression) &&
+      CONSUMING_OPTIONS[call.expression.text] === parent.name.text
+  }
+  return false
 }
 
 const isFactoryName = (name: string) => name.startsWith('createShell')
@@ -193,54 +230,192 @@ function callbackHookViolations(text: string): string[] {
   return found
 }
 
+const isReference = (node: ts.Identifier): boolean => {
+  const parent = node.parent
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false
+  if ((ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent) || ts.isGetAccessorDeclaration(parent) ||
+    ts.isSetAccessorDeclaration(parent)) && parent.name === node) return false
+  if ((ts.isVariableDeclaration(parent) || ts.isParameter(parent) || ts.isFunctionDeclaration(parent) ||
+    ts.isFunctionExpression(parent) || ts.isClassExpression(parent) || ts.isClassDeclaration(parent)) &&
+    parent.name === node) return false
+  if (ts.isBindingElement(parent) && (parent.name === node || parent.propertyName === node)) return false
+  if (ts.isJsxAttribute(parent) && parent.name === node) return false
+  let ancestor: ts.Node | undefined = parent
+  while (ancestor && !ts.isSourceFile(ancestor)) {
+    if (ts.isTypeNode(ancestor) || ts.isTypeAliasDeclaration(ancestor) || ts.isInterfaceDeclaration(ancestor)) return false
+    if (ts.isExpression(ancestor) || ts.isStatement(ancestor)) break
+    ancestor = ancestor.parent
+  }
+  return true
+}
+
+const isLiteral = (node: ts.Expression) =>
+  ts.isStringLiteral(node) || ts.isNumericLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ||
+  ts.isBigIntLiteral(node) || ts.isRegularExpressionLiteral(node) ||
+  node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword ||
+  node.kind === ts.SyntaxKind.NullKeyword || node.kind === ts.SyntaxKind.UndefinedKeyword
+
 /**
- * Ways a render's scope can outlive the render through a memo. A memo must return exactly a factory
- * call, or a value that creates no function and refers to no render-scope function. A factory's inputs
- * must create no function and name no render-scope function. Every `createShell*` call must be a memo's
- * result. Each entry is `line: reason`.
+ * Why the shell-scope name `name` could hold something that keeps a render's scope alive, or null when
+ * it cannot. Allowlist: a prop; a hook's value; a `const` whose initializer (and destructuring default)
+ * is built only from the shapes `closureRisk` accepts. A render-level function declaration, a `let`,
+ * `var`, loop or catch binding, and anything else are refused.
+ */
+function bindingRisk(s: Analysed, name: string, seen: Set<string> = new Set()): string | null {
+  const binding = s.local.get(name)
+  if (!binding) return null
+  if (binding.kind === 'parameter') return null
+  if (binding.kind === 'function') return 'a function declared in the render'
+  if (binding.kind === 'other') return 'not a const binding'
+  if (seen.has(name)) return null
+  seen.add(name)
+  const fromDefault = binding.element?.initializer ? closureRisk(s, binding.element.initializer, seen) : null
+  if (fromDefault) return fromDefault
+  if (!binding.declaration.initializer) return 'no initializer'
+  return closureRisk(s, binding.declaration.initializer, seen)
+}
+
+/**
+ * Why `expression`, evaluated in the render, could produce or hold a function created in the render,
+ * or null when it cannot. The safe shapes: literals and templates; module-level names; shell names
+ * whose binding is safe; property and element reads of a safe value; unary, binary, conditional and
+ * type operators on safe operands; array and object literals of safe parts (no methods or accessors);
+ * hook calls; other calls and `new` whose callee and arguments are safe, where the only function
+ * allowed in place is a consumed callback (`consumedCallbackRisk`). Every other shape is refused.
+ */
+function closureRisk(s: Analysed, node: ts.Expression, seen: Set<string> = new Set()): string | null {
+  const value = unwrap(node)
+  if (isLiteral(value)) return null
+  if (ts.isIdentifier(value)) {
+    const risk = bindingRisk(s, value.text, seen)
+    return risk ? `${value.text}: ${risk}` : null
+  }
+  if (createsFunction(value)) return 'a function created in the render'
+  if (ts.isTemplateExpression(value)) {
+    for (const span of value.templateSpans) {
+      const risk = closureRisk(s, span.expression, seen)
+      if (risk) return risk
+    }
+    return null
+  }
+  if (ts.isPropertyAccessExpression(value)) return closureRisk(s, value.expression, seen)
+  if (ts.isElementAccessExpression(value)) {
+    return closureRisk(s, value.expression, seen) ?? closureRisk(s, value.argumentExpression, seen)
+  }
+  if (ts.isPrefixUnaryExpression(value) || ts.isPostfixUnaryExpression(value)) return closureRisk(s, value.operand, seen)
+  if (ts.isTypeOfExpression(value) || ts.isVoidExpression(value) || ts.isAwaitExpression(value)) {
+    return closureRisk(s, value.expression, seen)
+  }
+  if (ts.isBinaryExpression(value)) return closureRisk(s, value.left, seen) ?? closureRisk(s, value.right, seen)
+  if (ts.isConditionalExpression(value)) {
+    return closureRisk(s, value.condition, seen) ?? closureRisk(s, value.whenTrue, seen) ??
+      closureRisk(s, value.whenFalse, seen)
+  }
+  if (ts.isArrayLiteralExpression(value)) {
+    for (const element of value.elements) {
+      const risk = ts.isOmittedExpression(element) ? null
+        : closureRisk(s, ts.isSpreadElement(element) ? element.expression : element, seen)
+      if (risk) return risk
+    }
+    return null
+  }
+  if (ts.isObjectLiteralExpression(value)) {
+    for (const property of value.properties) {
+      let risk: string | null
+      if (ts.isPropertyAssignment(property)) {
+        risk = (ts.isComputedPropertyName(property.name) ? closureRisk(s, property.name.expression, seen) : null) ??
+          closureRisk(s, property.initializer, seen)
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        risk = closureRisk(s, property.name, seen)
+      } else if (ts.isSpreadAssignment(property)) {
+        risk = closureRisk(s, property.expression, seen)
+      } else {
+        risk = 'a method or accessor created in the render'
+      }
+      if (risk) return risk
+    }
+    return null
+  }
+  if (ts.isCallExpression(value) || ts.isNewExpression(value)) {
+    if (ts.isCallExpression(value) && /^use[A-Z]/.test(hookName(value))) return null
+    const calleeRisk = closureRisk(s, value.expression, seen)
+    if (calleeRisk) return calleeRisk
+    for (const argument of value.arguments ?? []) {
+      const risk = createsFunction(unwrap(argument)) ? consumedCallbackRisk(s, unwrap(argument), seen)
+        : closureRisk(s, ts.isSpreadElement(argument) ? argument.expression : argument, seen)
+      if (risk) return risk
+    }
+    return null
+  }
+  return `cannot be decided (${ts.SyntaxKind[value.kind]})`
+}
+
+/**
+ * A function written as a call argument is safe only when it is consumed during the call and kept by
+ * nothing: the first argument of an array method in `CONSUMING_METHODS`, with an expression body that
+ * is itself safe (its own parameters are elements of the array and safe by that).
+ */
+function consumedCallbackRisk(s: Analysed, fn: ts.Expression, seen: Set<string>): string | null {
+  if (!isConsumedArgument(fn) || !ts.isArrowFunction(fn) || ts.isBlock(fn.body)) return 'a function created in the render'
+  const params = new Set<string>()
+  const bind = (name: ts.Node) => {
+    if (ts.isIdentifier(name)) params.add(name.text)
+    else ts.forEachChild(name, bind)
+  }
+  fn.parameters.forEach(parameter => bind(parameter.name))
+  const shadowed: [string, Binding | undefined][] = [...params].map(name => [name, s.local.get(name)])
+  for (const name of params) s.local.set(name, { kind: 'parameter' })
+  try {
+    return closureRisk(s, fn.body, seen)
+  } finally {
+    for (const [name, binding] of shadowed) {
+      if (binding) s.local.set(name, binding)
+      else s.local.delete(name)
+    }
+  }
+}
+
+/** Shell-scope names `callback` reads, excluding names it binds itself and property names. */
+function capturedNames(s: Analysed, callback: ts.Node): ts.Identifier[] {
+  const inner = callbackBindings(callback)
+  const found: ts.Identifier[] = []
+  const visit = (node: ts.Node) => {
+    if (ts.isIdentifier(node) && s.local.has(node.text) && !inner.has(node.text) && isReference(node)) found.push(node)
+    ts.forEachChild(node, visit)
+  }
+  ts.forEachChild(callback, visit)
+  return found
+}
+
+/**
+ * Ways a render's scope can outlive the render through a memo, decided by allowlist:
+ * - a memo's callback is an arrow or function expression written in place;
+ * - every shell-scope name it reads has a safe binding (`bindingRisk`);
+ * - it creates no function, except a consumed callback in a value memo;
+ * - a factory memo returns exactly factory calls, and every `createShell*` call is a memo's result.
+ * Each entry is `line: reason`.
  */
 function memoClosureViolations(text: string): string[] {
   const s = analyse(text)
-  const found: string[] = []
+  const found = new Set<string>()
+  const add = (node: ts.Node, reason: string) => found.add(`${lineOf(s, node)}: ${reason}`)
   const factoryCalls = new Set<ts.CallExpression>()
   for (const memo of shellMemos(s)) {
     if (!memo.callback) {
-      found.push(`${lineOf(s, memo.call)}: memo callback is not a function written in place`)
-      continue
-    }
-    if (memo.factories.length > 0) {
-      for (const call of memo.factories) {
-        factoryCalls.add(call)
-        const factory = (call.expression as ts.Identifier).text
-        const visit = (node: ts.Node) => {
-          if (createsFunction(node)) {
-            found.push(`${lineOf(s, node)}: inline function passed to ${factory}`)
-            return
-          }
-          if (ts.isIdentifier(node) && s.renderFunctions.has(node.text) && !isPropertyName(node)) {
-            found.push(`${lineOf(s, node)}: render-scope function ${node.text} passed to ${factory}`)
-          }
-          ts.forEachChild(node, visit)
-        }
-        call.arguments.forEach(visit)
-      }
-      if (ts.isBlock(memo.callback.body)) {
-        const body = memo.callback.body
-        const visit = (node: ts.Node) => {
-          if (createsFunction(node)) found.push(`${lineOf(s, node)}: function created in a factory memo`)
-          else ts.forEachChild(node, visit)
-        }
-        ts.forEachChild(body, visit)
-      }
+      add(memo.call, 'memo callback is not a function written in place')
       continue
     }
     const callback = memo.callback
+    const isFactoryMemo = memo.factories.length > 0
+    memo.factories.forEach(call => factoryCalls.add(call))
+    for (const name of capturedNames(s, callback)) {
+      const risk = bindingRisk(s, name.text)
+      if (risk) add(name, `captures ${name.text}: ${risk}`)
+    }
     const visit = (node: ts.Node) => {
       if (node !== callback && createsFunction(node)) {
-        if (!isConsumedArgument(node)) found.push(`${lineOf(s, node)}: function created in a value memo`)
-      } else if (ts.isIdentifier(node) && s.renderFunctions.has(node.text) && !isPropertyName(node) &&
-        !(ts.isCallExpression(node.parent) && node.parent.expression === node)) {
-        found.push(`${lineOf(s, node)}: render-scope function ${node.text} in a value memo`)
+        if (isFactoryMemo) add(node, 'function created in a factory memo')
+        else if (!isConsumedArgument(node)) add(node, 'function created in a value memo')
       }
       ts.forEachChild(node, visit)
     }
@@ -249,20 +424,11 @@ function memoClosureViolations(text: string): string[] {
   forEachInShell(s, node => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && isFactoryName(node.expression.text) &&
       !factoryCalls.has(node)) {
-      found.push(`${lineOf(s, node)}: ${node.expression.text} called outside a memo result`)
+      add(node, `${node.expression.text} called outside a memo result`)
     }
   })
-  return found.sort((x, y) => parseInt(x) - parseInt(y))
+  return [...found].sort((x, y) => parseInt(x) - parseInt(y))
 }
-
-const isPropertyName = (node: ts.Identifier) =>
-  (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) ||
-  (ts.isPropertyAssignment(node.parent) && node.parent.name === node)
-
-const isLiteral = (node: ts.Expression) =>
-  ts.isStringLiteral(node) || ts.isNumericLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ||
-  node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword ||
-  node.kind === ts.SyntaxKind.NullKeyword
 
 /** The identifier a name or property chain (`a`, `a.b`, `a!.b`) starts from; null for anything else. */
 function rootName(node: ts.Expression): ts.Identifier | null {
@@ -317,8 +483,8 @@ function lateFactoryInputs(text: string): string[] {
     for (const call of memo.factories) {
       for (const argument of call.arguments) {
         const root = rootName(argument)
-        const declaration = root ? s.local.get(root.text) : undefined
-        if (root && declaration && !ts.isParameter(declaration) && declaration.end > memo.call.getStart(s.file)) {
+        const declaration = root ? s.declaredAt.get(root.text) : undefined
+        if (root && declaration && declaration.end > memo.call.getStart(s.file)) {
           late.push(`${lineOf(s, memo.call)} ${(call.expression as ts.Identifier).text}: ${root.text}`)
         }
       }
@@ -327,7 +493,7 @@ function lateFactoryInputs(text: string): string[] {
   return late
 }
 
-/** How many memos return `createShell*` factory calls, and how many such calls the shell makes at all. */
+/** How many memos return factory calls, and how many `createShell*` calls the shell makes at all. */
 function factoryCounts(text: string): { factoryMemos: number; shellFactoryCalls: number } {
   const s = analyse(text)
   const factoryMemos = shellMemos(s).filter(memo => memo.factories.length > 0).length
@@ -338,6 +504,17 @@ function factoryCounts(text: string): { factoryMemos: number; shellFactoryCalls:
     }
   })
   return { factoryMemos, shellFactoryCalls }
+}
+
+const FACTORY_FLOOR = 100
+
+/** The floor that keeps the guards from passing on nothing after a rename. Each entry names a shortfall. */
+function factoryFloorViolations(text: string): string[] {
+  const { factoryMemos, shellFactoryCalls } = factoryCounts(text)
+  const found: string[] = []
+  if (factoryMemos < FACTORY_FLOOR) found.push(`factory memos: ${factoryMemos} (at least ${FACTORY_FLOOR})`)
+  if (shellFactoryCalls < FACTORY_FLOOR) found.push(`createShell calls: ${shellFactoryCalls} (at least ${FACTORY_FLOOR})`)
+  return found
 }
 
 const { file, shell } = shellOf(source)
@@ -435,128 +612,126 @@ describe('shell callback lifetime', () => {
     expect(lateFactoryInputs(source)).toEqual([])
   })
 
-  it('the guards see the shell: at least 100 factory memos, and every createShell call is one', () => {
-    const counts = factoryCounts(source)
-    expect(counts.factoryMemos).toBeGreaterThanOrEqual(100)
-    expect(counts.shellFactoryCalls).toBeLessThanOrEqual(counts.factoryMemos)
-    expect(counts.shellFactoryCalls).toBeGreaterThanOrEqual(100)
+  it('the guards see the shell: at least 100 factory memos and at least 100 createShell calls', () => {
+    expect(factoryFloorViolations(source)).toEqual([])
   })
 })
 
 describe('shell closure guards catch what they are for', () => {
   const shellWith = (body: string) => `
-    function createShellOpen(setOpen: (v: boolean) => void, id: string, onDone: () => void) {
-      return () => { setOpen(true); onDone(); void id }
+    function createShellOpen(setOpen: (v: boolean) => void, id: unknown, onDone: unknown) {
+      return () => { setOpen(true); void onDone; void id }
     }
-    export function MultiSessionShell({ sessionId }: { sessionId: string }) {
+    export function MultiSessionShell({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
       const [open, setOpen] = useState(false)
       const [, dispatch] = useReducer((s: number) => s, 0)
       const seenRef = useRef(0)
       const label = open ? 'open' : 'closed'
+      const items = [label, sessionId]
       const onDone = () => {}
       ${body}
       return null
     }`
   const reasons = (entries: string[]) => entries.map(entry => entry.replace(/^\d+:? ?/, ''))
 
-  it('accepts factory memos (expression or block body), value memos and consumed callbacks', () => {
+  it('accepts the safe shapes: factory memos, value memos, props, hook values and consumed callbacks', () => {
     const text = shellWith(`
-      const onOpen = useMemo(() => createShellOpen(setOpen, sessionId, onOpen2), [sessionId, onOpen2])
-      const onOpen2 = useMemo(() => { return createShellOpen(setOpen, 'fixed', seenRef as never) }, [])
-      const sorted = useMemo(() => [label].filter(item => item !== '').map(item => item.length), [label])
-      const handlers = useMemo(() => ({ open: onOpen, count: seenRef.current }), [onOpen])
-      const boot = React.useMemo(() => resolveBootSession({ mint: () => sessionId }), [sessionId])
-      void dispatch`)
+      const lengths = items.map(item => item.length)
+      const first = items.find(item => item !== '') ?? null
+      const counted = useWorkspaceState(state => state.count)
+      const config = { label, size: lengths.length, nested: [first, \`\${label}!\`] }
+      const onOpen = useMemo(() => createShellOpen(setOpen, config, onClose), [config, onClose])
+      const onOpen2 = useMemo(() => { return createShellOpen(setOpen, 'fixed', seenRef) }, [])
+      const sorted = useMemo(() => items.filter(item => item !== '').map(item => item.length), [items])
+      const handlers = useMemo(() => ({ open: onOpen, count: seenRef.current, counted }), [onOpen, counted])
+      const boot = React.useMemo(() => resolveBootSession({ mintSessionId: () => sessionId }), [sessionId])
+      void dispatch; void onOpen2; void sorted; void handlers; void boot`)
     expect(memoClosureViolations(text)).toEqual([])
     expect(callbackHookViolations(text)).toEqual([])
+    expect(factoryDependencyGaps(text)).toEqual([])
+    expect(lateFactoryInputs(text)).toEqual([])
   })
 
-  it('rejects every way a memo can return or hold a function created in the render', () => {
-    const text = shellWith(`
-      const direct = useMemo(() => (value: string) => value + label, [label])
-      const branch = useMemo(() => (open ? () => label : null), [open, label])
-      const named = useMemo(() => { const handler = () => label; return handler }, [label])
-      const declared = useMemo(() => { function handler() { return label } return handler }, [label])
-      const invoked = useMemo(() => (() => () => label)(), [label])
-      const byName = useMemo(() => onDone, [onDone])
-      const inObject = useMemo(() => ({ go: () => label }), [label])
-      const method = useMemo(() => ({ go() { return label } }), [label])
-      const namespaced = React.useMemo(() => () => label, [label])
-      const wrapped = useMemo(() => wrap(() => label), [label])
-      const kept = useMemo(() => [onDone], [onDone])`)
-    expect(reasons(memoClosureViolations(text))).toEqual([
-      'function created in a value memo',
-      'function created in a value memo',
-      'function created in a value memo',
-      'function created in a value memo',
-      'function created in a value memo',
-      'function created in a value memo',
-      'render-scope function onDone in a value memo',
-      'function created in a value memo',
-      'function created in a value memo',
-      'function created in a value memo',
-      'function created in a value memo',
-      'render-scope function onDone in a value memo',
-    ])
+  // One shape each; every case must be rejected on its own, with the reason given.
+  const rejected: [string, string, string][] = [
+    ['a render function returned by name', 'const x = useMemo(() => onDone, [onDone])', 'captures onDone'],
+    ['an inline function returned', 'const x = useMemo(() => () => label, [label])', 'function created in a value memo'],
+    ['an inline function through a conditional', 'const x = useMemo(() => (open ? () => label : null), [open, label])', 'function created in a value memo'],
+    ['an inline function bound inside the memo', 'const x = useMemo(() => { const h = () => label; return h }, [label])', 'function created in a value memo'],
+    ['a function declared inside the memo', 'const x = useMemo(() => { function h() { return label } return h }, [label])', 'function created in a value memo'],
+    ['an immediately invoked function returning one', 'const x = useMemo(() => (() => () => label)(), [label])', 'function created in a value memo'],
+    ['an object holding an inline closure', 'const x = useMemo(() => ({ go: () => label }), [label])', 'function created in a value memo'],
+    ['an object method', 'const x = useMemo(() => ({ go() { return label } }), [label])', 'function created in a value memo'],
+    ['an object accessor', 'const x = useMemo(() => ({ get go() { return label } }), [label])', 'function created in a value memo'],
+    ['a class expression', 'const x = useMemo(() => class { v = label }, [label])', 'function created in a value memo'],
+    ['a wrapper call around an inline function', 'const x = useMemo(() => wrap(() => label), [label])', 'function created in a value memo'],
+    ['a render function in an array', 'const x = useMemo(() => [onDone], [onDone])', 'captures onDone'],
+    ['a render function bound', 'const x = useMemo(() => onDone.bind(null), [onDone])', 'captures onDone'],
+    ['a render function called', 'const x = useMemo(() => onDone(), [onDone])', 'captures onDone'],
+    ['React.useMemo', 'const x = React.useMemo(() => () => label, [label])', 'function created in a value memo'],
+    ['a memo callback not written in place', 'const x = useMemo(makeValue, [])', 'memo callback is not a function written in place'],
+    ['a render-level function declaration', 'function handle() { return label }\nconst x = useMemo(() => handle, [])', 'captures handle: a function declared in the render'],
+    ['a render closure assigned through a conditional', 'const f = open ? () => label : undefined\nconst x = useMemo(() => f, [f])', 'captures f'],
+    ['a render closure assigned through ??', 'const f = seenRef.current ?? (() => label)\nconst x = useMemo(() => f, [f])', 'captures f'],
+    ['a render closure assigned through a wrapper call', 'const f = wrap(() => label)\nconst x = useMemo(() => f, [f])', 'captures f'],
+    ['a render object holding a function', 'const holder = { onDone }\nconst x = useMemo(() => holder, [holder])', 'captures holder'],
+    ['a render object with a method', 'const holder = { go() { return label } }\nconst x = useMemo(() => holder, [holder])', 'captures holder'],
+    ['a render value of JSX', 'const node = <b onClick={() => label} />\nconst x = useMemo(() => node, [node])', 'captures node'],
+    ['a let binding', 'let f = label\nconst x = useMemo(() => f, [f])', 'captures f'],
+    ['a block-bodied consumed callback in a render value', 'const fs = items.map(item => { return () => item })\nconst x = useMemo(() => fs, [fs])', 'captures fs'],
+    ['a callback in a non-first argument', 'const x = useMemo(() => items.reduce((a: string) => a, () => label), [items, label])', 'function created in a value memo'],
+    ['an unlisted resolveBootSession option', 'const x = useMemo(() => resolveBootSession({ other: () => label }), [label])', 'function created in a value memo'],
+    ['an inline function passed to a factory', 'const x = useMemo(() => createShellOpen(setOpen, sessionId, () => label), [sessionId, label])', 'function created in a factory memo'],
+    ['an inline function nested in a factory argument', 'const x = useMemo(() => createShellOpen(setOpen, sessionId, [() => label][0]), [sessionId, label])', 'function created in a factory memo'],
+    ['a render function passed to a factory', 'const x = useMemo(() => createShellOpen(setOpen, sessionId, onDone), [sessionId, onDone])', 'captures onDone'],
+    ['a render closure via a conditional passed to a factory', 'const f = open ? () => label : undefined\nconst x = useMemo(() => createShellOpen(setOpen, sessionId, f), [sessionId, f])', 'captures f'],
+    ['a render object holding a function passed to a factory', 'const holder = { onDone }\nconst x = useMemo(() => createShellOpen(setOpen, sessionId, holder), [sessionId, holder])', 'captures holder'],
+    ['a function created in a block-bodied factory memo', 'const x = useMemo(() => { const h = () => label; return createShellOpen(setOpen, sessionId, h) }, [sessionId])', 'function created in a factory memo'],
+    ['a factory called bare in the render', 'const x = createShellOpen(setOpen, sessionId, label)', 'createShellOpen called outside a memo result'],
+    ['a factory call nested inside a value memo', 'const x = useMemo(() => [createShellOpen(setOpen, sessionId, label)], [sessionId, label])', 'createShellOpen called outside a memo result'],
+  ]
+  it.each(rejected)('rejects %s', (_name, body, reason) => {
+    expect(reasons(memoClosureViolations(shellWith(body))).some(entry => entry.startsWith(reason)),
+      reasons(memoClosureViolations(shellWith(body))).join(' | ') || 'nothing reported').toBe(true)
   })
 
-  it('rejects functions handed to a factory, and a factory called outside a memo result', () => {
-    const text = shellWith(`
-      const a = useMemo(() => createShellOpen(setOpen, sessionId, () => label), [sessionId, label])
-      const b = useMemo(() => createShellOpen(setOpen, sessionId, [function () { return label }][0]!), [sessionId, label])
-      const c = useMemo(() => createShellOpen(setOpen, sessionId, onDone), [sessionId, onDone])
-      const d = useMemo(() => { const local = () => label; return createShellOpen(setOpen, sessionId, local) }, [sessionId])
-      const bare = createShellOpen(setOpen, sessionId, onDone)
-      const later = useMemo(() => [createShellOpen(setOpen, sessionId, c)], [sessionId, c])`)
-    expect(reasons(memoClosureViolations(text))).toEqual([
-      'inline function passed to createShellOpen',
-      'inline function passed to createShellOpen',
-      'render-scope function onDone passed to createShellOpen',
-      'function created in a factory memo',
-      'createShellOpen called outside a memo result',
-      'createShellOpen called outside a memo result',
-    ])
+  const staleInputs: [string, string, string][] = [
+    ['a name missing from the dependencies', 'const x = useMemo(() => createShellOpen(setOpen, sessionId, label), [label])', 'createShellOpen: sessionId'],
+    ['a block-bodied factory memo', 'const x = useMemo(() => { return createShellOpen(setOpen, label, sessionId) }, [sessionId])', 'createShellOpen: label'],
+    ['a non-name input', 'const x = useMemo(() => createShellOpen(setOpen, sessionId ?? label, label), [sessionId, label])', 'createShellOpen: sessionId ?? label (not a name; hoist it)'],
+    ['a name bound inside the memo', 'const x = useMemo(() => { const id = label; return createShellOpen(setOpen, id, label) }, [label])', 'createShellOpen: id (bound in the memo; hoist it)'],
+    ['an unlisted property chain', 'const x = useMemo(() => createShellOpen(setOpen, seenRef.current, label), [label])', 'createShellOpen: seenRef.current'],
+    ['React.useMemo', 'const x = React.useMemo(() => createShellOpen(setOpen, label, sessionId), [sessionId])', 'createShellOpen: label'],
+  ]
+  it.each(staleInputs)('reports a stale factory input: %s', (_name, body, reason) => {
+    expect(reasons(factoryDependencyGaps(shellWith(body)))).toContain(reason)
   })
 
-  it('reports factory inputs that could be stale, in every shape, but not refs, setters, dispatch or constants', () => {
-    const text = shellWith(`
-      const missing = useMemo(() => createShellOpen(setOpen, sessionId, missing2), [missing2])
-      const missing2 = useMemo(() => { return createShellOpen(setOpen, label, missing) }, [missing])
-      const expression = useMemo(() => createShellOpen(setOpen, sessionId ?? label, missing), [sessionId, label, missing])
-      const hoistable = useMemo(() => { const id = label; return createShellOpen(setOpen, id, missing) }, [label, missing])
-      const refValue = useMemo(() => createShellOpen(setOpen, seenRef.current, missing), [missing])
-      const namespaced = React.useMemo(() => createShellOpen(setOpen, label, missing), [missing])
-      const fine = useMemo(() => createShellCount(seenRef, dispatch, setOpen, 'x', 3, MODULE_LEVEL), [])`)
-    expect(reasons(factoryDependencyGaps(text))).toEqual([
-      'createShellOpen: sessionId',
-      'createShellOpen: label',
-      'createShellOpen: sessionId ?? label (not a name; hoist it)',
-      'createShellOpen: id (bound in the memo; hoist it)',
-      'createShellOpen: seenRef.current',
-      'createShellOpen: label',
-    ])
+  it('does not report refs, setters, dispatch, literals or module-level names as stale', () => {
+    expect(factoryDependencyGaps(shellWith(
+      'const x = useMemo(() => createShellCount(seenRef, dispatch, setOpen, "x", 3, MODULE_LEVEL), [])')))
+      .toEqual([])
   })
 
-  it('reports useCallback, bare or namespaced', () => {
-    const text = shellWith(`
-      const a = useCallback(() => label, [label])
-      const b = React.useCallback(() => label, [label])`)
-    expect(reasons(callbackHookViolations(text))).toEqual(['useCallback', 'useCallback'])
+  it.each([
+    ['bare', 'const a = useCallback(() => label, [label])'],
+    ['namespaced', 'const a = React.useCallback(() => label, [label])'],
+  ])('reports useCallback (%s)', (_name, body) => {
+    expect(reasons(callbackHookViolations(shellWith(body)))).toEqual(['useCallback'])
   })
 
   it('reports a factory memo input declared after the memo', () => {
     const text = shellWith(`
-      const early = useMemo(() => createShellOpen(setOpen, later, onDone), [later])
-      const later = label + '!'
-      const ok = useMemo(() => createShellOpen(setOpen, later, onDone), [later])`)
+      const early = useMemo(() => createShellOpen(setOpen, later, label), [later])
+      const later = label + '!'`)
     expect(reasons(lateFactoryInputs(text))).toEqual(['createShellOpen: later'])
   })
 
-  it('counts factory memos and shell factory calls, so a rename cannot make the guards vacuous', () => {
-    const text = shellWith(`
-      const a = useMemo(() => createShellOpen(setOpen, sessionId, onDone), [sessionId])
-      const b = useMemo(() => { return createShellOpen(setOpen, label, onDone) }, [label])
-      const c = useMemo(() => createConfiguredThing(label), [label])`)
-    expect(factoryCounts(text)).toEqual({ factoryMemos: 3, shellFactoryCalls: 2 })
+  it('fails the floor when the shell has too few factory memos or createShell calls', () => {
+    expect(factoryFloorViolations(shellWith(
+      'const a = useMemo(() => createShellOpen(setOpen, sessionId, label), [sessionId, label])'))).toEqual([
+      'factory memos: 1 (at least 100)',
+      'createShell calls: 1 (at least 100)',
+    ])
   })
 })
