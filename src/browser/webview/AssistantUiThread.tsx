@@ -205,6 +205,7 @@ import {
   ThreadWelcome,
 } from '@/components/assistant-ui/thread'
 import { ASK_TOOL_ID } from '@/toolkit/builtin/askUser'
+import { SKILL_TOOL_NAME } from '@/prompting/skillToolName'
 import { hasA2uiToolCall } from './a2ui/hasA2uiSurface'
 import {
   A2UI_CREATE_SURFACE,
@@ -272,6 +273,8 @@ const GENERATIVE_TOOL_NAMES = new Set([
   A2UI_UPDATE_DATA_MODEL,
   A2UI_DELETE_SURFACE,
   CONTINUE_IN_CODE_TOOL_ID,
+  // The Skill card names the skill and anchors a model-invoked review's report card.
+  SKILL_TOOL_NAME,
 ])
 
 export type AssistantUiThreadProps = {
@@ -646,7 +649,8 @@ export function runtimeErrorText(
   return key ? { text: t(key), detail: raw } : { text: raw, detail: null }
 }
 
-function hasGenerativeToolParts(messages: readonly ThreadMessageLike[]): boolean {
+/** Whether the thread holds a tool call whose card lives in the lazily loaded generative tool UIs. */
+export function hasGenerativeToolParts(messages: readonly ThreadMessageLike[]): boolean {
   return messages.some(message => {
     if (typeof message.content === 'string') {
       return false
