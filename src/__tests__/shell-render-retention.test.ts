@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 const source = readFileSync(new URL('../browser/webview/MultiSessionShell.tsx', import.meta.url), 'utf8')
 
 type Binding =
-  | { kind: 'parameter' }
+  | { kind: 'parameter'; element: ts.BindingElement | null }
   | { kind: 'function' }
   | { kind: 'const'; declaration: ts.VariableDeclaration; element: ts.BindingElement | null }
   | { kind: 'other' }
@@ -21,6 +21,8 @@ type Analysed = {
   stable: Set<string>
   /** Declarations, for the declared-before-read check. */
   declaredAt: Map<string, ts.Node>
+  /** Shell-scope names mutated in the render after their declaration (refs excepted). */
+  mutated: Set<string>
 }
 
 /** Parses `text` and returns its `MultiSessionShell` function, or throws when there is none. */
@@ -59,11 +61,16 @@ function analyse(text: string): Analysed {
   const local = new Map<string, Binding>()
   const stable = new Set<string>()
   const declaredAt = new Map<string, ts.Node>()
-  const bindParameter = (name: ts.Node) => {
-    if (ts.isIdentifier(name)) local.set(name.text, { kind: 'parameter' })
-    else ts.forEachChild(name, bindParameter)
+  const bindParameter = (name: ts.BindingName, element: ts.BindingElement | null) => {
+    if (ts.isIdentifier(name)) {
+      local.set(name.text, { kind: 'parameter', element })
+      return
+    }
+    for (const child of name.elements) {
+      if (ts.isBindingElement(child)) bindParameter(child.name, child)
+    }
   }
-  for (const parameter of shell.parameters) bindParameter(parameter.name)
+  for (const parameter of shell.parameters) bindParameter(parameter.name, null)
   const walk = (node: ts.Node) => {
     if (ts.isFunctionDeclaration(node) && node.name) {
       local.set(node.name.text, { kind: 'function' })
@@ -105,10 +112,36 @@ function analyse(text: string): Analysed {
     ts.forEachChild(node, walk)
   }
   if (shell.body) ts.forEachChild(shell.body, walk)
-  const result = { file, shell, local, stable, declaredAt }
+  const mutated = new Set<string>()
+  const markMutated = (target: ts.Expression) => {
+    let root = unwrap(target)
+    while (ts.isPropertyAccessExpression(root) || ts.isElementAccessExpression(root)) root = unwrap(root.expression)
+    if (ts.isIdentifier(root) && local.has(root.text) && !stable.has(root.text)) mutated.add(root.text)
+  }
+  const findMutations = (node: ts.Node) => {
+    if (createsFunction(node)) return
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+      (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))) markMutated(node.left)
+    if (ts.isDeleteExpression(node)) markMutated(node.expression)
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const { expression: receiver, name } = node.expression
+      if (MUTATING_METHODS.has(name.text)) markMutated(receiver)
+      if (ts.isIdentifier(receiver) && receiver.text === 'Object' && MUTATING_OBJECT_FUNCTIONS.has(name.text) &&
+        node.arguments[0]) markMutated(node.arguments[0])
+    }
+    ts.forEachChild(node, findMutations)
+  }
+  if (shell.body) ts.forEachChild(shell.body, findMutations)
+  const result = { file, shell, local, stable, declaredAt, mutated }
   analysed.set(text, result)
   return result
 }
+
+/** Methods and `Object.*` functions that change their receiver or first argument in place. */
+const MUTATING_METHODS = new Set(['push', 'unshift', 'splice', 'pop', 'shift', 'fill', 'copyWithin', 'reverse',
+  'sort', 'set', 'add', 'delete', 'clear'])
+const MUTATING_OBJECT_FUNCTIONS = new Set(['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf'])
 
 /** The hook a call names, written bare (`useMemo`) or through a namespace (`React.useMemo`). */
 function hookName(call: ts.CallExpression): string {
@@ -116,6 +149,18 @@ function hookName(call: ts.CallExpression): string {
   if (ts.isIdentifier(callee)) return callee.text
   if (ts.isPropertyAccessExpression(callee)) return callee.name.text
   return ''
+}
+
+/**
+ * Whether `call` is a hook whose value the guards trust: `useX(...)` called directly, or through a name
+ * that is not bound in the shell (`React.useX(...)`). `value.useX(...)` on a shell value is not a hook.
+ */
+function isTrustedHookCall(s: Analysed, call: ts.CallExpression): boolean {
+  if (!/^use[A-Z]/.test(hookName(call))) return false
+  const callee = call.expression
+  if (ts.isIdentifier(callee)) return true
+  return ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression) &&
+    !s.local.has(callee.expression.text)
 }
 
 const lineOf = (s: Analysed, node: ts.Node) => s.file.getLineAndCharacterOfPosition(node.getStart(s.file)).line + 1
@@ -264,9 +309,12 @@ const isLiteral = (node: ts.Expression) =>
 function bindingRisk(s: Analysed, name: string, seen: Set<string> = new Set()): string | null {
   const binding = s.local.get(name)
   if (!binding) return null
-  if (binding.kind === 'parameter') return null
+  if (binding.kind === 'parameter') {
+    return binding.element?.initializer ? closureRisk(s, binding.element.initializer, seen) : null
+  }
   if (binding.kind === 'function') return 'a function declared in the render'
   if (binding.kind === 'other') return 'not a const binding'
+  if (s.mutated.has(name)) return 'mutated in the render after its declaration'
   if (seen.has(name)) return null
   seen.add(name)
   const fromDefault = binding.element?.initializer ? closureRisk(s, binding.element.initializer, seen) : null
@@ -337,7 +385,7 @@ function closureRisk(s: Analysed, node: ts.Expression, seen: Set<string> = new S
     return null
   }
   if (ts.isCallExpression(value) || ts.isNewExpression(value)) {
-    if (ts.isCallExpression(value) && /^use[A-Z]/.test(hookName(value))) return null
+    if (ts.isCallExpression(value) && isTrustedHookCall(s, value)) return null
     const calleeRisk = closureRisk(s, value.expression, seen)
     if (calleeRisk) return calleeRisk
     for (const argument of value.arguments ?? []) {
@@ -364,7 +412,7 @@ function consumedCallbackRisk(s: Analysed, fn: ts.Expression, seen: Set<string>)
   }
   fn.parameters.forEach(parameter => bind(parameter.name))
   const shadowed: [string, Binding | undefined][] = [...params].map(name => [name, s.local.get(name)])
-  for (const name of params) s.local.set(name, { kind: 'parameter' })
+  for (const name of params) s.local.set(name, { kind: 'parameter', element: null })
   try {
     return closureRisk(s, fn.body, seen)
   } finally {
@@ -678,6 +726,10 @@ describe('shell closure guards catch what they are for', () => {
     ['a render object with a method', 'const holder = { go() { return label } }\nconst x = useMemo(() => holder, [holder])', 'captures holder'],
     ['a render value of JSX', 'const node = <b onClick={() => label} />\nconst x = useMemo(() => node, [node])', 'captures node'],
     ['a let binding', 'let f = label\nconst x = useMemo(() => f, [f])', 'captures f'],
+    ['a render value given a function by push', 'const kept: unknown[] = []\nkept.push(onDone)\nconst x = useMemo(() => kept, [kept])', 'captures kept: mutated in the render after its declaration'],
+    ['a render value given a function by property assignment', 'const holder: Record<string, unknown> = {}\nholder.go = () => label\nconst x = useMemo(() => createShellOpen(setOpen, sessionId, holder), [sessionId, holder])', 'captures holder: mutated in the render after its declaration'],
+    ['a render value given a function by Object.assign', 'const holder = {}\nObject.assign(holder, { go: onDone })\nconst x = useMemo(() => holder, [holder])', 'captures holder: mutated in the render after its declaration'],
+    ['a hook-named method on a render value', 'const f = onDone.useValue()\nconst x = useMemo(() => f, [f])', 'captures f: onDone: a function created in the render'],
     ['a block-bodied consumed callback in a render value', 'const fs = items.map(item => { return () => item })\nconst x = useMemo(() => fs, [fs])', 'captures fs'],
     ['a callback in a non-first argument', 'const x = useMemo(() => items.reduce((a: string) => a, () => label), [items, label])', 'function created in a value memo'],
     ['an unlisted resolveBootSession option', 'const x = useMemo(() => resolveBootSession({ other: () => label }), [label])', 'function created in a value memo'],
@@ -705,6 +757,15 @@ describe('shell closure guards catch what they are for', () => {
   ]
   it.each(staleInputs)('reports a stale factory input: %s', (_name, body, reason) => {
     expect(reasons(factoryDependencyGaps(shellWith(body)))).toContain(reason)
+  })
+
+  it('rejects a shell parameter whose default creates a function', () => {
+    const text = `
+      export function MultiSessionShell({ onClose = () => undefined }: { onClose?: () => void }) {
+        const x = useMemo(() => onClose, [onClose])
+        return null
+      }`
+    expect(reasons(memoClosureViolations(text))).toEqual(['captures onClose: a function created in the render'])
   })
 
   it('does not report refs, setters, dispatch, literals or module-level names as stale', () => {
