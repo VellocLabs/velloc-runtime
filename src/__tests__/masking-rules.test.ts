@@ -136,3 +136,25 @@ describe('compileMasking', () => {
     expect(masking.residualIn('x AcmeCo y')).toBe(1)
   })
 })
+
+describe('compileMasking at scale and across Unicode forms', () => {
+  it('handles the largest table on a long text in linear work per position', () => {
+    const rules = Array.from({ length: 256 }, (_, i) => ({ match: `${'k'.repeat(400)}${i.toString(36).padStart(3, '0')}`, alias: `A${i}` }))
+    const masking = compileMasking(rules)
+    const text = 'k'.repeat(200_000)
+    const started = performance.now()
+    expect(masking.maskText(text).text).toBe(text)
+    expect(performance.now() - started).toBeLessThan(2_000)
+    expect(masking.maskText(`x${rules[7]!.match}y`).text).toBe('xA7y')
+  })
+
+  it('finds a match written in its other normal form, restores it in the rule\'s form, and the guard sees it too', () => {
+    const nfc = 'caf\u00e9'
+    const nfd = 'cafe\u0301'
+    const masking = compileMasking([{ match: nfc, alias: 'bistro' }])
+    const masked = masking.maskText(`a ${nfd} b`)
+    expect(masked).toEqual({ text: 'a bistro b', collision: false })
+    expect(masking.restoreText('bistro')).toBe(nfc)
+    expect(masking.residualIn(`left ${nfd}`)).toBe(0)
+  })
+})

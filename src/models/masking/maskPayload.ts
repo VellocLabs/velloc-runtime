@@ -5,10 +5,14 @@
  * hold no hit are shared with the copy. Masked: message content (text, tool
  * calls and their arguments, tool results, thinking text), the system prompt,
  * the user / system context values, tool definitions (name, description and
- * every string in the schema and examples), the body extension and the
- * tool-use context. Never masked: object keys, `requestContext`, `model`,
- * `providerId`, and opaque or binary fields (image and document data, redacted
- * thinking, signatures). The egress guard catches what is left.
+ * every string and object key in the schema and examples), the body extension
+ * and the tool-use context. Object keys are masked like values. A part is
+ * judged by its `type` wherever it sits (a tool result's content too): an
+ * image and redacted thinking are left whole, a thinking part's `signature`
+ * is left as is, and a document is masked after decoding when its media type
+ * is `text/*` (other documents are left whole). Never masked:
+ * `requestContext`, `model`, `providerId`. The egress guard catches what is
+ * left.
  */
 import type {
   BridgeModelContentPart,
@@ -49,10 +53,40 @@ export class MaskingTally {
 const MAX_CONTEXTS = 64
 const CONTEXT_CHARS = 24
 
-function contextOf(text: string, hit: MaskingHit, alias: string): string {
-  const before = text.slice(Math.max(0, hit.start - CONTEXT_CHARS), hit.start)
-  const after = text.slice(hit.end, hit.end + CONTEXT_CHARS)
-  return `${before}⟦${alias}⟧${after}`.replace(/[\r\n|]/g, ' ')
+/** Part types whose payload is opaque as a whole. */
+const OPAQUE_PARTS: ReadonlySet<string> = new Set(['image', 'redacted_thinking'])
+/** Fields of a part, by part type, that hold provider-signed or binary data. */
+const OPAQUE_PART_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = {
+  thinking: new Set(['signature']),
+  reasoning: new Set(['signature', 'encrypted_content', 'encryptedContent']),
+}
+
+const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
+const UTF8_ENCODER = new TextEncoder()
+
+function decodeBase64Text(data: string): string | undefined {
+  try {
+    const binary = atob(data)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+    return UTF8_DECODER.decode(bytes)
+  } catch {
+    return undefined
+  }
+}
+
+function encodeBase64Text(text: string): string {
+  const bytes = UTF8_ENCODER.encode(text)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return btoa(binary)
+}
+
+function mediaTypeOf(part: Record<string, unknown>): string {
+  const value = part.mimeType ?? part.mime_type ?? part.media_type ?? part.mediaType
+  return typeof value === 'string' ? value.toLowerCase() : ''
 }
 
 /** Masks strings for one payload and records what it did. */
@@ -64,17 +98,34 @@ export class PayloadMasker {
 
   text(value: string, where: string): string {
     const tally = this.tally
+    const hits: MaskingHit[] = []
     const masked = this.masking.maskText(value, hit => {
       tally.count(where, hit.rule)
-      if (tally.contexts && tally.contexts.length < MAX_CONTEXTS) {
-        tally.contexts.push({ rule: hit.rule, where, context: contextOf(value, hit, this.masking.rules[hit.rule]!.alias) })
-      }
+      if (tally.contexts) hits.push(hit)
     })
     if (masked.collision) tally.collisions.add(where)
+    if (tally.contexts && hits.length > 0) this.recordContexts(masked.text, hits, where)
     return masked.text
   }
 
-  /** Every string value under `value`, keys excluded. */
+  /** Context around each hit, cut from the masked text: neighbouring
+   *  matches appear as their aliases, never in clear. */
+  private recordContexts(masked: string, hits: readonly MaskingHit[], where: string): void {
+    const contexts = this.tally.contexts!
+    let shift = 0
+    for (const hit of hits) {
+      const alias = this.masking.rules[hit.rule]!.alias
+      const start = hit.start + shift
+      const end = start + alias.length
+      shift += alias.length - (hit.end - hit.start)
+      if (contexts.length >= MAX_CONTEXTS) continue
+      const before = masked.slice(Math.max(0, start - CONTEXT_CHARS), start)
+      const after = masked.slice(end, end + CONTEXT_CHARS)
+      contexts.push({ rule: hit.rule, where, context: `${before}⟦${alias}⟧${after}`.replace(/[\r\n|]/g, ' ') })
+    }
+  }
+
+  /** Every string value and object key under `value`; parts by their type. */
   deep<T>(value: T, where: string): T {
     if (typeof value === 'string') return this.text(value, where) as T
     if (Array.isArray(value)) {
@@ -86,34 +137,44 @@ export class PayloadMasker {
       })
       return (changed ? out : value) as T
     }
-    if (value && typeof value === 'object') {
-      let out: Record<string, unknown> | undefined
-      for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-        if (OPAQUE_FIELDS.has(key)) continue
-        const next = this.deep(item, where)
-        if (next !== item) {
-          out ??= { ...(value as Record<string, unknown>) }
-          out[key] = next
-        }
-      }
-      return (out ?? value) as T
-    }
+    if (value && typeof value === 'object') return this.object(value as Record<string, unknown>, where) as T
     return value
   }
+
+  private object(value: Record<string, unknown>, where: string): Record<string, unknown> {
+    const type = typeof value.type === 'string' ? value.type : undefined
+    if (type !== undefined && OPAQUE_PARTS.has(type)) return value
+    if (type === 'document') return this.document(value, where)
+    const keep = type !== undefined ? OPAQUE_PART_FIELDS[type] : undefined
+    let changed = false
+    const out: Record<string, unknown> = {}
+    for (const [key, item] of Object.entries(value)) {
+      const nextKey = this.text(key, where)
+      const next = keep?.has(key) ? item : this.deep(item, where)
+      if (nextKey !== key || next !== item) changed = true
+      out[nextKey] = next
+    }
+    return changed ? out : value
+  }
+
+  /** A `text/*` document is masked inside its base64; any other is left whole. */
+  private document(value: Record<string, unknown>, where: string): Record<string, unknown> {
+    if (!mediaTypeOf(value).startsWith('text/')) return value
+    let out: Record<string, unknown> | undefined
+    for (const field of ['data', 'document'] as const) {
+      const data = value[field]
+      if (typeof data !== 'string') continue
+      const text = decodeBase64Text(data)
+      if (text === undefined) continue
+      const masked = this.text(text, where)
+      if (masked !== text) {
+        out ??= { ...value }
+        out[field] = encodeBase64Text(masked)
+      }
+    }
+    return out ?? value
+  }
 }
-
-/** Fields that hold bytes or provider-signed data, never prose. */
-const OPAQUE_FIELDS: ReadonlySet<string> = new Set([
-  'signature',
-  'data',
-  'image',
-  'document',
-  'encrypted_content',
-  'encryptedContent',
-])
-
-/** Part types whose payload is opaque as a whole. */
-const OPAQUE_PARTS: ReadonlySet<string> = new Set(['image', 'document', 'redacted_thinking'])
 
 function maskContent(
   masker: PayloadMasker,
@@ -121,14 +182,7 @@ function maskContent(
 ): string | BridgeModelContentPart[] | undefined {
   if (typeof content === 'string') return masker.text(content, 'messages')
   if (!Array.isArray(content)) return content
-  let changed = false
-  const out = content.map(part => {
-    if (!part || typeof part !== 'object' || OPAQUE_PARTS.has(String(part.type))) return part
-    const next = masker.deep(part, 'messages')
-    if (next !== part) changed = true
-    return next
-  })
-  return changed ? out : content
+  return masker.deep(content, 'messages')
 }
 
 function maskMessage(masker: PayloadMasker, message: BridgeModelInputMessage): BridgeModelInputMessage {

@@ -1,15 +1,20 @@
 /**
- * Starts the realm's model egress masking (F-39): the first read of the
- * `modelMasking` section, and the log sink on the runtime's host port.
- *
- * Contract: idempotent per realm; returns false (and does nothing) until a
- * home directory and a host port exist, so the caller retries later.
+ * Contract: starts the realm's model egress masking (F-39): the first read of
+ * the `modelMasking` section, and the log sink on the runtime's host port.
+ * Idempotent per realm; returns false (and does nothing) until a
+ * home directory and a host port exist, so the caller retries later. A
+ * settings file that exists but cannot be read leaves masking `unknown`
+ * (requests refused) and is read again. `settleWithoutSettings` is for a
+ * session that has no settings file at all (no home directory): masking can
+ * never have been turned on there, so it is off.
  */
 import type { BrowserBridgeTransport } from '../../browser/bridge/browserBridgeProtocol'
 import { createBridgeRoute } from '../../browser/bridge/protocol/core'
 import { readUserLayer } from '../../settings/settingsStore'
+import { resolveProviderUserAgent } from '../../config/providerUserAgent'
+import { runtimeProviderConfigs } from '../drivers/runtimeProviders'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
-import { modelMasking, type ModelMaskingHolder } from './maskingHolder'
+import { MaskingHostError, modelMasking, type ModelMaskingHolder } from './maskingHolder'
 import type { MaskingLogSink } from './maskingLog'
 
 export type MaskingBootHost = {
@@ -26,7 +31,7 @@ export function createMaskingLogSink(host: MaskingBootHost): MaskingLogSink {
   return {
     async append(path, text) {
       const transport = host.transport()
-      if (!transport) throw new Error('The host is not connected.')
+      if (!transport) throw new MaskingHostError('hostDisconnected')
       const response = await transport.request({
         id: host.requestId(),
         route: createBridgeRoute('fs', 'appendFile'),
@@ -43,7 +48,7 @@ export function createMaskingLogSink(host: MaskingBootHost): MaskingLogSink {
     },
     async rename(from, to) {
       const fs = host.fs()
-      if (!fs.rename) throw new Error('This host cannot rename files.')
+      if (!fs.rename) throw new MaskingHostError('cannotRename')
       await fs.rename(from, to)
     },
     async remove(path) {
@@ -60,8 +65,18 @@ export function startModelMasking(host: MaskingBootHost, holder: ModelMaskingHol
   if (!homeDir || !host.transport()) return false
   started = true
   holder.setLogSink(createMaskingLogSink(host))
-  void holder.load(async () => (await readUserLayer(homeDir, host.fs())).settings.modelMasking)
+  holder.setPresetUserAgentResolver(providerId => resolveProviderUserAgent(providerId, runtimeProviderConfigs()[providerId]))
+  void holder.load(async () => {
+    const result = await readUserLayer(homeDir, host.fs())
+    return result.unread ? 'unreadable' : result.settings.modelMasking
+  })
   return true
+}
+
+/** A session with no settings file: masking is off (it cannot be on). */
+export function settleWithoutSettings(holder: ModelMaskingHolder = modelMasking): void {
+  if (started) return
+  if (holder.status().state === 'unknown') holder.configure(undefined)
 }
 
 /** Test hook. */

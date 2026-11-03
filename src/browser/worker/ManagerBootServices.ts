@@ -55,7 +55,7 @@ import type { RoutineCoordinator } from './RoutineCoordinator'
 import { installRuntimeRenderCache } from '../../renderCache/runtimeRenderCache'
 import { readIdlePurgeEnabled } from '../../renderCache/idlePurgeFlag'
 import { TerminalService, type CliConversationStore } from '../../terminal/TerminalService'
-import { startModelMasking } from '../../models/masking/maskingBoot'
+import { settleWithoutSettings, startModelMasking } from '../../models/masking/maskingBoot'
 
 export interface ManagerBootServicesHost {
   getDirectBridgeTransport(): DirectPortBridgeTransport | null
@@ -96,6 +96,7 @@ export class ManagerBootServices {
   private managerFs: RuntimeFs | null = null
   private routineRuntimeHandle: RoutineRuntimeHandle | null = null
   private teamRegistryBooted = false
+  private storageReady = false
   private providerModsBoot: Promise<void> | null = null
   private modelCatalogInstalled = false
   private readonly directBridgeWaiters = new Set<
@@ -121,6 +122,7 @@ export class ManagerBootServices {
   }
 
   onStorageReady(): void {
+    this.storageReady = true
     void this.bootRoutineRuntimeOnce()
     void this.bootTeamRuntimeOnce()
     void this.publishProviderConfigsAtBoot()
@@ -177,12 +179,15 @@ export class ManagerBootServices {
   }
 
   private startModelMasking(): void {
-    startModelMasking({
+    const started = startModelMasking({
       homeDir: () => this.host.getHomeDir() || undefined,
       transport: () => this.host.getDirectBridgeTransport() ?? undefined,
       requestId: () => this.host.createBridgeRequestId(),
       fs: () => this.getManagerFs(),
     })
+    // Storage is up without a home directory (flat layout): there is no
+    // settings file, so masking was never turned on.
+    if (!started && this.storageReady && !this.host.getHomeDir()) settleWithoutSettings()
   }
 
   getManagerFs(): RuntimeFs {

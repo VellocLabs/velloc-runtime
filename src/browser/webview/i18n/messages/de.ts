@@ -397,6 +397,7 @@ export const de: Messages = {
   'statusBar.retryKind.repetitive_tool_calls': 'sich wiederholende Tool-Aufrufe',
   'statusBar.retryKind.refusal': 'Sicherheitsablehnung',
   'statusBar.retryKind.local_stream_limit': 'zu viele offene Anfragen',
+  'statusBar.retryKind.masking_refused': 'durch Ersetzen blockiert',
   'statusBar.retryKind.unknown': 'Verbindungsfehler',
   'providerIssue.repetitiveToolCalls.title':
     'Anbieter hat einen wiederholten Tool-Aufruf blockiert',
@@ -434,6 +435,15 @@ export const de: Messages = {
   'providerIssue.localStreamLimit.title': 'Zu viele offene Modellanfragen',
   'providerIssue.localStreamLimit.summary':
     '{product} hat diese Anfrage nicht gesendet, weil bereits zu viele Modellanfragen offen sind. Das ist kein Fehler des Anbieters, und ein Wechsel des Anbieters hilft nicht. Beenden oder stoppen Sie andere laufende Sitzungen oder warten Sie eine Minute, und wählen Sie dann „Erneut versuchen“.',
+  'providerIssue.maskingResidual.title': 'Durch Ersetzen blockiert',
+  'providerIssue.maskingResidual.summary':
+    'Die Anfrage enthielt nach dem Ersetzen noch den Text der Ersetzungsregel {rule} (in {where}), daher hat {product} sie nicht gesendet. Prüfen Sie mit /masking test, wo sie auftritt, und wählen Sie dann „Erneut versuchen“.',
+  'providerIssue.maskingUnknown.title': 'Ersetzungseinstellungen noch nicht gelesen',
+  'providerIssue.maskingUnknown.summary':
+    '{product} hat die Ersetzungseinstellungen noch nicht gelesen und sendet erst dann etwas, wenn feststeht, ob die Anfrage ersetzt werden muss. Wählen Sie gleich „Erneut versuchen“; bleibt es so, prüfen Sie mit /masking, ob die Einstellungsdatei lesbar ist.',
+  'providerIssue.maskingBroken.title': 'Ersetzungsregeln nicht verwendbar',
+  'providerIssue.maskingBroken.summary':
+    'Das Ersetzen von Schlüsselwörtern ist eingeschaltet, aber seine Regeln sind leer oder ungültig. Daher hat {product} diese Anfrage nicht gesendet, statt Ihre Schlüsselwörter unverändert zu senden. Beheben Sie die Regeln mit /masking rules oder schalten Sie das Ersetzen mit /masking off aus, und wählen Sie dann „Erneut versuchen“.',
   'providerIssue.network.title': 'Problem mit der Netzwerkverbindung',
   'providerIssue.network.summary':
     '{product} konnte den Anbieter nicht zuverlässig erreichen. {product} versucht es automatisch erneut, bevor der API-Fehler angezeigt wird.',
@@ -1324,6 +1334,8 @@ export const de: Messages = {
     '{product} hat diese Anfrage nicht gesendet — in {product} sind bereits zu viele Modellanfragen offen, daher hat der Anbieter sie nie erhalten.',
   'thread.providerStoredKeyNoRetrySummary':
     '{product} hat diese Anfrage nicht gesendet — der Anbieter hat keinen verwendbaren API-Schlüssel, daher würde ein unverändertes erneutes Senden genauso fehlschlagen.',
+  'thread.providerMaskingNoRetrySummary':
+    '{product} hat diese Anfrage nicht gesendet — das Ersetzen von Schlüsselwörtern hat sie blockiert, daher hat der Anbieter sie nie gesehen.',
   'thread.providerBillingHint':
     'Lade Guthaben auf dein Anbieterkonto — bezahlt werden Anfragen aus dem Kontoguthaben. Das Kreditlimit eines API-Schlüssels begrenzt nur, wie viel von diesem Guthaben der Schlüssel ausgeben darf; ein Schlüssel mit verbleibendem Limit scheitert also trotzdem, solange das Konto leer ist. Wähle dann Erneut versuchen.',
   'thread.providerRefusalHint':
@@ -2662,8 +2674,20 @@ export const de: Messages = {
     'Ersetzungsprotokoll: {path} ({detail}).',
   'slash.out.masking.statusNoLog':
     'Ersetzungsprotokoll: aus.',
-  'slash.out.masking.lastError':
-    'Letzter Fehler: {error}',
+  'slash.out.masking.error.cannotRename':
+    'Dieser Host kann Dateien nicht umbenennen, daher wird das Protokoll nicht rotiert.',
+  'slash.out.masking.error.hostDisconnected':
+    'Der Host ist nicht verbunden.',
+  'slash.out.masking.error.other':
+    '{detail}',
+  'slash.out.masking.error.settingsUnreadable':
+    'Die Einstellungsdatei kann nicht gelesen werden; bis sie lesbar ist, werden keine Modellanfragen gesendet.',
+  'slash.out.masking.lastErrorLabel':
+    'Letzter Fehler:',
+  'slash.out.masking.rulesIgnoredFields':
+    'Nur "rules" wurde aus der Datei gelesen; ignoriert: {fields}. Verwenden Sie /masking on und /masking log, um diese festzulegen.',
+  'slash.out.masking.statusUnknown':
+    'Die Ersetzungseinstellungen sind noch nicht gelesen; bis dahin werden keine Modellanfragen gesendet.',
   'slash.out.debug.usage.title':
     'Verwendung von {command}',
   'slash.out.debug.usage.issueArg':

@@ -286,8 +286,20 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
     'Replacement log: {path} ({detail}).',
   'slash.out.masking.statusNoLog':
     'Replacement log: off.',
-  'slash.out.masking.lastError':
-    'Last error: {error}',
+  'slash.out.masking.error.cannotRename':
+    'This host cannot rename files, so the log is not rotated.',
+  'slash.out.masking.error.hostDisconnected':
+    'The host is not connected.',
+  'slash.out.masking.error.other':
+    '{detail}',
+  'slash.out.masking.error.settingsUnreadable':
+    'The settings file cannot be read; model requests are not sent until it can be.',
+  'slash.out.masking.lastErrorLabel':
+    'Last error:',
+  'slash.out.masking.rulesIgnoredFields':
+    'Only "rules" was read from the file; ignored: {fields}. Use /masking on and /masking log to set those.',
+  'slash.out.masking.statusUnknown':
+    'The masking settings are not read yet; model requests are not sent until they are.',
   'slash.out.debug.usage.title':
     '{command} usage',
   'slash.out.debug.usage.issueArg':

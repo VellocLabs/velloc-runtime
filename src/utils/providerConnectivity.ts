@@ -5,6 +5,7 @@
 // import cycle.
 import type { MessageKey } from '../browser/webview/i18n/messages/en'
 import { storedKeyProblemOf } from './storedKeyProblem'
+import { maskingRefusalOf } from './maskingRefusal'
 
 export type ProviderApiErrorKind =
   | 'authentication_failed'
@@ -18,6 +19,8 @@ export type ProviderApiErrorKind =
   // The host refused to open another model stream: its table of open
   // requests is full. The provider never saw the request.
   | 'local_stream_limit'
+  // Model egress masking refused to send (F-39): the provider never saw it.
+  | 'masking_refused'
   // A safety stop (`stop_reason: 'content_filter'`), not a transport failure:
   // minted by engine/turn/modelErrorMessages.ts `withRefusalApiError`, never by the
   // classifier below — a refused turn is an HTTP 200 and never enters the
@@ -236,6 +239,29 @@ export function classifyProviderConnectivityIssue(
       summaryKey: unreadable ? 'providerIssue.storedKeyUnreadable.summary' : 'providerIssue.storedKeyUnavailable.summary',
       retryable: false,
       settingsRecommended: true,
+      detail,
+      status,
+      retryAfterMs,
+    }
+  }
+
+  // Model egress masking refused to send: nothing reached the provider, and
+  // resending changes nothing until the masking setup changes.
+  const masking = maskingRefusalOf(detail)
+  if (masking) {
+    const keys = {
+      residual: ['providerIssue.maskingResidual.title', 'providerIssue.maskingResidual.summary'],
+      unknown: ['providerIssue.maskingUnknown.title', 'providerIssue.maskingUnknown.summary'],
+      broken: ['providerIssue.maskingBroken.title', 'providerIssue.maskingBroken.summary'],
+    } as const satisfies Record<string, readonly [MessageKey, MessageKey]>
+    const [titleKey, summaryKey] = keys[masking.kind]
+    return {
+      kind: 'configuration',
+      error: 'masking_refused',
+      titleKey,
+      summaryKey,
+      retryable: false,
+      settingsRecommended: false,
       detail,
       status,
       retryAfterMs,

@@ -392,6 +392,7 @@ export const ko: Messages = {
   'statusBar.retryKind.repetitive_tool_calls': '도구 호출 반복',
   'statusBar.retryKind.refusal': '안전상의 거부',
   'statusBar.retryKind.local_stream_limit': '열린 요청이 너무 많음',
+  'statusBar.retryKind.masking_refused': '바꾸기로 차단됨',
   'statusBar.retryKind.unknown': '연결 오류',
   'providerIssue.repetitiveToolCalls.title': '제공업체가 반복된 도구 호출을 차단함',
   'providerIssue.repetitiveToolCalls.summary':
@@ -427,6 +428,15 @@ export const ko: Messages = {
   'providerIssue.localStreamLimit.title': '열린 모델 요청이 너무 많음',
   'providerIssue.localStreamLimit.summary':
     '이미 열린 모델 요청이 너무 많아 {product}이(가) 이 요청을 보내지 않았습니다. 제공업체 오류가 아니며, 제공업체를 바꿔도 해결되지 않습니다. 실행 중인 다른 세션을 끝내거나 중지하거나 1분 정도 기다린 뒤 "다시 시도"를 선택하세요.',
+  'providerIssue.maskingResidual.title': '바꾸기로 차단됨',
+  'providerIssue.maskingResidual.summary':
+    '바꾼 뒤에도 요청에 바꾸기 규칙 {rule}의 텍스트가 남아 있어({where}) {product}이(가) 보내지 않았습니다. /masking test로 나타나는 위치를 확인한 뒤 "다시 시도"를 선택하세요.',
+  'providerIssue.maskingUnknown.title': '바꾸기 설정을 아직 읽지 않음',
+  'providerIssue.maskingUnknown.summary':
+    '{product}이(가) 아직 키워드 바꾸기 설정을 읽지 않아, 요청을 바꿔야 하는지 알 때까지 아무것도 보내지 않습니다. 잠시 후 "다시 시도"를 선택하세요. 계속되면 /masking으로 설정 파일을 읽을 수 있는지 확인하세요.',
+  'providerIssue.maskingBroken.title': '바꾸기 규칙을 사용할 수 없음',
+  'providerIssue.maskingBroken.summary':
+    '키워드 바꾸기가 켜져 있지만 규칙이 비어 있거나 유효하지 않아, 키워드를 그대로 보내는 대신 {product}이(가) 이 요청을 보내지 않았습니다. /masking rules로 규칙을 고치거나 /masking off로 바꾸기를 끈 뒤 "다시 시도"를 선택하세요.',
   'providerIssue.network.title': '네트워크 연결 문제',
   'providerIssue.network.summary':
     '{product}이(가) 제공업체에 안정적으로 연결하지 못했습니다. {product}은(는) 자동으로 재시도한 후 API 오류를 표시합니다.',
@@ -1309,6 +1319,8 @@ export const ko: Messages = {
     '{product}이(가) 이 요청을 보내지 않았습니다 — {product}에 이미 열린 모델 요청이 너무 많아 제공업체는 이 요청을 받지 못했습니다.',
   'thread.providerStoredKeyNoRetrySummary':
     '{product}이(가) 이 요청을 보내지 않았습니다. 제공업체에 사용할 수 있는 API 키가 없으므로 그대로 다시 보내도 같은 이유로 실패합니다.',
+  'thread.providerMaskingNoRetrySummary':
+    '{product}이(가) 이 요청을 보내지 않았습니다. 키워드 바꾸기가 막았기 때문에 제공업체는 이 요청을 받지 않았습니다.',
   'thread.providerBillingHint':
     '제공업체 계정에 크레딧을 충전하세요. 요청 비용은 계정 잔액에서 지불됩니다. API 키의 크레딧 한도는 그 키가 잔액에서 쓸 수 있는 금액을 제한할 뿐이므로, 키 한도가 남아 있어도 계정 잔액이 비어 있으면 실패합니다. 충전한 뒤 다시 시도를 선택하세요.',
   'thread.providerRefusalHint':
@@ -2589,8 +2601,20 @@ export const ko: Messages = {
     '바꾼 기록 로그: {path}({detail}).',
   'slash.out.masking.statusNoLog':
     '바꾼 기록 로그: 꺼짐.',
-  'slash.out.masking.lastError':
-    '최근 오류: {error}',
+  'slash.out.masking.error.cannotRename':
+    '이 호스트는 파일 이름을 바꿀 수 없어 로그를 교체하지 않습니다.',
+  'slash.out.masking.error.hostDisconnected':
+    '호스트가 연결되어 있지 않습니다.',
+  'slash.out.masking.error.other':
+    '{detail}',
+  'slash.out.masking.error.settingsUnreadable':
+    '설정 파일을 읽을 수 없습니다. 읽을 수 있을 때까지 모델 요청을 보내지 않습니다.',
+  'slash.out.masking.lastErrorLabel':
+    '마지막 오류:',
+  'slash.out.masking.rulesIgnoredFields':
+    '파일에서 "rules"만 읽었습니다. 무시한 항목: {fields}. 이 항목들은 /masking on과 /masking log로 설정하세요.',
+  'slash.out.masking.statusUnknown':
+    '키워드 바꾸기 설정을 아직 읽지 않았습니다. 읽을 때까지 모델 요청을 보내지 않습니다.',
   'slash.out.debug.usage.title':
     '{command} 사용법',
   'slash.out.debug.usage.issueArg':

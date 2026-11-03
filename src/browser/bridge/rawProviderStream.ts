@@ -24,6 +24,9 @@ export type RawProviderStreamRequest = {
   idleTimeoutMs?: number
   maxResponseBytes?: number
   signal?: AbortSignal
+  /** `stream`: a driver stream already checked this request against its own
+   *  masking table (F-39), so the realm-wide check skips it. */
+  masking?: 'stream'
 }
 
 export type RawProviderStream = {
@@ -106,10 +109,13 @@ async function send<T>(
 
 /**
  * Security: a check every request passes before it is sent; one that throws
- * stops the request, and nothing reaches the host. Set by the realm's model
+ * stops the request, and nothing reaches the host. It may return a replacement
+ * request (masked headers), which is what is sent. Set by the realm's model
  * egress masking (F-39); absent = no check.
  */
-export type RawProviderEgressCheck = (request: Readonly<RawProviderStreamRequest>) => void
+export type RawProviderEgressCheck = (
+  request: Readonly<RawProviderStreamRequest>,
+) => RawProviderStreamRequest | void
 
 let egressCheck: RawProviderEgressCheck | undefined
 
@@ -119,10 +125,10 @@ export function setRawProviderEgressCheck(check: RawProviderEgressCheck | undefi
 
 export async function openRawProviderStream(
   transport: BrowserBridgeTransport,
-  request: RawProviderStreamRequest,
+  input: RawProviderStreamRequest,
 ): Promise<RawProviderStream> {
-  request.signal?.throwIfAborted()
-  egressCheck?.(request)
+  input.signal?.throwIfAborted()
+  const request = egressCheck?.(input) ?? input
   const idleTimeoutMs = Math.min(
     request.idleTimeoutMs ?? RAW_STREAM_MAX_IDLE_TIMEOUT_MS,
     RAW_STREAM_MAX_IDLE_TIMEOUT_MS,

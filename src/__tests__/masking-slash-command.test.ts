@@ -92,11 +92,11 @@ describe('/masking', () => {
   })
 
   it('loads rules from a file relative to the working directory, saves them and applies them at once', async () => {
-    const fs = stubFs({ '/w/rules.json': JSON.stringify({ rules: RULES, logPath: '/logs/m.log' }) })
+    const fs = stubFs({ '/w/rules.json': JSON.stringify({ rules: RULES }) })
     const loaded = await run('/masking rules rules.json')
     expect(loaded.text).toContain('Loaded 2 rules from /w/rules.json.')
-    expect(fs.settings()?.modelMasking).toEqual({ rules: RULES, logPath: '/logs/m.log' })
-    expect(modelMasking.status()).toMatchObject({ enabled: false, ruleCount: 2, logPath: '/logs/m.log' })
+    expect(fs.settings()?.modelMasking).toEqual({ rules: RULES })
+    expect(modelMasking.status()).toMatchObject({ enabled: false, ruleCount: 2 })
     expect(modelMasking.current()).toBeUndefined()
 
     const on = await run('/masking on')
@@ -107,6 +107,35 @@ describe('/masking', () => {
     const off = await run('/masking off')
     expect(off.text).toContain('Masking is off.')
     expect(modelMasking.current()).toBeUndefined()
+  })
+
+  it('reads only the rules from a file, and says which other fields it ignored', async () => {
+    const fs = stubFs({
+      '/w/rules.json': JSON.stringify({ rules: RULES, enabled: true, logPath: '/logs/m.log', logDetail: 'context' }),
+    })
+    const loaded = await run('/masking rules rules.json')
+    expect(loaded.text).toContain('ignored: enabled, logPath, logDetail')
+    expect(fs.settings()?.modelMasking).toEqual({ rules: RULES })
+    expect(modelMasking.status()).toMatchObject({ enabled: false, state: 'off' })
+  })
+
+  it('reports while the settings are not read yet that requests are held', async () => {
+    stubFs({})
+    modelMasking.resetForTest()
+    const { text, row } = await run('/masking')
+    expect(text).toContain('not read yet')
+    expect((row.i18nContent ?? []).some(part => 'key' in part && part.key === 'slash.out.masking.statusUnknown')).toBe(true)
+  })
+
+  it('shows the last error from the catalog', async () => {
+    stubFs({})
+    modelMasking.resetForTest()
+    await modelMasking.load(async () => 'unreadable')
+    const { text, row } = await run('/masking')
+    expect(text).toContain('Last error: The settings file cannot be read')
+    const keys = (row.i18nContent ?? []).flatMap(part => ('key' in part ? [part.key] : []))
+    expect(keys).toContain('slash.out.masking.error.settingsUnreadable')
+    modelMasking.resetForTest()
   })
 
   it('accepts inline JSON', async () => {
@@ -164,6 +193,13 @@ describe('/masking', () => {
     const { text } = await run('/masking rules')
     expect(text).toContain('Masking rules (2)')
     expect(text).toContain('#1 `AcmeCo` → `Northwind`')
+  })
+
+  it('lists a rule holding a backtick in a code span that still closes', async () => {
+    stubFs({})
+    await run(`/masking rules ${JSON.stringify([{ match: 'a`b', alias: 'x' }])}`)
+    const { text } = await run('/masking rules')
+    expect(text).toContain('#1 ``a`b`` → `x`')
   })
 
   it('says where it cannot save', async () => {

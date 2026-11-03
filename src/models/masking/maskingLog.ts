@@ -4,7 +4,7 @@
  * Rule numbers are 1-based, as `/masking` shows them.
  * `MaskingLogWriter.append` serializes writes, rotates the file past
  * `MAX_LOG_BYTES` (keeping `LOG_GENERATIONS` older files as `.1` …), and
- * reports a failure to `onError` without throwing.
+ * reports a failure (the thrown value) to `onError` without throwing.
  */
 
 /** Where the log goes: the host filesystem, through the runtime. */
@@ -37,7 +37,7 @@ export class MaskingLogWriter {
 
   constructor(
     private readonly sink: MaskingLogSink,
-    private readonly onError: (message: string) => void,
+    private readonly onError: (error: unknown) => void,
   ) {}
 
   append(path: string, text: string): Promise<void> {
@@ -51,7 +51,7 @@ export class MaskingLogWriter {
       await this.rotateIfFull(path)
       await this.sink.append(path, text)
     } catch (error) {
-      this.onError(error instanceof Error ? error.message : String(error))
+      this.onError(error)
     }
   }
 

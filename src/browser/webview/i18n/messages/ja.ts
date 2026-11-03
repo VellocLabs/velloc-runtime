@@ -394,6 +394,7 @@ export const ja: Messages = {
   'statusBar.retryKind.repetitive_tool_calls': 'ツール呼び出しの繰り返し',
   'statusBar.retryKind.refusal': '安全性による拒否',
   'statusBar.retryKind.local_stream_limit': '開いているリクエストが多すぎます',
+  'statusBar.retryKind.masking_refused': '置き換えによりブロック',
   'statusBar.retryKind.unknown': '接続エラー',
   'providerIssue.repetitiveToolCalls.title':
     'プロバイダが繰り返しのツール呼び出しをブロック',
@@ -430,6 +431,15 @@ export const ja: Messages = {
   'providerIssue.localStreamLimit.title': '開いているモデルリクエストが多すぎます',
   'providerIssue.localStreamLimit.summary':
     '開いているモデルリクエストが多すぎるため、{product} はこのリクエストを送信しませんでした。プロバイダのエラーではなく、プロバイダを切り替えても解決しません。実行中の他のセッションを完了または停止するか、1 分ほど待ってから「再試行」を選んでください。',
+  'providerIssue.maskingResidual.title': '置き換えによりブロックされました',
+  'providerIssue.maskingResidual.summary':
+    '置き換えの後も、リクエストに置き換えのルール {rule} のテキストが残っていたため({where})、{product} は送信しませんでした。/masking test で出現箇所を確認してから、「再試行」を選んでください。',
+  'providerIssue.maskingUnknown.title': '置き換えの設定をまだ読み込んでいません',
+  'providerIssue.maskingUnknown.summary':
+    '{product} はキーワードの置き換えの設定をまだ読み込んでおらず、リクエストを置き換える必要があるか分かるまで何も送信しません。少し待ってから「再試行」を選んでください。続く場合は、/masking で設定ファイルを読み取れるか確認してください。',
+  'providerIssue.maskingBroken.title': '置き換えのルールが使用できません',
+  'providerIssue.maskingBroken.summary':
+    'キーワードの置き換えはオンですが、ルールが空か無効です。キーワードをそのまま送信しないよう、{product} はこのリクエストを送信しませんでした。/masking rules でルールを修正するか /masking off で置き換えをオフにしてから、「再試行」を選んでください。',
   'providerIssue.network.title': 'ネットワーク接続の問題',
   'providerIssue.network.summary':
     '{product} はプロバイダに安定して接続できませんでした。{product} は自動的に再試行してから、API エラーを表示します。',
@@ -1313,6 +1323,8 @@ export const ja: Messages = {
     '{product} はこのリクエストを送信しませんでした — {product} で開いているモデルリクエストが多すぎるため、プロバイダには届いていません。',
   'thread.providerStoredKeyNoRetrySummary':
     '{product} はこのリクエストを送信していません。プロバイダに使用できる API キーがないため、そのまま再送しても同じように失敗します。',
+  'thread.providerMaskingNoRetrySummary':
+    '{product} はこのリクエストを送信していません。キーワードの置き換えが止めたため、プロバイダには届いていません。',
   'thread.providerBillingHint':
     'プロバイダのアカウントにクレジットを追加してください。リクエストの支払いに使われるのはアカウントの残高です。API キーのクレジット上限は、そのキーが残高から使える額を制限するだけなので、キーの上限が残っていてもアカウントの残高が空なら失敗します。追加したら「再試行」を選択してください。',
   'thread.providerRefusalHint':
@@ -2599,8 +2611,20 @@ export const ja: Messages = {
     '置き換えのログ: {path}（{detail}）。',
   'slash.out.masking.statusNoLog':
     '置き換えのログ: オフ。',
-  'slash.out.masking.lastError':
-    '直近のエラー: {error}',
+  'slash.out.masking.error.cannotRename':
+    'このホストはファイル名を変更できないため、ログはローテーションされません。',
+  'slash.out.masking.error.hostDisconnected':
+    'ホストに接続されていません。',
+  'slash.out.masking.error.other':
+    '{detail}',
+  'slash.out.masking.error.settingsUnreadable':
+    '設定ファイルを読み取れません。読み取れるようになるまでモデルリクエストは送信されません。',
+  'slash.out.masking.lastErrorLabel':
+    '直近のエラー:',
+  'slash.out.masking.rulesIgnoredFields':
+    'ファイルからは "rules" だけを読み込みました。無視した項目: {fields}。これらは /masking on と /masking log で設定してください。',
+  'slash.out.masking.statusUnknown':
+    'キーワードの置き換えの設定はまだ読み込まれていません。読み込まれるまでモデルリクエストは送信されません。',
   'slash.out.debug.usage.title':
     '{command} の使い方',
   'slash.out.debug.usage.issueArg':

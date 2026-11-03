@@ -719,22 +719,15 @@ function normalizeSettings(
   return out
 }
 
-/** The `modelMasking` section's shape (F-39). Rules keep their order; a
- *  malformed rule is kept out here, and the table's own validation runs
- *  where it is used, so a bad table is reported, not silently trimmed. */
+/** The `modelMasking` section's shape (F-39). `rules` is kept as written,
+ *  malformed entries included: the table's own validation runs where it is
+ *  used and refuses the whole table, never a trimmed part of it. */
 function normalizeModelMasking(raw: unknown): NexusModelMaskingSettings | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const r = raw as Record<string, unknown>
   const out: NexusModelMaskingSettings = {}
   if (typeof r.enabled === 'boolean') out.enabled = r.enabled
-  if (Array.isArray(r.rules)) {
-    out.rules = r.rules
-      .filter((rule): rule is { match: string; alias: string } =>
-        !!rule && typeof rule === 'object'
-        && typeof (rule as Record<string, unknown>).match === 'string'
-        && typeof (rule as Record<string, unknown>).alias === 'string')
-      .map(rule => ({ match: rule.match, alias: rule.alias }))
-  }
+  if (r.rules !== undefined) out.rules = structuredClone(r.rules) as NexusModelMaskingSettings['rules']
   if (typeof r.logPath === 'string' && r.logPath.length > 0) out.logPath = r.logPath
   if (r.logDetail === 'counts' || r.logDetail === 'context') out.logDetail = r.logDetail
   return Object.keys(out).length > 0 ? out : undefined
@@ -820,6 +813,7 @@ async function loadSettingsDocFresh(
   } catch (e) {
     const result: LoadResult = { settings: defaultSettings(), source: 'default' }
     if (!isMissingFileError(e)) {
+      result.unread = true
       // eslint-disable-next-line no-console
       console.warn(
         `[nexusSettings] failed to read ${path}: ${e instanceof Error ? e.message : String(e)}; using defaults`,
@@ -837,7 +831,7 @@ async function loadSettingsDocFresh(
     console.warn(
       `[nexusSettings] malformed JSON in ${path}: ${e instanceof Error ? e.message : String(e)}; using defaults (file NOT overwritten — fix or delete manually)`,
     )
-    return { settings: defaultSettings(), source: 'default' }
+    return { settings: defaultSettings(), source: 'default', unread: true }
   }
 
   if (
@@ -852,7 +846,7 @@ async function loadSettingsDocFresh(
         reportedVersion,
       )} (this build expects ${NEXUS_SETTINGS_VERSION}); using defaults — file will NOT be overwritten`,
     )
-    return { settings: defaultSettings(), source: 'default' }
+    return { settings: defaultSettings(), source: 'default', unread: true }
   }
 
   return {
@@ -870,6 +864,7 @@ function cloneLoadResult(value: LoadResult): LoadResult {
   return {
     settings: structuredClone(value.settings),
     source: value.source,
+    ...(value.unread ? { unread: true } : {}),
   }
 }
 

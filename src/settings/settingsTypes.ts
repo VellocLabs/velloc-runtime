@@ -480,7 +480,6 @@ export type NexusSettingsV1 = {
   // Keep them optional so older builds ignoring them stay no-op loads.
 }
 
-/** One model's entry in `modelSettings`. */
 /** Model egress masking (F-39): replace each rule's `match` with its
  *  `alias` in what is sent to a model provider, and back in the reply. The
  *  rules are validated where they are used; a table that fails is not used. */
@@ -493,6 +492,7 @@ export type NexusModelMaskingSettings = {
   logDetail?: 'counts' | 'context'
 }
 
+/** One model's entry in `modelSettings`. */
 export type NexusModelSettingsEntry = {
   /** Auto-compact window for this model, in tokens (100K–1M): where it
    *  compacts (see the every-model key). */
@@ -507,4 +507,7 @@ export type NexusModelSettings = Record<string, NexusModelSettingsEntry>
 export type LoadResult = {
   settings: NexusSettingsV1
   source: 'file' | 'default'
+  /** The file exists but could not be read, parsed or understood: the
+   *  defaults stand in for content that is unknown. */
+  unread?: true
 }

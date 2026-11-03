@@ -392,6 +392,7 @@ export const zh: Messages = {
   'statusBar.retryKind.repetitive_tool_calls': '工具调用重复',
   'statusBar.retryKind.refusal': '安全拒绝',
   'statusBar.retryKind.local_stream_limit': '打开的请求过多',
+  'statusBar.retryKind.masking_refused': '已被替换拦截',
   'statusBar.retryKind.unknown': '连接错误',
   'providerIssue.repetitiveToolCalls.title': '服务商拦截了重复的工具调用',
   'providerIssue.repetitiveToolCalls.summary':
@@ -427,6 +428,15 @@ export const zh: Messages = {
   'providerIssue.localStreamLimit.title': '打开的模型请求过多',
   'providerIssue.localStreamLimit.summary':
     '{product} 没有发送这个请求，因为已打开的模型请求过多。这不是服务商的错误，切换服务商也无济于事。请结束或停止其他正在运行的会话，或等待一分钟，然后选择“重试”。',
+  'providerIssue.maskingResidual.title': '已被替换拦截',
+  'providerIssue.maskingResidual.summary':
+    '替换后请求中仍含有替换规则 {rule} 的文本（位于 {where}），因此 {product} 没有发送。请用 /masking test 查看它出现在哪里，然后选择“重试”。',
+  'providerIssue.maskingUnknown.title': '尚未读取替换设置',
+  'providerIssue.maskingUnknown.summary':
+    '{product} 尚未读取关键词替换设置，在确定请求是否需要替换之前不会发送任何内容。请稍后选择“重试”；如果一直如此，请用 /masking 检查设置文件是否可读。',
+  'providerIssue.maskingBroken.title': '替换规则不可用',
+  'providerIssue.maskingBroken.summary':
+    '关键词替换已开启，但其规则为空或无效，因此 {product} 没有发送此请求，而不是将你的关键词原样发出。请用 /masking rules 修正规则，或用 /masking off 关闭替换，然后选择“重试”。',
   'providerIssue.network.title': '网络连接问题',
   'providerIssue.network.summary':
     '{product} 无法稳定地连接到服务商。{product} 会先自动重试，然后再显示该 API 错误。',
@@ -1301,6 +1311,8 @@ export const zh: Messages = {
     '{product} 没有发送这个请求——{product} 中已打开的模型请求过多，所以服务商根本没有收到它。',
   'thread.providerStoredKeyNoRetrySummary':
     '{product} 没有发送这个请求——该服务商没有可用的 API 密钥，原样重发也会以同样的方式失败。',
+  'thread.providerMaskingNoRetrySummary':
+    '{product} 没有发送这个请求——关键词替换拦截了它，因此服务商从未收到。',
   'thread.providerBillingHint':
     '请给服务商账户充值——支付请求的是账户余额。API Key 的额度上限只限制该密钥最多能花掉多少余额，并不是余额本身；账户余额为零时，即使密钥还有额度也会失败。充值后再点击“重试”。',
   'thread.providerRefusalHint':
@@ -2540,8 +2552,20 @@ export const zh: Messages = {
     '替换日志：{path}（{detail}）。',
   'slash.out.masking.statusNoLog':
     '替换日志：关闭。',
-  'slash.out.masking.lastError':
-    '最近的错误：{error}',
+  'slash.out.masking.error.cannotRename':
+    '此主机无法重命名文件，因此日志不会轮换。',
+  'slash.out.masking.error.hostDisconnected':
+    '主机未连接。',
+  'slash.out.masking.error.other':
+    '{detail}',
+  'slash.out.masking.error.settingsUnreadable':
+    '无法读取设置文件；在能够读取之前不会发送模型请求。',
+  'slash.out.masking.lastErrorLabel':
+    '最近的错误：',
+  'slash.out.masking.rulesIgnoredFields':
+    '只从文件中读取了 "rules"；已忽略：{fields}。请用 /masking on 和 /masking log 设置它们。',
+  'slash.out.masking.statusUnknown':
+    '尚未读取关键词替换设置；在读取之前不会发送模型请求。',
   'slash.out.debug.usage.title':
     '{command} 用法',
   'slash.out.debug.usage.issueArg':

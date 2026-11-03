@@ -9,6 +9,7 @@
  * them, and their names are not content.
  */
 import type { CompiledMasking } from './maskingRules'
+import { maskingRefusalMessage } from '../../utils/maskingRefusal'
 
 export type EgressRequest = {
   url: string
@@ -19,13 +20,23 @@ export type EgressRequest = {
 
 export type EgressResidual = { where: string; rule: number }
 
-/** Thrown before a request that still holds a `match` is sent. */
+/** Thrown before a request that still holds a `match` is sent. The message is
+ *  a machine-readable marker, not prose: the error card reads it with
+ *  `maskingRefusalOf` and shows catalog text. */
 export class MaskingResidualError extends Error {
   constructor(readonly residual: EgressResidual) {
-    super(
-      `Request blocked by model masking: it still contains the text of masking rule ${residual.rule + 1} (in ${residual.where}).`,
-    )
+    super(maskingRefusalMessage({ kind: 'residual', rule: residual.rule + 1, where: residual.where }))
     this.name = 'MaskingResidualError'
+  }
+}
+
+/** Thrown instead of sending while masking is wanted but cannot be applied:
+ *  its settings are not read yet (`unknown`) or its table is unusable
+ *  (`broken`). Nothing is sent. */
+export class MaskingUnavailableError extends Error {
+  constructor(readonly reason: 'unknown' | 'broken') {
+    super(maskingRefusalMessage({ kind: reason }))
+    this.name = 'MaskingUnavailableError'
   }
 }
 

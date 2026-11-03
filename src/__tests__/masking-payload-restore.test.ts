@@ -79,12 +79,12 @@ describe('maskPayload', () => {
       type: 'function',
       name: 'mcp__beacon__read',
       description: 'Read a beacon file',
-      parameters: { type: 'object', properties: { widget: { type: 'string', description: 'beacon path', enum: ['beacon'] } } },
+      parameters: { type: 'object', properties: { beacon: { type: 'string', description: 'beacon path', enum: ['beacon'] } } },
     })
     expect(out.providerBodyExtension).toEqual({ metadata: { user: 'Northwind' } })
 
     expect(tally.hits.get('messages')!.get(1)).toBe(8)
-    expect(tally.hits.get('tools')!.get(1)).toBe(4)
+    expect(tally.hits.get('tools')!.get(1)).toBe(5)
     expect(tally.collisions.size).toBe(0)
   })
 
@@ -99,6 +99,69 @@ describe('maskPayload', () => {
     expect(tally.contexts).toEqual([
       { rule: 0, where: 'messages', context: 'Northwind already, and ⟦Northwind⟧' },
     ])
+  })
+})
+
+describe('maskPayload: what counts as opaque', () => {
+  it('masks fields named data, image, document or signature in tool arguments, results and schemas', () => {
+    const original: BridgeModelRequestPayload = {
+      messages: [
+        {
+          role: 'assistant',
+          content: [{ type: 'tool-call', toolCallId: 'c', toolName: 'Write', args: { data: 'AcmeCo', image: 'widget', document: { signature: 'AcmeCo' } } }],
+        },
+        { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c', result: { data: 'from AcmeCo' } }] },
+      ],
+      tools: [{ type: 'function', name: 'Write', parameters: { properties: { data: { description: 'AcmeCo data' } } } }],
+      providerBodyExtension: { data: 'AcmeCo' },
+    }
+    const out = maskPayload(original, new PayloadMasker(masking, new MaskingTally(false)))
+    expect(JSON.stringify(out)).not.toMatch(/AcmeCo|widget/)
+  })
+
+  it('leaves image parts whole wherever they sit, and a thinking signature as is', () => {
+    const image = { type: 'image', url: 'data:image/png;base64,AcmeCowidget', mimeType: 'image/png' }
+    const original: BridgeModelRequestPayload = {
+      messages: [
+        { role: 'user', content: [image] },
+        { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c', result: [image, { type: 'text', text: 'AcmeCo' }] }] },
+        { role: 'assistant', content: [{ type: 'thinking', thinking: 'AcmeCo', signature: 'AcmeCo-sig' }] },
+      ],
+    }
+    const out = maskPayload(original, new PayloadMasker(masking, new MaskingTally(false)))
+    expect((out.messages[0]!.content as any[])[0]).toBe(image)
+    const nested = (out.messages[1]!.content as any[])[0].result
+    expect(nested[0]).toBe(image)
+    expect(nested[1].text).toBe('Northwind')
+    expect((out.messages[2]!.content as any[])[0]).toEqual({ type: 'thinking', thinking: 'Northwind', signature: 'AcmeCo-sig' })
+  })
+
+  it('masks object keys in tool arguments and results, and restore puts them back', () => {
+    const original: BridgeModelRequestPayload = {
+      messages: [{ role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c', toolName: 'Edit', args: { AcmeCo: { widget: 1 } } }] }],
+    }
+    const out = maskPayload(original, new PayloadMasker(masking, new MaskingTally(false)))
+    expect((out.messages[0]!.content as any[])[0].args).toEqual({ Northwind: { beacon: 1 } })
+    const filter = createRestoreFilter(masking, () => {})
+    const [call] = filter.apply([{ type: 'tool_call', id: 'c', name: 'Edit', input: { Northwind: { beacon: 1 } } }])
+    expect((call as any).input).toEqual({ AcmeCo: { widget: 1 } })
+  })
+
+  it('masks a text/* document inside its base64, and leaves a PDF whole', () => {
+    const b64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)))
+    const text = { type: 'document', data: b64('notes about AcmeCo'), mimeType: 'text/plain' }
+    const pdf = { type: 'document', data: b64('%PDF AcmeCo'), mimeType: 'application/pdf' }
+    const out = maskPayload({ messages: [{ role: 'user', content: [text, pdf] }] }, new PayloadMasker(masking, new MaskingTally(false)))
+    const [maskedText, keptPdf] = out.messages[0]!.content as any[]
+    expect(new TextDecoder().decode(Uint8Array.from(atob(maskedText.data), c => c.charCodeAt(0)))).toBe('notes about Northwind')
+    expect(keptPdf).toBe(pdf)
+  })
+
+  it('the log context never shows a neighbouring match in clear', () => {
+    const tally = new MaskingTally(true)
+    maskPayload({ messages: [{ role: 'user', content: 'AcmeCo and widget' }] }, new PayloadMasker(masking, tally))
+    expect(tally.contexts!.map(c => c.context)).toEqual(['⟦Northwind⟧ and beacon', 'Northwind and ⟦beacon⟧'])
+    expect(JSON.stringify(tally.contexts)).not.toMatch(/AcmeCo|widget/)
   })
 })
 
@@ -162,5 +225,39 @@ describe('createRestoreFilter', () => {
   it('releases a held tail at the end of the stream', () => {
     const { out } = restoreAll([[{ type: 'text_delta', text: 'ends with Nor' }]])
     expect(textOf(out, 'text_delta')).toBe('ends with Nor')
+  })
+})
+
+describe('createRestoreFilter: argument text and anonymous calls', () => {
+  const quoting = compileMasking([{ match: 'say "hi" C:\\x', alias: 'GREETING' }])
+
+  it('puts a match back JSON-escaped in streamed tool arguments, so the arguments still parse', () => {
+    const filter = createRestoreFilter(quoting, () => {})
+    const out = [
+      ...filter.apply([
+        { type: 'tool_call_start', id: 't', name: 'Echo' },
+        { type: 'tool_call_delta', id: 't', argsTextDelta: '{"text":"GREE' },
+        { type: 'tool_call_delta', id: 't', argsTextDelta: 'TING"}' },
+      ]),
+      ...filter.flush(),
+    ]
+    const args = out.filter(e => e.type === 'tool_call_delta').map(e => (e as any).argsTextDelta).join('')
+    expect(JSON.parse(args)).toEqual({ text: 'say "hi" C:\\x' })
+  })
+
+  it('keeps tool calls without an id apart: an alias split across two calls is not joined', () => {
+    const filter = createRestoreFilter(masking, () => {})
+    const out = [
+      ...filter.apply([
+        { type: 'tool_call_start', name: 'A' },
+        { type: 'tool_call_delta', argsTextDelta: '{"a":"North' },
+        { type: 'tool_call_start', name: 'B' },
+        { type: 'tool_call_delta', argsTextDelta: 'wind"}' },
+      ]),
+      ...filter.flush(),
+    ]
+    const deltas = out.filter(e => e.type === 'tool_call_delta').map(e => (e as any).argsTextDelta)
+    expect(deltas).toEqual(['{"a":"', 'North', 'wind"}'])
+    expect(JSON.stringify(out)).not.toContain('AcmeCo')
   })
 })

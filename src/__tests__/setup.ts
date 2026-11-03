@@ -11,6 +11,7 @@ import { de } from '../browser/webview/i18n/messages/de'
 import { ja } from '../browser/webview/i18n/messages/ja'
 import { ko } from '../browser/webview/i18n/messages/ko'
 import { setCatalog } from '../browser/webview/i18n/translate'
+import { modelMasking } from '../models/masking/maskingHolder'
 
 // Catalogs are FETCHED at runtime (see i18n/translate.ts — they ship as
 // content-hashed JSON assets, not JS imports), but tests call
@@ -45,6 +46,13 @@ function stopLeakedRoutineScheduler(): void {
 }
 
 beforeEach(stopLeakedRoutineScheduler)
+
+// Model masking starts `unknown` (requests refused) until settings are read;
+// a test realm reads none, so it starts off. Masking tests reset it themselves.
+beforeEach(() => {
+  modelMasking.resetForTest()
+  modelMasking.configure(undefined)
+})
 
 afterEach(() => {
   stopLeakedRoutineScheduler()

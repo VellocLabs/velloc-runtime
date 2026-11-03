@@ -6,8 +6,9 @@ import { DriverStreamHost } from '../models/drivers/driverStreamHost'
 import { createModelProvider } from '../models/drivers/modelProvider'
 import { registerProviderDriver } from '../models/drivers/driverRegistry'
 import type { DriverStreamEvent, ProviderDriver } from '../models/drivers/driverTypes'
-import { findEgressResidual, MaskingResidualError } from '../models/masking/egressGuard'
-import { modelMasking } from '../models/masking/maskingHolder'
+import { findEgressResidual, MaskingResidualError, MaskingUnavailableError } from '../models/masking/egressGuard'
+import { MASKING_READ_RETRY_MS, modelMasking } from '../models/masking/maskingHolder'
+import { maskingRefusalOf } from '../utils/maskingRefusal'
 import { MaskingLogWriter, formatLogLine, type MaskingLogSink } from '../models/masking/maskingLog'
 import { compileMasking } from '../models/masking/maskingRules'
 
@@ -202,7 +203,7 @@ describe('DriverStreamHost with masking on', () => {
     const chunks = await drain(host, streamId)
     expect(opened).toEqual([])
     const error = chunks.find(c => c.type === 'error')
-    expect(error.error.message).toContain('masking rule 1 (in url)')
+    expect(maskingRefusalOf(error.error.message)).toEqual({ kind: 'residual', rule: 1, where: 'url' })
     expect(error.httpStatus ?? error.error.httpStatus).toBe(400)
   })
 
@@ -216,6 +217,7 @@ describe('DriverStreamHost with masking on', () => {
   })
 
   it('waits for the first settings read before sending', async () => {
+    modelMasking.resetForTest()
     let release!: () => void
     const read = new Promise<{ enabled: boolean; rules: typeof RULES }>(resolve => {
       release = () => resolve({ enabled: true, rules: RULES })
@@ -268,7 +270,7 @@ describe('MaskingLogWriter', () => {
     const errors: string[] = []
     const writer = new MaskingLogWriter(
       { append: async () => { throw new Error('disk full') }, size: async () => undefined },
-      message => errors.push(message),
+      error => errors.push((error as Error).message),
     )
     await writer.append('/l', 'x\n')
     expect(errors).toEqual(['disk full'])

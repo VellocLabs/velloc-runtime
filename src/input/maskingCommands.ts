@@ -17,7 +17,7 @@ import { createLocalizedSystemMessage } from '../messages/messageFactories'
 import { updateSectionInSource } from '../settings/settingsStore'
 import { fsForContext } from '../utils/fs/runtimeFs'
 import { isAbsoluteRuntimePath, resolveRuntimePath } from '../utils/runtimePaths'
-import { modelMasking, type ModelMaskingHolder } from '../models/masking/maskingHolder'
+import { modelMasking, type MaskingError, type ModelMaskingHolder } from '../models/masking/maskingHolder'
 import {
   compileMasking,
   validateMaskingRules,
@@ -84,20 +84,29 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** What a rules file or inline JSON holds: the table, and optional options. */
-type RulesInput = { rules: unknown; options: NexusModelMaskingSettings }
+const ERROR_KEYS: Record<MaskingError['reason'], MessageKey> = {
+  settingsUnreadable: 'slash.out.masking.error.settingsUnreadable',
+  hostDisconnected: 'slash.out.masking.error.hostDisconnected',
+  cannotRename: 'slash.out.masking.error.cannotRename',
+  other: 'slash.out.masking.error.other',
+}
 
-function rulesInputOf(parsed: unknown): RulesInput {
-  if (Array.isArray(parsed)) return { rules: parsed, options: {} }
-  if (parsed && typeof parsed === 'object') {
+/** A rules file or inline JSON: the table itself, or an object holding it
+ *  under `rules`. Nothing else in it is read. */
+function rulesOf(parsed: unknown): { rules: unknown; ignored: string[] } {
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
     const r = parsed as Record<string, unknown>
-    const options: NexusModelMaskingSettings = {}
-    if (typeof r.enabled === 'boolean') options.enabled = r.enabled
-    if (typeof r.logPath === 'string' && r.logPath.length > 0) options.logPath = r.logPath
-    if (r.logDetail === 'counts' || r.logDetail === 'context') options.logDetail = r.logDetail
-    return { rules: r.rules, options }
+    return { rules: r.rules, ignored: Object.keys(r).filter(name => name !== 'rules') }
   }
-  return { rules: parsed, options: {} }
+  return { rules: parsed, ignored: [] }
+}
+
+/** `value` inside a markdown code span, whatever backticks it holds. */
+function codeSpan(value: string): string {
+  const longest = Math.max(0, ...(value.match(/`+/g) ?? []).map(run => run.length))
+  const fence = '`'.repeat(longest + 1)
+  const pad = value.startsWith('`') || value.endsWith('`') ? ' ' : ''
+  return `${fence}${pad}${value}${pad}${fence}`
 }
 
 export async function runMaskingCommand(
@@ -174,15 +183,19 @@ export async function runMaskingCommand(
     } catch (error) {
       return reply([key('slash.out.masking.badJson', { error: errorText(error) })])
     }
-    const input = rulesInputOf(parsed)
+    const input = rulesOf(parsed)
     const validated = validateMaskingRules(input.rules)
     if (!validated.ok) return reply([key('slash.out.masking.rulesRejected'), text(' '), problemPart(validated.problem)])
-    const failed = await save(prev => ({ ...prev, ...input.options, rules: validated.rules }))
+    const failed = await save(prev => ({ ...prev, rules: validated.rules }))
     if (failed) return reply([failed])
     const loaded = inline
       ? key('slash.out.masking.rulesLoadedInline', { count: validated.rules.length })
       : key('slash.out.masking.rulesLoaded', { count: validated.rules.length, path: resolvePath(unquote(rest)) })
-    return reply([loaded, text(BLOCK), ...statusParts(holder)])
+    const parts: SystemMessagePart[] = [loaded]
+    if (input.ignored.length > 0) {
+      parts.push(text(' '), key('slash.out.masking.rulesIgnoredFields', { fields: input.ignored.join(', ') }))
+    }
+    return reply([...parts, text(BLOCK), ...statusParts(holder)])
   }
 
   if (sub === 'log') {
@@ -237,7 +250,8 @@ export async function runMaskingCommand(
 function statusParts(holder: ModelMaskingHolder): SystemMessagePart[] {
   const status = holder.status()
   const parts: SystemMessagePart[] = []
-  if (status.active) parts.push(key('slash.out.masking.statusOn', { count: status.ruleCount }))
+  if (status.state === 'unknown') parts.push(key('slash.out.masking.statusUnknown'))
+  else if (status.active) parts.push(key('slash.out.masking.statusOn', { count: status.ruleCount }))
   else if (status.enabled && status.problem) {
     parts.push(key('slash.out.masking.statusBroken'), text(' '), problemPart(status.problem))
   } else if (status.enabled) parts.push(key('slash.out.masking.statusNoRules'))
@@ -248,7 +262,10 @@ function statusParts(holder: ModelMaskingHolder): SystemMessagePart[] {
       ? key('slash.out.masking.statusLog', { path: status.logPath, detail: status.logDetail })
       : key('slash.out.masking.statusNoLog'),
   )
-  if (status.lastError) parts.push(text(BLOCK), key('slash.out.masking.lastError', { error: status.lastError }))
+  if (status.lastError) {
+    const reason = key(ERROR_KEYS[status.lastError.reason], { detail: status.lastError.detail ?? '' })
+    parts.push(text(BLOCK), key('slash.out.masking.lastErrorLabel'), text(' '), reason)
+  }
   return parts
 }
 
@@ -259,6 +276,6 @@ function rulesListParts(holder: ModelMaskingHolder): SystemMessagePart[] {
   return [
     ...title(key('slash.out.masking.rulesHeading', { count: rules.length })),
     text(BLOCK),
-    ...bulletLines(rules.map((rule, i) => text(`#${i + 1} \`${rule.match}\` → \`${rule.alias}\``))),
+    ...bulletLines(rules.map((rule, i) => text(`#${i + 1} ${codeSpan(rule.match)} → ${codeSpan(rule.alias)}`))),
   ]
 }

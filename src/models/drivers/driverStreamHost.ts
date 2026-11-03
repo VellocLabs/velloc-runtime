@@ -28,10 +28,8 @@ import {
   type ProviderRequestSeam,
 } from './providerRequestSeam'
 import { sessionWorkingDirOf } from './sessionWorkingDirs'
-import { runtimeProviderConfigs } from './runtimeProviders'
-import { resolveProviderUserAgent } from '../../config/providerUserAgent'
-import { modelMasking, type MaskingStream } from '../masking/maskingHolder'
-import { MaskingResidualError } from '../masking/egressGuard'
+import { modelMasking, withMaskedUserAgent, type MaskingStream } from '../masking/maskingHolder'
+import { MaskingResidualError, MaskingUnavailableError } from '../masking/egressGuard'
 import { storedKeyProblemFromReason, withStoredKeyMarker } from '../../utils/storedKeyProblem'
 
 // A non-2xx body is read whole for the error message; cap it.
@@ -219,13 +217,17 @@ class DriverStream {
     // the provider sends anything — so it precedes even an HTTP error. Codecs
     // emit `message_start` only as a usage refresh.
     this.push([{ type: 'message_start', model: this.model }])
-    // The masking settings may still be on their first read: no request
-    // leaves before it is known whether this one must be masked.
-    const maskingLoad = modelMasking.whenLoaded()
-    if (maskingLoad) await maskingLoad
-    let request: ReturnType<ModelProvider['buildRequest']>
+    // No request leaves before it is known whether it must be masked (F-39).
+    await modelMasking.whenKnown(this.abort.signal)
+    if (this.abort.signal.aborted) return this.finishIfOpen()
     try {
       this.masking = modelMasking.openStream({ streamId: this.streamId, provider: this.provider.id, model: this.model })
+    } catch (error) {
+      this.fail(errorText(error), maskingRefusal(error))
+      return
+    }
+    let request: ReturnType<ModelProvider['buildRequest']>
+    try {
       // Every reader of the payload from here on (the codec, the seam's
       // parts, a provider mod's hooks) sees the masked copy.
       if (this.masking) this.payload = this.masking.maskPayload(this.payload)
@@ -259,7 +261,9 @@ class DriverStream {
    */
   private async sendThroughSeam(seam: ProviderRequestSeam, built: DriverHttpRequest): Promise<void> {
     const thinkingTier = thinkingTierOf(this.payload)
-    const cwd = seam.requestNeeds?.includes('cwd') ? sessionWorkingDirOf(this.payload.requestContext?.sessionId) : undefined
+    const rawCwd = seam.requestNeeds?.includes('cwd') ? sessionWorkingDirOf(this.payload.requestContext?.sessionId) : undefined
+    // A provider mod's hooks see what the provider will: masked values.
+    const cwd = rawCwd !== undefined && this.masking ? this.masking.maskValue(rawCwd) : rawCwd
     const flow = new ProviderRequestFlow(
       seam,
       {
@@ -310,7 +314,9 @@ class DriverStream {
   }
 
   private withMaskedUserAgent(request: DriverHttpRequest): DriverHttpRequest {
-    return this.masking ? maskedUserAgent(request, this.masking, this.provider.id) : request
+    const masking = this.masking
+    if (!masking) return request
+    return withMaskedUserAgent(request, masking.masking, modelMasking.presetUserAgent(this.provider.id))
   }
 
   /** Resolves true once this stream holds a slot, false when it is cancelled
@@ -339,6 +345,9 @@ class DriverStream {
     const idleTimeoutMs = seamed?.prepared.idleTimeoutMs ?? this.provider.spec.idleTimeoutMs
     const request = this.withMaskedUserAgent(sent)
     try {
+      // The stream's own table guards its request, whatever the realm's
+      // table has become since it opened.
+      this.masking?.checkEgress(request)
       this.raw = await openRawProviderStream(this.transport, {
         providerId: this.provider.id,
         url: request.url,
@@ -348,6 +357,7 @@ class DriverStream {
         body: request.body,
         ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
         signal: this.abort.signal,
+        ...(this.masking ? { masking: 'stream' as const } : {}),
       })
     } catch (error) {
       if (this.abort.signal.aborted) return this.finishIfOpen()
@@ -415,30 +425,10 @@ class DriverStream {
   }
 }
 
-/**
- * With masking on, the request's User-Agent is masked too. The host fills a
- * provider's preset User-Agent only when the request has none, out of the
- * guard's sight, so a preset that masking would change is sent explicitly.
- */
-function maskedUserAgent(
-  request: DriverHttpRequest,
-  masking: MaskingStream,
-  providerId: string,
-): DriverHttpRequest {
-  const name = Object.keys(request.headers).find(header => header.toLowerCase() === 'user-agent')
-  const current = name !== undefined
-    ? request.headers[name]!
-    : resolveProviderUserAgent(providerId, runtimeProviderConfigs()[providerId])
-  if (!current) return request
-  const masked = masking.maskValue(current)
-  if (masked === current) return request
-  return { ...request, headers: { ...request.headers, [name ?? 'user-agent']: masked } }
-}
-
-/** A request the masking guard stopped is a refusal, not a broken connection:
- *  the engine must not retry it. */
+/** A request masking stopped is a refusal, not a broken connection: the
+ *  engine must not retry it. */
 function maskingRefusal(error: unknown): { httpStatus?: number } {
-  return error instanceof MaskingResidualError ? { httpStatus: 400 } : {}
+  return error instanceof MaskingResidualError || error instanceof MaskingUnavailableError ? { httpStatus: 400 } : {}
 }
 
 /** A request that ended because the provider's sign-in is over is a refusal

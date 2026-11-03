@@ -169,6 +169,7 @@ import { compactCount } from "@/utils/humanize/compactCount";
 import { timeAgoLabel } from "@/utils/humanize/timeAgoLabel";
 import { writeClipboard } from "@/utils/clipboard";
 import { storedKeyProblemOf } from "@/utils/storedKeyProblem";
+import { maskingRefusalOf } from "@/utils/maskingRefusal";
 import {
   SlashCommandPicker,
   slashCommandDescription,
@@ -1573,6 +1574,7 @@ export function providerErrorSummaryKey(params: {
       : "thread.providerRetriedSummary";
   }
   if (storedKeyProblemOf(details)) return "thread.providerStoredKeyNoRetrySummary";
+  if (maskingRefusalOf(details)) return "thread.providerMaskingNoRetrySummary";
   if (kind === "local_stream_limit") return "thread.providerLocalLimitNoRetrySummary";
   if (kind === "billing_error") return "thread.providerBillingNoRetrySummary";
   return "thread.providerNoRetrySummary";
@@ -2447,6 +2449,9 @@ const ProviderApiErrorCard: FC = () => {
   // The host refused to send for want of a usable stored key: the provider
   // never saw the request, so "the provider rejected it" would mislead.
   const storedKeyProblem = storedKeyProblemOf(details);
+  // Model egress masking refused to send (F-39): the details are a marker,
+  // so the card shows the localized reason instead of them.
+  const maskingRefusal = maskingRefusalOf(details);
   const localLimitHint = kind === "local_stream_limit";
   const retrySummary = t(
     providerErrorSummaryKey({ kind, details, retryCount }),
@@ -2519,6 +2524,24 @@ const ProviderApiErrorCard: FC = () => {
                 )}
               </div>
             ) : null}
+            {maskingRefusal ? (
+              <div
+                className="text-xs text-muted-foreground"
+                data-testid="provider-api-error-masking-hint"
+                data-refusal={maskingRefusal.kind}
+              >
+                {maskingRefusal.kind === "residual"
+                  ? t("providerIssue.maskingResidual.summary", {
+                      rule: maskingRefusal.rule,
+                      where: maskingRefusal.where,
+                    })
+                  : t(
+                      maskingRefusal.kind === "broken"
+                        ? "providerIssue.maskingBroken.summary"
+                        : "providerIssue.maskingUnknown.summary",
+                    )}
+              </div>
+            ) : null}
             {localLimitHint ? (
               <div
                 className="text-xs text-muted-foreground"
@@ -2545,7 +2568,7 @@ const ProviderApiErrorCard: FC = () => {
                   : t("thread.providerRefusalHintUncategorized")}
               </div>
             ) : null}
-            {details ? (
+            {details && !maskingRefusal ? (
               <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-background/70 p-2 text-xs text-muted-foreground">
                 {details}
               </pre>

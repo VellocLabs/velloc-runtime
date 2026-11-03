@@ -1,12 +1,13 @@
 /**
  * Contract: Model egress masking rules (F-39): validation, and the compiled
  * matcher that replaces each rule's `match` with its `alias` on the way to a
- * model provider and puts it back on the way in. Matching is exact,
- * case-sensitive substring matching on UTF-16 code units, leftmost first and
- * longest first at each position, one pass, no rescan of replaced text. A
- * rule table that passes `validateMaskingRules` maps matches to aliases one
- * to one; a string whose masked form would not restore to itself is reported
- * by `maskText` as a collision.
+ * model provider and puts it back on the way in. Matching is case-sensitive
+ * substring matching on UTF-16 code units, leftmost first and longest first at
+ * each position, one pass, no rescan of replaced text; a match is also found
+ * in its other Unicode normal form (NFC / NFD). A rule table that passes
+ * `validateMaskingRules` maps matches to aliases one to one; a string whose
+ * masked form would not restore to itself is reported by `maskText` as a
+ * collision.
  */
 
 export type MaskingRule = { match: string; alias: string }
@@ -94,40 +95,53 @@ export type MaskingHit = { rule: number; start: number; end: number }
 
 type Needle = { text: string; rule: number }
 
-/** Needles grouped by first code unit, longest first. */
+type TrieNode = { next: Map<number, TrieNode>; needle?: Needle }
+
+/** Needles in a code-unit trie: each position costs at most the longest needle. */
 class NeedleIndex {
-  private readonly byFirst = new Map<number, Needle[]>()
+  private readonly root: TrieNode = { next: new Map() }
   readonly maxLength: number
 
   constructor(needles: Needle[]) {
     let max = 0
     for (const needle of needles) {
-      const key = needle.text.charCodeAt(0)
-      const list = this.byFirst.get(key) ?? []
-      list.push(needle)
-      this.byFirst.set(key, list)
+      let node = this.root
+      for (let i = 0; i < needle.text.length; i += 1) {
+        const code = needle.text.charCodeAt(i)
+        let child = node.next.get(code)
+        if (!child) {
+          child = { next: new Map() }
+          node.next.set(code, child)
+        }
+        node = child
+      }
+      node.needle ??= needle
       max = Math.max(max, needle.text.length)
     }
-    for (const list of this.byFirst.values()) list.sort((a, b) => b.text.length - a.text.length)
     this.maxLength = max
   }
 
   /** The longest needle that starts at `at`. */
   matchAt(text: string, at: number): Needle | undefined {
-    const list = this.byFirst.get(text.charCodeAt(at))
-    if (!list) return undefined
-    for (const needle of list) if (text.startsWith(needle.text, at)) return needle
-    return undefined
+    let node: TrieNode | undefined = this.root
+    let found: Needle | undefined
+    for (let i = at; i < text.length; i += 1) {
+      node = node.next.get(text.charCodeAt(i))
+      if (!node) break
+      if (node.needle) found = node.needle
+    }
+    return found
   }
 
   /** Whether `text` from `at` to its end is a proper prefix of a needle. */
   isPartialAt(text: string, at: number): boolean {
-    const tail = text.length - at
-    if (tail <= 0 || tail >= this.maxLength) return false
-    const list = this.byFirst.get(text.charCodeAt(at))
-    if (!list) return false
-    const rest = text.slice(at)
-    return list.some(needle => needle.text.length > tail && needle.text.startsWith(rest))
+    if (at >= text.length) return false
+    let node: TrieNode | undefined = this.root
+    for (let i = at; i < text.length; i += 1) {
+      node = node.next.get(text.charCodeAt(i))
+      if (!node) return false
+    }
+    return node.next.size > 0
   }
 
   /** The first needle that occurs in `text`. */
@@ -186,21 +200,29 @@ export type CompiledMasking = {
   /** Longest alias, in code units. */
   readonly maxAliasLength: number
   maskText(text: string, onHit?: (hit: MaskingHit) => void): MaskTextResult
-  restoreText(text: string, onHit?: (hit: MaskingHit) => void): string
+  /** With `json`, each match is inserted JSON-string-escaped (tool argument text). */
+  restoreText(text: string, onHit?: (hit: MaskingHit) => void, json?: boolean): string
   /** Restores what is settled; `held` may still grow into an alias. */
-  restorePartial(text: string, onHit?: (hit: MaskingHit) => void): { text: string; held: string }
-  /** The first rule whose `match` occurs in `text`. */
+  restorePartial(text: string, onHit?: (hit: MaskingHit) => void, json?: boolean): { text: string; held: string }
+  /** The first rule whose `match` (in either normal form) occurs in `text`. */
   residualIn(text: string): number | undefined
+}
+
+/** A match and its other Unicode normal forms, each once. */
+function matchForms(match: string): string[] {
+  return [...new Set([match, match.normalize('NFC'), match.normalize('NFD')])]
 }
 
 /** A validated table, compiled. */
 export function compileMasking(rules: readonly MaskingRule[]): CompiledMasking {
-  const matches = new NeedleIndex(rules.map((rule, i) => ({ text: rule.match, rule: i })))
+  const matches = new NeedleIndex(rules.flatMap((rule, i) => matchForms(rule.match).map(text => ({ text, rule: i }))))
   const aliases = new NeedleIndex(rules.map((rule, i) => ({ text: rule.alias, rule: i })))
   const aliasOf = (rule: number) => rules[rule]!.alias
   const matchOf = (rule: number) => rules[rule]!.match
-  const restoreText = (text: string, onHit?: (hit: MaskingHit) => void) =>
-    replaceAll(aliases, matchOf, text, onHit, false).text
+  const jsonMatches = rules.map(rule => JSON.stringify(rule.match).slice(1, -1))
+  const jsonMatchOf = (rule: number) => jsonMatches[rule]!
+  const restoreText = (text: string, onHit?: (hit: MaskingHit) => void, json?: boolean) =>
+    replaceAll(aliases, json ? jsonMatchOf : matchOf, text, onHit, false).text
   return {
     rules,
     maxAliasLength: aliases.maxLength,
@@ -208,12 +230,15 @@ export function compileMasking(rules: readonly MaskingRule[]): CompiledMasking {
       if (text.length === 0) return { text, collision: false }
       const masked = replaceAll(matches, aliasOf, text, onHit, false).text
       // Unchanged text can still collide: alias text in it would be turned
-      // into a match on the way back.
-      const collision = masked === text ? aliases.firstIn(text) !== undefined : restoreText(masked) !== text
+      // into a match on the way back. A match found in its other normal form
+      // comes back in the rule's own form, which is not a collision.
+      const collision = masked === text
+        ? aliases.firstIn(text) !== undefined
+        : restoreText(masked).normalize('NFC') !== text.normalize('NFC')
       return { text: masked, collision }
     },
     restoreText,
-    restorePartial: (text, onHit) => replaceAll(aliases, matchOf, text, onHit, true),
+    restorePartial: (text, onHit, json) => replaceAll(aliases, json ? jsonMatchOf : matchOf, text, onHit, true),
     residualIn: text => matches.firstIn(text)?.rule,
   }
 }

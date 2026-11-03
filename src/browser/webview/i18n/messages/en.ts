@@ -424,6 +424,7 @@ export const en = {
   'statusBar.retryKind.repetitive_tool_calls': 'repetitive tool calls',
   'statusBar.retryKind.refusal': 'safety refusal',
   'statusBar.retryKind.local_stream_limit': 'too many open requests',
+  'statusBar.retryKind.masking_refused': 'blocked by masking',
   'statusBar.retryKind.unknown': 'connection error',
   // ── Provider connectivity verdicts (utils/providerConnectivity.ts) ─────
   // The classifier returns these KEYS; titles show in the retry status line (e2e
@@ -463,6 +464,15 @@ export const en = {
   'providerIssue.localStreamLimit.title': 'Too many open model requests',
   'providerIssue.localStreamLimit.summary':
     '{product} did not send this request because too many model requests are already open. This is not a provider error, and switching providers will not help. Finish or stop other running sessions, or wait a minute, then choose Try again.',
+  'providerIssue.maskingResidual.title': 'Blocked by masking',
+  'providerIssue.maskingResidual.summary':
+    'The request still held the text of masking rule {rule} (in {where}) after masking, so {product} did not send it. Check where it appears with /masking test, then choose Try again.',
+  'providerIssue.maskingUnknown.title': 'Masking settings not read yet',
+  'providerIssue.maskingUnknown.summary':
+    '{product} has not read the masking settings yet, and sends nothing until it knows whether the request must be masked. Choose Try again in a moment; if this persists, check with /masking that the settings file can be read.',
+  'providerIssue.maskingBroken.title': 'Masking rules unusable',
+  'providerIssue.maskingBroken.summary':
+    'Keyword masking is turned on but its rules are empty or invalid, so {product} did not send this request rather than send your keywords as they are. Fix the rules with /masking rules or turn masking off with /masking off, then choose Try again.',
   'providerIssue.network.title': 'Network connection issue',
   'providerIssue.network.summary':
     '{product} could not reliably reach the provider. {product} retries automatically before surfacing the API error.',
@@ -1371,6 +1381,8 @@ export const en = {
     '{product} did not send this request — too many model requests are already open in {product}, so the provider never saw it.',
   'thread.providerStoredKeyNoRetrySummary':
     '{product} did not send this request — the provider has no usable API key, so resending it unchanged would fail the same way.',
+  'thread.providerMaskingNoRetrySummary':
+    '{product} did not send this request — keyword masking stopped it, so the provider never saw it.',
   'thread.providerBillingHint':
     'Add credits to your provider account — the account balance is what pays for requests. An API key\'s credit limit only caps how much of that balance the key may spend, so a key with limit left still fails while the account is empty. Then select Try again.',
   'thread.providerRefusalHint':
@@ -2707,8 +2719,20 @@ export const en = {
     'Replacement log: {path} ({detail}).',
   'slash.out.masking.statusNoLog':
     'Replacement log: off.',
-  'slash.out.masking.lastError':
-    'Last error: {error}',
+  'slash.out.masking.error.cannotRename':
+    'This host cannot rename files, so the log is not rotated.',
+  'slash.out.masking.error.hostDisconnected':
+    'The host is not connected.',
+  'slash.out.masking.error.other':
+    '{detail}',
+  'slash.out.masking.error.settingsUnreadable':
+    'The settings file cannot be read; model requests are not sent until it can be.',
+  'slash.out.masking.lastErrorLabel':
+    'Last error:',
+  'slash.out.masking.rulesIgnoredFields':
+    'Only "rules" was read from the file; ignored: {fields}. Use /masking on and /masking log to set those.',
+  'slash.out.masking.statusUnknown':
+    'The masking settings are not read yet; model requests are not sent until they are.',
   'slash.out.debug.usage.title':
     '{command} usage',
   'slash.out.debug.usage.issueArg':

@@ -396,6 +396,7 @@ export const fr: Messages = {
   'statusBar.retryKind.repetitive_tool_calls': 'appels d’outils répétitifs',
   'statusBar.retryKind.refusal': 'refus de sécurité',
   'statusBar.retryKind.local_stream_limit': 'trop de requêtes ouvertes',
+  'statusBar.retryKind.masking_refused': 'bloquée par le remplacement',
   'statusBar.retryKind.unknown': 'erreur de connexion',
   'providerIssue.repetitiveToolCalls.title':
     'Le fournisseur a bloqué un appel d’outils répété',
@@ -433,6 +434,15 @@ export const fr: Messages = {
   'providerIssue.localStreamLimit.title': 'Trop de requêtes au modèle ouvertes',
   'providerIssue.localStreamLimit.summary':
     '{product} n’a pas envoyé cette requête, car trop de requêtes au modèle sont déjà ouvertes. Ce n’est pas une erreur du fournisseur, et changer de fournisseur n’y changera rien. Terminez ou arrêtez d’autres sessions en cours, ou patientez une minute, puis choisissez « Réessayer ».',
+  'providerIssue.maskingResidual.title': 'Bloquée par le remplacement',
+  'providerIssue.maskingResidual.summary':
+    'Après le remplacement, la requête contenait encore le texte de la règle de remplacement {rule} (dans {where}) : {product} ne l’a donc pas envoyée. Vérifiez où il apparaît avec /masking test, puis choisissez « Réessayer ».',
+  'providerIssue.maskingUnknown.title': 'Paramètres du remplacement pas encore lus',
+  'providerIssue.maskingUnknown.summary':
+    '{product} n’a pas encore lu les paramètres du remplacement et n’envoie rien tant qu’il ne sait pas si la requête doit être remplacée. Choisissez « Réessayer » dans un instant ; si cela persiste, vérifiez avec /masking que le fichier de paramètres est lisible.',
+  'providerIssue.maskingBroken.title': 'Règles de remplacement inutilisables',
+  'providerIssue.maskingBroken.summary':
+    'Le remplacement des mots-clés est activé, mais ses règles sont vides ou invalides : {product} n’a donc pas envoyé cette requête plutôt que d’envoyer vos mots-clés tels quels. Corrigez les règles avec /masking rules ou désactivez le remplacement avec /masking off, puis choisissez « Réessayer ».',
   'providerIssue.network.title': 'Problème de connexion réseau',
   'providerIssue.network.summary':
     '{product} n’a pas pu joindre le fournisseur de manière fiable. {product} réessaie automatiquement avant d’afficher l’erreur d’API.',
@@ -1327,6 +1337,8 @@ export const fr: Messages = {
     '{product} n’a pas envoyé cette requête — trop de requêtes au modèle sont déjà ouvertes dans {product}, le fournisseur ne l’a donc jamais reçue.',
   'thread.providerStoredKeyNoRetrySummary':
     '{product} n’a pas envoyé cette requête : le fournisseur n’a aucune clé API utilisable, donc la renvoyer telle quelle échouerait de la même façon.',
+  'thread.providerMaskingNoRetrySummary':
+    '{product} n’a pas envoyé cette requête : le remplacement des mots-clés l’a arrêtée, donc le fournisseur ne l’a jamais vue.',
   'thread.providerBillingHint':
     'Ajoutez des crédits au compte du fournisseur : c’est le solde du compte qui paie les requêtes. La limite de crédit d’une clé d’API plafonne seulement la part de ce solde que la clé peut dépenser ; une clé à qui il reste de la limite échoue donc tant que le compte est vide. Sélectionnez ensuite Réessayer.',
   'thread.providerRefusalHint':
@@ -2673,8 +2685,20 @@ export const fr: Messages = {
     'Journal des remplacements : {path} ({detail}).',
   'slash.out.masking.statusNoLog':
     'Journal des remplacements : désactivé.',
-  'slash.out.masking.lastError':
-    'Dernière erreur : {error}',
+  'slash.out.masking.error.cannotRename':
+    'Cet hôte ne peut pas renommer de fichiers, donc le journal n’est pas renouvelé.',
+  'slash.out.masking.error.hostDisconnected':
+    'L’hôte n’est pas connecté.',
+  'slash.out.masking.error.other':
+    '{detail}',
+  'slash.out.masking.error.settingsUnreadable':
+    'Le fichier de paramètres est illisible ; aucune requête au modèle n’est envoyée tant qu’il ne l’est pas.',
+  'slash.out.masking.lastErrorLabel':
+    'Dernière erreur :',
+  'slash.out.masking.rulesIgnoredFields':
+    'Seul « rules » a été lu dans le fichier ; ignoré : {fields}. Utilisez /masking on et /masking log pour les définir.',
+  'slash.out.masking.statusUnknown':
+    'Les paramètres du remplacement ne sont pas encore lus ; aucune requête au modèle n’est envoyée d’ici là.',
   'slash.out.debug.usage.title':
     'Utilisation de {command}',
   'slash.out.debug.usage.issueArg':

@@ -398,6 +398,7 @@ export const es: Messages = {
   'statusBar.retryKind.repetitive_tool_calls': 'llamadas a herramientas repetidas',
   'statusBar.retryKind.refusal': 'rechazo por seguridad',
   'statusBar.retryKind.local_stream_limit': 'demasiadas solicitudes abiertas',
+  'statusBar.retryKind.masking_refused': 'bloqueada por el reemplazo',
   'statusBar.retryKind.unknown': 'error de conexión',
   'providerIssue.repetitiveToolCalls.title':
     'El proveedor bloqueó una llamada a herramientas repetida',
@@ -435,6 +436,15 @@ export const es: Messages = {
   'providerIssue.localStreamLimit.title': 'Demasiadas solicitudes al modelo abiertas',
   'providerIssue.localStreamLimit.summary':
     '{product} no envió esta solicitud porque ya hay demasiadas solicitudes al modelo abiertas. No es un error del proveedor y cambiar de proveedor no ayudará. Termina o detén otras sesiones en curso, o espera un minuto, y luego elige «Reintentar».',
+  'providerIssue.maskingResidual.title': 'Bloqueada por el reemplazo',
+  'providerIssue.maskingResidual.summary':
+    'La solicitud seguía conteniendo el texto de la regla de reemplazo {rule} (en {where}) después del reemplazo, así que {product} no la envió. Comprueba dónde aparece con /masking test y luego elige «Reintentar».',
+  'providerIssue.maskingUnknown.title': 'Configuración del reemplazo aún sin leer',
+  'providerIssue.maskingUnknown.summary':
+    '{product} aún no ha leído la configuración del reemplazo y no envía nada hasta saber si la solicitud debe reemplazarse. Elige «Reintentar» en un momento; si continúa, comprueba con /masking que se puede leer el archivo de configuración.',
+  'providerIssue.maskingBroken.title': 'Reglas de reemplazo inutilizables',
+  'providerIssue.maskingBroken.summary':
+    'El reemplazo de palabras clave está activado, pero sus reglas están vacías o no son válidas, así que {product} no envió esta solicitud en lugar de enviar tus palabras clave tal cual. Corrige las reglas con /masking rules o desactiva el reemplazo con /masking off y luego elige «Reintentar».',
   'providerIssue.network.title': 'Problema de conexión de red',
   'providerIssue.network.summary':
     '{product} no pudo comunicarse de forma fiable con el proveedor. {product} reintenta automáticamente antes de mostrar el error de API.',
@@ -1327,6 +1337,8 @@ export const es: Messages = {
     '{product} no envió esta solicitud: ya hay demasiadas solicitudes al modelo abiertas en {product}, así que el proveedor nunca la recibió.',
   'thread.providerStoredKeyNoRetrySummary':
     '{product} no envió esta solicitud: el proveedor no tiene una clave de API utilizable, así que reenviarla sin cambios fallaría de la misma forma.',
+  'thread.providerMaskingNoRetrySummary':
+    '{product} no envió esta solicitud: el reemplazo de palabras clave la detuvo, así que el proveedor nunca la vio.',
   'thread.providerBillingHint':
     'Añada créditos a la cuenta del proveedor: es el saldo de la cuenta lo que paga las solicitudes. El límite de crédito de una clave de API solo limita cuánto de ese saldo puede gastar la clave, así que una clave con límite disponible sigue fallando mientras la cuenta esté vacía. Después, seleccione Reintentar.',
   'thread.providerRefusalHint':
@@ -2667,8 +2679,20 @@ export const es: Messages = {
     'Registro de reemplazos: {path} ({detail}).',
   'slash.out.masking.statusNoLog':
     'Registro de reemplazos: desactivado.',
-  'slash.out.masking.lastError':
-    'Último error: {error}',
+  'slash.out.masking.error.cannotRename':
+    'Este host no puede renombrar archivos, así que el registro no se rota.',
+  'slash.out.masking.error.hostDisconnected':
+    'El host no está conectado.',
+  'slash.out.masking.error.other':
+    '{detail}',
+  'slash.out.masking.error.settingsUnreadable':
+    'No se puede leer el archivo de configuración; no se envían solicitudes al modelo hasta que se pueda.',
+  'slash.out.masking.lastErrorLabel':
+    'Último error:',
+  'slash.out.masking.rulesIgnoredFields':
+    'Del archivo solo se leyó "rules"; se ignoró: {fields}. Usa /masking on y /masking log para configurarlos.',
+  'slash.out.masking.statusUnknown':
+    'Aún no se ha leído la configuración del reemplazo; no se envían solicitudes al modelo hasta entonces.',
   'slash.out.debug.usage.title':
     'Uso de {command}',
   'slash.out.debug.usage.issueArg':
