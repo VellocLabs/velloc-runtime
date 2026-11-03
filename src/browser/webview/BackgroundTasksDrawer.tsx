@@ -44,12 +44,14 @@ import {
   SUB_AGENT_CATEGORY_LABEL_KEY,
   SUB_AGENT_STATUS_LABEL_KEY,
   groupSubAgentsByCategory,
+  isReviewTaskRow,
   taskRowLabelKey,
   taskRowOriginName,
   type SubAgentCategory,
 } from './backgroundSubAgents'
 import { loopTimerCountdown, loopTimerScheduleText } from './loopTimers'
 import { useT } from "./i18n";
+import { reviewTaskSummaryMessage } from '@/codeReview/messages'
 import { useSessionAreaVisible } from './sessionAreaVisibility'
 
 /** Static icon + tint for each TERMINAL status. A `running` task instead shows
@@ -563,6 +565,9 @@ export function BackgroundTasksDrawer({
   const detailRowLabel = detailRowLabelKey
     ? t(detailRowLabelKey)
     : detailRow?.description
+  const detailSummary = info?.summary && detailRow && isReviewTaskRow(detailRow)
+    ? reviewTaskSummaryMessage(t, info.summary)
+    : info?.summary
 
   // While a RUNNING task's detail is open, reload its transcript silently on each
   // `lastActivityAt` advance, and once more when it settles (the result is readable only
@@ -832,7 +837,7 @@ export function BackgroundTasksDrawer({
                   <div>
                     <p className="mb-0.5 font-semibold">Summary</p>
                     <p className="whitespace-pre-wrap break-words text-foreground/90">
-                      {info.summary}
+                      {detailSummary}
                     </p>
                   </div>
                 ) : null}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createTranslate } from '../browser/webview/i18n/translate'
-import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMessage, reviewEndMessage, reviewTaskRoleMessage } from '../codeReview/messages'
+import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMessage, reviewEndMessage, reviewTaskRoleMessage, reviewTaskSummaryMessage } from '../codeReview/messages'
 import type { PolicyNotice } from '../codeReview/contracts'
 import { parseReviewArguments } from '../codeReview/arguments'
 const t = createTranslate('en')
@@ -12,6 +12,13 @@ const policy: PolicyNotice[] = [
   { code: 'reasoning-mapped', requested: 'xhigh', effective: 'high' }, { code: 'committed-lines-only' },
 ]
 describe('review localization', () => {
+  it.each(['en', 'zh', 'ja', 'ko', 'es', 'fr', 'de'] as const)('reads a review task time-limit summary in %s without the code', locale => {
+    const translate = createTranslate(locale)
+    const message = reviewTaskSummaryMessage(translate, 'review-time-limit')
+    expect(message).toBe(reviewEndMessage(translate, { kind: 'time-limit' }))
+    expect(message).not.toContain('review-time-limit')
+    expect(reviewTaskSummaryMessage(translate, 'The finder reported two candidates.')).toBe('The finder reported two candidates.')
+  })
   it.each(['en', 'zh', 'ja', 'ko', 'es', 'fr', 'de'] as const)('localizes every policy variant in %s', locale => {
     const translate = createTranslate(locale)
     for (const notice of policy) {

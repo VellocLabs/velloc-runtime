@@ -23,7 +23,7 @@ const groups = {
   crash: ['review-crash'],
   changed: ['snapshot-changed', 'head-changed', 'head-check-failed'],
   cancelled: ['review-cancelled', 'cancelled', 'repair-no-longer-active'],
-  invalidReport: ['invalid-diff', 'invalid-anchor', 'invalid-response', 'invalid-publication', 'invalid-run-id', 'invalid-review-search', 'invalid-review-read','invalid-worker-role', 'invalid-worker-angles', 'worker-role-not-authorized', 'unknown-candidate', 'verifier-assignment-not-authorized', 'worker-candidate-limit', 'worker-angle-not-assigned', 'worker-angle-candidate-limit'],
+  invalidReport: ['invalid-diff', 'invalid-anchor', 'invalid-response', 'invalid-publication', 'invalid-run-id', 'invalid-review-search', 'invalid-review-read', 'invalid-worker-role', 'invalid-worker-angles', 'worker-role-not-authorized', 'unknown-candidate', 'verifier-assignment-not-authorized', 'worker-candidate-limit', 'worker-angle-not-assigned', 'worker-angle-candidate-limit'],
   failed: ['review-failed', 'query-failed', 'spawn-failed', 'http-failed', 'redirect-refused', 'secret-origin'],
   noTarget: ['publication-target-required', 'publication-target-unavailable', 'no-publish-target'],
   publicationFailed: ['publication-failed'],
@@ -67,6 +67,11 @@ export function reviewMessage(t: TranslateFn, notice: string | ReviewMessageNoti
 /** Coverage may contain authored prose or a legacy reason code; prose remains report content. */
 export function reviewDetailMessage(t: TranslateFn, text: string): string {
   return /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)+$/.test(text) || Object.values(groups).some(codes => (codes as readonly string[]).includes(text)) ? reviewMessage(t, text) : text
+}
+
+/** A review task's drawer summary: a known reason code reads as its catalogued message; other text is the task's own. */
+export function reviewTaskSummaryMessage(t: TranslateFn, summary: string): string {
+  return Object.values(groups).some(codes => (codes as readonly string[]).includes(summary)) ? reviewMessage(t, summary) : summary
 }
 
 const roles = ['coordinator', 'finder', 'verifier', 'sweeper', 'format', 'repair', 'behavior', 'reassessment', 'mechanism', 'publication'] as const

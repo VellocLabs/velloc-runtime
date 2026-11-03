@@ -278,6 +278,13 @@ const FAST_CALL_LABEL_KEY: Readonly<Record<string, MessageKey>> = {
 
 const REVIEW_FORK_AGENT_TYPE = /^review-(coordinator|finder|sweeper|format|repair|behavior|reassessment|mechanism|publication)$/
 
+/** Whether a row is a code-review task fork (any role, or none). */
+export function isReviewTaskRow(
+  row: Pick<NexusTaskSummaryRow, 'type' | 'querySource' | 'agentType'>,
+): boolean {
+  return row.type === 'local_fork' && row.querySource === 'skill_fork' && /^review(?:-[a-z]+)?$/.test(row.agentType ?? '')
+}
+
 /**
  * The catalog key a row's label should be shown with, or `null` to show its
  * `description` as-is. A `local_fast` row's description is never author text

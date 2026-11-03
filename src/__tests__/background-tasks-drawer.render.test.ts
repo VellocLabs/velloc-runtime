@@ -1552,3 +1552,37 @@ describe('BackgroundTasksDrawer — loop timers', () => {
     expect(timer.getAttribute('data-focused')).toBe('true')
   })
 })
+
+describe('BackgroundTasksDrawer — code-review task rows', () => {
+  function reviewRow(over: Partial<NexusTaskSummaryRow> = {}): NexusTaskSummaryRow {
+    return {
+      sessionId: 'rv-1',
+      spawnerSessionId: 'P',
+      status: 'error',
+      type: 'local_fork',
+      querySource: 'skill_fork',
+      agentType: 'review-finder',
+      description: 'Finder',
+      startedAt: NOW - 5_000,
+      finishedAt: NOW - 1_000,
+      ...over,
+    }
+  }
+  const openWith = async (row: NexusTaskSummaryRow, summary: string) => {
+    const loadTranscript = vi.fn(async (): Promise<NexusTaskDetail> => ({ entries: [], info: { type: 'local_fork', summary } }))
+    render(createElement(BackgroundTasksDrawer, drawerProps({ rows: [row], focusSessionId: row.sessionId, loadTranscript })))
+    await waitFor(() => expect(document.querySelector('[data-testid="background-tasks-detail-info"]')).not.toBeNull())
+    return document.querySelector('[data-testid="background-tasks-detail-info"]')!.textContent ?? ''
+  }
+
+  it('shows a time-limited review task\'s reason as the catalogued message, not the code', async () => {
+    const text = await openWith(reviewRow(), 'review-time-limit')
+    expect(text).not.toContain('review-time-limit')
+    expect(text).toContain('its budget expired')
+  })
+
+  it('leaves another fork\'s summary text as it is', async () => {
+    const text = await openWith(reviewRow({ agentType: 'general-purpose' }), 'review-time-limit')
+    expect(text).toContain('review-time-limit')
+  })
+})
