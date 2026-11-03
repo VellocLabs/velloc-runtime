@@ -401,6 +401,19 @@ describe('side-task registry — local_fork', () => {
     expect(finished.filter(r => r.forkLabel === 'memory')).toHaveLength(40)
     expect(finished.filter(r => r.forkLabel === 'code-review')).toHaveLength(160)
   })
+
+  it('caps code-review task forks per spawner session, so one session never evicts another session\'s rows', () => {
+    const { i } = manager()
+    const finish = (agentId: string, spawnerSessionId: string) => {
+      notifyForkStarted(forkStart({ agentId, forkLabel: 'code-review', spawnerSessionId }))
+      notifyForkFinished({ agentId, status: 'success', finishedAt: 1_000 })
+    }
+    for (let n = 0; n < 100; n++) finish(`a-${n}`, 'P1')
+    for (let n = 0; n < 170; n++) finish(`b-${n}`, 'P2')
+    const finished = [...i.taskRegistry.allFinished()].filter(r => r.type === 'local_fork') as Array<{ spawnerSessionId?: string }>
+    expect(finished.filter(r => r.spawnerSessionId === 'P1')).toHaveLength(100)
+    expect(finished.filter(r => r.spawnerSessionId === 'P2')).toHaveLength(160)
+  })
 })
 
 // ============================================================================
@@ -893,6 +906,20 @@ describe('launchFork — sink lifecycle', () => {
     await launchFork(forkParams() as never)
     expect(log.finished).toEqual([
       expect.objectContaining({ status: 'stopped' }),
+    ])
+  })
+
+  it('finishes an aborted run with the status the caller names for it', async () => {
+    const log = recordingSink()
+    queryMock.mockImplementation(async function* (params: {
+      callContext: { cancelSource: AbortController }
+    }) {
+      params.callContext.cancelSource.abort()
+    } as never)
+
+    await launchFork({ ...forkParams(), abortedStatus: () => 'error' } as never)
+    expect(log.finished).toEqual([
+      expect.objectContaining({ status: 'error' }),
     ])
   })
 

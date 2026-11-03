@@ -18,6 +18,8 @@ import { useT } from './i18n'
 
 type SkillArgs = { skill?: string; args?: string }
 const REVIEW_SKILLS = ['code-review', 'review', 'ultrareview']
+const DETAIL_RETRY_DELAY_MS = 2000
+const DETAIL_MAX_RETRIES = 2
 
 /**
  * The conversation card for a skill invocation (the `Skill` tool call, or `/skill` via
@@ -31,18 +33,30 @@ export const SkillToolUI = makeAssistantToolUI<SkillArgs, unknown>({
     const { openSkill } = useRightPanelContent()
     const [open, setOpen] = useState(false)
     const ref = readSkillBodyRef(result)
-    // A finished code-review call keeps its result in the lazy tool detail; the run id there anchors the card.
+    // The run id anchors the card: from the live result when it carries the envelope, else from the
+    // lazy tool detail, re-read while that detail is not written yet.
     const detailContext = useToolCallDetailContext()
-    const [reviewRunId, setReviewRunId] = useState<string | null>(() => reviewRunIdOfSkillResult(result))
+    const liveRunId = reviewRunIdOfSkillResult(result)
+    const [storedRunId, setStoredRunId] = useState<string | null>(null)
+    const [detailAttempt, setDetailAttempt] = useState(0)
     const reviewCall = status?.type === 'complete' && REVIEW_SKILLS.includes((args?.skill ?? '').trim().replace(/^\/+/, ''))
     useEffect(() => {
-      if (reviewRunId || !reviewCall || !detailContext || !toolCallId) return
+      if (liveRunId || storedRunId || !reviewCall || !detailContext || !toolCallId) return
       let live = true
+      let timer: ReturnType<typeof setTimeout> | undefined
       detailContext.loadToolCallDetail(toolCallId)
-        .then(detail => { if (live) setReviewRunId(reviewRunIdOfSkillResult(detail?.result)) })
+        .then(detail => {
+          if (!live) return
+          if (detail === null && detailAttempt < DETAIL_MAX_RETRIES) {
+            timer = setTimeout(() => { detailContext.clearCachedDetail(toolCallId); setDetailAttempt(n => n + 1) }, DETAIL_RETRY_DELAY_MS)
+            return
+          }
+          setStoredRunId(reviewRunIdOfSkillResult(detail?.result))
+        })
         .catch(() => {})
-      return () => { live = false }
-    }, [reviewRunId, reviewCall, detailContext, toolCallId])
+      return () => { live = false; clearTimeout(timer) }
+    }, [liveRunId, storedRunId, reviewCall, detailContext, toolCallId, detailAttempt])
+    const reviewRunId = liveRunId ?? storedRunId
     const name = ref?.name ?? args?.skill ?? ''
     const isRunning = status?.type === 'running'
     // Two failure shapes, matching the Plan surface's `planStatus === 'failed'`:

@@ -171,6 +171,8 @@ export const de: Messages = {
   "reviewCard.task.role.repair": "Reparatur",
   "reviewCard.task.role.behavior": "Verhaltensprüfung",
   "reviewCard.task.role.reassessment": "Neubewertung",
+  "reviewCard.task.role.mechanism": "Mechanismusabgleich",
+  "reviewCard.task.role.publication": "Vorschlagsentwurf",
   "reviewCard.task.status.running": "Läuft",
   "reviewCard.task.status.finished": "Beendet",
   "reviewCard.task.status.failed": "Fehlgeschlagen",

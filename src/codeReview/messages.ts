@@ -23,7 +23,7 @@ const groups = {
   crash: ['review-crash'],
   changed: ['snapshot-changed', 'head-changed', 'head-check-failed'],
   cancelled: ['review-cancelled', 'cancelled', 'repair-no-longer-active'],
-  invalidReport: ['invalid-diff', 'invalid-anchor', 'invalid-response', 'invalid-publication', 'invalid-run-id', 'invalid-review-search', 'invalid-worker-role', 'invalid-worker-angles', 'worker-role-not-authorized', 'unknown-candidate', 'verifier-assignment-not-authorized', 'worker-candidate-limit', 'worker-angle-not-assigned', 'worker-angle-candidate-limit'],
+  invalidReport: ['invalid-diff', 'invalid-anchor', 'invalid-response', 'invalid-publication', 'invalid-run-id', 'invalid-review-search', 'invalid-review-read','invalid-worker-role', 'invalid-worker-angles', 'worker-role-not-authorized', 'unknown-candidate', 'verifier-assignment-not-authorized', 'worker-candidate-limit', 'worker-angle-not-assigned', 'worker-angle-candidate-limit'],
   failed: ['review-failed', 'query-failed', 'spawn-failed', 'http-failed', 'redirect-refused', 'secret-origin'],
   noTarget: ['publication-target-required', 'publication-target-unavailable', 'no-publish-target'],
   publicationFailed: ['publication-failed'],
@@ -69,7 +69,7 @@ export function reviewDetailMessage(t: TranslateFn, text: string): string {
   return /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)+$/.test(text) || Object.values(groups).some(codes => (codes as readonly string[]).includes(text)) ? reviewMessage(t, text) : text
 }
 
-const roles = ['coordinator', 'finder', 'verifier', 'sweeper', 'format', 'repair', 'behavior', 'reassessment'] as const
+const roles = ['coordinator', 'finder', 'verifier', 'sweeper', 'format', 'repair', 'behavior', 'reassessment', 'mechanism', 'publication'] as const
 export function reviewTaskRoleMessage(t: TranslateFn, role: string): string {
   return roles.includes(role as typeof roles[number]) ? t(`reviewCard.task.role.${role}` as Parameters<TranslateFn>[0]) : t('reviewCard.notice.unspecified')
 }

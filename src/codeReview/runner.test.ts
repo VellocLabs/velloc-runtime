@@ -164,6 +164,25 @@ describe('review task records and stops', () => {
     expect(lastLaunch().agentType).toBe('review')
     expect(observer.started).not.toHaveBeenCalled()
   })
+  it('records the saved report, existing findings and retained ledger by size too', async () => {
+    const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })
+    const blocks = ['saved-report', 'existing-findings', 'retained-ledger'].map(source => ({ type: 'text' as const, text: `full ${source} body`, source, provenance: 'repository-material' as const }))
+    await runner({ blocks, tools: [], signal: new AbortController().signal, taskId: 'r', role: 'repair' })
+    const launch = lastLaunch()
+    for (const source of ['saved-report', 'existing-findings', 'retained-ledger']) {
+      expect(JSON.stringify(launch.openingRows)).toContain(`full ${source} body`)
+      expect(JSON.stringify(launch.recordedOpeningRows)).not.toContain(`full ${source} body`)
+    }
+  })
+  it('finishes the drawer row as an error once the run hit its time limit, and as stopped otherwise', async () => {
+    const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })
+    let limited = false
+    const observer: ReviewTaskObserver = { started: vi.fn(), activity: vi.fn(), ended: vi.fn(), timeLimited: () => limited }
+    await runner({ blocks: [], tools: [], signal: new AbortController().signal, taskId: 't', role: 'finder', observer })
+    expect(lastLaunch().abortedStatus!()).toBe('stopped')
+    limited = true
+    expect(lastLaunch().abortedStatus!()).toBe('error')
+  })
 })
 
 describe('end reasons and activity lines', () => {

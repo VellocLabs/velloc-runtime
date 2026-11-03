@@ -16,6 +16,8 @@ export interface ReviewTaskObserver {
   started(info: { key: string; agentId: string; role: ReviewTaskRole; label?: string; angles?: readonly string[] }): void
   activity(info: { key: string; action: string }): void
   ended(info: { key: string; end: ReviewRunEnd }): void
+  /** True once the run's time budget has aborted its tasks. */
+  timeLimited?(): boolean
 }
 
 export interface ReviewModelRequest {
@@ -38,6 +40,8 @@ export interface ReviewModelResult { text: string; interrupted: boolean; end?: R
 /** A result without an explicit end reads its `interrupted` flag. */
 export const endOf = (result: Pick<ReviewModelResult, 'interrupted' | 'end'>): ReviewRunEnd => result.end ?? { kind: result.interrupted ? 'crash' : 'completed' }
 export type ReviewModelRunner = (request: ReviewModelRequest) => Promise<ReviewModelResult>
+/** Prompt blocks a task record stores by size only. */
+const RECORDED_BY_SIZE = new Set(['review-material', 'existing-findings', 'saved-report', 'retained-ledger'])
 
 /** Contract: the loop's terminal reason, as the run reports it. */
 export function reviewRunEnd(conclusion: TurnConclusion): ReviewRunEnd {
@@ -125,8 +129,8 @@ export function createReviewModelRunner(input: {
         { reviewSource: { provenance: block.provenance, source: block.source } },
       )
       const opening = request.blocks.map(block => blockRow(block, { text: block.text }))
-      // The task record keeps the patch material's size, not another copy of it.
-      const recorded = request.blocks.map((block, index) => block.source === 'review-material' ? blockRow(block, { omittedBytes: new TextEncoder().encode(block.text).length }) : opening[index]!)
+      // The task record keeps the size of the run's own material (patches, report, ledger), not another copy of it.
+      const recorded = request.blocks.map((block, index) => RECORDED_BY_SIZE.has(block.source) ? blockRow(block, { omittedBytes: new TextEncoder().encode(block.text).length }) : opening[index]!)
       if (role) request.observer?.started({ key: request.taskId, agentId, role, label: request.label, angles: request.angles })
       const outcome = await launchFork({
         openingRows: opening, recordedOpeningRows: recorded, skipStartHooks: true, forkPrefix, canUseTool: input.decidePermission,
@@ -138,6 +142,7 @@ export function createReviewModelRunner(input: {
         sidechainStore: getContextSidechainStore(parent), spawnerSessionId: parent.options.sessionId || undefined,
         onMessage: row => { const action = describeActivity(row); if (action) request.observer?.activity({ key: request.taskId, action }) },
         onConclusion: conclusion => { end = reviewRunEnd(conclusion) },
+        abortedStatus: () => request.observer?.timeLimited?.() ? 'error' : 'stopped',
       })
       if (!end) end = cancelSource.signal.aborted ? { kind: 'cancelled' } : { kind: 'crash' }
       if (cancelSource.signal.aborted && end.kind === 'completed') end = { kind: 'cancelled' }

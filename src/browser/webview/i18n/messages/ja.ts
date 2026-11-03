@@ -169,6 +169,8 @@ export const ja: Messages = {
   "reviewCard.task.role.repair": "修正",
   "reviewCard.task.role.behavior": "動作確認",
   "reviewCard.task.role.reassessment": "再評価",
+  "reviewCard.task.role.mechanism": "メカニズム照合",
+  "reviewCard.task.role.publication": "提案の下書き",
   "reviewCard.task.status.running": "実行中",
   "reviewCard.task.status.finished": "完了",
   "reviewCard.task.status.failed": "失敗",

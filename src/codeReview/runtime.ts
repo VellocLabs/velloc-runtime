@@ -66,8 +66,8 @@ function readDiff(manifest: ScopeManifest, input: Record<string, unknown>): unkn
     return { path: file.path, beforePath: file.beforePath, status: file.status, reason: file.reason, patch: file.patch, anchors: file.anchors }
   }
   if (input.paths !== undefined) {
-    if (input.path !== undefined || !Array.isArray(input.paths) || !input.paths.length || input.paths.length > 50) throw new ReviewGatewayError('read-outside-review-scope')
-    return { files: input.paths.map(patchOf) }
+    if (input.path !== undefined || !Array.isArray(input.paths) || !input.paths.length || input.paths.length > 50) throw new ReviewGatewayError('invalid-review-read')
+    return { files: [...new Map(input.paths.map(path => { const file = patchOf(path); return [file.path, file] as const })).values()] }
   }
   return input.path === undefined ? scopeIndex(manifest) : patchOf(input.path)
 }
@@ -344,6 +344,8 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     return scope.complete ? JSON.stringify([scope.scope.revision, scope.scope.pathFilter]) : undefined
   }
   admit()
+  // Counts repair writes; a working-copy context cache older than the count is stale.
+  let repairEdits = 0
   const runModel: import('./runner').ReviewModelRunner = request => {
     admit(request.signal)
     const signal = ownerSignal ? AbortSignal.any([ownerSignal, request.signal]) : request.signal
@@ -467,13 +469,12 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         return contextText(read.bytes)
       }
       const guidance = await guidanceFor(manifest.files.map(file => file.path), !approved, authorizePath, approved)
-      // A fixed revision's text is fetched once per path (unavailable paths are remembered too); working-copy
-      // text is read fresh, since repair edits it within the same access.
+      // Each path's text is fetched once (unavailable paths are remembered too); a repair edit drops the
+      // working-copy cache, since repair reads the edited text within the same access.
       const contents = new Map<string, Promise<string | null>>()
+      let cachedEdits = repairEdits
       const cachedContext = (path: string, readSignal: AbortSignal): Promise<string | null> => {
-        if (manifest.semantics === 'working-copy') {
-          return readContext(path, readSignal).catch(error => { if (error instanceof ReviewGatewayError && error.code === 'review-context-unavailable') return null; throw error })
-        }
+        if (manifest.semantics === 'working-copy' && cachedEdits !== repairEdits) { contents.clear(); cachedEdits = repairEdits }
         let pending = contents.get(path)
         if (!pending) {
           pending = readContext(path, readSignal).catch(error => {
@@ -735,7 +736,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           targetKey: JSON.stringify([remote.target.platform, remote.target.origin, remote.target.platform === 'github' ? remote.target.projectKey.toLowerCase() : remote.target.projectKey, remote.target.number]), head: remote.head,
           diagnostic: { ...diagnostic, claim: { title: sanitize(diagnostic.claim.title), explanation: sanitize(diagnostic.claim.explanation), trigger: sanitize(diagnostic.claim.trigger) } },
           evidence: snapshot.evidence.filter(item => item.diagnosticId === diagnostic.id).map(item => ({ ...item, excerpt: sanitize(item.excerpt), reason: sanitize(item.reason) })), signal,
-          runner: runModel,
+          runner: request => runModel({ ...request, role: 'mechanism' }),
         })}`
         const binding = { runId: snapshot.run.id, reportRevision: snapshot.run.reportRevision, discussions,
           target: remote.target, base: remote.base, head: remote.head, kind: proposed.kind,
@@ -756,7 +757,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           if (write.kind === 'inline' && diagnostic && write.rootCauseFingerprint) {
             proposal = await proposeReviewSuggestion({ snapshot: remote, diagnostic, rootCauseFingerprint: write.rootCauseFingerprint,
               actions: snapshot.actions, taskId: `${snapshot.run.id}-${diagnostic.id}`, signal, reader: { checkHead: suggestionReader.checkHead, readContext: async (...args) => { await authorizePath(resolveRuntimePath(root, args[1])); return suggestionReader.readContext(...args) } },
-              runner: runModel })
+              runner: request => runModel({ ...request, role: 'publication' }) })
             if (proposal) write.suggestion = { original: proposal.original, replacement: proposal.replacement }
           }
           envelope = { version: 1, binding, write, ...(proposal ? { proposal } : {}) }
@@ -853,6 +854,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
             const next = typeof data === 'string' ? new TextEncoder().encode(data) : data
             admit(signal)
             await targetFs.writeFile(path, data, options)
+            repairEdits++
             if (await reviewDigest(before) !== await reviewDigest(next)) {
               const relative = normalized(path).slice(root.length + 1)
               const ids = snapshot.diagnostics.filter(d => grant.diagnosticIds.includes(d.id) && d.anchor.path === relative).map(d => d.id)

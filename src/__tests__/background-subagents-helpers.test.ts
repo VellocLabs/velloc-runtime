@@ -187,6 +187,13 @@ describe('backgroundSubAgents helpers (Background Tasks drawer)', () => {
     expect(taskRowLabelKey({ type: 'local_fork', querySource: 'memory_recall' })).toBeNull()
     expect(taskRowLabelKey({})).toBeNull()
   })
+
+  it('taskRowLabelKey names a code-review task fork by its role and leaves a verifier its candidate title', () => {
+    expect(taskRowLabelKey({ type: 'local_fork', querySource: 'skill_fork', agentType: 'review-finder' })).toBe('reviewCard.task.role.finder')
+    expect(taskRowLabelKey({ type: 'local_fork', querySource: 'skill_fork', agentType: 'review-mechanism' })).toBe('reviewCard.task.role.mechanism')
+    expect(taskRowLabelKey({ type: 'local_fork', querySource: 'skill_fork', agentType: 'review-verifier' })).toBeNull()
+    expect(taskRowLabelKey({ type: 'local_fork', querySource: 'agent_tool', agentType: 'review-finder' })).toBeNull()
+  })
 })
 
 describe('sessionTaskCardRows', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createTranslate } from '../browser/webview/i18n/translate'
-import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMessage, reviewEndMessage } from '../codeReview/messages'
+import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMessage, reviewEndMessage, reviewTaskRoleMessage } from '../codeReview/messages'
 import type { PolicyNotice } from '../codeReview/contracts'
 import { parseReviewArguments } from '../codeReview/arguments'
 const t = createTranslate('en')
@@ -30,7 +30,7 @@ describe('review localization', () => {
     expect(message).toContain('--max-findings n|all|default')
     expect(message).not.toContain(parsed.error.code)
   })
-  it.each(['other-untracked-files-excluded', 'initial-commit-all-tracked-files', 'diff-output-limit', 'remote-diff-incomplete', 'remote-patch-unavailable', 'publication-target-required', 'publication-target-unavailable', 'review-read-not-authorized', 'ambiguous-target', 'ambiguous-review-target', 'scope-incomplete', 'independent-worker-coverage-incomplete', 'review-budget-exhausted', 'head-changed', 'publication-failed', 'write-outcome-unknown', 'repair-workspace-mismatch'])('maps scope and service reason %s', code => {
+  it.each(['other-untracked-files-excluded', 'initial-commit-all-tracked-files', 'diff-output-limit', 'remote-diff-incomplete', 'remote-patch-unavailable', 'publication-target-required', 'publication-target-unavailable', 'review-read-not-authorized', 'ambiguous-target', 'ambiguous-review-target', 'scope-incomplete', 'independent-worker-coverage-incomplete', 'review-budget-exhausted', 'head-changed', 'publication-failed', 'write-outcome-unknown', 'repair-workspace-mismatch', 'invalid-review-read'])('maps scope and service reason %s', code => {
     expect(reviewMessage(t, code)).not.toBe(t('reviewCard.notice.unknown'))
     expect(reviewDetailMessage(t, code)).toBe(reviewMessage(t, code))
   })
@@ -50,5 +50,12 @@ describe('review localization', () => {
     expect(reviewValueMessage(t, 'scope')).toBe(t('reviewCard.value.scope'))
     expect(reviewValueMessage(t, 'future-stage')).toBe(t('reviewCard.notice.unspecified'))
     expect(reviewAngleMessage(t, 'future-angle')).toBe(t('reviewCard.notice.unspecified'))
+  })
+  it.each(['en', 'zh', 'ja', 'ko', 'es', 'fr', 'de'] as const)('names the mechanism and publication task roles in %s', locale => {
+    const translate = createTranslate(locale)
+    for (const role of ['mechanism', 'publication']) {
+      expect(reviewTaskRoleMessage(translate, role)).toBe(translate(`reviewCard.task.role.${role}` as Parameters<typeof translate>[0]))
+      expect(reviewTaskRoleMessage(translate, role)).not.toMatch(/reviewCard\.|unspecified/)
+    }
   })
 })

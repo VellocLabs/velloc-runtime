@@ -601,4 +601,24 @@ describe('SkillToolUI code-review card', () => {
     expect(other).not.toHaveBeenCalled()
     expect(screen.queryByTestId('code-review-card')).toBeNull()
   })
+  it('re-reads a stored result that is not written yet instead of keeping the empty read', async () => {
+    const envelope = JSON.stringify({ reviewRunId: 'run_1', status: 'finished', report: {} })
+    const loadToolCallDetail = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({ toolCallId: 'c1', toolName: 'Skill', args: {}, result: envelope } as never)
+    const card = createElement(Render as never, { args: { skill: 'code-review' }, result: { lazyDetailFinished: true }, toolCallId: 'c1', toolName: 'Skill', status: { type: 'complete' }, addResult: () => {} })
+    render(createElement(ToolCallDetailProvider, { loadToolCallDetail, children: card }))
+    await waitFor(() => expect(loadToolCallDetail).toHaveBeenCalledTimes(1))
+    expect(screen.queryByTestId('code-review-card')).toBeNull()
+    expect(await screen.findByTestId('code-review-card', undefined, { timeout: 3_000 })).toBeTruthy()
+    expect(loadToolCallDetail).toHaveBeenCalledTimes(2)
+  })
+
+  it('anchors the card from a live result that carries the envelope, without a stored-detail provider', () => {
+    const props = { args: { skill: 'code-review' }, toolCallId: 'c1', toolName: 'Skill', addResult: () => {} }
+    const { rerender } = render(createElement(Render as never, { ...props, result: undefined, status: { type: 'running' } }))
+    expect(screen.queryByTestId('code-review-card')).toBeNull()
+    rerender(createElement(Render as never, { ...props, result: { reviewRunId: 'run_1', status: 'finished', report: {} }, status: { type: 'complete' } }))
+    expect(screen.getByTestId('code-review-card')).toBeTruthy()
+  })
 })

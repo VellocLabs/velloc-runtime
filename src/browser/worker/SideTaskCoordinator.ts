@@ -25,8 +25,11 @@ export interface SideTaskHost {
 // --- Constants ---
 
 const MAX_FINISHED_FORKS = 40
-// A max-effort review runs over a hundred task forks; they never evict other forks' rows.
+// Per spawner session: a max-effort review runs over a hundred task forks; they never evict other forks' rows
+// or another session's review rows.
 const MAX_FINISHED_REVIEW_FORKS = 160
+// All sessions' review rows together, so the per-session pools stay bounded in one worker.
+const MAX_FINISHED_REVIEW_FORKS_TOTAL = 640
 const MAX_FINISHED_FAST_CALLS = 40
 const MAX_FINISHED_RUN_JS = 40
 
@@ -147,7 +150,11 @@ export class SideTaskCoordinator {
     this.registry.recordFinished(run.agentId, record)
     const reviewFork = run.forkLabel === REVIEW_FORK_LABEL
     this.host.evictFinishedOverCap('local_fork', reviewFork ? MAX_FINISHED_REVIEW_FORKS : MAX_FINISHED_FORKS, undefined,
-      (record: { forkLabel?: string }) => (record.forkLabel === REVIEW_FORK_LABEL) === reviewFork)
+      (record: { forkLabel?: string; spawnerSessionId?: string }) => reviewFork
+        ? record.forkLabel === REVIEW_FORK_LABEL && record.spawnerSessionId === run.spawnerSessionId
+        : record.forkLabel !== REVIEW_FORK_LABEL)
+    if (reviewFork) this.host.evictFinishedOverCap('local_fork', MAX_FINISHED_REVIEW_FORKS_TOTAL, undefined,
+      (record: { forkLabel?: string }) => record.forkLabel === REVIEW_FORK_LABEL)
     this.host.scheduleSummary()
   }
 

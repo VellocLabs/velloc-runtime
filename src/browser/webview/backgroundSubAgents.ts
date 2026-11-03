@@ -276,6 +276,8 @@ const FAST_CALL_LABEL_KEY: Readonly<Record<string, MessageKey>> = {
   web_fetch_apply: 'backgroundTasks.fastCall.webFetchExtraction',
 }
 
+const REVIEW_FORK_AGENT_TYPE = /^review-(coordinator|finder|sweeper|format|repair|behavior|reassessment|mechanism|publication)$/
+
 /**
  * The catalog key a row's label should be shown with, or `null` to show its
  * `description` as-is. A `local_fast` row's description is never author text
@@ -284,8 +286,11 @@ const FAST_CALL_LABEL_KEY: Readonly<Record<string, MessageKey>> = {
  * worker/webview split as the slash picker's `blurbKey`.
  */
 export function taskRowLabelKey(
-  row: Pick<NexusTaskSummaryRow, 'type' | 'querySource'>,
+  row: Pick<NexusTaskSummaryRow, 'type' | 'querySource' | 'agentType'>,
 ): MessageKey | null {
+  // A code-review task fork is named by its role; a verifier shows its candidate title.
+  const reviewRole = row.type === 'local_fork' && row.querySource === 'skill_fork' ? REVIEW_FORK_AGENT_TYPE.exec(row.agentType ?? '')?.[1] : undefined
+  if (reviewRole) return `reviewCard.task.role.${reviewRole}` as MessageKey
   if (row.type !== 'local_fast') return null
   const source = row.querySource ?? ''
   return Object.hasOwn(FAST_CALL_LABEL_KEY, source)

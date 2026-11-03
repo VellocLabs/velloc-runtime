@@ -142,6 +142,7 @@ export class LocalReviewService {
         task.status = task.end.kind === 'completed' ? 'finished' : task.end.kind === 'cancelled' ? 'stopped' : 'failed'
         this.changed()
       },
+      timeLimited: () => !!live.budgetExpired,
     }
   }
   preload(): { command: string; aliases: string[]; levels: string[] } {

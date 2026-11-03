@@ -172,6 +172,8 @@ export const es: Messages = {
   "reviewCard.task.role.repair": "Reparación",
   "reviewCard.task.role.behavior": "Comprobación de comportamiento",
   "reviewCard.task.role.reassessment": "Reevaluación",
+  "reviewCard.task.role.mechanism": "Comparación de mecanismo",
+  "reviewCard.task.role.publication": "Borrador de sugerencia",
   "reviewCard.task.status.running": "En ejecución",
   "reviewCard.task.status.finished": "Terminada",
   "reviewCard.task.status.failed": "Fallida",

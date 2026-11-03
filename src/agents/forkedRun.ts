@@ -244,6 +244,9 @@ export type ForkRunRequest = {
   /** The loop's terminal conclusion for each drive (a fallback retry reports again). */
   onConclusion?: (conclusion: TurnConclusion) => void
 
+  /** The drawer status of a fork whose cancelSource was aborted; `stopped` when absent. */
+  abortedStatus?: () => 'stopped' | 'error'
+
   sidechainStore?: SidechainTranscriptStore
 
   spawnerSessionId?: string
@@ -555,7 +558,7 @@ export async function launchFork(
     notifyForkFinished({
       agentId,
       status: isolatedToolUseContext.cancelSource.signal.aborted
-        ? 'stopped'
+        ? params.abortedStatus?.() ?? 'stopped'
         : 'error',
       finishedAt: Date.now(),
       errorMessage: error instanceof Error ? error.message : String(error),
@@ -567,7 +570,7 @@ export async function launchFork(
   notifyForkFinished({
     agentId,
     status: isolatedToolUseContext.cancelSource.signal.aborted
-      ? 'stopped'
+      ? params.abortedStatus?.() ?? 'stopped'
       : 'success',
     finishedAt: Date.now(),
     model: isolatedToolUseContext.options.mainLoopModel,

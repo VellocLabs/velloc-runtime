@@ -172,6 +172,8 @@ export const zh: Messages = {
   "reviewCard.task.role.repair": "修复",
   "reviewCard.task.role.behavior": "行为检查",
   "reviewCard.task.role.reassessment": "重新评估",
+  "reviewCard.task.role.mechanism": "机制比对",
+  "reviewCard.task.role.publication": "建议草稿",
   "reviewCard.task.status.running": "运行中",
   "reviewCard.task.status.finished": "已完成",
   "reviewCard.task.status.failed": "失败",

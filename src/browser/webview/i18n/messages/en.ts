@@ -172,6 +172,8 @@ export const en = {
   "reviewCard.task.role.repair": "Repair",
   "reviewCard.task.role.behavior": "Behaviour check",
   "reviewCard.task.role.reassessment": "Reassessment",
+  "reviewCard.task.role.mechanism": "Mechanism match",
+  "reviewCard.task.role.publication": "Suggestion draft",
   "reviewCard.task.status.running": "Running",
   "reviewCard.task.status.finished": "Finished",
   "reviewCard.task.status.failed": "Failed",

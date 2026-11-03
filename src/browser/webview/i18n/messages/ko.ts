@@ -169,6 +169,8 @@ export const ko: Messages = {
   "reviewCard.task.role.repair": "수정",
   "reviewCard.task.role.behavior": "동작 확인",
   "reviewCard.task.role.reassessment": "재평가",
+  "reviewCard.task.role.mechanism": "메커니즘 비교",
+  "reviewCard.task.role.publication": "제안 초안",
   "reviewCard.task.status.running": "실행 중",
   "reviewCard.task.status.finished": "완료",
   "reviewCard.task.status.failed": "실패",

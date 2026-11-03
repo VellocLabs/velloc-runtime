@@ -443,22 +443,46 @@ describe('actual review runtime security boundaries', () => {
     expect(context).toMatchObject({ code: 'review-context-unavailable' })
   })
 
-  it('reads working-copy context fresh and serves several patches, by current or pre-rename path, in one diff call', async () => {
+  it('caches working-copy context within a run and re-reads it after a repair edit', async () => {
     const h = fixture()
-    let first: unknown, second: unknown, batch: unknown
+    const data = (result: unknown) => String((result as { data: unknown }).data)
+    let first: unknown, cached: unknown
     mocks.model.mockImplementation(async request => {
       first = await invoke(request, 'ReviewRead', { operation: 'context', path: 'a.ts' })
+      const original = h.files.get(`${root}/a.ts`)!
       h.files.set(`${root}/a.ts`, 'export const a = 99\n')
-      second = await invoke(request, 'ReviewRead', { operation: 'context', path: 'a.ts' })
-      batch = await invoke(request, 'ReviewRead', { operation: 'diff', paths: ['a.ts'] })
+      cached = await invoke(request, 'ReviewRead', { operation: 'context', path: 'a.ts' })
+      h.files.set(`${root}/a.ts`, original)
+      return report(request, true)
+    })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('medium')
+    const snapshot = await service.wait(runId)
+    expect(data(cached)).toBe(data(first))
+    const selected = snapshot.diagnostics.find(diagnostic => diagnostic.anchor.path === 'a.ts')!
+    let afterEdit: unknown
+    mocks.model.mockImplementation(async request => {
+      await invoke(request, 'SuperEdit', { path: `${root}/a.ts` })
+      afterEdit = await invoke(request, 'ReviewRead', { operation: 'context', path: 'a.ts' })
+      return { text: '', interrupted: false }
+    })
+    await service.requestRepair(runId, [selected.id])
+    expect(JSON.stringify((afterEdit as { data: unknown }).data)).toContain('edited')
+  })
+
+  it('serves several patches, by current or pre-rename path, in one diff call, and rejects a malformed one', async () => {
+    const h = fixture()
+    let batch: unknown, malformed: unknown
+    mocks.model.mockImplementation(async request => {
+      batch = await invoke(request, 'ReviewRead', { operation: 'diff', paths: ['a.ts', 'a.ts'] })
+      malformed = await invoke(request, 'ReviewRead', { operation: 'diff', path: 'a.ts', paths: ['a.ts'] }).catch((error: unknown) => error)
       return report(request)
     })
     const service = await getOrCreateReviewService(h.context, h.permission)
     const { runId } = await service.startUser('high')
     await service.wait(runId)
-    expect(String((second as { data: unknown }).data)).toContain('99')
-    expect((second as { data: unknown }).data).not.toEqual((first as { data: unknown }).data)
     expect((batch as { data: { files: Array<{ path: string }> } }).data.files.map(file => file.path)).toEqual(['a.ts'])
+    expect(JSON.stringify(malformed)).toContain('invalid-review-read')
   })
 
   it('uses hardened native argv, preserves literal refs, and atomically persists reports and preferences', async () => {
