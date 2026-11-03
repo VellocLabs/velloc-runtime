@@ -26,7 +26,8 @@ export interface ReviewServiceOptions {
   preferences: ReviewPreferencesStorage
   storage: ReportStorageAdapter
   sanitizeExcerpt(text: string): string
-  resolveScope(args: ReviewArguments, plan: ReviewPlan, signal: AbortSignal): Promise<ReviewScopeAccess>
+  /** Contract: with `approved`, reuse that guidance decision instead of asking for review-effort approval again. */
+  resolveScope(args: ReviewArguments, plan: ReviewPlan, signal: AbortSignal, approved?: { guidance: ReviewServiceOptions['guidance'] }): Promise<ReviewScopeAccess>
   runModel: ReviewModelRunner
   repairTools?(snapshot: ReportSnapshot, grant: ReportGrant, signal: AbortSignal, store: ReviewReportStore, actionEpoch?: string): Promise<ToolContract[]>
   publish?(snapshot: ReportSnapshot, grantId: string, signal: AbortSignal, store: ReviewReportStore, discussions?: boolean): Promise<void>
@@ -117,19 +118,20 @@ export class LocalReviewService {
     if (plan.blocked) throw new ReviewGatewayError('review-plan-blocked')
     let access = await this.options.resolveScope(parsed.arguments, plan, controller.signal)
     this.admit(controller.signal)
+    const approved = { guidance: access.authorizedGuidance }
     const guidance = access.authorizedGuidance ?? this.options.guidance
     const authorizedPlan = resolveReviewPolicy({ arguments: parsed.arguments, source, preferences, sessionLevel: this.options.sessionLevel, guidance,
       canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal' })
     if (authorizedPlan.blocked) throw new ReviewGatewayError('review-plan-blocked')
     if (authorizedPlan.skipTestsAndFixtures !== plan.skipTestsAndFixtures) {
-      access = await this.options.resolveScope(parsed.arguments, authorizedPlan, controller.signal)
+      access = await this.options.resolveScope(parsed.arguments, authorizedPlan, controller.signal, approved)
       this.admit(controller.signal)
       if (JSON.stringify(access.authorizedGuidance ?? this.options.guidance) !== JSON.stringify(guidance)) throw new ReviewGatewayError('review-guidance-changed')
     }
     const testsOnly = authorizedPlan.skipTestsAndFixtures && onlyTestsSkipped(access.manifest)
     if (testsOnly) {
       access = await this.options.resolveScope(parsed.arguments, resolveReviewPolicy({ arguments: parsed.arguments, source, preferences, sessionLevel: this.options.sessionLevel, guidance,
-        canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal', testsOnly }), controller.signal)
+        canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: presentation ?? this.options.output ?? 'terminal', testsOnly }), controller.signal, approved)
       this.admit(controller.signal)
       if (JSON.stringify(access.authorizedGuidance ?? this.options.guidance) !== JSON.stringify(guidance)) throw new ReviewGatewayError('review-guidance-changed')
     }
@@ -226,7 +228,7 @@ export class LocalReviewService {
       }
       else if (live.args.comment) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['publication-target-required'], complete: (await this.store.getSnapshot(runId)).coverage.complete } })
       if (shouldRunAutomaticVerification(plan, { permitted: this.options.automaticVerificationPermitted === true,
-        adapterAvailable: !!this.options.verify, runtimeBehaviorChanged: access.manifest.files.some(f => !/(?:^|\/)(?:docs?|tests?|fixtures)\/|\.(?:md|txt)$|\.(?:test|spec)\./i.test(f.path)), alreadyVerified: await this.options.alreadyVerified?.(await this.store.getSnapshot(runId)) ?? false })) {
+        adapterAvailable: !!this.options.verify, runtimeBehaviorChanged: access.manifest.files.some(f => !isTestOrFixturePath(f.path) && !/(?:^|\/)docs?\/|\.(?:md|txt)$/i.test(f.path)), alreadyVerified: await this.options.alreadyVerified?.(await this.store.getSnapshot(runId)) ?? false })) {
         await this.store.setStage(runId, 'verify')
         const snapshot = await this.store.getSnapshot(runId)
         this.admit(controller.signal)
@@ -401,7 +403,7 @@ export class LocalReviewService {
     this.admit(controller.signal)
     if (plan.skipTestsAndFixtures && onlyTestsSkipped(access.manifest)) {
       plan = resolveReviewPolicy({ arguments: args, source: 'model', preferences, canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: snapshot.run.policy.presentation, testsOnly: true })
-      access = await this.options.resolveScope(args, plan, controller.signal)
+      access = await this.options.resolveScope(args, plan, controller.signal, { guidance: access.authorizedGuidance })
       this.admit(controller.signal)
     }
     if (access.manifest.scope.repository.projectKey !== snapshot.run.scope.repository.projectKey || access.manifest.scope.revision.head !== snapshot.run.scope.revision.head) throw new ReviewGatewayError('snapshot-changed')

@@ -35,7 +35,7 @@ import { registerReviewSession } from './review-channel'
 import type { ReviewReportView } from './review-protocol'
 import type { ReportSnapshot } from './report-store'
 import { SuperEditTool } from '../toolkit/builtin/superEdit'
-import type { ReviewPreferences } from './contracts'
+import { CONTEXT_READ_BYTES, type ReviewPreferences } from './contracts'
 import { bindChangeRequestTarget, createReviewPlatformReader, createReviewPlatformPublisher, type ReviewHttpRequest, type ChangeRequestSnapshot } from './platform-adapter'
 
 export interface ReviewRuntimeDependencies {
@@ -54,7 +54,6 @@ const pendingServices = new WeakMap<object, Promise<LocalReviewService>>()
 const normalized = (path: string) => { const slashed = path.replace(/\\/g, '/'); return /^(?:[A-Za-z]:)?\/$/.test(slashed) ? slashed : slashed.replace(/\/$/, '') }
 const equal = (a: string, b: string) => /^[A-Za-z]:/.test(a) ? a.toLowerCase() === b.toLowerCase() : a === b
 const below = (path: string, root: string) => equal(path, root) || ( /^[A-Za-z]:/.test(root) ? path.toLowerCase().startsWith(root.toLowerCase() + '/') : path.startsWith(root + '/'))
-const CONTEXT_READ_BYTES = 512 * 1024
 /** Context text is UTF-8 within the read cap; binary or oversized content is unavailable, not an error. */
 function contextText(bytes: Uint8Array): string {
   if (bytes.length > CONTEXT_READ_BYTES || bytes.includes(0)) throw new ReviewGatewayError('review-context-unavailable')
@@ -195,7 +194,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       return { kind: 'file', bytes: await fs!.readFileBytes(absolute, maxBytes) }
     } catch (error) { if (isFsNotFoundError(error)) return { kind: 'missing' }; throw error }
   }
-  const guidanceFor = async (paths: string[], authorizeEffort = false, authorize = authorizePath) => {
+  const guidanceFor = async (paths: string[], authorizeEffort = false, authorize = authorizePath, approved?: { guidance: ReviewServiceOptions['guidance'] }) => {
     if (!context.options.runtimeConfig) return { text: '', sources: [] as Array<{ path: string; revision: string; excerpt: string }> }
     const guardedFs = new Proxy(fs, { get(target, key) {
       if (key === 'readFile') return async (path: string, options: { encoding: string }) => { await authorize(path); return target.readFile(path, options) }
@@ -215,7 +214,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     const sources = await Promise.all(selected.filter(doc => below(normalized(doc.path), root) && !equal(normalized(doc.path), root)).map(async doc => ({
       path: normalized(doc.path).slice(root.length + 1), revision: `guidance:${await reviewDigest(doc.content)}`, excerpt: doc.content,
     })))
-    let authorizedGuidance: ReviewServiceOptions['guidance']
+    let authorizedGuidance: ReviewServiceOptions['guidance'] = approved?.guidance
     if (authorizeEffort) {
       for (const doc of [...selected].reverse()) {
         if (doc.type === 'AutoMem') continue
@@ -378,7 +377,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         return tool.call(input, callContext, permission, row, progress)
       } }),
     }),
-    async resolveScope(args, plan, signal) {
+    async resolveScope(args, plan, signal, approved) {
       const git = await scopeGit()
       let target: LocalReviewTarget = { kind: 'workspace' }
       if (args.target) {
@@ -396,7 +395,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           remote.manifest.anchors = remote.manifest.files.flatMap(file => file.anchors)
           if (remote.manifest.files.some(file => file.status !== 'included')) { remote.manifest.complete = false; remote.manifest.status = 'partial' }
           remoteSnapshots.set(remoteKey(remote.manifest.scope), remote)
-          const guidance = await guidanceFor(remote.manifest.files.map(file => file.path), true)
+          const guidance = await guidanceFor(remote.manifest.files.map(file => file.path), !approved, authorizePath, approved)
           return { manifest: remote.manifest, trustedGuidance: guidance.text, authorizedGuidance: guidance.authorizedGuidance, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {
             if (input.operation === 'diff') return remote.manifest
             if (!selectedPlan.allowWholeFileReads) throw new ReviewGatewayError('whole-file-read-not-authorized')
@@ -447,7 +446,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         if (read.kind !== 'file') throw new ReviewGatewayError('review-context-unavailable')
         return contextText(read.bytes)
       }
-      const guidance = await guidanceFor(manifest.files.map(file => file.path), true)
+      const guidance = await guidanceFor(manifest.files.map(file => file.path), !approved, authorizePath, approved)
       return { manifest, trustedGuidance: guidance.text, authorizedGuidance: guidance.authorizedGuidance, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {
         if (readSignal.aborted) throw new ReviewGatewayError('review-cancelled')
         if (input.operation === 'diff') return manifest

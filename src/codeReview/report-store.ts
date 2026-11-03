@@ -1,6 +1,6 @@
-import type {
-  ActionReceipt, Assessment, Diagnostic, ReviewCandidate, ReviewCoverage,
-  ReviewEvidence, ReviewRun, ReviewScope,
+import {
+  CONTEXT_READ_BYTES, type ActionReceipt, type Assessment, type Diagnostic, type ReviewCandidate, type ReviewCoverage,
+  type ReviewEvidence, type ReviewRun, type ReviewScope,
 } from './contracts'
 
 import { reassessmentTouches, validateReassessmentUpdates, type ReassessmentEvidence, type ReassessmentUpdate } from './reassessment'
@@ -168,31 +168,39 @@ function text(value: unknown): string {
   if (typeof value !== 'string' || !value.trim() || value.length > 100_000 || value.includes('\0')) return fail('invalid-text')
   return value
 }
-// Contract: a host read excerpt may be as long as the 512 KiB context-read cap.
+// Contract: a host read excerpt may be as long as the context-read cap.
 function excerptText(value: unknown): string {
-  if (typeof value !== 'string' || !value.trim() || value.length > 512 * 1024 || value.includes('\0')) return fail('invalid-text')
+  if (typeof value !== 'string' || !value.trim() || value.length > CONTEXT_READ_BYTES || value.includes('\0')) return fail('invalid-text')
   return value
 }
-/** The model's final object, also when wrapped in prose or a code fence. */
-function finalJsonObject(raw: string): unknown {
-  try { return JSON.parse(raw) } catch { /* fall through to wrapped forms */ }
-  const candidates = [...raw.matchAll(/```[a-z]*[ \t]*\r?\n([\s\S]*?)```/gi)].map(match => match[1])
-  let depth = 0, start = -1, quoted = false, escaped = false
-  for (let index = 0; index < raw.length; index++) {
+/** End index of the balanced object opening at `start`, or -1 when it never closes. */
+function objectEnd(raw: string, start: number): number {
+  let depth = 0, quoted = false, escaped = false
+  for (let index = start; index < raw.length; index++) {
     const character = raw[index]
-    if (depth === 0) { if (character === '{') { depth = 1; start = index } continue }
     if (quoted) { if (escaped) escaped = false; else if (character === '\\') escaped = true; else if (character === '"') quoted = false; continue }
     if (character === '"') quoted = true
     else if (character === '{') depth++
-    else if (character === '}' && --depth === 0) candidates.push(raw.slice(start, index + 1))
+    else if (character === '}' && --depth === 0) return index
   }
-  for (const candidate of candidates) {
+  return -1
+}
+/** Report-shaped objects in the model's final text, last first: the whole text, fenced blocks, then balanced top-level spans. */
+function finalJsonObjects(raw: string): Record<string, unknown>[] {
+  const texts = [{ at: -1, text: raw }, ...[...raw.matchAll(/```[a-z]*[ \t]*\r?\n([\s\S]*?)```/gi)].map(match => ({ at: match.index!, text: match[1] }))]
+  for (let index = raw.indexOf('{'); index >= 0;) {
+    const end = objectEnd(raw, index)
+    if (end >= 0) texts.push({ at: index, text: raw.slice(index, end + 1) })
+    index = raw.indexOf('{', end >= 0 ? end + 1 : index + 1)
+  }
+  const found: Array<{ at: number; value: Record<string, unknown> }> = []
+  for (const { at, text } of texts) {
     try {
-      const value = JSON.parse(candidate)
-      if (value && typeof value === 'object' && !Array.isArray(value) && ('candidates' in value || 'coverage' in value)) return value
-    } catch { /* try the next candidate */ }
+      const value = JSON.parse(text)
+      if (value && typeof value === 'object' && !Array.isArray(value) && 'candidates' in value && 'coverage' in value) found.push({ at, value })
+    } catch { /* not JSON; try the next candidate */ }
   }
-  return fail('malformed-json')
+  return found.sort((a, b) => (a.at < 0 ? 1 : b.at < 0 ? -1 : b.at - a.at)).map(item => item.value)
 }
 function integer(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) return fail('invalid-integer')
@@ -714,9 +722,23 @@ export class ReviewReportStore {
       return { reportRevision: state.run.reportRevision, accepted: state.retainedIds.map((diagnosticId, index) => ({ index, diagnosticId })), notices: [] }
     })
   }
+  /** True when `value` would commit as the record: exact keys, valid candidates, and agreement with the retained ledger. */
+  private matchesLedger(state: RunState, value: Record<string, unknown>): boolean {
+    try {
+      const draft = clone(state)
+      const record = object(value, ['candidates', 'coverage'])
+      const candidates = array(record.candidates, draft.run.policy.presentation === 'panel' ? 32 : 10_000).map(item => this.candidate(draft, item))
+      select(draft)
+      const expected = draft.retainedIds.map(id => draft.candidates.find(item => item.diagnosticId === id)!.input)
+      return canonical(expected) === canonical(candidates) && canonical(this.coverage(record.coverage)) === canonical(effectiveCoverage(draft))
+    } catch (error) { if (error instanceof ReportStoreError) return false; throw error }
+  }
   async submitFinalJson(runId: string, toolCallId: string, raw: string): Promise<ReportWriteResult> {
+    const found = finalJsonObjects(raw)
+    if (!found.length) return this.modelWrite(runId, toolCallId, raw, () => fail('malformed-json'))
+    const state = await this.serial(runId, () => this.load(runId))
     let value: Record<string, unknown>
-    try { value = object(finalJsonObject(raw), ['candidates', 'coverage']) } catch (error) {
+    try { value = object(found.find(item => this.matchesLedger(state, item)) ?? found[0], ['candidates', 'coverage']) } catch (error) {
       const code = error instanceof ReportStoreError ? error.code : 'malformed-json'
       return this.modelWrite(runId, toolCallId, raw, () => fail(code))
     }

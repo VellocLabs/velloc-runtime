@@ -400,6 +400,27 @@ describe('actual review runtime security boundaries', () => {
     expect(h.atomic).not.toHaveBeenCalled()
   })
 
+  it('asks for review-effort approval once when a quick review widens to a tests-only change', async () => {
+    const h = fixture()
+    const testPath = 'src/__tests__/a.test.ts'
+    h.files.set(`${root}/${testPath}`, 'export const a = 2\n')
+    const original = h.spawn.getMockImplementation()!
+    h.spawn.mockImplementation(async (spec, handlers) => original(spec, { ...handlers,
+      onOutput: (stream, bytes) => handlers.onOutput?.(stream, new TextEncoder().encode(new TextDecoder().decode(bytes).replaceAll('a.ts', testPath))) }))
+    mocks.guidance.mockResolvedValue([{ path: `${root}/AGENTS.md`, type: 'Project', content: 'Review effort: low' }])
+    mocks.confirm.mockResolvedValueOnce({ behavior: 'allow' }).mockResolvedValue({ behavior: 'deny' })
+    let manifest: { files: Array<{ path: string; status: string }> } | undefined
+    mocks.model.mockImplementation(async request => {
+      manifest = JSON.parse(request.blocks.find((block: { source: string }) => block.source === 'scope-manifest')!.text)
+      return report(request)
+    })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('low main..HEAD')
+    await service.wait(runId)
+    expect(mocks.confirm.mock.calls.filter(([request]) => request.tool.name === 'ReviewGuidance')).toHaveLength(1)
+    expect(manifest?.files).toEqual([expect.objectContaining({ path: testPath, status: 'included' })])
+  })
+
   it('skips binary blobs in a range review search instead of failing the search', async () => {
     const h = fixture()
     const original = h.spawn.getMockImplementation()!

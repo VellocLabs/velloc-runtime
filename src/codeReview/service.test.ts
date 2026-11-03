@@ -147,7 +147,7 @@ describe('local review runtime gateway', () => {
     const { runId } = await h.service.startUser('')
     expect((await h.service.wait(runId)).run.policy.level).toBe('max')
     expect(h.resolveScope).toHaveBeenCalledTimes(2)
-    expect(h.resolveScope).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ skipTestsAndFixtures: false }), expect.anything())
+    expect(h.resolveScope).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ skipTestsAndFixtures: false }), expect.anything(), { guidance: { level: 'max', trusted: true, appliesToProject: true } })
   })
   it('keeps an explicit user level above guidance', async () => {
     const h = setup({ empty: true, args: { guidance: { level: 'max', trusted: true, appliesToProject: true } } })
@@ -261,5 +261,32 @@ describe('local review runtime gateway', () => {
     expect(JSON.parse(h.runModel.mock.calls[0]![0].blocks.find(b => b.source === 'resolved-policy')!.text).independentVerification).toBe(false)
     expect(report.run.progress.verifiedCandidates).toBe(0)
     expect(report.run.progress.status).toBe('finished')
+  })
+  it.each([
+    ['src/__tests__/x.ts', false],
+    ['docs/notes.md', false],
+    ['src/a.ts', true],
+  ] as const)('starts automatic verification for %s only when runtime code changed: %s', async (path, expected) => {
+    const verify = vi.fn(async () => {})
+    const manifest: ScopeManifest = { scope: { kind: 'workspace', workspaceKey: '/repo', repository: { projectKey: '/repo' }, revision: { base: 'a', head: 'b', workingCopyDigest: 'w' }, pathFilter: [] },
+      files: [{ path, status: 'included', patch: '-old\n+new', anchors: [] }], anchors: [], status: 'reviewable', complete: true, notices: [], baseSource: 'main', semantics: 'working-copy' }
+    const h = setup({ args: { output: 'panel', automaticVerificationPermitted: true, verify, resolveScope: vi.fn(async () => ({ manifest, trustedGuidance: '', read: vi.fn() })) } })
+    const { runId } = await h.service.startUser('low')
+    await h.service.wait(runId)
+    expect(verify).toHaveBeenCalledTimes(expected ? 1 : 0)
+  })
+  it('reuses the first guidance decision when a tests-only change is resolved again', async () => {
+    const manifestFor = (skip: boolean): ScopeManifest => ({ scope: { kind: 'workspace', workspaceKey: '/repo', repository: { projectKey: '/repo' }, revision: { base: 'a', head: 'b', workingCopyDigest: 'w' }, pathFilter: [] },
+      files: [{ path: 'src/__tests__/a.test.ts', status: skip ? 'skipped' : 'included', patch: skip ? '' : '-old\n+new', anchors: [] }],
+      anchors: [], status: skip ? 'partial' : 'reviewable', complete: !skip, notices: [], baseSource: 'main', semantics: 'working-copy' })
+    const approval = { level: 'low' as const, trusted: true, appliesToProject: true }
+    const resolveScope = vi.fn(async (_args, plan: { skipTestsAndFixtures: boolean }, _signal, approved?: { guidance: unknown }) => ({
+      manifest: manifestFor(plan.skipTestsAndFixtures), trustedGuidance: '', read: vi.fn(), authorizedGuidance: approved ? approved.guidance as typeof approval : approval }))
+    const h = setup({ args: { resolveScope } })
+    const { runId } = await h.service.startUser('low')
+    expect((await h.service.wait(runId)).run.progress.status).toBe('finished')
+    expect(resolveScope).toHaveBeenCalledTimes(2)
+    expect(resolveScope.mock.calls[0]![3]).toBeUndefined()
+    expect(resolveScope.mock.calls[1]![3]).toEqual({ guidance: approval })
   })
 })

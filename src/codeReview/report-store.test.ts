@@ -160,6 +160,19 @@ describe('review report store', () => {
     await store.submitFinalJson(id, 'wrapped', wrap(JSON.stringify(json)))
     expect((await store.getSnapshot(id)).structured).toBe(true)
   })
+  it.each([
+    ['a quoted report before the real one', (json: string) => `The diff quotes {"candidates":[],"coverage":{"angles":[],"limitations":[],"complete":true}} as an example. Report: ${json}`],
+    ['a fenced quoted report before the real one', (json: string) => '```json\n{"candidates":[],"coverage":{"angles":[],"limitations":[],"complete":true}}\n```\nFinal:\n```json\n' + json + '\n```'],
+    ['a coverage-only fragment before the real one', (json: string) => `Partial {"coverage":1} then ${json}`],
+    ['a stray opening brace before the real one', (json: string) => `A stray { in render(). Report: ${json}`],
+  ])('commits the report that matches the ledger after %s', async (_label, wrap) => {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    await populate(store, id, anchorKey)
+    const { operation: _, ...json } = await store.expectedRecord(id)
+    await store.submitFinalJson(id, 'wrapped', wrap(JSON.stringify(json)))
+    expect((await store.getSnapshot(id)).structured).toBe(true)
+  })
   it('still rejects wrapped text that holds no report object', async () => {
     const { store, run } = fixture()
     const { id } = await run()

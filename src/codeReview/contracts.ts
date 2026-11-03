@@ -1,4 +1,6 @@
 export const REVIEW_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+/** Largest whole-file context read, and so the largest evidence excerpt the store accepts. */
+export const CONTEXT_READ_BYTES = 512 * 1024
 export type ReviewLevel = typeof REVIEW_LEVELS[number]
 export type ExecutionMode = 'isolated' | 'inline'
 export type OutputMode = 'terminal' | 'json' | 'panel'

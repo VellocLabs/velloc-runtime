@@ -337,3 +337,25 @@ it('rejects overlapping follow-up actions without replacing their cancellation s
   await action
   expect(cancelled).toBe(true)
 })
+
+
+it('completes a local ten-angle run that takes longer than ten minutes under the sized default budget', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    const angles = ['lines', 'removed', 'calls', 'reuse', 'simplification', 'efficiency', 'root-cause', 'guidance', 'language', 'wrappers']
+    const f = fixture({ capabilities: { agentAvailable: false, agentPermitted: false, remainingDepth: 0, outputToolAvailable: true }, runModel: async request => {
+      await new Promise(resolve => setTimeout(resolve, 15 * 60_000))
+      const full = { angles, limitations: [], complete: true }
+      await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: full })
+      return { text: JSON.stringify({ candidates: [], coverage: full }), interrupted: false }
+    } })
+    const { runId } = await f.service.startUser('xhigh')
+    const done = f.service.wait(runId)
+    await vi.advanceTimersByTimeAsync(15 * 60_000)
+    const snapshot = await done
+    expect(snapshot.run.policy.recipe).toBe('local-ten')
+    expect(snapshot.run.progress.status).toBe('finished')
+    expect(snapshot.coverage.limitations).not.toContain('review-budget-exhausted')
+    expect(snapshot.coverage.angles).toHaveLength(10)
+  } finally { vi.useRealTimers() }
+})
