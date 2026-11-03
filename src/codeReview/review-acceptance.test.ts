@@ -265,6 +265,33 @@ it.each([
 })
 
 
+it('commits a final report that words its limitations differently from the ledger, with no correction call', async () => {
+  const model = vi.fn(async (request: ReviewModelRequest) => {
+    await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: [], limitations: ['spec skipped (tests policy)'], complete: true } })
+    return { text: JSON.stringify({ candidates: [], coverage: { angles: [], limitations: ['The spec was skipped by the tests policy'], complete: true } }), interrupted: false }
+  })
+  const f = fixture({ runModel: model })
+  const snapshot = await f.service.wait((await f.service.startUser('low')).runId)
+  expect(model).toHaveBeenCalledOnce()
+  expect(snapshot.structured).toBe(true)
+  expect(snapshot.coverage.limitations).toEqual(expect.arrayContaining(['spec skipped (tests policy)', 'The spec was skipped by the tests policy']))
+  expect(snapshot.coverage.limitations).not.toContain('invalid-response')
+})
+it('accepts a format correction that echoes the retained ledger it was sent', async () => {
+  const sent: string[] = []
+  const model = vi.fn(async (request: ReviewModelRequest) => {
+    if (request.role !== 'format') return { text: 'Review done, no JSON.', interrupted: false }
+    const ledger = request.blocks.find(item => item.source === 'retained-ledger')!.text
+    sent.push(ledger)
+    return { text: '```json\n' + JSON.stringify({ operation: 'record', ...JSON.parse(ledger) }) + '\n```', interrupted: false }
+  })
+  const f = fixture({ runModel: model })
+  const snapshot = await f.service.wait((await f.service.startUser('low')).runId)
+  expect(model).toHaveBeenCalledTimes(2)
+  expect(Object.keys(JSON.parse(sent[0])).sort()).toEqual(['candidates', 'coverage'])
+  expect(snapshot.structured).toBe(true)
+  expect(snapshot.coverage.limitations).not.toContain('invalid-response')
+})
 it('keeps the retained ledger as a partial report after one format-only correction fails', async () => {
   const model = vi.fn(async () => ({ text: 'not JSON', interrupted: false }))
   const f = fixture({ runModel: model })

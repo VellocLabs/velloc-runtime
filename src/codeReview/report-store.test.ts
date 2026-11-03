@@ -173,6 +173,54 @@ describe('review report store', () => {
     await store.submitFinalJson(id, 'wrapped', wrap(JSON.stringify(json)))
     expect((await store.getSnapshot(id)).structured).toBe(true)
   })
+  async function ledgerWithoutRecord(limitations: string[]) {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    await store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [candidate(anchorKey)] })
+    await store.submitLedger(id, 'coverage', { operation: 'coverage', coverage: { angles: ['lines'], limitations, complete: true } })
+    const { operation: _, ...json } = await store.expectedRecord(id)
+    return { store, id, json }
+  }
+  it('commits a final report whose coverage rewords the ledger, merging that coverage into the ledger', async () => {
+    const { store, id, json } = await ledgerWithoutRecord(['spec.ts skipped (tests/fixtures policy)'])
+    const final = { ...json, coverage: { angles: ['lines'], limitations: ['spec.ts was skipped by the tests policy'], complete: true } }
+    await store.submitFinalJson(id, 'final', JSON.stringify(final))
+    const snapshot = await store.getSnapshot(id)
+    expect(snapshot.structured).toBe(true)
+    expect(snapshot.coverage.limitations).toEqual(['spec.ts skipped (tests/fixtures policy)', 'spec.ts was skipped by the tests policy'])
+    expect(snapshot.coverage.complete).toBe(true)
+  })
+  it('commits a final report when the ledger recorded no coverage at all', async () => {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    await store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [candidate(anchorKey)] })
+    const { operation: _, ...json } = await store.expectedRecord(id)
+    expect(json.coverage).toEqual({ angles: [], limitations: [], complete: false })
+    await store.submitFinalJson(id, 'final', JSON.stringify({ ...json, coverage: { angles: ['lines'], limitations: ['no tests run'], complete: true } }))
+    expect((await store.getSnapshot(id)).coverage).toEqual({ angles: ['lines'], limitations: ['no tests run'], complete: true })
+  })
+  it('accepts a final report that echoes the record operation, inside a fence', async () => {
+    const { store, id } = await ledgerWithoutRecord([])
+    await store.submitFinalJson(id, 'echo', '```json\n' + JSON.stringify(await store.expectedRecord(id)) + '\n```')
+    expect((await store.getSnapshot(id)).structured).toBe(true)
+  })
+  it('keeps rejecting final reports whose candidates or operation disagree, and coverage it would refuse as a ledger write', async () => {
+    const { store, id, json } = await ledgerWithoutRecord(['kept'])
+    await expect(store.submitFinalJson(id, 'omit', JSON.stringify({ ...json, candidates: [] }))).rejects.toThrow('ledger-mismatch')
+    await expect(store.submitFinalJson(id, 'contradict', JSON.stringify({ ...json, candidates: [{ ...json.candidates[0], impact: 'critical' }] }))).rejects.toThrow('ledger-mismatch')
+    await expect(store.submitFinalJson(id, 'operation', JSON.stringify({ ...json, operation: 'coverage' }))).rejects.toThrow('invalid-operation')
+    await expect(store.submitFinalJson(id, 'angle', JSON.stringify({ ...json, coverage: { angles: ['invented'], limitations: [], complete: true } }))).rejects.toThrow('unknown-angle')
+    await expect(store.submitFinalJson(id, 'extra', JSON.stringify({ ...json, coverage: { ...json.coverage, verified: true } }))).rejects.toThrow('unknown-field')
+    const snapshot = await store.getSnapshot(id)
+    expect(snapshot.structured).toBe(false)
+    expect(snapshot.coverage.limitations).toEqual(['kept'])
+  })
+  it('prefers the report whose coverage equals the ledger over an earlier quoted one with the same candidates', async () => {
+    const { store, id, json } = await ledgerWithoutRecord(['kept'])
+    const quoted = JSON.stringify({ ...json, coverage: { angles: [], limitations: ['quoted example'], complete: false } })
+    await store.submitFinalJson(id, 'final', `Example: ${quoted}\nReport: ${JSON.stringify(json)}`)
+    expect((await store.getSnapshot(id)).coverage).toEqual({ angles: ['lines'], limitations: ['kept'], complete: true })
+  })
   it('still rejects wrapped text that holds no report object', async () => {
     const { store, run } = fixture()
     const { id } = await run()

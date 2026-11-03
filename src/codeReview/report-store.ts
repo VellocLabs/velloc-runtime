@@ -697,40 +697,55 @@ export class ReviewReportStore {
         groups.forEach((group, index) => accepted.push({ index, diagnosticId: this.mergeDuplicates(state, group, toolCallId) }))
       } else if (operation.operation === 'coverage') {
         object(submitted, ['operation', 'coverage'])
-        const coverage = this.coverage(operation.coverage)
-        if (state.expectedAngles.length && coverage.angles.some(angle => !state.expectedAngles.includes(angle))) return fail('unknown-angle')
-        state.coverage = { angles: unique([...state.coverage.angles, ...coverage.angles]), limitations: unique([...state.coverage.limitations, ...coverage.limitations]), complete: coverage.complete }
-        state.run.progress.coveredAngles = [...state.coverage.angles]
+        this.recordCoverage(state, operation.coverage)
       } else return fail('invalid-operation')
       select(state)
       return { reportRevision: state.run.reportRevision, accepted, notices: [] }
     })
+  }
+  /** Merges a coverage statement into the ledger: angles and limitations accumulate, `complete` is the latest claim. */
+  private recordCoverage(state: RunState, value: unknown): void {
+    const coverage = this.coverage(value)
+    if (state.expectedAngles.length && coverage.angles.some(angle => !state.expectedAngles.includes(angle))) return fail('unknown-angle')
+    state.coverage = { angles: unique([...state.coverage.angles, ...coverage.angles]), limitations: unique([...state.coverage.limitations, ...coverage.limitations]), complete: coverage.complete }
+    state.run.progress.coveredAngles = [...state.coverage.angles]
+  }
+  /**
+   * Contract: commits the record when its candidates equal the retained ledger. `coverage: 'exact'` also requires the
+   * record's coverage to equal the ledger's; `'merge'` records it through the coverage operation first (F-38).
+   */
+  private commitRecord(state: RunState, record: Record<string, unknown>, coverage: 'exact' | 'merge'): ReportWriteResult {
+    const cap = state.run.policy.presentation === 'panel' ? 32 : 10_000
+    const candidates = array(record.candidates, cap).map(item => this.candidate(state, item))
+    select(state)
+    const expected = state.retainedIds.map(id => state.candidates.find(item => item.diagnosticId === id)!.input)
+    if (canonical(expected) !== canonical(candidates)) return fail('ledger-mismatch')
+    if (coverage === 'merge') this.recordCoverage(state, record.coverage)
+    else if (canonical(this.coverage(record.coverage)) !== canonical(effectiveCoverage(state))) return fail('ledger-mismatch')
+    state.run.reportRevision++
+    state.structured = true
+    this.event(state, 'report-committed')
+    return { reportRevision: state.run.reportRevision, accepted: state.retainedIds.map((diagnosticId, index) => ({ index, diagnosticId })), notices: [] }
   }
   async submitRecord(runId: string, toolCallId: string, input: unknown): Promise<ReportWriteResult> {
     const submitted = clone(input)
     return this.modelWrite(runId, toolCallId, submitted, state => {
       const record = object(submitted, ['operation', 'candidates', 'coverage'])
       if (record.operation !== 'record') return fail('invalid-operation')
-      const cap = state.run.policy.presentation === 'panel' ? 32 : 10_000
-      const candidates = array(record.candidates, cap).map(item => this.candidate(state, item))
-      select(state)
-      const expected = state.retainedIds.map(id => state.candidates.find(item => item.diagnosticId === id)!.input)
-      if (canonical(expected) !== canonical(candidates) || canonical(this.coverage(record.coverage)) !== canonical(effectiveCoverage(state))) return fail('ledger-mismatch')
-      state.run.reportRevision++
-      state.structured = true
-      this.event(state, 'report-committed')
-      return { reportRevision: state.run.reportRevision, accepted: state.retainedIds.map((diagnosticId, index) => ({ index, diagnosticId })), notices: [] }
+      return this.commitRecord(state, record, 'exact')
     })
   }
-  /** True when `value` would commit as the record: exact keys, valid candidates, and agreement with the retained ledger. */
-  private matchesLedger(state: RunState, value: Record<string, unknown>): boolean {
+  /** A final-text report object: `candidates` and `coverage`, optionally tagged `operation: 'record'`. */
+  private finalRecord(value: Record<string, unknown>): Record<string, unknown> {
+    const record = object(value, ['operation', 'candidates', 'coverage'])
+    if ('operation' in record && record.operation !== 'record') return fail('invalid-operation')
+    return record
+  }
+  /** True when `value` would commit as the final record; `exact` also requires its coverage to equal the ledger's. */
+  private matchesLedger(state: RunState, value: Record<string, unknown>, exact: boolean): boolean {
     try {
-      const draft = clone(state)
-      const record = object(value, ['candidates', 'coverage'])
-      const candidates = array(record.candidates, draft.run.policy.presentation === 'panel' ? 32 : 10_000).map(item => this.candidate(draft, item))
-      select(draft)
-      const expected = draft.retainedIds.map(id => draft.candidates.find(item => item.diagnosticId === id)!.input)
-      return canonical(expected) === canonical(candidates) && canonical(this.coverage(record.coverage)) === canonical(effectiveCoverage(draft))
+      this.commitRecord(clone(state), this.finalRecord(value), exact ? 'exact' : 'merge')
+      return true
     } catch (error) { if (error instanceof ReportStoreError) return false; throw error }
   }
   async submitFinalJson(runId: string, toolCallId: string, raw: string): Promise<ReportWriteResult> {
@@ -738,12 +753,15 @@ export class ReviewReportStore {
     if (!found.length) return this.modelWrite(runId, toolCallId, raw, () => fail('malformed-json'))
     const state = await this.serial(runId, () => this.load(runId))
     let value: Record<string, unknown>
-    try { value = object(found.find(item => this.matchesLedger(state, item)) ?? found[0], ['candidates', 'coverage']) } catch (error) {
+    try {
+      value = this.finalRecord(found.find(item => this.matchesLedger(state, item, true)) ?? found.find(item => this.matchesLedger(state, item, false)) ?? found[0])
+    } catch (error) {
       const code = error instanceof ReportStoreError ? error.code : 'malformed-json'
       return this.modelWrite(runId, toolCallId, raw, () => fail(code))
     }
     try {
-      return await this.submitRecord(runId, toolCallId, { operation: 'record', candidates: value.candidates, coverage: value.coverage })
+      const submitted = { operation: 'record', candidates: value.candidates, coverage: value.coverage }
+      return await this.modelWrite(runId, toolCallId, clone(submitted), draft => this.commitRecord(draft, submitted, 'merge'))
     } catch (error) {
       if (!(error instanceof ReportStoreError)) throw error
       await this.captureMalformed(runId, toolCallId, raw, error.code)
