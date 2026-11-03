@@ -40,8 +40,8 @@ function fixture() {
   } as unknown as RuntimeFs
   const spawn = vi.fn<GitStreamSpawner>(async (spec, handlers) => {
     let output = '', exitCode = 0
-    if (spec.args.includes('--parents')) output = `${head} ${base}\n`
-    else if (spec.args.includes('rev-list')) output = spec.args.at(-2)?.includes('@{upstream}') ? base : head
+    if (spec.args.includes('rev-parse')) output = spec.args.at(-1)?.includes('@{upstream}') ? base : head
+    else if (spec.args.includes('rev-list')) output = `${head} ${base}\n`
     else if (spec.args.includes('hash-object')) output = base
     else if (spec.args.includes('symbolic-ref')) exitCode = 1
     else if (spec.args.includes('merge-base')) output = base

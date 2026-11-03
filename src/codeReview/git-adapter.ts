@@ -42,8 +42,13 @@ export function validateGitOid(oid: string): string {
   if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(oid)) throw new GitAdapterError('invalid-oid')
   return oid
 }
+// Security: an allow-list, not git's own ref grammar. On Windows the host may
+// run a `git.bat` wrapper through cmd.exe, where `& | < > ( ) ^ % ! "` would
+// split or run commands; ASCII only, since a code-page conversion can map
+// other characters onto those.
+const REF_CHARS = /^[A-Za-z0-9._/+#@-]+$/
 export function validateGitRef(ref: string): string {
-  if (!ref || ref.length > 1024 || ref.startsWith('-') || /[\x00-\x20\x7f~^:?*\[\\]/.test(ref) || ref.includes('..') || ref.includes('@{') || ref.endsWith('.') || ref.endsWith('/') || ref.includes('//')) throw new GitAdapterError('invalid-ref')
+  if (!ref || ref.length > 1024 || ref.startsWith('-') || !REF_CHARS.test(ref) || ref.includes('..') || ref.includes('@{') || ref.endsWith('.') || ref.endsWith('/') || ref.includes('//')) throw new GitAdapterError('invalid-ref')
   return ref
 }
 export function validateReviewPath(path: string): string {
@@ -60,10 +65,10 @@ const config = [
 const prefix = ['--no-pager', '--no-optional-locks', '--no-replace-objects', '--literal-pathspecs', ...config.flatMap(c => ['-c', c])]
 function argv(q: GitQuery): string[] {
   switch (q.kind) {
-    // Peeled by rev-list, not `^{commit}`: a batch-file git wrapper on PATH runs
-    // through cmd.exe, which strips the caret and makes every ref unresolvable.
-    case 'resolve': return ['rev-list', '-n', '1', '--end-of-options', validateGitRef(q.ref), '--']
-    case 'upstream': return ['rev-list', '-n', '1', '--end-of-options', `${validateGitRef(q.ref)}@{upstream}`, '--']
+    // Peeled with `~0`, not `^{commit}`: a batch-file git wrapper on PATH runs
+    // through cmd.exe, which strips the caret. Exit 1 = no such commit.
+    case 'resolve': return ['rev-parse', '--verify', '--quiet', '--end-of-options', `${validateGitRef(q.ref)}~0`]
+    case 'upstream': return ['rev-parse', '--verify', '--quiet', '--end-of-options', `${validateGitRef(q.ref)}@{upstream}~0`]
     case 'default-branch': return ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']
     case 'merge-base': return ['merge-base', '--all', validateGitOid(q.left), validateGitOid(q.right)]
     case 'parents': return ['rev-list', '--parents', '-n', '1', validateGitOid(q.oid), '--']
@@ -74,8 +79,20 @@ function argv(q: GitQuery): string[] {
     case 'file-mode': return ['config', '--bool', '--get', 'core.filemode']
     case 'blob': return ['cat-file', 'blob', validateGitOid(q.oid)]
     case 'diff': return ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--ignore-submodules=all', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--unified=3', validateGitOid(q.base), validateGitOid(q.head), '--', ...(q.paths ?? []).map(validateReviewPath)]
-    case 'remotes': return ['config', '--local', '--get-regexp', 'remote\\..*\\.url$']
+    case 'remotes': return ['config', '--local', '-z', '--get-regexp', 'remote\\..*\\.url$']
   }
+}
+/** The URLs of `remote.<name>.url` keys in the `remotes` query's output:
+ *  NUL-ended records, key and value split at the first newline. The query
+ *  carries no `^` anchor, so the key is matched here. */
+export function remoteUrlsOf(output: string): string[] {
+  const urls: string[] = []
+  for (const record of output.split('\0')) {
+    const split = record.indexOf('\n')
+    if (split < 0) continue
+    if (/^remote\.[^.\s]+\.url$/.test(record.slice(0, split))) urls.push(record.slice(split + 1))
+  }
+  return urls
 }
 function absolute(path: string): boolean { return /^(?:[A-Za-z]:[\\/]|\/)/.test(path) && !/[\x00\r\n]/.test(path) && !path.split(/[\\/]/).includes('..') }
 

@@ -53,8 +53,8 @@ function fixture() {
   } as unknown as RuntimeFs
   const spawn = vi.fn<GitStreamSpawner>(async (spec, handlers) => {
     let output = '', exitCode = 0
-    if (spec.args.includes('--parents')) output = `${head} ${base}\n`
-    else if (spec.args.includes('rev-list')) output = spec.args.at(-2)?.includes('@{upstream}') ? base : head
+    if (spec.args.includes('rev-parse')) output = spec.args.at(-1)?.includes('@{upstream}') ? base : head
+    else if (spec.args.includes('rev-list')) output = `${head} ${base}\n`
     else if (spec.args.includes('hash-object')) output = base
     else if (spec.args.includes('symbolic-ref')) exitCode = 1
     else if (spec.args.includes('merge-base')) output = base
@@ -485,12 +485,20 @@ describe('actual review runtime security boundaries', () => {
     expect(JSON.stringify(malformed)).toContain('invalid-review-read')
   })
 
+  it.each(['feature/a&calc', 'feature/(a)', 'feature/a|b', 'feature/a^b', 'feature/%PATH%', 'feature/a!b'])('never spawns Git with a ref cmd.exe would interpret: %s', async ref => {
+    const h = fixture()
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const outcome = await service.startUser(`low ${ref}..HEAD`).then(({ runId }) => service.wait(runId)).then(() => 'ran', error => String(error))
+    expect(outcome).not.toBe('ran')
+    expect(h.spawn.mock.calls.some(([spec]) => spec.args.some(arg => arg.includes(ref)))).toBe(false)
+  })
+
   it('uses hardened native argv, preserves literal refs, and atomically persists reports and preferences', async () => {
     const h = fixture()
     const service = await getOrCreateReviewService(h.context, h.permission)
-    const { runId } = await service.startUser('low feature/a;$()&..HEAD')
+    const { runId } = await service.startUser('low feature/a+b#c@d..HEAD')
     expect((await service.wait(runId)).structured).toBe(true)
-    expect(h.spawn.mock.calls.some(([spec]) => spec.args.includes('feature/a;$()&'))).toBe(true)
+    expect(h.spawn.mock.calls.some(([spec]) => spec.args.includes('feature/a+b#c@d~0'))).toBe(true)
     for (const [spec] of h.spawn.mock.calls) {
       expect(spec.file).toBe('git')
       expect(spec.args).toEqual(expect.arrayContaining(['--no-pager', 'core.fsmonitor=false', 'core.hooksPath=/dev/null', 'credential.helper=', 'protocol.allow=never']))
@@ -800,7 +808,7 @@ describe('publication request routing', () => {
     const original = h.spawn.getMockImplementation()!
     h.spawn.mockImplementation(async (spec, events) => {
       if (!spec.args.includes('--get-regexp')) return original(spec, events)
-      events.onOutput?.('stdout', new TextEncoder().encode(`remote.origin.url https://${host}/owner/repo.git\n`))
+      events.onOutput?.('stdout', new TextEncoder().encode(`remote.origin.url\nhttps://${host}/owner/repo.git\0`))
       events.onExit?.({ exitCode: 0, timedOut: false, killed: false, durationMs: 1 })
       return { streamId: 'remote', write: async () => true, closeStdin: async () => true, kill: async () => true, detach() {} }
     })

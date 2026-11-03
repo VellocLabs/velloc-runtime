@@ -26,7 +26,7 @@ function fixture(settings: { fileMode?: string; indexEntries?: string; upstream?
       case 'blob': text = settings.before ?? 'same\nold\n'; break
       case 'diff': text = settings.patch ?? patch; break
     }
-    return { exitCode: text === undefined ? (q.kind === 'resolve' || q.kind === 'upstream' ? 128 : 1) : 0, stdout: encode(text ?? '') }
+    return { exitCode: text === undefined ? 1 : 0, stdout: encode(text ?? '') }
   } }
   const readWorkspaceFile = vi.fn(async (path: string): Promise<WorkspaceRead> => settings.files?.[path] ?? (path === 'a.ts' ? { kind: 'file', bytes: encode('same\nnew\n'), gitMode: '100644' } : { kind: 'missing' }))
   const options: ScopeResolverOptions = { git, workspaceKey: 'workspace', projectKey: 'project', readWorkspaceFile }
@@ -116,6 +116,12 @@ describe('local scope', () => {
     const result = await resolveLocalReviewScope(fixture({ before: 'unchanged', files: { 'a.ts': { kind: 'file', bytes: encode('unchanged') } } }).options)
     expect(result.status).toBe('partial'); expect(result.notices).toContain('mode-unavailable:a.ts')
   })
+  it('fails a review whose HEAD query hits a fatal Git error instead of treating the repository as unborn', async () => {
+    const f = fixture()
+    const query = f.options.git.query.bind(f.options.git)
+    f.options.git = { ...f.options.git, query: async (q, signal) => q.kind === 'resolve' ? { exitCode: 128, stdout: encode('') } : query(q, signal) }
+    await expect(resolveLocalReviewScope(f.options)).rejects.toThrow('query-failed')
+  })
   it('handles an unborn empty repository without claiming read failure as clean', async () => {
     const result = await resolveLocalReviewScope(fixture({ unborn: true, tracked: '' }).options)
     expect(result.baseSource).toBe('unborn'); expect(result.status).toBe('empty')
@@ -204,7 +210,7 @@ describe('diff anchors', () => {
 })
 
 describe.skipIf(!process.env.VELLOC_REVIEW_TEST_SCRATCH)('isolated real Git scope', () => {
-  it('includes initial main tracked files and never executes hostile filters or shell-like refs', async () => {
+  it('includes initial main tracked files, never executes hostile filters, and refuses shell-like refs', async () => {
     const root = await mkdtemp(join(process.env.VELLOC_REVIEW_TEST_SCRATCH!, 'review-git-'))
     const run = (args: string[], input?: string) => execFileSync('git', args, { cwd: root, encoding: 'utf8', input, env: { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.invalid', GIT_CONFIG_NOSYSTEM: '1' } }).trim()
     try {
@@ -221,7 +227,7 @@ describe.skipIf(!process.env.VELLOC_REVIEW_TEST_SCRATCH)('isolated real Git scop
       const bad = 'echo filter-executed >> sentinel; exit 77'
       for (const key of ['filter.hostile.clean', 'filter.hostile.smudge', 'filter.hostile.process', 'diff.hostile.command', 'diff.hostile.textconv', 'core.fsmonitor']) run(['config', key, bad])
       run(['config', 'filter.hostile.required', 'true'])
-      const ref = 'feature/$(echo-owned);name'
+      const ref = 'feature/odd+name#1@x'
       run(['update-ref', 'refs/heads/' + ref, revision])
       const spawner: GitStreamSpawner = async (spec, events) => {
         const child = spawn(spec.file, spec.args, { cwd: spec.cwd, env: { ...process.env, ...spec.env }, shell: false, stdio: 'pipe' })
@@ -235,6 +241,9 @@ describe.skipIf(!process.env.VELLOC_REVIEW_TEST_SCRATCH)('isolated real Git scop
       const options: ScopeResolverOptions = { git, workspaceKey: root, projectKey: 'fixture', async readWorkspaceFile(path) { return { kind: 'file', bytes: new Uint8Array(await readFile(join(root, path))) } } }
       const initial = await resolveLocalReviewScope(options)
       expect(initial.baseSource).toBe('initial-commit')
+      for (const ch of ['&', '(', ')', '^', '%', '!']) await expect(resolveLocalReviewScope(options, { kind: 'branch', ref: `feature/a${ch}b` })).rejects.toThrow('invalid-ref')
+      run(['tag', 'tree-only', tree])
+      expect((await git.query({ kind: 'resolve', ref: 'tree-only' })).exitCode).toBe(1)
       expect(initial.files.map(file => file.path)).toEqual(['.gitattributes', 'a.ts', oddPath])
       await writeFile(join(root, 'a.ts'), 'changed\n')
       const working = await resolveLocalReviewScope(options)

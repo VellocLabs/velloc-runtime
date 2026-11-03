@@ -25,7 +25,7 @@ import { vetFileRead } from '../permissions/filesystemPermission'
 import { gatherInstructionDocs, getNestedInstructionFilesForPath, getConditionalRulesForPath, formatMemoryFilesForPrompt } from '../memory/instructionFiles'
 import { assertUntrustedReadAllowed } from '../permissions/untrustedReadBoundary'
 import { isFsNotFoundError } from '../utils/fsTransportFailure'
-import { createGitArgvRunner, GitAdapterError, gitText, validateReviewPath, type GitStreamSpawner } from './git-adapter'
+import { createGitArgvRunner, GitAdapterError, gitText, remoteUrlsOf, validateReviewPath, type GitStreamSpawner } from './git-adapter'
 import { isTestOrFixturePath } from './recipes'
 import { resolveLocalReviewScope, reviewDigest, type WorkspaceRead, type LocalReviewTarget } from './scope'
 import { LocalReviewService, ReviewGatewayError, scopeIndex, type ReviewServiceOptions } from './service'
@@ -405,7 +405,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       if (args.target) {
         if (!args.targetLiteral && (/^\d+$/.test(args.target) || /^https?:/.test(args.target))) {
           if (!runtime.httpRequest) throw new ReviewGatewayError('review-platform-adapter-required')
-          const remotes = (await gitText(git, { kind: 'remotes' }, signal)).trim().split('\n').filter(line => /^remote\.[^.\s]+\.url /.test(line)).map(line => line.slice(line.indexOf(' ') + 1))
+          const remotes = remoteUrlsOf(await gitText(git, { kind: 'remotes' }, signal))
           const remoteTarget = bindChangeRequestTarget(remotes, args.target)
           const secret = await runtime.platformSecret?.(remoteTarget.platform === 'github' ? 'https://api.github.com' : remoteTarget.origin)
           const remoteReader = createReviewPlatformReader({ httpRequest: runtime.httpRequest, target: remoteTarget, workspaceKey: root, secret })

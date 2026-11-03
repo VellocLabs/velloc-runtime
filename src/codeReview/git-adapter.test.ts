@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { execFileSync, spawn as nodeSpawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
-import { createGitArgvRunner, validateGitRef, type GitStreamSpawner, type GitQuery } from './git-adapter'
+import { createGitArgvRunner, remoteUrlsOf, validateGitRef, type GitStreamSpawner, type GitQuery } from './git-adapter'
 import type { NativeStreamHandlers, NativeStreamChild } from '../browser/bridge/nativePrimitives'
 
 const oid = 'a'.repeat(40)
@@ -39,13 +39,29 @@ describe('native Git object queries', () => {
     const tree = await git.query({ kind: 'tree', oid: head })
     expect(tree.exitCode).toBe(0); expect(tree.stdout.length).toBeGreaterThan(0)
   })
+  it('resolves with exit 0 to a commit, exit 1 for a ref that names none', async () => {
+    const cwd = resolve(fileURLToPath(new URL('.', import.meta.url)), '../..')
+    const gitDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-dir'], { cwd, encoding: 'utf8' }).trim()
+    const commonDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd, encoding: 'utf8' }).trim()
+    const spawn: GitStreamSpawner = async (spec, handlers) => {
+      const child = nodeSpawn(spec.file, spec.args, { cwd: spec.cwd, env: { ...process.env, ...spec.env }, shell: false, stdio: 'pipe' })
+      child.stdout.on('data', bytes => handlers.onOutput?.('stdout', new Uint8Array(bytes)))
+      child.on('close', code => handlers.onExit?.({ ...exit, exitCode: code ?? -1 }))
+      return { streamId: 'real', async write() { return true }, async closeStdin() { child.stdin.end(); return true }, async kill() { return child.kill() }, detach() { child.stdout.removeAllListeners() } }
+    }
+    const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => ({ root: cwd, gitDir, commonDir }) })
+    const head = await git.query({ kind: 'resolve', ref: 'HEAD' })
+    expect(head.exitCode).toBe(0)
+    expect(new TextDecoder().decode(head.stdout).trim()).toBe(execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim())
+    expect((await git.query({ kind: 'resolve', ref: 'refs/heads/no-such-branch-for-review-test' })).exitCode).toBe(1)
+  })
 })
 describe('restricted Git argv runner', () => {
   it('uses only native git argv with canonical authorized cwd and hardened environment', async () => {
     const { spawn } = fake()
     const authorizeRoot = vi.fn(async () => root)
     const git = await createGitArgvRunner(spawn, { authorizeRoot })
-    const queries: GitQuery[] = [{ kind: 'resolve', ref: 'feature/a;$()&' }, { kind: 'upstream', ref: 'HEAD' }, { kind: 'default-branch' }, { kind: 'merge-base', left: oid, right: oid }, { kind: 'parents', oid }, { kind: 'empty-tree' }, { kind: 'tree', oid }, { kind: 'tracked' }, { kind: 'blob', oid }, { kind: 'diff', base: oid, head: oid, paths: ['-file;$(touch nope)'] }, { kind: 'remotes' }, { kind: 'index-entries' }, { kind: 'file-mode' }]
+    const queries: GitQuery[] = [{ kind: 'resolve', ref: 'feature/a+b#c@d' }, { kind: 'upstream', ref: 'HEAD' }, { kind: 'default-branch' }, { kind: 'merge-base', left: oid, right: oid }, { kind: 'parents', oid }, { kind: 'empty-tree' }, { kind: 'tree', oid }, { kind: 'tracked' }, { kind: 'blob', oid }, { kind: 'diff', base: oid, head: oid, paths: ['-file;$(touch nope)'] }, { kind: 'remotes' }, { kind: 'index-entries' }, { kind: 'file-mode' }]
     for (const query of queries) await git.query(query)
     expect(authorizeRoot).toHaveBeenCalledOnce()
     for (const [spec] of spawn.mock.calls) {
@@ -53,8 +69,9 @@ describe('restricted Git argv runner', () => {
       expect(spec.args).toEqual(expect.arrayContaining(['--no-pager', '--literal-pathspecs', 'core.fsmonitor=false', 'core.askPass=', 'credential.helper=', 'protocol.allow=never', 'core.hooksPath=/dev/null']))
       expect(spec.env).toMatchObject({ GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1', GIT_CONFIG_COUNT: '0', GIT_CONFIG_PARAMETERS: '', GIT_INDEX_FILE: root.gitDir + '/index', GIT_DIR: root.gitDir, GIT_WORK_TREE: root.root })
     }
-    expect(spawn.mock.calls[0][0].args.slice(-6)).toEqual(['rev-list', '-n', '1', '--end-of-options', 'feature/a;$()&', '--'])
-    expect(spawn.mock.calls[1][0].args.slice(-6)).toEqual(['rev-list', '-n', '1', '--end-of-options', 'HEAD@{upstream}', '--'])
+    expect(spawn.mock.calls[0][0].args.slice(-5)).toEqual(['rev-parse', '--verify', '--quiet', '--end-of-options', 'feature/a+b#c@d~0'])
+    expect(spawn.mock.calls[1][0].args.slice(-5)).toEqual(['rev-parse', '--verify', '--quiet', '--end-of-options', 'HEAD@{upstream}~0'])
+    expect(spawn.mock.calls[10][0].args.slice(-5)).toEqual(['config', '--local', '-z', '--get-regexp', 'remote\\..*\\.url$'])
     expect(spawn.mock.calls[9][0].args.slice(-4)).toEqual([oid, oid, '--', '-file;$(touch nope)'])
     expect(spawn.mock.calls[9][0].args).toContain('--no-textconv')
     expect(spawn.mock.calls[9][0].args).toContain('--no-ext-diff')
@@ -65,7 +82,26 @@ describe('restricted Git argv runner', () => {
     const { spawn } = fake(); const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root })
     const queries: GitQuery[] = [{ kind: 'resolve', ref: 'HEAD' }, { kind: 'resolve', ref: 'refs/heads/main' }, { kind: 'upstream', ref: 'HEAD' }, { kind: 'default-branch' }, { kind: 'merge-base', left: oid, right: oid }, { kind: 'parents', oid }, { kind: 'empty-tree' }, { kind: 'tree', oid }, { kind: 'tracked' }, { kind: 'blob', oid }, { kind: 'diff', base: oid, head: oid, paths: ['src/a.ts'] }, { kind: 'remotes' }, { kind: 'index-entries' }, { kind: 'file-mode' }]
     for (const query of queries) await git.query(query)
-    for (const [spec] of spawn.mock.calls) for (const arg of spec.args) expect(arg, `${spec.args.join(' ')}`).not.toMatch(/[\^%&|<>!]/)
+    for (const [spec] of spawn.mock.calls) for (const arg of spec.args) expect(arg, `${spec.args.join(' ')}`).not.toMatch(/[\^%&|<>!()"]/)
+  })
+  it('refuses each character cmd.exe would interpret in a ref, before spawning', async () => {
+    const { spawn } = fake(); const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root })
+    for (const ch of ['&', '|', '<', '>', '(', ')', '^', '%', '!', '"', ';', '$', '`', "'", ',', '=', '\u00e9', '\uff06']) {
+      const ref = `feature/a${ch}b`
+      expect(() => validateGitRef(ref), ref).toThrow('invalid-ref')
+      await expect(git.query({ kind: 'resolve', ref })).rejects.toThrow('invalid-ref')
+      await expect(git.query({ kind: 'upstream', ref })).rejects.toThrow('invalid-ref')
+    }
+    expect(spawn).not.toHaveBeenCalled()
+    for (const ref of ['HEAD', 'main', 'refs/heads/feature/x-1.2_3', 'release/v1+build#2', 'user@host/topic']) expect(validateGitRef(ref)).toBe(ref)
+  })
+  it('reads remote URLs from NUL-ended records and keys only remote.<name>.url', () => {
+    const output = 'remote.origin.url\nhttps://github.com/owner/repo.git\0'
+      + 'branch.remote.f.url\nz\nremote.evil.url https://evil.invalid/x.git\0'
+      + 'remote.a.b.url\nhttps://nested.invalid/x.git\0'
+      + 'remote.up.url\ngit@gitlab.com:owner/repo.git\0'
+    expect(remoteUrlsOf(output)).toEqual(['https://github.com/owner/repo.git', 'git@gitlab.com:owner/repo.git'])
+    expect(remoteUrlsOf('')).toEqual([])
   })
   it('rejects options, revision operators, path traversal and non-object diff revisions', async () => {
     const { spawn } = fake(); const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root })
