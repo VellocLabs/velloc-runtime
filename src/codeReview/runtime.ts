@@ -714,7 +714,8 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       const retained = snapshot.diagnostics.filter(d => snapshot.retainedIds.includes(d.id))
       const t = createTranslate('en')
       const bodyFor = (ids: string[]) => sanitize(prepareReviewPublicationBody({ diagnostics: retained.filter(d => ids.includes(d.id)), actions: snapshot.actions.filter(action => action.kind !== 'publication'),
-        body: [t('reviewCard.title'), t('reviewCard.count', { count: ids.length, omitted: snapshot.run.progress.omittedByLimit }),
+        body: [t('reviewCard.title'), ids.length === 1 ? t('reviewCard.findingsOne') : t('reviewCard.findingsMany', { count: ids.length }),
+          snapshot.run.progress.omittedByLimit > 0 ? t('reviewCard.omitted', { omitted: snapshot.run.progress.omittedByLimit }) : '',
           !snapshot.coverage.complete ? t('reviewCard.notice.incomplete') : !ids.length ? t('reviewCard.emptyComplete') : '',
           ...snapshot.coverage.limitations.map(value => reviewDetailMessage(t, value)), t('reviewCard.localNotPushed')].filter(Boolean).join('\n\n'),
         labels: {

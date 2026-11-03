@@ -19,6 +19,14 @@ function renderReport(value = report(), enabled = true) {
   render(createElement(ReviewReportCard, { report: value, can: () => enabled, onAction }))
   return onAction
 }
+/** Open the card's more-actions menu and return it. */
+async function openMore(): Promise<HTMLElement> {
+  const trigger = screen.getByTestId('review-more')
+  fireEvent.pointerDown(trigger)
+  fireEvent.click(trigger)
+  return (await screen.findByRole('menu')) as HTMLElement
+}
+const menuDisabled = (id: string) => screen.getByTestId(id).hasAttribute('data-disabled')
 describe('review report card', () => {
   it('distinguishes incomplete zero findings, complete zero findings and empty scope', () => {
     const value = report()
@@ -36,6 +44,7 @@ describe('review report card', () => {
   })
   it('publishes only after confirmation when host policy requires it', async () => {
     const action = renderReport()
+    await openMore()
     fireEvent.click(screen.getByTestId('review-publish'))
     expect(action).not.toHaveBeenCalled()
     const group = screen.getByRole('group', { name: t('reviewCard.confirm') })
@@ -46,18 +55,83 @@ describe('review report card', () => {
     const value = report()
     value.permissions!.publishConfirmation = false
     const action = renderReport(value)
+    await openMore()
     fireEvent.click(screen.getByTestId('review-preview'))
     await waitFor(() => expect(action).toHaveBeenCalledWith('publish', { preview: true, confirmed: false }))
-    await waitFor(() => expect((screen.getByTestId('review-publish') as HTMLButtonElement).disabled).toBe(false))
+    await openMore()
+    await waitFor(() => expect(menuDisabled('review-publish')).toBe(false))
     fireEvent.click(screen.getByTestId('review-publish'))
     await waitFor(() => expect(action).toHaveBeenCalledWith('publish', { preview: false, confirmed: false }))
   })
-  it('disables unavailable actions and collapse never cancels', () => {
+  it('disables unavailable actions and collapse never cancels', async () => {
     const action = renderReport(report(), false)
-    for (const id of ['cancel', 'repair', 'publish', 'preview', 'rerun']) expect((screen.getByTestId(`review-${id}`) as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.click(screen.getByText(t('reviewCard.collapse')))
+    expect(screen.queryByTestId('review-cancel')).toBeNull()
+    for (const id of ['repair', 'rerun']) expect((screen.getByTestId(`review-${id}`) as HTMLButtonElement).disabled).toBe(true)
+    await openMore()
+    for (const id of ['publish', 'preview', 'verify']) expect(menuDisabled(`review-${id}`)).toBe(true)
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+    fireEvent.click(screen.getByLabelText(t('reviewCard.collapse')))
     expect(action).not.toHaveBeenCalled()
     expect(screen.queryByTestId('review-empty')).toBeNull()
+    expect(screen.queryByTestId('review-repair')).toBeNull()
+    fireEvent.click(screen.getByLabelText(t('reviewCard.expand')))
+    expect(screen.getByTestId('review-empty')).toBeTruthy()
+  })
+  it('shows stages and only cancel while the review runs, and keeps findings through a follow-up stage', () => {
+    const value = report()
+    value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy', span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
+    value.permissions = { cancel: true, repair: true, rerun: true, publish: true }
+    value.run.progress.status = 'active'
+    value.run.progress.stage = 'inspect'
+    const action = renderReport(value)
+    const stages = screen.getByTestId('review-stages')
+    expect(Array.from(stages.querySelectorAll('li')).map(item => item.dataset.state)).toEqual(['done', 'current', 'pending'])
+    expect(screen.getByTestId('code-review-card').dataset.status).toBe('active')
+    expect(screen.queryByTestId('review-finding')).toBeNull()
+    expect(screen.queryByTestId('review-empty')).toBeNull()
+    expect(screen.queryByTestId('review-count')).toBeNull()
+    expect(screen.queryByTestId('review-repair')).toBeNull()
+    expect(screen.queryByTestId('review-rerun')).toBeNull()
+    expect(screen.queryByTestId('review-more')).toBeNull()
+    fireEvent.click(screen.getByTestId('review-cancel'))
+    expect(action).toHaveBeenCalledWith('cancel', undefined)
+    cleanup()
+    value.run.progress.stage = 'repair'
+    renderReport(value)
+    expect(screen.queryByTestId('review-stages')).toBeNull()
+    expect(screen.getByTestId('review-finding')).toBeTruthy()
+    expect(screen.getByTestId('review-cancel')).toBeTruthy()
+    expect(screen.queryByTestId('review-repair')).toBeNull()
+    cleanup()
+    value.run.progress.status = 'queued'
+    value.run.progress.stage = 'scope'
+    renderReport(value)
+    expect(Array.from(screen.getByTestId('review-stages').querySelectorAll('li')).map(item => item.dataset.state)).toEqual(['pending', 'pending', 'pending'])
+  })
+  it('counts findings by severity and flags incomplete coverage next to them', () => {
+    const value = report()
+    const finding = (id: string, impact: 'critical' | 'major' | 'minor') => ({ id, runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy' as const }, claim: { title: id, explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'correctness' as const, impact }, evidenceKeys: [], origin: { angle: 'lines' } })
+    value.diagnostics = [finding('d1', 'critical'), finding('d2', 'minor'), finding('d3', 'minor')]
+    value.run.progress.omittedByLimit = 2
+    renderReport(value)
+    expect(screen.getByTestId('review-count').textContent).toBe(t('reviewCard.findingsMany', { count: 3 }))
+    expect(screen.getByText(t('reviewCard.omitted', { omitted: 2 }))).toBeTruthy()
+    expect(screen.getByText(`${t('reviewCard.value.critical')} · 1`)).toBeTruthy()
+    expect(screen.getByText(`${t('reviewCard.value.minor')} · 2`)).toBeTruthy()
+    expect(screen.queryByText(`${t('reviewCard.value.major')} · 0`)).toBeNull()
+    expect(screen.getByTestId('review-incomplete')).toBeTruthy()
+    expect(screen.queryByTestId('review-empty')).toBeNull()
+    fireEvent.click(screen.getAllByRole('checkbox')[0]!)
+    expect(screen.getByTestId('review-repair').textContent).toBe(t('reviewCard.repairCount', { count: 1 }))
+    expect(screen.getByText(t('reviewCard.selected', { count: 1 }))).toBeTruthy()
+    cleanup()
+    value.diagnostics = [finding('d1', 'major')]
+    value.run.progress.omittedByLimit = 0
+    value.coverage.complete = true
+    renderReport(value)
+    expect(screen.getByTestId('review-count').textContent).toBe(t('reviewCard.findingsOne'))
+    expect(screen.queryByTestId('review-incomplete')).toBeNull()
+    expect(screen.queryByText(t('reviewCard.omitted', { omitted: 0 }))).toBeNull()
   })
   it('filters findings, selects repairs and refuses historical line jumps', async () => {
     const value = report()
@@ -95,23 +169,29 @@ it('sends the selected presentation for rereview and shows only exact host-gener
   value.exportJson = '{\n  "report": "<safe>", "actions": []\n}\n'
   const action = renderReport(value)
   expect(screen.getByTestId('review-export-json').textContent).toBe(value.exportJson)
-  fireEvent.change(screen.getByLabelText(t('reviewCard.outputMode')), { target: { value: 'json' } })
+  await openMore()
+  expect(screen.getByTestId('review-output-panel').getAttribute('aria-checked')).toBe('true')
+  fireEvent.click(screen.getByTestId('review-output-json'))
+  await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
   fireEvent.click(screen.getByTestId('review-rerun'))
   await waitFor(() => expect(action).toHaveBeenCalledWith('rerun', { presentation: 'json' }))
 })
 it('requires an explicit verify permission and sends no commands with verification', async () => {
   const value = report()
   renderReport(value)
-  expect((screen.getByTestId('review-verify') as HTMLButtonElement).disabled).toBe(true)
+  await openMore()
+  expect(menuDisabled('review-verify')).toBe(true)
   expect(screen.queryByTestId('review-export-json')).toBeNull()
   cleanup()
   value.permissions!.verify = true
   const action = renderReport(value)
+  await openMore()
   fireEvent.click(screen.getByTestId('review-verify'))
   await waitFor(() => expect(action).toHaveBeenCalledWith('verify', undefined))
   cleanup()
   renderReport(value, false)
-  expect((screen.getByTestId('review-verify') as HTMLButtonElement).disabled).toBe(true)
+  await openMore()
+  expect(menuDisabled('review-verify')).toBe(true)
 })
 
 it('opens only the fresh runtime locator and never the report path or historical line', async () => {
@@ -153,21 +233,29 @@ it('defaults GitLab publication to summary and carries explicit discussion inten
   const value = report()
   value.run.scope.repository.platform = 'gitlab'
   const action = renderReport(value)
-  const checkbox = screen.getByLabelText(t('reviewCard.discussions')) as HTMLInputElement
-  expect(checkbox.checked).toBe(false)
+  await openMore()
+  const checkbox = () => screen.getByTestId('review-discussions')
+  expect(checkbox().getAttribute('aria-checked')).toBe('false')
   fireEvent.click(screen.getByTestId('review-preview'))
   await waitFor(() => expect(action).toHaveBeenCalledWith('publish', { preview: true, confirmed: false, discussions: false }))
-  await waitFor(() => expect(checkbox.disabled).toBe(false))
-  fireEvent.click(checkbox)
+  await openMore()
+  await waitFor(() => expect(menuDisabled('review-discussions')).toBe(false))
+  fireEvent.click(checkbox())
+  expect(screen.getByRole('menu')).toBeTruthy()
+  await waitFor(() => expect(checkbox().getAttribute('aria-checked')).toBe('true'))
   fireEvent.click(screen.getByTestId('review-preview'))
   await waitFor(() => expect(action).toHaveBeenCalledWith('publish', { preview: true, confirmed: false, discussions: true }))
-  await waitFor(() => expect((screen.getByTestId('review-publish') as HTMLButtonElement).disabled).toBe(false))
+  await openMore()
+  await waitFor(() => expect(menuDisabled('review-publish')).toBe(false))
   fireEvent.click(screen.getByTestId('review-publish'))
-  expect(checkbox.disabled).toBe(true)
+  await openMore()
+  expect(menuDisabled('review-discussions')).toBe(true)
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
   fireEvent.click(screen.getByRole('group', { name: t('reviewCard.confirm') }).querySelector('button')!)
   await waitFor(() => expect(action).toHaveBeenCalledWith('publish', { preview: false, confirmed: true, discussions: true }))
   cleanup()
   value.run.scope.repository.platform = 'github'
   renderReport(value)
-  expect(screen.queryByLabelText(t('reviewCard.discussions'))).toBeNull()
+  await openMore()
+  expect(screen.queryByTestId('review-discussions')).toBeNull()
 })
