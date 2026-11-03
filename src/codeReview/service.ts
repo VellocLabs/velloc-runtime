@@ -1,11 +1,12 @@
 import { parseReviewArguments } from './arguments'
 import { isTestOrFixturePath, resolveReviewPolicy, resolveReviewPreferences, reviewTimeBudgetMs, shouldRunAutomaticVerification } from './recipes'
 import { composeReviewPrompt, composeFinderPrompt, composeVerifierPrompt, composeSweeperPrompt, type ReviewPromptBlock } from './composer'
-import type { ReviewArguments, ReviewCapabilities, ReviewPlan, ReviewPreferences, OutputMode } from './contracts'
+import type { ReviewArguments, ReviewCapabilities, ReviewPlan, ReviewPreferences, OutputMode, ReviewRunEnd, ReviewTaskView } from './contracts'
 import type { ScopeManifest } from './scope'
 import { ReviewReportStore, type ReportSnapshot, type ReportStorageAdapter, type ReportGrant } from './report-store'
 import { createReviewTools, REVIEW_RESULT_SCHEMA, REVIEW_ASSESSMENT_SCHEMA, REVIEW_SUPPORT_SCHEMA } from './tools'
-import { ReviewWorkerPool, type ReviewModelRunner } from './runner'
+import { ReviewWorkerPool, endOf, type ReviewModelRunner, type ReviewTaskObserver } from './runner'
+import { lookupForkTaskId } from '../backgroundTasks/sideTaskSink'
 import type { ToolContract } from '../toolkit/toolContract'
 
 export interface ReviewPreferencesStorage { load(): Promise<ReviewPreferences>; save(value: ReviewPreferences): Promise<void> }
@@ -41,11 +42,25 @@ export interface ReviewServiceOptions {
   loadTargetLiteral?(runId: string): Promise<true | undefined>
   loadTarget?(runId: string): Promise<string | undefined>
 }
-interface LiveRun { access: ReviewScopeAccess; plan: ReviewPlan; args: ReviewArguments; controller: AbortController; done: Promise<void>; source: 'user' | 'model'; completedAngles: Set<string>; finderTasks: Map<string, string>; verified: Set<string>; sweepIds: Set<string>; swept: boolean }
+interface LiveRun { access: ReviewScopeAccess; plan: ReviewPlan; args: ReviewArguments; controller: AbortController; done: Promise<void>; source: 'user' | 'model'; completedAngles: Set<string>; finderTasks: Map<string, string>; verified: Set<string>; sweepIds: Set<string>; swept: boolean; tasks: Map<string, ReviewTaskView>; agentIds: Map<string, string>; end?: ReviewRunEnd }
 export class ReviewGatewayError extends Error { constructor(readonly code: string) { super(code) } }
 const onlyTestsSkipped = (manifest: ScopeManifest): boolean => !manifest.files.some(file => file.status === 'included') && manifest.files.some(file => file.status === 'skipped' && isTestOrFixturePath(file.path))
 const patchBytes = (manifest: ScopeManifest): number => manifest.files.reduce((total, file) => total + new TextEncoder().encode(file.patch).length, 0)
 const block = (text: string, source: string): ReviewPromptBlock => ({ type: 'text', text, source, provenance: 'trusted-task' })
+const newLive = (base: Omit<LiveRun, 'completedAngles' | 'finderTasks' | 'verified' | 'sweepIds' | 'swept' | 'tasks' | 'agentIds'>): LiveRun =>
+  ({ ...base, completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false, tasks: new Map(), agentIds: new Map() })
+const endCode = (end: ReviewRunEnd): string => `review-${end.kind}`
+const countLines = (patch: string, sign: '+' | '-'): number => patch.split('\n').filter(line => line.startsWith(sign) && !line.startsWith(sign.repeat(3))).length
+
+/** Contract: the manifest without patch text; patches are read per file through ReviewRead. */
+export function scopeIndex(manifest: ScopeManifest): Record<string, unknown> {
+  return { ...manifest, files: manifest.files.map(({ patch, ...file }) => ({ ...file,
+    hunks: (patch.match(/^@@ /gm) ?? []).length, added: countLines(patch, '+'), removed: countLines(patch, '-') })) }
+}
+/** The patches a worker needs: every included file, or only the named ones. */
+export function reviewMaterial(manifest: ScopeManifest, paths?: readonly string[]): string {
+  return JSON.stringify(manifest.files.filter(file => file.status === 'included' && (!paths || paths.includes(file.path))).map(file => ({ path: file.path, beforePath: file.beforePath, patch: file.patch })))
+}
 
 /** Invocation provenance is selected by separate host entry points, never by model JSON. */
 export class LocalReviewService {
@@ -93,6 +108,38 @@ export class LocalReviewService {
   presentation(runId: string): { notices: ReviewPlan['notices']; emptyScope: boolean; target?: string } | undefined {
     const live = this.live.get(runId)
     return live ? { notices: live.plan.notices, emptyScope: live.access.manifest.status === 'empty', target: live.args.target } : undefined
+  }
+  /** The run's model tasks with their drawer handles, and the coordinator's end when it did not complete. */
+  tasks(runId: string): { tasks: ReviewTaskView[]; end?: ReviewRunEnd } | undefined {
+    const live = this.live.get(runId)
+    if (!live) return undefined
+    const tasks = [...live.tasks.values()].map(task => {
+      const agentId = live.agentIds.get(task.key)
+      const taskId = agentId ? lookupForkTaskId(agentId) : undefined
+      return taskId ? { ...task, taskId } : { ...task }
+    })
+    return { tasks, end: live.end }
+  }
+  private observer(live: LiveRun): ReviewTaskObserver {
+    return {
+      started: info => {
+        live.agentIds.set(info.key, info.agentId)
+        live.tasks.set(info.key, { key: info.key, role: info.role, label: info.label, status: 'running', startedAt: Date.now(), lastActivityAt: Date.now() })
+        this.changed()
+      },
+      activity: info => {
+        const task = live.tasks.get(info.key)
+        if (task) { task.lastAction = info.action; task.lastActivityAt = Date.now(); this.changed() }
+      },
+      ended: info => {
+        const task = live.tasks.get(info.key)
+        if (!task) return
+        task.end = info.end
+        task.finishedAt = Date.now()
+        task.status = info.end.kind === 'completed' ? 'finished' : info.end.kind === 'cancelled' ? 'stopped' : 'failed'
+        this.changed()
+      },
+    }
   }
   preload(): { command: string; aliases: string[]; levels: string[] } {
     return { command: 'code-review', aliases: ['review'], levels: ['low', 'medium', 'high', 'xhigh', 'max'] }
@@ -150,7 +197,7 @@ export class LocalReviewService {
       anchor.anchorKey = await this.store.registerAnchor(runId, { ...anchor, revision })
       anchor.revision = revision
     }
-    const live: LiveRun = { access, plan, args: parsed.arguments, controller, done: Promise.resolve(), source, completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false }
+    const live = newLive({ access, plan, args: parsed.arguments, controller, done: Promise.resolve(), source })
     this.live.set(runId, live); this.known.add(runId)
     live.done = this.execute(runId, live)
     return { runId }
@@ -180,7 +227,7 @@ export class LocalReviewService {
       } else {
         const tools = this.tools(runId, live, true)
         const blocks = composeReviewPrompt(plan, {
-          run_summary: JSON.stringify({ runId, plan }), scope_manifest: JSON.stringify(access.manifest),
+          run_summary: JSON.stringify({ runId, plan }), scope_manifest: JSON.stringify(scopeIndex(access.manifest)),
           trusted_guidance: access.trustedGuidance, capability_text: tools.map(t => t.name).join(', '),
           budget_text: JSON.stringify({ concurrency: plan.workerConcurrency, maxTurns: 32, maxDurationMs: budgetMs }),
           verification_contract: 'Runtime verification is a separate permission boundary; do not run tests during static review.',
@@ -189,14 +236,16 @@ export class LocalReviewService {
         let result: Awaited<ReturnType<ReviewModelRunner>>
         try {
           result = await this.runModel({ blocks, tools, signal: controller.signal, taskId: plan.coordinatorWorkerRequired ? `${runId}-worker` : runId,
-            execution: plan.coordinatorWorkerRequired ? 'isolated' : plan.execution, reasoningLevel: plan.reasoningLevel })
+            execution: plan.coordinatorWorkerRequired ? 'isolated' : plan.execution, reasoningLevel: plan.reasoningLevel,
+            role: 'coordinator', label: `${plan.level} · ${plan.recipe}`, observer: this.observer(live) })
         } finally { if (plan.coordinatorWorkerRequired) await this.store.noteWorker(runId, 'finished') }
-        if (result.interrupted) throw new ReviewGatewayError('review-budget-or-model-interrupted')
+        const end = endOf(result)
+        if (end.kind !== 'completed') { live.end = end; throw new ReviewGatewayError(endCode(end)) }
         if (plan.presentation !== 'panel') {
           try { await this.store.submitFinalJson(runId, crypto.randomUUID(), result.text) }
           catch {
             const expected = await this.store.expectedRecord(runId)
-            const corrected = await this.runModel({ blocks: [block('Correct only the JSON format/selection. Return candidates and coverage exactly from the provided retained ledger; do not rerun the review.', 'format-correction'), block(JSON.stringify(expected), 'retained-ledger')], tools: [], signal: controller.signal, taskId: `${runId}-format`, maxTurns: 1 })
+            const corrected = await this.runModel({ blocks: [block('Correct only the JSON format/selection. Return candidates and coverage exactly from the provided retained ledger; do not rerun the review.', 'format-correction'), block(JSON.stringify(expected), 'retained-ledger')], tools: [], signal: controller.signal, taskId: `${runId}-format`, maxTurns: 1, role: 'format', label: 'format', observer: this.observer(live) })
             try { await this.store.submitFinalJson(runId, crypto.randomUUID(), corrected.text) }
             catch {
               await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['invalid-response'], complete: false } })
@@ -276,15 +325,18 @@ export class LocalReviewService {
         const snapshot = await this.store.getSnapshot(runId)
         const candidate = snapshot.diagnostics.find(d => d.id === input.candidateId)
         if (role === 'verifier' && !candidate) throw new ReviewGatewayError('unknown-candidate')
-        const common = { scope_manifest: JSON.stringify(live.access.manifest), review_material: JSON.stringify(live.access.manifest.files) }
-        const promptBlocks = role === 'finder' ? composeFinderPrompt({ ...common, trusted_guidance: live.access.trustedGuidance, assigned_angles: JSON.stringify(angles), candidatesPerAngle: live.plan.candidatesPerAngle })
-          : role === 'verifier' ? composeVerifierPrompt({ ...common, candidate: JSON.stringify(candidate) })
-          : composeSweeperPrompt({ ...common, existing_findings: JSON.stringify(snapshot.diagnostics) })
+        const index = JSON.stringify(scopeIndex(live.access.manifest))
+        const promptBlocks = role === 'finder' ? composeFinderPrompt({ scope_manifest: index, review_material: reviewMaterial(live.access.manifest), trusted_guidance: live.access.trustedGuidance, assigned_angles: JSON.stringify(angles), candidatesPerAngle: live.plan.candidatesPerAngle })
+          : role === 'verifier' ? composeVerifierPrompt({ scope_manifest: index, review_material: reviewMaterial(live.access.manifest, [candidate!.anchor.path]), candidate: JSON.stringify(candidate) })
+          : composeSweeperPrompt({ scope_manifest: index, review_material: reviewMaterial(live.access.manifest), existing_findings: JSON.stringify(snapshot.diagnostics) })
         const blocks = [...promptBlocks, block(JSON.stringify(role === 'verifier' ? { type: 'object', properties: { ...REVIEW_ASSESSMENT_SCHEMA.properties, support: REVIEW_SUPPORT_SCHEMA, missingEvidence: { type: 'array', items: { type: 'string' } } }, required: ['disposition', 'reason', 'support'] } : REVIEW_RESULT_SCHEMA), 'required-json-schema')]
+        const label = role === 'finder' ? (angles as string[]).join(', ') : role === 'verifier' ? candidate!.claim.title : 'gap sweep'
         await this.store.noteWorker(runId, 'started'); this.changed()
         try {
-          const result = await this.runModel({ blocks, tools: this.tools(runId, live, false).filter(t => t.name === 'ReviewRead'), signal: live.controller.signal, taskId, maxTurns: 16 })
-          if (result.interrupted) throw new ReviewGatewayError('worker-interrupted')
+          const result = await this.runModel({ blocks, tools: this.tools(runId, live, false).filter(t => t.name === 'ReviewRead'), signal: live.controller.signal, taskId, maxTurns: 16,
+            role: role as 'finder' | 'verifier' | 'sweeper', label, observer: this.observer(live) })
+          const end = endOf(result)
+          if (end.kind !== 'completed') throw new ReviewGatewayError(endCode(end))
           const value = JSON.parse(result.text)
           if (role === 'verifier') {
             const candidateId = String(input.candidateId)
@@ -357,7 +409,8 @@ export class LocalReviewService {
           actionEpoch: epoch, evidence: [{ path: input.path, quote: material.slice(0, 4000), relevance: 'Fresh authorized context read during repair reassessment.' }] })
         return { content: material, executionRef: ref }
       }, changed: this.changed, allowOutput: live.plan.presentation === 'panel', actions: true, actionEpoch: epoch }).filter(t => t.name !== 'ReviewLedger')
-      const result = await this.runModel({ blocks: [block('Repair only the selected saved diagnostics. Preserve concurrent user changes. Use actual execution references returned by edits in ReviewActionLog; do not claim tests, commits or remote updates.', 'authorized-repair'), block(JSON.stringify({ report: snapshot, diagnosticIds: grant.diagnosticIds }), 'saved-report')], tools: [...tools, ...editTools], signal: live.controller.signal, taskId: `${runId}-repair` })
+      const result = await this.runModel({ blocks: [block('Repair only the selected saved diagnostics. Preserve concurrent user changes. Use actual execution references returned by edits in ReviewActionLog; do not claim tests, commits or remote updates.', 'authorized-repair'), block(JSON.stringify({ report: snapshot, diagnosticIds: grant.diagnosticIds }), 'saved-report')], tools: [...tools, ...editTools], signal: live.controller.signal, taskId: `${runId}-repair`,
+        role: 'repair', label: `${grant.diagnosticIds.length} selected`, observer: this.observer(live) })
       if (result.interrupted) throw new ReviewGatewayError('repair-interrupted')
       await this.store.reconcileObservedEdits(runId, grant.id, grant.diagnosticIds, epoch)
       const after = await this.store.getSnapshot(runId)
@@ -407,7 +460,7 @@ export class LocalReviewService {
       this.admit(controller.signal)
     }
     if (access.manifest.scope.repository.projectKey !== snapshot.run.scope.repository.projectKey || access.manifest.scope.revision.head !== snapshot.run.scope.revision.head) throw new ReviewGatewayError('snapshot-changed')
-    const live: LiveRun = { access, plan, args, controller, done: Promise.resolve(), source: 'model', completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false }
+    const live = newLive({ access, plan, args, controller, done: Promise.resolve(), source: 'model' })
     this.live.set(runId, live)
     return live
   }

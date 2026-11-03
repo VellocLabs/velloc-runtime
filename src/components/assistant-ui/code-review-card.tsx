@@ -5,9 +5,28 @@ import { useT } from '@/browser/webview/i18n'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useRightPanelContent } from './right-panel-content-context'
+import { useBackgroundTasksContext } from './background-tasks-context'
 import { isReviewFileLocation, reviewTopic, type ReviewAction, type ReviewReportView, type ReviewSessionSnapshot } from '@/codeReview/review-protocol'
-import type { Diagnostic, OutputMode } from '@/codeReview/contracts'
-import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMessage } from '@/codeReview/messages'
+import type { Diagnostic, OutputMode, ReviewTaskView } from '@/codeReview/contracts'
+import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMessage, reviewTaskRoleMessage, reviewTaskStatusMessage, reviewEndMessage } from '@/codeReview/messages'
+
+/** The run's model tasks: role, label, status, last action, end reason and a jump to the drawer transcript. */
+export const ReviewTaskTree: FC<{ tasks: ReviewTaskView[] }> = ({ tasks }) => {
+  const t = useT()
+  const { openTasksDrawer } = useBackgroundTasksContext()
+  if (!tasks.length) return null
+  return <details open data-testid="review-tasks"><summary className="cursor-pointer">{t('reviewCard.tasks')} · {tasks.length}</summary>
+    <ul className="mt-1 space-y-1">{tasks.map(task => {
+      const end = task.end ? reviewEndMessage(t, task.end) : undefined
+      return <li key={task.key} data-testid="review-task" data-role={task.role} data-status={task.status} className={task.role === 'coordinator' ? 'text-xs' : 'ml-4 text-xs'}>
+        <span className="font-medium">{reviewTaskRoleMessage(t, task.role)}</span> · {task.label} · <span aria-live="polite">{reviewTaskStatusMessage(t, task.status)}</span>
+        {task.taskId && openTasksDrawer && <button type="button" className="ml-2 underline" data-testid="review-task-transcript" onClick={() => openTasksDrawer(task.taskId)}>{t('reviewCard.task.openTranscript')}</button>}
+        {task.lastAction && <p className="truncate text-muted-foreground">{t('reviewCard.task.lastAction', { action: task.lastAction })}</p>}
+        {end && <p className="text-muted-foreground">{end}</p>}
+      </li>
+    })}</ul>
+  </details>
+}
 
 const ReviewConnectionContext = createContext<{ connection?: () => Promise<RuntimeConnection>; sessionId?: string; readOnly?: boolean }>({})
 export const CodeReviewProvider = ReviewConnectionContext.Provider
@@ -114,6 +133,8 @@ export const ReviewReportCard: FC<{
       <p className="text-xs text-muted-foreground">{t('reviewCard.policy', { level: enumText(run.policy.level), recipe: enumText(run.policy.recipe), mode: enumText(run.policy.execution), cap: run.policy.reportLimit === 'unlimited' ? enumText('unlimited') : run.policy.reportLimit })}</p>
       <p className="text-xs">{t(run.scope.revision.workingCopyDigest ? 'reviewCard.workingCopy' : 'reviewCard.revisionOnly')}</p>
       <p className="text-xs">{t('reviewCard.workers', { started: run.progress.spawnedTasks, finished: report.finishedTasks ?? 0 })}</p>
+      {report.tasks && <ReviewTaskTree tasks={report.tasks} />}
+      {report.end && reviewEndMessage(t, report.end) && <p role="status" data-testid="review-end" className="text-xs">{reviewEndMessage(t, report.end)}</p>}
       <p>{t('reviewCard.count', { count: report.diagnostics.length, omitted: run.progress.omittedByLimit })}</p>
       {report.notices && <ul data-testid="review-notices">{report.notices.map((notice, index) => <li key={index}>{reviewMessage(t, notice)}</li>)}</ul>}
       <details><summary className="cursor-pointer">{t('reviewCard.coverage')}</summary><ul>{report.coverage.limitations.map((text, index) => <li key={index}>{reviewDetailMessage(t, text)}</li>)}</ul>{run.progress.unavailableAngles.length > 0 && <p>{t('reviewCard.uncovered', { angles: run.progress.unavailableAngles.map(angle => reviewAngleMessage(t, angle)).join(', ') })}</p>}</details>

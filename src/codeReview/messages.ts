@@ -13,7 +13,14 @@ const groups = {
   unavailable: ['review-runtime-unavailable', 'review-context-unavailable', 'remote-context-unavailable', 'review-platform-adapter-required', 'repair-unavailable', 'publication-unavailable', 'review-plan-blocked', 'host_unavailable'],
   incomplete: ['scope-incomplete', 'independent-worker-coverage-incomplete', 'remote-diff-incomplete'],
   outputLimit: ['diff-output-limit', 'output-limit', 'response-limit'],
-  interrupted: ['review-budget-or-model-interrupted', 'review-budget-exhausted', 'review-task-budget', 'worker-interrupted', 'repair-interrupted', 'timeout'],
+  interrupted: ['review-budget-exhausted', 'review-task-budget', 'worker-interrupted', 'repair-interrupted', 'timeout'],
+  stepLimit: ['review-step-limit'],
+  outputCap: ['review-output-cap'],
+  contextOverflow: ['review-context-overflow'],
+  modelError: ['review-model-error'],
+  failureLimit: ['review-failure-limit'],
+  awaitingUser: ['review-awaiting-user'],
+  crash: ['review-crash'],
   changed: ['snapshot-changed', 'head-changed', 'head-check-failed'],
   cancelled: ['review-cancelled', 'cancelled', 'repair-no-longer-active'],
   invalidReport: ['invalid-diff', 'invalid-anchor', 'invalid-response', 'invalid-publication', 'invalid-run-id', 'invalid-review-search', 'invalid-worker-role', 'invalid-worker-angles', 'worker-role-not-authorized', 'unknown-candidate', 'verifier-assignment-not-authorized', 'worker-candidate-limit', 'worker-angle-not-assigned', 'worker-angle-candidate-limit'],
@@ -60,6 +67,19 @@ export function reviewMessage(t: TranslateFn, notice: string | ReviewMessageNoti
 /** Coverage may contain authored prose or a legacy reason code; prose remains report content. */
 export function reviewDetailMessage(t: TranslateFn, text: string): string {
   return /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)+$/.test(text) || Object.values(groups).some(codes => (codes as readonly string[]).includes(text)) ? reviewMessage(t, text) : text
+}
+
+const roles = ['coordinator', 'finder', 'verifier', 'sweeper', 'format', 'repair', 'behavior', 'reassessment'] as const
+export function reviewTaskRoleMessage(t: TranslateFn, role: string): string {
+  return roles.includes(role as typeof roles[number]) ? t(`reviewCard.task.role.${role}` as Parameters<TranslateFn>[0]) : t('reviewCard.notice.unspecified')
+}
+const taskStatuses = ['running', 'finished', 'failed', 'stopped'] as const
+export function reviewTaskStatusMessage(t: TranslateFn, status: string): string {
+  return taskStatuses.includes(status as typeof taskStatuses[number]) ? t(`reviewCard.task.status.${status}` as Parameters<TranslateFn>[0]) : t('reviewCard.notice.unspecified')
+}
+/** An end reason reads as its limitation message; `completed` has none. */
+export function reviewEndMessage(t: TranslateFn, end: { kind: string }): string | undefined {
+  return end.kind === 'completed' ? undefined : reviewMessage(t, end.kind === 'cancelled' ? 'review-cancelled' : `review-${end.kind}`)
 }
 
 const angles = ['lines', 'removed', 'calls', 'reuse', 'simplification', 'efficiency', 'root-cause', 'guidance', 'language', 'wrappers'] as const

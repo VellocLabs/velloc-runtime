@@ -15,7 +15,7 @@ You are performing a local code review. The run configuration below comes from t
 [Budget]
 {{budget_text}}
 
-First establish the comparison base, the revision under review, and whether working-copy changes are included. Read the diff according to the scope manifest. When context is needed, read the relevant functions, callers, callees, and guidance files. Record unread or inaccessible portions as coverage gaps; do not infer that they are correct.
+First establish the comparison base, the revision under review, and whether working-copy changes are included. The scope manifest is an index: it lists each file's status, hunk and line counts and anchor keys, but not the patch text. Read a file's patch with ReviewRead operation=diff and that file's path; read every included file before claiming coverage. When context is needed, read the relevant functions, callers, callees, and guidance files; a context read accepts startLine and endLine to keep the excerpt small. Record unread or inaccessible portions as coverage gaps; do not infer that they are correct.
 
 Follow this recipe:
 {{recipe_text}}

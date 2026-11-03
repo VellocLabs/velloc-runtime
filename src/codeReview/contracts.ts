@@ -11,6 +11,26 @@ export type RecipeId = 'quick-hunks' | 'quick-expand' | 'local-eight' | 'local-t
 export type ReviewAngle = 'lines' | 'removed' | 'calls' | 'reuse' | 'simplification' | 'efficiency' | 'root-cause' | 'guidance' | 'language' | 'wrappers'
 export type InvocationSource = 'user' | 'model' | 'preload'
 
+/** Contract: why one model run of a review ended; only `completed` counts as a full answer. */
+export type ReviewRunEnd = {
+  kind: 'completed' | 'cancelled' | 'step-limit' | 'output-cap' | 'context-overflow' | 'model-error' | 'failure-limit' | 'awaiting-user' | 'crash'
+  detail?: string
+}
+export type ReviewTaskRole = 'coordinator' | 'finder' | 'verifier' | 'sweeper' | 'format' | 'repair' | 'behavior' | 'reassessment'
+/** One model task of a run as the client sees it; `taskId` is the drawer handle once the fork registered. */
+export type ReviewTaskView = {
+  key: string
+  taskId?: string
+  role: ReviewTaskRole
+  label: string
+  status: 'running' | 'finished' | 'failed' | 'stopped'
+  startedAt: number
+  finishedAt?: number
+  lastActivityAt: number
+  lastAction?: string
+  end?: ReviewRunEnd
+}
+
 export interface ReviewArguments {
   level?: ReviewLevel
   target?: string

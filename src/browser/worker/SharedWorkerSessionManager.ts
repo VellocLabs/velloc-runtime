@@ -1658,6 +1658,7 @@ export class SharedWorkerSessionManager {
       fastCallFinished: (finish) => this.finishFastCall(finish),
       runJsStarted: (start) => this.registerRunJsTask(start),
       runJsFinished: (finish) => this.finishRunJsTask(finish),
+      forkTaskId: (agentId) => this.sideTasks.forkTaskId(agentId),
     })
   }
 

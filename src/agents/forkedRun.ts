@@ -16,6 +16,7 @@ import type {
   InstructionText,
 } from '../runtime/RuntimeTypes'
 import type { TurnOrigin } from '../runtime/interfaces/QueryRuntimeDeps'
+import type { TurnConclusion } from '../engine/turnOutcome'
 import {
   notifyForkFinished,
   notifyForkProgress,
@@ -127,6 +128,8 @@ export type ChildContextOptions = {
   inheritStateWriter?: boolean
   inheritLengthMeter?: boolean
   inheritAbort?: boolean
+  /** Carry the parent's confirmation prompt and tool-run seams into the child. */
+  inheritConfirm?: boolean
 }
 
 const SUBAGENT_START_QUERY_SOURCES: ReadonlySet<string> = new Set(['agent_tool', 'skill_fork'])
@@ -198,6 +201,13 @@ export function deriveChildToolContext(
     },
 
     agentLoopState: undefined,
+
+    ...(overrides.inheritConfirm
+      ? {
+          requestToolUseConfirm: outerToolContext.requestToolUseConfirm,
+          toolRunSeams: outerToolContext.toolRunSeams,
+        }
+      : {}),
   }
 }
 
@@ -224,6 +234,9 @@ export type ForkRunRequest = {
   skipCacheWrite?: boolean
 
   onMessage?: (message: Message) => void
+
+  /** The loop's terminal conclusion for each drive (a fallback retry reports again). */
+  onConclusion?: (conclusion: TurnConclusion) => void
 
   sidechainStore?: SidechainTranscriptStore
 
@@ -454,6 +467,9 @@ export async function launchFork(
         stepLimit: maxTurns,
         noCacheWrite: skipCacheWrite,
         useRememberedCallModel: useRealModelTransport,
+        ...(params.onConclusion
+          ? { commitTerminal: async conclusion => { params.onConclusion!(conclusion) } }
+          : {}),
       })) {
         if (
           message.type === 'stream_event' ||

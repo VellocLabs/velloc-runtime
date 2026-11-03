@@ -37,6 +37,12 @@ export class SideTaskCoordinator {
 
   // --- Fork lifecycle ---
 
+  forkTaskId(agentId: string): string | undefined {
+    const live = this.registry.getLiveByType(agentId, 'local_fork') as { taskId?: string } | undefined
+    const finished = this.registry.getFinishedByType(agentId, 'local_fork') as { taskId?: string } | undefined
+    return live?.taskId ?? finished?.taskId
+  }
+
   registerFork(start: {
     agentId: string
     spawnerSessionId?: string

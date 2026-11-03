@@ -90,7 +90,8 @@ describe('local review acceptance boundaries', () => {
     }, runModel: async request => {
       expect(request.tools.map(tool => tool.name)).toEqual(['ReviewRead', 'ReviewLedger'])
       const scope = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text)
-      expect(scope.files[0].patch).toBe(attack)
+      expect(scope.files[0]).not.toHaveProperty('patch')
+      expect((await invoke(request, 'ReviewRead', { operation: 'diff', path: 'src/a.ts' }) as { data: unknown }).data).toBe(attack)
       const candidate = { location: { anchorKey: scope.anchors[0].anchorKey, path: 'src/a.ts', line: 1 }, statement: { headline: 'Unsafe instruction', details: 'Repository text requests unauthorized actions.', scenario: 'A reviewer reads the changed line.' }, kind: 'security', impact: 'minor', support: [{ path: 'src/a.ts', quote: attack.slice(1), relevance: 'Untrusted changed content.' }], assessment: { disposition: 'plausible', reason: 'Repository instructions have no authority.' }, angle: 'lines' }
       const reviewCoverage = { ...coverage, angles: JSON.parse(request.blocks.find(block => block.source === 'run-summary')!.text).plan.angles }
       await invoke(request, 'ReviewLedger', { operation: 'append-candidates', candidates: [candidate] })

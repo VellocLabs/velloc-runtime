@@ -1,7 +1,7 @@
 import type { ReviewMessageNotice } from './messages'
 import type { ReportVerification } from './report-store'
 import type { TopicId } from '../browser/runtimeProtocol'
-import type { ActionReceipt, Assessment, Diagnostic, OutputMode, ReviewCoverage, ReviewEvidence, ReviewRun } from './contracts'
+import type { ActionReceipt, Assessment, Diagnostic, OutputMode, ReviewCoverage, ReviewEvidence, ReviewRun, ReviewRunEnd, ReviewTaskView } from './contracts'
 
 export type ReviewReportView = {
   run: ReviewRun
@@ -15,6 +15,10 @@ export type ReviewReportView = {
   targetLabel?: string
   emptyScope?: boolean
   finishedTasks?: number
+  /** The run's model tasks, coordinator first; absent on a cold projection. */
+  tasks?: ReviewTaskView[]
+  /** The coordinating task's end when the run did not complete normally. */
+  end?: ReviewRunEnd
   permissions?: { cancel?: boolean; repair?: boolean; publish?: boolean; rerun?: boolean; verify?: boolean; locate?: boolean; publishConfirmation?: boolean }
   publicationPreview?: string
   /** Exact runtime presenter output; the client never reconstructs report JSON. */
@@ -43,6 +47,15 @@ export function isReviewActionPayload(action: ReviewAction, value: unknown): val
   if (action === 'rerun') return value.presentation === undefined || value.presentation === 'terminal' || value.presentation === 'json' || value.presentation === 'panel'
   if (action === 'publish') return (value.discussions === undefined || typeof value.discussions === 'boolean') && typeof value.preview === 'boolean' && typeof value.confirmed === 'boolean' && !(value.preview && value.confirmed)
   return true
+}
+
+/** The run a Skill tool result anchors its card to; null for any other result. */
+export function reviewRunIdOfSkillResult(result: unknown): string | null {
+  if (typeof result !== 'string' || !result.startsWith('{"reviewRunId":')) return null
+  try {
+    const value = JSON.parse(result) as { reviewRunId?: unknown }
+    return isReviewId(value.reviewRunId) ? value.reviewRunId : null
+  } catch { return null }
 }
 
 /** Only a persisted system row's structured metadata can select a report card. */

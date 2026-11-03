@@ -133,6 +133,8 @@ export type SideTaskSink = {
   fastCallFinished: (finish: FastCallFinish) => void
   runJsStarted: (start: RunJsTaskStart) => void
   runJsFinished: (finish: RunJsTaskFinish) => void
+  /** The drawer's public task id for a registered fork, live or finished. */
+  forkTaskId?: (agentId: string) => string | undefined
 }
 
 let sink: SideTaskSink | null = null
@@ -152,6 +154,10 @@ export function notifyForkProgress(agentId: string, message: Message): void {
 
 export function notifyForkFinished(finish: ForkTaskFinish): void {
   sink?.forkFinished(finish)
+}
+
+export function lookupForkTaskId(agentId: string): string | undefined {
+  return sink?.forkTaskId?.(agentId)
 }
 
 export function notifyFastCallStarted(start: FastCallStart): void {

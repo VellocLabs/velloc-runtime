@@ -29,7 +29,8 @@ import { isFsNotFoundError } from '../utils/fsTransportFailure'
 import { createGitArgvRunner, GitAdapterError, gitText, validateReviewPath, type GitStreamSpawner } from './git-adapter'
 import { isTestOrFixturePath } from './recipes'
 import { resolveLocalReviewScope, reviewDigest, type WorkspaceRead, type LocalReviewTarget } from './scope'
-import { LocalReviewService, ReviewGatewayError, type ReviewServiceOptions } from './service'
+import { LocalReviewService, ReviewGatewayError, scopeIndex, type ReviewServiceOptions } from './service'
+import type { ScopeManifest } from './scope'
 import { createReviewModelRunner } from './runner'
 import { registerReviewSession } from './review-channel'
 import type { ReviewReportView } from './review-protocol'
@@ -58,6 +59,22 @@ const below = (path: string, root: string) => equal(path, root) || ( /^[A-Za-z]:
 function contextText(bytes: Uint8Array): string {
   if (bytes.length > CONTEXT_READ_BYTES || bytes.includes(0)) throw new ReviewGatewayError('review-context-unavailable')
   try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes) } catch { throw new ReviewGatewayError('review-context-unavailable') }
+}
+/** The scope index without a path, or one listed file's patch with it. */
+function readDiff(manifest: ScopeManifest, path: unknown): unknown {
+  if (path === undefined) return scopeIndex(manifest)
+  if (typeof path !== 'string') throw new ReviewGatewayError('read-outside-review-scope')
+  const file = manifest.files.find(entry => entry.path === path)
+  if (!file) throw new ReviewGatewayError('read-outside-review-scope')
+  return { path: file.path, beforePath: file.beforePath, status: file.status, reason: file.reason, patch: file.patch, anchors: file.anchors }
+}
+/** A 1-based inclusive line window of a context read; the whole text without one. */
+function sliceLines(content: string, startLine: unknown, endLine: unknown): string {
+  if (startLine === undefined && endLine === undefined) return content
+  const lines = content.split('\n')
+  const start = Number.isSafeInteger(startLine) && Number(startLine) >= 1 ? Number(startLine) : 1
+  const end = Number.isSafeInteger(endLine) && Number(endLine) >= start ? Number(endLine) : lines.length
+  return lines.slice(start - 1, end).join('\n')
 }
 const sanitize = (text: string) => text.replace(/((?:api[_-]?key|password|secret|token)\s*[:=]\s*["']?)[^\s"',;]+/gi, '$1[redacted]').replace(/(?:sk-|ghp_|github_pat_)[A-Za-z0-9_-]{16,}/g, '[redacted]')
 
@@ -397,7 +414,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           remoteSnapshots.set(remoteKey(remote.manifest.scope), remote)
           const guidance = await guidanceFor(remote.manifest.files.map(file => file.path), !approved, authorizePath, approved)
           return { manifest: remote.manifest, trustedGuidance: guidance.text, authorizedGuidance: guidance.authorizedGuidance, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {
-            if (input.operation === 'diff') return remote.manifest
+            if (input.operation === 'diff') return readDiff(remote.manifest, input.path)
             if (!selectedPlan.allowWholeFileReads) throw new ReviewGatewayError('whole-file-read-not-authorized')
             if (input.operation === 'search' && typeof input.query === 'string') return { files: remote.manifest.files.filter(file => file.patch.includes(input.query as string)), limitations: ['search-limited-to-remote-diff'] }
             if (input.operation === 'context' && typeof input.path === 'string') {
@@ -447,9 +464,23 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         return contextText(read.bytes)
       }
       const guidance = await guidanceFor(manifest.files.map(file => file.path), !approved, authorizePath, approved)
+      // One run reads a fixed revision, so a path's text is fetched once; unavailable paths are remembered too.
+      const contents = new Map<string, Promise<string | null>>()
+      const cachedContext = (path: string, readSignal: AbortSignal): Promise<string | null> => {
+        let pending = contents.get(path)
+        if (!pending) {
+          pending = readContext(path, readSignal).catch(error => {
+            if (error instanceof ReviewGatewayError && error.code === 'review-context-unavailable') return null
+            contents.delete(path)
+            throw error
+          })
+          contents.set(path, pending)
+        }
+        return pending
+      }
       return { manifest, trustedGuidance: guidance.text, authorizedGuidance: guidance.authorizedGuidance, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {
         if (readSignal.aborted) throw new ReviewGatewayError('review-cancelled')
-        if (input.operation === 'diff') return manifest
+        if (input.operation === 'diff') return readDiff(manifest, input.path)
         if (!selectedPlan.allowWholeFileReads) throw new ReviewGatewayError('whole-file-read-not-authorized')
         if (input.operation === 'search') {
           if (typeof input.query !== 'string' || input.query.length > 500) throw new ReviewGatewayError('invalid-review-search')
@@ -457,14 +488,16 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           let scanned = 0
           for (const path of contextPaths) {
             if (++scanned > 2000 || matches.length >= 200) break
-            let content: string
-            try { content = await readContext(path, readSignal) } catch (error) { if (error instanceof ReviewGatewayError && error.code === 'review-context-unavailable') continue; throw error }
+            const content = await cachedContext(path, readSignal)
+            if (content === null) continue
             content.split('\n').forEach((line, index) => { if (line.includes(input.query as string) && matches.length < 200) matches.push({ path, line: index + 1, text: line.slice(0, 2000) }) })
           }
           return { matches, truncated: scanned > 2000 || matches.length >= 200 }
         }
         if (input.operation !== 'context' || typeof input.path !== 'string') throw new ReviewGatewayError('read-outside-review-scope')
-        return readContext(input.path, readSignal)
+        const content = await cachedContext(input.path, readSignal)
+        if (content === null) throw new ReviewGatewayError('review-context-unavailable')
+        return sliceLines(content, input.startLine, input.endLine)
       } }
     },
     async alreadyVerified(snapshot) {
@@ -899,6 +932,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       targetLabel: presentation?.target ?? snapshot.run.scope.repository.projectKey,
       publicationPreview: previews.get(snapshot.run.id), exportJson: presentReviewJson(snapshot),
       finishedTasks: snapshot.events.filter(e => e.type === 'worker-finished').length,
+      ...(service.tasks(snapshot.run.id) ?? {}),
       permissions: { cancel: active, repair: !active && snapshot.structured && ['workspace', 'paths'].includes(snapshot.run.scope.kind), publish: !active && snapshot.structured && snapshot.run.scope.kind === 'change-request', publishConfirmation: true, rerun: !active, verify: !active && snapshot.structured, locate: !active && snapshot.structured },
     }
   }
@@ -963,5 +997,6 @@ export async function invokeReviewModelSkill(raw: string, context: ToolCallConte
   if (parsed.arguments.fix || parsed.arguments.comment) throw new ReviewGatewayError('action-not-authorized')
   const service = await getOrCreateReviewService(context, permission)
   const { runId } = await service.startModel(raw, context.cancelSource.signal)
-  return JSON.stringify(await service.wait(runId))
+  const snapshot = await service.wait(runId)
+  return JSON.stringify({ reviewRunId: runId, status: snapshot.run.progress.status, report: JSON.parse(presentReviewJson(snapshot)) })
 }

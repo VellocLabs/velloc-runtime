@@ -50,8 +50,9 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
   })
   const candidates = { type: 'array', maxItems: 32, items: REVIEW_CANDIDATE_SCHEMA }
   const tools: ToolContract[] = [
-    tool('ReviewRead', 'Read authorized review material. Use diff to inspect selected hunks; context reads require a permitted path. No shell or scripts.', {
+    tool('ReviewRead', 'Read authorized review material. diff without a path returns the scope index; diff with a path returns that file\'s patch and anchors. context reads a permitted path, optionally only startLine..endLine. search finds a literal query across in-scope files. No shell or scripts.', {
       operation: { type: 'string', enum: ['diff', 'context', 'search'] }, path: { type: 'string' }, query: { type: 'string' },
+      startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 },
     }, ['operation'], input => bindings.read(input)),
     tool('ReviewLedger', 'Record review candidates, assessments, coverage, or explicit semantic duplicate merges in this run. Candidate IDs are host generated. assess uses assessments=[{candidateId,disposition,reason,support}]. To merge differently worded findings of the same root mechanism, use operation="merge-duplicates" with groups=[{keepId,duplicateIds,reason,support}]. Explain the shared trigger and mechanism with nonempty evidence; overlapping locations alone are not duplicates. Host requires the same revision, path, side, classification kind, and overlapping line spans. Preserve distinct mechanisms. Merging preserves all diagnostic IDs and independent assessments, but only keepId counts toward the retained report cap. Existing representatives cannot be merged into another group. Final output must include the combined support from the retained ledger.', {
       operation: { type: 'string', enum: ['append-candidates', 'assess', 'coverage', 'merge-duplicates'] }, candidates,
