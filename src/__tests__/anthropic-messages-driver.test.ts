@@ -29,6 +29,8 @@ import { SpawnSessionTool } from '../toolkit/builtin/spawnSession'
 import { ProposeSessionTool, WithdrawProposalTool } from '../toolkit/builtin/proposeSession'
 import { HandOffSessionTool } from '../toolkit/builtin/handOffSession'
 import { serializeToolsForModel } from '../engine/turn/bridgeSerialization'
+import { buildModelRequest } from '../engine/turn/modelTransport'
+import type { Message } from '../runtime/RuntimeTypes'
 import * as strictTools from '../utils/strictTools'
 import { createNoopToolUseContext, NoopPlatformCapabilities, createEmptyAppState } from '../runtime/testing/noopAdapters'
 
@@ -135,6 +137,45 @@ describe('anthropic-messages buildRequest', () => {
     })
     expect(b.system[0].text).toBe('base\n\nextra')
     expect(b.messages).toHaveLength(1)
+  })
+
+  it('keeps a system-role message inside the conversation in place, as a user-side reminder', () => {
+    const b = body({
+      systemPrompt: 'base',
+      messages: [
+        { role: 'user', content: 'q' },
+        { role: 'assistant', content: 'a' },
+        { role: 'system', content: [{ type: 'text', text: 'notice' }, { type: 'text', text: 'more' }] },
+        { role: 'user', content: 'next' },
+      ],
+    })
+    expect(b.system[0].text).toBe('base')
+    expect(b.messages).toEqual([
+      { role: 'user', content: [{ type: 'text', text: 'q' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'a' }] },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '<system-reminder>\nnotice\n\nmore\n</system-reminder>' },
+          { type: 'text', text: 'next', cache_control: { type: 'ephemeral' } },
+        ],
+      },
+    ])
+  })
+
+  it('ends on the user side when a system-role message is the last one', () => {
+    const b = body({
+      systemPrompt: 'base',
+      messages: [
+        { role: 'user', content: 'q' },
+        { role: 'assistant', content: 'a' },
+        { role: 'system', content: 'notice' },
+      ],
+    })
+    expect(b.messages.at(-1)).toEqual({
+      role: 'user',
+      content: [{ type: 'text', text: '<system-reminder>\nnotice\n</system-reminder>', cache_control: { type: 'ephemeral' } }],
+    })
   })
 
   it('translates images (base64 / url) and documents', () => {
@@ -744,4 +785,111 @@ describe('strict tool schemas keep declared property order', () => {
       expect(declared.some((keys) => keys.join() !== [...keys].sort().join())).toBe(true)
     })
   }
+})
+
+// ── Cached prefix across an injected turn ─────────────────────────────────
+
+function withoutBreakpoints(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutBreakpoints)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).filter(([k]) => k !== 'cache_control').map(([k, v]) => [k, withoutBreakpoints(v)]),
+    )
+  }
+  return value
+}
+
+type WireRequest = { system: string; messages: string[] }
+
+/** One request from stored rows through the engine's request builder and the
+ *  driver: the system text and one serialized entry per message, without
+ *  breakpoints. */
+function wireRequest(rows: Message[], skillsFound: string[]): WireRequest {
+  const callContext = createNoopToolUseContext({
+    tools: [] as never,
+    platformCapabilities: new NoopPlatformCapabilities(),
+    appState: createEmptyAppState(),
+    setAppState: () => {},
+  })
+  callContext.skillsFound = new Set(skillsFound)
+  const { payload } = buildModelRequest({
+    messages: rows,
+    baseInstructions: ['You are the coordinator.'],
+    userContext: { currentDate: "Today's date is 2026-11-03." },
+    systemAmbient: {},
+    callContext,
+    querySource: 'sdk',
+    providerId: context.providerId,
+  } as never, [])
+  const sent = withoutBreakpoints(JSON.parse(new TextDecoder().decode(
+    build(payload as unknown as Partial<BridgeModelRequestPayload>).body,
+  ))) as { system?: unknown; messages: unknown[] }
+  return { system: JSON.stringify(sent.system ?? null), messages: sent.messages.map(m => JSON.stringify(m)) }
+}
+
+function textsOf(message: string): string[] {
+  return (JSON.parse(message).content as Array<{ text?: string }>).map(part => part.text ?? '')
+}
+
+/** The later request repeats the earlier one up to its tail; the tail message
+ *  may only have grown at its end. */
+function expectPrefixKept(before: WireRequest, after: WireRequest): void {
+  expect(after.system).toBe(before.system)
+  const last = before.messages.length - 1
+  expect(after.messages.slice(0, last)).toEqual(before.messages.slice(0, last))
+  const tail = before.messages[last]!
+  expect(after.messages[last]!.startsWith(tail.slice(0, tail.lastIndexOf(']')))).toBe(true)
+}
+
+describe('cached prefix across a turn the harness starts', () => {
+  let n = 0
+  const uuid = () => `row-${++n}`
+  const user = (content: unknown, extra: object = {}) =>
+    ({ type: 'user', uuid: uuid(), message: { role: 'user', content }, ...extra }) as unknown as Message
+  const assistant = (content: unknown[]) =>
+    ({ type: 'assistant', uuid: uuid(), message: { role: 'assistant', content } }) as unknown as Message
+  const notice = (message: string) =>
+    ({ type: 'system', subtype: 'informational', uuid: uuid(), message }) as unknown as Message
+  const attachment = (row: object) =>
+    ({ type: 'attachment', uuid: uuid(), attachment: row }) as unknown as Message
+
+  // A turn that ran a tool, then the rows injected before the next request.
+  const turnOne: Message[] = [
+    user('Run one coordinator tick.'),
+    assistant([{ type: 'tool-call', toolCallId: 'call-1', toolName: 'Bash', args: { command: 'ls' } }]),
+    user([{ type: 'tool-result', toolCallId: 'call-1', toolName: 'Bash', result: 'a.md' }]),
+  ]
+  const answer = assistant([{ type: 'text', text: 'One change is ready for review.' }])
+
+  it('keeps the earlier blocks byte-identical after a slash notice, a child report and an automatic continuation', () => {
+    const before = wireRequest(turnOne, [])
+    const after = wireRequest([
+      ...turnOne,
+      answer,
+      notice('### Transcript debug\n\n| Field | Value |'),
+      attachment({ type: 'child_reports', text: 'Reports from child sessions this session started.' }),
+      user('Automatic continuation: no person wrote this.', { isMeta: true, origin: 'auto_continuation' }),
+    ], [])
+
+    expectPrefixKept(before, after)
+    expect(textsOf(after.messages.at(-1)!)).toContain('<system-reminder>\n### Transcript debug\n\n| Field | Value |\n</system-reminder>')
+  })
+
+  it('keeps the system text when a skill is discovered between turns', () => {
+    const before = wireRequest(turnOne, ['update-config'])
+    const after = wireRequest([
+      ...turnOne,
+      answer,
+      attachment({
+        type: 'skill_discovery',
+        skills: [{ name: 'simplify', description: 'Reviews changed code.', path: 'bundled:simplify', shortId: 'simplify' }],
+        signal: 'user_input',
+        source: 'native',
+      }),
+      user('<team-message from="review">side-chat: ready-to-merge</team-message>', { origin: 'mailbox' }),
+    ], ['update-config', 'simplify'])
+
+    expectPrefixKept(before, after)
+    expect(textsOf(after.messages.at(-1)!).join('\n')).toContain('- simplify: Reviews changed code.')
+  })
 })

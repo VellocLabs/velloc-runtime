@@ -318,8 +318,24 @@ function translateContentParts(parts: HostList): HostList {
   return result
 }
 
+/** The texts of a system message, in order. */
+function systemTexts(message: HostDict): string[] {
+  const contentStr = findString(message, 'content')
+  if (contentStr !== undefined) return [contentStr]
+  const texts: string[] = []
+  for (const p of findList(message, 'content') ?? []) {
+    if (!isHostDict(p)) continue
+    const t = findString(p, 'text')
+    if (t !== undefined) texts.push(t)
+  }
+  return texts
+}
+
 /** TranslateMessages (anthropic_provider.cc:981): system → top level,
- *  tool → user, consecutive same-role messages merged. */
+ *  tool → user, consecutive same-role messages merged. Only leading system
+ *  messages go to the top level: a later one stays in place as a
+ *  `<system-reminder>` text on the user side, because folding it into the
+ *  system would change the cached prefix of every request after it. */
 function translateMessages(messages: HostList): { messages: HostList; systemPrompt: string } {
   const result: HostDict[] = []
   let systemPrompt = ''
@@ -331,28 +347,27 @@ function translateMessages(messages: HostList): { messages: HostList; systemProm
     if (!isHostDict(msgValue)) continue
     const role = findString(msgValue, 'role')
     if (role === undefined) continue
-    if (role === 'system') {
-      const contentStr = findString(msgValue, 'content')
-      if (contentStr !== undefined) appendSystem(contentStr)
-      else {
-        for (const p of findList(msgValue, 'content') ?? []) {
-          if (!isHostDict(p)) continue
-          const t = findString(p, 'text')
-          if (t !== undefined) appendSystem(t)
-        }
-      }
-      continue
-    }
-    const anthropicRole = role === 'tool' ? 'user' : role
+    let wireRole = role === 'tool' ? 'user' : role
     let contentParts: HostList = []
-    const contentStr = findString(msgValue, 'content')
-    if (contentStr !== undefined) contentParts = [textPart(contentStr)]
-    else {
-      const list = findList(msgValue, 'content')
-      if (list) contentParts = translateContentParts(list)
+    if (role === 'system') {
+      const texts = systemTexts(msgValue)
+      if (result.length === 0) {
+        for (const text of texts) appendSystem(text)
+        continue
+      }
+      if (texts.length === 0) continue
+      wireRole = 'user'
+      contentParts = [textPart(`<system-reminder>\n${texts.join('\n\n')}\n</system-reminder>`)]
+    } else {
+      const contentStr = findString(msgValue, 'content')
+      if (contentStr !== undefined) contentParts = [textPart(contentStr)]
+      else {
+        const list = findList(msgValue, 'content')
+        if (list) contentParts = translateContentParts(list)
+      }
     }
     const last = result[result.length - 1]
-    if (last && findString(last, 'role') === anthropicRole) {
+    if (last && findString(last, 'role') === wireRole) {
       const lastContent = findList(last, 'content')
       if (lastContent) {
         lastContent.push(...contentParts)
@@ -361,7 +376,7 @@ function translateMessages(messages: HostList): { messages: HostList; systemProm
     }
     result.push(
       new Map<string, HostValue>([
-        ['role', anthropicRole],
+        ['role', wireRole],
         ['content', contentParts],
       ]),
     )

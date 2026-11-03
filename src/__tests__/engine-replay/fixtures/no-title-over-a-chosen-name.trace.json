@@ -31,8 +31,7 @@
       "toolUseContext": {
         "permissionMode": "default",
         "querySource": "sdk",
-        "availableSkills": [],
-        "discoveredSkillNames": []
+        "availableSkills": []
       },
       "requestContext": {
         "sessionId": "session-replay",

@@ -50,8 +50,7 @@
       "toolUseContext": {
         "permissionMode": "default",
         "querySource": "sdk",
-        "availableSkills": [],
-        "discoveredSkillNames": []
+        "availableSkills": []
       },
       "requestContext": {
         "sessionId": "session-replay",
@@ -151,8 +150,7 @@
       "toolUseContext": {
         "permissionMode": "default",
         "querySource": "sdk",
-        "availableSkills": [],
-        "discoveredSkillNames": []
+        "availableSkills": []
       },
       "requestContext": {
         "sessionId": "session-replay",
@@ -181,8 +179,7 @@
       "toolUseContext": {
         "permissionMode": "default",
         "querySource": "rename_generate_name",
-        "availableSkills": [],
-        "discoveredSkillNames": []
+        "availableSkills": []
       },
       "requestContext": {
         "sessionId": "session-replay",

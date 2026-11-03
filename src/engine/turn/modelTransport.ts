@@ -84,9 +84,10 @@ const BLOCKING_CALL_TIMEOUT_MS = 300_000
 // ── pure: request construction ─────────────────────────────────────────────
 
 /**
- * The per-call context the model may act on. Session id and working
- * directory are deliberately left out: the host could inline them into the
- * prompt, where they add noise or leak.
+ * The per-call context the model may act on, rendered into the system prompt.
+ * Session id and working directory are left out: they add noise or leak.
+ * Skills found mid-session are left out: a growing list would change the
+ * cached prefix, and each find reaches the model as an attachment.
  */
 function modelVisibleContext(params: QueryModelCallParams): Record<string, unknown> {
   const permissionContext = {
@@ -97,9 +98,6 @@ function modelVisibleContext(params: QueryModelCallParams): Record<string, unkno
     permissionMode: permissionContext.mode,
     querySource: params.querySource,
     availableSkills: params.callContext.options.commands.map(command => command.name),
-    discoveredSkillNames: [
-      ...(params.callContext.skillsFound ?? new Set<string>()),
-    ],
   }
 }
 
