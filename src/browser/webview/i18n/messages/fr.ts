@@ -2450,6 +2450,8 @@ export const fr: Messages = {
     'Lister les hooks enregistrés pour cette session, par événement',
   'slash.builtin.permissions':
     'Afficher le mode d’autorisation et les règles en vigueur',
+  'slash.builtin.masking':
+    'Masquer des mots-clés choisis au fournisseur du modèle : /masking on|off, rules <fichier>, log <fichier>|off, test <texte>',
   'slash.builtin.debug':
     'Diagnostiquer le Runtime {product} ; sous-commandes : transcript, log [on|off], verbose [on|off], trace [on|off], inspect [on|off]',
 
@@ -2581,6 +2583,98 @@ export const fr: Messages = {
     'Avertissement : échec de l’enregistrement dans settings.json ({error}) — la modification ne dure que jusqu’au prochain rechargement.',
   'slash.out.debug.skillUnavailable':
     'La compétence debug n’est pas disponible dans cette session.',
+  'slash.out.masking.problem.notAList':
+    'Les règles doivent être un tableau JSON d’objets avec les chaînes "match" et "alias", ou un objet contenant un tel tableau sous "rules".',
+  'slash.out.masking.problem.notARule':
+    'La règle {rule} n’est pas un objet avec les chaînes "match" et "alias".',
+  'slash.out.masking.problem.empty':
+    'Règle {rule} : "{field}" est vide.',
+  'slash.out.masking.problem.tooLong':
+    'Règle {rule} : "{field}" dépasse 512 octets.',
+  'slash.out.masking.problem.badChar':
+    'Règle {rule} : "{field}" contient un caractère de contrôle, ou l’alias contient un guillemet ou une barre oblique inverse.',
+  'slash.out.masking.problem.duplicateMatch':
+    'La règle {rule} a le même match que la règle {other}.',
+  'slash.out.masking.problem.aliasNotUnique':
+    'La règle {rule} a le même alias que la règle {other} ; les réponses ne pourraient pas être restaurées.',
+  'slash.out.masking.problem.aliasOverlapsMatch':
+    'Un alias et un match se contiennent l’un l’autre (règles {other} et {rule}) ; le remplacement ne serait pas réversible.',
+  'slash.out.masking.problem.aliasEqualsMatch':
+    'Règle {rule} : l’alias est identique au match.',
+  'slash.out.masking.problem.tooManyRules':
+    'Il y a plus de 256 règles.',
+  'slash.out.masking.usage.title':
+    'Utilisation : /masking',
+  'slash.out.masking.usage.status':
+    'indique si le remplacement est actif, les règles et le journal',
+  'slash.out.masking.usage.onOff':
+    'active ou désactive le remplacement des mots-clés',
+  'slash.out.masking.usage.rules':
+    'charge les règles depuis un fichier JSON ou du JSON en ligne',
+  'slash.out.masking.usage.listRules':
+    'liste les règles enregistrées',
+  'slash.out.masking.usage.log':
+    'écrit un journal des remplacements dans un fichier, ou arrête de l’écrire',
+  'slash.out.masking.usage.logDetail':
+    'consigne seulement les nombres, ou aussi le texte autour de chaque remplacement',
+  'slash.out.masking.usage.test':
+    'montre comment un texte serait remplacé ; rien n’est envoyé',
+  'slash.out.masking.noSettings':
+    'Cet hôte n’a pas de fichier de réglages, le remplacement ne peut donc pas être configuré ici.',
+  'slash.out.masking.persistFailed':
+    'Impossible d’enregistrer dans settings.json ({error}). Rien n’a été modifié.',
+  'slash.out.masking.noRules':
+    'Activation impossible : il n’y a aucune règle. Chargez-les avec /masking rules <fichier>.',
+  'slash.out.masking.badTable':
+    'Les règles enregistrées ne sont pas utilisables.',
+  'slash.out.masking.enabled':
+    'Le remplacement est actif avec {count} règles. Il s’applique dès la prochaine requête au modèle.',
+  'slash.out.masking.disabled':
+    'Le remplacement est désactivé. La prochaine requête au modèle est envoyée telle quelle.',
+  'slash.out.masking.readFailed':
+    'Impossible de lire {path} : {error}',
+  'slash.out.masking.badJson':
+    'Les règles ne sont pas un JSON valide : {error}',
+  'slash.out.masking.rulesRejected':
+    'Les règles n’ont pas été enregistrées.',
+  'slash.out.masking.rulesLoaded':
+    '{count} règles chargées depuis {path}.',
+  'slash.out.masking.rulesLoadedInline':
+    '{count} règles chargées.',
+  'slash.out.masking.logDetailContext':
+    'Le journal consigne désormais aussi les 24 caractères de part et d’autre de chaque remplacement sortant. Ce texte, ce sont vos données.',
+  'slash.out.masking.logDetailCounts':
+    'Le journal ne consigne désormais que les nombres.',
+  'slash.out.masking.logOff':
+    'Le journal des remplacements est désactivé.',
+  'slash.out.masking.logSet':
+    'Les remplacements sont consignés dans {path} ({detail}).',
+  'slash.out.masking.rulesEmpty':
+    'Aucune règle de remplacement n’est enregistrée.',
+  'slash.out.masking.rulesHeading':
+    'Règles de remplacement ({count})',
+  'slash.out.masking.testMasked':
+    'Le modèle recevrait :',
+  'slash.out.masking.testNoHits':
+    'Aucune règle ne correspond.',
+  'slash.out.masking.testHits':
+    'Remplacements par règle :',
+  'slash.out.masking.testCollision':
+    'Attention : ce texte contient déjà un alias, la réponse ne pourrait donc pas être restaurée exactement. Choisissez un autre alias.',
+  'slash.out.masking.statusOn':
+    'Le remplacement est actif avec {count} règles.',
+  'slash.out.masking.statusBroken':
+    'Le remplacement est activé mais inopérant, car les règles enregistrées ne sont pas utilisables.',
+  'slash.out.masking.statusNoRules':
+    'Le remplacement est activé mais inopérant, car il n’y a aucune règle.',
+  'slash.out.masking.statusOff':
+    'Le remplacement est désactivé ({count} règles enregistrées).',
+  'slash.out.masking.statusLog':
+    'Journal des remplacements : {path} ({detail}).',
+  'slash.out.masking.statusNoLog':
+    'Journal des remplacements : désactivé.',
+  'slash.out.masking.lastError':
+    'Dernière erreur : {error}',
   'slash.out.debug.usage.title':
     'Utilisation de {command}',
   'slash.out.debug.usage.issueArg':

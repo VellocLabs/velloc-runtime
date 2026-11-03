@@ -2441,6 +2441,8 @@ export const de: Messages = {
     'Die für diese Sitzung registrierten Hooks nach Event auflisten',
   'slash.builtin.permissions':
     'Berechtigungsmodus und geltende Regeln anzeigen',
+  'slash.builtin.masking':
+    'Ausgewählte Schlüsselwörter vor dem Modellanbieter verbergen: /masking on|off, rules <Datei>, log <Datei>|off, test <Text>',
   'slash.builtin.debug':
     '{product}-Runtime diagnostizieren; Unterbefehle: transcript, log [on|off], verbose [on|off], trace [on|off], inspect [on|off]',
 
@@ -2570,6 +2572,98 @@ export const de: Messages = {
     'Warnung: Speichern in settings.json fehlgeschlagen ({error}) — die Änderung gilt nur bis zum nächsten Neuladen.',
   'slash.out.debug.skillUnavailable':
     'Der Skill debug ist in dieser Sitzung nicht verfügbar.',
+  'slash.out.masking.problem.notAList':
+    'Die Regeln müssen ein JSON-Array aus Objekten mit den Zeichenketten "match" und "alias" sein, oder ein Objekt, das ein solches Array unter "rules" enthält.',
+  'slash.out.masking.problem.notARule':
+    'Regel {rule} ist kein Objekt mit den Zeichenketten "match" und "alias".',
+  'slash.out.masking.problem.empty':
+    'Regel {rule}: "{field}" ist leer.',
+  'slash.out.masking.problem.tooLong':
+    'Regel {rule}: "{field}" ist länger als 512 Byte.',
+  'slash.out.masking.problem.badChar':
+    'Regel {rule}: "{field}" enthält ein Steuerzeichen, oder der Alias enthält ein Anführungszeichen oder einen Backslash.',
+  'slash.out.masking.problem.duplicateMatch':
+    'Regel {rule} hat denselben match wie Regel {other}.',
+  'slash.out.masking.problem.aliasNotUnique':
+    'Regel {rule} hat denselben Alias wie Regel {other}; Antworten ließen sich nicht wiederherstellen.',
+  'slash.out.masking.problem.aliasOverlapsMatch':
+    'Ein Alias und ein match enthalten einander (Regeln {other} und {rule}); die Ersetzung wäre nicht umkehrbar.',
+  'slash.out.masking.problem.aliasEqualsMatch':
+    'Regel {rule}: Der Alias ist gleich dem match.',
+  'slash.out.masking.problem.tooManyRules':
+    'Es gibt mehr als 256 Regeln.',
+  'slash.out.masking.usage.title':
+    'Verwendung: /masking',
+  'slash.out.masking.usage.status':
+    'zeigt, ob das Ersetzen an ist, die Regeln und das Protokoll',
+  'slash.out.masking.usage.onOff':
+    'schaltet das Ersetzen von Schlüsselwörtern ein oder aus',
+  'slash.out.masking.usage.rules':
+    'lädt die Regeln aus einer JSON-Datei oder aus Inline-JSON',
+  'slash.out.masking.usage.listRules':
+    'listet die gespeicherten Regeln auf',
+  'slash.out.masking.usage.log':
+    'schreibt ein Ersetzungsprotokoll in eine Datei oder hört damit auf',
+  'slash.out.masking.usage.logDetail':
+    'protokolliert nur Anzahlen oder auch den Text um jede Ersetzung',
+  'slash.out.masking.usage.test':
+    'zeigt, wie ein Text ersetzt würde; nichts wird gesendet',
+  'slash.out.masking.noSettings':
+    'Dieser Host hat keine Einstellungsdatei, daher lässt sich das Ersetzen hier nicht einrichten.',
+  'slash.out.masking.persistFailed':
+    'Speichern in settings.json fehlgeschlagen ({error}). Es wurde nichts geändert.',
+  'slash.out.masking.noRules':
+    'Einschalten nicht möglich: Es gibt keine Regeln. Lade sie mit /masking rules <Datei>.',
+  'slash.out.masking.badTable':
+    'Die gespeicherten Regeln sind nicht verwendbar.',
+  'slash.out.masking.enabled':
+    'Das Ersetzen ist an, mit {count} Regeln. Es gilt ab der nächsten Modellanfrage.',
+  'slash.out.masking.disabled':
+    'Das Ersetzen ist aus. Die nächste Modellanfrage wird unverändert gesendet.',
+  'slash.out.masking.readFailed':
+    '{path} kann nicht gelesen werden: {error}',
+  'slash.out.masking.badJson':
+    'Die Regeln sind kein gültiges JSON: {error}',
+  'slash.out.masking.rulesRejected':
+    'Die Regeln wurden nicht gespeichert.',
+  'slash.out.masking.rulesLoaded':
+    '{count} Regeln aus {path} geladen.',
+  'slash.out.masking.rulesLoadedInline':
+    '{count} Regeln geladen.',
+  'slash.out.masking.logDetailContext':
+    'Das Protokoll enthält jetzt auch die 24 Zeichen vor und nach jeder ausgehenden Ersetzung. Dieser Text sind deine Daten.',
+  'slash.out.masking.logDetailCounts':
+    'Das Protokoll enthält jetzt nur Anzahlen.',
+  'slash.out.masking.logOff':
+    'Das Ersetzungsprotokoll ist aus.',
+  'slash.out.masking.logSet':
+    'Ersetzungen werden in {path} protokolliert ({detail}).',
+  'slash.out.masking.rulesEmpty':
+    'Es sind keine Ersetzungsregeln gespeichert.',
+  'slash.out.masking.rulesHeading':
+    'Ersetzungsregeln ({count})',
+  'slash.out.masking.testMasked':
+    'Das Modell würde erhalten:',
+  'slash.out.masking.testNoHits':
+    'Keine Regel hat getroffen.',
+  'slash.out.masking.testHits':
+    'Ersetzungen je Regel:',
+  'slash.out.masking.testCollision':
+    'Achtung: Dieser Text enthält bereits einen Alias, daher ließe sich die Antwort nicht exakt wiederherstellen. Wähle einen anderen Alias.',
+  'slash.out.masking.statusOn':
+    'Das Ersetzen ist an, mit {count} Regeln.',
+  'slash.out.masking.statusBroken':
+    'Das Ersetzen ist eingeschaltet, aber nicht aktiv, weil die gespeicherten Regeln nicht verwendbar sind.',
+  'slash.out.masking.statusNoRules':
+    'Das Ersetzen ist eingeschaltet, aber nicht aktiv, weil es keine Regeln gibt.',
+  'slash.out.masking.statusOff':
+    'Das Ersetzen ist aus ({count} Regeln gespeichert).',
+  'slash.out.masking.statusLog':
+    'Ersetzungsprotokoll: {path} ({detail}).',
+  'slash.out.masking.statusNoLog':
+    'Ersetzungsprotokoll: aus.',
+  'slash.out.masking.lastError':
+    'Letzter Fehler: {error}',
   'slash.out.debug.usage.title':
     'Verwendung von {command}',
   'slash.out.debug.usage.issueArg':

@@ -55,6 +55,7 @@ import type { RoutineCoordinator } from './RoutineCoordinator'
 import { installRuntimeRenderCache } from '../../renderCache/runtimeRenderCache'
 import { readIdlePurgeEnabled } from '../../renderCache/idlePurgeFlag'
 import { TerminalService, type CliConversationStore } from '../../terminal/TerminalService'
+import { startModelMasking } from '../../models/masking/maskingBoot'
 
 export interface ManagerBootServicesHost {
   getDirectBridgeTransport(): DirectPortBridgeTransport | null
@@ -123,6 +124,7 @@ export class ManagerBootServices {
     void this.bootRoutineRuntimeOnce()
     void this.bootTeamRuntimeOnce()
     void this.publishProviderConfigsAtBoot()
+    this.startModelMasking()
     void this.bootProviderModsOnce()
     void this.installModelCatalogOnce()
     void this.publishBinaryRegistryAtBoot()
@@ -136,6 +138,8 @@ export class ManagerBootServices {
     // The team registry needs a transport (below); if storage became ready
     // before one existed, this is the retry. Idempotent.
     void this.bootTeamRuntimeOnce()
+    // …and model egress masking (F-39): its settings read and its log.
+    this.startModelMasking()
     // …and so does the provider-mod scan: it reads plugins through the fs. It
     // starts here, not at storage ready, so the plugin launchers are published
     // before the first window subscribes (F-25).
@@ -170,6 +174,15 @@ export class ManagerBootServices {
   /** The host port went away: the streams it carried died with it. */
   onDirectTransportDetached(): void {
     this.terminals.hostGone()
+  }
+
+  private startModelMasking(): void {
+    startModelMasking({
+      homeDir: () => this.host.getHomeDir() || undefined,
+      transport: () => this.host.getDirectBridgeTransport() ?? undefined,
+      requestId: () => this.host.createBridgeRequestId(),
+      fs: () => this.getManagerFs(),
+    })
   }
 
   getManagerFs(): RuntimeFs {

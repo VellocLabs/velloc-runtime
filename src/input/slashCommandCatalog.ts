@@ -26,6 +26,7 @@ export const BROWSER_SLASH_COMMANDS = [
   'skills',
   'hooks',
   'permissions',
+  'masking',
 ] as const
 
 export const NEXUS_SLASH_COMMANDS = [
@@ -48,6 +49,7 @@ export const NEXUS_SLASH_COMMANDS = [
   'skills',
   'hooks',
   'permissions',
+  'masking',
 ] as const
 
 /**
@@ -79,6 +81,7 @@ export const BUILTIN_SLASH_COMMAND_DESCRIPTION_KEYS: Record<
   skills: 'slash.builtin.skills',
   hooks: 'slash.builtin.hooks',
   permissions: 'slash.builtin.permissions',
+  masking: 'slash.builtin.masking',
 }
 
 export type BrowserSlashCommand = (typeof BROWSER_SLASH_COMMANDS)[number]

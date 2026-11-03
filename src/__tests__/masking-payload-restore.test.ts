@@ -1,0 +1,166 @@
+import { describe, expect, it } from 'vitest'
+import type { BridgeModelRequestPayload } from '../browser/bridge/browserBridgeProtocol'
+import type { DriverStreamEvent } from '../models/drivers/driverTypes'
+import { compileMasking, type MaskingRule } from '../models/masking/maskingRules'
+import { maskPayload, MaskingTally, PayloadMasker } from '../models/masking/maskPayload'
+import { createRestoreFilter, type RestoreWhere } from '../models/masking/restoreStream'
+
+const RULES: MaskingRule[] = [
+  { match: 'AcmeCo', alias: 'Northwind' },
+  { match: 'widget', alias: 'beacon' },
+]
+const masking = compileMasking(RULES)
+
+function payload(): BridgeModelRequestPayload {
+  return {
+    messages: [
+      { role: 'user', content: 'Fix the widget build for AcmeCo' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'the widget repo', signature: 'sig-widget' },
+          { type: 'text', text: 'Reading widget/src' },
+          { type: 'tool-call', toolCallId: 'c1', toolName: 'mcp__widget__read', args: { path: 'widget/a.ts', n: 3 } },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [
+          { type: 'tool-result', toolCallId: 'c1', toolName: 'mcp__widget__read', result: { out: 'origin git@AcmeCo/widget' } },
+          { type: 'image', data: 'd2lkZ2V0', mimeType: 'image/png' },
+        ],
+      },
+      { type: 'user', message: { role: 'user', content: 'nested widget' }, uuid: 'widget-uuid' },
+    ],
+    requestContext: { sessionId: 'widget-session', purpose: 'turn', querySource: 'sdk' },
+    systemPrompt: ['You work on widget.', 'Owner: AcmeCo'],
+    userContext: { projectNotes: 'widget rules' },
+    systemContext: { gitStatus: 'branch widget' },
+    providerId: 'widget-provider',
+    model: 'widget-model',
+    tools: [
+      {
+        type: 'function',
+        name: 'mcp__widget__read',
+        description: 'Read a widget file',
+        parameters: { type: 'object', properties: { widget: { type: 'string', description: 'widget path', enum: ['widget'] } } },
+      },
+    ],
+    providerBodyExtension: { metadata: { user: 'AcmeCo' } },
+  }
+}
+
+describe('maskPayload', () => {
+  it('masks the text the provider reads and leaves identifiers and bytes alone', () => {
+    const original = payload()
+    const snapshot = JSON.parse(JSON.stringify(original))
+    const tally = new MaskingTally(false)
+    const out = maskPayload(original, new PayloadMasker(masking, tally))
+
+    expect(original).toEqual(snapshot)
+    expect(out.messages[0]!.content).toBe('Fix the beacon build for Northwind')
+    const assistant = out.messages[1]!.content as any[]
+    expect(assistant[0]).toEqual({ type: 'thinking', thinking: 'the beacon repo', signature: 'sig-widget' })
+    expect(assistant[1].text).toBe('Reading beacon/src')
+    expect(assistant[2]).toMatchObject({ toolName: 'mcp__beacon__read', args: { path: 'beacon/a.ts', n: 3 } })
+    const tool = out.messages[2]!.content as any[]
+    expect(tool[0].result).toEqual({ out: 'origin git@Northwind/beacon' })
+    expect(tool[1]).toBe((original.messages[2]!.content as any[])[1])
+    expect((out.messages[3] as any).message.content).toBe('nested beacon')
+    expect((out.messages[3] as any).uuid).toBe('widget-uuid')
+
+    expect(out.requestContext).toBe(original.requestContext)
+    expect(out.providerId).toBe('widget-provider')
+    expect(out.model).toBe('widget-model')
+    expect(out.systemPrompt).toEqual(['You work on beacon.', 'Owner: Northwind'])
+    expect(out.userContext).toEqual({ projectNotes: 'beacon rules' })
+    expect(out.systemContext).toEqual({ gitStatus: 'branch beacon' })
+    expect(out.tools![0]).toEqual({
+      type: 'function',
+      name: 'mcp__beacon__read',
+      description: 'Read a beacon file',
+      parameters: { type: 'object', properties: { widget: { type: 'string', description: 'beacon path', enum: ['beacon'] } } },
+    })
+    expect(out.providerBodyExtension).toEqual({ metadata: { user: 'Northwind' } })
+
+    expect(tally.hits.get('messages')!.get(1)).toBe(8)
+    expect(tally.hits.get('tools')!.get(1)).toBe(4)
+    expect(tally.collisions.size).toBe(0)
+  })
+
+  it('shares untouched parts and records collisions and context', () => {
+    const tally = new MaskingTally(true)
+    const original: BridgeModelRequestPayload = {
+      messages: [{ role: 'user', content: 'plain' }, { role: 'user', content: 'Northwind already, and AcmeCo' }],
+    }
+    const out = maskPayload(original, new PayloadMasker(masking, tally))
+    expect(out.messages[0]).toBe(original.messages[0])
+    expect([...tally.collisions]).toEqual(['messages'])
+    expect(tally.contexts).toEqual([
+      { rule: 0, where: 'messages', context: 'Northwind already, and ⟦Northwind⟧' },
+    ])
+  })
+})
+
+function restoreAll(events: DriverStreamEvent[][]) {
+  const hits: Array<[RestoreWhere, number]> = []
+  const filter = createRestoreFilter(masking, (where, rule) => hits.push([where, rule]))
+  const out = events.flatMap(batch => filter.apply(batch))
+  out.push(...filter.flush())
+  return { out, hits }
+}
+
+const textOf = (events: DriverStreamEvent[], type: 'text_delta' | 'reasoning_delta') =>
+  events.filter(e => e.type === type).map(e => (e as { text: string }).text).join('')
+
+describe('createRestoreFilter', () => {
+  it('restores an alias split into one-character deltas', () => {
+    const reply = 'Built beacon for Northwind, and beacon again.'
+    const { out, hits } = restoreAll([...reply].map(ch => [{ type: 'text_delta', text: ch }]))
+    expect(textOf(out, 'text_delta')).toBe('Built widget for AcmeCo, and widget again.')
+    expect(hits).toEqual([['text', 1], ['text', 0], ['text', 1]])
+  })
+
+  it('keeps channels apart and flushes a held tail before another channel', () => {
+    const { out } = restoreAll([
+      [{ type: 'reasoning_delta', text: 'think bea' }],
+      [{ type: 'reasoning_delta', text: 'con' }],
+      [{ type: 'text_delta', text: 'see North' }],
+      [{ type: 'tool_call_start', id: 't1', name: 'mcp__beacon__read' }],
+      [{ type: 'tool_call_delta', id: 't1', argsTextDelta: '{"path":"bea' }],
+      [{ type: 'tool_call_delta', id: 't1', argsTextDelta: 'con/x"}' }],
+      [{ type: 'tool_call', id: 't1', name: 'mcp__beacon__read' }],
+      [{ type: 'text_delta', text: 'wind' }],
+      [{ type: 'finish', finishReason: 'tool_calls' }],
+    ])
+    expect(textOf(out, 'reasoning_delta')).toBe('think widget')
+    // The text tail was flushed when the tool call opened: a split across
+    // another channel is not joined.
+    expect(textOf(out, 'text_delta')).toBe('see Northwind')
+    expect(out.find(e => e.type === 'tool_call_start')).toEqual({ type: 'tool_call_start', id: 't1', name: 'mcp__widget__read' })
+    const args = out
+      .filter(e => e.type === 'tool_call_delta')
+      .map(e => (e as { argsTextDelta?: string }).argsTextDelta ?? '')
+      .join('')
+    expect(args).toBe('{"path":"widget/x"}')
+    expect(out.at(-1)).toEqual({ type: 'finish', finishReason: 'tool_calls' })
+    const types = out.map(e => e.type)
+    expect(types.indexOf('tool_call')).toBeLessThan(types.indexOf('finish'))
+  })
+
+  it('restores a whole tool input object, names and error messages', () => {
+    const { out } = restoreAll([
+      [{ type: 'tool_call', id: 'g1', name: 'beacon_tool', input: { path: 'beacon/a', list: ['Northwind', 2] } }],
+      [{ type: 'error', message: 'Northwind quota exceeded', httpStatus: 429 }],
+    ])
+    expect(out).toEqual([
+      { type: 'tool_call', id: 'g1', name: 'widget_tool', input: { path: 'widget/a', list: ['AcmeCo', 2] } },
+      { type: 'error', message: 'AcmeCo quota exceeded', httpStatus: 429 },
+    ])
+  })
+
+  it('releases a held tail at the end of the stream', () => {
+    const { out } = restoreAll([[{ type: 'text_delta', text: 'ends with Nor' }]])
+    expect(textOf(out, 'text_delta')).toBe('ends with Nor')
+  })
+})

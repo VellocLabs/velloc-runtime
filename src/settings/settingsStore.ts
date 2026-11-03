@@ -23,6 +23,7 @@ import {
   type ModelTierSlot,
   type NexusPermissionsSettings,
   type NexusPluginConfig,
+  type NexusModelMaskingSettings,
   type NexusSettingsV1,
   type SessionModelPolicy,
   type SessionModelPolicyType,
@@ -712,7 +713,31 @@ function normalizeSettings(
   )
   if (sessionModelPolicy) out.sessionModelPolicy = sessionModelPolicy
 
+  const modelMasking = normalizeModelMasking(rawAny.modelMasking)
+  if (modelMasking) out.modelMasking = modelMasking
+
   return out
+}
+
+/** The `modelMasking` section's shape (F-39). Rules keep their order; a
+ *  malformed rule is kept out here, and the table's own validation runs
+ *  where it is used, so a bad table is reported, not silently trimmed. */
+function normalizeModelMasking(raw: unknown): NexusModelMaskingSettings | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const r = raw as Record<string, unknown>
+  const out: NexusModelMaskingSettings = {}
+  if (typeof r.enabled === 'boolean') out.enabled = r.enabled
+  if (Array.isArray(r.rules)) {
+    out.rules = r.rules
+      .filter((rule): rule is { match: string; alias: string } =>
+        !!rule && typeof rule === 'object'
+        && typeof (rule as Record<string, unknown>).match === 'string'
+        && typeof (rule as Record<string, unknown>).alias === 'string')
+      .map(rule => ({ match: rule.match, alias: rule.alias }))
+  }
+  if (typeof r.logPath === 'string' && r.logPath.length > 0) out.logPath = r.logPath
+  if (r.logDetail === 'counts' || r.logDetail === 'context') out.logDetail = r.logDetail
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 /**

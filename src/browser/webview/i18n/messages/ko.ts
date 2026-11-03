@@ -2376,6 +2376,8 @@ export const ko: Messages = {
   'slash.builtin.skills': '불러온 스킬과 각각의 호출 방법 나열',
   'slash.builtin.hooks': '이 세션에 등록된 훅을 이벤트별로 나열',
   'slash.builtin.permissions': '권한 모드와 적용 중인 규칙 표시',
+  'slash.builtin.masking':
+    '지정한 키워드를 모델 제공업체에게 숨기기: /masking on|off, rules <파일>, log <파일>|off, test <텍스트>',
   'slash.builtin.debug':
     '{product} 런타임 진단. 하위 명령: transcript, log [on|off], verbose [on|off], trace [on|off], inspect [on|off]',
 
@@ -2497,6 +2499,98 @@ export const ko: Messages = {
     '경고: settings.json에 저장하지 못했습니다({error}) — 변경 사항은 다음 새로고침 전까지만 유지됩니다.',
   'slash.out.debug.skillUnavailable':
     '이 세션에서는 debug 스킬을 사용할 수 없습니다.',
+  'slash.out.masking.problem.notAList':
+    '규칙은 "match"와 "alias" 문자열을 가진 객체의 JSON 배열이거나, 그런 배열을 "rules"에 담은 객체여야 해요.',
+  'slash.out.masking.problem.notARule':
+    '규칙 {rule}은(는) "match"와 "alias" 문자열을 가진 객체가 아니에요.',
+  'slash.out.masking.problem.empty':
+    '규칙 {rule}: "{field}"이(가) 비어 있어요.',
+  'slash.out.masking.problem.tooLong':
+    '규칙 {rule}: "{field}"이(가) 512바이트를 넘어요.',
+  'slash.out.masking.problem.badChar':
+    '규칙 {rule}: "{field}"에 제어 문자가 있거나, 별칭에 따옴표 또는 백슬래시가 있어요.',
+  'slash.out.masking.problem.duplicateMatch':
+    '규칙 {rule}의 match가 규칙 {other}와 같아요.',
+  'slash.out.masking.problem.aliasNotUnique':
+    '규칙 {rule}의 별칭이 규칙 {other}와 같아서 응답을 복원할 수 없어요.',
+  'slash.out.masking.problem.aliasOverlapsMatch':
+    '별칭과 match가 서로를 포함해서(규칙 {other}, {rule}) 바꾼 내용을 되돌릴 수 없어요.',
+  'slash.out.masking.problem.aliasEqualsMatch':
+    '규칙 {rule}: 별칭이 match와 같아요.',
+  'slash.out.masking.problem.tooManyRules':
+    '규칙이 256개를 넘어요.',
+  'slash.out.masking.usage.title':
+    '사용법: /masking',
+  'slash.out.masking.usage.status':
+    '켜져 있는지, 규칙과 로그를 보여줘요',
+  'slash.out.masking.usage.onOff':
+    '키워드 바꾸기를 켜거나 꺼요',
+  'slash.out.masking.usage.rules':
+    'JSON 파일이나 인라인 JSON에서 규칙을 불러와요',
+  'slash.out.masking.usage.listRules':
+    '저장된 규칙을 보여줘요',
+  'slash.out.masking.usage.log':
+    '바꾼 기록을 파일에 쓰거나 그만 써요',
+  'slash.out.masking.usage.logDetail':
+    '로그에 횟수만 쓸지, 바꾼 곳 앞뒤 글자도 쓸지 정해요',
+  'slash.out.masking.usage.test':
+    '텍스트가 어떻게 바뀌는지 보여줘요. 아무것도 보내지 않아요',
+  'slash.out.masking.noSettings':
+    '이 호스트에는 설정 파일이 없어서 여기서는 설정할 수 없어요.',
+  'slash.out.masking.persistFailed':
+    'settings.json에 저장하지 못했어요({error}). 아무것도 바뀌지 않았어요.',
+  'slash.out.masking.noRules':
+    '켤 수 없어요: 규칙이 없어요. /masking rules <파일>로 불러오세요.',
+  'slash.out.masking.badTable':
+    '저장된 규칙을 사용할 수 없어요.',
+  'slash.out.masking.enabled':
+    '키워드 바꾸기를 켰어요(규칙 {count}개). 다음 모델 요청부터 적용돼요.',
+  'slash.out.masking.disabled':
+    '키워드 바꾸기를 껐어요. 다음 모델 요청은 그대로 보내져요.',
+  'slash.out.masking.readFailed':
+    '{path}을(를) 읽을 수 없어요: {error}',
+  'slash.out.masking.badJson':
+    '규칙이 올바른 JSON이 아니에요: {error}',
+  'slash.out.masking.rulesRejected':
+    '규칙을 저장하지 않았어요.',
+  'slash.out.masking.rulesLoaded':
+    '{path}에서 규칙 {count}개를 불러왔어요.',
+  'slash.out.masking.rulesLoadedInline':
+    '규칙 {count}개를 불러왔어요.',
+  'slash.out.masking.logDetailContext':
+    '이제 로그에 보내는 내용에서 바꾼 곳마다 앞뒤 24글자도 기록돼요. 이 글자는 사용자의 데이터예요.',
+  'slash.out.masking.logDetailCounts':
+    '이제 로그에 횟수만 기록돼요.',
+  'slash.out.masking.logOff':
+    '바꾼 기록 로그가 꺼졌어요.',
+  'slash.out.masking.logSet':
+    '바꾼 기록은 {path}에 남아요({detail}).',
+  'slash.out.masking.rulesEmpty':
+    '저장된 바꾸기 규칙이 없어요.',
+  'slash.out.masking.rulesHeading':
+    '바꾸기 규칙({count})',
+  'slash.out.masking.testMasked':
+    '모델이 받을 내용:',
+  'slash.out.masking.testNoHits':
+    '일치한 규칙이 없어요.',
+  'slash.out.masking.testHits':
+    '규칙별 바꾼 횟수:',
+  'slash.out.masking.testCollision':
+    '주의: 이 텍스트에 이미 별칭이 있어서 응답을 정확히 복원할 수 없어요. 다른 별칭을 고르세요.',
+  'slash.out.masking.statusOn':
+    '키워드 바꾸기가 켜져 있어요(규칙 {count}개).',
+  'slash.out.masking.statusBroken':
+    '키워드 바꾸기가 켜져 있지만, 저장된 규칙을 사용할 수 없어서 적용되지 않아요.',
+  'slash.out.masking.statusNoRules':
+    '키워드 바꾸기가 켜져 있지만, 규칙이 없어서 적용되지 않아요.',
+  'slash.out.masking.statusOff':
+    '키워드 바꾸기가 꺼져 있어요(저장된 규칙 {count}개).',
+  'slash.out.masking.statusLog':
+    '바꾼 기록 로그: {path}({detail}).',
+  'slash.out.masking.statusNoLog':
+    '바꾼 기록 로그: 꺼짐.',
+  'slash.out.masking.lastError':
+    '최근 오류: {error}',
   'slash.out.debug.usage.title':
     '{command} 사용법',
   'slash.out.debug.usage.issueArg':

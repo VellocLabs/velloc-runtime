@@ -2385,6 +2385,8 @@ export const ja: Messages = {
   'slash.builtin.skills': '読み込み済みのスキルと呼び出し方法を一覧表示',
   'slash.builtin.hooks': 'このセッションに登録されたフックをイベント別に一覧表示',
   'slash.builtin.permissions': '権限モードと有効なルールを表示',
+  'slash.builtin.masking':
+    '指定したキーワードをモデルプロバイダーから隠す: /masking on|off、rules <ファイル>、log <ファイル>|off、test <テキスト>',
   'slash.builtin.debug':
     '{product} ランタイムを診断。サブコマンド：transcript、log [on|off]、verbose [on|off]、trace [on|off]、inspect [on|off]',
 
@@ -2507,6 +2509,98 @@ export const ja: Messages = {
     '警告：settings.json への保存に失敗しました（{error}）— 変更は次の再読み込みまでしか持続しません。',
   'slash.out.debug.skillUnavailable':
     'debug スキルはこのセッションでは利用できません。',
+  'slash.out.masking.problem.notAList':
+    'ルールは "match" と "alias" の文字列を持つオブジェクトの JSON 配列か、その配列を "rules" に持つオブジェクトである必要があります。',
+  'slash.out.masking.problem.notARule':
+    'ルール {rule} は "match" と "alias" の文字列を持つオブジェクトではありません。',
+  'slash.out.masking.problem.empty':
+    'ルール {rule}: "{field}" が空です。',
+  'slash.out.masking.problem.tooLong':
+    'ルール {rule}: "{field}" が 512 バイトを超えています。',
+  'slash.out.masking.problem.badChar':
+    'ルール {rule}: "{field}" に制御文字が含まれているか、エイリアスに引用符またはバックスラッシュが含まれています。',
+  'slash.out.masking.problem.duplicateMatch':
+    'ルール {rule} の match がルール {other} と同じです。',
+  'slash.out.masking.problem.aliasNotUnique':
+    'ルール {rule} のエイリアスがルール {other} と同じため、返答を復元できません。',
+  'slash.out.masking.problem.aliasOverlapsMatch':
+    'エイリアスと match が互いを含むため（ルール {other} と {rule}）、置き換えを元に戻せません。',
+  'slash.out.masking.problem.aliasEqualsMatch':
+    'ルール {rule}: エイリアスが match と同じです。',
+  'slash.out.masking.problem.tooManyRules':
+    'ルールが 256 件を超えています。',
+  'slash.out.masking.usage.title':
+    '使い方: /masking',
+  'slash.out.masking.usage.status':
+    'オンかどうか、ルール、ログを表示',
+  'slash.out.masking.usage.onOff':
+    'キーワードの置き換えをオンまたはオフにする',
+  'slash.out.masking.usage.rules':
+    'JSON ファイルまたはインライン JSON からルールを読み込む',
+  'slash.out.masking.usage.listRules':
+    '保存済みのルールを一覧表示',
+  'slash.out.masking.usage.log':
+    '置き換えのログをファイルに書く、または書くのをやめる',
+  'slash.out.masking.usage.logDetail':
+    'ログに回数だけを書くか、置き換え箇所の前後の文字も書くか',
+  'slash.out.masking.usage.test':
+    'テキストがどう置き換えられるかを表示（何も送信しません）',
+  'slash.out.masking.noSettings':
+    'このホストには設定ファイルがないため、ここでは設定できません。',
+  'slash.out.masking.persistFailed':
+    'settings.json に保存できませんでした（{error}）。何も変更していません。',
+  'slash.out.masking.noRules':
+    'オンにできません: ルールがありません。/masking rules <ファイル> で読み込んでください。',
+  'slash.out.masking.badTable':
+    '保存済みのルールは使用できません。',
+  'slash.out.masking.enabled':
+    'キーワードの置き換えをオンにしました（ルール {count} 件）。次のモデルリクエストから適用されます。',
+  'slash.out.masking.disabled':
+    'キーワードの置き換えをオフにしました。次のモデルリクエストはそのまま送信されます。',
+  'slash.out.masking.readFailed':
+    '{path} を読み込めません: {error}',
+  'slash.out.masking.badJson':
+    'ルールが有効な JSON ではありません: {error}',
+  'slash.out.masking.rulesRejected':
+    'ルールは保存されませんでした。',
+  'slash.out.masking.rulesLoaded':
+    '{path} から {count} 件のルールを読み込みました。',
+  'slash.out.masking.rulesLoadedInline':
+    '{count} 件のルールを読み込みました。',
+  'slash.out.masking.logDetailContext':
+    'ログには送信時の各置き換え箇所の前後 24 文字も記録されます。この文字列はあなたのデータです。',
+  'slash.out.masking.logDetailCounts':
+    'ログには回数だけを記録します。',
+  'slash.out.masking.logOff':
+    '置き換えのログはオフです。',
+  'slash.out.masking.logSet':
+    '置き換えは {path} に記録されます（{detail}）。',
+  'slash.out.masking.rulesEmpty':
+    '保存済みの置き換えルールはありません。',
+  'slash.out.masking.rulesHeading':
+    '置き換えルール（{count}）',
+  'slash.out.masking.testMasked':
+    'モデルが受け取る内容:',
+  'slash.out.masking.testNoHits':
+    '一致したルールはありません。',
+  'slash.out.masking.testHits':
+    'ルールごとの置き換え回数:',
+  'slash.out.masking.testCollision':
+    '注意: このテキストにはすでにエイリアスが含まれているため、返答を正確に復元できません。別のエイリアスを選んでください。',
+  'slash.out.masking.statusOn':
+    'キーワードの置き換えはオンです（ルール {count} 件）。',
+  'slash.out.masking.statusBroken':
+    'キーワードの置き換えはオンですが、保存済みのルールが使用できないため適用されていません。',
+  'slash.out.masking.statusNoRules':
+    'キーワードの置き換えはオンですが、ルールがないため適用されていません。',
+  'slash.out.masking.statusOff':
+    'キーワードの置き換えはオフです（保存済みルール {count} 件）。',
+  'slash.out.masking.statusLog':
+    '置き換えのログ: {path}（{detail}）。',
+  'slash.out.masking.statusNoLog':
+    '置き換えのログ: オフ。',
+  'slash.out.masking.lastError':
+    '直近のエラー: {error}',
   'slash.out.debug.usage.title':
     '{command} の使い方',
   'slash.out.debug.usage.issueArg':

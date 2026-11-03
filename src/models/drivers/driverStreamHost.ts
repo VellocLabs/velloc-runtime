@@ -28,6 +28,10 @@ import {
   type ProviderRequestSeam,
 } from './providerRequestSeam'
 import { sessionWorkingDirOf } from './sessionWorkingDirs'
+import { runtimeProviderConfigs } from './runtimeProviders'
+import { resolveProviderUserAgent } from '../../config/providerUserAgent'
+import { modelMasking, type MaskingStream } from '../masking/maskingHolder'
+import { MaskingResidualError } from '../masking/egressGuard'
 import { storedKeyProblemFromReason, withStoredKeyMarker } from '../../utils/storedKeyProblem'
 
 // A non-2xx body is read whole for the error message; cap it.
@@ -125,16 +129,19 @@ class DriverStream {
   private readonly emitter = new DriverChunkEmitter()
   /** Waiting for a concurrency slot: nothing has gone upstream yet. */
   private queued = false
+  /** Model egress masking for this stream (F-39); absent = off. */
+  private masking: MaskingStream | undefined
 
   constructor(
     private readonly transport: BrowserBridgeTransport,
     private readonly provider: ModelProvider,
-    private readonly payload: BridgeModelRequestPayload,
+    private payload: BridgeModelRequestPayload,
     private readonly model: string,
+    private readonly streamId: string,
   ) {}
 
   start(): void {
-    void this.pump()
+    void this.pump().finally(() => this.masking?.close())
   }
 
   async read(waitMs: number | undefined): Promise<StreamReadResult> {
@@ -212,8 +219,16 @@ class DriverStream {
     // the provider sends anything — so it precedes even an HTTP error. Codecs
     // emit `message_start` only as a usage refresh.
     this.push([{ type: 'message_start', model: this.model }])
+    // The masking settings may still be on their first read: no request
+    // leaves before it is known whether this one must be masked.
+    const maskingLoad = modelMasking.whenLoaded()
+    if (maskingLoad) await maskingLoad
     let request: ReturnType<ModelProvider['buildRequest']>
     try {
+      this.masking = modelMasking.openStream({ streamId: this.streamId, provider: this.provider.id, model: this.model })
+      // Every reader of the payload from here on (the codec, the seam's
+      // parts, a provider mod's hooks) sees the masked copy.
+      if (this.masking) this.payload = this.masking.maskPayload(this.payload)
       request = this.provider.buildRequest(this.payload, this.model)
     } catch (error) {
       this.fail(`Failed to build the ${this.provider.format} request: ${errorText(error)}`)
@@ -294,6 +309,10 @@ class DriverStream {
     }
   }
 
+  private withMaskedUserAgent(request: DriverHttpRequest): DriverHttpRequest {
+    return this.masking ? maskedUserAgent(request, this.masking, this.provider.id) : request
+  }
+
   /** Resolves true once this stream holds a slot, false when it is cancelled
    *  while still waiting (its queue entry is removed). */
   private waitForSlot(pool: ConcurrencyPool): Promise<boolean> {
@@ -316,8 +335,9 @@ class DriverStream {
     })
   }
 
-  private async send(request: DriverHttpRequest, seamed?: SeamedSend): Promise<void> {
+  private async send(sent: DriverHttpRequest, seamed?: SeamedSend): Promise<void> {
     const idleTimeoutMs = seamed?.prepared.idleTimeoutMs ?? this.provider.spec.idleTimeoutMs
+    const request = this.withMaskedUserAgent(sent)
     try {
       this.raw = await openRawProviderStream(this.transport, {
         providerId: this.provider.id,
@@ -331,14 +351,21 @@ class DriverStream {
       })
     } catch (error) {
       if (this.abort.signal.aborted) return this.finishIfOpen()
-      this.fail(errorText(error))
+      this.fail(errorText(error), maskingRefusal(error))
       return
     }
 
     // The ids the provider's id mapper changed on the way out are put back
-    // on the way in, so the engine's transcript keeps its own.
+    // on the way in, so the engine's transcript keeps its own; then the
+    // masking aliases are put back (they touch no id).
     const decodeIds = seamed?.flow.idDecoder()
-    const decoded = (events: DriverStreamEvent[]): DriverStreamEvent[] => (decodeIds ? decodeIds(events) : events)
+    const masking = this.masking
+    const restored = (events: DriverStreamEvent[]): DriverStreamEvent[] =>
+      masking ? masking.restoreEvents(events) : events
+    const decoded = (events: DriverStreamEvent[]): DriverStreamEvent[] => restored(decodeIds ? decodeIds(events) : events)
+    const flushRestore = (): void => {
+      if (masking) this.push(masking.restore.flush())
+    }
     let decoder: ReturnType<ModelProvider['createDecoder']> | undefined
     try {
       if (!this.provider.isStreamStatus(this.raw.status)) {
@@ -356,14 +383,14 @@ class DriverStream {
             return this.send(again.request, { flow: seamed.flow, prepared: again })
           }
         }
-        this.push([
+        this.push(restored([
           this.provider.errorFromResponse({
             status: this.raw.status,
             statusText: this.raw.statusText,
             headers: this.raw.headers,
             bodyText,
           }),
-        ])
+        ]))
         this.finishIfOpen()
         return
       }
@@ -373,6 +400,7 @@ class DriverStream {
         if (this.emitter.terminalEmitted) break
       }
       this.push(decoded(decoder.end()))
+      flushRestore()
       this.finishIfOpen()
     } catch (error) {
       if (this.abort.signal.aborted) return this.finishIfOpen()
@@ -380,10 +408,37 @@ class DriverStream {
       // emit a buffered finish first; when it does, the stream is over and the
       // transport error is dropped by the host's terminal guard.
       if (decoder?.abort) this.push(decoded(decoder.abort()))
+      flushRestore()
       if (!this.emitter.terminalEmitted) this.fail(errorText(error), signInFailure(error))
       else this.finishIfOpen()
     }
   }
+}
+
+/**
+ * With masking on, the request's User-Agent is masked too. The host fills a
+ * provider's preset User-Agent only when the request has none, out of the
+ * guard's sight, so a preset that masking would change is sent explicitly.
+ */
+function maskedUserAgent(
+  request: DriverHttpRequest,
+  masking: MaskingStream,
+  providerId: string,
+): DriverHttpRequest {
+  const name = Object.keys(request.headers).find(header => header.toLowerCase() === 'user-agent')
+  const current = name !== undefined
+    ? request.headers[name]!
+    : resolveProviderUserAgent(providerId, runtimeProviderConfigs()[providerId])
+  if (!current) return request
+  const masked = masking.maskValue(current)
+  if (masked === current) return request
+  return { ...request, headers: { ...request.headers, [name ?? 'user-agent']: masked } }
+}
+
+/** A request the masking guard stopped is a refusal, not a broken connection:
+ *  the engine must not retry it. */
+function maskingRefusal(error: unknown): { httpStatus?: number } {
+  return error instanceof MaskingResidualError ? { httpStatus: 400 } : {}
 }
 
 /** A request that ended because the provider's sign-in is over is a refusal
@@ -466,7 +521,7 @@ export class DriverStreamHost {
   ): { streamId: string } {
     nextStreamId += 1
     const streamId = `driver-${provider.format}-${Date.now().toString(36)}-${nextStreamId}`
-    const stream = new DriverStream(this.transport, provider, payload, model)
+    const stream = new DriverStream(this.transport, provider, payload, model, streamId)
     this.streams.set(streamId, stream)
     stream.start()
     return { streamId }

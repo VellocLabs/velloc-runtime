@@ -2447,6 +2447,8 @@ export const es: Messages = {
     'Enumerar los hooks registrados en esta sesión, por evento',
   'slash.builtin.permissions':
     'Mostrar el modo de permisos y las reglas vigentes',
+  'slash.builtin.masking':
+    'Ocultar palabras clave elegidas al proveedor del modelo: /masking on|off, rules <archivo>, log <archivo>|off, test <texto>',
   'slash.builtin.debug':
     'Diagnosticar el Runtime de {product}; subcomandos: transcript, log [on|off], verbose [on|off], trace [on|off], inspect [on|off]',
 
@@ -2575,6 +2577,98 @@ export const es: Messages = {
     'Advertencia: no se pudo guardar en settings.json ({error}) — el cambio solo dura hasta la próxima recarga.',
   'slash.out.debug.skillUnavailable':
     'La skill debug no está disponible en esta sesión.',
+  'slash.out.masking.problem.notAList':
+    'Las reglas deben ser un array JSON de objetos con las cadenas "match" y "alias", o un objeto que contenga ese array en "rules".',
+  'slash.out.masking.problem.notARule':
+    'La regla {rule} no es un objeto con las cadenas "match" y "alias".',
+  'slash.out.masking.problem.empty':
+    'Regla {rule}: "{field}" está vacío.',
+  'slash.out.masking.problem.tooLong':
+    'Regla {rule}: "{field}" supera los 512 bytes.',
+  'slash.out.masking.problem.badChar':
+    'Regla {rule}: "{field}" contiene un carácter de control, o el alias contiene comillas o una barra invertida.',
+  'slash.out.masking.problem.duplicateMatch':
+    'La regla {rule} tiene el mismo match que la regla {other}.',
+  'slash.out.masking.problem.aliasNotUnique':
+    'La regla {rule} tiene el mismo alias que la regla {other}; las respuestas no se podrían restaurar.',
+  'slash.out.masking.problem.aliasOverlapsMatch':
+    'Un alias y un match se contienen entre sí (reglas {other} y {rule}); el reemplazo no sería reversible.',
+  'slash.out.masking.problem.aliasEqualsMatch':
+    'Regla {rule}: el alias es igual al match.',
+  'slash.out.masking.problem.tooManyRules':
+    'Hay más de 256 reglas.',
+  'slash.out.masking.usage.title':
+    'Uso: /masking',
+  'slash.out.masking.usage.status':
+    'muestra si el reemplazo está activo, las reglas y el registro',
+  'slash.out.masking.usage.onOff':
+    'activa o desactiva el reemplazo de palabras clave',
+  'slash.out.masking.usage.rules':
+    'carga las reglas desde un archivo JSON o desde JSON en línea',
+  'slash.out.masking.usage.listRules':
+    'lista las reglas guardadas',
+  'slash.out.masking.usage.log':
+    'escribe un registro de reemplazos en un archivo, o deja de escribirlo',
+  'slash.out.masking.usage.logDetail':
+    'registra solo recuentos, o también el texto alrededor de cada reemplazo',
+  'slash.out.masking.usage.test':
+    'muestra cómo se reemplazaría un texto; no se envía nada',
+  'slash.out.masking.noSettings':
+    'Este host no tiene archivo de configuración, así que el reemplazo no se puede configurar aquí.',
+  'slash.out.masking.persistFailed':
+    'No se pudo guardar en settings.json ({error}). No se cambió nada.',
+  'slash.out.masking.noRules':
+    'No se puede activar: no hay reglas. Cárgalas con /masking rules <archivo>.',
+  'slash.out.masking.badTable':
+    'Las reglas guardadas no se pueden usar.',
+  'slash.out.masking.enabled':
+    'El reemplazo está activo con {count} reglas. Se aplica desde la próxima solicitud al modelo.',
+  'slash.out.masking.disabled':
+    'El reemplazo está desactivado. La próxima solicitud al modelo se envía tal cual.',
+  'slash.out.masking.readFailed':
+    'No se puede leer {path}: {error}',
+  'slash.out.masking.badJson':
+    'Las reglas no son JSON válido: {error}',
+  'slash.out.masking.rulesRejected':
+    'Las reglas no se guardaron.',
+  'slash.out.masking.rulesLoaded':
+    'Se cargaron {count} reglas desde {path}.',
+  'slash.out.masking.rulesLoadedInline':
+    'Se cargaron {count} reglas.',
+  'slash.out.masking.logDetailContext':
+    'Ahora el registro también guarda los 24 caracteres a cada lado de cada reemplazo saliente. Ese texto son tus datos.',
+  'slash.out.masking.logDetailCounts':
+    'Ahora el registro solo guarda recuentos.',
+  'slash.out.masking.logOff':
+    'El registro de reemplazos está desactivado.',
+  'slash.out.masking.logSet':
+    'Los reemplazos se registran en {path} ({detail}).',
+  'slash.out.masking.rulesEmpty':
+    'No hay reglas de reemplazo guardadas.',
+  'slash.out.masking.rulesHeading':
+    'Reglas de reemplazo ({count})',
+  'slash.out.masking.testMasked':
+    'El modelo recibiría:',
+  'slash.out.masking.testNoHits':
+    'Ninguna regla coincidió.',
+  'slash.out.masking.testHits':
+    'Reemplazos por regla:',
+  'slash.out.masking.testCollision':
+    'Atención: este texto ya contiene un alias, así que la respuesta no se podría restaurar exactamente. Elige otro alias.',
+  'slash.out.masking.statusOn':
+    'El reemplazo está activo con {count} reglas.',
+  'slash.out.masking.statusBroken':
+    'El reemplazo está activado pero no se aplica, porque las reglas guardadas no se pueden usar.',
+  'slash.out.masking.statusNoRules':
+    'El reemplazo está activado pero no se aplica, porque no hay reglas.',
+  'slash.out.masking.statusOff':
+    'El reemplazo está desactivado ({count} reglas guardadas).',
+  'slash.out.masking.statusLog':
+    'Registro de reemplazos: {path} ({detail}).',
+  'slash.out.masking.statusNoLog':
+    'Registro de reemplazos: desactivado.',
+  'slash.out.masking.lastError':
+    'Último error: {error}',
   'slash.out.debug.usage.title':
     'Uso de {command}',
   'slash.out.debug.usage.issueArg':

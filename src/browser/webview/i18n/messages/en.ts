@@ -2480,6 +2480,8 @@ export const en = {
   'slash.builtin.skills': 'List loaded skills and how each can be invoked',
   'slash.builtin.hooks': 'List the hooks registered for this session, by event',
   'slash.builtin.permissions': 'Show the permission mode and the rules in force',
+  'slash.builtin.masking':
+    'Hide chosen keywords from the model provider: /masking on|off, rules <file>, log <file>|off, test <text>',
   // Hidden built-ins — revealed only on an exact full-name query.
   'slash.builtin.debug':
     'Diagnose the {product} runtime; subcommands: transcript, log [on|off], verbose [on|off], trace [on|off], inspect [on|off]',
@@ -2615,6 +2617,98 @@ export const en = {
     'Warning: failed to persist to settings.json ({error}) — the change lasts only until the next reload.',
   'slash.out.debug.skillUnavailable':
     'The debug skill is not available in this session.',
+  'slash.out.masking.problem.notAList':
+    'The rules must be a JSON array of objects with "match" and "alias" strings, or an object that holds such an array under "rules".',
+  'slash.out.masking.problem.notARule':
+    'Rule {rule} is not an object with "match" and "alias" strings.',
+  'slash.out.masking.problem.empty':
+    'Rule {rule}: "{field}" is empty.',
+  'slash.out.masking.problem.tooLong':
+    'Rule {rule}: "{field}" is longer than 512 bytes.',
+  'slash.out.masking.problem.badChar':
+    'Rule {rule}: "{field}" contains a control character, or the alias contains a quote or a backslash.',
+  'slash.out.masking.problem.duplicateMatch':
+    'Rule {rule} has the same match as rule {other}.',
+  'slash.out.masking.problem.aliasNotUnique':
+    'Rule {rule} has the same alias as rule {other}, so replies could not be restored.',
+  'slash.out.masking.problem.aliasOverlapsMatch':
+    'An alias and a match contain one another (rules {other} and {rule}), so masking would not be reversible.',
+  'slash.out.masking.problem.aliasEqualsMatch':
+    'Rule {rule}: the alias is the same as the match.',
+  'slash.out.masking.problem.tooManyRules':
+    'There are more than 256 rules.',
+  'slash.out.masking.usage.title':
+    'Usage: /masking',
+  'slash.out.masking.usage.status':
+    'show whether masking is on, the rules and the log',
+  'slash.out.masking.usage.onOff':
+    'turn masking on or off',
+  'slash.out.masking.usage.rules':
+    'load the rules from a JSON file or from inline JSON',
+  'slash.out.masking.usage.listRules':
+    'list the saved rules',
+  'slash.out.masking.usage.log':
+    'write a replacement log to a file, or stop writing it',
+  'slash.out.masking.usage.logDetail':
+    'log counts only, or also the text around each replacement',
+  'slash.out.masking.usage.test':
+    'show how a text would be masked; nothing is sent',
+  'slash.out.masking.noSettings':
+    'This host has no settings file, so masking cannot be set here.',
+  'slash.out.masking.persistFailed':
+    'Could not save to settings.json ({error}). Nothing was changed.',
+  'slash.out.masking.noRules':
+    'Cannot turn masking on: there are no rules. Load them with /masking rules <file>.',
+  'slash.out.masking.badTable':
+    'The saved rules cannot be used.',
+  'slash.out.masking.enabled':
+    'Masking is on with {count} rules. It applies from the next model request.',
+  'slash.out.masking.disabled':
+    'Masking is off. The next model request is sent as written.',
+  'slash.out.masking.readFailed':
+    'Cannot read {path}: {error}',
+  'slash.out.masking.badJson':
+    'The rules are not valid JSON: {error}',
+  'slash.out.masking.rulesRejected':
+    'The rules were not saved.',
+  'slash.out.masking.rulesLoaded':
+    'Loaded {count} rules from {path}.',
+  'slash.out.masking.rulesLoadedInline':
+    'Loaded {count} rules.',
+  'slash.out.masking.logDetailContext':
+    'The log now also records the 24 characters on each side of every outbound replacement. That text is your data.',
+  'slash.out.masking.logDetailCounts':
+    'The log now records counts only.',
+  'slash.out.masking.logOff':
+    'The replacement log is off.',
+  'slash.out.masking.logSet':
+    'Replacements are logged to {path} ({detail}).',
+  'slash.out.masking.rulesEmpty':
+    'No masking rules are saved.',
+  'slash.out.masking.rulesHeading':
+    'Masking rules ({count})',
+  'slash.out.masking.testMasked':
+    'The model would receive:',
+  'slash.out.masking.testNoHits':
+    'No rule matched.',
+  'slash.out.masking.testHits':
+    'Replacements by rule:',
+  'slash.out.masking.testCollision':
+    'Warning: this text already contains an alias, so the reply could not be restored exactly. Choose a different alias.',
+  'slash.out.masking.statusOn':
+    'Masking is on with {count} rules.',
+  'slash.out.masking.statusBroken':
+    'Masking is turned on but not in use, because the saved rules cannot be used.',
+  'slash.out.masking.statusNoRules':
+    'Masking is turned on but not in use, because there are no rules.',
+  'slash.out.masking.statusOff':
+    'Masking is off ({count} rules saved).',
+  'slash.out.masking.statusLog':
+    'Replacement log: {path} ({detail}).',
+  'slash.out.masking.statusNoLog':
+    'Replacement log: off.',
+  'slash.out.masking.lastError':
+    'Last error: {error}',
   'slash.out.debug.usage.title':
     '{command} usage',
   'slash.out.debug.usage.issueArg':

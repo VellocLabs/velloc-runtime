@@ -73,6 +73,7 @@ import {
   SLASH_DISPATCH_CAN_USE_TOOL,
 } from './skillSlashCommand'
 import { handleHiddenSlashCommand } from './debugCommands'
+import { runMaskingCommand } from './maskingCommands'
 import {
   buildAgentsListing,
   buildHooksListing,
@@ -837,6 +838,12 @@ export async function dispatchCommandInput(
         shouldQuery: false,
         resultText: rawInput,
       }
+
+    case 'masking':
+      return runMaskingCommand(args, rawInput, params, {
+        runtimeConfig: options.runtimeConfig,
+        ...(options.settingsHomeDir ? { settingsHomeDir: options.settingsHomeDir } : {}),
+      })
 
     case 'autocompact':
       return runAutoCompactCommand(

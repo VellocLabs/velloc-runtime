@@ -474,11 +474,25 @@ export type NexusSettingsV1 = {
   /** Per-model settings keyed by model id. A model's entry wins over the
    *  every-model key in the same file. Written by `/autocompact`. */
   modelSettings?: NexusModelSettings
+  /** Model egress masking (F-39). Written by `/masking`. */
+  modelMasking?: NexusModelMaskingSettings
   // Future top-level sections (browserTools, host, …) land here.
   // Keep them optional so older builds ignoring them stay no-op loads.
 }
 
 /** One model's entry in `modelSettings`. */
+/** Model egress masking (F-39): replace each rule's `match` with its
+ *  `alias` in what is sent to a model provider, and back in the reply. The
+ *  rules are validated where they are used; a table that fails is not used. */
+export type NexusModelMaskingSettings = {
+  enabled?: boolean
+  rules?: Array<{ match: string; alias: string }>
+  /** Absolute path of the replacement log; absent = no log. */
+  logPath?: string
+  /** `context` adds the text around each outbound hit. Default `counts`. */
+  logDetail?: 'counts' | 'context'
+}
+
 export type NexusModelSettingsEntry = {
   /** Auto-compact window for this model, in tokens (100K–1M): where it
    *  compacts (see the every-model key). */

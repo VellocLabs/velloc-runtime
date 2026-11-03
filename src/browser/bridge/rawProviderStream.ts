@@ -104,11 +104,25 @@ async function send<T>(
   return response.result
 }
 
+/**
+ * Security: a check every request passes before it is sent; one that throws
+ * stops the request, and nothing reaches the host. Set by the realm's model
+ * egress masking (F-39); absent = no check.
+ */
+export type RawProviderEgressCheck = (request: Readonly<RawProviderStreamRequest>) => void
+
+let egressCheck: RawProviderEgressCheck | undefined
+
+export function setRawProviderEgressCheck(check: RawProviderEgressCheck | undefined): void {
+  egressCheck = check
+}
+
 export async function openRawProviderStream(
   transport: BrowserBridgeTransport,
   request: RawProviderStreamRequest,
 ): Promise<RawProviderStream> {
   request.signal?.throwIfAborted()
+  egressCheck?.(request)
   const idleTimeoutMs = Math.min(
     request.idleTimeoutMs ?? RAW_STREAM_MAX_IDLE_TIMEOUT_MS,
     RAW_STREAM_MAX_IDLE_TIMEOUT_MS,

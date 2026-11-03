@@ -50,6 +50,8 @@ const HALT_SAFE_BUILTINS: Record<BrowserSlashCommand | HiddenBrowserSlashCommand
   skills: true,
   hooks: true,
   permissions: true,
+  // Saves a setting for the next model request; the transcript is untouched.
+  masking: true,
   debug: true,
 }
 

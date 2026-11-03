@@ -2329,6 +2329,8 @@ export const zh: Messages = {
   'slash.builtin.skills': '列出已加载的技能及其调用方式',
   'slash.builtin.hooks': '按事件列出此会话注册的 hook',
   'slash.builtin.permissions': '显示权限模式和生效的规则',
+  'slash.builtin.masking':
+    '对模型服务商隐藏指定关键词：/masking on|off、rules <文件>、log <文件>|off、test <文本>',
   'slash.builtin.debug':
     '诊断 {product} 运行时；子命令：transcript、log [on|off]、verbose [on|off]、trace [on|off]、inspect [on|off]',
 
@@ -2448,6 +2450,98 @@ export const zh: Messages = {
     '警告：无法保存到 settings.json（{error}）— 更改只持续到下次重新加载。',
   'slash.out.debug.skillUnavailable':
     'debug 技能在此会话中不可用。',
+  'slash.out.masking.problem.notAList':
+    '规则必须是由含 "match" 与 "alias" 字符串的对象组成的 JSON 数组，或在 "rules" 下包含这样一个数组的对象。',
+  'slash.out.masking.problem.notARule':
+    '规则 {rule} 不是含 "match" 与 "alias" 字符串的对象。',
+  'slash.out.masking.problem.empty':
+    '规则 {rule}："{field}" 为空。',
+  'slash.out.masking.problem.tooLong':
+    '规则 {rule}："{field}" 超过 512 字节。',
+  'slash.out.masking.problem.badChar':
+    '规则 {rule}："{field}" 含控制字符，或别名含引号或反斜杠。',
+  'slash.out.masking.problem.duplicateMatch':
+    '规则 {rule} 与规则 {other} 的 match 相同。',
+  'slash.out.masking.problem.aliasNotUnique':
+    '规则 {rule} 与规则 {other} 的别名相同，回复将无法还原。',
+  'slash.out.masking.problem.aliasOverlapsMatch':
+    '别名与 match 互相包含（规则 {other} 与 {rule}），替换将不可逆。',
+  'slash.out.masking.problem.aliasEqualsMatch':
+    '规则 {rule}：别名与 match 相同。',
+  'slash.out.masking.problem.tooManyRules':
+    '规则超过 256 条。',
+  'slash.out.masking.usage.title':
+    '用法：/masking',
+  'slash.out.masking.usage.status':
+    '显示是否开启、规则与日志',
+  'slash.out.masking.usage.onOff':
+    '开启或关闭关键词替换',
+  'slash.out.masking.usage.rules':
+    '从 JSON 文件或内联 JSON 载入规则',
+  'slash.out.masking.usage.listRules':
+    '列出已保存的规则',
+  'slash.out.masking.usage.log':
+    '把替换记录写入文件，或停止写入',
+  'slash.out.masking.usage.logDetail':
+    '日志只记次数，或同时记录每处替换前后的文字',
+  'slash.out.masking.usage.test':
+    '预览一段文字替换后的样子，不发送任何内容',
+  'slash.out.masking.noSettings':
+    '此主机没有设置文件，无法在这里设置关键词替换。',
+  'slash.out.masking.persistFailed':
+    '无法保存到 settings.json（{error}），未做任何更改。',
+  'slash.out.masking.noRules':
+    '无法开启：没有规则。请用 /masking rules <文件> 载入。',
+  'slash.out.masking.badTable':
+    '已保存的规则无法使用。',
+  'slash.out.masking.enabled':
+    '关键词替换已开启，共 {count} 条规则，从下一次模型请求起生效。',
+  'slash.out.masking.disabled':
+    '关键词替换已关闭，下一次模型请求将按原文发送。',
+  'slash.out.masking.readFailed':
+    '无法读取 {path}：{error}',
+  'slash.out.masking.badJson':
+    '规则不是有效的 JSON：{error}',
+  'slash.out.masking.rulesRejected':
+    '规则未保存。',
+  'slash.out.masking.rulesLoaded':
+    '已从 {path} 载入 {count} 条规则。',
+  'slash.out.masking.rulesLoadedInline':
+    '已载入 {count} 条规则。',
+  'slash.out.masking.logDetailContext':
+    '日志现在还会记录每处出站替换两侧各 24 个字符。这些文字是你的数据。',
+  'slash.out.masking.logDetailCounts':
+    '日志现在只记录次数。',
+  'slash.out.masking.logOff':
+    '替换日志已关闭。',
+  'slash.out.masking.logSet':
+    '替换记录写入 {path}（{detail}）。',
+  'slash.out.masking.rulesEmpty':
+    '没有已保存的替换规则。',
+  'slash.out.masking.rulesHeading':
+    '替换规则（{count}）',
+  'slash.out.masking.testMasked':
+    '模型将收到：',
+  'slash.out.masking.testNoHits':
+    '没有规则命中。',
+  'slash.out.masking.testHits':
+    '各规则的替换次数：',
+  'slash.out.masking.testCollision':
+    '注意：这段文字本身含有别名，回复将无法精确还原。请换一个别名。',
+  'slash.out.masking.statusOn':
+    '关键词替换已开启，共 {count} 条规则。',
+  'slash.out.masking.statusBroken':
+    '关键词替换已打开但未生效：已保存的规则无法使用。',
+  'slash.out.masking.statusNoRules':
+    '关键词替换已打开但未生效：没有规则。',
+  'slash.out.masking.statusOff':
+    '关键词替换已关闭（已保存 {count} 条规则）。',
+  'slash.out.masking.statusLog':
+    '替换日志：{path}（{detail}）。',
+  'slash.out.masking.statusNoLog':
+    '替换日志：关闭。',
+  'slash.out.masking.lastError':
+    '最近的错误：{error}',
   'slash.out.debug.usage.title':
     '{command} 用法',
   'slash.out.debug.usage.issueArg':
