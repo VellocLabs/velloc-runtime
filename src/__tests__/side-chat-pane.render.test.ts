@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 /**
- * The Side chats pane (F-36): the viewed session's side chats as rows, the
- * selected one's conversation under them, `+` for a new one.
+ * The Side chats pane (F-36): the viewed session's side chats as tabs in the
+ * header, the selected one's conversation under them, `+` for a new one, a
+ * detach action for the shown one.
  */
 import { createElement, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -39,44 +40,60 @@ function pane(props: Partial<SideChatPaneProps> = {}, children?: ReactNode): Rea
 }
 
 describe('SideChatPane', () => {
-  it('with no side chat: the hint, and `+` enabled only when the conversation can be forked', () => {
+  it('with no side chat: the pane name in the header, the hint, `+` enabled only when the conversation can be forked, no detach', () => {
     render(pane({ onAdd: vi.fn() }))
+    expect(screen.getByTestId('side-chat-list').textContent).toBe('Side chats')
+    expect(screen.queryAllByRole('tab')).toEqual([])
     expect(screen.getByTestId('side-chat-empty').textContent).toContain('Start a side chat')
     expect((screen.getByTestId('side-chat-add') as HTMLButtonElement).disabled).toBe(false)
+    expect(document.querySelector('[data-testid^="side-chat-detach-"]')).toBeNull()
     cleanup()
     render(pane())
     expect((screen.getByTestId('side-chat-add') as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('lists the side chats in the given order with their state, the selected one marked', () => {
+  it('the header lists the side chats as tabs in the given order with their state, the selected one marked, `+` after them', () => {
     render(pane({ items: [waiting, working], selectedId: 'c1' }, createElement('p', null, 'THREAD')))
-    const rows = screen.getAllByRole('option')
-    expect(rows.map(row => row.textContent)).toEqual(['Why that nameWaiting for you', 'Try the other pathWorking'])
-    expect(rows.map(row => row.getAttribute('aria-selected'))).toEqual(['false', 'true'])
-    expect(rows[0]!.getAttribute('data-needs-answer')).toBe('true')
-    expect(rows[1]!.getAttribute('data-running')).toBe('true')
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs.map(tab => tab.textContent)).toEqual(['Why that nameWaiting for you', 'Try the other pathWorking'])
+    expect(tabs.map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'true'])
+    expect(screen.getByTestId('side-chat-row-c2').getAttribute('data-needs-answer')).toBe('true')
+    expect(screen.getByTestId('side-chat-row-c1').getAttribute('data-running')).toBe('true')
+    // Each tab closes from its own `×`; `+` follows the strip, inside the header.
+    const header = screen.getByRole('tablist').parentElement!
+    expect(header.tagName).toBe('HEADER')
+    expect(screen.getByTestId('side-chat-row-c2').contains(screen.getByTestId('side-chat-archive-c2'))).toBe(true)
+    expect(screen.getByRole('tablist').compareDocumentPosition(screen.getByTestId('side-chat-add')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByTestId('side-chat-shared-folder').textContent).toContain("main conversation's folder")
     expect(screen.getByTestId('side-chat-thread').textContent).toBe('THREAD')
   })
 
-  it('a row press selects it; its marks detach and archive it; `+` adds one', () => {
+  it('a tab press selects it; its `×` archives it; the header action detaches the shown one; `+` adds one', () => {
     const onSelect = vi.fn()
     const onDetach = vi.fn()
     const onArchive = vi.fn()
     const onAdd = vi.fn()
-    render(pane({ items: [idle, waiting], selectedId: null, onSelect, onDetach, onArchive, onAdd }))
-    fireEvent.click(screen.getByText('Why that name'))
-    expect(onSelect).toHaveBeenCalledWith('c2')
-    fireEvent.click(screen.getByTestId('side-chat-detach-c2'))
+    render(pane({ items: [idle, waiting], selectedId: 'c2', onSelect, onDetach, onArchive, onAdd }))
+    fireEvent.click(screen.getByText('Done aside'))
+    expect(onSelect).toHaveBeenCalledWith('c0')
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    // The pill's own edge selects it as well.
+    fireEvent.click(screen.getByTestId('side-chat-row-c0'))
+    expect(onSelect).toHaveBeenCalledTimes(2)
+    // Detach is one control, bound to the shown side chat.
+    expect(screen.queryByTestId('side-chat-detach-c0')).toBeNull()
+    const detach = screen.getByTestId('side-chat-detach-c2')
+    expect(detach.getAttribute('aria-label')).toBe('Move to the sidebar')
+    fireEvent.click(detach)
     expect(onDetach).toHaveBeenCalledWith('c2')
     const archive = screen.getByTestId('side-chat-archive-c0')
     expect(archive.getAttribute('aria-label')).toBe('Archive')
     fireEvent.click(archive)
     expect(onArchive).toHaveBeenCalledWith('c0')
+    expect(onSelect).toHaveBeenCalledTimes(2)
     expect(screen.queryByTestId('side-chat-delete-c0')).toBeNull()
     fireEvent.click(screen.getByTestId('side-chat-add'))
     expect(onAdd).toHaveBeenCalledTimes(1)
-    expect(screen.getByTestId('side-chat-detach-c2').getAttribute('aria-label')).toBe('Move to the sidebar')
   })
 
   it('closing a side chat archives it, offered only while it neither starts, works nor waits for the person', () => {

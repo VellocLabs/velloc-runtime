@@ -31,6 +31,12 @@ describe('paneShortcutFor', () => {
     expect(paneShortcutFor(key('Backquote', { shiftKey: true }))).toBeNull()
   })
 
+  it('Ctrl+; toggles the Side chats pane; with Shift it is nothing', () => {
+    expect(paneShortcutFor(key('Semicolon'))).toEqual({ action: 'toggle', kind: 'sidechat' })
+    expect(paneShortcutFor(key('Semicolon', { shiftKey: true }))).toBeNull()
+    expect(paneShortcutFor(key('Semicolon', { ctrlKey: false }))).toBeNull()
+  })
+
   it('ignores other chords and keys', () => {
     expect(paneShortcutFor(key('KeyD'))).toBeNull()
     expect(paneShortcutFor(key('KeyT'))).toBeNull()
@@ -42,6 +48,7 @@ describe('paneShortcutFor', () => {
 
   it('labels only the kinds with a shortcut', () => {
     expect(paneShortcutLabel('diff')).toBe('Ctrl+Shift+D')
+    expect(paneShortcutLabel('sidechat')).toBe('Ctrl+;')
     expect(paneShortcutLabel('tasks')).toBeNull()
   })
 })

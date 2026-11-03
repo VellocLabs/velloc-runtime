@@ -4,6 +4,7 @@
  *
  *   Ctrl+Shift+D   toggle the Diff pane
  *   Ctrl+`         toggle the Terminal pane
+ *   Ctrl+;         toggle the Side chats pane
  *   Ctrl+\         close the focused pane
  *   Ctrl+Shift+\   expand or restore the focused pane
  *   Ctrl+Shift+T   reopen the last closed pane
@@ -39,6 +40,8 @@ export function paneShortcutFor(event: ShortcutKeyEvent): PaneShortcut | null {
       return event.shiftKey ? { action: 'toggle', kind: 'diff' } : null
     case 'Backquote':
       return event.shiftKey ? null : { action: 'toggle', kind: 'terminal' }
+    case 'Semicolon':
+      return event.shiftKey ? null : { action: 'toggle', kind: 'sidechat' }
     case 'KeyT':
       return event.shiftKey ? { action: 'reopen-closed' } : null
     case 'KeyE':
@@ -107,6 +110,8 @@ export function paneShortcutLabel(kind: SidePaneKind): string | null {
       return 'Ctrl+`'
     case 'files':
       return 'Ctrl+Shift+F'
+    case 'sidechat':
+      return 'Ctrl+;'
     default:
       return null
   }

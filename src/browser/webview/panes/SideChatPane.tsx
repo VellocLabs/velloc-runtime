@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
-import { ArchiveIcon, FolderSyncIcon, PanelLeftOpenIcon, PlusIcon } from 'lucide-react'
+import { FolderSyncIcon, PanelLeftOpenIcon, PlusIcon, XIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -9,10 +9,11 @@ import { useT } from '../i18n'
 import { sessionDisplayTitle, type SessionListItem } from '../SessionRows'
 
 /**
- * The Side chats pane (F-36): the viewed session's side chats as a list,
- * newest first, each with its state; under it the selected one's whole
- * conversation, which the shell mounts and hands in as `children`. The `+`
- * in the header opens a new side chat cut at the conversation's end.
+ * The Side chats pane (F-36): the viewed session's side chats as tabs in the
+ * header, newest first, each with its state and its close; the `+` after the
+ * tabs opens a new side chat cut at the conversation's end, and the header
+ * action detaches the shown one. The body is the shown side chat's whole
+ * conversation, which the shell mounts and hands in as `children`.
  */
 export type SideChatPaneProps = {
   /** The viewed session's side chats, newest first. */
@@ -41,27 +42,122 @@ export function SideChatPane({
   children,
 }: SideChatPaneProps): ReactElement {
   const t = useT()
-  const title = <span className="min-w-0 truncate">{t('topbar.pane.sidechat')}</span>
-  const actions = (
+  const shown = items.find(item => item.sessionId === selectedId) ?? null
+  const title = (
     <TooltipProvider>
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          data-testid="side-chat-add"
-          aria-label={t('sideChat.add')}
-          disabled={!onAdd}
-          onClick={onAdd}
-        >
-          <PlusIcon className="size-4" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{t('sideChat.add')}</TooltipContent>
-    </Tooltip>
+      <div
+        role="tablist"
+        aria-label={t('topbar.pane.sidechat')}
+        data-testid="side-chat-list"
+        className="flex min-w-0 items-center gap-0.5 overflow-hidden"
+      >
+        {items.length === 0 ? (
+          <span className="min-w-0 truncate ps-1">{t('topbar.pane.sidechat')}</span>
+        ) : null}
+        {items.map(item => {
+          const selected = item.sessionId === selectedId
+          const label = sessionDisplayTitle(item, t)
+          const busy = !!(item.starting || item.running || item.needsAnswer)
+          const archiveLabel = t(busy ? 'sideChat.archiveBusy' : 'sideChat.archive')
+          return (
+            // The whole pill is the tab: a press on its edge selects it too.
+            <div
+              key={item.sessionId}
+              data-testid={`side-chat-row-${item.sessionId}`}
+              data-needs-answer={item.needsAnswer || undefined}
+              data-running={item.running || undefined}
+              onClick={event => {
+                if (event.target === event.currentTarget) onSelect(item.sessionId)
+              }}
+              className={cn(
+                'group flex h-7 min-w-0 cursor-default items-stretch gap-0.5 rounded-md pe-0.5 text-[12px]',
+                selected ? 'bg-muted' : 'hover:bg-muted/50',
+              )}
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                data-testid={`side-chat-tab-${item.sessionId}`}
+                title={label}
+                onClick={() => onSelect(item.sessionId)}
+                className={cn(
+                  'flex min-w-0 max-w-[12rem] items-center gap-1.5 ps-1.5 outline-none',
+                  selected ? 'font-medium text-foreground' : 'text-muted-foreground',
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    'size-2 shrink-0 rounded-full',
+                    item.needsAnswer
+                      ? 'bg-warning'
+                      : item.running
+                        ? 'bg-primary animate-pulse'
+                        : 'bg-border',
+                  )}
+                />
+                <span className="min-w-0 truncate">{label}</span>
+                {item.needsAnswer ? (
+                  <span className="sr-only">{t('sideChat.waiting')}</span>
+                ) : item.running ? (
+                  <span className="sr-only">{t('sideChat.working')}</span>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                aria-label={archiveLabel}
+                title={archiveLabel}
+                data-testid={`side-chat-archive-${item.sessionId}`}
+                disabled={busy}
+                onClick={() => onArchive(item.sessionId)}
+                className="flex size-4 shrink-0 items-center justify-center self-center rounded text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted-foreground"
+              >
+                <XIcon className="size-3" />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="size-7 shrink-0"
+            data-testid="side-chat-add"
+            aria-label={t('sideChat.add')}
+            disabled={!onAdd}
+            onClick={onAdd}
+          >
+            <PlusIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{t('sideChat.add')}</TooltipContent>
+      </Tooltip>
     </TooltipProvider>
   )
+  const actions = shown ? (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="size-7"
+            data-testid={`side-chat-detach-${shown.sessionId}`}
+            aria-label={t('sideChat.detach')}
+            onClick={() => onDetach(shown.sessionId)}
+          >
+            <PanelLeftOpenIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{t('sideChat.detach')}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  ) : null
   const body = (
     <div className="flex h-full min-h-0 flex-col">
       {items.length === 0 ? (
@@ -73,81 +169,9 @@ export function SideChatPane({
         </div>
       ) : (
         <>
-          <ul
-            role="listbox"
-            aria-label={t('topbar.pane.sidechat')}
-            data-testid="side-chat-list"
-            className="max-h-[40%] shrink-0 overflow-y-auto border-b border-border p-1"
-          >
-            {items.map(item => {
-              const selected = item.sessionId === selectedId
-              const label = sessionDisplayTitle(item, t)
-              const busy = !!(item.starting || item.running || item.needsAnswer)
-              const archiveLabel = t(busy ? 'sideChat.archiveBusy' : 'sideChat.archive')
-              return (
-                <li
-                  key={item.sessionId}
-                  role="option"
-                  aria-selected={selected}
-                  data-testid={`side-chat-row-${item.sessionId}`}
-                  data-needs-answer={item.needsAnswer || undefined}
-                  data-running={item.running || undefined}
-                  className={cn(
-                    'group flex items-center gap-2 rounded-md px-2 py-1 text-[12px]',
-                    selected ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50',
-                  )}
-                >
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-center gap-2 text-start outline-none"
-                    onClick={() => onSelect(item.sessionId)}
-                  >
-                    <span
-                      aria-hidden
-                      className={cn(
-                        'size-2 shrink-0 rounded-full',
-                        item.needsAnswer
-                          ? 'bg-warning'
-                          : item.running
-                            ? 'bg-primary animate-pulse'
-                            : 'bg-border',
-                      )}
-                    />
-                    <span className="min-w-0 truncate">{label}</span>
-                    {item.needsAnswer ? (
-                      <span className="sr-only">{t('sideChat.waiting')}</span>
-                    ) : item.running ? (
-                      <span className="sr-only">{t('sideChat.working')}</span>
-                    ) : null}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={t('sideChat.detach')}
-                    title={t('sideChat.detach')}
-                    data-testid={`side-chat-detach-${item.sessionId}`}
-                    onClick={() => onDetach(item.sessionId)}
-                    className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:text-foreground focus:opacity-100 group-hover:opacity-100"
-                  >
-                    <PanelLeftOpenIcon className="size-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={archiveLabel}
-                    title={archiveLabel}
-                    data-testid={`side-chat-archive-${item.sessionId}`}
-                    disabled={busy}
-                    onClick={() => onArchive(item.sessionId)}
-                    className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:text-foreground focus:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed disabled:hover:text-muted-foreground"
-                  >
-                    <ArchiveIcon className="size-3.5" />
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
           <div
             data-testid="side-chat-shared-folder"
-            className="flex shrink-0 items-center gap-1.5 px-3 py-1 text-[11px] text-muted-foreground"
+            className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-1 text-[11px] text-muted-foreground"
           >
             <FolderSyncIcon className="size-3" aria-hidden />
             <span className="truncate">{t('sideChat.sharedFolder')}</span>

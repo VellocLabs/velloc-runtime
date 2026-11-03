@@ -61,9 +61,9 @@ import { TOP_BAR_HEIGHT_CLASS } from "./barHeight";
  */
 
 /** The pane kinds with a toggle of their own in the bar, in bar order. */
-const BAR_PANE_KINDS: readonly SidePaneKind[] = ["terminal", "diff", "browser", "files", "mods", "sidechat"];
+const BAR_PANE_KINDS: readonly SidePaneKind[] = ["terminal", "diff", "browser", "files", "mods"];
 /** The pane kinds listed as rows of the More menu, in menu order. */
-const MENU_PANE_KINDS: readonly SidePaneKind[] = ["tasks", "plan", "skill"];
+const MENU_PANE_KINDS: readonly SidePaneKind[] = ["sidechat", "tasks", "plan", "skill"];
 
 const MENU_ITEM_CLASS =
   "flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-start text-body outline-none data-[highlighted]:bg-muted";
@@ -126,7 +126,9 @@ export type NexusTopBarProps = {
   sessionOverview?: { shown: boolean; onToggle: () => void };
   /** The More menu's *Reset layout* row: the active session back to the default arrangement. */
   onResetLayout?: () => void;
-  /** The pane kinds whose toggle carries an attention mark: something inside waits for the person (F-36). */
+  /** The pane kinds whose toggle carries an attention mark: something inside
+   *  waits for the person (F-36). A kind listed in the More menu marks its row
+   *  and the More button instead. */
   paneAttention?: ReadonlySet<SidePaneKind>;
   /** Number of in-flight background sub-agents — the badge on the More button. */
   backgroundTaskCount?: number;
@@ -293,6 +295,8 @@ export function NexusTopBar({
   );
   const folded = fit.folded;
   const foldedPanes = barPaneKinds.filter((kind) => folded.has(`pane:${kind}`));
+  const menuPaneKinds = onTogglePane ? [...foldedPanes, ...MENU_PANE_KINDS.filter(offered)] : [];
+  const menuAttention = menuPaneKinds.some((kind) => paneAttention?.has(kind));
   const railFolded = !!sessionOverview && folded.has("rail");
   const foldedImports = importEntries.filter((entry) => folded.has(`import:${entry.source}`));
   const remoteFolded = showRemoteDevices && folded.has("remote");
@@ -614,6 +618,13 @@ export function NexusTopBar({
                         {backgroundTaskCount}
                       </span>
                     ) : null}
+                    {menuAttention ? (
+                      <span
+                        aria-hidden
+                        data-testid="topbar-more-panes-attention"
+                        className="absolute bottom-1 right-1 size-1.5 rounded-full bg-destructive"
+                      />
+                    ) : null}
                   </Button>
                 </DropdownMenuPrimitive.Trigger>
               </TooltipTrigger>
@@ -642,7 +653,7 @@ export function NexusTopBar({
                     </DropdownMenuPrimitive.ItemIndicator>
                   </DropdownMenuPrimitive.CheckboxItem>
                 ) : null}
-                {[...foldedPanes, ...MENU_PANE_KINDS.filter(offered)].map((kind) => {
+                {menuPaneKinds.map((kind) => {
                   const Icon = PANE_ICON[kind];
                   return (
                     <DropdownMenuPrimitive.CheckboxItem
@@ -656,6 +667,13 @@ export function NexusTopBar({
                       <Icon aria-hidden className="size-4 text-muted-foreground" />
                       <span className="flex flex-1 items-center">
                         <PaneLabel kind={kind} />
+                        {paneAttention?.has(kind) ? (
+                          <span
+                            aria-hidden
+                            data-testid={`topbar-pane-row-${kind}-attention`}
+                            className="ms-2 size-1.5 rounded-full bg-destructive"
+                          />
+                        ) : null}
                       </span>
                       <DropdownMenuPrimitive.ItemIndicator>
                         <CheckIcon aria-hidden className="size-4 text-primary" />

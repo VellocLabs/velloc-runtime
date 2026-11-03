@@ -41,10 +41,24 @@ describe('NexusTopBar render', () => {
   })
 
   it('a pane toggle carries the attention mark only for the kinds named (F-36)', () => {
-    const html = markup({ onTogglePane: () => {}, paneAttention: new Set(['sidechat']) })
-    expect(html).toContain('data-testid="topbar-pane-sidechat-attention"')
-    expect(html).not.toContain('data-testid="topbar-pane-diff-attention"')
+    const html = markup({ onTogglePane: () => {}, paneAttention: new Set(['diff']) })
+    expect(html).toContain('data-testid="topbar-pane-diff-attention"')
+    expect(html).not.toContain('data-testid="topbar-pane-files-attention"')
+    expect(html).not.toContain('data-testid="topbar-more-panes-attention"')
     expect(markup({ onTogglePane: () => {} })).not.toContain('-attention"')
+  })
+
+  // The Side chats pane has no toggle of its own in the bar: it is a row of
+  // the More menu, so its attention mark sits on the More button (F-36).
+  it('the Side chats pane is reached from the More menu, whose button carries its attention mark', () => {
+    const html = markup({ onTogglePane: () => {}, paneAttention: new Set(['sidechat']) })
+    expect(html).not.toContain('topbar-pane-sidechat')
+    expect(html).toContain('data-testid="topbar-more-panes-attention"')
+    expect(markup({ onTogglePane: () => {} })).not.toContain('topbar-pane-sidechat')
+    // A session that does not offer the pane has nothing to mark.
+    expect(
+      markup({ onTogglePane: () => {}, paneKinds: ['diff'], paneAttention: new Set(['sidechat']) }),
+    ).not.toContain('topbar-more-panes-attention')
   })
 
   it('renders standalone (no TooltipProvider ancestor) without throwing', () => {
