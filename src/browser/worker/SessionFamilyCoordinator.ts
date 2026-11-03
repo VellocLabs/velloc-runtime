@@ -21,6 +21,7 @@ import type {
   SessionMetaFile,
 } from '../../sessions/sessionStore'
 import {
+  directChildrenOf,
   familyOf,
   isDetached,
   lineageInputFromRelationFields,
@@ -36,6 +37,7 @@ import {
   appendPeerInbox,
   archiveDecision,
   clampLimit,
+  clearDecision,
   controlDecision,
   detachDecision,
   isPeerInboxEntry,
@@ -89,6 +91,9 @@ export interface SessionFamilyHost {
   /** Stop the session's current turn the way the user's Stop does; `by` is
    *  the session whose model asked. */
   interrupt(sessionId: string, by: string): void
+  /** Start the session's conversation over the way the user's `/clear`
+   *  does; false without a live worker. */
+  clearConversation(sessionId: string): boolean
   trustOf(sessionId: string): TeamMessageTrust
   tracer: SessionTracer
   /** `lineage.detach` on `callerSessionId`'s plugins; null when none hooks
@@ -443,6 +448,33 @@ export class SessionFamilyCoordinator implements SessionDirectory {
     if (!this.host.isLive(target) || !this.host.isBusy(target)) return { ok: true, result: 'idle' }
     this.host.interrupt(target, callerSessionId)
     return { ok: true, result: 'interrupted' }
+  }
+
+  async clear(callerSessionId: string, target: string): Promise<FamilyOutcome<Record<never, never>>> {
+    if (target === callerSessionId || target === 'self') {
+      return { ok: false, code: 'self', reason: 'a session does not clear itself with this tool.' }
+    }
+    if (!this.knows(target)) return { ok: false, code: 'unknown', reason: 'no session with that id in this runtime.' }
+    const index = this.lineageIndex()
+    const control = controlDecision(callerSessionId, target, index, 'clear')
+    if (!control.ok) return control
+    const decision = clearDecision({
+      live: this.host.isLive(target),
+      running: this.host.isLive(target) && this.host.isBusy(target),
+      starting: this.host.isStarting(target),
+      waitingForUser: this.host.needsAnswer(target),
+      stoppedByUser: this.host.isDeliverySuppressed(target),
+      liveWork: this.host.hasLiveWork(target),
+      childRunning: directChildrenOf(target, index).some(
+        child => this.host.isStarting(child) || (this.host.isLive(child) && this.host.isBusy(child)),
+      ),
+      messagesQueued: this.mailbox.hasPending(target),
+    })
+    if (!decision.ok) return decision
+    if (!this.host.clearConversation(target)) {
+      return { ok: false, code: 'not_live', reason: 'the session is not running in this runtime; there is no conversation to clear here.' }
+    }
+    return { ok: true }
   }
 
   async setArchived(

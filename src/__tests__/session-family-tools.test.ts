@@ -65,6 +65,7 @@ function stubDirectory(overrides: Partial<SessionDirectory> = {}): SessionDirect
     resolves: () => true,
     send: record('send', { messageId: 'msg_1', state: 'delivered' as const, to: { sessionId: 'c1', name: 'parser' } }),
     stop: record('stop', { ok: true as const, result: 'interrupted' as const }),
+    clear: record('clear', { ok: true as const }),
     setArchived: record('setArchived', { ok: true as const, changed: true }),
     detach: record('detach', { ok: true as const, changed: true }),
     ...overrides,
@@ -105,6 +106,8 @@ describe('argument checks', () => {
   it('require a session id where one is needed, and whole-number limits', async () => {
     expect(await DescribeSessionTool.checkInput!({}, ctx())).toMatchObject({ result: false, errorCode: 1 })
     expect(await StopSessionTool.checkInput!({ sessionId: 'self' }, ctx())).toMatchObject({ result: false, errorCode: 2 })
+    expect(await StopSessionTool.checkInput!({ sessionId: 'c1', clear: 'yes' as never }, ctx())).toMatchObject({ result: false, errorCode: 3 })
+    expect(await StopSessionTool.checkInput!({ sessionId: 'c1', clear: true }, ctx())).toEqual({ result: true })
     expect(await DetachSessionTool.checkInput!({ sessionId: 'self' }, ctx())).toEqual({ result: true })
     expect(await ListSessionsTool.checkInput!({ limit: 2.5 }, ctx())).toMatchObject({ result: false })
     expect(await ListSessionsTool.checkInput!({ linked: 'yes' as never }, ctx())).toMatchObject({ result: false })
@@ -147,6 +150,21 @@ describe('the tools over the directory', () => {
     expect(await StopSessionTool.call({ sessionId: 'c1' }, ctx(), ALLOW, PARENT)).toMatchObject({ data: /still starting/ })
     setSessionDirectory(stubDirectory({ stop: async () => ({ ok: false, code: 'waiting_user', reason: 'the user is asked.' }) }))
     expect(await StopSessionTool.call({ sessionId: 'c1' }, ctx(), ALLOW, PARENT)).toEqual({ data: 'Refused (waiting_user): the user is asked.' })
+  })
+
+  it('StopSession with clear starts the conversation over instead of stopping, and says what the next message needs', async () => {
+    const dir = stubDirectory()
+    setSessionDirectory(dir)
+    const out = await StopSessionTool.call({ sessionId: 'c1', clear: true }, ctx(), ALLOW, PARENT)
+    expect(out.data).toMatch(/conversation is starting over/)
+    expect(out.data).toMatch(/complete brief/)
+    expect(await StopSessionTool.call({ sessionId: 'c1', clear: false }, ctx(), ALLOW, PARENT)).toMatchObject({ data: /interrupted/ })
+    expect(dir.calls).toEqual([
+      ['clear', 'caller-1', 'c1'],
+      ['stop', 'caller-1', 'c1'],
+    ])
+    setSessionDirectory(stubDirectory({ clear: async () => ({ ok: false, code: 'running', reason: 'stop it first.' }) }))
+    expect(await StopSessionTool.call({ sessionId: 'c1', clear: true }, ctx(), ALLOW, PARENT)).toEqual({ data: 'Refused (running): stop it first.' })
   })
 
   it('ArchiveSession / UnarchiveSession / DetachSession report changed, unchanged and refusals', async () => {

@@ -37,6 +37,7 @@ class FakeHost implements SessionFamilyHost {
   readonly sessions = new Map<string, FakeSession>()
   readonly turns: Array<{ sessionId: string; prompt: string }> = []
   readonly interrupted: string[] = []
+  readonly cleared: string[] = []
   readonly stoppedBy: string[] = []
   readonly events: string[] = []
   tracer = {
@@ -108,6 +109,11 @@ class FakeHost implements SessionFamilyHost {
   }
   trustOf(id: string) {
     return this.sessions.get(id)?.trust ?? 'trusted'
+  }
+  clearConversation(id: string) {
+    if (!this.isLive(id)) return false
+    this.cleared.push(id)
+    return true
   }
 }
 
@@ -457,6 +463,77 @@ describe('StopSession', () => {
     expect(await coord.stop('c1', 'f')).toEqual(refused)
     expect(await coord.stop('p', 'd')).toEqual(refused)
     expect(host.interrupted).toEqual([])
+  })
+})
+
+describe('StopSession with clear', () => {
+  it('a parent clears an idle child or grandchild in place, keeping its record and family link', async () => {
+    const host = family()
+    host.add('g', { metadata: { spawnedFrom: origin('c1', { name: 'lexer' }) }, live: true })
+    const coord = new SessionFamilyCoordinator(host)
+    expect(await coord.clear('p', 'c1')).toEqual({ ok: true })
+    expect(await coord.clear('p', 'g')).toEqual({ ok: true })
+    expect(host.cleared).toEqual(['c1', 'g'])
+    expect(host.interrupted).toEqual([])
+    expect(host.sessions.get('c1')!.metadata).toEqual({ spawnedFrom: origin('p', { name: 'parser' }) })
+  })
+
+  it('refuses while clearing would cut work in flight or drop a waiting message', async () => {
+    const lexer = { spawnedFrom: origin('c1', { name: 'lexer' }) }
+    const cases: Array<[string, (h: FakeHost) => void]> = [
+      ['running', h => { h.sessions.get('c1')!.busy = true }],
+      ['starting', h => { h.sessions.get('c1')!.starting = true }],
+      ['waiting_user', h => { h.sessions.get('c1')!.needsAnswer = true }],
+      ['stopped_by_user', h => { h.sessions.get('c1')!.suppressed = true }],
+      ['live_work', h => { h.sessions.get('c1')!.liveWork = true }],
+      ['not_live', h => { h.sessions.get('c1')!.live = false }],
+      ['child_running', h => { h.add('g', { metadata: lexer, live: true, busy: true }) }],
+      ['child_running', h => { h.add('g', { metadata: lexer, starting: true }) }],
+    ]
+    for (const [code, setUp] of cases) {
+      const host = family()
+      setUp(host)
+      const coord = new SessionFamilyCoordinator(host)
+      expect([code, await coord.clear('p', 'c1')]).toMatchObject([code, { ok: false, code }])
+      expect(host.cleared).toEqual([])
+    }
+  })
+
+  it('refuses while a message is queued for the session, and clears once it is delivered', async () => {
+    const host = family()
+    host.sessions.get('c1')!.busy = true
+    const coord = new SessionFamilyCoordinator(host)
+    expect(await coord.send('p', 'c1', 'next task')).toMatchObject({ state: 'queued' })
+    host.sessions.get('c1')!.busy = false
+    expect(await coord.clear('p', 'c1')).toMatchObject({ ok: false, code: 'messages_queued' })
+    coord.maybeDrain('c1')
+    expect(host.turns.map(t => t.sessionId)).toEqual(['c1'])
+    expect(await coord.clear('p', 'c1')).toEqual({ ok: true })
+    expect(host.cleared).toEqual(['c1'])
+  })
+
+  it('a finished child does not hold its parent\'s clear', async () => {
+    const host = family()
+    host.add('g', { metadata: { spawnedFrom: origin('c1', { name: 'lexer' }) }, live: true })
+    const coord = new SessionFamilyCoordinator(host)
+    expect(await coord.clear('p', 'c1')).toEqual({ ok: true })
+  })
+
+  it('only delegation grants a clear, never on itself or a teammate', async () => {
+    const host = family()
+    for (const id of ['p', 'c1', 'c2', 'f', 'd', 'x']) host.sessions.get(id)!.live = true
+    host.add('t', { metadata: { spawnerSessionId: 'p', teammateName: 'helper' }, live: true })
+    const coord = new SessionFamilyCoordinator(host)
+    expect(await coord.clear('c1', 'p')).toMatchObject({ ok: false, code: 'not_delegated' })
+    expect(await coord.clear('c1', 'c2')).toMatchObject({ ok: false, code: 'not_delegated' })
+    expect(await coord.clear('x', 'c1')).toMatchObject({ ok: false, code: 'not_delegated' })
+    expect(await coord.clear('p', 'd')).toMatchObject({ ok: false, code: 'not_delegated' })
+    expect(await coord.clear('c1', 'f')).toMatchObject({ ok: false, code: 'not_delegated' })
+    expect(await coord.clear('p', 't')).toMatchObject({ ok: false, code: 'team' })
+    expect(await coord.clear('p', 'p')).toMatchObject({ ok: false, code: 'self' })
+    expect(await coord.clear('p', 'self')).toMatchObject({ ok: false, code: 'self' })
+    expect(await coord.clear('p', 'nope')).toMatchObject({ ok: false, code: 'unknown' })
+    expect(host.cleared).toEqual([])
   })
 })
 

@@ -191,6 +191,15 @@ function attachedOriginId(meta: SessionLineageInput | undefined): string | undef
   return originOf(meta)?.sessionId
 }
 
+/** The sessions whose attached origin link is `sessionId`. */
+export function directChildrenOf(sessionId: string, index: SessionLineageIndex): string[] {
+  const children: string[] = []
+  for (const [id, meta] of index) {
+    if (id !== sessionId && attachedOriginId(meta) === sessionId) children.push(id)
+  }
+  return children
+}
+
 /**
  * The topmost session reachable from `sessionId` along attached origin links
  * that resolve to a known session. Stops at a missing origin, a cycle, or

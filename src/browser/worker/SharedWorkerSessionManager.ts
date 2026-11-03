@@ -1601,6 +1601,20 @@ export class SharedWorkerSessionManager {
         return true
       },
       interrupt: (sessionId, by) => this.interruptSessionTurn(sessionId, by),
+      // Security: the prompt is the fixed built-in command, submitted as the
+      // session's own input so it runs as a command; a peer message never would.
+      clearConversation: sessionId => {
+        const session = this.sessions.get(sessionId)
+        if (!session) return false
+        void session.worker
+          .receiveFrame({
+            type: 'worker.submitMessage',
+            sessionId,
+            payload: { prompt: '/clear' },
+          } as SessionWorkerInboundMessage)
+          .catch(() => {})
+        return true
+      },
       trustOf: sessionId => this.getSessionTrust(sessionId),
       tracer: this.tracer,
       raiseDetach: (callerSessionId, input) => {

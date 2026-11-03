@@ -115,6 +115,9 @@ export interface SessionDirectory {
   resolves(callerSessionId: string, to: string): boolean
   send(callerSessionId: string, to: string, text: string): Promise<DeliveryReceipt>
   stop(callerSessionId: string, target: string): Promise<FamilyOutcome<{ result: StopResult }>>
+  /** Start an idle session's conversation over, keeping its id, folder,
+   *  model, permission mode and family links. */
+  clear(callerSessionId: string, target: string): Promise<FamilyOutcome<Record<never, never>>>
   setArchived(
     callerSessionId: string,
     target: string,

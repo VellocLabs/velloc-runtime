@@ -111,7 +111,7 @@ export function resolveRecipient(
   return { kind: 'unknown' }
 }
 
-export type ControlAction = 'stop' | 'archive' | 'unarchive'
+export type ControlAction = 'stop' | 'clear' | 'archive' | 'unarchive'
 
 export type ControlDecision = { ok: true } | { ok: false; code: 'self' | 'team' | 'not_delegated'; reason: string }
 
@@ -158,7 +158,9 @@ export function controlDecision(
       reason:
         action === 'stop'
           ? 'a teammate is its team\'s; end it with Shutdown instead.'
-          : 'a teammate is its team\'s; it is not archived on its own.',
+          : action === 'clear'
+            ? 'a teammate is its team\'s; it is not cleared on its own.'
+            : 'a teammate is its team\'s; it is not archived on its own.',
     }
   }
   if (!isDelegatedOver(callerSessionId, targetSessionId, index)) {
@@ -238,6 +240,46 @@ export function archiveDecision(state: ArchiveState): ArchiveDecision {
     return { ok: false, code: 'live_work', reason: 'the session has background work running (a sub-agent or shell); stop that first.' }
   }
   return { ok: true, changed: true }
+}
+
+export type ClearState = {
+  live: boolean
+  running: boolean
+  starting: boolean
+  waitingForUser: boolean
+  stoppedByUser: boolean
+  liveWork: boolean
+  childRunning: boolean
+  messagesQueued: boolean
+}
+
+/** Whether a session in `state` may have its conversation started over now.
+ *  Contract: refused whenever clearing would cut work in flight or drop a
+ *  message not yet delivered. */
+export function clearDecision(state: ClearState): { ok: true } | { ok: false; code: string; reason: string } {
+  if (state.starting) return { ok: false, code: 'starting', reason: 'the session is still starting.' }
+  if (state.waitingForUser) {
+    return { ok: false, code: 'waiting_user', reason: 'the session is waiting on the user (a question or permission card); that is the user\'s to answer.' }
+  }
+  if (state.stoppedByUser) {
+    return { ok: false, code: 'stopped_by_user', reason: 'the user stopped this session; it waits for the user.' }
+  }
+  if (!state.live) {
+    return { ok: false, code: 'not_live', reason: 'the session is not running in this runtime; there is no conversation to clear here.' }
+  }
+  if (state.running) {
+    return { ok: false, code: 'running', reason: 'the session has a turn in flight; stop it first and clear it once the stopped turn has reported.' }
+  }
+  if (state.liveWork) {
+    return { ok: false, code: 'live_work', reason: 'the session has background work running (a sub-agent or shell); wait for it or stop it first.' }
+  }
+  if (state.childRunning) {
+    return { ok: false, code: 'child_running', reason: 'a session it started is still running or starting; wait for its report first.' }
+  }
+  if (state.messagesQueued) {
+    return { ok: false, code: 'messages_queued', reason: 'messages are waiting to be delivered to the session; clearing would drop them.' }
+  }
+  return { ok: true }
 }
 
 /** A message kept on a session's record until it has a runtime to take it. */

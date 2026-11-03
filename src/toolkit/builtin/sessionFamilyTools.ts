@@ -258,30 +258,52 @@ export const ReadSessionEventsTool: ToolContract<ReadSessionEventsInput, string>
 // StopSession
 // ---------------------------------------------------------------------------
 
-export type StopSessionInput = { sessionId?: string }
+export type StopSessionInput = { sessionId?: string; clear?: boolean }
 
 export const StopSessionTool: ToolContract<StopSessionInput, string> = declareTool({
   name: STOP_SESSION_TOOL_NAME,
-  discoveryHint: 'stop the current turn of a session in this session\'s family',
+  discoveryHint: 'stop the current turn of a session in this session\'s family, or clear an idle one',
   argsSchema: {
     type: 'object',
-    properties: SESSION_ID_ARG(false),
+    properties: {
+      ...SESSION_ID_ARG(false),
+      clear: {
+        type: 'boolean',
+        description: 'true: start an idle session\'s conversation over instead of stopping a turn. Omit to stop.',
+      },
+    },
     required: ['sessionId'],
   },
   description: async () =>
     'Stop the turn a session in this session\'s family is running now, the way the user\'s Stop ' +
     'does. The session is kept, its transcript and record intact; nothing is deleted. An idle or ' +
     'still-starting session is reported as such, not as interrupted. Refused while the session is ' +
-    'waiting on the user (a question or permission card): that is the user\'s to answer.',
+    'waiting on the user (a question or permission card): that is the user\'s to answer. ' +
+    'With clear: true, an idle session starts its conversation over the way the user\'s /clear does: ' +
+    'it keeps its id, folder, model and permission mode and remembers nothing of earlier turns, so ' +
+    'the next message to it must be a complete brief. Clearing is refused while the session runs a ' +
+    'turn, has background work or a session it started still running, or has messages waiting for it.',
   parallelSafe: () => false,
   readsOnly: () => false,
   async checkInput(input: StopSessionInput): Promise<InputCheck> {
+    if (input.clear !== undefined && typeof input.clear !== 'boolean') {
+      return { result: false, message: 'clear must be true or false.', errorCode: 3 }
+    }
     return requireSessionId(input, false)
   },
   async call(input: StopSessionInput, context: ToolCallContext) {
     const g = gate(context)
     if (!g.ok) return g.outcome
     const target = (input.sessionId ?? '').trim()
+    if (input.clear === true) {
+      const cleared = await g.directory.clear(g.sessionId, target)
+      if (!cleared.ok) return refusal(cleared)
+      return {
+        data:
+          `Session ${target}: its conversation is starting over. It keeps its id, folder, model and ` +
+          'permission mode and remembers nothing of earlier turns; send it a complete brief next.',
+      }
+    }
     const outcome = await g.directory.stop(g.sessionId, target)
     if (!outcome.ok) return refusal(outcome)
     switch (outcome.result) {
