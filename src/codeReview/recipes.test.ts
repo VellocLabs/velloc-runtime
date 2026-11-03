@@ -191,9 +191,14 @@ describe('automatic runtime verification', () => {
 })
 
 describe('level selection boundaries', () => {
-  it('honors a model request ahead of session defaults, but not remembered user choices', () => {
+  it('honors a model request ahead of session defaults and the saved level', () => {
     expect(policy({ source: 'model', arguments: { ...base.arguments, level: 'low' }, sessionLevel: 'high' })).toMatchObject({ level: 'low', levelSource: 'model' })
-    expect(policy({ source: 'model', arguments: { ...base.arguments, level: 'low' }, sessionLevel: 'medium', preferences: { level: 'high' } })).toMatchObject({ level: 'high', levelSource: 'preference' })
+    expect(policy({ source: 'model', arguments: { ...base.arguments, level: 'low' }, sessionLevel: 'medium', preferences: { level: 'high' } })).toMatchObject({ level: 'low', levelSource: 'model', notices: [{ code: 'tests-fixtures-skipped' }] })
+  })
+
+  it('uses the saved level only when the run names none', () => {
+    expect(policy({ source: 'model', preferences: { level: 'high' }, sessionLevel: 'medium' })).toMatchObject({ level: 'high', levelSource: 'preference', notices: [{ code: 'level-reused', level: 'high' }] })
+    expect(policy({ source: 'model', arguments: { ...base.arguments, level: 'max' }, preferences: { level: 'low' } })).toMatchObject({ level: 'low', levelSource: 'preference', notices: expect.arrayContaining([{ code: 'max-not-authorized', level: 'low' }, { code: 'level-reused', level: 'low' }]) })
   })
 
   it('rejects unauthorized max without discarding an allowed session level', () => {
@@ -205,6 +210,7 @@ describe('level selection boundaries', () => {
     expect(policy({ source: 'model', arguments: { ...base.arguments, level: 'max' }, sessionLevel: 'low', guidance })).toMatchObject({ level: 'max', levelSource: 'model' })
     expect(policy({ source: 'model', arguments: { ...base.arguments, level: 'low' }, guidance })).toMatchObject({ level: 'low', levelSource: 'model' })
     expect(policy({ sessionLevel: 'low', guidance })).toMatchObject({ level: 'max', levelSource: 'guidance' })
+    expect(policy({ source: 'model', arguments: { ...base.arguments, level: 'max' }, preferences: { level: 'low' }, guidance })).toMatchObject({ level: 'max', levelSource: 'model', notices: [] })
   })
 
   it.each([

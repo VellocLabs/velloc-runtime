@@ -63,6 +63,16 @@ describe('local review acceptance boundaries', () => {
     await f.service.startModel('low')
     expect(f.savePreferences).toHaveBeenCalledOnce()
   })
+  it('runs a model-requested level over the saved one, and reuses the saved level only when none is named', async () => {
+    const f = fixture({ resolveScope: async () => ({ manifest: manifest(true), trustedGuidance: '', read: async () => '' }) })
+    await f.service.wait((await f.service.startUser('low')).runId)
+    const requested = await f.service.wait((await f.service.startModel('high')).runId)
+    expect(requested.run.policy).toMatchObject({ level: 'high', levelSource: 'model' })
+    expect(requested.coverage.limitations).not.toContain('level-reused')
+    const unnamed = await f.service.wait((await f.service.startModel('')).runId)
+    expect(unnamed.run.policy).toMatchObject({ level: 'low', levelSource: 'preference' })
+    expect(unnamed.coverage.limitations).toContain('level-reused')
+  })
   it('runs quick review with only scoped read and ledger tools and commits one report', async () => {
     const f = fixture()
     const { runId } = await f.service.startUser('low')

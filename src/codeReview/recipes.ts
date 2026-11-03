@@ -62,10 +62,11 @@ export function resolveReviewLevel(input: Pick<ReviewPolicyInput, 'arguments' | 
   const guidance = input.guidance?.trusted && input.guidance.appliesToProject ? input.guidance.level : undefined
   const maxAuthorized = userLevel === 'max' || preference === 'max' || guidance === 'max'
   const modelLevel = input.source === 'model' ? input.arguments.level : undefined
+  // An explicit level, typed or model-requested, outranks the saved one (F-38).
   const candidates: Array<{ level: ReviewLevel | undefined; source: ReviewPlan['levelSource'] }> = [
     { level: userLevel, source: 'user' },
-    { level: preference, source: 'preference' },
     { level: modelLevel, source: 'model' },
+    { level: preference, source: 'preference' },
     { level: guidance, source: 'guidance' },
     { level: input.sessionLevel, source: 'session' },
     { level: 'medium', source: 'default' },
