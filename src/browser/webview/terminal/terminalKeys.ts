@@ -27,6 +27,7 @@ const APP_CODES: ReadonlySet<string> = new Set([
   'Backquote', // toggle the Terminal pane
   'Tab', // switch session
   'Backslash', // close / expand the focused pane
+  'Semicolon', // toggle the Side chats pane
 ])
 /** The app's Ctrl+Shift chords that stay with the app. */
 const APP_SHIFT_CODES: ReadonlySet<string> = new Set(['KeyD', 'KeyT'])

@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from 'react'
+import { useEffect, useId, useRef, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { FolderSyncIcon, PanelLeftOpenIcon, PlusIcon, XIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -9,10 +9,10 @@ import { useT } from '../i18n'
 import { sessionDisplayTitle, type SessionListItem } from '../SessionRows'
 
 /**
- * The Side chats pane (F-36): the viewed session's side chats as tabs in the
- * header, newest first, each with its state and its close; the `+` after the
- * tabs opens a new side chat cut at the conversation's end, and the header
- * action detaches the shown one. The body is the shown side chat's whole
+ * The Side chats pane (F-36): the viewed session's side chats as a scrolling
+ * tab list in the header, newest first, each with its state and its close;
+ * `+` after the tabs opens a new side chat, the header action detaches the
+ * shown one. The body is the tab panel holding the shown side chat's
  * conversation, which the shell mounts and hands in as `children`.
  */
 export type SideChatPaneProps = {
@@ -42,83 +42,130 @@ export function SideChatPane({
   children,
 }: SideChatPaneProps): ReactElement {
   const t = useT()
+  const idBase = useId()
+  const tabId = (sessionId: string): string => `${idBase}-tab-${sessionId}`
+  const panelId = `${idBase}-panel`
+  const stripRef = useRef<HTMLDivElement>(null)
   const shown = items.find(item => item.sessionId === selectedId) ?? null
+  const focusId = shown?.sessionId ?? items[0]?.sessionId ?? null
+
+  const shownId = shown?.sessionId ?? null
+  useEffect(() => {
+    if (!shownId) return
+    const tab = stripRef.current?.querySelector<HTMLElement>(
+      `[data-testid="side-chat-tab-${CSS.escape(shownId)}"]`,
+    )
+    tab?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [shownId])
+
+  const onStripKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    const tabs = Array.from(stripRef.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])
+    const at = tabs.indexOf(event.target as HTMLElement)
+    if (at < 0) return
+    let next = -1
+    if (event.key === 'ArrowRight') next = (at + 1) % tabs.length
+    else if (event.key === 'ArrowLeft') next = (at - 1 + tabs.length) % tabs.length
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = tabs.length - 1
+    else if (event.key === 'Delete') {
+      const item = items[at]
+      if (item && !(item.starting || item.running || item.needsAnswer)) {
+        event.preventDefault()
+        onArchive(item.sessionId)
+      }
+      return
+    }
+    if (next < 0) return
+    event.preventDefault()
+    tabs[next]?.focus()
+  }
+
   const title = (
     <TooltipProvider>
-      <div
-        role="tablist"
-        aria-label={t('topbar.pane.sidechat')}
-        data-testid="side-chat-list"
-        className="flex min-w-0 items-center gap-0.5 overflow-hidden"
-      >
-        {items.length === 0 ? (
-          <span className="min-w-0 truncate ps-1">{t('topbar.pane.sidechat')}</span>
-        ) : null}
-        {items.map(item => {
-          const selected = item.sessionId === selectedId
-          const label = sessionDisplayTitle(item, t)
-          const busy = !!(item.starting || item.running || item.needsAnswer)
-          const archiveLabel = t(busy ? 'sideChat.archiveBusy' : 'sideChat.archive')
-          return (
-            // The whole pill is the tab: a press on its edge selects it too.
-            <div
-              key={item.sessionId}
-              data-testid={`side-chat-row-${item.sessionId}`}
-              data-needs-answer={item.needsAnswer || undefined}
-              data-running={item.running || undefined}
-              onClick={event => {
-                if (event.target === event.currentTarget) onSelect(item.sessionId)
-              }}
-              className={cn(
-                'group flex h-7 min-w-0 cursor-default items-stretch gap-0.5 rounded-md pe-0.5 text-[12px]',
-                selected ? 'bg-muted' : 'hover:bg-muted/50',
-              )}
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                data-testid={`side-chat-tab-${item.sessionId}`}
-                title={label}
-                onClick={() => onSelect(item.sessionId)}
+      {items.length === 0 ? (
+        <span data-testid="side-chat-pane-name" className="min-w-0 truncate ps-1">
+          {t('topbar.pane.sidechat')}
+        </span>
+      ) : (
+        <div
+          ref={stripRef}
+          role="tablist"
+          aria-label={t('topbar.pane.sidechat')}
+          data-testid="side-chat-list"
+          onKeyDown={onStripKeyDown}
+          className="flex min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden [scrollbar-width:none]"
+        >
+          {items.map(item => {
+            const selected = item.sessionId === selectedId
+            const label = sessionDisplayTitle(item, t)
+            const busy = !!(item.starting || item.running || item.needsAnswer)
+            const archiveLabel = t(busy ? 'sideChat.archiveBusy' : 'sideChat.archive')
+            return (
+              // The whole pill is the tab: a press on its edge selects it too.
+              <div
+                key={item.sessionId}
+                role="presentation"
+                data-testid={`side-chat-row-${item.sessionId}`}
+                data-needs-answer={item.needsAnswer || undefined}
+                data-running={item.running || undefined}
+                onClick={event => {
+                  if (event.target === event.currentTarget) onSelect(item.sessionId)
+                }}
                 className={cn(
-                  'flex min-w-0 max-w-[12rem] items-center gap-1.5 ps-1.5 outline-none',
-                  selected ? 'font-medium text-foreground' : 'text-muted-foreground',
+                  'group flex h-7 shrink-0 cursor-default items-stretch gap-0.5 rounded-md pe-0.5 text-[12px]',
+                  selected ? 'bg-muted' : 'hover:bg-muted/50',
                 )}
               >
-                <span
-                  aria-hidden
+                <button
+                  type="button"
+                  role="tab"
+                  id={tabId(item.sessionId)}
+                  aria-selected={selected}
+                  aria-controls={selected ? panelId : undefined}
+                  tabIndex={item.sessionId === focusId ? 0 : -1}
+                  data-testid={`side-chat-tab-${item.sessionId}`}
+                  title={label}
+                  onClick={() => onSelect(item.sessionId)}
                   className={cn(
-                    'size-2 shrink-0 rounded-full',
-                    item.needsAnswer
-                      ? 'bg-warning'
-                      : item.running
-                        ? 'bg-primary animate-pulse'
-                        : 'bg-border',
+                    'flex w-max min-w-[6rem] max-w-[12rem] items-center gap-1.5 rounded-md ps-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                    selected ? 'font-medium text-foreground' : 'text-muted-foreground',
                   )}
-                />
-                <span className="min-w-0 truncate">{label}</span>
-                {item.needsAnswer ? (
-                  <span className="sr-only">{t('sideChat.waiting')}</span>
-                ) : item.running ? (
-                  <span className="sr-only">{t('sideChat.working')}</span>
-                ) : null}
-              </button>
-              <button
-                type="button"
-                aria-label={archiveLabel}
-                title={archiveLabel}
-                data-testid={`side-chat-archive-${item.sessionId}`}
-                disabled={busy}
-                onClick={() => onArchive(item.sessionId)}
-                className="flex size-4 shrink-0 items-center justify-center self-center rounded text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted-foreground"
-              >
-                <XIcon className="size-3" />
-              </button>
-            </div>
-          )
-        })}
-      </div>
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'size-2 shrink-0 rounded-full',
+                      item.needsAnswer
+                        ? 'bg-warning'
+                        : item.running
+                          ? 'bg-primary animate-pulse'
+                          : 'bg-border',
+                    )}
+                  />
+                  <span className="min-w-0 truncate">{label}</span>
+                  {item.needsAnswer ? (
+                    <span className="sr-only">{t('sideChat.waiting')}</span>
+                  ) : item.running ? (
+                    <span className="sr-only">{t('sideChat.working')}</span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  aria-label={archiveLabel}
+                  title={archiveLabel}
+                  data-testid={`side-chat-archive-${item.sessionId}`}
+                  tabIndex={-1}
+                  disabled={busy}
+                  onClick={() => onArchive(item.sessionId)}
+                  className="flex size-4 shrink-0 items-center justify-center self-center rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted-foreground"
+                >
+                  <XIcon className="size-3" />
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -168,7 +215,13 @@ export function SideChatPane({
           {t('sideChat.empty')}
         </div>
       ) : (
-        <>
+        <div
+          role="tabpanel"
+          id={panelId}
+          aria-labelledby={shown ? tabId(shown.sessionId) : undefined}
+          data-testid="side-chat-panel"
+          className="flex min-h-0 flex-1 flex-col"
+        >
           <div
             data-testid="side-chat-shared-folder"
             className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-1 text-[11px] text-muted-foreground"
@@ -179,7 +232,7 @@ export function SideChatPane({
           <div data-testid="side-chat-thread" className="flex min-h-0 flex-1 flex-col">
             {children}
           </div>
-        </>
+        </div>
       )}
     </div>
   )

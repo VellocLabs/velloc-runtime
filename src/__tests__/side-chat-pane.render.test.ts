@@ -42,7 +42,8 @@ function pane(props: Partial<SideChatPaneProps> = {}, children?: ReactNode): Rea
 describe('SideChatPane', () => {
   it('with no side chat: the pane name in the header, the hint, `+` enabled only when the conversation can be forked, no detach', () => {
     render(pane({ onAdd: vi.fn() }))
-    expect(screen.getByTestId('side-chat-list').textContent).toBe('Side chats')
+    expect(screen.getByTestId('side-chat-pane-name').textContent).toBe('Side chats')
+    expect(screen.queryByRole('tablist')).toBeNull()
     expect(screen.queryAllByRole('tab')).toEqual([])
     expect(screen.getByTestId('side-chat-empty').textContent).toContain('Start a side chat')
     expect((screen.getByTestId('side-chat-add') as HTMLButtonElement).disabled).toBe(false)
@@ -106,5 +107,76 @@ describe('SideChatPane', () => {
       fireEvent.click(archive)
     }
     expect(onArchive).not.toHaveBeenCalled()
+  })
+
+  it('follows the tabs pattern: one Tab stop, arrow / Home / End focus moves, Delete closes, a labelled panel', () => {
+    const onArchive = vi.fn()
+    render(pane({ items: [idle, waiting, working], selectedId: 'c2', onArchive }, createElement('p', null, 'THREAD')))
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs.map(tab => tab.tabIndex)).toEqual([-1, 0, -1])
+    for (const id of ['c0', 'c2', 'c1']) {
+      expect(screen.getByTestId(`side-chat-archive-${id}`).tabIndex).toBe(-1)
+      expect(screen.getByTestId(`side-chat-row-${id}`).getAttribute('role')).toBe('presentation')
+    }
+    const panel = screen.getByRole('tabpanel')
+    expect(panel.getAttribute('aria-labelledby')).toBe(tabs[1]!.id)
+    expect(tabs[1]!.getAttribute('aria-controls')).toBe(panel.id)
+    expect(panel.contains(screen.getByTestId('side-chat-shared-folder'))).toBe(true)
+    expect(panel.textContent).toContain('THREAD')
+
+    tabs[1]!.focus()
+    fireEvent.keyDown(tabs[1]!, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(tabs[2])
+    fireEvent.keyDown(tabs[2]!, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(tabs[0])
+    fireEvent.keyDown(tabs[0]!, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(tabs[2])
+    fireEvent.keyDown(tabs[2]!, { key: 'Home' })
+    expect(document.activeElement).toBe(tabs[0])
+    fireEvent.keyDown(tabs[0]!, { key: 'End' })
+    expect(document.activeElement).toBe(tabs[2])
+    // Delete closes only a side chat whose close is offered.
+    fireEvent.keyDown(tabs[2]!, { key: 'Delete' })
+    expect(onArchive).not.toHaveBeenCalled()
+    fireEvent.keyDown(tabs[0]!, { key: 'Delete' })
+    expect(onArchive).toHaveBeenCalledWith('c0')
+  })
+
+  it('the tab and its close show a keyboard focus ring', () => {
+    render(pane({ items: [idle], selectedId: 'c0' }))
+    expect(screen.getByTestId('side-chat-tab-c0').className).toContain('focus-visible:ring')
+    expect(screen.getByTestId('side-chat-archive-c0').className).toContain('focus-visible:ring')
+  })
+
+  it('with many side chats the strip scrolls instead of clipping: pills keep a readable width, every one selects and archives, the selected one is brought into view', () => {
+    const many = Array.from({ length: 10 }, (_, i) => item({ sessionId: `m${i}`, title: `Side ${i}` }))
+    const scrolled: string[] = []
+    const original = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+      scrolled.push(this.dataset.testid ?? '')
+    }
+    try {
+      const onSelect = vi.fn()
+      const onArchive = vi.fn()
+      const view = render(pane({ items: many, selectedId: 'm0', onSelect, onArchive }))
+      const strip = screen.getByRole('tablist')
+      expect(strip.className).toContain('overflow-x-auto')
+      expect(strip.className).not.toContain('overflow-hidden')
+      for (const entry of many) {
+        const row = screen.getByTestId(`side-chat-row-${entry.sessionId}`)
+        expect(row.className).toContain('shrink-0')
+        expect(row.className).not.toContain('min-w-0')
+        expect(screen.getByTestId(`side-chat-tab-${entry.sessionId}`).className).toContain('min-w-[6rem]')
+        fireEvent.click(screen.getByTestId(`side-chat-tab-${entry.sessionId}`))
+        fireEvent.click(screen.getByTestId(`side-chat-archive-${entry.sessionId}`))
+      }
+      expect(onSelect.mock.calls.map(call => call[0])).toEqual(many.map(entry => entry.sessionId))
+      expect(onArchive.mock.calls.map(call => call[0])).toEqual(many.map(entry => entry.sessionId))
+      expect(scrolled).toEqual(['side-chat-tab-m0'])
+      view.rerender(pane({ items: many, selectedId: 'm9', onSelect, onArchive }))
+      expect(scrolled).toEqual(['side-chat-tab-m0', 'side-chat-tab-m9'])
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original
+    }
   })
 })
