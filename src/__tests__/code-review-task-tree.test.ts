@@ -43,7 +43,7 @@ describe('review task tree', () => {
   })
   it('shows the run end reason on the report card', () => {
     render(createElement(ReviewReportCard, { report: report(), can: () => false, onAction: vi.fn(async () => {}) }))
-    expect(screen.getByTestId('review-end').textContent).toBe(t('reviewCard.notice.modelError'))
+    expect(screen.getByTestId('review-end').textContent).toBe(`${t('reviewCard.notice.modelError')} — HTTP 529`)
     expect(screen.getByTestId('review-tasks')).toBeTruthy()
   })
 })

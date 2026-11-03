@@ -78,8 +78,11 @@ export function reviewTaskStatusMessage(t: TranslateFn, status: string): string 
   return taskStatuses.includes(status as typeof taskStatuses[number]) ? t(`reviewCard.task.status.${status}` as Parameters<TranslateFn>[0]) : t('reviewCard.notice.unspecified')
 }
 /** An end reason reads as its limitation message; `completed` has none. */
-export function reviewEndMessage(t: TranslateFn, end: { kind: string }): string | undefined {
-  return end.kind === 'completed' ? undefined : reviewMessage(t, end.kind === 'cancelled' ? 'review-cancelled' : `review-${end.kind}`)
+/** The end reason for people, with the run's own detail (a provider error, a crash message) when it carries one. */
+export function reviewEndMessage(t: TranslateFn, end: { kind: string; detail?: string }): string | undefined {
+  if (end.kind === 'completed') return undefined
+  const message = reviewMessage(t, end.kind === 'cancelled' ? 'review-cancelled' : `review-${end.kind}`)
+  return end.detail ? `${message} — ${end.detail.slice(0, 300)}` : message
 }
 
 const angles = ['lines', 'removed', 'calls', 'reuse', 'simplification', 'efficiency', 'root-cause', 'guidance', 'language', 'wrappers'] as const
