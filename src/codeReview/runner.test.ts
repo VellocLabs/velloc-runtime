@@ -174,14 +174,23 @@ describe('review task records and stops', () => {
       expect(JSON.stringify(launch.recordedOpeningRows)).not.toContain(`full ${source} body`)
     }
   })
-  it('finishes the drawer row as an error once the run hit its time limit, and as stopped otherwise', async () => {
+  it('finishes the drawer row as a time-limit error when the budget aborted it', async () => {
     const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })
     let limited = false
     const observer: ReviewTaskObserver = { started: vi.fn(), activity: vi.fn(), ended: vi.fn(), timeLimited: () => limited }
     await runner({ blocks: [], tools: [], signal: new AbortController().signal, taskId: 't', role: 'finder', observer })
-    expect(lastLaunch().abortedStatus!()).toBe('stopped')
     limited = true
-    expect(lastLaunch().abortedStatus!()).toBe('error')
+    lastLaunch().overrides!.abortController!.abort()
+    expect(lastLaunch().abortedFinish!()).toEqual({ status: 'error', errorMessage: 'review-time-limit' })
+  })
+  it('keeps a task stopped before the budget expired as stopped', async () => {
+    const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })
+    let limited = false
+    const observer: ReviewTaskObserver = { started: vi.fn(), activity: vi.fn(), ended: vi.fn(), timeLimited: () => limited }
+    await runner({ blocks: [], tools: [], signal: new AbortController().signal, taskId: 't', role: 'finder', observer })
+    lastLaunch().overrides!.abortController!.abort()
+    limited = true
+    expect(lastLaunch().abortedFinish!()).toEqual({ status: 'stopped' })
   })
 })
 

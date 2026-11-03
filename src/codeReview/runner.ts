@@ -99,7 +99,10 @@ export function createReviewModelRunner(input: {
 }): ReviewModelRunner {
   return async request => {
     const cancelSource = new AbortController()
-    const abort = () => cancelSource.abort(request.signal.reason)
+    // Read when the abort lands: a task stopped before the budget expired stays stopped.
+    let timeLimited = false
+    cancelSource.signal.addEventListener('abort', () => { timeLimited = !!request.observer?.timeLimited?.() }, { once: true })
+    const abort =() => cancelSource.abort(request.signal.reason)
     request.signal.addEventListener('abort', abort, { once: true })
     if (request.signal.aborted) abort()
     cancelSource.signal.addEventListener('abort', () => { if (!request.signal.aborted) request.onStop?.() }, { once: true })
@@ -142,7 +145,7 @@ export function createReviewModelRunner(input: {
         sidechainStore: getContextSidechainStore(parent), spawnerSessionId: parent.options.sessionId || undefined,
         onMessage: row => { const action = describeActivity(row); if (action) request.observer?.activity({ key: request.taskId, action }) },
         onConclusion: conclusion => { end = reviewRunEnd(conclusion) },
-        abortedStatus: () => request.observer?.timeLimited?.() ? 'error' : 'stopped',
+        abortedFinish: () => timeLimited ? { status: 'error', errorMessage: 'review-time-limit' } : { status: 'stopped' },
       })
       if (!end) end = cancelSource.signal.aborted ? { kind: 'cancelled' } : { kind: 'crash' }
       if (cancelSource.signal.aborted && end.kind === 'completed') end = { kind: 'cancelled' }

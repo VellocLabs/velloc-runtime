@@ -244,8 +244,8 @@ export type ForkRunRequest = {
   /** The loop's terminal conclusion for each drive (a fallback retry reports again). */
   onConclusion?: (conclusion: TurnConclusion) => void
 
-  /** The drawer status of a fork whose cancelSource was aborted; `stopped` when absent. */
-  abortedStatus?: () => 'stopped' | 'error'
+  /** The drawer finish of a fork whose cancelSource was aborted; `stopped` when absent. */
+  abortedFinish?: () => { status: 'stopped' | 'error'; errorMessage?: string }
 
   sidechainStore?: SidechainTranscriptStore
 
@@ -555,24 +555,27 @@ export async function launchFork(
       throw firstError
     }
   } catch (error) {
+    const aborted = isolatedToolUseContext.cancelSource.signal.aborted
+      ? params.abortedFinish?.() ?? { status: 'stopped' as const }
+      : undefined
     notifyForkFinished({
       agentId,
-      status: isolatedToolUseContext.cancelSource.signal.aborted
-        ? params.abortedStatus?.() ?? 'stopped'
-        : 'error',
+      status: aborted?.status ?? 'error',
       finishedAt: Date.now(),
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: aborted?.errorMessage ?? (error instanceof Error ? error.message : String(error)),
       model: isolatedToolUseContext.options.mainLoopModel,
     })
     throw error
   }
 
+  const aborted = isolatedToolUseContext.cancelSource.signal.aborted
+    ? params.abortedFinish?.() ?? { status: 'stopped' as const }
+    : undefined
   notifyForkFinished({
     agentId,
-    status: isolatedToolUseContext.cancelSource.signal.aborted
-      ? params.abortedStatus?.() ?? 'stopped'
-      : 'success',
+    status: aborted?.status ?? 'success',
     finishedAt: Date.now(),
+    ...(aborted?.errorMessage ? { errorMessage: aborted.errorMessage } : {}),
     model: isolatedToolUseContext.options.mainLoopModel,
   })
 

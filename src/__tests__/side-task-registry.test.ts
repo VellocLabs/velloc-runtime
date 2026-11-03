@@ -917,9 +917,9 @@ describe('launchFork — sink lifecycle', () => {
       params.callContext.cancelSource.abort()
     } as never)
 
-    await launchFork({ ...forkParams(), abortedStatus: () => 'error' } as never)
+    await launchFork({ ...forkParams(), abortedFinish: () => ({ status: 'error', errorMessage: 'review-time-limit' }) } as never)
     expect(log.finished).toEqual([
-      expect.objectContaining({ status: 'error' }),
+      expect.objectContaining({ status: 'error', errorMessage: 'review-time-limit' }),
     ])
   })
 
