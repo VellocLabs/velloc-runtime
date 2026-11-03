@@ -6,10 +6,15 @@ import { describe, expect, it } from 'vitest'
 
 const source = readFileSync(new URL('../browser/webview/MultiSessionShell.tsx', import.meta.url), 'utf8')
 
+/**
+ * How a shell-scope name is bound. `defaults` holds every default on the path from the whole parameter or
+ * declaration down to the name (a whole-parameter default and each enclosing destructuring default); any
+ * of them can become its value.
+ */
 type Binding =
-  | { kind: 'parameter'; element: ts.BindingElement | null }
+  | { kind: 'parameter'; defaults: ts.Expression[] }
   | { kind: 'function' }
-  | { kind: 'const'; declaration: ts.VariableDeclaration; element: ts.BindingElement | null }
+  | { kind: 'const'; declaration: ts.VariableDeclaration; defaults: ts.Expression[] }
   | { kind: 'other' }
 
 type Analysed = {
@@ -21,7 +26,10 @@ type Analysed = {
   stable: Set<string>
   /** Declarations, for the declared-before-read check. */
   declaredAt: Map<string, ts.Node>
-  /** Shell-scope names mutated in the render after their declaration (refs excepted). */
+  /**
+   * Shell-scope names mutated in the render after their declaration, directly or through a `const` alias.
+   * Stable names are never included.
+   */
   mutated: Set<string>
 }
 
@@ -61,16 +69,19 @@ function analyse(text: string): Analysed {
   const local = new Map<string, Binding>()
   const stable = new Set<string>()
   const declaredAt = new Map<string, ts.Node>()
-  const bindParameter = (name: ts.BindingName, element: ts.BindingElement | null) => {
+  const withDefault = (defaults: ts.Expression[], value: ts.Expression | undefined) =>
+    value ? [...defaults, value] : defaults
+  const bindParameter = (name: ts.BindingName, defaults: ts.Expression[]) => {
     if (ts.isIdentifier(name)) {
-      local.set(name.text, { kind: 'parameter', element })
+      local.set(name.text, { kind: 'parameter', defaults })
       return
     }
     for (const child of name.elements) {
-      if (ts.isBindingElement(child)) bindParameter(child.name, child)
+      if (ts.isBindingElement(child)) bindParameter(child.name, withDefault(defaults, child.initializer))
     }
   }
-  for (const parameter of shell.parameters) bindParameter(parameter.name, null)
+  for (const parameter of shell.parameters) bindParameter(parameter.name, withDefault([], parameter.initializer))
+  const hookValues: [string, ts.CallExpression][] = []
   const walk = (node: ts.Node) => {
     if (ts.isFunctionDeclaration(node) && node.name) {
       local.set(node.name.text, { kind: 'function' })
@@ -80,23 +91,26 @@ function analyse(text: string): Analysed {
     if (createsFunction(node)) return
     if (ts.isVariableDeclaration(node)) {
       const isConst = (node.parent.flags & ts.NodeFlags.Const) !== 0 && ts.isVariableStatement(node.parent.parent)
-      const bind = (name: ts.BindingName, element: ts.BindingElement | null) => {
+      const bind = (name: ts.BindingName, defaults: ts.Expression[]) => {
         if (ts.isIdentifier(name)) {
-          local.set(name.text, isConst ? { kind: 'const', declaration: node, element } : { kind: 'other' })
+          local.set(name.text, isConst ? { kind: 'const', declaration: node, defaults } : { kind: 'other' })
           declaredAt.set(name.text, node)
           return
         }
         for (const child of name.elements) {
-          if (ts.isBindingElement(child)) bind(child.name, child)
+          if (ts.isBindingElement(child)) bind(child.name, withDefault(defaults, child.initializer))
         }
       }
-      bind(node.name, null)
+      bind(node.name, [])
       const init = node.initializer ? unwrap(node.initializer) : null
-      const hook = init && ts.isCallExpression(init) ? hookName(init) : ''
-      if (hook === 'useRef' && ts.isIdentifier(node.name)) stable.add(node.name.text)
-      if ((hook === 'useState' || hook === 'useReducer') && ts.isArrayBindingPattern(node.name)) {
+      const call = init && ts.isCallExpression(init) ? init : null
+      const hook = call ? hookName(call) : ''
+      if (call && hook === 'useRef' && ts.isIdentifier(node.name)) hookValues.push([node.name.text, call])
+      if (call && (hook === 'useState' || hook === 'useReducer') && ts.isArrayBindingPattern(node.name)) {
         const second = node.name.elements[1]
-        if (second && ts.isBindingElement(second) && ts.isIdentifier(second.name)) stable.add(second.name.text)
+        if (second && ts.isBindingElement(second) && ts.isIdentifier(second.name)) {
+          hookValues.push([second.name.text, call])
+        }
       }
     }
     if ((ts.isCatchClause(node) && node.variableDeclaration) || ts.isForOfStatement(node) || ts.isForInStatement(node)) {
@@ -112,27 +126,50 @@ function analyse(text: string): Analysed {
     ts.forEachChild(node, walk)
   }
   if (shell.body) ts.forEachChild(shell.body, walk)
+  for (const [name, call] of hookValues) {
+    if (isTrustedHookCall(local, call)) stable.add(name)
+  }
   const mutated = new Set<string>()
-  const markMutated = (target: ts.Expression) => {
+  const markMutated = (target: ts.Expression, hidden: Set<string>) => {
     let root = unwrap(target)
     while (ts.isPropertyAccessExpression(root) || ts.isElementAccessExpression(root)) root = unwrap(root.expression)
-    if (ts.isIdentifier(root) && local.has(root.text) && !stable.has(root.text)) mutated.add(root.text)
+    if (ts.isIdentifier(root) && !hidden.has(root.text) && local.has(root.text) && !stable.has(root.text)) {
+      mutated.add(root.text)
+    }
   }
-  const findMutations = (node: ts.Node) => {
-    if (createsFunction(node)) return
+  const findMutations = (node: ts.Node, hidden: Set<string>) => {
+    if (createsFunction(node)) {
+      if (!isConsumedArgument(node)) return
+      hidden = new Set([...hidden, ...callbackBindings(node)])
+    }
     if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
       node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
-      (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))) markMutated(node.left)
-    if (ts.isDeleteExpression(node)) markMutated(node.expression)
+      (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))) {
+      markMutated(node.left, hidden)
+    }
+    if (ts.isDeleteExpression(node)) markMutated(node.expression, hidden)
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const { expression: receiver, name } = node.expression
-      if (MUTATING_METHODS.has(name.text)) markMutated(receiver)
+      if (MUTATING_METHODS.has(name.text)) markMutated(receiver, hidden)
       if (ts.isIdentifier(receiver) && receiver.text === 'Object' && MUTATING_OBJECT_FUNCTIONS.has(name.text) &&
-        node.arguments[0]) markMutated(node.arguments[0])
+        node.arguments[0]) markMutated(node.arguments[0], hidden)
     }
-    ts.forEachChild(node, findMutations)
+    ts.forEachChild(node, child => findMutations(child, hidden))
   }
-  if (shell.body) ts.forEachChild(shell.body, findMutations)
+  if (shell.body) ts.forEachChild(shell.body, child => findMutations(child, new Set()))
+  for (let grew = true; grew;) {
+    grew = false
+    for (const [name, binding] of local) {
+      if (binding.kind !== 'const' || !mutated.has(name)) continue
+      const sources = [binding.declaration.initializer, ...binding.defaults]
+      for (const root of sources.flatMap(source => (source ? aliasRoots(source) : []))) {
+        if (local.has(root) && !stable.has(root) && !mutated.has(root)) {
+          mutated.add(root)
+          grew = true
+        }
+      }
+    }
+  }
   const result = { file, shell, local, stable, declaredAt, mutated }
   analysed.set(text, result)
   return result
@@ -142,6 +179,24 @@ function analyse(text: string): Analysed {
 const MUTATING_METHODS = new Set(['push', 'unshift', 'splice', 'pop', 'shift', 'fill', 'copyWithin', 'reverse',
   'sort', 'set', 'add', 'delete', 'clear'])
 const MUTATING_OBJECT_FUNCTIONS = new Set(['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf'])
+
+/**
+ * Names whose own value `expression` may be, so that mutating the result mutates them: a name, a property
+ * or element read of one, either branch of a conditional, and either side of `??`, `||` or `&&`.
+ */
+function aliasRoots(expression: ts.Expression): string[] {
+  const value = unwrap(expression)
+  if (ts.isIdentifier(value)) return [value.text]
+  if (ts.isPropertyAccessExpression(value) || ts.isElementAccessExpression(value)) return aliasRoots(value.expression)
+  if (ts.isConditionalExpression(value)) return [...aliasRoots(value.whenTrue), ...aliasRoots(value.whenFalse)]
+  if (ts.isBinaryExpression(value)) {
+    const operator = value.operatorToken.kind
+    if (operator === ts.SyntaxKind.QuestionQuestionToken || operator === ts.SyntaxKind.BarBarToken ||
+      operator === ts.SyntaxKind.AmpersandAmpersandToken) return [...aliasRoots(value.left), ...aliasRoots(value.right)]
+    if (operator === ts.SyntaxKind.CommaToken) return aliasRoots(value.right)
+  }
+  return []
+}
 
 /** The hook a call names, written bare (`useMemo`) or through a namespace (`React.useMemo`). */
 function hookName(call: ts.CallExpression): string {
@@ -155,12 +210,12 @@ function hookName(call: ts.CallExpression): string {
  * Whether `call` is a hook whose value the guards trust: `useX(...)` called directly, or through a name
  * that is not bound in the shell (`React.useX(...)`). `value.useX(...)` on a shell value is not a hook.
  */
-function isTrustedHookCall(s: Analysed, call: ts.CallExpression): boolean {
+function isTrustedHookCall(local: Map<string, Binding>, call: ts.CallExpression): boolean {
   if (!/^use[A-Z]/.test(hookName(call))) return false
   const callee = call.expression
   if (ts.isIdentifier(callee)) return true
   return ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression) &&
-    !s.local.has(callee.expression.text)
+    !local.has(callee.expression.text)
 }
 
 const lineOf = (s: Analysed, node: ts.Node) => s.file.getLineAndCharacterOfPosition(node.getStart(s.file)).line + 1
@@ -187,8 +242,8 @@ function memoResults(callback: ts.ArrowFunction | ts.FunctionExpression): ts.Exp
 }
 
 /**
- * The one factory predicate both guards share: a call to a module-level function (not bound in the
- * shell) whose name starts with `create`.
+ * The factory predicate of the memo guards: a call to a module-level function (not bound in the shell)
+ * whose name starts with `create`. The outside-a-memo check and the floor use `isFactoryName` instead.
  */
 function factoryCallOf(s: Analysed, expression: ts.Expression): ts.CallExpression | null {
   const value = unwrap(expression)
@@ -302,23 +357,23 @@ const isLiteral = (node: ts.Expression) =>
 
 /**
  * Why the shell-scope name `name` could hold something that keeps a render's scope alive, or null when
- * it cannot. Allowlist: a prop; a hook's value; a `const` whose initializer (and destructuring default)
- * is built only from the shapes `closureRisk` accepts. A render-level function declaration, a `let`,
- * `var`, loop or catch binding, and anything else are refused.
+ * it cannot. Allowlist: a prop; a hook's value; a `const` whose initializer is built only from the shapes
+ * `closureRisk` accepts. For a prop or a `const`, every default on its path must pass too. A render-level
+ * function declaration, a `let`, `var`, loop or catch binding, and anything else are refused.
  */
 function bindingRisk(s: Analysed, name: string, seen: Set<string> = new Set()): string | null {
   const binding = s.local.get(name)
   if (!binding) return null
-  if (binding.kind === 'parameter') {
-    return binding.element?.initializer ? closureRisk(s, binding.element.initializer, seen) : null
-  }
   if (binding.kind === 'function') return 'a function declared in the render'
   if (binding.kind === 'other') return 'not a const binding'
-  if (s.mutated.has(name)) return 'mutated in the render after its declaration'
+  if (binding.kind === 'const' && s.mutated.has(name)) return 'mutated in the render after its declaration'
   if (seen.has(name)) return null
   seen.add(name)
-  const fromDefault = binding.element?.initializer ? closureRisk(s, binding.element.initializer, seen) : null
-  if (fromDefault) return fromDefault
+  for (const value of binding.defaults) {
+    const risk = closureRisk(s, value, seen)
+    if (risk) return risk
+  }
+  if (binding.kind === 'parameter') return null
   if (!binding.declaration.initializer) return 'no initializer'
   return closureRisk(s, binding.declaration.initializer, seen)
 }
@@ -385,7 +440,7 @@ function closureRisk(s: Analysed, node: ts.Expression, seen: Set<string> = new S
     return null
   }
   if (ts.isCallExpression(value) || ts.isNewExpression(value)) {
-    if (ts.isCallExpression(value) && isTrustedHookCall(s, value)) return null
+    if (ts.isCallExpression(value) && isTrustedHookCall(s.local, value)) return null
     const calleeRisk = closureRisk(s, value.expression, seen)
     if (calleeRisk) return calleeRisk
     for (const argument of value.arguments ?? []) {
@@ -412,7 +467,7 @@ function consumedCallbackRisk(s: Analysed, fn: ts.Expression, seen: Set<string>)
   }
   fn.parameters.forEach(parameter => bind(parameter.name))
   const shadowed: [string, Binding | undefined][] = [...params].map(name => [name, s.local.get(name)])
-  for (const name of params) s.local.set(name, { kind: 'parameter', element: null })
+  for (const name of params) s.local.set(name, { kind: 'parameter', defaults: [] })
   try {
     return closureRisk(s, fn.body, seen)
   } finally {
@@ -729,6 +784,8 @@ describe('shell closure guards catch what they are for', () => {
     ['a render value given a function by push', 'const kept: unknown[] = []\nkept.push(onDone)\nconst x = useMemo(() => kept, [kept])', 'captures kept: mutated in the render after its declaration'],
     ['a render value given a function by property assignment', 'const holder: Record<string, unknown> = {}\nholder.go = () => label\nconst x = useMemo(() => createShellOpen(setOpen, sessionId, holder), [sessionId, holder])', 'captures holder: mutated in the render after its declaration'],
     ['a render value given a function by Object.assign', 'const holder = {}\nObject.assign(holder, { go: onDone })\nconst x = useMemo(() => holder, [holder])', 'captures holder: mutated in the render after its declaration'],
+    ['a render value given functions inside a consumed callback', 'const kept: unknown[] = []\nitems.forEach(item => kept.push(() => item))\nconst x = useMemo(() => kept, [kept])', 'captures kept: mutated in the render after its declaration'],
+    ['a render value given a function through an alias', 'const kept: unknown[] = []\nconst alias = kept\nalias.push(onDone)\nconst x = useMemo(() => kept, [kept])', 'captures kept: mutated in the render after its declaration'],
     ['a hook-named method on a render value', 'const f = onDone.useValue()\nconst x = useMemo(() => f, [f])', 'captures f: onDone: a function created in the render'],
     ['a block-bodied consumed callback in a render value', 'const fs = items.map(item => { return () => item })\nconst x = useMemo(() => fs, [fs])', 'captures fs'],
     ['a callback in a non-first argument', 'const x = useMemo(() => items.reduce((a: string) => a, () => label), [items, label])', 'function created in a value memo'],
@@ -754,18 +811,33 @@ describe('shell closure guards catch what they are for', () => {
     ['a name bound inside the memo', 'const x = useMemo(() => { const id = label; return createShellOpen(setOpen, id, label) }, [label])', 'createShellOpen: id (bound in the memo; hoist it)'],
     ['an unlisted property chain', 'const x = useMemo(() => createShellOpen(setOpen, seenRef.current, label), [label])', 'createShellOpen: seenRef.current'],
     ['React.useMemo', 'const x = React.useMemo(() => createShellOpen(setOpen, label, sessionId), [sessionId])', 'createShellOpen: label'],
+    ['a hook-named method on a render value, not taken as a ref', 'const r = onDone.useRef()\nconst x = useMemo(() => createShellOpen(setOpen, r, label), [label])', 'createShellOpen: r'],
   ]
   it.each(staleInputs)('reports a stale factory input: %s', (_name, body, reason) => {
     expect(reasons(factoryDependencyGaps(shellWith(body)))).toContain(reason)
   })
 
-  it('rejects a shell parameter whose default creates a function', () => {
+  it.each([
+    ['a destructuring default', '{ onClose = () => undefined }: { onClose?: () => void }'],
+    ['a whole-parameter default', 'onClose: () => void = () => undefined'],
+    ['a whole-parameter default around a pattern', '{ onClose }: { onClose: () => void } = { onClose: () => undefined }'],
+    ['a nested-pattern default', '{ actions: { onClose } = { onClose: () => undefined } }: { actions?: { onClose: () => void } }'],
+  ])('rejects a shell parameter whose default creates a function: %s', (_name, parameter) => {
     const text = `
-      export function MultiSessionShell({ onClose = () => undefined }: { onClose?: () => void }) {
+      export function MultiSessionShell(${parameter}) {
         const x = useMemo(() => onClose, [onClose])
         return null
       }`
     expect(reasons(memoClosureViolations(text))).toEqual(['captures onClose: a function created in the render'])
+  })
+
+  it('ends on shell parameters whose defaults name each other', () => {
+    const text = `
+      export function MultiSessionShell({ a = b, b = a }: { a?: string; b?: string }) {
+        const x = useMemo(() => [a, b], [a, b])
+        return null
+      }`
+    expect(memoClosureViolations(text)).toEqual([])
   })
 
   it('does not report refs, setters, dispatch, literals or module-level names as stale', () => {
