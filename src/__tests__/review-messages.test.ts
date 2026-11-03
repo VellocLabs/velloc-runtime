@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createTranslate } from '../browser/webview/i18n/translate'
-import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMessage } from '../codeReview/messages'
+import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMessage, reviewEndMessage } from '../codeReview/messages'
 import type { PolicyNotice } from '../codeReview/contracts'
 import { parseReviewArguments } from '../codeReview/arguments'
 const t = createTranslate('en')
@@ -33,6 +33,10 @@ describe('review localization', () => {
   it.each(['other-untracked-files-excluded', 'initial-commit-all-tracked-files', 'diff-output-limit', 'remote-diff-incomplete', 'remote-patch-unavailable', 'publication-target-required', 'publication-target-unavailable', 'review-read-not-authorized', 'ambiguous-target', 'ambiguous-review-target', 'scope-incomplete', 'independent-worker-coverage-incomplete', 'review-budget-exhausted', 'head-changed', 'publication-failed', 'write-outcome-unknown', 'repair-workspace-mismatch'])('maps scope and service reason %s', code => {
     expect(reviewMessage(t, code)).not.toBe(t('reviewCard.notice.unknown'))
     expect(reviewDetailMessage(t, code)).toBe(reviewMessage(t, code))
+  })
+  it('reads a stored legacy interruption code and a time-limit end as the interrupted notice', () => {
+    expect(reviewDetailMessage(t, 'review-budget-or-model-interrupted')).toBe(t('reviewCard.notice.interrupted'))
+    expect(reviewEndMessage(t, { kind: 'time-limit' })).toBe(t('reviewCard.notice.interrupted'))
   })
   it('retains prose, suppresses unknown codes, and never interpolates invalid structured values', () => {
     expect(reviewDetailMessage(t, 'The generated fixture could not be checked.')).toBe('The generated fixture could not be checked.')

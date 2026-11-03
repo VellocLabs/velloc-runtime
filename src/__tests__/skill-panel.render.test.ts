@@ -10,6 +10,7 @@ import {
 } from '../browser/webview/SkillPanel'
 import { SkillToolUI } from '../browser/webview/SkillToolUI'
 import { RightPanelContentContext } from '../components/assistant-ui/right-panel-content-context'
+import { ToolCallDetailProvider } from '../components/assistant-ui/tool-call-detail-context'
 
 // The right-panel Skill view: lazy-loads the `skill:<uuid>` sidecar through
 // loadToolCallDetail and renders the SKILL.md body (tags stripped) as markdown;
@@ -574,5 +575,30 @@ describe('SkillPanel bundled-skill body fallback', () => {
     await waitFor(() =>
       expect(screen.getByText('Failed to load skill instructions.')).toBeTruthy(),
     )
+  })
+})
+
+describe('SkillToolUI code-review card', () => {
+  const Render = (SkillToolUI as unknown as { unstable_tool: { render: (p: unknown) => unknown } })
+    .unstable_tool.render as (p: unknown) => React.ReactElement
+  const renderReview = (skill: string, result: unknown) => {
+    const loadToolCallDetail = vi.fn(async () => ({ toolCallId: 'c1', toolName: 'Skill', args: {}, result }) as never)
+    const card = createElement(Render as never, { args: { skill }, result: { lazyDetailFinished: true }, toolCallId: 'c1', toolName: 'Skill', status: { type: 'complete' }, addResult: () => {} })
+    render(createElement(ToolCallDetailProvider, { loadToolCallDetail, children: card }))
+    return loadToolCallDetail
+  }
+
+  it('anchors the report card from the lazy detail of a finished review call', async () => {
+    renderReview('code-review', JSON.stringify({ reviewRunId: 'run_1', status: 'finished', report: {} }))
+    expect(await screen.findByTestId('code-review-card')).toBeTruthy()
+  })
+
+  it('draws no card for another skill or a result without the review envelope', async () => {
+    const other = renderReview('commit', JSON.stringify({ reviewRunId: 'run_1', status: 'finished', report: {} }))
+    cleanup()
+    const plain = renderReview('review', 'done')
+    await waitFor(() => expect(plain).toHaveBeenCalled())
+    expect(other).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('code-review-card')).toBeNull()
   })
 })

@@ -73,10 +73,15 @@ export function registerReviewCapability(registry: CapabilityRegistry, broker: T
       return { accepted: true }
     },
   })
-  // Serialize projection reads so a slow older snapshot never overwrites a newer one.
+  // Serialize projection reads so a slow older snapshot never overwrites a newer one; changes that
+  // arrive while a session's publish is still queued fold into that one publish.
   let pending = Promise.resolve()
+  const queued = new Set<string>()
   const dispose = onReviewSessionsChanged(sessionId => {
+    if (queued.has(sessionId)) return
+    queued.add(sessionId)
     pending = pending.then(async () => {
+      queued.delete(sessionId)
       const topic = reviewTopic(sessionId)
       if (broker.subscribersOf(topic).length) broker.publish(topic, await state(sessionId), { type: 'state' })
     }).catch(() => {})

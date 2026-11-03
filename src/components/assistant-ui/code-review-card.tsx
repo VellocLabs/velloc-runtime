@@ -18,8 +18,9 @@ export const ReviewTaskTree: FC<{ tasks: ReviewTaskView[] }> = ({ tasks }) => {
   return <details open data-testid="review-tasks"><summary className="cursor-pointer">{t('reviewCard.tasks')} · {tasks.length}</summary>
     <ul className="mt-1 space-y-1">{tasks.map(task => {
       const end = task.end ? reviewEndMessage(t, task.end) : undefined
+      const detail = task.angles?.length ? task.angles.map(angle => reviewAngleMessage(t, angle)).join(', ') : task.label
       return <li key={task.key} data-testid="review-task" data-role={task.role} data-status={task.status} className={task.role === 'coordinator' ? 'text-xs' : 'ml-4 text-xs'}>
-        <span className="font-medium">{reviewTaskRoleMessage(t, task.role)}</span> · {task.label} · <span aria-live="polite">{reviewTaskStatusMessage(t, task.status)}</span>
+        <span className="font-medium">{reviewTaskRoleMessage(t, task.role)}</span>{detail && <> · {detail}</>} · <span aria-live="polite">{reviewTaskStatusMessage(t, task.status)}</span>
         {task.taskId && openTasksDrawer && <button type="button" className="ml-2 underline" data-testid="review-task-transcript" onClick={() => openTasksDrawer(task.taskId)}>{t('reviewCard.task.openTranscript')}</button>}
         {task.lastAction && <p className="truncate text-muted-foreground">{t('reviewCard.task.lastAction', { action: task.lastAction })}</p>}
         {end && <p className="text-muted-foreground">{end}</p>}

@@ -2474,7 +2474,7 @@ ${teammateAddendum}`
       atomicWrite: async (path, content) => {
         const response = await options.bridgeTransport.request({ id: crypto.randomUUID(), route: { namespace: 'nexus', capability: 'fs', action: 'writeFile' }, payload: { path, content: new TextEncoder().encode(content), atomic: true } })
         if (!response.ok) throw new Error(response.error.code)
-      }, promptContextProvider: coreState.promptContextProvider, deps: coreState.queryRuntimeDeps },
+      }, promptContextProvider: coreState.promptContextProvider },
     // ...and the sidechain store built over that fs, for the same reason:
     // fork call sites (SpawnAgentTool, forked skills, agent hooks) must not read
     // the realm-shared active-store slot.

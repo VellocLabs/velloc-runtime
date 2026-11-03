@@ -137,6 +137,9 @@ export type SideTaskSink = {
   forkTaskId?: (agentId: string) => string | undefined
 }
 
+/** `forkLabel` of every code-review task fork; the drawer keeps their finished rows in a pool of their own. */
+export const REVIEW_FORK_LABEL = 'code-review'
+
 let sink: SideTaskSink | null = null
 
 /** Register the sink. The manager calls this in its init; pass `null` to clear. */

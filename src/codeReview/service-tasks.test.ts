@@ -8,7 +8,7 @@ import type { Message } from '../runtime/RuntimeTypes'
 vi.mock('../backgroundTasks/sideTaskSink', () => ({ lookupForkTaskId: (agentId: string) => agentId === 'agent-1' ? 'f-1' : undefined }))
 
 const patch = '--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,2 +1,3 @@\n-old\n+new\n+more\n context\n'
-function setup() {
+function setup(options: { maxDurationMs?: number } = {}) {
   const storage = new Map<string, string>()
   const manifest: ScopeManifest = { scope: { kind: 'workspace', workspaceKey: '/repo', repository: { projectKey: '/repo' }, revision: { base: 'a', head: 'b', workingCopyDigest: 'w' }, pathFilter: [] },
     files: [{ path: 'src/a.ts', status: 'included', patch, anchors: [] }, { path: 'src/skip.test.ts', status: 'skipped', patch: '', anchors: [] }], anchors: [], status: 'reviewable', complete: true, notices: [], baseSource: 'main', semantics: 'working-copy' }
@@ -28,7 +28,7 @@ function setup() {
   const service = new LocalReviewService({ conversationKey: 'session', modelId: 'unknown',
     capabilities: { agentAvailable: true, agentPermitted: true, remainingDepth: 2, outputToolAvailable: true },
     preferences: { load: async () => ({}), save: async () => {} }, storage: { listRunIds: async () => [...storage.keys()], load: async id => storage.get(id) ?? null, save: async (id, value) => { storage.set(id, value) } },
-    sanitizeExcerpt: text => text, resolveScope: async () => ({ manifest, trustedGuidance: '', read: vi.fn() }), runModel })
+    sanitizeExcerpt: text => text, resolveScope: async () => ({ manifest, trustedGuidance: '', read: vi.fn() }), runModel, ...options })
   return { service, runModel, manifest }
 }
 
@@ -38,7 +38,8 @@ describe('review runs as an observable task tree', () => {
     const { runId } = await h.service.startUser('medium')
     await h.service.wait(runId)
     const tree = h.service.tasks(runId)!
-    expect(tree.tasks).toEqual([expect.objectContaining({ key: runId, taskId: 'f-1', role: 'coordinator', label: 'medium · local-eight', status: 'finished', lastAction: 'ReviewRead diff src/a.ts', end: { kind: 'completed' } })])
+    expect(tree.tasks).toEqual([expect.objectContaining({ key: runId, taskId: 'f-1', role: 'coordinator', status: 'finished', lastAction: 'ReviewRead diff src/a.ts', end: { kind: 'completed' } })])
+    expect(tree.tasks[0]).not.toHaveProperty('label')
     expect(tree.end).toBeUndefined()
     expect(h.runModel.mock.calls[0][0].role).toBe('coordinator')
   })
@@ -60,6 +61,37 @@ describe('review runs as an observable task tree', () => {
     expect(tree.tasks[0]).toMatchObject({ status: 'failed', end: { kind } })
     expect(tree.tasks[0]).not.toHaveProperty('taskId')
     expect(h.runModel).toHaveBeenCalledTimes(1)
+  })
+  it('cancels the whole run when the coordinator task itself is stopped', async () => {
+    const h = setup()
+    let runSignal: AbortSignal | undefined
+    h.runModel.mockImplementationOnce(async request => {
+      runSignal = request.signal
+      request.observer?.started({ key: request.taskId, agentId: 'agent-1', role: 'coordinator' })
+      request.onStop?.()
+      request.observer?.ended({ key: request.taskId, end: { kind: 'cancelled' } })
+      return { text: '', interrupted: true, end: { kind: 'cancelled' } }
+    })
+    const { runId } = await h.service.startUser('medium')
+    const snapshot = await h.service.wait(runId)
+    expect(runSignal?.aborted).toBe(true)
+    expect(snapshot.run.progress.status).toBe('cancelled')
+  })
+  it('reports a run the time budget stopped as a time limit, not a cancellation', async () => {
+    const h = setup({ maxDurationMs: 5 })
+    h.runModel.mockImplementationOnce(async request => {
+      request.observer?.started({ key: request.taskId, agentId: 'agent-1', role: 'coordinator' })
+      await new Promise(resolve => request.signal.addEventListener('abort', resolve, { once: true }))
+      request.observer?.ended({ key: request.taskId, end: { kind: 'cancelled' } })
+      return { text: '', interrupted: true, end: { kind: 'cancelled' } }
+    })
+    const { runId } = await h.service.startUser('medium')
+    const snapshot = await h.service.wait(runId)
+    expect(snapshot.run.progress.status).toBe('partial')
+    expect(snapshot.coverage.limitations).toContain('review-budget-exhausted')
+    const tree = h.service.tasks(runId)!
+    expect(tree.end).toEqual({ kind: 'time-limit' })
+    expect(tree.tasks[0]).toMatchObject({ status: 'failed', end: { kind: 'time-limit' } })
   })
   it('reads an interrupted result without an end as a crash', async () => {
     const h = setup()
@@ -88,5 +120,9 @@ describe('worker material', () => {
     expect(JSON.parse(reviewMaterial(manifest))).toEqual([{ path: 'src/a.ts', beforePath: undefined, patch }])
     expect(JSON.parse(reviewMaterial(manifest, ['src/skip.test.ts']))).toEqual([])
     expect(JSON.parse(reviewMaterial(manifest, ['src/a.ts']))).toHaveLength(1)
+  })
+  it('selects a renamed file by its pre-rename path', () => {
+    const renamed: ScopeManifest = { ...manifest, files: [{ path: 'src/new.ts', beforePath: 'src/old.ts', status: 'included', patch, anchors: [] }] }
+    expect(JSON.parse(reviewMaterial(renamed, ['src/old.ts']))).toEqual([{ path: 'src/new.ts', beforePath: 'src/old.ts', patch }])
   })
 })

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { SKILL_TOOL_NAME } from '@/prompting/skillToolName'
 import {
@@ -10,10 +10,14 @@ import {
 } from '@/components/assistant-ui/tool-fallback'
 import { PanelJumpChevron } from '@/components/assistant-ui/panel-jump-chevron'
 import { useRightPanelContent } from '@/components/assistant-ui/right-panel-content-context'
+import { useToolCallDetailContext } from '@/components/assistant-ui/tool-call-detail-context'
+import { CodeReviewCard } from '@/components/assistant-ui/code-review-card'
+import { reviewRunIdOfSkillResult } from '@/codeReview/review-protocol'
 import { readSkillBodyRef } from './assistantUiAdapterParts'
 import { useT } from './i18n'
 
 type SkillArgs = { skill?: string; args?: string }
+const REVIEW_SKILLS = ['code-review', 'review', 'ultrareview']
 
 /**
  * The conversation card for a skill invocation (the `Skill` tool call, or `/skill` via
@@ -22,11 +26,23 @@ type SkillArgs = { skill?: string; args?: string }
  */
 export const SkillToolUI = makeAssistantToolUI<SkillArgs, unknown>({
   toolName: SKILL_TOOL_NAME,
-  render: function SkillUI({ args, result, status, isError }) {
+  render: function SkillUI({ args, result, status, isError, toolCallId }) {
     const t = useT()
     const { openSkill } = useRightPanelContent()
     const [open, setOpen] = useState(false)
     const ref = readSkillBodyRef(result)
+    // A finished code-review call keeps its result in the lazy tool detail; the run id there anchors the card.
+    const detailContext = useToolCallDetailContext()
+    const [reviewRunId, setReviewRunId] = useState<string | null>(() => reviewRunIdOfSkillResult(result))
+    const reviewCall = status?.type === 'complete' && REVIEW_SKILLS.includes((args?.skill ?? '').trim().replace(/^\/+/, ''))
+    useEffect(() => {
+      if (reviewRunId || !reviewCall || !detailContext || !toolCallId) return
+      let live = true
+      detailContext.loadToolCallDetail(toolCallId)
+        .then(detail => { if (live) setReviewRunId(reviewRunIdOfSkillResult(detail?.result)) })
+        .catch(() => {})
+      return () => { live = false }
+    }, [reviewRunId, reviewCall, detailContext, toolCallId])
     const name = ref?.name ?? args?.skill ?? ''
     const isRunning = status?.type === 'running'
     // Two failure shapes, matching the Plan surface's `planStatus === 'failed'`:
@@ -101,6 +117,8 @@ export const SkillToolUI = makeAssistantToolUI<SkillArgs, unknown>({
             <ToolFallbackArgs value={args} />
           </ToolFallbackContent>
         </ToolFallbackRoot>
+        {/* A model-invoked code review anchors its report card under the Skill row (F-38). */}
+        {reviewRunId && <CodeReviewCard runId={reviewRunId} />}
       </div>
     )
   },

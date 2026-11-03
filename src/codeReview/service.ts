@@ -42,7 +42,7 @@ export interface ReviewServiceOptions {
   loadTargetLiteral?(runId: string): Promise<true | undefined>
   loadTarget?(runId: string): Promise<string | undefined>
 }
-interface LiveRun { access: ReviewScopeAccess; plan: ReviewPlan; args: ReviewArguments; controller: AbortController; done: Promise<void>; source: 'user' | 'model'; completedAngles: Set<string>; finderTasks: Map<string, string>; verified: Set<string>; sweepIds: Set<string>; swept: boolean; tasks: Map<string, ReviewTaskView>; agentIds: Map<string, string>; end?: ReviewRunEnd }
+interface LiveRun { access: ReviewScopeAccess; plan: ReviewPlan; args: ReviewArguments; controller: AbortController; done: Promise<void>; source: 'user' | 'model'; completedAngles: Set<string>; finderTasks: Map<string, string>; verified: Set<string>; sweepIds: Set<string>; swept: boolean; tasks: Map<string, ReviewTaskView>; agentIds: Map<string, string>; end?: ReviewRunEnd; budgetExpired?: boolean }
 export class ReviewGatewayError extends Error { constructor(readonly code: string) { super(code) } }
 const onlyTestsSkipped = (manifest: ScopeManifest): boolean => !manifest.files.some(file => file.status === 'included') && manifest.files.some(file => file.status === 'skipped' && isTestOrFixturePath(file.path))
 const patchBytes = (manifest: ScopeManifest): number => manifest.files.reduce((total, file) => total + new TextEncoder().encode(file.patch).length, 0)
@@ -50,6 +50,8 @@ const block = (text: string, source: string): ReviewPromptBlock => ({ type: 'tex
 const newLive = (base: Omit<LiveRun, 'completedAngles' | 'finderTasks' | 'verified' | 'sweepIds' | 'swept' | 'tasks' | 'agentIds'>): LiveRun =>
   ({ ...base, completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false, tasks: new Map(), agentIds: new Map() })
 const endCode = (end: ReviewRunEnd): string => `review-${end.kind}`
+/** A task the run's time budget aborted ended on the time limit, not on a cancellation. */
+const timed = (live: LiveRun, end: ReviewRunEnd): ReviewRunEnd => live.budgetExpired && end.kind === 'cancelled' ? { kind: 'time-limit' } : end
 const countLines = (patch: string, sign: '+' | '-'): number => patch.split('\n').filter(line => line.startsWith(sign) && !line.startsWith(sign.repeat(3))).length
 
 /** Contract: the manifest without patch text; patches are read per file through ReviewRead. */
@@ -57,9 +59,9 @@ export function scopeIndex(manifest: ScopeManifest): Record<string, unknown> {
   return { ...manifest, files: manifest.files.map(({ patch, ...file }) => ({ ...file,
     hunks: (patch.match(/^@@ /gm) ?? []).length, added: countLines(patch, '+'), removed: countLines(patch, '-') })) }
 }
-/** The patches a worker needs: every included file, or only the named ones. */
+/** The patches a worker needs: every included file, or only the named ones (by current or pre-rename path). */
 export function reviewMaterial(manifest: ScopeManifest, paths?: readonly string[]): string {
-  return JSON.stringify(manifest.files.filter(file => file.status === 'included' && (!paths || paths.includes(file.path))).map(file => ({ path: file.path, beforePath: file.beforePath, patch: file.patch })))
+  return JSON.stringify(manifest.files.filter(file => file.status === 'included' && (!paths || paths.includes(file.path) || (!!file.beforePath && paths.includes(file.beforePath)))).map(file => ({ path: file.path, beforePath: file.beforePath, patch: file.patch })))
 }
 
 /** Invocation provenance is selected by separate host entry points, never by model JSON. */
@@ -124,7 +126,8 @@ export class LocalReviewService {
     return {
       started: info => {
         live.agentIds.set(info.key, info.agentId)
-        live.tasks.set(info.key, { key: info.key, role: info.role, label: info.label, status: 'running', startedAt: Date.now(), lastActivityAt: Date.now() })
+        live.tasks.set(info.key, { key: info.key, role: info.role, ...(info.label ? { label: info.label } : {}), ...(info.angles?.length ? { angles: [...info.angles] } : {}),
+          status: 'running', startedAt: Date.now(), lastActivityAt: Date.now() })
         this.changed()
       },
       activity: info => {
@@ -134,9 +137,9 @@ export class LocalReviewService {
       ended: info => {
         const task = live.tasks.get(info.key)
         if (!task) return
-        task.end = info.end
+        task.end = timed(live, info.end)
         task.finishedAt = Date.now()
-        task.status = info.end.kind === 'completed' ? 'finished' : info.end.kind === 'cancelled' ? 'stopped' : 'failed'
+        task.status = task.end.kind === 'completed' ? 'finished' : task.end.kind === 'cancelled' ? 'stopped' : 'failed'
         this.changed()
       },
     }
@@ -214,9 +217,8 @@ export class LocalReviewService {
   }
   private async execute(runId: string, live: LiveRun): Promise<void> {
     const { plan, access, controller } = live
-    let budgetExpired = false
     const budgetMs = this.options.maxDurationMs ?? reviewTimeBudgetMs(plan, patchBytes(access.manifest))
-    const timer = setTimeout(() => { budgetExpired = true; controller.abort() }, budgetMs)
+    const timer = setTimeout(() => { live.budgetExpired = true; controller.abort() }, budgetMs)
     try {
       await this.store.start(runId); this.changed()
       this.admit(controller.signal)
@@ -237,15 +239,15 @@ export class LocalReviewService {
         try {
           result = await this.runModel({ blocks, tools, signal: controller.signal, taskId: plan.coordinatorWorkerRequired ? `${runId}-worker` : runId,
             execution: plan.coordinatorWorkerRequired ? 'isolated' : plan.execution, reasoningLevel: plan.reasoningLevel,
-            role: 'coordinator', label: `${plan.level} · ${plan.recipe}`, observer: this.observer(live) })
+            role: 'coordinator', observer: this.observer(live), onStop: () => controller.abort() })
         } finally { if (plan.coordinatorWorkerRequired) await this.store.noteWorker(runId, 'finished') }
-        const end = endOf(result)
+        const end = timed(live, endOf(result))
         if (end.kind !== 'completed') { live.end = end; throw new ReviewGatewayError(endCode(end)) }
         if (plan.presentation !== 'panel') {
           try { await this.store.submitFinalJson(runId, crypto.randomUUID(), result.text) }
           catch {
             const expected = await this.store.expectedRecord(runId)
-            const corrected = await this.runModel({ blocks: [block('Correct only the JSON format/selection. Return candidates and coverage exactly from the provided retained ledger; do not rerun the review.', 'format-correction'), block(JSON.stringify(expected), 'retained-ledger')], tools: [], signal: controller.signal, taskId: `${runId}-format`, maxTurns: 1, role: 'format', label: 'format', observer: this.observer(live) })
+            const corrected = await this.runModel({ blocks: [block('Correct only the JSON format/selection. Return candidates and coverage exactly from the provided retained ledger; do not rerun the review.', 'format-correction'), block(JSON.stringify(expected), 'retained-ledger')], tools: [], signal: controller.signal, taskId: `${runId}-format`, maxTurns: 1, role: 'format', observer: this.observer(live) })
             try { await this.store.submitFinalJson(runId, crypto.randomUUID(), corrected.text) }
             catch {
               await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['invalid-response'], complete: false } })
@@ -288,10 +290,10 @@ export class LocalReviewService {
     } catch (error) {
       const snapshot = await this.store.getSnapshot(runId)
       if (snapshot.run.progress.status === 'active') {
-        const reason = budgetExpired ? 'review-budget-exhausted' : controller.signal.aborted ? 'review-cancelled' : error instanceof Error ? error.message : 'review-failed'
+        const reason = live.budgetExpired ? 'review-budget-exhausted' : controller.signal.aborted ? 'review-cancelled' : error instanceof Error ? error.message : 'review-failed'
         await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: [reason], complete: false } })
         if (!snapshot.structured) await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
-        await this.store.finish(runId, controller.signal.aborted && !budgetExpired ? 'cancelled' : 'partial')
+        await this.store.finish(runId, controller.signal.aborted && !live.budgetExpired ? 'cancelled' : 'partial')
       }
     } finally { clearTimeout(timer); this.changed() }
   }
@@ -330,12 +332,11 @@ export class LocalReviewService {
           : role === 'verifier' ? composeVerifierPrompt({ scope_manifest: index, review_material: reviewMaterial(live.access.manifest, [candidate!.anchor.path]), candidate: JSON.stringify(candidate) })
           : composeSweeperPrompt({ scope_manifest: index, review_material: reviewMaterial(live.access.manifest), existing_findings: JSON.stringify(snapshot.diagnostics) })
         const blocks = [...promptBlocks, block(JSON.stringify(role === 'verifier' ? { type: 'object', properties: { ...REVIEW_ASSESSMENT_SCHEMA.properties, support: REVIEW_SUPPORT_SCHEMA, missingEvidence: { type: 'array', items: { type: 'string' } } }, required: ['disposition', 'reason', 'support'] } : REVIEW_RESULT_SCHEMA), 'required-json-schema')]
-        const label = role === 'finder' ? (angles as string[]).join(', ') : role === 'verifier' ? candidate!.claim.title : 'gap sweep'
         await this.store.noteWorker(runId, 'started'); this.changed()
         try {
           const result = await this.runModel({ blocks, tools: this.tools(runId, live, false).filter(t => t.name === 'ReviewRead'), signal: live.controller.signal, taskId, maxTurns: 16,
-            role: role as 'finder' | 'verifier' | 'sweeper', label, observer: this.observer(live) })
-          const end = endOf(result)
+            role: role as 'finder' | 'verifier' | 'sweeper', ...(role === 'verifier' ? { label: candidate!.claim.title } : role === 'finder' ? { angles: angles as string[] } : {}), observer: this.observer(live) })
+          const end = timed(live, endOf(result))
           if (end.kind !== 'completed') throw new ReviewGatewayError(endCode(end))
           const value = JSON.parse(result.text)
           if (role === 'verifier') {
@@ -410,7 +411,7 @@ export class LocalReviewService {
         return { content: material, executionRef: ref }
       }, changed: this.changed, allowOutput: live.plan.presentation === 'panel', actions: true, actionEpoch: epoch }).filter(t => t.name !== 'ReviewLedger')
       const result = await this.runModel({ blocks: [block('Repair only the selected saved diagnostics. Preserve concurrent user changes. Use actual execution references returned by edits in ReviewActionLog; do not claim tests, commits or remote updates.', 'authorized-repair'), block(JSON.stringify({ report: snapshot, diagnosticIds: grant.diagnosticIds }), 'saved-report')], tools: [...tools, ...editTools], signal: live.controller.signal, taskId: `${runId}-repair`,
-        role: 'repair', label: `${grant.diagnosticIds.length} selected`, observer: this.observer(live) })
+        role: 'repair', observer: this.observer(live) })
       if (result.interrupted) throw new ReviewGatewayError('repair-interrupted')
       await this.store.reconcileObservedEdits(runId, grant.id, grant.diagnosticIds, epoch)
       const after = await this.store.getSnapshot(runId)
@@ -473,6 +474,7 @@ export class LocalReviewService {
       const live = await this.actionContext(runId, operation.controller)
       this.admit(operation.controller.signal)
       live.controller = operation.controller
+      live.budgetExpired = false
       live.done = task(live)
       await live.done
       this.admit()

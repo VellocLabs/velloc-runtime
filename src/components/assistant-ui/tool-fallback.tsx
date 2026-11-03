@@ -70,9 +70,6 @@ import { ChildSessionCard, classifyChildSpawn } from "@/components/assistant-ui/
 import { StaticMarkdown } from "@/components/assistant-ui/static-markdown";
 import { requestTeammateJump } from "@/browser/webview/teammateJumpRequests";
 import { ModToolResultSite, ModToolUseSite, modToolUseProps } from "@/components/assistant-ui/mod-render";
-import { CodeReviewCard } from "@/components/assistant-ui/code-review-card";
-import { reviewRunIdOfSkillResult } from "@/codeReview/review-protocol";
-import { SKILL_TOOL_NAME } from "@/prompting/skillToolName";
 import { modToolUseValue, useModToolUseRewrite } from "@/components/assistant-ui/mod-ui-context";
 
 // Re-exported for the tool-plan-stream / tool-call-detail-body / AskUserQuestion
@@ -1155,7 +1152,7 @@ const ToolFallbackRouted: ToolCallMessagePartComponent = (props) => {
   if (childSpawn) return <ChildSessionCard spawn={childSpawn} />;
   // A mod hooking `ToolUse` (F-25) draws the card through `ui.render`;
   // a rewritten input / output reaches the title as the card's own args.
-  const row = (
+  return (
     <ModToolUseSite
       part={props}
       drawEngine={(rewrite) => (
@@ -1167,19 +1164,6 @@ const ToolFallbackRouted: ToolCallMessagePartComponent = (props) => {
       )}
     />
   );
-  // A model-invoked code review anchors the same report card the slash command
-  // gets, under the Skill row that started it (F-38).
-  const reviewRunId =
-    props.toolName === SKILL_TOOL_NAME ? reviewRunIdOfSkillResult(props.result) : null;
-  if (reviewRunId) {
-    return (
-      <>
-        {row}
-        <CodeReviewCard runId={reviewRunId} />
-      </>
-    );
-  }
-  return row;
 };
 
 const ToolFallback = memo(

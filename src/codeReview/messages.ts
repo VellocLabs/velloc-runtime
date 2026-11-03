@@ -13,7 +13,7 @@ const groups = {
   unavailable: ['review-runtime-unavailable', 'review-context-unavailable', 'remote-context-unavailable', 'review-platform-adapter-required', 'repair-unavailable', 'publication-unavailable', 'review-plan-blocked', 'host_unavailable'],
   incomplete: ['scope-incomplete', 'independent-worker-coverage-incomplete', 'remote-diff-incomplete'],
   outputLimit: ['diff-output-limit', 'output-limit', 'response-limit'],
-  interrupted: ['review-budget-exhausted', 'review-task-budget', 'worker-interrupted', 'repair-interrupted', 'timeout'],
+  interrupted: ['review-budget-or-model-interrupted', 'review-budget-exhausted', 'review-time-limit', 'review-task-budget', 'worker-interrupted', 'repair-interrupted', 'timeout'],
   stepLimit: ['review-step-limit'],
   outputCap: ['review-output-cap'],
   contextOverflow: ['review-context-overflow'],
@@ -77,7 +77,6 @@ const taskStatuses = ['running', 'finished', 'failed', 'stopped'] as const
 export function reviewTaskStatusMessage(t: TranslateFn, status: string): string {
   return taskStatuses.includes(status as typeof taskStatuses[number]) ? t(`reviewCard.task.status.${status}` as Parameters<TranslateFn>[0]) : t('reviewCard.notice.unspecified')
 }
-/** An end reason reads as its limitation message; `completed` has none. */
 /** The end reason for people, with the run's own detail (a provider error, a crash message) when it carries one. */
 export function reviewEndMessage(t: TranslateFn, end: { kind: string; detail?: string }): string | undefined {
   if (end.kind === 'completed') return undefined

@@ -88,6 +88,21 @@ it('subscribes to a complete report projection without initiating any work', asy
 })
 
 
+it('folds a burst of review changes into one publish per session', async () => {
+  const { broker, connect } = rig({ cold: true })
+  let notify = () => {}
+  const getSnapshot = vi.fn(() => ({ sessionId: 's1', sequence: 2, reports: [] }))
+  dispose.push(registerReviewSession('s1', { getSnapshot, subscribe: listener => { notify = listener; return () => {} }, cancel: async () => {}, repair: async () => {}, publish: async () => {}, rerun: async () => {} }))
+  const conn = await connect('observe')
+  dispose.push(conn.subscribe('review/s1', () => {}))
+  await vi.waitFor(() => expect(broker.subscribersOf('review/s1').length).toBeGreaterThan(0))
+  const publish = vi.spyOn(broker, 'publish')
+  for (let n = 0; n < 5; n++) notify()
+  await vi.waitFor(() => expect(publish).toHaveBeenCalled())
+  await new Promise(resolve => setTimeout(resolve, 20))
+  expect(publish.mock.calls.filter(([topic]) => topic === 'review/s1')).toHaveLength(1)
+})
+
 it('unsubscribes the review facade listener when its capability is disposed', async () => {
   const { capability, broker } = rig()
   const publish = vi.spyOn(broker, 'publish')

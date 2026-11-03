@@ -13,7 +13,7 @@ export type InvocationSource = 'user' | 'model' | 'preload'
 
 /** Contract: why one model run of a review ended; only `completed` counts as a full answer. */
 export type ReviewRunEnd = {
-  kind: 'completed' | 'cancelled' | 'step-limit' | 'output-cap' | 'context-overflow' | 'model-error' | 'failure-limit' | 'awaiting-user' | 'crash'
+  kind: 'completed' | 'cancelled' | 'step-limit' | 'output-cap' | 'context-overflow' | 'model-error' | 'failure-limit' | 'awaiting-user' | 'time-limit' | 'crash'
   detail?: string
 }
 export type ReviewTaskRole = 'coordinator' | 'finder' | 'verifier' | 'sweeper' | 'format' | 'repair' | 'behavior' | 'reassessment'
@@ -22,7 +22,9 @@ export type ReviewTaskView = {
   key: string
   taskId?: string
   role: ReviewTaskRole
-  label: string
+  /** Run content naming the task (a candidate title). */
+  label?: string
+  angles?: string[]
   status: 'running' | 'finished' | 'failed' | 'stopped'
   startedAt: number
   finishedAt?: number

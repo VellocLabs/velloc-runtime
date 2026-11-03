@@ -2,18 +2,18 @@ import { launchFork, recallForkPrefix, type ForkPrefixSnapshot } from '../agents
 import type { TurnConclusion } from '../engine/turnOutcome'
 import { createGeneratedUserMessage } from '../messages/messageFactories'
 import type { PromptContextProvider } from '../runtime/interfaces/PromptContextProvider'
-import type { QueryRuntimeDeps } from '../runtime/interfaces/QueryRuntimeDeps'
 import type { Message } from '../runtime/RuntimeTypes'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { ToolContractList } from '../toolkit/toolContract'
 import type { PermissionDecider } from '../toolkit/permissionVerdict'
+import { REVIEW_FORK_LABEL } from '../backgroundTasks/sideTaskSink'
 import { createSidechainAgentId, getContextSidechainStore } from '../utils/sidechainTranscripts'
 import type { ReviewPromptBlock } from './composer'
 import type { ReviewRunEnd, ReviewTaskRole } from './contracts'
 
 /** Observes one review task's life; every callback carries the review-side task key. */
 export interface ReviewTaskObserver {
-  started(info: { key: string; agentId: string; role: ReviewTaskRole; label: string }): void
+  started(info: { key: string; agentId: string; role: ReviewTaskRole; label?: string; angles?: readonly string[] }): void
   activity(info: { key: string; action: string }): void
   ended(info: { key: string; end: ReviewRunEnd }): void
 }
@@ -27,8 +27,12 @@ export interface ReviewModelRequest {
   maxTurns?: number
   reasoningLevel?: string
   role?: ReviewTaskRole
+  /** Run content that names the task (a candidate title); never authored prose. */
   label?: string
+  angles?: readonly string[]
   observer?: ReviewTaskObserver
+  /** Called when the task itself is stopped (its drawer Stop) while `signal` is still live. */
+  onStop?: () => void
 }
 export interface ReviewModelResult { text: string; interrupted: boolean; end?: ReviewRunEnd; agentId?: string }
 /** A result without an explicit end reads its `interrupted` flag. */
@@ -88,16 +92,16 @@ export function createReviewModelRunner(input: {
   context: ToolCallContext
   promptContextProvider: PromptContextProvider
   decidePermission: PermissionDecider
-  deps?: QueryRuntimeDeps
 }): ReviewModelRunner {
   return async request => {
     const cancelSource = new AbortController()
     const abort = () => cancelSource.abort(request.signal.reason)
     request.signal.addEventListener('abort', abort, { once: true })
     if (request.signal.aborted) abort()
-    const role = request.role ?? 'coordinator'
-    const label = request.label ?? role
-    const agentId = createSidechainAgentId(`review-${role}`)
+    cancelSource.signal.addEventListener('abort', () => { if (!request.signal.aborted) request.onStop?.() }, { once: true })
+    const role = request.role
+    const agentType = role ? `review-${role}` : 'review'
+    const agentId = createSidechainAgentId(agentType)
     let end: ReviewRunEnd | undefined
     try {
       if (cancelSource.signal.aborted) throw new Error('review-cancelled')
@@ -116,14 +120,17 @@ export function createReviewModelRunner(input: {
         toolUseContext: parent, forkSeedRows: inherited?.forkSeedRows ?? [],
         providerId: options.mainLoopProviderId, thinkingTier: request.reasoningLevel,
       }
-      const opening = request.blocks.map(block => Object.assign(
-        createGeneratedUserMessage([{ type: 'text' as const, text: JSON.stringify({ source: block.source, provenance: block.provenance, text: block.text }) }]),
+      const blockRow = (block: ReviewPromptBlock, body: Record<string, unknown>) => Object.assign(
+        createGeneratedUserMessage([{ type: 'text' as const, text: JSON.stringify({ source: block.source, provenance: block.provenance, ...body }) }]),
         { reviewSource: { provenance: block.provenance, source: block.source } },
-      ))
-      request.observer?.started({ key: request.taskId, agentId, role, label })
+      )
+      const opening = request.blocks.map(block => blockRow(block, { text: block.text }))
+      // The task record keeps the patch material's size, not another copy of it.
+      const recorded = request.blocks.map((block, index) => block.source === 'review-material' ? blockRow(block, { omittedBytes: new TextEncoder().encode(block.text).length }) : opening[index]!)
+      if (role) request.observer?.started({ key: request.taskId, agentId, role, label: request.label, angles: request.angles })
       const outcome = await launchFork({
-        openingRows: opening, forkPrefix, canUseTool: input.decidePermission,
-        querySource: 'skill_fork', forkLabel: 'code-review', agentType: `review-${role}`, description: label, agentId,
+        openingRows: opening, recordedOpeningRows: recorded, skipStartHooks: true, forkPrefix, canUseTool: input.decidePermission,
+        querySource: 'skill_fork', forkLabel: REVIEW_FORK_LABEL, agentType, description: request.label, agentId,
         overrides: { options, abortController: cancelSource, messages: [], readFileState: new Map(), inheritConfirm: true },
         systemPromptOverride: prompt.defaultSystemPrompt,
         omitParentContext: !inherited,
@@ -132,7 +139,7 @@ export function createReviewModelRunner(input: {
         onMessage: row => { const action = describeActivity(row); if (action) request.observer?.activity({ key: request.taskId, action }) },
         onConclusion: conclusion => { end = reviewRunEnd(conclusion) },
       })
-      if (!end) end = cancelSource.signal.aborted ? { kind: 'cancelled' } : { kind: 'crash', detail: 'no-conclusion' }
+      if (!end) end = cancelSource.signal.aborted ? { kind: 'cancelled' } : { kind: 'crash' }
       if (cancelSource.signal.aborted && end.kind === 'completed') end = { kind: 'cancelled' }
       return { text: lastAssistantText(outcome.messages), interrupted: end.kind !== 'completed', end, agentId }
     } catch (error) {

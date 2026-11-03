@@ -388,6 +388,19 @@ describe('side-task registry — local_fork', () => {
     expect(retained).toBe(40)
     expect(rowsOf(i).filter(r => r.type === 'local_fork').length).toBe(20)
   })
+
+  it('keeps code-review task forks in a pool of their own', () => {
+    const { i } = manager()
+    const finish = (agentId: string, forkLabel: string) => {
+      notifyForkStarted(forkStart({ agentId, forkLabel }))
+      notifyForkFinished({ agentId, status: 'success', finishedAt: 1_000 })
+    }
+    for (let n = 0; n < 40; n++) finish(`fork-${n}`, 'memory')
+    for (let n = 0; n < 170; n++) finish(`review-${n}`, 'code-review')
+    const finished = [...i.taskRegistry.allFinished()].filter(r => r.type === 'local_fork') as Array<{ forkLabel?: string }>
+    expect(finished.filter(r => r.forkLabel === 'memory')).toHaveLength(40)
+    expect(finished.filter(r => r.forkLabel === 'code-review')).toHaveLength(160)
+  })
 })
 
 // ============================================================================
@@ -841,6 +854,17 @@ describe('launchFork — sink lifecycle', () => {
     expect(log.finished).toEqual([
       expect.objectContaining({ agentId: result.agentId, status: 'success' }),
     ])
+  })
+
+  it('records the substitute opening rows as the prompt while the model reads the real ones', async () => {
+    const log = recordingSink()
+    queryMock.mockImplementation((async function* () {
+      yield ASSISTANT_MSG
+    }) as never)
+    const recorded = [{ type: 'user', uuid: 'u-r', message: { role: 'user', content: 'material omitted' } }] as never[]
+    await launchFork({ ...forkParams(), recordedOpeningRows: recorded, skipStartHooks: true } as never)
+    expect(log.started[0]!.prompt).toBe('material omitted')
+    expect(JSON.stringify(queryMock.mock.calls.at(-1)![0].messages)).toContain('do the research')
   })
 
   it('announces an error finish and rethrows when the query loop throws', async () => {

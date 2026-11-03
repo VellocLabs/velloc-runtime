@@ -214,6 +214,12 @@ export function deriveChildToolContext(
 export type ForkRunRequest = {
   openingRows: Message[]
 
+  /** Written to the transcript and the drawer prompt in place of `openingRows`; the model still reads `openingRows`. */
+  recordedOpeningRows?: Message[]
+
+  /** Do not run SubagentStart hooks for this fork. */
+  skipStartHooks?: boolean
+
   forkPrefix: ForkPrefixSnapshot
 
   canUseTool: PermissionDecider
@@ -395,7 +401,7 @@ export async function launchFork(
     agentType,
     description,
     model: isolatedToolUseContext.options.mainLoopModel,
-    prompt: extractPromptText(openingRows),
+    prompt: extractPromptText(params.recordedOpeningRows ?? openingRows),
     systemPrompt: serializeSystemPromptForDisplay(forkSystemPrompt),
     startedAt: Date.now(),
     abort: () => isolatedToolUseContext.cancelSource.abort(),
@@ -434,12 +440,12 @@ export async function launchFork(
         modelSource,
       }
       await recordEntry(metadata)
-      for (const promptMessage of openingRows) {
+      for (const promptMessage of params.recordedOpeningRows ?? openingRows) {
         await recordEntry(promptMessage)
       }
     }
 
-    if (SUBAGENT_START_QUERY_SOURCES.has(querySource)) {
+    if (!params.skipStartHooks && SUBAGENT_START_QUERY_SOURCES.has(querySource)) {
       const startRows = await runSubagentStartHooks(agentId, agentType, toolUseContext)
       for (const row of startRows) {
         initialMessages.push(row)

@@ -49,13 +49,15 @@ export function isReviewActionPayload(action: ReviewAction, value: unknown): val
   return true
 }
 
-/** The run a Skill tool result anchors its card to; null for any other result. */
+/** The run a Skill tool result anchors its card to, as the raw envelope text or its parsed form; null for any other result. */
 export function reviewRunIdOfSkillResult(result: unknown): string | null {
-  if (typeof result !== 'string' || !result.startsWith('{"reviewRunId":')) return null
-  try {
-    const value = JSON.parse(result) as { reviewRunId?: unknown }
-    return isReviewId(value.reviewRunId) ? value.reviewRunId : null
-  } catch { return null }
+  let value: unknown = result
+  if (typeof result === 'string') {
+    if (!result.startsWith('{"reviewRunId":')) return null
+    try { value = JSON.parse(result) } catch { return null }
+  }
+  if (!record(value) || Object.keys(value)[0] !== 'reviewRunId' || !record(value.report)) return null
+  return isReviewId(value.reviewRunId) ? value.reviewRunId : null
 }
 
 /** Only a persisted system row's structured metadata can select a report card. */

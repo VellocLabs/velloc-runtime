@@ -1169,11 +1169,12 @@ export class SharedWorkerSessionManager {
       runJsDisplayLabel: () => runJsDisplayLabel(),
       extractFinalAssistantText: (msgs) => extractFinalAssistantText(msgs),
       projectSubAgentTranscript: (msgs) => projectSubAgentTranscript(msgs),
-      evictFinishedOverCap: (kind, cap, onEvict) =>
+      evictFinishedOverCap: (kind, cap, onEvict, filter) =>
         this.evictFinishedOverCap(
           kind as NexusTaskKind,
           cap,
           onEvict,
+          filter,
         ),
     })
     // Transport-facing shell plumbing (the persistent-shell + fs primitives,

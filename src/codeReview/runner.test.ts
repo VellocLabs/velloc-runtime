@@ -132,6 +132,40 @@ describe('review model runs on the fork substrate', () => {
   })
 })
 
+describe('review task records and stops', () => {
+  it('records the patch material by size, keeps other blocks, and skips start hooks', async () => {
+    const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })
+    await runner({ blocks: [{ type: 'text', text: '+secret patch', source: 'review-material', provenance: 'repository-material' }, { type: 'text', text: 'task text', source: 'task', provenance: 'trusted-task' }],
+      tools: [], signal: new AbortController().signal, taskId: 'w1', role: 'finder', angles: ['lines'] })
+    const launch = lastLaunch()
+    expect(JSON.stringify(launch.openingRows)).toContain('+secret patch')
+    expect(JSON.stringify(launch.recordedOpeningRows)).not.toContain('+secret patch')
+    expect(JSON.stringify(launch.recordedOpeningRows)).toContain('omittedBytes')
+    expect(launch.recordedOpeningRows![1]).toBe(launch.openingRows[1])
+    expect(launch.skipStartHooks).toBe(true)
+    expect(launch.description).toBeUndefined()
+  })
+  it('reports a stop of the task itself, never one that came through the run signal', async () => {
+    const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })
+    const onStop = vi.fn()
+    vi.mocked(launchFork).mockImplementationOnce(async params => { params.overrides!.abortController!.abort(); return { messages: [], agentId: 'fork' } })
+    expect((await runner({ blocks: [], tools: [], signal: new AbortController().signal, taskId: 'c', onStop })).end).toEqual({ kind: 'cancelled' })
+    expect(onStop).toHaveBeenCalledTimes(1)
+    const controller = new AbortController()
+    const notStopped = vi.fn()
+    vi.mocked(launchFork).mockImplementationOnce(async () => { controller.abort(); return { messages: [], agentId: 'fork' } })
+    await runner({ blocks: [], tools: [], signal: controller.signal, taskId: 'c', onStop: notStopped })
+    expect(notStopped).not.toHaveBeenCalled()
+  })
+  it('registers a run without a role as a plain review task, outside the task tree', async () => {
+    const observer: ReviewTaskObserver = { started: vi.fn(), activity: vi.fn(), ended: vi.fn() }
+    const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })
+    await runner({ blocks: [], tools: [], signal: new AbortController().signal, taskId: 'm', observer })
+    expect(lastLaunch().agentType).toBe('review')
+    expect(observer.started).not.toHaveBeenCalled()
+  })
+})
+
 describe('end reasons and activity lines', () => {
   it.each([
     ['completed', 'completed'], ['stop_hook_prevented', 'completed'], ['aborted_streaming', 'cancelled'], ['max_turns', 'step-limit'],

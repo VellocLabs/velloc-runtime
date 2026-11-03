@@ -16,7 +16,6 @@ import { resolveModelId } from '../config/nexusModelConfig/modelEntryResolution'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { PermissionDecider } from '../toolkit/permissionVerdict'
 import type { PromptContextProvider } from '../runtime/interfaces/PromptContextProvider'
-import type { QueryRuntimeDeps } from '../runtime/interfaces/QueryRuntimeDeps'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { resolveRuntimePath, dirnameRuntimePath, isAbsoluteRuntimePath } from '../utils/runtimePaths'
 import { buildFilePermissionContext, decideToolPermission, requestQueuedToolUseConfirm, resolveHeadlessPermissionDecision } from '../toolkit/run/toolPermissionGate'
@@ -46,7 +45,6 @@ export interface ReviewRuntimeDependencies {
   platformSecret?: (origin: string) => Promise<import('./platform-adapter').PlatformSecret | undefined>
   atomicWrite?: (path: string, content: string) => Promise<void>
   promptContextProvider: PromptContextProvider
-  deps?: QueryRuntimeDeps
 }
 const publicationOwners = new Map<string, object>()
 const services = new WeakMap<object, LocalReviewService>()
@@ -60,13 +58,18 @@ function contextText(bytes: Uint8Array): string {
   if (bytes.length > CONTEXT_READ_BYTES || bytes.includes(0)) throw new ReviewGatewayError('review-context-unavailable')
   try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes) } catch { throw new ReviewGatewayError('review-context-unavailable') }
 }
-/** The scope index without a path, or one listed file's patch with it. */
-function readDiff(manifest: ScopeManifest, path: unknown): unknown {
-  if (path === undefined) return scopeIndex(manifest)
-  if (typeof path !== 'string') throw new ReviewGatewayError('read-outside-review-scope')
-  const file = manifest.files.find(entry => entry.path === path)
-  if (!file) throw new ReviewGatewayError('read-outside-review-scope')
-  return { path: file.path, beforePath: file.beforePath, status: file.status, reason: file.reason, patch: file.patch, anchors: file.anchors }
+/** The scope index without a path; one listed file's patch with `path`; up to 50 with `paths`. A pre-rename path names its file too. */
+function readDiff(manifest: ScopeManifest, input: Record<string, unknown>): unknown {
+  const patchOf = (path: unknown) => {
+    const file = typeof path === 'string' ? manifest.files.find(entry => entry.path === path) ?? manifest.files.find(entry => entry.beforePath === path) : undefined
+    if (!file) throw new ReviewGatewayError('read-outside-review-scope')
+    return { path: file.path, beforePath: file.beforePath, status: file.status, reason: file.reason, patch: file.patch, anchors: file.anchors }
+  }
+  if (input.paths !== undefined) {
+    if (input.path !== undefined || !Array.isArray(input.paths) || !input.paths.length || input.paths.length > 50) throw new ReviewGatewayError('read-outside-review-scope')
+    return { files: input.paths.map(patchOf) }
+  }
+  return input.path === undefined ? scopeIndex(manifest) : patchOf(input.path)
 }
 /** A 1-based inclusive line window of a context read; the whole text without one. */
 function sliceLines(content: string, startLine: unknown, endLine: unknown): string {
@@ -345,7 +348,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     admit(request.signal)
     const signal = ownerSignal ? AbortSignal.any([ownerSignal, request.signal]) : request.signal
     const currentRuntime = context.options.reviewRuntime!
-    return createReviewModelRunner({ context, promptContextProvider: currentRuntime.promptContextProvider, decidePermission, deps: currentRuntime.deps })({ ...request, signal,
+    return createReviewModelRunner({ context, promptContextProvider: currentRuntime.promptContextProvider, decidePermission })({ ...request, signal,
       tools: request.tools.map(tool => ({ ...tool, call: (...args) => { admit(signal); return tool.call(...args) } })),
     })
   }
@@ -414,7 +417,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           remoteSnapshots.set(remoteKey(remote.manifest.scope), remote)
           const guidance = await guidanceFor(remote.manifest.files.map(file => file.path), !approved, authorizePath, approved)
           return { manifest: remote.manifest, trustedGuidance: guidance.text, authorizedGuidance: guidance.authorizedGuidance, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {
-            if (input.operation === 'diff') return readDiff(remote.manifest, input.path)
+            if (input.operation === 'diff') return readDiff(remote.manifest, input)
             if (!selectedPlan.allowWholeFileReads) throw new ReviewGatewayError('whole-file-read-not-authorized')
             if (input.operation === 'search' && typeof input.query === 'string') return { files: remote.manifest.files.filter(file => file.patch.includes(input.query as string)), limitations: ['search-limited-to-remote-diff'] }
             if (input.operation === 'context' && typeof input.path === 'string') {
@@ -464,9 +467,13 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         return contextText(read.bytes)
       }
       const guidance = await guidanceFor(manifest.files.map(file => file.path), !approved, authorizePath, approved)
-      // One run reads a fixed revision, so a path's text is fetched once; unavailable paths are remembered too.
+      // A fixed revision's text is fetched once per path (unavailable paths are remembered too); working-copy
+      // text is read fresh, since repair edits it within the same access.
       const contents = new Map<string, Promise<string | null>>()
       const cachedContext = (path: string, readSignal: AbortSignal): Promise<string | null> => {
+        if (manifest.semantics === 'working-copy') {
+          return readContext(path, readSignal).catch(error => { if (error instanceof ReviewGatewayError && error.code === 'review-context-unavailable') return null; throw error })
+        }
         let pending = contents.get(path)
         if (!pending) {
           pending = readContext(path, readSignal).catch(error => {
@@ -480,7 +487,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       }
       return { manifest, trustedGuidance: guidance.text, authorizedGuidance: guidance.authorizedGuidance, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {
         if (readSignal.aborted) throw new ReviewGatewayError('review-cancelled')
-        if (input.operation === 'diff') return readDiff(manifest, input.path)
+        if (input.operation === 'diff') return readDiff(manifest, input)
         if (!selectedPlan.allowWholeFileReads) throw new ReviewGatewayError('whole-file-read-not-authorized')
         if (input.operation === 'search') {
           if (typeof input.query !== 'string' || input.query.length > 500) throw new ReviewGatewayError('invalid-review-search')
@@ -659,7 +666,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           sanitize, record: async execution => { executions.set(execution.ref, execution) },
         }))
         let behavior: Awaited<ReturnType<typeof runBehaviorVerification>>
-        try { behavior = await runBehaviorVerification({ runner: runModel,
+        try { behavior = await runBehaviorVerification({ runner: request => runModel({ ...request, role: 'behavior' }),
           taskId: `${snapshot.run.id}-behavior`, scopeManifest: JSON.stringify(currentScope), guidance: guidance.text,
           diff: JSON.stringify(currentScope.files), repairAndValidationSummary: JSON.stringify({ actions: snapshot.actions, executions: [...executions.values()] }),
           approvedTools: behaviorTools, executions, signal, uiChanged: plan.uiChanged,
@@ -904,7 +911,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       const afterDigest = await reviewDigest(JSON.stringify(mutation.changes.map(change => [change.path, change.after.kind, change.after.digest])))
       if (beforeDigest === afterDigest) continue
       const updates = await reassessExternalEdit({ snapshot, mutations: [{ ref: mutation.ref, paths, changes: mutation.changes.map(change => ({ path: normalized(resolveRuntimePath(root, change.path)).slice(root.length + 1), before: { digest: change.before.digest, content: change.before.content ? sanitize(change.before.content) : undefined }, after: { digest: change.after.digest, content: change.after.content ? sanitize(change.after.content) : undefined } })) }], evidence, tools: [], signal,
-        runner: runModel })
+        runner: request => runModel({ ...request, role: 'reassessment' }) })
       if (!updates.length || signal.aborted) continue
       await service.store.reconcileExternalEdit(snapshot.run.id, { runId: snapshot.run.id, ref: mutation.ref, paths,
         workspaceKey: root, headRevision: snapshot.run.scope.revision.head, beforeDigest, afterDigest, evidence,

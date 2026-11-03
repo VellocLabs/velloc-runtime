@@ -443,6 +443,24 @@ describe('actual review runtime security boundaries', () => {
     expect(context).toMatchObject({ code: 'review-context-unavailable' })
   })
 
+  it('reads working-copy context fresh and serves several patches, by current or pre-rename path, in one diff call', async () => {
+    const h = fixture()
+    let first: unknown, second: unknown, batch: unknown
+    mocks.model.mockImplementation(async request => {
+      first = await invoke(request, 'ReviewRead', { operation: 'context', path: 'a.ts' })
+      h.files.set(`${root}/a.ts`, 'export const a = 99\n')
+      second = await invoke(request, 'ReviewRead', { operation: 'context', path: 'a.ts' })
+      batch = await invoke(request, 'ReviewRead', { operation: 'diff', paths: ['a.ts'] })
+      return report(request)
+    })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('high')
+    await service.wait(runId)
+    expect(String((second as { data: unknown }).data)).toContain('99')
+    expect((second as { data: unknown }).data).not.toEqual((first as { data: unknown }).data)
+    expect((batch as { data: { files: Array<{ path: string }> } }).data.files.map(file => file.path)).toEqual(['a.ts'])
+  })
+
   it('uses hardened native argv, preserves literal refs, and atomically persists reports and preferences', async () => {
     const h = fixture()
     const service = await getOrCreateReviewService(h.context, h.permission)

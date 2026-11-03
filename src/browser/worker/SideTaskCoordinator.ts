@@ -5,6 +5,7 @@
  * - a reused agentId supersedes the stale finished record and its index entry
  */
 import type { TaskRegistry } from './TaskRegistry'
+import { REVIEW_FORK_LABEL } from '../../backgroundTasks/sideTaskSink'
 
 // --- Host interface (Manager provides these) ---
 
@@ -17,12 +18,15 @@ export interface SideTaskHost {
   runJsDisplayLabel(): string
   extractFinalAssistantText(messages: unknown[]): string
   projectSubAgentTranscript(messages: unknown[]): unknown[]
-  evictFinishedOverCap(kind: string, cap: number, onEvict?: (id: string) => void): void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  evictFinishedOverCap(kind: string, cap: number, onEvict?: (id: string) => void, filter?: (record: any) => boolean): void
 }
 
 // --- Constants ---
 
 const MAX_FINISHED_FORKS = 40
+// A max-effort review runs over a hundred task forks; they never evict other forks' rows.
+const MAX_FINISHED_REVIEW_FORKS = 160
 const MAX_FINISHED_FAST_CALLS = 40
 const MAX_FINISHED_RUN_JS = 40
 
@@ -110,7 +114,7 @@ export class SideTaskCoordinator {
     const run = this.registry.getLiveByType(finish.agentId, 'local_fork') as
       | {
           taskId: string; agentId: string; spawnerSessionId: string
-          querySource: string; description: string; agentType?: string
+          querySource: string; forkLabel: string; description: string; agentType?: string
           model?: string; prompt?: string; systemPrompt?: string
           messages: unknown[]; startedAt: number; stopRequested: boolean
         }
@@ -124,6 +128,7 @@ export class SideTaskCoordinator {
       agentId: run.agentId,
       spawnerSessionId: run.spawnerSessionId,
       querySource: run.querySource,
+      forkLabel: run.forkLabel,
       description: run.description,
       agentType: run.agentType,
       model: finish.model ?? run.model,
@@ -140,7 +145,9 @@ export class SideTaskCoordinator {
       finishedAt: finish.finishedAt,
     }
     this.registry.recordFinished(run.agentId, record)
-    this.host.evictFinishedOverCap('local_fork', MAX_FINISHED_FORKS)
+    const reviewFork = run.forkLabel === REVIEW_FORK_LABEL
+    this.host.evictFinishedOverCap('local_fork', reviewFork ? MAX_FINISHED_REVIEW_FORKS : MAX_FINISHED_FORKS, undefined,
+      (record: { forkLabel?: string }) => (record.forkLabel === REVIEW_FORK_LABEL) === reviewFork)
     this.host.scheduleSummary()
   }
 

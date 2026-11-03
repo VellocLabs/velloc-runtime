@@ -240,7 +240,7 @@ export const builtinCommands: Readonly<Record<BuiltinAction, BuiltinCommand>> = 
     try {
       const service = await getOrCreateReviewService({ ...ctx.callContext, options: { ...ctx.callContext.options,
         reviewRuntime: ctx.callContext.options.reviewRuntime ? { ...ctx.callContext.options.reviewRuntime,
-          promptContextProvider: ctx.ledger.config.promptContextProvider, deps: ctx.ledger.config.queryRuntimeDeps } : undefined,
+          promptContextProvider: ctx.ledger.config.promptContextProvider } : undefined,
       } }, ctx.ledger.config.decidePermission)
       const { runId } = await service.startUser(ctx.result.reviewArguments ?? '', ctx.callContext.cancelSource.signal, ctx.result.reviewPresentation)
       yield await persist(Object.assign(createLocalizedSystemMessage(ctx.ledger.config.runtimeConfig, [key('reviewCard.value.active')]), { subtype: 'code-review', review: { runId } }))

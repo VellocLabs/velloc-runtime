@@ -11,8 +11,8 @@ const t = createTranslate('en')
 afterEach(cleanup)
 
 const tasks: ReviewTaskView[] = [
-  { key: 'r1', taskId: 'f-1', role: 'coordinator', label: 'max · team-ten', status: 'running', startedAt: 1, lastActivityAt: 2, lastAction: 'ReviewRead diff src/a.ts' },
-  { key: 'w1', role: 'finder', label: 'calls, removed', status: 'failed', startedAt: 1, lastActivityAt: 2, finishedAt: 3, end: { kind: 'step-limit' } },
+  { key: 'r1', taskId: 'f-1', role: 'coordinator', status: 'running', startedAt: 1, lastActivityAt: 2, lastAction: 'ReviewRead diff src/a.ts' },
+  { key: 'w1', role: 'finder', angles: ['calls', 'removed'], status: 'failed', startedAt: 1, lastActivityAt: 2, finishedAt: 3, end: { kind: 'step-limit' } },
 ]
 function report(): ReviewReportView {
   return {
@@ -30,6 +30,7 @@ describe('review task tree', () => {
     expect(rows[0].textContent).toContain(t('reviewCard.task.status.running'))
     expect(rows[0].textContent).toContain(t('reviewCard.task.lastAction', { action: 'ReviewRead diff src/a.ts' }))
     expect(rows[1].textContent).toContain(t('reviewCard.task.role.finder'))
+    expect(rows[1].textContent).toContain(`${t('reviewCard.angle.calls')}, ${t('reviewCard.angle.removed')}`)
     expect(rows[1].textContent).toContain(t('reviewCard.notice.stepLimit'))
     expect(screen.queryByTestId('review-task-transcript')).toBeNull()
   })
@@ -55,5 +56,7 @@ describe('skill result card anchor', () => {
     expect(reviewRunIdOfSkillResult(JSON.stringify({ report: {}, reviewRunId: 'run_1' }))).toBeNull()
     expect(reviewRunIdOfSkillResult('{"reviewRunId":')).toBeNull()
     expect(reviewRunIdOfSkillResult({ reviewRunId: 'run_1' })).toBeNull()
+    expect(reviewRunIdOfSkillResult({ reviewRunId: 'run_1', status: 'finished', report: {} })).toBe('run_1')
+    expect(reviewRunIdOfSkillResult({ status: 'finished', reviewRunId: 'run_1', report: {} })).toBeNull()
   })
 })
