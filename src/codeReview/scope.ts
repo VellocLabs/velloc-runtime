@@ -130,7 +130,7 @@ export function resolveReviewAnchor(anchors: readonly ReviewAnchor[], key: strin
 }
 async function optional(git: ReviewGitRunner, query: GitQuery, signal?: AbortSignal): Promise<string | undefined> {
   const result = await git.query(query, signal)
-  if (result.exitCode === 1 || (result.exitCode === 128 && query.kind === 'upstream')) return undefined
+  if (result.exitCode === 1 || (result.exitCode === 128 && (query.kind === 'resolve' || query.kind === 'upstream'))) return undefined
   if (result.exitCode !== 0) throw new GitAdapterError('query-failed')
   return new TextDecoder('utf-8', { fatal: true }).decode(result.stdout).trim() || undefined
 }

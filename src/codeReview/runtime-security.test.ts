@@ -53,8 +53,8 @@ function fixture() {
   } as unknown as RuntimeFs
   const spawn = vi.fn<GitStreamSpawner>(async (spec, handlers) => {
     let output = '', exitCode = 0
-    if (spec.args.includes('rev-parse')) output = spec.args.at(-1)?.includes('@{upstream}') ? base : head
-    else if (spec.args.includes('rev-list')) output = `${head} ${base}\n`
+    if (spec.args.includes('--parents')) output = `${head} ${base}\n`
+    else if (spec.args.includes('rev-list')) output = spec.args.at(-2)?.includes('@{upstream}') ? base : head
     else if (spec.args.includes('hash-object')) output = base
     else if (spec.args.includes('symbolic-ref')) exitCode = 1
     else if (spec.args.includes('merge-base')) output = base
@@ -490,7 +490,7 @@ describe('actual review runtime security boundaries', () => {
     const service = await getOrCreateReviewService(h.context, h.permission)
     const { runId } = await service.startUser('low feature/a;$()&..HEAD')
     expect((await service.wait(runId)).structured).toBe(true)
-    expect(h.spawn.mock.calls.some(([spec]) => spec.args.includes('feature/a;$()&^{commit}'))).toBe(true)
+    expect(h.spawn.mock.calls.some(([spec]) => spec.args.includes('feature/a;$()&'))).toBe(true)
     for (const [spec] of h.spawn.mock.calls) {
       expect(spec.file).toBe('git')
       expect(spec.args).toEqual(expect.arrayContaining(['--no-pager', 'core.fsmonitor=false', 'core.hooksPath=/dev/null', 'credential.helper=', 'protocol.allow=never']))

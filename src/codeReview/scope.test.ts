@@ -26,7 +26,7 @@ function fixture(settings: { fileMode?: string; indexEntries?: string; upstream?
       case 'blob': text = settings.before ?? 'same\nold\n'; break
       case 'diff': text = settings.patch ?? patch; break
     }
-    return { exitCode: text === undefined ? 1 : 0, stdout: encode(text ?? '') }
+    return { exitCode: text === undefined ? (q.kind === 'resolve' || q.kind === 'upstream' ? 128 : 1) : 0, stdout: encode(text ?? '') }
   } }
   const readWorkspaceFile = vi.fn(async (path: string): Promise<WorkspaceRead> => settings.files?.[path] ?? (path === 'a.ts' ? { kind: 'file', bytes: encode('same\nnew\n'), gitMode: '100644' } : { kind: 'missing' }))
   const options: ScopeResolverOptions = { git, workspaceKey: 'workspace', projectKey: 'project', readWorkspaceFile }

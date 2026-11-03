@@ -46,7 +46,7 @@ describe('review Git native stream integration', () => {
       expect(requests.map(request => request.route.action)).toEqual(['spawn', 'closeStdin'])
       const payload = requests[0]!.payload as { file: string; args: string[] }
       expect(payload.file).toBe('git')
-      expect(payload.args.slice(-5)).toEqual(['rev-parse', '--verify', '--quiet', '--end-of-options', 'HEAD^{commit}'])
+      expect(payload.args.slice(-6)).toEqual(['rev-list', '-n', '1', '--end-of-options', 'HEAD', '--'])
       const send = (action: string, payload: unknown) => channel.port2.postMessage(JSON.stringify({
         hostBridge: true, direction: 'event', route: { namespace: 'nexus', capability: 'shell', action }, payload,
       }))

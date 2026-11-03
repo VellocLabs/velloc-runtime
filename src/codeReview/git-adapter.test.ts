@@ -53,12 +53,19 @@ describe('restricted Git argv runner', () => {
       expect(spec.args).toEqual(expect.arrayContaining(['--no-pager', '--literal-pathspecs', 'core.fsmonitor=false', 'core.askPass=', 'credential.helper=', 'protocol.allow=never', 'core.hooksPath=/dev/null']))
       expect(spec.env).toMatchObject({ GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1', GIT_CONFIG_COUNT: '0', GIT_CONFIG_PARAMETERS: '', GIT_INDEX_FILE: root.gitDir + '/index', GIT_DIR: root.gitDir, GIT_WORK_TREE: root.root })
     }
-    expect(spawn.mock.calls[0][0].args.slice(-5)).toEqual(['rev-parse', '--verify', '--quiet', '--end-of-options', 'feature/a;$()&^{commit}'])
+    expect(spawn.mock.calls[0][0].args.slice(-6)).toEqual(['rev-list', '-n', '1', '--end-of-options', 'feature/a;$()&', '--'])
+    expect(spawn.mock.calls[1][0].args.slice(-6)).toEqual(['rev-list', '-n', '1', '--end-of-options', 'HEAD@{upstream}', '--'])
     expect(spawn.mock.calls[9][0].args.slice(-4)).toEqual([oid, oid, '--', '-file;$(touch nope)'])
     expect(spawn.mock.calls[9][0].args).toContain('--no-textconv')
     expect(spawn.mock.calls[9][0].args).toContain('--no-ext-diff')
     expect(spawn.mock.calls[11][0].args.slice(-4)).toEqual(['ls-files', '--stage', '-z', '--'])
     expect(spawn.mock.calls[12][0].args.slice(-4)).toEqual(['config', '--bool', '--get', 'core.filemode'])
+  })
+  it('keeps every fixed argv free of cmd.exe metacharacters', async () => {
+    const { spawn } = fake(); const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root })
+    const queries: GitQuery[] = [{ kind: 'resolve', ref: 'HEAD' }, { kind: 'resolve', ref: 'refs/heads/main' }, { kind: 'upstream', ref: 'HEAD' }, { kind: 'default-branch' }, { kind: 'merge-base', left: oid, right: oid }, { kind: 'parents', oid }, { kind: 'empty-tree' }, { kind: 'tree', oid }, { kind: 'tracked' }, { kind: 'blob', oid }, { kind: 'diff', base: oid, head: oid, paths: ['src/a.ts'] }, { kind: 'remotes' }, { kind: 'index-entries' }, { kind: 'file-mode' }]
+    for (const query of queries) await git.query(query)
+    for (const [spec] of spawn.mock.calls) for (const arg of spec.args) expect(arg, `${spec.args.join(' ')}`).not.toMatch(/[\^%&|<>!]/)
   })
   it('rejects options, revision operators, path traversal and non-object diff revisions', async () => {
     const { spawn } = fake(); const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root })

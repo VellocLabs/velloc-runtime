@@ -60,8 +60,10 @@ const config = [
 const prefix = ['--no-pager', '--no-optional-locks', '--no-replace-objects', '--literal-pathspecs', ...config.flatMap(c => ['-c', c])]
 function argv(q: GitQuery): string[] {
   switch (q.kind) {
-    case 'resolve': return ['rev-parse', '--verify', '--quiet', '--end-of-options', `${validateGitRef(q.ref)}^{commit}`]
-    case 'upstream': return ['rev-parse', '--verify', '--quiet', '--end-of-options', `${validateGitRef(q.ref)}@{upstream}^{commit}`]
+    // Peeled by rev-list, not `^{commit}`: a batch-file git wrapper on PATH runs
+    // through cmd.exe, which strips the caret and makes every ref unresolvable.
+    case 'resolve': return ['rev-list', '-n', '1', '--end-of-options', validateGitRef(q.ref), '--']
+    case 'upstream': return ['rev-list', '-n', '1', '--end-of-options', `${validateGitRef(q.ref)}@{upstream}`, '--']
     case 'default-branch': return ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']
     case 'merge-base': return ['merge-base', '--all', validateGitOid(q.left), validateGitOid(q.right)]
     case 'parents': return ['rev-list', '--parents', '-n', '1', validateGitOid(q.oid), '--']
@@ -72,7 +74,7 @@ function argv(q: GitQuery): string[] {
     case 'file-mode': return ['config', '--bool', '--get', 'core.filemode']
     case 'blob': return ['cat-file', 'blob', validateGitOid(q.oid)]
     case 'diff': return ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--ignore-submodules=all', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--unified=3', validateGitOid(q.base), validateGitOid(q.head), '--', ...(q.paths ?? []).map(validateReviewPath)]
-    case 'remotes': return ['config', '--local', '--get-regexp', '^remote\\.[^.]+\\.url$']
+    case 'remotes': return ['config', '--local', '--get-regexp', 'remote\\..*\\.url$']
   }
 }
 function absolute(path: string): boolean { return /^(?:[A-Za-z]:[\\/]|\/)/.test(path) && !/[\x00\r\n]/.test(path) && !path.split(/[\\/]/).includes('..') }

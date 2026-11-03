@@ -405,7 +405,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       if (args.target) {
         if (!args.targetLiteral && (/^\d+$/.test(args.target) || /^https?:/.test(args.target))) {
           if (!runtime.httpRequest) throw new ReviewGatewayError('review-platform-adapter-required')
-          const remotes = (await gitText(git, { kind: 'remotes' }, signal)).trim().split('\n').map(line => line.slice(line.indexOf(' ') + 1))
+          const remotes = (await gitText(git, { kind: 'remotes' }, signal)).trim().split('\n').filter(line => /^remote\.[^.\s]+\.url /.test(line)).map(line => line.slice(line.indexOf(' ') + 1))
           const remoteTarget = bindChangeRequestTarget(remotes, args.target)
           const secret = await runtime.platformSecret?.(remoteTarget.platform === 'github' ? 'https://api.github.com' : remoteTarget.origin)
           const remoteReader = createReviewPlatformReader({ httpRequest: runtime.httpRequest, target: remoteTarget, workspaceKey: root, secret })
