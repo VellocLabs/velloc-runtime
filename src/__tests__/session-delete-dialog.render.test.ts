@@ -7,7 +7,7 @@ import {
   sessionDeleteInfoFor,
   sessionDeletionOrder,
 } from '../browser/webview/SessionDeleteDialog'
-import { sidebarSessionTree } from '../browser/webview/sessionPinning'
+import { projectSessionTree, sidebarSessionTree } from '../browser/webview/sessionPinning'
 import { DEFAULT_SESSION_LIST_VIEW } from '../browser/webview/sessionListView'
 import { SESSION_TREE_MAX_DEPTH, type TreeableSession } from '../browser/webview/sessionTree'
 import { de } from '../browser/webview/i18n/messages/de'
@@ -125,7 +125,7 @@ describe('SessionDeleteDialog', () => {
   })
 })
 
-type Row = TreeableSession & { title: string; updatedAt: number; starting?: boolean }
+type Row = TreeableSession & { title: string; updatedAt: number; starting?: boolean; projectRoot?: string }
 const row = (sessionId: string, extra: Partial<Row> = {}): Row => ({
   sessionId,
   title: `T ${sessionId}`,
@@ -200,6 +200,33 @@ describe('sessionDeleteInfoFor', () => {
     for (let i = 1; i <= SESSION_TREE_MAX_DEPTH + 2; i++) chain.push(row(`n${i}`, under(`n${i - 1}`)))
     const tree = treeOf(chain)
     expect(sessionDeleteInfoFor(chain, tree, 'n0')).toMatchObject({ childCount: SESSION_TREE_MAX_DEPTH })
+  })
+})
+
+describe('a delete from a Projects folder', () => {
+  const A = 'D:\\work\\alpha'
+  const B = 'D:\\work\\beta'
+  const split = [
+    row('p', { projectRoot: A }),
+    row('a', { ...under('p'), projectRoot: A }),
+    row('b', { ...under('p'), projectRoot: B }),
+    row('bb', { ...under('b'), projectRoot: B }),
+  ]
+
+  it("counts and deletes only the rows that folder nests: none from another folder", () => {
+    const folderA = projectSessionTree(split, DEFAULT_SESSION_LIST_VIEW, A)
+    expect(sessionDeleteInfoFor(split, folderA, 'p')).toMatchObject({ childCount: 1 })
+    expect(sessionDeletionOrder(folderA.childrenOf, 'p', true, 'none')).toEqual(['p', 'a'])
+  })
+
+  it("nests a child whose parent sits in another folder at the top of its own folder", () => {
+    const folderB = projectSessionTree(split, DEFAULT_SESSION_LIST_VIEW, B)
+    expect(folderB.roots.map(r => r.sessionId)).toEqual(['b'])
+    expect(sessionDeleteInfoFor(split, folderB, 'b')).toMatchObject({ childCount: 1 })
+  })
+
+  it('the Recents tree still nests every child under the parent', () => {
+    expect(sessionDeleteInfoFor(split, treeOf(split), 'p')).toMatchObject({ childCount: 3 })
   })
 })
 

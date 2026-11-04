@@ -253,7 +253,11 @@ import { useWorkspaceState } from './workspaceStore'
 import { normalizeProjectPath } from './projectTree'
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { Button } from '@/components/ui/button'
-import { SessionDeleteConfirm } from './SessionDeleteDialog'
+import {
+  SessionDeleteConfirm,
+  type SessionDeleteOrigin,
+  type SessionDeleteTarget,
+} from './SessionDeleteDialog'
 import { PlusIcon } from 'lucide-react'
 import { NexusTopBar } from './topbar/NexusTopBar'
 import { topbarImportEntries } from './sessionImport/sourceMeta'
@@ -3686,11 +3690,16 @@ export function MultiSessionShell({
     sessionCount: number
   } | null>(null)
 
-  // The session awaiting delete confirmation (`null` = no dialog). A sidebar
-  // row's Delete lands here; the dialog's confirm runs the deletion, with the
-  // sessions under it when asked (F-36). The dialog reads the row from the
+  // The session awaiting delete confirmation (`null` = no dialog), with the
+  // Projects folder its Delete was pressed in, if any. A sidebar row's Delete
+  // lands here; the dialog's confirm runs the deletion, with the sessions that
+  // list nests under it when asked (F-36). The dialog reads the row from the
   // live list, so one deleted elsewhere meanwhile closes it.
-  const [sessionDeleteTarget, setSessionDeleteTarget] = useState<string | null>(null)
+  const [sessionDeleteTarget, setSessionDeleteTarget] = useState<SessionDeleteTarget | null>(null)
+  const requestSessionDelete = useMemo(
+    () => createShellRequestSessionDelete(setSessionDeleteTarget),
+    [],
+  )
 
   // "+" on the Projects header: native folder picker → registered project.
   // A cancel (no path) is a silent no-op, as with the composer chip's picker.
@@ -4284,7 +4293,7 @@ export function MultiSessionShell({
           onLaunchThread={handleLaunchThread}
           installedClis={terminalsState?.clis ?? NO_CLIS}
           onSwitchThread={focusSession}
-          onDeleteThread={setSessionDeleteTarget}
+          onDeleteThread={requestSessionDelete}
           onRenameThread={retitleSession}
           onPinThread={handlePinThread}
           onArchiveThread={handleArchiveThread}
@@ -4340,7 +4349,7 @@ export function MultiSessionShell({
       </div>
       </SessionAreaVisibleContext.Provider>}
       <SessionDeleteConfirm
-        targetId={sessionDeleteTarget}
+        target={sessionDeleteTarget}
         sessions={sessionItems}
         activeSessionId={activeSessionId}
         onDelete={handleDeleteThread}
@@ -5959,6 +5968,13 @@ function createShellHandleLaunchInProject(
     addRecentFolder(trimmed)
     writeLastFolderForType(templateType, trimmed)
   }
+}
+
+function createShellRequestSessionDelete(
+  setSessionDeleteTarget: Dispatch<SetStateAction<SessionDeleteTarget | null>>,
+) {
+  return (sessionId: string, origin?: SessionDeleteOrigin) =>
+    setSessionDeleteTarget({ ...origin, sessionId })
 }
 
 function createShellHandleLaunchThread(

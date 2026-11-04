@@ -43,6 +43,7 @@ import {
 import { ungroupedView } from './sessionListView'
 import { pinnedFirst } from './sessionPinning'
 import { nestSessions } from './sessionTree'
+import type { SessionDeleteOrigin } from './SessionDeleteDialog'
 
 export type ProjectSectionProps = {
   sessions: SessionListItem[]
@@ -60,7 +61,7 @@ export type ProjectSectionProps = {
   /** CLIs the host has (F-34): a CLI launcher is offered only for these. */
   installedClis?: readonly string[]
   onSwitchThread?: (sessionId: string) => void
-  onDeleteThread?: (sessionId: string) => void
+  onDeleteThread?: (sessionId: string, origin?: SessionDeleteOrigin) => void
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
   onForkThread?: (sessionId: string) => void
@@ -270,7 +271,7 @@ type ProjectRowProps = {
   onCopyProjectPath?: (path: string) => void
   onLaunchInProject?: (projectRoot: string, templateType: string) => void
   onSwitchThread?: (sessionId: string) => void
-  onDeleteThread?: (sessionId: string) => void
+  onDeleteThread?: (sessionId: string, origin?: SessionDeleteOrigin) => void
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
   onForkThread?: (sessionId: string) => void
@@ -311,6 +312,15 @@ function ProjectRow({
   const nesting = useMemo<SessionNesting>(
     () => ({ tree: nodeTree, collapsed: collapsedParents ?? EMPTY_SET, onToggle: onToggleChildren }),
     [nodeTree, collapsedParents, onToggleChildren],
+  )
+  // A Delete here is scoped to this folder's list: the dialog counts and
+  // deletes only the rows this folder nests under the target.
+  const onDeleteInFolder = useMemo(
+    () =>
+      onDeleteThread
+        ? (sessionId: string) => onDeleteThread(sessionId, { projectPath: node.path })
+        : undefined,
+    [onDeleteThread, node.path],
   )
   const FolderGlyph = expanded ? FolderOpenIcon : FolderIcon
   // Tracked so the hover actions stay on screen while the ⋯ menu is open. The
@@ -549,7 +559,7 @@ function ProjectRow({
               groups={ungroupedView(pinnedFirst(nodeTree.roots))}
               activeSessionId={activeSessionId}
               onSwitchThread={onSwitchThread}
-              onDeleteThread={onDeleteThread}
+              onDeleteThread={onDeleteInFolder}
               onRenameThread={onRenameThread}
               onPinThread={onPinThread}
               onForkThread={onForkThread}

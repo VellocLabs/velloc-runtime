@@ -25,6 +25,7 @@ import {
 } from './SessionRows'
 import { nestSessions, partitionArchived, reportSessionTreeFallbacks } from './sessionTree'
 import { ProjectSection } from './ProjectSection'
+import type { SessionDeleteOrigin } from './SessionDeleteDialog'
 import { SessionListMenu } from './SessionListMenu'
 import {
   buildSessionListView,
@@ -209,7 +210,8 @@ type SessionListBodyProps = SidebarProjectProps & {
   /** CLIs the host has (F-34): a CLI launcher is offered only for these. */
   installedClis?: readonly string[]
   onSwitchThread?: (sessionId: string) => void
-  onDeleteThread?: (sessionId: string) => void
+  /** Ask to delete a session; `origin` names the Projects folder it was picked in. */
+  onDeleteThread?: (sessionId: string, origin?: SessionDeleteOrigin) => void
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
   onForkThread?: (sessionId: string) => void
@@ -694,7 +696,8 @@ export function Sidebar({
   /** CLIs the host has (F-34): a CLI launcher is offered only for these. */
   installedClis?: readonly string[]
   onSwitchThread?: (sessionId: string) => void
-  onDeleteThread?: (sessionId: string) => void
+  /** Ask to delete a session; `origin` names the Projects folder it was picked in. */
+  onDeleteThread?: (sessionId: string, origin?: SessionDeleteOrigin) => void
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
   onForkThread?: (sessionId: string) => void

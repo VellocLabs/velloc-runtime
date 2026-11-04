@@ -4,9 +4,9 @@ import { join } from 'node:path'
 import { createElement, Fragment, useState } from 'react'
 import ts from 'typescript'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { Sidebar, type SessionListItem } from '../browser/webview/Sidebar'
-import { SessionDeleteConfirm } from '../browser/webview/SessionDeleteDialog'
+import { SessionDeleteConfirm, type SessionDeleteTarget } from '../browser/webview/SessionDeleteDialog'
 
 // How the shell wires the delete confirmation: a sidebar row's Delete opens
 // the dialog instead of deleting; confirm deletes through the shell's delete
@@ -47,7 +47,8 @@ function ShellDelete({
   activeSessionId: string
   onDelete: (sessionId: string) => void
 }) {
-  const [target, setTarget] = useState<string | null>(null)
+  const [target, setTarget] = useState<SessionDeleteTarget | null>(null)
+  const projectPaths = [...new Set(sessions.flatMap(s => (s.projectRoot ? [s.projectRoot] : [])))]
   return createElement(
     Fragment,
     null,
@@ -56,10 +57,12 @@ function ShellDelete({
       sessionId: activeSessionId,
       activeSessionId,
       sessions,
-      onDeleteThread: setTarget,
+      addedProjectPaths: projectPaths,
+      addedProjectOrder: new Map(projectPaths.map((path, i) => [path, i] as const)),
+      onDeleteThread: (sessionId, origin) => setTarget({ ...origin, sessionId }),
     }),
     createElement(SessionDeleteConfirm, {
-      targetId: target,
+      target,
       sessions,
       activeSessionId,
       onDelete,
@@ -68,8 +71,11 @@ function ShellDelete({
   )
 }
 
-async function clickRowDelete(sessionId: string) {
-  const row = screen.getAllByTestId(`sidebar-row-${sessionId}`)[0]!
+/** Opens the row's menu and presses Delete; `scope` picks one list's copy of the row. */
+async function clickRowDelete(sessionId: string, scope: HTMLElement = document.body) {
+  const row = Array.from(scope.querySelectorAll<HTMLElement>(`[data-testid="sidebar-row-${sessionId}"]`)).find(
+    el => scope !== document.body || !el.closest('[data-testid="sidebar-project-child"]'),
+  )!
   const trigger = row.parentElement!.querySelector<HTMLElement>('[data-testid="sidebar-row-actions"]')!
   fireEvent.pointerDown(trigger)
   fireEvent.click(trigger)
@@ -131,6 +137,56 @@ describe('the sidebar delete, wired as the shell wires it', () => {
     expect(onDelete).not.toHaveBeenCalled()
   })
 
+  // P sits in folder A, with one child in A and one in B. Folder A's list nests
+  // only the A child under P; Recents nests both.
+  const A = 'D:\\work\\alpha'
+  const B = 'D:\\work\\beta'
+  const split = [
+    item('P', { projectRoot: A }),
+    item('cA', { ...under('P'), projectRoot: A }),
+    item('cB', { ...under('P'), projectRoot: B, running: true }),
+  ]
+
+  function openFolder(path: string): HTMLElement {
+    if (!screen.queryAllByTestId('sidebar-project-row').length) {
+      fireEvent.click(screen.getByTestId('sidebar-projects-toggle'))
+    }
+    const folderRow = screen.getAllByTestId('sidebar-project-row').find(el => el.dataset.projectPath === path)!
+    fireEvent.click(folderRow)
+    return screen.getAllByTestId('sidebar-project-child').find(el => el.dataset.projectPath === path)!
+  }
+
+  it("from a Projects row, counts and deletes only that folder's nested rows", async () => {
+    const onDelete = vi.fn()
+    render(createElement(ShellDelete, { sessions: split, activeSessionId: 'none', onDelete }))
+    const folderA = openFolder(A)
+    expect(within(folderA).queryByTestId('sidebar-row-cB')).toBeNull()
+    await clickRowDelete('P', folderA)
+    expect(screen.getByTestId('session-delete-children').closest('label')!.textContent).toBe(
+      'Also delete the 1 thread nested under it',
+    )
+    fireEvent.click(screen.getByTestId('session-delete-children'))
+    expect(screen.queryByTestId('session-delete-busy')).toBeNull()
+    fireEvent.click(screen.getByTestId('session-delete-confirm'))
+    expect(onDelete.mock.calls.map(call => call[0])).toEqual(['P', 'cA'])
+  })
+
+  it('from the Recents row, the same parent still takes every child it nests there', async () => {
+    const onDelete = vi.fn()
+    render(createElement(ShellDelete, { sessions: split, activeSessionId: 'none', onDelete }))
+    openFolder(A)
+    await clickRowDelete('P')
+    expect(screen.getByTestId('session-delete-children').closest('label')!.textContent).toBe(
+      'Also delete the 2 threads nested under it',
+    )
+    fireEvent.click(screen.getByTestId('session-delete-children'))
+    expect(screen.getByTestId('session-delete-busy').textContent).toBe(
+      '1 thread is still working and will be stopped.',
+    )
+    fireEvent.click(screen.getByTestId('session-delete-confirm'))
+    expect(onDelete.mock.calls.map(call => call[0]).sort()).toEqual(['P', 'cA', 'cB'])
+  })
+
   it('closes when the target row is no longer listed', async () => {
     const onDelete = vi.fn()
     const view = render(createElement(ShellDelete, { sessions: family, activeSessionId: 'other', onDelete }))
@@ -177,14 +233,21 @@ describe('MultiSessionShell wiring', () => {
   it("routes the sidebar's Delete to the confirmation target", () => {
     const sidebars = jsxElements('Sidebar')
     expect(sidebars).toHaveLength(1)
-    expect(sidebars[0]!.get('onDeleteThread')).toBe('setSessionDeleteTarget')
+    expect(sidebars[0]!.get('onDeleteThread')).toBe('requestSessionDelete')
+  })
+
+  it("keeps the Delete's Projects folder on the confirmation target", () => {
+    expect(shellSource).toMatch(/const requestSessionDelete = useMemo\(\s*\(\) => createShellRequestSessionDelete\(setSessionDeleteTarget\)/)
+    const body = /function createShellRequestSessionDelete\(([\s\S]*?)\n\}\n/.exec(shellSource)?.[1] ?? ''
+    expect(body).toMatch(/\(sessionId: string, origin\?: SessionDeleteOrigin\)/)
+    expect(body).toMatch(/setSessionDeleteTarget\(\{ \.\.\.origin, sessionId \}\)/)
   })
 
   it('mounts the confirmation over the same list, deleting through the shell handler', () => {
     const confirms = jsxElements('SessionDeleteConfirm')
     expect(confirms).toHaveLength(1)
     const attrs = confirms[0]!
-    expect(attrs.get('targetId')).toBe('sessionDeleteTarget')
+    expect(attrs.get('target')).toBe('sessionDeleteTarget')
     expect(attrs.get('sessions')).toBe(jsxElements('Sidebar')[0]!.get('sessions'))
     expect(attrs.get('activeSessionId')).toBe('activeSessionId')
     expect(attrs.get('onDelete')).toBe('handleDeleteThread')

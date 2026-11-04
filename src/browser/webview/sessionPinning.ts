@@ -12,6 +12,7 @@ import {
   type SessionTree,
   type TreeableSession,
 } from './sessionTree'
+import { normalizeProjectPath } from './projectTree'
 
 /**
  * Pinned sessions list above unpinned ones. The partition is stable, so each
@@ -36,6 +37,24 @@ export function sidebarSessionTree<T extends ListableSession & TreeableSession>(
 ): SessionTree<T> {
   const { live, archivedIds } = partitionArchived(sessions)
   return nestSessions(orderSessions(live, view.field, view.direction), archivedIds)
+}
+
+/**
+ * The tree a Projects folder nests its rows by: the live sessions bound to
+ * `projectPath`, in the view's order, nested among themselves only. A child
+ * bound to another folder is not in it, and neither is a parent bound
+ * elsewhere, so the folder's list draws such a child top-level. (F-36)
+ */
+export function projectSessionTree<T extends ListableSession & TreeableSession & { projectRoot?: string }>(
+  sessions: readonly T[],
+  view: SessionListView,
+  projectPath: string,
+): SessionTree<T> {
+  const { live } = partitionArchived(sessions)
+  const inFolder = live.filter(
+    session => !!session.projectRoot && normalizeProjectPath(session.projectRoot) === projectPath,
+  )
+  return nestSessions(orderSessions(inFolder, view.field, view.direction))
 }
 
 /**

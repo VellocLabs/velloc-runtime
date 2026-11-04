@@ -10,10 +10,20 @@ import { useUnsavedEditsGate } from '@/glic/unsavedEditsGate'
 import { useT } from './i18n'
 import type { ListableSession } from './sessionListView'
 import { readSessionListView } from './sessionListView'
-import { sidebarSessionTree } from './sessionPinning'
+import { projectSessionTree, sidebarSessionTree } from './sessionPinning'
 import { descendantSessionIds, type SessionTree, type TreeableSession } from './sessionTree'
 
-type DeletableSession = TreeableSession & ListableSession & { title: string; starting?: boolean }
+type DeletableSession = TreeableSession &
+  ListableSession & { title: string; starting?: boolean; projectRoot?: string }
+
+/**
+ * Where a row's Delete was pressed: a Projects folder's list (`projectPath`,
+ * the folder's normalized path) or, without one, the Pinned/Recents list.
+ */
+export type SessionDeleteOrigin = { projectPath?: string }
+
+/** The session awaiting delete confirmation and the list it was picked from. */
+export type SessionDeleteTarget = SessionDeleteOrigin & { sessionId: string }
 
 /** The part of the sidebar's tree the delete reads. */
 type DeleteTree<T> = Pick<SessionTree<T>, 'byId' | 'childrenOf'>
@@ -72,29 +82,35 @@ export function sessionDeletionOrder<T extends TreeableSession>(
 }
 
 /**
- * The shell's delete confirmation for `targetId` (`null` = none shown). It
- * nests `sessions` exactly as the docked list does, so the count, the busy
- * warning and the deletion cover the rows drawn under the target. Confirm
+ * The shell's delete confirmation for `target` (`null` = none shown). It
+ * nests `sessions` exactly as the list the Delete came from does (that
+ * Projects folder's list, else Pinned/Recents), so the count, the busy
+ * warning and the deletion cover the rows drawn under the target there. Confirm
  * calls `onDelete` once per session, in {@link sessionDeletionOrder}, then
  * `onClose`; cancel calls only `onClose`.
  */
 export function SessionDeleteConfirm<T extends DeletableSession>({
-  targetId,
+  target,
   sessions,
   activeSessionId,
   onDelete,
   onClose,
 }: {
-  targetId: string | null
+  target: SessionDeleteTarget | null
   sessions: readonly T[]
   activeSessionId: string
   onDelete: (sessionId: string) => void
   onClose: () => void
 }) {
-  const tree = useMemo(
-    () => (targetId === null ? null : sidebarSessionTree(sessions, readSessionListView())),
-    [sessions, targetId],
-  )
+  const targetId = target?.sessionId ?? null
+  const projectPath = target?.projectPath
+  const tree = useMemo(() => {
+    if (targetId === null) return null
+    const view = readSessionListView()
+    return projectPath === undefined
+      ? sidebarSessionTree(sessions, view)
+      : projectSessionTree(sessions, view, projectPath)
+  }, [sessions, targetId, projectPath])
   const info = tree ? sessionDeleteInfoFor(sessions, tree, targetId) : null
   if (!tree || !info) return null
   return (
