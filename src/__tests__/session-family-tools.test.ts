@@ -250,6 +250,7 @@ describe('registration', () => {
       'WithdrawProposal',
       'HandOffSession',
       ...SESSION_FAMILY_TOOL_NAMES,
+      'SendMessage',
     ])
     const manifest = {
       hostedTools: [],
