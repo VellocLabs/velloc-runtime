@@ -97,7 +97,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Each shard still runs its files serially (vitest.config.mjs). One retry
+      # Each shard runs its files on half the runner's cores (vitest.config.mjs). One retry
       # absorbs a timing-sensitive test on a loaded runner; a real failure
       # fails both attempts.
       - run: npm test -- --shard=${{ matrix.shard }}/6 --retry=1
