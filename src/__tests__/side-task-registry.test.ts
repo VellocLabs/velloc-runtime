@@ -736,6 +736,38 @@ describe('side-task registry — local_routine', () => {
     ).toBe('session_gone')
   })
 
+  it('a background command result wakes its session with an ordinary turn, not a routine fire', () => {
+    // A turn woken by a command's exit may start child sessions, so it must
+    // not arm the routine recursion guard.
+    const submits: Array<{ message: unknown; priority: number }> = []
+    const worker = {
+      ...makeWorker(),
+      enqueueSubmit: (message: unknown, priority: number) => {
+        submits.push({ message, priority })
+      },
+    } as unknown as AgentRuntimeWorkerHandle
+    const { m, i } = manager()
+    ;(i.sessions as Map<string, unknown>).set('sess-coord', { worker, ports: new Set() })
+
+    ;(m as unknown as {
+      deliverTaskResult(sessionId: string, result: unknown): void
+    }).deliverTaskResult('sess-coord', {
+      type: 'local_bash',
+      taskId: 'b-watch-1',
+      shellId: 'shell-1',
+      command: 'python watch.py',
+      outputFilePath: '/tmp/b-watch-1.out',
+      status: 'success',
+      summary: 'handoff-watch: change',
+    })
+
+    expect(submits).toHaveLength(1)
+    const payload = (submits[0]!.message as { payload: Record<string, unknown> }).payload
+    expect(payload.prompt).toContain('<task-type>local_bash</task-type>')
+    expect(payload.routineFireId).toBeUndefined()
+    expect(submits[0]!.priority).toBe(2)
+  })
+
   it('routine rows pass the per-session drawer filter from ANY session', () => {
     const rows: NexusTaskSummaryRow[] = [
       {
