@@ -284,7 +284,10 @@ export const es: Messages = {
   'sidebar.sessionDeleteTitle': '¿Eliminar el chat?',
   'sidebar.sessionDeleteBody':
     '«{title}» se eliminará de este equipo. Esta acción no se puede deshacer.',
-  'sidebar.sessionDeleteChildren': 'Eliminar también las {count} sesión(es) que hay debajo',
+  'sidebar.sessionDeleteChildrenOne': 'Eliminar también {count} chat anidado debajo',
+  'sidebar.sessionDeleteChildren': 'Eliminar también los {count} chats anidados debajo',
+  'sidebar.sessionDeleteBusyOne': '{count} chat sigue en curso y se detendrá.',
+  'sidebar.sessionDeleteBusy': '{count} chats siguen en curso y se detendrán.',
   'sidebar.sessionDeleteConfirm': 'Eliminar',
   'sidebar.sessionDeleteCancel': 'Cancelar',
   'composer.placeholder': 'Escriba / para ver los comandos',

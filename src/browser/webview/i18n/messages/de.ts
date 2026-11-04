@@ -283,7 +283,10 @@ export const de: Messages = {
   'sidebar.sessionDeleteTitle': 'Chat löschen?',
   'sidebar.sessionDeleteBody':
     '„{title}“ wird von diesem Computer entfernt. Das lässt sich nicht rückgängig machen.',
-  'sidebar.sessionDeleteChildren': 'Auch die {count} Sitzung(en) darunter löschen',
+  'sidebar.sessionDeleteChildrenOne': 'Auch {count} darunter verschachtelten Chat löschen',
+  'sidebar.sessionDeleteChildren': 'Auch die {count} darunter verschachtelten Chats löschen',
+  'sidebar.sessionDeleteBusyOne': '{count} Chat arbeitet noch und wird gestoppt.',
+  'sidebar.sessionDeleteBusy': '{count} Chats arbeiten noch und werden gestoppt.',
   'sidebar.sessionDeleteConfirm': 'Löschen',
   'sidebar.sessionDeleteCancel': 'Abbrechen',
   'composer.placeholder': 'Tippe / für Befehle',

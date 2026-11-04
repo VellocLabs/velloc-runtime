@@ -288,7 +288,10 @@ export const en = {
   'sidebar.sessionDeleteTitle': 'Delete thread?',
   'sidebar.sessionDeleteBody':
     '"{title}" will be removed from this computer. This cannot be undone.',
-  'sidebar.sessionDeleteChildren': 'Also delete the {count} session(s) under it',
+  'sidebar.sessionDeleteChildrenOne': 'Also delete the {count} thread nested under it',
+  'sidebar.sessionDeleteChildren': 'Also delete the {count} threads nested under it',
+  'sidebar.sessionDeleteBusyOne': '{count} thread is still working and will be stopped.',
+  'sidebar.sessionDeleteBusy': '{count} threads are still working and will be stopped.',
   'sidebar.sessionDeleteConfirm': 'Delete',
   'sidebar.sessionDeleteCancel': 'Cancel',
   'composer.placeholder': 'Type / for commands',

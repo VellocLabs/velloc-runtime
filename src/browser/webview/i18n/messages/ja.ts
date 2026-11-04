@@ -281,7 +281,10 @@ export const ja: Messages = {
   'sidebar.sessionDeleteTitle': 'チャットを削除しますか？',
   'sidebar.sessionDeleteBody':
     '「{title}」はこのコンピューターから削除されます。この操作は取り消せません。',
-  'sidebar.sessionDeleteChildren': 'その下のセッション（{count} 件）も削除する',
+  'sidebar.sessionDeleteChildrenOne': 'その下にあるチャット（{count} 件）も削除する',
+  'sidebar.sessionDeleteChildren': 'その下にあるチャット（{count} 件）も削除する',
+  'sidebar.sessionDeleteBusyOne': '{count} 件のチャットはまだ処理中のため、停止されます。',
+  'sidebar.sessionDeleteBusy': '{count} 件のチャットはまだ処理中のため、停止されます。',
   'sidebar.sessionDeleteConfirm': '削除',
   'sidebar.sessionDeleteCancel': 'キャンセル',
   'composer.placeholder': '/ でコマンドを入力',

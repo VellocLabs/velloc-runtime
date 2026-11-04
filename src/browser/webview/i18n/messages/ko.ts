@@ -281,7 +281,10 @@ export const ko: Messages = {
   'sidebar.sessionDeleteTitle': '채팅을 삭제할까요?',
   'sidebar.sessionDeleteBody':
     '"{title}"이(가) 이 컴퓨터에서 삭제됩니다. 되돌릴 수 없습니다.',
-  'sidebar.sessionDeleteChildren': '아래의 세션 {count}개도 함께 삭제',
+  'sidebar.sessionDeleteChildrenOne': '아래에 있는 채팅 {count}개도 함께 삭제',
+  'sidebar.sessionDeleteChildren': '아래에 있는 채팅 {count}개도 함께 삭제',
+  'sidebar.sessionDeleteBusyOne': '채팅 {count}개가 아직 작업 중이며 중지됩니다.',
+  'sidebar.sessionDeleteBusy': '채팅 {count}개가 아직 작업 중이며 중지됩니다.',
   'sidebar.sessionDeleteConfirm': '삭제',
   'sidebar.sessionDeleteCancel': '취소',
   'composer.placeholder': '/를 입력해 명령 사용',

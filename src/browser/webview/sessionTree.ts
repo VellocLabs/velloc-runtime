@@ -167,36 +167,24 @@ export function countDescendants<T extends TreeableSession>(
 }
 
 /**
- * Every session nested under `sessionId`, transitively, nearest level first:
- * the rows a Delete of that session may take with it. A row counts whether
- * it is archived or not; a side chat, a detached row and a team member do not
- * (each is a session of its own). Empty for a session with no listed child.
+ * Every row drawn under `sessionId` in a tree's `childrenOf`, at every depth,
+ * nearest level first: the rows {@link countDescendants} counts. Empty for a
+ * row with no children in that tree.
  */
-export function descendantSessionIds<T extends TreeableSession & { sideChat?: boolean }>(
-  sessions: readonly T[],
+export function descendantSessionIds<T extends TreeableSession>(
   sessionId: string,
+  childrenOf: ReadonlyMap<string, T[]>,
 ): string[] {
-  const byId = new Map<string, T>()
-  for (const session of sessions) byId.set(session.sessionId, session)
-  const childrenOf = new Map<string, string[]>()
-  for (const session of sessions) {
-    if (session.sideChat) continue
-    const parentId = listedParentOf(session, byId)
-    if (parentId === undefined) continue
-    const siblings = childrenOf.get(parentId)
-    if (siblings) siblings.push(session.sessionId)
-    else childrenOf.set(parentId, [session.sessionId])
-  }
   const found: string[] = []
   const seen = new Set<string>([sessionId])
   const queue = [sessionId]
   while (queue.length > 0) {
     const current = queue.shift()!
-    for (const childId of childrenOf.get(current) ?? []) {
-      if (seen.has(childId)) continue
-      seen.add(childId)
-      found.push(childId)
-      queue.push(childId)
+    for (const child of childrenOf.get(current) ?? []) {
+      if (seen.has(child.sessionId)) continue
+      seen.add(child.sessionId)
+      found.push(child.sessionId)
+      queue.push(child.sessionId)
     }
   }
   return found

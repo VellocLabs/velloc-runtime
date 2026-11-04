@@ -253,7 +253,7 @@ import { useWorkspaceState } from './workspaceStore'
 import { normalizeProjectPath } from './projectTree'
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { Button } from '@/components/ui/button'
-import { SessionDeleteDialog, sessionDeleteInfoFor, sessionDeletionOrder } from './SessionDeleteDialog'
+import { SessionDeleteConfirm } from './SessionDeleteDialog'
 import { PlusIcon } from 'lucide-react'
 import { NexusTopBar } from './topbar/NexusTopBar'
 import { topbarImportEntries } from './sessionImport/sourceMeta'
@@ -3691,10 +3691,6 @@ export function MultiSessionShell({
   // sessions under it when asked (F-36). The dialog reads the row from the
   // live list, so one deleted elsewhere meanwhile closes it.
   const [sessionDeleteTarget, setSessionDeleteTarget] = useState<string | null>(null)
-  const sessionDeleteInfo = useMemo(
-    () => sessionDeleteInfoFor(sessionItems, sessionDeleteTarget),
-    [sessionDeleteTarget, sessionItems],
-  )
 
   // "+" on the Projects header: native folder picker → registered project.
   // A cancel (no path) is a silent no-op, as with the composer chip's picker.
@@ -4343,19 +4339,13 @@ export function MultiSessionShell({
         />
       </div>
       </SessionAreaVisibleContext.Provider>}
-      {sessionDeleteInfo && (
-        <SessionDeleteDialog
-          title={sessionDeleteInfo.title}
-          childCount={sessionDeleteInfo.childCount}
-          onCancel={() => setSessionDeleteTarget(null)}
-          onConfirm={withChildren => {
-            for (const id of sessionDeletionOrder(sessionItems, sessionDeleteInfo.sessionId, withChildren, activeSessionId)) {
-              handleDeleteThread(id)
-            }
-            setSessionDeleteTarget(null)
-          }}
-        />
-      )}
+      <SessionDeleteConfirm
+        targetId={sessionDeleteTarget}
+        sessions={sessionItems}
+        activeSessionId={activeSessionId}
+        onDelete={handleDeleteThread}
+        onClose={() => setSessionDeleteTarget(null)}
+      />
       {projectDeleteTarget && (
         <ProjectDeleteDialog
           path={projectDeleteTarget.path}

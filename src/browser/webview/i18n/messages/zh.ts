@@ -283,7 +283,10 @@ export const zh: Messages = {
   'sidebar.sessionDeleteTitle': '删除对话？',
   'sidebar.sessionDeleteBody':
     '“{title}”将从这台电脑上移除。此操作无法撤销。',
-  'sidebar.sessionDeleteChildren': '同时删除它下面的 {count} 个会话',
+  'sidebar.sessionDeleteChildrenOne': '同时删除其下的 {count} 个对话',
+  'sidebar.sessionDeleteChildren': '同时删除其下的 {count} 个对话',
+  'sidebar.sessionDeleteBusyOne': '其中 {count} 个对话仍在运行，将被停止。',
+  'sidebar.sessionDeleteBusy': '其中 {count} 个对话仍在运行，将被停止。',
   'sidebar.sessionDeleteConfirm': '删除',
   'sidebar.sessionDeleteCancel': '取消',
   'composer.placeholder': '输入 / 使用命令',

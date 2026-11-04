@@ -5,7 +5,13 @@ import {
   type SessionGroup,
   type SessionListView,
 } from './sessionListView'
-import { flattenSessionTree, nestSessions, partitionArchived, type TreeableSession } from './sessionTree'
+import {
+  flattenSessionTree,
+  nestSessions,
+  partitionArchived,
+  type SessionTree,
+  type TreeableSession,
+} from './sessionTree'
 
 /**
  * Pinned sessions list above unpinned ones. The partition is stable, so each
@@ -17,6 +23,19 @@ export function pinnedFirst<T extends { pinned?: boolean }>(
   const pinned = sessions.filter(session => session.pinned)
   if (pinned.length === 0) return [...sessions]
   return [...pinned, ...sessions.filter(session => !session.pinned)]
+}
+
+/**
+ * The tree the docked list nests its rows by: the live sessions in the view's
+ * order, a child of an archived parent drawn top-level. The archived rows
+ * themselves are not in it (the Archived section lists them flat). (F-36)
+ */
+export function sidebarSessionTree<T extends ListableSession & TreeableSession>(
+  sessions: readonly T[],
+  view: SessionListView,
+): SessionTree<T> {
+  const { live, archivedIds } = partitionArchived(sessions)
+  return nestSessions(orderSessions(live, view.field, view.direction), archivedIds)
 }
 
 /**
@@ -35,8 +54,7 @@ export function sidebarRowOrder<
   collapsed: { pinned?: boolean; recents?: boolean } = {},
   collapsedParents: ReadonlySet<string> = new Set(),
 ): T[] {
-  const { live, archivedIds } = partitionArchived(sessions)
-  const tree = nestSessions(orderSessions(live, view.field, view.direction), archivedIds)
+  const tree = sidebarSessionTree(sessions, view)
   const pinned = collapsed.pinned
     ? []
     : orderSessions(tree.roots.filter(session => session.pinned), view.field, view.direction)

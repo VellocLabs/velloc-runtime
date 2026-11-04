@@ -130,32 +130,34 @@ describe('aggregateDescendantState', () => {
 })
 
 describe('descendantSessionIds', () => {
-  it('lists every session under a parent, nearest level first, archived ones included', () => {
-    const ids = descendantSessionIds(
-      [
-        row('g1', { parentSessionId: 'c1', lineageKind: 'fork' }),
-        row('p'),
-        row('c1', { parentSessionId: 'p', lineageKind: 'side_session' }),
-        row('c2', { parentSessionId: 'p', lineageKind: 'side_session', archived: true }),
-        row('q', { parentSessionId: 'other', lineageKind: 'side_session' }),
-      ],
-      'p',
-    )
-    expect(ids).toEqual(['c1', 'c2', 'g1'])
-    expect(descendantSessionIds([row('p')], 'p')).toEqual([])
+  it('lists every row the tree draws under a parent, nearest level first', () => {
+    const tree = nestSessions([
+      row('g1', { parentSessionId: 'c1', lineageKind: 'fork' }),
+      row('p'),
+      row('c1', { parentSessionId: 'p', lineageKind: 'side_session' }),
+      row('c2', { parentSessionId: 'p', lineageKind: 'side_session' }),
+      row('q', { parentSessionId: 'other', lineageKind: 'side_session' }),
+    ])
+    expect(descendantSessionIds('p', tree.childrenOf)).toEqual(['c1', 'c2', 'g1'])
+    expect(descendantSessionIds('p', tree.childrenOf)).toHaveLength(countDescendants('p', tree.childrenOf))
+    expect(descendantSessionIds('q', tree.childrenOf)).toEqual([])
   })
 
-  it('leaves out a side chat, a detached row, a team member, and a loop', () => {
-    const rows: (Row & { sideChat?: boolean })[] = [
+  it('leaves out a detached row, a team member, and a row the tree drew flat', () => {
+    const tree = nestSessions([
       row('p'),
-      { ...row('sc', { parentSessionId: 'p', lineageKind: 'fork' }), sideChat: true },
       row('d', { parentSessionId: 'p', lineageKind: 'side_session', detached: true }),
       row('t', { parentSessionId: 'p', lineageKind: 'team' }),
       row('c', { parentSessionId: 'p', lineageKind: 'side_session' }),
       row('x', { parentSessionId: 'y', lineageKind: 'side_session' }),
       row('y', { parentSessionId: 'x', lineageKind: 'side_session' }),
-    ]
-    expect(descendantSessionIds(rows, 'p')).toEqual(['c'])
-    expect(descendantSessionIds(rows, 'x')).toEqual(['y'])
+    ])
+    expect(descendantSessionIds('p', tree.childrenOf)).toEqual(['c'])
+    // The loop is broken at one link: whichever row became top-level is not
+    // counted under the other.
+    const flat = tree.fallbackIds[0]!
+    const nested = flat === 'x' ? 'y' : 'x'
+    expect(descendantSessionIds(nested, tree.childrenOf)).toEqual([])
+    expect(descendantSessionIds(flat, tree.childrenOf)).toEqual([nested])
   })
 })

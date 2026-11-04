@@ -280,7 +280,10 @@ export const fr: Messages = {
   'sidebar.sessionDeleteTitle': 'Supprimer la discussion ?',
   'sidebar.sessionDeleteBody':
     '« {title} » sera supprimée de cet ordinateur. Cette action est irréversible.',
-  'sidebar.sessionDeleteChildren': 'Supprimer aussi les {count} session(s) en dessous',
+  'sidebar.sessionDeleteChildrenOne': 'Supprimer aussi {count} discussion imbriquée en dessous',
+  'sidebar.sessionDeleteChildren': 'Supprimer aussi les {count} discussions imbriquées en dessous',
+  'sidebar.sessionDeleteBusyOne': '{count} discussion est encore en cours et sera arrêtée.',
+  'sidebar.sessionDeleteBusy': '{count} discussions sont encore en cours et seront arrêtées.',
   'sidebar.sessionDeleteConfirm': 'Supprimer',
   'sidebar.sessionDeleteCancel': 'Annuler',
   'composer.placeholder': 'Tapez / pour les commandes',
