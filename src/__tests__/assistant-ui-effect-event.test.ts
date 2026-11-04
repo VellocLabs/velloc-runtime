@@ -1,8 +1,11 @@
 import { execFileSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 
+// --no-concurrent-recompilation keeps Maglev and TurboFan jobs on the main thread. A background
+// job pins the closure it compiles, and with it that render's payload, until the job is installed.
 function runProduction(source: string): string {
-  return execFileSync(process.execPath, ['--expose-gc', '--input-type=module', '-e', source], {
+  const flags = ['--expose-gc', '--no-concurrent-recompilation', '--input-type=module']
+  return execFileSync(process.execPath, [...flags, '-e', source], {
     cwd: process.cwd(),
     env: { ...process.env, NODE_ENV: 'production' },
     encoding: 'utf8',
