@@ -65,8 +65,15 @@ const MENU_ITEM_CLASS = 'flex w-full cursor-default select-none items-center gap
 
 export const CodeReviewMessage: FC = () => {
   const runId = useAssistantState(state => state.message.metadata.custom?.reviewRunId)
-  return typeof runId === 'string' ? <CodeReviewCard runId={runId} /> : null
+  return typeof runId === 'string' ? <CodeReviewRow runId={runId} /> : null
 }
+
+/** A review card as its own transcript row: held to the thread's text column like every other row. */
+export const CodeReviewRow: FC<{ runId: string }> = ({ runId }) => (
+  <div data-testid="code-review-row" className="mx-auto w-full max-w-(--thread-max-width) px-2">
+    <CodeReviewCard runId={runId} />
+  </div>
+)
 
 export const CodeReviewCard: FC<{ runId: string }> = ({ runId }) => {
   const t = useT()

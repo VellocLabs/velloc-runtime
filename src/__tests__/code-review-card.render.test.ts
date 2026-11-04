@@ -3,7 +3,7 @@ import { RightPanelContentContext } from '../components/assistant-ui/right-panel
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { CodeReviewCard, CodeReviewProvider, ReviewReportCard, currentReviewLocation, reviewFindingState } from '../components/assistant-ui/code-review-card'
+import { CodeReviewCard, CodeReviewProvider, CodeReviewRow, ReviewReportCard, currentReviewLocation, reviewFindingState } from '../components/assistant-ui/code-review-card'
 import type { ReviewReportView } from '../codeReview/review-protocol'
 import { createTranslate } from '../browser/webview/i18n/translate'
 const t = createTranslate('en')
@@ -28,6 +28,12 @@ async function openMore(): Promise<HTMLElement> {
 }
 const menuDisabled = (id: string) => screen.getByTestId(id).hasAttribute('data-disabled')
 describe('review report card', () => {
+  it('holds a transcript-row card to the thread text column', () => {
+    render(createElement(CodeReviewRow, { runId: 'r1' }))
+    const row = screen.getByTestId('code-review-row')
+    expect(row.contains(screen.getByTestId('code-review-card'))).toBe(true)
+    expect(row.className.split(' ')).toEqual(expect.arrayContaining(['mx-auto', 'w-full', 'max-w-(--thread-max-width)', 'px-2']))
+  })
   it('distinguishes incomplete zero findings, complete zero findings and empty scope', () => {
     const value = report()
     renderReport(value)
