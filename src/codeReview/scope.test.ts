@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { hunkSides, parseUnifiedDiff, resolveLocalReviewScope, resolveReviewAnchor, type ScopeResolverOptions, type WorkspaceRead } from './scope'
+import { hunkSides, parseUnifiedDiff, resolveLocalReviewScope, resolveReviewAnchor, scopeComplete, type ScopeResolverOptions, type WorkspaceRead } from './scope'
 import { GitAdapterError, createGitArgvRunner, type GitStreamSpawner, type GitQuery, type ReviewGitRunner } from './git-adapter'
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdtemp, writeFile, readFile, rm, stat } from 'node:fs/promises'
@@ -151,6 +151,16 @@ describe('local scope', () => {
     const result = await resolveLocalReviewScope({ ...f.options, skipPath: () => true }, { kind: 'paths', paths: ['a.ts'] })
     expect(result.status).toBe('empty')
     expect(result.files).toEqual([])
+  })
+  it('stays complete when the policy skips a test file beside a reviewed one', async () => {
+    const f = fixture({ tree: ['a.ts', 'b.test.ts', ''].map(path => path && `100644 blob ${blob}\t${path}`).join('\0'), tracked: 'a.ts\0b.test.ts\0',
+      files: { 'a.ts': { kind: 'file', bytes: encode('same\nnew\n'), gitMode: '100644' }, 'b.test.ts': { kind: 'file', bytes: encode('same\nnew\n'), gitMode: '100644' } } })
+    const result = await resolveLocalReviewScope({ ...f.options, skipPath: path => path.endsWith('.test.ts') })
+    expect(result.files.map(file => [file.path, file.status])).toEqual([['a.ts', 'included'], ['b.test.ts', 'skipped']])
+    expect(result).toMatchObject({ complete: true, status: 'reviewable' })
+    expect(scopeComplete([{ status: 'included' }, { status: 'skipped' }, { status: 'binary' }], [])).toBe(false)
+    expect(scopeComplete([{ status: 'skipped' }], [])).toBe(false)
+    expect(scopeComplete([], [])).toBe(true)
   })
   it('keeps changed excluded files visible as skipped coverage', async () => {
     const result = await resolveLocalReviewScope({ ...fixture().options, skipPath: () => true })

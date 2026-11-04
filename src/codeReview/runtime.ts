@@ -27,7 +27,7 @@ import { assertUntrustedReadAllowed } from '../permissions/untrustedReadBoundary
 import { isFsNotFoundError } from '../utils/fsTransportFailure'
 import { createGitArgvRunner, GitAdapterError, gitText, isGitRefSyntax, remoteUrlsOf, validateReviewPath, type GitStreamSpawner } from './git-adapter'
 import { isTestOrFixturePath } from './recipes'
-import { resolveLocalReviewScope, reviewDigest, type WorkspaceRead, type LocalReviewTarget } from './scope'
+import { resolveLocalReviewScope, reviewDigest, scopeComplete, type WorkspaceRead, type LocalReviewTarget } from './scope'
 import { LocalReviewService, ReviewGatewayError, scopeIndex, type ReviewServiceOptions } from './service'
 import type { ScopeManifest } from './scope'
 import { createReviewModelRunner } from './runner'
@@ -458,7 +458,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
             if (plan.skipTestsAndFixtures && isTestOrFixturePath(file.path)) { file.status = 'skipped'; file.patch = ''; file.anchors = [] }
           }
           remote.manifest.anchors = remote.manifest.files.flatMap(file => file.anchors)
-          if (remote.manifest.files.some(file => file.status !== 'included')) { remote.manifest.complete = false; remote.manifest.status = 'partial' }
+          if (!scopeComplete(remote.manifest.files, remote.manifest.notices)) { remote.manifest.complete = false; remote.manifest.status = 'partial' }
           remoteSnapshots.set(remoteKey(remote.manifest.scope), remote)
           const guidance = await guidanceFor(remote.manifest.files.map(file => file.path), !approved, authorizePath, approved)
           return { manifest: remote.manifest, trustedGuidance: guidance.text, authorizedGuidance: guidance.authorizedGuidance, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {

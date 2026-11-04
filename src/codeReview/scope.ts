@@ -121,6 +121,15 @@ export async function parseUnifiedDiff(patch: string, revisions: { base: string;
   return files
 }
 /** Each hunk of one file's patch as it reads on the before side and on the after side, without diff markers. */
+/**
+ * A scope is complete when every changed file was read, or was left out only by the tests/fixtures policy beside files
+ * that were read; a change of policy-skipped files alone is incomplete, since nothing was reviewed (F-38).
+ */
+export function scopeComplete(files: readonly Pick<DiffFile, 'status'>[], notices: readonly string[]): boolean {
+  if (notices.some(n => n === 'diff-output-limit' || n.startsWith('mode-unavailable:'))) return false
+  if (files.some(f => f.status !== 'included' && f.status !== 'skipped')) return false
+  return !files.length || files.some(f => f.status === 'included')
+}
 export function hunkSides(patch: string): Array<{ before: string; after: string; beforeStart: number; afterStart: number }> {
   const hunks: Array<{ before: string[]; after: string[]; beforeStart: number; afterStart: number }> = []
   for (const line of patch.split('\n')) {
@@ -307,6 +316,6 @@ export async function resolveLocalReviewScope(options: ScopeResolverOptions, tar
     const endHead = await optional(git, { kind: 'resolve', ref: 'HEAD' }, signal)
     if (source === 'unborn' ? !!endHead : endHead !== head) throw new ScopeError('snapshot-changed')
   }
-  const complete = files.every(f => f.status === 'included') && !notices.some(n => n === 'diff-output-limit' || n.startsWith('mode-unavailable:'))
+  const complete = scopeComplete(files, notices)
   return { scope, files, anchors: files.flatMap(f => f.anchors), status: !complete ? 'partial' : files.length ? 'reviewable' : 'empty', complete, notices, baseSource: source, semantics }
 }

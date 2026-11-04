@@ -274,6 +274,19 @@ describe('local review runtime gateway', () => {
     expect(report.coverage.limitations).toContain('tests-fixtures-reviewed')
     expect(report.run.progress.status).toBe('finished')
   })
+  it('finishes a low review whose test files the policy skipped beside reviewed code', async () => {
+    const manifest: ScopeManifest = { scope: { kind: 'workspace', workspaceKey: '/repo', repository: { projectKey: '/repo' }, revision: { base: 'a', head: 'b', workingCopyDigest: 'w' }, pathFilter: [] },
+      files: [{ path: 'src/a.ts', status: 'included', patch: '-old\n+new', anchors: [] }, { path: 'src/__tests__/a.test.ts', status: 'skipped', patch: '', anchors: [] }],
+      anchors: [], status: 'reviewable', complete: true, notices: [], baseSource: 'main', semantics: 'working-copy' }
+    const h = setup({ args: { resolveScope: vi.fn(async () => ({ manifest, trustedGuidance: '', read: vi.fn() })) } })
+    const { runId } = await h.service.startUser('low')
+    const report = await h.service.wait(runId)
+    const scope = JSON.parse(h.runModel.mock.calls[0]![0].blocks.find(b => b.source === 'scope-manifest')!.text)
+    expect(scope.files.map((file: { path: string; status: string }) => [file.path, file.status])).toEqual([['src/a.ts', 'included'], ['src/__tests__/a.test.ts', 'skipped']])
+    expect(report.run.progress.status).toBe('finished')
+    expect(report.coverage.limitations).toContain('tests-fixtures-skipped')
+    expect(report.coverage.limitations).not.toContain('scope-incomplete')
+  })
   it('finishes a local run that covered every angle although nothing was independently verified', async () => {
     const h = setup()
     const { runId } = await h.service.startUser('high')
