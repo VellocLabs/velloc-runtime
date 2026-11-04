@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { LocalReviewService, type ReviewServiceOptions } from './service'
+import { USER_CANCELLED } from './review-protocol'
 import type { ReviewModelRequest } from './runner'
 import type { ScopeManifest } from './scope'
 import { REVIEW_MODEL_IDENTITIES } from './modelProfiles'
@@ -196,7 +197,25 @@ describe('review output and cancellation', () => {
     const snapshot = await f.service.wait(runId)
     expect(snapshot.run.progress.status).toBe('cancelled')
     expect(snapshot.coverage.complete).toBe(false)
+    expect(snapshot.coverage.limitations).toContain(USER_CANCELLED)
     expect(snapshot.diagnostics).toEqual([])
+  })
+  it('records an abort from the invoking turn as a plain cancellation, not a user cancel', async () => {
+    let started!: () => void
+    const entered = new Promise<void>(resolve => { started = resolve })
+    const f = fixture({ runModel: async request => {
+      started()
+      await new Promise<void>(resolve => request.signal.addEventListener('abort', () => resolve(), { once: true }))
+      return { text: '', interrupted: true }
+    } })
+    const turn = new AbortController()
+    const { runId } = await f.service.startModel('low', turn.signal, 'call-1')
+    await entered
+    turn.abort()
+    const snapshot = await f.service.wait(runId)
+    expect(snapshot.run.progress.status).toBe('cancelled')
+    expect(snapshot.coverage.limitations).toContain('review-cancelled')
+    expect(snapshot.coverage.limitations).not.toContain(USER_CANCELLED)
   })
 })
 
@@ -677,7 +696,7 @@ it('cancels a review that is still preparing, so the Skill call ends without a r
   const started = f.service.startModel('high', undefined, 'call-1')
   await vi.waitFor(() => expect(f.service.preparing()).toHaveLength(1))
   expect(await f.service.cancel(f.service.preparing()[0].id)).toEqual({ accepted: true })
-  await expect(started).rejects.toThrow()
+  await expect(started).rejects.toThrow(USER_CANCELLED)
   expect(f.service.preparing()).toEqual([])
   expect((await f.service.snapshots()).reports).toEqual([])
   expect(f.runModel).not.toHaveBeenCalled()
@@ -695,7 +714,7 @@ it('ends a cancelled start at once even while scope resolution ignores the signa
   const started = f.service.startModel('high', undefined, 'call-1')
   await vi.waitFor(() => expect(f.service.preparing()).toHaveLength(1))
   await f.service.cancel(f.service.preparing()[0].id)
-  await expect(started).rejects.toThrow('review-cancelled')
+  await expect(started).rejects.toThrow(USER_CANCELLED)
   expect(f.service.preparing()).toEqual([])
   expect((await f.service.snapshots()).reports).toEqual([])
 })

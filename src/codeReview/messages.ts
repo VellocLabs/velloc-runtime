@@ -26,6 +26,7 @@ const groups = {
   crash: ['review-crash'],
   changed: ['snapshot-changed', 'head-changed', 'head-check-failed'],
   cancelled: ['review-cancelled', 'cancelled', 'repair-no-longer-active'],
+  cancelledByUser: ['review-cancelled-by-user'],
   invalidReport: ['invalid-diff', 'invalid-anchor', 'invalid-response', 'invalid-publication', 'invalid-run-id', 'invalid-review-search', 'invalid-review-read', 'invalid-worker-role', 'invalid-worker-angles', 'worker-role-not-authorized', 'unknown-candidate', 'verifier-assignment-not-authorized', 'worker-candidate-limit', 'worker-angle-not-assigned', 'worker-angle-candidate-limit', 'unstructured-worker-answer'],
   failed: ['review-failed', 'query-failed', 'spawn-failed', 'http-failed', 'redirect-refused', 'secret-origin'],
   noTarget: ['publication-target-required', 'publication-target-unavailable', 'no-publish-target'],

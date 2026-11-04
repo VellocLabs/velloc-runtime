@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type FC, type ReactNode } from 'react'
 import { useAssistantState } from '@assistant-ui/react'
-import { CheckIcon, ChevronDownIcon, CopyIcon, EllipsisIcon, Loader2Icon, SearchCheckIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, CircleSlashIcon, CopyIcon, EllipsisIcon, Loader2Icon, SearchCheckIcon } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import type { RuntimeConnection } from '@/browser/runtimeClient/RuntimeConnection'
 import { useT } from '@/browser/webview/i18n'
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 import { useCopyToClipboard } from './markdown-components'
 import { useRightPanelContent } from './right-panel-content-context'
 import { useBackgroundTasksContext } from './background-tasks-context'
-import { isReviewFileLocation, reviewTopic, type ReviewAction, type ReviewReportView, type ReviewSessionSnapshot } from '@/codeReview/review-protocol'
+import { USER_CANCELLED, isReviewFileLocation, reviewTopic, type ReviewAction, type ReviewReportView, type ReviewSessionSnapshot } from '@/codeReview/review-protocol'
 import type { Diagnostic, OutputMode, ReviewRun, ReviewTaskView } from '@/codeReview/contracts'
 import { latestAssessment } from '@/codeReview/ledger-lookups'
 import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMessage, reviewTaskRoleMessage, reviewTaskStatusMessage, reviewEndMessage } from '@/codeReview/messages'
@@ -27,7 +27,7 @@ function reviewTaskCounts(tasks: ReviewTaskView[]): { running: number; finished:
   return { running, finished, notCompleted: tasks.length - running - finished }
 }
 
-/** The run's model tasks: role, label, status, last action, end reason and a jump to the drawer transcript. */
+/** The run's model tasks: role, label, status, last action, end reason and a jump to the drawer transcript. A stopped task's status already says it was cancelled. */
 export const ReviewTaskTree: FC<{ tasks: ReviewTaskView[]; open?: boolean }> = ({ tasks, open = true }) => {
   const t = useT()
   const { openTasksDrawer } = useBackgroundTasksContext()
@@ -39,7 +39,7 @@ export const ReviewTaskTree: FC<{ tasks: ReviewTaskView[]; open?: boolean }> = (
       {counts.notCompleted > 0 && <> · {t('reviewCard.tasksNotCompleted', { count: counts.notCompleted })}</>}
     </>}</summary>
     <ul className="mt-1.5 space-y-1">{tasks.map(task => {
-      const end = task.end ? reviewEndMessage(t, task.end) : undefined
+      const end = task.end && task.end.kind !== 'cancelled' ? reviewEndMessage(t, task.end) : undefined
       const detail = taskDetail(t, task)
       return <li key={task.key} data-testid="review-task" data-role={task.role} data-status={task.status} className={task.role === 'coordinator' ? '' : 'ml-4'}>
         <span className="font-medium">{reviewTaskRoleMessage(t, task.role)}</span>{detail && <> · {detail}</>} · <span aria-live="polite">{reviewTaskStatusMessage(t, task.status)}</span>
@@ -364,6 +364,9 @@ export const ReviewReportCard: FC<{
   // The review itself is in flight: findings are not a result yet. A follow-up stage keeps them on screen.
   const reviewing = running && (status === 'queued' || REVIEWING_STAGES.includes(stage))
   const finished = !running
+  const cancelled = status === 'cancelled'
+  const cancelledByUser = cancelled && report.coverage.limitations.includes(USER_CANCELLED)
+  const hasFindings = report.diagnostics.length > 0
   const shown = report.diagnostics.slice(0, 32).filter(diagnostic =>
     (severity === 'all' || diagnostic.classification.impact === severity) &&
     (kind === 'all' || (kind === 'correctness' ? ['correctness', 'security'].includes(diagnostic.classification.kind) : !['correctness', 'security'].includes(diagnostic.classification.kind))) &&
@@ -412,22 +415,29 @@ export const ReviewReportCard: FC<{
           <ReviewActivity tasks={report.tasks ?? []} status={enumText(reviewStatusValue(status, stage))} />
           {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{progress.found === 0 ? t('reviewCard.progressNone') : progress.found === 1 ? t('reviewCard.progressFoundOne', progress) : t('reviewCard.progressFound', progress)}</p>}
         </> : <>
-          <div className="flex flex-col gap-1">
+          {cancelled && <div data-testid="review-cancelled" data-by-user={cancelledByUser} className="flex items-start gap-3 rounded-lg bg-muted/50 px-3 py-2.5">
+            <CircleSlashIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0">
+              <p className="font-medium">{cancelledByUser ? t('reviewCard.notice.cancelledByUser') : enumText('cancelled')}</p>
+              <p className="text-xs text-muted-foreground">{t(hasFindings ? 'reviewCard.cancelledRetained' : 'reviewCard.cancelledEmpty')}</p>
+            </div>
+          </div>}
+          {(!cancelled || hasFindings) && <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-lg font-semibold leading-tight" data-testid="review-count">{report.diagnostics.length === 1 ? t('reviewCard.findingsOne') : t('reviewCard.findingsMany', { count: report.diagnostics.length })}</p>
               {impactCounts.map(([impact, count]) => <Badge key={impact} variant={IMPACT_VARIANT[impact]} size="sm">{enumText(impact)} · {count}</Badge>)}
               {run.progress.omittedByLimit > 0 && <span className="text-xs text-muted-foreground">{t('reviewCard.omitted', { omitted: run.progress.omittedByLimit })}</span>}
             </div>
             {report.diagnostics.length === 0 && <p data-testid="review-empty" className={cn('text-xs', report.emptyScope || clean ? 'text-muted-foreground' : 'text-warning-emphasis')}>{t(report.emptyScope ? 'reviewCard.emptyScope' : clean ? 'reviewCard.emptyComplete' : 'reviewCard.emptyPartial')}</p>}
-          </div>
+          </div>}
           <div data-testid="review-scope" className={cn('space-y-1', SCOPE_BLOCK_CLASS)}>
             <p data-testid="review-method">{method}</p>
             {notices}
           </div>
         </>}
-        {endMessage && <p role="status" data-testid="review-end" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{endMessage}</p>}
+        {endMessage && !(cancelled && report.end?.kind === 'cancelled') && <p role="status" data-testid="review-end" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{endMessage}</p>}
         {reviewing && notices && <div className={SCOPE_BLOCK_CLASS}>{notices}</div>}
-        {finished && !report.coverage.complete && !report.emptyScope && report.diagnostics.length > 0 && <p data-testid="review-incomplete" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{t('reviewCard.notice.incomplete')}</p>}
+        {finished && !cancelled && !report.coverage.complete && !report.emptyScope && report.diagnostics.length > 0 && <p data-testid="review-incomplete" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{t('reviewCard.notice.incomplete')}</p>}
         {!reviewing && report.diagnostics.length > 0 && <>
           <div className="flex flex-wrap items-center gap-3">
             {repairable && <label className="flex items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" data-testid="review-select-all" className="size-4 accent-primary" checked={allShown} disabled={busy || shown.length === 0} onChange={event => setSelected(ids => event.target.checked ? [...new Set([...ids, ...shown.map(item => item.id)])] : ids.filter(id => !shown.some(item => item.id === id)))} />{t('reviewCard.selectAll')}</label>}
@@ -499,7 +509,7 @@ export const ReviewReportCard: FC<{
       </div>
       {!running && <footer className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-2.5">
         <span className="mr-auto text-xs text-muted-foreground">{selectedIds.length > 0 && t('reviewCard.selected', { count: selectedIds.length })}</span>
-          <Button type="button" variant="outline" size="sm" disabled={busy || !can('rerun')} onClick={() => act('rerun', { presentation })} data-testid="review-rerun">{t('reviewCard.rerun')}</Button>
+          <Button type="button" variant={cancelled && !hasFindings ? 'default' : 'outline'} size="sm" disabled={busy || !can('rerun')} onClick={() => act('rerun', { presentation })} data-testid="review-rerun">{t('reviewCard.rerun')}</Button>
           {report.diagnostics.length > 0 && repairable && <Button type="button" size="sm" disabled={busy || selectedIds.length === 0} onClick={() => act('repair', { diagnosticIds: selectedIds })} data-testid="review-repair">{selectedIds.length > 0 ? t('reviewCard.repairCount', { count: selectedIds.length }) : t('reviewCard.repair')}</Button>}
           <DropdownMenuPrimitive.Root>
             <DropdownMenuPrimitive.Trigger asChild>

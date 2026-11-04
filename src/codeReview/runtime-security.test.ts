@@ -5,7 +5,7 @@ import type { Message } from '../runtime/RuntimeTypes'
 import type { GitStreamSpawner } from './git-adapter'
 import type { ReviewHttpRequest } from './platform-adapter'
 import type { ReviewModelRequest } from './runner'
-import { getOrCreateReviewService, outsideGuidancePath } from './runtime'
+import { getOrCreateReviewService, invokeReviewModelSkill, outsideGuidancePath } from './runtime'
 
 const mocks = vi.hoisted(() => ({
   formatGuidance: vi.fn(), guidance: vi.fn(), nestedGuidance: vi.fn(), vet: vi.fn(), boundary: vi.fn(), gate: vi.fn(), confirm: vi.fn(), model: vi.fn(), runnerContexts: [] as unknown[], edit: vi.fn(),
@@ -145,6 +145,26 @@ beforeEach(() => {
 })
 
 describe('review execution admission', () => {
+  it('tells the model a review was cancelled by the user when the card cancels it', async () => {
+    const { getReviewSession } = await import('./review-channel')
+    const h = fixture()
+    let entered!: () => void
+    const running = new Promise<void>(resolve => { entered = resolve })
+    mocks.model.mockImplementation(async (request: ReviewModelRequest) => {
+      entered()
+      await new Promise<void>(resolve => request.signal.addEventListener('abort', () => resolve(), { once: true }))
+      return { text: '', interrupted: true }
+    })
+    const result = invokeReviewModelSkill('low', h.context, h.permission, 'call-1')
+    await running
+    const session = getReviewSession(h.context.options.sessionId)!
+    const { reports } = await session.getSnapshot()
+    await session.cancel(reports[0].run.id)
+    const value = JSON.parse(await result)
+    expect(value).toMatchObject({ reviewRunId: reports[0].run.id, status: 'cancelled', cancelledBy: 'user' })
+    expect(typeof value.note).toBe('string')
+  })
+
   it('creates the guarded report directory before native restoration reads', async () => {
     const h = fixture()
     let created = false

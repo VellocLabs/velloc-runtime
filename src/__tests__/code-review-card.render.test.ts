@@ -50,6 +50,32 @@ describe('review report card', () => {
     renderReport(value)
     expect(screen.getByTestId('review-empty').textContent).toBe(t('reviewCard.emptyScope'))
   })
+  it('shows a cancelled review as one notice, says when the user cancelled it, and offers only a rerun without findings', () => {
+    const value = report()
+    value.run.progress.status = 'cancelled'
+    value.run.progress.stage = 'inspect'
+    value.coverage.limitations = ['review-cancelled-by-user']
+    value.end = { kind: 'cancelled' }
+    value.tasks = [{ key: 'r1', role: 'coordinator', status: 'stopped', startedAt: 1, lastActivityAt: 2, finishedAt: 3, end: { kind: 'cancelled' } }]
+    renderReport(value)
+    const notice = screen.getByTestId('review-cancelled')
+    expect(notice.dataset.byUser).toBe('true')
+    expect(notice.textContent).toContain(t('reviewCard.notice.cancelledByUser'))
+    expect(notice.textContent).toContain(t('reviewCard.cancelledEmpty'))
+    for (const id of ['review-count', 'review-empty', 'review-end', 'review-incomplete', 'review-repair']) expect(screen.queryByTestId(id)).toBeNull()
+    expect(screen.getByTestId('review-rerun')).toBeTruthy()
+    expect((screen.getByTestId('review-tasks') as HTMLDetailsElement).open).toBe(false)
+    expect(screen.getByTestId('review-task').textContent).not.toContain(t('reviewCard.notice.cancelled'))
+    cleanup()
+    value.coverage.limitations = ['review-cancelled']
+    value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy', span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
+    renderReport(value)
+    expect(screen.getByTestId('review-cancelled').dataset.byUser).toBe('false')
+    expect(screen.getByTestId('review-cancelled').textContent).toContain(t('reviewCard.cancelledRetained'))
+    expect(screen.getByTestId('review-count')).toBeTruthy()
+    expect(screen.getByTestId('review-finding')).toBeTruthy()
+    expect(screen.getByTestId('review-repair')).toBeTruthy()
+  })
   it('publishes only after confirmation when host policy requires it', async () => {
     const action = renderReport()
     await openMore()

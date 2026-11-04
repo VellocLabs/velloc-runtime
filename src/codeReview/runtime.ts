@@ -33,6 +33,7 @@ import type { ScopeManifest } from './scope'
 import { createReviewModelRunner } from './runner'
 import { registerReviewSession } from './review-channel'
 import type { ReviewReportView } from './review-protocol'
+import { USER_CANCELLED } from './review-protocol'
 import type { ReportSnapshot } from './report-store'
 import { SuperEditTool } from '../toolkit/builtin/superEdit'
 import { CONTEXT_READ_BYTES, type ReviewPreferences } from './contracts'
@@ -1117,14 +1118,23 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
   }
 }
 
+/** Model-facing: a user cancel is a decision, not a failure to work around. */
+const USER_CANCELLED_NOTE = 'The user cancelled this review. Do not retry it or start another review on your own; tell the user it was cancelled and continue only as they direct.'
 /** Contract: `toolCallId` is the invoking Skill call's id; the run records it so the conversation can show its card while it runs. */
 export async function invokeReviewModelSkill(raw: string, context: ToolCallContext, permission: PermissionDecider, toolCallId?: string): Promise<string> {
   const parsed = parseReviewArguments(raw)
   if (!parsed.ok) throw new ReviewGatewayError(parsed.error.code)
   if (parsed.arguments.fix || parsed.arguments.comment) throw new ReviewGatewayError('action-not-authorized')
   const service = await getOrCreateReviewService(context, permission)
-  const { runId } = await service.startModel(raw, context.cancelSource.signal, toolCallId)
+  let runId: string
+  try { ({ runId } = await service.startModel(raw, context.cancelSource.signal, toolCallId)) }
+  catch (error) {
+    if (error instanceof ReviewGatewayError && error.code === USER_CANCELLED) return JSON.stringify({ status: 'cancelled', cancelledBy: 'user', note: USER_CANCELLED_NOTE })
+    throw error
+  }
   const snapshot = await service.wait(runId)
   const report = JSON.parse(presentReviewJson(snapshot))
-  return JSON.stringify({ reviewRunId: runId, status: snapshot.run.progress.status, report, ...(report.unverified?.length ? { note: 'report.unverified lists candidates whose evidence the host could not confirm; they are not findings and must not be reported as such.' } : {}) })
+  const byUser = snapshot.run.progress.status === 'cancelled' && snapshot.coverage.limitations.includes(USER_CANCELLED)
+  const notes = [...(byUser ? [USER_CANCELLED_NOTE] : []), ...(report.unverified?.length ? ['report.unverified lists candidates whose evidence the host could not confirm; they are not findings and must not be reported as such.'] : [])]
+  return JSON.stringify({ reviewRunId: runId, status: snapshot.run.progress.status, report, ...(byUser ? { cancelledBy: 'user' } : {}), ...(notes.length ? { note: notes.join(' ') } : {}) })
 }
