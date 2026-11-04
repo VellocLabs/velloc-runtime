@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   aggregateDescendantState,
   countDescendants,
+  descendantSessionIds,
   flattenSessionTree,
   nestSessions,
   rootOf,
@@ -125,5 +126,36 @@ describe('aggregateDescendantState', () => {
       running: false,
       needsAnswer: false,
     })
+  })
+})
+
+describe('descendantSessionIds', () => {
+  it('lists every session under a parent, nearest level first, archived ones included', () => {
+    const ids = descendantSessionIds(
+      [
+        row('g1', { parentSessionId: 'c1', lineageKind: 'fork' }),
+        row('p'),
+        row('c1', { parentSessionId: 'p', lineageKind: 'side_session' }),
+        row('c2', { parentSessionId: 'p', lineageKind: 'side_session', archived: true }),
+        row('q', { parentSessionId: 'other', lineageKind: 'side_session' }),
+      ],
+      'p',
+    )
+    expect(ids).toEqual(['c1', 'c2', 'g1'])
+    expect(descendantSessionIds([row('p')], 'p')).toEqual([])
+  })
+
+  it('leaves out a side chat, a detached row, a team member, and a loop', () => {
+    const rows: (Row & { sideChat?: boolean })[] = [
+      row('p'),
+      { ...row('sc', { parentSessionId: 'p', lineageKind: 'fork' }), sideChat: true },
+      row('d', { parentSessionId: 'p', lineageKind: 'side_session', detached: true }),
+      row('t', { parentSessionId: 'p', lineageKind: 'team' }),
+      row('c', { parentSessionId: 'p', lineageKind: 'side_session' }),
+      row('x', { parentSessionId: 'y', lineageKind: 'side_session' }),
+      row('y', { parentSessionId: 'x', lineageKind: 'side_session' }),
+    ]
+    expect(descendantSessionIds(rows, 'p')).toEqual(['c'])
+    expect(descendantSessionIds(rows, 'x')).toEqual(['y'])
   })
 })

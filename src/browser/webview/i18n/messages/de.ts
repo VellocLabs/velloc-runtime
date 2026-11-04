@@ -280,6 +280,12 @@ export const de: Messages = {
     'Die {count} für „{name}“ gespeicherten Chats löschen? Damit wird ihr Verlauf aus {store} entfernt und kann nicht wiederhergestellt werden. Dein Arbeitsbereich-Ordner unter {path} bleibt UNBERÜHRT.',
   'sidebar.projectDeleteConfirm': 'Chats löschen',
   'sidebar.projectDeleteCancel': 'Abbrechen',
+  'sidebar.sessionDeleteTitle': 'Chat löschen?',
+  'sidebar.sessionDeleteBody':
+    '„{title}“ wird von diesem Computer entfernt. Das lässt sich nicht rückgängig machen.',
+  'sidebar.sessionDeleteChildren': 'Auch die {count} Sitzung(en) darunter löschen',
+  'sidebar.sessionDeleteConfirm': 'Löschen',
+  'sidebar.sessionDeleteCancel': 'Abbrechen',
   'composer.placeholder': 'Tippe / für Befehle',
   'composer.placeholderEmptyThread': 'Beschreibe eine Aufgabe oder stelle eine Frage',
   'composer.inputAria': 'Nachrichteneingabe',

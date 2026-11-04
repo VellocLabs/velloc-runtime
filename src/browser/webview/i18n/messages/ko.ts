@@ -278,6 +278,12 @@ export const ko: Messages = {
     '"{name}"에 저장된 채팅 {count}개를 삭제할까요? 기록이 {store}에서 제거되며 이 작업은 되돌릴 수 없습니다. {path}에 있는 워크스페이스 폴더는 변경되지 않습니다.',
   'sidebar.projectDeleteConfirm': '채팅 삭제',
   'sidebar.projectDeleteCancel': '취소',
+  'sidebar.sessionDeleteTitle': '채팅을 삭제할까요?',
+  'sidebar.sessionDeleteBody':
+    '"{title}"이(가) 이 컴퓨터에서 삭제됩니다. 되돌릴 수 없습니다.',
+  'sidebar.sessionDeleteChildren': '아래의 세션 {count}개도 함께 삭제',
+  'sidebar.sessionDeleteConfirm': '삭제',
+  'sidebar.sessionDeleteCancel': '취소',
   'composer.placeholder': '/를 입력해 명령 사용',
   'composer.placeholderEmptyThread': '작업을 설명하거나 질문하세요',
   'composer.inputAria': '메시지 입력란',

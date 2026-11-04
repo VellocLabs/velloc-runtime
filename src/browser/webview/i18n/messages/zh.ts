@@ -280,6 +280,12 @@ export const zh: Messages = {
     '要删除“{name}”下保存的 {count} 个对话吗？这会从 {store} 中移除它们的历史记录，且无法撤销。你位于 {path} 的工作区文件夹不会被改动。',
   'sidebar.projectDeleteConfirm': '删除对话',
   'sidebar.projectDeleteCancel': '取消',
+  'sidebar.sessionDeleteTitle': '删除对话？',
+  'sidebar.sessionDeleteBody':
+    '“{title}”将从这台电脑上移除。此操作无法撤销。',
+  'sidebar.sessionDeleteChildren': '同时删除它下面的 {count} 个会话',
+  'sidebar.sessionDeleteConfirm': '删除',
+  'sidebar.sessionDeleteCancel': '取消',
   'composer.placeholder': '输入 / 使用命令',
   'composer.placeholderEmptyThread': '描述一个任务或提出一个问题',
   'composer.inputAria': '消息输入框',

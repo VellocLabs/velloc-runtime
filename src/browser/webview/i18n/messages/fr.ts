@@ -277,6 +277,12 @@ export const fr: Messages = {
     'Supprimer les {count} discussions enregistrées pour « {name} » ? Leur historique sera retiré de {store}, sans possibilité d’annuler. Votre dossier d’espace de travail dans {path} n’est PAS touché.',
   'sidebar.projectDeleteConfirm': 'Supprimer les discussions',
   'sidebar.projectDeleteCancel': 'Annuler',
+  'sidebar.sessionDeleteTitle': 'Supprimer la discussion ?',
+  'sidebar.sessionDeleteBody':
+    '« {title} » sera supprimée de cet ordinateur. Cette action est irréversible.',
+  'sidebar.sessionDeleteChildren': 'Supprimer aussi les {count} session(s) en dessous',
+  'sidebar.sessionDeleteConfirm': 'Supprimer',
+  'sidebar.sessionDeleteCancel': 'Annuler',
   'composer.placeholder': 'Tapez / pour les commandes',
   'composer.placeholderEmptyThread': 'Décrivez une tâche ou posez une question',
   'composer.inputAria': 'Saisie du message',

@@ -26,6 +26,7 @@ import {
   ProviderMissingDialog,
 } from '../browser/webview/ThreadDialogs'
 import { ProjectDeleteDialog } from '../browser/webview/MultiSessionShell'
+import { SessionDeleteDialog } from '../browser/webview/SessionDeleteDialog'
 
 /**
  * The "unsaved edits" gate (glic/unsavedEditsGate.ts): no background reload of a hidden page while a surface holds
@@ -154,6 +155,16 @@ describe('hand-rolled modals hold the gate while shown', () => {
         createElement(ProjectDeleteDialog, {
           path: '/work/api',
           sessionCount: 2,
+          onCancel: () => {},
+          onConfirm: () => {},
+        }),
+    ],
+    [
+      'SessionDeleteDialog',
+      () =>
+        createElement(SessionDeleteDialog, {
+          title: 'Refactor plan',
+          childCount: 1,
           onCancel: () => {},
           onConfirm: () => {},
         }),

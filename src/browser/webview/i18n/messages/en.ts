@@ -285,6 +285,12 @@ export const en = {
     'Delete the {count} thread(s) stored for "{name}"? This removes their history from {store} and cannot be undone. Your workspace folder at {path} is NOT touched.',
   'sidebar.projectDeleteConfirm': 'Delete threads',
   'sidebar.projectDeleteCancel': 'Cancel',
+  'sidebar.sessionDeleteTitle': 'Delete thread?',
+  'sidebar.sessionDeleteBody':
+    '"{title}" will be removed from this computer. This cannot be undone.',
+  'sidebar.sessionDeleteChildren': 'Also delete the {count} session(s) under it',
+  'sidebar.sessionDeleteConfirm': 'Delete',
+  'sidebar.sessionDeleteCancel': 'Cancel',
   'composer.placeholder': 'Type / for commands',
   // The empty composer's placeholder before the thread has any message;
   // once it has one, `composer.placeholder` points at slash commands.

@@ -278,6 +278,12 @@ export const ja: Messages = {
     '「{name}」に保存されている {count} 件のチャットを削除しますか？履歴は {store} から削除され、この操作は取り消せません。{path} にあるワークスペースのフォルダは変更されません。',
   'sidebar.projectDeleteConfirm': 'チャットを削除',
   'sidebar.projectDeleteCancel': 'キャンセル',
+  'sidebar.sessionDeleteTitle': 'チャットを削除しますか？',
+  'sidebar.sessionDeleteBody':
+    '「{title}」はこのコンピューターから削除されます。この操作は取り消せません。',
+  'sidebar.sessionDeleteChildren': 'その下のセッション（{count} 件）も削除する',
+  'sidebar.sessionDeleteConfirm': '削除',
+  'sidebar.sessionDeleteCancel': 'キャンセル',
   'composer.placeholder': '/ でコマンドを入力',
   'composer.placeholderEmptyThread': 'タスクを説明するか、質問してください',
   'composer.inputAria': 'メッセージ入力欄',

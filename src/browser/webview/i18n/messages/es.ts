@@ -281,6 +281,12 @@ export const es: Messages = {
     '¿Eliminar los {count} chats guardados de «{name}»? Se borrará su historial de {store} y no se puede deshacer. Su carpeta del espacio de trabajo en {path} NO se toca.',
   'sidebar.projectDeleteConfirm': 'Eliminar chats',
   'sidebar.projectDeleteCancel': 'Cancelar',
+  'sidebar.sessionDeleteTitle': '¿Eliminar el chat?',
+  'sidebar.sessionDeleteBody':
+    '«{title}» se eliminará de este equipo. Esta acción no se puede deshacer.',
+  'sidebar.sessionDeleteChildren': 'Eliminar también las {count} sesión(es) que hay debajo',
+  'sidebar.sessionDeleteConfirm': 'Eliminar',
+  'sidebar.sessionDeleteCancel': 'Cancelar',
   'composer.placeholder': 'Escriba / para ver los comandos',
   'composer.placeholderEmptyThread': 'Describa una tarea o haga una pregunta',
   'composer.inputAria': 'Entrada de mensaje',
