@@ -11,6 +11,7 @@ import {
   collectPostCompactPlanRows,
   createPostCompactReadRestoreMessage,
 } from '../messages/contextAttachments'
+import { collectPostCompactSkillDiscoveryRows } from '../messages/postCompactSkillDiscovery'
 import type { RefreshedInstructions, TurnEffect } from './turnEffects'
 import { mintRows, type EffectRunner, type TurnEnvironment } from './turnEnvironment'
 
@@ -34,7 +35,8 @@ async function compactionRestores(env: TurnEnvironment): Promise<Message[]> {
     toolUseContext: ctx,
   })
   const plan = await collectPostCompactPlanRows(ctx, env.input.runtimeConfig)
-  return [...plan, ...(restore ? [restore] : [])]
+  const skills = collectPostCompactSkillDiscoveryRows(ctx, env.input.runtimeConfig)
+  return [...plan, ...skills, ...(restore ? [restore] : [])]
 }
 
 async function nestedRules(env: TurnEnvironment): Promise<Message[]> {

@@ -15,6 +15,7 @@ import {
   collectPostCompactPlanRows,
   createPostCompactReadRestoreMessage,
 } from '../messages/contextAttachments'
+import { collectPostCompactSkillDiscoveryRows } from '../messages/postCompactSkillDiscovery'
 import { key } from '../input/systemMessageParts'
 import { hydrateMessagesForModel, storeUserTitle } from '../sessions/sessionStore'
 import { runSessionEndHooks, runSessionStartHooks } from '../lifecycleHooks/sessionLifecycleHooks'
@@ -62,6 +63,7 @@ async function rowsAfterSummary(ledger: SessionLedger, context: ToolCallContext,
   const readsBefore = new Map(ledger.fileReadLedger)
   const rows: Message[] = []
   rows.push(...(await collectPostCompactPlanRows(context, config.runtimeConfig)))
+  rows.push(...collectPostCompactSkillDiscoveryRows(context, config.runtimeConfig))
   const restore = await createPostCompactReadRestoreMessage({
     readPaths: ledger.recentReadPaths,
     readFileState: readsBefore,

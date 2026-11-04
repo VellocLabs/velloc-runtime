@@ -178,6 +178,45 @@ describe('anthropic-messages buildRequest', () => {
     })
   })
 
+  it('keeps the tool results first when a reminder sits between a tool call and its result', () => {
+    const b = body({
+      messages: [
+        { role: 'user', content: 'q' },
+        { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c1', toolName: 'Bash', args: {} }] },
+        { role: 'system', content: 'notice' },
+        { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'c1', toolName: 'Bash', result: 'ok' }] },
+      ],
+    })
+    expect(b.messages).toHaveLength(3)
+    expect(b.messages[2].content.map((p: { type: string }) => p.type)).toEqual(['tool_result', 'text'])
+    expect(b.messages[2].content[1].text).toBe('<system-reminder>\nnotice\n</system-reminder>')
+  })
+
+  it('drops a blank system message inside the conversation instead of sending an empty reminder', () => {
+    const b = body({
+      messages: [
+        { role: 'user', content: 'q' },
+        { role: 'assistant', content: 'a' },
+        { role: 'system', content: '' },
+        { role: 'system', content: [{ type: 'text', text: '  ' }] },
+        { role: 'user', content: 'next' },
+      ],
+    })
+    expect(b.messages.at(-1)).toEqual({ role: 'user', content: [{ type: 'text', text: 'next', cache_control: { type: 'ephemeral' } }] })
+    expect(bodyText({ messages: [{ role: 'user', content: 'q' }, { role: 'system', content: '' }] })).not.toContain('system-reminder')
+  })
+
+  it('does not wrap a system message that is already a reminder a second time', () => {
+    const b = body({
+      messages: [
+        { role: 'user', content: 'q' },
+        { role: 'assistant', content: 'a' },
+        { role: 'system', content: '<system-reminder>\nalready wrapped\n</system-reminder>\n' },
+      ],
+    })
+    expect(b.messages.at(-1).content[0].text).toBe('<system-reminder>\nalready wrapped\n</system-reminder>')
+  })
+
   it('translates images (base64 / url) and documents', () => {
     const b = body({
       messages: [

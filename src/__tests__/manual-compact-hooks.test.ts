@@ -53,9 +53,10 @@ function compactPipeline(runtimeConfig: DefaultRuntimeConfig): UserInputPipeline
 
 type ClassicCall = { event: string; e: Record<string, unknown> }
 
-function world(options: { classic?: boolean; sessionCompact?: (input: { trigger: string }) => Promise<unknown> } = {}) {
+function world(options: { classic?: boolean; foundSkill?: boolean; sessionCompact?: (input: { trigger: string }) => Promise<unknown> } = {}) {
   const runtimeConfig = new DefaultRuntimeConfig()
   let appState: WorkingState = createEmptyAppState()
+  if (options.foundSkill) appState = { ...appState, attachmentState: { discoveredSkillNames: ['simplify'] } }
   const writeAppState = (updater: (prev: WorkingState) => WorkingState) => {
     appState = updater(appState)
   }
@@ -95,8 +96,10 @@ function world(options: { classic?: boolean; sessionCompact?: (input: { trigger:
   const engine = new ConversationEngine({
     cwd: '/workspace',
     projectRoot: '/workspace',
-    tools: [],
-    commands: [],
+    tools: (options.foundSkill ? [{ name: 'Skill' }] : []) as never,
+    commands: (options.foundSkill
+      ? [{ type: 'prompt', name: 'simplify', description: 'Reviews changed code.', path: 'bundled:simplify', loadedFrom: 'bundled', source: 'bundled' }]
+      : []) as never,
     mcpClients: [],
     agents: [],
     decidePermission: async () => ({ behavior: 'allow' }),
@@ -235,6 +238,18 @@ describe('/compact — after the summary (8-3-2)', () => {
     // A replacement would leave only the command, the boundary and the summary.
     expect(after.slice(0, before.length)).toEqual(before)
     expect(after.slice(before.length)).toEqual(['u2', 'b1', 'sum1'])
+  })
+
+  it('a skill found before `/compact` and never invoked is announced again after the summary', async () => {
+    const { engine } = world({ foundSkill: true })
+    await submit(engine, 'hello', 'u1')
+    await submit(engine, '/compact', 'u2')
+    const rows = engine.transcriptRows()
+    const after = rows.slice(rows.findIndex(hasBoundaryRow))
+    const found = after
+      .map(row => (row as { attachment?: { type?: string; skills?: Array<{ name: string }> } }).attachment)
+      .filter(a => a?.type === 'skill_discovery')
+    expect(found.map(a => a!.skills!.map(s => s.name))).toEqual([['simplify']])
   })
 
   it('the turn after `/compact` builds on the same whole transcript: one boundary, nothing repeated', async () => {

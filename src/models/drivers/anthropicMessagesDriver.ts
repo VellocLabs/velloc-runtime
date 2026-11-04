@@ -1,9 +1,8 @@
 /**
- * Anthropic Messages API driver: byte-for-byte the C++ provider's requests, fed the
- * exact `call_options` the host builds (hostCallOptions.ts), so a payload the host
- * rejects throws `HostRequestError` here too. The body is a `HostValue` tree written
- * as `base::JSONWriter` would (P-4). No thinking / redacted_thinking round trip and no
- * `signature_delta`, as in the C++ provider.
+ * Messages wire-format driver, fed the exact `call_options` the host builds
+ * (hostCallOptions.ts), so a payload the host rejects throws `HostRequestError`
+ * here too. The body is a `HostValue` tree written as `base::JSONWriter` would
+ * (P-4). No thinking / redacted_thinking round trip and no `signature_delta`.
  */
 import type { BridgeModelRequestPayload } from '../../browser/bridge/browserBridgeProtocol'
 import {
@@ -331,11 +330,34 @@ function systemTexts(message: HostDict): string[] {
   return texts
 }
 
-/** TranslateMessages (anthropic_provider.cc:981): system → top level,
- *  tool → user, consecutive same-role messages merged. Only leading system
- *  messages go to the top level: a later one stays in place as a
- *  `<system-reminder>` text on the user side, because folding it into the
- *  system would change the cached prefix of every request after it. */
+const REMINDER_OPEN = '<system-reminder>'
+const REMINDER_CLOSE = '</system-reminder>'
+
+/** One user-side reminder text for a system message inside the conversation,
+ *  or undefined when it has no text. Text that is already a reminder is kept
+ *  as it is. */
+function reminderText(texts: readonly string[]): string | undefined {
+  const joined = texts.filter(text => text.trim() !== '').join('\n\n')
+  if (!joined) return undefined
+  const trimmed = joined.trim()
+  if (trimmed.startsWith(REMINDER_OPEN) && trimmed.endsWith(REMINDER_CLOSE)) return trimmed
+  return `${REMINDER_OPEN}\n${joined}\n${REMINDER_CLOSE}`
+}
+
+/** Moves `tool_result` parts ahead of the others, each group in its order:
+ *  the API requires a user turn's tool results to come first. */
+function toolResultsFirst(parts: HostList): void {
+  const results = parts.filter(part => isHostDict(part) && findString(part, 'type') === 'tool_result')
+  if (results.length === 0 || results.length === parts.length) return
+  const rest = parts.filter(part => !results.includes(part))
+  parts.splice(0, parts.length, ...results, ...rest)
+}
+
+/** System → top level, tool → user, consecutive same-role messages merged.
+ *  Only leading system messages go to the top level: a later one stays in
+ *  place as a `<system-reminder>` text on the user side, because folding it
+ *  into the system would change the cached prefix of every request after it
+ *  (P-4). */
 function translateMessages(messages: HostList): { messages: HostList; systemPrompt: string } {
   const result: HostDict[] = []
   let systemPrompt = ''
@@ -355,9 +377,10 @@ function translateMessages(messages: HostList): { messages: HostList; systemProm
         for (const text of texts) appendSystem(text)
         continue
       }
-      if (texts.length === 0) continue
+      const reminder = reminderText(texts)
+      if (reminder === undefined) continue
       wireRole = 'user'
-      contentParts = [textPart(`<system-reminder>\n${texts.join('\n\n')}\n</system-reminder>`)]
+      contentParts = [textPart(reminder)]
     } else {
       const contentStr = findString(msgValue, 'content')
       if (contentStr !== undefined) contentParts = [textPart(contentStr)]
@@ -371,6 +394,7 @@ function translateMessages(messages: HostList): { messages: HostList; systemProm
       const lastContent = findList(last, 'content')
       if (lastContent) {
         lastContent.push(...contentParts)
+        if (wireRole === 'user') toolResultsFirst(lastContent)
         continue
       }
     }
