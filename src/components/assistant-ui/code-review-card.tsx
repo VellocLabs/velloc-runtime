@@ -19,17 +19,23 @@ import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMess
 type Translate = ReturnType<typeof useT>
 /** A task's angles, else its label. */
 const taskDetail = (t: Translate, task: ReviewTaskView) => task.angles?.length ? task.angles.map(angle => reviewAngleMessage(t, angle)).join(', ') : task.label
+/** Tasks still running, tasks that finished, and tasks that ended without finishing. */
+function reviewTaskCounts(tasks: ReviewTaskView[]): { running: number; finished: number; notCompleted: number } {
+  const running = tasks.filter(task => task.status === 'running').length
+  const finished = tasks.filter(task => task.status === 'finished').length
+  return { running, finished, notCompleted: tasks.length - running - finished }
+}
 
 /** The run's model tasks: role, label, status, last action, end reason and a jump to the drawer transcript. */
 export const ReviewTaskTree: FC<{ tasks: ReviewTaskView[]; open?: boolean }> = ({ tasks, open = true }) => {
   const t = useT()
   const { openTasksDrawer } = useBackgroundTasksContext()
   if (!tasks.length) return null
-  const completed = tasks.filter(task => task.status === 'finished').length
+  const counts = reviewTaskCounts(tasks)
   return <details open={open} data-testid="review-tasks" className="text-xs">
-    <summary className="cursor-pointer text-muted-foreground">{t('reviewCard.tasks')} · {open || tasks.some(task => task.status === 'running') ? tasks.length : <>
-      {t('reviewCard.tasksCompleted', { count: completed })}
-      {completed < tasks.length && <> · {t('reviewCard.tasksNotCompleted', { count: tasks.length - completed })}</>}
+    <summary className="cursor-pointer text-muted-foreground">{t('reviewCard.tasks')} · {counts.running > 0 ? tasks.length : <>
+      {t('reviewCard.tasksCompleted', { count: counts.finished })}
+      {counts.notCompleted > 0 && <> · {t('reviewCard.tasksNotCompleted', { count: counts.notCompleted })}</>}
     </>}</summary>
     <ul className="mt-1.5 space-y-1">{tasks.map(task => {
       const end = task.end ? reviewEndMessage(t, task.end) : undefined
@@ -185,18 +191,16 @@ const ReviewCardHeader: FC<{
 /** What the review is doing now: the most recently active running task, how many tasks finished, are running or did not complete; the full tree folds away. */
 const ReviewActivity: FC<{ tasks: ReviewTaskView[] }> = ({ tasks }) => {
   const t = useT()
-  const running = tasks.filter(task => task.status === 'running')
-  const finished = tasks.filter(task => task.status === 'finished').length
-  const ended = tasks.length - running.length
-  const current = running.reduce<ReviewTaskView | undefined>((latest, task) => !latest || task.lastActivityAt >= latest.lastActivityAt ? task : latest, undefined)
+  const counts = reviewTaskCounts(tasks)
+  const current = tasks.filter(task => task.status === 'running').reduce<ReviewTaskView | undefined>((latest, task) => !latest || task.lastActivityAt >= latest.lastActivityAt ? task : latest, undefined)
   const detail = current && taskDetail(t, current)
   return <div data-testid="review-activity" className="space-y-1.5 text-xs">
     {current && <div data-testid="review-current-task" className="min-w-0">
       <p><span className="sr-only">{t('reviewCard.currentTask')} </span><span className="font-medium">{reviewTaskRoleMessage(t, current.role)}</span>{detail && <> · {detail}</>}</p>
       {current.lastAction && <p className="truncate text-muted-foreground" title={current.lastAction}>{t('reviewCard.task.lastAction', { action: current.lastAction })}</p>}
     </div>}
-    <p data-testid="review-task-counts" className="text-muted-foreground">{t('reviewCard.tasksDone', { finished: finished, running: running.length })}
-      {ended > finished && <> · {t('reviewCard.tasksNotCompleted', { count: ended - finished })}</>}</p>
+    <p data-testid="review-task-counts" className="text-muted-foreground">{t('reviewCard.tasksDone', { finished: counts.finished, running: counts.running })}
+      {counts.notCompleted > 0 && <> · {t('reviewCard.tasksNotCompleted', { count: counts.notCompleted })}</>}</p>
     <ReviewTaskTree tasks={tasks} open={false} />
   </div>
 }

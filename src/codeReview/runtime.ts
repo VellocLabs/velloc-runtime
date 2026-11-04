@@ -487,10 +487,11 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           target = read.kind !== 'missing' ? { kind: 'paths', paths: [path] } : { kind: 'branch', ref: args.target }
         }
       }
+      const remotes = gitText(git, { kind: 'remotes' }, signal).catch(() => '')
       const manifest = await resolveLocalReviewScope({ git, workspaceKey: root, projectKey: root, readWorkspaceFile,
         skipPath: path => plan.skipTestsAndFixtures && isTestOrFixturePath(path),
       }, target, signal)
-      const repositoryName = repositoryNameOf(await gitText(git, { kind: 'remotes' }, signal).catch(() => ''))
+      const repositoryName = repositoryNameOf(await remotes)
       if (repositoryName) manifest.scope.repository.name = repositoryName
       for (const file of manifest.files) await authorizePath(resolveRuntimePath(root, file.path))
       const treeText = manifest.semantics === 'working-copy' ? await gitText(git, { kind: 'tracked' }, signal) : await gitText(git, { kind: 'tree', oid: manifest.scope.revision.head }, signal)

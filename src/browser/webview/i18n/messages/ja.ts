@@ -98,7 +98,7 @@ export const ja: Messages = {
   "reviewCard.progressFound": "これまでに問題の可能性 {found} 件 · 検証済み {verified} 件",
   "reviewCard.tasksDone": "タスク：完了 {finished} 件 · 実行中 {running} 件",
   "reviewCard.currentTask": "現在のタスク：",
-  "reviewCard.method": "方式",
+  "reviewCard.method": "方法",
   "reviewCard.copyRange": "リビジョン範囲をコピー",
   "reviewCard.policy": "レベル: {level} · 方法: {recipe} · モード: {mode} · 上限: {cap}",
   "reviewCard.preview": "公開プレビュー",

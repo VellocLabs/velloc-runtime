@@ -98,7 +98,7 @@ export const ko: Messages = {
   "reviewCard.progressFound": "지금까지 가능한 문제 {found}개 · 검증됨 {verified}개",
   "reviewCard.tasksDone": "작업: 완료 {finished}개 · 실행 중 {running}개",
   "reviewCard.currentTask": "현재 작업:",
-  "reviewCard.method": "방식",
+  "reviewCard.method": "방법",
   "reviewCard.copyRange": "리비전 범위 복사",
   "reviewCard.policy": "수준: {level} · 방법: {recipe} · 모드: {mode} · 한도: {cap}",
   "reviewCard.preview": "게시 미리 보기",
