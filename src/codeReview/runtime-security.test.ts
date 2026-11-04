@@ -842,6 +842,50 @@ describe('integrated bounded project verification', () => {
   })
 })
 
+describe('repository name on a local scope', () => {
+  function withRemotes(h: ReturnType<typeof fixture>, remotes: (events: Parameters<GitStreamSpawner>[1]) => Promise<void> | void) {
+    const original = h.spawn.getMockImplementation()!
+    h.spawn.mockImplementation(async (spec, events) => {
+      if (!spec.args.includes('--get-regexp')) return original(spec, events)
+      await remotes(events)
+      return { streamId: 'remote', write: async () => true, closeStdin: async () => true, kill: async () => true, detach() {} }
+    })
+  }
+  it('records the origin remote name on the run scope and keeps it in the stored snapshot', async () => {
+    const h = fixture()
+    withRemotes(h, events => {
+      events.onOutput?.('stdout', new TextEncoder().encode('remote.up.url\nhttps://example.invalid/owner/other.git\0remote.origin.url\nhttps://example.invalid/owner/velloc-runtime.git\0'))
+      events.onExit?.({ exitCode: 0, timedOut: false, killed: false, durationMs: 1 })
+    })
+    mocks.model.mockImplementation(request => report(request))
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('low')
+    expect((await service.wait(runId)).run.scope.repository.name).toBe('velloc-runtime')
+    expect((await service.store.getSnapshot(runId)).run.scope.repository.name).toBe('velloc-runtime')
+  })
+  it('reviews without a name when the repository has no remote', async () => {
+    const h = fixture()
+    withRemotes(h, events => events.onExit?.({ exitCode: 1, timedOut: false, killed: false, durationMs: 1 }))
+    mocks.model.mockImplementation(request => report(request))
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('low')
+    const finished = await service.wait(runId)
+    expect(finished.run.progress.status).toBe('finished')
+    expect(finished.run.scope.repository.name).toBeUndefined()
+  })
+  it('still cancels the review when cancellation arrives during the remote lookup', async () => {
+    const h = fixture()
+    const owner = new AbortController()
+    h.context.options.runtimeScopeSignal = owner.signal
+    withRemotes(h, () => { owner.abort() })
+    mocks.model.mockImplementation(request => report(request))
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    await expect(service.startUser('low')).rejects.toThrow('review-cancelled')
+    expect(h.spawn.mock.calls.some(([spec]) => spec.args.includes('--get-regexp'))).toBe(true)
+    expect(mocks.model).not.toHaveBeenCalled()
+  })
+})
+
 describe('ordinary workspace edit reassessment', () => {
   it('reassesses current evidence and updates the saved finding without a repair grant', async () => {
     const h = fixture()

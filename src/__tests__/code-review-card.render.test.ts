@@ -370,6 +370,15 @@ it('counts candidates and verified candidates while the review is active, withou
   expect(screen.queryByTestId('review-progress')).toBeNull()
 })
 
+it('uses the singular progress line for exactly one candidate', () => {
+  const value = report()
+  value.run.progress = { ...value.run.progress, status: 'active', stage: 'assess', verifiedCandidates: 0, omittedByLimit: 0 }
+  value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy', span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
+  value.assessments = []
+  renderReport(value)
+  expect(screen.getByTestId('review-progress').textContent).toBe(t('reviewCard.progressFoundOne', { verified: 0 }))
+})
+
 describe('review card header and live activity', () => {
   const base = `fb1669b${'0'.repeat(33)}`
   const head = `f5ecacb${'1'.repeat(33)}`
@@ -424,6 +433,8 @@ describe('review card header and live activity', () => {
     expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toBeTruthy()
     fireEvent.click(toggle)
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    // The body is gone, so nothing is referenced.
+    expect(toggle.hasAttribute('aria-controls')).toBe(false)
     expect(screen.queryByTestId('review-stages')).toBeNull()
     for (const id of ['review-heading', 'review-level', 'review-range', 'review-status']) expect(screen.getByTestId(id)).toBeTruthy()
   })
@@ -440,6 +451,14 @@ describe('review card header and live activity', () => {
     expect(current.textContent).toContain(t('reviewCard.angle.calls'))
     expect(current.textContent).toContain(t('reviewCard.task.lastAction', { action: 'ReviewRead diff src/a.ts' }))
     expect(screen.getByTestId('review-task-counts').textContent).toBe(t('reviewCard.tasksDone', { finished: 1, running: 2 }))
+    cleanup()
+    value.tasks[2] = { ...value.tasks[2], status: 'failed' }
+    renderReport(value)
+    // A failed task ended but did not finish.
+    expect(screen.getByTestId('review-task-counts').textContent).toBe(`${t('reviewCard.tasksDone', { finished: 0, running: 2 })} · ${t('reviewCard.tasksNotCompleted', { count: 1 })}`)
+    value.tasks[2] = { ...value.tasks[2], status: 'finished' }
+    cleanup()
+    renderReport(value)
     expect((screen.getByTestId('review-tasks') as HTMLDetailsElement).open).toBe(false)
     cleanup()
     value.run.progress.status = 'finished'

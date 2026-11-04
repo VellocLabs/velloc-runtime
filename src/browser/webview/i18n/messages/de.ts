@@ -96,6 +96,7 @@ export const de: Messages = {
   "reviewCard.loading": "Review wird geladen…",
   "reviewCard.preparing": "Review wird vorbereitet: Änderung und Vorgaben werden gelesen…",
   "reviewCard.progressNone": "Noch keine Probleme gefunden; die Prüfung läuft weiter.",
+  "reviewCard.progressFoundOne": "Bisher 1 mögliches Problem · {verified} geprüft",
   "reviewCard.progressFound": "Bisher {found} mögliche Probleme · {verified} geprüft",
   "reviewCard.tasksDone": "Aufgaben: {finished} abgeschlossen · {running} laufen",
   "reviewCard.currentTask": "Aktuelle Aufgabe:",

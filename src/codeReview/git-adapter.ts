@@ -92,23 +92,21 @@ function argv(q: GitQuery): string[] {
  *  NUL-ended records, key and value split at the first newline. The query
  *  carries no `^` anchor, so the key is matched here. */
 export function remoteUrlsOf(output: string): string[] {
-  const urls: string[] = []
-  for (const record of output.split('\0')) {
-    const split = record.indexOf('\n')
-    if (split < 0) continue
-    if (/^remote\.[^.\s]+\.url$/.test(record.slice(0, split))) urls.push(record.slice(split + 1))
-  }
-  return urls
+  return remoteRecordsOf(output).map(([, url]) => url)
 }
-/** A repository name from the `remotes` query's output: the last path segment of `origin`'s URL, else of the first
- *  remote's, without `.git`. Undefined when no remote yields a plain name. */
-export function repositoryNameOf(output: string): string | undefined {
+function remoteRecordsOf(output: string): Array<[name: string, url: string]> {
   const remotes: Array<[string, string]> = []
   for (const record of output.split('\0')) {
     const split = record.indexOf('\n')
     const key = split < 0 ? null : /^remote\.([^.\s]+)\.url$/.exec(record.slice(0, split))
     if (key) remotes.push([key[1], record.slice(split + 1)])
   }
+  return remotes
+}
+/** A repository name from the `remotes` query's output: the last path segment of `origin`'s URL, else of the first
+ *  remote's, without `.git`. Undefined when no remote yields a plain name. */
+export function repositoryNameOf(output: string): string | undefined {
+  const remotes = remoteRecordsOf(output)
   const url = (remotes.find(([name]) => name === 'origin') ?? remotes[0])?.[1]
   const name = url?.trim().replace(/[\\/]+$/, '').split(/[\\/:]/).at(-1)?.replace(/\.git$/i, '')
   return name && /^[A-Za-z0-9_.-]{1,100}$/.test(name) && name !== '.' && name !== '..' ? name : undefined

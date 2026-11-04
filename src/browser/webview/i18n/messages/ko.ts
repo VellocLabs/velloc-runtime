@@ -94,6 +94,7 @@ export const ko: Messages = {
   "reviewCard.loading": "검토 로드 중…",
   "reviewCard.preparing": "검토 준비 중: 변경 사항과 관련 지침을 읽는 중…",
   "reviewCard.progressNone": "아직 발견된 문제가 없습니다. 검토가 계속 진행 중입니다.",
+  "reviewCard.progressFoundOne": "지금까지 가능한 문제 1개 · 검증됨 {verified}개",
   "reviewCard.progressFound": "지금까지 가능한 문제 {found}개 · 검증됨 {verified}개",
   "reviewCard.tasksDone": "작업: 완료 {finished}개 · 실행 중 {running}개",
   "reviewCard.currentTask": "현재 작업:",

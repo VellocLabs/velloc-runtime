@@ -97,6 +97,7 @@ export const en = {
   "reviewCard.loading": "Loading review…",
   "reviewCard.preparing": "Preparing the review: reading the change and its guidance…",
   "reviewCard.progressNone": "No issues found yet; the review is still running.",
+  "reviewCard.progressFoundOne": "1 possible issue so far · {verified} verified",
   "reviewCard.progressFound": "{found} possible issues so far · {verified} verified",
   "reviewCard.tasksDone": "Tasks: {finished} finished · {running} running",
   "reviewCard.currentTask": "Current task:",

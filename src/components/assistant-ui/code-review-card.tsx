@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { writeClipboard } from '@/utils/clipboard'
+import { useCopyToClipboard } from './markdown-components'
 import { useRightPanelContent } from './right-panel-content-context'
 import { useBackgroundTasksContext } from './background-tasks-context'
 import { isReviewFileLocation, reviewTopic, type ReviewAction, type ReviewReportView, type ReviewSessionSnapshot } from '@/codeReview/review-protocol'
@@ -25,10 +25,11 @@ export const ReviewTaskTree: FC<{ tasks: ReviewTaskView[]; open?: boolean }> = (
   const t = useT()
   const { openTasksDrawer } = useBackgroundTasksContext()
   if (!tasks.length) return null
+  const completed = tasks.filter(task => task.status === 'finished').length
   return <details open={open} data-testid="review-tasks" className="text-xs">
     <summary className="cursor-pointer text-muted-foreground">{t('reviewCard.tasks')} · {open || tasks.some(task => task.status === 'running') ? tasks.length : <>
-      {t('reviewCard.tasksCompleted', { count: tasks.filter(task => task.status === 'finished').length })}
-      {tasks.some(task => task.status !== 'finished') && <> · {t('reviewCard.tasksNotCompleted', { count: tasks.filter(task => task.status !== 'finished').length })}</>}
+      {t('reviewCard.tasksCompleted', { count: completed })}
+      {completed < tasks.length && <> · {t('reviewCard.tasksNotCompleted', { count: tasks.length - completed })}</>}
     </>}</summary>
     <ul className="mt-1.5 space-y-1">{tasks.map(task => {
       const end = task.end ? reviewEndMessage(t, task.end) : undefined
@@ -123,9 +124,7 @@ export function reviewRepositoryName(scope: ReviewRun['scope']): string {
 /** The repository and the revision pair shown short; hover or focus shows the pair in full, and the button copies it in full. */
 const ReviewRange: FC<{ repository: string; base: string; head: string; target?: string }> = ({ repository, base, head, target }) => {
   const t = useT()
-  const [copied, setCopied] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  useEffect(() => () => clearTimeout(timer.current), [])
+  const { isCopied: copied, copyToClipboard } = useCopyToClipboard({ copiedDuration: 1500 })
   const full = `${base} → ${head}`
   const extra = target && !REVISION_ONLY_LABEL.test(target) ? target : undefined
   return <div data-testid="review-range" className="relative z-10 flex min-w-0 max-w-full items-center gap-1 self-start text-xs text-muted-foreground">
@@ -141,12 +140,7 @@ const ReviewRange: FC<{ repository: string; base: string; head: string; target?:
       className="flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onClick={event => {
         event.stopPropagation()
-        void writeClipboard(full).then(ok => {
-          if (!ok) return
-          setCopied(true)
-          clearTimeout(timer.current)
-          timer.current = setTimeout(() => setCopied(false), 1500)
-        })
+        copyToClipboard(full)
       }}>{copied ? <CheckIcon aria-hidden className="size-3.5 text-success" /> : <CopyIcon aria-hidden className="size-3.5" />}</button>
     {extra && <span className="min-w-0 truncate" title={extra}>· {extra}</span>}
   </div>
@@ -180,7 +174,7 @@ const ReviewCardHeader: FC<{
       <Badge variant={variant} size="sm" aria-live="polite" data-testid="review-status">
         {running && <Loader2Icon aria-hidden className="animate-spin" />}{status}
       </Badge>
-      {onToggle && <button type="button" data-testid="review-toggle" aria-expanded={!collapsed} aria-controls={bodyId} aria-label={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} title={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} onClick={onToggle}
+      {onToggle && <button type="button" data-testid="review-toggle" aria-expanded={!collapsed} aria-controls={collapsed ? undefined : bodyId} aria-label={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} title={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} onClick={onToggle}
         className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none after:absolute after:inset-0 after:content-[''] hover:text-foreground focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring">
         <ChevronDownIcon aria-hidden className={cn('size-4 transition-transform', collapsed && '-rotate-90')} />
       </button>}
@@ -188,10 +182,12 @@ const ReviewCardHeader: FC<{
   </header>
 }
 
-/** What the review is doing now: the most recently active running task and how many tasks have ended; the full tree folds away. */
+/** What the review is doing now: the most recently active running task, how many tasks finished, are running or did not complete; the full tree folds away. */
 const ReviewActivity: FC<{ tasks: ReviewTaskView[] }> = ({ tasks }) => {
   const t = useT()
   const running = tasks.filter(task => task.status === 'running')
+  const finished = tasks.filter(task => task.status === 'finished').length
+  const ended = tasks.length - running.length
   const current = running.reduce<ReviewTaskView | undefined>((latest, task) => !latest || task.lastActivityAt >= latest.lastActivityAt ? task : latest, undefined)
   const detail = current && taskDetail(t, current)
   return <div data-testid="review-activity" className="space-y-1.5 text-xs">
@@ -199,7 +195,8 @@ const ReviewActivity: FC<{ tasks: ReviewTaskView[] }> = ({ tasks }) => {
       <p><span className="sr-only">{t('reviewCard.currentTask')} </span><span className="font-medium">{reviewTaskRoleMessage(t, current.role)}</span>{detail && <> · {detail}</>}</p>
       {current.lastAction && <p className="truncate text-muted-foreground" title={current.lastAction}>{t('reviewCard.task.lastAction', { action: current.lastAction })}</p>}
     </div>}
-    <p data-testid="review-task-counts" className="text-muted-foreground">{t('reviewCard.tasksDone', { finished: tasks.length - running.length, running: running.length })}</p>
+    <p data-testid="review-task-counts" className="text-muted-foreground">{t('reviewCard.tasksDone', { finished: finished, running: running.length })}
+      {ended > finished && <> · {t('reviewCard.tasksNotCompleted', { count: ended - finished })}</>}</p>
     <ReviewTaskTree tasks={tasks} open={false} />
   </div>
 }
@@ -212,6 +209,7 @@ const ReviewCancel: FC<{ disabled: boolean; onClick: () => void }> = ({ disabled
   </div>
 }
 
+const SCOPE_BLOCK_CLASS = 'rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground'
 const IMPACT_VARIANT = { critical: 'destructive', major: 'warning', minor: 'muted' } as const
 const STATUS_VARIANT = { queued: 'muted', active: 'info', finished: 'success', partial: 'warning', cancelled: 'muted', failed: 'destructive' } as const
 const MENU_CONTENT_CLASS = 'z-50 min-w-[14rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md'
@@ -380,6 +378,7 @@ export const ReviewReportCard: FC<{
     <DropdownMenuPrimitive.Item data-testid={`review-${label}`} className={MENU_ITEM_CLASS} disabled={busy || !can(action) || disabled} onSelect={handler}>{t(`reviewCard.${label}`)}</DropdownMenuPrimitive.Item>
   )
   const progress = reviewProgressCounts(report)
+  const clean = report.coverage.complete && status === 'finished'
   const notices = report.notices && report.notices.length > 0 ? <ul data-testid="review-notices" className="space-y-1">{report.notices.map((notice, index) => <li key={index}>{reviewMessage(t, notice)}</li>)}</ul> : null
   const target = report.targetLabel !== undefined && report.targetLabel !== run.scope.repository.projectKey && report.targetLabel !== run.scope.workspaceKey ? report.targetLabel : undefined
   return <TooltipProvider><Card className="my-2 gap-0 overflow-hidden py-0 text-sm" data-testid="code-review-card" data-status={status}>
@@ -390,7 +389,7 @@ export const ReviewReportCard: FC<{
         {reviewing ? <>
           <ReviewStages stage={stage} queued={status === 'queued'} />
           {report.tasks && report.tasks.length > 0 && <ReviewActivity tasks={report.tasks} />}
-          {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{progress.found === 0 ? t('reviewCard.progressNone') : t('reviewCard.progressFound', progress)}</p>}
+          {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{progress.found === 0 ? t('reviewCard.progressNone') : progress.found === 1 ? t('reviewCard.progressFoundOne', progress) : t('reviewCard.progressFound', progress)}</p>}
         </> : <>
           <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -398,15 +397,15 @@ export const ReviewReportCard: FC<{
               {impactCounts.map(([impact, count]) => <Badge key={impact} variant={IMPACT_VARIANT[impact]} size="sm">{enumText(impact)} · {count}</Badge>)}
               {run.progress.omittedByLimit > 0 && <span className="text-xs text-muted-foreground">{t('reviewCard.omitted', { omitted: run.progress.omittedByLimit })}</span>}
             </div>
-            {report.diagnostics.length === 0 && <p data-testid="review-empty" className={cn('text-xs', report.emptyScope || (report.coverage.complete && status === 'finished') ? 'text-muted-foreground' : 'text-warning-emphasis')}>{t(report.emptyScope ? 'reviewCard.emptyScope' : report.coverage.complete && status === 'finished' ? 'reviewCard.emptyComplete' : 'reviewCard.emptyPartial')}</p>}
+            {report.diagnostics.length === 0 && <p data-testid="review-empty" className={cn('text-xs', report.emptyScope || clean ? 'text-muted-foreground' : 'text-warning-emphasis')}>{t(report.emptyScope ? 'reviewCard.emptyScope' : clean ? 'reviewCard.emptyComplete' : 'reviewCard.emptyPartial')}</p>}
           </div>
-          <div data-testid="review-scope" className="space-y-1 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+          <div data-testid="review-scope" className={cn('space-y-1', SCOPE_BLOCK_CLASS)}>
             <p data-testid="review-method">{method}</p>
             {notices}
           </div>
         </>}
         {endMessage && <p role="status" data-testid="review-end" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{endMessage}</p>}
-        {reviewing && notices && <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">{notices}</div>}
+        {reviewing && notices && <div className={SCOPE_BLOCK_CLASS}>{notices}</div>}
         {finished && !report.coverage.complete && !report.emptyScope && report.diagnostics.length > 0 && <p data-testid="review-incomplete" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{t('reviewCard.notice.incomplete')}</p>}
         {!reviewing && report.diagnostics.length > 0 && <>
           <div className="flex flex-wrap gap-3">{filter('severity', severity, ['all', 'critical', 'major', 'minor'], setSeverity)}{filter('kind', kind, ['all', 'correctness', 'cleanup'], setKind)}{filter('state', state, ['all', 'open', 'applied', 'verified', 'skipped'], setState)}</div>

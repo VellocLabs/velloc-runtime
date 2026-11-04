@@ -94,6 +94,7 @@ export const ja: Messages = {
   "reviewCard.loading": "レビューを読み込み中…",
   "reviewCard.preparing": "レビューを準備中：変更と関連ガイダンスを読み込んでいます…",
   "reviewCard.progressNone": "まだ問題は見つかっていません。レビューは続行中です。",
+  "reviewCard.progressFoundOne": "これまでに問題の可能性 1 件 · 検証済み {verified} 件",
   "reviewCard.progressFound": "これまでに問題の可能性 {found} 件 · 検証済み {verified} 件",
   "reviewCard.tasksDone": "タスク：完了 {finished} 件 · 実行中 {running} 件",
   "reviewCard.currentTask": "現在のタスク：",
