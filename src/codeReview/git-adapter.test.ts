@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { execFileSync, spawn as nodeSpawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { createGitArgvRunner, remoteUrlsOf, validateGitRef, type GitStreamSpawner, type GitQuery } from './git-adapter'
 import type { NativeStreamHandlers, NativeStreamChild } from '../browser/bridge/nativePrimitives'
 
@@ -40,26 +42,37 @@ describe('native Git object queries', () => {
     expect(tree.exitCode).toBe(0); expect(tree.stdout.length).toBeGreaterThan(0)
   })
   it('resolves with exit 0 to a commit, exit 1 for a ref that names none', async () => {
-    const cwd = resolve(fileURLToPath(new URL('.', import.meta.url)), '../..')
-    const gitDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-dir'], { cwd, encoding: 'utf8' }).trim()
-    const commonDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd, encoding: 'utf8' }).trim()
-    const spawn: GitStreamSpawner = async (spec, handlers) => {
-      const child = nodeSpawn(spec.file, spec.args, { cwd: spec.cwd, env: { ...process.env, ...spec.env }, shell: false, stdio: 'pipe' })
-      child.stdout.on('data', bytes => handlers.onOutput?.('stdout', new Uint8Array(bytes)))
-      child.on('close', code => handlers.onExit?.({ ...exit, exitCode: code ?? -1 }))
-      return { streamId: 'real', async write() { return true }, async closeStdin() { child.stdin.end(); return true }, async kill() { return child.kill() }, detach() { child.stdout.removeAllListeners() } }
+    // A private two-commit repository: the checkout running the suite may be a single-commit or shallow clone.
+    const cwd = mkdtempSync(join(tmpdir(), 'git-adapter-resolve-'))
+    try {
+      const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t.invalid' }
+      const run = (args: string[]) => execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], { cwd, env, encoding: 'utf8' }).trim()
+      run(['init', '-q'])
+      const emptyTree = run(['write-tree'])
+      const first = run(['commit-tree', emptyTree, '-m', 'first'])
+      const second = run(['commit-tree', emptyTree, '-p', first, '-m', 'second'])
+      run(['update-ref', 'HEAD', second])
+      const gitDir = run(['rev-parse', '--path-format=absolute', '--git-dir'])
+      const commonDir = run(['rev-parse', '--path-format=absolute', '--git-common-dir'])
+      const spawn: GitStreamSpawner = async (spec, handlers) => {
+        const child = nodeSpawn(spec.file, spec.args, { cwd: spec.cwd, env: { ...process.env, ...spec.env }, shell: false, stdio: 'pipe' })
+        child.stdout.on('data', bytes => handlers.onOutput?.('stdout', new Uint8Array(bytes)))
+        child.on('close', code => handlers.onExit?.({ ...exit, exitCode: code ?? -1 }))
+        return { streamId: 'real', async write() { return true }, async closeStdin() { child.stdin.end(); return true }, async kill() { return child.kill() }, detach() { child.stdout.removeAllListeners() } }
+      }
+      const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => ({ root: cwd, gitDir, commonDir }) })
+      const head = await git.query({ kind: 'resolve', ref: 'HEAD' })
+      expect(head.exitCode).toBe(0)
+      expect(new TextDecoder().decode(head.stdout).trim()).toBe(second)
+      expect((await git.query({ kind: 'resolve', ref: 'refs/heads/no-such-branch-for-review-test' })).exitCode).toBe(1)
+      const ancestor = await git.query({ kind: 'resolve', ref: 'HEAD~1' })
+      expect(ancestor.exitCode).toBe(0)
+      expect(new TextDecoder().decode(ancestor.stdout).trim()).toBe(first)
+      expect((await git.query({ kind: 'resolve', ref: 'HEAD~2' })).exitCode).toBe(1)
+      expect((await git.query({ kind: 'resolve', ref: emptyTree })).exitCode).toBe(1)
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
     }
-    const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => ({ root: cwd, gitDir, commonDir }) })
-    const head = await git.query({ kind: 'resolve', ref: 'HEAD' })
-    expect(head.exitCode).toBe(0)
-    expect(new TextDecoder().decode(head.stdout).trim()).toBe(execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim())
-    expect((await git.query({ kind: 'resolve', ref: 'refs/heads/no-such-branch-for-review-test' })).exitCode).toBe(1)
-    const parent = execFileSync('git', ['rev-parse', '--verify', '--quiet', 'HEAD~1'], { cwd, encoding: 'utf8' }).trim()
-    const ancestor = await git.query({ kind: 'resolve', ref: 'HEAD~1' })
-    expect(ancestor.exitCode).toBe(0)
-    expect(new TextDecoder().decode(ancestor.stdout).trim()).toBe(parent)
-    const treeOid = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { cwd, encoding: 'utf8' }).trim()
-    expect((await git.query({ kind: 'resolve', ref: treeOid })).exitCode).toBe(1)
   })
 })
 describe('restricted Git argv runner', () => {
