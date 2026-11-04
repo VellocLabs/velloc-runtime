@@ -538,6 +538,30 @@ const OPEN_200 = {
   ok: true as const,
   result: { streamId: 'raw-1', status: 200, statusText: 'OK', finalUrl: 'u', headers: {} },
 }
+
+/** Raw reads answered `everyMs` apart: the scripted results in order, then
+ *  `tail` again and again (or a silent hold when `tail` is absent). */
+function pacedTransport(everyMs: number, reads: Script['reads'], tail?: Script['reads'][number]) {
+  const calls: Array<{ action: string; payload: any }> = []
+  let pendingRead: ((value: unknown) => void) | undefined
+  const transport: BrowserBridgeTransport = {
+    async request(req: any) {
+      calls.push({ action: req.route.action, payload: req.payload })
+      if (req.route.action === 'rawStreamOpen') return OPEN_200 as any
+      if (req.route.action === 'rawStreamCancel') {
+        pendingRead?.({ ok: true, result: { done: true, chunk: new Uint8Array(), errorCode: 'CANCELLED' } })
+        return { ok: true, result: { ok: true } } as any
+      }
+      const next = reads.shift() ?? tail
+      return new Promise(resolve => {
+        pendingRead = resolve
+        if (next) setTimeout(() => resolve({ ok: true, result: next }), everyMs)
+      }) as any
+    },
+  }
+  return { transport, calls }
+}
+const KEEP_ALIVE = { done: false, chunk: new TextEncoder().encode('\n') }
 const provider = () => createModelProvider({ id: 'p', format: 'fake-format', baseUrl: 'https://h.example.com' })
 
 async function drain(host: DriverStreamHost, streamId: string) {
@@ -635,6 +659,42 @@ describe('DriverStreamHost', () => {
     expect(host.has(streamId)).toBe(false)
   })
 
+  it('a held window that saw only keep-alive bytes answers ok with no chunks; the stream goes on', async () => {
+    const { transport } = pacedTransport(15, [
+      KEEP_ALIVE, KEEP_ALIVE, KEEP_ALIVE, KEEP_ALIVE, KEEP_ALIVE, KEEP_ALIVE,
+      { done: false, chunk: enc([{ type: 'text_delta', text: 'late' }]) },
+      { done: true, chunk: enc([{ type: 'finish', finishReason: 'stop' }]) },
+    ])
+    const host = new DriverStreamHost(transport)
+    const { streamId } = host.start(provider(), { messages: [] }, 'm')
+    const reads: Array<{ chunks: any[]; done: boolean; status: string }> = []
+    for (let i = 0; i < 20; i += 1) {
+      const read = await host.read(streamId, 40)
+      reads.push(read)
+      if (read.done || read.status === 'timeout') break
+    }
+    expect(reads.some(r => r.status === 'timeout')).toBe(false)
+    expect(reads.some(r => r.status === 'ok' && r.chunks.length === 0)).toBe(true)
+    expect(reads.at(-1)).toMatchObject({ done: true, status: 'done' })
+    const text = reads.flatMap(r => r.chunks).filter(c => c.type === 'content_block_delta').map(c => c.delta.text)
+    expect(text).toEqual(['late'])
+  })
+
+  it('a held window with no bytes at all still times out and cancels upstream, after a keep-alive', async () => {
+    const { transport, calls } = pacedTransport(10, [KEEP_ALIVE])
+    const host = new DriverStreamHost(transport)
+    const { streamId } = host.start(provider(), { messages: [] }, 'm')
+    const reads: Array<{ chunks: any[]; done: boolean; status: string }> = []
+    for (let i = 0; i < 5; i += 1) {
+      const read = await host.read(streamId, 40)
+      reads.push(read)
+      if (read.done || read.status === 'timeout') break
+    }
+    expect(reads.at(-1)).toEqual({ chunks: [], done: false, status: 'timeout' })
+    expect(calls.some(c => c.action === 'rawStreamCancel')).toBe(true)
+    expect(host.has(streamId)).toBe(false)
+  })
+
   it('cancel closes upstream and forgets the stream; unknown ids throw on read', async () => {
     const { transport, calls } = scriptedTransport({ open: OPEN_200, reads: [] })
     const host = new DriverStreamHost(transport)
@@ -708,6 +768,20 @@ describe('runBlockingCall — model.call on a ModelProvider (a fresh stream, rea
       'm',
     )
     expect(result).toEqual({ status: 'timeout', message: { role: 'assistant', content: [] } })
+    expect(calls.some(c => c.action === 'rawStreamCancel')).toBe(true)
+  })
+
+  it('keep-alive bytes do not stretch the deadline past the whole-response budget', async () => {
+    const { transport, calls } = pacedTransport(5, [], KEEP_ALIVE)
+    const startedAt = Date.now()
+    const result = await runBlockingCall(
+      new DriverStreamHost(transport),
+      provider(),
+      { messages: [], deadlineMs: startedAt + 60 },
+      'm',
+    )
+    expect(result).toEqual({ status: 'timeout', message: { role: 'assistant', content: [] } })
+    expect(Date.now() - startedAt).toBeLessThan(1000)
     expect(calls.some(c => c.action === 'rawStreamCancel')).toBe(true)
   })
 })

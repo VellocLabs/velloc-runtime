@@ -120,6 +120,11 @@ export async function runBlockingCall(
       throw new Error(QUEUE_TIMEOUT_MESSAGE)
     }
     if (read.done) break
+    // A keep-alive answers a held read `ok`; the deadline still bounds the whole response.
+    if (deadline !== undefined && now() >= deadline) {
+      await host.cancel(streamId)
+      return { message: { role: 'assistant', content: [] }, status: 'timeout' }
+    }
   }
   if (assembler.error !== undefined) throw new Error(assembler.error)
   return { message: assembler.message(), status: 'ok' }

@@ -2,7 +2,10 @@
  * Contract: serves `model.streamStart / streamRead / streamCancel` in the runtime with
  * the host's contract. streamStart answers at once; later failures arrive as chunks
  * ending in an `error` chunk. streamRead is a held read: chunks, or after `waitMs`
- * `status: 'timeout'`, which also cancels upstream. streamCancel is idempotent.
+ * with no bytes from the provider `status: 'timeout'`, which also cancels upstream.
+ * A window in which only bytes that decode to nothing arrived (an SSE keep-alive
+ * while the model thinks with its reasoning hidden) answers `ok` with no chunks:
+ * the connection is alive. streamCancel is idempotent.
  */
 import type {
   BridgeModelRequestPayload,
@@ -129,6 +132,8 @@ class DriverStream {
   private queued = false
   /** Model egress masking for this stream (F-39); absent = off. */
   private masking: MaskingStream | undefined
+  /** When the provider last sent response bytes, ones that decode to nothing included. */
+  private lastBytesAt = 0
 
   constructor(
     private readonly transport: BrowserBridgeTransport,
@@ -159,6 +164,7 @@ class DriverStream {
       return this.drain()
     }
     if (this.queue.length === 0 && !this.done && waitMs > 0) {
+      const heldSince = Date.now()
       let timer: ReturnType<typeof setTimeout> | undefined
       const timedOut = await new Promise<boolean>(resolve => {
         this.wake = () => resolve(false)
@@ -171,6 +177,8 @@ class DriverStream {
         // OnStreamReadHoldTimeout): a request still waiting for a slot keeps
         // its place, and the read says `queued`.
         if (this.queued) return { chunks: [], done: false, status: 'queued' }
+        // Bytes with no event in them are provider activity, not silence.
+        if (this.lastBytesAt >= heldSince) return this.drain()
         // As in the C++ host: a read that expires on its deadline cancels upstream.
         await this.cancel()
         return { chunks: [], done: false, status: 'timeout' }
@@ -408,6 +416,7 @@ class DriverStream {
       }
       decoder = this.provider.createDecoder(this.model)
       for await (const bytes of this.raw.body) {
+        this.lastBytesAt = Date.now()
         this.push(decoded(decoder.push(bytes)))
         if (this.emitter.terminalEmitted) break
       }
