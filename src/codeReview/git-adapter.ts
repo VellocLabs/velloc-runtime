@@ -45,10 +45,16 @@ export function validateGitOid(oid: string): string {
 // Security: an allow-list, not git's own ref grammar. On Windows the host may
 // run a `git.bat` wrapper through cmd.exe, where `& | < > ( ) ^ % ! "` would
 // split or run commands; ASCII only, since a code-page conversion can map
-// other characters onto those.
+// other characters onto those. A name may end in `~` / `~<n>` ancestry steps.
 const REF_CHARS = /^[A-Za-z0-9._/+#@-]+$/
+const ANCESTRY = /^(?:~[0-9]*)*$/
+export function isGitRefSyntax(ref: string): boolean {
+  const tilde = ref.indexOf('~')
+  const name = tilde < 0 ? ref : ref.slice(0, tilde)
+  return ref.length <= 1024 && REF_CHARS.test(name) && ANCESTRY.test(ref.slice(name.length)) && !name.startsWith('-') && !name.includes('..') && !name.includes('@{') && !name.endsWith('.') && !name.endsWith('/') && !name.includes('//')
+}
 export function validateGitRef(ref: string): string {
-  if (!ref || ref.length > 1024 || ref.startsWith('-') || !REF_CHARS.test(ref) || ref.includes('..') || ref.includes('@{') || ref.endsWith('.') || ref.endsWith('/') || ref.includes('//')) throw new GitAdapterError('invalid-ref')
+  if (!isGitRefSyntax(ref)) throw new GitAdapterError('invalid-ref')
   return ref
 }
 export function validateReviewPath(path: string): string {

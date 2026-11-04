@@ -25,7 +25,7 @@ import { vetFileRead } from '../permissions/filesystemPermission'
 import { gatherInstructionDocs, getNestedInstructionFilesForPath, getConditionalRulesForPath, formatMemoryFilesForPrompt } from '../memory/instructionFiles'
 import { assertUntrustedReadAllowed } from '../permissions/untrustedReadBoundary'
 import { isFsNotFoundError } from '../utils/fsTransportFailure'
-import { createGitArgvRunner, GitAdapterError, gitText, remoteUrlsOf, validateReviewPath, type GitStreamSpawner } from './git-adapter'
+import { createGitArgvRunner, GitAdapterError, gitText, isGitRefSyntax, remoteUrlsOf, validateReviewPath, type GitStreamSpawner } from './git-adapter'
 import { isTestOrFixturePath } from './recipes'
 import { resolveLocalReviewScope, reviewDigest, type WorkspaceRead, type LocalReviewTarget } from './scope'
 import { LocalReviewService, ReviewGatewayError, scopeIndex, type ReviewServiceOptions } from './service'
@@ -439,7 +439,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         else {
           const path = args.target.replace(/^\.\//, '')
           const read = await readWorkspaceFile(path, 1, signal)
-          const ref = args.target.startsWith('./') ? undefined : await git.query({ kind: 'resolve', ref: args.target }, signal)
+          const ref = args.target.startsWith('./') || !isGitRefSyntax(args.target) ? undefined : await git.query({ kind: 'resolve', ref: args.target }, signal)
           if (read.kind !== 'missing' && ref?.exitCode === 0) throw new ReviewGatewayError('ambiguous-review-target')
           target = read.kind !== 'missing' ? { kind: 'paths', paths: [path] } : { kind: 'branch', ref: args.target }
         }

@@ -54,6 +54,12 @@ describe('native Git object queries', () => {
     expect(head.exitCode).toBe(0)
     expect(new TextDecoder().decode(head.stdout).trim()).toBe(execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim())
     expect((await git.query({ kind: 'resolve', ref: 'refs/heads/no-such-branch-for-review-test' })).exitCode).toBe(1)
+    const parent = execFileSync('git', ['rev-parse', '--verify', '--quiet', 'HEAD~1'], { cwd, encoding: 'utf8' }).trim()
+    const ancestor = await git.query({ kind: 'resolve', ref: 'HEAD~1' })
+    expect(ancestor.exitCode).toBe(0)
+    expect(new TextDecoder().decode(ancestor.stdout).trim()).toBe(parent)
+    const treeOid = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { cwd, encoding: 'utf8' }).trim()
+    expect((await git.query({ kind: 'resolve', ref: treeOid })).exitCode).toBe(1)
   })
 })
 describe('restricted Git argv runner', () => {
@@ -95,6 +101,13 @@ describe('restricted Git argv runner', () => {
     expect(spawn).not.toHaveBeenCalled()
     for (const ref of ['HEAD', 'main', 'refs/heads/feature/x-1.2_3', 'release/v1+build#2', 'user@host/topic']) expect(validateGitRef(ref)).toBe(ref)
   })
+  it('accepts ancestry steps after a ref name and resolves them without a caret', async () => {
+    const { spawn } = fake(); const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root })
+    for (const ref of ['HEAD~1', 'HEAD~', 'HEAD~~2', `${oid}~12`, 'origin/main~3']) expect(validateGitRef(ref), ref).toBe(ref)
+    await git.query({ kind: 'resolve', ref: 'HEAD~2' })
+    expect(spawn.mock.calls[0][0].args.slice(-2)).toEqual(['--end-of-options', 'HEAD~2~0'])
+    for (const ch of ['&', '(', ')', '^', '%', '!', '|']) expect(() => validateGitRef(`HEAD~1${ch}`), ch).toThrow('invalid-ref')
+  })
   it('reads remote URLs from NUL-ended records and keys only remote.<name>.url', () => {
     const output = 'remote.origin.url\nhttps://github.com/owner/repo.git\0'
       + 'branch.remote.f.url\nz\nremote.evil.url https://evil.invalid/x.git\0'
@@ -105,7 +118,7 @@ describe('restricted Git argv runner', () => {
   })
   it('rejects options, revision operators, path traversal and non-object diff revisions', async () => {
     const { spawn } = fake(); const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root })
-    for (const ref of ['-c', '--help', 'HEAD~1', 'a..b', 'HEAD:path', 'HEAD@{1}', 'x\ny', '']) expect(() => validateGitRef(ref)).toThrow()
+    for (const ref of ['-c', '--help', '~1', 'HEAD~1~x', 'HEAD~-1', 'HEAD~1/x', 'a~1..b', 'a..b', 'HEAD:path', 'HEAD@{1}', 'HEAD~1@{upstream}', 'HEAD^1', 'x\ny', '']) expect(() => validateGitRef(ref), ref).toThrow('invalid-ref')
     await expect(git.query({ kind: 'diff', base: 'main', head: oid })).rejects.toThrow('invalid-oid')
     for (const path of ['../secret', '/etc/passwd', 'C:/secret', 'a/../../b', '.git/config', 'a\\b']) await expect(git.query({ kind: 'diff', base: oid, head: oid, paths: [path] })).rejects.toThrow('invalid-path')
     expect(spawn).not.toHaveBeenCalled()

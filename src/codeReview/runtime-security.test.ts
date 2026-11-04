@@ -493,6 +493,40 @@ describe('actual review runtime security boundaries', () => {
     expect(h.spawn.mock.calls.some(([spec]) => spec.args.some(arg => arg.includes(ref)))).toBe(false)
   })
 
+  it.each(['src/(group)/a.ts', 'docs/caf\u00e9.md', 'notes,v2&x!.md'])('reviews a bare target as a path when it cannot be a ref: %s', async path => {
+    const h = fixture()
+    h.files.set(`${root}/${path}`, 'export const grouped = 1\n')
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const snapshot = await service.wait((await service.startUser(`low ${path}`)).runId)
+    expect(snapshot.run.scope).toMatchObject({ kind: 'paths', pathFilter: [path] })
+    expect(h.spawn.mock.calls.some(([spec]) => spec.args.some(arg => arg.includes(path)))).toBe(false)
+  })
+
+  it('reviews the path when the same name resolves to no commit', async () => {
+    const h = fixture()
+    const original = h.spawn.getMockImplementation()!
+    h.spawn.mockImplementation(async (spec, events) => {
+      if (!spec.args.includes('a.ts~0')) return original(spec, events)
+      events.onExit?.({ exitCode: 1, timedOut: false, killed: false, durationMs: 1 })
+      return { streamId: 'tree-tag', write: async () => true, closeStdin: async () => true, kill: async () => true, detach() {} }
+    })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const snapshot = await service.wait((await service.startUser('low a.ts')).runId)
+    expect(snapshot.run.scope).toMatchObject({ kind: 'paths', pathFilter: ['a.ts'] })
+    expect(h.spawn.mock.calls.some(([spec]) => spec.args.includes('a.ts~0'))).toBe(true)
+  })
+
+  it('resolves an ancestry target such as HEAD~2 as a commit', async () => {
+    const h = fixture()
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const snapshot = await service.wait((await service.startUser('low HEAD~2')).runId)
+    expect(snapshot.run.scope.kind).toBe('branch')
+    expect(h.spawn.mock.calls.some(([spec]) => spec.args.includes('HEAD~2~0'))).toBe(true)
+    const range = await service.wait((await service.startUser(`low ${head}~1..${head}`)).runId)
+    expect(range.run.scope.kind).toBe('range')
+    expect(h.spawn.mock.calls.some(([spec]) => spec.args.includes(`${head}~1~0`))).toBe(true)
+  })
+
   it('uses hardened native argv, preserves literal refs, and atomically persists reports and preferences', async () => {
     const h = fixture()
     const service = await getOrCreateReviewService(h.context, h.permission)
