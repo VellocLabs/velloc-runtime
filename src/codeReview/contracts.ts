@@ -122,7 +122,8 @@ export interface ReviewPlan {
 export type ReviewScope = {
   kind: 'workspace' | 'branch' | 'range' | 'paths' | 'change-request'
   workspaceKey: string
-  repository: { platform?: 'github' | 'gitlab'; projectKey: string }
+  /** `name`: a local repository's name from its git remote (`origin` first); absent when it has none. */
+  repository: { platform?: 'github' | 'gitlab'; projectKey: string; name?: string }
   revision: { base: string; head: string; workingCopyDigest?: string }
   pathFilter: string[]
   request?: { number: number; headRevision: string }

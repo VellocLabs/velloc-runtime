@@ -1,29 +1,38 @@
-import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type FC, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type FC, type ReactNode } from 'react'
 import { useAssistantState } from '@assistant-ui/react'
-import { CheckIcon, ChevronDownIcon, EllipsisIcon, Loader2Icon, SearchCheckIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, CopyIcon, EllipsisIcon, Loader2Icon, SearchCheckIcon } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import type { RuntimeConnection } from '@/browser/runtimeClient/RuntimeConnection'
 import { useT } from '@/browser/webview/i18n'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { writeClipboard } from '@/utils/clipboard'
 import { useRightPanelContent } from './right-panel-content-context'
 import { useBackgroundTasksContext } from './background-tasks-context'
 import { isReviewFileLocation, reviewTopic, type ReviewAction, type ReviewReportView, type ReviewSessionSnapshot } from '@/codeReview/review-protocol'
 import type { Diagnostic, OutputMode, ReviewRun, ReviewTaskView } from '@/codeReview/contracts'
 import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMessage, reviewTaskRoleMessage, reviewTaskStatusMessage, reviewEndMessage } from '@/codeReview/messages'
 
+type Translate = ReturnType<typeof useT>
+/** A task's angles, else its label. */
+const taskDetail = (t: Translate, task: ReviewTaskView) => task.angles?.length ? task.angles.map(angle => reviewAngleMessage(t, angle)).join(', ') : task.label
+
 /** The run's model tasks: role, label, status, last action, end reason and a jump to the drawer transcript. */
-export const ReviewTaskTree: FC<{ tasks: ReviewTaskView[] }> = ({ tasks }) => {
+export const ReviewTaskTree: FC<{ tasks: ReviewTaskView[]; open?: boolean }> = ({ tasks, open = true }) => {
   const t = useT()
   const { openTasksDrawer } = useBackgroundTasksContext()
   if (!tasks.length) return null
-  return <details open data-testid="review-tasks" className="text-xs">
-    <summary className="cursor-pointer text-muted-foreground">{t('reviewCard.tasks')} · {tasks.length}</summary>
+  return <details open={open} data-testid="review-tasks" className="text-xs">
+    <summary className="cursor-pointer text-muted-foreground">{t('reviewCard.tasks')} · {open || tasks.some(task => task.status === 'running') ? tasks.length : <>
+      {t('reviewCard.tasksCompleted', { count: tasks.filter(task => task.status === 'finished').length })}
+      {tasks.some(task => task.status !== 'finished') && <> · {t('reviewCard.tasksNotCompleted', { count: tasks.filter(task => task.status !== 'finished').length })}</>}
+    </>}</summary>
     <ul className="mt-1.5 space-y-1">{tasks.map(task => {
       const end = task.end ? reviewEndMessage(t, task.end) : undefined
-      const detail = task.angles?.length ? task.angles.map(angle => reviewAngleMessage(t, angle)).join(', ') : task.label
+      const detail = taskDetail(t, task)
       return <li key={task.key} data-testid="review-task" data-role={task.role} data-status={task.status} className={task.role === 'coordinator' ? '' : 'ml-4'}>
         <span className="font-medium">{reviewTaskRoleMessage(t, task.role)}</span>{detail && <> · {detail}</>} · <span aria-live="polite">{reviewTaskStatusMessage(t, task.status)}</span>
         {task.taskId && openTasksDrawer && <button type="button" className="ml-2 underline" data-testid="review-task-transcript" onClick={() => openTasksDrawer(task.taskId)}>{t('reviewCard.task.openTranscript')}</button>}
@@ -97,6 +106,111 @@ function stepOfStage(stage: Stage): number {
 }
 /** A revision shown short; the full identity stays in the title. */
 const shortRevision = (revision: string) => /^[0-9a-f]{12,}$/i.test(revision) ? revision.slice(0, 7) : revision
+/** A target label that names only revisions, which the range line already shows. */
+const REVISION_ONLY_LABEL = /^\s*[0-9a-f]{7,}\s*(?:(?:\.\.\.?|→|->)\s*[0-9a-f]{7,}\s*)?$/i
+/** The catalog value naming the card's state: a running review names its stage. */
+export function reviewStatusValue(status: ReviewRun['progress']['status'], stage: Stage): string {
+  return status === 'active' ? stage : status
+}
+
+/** The repository's name: its remote name, else the change request's project, else the reviewed directory's name. */
+export function reviewRepositoryName(scope: ReviewRun['scope']): string {
+  if (scope.repository.name) return scope.repository.name
+  const key = scope.repository.platform ? scope.repository.projectKey : scope.workspaceKey
+  return key.split(/[\\/]/).filter(Boolean).at(-1) ?? key
+}
+
+/** The repository and the revision pair shown short; hover or focus shows the pair in full, and the button copies it in full. */
+const ReviewRange: FC<{ repository: string; base: string; head: string; target?: string }> = ({ repository, base, head, target }) => {
+  const t = useT()
+  const [copied, setCopied] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(timer.current), [])
+  const full = `${base} → ${head}`
+  const extra = target && !REVISION_ONLY_LABEL.test(target) ? target : undefined
+  return <div data-testid="review-range" className="relative z-10 flex min-w-0 max-w-full items-center gap-1 self-start text-xs text-muted-foreground">
+    <span data-testid="review-repository" className="min-w-0 max-w-[40%] shrink truncate font-medium text-foreground/80" title={repository}>{repository}</span>
+    <span aria-hidden>·</span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} data-testid="review-range-short" className="shrink-0 rounded-sm font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring">{shortRevision(base)} → {shortRevision(head)}</span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-none font-mono">{full}</TooltipContent>
+    </Tooltip>
+    <button type="button" data-testid="review-range-copy" aria-label={t(copied ? 'messageMenu.copied' : 'reviewCard.copyRange')} title={t(copied ? 'messageMenu.copied' : 'reviewCard.copyRange')}
+      className="flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={event => {
+        event.stopPropagation()
+        void writeClipboard(full).then(ok => {
+          if (!ok) return
+          setCopied(true)
+          clearTimeout(timer.current)
+          timer.current = setTimeout(() => setCopied(false), 1500)
+        })
+      }}>{copied ? <CheckIcon aria-hidden className="size-3.5 text-success" /> : <CopyIcon aria-hidden className="size-3.5" />}</button>
+    {extra && <span className="min-w-0 truncate" title={extra}>· {extra}</span>}
+  </div>
+}
+
+/**
+ * The header both card states share: title and level on one line, the range under them, one status badge. With
+ * `onToggle`, the whole row is one toggle button; the range's own controls sit above it.
+ */
+const ReviewCardHeader: FC<{
+  level?: string
+  range?: { repository: string; base: string; head: string; target?: string }
+  status: string
+  variant: (typeof STATUS_VARIANT)[keyof typeof STATUS_VARIANT]
+  running: boolean
+  collapsed?: boolean
+  bodyId?: string
+  onToggle?: () => void
+}> = ({ level, range, status, variant, running, collapsed = false, bodyId, onToggle }) => {
+  const t = useT()
+  return <header className="relative flex items-start gap-3 px-4 py-3">
+    <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><SearchCheckIcon className="size-4" /></span>
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div data-testid="review-heading" className="flex min-h-8 min-w-0 items-center gap-2">
+        <h3 className="truncate font-medium">{t('reviewCard.title')}</h3>
+        {level && <span data-testid="review-level" className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{level}</span>}
+      </div>
+      {range && <ReviewRange {...range} />}
+    </div>
+    <div className="flex h-8 shrink-0 items-center gap-1">
+      <Badge variant={variant} size="sm" aria-live="polite" data-testid="review-status">
+        {running && <Loader2Icon aria-hidden className="animate-spin" />}{status}
+      </Badge>
+      {onToggle && <button type="button" data-testid="review-toggle" aria-expanded={!collapsed} aria-controls={bodyId} aria-label={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} title={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} onClick={onToggle}
+        className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none after:absolute after:inset-0 after:content-[''] hover:text-foreground focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring">
+        <ChevronDownIcon aria-hidden className={cn('size-4 transition-transform', collapsed && '-rotate-90')} />
+      </button>}
+    </div>
+  </header>
+}
+
+/** What the review is doing now: the most recently active running task and how many tasks have ended; the full tree folds away. */
+const ReviewActivity: FC<{ tasks: ReviewTaskView[] }> = ({ tasks }) => {
+  const t = useT()
+  const running = tasks.filter(task => task.status === 'running')
+  const current = running.reduce<ReviewTaskView | undefined>((latest, task) => !latest || task.lastActivityAt >= latest.lastActivityAt ? task : latest, undefined)
+  const detail = current && taskDetail(t, current)
+  return <div data-testid="review-activity" className="space-y-1.5 text-xs">
+    {current && <div data-testid="review-current-task" className="min-w-0">
+      <p><span className="sr-only">{t('reviewCard.currentTask')} </span><span className="font-medium">{reviewTaskRoleMessage(t, current.role)}</span>{detail && <> · {detail}</>}</p>
+      {current.lastAction && <p className="truncate text-muted-foreground" title={current.lastAction}>{t('reviewCard.task.lastAction', { action: current.lastAction })}</p>}
+    </div>}
+    <p data-testid="review-task-counts" className="text-muted-foreground">{t('reviewCard.tasksDone', { finished: tasks.length - running.length, running: running.length })}</p>
+    <ReviewTaskTree tasks={tasks} open={false} />
+  </div>
+}
+
+/** A ghost cancel at the bottom of a running card's body. */
+const ReviewCancel: FC<{ disabled: boolean; onClick: () => void }> = ({ disabled, onClick }) => {
+  const t = useT()
+  return <div className="flex justify-end">
+    <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" disabled={disabled} data-testid="review-cancel" onClick={onClick}>{t('reviewCard.cancel')}</Button>
+  </div>
+}
 
 const IMPACT_VARIANT = { critical: 'destructive', major: 'warning', minor: 'muted' } as const
 const STATUS_VARIANT = { queued: 'muted', active: 'info', finished: 'success', partial: 'warning', cancelled: 'muted', failed: 'destructive' } as const
@@ -177,29 +291,16 @@ const ReviewPreparingCard: FC<{ canCancel: boolean; onCancel: () => Promise<void
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
   return <Card className="my-2 gap-0 overflow-hidden py-0 text-sm" data-testid="code-review-card" data-status="preparing">
-    <header className="flex items-center gap-3 px-4 py-3">
-      <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><SearchCheckIcon className="size-4" /></span>
-      <h3 className="min-w-0 flex-1 font-medium">{t('reviewCard.title')}</h3>
-      <Badge variant="muted" size="sm" aria-live="polite" data-testid="review-status"><Loader2Icon aria-hidden className="animate-spin" />{reviewValueMessage(t, 'queued')}</Badge>
-    </header>
+    <ReviewCardHeader status={reviewValueMessage(t, 'scope')} variant="muted" running />
     <div className="flex flex-col gap-3 border-t px-4 py-3">
-      <div className="flex items-start gap-3">
-        <Loader2Icon aria-hidden className="mt-0.5 size-5 shrink-0 animate-spin text-primary" />
-        <div className="min-w-0">
-          <p className="font-medium">{reviewValueMessage(t, 'scope')}</p>
-          <p className="text-xs text-muted-foreground" data-testid="review-preparing">{t('reviewCard.preparing')}</p>
-        </div>
-      </div>
       <ReviewStages stage="scope" queued={false} />
-    </div>
-    <footer className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-2.5">
-      <span className="mr-auto text-xs text-muted-foreground">{reviewValueMessage(t, 'scope')}</span>
-      <Button type="button" variant="outline" size="sm" disabled={busy || !canCancel} data-testid="review-cancel" onClick={() => {
+      <p className="text-xs text-muted-foreground" data-testid="review-preparing">{t('reviewCard.preparing')}</p>
+      <ReviewCancel disabled={busy || !canCancel} onClick={() => {
         setBusy(true)
         setError(false)
         void onCancel().catch(() => { setError(true); setBusy(false) })
-      }}>{t('reviewCard.cancel')}</Button>
-    </footer>
+      }} />
+    </div>
     {error && <p role="alert" className="border-t px-4 py-2 text-xs text-destructive">{t('reviewCard.actionFailed')}</p>}
   </Card>
 }
@@ -236,6 +337,7 @@ export const ReviewReportCard: FC<{
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const bodyId = useId()
   const [confirming, setConfirming] = useState(false)
   const [discussions, setDiscussions] = useState(false)
   const { run } = report
@@ -272,53 +374,40 @@ export const ReviewReportCard: FC<{
   const filter = (name: 'severity' | 'kind' | 'state', value: string, values: string[], change: (value: string) => void) => (
     <label className="flex items-center gap-1 text-xs text-muted-foreground">{t(`reviewCard.${name}`)}<select aria-label={t(`reviewCard.${name}`)} className="rounded-md border bg-background px-1.5 py-0.5 text-xs text-foreground" value={value} onChange={event => change(event.target.value)}>{values.map(item => <option key={item} value={item}>{enumText(item)}</option>)}</select></label>
   )
-  const revision = `${run.scope.revision.base} → ${run.scope.revision.head}`
   const method = <>{enumText(run.policy.recipe)} · {t(run.scope.revision.workingCopyDigest ? 'reviewCard.workingCopy' : 'reviewCard.revisionOnly')}</>
   const openPublish = () => report.permissions?.publishConfirmation ? setConfirming(true) : act('publish', { preview: false, confirmed: false, ...publicationOptions })
   const menuItem = (label: 'preview' | 'publish' | 'verify', action: ReviewAction, handler: () => void, disabled = false): ReactNode => (
     <DropdownMenuPrimitive.Item data-testid={`review-${label}`} className={MENU_ITEM_CLASS} disabled={busy || !can(action) || disabled} onSelect={handler}>{t(`reviewCard.${label}`)}</DropdownMenuPrimitive.Item>
   )
-  return <Card className="my-2 gap-0 overflow-hidden py-0 text-sm" data-testid="code-review-card" data-status={status}>
-    <header className="flex items-center gap-3 px-4 py-3">
-      <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><SearchCheckIcon className="size-4" /></span>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
-        <h3 className="font-medium">{t('reviewCard.title')}</h3>
-        <span className="truncate text-xs text-muted-foreground">{report.targetLabel ?? run.scope.repository.projectKey}</span>
-        <Badge variant="muted" size="sm">{enumText(run.policy.level)}</Badge>
-      </div>
-      <Badge variant={STATUS_VARIANT[status]} size="sm" aria-live="polite" data-testid="review-status">
-        {running && <Loader2Icon aria-hidden className="animate-spin" />}{enumText(status)}
-      </Badge>
-      <Button type="button" variant="ghost" size="icon-xs" aria-expanded={!collapsed} aria-label={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} title={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} onClick={() => setCollapsed(value => !value)}>
-        <ChevronDownIcon aria-hidden className={cn('transition-transform', collapsed && '-rotate-90')} />
-      </Button>
-    </header>
-    {!collapsed && <>
+  const progress = reviewProgressCounts(report)
+  const notices = report.notices && report.notices.length > 0 ? <ul data-testid="review-notices" className="space-y-1">{report.notices.map((notice, index) => <li key={index}>{reviewMessage(t, notice)}</li>)}</ul> : null
+  const target = report.targetLabel !== undefined && report.targetLabel !== run.scope.repository.projectKey && report.targetLabel !== run.scope.workspaceKey ? report.targetLabel : undefined
+  return <TooltipProvider><Card className="my-2 gap-0 overflow-hidden py-0 text-sm" data-testid="code-review-card" data-status={status}>
+    <ReviewCardHeader level={enumText(run.policy.level)} range={{ repository: reviewRepositoryName(run.scope), base: run.scope.revision.base, head: run.scope.revision.head, target }}
+      status={enumText(reviewStatusValue(status, stage))} variant={STATUS_VARIANT[status]} running={running} collapsed={collapsed} bodyId={bodyId} onToggle={() => setCollapsed(value => !value)} />
+    {!collapsed && <div id={bodyId}>
       <div className="flex flex-col gap-3 border-t px-4 py-3">
         {reviewing ? <>
-          <div className="flex items-start gap-3">
-            <Loader2Icon aria-hidden className="mt-0.5 size-5 shrink-0 animate-spin text-primary" />
-            <div className="min-w-0">
-              <p className="font-medium">{enumText(stage)}</p>
-              <p className="text-xs text-muted-foreground">{t('reviewCard.inProgress')}</p>
-            </div>
-          </div>
           <ReviewStages stage={stage} queued={status === 'queued'} />
-          {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{t('reviewCard.progressCounts', reviewProgressCounts(report))}</p>}
-          <p className="text-xs text-muted-foreground">{method}</p>
+          {report.tasks && report.tasks.length > 0 && <ReviewActivity tasks={report.tasks} />}
+          {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{progress.found === 0 ? t('reviewCard.progressNone') : t('reviewCard.progressFound', progress)}</p>}
         </> : <>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-lg font-semibold leading-tight" data-testid="review-count">{report.diagnostics.length === 1 ? t('reviewCard.findingsOne') : t('reviewCard.findingsMany', { count: report.diagnostics.length })}</p>
-            {impactCounts.map(([impact, count]) => <Badge key={impact} variant={IMPACT_VARIANT[impact]} size="sm">{enumText(impact)} · {count}</Badge>)}
-            {run.progress.omittedByLimit > 0 && <span className="text-xs text-muted-foreground">{t('reviewCard.omitted', { omitted: run.progress.omittedByLimit })}</span>}
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-lg font-semibold leading-tight" data-testid="review-count">{report.diagnostics.length === 1 ? t('reviewCard.findingsOne') : t('reviewCard.findingsMany', { count: report.diagnostics.length })}</p>
+              {impactCounts.map(([impact, count]) => <Badge key={impact} variant={IMPACT_VARIANT[impact]} size="sm">{enumText(impact)} · {count}</Badge>)}
+              {run.progress.omittedByLimit > 0 && <span className="text-xs text-muted-foreground">{t('reviewCard.omitted', { omitted: run.progress.omittedByLimit })}</span>}
+            </div>
+            {report.diagnostics.length === 0 && <p data-testid="review-empty" className={cn('text-xs', report.emptyScope || (report.coverage.complete && status === 'finished') ? 'text-muted-foreground' : 'text-warning-emphasis')}>{t(report.emptyScope ? 'reviewCard.emptyScope' : report.coverage.complete && status === 'finished' ? 'reviewCard.emptyComplete' : 'reviewCard.emptyPartial')}</p>}
           </div>
-          <p className="text-xs text-muted-foreground">{method}</p>
-          {running && <p role="status" className="flex items-center gap-2 rounded-lg bg-info/10 px-3 py-2 text-xs text-info"><Loader2Icon aria-hidden className="size-3.5 animate-spin" />{enumText(stage)}</p>}
+          <div data-testid="review-scope" className="space-y-1 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+            <p data-testid="review-method">{method}</p>
+            {notices}
+          </div>
         </>}
         {endMessage && <p role="status" data-testid="review-end" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{endMessage}</p>}
-        {report.notices && report.notices.length > 0 && <ul data-testid="review-notices" className="space-y-1 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">{report.notices.map((notice, index) => <li key={index}>{reviewMessage(t, notice)}</li>)}</ul>}
+        {reviewing && notices && <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">{notices}</div>}
         {finished && !report.coverage.complete && !report.emptyScope && report.diagnostics.length > 0 && <p data-testid="review-incomplete" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{t('reviewCard.notice.incomplete')}</p>}
-        {!reviewing && report.diagnostics.length === 0 && <p data-testid="review-empty" className={cn('rounded-lg px-3 py-2 text-xs', report.emptyScope ? 'bg-muted/50 text-muted-foreground' : report.coverage.complete && status === 'finished' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning-emphasis')}>{t(report.emptyScope ? 'reviewCard.emptyScope' : report.coverage.complete && status === 'finished' ? 'reviewCard.emptyComplete' : 'reviewCard.emptyPartial')}</p>}
         {!reviewing && report.diagnostics.length > 0 && <>
           <div className="flex flex-wrap gap-3">{filter('severity', severity, ['all', 'critical', 'major', 'minor'], setSeverity)}{filter('kind', kind, ['all', 'correctness', 'cleanup'], setKind)}{filter('state', state, ['all', 'open', 'applied', 'verified', 'skipped'], setState)}</div>
           <ul className="space-y-2">{shown.map(diagnostic => {
@@ -369,11 +458,11 @@ export const ReviewReportCard: FC<{
         </details>}
         {(report.verifications ?? []).map(check => <details key={check.ref} data-testid="review-verification" className="text-xs"><summary className="cursor-pointer">{t('reviewCard.verify')} · {enumText(check.afterLatestEdit ? check.succeeded ? 'passed' : 'failed' : 'not-run')}</summary>{check.command && <pre className="whitespace-pre-wrap">{check.command}</pre>}{check.codeRevision && <p className="break-all">{check.codeRevision}</p>}{check.evidence.map((evidence, index) => <pre key={index} className="overflow-auto whitespace-pre-wrap">{evidence.quote}</pre>)}{check.missingCases.map((item, index) => <p key={index}>{reviewDetailMessage(t, item)}</p>)}</details>)}
         {report.publicationPreview !== undefined && <details open className="text-xs"><summary className="cursor-pointer">{t('reviewCard.preview')}</summary><pre className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{report.publicationPreview}</pre></details>}
-        {report.tasks && <ReviewTaskTree tasks={report.tasks} />}
+        {!reviewing && report.tasks && <ReviewTaskTree tasks={report.tasks} open={false} />}
         <details data-testid="review-details" className="text-xs">
           <summary className="cursor-pointer text-muted-foreground">{t('reviewCard.details')}</summary>
           <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
-            <dt>{t('reviewCard.revision')}</dt><dd className="font-mono" title={revision}>{shortRevision(run.scope.revision.base)} → {shortRevision(run.scope.revision.head)}</dd>
+            {reviewing && <><dt>{t('reviewCard.method')}</dt><dd data-testid="review-method">{method}</dd></>}
             <dt>{t('reviewCard.policyLabel')}</dt><dd>{t('reviewCard.policy', { level: enumText(run.policy.level), recipe: enumText(run.policy.recipe), mode: enumText(run.policy.execution), cap: run.policy.reportLimit === 'unlimited' ? enumText('unlimited') : run.policy.reportLimit })}</dd>
             <dt>{t('reviewCard.coverage')}</dt><dd>
               {report.coverage.limitations.length === 0 && run.progress.unavailableAngles.length === 0 ? <span>{t(report.coverage.complete ? 'reviewCard.coverageComplete' : 'reviewCard.notice.incomplete')}</span> : <ul className="list-disc pl-4">{report.coverage.limitations.map((text, index) => <li key={index}>{reviewDetailMessage(t, text)}</li>)}{run.progress.unavailableAngles.length > 0 && <li>{t('reviewCard.uncovered', { angles: run.progress.unavailableAngles.map(angle => reviewAngleMessage(t, angle)).join(', ') })}</li>}</ul>}
@@ -382,12 +471,12 @@ export const ReviewReportCard: FC<{
           <p className="mt-1.5 text-muted-foreground">{t('reviewCard.workers', { started: run.progress.spawnedTasks, finished: report.finishedTasks ?? 0 })}</p>
           {report.exportJson !== undefined && <details className="mt-2"><summary className="cursor-pointer">{t('reviewCard.exportJson')}</summary><pre data-testid="review-export-json" className="mt-1 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{report.exportJson}</pre></details>}
         </details>
+        {running && <ReviewCancel disabled={busy || !can('cancel')} onClick={() => act('cancel')} />}
       </div>
-      <footer className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-2.5">
-        <span className="mr-auto text-xs text-muted-foreground">{running ? enumText(stage) : selectedIds.length > 0 ? t('reviewCard.selected', { count: selectedIds.length }) : enumText(status)}</span>
-        {running ? <Button type="button" variant="outline" size="sm" disabled={busy || !can('cancel')} onClick={() => act('cancel')} data-testid="review-cancel">{t('reviewCard.cancel')}</Button> : <>
+      {!running && <footer className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-2.5">
+        <span className="mr-auto text-xs text-muted-foreground">{selectedIds.length > 0 && t('reviewCard.selected', { count: selectedIds.length })}</span>
           <Button type="button" variant="outline" size="sm" disabled={busy || !can('rerun')} onClick={() => act('rerun', { presentation })} data-testid="review-rerun">{t('reviewCard.rerun')}</Button>
-          <Button type="button" size="sm" disabled={busy || !can('repair') || selectedIds.length === 0} onClick={() => act('repair', { diagnosticIds: selectedIds })} data-testid="review-repair">{selectedIds.length > 0 ? t('reviewCard.repairCount', { count: selectedIds.length }) : t('reviewCard.repair')}</Button>
+          {report.diagnostics.length > 0 && <Button type="button" size="sm" disabled={busy || !can('repair') || selectedIds.length === 0} onClick={() => act('repair', { diagnosticIds: selectedIds })} data-testid="review-repair">{selectedIds.length > 0 ? t('reviewCard.repairCount', { count: selectedIds.length }) : t('reviewCard.repair')}</Button>}
           <DropdownMenuPrimitive.Root>
             <DropdownMenuPrimitive.Trigger asChild>
               <Button type="button" variant="outline" size="icon-sm" aria-label={t('reviewCard.more')} title={t('reviewCard.more')} data-testid="review-more"><EllipsisIcon aria-hidden /></Button>
@@ -410,10 +499,9 @@ export const ReviewReportCard: FC<{
               </DropdownMenuPrimitive.Content>
             </DropdownMenuPrimitive.Portal>
           </DropdownMenuPrimitive.Root>
-        </>}
-      </footer>
+      </footer>}
       {confirming && <div role="group" aria-label={t('reviewCard.confirm')} className="flex flex-wrap items-center gap-2 border-t px-4 py-2.5 text-xs"><p className="mr-auto">{t('reviewCard.confirm')}</p><Button type="button" size="sm" disabled={busy || !can('publish')} onClick={() => { setConfirming(false); act('publish', { preview: false, confirmed: true, ...publicationOptions }) }}>{t('reviewCard.publish')}</Button><Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)}>{t('reviewCard.dismiss')}</Button></div>}
       {error && <p role="alert" className="border-t px-4 py-2 text-xs text-destructive">{t('reviewCard.actionFailed')}</p>}
-    </>}
-  </Card>
+    </div>}
+  </Card></TooltipProvider>
 }

@@ -6,6 +6,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { CodeReviewCard, CodeReviewProvider, CodeReviewRow, ReviewReportCard, currentReviewLocation, reviewFindingState } from '../components/assistant-ui/code-review-card'
 import type { ReviewReportView, ReviewSessionSnapshot } from '../codeReview/review-protocol'
 import { createTranslate } from '../browser/webview/i18n/translate'
+import { writeClipboard } from '../utils/clipboard'
+vi.mock('../utils/clipboard', () => ({ writeClipboard: vi.fn(async () => true) }))
 const t = createTranslate('en')
 afterEach(cleanup)
 function report(): ReviewReportView {
@@ -72,7 +74,9 @@ describe('review report card', () => {
   it('disables unavailable actions and collapse never cancels', async () => {
     const action = renderReport(report(), false)
     expect(screen.queryByTestId('review-cancel')).toBeNull()
-    for (const id of ['repair', 'rerun']) expect((screen.getByTestId(`review-${id}`) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByTestId('review-rerun') as HTMLButtonElement).disabled).toBe(true)
+    // Nothing to repair: no Repair button at all.
+    expect(screen.queryByTestId('review-repair')).toBeNull()
     await openMore()
     for (const id of ['publish', 'preview', 'verify']) expect(menuDisabled(`review-${id}`)).toBe(true)
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
@@ -358,10 +362,139 @@ it('counts candidates and verified candidates while the review is active, withou
   value.run.progress = { ...value.run.progress, status: 'active', stage: 'assess', verifiedCandidates: 3, omittedByLimit: 2 }
   renderReport(value)
   // One retained, two over the report limit, one dismissed: verified never outruns found.
-  expect(screen.getByTestId('review-progress').textContent).toBe(t('reviewCard.progressCounts', { found: 4, verified: 3 }))
+  expect(screen.getByTestId('review-progress').textContent).toBe(t('reviewCard.progressFound', { found: 4, verified: 3 }))
   expect(screen.queryByTestId('review-finding')).toBeNull()
   cleanup()
   value.run.progress.status = 'queued'
   renderReport(value)
   expect(screen.queryByTestId('review-progress')).toBeNull()
+})
+
+describe('review card header and live activity', () => {
+  const base = `fb1669b${'0'.repeat(33)}`
+  const head = `f5ecacb${'1'.repeat(33)}`
+  function running(): ReviewReportView {
+    const value = report()
+    value.run.scope.revision = { base, head }
+    value.run.policy = { ...value.run.policy, level: 'max' }
+    value.targetLabel = `${base}..${head}`
+    value.run.progress = { ...value.run.progress, status: 'active', stage: 'inspect' }
+    value.permissions = { cancel: true }
+    return value
+  }
+  it('keeps the level on the title line and shows the range short, full on focus', async () => {
+    renderReport(running())
+    const heading = screen.getByTestId('review-heading')
+    expect(heading.querySelector('h3')!.textContent).toBe(t('reviewCard.title'))
+    expect(heading.contains(screen.getByTestId('review-level'))).toBe(true)
+    expect(screen.getByTestId('review-level').textContent).toBe(t('reviewCard.value.max'))
+    expect(screen.getByTestId('review-range-short').textContent).toBe('fb1669b → f5ecacb')
+    // A target label naming only the revisions adds nothing to the range.
+    expect(screen.getByTestId('code-review-card').textContent).not.toContain(base)
+    fireEvent.focus(screen.getByTestId('review-range-short'))
+    expect((await screen.findByRole('tooltip')).textContent).toContain(`${base} → ${head}`)
+  })
+  it('appends a target label that says more than the revisions', () => {
+    const value = running()
+    value.targetLabel = './src/a.ts'
+    renderReport(value)
+    expect(screen.getByTestId('review-range').textContent).toContain('./src/a.ts')
+  })
+  it('copies the full pair without toggling the card', async () => {
+    renderReport(running())
+    fireEvent.click(screen.getByTestId('review-range-copy'))
+    expect(writeClipboard).toHaveBeenCalledWith(`${base} → ${head}`)
+    await waitFor(() => expect(screen.getByTestId('review-range-copy').getAttribute('aria-label')).toBe(t('messageMenu.copied')))
+    expect(screen.getByTestId('review-toggle').getAttribute('aria-expanded')).toBe('true')
+  })
+  it('names the stage once, in the single status badge, with no footer while running', () => {
+    renderReport(running())
+    expect(screen.getByTestId('review-status').textContent).toBe(t('reviewCard.value.inspect'))
+    const card = screen.getByTestId('code-review-card')
+    expect(card.textContent).not.toContain(t('reviewCard.value.active'))
+    expect(card.textContent!.split(t('reviewCard.value.inspect')).length).toBe(2)
+    expect(card.querySelector('footer')).toBeNull()
+    expect(screen.getByTestId('review-cancel')).toBeTruthy()
+    expect(screen.getByTestId('review-progress').textContent).toBe(t('reviewCard.progressNone'))
+  })
+  it('keeps the same header collapsed, toggled by one button covering the row', () => {
+    renderReport(running())
+    const toggle = screen.getByTestId('review-toggle')
+    expect(toggle.tagName).toBe('BUTTON')
+    expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toBeTruthy()
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByTestId('review-stages')).toBeNull()
+    for (const id of ['review-heading', 'review-level', 'review-range', 'review-status']) expect(screen.getByTestId(id)).toBeTruthy()
+  })
+  it('shows the most recently active task and task counts, with the full tree folded', () => {
+    const value = running()
+    value.tasks = [
+      { key: 'c', role: 'coordinator', status: 'running', startedAt: 1, lastActivityAt: 2, lastAction: 'ReviewLedger' },
+      { key: 'f', role: 'finder', angles: ['calls'], status: 'running', startedAt: 1, lastActivityAt: 5, lastAction: 'ReviewRead diff src/a.ts' },
+      { key: 'v', role: 'verifier', status: 'finished', startedAt: 1, lastActivityAt: 3, finishedAt: 4 },
+    ]
+    renderReport(value)
+    const current = screen.getByTestId('review-current-task')
+    expect(current.textContent).toContain(t('reviewCard.task.role.finder'))
+    expect(current.textContent).toContain(t('reviewCard.angle.calls'))
+    expect(current.textContent).toContain(t('reviewCard.task.lastAction', { action: 'ReviewRead diff src/a.ts' }))
+    expect(screen.getByTestId('review-task-counts').textContent).toBe(t('reviewCard.tasksDone', { finished: 1, running: 2 }))
+    expect((screen.getByTestId('review-tasks') as HTMLDetailsElement).open).toBe(false)
+    cleanup()
+    value.run.progress.status = 'finished'
+    value.run.progress.stage = 'report'
+    value.tasks = value.tasks.map((task, index) => ({ ...task, status: index === 0 ? 'failed' : 'finished' }))
+    renderReport(value)
+    expect(screen.queryByTestId('review-activity')).toBeNull()
+    const tree = screen.getByTestId('review-tasks') as HTMLDetailsElement
+    expect(tree.open).toBe(false)
+    expect(tree.querySelector('summary')!.textContent).toBe(`${t('reviewCard.tasks')} · ${t('reviewCard.tasksCompleted', { count: 2 })} · ${t('reviewCard.tasksNotCompleted', { count: 1 })}`)
+  })
+  it('keeps the method in review details while running, and in the scope block once finished', () => {
+    const value = running()
+    renderReport(value)
+    expect(screen.getByTestId('review-details').contains(screen.getByTestId('review-method'))).toBe(true)
+    cleanup()
+    value.run.progress.status = 'finished'
+    value.run.progress.stage = 'report'
+    value.notices = [{ code: 'level-reused', level: 'high' }]
+    renderReport(value)
+    const scope = screen.getByTestId('review-scope')
+    expect(scope.contains(screen.getByTestId('review-method'))).toBe(true)
+    expect(scope.contains(screen.getByTestId('review-notices'))).toBe(true)
+    expect(screen.getByTestId('review-method').textContent).toContain(t('reviewCard.revisionOnly'))
+    expect(screen.getByTestId('review-details').querySelector('[data-testid="review-method"]')).toBeNull()
+  })
+  it('states a clean result as plain text under the count, with no Repair and no footer status', () => {
+    const value = running()
+    value.run.progress.status = 'finished'
+    value.run.progress.stage = 'report'
+    value.coverage.complete = true
+    renderReport(value)
+    const empty = screen.getByTestId('review-empty')
+    expect(empty.textContent).toBe(t('reviewCard.emptyComplete'))
+    expect(empty.className).not.toMatch(/\bbg-/)
+    expect(screen.queryByTestId('review-repair')).toBeNull()
+    expect(screen.getByTestId('review-rerun')).toBeTruthy()
+    expect(screen.getByTestId('code-review-card').querySelector('footer')!.textContent).not.toContain(t('reviewCard.value.finished'))
+  })
+  it('names the repository: its remote name, else the change request project, else the directory', () => {
+    const value = running()
+    value.run.scope.workspaceKey = 'D:/work/my-dir'
+    value.run.scope.repository = { projectKey: 'D:/work/my-dir', name: 'velloc-runtime' }
+    value.targetLabel = 'D:/work/my-dir'
+    renderReport(value)
+    expect(screen.getByTestId('review-repository').textContent).toBe('velloc-runtime')
+    // The project key standing in for a target adds nothing to the header.
+    expect(screen.getByTestId('review-range').textContent).not.toContain('D:/work')
+    cleanup()
+    value.run.scope.repository = { projectKey: 'D:/work/my-dir' }
+    renderReport(value)
+    expect(screen.getByTestId('review-repository').textContent).toBe('my-dir')
+    cleanup()
+    value.run.scope.repository = { platform: 'github', projectKey: 'owner/repo' }
+    renderReport(value)
+    expect(screen.getByTestId('review-repository').textContent).toBe('repo')
+  })
 })

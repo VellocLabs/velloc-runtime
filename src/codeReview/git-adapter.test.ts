@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { join, resolve } from 'node:path'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { createGitArgvRunner, remoteUrlsOf, validateGitRef, type GitStreamSpawner, type GitQuery } from './git-adapter'
+import { createGitArgvRunner, remoteUrlsOf, repositoryNameOf, validateGitRef, type GitStreamSpawner, type GitQuery } from './git-adapter'
 import type { NativeStreamHandlers, NativeStreamChild } from '../browser/bridge/nativePrimitives'
 
 const oid = 'a'.repeat(40)
@@ -128,6 +128,14 @@ describe('restricted Git argv runner', () => {
       + 'remote.up.url\ngit@gitlab.com:owner/repo.git\0'
     expect(remoteUrlsOf(output)).toEqual(['https://github.com/owner/repo.git', 'git@gitlab.com:owner/repo.git'])
     expect(remoteUrlsOf('')).toEqual([])
+  })
+  it('names the repository from origin first, else the first remote, and refuses names that are not plain', () => {
+    expect(repositoryNameOf('remote.up.url\ngit@gitlab.com:owner/other.git\0remote.origin.url\nhttps://github.com/owner/repo.git\0')).toBe('repo')
+    expect(repositoryNameOf('remote.up.url\ngit@gitlab.com:owner/other.git\0')).toBe('other')
+    expect(repositoryNameOf('remote.origin.url\nD:\\mirrors\\local-repo\\\0')).toBe('local-repo')
+    expect(repositoryNameOf('remote.origin.url\nhttps://host.invalid/a/..\0')).toBeUndefined()
+    expect(repositoryNameOf('remote.origin.url\nhttps://host.invalid/a/b c\0')).toBeUndefined()
+    expect(repositoryNameOf('')).toBeUndefined()
   })
   it('rejects options, revision operators, path traversal and non-object diff revisions', async () => {
     const { spawn } = fake(); const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root })

@@ -16,7 +16,7 @@ const disposition = z.enum(['proven', 'plausible', 'dismissed', 'unchecked'])
 const run = z.object({
   id, conversationKey: id,
   scope: z.object({ kind: z.enum(['workspace', 'branch', 'range', 'paths', 'change-request']), workspaceKey: text,
-    repository: z.object({ platform: z.enum(['github', 'gitlab']).optional(), projectKey: text }),
+    repository: z.object({ platform: z.enum(['github', 'gitlab']).optional(), projectKey: text, name: text.optional() }),
     revision: z.object({ base: text, head: text, workingCopyDigest: text.optional() }), pathFilter: z.array(path).max(1000),
     request: z.object({ number: positive, headRevision: text }).optional(),
   }),

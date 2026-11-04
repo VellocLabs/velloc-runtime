@@ -25,7 +25,7 @@ import { vetFileRead } from '../permissions/filesystemPermission'
 import { gatherInstructionDocs, getNestedInstructionFilesForPath, getConditionalRulesForPath, formatMemoryFilesForPrompt } from '../memory/instructionFiles'
 import { assertUntrustedReadAllowed } from '../permissions/untrustedReadBoundary'
 import { isFsNotFoundError } from '../utils/fsTransportFailure'
-import { createGitArgvRunner, GitAdapterError, gitText, isGitRefSyntax, remoteUrlsOf, validateReviewPath, type GitStreamSpawner } from './git-adapter'
+import { createGitArgvRunner, GitAdapterError, gitText, isGitRefSyntax, remoteUrlsOf, repositoryNameOf, validateReviewPath, type GitStreamSpawner } from './git-adapter'
 import { isTestOrFixturePath } from './recipes'
 import { resolveLocalReviewScope, reviewDigest, scopeComplete, type WorkspaceRead, type LocalReviewTarget } from './scope'
 import { LocalReviewService, ReviewGatewayError, scopeIndex, type ReviewServiceOptions } from './service'
@@ -490,6 +490,8 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       const manifest = await resolveLocalReviewScope({ git, workspaceKey: root, projectKey: root, readWorkspaceFile,
         skipPath: path => plan.skipTestsAndFixtures && isTestOrFixturePath(path),
       }, target, signal)
+      const repositoryName = repositoryNameOf(await gitText(git, { kind: 'remotes' }, signal).catch(() => ''))
+      if (repositoryName) manifest.scope.repository.name = repositoryName
       for (const file of manifest.files) await authorizePath(resolveRuntimePath(root, file.path))
       const treeText = manifest.semantics === 'working-copy' ? await gitText(git, { kind: 'tracked' }, signal) : await gitText(git, { kind: 'tree', oid: manifest.scope.revision.head }, signal)
       const contextPaths = manifest.semantics === 'working-copy' ? treeText.split('\0').filter(Boolean) : treeText.split('\0').filter(Boolean).map(line => line.slice(line.indexOf('\t') + 1))
