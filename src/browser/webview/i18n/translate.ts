@@ -266,6 +266,8 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
     'No masking rules are saved.',
   'slash.out.masking.rulesHeading':
     'Masking rules ({count})',
+  'slash.out.masking.notARuleEntry':
+    "not a rule (needs \"match\" and \"alias\" strings)",
   'slash.out.masking.testMasked':
     'The model would receive:',
   'slash.out.masking.testNoHits':

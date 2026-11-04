@@ -135,7 +135,6 @@ describe('before the masking settings are known', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(modelMasking.status().state).toBe('unknown')
     content = JSON.stringify({ version: 1, modelMasking: { enabled: true, rules: RULES } })
-    wipeSettingsMemos()
     await vi.advanceTimersByTimeAsync(MASKING_READ_RETRY_MS)
     expect(modelMasking.status().state).toBe('active')
   })

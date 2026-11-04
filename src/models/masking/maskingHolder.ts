@@ -27,7 +27,6 @@ import {
   compileMasking,
   validateMaskingRules,
   type CompiledMasking,
-  type MaskingRule,
   type MaskingRuleProblem,
 } from './maskingRules'
 import { maskPayload, MaskingTally, PayloadMasker } from './maskPayload'
@@ -80,6 +79,10 @@ export type MaskingStreamMeta = { streamId: string; provider: string; model: str
 
 /** Delay before a failed settings read is tried again. */
 export const MASKING_READ_RETRY_MS = 5_000
+
+/** Longest a stream waits for the state to become known before it is refused
+ *  as `unknown`; well inside a stream's idle budget. */
+export const MASKING_KNOWN_WAIT_MS = 20_000
 
 /** The preset User-Agent the host would fill in for a provider, if any. */
 export type PresetUserAgentOf = (providerId: string) => string | undefined
@@ -175,6 +178,8 @@ export class ModelMaskingHolder {
   private writer: MaskingLogWriter | undefined
   private pending: Promise<void> | undefined
   private retryTimer: ReturnType<typeof setTimeout> | undefined
+  /** Bumped by every `configure` and reset: a read that started before it is stale. */
+  private generation = 0
   private readonly listeners = new Set<(status: MaskingStatus) => void>()
   private readonly waiters = new Set<() => void>()
   private presetUserAgentOf: PresetUserAgentOf = () => undefined
@@ -199,6 +204,7 @@ export class ModelMaskingHolder {
     const wasActive = this.state === 'active'
     const rulesChanged = JSON.stringify(next.rules ?? []) !== JSON.stringify(this.settings.rules ?? [])
     this.settings = next
+    this.generation += 1
     this.lastError = undefined
     this.cancelRetry()
     const validated = validateMaskingRules(next.rules ?? [])
@@ -225,15 +231,20 @@ export class ModelMaskingHolder {
    * Reads the settings; streams opened meanwhile wait. `read` resolving to
    * `'unreadable'` or rejecting leaves the state `unknown` and tries again
    * after `MASKING_READ_RETRY_MS`; `undefined` means the file holds no section.
+   * A read that lands after a `configure` (a `/masking` change) is dropped.
    */
   load(read: () => Promise<NexusModelMaskingSettings | undefined | 'unreadable'>): Promise<void> {
     this.cancelRetry()
+    const generation = this.generation
     const pending = read().then(
       settings => {
+        if (generation !== this.generation) return
         if (settings === 'unreadable') this.readFailed(read, { reason: 'settingsUnreadable' })
         else this.configure(settings)
       },
-      error => this.readFailed(read, maskingErrorOf(error)),
+      error => {
+        if (generation === this.generation) this.readFailed(read, maskingErrorOf(error))
+      },
     ).finally(() => {
       if (this.pending === pending) this.pending = undefined
     })
@@ -241,12 +252,14 @@ export class ModelMaskingHolder {
     return pending
   }
 
-  /** Resolves once the state is known (anything but `unknown`), or when
-   *  `signal` aborts. */
-  whenKnown(signal?: AbortSignal): Promise<void> {
+  /** Resolves once the state is known (anything but `unknown`), when
+   *  `signal` aborts, or after `timeoutMs`; the caller then reads the state. */
+  whenKnown(signal?: AbortSignal, timeoutMs: number = MASKING_KNOWN_WAIT_MS): Promise<void> {
     if (this.state !== 'unknown' || signal?.aborted) return Promise.resolve()
     return new Promise<void>(resolve => {
+      const timer = setTimeout(() => done(), timeoutMs)
       const done = () => {
+        clearTimeout(timer)
         this.waiters.delete(done)
         signal?.removeEventListener('abort', done)
         resolve()
@@ -261,12 +274,12 @@ export class ModelMaskingHolder {
   }
 
   status(): MaskingStatus {
-    const rules = this.settings.rules ?? []
+    const rules = this.settings.rules
     return {
       state: this.state,
       enabled: this.settings.enabled === true,
       active: this.state === 'active',
-      ruleCount: rules.length,
+      ruleCount: Array.isArray(rules) ? rules.length : 0,
       ...(this.settings.logPath ? { logPath: this.settings.logPath } : {}),
       logDetail: this.settings.logDetail ?? 'counts',
       ...(this.problem ? { problem: this.problem } : {}),
@@ -274,9 +287,9 @@ export class ModelMaskingHolder {
     }
   }
 
-  /** The rules settings.json holds, whether in use or not. */
-  savedRules(): MaskingRule[] {
-    return [...(this.settings.rules ?? [])]
+  /** The rules settings.json holds, as written (any JSON), whether in use or not. */
+  savedRules(): unknown {
+    return structuredClone(this.settings.rules ?? [])
   }
 
   /** The table requests use now, if masking is active. */
@@ -321,6 +334,7 @@ export class ModelMaskingHolder {
   /** Test hook: back to the state before any read. */
   resetForTest(): void {
     this.cancelRetry()
+    this.generation += 1
     this.settings = {}
     this.state = 'unknown'
     this.compiled = undefined

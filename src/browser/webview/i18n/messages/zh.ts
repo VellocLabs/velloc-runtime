@@ -2532,6 +2532,8 @@ export const zh: Messages = {
     '没有已保存的替换规则。',
   'slash.out.masking.rulesHeading':
     '替换规则（{count}）',
+  'slash.out.masking.notARuleEntry':
+    "不是规则（需要 \"match\" 和 \"alias\" 字符串）",
   'slash.out.masking.testMasked':
     '模型将收到：',
   'slash.out.masking.testNoHits':

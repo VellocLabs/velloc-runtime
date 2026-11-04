@@ -2665,6 +2665,8 @@ export const fr: Messages = {
     'Aucune règle de remplacement n’est enregistrée.',
   'slash.out.masking.rulesHeading':
     'Règles de remplacement ({count})',
+  'slash.out.masking.notARuleEntry':
+    "pas une règle (il faut les chaînes \"match\" et \"alias\")",
   'slash.out.masking.testMasked':
     'Le modèle recevrait :',
   'slash.out.masking.testNoHits':

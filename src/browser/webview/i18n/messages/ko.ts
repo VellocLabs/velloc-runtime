@@ -2581,6 +2581,8 @@ export const ko: Messages = {
     '저장된 바꾸기 규칙이 없어요.',
   'slash.out.masking.rulesHeading':
     '바꾸기 규칙({count})',
+  'slash.out.masking.notARuleEntry':
+    "규칙이 아닙니다 (\"match\"와 \"alias\" 문자열이 필요합니다)",
   'slash.out.masking.testMasked':
     '모델이 받을 내용:',
   'slash.out.masking.testNoHits':

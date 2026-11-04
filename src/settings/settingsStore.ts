@@ -727,7 +727,7 @@ function normalizeModelMasking(raw: unknown): NexusModelMaskingSettings | undefi
   const r = raw as Record<string, unknown>
   const out: NexusModelMaskingSettings = {}
   if (typeof r.enabled === 'boolean') out.enabled = r.enabled
-  if (r.rules !== undefined) out.rules = structuredClone(r.rules) as NexusModelMaskingSettings['rules']
+  if (r.rules !== undefined) out.rules = structuredClone(r.rules)
   if (typeof r.logPath === 'string' && r.logPath.length > 0) out.logPath = r.logPath
   if (r.logDetail === 'counts' || r.logDetail === 'context') out.logDetail = r.logDetail
   return Object.keys(out).length > 0 ? out : undefined
@@ -1001,10 +1001,21 @@ function jsonEquals(a: unknown, b: unknown): boolean {
   }
 }
 
+/** A section write refused because the file exists but could not be read,
+ *  parsed or understood: writing would replace content that is unknown. */
+export class SettingsUnreadableError extends Error {
+  constructor(readonly path: string) {
+    super(`${path} exists but cannot be read; not overwritten`)
+    this.name = 'SettingsUnreadableError'
+  }
+}
+
 /**
  * Read-modify-write one top-level section; the updater returns the next value
  * (`undefined` clears it). Other sections are preserved; no write when
- * equivalent. The read bypasses the cache.
+ * equivalent. The read bypasses the cache. With `refuseUnread`, throws
+ * `SettingsUnreadableError` and writes nothing when the file exists but its
+ * content is unknown.
  */
 export async function updateSectionInSource<K extends keyof NexusSettingsV1>(
   source: SettingsLayer,
@@ -1012,6 +1023,7 @@ export async function updateSectionInSource<K extends keyof NexusSettingsV1>(
   fs: RuntimeFs,
   section: K,
   updater: (prev: NexusSettingsV1[K]) => NexusSettingsV1[K],
+  options: { refuseUnread?: boolean } = {},
 ): Promise<NexusSettingsV1> {
   if (section === 'version') {
     throw new Error(
@@ -1021,7 +1033,8 @@ export async function updateSectionInSource<K extends keyof NexusSettingsV1>(
   return enqueueSettingsUpdate(
     layerFilePath(source, ctx),
     async () => {
-      const { settings } = await readLayerFresh(source, ctx, fs)
+      const { settings, unread } = await readLayerFresh(source, ctx, fs)
+      if (unread && options.refuseUnread) throw new SettingsUnreadableError(layerFilePath(source, ctx))
       const before = settings[section]
       const after = updater(before)
 

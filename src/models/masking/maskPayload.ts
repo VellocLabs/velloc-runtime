@@ -12,7 +12,8 @@
  * is left as is, and a document is masked after decoding when its media type
  * is `text/*` (other documents are left whole). Never masked:
  * `requestContext`, `model`, `providerId`. The egress guard catches what is
- * left.
+ * left. Two object keys that would mask to the same key are refused
+ * (`MaskingResidualError`), never merged.
  */
 import type {
   BridgeModelContentPart,
@@ -21,6 +22,7 @@ import type {
   BridgeModelToolDefinition,
 } from '../../browser/bridge/browserBridgeProtocol'
 import type { CompiledMasking, MaskingHit } from './maskingRules'
+import { MaskingResidualError } from './egressGuard'
 
 export type MaskingWhere = 'messages' | 'system' | 'tools' | 'extension'
 
@@ -148,10 +150,18 @@ export class PayloadMasker {
     const keep = type !== undefined ? OPAQUE_PART_FIELDS[type] : undefined
     let changed = false
     const out: Record<string, unknown> = {}
+    const sourceKey = new Map<string, string>()
     for (const [key, item] of Object.entries(value)) {
       const nextKey = this.text(key, where)
       const next = keep?.has(key) ? item : this.deep(item, where)
       if (nextKey !== key || next !== item) changed = true
+      // Two keys that mask to one would merge and lose a value: refuse.
+      const earlier = sourceKey.get(nextKey)
+      if (earlier !== undefined) {
+        const rule = this.masking.residualIn(key) ?? this.masking.residualIn(earlier) ?? 0
+        throw new MaskingResidualError({ where, rule })
+      }
+      sourceKey.set(nextKey, key)
       out[nextKey] = next
     }
     return changed ? out : value

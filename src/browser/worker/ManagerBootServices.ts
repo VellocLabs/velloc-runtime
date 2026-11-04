@@ -56,6 +56,10 @@ import { installRuntimeRenderCache } from '../../renderCache/runtimeRenderCache'
 import { readIdlePurgeEnabled } from '../../renderCache/idlePurgeFlag'
 import { TerminalService, type CliConversationStore } from '../../terminal/TerminalService'
 import { settleWithoutSettings, startModelMasking } from '../../models/masking/maskingBoot'
+import { MASKING_READ_RETRY_MS, modelMasking } from '../../models/masking/maskingHolder'
+
+/** Bound on the `fs.userHome` question that decides whether masking can be off. */
+const MASKING_HOME_ANSWER_MS = 5_000
 
 export interface ManagerBootServicesHost {
   getDirectBridgeTransport(): DirectPortBridgeTransport | null
@@ -97,6 +101,8 @@ export class ManagerBootServices {
   private routineRuntimeHandle: RoutineRuntimeHandle | null = null
   private teamRegistryBooted = false
   private storageReady = false
+  private maskingBoot: Promise<void> | null = null
+  private maskingRetry: ReturnType<typeof setTimeout> | null = null
   private providerModsBoot: Promise<void> | null = null
   private modelCatalogInstalled = false
   private readonly directBridgeWaiters = new Set<
@@ -126,7 +132,7 @@ export class ManagerBootServices {
     void this.bootRoutineRuntimeOnce()
     void this.bootTeamRuntimeOnce()
     void this.publishProviderConfigsAtBoot()
-    this.startModelMasking()
+    void this.startModelMasking()
     void this.bootProviderModsOnce()
     void this.installModelCatalogOnce()
     void this.publishBinaryRegistryAtBoot()
@@ -141,7 +147,7 @@ export class ManagerBootServices {
     // before one existed, this is the retry. Idempotent.
     void this.bootTeamRuntimeOnce()
     // …and model egress masking (F-39): its settings read and its log.
-    this.startModelMasking()
+    void this.startModelMasking()
     // …and so does the provider-mod scan: it reads plugins through the fs. It
     // starts here, not at storage ready, so the plugin launchers are published
     // before the first window subscribes (F-25).
@@ -178,16 +184,71 @@ export class ManagerBootServices {
     this.terminals.hostGone()
   }
 
-  private startModelMasking(): void {
+  /**
+   * Security: starts masking with the home sessions use, which flat storage
+   * may not know (its home probe can miss the boot budget). Masking is settled
+   * off only when storage is up and the host itself answers that there is no
+   * home; a host that does not answer leaves it `unknown` and is asked again
+   * after `MASKING_READ_RETRY_MS` (F-39).
+   */
+  private startModelMasking(): Promise<void> {
+    if (this.maskingBoot) return this.maskingBoot
+    const boot = this.bootModelMasking().finally(() => {
+      if (this.maskingBoot === boot) this.maskingBoot = null
+    })
+    this.maskingBoot = boot
+    return boot
+  }
+
+  private async bootModelMasking(): Promise<void> {
+    if (this.maskingRetry !== null) clearTimeout(this.maskingRetry)
+    this.maskingRetry = null
+    if (!this.host.getDirectBridgeTransport()) return
+    let homeDir = this.host.getHomeDir()
+    if (!homeDir && this.host.resolveHomeDir) homeDir = await this.host.resolveHomeDir().catch(() => null)
     const started = startModelMasking({
-      homeDir: () => this.host.getHomeDir() || undefined,
+      homeDir: () => homeDir || undefined,
       transport: () => this.host.getDirectBridgeTransport() ?? undefined,
       requestId: () => this.host.createBridgeRequestId(),
       fs: () => this.getManagerFs(),
     })
-    // Storage is up without a home directory (flat layout): there is no
-    // settings file, so masking was never turned on.
-    if (!started && this.storageReady && !this.host.getHomeDir()) settleWithoutSettings()
+    if (started || !this.storageReady) return
+    const noHome = await this.hostHomeAnswer()
+    if (noHome === 'none') {
+      settleWithoutSettings()
+    } else if (modelMasking.status().state === 'unknown') {
+      // A home the host named late, or no answer at all: try again.
+      this.maskingRetry = setTimeout(() => {
+        this.maskingRetry = null
+        void this.startModelMasking()
+      }, MASKING_READ_RETRY_MS)
+    }
+  }
+
+  /** The host's own answer to `fs.userHome`: `none` only when it answers with
+   *  no home; `unanswered` when it fails or does not answer in time. */
+  private async hostHomeAnswer(): Promise<'none' | 'home' | 'unanswered'> {
+    const transport = this.host.getDirectBridgeTransport()
+    if (!transport) return 'unanswered'
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<'unanswered'>(resolve => {
+      timer = setTimeout(() => resolve('unanswered'), MASKING_HOME_ANSWER_MS)
+    })
+    const ask = transport
+      .request({ id: this.host.createBridgeRequestId(), route: createBridgeRoute('fs', 'userHome'), payload: {} })
+      .then(
+        response => {
+          if (!response.ok) return 'unanswered' as const
+          const home = response.result as unknown
+          return typeof home === 'string' && home.length > 0 ? ('home' as const) : ('none' as const)
+        },
+        () => 'unanswered' as const,
+      )
+    try {
+      return await Promise.race([ask, timeout])
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   getManagerFs(): RuntimeFs {

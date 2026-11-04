@@ -2591,6 +2591,8 @@ export const ja: Messages = {
     '保存済みの置き換えルールはありません。',
   'slash.out.masking.rulesHeading':
     '置き換えルール（{count}）',
+  'slash.out.masking.notARuleEntry':
+    "ルールではありません（\"match\" と \"alias\" の文字列が必要です）",
   'slash.out.masking.testMasked':
     'モデルが受け取る内容:',
   'slash.out.masking.testNoHits':

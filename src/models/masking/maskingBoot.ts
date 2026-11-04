@@ -3,14 +3,14 @@
  * the `modelMasking` section, and the log sink on the runtime's host port.
  * Idempotent per realm; returns false (and does nothing) until a
  * home directory and a host port exist, so the caller retries later. A
- * settings file that exists but cannot be read leaves masking `unknown`
- * (requests refused) and is read again. `settleWithoutSettings` is for a
- * session that has no settings file at all (no home directory): masking can
- * never have been turned on there, so it is off.
+ * settings file that exists but cannot be read, parsed or understood leaves
+ * masking `unknown` (requests refused) and is read again from disk, never
+ * from a cache. `settleWithoutSettings` is only for a host that reports no
+ * home directory at all: there is no settings file, so masking is off.
  */
 import type { BrowserBridgeTransport } from '../../browser/bridge/browserBridgeProtocol'
 import { createBridgeRoute } from '../../browser/bridge/protocol/core'
-import { readUserLayer } from '../../settings/settingsStore'
+import { readLayerFresh } from '../../settings/settingsStore'
 import { resolveProviderUserAgent } from '../../config/providerUserAgent'
 import { runtimeProviderConfigs } from '../drivers/runtimeProviders'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
@@ -67,13 +67,13 @@ export function startModelMasking(host: MaskingBootHost, holder: ModelMaskingHol
   holder.setLogSink(createMaskingLogSink(host))
   holder.setPresetUserAgentResolver(providerId => resolveProviderUserAgent(providerId, runtimeProviderConfigs()[providerId]))
   void holder.load(async () => {
-    const result = await readUserLayer(homeDir, host.fs())
+    const result = await readLayerFresh('userSettings', { homeDir }, host.fs())
     return result.unread ? 'unreadable' : result.settings.modelMasking
   })
   return true
 }
 
-/** A session with no settings file: masking is off (it cannot be on). */
+/** A host with no home directory, so no settings file: masking is off (it cannot be on). */
 export function settleWithoutSettings(holder: ModelMaskingHolder = modelMasking): void {
   if (started) return
   if (holder.status().state === 'unknown') holder.configure(undefined)

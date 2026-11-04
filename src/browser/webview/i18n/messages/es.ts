@@ -2659,6 +2659,8 @@ export const es: Messages = {
     'No hay reglas de reemplazo guardadas.',
   'slash.out.masking.rulesHeading':
     'Reglas de reemplazo ({count})',
+  'slash.out.masking.notARuleEntry':
+    "no es una regla (necesita las cadenas \"match\" y \"alias\")",
   'slash.out.masking.testMasked':
     'El modelo recibiría:',
   'slash.out.masking.testNoHits':

@@ -233,7 +233,8 @@ class DriverStream {
       if (this.masking) this.payload = this.masking.maskPayload(this.payload)
       request = this.provider.buildRequest(this.payload, this.model)
     } catch (error) {
-      this.fail(`Failed to build the ${this.provider.format} request: ${errorText(error)}`)
+      if (error instanceof MaskingResidualError) this.fail(errorText(error), maskingRefusal(error))
+      else this.fail(`Failed to build the ${this.provider.format} request: ${errorText(error)}`)
       return
     }
     const pool = poolFor(this.provider)

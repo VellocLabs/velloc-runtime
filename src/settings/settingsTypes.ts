@@ -485,7 +485,8 @@ export type NexusSettingsV1 = {
  *  rules are validated where they are used; a table that fails is not used. */
 export type NexusModelMaskingSettings = {
   enabled?: boolean
-  rules?: Array<{ match: string; alias: string }>
+  /** As written: a valid table is an array of `{ match, alias }` strings. */
+  rules?: unknown
   /** Absolute path of the replacement log; absent = no log. */
   logPath?: string
   /** `context` adds the text around each outbound hit. Default `counts`. */

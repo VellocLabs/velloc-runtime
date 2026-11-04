@@ -2654,6 +2654,8 @@ export const de: Messages = {
     'Es sind keine Ersetzungsregeln gespeichert.',
   'slash.out.masking.rulesHeading':
     'Ersetzungsregeln ({count})',
+  'slash.out.masking.notARuleEntry':
+    "keine Regel (braucht die Zeichenketten \"match\" und \"alias\")",
   'slash.out.masking.testMasked':
     'Das Modell würde erhalten:',
   'slash.out.masking.testNoHits':

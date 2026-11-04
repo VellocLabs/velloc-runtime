@@ -14,14 +14,13 @@ import type { SystemMessagePart } from '../runtime/RuntimeTypes'
 import type { MessageKey } from '../browser/webview/i18n/messages/en'
 import type { NexusModelMaskingSettings } from '../settings/settingsTypes'
 import { createLocalizedSystemMessage } from '../messages/messageFactories'
-import { updateSectionInSource } from '../settings/settingsStore'
+import { SettingsUnreadableError, updateSectionInSource } from '../settings/settingsStore'
 import { fsForContext } from '../utils/fs/runtimeFs'
 import { isAbsoluteRuntimePath, resolveRuntimePath } from '../utils/runtimePaths'
 import { modelMasking, type MaskingError, type ModelMaskingHolder } from '../models/masking/maskingHolder'
 import {
   compileMasking,
   validateMaskingRules,
-  type MaskingRule,
   type MaskingRuleProblem,
 } from '../models/masking/maskingRules'
 import { BLOCK, bulletLines, key, text, title } from './systemMessageParts'
@@ -101,12 +100,23 @@ function rulesOf(parsed: unknown): { rules: unknown; ignored: string[] } {
   return { rules: parsed, ignored: [] }
 }
 
+/** A run of backticks longer than any run in `value`, at least `min` long. */
+function fenceFor(value: string, min: number): string {
+  const longest = Math.max(0, ...(value.match(/`+/g) ?? []).map(run => run.length))
+  return '`'.repeat(Math.max(min, longest + 1))
+}
+
 /** `value` inside a markdown code span, whatever backticks it holds. */
 function codeSpan(value: string): string {
-  const longest = Math.max(0, ...(value.match(/`+/g) ?? []).map(run => run.length))
-  const fence = '`'.repeat(longest + 1)
+  const fence = fenceFor(value, 1)
   const pad = value.startsWith('`') || value.endsWith('`') ? ' ' : ''
   return `${fence}${pad}${value}${pad}${fence}`
+}
+
+/** `value` as a fenced code block that its own backticks cannot close. */
+function codeBlock(value: string): string {
+  const fence = fenceFor(value, 3)
+  return `${fence}\n${value}\n${fence}`
 }
 
 export async function runMaskingCommand(
@@ -132,13 +142,22 @@ export async function runMaskingCommand(
     const homeDir = options.settingsHomeDir
     if (!homeDir) return key('slash.out.masking.noSettings')
     try {
-      const next = await updateSectionInSource('userSettings', { homeDir }, fs, 'modelMasking', prev => {
-        const updated = update({ ...(prev ?? {}) })
-        return Object.keys(updated).length > 0 ? updated : undefined
-      })
+      const next = await updateSectionInSource(
+        'userSettings',
+        { homeDir },
+        fs,
+        'modelMasking',
+        prev => {
+          const updated = update({ ...(prev ?? {}) })
+          return Object.keys(updated).length > 0 ? updated : undefined
+        },
+        // A file whose content is unknown is never replaced by one section.
+        { refuseUnread: true },
+      )
       holder.configure(next.modelMasking)
       return undefined
     } catch (error) {
+      if (error instanceof SettingsUnreadableError) return key('slash.out.masking.error.settingsUnreadable')
       return key('slash.out.masking.persistFailed', { error: errorText(error) })
     }
   }
@@ -234,7 +253,7 @@ export async function runMaskingCommand(
     const masked = compileMasking(validated.rules).maskText(rest, hit => {
       counts.set(hit.rule, (counts.get(hit.rule) ?? 0) + 1)
     })
-    const parts: SystemMessagePart[] = [key('slash.out.masking.testMasked'), text(`${BLOCK}\`\`\`\n${masked.text}\n\`\`\``)]
+    const parts: SystemMessagePart[] = [key('slash.out.masking.testMasked'), text(`${BLOCK}${codeBlock(masked.text)}`)]
     if (counts.size === 0) parts.push(text(BLOCK), key('slash.out.masking.testNoHits'))
     else {
       parts.push(text(BLOCK), key('slash.out.masking.testHits'), text(BLOCK))
@@ -269,13 +288,20 @@ function statusParts(holder: ModelMaskingHolder): SystemMessagePart[] {
   return parts
 }
 
-/** The saved rules, numbered as the problems and the log number them. */
+/** The saved rules as written, numbered as the problems and the log number
+ *  them; an entry that is not a rule is listed as such, never read. */
 function rulesListParts(holder: ModelMaskingHolder): SystemMessagePart[] {
-  const rules: readonly MaskingRule[] = holder.savedRules()
-  if (rules.length === 0) return [key('slash.out.masking.rulesEmpty')]
-  return [
-    ...title(key('slash.out.masking.rulesHeading', { count: rules.length })),
-    text(BLOCK),
-    ...bulletLines(rules.map((rule, i) => text(`#${i + 1} ${codeSpan(rule.match)} → ${codeSpan(rule.alias)}`))),
-  ]
+  const saved = holder.savedRules()
+  if (!Array.isArray(saved)) return [key('slash.out.masking.badTable'), text(' '), problemPart({ reason: 'not_a_list' })]
+  if (saved.length === 0) return [key('slash.out.masking.rulesEmpty')]
+  const line = (entry: unknown, i: number): SystemMessagePart[] => {
+    const rule = entry as { match?: unknown; alias?: unknown } | null
+    if (rule && typeof rule === 'object' && typeof rule.match === 'string' && typeof rule.alias === 'string') {
+      return [text(`#${i + 1} ${codeSpan(rule.match)} → ${codeSpan(rule.alias)}`)]
+    }
+    return [text(`#${i + 1} `), key('slash.out.masking.notARuleEntry')]
+  }
+  const parts: SystemMessagePart[] = [...title(key('slash.out.masking.rulesHeading', { count: saved.length })), text(BLOCK)]
+  saved.forEach((entry, i) => parts.push(text(i === 0 ? '- ' : '\n- '), ...line(entry, i)))
+  return parts
 }
