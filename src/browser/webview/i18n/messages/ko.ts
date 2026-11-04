@@ -117,6 +117,8 @@ export const ko: Messages = {
   "reviewCard.publish": "게시",
   "reviewCard.repair": "선택 항목 수정",
   "reviewCard.rerun": "다시 검토",
+  "reviewCard.rerunStarted": "이 검토를 다시 실행했습니다.",
+  "reviewCard.showRerun": "보기",
   "reviewCard.revisionOnly": "기록된 리비전만",
   "reviewCard.select": "{title} 선택",
   "reviewCard.selectAll": "모두 선택",

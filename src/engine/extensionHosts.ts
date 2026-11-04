@@ -551,7 +551,8 @@ export class ExtensionHosts {
     void mods.sessionMeasure(() => this.transcript.usage())
   }
 
-  private notifyRewritten(): void {
+  /** Tells the worker the rows changed outside the stream it copies. */
+  notifyRewritten(): void {
     try {
       this.rewrittenListener?.()
     } catch (error) {

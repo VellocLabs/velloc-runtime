@@ -24,10 +24,13 @@ export class ConversationEngine {
   private readonly titler: SessionTitler
   private readonly hosts: ExtensionHosts
   private readonly parts: EngineParts
+  private readonly writer: TranscriptWriter
+  private betweenTurns: Promise<void> = Promise.resolve()
 
   constructor(config: ConversationEngineConfig) {
     this.ledger = new SessionLedger(config)
     const writer = new TranscriptWriter(this.ledger)
+    this.writer = writer
     this.titler = new SessionTitler(
       { store: config.conversationStore, rows: () => this.ledger.rows, sessionId: () => this.ledger.sessionId() },
       config.titleServices,
@@ -37,7 +40,7 @@ export class ConversationEngine {
     if (config.reviewRuntime && config.fsOperations) {
       void import('../codeReview/runtime').then(({ getOrCreateReviewService }) =>
         getOrCreateReviewService(this.ledger.callContext(), config.decidePermission),
-      ).catch(error => console.warn('[review] restore unavailable', error))
+      ).then(service => { service.transcript = { append: rows => this.appendBetweenTurns(rows) } }).catch(error => console.warn('[review] restore unavailable', error))
     }
   }
 
@@ -72,6 +75,25 @@ export class ConversationEngine {
 
   transcriptRows(): readonly Message[] {
     return this.ledger.rows
+  }
+
+  /**
+   * Contract: appends `rows` and stores them when no model turn runs, else as soon as the turn in flight ends, in call
+   * order; open pages are told through the rewritten listener. Rows meant for a conversation `/clear` has since
+   * replaced are dropped. Never rejects.
+   */
+  appendBetweenTurns(rows: readonly Message[]): Promise<void> {
+    const epoch = this.ledger.epoch
+    const next = this.betweenTurns.then(async () => {
+      const kept = await this.writer.appendRows(rows)
+      while (this.ledger.turnEnded) await this.ledger.turnEnded
+      if (this.ledger.epoch !== epoch || kept.length === 0) return
+      this.ledger.rows.push(...kept)
+      await this.writer.persist()
+      this.hosts.notifyRewritten()
+    }).catch(error => console.warn('[nexus] rows for between turns were not stored', error))
+    this.betweenTurns = next
+    return next
   }
 
   /** Changes whenever the conversation is replaced (`/clear`). */

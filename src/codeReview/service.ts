@@ -10,6 +10,7 @@ import { createReviewTools, withRefusalHint, REVIEW_RESULT_SCHEMA, REVIEW_ASSESS
 import { ReviewWorkerPool, endOf, type ReviewModelRunner, type ReviewTaskObserver } from './runner'
 import { lookupForkTaskId } from '../backgroundTasks/sideTaskSink'
 import type { ToolContract } from '../toolkit/toolContract'
+import type { Message } from '../runtime/RuntimeTypes'
 
 export interface ReviewPreferencesStorage { load(): Promise<ReviewPreferences>; save(value: ReviewPreferences): Promise<void> }
 export interface ReviewScopeAccess {
@@ -60,6 +61,8 @@ interface LiveRun {
   startVerification?: () => Promise<VerificationOutcome>
   findersLaunched?: boolean
 }
+/** Contract: adds rows to the session's transcript between model turns, in call order; never rejects. */
+export interface ReviewTranscriptSink { append(rows: readonly Message[]): Promise<void> }
 export class ReviewGatewayError extends Error { constructor(readonly code: string) { super(code) } }
 const onlyTestsSkipped = (manifest: ScopeManifest): boolean => !manifest.files.some(file => file.status === 'included') && manifest.files.some(file => file.status === 'skipped' && isTestOrFixturePath(file.path))
 const block = (text: string, source: string): ReviewPromptBlock => ({ type: 'text', text, source, provenance: 'trusted-task' })
@@ -124,6 +127,8 @@ export function reviewMaterial(manifest: ScopeManifest, paths?: readonly string[
 /** Invocation provenance is selected by separate host entry points, never by model JSON. */
 export class LocalReviewService {
   readonly store: ReviewReportStore
+  /** The session's transcript, set by the session's engine; a rerun is announced through it. */
+  transcript?: ReviewTranscriptSink
   private readonly live = new Map<string, LiveRun>()
   private readonly pending = new Map<string, { toolCallId: string; controller: AbortController }>()
   /** Controllers aborted by the card's cancel action; a start and its run share one, so both read the same cause. */
@@ -215,12 +220,12 @@ export class LocalReviewService {
   }
   /** Model-requested reviews whose run does not exist yet; `cancel` accepts their ids. */
   preparing(): Array<{ id: string; toolCallId: string }> { return [...this.pending].map(([id, entry]) => ({ id, toolCallId: entry.toolCallId })) }
-  private async start(raw: string, source: 'user' | 'model', signal?: AbortSignal, presentation?: OutputMode, toolCallId?: string): Promise<{ runId: string }> {
+  private async start(raw: string, source: 'user' | 'model', signal?: AbortSignal, presentation?: OutputMode, toolCallId?: string, rerunOf?: string): Promise<{ runId: string }> {
     const operation = this.operation(signal)
     const pendingId = toolCallId ? `preparing-${crypto.randomUUID()}` : undefined
     if (pendingId) { this.pending.set(pendingId, { toolCallId: toolCallId!, controller: operation.controller }); this.changed() }
     const created: { creating?: boolean } = {}
-    const prepared = this.prepare(raw, source, operation.controller, presentation, toolCallId, created)
+    const prepared = this.prepare(raw, source, operation.controller, presentation, toolCallId, created, rerunOf)
     const handOff = (result: { runId: string }) => { void this.live.get(result.runId)!.done.then(operation.release, operation.release); return result }
     try {
       // Scope resolution can wait on a prompt that ignores the signal; a cancelled start still returns at once.
@@ -236,7 +241,7 @@ export class LocalReviewService {
       throw error
     } finally { if (pendingId && this.pending.delete(pendingId)) this.changed() }
   }
-  private async prepare(raw: string, source: 'user' | 'model', controller: AbortController, presentation?: OutputMode, toolCallId?: string, created?: { creating?: boolean }): Promise<{ runId: string }> {
+  private async prepare(raw: string, source: 'user' | 'model', controller: AbortController, presentation?: OutputMode, toolCallId?: string, created?: { creating?: boolean }, rerunOf?: string): Promise<{ runId: string }> {
     const parsed = parseReviewArguments(raw)
     if (!parsed.ok) throw new ReviewGatewayError(parsed.error.code)
     if (source === 'model' && (parsed.arguments.fix || parsed.arguments.comment)) throw new ReviewGatewayError('action-not-authorized')
@@ -272,7 +277,7 @@ export class LocalReviewService {
     this.admit(controller.signal)
     if (created) created.creating = true
     const runId = await this.store.createRun({ conversationKey: this.options.conversationKey, scope: access.manifest.scope,
-      policy: plan, expectedAngles: access.manifest.status === 'empty' ? [] : [...plan.angles], ...(toolCallId ? { toolCallId } : {}) })
+      policy: plan, expectedAngles: access.manifest.status === 'empty' ? [] : [...plan.angles], ...(toolCallId ? { toolCallId } : {}), ...(rerunOf ? { rerunOf } : {}) })
     await this.options.saveTarget?.(runId, parsed.arguments.target, parsed.arguments.targetLiteral, parsed.arguments.directory)
     await this.options.savePresentation?.(runId, { notices: plan.notices, emptyScope: access.manifest.status === 'empty', target: [parsed.arguments.directory, parsed.arguments.target].filter(Boolean).join(' ') || undefined })
     for (const anchor of access.manifest.anchors) {
@@ -778,6 +783,6 @@ export class LocalReviewService {
     if ([target, directory].some(value => value?.includes('"') && value.includes("'"))) throw new ReviewGatewayError('review-target-needs-selection')
     const quote = (value: string) => value.includes('"') ? `'${value}'` : `"${value}"`
     const literal = live?.args.targetLiteral ?? await this.options.loadTargetLiteral?.(runId)
-    return this.start(`${snapshot.run.policy.level}${directory ? ` -C ${quote(directory)}` : ''}${target ? ` ${literal ? '-- ' : ''}${quote(target)}` : ''}`, 'user', undefined, presentation)
+    return this.start(`${snapshot.run.policy.level}${directory ? ` -C ${quote(directory)}` : ''}${target ? ` ${literal ? '-- ' : ''}${quote(target)}` : ''}`, 'user', undefined, presentation, undefined, runId)
   }
 }

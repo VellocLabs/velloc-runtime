@@ -150,6 +150,8 @@ export type ReviewRun = {
   reportRevision: number
   /** The model's Skill tool call that started the run, when one did; the conversation anchors its card to it. */
   toolCallId?: string
+  /** The run this one reviews again, when the user started it from that run's card. */
+  rerunOf?: string
 }
 
 export type Diagnostic = {

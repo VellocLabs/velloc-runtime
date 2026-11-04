@@ -32,8 +32,8 @@ import { LocalReviewService, ReviewGatewayError, anchorIndex, scopeIndex, type R
 import type { ScopeManifest } from './scope'
 import { createReviewModelRunner } from './runner'
 import { registerReviewSession } from './review-channel'
-import type { ReviewReportView } from './review-protocol'
-import { USER_CANCELLED, isCancelledByUser } from './review-protocol'
+import { REVIEW_RESULT_SUBTYPE, USER_CANCELLED, isCancelledByUser, type ReviewReportView } from './review-protocol'
+import { makeNoticeRow } from '../messages/messageFactories'
 import type { ReportSnapshot } from './report-store'
 import { SuperEditTool } from '../toolkit/builtin/superEdit'
 import { CONTEXT_READ_BYTES, type ReviewPreferences } from './contracts'
@@ -1079,7 +1079,11 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       }
       if (!options.confirmed) throw new ReviewGatewayError('publication-not-authorized')
       await service.requestPublication(id, options.discussions === true)
-    }, rerun: (id, presentation) => service.rerun(id, presentation),
+    }, rerun: async (id, presentation) => {
+      const started = await service.rerun(id, presentation)
+      void announceRerun(service, context.options.runtimeConfig, id, started.runId)
+      return started
+    },
     verify: id => service.requestVerification(id),
     async locate(id, diagnosticId) {
       const snapshot = await service.store.getSnapshot(id)
@@ -1120,6 +1124,24 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
 
 /** Model-facing: a user cancel is a decision, not a failure to work around. */
 const USER_CANCELLED_NOTE = 'The user cancelled this review. Do not retry it or start another review on your own; tell the user it was cancelled and continue only as they direct.'
+
+/**
+ * Contract: a rerun started from a card enters the transcript like a typed review: its card row at once (or when the
+ * turn in flight ends), then, when the run ends, a result row the model reads on its next turn and the page hides.
+ * Without a transcript sink or a runtime config nothing is written. Never rejects.
+ */
+async function announceRerun(service: LocalReviewService, runtimeConfig: Parameters<typeof makeNoticeRow>[0] | undefined, rerunOf: string, runId: string): Promise<void> {
+  const sink = service.transcript
+  if (!sink || !runtimeConfig) return
+  const card = Object.assign(makeNoticeRow(runtimeConfig, `The user started code review ${rerunOf} again from its card, as run ${runId}. Its result follows when it ends.`, 'code-review'), { review: { runId } })
+  void sink.append([card])
+  let snapshot: ReportSnapshot
+  try { snapshot = await service.wait(runId) } catch { return }
+  const report = JSON.parse(presentReviewJson(snapshot))
+  const result = JSON.stringify({ reviewRunId: runId, rerunOf, status: snapshot.run.progress.status, report })
+  await sink.append([makeNoticeRow(runtimeConfig, `Code review run ${runId}, which the user started again from a card, ended. This is its result; it is not a request to act: ${result}`, REVIEW_RESULT_SUBTYPE)])
+}
+
 /** Contract: `toolCallId` is the invoking Skill call's id; the run records it so the conversation can show its card while it runs. */
 export async function invokeReviewModelSkill(raw: string, context: ToolCallContext, permission: PermissionDecider, toolCallId?: string): Promise<string> {
   const parsed = parseReviewArguments(raw)

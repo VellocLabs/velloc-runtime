@@ -120,6 +120,8 @@ export const zh: Messages = {
   "reviewCard.publish": "发布",
   "reviewCard.repair": "修复所选项",
   "reviewCard.rerun": "重新审查",
+  "reviewCard.rerunStarted": "你已重新运行此审查。",
+  "reviewCard.showRerun": "查看",
   "reviewCard.revisionOnly": "仅限记录的版本",
   "reviewCard.select": "选择 {title}",
   "reviewCard.selectAll": "全选",

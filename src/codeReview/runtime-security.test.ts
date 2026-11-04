@@ -165,6 +165,24 @@ describe('review execution admission', () => {
     expect(typeof value.note).toBe('string')
   })
 
+  it('announces a card rerun in the transcript: its card row, then a result row for the model', async () => {
+    const { getReviewSession } = await import('./review-channel')
+    const h = fixture()
+    Object.assign(h.context.options.runtimeConfig!, { createUUID: () => crypto.randomUUID(), createTimestamp: () => new Date().toISOString() })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const appended: Message[][] = []
+    service.transcript = { append: async rows => { appended.push([...rows]) } }
+    const { runId } = await service.startUser('low')
+    await service.wait(runId)
+    expect(appended).toEqual([])
+    const started = await getReviewSession(h.context.options.sessionId)!.rerun(runId) as { runId: string }
+    await vi.waitFor(() => expect(appended).toHaveLength(2))
+    expect(appended[0]).toMatchObject([{ type: 'system', subtype: 'code-review', review: { runId: started.runId } }])
+    expect(appended[1]).toMatchObject([{ type: 'system', subtype: 'code-review-result' }])
+    expect((appended[1]![0] as unknown as { message: string }).message).toContain(`"reviewRunId":"${started.runId}"`)
+    expect((await service.store.getSnapshot(started.runId)).run.rerunOf).toBe(runId)
+  })
+
   it('creates the guarded report directory before native restoration reads', async () => {
     const h = fixture()
     let created = false

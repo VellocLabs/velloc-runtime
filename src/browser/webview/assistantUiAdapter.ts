@@ -1,4 +1,4 @@
-import { reviewNoticeRunId } from '../../codeReview/review-protocol'
+import { isReviewResultRow, reviewNoticeRunId } from '../../codeReview/review-protocol'
 import type {
   AppendMessage,
   CompleteAttachment,
@@ -413,6 +413,7 @@ function convertTranscriptMessage(
         return memorySavedThreadMessage(message)
       }
 
+      if (isReviewResultRow(message)) return null
       const systemText = formatSystemMessage(message, t)
       if (!systemText) {
         return null
@@ -732,6 +733,8 @@ function createLiveAssistantMessages(
           liveIndex++
           break
         }
+
+        if (isReviewResultRow(message)) break
 
         const systemText = formatSystemMessage(message, t)
         if (systemText) {

@@ -120,6 +120,8 @@ export const es: Messages = {
   "reviewCard.publish": "Publicar",
   "reviewCard.repair": "Corregir selección",
   "reviewCard.rerun": "Revisar de nuevo",
+  "reviewCard.rerunStarted": "Volviste a ejecutar esta revisión.",
+  "reviewCard.showRerun": "Mostrar",
   "reviewCard.revisionOnly": "Solo revisiones registradas",
   "reviewCard.select": "Seleccionar {title}",
   "reviewCard.selectAll": "Seleccionar todo",

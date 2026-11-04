@@ -116,6 +116,8 @@ export const fr: Messages = {
   "reviewCard.publish": "Publier",
   "reviewCard.repair": "Corriger la sélection",
   "reviewCard.rerun": "Relancer la revue",
+  "reviewCard.rerunStarted": "Vous avez relancé cette revue.",
+  "reviewCard.showRerun": "Afficher",
   "reviewCard.revisionOnly": "Révisions enregistrées uniquement",
   "reviewCard.select": "Sélectionner {title}",
   "reviewCard.selectAll": "Tout sélectionner",

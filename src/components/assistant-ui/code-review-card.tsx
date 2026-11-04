@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type FC, type ReactNode } from 'react'
 import { useAssistantState } from '@assistant-ui/react'
-import { CheckIcon, ChevronDownIcon, CircleSlashIcon, CopyIcon, EllipsisIcon, Loader2Icon, SearchCheckIcon, SquareIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, CircleSlashIcon, CopyIcon, EllipsisIcon, Loader2Icon, RotateCwIcon, SearchCheckIcon, SquareIcon } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import type { RuntimeConnection } from '@/browser/runtimeClient/RuntimeConnection'
 import { useT } from '@/browser/webview/i18n'
@@ -253,7 +253,7 @@ export const CodeReviewMessage: FC = () => {
 
 /** A review card as its own transcript row: held to the thread's text column like every other row. */
 export const CodeReviewRow: FC<{ runId: string }> = ({ runId }) => (
-  <div data-testid="code-review-row" className="mx-auto w-full max-w-(--thread-max-width) px-2">
+  <div data-testid="code-review-row" data-review-run={runId} className="mx-auto w-full max-w-(--thread-max-width) px-2">
     <CodeReviewCard runId={runId} />
   </div>
 )
@@ -265,6 +265,7 @@ export const CodeReviewRow: FC<{ runId: string }> = ({ runId }) => (
 export const CodeReviewCard: FC<{ runId?: string; toolCallId?: string; starting?: boolean; fallback?: ReactNode }> = ({ runId, toolCallId, starting = false, fallback }) => {
   const t = useT()
   const { connection, sessionId, readOnly } = useContext(ReviewConnectionContext)
+  // Set only when the rerun's own transcript row is not there to scroll to: the card then shows the rerun in place.
   const [rerunRunId, setRerunRunId] = useState<string | undefined>()
   const [conn, setConn] = useState<RuntimeConnection | null>(null)
   const [unavailable, setUnavailable] = useState(false)
@@ -297,11 +298,14 @@ export const CodeReviewCard: FC<{ runId?: string; toolCallId?: string; starting?
     return <Card className="my-2 gap-0 p-4 text-sm text-muted-foreground" data-testid="code-review-card">{t(unavailable || snapshot ? 'reviewCard.unavailable' : 'reviewCard.loading')}</Card>
   }
   const can = (action: ReviewAction) => !readOnly && !!report.permissions?.[action] && !!conn?.can('review', action)
-  return <ReviewReportCard key={selectedRunId} report={report} can={can} onAction={async (action, extra = {}) => {
+  const rerun = snapshot?.reports.filter(item => item.run.rerunOf === report.run.id).at(-1)
+  return <ReviewReportCard key={selectedRunId} report={report} can={can} rerun={rerun && { status: rerun.run.progress.status, show: () => {
+    const row = Array.from(document.querySelectorAll<HTMLElement>('[data-review-run]')).find(element => element.dataset.reviewRun === rerun.run.id)
+    if (row) row.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    else setRerunRunId(rerun.run.id)
+  } }} onAction={async (action, extra = {}) => {
     if (!conn || !can(action)) throw new Error('Review action unavailable')
-    const result = await conn.request<unknown>(`review.${action}`, { sessionId, runId: selectedRunId, ...extra })
-    if (action === 'rerun' && result && typeof result === 'object' && 'runId' in result && typeof result.runId === 'string') setRerunRunId(result.runId)
-    return result
+    return conn.request<unknown>(`review.${action}`, { sessionId, runId: selectedRunId, ...extra })
   }} />
 }
 
@@ -357,9 +361,11 @@ const ReviewStages: FC<{ recipe: string; agentMode?: string; stage: Stage; queue
 
 export const ReviewReportCard: FC<{
   report: ReviewReportView
+  /** The latest run started again from this card: its status, and a jump to its own transcript row. */
+  rerun?: { status: ReviewRun['progress']['status']; show: () => void }
   can: (action: ReviewAction) => boolean
   onAction: (action: ReviewAction, extra?: Record<string, unknown>) => Promise<unknown>
-}> = ({ report, can, onAction }) => {
+}> = ({ report, rerun, can, onAction }) => {
   const t = useT()
   const { openFile } = useRightPanelContent()
   const [severity, setSeverity] = useState('all')
@@ -428,6 +434,12 @@ export const ReviewReportCard: FC<{
       action={reviewing ? undefined : stop} />
     {!collapsed && <div id={bodyId}>
       <div className="flex flex-col gap-3 border-t px-4 py-3">
+        {rerun && <div data-testid="review-rerun-of" className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-1.5 text-xs text-muted-foreground">
+          <RotateCwIcon aria-hidden className="size-3.5 shrink-0" />
+          <span className="mr-auto">{t('reviewCard.rerunStarted')}</span>
+          <Badge variant={STATUS_VARIANT[rerun.status]} size="sm" aria-live="polite">{enumText(rerun.status)}</Badge>
+          <Button type="button" variant="ghost" size="xs" data-testid="review-show-rerun" onClick={rerun.show}>{t('reviewCard.showRerun')}</Button>
+        </div>}
         {reviewing ? <>
           <ReviewStages recipe={run.policy.recipe} agentMode={run.policy.agentMode} stage={stage} queued={status === 'queued'} action={stop} />
           <ReviewActivity tasks={report.tasks ?? []} status={enumText(reviewStatusValue(status, stage))} />

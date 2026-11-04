@@ -69,6 +69,9 @@ export function reviewRunIdOfSkillResult(result: unknown): string | null {
   return isReviewId(value.reviewRunId) ? value.reviewRunId : null
 }
 
+/** A system row that hands a rerun's result to the model; the page does not show it. */
+export const REVIEW_RESULT_SUBTYPE = 'code-review-result'
+export const isReviewResultRow = (message: unknown): boolean => record(message) && message.type === 'system' && message.subtype === REVIEW_RESULT_SUBTYPE
 /** Only a persisted system row's structured metadata can select a report card. */
 export function reviewNoticeRunId(message: unknown): string | null {
   if (!record(message) || message.type !== 'system' || message.subtype !== 'code-review' || !record(message.review)) return null

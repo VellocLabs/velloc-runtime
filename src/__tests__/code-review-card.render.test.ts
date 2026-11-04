@@ -336,6 +336,28 @@ it('checks capability and action separately on the real connection-shaped card',
   expect(can).toHaveBeenCalledWith('review', 'rerun')
 })
 
+it('links a card to the run started again from it, scrolling to the rerun row, or showing the rerun in place without one', async () => {
+  const first = report()
+  const again = report()
+  again.run = { ...again.run, id: 'r2', rerunOf: 'r1', progress: { ...again.run.progress, status: 'active', stage: 'inspect' } }
+  const connection = { can: () => true, request: vi.fn(), subscribe: (_topic: string, listener: (event: unknown) => void) => { listener({ payload: { sessionId: 's1', sequence: 1, reports: [first, again] } }); return () => {} } }
+  const target = document.createElement('div')
+  target.dataset.reviewRun = 'r2'
+  target.scrollIntoView = vi.fn()
+  document.body.appendChild(target)
+  render(createElement(CodeReviewProvider, { value: { sessionId: 's1', connection: async () => connection as never } }, createElement(CodeReviewCard, { runId: 'r1' })))
+  const banner = await screen.findByTestId('review-rerun-of')
+  expect(banner.textContent).toContain(t('reviewCard.rerunStarted'))
+  expect(banner.textContent).toContain(t('reviewCard.value.active'))
+  fireEvent.click(screen.getByTestId('review-show-rerun'))
+  expect(target.scrollIntoView).toHaveBeenCalled()
+  expect(screen.getByTestId('code-review-card').dataset.status).toBe('partial')
+  target.remove()
+  fireEvent.click(screen.getByTestId('review-show-rerun'))
+  await waitFor(() => expect(screen.getByTestId('code-review-card').dataset.status).toBe('active'))
+  expect(screen.queryByTestId('review-rerun-of')).toBeNull()
+})
+
 it('defaults GitLab publication to summary and carries explicit discussion intent through preview and confirmation', async () => {
   const value = report()
   value.run.scope.repository.platform = 'gitlab'

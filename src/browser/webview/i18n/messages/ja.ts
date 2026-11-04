@@ -117,6 +117,8 @@ export const ja: Messages = {
   "reviewCard.publish": "公開",
   "reviewCard.repair": "選択項目を修正",
   "reviewCard.rerun": "再レビュー",
+  "reviewCard.rerunStarted": "このレビューを再実行しました。",
+  "reviewCard.showRerun": "表示",
   "reviewCard.revisionOnly": "記録されたリビジョンのみ",
   "reviewCard.select": "{title} を選択",
   "reviewCard.selectAll": "すべて選択",

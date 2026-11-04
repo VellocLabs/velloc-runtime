@@ -120,6 +120,8 @@ export const en = {
   "reviewCard.publish": "Publish",
   "reviewCard.repair": "Repair selected",
   "reviewCard.rerun": "Review again",
+  "reviewCard.rerunStarted": "You ran this review again.",
+  "reviewCard.showRerun": "Show",
   "reviewCard.revisionOnly": "Recorded revisions only",
   "reviewCard.select": "Select {title}",
   "reviewCard.selectAll": "Select all",
