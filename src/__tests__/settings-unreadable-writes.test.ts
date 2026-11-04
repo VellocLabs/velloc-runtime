@@ -120,7 +120,7 @@ describe('masking after an unrelated write over an unreadable file', () => {
       ).rejects.toBeInstanceOf(SettingsUnreadableError)
       await modelMasking.load(read)
       expect(modelMasking.status().state).toBe('unknown')
-      expect(() => modelMasking.openStream({ streamId: 's', provider: 'p', model: 'm' })).toThrow()
+      expect(() => modelMasking.openStream()).toThrow()
     })
   }
 })

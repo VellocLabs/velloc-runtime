@@ -2645,9 +2645,7 @@ export const fr: Messages = {
   'slash.out.masking.usage.listRules':
     'liste les règles enregistrées',
   'slash.out.masking.usage.log':
-    'écrit un journal des remplacements dans un fichier, ou arrête de l’écrire',
-  'slash.out.masking.usage.logDetail':
-    'consigne seulement les nombres, ou aussi le texte autour de chaque remplacement',
+    'écrit un journal des remplacements (les 5 000 lignes les plus récentes) dans un fichier, ou arrête de l’écrire',
   'slash.out.masking.usage.test':
     'montre comment un texte serait remplacé ; rien n’est envoyé',
   'slash.out.masking.noSettings':
@@ -2672,14 +2670,10 @@ export const fr: Messages = {
     '{count} règles chargées depuis {path}.',
   'slash.out.masking.rulesLoadedInline':
     '{count} règles chargées.',
-  'slash.out.masking.logDetailContext':
-    'Le journal consigne désormais aussi les 24 caractères de part et d’autre de chaque remplacement sortant. Ce texte, ce sont vos données.',
-  'slash.out.masking.logDetailCounts':
-    'Le journal ne consigne désormais que les nombres.',
   'slash.out.masking.logOff':
     'Le journal des remplacements est désactivé.',
   'slash.out.masking.logSet':
-    'Les remplacements sont consignés dans {path} ({detail}).',
+    'Les remplacements sont consignés dans {path}.',
   'slash.out.masking.rulesEmpty':
     'Aucune règle de remplacement n’est enregistrée.',
   'slash.out.masking.rulesHeading':
@@ -2703,11 +2697,9 @@ export const fr: Messages = {
   'slash.out.masking.statusOff':
     'Le remplacement est désactivé ({count} règles enregistrées).',
   'slash.out.masking.statusLog':
-    'Journal des remplacements : {path} ({detail}).',
+    'Journal des remplacements : {path}.',
   'slash.out.masking.statusNoLog':
     'Journal des remplacements : désactivé.',
-  'slash.out.masking.error.cannotRename':
-    'Cet hôte ne peut pas renommer de fichiers, donc le journal n’est pas renouvelé.',
   'slash.out.masking.error.hostDisconnected':
     'L’hôte n’est pas connecté.',
   'slash.out.masking.error.other':

@@ -4,7 +4,7 @@ import type { DriverStreamEvent } from '../models/drivers/driverTypes'
 import { compileMasking, type MaskingRule } from '../models/masking/maskingRules'
 import { maskPayload, MaskingTally, PayloadMasker } from '../models/masking/maskPayload'
 import { MaskingUndecodableError } from '../models/masking/egressGuard'
-import { createRestoreFilter, type RestoreWhere } from '../models/masking/restoreStream'
+import { createRestoreFilter } from '../models/masking/restoreStream'
 
 const RULES: MaskingRule[] = [
   { match: 'AcmeCo', alias: 'Northwind' },
@@ -55,7 +55,7 @@ describe('maskPayload', () => {
   it('masks the text the provider reads and leaves identifiers and bytes alone', () => {
     const original = payload()
     const snapshot = JSON.parse(JSON.stringify(original))
-    const tally = new MaskingTally(false)
+    const tally = new MaskingTally()
     const out = maskPayload(original, new PayloadMasker(masking, tally))
 
     expect(original).toEqual(snapshot)
@@ -84,21 +84,29 @@ describe('maskPayload', () => {
     })
     expect(out.providerBodyExtension).toEqual({ metadata: { user: 'Northwind' } })
 
-    expect(tally.hits.get('messages')!.get(1)).toBe(8)
-    expect(tally.hits.get('tools')!.get(1)).toBe(5)
-    expect(tally.collisions.size).toBe(0)
+    const per = (where: string) => tally.entries.filter(entry => entry.where === where).length
+    expect(per('messages')).toBe(10)
+    expect(per('tools')).toBe(5)
+    expect(per('system')).toBe(4)
+    expect(per('extension')).toBe(1)
+    expect(tally.entries.every(entry => entry.dir === 'out')).toBe(true)
   })
 
-  it('shares untouched parts and records collisions and context', () => {
-    const tally = new MaskingTally(true)
+  it('shares untouched parts and logs each replacement with the text before and after it', () => {
+    const tally = new MaskingTally()
     const original: BridgeModelRequestPayload = {
       messages: [{ role: 'user', content: 'plain' }, { role: 'user', content: 'Northwind already, and AcmeCo' }],
     }
     const out = maskPayload(original, new PayloadMasker(masking, tally))
     expect(out.messages[0]).toBe(original.messages[0])
-    expect([...tally.collisions]).toEqual(['messages'])
-    expect(tally.contexts).toEqual([
-      { rule: 0, where: 'messages', context: 'Northwind already, and ⟦Northwind⟧' },
+    expect(tally.entries).toEqual([
+      {
+        at: expect.any(Number),
+        dir: 'out',
+        where: 'messages',
+        original: 'Northwind already, and AcmeCo',
+        replaced: 'Northwind already, and Northwind',
+      },
     ])
   })
 })
@@ -116,7 +124,7 @@ describe('maskPayload: what counts as opaque', () => {
       tools: [{ type: 'function', name: 'Write', parameters: { properties: { data: { description: 'AcmeCo data' } } } }],
       providerBodyExtension: { data: 'AcmeCo' },
     }
-    const out = maskPayload(original, new PayloadMasker(masking, new MaskingTally(false)))
+    const out = maskPayload(original, new PayloadMasker(masking, new MaskingTally()))
     expect(JSON.stringify(out)).not.toMatch(/AcmeCo|widget/)
   })
 
@@ -129,7 +137,7 @@ describe('maskPayload: what counts as opaque', () => {
         { role: 'assistant', content: [{ type: 'thinking', thinking: 'AcmeCo', signature: 'AcmeCo-sig' }] },
       ],
     }
-    const out = maskPayload(original, new PayloadMasker(masking, new MaskingTally(false)))
+    const out = maskPayload(original, new PayloadMasker(masking, new MaskingTally()))
     expect((out.messages[0]!.content as any[])[0]).toBe(image)
     const nested = (out.messages[1]!.content as any[])[0].result
     expect(nested[0]).toBe(image)
@@ -141,9 +149,9 @@ describe('maskPayload: what counts as opaque', () => {
     const original: BridgeModelRequestPayload = {
       messages: [{ role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c', toolName: 'Edit', args: { AcmeCo: { widget: 1 } } }] }],
     }
-    const out = maskPayload(original, new PayloadMasker(masking, new MaskingTally(false)))
+    const out = maskPayload(original, new PayloadMasker(masking, new MaskingTally()))
     expect((out.messages[0]!.content as any[])[0].args).toEqual({ Northwind: { beacon: 1 } })
-    const filter = createRestoreFilter(masking, () => {})
+    const filter = createRestoreFilter(masking)
     const [call] = filter.apply([{ type: 'tool_call', id: 'c', name: 'Edit', input: { Northwind: { beacon: 1 } } }])
     expect((call as any).input).toEqual({ AcmeCo: { widget: 1 } })
   })
@@ -152,7 +160,7 @@ describe('maskPayload: what counts as opaque', () => {
     const b64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)))
     const text = { type: 'document', data: b64('notes about AcmeCo'), mimeType: 'text/plain' }
     const pdf = { type: 'document', data: b64('%PDF AcmeCo'), mimeType: 'application/pdf' }
-    const out = maskPayload({ messages: [{ role: 'user', content: [text, pdf] }] }, new PayloadMasker(masking, new MaskingTally(false)))
+    const out = maskPayload({ messages: [{ role: 'user', content: [text, pdf] }] }, new PayloadMasker(masking, new MaskingTally()))
     const [maskedText, keptPdf] = out.messages[0]!.content as any[]
     expect(new TextDecoder().decode(Uint8Array.from(atob(maskedText.data), c => c.charCodeAt(0)))).toBe('notes about Northwind')
     expect(keptPdf).toBe(pdf)
@@ -163,7 +171,7 @@ describe('maskPayload: what counts as opaque', () => {
     const latin1 = (text: string) => bytes([...text].map(c => c.charCodeAt(0)))
     const utf16le = (text: string) => bytes([...text].flatMap(c => [c.charCodeAt(0) & 0xff, c.charCodeAt(0) >> 8]))
     const mask = (part: Record<string, unknown>) =>
-      maskPayload({ messages: [{ role: 'user', content: [part as never] }] }, new PayloadMasker(masking, new MaskingTally(false)))
+      maskPayload({ messages: [{ role: 'user', content: [part as never] }] }, new PayloadMasker(masking, new MaskingTally()))
 
     for (const [name, part] of [
       ['Latin-1 bytes', { type: 'document', data: latin1('AcmeCo caf\u00e9 plan'), mimeType: 'text/plain' }],
@@ -193,20 +201,36 @@ describe('maskPayload: what counts as opaque', () => {
     })
   })
 
-  it('the log context never shows a neighbouring match in clear', () => {
-    const tally = new MaskingTally(true)
+  it('logs the original beside the replaced text, each with its own context', () => {
+    const tally = new MaskingTally()
     maskPayload({ messages: [{ role: 'user', content: 'AcmeCo and widget' }] }, new PayloadMasker(masking, tally))
-    expect(tally.contexts!.map(c => c.context)).toEqual(['⟦Northwind⟧ and beacon', 'Northwind and ⟦beacon⟧'])
-    expect(JSON.stringify(tally.contexts)).not.toMatch(/AcmeCo|widget/)
+    expect(tally.entries.map(entry => [entry.original, entry.replaced])).toEqual([
+      ['AcmeCo and widget', 'Northwind and beacon'],
+      ['AcmeCo and widget', 'Northwind and beacon'],
+    ])
+  })
+
+  it('cuts 50 characters on each side, measured in each text, and fewer at an end', () => {
+    const tally = new MaskingTally()
+    const a = (n: number) => 'a'.repeat(n)
+    const b = (n: number) => 'b'.repeat(n)
+    maskPayload(
+      { messages: [{ role: 'user', content: `${a(70)}widget AcmeCo${b(70)}` }, { role: 'user', content: 'x widget y' }] },
+      new PayloadMasker(masking, tally),
+    )
+    expect(tally.entries.map(entry => [entry.original, entry.replaced])).toEqual([
+      [`${a(50)}widget AcmeCo${b(43)}`, `${a(50)}beacon Northwind${b(40)}`],
+      [`${a(43)}widget AcmeCo${b(50)}`, `${a(43)}beacon Northwind${b(50)}`],
+      ['x widget y', 'x beacon y'],
+    ])
   })
 })
 
 function restoreAll(events: DriverStreamEvent[][]) {
-  const hits: Array<[RestoreWhere, number]> = []
-  const filter = createRestoreFilter(masking, (where, rule) => hits.push([where, rule]))
+  const filter = createRestoreFilter(masking)
   const out = events.flatMap(batch => filter.apply(batch))
   out.push(...filter.flush())
-  return { out, hits }
+  return { out, entries: filter.entries() }
 }
 
 const textOf = (events: DriverStreamEvent[], type: 'text_delta' | 'reasoning_delta') =>
@@ -215,9 +239,11 @@ const textOf = (events: DriverStreamEvent[], type: 'text_delta' | 'reasoning_del
 describe('createRestoreFilter', () => {
   it('restores an alias split into one-character deltas', () => {
     const reply = 'Built beacon for Northwind, and beacon again.'
-    const { out, hits } = restoreAll([...reply].map(ch => [{ type: 'text_delta', text: ch }]))
+    const { out, entries } = restoreAll([...reply].map(ch => [{ type: 'text_delta', text: ch }]))
     expect(textOf(out, 'text_delta')).toBe('Built widget for AcmeCo, and widget again.')
-    expect(hits).toEqual([['text', 1], ['text', 0], ['text', 1]])
+    expect(entries.map(entry => [entry.dir, entry.where, entry.original, entry.replaced])).toEqual(
+      Array(3).fill(['in', 'text', reply, 'Built widget for AcmeCo, and widget again.']),
+    )
   })
 
   it('keeps channels apart and flushes a held tail before another channel', () => {
@@ -268,7 +294,7 @@ describe('createRestoreFilter: argument text and anonymous calls', () => {
   const quoting = compileMasking([{ match: 'say "hi" C:\\x', alias: 'GREETING' }])
 
   it('puts a match back JSON-escaped in streamed tool arguments, so the arguments still parse', () => {
-    const filter = createRestoreFilter(quoting, () => {})
+    const filter = createRestoreFilter(quoting)
     const out = [
       ...filter.apply([
         { type: 'tool_call_start', id: 't', name: 'Echo' },
@@ -282,7 +308,7 @@ describe('createRestoreFilter: argument text and anonymous calls', () => {
   })
 
   it('keeps tool calls without an id apart: an alias split across two calls is not joined', () => {
-    const filter = createRestoreFilter(masking, () => {})
+    const filter = createRestoreFilter(masking)
     const out = [
       ...filter.apply([
         { type: 'tool_call_start', name: 'A' },

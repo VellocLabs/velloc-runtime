@@ -135,7 +135,6 @@ class DriverStream {
     private readonly provider: ModelProvider,
     private payload: BridgeModelRequestPayload,
     private readonly model: string,
-    private readonly streamId: string,
   ) {}
 
   start(): void {
@@ -221,7 +220,7 @@ class DriverStream {
     await modelMasking.whenKnown(this.abort.signal)
     if (this.abort.signal.aborted) return this.finishIfOpen()
     try {
-      this.masking = modelMasking.openStream({ streamId: this.streamId, provider: this.provider.id, model: this.model })
+      this.masking = modelMasking.openStream()
     } catch (error) {
       this.fail(errorText(error), maskingRefusal(error))
       return
@@ -518,7 +517,7 @@ export class DriverStreamHost {
   ): { streamId: string } {
     nextStreamId += 1
     const streamId = `driver-${provider.format}-${Date.now().toString(36)}-${nextStreamId}`
-    const stream = new DriverStream(this.transport, provider, payload, model, streamId)
+    const stream = new DriverStream(this.transport, provider, payload, model)
     this.streams.set(streamId, stream)
     stream.start()
     return { streamId }

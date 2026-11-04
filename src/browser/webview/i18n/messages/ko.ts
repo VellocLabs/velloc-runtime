@@ -2561,9 +2561,7 @@ export const ko: Messages = {
   'slash.out.masking.usage.listRules':
     '저장된 규칙을 보여줘요',
   'slash.out.masking.usage.log':
-    '바꾼 기록을 파일에 쓰거나 그만 써요',
-  'slash.out.masking.usage.logDetail':
-    '로그에 횟수만 쓸지, 바꾼 곳 앞뒤 글자도 쓸지 정해요',
+    '바꾼 기록(최근 5,000줄)을 파일에 쓰거나 그만 써요',
   'slash.out.masking.usage.test':
     '텍스트가 어떻게 바뀌는지 보여줘요. 아무것도 보내지 않아요',
   'slash.out.masking.noSettings':
@@ -2588,14 +2586,10 @@ export const ko: Messages = {
     '{path}에서 규칙 {count}개를 불러왔어요.',
   'slash.out.masking.rulesLoadedInline':
     '규칙 {count}개를 불러왔어요.',
-  'slash.out.masking.logDetailContext':
-    '이제 로그에 보내는 내용에서 바꾼 곳마다 앞뒤 24글자도 기록돼요. 이 글자는 사용자의 데이터예요.',
-  'slash.out.masking.logDetailCounts':
-    '이제 로그에 횟수만 기록돼요.',
   'slash.out.masking.logOff':
     '바꾼 기록 로그가 꺼졌어요.',
   'slash.out.masking.logSet':
-    '바꾼 기록은 {path}에 남아요({detail}).',
+    '바꾼 기록은 {path}에 남아요.',
   'slash.out.masking.rulesEmpty':
     '저장된 바꾸기 규칙이 없어요.',
   'slash.out.masking.rulesHeading':
@@ -2619,11 +2613,9 @@ export const ko: Messages = {
   'slash.out.masking.statusOff':
     '키워드 바꾸기가 꺼져 있어요(저장된 규칙 {count}개).',
   'slash.out.masking.statusLog':
-    '바꾼 기록 로그: {path}({detail}).',
+    '바꾼 기록 로그: {path}.',
   'slash.out.masking.statusNoLog':
     '바꾼 기록 로그: 꺼짐.',
-  'slash.out.masking.error.cannotRename':
-    '이 호스트는 파일 이름을 바꿀 수 없어 로그를 교체하지 않습니다.',
   'slash.out.masking.error.hostDisconnected':
     '호스트가 연결되어 있지 않습니다.',
   'slash.out.masking.error.other':

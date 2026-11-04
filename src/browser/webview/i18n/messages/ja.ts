@@ -2571,9 +2571,7 @@ export const ja: Messages = {
   'slash.out.masking.usage.listRules':
     '保存済みのルールを一覧表示',
   'slash.out.masking.usage.log':
-    '置き換えのログをファイルに書く、または書くのをやめる',
-  'slash.out.masking.usage.logDetail':
-    'ログに回数だけを書くか、置き換え箇所の前後の文字も書くか',
+    '置き換えのログ（最新の 5,000 行）をファイルに書く、または書くのをやめる',
   'slash.out.masking.usage.test':
     'テキストがどう置き換えられるかを表示（何も送信しません）',
   'slash.out.masking.noSettings':
@@ -2598,14 +2596,10 @@ export const ja: Messages = {
     '{path} から {count} 件のルールを読み込みました。',
   'slash.out.masking.rulesLoadedInline':
     '{count} 件のルールを読み込みました。',
-  'slash.out.masking.logDetailContext':
-    'ログには送信時の各置き換え箇所の前後 24 文字も記録されます。この文字列はあなたのデータです。',
-  'slash.out.masking.logDetailCounts':
-    'ログには回数だけを記録します。',
   'slash.out.masking.logOff':
     '置き換えのログはオフです。',
   'slash.out.masking.logSet':
-    '置き換えは {path} に記録されます（{detail}）。',
+    '置き換えは {path} に記録されます。',
   'slash.out.masking.rulesEmpty':
     '保存済みの置き換えルールはありません。',
   'slash.out.masking.rulesHeading':
@@ -2629,11 +2623,9 @@ export const ja: Messages = {
   'slash.out.masking.statusOff':
     'キーワードの置き換えはオフです（保存済みルール {count} 件）。',
   'slash.out.masking.statusLog':
-    '置き換えのログ: {path}（{detail}）。',
+    '置き換えのログ: {path}。',
   'slash.out.masking.statusNoLog':
     '置き換えのログ: オフ。',
-  'slash.out.masking.error.cannotRename':
-    'このホストはファイル名を変更できないため、ログはローテーションされません。',
   'slash.out.masking.error.hostDisconnected':
     'ホストに接続されていません。',
   'slash.out.masking.error.other':

@@ -2639,9 +2639,7 @@ export const es: Messages = {
   'slash.out.masking.usage.listRules':
     'lista las reglas guardadas',
   'slash.out.masking.usage.log':
-    'escribe un registro de reemplazos en un archivo, o deja de escribirlo',
-  'slash.out.masking.usage.logDetail':
-    'registra solo recuentos, o también el texto alrededor de cada reemplazo',
+    'escribe un registro de reemplazos (las 5.000 líneas más recientes) en un archivo, o deja de escribirlo',
   'slash.out.masking.usage.test':
     'muestra cómo se reemplazaría un texto; no se envía nada',
   'slash.out.masking.noSettings':
@@ -2666,14 +2664,10 @@ export const es: Messages = {
     'Se cargaron {count} reglas desde {path}.',
   'slash.out.masking.rulesLoadedInline':
     'Se cargaron {count} reglas.',
-  'slash.out.masking.logDetailContext':
-    'Ahora el registro también guarda los 24 caracteres a cada lado de cada reemplazo saliente. Ese texto son tus datos.',
-  'slash.out.masking.logDetailCounts':
-    'Ahora el registro solo guarda recuentos.',
   'slash.out.masking.logOff':
     'El registro de reemplazos está desactivado.',
   'slash.out.masking.logSet':
-    'Los reemplazos se registran en {path} ({detail}).',
+    'Los reemplazos se registran en {path}.',
   'slash.out.masking.rulesEmpty':
     'No hay reglas de reemplazo guardadas.',
   'slash.out.masking.rulesHeading':
@@ -2697,11 +2691,9 @@ export const es: Messages = {
   'slash.out.masking.statusOff':
     'El reemplazo está desactivado ({count} reglas guardadas).',
   'slash.out.masking.statusLog':
-    'Registro de reemplazos: {path} ({detail}).',
+    'Registro de reemplazos: {path}.',
   'slash.out.masking.statusNoLog':
     'Registro de reemplazos: desactivado.',
-  'slash.out.masking.error.cannotRename':
-    'Este host no puede renombrar archivos, así que el registro no se rota.',
   'slash.out.masking.error.hostDisconnected':
     'El host no está conectado.',
   'slash.out.masking.error.other':

@@ -60,7 +60,6 @@ const USAGE_ROWS: ReadonlyArray<readonly [string, MessageKey]> = [
   ['/masking rules <file>|<json>', 'slash.out.masking.usage.rules'],
   ['/masking rules', 'slash.out.masking.usage.listRules'],
   ['/masking log <file>|off', 'slash.out.masking.usage.log'],
-  ['/masking log detail counts|context', 'slash.out.masking.usage.logDetail'],
   ['/masking test <text>', 'slash.out.masking.usage.test'],
 ]
 
@@ -86,7 +85,6 @@ function errorText(error: unknown): string {
 const ERROR_KEYS: Record<MaskingError['reason'], MessageKey> = {
   settingsUnreadable: 'slash.out.masking.error.settingsUnreadable',
   hostDisconnected: 'slash.out.masking.error.hostDisconnected',
-  cannotRename: 'slash.out.masking.error.cannotRename',
   other: 'slash.out.masking.error.other',
 }
 
@@ -216,17 +214,6 @@ export async function runMaskingCommand(
   }
 
   if (sub === 'log') {
-    const detail = /^detail\s+(counts|context)$/.exec(rest)
-    if (detail) {
-      const value = detail[1] as 'counts' | 'context'
-      const failed = await save(prev => ({ ...prev, logDetail: value }))
-      if (failed) return reply([failed])
-      return reply([
-        value === 'context'
-          ? key('slash.out.masking.logDetailContext')
-          : key('slash.out.masking.logDetailCounts'),
-      ])
-    }
     if (rest === 'off') {
       const failed = await save(prev => {
         const { logPath: _drop, ...kept } = prev
@@ -234,11 +221,11 @@ export async function runMaskingCommand(
       })
       return reply([failed ?? key('slash.out.masking.logOff')])
     }
-    if (rest !== '' && !rest.startsWith('detail')) {
+    if (rest !== '' && !/^detail(\s|$)/.test(rest)) {
       const path = resolvePath(unquote(rest))
       const failed = await save(prev => ({ ...prev, logPath: path }))
       if (failed) return reply([failed])
-      return reply([key('slash.out.masking.logSet', { path, detail: holder.status().logDetail })])
+      return reply([key('slash.out.masking.logSet', { path })])
     }
   }
 
@@ -276,7 +263,7 @@ function statusParts(holder: ModelMaskingHolder): SystemMessagePart[] {
   parts.push(
     text(BLOCK),
     status.logPath
-      ? key('slash.out.masking.statusLog', { path: status.logPath, detail: status.logDetail })
+      ? key('slash.out.masking.statusLog', { path: status.logPath })
       : key('slash.out.masking.statusNoLog'),
   )
   if (status.lastError) {
@@ -286,8 +273,7 @@ function statusParts(holder: ModelMaskingHolder): SystemMessagePart[] {
   return parts
 }
 
-/** The saved rules as written, numbered as the problems and the log number
- *  them; an entry that is not a rule is listed as such, never read. */
+/** The saved rules as written, numbered as the problems number them; an entry that is not a rule is listed as such, never read. */
 function rulesListParts(holder: ModelMaskingHolder): SystemMessagePart[] {
   const saved = holder.savedRules()
   if (!Array.isArray(saved)) return [key('slash.out.masking.badTable'), text(' '), problemPart({ reason: 'not_a_list' })]

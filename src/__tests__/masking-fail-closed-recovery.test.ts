@@ -161,7 +161,7 @@ describe('the settings re-read', () => {
     expect(released).toBe(false)
     await vi.advanceTimersByTimeAsync(1)
     expect(released).toBe(true)
-    expect(() => modelMasking.openStream({ streamId: 's', provider: 'p', model: 'm' })).toThrow()
+    expect(() => modelMasking.openStream()).toThrow()
   })
 })
 
@@ -242,14 +242,14 @@ describe('masked object keys', () => {
     const payload = {
       messages: [{ role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c', toolName: 'Edit', args: { AcmeCo: 1, Northwind: 2 } }] }],
     }
-    expect(() => maskPayload(payload as never, new PayloadMasker(masking, new MaskingTally(false))))
+    expect(() => maskPayload(payload as never, new PayloadMasker(masking, new MaskingTally())))
       .toThrow(MaskingResidualError)
   })
 
   it('distinct keys are still masked', () => {
     const masking = compileMasking(RULES)
     const payload = { messages: [{ role: 'user', content: [{ type: 'tool-call', toolCallId: 'c', toolName: 'E', args: { AcmeCo: 1, other: 2 } }] }] }
-    const out = maskPayload(payload as never, new PayloadMasker(masking, new MaskingTally(false)))
+    const out = maskPayload(payload as never, new PayloadMasker(masking, new MaskingTally()))
     expect((out.messages[0]!.content as any[])[0].args).toEqual({ Northwind: 1, other: 2 })
   })
 })

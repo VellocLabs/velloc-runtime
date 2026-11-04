@@ -2512,9 +2512,7 @@ export const zh: Messages = {
   'slash.out.masking.usage.listRules':
     '列出已保存的规则',
   'slash.out.masking.usage.log':
-    '把替换记录写入文件，或停止写入',
-  'slash.out.masking.usage.logDetail':
-    '日志只记次数，或同时记录每处替换前后的文字',
+    '把替换记录（最新 5,000 行）写入文件，或停止写入',
   'slash.out.masking.usage.test':
     '预览一段文字替换后的样子，不发送任何内容',
   'slash.out.masking.noSettings':
@@ -2539,14 +2537,10 @@ export const zh: Messages = {
     '已从 {path} 载入 {count} 条规则。',
   'slash.out.masking.rulesLoadedInline':
     '已载入 {count} 条规则。',
-  'slash.out.masking.logDetailContext':
-    '日志现在还会记录每处出站替换两侧各 24 个字符。这些文字是你的数据。',
-  'slash.out.masking.logDetailCounts':
-    '日志现在只记录次数。',
   'slash.out.masking.logOff':
     '替换日志已关闭。',
   'slash.out.masking.logSet':
-    '替换记录写入 {path}（{detail}）。',
+    '替换记录写入 {path}。',
   'slash.out.masking.rulesEmpty':
     '没有已保存的替换规则。',
   'slash.out.masking.rulesHeading':
@@ -2570,11 +2564,9 @@ export const zh: Messages = {
   'slash.out.masking.statusOff':
     '关键词替换已关闭（已保存 {count} 条规则）。',
   'slash.out.masking.statusLog':
-    '替换日志：{path}（{detail}）。',
+    '替换日志：{path}。',
   'slash.out.masking.statusNoLog':
     '替换日志：关闭。',
-  'slash.out.masking.error.cannotRename':
-    '此主机无法重命名文件，因此日志不会轮换。',
   'slash.out.masking.error.hostDisconnected':
     '主机未连接。',
   'slash.out.masking.error.other':

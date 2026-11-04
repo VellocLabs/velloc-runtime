@@ -26,7 +26,7 @@ export type MaskingBootHost = {
 
 const ENCODER = new TextEncoder()
 
-/** Appends through the host's `fs.appendFile`; sizes and moves through `fs`. */
+/** Appends through the host's `fs.appendFile`; sizes, reads and rewrites through `fs`. */
 export function createMaskingLogSink(host: MaskingBootHost): MaskingLogSink {
   return {
     async append(path, text) {
@@ -46,13 +46,15 @@ export function createMaskingLogSink(host: MaskingBootHost): MaskingLogSink {
         return undefined
       }
     },
-    async rename(from, to) {
-      const fs = host.fs()
-      if (!fs.rename) throw new MaskingHostError('cannotRename')
-      await fs.rename(from, to)
+    async read(path) {
+      try {
+        return await host.fs().readFile(path, { encoding: 'utf8' })
+      } catch {
+        return undefined
+      }
     },
-    async remove(path) {
-      await host.fs().rm(path, { force: true })
+    async write(path, text) {
+      await host.fs().writeFile(path, text, { encoding: 'utf8' })
     },
   }
 }

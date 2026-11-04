@@ -489,8 +489,6 @@ export type NexusModelMaskingSettings = {
   rules?: unknown
   /** Absolute path of the replacement log; absent = no log. */
   logPath?: string
-  /** `context` adds the text around each outbound hit. Default `counts`. */
-  logDetail?: 'counts' | 'context'
 }
 
 /** One model's entry in `modelSettings`. */

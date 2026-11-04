@@ -167,14 +167,21 @@ describe('/masking', () => {
     expect(fs.writes).toEqual([])
   })
 
-  it('sets and clears the log, and its detail', async () => {
+  it('sets and clears the log', async () => {
     const fs = stubFs({})
-    expect((await run('/masking log logs/m.log')).text).toContain('Replacements are logged to /w/logs/m.log (counts).')
+    expect((await run('/masking log logs/m.log')).text).toContain('Replacements are logged to /w/logs/m.log.')
     expect(fs.settings()?.modelMasking).toEqual({ logPath: '/w/logs/m.log' })
-    expect((await run('/masking log detail context')).text).toContain('24 characters')
-    expect(fs.settings()?.modelMasking).toEqual({ logPath: '/w/logs/m.log', logDetail: 'context' })
     expect((await run('/masking log off')).text).toContain('The replacement log is off.')
-    expect(fs.settings()?.modelMasking).toEqual({ logDetail: 'context' })
+    expect(fs.settings()?.modelMasking).toBeUndefined()
+  })
+
+  it('has no log detail setting: the old subcommand shows the usage and changes nothing', async () => {
+    const fs = stubFs({})
+    await run('/masking log logs/m.log')
+    const { text } = await run('/masking log detail context')
+    expect(text).toContain('/masking log <file>|off')
+    expect(text).not.toContain('detail')
+    expect(fs.settings()?.modelMasking).toEqual({ logPath: '/w/logs/m.log' })
   })
 
   it('previews masking without sending anything', async () => {

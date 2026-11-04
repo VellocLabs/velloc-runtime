@@ -87,23 +87,26 @@ async function drain(host: DriverStreamHost, streamId: string) {
 
 function memorySink() {
   const files = new Map<string, string>()
+  const calls = { append: 0, write: 0 }
+  const bytes = (text: string) => new TextEncoder().encode(text).length
   const sink: MaskingLogSink = {
     async append(path, text) {
+      calls.append += 1
       files.set(path, (files.get(path) ?? '') + text)
     },
     async size(path) {
       const text = files.get(path)
-      return text === undefined ? undefined : text.length
+      return text === undefined ? undefined : bytes(text)
     },
-    async rename(from, to) {
-      files.set(to, files.get(from)!)
-      files.delete(from)
+    async read(path) {
+      return files.get(path)
     },
-    async remove(path) {
-      files.delete(path)
+    async write(path, text) {
+      calls.write += 1
+      files.set(path, text)
     },
   }
-  return { sink, files }
+  return { sink, files, calls }
 }
 
 const provider = () => createModelProvider({ id: 'masking-p', format: 'masking-echo', baseUrl: 'https://llm.example.com' })
@@ -185,13 +188,21 @@ describe('DriverStreamHost with masking on', () => {
     const call = chunks.find(c => c.type === 'content_block_start' && c.content_block?.type === 'tool-call')
     expect(call.content_block.args).toEqual({ content: 'AcmeCo' })
 
-    await vi.waitFor(() => expect(files.get('/logs/masking.log')).toMatch(/dir=in/))
-    const log = files.get('/logs/masking.log') ?? ''
-    expect(log).toMatch(/event=rules_set\|count=2/)
-    expect(log).toMatch(new RegExp(`stream=${streamId}\\|provider=masking-p\\|model=m\\|dir=out\\|rule=1\\|n=1\\|where=messages`))
-    expect(log).toMatch(/dir=out\|rule=1\|n=1\|where=system/)
-    expect(log).toMatch(/dir=in\|rule=1\|n=1\|where=text/)
-    expect(log).toMatch(/dir=in\|rule=1\|n=1\|where=tool_args/)
+    await vi.waitFor(() => expect(files.get('/logs/masking.log')?.split('|in|').length).toBeGreaterThan(1))
+    const lines = (files.get('/logs/masking.log') ?? '').trimEnd().split('\n').map(line => line.split('|'))
+    // Date, direction, where, original, replaced: nothing else is logged.
+    expect(lines.every(fields => fields.length === 5 && new Date(fields[0]!).toISOString() === fields[0])).toBe(true)
+    expect(lines).toHaveLength(6)
+    const rows = lines.map(fields => fields.slice(1))
+    const swap = ['Ship the AcmeCo café build', 'Ship the Northwind bistro build']
+    expect(rows).toEqual(expect.arrayContaining([
+      ['out', 'messages', ...swap],
+      ['out', 'system', "You are AcmeCo's agent", "You are Northwind's agent"],
+      ['in', 'text', 'Northwind ships the bistro build', 'AcmeCo ships the café build'],
+      ['in', 'tool_args', '{"content":"Northwind"}', '{"content":"AcmeCo"}'],
+    ]))
+    // Outbound lines are written before the reply is read.
+    expect(rows.slice(0, 3).every(row => row[0] === 'out')).toBe(true)
   })
 
   it('fails the stream without retry when the request would leak, and sends nothing', async () => {
@@ -235,44 +246,75 @@ describe('DriverStreamHost with masking on', () => {
   })
 })
 
-describe('the rules_set log line', () => {
-  it('is written when a table becomes active, not on a change that keeps it', async () => {
-    const { sink, files } = memorySink()
-    modelMasking.setLogSink(sink)
-    modelMasking.configure({ rules: RULES, logPath: '/l' })
-    modelMasking.configure({ enabled: true, rules: RULES, logPath: '/l' })
-    modelMasking.configure({ enabled: true, rules: RULES, logPath: '/l', logDetail: 'context' })
-    await vi.waitFor(() => expect(files.get('/l')).toBeDefined())
-    expect(files.get('/l')!.match(/event=rules_set\|count=2/g)).toHaveLength(1)
-  })
-})
-
 describe('MaskingLogWriter', () => {
-  it('formats key=value lines and leaves out empty fields', () => {
-    expect(formatLogLine({ ts_ms: 1, event: 'refused', where: 'body', rule: undefined, ctx: 'a|b\nc' }))
-      .toBe('ts_ms=1|event=refused|where=body|ctx=a b c\n')
+  const entry = (n: number) => ({ at: Date.UTC(2026, 10, 4, 1, 2, 3, 456) + n, dir: 'out' as const, where: 'messages', original: `o${n}`, replaced: `r${n}` })
+  const line = (n: number) => formatLogLine(entry(n))
+
+  it('writes the date, direction, where, original and replaced text, one line each', () => {
+    expect(line(0)).toBe('2026-11-04T01:02:03.456Z|out|messages|o0|r0\n')
   })
 
-  it('rotates a full log and keeps four older files', async () => {
+  it('removes line breaks from the logged text, and writes a pipe as an escaped pipe', () => {
+    const text = formatLogLine({ at: 0, dir: 'in', where: 'text', original: 'a|b\r\nc\nd\re', replaced: 'x' })
+    expect(text).toBe('1970-01-01T00:00:00.000Z|in|text|a\\|b c d e|x\n')
+  })
+
+  it('appends while under 5000 lines, and rewrites the file only to drop the oldest', async () => {
+    const { sink, files, calls } = memorySink()
+    const writer = new MaskingLogWriter(sink, () => {})
+    await writer.append('/l', Array.from({ length: 4990 }, (_, n) => line(n)))
+    await writer.append('/l', Array.from({ length: 10 }, (_, n) => line(4990 + n)))
+    expect(calls).toEqual({ append: 2, write: 0 })
+    expect(files.get('/l')!.trimEnd().split('\n')).toHaveLength(5000)
+
+    await writer.append('/l', [line(5000), line(5001)])
+    expect(calls.write).toBe(1)
+    const kept = files.get('/l')!.trimEnd().split('\n')
+    expect(kept).toHaveLength(5000)
+    expect(kept[0]).toBe(line(2).trimEnd())
+    expect(kept.at(-1)).toBe(line(5001).trimEnd())
+
+    await writer.append('/l', [line(5002)])
+    expect(files.get('/l')!.trimEnd().split('\n')).toHaveLength(5000)
+    expect(files.get('/l')!.endsWith(line(5002))).toBe(true)
+  })
+
+  it('keeps the newest 5000 of one batch larger than the file allows', async () => {
     const { sink, files } = memorySink()
     const writer = new MaskingLogWriter(sink, () => {})
-    files.set('/l', 'x'.repeat(8 * 1024 * 1024))
-    for (const n of [1, 2, 3, 4]) files.set(`/l.${n}`, `gen${n}`)
-    await writer.append('/l', 'new\n')
-    expect(files.get('/l')).toBe('new\n')
-    expect(files.get('/l.1')!.length).toBe(8 * 1024 * 1024)
-    expect(files.get('/l.2')).toBe('gen1')
-    expect(files.get('/l.4')).toBe('gen3')
-    expect(files.has('/l.5')).toBe(false)
+    await writer.append('/l', ['old\n'])
+    await writer.append('/l', Array.from({ length: 5003 }, (_, n) => line(n)))
+    const kept = files.get('/l')!.trimEnd().split('\n')
+    expect(kept).toHaveLength(5000)
+    expect(kept[0]).toBe(line(3).trimEnd())
+  })
+
+  it('counts again when the file was changed outside', async () => {
+    const { sink, files } = memorySink()
+    const writer = new MaskingLogWriter(sink, () => {})
+    await writer.append('/l', [line(0)])
+    files.set('/l', Array.from({ length: 4999 }, (_, n) => line(n)).join(''))
+    await writer.append('/l', [line(1), line(2)])
+    const kept = files.get('/l')!.trimEnd().split('\n')
+    expect(kept).toHaveLength(5000)
+    expect(kept.at(-1)).toBe(line(2).trimEnd())
+    files.delete('/l')
+    await writer.append('/l', [line(7)])
+    expect(files.get('/l')).toBe(line(7))
   })
 
   it('reports a write failure without throwing', async () => {
     const errors: string[] = []
     const writer = new MaskingLogWriter(
-      { append: async () => { throw new Error('disk full') }, size: async () => undefined },
+      {
+        append: async () => { throw new Error('disk full') },
+        size: async () => undefined,
+        read: async () => undefined,
+        write: async () => {},
+      },
       error => errors.push((error as Error).message),
     )
-    await writer.append('/l', 'x\n')
+    await writer.append('/l', ['x\n'])
     expect(errors).toEqual(['disk full'])
   })
 })

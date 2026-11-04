@@ -10,7 +10,8 @@
  * `input`, an error message) are restored in place. Event order is preserved.
  */
 import type { DriverStreamEvent } from '../drivers/driverTypes'
-import type { CompiledMasking } from './maskingRules'
+import type { CompiledMasking, MaskingHit } from './maskingRules'
+import { ChannelTrace, traceEntries, type ReplacementEntry } from './replacementTrace'
 
 export type RestoreWhere = 'text' | 'reasoning' | 'tool_args' | 'tool_name' | 'error'
 
@@ -20,21 +21,38 @@ export type RestoreFilter = {
   apply(events: readonly DriverStreamEvent[]): DriverStreamEvent[]
   /** Releases every held tail. */
   flush(): DriverStreamEvent[]
+  /** One entry per alias put back so far, oldest first; completes the entries
+   *  still waiting for text that followed. */
+  entries(): ReplacementEntry[]
 }
 
-export function createRestoreFilter(
-  masking: CompiledMasking,
-  onHit: (where: RestoreWhere, rule: number) => void,
-): RestoreFilter {
+export function createRestoreFilter(masking: CompiledMasking): RestoreFilter {
   const held = new Map<string, { channel: Channel; text: string }>()
+  const done: ReplacementEntry[] = []
+  const traces = new Map<string, ChannelTrace>()
 
-  const restoreWhole = (value: string, where: RestoreWhere): string =>
-    masking.restoreText(value, hit => onHit(where, hit.rule))
+  const restoreWhole = (value: string, where: RestoreWhere): string => {
+    const hits: MaskingHit[] = []
+    const text = masking.restoreText(value, hit => hits.push(hit))
+    if (hits.length > 0) traceEntries('in', where, value, text, hits, done)
+    return text
+  }
+  const traceOf = (channel: Channel): ChannelTrace => {
+    let trace = traces.get(channel.key)
+    if (!trace) {
+      trace = new ChannelTrace(channel.where, done)
+      traces.set(channel.key, trace)
+    }
+    return trace
+  }
   const restoreChannel = (channel: Channel, value: string, partial: boolean) => {
-    const hit = (h: { rule: number }) => onHit(channel.where, h.rule)
-    return partial
-      ? masking.restorePartial(value, hit, channel.json)
-      : { text: masking.restoreText(value, hit, channel.json), held: '' }
+    const hits: MaskingHit[] = []
+    const collect = (hit: MaskingHit) => hits.push(hit)
+    const result = partial
+      ? masking.restorePartial(value, collect, channel.json)
+      : { text: masking.restoreText(value, collect, channel.json), held: '' }
+    traceOf(channel).feed(value.slice(0, value.length - result.held.length), result.text, hits)
+    return result
   }
 
   const restoreDeep = (value: unknown): unknown => {
@@ -142,6 +160,10 @@ export function createRestoreFilter(
       const out: DriverStreamEvent[] = []
       flushExcept(undefined, out)
       return out
+    },
+    entries() {
+      for (const trace of traces.values()) trace.finish()
+      return [...done].sort((a, b) => a.at - b.at)
     },
   }
 }

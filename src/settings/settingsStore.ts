@@ -729,7 +729,6 @@ function normalizeModelMasking(raw: unknown): NexusModelMaskingSettings | undefi
   if (typeof r.enabled === 'boolean') out.enabled = r.enabled
   if (r.rules !== undefined) out.rules = structuredClone(r.rules)
   if (typeof r.logPath === 'string' && r.logPath.length > 0) out.logPath = r.logPath
-  if (r.logDetail === 'counts' || r.logDetail === 'context') out.logDetail = r.logDetail
   return Object.keys(out).length > 0 ? out : undefined
 }
 

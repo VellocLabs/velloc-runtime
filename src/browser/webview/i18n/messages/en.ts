@@ -2679,9 +2679,7 @@ export const en = {
   'slash.out.masking.usage.listRules':
     'list the saved rules',
   'slash.out.masking.usage.log':
-    'write a replacement log to a file, or stop writing it',
-  'slash.out.masking.usage.logDetail':
-    'log counts only, or also the text around each replacement',
+    'write a replacement log (newest 5,000 lines) to a file, or stop writing it',
   'slash.out.masking.usage.test':
     'show how a text would be masked; nothing is sent',
   'slash.out.masking.noSettings':
@@ -2706,14 +2704,10 @@ export const en = {
     'Loaded {count} rules from {path}.',
   'slash.out.masking.rulesLoadedInline':
     'Loaded {count} rules.',
-  'slash.out.masking.logDetailContext':
-    'The log now also records the 24 characters on each side of every outbound replacement. That text is your data.',
-  'slash.out.masking.logDetailCounts':
-    'The log now records counts only.',
   'slash.out.masking.logOff':
     'The replacement log is off.',
   'slash.out.masking.logSet':
-    'Replacements are logged to {path} ({detail}).',
+    'Replacements are logged to {path}.',
   'slash.out.masking.rulesEmpty':
     'No masking rules are saved.',
   'slash.out.masking.rulesHeading':
@@ -2737,11 +2731,9 @@ export const en = {
   'slash.out.masking.statusOff':
     'Masking is off ({count} rules saved).',
   'slash.out.masking.statusLog':
-    'Replacement log: {path} ({detail}).',
+    'Replacement log: {path}.',
   'slash.out.masking.statusNoLog':
     'Replacement log: off.',
-  'slash.out.masking.error.cannotRename':
-    'This host cannot rename files, so the log is not rotated.',
   'slash.out.masking.error.hostDisconnected':
     'The host is not connected.',
   'slash.out.masking.error.other':

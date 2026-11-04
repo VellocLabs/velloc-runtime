@@ -28,37 +28,14 @@ import type {
 } from '../../browser/bridge/browserBridgeProtocol'
 import type { CompiledMasking, MaskingHit } from './maskingRules'
 import { MaskingResidualError, MaskingUndecodableError } from './egressGuard'
+import { traceEntries, type ReplacementEntry } from './replacementTrace'
 
 export type MaskingWhere = 'messages' | 'system' | 'tools' | 'extension'
 
-/** What one payload's masking did, for the log. */
+/** What one payload's masking did, for the log: one entry per replacement. */
 export class MaskingTally {
-  /** where -> rule -> count */
-  readonly hits = new Map<string, Map<number, number>>()
-  readonly collisions = new Set<string>()
-  /** Present when the log asks for context around each hit. */
-  readonly contexts: Array<{ rule: number; where: string; context: string }> | undefined
-
-  constructor(withContext: boolean) {
-    this.contexts = withContext ? [] : undefined
-  }
-
-  count(where: string, rule: number): void {
-    const byRule = this.hits.get(where) ?? new Map<number, number>()
-    byRule.set(rule, (byRule.get(rule) ?? 0) + 1)
-    this.hits.set(where, byRule)
-  }
-
-  get total(): number {
-    let sum = 0
-    for (const byRule of this.hits.values()) for (const n of byRule.values()) sum += n
-    return sum
-  }
+  readonly entries: ReplacementEntry[] = []
 }
-
-/** Context entries kept per payload, so a huge transcript cannot flood the log. */
-const MAX_CONTEXTS = 64
-const CONTEXT_CHARS = 24
 
 /** Part types whose payload is opaque as a whole. */
 const OPAQUE_PARTS: ReadonlySet<string> = new Set(['image', 'redacted_thinking'])
@@ -106,32 +83,10 @@ export class PayloadMasker {
   ) {}
 
   text(value: string, where: string): string {
-    const tally = this.tally
     const hits: MaskingHit[] = []
-    const masked = this.masking.maskText(value, hit => {
-      tally.count(where, hit.rule)
-      if (tally.contexts) hits.push(hit)
-    })
-    if (masked.collision) tally.collisions.add(where)
-    if (tally.contexts && hits.length > 0) this.recordContexts(masked.text, hits, where)
-    return masked.text
-  }
-
-  /** Context around each hit, cut from the masked text: neighbouring
-   *  matches appear as their aliases, never in clear. */
-  private recordContexts(masked: string, hits: readonly MaskingHit[], where: string): void {
-    const contexts = this.tally.contexts!
-    let shift = 0
-    for (const hit of hits) {
-      const alias = this.masking.rules[hit.rule]!.alias
-      const start = hit.start + shift
-      const end = start + alias.length
-      shift += alias.length - (hit.end - hit.start)
-      if (contexts.length >= MAX_CONTEXTS) continue
-      const before = masked.slice(Math.max(0, start - CONTEXT_CHARS), start)
-      const after = masked.slice(end, end + CONTEXT_CHARS)
-      contexts.push({ rule: hit.rule, where, context: `${before}⟦${alias}⟧${after}`.replace(/[\r\n|]/g, ' ') })
-    }
+    const masked = this.masking.maskText(value, hit => hits.push(hit)).text
+    if (hits.length > 0) traceEntries('out', where, value, masked, hits, this.tally.entries)
+    return masked
   }
 
   /** Every string value and object key under `value`; parts by their type. */

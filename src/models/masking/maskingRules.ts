@@ -90,8 +90,9 @@ export function validateMaskingRules(
   return { ok: true, rules }
 }
 
-/** One replacement: rule index, and the range it covered in the input. */
-export type MaskingHit = { rule: number; start: number; end: number }
+/** One replacement: `start`..`end` in the input text, `outStart`..`outEnd` in
+ *  the text the call returns. */
+export type MaskingHit = { rule: number; start: number; end: number; outStart: number; outEnd: number }
 
 type Needle = { text: string; rule: number }
 
@@ -177,8 +178,10 @@ function replaceAll(
     }
     const found = index.matchAt(text, i)
     if (found) {
-      out += text.slice(copyFrom, i) + replacementOf(found.rule)
-      onHit?.({ rule: found.rule, start: i, end: i + found.text.length })
+      const replacement = replacementOf(found.rule)
+      const outStart = out.length + (i - copyFrom)
+      out += text.slice(copyFrom, i) + replacement
+      onHit?.({ rule: found.rule, start: i, end: i + found.text.length, outStart, outEnd: outStart + replacement.length })
       i += found.text.length
       copyFrom = i
       continue

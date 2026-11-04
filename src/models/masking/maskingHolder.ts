@@ -22,7 +22,7 @@ import {
   MaskingUnavailableError,
   type EgressRequest,
 } from './egressGuard'
-import { formatLogLine, MaskingLogWriter, type LogFields, type MaskingLogSink } from './maskingLog'
+import { formatLogLine, MaskingLogWriter, type MaskingLogSink } from './maskingLog'
 import {
   compileMasking,
   validateMaskingRules,
@@ -31,8 +31,7 @@ import {
 } from './maskingRules'
 import { maskPayload, MaskingTally, PayloadMasker } from './maskPayload'
 import { createRestoreFilter, type RestoreFilter } from './restoreStream'
-
-export type MaskingLogDetail = 'counts' | 'context'
+import type { ReplacementEntry } from './replacementTrace'
 
 /**
  * `unknown`: the settings have not been read (yet). `off`: masking is turned
@@ -49,7 +48,6 @@ export type MaskingStatus = {
   active: boolean
   ruleCount: number
   logPath?: string
-  logDetail: MaskingLogDetail
   /** Why an enabled table is not in use. */
   problem?: MaskingRuleProblem
   /** The last failure to read the settings or write the log. */
@@ -58,13 +56,13 @@ export type MaskingStatus = {
 
 /** A failure, by reason; `detail` is the system's own message, if any. */
 export type MaskingError = {
-  reason: 'settingsUnreadable' | 'hostDisconnected' | 'cannotRename' | 'other'
+  reason: 'settingsUnreadable' | 'hostDisconnected' | 'other'
   detail?: string
 }
 
 /** Thrown by a log sink for a failure the user is told about by reason. */
 export class MaskingHostError extends Error {
-  constructor(readonly reason: 'hostDisconnected' | 'cannotRename') {
+  constructor(readonly reason: 'hostDisconnected') {
     super(reason)
     this.name = 'MaskingHostError'
   }
@@ -74,8 +72,6 @@ function maskingErrorOf(error: unknown): MaskingError {
   if (error instanceof MaskingHostError) return { reason: error.reason }
   return { reason: 'other', detail: error instanceof Error ? error.message : String(error) }
 }
-
-export type MaskingStreamMeta = { streamId: string; provider: string; model: string }
 
 /** Delay before a failed settings read is tried again. */
 export const MASKING_READ_RETRY_MS = 5_000
@@ -108,27 +104,24 @@ export function withMaskedUserAgent<T extends { headers?: Record<string, string>
 
 /** One stream's masking: its payload copy, its restore filter, its guard, its log lines. */
 export class MaskingStream {
-  private readonly outTally: MaskingTally
-  private readonly inHits = new Map<string, Map<number, number>>()
+  private readonly outTally = new MaskingTally()
   readonly restore: RestoreFilter
+  private loggedOut = 0
   private closed = false
 
   constructor(
     private readonly holder: ModelMaskingHolder,
     readonly masking: CompiledMasking,
-    private readonly meta: MaskingStreamMeta,
-    logDetail: MaskingLogDetail,
   ) {
-    this.outTally = new MaskingTally(logDetail === 'context')
-    this.restore = createRestoreFilter(masking, (where, rule) => {
-      const byRule = this.inHits.get(where) ?? new Map<number, number>()
-      byRule.set(rule, (byRule.get(rule) ?? 0) + 1)
-      this.inHits.set(where, byRule)
-    })
+    this.restore = createRestoreFilter(masking)
   }
 
+  /** Masks `payload`; the replacements are logged as soon as they are made. */
   maskPayload(payload: BridgeModelRequestPayload): BridgeModelRequestPayload {
-    return maskPayload(payload, new PayloadMasker(this.masking, this.outTally))
+    const masked = maskPayload(payload, new PayloadMasker(this.masking, this.outTally))
+    this.holder.log(this.outTally.entries.slice(this.loggedOut))
+    this.loggedOut = this.outTally.entries.length
+    return masked
   }
 
   /** A header or other single value, masked. */
@@ -146,26 +139,11 @@ export class MaskingStream {
     return this.restore.apply(events)
   }
 
-  /** Writes this stream's lines once. */
+  /** Writes what came back, once. */
   close(): void {
     if (this.closed) return
     this.closed = true
-    const now = Date.now()
-    const base = { ts_ms: now, stream: this.meta.streamId, provider: this.meta.provider, model: this.meta.model }
-    const lines: LogFields[] = []
-    for (const [where, byRule] of this.outTally.hits) {
-      for (const [rule, n] of byRule) lines.push({ ...base, dir: 'out', rule: rule + 1, n, where })
-    }
-    for (const where of this.outTally.collisions) {
-      lines.push({ ts_ms: now, stream: this.meta.streamId, event: 'collision', where })
-    }
-    for (const entry of this.outTally.contexts ?? []) {
-      lines.push({ ts_ms: now, stream: this.meta.streamId, dir: 'out', rule: entry.rule + 1, where: entry.where, ctx: entry.context })
-    }
-    for (const [where, byRule] of this.inHits) {
-      for (const [rule, n] of byRule) lines.push({ ...base, dir: 'in', rule: rule + 1, n, where })
-    }
-    this.holder.log(lines)
+    this.holder.log(this.restore.entries())
   }
 }
 
@@ -201,8 +179,6 @@ export class ModelMaskingHolder {
   /** Applies the `modelMasking` section. Returns the table's problem, if any. */
   configure(settings: NexusModelMaskingSettings | undefined): MaskingRuleProblem | undefined {
     const next = settings ?? {}
-    const wasActive = this.state === 'active'
-    const rulesChanged = JSON.stringify(next.rules ?? []) !== JSON.stringify(this.settings.rules ?? [])
     this.settings = next
     this.generation += 1
     this.lastError = undefined
@@ -218,10 +194,6 @@ export class ModelMaskingHolder {
     } else {
       this.state = 'broken'
       this.compiled = undefined
-    }
-    // Logged whenever requests start using a table: turned on, or replaced.
-    if (this.compiled && (rulesChanged || !wasActive)) {
-      this.log([{ ts_ms: Date.now(), event: 'rules_set', count: this.compiled.rules.length }])
     }
     this.settle()
     return this.problem
@@ -281,7 +253,6 @@ export class ModelMaskingHolder {
       active: this.state === 'active',
       ruleCount: Array.isArray(rules) ? rules.length : 0,
       ...(this.settings.logPath ? { logPath: this.settings.logPath } : {}),
-      logDetail: this.settings.logDetail ?? 'counts',
       ...(this.problem ? { problem: this.problem } : {}),
       ...(this.lastError ? { lastError: this.lastError } : {}),
     }
@@ -307,27 +278,24 @@ export class ModelMaskingHolder {
    * off. Throws `MaskingUnavailableError` while the state is `unknown` or
    * `broken`, so the stream sends nothing.
    */
-  openStream(meta: MaskingStreamMeta): MaskingStream | undefined {
+  openStream(): MaskingStream | undefined {
     if (this.state === 'off') return undefined
-    if (this.state === 'active' && this.compiled) {
-      return new MaskingStream(this, this.compiled, meta, this.settings.logDetail ?? 'counts')
-    }
+    if (this.state === 'active' && this.compiled) return new MaskingStream(this, this.compiled)
     throw this.unavailable()
   }
 
-  /** Appends lines to the log, when a path and a sink are set. */
-  log(lines: readonly LogFields[]): void {
+  /** Appends the entries to the log, when a path and a sink are set. */
+  log(entries: readonly ReplacementEntry[]): void {
     const path = this.settings.logPath
-    if (!path || !this.writer || lines.length === 0) return
-    void this.writer.append(path, lines.map(formatLogLine).join(''))
+    if (!path || !this.writer || entries.length === 0) return
+    void this.writer.append(path, entries.map(formatLogLine))
   }
 
-  /** Throws `MaskingResidualError` (and logs it) when `request` still holds
-   *  a match of `masking`. */
+  /** Throws `MaskingResidualError` when `request` still holds a match of
+   *  `masking`. */
   refuseResidual(masking: CompiledMasking, request: EgressRequest): void {
     const residual = findEgressResidual(masking, request)
     if (!residual) return
-    this.log([{ ts_ms: Date.now(), event: 'refused', where: residual.where, rule: residual.rule + 1 }])
     throw new MaskingResidualError(residual)
   }
 

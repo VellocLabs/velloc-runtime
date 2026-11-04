@@ -2634,9 +2634,7 @@ export const de: Messages = {
   'slash.out.masking.usage.listRules':
     'listet die gespeicherten Regeln auf',
   'slash.out.masking.usage.log':
-    'schreibt ein Ersetzungsprotokoll in eine Datei oder hört damit auf',
-  'slash.out.masking.usage.logDetail':
-    'protokolliert nur Anzahlen oder auch den Text um jede Ersetzung',
+    'schreibt ein Ersetzungsprotokoll (die neuesten 5.000 Zeilen) in eine Datei oder hört damit auf',
   'slash.out.masking.usage.test':
     'zeigt, wie ein Text ersetzt würde; nichts wird gesendet',
   'slash.out.masking.noSettings':
@@ -2661,14 +2659,10 @@ export const de: Messages = {
     '{count} Regeln aus {path} geladen.',
   'slash.out.masking.rulesLoadedInline':
     '{count} Regeln geladen.',
-  'slash.out.masking.logDetailContext':
-    'Das Protokoll enthält jetzt auch die 24 Zeichen vor und nach jeder ausgehenden Ersetzung. Dieser Text sind deine Daten.',
-  'slash.out.masking.logDetailCounts':
-    'Das Protokoll enthält jetzt nur Anzahlen.',
   'slash.out.masking.logOff':
     'Das Ersetzungsprotokoll ist aus.',
   'slash.out.masking.logSet':
-    'Ersetzungen werden in {path} protokolliert ({detail}).',
+    'Ersetzungen werden in {path} protokolliert.',
   'slash.out.masking.rulesEmpty':
     'Es sind keine Ersetzungsregeln gespeichert.',
   'slash.out.masking.rulesHeading':
@@ -2692,11 +2686,9 @@ export const de: Messages = {
   'slash.out.masking.statusOff':
     'Das Ersetzen ist aus ({count} Regeln gespeichert).',
   'slash.out.masking.statusLog':
-    'Ersetzungsprotokoll: {path} ({detail}).',
+    'Ersetzungsprotokoll: {path}.',
   'slash.out.masking.statusNoLog':
     'Ersetzungsprotokoll: aus.',
-  'slash.out.masking.error.cannotRename':
-    'Dieser Host kann Dateien nicht umbenennen, daher wird das Protokoll nicht rotiert.',
   'slash.out.masking.error.hostDisconnected':
     'Der Host ist nicht verbunden.',
   'slash.out.masking.error.other':
