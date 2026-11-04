@@ -17,7 +17,7 @@ import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { PermissionDecider } from '../toolkit/permissionVerdict'
 import type { PromptContextProvider } from '../runtime/interfaces/PromptContextProvider'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
-import { resolveRuntimePath, dirnameRuntimePath, isAbsoluteRuntimePath } from '../utils/runtimePaths'
+import { resolveRuntimePath, dirnameRuntimePath, isAbsoluteRuntimePath, normalizeRuntimePath } from '../utils/runtimePaths'
 import { buildFilePermissionContext, decideToolPermission, requestQueuedToolUseConfirm, resolveHeadlessPermissionDecision } from '../toolkit/run/toolPermissionGate'
 import { declareTool, dropDeniedTools } from '../toolkit/toolContract'
 import { nestedToolGatesOf } from '../toolkit/run/toolLifecycleHooks'
@@ -313,13 +313,15 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         return result
       } }
     }
+    /** Verified-state key; the root is part of it so two repositories at one revision stay apart. */
+    const versionKey = (scope: Pick<ScopeManifest['scope'], 'revision' | 'pathFilter'>) => JSON.stringify([root, scope.revision, scope.pathFilter])
     const verificationVersion = async (snapshot: ReportSnapshot, signal?: AbortSignal) => {
       if (!['workspace', 'paths'].includes(snapshot.run.scope.kind) || snapshot.run.scope.workspaceKey !== root) return undefined
       const scope = await resolveLocalReviewScope({ git: await scopeGit(), workspaceKey: root, projectKey: root, readWorkspaceFile },
         snapshot.run.scope.kind === 'paths' ? { kind: 'paths', paths: snapshot.run.scope.pathFilter } : { kind: 'workspace' }, signal)
-      return scope.complete ? JSON.stringify([scope.scope.revision, scope.scope.pathFilter]) : undefined
+      return scope.complete ? versionKey(scope.scope) : undefined
     }
-    return { root, readWorkspaceFile, guidanceFor, scopeGit, verificationVersion }
+    return { root, readWorkspaceFile, guidanceFor, scopeGit, verificationVersion, versionKey }
   }
   type ReviewWorkspace = ReturnType<typeof bindWorkspace>
   const workspaces = new Map<string, ReviewWorkspace>()
@@ -344,8 +346,12 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     return workspaceAt(actual)
   }
   /** The binding a stored run was reviewed in; undefined when its root is outside the session root. */
-  const workspaceOfRun = (snapshot: ReportSnapshot): ReviewWorkspace | undefined =>
-    below(snapshot.run.scope.workspaceKey, sessionRoot) ? workspaceAt(snapshot.run.scope.workspaceKey) : undefined
+  const workspaceOfRun = (snapshot: ReportSnapshot): ReviewWorkspace | undefined => {
+    const key = snapshot.run.scope.workspaceKey
+    // Security: a stored key that changes under normalization (`..`, `.`, doubled separators) is refused, not resolved.
+    if (typeof key !== 'string' || !key || !equal(normalized(normalizeRuntimePath(key)), key)) return undefined
+    return below(key, sessionRoot) ? workspaceAt(key) : undefined
+  }
   const receiptFile = resolveRuntimePath(storageRoot, 'publication-receipts.json')
   const receiptOwner = publicationOwners.get(receiptFile) ?? {}
   publicationOwners.set(receiptFile, receiptOwner)
@@ -547,7 +553,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     async verify(snapshot, signal, store, actionEpoch, verificationGrantId) {
       const workspace = workspaceOfRun(snapshot)
       if (!['workspace', 'paths'].includes(snapshot.run.scope.kind) || !workspace) throw new ReviewGatewayError('verification-workspace-mismatch')
-      const { root, readWorkspaceFile, guidanceFor, scopeGit, verificationVersion } = workspace
+      const { root, readWorkspaceFile, guidanceFor, scopeGit, verificationVersion, versionKey } = workspace
       if (actionEpoch && !verificationGrantId) throw new ReviewGatewayError('verification-phase-grant-required')
       const grantId = verificationGrantId ?? await store.grantAction(snapshot.run.id, { kind: 'verification', workspaceKey: root,
         headRevision: snapshot.run.scope.revision.head, diagnosticIds: snapshot.retainedIds, expiresAt: Date.now() + 600_000 })
@@ -561,7 +567,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       }
       const currentScope = await resolveLocalReviewScope({ git: await scopeGit(), workspaceKey: root, projectKey: root, readWorkspaceFile },
         snapshot.run.scope.kind === 'paths' ? { kind: 'paths', paths: snapshot.run.scope.pathFilter } : { kind: 'workspace' }, signal)
-      const initialVersion = currentScope.complete ? JSON.stringify([currentScope.scope.revision, currentScope.scope.pathFilter]) : undefined
+      const initialVersion = currentScope.complete ? versionKey(currentScope.scope) : undefined
       const files = [...new Set(currentScope.files.map(file => file.path).concat(snapshot.diagnostics.map(d => d.anchor.path)))]
       if (!currentScope.complete) instructionGaps.push('verification-scope-incomplete')
       const guidance = await guidanceFor(files)
@@ -907,7 +913,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           return () => { throw new ReviewGatewayError('review-fs-operation-not-authorized') }
         } }) as RuntimeFs
         const repairContext = { ...callContext, requestToolUseConfirm: context.requestToolUseConfirm,
-          options: { ...callContext.options, fsOperations: restricted } }
+          options: { ...callContext.options, cwd: root, fsOperations: restricted } }
         const result = await withSuppressedWorkspaceMutations(repairContext, () => SuperEditTool.call(input, repairContext, permission, row, progress))
         return { ...result, data: JSON.stringify({ result: result.data, executionRefs: refs }) }
       } }]
@@ -972,7 +978,8 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     if (mutationContext.options.sessionId !== context.options.sessionId) return
     for (const root of new Set([sessionRoot, ...workspaces.keys()])) {
       if (signal.aborted) return
-      await reassessAfterEdit(workspaceAt(root), mutation, signal)
+      // One root's failure leaves the other roots' reports to be reassessed.
+      try { await reassessAfterEdit(workspaceAt(root), mutation, signal) } catch { /* that root keeps its previous assessments */ }
     }
   })
   const previews = new Map<string, string>()
