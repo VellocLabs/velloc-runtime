@@ -241,8 +241,8 @@ export const zh: Messages = {
   'sidebar.showNestedSessions': '显示子会话',
   'sidebar.hideNestedSessions': '隐藏子会话',
   'sidebar.expandSection': '展开',
-  'sidebar.expandProject': '展开项目',
-  'sidebar.collapseProject': '收起项目',
+  'sidebar.expandProject': '展开工作区',
+  'sidebar.collapseProject': '收起工作区',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} 已就绪',
   'appUpdate.restart': '重启以更新',

@@ -240,8 +240,8 @@ export const de: Messages = {
   'sidebar.showNestedSessions': 'Untersitzungen anzeigen',
   'sidebar.hideNestedSessions': 'Untersitzungen ausblenden',
   'sidebar.expandSection': 'Aufklappen',
-  'sidebar.expandProject': 'Projekt aufklappen',
-  'sidebar.collapseProject': 'Projekt zuklappen',
+  'sidebar.expandProject': 'Arbeitsbereich aufklappen',
+  'sidebar.collapseProject': 'Arbeitsbereich zuklappen',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} ist bereit',
   'appUpdate.restart': 'Neu starten zum Aktualisieren',

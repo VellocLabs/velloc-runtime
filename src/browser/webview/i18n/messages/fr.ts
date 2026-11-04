@@ -237,8 +237,8 @@ export const fr: Messages = {
   'sidebar.showNestedSessions': 'Afficher les sous-sessions',
   'sidebar.hideNestedSessions': 'Masquer les sous-sessions',
   'sidebar.expandSection': 'Développer',
-  'sidebar.expandProject': 'Développer le projet',
-  'sidebar.collapseProject': 'Réduire le projet',
+  'sidebar.expandProject': 'Développer l’espace de travail',
+  'sidebar.collapseProject': 'Réduire l’espace de travail',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} est prêt',
   'appUpdate.restart': 'Redémarrer pour mettre à jour',

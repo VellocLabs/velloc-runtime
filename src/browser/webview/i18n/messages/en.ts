@@ -243,8 +243,8 @@ export const en = {
   'sidebar.showNestedSessions': 'Show nested sessions',
   'sidebar.hideNestedSessions': 'Hide nested sessions',
   'sidebar.expandSection': 'Expand',
-  'sidebar.expandProject': 'Expand project',
-  'sidebar.collapseProject': 'Collapse project',
+  'sidebar.expandProject': 'Expand workspace',
+  'sidebar.collapseProject': 'Collapse workspace',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} is ready',
   'appUpdate.restart': 'Restart to update',

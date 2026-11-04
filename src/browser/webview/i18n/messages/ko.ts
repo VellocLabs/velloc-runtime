@@ -238,8 +238,8 @@ export const ko: Messages = {
   'sidebar.showNestedSessions': '하위 세션 표시',
   'sidebar.hideNestedSessions': '하위 세션 숨기기',
   'sidebar.expandSection': '펼치기',
-  'sidebar.expandProject': '프로젝트 펼치기',
-  'sidebar.collapseProject': '프로젝트 접기',
+  'sidebar.expandProject': '워크스페이스 펼치기',
+  'sidebar.collapseProject': '워크스페이스 접기',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} 준비 완료',
   'appUpdate.restart': '다시 시작하여 업데이트',

@@ -6,6 +6,12 @@ import { ProjectSection } from '../browser/webview/ProjectSection'
 import { writeProjectsCollapsed } from '../browser/webview/projectsStorage'
 import { Sidebar, type SessionListItem } from '../browser/webview/Sidebar'
 import { en } from '../browser/webview/i18n/messages/en'
+import { de } from '../browser/webview/i18n/messages/de'
+import { es } from '../browser/webview/i18n/messages/es'
+import { fr } from '../browser/webview/i18n/messages/fr'
+import { ja } from '../browser/webview/i18n/messages/ja'
+import { ko } from '../browser/webview/i18n/messages/ko'
+import { zh } from '../browser/webview/i18n/messages/zh'
 
 // Every collapsible sidebar item uses one solid caret, drawn after its label,
 // with a hover tip and a hover background; no outline chevrons remain.
@@ -104,6 +110,22 @@ describe('workspace disclosure', () => {
     expect(row.querySelector('[data-slot="disclosure-caret"]')!.getAttribute('title'))
       .toBe(en['sidebar.collapseProject'])
     noLucideChevrons(document)
+  })
+})
+
+describe('workspace row caret tips', () => {
+  // The tips name the row with the same noun as the Workspaces section.
+  const workspaceNoun = {
+    en: /workspace/i, de: /Arbeitsbereich/, es: /espacios? de trabajo/i, fr: /espaces? de travail/i,
+    ja: /ワークスペース/, ko: /워크스페이스/, zh: /工作区/,
+  } as const
+  const catalogs = { en, de, es, fr, ja, ko, zh } as const
+
+  it.each(Object.keys(catalogs) as (keyof typeof catalogs)[])('%s uses the workspace noun', loc => {
+    const cat = catalogs[loc]
+    expect(cat['sidebar.projects']).toMatch(workspaceNoun[loc])
+    expect(cat['sidebar.expandProject']).toMatch(workspaceNoun[loc])
+    expect(cat['sidebar.collapseProject']).toMatch(workspaceNoun[loc])
   })
 })
 
