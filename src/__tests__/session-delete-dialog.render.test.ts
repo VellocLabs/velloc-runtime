@@ -3,7 +3,9 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import {
+  runSessionDeletion,
   SessionDeleteDialog,
+  SessionDeleteProgress,
   sessionDeleteInfoFor,
   sessionDeletionOrder,
 } from '../browser/webview/SessionDeleteDialog'
@@ -19,8 +21,8 @@ import { ko } from '../browser/webview/i18n/messages/ko'
 import { zh } from '../browser/webview/i18n/messages/zh'
 
 // Deleting a session from the sidebar asks first. A session with sessions
-// nested under it offers to take them along, off by default; the confirm
-// reports the choice and the deletion runs the active session last. (F-36)
+// nested under it offers Delete this session or Delete all; the deletion runs
+// one session at a time, the active session last, behind a progress cover. (F-36)
 
 afterEach(() => {
   cleanup()
@@ -42,15 +44,16 @@ function mount(childCount: number, busyChildCount = 0) {
 }
 
 describe('SessionDeleteDialog', () => {
-  it('names the session, and offers no checkbox for one without children', () => {
+  it('names the session and offers Cancel and Delete for one without children', () => {
     mount(0)
     const dialog = screen.getByTestId('session-delete-dialog')
     expect(dialog.getAttribute('role')).toBe('dialog')
-    expect(screen.getByText('Delete thread?')).toBeTruthy()
-    expect(
-      screen.getByText('"Refactor plan" will be removed from this computer. This cannot be undone.'),
-    ).toBeTruthy()
-    expect(screen.queryByTestId('session-delete-children')).toBeNull()
+    expect(screen.getByText('Delete session?')).toBeTruthy()
+    expect(screen.getByTestId('session-delete-body').textContent).toBe(
+      '"Refactor plan" will be removed from this computer. This cannot be undone.',
+    )
+    expect(screen.queryByTestId('session-delete-all')).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
     expect(screen.getByTestId('session-delete-confirm').textContent).toBe('Delete')
     expect(screen.getByTestId('session-delete-cancel').textContent).toBe('Cancel')
   })
@@ -62,51 +65,50 @@ describe('SessionDeleteDialog', () => {
     expect(onCancel).not.toHaveBeenCalled()
   })
 
-  it('offers an unticked checkbox counting the threads under a parent', () => {
+  it('offers this session only or all of them for a parent, with no checkbox', () => {
+    mount(3)
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.getByTestId('session-delete-body').textContent).toBe(
+      '"Refactor plan" has 3 sessions nested under it. If you delete only this one, they move to the top level.' +
+        ' Deleted sessions are removed from this computer and cannot be restored.',
+    )
+    expect(screen.getByTestId('session-delete-all').textContent).toBe('Delete all 4 sessions')
+    expect(screen.getByTestId('session-delete-confirm').textContent).toBe('Delete this session')
+  })
+
+  it('deletes only this session from Delete this session', () => {
     const { onConfirm } = mount(3)
-    const box = screen.getByTestId<HTMLInputElement>('session-delete-children')
-    expect(box.checked).toBe(false)
-    expect(box.closest('label')!.textContent).toBe('Also delete the 3 threads nested under it')
     fireEvent.click(screen.getByTestId('session-delete-confirm'))
-    expect(onConfirm).toHaveBeenCalledWith(false)
+    expect(onConfirm.mock.calls).toEqual([[false]])
   })
 
-  it('uses the singular form for one thread under it', () => {
+  it('deletes the session and its children from Delete all', () => {
+    const { onConfirm } = mount(3)
+    fireEvent.click(screen.getByTestId('session-delete-all'))
+    expect(onConfirm.mock.calls).toEqual([[true]])
+  })
+
+  it('uses the singular form for one session under it', () => {
     mount(1)
-    expect(screen.getByTestId('session-delete-children').closest('label')!.textContent).toBe(
-      'Also delete the 1 thread nested under it',
+    expect(screen.getByTestId('session-delete-body').textContent).toContain(
+      'has 1 session nested under it. If you delete only this one, it moves to the top level.',
     )
+    expect(screen.getByTestId('session-delete-all').textContent).toBe('Delete all 2 sessions')
   })
 
-  it('says busy children will be stopped, only while the box is ticked', () => {
+  it('says how many children are still working, singular for one, nothing when none', () => {
     mount(3, 2)
-    expect(screen.queryByTestId('session-delete-busy')).toBeNull()
-    fireEvent.click(screen.getByTestId('session-delete-children'))
     expect(screen.getByTestId('session-delete-busy').textContent).toBe(
-      '2 threads are still working and will be stopped.',
+      '2 of the nested sessions are still working; deleting all stops them.',
     )
-    fireEvent.click(screen.getByTestId('session-delete-children'))
-    expect(screen.queryByTestId('session-delete-busy')).toBeNull()
-  })
-
-  it('uses the singular busy line for one, and none when no child is busy', () => {
+    cleanup()
     mount(2, 1)
-    fireEvent.click(screen.getByTestId('session-delete-children'))
     expect(screen.getByTestId('session-delete-busy').textContent).toBe(
-      '1 thread is still working and will be stopped.',
+      '1 of the nested sessions is still working; deleting all stops it.',
     )
     cleanup()
     mount(2, 0)
-    fireEvent.click(screen.getByTestId('session-delete-children'))
     expect(screen.queryByTestId('session-delete-busy')).toBeNull()
-  })
-
-  it('reports a ticked checkbox on confirm', () => {
-    const { onConfirm } = mount(2)
-    fireEvent.click(screen.getByTestId('session-delete-children'))
-    expect(screen.getByTestId<HTMLInputElement>('session-delete-children').checked).toBe(true)
-    fireEvent.click(screen.getByTestId('session-delete-confirm'))
-    expect(onConfirm).toHaveBeenCalledWith(true)
   })
 
   it('cancels on the Cancel button, the backdrop and Escape, deleting nothing', () => {
@@ -120,8 +122,123 @@ describe('SessionDeleteDialog', () => {
 
   it('does not cancel on a click inside the panel', () => {
     const { onCancel } = mount(1)
-    fireEvent.click(screen.getByText('Delete thread?'))
+    fireEvent.click(screen.getByText('Delete session?'))
     expect(onCancel).not.toHaveBeenCalled()
+  })
+})
+
+describe('SessionDeleteProgress', () => {
+  it('covers the window with the count deleted so far', () => {
+    render(createElement(SessionDeleteProgress, { done: 3, total: 64 }))
+    const cover = screen.getByTestId('session-delete-progress')
+    expect(cover.getAttribute('role')).toBe('alertdialog')
+    expect(cover.getAttribute('aria-busy')).toBe('true')
+    expect(cover.className).toContain('fixed inset-0')
+    expect(screen.getByText('Deleting sessions…')).toBeTruthy()
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('3')
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuemax')).toBe('64')
+    expect(screen.getByRole('status').textContent).toBe('3 of 64 deleted')
+  })
+
+  it('keeps keys and clicks from reaching the page beneath', () => {
+    const onKey = vi.fn()
+    const onClick = vi.fn()
+    render(
+      createElement(
+        'div',
+        { onKeyDown: onKey, onClick },
+        createElement(SessionDeleteProgress, { done: 0, total: 2 }),
+      ),
+    )
+    const cover = screen.getByTestId('session-delete-progress')
+    expect(document.activeElement).toBe(cover)
+    fireEvent.keyDown(cover, { key: 'Escape' })
+    fireEvent.click(cover)
+    expect(onKey).not.toHaveBeenCalled()
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('keeps a shortcut the page listens for on document from firing while it is up', () => {
+    const shortcut = vi.fn()
+    document.addEventListener('keydown', shortcut, true)
+    try {
+      const { unmount } = render(createElement(SessionDeleteProgress, { done: 0, total: 2 }))
+      fireEvent.keyDown(document.body, { key: 'b', ctrlKey: true })
+      expect(shortcut).not.toHaveBeenCalled()
+      unmount()
+      fireEvent.keyDown(document.body, { key: 'b', ctrlKey: true })
+      expect(shortcut).toHaveBeenCalledTimes(1)
+    } finally {
+      document.removeEventListener('keydown', shortcut, true)
+    }
+  })
+})
+
+describe('runSessionDeletion', () => {
+  it('deletes one at a time, each after the previous settled, reporting progress', async () => {
+    const events: string[] = []
+    const settle: Array<() => void> = []
+    const run = runSessionDeletion(
+      ['a', 'b', 'c'],
+      id =>
+        new Promise<void>(resolve => {
+          events.push(`start ${id}`)
+          settle.push(() => {
+            events.push(`end ${id}`)
+            resolve()
+          })
+        }),
+      (done, total) => events.push(`${done}/${total}`),
+    )
+    await Promise.resolve()
+    expect(events).toEqual(['0/3', 'start a'])
+    settle.shift()!()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(events).toEqual(['0/3', 'start a', 'end a', '1/3', 'start b'])
+    settle.shift()!()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    settle.shift()!()
+    await run
+    expect(events).toEqual([
+      '0/3', 'start a', 'end a', '1/3', 'start b', 'end b', '2/3', 'start c', 'end c', '3/3',
+    ])
+  })
+
+  it('stops waiting once a removal goes unconfirmed, and sends the rest straight away', async () => {
+    const events: string[] = []
+    const settle = new Map<string, (removed: boolean) => void>()
+    const run = runSessionDeletion(
+      ['a', 'b', 'c', 'd'],
+      id =>
+        new Promise<boolean>(resolve => {
+          events.push(`send ${id}`)
+          settle.set(id, resolve)
+        }),
+      (done, total) => events.push(`${done}/${total}`),
+    )
+    await Promise.resolve()
+    settle.get('a')!(true)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(events).toEqual(['0/4', 'send a', '1/4', 'send b'])
+    settle.get('b')!(false)
+    await run
+    expect(events).toEqual(['0/4', 'send a', '1/4', 'send b', '2/4', 'send c', '3/4', 'send d', '4/4'])
+  })
+
+  it('goes on past a failed delete and never rejects', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const seen: string[] = []
+    await runSessionDeletion(
+      ['a', 'b'],
+      async id => {
+        seen.push(id)
+        if (id === 'a') throw new Error('gone wrong')
+      },
+      () => {},
+    )
+    expect(seen).toEqual(['a', 'b'])
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
   })
 })
 
@@ -250,7 +367,7 @@ describe('sessionDeletionOrder', () => {
 describe('session delete catalog', () => {
   const catalogs = { en, de, es, fr, ja, ko, zh } as Record<string, Record<string, string>>
   const pairs = [
-    ['sidebar.sessionDeleteChildrenOne', 'sidebar.sessionDeleteChildren'],
+    ['sidebar.sessionDeleteNestedBodyOne', 'sidebar.sessionDeleteNestedBody'],
     ['sidebar.sessionDeleteBusyOne', 'sidebar.sessionDeleteBusy'],
   ] as const
 
@@ -262,7 +379,10 @@ describe('session delete catalog', () => {
         if (['ja', 'ko', 'zh'].includes(locale)) expect(catalog[one]).toBe(catalog[many])
         else expect(catalog[one]).not.toBe(catalog[many])
       }
-      expect(JSON.stringify(catalog['sidebar.sessionDeleteChildren'])).not.toMatch(/\(/)
+      expect(catalog['sidebar.sessionDeleteNestedBody'], `${locale} nested`).not.toMatch(/\(s\)/)
+      expect(catalog['sidebar.sessionDeleteAll'], `${locale} all`).toContain('{count}')
+      expect(catalog['sidebar.sessionDeleteProgress'], `${locale} progress`).toContain('{done}')
+      expect(catalog['sidebar.sessionDeleteProgress'], `${locale} progress`).toContain('{total}')
     }
   })
 })

@@ -82,6 +82,16 @@ function isLockError(error: { code: string; message: string }): boolean {
   )
 }
 
+/** Whether `err`, as this store's writes throw it (`CODE: message`), is lock
+ *  contention or a contended open: worth trying again a little later. */
+export function isContendedSqliteError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const match = /^(SQLITE_[A-Z_]+): ([\s\S]*)$/.exec(err.message)
+  if (!match) return false
+  const [, code, message] = match
+  return code === 'SQLITE_CANTOPEN' || isLockError({ code, message })
+}
+
 /**
  * Ordered column list — the contract for positional row mapping. Adding a
  * `SessionMetaFile` field later is one entry here + one line in each of

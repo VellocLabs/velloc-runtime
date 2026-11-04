@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { GroupedConversationStorage } from '../browser/storage/GroupedConversationStorage'
+import {
+  GroupedConversationStorage,
+  ROW_DELETE_RETRY_DELAYS_MS,
+} from '../browser/storage/GroupedConversationStorage'
 import type { SqliteSessionMetaStore } from '../browser/storage/SqliteSessionMetaStore'
 import { MIGRATION_READ_FAILURE_LIMIT } from '../browser/storage/SqliteSessionMetaStore'
 import type { SessionMetaFile } from '../sessions/sessionStore'
@@ -627,8 +630,13 @@ describe('GroupedConversationStorage (sqlite meta store)', () => {
     })
     await storage.listSessions()
     expect(storage.projectRouteOf('s1')).toBe(`${PROJECTS}/ProjA`)
-    store.deleteMeta.mockRejectedValueOnce(new Error('SQLITE_BUSY'))
-    await expect(storage.deleteSession('s1')).rejects.toThrow(/SQLITE_BUSY/)
+    vi.useFakeTimers()
+    store.deleteMeta.mockRejectedValue(new Error('SQLITE_BUSY: database is locked'))
+    const deleting = expect(storage.deleteSession('s1')).rejects.toThrow(/SQLITE_BUSY/)
+    await vi.runAllTimersAsync()
+    await deleting
+    vi.useRealTimers()
+    expect(store.deleteMeta).toHaveBeenCalledTimes(ROW_DELETE_RETRY_DELAYS_MS.length + 1)
     // The row survived, so the files must too — no listed row pointing at a
     // deleted directory.
     expect(created.get(`${PROJECTS}/ProjA`)?.deleteSession).not.toHaveBeenCalled()
@@ -637,6 +645,37 @@ describe('GroupedConversationStorage (sqlite meta store)', () => {
     expect((await storage.loadSessionSummariesBatch(['s1'])).get('s1')?.projectDir).toBe(
       `${PROJECTS}/ProjA`,
     )
+  })
+
+  it('deleteSession tries a row delete that lost a lock again, then removes the right folder', async () => {
+    const { storage, created, store } = makeStorage({
+      migrated: true,
+      preseed: [{ sessionId: 's1', meta: makeMeta('s1', `${PROJECTS}/ProjA`) }],
+    })
+    await storage.listSessions()
+    vi.useFakeTimers()
+    store.deleteMeta
+      .mockRejectedValueOnce(new Error('SQLITE_CANTOPEN: unable to open database file'))
+      .mockRejectedValueOnce(new Error('SQLITE_BUSY: database is locked'))
+    const deleting = storage.deleteSession('s1')
+    await vi.runAllTimersAsync()
+    await deleting
+    vi.useRealTimers()
+    expect(store.deleteMeta).toHaveBeenCalledTimes(3)
+    expect(created.get(`${PROJECTS}/ProjA`)?.deleteSession).toHaveBeenCalledWith('s1')
+    expect(storage.projectRouteOf('s1')).toBeUndefined()
+  })
+
+  it('deleteSession does not try again a row delete that failed for another reason', async () => {
+    const { storage, created, store } = makeStorage({
+      migrated: true,
+      preseed: [{ sessionId: 's1', meta: makeMeta('s1', `${PROJECTS}/ProjA`) }],
+    })
+    await storage.listSessions()
+    store.deleteMeta.mockRejectedValue(new Error('SQLITE_CORRUPT: database disk image is malformed'))
+    await expect(storage.deleteSession('s1')).rejects.toThrow(/SQLITE_CORRUPT/)
+    expect(store.deleteMeta).toHaveBeenCalledTimes(1)
+    expect(created.get(`${PROJECTS}/ProjA`)?.deleteSession).not.toHaveBeenCalled()
   })
 
   // Regression: a re-bind used to leave the pre-bind meta stub under the

@@ -360,6 +360,8 @@ export class SharedWorkerSessionManager {
   private readonly dirtySessionCounters = new Set<string>()
   /** Sessions a `session.delete` is tearing down; metadata writes for them are refused. */
   private readonly deletingSessions = new Set<string>()
+  /** The tail of the `session.delete` queue: deletes run one at a time, in arrival order. */
+  private sessionDeleteQueue: Promise<void> = Promise.resolve()
   /** Compatibility state for worker handles without explicit boundary returns. */
   private readonly legacyStreamEndedSessions = new Set<string>()
   private readonly bridgeRouter = new BridgeRequestRouter({
@@ -629,7 +631,7 @@ export class SharedWorkerSessionManager {
     detachSessionPort: (sessionId, port) =>
       this.detachSessionPort(sessionId, port),
     deleteSession: (port, sessionId, requestId) =>
-      void this.handleSessionDelete(port, sessionId, requestId),
+      void this.enqueueSessionDelete(port, sessionId, requestId),
     retitleSession: (port, sessionId, title, requestId) =>
       void this.handleSessionRename(port, sessionId, title, requestId),
     pinSession: (port, sessionId, pinned, requestId) =>
@@ -3220,6 +3222,25 @@ export class SharedWorkerSessionManager {
     return snapshot?.cwd || snapshot?.projectRoot || entry.projectRoot || undefined
   }
 
+  /**
+   * Queues a `session.delete` behind the ones already running. Concurrent
+   * deletes contend for the session index's lock, and a delete whose row
+   * delete loses keeps its files. A failed delete is logged; the queue goes on.
+   */
+  private enqueueSessionDelete(
+    port: MessagePort,
+    sessionId: string,
+    requestId?: string,
+  ): Promise<void> {
+    const run = this.sessionDeleteQueue.then(() =>
+      this.handleSessionDelete(port, sessionId, requestId),
+    )
+    this.sessionDeleteQueue = run.catch(err => {
+      console.warn(`[SharedWorker] delete of ${sessionId} failed`, err)
+    })
+    return this.sessionDeleteQueue
+  }
+
   private async handleSessionDelete(
     port: MessagePort,
     sessionId: string,
@@ -3298,8 +3319,10 @@ export class SharedWorkerSessionManager {
         }
         try {
           await this.storage.deleteSession(sessionId)
-        } catch {
-          // best-effort; the in-memory state is already gone
+        } catch (err) {
+          // The in-memory state is already gone; the files stay with the
+          // surviving row, and the session lists again on the next start.
+          console.warn(`[SharedWorker] storage delete of ${sessionId} failed`, err)
         }
         // Cascade the meta ROWS of this session's teammates. Their FILES are
         // already gone — they live under the directory just removed — but the

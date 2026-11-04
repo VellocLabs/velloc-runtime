@@ -33,6 +33,7 @@ import {
 import type { SessionTreeRow, SessionTreeScanResult } from './sessionTreeScan'
 import type { SqliteSessionMetaStore } from './SqliteSessionMetaStore'
 import {
+  isContendedSqliteError,
   MIGRATION_READ_FAILURE_LIMIT,
   SESSION_META_MIGRATION_V1,
 } from './SqliteSessionMetaStore'
@@ -107,6 +108,28 @@ const BATCH_MAX_ITEMS = 32
 const BATCH_MAX_BYTES = 2 * 1024 * 1024
 
 const TEXT_DECODER = new TextDecoder()
+
+/**
+ * Waits before each further try of a session's row delete. The store already
+ * retries a busy lock briefly; a delete that still loses the lock is tried
+ * again after these pauses before the delete gives up and keeps the files.
+ */
+export const ROW_DELETE_RETRY_DELAYS_MS: readonly number[] = [250, 1000]
+
+/** Runs `remove`, again after each of {@link ROW_DELETE_RETRY_DELAYS_MS} while
+ *  it fails on lock contention; throws any other failure, or the last one. */
+async function deleteRowPatiently(remove: () => Promise<void>): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await remove()
+      return
+    } catch (error) {
+      const delay = ROW_DELETE_RETRY_DELAYS_MS[attempt]
+      if (delay === undefined || !isContendedSqliteError(error)) throw error
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+}
 
 /** What the scan told us about one session, kept for the preload. */
 type ScannedSession = {
@@ -731,7 +754,7 @@ export class GroupedConversationStorage
     // Row FIRST (it tombstones the id), then files; the caches clear either way.
     const backend = this.backendFor(sessionId)
     try {
-      await this.opts.metaStore.deleteMeta(sessionId)
+      await deleteRowPatiently(() => this.opts.metaStore.deleteMeta(sessionId))
       await backend.deleteSession?.(sessionId)
     } finally {
       this.summaryCache.delete(sessionId)

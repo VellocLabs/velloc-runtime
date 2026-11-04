@@ -254,6 +254,7 @@ import { normalizeProjectPath } from './projectTree'
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { Button } from '@/components/ui/button'
 import {
+  SESSION_REMOVAL_TIMEOUT_MS,
   SessionDeleteConfirm,
   type SessionDeleteOrigin,
   type SessionDeleteTarget,
@@ -744,6 +745,8 @@ export function MultiSessionShell({
   // when the `session.forked` ack lands we delete the original and switch to
   // the truncated copy.
   const pendingRewindRef = useRef<Map<string, string>>(new Map())
+  // A confirmed delete waiting on `session.removed`, per session id.
+  const sessionRemovalWaitersRef = useRef<Map<string, (removed: boolean) => void>>(new Map())
   // Fork-sends (the composer's Ctrl/Cmd+Alt+Enter) waiting on their
   // `session.forked` ack: the message to send into the new session.
   // Read through a ref: the worker-message effect below does not re-subscribe
@@ -1062,6 +1065,7 @@ export function MultiSessionShell({
         const payload = data.payload as { sessionId?: string }
         if (payload?.sessionId) {
           applyRemoteRemoval(payload.sessionId)
+          sessionRemovalWaitersRef.current.get(payload.sessionId)?.(true)
         }
         return
       }
@@ -3700,6 +3704,12 @@ export function MultiSessionShell({
     () => createShellRequestSessionDelete(setSessionDeleteTarget),
     [],
   )
+  // A confirmed delete runs one session at a time: each resolves `true` on the
+  // runtime's `session.removed` for it, or `false` when the timeout ends the wait.
+  const deleteAndAwaitRemoval = useMemo(
+    () => createShellDeleteAndAwaitRemoval(handleDeleteThread, sessionRemovalWaitersRef),
+    [handleDeleteThread],
+  )
 
   // "+" on the Projects header: native folder picker → registered project.
   // A cancel (no path) is a silent no-op, as with the composer chip's picker.
@@ -4352,7 +4362,8 @@ export function MultiSessionShell({
         target={sessionDeleteTarget}
         sessions={sessionItems}
         activeSessionId={activeSessionId}
-        onDelete={handleDeleteThread}
+        onShow={focusSession}
+        onDelete={deleteAndAwaitRemoval}
         onClose={() => setSessionDeleteTarget(null)}
       />
       {projectDeleteTarget && (
@@ -6053,6 +6064,23 @@ function createShellHandleConfirmDeleteProject(
     removeProject(path)
     setProjectDeleteTarget(null)
   }
+}
+
+function createShellDeleteAndAwaitRemoval(
+  handleDeleteThread: (sessionId: string) => void,
+  waitersRef: RefObject<Map<string, (removed: boolean) => void>>,
+) {
+  return (sessionId: string) =>
+    new Promise<boolean>(resolve => {
+      const settle = (removed: boolean) => {
+        clearTimeout(timer)
+        if (waitersRef.current.get(sessionId) === settle) waitersRef.current.delete(sessionId)
+        resolve(removed)
+      }
+      const timer = setTimeout(() => settle(false), SESSION_REMOVAL_TIMEOUT_MS)
+      waitersRef.current.set(sessionId, settle)
+      handleDeleteThread(sessionId)
+    })
 }
 
 function createShellHandleRevealProjectFolder(

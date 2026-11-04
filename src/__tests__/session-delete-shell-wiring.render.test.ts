@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { createElement, Fragment, useState } from 'react'
 import ts from 'typescript'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Sidebar, type SessionListItem } from '../browser/webview/Sidebar'
 import { SessionDeleteConfirm, type SessionDeleteTarget } from '../browser/webview/SessionDeleteDialog'
 
@@ -42,10 +42,12 @@ function ShellDelete({
   sessions,
   activeSessionId,
   onDelete,
+  onShow = () => {},
 }: {
   sessions: SessionListItem[]
   activeSessionId: string
-  onDelete: (sessionId: string) => void
+  onDelete: (sessionId: string) => void | Promise<void>
+  onShow?: (sessionId: string) => void
 }) {
   const [target, setTarget] = useState<SessionDeleteTarget | null>(null)
   const projectPaths = [...new Set(sessions.flatMap(s => (s.projectRoot ? [s.projectRoot] : [])))]
@@ -65,6 +67,7 @@ function ShellDelete({
       target,
       sessions,
       activeSessionId,
+      onShow,
       onDelete,
       onClose: () => setTarget(null),
     }),
@@ -101,28 +104,97 @@ describe('the sidebar delete, wired as the shell wires it', () => {
     expect(onDelete).not.toHaveBeenCalled()
   })
 
-  it('confirms the parent alone when the box is left unticked', async () => {
+  it('Delete this session deletes the parent alone', async () => {
     const onDelete = vi.fn()
     render(createElement(ShellDelete, { sessions: family, activeSessionId: 'other', onDelete }))
     await clickRowDelete('p')
     fireEvent.click(screen.getByTestId('session-delete-confirm'))
+    await waitFor(() => expect(screen.queryByTestId('session-delete-progress')).toBeNull())
     expect(onDelete.mock.calls).toEqual([['p']])
     expect(screen.queryByTestId('session-delete-dialog')).toBeNull()
   })
 
-  it('ticked, deletes the nested rows with the active one last, sparing a teammate and a detached row', async () => {
+  it('Delete all deletes the nested rows with the active one last, sparing a teammate and a detached row', async () => {
     const onDelete = vi.fn()
     render(createElement(ShellDelete, { sessions: family, activeSessionId: 'c', onDelete }))
     await clickRowDelete('p')
-    expect(screen.getByTestId('session-delete-children').closest('label')!.textContent).toBe(
-      'Also delete the 2 threads nested under it',
-    )
-    fireEvent.click(screen.getByTestId('session-delete-children'))
+    expect(screen.getByTestId('session-delete-all').textContent).toBe('Delete all 3 sessions')
     expect(screen.getByTestId('session-delete-busy').textContent).toBe(
-      '1 thread is still working and will be stopped.',
+      '1 of the nested sessions is still working; deleting all stops it.',
     )
-    fireEvent.click(screen.getByTestId('session-delete-confirm'))
+    fireEvent.click(screen.getByTestId('session-delete-all'))
+    await waitFor(() => expect(screen.queryByTestId('session-delete-progress')).toBeNull())
     expect(onDelete.mock.calls.map(call => call[0])).toEqual(['p', 'g', 'c'])
+  })
+
+  it('covers the page while it runs, starting each delete only after the previous one settled', async () => {
+    const settle: Array<() => void> = []
+    const onDelete = vi.fn((_id: string) => new Promise<void>(resolve => settle.push(resolve)))
+    render(createElement(ShellDelete, { sessions: family, activeSessionId: 'c', onDelete }))
+    await clickRowDelete('p')
+    fireEvent.click(screen.getByTestId('session-delete-all'))
+    const cover = await screen.findByTestId('session-delete-progress')
+    expect(screen.queryByTestId('session-delete-dialog')).toBeNull()
+    expect(cover.dataset.total).toBe('3')
+    expect(onDelete.mock.calls.map(call => call[0])).toEqual(['p'])
+    settle.shift()!()
+    await waitFor(() => expect(onDelete).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('session-delete-progress').dataset.done).toBe('1')
+    settle.shift()!()
+    await waitFor(() => expect(onDelete).toHaveBeenCalledTimes(3))
+    settle.shift()!()
+    await waitFor(() => expect(screen.queryByTestId('session-delete-progress')).toBeNull())
+    expect(onDelete.mock.calls.map(call => call[0])).toEqual(['p', 'g', 'c'])
+  })
+
+  it('before the first delete, moves the screen to the surviving top-level row when the shown session goes', async () => {
+    const calls: string[] = []
+    const onShow = vi.fn((id: string) => calls.push(`show ${id}`))
+    const onDelete = vi.fn((id: string) => {
+      calls.push(`delete ${id}`)
+    })
+    render(createElement(ShellDelete, { sessions: family, activeSessionId: 'g', onDelete, onShow }))
+    await clickRowDelete('c')
+    fireEvent.click(screen.getByTestId('session-delete-all'))
+    await waitFor(() => expect(screen.queryByTestId('session-delete-progress')).toBeNull())
+    // `c` is nested under `p`, which survives: that top-level row is shown.
+    expect(calls).toEqual(['show p', 'delete c', 'delete g'])
+  })
+
+  it('moves to the next top-level row when the shown top-level session itself goes', async () => {
+    const onShow = vi.fn()
+    const onDelete = vi.fn()
+    render(createElement(ShellDelete, { sessions: family, activeSessionId: 'c', onDelete, onShow }))
+    await clickRowDelete('p')
+    fireEvent.click(screen.getByTestId('session-delete-all'))
+    await waitFor(() => expect(screen.queryByTestId('session-delete-progress')).toBeNull())
+    expect(onShow.mock.calls).toEqual([['other']])
+    expect(onShow.mock.invocationCallOrder[0]!).toBeLessThan(onDelete.mock.invocationCallOrder[0]!)
+  })
+
+  it('never moves the screen to a session this channel hides', async () => {
+    const sessions = [
+      item('p', { updatedAt: NOW }),
+      item('unlisted', { updatedAt: NOW - 500, templateType: 'no-such-launcher-type' }),
+      item('kept', { updatedAt: NOW - 2000 }),
+    ]
+    const onShow = vi.fn()
+    render(createElement(ShellDelete, { sessions, activeSessionId: 'p', onDelete: vi.fn(), onShow }))
+    await clickRowDelete('p')
+    fireEvent.click(screen.getByTestId('session-delete-confirm'))
+    await waitFor(() => expect(screen.queryByTestId('session-delete-progress')).toBeNull())
+    expect(onShow.mock.calls).toEqual([['kept']])
+  })
+
+  it('leaves the screen alone when the shown session survives', async () => {
+    const onShow = vi.fn()
+    const onDelete = vi.fn()
+    render(createElement(ShellDelete, { sessions: family, activeSessionId: 'c', onDelete, onShow }))
+    await clickRowDelete('p')
+    fireEvent.click(screen.getByTestId('session-delete-confirm'))
+    await waitFor(() => expect(screen.queryByTestId('session-delete-progress')).toBeNull())
+    expect(onDelete.mock.calls).toEqual([['p']])
+    expect(onShow).not.toHaveBeenCalled()
   })
 
   it('Cancel and Escape close the dialog and delete nothing', async () => {
@@ -162,12 +234,10 @@ describe('the sidebar delete, wired as the shell wires it', () => {
     const folderA = openFolder(A)
     expect(within(folderA).queryByTestId('sidebar-row-cB')).toBeNull()
     await clickRowDelete('P', folderA)
-    expect(screen.getByTestId('session-delete-children').closest('label')!.textContent).toBe(
-      'Also delete the 1 thread nested under it',
-    )
-    fireEvent.click(screen.getByTestId('session-delete-children'))
+    expect(screen.getByTestId('session-delete-all').textContent).toBe('Delete all 2 sessions')
     expect(screen.queryByTestId('session-delete-busy')).toBeNull()
-    fireEvent.click(screen.getByTestId('session-delete-confirm'))
+    fireEvent.click(screen.getByTestId('session-delete-all'))
+    await waitFor(() => expect(screen.queryByTestId('session-delete-progress')).toBeNull())
     expect(onDelete.mock.calls.map(call => call[0])).toEqual(['P', 'cA'])
   })
 
@@ -176,14 +246,12 @@ describe('the sidebar delete, wired as the shell wires it', () => {
     render(createElement(ShellDelete, { sessions: split, activeSessionId: 'none', onDelete }))
     openFolder(A)
     await clickRowDelete('P')
-    expect(screen.getByTestId('session-delete-children').closest('label')!.textContent).toBe(
-      'Also delete the 2 threads nested under it',
-    )
-    fireEvent.click(screen.getByTestId('session-delete-children'))
+    expect(screen.getByTestId('session-delete-all').textContent).toBe('Delete all 3 sessions')
     expect(screen.getByTestId('session-delete-busy').textContent).toBe(
-      '1 thread is still working and will be stopped.',
+      '1 of the nested sessions is still working; deleting all stops it.',
     )
-    fireEvent.click(screen.getByTestId('session-delete-confirm'))
+    fireEvent.click(screen.getByTestId('session-delete-all'))
+    await waitFor(() => expect(screen.queryByTestId('session-delete-progress')).toBeNull())
     expect(onDelete.mock.calls.map(call => call[0]).sort()).toEqual(['P', 'cA', 'cB'])
   })
 
@@ -243,15 +311,24 @@ describe('MultiSessionShell wiring', () => {
     expect(body).toMatch(/setSessionDeleteTarget\(\{ \.\.\.origin, sessionId \}\)/)
   })
 
-  it('mounts the confirmation over the same list, deleting through the shell handler', () => {
+  it('mounts the confirmation over the same list, deleting through the awaited shell handler', () => {
     const confirms = jsxElements('SessionDeleteConfirm')
     expect(confirms).toHaveLength(1)
     const attrs = confirms[0]!
     expect(attrs.get('target')).toBe('sessionDeleteTarget')
     expect(attrs.get('sessions')).toBe(jsxElements('Sidebar')[0]!.get('sessions'))
     expect(attrs.get('activeSessionId')).toBe('activeSessionId')
-    expect(attrs.get('onDelete')).toBe('handleDeleteThread')
+    expect(attrs.get('onShow')).toBe('focusSession')
+    expect(attrs.get('onDelete')).toBe('deleteAndAwaitRemoval')
     expect(attrs.get('onClose')).toBeTruthy()
+    expect(shellSource).toMatch(
+      /const deleteAndAwaitRemoval = useMemo\(\s*\(\) => createShellDeleteAndAwaitRemoval\(handleDeleteThread, sessionRemovalWaitersRef\)/,
+    )
+  })
+
+  it("settles a delete as removed on the runtime's removal of that session", () => {
+    const removed = /if \(data\.type === 'session\.removed'\) \{([\s\S]*?)\n {6}\}/.exec(shellSource)?.[1] ?? ''
+    expect(removed).toMatch(/sessionRemovalWaitersRef\.current\.get\(payload\.sessionId\)\?\.\(true\)/)
   })
 
   it("keeps the folder picker's cancel deleting at once, without the dialog", () => {
