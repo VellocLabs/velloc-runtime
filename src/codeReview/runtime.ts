@@ -1071,5 +1071,6 @@ export async function invokeReviewModelSkill(raw: string, context: ToolCallConte
   const service = await getOrCreateReviewService(context, permission)
   const { runId } = await service.startModel(raw, context.cancelSource.signal, toolCallId)
   const snapshot = await service.wait(runId)
-  return JSON.stringify({ reviewRunId: runId, status: snapshot.run.progress.status, report: JSON.parse(presentReviewJson(snapshot)) })
+  const report = JSON.parse(presentReviewJson(snapshot))
+  return JSON.stringify({ reviewRunId: runId, status: snapshot.run.progress.status, report, ...(report.unverified?.length ? { note: 'report.unverified lists candidates whose evidence the host could not confirm; they are not findings and must not be reported as such.' } : {}) })
 }

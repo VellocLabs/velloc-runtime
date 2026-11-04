@@ -141,7 +141,7 @@ function workerOutputContract(limit: number, perAngle: boolean): readonly Review
     statement: { headline: 'Concise issue title', details: 'Concrete mechanism and supporting evidence', scenario: 'Reachable trigger and incorrect behavior' },
     kind: 'correctness',
     impact: 'major',
-    support: [{ source: 'source id shown with a patch or a ReviewRead result', startLine: 1, endLine: 1, relevance: 'How the cited lines support the mechanism' }],
+    support: [{ source: 'source id shown with a patch or a ReviewRead result', quote: 'Short quotation that occurs in that source', relevance: 'How the quotation supports the mechanism' }],
     assessment: { disposition: 'unchecked', reason: 'No independent verification has been performed' },
     angle: 'assigned review angle',
   }

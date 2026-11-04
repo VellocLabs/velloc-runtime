@@ -752,7 +752,9 @@ export class ReviewReportStore {
         if (!(error instanceof ReportStoreError)) throw error
         draft = clone(original)
         draft.calls.push({ id: callKey, input: fingerprint, error: error.code })
-        draft.rawResults.push({ toolCallId, raw: this.options.sanitizeExcerpt(typeof input === 'string' ? input : canonical(input)), code: error.code })
+        // A per-item refusal already kept each item as a raw result; only a whole-call refusal keeps the whole input.
+        if (!error.rejected) draft.rawResults.push({ toolCallId, raw: this.options.sanitizeExcerpt(typeof input === 'string' ? input : canonical(input)), code: error.code })
+        else draft.rawResults.push(...error.rejected.map(({ index, code }) => ({ toolCallId: `${toolCallId}#${index}`, raw: this.options.sanitizeExcerpt(canonical((input as { candidates?: unknown[]; assessments?: unknown[] }).candidates?.[index] ?? (input as { assessments?: unknown[] }).assessments?.[index])), code })))
         if (error.unverified?.length) this.keepUnverified(draft, error.unverified)
         this.event(draft, 'write-rejected')
         await this.save(draft)
@@ -800,7 +802,9 @@ export class ReviewReportStore {
    * `candidates`, a refused item with a readable statement is kept as unverified, and an accepted one clears it (F-38).
    */
   private eachItem(state: RunState, toolCallId: string, items: unknown[], apply: (draft: RunState, item: unknown) => string, candidates = false): { accepted: ReportWriteResult['accepted']; rejected: Array<{ index: number; code: string }> } {
-    const trial = clone(state)
+    // Only the collections a candidate or assessment write touches are copied; sources and anchors are read-only here.
+    const draftOf = (base: RunState): RunState => ({ ...base, ...clone({ run: base.run, diagnostics: base.diagnostics, candidates: base.candidates, evidence: base.evidence, assessments: base.assessments, events: base.events, duplicateIds: base.duplicateIds, duplicateMerges: base.duplicateMerges }) })
+    const trial = draftOf(state)
     try {
       const accepted = items.map((item, index) => ({ index, diagnosticId: apply(trial, item) }))
       Object.assign(state, trial)
@@ -809,7 +813,7 @@ export class ReviewReportStore {
     } catch (error) { if (!(error instanceof ReportStoreError)) throw error }
     const accepted: ReportWriteResult['accepted'] = [], rejected: Array<{ index: number; code: string }> = [], unverified: ReportUnverified[] = []
     for (const [index, item] of items.entries()) {
-      const draft = clone(state)
+      const draft = draftOf(state)
       try {
         accepted.push({ index, diagnosticId: apply(draft, item) })
         Object.assign(state, draft)

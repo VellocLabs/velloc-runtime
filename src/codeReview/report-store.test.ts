@@ -174,6 +174,7 @@ describe('review report store', () => {
     expect(refused).toBeInstanceOf(ReportStoreError)
     expect((refused as ReportStoreError).rejected).toEqual([{ index: 0, code: 'missing-evidence' }, { index: 1, code: 'missing-evidence' }])
     expect((await store.getSnapshot(id)).diagnostics).toHaveLength(2)
+    expect((await store.getRawResults(id)).map(item => item.toolCallId)).toEqual(['add#1', 'none#0', 'none#1'])
   })
   it.each([
     ['prose', () => 'Reviewed src/a.ts; one major finding, nothing else.'],
