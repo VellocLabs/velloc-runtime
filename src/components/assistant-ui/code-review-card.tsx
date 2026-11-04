@@ -355,6 +355,18 @@ export const ReviewReportCard: FC<{
             </li>
           })}</ul>
         </>}
+        {!reviewing && (report.unverified?.length ?? 0) > 0 && <details data-testid="review-unverified" className="rounded-lg border border-dashed px-3 py-2 text-xs">
+          <summary className="cursor-pointer text-muted-foreground">{t('reviewCard.unverified')} · {report.unverified!.length}</summary>
+          <p className="mt-1 text-muted-foreground">{t('reviewCard.unverifiedNote')}</p>
+          <ul className="mt-2 space-y-2">{report.unverified!.map(item => <li key={item.id} data-testid="review-unverified-item" className="space-y-0.5">
+            <div className="flex flex-wrap items-center gap-x-2">
+              {item.impact && <Badge variant={IMPACT_VARIANT[item.impact]} size="sm">{enumText(item.impact)}</Badge>}
+              <p className="font-medium leading-snug">{item.headline}</p>
+              {item.path && <span className="ml-auto max-w-full truncate font-mono text-muted-foreground">{item.path}{item.line ? `:${item.line}` : ''}</span>}
+            </div>
+            {item.details && <p className="line-clamp-3 whitespace-pre-wrap text-muted-foreground">{item.details}</p>}
+          </li>)}</ul>
+        </details>}
         {(report.verifications ?? []).map(check => <details key={check.ref} data-testid="review-verification" className="text-xs"><summary className="cursor-pointer">{t('reviewCard.verify')} · {enumText(check.afterLatestEdit ? check.succeeded ? 'passed' : 'failed' : 'not-run')}</summary>{check.command && <pre className="whitespace-pre-wrap">{check.command}</pre>}{check.codeRevision && <p className="break-all">{check.codeRevision}</p>}{check.evidence.map((evidence, index) => <pre key={index} className="overflow-auto whitespace-pre-wrap">{evidence.quote}</pre>)}{check.missingCases.map((item, index) => <p key={index}>{reviewDetailMessage(t, item)}</p>)}</details>)}
         {report.publicationPreview !== undefined && <details open className="text-xs"><summary className="cursor-pointer">{t('reviewCard.preview')}</summary><pre className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{report.publicationPreview}</pre></details>}
         {report.tasks && <ReviewTaskTree tasks={report.tasks} />}

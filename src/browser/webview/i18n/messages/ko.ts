@@ -88,6 +88,8 @@ export const ko: Messages = {
   "reviewCard.emptyPartial": "확인한 부분에서는 아직 문제가 없지만 검토 범위가 불완전합니다.",
   "reviewCard.emptyScope": "이 대상에 검토할 변경사항이 없습니다.",
   "reviewCard.evidence": "세부 내용 및 근거",
+  "reviewCard.unverified": "검증되지 않음",
+  "reviewCard.unverifiedNote": "리뷰어가 보고했지만 근거가 읽은 코드와 일치하지 않았습니다. 직접 확인하세요. 수정이나 게시 대상으로 제공되지 않습니다.",
   "reviewCard.expand": "보고서 열기",
   "reviewCard.historical": "{revision}의 위치입니다. 현재 파일을 열기 전에 위치를 다시 확인하세요.",
   "reviewCard.kind": "분류",

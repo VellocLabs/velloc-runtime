@@ -91,6 +91,8 @@ export const zh: Messages = {
   "reviewCard.emptyPartial": "已检查部分暂未发现问题；审查范围尚未完成。",
   "reviewCard.emptyScope": "当前目标没有可审查的差异。",
   "reviewCard.evidence": "详情与证据",
+  "reviewCard.unverified": "未核实",
+  "reviewCard.unverifiedNote": "审查者报告了这些问题，但其证据与它读取的代码不符。请自行核对；它们不会被用于修复或发布。",
   "reviewCard.expand": "打开报告",
   "reviewCard.historical": "位置属于 {revision}；打开当前文件前需重新定位。",
   "reviewCard.kind": "分类",

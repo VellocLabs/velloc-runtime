@@ -1,4 +1,4 @@
-import type { ReportActionReceipt, ReportAssessment, ReportDiagnostic, ReportEvidence, ReportSnapshot } from './report-store'
+import type { ReportActionReceipt, ReportAssessment, ReportDiagnostic, ReportEvidence, ReportSnapshot, ReportUnverified } from './report-store'
 
 export interface PresentedDiagnostic {
   diagnostic: ReportDiagnostic
@@ -9,6 +9,8 @@ export interface PresentedDiagnostic {
 export interface ReviewReportProjection {
   run: ReportSnapshot['run']
   report: PresentedDiagnostic[]
+  /** Refused candidates for people to check; not findings, never repaired or published. */
+  unverified: ReportUnverified[]
   actions: ReportActionReceipt[]
   coverage: ReportSnapshot['coverage']
   verifications: ReportSnapshot['verifications']
@@ -35,7 +37,7 @@ export function projectReviewReport(snapshot: ReportSnapshot): ReviewReportProje
   })
   const complete = snapshot.coverage.complete && !['partial', 'cancelled', 'failed'].includes(snapshot.run.progress.status)
   const summary = !snapshot.structured ? 'unstructured' : report.length ? 'findings' : complete ? 'complete-empty' : 'partial-empty'
-  return freeze(structuredClone({ run: snapshot.run, report, actions: snapshot.actions,
+  return freeze(structuredClone({ run: snapshot.run, report, unverified: snapshot.unverified ?? [], actions: snapshot.actions,
     coverage: { ...snapshot.coverage, complete }, verifications: snapshot.verifications ?? [], structured: snapshot.structured, summary }))
 }
 export function presentReviewJson(snapshot: ReportSnapshot): string {

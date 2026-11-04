@@ -158,6 +158,18 @@ describe('review report card', () => {
   })
 })
 
+it('lists unverified items apart from the findings, with no repair selection', () => {
+  const value = { ...report(), unverified: [{ id: 'u1', headline: 'Handle leaks on throw', details: 'The release call is gone.', path: 'src/a.ts', line: 5, impact: 'major' as const, code: 'quote-not-in-source' }] }
+  renderReport(value)
+  const section = screen.getByTestId('review-unverified')
+  expect(section.textContent).toContain(t('reviewCard.unverified'))
+  expect(section.textContent).toContain(t('reviewCard.unverifiedNote'))
+  expect(screen.getByTestId('review-unverified-item').textContent).toContain('Handle leaks on throw')
+  expect(screen.getByTestId('review-unverified-item').textContent).toContain('src/a.ts:5')
+  expect(section.textContent).not.toContain('quote-not-in-source')
+  expect(section.querySelector('input[type="checkbox"]')).toBeNull()
+  expect(screen.queryAllByTestId('review-finding')).toHaveLength(0)
+})
 it('renders structured policy notices and coded coverage without leaking identifiers', () => {
   const value = report()
   value.notices = [{ code: 'level-reused', level: 'high' }, { code: 'panel-limit', requested: 'unlimited', effective: 32 }]

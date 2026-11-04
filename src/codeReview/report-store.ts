@@ -48,6 +48,10 @@ export interface ReportDuplicateMerge {
   reason: string
   support: ReportSupport[]
 }
+/** A candidate the ledger refused, kept for people to check by hand; never a finding, never repaired or published (F-38). */
+export interface ReportUnverified {
+  id: string; headline: string; details?: string; path?: string; line?: number; impact?: ReportDiagnostic['classification']['impact']; code: string
+}
 export interface ReportSnapshot {
   run: ReportRun
   diagnostics: ReportDiagnostic[]
@@ -57,6 +61,8 @@ export interface ReportSnapshot {
   retainedIds: string[]
   /** Duplicate diagnostic ID to its explicitly selected representative; original ledger facts remain intact. */
   duplicateIds?: Record<string, string>
+  /** Refused candidates whose statement was readable, newest last; present only when there are some. */
+  unverified?: ReportUnverified[]
   coverage: ReportCoverage
   events: ReportEvent[]
   structured: boolean
@@ -143,8 +149,8 @@ interface RunState extends Omit<ReportSnapshot, 'verifications'> {
   duplicateMerges?: ReportDuplicateMerge[]
 }
 export class ReportStoreError extends Error {
-  /** `rejected` lists every refused item when a per-item write refused them all. */
-  constructor(readonly code: string, readonly rejected?: ReadonlyArray<{ index: number; code: string }>) { super(code); this.name = 'ReportStoreError' }
+  /** `rejected` lists every refused item when a per-item write refused them all; `unverified` keeps the readable ones. */
+  constructor(readonly code: string, readonly rejected?: ReadonlyArray<{ index: number; code: string }>, readonly unverified?: ReadonlyArray<ReportUnverified>) { super(code); this.name = 'ReportStoreError' }
 }
 const fail = (code: string): never => { throw new ReportStoreError(code) }
 const clone = <T>(value: T): T => structuredClone(value)
@@ -290,7 +296,7 @@ export class ReviewReportStore {
   }
   private snapshot(state: RunState): ReportSnapshot {
     const { run, diagnostics, evidence, assessments, actions, retainedIds, events, structured } = state
-    return immutable(clone({ run, diagnostics, evidence, assessments, actions, retainedIds, events, structured, ...(state.duplicateIds ? { duplicateIds: state.duplicateIds } : {}), verifications: this.verifications(state), coverage: effectiveCoverage(state) }))
+    return immutable(clone({ run, diagnostics, evidence, assessments, actions, retainedIds, events, structured, ...(state.duplicateIds ? { duplicateIds: state.duplicateIds } : {}), ...(state.unverified?.length ? { unverified: state.unverified } : {}), verifications: this.verifications(state), coverage: effectiveCoverage(state) }))
   }
   private verifications(state: RunState): ReportVerification[] {
     return state.executions.filter(event => event.kind === 'verification').map(event => {
@@ -747,6 +753,7 @@ export class ReviewReportStore {
         draft = clone(original)
         draft.calls.push({ id: callKey, input: fingerprint, error: error.code })
         draft.rawResults.push({ toolCallId, raw: this.options.sanitizeExcerpt(typeof input === 'string' ? input : canonical(input)), code: error.code })
+        if (error.unverified?.length) this.keepUnverified(draft, error.unverified)
         this.event(draft, 'write-rejected')
         await this.save(draft)
         throw error
@@ -761,7 +768,7 @@ export class ReviewReportStore {
       let rejected: Array<{ index: number; code: string }> = []
       if (operation.operation === 'append-candidates') {
         object(submitted, ['operation', 'candidates'])
-        const written = this.eachItem(state, toolCallId, array(operation.candidates, 32), (draft, item) => this.append(draft, this.candidate(draft, item), toolCallId))
+        const written = this.eachItem(state, toolCallId, array(operation.candidates, 32), (draft, item) => this.append(draft, this.candidate(draft, item), toolCallId), true)
         accepted.push(...written.accepted); rejected = written.rejected
       } else if (operation.operation === 'assess') {
         object(submitted, ['operation', 'assessments'])
@@ -789,16 +796,18 @@ export class ReviewReportStore {
   }
   /**
    * Contract: applies `apply` to each item on its own. A refused item leaves the state as it was, is kept as a raw
-   * result and listed in `rejected`; the call fails with the first item's code only when every item is refused (F-38).
+   * result and listed in `rejected`; the call fails with the first item's code only when every item is refused. With
+   * `candidates`, a refused item with a readable statement is kept as unverified, and an accepted one clears it (F-38).
    */
-  private eachItem(state: RunState, toolCallId: string, items: unknown[], apply: (draft: RunState, item: unknown) => string): { accepted: ReportWriteResult['accepted']; rejected: Array<{ index: number; code: string }> } {
+  private eachItem(state: RunState, toolCallId: string, items: unknown[], apply: (draft: RunState, item: unknown) => string, candidates = false): { accepted: ReportWriteResult['accepted']; rejected: Array<{ index: number; code: string }> } {
     const trial = clone(state)
     try {
       const accepted = items.map((item, index) => ({ index, diagnosticId: apply(trial, item) }))
       Object.assign(state, trial)
+      if (candidates) this.keepUnverified(state, [])
       return { accepted, rejected: [] }
     } catch (error) { if (!(error instanceof ReportStoreError)) throw error }
-    const accepted: ReportWriteResult['accepted'] = [], rejected: Array<{ index: number; code: string }> = []
+    const accepted: ReportWriteResult['accepted'] = [], rejected: Array<{ index: number; code: string }> = [], unverified: ReportUnverified[] = []
     for (const [index, item] of items.entries()) {
       const draft = clone(state)
       try {
@@ -809,10 +818,33 @@ export class ReviewReportStore {
         rejected.push({ index, code: error.code })
         state.rawResults.push({ toolCallId: `${toolCallId}#${index}`, raw: this.options.sanitizeExcerpt(canonical(item)), code: error.code })
         this.event(state, 'write-rejected')
+        const kept = candidates ? this.unverifiedItem(item, error.code) : undefined
+        if (kept) unverified.push(kept)
       }
     }
-    if (!accepted.length) throw new ReportStoreError(rejected[0].code, rejected)
+    if (!accepted.length) throw new ReportStoreError(rejected[0].code, rejected, unverified)
+    if (candidates) this.keepUnverified(state, unverified)
     return { accepted, rejected }
+  }
+  /** The readable part of a refused candidate; model text is sanitized and the path must be a review-relative one. */
+  private unverifiedItem(value: unknown, code: string): ReportUnverified | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+    const item = value as { statement?: { headline?: unknown; details?: unknown }; location?: { path?: unknown; line?: unknown }; impact?: unknown }
+    const clip = (input: unknown, max: number) => typeof input === 'string' && input.trim() ? this.options.sanitizeExcerpt(input.trim().slice(0, max)) : undefined
+    const headline = clip(item.statement?.headline, 300)
+    if (!headline) return undefined
+    let path: string | undefined
+    try { path = item.location?.path === undefined ? undefined : relativePath(item.location.path) } catch (error) { if (!(error instanceof ReportStoreError)) throw error }
+    const line = path && Number.isSafeInteger(item.location?.line) && Number(item.location!.line) >= 1 ? Number(item.location!.line) : undefined
+    const details = clip(item.statement?.details, 2000)
+    const impact = impacts.find(value => value === item.impact)
+    return { id: this.id(), headline, ...(details ? { details } : {}), ...(path ? { path } : {}), ...(line ? { line } : {}), ...(impact ? { impact } : {}), code }
+  }
+  /** Adds refused candidates and drops any whose headline and path an accepted candidate now carries; at most 64 are kept. */
+  private keepUnverified(state: RunState, items: readonly ReportUnverified[]): void {
+    const recorded = (item: ReportUnverified) => state.candidates.some(candidate => normalized(candidate.input.statement.headline) === normalized(item.headline) && (!item.path || candidate.input.location.path === item.path))
+    const kept = [...state.unverified ?? [], ...items].filter(item => !recorded(item))
+    if (kept.length || state.unverified) state.unverified = kept.slice(-64)
   }
   /** Merges a coverage statement into the ledger: angles and limitations accumulate, `complete` is the latest claim. */
   private recordCoverage(state: RunState, value: unknown): void {
@@ -857,8 +889,12 @@ export class ReviewReportStore {
     return this.modelWrite(runId, toolCallId, raw, state => {
       let rejected: Array<{ index: number; code: string }> = []
       if (found && !state.candidates.length && Array.isArray(found.candidates) && found.candidates.length) {
-        try { rejected = this.eachItem(state, toolCallId, found.candidates, (draft, item) => this.append(draft, this.candidate(draft, item), toolCallId)).rejected }
-        catch (error) { if (!(error instanceof ReportStoreError) || !error.rejected) throw error; rejected = [...error.rejected] }
+        try { rejected = this.eachItem(state, toolCallId, found.candidates, (draft, item) => this.append(draft, this.candidate(draft, item), toolCallId), true).rejected }
+        catch (error) {
+          if (!(error instanceof ReportStoreError) || !error.rejected) throw error
+          rejected = [...error.rejected]
+          this.keepUnverified(state, error.unverified ?? [])
+        }
       }
       if (found && found.coverage !== undefined) {
         try { this.recordCoverage(state, found.coverage) }

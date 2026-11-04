@@ -91,6 +91,8 @@ export const en = {
   "reviewCard.emptyPartial": "No issues found in the inspected portion yet; review coverage is incomplete.",
   "reviewCard.emptyScope": "There are no reviewable changes in this target.",
   "reviewCard.evidence": "Details and evidence",
+  "reviewCard.unverified": "Not verified",
+  "reviewCard.unverifiedNote": "The reviewer reported these, but their evidence did not match the code it read. Check them yourself; they are not offered for fixing or publishing.",
   "reviewCard.expand": "Open report",
   "reviewCard.historical": "Location at {revision}; relocate before opening the current file.",
   "reviewCard.kind": "Category",

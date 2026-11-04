@@ -994,7 +994,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     const presentation = service.presentation(snapshot.run.id) ?? restoredPresentations.get(snapshot.run.id)
     const active = ['active', 'queued'].includes(snapshot.run.progress.status)
     return {
-      run: snapshot.run, diagnostics: snapshot.diagnostics.filter(d => snapshot.retainedIds.includes(d.id)), evidence: snapshot.evidence,
+      run: snapshot.run, diagnostics: snapshot.diagnostics.filter(d => snapshot.retainedIds.includes(d.id)), ...(snapshot.unverified ? { unverified: snapshot.unverified } : {}), evidence: snapshot.evidence,
       assessments: snapshot.assessments, actions: snapshot.actions, coverage: snapshot.coverage, verifications: snapshot.verifications,
       notices: presentation?.notices.map(notice => ({ ...notice })), emptyScope: presentation?.emptyScope,
       targetLabel: presentation?.target ?? snapshot.run.scope.repository.projectKey,

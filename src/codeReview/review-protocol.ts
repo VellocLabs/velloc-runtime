@@ -1,11 +1,13 @@
 import type { ReviewMessageNotice } from './messages'
-import type { ReportVerification } from './report-store'
+import type { ReportUnverified, ReportVerification } from './report-store'
 import type { TopicId } from '../browser/runtimeProtocol'
 import type { ActionReceipt, Assessment, Diagnostic, OutputMode, ReviewCoverage, ReviewEvidence, ReviewRun, ReviewRunEnd, ReviewTaskView } from './contracts'
 
 export type ReviewReportView = {
   run: ReviewRun
   diagnostics: Diagnostic[]
+  /** Refused candidates shown apart from the findings; never selectable for repair. */
+  unverified?: ReportUnverified[]
   evidence: ReviewEvidence[]
   assessments: Assessment[]
   actions: ActionReceipt[]

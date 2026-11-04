@@ -145,6 +145,22 @@ describe('review report store', () => {
     expect((await store.getSnapshot(id)).run.progress.status).toBe('active')
     expect((await store.getSnapshot(id)).run.reportRevision).toBe(1)
   })
+  it('keeps a refused candidate with a readable statement as unverified until a corrected one is accepted', async () => {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    const bad = (line: number, headline: string, path = 'src/a.ts') => ({ ...candidate(anchorKey, line, `Mechanism ${line}`), statement: { headline, details: 'token=abc123 leaks', scenario: 'x' }, location: { anchorKey, path, line }, support: [] })
+    await store.submitLedger(id, 'mixed', { operation: 'append-candidates', candidates: [candidate(anchorKey, 1), bad(2, 'Refused one')] })
+    await expect(store.submitLedger(id, 'all', { operation: 'append-candidates', candidates: [bad(3, 'Refused two'), { statement: { headline: ' ' } }, { ...bad(4, 'Outside'), location: { anchorKey, path: 'D:/workspace/AGENTS.md', line: 4 } }] })).rejects.toThrow()
+    let snapshot = await store.getSnapshot(id)
+    expect(snapshot.unverified?.map(item => [item.headline, item.path, item.line, item.impact, item.code])).toEqual([
+      ['Refused one', 'src/a.ts', 2, 'major', 'missing-evidence'], ['Refused two', 'src/a.ts', 3, 'major', 'missing-evidence'], ['Outside', undefined, undefined, 'major', 'invalid-path']])
+    expect(snapshot.retainedIds).toHaveLength(1)
+    expect(projectReviewReport(snapshot).unverified.map(item => item.headline)).toEqual(['Refused one', 'Refused two', 'Outside'])
+    await store.submitLedger(id, 'fixed', { operation: 'append-candidates', candidates: [{ ...candidate(anchorKey, 2, 'Mechanism 2'), statement: { headline: 'refused  ONE', details: 'Fixed', scenario: 'x' } }] })
+    snapshot = await store.getSnapshot(id)
+    expect(snapshot.unverified?.map(item => item.headline)).toEqual(['Refused two', 'Outside'])
+    expect(snapshot.diagnostics).toHaveLength(2)
+  })
   it('accepts each ledger candidate on its own and lists the refused ones', async () => {
     const { store, run } = fixture()
     const { id, anchorKey } = await run()

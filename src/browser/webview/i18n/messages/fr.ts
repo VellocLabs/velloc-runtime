@@ -87,6 +87,8 @@ export const fr: Messages = {
   "reviewCard.emptyPartial": "Aucun problème trouvé dans la partie examinée ; la revue est incomplète.",
   "reviewCard.emptyScope": "Cette cible ne contient aucune modification à examiner.",
   "reviewCard.evidence": "Détails et éléments probants",
+  "reviewCard.unverified": "Non vérifiés",
+  "reviewCard.unverifiedNote": "Le relecteur les a signalés, mais leurs éléments probants ne correspondaient pas au code lu. Vérifiez-les vous-même ; ils ne sont pas proposés pour correction ni publication.",
   "reviewCard.expand": "Ouvrir le rapport",
   "reviewCard.historical": "Emplacement dans {revision} ; relocalisez avant d’ouvrir le fichier actuel.",
   "reviewCard.kind": "Catégorie",

@@ -91,6 +91,8 @@ export const es: Messages = {
   "reviewCard.emptyPartial": "Aún no hay problemas en la parte examinada; la revisión está incompleta.",
   "reviewCard.emptyScope": "No hay cambios que revisar en este destino.",
   "reviewCard.evidence": "Detalles y pruebas",
+  "reviewCard.unverified": "Sin verificar",
+  "reviewCard.unverifiedNote": "El revisor los informó, pero sus pruebas no coincidían con el código que leyó. Compruébelos usted mismo; no se ofrecen para corregir ni publicar.",
   "reviewCard.expand": "Abrir informe",
   "reviewCard.historical": "Ubicación en {revision}; reubique antes de abrir el archivo actual.",
   "reviewCard.kind": "Categoría",
