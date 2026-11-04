@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { parseUnifiedDiff, resolveLocalReviewScope, resolveReviewAnchor, type ScopeResolverOptions, type WorkspaceRead } from './scope'
+import { hunkSides, parseUnifiedDiff, resolveLocalReviewScope, resolveReviewAnchor, type ScopeResolverOptions, type WorkspaceRead } from './scope'
 import { GitAdapterError, createGitArgvRunner, type GitStreamSpawner, type GitQuery, type ReviewGitRunner } from './git-adapter'
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdtemp, writeFile, readFile, rm, stat } from 'node:fs/promises'
@@ -32,6 +32,16 @@ function fixture(settings: { fileMode?: string; indexEntries?: string; upstream?
   const options: ScopeResolverOptions = { git, workspaceKey: 'workspace', projectKey: 'project', readWorkspaceFile }
   return { options, queries, readWorkspaceFile }
 }
+describe('hunk sides', () => {
+  it('splits each hunk into its before and after text, without markers or headers', () => {
+    const patch = 'diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1,3 +1,3 @@\n keep()\n-old()\n+fresh()\n tail()\n@@ -9 +9,2 @@\n-gone()\n+added()\n+more()\n\\ No newline at end of file\n'
+    expect(hunkSides(patch)).toEqual([
+      { before: 'keep()\nold()\ntail()', after: 'keep()\nfresh()\ntail()' },
+      { before: 'gone()\n', after: 'added()\nmore()\n' },
+    ])
+  })
+})
+
 describe('local scope', () => {
   it('combines committed/index/worktree state into one base-to-current snapshot', async () => {
     const f = fixture({ upstream: base })

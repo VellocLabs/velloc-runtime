@@ -1,5 +1,5 @@
 import {
-  CONTEXT_READ_BYTES, type ActionReceipt, type Assessment, type Diagnostic, type ReviewCandidate, type ReviewCoverage,
+  CONTEXT_READ_BYTES, quotedIn, type ActionReceipt, type Assessment, type Diagnostic, type ReviewCandidate, type ReviewCoverage,
   type ReviewEvidence, type ReviewRun, type ReviewScope,
 } from './contracts'
 
@@ -251,6 +251,13 @@ function select(state: RunState): void {
   state.retainedIds = ranked.slice(0, cap)
   state.run.progress.omittedByLimit = ranked.length - state.retainedIds.length
 }
+/** The revision a quote found in several recorded sources is attributed to: the only one, else the one under review (F-38). */
+function quoteRevision(state: RunState, revisions: string[]): string | undefined {
+  const candidates = unique(revisions)
+  if (candidates.length === 1) return candidates[0]
+  const { workingCopyDigest, head } = state.run.scope.revision
+  return [workingCopyDigest, head].find(revision => revision !== undefined && candidates.includes(revision))
+}
 function effectiveCoverage(state: RunState): ReportCoverage {
   return { ...state.coverage, complete: state.coverage.complete
     && state.expectedAngles.every(angle => state.coverage.angles.includes(angle))
@@ -499,25 +506,32 @@ export class ReviewReportStore {
   }
   // Security: register only host-authorized reads; context sources never authorize diagnostic anchors.
   async registerEvidenceSource(runId: string, source: ReportEvidenceSource): Promise<void> {
-    const value: ReportEvidenceSource = {
+    return this.registerEvidenceSources(runId, [source])
+  }
+  /** Registers several host-authorized sources in one write; any invalid source rejects them all. */
+  async registerEvidenceSources(runId: string, input: readonly ReportEvidenceSource[]): Promise<void> {
+    const values: ReportEvidenceSource[] = input.map(source => ({
       path: relativePath(source.path), revision: text(source.revision),
       ...(source.toolCallKey === undefined ? {} : { toolCallKey: text(source.toolCallKey) }),
       ...(source.excerpt === undefined ? {} : { excerpt: this.options.sanitizeExcerpt(excerptText(source.excerpt)) }),
-    }
+    }))
+    if (!values.length) return
     return this.mutate(runId, state => {
       if (terminal(state.run.progress.status)) return fail('run-terminated')
-      const sources = state.evidenceSources ?? []
-      if (!sources.some(item => canonical(item) === canonical(value))) state.evidenceSources = [...sources, value]
+      const sources = [...(state.evidenceSources ?? [])]
+      for (const value of values) if (!sources.some(item => canonical(item) === canonical(value))) sources.push(value)
+      state.evidenceSources = sources
     })
   }
   private evidenceSource(state: RunState, diagnostic: ReportDiagnostic, support: ReportSupport, callKey: string): ReportEvidence['source'] {
     if (!support.path) return { toolCallKey: callKey }
     const sources = (state.evidenceSources ?? []).filter(source => source.path === support.path)
-    const quoted = sources.filter(source => source.excerpt !== undefined && source.excerpt.includes(support.quote))
+    const quoted = sources.filter(source => source.excerpt !== undefined && quotedIn(source.excerpt, support.quote))
     const matching = quoted.length ? quoted : sources.filter(source => source.excerpt === undefined)
     if (matching.length) {
-      if (unique(matching.map(source => source.revision)).length !== 1) return fail('ambiguous-evidence-source')
-      const source = matching[0]
+      const revision = quoted.length ? quoteRevision(state, matching.map(source => source.revision)) : unique(matching.map(source => source.revision)).length === 1 ? matching[0].revision : undefined
+      if (revision === undefined) return fail('ambiguous-evidence-source')
+      const source = matching.find(item => item.revision === revision)!
       return { path: source.path, revision: source.revision, toolCallKey: source.toolCallKey ?? callKey }
     }
     const anchors = state.anchors.filter(item => item.anchor.path === support.path)
@@ -946,7 +960,7 @@ export class ReviewReportStore {
       const actions: ReportActionReceipt[] = []
       for (const update of validated) {
         for (const item of update.evidence) {
-          const source = input.evidence.find(source => source.path === item.path && source.excerpt.includes(item.quote))!
+          const source = input.evidence.find(source => source.path === item.path && quotedIn(source.excerpt, item.quote))!
           state.evidence.push({ id: this.id(), runId, diagnosticId: update.diagnosticId,
             source: { path: item.path, revision: source.revision, toolCallKey: input.ref },
             excerpt: this.options.sanitizeExcerpt(item.quote), reason: this.options.sanitizeExcerpt(item.relevance) })

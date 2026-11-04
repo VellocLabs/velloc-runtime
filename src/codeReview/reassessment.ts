@@ -1,4 +1,5 @@
 import type { ToolContractList } from '../toolkit/toolContract'
+import { quotedIn } from './contracts'
 import type { ReportSnapshot, ReportSupport } from './report-store'
 import type { ReviewModelRunner } from './runner'
 
@@ -61,7 +62,7 @@ export function validateReassessmentUpdates(snapshot: ReportSnapshot, mutations:
     const support = list(item.evidence).map(value => {
       const item = record(value, ['path', 'quote', 'relevance'])
       const path = text(item.path), quote = text(item.quote), relevance = text(item.relevance)
-      const sources = evidence.filter(source => source.path === path && source.excerpt.includes(quote))
+      const sources = evidence.filter(source => source.path === path && quotedIn(source.excerpt, quote))
       if (!sources.length || new Set(sources.map(source => source.revision)).size !== 1) return fail()
       return { path, quote, relevance }
     })

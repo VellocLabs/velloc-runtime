@@ -120,6 +120,19 @@ export async function parseUnifiedDiff(patch: string, revisions: { base: string;
   }
   return files
 }
+/** Each hunk of one file's patch as it reads on the before side and on the after side, without diff markers. */
+export function hunkSides(patch: string): Array<{ before: string; after: string }> {
+  const hunks: Array<{ before: string[]; after: string[] }> = []
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('@@')) { hunks.push({ before: [], after: [] }); continue }
+    const hunk = hunks.at(-1)
+    if (!hunk || line.startsWith('\\')) continue
+    if (line.startsWith('-')) hunk.before.push(line.slice(1))
+    else if (line.startsWith('+')) hunk.after.push(line.slice(1))
+    else { hunk.before.push(line.slice(1)); hunk.after.push(line.slice(1)) }
+  }
+  return hunks.map(hunk => ({ before: hunk.before.join('\n'), after: hunk.after.join('\n') }))
+}
 export function resolveReviewAnchor(anchors: readonly ReviewAnchor[], key: string, path: string, line?: number, endLine?: number): ReviewAnchor {
   const anchor = anchors.find(a => a.anchorKey === key)
   if (!anchor || anchor.path !== path || (endLine !== undefined && line === undefined)) throw new ScopeError('invalid-anchor')

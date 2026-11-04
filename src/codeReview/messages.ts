@@ -11,7 +11,7 @@ const groups = {
   invalidTarget: ['invalid-target', 'target-mismatch', 'invalid-range', 'missing-ref', 'missing-path', 'invalid-ref', 'invalid-oid', 'invalid-path', 'invalid-root', 'invalid-git-directory'],
   denied: ['action-not-authorized', 'review-read-not-authorized', 'read-denied', 'read-outside-review-scope', 'whole-file-read-not-authorized', 'edit-outside-review-grant', 'review-mutation-not-authorized', 'review-fs-operation-not-authorized', 'publication-not-authorized', 'publication-denied', 'forbidden_scope', 'repair-grant-expired'],
   unavailable: ['review-runtime-unavailable', 'review-context-unavailable', 'remote-context-unavailable', 'review-platform-adapter-required', 'repair-unavailable', 'publication-unavailable', 'review-plan-blocked', 'host_unavailable'],
-  incomplete: ['scope-incomplete', 'independent-worker-coverage-incomplete', 'remote-diff-incomplete'],
+  incomplete: ['scope-incomplete', 'independent-worker-coverage-incomplete', 'remote-diff-incomplete', 'worker-candidates-rejected'],
   outputLimit: ['diff-output-limit', 'output-limit', 'response-limit'],
   interrupted: ['review-budget-or-model-interrupted', 'review-budget-exhausted', 'review-time-limit', 'review-task-budget', 'worker-interrupted', 'repair-interrupted', 'timeout'],
   stepLimit: ['review-step-limit'],

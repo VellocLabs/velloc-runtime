@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Diagnostic, ReviewEvidence } from './contracts'
+import { quotedIn, type Diagnostic, type ReviewEvidence } from './contracts'
 import type { ReviewModelRunner } from './runner'
 
 export interface MechanismCatalogStorage {
@@ -55,7 +55,7 @@ function supplied(row: Row, diagnosticId: string) {
   return { diagnosticId, claim: row.claim, evidence: row.evidence }
 }
 function quoteExists(row: Row, quote: string): boolean {
-  return [...Object.values(row.claim), ...row.evidence.map(item => item.excerpt)].some(source => source.includes(quote))
+  return [...Object.values(row.claim), ...row.evidence.map(item => item.excerpt)].some(source => quotedIn(source, quote))
 }
 
 async function match(input: MechanismCatalogInput, current: Row, candidates: Row[]): Promise<string | null> {

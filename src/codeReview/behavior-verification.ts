@@ -1,5 +1,6 @@
 import { declareTool, type ToolContractList } from '../toolkit/toolContract'
 import { composeVerifyHandoffPrompt } from './composer'
+import { quotedIn } from './contracts'
 import type { ReviewModelRunner } from './runner'
 
 export interface BehaviorExecution {
@@ -88,7 +89,7 @@ export async function runBehaviorVerification(input: BehaviorVerificationInput):
         // Host observations, not model claims about tool use, establish evidence.
         if (!execution || execution.ref !== item.ref || !['command', 'browser'].includes(execution.kind)) return reject('unknown-execution-reference')
         if (execution.succeeded !== true) return reject('execution-not-successful')
-        if (!execution.observation.includes(item.quote)) return reject('assertion-not-observed')
+        if (!quotedIn(execution.observation, item.quote)) return reject('assertion-not-observed')
         evidence.push({ ref: execution.ref, quote: item.quote, kind: execution.kind, interaction: execution.kind === 'browser' && execution.interaction === true })
       }
       if (args.type === 'main-path' && !evidence.some(item => item.kind === 'command' || item.interaction)) return reject('main-path-not-exercised')

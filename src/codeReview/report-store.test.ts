@@ -239,6 +239,33 @@ describe('review report store', () => {
     await store.submitFinalJson(id, 'final', `Example: ${quoted}\nReport: ${JSON.stringify(json)}`)
     expect((await store.getSnapshot(id)).coverage).toEqual({ angles: ['lines'], limitations: ['kept'], complete: true })
   })
+  it('matches a multi-line quote against a read whose file uses CRLF line endings', async () => {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    await store.registerAnchor(id, { path: 'src/b.ts', revision: 'base', side: 'before', span: { start: 1, end: 4 } })
+    await store.registerAnchor(id, { path: 'src/b.ts', revision: 'head', side: 'after', span: { start: 1, end: 6 } })
+    await store.registerEvidenceSource(id, { path: 'src/b.ts', revision: 'head', toolCallKey: 'b-read', excerpt: '  } finally {\r\n    release()\r\n  }\r\n' })
+    const support = [{ path: 'src/b.ts', quote: '} finally {\n    release()', relevance: 'The release runs after a throw' }]
+    await store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [{ ...candidate(anchorKey), support }] })
+    const evidence = (await store.getSnapshot(id)).evidence.find(item => item.source.path === 'src/b.ts')
+    expect(evidence?.source).toEqual({ path: 'src/b.ts', revision: 'head', toolCallKey: 'b-read' })
+  })
+  it('prefers the reviewed revision when a quote appears in reads of two revisions', async () => {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    await store.registerAnchor(id, { path: 'src/b.ts', revision: 'base', side: 'before', span: { start: 1, end: 4 } })
+    await store.registerEvidenceSource(id, { path: 'src/b.ts', revision: 'base', excerpt: 'shared line' })
+    await store.registerEvidenceSource(id, { path: 'src/b.ts', revision: 'head', excerpt: 'shared line' })
+    await store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [{ ...candidate(anchorKey), support: [{ path: 'src/b.ts', quote: 'shared line', relevance: 'Both sides' }] }] })
+    expect((await store.getSnapshot(id)).evidence.find(item => item.source.path === 'src/b.ts')?.source.revision).toBe('head')
+  })
+  it('still refuses a quote whose revisions are all outside the reviewed one', async () => {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    await store.registerEvidenceSource(id, { path: 'docs/a.md', revision: 'digest-1', excerpt: 'rule' })
+    await store.registerEvidenceSource(id, { path: 'docs/a.md', revision: 'digest-2', excerpt: 'rule' })
+    await expect(store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [{ ...candidate(anchorKey), support: [{ path: 'docs/a.md', quote: 'rule', relevance: 'Guidance' }] }] })).rejects.toThrow('ambiguous-evidence-source')
+  })
   it('still rejects wrapped text that holds no report object', async () => {
     const { store, run } = fixture()
     const { id } = await run()
