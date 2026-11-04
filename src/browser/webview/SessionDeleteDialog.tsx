@@ -4,7 +4,7 @@
  * with child sessions nested under it offers to delete them too, and says
  * when any of them is still working. (F-36)
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { useUnsavedEditsGate } from '@/glic/unsavedEditsGate'
 import { useT } from './i18n'
@@ -18,7 +18,7 @@ type DeletableSession = TreeableSession &
   ListableSession & { title: string; starting?: boolean; projectRoot?: string }
 
 /** A session the screen may move to before a delete: a sidebar row, unless a teammate or side chat. */
-type ShowableSession = DeletableSession & { pinned?: boolean; spawnerSessionId?: string; sideChat?: boolean }
+export type ShowableSession = DeletableSession & { pinned?: boolean; spawnerSessionId?: string; sideChat?: boolean }
 
 /**
  * Where a row's Delete was pressed: a Projects folder's list (`projectPath`,
@@ -162,6 +162,38 @@ export async function runSessionDeletion(
 }
 
 /**
+ * One confirmed delete run at a time. `start` deletes `ids` with
+ * {@link runSessionDeletion}, shows {@link SessionDeleteProgress} as `cover`
+ * (`null` when idle) while it runs, then calls `onDone`. An empty `ids` calls
+ * `onDone` at once, with no cover.
+ */
+export function useSessionDeletionRun(): {
+  cover: ReactNode
+  running: boolean
+  start: (ids: readonly string[], deleteOne: (sessionId: string) => Promise<boolean | void> | boolean | void, onDone: () => void) => void
+} {
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const start = useCallback(
+    (ids: readonly string[], deleteOne: (sessionId: string) => Promise<boolean | void> | boolean | void, onDone: () => void) => {
+      if (ids.length === 0) {
+        onDone()
+        return
+      }
+      void runSessionDeletion(ids, deleteOne, (done, total) => setProgress({ done, total })).finally(() => {
+        setProgress(null)
+        onDone()
+      })
+    },
+    [],
+  )
+  return {
+    cover: progress ? <SessionDeleteProgress done={progress.done} total={progress.total} /> : null,
+    running: progress !== null,
+    start,
+  }
+}
+
+/**
  * The shell's delete confirmation for `target` (`null` = none shown).
  * `sessions` is the list the Delete came from, nested as drawn there.
  * Confirm moves the screen off a session it will delete
@@ -186,10 +218,10 @@ export function SessionDeleteConfirm<T extends ShowableSession>({
   onDelete: (sessionId: string) => Promise<boolean | void> | boolean | void
   onClose: () => void
 }) {
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const run = useSessionDeletionRun()
   const targetId = target?.sessionId ?? null
   const projectPath = target?.projectPath
-  const running = progress !== null
+  const running = run.running
   const tree = useMemo(() => {
     if (running) return null
     if (targetId === null) return null
@@ -198,7 +230,7 @@ export function SessionDeleteConfirm<T extends ShowableSession>({
       ? sidebarSessionTree(sessions, view)
       : projectSessionTree(sessions, view, projectPath)
   }, [sessions, targetId, projectPath, running])
-  if (progress) return <SessionDeleteProgress done={progress.done} total={progress.total} />
+  if (run.cover) return run.cover
   const info = tree ? sessionDeleteInfoFor(sessions, tree, targetId) : null
   if (!tree || !info) return null
   return (
@@ -211,10 +243,7 @@ export function SessionDeleteConfirm<T extends ShowableSession>({
         const ids = sessionDeletionOrder(tree.childrenOf, info.sessionId, withChildren, activeSessionId)
         const show = sessionToShowBeforeDelete(sessions, ids, info.sessionId, activeSessionId)
         if (show !== undefined) onShow(show)
-        void runSessionDeletion(ids, onDelete, (done, total) => setProgress({ done, total })).finally(() => {
-          setProgress(null)
-          onClose()
-        })
+        run.start(ids, onDelete, onClose)
       }}
     />
   )

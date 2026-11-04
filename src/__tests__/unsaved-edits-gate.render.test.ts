@@ -25,7 +25,7 @@ import {
   ProjectFolderDialog,
   ProviderMissingDialog,
 } from '../browser/webview/ThreadDialogs'
-import { ProjectDeleteDialog } from '../browser/webview/MultiSessionShell'
+import { ProjectDeleteDialog } from '../browser/webview/ProjectDeleteDialog'
 import { SessionDeleteDialog } from '../browser/webview/SessionDeleteDialog'
 
 /**

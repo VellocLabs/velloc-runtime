@@ -200,7 +200,6 @@ import {
 } from './sessionAttention'
 import { showHostNotification } from './nexusBridgeActions'
 import { sessionDisplayTitle } from './SessionRows'
-import { useUnsavedEditsGate } from '@/glic/unsavedEditsGate'
 import {
   createGlobalDefaultMirror,
   followGlobalDefault,
@@ -247,11 +246,8 @@ import { isForcedFolderTemplateType } from '../../utils/conversationStoragePaths
 import {
   addProject,
   removeProject,
-  projectDisplayName,
 } from './projectsStorage'
 import { useWorkspaceState } from './workspaceStore'
-import { normalizeProjectPath } from './projectTree'
-import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { Button } from '@/components/ui/button'
 import {
   SESSION_REMOVAL_TIMEOUT_MS,
@@ -259,6 +255,7 @@ import {
   type SessionDeleteOrigin,
   type SessionDeleteTarget,
 } from './SessionDeleteDialog'
+import { ProjectDeleteConfirm, type ProjectDeleteTarget } from './ProjectDeleteDialog'
 import { PlusIcon } from 'lucide-react'
 import { NexusTopBar } from './topbar/NexusTopBar'
 import { topbarImportEntries } from './sessionImport/sourceMeta'
@@ -3687,12 +3684,9 @@ export function MultiSessionShell({
     () => new Map(addedProjects.map(entry => [entry.path, entry.addedAt])),
     [addedProjects],
   )
-  // The project awaiting delete confirmation (`null` = no dialog). Carries the
-  // session count so the dialog can state exactly what is about to be removed.
-  const [projectDeleteTarget, setProjectDeleteTarget] = useState<{
-    path: string
-    sessionCount: number
-  } | null>(null)
+  // The project awaiting delete confirmation (`null` = no dialog); the dialog
+  // counts what the delete would remove from the live session list.
+  const [projectDeleteTarget, setProjectDeleteTarget] = useState<ProjectDeleteTarget | null>(null)
 
   // The session awaiting delete confirmation (`null` = no dialog), with the
   // Projects folder its Delete was pressed in, if any. A sidebar row's Delete
@@ -3750,15 +3744,6 @@ export function MultiSessionShell({
   const handleCopyProjectPath = useMemo(
     () => createShellHandleCopyProjectPath(),
     [],
-  )
-
-  // Delete a project: confirmed in `projectDeleteTarget`'s dialog, then this
-  // removes every session filed under that folder and drops the registry entry.
-  // It NEVER touches the user's folder on disk — only the conversation history
-  // Nexus stores under `~/.velloc/projects/<sanitized>/`.
-  const handleConfirmDeleteProject = useMemo(
-    () => createShellHandleConfirmDeleteProject(sessions, activeSessionId, handleDeleteThread, setProjectDeleteTarget),
-    [activeSessionId, handleDeleteThread, sessions],
   )
 
   // Reveal the bound folder in the native OS file manager (chip "Show in
@@ -4314,9 +4299,7 @@ export function MultiSessionShell({
           addedProjectPaths={addedProjectPaths}
           addedProjectOrder={addedProjectOrder}
           onAddProject={handleAddProject}
-          onDeleteProject={(path, sessionCount) =>
-            setProjectDeleteTarget({ path, sessionCount })
-          }
+          onDeleteProject={path => setProjectDeleteTarget({ path })}
           onRevealProject={handleRevealProjectFolder}
           onCopyProjectPath={handleCopyProjectPath}
           onLaunchInProject={handleLaunchInProject}
@@ -4366,16 +4349,20 @@ export function MultiSessionShell({
         onDelete={deleteAndAwaitRemoval}
         onClose={() => setSessionDeleteTarget(null)}
       />
-      {projectDeleteTarget && (
-        <ProjectDeleteDialog
-          path={projectDeleteTarget.path}
-          sessionCount={projectDeleteTarget.sessionCount}
-          onCancel={() => setProjectDeleteTarget(null)}
-          onConfirm={() =>
-            handleConfirmDeleteProject(projectDeleteTarget.path)
-          }
-        />
-      )}
+      {/* Removes every session filed under the folder, never the folder on disk. (F-17) */}
+      <ProjectDeleteConfirm
+        target={projectDeleteTarget}
+        sessions={sessions}
+        listed={sessionItems}
+        activeSessionId={activeSessionId}
+        onShow={focusSession}
+        onDelete={deleteAndAwaitRemoval}
+        onDeleted={path => {
+          removeProject(path)
+          setProjectDeleteTarget(null)
+        }}
+        onCancel={() => setProjectDeleteTarget(null)}
+      />
       {/* Safety net for a refusal no `useCan` trimmed — and the thing that
           keeps `forbidden_scope` from surfacing as an unhandled rejection. */}
       <ForbiddenScopeNotice />
@@ -4395,78 +4382,6 @@ export function MultiSessionShell({
     </SessionStatusChannelContext.Provider>
     </RuntimeReadyContext.Provider>
     </RuntimeCapabilitiesContext.Provider>
-  )
-}
-
-/**
- * Confirmation for deleting a project: it removes the conversation history Nexus stores
- * (`~/.velloc/projects/<sanitized>/`), never the user's source folder, and names both
- * paths. A project with no sessions is only un-listed. Backdrop click cancels.
- */
-export function ProjectDeleteDialog({
-  path,
-  sessionCount,
-  onCancel,
-  onConfirm,
-}: {
-  path: string
-  sessionCount: number
-  onCancel: () => void
-  onConfirm: () => void
-}) {
-  const t = useT()
-  const name = projectDisplayName(path)
-  // Hand-rolled modal, not the shared Dialog primitive (which holds the gate
-  // itself): hold the background updater's reload while it is up
-  // (glic/unsavedEditsGate.ts). Mounted only while shown.
-  useUnsavedEditsGate(true)
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="project-delete-dialog-title"
-      data-testid="project-delete-dialog"
-      onClick={onCancel}
-    >
-      <div
-        className="w-full max-w-md rounded-2xl border bg-background p-6 shadow-2xl"
-        onClick={event => event.stopPropagation()}
-      >
-        <h2
-          id="project-delete-dialog-title"
-          className="text-lg font-semibold text-foreground"
-        >
-          {t('sidebar.projectDeleteTitle')}
-        </h2>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          {sessionCount === 0
-            ? t('sidebar.projectDeleteEmptyBody', { name })
-            : t('sidebar.projectDeleteBody', {
-                count: sessionCount,
-                name,
-                store: `${RUNTIME_DIR_NAME}/projects`,
-                path,
-              })}
-        </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button
-            variant="outline"
-            data-testid="project-delete-cancel"
-            onClick={onCancel}
-          >
-            {t('sidebar.projectDeleteCancel')}
-          </Button>
-          <Button
-            variant="destructive"
-            data-testid="project-delete-confirm"
-            onClick={onConfirm}
-          >
-            {t('sidebar.projectDeleteConfirm')}
-          </Button>
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -6036,33 +5951,6 @@ function createShellHandleCopyProjectPath(
     void writeClipboard(path).then(ok => {
       if (!ok) console.warn('Failed to copy the project path')
     })
-  }
-}
-
-function createShellHandleConfirmDeleteProject(
-  sessions: LocalSessionEntry[],
-  activeSessionId: string,
-  handleDeleteThread: (sessionId: string) => void,
-  setProjectDeleteTarget: Dispatch<SetStateAction<{ path: string; sessionCount: number; } | null>>,
-) {
-  return (path: string) => {
-    const normalized = normalizeProjectPath(path)
-    const doomed = sessions.filter(
-      session =>
-        session.projectRoot &&
-        normalizeProjectPath(session.projectRoot) === normalized,
-    )
-    // Delete the ACTIVE session last: `deleteSession` re-points from a stale closure, so
-    // deleting it first could leave the shell on a sibling deleted later.
-    const ordered = [
-      ...doomed.filter(s => s.sessionId !== activeSessionId),
-      ...doomed.filter(s => s.sessionId === activeSessionId),
-    ]
-    for (const session of ordered) {
-      handleDeleteThread(session.sessionId)
-    }
-    removeProject(path)
-    setProjectDeleteTarget(null)
   }
 }
 
