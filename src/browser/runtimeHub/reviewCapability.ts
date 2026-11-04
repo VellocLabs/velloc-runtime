@@ -41,12 +41,15 @@ export function registerReviewCapability(registry: CapabilityRegistry, broker: T
       if (!service) throw wireError('host_unavailable', 'Review service unavailable')
       const snapshot = await state(payload.sessionId)
       const report = snapshot.reports.find(report => report.run.id === payload.runId)
-      if (!report && action === 'cancel' && snapshot.preparing?.some(entry => entry.id === payload.runId)) {
+      // A review still preparing has no run yet; it is listed with one permission, cancel.
+      const preparing = !report && snapshot.preparing?.some(entry => entry.id === payload.runId) === true
+      if (!report && !preparing) throw wireError('not_found', 'Review run not in session')
+      const permissions: Partial<Record<string, boolean>> | undefined = report ? report.permissions : { cancel: true }
+      if (!permissions?.[action]) throw wireError('forbidden_scope', 'Review action unavailable')
+      if (!report) {
         await service.cancel(payload.runId)
         return { accepted: true }
       }
-      if (!report) throw wireError('not_found', 'Review run not in session')
-      if (!report.permissions?.[action]) throw wireError('forbidden_scope', 'Review action unavailable')
       switch (action) {
         case 'locate': {
           const diagnostic = report.diagnostics.find(item => item.id === payload.diagnosticId && item.runId === payload.runId)
@@ -70,7 +73,7 @@ export function registerReviewCapability(registry: CapabilityRegistry, broker: T
           break
         }
         case 'publish':
-          if (!payload.preview && report.permissions.publishConfirmation && !payload.confirmed) throw wireError('conflict', 'Review publication needs confirmation')
+          if (!payload.preview && permissions.publishConfirmation && !payload.confirmed) throw wireError('conflict', 'Review publication needs confirmation')
           await service.publish(payload.runId, { preview: payload.preview!, confirmed: payload.confirmed!, ...(payload.discussions !== undefined ? { discussions: payload.discussions } : {}) })
           break
         default: throw wireError('unknown_route', 'Unknown review action')

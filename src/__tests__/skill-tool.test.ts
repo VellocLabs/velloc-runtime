@@ -348,3 +348,11 @@ it('runs a code review with the id of the Skill call that asked for it', async (
   expect(out).toEqual({ data: 'review-envelope' })
   expect(reviewSkill).toHaveBeenCalledWith('max', context, ALLOW, 'call-review')
 })
+it('prefers the call id the executor hands over to a lookup in the invoking row', async () => {
+  const invoking = { type: 'assistant', uuid: 'assistant-3', message: { role: 'assistant', content: [
+    { type: 'tool-call', toolCallId: 'call-guess', toolName: 'Skill', args: { skill: 'review' } },
+  ] } } as never
+  const context = makeContext([])
+  await SkillRunTool.call({ skill: '/review' }, context as never, ALLOW, invoking, undefined, { toolCallId: 'call-own' })
+  expect(reviewSkill).toHaveBeenLastCalledWith('', context, ALLOW, 'call-own')
+})

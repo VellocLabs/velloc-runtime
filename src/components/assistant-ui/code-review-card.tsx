@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type FC, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type FC, type ReactNode } from 'react'
 import { useAssistantState } from '@assistant-ui/react'
 import { CheckIcon, ChevronDownIcon, EllipsisIcon, Loader2Icon, SearchCheckIcon } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
@@ -32,6 +32,46 @@ export const ReviewTaskTree: FC<{ tasks: ReviewTaskView[] }> = ({ tasks }) => {
       </li>
     })}</ul>
   </details>
+}
+
+type SnapshotStore = { get(): ReviewSessionSnapshot | null; subscribe(listener: () => void): () => void }
+const snapshotStores = new WeakMap<RuntimeConnection, Map<string, SnapshotStore>>()
+const noSnapshotStore: SnapshotStore = { get: () => null, subscribe: () => () => {} }
+
+/** One topic subscription per connection and session, shared by every card: the runtime sends a snapshot to the first subscriber only. */
+function snapshotStoreFor(conn: RuntimeConnection, sessionId: string): SnapshotStore {
+  let bySession = snapshotStores.get(conn)
+  if (!bySession) snapshotStores.set(conn, bySession = new Map())
+  const existing = bySession.get(sessionId)
+  if (existing) return existing
+  const sessions = bySession
+  let snapshot: ReviewSessionSnapshot | null = null
+  let unsubscribeTopic: (() => void) | undefined
+  const listeners = new Set<() => void>()
+  const store: SnapshotStore = {
+    get: () => snapshot,
+    subscribe(listener) {
+      listeners.add(listener)
+      if (listeners.size === 1) {
+        unsubscribeTopic = conn.subscribe<ReviewSessionSnapshot>(reviewTopic(sessionId), event => {
+          const next = event.payload
+          if (next.sessionId !== sessionId || !Array.isArray(next.reports)) return
+          if (snapshot && snapshot.sequence > next.sequence) return
+          snapshot = next
+          for (const notify of Array.from(listeners)) notify()
+        })
+      }
+      return () => {
+        listeners.delete(listener)
+        if (listeners.size > 0) return
+        unsubscribeTopic?.()
+        unsubscribeTopic = undefined
+        sessions.delete(sessionId)
+      }
+    },
+  }
+  bySession.set(sessionId, store)
+  return store
 }
 
 const ReviewConnectionContext = createContext<{ connection?: () => Promise<RuntimeConnection>; sessionId?: string; readOnly?: boolean }>({})
@@ -82,33 +122,28 @@ export const CodeReviewRow: FC<{ runId: string }> = ({ runId }) => (
 export const CodeReviewCard: FC<{ runId?: string; toolCallId?: string; starting?: boolean; fallback?: ReactNode }> = ({ runId, toolCallId, starting = false, fallback }) => {
   const t = useT()
   const { connection, sessionId, readOnly } = useContext(ReviewConnectionContext)
-  const [snapshot, setSnapshot] = useState<ReviewSessionSnapshot | null>(null)
-  const [rerunId, setSelectedRunId] = useState<string | undefined>()
+  const [rerunRunId, setRerunRunId] = useState<string | undefined>()
   const [conn, setConn] = useState<RuntimeConnection | null>(null)
   const [unavailable, setUnavailable] = useState(false)
   useEffect(() => {
-    setSnapshot(null)
     setConn(null)
     setUnavailable(!connection || !sessionId)
     if (!connection || !sessionId) return
     let disposed = false
-    let unsubscribe: (() => void) | undefined
-    connection().then(client => {
-      if (disposed) return
-      setConn(client)
-      unsubscribe = client.subscribe<ReviewSessionSnapshot>(reviewTopic(sessionId), event => {
-        const next = event.payload
-        if (next.sessionId !== sessionId || !Array.isArray(next.reports)) return
-        setSnapshot(previous => previous && previous.sequence > next.sequence ? previous : next)
-      })
-    }).catch(() => { if (!disposed) setUnavailable(true) })
-    return () => { disposed = true; unsubscribe?.() }
+    connection().then(client => { if (!disposed) setConn(client) }).catch(() => { if (!disposed) setUnavailable(true) })
+    return () => { disposed = true }
   }, [connection, sessionId])
-  const selectedRunId = rerunId ?? runId ?? (toolCallId ? snapshot?.reports.filter(item => item.run.toolCallId === toolCallId).at(-1)?.run.id : undefined)
+  const store = conn && sessionId ? snapshotStoreFor(conn, sessionId) : noSnapshotStore
+  const snapshot = useSyncExternalStore(store.subscribe, store.get, () => null)
+  // The first sequence this card saw: a later one that still lists neither run nor preparing entry means no review is tracked for the call.
+  const firstSequence = useRef<number | undefined>(undefined)
+  if (snapshot && firstSequence.current === undefined) firstSequence.current = snapshot.sequence
+  const selectedRunId = rerunRunId ?? runId ?? (toolCallId ? snapshot?.reports.filter(item => item.run.toolCallId === toolCallId).at(-1)?.run.id : undefined)
   const report = selectedRunId ? snapshot?.reports.find(item => item.run.id === selectedRunId) : undefined
   if (!report) {
     const preparing = toolCallId ? snapshot?.preparing?.find(entry => entry.toolCallId === toolCallId) : undefined
-    if (preparing || (starting && !runId)) {
+    const untracked = !!snapshot && firstSequence.current !== undefined && snapshot.sequence > firstSequence.current
+    if (preparing || (starting && !runId && !(untracked && fallback !== undefined))) {
       const canCancel = !readOnly && !!preparing && !!conn?.can('review', 'cancel')
       return <ReviewPreparingCard canCancel={canCancel} onCancel={async () => {
         if (!conn || !preparing || !canCancel) throw new Error('Review action unavailable')
@@ -122,9 +157,18 @@ export const CodeReviewCard: FC<{ runId?: string; toolCallId?: string; starting?
   return <ReviewReportCard key={selectedRunId} report={report} can={can} onAction={async (action, extra = {}) => {
     if (!conn || !can(action)) throw new Error('Review action unavailable')
     const result = await conn.request<unknown>(`review.${action}`, { sessionId, runId: selectedRunId, ...extra })
-    if (action === 'rerun' && result && typeof result === 'object' && 'runId' in result && typeof result.runId === 'string') setSelectedRunId(result.runId)
+    if (action === 'rerun' && result && typeof result === 'object' && 'runId' in result && typeof result.runId === 'string') setRerunRunId(result.runId)
     return result
   }} />
+}
+
+/** Candidates found so far, counting those over the report limit and those dismissed, beside how many were verified. */
+export function reviewProgressCounts(report: ReviewReportView): { found: number; verified: number } {
+  const latest = new Map<string, string>()
+  for (const assessment of report.assessments) latest.set(assessment.diagnosticId, assessment.disposition)
+  const dismissed = [...latest.values()].filter(disposition => disposition === 'dismissed').length
+  const found = report.diagnostics.length + report.run.progress.omittedByLimit + dismissed
+  return { found, verified: Math.min(report.run.progress.verifiedCandidates, found) }
 }
 
 /** A model-requested review before its run exists: the scope is still being read; only cancel is offered. */
@@ -260,7 +304,7 @@ export const ReviewReportCard: FC<{
             </div>
           </div>
           <ReviewStages stage={stage} queued={status === 'queued'} />
-          {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{t('reviewCard.progressCounts', { found: report.diagnostics.length, verified: run.progress.verifiedCandidates })}</p>}
+          {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{t('reviewCard.progressCounts', reviewProgressCounts(report))}</p>}
           <p className="text-xs text-muted-foreground">{method}</p>
         </> : <>
           <div className="flex flex-wrap items-center gap-2">

@@ -188,7 +188,7 @@ export async function* invokeStage(run: AdmittedRun): AsyncGenerator<DeferredMes
         data: event.data,
       },
     } as Message)
-  })
+  }, { toolCallId: block.toolCallId })
   let result = yield* drainWithProgress(pending, progress)
   const screenshotMissing = () =>
     tool.name === 'BrowserScreenshot' &&
@@ -197,7 +197,7 @@ export async function* invokeStage(run: AdmittedRun): AsyncGenerator<DeferredMes
   for (const settleMs of SCREENSHOT_RETRY_DELAYS_MS) {
     if (!screenshotMissing()) break
     await new Promise(resolve => setTimeout(resolve, settleMs))
-    result = await tool.call(runInput, callContext, run.decidePermission, run.modelReply)
+    result = await tool.call(runInput, callContext, run.decidePermission, run.modelReply, undefined, { toolCallId: block.toolCallId })
   }
   run.outcome = result
   return 'continue'

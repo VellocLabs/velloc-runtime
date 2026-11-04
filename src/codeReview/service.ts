@@ -3,6 +3,7 @@ import { isTestOrFixturePath, resolveReviewPolicy, resolveReviewPreferences, rev
 import { composeReviewPrompt, composeFinderPrompt, composeVerifierPrompt, composeSweeperPrompt, type ReviewPromptBlock } from './composer'
 import type { ReviewArguments, ReviewCapabilities, ReviewPlan, ReviewPreferences, OutputMode, ReviewRunEnd, ReviewTaskView } from './contracts'
 import type { ScopeManifest } from './scope'
+import { isReviewId } from './review-protocol'
 import { ReviewReportStore, type ReportSnapshot, type ReportStorageAdapter, type ReportGrant } from './report-store'
 import { createReviewTools, REVIEW_RESULT_SCHEMA, REVIEW_ASSESSMENT_SCHEMA, REVIEW_SUPPORT_SCHEMA } from './tools'
 import { ReviewWorkerPool, endOf, type ReviewModelRunner, type ReviewTaskObserver } from './runner'
@@ -51,6 +52,11 @@ const block = (text: string, source: string): ReviewPromptBlock => ({ type: 'tex
 const newLive = (base: Omit<LiveRun, 'completedAngles' | 'finderTasks' | 'verified' | 'sweepIds' | 'swept' | 'tasks' | 'agentIds'>): LiveRun =>
   ({ ...base, completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false, tasks: new Map(), agentIds: new Map() })
 const endCode = (end: ReviewRunEnd): string => `review-${end.kind}`
+const whenAborted = (signal: AbortSignal): Promise<never> => new Promise((_, reject) => {
+  const fail = () => reject(new ReviewGatewayError('review-cancelled'))
+  if (signal.aborted) fail()
+  else signal.addEventListener('abort', fail, { once: true })
+})
 /** A task the run's time budget aborted ended on the time limit, not on a cancellation. */
 const timed = (live: LiveRun, end: ReviewRunEnd): ReviewRunEnd => live.budgetExpired && end.kind === 'cancelled' ? { kind: 'time-limit' } : end
 const countLines = (patch: string, sign: '+' | '-'): number => patch.split('\n').filter(line => line.startsWith(sign) && !line.startsWith(sign.repeat(3))).length
@@ -152,19 +158,27 @@ export class LocalReviewService {
   }
   startUser(raw: string, signal?: AbortSignal, presentation?: OutputMode): Promise<{ runId: string }> { return this.start(raw, 'user', signal, presentation) }
   /** `toolCallId` names the Skill call that asked for the review; until the run exists it is listed by `preparing()`. */
-  startModel(raw: string, signal?: AbortSignal, toolCallId?: string): Promise<{ runId: string }> { return this.start(raw, 'model', signal, undefined, toolCallId) }
+  startModel(raw: string, signal?: AbortSignal, toolCallId?: string): Promise<{ runId: string }> {
+    // The id only anchors the conversation's card; one the store cannot keep is dropped, never fatal.
+    return this.start(raw, 'model', signal, undefined, isReviewId(toolCallId) ? toolCallId : undefined)
+  }
   /** Model-requested reviews whose run does not exist yet; `cancel` accepts their ids. */
   preparing(): Array<{ id: string; toolCallId: string }> { return [...this.pending].map(([id, entry]) => ({ id, toolCallId: entry.toolCallId })) }
   private async start(raw: string, source: 'user' | 'model', signal?: AbortSignal, presentation?: OutputMode, toolCallId?: string): Promise<{ runId: string }> {
     const operation = this.operation(signal)
     const pendingId = toolCallId ? `preparing-${crypto.randomUUID()}` : undefined
     if (pendingId) { this.pending.set(pendingId, { toolCallId: toolCallId!, controller: operation.controller }); this.changed() }
+    const prepared = this.prepare(raw, source, operation.controller, presentation, toolCallId)
     try {
-      const result = await this.prepare(raw, source, operation.controller, presentation, toolCallId)
+      // Scope resolution can wait on a prompt that ignores the signal; a cancelled start still returns at once.
+      const result = await Promise.race([prepared, whenAborted(operation.controller.signal)])
       void this.live.get(result.runId)!.done.then(operation.release, operation.release)
       return result
-    } catch (error) { operation.release(); throw error }
-    finally { if (pendingId && this.pending.delete(pendingId)) this.changed() }
+    } catch (error) {
+      prepared.catch(() => {})
+      operation.release()
+      throw error
+    } finally { if (pendingId && this.pending.delete(pendingId)) this.changed() }
   }
   private async prepare(raw: string, source: 'user' | 'model', controller: AbortController, presentation?: OutputMode, toolCallId?: string): Promise<{ runId: string }> {
     const parsed = parseReviewArguments(raw)

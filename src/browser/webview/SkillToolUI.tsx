@@ -134,8 +134,8 @@ export const SkillToolUI = makeAssistantToolUI<SkillArgs, unknown>({
       </div>
     )
     // A model-invoked code review is its report card from the first moment, found by this call's id (F-38).
-    if (reviewSkill && toolCallId) {
-      return <CodeReviewCard runId={reviewRunId ?? undefined} toolCallId={toolCallId} starting={isRunning} fallback={row} />
+    if (reviewRunId || (reviewSkill && toolCallId)) {
+      return <CodeReviewCard runId={reviewRunId ?? undefined} toolCallId={toolCallId} starting={isRunning && reviewSkill} fallback={row} />
     }
     return row
   },

@@ -2,7 +2,7 @@ import { RightPanelContentContext } from '../components/assistant-ui/right-panel
 // @vitest-environment happy-dom
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { CodeReviewCard, CodeReviewProvider, CodeReviewRow, ReviewReportCard, currentReviewLocation, reviewFindingState } from '../components/assistant-ui/code-review-card'
 import type { ReviewReportView, ReviewSessionSnapshot } from '../codeReview/review-protocol'
 import { createTranslate } from '../browser/webview/i18n/translate'
@@ -300,6 +300,34 @@ describe('a model-requested review found by its Skill call', () => {
     await waitFor(() => expect(screen.getByTestId('code-review-card').dataset.status).toBe('preparing'))
     expect((screen.getByTestId('review-cancel') as HTMLButtonElement).disabled).toBe(true)
   })
+  it('gives every card the snapshot, though the runtime sends it to a topic\'s first subscriber only', async () => {
+    const first = report()
+    first.run.toolCallId = 'call-1'
+    const second = { ...report(), run: { ...report().run, id: 'r2', toolCallId: 'call-2' } }
+    const listeners: Array<(event: unknown) => void> = []
+    const subscribe = vi.fn((_topic: string, listener: (event: unknown) => void) => {
+      listeners.push(listener)
+      if (listeners.length === 1) listener({ payload: { sessionId: 's1', sequence: 1, reports: [first, second] } })
+      return () => { listeners.splice(listeners.indexOf(listener), 1) }
+    })
+    const connection = { can: vi.fn(() => true), request: vi.fn(), subscribe }
+    render(createElement(CodeReviewProvider, { value: { sessionId: 's1', connection: async () => connection as never } },
+      createElement(CodeReviewCard, { toolCallId: 'call-1' }), createElement(CodeReviewCard, { toolCallId: 'call-2' })))
+    await waitFor(() => expect(screen.getAllByTestId('code-review-card').map(card => card.dataset.status)).toEqual(['partial', 'partial']))
+    expect(subscribe).toHaveBeenCalledTimes(1)
+  })
+  it('gives up the preparing card for the fallback once a later snapshot still lists nothing for the call', async () => {
+    let publish: ((event: unknown) => void) | undefined
+    const connection = { can: vi.fn(() => true), request: vi.fn(), subscribe: (_topic: string, listener: (event: unknown) => void) => { publish = listener; listener({ payload: { sessionId: 's1', sequence: 1, reports: [] } }); return () => {} } }
+    render(createElement(CodeReviewProvider, { value: { sessionId: 's1', connection: async () => connection as never } },
+      createElement(CodeReviewCard, { toolCallId: 'call-1', starting: true, fallback: createElement('p', { 'data-testid': 'plain-row' }) })))
+    await waitFor(() => expect(publish).toBeTypeOf('function'))
+    expect(screen.getByTestId('code-review-card').dataset.status).toBe('preparing')
+    act(() => publish!({ payload: { sessionId: 's1', sequence: 2, reports: [] } }))
+    expect(await screen.findByTestId('plain-row')).toBeTruthy()
+    act(() => publish!({ payload: { sessionId: 's1', sequence: 3, reports: [], preparing: [{ id: 'preparing-1', toolCallId: 'call-1' }] } }))
+    await waitFor(() => expect(screen.getByTestId('code-review-card').dataset.status).toBe('preparing'))
+  })
   it('renders the fallback for a settled call that started no run', async () => {
     rigCard({}, { toolCallId: 'call-1', starting: false, fallback: createElement('p', { 'data-testid': 'plain-row' }) })
     expect(await screen.findByTestId('plain-row')).toBeTruthy()
@@ -310,9 +338,15 @@ describe('a model-requested review found by its Skill call', () => {
 it('counts candidates and verified candidates while the review is active, without showing findings', () => {
   const value = report()
   value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy', span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
-  value.run.progress = { ...value.run.progress, status: 'active', stage: 'assess', verifiedCandidates: 1 }
+  value.assessments = [
+    { id: 'a1', diagnosticId: 'd2', disposition: 'plausible', rationale: 'Looks real', evidenceKeys: [] },
+    { id: 'a2', diagnosticId: 'd2', disposition: 'dismissed', rationale: 'Guard present', evidenceKeys: [] },
+    { id: 'a3', diagnosticId: 'd1', disposition: 'proven', rationale: 'Reproduced', evidenceKeys: [] },
+  ]
+  value.run.progress = { ...value.run.progress, status: 'active', stage: 'assess', verifiedCandidates: 3, omittedByLimit: 2 }
   renderReport(value)
-  expect(screen.getByTestId('review-progress').textContent).toBe(t('reviewCard.progressCounts', { found: 1, verified: 1 }))
+  // One retained, two over the report limit, one dismissed: verified never outruns found.
+  expect(screen.getByTestId('review-progress').textContent).toBe(t('reviewCard.progressCounts', { found: 4, verified: 3 }))
   expect(screen.queryByTestId('review-finding')).toBeNull()
   cleanup()
   value.run.progress.status = 'queued'

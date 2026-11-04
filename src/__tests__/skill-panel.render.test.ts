@@ -623,6 +623,11 @@ describe('SkillToolUI code-review card', () => {
     expect(screen.getByTestId('code-review-card')).toBeTruthy()
     expect(screen.queryByTestId('skill-card')).toBeNull()
   })
+  it('shows the card from a result carrying a review run even without a call id', () => {
+    render(createElement(Render as never, { args: { skill: 'code-review' }, toolName: 'Skill', addResult: () => {}, result: { reviewRunId: 'run_1', status: 'finished', report: {} }, status: { type: 'complete' } }))
+    expect(screen.getByTestId('code-review-card')).toBeTruthy()
+    expect(screen.queryByTestId('skill-card')).toBeNull()
+  })
   it('keeps the plain skill row for a failed review call', () => {
     render(createElement(Render as never, { args: { skill: 'code-review' }, toolCallId: 'c1', toolName: 'Skill', addResult: () => {}, result: undefined, status: { type: 'incomplete', reason: 'error', error: 'review-plan-blocked' } }))
     expect(screen.getByTestId('skill-card')).toBeTruthy()

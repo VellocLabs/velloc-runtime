@@ -67,7 +67,7 @@ describe('review protocol', () => {
     const conn = await connect('control')
     await conn.request('review.cancel', { sessionId: 's1', runId: 'preparing-1' })
     expect(service.cancel).toHaveBeenCalledWith('preparing-1')
-    await expect(conn.request('review.rerun', { sessionId: 's1', runId: 'preparing-1' })).rejects.toMatchObject({ code: 'not_found' })
+    await expect(conn.request('review.rerun', { sessionId: 's1', runId: 'preparing-1' })).rejects.toMatchObject({ code: 'forbidden_scope' })
     await expect(conn.request('review.cancel', { sessionId: 's1', runId: 'call-1' })).rejects.toMatchObject({ code: 'not_found' })
     const observer = await connect('observe')
     await expect(observer.request('review.cancel', { sessionId: 's1', runId: 'preparing-1' })).rejects.toMatchObject({ code: 'forbidden_scope' })

@@ -70,6 +70,9 @@ export type ToolOutcome<T> = {
 /** Receives progress updates while a tool runs. */
 export type ToolCallStepUpdate<P = unknown> = (progress: P) => void
 
+/** Contract: what the executor knows about the call being run; absent when a wrapper or helper invokes the tool directly. */
+export type ToolInvocation = { toolCallId: string }
+
 export type ToolContractList = readonly ToolContract[]
 
 export type ToolContract<
@@ -88,6 +91,7 @@ export type ToolContract<
     canUseTool: PermissionDecider,
     invokingRow: Message,
     onProgress?: ToolCallStepUpdate<P>,
+    invocation?: ToolInvocation,
   ): Promise<ToolOutcome<Output>>
   description(
     input: Input,

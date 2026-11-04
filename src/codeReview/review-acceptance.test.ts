@@ -337,6 +337,23 @@ it('cancels a review that is still preparing, so the Skill call ends without a r
   expect((await f.service.snapshots()).reports).toEqual([])
   expect(f.runModel).not.toHaveBeenCalled()
 })
+it('drops a Skill call id the run cannot keep, and still runs the review', async () => {
+  const f = fixture()
+  const { runId } = await f.service.startModel('high', undefined, 'call|with/odd+chars=')
+  const snapshot = await f.service.wait(runId)
+  expect(snapshot.run.toolCallId).toBeUndefined()
+  expect(f.runModel).toHaveBeenCalled()
+})
+it('ends a cancelled start at once even while scope resolution ignores the signal', async () => {
+  const resolveScope = vi.fn(() => new Promise<never>(() => {}))
+  const f = fixture({ resolveScope: resolveScope as never })
+  const started = f.service.startModel('high', undefined, 'call-1')
+  await vi.waitFor(() => expect(f.service.preparing()).toHaveLength(1))
+  await f.service.cancel(f.service.preparing()[0].id)
+  await expect(started).rejects.toThrow('review-cancelled')
+  expect(f.service.preparing()).toEqual([])
+  expect((await f.service.snapshots()).reports).toEqual([])
+})
 it('keeps the retained ledger as a partial report after one format-only correction fails', async () => {
   const model = vi.fn(async () => ({ text: 'not JSON', interrupted: false }))
   const f = fixture({ runModel: model })
