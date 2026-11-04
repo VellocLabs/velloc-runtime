@@ -292,6 +292,24 @@ it('accepts a format correction that echoes the retained ledger it was sent', as
   expect(snapshot.structured).toBe(true)
   expect(snapshot.coverage.limitations).not.toContain('invalid-response')
 })
+it('refuses a format correction that raises complete or adds an angle the ledger never recorded', async () => {
+  for (const change of [{ complete: true }, { angles: ['lines'] }]) {
+    const model = vi.fn(async (request: ReviewModelRequest) => {
+      if (request.role !== 'format') {
+        await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: [], limitations: ['could not read src/a.ts'], complete: false } })
+        return { text: 'Review done, no JSON.', interrupted: false }
+      }
+      const ledger = JSON.parse(request.blocks.find(item => item.source === 'retained-ledger')!.text)
+      return { text: JSON.stringify({ ...ledger, coverage: { ...ledger.coverage, ...change } }), interrupted: false }
+    })
+    const f = fixture({ runModel: model })
+    const snapshot = await f.service.wait((await f.service.startUser('low')).runId)
+    expect(model).toHaveBeenCalledTimes(2)
+    expect(snapshot.run.progress.status).toBe('partial')
+    expect(snapshot.coverage.complete).toBe(false)
+    expect(snapshot.coverage.limitations).toEqual(expect.arrayContaining(['could not read src/a.ts', 'invalid-response']))
+  }
+})
 it('keeps the retained ledger as a partial report after one format-only correction fails', async () => {
   const model = vi.fn(async () => ({ text: 'not JSON', interrupted: false }))
   const f = fixture({ runModel: model })

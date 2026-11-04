@@ -748,20 +748,25 @@ export class ReviewReportStore {
       return true
     } catch (error) { if (error instanceof ReportStoreError) return false; throw error }
   }
-  async submitFinalJson(runId: string, toolCallId: string, raw: string): Promise<ReportWriteResult> {
+  /**
+   * Contract: commits the final-text report. `coverage: 'merge'` merges the report's coverage into the ledger and takes
+   * the last object in the text whose candidates match; `'exact'` (a caller with no review tools, such as the format
+   * correction) commits only when the coverage equals the ledger's, so it cannot add angles or raise `complete` (F-38).
+   */
+  async submitFinalJson(runId: string, toolCallId: string, raw: string, coverage: 'exact' | 'merge' = 'merge'): Promise<ReportWriteResult> {
     const found = finalJsonObjects(raw)
     if (!found.length) return this.modelWrite(runId, toolCallId, raw, () => fail('malformed-json'))
     const state = await this.serial(runId, () => this.load(runId))
     let value: Record<string, unknown>
     try {
-      value = this.finalRecord(found.find(item => this.matchesLedger(state, item, true)) ?? found.find(item => this.matchesLedger(state, item, false)) ?? found[0])
+      value = this.finalRecord(found.find(item => this.matchesLedger(state, item, coverage === 'exact')) ?? found[0])
     } catch (error) {
       const code = error instanceof ReportStoreError ? error.code : 'malformed-json'
       return this.modelWrite(runId, toolCallId, raw, () => fail(code))
     }
     try {
       const submitted = { operation: 'record', candidates: value.candidates, coverage: value.coverage }
-      return await this.modelWrite(runId, toolCallId, clone(submitted), draft => this.commitRecord(draft, submitted, 'merge'))
+      return await this.modelWrite(runId, toolCallId, clone(submitted), draft => this.commitRecord(draft, submitted, coverage))
     } catch (error) {
       if (!(error instanceof ReportStoreError)) throw error
       await this.captureMalformed(runId, toolCallId, raw, error.code)

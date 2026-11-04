@@ -215,7 +215,25 @@ describe('review report store', () => {
     expect(snapshot.structured).toBe(false)
     expect(snapshot.coverage.limitations).toEqual(['kept'])
   })
-  it('prefers the report whose coverage equals the ledger over an earlier quoted one with the same candidates', async () => {
+  it('takes the last matching report, so an earlier quoted ledger cannot hide the report\'s own limitations', async () => {
+    const { store, id, json } = await ledgerWithoutRecord(['kept'])
+    const report = JSON.stringify({ ...json, coverage: { angles: ['lines'], limitations: ['src/b.ts unread'], complete: false } })
+    await store.submitFinalJson(id, 'final', `Ledger: ${JSON.stringify(json)}\nReport: ${report}`)
+    expect((await store.getSnapshot(id)).coverage).toEqual({ angles: ['lines'], limitations: ['kept', 'src/b.ts unread'], complete: false })
+  })
+  it('commits an exact-coverage final report only when its coverage equals the ledger', async () => {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    await store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [candidate(anchorKey)] })
+    await store.submitLedger(id, 'coverage', { operation: 'coverage', coverage: { angles: [], limitations: ['could not read src/a.ts'], complete: false } })
+    const { operation: _, ...json } = await store.expectedRecord(id)
+    await expect(store.submitFinalJson(id, 'raise', JSON.stringify({ ...json, coverage: { ...json.coverage, complete: true } }), 'exact')).rejects.toThrow('ledger-mismatch')
+    await expect(store.submitFinalJson(id, 'angle', JSON.stringify({ ...json, coverage: { ...json.coverage, angles: ['lines'] } }), 'exact')).rejects.toThrow('ledger-mismatch')
+    expect((await store.getSnapshot(id)).coverage).toEqual({ angles: [], limitations: ['could not read src/a.ts'], complete: false })
+    await store.submitFinalJson(id, 'echo', JSON.stringify({ operation: 'record', ...json }), 'exact')
+    expect((await store.getSnapshot(id)).structured).toBe(true)
+  })
+  it('takes the matching report over an earlier quoted one with the same candidates', async () => {
     const { store, id, json } = await ledgerWithoutRecord(['kept'])
     const quoted = JSON.stringify({ ...json, coverage: { angles: [], limitations: ['quoted example'], complete: false } })
     await store.submitFinalJson(id, 'final', `Example: ${quoted}\nReport: ${JSON.stringify(json)}`)

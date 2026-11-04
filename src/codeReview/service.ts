@@ -249,7 +249,7 @@ export class LocalReviewService {
           catch {
             const { operation: _, ...expected } = await this.store.expectedRecord(runId)
             const corrected = await this.runModel({ blocks: [block('Correct only the JSON format/selection. Return candidates and coverage exactly from the provided retained ledger; do not rerun the review.', 'format-correction'), block(JSON.stringify(expected), 'retained-ledger')], tools: [], signal: controller.signal, taskId: `${runId}-format`, maxTurns: 1, role: 'format', observer: this.observer(live) })
-            try { await this.store.submitFinalJson(runId, crypto.randomUUID(), corrected.text) }
+            try { await this.store.submitFinalJson(runId, crypto.randomUUID(), corrected.text, 'exact') }
             catch {
               await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['invalid-response'], complete: false } })
               await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
