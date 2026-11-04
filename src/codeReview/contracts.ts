@@ -37,6 +37,8 @@ export interface ReviewArguments {
   level?: ReviewLevel
   target?: string
   targetLiteral?: true
+  /** `-C <dir>`: the repository folder to review, relative to the session's root. */
+  directory?: string
   fix: boolean
   comment: boolean
   maxFindings?: FindingLimit

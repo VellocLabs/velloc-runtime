@@ -27,7 +27,7 @@ export const zh: Messages = {
   "reviewCard.angle.simplification": "简化",
   "reviewCard.angle.wrappers": "包装器与代理",
   "reviewCard.notice.ambiguous": "请先明确选择仓库和审查目标。",
-  "reviewCard.notice.arguments": "{reason} 支持：/code-review [low|medium|high|xhigh|max] [target] [--fix] [--comment] [--max-findings n|all|default]。",
+  "reviewCard.notice.arguments": "{reason} 支持：/code-review [low|medium|high|xhigh|max] [-C dir] [target] [--fix] [--comment] [--max-findings n|all|default]。",
   "reviewCard.notice.binary": "未检查二进制内容。",
   "reviewCard.notice.cancelled": "审查操作已取消，保留的结果仍可查看。",
   "reviewCard.notice.cap": "请求上限：{requested}。本轮最多展示 {effective} 项发现；保存的偏好不变。",

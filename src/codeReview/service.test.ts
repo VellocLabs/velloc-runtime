@@ -175,6 +175,26 @@ describe('local review runtime gateway', () => {
     expect((await h.service.wait(rerun.runId)).run.policy.level).toBe('max')
     expect(h.resolveScope).toHaveBeenLastCalledWith(expect.objectContaining({ fix: false, comment: false }), expect.anything(), expect.anything())
   })
+  it('keeps -C on a rerun, from the live run and from the stored target', async () => {
+    const stored = new Map<string, { target?: string; literal?: true; directory?: string }>()
+    const presentations: Array<{ target?: string }> = []
+    const h = setup({ empty: true, args: {
+      saveTarget: async (id, target, literal, directory) => { stored.set(id, { target, literal, directory }) },
+      loadTarget: async id => stored.get(id)?.target, loadTargetLiteral: async id => stored.get(id)?.literal, loadDirectory: async id => stored.get(id)?.directory,
+      savePresentation: async (_id, value) => { presentations.push(value) },
+    } })
+    const { runId } = await h.service.startUser('low -C "nested repo" main..topic')
+    await h.service.wait(runId)
+    expect(stored.get(runId)).toEqual({ target: 'main..topic', literal: undefined, directory: 'nested repo' })
+    expect(presentations.at(-1)?.target).toBe('nested repo main..topic')
+    const live = await h.service.rerun(runId)
+    await h.service.wait(live.runId)
+    expect(h.resolveScope).toHaveBeenLastCalledWith(expect.objectContaining({ directory: 'nested repo', target: 'main..topic' }), expect.anything(), expect.anything())
+    ;(h.service as unknown as { live: Map<string, unknown> }).live.delete(runId)
+    const restored = await h.service.rerun(runId)
+    await h.service.wait(restored.runId)
+    expect(h.resolveScope).toHaveBeenLastCalledWith(expect.objectContaining({ directory: 'nested repo', target: 'main..topic' }), expect.anything(), expect.anything())
+  })
   it('restores interrupted reports without another model request', async () => {
     const h = setup()
     const { runId } = await h.service.startUser('low')

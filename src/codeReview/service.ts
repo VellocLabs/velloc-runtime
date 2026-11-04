@@ -38,7 +38,8 @@ export interface ReviewServiceOptions {
   output?: OutputMode
   maxDurationMs?: number
   savePresentation?(runId: string, value: { notices: ReviewPlan['notices']; emptyScope: boolean; target?: string }): Promise<void>
-  saveTarget?(runId: string, target: string | undefined, targetLiteral?: true): Promise<void>
+  saveTarget?(runId: string, target: string | undefined, targetLiteral?: true, directory?: string): Promise<void>
+  loadDirectory?(runId: string): Promise<string | undefined>
   loadTargetLiteral?(runId: string): Promise<true | undefined>
   loadTarget?(runId: string): Promise<string | undefined>
 }
@@ -194,8 +195,8 @@ export class LocalReviewService {
     this.admit(controller.signal)
     const runId = await this.store.createRun({ conversationKey: this.options.conversationKey, scope: access.manifest.scope,
       policy: plan, expectedAngles: access.manifest.status === 'empty' ? [] : [...plan.angles] })
-    await this.options.saveTarget?.(runId, parsed.arguments.target, parsed.arguments.targetLiteral)
-    await this.options.savePresentation?.(runId, { notices: plan.notices, emptyScope: access.manifest.status === 'empty', target: parsed.arguments.target })
+    await this.options.saveTarget?.(runId, parsed.arguments.target, parsed.arguments.targetLiteral, parsed.arguments.directory)
+    await this.options.savePresentation?.(runId, { notices: plan.notices, emptyScope: access.manifest.status === 'empty', target: [parsed.arguments.directory, parsed.arguments.target].filter(Boolean).join(' ') || undefined })
     for (const anchor of access.manifest.anchors) {
       const revision = anchor.side === 'working-copy' ? access.manifest.scope.revision.workingCopyDigest! : anchor.revision
       anchor.anchorKey = await this.store.registerAnchor(runId, { ...anchor, revision })
@@ -449,7 +450,7 @@ export class LocalReviewService {
     const snapshot = await this.store.getSnapshot(runId)
     const target = await this.options.loadTarget?.(runId)
     if (!target && snapshot.run.scope.kind !== 'workspace') throw new ReviewGatewayError('review-target-needs-selection')
-    const args: ReviewArguments = { target, targetLiteral: await this.options.loadTargetLiteral?.(runId), level: snapshot.run.policy.level, fix: false, comment: false }
+    const args: ReviewArguments = { target, targetLiteral: await this.options.loadTargetLiteral?.(runId), directory: await this.options.loadDirectory?.(runId), level: snapshot.run.policy.level, fix: false, comment: false }
     const preferences = await this.options.preferences.load()
     let plan = resolveReviewPolicy({ arguments: args, source: 'model', preferences,
       canonicalModelId: this.options.modelId, capabilities: this.options.capabilities, output: snapshot.run.policy.presentation })
@@ -518,9 +519,10 @@ export class LocalReviewService {
     const live = this.live.get(runId)
     const target = live?.args.target ?? await this.options.loadTarget?.(runId)
     if (!live && !target && snapshot.run.scope.kind !== 'workspace') throw new ReviewGatewayError('review-target-needs-selection')
-    const quoted = target?.includes('"') ? `'${target}'` : `"${target ?? ''}"`
-    if (target?.includes('"') && target.includes("'")) throw new ReviewGatewayError('review-target-needs-selection')
+    const directory = live?.args.directory ?? await this.options.loadDirectory?.(runId)
+    if ([target, directory].some(value => value?.includes('"') && value.includes("'"))) throw new ReviewGatewayError('review-target-needs-selection')
+    const quote = (value: string) => value.includes('"') ? `'${value}'` : `"${value}"`
     const literal = live?.args.targetLiteral ?? await this.options.loadTargetLiteral?.(runId)
-    return this.start(`${snapshot.run.policy.level}${target ? ` ${literal ? '-- ' : ''}${quoted}` : ''}`, 'user', undefined, presentation)
+    return this.start(`${snapshot.run.policy.level}${directory ? ` -C ${quote(directory)}` : ''}${target ? ` ${literal ? '-- ' : ''}${quote(target)}` : ''}`, 'user', undefined, presentation)
   }
 }

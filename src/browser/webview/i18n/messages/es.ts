@@ -27,7 +27,7 @@ export const es: Messages = {
   "reviewCard.angle.simplification": "Simplificación",
   "reviewCard.angle.wrappers": "Envoltorios y proxies",
   "reviewCard.notice.ambiguous": "Seleccione explícitamente el repositorio y el destino antes de continuar.",
-  "reviewCard.notice.arguments": "{reason} Sintaxis admitida: /code-review [low|medium|high|xhigh|max] [target] [--fix] [--comment] [--max-findings n|all|default].",
+  "reviewCard.notice.arguments": "{reason} Sintaxis admitida: /code-review [low|medium|high|xhigh|max] [-C dir] [target] [--fix] [--comment] [--max-findings n|all|default].",
   "reviewCard.notice.binary": "No se examinó el contenido binario.",
   "reviewCard.notice.cancelled": "La operación se canceló; los resultados conservados siguen disponibles.",
   "reviewCard.notice.cap": "Límite solicitado: {requested}. Esta ejecución muestra como máximo {effective} hallazgos; la preferencia guardada no cambia.",

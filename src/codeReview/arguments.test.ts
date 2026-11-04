@@ -78,4 +78,22 @@ describe('review arguments', () => {
     expect(parseReviewCommand('/ultrareview')).toMatchObject({ ok: false, error: { code: 'removed-option' } })
     expect(parsed('/absolute/path').target).toBe('/absolute/path')
   })
+
+  it('takes -C <dir> anywhere before --, with the level first among the rest', () => {
+    expect(parsed('-C nexus_web max main..topic')).toEqual({ directory: 'nexus_web', level: 'max', target: 'main..topic', fix: false, comment: false })
+    expect(parsed('max -C nexus_web main..topic')).toEqual({ directory: 'nexus_web', level: 'max', target: 'main..topic', fix: false, comment: false })
+    expect(parsed('high main..topic -C internal --fix')).toEqual({ directory: 'internal', level: 'high', target: 'main..topic', fix: true, comment: false })
+    expect(parsed('-C "some folder/repo"').directory).toBe('some folder/repo')
+    expect(parsed('-C "-dash"').directory).toBe('-dash')
+    expect(parsed('--fix -C sub high')).toEqual({ directory: 'sub', target: 'high', fix: true, comment: false })
+  })
+
+  it('treats -C after --, or quoted, as a target, and refuses a missing or second directory', () => {
+    expect(parsed('-- -C')).toEqual({ target: '-C', targetLiteral: true, fix: false, comment: false })
+    expect(parsed('"-C"').target).toBe('-C')
+    expect(parseReviewArguments('-C')).toMatchObject({ ok: false, error: { code: 'missing-value', token: '-C' } })
+    expect(parseReviewArguments('-C --fix')).toMatchObject({ ok: false, error: { code: 'missing-value' } })
+    expect(parseReviewArguments('-C ""')).toMatchObject({ ok: false, error: { code: 'missing-value' } })
+    expect(parseReviewArguments('-C a -C b')).toMatchObject({ ok: false, error: { code: 'multiple-directories', token: 'b' } })
+  })
 })

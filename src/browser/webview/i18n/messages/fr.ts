@@ -23,7 +23,7 @@ export const fr: Messages = {
   "reviewCard.angle.simplification": "Simplification",
   "reviewCard.angle.wrappers": "Enveloppes et proxys",
   "reviewCard.notice.ambiguous": "Sélectionnez explicitement le dépôt et la cible avant de continuer.",
-  "reviewCard.notice.arguments": "{reason} Syntaxe : /code-review [low|medium|high|xhigh|max] [target] [--fix] [--comment] [--max-findings n|all|default].",
+  "reviewCard.notice.arguments": "{reason} Syntaxe : /code-review [low|medium|high|xhigh|max] [-C dir] [target] [--fix] [--comment] [--max-findings n|all|default].",
   "reviewCard.notice.binary": "Le contenu binaire n’a pas été examiné.",
   "reviewCard.notice.cancelled": "L’opération a été annulée ; les résultats conservés restent disponibles.",
   "reviewCard.notice.cap": "Limite demandée : {requested}. Cette exécution affiche au plus {effective} constats ; la préférence enregistrée reste inchangée.",

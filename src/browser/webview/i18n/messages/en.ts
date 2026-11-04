@@ -27,7 +27,7 @@ export const en = {
   "reviewCard.angle.simplification": "Simplification",
   "reviewCard.angle.wrappers": "Wrappers and proxies",
   "reviewCard.notice.ambiguous": "Select the repository and review target explicitly before continuing.",
-  "reviewCard.notice.arguments": "{reason} Supported: /code-review [low|medium|high|xhigh|max] [target] [--fix] [--comment] [--max-findings n|all|default].",
+  "reviewCard.notice.arguments": "{reason} Supported: /code-review [low|medium|high|xhigh|max] [-C dir] [target] [--fix] [--comment] [--max-findings n|all|default].",
   "reviewCard.notice.binary": "Binary content was not inspected.",
   "reviewCard.notice.cancelled": "The review operation was cancelled; retained results remain available.",
   "reviewCard.notice.cap": "Requested limit: {requested}. This run can show at most {effective} findings; your saved preference is unchanged.",

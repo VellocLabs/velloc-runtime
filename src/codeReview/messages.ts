@@ -6,7 +6,7 @@ const groups = {
   unknownOption: ['unknown-option', 'unknown-command'],
   missingValue: ['missing-value'],
   invalidLimit: ['invalid-limit'],
-  invalidArguments: ['multiple-targets', 'empty-target', 'unclosed-quote'],
+  invalidArguments: ['multiple-targets', 'multiple-directories', 'empty-target', 'unclosed-quote'],
   ambiguous: ['ambiguous-target', 'ambiguous-review-target', 'ambiguous-base', 'review-target-needs-selection'],
   invalidTarget: ['invalid-target', 'target-mismatch', 'invalid-range', 'missing-ref', 'missing-path', 'invalid-ref', 'invalid-oid', 'invalid-path', 'invalid-root', 'invalid-git-directory'],
   denied: ['action-not-authorized', 'review-read-not-authorized', 'read-denied', 'read-outside-review-scope', 'whole-file-read-not-authorized', 'edit-outside-review-grant', 'review-mutation-not-authorized', 'review-fs-operation-not-authorized', 'publication-not-authorized', 'publication-denied', 'forbidden_scope', 'repair-grant-expired'],
@@ -40,7 +40,7 @@ const groups = {
   committedOnly: ['committed-lines-only'],
   binary: ['binary'], large: ['large'], skipped: ['skipped'], unreadable: ['unreadable'],
 } as const
-const parserCodes = new Set(['removed-option', 'unknown-command', 'unknown-option', 'missing-value', 'invalid-limit', 'multiple-targets', 'empty-target', 'unclosed-quote'])
+const parserCodes = new Set(['removed-option', 'unknown-command', 'unknown-option', 'missing-value', 'invalid-limit', 'multiple-targets', 'multiple-directories', 'empty-target', 'unclosed-quote'])
 const levels = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 const level = (t: TranslateFn, value: unknown): string => typeof value === 'string' && levels.includes(value as typeof levels[number]) ? t(`reviewCard.value.${value}` as Parameters<TranslateFn>[0]) : t('reviewCard.notice.unspecified')
 const count = (t: TranslateFn, value: unknown): string | number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : value === 'all' || value === 'unlimited' ? t('reviewCard.value.unlimited') : t('reviewCard.notice.unspecified')

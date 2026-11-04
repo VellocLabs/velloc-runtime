@@ -24,7 +24,7 @@ export const ko: Messages = {
   "reviewCard.angle.simplification": "단순화",
   "reviewCard.angle.wrappers": "래퍼 및 프록시",
   "reviewCard.notice.ambiguous": "계속하기 전에 저장소와 검토 대상을 명확히 선택하세요.",
-  "reviewCard.notice.arguments": "{reason} 지원 형식: /code-review [low|medium|high|xhigh|max] [target] [--fix] [--comment] [--max-findings n|all|default].",
+  "reviewCard.notice.arguments": "{reason} 지원 형식: /code-review [low|medium|high|xhigh|max] [-C dir] [target] [--fix] [--comment] [--max-findings n|all|default].",
   "reviewCard.notice.binary": "바이너리 내용을 검사하지 않았습니다.",
   "reviewCard.notice.cancelled": "검토 작업이 취소되었습니다. 보존된 결과는 계속 확인할 수 있습니다.",
   "reviewCard.notice.cap": "요청한 한도: {requested}. 이번 실행은 최대 {effective}개를 표시하며 저장된 기본 설정은 변경하지 않습니다.",

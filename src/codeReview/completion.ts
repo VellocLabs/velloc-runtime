@@ -46,12 +46,14 @@ export function completeReviewArguments(input: string, cursor = input.length): R
   if (!parsed.ok && !missingQuantity) return { items: [] }
   if (missingQuantity && !parseReviewArguments(completed.replace(/--max-findings\s+$/u, '')).ok) return { items: [] }
   const quantity = missingQuantity || equalQuantity
+  const onlyDirectory = parsed.ok && parsed.arguments.directory !== undefined && !parsed.arguments.level && parsed.arguments.target === undefined
+    && !parsed.arguments.fix && !parsed.arguments.comment && parsed.arguments.maxFindings === undefined
   const stem = equalQuantity ? '--max-findings=' : ''
   const values: Array<{ value: string; kind: ReviewArgumentCompletion['kind'] }> = quantity
     ? ['4', '8', '10', '15', '32', 'all', 'default'].map(value => ({ value: stem + value, kind: 'quantity' }))
     : [
-        ...(!completed.trim() ? REVIEW_LEVELS.map(value => ({ value, kind: 'level' as const })) : []),
-        ...REVIEW_SWITCHES.map(value => ({ value, kind: 'switch' as const })),
+        ...(!completed.trim() || onlyDirectory ? REVIEW_LEVELS.map(value => ({ value, kind: 'level' as const })) : []),
+        ...REVIEW_SWITCHES.filter(value => value !== '-C' || !parsed.ok || parsed.arguments.directory === undefined).map(value => ({ value, kind: 'switch' as const })),
       ]
   return {
     items: values.filter(item => item.value.startsWith(fragment)).map(item => ({ ...item, replace: { start, end: cursor } })),

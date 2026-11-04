@@ -2,7 +2,7 @@ import { createMechanismCatalog } from './mechanism-catalog'
 import { proposeReviewSuggestion, prepareReviewPublicationBody } from './publication-content'
 import { createTranslate } from '../browser/webview/i18n/translate'
 import { reviewDetailMessage, reviewValueMessage } from './messages'
-import { registerWorkspaceMutationObserver, withSuppressedWorkspaceMutations } from './mutation-observer'
+import { registerWorkspaceMutationObserver, withSuppressedWorkspaceMutations, type ObservedWorkspaceMutation } from './mutation-observer'
 import { reassessExternalEdit, reassessmentTouches, type ReassessmentEvidence } from './reassessment'
 import { runBehaviorVerification, type BehaviorExecution } from './behavior-verification'
 import { createVerificationBrowserTools } from './verification-browser'
@@ -108,14 +108,14 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
   }
   const fs = context.options.fsOperations
   if (!runtime || !fs?.realpath) throw new ReviewGatewayError('review-runtime-unavailable')
-  const root = normalized(await fs.realpath(context.options.projectRoot, { resolveLinks: true }))
+  const sessionRoot = normalized(await fs.realpath(context.options.projectRoot, { resolveLinks: true }))
   admit()
   const configuredBase = context.options.sessionStorageBase ?? context.options.sessionStoragePath
   if (!configuredBase || !isAbsoluteRuntimePath(configuredBase) || !/^[A-Za-z0-9_-]+$/.test(context.options.sessionId)) throw new ReviewGatewayError('review-storage-unavailable')
   const storageBase = normalized(resolveRuntimePath(configuredBase, '.'))
-  if (below(storageBase, root)) throw new ReviewGatewayError('review-storage-unavailable')
+  if (below(storageBase, sessionRoot)) throw new ReviewGatewayError('review-storage-unavailable')
   const sharedBase = context.options.sessionStoragePath ?? configuredBase
-  if (!isAbsoluteRuntimePath(sharedBase) || below(normalized(sharedBase), root)) throw new ReviewGatewayError('review-storage-unavailable')
+  if (!isAbsoluteRuntimePath(sharedBase) || below(normalized(sharedBase), sessionRoot)) throw new ReviewGatewayError('review-storage-unavailable')
   const storageRoot = resolveRuntimePath(sharedBase, 'code-review')
   const sessionDir = resolveRuntimePath(storageBase, `${context.options.sessionId}/code-review`)
   const preferencePath = resolveRuntimePath(storageRoot, 'preferences.json')
@@ -128,7 +128,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     for (;;) {
       try {
         const actual = normalized(await fs!.realpath!(current, { resolveLinks: true }))
-        if (!equal(actual, current) || below(actual, root)) throw new ReviewGatewayError('review-storage-not-authorized')
+        if (!equal(actual, current) || below(actual, sessionRoot)) throw new ReviewGatewayError('review-storage-not-authorized')
       } catch (error) { if (!isFsNotFoundError(error)) throw error }
       const parent = normalized(dirnameRuntimePath(current))
       if (equal(parent, current) || !parent) break
@@ -195,122 +195,157 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       } else if (!await authorizeAction('Read', { file_path: absolute })) throw new ReviewGatewayError('review-read-not-authorized')
     }
   }
-  const readWorkspaceFile = async (path: string, maxBytes: number, signal?: AbortSignal, authorize = authorizePath): Promise<WorkspaceRead> => {
-    validateReviewPath(path)
-    admit(signal)
-    const absolute = resolveRuntimePath(root, path)
-    let canonical: string
-    try { canonical = normalized(await fs!.realpath!(absolute, { resolveLinks: true })) }
-    catch (error) { if (isFsNotFoundError(error)) return { kind: 'missing' }; throw error }
-    if (!below(canonical, root) || !equal(canonical, normalized(absolute))) return { kind: 'symlink' }
-    await authorize(absolute)
-    try {
-      const stat = await fs!.stat(absolute)
-      if (stat.isSymbolicLink()) return { kind: 'symlink' }
-      if (stat.isDirectory()) return { kind: 'directory' }
-      if (!stat.isFile()) return { kind: 'unreadable' }
-      if (stat.size > maxBytes) return { kind: 'large' }
+  /** Contract: the readers bound to one review root, the session root or a repository folder below it. */
+  const bindWorkspace = (root: string) => {
+    const readWorkspaceFile = async (path: string, maxBytes: number, signal?: AbortSignal, authorize = authorizePath): Promise<WorkspaceRead> => {
+      validateReviewPath(path)
       admit(signal)
-      return { kind: 'file', bytes: await fs!.readFileBytes(absolute, maxBytes) }
-    } catch (error) { if (isFsNotFoundError(error)) return { kind: 'missing' }; throw error }
-  }
-  const guidanceFor = async (paths: string[], authorizeEffort = false, authorize = authorizePath, approved?: { guidance: ReviewServiceOptions['guidance'] }) => {
-    if (!context.options.runtimeConfig) return { text: '', sources: [] as Array<{ path: string; revision: string; excerpt: string }> }
-    const guardedFs = new Proxy(fs, { get(target, key) {
-      if (key === 'readFile') return async (path: string, options: { encoding: string }) => { await authorize(path); return target.readFile(path, options) }
-      if (key === 'readdir') return async (path: string) => { await authorize(path); return target.readdir(path) }
-      const value = target[key as keyof RuntimeFs]
-      return typeof value === 'function' ? value.bind(target) : value
-    } })
-    const params = { cwd: root, projectRoot: root, homeDir: context.options.homeDir, readRoot: context.options.untrustedReadRoot,
-      runtimeConfig: context.options.runtimeConfig, fs: guardedFs, memorySettings: context.options.memorySettings }
-    const docs = await gatherInstructionDocs(params)
-    for (const path of paths) {
-      docs.push(...await getNestedInstructionFilesForPath(resolveRuntimePath(root, path), params))
-      docs.push(...await getConditionalRulesForPath(resolveRuntimePath(root, path), params))
+      const absolute = resolveRuntimePath(root, path)
+      let canonical: string
+      try { canonical = normalized(await fs!.realpath!(absolute, { resolveLinks: true })) }
+      catch (error) { if (isFsNotFoundError(error)) return { kind: 'missing' }; throw error }
+      if (!below(canonical, root) || !equal(canonical, normalized(absolute))) return { kind: 'symlink' }
+      await authorize(absolute)
+      try {
+        const stat = await fs!.stat(absolute)
+        if (stat.isSymbolicLink()) return { kind: 'symlink' }
+        if (stat.isDirectory()) return { kind: 'directory' }
+        if (!stat.isFile()) return { kind: 'unreadable' }
+        if (stat.size > maxBytes) return { kind: 'large' }
+        admit(signal)
+        return { kind: 'file', bytes: await fs!.readFileBytes(absolute, maxBytes) }
+      } catch (error) { if (isFsNotFoundError(error)) return { kind: 'missing' }; throw error }
     }
-    admit()
-    const selected = docs.filter((doc, index) => docs.findIndex(other => other.path === doc.path) === index)
-    const sources = await Promise.all(selected.filter(doc => below(normalized(doc.path), root) && !equal(normalized(doc.path), root)).map(async doc => ({
-      path: normalized(doc.path).slice(root.length + 1), revision: `guidance:${await reviewDigest(doc.content)}`, excerpt: doc.content,
-    })))
-    let authorizedGuidance: ReviewServiceOptions['guidance'] = approved?.guidance
-    if (authorizeEffort) {
-      for (const doc of [...selected].reverse()) {
-        if (doc.type === 'AutoMem') continue
-        const level = reviewEffortDirective(doc.content)
-        if (!level) continue
-        const digest = await reviewDigest(doc.content)
-        if (await authorizeAction('ReviewGuidance', { path: doc.path, digest, level, workspace: root, paths, parent: doc.parent }, true)) {
-          authorizedGuidance = { level, trusted: true, appliesToProject: true }
-          break
-        }
+    const guidanceFor = async (paths: string[], authorizeEffort = false, authorize = authorizePath, approved?: { guidance: ReviewServiceOptions['guidance'] }) => {
+      if (!context.options.runtimeConfig) return { text: '', sources: [] as Array<{ path: string; revision: string; excerpt: string }> }
+      const guardedFs = new Proxy(fs, { get(target, key) {
+        if (key === 'readFile') return async (path: string, options: { encoding: string }) => { await authorize(path); return target.readFile(path, options) }
+        if (key === 'readdir') return async (path: string) => { await authorize(path); return target.readdir(path) }
+        const value = target[key as keyof RuntimeFs]
+        return typeof value === 'function' ? value.bind(target) : value
+      } })
+      const params = { cwd: root, projectRoot: root, homeDir: context.options.homeDir, readRoot: context.options.untrustedReadRoot,
+        runtimeConfig: context.options.runtimeConfig, fs: guardedFs, memorySettings: context.options.memorySettings }
+      const docs = await gatherInstructionDocs(params)
+      for (const path of paths) {
+        docs.push(...await getNestedInstructionFilesForPath(resolveRuntimePath(root, path), params))
+        docs.push(...await getConditionalRulesForPath(resolveRuntimePath(root, path), params))
       }
-    }
-    return { text: formatMemoryFilesForPrompt(selected), sources, authorizedGuidance }
-  }
-  const scopeGit = async () => {
-    const git = await createGitArgvRunner(runtime.spawnArgv, { authorizeRoot: async () => {
-    await authorizePath(root)
-    const dotGit = resolveRuntimePath(root, '.git')
-    await authorizePath(dotGit)
-    const stat = await fs.stat(dotGit)
-    let gitDir = dotGit
-    if (stat.isFile()) {
-      const marker = await fs.readFile(dotGit, { encoding: 'utf-8' })
-      const match = /^gitdir: ([^\r\n]+)\r?\n?$/.exec(marker)
-      if (!match) throw new ReviewGatewayError('invalid-git-directory')
-      gitDir = resolveRuntimePath(root, match[1])
-    }
-    gitDir = normalized(await fs.realpath!(gitDir, { resolveLinks: true }))
-    await authorizePath(gitDir)
-    let commonDir = gitDir
-    const commonMarker = resolveRuntimePath(gitDir, 'commondir')
-    try {
-      const actualMarker = normalized(await fs.realpath!(commonMarker, { resolveLinks: true }))
-      await authorizePath(actualMarker)
-      const relative = (await fs.readFile(actualMarker, { encoding: 'utf-8' })).trim()
-      if (!relative || /[\r\n\0]/.test(relative)) throw new ReviewGatewayError('invalid-git-directory')
-      commonDir = normalized(await fs.realpath!(resolveRuntimePath(gitDir, relative), { resolveLinks: true }))
-    } catch (error) { if (!isFsNotFoundError(error)) throw error }
-    await authorizePath(commonDir)
-    for (const metadata of [resolveRuntimePath(commonDir, 'config'), resolveRuntimePath(gitDir, 'config.worktree'), resolveRuntimePath(gitDir, 'index'), resolveRuntimePath(commonDir, 'objects')]) {
-      let actual = metadata
-      try { actual = normalized(await fs.realpath!(metadata, { resolveLinks: true })) }
-      catch (error) { if (!isFsNotFoundError(error)) throw error }
-      await authorizePath(actual)
-    }
-    return { root, gitDir, commonDir }
-  } })
-    const objects = new Map<string, Set<string>>()
-    const rememberTree = (bytes: Uint8Array) => {
-      for (const line of new TextDecoder().decode(bytes).split('\0')) {
-        const match = /^\d+ blob ([a-f0-9]+)\t([\s\S]+)$/.exec(line)
-        if (match) { const paths = objects.get(match[1]) ?? new Set<string>(); paths.add(validateReviewPath(match[2])); objects.set(match[1], paths) }
-      }
-    }
-    return { root: git.root, async query(query: import('./git-adapter').GitQuery, signal?: AbortSignal) {
-      if (query.kind === 'blob') {
-        const paths = objects.get(query.oid)
-        if (!paths?.size) throw new ReviewGatewayError('review-object-not-authorized')
-        for (const path of paths) await authorizePath(resolveRuntimePath(root, path))
-      }
-      if (query.kind === 'diff') {
-        for (const oid of [query.base, query.head]) {
-          const tree = await git.query({ kind: 'tree', oid }, signal)
-          if (tree.exitCode !== 0) throw new ReviewGatewayError('review-context-unavailable')
-          rememberTree(tree.stdout)
-          for (const line of new TextDecoder().decode(tree.stdout).split('\0').filter(Boolean)) {
-            const path = line.slice(line.indexOf('\t') + 1)
-            if (!query.paths?.length || query.paths.some(p => path === p || path.startsWith(p + '/'))) await authorizePath(resolveRuntimePath(root, validateReviewPath(path)))
+      admit()
+      const selected = docs.filter((doc, index) => docs.findIndex(other => other.path === doc.path) === index)
+      const sources = await Promise.all(selected.filter(doc => below(normalized(doc.path), root) && !equal(normalized(doc.path), root)).map(async doc => ({
+        path: normalized(doc.path).slice(root.length + 1), revision: `guidance:${await reviewDigest(doc.content)}`, excerpt: doc.content,
+      })))
+      let authorizedGuidance: ReviewServiceOptions['guidance'] = approved?.guidance
+      if (authorizeEffort) {
+        for (const doc of [...selected].reverse()) {
+          if (doc.type === 'AutoMem') continue
+          const level = reviewEffortDirective(doc.content)
+          if (!level) continue
+          const digest = await reviewDigest(doc.content)
+          if (await authorizeAction('ReviewGuidance', { path: doc.path, digest, level, workspace: root, paths, parent: doc.parent }, true)) {
+            authorizedGuidance = { level, trusted: true, appliesToProject: true }
+            break
           }
         }
       }
-      const result = await git.query(query, signal)
-      if (query.kind === 'tree' && result.exitCode === 0) rememberTree(result.stdout)
-      return result
-    } }
+      return { text: formatMemoryFilesForPrompt(selected), sources, authorizedGuidance }
+    }
+    const scopeGit = async () => {
+      const git = await createGitArgvRunner(runtime.spawnArgv, { authorizeRoot: async () => {
+      await authorizePath(root)
+      const dotGit = resolveRuntimePath(root, '.git')
+      await authorizePath(dotGit)
+      const stat = await fs.stat(dotGit)
+      let gitDir = dotGit
+      if (stat.isFile()) {
+        const marker = await fs.readFile(dotGit, { encoding: 'utf-8' })
+        const match = /^gitdir: ([^\r\n]+)\r?\n?$/.exec(marker)
+        if (!match) throw new ReviewGatewayError('invalid-git-directory')
+        gitDir = resolveRuntimePath(root, match[1])
+      }
+      gitDir = normalized(await fs.realpath!(gitDir, { resolveLinks: true }))
+      await authorizePath(gitDir)
+      let commonDir = gitDir
+      const commonMarker = resolveRuntimePath(gitDir, 'commondir')
+      try {
+        const actualMarker = normalized(await fs.realpath!(commonMarker, { resolveLinks: true }))
+        await authorizePath(actualMarker)
+        const relative = (await fs.readFile(actualMarker, { encoding: 'utf-8' })).trim()
+        if (!relative || /[\r\n\0]/.test(relative)) throw new ReviewGatewayError('invalid-git-directory')
+        commonDir = normalized(await fs.realpath!(resolveRuntimePath(gitDir, relative), { resolveLinks: true }))
+      } catch (error) { if (!isFsNotFoundError(error)) throw error }
+      await authorizePath(commonDir)
+      for (const metadata of [resolveRuntimePath(commonDir, 'config'), resolveRuntimePath(gitDir, 'config.worktree'), resolveRuntimePath(gitDir, 'index'), resolveRuntimePath(commonDir, 'objects')]) {
+        let actual = metadata
+        try { actual = normalized(await fs.realpath!(metadata, { resolveLinks: true })) }
+        catch (error) { if (!isFsNotFoundError(error)) throw error }
+        await authorizePath(actual)
+      }
+      return { root, gitDir, commonDir }
+    } })
+      const objects = new Map<string, Set<string>>()
+      const rememberTree = (bytes: Uint8Array) => {
+        for (const line of new TextDecoder().decode(bytes).split('\0')) {
+          const match = /^\d+ blob ([a-f0-9]+)\t([\s\S]+)$/.exec(line)
+          if (match) { const paths = objects.get(match[1]) ?? new Set<string>(); paths.add(validateReviewPath(match[2])); objects.set(match[1], paths) }
+        }
+      }
+      return { root: git.root, async query(query: import('./git-adapter').GitQuery, signal?: AbortSignal) {
+        if (query.kind === 'blob') {
+          const paths = objects.get(query.oid)
+          if (!paths?.size) throw new ReviewGatewayError('review-object-not-authorized')
+          for (const path of paths) await authorizePath(resolveRuntimePath(root, path))
+        }
+        if (query.kind === 'diff') {
+          for (const oid of [query.base, query.head]) {
+            const tree = await git.query({ kind: 'tree', oid }, signal)
+            if (tree.exitCode !== 0) throw new ReviewGatewayError('review-context-unavailable')
+            rememberTree(tree.stdout)
+            for (const line of new TextDecoder().decode(tree.stdout).split('\0').filter(Boolean)) {
+              const path = line.slice(line.indexOf('\t') + 1)
+              if (!query.paths?.length || query.paths.some(p => path === p || path.startsWith(p + '/'))) await authorizePath(resolveRuntimePath(root, validateReviewPath(path)))
+            }
+          }
+        }
+        const result = await git.query(query, signal)
+        if (query.kind === 'tree' && result.exitCode === 0) rememberTree(result.stdout)
+        return result
+      } }
+    }
+    const verificationVersion = async (snapshot: ReportSnapshot, signal?: AbortSignal) => {
+      if (!['workspace', 'paths'].includes(snapshot.run.scope.kind) || snapshot.run.scope.workspaceKey !== root) return undefined
+      const scope = await resolveLocalReviewScope({ git: await scopeGit(), workspaceKey: root, projectKey: root, readWorkspaceFile },
+        snapshot.run.scope.kind === 'paths' ? { kind: 'paths', paths: snapshot.run.scope.pathFilter } : { kind: 'workspace' }, signal)
+      return scope.complete ? JSON.stringify([scope.scope.revision, scope.scope.pathFilter]) : undefined
+    }
+    return { root, readWorkspaceFile, guidanceFor, scopeGit, verificationVersion }
   }
+  type ReviewWorkspace = ReturnType<typeof bindWorkspace>
+  const workspaces = new Map<string, ReviewWorkspace>()
+  const workspaceAt = (root: string): ReviewWorkspace => {
+    let workspace = workspaces.get(root)
+    if (!workspace) { workspace = bindWorkspace(root); workspaces.set(root, workspace) }
+    return workspace
+  }
+  // Security: `-C` is relative to the session root; its real path must stay at or below that root and hold a repository.
+  const workspaceFor = async (directory?: string): Promise<ReviewWorkspace> => {
+    if (directory === undefined) return workspaceAt(sessionRoot)
+    if (!directory || isAbsoluteRuntimePath(directory) || /[\0\r\n]/.test(directory)) throw new ReviewGatewayError('invalid-root')
+    const lexical = normalized(resolveRuntimePath(sessionRoot, directory))
+    if (!below(lexical, sessionRoot)) throw new ReviewGatewayError('invalid-root')
+    let actual: string
+    try { actual = normalized(await fs.realpath!(lexical, { resolveLinks: true })) }
+    catch (error) { if (isFsNotFoundError(error)) throw new ReviewGatewayError('invalid-root'); throw error }
+    if (!below(actual, sessionRoot)) throw new ReviewGatewayError('invalid-root')
+    await authorizePath(actual)
+    try { await fs.stat(resolveRuntimePath(actual, '.git')) }
+    catch (error) { if (isFsNotFoundError(error)) throw new ReviewGatewayError('invalid-root'); throw error }
+    return workspaceAt(actual)
+  }
+  /** The binding a stored run was reviewed in; undefined when its root is outside the session root. */
+  const workspaceOfRun = (snapshot: ReportSnapshot): ReviewWorkspace | undefined =>
+    below(snapshot.run.scope.workspaceKey, sessionRoot) ? workspaceAt(snapshot.run.scope.workspaceKey) : undefined
   const receiptFile = resolveRuntimePath(storageRoot, 'publication-receipts.json')
   const receiptOwner = publicationOwners.get(receiptFile) ?? {}
   publicationOwners.set(receiptFile, receiptOwner)
@@ -337,12 +372,6 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
   ])
   const remoteSnapshots = new Map<string, ChangeRequestSnapshot>()
   const verifiedVersions = new Set<string>()
-  const verificationVersion = async (snapshot: ReportSnapshot, signal?: AbortSignal) => {
-    if (!['workspace', 'paths'].includes(snapshot.run.scope.kind) || snapshot.run.scope.workspaceKey !== root) return undefined
-    const scope = await resolveLocalReviewScope({ git: await scopeGit(), workspaceKey: root, projectKey: root, readWorkspaceFile },
-      snapshot.run.scope.kind === 'paths' ? { kind: 'paths', paths: snapshot.run.scope.pathFilter } : { kind: 'workspace' }, signal)
-    return scope.complete ? JSON.stringify([scope.scope.revision, scope.scope.pathFilter]) : undefined
-  }
   admit()
   // Counts repair writes; a working-copy context cache older than the count is stale.
   let repairEdits = 0
@@ -359,7 +388,8 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     conversationKey: context.options.sessionId, get modelId() { return resolveModelId(context.options.mainLoopProviderId, context.options.mainLoopModel) },
     get sessionLevel() { const level = context.options.reviewRuntime?.sessionLevel?.(); return level && isReviewLevel(level) ? level : undefined },
     savePresentation: (id, value) => writeJson(resolveRuntimePath(sessionDir, `presentation/${id}.json`), value),
-    saveTarget: (id, target, targetLiteral) => writeJson(resolveRuntimePath(sessionDir, `targets/${id}.json`), { target, targetLiteral }),
+    saveTarget: (id, target, targetLiteral, directory) => writeJson(resolveRuntimePath(sessionDir, `targets/${id}.json`), { target, targetLiteral, directory }),
+    loadDirectory: async id => (await readJson(resolveRuntimePath(sessionDir, `targets/${id}.json`)) as { directory?: string } | undefined)?.directory,
     loadTarget: async id => (await readJson(resolveRuntimePath(sessionDir, `targets/${id}.json`)) as { target?: string } | undefined)?.target,
     loadTargetLiteral: async id => (await readJson(resolveRuntimePath(sessionDir, `targets/${id}.json`)) as { targetLiteral?: true } | undefined)?.targetLiteral,
     get capabilities() { return currentCapabilities() },
@@ -400,6 +430,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       } }),
     }),
     async resolveScope(args, plan, signal, approved) {
+      const { root, readWorkspaceFile, guidanceFor, scopeGit } = await workspaceFor(args.directory)
       const git = await scopeGit()
       let target: LocalReviewTarget = { kind: 'workspace' }
       if (args.target) {
@@ -510,11 +541,13 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     },
     async alreadyVerified(snapshot) {
       if (!verifiedVersions.size) return false
-      const version = await verificationVersion(snapshot)
+      const version = await workspaceOfRun(snapshot)?.verificationVersion(snapshot)
       return version !== undefined && verifiedVersions.has(version)
     },
     async verify(snapshot, signal, store, actionEpoch, verificationGrantId) {
-      if (!['workspace', 'paths'].includes(snapshot.run.scope.kind) || snapshot.run.scope.workspaceKey !== root) throw new ReviewGatewayError('verification-workspace-mismatch')
+      const workspace = workspaceOfRun(snapshot)
+      if (!['workspace', 'paths'].includes(snapshot.run.scope.kind) || !workspace) throw new ReviewGatewayError('verification-workspace-mismatch')
+      const { root, readWorkspaceFile, guidanceFor, scopeGit, verificationVersion } = workspace
       if (actionEpoch && !verificationGrantId) throw new ReviewGatewayError('verification-phase-grant-required')
       const grantId = verificationGrantId ?? await store.grantAction(snapshot.run.id, { kind: 'verification', workspaceKey: root,
         headRevision: snapshot.run.scope.revision.head, diagnosticIds: snapshot.retainedIds, expiresAt: Date.now() + 600_000 })
@@ -704,6 +737,8 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       if (behaviorVerified && !instructionGaps.length && initialVersion && initialVersion === await verificationVersion(snapshot, signal)) verifiedVersions.add(initialVersion)
     },
     async publish(snapshot, grantId, signal, store, discussions = false) {
+      const root = workspaceOfRun(snapshot)?.root
+      if (!root) throw new ReviewGatewayError('publication-target-unavailable')
       const scope = snapshot.run.scope
       const remote = remoteSnapshots.get(remoteKey(scope))
       if (!remote || !runtime.httpRequest) throw new ReviewGatewayError('publication-target-unavailable')
@@ -828,6 +863,9 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     },
     async repairTools(snapshot, grant, signal, store, actionEpoch) {
       if (context.readAppState().permissionRules.mode === 'plan' || !['workspace', 'paths'].includes(snapshot.run.scope.kind)) throw new ReviewGatewayError('repair-workspace-mismatch')
+      const workspace = workspaceOfRun(snapshot)
+      if (!workspace) throw new ReviewGatewayError('repair-workspace-mismatch')
+      const { root, readWorkspaceFile, scopeGit } = workspace
       const git = await scopeGit()
       const notices = service.presentation(snapshot.run.id)?.notices ?? (await readJson(resolveRuntimePath(sessionDir, `presentation/${snapshot.run.id}.json`)) as ReturnType<LocalReviewService['presentation']>)?.notices ?? []
       const currentScope = await resolveLocalReviewScope({ git, workspaceKey: root, projectKey: root, readWorkspaceFile,
@@ -876,8 +914,8 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     },
   })
   services.set(identity, service)
-  const unregisterMutations = registerWorkspaceMutationObserver(context.options, async (mutation, mutationContext, signal) => {
-    if (mutationContext.options.sessionId !== context.options.sessionId) return
+  /** Reassesses one review root's finished reports against an edit the session made. */
+  const reassessAfterEdit = async ({ root, readWorkspaceFile, scopeGit }: ReviewWorkspace, mutation: ObservedWorkspaceMutation, signal: AbortSignal) => {
     const paths: string[] = []
     for (const path of mutation.paths) {
       const absolute = normalized(resolveRuntimePath(root, path))
@@ -929,6 +967,13 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         },
       }, updates)
     }
+  }
+  const unregisterMutations = registerWorkspaceMutationObserver(context.options, async (mutation, mutationContext, signal) => {
+    if (mutationContext.options.sessionId !== context.options.sessionId) return
+    for (const root of new Set([sessionRoot, ...workspaces.keys()])) {
+      if (signal.aborted) return
+      await reassessAfterEdit(workspaceAt(root), mutation, signal)
+    }
   })
   const previews = new Map<string, string>()
   const restoredPresentations = new Map<string, NonNullable<ReturnType<LocalReviewService['presentation']>>>()
@@ -971,6 +1016,9 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       const snapshot = await service.store.getSnapshot(id)
       const diagnostic = snapshot.diagnostics.find(item => item.id === diagnosticId && snapshot.retainedIds.includes(item.id))
       if (!diagnostic || diagnostic.anchor.side !== 'working-copy') throw new ReviewGatewayError('snapshot-changed')
+      const workspace = workspaceOfRun(snapshot)
+      if (!workspace) throw new ReviewGatewayError('snapshot-changed')
+      const { root, readWorkspaceFile, scopeGit } = workspace
       const git = await scopeGit()
       const current = await resolveLocalReviewScope({ git, workspaceKey: root, projectKey: root, readWorkspaceFile,
         skipPath: path => (service.presentation(id)?.notices ?? restoredPresentations.get(id)?.notices ?? []).some(notice => notice.code === 'tests-fixtures-skipped') && isTestOrFixturePath(path),
@@ -990,7 +1038,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     await fs.mkdir(sessionDir)
     await guardStorage(sessionDir)
     admit()
-    try { const entries = await fs.readdir(sessionDir); admit(); await service.restore(entries.filter(e => e.isFile() && /^[A-Za-z0-9_-]+\.json$/.test(e.name)).map(e => e.name.slice(0, -5))) }
+    try { const entries = await fs.readdir(sessionDir); admit(); await service.restore(entries.filter(e => e.isFile() && /^[A-Za-z0-9_-]+\.json$/.test(e.name)).map(e => e.name.slice(0, -5))); for (const report of (await service.snapshots()).reports) workspaceOfRun(report) }
     catch (error) { if (!isFsNotFoundError(error)) throw error }
     admit()
     return service

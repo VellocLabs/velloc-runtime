@@ -19,7 +19,7 @@ describe('review argument completion', () => {
     expect(values('h')).toEqual(['high'])
     expect(values('--c')).toEqual(['--comment'])
     expect(values('high h')).toEqual([])
-    expect(values('--')).toEqual(REVIEW_SWITCHES)
+    expect(values('--')).toEqual(REVIEW_SWITCHES.filter(value => value.startsWith('--')))
   })
 
   it.each(['-- ', '-- --f', '--fix -- ', '--fix -- high ', 'high -- --max-findings=', '/ultrareview ', '/other ', '/review'])('does not suggest syntax outside the command option context: %s', input => {
@@ -53,5 +53,13 @@ describe('review argument completion', () => {
     const cursor = input.indexOf(' trailing')
     expect(completeReviewArguments(input, cursor).items).toEqual([{ value: '--comment', kind: 'switch', replace: { start: 13, end: cursor } }])
     for (const invalid of [-1, 0.5, Infinity, input.length + 1]) expect(completeReviewArguments(input, invalid)).toEqual({ items: [] })
+  })
+
+  it('offers nothing for the -C value, then the levels, and never a second -C', () => {
+    expect(values('-C ')).toEqual([])
+    expect(values('-C nexus_web ')).toEqual([...REVIEW_LEVELS, ...REVIEW_SWITCHES.filter(value => value !== '-C')])
+    expect(values('/code-review -C nexus_web m')).toEqual(['medium', 'max'])
+    expect(values('max -C nexus_web ')).toEqual(REVIEW_SWITCHES.filter(value => value !== '-C'))
+    expect(values('max ')).toEqual(REVIEW_SWITCHES)
   })
 })

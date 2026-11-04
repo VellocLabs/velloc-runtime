@@ -26,7 +26,7 @@ export const de: Messages = {
   "reviewCard.angle.simplification": "Vereinfachung",
   "reviewCard.angle.wrappers": "Wrapper und Proxys",
   "reviewCard.notice.ambiguous": "Wähle vor dem Fortfahren das Repository und Review-Ziel ausdrücklich aus.",
-  "reviewCard.notice.arguments": "{reason} Unterstützt: /code-review [low|medium|high|xhigh|max] [target] [--fix] [--comment] [--max-findings n|all|default].",
+  "reviewCard.notice.arguments": "{reason} Unterstützt: /code-review [low|medium|high|xhigh|max] [-C dir] [target] [--fix] [--comment] [--max-findings n|all|default].",
   "reviewCard.notice.binary": "Binärinhalte wurden nicht untersucht.",
   "reviewCard.notice.cancelled": "Die Review-Aktion wurde abgebrochen; gespeicherte Ergebnisse bleiben verfügbar.",
   "reviewCard.notice.cap": "Gewünschtes Limit: {requested}. Dieser Lauf zeigt höchstens {effective} Befunde; die gespeicherte Präferenz bleibt unverändert.",

@@ -24,7 +24,7 @@ export const ja: Messages = {
   "reviewCard.angle.simplification": "簡略化",
   "reviewCard.angle.wrappers": "ラッパーとプロキシ",
   "reviewCard.notice.ambiguous": "続行する前にリポジトリとレビュー対象を明示してください。",
-  "reviewCard.notice.arguments": "{reason} 対応形式: /code-review [low|medium|high|xhigh|max] [target] [--fix] [--comment] [--max-findings n|all|default]。",
+  "reviewCard.notice.arguments": "{reason} 対応形式: /code-review [low|medium|high|xhigh|max] [-C dir] [target] [--fix] [--comment] [--max-findings n|all|default]。",
   "reviewCard.notice.binary": "バイナリ内容は確認していません。",
   "reviewCard.notice.cancelled": "レビュー操作はキャンセルされました。保持された結果は引き続き確認できます。",
   "reviewCard.notice.cap": "指定上限: {requested}。今回は最大 {effective} 件を表示します。保存済みの設定は変更しません。",

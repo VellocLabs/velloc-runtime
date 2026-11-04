@@ -1,9 +1,9 @@
 import { REVIEW_LEVELS, type FindingLimit, type ReviewArguments, type ReviewLevel } from './contracts'
 
 export const REVIEW_COMMANDS = ['code-review', 'review'] as const
-export const REVIEW_SWITCHES = ['--fix', '--comment', '--max-findings'] as const
+export const REVIEW_SWITCHES = ['--fix', '--comment', '--max-findings', '-C'] as const
 
-export type ArgumentErrorCode = 'unknown-command' | 'removed-option' | 'unknown-option' | 'missing-value' | 'invalid-limit' | 'multiple-targets' | 'empty-target' | 'unclosed-quote'
+export type ArgumentErrorCode = 'unknown-command' | 'removed-option' | 'unknown-option' | 'missing-value' | 'invalid-limit' | 'multiple-targets' | 'multiple-directories' | 'empty-target' | 'unclosed-quote'
 export type ReviewArgumentResult =
   | { ok: true; arguments: ReviewArguments }
   | { ok: false; error: { code: ArgumentErrorCode; token?: string } }
@@ -58,16 +58,27 @@ export function parseReviewArguments(input: string): ReviewArgumentResult {
   if (tokens[0]?.value === '/review' || tokens[0]?.value === '/code-review') tokens.shift()
   const args: ReviewArguments = { fix: false, comment: false }
   let optionsEnded = false
+  let leading = true
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i]!
     const value = token.value
+    if (!optionsEnded && !token.quoted && value === '-C') {
+      const next = tokens[i + 1]
+      if (!next || !next.value || (!next.quoted && next.value.startsWith('-'))) return fail('missing-value', value)
+      if (args.directory !== undefined) return fail('multiple-directories', next.value)
+      args.directory = next.value
+      i += 1
+      continue
+    }
+    const first = leading
+    leading = false
     if (!optionsEnded && value === '--' && !token.quoted) {
       optionsEnded = true
       continue
     }
     if (!optionsEnded) {
       if (value === 'ultra' || /^--(?:post|no-post)(?:=|$)/u.test(value)) return fail('removed-option', value)
-      if (i === 0 && !token.quoted && isReviewLevel(value)) {
+      if (first && !token.quoted && isReviewLevel(value)) {
         args.level = value
         continue
       }
