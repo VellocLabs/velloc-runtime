@@ -182,7 +182,6 @@ export const de: Messages = {
   "reviewCard.task.role.finder": "Finder",
   "reviewCard.task.role.verifier": "Prüfer",
   "reviewCard.task.role.sweeper": "Lückensuche",
-  "reviewCard.task.role.format": "Formatkorrektur",
   "reviewCard.task.role.repair": "Reparatur",
   "reviewCard.task.role.behavior": "Verhaltensprüfung",
   "reviewCard.task.role.reassessment": "Neubewertung",

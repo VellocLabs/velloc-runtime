@@ -11,7 +11,7 @@ const groups = {
   invalidTarget: ['invalid-target', 'target-mismatch', 'invalid-range', 'missing-ref', 'missing-path', 'invalid-ref', 'invalid-oid', 'invalid-path', 'invalid-root', 'invalid-git-directory'],
   denied: ['action-not-authorized', 'review-read-not-authorized', 'read-denied', 'read-outside-review-scope', 'whole-file-read-not-authorized', 'edit-outside-review-grant', 'review-mutation-not-authorized', 'review-fs-operation-not-authorized', 'publication-not-authorized', 'publication-denied', 'forbidden_scope', 'repair-grant-expired'],
   unavailable: ['review-runtime-unavailable', 'review-context-unavailable', 'remote-context-unavailable', 'review-platform-adapter-required', 'repair-unavailable', 'publication-unavailable', 'review-plan-blocked', 'host_unavailable'],
-  incomplete: ['scope-incomplete', 'independent-worker-coverage-incomplete', 'remote-diff-incomplete', 'worker-candidates-rejected'],
+  incomplete: ['scope-incomplete', 'independent-worker-coverage-incomplete', 'remote-diff-incomplete', 'worker-candidates-rejected', 'report-candidates-rejected'],
   outputLimit: ['diff-output-limit', 'output-limit', 'response-limit'],
   interrupted: ['review-budget-or-model-interrupted', 'review-budget-exhausted', 'review-time-limit', 'review-task-budget', 'worker-interrupted', 'repair-interrupted', 'timeout'],
   stepLimit: ['review-step-limit'],
@@ -23,7 +23,7 @@ const groups = {
   crash: ['review-crash'],
   changed: ['snapshot-changed', 'head-changed', 'head-check-failed'],
   cancelled: ['review-cancelled', 'cancelled', 'repair-no-longer-active'],
-  invalidReport: ['invalid-diff', 'invalid-anchor', 'invalid-response', 'invalid-publication', 'invalid-run-id', 'invalid-review-search', 'invalid-review-read', 'invalid-worker-role', 'invalid-worker-angles', 'worker-role-not-authorized', 'unknown-candidate', 'verifier-assignment-not-authorized', 'worker-candidate-limit', 'worker-angle-not-assigned', 'worker-angle-candidate-limit'],
+  invalidReport: ['invalid-diff', 'invalid-anchor', 'invalid-response', 'invalid-publication', 'invalid-run-id', 'invalid-review-search', 'invalid-review-read', 'invalid-worker-role', 'invalid-worker-angles', 'worker-role-not-authorized', 'unknown-candidate', 'verifier-assignment-not-authorized', 'worker-candidate-limit', 'worker-angle-not-assigned', 'worker-angle-candidate-limit', 'unstructured-worker-answer'],
   failed: ['review-failed', 'query-failed', 'spawn-failed', 'http-failed', 'redirect-refused', 'secret-origin'],
   noTarget: ['publication-target-required', 'publication-target-unavailable', 'no-publish-target'],
   publicationFailed: ['publication-failed'],
@@ -74,7 +74,7 @@ export function reviewTaskSummaryMessage(t: TranslateFn, summary: string): strin
   return Object.values(groups).some(codes => (codes as readonly string[]).includes(summary)) ? reviewMessage(t, summary) : summary
 }
 
-const roles = ['coordinator', 'finder', 'verifier', 'sweeper', 'format', 'repair', 'behavior', 'reassessment', 'mechanism', 'publication'] as const
+const roles = ['coordinator', 'finder', 'verifier', 'sweeper', 'repair', 'behavior', 'reassessment', 'mechanism', 'publication'] as const
 export function reviewTaskRoleMessage(t: TranslateFn, role: string): string {
   return roles.includes(role as typeof roles[number]) ? t(`reviewCard.task.role.${role}` as Parameters<TranslateFn>[0]) : t('reviewCard.notice.unspecified')
 }

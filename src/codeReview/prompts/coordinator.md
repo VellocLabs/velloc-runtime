@@ -23,7 +23,7 @@ Follow this recipe:
 Selected review angles:
 {{selected_angles}}
 
-Use ReviewLedger to record actual candidates, assessments, and coverage before producing the final report. Keep the returned candidate IDs; the final report must come from recorded candidates. ReviewLedger is an internal ledger, not the panel reporting tool, and is available to every recipe. If it is unavailable, report a submission failure rather than pretending that results were saved.
+Use ReviewLedger to record actual candidates, assessments, and coverage before producing the final report; the report is built from what the ledger holds. Keep the returned candidate IDs. The ledger accepts or refuses each item on its own and lists refused items in `rejected` with a reason code; record a refused item again only after correcting it against what you read. An Agent result's `rejectedCandidates` are worker candidates the ledger refused, by index and code. ReviewLedger is an internal ledger, not the panel reporting tool, and is available to every recipe. If it is unavailable, report a submission failure rather than pretending that results were saved.
 
 Each candidate must describe a specific mechanism and provide locatable evidence. Correctness findings must identify triggering conditions and incorrect behavior. Cleanup findings must identify actual duplication, maintenance cost, or wasted work. Do not present personal style preferences, unknown requirements, or vague concerns about elegance as defects.
 

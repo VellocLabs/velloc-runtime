@@ -19,7 +19,7 @@ export type ReviewRunEnd = {
   kind: 'completed' | 'cancelled' | 'step-limit' | 'output-cap' | 'context-overflow' | 'model-error' | 'failure-limit' | 'awaiting-user' | 'time-limit' | 'crash'
   detail?: string
 }
-export type ReviewTaskRole = 'coordinator' | 'finder' | 'verifier' | 'sweeper' | 'format' | 'repair' | 'behavior' | 'reassessment' | 'mechanism' | 'publication'
+export type ReviewTaskRole = 'coordinator' | 'finder' | 'verifier' | 'sweeper' | 'repair' | 'behavior' | 'reassessment' | 'mechanism' | 'publication'
 /** One model task of a run as the client sees it; `taskId` is the drawer handle once the fork registered. */
 export type ReviewTaskView = {
   key: string

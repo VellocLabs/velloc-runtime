@@ -180,7 +180,6 @@ export const ko: Messages = {
   "reviewCard.task.role.finder": "탐색기",
   "reviewCard.task.role.verifier": "검증기",
   "reviewCard.task.role.sweeper": "누락 점검",
-  "reviewCard.task.role.format": "형식 수정",
   "reviewCard.task.role.repair": "수정",
   "reviewCard.task.role.behavior": "동작 확인",
   "reviewCard.task.role.reassessment": "재평가",

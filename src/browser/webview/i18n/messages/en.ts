@@ -183,7 +183,6 @@ export const en = {
   "reviewCard.task.role.finder": "Finder",
   "reviewCard.task.role.verifier": "Verifier",
   "reviewCard.task.role.sweeper": "Gap sweep",
-  "reviewCard.task.role.format": "Format correction",
   "reviewCard.task.role.repair": "Repair",
   "reviewCard.task.role.behavior": "Behaviour check",
   "reviewCard.task.role.reassessment": "Reassessment",

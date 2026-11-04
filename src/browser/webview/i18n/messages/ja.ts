@@ -180,7 +180,6 @@ export const ja: Messages = {
   "reviewCard.task.role.finder": "ファインダー",
   "reviewCard.task.role.verifier": "検証者",
   "reviewCard.task.role.sweeper": "抜け漏れ確認",
-  "reviewCard.task.role.format": "形式修正",
   "reviewCard.task.role.repair": "修正",
   "reviewCard.task.role.behavior": "動作確認",
   "reviewCard.task.role.reassessment": "再評価",

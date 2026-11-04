@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ReviewReportStore, type ReportCandidateInput, type ReportPolicy, type ReportStorageAdapter } from './report-store'
+import { ReportStoreError, ReviewReportStore, type ReportCandidateInput, type ReportPolicy, type ReportStorageAdapter } from './report-store'
 import { presentReviewJson, presentReviewTerminal, projectReviewReport } from './presenter'
 import { createReviewTools } from './tools'
 import type { Message } from '../runtime/RuntimeTypes'
@@ -45,7 +45,7 @@ async function populate(store: ReviewReportStore, id: string, anchorKey: string,
 }
 
 describe('review report store', () => {
-  it('rejects forged anchors, paths, spans, ids, lifecycle fields and oversized batches atomically', async () => {
+  it('refuses forged anchors, paths, spans, ids and lifecycle fields item by item, and oversized batches whole', async () => {
     const { store, run } = fixture()
     const { id, anchorKey } = await run()
     const valid = candidate(anchorKey)
@@ -59,11 +59,13 @@ describe('review report store', () => {
       { ...valid, support: [{ path: 'private.txt', quote: 'x', relevance: 'y' }] },
     ]
     for (const [index, item] of cases.entries()) {
-      await expect(store.submitLedger(id, `invalid-${index}`, { operation: 'append-candidates', candidates: [valid, item] })).rejects.toThrow()
+      const result = await store.submitLedger(id, `invalid-${index}`, { operation: 'append-candidates', candidates: [valid, item] })
+      expect(result.rejected).toEqual([{ index: 1, code: expect.any(String) }])
+      await expect(store.submitLedger(id, `alone-${index}`, { operation: 'append-candidates', candidates: [item] })).rejects.toThrow()
     }
     await expect(store.submitLedger(id, 'too-many', { operation: 'append-candidates', candidates: Array(33).fill(valid) })).rejects.toThrow()
-    expect((await store.getSnapshot(id)).diagnostics).toHaveLength(0)
-    expect(await store.getRawResults(id)).toHaveLength(9)
+    expect((await store.getSnapshot(id)).diagnostics).toHaveLength(1)
+    expect(await store.getRawResults(id)).toHaveLength(17)
     await expect(store.registerAnchor(id, { path: 'src/a.ts', revision: 'forged', side: 'after' })).rejects.toThrow('anchor-revision-mismatch')
   })
 
@@ -133,45 +135,46 @@ describe('review report store', () => {
     await expect(store.submitLedger(id, 'forged', { operation: 'assess', assessments: [{ candidateId: 'not-this-run', disposition: 'proven', reason: 'trust me', support: [] }] })).rejects.toThrow()
   })
 
-  it('requires exact retained candidates and coverage, captures malformed output without finishing', async () => {
+  it('requires a record to equal the retained candidates and coverage', async () => {
     const { store, run } = fixture()
     const { id, anchorKey } = await run()
     await populate(store, id, anchorKey)
     const expected = await store.expectedRecord(id)
     await expect(store.submitRecord(id, 'omit', { ...expected, candidates: [] })).rejects.toThrow('ledger-mismatch')
     await expect(store.submitRecord(id, 'contradict', { ...expected, candidates: [{ ...expected.candidates[0], impact: 'critical' }] })).rejects.toThrow('ledger-mismatch')
-    await expect(store.submitFinalJson(id, 'malformed', 'secret-value{')).rejects.toThrow('malformed-json')
-    expect((await store.getRawResults(id)).at(-1)?.raw).toBe('[redacted]{')
     expect((await store.getSnapshot(id)).run.progress.status).toBe('active')
     expect((await store.getSnapshot(id)).run.reportRevision).toBe(1)
-    const { operation: _, ...json } = expected
-    await store.submitFinalJson(id, 'corrected', JSON.stringify(json))
-    expect((await store.getSnapshot(id)).run.reportRevision).toBe(2)
+  })
+  it('accepts each ledger candidate on its own and lists the refused ones', async () => {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    const bad = { ...candidate(anchorKey, 2, 'No evidence'), support: [] }
+    const result = await store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [candidate(anchorKey, 1), bad, candidate(anchorKey, 3, 'Third')] })
+    expect(result.accepted.map(item => item.index)).toEqual([0, 2])
+    expect(result.rejected).toEqual([{ index: 1, code: 'missing-evidence' }])
+    expect((await store.getSnapshot(id)).diagnostics).toHaveLength(2)
+    expect((await store.getRawResults(id)).map(item => [item.toolCallId, item.code])).toEqual([['add#1', 'missing-evidence']])
+    const refused = await store.submitLedger(id, 'none', { operation: 'append-candidates', candidates: [bad, bad] }).catch((error: ReportStoreError) => error)
+    expect(refused).toBeInstanceOf(ReportStoreError)
+    expect((refused as ReportStoreError).rejected).toEqual([{ index: 0, code: 'missing-evidence' }, { index: 1, code: 'missing-evidence' }])
+    expect((await store.getSnapshot(id)).diagnostics).toHaveLength(2)
   })
   it.each([
-    ['a code fence', (json: string) => `Here is the report:\n\n\`\`\`json\n${json}\n\`\`\`\nDone.`],
-    ['surrounding prose', (json: string) => `Review complete. ${json} Let me know if you need more.`],
-    ['prose that contains braces', (json: string) => `Checked {a} and {b}: ${json}`],
-  ])('extracts the final object from %s', async (_label, wrap) => {
+    ['prose', () => 'Reviewed src/a.ts; one major finding, nothing else.'],
+    ['an unclosed brace', () => 'secret-value{'],
+    ['prose that contains braces', () => 'I found {nothing} worth reporting.'],
+    ['a fenced report', (json: string) => `Here is the report:\n\n\`\`\`json\n${json}\n\`\`\`\nDone.`],
+    ['a report in prose', (json: string) => `Review complete. ${json} Let me know if you need more.`],
+  ])('commits the retained ledger as the report when the final answer is %s', async (_label, answer) => {
     const { store, run } = fixture()
     const { id, anchorKey } = await run()
     await populate(store, id, anchorKey)
     const { operation: _, ...json } = await store.expectedRecord(id)
-    await store.submitFinalJson(id, 'wrapped', wrap(JSON.stringify(json)))
-    expect((await store.getSnapshot(id)).structured).toBe(true)
-  })
-  it.each([
-    ['a quoted report before the real one', (json: string) => `The diff quotes {"candidates":[],"coverage":{"angles":[],"limitations":[],"complete":true}} as an example. Report: ${json}`],
-    ['a fenced quoted report before the real one', (json: string) => '```json\n{"candidates":[],"coverage":{"angles":[],"limitations":[],"complete":true}}\n```\nFinal:\n```json\n' + json + '\n```'],
-    ['a coverage-only fragment before the real one', (json: string) => `Partial {"coverage":1} then ${json}`],
-    ['a stray opening brace before the real one', (json: string) => `A stray { in render(). Report: ${json}`],
-  ])('commits the report that matches the ledger after %s', async (_label, wrap) => {
-    const { store, run } = fixture()
-    const { id, anchorKey } = await run()
-    await populate(store, id, anchorKey)
-    const { operation: _, ...json } = await store.expectedRecord(id)
-    await store.submitFinalJson(id, 'wrapped', wrap(JSON.stringify(json)))
-    expect((await store.getSnapshot(id)).structured).toBe(true)
+    const retained = (await store.getSnapshot(id)).retainedIds
+    await store.submitFinalAnswer(id, 'final', answer(JSON.stringify(json)))
+    const snapshot = await store.getSnapshot(id)
+    expect(snapshot).toMatchObject({ structured: true, retainedIds: retained })
+    expect(snapshot.run.reportRevision).toBe(2)
   })
   async function ledgerWithoutRecord(limitations: string[]) {
     const { store, run } = fixture()
@@ -179,64 +182,60 @@ describe('review report store', () => {
     await store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [candidate(anchorKey)] })
     await store.submitLedger(id, 'coverage', { operation: 'coverage', coverage: { angles: ['lines'], limitations, complete: true } })
     const { operation: _, ...json } = await store.expectedRecord(id)
-    return { store, id, json }
+    return { store, id, json, anchorKey }
   }
-  it('commits a final report whose coverage rewords the ledger, merging that coverage into the ledger', async () => {
+  it('merges the coverage a final answer states into the ledger', async () => {
     const { store, id, json } = await ledgerWithoutRecord(['spec.ts skipped (tests/fixtures policy)'])
     const final = { ...json, coverage: { angles: ['lines'], limitations: ['spec.ts was skipped by the tests policy'], complete: true } }
-    await store.submitFinalJson(id, 'final', JSON.stringify(final))
+    await store.submitFinalAnswer(id, 'final', JSON.stringify(final))
     const snapshot = await store.getSnapshot(id)
     expect(snapshot.structured).toBe(true)
     expect(snapshot.coverage.limitations).toEqual(['spec.ts skipped (tests/fixtures policy)', 'spec.ts was skipped by the tests policy'])
     expect(snapshot.coverage.complete).toBe(true)
   })
-  it('commits a final report when the ledger recorded no coverage at all', async () => {
+  it('takes coverage from a final answer when the ledger recorded none', async () => {
     const { store, run } = fixture()
     const { id, anchorKey } = await run()
     await store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [candidate(anchorKey)] })
     const { operation: _, ...json } = await store.expectedRecord(id)
     expect(json.coverage).toEqual({ angles: [], limitations: [], complete: false })
-    await store.submitFinalJson(id, 'final', JSON.stringify({ ...json, coverage: { angles: ['lines'], limitations: ['no tests run'], complete: true } }))
+    await store.submitFinalAnswer(id, 'final', JSON.stringify({ ...json, coverage: { angles: ['lines'], limitations: ['no tests run'], complete: true } }))
     expect((await store.getSnapshot(id)).coverage).toEqual({ angles: ['lines'], limitations: ['no tests run'], complete: true })
   })
-  it('accepts a final report that echoes the record operation, inside a fence', async () => {
-    const { store, id } = await ledgerWithoutRecord([])
-    await store.submitFinalJson(id, 'echo', '```json\n' + JSON.stringify(await store.expectedRecord(id)) + '\n```')
-    expect((await store.getSnapshot(id)).structured).toBe(true)
-  })
-  it('keeps rejecting final reports whose candidates or operation disagree, and coverage it would refuse as a ledger write', async () => {
+  it('never lets a final answer change the ledger\'s candidates, and keeps coverage a ledger write would refuse as a raw result', async () => {
     const { store, id, json } = await ledgerWithoutRecord(['kept'])
-    await expect(store.submitFinalJson(id, 'omit', JSON.stringify({ ...json, candidates: [] }))).rejects.toThrow('ledger-mismatch')
-    await expect(store.submitFinalJson(id, 'contradict', JSON.stringify({ ...json, candidates: [{ ...json.candidates[0], impact: 'critical' }] }))).rejects.toThrow('ledger-mismatch')
-    await expect(store.submitFinalJson(id, 'operation', JSON.stringify({ ...json, operation: 'coverage' }))).rejects.toThrow('invalid-operation')
-    await expect(store.submitFinalJson(id, 'angle', JSON.stringify({ ...json, coverage: { angles: ['invented'], limitations: [], complete: true } }))).rejects.toThrow('unknown-angle')
-    await expect(store.submitFinalJson(id, 'extra', JSON.stringify({ ...json, coverage: { ...json.coverage, verified: true } }))).rejects.toThrow('unknown-field')
+    const retained = (await store.getSnapshot(id)).retainedIds
+    await store.submitFinalAnswer(id, 'omit', JSON.stringify({ ...json, candidates: [] }))
+    await store.submitFinalAnswer(id, 'contradict', JSON.stringify({ ...json, candidates: [{ ...json.candidates[0], impact: 'critical' }] }))
+    await store.submitFinalAnswer(id, 'angle', JSON.stringify({ ...json, coverage: { angles: ['invented'], limitations: [], complete: true } }))
+    await store.submitFinalAnswer(id, 'extra', JSON.stringify({ ...json, coverage: { ...json.coverage, verified: true } }))
     const snapshot = await store.getSnapshot(id)
-    expect(snapshot.structured).toBe(false)
-    expect(snapshot.coverage.limitations).toEqual(['kept'])
+    expect(snapshot.retainedIds).toEqual(retained)
+    expect(snapshot.diagnostics.map(item => item.classification.impact)).toEqual(['major'])
+    expect(snapshot.coverage).toEqual({ angles: ['lines'], limitations: ['kept'], complete: true })
+    expect((await store.getRawResults(id)).map(item => [item.toolCallId, item.code])).toEqual([['angle#coverage', 'unknown-angle'], ['extra#coverage', 'unknown-field']])
   })
-  it('takes the last matching report, so an earlier quoted ledger cannot hide the report\'s own limitations', async () => {
-    const { store, id, json } = await ledgerWithoutRecord(['kept'])
-    const report = JSON.stringify({ ...json, coverage: { angles: ['lines'], limitations: ['src/b.ts unread'], complete: false } })
-    await store.submitFinalJson(id, 'final', `Ledger: ${JSON.stringify(json)}\nReport: ${report}`)
-    expect((await store.getSnapshot(id)).coverage).toEqual({ angles: ['lines'], limitations: ['kept', 'src/b.ts unread'], complete: false })
-  })
-  it('commits an exact-coverage final report only when its coverage equals the ledger', async () => {
+  it('imports a final answer\'s candidates item by item only when the ledger holds none', async () => {
     const { store, run } = fixture()
     const { id, anchorKey } = await run()
-    await store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [candidate(anchorKey)] })
-    await store.submitLedger(id, 'coverage', { operation: 'coverage', coverage: { angles: [], limitations: ['could not read src/a.ts'], complete: false } })
-    const { operation: _, ...json } = await store.expectedRecord(id)
-    await expect(store.submitFinalJson(id, 'raise', JSON.stringify({ ...json, coverage: { ...json.coverage, complete: true } }), 'exact')).rejects.toThrow('ledger-mismatch')
-    await expect(store.submitFinalJson(id, 'angle', JSON.stringify({ ...json, coverage: { ...json.coverage, angles: ['lines'] } }), 'exact')).rejects.toThrow('ledger-mismatch')
-    expect((await store.getSnapshot(id)).coverage).toEqual({ angles: [], limitations: ['could not read src/a.ts'], complete: false })
-    await store.submitFinalJson(id, 'echo', JSON.stringify({ operation: 'record', ...json }), 'exact')
-    expect((await store.getSnapshot(id)).structured).toBe(true)
+    const answer = { candidates: [candidate(anchorKey, 1), { ...candidate(anchorKey, 2, 'No evidence'), support: [] }], coverage: { angles: ['lines'], limitations: [], complete: true } }
+    const result = await store.submitFinalAnswer(id, 'final', JSON.stringify(answer))
+    expect(result.rejected).toEqual([{ index: 1, code: 'missing-evidence' }])
+    expect((await store.getSnapshot(id)).retainedIds).toHaveLength(1)
+    const recorded = await ledgerWithoutRecord([])
+    await recorded.store.submitFinalAnswer(recorded.id, 'final', JSON.stringify({ ...recorded.json, candidates: [candidate(recorded.anchorKey, 5, 'Restated')] }))
+    expect((await recorded.store.getSnapshot(recorded.id)).diagnostics).toHaveLength(1)
   })
-  it('takes the matching report over an earlier quoted one with the same candidates', async () => {
+  it('merges the last report-shaped object, so an earlier quoted ledger cannot hide the report\'s own limitations', async () => {
+    const { store, id, json } = await ledgerWithoutRecord(['kept'])
+    const report = JSON.stringify({ ...json, coverage: { angles: ['lines'], limitations: ['src/b.ts unread'], complete: false } })
+    await store.submitFinalAnswer(id, 'final', `Ledger: ${JSON.stringify(json)}\nReport: ${report}`)
+    expect((await store.getSnapshot(id)).coverage).toEqual({ angles: ['lines'], limitations: ['kept', 'src/b.ts unread'], complete: false })
+  })
+  it('ignores a quoted example before the last report-shaped object', async () => {
     const { store, id, json } = await ledgerWithoutRecord(['kept'])
     const quoted = JSON.stringify({ ...json, coverage: { angles: [], limitations: ['quoted example'], complete: false } })
-    await store.submitFinalJson(id, 'final', `Example: ${quoted}\nReport: ${JSON.stringify(json)}`)
+    await store.submitFinalAnswer(id, 'final', `Example: ${quoted}\nReport: ${JSON.stringify(json)}`)
     expect((await store.getSnapshot(id)).coverage).toEqual({ angles: ['lines'], limitations: ['kept'], complete: true })
   })
   it('matches a multi-line quote against a read whose file uses CRLF line endings', async () => {
@@ -285,11 +284,6 @@ describe('review report store', () => {
     await store.registerEvidenceSource(id, { path: 'docs/a.md', revision: 'digest-1', excerpt: 'rule' })
     await store.registerEvidenceSource(id, { path: 'docs/a.md', revision: 'digest-2', excerpt: 'rule' })
     await expect(store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [{ ...candidate(anchorKey), support: [{ path: 'docs/a.md', quote: 'rule', relevance: 'Guidance' }] }] })).rejects.toThrow('ambiguous-evidence-source')
-  })
-  it('still rejects wrapped text that holds no report object', async () => {
-    const { store, run } = fixture()
-    const { id } = await run()
-    await expect(store.submitFinalJson(id, 'prose', 'I found {nothing} worth reporting.')).rejects.toThrow('malformed-json')
   })
 
   it('never projects incomplete empty reports as clean and restores interrupted runs without replay', async () => {

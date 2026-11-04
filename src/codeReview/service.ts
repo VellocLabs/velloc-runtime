@@ -4,7 +4,7 @@ import { composeReviewPrompt, composeFinderPrompt, composeVerifierPrompt, compos
 import type { ReviewArguments, ReviewCapabilities, ReviewPlan, ReviewPreferences, OutputMode, ReviewRunEnd, ReviewTaskView } from './contracts'
 import { hunkSides, type ScopeManifest } from './scope'
 import { isReviewId } from './review-protocol'
-import { ReportStoreError, ReviewReportStore, type ReportSnapshot, type ReportStorageAdapter, type ReportGrant } from './report-store'
+import { ReportStoreError, ReviewReportStore, answerObjects, type ReportSnapshot, type ReportStorageAdapter, type ReportGrant, type ReportWriteResult } from './report-store'
 import { createReviewTools, REVIEW_RESULT_SCHEMA, REVIEW_ASSESSMENT_SCHEMA, REVIEW_SUPPORT_SCHEMA } from './tools'
 import { ReviewWorkerPool, endOf, type ReviewModelRunner, type ReviewTaskObserver } from './runner'
 import { lookupForkTaskId } from '../backgroundTasks/sideTaskSink'
@@ -48,8 +48,6 @@ interface LiveRun { access: ReviewScopeAccess; plan: ReviewPlan; args: ReviewArg
 export class ReviewGatewayError extends Error { constructor(readonly code: string) { super(code) } }
 const onlyTestsSkipped = (manifest: ScopeManifest): boolean => !manifest.files.some(file => file.status === 'included') && manifest.files.some(file => file.status === 'skipped' && isTestOrFixturePath(file.path))
 const patchBytes = (manifest: ScopeManifest): number => manifest.files.reduce((total, file) => total + new TextEncoder().encode(file.patch).length, 0)
-/** Write refusals no single candidate can cause, so retrying candidates one by one cannot help. */
-const RUN_LEVEL_WRITE_ERRORS = new Set(['run-not-active', 'invalid-action-epoch', 'verification-host-only', 'publication-host-only', 'tool-call-conflict'])
 const block = (text: string, source: string): ReviewPromptBlock => ({ type: 'text', text, source, provenance: 'trusted-task' })
 const newLive = (base: Omit<LiveRun, 'completedAngles' | 'finderTasks' | 'verified' | 'sweepIds' | 'swept' | 'tasks' | 'agentIds'>): LiveRun =>
   ({ ...base, completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false, tasks: new Map(), agentIds: new Map() })
@@ -286,16 +284,8 @@ export class LocalReviewService {
         const end = timed(live, endOf(result))
         if (end.kind !== 'completed') { live.end = end; throw new ReviewGatewayError(endCode(end)) }
         if (plan.presentation !== 'panel') {
-          try { await this.store.submitFinalJson(runId, crypto.randomUUID(), result.text) }
-          catch {
-            const { operation: _, ...expected } = await this.store.expectedRecord(runId)
-            const corrected = await this.runModel({ blocks: [block('Correct only the JSON format/selection. Return candidates and coverage exactly from the provided retained ledger; do not rerun the review.', 'format-correction'), block(JSON.stringify(expected), 'retained-ledger')], tools: [], signal: controller.signal, taskId: `${runId}-format`, maxTurns: 1, role: 'format', observer: this.observer(live) })
-            try { await this.store.submitFinalJson(runId, crypto.randomUUID(), corrected.text, 'exact') }
-            catch {
-              await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['invalid-response'], complete: false } })
-              await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
-            }
-          }
+          const committed = await this.store.submitFinalAnswer(runId, crypto.randomUUID(), result.text)
+          if (committed.rejected?.length) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['report-candidates-rejected'], complete: false } })
         }
         if (plan.agentMode === 'parallel') {
           const snapshot = await this.store.getSnapshot(runId)
@@ -380,7 +370,8 @@ export class LocalReviewService {
             role: role as 'finder' | 'verifier' | 'sweeper', ...(role === 'verifier' ? { label: candidate!.claim.title } : role === 'finder' ? { angles: angles as string[] } : {}), observer: this.observer(live) })
           const end = timed(live, endOf(result))
           if (end.kind !== 'completed') throw new ReviewGatewayError(endCode(end))
-          const value = JSON.parse(result.text)
+          const [value] = answerObjects(result.text, role === 'verifier' ? ['disposition'] : ['candidates']) as Array<Record<string, any>>
+          if (!value) throw new ReviewGatewayError('unstructured-worker-answer')
           const rejectedCandidates: Array<{ index: number; code: string }> = []
           if (role === 'verifier') {
             const candidateId = String(input.candidateId)
@@ -407,20 +398,14 @@ export class LocalReviewService {
             if (covered.some(angle => !assigned.includes(angle))) throw new ReviewGatewayError('worker-angle-not-assigned')
             for (let i = 0; i < value.candidates.length; i += 32) {
               const batch: unknown[] = value.candidates.slice(i, i + 32)
-              const accepted: string[] = []
-              try { accepted.push(...(await this.store.submitLedger(runId, `${taskId}-${i}`, { operation: 'append-candidates', candidates: batch })).accepted.map(entry => entry.diagnosticId)) }
+              let written: Pick<ReportWriteResult, 'accepted' | 'rejected'>
+              try { written = await this.store.submitLedger(runId, `${taskId}-${i}`, { operation: 'append-candidates', candidates: batch }) }
               catch (error) {
-                if (!(error instanceof ReportStoreError) || RUN_LEVEL_WRITE_ERRORS.has(error.code)) throw error
-                // A worker's batch is one write; one refused candidate must not discard the others.
-                for (const [j, candidate] of batch.entries()) {
-                  try { accepted.push(...(await this.store.submitLedger(runId, `${taskId}-${i}-${j}`, { operation: 'append-candidates', candidates: [candidate] })).accepted.map(entry => entry.diagnosticId)) }
-                  catch (single) {
-                    if (!(single instanceof ReportStoreError) || RUN_LEVEL_WRITE_ERRORS.has(single.code)) throw single
-                    rejectedCandidates.push({ index: i + j, code: single.code })
-                  }
-                }
+                if (!(error instanceof ReportStoreError) || !error.rejected) throw error
+                written = { accepted: [], rejected: [...error.rejected] }
               }
-              for (const diagnosticId of accepted) {
+              rejectedCandidates.push(...(written.rejected ?? []).map(item => ({ index: i + item.index, code: item.code })))
+              for (const { diagnosticId } of written.accepted) {
                 if (!live.finderTasks.has(diagnosticId)) {
                   live.finderTasks.set(diagnosticId, taskId)
                   if (role === 'sweeper') live.sweepIds.add(diagnosticId)

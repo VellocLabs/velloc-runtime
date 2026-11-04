@@ -179,7 +179,8 @@ describe('typed single-pass template assembly', () => {
     expect(verifier).toContain('dismissed: The candidate contradicts the code')
     expect(actions).toContain('Model assertions cannot replace edit receipts.')
     expect(actions).toContain('separate repair phase')
-    expect(output).toContain('Use candidates=[] when there are no findings.')
+    expect(output).toContain('so do not repeat them as JSON in your answer')
+    expect(output).toContain('complete=true only when every included file was read and every selected angle was covered')
   })
 })
 

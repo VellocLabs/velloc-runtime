@@ -183,7 +183,6 @@ export const zh: Messages = {
   "reviewCard.task.role.finder": "查找器",
   "reviewCard.task.role.verifier": "验证器",
   "reviewCard.task.role.sweeper": "补漏",
-  "reviewCard.task.role.format": "格式修正",
   "reviewCard.task.role.repair": "修复",
   "reviewCard.task.role.behavior": "行为检查",
   "reviewCard.task.role.reassessment": "重新评估",

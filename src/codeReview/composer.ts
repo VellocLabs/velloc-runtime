@@ -124,7 +124,7 @@ export function composeReviewPrompt(plan: ReviewPlan, inputs: CoordinatorInputs,
     ['verification_contract', block(inputs.verification_contract, 'verification-contract')],
     ['recipe_text', block(getSelectedRecipeText(plan), 'selected-recipe')],
     ['selected_angles', block(getSelectedAngleText(plan.angles), 'selected-angles')],
-    ['output_contract', block(section(output, plan.presentation === 'panel' ? 'panel' : 'terminal-json'), 'output-contract')],
+    ['output_contract', block(section(output, plan.presentation === 'panel' ? 'panel' : 'terminal'), 'output-contract')],
     ['action_contract', block(getSelectedActionText(authorization), 'action-contract')],
   ])
   return Object.freeze([

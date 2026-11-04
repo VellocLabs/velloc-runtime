@@ -332,38 +332,16 @@ it('commits a final report that words its limitations differently from the ledge
   expect(snapshot.coverage.limitations).toEqual(expect.arrayContaining(['spec skipped (tests policy)', 'The spec was skipped by the tests policy']))
   expect(snapshot.coverage.limitations).not.toContain('invalid-response')
 })
-it('accepts a format correction that echoes the retained ledger it was sent', async () => {
-  const sent: string[] = []
+it('commits the ledger as the report when the final answer is prose, with no second model call', async () => {
   const model = vi.fn(async (request: ReviewModelRequest) => {
-    if (request.role !== 'format') return { text: 'Review done, no JSON.', interrupted: false }
-    const ledger = request.blocks.find(item => item.source === 'retained-ledger')!.text
-    sent.push(ledger)
-    return { text: '```json\n' + JSON.stringify({ operation: 'record', ...JSON.parse(ledger) }) + '\n```', interrupted: false }
+    await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: [], limitations: [], complete: true } })
+    return { text: 'Reviewed every included file; nothing to report.', interrupted: false }
   })
   const f = fixture({ runModel: model })
   const snapshot = await f.service.wait((await f.service.startUser('low')).runId)
-  expect(model).toHaveBeenCalledTimes(2)
-  expect(Object.keys(JSON.parse(sent[0])).sort()).toEqual(['candidates', 'coverage'])
-  expect(snapshot.structured).toBe(true)
-  expect(snapshot.coverage.limitations).not.toContain('invalid-response')
-})
-it('refuses a format correction that raises complete or adds an angle the ledger never recorded', async () => {
-  for (const change of [{ complete: true }, { angles: ['lines'] }]) {
-    const model = vi.fn(async (request: ReviewModelRequest) => {
-      if (request.role !== 'format') {
-        await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: [], limitations: ['could not read src/a.ts'], complete: false } })
-        return { text: 'Review done, no JSON.', interrupted: false }
-      }
-      const ledger = JSON.parse(request.blocks.find(item => item.source === 'retained-ledger')!.text)
-      return { text: JSON.stringify({ ...ledger, coverage: { ...ledger.coverage, ...change } }), interrupted: false }
-    })
-    const f = fixture({ runModel: model })
-    const snapshot = await f.service.wait((await f.service.startUser('low')).runId)
-    expect(model).toHaveBeenCalledTimes(2)
-    expect(snapshot.run.progress.status).toBe('partial')
-    expect(snapshot.coverage.complete).toBe(false)
-    expect(snapshot.coverage.limitations).toEqual(expect.arrayContaining(['could not read src/a.ts', 'invalid-response']))
-  }
+  expect(model).toHaveBeenCalledOnce()
+  expect(snapshot).toMatchObject({ structured: true, coverage: { complete: true } })
+  expect(snapshot.run.progress.status).toBe('finished')
 })
 it('lists a model-requested review as preparing by its Skill call until the run exists, then records the call on the run', async () => {
   let release!: () => void
@@ -409,16 +387,33 @@ it('ends a cancelled start at once even while scope resolution ignores the signa
   expect(f.service.preparing()).toEqual([])
   expect((await f.service.snapshots()).reports).toEqual([])
 })
-it('keeps the retained ledger as a partial report after one format-only correction fails', async () => {
+it('ends partial with the ledger as the report when the coordinator never recorded coverage', async () => {
   const model = vi.fn(async () => ({ text: 'not JSON', interrupted: false }))
   const f = fixture({ runModel: model })
-  const { runId } = await f.service.startUser('low')
-  const snapshot = await f.service.wait(runId)
-  expect(model).toHaveBeenCalledTimes(2)
+  const snapshot = await f.service.wait((await f.service.startUser('low')).runId)
+  expect(model).toHaveBeenCalledOnce()
   expect(snapshot.run.progress.status).toBe('partial')
   expect(snapshot.structured).toBe(true)
-  expect(snapshot.coverage.limitations).toContain('invalid-response')
-  expect((await f.service.store.getRawResults(runId)).length).toBeGreaterThan(0)
+})
+it("imports the final answer's candidates when the coordinator recorded none, and says some were refused", async () => {
+  const f = fixture({ resolveScope: async () => {
+    const value = manifest()
+    value.anchors = [{ anchorKey: 'a', path: 'src/a.ts', revision: value.scope.revision.workingCopyDigest!, side: 'working-copy', span: { start: 1, end: 2 } }]
+    value.files[0].anchors = value.anchors
+    return { manifest: value, trustedGuidance: '', read: async () => '' }
+  }, runModel: async request => {
+    const anchorKey = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text).anchors[0].anchorKey
+    const issue = (n: number, support: unknown[]) => ({ location: { anchorKey, path: 'src/a.ts', line: 1, endLine: 1 }, statement: { headline: `Issue ${n}`, details: `Details ${n}`, scenario: 'Scenario' }, kind: 'correctness', impact: 'major', support, assessment: { disposition: 'plausible', reason: 'Read.' }, angle: 'lines' })
+    const answer = { candidates: [issue(1, [{ path: 'src/a.ts', quote: 'new', relevance: 'Changed' }]), issue(2, [])], coverage: { angles: ['lines'], limitations: [], complete: true } }
+    return { text: `Two findings.
+\`\`\`json
+${JSON.stringify(answer)}
+\`\`\``, interrupted: false }
+  } })
+  const snapshot = await f.service.wait((await f.service.startUser('low')).runId)
+  expect(snapshot.diagnostics.map(item => item.claim.title)).toEqual(['Issue 1'])
+  expect(snapshot.coverage.limitations).toContain('report-candidates-rejected')
+  expect(snapshot.run.progress.status).toBe('partial')
 })
 
 

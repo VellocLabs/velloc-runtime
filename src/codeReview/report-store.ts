@@ -66,6 +66,8 @@ export interface ReportWriteResult {
   reportRevision: number
   accepted: Array<{ index: number; diagnosticId: string }>
   notices: string[]
+  /** Items of the call the ledger refused, each with its reason; the accepted items were still written. */
+  rejected?: Array<{ index: number; code: string }>
 }
 // Contract: save atomically replaces one run. One store owns each adapter namespace.
 export interface ReportStorageAdapter {
@@ -139,7 +141,8 @@ interface RunState extends Omit<ReportSnapshot, 'verifications'> {
   duplicateMerges?: ReportDuplicateMerge[]
 }
 export class ReportStoreError extends Error {
-  constructor(readonly code: string) { super(code); this.name = 'ReportStoreError' }
+  /** `rejected` lists every refused item when a per-item write refused them all. */
+  constructor(readonly code: string, readonly rejected?: ReadonlyArray<{ index: number; code: string }>) { super(code); this.name = 'ReportStoreError' }
 }
 const fail = (code: string): never => { throw new ReportStoreError(code) }
 const clone = <T>(value: T): T => structuredClone(value)
@@ -185,8 +188,8 @@ function objectEnd(raw: string, start: number): number {
   }
   return -1
 }
-/** Report-shaped objects in the model's final text, last first: the whole text, fenced blocks, then balanced top-level spans. */
-function finalJsonObjects(raw: string): Record<string, unknown>[] {
+/** Objects in a model's answer that carry every `required` key, last first: the whole text, fenced blocks, then balanced top-level spans. */
+export function answerObjects(raw: string, required: readonly string[]): Record<string, unknown>[] {
   const texts = [{ at: -1, text: raw }, ...[...raw.matchAll(/```[a-z]*[ \t]*\r?\n([\s\S]*?)```/gi)].map(match => ({ at: match.index!, text: match[1] }))]
   for (let index = raw.indexOf('{'); index >= 0;) {
     const end = objectEnd(raw, index)
@@ -197,7 +200,7 @@ function finalJsonObjects(raw: string): Record<string, unknown>[] {
   for (const { at, text } of texts) {
     try {
       const value = JSON.parse(text)
-      if (value && typeof value === 'object' && !Array.isArray(value) && 'candidates' in value && 'coverage' in value) found.push({ at, value })
+      if (value && typeof value === 'object' && !Array.isArray(value) && required.every(key => key in value)) found.push({ at, value })
     } catch { /* not JSON; try the next candidate */ }
   }
   return found.sort((a, b) => (a.at < 0 ? 1 : b.at < 0 ? -1 : b.at - a.at)).map(item => item.value)
@@ -711,20 +714,22 @@ export class ReviewReportStore {
     return this.modelWrite(runId, toolCallId, submitted, state => {
       const operation = object(submitted, ['operation', 'candidates', 'assessments', 'coverage', 'groups'])
       const accepted: ReportWriteResult['accepted'] = []
+      let rejected: Array<{ index: number; code: string }> = []
       if (operation.operation === 'append-candidates') {
         object(submitted, ['operation', 'candidates'])
-        const candidates = array(operation.candidates, 32).map(item => this.candidate(state, item))
-        candidates.forEach((item, index) => accepted.push({ index, diagnosticId: this.append(state, item, toolCallId) }))
+        const written = this.eachItem(state, toolCallId, array(operation.candidates, 32), (draft, item) => this.append(draft, this.candidate(draft, item), toolCallId))
+        accepted.push(...written.accepted); rejected = written.rejected
       } else if (operation.operation === 'assess') {
         object(submitted, ['operation', 'assessments'])
-        array(operation.assessments, 32).forEach((value, index) => {
+        const written = this.eachItem(state, toolCallId, array(operation.assessments, 32), (draft, value) => {
           const item = object(value, ['candidateId', 'disposition', 'reason', 'support'])
           const id = text(item.candidateId)
-          const support = this.support(state, item.support)
+          const support = this.support(draft, item.support)
           if (!support.length) return fail('missing-evidence')
-          this.assess(state, id, enumeration(item.disposition, dispositions), text(item.reason), support, toolCallId)
-          accepted.push({ index, diagnosticId: id })
+          this.assess(draft, id, enumeration(item.disposition, dispositions), text(item.reason), support, toolCallId)
+          return id
         })
+        accepted.push(...written.accepted); rejected = written.rejected
       } else if (operation.operation === 'merge-duplicates') {
         object(submitted, ['operation', 'groups'])
         const groups = array(operation.groups, 32)
@@ -735,8 +740,35 @@ export class ReviewReportStore {
         this.recordCoverage(state, operation.coverage)
       } else return fail('invalid-operation')
       select(state)
-      return { reportRevision: state.run.reportRevision, accepted, notices: [] }
+      return { reportRevision: state.run.reportRevision, accepted, notices: [], ...(rejected.length ? { rejected } : {}) }
     })
+  }
+  /**
+   * Contract: applies `apply` to each item on its own. A refused item leaves the state as it was, is kept as a raw
+   * result and listed in `rejected`; the call fails with the first item's code only when every item is refused (F-38).
+   */
+  private eachItem(state: RunState, toolCallId: string, items: unknown[], apply: (draft: RunState, item: unknown) => string): { accepted: ReportWriteResult['accepted']; rejected: Array<{ index: number; code: string }> } {
+    const trial = clone(state)
+    try {
+      const accepted = items.map((item, index) => ({ index, diagnosticId: apply(trial, item) }))
+      Object.assign(state, trial)
+      return { accepted, rejected: [] }
+    } catch (error) { if (!(error instanceof ReportStoreError)) throw error }
+    const accepted: ReportWriteResult['accepted'] = [], rejected: Array<{ index: number; code: string }> = []
+    for (const [index, item] of items.entries()) {
+      const draft = clone(state)
+      try {
+        accepted.push({ index, diagnosticId: apply(draft, item) })
+        Object.assign(state, draft)
+      } catch (error) {
+        if (!(error instanceof ReportStoreError)) throw error
+        rejected.push({ index, code: error.code })
+        state.rawResults.push({ toolCallId: `${toolCallId}#${index}`, raw: this.options.sanitizeExcerpt(canonical(item)), code: error.code })
+        this.event(state, 'write-rejected')
+      }
+    }
+    if (!accepted.length) throw new ReportStoreError(rejected[0].code, rejected)
+    return { accepted, rejected }
   }
   /** Merges a coverage statement into the ledger: angles and limitations accumulate, `complete` is the latest claim. */
   private recordCoverage(state: RunState, value: unknown): void {
@@ -745,74 +777,53 @@ export class ReviewReportStore {
     state.coverage = { angles: unique([...state.coverage.angles, ...coverage.angles]), limitations: unique([...state.coverage.limitations, ...coverage.limitations]), complete: coverage.complete }
     state.run.progress.coveredAngles = [...state.coverage.angles]
   }
-  /**
-   * Contract: commits the record when its candidates equal the retained ledger. `coverage: 'exact'` also requires the
-   * record's coverage to equal the ledger's; `'merge'` records it through the coverage operation first (F-38).
-   */
-  private commitRecord(state: RunState, record: Record<string, unknown>, coverage: 'exact' | 'merge'): ReportWriteResult {
+  /** Contract: commits the retained ledger as the report. */
+  private commitLedger(state: RunState, rejected: Array<{ index: number; code: string }> = []): ReportWriteResult {
+    select(state)
+    state.run.reportRevision++
+    state.structured = true
+    this.event(state, 'report-committed')
+    return { reportRevision: state.run.reportRevision, accepted: state.retainedIds.map((diagnosticId, index) => ({ index, diagnosticId })), notices: [], ...(rejected.length ? { rejected } : {}) }
+  }
+  /** Contract: commits the record when its candidates and coverage equal the retained ledger (F-38). */
+  private commitRecord(state: RunState, record: Record<string, unknown>): ReportWriteResult {
     const cap = state.run.policy.presentation === 'panel' ? 32 : 10_000
     const candidates = array(record.candidates, cap).map(item => this.candidate(state, item))
     select(state)
     const expected = state.retainedIds.map(id => state.candidates.find(item => item.diagnosticId === id)!.input)
     if (canonical(expected) !== canonical(candidates)) return fail('ledger-mismatch')
-    if (coverage === 'merge') this.recordCoverage(state, record.coverage)
-    else if (canonical(this.coverage(record.coverage)) !== canonical(effectiveCoverage(state))) return fail('ledger-mismatch')
-    state.run.reportRevision++
-    state.structured = true
-    this.event(state, 'report-committed')
-    return { reportRevision: state.run.reportRevision, accepted: state.retainedIds.map((diagnosticId, index) => ({ index, diagnosticId })), notices: [] }
+    if (canonical(this.coverage(record.coverage)) !== canonical(effectiveCoverage(state))) return fail('ledger-mismatch')
+    return this.commitLedger(state)
   }
   async submitRecord(runId: string, toolCallId: string, input: unknown): Promise<ReportWriteResult> {
     const submitted = clone(input)
     return this.modelWrite(runId, toolCallId, submitted, state => {
       const record = object(submitted, ['operation', 'candidates', 'coverage'])
       if (record.operation !== 'record') return fail('invalid-operation')
-      return this.commitRecord(state, record, 'exact')
+      return this.commitRecord(state, record)
     })
   }
-  /** A final-text report object: `candidates` and `coverage`, optionally tagged `operation: 'record'`. */
-  private finalRecord(value: Record<string, unknown>): Record<string, unknown> {
-    const record = object(value, ['operation', 'candidates', 'coverage'])
-    if ('operation' in record && record.operation !== 'record') return fail('invalid-operation')
-    return record
-  }
-  /** True when `value` would commit as the final record; `exact` also requires its coverage to equal the ledger's. */
-  private matchesLedger(state: RunState, value: Record<string, unknown>, exact: boolean): boolean {
-    try {
-      this.commitRecord(clone(state), this.finalRecord(value), exact ? 'exact' : 'merge')
-      return true
-    } catch (error) { if (error instanceof ReportStoreError) return false; throw error }
-  }
   /**
-   * Contract: commits the final-text report. `coverage: 'merge'` merges the report's coverage into the ledger and takes
-   * the last object in the text whose candidates match; `'exact'` (a caller with no review tools, such as the format
-   * correction) commits only when the coverage equals the ledger's, so it cannot add angles or raise `complete` (F-38).
+   * Contract: commits the retained ledger as the report; the final answer is a summary and is never reconciled against
+   * it. A candidates object in the answer is imported item by item only when the ledger holds no candidates, and its
+   * coverage is merged through the checks of a coverage write; coverage those checks refuse is kept as a raw result (F-38).
    */
-  async submitFinalJson(runId: string, toolCallId: string, raw: string, coverage: 'exact' | 'merge' = 'merge'): Promise<ReportWriteResult> {
-    const found = finalJsonObjects(raw)
-    if (!found.length) return this.modelWrite(runId, toolCallId, raw, () => fail('malformed-json'))
-    const state = await this.serial(runId, () => this.load(runId))
-    let value: Record<string, unknown>
-    try {
-      value = this.finalRecord(found.find(item => this.matchesLedger(state, item, coverage === 'exact')) ?? found[0])
-    } catch (error) {
-      const code = error instanceof ReportStoreError ? error.code : 'malformed-json'
-      return this.modelWrite(runId, toolCallId, raw, () => fail(code))
-    }
-    try {
-      const submitted = { operation: 'record', candidates: value.candidates, coverage: value.coverage }
-      return await this.modelWrite(runId, toolCallId, clone(submitted), draft => this.commitRecord(draft, submitted, coverage))
-    } catch (error) {
-      if (!(error instanceof ReportStoreError)) throw error
-      await this.captureMalformed(runId, toolCallId, raw, error.code)
-      throw error
-    }
-  }
-  async captureMalformed(runId: string, toolCallId: string, raw: string, code = 'unstructured-result'): Promise<void> {
-    return this.mutate(runId, state => {
-      if (!state.rawResults.some(item => item.toolCallId === toolCallId && item.raw === this.options.sanitizeExcerpt(raw))) {
-        state.rawResults.push({ toolCallId, raw: this.options.sanitizeExcerpt(raw), code })
+  async submitFinalAnswer(runId: string, toolCallId: string, raw: string): Promise<ReportWriteResult> {
+    const [found] = answerObjects(raw, ['candidates'])
+    return this.modelWrite(runId, toolCallId, raw, state => {
+      let rejected: Array<{ index: number; code: string }> = []
+      if (found && !state.candidates.length && Array.isArray(found.candidates) && found.candidates.length) {
+        try { rejected = this.eachItem(state, toolCallId, found.candidates, (draft, item) => this.append(draft, this.candidate(draft, item), toolCallId)).rejected }
+        catch (error) { if (!(error instanceof ReportStoreError) || !error.rejected) throw error; rejected = [...error.rejected] }
       }
+      if (found && found.coverage !== undefined) {
+        try { this.recordCoverage(state, found.coverage) }
+        catch (error) {
+          if (!(error instanceof ReportStoreError)) throw error
+          state.rawResults.push({ toolCallId: `${toolCallId}#coverage`, raw: this.options.sanitizeExcerpt(canonical(found.coverage)), code: error.code })
+        }
+      }
+      return this.commitLedger(state, rejected)
     })
   }
   async expectedRecord(runId: string): Promise<{ operation: 'record'; candidates: ReportCandidateInput[]; coverage: ReportCoverage }> {
