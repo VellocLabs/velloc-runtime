@@ -29,7 +29,7 @@ import {
   type CompiledMasking,
   type MaskingRuleProblem,
 } from './maskingRules'
-import { maskPayload, MaskingTally, PayloadMasker } from './maskPayload'
+import { maskPayload, PayloadMasker } from './maskPayload'
 import { createRestoreFilter, type RestoreFilter } from './restoreStream'
 import type { ReplacementEntry } from './replacementTrace'
 
@@ -104,9 +104,9 @@ export function withMaskedUserAgent<T extends { headers?: Record<string, string>
 
 /** One stream's masking: its payload copy, its restore filter, its guard, its log lines. */
 export class MaskingStream {
-  private readonly outTally = new MaskingTally()
+  /** The replacements made in the payload, until the request passes the egress check. */
+  private readonly pending: ReplacementEntry[] = []
   readonly restore: RestoreFilter
-  private loggedOut = 0
   private closed = false
 
   constructor(
@@ -116,12 +116,9 @@ export class MaskingStream {
     this.restore = createRestoreFilter(masking)
   }
 
-  /** Masks `payload`; the replacements are logged as soon as they are made. */
+  /** Masks `payload`; the replacements are logged once the request passes `checkEgress`. */
   maskPayload(payload: BridgeModelRequestPayload): BridgeModelRequestPayload {
-    const masked = maskPayload(payload, new PayloadMasker(this.masking, this.outTally))
-    this.holder.log(this.outTally.entries.slice(this.loggedOut))
-    this.loggedOut = this.outTally.entries.length
-    return masked
+    return maskPayload(payload, new PayloadMasker(this.masking, this.pending))
   }
 
   /** A header or other single value, masked. */
@@ -130,9 +127,10 @@ export class MaskingStream {
   }
 
   /** Throws `MaskingResidualError` when `request` still holds a match of
-   *  this stream's table. */
+   *  this stream's table; otherwise logs the replacements made for it. */
   checkEgress(request: EgressRequest): void {
     this.holder.refuseResidual(this.masking, request)
+    this.holder.logOut(this.pending.splice(0))
   }
 
   restoreEvents(events: DriverStreamEvent[]): DriverStreamEvent[] {
@@ -154,6 +152,7 @@ export class ModelMaskingHolder {
   private problem: MaskingRuleProblem | undefined
   private lastError: MaskingError | undefined
   private writer: MaskingLogWriter | undefined
+  private lastOut = new Set<string>()
   private pending: Promise<void> | undefined
   private retryTimer: ReturnType<typeof setTimeout> | undefined
   /** Bumped by every `configure` and reset: a read that started before it is stale. */
@@ -181,6 +180,7 @@ export class ModelMaskingHolder {
     const next = settings ?? {}
     this.settings = next
     this.generation += 1
+    this.lastOut = new Set()
     this.lastError = undefined
     this.cancelRetry()
     const validated = validateMaskingRules(next.rules ?? [])
@@ -291,6 +291,16 @@ export class ModelMaskingHolder {
     void this.writer.append(path, entries.map(formatLogLine))
   }
 
+  /** Logs the replacements of a request that is about to be sent, except those
+   *  the previous request already had (the history is masked again each turn). */
+  logOut(entries: readonly ReplacementEntry[]): void {
+    if (entries.length === 0) return
+    const keys = entries.map(entry => JSON.stringify([entry.where, entry.original, entry.replaced]))
+    const previous = this.lastOut
+    this.lastOut = new Set(keys)
+    this.log(entries.filter((_, i) => !previous.has(keys[i]!)))
+  }
+
   /** Throws `MaskingResidualError` when `request` still holds a match of
    *  `masking`. */
   refuseResidual(masking: CompiledMasking, request: EgressRequest): void {
@@ -310,6 +320,7 @@ export class ModelMaskingHolder {
     this.lastError = undefined
     this.pending = undefined
     this.writer = undefined
+    this.lastOut = new Set()
   }
 
   private unavailable(): MaskingUnavailableError {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { BridgeModelRequestPayload } from '../browser/bridge/browserBridgeProtocol'
 import type { DriverStreamEvent } from '../models/drivers/driverTypes'
 import { compileMasking, type MaskingHit } from '../models/masking/maskingRules'
-import { maskPayload, MaskingTally, PayloadMasker } from '../models/masking/maskPayload'
+import { maskPayload, PayloadMasker } from '../models/masking/maskPayload'
 import { MAX_TRACE_ENTRIES, traceEntries, type ReplacementEntry } from '../models/masking/replacementTrace'
 import { createRestoreFilter } from '../models/masking/restoreStream'
 
@@ -78,12 +78,21 @@ describe('the log context of a streamed reply', () => {
       ['in', 'text', 'see beacon ', 'see widget '],
       ['in', 'tool_name', 'beacon_tool', 'widget_tool'],
       ['in', 'tool_args', '{"path":"beacon/x"}', '{"path":"widget/x"}'],
-      ['in', 'tool_args', 'beacon/x', 'widget/x'],
       ['in', 'error', 'Northwind quota', 'AcmeCo quota'],
     ]))
-    // The tool name is restored on the start event and again on the call itself.
-    expect(rows.filter(row => row[1] === 'tool_name')).toHaveLength(2)
-    expect(rows).toHaveLength(7)
+    // The name and arguments streamed first are not logged again on the call itself.
+    expect(rows.filter(row => row[1] === 'tool_name')).toHaveLength(1)
+    expect(rows).toHaveLength(5)
+  })
+
+  it('logs a tool call that was never streamed from its final event', () => {
+    const filter = createRestoreFilter(masking)
+    filter.apply([{ type: 'tool_call', id: 'u', name: 'beacon_tool', input: { path: 'beacon/x' } }])
+    filter.flush()
+    expect(filter.entries().map(entry => [entry.where, entry.original])).toEqual([
+      ['tool_name', 'beacon_tool'],
+      ['tool_args', 'beacon/x'],
+    ])
   })
 
   it('completes an entry that is still waiting for text when the stream ends', () => {
@@ -106,18 +115,30 @@ describe('the log context of a streamed reply', () => {
 })
 
 describe('the entry cap', () => {
-  it('keeps at most 5000 outbound entries for one request', () => {
+  it('keeps the newest 5000 outbound entries for one request', () => {
     const payload: BridgeModelRequestPayload = {
-      messages: [{ role: 'user', content: 'widget '.repeat(MAX_TRACE_ENTRIES + 500) }],
+      messages: [{ role: 'user', content: `${'widget '.repeat(MAX_TRACE_ENTRIES + 500)}widget END` }],
     }
-    const tally = new MaskingTally()
+    const tally: ReplacementEntry[] = []
     maskPayload(payload, new PayloadMasker(masking, tally))
-    expect(tally.entries).toHaveLength(MAX_TRACE_ENTRIES)
+    expect(tally).toHaveLength(MAX_TRACE_ENTRIES)
+    expect(tally.at(-1)!.original).toContain('widget END')
+    expect(tally.at(-1)!.replaced).toContain('beacon END')
   })
 
-  it('keeps at most 5000 inbound entries for one reply', () => {
+  it('keeps the newest 5000 inbound entries for one reply', () => {
     const filter = createRestoreFilter(masking)
-    filter.apply([{ type: 'text_delta', text: 'beacon '.repeat(MAX_TRACE_ENTRIES + 500) }])
+    filter.apply([{ type: 'text_delta', text: `${'beacon '.repeat(MAX_TRACE_ENTRIES + 500)}beacon END` }])
+    filter.flush()
+    const entries = filter.entries()
+    expect(entries).toHaveLength(MAX_TRACE_ENTRIES)
+    expect(entries.at(-1)!.original).toContain('beacon END')
+  })
+
+  it('keeps the cap across channels sharing one filter', () => {
+    const filter = createRestoreFilter(masking)
+    const many = 'beacon '.repeat(MAX_TRACE_ENTRIES / 2 + 100)
+    filter.apply([{ type: 'text_delta', text: many }, { type: 'reasoning_delta', text: many }])
     filter.flush()
     expect(filter.entries()).toHaveLength(MAX_TRACE_ENTRIES)
   })

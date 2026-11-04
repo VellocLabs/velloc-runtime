@@ -6,8 +6,8 @@
  * `ChannelTrace` does the same for a streamed channel, where the text after a
  * replacement arrives later: it keeps the last `CONTEXT_CHARS` characters of
  * each side and finishes an entry once enough text followed it, or at
- * `finish()`. Neither changes the text it is given. At most `MAX_TRACE_ENTRIES`
- * entries are kept per sink.
+ * `finish()`. Neither changes the text it is given. A sink keeps the newest
+ * `MAX_TRACE_ENTRIES` entries.
  */
 import type { MaskingHit } from './maskingRules'
 
@@ -26,6 +26,11 @@ export type ReplacementEntry = {
   replaced: string
 }
 
+/** Drops the oldest entries beyond `MAX_TRACE_ENTRIES`. */
+function keepNewest(sink: ReplacementEntry[]): void {
+  if (sink.length > MAX_TRACE_ENTRIES) sink.splice(0, sink.length - MAX_TRACE_ENTRIES)
+}
+
 /** Entries for the hits found when turning `original` into `replaced`. */
 export function traceEntries(
   dir: ReplacementEntry['dir'],
@@ -37,7 +42,6 @@ export function traceEntries(
 ): void {
   const at = Date.now()
   for (const hit of hits) {
-    if (sink.length >= MAX_TRACE_ENTRIES) return
     sink.push({
       at,
       dir,
@@ -46,6 +50,7 @@ export function traceEntries(
       replaced: replaced.slice(Math.max(0, hit.outStart - CONTEXT_CHARS), hit.outEnd + CONTEXT_CHARS),
     })
   }
+  keepNewest(sink)
 }
 
 type OpenEntry = {
@@ -83,7 +88,6 @@ export class ChannelTrace {
     const originalText = this.beforeOriginal + consumed
     const replacedText = this.beforeReplaced + emitted
     for (const hit of hits) {
-      if (this.sink.length + this.open.length >= MAX_TRACE_ENTRIES) break
       const start = this.beforeOriginal.length + hit.start
       const end = this.beforeOriginal.length + hit.end
       const outStart = this.beforeReplaced.length + hit.outStart
@@ -115,5 +119,6 @@ export class ChannelTrace {
 
   private emit(entry: OpenEntry): void {
     this.sink.push({ at: entry.at, dir: 'in', where: this.where, original: entry.original, replaced: entry.replaced })
+    keepNewest(this.sink)
   }
 }

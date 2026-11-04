@@ -16,6 +16,7 @@ import { runtimeProviderConfigs } from '../drivers/runtimeProviders'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { MaskingHostError, modelMasking, type ModelMaskingHolder } from './maskingHolder'
 import type { MaskingLogSink } from './maskingLog'
+import { isNotFoundError } from '../../utils/planFiles'
 
 export type MaskingBootHost = {
   homeDir: () => string | undefined
@@ -26,7 +27,7 @@ export type MaskingBootHost = {
 
 const ENCODER = new TextEncoder()
 
-/** Appends through the host's `fs.appendFile`; sizes, reads and rewrites through `fs`. */
+/** Appends through the host's `fs.appendFile`; sizes, reads and rewrites through `fs`. Only a missing file reads as absent. */
 export function createMaskingLogSink(host: MaskingBootHost): MaskingLogSink {
   return {
     async append(path, text) {
@@ -42,15 +43,17 @@ export function createMaskingLogSink(host: MaskingBootHost): MaskingLogSink {
     async size(path) {
       try {
         return (await host.fs().stat(path)).size
-      } catch {
-        return undefined
+      } catch (error) {
+        if (isNotFoundError(error)) return undefined
+        throw error
       }
     },
     async read(path) {
       try {
         return await host.fs().readFile(path, { encoding: 'utf8' })
-      } catch {
-        return undefined
+      } catch (error) {
+        if (isNotFoundError(error)) return undefined
+        throw error
       }
     },
     async write(path, text) {

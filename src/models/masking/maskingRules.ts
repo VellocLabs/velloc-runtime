@@ -202,7 +202,8 @@ export type CompiledMasking = {
   readonly rules: readonly MaskingRule[]
   /** Longest alias, in code units. */
   readonly maxAliasLength: number
-  maskText(text: string, onHit?: (hit: MaskingHit) => void): MaskTextResult
+  /** `collision` is only worked out with `detectCollision` (default true). */
+  maskText(text: string, onHit?: (hit: MaskingHit) => void, detectCollision?: boolean): MaskTextResult
   /** With `json`, each match is inserted JSON-string-escaped (tool argument text). */
   restoreText(text: string, onHit?: (hit: MaskingHit) => void, json?: boolean): string
   /** Restores what is settled; `held` may still grow into an alias. */
@@ -229,9 +230,10 @@ export function compileMasking(rules: readonly MaskingRule[]): CompiledMasking {
   return {
     rules,
     maxAliasLength: aliases.maxLength,
-    maskText(text, onHit) {
+    maskText(text, onHit, detectCollision = true) {
       if (text.length === 0) return { text, collision: false }
       const masked = replaceAll(matches, aliasOf, text, onHit, false).text
+      if (!detectCollision) return { text: masked, collision: false }
       // Unchanged text can still collide: alias text in it would be turned
       // into a match on the way back. A match found in its other normal form
       // comes back in the rule's own form, which is not a collision.

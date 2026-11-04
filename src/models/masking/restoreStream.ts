@@ -7,7 +7,8 @@
  * at a terminal event, and by `flush()`. Argument text is JSON, so a match is
  * put back JSON-string-escaped there. A tool call without an id gets a channel
  * of its own per `tool_call_start`. Whole strings (tool names, a tool call's
- * `input`, an error message) are restored in place. Event order is preserved.
+ * `input`, an error message) are restored in place; a call's name and arguments
+ * are logged once, where they were streamed first. Event order is preserved.
  */
 import type { DriverStreamEvent } from '../drivers/driverTypes'
 import type { CompiledMasking, MaskingHit } from './maskingRules'
@@ -31,10 +32,17 @@ export function createRestoreFilter(masking: CompiledMasking): RestoreFilter {
   const done: ReplacementEntry[] = []
   const traces = new Map<string, ChannelTrace>()
 
-  const restoreWhole = (value: string, where: RestoreWhere): string => {
+  const namedCalls = new Set<string>()
+  const streamedArgs = new Set<string>()
+  let anonymousCalls = 0
+  const callKey = (id: string | undefined) => (id !== undefined ? `id:${id}` : `n:${anonymousCalls}`)
+  /** True the first time `key`'s name is seen. */
+  const firstName = (key: string): boolean => !namedCalls.has(key) && !!namedCalls.add(key)
+
+  const restoreWhole = (value: string, where: RestoreWhere, log = true): string => {
     const hits: MaskingHit[] = []
     const text = masking.restoreText(value, hit => hits.push(hit))
-    if (hits.length > 0) traceEntries('in', where, value, text, hits, done)
+    if (log && hits.length > 0) traceEntries('in', where, value, text, hits, done)
     return text
   }
   const traceOf = (channel: Channel): ChannelTrace => {
@@ -55,13 +63,13 @@ export function createRestoreFilter(masking: CompiledMasking): RestoreFilter {
     return result
   }
 
-  const restoreDeep = (value: unknown): unknown => {
-    if (typeof value === 'string') return restoreWhole(value, 'tool_args')
-    if (Array.isArray(value)) return value.map(restoreDeep)
+  const restoreDeep = (value: unknown, log: boolean): unknown => {
+    if (typeof value === 'string') return restoreWhole(value, 'tool_args', log)
+    if (Array.isArray(value)) return value.map(item => restoreDeep(item, log))
     if (value && typeof value === 'object') {
       const out: Record<string, unknown> = {}
       for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-        out[restoreWhole(key, 'tool_args')] = restoreDeep(item)
+        out[restoreWhole(key, 'tool_args', log)] = restoreDeep(item, log)
       }
       return out
     }
@@ -92,7 +100,6 @@ export function createRestoreFilter(masking: CompiledMasking): RestoreFilter {
     json: false,
     flushEvent: text => ({ type: 'reasoning_delta', text }),
   }
-  let anonymousCalls = 0
   const toolChannel = (id: string | undefined): Channel => ({
     key: id !== undefined ? `tool:id:${id}` : `tool:n:${anonymousCalls}`,
     where: 'tool_args',
@@ -118,8 +125,9 @@ export function createRestoreFilter(masking: CompiledMasking): RestoreFilter {
           }
           case 'tool_call_delta': {
             const next: DriverStreamEvent = { ...event }
-            if (event.name !== undefined) next.name = restoreWhole(event.name, 'tool_name')
+            if (event.name !== undefined) next.name = restoreWhole(event.name, 'tool_name', firstName(callKey(event.id)))
             if (event.argsTextDelta !== undefined) {
+              streamedArgs.add(callKey(event.id))
               const args = onDelta(toolChannel(event.id), event.argsTextDelta, out)
               if (args) next.argsTextDelta = args
               else delete next.argsTextDelta
@@ -132,14 +140,15 @@ export function createRestoreFilter(masking: CompiledMasking): RestoreFilter {
           case 'tool_call_start': {
             flushExcept(undefined, out)
             if (event.id === undefined) anonymousCalls += 1
-            out.push(event.name !== undefined ? { ...event, name: restoreWhole(event.name, 'tool_name') } : event)
+            out.push(event.name !== undefined ? { ...event, name: restoreWhole(event.name, 'tool_name', firstName(callKey(event.id))) } : event)
             break
           }
           case 'tool_call': {
             flushExcept(undefined, out)
             const next: DriverStreamEvent = { ...event }
-            if (event.name !== undefined) next.name = restoreWhole(event.name, 'tool_name')
-            if (event.input !== undefined) next.input = restoreDeep(event.input)
+            const key = callKey(event.id)
+            if (event.name !== undefined) next.name = restoreWhole(event.name, 'tool_name', firstName(key))
+            if (event.input !== undefined) next.input = restoreDeep(event.input, !streamedArgs.has(key))
             out.push(next)
             break
           }

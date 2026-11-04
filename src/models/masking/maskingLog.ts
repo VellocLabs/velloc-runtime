@@ -4,10 +4,11 @@
  * user named. `date` is ISO 8601 UTC; `dir` is `out` (toward the model) or
  * `in`; `original` and `replaced` are the text before and after the
  * replacement, each with its context (see `replacementTrace`). Line breaks in
- * the text are written as one space, and `|` as `\|`; the data itself is not
- * changed. `MaskingLogWriter.append` serializes writes, keeps the file to the
- * newest `MAX_LOG_LINES` lines (older lines are dropped, never rotated to
- * another file), and reports a failure (the thrown value) to `onError`
+ * the text are written as one space, `\` as `\\` and `|` as `\|`; the data itself is not
+ * changed. `MaskingLogWriter.append` serializes writes, keeps the file to at
+ * most `MAX_LOG_LINES` lines: an append that would pass it rewrites the file
+ * with the newest `TRIM_LOG_LINES` lines (older lines are dropped, never
+ * rotated to another file), and reports a failure (the thrown value) to `onError`
  * without throwing.
  */
 import type { ReplacementEntry } from './replacementTrace'
@@ -24,11 +25,13 @@ export type MaskingLogSink = {
 }
 
 export const MAX_LOG_LINES = 5000
+/** Lines kept by a rewrite, so the next rewrite is a thousand lines away. */
+export const TRIM_LOG_LINES = 4000
 
 const ENCODER = new TextEncoder()
 
 function logText(text: string): string {
-  return text.replace(/\r\n|[\r\n\u2028\u2029]/g, ' ').replace(/\|/g, '\\|')
+  return text.replace(/\r\n|[\r\n\u2028\u2029]/g, ' ').replace(/[\\|]/g, '\\$&')
 }
 
 /** One log line, newline included. */
@@ -72,7 +75,7 @@ export class MaskingLogWriter {
         return
       }
       const existing = linesOf((await this.sink.read(path)) ?? '')
-      const kept = [...existing, ...lines.map(line => line.replace(/\n$/, ''))].slice(-MAX_LOG_LINES)
+      const kept = [...existing, ...lines.map(line => line.replace(/\n$/, ''))].slice(-TRIM_LOG_LINES)
       const text = `${kept.join('\n')}\n`
       await this.sink.write(path, text)
       this.known = { path, bytes: ENCODER.encode(text).length, lines: kept.length }

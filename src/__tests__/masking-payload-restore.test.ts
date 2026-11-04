@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { BridgeModelRequestPayload } from '../browser/bridge/browserBridgeProtocol'
 import type { DriverStreamEvent } from '../models/drivers/driverTypes'
 import { compileMasking, type MaskingRule } from '../models/masking/maskingRules'
-import { maskPayload, MaskingTally, PayloadMasker } from '../models/masking/maskPayload'
+import { maskPayload, PayloadMasker } from '../models/masking/maskPayload'
 import { MaskingUndecodableError } from '../models/masking/egressGuard'
 import { createRestoreFilter } from '../models/masking/restoreStream'
+import type { ReplacementEntry } from '../models/masking/replacementTrace'
 
 const RULES: MaskingRule[] = [
   { match: 'AcmeCo', alias: 'Northwind' },
@@ -55,7 +56,7 @@ describe('maskPayload', () => {
   it('masks the text the provider reads and leaves identifiers and bytes alone', () => {
     const original = payload()
     const snapshot = JSON.parse(JSON.stringify(original))
-    const tally = new MaskingTally()
+    const tally: ReplacementEntry[] = []
     const out = maskPayload(original, new PayloadMasker(masking, tally))
 
     expect(original).toEqual(snapshot)
@@ -84,22 +85,22 @@ describe('maskPayload', () => {
     })
     expect(out.providerBodyExtension).toEqual({ metadata: { user: 'Northwind' } })
 
-    const per = (where: string) => tally.entries.filter(entry => entry.where === where).length
+    const per = (where: string) => tally.filter(entry => entry.where === where).length
     expect(per('messages')).toBe(10)
     expect(per('tools')).toBe(5)
     expect(per('system')).toBe(4)
     expect(per('extension')).toBe(1)
-    expect(tally.entries.every(entry => entry.dir === 'out')).toBe(true)
+    expect(tally.every(entry => entry.dir === 'out')).toBe(true)
   })
 
   it('shares untouched parts and logs each replacement with the text before and after it', () => {
-    const tally = new MaskingTally()
+    const tally: ReplacementEntry[] = []
     const original: BridgeModelRequestPayload = {
       messages: [{ role: 'user', content: 'plain' }, { role: 'user', content: 'Northwind already, and AcmeCo' }],
     }
     const out = maskPayload(original, new PayloadMasker(masking, tally))
     expect(out.messages[0]).toBe(original.messages[0])
-    expect(tally.entries).toEqual([
+    expect(tally).toEqual([
       {
         at: expect.any(Number),
         dir: 'out',
@@ -124,7 +125,7 @@ describe('maskPayload: what counts as opaque', () => {
       tools: [{ type: 'function', name: 'Write', parameters: { properties: { data: { description: 'AcmeCo data' } } } }],
       providerBodyExtension: { data: 'AcmeCo' },
     }
-    const out = maskPayload(original, new PayloadMasker(masking, new MaskingTally()))
+    const out = maskPayload(original, new PayloadMasker(masking, []))
     expect(JSON.stringify(out)).not.toMatch(/AcmeCo|widget/)
   })
 
@@ -137,7 +138,7 @@ describe('maskPayload: what counts as opaque', () => {
         { role: 'assistant', content: [{ type: 'thinking', thinking: 'AcmeCo', signature: 'AcmeCo-sig' }] },
       ],
     }
-    const out = maskPayload(original, new PayloadMasker(masking, new MaskingTally()))
+    const out = maskPayload(original, new PayloadMasker(masking, []))
     expect((out.messages[0]!.content as any[])[0]).toBe(image)
     const nested = (out.messages[1]!.content as any[])[0].result
     expect(nested[0]).toBe(image)
@@ -149,7 +150,7 @@ describe('maskPayload: what counts as opaque', () => {
     const original: BridgeModelRequestPayload = {
       messages: [{ role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c', toolName: 'Edit', args: { AcmeCo: { widget: 1 } } }] }],
     }
-    const out = maskPayload(original, new PayloadMasker(masking, new MaskingTally()))
+    const out = maskPayload(original, new PayloadMasker(masking, []))
     expect((out.messages[0]!.content as any[])[0].args).toEqual({ Northwind: { beacon: 1 } })
     const filter = createRestoreFilter(masking)
     const [call] = filter.apply([{ type: 'tool_call', id: 'c', name: 'Edit', input: { Northwind: { beacon: 1 } } }])
@@ -160,7 +161,7 @@ describe('maskPayload: what counts as opaque', () => {
     const b64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)))
     const text = { type: 'document', data: b64('notes about AcmeCo'), mimeType: 'text/plain' }
     const pdf = { type: 'document', data: b64('%PDF AcmeCo'), mimeType: 'application/pdf' }
-    const out = maskPayload({ messages: [{ role: 'user', content: [text, pdf] }] }, new PayloadMasker(masking, new MaskingTally()))
+    const out = maskPayload({ messages: [{ role: 'user', content: [text, pdf] }] }, new PayloadMasker(masking, []))
     const [maskedText, keptPdf] = out.messages[0]!.content as any[]
     expect(new TextDecoder().decode(Uint8Array.from(atob(maskedText.data), c => c.charCodeAt(0)))).toBe('notes about Northwind')
     expect(keptPdf).toBe(pdf)
@@ -171,7 +172,7 @@ describe('maskPayload: what counts as opaque', () => {
     const latin1 = (text: string) => bytes([...text].map(c => c.charCodeAt(0)))
     const utf16le = (text: string) => bytes([...text].flatMap(c => [c.charCodeAt(0) & 0xff, c.charCodeAt(0) >> 8]))
     const mask = (part: Record<string, unknown>) =>
-      maskPayload({ messages: [{ role: 'user', content: [part as never] }] }, new PayloadMasker(masking, new MaskingTally()))
+      maskPayload({ messages: [{ role: 'user', content: [part as never] }] }, new PayloadMasker(masking, []))
 
     for (const [name, part] of [
       ['Latin-1 bytes', { type: 'document', data: latin1('AcmeCo caf\u00e9 plan'), mimeType: 'text/plain' }],
@@ -202,23 +203,23 @@ describe('maskPayload: what counts as opaque', () => {
   })
 
   it('logs the original beside the replaced text, each with its own context', () => {
-    const tally = new MaskingTally()
+    const tally: ReplacementEntry[] = []
     maskPayload({ messages: [{ role: 'user', content: 'AcmeCo and widget' }] }, new PayloadMasker(masking, tally))
-    expect(tally.entries.map(entry => [entry.original, entry.replaced])).toEqual([
+    expect(tally.map(entry => [entry.original, entry.replaced])).toEqual([
       ['AcmeCo and widget', 'Northwind and beacon'],
       ['AcmeCo and widget', 'Northwind and beacon'],
     ])
   })
 
   it('cuts 50 characters on each side, measured in each text, and fewer at an end', () => {
-    const tally = new MaskingTally()
+    const tally: ReplacementEntry[] = []
     const a = (n: number) => 'a'.repeat(n)
     const b = (n: number) => 'b'.repeat(n)
     maskPayload(
       { messages: [{ role: 'user', content: `${a(70)}widget AcmeCo${b(70)}` }, { role: 'user', content: 'x widget y' }] },
       new PayloadMasker(masking, tally),
     )
-    expect(tally.entries.map(entry => [entry.original, entry.replaced])).toEqual([
+    expect(tally.map(entry => [entry.original, entry.replaced])).toEqual([
       [`${a(50)}widget AcmeCo${b(43)}`, `${a(50)}beacon Northwind${b(40)}`],
       [`${a(43)}widget AcmeCo${b(50)}`, `${a(43)}beacon Northwind${b(50)}`],
       ['x widget y', 'x beacon y'],

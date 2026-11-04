@@ -17,7 +17,7 @@ import { MaskingResidualError } from '../models/masking/egressGuard'
 import { MASKING_KNOWN_WAIT_MS, MASKING_READ_RETRY_MS, modelMasking } from '../models/masking/maskingHolder'
 import { resetModelMaskingBoot } from '../models/masking/maskingBoot'
 import { compileMasking } from '../models/masking/maskingRules'
-import { maskPayload, MaskingTally, PayloadMasker } from '../models/masking/maskPayload'
+import { maskPayload, PayloadMasker } from '../models/masking/maskPayload'
 import { wipeSettingsMemos } from '../settings/settingsStore'
 import { type RuntimeFs, installProcessFs, resetProcessFs } from '../utils/fs/runtimeFs'
 
@@ -242,14 +242,14 @@ describe('masked object keys', () => {
     const payload = {
       messages: [{ role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'c', toolName: 'Edit', args: { AcmeCo: 1, Northwind: 2 } }] }],
     }
-    expect(() => maskPayload(payload as never, new PayloadMasker(masking, new MaskingTally())))
+    expect(() => maskPayload(payload as never, new PayloadMasker(masking, [])))
       .toThrow(MaskingResidualError)
   })
 
   it('distinct keys are still masked', () => {
     const masking = compileMasking(RULES)
     const payload = { messages: [{ role: 'user', content: [{ type: 'tool-call', toolCallId: 'c', toolName: 'E', args: { AcmeCo: 1, other: 2 } }] }] }
-    const out = maskPayload(payload as never, new PayloadMasker(masking, new MaskingTally()))
+    const out = maskPayload(payload as never, new PayloadMasker(masking, []))
     expect((out.messages[0]!.content as any[])[0].args).toEqual({ Northwind: 1, other: 2 })
   })
 })

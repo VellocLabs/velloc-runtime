@@ -32,11 +32,6 @@ import { traceEntries, type ReplacementEntry } from './replacementTrace'
 
 export type MaskingWhere = 'messages' | 'system' | 'tools' | 'extension'
 
-/** What one payload's masking did, for the log: one entry per replacement. */
-export class MaskingTally {
-  readonly entries: ReplacementEntry[] = []
-}
-
 /** Part types whose payload is opaque as a whole. */
 const OPAQUE_PARTS: ReadonlySet<string> = new Set(['image', 'redacted_thinking'])
 /** Fields of a part, by part type, that hold provider-signed or binary data. */
@@ -75,17 +70,17 @@ function mediaTypeOf(part: Record<string, unknown>): string {
   return typeof value === 'string' ? value.toLowerCase() : ''
 }
 
-/** Masks strings for one payload and records what it did. */
+/** Masks strings for one payload and adds one `entries` item per replacement. */
 export class PayloadMasker {
   constructor(
     private readonly masking: CompiledMasking,
-    readonly tally: MaskingTally,
+    readonly entries: ReplacementEntry[],
   ) {}
 
   text(value: string, where: string): string {
     const hits: MaskingHit[] = []
-    const masked = this.masking.maskText(value, hit => hits.push(hit)).text
-    if (hits.length > 0) traceEntries('out', where, value, masked, hits, this.tally.entries)
+    const masked = this.masking.maskText(value, hit => hits.push(hit), false).text
+    if (hits.length > 0) traceEntries('out', where, value, masked, hits, this.entries)
     return masked
   }
 
