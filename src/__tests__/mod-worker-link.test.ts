@@ -414,6 +414,7 @@ describe('$ — served by the runtime', () => {
     const ran: string[] = []
     let detached!: () => void
     const done = new Promise<void>(resolve => (detached = resolve))
+    let callLater!: () => void
     const serveCall: ModCallServer = async call => {
       const result = await dispatcher.dispatch(`${call.noun}.${call.method}`, call.args[0], () => 'written', {
         context: call.context,
@@ -433,7 +434,7 @@ describe('$ — served by the runtime', () => {
       on => {
         on('fs.write', ($: any, e: any, next: any) => {
           ran.push(e.later ? 'acme:later' : 'acme')
-          if (!e.later) setTimeout(() => void $.fs.write({ path: e.path, later: true }), 0)
+          if (!e.later) callLater = () => void $.fs.write({ path: e.path, later: true })
           return next(e)
         })
       },
@@ -442,8 +443,10 @@ describe('$ — served by the runtime', () => {
     await org.load('unused', {})
     await acme.load('unused', {})
     await dispatcher.dispatch('fs.write', { path: 'a.txt' }, () => 'written')
+    // Only once the outer dispatch has returned is org's frame no longer pending.
+    callLater()
     await done
-    // org's `next` settled long before: the detached call passes it again.
+    // org's `next` has settled: the detached call passes it again.
     expect(ran).toEqual(['org', 'acme', 'org:later'])
   })
 

@@ -3,7 +3,7 @@
  * `broadcastChanged` beside `ctx.broadcastEvent`. The pool itself: mcp-pool-settings-loader.test.ts.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // vi.mock factories must be hoisted before any `await import(...)` so
 // the module-under-test sees the mocked surface from the start. Two open
@@ -51,6 +51,11 @@ vi.mock('../skillLibrary/builtin/catalog', () => ({
 }))
 
 describe('initBuiltinWebUiBridgeHandlers — mcpSettings broadcast hook', () => {
+  // The first import transforms the whole handler graph; under a loaded parallel run that
+  // alone can pass the per-test timeout, so it is paid here on its own budget.
+  beforeAll(async () => {
+    await import('../browser/worker/webUiBridge/initBuiltinHandlers')
+  }, 30_000)
   beforeEach(() => {
     refreshNativeServers.mockClear()
   })

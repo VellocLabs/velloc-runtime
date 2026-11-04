@@ -3,7 +3,7 @@
  * engine push (applyAgentSettingsToAllSessions).
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Stub the adapter so we can pin the broadcast hook independent of the
 // real settings.json write semantics — those are exercised in
@@ -53,6 +53,11 @@ vi.mock('../skillLibrary/builtin/catalog', () => ({
 }))
 
 describe('initBuiltinWebUiBridgeHandlers — agent broadcast hook', () => {
+  // The first import transforms the whole handler graph; under a loaded parallel run that
+  // alone can pass the per-test timeout, so it is paid here on its own budget.
+  beforeAll(async () => {
+    await import('../browser/worker/webUiBridge/initBuiltinHandlers')
+  }, 30_000)
   beforeEach(() => {
     vi.clearAllMocks()
   })

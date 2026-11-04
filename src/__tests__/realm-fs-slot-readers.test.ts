@@ -321,7 +321,8 @@ describe('team provider trust', () => {
 describe('WebFetch persistence', () => {
   it('writes the overflow markdown through deps.fs', async () => {
     const { fs, files } = sessionFs()
-    const longHtml = `<html><body>${'<p>word word word</p>'.repeat(20_000)}</body></html>`
+    // One paragraph past PAGE_TEXT_CHAR_CAP: few nodes keeps the conversion cheap.
+    const longHtml = `<html><body><p>${'word '.repeat(30_000)}</p></body></html>`
     webFetch.forgetFetchedPages()
     const result = await webFetch.capturePageAsMarkdown(
       'https://example.test/realm-slot',

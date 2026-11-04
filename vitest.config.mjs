@@ -68,8 +68,9 @@ export default defineConfig({
     environment: 'node',
     include: ['src/__tests__/**/*.test.ts', 'src/codeReview/**/*.test.ts'],
     pool: 'threads',
-    fileParallelism: false,
-    maxWorkers: 1,
+    // Files run in parallel; half the cores leaves room for e2e and builds
+    // sharing the machine. Override per run with `--maxWorkers=<n>`.
+    maxWorkers: '50%',
     setupFiles: ['src/__tests__/setup.ts'],
     server: {
       deps: {
