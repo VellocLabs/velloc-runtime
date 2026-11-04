@@ -172,12 +172,16 @@ Groups (eager-or-excluded): `read` (Read/Glob/Grep), `edit`
 (Write/Edit/NotebookEdit), `shell` (Bash/PowerShell), `subagent` (Agent),
 `plan`, `todo`, `webfetch` (WebFetch), `ask` (AskUserQuestion), `schedule` (cron /
 routines), `skills` (Skill/ToolSearch — keep eager whenever anything is
-deferred), `superedit` (SuperEdit), `exec` (exec), `misc` (Sleep).
+deferred), `superedit` (SuperEdit), `exec` (exec), `misc` (Sleep), `sessions`
+(the child-session tools and SendMessage).
 
 Deferrable **skills** (named in `deferredTools:`): `browser`, `a2ui`,
 `agent-teams`. The `shell` *group* may also be deferred. MCP servers are always
 deferred. A skill/group in `deferredTools:` is loaded (its tools registered) but
 hidden from `tools[]` until `Skill('<name>')` / `ToolSearch` activates it.
+A tool that a group in `tools:` names stays visible even when a deferred unit
+also owns it (`sessions` loads SendMessage while `agent-teams` is deferred); a
+`sealedTools:` unit still hides it.
 
 ```yaml
 tools: [read, edit, webfetch, ask, skills, misc]   # eager

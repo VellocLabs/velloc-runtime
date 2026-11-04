@@ -349,6 +349,12 @@ export function resolveDeferrableSkills(
   return out
 }
 
+/** The tools the GROUP entries of a template's `tools:` name. The deferral
+ *  gate treats them as loaded even when a deferred unit also owns them. */
+export function templateListedToolNames(config: TemplateConfig | undefined): string[] {
+  return [...expandGroups((config?.tools ?? []).filter(isToolGroup))]
+}
+
 /**
  * Narrow named items (tools) by a template's `tools` allowlist. Each `tools:`
  * entry is a GROUP name (expanded to its tools via `expandGroups` — see

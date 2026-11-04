@@ -89,6 +89,7 @@ import {
   applyTemplateToolAllowlist,
   getTemplate,
   resolveDeferrableSkills,
+  templateListedToolNames,
   templateAllowsMcp,
   templateWantsFileSnapshots,
   unresolvedAgentNames,
@@ -1094,7 +1095,8 @@ export async function createBrowserRuntime(
   // is also updated, which the synchronous `isEnabled()` evaluation in
   // `getToolsForHostManifestOrPreset` below relies on (no await between here
   // and there — a sibling cannot interleave).
-  registerDeferrableSkills(deferrableSkills, runtimeConfig)
+  const listedToolNames = templateListedToolNames(sessionTemplate?.config)
+  registerDeferrableSkills(deferrableSkills, runtimeConfig, listedToolNames)
   // JS skill catalogs, emitted only while the skill's tools are visible; registration order is
   // emission order. Browser gates by predicate: its tools are published by the host.
   registerSkillCatalog({
@@ -1237,6 +1239,7 @@ export async function createBrowserRuntime(
     registerDeferrableSkills(
       resolveDeferrableSkills(mcpOffering.skillNames, sessionTemplate?.config),
       runtimeConfig,
+      listedToolNames,
     )
     mcpServersOffered.clear()
     for (const name of mcpOffering.servers) mcpServersOffered.add(name)

@@ -38,12 +38,16 @@ type DeferralRegistry = {
   // Tools that belong to a GROUP unit (group tools have no `tool.skill`, so
   // the gate matches them by name): tool name → owning group-unit name.
   groupToolUnits: Map<string, string>
+  // Tools a group in the template's `tools:` names: loaded, so a deferred
+  // unit that also owns one does not hide it. A sealed unit still does.
+  listedTools: ReadonlySet<string>
 }
 
 const EMPTY_REGISTRY: DeferralRegistry = {
   skillDefaults: new Map(),
   sealedUnits: new Set(),
   groupToolUnits: new Map(),
+  listedTools: new Set(),
 }
 
 /** Per-runtime registries, keyed by RuntimeConfig identity (WeakMap — dies
@@ -83,18 +87,21 @@ function registryFor(key?: DeferralKey): DeferralRegistry {
 
 /**
  * Register the deferrable UNITS + their defaults (a unit with `toolNames` is a
- * GROUP, without is a SKILL). Replaces wholesale for THIS key only; keyless
+ * GROUP, without is a SKILL), and the tools the template's `tools:` groups
+ * name (`listedTools`). Replaces wholesale for THIS key only; keyless
  * registration serves tests.
  */
 export function registerDeferrableSkills(
   skills: Iterable<DeferrableSkill>,
   key?: DeferralKey,
+  listedTools: Iterable<string> = [],
 ): void {
   const list = [...skills]
   const registry: DeferralRegistry = {
     skillDefaults: new Map(list.map((s) => [s.name, s.defaultDeferred])),
     sealedUnits: new Set(list.filter((s) => s.sealed).map((s) => s.name)),
     groupToolUnits: new Map(),
+    listedTools: new Set(listedTools),
   }
   for (const s of list) {
     if (s.toolNames) {
@@ -139,6 +146,11 @@ const EMPTY_EXTENSION_UNITS: ReadonlyMap<string, boolean> = new Map()
 /** Whether a tool name is an extension-registered unit for THIS key. */
 export function isExtensionToolUnit(toolName: string, key?: DeferralKey): boolean {
   return extensionUnitsFor(key).has(toolName)
+}
+
+/** Whether a group in the template's `tools:` names this tool under `key`. */
+export function isListedTool(toolName: string, key?: DeferralKey): boolean {
+  return registryFor(key).listedTools.has(toolName)
 }
 
 /** The group-unit a tool belongs to (for tools with no `tool.skill`), if any. */
@@ -245,6 +257,7 @@ export function shouldHideToolFromModel(
     (u): u is string => isSkillDeferred(u, key),
   )
   if (units.length === 0) return false
+  if (isListedTool(tool.name, key)) return units.some((u) => isSkillSealed(u, key))
   return units.every((u) => isSkillSealed(u, key) || !isSkillActive(appState, u))
 }
 

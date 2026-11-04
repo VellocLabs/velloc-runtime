@@ -5,6 +5,7 @@
 import type { ToolContract, ToolContractList } from '../../toolContract'
 import {
   groupUnitForTool,
+  isListedTool,
   isSkillDeferred,
   isSkillSealed,
   type DeferralKey,
@@ -23,10 +24,11 @@ export function isToolSealed(tool: ToolContract, key: DeferralKey): boolean {
   )
 }
 
-/** Deferred and not sealed: the tools the loader may list and load. */
+/** Deferred, not sealed and not loaded by a `tools:` group: the tools the
+ *  loader may list and load. */
 export function loadableTools(tools: ToolContractList, key: DeferralKey): ToolContract[] {
   return tools.filter(tool => {
-    if (isToolSealed(tool, key)) return false
+    if (isToolSealed(tool, key) || isListedTool(tool.name, key)) return false
     return (
       isSkillDeferred(tool.skill, key) ||
       isSkillDeferred(groupUnitForTool(tool.name, key), key)

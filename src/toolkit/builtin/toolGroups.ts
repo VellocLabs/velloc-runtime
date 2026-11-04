@@ -55,7 +55,9 @@ export const TOOL_GROUPS = {
    *  runtime set (visible, deferred, or sealed) to dispatch through. */
   exec: ['Exec'],
   /** Sessions of this runtime: start, propose or hand off a child session,
-   *  list, describe, read, message, stop, archive, detach (F-36). */
+   *  list, describe, read, message, stop, archive, detach (F-36).
+   *  `SendMessage` is also an `agent-teams` tool; listing this group loads it
+   *  even while that skill is deferred. */
   sessions: [
     'SpawnSession',
     'ProposeSession',
@@ -68,6 +70,7 @@ export const TOOL_GROUPS = {
     'ArchiveSession',
     'UnarchiveSession',
     'DetachSession',
+    'SendMessage',
   ],
   /** Misc control. */
   misc: ['Sleep'],
