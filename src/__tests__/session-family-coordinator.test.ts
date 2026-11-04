@@ -25,6 +25,7 @@ type FakeSession = {
   needsAnswer?: boolean
   suppressed?: boolean
   liveWork?: boolean
+  queuedInput?: boolean
   trust?: 'trusted' | 'untrusted'
   transcript?: BrowserTranscriptEntry[]
 }
@@ -98,6 +99,9 @@ class FakeHost implements SessionFamilyHost {
   hasLiveWork(id: string) {
     return this.sessions.get(id)?.liveWork === true
   }
+  hasQueuedInput(id: string) {
+    return this.sessions.get(id)?.queuedInput === true
+  }
   enqueueTurn(id: string, prompt: string) {
     if (!this.isLive(id)) return false
     this.turns.push({ sessionId: id, prompt })
@@ -111,9 +115,7 @@ class FakeHost implements SessionFamilyHost {
     return this.sessions.get(id)?.trust ?? 'trusted'
   }
   clearConversation(id: string) {
-    if (!this.isLive(id)) return false
-    this.cleared.push(id)
-    return true
+    if (this.isLive(id)) this.cleared.push(id)
   }
 }
 
@@ -487,6 +489,7 @@ describe('StopSession with clear', () => {
       ['stopped_by_user', h => { h.sessions.get('c1')!.suppressed = true }],
       ['live_work', h => { h.sessions.get('c1')!.liveWork = true }],
       ['not_live', h => { h.sessions.get('c1')!.live = false }],
+      ['messages_queued', h => { h.sessions.get('c1')!.queuedInput = true }],
       ['child_running', h => { h.add('g', { metadata: lexer, live: true, busy: true }) }],
       ['child_running', h => { h.add('g', { metadata: lexer, starting: true }) }],
     ]

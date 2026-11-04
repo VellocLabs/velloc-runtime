@@ -139,7 +139,7 @@ export function isDelegatedOver(
   return false
 }
 
-/** Whether the caller may stop, archive or unarchive the target: only a
+/** Whether the caller may stop, clear, archive or unarchive the target: only a
  *  session it is delegated over. A teammate is its team's. */
 export function controlDecision(
   callerSessionId: string,
@@ -250,6 +250,7 @@ export type ClearState = {
   stoppedByUser: boolean
   liveWork: boolean
   childRunning: boolean
+  /** Peer messages, task results or team frames wait for the session. */
   messagesQueued: boolean
 }
 
@@ -277,7 +278,7 @@ export function clearDecision(state: ClearState): { ok: true } | { ok: false; co
     return { ok: false, code: 'child_running', reason: 'a session it started is still running or starting; wait for its report first.' }
   }
   if (state.messagesQueued) {
-    return { ok: false, code: 'messages_queued', reason: 'messages are waiting to be delivered to the session; clearing would drop them.' }
+    return { ok: false, code: 'messages_queued', reason: 'messages or task results are waiting to be delivered to the session; clearing would drop them.' }
   }
   return { ok: true }
 }

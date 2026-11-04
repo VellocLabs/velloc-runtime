@@ -91,9 +91,12 @@ export interface SessionFamilyHost {
   /** Stop the session's current turn the way the user's Stop does; `by` is
    *  the session whose model asked. */
   interrupt(sessionId: string, by: string): void
+  /** Task results or team frames are queued for the session's next turn. */
+  hasQueuedInput(sessionId: string): boolean
   /** Start the session's conversation over the way the user's `/clear`
-   *  does; false without a live worker. */
-  clearConversation(sessionId: string): boolean
+   *  does, through the same per-submit path; a no-op without a live
+   *  worker. */
+  clearConversation(sessionId: string): void
   trustOf(sessionId: string): TeamMessageTrust
   tracer: SessionTracer
   /** `lineage.detach` on `callerSessionId`'s plugins; null when none hooks
@@ -468,12 +471,10 @@ export class SessionFamilyCoordinator implements SessionDirectory {
       childRunning: directChildrenOf(target, index).some(
         child => this.host.isStarting(child) || (this.host.isLive(child) && this.host.isBusy(child)),
       ),
-      messagesQueued: this.mailbox.hasPending(target),
+      messagesQueued: this.mailbox.hasPending(target) || this.host.hasQueuedInput(target),
     })
     if (!decision.ok) return decision
-    if (!this.host.clearConversation(target)) {
-      return { ok: false, code: 'not_live', reason: 'the session is not running in this runtime; there is no conversation to clear here.' }
-    }
+    this.host.clearConversation(target)
     return { ok: true }
   }
 

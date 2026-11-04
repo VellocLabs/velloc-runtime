@@ -1587,6 +1587,8 @@ export class SharedWorkerSessionManager {
       },
       isDeliverySuppressed: sessionId => this.taskDelivery.isSuppressed(sessionId),
       hasLiveWork: sessionId => this.hasLiveWorkFor(sessionId),
+      hasQueuedInput: sessionId =>
+        this.taskDelivery.hasPending(sessionId) || this.teams.hasQueuedFrames(sessionId),
       enqueueTurn: (sessionId, prompt) => {
         const session = this.sessions.get(sessionId)
         if (!session) return false
@@ -1605,15 +1607,12 @@ export class SharedWorkerSessionManager {
       // session's own input so it runs as a command; a peer message never would.
       clearConversation: sessionId => {
         const session = this.sessions.get(sessionId)
-        if (!session) return false
-        void session.worker
-          .receiveFrame({
-            type: 'worker.submitMessage',
-            sessionId,
-            payload: { prompt: '/clear' },
-          } as SessionWorkerInboundMessage)
-          .catch(() => {})
-        return true
+        if (!session) return
+        this.deliverSessionFrame(session, {
+          type: 'worker.submitMessage',
+          sessionId,
+          payload: { prompt: '/clear' },
+        } as SessionWorkerInboundMessage, null)
       },
       trustOf: sessionId => this.getSessionTrust(sessionId),
       tracer: this.tracer,
@@ -3646,46 +3645,7 @@ export class SharedWorkerSessionManager {
       return
     }
 
-    // A genuine user turn re-arms background-task delivery: any results that
-    // were suppressed by a prior Stop should flush once the user is actively
-    // driving the conversation again.
-    // Suppression is now owned by TaskDeliveryQueue.
-    if (message.type === 'worker.submitMessage') {
-      this.taskDelivery.resumeParent(sessionId)
-      this.childReports.personWrote(sessionId, message.payload.prompt)
-      // A person's new message closes the session's open offers (F-36).
-      this.proposals.supersedeOpenOffers(sessionId)
-    }
-
-    // submitMessage and clearPendingMessage are handled internally
-    // by the Worker (which owns the submit queue + pending message). The Manager
-    // only intercepts for lifecycle (worker.init above) and cross-session
-    // concerns (worker.interrupt cascade below).
-    void session.worker.receiveFrame(message).catch(error => {
-      if (
-        this.sessions.get(sessionId) !== session ||
-        (error instanceof Error && error.name === 'AbortError')
-      ) {
-        return
-      }
-      const messageText =
-        error instanceof Error ? error.message : String(error)
-      try {
-        port.postMessage({
-          type: 'worker.error',
-          sessionId,
-          payload: {
-            code: 'worker_message_failed',
-            message: messageText,
-          },
-        })
-      } catch {
-        // Port may already be gone.
-      }
-      this.tracer.event('worker.manager.message.failed', {
-        attrs: { sessionId, type: message.type, message: messageText },
-      })
-    })
+    this.deliverSessionFrame(session, message, port)
 
     // User Stop on a session = "halt everything this session started", not just
     // the parent turn. The interrupt above unblocks any TaskOutput(block) the
@@ -3705,6 +3665,55 @@ export class SharedWorkerSessionManager {
       // Suppression is now owned by TaskDeliveryQueue.
       this.interruptCascade(sessionId)
     }
+  }
+
+  /**
+   * Hand a frame to the session's worker the way the session's own client
+   * does. Every submit through here is the person's input: it runs the
+   * per-submit hooks first. A failure is traced, and reported on `port` when
+   * there is one. (F-36)
+   */
+  private deliverSessionFrame(
+    session: SessionEntry,
+    message: SessionWorkerInboundMessage,
+    port: MessagePort | null,
+  ): void {
+    const { sessionId } = message
+    // A person's submit re-arms background-task delivery held by a Stop.
+    if (message.type === 'worker.submitMessage') {
+      this.taskDelivery.resumeParent(sessionId)
+      this.childReports.personWrote(sessionId, message.payload.prompt)
+      // A person's new message closes the session's open offers (F-36).
+      this.proposals.supersedeOpenOffers(sessionId)
+    }
+
+    // The worker owns the submit queue and the pending message; the manager
+    // only adds the cross-session concerns.
+    void session.worker.receiveFrame(message).catch(error => {
+      if (
+        this.sessions.get(sessionId) !== session ||
+        (error instanceof Error && error.name === 'AbortError')
+      ) {
+        return
+      }
+      const messageText =
+        error instanceof Error ? error.message : String(error)
+      try {
+        port?.postMessage({
+          type: 'worker.error',
+          sessionId,
+          payload: {
+            code: 'worker_message_failed',
+            message: messageText,
+          },
+        })
+      } catch {
+        // Port may already be gone.
+      }
+      this.tracer.event('worker.manager.message.failed', {
+        attrs: { sessionId, type: message.type, message: messageText },
+      })
+    })
   }
 
   /**
