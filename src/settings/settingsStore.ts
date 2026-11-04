@@ -1011,11 +1011,26 @@ export class SettingsUnreadableError extends Error {
 }
 
 /**
+ * Security: the fresh read every read-modify-write starts from. Throws
+ * `SettingsUnreadableError` when the file exists but could not be read,
+ * parsed or understood, so no writer replaces content it never saw (the
+ * `modelMasking` section included: dropping it would turn masking off).
+ */
+async function readLayerForWrite(
+  source: SettingsLayer,
+  ctx: SettingsPathContext,
+  fs: RuntimeFs,
+): Promise<NexusSettingsV1> {
+  const { settings, unread } = await readLayerFresh(source, ctx, fs)
+  if (unread) throw new SettingsUnreadableError(layerFilePath(source, ctx))
+  return settings
+}
+
+/**
  * Read-modify-write one top-level section; the updater returns the next value
  * (`undefined` clears it). Other sections are preserved; no write when
- * equivalent. The read bypasses the cache. With `refuseUnread`, throws
- * `SettingsUnreadableError` and writes nothing when the file exists but its
- * content is unknown.
+ * equivalent. The read bypasses the cache. Throws `SettingsUnreadableError`
+ * and writes nothing when the file exists but its content is unknown.
  */
 export async function updateSectionInSource<K extends keyof NexusSettingsV1>(
   source: SettingsLayer,
@@ -1023,7 +1038,6 @@ export async function updateSectionInSource<K extends keyof NexusSettingsV1>(
   fs: RuntimeFs,
   section: K,
   updater: (prev: NexusSettingsV1[K]) => NexusSettingsV1[K],
-  options: { refuseUnread?: boolean } = {},
 ): Promise<NexusSettingsV1> {
   if (section === 'version') {
     throw new Error(
@@ -1033,8 +1047,7 @@ export async function updateSectionInSource<K extends keyof NexusSettingsV1>(
   return enqueueSettingsUpdate(
     layerFilePath(source, ctx),
     async () => {
-      const { settings, unread } = await readLayerFresh(source, ctx, fs)
-      if (unread && options.refuseUnread) throw new SettingsUnreadableError(layerFilePath(source, ctx))
+      const settings = await readLayerForWrite(source, ctx, fs)
       const before = settings[section]
       const after = updater(before)
 
@@ -1428,7 +1441,7 @@ export async function updateMemorySettingsInSource(
   patch: MemorySettingsPatch,
 ): Promise<NexusSettingsV1> {
   return enqueueSettingsUpdate(layerFilePath(source, ctx), async () => {
-    const { settings } = await readLayerFresh(source, ctx, fs)
+    const settings = await readLayerForWrite(source, ctx, fs)
     const next: NexusSettingsV1 = { ...settings, version: NEXUS_SETTINGS_VERSION }
 
     for (const k of [
@@ -1494,7 +1507,7 @@ export async function updateSessionModelSettingsInSource(
   patch: SessionModelSettingsPatch,
 ): Promise<NexusSettingsV1> {
   return enqueueSettingsUpdate(layerFilePath(source, ctx), async () => {
-    const { settings } = await readLayerFresh(source, ctx, fs)
+    const settings = await readLayerForWrite(source, ctx, fs)
     const next: NexusSettingsV1 = { ...settings, version: NEXUS_SETTINGS_VERSION }
 
     if (patch.modelTiers) {
@@ -1541,7 +1554,7 @@ export async function updateUserModelAutoCompactWindow(
 ): Promise<NexusSettingsV1> {
   return enqueueSettingsUpdate(layerFilePath('userSettings', { homeDir }), async () => {
     const ctx = { homeDir }
-    const { settings } = await readLayerFresh('userSettings', ctx, fs)
+    const settings = await readLayerForWrite('userSettings', ctx, fs)
     const models = { ...settings.modelSettings }
     const entry = { ...models[modelId] }
     if (tokens === null) delete entry.autoCompactWindow

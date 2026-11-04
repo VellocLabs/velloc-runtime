@@ -473,6 +473,9 @@ export const en = {
   'providerIssue.maskingBroken.title': 'Masking rules unusable',
   'providerIssue.maskingBroken.summary':
     'Keyword masking is turned on but its rules are empty or invalid, so {product} did not send this request rather than send your keywords as they are. Fix the rules with /masking rules or turn masking off with /masking off, then choose Try again.',
+  'providerIssue.maskingUndecodable.title': 'Attachment cannot be masked',
+  'providerIssue.maskingUndecodable.summary':
+    'Keyword masking is on, and a text attachment in this request is not UTF-8 text, so it could not be masked. {product} did not send the request rather than send it as it is. Save the file as UTF-8 or remove it, or turn masking off with /masking off, then choose Try again.',
   'providerIssue.network.title': 'Network connection issue',
   'providerIssue.network.summary':
     '{product} could not reliably reach the provider. {product} retries automatically before surfacing the API error.',

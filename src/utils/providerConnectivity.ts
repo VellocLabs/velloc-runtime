@@ -253,6 +253,7 @@ export function classifyProviderConnectivityIssue(
       residual: ['providerIssue.maskingResidual.title', 'providerIssue.maskingResidual.summary'],
       unknown: ['providerIssue.maskingUnknown.title', 'providerIssue.maskingUnknown.summary'],
       broken: ['providerIssue.maskingBroken.title', 'providerIssue.maskingBroken.summary'],
+      undecodable: ['providerIssue.maskingUndecodable.title', 'providerIssue.maskingUndecodable.summary'],
     } as const satisfies Record<string, readonly [MessageKey, MessageKey]>
     const [titleKey, summaryKey] = keys[masking.kind]
     return {

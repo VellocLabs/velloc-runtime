@@ -3,6 +3,7 @@ import type { BridgeModelRequestPayload } from '../browser/bridge/browserBridgeP
 import type { DriverStreamEvent } from '../models/drivers/driverTypes'
 import { compileMasking, type MaskingRule } from '../models/masking/maskingRules'
 import { maskPayload, MaskingTally, PayloadMasker } from '../models/masking/maskPayload'
+import { MaskingUndecodableError } from '../models/masking/egressGuard'
 import { createRestoreFilter, type RestoreWhere } from '../models/masking/restoreStream'
 
 const RULES: MaskingRule[] = [
@@ -155,6 +156,41 @@ describe('maskPayload: what counts as opaque', () => {
     const [maskedText, keptPdf] = out.messages[0]!.content as any[]
     expect(new TextDecoder().decode(Uint8Array.from(atob(maskedText.data), c => c.charCodeAt(0)))).toBe('notes about Northwind')
     expect(keptPdf).toBe(pdf)
+  })
+
+  describe('a text/* document it cannot read as UTF-8 text', () => {
+    const bytes = (values: number[]) => btoa(String.fromCharCode(...values))
+    const latin1 = (text: string) => bytes([...text].map(c => c.charCodeAt(0)))
+    const utf16le = (text: string) => bytes([...text].flatMap(c => [c.charCodeAt(0) & 0xff, c.charCodeAt(0) >> 8]))
+    const mask = (part: Record<string, unknown>) =>
+      maskPayload({ messages: [{ role: 'user', content: [part as never] }] }, new PayloadMasker(masking, new MaskingTally(false)))
+
+    for (const [name, part] of [
+      ['Latin-1 bytes', { type: 'document', data: latin1('AcmeCo caf\u00e9 plan'), mimeType: 'text/plain' }],
+      ['UTF-16LE bytes', { type: 'document', data: bytes([0xff, 0xfe, ...[...'AcmeCo secret'].flatMap(c => [c.charCodeAt(0), 0])]), mimeType: 'text/plain; charset=utf-16' }],
+      ['data that is not base64', { type: 'document', data: 'AcmeCo plan, not base64!', mimeType: 'text/markdown' }],
+      ['data that is not a string', { type: 'document', data: { text: 'AcmeCo' }, mimeType: 'text/plain' }],
+      ['an undecodable document field', { type: 'document', document: latin1('AcmeCo \u00e9'), mimeType: 'text/csv' }],
+      ['one nested in a tool result', { type: 'tool-result', toolCallId: 't', content: [{ type: 'document', data: latin1('AcmeCo \u00e9'), media_type: 'TEXT/plain' }] }],
+    ] as const) {
+      it(`${name}: refused, never sent as it is`, () => {
+        expect(() => mask(part)).toThrow(MaskingUndecodableError)
+      })
+    }
+
+    it('UTF-16 without a byte-order mark (valid UTF-8 with NULs) is refused, keyword or not', () => {
+      expect(() => mask({ type: 'document', data: utf16le('AcmeCo secret'), mimeType: 'text/plain' })).toThrow(MaskingUndecodableError)
+      expect(() => mask({ type: 'document', data: utf16le('hello'), mimeType: 'text/plain' })).toThrow(MaskingUndecodableError)
+    })
+
+    it('a UTF-8 document with an accent is still masked, and a PDF still sent whole', () => {
+      const b64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)))
+      const out = mask({ type: 'document', data: b64('AcmeCo caf\u00e9'), mimeType: 'text/plain' })
+      const [part] = out.messages[0]!.content as any[]
+      expect(new TextDecoder().decode(Uint8Array.from(atob(part.data), c => c.charCodeAt(0)))).toBe('Northwind caf\u00e9')
+      const pdf = { type: 'document', data: latin1('%PDF (AcmeCo) Tj \u00e9'), mimeType: 'application/pdf' }
+      expect((mask(pdf).messages[0]!.content as any[])[0]).toBe(pdf)
+    })
   })
 
   it('the log context never shows a neighbouring match in clear', () => {

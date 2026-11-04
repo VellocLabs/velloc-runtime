@@ -440,6 +440,9 @@ export const ja: Messages = {
   'providerIssue.maskingBroken.title': '置き換えのルールが使用できません',
   'providerIssue.maskingBroken.summary':
     'キーワードの置き換えはオンですが、ルールが空か無効です。キーワードをそのまま送信しないよう、{product} はこのリクエストを送信しませんでした。/masking rules でルールを修正するか /masking off で置き換えをオフにしてから、「再試行」を選んでください。',
+  'providerIssue.maskingUndecodable.title': '添付ファイルを置き換えられません',
+  'providerIssue.maskingUndecodable.summary':
+    'キーワードの置き換えはオンですが、このリクエストのテキスト添付ファイルが UTF-8 テキストではないため、置き換えられませんでした。そのまま送信しないよう、{product} はリクエストを送信しませんでした。ファイルを UTF-8 で保存し直すか削除するか、/masking off で置き換えをオフにしてから、「再試行」を選んでください。',
   'providerIssue.network.title': 'ネットワーク接続の問題',
   'providerIssue.network.summary':
     '{product} はプロバイダに安定して接続できませんでした。{product} は自動的に再試行してから、API エラーを表示します。',

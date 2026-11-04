@@ -151,8 +151,6 @@ export async function runMaskingCommand(
           const updated = update({ ...(prev ?? {}) })
           return Object.keys(updated).length > 0 ? updated : undefined
         },
-        // A file whose content is unknown is never replaced by one section.
-        { refuseUnread: true },
       )
       holder.configure(next.modelMasking)
       return undefined

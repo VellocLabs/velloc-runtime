@@ -3,12 +3,14 @@
  * the classifier and the API-error card name the cause in the reader's own
  * language. `residual`: the request still held a rule's match. `unknown`: the
  * masking settings are not read yet. `broken`: masking is on but its table is
- * empty or invalid. Dependency-free: worker and webview.
+ * empty or invalid. `undecodable`: a `text/*` document could not be read as
+ * UTF-8 text, so it could not be masked. Dependency-free: worker and webview.
  */
 export type MaskingRefusal =
   | { kind: 'residual'; rule: number; where: string }
   | { kind: 'unknown' }
   | { kind: 'broken' }
+  | { kind: 'undecodable' }
 
 const MARKER = 'model_masking_refused'
 
@@ -27,6 +29,7 @@ export function maskingRefusalOf(text: string): MaskingRefusal | undefined {
   const residual = /^residual rule=(\d+) where=(\S+)/.exec(rest)
   if (residual) return { kind: 'residual', rule: Number(residual[1]), where: residual[2]! }
   if (rest.startsWith('broken')) return { kind: 'broken' }
+  if (rest.startsWith('undecodable')) return { kind: 'undecodable' }
   if (rest.startsWith('unknown')) return { kind: 'unknown' }
   return undefined
 }

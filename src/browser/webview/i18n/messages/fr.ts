@@ -443,6 +443,9 @@ export const fr: Messages = {
   'providerIssue.maskingBroken.title': 'Règles de remplacement inutilisables',
   'providerIssue.maskingBroken.summary':
     'Le remplacement des mots-clés est activé, mais ses règles sont vides ou invalides : {product} n’a donc pas envoyé cette requête plutôt que d’envoyer vos mots-clés tels quels. Corrigez les règles avec /masking rules ou désactivez le remplacement avec /masking off, puis choisissez « Réessayer ».',
+  'providerIssue.maskingUndecodable.title': 'Pièce jointe impossible à remplacer',
+  'providerIssue.maskingUndecodable.summary':
+    'Le remplacement des mots-clés est activé, et une pièce jointe texte de cette requête n’est pas du texte UTF-8 : elle n’a donc pas pu être remplacée. {product} n’a pas envoyé la requête plutôt que de l’envoyer telle quelle. Enregistrez le fichier en UTF-8 ou retirez-le, ou désactivez le remplacement avec /masking off, puis choisissez « Réessayer ».',
   'providerIssue.network.title': 'Problème de connexion réseau',
   'providerIssue.network.summary':
     '{product} n’a pas pu joindre le fournisseur de manière fiable. {product} réessaie automatiquement avant d’afficher l’erreur d’API.',

@@ -445,6 +445,9 @@ export const es: Messages = {
   'providerIssue.maskingBroken.title': 'Reglas de reemplazo inutilizables',
   'providerIssue.maskingBroken.summary':
     'El reemplazo de palabras clave está activado, pero sus reglas están vacías o no son válidas, así que {product} no envió esta solicitud en lugar de enviar tus palabras clave tal cual. Corrige las reglas con /masking rules o desactiva el reemplazo con /masking off y luego elige «Reintentar».',
+  'providerIssue.maskingUndecodable.title': 'No se puede reemplazar el adjunto',
+  'providerIssue.maskingUndecodable.summary':
+    'El reemplazo de palabras clave está activado y un adjunto de texto de esta solicitud no es texto UTF-8, así que no se pudo reemplazar. {product} no envió la solicitud en lugar de enviarla tal cual. Guarda el archivo como UTF-8 o quítalo, o desactiva el reemplazo con /masking off, y luego elige «Reintentar».',
   'providerIssue.network.title': 'Problema de conexión de red',
   'providerIssue.network.summary':
     '{product} no pudo comunicarse de forma fiable con el proveedor. {product} reintenta automáticamente antes de mostrar el error de API.',

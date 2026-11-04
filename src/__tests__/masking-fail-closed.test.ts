@@ -21,6 +21,11 @@ import { providerErrorSummaryKey } from '../components/assistant-ui/thread'
 import { createTranslate } from '../browser/webview/i18n/translate'
 import { en } from '../browser/webview/i18n/messages/en'
 import { de } from '../browser/webview/i18n/messages/de'
+import { es } from '../browser/webview/i18n/messages/es'
+import { fr } from '../browser/webview/i18n/messages/fr'
+import { ja } from '../browser/webview/i18n/messages/ja'
+import { ko } from '../browser/webview/i18n/messages/ko'
+import { zh } from '../browser/webview/i18n/messages/zh'
 
 const RULES = [{ match: 'AcmeCo', alias: 'Northwind' }]
 
@@ -214,6 +219,39 @@ describe('the guard of a stream', () => {
   })
 })
 
+describe('a text document that cannot be masked', () => {
+  const latin1 = (text: string) => btoa(text)
+
+  it('is refused with the undecodable card, sends nothing, and is not retried', async () => {
+    modelMasking.configure({ enabled: true, rules: RULES })
+    const { transport, opened } = recordingTransport()
+    const host = new DriverStreamHost(transport)
+    const doc = { type: 'document', data: latin1('AcmeCo caf\u00e9 plan'), mimeType: 'text/plain' }
+    const { streamId } = host.start(provider(), { messages: [{ role: 'user', content: [doc] as never }] }, 'm')
+    const chunks = await drain(host, streamId)
+    expect(opened).toEqual([])
+    const error = chunks.find(c => c.type === 'error')
+    expect(maskingRefusalOf(error.error.message)).toEqual({ kind: 'undecodable' })
+    expect(error.httpStatus ?? error.error.httpStatus).toBe(400)
+    expect(classifyProviderConnectivityIssue(error.error.message)).toMatchObject({
+      error: 'masking_refused',
+      titleKey: 'providerIssue.maskingUndecodable.title',
+      summaryKey: 'providerIssue.maskingUndecodable.summary',
+      retryable: false,
+    })
+  })
+
+  it('is sent as it is while masking is off', async () => {
+    modelMasking.configure({ enabled: false, rules: RULES })
+    const { transport, opened } = recordingTransport()
+    const host = new DriverStreamHost(transport)
+    const doc = { type: 'document', data: latin1('caf\u00e9'), mimeType: 'text/plain' }
+    const { streamId } = host.start(provider(), { messages: [{ role: 'user', content: [doc] as never }] }, 'm')
+    await drain(host, streamId)
+    expect(opened).toHaveLength(1)
+  })
+})
+
 describe('the User-Agent outside chat streams', () => {
   it('is sent explicitly and masked while masking is on', async () => {
     modelMasking.configure({ enabled: true, rules: RULES })
@@ -252,7 +290,7 @@ describe('the User-Agent outside chat streams', () => {
 
 describe('a masking refusal on the error card', () => {
   it('carries a marker, not English prose, and round-trips', () => {
-    for (const refusal of [{ kind: 'residual', rule: 3, where: 'header:user-agent' }, { kind: 'unknown' }, { kind: 'broken' }] as const) {
+    for (const refusal of [{ kind: 'residual', rule: 3, where: 'header:user-agent' }, { kind: 'unknown' }, { kind: 'broken' }, { kind: 'undecodable' }] as const) {
       const message = maskingRefusalMessage(refusal)
       expect(message).not.toMatch(/blocked|masking rule/i)
       expect(maskingRefusalOf(`provider_error: ${message}`)).toEqual(refusal)
@@ -276,13 +314,17 @@ describe('a masking refusal on the error card', () => {
       'providerIssue.maskingResidual.summary',
       'providerIssue.maskingUnknown.summary',
       'providerIssue.maskingBroken.summary',
+      'providerIssue.maskingUndecodable.title',
+      'providerIssue.maskingUndecodable.summary',
       'thread.providerMaskingNoRetrySummary',
       'statusBar.retryKind.masking_refused',
     ] as const
     for (const key of keys) {
       expect(en[key]).toBeTruthy()
-      expect(de[key]).toBeTruthy()
-      expect(de[key]).not.toBe(en[key])
+      for (const locale of [de, es, fr, ja, ko, zh]) {
+        expect(locale[key]).toBeTruthy()
+        expect(locale[key]).not.toBe(en[key])
+      }
     }
     const text = createTranslate('de')('providerIssue.maskingResidual.summary', { rule: 2, where: 'body', product: 'Velloc' })
     expect(text).toContain('2')

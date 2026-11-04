@@ -30,6 +30,15 @@ export class MaskingResidualError extends Error {
   }
 }
 
+/** Thrown before a request holding a `text/*` document that cannot be read
+ *  as UTF-8 text: it cannot be masked, so it is not sent. */
+export class MaskingUndecodableError extends Error {
+  constructor(readonly where: string) {
+    super(maskingRefusalMessage({ kind: 'undecodable' }))
+    this.name = 'MaskingUndecodableError'
+  }
+}
+
 /** Thrown instead of sending while masking is wanted but cannot be applied:
  *  its settings are not read yet (`unknown`) or its table is unusable
  *  (`broken`). Nothing is sent. */

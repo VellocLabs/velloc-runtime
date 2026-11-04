@@ -437,6 +437,9 @@ export const zh: Messages = {
   'providerIssue.maskingBroken.title': '替换规则不可用',
   'providerIssue.maskingBroken.summary':
     '关键词替换已开启，但其规则为空或无效，因此 {product} 没有发送此请求，而不是将你的关键词原样发出。请用 /masking rules 修正规则，或用 /masking off 关闭替换，然后选择“重试”。',
+  'providerIssue.maskingUndecodable.title': '无法替换附件',
+  'providerIssue.maskingUndecodable.summary':
+    '关键词替换已开启，而此请求中的一个文本附件不是 UTF-8 文本，因此无法替换。{product} 没有发送该请求，而不是将其原样发出。请将文件另存为 UTF-8 或移除它，或用 /masking off 关闭替换，然后选择“重试”。',
   'providerIssue.network.title': '网络连接问题',
   'providerIssue.network.summary':
     '{product} 无法稳定地连接到服务商。{product} 会先自动重试，然后再显示该 API 错误。',

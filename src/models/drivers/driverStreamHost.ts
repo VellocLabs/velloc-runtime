@@ -29,7 +29,7 @@ import {
 } from './providerRequestSeam'
 import { sessionWorkingDirOf } from './sessionWorkingDirs'
 import { modelMasking, withMaskedUserAgent, type MaskingStream } from '../masking/maskingHolder'
-import { MaskingResidualError, MaskingUnavailableError } from '../masking/egressGuard'
+import { MaskingResidualError, MaskingUnavailableError, MaskingUndecodableError } from '../masking/egressGuard'
 import { storedKeyProblemFromReason, withStoredKeyMarker } from '../../utils/storedKeyProblem'
 
 // A non-2xx body is read whole for the error message; cap it.
@@ -233,7 +233,9 @@ class DriverStream {
       if (this.masking) this.payload = this.masking.maskPayload(this.payload)
       request = this.provider.buildRequest(this.payload, this.model)
     } catch (error) {
-      if (error instanceof MaskingResidualError) this.fail(errorText(error), maskingRefusal(error))
+      if (error instanceof MaskingResidualError || error instanceof MaskingUndecodableError) {
+        this.fail(errorText(error), maskingRefusal(error))
+      }
       else this.fail(`Failed to build the ${this.provider.format} request: ${errorText(error)}`)
       return
     }
@@ -429,7 +431,11 @@ class DriverStream {
 /** A request masking stopped is a refusal, not a broken connection: the
  *  engine must not retry it. */
 function maskingRefusal(error: unknown): { httpStatus?: number } {
-  return error instanceof MaskingResidualError || error instanceof MaskingUnavailableError ? { httpStatus: 400 } : {}
+  return error instanceof MaskingResidualError
+    || error instanceof MaskingUnavailableError
+    || error instanceof MaskingUndecodableError
+    ? { httpStatus: 400 }
+    : {}
 }
 
 /** A request that ended because the provider's sign-in is over is a refusal

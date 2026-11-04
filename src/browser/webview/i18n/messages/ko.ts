@@ -437,6 +437,9 @@ export const ko: Messages = {
   'providerIssue.maskingBroken.title': '바꾸기 규칙을 사용할 수 없음',
   'providerIssue.maskingBroken.summary':
     '키워드 바꾸기가 켜져 있지만 규칙이 비어 있거나 유효하지 않아, 키워드를 그대로 보내는 대신 {product}이(가) 이 요청을 보내지 않았습니다. /masking rules로 규칙을 고치거나 /masking off로 바꾸기를 끈 뒤 "다시 시도"를 선택하세요.',
+  'providerIssue.maskingUndecodable.title': '첨부 파일을 바꿀 수 없음',
+  'providerIssue.maskingUndecodable.summary':
+    '키워드 바꾸기가 켜져 있는데 이 요청의 텍스트 첨부 파일이 UTF-8 텍스트가 아니어서 바꿀 수 없었습니다. 그대로 보내는 대신 {product}이(가) 요청을 보내지 않았습니다. 파일을 UTF-8로 저장하거나 제거하거나, /masking off로 바꾸기를 끈 뒤 "다시 시도"를 선택하세요.',
   'providerIssue.network.title': '네트워크 연결 문제',
   'providerIssue.network.summary':
     '{product}이(가) 제공업체에 안정적으로 연결하지 못했습니다. {product}은(는) 자동으로 재시도한 후 API 오류를 표시합니다.',

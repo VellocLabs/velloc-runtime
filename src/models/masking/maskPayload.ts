@@ -10,10 +10,15 @@
  * judged by its `type` wherever it sits (a tool result's content too): an
  * image and redacted thinking are left whole, a thinking part's `signature`
  * is left as is, and a document is masked after decoding when its media type
- * is `text/*` (other documents are left whole). Never masked:
+ * is `text/*` (other documents, PDF included, are sent whole). Never masked:
  * `requestContext`, `model`, `providerId`. The egress guard catches what is
- * left. Two object keys that would mask to the same key are refused
- * (`MaskingResidualError`), never merged.
+ * left.
+ *
+ * Security: refused rather than sent (nothing is masked or sent): two object
+ * keys that would mask to the same key (`MaskingResidualError`), and a
+ * `text/*` document whose `data` / `document` field is not a base64 string of
+ * UTF-8 text without NUL characters (`MaskingUndecodableError`); the guard
+ * cannot see inside base64.
  */
 import type {
   BridgeModelContentPart,
@@ -22,7 +27,7 @@ import type {
   BridgeModelToolDefinition,
 } from '../../browser/bridge/browserBridgeProtocol'
 import type { CompiledMasking, MaskingHit } from './maskingRules'
-import { MaskingResidualError } from './egressGuard'
+import { MaskingResidualError, MaskingUndecodableError } from './egressGuard'
 
 export type MaskingWhere = 'messages' | 'system' | 'tools' | 'extension'
 
@@ -71,7 +76,9 @@ function decodeBase64Text(data: string): string | undefined {
     const binary = atob(data)
     const bytes = new Uint8Array(binary.length)
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
-    return UTF8_DECODER.decode(bytes)
+    const text = UTF8_DECODER.decode(bytes)
+    // NUL bytes mean UTF-16/32 or binary: a keyword there would not match.
+    return text.includes('\u0000') ? undefined : text
   } catch {
     return undefined
   }
@@ -167,15 +174,16 @@ export class PayloadMasker {
     return changed ? out : value
   }
 
-  /** A `text/*` document is masked inside its base64; any other is left whole. */
+  /** A `text/*` document is masked inside its base64; any other is left whole.
+   *  Throws `MaskingUndecodableError` when its data is not base64 UTF-8 text. */
   private document(value: Record<string, unknown>, where: string): Record<string, unknown> {
     if (!mediaTypeOf(value).startsWith('text/')) return value
     let out: Record<string, unknown> | undefined
     for (const field of ['data', 'document'] as const) {
+      if (!(field in value) || value[field] === undefined) continue
       const data = value[field]
-      if (typeof data !== 'string') continue
-      const text = decodeBase64Text(data)
-      if (text === undefined) continue
+      const text = typeof data === 'string' ? decodeBase64Text(data) : undefined
+      if (text === undefined) throw new MaskingUndecodableError(where)
       const masked = this.text(text, where)
       if (masked !== text) {
         out ??= { ...value }

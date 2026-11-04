@@ -2538,7 +2538,9 @@ const ProviderApiErrorCard: FC = () => {
                   : t(
                       maskingRefusal.kind === "broken"
                         ? "providerIssue.maskingBroken.summary"
-                        : "providerIssue.maskingUnknown.summary",
+                        : maskingRefusal.kind === "undecodable"
+                          ? "providerIssue.maskingUndecodable.summary"
+                          : "providerIssue.maskingUnknown.summary",
                     )}
               </div>
             ) : null}

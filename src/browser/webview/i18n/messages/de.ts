@@ -444,6 +444,9 @@ export const de: Messages = {
   'providerIssue.maskingBroken.title': 'Ersetzungsregeln nicht verwendbar',
   'providerIssue.maskingBroken.summary':
     'Das Ersetzen von Schlüsselwörtern ist eingeschaltet, aber seine Regeln sind leer oder ungültig. Daher hat {product} diese Anfrage nicht gesendet, statt Ihre Schlüsselwörter unverändert zu senden. Beheben Sie die Regeln mit /masking rules oder schalten Sie das Ersetzen mit /masking off aus, und wählen Sie dann „Erneut versuchen“.',
+  'providerIssue.maskingUndecodable.title': 'Anhang kann nicht ersetzt werden',
+  'providerIssue.maskingUndecodable.summary':
+    'Das Ersetzen von Schlüsselwörtern ist eingeschaltet, und ein Textanhang dieser Anfrage ist kein UTF-8-Text, daher konnte er nicht ersetzt werden. {product} hat die Anfrage nicht gesendet, statt sie unverändert zu senden. Speichern Sie die Datei als UTF-8 oder entfernen Sie sie, oder schalten Sie das Ersetzen mit /masking off aus, und wählen Sie dann „Erneut versuchen“.',
   'providerIssue.network.title': 'Problem mit der Netzwerkverbindung',
   'providerIssue.network.summary':
     '{product} konnte den Anbieter nicht zuverlässig erreichen. {product} versucht es automatisch erneut, bevor der API-Fehler angezeigt wird.',
