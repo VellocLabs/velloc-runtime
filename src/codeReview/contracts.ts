@@ -203,7 +203,8 @@ export type ReviewCandidate = {
   statement: { headline: string; details: string; scenario: string }
   kind: Diagnostic['classification']['kind']
   impact: Diagnostic['classification']['impact']
-  support: Array<{ path?: string; quote: string; relevance: string }>
+  /** `source` is the host id of the recorded read or diff side the quote was taken from (F-38). */
+  support: Array<{ source?: string; path?: string; quote: string; relevance: string }>
   assessment: { disposition: Assessment['disposition']; reason: string }
   angle: string
 }

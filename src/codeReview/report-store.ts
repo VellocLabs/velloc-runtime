@@ -118,6 +118,8 @@ export interface PublicationOperation {
   externalRef?: string
 }
 export interface ReportEvidenceSource {
+  /** Host id a support item may cite; `startLine` is the file line of the excerpt's first line. */
+  id?: string; startLine?: number
   path: string; revision: string; toolCallKey?: string; excerpt?: string
 }
 interface StoredCandidate { diagnosticId: string; input: ReportCandidateInput; mechanism: string }
@@ -511,22 +513,24 @@ export class ReviewReportStore {
     })
   }
   // Security: register only host-authorized reads; context sources never authorize diagnostic anchors.
-  async registerEvidenceSource(runId: string, source: ReportEvidenceSource): Promise<void> {
-    return this.registerEvidenceSources(runId, [source])
+  async registerEvidenceSource(runId: string, source: ReportEvidenceSource): Promise<string> {
+    return (await this.registerEvidenceSources(runId, [source]))[0]
   }
-  /** Registers several host-authorized sources in one write; any invalid source rejects them all. */
-  async registerEvidenceSources(runId: string, input: readonly ReportEvidenceSource[]): Promise<void> {
-    const values = input.map(source => this.evidenceSourceValue(source))
-    if (!values.length) return
+  /** Registers several host-authorized sources in one write and returns their ids; any invalid source rejects them all. */
+  async registerEvidenceSources(runId: string, input: readonly ReportEvidenceSource[]): Promise<string[]> {
+    const values = input.map(source => { const { id: _, ...value } = this.evidenceSourceValue(source); return value })
+    if (!values.length) return []
     return this.mutate(runId, state => {
       if (terminal(state.run.progress.status)) return fail('run-terminated')
       const sources = [...(state.evidenceSources ?? [])]
-      const keys = new Set(sources.map(canonical))
-      for (const value of values) {
+      const ids = new Map(sources.map(({ id, ...source }) => [canonical(source), id!]))
+      const assigned = values.map(value => {
         const key = canonical(value)
-        if (!keys.has(key)) { keys.add(key); sources.push(value) }
-      }
+        if (!ids.has(key)) { ids.set(key, `r${sources.length + 1}`); sources.push({ id: ids.get(key)!, ...value }) }
+        return ids.get(key)!
+      })
       state.evidenceSources = sources
+      return assigned
     })
   }
   // Security: only the host's own diff for this run; the sources live in memory until the run finishes (F-38).
@@ -538,15 +542,23 @@ export class ReviewReportStore {
     })
   }
   private evidenceSourceValue(source: ReportEvidenceSource): ReportEvidenceSource {
+    if (source.id !== undefined && !/^[a-z]\d{1,6}$/.test(source.id)) return fail('invalid-evidence-source')
     return {
+      ...(source.id === undefined ? {} : { id: source.id }),
+      ...(source.startLine === undefined ? {} : { startLine: integer(source.startLine) }),
       path: relativePath(source.path), revision: text(source.revision),
       ...(source.toolCallKey === undefined ? {} : { toolCallKey: text(source.toolCallKey) }),
       ...(source.excerpt === undefined ? {} : { excerpt: lineFeeds(this.options.sanitizeExcerpt(excerptText(source.excerpt))) }),
     }
   }
+  private sources(state: RunState): ReportEvidenceSource[] {
+    return [...state.evidenceSources ?? [], ...this.diffSources.get(state.run.id) ?? []]
+  }
   private evidenceSource(state: RunState, diagnostic: ReportDiagnostic, support: ReportSupport, callKey: string): ReportEvidence['source'] {
+    const cited = support.source === undefined ? undefined : this.sources(state).find(source => source.id === support.source)
+    if (cited) return { path: cited.path, revision: cited.revision, toolCallKey: cited.toolCallKey ?? callKey }
     if (!support.path) return { toolCallKey: callKey }
-    const sources = [...state.evidenceSources ?? [], ...this.diffSources.get(state.run.id) ?? []].filter(source => source.path === support.path)
+    const sources = this.sources(state).filter(source => source.path === support.path)
     const quote = lineFeeds(support.quote)
     const quoted = sources.filter(source => source.excerpt?.includes(quote))
     const matching = quoted.length ? quoted : sources.filter(source => source.excerpt === undefined)
@@ -562,9 +574,41 @@ export class ReviewReportStore {
     if (revisions.length !== 1) return fail(revisions.length ? 'ambiguous-evidence-source' : 'unsupported-evidence-source')
     return { path: support.path, revision: revisions[0], toolCallKey: callKey }
   }
+  /**
+   * Contract: a support item that cites `source` takes its path, revision and excerpt from that recorded source:
+   * `quote` must occur in it, or `startLine`..`endLine` (file lines, at most 40) select it; a short source may be cited
+   * whole. Otherwise `quote` is required and attributed by path (F-38).
+   */
+  private citedSupport(state: RunState, support: Record<string, unknown>): ReportSupport {
+    const id = text(support.source)
+    const source = this.sources(state).find(item => item.id === id)
+    if (!source?.excerpt) return fail('unknown-evidence-source')
+    if (support.path !== undefined && relativePath(support.path) !== source.path) return fail('evidence-source-path-mismatch')
+    let quote: string
+    if (support.quote !== undefined) {
+      if (support.startLine !== undefined || support.endLine !== undefined) return fail('invalid-span')
+      quote = lineFeeds(this.options.sanitizeExcerpt(text(support.quote)))
+      if (!source.excerpt.includes(quote)) return fail('quote-not-in-source')
+    } else {
+      const lines = source.excerpt.split('\n'), first = source.startLine ?? 1
+      if (support.startLine === undefined) {
+        if (support.endLine !== undefined) return fail('invalid-span')
+        if (lines.length > 40) return fail('evidence-lines-required')
+        quote = source.excerpt
+      } else {
+        const start = integer(support.startLine), end = support.endLine === undefined ? start : integer(support.endLine)
+        if (start < first || end < start || end - start >= 40 || end >= first + lines.length) return fail('invalid-span')
+        quote = lines.slice(start - first, end - first + 1).join('\n')
+      }
+      if (!quote.trim()) return fail('missing-evidence')
+    }
+    return { source: id, path: source.path, quote, relevance: text(support.relevance) }
+  }
   private support(state: RunState, value: unknown): ReportSupport[] {
     return array(value, 128).map(item => {
-      const support = object(item, ['path', 'quote', 'relevance'])
+      const support = object(item, ['source', 'startLine', 'endLine', 'path', 'quote', 'relevance'])
+      if (support.source !== undefined) return this.citedSupport(state, support)
+      if (support.startLine !== undefined || support.endLine !== undefined) return fail('invalid-span')
       const path = support.path === undefined ? undefined : relativePath(support.path)
       if (path && !state.anchors.some(item => item.anchor.path === path) && !(state.evidenceSources ?? []).some(item => item.path === path)) return fail('unsupported-evidence-path')
       return { ...(path ? { path } : {}), quote: this.options.sanitizeExcerpt(text(support.quote)), relevance: text(support.relevance) }

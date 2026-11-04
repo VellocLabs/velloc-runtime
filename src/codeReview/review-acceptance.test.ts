@@ -217,6 +217,38 @@ it.each(['after', 'working-copy'] as const)('keeps a finder\'s valid candidates 
   await f.service.wait((await f.service.startUser('max')).runId)
   expect(recorded).toEqual({ diagnostics: 1, limitations: expect.arrayContaining(['worker-candidates-rejected']), revisions: [reviewed, base, reviewed], rejected: [{ index: 1, code: 'invalid-path' }] })
 })
+it('shows a finder the hunk sources beside each patch and accepts support that cites one', async () => {
+  const head = 'b'.repeat(40), base = 'a'.repeat(40)
+  let material: Array<{ path: string; sources: Array<{ source: string; side: string; startLine: number }> }> = []
+  let read: { source?: string; startLine?: number } = {}
+  let recorded: Array<[string | undefined, string]> = []
+  const f = fixture({ resolveScope: async () => {
+    const value = manifest()
+    const anchor = (side: 'before' | 'after') => ({ anchorKey: `a-${side}`, path: 'src/a.ts', revision: side === 'before' ? base : head, side, span: { start: 1, end: 9 } })
+    value.scope.revision = { ...value.scope.revision, base, head, workingCopyDigest: undefined }
+    value.files = [{ path: 'src/a.ts', status: 'included', patch: '--- a/src/a.ts\n+++ b/src/a.ts\n@@ -4,2 +4,2 @@\n keep()\n-release()\n+skip()', anchors: [anchor('before'), anchor('after')] }]
+    value.anchors = value.files[0].anchors
+    return { manifest: value, trustedGuidance: '', read: async () => 'line one\nline two\nline three' }
+  }, runModel: async request => {
+    if (request.blocks.some(block => block.source === 'assigned-angles')) {
+      material = JSON.parse(request.blocks.find(block => block.source === 'review-material')!.text)
+      read = (await invoke(request, 'ReviewRead', { operation: 'context', path: 'src/a.ts', startLine: 2 })).data as typeof read
+      const before = material[0].sources.find(item => item.side === 'before')!
+      const anchorKey = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text).anchors.find((item: { side: string }) => item.side === 'after').anchorKey
+      const issue = { location: { anchorKey, path: 'src/a.ts', line: 5, endLine: 5 }, statement: { headline: 'Release skipped', details: 'The release call is gone.', scenario: 'A throw leaks the handle' }, kind: 'correctness', impact: 'major',
+        support: [{ source: before.source, startLine: 5, endLine: 5, relevance: 'The removed release' }, { source: read.source, startLine: 3, relevance: 'Context read' }], assessment: { disposition: 'plausible', reason: 'Read.' }, angle: 'lines' }
+      return { text: JSON.stringify({ candidates: [issue], coverage: { angles: ['lines'], limitations: [] } }), interrupted: false }
+    }
+    await invoke(request, 'Agent', { role: 'finder', angles: ['lines'] })
+    const snapshot = await f.service.store.getSnapshot(JSON.parse(request.blocks.find(block => block.source === 'run-summary')!.text).runId)
+    recorded = snapshot.evidence.map(item => [item.source.revision, item.excerpt])
+    return { text: 'Done.', interrupted: false }
+  } })
+  await f.service.wait((await f.service.startUser('max')).runId).catch(() => undefined)
+  expect(material[0].sources).toEqual([{ source: 'd1', side: 'before', startLine: 4 }, { source: 'd2', side: 'after', startLine: 4 }])
+  expect(read).toMatchObject({ source: expect.stringMatching(/^r\d+$/), startLine: 2 })
+  expect(recorded).toEqual([[base, 'release()'], [head, 'line two']])
+})
 it('does not retry a finder batch candidate by candidate when the run itself refuses the write', async () => {
   let runId = ''
   const f = fixture({ resolveScope: async () => {

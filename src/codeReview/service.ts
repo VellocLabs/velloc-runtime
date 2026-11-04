@@ -70,19 +70,30 @@ export function scopeIndex(manifest: ScopeManifest): Record<string, unknown> {
  * Contract: each included hunk's before and after text, as host-recorded sources at the side's revision, so a support
  * quote taken from the diff is attributed to the side that contains it (F-38).
  */
-function diffEvidenceSources(manifest: ScopeManifest): Array<{ path: string; revision: string; excerpt: string }> {
+type DiffSource = { id: string; file: string; side: 'before' | 'after'; path: string; revision: string; startLine: number; excerpt: string }
+const diffSourceCache = new WeakMap<ScopeManifest, DiffSource[]>()
+/** Each hunk side of the reviewed diff as a citable source, with ids `d1`, `d2`, … in manifest order (F-38). */
+function diffEvidenceSources(manifest: ScopeManifest): DiffSource[] {
+  const cached = diffSourceCache.get(manifest)
+  if (cached) return cached
   const { base, head, workingCopyDigest } = manifest.scope.revision
-  return manifest.files.filter(file => file.status === 'included' && file.patch).flatMap(file => {
+  const sides = manifest.files.filter(file => file.status === 'included' && file.patch).flatMap(file => {
     const after = file.anchors.some(anchor => anchor.side === 'working-copy') ? workingCopyDigest! : head
     return hunkSides(file.patch).flatMap(hunk => [
-      ...(hunk.before.trim() && file.anchors.some(anchor => anchor.side === 'before') ? [{ path: file.beforePath ?? file.path, revision: base, excerpt: hunk.before }] : []),
-      ...(hunk.after.trim() && file.anchors.some(anchor => anchor.side !== 'before') ? [{ path: file.path, revision: after, excerpt: hunk.after }] : []),
+      ...(hunk.before.trim() && file.anchors.some(anchor => anchor.side === 'before') ? [{ file: file.path, side: 'before' as const, path: file.beforePath ?? file.path, revision: base, startLine: hunk.beforeStart, excerpt: hunk.before }] : []),
+      ...(hunk.after.trim() && file.anchors.some(anchor => anchor.side !== 'before') ? [{ file: file.path, side: 'after' as const, path: file.path, revision: after, startLine: hunk.afterStart, excerpt: hunk.after }] : []),
     ])
   })
+  const sources = sides.map((side, index) => ({ id: `d${index + 1}`, ...side }))
+  diffSourceCache.set(manifest, sources)
+  return sources
 }
+/** The citable sides of one file's patch, as a worker sees them next to it. */
+const patchSources = (manifest: ScopeManifest, path: string) =>
+  diffEvidenceSources(manifest).filter(source => source.file === path).map(({ id, side, startLine }) => ({ source: id, side, startLine }))
 /** The patches a worker needs: every included file, or only the named ones (by current or pre-rename path). */
 export function reviewMaterial(manifest: ScopeManifest, paths?: readonly string[]): string {
-  return JSON.stringify(manifest.files.filter(file => file.status === 'included' && (!paths || paths.includes(file.path) || (!!file.beforePath && paths.includes(file.beforePath)))).map(file => ({ path: file.path, beforePath: file.beforePath, patch: file.patch })))
+  return JSON.stringify(manifest.files.filter(file => file.status === 'included' && (!paths || paths.includes(file.path) || (!!file.beforePath && paths.includes(file.beforePath)))).map(file => ({ path: file.path, beforePath: file.beforePath, patch: file.patch, sources: patchSources(manifest, file.path) })))
 }
 
 /** Invocation provenance is selected by separate host entry points, never by model JSON. */
@@ -332,13 +343,22 @@ export class LocalReviewService {
   private async read(runId: string, live: LiveRun, input: Record<string, unknown>): Promise<unknown> {
     this.admit(live.controller.signal)
     const result = await live.access.read(input, live.plan, live.controller.signal)
-    const revision = live.access.manifest.scope.revision.workingCopyDigest ?? live.access.manifest.scope.revision.head
-    if (input.operation === 'context' && typeof input.path === 'string' && typeof result === 'string' && result.trim()) {
-      await this.store.registerEvidenceSource(runId, { path: input.path, revision, excerpt: result })
-    } else if (input.operation === 'search' && result && typeof result === 'object' && 'matches' in result && Array.isArray(result.matches)) {
-      for (const match of result.matches) if (match && typeof match.path === 'string' && typeof match.text === 'string' && match.text.trim()) {
-        await this.store.registerEvidenceSource(runId, { path: match.path, revision, excerpt: match.text })
-      }
+    const manifest = live.access.manifest
+    const revision = manifest.scope.revision.workingCopyDigest ?? manifest.scope.revision.head
+    if (input.operation === 'context' && typeof input.path === 'string' && typeof result === 'string') {
+      const startLine = Number.isSafeInteger(input.startLine) && Number(input.startLine) >= 1 ? Number(input.startLine) : 1
+      if (!result.trim()) return { startLine, text: result }
+      return { source: await this.store.registerEvidenceSource(runId, { path: input.path, revision, startLine, excerpt: result }), startLine, text: result }
+    }
+    if (input.operation === 'search' && result && typeof result === 'object' && 'matches' in result && Array.isArray(result.matches)) {
+      const matches = result.matches.filter(match => match && typeof match.path === 'string' && typeof match.text === 'string' && match.text.trim())
+      const ids = await this.store.registerEvidenceSources(runId, matches.map(match => ({ path: match.path, revision, excerpt: match.text, ...(Number.isSafeInteger(match.line) && match.line >= 1 ? { startLine: match.line } : {}) })))
+      const cited = new Map(matches.map((match, index) => [match, ids[index]]))
+      return { ...result, matches: result.matches.map(match => cited.has(match) ? { ...match, source: cited.get(match) } : match) }
+    }
+    if (input.operation === 'diff' && result && typeof result === 'object') {
+      const withSources = (file: unknown) => file && typeof file === 'object' && 'patch' in file && 'path' in file && typeof file.path === 'string' ? { ...file, sources: patchSources(manifest, file.path) } : file
+      return 'files' in result && Array.isArray(result.files) ? { ...result, files: result.files.map(withSources) } : withSources(result)
     }
     return result
   }

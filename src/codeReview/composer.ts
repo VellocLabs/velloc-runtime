@@ -136,12 +136,12 @@ export function composeReviewPrompt(plan: ReviewPlan, inputs: CoordinatorInputs,
 
 function workerOutputContract(limit: number, perAngle: boolean): readonly ReviewPromptBlock[] {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 8) throw new ReviewCompositionError('invalid-candidate-limit', 'candidatesPerAngle')
-  const candidate: ReviewCandidate = {
+  const candidate: Omit<ReviewCandidate, 'support'> & { support: Array<Record<string, unknown>> } = {
     location: { anchorKey: 'anchor key supplied by the scope manifest', path: 'relative/path', line: 1, endLine: 1 },
     statement: { headline: 'Concise issue title', details: 'Concrete mechanism and supporting evidence', scenario: 'Reachable trigger and incorrect behavior' },
     kind: 'correctness',
     impact: 'major',
-    support: [{ path: 'relative/path', quote: 'Necessary short code or rule quotation', relevance: 'How the quotation supports the mechanism' }],
+    support: [{ source: 'source id shown with a patch or a ReviewRead result', startLine: 1, endLine: 1, relevance: 'How the cited lines support the mechanism' }],
     assessment: { disposition: 'unchecked', reason: 'No independent verification has been performed' },
     angle: 'assigned review angle',
   }

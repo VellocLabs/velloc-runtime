@@ -254,7 +254,7 @@ describe('local review runtime gateway', () => {
     })
     const { runId } = await h.service.startUser('medium')
     const report = await h.service.wait(runId)
-    expect(read).toEqual({ data: content })
+    expect(read).toEqual({ data: { source: 'r1', startLine: 1, text: content } })
     expect(report.run.progress.status).toBe('finished')
   })
   it('reviews test and fixture files at low when they are the only changes, with a notice', async () => {

@@ -25,7 +25,7 @@ function callId(row: Message, name: string, input: unknown): string {
 const text = { type: 'string' }
 const stringList = { type: 'array', items: text }
 const shape = (properties: Record<string, unknown>, required = Object.keys(properties)) => ({ type: 'object', properties, required, additionalProperties: false })
-export const REVIEW_SUPPORT_SCHEMA = { type: 'array', items: shape({ path: text, quote: text, relevance: text }, ['quote', 'relevance']) }
+export const REVIEW_SUPPORT_SCHEMA = { type: 'array', items: shape({ source: text, startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 }, path: text, quote: text, relevance: text }, ['relevance']) }
 export const REVIEW_ASSESSMENT_SCHEMA = shape({ disposition: { type: 'string', enum: ['proven', 'plausible', 'dismissed', 'unchecked'] }, reason: text })
 export const REVIEW_COVERAGE_SCHEMA = shape({ angles: stringList, limitations: stringList, complete: { type: 'boolean' } })
 export const REVIEW_CANDIDATE_SCHEMA = shape({
@@ -50,7 +50,7 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
   })
   const candidates = { type: 'array', maxItems: 32, items: REVIEW_CANDIDATE_SCHEMA }
   const tools: ToolContract[] = [
-    tool('ReviewRead', 'Read authorized review material. diff without a path returns the scope index; diff with a path returns that file\'s patch and anchors; diff with paths (up to 50) returns several patches in one call. context reads a permitted path, optionally only startLine..endLine. search finds a literal query across in-scope files. No shell or scripts.', {
+    tool('ReviewRead', 'Read authorized review material. diff without a path returns the scope index; diff with a path returns that file\'s patch and anchors; diff with paths (up to 50) returns several patches in one call. context reads a permitted path, optionally only startLine..endLine. search finds a literal query across in-scope files. Patches, context results and search matches carry a source id that support items may cite. No shell or scripts.', {
       operation: { type: 'string', enum: ['diff', 'context', 'search'] }, path: { type: 'string' }, paths: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 50 }, query: { type: 'string' },
       startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 },
     }, ['operation'], input => bindings.read(input)),

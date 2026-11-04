@@ -210,7 +210,7 @@ describe('canonical worker output contract', () => {
     expect(example.candidates[0]).toMatchObject({
       location: { anchorKey: expect.any(String), path: expect.any(String), line: 1, endLine: 1 },
       statement: { headline: expect.any(String), details: expect.any(String), scenario: expect.any(String) },
-      support: [{ path: expect.any(String), quote: expect.any(String), relevance: expect.any(String) }],
+      support: [{ source: expect.any(String), startLine: 1, endLine: 1, relevance: expect.any(String) }],
       assessment: { disposition: 'unchecked', reason: expect.any(String) },
     })
     expect(example.coverage).toEqual({ angles: [], limitations: [] })

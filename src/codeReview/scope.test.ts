@@ -33,11 +33,11 @@ function fixture(settings: { fileMode?: string; indexEntries?: string; upstream?
   return { options, queries, readWorkspaceFile }
 }
 describe('hunk sides', () => {
-  it('splits each hunk into its before and after text, without markers or headers', () => {
+  it('splits each hunk into its before and after text and first lines, without markers or headers', () => {
     const patch = 'diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1,3 +1,3 @@\n keep()\n-old()\n+fresh()\n tail()\n@@ -9 +9,2 @@\n-gone()\n+added()\n+more()\n\\ No newline at end of file\n'
     expect(hunkSides(patch)).toEqual([
-      { before: 'keep()\nold()\ntail()', after: 'keep()\nfresh()\ntail()' },
-      { before: 'gone()\n', after: 'added()\nmore()\n' },
+      { before: 'keep()\nold()\ntail()', after: 'keep()\nfresh()\ntail()', beforeStart: 1, afterStart: 1 },
+      { before: 'gone()\n', after: 'added()\nmore()\n', beforeStart: 9, afterStart: 9 },
     ])
   })
 })

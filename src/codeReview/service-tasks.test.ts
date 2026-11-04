@@ -117,12 +117,12 @@ describe('worker material', () => {
   const manifest = setup().manifest
   it('indexes without patches and selects included patches by path', () => {
     expect(JSON.stringify(scopeIndex(manifest))).not.toContain('+new')
-    expect(JSON.parse(reviewMaterial(manifest))).toEqual([{ path: 'src/a.ts', beforePath: undefined, patch }])
+    expect(JSON.parse(reviewMaterial(manifest))).toEqual([{ path: 'src/a.ts', beforePath: undefined, patch, sources: [] }])
     expect(JSON.parse(reviewMaterial(manifest, ['src/skip.test.ts']))).toEqual([])
     expect(JSON.parse(reviewMaterial(manifest, ['src/a.ts']))).toHaveLength(1)
   })
   it('selects a renamed file by its pre-rename path', () => {
     const renamed: ScopeManifest = { ...manifest, files: [{ path: 'src/new.ts', beforePath: 'src/old.ts', status: 'included', patch, anchors: [] }] }
-    expect(JSON.parse(reviewMaterial(renamed, ['src/old.ts']))).toEqual([{ path: 'src/new.ts', beforePath: 'src/old.ts', patch }])
+    expect(JSON.parse(reviewMaterial(renamed, ['src/old.ts']))).toEqual([{ path: 'src/new.ts', beforePath: 'src/old.ts', patch, sources: [] }])
   })
 })
