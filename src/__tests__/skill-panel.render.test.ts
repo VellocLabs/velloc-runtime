@@ -614,11 +614,18 @@ describe('SkillToolUI code-review card', () => {
     expect(loadToolCallDetail).toHaveBeenCalledTimes(2)
   })
 
-  it('anchors the card from a live result that carries the envelope, without a stored-detail provider', () => {
+  it('is the review card while running, never a loading-skill row, and keeps it once the result lands', () => {
     const props = { args: { skill: 'code-review' }, toolCallId: 'c1', toolName: 'Skill', addResult: () => {} }
     const { rerender } = render(createElement(Render as never, { ...props, result: undefined, status: { type: 'running' } }))
-    expect(screen.queryByTestId('code-review-card')).toBeNull()
+    expect(screen.getByTestId('code-review-card').dataset.status).toBe('preparing')
+    expect(screen.queryByTestId('skill-card')).toBeNull()
     rerender(createElement(Render as never, { ...props, result: { reviewRunId: 'run_1', status: 'finished', report: {} }, status: { type: 'complete' } }))
     expect(screen.getByTestId('code-review-card')).toBeTruthy()
+    expect(screen.queryByTestId('skill-card')).toBeNull()
+  })
+  it('keeps the plain skill row for a failed review call', () => {
+    render(createElement(Render as never, { args: { skill: 'code-review' }, toolCallId: 'c1', toolName: 'Skill', addResult: () => {}, result: undefined, status: { type: 'incomplete', reason: 'error', error: 'review-plan-blocked' } }))
+    expect(screen.getByTestId('skill-card')).toBeTruthy()
+    expect(screen.queryByTestId('code-review-card')).toBeNull()
   })
 })

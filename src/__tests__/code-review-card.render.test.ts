@@ -4,7 +4,7 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { CodeReviewCard, CodeReviewProvider, CodeReviewRow, ReviewReportCard, currentReviewLocation, reviewFindingState } from '../components/assistant-ui/code-review-card'
-import type { ReviewReportView } from '../codeReview/review-protocol'
+import type { ReviewReportView, ReviewSessionSnapshot } from '../codeReview/review-protocol'
 import { createTranslate } from '../browser/webview/i18n/translate'
 const t = createTranslate('en')
 afterEach(cleanup)
@@ -264,4 +264,58 @@ it('defaults GitLab publication to summary and carries explicit discussion inten
   renderReport(value)
   await openMore()
   expect(screen.queryByTestId('review-discussions')).toBeNull()
+})
+
+describe('a model-requested review found by its Skill call', () => {
+  const rigCard = (snapshot: Partial<ReviewSessionSnapshot>, props: Record<string, unknown>, allow = true) => {
+    const request = vi.fn(async () => ({ accepted: true }))
+    const connection = { can: vi.fn(() => allow), request, subscribe: (_topic: string, listener: (event: unknown) => void) => { listener({ payload: { sessionId: 's1', sequence: 1, reports: [], ...snapshot } }); return () => {} } }
+    render(createElement(CodeReviewProvider, { value: { sessionId: 's1', connection: async () => connection as never } }, createElement(CodeReviewCard, props as never)))
+    return request
+  }
+  it('shows the run the call started, before the call returns a run id', async () => {
+    const value = report()
+    value.run.toolCallId = 'call-1'
+    value.run.progress.status = 'active'
+    value.run.progress.stage = 'inspect'
+    const other = { ...report(), run: { ...report().run, id: 'r2', toolCallId: 'call-2' } }
+    rigCard({ reports: [other, value] }, { toolCallId: 'call-1', starting: true })
+    await waitFor(() => expect(screen.getByTestId('code-review-card').dataset.status).toBe('active'))
+    expect(screen.getByTestId('review-stages')).toBeTruthy()
+  })
+  it('stands in a preparing card that cancels by the preparing id while the run does not exist', async () => {
+    const request = rigCard({ preparing: [{ id: 'preparing-1', toolCallId: 'call-1' }] }, { toolCallId: 'call-1', starting: true })
+    await waitFor(() => expect((screen.getByTestId('review-cancel') as HTMLButtonElement).disabled).toBe(false))
+    expect(screen.getByTestId('code-review-card').dataset.status).toBe('preparing')
+    expect(screen.getByTestId('review-preparing').textContent).toBe(t('reviewCard.preparing'))
+    fireEvent.click(screen.getByTestId('review-cancel'))
+    await waitFor(() => expect(request).toHaveBeenCalledWith('review.cancel', { sessionId: 's1', runId: 'preparing-1' }))
+  })
+  it('keeps the preparing card, without cancel, before the runtime lists the call or for an observer', async () => {
+    rigCard({}, { toolCallId: 'call-1', starting: true })
+    await waitFor(() => expect(screen.getByTestId('code-review-card').dataset.status).toBe('preparing'))
+    expect((screen.getByTestId('review-cancel') as HTMLButtonElement).disabled).toBe(true)
+    cleanup()
+    rigCard({ preparing: [{ id: 'preparing-1', toolCallId: 'call-1' }] }, { toolCallId: 'call-1', starting: true }, false)
+    await waitFor(() => expect(screen.getByTestId('code-review-card').dataset.status).toBe('preparing'))
+    expect((screen.getByTestId('review-cancel') as HTMLButtonElement).disabled).toBe(true)
+  })
+  it('renders the fallback for a settled call that started no run', async () => {
+    rigCard({}, { toolCallId: 'call-1', starting: false, fallback: createElement('p', { 'data-testid': 'plain-row' }) })
+    expect(await screen.findByTestId('plain-row')).toBeTruthy()
+    expect(screen.queryByTestId('code-review-card')).toBeNull()
+  })
+})
+
+it('counts candidates and verified candidates while the review is active, without showing findings', () => {
+  const value = report()
+  value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy', span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
+  value.run.progress = { ...value.run.progress, status: 'active', stage: 'assess', verifiedCandidates: 1 }
+  renderReport(value)
+  expect(screen.getByTestId('review-progress').textContent).toBe(t('reviewCard.progressCounts', { found: 1, verified: 1 }))
+  expect(screen.queryByTestId('review-finding')).toBeNull()
+  cleanup()
+  value.run.progress.status = 'queued'
+  renderReport(value)
+  expect(screen.queryByTestId('review-progress')).toBeNull()
 })

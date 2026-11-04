@@ -61,6 +61,18 @@ describe('review protocol', () => {
     await conn.request('review.cancel', { sessionId: 's1', runId: 'r1' })
     expect(service.cancel).toHaveBeenCalledWith('r1')
   })
+  it('cancels a model-requested review that is still preparing, by the id the snapshot lists only', async () => {
+    const { connect, service, snapshot } = rig()
+    snapshot.preparing = [{ id: 'preparing-1', toolCallId: 'call-1' }]
+    const conn = await connect('control')
+    await conn.request('review.cancel', { sessionId: 's1', runId: 'preparing-1' })
+    expect(service.cancel).toHaveBeenCalledWith('preparing-1')
+    await expect(conn.request('review.rerun', { sessionId: 's1', runId: 'preparing-1' })).rejects.toMatchObject({ code: 'not_found' })
+    await expect(conn.request('review.cancel', { sessionId: 's1', runId: 'call-1' })).rejects.toMatchObject({ code: 'not_found' })
+    const observer = await connect('observe')
+    await expect(observer.request('review.cancel', { sessionId: 's1', runId: 'preparing-1' })).rejects.toMatchObject({ code: 'forbidden_scope' })
+    expect(service.cancel).toHaveBeenCalledTimes(1)
+  })
   it('recognizes only structured system notices, not model or tool text', () => {
     expect(reviewNoticeRunId({ type: 'system', subtype: 'code-review', review: { runId: 'r1' }, message: 'anything' })).toBe('r1')
     expect(reviewNoticeRunId({ type: 'assistant', subtype: 'code-review', review: { runId: 'r1' } })).toBeNull()

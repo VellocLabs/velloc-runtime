@@ -1005,7 +1005,8 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         const stored = await readJson(resolveRuntimePath(sessionDir, `presentation/${report.run.id}.json`)) as ReturnType<LocalReviewService['presentation']>
         if (stored) restoredPresentations.set(report.run.id, stored)
       }
-      return { sessionId: context.options.sessionId, sequence: snapshot.sequence, reports: snapshot.reports.map(projection) }
+      const preparing = service.preparing()
+      return { sessionId: context.options.sessionId, sequence: snapshot.sequence, reports: snapshot.reports.map(projection), ...(preparing.length ? { preparing } : {}) }
     },
     subscribe: service.subscribe, cancel: id => service.cancel(id), repair: (id, ids) => service.requestRepair(id, ids),
     async publish(id, options) {
@@ -1056,12 +1057,13 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
   }
 }
 
-export async function invokeReviewModelSkill(raw: string, context: ToolCallContext, permission: PermissionDecider): Promise<string> {
+/** Contract: `toolCallId` is the invoking Skill call's id; the run records it so the conversation can show its card while it runs. */
+export async function invokeReviewModelSkill(raw: string, context: ToolCallContext, permission: PermissionDecider, toolCallId?: string): Promise<string> {
   const parsed = parseReviewArguments(raw)
   if (!parsed.ok) throw new ReviewGatewayError(parsed.error.code)
   if (parsed.arguments.fix || parsed.arguments.comment) throw new ReviewGatewayError('action-not-authorized')
   const service = await getOrCreateReviewService(context, permission)
-  const { runId } = await service.startModel(raw, context.cancelSource.signal)
+  const { runId } = await service.startModel(raw, context.cancelSource.signal, toolCallId)
   const snapshot = await service.wait(runId)
   return JSON.stringify({ reviewRunId: runId, status: snapshot.run.progress.status, report: JSON.parse(presentReviewJson(snapshot)) })
 }

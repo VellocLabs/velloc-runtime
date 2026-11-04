@@ -95,6 +95,8 @@ export const es: Messages = {
   "reviewCard.historical": "Ubicación en {revision}; reubique antes de abrir el archivo actual.",
   "reviewCard.kind": "Categoría",
   "reviewCard.loading": "Cargando revisión…",
+  "reviewCard.preparing": "Preparando la revisión: leyendo el cambio y sus pautas…",
+  "reviewCard.progressCounts": "Candidatos hasta ahora: {found} · verificados: {verified}",
   "reviewCard.policy": "Nivel: {level} · Método: {recipe} · Modo: {mode} · Límite: {cap}",
   "reviewCard.preview": "Vista previa de publicación",
   "reviewCard.publish": "Publicar",

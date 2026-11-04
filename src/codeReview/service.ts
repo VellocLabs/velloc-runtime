@@ -69,6 +69,7 @@ export function reviewMaterial(manifest: ScopeManifest, paths?: readonly string[
 export class LocalReviewService {
   readonly store: ReviewReportStore
   private readonly live = new Map<string, LiveRun>()
+  private readonly pending = new Map<string, { toolCallId: string; controller: AbortController }>()
   private readonly listeners = new Set<() => void>()
   private readonly known = new Set<string>()
   private sequence = 0
@@ -150,16 +151,22 @@ export class LocalReviewService {
     return { command: 'code-review', aliases: ['review'], levels: ['low', 'medium', 'high', 'xhigh', 'max'] }
   }
   startUser(raw: string, signal?: AbortSignal, presentation?: OutputMode): Promise<{ runId: string }> { return this.start(raw, 'user', signal, presentation) }
-  startModel(raw: string, signal?: AbortSignal): Promise<{ runId: string }> { return this.start(raw, 'model', signal) }
-  private async start(raw: string, source: 'user' | 'model', signal?: AbortSignal, presentation?: OutputMode): Promise<{ runId: string }> {
+  /** `toolCallId` names the Skill call that asked for the review; until the run exists it is listed by `preparing()`. */
+  startModel(raw: string, signal?: AbortSignal, toolCallId?: string): Promise<{ runId: string }> { return this.start(raw, 'model', signal, undefined, toolCallId) }
+  /** Model-requested reviews whose run does not exist yet; `cancel` accepts their ids. */
+  preparing(): Array<{ id: string; toolCallId: string }> { return [...this.pending].map(([id, entry]) => ({ id, toolCallId: entry.toolCallId })) }
+  private async start(raw: string, source: 'user' | 'model', signal?: AbortSignal, presentation?: OutputMode, toolCallId?: string): Promise<{ runId: string }> {
     const operation = this.operation(signal)
+    const pendingId = toolCallId ? `preparing-${crypto.randomUUID()}` : undefined
+    if (pendingId) { this.pending.set(pendingId, { toolCallId: toolCallId!, controller: operation.controller }); this.changed() }
     try {
-      const result = await this.prepare(raw, source, operation.controller, presentation)
+      const result = await this.prepare(raw, source, operation.controller, presentation, toolCallId)
       void this.live.get(result.runId)!.done.then(operation.release, operation.release)
       return result
     } catch (error) { operation.release(); throw error }
+    finally { if (pendingId && this.pending.delete(pendingId)) this.changed() }
   }
-  private async prepare(raw: string, source: 'user' | 'model', controller: AbortController, presentation?: OutputMode): Promise<{ runId: string }> {
+  private async prepare(raw: string, source: 'user' | 'model', controller: AbortController, presentation?: OutputMode, toolCallId?: string): Promise<{ runId: string }> {
     const parsed = parseReviewArguments(raw)
     if (!parsed.ok) throw new ReviewGatewayError(parsed.error.code)
     if (source === 'model' && (parsed.arguments.fix || parsed.arguments.comment)) throw new ReviewGatewayError('action-not-authorized')
@@ -194,7 +201,7 @@ export class LocalReviewService {
     if (source === 'user' && JSON.stringify(preferences) !== JSON.stringify(next)) await this.options.preferences.save(next)
     this.admit(controller.signal)
     const runId = await this.store.createRun({ conversationKey: this.options.conversationKey, scope: access.manifest.scope,
-      policy: plan, expectedAngles: access.manifest.status === 'empty' ? [] : [...plan.angles] })
+      policy: plan, expectedAngles: access.manifest.status === 'empty' ? [] : [...plan.angles], ...(toolCallId ? { toolCallId } : {}) })
     await this.options.saveTarget?.(runId, parsed.arguments.target, parsed.arguments.targetLiteral, parsed.arguments.directory)
     await this.options.savePresentation?.(runId, { notices: plan.notices, emptyScope: access.manifest.status === 'empty', target: [parsed.arguments.directory, parsed.arguments.target].filter(Boolean).join(' ') || undefined })
     for (const anchor of access.manifest.anchors) {
@@ -213,6 +220,8 @@ export class LocalReviewService {
     return { sequence: this.sequence, reports: await Promise.all([...this.known].map(id => this.store.getSnapshot(id))) }
   }
   async cancel(runId: string): Promise<{ accepted: boolean }> {
+    const pending = this.pending.get(runId)
+    if (pending) { pending.controller.abort(); return { accepted: true } }
     const live = this.live.get(runId)
     if (!live || !['queued', 'active'].includes((await this.store.getSnapshot(runId)).run.progress.status)) return { accepted: false }
     live.controller.abort(); this.changed(); return { accepted: true }

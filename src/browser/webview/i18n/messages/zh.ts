@@ -95,6 +95,8 @@ export const zh: Messages = {
   "reviewCard.historical": "位置属于 {revision}；打开当前文件前需重新定位。",
   "reviewCard.kind": "分类",
   "reviewCard.loading": "正在加载审查…",
+  "reviewCard.preparing": "正在准备审查：读取改动和相关指引…",
+  "reviewCard.progressCounts": "已发现候选：{found} · 已核实：{verified}",
   "reviewCard.policy": "等级：{level} · 方法：{recipe} · 模式：{mode} · 上限：{cap}",
   "reviewCard.preview": "发布预览",
   "reviewCard.publish": "发布",

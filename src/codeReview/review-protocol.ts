@@ -26,7 +26,11 @@ export type ReviewReportView = {
   /** Only runtime-validated working-copy anchors may open the current file. */
   currentAnchors?: string[]
 }
-export type ReviewSessionSnapshot = { sessionId: string; sequence: number; reports: ReviewReportView[] }
+/** `preparing` lists model-requested reviews whose run is not created yet, by the Skill call that asked. */
+export type ReviewSessionSnapshot = { sessionId: string; sequence: number; reports: ReviewReportView[]; preparing?: Array<{ id: string; toolCallId: string }> }
+/** Skill names that run a code review instead of loading instructions. */
+export const REVIEW_SKILL_NAMES = ['code-review', 'review', 'ultrareview'] as const
+export const isReviewSkillName = (value: unknown): boolean => typeof value === 'string' && (REVIEW_SKILL_NAMES as readonly string[]).includes(value.trim().replace(/^\/+/, ''))
 export const REVIEW_ACTION_SCOPES = { cancel: 'control', repair: 'control', publish: 'control', rerun: 'control', verify: 'control', locate: 'control' } as const
 export type ReviewAction = keyof typeof REVIEW_ACTION_SCOPES
 export type ReviewActionPayload = { sessionId: string; runId: string; diagnosticIds?: string[]; diagnosticId?: string; preview?: boolean; confirmed?: boolean; discussions?: boolean; presentation?: OutputMode }

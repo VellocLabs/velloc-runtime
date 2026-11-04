@@ -12,12 +12,11 @@ import { PanelJumpChevron } from '@/components/assistant-ui/panel-jump-chevron'
 import { useRightPanelContent } from '@/components/assistant-ui/right-panel-content-context'
 import { useToolCallDetailContext } from '@/components/assistant-ui/tool-call-detail-context'
 import { CodeReviewCard } from '@/components/assistant-ui/code-review-card'
-import { reviewRunIdOfSkillResult } from '@/codeReview/review-protocol'
+import { isReviewSkillName, reviewRunIdOfSkillResult } from '@/codeReview/review-protocol'
 import { readSkillBodyRef } from './assistantUiAdapterParts'
 import { useT } from './i18n'
 
 type SkillArgs = { skill?: string; args?: string }
-const REVIEW_SKILLS = ['code-review', 'review', 'ultrareview']
 const DETAIL_RETRY_DELAY_MS = 2000
 const DETAIL_MAX_RETRIES = 2
 
@@ -39,7 +38,8 @@ export const SkillToolUI = makeAssistantToolUI<SkillArgs, unknown>({
     const liveRunId = reviewRunIdOfSkillResult(result)
     const [storedRunId, setStoredRunId] = useState<string | null>(null)
     const [detailAttempt, setDetailAttempt] = useState(0)
-    const reviewCall = status?.type === 'complete' && REVIEW_SKILLS.includes((args?.skill ?? '').trim().replace(/^\/+/, ''))
+    const reviewSkill = isReviewSkillName(args?.skill)
+    const reviewCall = status?.type === 'complete' && reviewSkill
     useEffect(() => {
       if (liveRunId || storedRunId || !reviewCall || !detailContext || !toolCallId) return
       let live = true
@@ -117,7 +117,7 @@ export const SkillToolUI = makeAssistantToolUI<SkillArgs, unknown>({
       )
     }
 
-    return (
+    const row = (
       <div className="my-2" data-testid="skill-card">
         <ToolFallbackRoot open={open} onOpenChange={setOpen}>
           <ToolFallbackTrigger
@@ -131,9 +131,12 @@ export const SkillToolUI = makeAssistantToolUI<SkillArgs, unknown>({
             <ToolFallbackArgs value={args} />
           </ToolFallbackContent>
         </ToolFallbackRoot>
-        {/* A model-invoked code review anchors its report card under the Skill row (F-38). */}
-        {reviewRunId && <CodeReviewCard runId={reviewRunId} />}
       </div>
     )
+    // A model-invoked code review is its report card from the first moment, found by this call's id (F-38).
+    if (reviewSkill && toolCallId) {
+      return <CodeReviewCard runId={reviewRunId ?? undefined} toolCallId={toolCallId} starting={isRunning} fallback={row} />
+    }
+    return row
   },
 })

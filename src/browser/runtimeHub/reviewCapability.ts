@@ -39,7 +39,12 @@ export function registerReviewCapability(registry: CapabilityRegistry, broker: T
       const payload = request.payload as ReviewActionPayload
       const service = getReviewSession(payload.sessionId)
       if (!service) throw wireError('host_unavailable', 'Review service unavailable')
-      const report = (await state(payload.sessionId)).reports.find(report => report.run.id === payload.runId)
+      const snapshot = await state(payload.sessionId)
+      const report = snapshot.reports.find(report => report.run.id === payload.runId)
+      if (!report && action === 'cancel' && snapshot.preparing?.some(entry => entry.id === payload.runId)) {
+        await service.cancel(payload.runId)
+        return { accepted: true }
+      }
       if (!report) throw wireError('not_found', 'Review run not in session')
       if (!report.permissions?.[action]) throw wireError('forbidden_scope', 'Review action unavailable')
       switch (action) {

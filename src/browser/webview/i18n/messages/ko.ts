@@ -92,6 +92,8 @@ export const ko: Messages = {
   "reviewCard.historical": "{revision}의 위치입니다. 현재 파일을 열기 전에 위치를 다시 확인하세요.",
   "reviewCard.kind": "분류",
   "reviewCard.loading": "검토 로드 중…",
+  "reviewCard.preparing": "검토 준비 중: 변경 사항과 관련 지침을 읽는 중…",
+  "reviewCard.progressCounts": "후보: {found} · 검증됨: {verified}",
   "reviewCard.policy": "수준: {level} · 방법: {recipe} · 모드: {mode} · 한도: {cap}",
   "reviewCard.preview": "게시 미리 보기",
   "reviewCard.publish": "게시",

@@ -627,3 +627,48 @@ describe('AssistantMessageBody — the Continue in Code offer stays a top-level 
     expect(row.closest('[data-slot="tool-plan-stream-root"]')).toBeNull()
   })
 })
+
+describe('AssistantMessageBody — a code review Skill call is a top-level card', () => {
+  afterEach(cleanup)
+
+  const skill = (name: string, toolCallId: string) => ({
+    type: 'tool-call' as const,
+    toolCallId,
+    toolName: 'Skill',
+    args: { skill: name, args: 'max' },
+  })
+
+  it('a running review never folds into the tool run around it, which splits at the review', async () => {
+    const Harness = makeHarness(
+      {
+        role: 'assistant',
+        status: { type: 'running' },
+        content: [BASH, { ...BASH, toolCallId: 'b2' }, skill('code-review', 'r1')],
+      } as ThreadMessageLike,
+      true,
+    )
+    const { container } = render(createElement(Harness))
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="tool-row-Skill"]')).not.toBeNull()
+    })
+    const row = container.querySelector('[data-testid="tool-row-Skill"]')!
+    expect(row.closest('[data-slot="tool-plan-stream-root"]')).toBeNull()
+    expect(container.querySelector('[data-slot="assistant-message-body"]')!.children.length).toBe(2)
+  })
+
+  it('another skill still folds into the tool run', async () => {
+    const Harness = makeHarness(
+      {
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [BASH, skill('commit', 's1'), { ...BASH, toolCallId: 'b2' }],
+      } as ThreadMessageLike,
+      false,
+    )
+    const { container } = render(createElement(Harness))
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="assistant-message-body"]')).not.toBeNull()
+    })
+    expect(container.querySelector('[data-slot="assistant-message-body"]')!.children.length).toBe(1)
+  })
+})

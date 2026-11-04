@@ -361,9 +361,10 @@ export class ReviewReportStore {
       return immutable(clone(result))
     })
   }
-  async createRun(input: { conversationKey: string; scope: ReportScope; policy: ReportPolicy; expectedAngles?: string[] }): Promise<string> {
+  async createRun(input: { conversationKey: string; scope: ReportScope; policy: ReportPolicy; expectedAngles?: string[]; toolCallId?: string }): Promise<string> {
     const runId = text(this.id())
     text(input.conversationKey)
+    if (input.toolCallId !== undefined && !/^[A-Za-z0-9_.:-]{1,300}$/.test(input.toolCallId)) return fail('invalid-text')
     text(input.scope.workspaceKey); text(input.scope.repository.projectKey)
     text(input.scope.revision.base); text(input.scope.revision.head)
     if (input.policy.reportLimit !== 'unlimited') integer(input.policy.reportLimit)
@@ -372,7 +373,8 @@ export class ReviewReportStore {
       const state: RunState = {
         version: 1,
         run: { id: runId, conversationKey: input.conversationKey, scope: clone(input.scope), policy: clone(input.policy),
-          progress: { status: 'queued', stage: 'scope', coveredAngles: [], unavailableAngles: [], spawnedTasks: 0, verifiedCandidates: 0, omittedByLimit: 0 }, reportRevision: 0 },
+          progress: { status: 'queued', stage: 'scope', coveredAngles: [], unavailableAngles: [], spawnedTasks: 0, verifiedCandidates: 0, omittedByLimit: 0 }, reportRevision: 0,
+          ...(input.toolCallId !== undefined ? { toolCallId: input.toolCallId } : {}) },
         expectedAngles: unique(input.expectedAngles ?? []), anchors: [], candidates: [], calls: [], grants: [], executions: [], publications: [], rawResults: [],
         diagnostics: [], evidence: [], assessments: [], actions: [], retainedIds: [], events: [],
         coverage: { angles: [], limitations: [], complete: false }, structured: false,

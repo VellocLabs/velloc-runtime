@@ -8,6 +8,7 @@ import {
   offeredAgentsThroughMods,
 } from '../../agents/agentEventsThroughMods'
 import { declareTool } from '../toolContract'
+import { invokingToolCallId } from '../invokingToolCallId'
 import { filterSubAgentTools } from '../../agents/subAgentToolScope'
 import { withoutBlockedAgents } from '../../permissions/ruleEngine'
 import type {
@@ -265,22 +266,6 @@ export function resolveModelTier(
   }
 }
 
-// Finds the id of the Agent tool call that triggered this run, preferring the
-// call whose arguments match the input. Empty string when it cannot tell.
-function agentToolUseIdOf(invokingRow: unknown, input: SpawnArgs): string {
-  const message = (invokingRow as { message?: { content?: unknown } } | undefined)?.message
-  const parts = Array.isArray(message?.content) ? (message!.content as unknown[]) : []
-  const calls = parts.filter(
-    (part): part is { toolCallId?: string; toolName?: string; args?: unknown } =>
-      typeof part === 'object' &&
-      part !== null &&
-      ((part as { type?: string }).type === 'tool-call' || (part as { type?: string }).type === 'tool_use') &&
-      ((part as { toolName?: string }).toolName ?? (part as { name?: string }).name) === SPAWN_TOOL_ID,
-  )
-  const same = calls.find(call => JSON.stringify(call.args) === JSON.stringify(input))
-  const chosen = same ?? (calls.length === 1 ? calls[0] : undefined)
-  return typeof chosen?.toolCallId === 'string' ? chosen.toolCallId : ''
-}
 
 export const SpawnAgentTool: ToolContract<SpawnArgs, AgentToolOutput> = declareTool({
   name: SPAWN_TOOL_ID,
@@ -403,7 +388,7 @@ export const SpawnAgentTool: ToolContract<SpawnArgs, AgentToolOutput> = declareT
       const settled = await agentSpawnThroughMods(
         mods,
         {
-          tool_use_id: agentToolUseIdOf(invokingRow, input),
+          tool_use_id: invokingToolCallId(invokingRow, SPAWN_TOOL_ID, input),
           prompt: input.prompt ?? '',
           description: input.description ?? '',
           subagentType: spawnedType,

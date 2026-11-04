@@ -17,6 +17,9 @@ import {
 // deterministically without a real sub-agent / cache-safe params. No inline
 // (non-fork) test in this file reaches runSkillInFork, so the mock is
 // inert for them.
+const reviewSkill = vi.hoisted(() => vi.fn(async () => 'review-envelope'))
+vi.mock('../codeReview/runtime', () => ({ invokeReviewModelSkill: reviewSkill }))
+
 vi.mock('../skillLibrary/executeForkedSkill', () => ({
   runSkillInFork: vi.fn(async () => ({
     text: 'fork result',
@@ -333,4 +336,15 @@ describe('SkillRunTool', () => {
       expect(skillsUsedBy('sess-inline', null).size).toBe(1)
     })
   })
+})
+
+it('runs a code review with the id of the Skill call that asked for it', async () => {
+  const invoking = { type: 'assistant', uuid: 'assistant-2', message: { role: 'assistant', content: [
+    { type: 'tool-call', toolCallId: 'call-other', toolName: 'Skill', args: { skill: 'commit' } },
+    { type: 'tool-call', toolCallId: 'call-review', toolName: 'Skill', args: { skill: 'code-review', args: 'max' } },
+  ] } } as never
+  const context = makeContext([])
+  const out = await SkillRunTool.call({ skill: 'code-review', args: 'max' }, context as never, ALLOW, invoking)
+  expect(out).toEqual({ data: 'review-envelope' })
+  expect(reviewSkill).toHaveBeenCalledWith('max', context, ALLOW, 'call-review')
 })

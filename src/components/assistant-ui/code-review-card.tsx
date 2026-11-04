@@ -75,11 +75,15 @@ export const CodeReviewRow: FC<{ runId: string }> = ({ runId }) => (
   </div>
 )
 
-export const CodeReviewCard: FC<{ runId: string }> = ({ runId }) => {
+/**
+ * Contract: shows the run named by `runId`, else the run a model's Skill call `toolCallId` started. While that call is
+ * `starting` and its run is not listed yet, a preparing card stands in; a settled call with no run renders `fallback`.
+ */
+export const CodeReviewCard: FC<{ runId?: string; toolCallId?: string; starting?: boolean; fallback?: ReactNode }> = ({ runId, toolCallId, starting = false, fallback }) => {
   const t = useT()
   const { connection, sessionId, readOnly } = useContext(ReviewConnectionContext)
   const [snapshot, setSnapshot] = useState<ReviewSessionSnapshot | null>(null)
-  const [selectedRunId, setSelectedRunId] = useState(runId)
+  const [rerunId, setSelectedRunId] = useState<string | undefined>()
   const [conn, setConn] = useState<RuntimeConnection | null>(null)
   const [unavailable, setUnavailable] = useState(false)
   useEffect(() => {
@@ -100,8 +104,20 @@ export const CodeReviewCard: FC<{ runId: string }> = ({ runId }) => {
     }).catch(() => { if (!disposed) setUnavailable(true) })
     return () => { disposed = true; unsubscribe?.() }
   }, [connection, sessionId])
-  const report = snapshot?.reports.find(item => item.run.id === selectedRunId)
-  if (!report) return <Card className="my-2 gap-0 p-4 text-sm text-muted-foreground" data-testid="code-review-card">{t(unavailable || snapshot ? 'reviewCard.unavailable' : 'reviewCard.loading')}</Card>
+  const selectedRunId = rerunId ?? runId ?? (toolCallId ? snapshot?.reports.filter(item => item.run.toolCallId === toolCallId).at(-1)?.run.id : undefined)
+  const report = selectedRunId ? snapshot?.reports.find(item => item.run.id === selectedRunId) : undefined
+  if (!report) {
+    const preparing = toolCallId ? snapshot?.preparing?.find(entry => entry.toolCallId === toolCallId) : undefined
+    if (preparing || (starting && !runId)) {
+      const canCancel = !readOnly && !!preparing && !!conn?.can('review', 'cancel')
+      return <ReviewPreparingCard canCancel={canCancel} onCancel={async () => {
+        if (!conn || !preparing || !canCancel) throw new Error('Review action unavailable')
+        await conn.request<unknown>('review.cancel', { sessionId, runId: preparing.id })
+      }} />
+    }
+    if (fallback !== undefined && !runId && (unavailable || snapshot)) return <>{fallback}</>
+    return <Card className="my-2 gap-0 p-4 text-sm text-muted-foreground" data-testid="code-review-card">{t(unavailable || snapshot ? 'reviewCard.unavailable' : 'reviewCard.loading')}</Card>
+  }
   const can = (action: ReviewAction) => !readOnly && !!report.permissions?.[action] && !!conn?.can('review', action)
   return <ReviewReportCard key={selectedRunId} report={report} can={can} onAction={async (action, extra = {}) => {
     if (!conn || !can(action)) throw new Error('Review action unavailable')
@@ -109,6 +125,39 @@ export const CodeReviewCard: FC<{ runId: string }> = ({ runId }) => {
     if (action === 'rerun' && result && typeof result === 'object' && 'runId' in result && typeof result.runId === 'string') setSelectedRunId(result.runId)
     return result
   }} />
+}
+
+/** A model-requested review before its run exists: the scope is still being read; only cancel is offered. */
+const ReviewPreparingCard: FC<{ canCancel: boolean; onCancel: () => Promise<void> }> = ({ canCancel, onCancel }) => {
+  const t = useT()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(false)
+  return <Card className="my-2 gap-0 overflow-hidden py-0 text-sm" data-testid="code-review-card" data-status="preparing">
+    <header className="flex items-center gap-3 px-4 py-3">
+      <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><SearchCheckIcon className="size-4" /></span>
+      <h3 className="min-w-0 flex-1 font-medium">{t('reviewCard.title')}</h3>
+      <Badge variant="muted" size="sm" aria-live="polite" data-testid="review-status"><Loader2Icon aria-hidden className="animate-spin" />{reviewValueMessage(t, 'queued')}</Badge>
+    </header>
+    <div className="flex flex-col gap-3 border-t px-4 py-3">
+      <div className="flex items-start gap-3">
+        <Loader2Icon aria-hidden className="mt-0.5 size-5 shrink-0 animate-spin text-primary" />
+        <div className="min-w-0">
+          <p className="font-medium">{reviewValueMessage(t, 'scope')}</p>
+          <p className="text-xs text-muted-foreground" data-testid="review-preparing">{t('reviewCard.preparing')}</p>
+        </div>
+      </div>
+      <ReviewStages stage="scope" queued={false} />
+    </div>
+    <footer className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-2.5">
+      <span className="mr-auto text-xs text-muted-foreground">{reviewValueMessage(t, 'scope')}</span>
+      <Button type="button" variant="outline" size="sm" disabled={busy || !canCancel} data-testid="review-cancel" onClick={() => {
+        setBusy(true)
+        setError(false)
+        void onCancel().catch(() => { setError(true); setBusy(false) })
+      }}>{t('reviewCard.cancel')}</Button>
+    </footer>
+    {error && <p role="alert" className="border-t px-4 py-2 text-xs text-destructive">{t('reviewCard.actionFailed')}</p>}
+  </Card>
 }
 
 /** Three steps of a running review; a follow-up stage shows all three done. */
@@ -211,6 +260,7 @@ export const ReviewReportCard: FC<{
             </div>
           </div>
           <ReviewStages stage={stage} queued={status === 'queued'} />
+          {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{t('reviewCard.progressCounts', { found: report.diagnostics.length, verified: run.progress.verifiedCandidates })}</p>}
           <p className="text-xs text-muted-foreground">{method}</p>
         </> : <>
           <div className="flex flex-wrap items-center gap-2">

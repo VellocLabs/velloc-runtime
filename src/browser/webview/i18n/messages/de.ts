@@ -94,6 +94,8 @@ export const de: Messages = {
   "reviewCard.historical": "Position in {revision}; vor dem Öffnen der aktuellen Datei neu zuordnen.",
   "reviewCard.kind": "Kategorie",
   "reviewCard.loading": "Review wird geladen…",
+  "reviewCard.preparing": "Review wird vorbereitet: Änderung und Vorgaben werden gelesen…",
+  "reviewCard.progressCounts": "Kandidaten bisher: {found} · geprüft: {verified}",
   "reviewCard.policy": "Stufe: {level} · Methode: {recipe} · Modus: {mode} · Limit: {cap}",
   "reviewCard.preview": "Veröffentlichungsvorschau",
   "reviewCard.publish": "Veröffentlichen",

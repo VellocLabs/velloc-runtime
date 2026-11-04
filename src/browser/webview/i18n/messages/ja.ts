@@ -92,6 +92,8 @@ export const ja: Messages = {
   "reviewCard.historical": "{revision} 時点の位置です。現在のファイルを開く前に位置を再確認してください。",
   "reviewCard.kind": "分類",
   "reviewCard.loading": "レビューを読み込み中…",
+  "reviewCard.preparing": "レビューを準備中：変更と関連ガイダンスを読み込んでいます…",
+  "reviewCard.progressCounts": "候補：{found} · 検証済み：{verified}",
   "reviewCard.policy": "レベル: {level} · 方法: {recipe} · モード: {mode} · 上限: {cap}",
   "reviewCard.preview": "公開プレビュー",
   "reviewCard.publish": "公開",

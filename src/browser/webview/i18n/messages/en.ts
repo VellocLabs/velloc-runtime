@@ -95,6 +95,8 @@ export const en = {
   "reviewCard.historical": "Location at {revision}; relocate before opening the current file.",
   "reviewCard.kind": "Category",
   "reviewCard.loading": "Loading review…",
+  "reviewCard.preparing": "Preparing the review: reading the change and its guidance…",
+  "reviewCard.progressCounts": "Candidates so far: {found} · verified: {verified}",
   "reviewCard.policy": "Level: {level} · Method: {recipe} · Mode: {mode} · Limit: {cap}",
   "reviewCard.preview": "Publication preview",
   "reviewCard.publish": "Publish",

@@ -3,6 +3,7 @@ import type { PermissionDecider } from '../permissionVerdict'
 import type { ToolContract } from '../toolContract'
 import type { ToolCallContext } from '../toolCallContext'
 import { declareTool } from '../toolContract'
+import { invokingToolCallId } from '../invokingToolCallId'
 import { buildSkillBody } from '../../skillLibrary/buildSkillBody'
 import { createSkillInvocationMessage } from '../../skillLibrary/skillInvocationMessage'
 import { getBundledSkillDynamicContent } from '../../skillLibrary/builtinSkills'
@@ -126,11 +127,13 @@ export const SkillRunTool: ToolContract<SkillToolInput, SkillToolOutput> = decla
     input: SkillToolInput,
     context: ToolCallContext,
     canUseTool: PermissionDecider,
+    invokingRow?: unknown,
   ) => {
     const requested = normalizeSkillName(input.skill ?? '')
     if (['code-review', 'review', 'ultrareview'].includes(requested)) {
       const { invokeReviewModelSkill } = await import('../../codeReview/runtime')
-      return { data: await invokeReviewModelSkill(requested === 'ultrareview' ? '/ultrareview' : input.args ?? '', context, canUseTool) }
+      const toolCallId = invokingToolCallId(invokingRow, SKILL_TOOL_NAME, input) || undefined
+      return { data: await invokeReviewModelSkill(requested === 'ultrareview' ? '/ultrareview' : input.args ?? '', context, canUseTool, toolCallId) }
     }
     const command = findCommandByName(
       getSkillCommands(context.options.commands),

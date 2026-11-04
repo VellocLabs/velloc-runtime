@@ -140,6 +140,8 @@ export type ReviewRun = {
     omittedByLimit: number
   }
   reportRevision: number
+  /** The model's Skill tool call that started the run, when one did; the conversation anchors its card to it. */
+  toolCallId?: string
 }
 
 export type Diagnostic = {

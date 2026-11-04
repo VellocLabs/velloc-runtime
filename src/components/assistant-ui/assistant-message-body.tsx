@@ -73,6 +73,8 @@ import { Reasoning, ReasoningGroup } from "./reasoning";
 import { SPAWN_TOOL_ID, classifyTeammateSpawn, ToolFallback } from "./tool-fallback";
 import { isTeammateSpawnTool } from "@/utils/toolLabels";
 import { SPAWN_SESSION_TOOL_NAME } from "@/sessions/childSessionSpec";
+import { SKILL_TOOL_NAME } from "@/prompting/skillToolName";
+import { isReviewSkillName } from "@/codeReview/review-protocol";
 import { ToolGroup } from "./tool-group";
 import { PartLineProvider } from "./part-line-context";
 import {
@@ -126,6 +128,8 @@ type PartView = {
    * segmenter — need the answer and neither is handed the raw part.
    */
   teammateSpawn?: boolean;
+  /** This `tool-call` is a `Skill` call that runs a code review; derived at encode time like `teammateSpawn`. */
+  reviewSkill?: boolean;
   /** The last text of an `end_turn` message — the reply the user reads. */
   endTurn?: boolean;
 };
@@ -143,6 +147,7 @@ function isStandalonePart(view: PartView): boolean {
     view.type === "tool-call" &&
     (isUngroupableToolName(view.toolName) ||
       view.teammateSpawn === true ||
+      view.reviewSkill === true ||
       view.toolName === SPAWN_SESSION_TOOL_NAME)
   );
 }
@@ -629,7 +634,12 @@ function encodePart(part: {
       classifyTeammateSpawn(part.args, part.result) !== null
         ? "1"
         : "";
-    return `${ENC_TOOL_CALL}${SEP}${part.toolName ?? ""}${SEP}${part.toolCallId ?? ""}${SEP}${targetKey}${SEP}${statusType}${SEP}${statusReason}${SEP}${teammate}${SEP}${line}`;
+    const review =
+      part.toolName === SKILL_TOOL_NAME &&
+      isReviewSkillName((part.args as { skill?: unknown } | undefined)?.skill)
+        ? "1"
+        : "";
+    return `${ENC_TOOL_CALL}${SEP}${part.toolName ?? ""}${SEP}${part.toolCallId ?? ""}${SEP}${targetKey}${SEP}${statusType}${SEP}${statusReason}${SEP}${teammate}${SEP}${review}${SEP}${line}`;
   }
   const textKey =
     part.type === "text" && typeof part.text === "string"
@@ -642,7 +652,7 @@ function encodePart(part: {
 function decodePart(encoded: string): PartView {
   // Last field on every shape: see `encodePart`.
   const parts = encoded.split(SEP);
-  const [kind, a, b, c, d, e, f] = parts;
+  const [kind, a, b, c, d, e, f, g] = parts;
   const rawLine = parts[parts.length - 1];
   const sourceLine =
     rawLine !== undefined && rawLine !== '' && Number.isFinite(Number(rawLine))
@@ -682,6 +692,7 @@ function decodePart(encoded: string): PartView {
       toolTarget,
       status: d ? { type: d, reason: e || undefined } : undefined,
       teammateSpawn: f === "1",
+      reviewSkill: g === "1",
       sourceLine,
     };
   }

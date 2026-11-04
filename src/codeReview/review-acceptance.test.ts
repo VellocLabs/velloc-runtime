@@ -310,6 +310,33 @@ it('refuses a format correction that raises complete or adds an angle the ledger
     expect(snapshot.coverage.limitations).toEqual(expect.arrayContaining(['could not read src/a.ts', 'invalid-response']))
   }
 })
+it('lists a model-requested review as preparing by its Skill call until the run exists, then records the call on the run', async () => {
+  let release!: () => void
+  const scoped = new Promise<void>(resolve => { release = resolve })
+  const resolveScope = vi.fn(async () => { await scoped; return { manifest: manifest(), trustedGuidance: '', read: async () => '' } })
+  const f = fixture({ resolveScope })
+  const started = f.service.startModel('high', undefined, 'call-1')
+  await vi.waitFor(() => expect(resolveScope).toHaveBeenCalled())
+  expect(f.service.preparing()).toEqual([{ id: expect.stringMatching(/^preparing-/), toolCallId: 'call-1' }])
+  release()
+  const { runId } = await started
+  expect(f.service.preparing()).toEqual([])
+  const snapshot = await f.service.wait(runId)
+  expect(snapshot.run.toolCallId).toBe('call-1')
+  const typed = await f.service.wait((await f.service.startUser('high')).runId)
+  expect(typed.run.toolCallId).toBeUndefined()
+})
+it('cancels a review that is still preparing, so the Skill call ends without a run', async () => {
+  const resolveScope = vi.fn((_args: unknown, _plan: unknown, signal: AbortSignal) => new Promise<never>((_, reject) => signal.addEventListener('abort', () => reject(new Error('review-cancelled')), { once: true })))
+  const f = fixture({ resolveScope: resolveScope as never })
+  const started = f.service.startModel('high', undefined, 'call-1')
+  await vi.waitFor(() => expect(f.service.preparing()).toHaveLength(1))
+  expect(await f.service.cancel(f.service.preparing()[0].id)).toEqual({ accepted: true })
+  await expect(started).rejects.toThrow()
+  expect(f.service.preparing()).toEqual([])
+  expect((await f.service.snapshots()).reports).toEqual([])
+  expect(f.runModel).not.toHaveBeenCalled()
+})
 it('keeps the retained ledger as a partial report after one format-only correction fails', async () => {
   const model = vi.fn(async () => ({ text: 'not JSON', interrupted: false }))
   const f = fixture({ runModel: model })
