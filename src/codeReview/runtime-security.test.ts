@@ -5,7 +5,7 @@ import type { Message } from '../runtime/RuntimeTypes'
 import type { GitStreamSpawner } from './git-adapter'
 import type { ReviewHttpRequest } from './platform-adapter'
 import type { ReviewModelRequest } from './runner'
-import { getOrCreateReviewService } from './runtime'
+import { getOrCreateReviewService, outsideGuidancePath } from './runtime'
 
 const mocks = vi.hoisted(() => ({
   formatGuidance: vi.fn(), guidance: vi.fn(), nestedGuidance: vi.fn(), vet: vi.fn(), boundary: vi.fn(), gate: vi.fn(), confirm: vi.fn(), model: vi.fn(), runnerContexts: [] as unknown[], edit: vi.fn(),
@@ -353,6 +353,33 @@ describe('review execution admission', () => {
 })
 
 describe('actual review runtime security boundaries', () => {
+  it('lets a finding cite guidance from outside the review root by the path the prompt lists', async () => {
+    const h = fixture()
+    const outside = 'D:/workspace-guide/AGENTS.md', rule = 'Every visible string is a catalog entry.'
+    mocks.guidance.mockResolvedValue([{ path: outside, type: 'Project', content: rule }])
+    mocks.formatGuidance.mockReturnValue(`Contents of ${outside}:\n\n${rule}`)
+    let guidance = ''
+    mocks.model.mockImplementation(async (request: ReviewModelRequest) => {
+      const ledger = request.blocks.find(block => block.source === 'retained-ledger')
+      if (ledger) return { text: ledger.text, interrupted: false }
+      guidance = request.blocks.find(block => block.source === 'applicable-guidance')?.text ?? ''
+      const manifest = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text)
+      const plan = JSON.parse(request.blocks.find(block => block.source === 'resolved-policy')!.text)
+      const file = manifest.files[0]
+      const anchor = file.anchors.find((item: { side: string }) => item.side === 'working-copy')
+      const candidate = { location: { anchorKey: anchor.anchorKey, path: file.path, line: anchor.span.start }, statement: { headline: 'Hard-coded text', details: 'The changed value is shown as is.', scenario: 'A user reads untranslated text' }, kind: 'guidance', impact: 'minor',
+        support: [{ path: outsideGuidancePath(outside), quote: rule, relevance: 'The workspace rule' }], assessment: { disposition: 'plausible', reason: 'The rule applies' }, angle: 'lines' }
+      await invoke(request, 'ReviewLedger', { operation: 'append-candidates', candidates: [candidate] })
+      const coverage = { angles: plan.angles, limitations: [], complete: true }
+      await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage })
+      return { text: JSON.stringify({ candidates: [], coverage }), interrupted: false }
+    })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const snapshot = await service.wait((await service.startUser('low')).runId)
+    expect(guidance).toContain(`- ${outside} as ${outsideGuidancePath(outside)}`)
+    expect(outsideGuidancePath(outside)).toBe('@guidance/D/workspace-guide/AGENTS.md')
+    expect(snapshot.evidence.map(item => item.source.path)).toContain('@guidance/D/workspace-guide/AGENTS.md')
+  })
   it.each([true, false])('requires host approval before project guidance selects max: %s', async approved => {
     const h = fixture()
     mocks.guidance.mockResolvedValue([{ path: `${root}/AGENTS.md`, type: 'Project', content: 'Review effort: max' }])

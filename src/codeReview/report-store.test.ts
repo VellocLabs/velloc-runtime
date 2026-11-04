@@ -259,6 +259,26 @@ describe('review report store', () => {
     await store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [{ ...candidate(anchorKey), support: [{ path: 'src/b.ts', quote: 'shared line', relevance: 'Both sides' }] }] })
     expect((await store.getSnapshot(id)).evidence.find(item => item.source.path === 'src/b.ts')?.source.revision).toBe('head')
   })
+  it('resolves quotes from attached diff sources without saving them, and keeps them out of the saved run', async () => {
+    const { store, run, data } = fixture()
+    const { id, anchorKey } = await run()
+    await store.registerAnchor(id, { path: 'src/b.ts', revision: 'base', side: 'before', span: { start: 1, end: 4 } })
+    await store.registerAnchor(id, { path: 'src/b.ts', revision: 'head', side: 'after', span: { start: 1, end: 6 } })
+    await store.attachDiffSources(id, [{ path: 'src/b.ts', revision: 'base', excerpt: 'removed-only line' }, { path: 'src/b.ts', revision: 'head', excerpt: 'added-only line' }])
+    const support = (quote: string) => [{ path: 'src/b.ts', quote, relevance: 'Diff side' }]
+    await store.submitLedger(id, 'removed', { operation: 'append-candidates', candidates: [{ ...candidate(anchorKey, 1), support: support('removed-only line') }] })
+    await store.submitLedger(id, 'added', { operation: 'append-candidates', candidates: [{ ...candidate(anchorKey, 2), support: support('added-only line') }] })
+    expect((await store.getSnapshot(id)).evidence.filter(item => item.source.path === 'src/b.ts').map(item => item.source.revision)).toEqual(['base', 'head'])
+    expect(JSON.parse(data.get(id)!).evidenceSources ?? []).toEqual([])
+  })
+  it('keeps one copy of a source registered twice', async () => {
+    const { store, run, data } = fixture()
+    const { id } = await run()
+    const source = { path: 'src/b.ts', revision: 'head', excerpt: 'line one\r\nline two' }
+    await store.registerEvidenceSources(id, [source, source])
+    await store.registerEvidenceSource(id, source)
+    expect(JSON.parse(data.get(id)!).evidenceSources).toEqual([{ path: 'src/b.ts', revision: 'head', excerpt: 'line one\nline two' }])
+  })
   it('still refuses a quote whose revisions are all outside the reviewed one', async () => {
     const { store, run } = fixture()
     const { id, anchorKey } = await run()

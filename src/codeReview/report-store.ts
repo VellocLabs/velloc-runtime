@@ -1,5 +1,5 @@
 import {
-  CONTEXT_READ_BYTES, quotedIn, type ActionReceipt, type Assessment, type Diagnostic, type ReviewCandidate, type ReviewCoverage,
+  CONTEXT_READ_BYTES, lineFeeds, quotedIn, type ActionReceipt, type Assessment, type Diagnostic, type ReviewCandidate, type ReviewCoverage,
   type ReviewEvidence, type ReviewRun, type ReviewScope,
 } from './contracts'
 
@@ -266,6 +266,8 @@ function effectiveCoverage(state: RunState): ReportCoverage {
 
 export class ReviewReportStore {
   private readonly states = new Map<string, RunState>()
+  /** Per-run hunk sources: derived from the manifest, held only while the run is live and never persisted. */
+  private readonly diffSources = new Map<string, ReportEvidenceSource[]>()
   private readonly listeners = new Set<(snapshot: ReportSnapshot) => void>()
   private readonly tails = new Map<string, Promise<unknown>>()
   private publicationTail: Promise<unknown> = Promise.resolve()
@@ -441,6 +443,7 @@ export class ReviewReportStore {
       if (!state.structured) select(state)
       state.actionPhase = undefined
       this.event(state, 'run-ended')
+      this.diffSources.delete(runId)
     })
   }
   // Contract: bind the returned repair/verification epoch in host closures and call endActionPhase in finally.
@@ -510,23 +513,39 @@ export class ReviewReportStore {
   }
   /** Registers several host-authorized sources in one write; any invalid source rejects them all. */
   async registerEvidenceSources(runId: string, input: readonly ReportEvidenceSource[]): Promise<void> {
-    const values: ReportEvidenceSource[] = input.map(source => ({
-      path: relativePath(source.path), revision: text(source.revision),
-      ...(source.toolCallKey === undefined ? {} : { toolCallKey: text(source.toolCallKey) }),
-      ...(source.excerpt === undefined ? {} : { excerpt: this.options.sanitizeExcerpt(excerptText(source.excerpt)) }),
-    }))
+    const values = input.map(source => this.evidenceSourceValue(source))
     if (!values.length) return
     return this.mutate(runId, state => {
       if (terminal(state.run.progress.status)) return fail('run-terminated')
       const sources = [...(state.evidenceSources ?? [])]
-      for (const value of values) if (!sources.some(item => canonical(item) === canonical(value))) sources.push(value)
+      const keys = new Set(sources.map(canonical))
+      for (const value of values) {
+        const key = canonical(value)
+        if (!keys.has(key)) { keys.add(key); sources.push(value) }
+      }
       state.evidenceSources = sources
     })
   }
+  // Security: only the host's own diff for this run; the sources live in memory until the run finishes (F-38).
+  async attachDiffSources(runId: string, input: readonly ReportEvidenceSource[]): Promise<void> {
+    const values = input.map(source => this.evidenceSourceValue(source))
+    return this.serial(runId, async () => {
+      if (terminal((await this.load(runId)).run.progress.status)) return fail('run-terminated')
+      this.diffSources.set(runId, values)
+    })
+  }
+  private evidenceSourceValue(source: ReportEvidenceSource): ReportEvidenceSource {
+    return {
+      path: relativePath(source.path), revision: text(source.revision),
+      ...(source.toolCallKey === undefined ? {} : { toolCallKey: text(source.toolCallKey) }),
+      ...(source.excerpt === undefined ? {} : { excerpt: lineFeeds(this.options.sanitizeExcerpt(excerptText(source.excerpt))) }),
+    }
+  }
   private evidenceSource(state: RunState, diagnostic: ReportDiagnostic, support: ReportSupport, callKey: string): ReportEvidence['source'] {
     if (!support.path) return { toolCallKey: callKey }
-    const sources = (state.evidenceSources ?? []).filter(source => source.path === support.path)
-    const quoted = sources.filter(source => source.excerpt !== undefined && quotedIn(source.excerpt, support.quote))
+    const sources = [...state.evidenceSources ?? [], ...this.diffSources.get(state.run.id) ?? []].filter(source => source.path === support.path)
+    const quote = lineFeeds(support.quote)
+    const quoted = sources.filter(source => source.excerpt?.includes(quote))
     const matching = quoted.length ? quoted : sources.filter(source => source.excerpt === undefined)
     if (matching.length) {
       const revision = quoted.length ? quoteRevision(state, matching.map(source => source.revision)) : unique(matching.map(source => source.revision)).length === 1 ? matching[0].revision : undefined

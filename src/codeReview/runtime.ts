@@ -52,6 +52,8 @@ const contexts = new WeakMap<object, ToolCallContext>()
 const pendingServices = new WeakMap<object, Promise<LocalReviewService>>()
 const normalized = (path: string) => { const slashed = path.replace(/\\/g, '/'); return /^(?:[A-Za-z]:)?\/$/.test(slashed) ? slashed : slashed.replace(/\/$/, '') }
 const equal = (a: string, b: string) => /^[A-Za-z]:/.test(a) ? a.toLowerCase() === b.toLowerCase() : a === b
+/** The citable path of a guidance file outside the review root: stable, relative, and never a repository path (F-38). */
+export const outsideGuidancePath = (path: string) => `@guidance/${normalized(path).replace(/:/g, '').replace(/^\/+/, '')}`
 const below = (path: string, root: string) => equal(path, root) || ( /^[A-Za-z]:/.test(root) ? path.toLowerCase().startsWith(root.toLowerCase() + '/') : path.startsWith(root + '/'))
 /** Context text is UTF-8 within the read cap; binary or oversized content is unavailable, not an error. */
 function contextText(bytes: Uint8Array): string {
@@ -233,9 +235,13 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       }
       admit()
       const selected = docs.filter((doc, index) => docs.findIndex(other => other.path === doc.path) === index)
-      const sources = await Promise.all(selected.filter(doc => below(normalized(doc.path), root) && !equal(normalized(doc.path), root)).map(async doc => ({
-        path: normalized(doc.path).slice(root.length + 1), revision: `guidance:${await reviewDigest(doc.content)}`, excerpt: doc.content,
+      const inside = (doc: { path: string }) => below(normalized(doc.path), root) && !equal(normalized(doc.path), root)
+      // A blank or oversized file is not a valid excerpt, and would fail the whole run's source registration.
+      const outside = selected.filter(doc => !inside(doc) && !equal(normalized(doc.path), root) && doc.content.trim() && doc.content.length <= CONTEXT_READ_BYTES && !doc.content.includes('\0'))
+      const sources = await Promise.all(selected.filter(doc => inside(doc) || outside.includes(doc)).map(async doc => ({
+        path: inside(doc) ? normalized(doc.path).slice(root.length + 1) : outsideGuidancePath(doc.path), revision: `guidance:${await reviewDigest(doc.content)}`, excerpt: doc.content,
       })))
+      const citations = outside.length ? `\n\nWhen support quotes a guidance file outside the repository, use this path for it:\n${outside.map(doc => `- ${doc.path} as ${outsideGuidancePath(doc.path)}`).join('\n')}` : ''
       let authorizedGuidance: ReviewServiceOptions['guidance'] = approved?.guidance
       if (authorizeEffort) {
         for (const doc of [...selected].reverse()) {
@@ -249,7 +255,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
           }
         }
       }
-      return { text: formatMemoryFilesForPrompt(selected), sources, authorizedGuidance }
+      return { text: formatMemoryFilesForPrompt(selected) + citations, sources, authorizedGuidance }
     }
     const scopeGit = async () => {
       const git = await createGitArgvRunner(runtime.spawnArgv, { authorizeRoot: async () => {

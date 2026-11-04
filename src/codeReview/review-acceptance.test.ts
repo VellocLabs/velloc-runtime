@@ -185,22 +185,22 @@ describe('review output and cancellation', () => {
 })
 
 
-it('keeps a finder\'s valid candidates when one in the same answer is refused, and says so', async () => {
-  const head = 'b'.repeat(40), base = 'a'.repeat(40)
-  let recorded: { diagnostics: number; limitations: string[]; revisions: Array<string | undefined> } | undefined
+it.each(['after', 'working-copy'] as const)('keeps a finder\'s valid candidates when one in the same answer is refused, and says so (%s)', async afterSide => {
+  const head = 'b'.repeat(40), base = 'a'.repeat(40), reviewed = afterSide === 'after' ? head : 'c'.repeat(64)
+  let recorded: { diagnostics: number; limitations: string[]; revisions: Array<string | undefined>; rejected: unknown } | undefined
   const f = fixture({ resolveScope: async () => {
     const value = manifest()
-    const anchor = (path: string, side: 'before' | 'after') => ({ anchorKey: `${path}-${side}`, path, revision: side === 'before' ? base : head, side, span: { start: 1, end: 4 } })
+    const anchor = (path: string, side: 'before' | typeof afterSide) => ({ anchorKey: `${path}-${side}`, path, revision: side === 'before' ? base : reviewed, side, span: { start: 1, end: 4 } })
     value.files = [
-      { path: 'src/a.ts', status: 'included', patch: '--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+await wait()', anchors: [anchor('src/a.ts', 'before'), anchor('src/a.ts', 'after')] },
-      { path: 'src/b.ts', status: 'included', patch: '--- a/src/b.ts\n+++ b/src/b.ts\n@@ -1,2 +1,2 @@\n import { settle } from "./settle"\n-const timer = setTimeout(settle, OLD)\n+const timer = setTimeout(settle, LIMIT)', anchors: [anchor('src/b.ts', 'before'), anchor('src/b.ts', 'after')] },
+      { path: 'src/a.ts', status: 'included', patch: '--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+await wait()', anchors: [anchor('src/a.ts', 'before'), anchor('src/a.ts', afterSide)] },
+      { path: 'src/b.ts', status: 'included', patch: '--- a/src/b.ts\n+++ b/src/b.ts\n@@ -1,2 +1,2 @@\n import { settle } from "./settle"\n-const timer = setTimeout(settle, OLD)\n+const timer = setTimeout(settle, LIMIT)', anchors: [anchor('src/b.ts', 'before'), anchor('src/b.ts', afterSide)] },
     ]
     value.anchors = value.files.flatMap(file => file.anchors)
     return { manifest: value, trustedGuidance: '', read: async () => '' }
   }, runModel: async request => {
     if (request.blocks.some(block => block.source === 'assigned-angles')) {
       const scope = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text)
-      const anchorKey = scope.anchors.find((item: { path: string; side: string }) => item.path === 'src/a.ts' && item.side === 'after').anchorKey
+      const anchorKey = scope.anchors.find((item: { path: string; side: string }) => item.path === 'src/a.ts' && item.side === afterSide).anchorKey
       const issue = (headline: string, support: unknown[]) => ({ location: { anchorKey, path: 'src/a.ts', line: 1, endLine: 1 }, statement: { headline, details: 'The wait never ends.', scenario: 'The timer is never set.' }, kind: 'correctness', impact: 'major', support, assessment: { disposition: 'plausible', reason: 'Read from the diff.' }, angle: 'lines' })
       return { text: JSON.stringify({ candidates: [
         issue('Wait outlives its timer', [{ path: 'src/a.ts', quote: 'await wait()', relevance: 'The wait' }, { path: 'src/b.ts', quote: 'const timer = setTimeout(settle, LIMIT)', relevance: 'The timer' },
@@ -208,14 +208,37 @@ it('keeps a finder\'s valid candidates when one in the same answer is refused, a
         issue('Guidance is ignored', [{ path: 'D:/repo/GUIDE.md', quote: 'a rule', relevance: 'An absolute path' }]),
       ], coverage: { angles: ['lines'], limitations: [] } }), interrupted: false }
     }
-    await invoke(request, 'Agent', { role: 'finder', angles: ['lines'] })
+    const launched = await invoke(request, 'Agent', { role: 'finder', angles: ['lines'] })
     const snapshot = await f.service.store.getSnapshot(JSON.parse(request.blocks.find(block => block.source === 'run-summary')!.text).runId)
-    recorded = { diagnostics: snapshot.diagnostics.length, limitations: snapshot.coverage.limitations, revisions: snapshot.evidence.filter(item => item.source.path === 'src/b.ts').map(item => item.source.revision) }
+    recorded = { diagnostics: snapshot.diagnostics.length, limitations: snapshot.coverage.limitations, revisions: snapshot.evidence.filter(item => item.source.path === 'src/b.ts').map(item => item.source.revision), rejected: (launched.data as { rejectedCandidates?: unknown }).rejectedCandidates }
     const { operation: _, ...result } = await f.service.store.expectedRecord(snapshot.run.id)
     return { text: JSON.stringify(result), interrupted: false }
   } })
   await f.service.wait((await f.service.startUser('max')).runId)
-  expect(recorded).toEqual({ diagnostics: 1, limitations: expect.arrayContaining(['worker-candidates-rejected']), revisions: [head, base, head] })
+  expect(recorded).toEqual({ diagnostics: 1, limitations: expect.arrayContaining(['worker-candidates-rejected']), revisions: [reviewed, base, reviewed], rejected: [{ index: 1, code: 'invalid-path' }] })
+})
+it('does not retry a finder batch candidate by candidate when the run itself refuses the write', async () => {
+  let runId = ''
+  const f = fixture({ resolveScope: async () => {
+    const value = manifest()
+    value.anchors = [{ anchorKey: 'a', path: 'src/a.ts', revision: value.scope.revision.workingCopyDigest!, side: 'working-copy', span: { start: 1, end: 2 } }]
+    value.files[0].anchors = value.anchors
+    return { manifest: value, trustedGuidance: '', read: async () => '' }
+  }, runModel: async request => {
+    if (request.blocks.some(block => block.source === 'assigned-angles')) {
+      const scope = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text)
+      const issue = (n: number) => ({ location: { anchorKey: scope.anchors[0].anchorKey, path: 'src/a.ts', line: 1, endLine: 1 }, statement: { headline: `Issue ${n}`, details: 'Details', scenario: 'Scenario' }, kind: 'correctness', impact: 'major', support: [{ path: 'src/a.ts', quote: 'new', relevance: 'Changed' }], assessment: { disposition: 'plausible', reason: 'Read.' }, angle: 'lines' })
+      await f.service.store.finish(runId, 'cancelled')
+      return { text: JSON.stringify({ candidates: [issue(1), issue(2), issue(3)], coverage: { angles: ['lines'], limitations: [] } }), interrupted: false }
+    }
+    runId = JSON.parse(request.blocks.find(block => block.source === 'run-summary')!.text).runId
+    await invoke(request, 'Agent', { role: 'finder', angles: ['lines'] }).catch(() => undefined)
+    return { text: '{}', interrupted: false }
+  } })
+  await f.service.wait((await f.service.startUser('max')).runId).catch(() => undefined)
+  const ids = (await f.service.store.getRawResults(runId)).map(item => item.toolCallId)
+  expect(ids.filter(id => /-0$/.test(id))).toHaveLength(1)
+  expect(ids.filter(id => /-0-\d+$/.test(id))).toEqual([])
 })
 it('records successful finder coverage and a separate sweep from actual worker runs', async () => {
   const angles = ['lines', 'removed', 'calls', 'reuse', 'simplification', 'efficiency', 'root-cause', 'guidance', 'language', 'wrappers']

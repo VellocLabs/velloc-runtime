@@ -48,6 +48,8 @@ interface LiveRun { access: ReviewScopeAccess; plan: ReviewPlan; args: ReviewArg
 export class ReviewGatewayError extends Error { constructor(readonly code: string) { super(code) } }
 const onlyTestsSkipped = (manifest: ScopeManifest): boolean => !manifest.files.some(file => file.status === 'included') && manifest.files.some(file => file.status === 'skipped' && isTestOrFixturePath(file.path))
 const patchBytes = (manifest: ScopeManifest): number => manifest.files.reduce((total, file) => total + new TextEncoder().encode(file.patch).length, 0)
+/** Write refusals no single candidate can cause, so retrying candidates one by one cannot help. */
+const RUN_LEVEL_WRITE_ERRORS = new Set(['run-not-active', 'invalid-action-epoch', 'verification-host-only', 'publication-host-only', 'tool-call-conflict'])
 const block = (text: string, source: string): ReviewPromptBlock => ({ type: 'text', text, source, provenance: 'trusted-task' })
 const newLive = (base: Omit<LiveRun, 'completedAngles' | 'finderTasks' | 'verified' | 'sweepIds' | 'swept' | 'tasks' | 'agentIds'>): LiveRun =>
   ({ ...base, completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false, tasks: new Map(), agentIds: new Map() })
@@ -66,7 +68,6 @@ export function scopeIndex(manifest: ScopeManifest): Record<string, unknown> {
   return { ...manifest, files: manifest.files.map(({ patch, ...file }) => ({ ...file,
     hunks: (patch.match(/^@@ /gm) ?? []).length, added: countLines(patch, '+'), removed: countLines(patch, '-') })) }
 }
-/** The patches a worker needs: every included file, or only the named ones (by current or pre-rename path). */
 /**
  * Contract: each included hunk's before and after text, as host-recorded sources at the side's revision, so a support
  * quote taken from the diff is attributed to the side that contains it (F-38).
@@ -81,6 +82,7 @@ function diffEvidenceSources(manifest: ScopeManifest): Array<{ path: string; rev
     ])
   })
 }
+/** The patches a worker needs: every included file, or only the named ones (by current or pre-rename path). */
 export function reviewMaterial(manifest: ScopeManifest, paths?: readonly string[]): string {
   return JSON.stringify(manifest.files.filter(file => file.status === 'included' && (!paths || paths.includes(file.path) || (!!file.beforePath && paths.includes(file.beforePath)))).map(file => ({ path: file.path, beforePath: file.beforePath, patch: file.patch })))
 }
@@ -261,7 +263,8 @@ export class LocalReviewService {
     try {
       await this.store.start(runId); this.changed()
       this.admit(controller.signal)
-      await this.store.registerEvidenceSources(runId, [...access.evidenceSources ?? [], ...diffEvidenceSources(access.manifest)])
+      await this.store.registerEvidenceSources(runId, access.evidenceSources ?? [])
+      await this.store.attachDiffSources(runId, diffEvidenceSources(access.manifest))
       if (access.manifest.status === 'empty') {
         await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: access.manifest.notices, complete: true } })
         await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
@@ -378,6 +381,7 @@ export class LocalReviewService {
           const end = timed(live, endOf(result))
           if (end.kind !== 'completed') throw new ReviewGatewayError(endCode(end))
           const value = JSON.parse(result.text)
+          const rejectedCandidates: Array<{ index: number; code: string }> = []
           if (role === 'verifier') {
             const candidateId = String(input.candidateId)
             const finderTaskKey = live.finderTasks.get(candidateId)
@@ -401,17 +405,19 @@ export class LocalReviewService {
             }
             const covered: string[] = value.coverage?.angles ?? []
             if (covered.some(angle => !assigned.includes(angle))) throw new ReviewGatewayError('worker-angle-not-assigned')
-            let rejected = false
             for (let i = 0; i < value.candidates.length; i += 32) {
               const batch: unknown[] = value.candidates.slice(i, i + 32)
               const accepted: string[] = []
               try { accepted.push(...(await this.store.submitLedger(runId, `${taskId}-${i}`, { operation: 'append-candidates', candidates: batch })).accepted.map(entry => entry.diagnosticId)) }
               catch (error) {
-                if (!(error instanceof ReportStoreError)) throw error
+                if (!(error instanceof ReportStoreError) || RUN_LEVEL_WRITE_ERRORS.has(error.code)) throw error
                 // A worker's batch is one write; one refused candidate must not discard the others.
                 for (const [j, candidate] of batch.entries()) {
                   try { accepted.push(...(await this.store.submitLedger(runId, `${taskId}-${i}-${j}`, { operation: 'append-candidates', candidates: [candidate] })).accepted.map(entry => entry.diagnosticId)) }
-                  catch (single) { if (!(single instanceof ReportStoreError)) throw single; rejected = true }
+                  catch (single) {
+                    if (!(single instanceof ReportStoreError) || RUN_LEVEL_WRITE_ERRORS.has(single.code)) throw single
+                    rejectedCandidates.push({ index: i + j, code: single.code })
+                  }
                 }
               }
               for (const diagnosticId of accepted) {
@@ -421,13 +427,13 @@ export class LocalReviewService {
                 }
               }
             }
-            const limitations: string[] = [...(value.coverage?.limitations ?? []), ...(rejected ? ['worker-candidates-rejected'] : [])]
+            const limitations: string[] = [...(value.coverage?.limitations ?? []), ...(rejectedCandidates.length ? ['worker-candidates-rejected'] : [])]
             await this.store.submitLedger(runId, `${taskId}-coverage`, { operation: 'coverage', coverage: { angles: covered, limitations, complete: false } })
             if (role === 'finder') for (const angle of covered) live.completedAngles.add(angle)
             else live.swept = true
           }
           await this.store.noteWorker(runId, 'finished'); this.changed()
-          return { taskId, result: value, ledger: await this.store.expectedRecord(runId) }
+          return { taskId, result: value, ...(rejectedCandidates.length ? { rejectedCandidates } : {}), ledger: await this.store.expectedRecord(runId) }
         } catch (error) { await this.store.noteWorker(runId, 'finished', angles as string[]); this.changed(); throw error }
       })
     }

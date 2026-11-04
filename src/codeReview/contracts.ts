@@ -1,7 +1,7 @@
 export const REVIEW_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 /** Largest whole-file context read, and so the largest evidence excerpt the store accepts. */
 export const CONTEXT_READ_BYTES = 512 * 1024
-const lineFeeds = (value: string) => value.replace(/\r\n?/g, '\n')
+export const lineFeeds = (value: string) => value.replace(/\r\n?/g, '\n')
 /** True when `quote` occurs in host-recorded `text`; line endings do not count, since a read keeps the file's own (F-38). */
 export function quotedIn(text: string, quote: string): boolean { return lineFeeds(text).includes(lineFeeds(quote)) }
 export type ReviewLevel = typeof REVIEW_LEVELS[number]
