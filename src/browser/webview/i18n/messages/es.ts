@@ -30,7 +30,7 @@ export const es: Messages = {
   "reviewCard.notice.arguments": "{reason} Sintaxis admitida: /code-review [low|medium|high|xhigh|max] [-C dir] [target] [--fix] [--comment] [--max-findings n|all|default].",
   "reviewCard.notice.binary": "No se examinó el contenido binario.",
   "reviewCard.notice.cancelled": "La operación se canceló; los resultados conservados siguen disponibles.",
-  "reviewCard.notice.cancelledByUser": "Cancelaste esta revisión.",
+  "reviewCard.notice.cancelledByUser": "Canceló esta revisión.",
   "reviewCard.cancelledEmpty": "Se detuvo antes de informar ningún hallazgo.",
   "reviewCard.cancelledRetained": "Los hallazgos informados antes de detenerse se conservan abajo.",
   "reviewCard.notice.cap": "Límite solicitado: {requested}. Esta ejecución muestra como máximo {effective} hallazgos; la preferencia guardada no cambia.",

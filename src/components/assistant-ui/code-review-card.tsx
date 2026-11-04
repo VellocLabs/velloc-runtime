@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 import { useCopyToClipboard } from './markdown-components'
 import { useRightPanelContent } from './right-panel-content-context'
 import { useBackgroundTasksContext } from './background-tasks-context'
-import { USER_CANCELLED, isReviewFileLocation, reviewTopic, type ReviewAction, type ReviewReportView, type ReviewSessionSnapshot } from '@/codeReview/review-protocol'
+import { isCancelledByUser, isReviewFileLocation, reviewTopic, type ReviewAction, type ReviewReportView, type ReviewSessionSnapshot } from '@/codeReview/review-protocol'
 import type { Diagnostic, OutputMode, ReviewRun, ReviewTaskView } from '@/codeReview/contracts'
 import { latestAssessment } from '@/codeReview/ledger-lookups'
 import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMessage, reviewTaskRoleMessage, reviewTaskStatusMessage, reviewEndMessage } from '@/codeReview/messages'
@@ -365,7 +365,7 @@ export const ReviewReportCard: FC<{
   const reviewing = running && (status === 'queued' || REVIEWING_STAGES.includes(stage))
   const finished = !running
   const cancelled = status === 'cancelled'
-  const cancelledByUser = cancelled && report.coverage.limitations.includes(USER_CANCELLED)
+  const cancelledByUser = isCancelledByUser(status, report.coverage.limitations)
   const hasFindings = report.diagnostics.length > 0
   const shown = report.diagnostics.slice(0, 32).filter(diagnostic =>
     (severity === 'all' || diagnostic.classification.impact === severity) &&
@@ -392,7 +392,7 @@ export const ReviewReportCard: FC<{
     }).catch(() => setError(true)).finally(() => setBusy(false))
   }
   const enumText = (value: string) => reviewValueMessage(t, value)
-  const endMessage = report.end && reviewEndMessage(t, report.end)
+  const endMessage = report.end && !(cancelled && report.end.kind === 'cancelled') && reviewEndMessage(t, report.end)
   const filter = (name: 'severity' | 'kind' | 'state', value: string, values: string[], change: (value: string) => void) => (
     <label className="flex items-center gap-1 text-xs text-muted-foreground">{t(`reviewCard.${name}`)}<select aria-label={t(`reviewCard.${name}`)} className="rounded-md border bg-background px-1.5 py-0.5 text-xs text-foreground" value={value} onChange={event => change(event.target.value)}>{values.map(item => <option key={item} value={item}>{enumText(item)}</option>)}</select></label>
   )
@@ -435,9 +435,9 @@ export const ReviewReportCard: FC<{
             {notices}
           </div>
         </>}
-        {endMessage && !(cancelled && report.end?.kind === 'cancelled') && <p role="status" data-testid="review-end" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{endMessage}</p>}
+        {endMessage && <p role="status" data-testid="review-end" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{endMessage}</p>}
         {reviewing && notices && <div className={SCOPE_BLOCK_CLASS}>{notices}</div>}
-        {finished && !cancelled && !report.coverage.complete && !report.emptyScope && report.diagnostics.length > 0 && <p data-testid="review-incomplete" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{t('reviewCard.notice.incomplete')}</p>}
+        {finished && !cancelled && !report.coverage.complete && !report.emptyScope && hasFindings && <p data-testid="review-incomplete" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{t('reviewCard.notice.incomplete')}</p>}
         {!reviewing && report.diagnostics.length > 0 && <>
           <div className="flex flex-wrap items-center gap-3">
             {repairable && <label className="flex items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" data-testid="review-select-all" className="size-4 accent-primary" checked={allShown} disabled={busy || shown.length === 0} onChange={event => setSelected(ids => event.target.checked ? [...new Set([...ids, ...shown.map(item => item.id)])] : ids.filter(id => !shown.some(item => item.id === id)))} />{t('reviewCard.selectAll')}</label>}

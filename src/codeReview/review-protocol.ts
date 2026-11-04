@@ -39,6 +39,7 @@ export type ReviewActionPayload = { sessionId: string; runId: string; diagnostic
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 /** The coverage limitation and start error of a review the user cancelled from its card. */
 export const USER_CANCELLED = 'review-cancelled-by-user'
+export const isCancelledByUser = (status: string, limitations: readonly string[]): boolean => status === 'cancelled' && limitations.includes(USER_CANCELLED)
 export const isReviewId = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9_.:-]{1,300}$/.test(value)
 export const reviewTopic = (sessionId: string): TopicId => {
   if (!isReviewId(sessionId)) throw new RangeError('Invalid review session id')

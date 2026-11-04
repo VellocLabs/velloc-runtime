@@ -33,7 +33,7 @@ import type { ScopeManifest } from './scope'
 import { createReviewModelRunner } from './runner'
 import { registerReviewSession } from './review-channel'
 import type { ReviewReportView } from './review-protocol'
-import { USER_CANCELLED } from './review-protocol'
+import { USER_CANCELLED, isCancelledByUser } from './review-protocol'
 import type { ReportSnapshot } from './report-store'
 import { SuperEditTool } from '../toolkit/builtin/superEdit'
 import { CONTEXT_READ_BYTES, type ReviewPreferences } from './contracts'
@@ -1134,7 +1134,7 @@ export async function invokeReviewModelSkill(raw: string, context: ToolCallConte
   }
   const snapshot = await service.wait(runId)
   const report = JSON.parse(presentReviewJson(snapshot))
-  const byUser = snapshot.run.progress.status === 'cancelled' && snapshot.coverage.limitations.includes(USER_CANCELLED)
+  const byUser = isCancelledByUser(snapshot.run.progress.status, snapshot.coverage.limitations)
   const notes = [...(byUser ? [USER_CANCELLED_NOTE] : []), ...(report.unverified?.length ? ['report.unverified lists candidates whose evidence the host could not confirm; they are not findings and must not be reported as such.'] : [])]
   return JSON.stringify({ reviewRunId: runId, status: snapshot.run.progress.status, report, ...(byUser ? { cancelledBy: 'user' } : {}), ...(notes.length ? { note: notes.join(' ') } : {}) })
 }

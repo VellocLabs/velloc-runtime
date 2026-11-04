@@ -59,7 +59,6 @@ interface LiveRun {
   verification?: Promise<VerificationOutcome>
   startVerification?: () => Promise<VerificationOutcome>
   findersLaunched?: boolean
-  cancelledByUser?: boolean
 }
 export class ReviewGatewayError extends Error { constructor(readonly code: string) { super(code) } }
 const onlyTestsSkipped = (manifest: ScopeManifest): boolean => !manifest.files.some(file => file.status === 'included') && manifest.files.some(file => file.status === 'skipped' && isTestOrFixturePath(file.path))
@@ -126,7 +125,9 @@ export function reviewMaterial(manifest: ScopeManifest, paths?: readonly string[
 export class LocalReviewService {
   readonly store: ReviewReportStore
   private readonly live = new Map<string, LiveRun>()
-  private readonly pending = new Map<string, { toolCallId: string; controller: AbortController; cancelledByUser?: boolean }>()
+  private readonly pending = new Map<string, { toolCallId: string; controller: AbortController }>()
+  /** Controllers aborted by the card's cancel action; a start and its run share one, so both read the same cause. */
+  private readonly userCancelled = new WeakSet<AbortController>()
   private readonly listeners = new Set<() => void>()
   private readonly known = new Set<string>()
   private sequence = 0
@@ -217,8 +218,7 @@ export class LocalReviewService {
   private async start(raw: string, source: 'user' | 'model', signal?: AbortSignal, presentation?: OutputMode, toolCallId?: string): Promise<{ runId: string }> {
     const operation = this.operation(signal)
     const pendingId = toolCallId ? `preparing-${crypto.randomUUID()}` : undefined
-    const entry = pendingId ? { toolCallId: toolCallId!, controller: operation.controller, cancelledByUser: false } : undefined
-    if (pendingId) { this.pending.set(pendingId, entry!); this.changed() }
+    if (pendingId) { this.pending.set(pendingId, { toolCallId: toolCallId!, controller: operation.controller }); this.changed() }
     const prepared = this.prepare(raw, source, operation.controller, presentation, toolCallId)
     try {
       // Scope resolution can wait on a prompt that ignores the signal; a cancelled start still returns at once.
@@ -228,7 +228,7 @@ export class LocalReviewService {
     } catch (error) {
       prepared.catch(() => {})
       operation.release()
-      if (entry?.cancelledByUser) throw new ReviewGatewayError(USER_CANCELLED)
+      if (this.userCancelled.has(operation.controller)) throw new ReviewGatewayError(USER_CANCELLED)
       throw error
     } finally { if (pendingId && this.pending.delete(pendingId)) this.changed() }
   }
@@ -288,10 +288,10 @@ export class LocalReviewService {
   /** Contract: reached only through the card's cancel action, so the run records the user as the cause. */
   async cancel(runId: string): Promise<{ accepted: boolean }> {
     const pending = this.pending.get(runId)
-    if (pending) { pending.cancelledByUser = true; pending.controller.abort(); return { accepted: true } }
+    if (pending) { this.userCancelled.add(pending.controller); pending.controller.abort(); return { accepted: true } }
     const live = this.live.get(runId)
     if (!live || !['queued', 'active'].includes((await this.store.getSnapshot(runId)).run.progress.status)) return { accepted: false }
-    live.cancelledByUser = true; live.controller.abort(); this.changed(); return { accepted: true }
+    this.userCancelled.add(live.controller); live.controller.abort(); this.changed(); return { accepted: true }
   }
   private async execute(runId: string, live: LiveRun): Promise<void> {
     const { plan, access, controller } = live
@@ -374,7 +374,7 @@ export class LocalReviewService {
     } catch (error) {
       const snapshot = await this.store.getSnapshot(runId)
       if (snapshot.run.progress.status === 'active') {
-        const reason = controller.signal.aborted ? live.cancelledByUser ? USER_CANCELLED : 'review-cancelled' : error instanceof Error ? error.message : 'review-failed'
+        const reason = controller.signal.aborted ? this.userCancelled.has(controller) ? USER_CANCELLED : 'review-cancelled' : error instanceof Error ? error.message : 'review-failed'
         await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: [reason], complete: false } })
         if (!snapshot.structured) await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
         await this.store.finish(runId, controller.signal.aborted ? 'cancelled' : 'partial')
