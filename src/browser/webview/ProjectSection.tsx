@@ -3,8 +3,6 @@
  * from the session summaries (`metadata.projectRoot`) plus `projectsStorage`.
  */
 import {
-  ChevronDownIcon,
-  ChevronRightIcon,
   CopyIcon,
   FolderIcon,
   FolderOpenIcon,
@@ -19,6 +17,7 @@ import { FORCED_FOLDER_TEMPLATE_TYPE } from '../../utils/conversationStoragePath
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { DisclosureCaret } from './DisclosureCaret'
 import { useLocale, useT } from './i18n'
 import { useModContributions } from './mods/modContributionsView'
 import { buildProjectMenuEntries } from './projectMenu'
@@ -173,7 +172,7 @@ export function ProjectSection({
 
   return (
     <div className="flex shrink-0 flex-col gap-1">
-      {/* Section header: label + collapse chevron on the left, the
+      {/* Section header: label + collapse caret on the left, the
           add-workspace folder button on the right. Not a session row (no `span.min-w-0.flex-1`), so the e2e
           row-count harness ignores it. */}
       <div className="flex w-full items-center pr-1">
@@ -195,7 +194,7 @@ export function ProjectSection({
         >
           {t('sidebar.projects')}
           {collapsed && (
-            <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />
+            <DisclosureCaret expanded={false} title={t('sidebar.expandSection')} className="ms-0.5" />
           )}
         </button>
         {onAddProject && (
@@ -366,26 +365,19 @@ function ProjectRow({
             SIDEBAR_ROW_HEIGHT,
           )}
         >
-          {expanded ? (
-            <ChevronDownIcon
-              aria-hidden
-              className="size-3 shrink-0 text-muted-foreground/60"
-            />
-          ) : (
-            <ChevronRightIcon
-              aria-hidden
-              className="size-3 shrink-0 text-muted-foreground/60"
-            />
-          )}
           <FolderGlyph
             aria-hidden
             className="size-3.5 shrink-0 text-muted-foreground/70"
           />
           {/* Deliberately NOT `span.min-w-0.flex-1` — that shape is how the e2e
               harness identifies a SESSION row, and a project is not one. */}
-          <span className="min-w-0 flex-[1_1_0%] truncate leading-tight">
+          <span className="min-w-0 truncate leading-tight">
             {node.name}
           </span>
+          <DisclosureCaret
+            expanded={expanded}
+            title={t(expanded ? 'sidebar.collapseProject' : 'sidebar.expandProject')}
+          />
         </button>
 
         {/* Hover actions, right-aligned: a one-click "new code session", then

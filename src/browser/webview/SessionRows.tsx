@@ -38,6 +38,7 @@ import {
   SESSION_PAGE_SIZE,
 } from './sessionListPaging'
 import { cn } from '@/lib/utils'
+import { DISCLOSURE_CARET_HOVER, DisclosureCaretGlyph } from './DisclosureCaret'
 import type { SessionLineageKind } from '../../sessions/sessionLineage'
 import {
   aggregateDescendantState,
@@ -722,11 +723,13 @@ function SessionRow({
                 e.stopPropagation()
                 nesting?.onToggle?.(session.sessionId)
               }}
-              className="relative z-10 ms-1 me-2 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              title={t(collapsed ? 'sidebar.showNestedSessions' : 'sidebar.hideNestedSessions')}
+              className={cn(
+                'relative z-10 ms-1 me-2 flex size-5 shrink-0 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                DISCLOSURE_CARET_HOVER,
+              )}
             >
-              <svg aria-hidden viewBox="0 0 12 12" className="size-3 fill-current">
-                <path d={collapsed ? 'M4 2 9 6 4 10Z' : 'M2 4 10 4 6 9Z'} />
-              </svg>
+              <DisclosureCaretGlyph expanded={!collapsed} />
             </button>
           )}
           {canDismissStart && (

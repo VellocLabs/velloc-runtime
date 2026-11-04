@@ -235,6 +235,11 @@ export const ko: Messages = {
   'sidebar.expandChildrenAria': '{title} 아래 세션 표시 ({count})',
   'sidebar.nestedSessionOne': '하위 세션 {count}개',
   'sidebar.nestedSessions': '하위 세션 {count}개',
+  'sidebar.showNestedSessions': '하위 세션 표시',
+  'sidebar.hideNestedSessions': '하위 세션 숨기기',
+  'sidebar.expandSection': '펼치기',
+  'sidebar.expandProject': '프로젝트 펼치기',
+  'sidebar.collapseProject': '프로젝트 접기',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} 준비 완료',
   'appUpdate.restart': '다시 시작하여 업데이트',

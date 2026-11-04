@@ -1,12 +1,12 @@
 
 
-import { ChevronRightIcon } from 'lucide-react'
 import { InkRipple } from '@/components/assistant-ui/ink-ripple'
 import {
   SessionAttentionDot,
 } from '@/components/assistant-ui/session-attention-dot'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { DisclosureCaret } from './DisclosureCaret'
 import { useLocale, useT } from './i18n'
 import { useModContributions } from './mods/modContributionsView'
 import {
@@ -156,6 +156,7 @@ function SessionSectionToggle({
   collapsed: boolean
   onCollapsedChange: (next: boolean) => void
 }) {
+  const t = useT()
   return (
     <button
       type="button"
@@ -175,10 +176,10 @@ function SessionSectionToggle({
       className="flex w-full shrink-0 select-none items-center rounded-md px-3 pb-1 pt-3 text-start text-caption font-medium uppercase tracking-wider text-muted-foreground/70 transition-colors hover:text-muted-foreground"
     >
       {label}
-      {/* Chevron only while collapsed (click to expand); no arrow when
-          expanded. Sits flush to the right of the label (no gap). */}
+      {/* Caret only while collapsed (click to expand); no caret when
+          expanded. */}
       {collapsed && (
-        <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />
+        <DisclosureCaret expanded={false} title={t('sidebar.expandSection')} className="ms-0.5" />
       )}
     </button>
   )
@@ -759,7 +760,7 @@ export function Sidebar({
           collapsedParents={collapsedParents}
         />
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col py-2">
+        <div data-slot="sidebar-body" className="flex min-h-0 flex-1 flex-col px-3 py-2">
           <SessionListBody
             title={title}
             sessionId={sessionId}

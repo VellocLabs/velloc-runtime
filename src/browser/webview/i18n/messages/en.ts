@@ -240,6 +240,11 @@ export const en = {
   'sidebar.expandChildrenAria': 'Show the sessions under {title} ({count})',
   'sidebar.nestedSessionOne': '{count} nested session',
   'sidebar.nestedSessions': '{count} nested sessions',
+  'sidebar.showNestedSessions': 'Show nested sessions',
+  'sidebar.hideNestedSessions': 'Hide nested sessions',
+  'sidebar.expandSection': 'Expand',
+  'sidebar.expandProject': 'Expand project',
+  'sidebar.collapseProject': 'Collapse project',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} is ready',
   'appUpdate.restart': 'Restart to update',

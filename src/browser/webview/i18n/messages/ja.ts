@@ -235,6 +235,11 @@ export const ja: Messages = {
   'sidebar.expandChildrenAria': '{title} の下のセッションを表示（{count}）',
   'sidebar.nestedSessionOne': '{count} 件のサブセッション',
   'sidebar.nestedSessions': '{count} 件のサブセッション',
+  'sidebar.showNestedSessions': 'サブセッションを表示',
+  'sidebar.hideNestedSessions': 'サブセッションを隠す',
+  'sidebar.expandSection': '展開',
+  'sidebar.expandProject': 'プロジェクトを展開',
+  'sidebar.collapseProject': 'プロジェクトを折りたたむ',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} の準備ができました',
   'appUpdate.restart': '再起動して更新',

@@ -238,6 +238,11 @@ export const es: Messages = {
   'sidebar.expandChildrenAria': 'Mostrar las sesiones bajo {title} ({count})',
   'sidebar.nestedSessionOne': '{count} subsesión',
   'sidebar.nestedSessions': '{count} subsesiones',
+  'sidebar.showNestedSessions': 'Mostrar subsesiones',
+  'sidebar.hideNestedSessions': 'Ocultar subsesiones',
+  'sidebar.expandSection': 'Expandir',
+  'sidebar.expandProject': 'Expandir proyecto',
+  'sidebar.collapseProject': 'Contraer proyecto',
   // Client update: the bottom-of-sidebar restart notice.
   'appUpdate.ready': '{product} {version} está listo',
   'appUpdate.restart': 'Reiniciar para actualizar',
