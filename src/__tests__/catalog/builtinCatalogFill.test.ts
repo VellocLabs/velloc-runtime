@@ -90,8 +90,8 @@ describe('the catalog is the lowest layer', () => {
     expect(row).toMatchObject({ contextWindow: 111_000, maxOutputTokens: 22_000, supportsImageInput: false })
     // Never a name or tiers: the row's own stay.
     expect(row.availableThinkingTiers).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
-    // A filled cap bounds the first-request reservation, as a listed one does.
-    expect(row.defaultMaxOutputTokens).toBe(22_000)
+    // A filled cap sets the first-request allowance, as a listed one does.
+    expect(row.defaultMaxOutputTokens).toBe(11_000)
 
     // A row's own figure wins: 3.7 Plus states its cap, V4 Pro no images.
     setCatalogFigures('qwen', [layer({ 'qwen3.7-plus': { contextWindow: 1_000_000, maxOutputTokens: 64_000 } })])

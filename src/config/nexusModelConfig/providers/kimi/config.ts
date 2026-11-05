@@ -47,7 +47,7 @@ export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       // it (HTTP 400), so there is no `none` pill. Documented default `high`.
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['low', 'high', 'max'],
-      defaultMaxOutputTokens: 64_000,
+      defaultMaxOutputTokens: 65_536,
     },
     {
       family: 'k*-pro-highspeed',
@@ -61,7 +61,7 @@ export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       todoTools: false,
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['low', 'high', 'max'],
-      defaultMaxOutputTokens: 64_000,
+      defaultMaxOutputTokens: 65_536,
     },
     {
       family: 'k*',
@@ -74,7 +74,7 @@ export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       // The page's documented default moved `max` → `high`.
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['none', 'low', 'high', 'max'],
-      defaultMaxOutputTokens: 64_000,
+      defaultMaxOutputTokens: 65_536,
     },
     {
       family: 'k*-256k',
@@ -89,7 +89,7 @@ export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       todoTools: false,
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['none', 'low', 'high', 'max'],
-      defaultMaxOutputTokens: 64_000,
+      defaultMaxOutputTokens: 65_536,
     },
     {
       // FIXED. K2.8 Preview ("performance approaching K3, higher thinking

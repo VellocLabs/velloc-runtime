@@ -54,7 +54,7 @@ export const GLM_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       // Current-generation flagship/balanced tier — no TodoWrite (see
       // `todoTools` in ../types.ts).
       todoTools: false,
-      defaultMaxOutputTokens: 32_000,
+      defaultMaxOutputTokens: 65_536,
       supportsStrictTools: true,
       // Text-only per its model page, like every plain GLM row.
       supportsImageInput: false,
@@ -87,7 +87,7 @@ export const GLM_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('glm-5\\.3-flash'),
       name: 'GLM-5.3 Flash',
       minVersion: '4',
-      defaultMaxOutputTokens: 32_000,
+      defaultMaxOutputTokens: 65_536,
       supportsStrictTools: true,
       versions: {
         // GLM-4 Flash: legacy, text-only, 4K output, no strict tools.

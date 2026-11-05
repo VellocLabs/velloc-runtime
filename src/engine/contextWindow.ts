@@ -5,6 +5,7 @@ import {
 } from '../config/nexusModelConfig'
 import { catalogFiguresRead, catalogKeysOf } from '../config/nexusModelConfig/catalogFigures'
 import { findConfiguredModelIn } from '../config/nexusModelConfig/findConfiguredModel'
+import { firstRequestOutputTokens, firstRequestOutputTokensForWindow } from '../config/nexusModelConfig/firstRequestOutput'
 import { entryId, LATEST } from '../config/nexusModelConfig/modelEntries'
 import { resolveModelId } from '../config/nexusModelConfig/modelEntryResolution'
 import { deriveCanonicalModelId } from '../config/nexusModelConfig/patterns'
@@ -84,8 +85,10 @@ export function outputBudgetOf(
 }
 
 /**
- * The initial-request max output tokens for a model (`defaultMaxOutputTokens`); max-tokens recovery
- * escalates to `getMaxOutputTokensForModel`. `undefined` for uncatalogued models (caller's floor applies).
+ * The initial-request max output tokens for a model: its row's
+ * `defaultMaxOutputTokens`, else half its output cap within the first-request
+ * bounds, else a figure from its window. Max-tokens recovery raises it toward
+ * the cap. `undefined` only without a model id.
  */
 export function getDefaultMaxOutputTokensForModel(
   modelId: string | undefined,
@@ -94,7 +97,9 @@ export function getDefaultMaxOutputTokensForModel(
 ): number | undefined {
   if (!modelId) return undefined
   const configured = findConfiguredModel(modelId, providerId, config)
-  return configured?.defaultMaxOutputTokens
+  if (configured?.defaultMaxOutputTokens) return configured.defaultMaxOutputTokens
+  if (configured?.maxOutputTokens) return firstRequestOutputTokens(configured.maxOutputTokens)
+  return firstRequestOutputTokensForWindow(contextWindowOf(modelId, providerId, config))
 }
 
 /**

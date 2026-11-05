@@ -51,7 +51,7 @@ export const GOOGLE_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       // Current-generation flagship/balanced tier — no TodoWrite (see
       // `todoTools` in ../types.ts).
       todoTools: false,
-      defaultMaxOutputTokens: 32_000,
+      defaultMaxOutputTokens: 32_768,
       compactionTriggerCharCount: 200_000,
       versions: {
         '3.7': { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash' },
@@ -66,7 +66,7 @@ export const GOOGLE_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('gemini-3\\.5-flash-lite'),
       name: 'Gemini 3.5 Flash-Lite',
       minVersion: '2.5',
-      defaultMaxOutputTokens: 32_000,
+      defaultMaxOutputTokens: 32_768,
       compactionTriggerCharCount: 200_000,
       versions: {
         '2.5': { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite' },
@@ -79,7 +79,7 @@ export const GOOGLE_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('gemini-2\\.5-pro'),
       name: 'Gemini 2.5 Pro',
       minVersion: '2.5',
-      defaultMaxOutputTokens: 32_000,
+      defaultMaxOutputTokens: 32_768,
       compactionTriggerCharCount: 200_000,
     },
     // FIXED rows: the preview ids, matched by pattern (a fixed row answers
@@ -94,7 +94,7 @@ export const GOOGLE_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       // `todoTools` in ../types.ts).
       todoTools: false,
       contextWindow: 1_048_576,
-      defaultMaxOutputTokens: 32_000,
+      defaultMaxOutputTokens: 32_768,
       maxOutputTokens: 65_536,
       compactionTriggerCharCount: 200_000,
     },
@@ -102,7 +102,7 @@ export const GOOGLE_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: /gemini-3-flash(?:-preview(?:-[\w-]+)?)?/i,
       name: 'Gemini 3 Flash Preview',
       contextWindow: 1_048_576,
-      defaultMaxOutputTokens: 32_000,
+      defaultMaxOutputTokens: 32_768,
       maxOutputTokens: 65_536,
       compactionTriggerCharCount: 200_000,
     },
@@ -110,7 +110,7 @@ export const GOOGLE_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: /gemini-3(?:\.1)?-flash-lite(?:-preview(?:-[\w-]+)?)?/i,
       name: 'Gemini 3.1 Flash-Lite Preview',
       contextWindow: 1_048_576,
-      defaultMaxOutputTokens: 32_000,
+      defaultMaxOutputTokens: 32_768,
       maxOutputTokens: 65_536,
       compactionTriggerCharCount: 200_000,
     },

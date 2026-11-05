@@ -1,20 +1,59 @@
 import { describe, expect, it } from 'vitest'
-import { firstRequestOutputTokens, listedModelRow } from '../config/nexusModelConfig/familyRows'
+import { listedModelRow } from '../config/nexusModelConfig/familyRows'
+import { firstRequestOutputTokens, firstRequestOutputTokensForWindow } from '../config/nexusModelConfig/firstRequestOutput'
+import { getDefaultMaxOutputTokensForModel } from '../engine/contextWindow'
+import type { NexusModelConfig } from '../config/nexusModelConfig/types'
 
-describe('the first-request output allowance of a listed model', () => {
-  it('is 32768 below a million-token window and 131072 from there up', () => {
-    expect(firstRequestOutputTokens(1_048_000, 300_000)).toBe(32_768)
-    expect(firstRequestOutputTokens(1_048_000, 999_999)).toBe(32_768)
-    expect(firstRequestOutputTokens(1_048_000, 1_000_000)).toBe(131_072)
-    expect(firstRequestOutputTokens(1_048_000, 1_048_576)).toBe(131_072)
-    expect(firstRequestOutputTokens(1_048_000, undefined)).toBe(32_768)
+describe('the first-request output allowance', () => {
+  it('is half the output cap', () => {
+    expect(firstRequestOutputTokens(128_000)).toBe(64_000)
+    expect(firstRequestOutputTokens(65_536)).toBe(32_768)
+    expect(firstRequestOutputTokens(16_384)).toBe(8_192)
   })
-  it('never exceeds the cap the model lists', () => {
-    expect(firstRequestOutputTokens(65_536, 1_048_576)).toBe(65_536)
-    expect(firstRequestOutputTokens(8_192, 128_000)).toBe(8_192)
+  it('is at most 131072', () => {
+    expect(firstRequestOutputTokens(393_216)).toBe(131_072)
+    expect(firstRequestOutputTokens(1_048_576)).toBe(131_072)
+  })
+  it('is at least 4096, and never above the cap', () => {
+    expect(firstRequestOutputTokens(8_192)).toBe(4_096)
+    expect(firstRequestOutputTokens(6_000)).toBe(4_096)
+    expect(firstRequestOutputTokens(4_096)).toBe(4_096)
+    expect(firstRequestOutputTokens(1_024)).toBe(1_024)
   })
   it('is what a listed row carries', () => {
     expect(listedModelRow('vendor/big', { contextWindow: 1_048_000, maxOutputTokens: 1_048_000 }).defaultMaxOutputTokens).toBe(131_072)
-    expect(listedModelRow('vendor/mid', { contextWindow: 300_000, maxOutputTokens: 300_000 }).defaultMaxOutputTokens).toBe(32_768)
+    expect(listedModelRow('vendor/mid', { contextWindow: 300_000, maxOutputTokens: 100_000 }).defaultMaxOutputTokens).toBe(50_000)
+  })
+  it('follows the window when a model states no cap', () => {
+    expect(firstRequestOutputTokensForWindow(1_000_000)).toBe(65_536)
+    expect(firstRequestOutputTokensForWindow(900_000)).toBe(32_768)
+    expect(firstRequestOutputTokensForWindow(272_000)).toBe(32_768)
+    expect(firstRequestOutputTokensForWindow(200_000)).toBe(8_192)
+    expect(firstRequestOutputTokensForWindow(8_192)).toBe(8_192)
+  })
+})
+
+describe('the allowance a model resolves to', () => {
+  const config: NexusModelConfig = {
+    providers: [{
+      providerId: 'acme',
+      filterMode: 'passthrough',
+      models: [
+        { model: /^stated$/, contextWindow: 1_000_000, maxOutputTokens: 100_000, defaultMaxOutputTokens: 20_000 },
+        { model: /^capped$/, contextWindow: 1_000_000, maxOutputTokens: 100_000 },
+        { model: /^wide$/, contextWindow: 1_000_000 },
+        { model: /^mid$/, contextWindow: 300_000 },
+        { model: /^small$/, contextWindow: 64_000 },
+      ],
+    }],
+  }
+  it.each([
+    ['stated', 20_000],
+    ['capped', 50_000],
+    ['wide', 65_536],
+    ['mid', 32_768],
+    ['small', 8_192],
+  ])('%s -> %i', (model, expected) => {
+    expect(getDefaultMaxOutputTokensForModel(model, 'acme', config)).toBe(expected)
   })
 })

@@ -47,7 +47,7 @@ export const QWEN_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       // Current-generation flagship/balanced tier — no TodoWrite (see
       // `todoTools` in ../types.ts).
       todoTools: false,
-      defaultMaxOutputTokens: 16_384,
+      defaultMaxOutputTokens: 65_536,
       compactionTriggerCharCount: 60_000,
       defaultThinkingTier: 'max',
       // NO `none` pill: the DashScope / token-plan gateway RESTRICTS
@@ -76,7 +76,7 @@ export const QWEN_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('qwen3\\.8-flash'),
       name: '3.8 Flash',
       minVersion: '3.6',
-      defaultMaxOutputTokens: 16_384,
+      defaultMaxOutputTokens: 65_536,
       compactionTriggerCharCount: 60_000,
       versions: {
         '3.6': { id: 'qwen3.6-flash', name: '3.6 Flash' },
@@ -87,7 +87,7 @@ export const QWEN_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('qwen3\\.7-plus'),
       name: '3.7 Plus',
       minVersion: '3.7',
-      defaultMaxOutputTokens: 16_384,
+      defaultMaxOutputTokens: 65_536,
       // 131,072 per its model page (alibabacloud.com/help/en/model-studio/
       // qwen3-7-plus, "Max Output Length 131072"); the
       // catalog's DashScope China record says 64,000.

@@ -7,6 +7,7 @@ import type { BrowserLlmProvider } from '../browser/bridge/browserBridgeProtocol
 import { NEXUS_MODEL_CONFIG } from '../config/nexusModelConfig'
 import { familyRowProblems, knownModelRows } from '../config/nexusModelConfig/familyRows'
 import { findConfiguredModel } from '../config/nexusModelConfig/findConfiguredModel'
+import { firstRequestOutputTokens } from '../config/nexusModelConfig/firstRequestOutput'
 import { versionParser } from '../config/nexusModelConfig/modelEntries'
 import { resetEntryResolutions, resolveModelId } from '../config/nexusModelConfig/modelEntryResolution'
 import { deriveCanonicalModelId } from '../config/nexusModelConfig/patterns'
@@ -102,8 +103,15 @@ const CHANGED_SINCE = (providerId: string, id: string): Record<string, unknown> 
   ...(providerId === 'anthropic' && id.startsWith('claude-fable-') ? { defaultThinkingTier: 'high' } : {}),
   ...VENDOR_SINCE[providerId]?.[id],
 })
+// The first-request allowance is half the output cap within its bounds; the
+// figures below state the cap's earlier share. A row whose allowance equals
+// its cap publishes no ceiling and uses the cap whole.
+const withAllowance = <T extends { maxOutputTokens?: unknown; defaultMaxOutputTokens?: unknown }>(figures: T): T =>
+  typeof figures.maxOutputTokens === 'number' && figures.maxOutputTokens !== figures.defaultMaxOutputTokens
+    ? { ...figures, defaultMaxOutputTokens: firstRequestOutputTokens(figures.maxOutputTokens) }
+    : figures
 const SHIPPED = Object.entries(BEFORE).flatMap(([providerId, rows]) =>
-  Object.entries(rows).map(([id, figures]) => [providerId, id, { ...figures, ...CHANGED_SINCE(providerId, id) }] as const))
+  Object.entries(rows).map(([id, figures]) => [providerId, id, withAllowance({ ...figures, ...CHANGED_SINCE(providerId, id) })] as const))
 
 // Versions no table names: each must read its family's row, whole.
 const UNSHIPPED: ReadonlyArray<readonly [string, string, Frozen]> = [
@@ -180,7 +188,8 @@ const UNCOVERED: ReadonlyArray<readonly [string, string, string]> = [
   ['qwen', 'qwen3.5-plus', 'below minVersion 3.7'],
 ]
 
-const expectFrozen = (providerId: string, id: string, frozen: Frozen) => {
+const expectFrozen = (providerId: string, id: string, stated: Frozen) => {
+  const frozen = withAllowance(stated)
   const row = findConfiguredModel(providerId, id)
   expect(row, `${providerId}/${id} is covered`).toBeDefined()
   for (const field of ['promptProfile', 'todoTools', 'defaultThinkingTier', 'availableThinkingTiers', 'contextWindow', 'defaultMaxOutputTokens', 'maxOutputTokens'] as const) {

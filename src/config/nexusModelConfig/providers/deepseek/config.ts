@@ -45,7 +45,7 @@ export const DEEPSEEK_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       todoTools: false,
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['none', 'low', 'high', 'max'],
-      defaultMaxOutputTokens: 32_000,
+      defaultMaxOutputTokens: 131_072,
       // Text-only: the pricing table's Vision column says "Not supported"
       // for V4 Pro (api-docs.deepseek.com/quick_start/pricing); only the
       // Flash row takes images.
@@ -58,7 +58,7 @@ export const DEEPSEEK_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       name: 'V4.1 Flash',
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['none', 'low', 'high', 'max'],
-      defaultMaxOutputTokens: 32_000,
+      defaultMaxOutputTokens: 131_072,
     },
   ],
 }

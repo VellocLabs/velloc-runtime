@@ -121,7 +121,7 @@ export const ANTHROPIC_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       // Default stays at `high` (the API default) per the migration guide.
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['low', 'medium', 'high', 'extra-high', 'max'],
-      defaultMaxOutputTokens: 32_000,
+      defaultMaxOutputTokens: 64_000,
       compactionTriggerCharCount: 200_000,
       supportsStrictTools: true,
       versions: {

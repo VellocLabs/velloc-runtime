@@ -8,6 +8,7 @@
  */
 import { normalizeModelId, preferSibling } from '../../catalog/catalogMatch'
 import type { CatalogModel, CatalogProviderRecords } from '../../catalog/types'
+import { firstRequestOutputTokens } from './firstRequestOutput'
 import { fallbackTier, orderedTiers } from './providers/shared/listing'
 import type { NexusConfiguredModel, NexusModelConfig, NexusProviderModelConfig } from './types'
 
@@ -248,7 +249,7 @@ const mergedCache = new WeakMap<
 /**
  * `row` with the catalog's figures beneath its three unset fields; `row` itself when
  * nothing is filled. `verifiedModelId` answers for a family version the catalog does
- * not list. A filled output cap also lowers a higher `defaultMaxOutputTokens`.
+ * not list. A filled output cap also sets `defaultMaxOutputTokens` from it.
  */
 export function withCatalogFigures(
   providerId: string,
@@ -272,9 +273,7 @@ export function withCatalogFigures(
   }
   if (out.maxOutputTokens === undefined && figures.maxOutputTokens !== undefined) {
     out.maxOutputTokens = figures.maxOutputTokens
-    if (out.defaultMaxOutputTokens !== undefined && out.defaultMaxOutputTokens > figures.maxOutputTokens) {
-      out.defaultMaxOutputTokens = figures.maxOutputTokens
-    }
+    out.defaultMaxOutputTokens = firstRequestOutputTokens(figures.maxOutputTokens)
   }
   if (out.supportsImageInput === undefined && figures.supportsImageInput !== undefined) {
     out.supportsImageInput = figures.supportsImageInput

@@ -4,6 +4,7 @@
  * A matching FIXED row answers first. The opt-in flags (`promptProfile`,
  * `todoTools`, `supportsStrictTools`) are never read from a listing.
  */
+import { firstRequestOutputTokens } from './firstRequestOutput'
 import type { ModelWire, ProviderModelInfo } from './providerDefinition'
 import { deriveCanonicalModelId, escapeRegExp } from './patterns'
 import { compareVersionsDesc, type ModelVersionInfo } from './providers/shared/modelVersions'
@@ -36,23 +37,7 @@ export function familyRowCovers(row: NexusConfiguredModel, info: ModelVersionInf
   return true
 }
 
-/**
- * The first request reserves at most this many output tokens (or the model's
- * cap when lower): a gateway row's cap is often its whole window, and
- * reserving that would leave nothing for the prompt. Truncation recovery
- * escalates to `maxOutputTokens`.
- */
-export const FIRST_REQUEST_OUTPUT_RESERVATION = 32_768
-/** The reservation for a window of `LARGE_WINDOW_TOKENS` or more. */
-export const LARGE_WINDOW_OUTPUT_RESERVATION = 131_072
-export const LARGE_WINDOW_TOKENS = 1_000_000
-
-/** A listed model's first-request output allowance: the reservation for its window, or its cap when lower. */
-export function firstRequestOutputTokens(maxOutputTokens: number, contextWindow: number | undefined): number {
-  const reservation = (contextWindow ?? 0) >= LARGE_WINDOW_TOKENS ? LARGE_WINDOW_OUTPUT_RESERVATION : FIRST_REQUEST_OUTPUT_RESERVATION
-  return Math.min(maxOutputTokens, reservation)
-}
-
+export { firstRequestOutputTokens, firstRequestOutputTokensForWindow } from './firstRequestOutput'
 
 /**
  * The row a version of `row`'s family reads (the three layers above). `info`
@@ -78,10 +63,7 @@ export function resolveFamilyRow(
     if (listed.contextWindow) out.contextWindow = listed.contextWindow
     if (listed.maxOutputTokens) {
       out.maxOutputTokens = listed.maxOutputTokens
-      // The first-request reservation never exceeds the listed cap.
-      if (out.defaultMaxOutputTokens && out.defaultMaxOutputTokens > listed.maxOutputTokens) {
-        out.defaultMaxOutputTokens = listed.maxOutputTokens
-      }
+      out.defaultMaxOutputTokens = firstRequestOutputTokens(listed.maxOutputTokens)
     }
     if (listed.availableThinkingTiers) {
       const tiers = [...listed.availableThinkingTiers]
@@ -255,7 +237,7 @@ export function listedModelRow(modelId: string, figures: ListedModelFigures | un
   if (figures.contextWindow) row.contextWindow = figures.contextWindow
   if (figures.maxOutputTokens) {
     row.maxOutputTokens = figures.maxOutputTokens
-    row.defaultMaxOutputTokens = firstRequestOutputTokens(figures.maxOutputTokens, figures.contextWindow)
+    row.defaultMaxOutputTokens = firstRequestOutputTokens(figures.maxOutputTokens)
   }
   const tiers = figures.availableThinkingTiers
   if (tiers) {

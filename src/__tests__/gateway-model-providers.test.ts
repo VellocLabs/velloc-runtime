@@ -851,7 +851,7 @@ describe('runtime provider listing, entries and catalog rows', () => {
     await refreshRuntimeProviderModels(transport, 'vercel-ai-gateway', { now: NOW })
     expect(contextWindowOf('anthropic/claude-sonnet-5.5', 'vercel-ai-gateway')).toBe(1_000_000)
     expect(outputBudgetOf('anthropic/claude-sonnet-5.5', 'vercel-ai-gateway')).toBe(128_000)
-    expect(getDefaultMaxOutputTokensForModel(VERCEL_LISTING.data[0]!.id, 'vercel-ai-gateway')).toBe(128_000)
+    expect(getDefaultMaxOutputTokensForModel(VERCEL_LISTING.data[0]!.id, 'vercel-ai-gateway')).toBe(64_000)
     expect(getAvailableThinkingTiersForModel('google/gemini-3-pro', 'vercel-ai-gateway')).toEqual(['low', 'high'])
     expect(contextWindowOf('anthropic/claude-sonnet-5.5-fast', 'vercel-ai-gateway')).toBe(200_000)
     expect(

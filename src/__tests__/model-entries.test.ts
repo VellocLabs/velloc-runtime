@@ -336,7 +336,7 @@ describe('built-in providers', () => {
 
       expect(contextWindowOf('acme-chat-2', 'anthropic')).toBe(1_000_000)
       const fields = resolveModelRequestFields({ model: 'acme-chat-2', providerId: 'anthropic', thinkingTier: 'max' })
-      expect(fields.maxOutputTokens).toBe(128_000)
+      expect(fields.maxOutputTokens).toBe(64_000)
       expect(fields.thinkingTier).toBe('max')
       // A level the listing does not state is dropped, not sent.
       expect(resolveModelRequestFields({ model: 'acme-chat-2', providerId: 'anthropic', thinkingTier: 'extra-high' })
