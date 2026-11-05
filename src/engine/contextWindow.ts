@@ -98,7 +98,7 @@ export function getDefaultMaxOutputTokensForModel(
   if (!modelId) return undefined
   const configured = findConfiguredModel(modelId, providerId, config)
   if (configured?.defaultMaxOutputTokens) return configured.defaultMaxOutputTokens
-  if (configured?.maxOutputTokens) return firstRequestOutputTokens(configured.maxOutputTokens)
+  if (configured?.maxOutputTokens) return firstRequestOutputTokens(configured.maxOutputTokens, contextWindowOf(modelId, providerId, config))
   return firstRequestOutputTokensForWindow(contextWindowOf(modelId, providerId, config))
 }
 

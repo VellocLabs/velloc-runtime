@@ -273,7 +273,7 @@ export function withCatalogFigures(
   }
   if (out.maxOutputTokens === undefined && figures.maxOutputTokens !== undefined) {
     out.maxOutputTokens = figures.maxOutputTokens
-    out.defaultMaxOutputTokens = firstRequestOutputTokens(figures.maxOutputTokens)
+    out.defaultMaxOutputTokens = firstRequestOutputTokens(figures.maxOutputTokens, out.contextWindow)
   }
   if (out.supportsImageInput === undefined && figures.supportsImageInput !== undefined) {
     out.supportsImageInput = figures.supportsImageInput

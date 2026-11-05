@@ -20,8 +20,21 @@ describe('the first-request output allowance', () => {
     expect(firstRequestOutputTokens(1_024)).toBe(1_024)
   })
   it('is what a listed row carries', () => {
-    expect(listedModelRow('vendor/big', { contextWindow: 1_048_000, maxOutputTokens: 1_048_000 }).defaultMaxOutputTokens).toBe(131_072)
+    expect(listedModelRow('vendor/big', { contextWindow: 1_048_576, maxOutputTokens: 1_048_000 }).defaultMaxOutputTokens).toBe(131_072)
     expect(listedModelRow('vendor/mid', { contextWindow: 300_000, maxOutputTokens: 100_000 }).defaultMaxOutputTokens).toBe(50_000)
+  })
+  it('reads a cap as large as a wide window as no cap', () => {
+    expect(firstRequestOutputTokens(1_048_576, 1_048_576)).toBe(128_000)
+    expect(firstRequestOutputTokens(2_000_000, 1_000_000)).toBe(128_000)
+    expect(firstRequestOutputTokens(1_048_000, 1_048_576)).toBe(131_072)
+    expect(firstRequestOutputTokens(393_216, 1_048_576)).toBe(131_072)
+    expect(firstRequestOutputTokens(65_536, 1_048_576)).toBe(32_768)
+    expect(listedModelRow('vendor/wide', { contextWindow: 1_048_576, maxOutputTokens: 1_048_576 }).defaultMaxOutputTokens).toBe(128_000)
+  })
+  it('keeps half the cap when the window is not a wide one', () => {
+    expect(firstRequestOutputTokens(262_144, 262_144)).toBe(131_072)
+    expect(firstRequestOutputTokens(900_000, 900_000)).toBe(131_072)
+    expect(firstRequestOutputTokens(131_072, 131_072)).toBe(65_536)
   })
   it('follows the window when a model states no cap', () => {
     expect(firstRequestOutputTokensForWindow(1_000_000)).toBe(128_000)
@@ -42,6 +55,7 @@ describe('the allowance a model resolves to', () => {
         { model: /^stated$/, contextWindow: 1_000_000, maxOutputTokens: 100_000, defaultMaxOutputTokens: 20_000 },
         { model: /^capped$/, contextWindow: 1_000_000, maxOutputTokens: 100_000 },
         { model: /^wide$/, contextWindow: 1_000_000 },
+        { model: /^filled$/, contextWindow: 1_000_000, maxOutputTokens: 1_000_000 },
         { model: /^mid$/, contextWindow: 300_000 },
         { model: /^small$/, contextWindow: 64_000 },
       ],
@@ -51,6 +65,7 @@ describe('the allowance a model resolves to', () => {
     ['stated', 20_000],
     ['capped', 50_000],
     ['wide', 128_000],
+    ['filled', 128_000],
     ['mid', 32_768],
     ['small', 8_192],
   ])('%s -> %i', (model, expected) => {

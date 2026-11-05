@@ -303,7 +303,7 @@ function mirrorEntryFigures(
     if (model.contextWindow !== undefined) row.contextWindow = model.contextWindow
     if (model.maxOutputTokens !== undefined) {
       row.maxOutputTokens = model.maxOutputTokens
-      row.defaultMaxOutputTokens = firstRequestOutputTokens(model.maxOutputTokens)
+      row.defaultMaxOutputTokens = firstRequestOutputTokens(model.maxOutputTokens, model.contextWindow)
     }
     if (model.availableThinkingTiers) row.availableThinkingTiers = [...model.availableThinkingTiers]
     if (model.defaultThinkingTier) row.defaultThinkingTier = model.defaultThinkingTier

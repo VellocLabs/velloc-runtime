@@ -63,7 +63,7 @@ export function resolveFamilyRow(
     if (listed.contextWindow) out.contextWindow = listed.contextWindow
     if (listed.maxOutputTokens) {
       out.maxOutputTokens = listed.maxOutputTokens
-      out.defaultMaxOutputTokens = firstRequestOutputTokens(listed.maxOutputTokens)
+      out.defaultMaxOutputTokens = firstRequestOutputTokens(listed.maxOutputTokens, out.contextWindow)
     }
     if (listed.availableThinkingTiers) {
       const tiers = [...listed.availableThinkingTiers]
@@ -237,7 +237,7 @@ export function listedModelRow(modelId: string, figures: ListedModelFigures | un
   if (figures.contextWindow) row.contextWindow = figures.contextWindow
   if (figures.maxOutputTokens) {
     row.maxOutputTokens = figures.maxOutputTokens
-    row.defaultMaxOutputTokens = firstRequestOutputTokens(figures.maxOutputTokens)
+    row.defaultMaxOutputTokens = firstRequestOutputTokens(figures.maxOutputTokens, figures.contextWindow)
   }
   const tiers = figures.availableThinkingTiers
   if (tiers) {
