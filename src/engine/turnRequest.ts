@@ -107,7 +107,7 @@ export function issueModelRequest(d: Draft, policies: TurnPolicies): void {
     userAmbient: s.userAmbient,
     systemAmbient: s.systemAmbient,
     tools: s.visibleTools,
-    outputTokenCapOverride: s.outputTokenCapOverride,
+    outputTokenCapOverride: s.outputTokenCapOverride ?? s.limits.outputCapTokens,
     finalResponse: finalReplyDue(s, policies),
   })
 }

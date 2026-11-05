@@ -52,7 +52,8 @@ export function onModelAnswer(
   if (failure === 'output_cap') {
     const choice = policies.recoverOutputCap({
       outputCapRetries: state.outputCapRetries,
-      outputTokenCapOverride: state.outputTokenCapOverride,
+      // A turn its caller capped is never escalated past that cap.
+      outputTokenCapOverride: state.outputTokenCapOverride ?? state.limits.outputCapTokens,
     })
     if (choice === 'escalate') {
       // Same input again with the model's full output allowance; the cut

@@ -351,6 +351,20 @@ describe('turn decisions', () => {
     expect([...assigned].sort()).toEqual(fixtureNames())
   })
 
+  describe('a turn its caller capped', () => {
+    const capped = { limits: { outputCapTokens: 12_000, outputCeilingTokens: 32_000 }, messages: [PROMPT] }
+    it('sends the cap with every request, also after a tool step', () => {
+      const run = driveMachine({ model: [toolStep('a'), toolStep('b'), TEXT], tools: { Read: { text: 'ok' } }, state: capped })
+      expect(run.requests.map((r) => r.outputTokenCapOverride)).toEqual([12_000, 12_000, 12_000])
+    })
+    it('resumes a cut reply under the same cap instead of raising it', () => {
+      const run = driveMachine({ model: [{ fail: 'output_cap' }, TEXT], state: capped })
+      expect(run.requests.map((r) => r.outputTokenCapOverride)).toEqual([12_000, 12_000])
+      const last = run.requests.at(-1)!.messages.at(-1) as { message?: { content?: unknown } }
+      expect(last.message?.content).toBe(OUTPUT_CAP_CONTINUE_NOTE)
+    })
+  })
+
   for (const row of DECISIONS) {
     describe(row.decision, () => {
       for (const fixture of row.fixtures) {

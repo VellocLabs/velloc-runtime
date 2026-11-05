@@ -80,6 +80,8 @@ export type TurnLimits = {
   readonly servingModel?: string
   readonly blockingLimitTokens?: number
   readonly outputCeilingTokens?: number
+  /** The caller's output cap: it bounds every request of the turn, not only the first. */
+  readonly outputCapTokens?: number
 }
 
 /**

@@ -85,6 +85,7 @@ function openState(env: TurnEnvironment): TurnState {
       servingModel: model,
       blockingLimitTokens: getBlockingLimitTokens(model, ctx.options.mainLoopProviderId),
       outputCeilingTokens: outputBudgetOf(model, input.providerId) ?? undefined,
+      ...(input.outputTokenCapOverride !== undefined ? { outputCapTokens: input.outputTokenCapOverride } : {}),
     },
     k: 1,
     messages: input.messages,
