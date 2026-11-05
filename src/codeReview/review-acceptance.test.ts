@@ -1104,6 +1104,45 @@ describe('worker hand-in through ReviewSubmit', () => {
     expect(snapshot.assessments.at(-1)).toMatchObject({ disposition: 'dismissed' })
     expect(snapshot.run.progress.status).toBe('finished')
   })
+  it('reads candidates and coverage sent as JSON text', async () => {
+    let handed: Record<string, any> = {}
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) {
+        handed = await submit(request, { candidates: JSON.stringify([findingFor(request, 'lines', 'Unguarded read')]), coverage: JSON.stringify({ angles: TEN, limitations: [] }) })
+        return done
+      }
+      if (request.blocks.some(block => block.source === 'candidate')) return verdict('plausible')
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      await invoke(request, 'Agent', { role: 'verifier' })
+      return finishCoordinator(f, request)
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(handed).toEqual({ accepted: true })
+    expect(snapshot.diagnostics.map(d => d.claim.title)).toEqual(['Unguarded read'])
+    expect(snapshot.run.progress.status).toBe('finished')
+  })
+  it('names a hand-in refused as a whole, with a hint, and takes the corrected one', async () => {
+    let first: Record<string, any> = {}, second: Record<string, any> = {}
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) {
+        const good = findingFor(request, 'lines', 'Unguarded read')
+        first = await submit(request, { candidates: 'not a list', coverage: { angles: TEN, limitations: [] } })
+        second = await submit(request, { candidates: [good], coverage: { angles: TEN, limitations: [] } })
+        return done
+      }
+      if (request.blocks.some(block => block.source === 'candidate')) return verdict('plausible')
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      await invoke(request, 'Agent', { role: 'verifier' })
+      return finishCoordinator(f, request)
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(first).toEqual({ acceptedCandidates: 0, refused: { code: 'worker-candidate-limit', hint: expect.stringContaining('array') }, next: expect.stringContaining('once more') })
+    expect(second).toEqual({ accepted: true })
+    expect(snapshot.diagnostics).toHaveLength(1)
+    expect(snapshot.run.progress.status).toBe('finished')
+  })
   it('counts a worker that handed in as whole when its step limit stops it afterwards', async () => {
     const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
       if (request.blocks.some(block => block.source === 'assigned-angles')) {

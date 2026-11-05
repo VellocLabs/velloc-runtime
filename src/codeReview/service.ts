@@ -563,9 +563,21 @@ export class LocalReviewService {
         const hand = async (value: Record<string, unknown>) => {
           if (!open) throw new ReviewGatewayError('already-submitted')
           const final = handed++ > 0
+          const input = structuredClone(value)
+          // A field sent as JSON text is read as the value it spells.
+          for (const key of ['candidates', 'coverage', 'support', 'missingEvidence']) {
+            const text = input[key]
+            if (typeof text !== 'string') continue
+            try { const spelled: unknown = JSON.parse(text); if (spelled && typeof spelled === 'object') input[key] = spelled } catch { /* stays text, and is refused as text */ }
+          }
           let refused: Refusal[]
-          try { refused = await record(structuredClone(value), final) }
-          catch (error) { if (final) open = false; throw error }
+          try { refused = await record(input, final) }
+          catch (error) {
+            if (final) open = false
+            if (final || !(error instanceof ReviewGatewayError)) throw error
+            // A hand-in refused as a whole is answered like a refused item: named, with a hint, and one more call.
+            return { ...(role === 'verifier' ? { accepted: false } : { acceptedCandidates: kept.length }), refused: withRefusalHint({ code: error.code }), next: 'correct the hand-in and call ReviewSubmit once more; that call is final' }
+          }
           if (final || !refused.length) open = false
           if (!refused.length) return { accepted: true }
           return { ...(role === 'verifier' ? { accepted: false } : { acceptedCandidates: kept.length }),

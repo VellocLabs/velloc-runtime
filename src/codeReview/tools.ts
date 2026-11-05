@@ -60,6 +60,9 @@ const REFUSAL_HINTS: Record<string, string> = {
   'invalid-array': 'candidates, support, angles and limitations are arrays',
   'invalid-object': 'location, statement, assessment and every support item are objects',
   'unknown-field': 'remove fields the schema does not list',
+  'worker-candidate-limit': 'candidates must be an array, and no longer than this task allows; keep the strongest',
+  'worker-angle-candidate-limit': 'too many candidates for one angle; keep the strongest of that angle',
+  'worker-angle-not-assigned': 'every candidate angle and every coverage angle must be one of your assigned angles',
 }
 /** A refused item as a worker reads it: its code and how to correct it. */
 export const withRefusalHint = <T extends { code: string }>(item: T): T & { hint?: string } => ({ ...item, ...(REFUSAL_HINTS[item.code] ? { hint: REFUSAL_HINTS[item.code] } : {}) })
