@@ -134,6 +134,8 @@ export type ToolCallContext = {
     /** This session's auto-compact settings reader (switch + windows), the
      *  one its `autocompact` resolves through. Absent without settings. */
     autoCompactWindows?: AutoCompactWindowSettings
+    /** Auto-compaction uses the model's own threshold and ignores the user's window (the on/off switch still applies). */
+    compactAtModelWindow?: boolean
     /** This session's filesystem. Tools that must not lose a write to another
      *  runtime's teardown read this first and fall back to the process
      *  filesystem only when it is absent. Forks share it. */

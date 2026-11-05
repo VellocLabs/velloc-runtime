@@ -1,7 +1,8 @@
 import {
-  CONTEXT_READ_BYTES, lineFeeds, quotedIn, type ActionReceipt, type Assessment, type Diagnostic, type ReviewCandidate, type ReviewCoverage,
+  CONTEXT_READ_BYTES, REVIEW_STAGES, lineFeeds, quotedIn, type ActionReceipt, type Assessment, type Diagnostic, type ReviewCandidate, type ReviewCoverage,
   type ReviewEvidence, type ReviewRun, type ReviewScope,
 } from './contracts'
+import { isMergedDuplicate, latestAssessment } from './ledger-lookups'
 
 import { reassessmentTouches, validateReassessmentUpdates, type ReassessmentEvidence, type ReassessmentUpdate } from './reassessment'
 
@@ -241,13 +242,14 @@ function overlap(a: ReportAnchor, b: ReportAnchor): boolean {
   if (!a.span || !b.span) return !a.span && !b.span && a.contextDigest === b.contextDigest
   return a.span.start <= b.span.end && b.span.start <= a.span.end
 }
+const isDefectKind = (kind: string) => kind === 'correctness' || kind === 'security'
 function lastAssessment(state: RunState, id: string): ReportAssessment {
-  return state.assessments.filter(item => item.diagnosticId === id).at(-1)!
+  return latestAssessment(state, id)!
 }
 function rank(state: RunState): string[] {
   const impact = { critical: 0, major: 1, minor: 2 }
   const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0
-  return state.diagnostics.filter(d => !Object.hasOwn(state.duplicateIds ?? {}, d.id) && lastAssessment(state, d.id).disposition !== 'dismissed').sort((a, b) => {
+  return state.diagnostics.filter(d => !isMergedDuplicate(state, d.id) && lastAssessment(state, d.id).disposition !== 'dismissed').sort((a, b) => {
     const category = (d: ReportDiagnostic) => ['correctness', 'security'].includes(d.classification.kind) ? 0 : 1
     return category(a) - category(b) || impact[a.classification.impact] - impact[b.classification.impact]
       || compare(a.anchor.path, b.anchor.path) || (a.anchor.span?.start ?? 0) - (b.anchor.span?.start ?? 0)
@@ -431,7 +433,7 @@ export class ReviewReportStore {
     })
   }
   async setStage(runId: string, stage: ReportStage): Promise<void> {
-    enumeration(stage, ['scope', 'inspect', 'assess', 'sweep', 'report', 'repair', 'publish', 'verify'])
+    enumeration(stage, REVIEW_STAGES)
     return this.mutate(runId, state => {
       if (state.run.progress.status !== 'active') return fail('run-not-active')
       if (state.actionPhase) {
@@ -582,30 +584,28 @@ export class ReviewReportStore {
   }
   /**
    * Contract: a support item that cites `source` takes its path, revision and excerpt from that recorded source:
-   * `quote` must occur in it, or `startLine`..`endLine` (file lines, at most 40) select it; a short source may be cited
-   * whole. Otherwise `quote` is required and attributed by path (F-38).
+   * `quote` must occur in it, or `startLine`..`endLine` (file lines, at most 40) select it, or both, when the quote
+   * occurs within those lines; a short source may be cited whole. Otherwise `quote` is required and attributed by path (F-38).
    */
   private citedSupport(state: RunState, support: Record<string, unknown>): ReportSupport {
     const id = text(support.source)
     const source = this.sources(state).find(item => item.id === id)
     if (!source?.excerpt) return fail('unknown-evidence-source')
     if (support.path !== undefined && relativePath(support.path) !== source.path) return fail('evidence-source-path-mismatch')
+    const lines = source.excerpt.split('\n'), first = source.startLine ?? 1
+    let span: string | undefined
+    if (support.startLine !== undefined) {
+      const start = integer(support.startLine), end = support.endLine === undefined ? start : integer(support.endLine)
+      if (start < first || end < start || end - start >= 40 || end >= first + lines.length) return fail('invalid-span')
+      span = lines.slice(start - first, end - first + 1).join('\n')
+    } else if (support.endLine !== undefined) return fail('invalid-span')
     let quote: string
     if (support.quote !== undefined) {
-      if (support.startLine !== undefined || support.endLine !== undefined) return fail('invalid-span')
       quote = lineFeeds(this.options.sanitizeExcerpt(text(support.quote)))
-      if (!source.excerpt.includes(quote)) return fail('quote-not-in-source')
+      if (!(span ?? source.excerpt).includes(quote)) return fail('quote-not-in-source')
     } else {
-      const lines = source.excerpt.split('\n'), first = source.startLine ?? 1
-      if (support.startLine === undefined) {
-        if (support.endLine !== undefined) return fail('invalid-span')
-        if (lines.length > 40) return fail('evidence-lines-required')
-        quote = source.excerpt
-      } else {
-        const start = integer(support.startLine), end = support.endLine === undefined ? start : integer(support.endLine)
-        if (start < first || end < start || end - start >= 40 || end >= first + lines.length) return fail('invalid-span')
-        quote = lines.slice(start - first, end - first + 1).join('\n')
-      }
+      if (span === undefined && lines.length > 40) return fail('evidence-lines-required')
+      quote = span ?? source.excerpt
       if (!quote.trim()) return fail('missing-evidence')
     }
     return { source: id, path: source.path, quote, relevance: text(support.relevance) }
@@ -668,7 +668,7 @@ export class ReviewReportStore {
     const merged = combined.filter((item, index) => combined.findIndex(other => canonical(item) === canonical(other)) === index)
     if (merged.length > 128) return fail('evidence-limit')
     candidate.input.support = merged
-    const keepId = Object.hasOwn(state.duplicateIds ?? {}, id) ? state.duplicateIds![id] : undefined
+    const keepId = isMergedDuplicate(state, id) ? state.duplicateIds![id] : undefined
     if (keepId) this.mergeSupport(state, keepId, support, callId)
     return evidenceKeys
   }
@@ -686,8 +686,11 @@ export class ReviewReportStore {
       const diagnostic = state.diagnostics.find(item => item.id === id)
       if (!diagnostic) return fail('unknown-diagnostic')
       if ((Object.hasOwn(mapping, id) && mapping[id] !== keepId) || Object.values(mapping).includes(id)) return fail('duplicate-merge-conflict')
+      // Two angles may file one defect under different kinds; the kept candidate's kind stands, so a cleanup
+      // candidate cannot represent a correctness or security one.
+      if (isDefectKind(diagnostic.classification.kind) && !isDefectKind(kept.classification.kind)) return fail('duplicate-keep-kind')
       if (diagnostic.anchor.revision !== kept.anchor.revision || diagnostic.anchor.path !== kept.anchor.path || diagnostic.anchor.side !== kept.anchor.side ||
-          diagnostic.classification.kind !== kept.classification.kind || !diagnostic.anchor.span || !kept.anchor.span || !overlap(diagnostic.anchor, kept.anchor)) return fail('duplicate-anchor-mismatch')
+          !diagnostic.anchor.span || !kept.anchor.span || !overlap(diagnostic.anchor, kept.anchor)) return fail('duplicate-anchor-mismatch')
     }
     this.mergeSupport(state, keepId, [...duplicateIds.flatMap(id => state.candidates.find(item => item.diagnosticId === id)!.input.support), ...support], callId)
     state.duplicateIds = Object.fromEntries([...Object.entries(mapping), ...duplicateIds.map(id => [id, keepId])])

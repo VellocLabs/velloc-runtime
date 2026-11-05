@@ -203,39 +203,44 @@ describe('local review runtime gateway', () => {
     expect(h.runModel).toHaveBeenCalledTimes(1)
     expect((await h.service.snapshots()).reports).toHaveLength(1)
   })
-  it('sizes the default time budget so a ten-angle team run outlives ten minutes', async () => {
+  it('sets no wall-clock budget: a team run longer than ninety minutes is not cut, and the budget names no duration', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       const h = setup({ args: { capabilities: { agentAvailable: false, agentPermitted: false, remainingDepth: 0, outputToolAvailable: true } } })
-      let budget = 0
+      let budget: Record<string, unknown> | undefined
       h.runModel.mockImplementation(async (request: ReviewModelRequest) => {
-        budget = JSON.parse(request.blocks.find(b => b.source === 'budget')!.text).maxDurationMs
-        await new Promise(resolve => setTimeout(resolve, 11 * 60_000))
+        budget = JSON.parse(request.blocks.find(b => b.source === 'budget')!.text)
+        await new Promise(resolve => setTimeout(resolve, 120 * 60_000))
         const plan = JSON.parse(request.blocks.find(b => b.source === 'resolved-policy')!.text)
         const coverage = { angles: plan.angles, limitations: [], complete: true }
         await h.invoke(request, 'ReviewLedger', { operation: 'coverage', coverage })
         return { text: JSON.stringify({ candidates: [], coverage }), interrupted: false }
       })
       const { runId } = await h.service.startUser('max')
-      await vi.waitFor(() => expect(budget).toBeGreaterThan(0))
-      await vi.advanceTimersByTimeAsync(11 * 60_000)
+      await vi.waitFor(() => expect(budget).toBeDefined())
+      await vi.advanceTimersByTimeAsync(120 * 60_000)
       const report = await h.service.wait(runId)
-      expect(budget).toBeGreaterThan(600_000)
-      expect(report.coverage.limitations).not.toContain('review-budget-exhausted')
+      expect(budget).toEqual({ concurrency: 4, maxTurns: 32 })
+      expect(report.run.progress.status).toBe('finished')
       expect(report.coverage.angles).toHaveLength(10)
     } finally { vi.useRealTimers() }
   })
-  it('keeps and reports the angles a run finished before its budget ran out', async () => {
-    const h = setup({ args: { maxDurationMs: 50 } })
+  it('keeps and reports the angles a run finished before it was cancelled', async () => {
+    const h = setup()
+    let started!: () => void
+    const running = new Promise<void>(resolve => { started = resolve })
     h.runModel.mockImplementation(async (request: ReviewModelRequest) => {
       await h.invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: ['lines', 'removed'], limitations: [], complete: false } })
+      started()
       await new Promise<void>(resolve => request.signal.addEventListener('abort', () => resolve(), { once: true }))
       return { text: '', interrupted: true }
     })
     const { runId } = await h.service.startUser('medium')
+    await running
+    await h.service.cancel(runId)
     const report = await h.service.wait(runId)
-    expect(report.run.progress.status).toBe('partial')
-    expect(report.coverage.limitations).toContain('review-budget-exhausted')
+    expect(report.run.progress.status).toBe('cancelled')
+    expect(report.coverage.limitations).toContain('review-cancelled')
     expect(report.coverage.angles).toEqual(['lines', 'removed'])
     expect(report.structured).toBe(true)
   })

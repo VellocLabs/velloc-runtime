@@ -26,33 +26,37 @@ Report within the output limit after inspection. Fewer findings than the limit i
 
 Cover the 10 selected angles sequentially within the current review agent, with at most 8 candidates per angle. Do not create finder or verifier subagents.
 
-Merge duplicate root causes and sort the results. Then reread the diff and relevant functions solely for mechanisms missing from the current list. Focus on guards lost during extraction, asymmetric test cleanup, changed configuration defaults, and secondary language pitfalls. Add at most 8 evidence-supported candidates without re-deriving existing entries.
+Merge duplicate root causes and sort the results. Merging is not a second judgement: do not drop a candidate because its trigger is uncertain. Then reread the diff and relevant functions solely for mechanisms missing from the current list. Focus on guards lost during extraction, asymmetric test cleanup, changed configuration defaults, and secondary language pitfalls. Add at most 8 evidence-supported candidates without re-deriving existing entries.
 
 Record that the gap sweep ran in the same context; do not call it independent verification. Apply the final limit and report uncovered scope.
 
 ## team-eight-precise
 
-Cover the 8 independent review angles. Use the available Agent tool to launch finders, grouping or parallelizing them according to the run budget. Give each task the complete target description, relevant diff, applicable rules, and assigned angles. Allow at most 6 candidates per angle.
-
-Aggregate and merge candidates with the same root cause, then assign one independent verifier to each remaining candidate. Provide the candidate, target revision, evidence, and accessible context. Do not use the candidate's finder as its independent verifier.
+Cover the 8 independent review angles with finders, at most 6 candidates per angle, and relaunch a finder that failed.
 
 Retain proven and plausible findings. Remove dismissed findings supported by clear counterevidence. Report actionable issues, not style opinions. If a verifier does not finish, preserve the candidate's unverified status and mark the coverage gap rather than counting verification as passed.
 
 ## team-eight-recall
 
-Organize finders around the 8 selected angles, with at most 6 candidates per angle, then assign one independent verifier to each deduplicated candidate. Respect actual agent budgets and permissions.
+Organize finders around the 8 selected angles, with at most 6 candidates per angle. Respect actual agent budgets and permissions.
 
-This run prioritizes avoiding missed defects. Concurrency, cold caches, error paths, default configurations, and uncommon but reachable boundaries must not be rejected merely because they are unlikely. Require actual counterevidence for a dismissed verdict. If the mechanism is supported but a triggering condition needs runtime confirmation, retain plausible and identify the missing evidence.
+This run prioritizes avoiding missed defects, and its verifiers keep a supported mechanism plausible unless the code refutes it. Concurrency, cold caches, error paths, default configurations, and uncommon but reachable boundaries must not be dropped merely because they are unlikely, while merging or anywhere else. If the mechanism is supported but a triggering condition needs runtime confirmation, it stays plausible with the missing evidence named.
 
 Do not keep speculation without a concrete mechanism. Sort the final results by impact and disclose unfinished verification and coverage limits.
 
 ## team-ten
 
-Run independent finder checks across the 10 selected angles, with at most 8 candidates per angle. Group angles into tasks as the budget requires, but cover every angle. One angle's conclusion must not prevent another angle from reporting a different mechanism.
+Run independent finder checks across the 10 selected angles, with at most 8 candidates per angle. Group angles into tasks as the budget requires, but cover every angle, and relaunch a finder that failed. One angle's conclusion must not prevent another angle from reporting a different mechanism: two angles that flag the same line for different mechanisms both stay.
 
-After merging duplicates, assign one independent verifier to each candidate. Retain proven and plausible findings; do not discard a candidate solely because its trigger is uncommon.
+Each candidate gets one verdict, and that verdict decides: proven and plausible stay in the report, dismissed leaves it. Do not discard a candidate because its trigger is uncertain or uncommon.
 
-Then launch one gap-sweep task with the diff, relevant context, and existing findings. It must look only for unlisted defects and return at most 8 candidates. The sweep task must self-check the evidence for new candidates. Without a second verifier, these additions must not be labeled independently verified. Merge, deduplicate, sort, and apply the output limit.
+After the verdicts, the verification call runs one gap-sweep task with the diff and the verified list, and returns it under `sweep`. It must look only for unlisted defects and return at most 8 candidates. The sweep task must self-check the evidence for new candidates. Without a second verifier, these additions must not be labeled independently verified. Merge, deduplicate, sort, and apply the output limit.
+
+## team-steps
+
+Launch every finder in one turn: issue all the finder Agent calls together, and the host queues those past its concurrency. Each finder receives the diff itself, so do not read patches before launching them, and do not review the diff yourself while they run.
+
+When the finders have returned, and before any verifier runs, merge candidates that share a location and a mechanism with ReviewLedger operation=merge-duplicates, naming each by the candidateId its finder result carries, even when two angles filed them under different kinds; keep as representative the one whose kind matters most (correctness and security before cleanup), then the one whose failure scenario is most concrete. Read context only when it is needed to decide whether two candidates are the same defect. Then call Agent once with role=verifier and no candidateId; a duplicate merged before that call gets no verifier of its own. The host waits for any finder still running, gives each remaining candidate one independent verifier, never the candidate's own finder, and returns every verdict under `verification`; finders launched after that call are refused. The verdicts decide: do not re-check them yourself or read more of the diff to second-guess them. Calling Agent the same way again retries only the verifiers that failed or came back unchecked, and a sweep that failed; otherwise leave such a candidate unverified and say so. After the verdicts, record coverage and report. The host decides whether this run is complete from what the workers covered and verified: record what could not be checked as limitations, and do not mark the run incomplete for checks outside the diff, such as other repositories, translation quality or runtime behaviour.
 
 ## careful-pass
 

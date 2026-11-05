@@ -1,10 +1,11 @@
 import { parseReviewArguments } from './arguments'
-import { isTestOrFixturePath, resolveReviewPolicy, resolveReviewPreferences, reviewTimeBudgetMs, shouldRunAutomaticVerification } from './recipes'
+import { isTestOrFixturePath, resolveReviewPolicy, resolveReviewPreferences, shouldRunAutomaticVerification } from './recipes'
 import { composeReviewPrompt, composeFinderPrompt, composeVerifierPrompt, composeSweeperPrompt, type ReviewPromptBlock } from './composer'
 import type { ReviewArguments, ReviewCapabilities, ReviewPlan, ReviewPreferences, OutputMode, ReviewRunEnd, ReviewTaskView } from './contracts'
 import { hunkSides, type ScopeManifest } from './scope'
 import { isReviewId } from './review-protocol'
 import { ReportStoreError, ReviewReportStore, answerObjects, type ReportSnapshot, type ReportStorageAdapter, type ReportGrant, type ReportWriteResult } from './report-store'
+import { isMergedDuplicate, latestAssessment } from './ledger-lookups'
 import { createReviewTools, REVIEW_RESULT_SCHEMA, REVIEW_ASSESSMENT_SCHEMA, REVIEW_SUPPORT_SCHEMA } from './tools'
 import { ReviewWorkerPool, endOf, type ReviewModelRunner, type ReviewTaskObserver } from './runner'
 import { lookupForkTaskId } from '../backgroundTasks/sideTaskSink'
@@ -37,28 +38,39 @@ export interface ReviewServiceOptions {
   alreadyVerified?(snapshot: ReportSnapshot): Promise<boolean>
   automaticVerificationPermitted?: boolean
   output?: OutputMode
-  maxDurationMs?: number
   savePresentation?(runId: string, value: { notices: ReviewPlan['notices']; emptyScope: boolean; target?: string }): Promise<void>
   saveTarget?(runId: string, target: string | undefined, targetLiteral?: true, directory?: string): Promise<void>
   loadDirectory?(runId: string): Promise<string | undefined>
   loadTargetLiteral?(runId: string): Promise<true | undefined>
   loadTarget?(runId: string): Promise<string | undefined>
 }
-interface LiveRun { access: ReviewScopeAccess; plan: ReviewPlan; args: ReviewArguments; controller: AbortController; done: Promise<void>; source: 'user' | 'model'; completedAngles: Set<string>; finderTasks: Map<string, string>; verified: Set<string>; sweepIds: Set<string>; swept: boolean; tasks: Map<string, ReviewTaskView>; agentIds: Map<string, string>; end?: ReviewRunEnd; budgetExpired?: boolean }
+/** One finished worker task: its answer, and the candidate IDs it added to the ledger. */
+/** The finder key of candidates the coordinator records itself; never a verifier's task key. */
+const COORDINATOR_TASK = 'coordinator'
+type WorkerOutcome = { taskId: string; result: Record<string, any>; newIds: string[]; rejectedCandidates?: Array<{ index: number; code: string }> }
+/** The outcome of a run's verification step: one verdict or error per candidate, then the gap sweep when the recipe has one. */
+type VerificationOutcome = { verification: Array<Record<string, unknown>>; sweep?: Record<string, unknown> }
+interface LiveRun {
+  access: ReviewScopeAccess; plan: ReviewPlan; args: ReviewArguments; controller: AbortController; done: Promise<void>; source: 'user' | 'model'
+  completedAngles: Set<string>; finderTasks: Map<string, string>; verified: Set<string>; sweepIds: Set<string>; swept: boolean; tasks: Map<string, ReviewTaskView>; agentIds: Map<string, string>; end?: ReviewRunEnd
+  /** Set once the verification step has started; finders are refused from then on. */
+  verification?: Promise<VerificationOutcome>
+  startVerification?: () => Promise<VerificationOutcome>
+  findersLaunched?: boolean
+}
 export class ReviewGatewayError extends Error { constructor(readonly code: string) { super(code) } }
 const onlyTestsSkipped = (manifest: ScopeManifest): boolean => !manifest.files.some(file => file.status === 'included') && manifest.files.some(file => file.status === 'skipped' && isTestOrFixturePath(file.path))
-const patchBytes = (manifest: ScopeManifest): number => manifest.files.reduce((total, file) => total + new TextEncoder().encode(file.patch).length, 0)
 const block = (text: string, source: string): ReviewPromptBlock => ({ type: 'text', text, source, provenance: 'trusted-task' })
 const newLive = (base: Omit<LiveRun, 'completedAngles' | 'finderTasks' | 'verified' | 'sweepIds' | 'swept' | 'tasks' | 'agentIds'>): LiveRun =>
   ({ ...base, completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false, tasks: new Map(), agentIds: new Map() })
 const endCode = (end: ReviewRunEnd): string => `review-${end.kind}`
+/** A worker's step limit, and the steps it may spend reading before it must answer. */
+const WORKER_STEPS = 16, WORKER_READ_STEPS = 14
 const whenAborted = (signal: AbortSignal): Promise<never> => new Promise((_, reject) => {
   const fail = () => reject(new ReviewGatewayError('review-cancelled'))
   if (signal.aborted) fail()
   else signal.addEventListener('abort', fail, { once: true })
 })
-/** A task the run's time budget aborted ended on the time limit, not on a cancellation. */
-const timed = (live: LiveRun, end: ReviewRunEnd): ReviewRunEnd => live.budgetExpired && end.kind === 'cancelled' ? { kind: 'time-limit' } : end
 const countLines = (patch: string, sign: '+' | '-'): number => patch.split('\n').filter(line => line.startsWith(sign) && !line.startsWith(sign.repeat(3))).length
 
 /** Contract: the manifest without patch text; patches are read per file through ReviewRead. */
@@ -91,6 +103,12 @@ function diffEvidenceSources(manifest: ScopeManifest): DiffSource[] {
 /** The citable sides of one file's patch, as a worker sees them next to it. */
 const patchSources = (manifest: ScopeManifest, path: string) =>
   diffEvidenceSources(manifest).filter(source => source.file === path).map(({ id, side, startLine }) => ({ source: id, side, startLine }))
+const isPrimary = (snapshot: ReportSnapshot, id: string): boolean => !isMergedDuplicate(snapshot, id)
+/** The findings a gap sweep starts from: each candidate that is not a merged duplicate, with its latest disposition. */
+function verdictList(snapshot: ReportSnapshot): Array<Record<string, unknown>> {
+  return snapshot.diagnostics.filter(d => isPrimary(snapshot, d.id))
+    .map(d => ({ ...d, disposition: latestAssessment(snapshot, d.id)?.disposition ?? 'unchecked' }))
+}
 /** The patches a worker needs: every included file, or only the named ones (by current or pre-rename path). */
 export function reviewMaterial(manifest: ScopeManifest, paths?: readonly string[]): string {
   return JSON.stringify(manifest.files.filter(file => file.status === 'included' && (!paths || paths.includes(file.path) || (!!file.beforePath && paths.includes(file.beforePath)))).map(file => ({ path: file.path, beforePath: file.beforePath, patch: file.patch, sources: patchSources(manifest, file.path) })))
@@ -170,12 +188,11 @@ export class LocalReviewService {
       ended: info => {
         const task = live.tasks.get(info.key)
         if (!task) return
-        task.end = timed(live, info.end)
+        task.end = info.end
         task.finishedAt = Date.now()
         task.status = task.end.kind === 'completed' ? 'finished' : task.end.kind === 'cancelled' ? 'stopped' : 'failed'
         this.changed()
       },
-      timeLimited: () => !!live.budgetExpired,
     }
   }
   preload(): { command: string; aliases: string[]; levels: string[] } {
@@ -267,8 +284,6 @@ export class LocalReviewService {
   }
   private async execute(runId: string, live: LiveRun): Promise<void> {
     const { plan, access, controller } = live
-    const budgetMs = this.options.maxDurationMs ?? reviewTimeBudgetMs(plan, patchBytes(access.manifest))
-    const timer = setTimeout(() => { live.budgetExpired = true; controller.abort() }, budgetMs)
     try {
       await this.store.start(runId); this.changed()
       this.admit(controller.signal)
@@ -282,7 +297,7 @@ export class LocalReviewService {
         const blocks = composeReviewPrompt(plan, {
           run_summary: JSON.stringify({ runId, plan }), scope_manifest: JSON.stringify(scopeIndex(access.manifest)),
           trusted_guidance: access.trustedGuidance, capability_text: tools.map(t => t.name).join(', '),
-          budget_text: JSON.stringify({ concurrency: plan.workerConcurrency, maxTurns: 32, maxDurationMs: budgetMs }),
+          budget_text: JSON.stringify({ concurrency: plan.workerConcurrency, maxTurns: 32 }),
           verification_contract: 'Runtime verification is a separate permission boundary; do not run tests during static review.',
         }, { repair: false, publication: false })
         if (plan.coordinatorWorkerRequired) await this.store.noteWorker(runId, 'started')
@@ -292,20 +307,30 @@ export class LocalReviewService {
             execution: plan.coordinatorWorkerRequired ? 'isolated' : plan.execution, reasoningLevel: plan.reasoningLevel,
             role: 'coordinator', observer: this.observer(live), onStop: () => controller.abort() })
         } finally { if (plan.coordinatorWorkerRequired) await this.store.noteWorker(runId, 'finished') }
-        const end = timed(live, endOf(result))
+        const end = endOf(result)
         if (end.kind !== 'completed') { live.end = end; throw new ReviewGatewayError(endCode(end)) }
+        // A coordinator that ended without starting verification gets it from the host; a committed panel report is rebuilt from the ledger.
+        const hostVerified = !!live.startVerification && !live.verification && !!live.findersLaunched
+        const hostStep = hostVerified ? await live.startVerification!() : undefined
+        // The summary predates the step: it is stale when a verdict dropped a candidate or the sweep added one.
+        const summaryStale = !!hostStep && (hostStep.verification.some(item => item.disposition === 'dismissed') || (Array.isArray(hostStep.sweep?.candidateIds) && hostStep.sweep.candidateIds.length > 0))
+        let reportRejected = false
         if (plan.presentation !== 'panel') {
           const committed = await this.store.submitFinalAnswer(runId, crypto.randomUUID(), result.text)
-          if (committed.rejected?.length) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['report-candidates-rejected'], complete: false } })
+          reportRejected = !!committed.rejected?.length
+          if (reportRejected) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['report-candidates-rejected'], complete: false } })
         }
         if (plan.agentMode === 'parallel') {
           const snapshot = await this.store.getSnapshot(runId)
           const missing = plan.angles.filter(angle => !live.completedAngles.has(angle))
-          const unverified = snapshot.diagnostics.map(diagnostic => diagnostic.id).filter(id => !live.verified.has(id) && !live.sweepIds.has(id))
-          if (missing.length || plan.independentVerification && unverified.length || plan.sweep === 'independent' && !live.swept) {
-            await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['independent-worker-coverage-incomplete'], complete: false } })
-          }
+          const unverified = snapshot.diagnostics.map(diagnostic => diagnostic.id).filter(id => isPrimary(snapshot, id) && !live.verified.has(id) && !live.sweepIds.has(id))
+          const gap = missing.length > 0 || plan.independentVerification && unverified.length > 0 || plan.sweep === 'independent' && !live.swept
+          // Contract (F-38): a team run is complete when its receipts say so; the coordinator's and workers' notes stay as limitations.
+          const complete = !gap && !reportRejected
+          const limitations = [...(gap ? ['independent-worker-coverage-incomplete'] : []), ...(summaryStale && plan.presentation !== 'panel' ? ['verified-after-summary'] : [])]
+          if (limitations.length || complete !== snapshot.coverage.complete) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations, complete } })
         }
+        if (hostVerified && (await this.store.getSnapshot(runId)).structured) await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
         if (!access.manifest.complete) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: access.manifest.notices.concat('scope-incomplete'), complete: false } })
       }
       await this.store.setStage(runId, 'report'); this.changed()
@@ -333,12 +358,12 @@ export class LocalReviewService {
     } catch (error) {
       const snapshot = await this.store.getSnapshot(runId)
       if (snapshot.run.progress.status === 'active') {
-        const reason = live.budgetExpired ? 'review-budget-exhausted' : controller.signal.aborted ? 'review-cancelled' : error instanceof Error ? error.message : 'review-failed'
+        const reason = controller.signal.aborted ? 'review-cancelled' : error instanceof Error ? error.message : 'review-failed'
         await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: [reason], complete: false } })
         if (!snapshot.structured) await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
-        await this.store.finish(runId, controller.signal.aborted && !live.budgetExpired ? 'cancelled' : 'partial')
+        await this.store.finish(runId, controller.signal.aborted ? 'cancelled' : 'partial')
       }
-    } finally { clearTimeout(timer); this.changed() }
+    } finally { this.changed() }
   }
   private async read(runId: string, live: LiveRun, input: Record<string, unknown>): Promise<unknown> {
     this.admit(live.controller.signal)
@@ -362,9 +387,51 @@ export class LocalReviewService {
     }
     return result
   }
-  private tools(runId: string, live: LiveRun, delegate: boolean): ToolContract[] {
+  private tools(runId: string, live: LiveRun, delegate: boolean, readSteps?: number): ToolContract[] {
     const pool = new ReviewWorkerPool(Math.min(4, live.plan.workerConcurrency))
     let launched = 0
+    const verifications = new Map<string, Promise<WorkerOutcome>>()
+    const finders = new Set<Promise<unknown>>()
+    const failure = (error: unknown) => error instanceof Error ? error.message : 'review-failed'
+    const verifyOnce = (candidateId: string): Promise<WorkerOutcome> => {
+      let pending = verifications.get(candidateId)
+      if (!pending) {
+        const attempt = runWorker({ role: 'verifier', candidateId })
+        verifications.set(candidateId, pending = attempt)
+        // A failed or unchecked attempt can be retried by a later call for that candidate.
+        const forget = () => { if (verifications.get(candidateId) === attempt) verifications.delete(candidateId) }
+        attempt.then(outcome => { if (outcome.result.disposition === 'unchecked') forget() }, forget)
+      }
+      return pending
+    }
+    const settled = async (candidateId: string, outcome: Promise<WorkerOutcome>) => {
+      try {
+        const { taskId, result } = await outcome
+        return { candidateId, taskId, disposition: result.disposition, reason: result.reason }
+      } catch (error) { return { candidateId, error: failure(error) } }
+    }
+    let sweep: Record<string, unknown> | undefined
+    // The stage only drives the progress display; a run that has stopped keeps the stage it had.
+    let findersRunning = 0
+    let merging = false
+    const moveTo = (stage: 'inspect' | 'merge' | 'assess' | 'sweep' | 'report') => this.store.setStage(runId, stage).then(() => this.changed(), () => undefined)
+    // Contract (F-38): verification waits for every launched finder, gives each finder candidate that is not a merged
+    // duplicate one independent verifier, then runs the gap sweep with the verdicts. A later call retries only what
+    // has no verdict yet (a failed or unchecked verifier) and a sweep that failed.
+    const verificationStep = async (): Promise<VerificationOutcome> => {
+      await Promise.all(finders)
+      await moveTo('assess')
+      const snapshot = await this.store.getSnapshot(runId)
+      const pending = snapshot.diagnostics.map(d => d.id).filter(id => isPrimary(snapshot, id) && !live.sweepIds.has(id) && !live.verified.has(id))
+      const verification = await Promise.all(pending.map(id => settled(id, verifyOnce(id))))
+      if (live.plan.sweep !== 'independent') { await moveTo('report'); return { verification } }
+      if (!live.swept) await moveTo('sweep')
+      if (!live.swept) sweep = await runWorker({ role: 'sweeper' }).then(({ newIds, taskId, result }) => ({ taskId, candidateIds: newIds, coverage: result.coverage }), error => ({ error: failure(error) }))
+      await moveTo('report')
+      return { verification, sweep }
+    }
+    const startVerification = (): Promise<VerificationOutcome> => (live.verification = (live.verification ?? Promise.resolve()).then(verificationStep, verificationStep))
+    if (delegate && live.plan.agentMode === 'parallel') live.startVerification = startVerification
     const launch = async (input: Record<string, unknown>) => {
       const capabilities = this.options.capabilities
       if (!capabilities.agentAvailable || !capabilities.agentPermitted || capabilities.remainingDepth <= 0) throw new ReviewGatewayError('agent-unavailable')
@@ -373,7 +440,29 @@ export class LocalReviewService {
       if (role === 'verifier' && !live.plan.independentVerification || role === 'sweeper' && live.plan.sweep !== 'independent') throw new ReviewGatewayError('worker-role-not-authorized')
       const angles = Array.isArray(input.angles) ? input.angles : []
       if (role === 'finder' && (!angles.length || angles.some(a => !live.plan.angles.includes(a as never)))) throw new ReviewGatewayError('invalid-worker-angles')
-      if (++launched > 128) throw new ReviewGatewayError('review-task-budget')
+      const ledger = async () => ({ ledger: await this.store.expectedRecord(runId) })
+      if (role === 'finder') {
+        if (live.verification) throw new ReviewGatewayError('verification-started')
+        live.findersLaunched = true
+        // The run shows merge only while no finder runs and every angle is covered; a finder launched later moves it back.
+        if (findersRunning++ === 0 && merging) { merging = false; await moveTo('inspect') }
+        const work = runWorker(input)
+        finders.add(work.catch(() => undefined))
+        try {
+          const { newIds: _, ...found } = await work
+          return { ...found, ...await ledger() }
+        } finally {
+          if (--findersRunning === 0 && !live.verification && live.plan.angles.every(angle => live.completedAngles.has(angle))) { merging = true; await moveTo('merge') }
+        }
+      }
+      // A verifier call naming a candidate verifies or retries that one; without one, and for a sweeper, it is the run's verification step.
+      if (role === 'verifier' && input.candidateId !== undefined) { const { newIds: _, ...outcome } = await verifyOnce(String(input.candidateId)); return { ...outcome, ...await ledger() } }
+      return { ...await startVerification(), ...await ledger() }
+    }
+    const runWorker = (input: Record<string, unknown>): Promise<WorkerOutcome> => {
+      const role = input.role
+      const angles = Array.isArray(input.angles) ? input.angles : []
+      if (++launched > 128) return Promise.reject(new ReviewGatewayError('review-task-budget'))
       return pool.run(live.controller.signal, async () => {
         const taskId = crypto.randomUUID()
         const snapshot = await this.store.getSnapshot(runId)
@@ -381,25 +470,28 @@ export class LocalReviewService {
         if (role === 'verifier' && !candidate) throw new ReviewGatewayError('unknown-candidate')
         const index = JSON.stringify(scopeIndex(live.access.manifest))
         const promptBlocks = role === 'finder' ? composeFinderPrompt({ scope_manifest: index, review_material: reviewMaterial(live.access.manifest), trusted_guidance: live.access.trustedGuidance, assigned_angles: JSON.stringify(angles), candidatesPerAngle: live.plan.candidatesPerAngle })
-          : role === 'verifier' ? composeVerifierPrompt({ scope_manifest: index, review_material: reviewMaterial(live.access.manifest, [candidate!.anchor.path]), candidate: JSON.stringify(candidate) })
-          : composeSweeperPrompt({ scope_manifest: index, review_material: reviewMaterial(live.access.manifest), existing_findings: JSON.stringify(snapshot.diagnostics) })
+          : role === 'verifier' ? composeVerifierPrompt({ scope_manifest: index, review_material: reviewMaterial(live.access.manifest, [candidate!.anchor.path]), candidate: JSON.stringify(candidate), ...(live.plan.recipe === 'team-eight-recall' ? { stance: 'recall' as const } : {}) })
+          : composeSweeperPrompt({ scope_manifest: index, review_material: reviewMaterial(live.access.manifest), existing_findings: JSON.stringify(verdictList(snapshot)) })
         const blocks = [...promptBlocks, block(JSON.stringify(role === 'verifier' ? { type: 'object', properties: { ...REVIEW_ASSESSMENT_SCHEMA.properties, support: REVIEW_SUPPORT_SCHEMA, missingEvidence: { type: 'array', items: { type: 'string' } } }, required: ['disposition', 'reason', 'support'] } : REVIEW_RESULT_SCHEMA), 'required-json-schema')]
         await this.store.noteWorker(runId, 'started'); this.changed()
         try {
-          const result = await this.runModel({ blocks, tools: this.tools(runId, live, false).filter(t => t.name === 'ReviewRead'), signal: live.controller.signal, taskId, maxTurns: 16,
+          const result = await this.runModel({ blocks, tools: this.tools(runId, live, false, WORKER_READ_STEPS).filter(t => t.name === 'ReviewRead'), signal: live.controller.signal, taskId, maxTurns: WORKER_STEPS,
             role: role as 'finder' | 'verifier' | 'sweeper', ...(role === 'verifier' ? { label: candidate!.claim.title } : role === 'finder' ? { angles: angles as string[] } : {}), observer: this.observer(live) })
-          const end = timed(live, endOf(result))
-          if (end.kind !== 'completed') throw new ReviewGatewayError(endCode(end))
-          const [value] = answerObjects(result.text, role === 'verifier' ? ['disposition'] : ['candidates']) as Array<Record<string, any>>
+          const end = endOf(result)
+          // A worker stopped by its step limit still counts when its last reply holds the answer.
+          const [value] = end.kind === 'completed' || end.kind === 'step-limit' ? answerObjects(result.text, role === 'verifier' ? ['disposition'] : ['candidates']) as Array<Record<string, any>> : []
+          if (end.kind !== 'completed' && !value) throw new ReviewGatewayError(endCode(end))
           if (!value) throw new ReviewGatewayError('unstructured-worker-answer')
           const rejectedCandidates: Array<{ index: number; code: string }> = []
+          const newIds: string[] = []
           if (role === 'verifier') {
             const candidateId = String(input.candidateId)
-            const finderTaskKey = live.finderTasks.get(candidateId)
-            if (!finderTaskKey || live.verified.has(candidateId)) throw new ReviewGatewayError('verifier-assignment-not-authorized')
+            // A candidate the coordinator recorded itself, such as one it corrected after the ledger refused a finder's, is the coordinator's.
+            const finderTaskKey = live.finderTasks.get(candidateId) ?? COORDINATOR_TASK
+            if (live.sweepIds.has(candidateId) || live.verified.has(candidateId)) throw new ReviewGatewayError('verifier-assignment-not-authorized')
             await this.store.submitLedger(runId, taskId, { operation: 'assess', assessments: [{ candidateId, disposition: value.disposition, reason: value.reason, support: value.support }] })
             if (value.disposition !== 'unchecked') {
-              const assessment = (await this.store.getSnapshot(runId)).assessments.filter(a => a.diagnosticId === candidateId).at(-1)!
+              const assessment = latestAssessment(await this.store.getSnapshot(runId), candidateId)!
               await this.store.noteIndependentVerification(runId, { ref: taskId, diagnosticId: candidateId, assessmentId: assessment.id, finderTaskKey, verifierTaskKey: taskId })
               live.verified.add(candidateId)
             }
@@ -425,26 +517,29 @@ export class LocalReviewService {
                 written = { accepted: [], rejected: [...error.rejected] }
               }
               rejectedCandidates.push(...(written.rejected ?? []).map(item => ({ index: i + item.index, code: item.code })))
-              for (const { diagnosticId } of written.accepted) {
+              for (const { index, diagnosticId } of written.accepted) {
+                // The coordinator merges by these host IDs.
+                value.candidates[i + index].candidateId = diagnosticId
                 if (!live.finderTasks.has(diagnosticId)) {
                   live.finderTasks.set(diagnosticId, taskId)
+                  newIds.push(diagnosticId)
                   if (role === 'sweeper') live.sweepIds.add(diagnosticId)
                 }
               }
             }
-            const limitations: string[] = [...(value.coverage?.limitations ?? []), ...(rejectedCandidates.length ? ['worker-candidates-rejected'] : [])]
+            const limitations: string[] = [...(value.coverage?.limitations ?? []), ...(rejectedCandidates.length ? ['worker-candidates-rejected'] : []), ...(end.kind === 'step-limit' ? ['review-step-limit'] : [])]
             await this.store.submitLedger(runId, `${taskId}-coverage`, { operation: 'coverage', coverage: { angles: covered, limitations, complete: false } })
             if (role === 'finder') for (const angle of covered) live.completedAngles.add(angle)
             else live.swept = true
           }
           await this.store.noteWorker(runId, 'finished'); this.changed()
-          return { taskId, result: value, ...(rejectedCandidates.length ? { rejectedCandidates } : {}), ledger: await this.store.expectedRecord(runId) }
+          return { taskId, result: value, newIds, ...(rejectedCandidates.length ? { rejectedCandidates } : {}) }
         } catch (error) { await this.store.noteWorker(runId, 'finished', angles as string[]); this.changed(); throw error }
       })
     }
     return createReviewTools({ runId, store: this.store, signal: live.controller.signal,
       read: input => this.read(runId, live, input), changed: this.changed,
-      independentAssessments: live.plan.independentVerification,
+      independentAssessments: live.plan.independentVerification, ...(readSteps !== undefined ? { readSteps } : {}),
       allowOutput: live.plan.presentation === 'panel', launch: delegate && live.plan.agentMode === 'parallel' ? launch : undefined })
   }
   private async actionGrant(runId: string, kind: 'repair' | 'publication', ids?: string[]): Promise<ReportGrant> {
@@ -536,7 +631,6 @@ export class LocalReviewService {
       const live = await this.actionContext(runId, operation.controller)
       this.admit(operation.controller.signal)
       live.controller = operation.controller
-      live.budgetExpired = false
       live.done = task(live)
       await live.done
       this.admit()

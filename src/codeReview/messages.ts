@@ -11,10 +11,13 @@ const groups = {
   invalidTarget: ['invalid-target', 'target-mismatch', 'invalid-range', 'missing-ref', 'missing-path', 'invalid-ref', 'invalid-oid', 'invalid-path', 'invalid-root', 'invalid-git-directory'],
   denied: ['action-not-authorized', 'review-read-not-authorized', 'read-denied', 'read-outside-review-scope', 'whole-file-read-not-authorized', 'edit-outside-review-grant', 'review-mutation-not-authorized', 'review-fs-operation-not-authorized', 'publication-not-authorized', 'publication-denied', 'forbidden_scope', 'repair-grant-expired'],
   unavailable: ['review-runtime-unavailable', 'review-context-unavailable', 'remote-context-unavailable', 'review-platform-adapter-required', 'repair-unavailable', 'publication-unavailable', 'review-plan-blocked', 'host_unavailable'],
-  incomplete: ['scope-incomplete', 'independent-worker-coverage-incomplete', 'remote-diff-incomplete', 'worker-candidates-rejected', 'report-candidates-rejected'],
+  incomplete: ['scope-incomplete', 'independent-worker-coverage-incomplete', 'remote-diff-incomplete', 'report-candidates-rejected'],
+  candidatesRefused: ['worker-candidates-rejected'],
   outputLimit: ['diff-output-limit', 'output-limit', 'response-limit'],
-  interrupted: ['review-budget-or-model-interrupted', 'review-budget-exhausted', 'review-time-limit', 'review-task-budget', 'worker-interrupted', 'repair-interrupted', 'timeout'],
+  interrupted: ['review-budget-or-model-interrupted', 'review-budget-exhausted', 'review-time-limit', 'review-task-budget', 'worker-interrupted', 'repair-interrupted'],
+  gitTimeout: ['timeout'],
   stepLimit: ['review-step-limit'],
+  verifiedAfterSummary: ['verified-after-summary'],
   outputCap: ['review-output-cap'],
   contextOverflow: ['review-context-overflow'],
   modelError: ['review-model-error'],
@@ -94,7 +97,7 @@ export function reviewAngleMessage(t: TranslateFn, angle: string): string {
   return angles.includes(angle as typeof angles[number]) ? t(`reviewCard.angle.${angle}` as Parameters<TranslateFn>[0]) : t('reviewCard.notice.unspecified')
 }
 
-const values = new Set(['active', 'all', 'applied', 'assess', 'blocked', 'cancelled', 'careful-pass', 'cleanup', 'correctness', 'critical', 'dismissed', 'efficiency', 'failed', 'finished', 'guidance', 'high', 'inline', 'inspect', 'isolated', 'local-eight', 'local-ten', 'low', 'major', 'max', 'medium', 'minor', 'not-run', 'open', 'partial', 'passed', 'plausible', 'proven', 'publication', 'publish', 'queued', 'quick-expand', 'quick-hunks', 'repair', 'report', 'requested', 'reuse', 'root-cause', 'running', 'scope', 'security', 'simplicity', 'skipped', 'succeeded', 'sweep', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'uncertain', 'unchecked', 'unlimited', 'unnecessary', 'verified', 'verify', 'xhigh'])
+const values = new Set(['active', 'all', 'applied', 'assess', 'blocked', 'cancelled', 'careful-pass', 'cleanup', 'correctness', 'critical', 'dismissed', 'efficiency', 'failed', 'finished', 'guidance', 'high', 'inline', 'inspect', 'isolated', 'local-eight', 'local-ten', 'low', 'major', 'max', 'medium', 'merge', 'minor', 'not-run', 'open', 'partial', 'passed', 'plausible', 'proven', 'publication', 'publish', 'queued', 'quick-expand', 'quick-hunks', 'repair', 'report', 'requested', 'reuse', 'root-cause', 'running', 'scope', 'security', 'simplicity', 'skipped', 'succeeded', 'sweep', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'uncertain', 'unchecked', 'unlimited', 'unnecessary', 'verified', 'verify', 'xhigh'])
 export function reviewValueMessage(t: TranslateFn, value: string): string {
   return values.has(value) ? t(`reviewCard.value.${value}` as Parameters<TranslateFn>[0]) : t('reviewCard.notice.unspecified')
 }

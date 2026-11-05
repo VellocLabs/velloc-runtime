@@ -41,6 +41,11 @@ describe('review localization', () => {
     expect(reviewMessage(t, code)).not.toBe(t('reviewCard.notice.unknown'))
     expect(reviewDetailMessage(t, code)).toBe(reviewMessage(t, code))
   })
+  it('names a git timeout as git not answering, not as an interrupted task', () => {
+    expect(reviewMessage(t, 'timeout')).toBe(t('reviewCard.notice.gitTimeout'))
+    expect(reviewDetailMessage(t, 'timeout')).toBe(t('reviewCard.notice.gitTimeout'))
+    expect(t('reviewCard.notice.gitTimeout')).not.toBe(t('reviewCard.notice.interrupted'))
+  })
   it('reads a stored legacy interruption code and a time-limit end as the interrupted notice', () => {
     expect(reviewDetailMessage(t, 'review-budget-or-model-interrupted')).toBe(t('reviewCard.notice.interrupted'))
     expect(reviewEndMessage(t, { kind: 'time-limit' })).toBe(t('reviewCard.notice.interrupted'))

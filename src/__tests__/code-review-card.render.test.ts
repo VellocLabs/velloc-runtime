@@ -118,6 +118,26 @@ describe('review report card', () => {
     renderReport(value)
     expect(Array.from(screen.getByTestId('review-stages').querySelectorAll('li')).map(item => item.dataset.state)).toEqual(['pending', 'pending', 'pending'])
   })
+  it('shows a team run its find, merge, verify and sweep steps, and the summary once the sweep is done', () => {
+    const value = report()
+    value.run.policy = { ...value.run.policy, recipe: 'team-ten' }
+    value.run.progress.status = 'active'
+    const states = (stage: ReviewReportView['run']['progress']['stage']) => {
+      value.run.progress.stage = stage
+      renderReport(value)
+      const items = Array.from(screen.getByTestId('review-stages').querySelectorAll('li'))
+      const result = [items.map(item => item.textContent).join(','), items.findIndex(item => item.dataset.state === 'current')]
+      cleanup()
+      return result
+    }
+    expect(states('inspect')).toEqual(['Prepare,Find,Merge,Verify,Sweep,Summarize', 1])
+    expect(states('merge')[1]).toBe(2)
+    expect(states('assess')[1]).toBe(3)
+    expect(states('sweep')[1]).toBe(4)
+    expect(states('report')[1]).toBe(5)
+    value.run.policy = { ...value.run.policy, recipe: 'team-eight-recall' }
+    expect(states('report')).toEqual(['Prepare,Find,Merge,Verify,Summarize', 4])
+  })
   it('counts findings by severity and flags incomplete coverage next to them', () => {
     const value = report()
     const finding = (id: string, impact: 'critical' | 'major' | 'minor') => ({ id, runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy' as const }, claim: { title: id, explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'correctness' as const, impact }, evidenceKeys: [], origin: { angle: 'lines' } })
@@ -131,7 +151,7 @@ describe('review report card', () => {
     expect(screen.queryByText(`${t('reviewCard.value.major')} · 0`)).toBeNull()
     expect(screen.getByTestId('review-incomplete')).toBeTruthy()
     expect(screen.queryByTestId('review-empty')).toBeNull()
-    fireEvent.click(screen.getAllByRole('checkbox')[0]!)
+    fireEvent.click(screen.getByLabelText(t('reviewCard.select', { title: 'd1' })))
     expect(screen.getByTestId('review-repair').textContent).toBe(t('reviewCard.repairCount', { count: 1 }))
     expect(screen.getByText(t('reviewCard.selected', { count: 1 }))).toBeTruthy()
     cleanup()
@@ -151,7 +171,7 @@ describe('review report card', () => {
     fireEvent.change(screen.getByLabelText(t('reviewCard.severity')), { target: { value: 'minor' } })
     expect(screen.queryByTestId('review-finding')).toBeNull()
     fireEvent.change(screen.getByLabelText(t('reviewCard.severity')), { target: { value: 'all' } })
-    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByLabelText(t('reviewCard.select', { title: 'Unsafe branch' })))
     fireEvent.click(screen.getByTestId('review-repair'))
     await waitFor(() => expect(action).toHaveBeenCalledWith('repair', { diagnosticIds: ['d1'] }))
     expect(currentReviewLocation(value, value.diagnostics[0]!)).toBe(false)
@@ -162,6 +182,31 @@ describe('review report card', () => {
   })
 })
 
+it('selects every shown finding at once, and offers no selection where repair is not available', async () => {
+  const value = report()
+  value.diagnostics = ['d1', 'd2'].map(id => ({ id, runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy' as const, span: { start: 2, end: 2 } }, claim: { title: `Finding ${id}`, explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'correctness' as const, impact: 'major' as const }, evidenceKeys: [], origin: { angle: 'lines' } }))
+  value.permissions = { ...value.permissions, repair: true }
+  const action = renderReport(value)
+  fireEvent.click(screen.getByTestId('review-select-all'))
+  expect(screen.getAllByRole('checkbox').map(box => (box as HTMLInputElement).checked)).toEqual([true, true, true])
+  fireEvent.click(screen.getByTestId('review-repair'))
+  await waitFor(() => expect(action).toHaveBeenCalledWith('repair', { diagnosticIds: ['d1', 'd2'] }))
+  fireEvent.click(screen.getByTestId('review-select-all'))
+  expect(screen.getAllByRole('checkbox').map(box => (box as HTMLInputElement).checked)).toEqual([false, false, false])
+  cleanup()
+  value.permissions = { ...value.permissions, repair: false }
+  const noRepair = () => render(createElement(ReviewReportCard, { report: value, can: action => action !== 'repair', onAction: vi.fn(async () => {}) }))
+  noRepair()
+  expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+  expect(screen.queryByTestId('review-repair')).toBeNull()
+  // A working-copy review without repair (a stored or unstructured report) is not told it needs a working copy.
+  expect(screen.queryByTestId('review-repair-unavailable')).toBeNull()
+  cleanup()
+  value.run.scope = { ...value.run.scope, kind: 'range' }
+  noRepair()
+  expect(screen.getByTestId('review-repair-unavailable').textContent).toBe(t('reviewCard.repairUnavailable'))
+  expect(screen.getByTestId('review-rerun')).toBeTruthy()
+})
 it('lists unverified items apart from the findings, with no repair selection', () => {
   const value = { ...report(), unverified: [{ id: 'u1', headline: 'Handle leaks on throw', details: 'The release call is gone.', path: 'src/a.ts', line: 5, impact: 'major' as const, code: 'quote-not-in-source' }] }
   renderReport(value)
@@ -416,12 +461,15 @@ describe('review card header and live activity', () => {
     await waitFor(() => expect(screen.getByTestId('review-range-copy').getAttribute('aria-label')).toBe(t('messageMenu.copied')))
     expect(screen.getByTestId('review-toggle').getAttribute('aria-expanded')).toBe('true')
   })
-  it('names the stage once, in the single status badge, with no footer while running', () => {
+  it('names the stage under the steps of an open running card, with the current step spinning and no footer', () => {
     renderReport(running())
-    expect(screen.getByTestId('review-status').textContent).toBe(t('reviewCard.value.inspect'))
+    expect(screen.queryByTestId('review-status')).toBeNull()
+    const line = screen.getByTestId('review-status-line')
+    expect(line.firstElementChild!.firstChild!.textContent).toBe(t('reviewCard.value.inspect'))
+    expect(line.querySelector('[aria-hidden].shimmer')!.textContent).toBe(t('reviewCard.value.inspect'))
+    expect(screen.getByTestId('review-stages').querySelector('[data-state="current"] [data-testid="review-stage-spinner"]')).toBeTruthy()
     const card = screen.getByTestId('code-review-card')
     expect(card.textContent).not.toContain(t('reviewCard.value.active'))
-    expect(card.textContent!.split(t('reviewCard.value.inspect')).length).toBe(2)
     expect(card.querySelector('footer')).toBeNull()
     expect(screen.getByTestId('review-cancel')).toBeTruthy()
     expect(screen.getByTestId('review-progress').textContent).toBe(t('reviewCard.progressNone'))
@@ -437,6 +485,9 @@ describe('review card header and live activity', () => {
     expect(toggle.hasAttribute('aria-controls')).toBe(false)
     expect(screen.queryByTestId('review-stages')).toBeNull()
     for (const id of ['review-heading', 'review-level', 'review-range', 'review-status']) expect(screen.getByTestId(id)).toBeTruthy()
+    // Collapsed, the header carries the spinner and the stage again.
+    expect(screen.getByTestId('review-status').textContent).toBe(t('reviewCard.value.inspect'))
+    expect(screen.getByTestId('review-status').querySelector('.animate-spin')).toBeTruthy()
   })
   it('shows the most recently active task and task counts, with the full tree folded', () => {
     const value = running()

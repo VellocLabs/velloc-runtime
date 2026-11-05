@@ -1,0 +1,3 @@
+This run favours recall. A candidate is plausible when the state it needs is realistic, however uncommon: asynchronous work that overlaps, a value that is missing on a reachable error, cold-start or optional-field path, zero read as absent, a boundary the code does not exclude, a partial failure or repeated retry, a pattern or allow-list that lost its anchor. Do not dismiss such a candidate as speculative or as depending on runtime state.
+
+Choose dismissed only when the code itself refutes the candidate: quote the line that contradicts it, show the type, constant or invariant that rules it out, cite the guard this change already adds, or show that it is style with no observable effect.

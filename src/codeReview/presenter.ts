@@ -1,3 +1,4 @@
+import { latestAssessment } from './ledger-lookups'
 import type { ReportActionReceipt, ReportAssessment, ReportDiagnostic, ReportEvidence, ReportSnapshot, ReportUnverified } from './report-store'
 
 export interface PresentedDiagnostic {
@@ -31,7 +32,7 @@ export function projectReviewReport(snapshot: ReportSnapshot): ReviewReportProje
     return {
       diagnostic,
       evidence: snapshot.evidence.filter(item => item.diagnosticId === id),
-      assessment: snapshot.assessments.filter(item => item.diagnosticId === id).at(-1),
+      assessment: latestAssessment(snapshot, id),
       actions: snapshot.actions.filter(item => item.diagnosticIds.includes(id)),
     }
   })

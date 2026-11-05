@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import gatewayModelIds from '../__tests__/fixtures/gateway-model-ids.json'
 import { REVIEW_LEVELS, type CapabilityProfile, type ReviewPolicyInput } from './contracts'
-import { EIGHT_ANGLES, TEN_ANGLES, resolveCapabilityProfile, resolveReviewLevel, resolveReviewPolicy, resolveReviewPreferences, reviewTimeBudgetMs, selectReviewRecipe, shouldRunAutomaticVerification } from './recipes'
+import { EIGHT_ANGLES, TEN_ANGLES, resolveCapabilityProfile, resolveReviewLevel, resolveReviewPolicy, resolveReviewPreferences, selectReviewRecipe, shouldRunAutomaticVerification } from './recipes'
 
 const base: ReviewPolicyInput = {
   arguments: { fix: false, comment: false },
@@ -15,12 +15,19 @@ const expectedRoutes = {
   fallback: [['quick-hunks', 4], ['local-eight', 10], ['local-eight', 10], ['local-ten', 15], ['team-ten', 15]],
   'balanced-review': [['quick-hunks', 4], ['local-eight', 8], ['team-eight-recall', 10], ['team-ten', 15], ['team-ten', 15]],
   'fast-review': [['quick-hunks', 4], ['team-eight-precise', 8], ['team-eight-recall', 10], ['team-ten', 15], ['team-ten', 15]],
-  'context-specialist': [['quick-expand', 4], ['local-eight', 8], ['local-eight', 10], ['local-ten', 15], ['team-ten', 15]],
+  'context-specialist': [['quick-expand', 8], ['local-eight', 8], ['local-eight', 10], ['local-ten', 15], ['team-ten', 15]],
   'minimal-specialist': [['quick-hunks', 4], ['careful-pass', 15], ['careful-pass', 15], ['local-ten', 15], ['team-ten', 15]],
   'delegation-specialist': [['quick-expand', 'unlimited'], ['team-eight-precise', 8], ['team-eight-recall', 10], ['team-ten', 15], ['team-ten', 15]],
 } as const
 
 describe('recipe routes', () => {
+  it.each([
+    ['fallback', 'medium', undefined, 5], ['fallback', 'high', undefined, 5], ['fallback', 'xhigh', undefined, 7], ['context-specialist', 'medium', undefined, 4],
+    ['fallback', 'high', 4, 2], ['fallback', 'high', 1, 1], ['fallback', 'high', 'all', 5], ['fallback', 'xhigh', 40, 7],
+    ['fallback', 'low', undefined, undefined], ['minimal-specialist', 'high', undefined, undefined], ['delegation-specialist', 'high', undefined, undefined], ['fallback', 'max', undefined, undefined],
+  ] as const)('%s %s with limit %s aims for %s findings', (profile, level, maxFindings, target) => {
+    expect(policy({ profile, arguments: { ...base.arguments, level, ...(maxFindings === undefined ? {} : { maxFindings }) } }).findingTarget).toBe(target)
+  })
   for (const profile of Object.keys(expectedRoutes) as CapabilityProfile[]) {
     it.each(REVIEW_LEVELS)(`${profile} %s selects its versioned route`, level => {
       const [recipe, defaultLimit] = expectedRoutes[profile][REVIEW_LEVELS.indexOf(level)]!
@@ -126,16 +133,6 @@ describe('output limits, capabilities and budget', () => {
     expect(policy({ arguments: { ...base.arguments, level: 'low' } })).toMatchObject({ skipTestsAndFixtures: true, notices: [{ code: 'tests-fixtures-skipped' }] })
     expect(policy({ arguments: { ...base.arguments, level: 'low' }, testsOnly: true })).toMatchObject({ skipTestsAndFixtures: false, notices: [{ code: 'tests-fixtures-reviewed' }] })
     expect(policy({ arguments: { ...base.arguments, level: 'medium' }, testsOnly: true }).notices).toEqual([])
-  })
-
-  it('sizes the time budget by angle rounds and patch bytes', () => {
-    const team = policy({ arguments: { ...base.arguments, level: 'max' } })
-    const local = policy({ arguments: { ...base.arguments, level: 'medium' } })
-    const quick = policy({ arguments: { ...base.arguments, level: 'low' } })
-    expect(reviewTimeBudgetMs(team, 0)).toBeGreaterThan(600_000)
-    expect(reviewTimeBudgetMs(local, 0)).toBeGreaterThan(reviewTimeBudgetMs(quick, 0))
-    expect(reviewTimeBudgetMs(local, 512 * 1024)).toBeGreaterThan(reviewTimeBudgetMs(local, 0))
-    expect(reviewTimeBudgetMs(team, 1e12)).toBe(90 * 60_000)
   })
 
   it('keeps local recipes free of verifier tasks', () => {

@@ -16,8 +16,6 @@ export interface ReviewTaskObserver {
   started(info: { key: string; agentId: string; role: ReviewTaskRole; label?: string; angles?: readonly string[] }): void
   activity(info: { key: string; action: string }): void
   ended(info: { key: string; end: ReviewRunEnd }): void
-  /** True once the run's time budget has aborted its tasks. */
-  timeLimited?(): boolean
 }
 
 export interface ReviewModelRequest {
@@ -99,9 +97,6 @@ export function createReviewModelRunner(input: {
 }): ReviewModelRunner {
   return async request => {
     const cancelSource = new AbortController()
-    // Read when the abort lands: a task stopped before the budget expired stays stopped.
-    let timeLimited = false
-    cancelSource.signal.addEventListener('abort', () => { timeLimited = !!request.observer?.timeLimited?.() }, { once: true })
     const abort =() => cancelSource.abort(request.signal.reason)
     request.signal.addEventListener('abort', abort, { once: true })
     if (request.signal.aborted) abort()
@@ -113,7 +108,8 @@ export function createReviewModelRunner(input: {
     try {
       if (cancelSource.signal.aborted) throw new Error('review-cancelled')
       const parent = input.context
-      const options = { ...parent.options, tools: request.tools, commands: [], refreshTools: () => request.tools }
+      // A review run compacts at the model's own threshold, not a smaller window the user chose for the conversation.
+      const options = { ...parent.options, tools: request.tools, commands: [], refreshTools: () => request.tools, compactAtModelWindow: true }
       const prompt = await input.promptContextProvider.gatherSystemPromptSources({
         tools: request.tools, visibleToolNames: request.tools.map(tool => tool.name),
         mainLoopModel: options.mainLoopModel, extraWorkspaceRoots: [], mcpClients: [],
@@ -145,7 +141,7 @@ export function createReviewModelRunner(input: {
         sidechainStore: getContextSidechainStore(parent), spawnerSessionId: parent.options.sessionId || undefined,
         onMessage: row => { const action = describeActivity(row); if (action) request.observer?.activity({ key: request.taskId, action }) },
         onConclusion: conclusion => { end = reviewRunEnd(conclusion) },
-        abortedFinish: () => timeLimited ? { status: 'error', errorMessage: 'review-time-limit' } : { status: 'stopped' },
+        abortedFinish: () => ({ status: 'stopped' }),
       })
       if (!end) end = cancelSource.signal.aborted ? { kind: 'cancelled' } : { kind: 'crash' }
       if (cancelSource.signal.aborted && end.kind === 'completed') end = { kind: 'cancelled' }

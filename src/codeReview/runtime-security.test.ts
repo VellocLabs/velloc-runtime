@@ -51,15 +51,17 @@ function fixture() {
     }),
     readdir: vi.fn(async () => []), mkdir: vi.fn(async () => {}), writeFile: writes,
   } as unknown as RuntimeFs
+  const tracked = ['a.ts', 'b.ts']
   const spawn = vi.fn<GitStreamSpawner>(async (spec, handlers) => {
+    if (spec.args.includes('grep')) return grepStream(spec.args.slice(spec.args.indexOf('grep')), files, tracked, handlers)
     let output = '', exitCode = 0
     if (spec.args.includes('rev-parse')) output = spec.args.at(-1)?.includes('@{upstream}') ? base : head
     else if (spec.args.includes('rev-list')) output = `${head} ${base}\n`
     else if (spec.args.includes('hash-object')) output = base
     else if (spec.args.includes('symbolic-ref')) exitCode = 1
     else if (spec.args.includes('merge-base')) output = base
-    else if (spec.args.includes('ls-tree')) output = `100644 blob ${blob}\ta.ts\0` + `100644 blob ${blob}\tb.ts\0`
-    else if (spec.args.includes('ls-files')) output = spec.args.includes('--stage') ? `100644 ${blob} 0\ta.ts\0` + `100644 ${blob} 0\tb.ts\0` : 'a.ts\0b.ts\0'
+    else if (spec.args.includes('ls-tree')) output = tracked.map(path => `100644 blob ${blob}\t${path}\0`).join('')
+    else if (spec.args.includes('ls-files')) output = spec.args.includes('--stage') ? tracked.map(path => `100644 ${blob} 0\t${path}\0`).join('') : tracked.map(path => `${path}\0`).join('')
     else if (spec.args.includes('config') && spec.args.includes('core.filemode')) output = 'false\n'
     else if (spec.args.includes('cat-file')) output = 'export const value = 1\n'
     else if (spec.args.includes('diff')) output = 'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n'
@@ -75,7 +77,36 @@ function fixture() {
       reviewRuntime: { spawnArgv: spawn, atomicWrite: atomic, promptContextProvider: { gatherSystemPromptSources: async () => ({ defaultSystemPrompt: [], userContext: {}, systemContext: {} }) } } },
     readAppState: () => ({ permissionRules: { mode: 'default', denyRuleBook: {} } }), cancelSource: controller, fileReadLedger: new Map(), messages: [],
   } as unknown as ToolCallContext
-  return { context, permission, fs, files, writes, atomic, spawn }
+  return { context, permission, fs, files, writes, atomic, spawn, tracked }
+}
+
+/** A git without grep --max-count, as before 2.38: the option is a usage error (exit 129). */
+let gitWithoutMaxCount = false
+/** Fixed-string search over the fixture files, reading the pattern from stdin as the adapter sends it. */
+function grepStream(args: string[], files: Map<string, string>, tracked: string[], handlers: Parameters<GitStreamSpawner>[1]) {
+  let stdin = ''
+  const separator = args.indexOf('--')
+  const oid = args[separator - 1] !== '-' ? args[separator - 1] : undefined
+  const scopes = args.slice(separator + 1)
+  const limit = args.find(arg => arg.startsWith('--max-count='))
+  const perFile = limit ? Number(limit.split('=')[1]) : Infinity
+  return { streamId: 'grep', write: async (data: Uint8Array) => { stdin += new TextDecoder().decode(data); return true }, kill: async () => true, detach() {},
+    closeStdin: async () => {
+      const pattern = stdin.replace(/\n$/, '')
+      if (limit && gitWithoutMaxCount) {
+        handlers.onExit?.({ exitCode: 129, timedOut: false, killed: false, durationMs: 1 })
+        return true
+      }
+      let output = ''
+      for (const path of tracked) {
+        if (scopes.length && !scopes.some(scope => path === scope || path.startsWith(`${scope}/`))) continue
+        const lines = (files.get(`${root}/${path}`) ?? '').split('\n').map((text, index) => ({ text, line: index + 1 })).filter(entry => entry.text.includes(pattern)).slice(0, perFile)
+        for (const entry of lines) output += `${oid ? `${oid}:` : ''}${path}\0${entry.line}\0${entry.text}\n`
+      }
+      handlers.onOutput?.('stdout', new TextEncoder().encode(output))
+      handlers.onExit?.({ exitCode: output ? 0 : 1, timedOut: false, killed: false, durationMs: 1 })
+      return true
+    } }
 }
 
 async function invoke(request: ReviewModelRequest, name: string, input: Record<string, unknown>) {
@@ -448,7 +479,7 @@ describe('actual review runtime security boundaries', () => {
     expect(manifest?.files).toEqual([expect.objectContaining({ path: testPath, status: 'included' })])
   })
 
-  it('skips binary blobs in a range review search instead of failing the search', async () => {
+  it('searches the head tree with git and keeps a binary blob out of context reads', async () => {
     const h = fixture()
     const original = h.spawn.getMockImplementation()!
     h.spawn.mockImplementation(async (spec, handlers) => {
@@ -457,17 +488,136 @@ describe('actual review runtime security boundaries', () => {
       handlers.onExit?.({ exitCode: 0, timedOut: false, killed: false, durationMs: 1 })
       return { streamId: 'blob', write: async () => true, closeStdin: async () => true, kill: async () => true, detach() {} }
     })
-    let searched: unknown, context: unknown
+    let searched: unknown, missing: unknown, context: unknown
     mocks.model.mockImplementation(async request => {
-      searched = await invoke(request, 'ReviewRead', { operation: 'search', query: 'export' })
+      searched = await invoke(request, 'ReviewRead', { operation: 'search', query: 'const a' })
+      missing = await invoke(request, 'ReviewRead', { operation: 'search', query: 'absent text' })
       context = await invoke(request, 'ReviewRead', { operation: 'context', path: 'a.ts' }).catch(error => error)
       return report(request)
     })
     const service = await getOrCreateReviewService(h.context, h.permission)
     const { runId } = await service.startUser('high main..HEAD')
     await service.wait(runId)
-    expect(searched).toEqual({ data: { matches: [], truncated: false } })
+    expect(searched).toEqual({ data: { matches: [expect.objectContaining({ path: 'a.ts', line: 1, text: 'export const a = 2' })], truncated: false } })
+    expect(missing).toEqual({ data: { matches: [], truncated: false } })
     expect(context).toMatchObject({ code: 'review-context-unavailable' })
+    const grep = h.spawn.mock.calls.map(([spec]) => spec.args).find(args => args.includes('grep'))!
+    expect(grep).toEqual(expect.arrayContaining(['-I', '-F', head]))
+  })
+
+  it('searches every tracked file, honours the path filter and never puts the pattern in argv', async () => {
+    const h = fixture()
+    for (let index = 0; index < 2500; index++) {
+      const path = `pkg${index % 2}/file${index}.ts`
+      h.tracked.push(path)
+      h.files.set(`${root}/${path}`, index === 2499 ? 'needle & "quoted" | text\n' : 'filler\n')
+    }
+    let everywhere: unknown, scoped: unknown, elsewhere: unknown
+    mocks.model.mockImplementation(async request => {
+      everywhere = await invoke(request, 'ReviewRead', { operation: 'search', query: 'needle & "quoted"' })
+      scoped = await invoke(request, 'ReviewRead', { operation: 'search', query: 'needle', path: 'pkg1/' })
+      elsewhere = await invoke(request, 'ReviewRead', { operation: 'search', query: 'needle', path: 'pkg0' })
+      return report(request)
+    })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('high main..HEAD')
+    await service.wait(runId)
+    const hit = expect.objectContaining({ path: 'pkg1/file2499.ts', line: 1, text: 'needle & "quoted" | text' })
+    expect(everywhere).toEqual({ data: { matches: [hit], truncated: false } })
+    expect(scoped).toEqual({ data: { matches: [hit], truncated: false } })
+    expect(elsewhere).toEqual({ data: { matches: [], truncated: false } })
+    for (const [spec] of h.spawn.mock.calls) expect(spec.args.some(arg => arg.includes('needle'))).toBe(false)
+  })
+
+  it('marks a search truncated only when a file has more matches than the per-file limit', async () => {
+    const h = fixture()
+    h.tracked.push('exact.ts', 'over.ts')
+    h.files.set(`${root}/exact.ts`, Array(20).fill('needle').join('\n'))
+    h.files.set(`${root}/over.ts`, Array(21).fill('needle').join('\n'))
+    const searched: Array<{ data: { matches: unknown[]; truncated: boolean } }> = []
+    mocks.model.mockImplementation(async request => {
+      for (const path of ['exact.ts', 'over.ts']) searched.push(await invoke(request, 'ReviewRead', { operation: 'search', query: 'needle', path }) as typeof searched[number])
+      return report(request)
+    })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    await service.wait((await service.startUser('high main..HEAD')).runId)
+    expect(searched.map(item => [item.data.matches.length, item.data.truncated])).toEqual([[20, false], [20, true]])
+  })
+
+  it('searches again without the per-file option on a git that lacks it, and still cuts each file at the limit', async () => {
+    const h = fixture()
+    h.tracked.push('over.ts', 'one.ts')
+    h.files.set(`${root}/over.ts`, Array(25).fill('needle').join('\n'))
+    h.files.set(`${root}/one.ts`, 'needle')
+    let searched: { data: { matches: Array<{ path: string }>; truncated: boolean } } | undefined
+    mocks.model.mockImplementation(async request => {
+      searched = await invoke(request, 'ReviewRead', { operation: 'search', query: 'needle' }) as typeof searched
+      return report(request)
+    })
+    gitWithoutMaxCount = true
+    try {
+      const service = await getOrCreateReviewService(h.context, h.permission)
+      await service.wait((await service.startUser('high main..HEAD')).runId)
+    } finally { gitWithoutMaxCount = false }
+    expect(searched!.data.truncated).toBe(true)
+    expect(searched!.data.matches.filter(match => match.path === 'over.ts')).toHaveLength(20)
+    expect(searched!.data.matches.filter(match => match.path === 'one.ts')).toHaveLength(1)
+  })
+
+  it('returns the first matches of a search whose output passes the cap, marked truncated', async () => {
+    const h = fixture()
+    const line = `needle ${'x'.repeat(200)}`
+    // About 9 MB of matches: past the adapter's general output limit as well as the search cap.
+    for (let index = 0; index < 2000; index++) {
+      const path = `wide/file${String(index).padStart(4, '0')}.ts`
+      h.tracked.push(path)
+      h.files.set(`${root}/${path}`, Array(20).fill(line).join('\n'))
+    }
+    let searched: { data: { matches: Array<{ path: string }>; truncated: boolean } } | undefined
+    mocks.model.mockImplementation(async request => {
+      searched = await invoke(request, 'ReviewRead', { operation: 'search', query: 'needle' }) as typeof searched
+      return report(request)
+    })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('high main..HEAD')
+    await service.wait(runId)
+    expect(searched!.data.truncated).toBe(true)
+    expect(searched!.data.matches).toHaveLength(200)
+    expect(searched!.data.matches[0].path).toBe('wide/file0000.ts')
+  })
+
+  it('asks again for a path whose read authorization failed for a reason other than a refusal', async () => {
+    const h = fixture()
+    let first: unknown, second: unknown
+    mocks.model.mockImplementation(async request => {
+      let failures = 1
+      mocks.vet.mockImplementation(async (_tool, input) => {
+        if (clean(input.file_path) === `${root}/b.ts` && failures-- > 0) throw new Error('permission bridge unavailable')
+        return { behavior: 'allow' }
+      })
+      first = await invoke(request, 'ReviewRead', { operation: 'search', query: 'export const b' }).catch((error: Error) => error.message)
+      second = await invoke(request, 'ReviewRead', { operation: 'search', query: 'export const b' })
+      return report(request)
+    })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('high')
+    await service.wait(runId)
+    expect(first).toBe('permission bridge unavailable')
+    expect(second).toEqual({ data: { matches: [expect.objectContaining({ path: 'b.ts', line: 1 })], truncated: false } })
+  })
+
+  it('drops search matches from a path the read policy denies', async () => {
+    const h = fixture()
+    let searched: unknown
+    mocks.model.mockImplementation(async request => {
+      mocks.vet.mockImplementation(async (_tool, input) => ({ behavior: clean(input.file_path) === `${root}/b.ts` ? 'deny' : 'allow' }))
+      searched = await invoke(request, 'ReviewRead', { operation: 'search', query: 'export const' })
+      return report(request)
+    })
+    const service = await getOrCreateReviewService(h.context, h.permission)
+    const { runId } = await service.startUser('high')
+    await service.wait(runId)
+    expect(searched).toEqual({ data: { matches: [expect.objectContaining({ path: 'a.ts', line: 1, text: 'export const a = 2' })], truncated: false } })
   })
 
   it('caches working-copy context within a run and re-reads it after a repair edit', async () => {

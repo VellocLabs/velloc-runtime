@@ -3,6 +3,7 @@ import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { dirnameRuntimePath, isAbsoluteRuntimePath, joinRuntimePath, pathCompareKey } from '../utils/runtimePaths'
 import { isFsNotFoundError } from '../utils/fsTransportFailure'
 import type { ReviewReportView, ReviewSessionSnapshot } from './review-protocol'
+import { REVIEW_STAGES } from './contracts'
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,300}$/)
 const text = z.string().max(100_000).refine(value => !value.includes('\0'))
@@ -24,7 +25,7 @@ const run = z.object({
     recipe: z.enum(['quick-hunks', 'quick-expand', 'local-eight', 'local-ten', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'careful-pass']),
     recipeRevision: positive, execution: z.enum(['isolated', 'inline']), presentation: z.enum(['terminal', 'json', 'panel']), reportLimit: z.union([positive, z.literal('unlimited')]),
   }),
-  progress: z.object({ status: z.enum(['queued', 'active', 'finished', 'partial', 'cancelled', 'failed']), stage: z.enum(['scope', 'inspect', 'assess', 'sweep', 'report', 'repair', 'publish', 'verify']),
+  progress: z.object({ status: z.enum(['queued', 'active', 'finished', 'partial', 'cancelled', 'failed']), stage: z.enum(REVIEW_STAGES),
     coveredAngles: strings, unavailableAngles: strings, spawnedTasks: count, verifiedCandidates: count, omittedByLimit: count }), reportRevision: count,
 })
 const diagnostic = z.object({ id, runId: id, anchor,

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { execFileSync, spawn as nodeSpawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { join, resolve } from 'node:path'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createGitArgvRunner, remoteUrlsOf, repositoryNameOf, validateGitRef, type GitStreamSpawner, type GitQuery } from './git-adapter'
 import type { NativeStreamHandlers, NativeStreamChild } from '../browser/bridge/nativePrimitives'
@@ -18,19 +18,21 @@ function fake(output = oid + '\n') {
   })
   return { spawn, child }
 }
+/** Runs git for real; stdin, stdout and stderr are piped to the handlers. */
+const realSpawner: GitStreamSpawner = async (spec, handlers) => {
+  const child = nodeSpawn(spec.file, spec.args, { cwd: spec.cwd, env: { ...process.env, ...spec.env }, shell: false, stdio: 'pipe' })
+  child.stdout.on('data', bytes => handlers.onOutput?.('stdout', new Uint8Array(bytes)))
+  child.stderr.on('data', bytes => handlers.onOutput?.('stderr', new Uint8Array(bytes)))
+  child.on('close', code => handlers.onExit?.({ ...exit, exitCode: code ?? -1 }))
+  child.on('error', () => handlers.onExit?.({ ...exit, exitCode: -1 }))
+  return { streamId: 'real', async write(bytes) { child.stdin.write(bytes); return true }, async closeStdin() { child.stdin.end(); return true }, async kill() { return child.kill() }, detach() { child.stdout.removeAllListeners(); child.stderr.removeAllListeners() } }
+}
 describe('native Git object queries', () => {
   it('executes the fixed argv against a real repository without modifying it', async () => {
     const cwd = resolve(fileURLToPath(new URL('.', import.meta.url)), '../..')
     const gitDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-dir'], { cwd, encoding: 'utf8' }).trim()
     const commonDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd, encoding: 'utf8' }).trim()
-    const spawn: GitStreamSpawner = async (spec, handlers) => {
-      const child = nodeSpawn(spec.file, spec.args, { cwd: spec.cwd, env: { ...process.env, ...spec.env }, shell: false, stdio: 'pipe' })
-      child.stdout.on('data', bytes => handlers.onOutput?.('stdout', new Uint8Array(bytes)))
-      child.stderr.on('data', bytes => handlers.onOutput?.('stderr', new Uint8Array(bytes)))
-      child.on('close', code => handlers.onExit?.({ ...exit, exitCode: code ?? -1 }))
-      child.on('error', () => handlers.onExit?.({ ...exit, exitCode: -1 }))
-      return { streamId: 'real', async write(bytes) { child.stdin.write(bytes); return true }, async closeStdin() { child.stdin.end(); return true }, async kill() { return child.kill() }, detach() { child.stdout.removeAllListeners(); child.stderr.removeAllListeners() } }
-    }
+    const spawn = realSpawner
     const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => ({ root: cwd, gitDir, commonDir }) })
     const resolved = await git.query({ kind: 'resolve', ref: 'HEAD' })
     expect(resolved.exitCode).toBe(0)
@@ -54,12 +56,7 @@ describe('native Git object queries', () => {
       run(['update-ref', 'HEAD', second])
       const gitDir = run(['rev-parse', '--path-format=absolute', '--git-dir'])
       const commonDir = run(['rev-parse', '--path-format=absolute', '--git-common-dir'])
-      const spawn: GitStreamSpawner = async (spec, handlers) => {
-        const child = nodeSpawn(spec.file, spec.args, { cwd: spec.cwd, env: { ...process.env, ...spec.env }, shell: false, stdio: 'pipe' })
-        child.stdout.on('data', bytes => handlers.onOutput?.('stdout', new Uint8Array(bytes)))
-        child.on('close', code => handlers.onExit?.({ ...exit, exitCode: code ?? -1 }))
-        return { streamId: 'real', async write() { return true }, async closeStdin() { child.stdin.end(); return true }, async kill() { return child.kill() }, detach() { child.stdout.removeAllListeners() } }
-      }
+      const spawn = realSpawner
       const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => ({ root: cwd, gitDir, commonDir }) })
       const head = await git.query({ kind: 'resolve', ref: 'HEAD' })
       expect(head.exitCode).toBe(0)
@@ -99,9 +96,46 @@ describe('restricted Git argv runner', () => {
   })
   it('keeps every fixed argv free of cmd.exe metacharacters', async () => {
     const { spawn } = fake(); const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root })
-    const queries: GitQuery[] = [{ kind: 'resolve', ref: 'HEAD' }, { kind: 'resolve', ref: 'refs/heads/main' }, { kind: 'upstream', ref: 'HEAD' }, { kind: 'default-branch' }, { kind: 'merge-base', left: oid, right: oid }, { kind: 'parents', oid }, { kind: 'empty-tree' }, { kind: 'tree', oid }, { kind: 'tracked' }, { kind: 'blob', oid }, { kind: 'diff', base: oid, head: oid, paths: ['src/a.ts'] }, { kind: 'remotes' }, { kind: 'index-entries' }, { kind: 'file-mode' }]
+    const queries: GitQuery[] = [{ kind: 'resolve', ref: 'HEAD' }, { kind: 'resolve', ref: 'refs/heads/main' }, { kind: 'upstream', ref: 'HEAD' }, { kind: 'default-branch' }, { kind: 'merge-base', left: oid, right: oid }, { kind: 'parents', oid }, { kind: 'empty-tree' }, { kind: 'tree', oid }, { kind: 'tracked' }, { kind: 'blob', oid }, { kind: 'diff', base: oid, head: oid, paths: ['src/a.ts'] }, { kind: 'remotes' }, { kind: 'index-entries' }, { kind: 'file-mode' }, { kind: 'grep', pattern: 'a & "b" | ^c', oid, paths: ['src'], perFile: 20 }]
     for (const query of queries) await git.query(query)
     for (const [spec] of spawn.mock.calls) for (const arg of spec.args) expect(arg, `${spec.args.join(' ')}`).not.toMatch(/[\^%&|<>!()"]/)
+  })
+  it('sends a search pattern on stdin only, then closes it', async () => {
+    let handlers: NativeStreamHandlers | undefined
+    const written: string[] = []
+    const child: NativeStreamChild = { streamId: 'grep', write: vi.fn(async (bytes: Uint8Array) => { written.push(new TextDecoder().decode(bytes)); return true }), kill: vi.fn(async () => true), detach: vi.fn(),
+      closeStdin: vi.fn(async () => { handlers!.onOutput?.('stdout', new TextEncoder().encode('src/a.ts\u00003\u0000hit\n')); handlers!.onExit?.(exit); return true }) }
+    const spawn = vi.fn<GitStreamSpawner>(async (_spec, events) => { handlers = events; return child })
+    const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root })
+    const result = await git.query({ kind: 'grep', pattern: '--secret-option', paths: ['src'], perFile: 5 })
+    expect(new TextDecoder().decode(result.stdout)).toBe('src/a.ts\u00003\u0000hit\n')
+    expect(written).toEqual(['--secret-option\n'])
+    const args = spawn.mock.calls[0][0].args
+    expect(args.slice(args.indexOf('grep'))).toEqual(['grep', '-n', '-I', '-F', '--null', '--no-color', '--full-name', '--max-count=5', '-f', '-', '--', 'src'])
+    await expect(git.query({ kind: 'grep', pattern: 'x', perFile: 0 })).rejects.toMatchObject({ code: 'query-failed' })
+    await expect(git.query({ kind: 'grep', pattern: 'x', paths: ['../outside'], perFile: 1 })).rejects.toMatchObject({ code: 'invalid-path' })
+  })
+  it('searches a commit tree and the working tree of a real repository', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'git-adapter-grep-'))
+    try {
+      const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t.invalid' }
+      const run = (args: string[]) => execFileSync('git', ['-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false', ...args], { cwd, env, encoding: 'utf8' }).trim()
+      run(['init', '-q'])
+      writeFileSync(join(cwd, 'a.txt'), 'one\nneedle & | "two"\n')
+      writeFileSync(join(cwd, 'bin.dat'), Buffer.from([0, 1, 2, 0x6e, 0x65, 0x65, 0x64, 0x6c, 0x65]))
+      run(['add', '.']); run(['commit', '-q', '-m', 'first'])
+      const head = run(['rev-parse', 'HEAD'])
+      writeFileSync(join(cwd, 'a.txt'), 'changed\n')
+      const gitDir = run(['rev-parse', '--path-format=absolute', '--git-dir'])
+      const commonDir = run(['rev-parse', '--path-format=absolute', '--git-common-dir'])
+      const spawn = realSpawner
+      const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => ({ root: cwd, gitDir, commonDir }) })
+      const committed = await git.query({ kind: 'grep', pattern: 'needle & |', oid: head, perFile: 20 })
+      expect(committed.exitCode).toBe(0)
+      expect(new TextDecoder().decode(committed.stdout)).toBe(`${head}:a.txt\u00002\u0000needle & | "two"\n`)
+      const working = await git.query({ kind: 'grep', pattern: 'needle', perFile: 20 })
+      expect(working.exitCode).toBe(1)
+    } finally { rmSync(cwd, { recursive: true, force: true }) }
   })
   it('refuses each character cmd.exe would interpret in a ref, before spawning', async () => {
     const { spawn } = fake(); const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root })
@@ -151,6 +185,32 @@ describe('restricted Git argv runner', () => {
     await expect(git.query({ kind: 'tracked' })).rejects.toThrow('output-limit')
     await Promise.resolve()
     expect(child.kill).toHaveBeenCalledOnce(); expect(child.detach).toHaveBeenCalledOnce()
+  })
+  it('stops a search at its output cap with what arrived and kills the child, while other queries still fail', async () => {
+    const { child } = fake()
+    const spawn: GitStreamSpawner = async (_spec, handlers) => {
+      setTimeout(() => { handlers.onOutput?.('stdout', new TextEncoder().encode('a.ts\u00001\u0000first\nb.ts\u00002\u0000sec')); handlers.onOutput?.('stdout', new TextEncoder().encode('ond\n')) })
+      return child
+    }
+    const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root, maxOutputBytes: 20 })
+    const result = await git.query({ kind: 'grep', pattern: 'x', perFile: 1 })
+    expect(result).toMatchObject({ exitCode: 0, truncated: true })
+    expect(new TextDecoder().decode(result.stdout)).toBe('a.ts\u00001\u0000first\nb.ts\u00002\u0000')
+    expect(child.kill).toHaveBeenCalledOnce()
+    await expect(git.query({ kind: 'tracked' })).rejects.toThrow('output-limit')
+  })
+  it('returns what a search produced before its timeout, marked truncated, while other queries still time out', async () => {
+    const { child } = fake()
+    const spawn: GitStreamSpawner = async (_spec, handlers) => {
+      setTimeout(() => handlers.onOutput?.('stdout', new TextEncoder().encode('a.ts\u00001\u0000first\nb.ts\u00002\u0000sec')))
+      return child
+    }
+    const git = await createGitArgvRunner(spawn, { authorizeRoot: async () => root, timeoutMs: 30 })
+    const result = await git.query({ kind: 'grep', pattern: 'x', perFile: 1 })
+    expect(result).toMatchObject({ exitCode: 0, truncated: true })
+    expect(new TextDecoder().decode(result.stdout)).toBe('a.ts\u00001\u0000first\nb.ts\u00002\u0000sec')
+    expect(child.kill).toHaveBeenCalled()
+    await expect(git.query({ kind: 'tracked' })).rejects.toThrow('timeout')
   })
   it('propagates cancellation without spawning and while waiting for a child', async () => {
     const { child } = fake(); let handlers: NativeStreamHandlers | undefined

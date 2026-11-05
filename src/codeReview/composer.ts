@@ -4,6 +4,7 @@ import angles from './prompts/angles.md?raw'
 import recipes from './prompts/recipes.md?raw'
 import finder from './prompts/finder.md?raw'
 import verifier from './prompts/verifier.md?raw'
+import verifierRecall from './prompts/verifier-recall.md?raw'
 import sweeper from './prompts/sweeper.md?raw'
 import output from './prompts/output.md?raw'
 import actions from './prompts/actions.md?raw'
@@ -39,6 +40,8 @@ export interface VerifierInputs {
   scope_manifest: string
   candidate: string
   review_material: string
+  /** recall: the run keeps a supported mechanism unless the code refutes it. */
+  stance?: 'recall'
 }
 
 export interface SweeperInputs {
@@ -103,8 +106,10 @@ export function getSelectedAngleText(selected: readonly ReviewAngle[]): string {
   }).join('\n\n')
 }
 
-export function getSelectedRecipeText(plan: Pick<ReviewPlan, 'recipe' | 'agentMode'>): string {
-  const selected = section(recipes, plan.recipe)
+export function getSelectedRecipeText(plan: Pick<ReviewPlan, 'recipe' | 'agentMode'> & Pick<Partial<ReviewPlan>, 'findingTarget'>): string {
+  const steps = plan.agentMode === 'parallel' ? `\n\n${section(recipes, 'team-steps')}` : ''
+  const recipe = `${section(recipes, plan.recipe)}${steps}`
+  const selected = plan.findingTarget ? `${recipe}\n\nAim to report at least ${plan.findingTarget} findings: keep every candidate that names a concrete failure scenario instead of dropping the half-believed ones. If fewer genuine findings exist, report only those; never invent one to reach the number.` : recipe
   return plan.agentMode === 'sequential-fallback' ? `${selected}\n\n${section(recipes, 'sequential-fallback')}` : selected
 }
 
@@ -164,11 +169,12 @@ export function composeFinderPrompt(inputs: FinderInputs): readonly ReviewPrompt
 }
 
 export function composeVerifierPrompt(inputs: VerifierInputs): readonly ReviewPromptBlock[] {
-  return render(verifier, 'verifier', new Map([
+  const blocks = render(verifier, 'verifier', new Map([
     ['scope_manifest', block(inputs.scope_manifest, 'scope-manifest', 'repository-material')],
     ['candidate', block(inputs.candidate, 'candidate', 'repository-material')],
     ['review_material', block(inputs.review_material, 'review-material', 'repository-material')],
   ]))
+  return inputs.stance === 'recall' ? Object.freeze([...blocks, block(verifierRecall, 'verifier-stance')]) : blocks
 }
 
 export function composeSweeperPrompt(inputs: SweeperInputs): readonly ReviewPromptBlock[] {

@@ -316,6 +316,18 @@ describe('review report store', () => {
     const long = await store.registerEvidenceSource(id, { path: 'src/b.ts', revision: 'head', excerpt: Array.from({ length: 41 }, (_, i) => `line ${i}`).join('\n') })
     await expect(append([{ source: long, relevance: 'Whole file' }], 3)).rejects.toThrow('evidence-lines-required')
   })
+  it('accepts a quote cited with its line range when the quote lies within those lines', async () => {
+    const { store, run } = fixture()
+    const { id, anchorKey } = await run()
+    const read = await store.registerEvidenceSource(id, { path: 'src/b.ts', revision: 'head', startLine: 10, excerpt: 'ten\neleven\ntwelve' })
+    let call = 0
+    const append = (support: unknown[], line = 1) => store.submitLedger(id, `c${++call}`, { operation: 'append-candidates', candidates: [{ ...candidate(anchorKey, line, `Mechanism ${line}`), support }] })
+    await append([{ source: read, startLine: 11, endLine: 12, quote: 'even\ntwel', relevance: 'Quoted within the range' }], 1)
+    expect((await store.getSnapshot(id)).evidence.map(item => item.excerpt)).toEqual(['even\ntwel'])
+    await expect(append([{ source: read, startLine: 11, endLine: 12, quote: 'ten', relevance: 'x' }], 2)).rejects.toThrow('quote-not-in-source')
+    await expect(append([{ source: read, startLine: 12, endLine: 13, quote: 'twelve', relevance: 'x' }], 2)).rejects.toThrow('invalid-span')
+    await expect(append([{ source: read, endLine: 12, quote: 'twelve', relevance: 'x' }], 2)).rejects.toThrow('invalid-span')
+  })
   it('still refuses a quote whose revisions are all outside the reviewed one', async () => {
     const { store, run } = fixture()
     const { id, anchorKey } = await run()
@@ -959,14 +971,31 @@ describe('explicit semantic duplicate merges', () => {
     expect(await h.store.submitLedger(h.id, 'same-merge', input)).toEqual(results[0])
     await expect(h.store.submitLedger(h.id, 'late-merge', input)).rejects.toThrow('run-not-active')
   })
-  it.each(['nonoverlap', 'before-revision', 'other-path', 'other-kind', 'no-span', 'foreign-id'] as const)('rejects %s without changing ledger facts', async kind => {
+  it('merges a duplicate filed under another kind and keeps the kind of the kept candidate', async () => {
+    const h = await pair()
+    const input = candidate(h.anchorKey, 1, 'Another wording')
+    input.kind = 'efficiency'
+    const duplicate = (await h.store.submitLedger(h.id, 'other', { operation: 'append-candidates', candidates: [input] })).accepted[0].diagnosticId
+    await h.store.submitLedger(h.id, 'merge', merge(h.ids[0], [duplicate]))
+    const after = await h.store.getSnapshot(h.id)
+    expect(after.duplicateIds).toEqual({ [duplicate]: h.ids[0] })
+    expect(after.diagnostics.find(item => item.id === h.ids[0])!.classification.kind).toBe('correctness')
+  })
+  it('refuses a cleanup candidate as the representative of a correctness duplicate', async () => {
+    const h = await pair()
+    const input = candidate(h.anchorKey, 1, 'Another wording')
+    input.kind = 'efficiency'
+    const cleanup = (await h.store.submitLedger(h.id, 'other', { operation: 'append-candidates', candidates: [input] })).accepted[0].diagnosticId
+    await expect(h.store.submitLedger(h.id, 'merge', merge(cleanup, [h.ids[0]]))).rejects.toThrow('duplicate-keep-kind')
+    expect((await h.store.getSnapshot(h.id)).duplicateIds ?? {}).toEqual({})
+  })
+  it.each(['nonoverlap', 'before-revision', 'other-path', 'no-span', 'foreign-id'] as const)('rejects %s without changing ledger facts', async kind => {
     const h = await pair()
     let key = h.anchorKey
     if (kind === 'before-revision') key = await h.store.registerAnchor(h.id, { path: 'src/a.ts', revision: 'base', side: 'before', span: { start: 1, end: 10 } })
     if (kind === 'other-path') key = await h.store.registerAnchor(h.id, { path: 'src/b.ts', revision: 'head', side: 'after', span: { start: 1, end: 10 } })
     const input = candidate(key, kind === 'nonoverlap' ? 10 : 1, 'Another wording')
     if (kind === 'other-path') input.location.path = 'src/b.ts'
-    if (kind === 'other-kind') input.kind = 'security'
     if (kind === 'no-span') delete input.location.line
     let duplicate: string
     if (kind === 'foreign-id') {

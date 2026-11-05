@@ -10,21 +10,13 @@ export function isTestOrFixturePath(path: string): boolean {
   return /(?:^|\/)(?:__tests__|tests?|fixtures)(?:\/|$)|\.(?:test|spec)\./i.test(path)
 }
 
-/** Contract: wall-clock budget for one run, sized by angle rounds and included patch bytes; capped at 90 minutes. */
-export function reviewTimeBudgetMs(plan: Pick<ReviewPlan, 'angles' | 'agentMode' | 'workerConcurrency' | 'independentVerification' | 'sweep'>, patchBytes: number): number {
-  const lanes = plan.agentMode === 'parallel' ? Math.max(1, Math.min(4, plan.workerConcurrency)) : 1
-  const rounds = Math.ceil(plan.angles.length / lanes) + (plan.independentVerification ? 1 : 0) + (plan.sweep === 'none' ? 0 : 1)
-  const sizeSteps = Math.ceil(Math.max(0, patchBytes) / (64 * 1024))
-  return Math.min(90, 10 + rounds * 3 + sizeSteps * 2) * 60_000
-}
-
 export type RecipeRoute = { recipe: RecipeId; defaultLimit: ReportLimit }
 const route = (recipe: RecipeId, defaultLimit: ReportLimit): Readonly<RecipeRoute> => Object.freeze({ recipe, defaultLimit })
 export const RECIPE_ROUTES: Readonly<Record<CapabilityProfile, Readonly<Record<ReviewLevel, Readonly<RecipeRoute>>>>> = Object.freeze({
   fallback: Object.freeze({ low: route('quick-hunks', 4), medium: route('local-eight', 10), high: route('local-eight', 10), xhigh: route('local-ten', 15), max: route('team-ten', 15) }),
   'balanced-review': Object.freeze({ low: route('quick-hunks', 4), medium: route('local-eight', 8), high: route('team-eight-recall', 10), xhigh: route('team-ten', 15), max: route('team-ten', 15) }),
   'fast-review': Object.freeze({ low: route('quick-hunks', 4), medium: route('team-eight-precise', 8), high: route('team-eight-recall', 10), xhigh: route('team-ten', 15), max: route('team-ten', 15) }),
-  'context-specialist': Object.freeze({ low: route('quick-expand', 4), medium: route('local-eight', 8), high: route('local-eight', 10), xhigh: route('local-ten', 15), max: route('team-ten', 15) }),
+  'context-specialist': Object.freeze({ low: route('quick-expand', 8), medium: route('local-eight', 8), high: route('local-eight', 10), xhigh: route('local-ten', 15), max: route('team-ten', 15) }),
   'minimal-specialist': Object.freeze({ low: route('quick-hunks', 4), medium: route('careful-pass', 15), high: route('careful-pass', 15), xhigh: route('local-ten', 15), max: route('team-ten', 15) }),
   'delegation-specialist': Object.freeze({ low: route('quick-expand', 'unlimited'), medium: route('team-eight-precise', 8), high: route('team-eight-recall', 10), xhigh: route('team-ten', 15), max: route('team-ten', 15) }),
 })
@@ -135,6 +127,9 @@ export function resolveReviewPolicy(input: ReviewPolicyInput): ReviewPlan {
     suggestedFinderTasks = Math.max(2, Math.min(8, Math.ceil(input.changedLines! / 150)))
     if (input.changedLinesCommittedOnly) notices.push({ code: 'committed-lines-only' })
   }
+  // Half the smaller of the effective and the recipe's default limit, at least one (F-38).
+  const bound = (value: ReportLimit) => value === 'unlimited' ? Infinity : value
+  const findingTarget = recipe === 'local-eight' || recipe === 'local-ten' ? Math.max(1, Math.floor(Math.min(bound(reportLimit), bound(defaultLimit)) / 2)) : undefined
   const execution = presentation === 'panel' || caps.coordinator ? 'inline' : 'isolated'
   const coordinatorWorkerRequired = Boolean(caps.coordinator && !caps.coordinatorCanExecuteSkill)
   const blocked = coordinatorWorkerRequired && !caps.coordinatorWorkerAvailable
@@ -161,6 +156,7 @@ export function resolveReviewPolicy(input: ReviewPolicyInput): ReviewPlan {
     allowWholeFileReads: !quick,
     workerConcurrency,
     suggestedFinderTasks,
+    ...(findingTarget ? { findingTarget } : {}),
     coordinatorWorkerRequired,
     blocked,
     automaticVerificationEligible: presentation === 'panel' && execution === 'inline' && !blocked && verificationRoute,

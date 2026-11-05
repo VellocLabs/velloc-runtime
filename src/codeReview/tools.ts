@@ -13,6 +13,8 @@ export interface ReviewToolBindings {
   actions?: boolean
   actionEpoch?: string
   independentAssessments?: boolean
+  /** A worker's read budget in model steps: a ReviewRead from a later step fails with `review-step-budget`. */
+  readSteps?: number
 }
 function callId(row: Message, name: string, input: unknown): string {
   const content = (row as Message & { message?: { content?: unknown } }).message?.content
@@ -37,24 +39,33 @@ export const REVIEW_CANDIDATE_SCHEMA = shape({
 export const REVIEW_RESULT_SCHEMA = shape({ candidates: { type: 'array', items: REVIEW_CANDIDATE_SCHEMA }, coverage: REVIEW_COVERAGE_SCHEMA })
 const updatesSchema = { type: 'array', maxItems: 32, items: shape({ diagnosticId: text, observation: { type: 'string', enum: ['edited', 'not-needed', 'left-open'] }, explanation: text, executionRefs: stringList }) }
 export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] {
-  const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[], invoke: (input: Record<string, unknown>, id: string) => Promise<unknown>) => declareTool({
+  const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[], invoke: (input: Record<string, unknown>, id: string, row: Message) => Promise<unknown>) => declareTool({
     name, description: async () => description,
     argsSchema: { type: 'object' as const, properties, required, additionalProperties: false },
     readsOnly: () => true, parallelSafe: () => name === 'Agent',
     call: async (input: Record<string, unknown>, _context: unknown, _permission: unknown, row: Message) => {
       if (bindings.signal.aborted) throw new Error('review-cancelled')
-      const data = await invoke(input, callId(row, name, input))
+      const data = await invoke(input, callId(row, name, input), row)
       bindings.changed()
       return { data }
     },
   })
+  // One model step is one assistant row: its uuid, or the row itself when it has none.
+  const readRows = new Set<string | Message>()
+  const read = (input: Record<string, unknown>, row: Message) => {
+    if (bindings.readSteps !== undefined) {
+      readRows.add(row.uuid ?? row)
+      if (readRows.size > bindings.readSteps) throw new Error('review-step-budget')
+    }
+    return bindings.read(input)
+  }
   const candidates = { type: 'array', maxItems: 32, items: REVIEW_CANDIDATE_SCHEMA }
   const tools: ToolContract[] = [
     tool('ReviewRead', 'Read authorized review material. diff without a path returns the scope index; diff with a path returns that file\'s patch and anchors; diff with paths (up to 50) returns several patches in one call. context reads a permitted path, optionally only startLine..endLine. search finds a literal query across in-scope files. Patches, context results and search matches carry a source id that support items may cite. No shell or scripts.', {
       operation: { type: 'string', enum: ['diff', 'context', 'search'] }, path: { type: 'string' }, paths: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 50 }, query: { type: 'string' },
       startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 },
-    }, ['operation'], input => bindings.read(input)),
-    tool('ReviewLedger', 'Record review candidates, assessments, coverage, or explicit semantic duplicate merges in this run. Candidate IDs are host generated. assess uses assessments=[{candidateId,disposition,reason,support}]. To merge differently worded findings of the same root mechanism, use operation="merge-duplicates" with groups=[{keepId,duplicateIds,reason,support}]. Explain the shared trigger and mechanism with nonempty evidence; overlapping locations alone are not duplicates. Host requires the same revision, path, side, classification kind, and overlapping line spans. Preserve distinct mechanisms. Merging preserves all diagnostic IDs and independent assessments, but only keepId counts toward the retained report cap. Existing representatives cannot be merged into another group. Each candidate or assessment is accepted or refused on its own; refused items are listed in rejected with their reason code, and the call fails only when every item is refused.', {
+    }, ['operation'], (input, _id, row) => read(input, row)),
+    tool('ReviewLedger', 'Record review candidates, assessments, coverage, or explicit semantic duplicate merges in this run. Candidate IDs are host generated. assess uses assessments=[{candidateId,disposition,reason,support}]. To merge differently worded findings of the same root mechanism, use operation="merge-duplicates" with groups=[{keepId,duplicateIds,reason,support}]. Explain the shared trigger and mechanism with nonempty evidence; overlapping locations alone are not duplicates. keepId and duplicateIds are host candidate IDs, the candidateId of each finder candidate and verdict. Host requires the same revision, path, side, and overlapping line spans; kinds may differ, and the kind of keepId stands, so keepId must be a correctness or security candidate when any duplicate is one. Preserve distinct mechanisms. Merging preserves all diagnostic IDs and independent assessments, but only keepId counts toward the retained report cap. Existing representatives cannot be merged into another group. Each candidate or assessment is accepted or refused on its own; refused items are listed in rejected with their reason code, and the call fails only when every item is refused.', {
       operation: { type: 'string', enum: ['append-candidates', 'assess', 'coverage', 'merge-duplicates'] }, candidates,
       groups: { type: 'array', minItems: 1, maxItems: 32, items: shape({ keepId: text, duplicateIds: { ...stringList, minItems: 1, maxItems: 32, uniqueItems: true }, reason: text, support: { ...REVIEW_SUPPORT_SCHEMA, minItems: 1, maxItems: 128 } }) },
       assessments: { type: 'array', maxItems: 32, items: shape({ candidateId: text, ...REVIEW_ASSESSMENT_SCHEMA.properties, support: REVIEW_SUPPORT_SCHEMA }) }, coverage: REVIEW_COVERAGE_SCHEMA,
@@ -72,7 +83,7 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
   if (bindings.actions) tools.push(tool('ReviewActionLog', 'Propose repair reconciliation using actual execution references. No model assertion can mark an unobserved edit applied.', {
     updates: updatesSchema,
   }, ['updates'], (input, id) => bindings.store.reconcile(bindings.runId, id, { operation: 'reconcile', updates: input.updates }, bindings.actionEpoch)))
-  if (bindings.launch) tools.push(tool('Agent', 'Launch a bounded read-only review worker. Only finder, verifier and sweeper roles are allowed. No parent conversation or further delegation is inherited.', {
+  if (bindings.launch) tools.push(tool('Agent', 'Launch a bounded read-only review worker. Only finder, verifier and sweeper roles are allowed. No parent conversation or further delegation is inherited. When the run verifies independently, launch every finder first, all in one turn. A verifier call without candidateId starts the run\'s verification: the host waits for running finders, gives each finder candidate that is not a merged duplicate one independent verifier, then runs the gap sweep with the verdicts when the recipe has one; the result carries `verification` and `sweep`, a repeated call retries only verifiers that failed or came back unchecked and a sweep that failed, and finders are refused from then on. A sweeper call starts the same step. A verifier call with candidateId verifies or retries that one candidate.', {
     role: { type: 'string', enum: ['finder', 'verifier', 'sweeper'] }, angles: { type: 'array', items: { type: 'string' } }, candidateId: { type: 'string' },
   }, ['role'], input => bindings.launch!(input)))
   return tools

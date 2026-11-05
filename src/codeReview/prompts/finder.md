@@ -18,4 +18,4 @@ Return no more than the configured candidate count per angle. Each candidate inc
 
 Keep concerns with a concrete, reachable mechanism and identify triggering conditions that remain unconfirmed. Do not pad the list with unsupported assumptions. Cleanup candidates must describe actual cost; correctness candidates must describe incorrect behavior.
 
-Return a JSON object: {"candidates": [...], "coverage": {"angles": [...], "limitations": [...]}}. Return an empty candidates array when there are none. Do not edit, commit, comment, or start additional review chains that were not assigned.
+Return a JSON object: {"candidates": [...], "coverage": {"angles": [...], "limitations": [...]}}. Return an empty candidates array when there are none. When ReviewRead answers review-step-budget, stop reading and return this object now from what you have read, naming what you did not check in coverage limitations. Do not edit, commit, comment, or start additional review chains that were not assigned.

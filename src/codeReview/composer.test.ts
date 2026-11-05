@@ -10,6 +10,7 @@ import actions from './prompts/actions.md?raw'
 import coordinator from './prompts/coordinator.md?raw'
 import finder from './prompts/finder.md?raw'
 import verifier from './prompts/verifier.md?raw'
+import verifierRecall from './prompts/verifier-recall.md?raw'
 import sweeper from './prompts/sweeper.md?raw'
 import verifyHandoff from './prompts/verify-handoff.md?raw'
 
@@ -34,19 +35,24 @@ const text = (blocks: readonly ReviewPromptBlock[]) => blocks.map(block => block
 describe('review prompt selection', () => {
   it('uses raw Markdown resources with every required body', () => {
     expect(skill.startsWith('# Local Code Change Review')).toBe(true)
-    expect(recipes.match(/^## /gmu)).toHaveLength(9)
+    expect(recipes.match(/^## /gmu)).toHaveLength(10)
     expect(angles.match(/^Angle: /gmu)).toHaveLength(10)
     expect(output.match(/^## /gmu)).toHaveLength(2)
     expect(actions.match(/^## /gmu)).toHaveLength(3)
     for (const resource of [skill, recipes, angles, output, actions, coordinator, finder, verifier, sweeper, verifyHandoff]) expect(resource.trim().length).toBeGreaterThan(100)
   })
 
+  it.each([['delegation-specialist', 'medium', true], ['delegation-specialist', 'high', true], ['fallback', 'max', true], ['fallback', 'xhigh', false], ['minimal-specialist', 'medium', false]] as const)('gives the %s %s team steps once: %s', (profile, level, team) => {
+    const selected = composeReviewPrompt(plan(profile, level), inputs, noActions).find(block => block.source === 'selected-recipe')!.text
+    expect(selected.split('Launch every finder in one turn').length - 1).toBe(team ? 1 : 0)
+    expect(selected.includes('retries only the verifiers that failed or came back unchecked')).toBe(team)
+  })
   it.each([
     ['fallback', 'low', 'This is a quick diff inspection.'],
     ['context-specialist', 'low', 'This remains a quick diff inspection:'],
     ['fallback', 'medium', 'Work through the 8 selected angles sequentially'],
     ['fallback', 'xhigh', 'Cover the 10 selected angles sequentially'],
-    ['delegation-specialist', 'medium', 'Cover the 8 independent review angles.'],
+    ['delegation-specialist', 'medium', 'Cover the 8 independent review angles with finders'],
     ['delegation-specialist', 'high', 'Organize finders around the 8 selected angles'],
     ['fallback', 'max', 'Run independent finder checks across the 10 selected angles'],
     ['minimal-specialist', 'medium', 'Inspect the target diff as a senior reviewer'],
@@ -141,6 +147,18 @@ describe('typed single-pass template assembly', () => {
     expect(blocks.find(block => block.source === 'candidate')?.provenance).toBe('repository-material')
     expect(text(blocks)).toContain('return unchecked with a reason')
     expect(text(blocks)).toContain('Cite counterevidence.')
+    expect(blocks.some(block => block.source === 'verifier-stance')).toBe(false)
+    const recall = composeVerifierPrompt({ scope_manifest: 'Scope', candidate: 'Claim', review_material: 'Evidence', stance: 'recall' })
+    expect(recall.at(-1)).toMatchObject({ source: 'verifier-stance', provenance: 'trusted-task', text: verifierRecall })
+    expect(verifierRecall).toContain('Choose dismissed only when the code itself refutes the candidate')
+  })
+
+  it('states the findings target only for inline angle recipes', () => {
+    expect(getSelectedRecipeText(plan('fallback', 'xhigh'))).toContain('Aim to report at least 7 findings')
+    expect(getSelectedRecipeText(plan('fallback', 'high'))).toContain('Aim to report at least 5 findings')
+    expect(getSelectedRecipeText(plan('fallback', 'high'))).toContain('never invent one to reach the number')
+    for (const level of ['low', 'max'] as const) expect(getSelectedRecipeText(plan('fallback', level))).not.toContain('Aim to report at least')
+    expect(getSelectedRecipeText(plan('minimal-specialist', 'high'))).not.toContain('Aim to report at least')
   })
 
   it('assembles gap sweep and runtime verification as distinct templates', () => {
@@ -173,7 +191,7 @@ describe('typed single-pass template assembly', () => {
     expect(skill).toContain('an incomplete review must not be presented as a clean result')
     expect(coordinator).toContain('Never invent findings to meet a quota.')
     expect(coordinator).toContain('Tool receipts determine the number of tasks actually started')
-    expect(recipes).toContain('Do not use the candidate\'s finder as its independent verifier.')
+    expect(recipes).toContain('never the candidate\'s own finder')
     expect(recipes).toContain('these additions must not be labeled independently verified')
     expect(verifier).toContain('plausible: The mechanism is supported')
     expect(verifier).toContain('dismissed: The candidate contradicts the code')

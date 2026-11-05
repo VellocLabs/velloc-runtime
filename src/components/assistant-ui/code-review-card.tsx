@@ -14,6 +14,7 @@ import { useRightPanelContent } from './right-panel-content-context'
 import { useBackgroundTasksContext } from './background-tasks-context'
 import { isReviewFileLocation, reviewTopic, type ReviewAction, type ReviewReportView, type ReviewSessionSnapshot } from '@/codeReview/review-protocol'
 import type { Diagnostic, OutputMode, ReviewRun, ReviewTaskView } from '@/codeReview/contracts'
+import { latestAssessment } from '@/codeReview/ledger-lookups'
 import { reviewMessage, reviewDetailMessage, reviewAngleMessage, reviewValueMessage, reviewTaskRoleMessage, reviewTaskStatusMessage, reviewEndMessage } from '@/codeReview/messages'
 
 type Translate = ReturnType<typeof useT>
@@ -104,12 +105,18 @@ export function currentReviewLocation(report: ReviewReportView, diagnostic: Diag
 }
 
 type Stage = ReviewRun['progress']['stage']
-type Step = 'prepare' | 'inspect' | 'summarize'
-const STEPS: Step[] = ['prepare', 'inspect', 'summarize']
-const REVIEW_STAGES: Stage[] = ['scope', 'inspect', 'assess', 'sweep', 'report']
-/** Which of the three visible steps a run stage belongs to; follow-up stages come after all of them. */
-function stepOfStage(stage: Stage): number {
-  return stage === 'scope' ? 0 : stage === 'report' ? 2 : REVIEW_STAGES.includes(stage) ? 1 : 3
+type Step = 'prepare' | 'inspect' | 'find' | 'merge' | 'verify' | 'sweep' | 'summarize'
+const REVIEWING_STAGES: Stage[] = ['scope', 'inspect', 'merge', 'assess', 'sweep', 'report']
+/** The visible steps of a recipe: a team recipe shows its find, merge, verify and (team-ten) sweep steps. */
+export function reviewSteps(recipe: string): Step[] {
+  if (!recipe.startsWith('team-')) return ['prepare', 'inspect', 'summarize']
+  return ['prepare', 'find', 'merge', 'verify', ...(recipe === 'team-ten' ? ['sweep' as const] : []), 'summarize']
+}
+const STEP_OF_STAGE: Partial<Record<Stage, Step[]>> = { scope: ['prepare'], inspect: ['inspect', 'find'], merge: ['merge'], assess: ['verify', 'inspect'], sweep: ['sweep', 'inspect'], report: ['summarize'] }
+/** Which visible step a run stage belongs to; follow-up stages come after all of them. */
+export function stepOfStage(steps: Step[], stage: Stage): number {
+  const index = steps.findIndex(step => STEP_OF_STAGE[stage]?.includes(step))
+  return index < 0 ? steps.length : index
 }
 /** A revision shown short; the full identity stays in the title. */
 const shortRevision = (revision: string) => /^[0-9a-f]{12,}$/i.test(revision) ? revision.slice(0, 7) : revision
@@ -165,7 +172,9 @@ const ReviewCardHeader: FC<{
   collapsed?: boolean
   bodyId?: string
   onToggle?: () => void
-}> = ({ level, range, status, variant, running, collapsed = false, bodyId, onToggle }) => {
+  /** The open body shows the status under its steps instead. */
+  statusInBody?: boolean
+}> = ({ level, range, status, variant, running, collapsed = false, bodyId, onToggle, statusInBody = false }) => {
   const t = useT()
   return <header className="relative flex items-start gap-3 px-4 py-3">
     <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><SearchCheckIcon className="size-4" /></span>
@@ -177,9 +186,9 @@ const ReviewCardHeader: FC<{
       {range && <ReviewRange {...range} />}
     </div>
     <div className="flex h-8 shrink-0 items-center gap-1">
-      <Badge variant={variant} size="sm" aria-live="polite" data-testid="review-status">
+      {!(statusInBody && !collapsed) && <Badge variant={variant} size="sm" aria-live="polite" data-testid="review-status">
         {running && <Loader2Icon aria-hidden className="animate-spin" />}{status}
-      </Badge>
+      </Badge>}
       {onToggle && <button type="button" data-testid="review-toggle" aria-expanded={!collapsed} aria-controls={collapsed ? undefined : bodyId} aria-label={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} title={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} onClick={onToggle}
         className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none after:absolute after:inset-0 after:content-[''] hover:text-foreground focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring">
         <ChevronDownIcon aria-hidden className={cn('size-4 transition-transform', collapsed && '-rotate-90')} />
@@ -188,20 +197,23 @@ const ReviewCardHeader: FC<{
   </header>
 }
 
-/** What the review is doing now: the most recently active running task, how many tasks finished, are running or did not complete; the full tree folds away. */
-const ReviewActivity: FC<{ tasks: ReviewTaskView[] }> = ({ tasks }) => {
+/** Text with a light sweeping across it while work runs. */
+const Shimmer: FC<{ text: string }> = ({ text }) => <span className="relative inline-block">{text}<span aria-hidden className="shimmer pointer-events-none absolute inset-0 motion-reduce:animate-none">{text}</span></span>
+
+/** What the review is doing now: the most recently active running task with the run's status, how many tasks finished, are running or did not complete; the full tree folds away. */
+const ReviewActivity: FC<{ tasks: ReviewTaskView[]; status: string }> = ({ tasks, status }) => {
   const t = useT()
   const counts = reviewTaskCounts(tasks)
   const current = tasks.filter(task => task.status === 'running').reduce<ReviewTaskView | undefined>((latest, task) => !latest || task.lastActivityAt >= latest.lastActivityAt ? task : latest, undefined)
   const detail = current && taskDetail(t, current)
   return <div data-testid="review-activity" className="space-y-1.5 text-xs">
-    {current && <div data-testid="review-current-task" className="min-w-0">
-      <p><span className="sr-only">{t('reviewCard.currentTask')} </span><span className="font-medium">{reviewTaskRoleMessage(t, current.role)}</span>{detail && <> · {detail}</>}</p>
-      {current.lastAction && <p className="truncate text-muted-foreground" title={current.lastAction}>{t('reviewCard.task.lastAction', { action: current.lastAction })}</p>}
-    </div>}
-    <p data-testid="review-task-counts" className="text-muted-foreground">{t('reviewCard.tasksDone', { finished: counts.finished, running: counts.running })}
-      {counts.notCompleted > 0 && <> · {t('reviewCard.tasksNotCompleted', { count: counts.notCompleted })}</>}</p>
-    <ReviewTaskTree tasks={tasks} open={false} />
+    <div data-testid="review-current-task" className="min-w-0">
+      <p aria-live="polite">{current && <><span className="sr-only">{t('reviewCard.currentTask')} </span><span className="font-medium">{reviewTaskRoleMessage(t, current.role)}</span> · </>}<span data-testid="review-status-line"><Shimmer text={status} /></span>{detail && <> · {detail}</>}</p>
+      {current?.lastAction && <p className="truncate text-muted-foreground" title={current.lastAction}>{t('reviewCard.task.lastAction', { action: current.lastAction })}</p>}
+    </div>
+    {tasks.length > 0 && <p data-testid="review-task-counts" className="text-muted-foreground">{t('reviewCard.tasksDone', { finished: counts.finished, running: counts.running })}
+      {counts.notCompleted > 0 && <> · {t('reviewCard.tasksNotCompleted', { count: counts.notCompleted })}</>}</p>}
+    {tasks.length > 0 && <ReviewTaskTree tasks={tasks} open={false} />}
   </div>
 }
 
@@ -295,7 +307,7 @@ const ReviewPreparingCard: FC<{ canCancel: boolean; onCancel: () => Promise<void
   return <Card className="my-2 gap-0 overflow-hidden py-0 text-sm" data-testid="code-review-card" data-status="preparing">
     <ReviewCardHeader status={reviewValueMessage(t, 'scope')} variant="muted" running />
     <div className="flex flex-col gap-3 border-t px-4 py-3">
-      <ReviewStages stage="scope" queued={false} />
+      <ReviewStages recipe="" stage="scope" queued={false} />
       <p className="text-xs text-muted-foreground" data-testid="review-preparing">{t('reviewCard.preparing')}</p>
       <ReviewCancel disabled={busy || !canCancel} onClick={() => {
         setBusy(true)
@@ -307,17 +319,18 @@ const ReviewPreparingCard: FC<{ canCancel: boolean; onCancel: () => Promise<void
   </Card>
 }
 
-/** Three steps of a running review; a follow-up stage shows all three done. */
-const ReviewStages: FC<{ stage: Stage; queued: boolean }> = ({ stage, queued }) => {
+/** The steps of a running review; a follow-up stage shows them all done. */
+const ReviewStages: FC<{ recipe: string; stage: Stage; queued: boolean }> = ({ recipe, stage, queued }) => {
   const t = useT()
-  const current = queued ? -1 : stepOfStage(stage)
+  const steps = reviewSteps(recipe)
+  const current = queued ? -1 : stepOfStage(steps, stage)
   return <ol data-testid="review-stages" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-muted/50 px-3 py-2 text-xs">
-    {STEPS.map((step, index) => {
+    {steps.map((step, index) => {
       const state = index < current ? 'done' : index === current ? 'current' : 'pending'
       return <li key={step} data-state={state} className="flex items-center gap-1.5">
         {index > 0 && <span aria-hidden className="mr-0.5 h-px w-6 bg-border" />}
         <span aria-hidden className={cn('flex size-4 items-center justify-center rounded-full border', state === 'done' && 'border-success/40 bg-success/15 text-success', state === 'current' && 'border-primary bg-primary text-primary-foreground', state === 'pending' && 'border-border text-transparent')}>
-          {state === 'done' ? <CheckIcon className="size-2.5" /> : <span className="size-1.5 rounded-full bg-current" />}
+          {state === 'done' ? <CheckIcon className="size-2.5" /> : state === 'current' ? <Loader2Icon data-testid="review-stage-spinner" className="size-2.5 animate-spin motion-reduce:animate-none" /> : <span className="size-1.5 rounded-full bg-current" />}
         </span>
         <span className={cn(state === 'current' ? 'font-medium text-foreground' : 'text-muted-foreground')}>{t(`reviewCard.stage.${step}`)}</span>
       </li>
@@ -348,13 +361,16 @@ export const ReviewReportCard: FC<{
   const { status, stage } = run.progress
   const running = status === 'queued' || status === 'active'
   // The review itself is in flight: findings are not a result yet. A follow-up stage keeps them on screen.
-  const reviewing = running && (status === 'queued' || REVIEW_STAGES.includes(stage))
+  const reviewing = running && (status === 'queued' || REVIEWING_STAGES.includes(stage))
   const finished = !running
   const shown = report.diagnostics.slice(0, 32).filter(diagnostic =>
     (severity === 'all' || diagnostic.classification.impact === severity) &&
     (kind === 'all' || (kind === 'correctness' ? ['correctness', 'security'].includes(diagnostic.classification.kind) : !['correctness', 'security'].includes(diagnostic.classification.kind))) &&
     (state === 'all' || reviewFindingState(report, diagnostic.id) === state))
   const selectedIds = selected.filter(id => report.diagnostics.some(item => item.id === id))
+  // Selection only feeds repair: without it there is nothing to select.
+  const repairable = can('repair')
+  const allShown = shown.length > 0 && shown.every(item => selectedIds.includes(item.id))
   const impactCounts = (['critical', 'major', 'minor'] as const).map(impact => [impact, report.diagnostics.filter(item => item.classification.impact === impact).length] as const).filter(([, count]) => count > 0)
   const act = (action: ReviewAction, extra?: Record<string, unknown>) => {
     if (busy || !can(action)) return
@@ -387,12 +403,12 @@ export const ReviewReportCard: FC<{
   const target = report.targetLabel !== undefined && report.targetLabel !== run.scope.repository.projectKey && report.targetLabel !== run.scope.workspaceKey ? report.targetLabel : undefined
   return <TooltipProvider><Card className="my-2 gap-0 overflow-hidden py-0 text-sm" data-testid="code-review-card" data-status={status}>
     <ReviewCardHeader level={enumText(run.policy.level)} range={{ repository: reviewRepositoryName(run.scope), base: run.scope.revision.base, head: run.scope.revision.head, target }}
-      status={enumText(reviewStatusValue(status, stage))} variant={STATUS_VARIANT[status]} running={running} collapsed={collapsed} bodyId={bodyId} onToggle={() => setCollapsed(value => !value)} />
+      status={enumText(reviewStatusValue(status, stage))} variant={STATUS_VARIANT[status]} running={running} collapsed={collapsed} bodyId={bodyId} onToggle={() => setCollapsed(value => !value)} statusInBody={reviewing} />
     {!collapsed && <div id={bodyId}>
       <div className="flex flex-col gap-3 border-t px-4 py-3">
         {reviewing ? <>
-          <ReviewStages stage={stage} queued={status === 'queued'} />
-          {report.tasks && report.tasks.length > 0 && <ReviewActivity tasks={report.tasks} />}
+          <ReviewStages recipe={run.policy.recipe} stage={stage} queued={status === 'queued'} />
+          <ReviewActivity tasks={report.tasks ?? []} status={enumText(reviewStatusValue(status, stage))} />
           {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{progress.found === 0 ? t('reviewCard.progressNone') : progress.found === 1 ? t('reviewCard.progressFoundOne', progress) : t('reviewCard.progressFound', progress)}</p>}
         </> : <>
           <div className="flex flex-col gap-1">
@@ -412,9 +428,13 @@ export const ReviewReportCard: FC<{
         {reviewing && notices && <div className={SCOPE_BLOCK_CLASS}>{notices}</div>}
         {finished && !report.coverage.complete && !report.emptyScope && report.diagnostics.length > 0 && <p data-testid="review-incomplete" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{t('reviewCard.notice.incomplete')}</p>}
         {!reviewing && report.diagnostics.length > 0 && <>
-          <div className="flex flex-wrap gap-3">{filter('severity', severity, ['all', 'critical', 'major', 'minor'], setSeverity)}{filter('kind', kind, ['all', 'correctness', 'cleanup'], setKind)}{filter('state', state, ['all', 'open', 'applied', 'verified', 'skipped'], setState)}</div>
+          <div className="flex flex-wrap items-center gap-3">
+            {repairable && <label className="flex items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" data-testid="review-select-all" className="size-4 accent-primary" checked={allShown} disabled={busy || shown.length === 0} onChange={event => setSelected(ids => event.target.checked ? [...new Set([...ids, ...shown.map(item => item.id)])] : ids.filter(id => !shown.some(item => item.id === id)))} />{t('reviewCard.selectAll')}</label>}
+            {filter('severity', severity, ['all', 'critical', 'major', 'minor'], setSeverity)}{filter('kind', kind, ['all', 'correctness', 'cleanup'], setKind)}{filter('state', state, ['all', 'open', 'applied', 'verified', 'skipped'], setState)}
+          </div>
+          {!repairable && !['workspace', 'paths'].includes(run.scope.kind) && <p data-testid="review-repair-unavailable" className="text-xs text-muted-foreground">{t('reviewCard.repairUnavailable')}</p>}
           <ul className="space-y-2">{shown.map(diagnostic => {
-            const assessment = report.assessments.filter(item => item.diagnosticId === diagnostic.id).at(-1)
+            const assessment = latestAssessment(report, diagnostic.id)
             const receipts = report.actions.filter(item => item.diagnosticIds.includes(diagnostic.id))
             const workingCopy = diagnostic.anchor.side === 'working-copy'
             const canLocate = workingCopy && !!report.permissions?.locate && can('locate') && !!openFile
@@ -422,7 +442,7 @@ export const ReviewReportCard: FC<{
             const findingState = reviewFindingState(report, diagnostic.id)
             return <li key={diagnostic.id} data-testid="review-finding" data-impact={diagnostic.classification.impact} className={cn('rounded-lg border p-3', checked ? 'border-primary/50 bg-primary/5' : 'bg-card')}>
               <div className="flex items-start gap-2">
-                <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-primary" checked={checked} disabled={busy || !can('repair')} onChange={event => setSelected(ids => event.target.checked ? [...ids, diagnostic.id] : ids.filter(id => id !== diagnostic.id))} aria-label={t('reviewCard.select', { title: diagnostic.claim.title })} />
+                {repairable && <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-primary" checked={checked} disabled={busy} onChange={event => setSelected(ids => event.target.checked ? [...ids, diagnostic.id] : ids.filter(id => id !== diagnostic.id))} aria-label={t('reviewCard.select', { title: diagnostic.claim.title })} />}
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <Badge variant={IMPACT_VARIANT[diagnostic.classification.impact]} size="sm">{enumText(diagnostic.classification.impact)}</Badge>
@@ -479,7 +499,7 @@ export const ReviewReportCard: FC<{
       {!running && <footer className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-2.5">
         <span className="mr-auto text-xs text-muted-foreground">{selectedIds.length > 0 && t('reviewCard.selected', { count: selectedIds.length })}</span>
           <Button type="button" variant="outline" size="sm" disabled={busy || !can('rerun')} onClick={() => act('rerun', { presentation })} data-testid="review-rerun">{t('reviewCard.rerun')}</Button>
-          {report.diagnostics.length > 0 && <Button type="button" size="sm" disabled={busy || !can('repair') || selectedIds.length === 0} onClick={() => act('repair', { diagnosticIds: selectedIds })} data-testid="review-repair">{selectedIds.length > 0 ? t('reviewCard.repairCount', { count: selectedIds.length }) : t('reviewCard.repair')}</Button>}
+          {report.diagnostics.length > 0 && repairable && <Button type="button" size="sm" disabled={busy || selectedIds.length === 0} onClick={() => act('repair', { diagnosticIds: selectedIds })} data-testid="review-repair">{selectedIds.length > 0 ? t('reviewCard.repairCount', { count: selectedIds.length }) : t('reviewCard.repair')}</Button>}
           <DropdownMenuPrimitive.Root>
             <DropdownMenuPrimitive.Trigger asChild>
               <Button type="button" variant="outline" size="icon-sm" aria-label={t('reviewCard.more')} title={t('reviewCard.more')} data-testid="review-more"><EllipsisIcon aria-hidden /></Button>

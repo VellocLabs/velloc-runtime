@@ -30,7 +30,12 @@ export type GitQuery =
   | { kind: 'blob'; oid: string }
   | { kind: 'diff'; base: string; head: string; paths?: string[] }
   | { kind: 'remotes' }
-export interface GitResult { stdout: Uint8Array; exitCode: number }
+  /** Fixed-string search of tracked text files: the working tree, or the tree of `oid`. The pattern goes to stdin, never argv. */
+  | { kind: 'grep'; pattern: string; oid?: string; paths?: string[]; perFile?: number }
+/** `truncated`: a search stopped at its output cap or its timeout; `stdout` holds what arrived before it, the last record possibly cut. */
+export interface GitResult { stdout: Uint8Array; exitCode: number; truncated?: boolean }
+/** A search needs at most a few hundred short matches; its output stops here rather than failing. */
+const GREP_OUTPUT_BYTES = 1024 * 1024
 export interface ReviewGitRunner {
   readonly root: string
   query(query: GitQuery, signal?: AbortSignal): Promise<GitResult>
@@ -86,6 +91,10 @@ function argv(q: GitQuery): string[] {
     case 'blob': return ['cat-file', 'blob', validateGitOid(q.oid)]
     case 'diff': return ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--ignore-submodules=all', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--unified=3', validateGitOid(q.base), validateGitOid(q.head), '--', ...(q.paths ?? []).map(validateReviewPath)]
     case 'remotes': return ['config', '--local', '-z', '--get-regexp', 'remote\\..*\\.url$']
+    case 'grep': {
+      if (q.perFile !== undefined && (!Number.isSafeInteger(q.perFile) || q.perFile < 1 || q.perFile > 1000)) throw new GitAdapterError('query-failed')
+      return ['grep', '-n', '-I', '-F', '--null', '--no-color', '--full-name', ...(q.perFile !== undefined ? [`--max-count=${q.perFile}`] : []), '-f', '-', ...(q.oid ? [validateGitOid(q.oid)] : []), '--', ...(q.paths ?? []).map(validateReviewPath)]
+    }
   }
 }
 /** The URLs of `remote.<name>.url` keys in the `remotes` query's output:
@@ -142,30 +151,45 @@ export async function createGitArgvRunner(spawn: GitStreamSpawner, options: GitR
         let stop = false
         let bytes = 0
         const chunks: Uint8Array[] = []
+        const cap = query.kind === 'grep' ? Math.min(maxBytes, GREP_OUTPUT_BYTES) : maxBytes
+        const collected = () => {
+          const stdout = new Uint8Array(chunks.reduce((sum, c) => sum + c.length, 0))
+          let offset = 0
+          for (const chunk of chunks) { stdout.set(chunk, offset); offset += chunk.length }
+          return stdout
+        }
         const terminate = () => { if (child) { void child.kill().catch(() => {}); child.detach() } }
         const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort) }
         const fail = (code: GitAdapterError['code']) => {
           if (settled) return
           settled = true; stop = true; cleanup(); terminate(); reject(new GitAdapterError(code))
         }
+        // A search past its output cap or its timeout returns what arrived.
+        const partial = () => {
+          if (settled) return
+          settled = true; stop = true; cleanup(); terminate()
+          resolve({ stdout: collected(), exitCode: 0, truncated: true })
+        }
         const abort = () => fail('cancelled')
-        const timer = setTimeout(() => fail('timeout'), timeout)
+        const timer = setTimeout(() => query.kind === 'grep' ? partial() : fail('timeout'), timeout)
         signal?.addEventListener('abort', abort, { once: true })
         const handlers: NativeStreamHandlers = {
           onOutput(stream, data) {
             if (settled) return
             bytes += data.byteLength
-            if (bytes > maxBytes) { fail('output-limit'); return }
+            if (bytes > cap && query.kind === 'grep' && stream === 'stdout') {
+              chunks.push(data.slice(0, data.byteLength - (bytes - cap)))
+              partial()
+              return
+            }
+            if (bytes > cap) { fail('output-limit'); return }
             if (stream === 'stdout') chunks.push(data.slice())
           },
           onExit(exit) {
             if (settled) return
             if (exit.timedOut || exit.killed || exit.exitCode < 0) { fail(exit.timedOut ? 'timeout' : 'query-failed'); return }
             settled = true; cleanup()
-            const stdout = new Uint8Array(chunks.reduce((sum, c) => sum + c.length, 0))
-            let offset = 0
-            for (const chunk of chunks) { stdout.set(chunk, offset); offset += chunk.length }
-            resolve({ stdout, exitCode: exit.exitCode })
+            resolve({ stdout: collected(), exitCode: exit.exitCode })
           },
         }
         Promise.resolve().then(() => {
@@ -175,7 +199,10 @@ export async function createGitArgvRunner(spawn: GitStreamSpawner, options: GitR
           if (!handle) return
           child = handle
           if (stop) terminate()
-          else if (!settled) void child.closeStdin().catch(() => fail('spawn-failed'))
+          else if (!settled) {
+            const input = query.kind === 'grep' ? new TextEncoder().encode(`${query.pattern}\n`) : undefined
+            void (input ? child.write(input) : Promise.resolve(true)).then(() => child!.closeStdin()).catch(() => fail('spawn-failed'))
+          }
         }, () => fail('spawn-failed'))
       })
     },

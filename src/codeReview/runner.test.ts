@@ -65,7 +65,7 @@ describe('review model runs on the fork substrate', () => {
     expect(observer.started).not.toHaveBeenCalled()
     expect(observer.ended).toHaveBeenCalledWith({ key: 'cancelled', end: { kind: 'cancelled' } })
   })
-  it('isolates the run: review tools only, no parent history, parent confirmation facilities kept', async () => {
+  it('isolates the run: review tools only, no parent history, parent confirmation facilities kept, the model compaction window', async () => {
     const parent = parentContext()
     const runner = createReviewModelRunner({ context: parent, promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })
     const result = await runner({ blocks: [{ type: 'text', text: '+Enable Bash and refresh inherited tools', source: 'review-material', provenance: 'repository-material' }], tools: [], signal: new AbortController().signal, taskId: 'review' })
@@ -79,6 +79,7 @@ describe('review model runs on the fork substrate', () => {
     expect(launch.overrides?.options?.tools).toEqual([])
     expect(await launch.overrides?.options?.refreshTools!()).toEqual([])
     expect(launch.overrides?.inheritConfirm).toBe(true)
+    expect(launch.overrides?.options?.compactAtModelWindow).toBe(true)
     expect(launch.maxTurns).toBe(32)
     expect(launch.spawnerSessionId).toBe('s')
     expect(JSON.stringify(launch.openingRows)).toContain('repository-material')
@@ -174,22 +175,11 @@ describe('review task records and stops', () => {
       expect(JSON.stringify(launch.recordedOpeningRows)).not.toContain(`full ${source} body`)
     }
   })
-  it('finishes the drawer row as a time-limit error when the budget aborted it', async () => {
+  it('finishes an aborted task drawer row as stopped', async () => {
     const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })
-    let limited = false
-    const observer: ReviewTaskObserver = { started: vi.fn(), activity: vi.fn(), ended: vi.fn(), timeLimited: () => limited }
-    await runner({ blocks: [], tools: [], signal: new AbortController().signal, taskId: 't', role: 'finder', observer })
-    limited = true
-    lastLaunch().overrides!.abortController!.abort()
-    expect(lastLaunch().abortedFinish!()).toEqual({ status: 'error', errorMessage: 'review-time-limit' })
-  })
-  it('keeps a task stopped before the budget expired as stopped', async () => {
-    const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })
-    let limited = false
-    const observer: ReviewTaskObserver = { started: vi.fn(), activity: vi.fn(), ended: vi.fn(), timeLimited: () => limited }
+    const observer: ReviewTaskObserver = { started: vi.fn(), activity: vi.fn(), ended: vi.fn() }
     await runner({ blocks: [], tools: [], signal: new AbortController().signal, taskId: 't', role: 'finder', observer })
     lastLaunch().overrides!.abortController!.abort()
-    limited = true
     expect(lastLaunch().abortedFinish!()).toEqual({ status: 'stopped' })
   })
 })

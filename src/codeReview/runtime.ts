@@ -496,10 +496,15 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       for (const file of manifest.files) await authorizePath(resolveRuntimePath(root, file.path))
       const treeText = manifest.semantics === 'working-copy' ? await gitText(git, { kind: 'tracked' }, signal) : await gitText(git, { kind: 'tree', oid: manifest.scope.revision.head }, signal)
       const contextPaths = manifest.semantics === 'working-copy' ? treeText.split('\0').filter(Boolean) : treeText.split('\0').filter(Boolean).map(line => line.slice(line.indexOf('\t') + 1))
-      const readContext = async (path: string, readSignal: AbortSignal): Promise<string> => {
+      const contextSet = new Set(contextPaths)
+      /** Security: the scope and read authorization every context read and every search match passes. */
+      const authorizeContextPath = async (path: string): Promise<void> => {
         validateReviewPath(path)
-        if (!contextPaths.includes(path) && !manifest.files.some(file => file.path === path)) throw new ReviewGatewayError('read-outside-review-scope')
+        if (!contextSet.has(path) && !manifest.files.some(file => file.path === path)) throw new ReviewGatewayError('read-outside-review-scope')
         await authorizePath(resolveRuntimePath(root, path))
+      }
+      const readContext = async (path: string, readSignal: AbortSignal): Promise<string> => {
+        await authorizeContextPath(path)
         if (manifest.semantics !== 'working-copy') {
           const row = treeText.split('\0').find(line => line.endsWith('\t' + path))
           const match = row && /^100[0-9]{3} blob ([a-f0-9]+)\t/.exec(row)
@@ -532,21 +537,66 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
         }
         return pending
       }
+      // Security: git reads the files, but a match reaches the model only from a path that passes
+      // `authorizeContextPath`. Every tracked file is searched; `truncated` means matches were cut.
+      // A refusal is remembered for the run; any other failure is not, so a later search asks again.
+      const authorizedPaths = new Map<string, Promise<boolean>>()
+      const searchable = (path: string): Promise<boolean> => {
+        let pending = authorizedPaths.get(path)
+        if (!pending) {
+          pending = authorizeContextPath(path).then(() => true, error => {
+            if (error instanceof ReviewGatewayError && ['review-read-not-authorized', 'read-outside-review-scope'].includes(error.code)) return false
+            if (error instanceof GitAdapterError && error.code === 'invalid-path') return false
+            authorizedPaths.delete(path)
+            throw error
+          })
+          authorizedPaths.set(path, pending)
+        }
+        return pending
+      }
+      const searchScope = async (query: string, path: string | undefined, readSignal: AbortSignal) => {
+        const limit = 200, perFile = 20
+        let result: Awaited<ReturnType<typeof git.query>>
+        try {
+          const grep = { kind: 'grep' as const, pattern: query, ...(manifest.semantics === 'working-copy' ? {} : { oid: manifest.scope.revision.head }), ...(path ? { paths: [validateReviewPath(path.replace(/\/+$/, ''))] } : {}) }
+          result = await git.query({ ...grep, perFile: perFile + 1 }, readSignal)
+          // Git before 2.38 has no grep --max-count (usage error 129); the per-file limit is then applied here alone.
+          if (result.exitCode === 129) result = await git.query(grep, readSignal)
+        } catch (error) {
+          if (error instanceof GitAdapterError && error.code === 'invalid-path') throw new ReviewGatewayError('read-outside-review-scope')
+          throw error
+        }
+        if (result.exitCode === 1) return { matches: [], truncated: false }
+        if (result.exitCode !== 0) throw new ReviewGatewayError('query-failed')
+        const prefix = manifest.semantics === 'working-copy' ? '' : `${manifest.scope.revision.head}:`
+        const matches: Array<{ path: string; line: number; text: string }> = []
+        const perPath = new Map<string, number>()
+        const records = new TextDecoder().decode(result.stdout).split('\n')
+        // Output cut at the cap ends inside a record; that record is dropped.
+        if (result.truncated) records.pop()
+        let truncated = !!result.truncated
+        for (const record of records) {
+          const [name, line, ...rest] = record.split('\0')
+          if (!name || !line || !rest.length || !name.startsWith(prefix)) continue
+          const file = name.slice(prefix.length)
+          if (!await searchable(file)) continue
+          if (matches.length >= limit) { truncated = true; break }
+          const count = (perPath.get(file) ?? 0) + 1
+          perPath.set(file, count)
+          // git is asked for one match past the per-file limit, so a file with exactly the limit is not cut.
+          if (count > perFile) { truncated = true; continue }
+          matches.push({ path: file, line: Number(line), text: rest.join('\0').replace(/\r$/, '').slice(0, 2000) })
+        }
+        return { matches, truncated }
+      }
       return { manifest, trustedGuidance: guidance.text, authorizedGuidance: guidance.authorizedGuidance, evidenceSources: guidance.sources, async read(input, selectedPlan, readSignal) {
         if (readSignal.aborted) throw new ReviewGatewayError('review-cancelled')
         if (input.operation === 'diff') return readDiff(manifest, input)
         if (!selectedPlan.allowWholeFileReads) throw new ReviewGatewayError('whole-file-read-not-authorized')
         if (input.operation === 'search') {
-          if (typeof input.query !== 'string' || input.query.length > 500) throw new ReviewGatewayError('invalid-review-search')
-          const matches: Array<{ path: string; line: number; text: string }> = []
-          let scanned = 0
-          for (const path of contextPaths) {
-            if (++scanned > 2000 || matches.length >= 200) break
-            const content = await cachedContext(path, readSignal)
-            if (content === null) continue
-            content.split('\n').forEach((line, index) => { if (line.includes(input.query as string) && matches.length < 200) matches.push({ path, line: index + 1, text: line.slice(0, 2000) }) })
-          }
-          return { matches, truncated: scanned > 2000 || matches.length >= 200 }
+          if (typeof input.query !== 'string' || !input.query || input.query.length > 500 || /[\r\n]/.test(input.query)) throw new ReviewGatewayError('invalid-review-search')
+          if (input.path !== undefined && typeof input.path !== 'string') throw new ReviewGatewayError('invalid-review-search')
+          return searchScope(input.query, input.path, readSignal)
         }
         if (input.operation !== 'context' || typeof input.path !== 'string') throw new ReviewGatewayError('read-outside-review-scope')
         const content = await cachedContext(input.path, readSignal)

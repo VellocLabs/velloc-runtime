@@ -1,4 +1,6 @@
 export const REVIEW_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+/** A run's stages: the review itself, then the follow-up stages. */
+export const REVIEW_STAGES = ['scope', 'inspect', 'merge', 'assess', 'sweep', 'report', 'repair', 'publish', 'verify'] as const
 /** Largest whole-file context read, and so the largest evidence excerpt the store accepts. */
 export const CONTEXT_READ_BYTES = 512 * 1024
 export const lineFeeds = (value: string) => value.replace(/\r\n?/g, '\n')
@@ -16,7 +18,7 @@ export type InvocationSource = 'user' | 'model' | 'preload'
 
 /** Contract: why one model run of a review ended; only `completed` counts as a full answer. */
 export type ReviewRunEnd = {
-  kind: 'completed' | 'cancelled' | 'step-limit' | 'output-cap' | 'context-overflow' | 'model-error' | 'failure-limit' | 'awaiting-user' | 'time-limit' | 'crash'
+  kind: 'completed' | 'cancelled' | 'step-limit' | 'output-cap' | 'context-overflow' | 'model-error' | 'failure-limit' | 'awaiting-user' | 'crash'
   detail?: string
 }
 export type ReviewTaskRole = 'coordinator' | 'finder' | 'verifier' | 'sweeper' | 'repair' | 'behavior' | 'reassessment' | 'mechanism' | 'publication'
@@ -113,6 +115,8 @@ export interface ReviewPlan {
   readonly allowWholeFileReads: boolean
   readonly workerConcurrency: number
   readonly suggestedFinderTasks?: number
+  /** Inline angle recipes only: the number of findings the coordinator aims for, never a reason to invent one. */
+  readonly findingTarget?: number
   readonly coordinatorWorkerRequired: boolean
   readonly blocked: boolean
   readonly automaticVerificationEligible: boolean
@@ -136,7 +140,7 @@ export type ReviewRun = {
   policy: Pick<ReviewPlan, 'level' | 'recipe' | 'recipeRevision' | 'execution' | 'presentation' | 'reportLimit'>
   progress: {
     status: 'queued' | 'active' | 'finished' | 'partial' | 'cancelled' | 'failed'
-    stage: 'scope' | 'inspect' | 'assess' | 'sweep' | 'report' | 'repair' | 'publish' | 'verify'
+    stage: (typeof REVIEW_STAGES)[number]
     coveredAngles: string[]
     unavailableAngles: string[]
     spawnedTasks: number

@@ -390,7 +390,7 @@ function assistantWithContext(tokens: number): Message {
 
 /** Run one gate attempt; "fired" = it reached the summarizer (which fails
  *  here, so a fired attempt comes back as one failure). */
-async function gateFires(settingsSeed: object, contextTokens: number): Promise<boolean> {
+async function gateFires(settingsSeed: object, contextTokens: number, compactAtModelWindow = false): Promise<boolean> {
   const { fs } = memoryFs(userSettingsPathSeed(settingsSeed))
   let summarizerCalls = 0
   const bridge = {
@@ -410,6 +410,7 @@ async function gateFires(settingsSeed: object, contextTokens: number): Promise<b
   })
   callContext.options.mainLoopModel = ONE_M
   callContext.options.sessionId = '' // no hooks
+  if (compactAtModelWindow) callContext.options.compactAtModelWindow = true
   const result = await autocompact(
     [
       { type: 'user', uuid: 'u1', message: { role: 'user', content: 'task' } } as Message,
@@ -435,6 +436,14 @@ describe('autocompact trigger and the window settings', () => {
   it('fires at the every-model window', async () => {
     expect(await gateFires({ autoCompactWindow: 300_000 }, 300_000)).toBe(true)
     expect(await gateFires({ autoCompactWindow: 300_000 }, 290_000)).toBe(false)
+  })
+
+  it('ignores the user window for a run that compacts at the model window, but keeps the off switch', async () => {
+    const threshold = foldTriggerTokens(ONE_M, undefined, undefined)
+    expect(await gateFires({ autoCompactWindow: 345_000 }, 400_000, true)).toBe(false)
+    expect(await gateFires({ autoCompactWindow: 345_000 }, 400_000)).toBe(true)
+    expect(await gateFires({ autoCompactWindow: 345_000 }, threshold, true)).toBe(true)
+    expect(await gateFires({ autoCompaction: false }, threshold, true)).toBe(false)
   })
 
   it('never fires when autoCompaction is false', async () => {

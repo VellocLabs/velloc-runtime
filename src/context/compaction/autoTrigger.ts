@@ -508,9 +508,10 @@ export function createBrowserAutoCompact(
     // effective window minus the buffer. The window is the user's when set,
     // capped at the model's. The optional `autoCompactTokenThreshold`
     // override lets e2e tests force a compaction deterministically.
+    const userWindow = context.callContext.options.compactAtModelWindow ? undefined : choice?.windowTokens
     const threshold =
       settings.autoCompactTokenThreshold
-      ?? foldTriggerTokens(model, context.providerId, choice?.windowTokens)
+      ?? foldTriggerTokens(model, context.providerId, userWindow)
     if (estimateTranscriptTokens(messages) < threshold) {
       return {}
     }

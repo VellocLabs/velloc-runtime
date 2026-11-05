@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { LocalReviewService, type ReviewServiceOptions } from './service'
 import type { ReviewModelRequest } from './runner'
 import type { ScopeManifest } from './scope'
+import { REVIEW_MODEL_IDENTITIES } from './modelProfiles'
 import type { ReviewPreferences } from './contracts'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { PermissionDecider } from '../toolkit/permissionVerdict'
@@ -295,54 +296,76 @@ it('records successful finder coverage and a separate sweep from actual worker r
 })
 
 
-it.each([
-  { disposition: 'proven', headline: 'Missing null guard', code: 'export function name(value) { return value.name }', scenario: 'The caller passes null and name throws.', reason: 'The exported function dereferences null without any guard.' },
-  { disposition: 'plausible', headline: 'Stale cache completion overwrites newer data', code: 'async function refresh() { const value = await fetchValue(); cache = value }', scenario: 'Two refreshes overlap and the older request resolves last.', reason: 'The completion has no generation check, but overlapping callers have not been established.' },
-  { disposition: 'dismissed', headline: 'Guarded value may be null', code: 'export function name(value) { if (value == null) return ""; return value.name }', scenario: 'A null argument reaches the exported function.', reason: 'The null guard returns before the dereference, so the proposed failure is unreachable.' },
-] as const)('records $disposition only after an actual independent verifier finishes', async ({ disposition, headline, code, scenario, reason }) => {
-  let issue: Record<string, unknown>
-  let verifierTaskId = ""
-  const angles = ['lines', 'removed', 'calls', 'reuse', 'simplification', 'efficiency', 'root-cause', 'guidance', 'language', 'wrappers']
-  const f = fixture({ resolveScope: async () => {
+const TEN = ['lines', 'removed', 'calls', 'reuse', 'simplification', 'efficiency', 'root-cause', 'guidance', 'language', 'wrappers']
+const NULL_DEREF = 'export function name(value) { return value.name }'
+function singleAnchorScope(code: string) {
+  return async () => {
     const value = manifest()
     value.anchors = [{ anchorKey: 'temporary', path: 'src/a.ts', revision: value.scope.revision.workingCopyDigest!, side: 'working-copy', span: { start: 1, end: 2 } }]
     value.files[0].anchors = value.anchors
     value.files[0].patch = `-old\n+${code}`
     return { manifest: value, trustedGuidance: '', read: async () => code }
-  }, runModel: async request => {
+  }
+}
+function findingFor(request: ReviewModelRequest, angle: string, headline: string, code = NULL_DEREF) {
+  const anchorKey = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text).anchors[0].anchorKey
+  return { location: { anchorKey, path: 'src/a.ts', line: 1, endLine: 1 }, statement: { headline, details: `${headline}: value.name is read unguarded`, scenario: 'A null argument reaches name.' },
+    kind: 'correctness', impact: 'major', support: [{ path: 'src/a.ts', quote: code, relevance: 'The dereference.' }], assessment: { disposition: 'plausible', reason: 'Needs a verifier.' }, angle }
+}
+const verdict = (disposition: string, reason = 'The dereference is reachable.', code = NULL_DEREF) =>
+  ({ text: JSON.stringify({ disposition, reason, support: [{ path: 'src/a.ts', quote: code, relevance: reason }], missingEvidence: [] }), interrupted: false })
+const emptySweep = { text: JSON.stringify({ candidates: [], coverage: { angles: [], limitations: [] } }), interrupted: false }
+const runIdOf = (request: ReviewModelRequest) => JSON.parse(request.blocks.find(block => block.source === 'run-summary')!.text).runId as string
+async function finishCoordinator(f: { service: LocalReviewService }, request: ReviewModelRequest) {
+  await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: TEN, limitations: [], complete: true } })
+  const { operation: _, ...result } = await f.service.store.expectedRecord(runIdOf(request))
+  return { text: JSON.stringify(result), interrupted: false }
+}
+
+it.each([
+  { disposition: 'proven', headline: 'Missing null guard', code: 'export function name(value) { return value.name }', scenario: 'The caller passes null and name throws.', reason: 'The exported function dereferences null without any guard.' },
+  { disposition: 'plausible', headline: 'Stale cache completion overwrites newer data', code: 'async function refresh() { const value = await fetchValue(); cache = value }', scenario: 'Two refreshes overlap and the older request resolves last.', reason: 'The completion has no generation check, but overlapping callers have not been established.' },
+  { disposition: 'dismissed', headline: 'Guarded value may be null', code: 'export function name(value) { if (value == null) return ""; return value.name }', scenario: 'A null argument reaches the exported function.', reason: 'The null guard returns before the dereference, so the proposed failure is unreachable.' },
+] as const)('records $disposition only from the verifier the verification step starts after the finders', async ({ disposition, headline, code, scenario, reason }) => {
+  let verifierTaskId = ''
+  let sweepTaskId = ''
+  let swept: Array<Record<string, unknown>> = []
+  const f = fixture({ resolveScope: singleAnchorScope(code), runModel: async request => {
     if (request.blocks.some(block => block.source === 'assigned-angles')) {
-      const scope = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text)
-      issue = { location: { anchorKey: scope.anchors[0].anchorKey, path: 'src/a.ts', line: 1, endLine: 1 }, statement: { headline, details: scenario, scenario }, kind: 'correctness', impact: 'major', support: [{ path: 'src/a.ts', quote: code, relevance: scenario }], assessment: { disposition: 'plausible', reason: 'Requires independent assessment.' }, angle: 'lines' }
-      return { text: JSON.stringify({ candidates: [issue], coverage: { angles, limitations: [] } }), interrupted: false }
+      const issue = { ...findingFor(request, 'lines', headline, code), statement: { headline, details: scenario, scenario } }
+      return { text: JSON.stringify({ candidates: [issue], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
     }
     if (request.blocks.some(block => block.source === 'candidate')) {
       verifierTaskId = request.taskId
       expect(request.tools.map(tool => tool.name)).toEqual(['ReviewRead'])
-      return { text: JSON.stringify({ disposition, reason, support: [{ path: 'src/a.ts', quote: code, relevance: reason }], missingEvidence: disposition === 'plausible' ? ['Overlapping caller evidence'] : [] }), interrupted: false }
+      return verdict(disposition, reason, code)
     }
-    if (request.blocks.some(block => block.source === 'existing-findings')) return { text: JSON.stringify({ candidates: [], coverage: { angles: [], limitations: [] } }), interrupted: false }
-    const found = await invoke(request, 'Agent', { role: 'finder', angles })
-    const ledger = (found.data as { ledger: { candidates: unknown[] } }).ledger
-    expect(ledger.candidates).toHaveLength(1)
-    const runId = JSON.parse(request.blocks.find(block => block.source === 'run-summary')!.text).runId
-    const candidateId = (await f.service.store.getSnapshot(runId)).retainedIds[0]
+    if (request.blocks.some(block => block.source === 'existing-findings')) {
+      sweepTaskId = request.taskId
+      swept = JSON.parse(request.blocks.find(block => block.source === 'existing-findings')!.text)
+      return emptySweep
+    }
+    const runId = runIdOf(request)
+    const found = (await invoke(request, 'Agent', { role: 'finder', angles: TEN })).data as Record<string, unknown>
+    expect(found).not.toHaveProperty('verification')
+    expect(verifierTaskId).toBe('')
     const before = await f.service.store.getSnapshot(runId)
-    expect(before.run.progress.verifiedCandidates).toBe(0)
+    const candidateId = before.diagnostics[0].id
     for (const claimed of ['dismissed', 'proven']) {
       await expect(invoke(request, 'ReviewLedger', { operation: 'assess', assessments: [{ candidateId, disposition: claimed, reason, support: [{ path: 'src/a.ts', quote: code, relevance: reason }] }] })).rejects.toThrow('independent-verifier-required')
     }
     expect((await f.service.store.getSnapshot(runId)).assessments).toEqual(before.assessments)
-    const verified = await invoke(request, 'Agent', { role: 'verifier', candidateId })
-    expect((verified.data as { taskId: string }).taskId).toBe(verifierTaskId)
-    expect(verifierTaskId).not.toBe((found.data as { taskId: string }).taskId)
-    expect((await f.service.store.getSnapshot(runId)).run.progress.verifiedCandidates).toBe(1)
-    await invoke(request, 'Agent', { role: 'sweeper' })
-    await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles, limitations: [], complete: true } })
-    const { operation: _, ...result } = await f.service.store.expectedRecord(runId)
-    return { text: JSON.stringify(result), interrupted: false }
+    const step = (await invoke(request, 'Agent', { role: 'verifier' })).data as { verification: unknown[]; sweep: { taskId: string } }
+    expect(step.verification).toEqual([{ candidateId, taskId: verifierTaskId, disposition, reason }])
+    expect(verifierTaskId).not.toBe(found.taskId)
+    expect(step.sweep.taskId).toBe(sweepTaskId)
+    expect(swept).toEqual([expect.objectContaining({ id: candidateId, disposition })])
+    expect(((await invoke(request, 'Agent', { role: 'verifier', candidateId })).data as { taskId: string }).taskId).toBe(verifierTaskId)
+    expect(((await invoke(request, 'Agent', { role: 'sweeper' })).data as { sweep: { taskId: string } }).sweep.taskId).toBe(sweepTaskId)
+    await expect(invoke(request, 'Agent', { role: 'finder', angles: ['lines'] })).rejects.toThrow('verification-started')
+    return finishCoordinator(f, request)
   } })
-  const { runId } = await f.service.startUser('max')
-  const snapshot = await f.service.wait(runId)
+  const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
   expect(snapshot.run.progress.status).toBe('finished')
   expect(snapshot.run.progress.spawnedTasks).toBe(3)
   expect(snapshot.run.progress.verifiedCandidates).toBe(1)
@@ -351,6 +374,219 @@ it.each([
   expect(snapshot.retainedIds).toHaveLength(disposition === 'dismissed' ? 0 : 1)
 })
 
+it('verifies each candidate left after merging duplicates, then sweeps once with the verdicts, when the coordinator ends without starting verification', async () => {
+  const groups = [['lines', 'language'], ['removed', 'calls'], ['reuse', 'simplification', 'efficiency'], ['root-cause', 'guidance', 'wrappers']]
+  let running = 0
+  let peak = 0
+  const order: string[] = []
+  const verified: string[] = []
+  let merged: string[] = []
+  const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+    const worker = async <T>(kind: string, work: () => T) => {
+      order.push(kind)
+      running++; peak = Math.max(peak, running)
+      await new Promise(resolve => setTimeout(resolve, 5))
+      try { return work() } finally { running-- }
+    }
+    const assigned = request.blocks.find(block => block.source === 'assigned-angles')
+    if (assigned) return worker('finder', () => {
+      const angles = JSON.parse(assigned.text) as string[]
+      return { text: JSON.stringify({ candidates: [1, 2].map(n => findingFor(request, angles[0], `${angles[0]} issue ${n}`)), coverage: { angles, limitations: [] } }), interrupted: false }
+    })
+    if (request.blocks.some(block => block.source === 'candidate')) return worker('verifier', () => {
+      verified.push(JSON.parse(request.blocks.find(block => block.source === 'candidate')!.text).id)
+      return verdict('plausible')
+    })
+    if (request.blocks.some(block => block.source === 'existing-findings')) return worker('sweeper', () => {
+      expect((JSON.parse(request.blocks.find(block => block.source === 'existing-findings')!.text) as Array<{ disposition: string }>).map(item => item.disposition)).toEqual(Array(6).fill('plausible'))
+      return emptySweep
+    })
+    await Promise.all(groups.map(angles => invoke(request, 'Agent', { role: 'finder', angles })))
+    const ids = (await f.service.store.getSnapshot(runIdOf(request))).diagnostics.map(d => d.id)
+    merged = [ids[1], ids[3]]
+    await invoke(request, 'ReviewLedger', { operation: 'merge-duplicates', groups: [{ keepId: ids[0], duplicateIds: [ids[1]], reason: 'Same unguarded read.', support: [{ path: 'src/a.ts', quote: NULL_DEREF, relevance: 'The one dereference both describe.' }] },
+      { keepId: ids[2], duplicateIds: [ids[3]], reason: 'Same unguarded read.', support: [{ path: 'src/a.ts', quote: NULL_DEREF, relevance: 'The one dereference both describe.' }] }] })
+    return finishCoordinator(f, request)
+  } })
+  const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+  expect(snapshot.run.progress.status).toBe('finished')
+  expect(snapshot.coverage.limitations).not.toContain('independent-worker-coverage-incomplete')
+  expect(snapshot.run.progress.verifiedCandidates).toBe(6)
+  expect(new Set(verified).size).toBe(6)
+  expect(verified.filter(id => merged.includes(id))).toEqual([])
+  expect(order.filter(kind => kind === 'sweeper')).toHaveLength(1)
+  expect(order.at(-1)).toBe('sweeper')
+  expect(order.indexOf('verifier')).toBeGreaterThan(order.lastIndexOf('finder'))
+  expect(snapshot.run.progress.spawnedTasks).toBe(4 + 6 + 1)
+  expect(peak).toBeLessThanOrEqual(4)
+})
+
+it('names each finder candidate by its host ID, so the coordinator merges before verification with the IDs it was given', async () => {
+  const groups = [['lines', 'language'], ['removed', 'calls'], ['reuse', 'simplification', 'efficiency'], ['root-cause', 'guidance', 'wrappers']]
+  const verified: string[] = []
+  let given: string[][] = []
+  const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+    const assigned = request.blocks.find(block => block.source === 'assigned-angles')
+    if (assigned) {
+      const angles = JSON.parse(assigned.text) as string[]
+      return { text: JSON.stringify({ candidates: [findingFor(request, angles[0], `${angles[0]} issue`)], coverage: { angles, limitations: [] } }), interrupted: false }
+    }
+    if (request.blocks.some(block => block.source === 'candidate')) {
+      verified.push(JSON.parse(request.blocks.find(block => block.source === 'candidate')!.text).id)
+      return verdict('plausible')
+    }
+    if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+    const results = await Promise.all(groups.map(angles => invoke(request, 'Agent', { role: 'finder', angles })))
+    given = results.map(result => (result.data as { result: { candidates: Array<{ candidateId?: string }> } }).result.candidates.map(candidate => candidate.candidateId!))
+    await invoke(request, 'ReviewLedger', { operation: 'merge-duplicates', groups: [{ keepId: given[0][0], duplicateIds: [given[1][0]], reason: 'Same unguarded read.', support: [{ path: 'src/a.ts', quote: NULL_DEREF, relevance: 'The one dereference both describe.' }] }] })
+    return finishCoordinator(f, request)
+  } })
+  const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+  const recorded = snapshot.diagnostics.map(d => d.id)
+  expect(given.flat()).toHaveLength(4)
+  expect(given.flat().every(id => recorded.includes(id))).toBe(true)
+  expect(snapshot.duplicateIds).toEqual({ [given[1][0]]: given[0][0] })
+  expect(verified).not.toContain(given[1][0])
+  expect(new Set(verified).size).toBe(3)
+  expect(snapshot.run.progress.status).toBe('finished')
+})
+
+it('moves a team run through find, merge, verify and sweep, and reaches report when the sweep is done', async () => {
+  const groups = [['lines', 'language'], ['removed', 'calls'], ['reuse', 'simplification', 'efficiency'], ['root-cause', 'guidance', 'wrappers']]
+  const seen: string[] = []
+  let runId = ''
+  const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+    const stage = async (label: string) => seen.push(`${label}:${(await f.service.store.getSnapshot(runId)).run.progress.stage}`)
+    if (request.blocks.some(block => block.source === 'run-summary')) runId = runIdOf(request)
+    const assigned = request.blocks.find(block => block.source === 'assigned-angles')
+    if (assigned) {
+      await stage('finder')
+      const angles = JSON.parse(assigned.text) as string[]
+      return { text: JSON.stringify({ candidates: [findingFor(request, angles[0], `${angles[0]} issue`)], coverage: { angles, limitations: [] } }), interrupted: false }
+    }
+    if (request.blocks.some(block => block.source === 'candidate')) { await stage('verifier'); return verdict('plausible') }
+    if (request.blocks.some(block => block.source === 'existing-findings')) { await stage('sweeper'); return emptySweep }
+    await Promise.all(groups.map(angles => invoke(request, 'Agent', { role: 'finder', angles })))
+    await stage('merging')
+    await invoke(request, 'Agent', { role: 'verifier' })
+    await stage('summary')
+    return finishCoordinator(f, request)
+  } })
+  await f.service.wait((await f.service.startUser('max')).runId)
+  expect([...new Set(seen)]).toEqual(['finder:inspect', 'merging:merge', 'verifier:assess', 'sweeper:sweep', 'summary:report'])
+})
+
+it('moves a run back from merge while a finder launched later runs, and verifies a candidate the coordinator recorded itself', async () => {
+  const groups = [['lines', 'language'], ['removed', 'calls'], ['reuse', 'simplification', 'efficiency'], ['root-cause', 'guidance', 'wrappers']]
+  const seen: string[] = []
+  const verified: string[] = []
+  let runId = ''
+  let own = ''
+  const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+    const stage = async (label: string) => seen.push(`${label}:${(await f.service.store.getSnapshot(runId)).run.progress.stage}`)
+    if (request.blocks.some(block => block.source === 'run-summary')) runId = runIdOf(request)
+    const assigned = request.blocks.find(block => block.source === 'assigned-angles')
+    if (assigned) {
+      const angles = JSON.parse(assigned.text) as string[]
+      if (seen.length) await stage('late finder')
+      return { text: JSON.stringify({ candidates: [findingFor(request, angles[0], `${angles[0]} issue ${seen.length}`)], coverage: { angles, limitations: [] } }), interrupted: false }
+    }
+    if (request.blocks.some(block => block.source === 'candidate')) {
+      verified.push(JSON.parse(request.blocks.find(block => block.source === 'candidate')!.text).id)
+      return verdict('plausible')
+    }
+    if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+    await Promise.all(groups.map(angles => invoke(request, 'Agent', { role: 'finder', angles })))
+    await stage('first round')
+    await invoke(request, 'Agent', { role: 'finder', angles: ['lines'] })
+    await stage('second round')
+    const written = await invoke(request, 'ReviewLedger', { operation: 'append-candidates', candidates: [findingFor(request, 'lines', 'Corrected by the coordinator')] })
+    own = (written.data as { accepted: Array<{ diagnosticId: string }> }).accepted[0].diagnosticId
+    await invoke(request, 'Agent', { role: 'verifier' })
+    return finishCoordinator(f, request)
+  } })
+  const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+  expect(seen).toEqual(['first round:merge', 'late finder:inspect', 'second round:merge'])
+  expect(verified).toContain(own)
+  // Five finder candidates and the coordinator's own one.
+  expect(snapshot.run.progress.verifiedCandidates).toBe(6)
+  expect(snapshot.run.progress.status).toBe('finished')
+})
+
+it('waits for a finder still running before it verifies, and refuses a finder launched afterwards', async () => {
+  let verification: Array<Record<string, unknown>> = []
+  const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+    if (request.blocks.some(block => block.source === 'assigned-angles')) {
+      await new Promise(resolve => setTimeout(resolve, 20))
+      return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Null dereference')], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+    }
+    if (request.blocks.some(block => block.source === 'candidate')) return verdict('proven')
+    if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+    const [, step] = await Promise.all([invoke(request, 'Agent', { role: 'finder', angles: TEN }), invoke(request, 'Agent', { role: 'verifier' })])
+    verification = (step.data as { verification: Array<Record<string, unknown>> }).verification
+    await expect(invoke(request, 'Agent', { role: 'finder', angles: ['lines'] })).rejects.toThrow('verification-started')
+    return finishCoordinator(f, request)
+  } })
+  const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+  expect(verification).toEqual([expect.objectContaining({ candidateId: snapshot.diagnostics[0].id, disposition: 'proven' })])
+  expect(snapshot.run.progress.status).toBe('finished')
+  expect(snapshot.run.progress.spawnedTasks).toBe(3)
+})
+
+it('reports a failed verifier in the verification result, and verifies that candidate when the coordinator retries it', async () => {
+  let attempts = 0
+  const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+    if (request.blocks.some(block => block.source === 'assigned-angles')) return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Null dereference')], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+    if (request.blocks.some(block => block.source === 'candidate')) return ++attempts === 1 ? { text: 'no structured answer', interrupted: false } : verdict('plausible')
+    if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+    await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+    const step = (await invoke(request, 'Agent', { role: 'verifier' })).data as { verification: Array<{ candidateId: string; error?: string }> }
+    expect(step.verification).toEqual([expect.objectContaining({ error: 'unstructured-worker-answer' })])
+    expect((await f.service.store.getSnapshot(runIdOf(request))).run.progress.verifiedCandidates).toBe(0)
+    const retried = (await invoke(request, 'Agent', { role: 'verifier', candidateId: step.verification[0].candidateId })).data as { result: { disposition: string } }
+    expect(retried.result.disposition).toBe('plausible')
+    return finishCoordinator(f, request)
+  } })
+  const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+  expect(attempts).toBe(2)
+  expect(snapshot.run.progress.verifiedCandidates).toBe(1)
+  expect(snapshot.run.progress.status).toBe('finished')
+})
+
+it('leaves a candidate unverified and the run partial when its verifier fails and is not retried', async () => {
+  const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+    if (request.blocks.some(block => block.source === 'assigned-angles')) return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Null dereference')], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+    if (request.blocks.some(block => block.source === 'candidate')) return { text: 'no structured answer', interrupted: false }
+    if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+    await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+    await invoke(request, 'Agent', { role: 'verifier' })
+    return finishCoordinator(f, request)
+  } })
+  const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+  expect(snapshot.run.progress.verifiedCandidates).toBe(0)
+  expect(snapshot.retainedIds).toHaveLength(1)
+  expect(snapshot.coverage.limitations).toContain('independent-worker-coverage-incomplete')
+})
+
+it('rebuilds a committed panel report from the verdicts when the coordinator recorded it before verifying', async () => {
+  const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+    if (request.blocks.some(block => block.source === 'assigned-angles')) return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Null dereference')], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+    if (request.blocks.some(block => block.source === 'candidate')) return verdict('dismissed', 'A guard upstream rejects null before name runs.')
+    if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+    await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+    await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: TEN, limitations: [], complete: true } })
+    const { operation: _, ...record } = await f.service.store.expectedRecord(runIdOf(request))
+    expect(record.candidates).toHaveLength(1)
+    await invoke(request, 'ReviewOutput', { operation: 'record', ...record })
+    return { text: 'Recorded one finding.', interrupted: false }
+  } })
+  const snapshot = await f.service.wait((await f.service.startUser('max', undefined, 'panel')).runId)
+  expect(snapshot.run.progress.verifiedCandidates).toBe(1)
+  expect(snapshot.assessments.at(-1)).toMatchObject({ disposition: 'dismissed' })
+  expect(snapshot.retainedIds).toEqual([])
+  expect(snapshot.run.reportRevision).toBe(2)
+  expect(snapshot.run.progress.status).toBe('finished')
+})
 
 it('commits a final report that words its limitations differently from the ledger, with no correction call', async () => {
   const model = vi.fn(async (request: ReviewModelRequest) => {
@@ -521,7 +757,7 @@ it('rejects overlapping follow-up actions without replacing their cancellation s
 })
 
 
-it('completes a local ten-angle run that takes longer than ten minutes under the sized default budget', async () => {
+it('completes a local ten-angle run that takes longer than ten minutes with no time budget', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   try {
     const angles = ['lines', 'removed', 'calls', 'reuse', 'simplification', 'efficiency', 'root-cause', 'guidance', 'language', 'wrappers']
@@ -537,7 +773,180 @@ it('completes a local ten-angle run that takes longer than ten minutes under the
     const snapshot = await done
     expect(snapshot.run.policy.recipe).toBe('local-ten')
     expect(snapshot.run.progress.status).toBe('finished')
-    expect(snapshot.coverage.limitations).not.toContain('review-budget-exhausted')
+    expect(snapshot.coverage.limitations).not.toEqual(expect.arrayContaining([expect.stringMatching(/^review-(budget-exhausted|time-limit)$/)]))
     expect(snapshot.coverage.angles).toHaveLength(10)
   } finally { vi.useRealTimers() }
+})
+
+it.each([['delegation-specialist', 'high', true], ['delegation-specialist', 'medium', false], ['fallback', 'max', false]] as const)('gives the %s %s verifiers the recall stance: %s', async (profile, level, recall) => {
+  const stances: boolean[] = []
+  const modelId = profile === 'fallback' ? 'unknown' : REVIEW_MODEL_IDENTITIES.find(identity => identity.profile === profile)!.id
+  const f = fixture({ modelId, resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+    const assigned = request.blocks.find(block => block.source === 'assigned-angles')
+    if (assigned) return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Null dereference')], coverage: { angles: JSON.parse(assigned.text), limitations: [] } }), interrupted: false }
+    if (request.blocks.some(block => block.source === 'candidate')) { stances.push(request.blocks.some(block => block.source === 'verifier-stance')); return verdict('plausible') }
+    if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+    const angles = JSON.parse(request.blocks.find(block => block.source === 'resolved-policy')!.text).angles as string[]
+    await invoke(request, 'Agent', { role: 'finder', angles })
+    await invoke(request, 'Agent', { role: 'verifier' })
+    await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles, limitations: [], complete: true } })
+    return { text: 'Done.', interrupted: false }
+  } })
+  const snapshot = await f.service.wait((await f.service.startUser(level)).runId)
+  expect(stances).toEqual([recall])
+  expect(snapshot.run.progress.status).toBe('finished')
+})
+
+describe('worker step budget', () => {
+  const readAt = (request: ReviewModelRequest) => {
+    const tool = request.tools.find(t => t.name === 'ReviewRead')!
+    return tool.call({ operation: 'diff' }, {} as ToolCallContext, vi.fn() as unknown as PermissionDecider, { uuid: crypto.randomUUID(), type: 'assistant', message: { content: [] } } as unknown as Message)
+  }
+  it('refuses a worker read past its read steps while the coordinator keeps reading', async () => {
+    let finderReads: Array<string> = [], coordinatorReads = 0
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) {
+        expect(request.maxTurns).toBe(16)
+        for (let step = 0; step < 15; step++) finderReads.push(await readAt(request).then(() => 'ok', (error: Error) => error.message))
+        return { text: JSON.stringify({ candidates: [], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+      }
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      for (let step = 0; step < 20; step++) { await readAt(request); coordinatorReads++ }
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      return finishCoordinator(f, request)
+    } })
+    await f.service.wait((await f.service.startUser('max')).runId)
+    expect(finderReads).toEqual([...Array(14).fill('ok'), 'review-step-budget'])
+    expect(coordinatorReads).toBe(20)
+  })
+  it('counts reads by model step: calls of one row share a step, rows without a uuid are steps of their own', async () => {
+    let outcomes: string[] = []
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) {
+        const tool = request.tools.find(t => t.name === 'ReviewRead')!
+        const call = (row: Message) => tool.call({ operation: 'diff' }, {} as ToolCallContext, vi.fn() as unknown as PermissionDecider, row).then(() => 'ok', (error: Error) => error.message)
+        const shared = { type: 'assistant', message: { content: [] } } as unknown as Message
+        for (let step = 0; step < 13; step++) outcomes.push(await call({ type: 'assistant', message: { content: [] } } as unknown as Message))
+        outcomes.push(await call(shared), await call(shared), await call({ type: 'assistant', message: { content: [] } } as unknown as Message))
+        return { text: JSON.stringify({ candidates: [], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+      }
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      return finishCoordinator(f, request)
+    } })
+    await f.service.wait((await f.service.startUser('max')).runId)
+    expect(outcomes).toEqual([...Array(15).fill('ok'), 'review-step-budget'])
+  })
+  it('keeps the answer of a finder its step limit stopped and records the limitation', async () => {
+    let candidates = 0
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) {
+        return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Missing null guard')], coverage: { angles: ['lines'], limitations: [] } }), interrupted: true, end: { kind: 'step-limit' as const } }
+      }
+      if (request.blocks.some(block => block.source === 'candidate')) return verdict('plausible')
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      candidates = (await f.service.store.getSnapshot(runIdOf(request))).diagnostics.length
+      await invoke(request, 'Agent', { role: 'verifier' })
+      return finishCoordinator(f, request)
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(candidates).toBe(1)
+    expect(snapshot.coverage.limitations).toContain('review-step-limit')
+  })
+  it('still fails a finder its step limit stopped before it answered', async () => {
+    let failure: unknown
+    const f = fixture({ runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) return { text: 'Reading more files', interrupted: true, end: { kind: 'step-limit' as const } }
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      failure = await invoke(request, 'Agent', { role: 'finder', angles: TEN }).catch((error: Error) => error.message)
+      return finishCoordinator(f, request)
+    } })
+    await f.service.wait((await f.service.startUser('max')).runId).catch(() => undefined)
+    expect(failure).toBe('review-step-limit')
+  })
+})
+
+describe('verification step retries', () => {
+  it('retries an unchecked verdict and a failed sweep on the next call, and keeps a settled verdict', async () => {
+    let verifiers = 0, sweeps = 0
+    const steps: Array<{ verification: Array<Record<string, unknown>>; sweep: Record<string, unknown> }> = []
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Missing null guard')], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+      if (request.blocks.some(block => block.source === 'candidate')) return verdict(++verifiers === 1 ? 'unchecked' : 'proven')
+      if (request.blocks.some(block => block.source === 'existing-findings')) {
+        if (++sweeps === 1) return { text: 'no answer', interrupted: false }
+        return emptySweep
+      }
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      for (let call = 0; call < 3; call++) steps.push((await invoke(request, 'Agent', { role: 'verifier' })).data as typeof steps[number])
+      return finishCoordinator(f, request)
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(steps.map(step => step.verification.map(item => item.disposition))).toEqual([['unchecked'], ['proven'], []])
+    expect(steps.map(step => 'error' in step.sweep)).toEqual([true, false, false])
+    expect(steps[2].sweep).toEqual(steps[1].sweep)
+    expect([verifiers, sweeps]).toEqual([2, 2])
+    expect(snapshot.coverage.limitations).not.toContain('independent-worker-coverage-incomplete')
+  })
+  it.each([[false, true], [true, false]] as const)('notes a summary written before the host dropped a finding (verifier started by coordinator: %s)', async (coordinatorVerifies, noted) => {
+    const f = fixture({ capabilities: { agentAvailable: true, agentPermitted: true, remainingDepth: 3, outputToolAvailable: false }, resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Missing null guard')], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+      if (request.blocks.some(block => block.source === 'candidate')) return verdict('dismissed', 'A guard returns first.')
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      if (coordinatorVerifies) await invoke(request, 'Agent', { role: 'verifier' })
+      await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: TEN, limitations: [], complete: true } })
+      return { text: 'One finding: Missing null guard.', interrupted: false }
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(snapshot.run.policy.presentation).not.toBe('panel')
+    expect(snapshot.coverage.limitations.includes('verified-after-summary')).toBe(noted)
+  })
+  it('sweeps a run whose finders found nothing when the coordinator never starts verification', async () => {
+    let sweeps = 0
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) return { text: JSON.stringify({ candidates: [], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+      if (request.blocks.some(block => block.source === 'existing-findings')) { sweeps++; return emptySweep }
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      return finishCoordinator(f, request)
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(sweeps).toBe(1)
+    expect(snapshot.coverage.limitations).not.toContain('independent-worker-coverage-incomplete')
+  })
+})
+
+describe('team run completeness', () => {
+  const teamRun = (options: { verdict?: string; coordinatorComplete: boolean; skipAngle?: boolean; coordinatorVerifies?: boolean }) => fixture({ capabilities: { agentAvailable: true, agentPermitted: true, remainingDepth: 3, outputToolAvailable: false }, resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+    if (request.blocks.some(block => block.source === 'assigned-angles')) {
+      const assigned = JSON.parse(request.blocks.find(block => block.source === 'assigned-angles')!.text) as string[]
+      return { text: JSON.stringify({ candidates: options.verdict ? [findingFor(request, assigned[0], 'Missing null guard')] : [], coverage: { angles: assigned, limitations: ['Translations were not checked for accuracy.'] } }), interrupted: false }
+    }
+    if (request.blocks.some(block => block.source === 'candidate')) return verdict(options.verdict ?? 'proven')
+    if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+    await invoke(request, 'Agent', { role: 'finder', angles: options.skipAngle ? TEN.slice(1) : TEN })
+    if (options.coordinatorVerifies) await invoke(request, 'Agent', { role: 'verifier' })
+    await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: TEN, limitations: ['The internal docs repository is outside the scope.'], complete: options.coordinatorComplete } })
+    return { text: 'Summary.', interrupted: false }
+  } })
+  it('finishes when every angle, verdict and the sweep are in, whatever caveats the coordinator recorded', async () => {
+    const f = teamRun({ verdict: 'proven', coordinatorComplete: false, coordinatorVerifies: true })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(snapshot.run.progress.status).toBe('finished')
+    expect(snapshot.coverage).toMatchObject({ complete: true, limitations: expect.arrayContaining(['The internal docs repository is outside the scope.', 'Translations were not checked for accuracy.']) })
+    expect(snapshot.coverage.limitations).not.toContain('verified-after-summary')
+  })
+  it('stays partial when an angle has no finder, even when the coordinator claims complete', async () => {
+    const f = teamRun({ coordinatorComplete: true, coordinatorVerifies: true, skipAngle: true })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(snapshot.run.progress.status).toBe('partial')
+    expect(snapshot.coverage.limitations).toContain('independent-worker-coverage-incomplete')
+  })
+  it('does not note a stale summary when the host verified and nothing was dropped or added', async () => {
+    const f = teamRun({ verdict: 'plausible', coordinatorComplete: true })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(snapshot.run.progress.status).toBe('finished')
+    expect(snapshot.coverage.limitations).not.toContain('verified-after-summary')
+  })
 })
