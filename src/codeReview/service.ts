@@ -615,7 +615,7 @@ export class LocalReviewService {
     }
     return createReviewTools({ runId, store: this.store, signal: live.controller.signal,
       read: input => this.read(runId, live, input), changed: this.changed,
-      independentAssessments: live.plan.independentVerification, ...(readSteps !== undefined ? { readSteps } : {}), ...(submit ? { submit } : {}),
+      independentAssessments: live.plan.independentVerification, diffOnly: !live.plan.allowWholeFileReads, ...(readSteps !== undefined ? { readSteps } : {}), ...(submit ? { submit } : {}),
       allowOutput: live.plan.presentation === 'panel', launch: delegate && live.plan.agentMode === 'parallel' ? launch : undefined })
   }
   private async actionGrant(runId: string, kind: 'repair' | 'publication', ids?: string[]): Promise<ReportGrant> {

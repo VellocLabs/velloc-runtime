@@ -15,6 +15,8 @@ export interface ReviewToolBindings {
   independentAssessments?: boolean
   /** A worker's read budget in model steps: a ReviewRead from a later step fails with `review-step-budget`. */
   readSteps?: number
+  /** The run reads patches only: ReviewRead offers neither context nor search. */
+  diffOnly?: boolean
   /** A worker's hand-in: `hand` records the answer and returns what the host refused. */
   submit?: { role: 'finder' | 'verifier' | 'sweeper'; hand(input: Record<string, unknown>): Promise<unknown> }
 }
@@ -90,7 +92,9 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
   }
   const candidates = { type: 'array', maxItems: 32, items: REVIEW_CANDIDATE_SCHEMA }
   const tools: ToolContract[] = [
-    tool('ReviewRead', 'Read authorized review material. diff without a path returns the scope index; diff with a path returns that file\'s patch and anchors; diff with paths (up to 50) returns several patches in one call. context reads a permitted path, optionally only startLine..endLine. search finds a literal query across in-scope files. Patches, context results and search matches carry a source id that support items may cite. No shell or scripts.', {
+    tool('ReviewRead', bindings.diffOnly
+      ? 'Read the patches under review; this run reads nothing else. diff without a path returns the scope index; diff with a path returns the patch of that file and its anchors; diff with paths (up to 50) returns several patches in one call. Every patch carries a source id that support items may cite. No context reads, no search, no shell or scripts.'
+      : 'Read authorized review material. diff without a path returns the scope index; diff with a path returns that file\'s patch and anchors; diff with paths (up to 50) returns several patches in one call. context reads a permitted path, optionally only startLine..endLine. search finds a literal query across in-scope files. Patches, context results and search matches carry a source id that support items may cite. No shell or scripts.', bindings.diffOnly ? { operation: { type: 'string', enum: ['diff'] }, path: { type: 'string' }, paths: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 50 } } : {
       operation: { type: 'string', enum: ['diff', 'context', 'search'] }, path: { type: 'string' }, paths: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 50 }, query: { type: 'string' },
       startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 },
     }, ['operation'], (input, _id, row) => read(input, row)),
