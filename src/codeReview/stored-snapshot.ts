@@ -24,6 +24,7 @@ const run = z.object({
   policy: z.object({ level: z.enum(['low', 'medium', 'high', 'xhigh', 'max']),
     recipe: z.enum(['quick-hunks', 'quick-expand', 'local-eight', 'local-ten', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'careful-pass']),
     recipeRevision: positive, execution: z.enum(['isolated', 'inline']), presentation: z.enum(['terminal', 'json', 'panel']), reportLimit: z.union([positive, z.literal('unlimited')]),
+    agentMode: z.enum(['none', 'parallel', 'sequential-fallback']).optional(),
   }),
   progress: z.object({ status: z.enum(['queued', 'active', 'finished', 'partial', 'cancelled', 'failed']), stage: z.enum(REVIEW_STAGES),
     coveredAngles: strings, unavailableAngles: strings, spawnedTasks: count, verifiedCandidates: count, omittedByLimit: count }), reportRevision: count,

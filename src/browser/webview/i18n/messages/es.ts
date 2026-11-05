@@ -41,7 +41,7 @@ export const es: Messages = {
   "reviewCard.notice.candidatesRefused": "El registro rechazó algunos candidatos de los workers porque su evidencia no coincidía con lo leído.",
   "reviewCard.notice.initial": "Commit inicial: se incluyen todos los archivos con seguimiento.",
   "reviewCard.notice.interrupted": "La revisión se detuvo antes de terminar por una interrupción o por agotar su presupuesto.",
-  "reviewCard.notice.gitTimeout": "Git no respondió a tiempo, así que la revisión no pudo leer el cambio. Inténtalo de nuevo; si sigue pasando, reinicia Velloc.",
+  "reviewCard.notice.gitTimeout": "Git no respondió a tiempo, así que la revisión no pudo leer el cambio. Inténtelo de nuevo; si sigue pasando, reinicie Velloc.",
   "reviewCard.notice.invalidArguments": "Indique como máximo un destino no vacío y cierre las comillas.",
   "reviewCard.notice.invalidLimit": "El límite debe ser un entero positivo seguro, all o default.",
   "reviewCard.notice.invalidReport": "No se pudieron validar los datos. No los considere una revisión completa.",

@@ -26,7 +26,7 @@ import { gatherInstructionDocs, getNestedInstructionFilesForPath, getConditional
 import { assertUntrustedReadAllowed } from '../permissions/untrustedReadBoundary'
 import { isFsNotFoundError } from '../utils/fsTransportFailure'
 import { createGitArgvRunner, GitAdapterError, gitText, isGitRefSyntax, remoteUrlsOf, repositoryNameOf, validateReviewPath, type GitStreamSpawner } from './git-adapter'
-import { isTestOrFixturePath } from './recipes'
+import { isTestOrFixturePath, reviewLevelsOfTiers, thinkingTierForLevel } from './recipes'
 import { resolveLocalReviewScope, reviewDigest, scopeComplete, type WorkspaceRead, type LocalReviewTarget } from './scope'
 import { LocalReviewService, ReviewGatewayError, scopeIndex, type ReviewServiceOptions } from './service'
 import type { ScopeManifest } from './scope'
@@ -370,13 +370,14 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
     async read() { const value = await readJson(mechanismPath); return value === undefined ? null : JSON.stringify(value) },
     writeAtomic: serialized => writeSerialized(mechanismPath, serialized),
   }, receiptOwner)
+  const modelThinkingTiers = () => findConfiguredModel(context.options.mainLoopProviderId, context.options.mainLoopModel)?.availableThinkingTiers
   const currentCapabilities = () => {
     const rules = context.readAppState().permissionRules
     const agents = dropDeniedTools(context.options.tools, { denyRuleBook: rules.denyRuleBook ?? {} }).filter(tool => tool.name === 'Agent' && tool.offeredNow())
     return { agentAvailable: agents.length > 0, agentPermitted: rules.mode !== 'plan' && agents.length > 0,
       remainingDepth: Math.max(0, 3 - (context.turnChain?.depth ?? 0)), outputToolAvailable: true, workerConcurrency: 4,
       coordinator: context.options.templateType === 'team', coordinatorCanExecuteSkill: context.options.tools.some(tool => tool.name === 'Skill' && tool.offeredNow()), coordinatorWorkerAvailable: agents.length > 0,
-      supportedReasoningLevels: findConfiguredModel(context.options.mainLoopProviderId, context.options.mainLoopModel)?.availableThinkingTiers?.filter(isReviewLevel) }
+      supportedReasoningLevels: reviewLevelsOfTiers(modelThinkingTiers()) }
   }
   const remoteKey = (scope: ReportSnapshot['run']['scope']) => JSON.stringify([
     scope.repository.platform, scope.repository.platform === 'github' ? 'https://github.com' : 'https://gitlab.com',
@@ -429,7 +430,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       },
     },
     sanitizeExcerpt: sanitize,
-    runModel: request => runModel({ ...request,
+    runModel: request => runModel({ ...request, reasoningLevel: thinkingTierForLevel(request.reasoningLevel, modelThinkingTiers()),
       tools: request.tools.map(tool => tool.name !== 'Agent' ? tool : { ...tool, async call(input, callContext, permission, row, progress) {
         const caps = currentCapabilities()
         if (!caps.agentAvailable || !caps.agentPermitted || caps.remainingDepth < 1 || request.signal.aborted) throw new ReviewGatewayError('review-worker-not-authorized')

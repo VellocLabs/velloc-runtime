@@ -40,7 +40,7 @@ export const de: Messages = {
   "reviewCard.notice.candidatesRefused": "Das Ledger hat einige Kandidaten der Worker abgelehnt, weil ihre Belege nicht zum Gelesenen passten.",
   "reviewCard.notice.initial": "Erster Commit: Alle versionierten Dateien sind im Umfang enthalten.",
   "reviewCard.notice.interrupted": "Das Review wurde vorzeitig durch eine Unterbrechung oder ein erschöpftes Budget beendet.",
-  "reviewCard.notice.gitTimeout": "Git hat nicht rechtzeitig geantwortet, daher konnte das Review die Änderung nicht lesen. Versuchen Sie es erneut; wenn es wieder passiert, starten Sie Velloc neu.",
+  "reviewCard.notice.gitTimeout": "Git hat nicht rechtzeitig geantwortet, daher konnte das Review die Änderung nicht lesen. Versuche es erneut; wenn es wieder passiert, starte Velloc neu.",
   "reviewCard.notice.invalidArguments": "Gib höchstens ein nicht leeres Ziel an und schließe alle Anführungszeichen.",
   "reviewCard.notice.invalidLimit": "Das Limit muss eine sichere positive Ganzzahl, all oder default sein.",
   "reviewCard.notice.invalidReport": "Review-Daten konnten nicht validiert werden. Betrachte die Prüfung nicht als abgeschlossen.",

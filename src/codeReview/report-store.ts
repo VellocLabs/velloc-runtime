@@ -75,6 +75,8 @@ export interface ReportWriteResult {
   notices: string[]
   /** Items of the call the ledger refused, each with its reason; the accepted items were still written. */
   rejected?: Array<{ index: number; code: string }>
+  /** Set by a coverage write: the coverage was recorded. */
+  coverageRecorded?: true
 }
 // Contract: save atomically replaces one run. One store owns each adapter namespace.
 export interface ReportStorageAdapter {
@@ -250,7 +252,7 @@ function rank(state: RunState): string[] {
   const impact = { critical: 0, major: 1, minor: 2 }
   const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0
   return state.diagnostics.filter(d => !isMergedDuplicate(state, d.id) && lastAssessment(state, d.id).disposition !== 'dismissed').sort((a, b) => {
-    const category = (d: ReportDiagnostic) => ['correctness', 'security'].includes(d.classification.kind) ? 0 : 1
+    const category = (d: ReportDiagnostic) => isDefectKind(d.classification.kind) ? 0 : 1
     return category(a) - category(b) || impact[a.classification.impact] - impact[b.classification.impact]
       || compare(a.anchor.path, b.anchor.path) || (a.anchor.span?.start ?? 0) - (b.anchor.span?.start ?? 0)
       || compare(a.id, b.id)
@@ -796,7 +798,7 @@ export class ReviewReportStore {
         this.recordCoverage(state, operation.coverage)
       } else return fail('invalid-operation')
       select(state)
-      return { reportRevision: state.run.reportRevision, accepted, notices: [], ...(rejected.length ? { rejected } : {}) }
+      return { reportRevision: state.run.reportRevision, accepted, notices: [], ...(rejected.length ? { rejected } : {}), ...(operation.operation === 'coverage' ? { coverageRecorded: true as const } : {}) }
     })
   }
   /**

@@ -44,9 +44,9 @@ export interface ReviewServiceOptions {
   loadTargetLiteral?(runId: string): Promise<true | undefined>
   loadTarget?(runId: string): Promise<string | undefined>
 }
-/** One finished worker task: its answer, and the candidate IDs it added to the ledger. */
 /** The finder key of candidates the coordinator records itself; never a verifier's task key. */
 const COORDINATOR_TASK = 'coordinator'
+/** One finished worker task: its answer, and the candidate IDs it added to the ledger. */
 type WorkerOutcome = { taskId: string; result: Record<string, any>; newIds: string[]; rejectedCandidates?: Array<{ index: number; code: string }> }
 /** The outcome of a run's verification step: one verdict or error per candidate, then the gap sweep when the recipe has one. */
 type VerificationOutcome = { verification: Array<Record<string, unknown>>; sweep?: Record<string, unknown> }
@@ -308,7 +308,12 @@ export class LocalReviewService {
             role: 'coordinator', observer: this.observer(live), onStop: () => controller.abort() })
         } finally { if (plan.coordinatorWorkerRequired) await this.store.noteWorker(runId, 'finished') }
         const end = endOf(result)
-        if (end.kind !== 'completed') { live.end = end; throw new ReviewGatewayError(endCode(end)) }
+        if (end.kind !== 'completed') {
+          live.end = end
+          // A coordinator stopped by its step limit still gets the host's verification of what its finders found.
+          if (end.kind === 'step-limit') await (live.verification ?? (live.startVerification && live.findersLaunched ? live.startVerification() : undefined))
+          throw new ReviewGatewayError(endCode(end))
+        }
         // A coordinator that ended without starting verification gets it from the host; a committed panel report is rebuilt from the ledger.
         const hostVerified = !!live.startVerification && !live.verification && !!live.findersLaunched
         const hostStep = hostVerified ? await live.startVerification!() : undefined
@@ -445,9 +450,10 @@ export class LocalReviewService {
         if (live.verification) throw new ReviewGatewayError('verification-started')
         live.findersLaunched = true
         // The run shows merge only while no finder runs and every angle is covered; a finder launched later moves it back.
-        if (findersRunning++ === 0 && merging) { merging = false; await moveTo('inspect') }
+        // Registered before any await, so a verification step that starts meanwhile waits for this finder.
         const work = runWorker(input)
         finders.add(work.catch(() => undefined))
+        if (findersRunning++ === 0 && merging) { merging = false; await moveTo('inspect') }
         try {
           const { newIds: _, ...found } = await work
           return { ...found, ...await ledger() }
@@ -529,8 +535,11 @@ export class LocalReviewService {
             }
             const limitations: string[] = [...(value.coverage?.limitations ?? []), ...(rejectedCandidates.length ? ['worker-candidates-rejected'] : []), ...(end.kind === 'step-limit' ? ['review-step-limit'] : [])]
             await this.store.submitLedger(runId, `${taskId}-coverage`, { operation: 'coverage', coverage: { angles: covered, limitations, complete: false } })
-            if (role === 'finder') for (const angle of covered) live.completedAngles.add(angle)
-            else live.swept = true
+            // A worker cut off by its step limit leaves its angles, or the sweep, uncovered.
+            if (end.kind === 'completed') {
+              if (role === 'finder') for (const angle of covered) live.completedAngles.add(angle)
+              else live.swept = true
+            }
           }
           await this.store.noteWorker(runId, 'finished'); this.changed()
           return { taskId, result: value, newIds, ...(rejectedCandidates.length ? { rejectedCandidates } : {}) }

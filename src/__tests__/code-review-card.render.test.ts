@@ -137,6 +137,11 @@ describe('review report card', () => {
     expect(states('report')[1]).toBe(5)
     value.run.policy = { ...value.run.policy, recipe: 'team-eight-recall' }
     expect(states('report')).toEqual(['Prepare,Find,Merge,Verify,Summarize', 4])
+    // A team recipe that fell back to one sequential agent runs the local steps.
+    value.run.policy = { ...value.run.policy, recipe: 'team-ten', agentMode: 'sequential-fallback' }
+    expect(states('inspect')).toEqual(['Prepare,Inspect,Summarize', 1])
+    value.run.policy = { ...value.run.policy, agentMode: 'parallel' }
+    expect(states('inspect')[0]).toBe('Prepare,Find,Merge,Verify,Sweep,Summarize')
   })
   it('counts findings by severity and flags incomplete coverage next to them', () => {
     const value = report()
@@ -488,6 +493,16 @@ describe('review card header and live activity', () => {
     // Collapsed, the header carries the spinner and the stage again.
     expect(screen.getByTestId('review-status').textContent).toBe(t('reviewCard.value.inspect'))
     expect(screen.getByTestId('review-status').querySelector('.animate-spin')).toBeTruthy()
+  })
+  it('shows no task counts or task tree while the coordinator is the only task', () => {
+    const value = running()
+    value.tasks = [{ key: 'c', role: 'coordinator', status: 'running', startedAt: 1, lastActivityAt: 2, lastAction: 'ReviewRead diff src/a.ts' }]
+    renderReport(value)
+    expect(screen.getByTestId('review-current-task').textContent).toContain(t('reviewCard.task.role.coordinator'))
+    expect(screen.getByTestId('review-current-task').textContent).toContain(t('reviewCard.task.lastAction', { action: 'ReviewRead diff src/a.ts' }))
+    expect(screen.queryByTestId('review-task-counts')).toBeNull()
+    expect(screen.queryByTestId('review-tasks')).toBeNull()
+    expect(screen.getByTestId('review-progress')).toBeTruthy()
   })
   it('shows the most recently active task and task counts, with the full tree folded', () => {
     const value = running()

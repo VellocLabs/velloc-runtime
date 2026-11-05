@@ -38,6 +38,9 @@ export const REVIEW_CANDIDATE_SCHEMA = shape({
 })
 export const REVIEW_RESULT_SCHEMA = shape({ candidates: { type: 'array', items: REVIEW_CANDIDATE_SCHEMA }, coverage: REVIEW_COVERAGE_SCHEMA })
 const updatesSchema = { type: 'array', maxItems: 32, items: shape({ diagnosticId: text, observation: { type: 'string', enum: ['edited', 'not-needed', 'left-open'] }, explanation: text, executionRefs: stringList }) }
+/** The field each ReviewLedger operation reads its items from. */
+const LEDGER_FIELDS: Record<string, string> = { 'append-candidates': 'candidates', assess: 'assessments', coverage: 'coverage', 'merge-duplicates': 'groups' }
+
 export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] {
   const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[], invoke: (input: Record<string, unknown>, id: string, row: Message) => Promise<unknown>) => declareTool({
     name, description: async () => description,
@@ -70,6 +73,8 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
       groups: { type: 'array', minItems: 1, maxItems: 32, items: shape({ keepId: text, duplicateIds: { ...stringList, minItems: 1, maxItems: 32, uniqueItems: true }, reason: text, support: { ...REVIEW_SUPPORT_SCHEMA, minItems: 1, maxItems: 128 } }) },
       assessments: { type: 'array', maxItems: 32, items: shape({ candidateId: text, ...REVIEW_ASSESSMENT_SCHEMA.properties, support: REVIEW_SUPPORT_SCHEMA }) }, coverage: REVIEW_COVERAGE_SCHEMA,
     }, ['operation'], (input, id) => {
+      const field = LEDGER_FIELDS[String(input.operation)]
+      if (field && input[field] === undefined) throw new Error(`missing-${field}: operation "${String(input.operation)}" takes "${field}" in the same call`)
       if (bindings.independentAssessments && input.operation === 'assess') throw new Error('independent-verifier-required')
       if (bindings.independentAssessments && input.operation === 'append-candidates' && Array.isArray(input.candidates) && input.candidates.some(candidate => candidate?.assessment?.disposition === 'dismissed' || candidate?.assessment?.disposition === 'proven')) throw new Error('independent-verifier-required')
       return bindings.store.submitLedger(bindings.runId, id, input)
@@ -85,6 +90,9 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
   }, ['updates'], (input, id) => bindings.store.reconcile(bindings.runId, id, { operation: 'reconcile', updates: input.updates }, bindings.actionEpoch)))
   if (bindings.launch) tools.push(tool('Agent', 'Launch a bounded read-only review worker. Only finder, verifier and sweeper roles are allowed. No parent conversation or further delegation is inherited. When the run verifies independently, launch every finder first, all in one turn. A verifier call without candidateId starts the run\'s verification: the host waits for running finders, gives each finder candidate that is not a merged duplicate one independent verifier, then runs the gap sweep with the verdicts when the recipe has one; the result carries `verification` and `sweep`, a repeated call retries only verifiers that failed or came back unchecked and a sweep that failed, and finders are refused from then on. A sweeper call starts the same step. A verifier call with candidateId verifies or retries that one candidate.', {
     role: { type: 'string', enum: ['finder', 'verifier', 'sweeper'] }, angles: { type: 'array', items: { type: 'string' } }, candidateId: { type: 'string' },
-  }, ['role'], input => bindings.launch!(input)))
+  }, ['role'], input => {
+    if (input.role === 'finder' && (!Array.isArray(input.angles) || input.angles.length === 0)) throw new Error('missing-angles: a finder takes "angles", one or more of the angles this run assigns')
+    return bindings.launch!(input)
+  }))
   return tools
 }

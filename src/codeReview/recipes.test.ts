@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import gatewayModelIds from '../__tests__/fixtures/gateway-model-ids.json'
 import { REVIEW_LEVELS, type CapabilityProfile, type ReviewPolicyInput } from './contracts'
-import { EIGHT_ANGLES, TEN_ANGLES, resolveCapabilityProfile, resolveReviewLevel, resolveReviewPolicy, resolveReviewPreferences, selectReviewRecipe, shouldRunAutomaticVerification } from './recipes'
+import { EIGHT_ANGLES, TEN_ANGLES, resolveCapabilityProfile, resolveReviewLevel, resolveReviewPolicy, resolveReviewPreferences, selectReviewRecipe, shouldRunAutomaticVerification, reviewLevelsOfTiers, thinkingTierForLevel } from './recipes'
 
 const base: ReviewPolicyInput = {
   arguments: { fix: false, comment: false },
@@ -158,6 +158,21 @@ describe('output limits, capabilities and budget', () => {
 
   it('maps provider reasoning independently of logical level', () => {
     expect(policy({ arguments: { ...base.arguments, level: 'xhigh' }, capabilities: { ...base.capabilities, supportedReasoningLevels: ['low', 'medium', 'high'] } })).toMatchObject({ level: 'xhigh', recipe: 'local-ten', reasoningLevel: 'high', notices: [{ code: 'reasoning-mapped', requested: 'xhigh', effective: 'high' }] })
+  })
+
+  it('reads a model listing extra-high as offering xhigh, and asks for it in the model spelling', () => {
+    const tiers = ['low', 'medium', 'high', 'extra-high', 'max']
+    expect(reviewLevelsOfTiers(tiers)).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    expect(reviewLevelsOfTiers(['none', 'low', 'medium', 'high', 'xhigh'])).toEqual(['low', 'medium', 'high', 'xhigh'])
+    expect(reviewLevelsOfTiers(undefined)).toBeUndefined()
+    const plan = policy({ arguments: { ...base.arguments, level: 'xhigh' }, capabilities: { ...base.capabilities, supportedReasoningLevels: reviewLevelsOfTiers(tiers) } })
+    expect(plan).toMatchObject({ level: 'xhigh', recipe: 'local-ten', reasoningLevel: 'xhigh' })
+    expect(plan.notices.some(notice => notice.code === 'reasoning-mapped')).toBe(false)
+    expect(thinkingTierForLevel('xhigh', tiers)).toBe('extra-high')
+    expect(thinkingTierForLevel('xhigh', ['low', 'medium', 'high', 'xhigh', 'max'])).toBe('xhigh')
+    expect(thinkingTierForLevel('high', tiers)).toBe('high')
+    expect(thinkingTierForLevel('xhigh', undefined)).toBe('xhigh')
+    expect(thinkingTierForLevel(undefined, tiers)).toBeUndefined()
   })
 
   it('returns an immutable plan and immutable routing metadata', () => {

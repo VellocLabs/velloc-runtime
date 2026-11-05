@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ReportStoreError, ReviewReportStore, type ReportCandidateInput, type ReportPolicy, type ReportStorageAdapter } from './report-store'
 import { presentReviewJson, presentReviewTerminal, projectReviewReport } from './presenter'
 import { createReviewTools } from './tools'
@@ -1078,5 +1078,21 @@ describe('explicit semantic duplicate merges', () => {
     await expect(invoke({ operation: 'assess', assessments: [] }, 'assess')).rejects.toThrow('independent-verifier-required')
     await invoke(merge(h.ids[0], [h.ids[1]]), 'tool-merge')
     expect((await h.store.getSnapshot(h.id)).retainedIds).toEqual([h.ids[0]])
+  })
+  it('names the field an operation is missing, says a coverage write was recorded, and asks a finder for its angles', async () => {
+    const h = await pair()
+    const launch = vi.fn(async () => ({}))
+    const tools = createReviewTools({ runId: h.id, store: h.store, signal: new AbortController().signal, read: async () => ({}), changed: () => {}, allowOutput: true, launch })
+    const call = (name: string, input: Record<string, unknown>, id: string) => tools.find(tool => tool.name === name)!.call(input, undefined as never, undefined as never, { type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } } as unknown as Message)
+    for (const [operation, field] of [['append-candidates', 'candidates'], ['assess', 'assessments'], ['coverage', 'coverage'], ['merge-duplicates', 'groups']]) {
+      await expect(call('ReviewLedger', { operation }, `missing-${field}`)).rejects.toThrow(`missing-${field}: operation "${operation}" takes "${field}"`)
+    }
+    const written = await call('ReviewLedger', { operation: 'coverage', coverage: { angles: ['lines'], limitations: [], complete: false } }, 'coverage')
+    expect(written.data).toMatchObject({ accepted: [], coverageRecorded: true })
+    expect((await call('ReviewLedger', { operation: 'append-candidates', candidates: [] }, 'no-candidates')).data).not.toHaveProperty('coverageRecorded')
+    for (const input of [{ role: 'finder' }, { role: 'finder', angles: [] }]) await expect(call('Agent', input, 'finder')).rejects.toThrow('missing-angles')
+    expect(launch).not.toHaveBeenCalled()
+    await call('Agent', { role: 'verifier' }, 'verifier')
+    expect(launch).toHaveBeenCalledTimes(1)
   })
 })

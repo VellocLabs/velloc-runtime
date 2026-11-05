@@ -137,7 +137,7 @@ export type ReviewRun = {
   id: string
   conversationKey: string
   scope: ReviewScope
-  policy: Pick<ReviewPlan, 'level' | 'recipe' | 'recipeRevision' | 'execution' | 'presentation' | 'reportLimit'>
+  policy: Pick<ReviewPlan, 'level' | 'recipe' | 'recipeRevision' | 'execution' | 'presentation' | 'reportLimit'> & Partial<Pick<ReviewPlan, 'agentMode'>>
   progress: {
     status: 'queued' | 'active' | 'finished' | 'partial' | 'cancelled' | 'failed'
     stage: (typeof REVIEW_STAGES)[number]

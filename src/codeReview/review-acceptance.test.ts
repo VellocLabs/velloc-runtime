@@ -513,6 +513,35 @@ it('moves a run back from merge while a finder launched later runs, and verifies
   expect(snapshot.run.progress.status).toBe('finished')
 })
 
+it('waits for a finder launched during merge when verification starts in the same turn', async () => {
+  const groups = [['lines', 'language'], ['removed', 'calls'], ['reuse', 'simplification', 'efficiency'], ['root-cause', 'guidance', 'wrappers']]
+  const verified: string[] = []
+  let late = ''
+  const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+    const assigned = request.blocks.find(block => block.source === 'assigned-angles')
+    if (assigned) {
+      const angles = JSON.parse(assigned.text) as string[]
+      const second = angles.length === 1
+      if (second) await new Promise(resolve => setTimeout(resolve, 20))
+      return { text: JSON.stringify({ candidates: [findingFor(request, angles[0], second ? 'Found by the late finder' : `${angles[0]} issue`)], coverage: { angles, limitations: [] } }), interrupted: false }
+    }
+    if (request.blocks.some(block => block.source === 'candidate')) {
+      verified.push(JSON.parse(request.blocks.find(block => block.source === 'candidate')!.text).id)
+      return verdict('plausible')
+    }
+    if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+    await Promise.all(groups.map(angles => invoke(request, 'Agent', { role: 'finder', angles })))
+    expect((await f.service.store.getSnapshot(runIdOf(request))).run.progress.stage).toBe('merge')
+    await Promise.all([invoke(request, 'Agent', { role: 'finder', angles: ['lines'] }), invoke(request, 'Agent', { role: 'verifier' })])
+    late = (await f.service.store.getSnapshot(runIdOf(request))).diagnostics.find(d => d.claim.title === 'Found by the late finder')!.id
+    return finishCoordinator(f, request)
+  } })
+  const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+  expect(verified).toContain(late)
+  expect(snapshot.run.progress.verifiedCandidates).toBe(5)
+  expect(snapshot.run.progress.status).toBe('finished')
+})
+
 it('waits for a finder still running before it verifies, and refuses a finder launched afterwards', async () => {
   let verification: Array<Record<string, unknown>> = []
   const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
@@ -841,7 +870,7 @@ describe('worker step budget', () => {
     let candidates = 0
     const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
       if (request.blocks.some(block => block.source === 'assigned-angles')) {
-        return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Missing null guard')], coverage: { angles: ['lines'], limitations: [] } }), interrupted: true, end: { kind: 'step-limit' as const } }
+        return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Missing null guard')], coverage: { angles: TEN, limitations: [] } }), interrupted: true, end: { kind: 'step-limit' as const } }
       }
       if (request.blocks.some(block => block.source === 'candidate')) return verdict('plausible')
       if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
@@ -852,6 +881,25 @@ describe('worker step budget', () => {
     } })
     const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
     expect(candidates).toBe(1)
+    expect(snapshot.coverage.limitations).toContain('review-step-limit')
+    // The cut-off finder's angles stay uncovered, so the run cannot be complete.
+    expect(snapshot.coverage.limitations).toContain('independent-worker-coverage-incomplete')
+    expect(snapshot.run.progress.status).toBe('partial')
+  })
+  it('verifies what the finders found when the coordinator stops at its step limit before starting verification', async () => {
+    let verifiers = 0, sweeps = 0
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Missing null guard')], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+      if (request.blocks.some(block => block.source === 'candidate')) { verifiers++; return verdict('plausible') }
+      if (request.blocks.some(block => block.source === 'existing-findings')) { sweeps++; return emptySweep }
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      return { text: 'Still recording candidates', interrupted: true, end: { kind: 'step-limit' as const } }
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect([verifiers, sweeps]).toEqual([1, 1])
+    expect(snapshot.run.progress.verifiedCandidates).toBe(1)
+    expect(snapshot.run.progress.stage).toBe('report')
+    expect(snapshot.run.progress.status).toBe('partial')
     expect(snapshot.coverage.limitations).toContain('review-step-limit')
   })
   it('still fails a finder its step limit stopped before it answered', async () => {

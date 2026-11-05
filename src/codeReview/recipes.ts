@@ -1,6 +1,8 @@
 import { REVIEW_LEVELS, type CapabilityProfile, type InvocationSource, type PolicyNotice, type RecipeId, type ReportLimit, type ReviewAngle, type ReviewArguments, type ReviewLevel, type ReviewPlan, type ReviewPolicyInput, type ReviewPreferences } from './contracts'
 
 import { resolveReviewModelIdentity } from './modelProfiles'
+import { isReviewLevel } from './arguments'
+import { effortOfTier } from '../config/nexusModelConfig/providers/shared/listing'
 
 export const RECIPE_REVISION = 2
 export const EIGHT_ANGLES: readonly ReviewAngle[] = Object.freeze(['lines', 'removed', 'calls', 'reuse', 'simplification', 'efficiency', 'root-cause', 'guidance'])
@@ -23,6 +25,16 @@ export const RECIPE_ROUTES: Readonly<Record<CapabilityProfile, Readonly<Record<R
 
 export function resolveCapabilityProfile(canonicalModelId?: string, explicitProfile?: CapabilityProfile): CapabilityProfile {
   return explicitProfile ?? resolveReviewModelIdentity(canonicalModelId)?.profile ?? 'fallback'
+}
+
+/** The review levels a model's thinking tiers offer; a tier is read by its wire word (`extra-high` is `xhigh`). */
+export function reviewLevelsOfTiers(tiers: readonly string[] | undefined): ReviewLevel[] | undefined {
+  return tiers?.map(tier => effortOfTier(tier)!).filter(isReviewLevel)
+}
+
+/** The model's own spelling of the thinking tier for a review level; the level itself when the model lists none. */
+export function thinkingTierForLevel(level: string | undefined, tiers: readonly string[] | undefined): string | undefined {
+  return level && (tiers?.find(tier => effortOfTier(tier) === level) ?? level)
 }
 
 export function selectReviewRecipe(profile: CapabilityProfile, level: ReviewLevel): Readonly<RecipeRoute> {

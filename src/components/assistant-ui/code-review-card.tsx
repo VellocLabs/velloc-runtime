@@ -107,9 +107,9 @@ export function currentReviewLocation(report: ReviewReportView, diagnostic: Diag
 type Stage = ReviewRun['progress']['stage']
 type Step = 'prepare' | 'inspect' | 'find' | 'merge' | 'verify' | 'sweep' | 'summarize'
 const REVIEWING_STAGES: Stage[] = ['scope', 'inspect', 'merge', 'assess', 'sweep', 'report']
-/** The visible steps of a recipe: a team recipe shows its find, merge, verify and (team-ten) sweep steps. */
-export function reviewSteps(recipe: string): Step[] {
-  if (!recipe.startsWith('team-')) return ['prepare', 'inspect', 'summarize']
+/** The visible steps of a recipe: a team recipe run by parallel workers shows its find, merge, verify and (team-ten) sweep steps. */
+export function reviewSteps(recipe: string, agentMode?: string): Step[] {
+  if (!recipe.startsWith('team-') || agentMode === 'sequential-fallback') return ['prepare', 'inspect', 'summarize']
   return ['prepare', 'find', 'merge', 'verify', ...(recipe === 'team-ten' ? ['sweep' as const] : []), 'summarize']
 }
 const STEP_OF_STAGE: Partial<Record<Stage, Step[]>> = { scope: ['prepare'], inspect: ['inspect', 'find'], merge: ['merge'], assess: ['verify', 'inspect'], sweep: ['sweep', 'inspect'], report: ['summarize'] }
@@ -200,10 +200,11 @@ const ReviewCardHeader: FC<{
 /** Text with a light sweeping across it while work runs. */
 const Shimmer: FC<{ text: string }> = ({ text }) => <span className="relative inline-block">{text}<span aria-hidden className="shimmer pointer-events-none absolute inset-0 motion-reduce:animate-none">{text}</span></span>
 
-/** What the review is doing now: the most recently active running task with the run's status, how many tasks finished, are running or did not complete; the full tree folds away. */
+/** What the review is doing now: the most recently active running task with the run's status; with worker tasks, how many finished, are running or did not complete, and the full tree folded away. */
 const ReviewActivity: FC<{ tasks: ReviewTaskView[]; status: string }> = ({ tasks, status }) => {
   const t = useT()
   const counts = reviewTaskCounts(tasks)
+  const workers = tasks.some(task => task.role !== 'coordinator')
   const current = tasks.filter(task => task.status === 'running').reduce<ReviewTaskView | undefined>((latest, task) => !latest || task.lastActivityAt >= latest.lastActivityAt ? task : latest, undefined)
   const detail = current && taskDetail(t, current)
   return <div data-testid="review-activity" className="space-y-1.5 text-xs">
@@ -211,9 +212,9 @@ const ReviewActivity: FC<{ tasks: ReviewTaskView[]; status: string }> = ({ tasks
       <p aria-live="polite">{current && <><span className="sr-only">{t('reviewCard.currentTask')} </span><span className="font-medium">{reviewTaskRoleMessage(t, current.role)}</span> · </>}<span data-testid="review-status-line"><Shimmer text={status} /></span>{detail && <> · {detail}</>}</p>
       {current?.lastAction && <p className="truncate text-muted-foreground" title={current.lastAction}>{t('reviewCard.task.lastAction', { action: current.lastAction })}</p>}
     </div>
-    {tasks.length > 0 && <p data-testid="review-task-counts" className="text-muted-foreground">{t('reviewCard.tasksDone', { finished: counts.finished, running: counts.running })}
+    {workers && <p data-testid="review-task-counts" className="text-muted-foreground">{t('reviewCard.tasksDone', { finished: counts.finished, running: counts.running })}
       {counts.notCompleted > 0 && <> · {t('reviewCard.tasksNotCompleted', { count: counts.notCompleted })}</>}</p>}
-    {tasks.length > 0 && <ReviewTaskTree tasks={tasks} open={false} />}
+    {workers && <ReviewTaskTree tasks={tasks} open={false} />}
   </div>
 }
 
@@ -320,9 +321,9 @@ const ReviewPreparingCard: FC<{ canCancel: boolean; onCancel: () => Promise<void
 }
 
 /** The steps of a running review; a follow-up stage shows them all done. */
-const ReviewStages: FC<{ recipe: string; stage: Stage; queued: boolean }> = ({ recipe, stage, queued }) => {
+const ReviewStages: FC<{ recipe: string; agentMode?: string; stage: Stage; queued: boolean }> = ({ recipe, agentMode, stage, queued }) => {
   const t = useT()
-  const steps = reviewSteps(recipe)
+  const steps = reviewSteps(recipe, agentMode)
   const current = queued ? -1 : stepOfStage(steps, stage)
   return <ol data-testid="review-stages" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-muted/50 px-3 py-2 text-xs">
     {steps.map((step, index) => {
@@ -407,7 +408,7 @@ export const ReviewReportCard: FC<{
     {!collapsed && <div id={bodyId}>
       <div className="flex flex-col gap-3 border-t px-4 py-3">
         {reviewing ? <>
-          <ReviewStages recipe={run.policy.recipe} stage={stage} queued={status === 'queued'} />
+          <ReviewStages recipe={run.policy.recipe} agentMode={run.policy.agentMode} stage={stage} queued={status === 'queued'} />
           <ReviewActivity tasks={report.tasks ?? []} status={enumText(reviewStatusValue(status, stage))} />
           {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{progress.found === 0 ? t('reviewCard.progressNone') : progress.found === 1 ? t('reviewCard.progressFoundOne', progress) : t('reviewCard.progressFound', progress)}</p>}
         </> : <>
