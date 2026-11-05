@@ -25,7 +25,8 @@ describe('review model identities', () => {
     })
   }
   it('pins gateway spellings to recorded provider listings', () => {
-    for (const model of REVIEW_MODEL_IDENTITIES) for (const alias of model.aliases.filter(alias => alias.includes('/'))) {
+    // Nebius Token Factory spellings (`deepseek-ai/...`) are not gateway spellings.
+    for (const model of REVIEW_MODEL_IDENTITIES) for (const alias of model.aliases.filter(alias => alias.includes('/') && !alias.startsWith('deepseek-ai/'))) {
       const providers = alias.startsWith('z-ai/') ? ['openrouter'] as const : alias.startsWith('zai/') ? ['vercel-ai-gateway'] as const : ['openrouter', 'vercel-ai-gateway'] as const
       for (const provider of providers) expect(gatewayIds[provider], `${provider}: ${alias}`).toContain(alias)
     }

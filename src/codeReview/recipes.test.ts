@@ -249,6 +249,12 @@ describe('level selection boundaries', () => {
     })
   }
 
+  it('routes the Nebius Token Factory DeepSeek V4.1 Flash like the direct Flash model, a team review at medium', () => {
+    const recipes = REVIEW_LEVELS.map(level => policy({ canonicalModelId: 'deepseek-ai/DeepSeek-V4.1-Flash', arguments: { ...base.arguments, level } }).recipe)
+    expect(recipes).toEqual(['quick-hunks', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'team-ten'])
+    expect(resolveCapabilityProfile('deepseek-ai/DeepSeek-V4-Flash')).toBe('fallback')
+  })
+
   it.each([
     'claude-opus-5-5', 'claude-sonnet-5-5', 'anthropic/claude-opus-5.5', 'anthropic/claude-sonnet-5.5',
     'anthropic/claude-opus-4.8-fast', 'anthropic/claude-opus-5-fast', 'anthropic/claude-opus-5:batch',
