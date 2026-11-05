@@ -240,6 +240,9 @@ const impacts = ['critical', 'major', 'minor'] as const
 const terminal = (status: ReportStatus) => !['queued', 'active'].includes(status)
 const unique = <T>(items: T[]): T[] => [...new Set(items)]
 const normalized = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase()
+/** Two findings of one mechanism are often filed a few lines apart; a duplicate merge accepts spans this close. */
+const DUPLICATE_SPAN_GAP = 10
+const near = (a: { start: number; end: number }, b: { start: number; end: number }): boolean => a.start <= b.end + DUPLICATE_SPAN_GAP && b.start <= a.end + DUPLICATE_SPAN_GAP
 function overlap(a: ReportAnchor, b: ReportAnchor): boolean {
   if (!a.span || !b.span) return !a.span && !b.span && a.contextDigest === b.contextDigest
   return a.span.start <= b.span.end && b.span.start <= a.span.end
@@ -694,7 +697,7 @@ export class ReviewReportStore {
       // candidate cannot represent a correctness or security one.
       if (isDefectKind(diagnostic.classification.kind) && !isDefectKind(kept.classification.kind)) return fail('duplicate-keep-kind')
       if (diagnostic.anchor.revision !== kept.anchor.revision || diagnostic.anchor.path !== kept.anchor.path || diagnostic.anchor.side !== kept.anchor.side ||
-          !diagnostic.anchor.span || !kept.anchor.span || !overlap(diagnostic.anchor, kept.anchor)) return fail('duplicate-anchor-mismatch')
+          !diagnostic.anchor.span || !kept.anchor.span || !near(diagnostic.anchor.span, kept.anchor.span)) return fail('duplicate-anchor-mismatch')
     }
     this.mergeSupport(state, keepId, [...duplicateIds.flatMap(id => state.candidates.find(item => item.diagnosticId === id)!.input.support), ...support], callId)
     state.duplicateIds = Object.fromEntries([...Object.entries(mapping), ...duplicateIds.map(id => [id, keepId])])

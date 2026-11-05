@@ -987,6 +987,12 @@ describe('explicit semantic duplicate merges', () => {
     expect(after.duplicateIds).toEqual({ [duplicate]: h.ids[0] })
     expect(after.diagnostics.find(item => item.id === h.ids[0])!.classification.kind).toBe('correctness')
   })
+  it('merges two findings of one mechanism filed a few lines apart', async () => {
+    const h = await pair()
+    const apart = (await h.store.submitLedger(h.id, 'other', { operation: 'append-candidates', candidates: [candidate(h.anchorKey, 10, 'Another wording')] })).accepted[0].diagnosticId
+    await h.store.submitLedger(h.id, 'merge', merge(h.ids[0], [apart]))
+    expect((await h.store.getSnapshot(h.id)).duplicateIds).toEqual({ [apart]: h.ids[0] })
+  })
   it('refuses a cleanup candidate as the representative of a correctness duplicate', async () => {
     const h = await pair()
     const input = candidate(h.anchorKey, 1, 'Another wording')
@@ -995,12 +1001,13 @@ describe('explicit semantic duplicate merges', () => {
     await expect(h.store.submitLedger(h.id, 'merge', merge(cleanup, [h.ids[0]]))).rejects.toThrow('duplicate-keep-kind')
     expect((await h.store.getSnapshot(h.id)).duplicateIds ?? {}).toEqual({})
   })
-  it.each(['nonoverlap', 'before-revision', 'other-path', 'no-span', 'foreign-id'] as const)('rejects %s without changing ledger facts', async kind => {
+  it.each(['far-apart', 'before-revision', 'other-path', 'no-span', 'foreign-id'] as const)('rejects %s without changing ledger facts', async kind => {
     const h = await pair()
     let key = h.anchorKey
     if (kind === 'before-revision') key = await h.store.registerAnchor(h.id, { path: 'src/a.ts', revision: 'base', side: 'before', span: { start: 1, end: 10 } })
     if (kind === 'other-path') key = await h.store.registerAnchor(h.id, { path: 'src/b.ts', revision: 'head', side: 'after', span: { start: 1, end: 10 } })
-    const input = candidate(key, kind === 'nonoverlap' ? 10 : 1, 'Another wording')
+    if (kind === 'far-apart') key = await h.store.registerAnchor(h.id, { path: 'src/a.ts', revision: 'head', side: 'after', span: { start: 20, end: 40 } })
+    const input = candidate(key, kind === 'far-apart' ? 30 : 1, 'Another wording')
     if (kind === 'other-path') input.location.path = 'src/b.ts'
     if (kind === 'no-span') { key = await h.store.registerAnchor(h.id, { path: 'src/a.ts', revision: 'head', side: 'after' }); input.location.anchorKey = key; delete input.location.line }
     let duplicate: string

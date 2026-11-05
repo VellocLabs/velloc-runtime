@@ -521,7 +521,8 @@ export class LocalReviewService {
             answer = value
             return []
           }
-          if (!Array.isArray(value.candidates) || kept.length + value.candidates.length > (role === 'sweeper' ? 8 : live.plan.candidatesPerAngle * angles.length)) throw new ReviewGatewayError('worker-candidate-limit')
+          if (!Array.isArray(value.candidates)) throw new ReviewGatewayError('unstructured-worker-answer')
+          if (kept.length + value.candidates.length > (role === 'sweeper' ? 8 : live.plan.candidatesPerAngle * angles.length)) throw new ReviewGatewayError('worker-candidate-limit')
           const seen = new Map(counts)
           for (const candidate of value.candidates) {
             if (!assigned.includes(candidate?.angle)) throw new ReviewGatewayError('worker-angle-not-assigned')
@@ -564,25 +565,32 @@ export class LocalReviewService {
           }))
         }
         // A worker hands in through ReviewSubmit: once, and once more when the first call left something refused.
-        let handed = 0, open = true
+        let handed = 0, wholeRefusals = 0, open = true
         const hand = async (value: Record<string, unknown>) => {
           if (!open) throw new ReviewGatewayError('already-submitted')
-          const final = handed++ > 0
+          const final = handed > 0
           const input = structuredClone(value)
           // A field sent as JSON text is read as the value it spells.
           for (const key of ['candidates', 'coverage', 'support', 'missingEvidence']) {
             const text = input[key]
             if (typeof text !== 'string') continue
-            try { const spelled: unknown = JSON.parse(text); if (spelled && typeof spelled === 'object') input[key] = spelled } catch { /* stays text, and is refused as text */ }
+            try { const spelled: unknown = JSON.parse(text); if (spelled && typeof spelled === 'object') input[key] = spelled; continue } catch { /* may be the value followed by the rest of the answer */ }
+            // Text that holds the value and then the answer's other fields is read as that answer.
+            try {
+              const rest = JSON.parse(`{${JSON.stringify(key)}:${text}`) as Record<string, unknown>
+              for (const [name, field] of Object.entries(rest)) if (name === key || input[name] === undefined) input[name] = field
+            } catch { /* stays text, and is refused as text */ }
           }
           let refused: Refusal[]
           try { refused = await record(input, final) }
           catch (error) {
-            if (final) open = false
-            if (final || !(error instanceof ReviewGatewayError)) throw error
-            // A hand-in refused as a whole is answered like a refused item: named, with a hint, and one more call.
-            return { ...(role === 'verifier' ? { accepted: false } : { acceptedCandidates: kept.length }), refused: withRefusalHint({ code: error.code }), next: 'correct the hand-in and call ReviewSubmit once more; that call is final' }
+            // A hand-in refused as a whole recorded nothing, so it does not use up the correction: it is named with
+            // a hint and may be sent again. The third such refusal closes the hand-in.
+            if (error instanceof ReviewGatewayError && ++wholeRefusals <= 2) return { ...(role === 'verifier' ? { accepted: false } : { acceptedCandidates: kept.length }), refused: withRefusalHint({ code: error.code }), next: 'correct the hand-in and call ReviewSubmit once more' }
+            if (final || error instanceof ReviewGatewayError) open = false
+            throw error
           }
+          handed++
           if (final || !refused.length) open = false
           if (!refused.length) return { accepted: true }
           return { ...(role === 'verifier' ? { accepted: false } : { acceptedCandidates: kept.length }),

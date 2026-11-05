@@ -137,7 +137,7 @@ export function createReviewModelRunner(input: {
         overrides: { options, abortController: cancelSource, messages: [], readFileState: new Map(), inheritConfirm: true },
         systemPromptOverride: prompt.defaultSystemPrompt,
         omitParentContext: !inherited,
-        maxTurns: request.maxTurns ?? 32, maxOutputTokens: 12_000, skipCacheWrite: true, useRealModelTransport: true,
+        maxTurns: request.maxTurns ?? 32, skipCacheWrite: true, useRealModelTransport: true,
         sidechainStore: getContextSidechainStore(parent), spawnerSessionId: parent.options.sessionId || undefined,
         onMessage: row => { const action = describeActivity(row); if (action) request.observer?.activity({ key: request.taskId, action }) },
         onConclusion: conclusion => { end = reviewRunEnd(conclusion) },
