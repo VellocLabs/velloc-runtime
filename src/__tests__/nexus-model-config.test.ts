@@ -1771,7 +1771,7 @@ describe('runtime-only provider figures in a realm without the listing', () => {
     createConfiguredModelCatalog(entryCatalog(1_000_000), config)
     expect(contextWindowOf(entryId, 'openrouter', config)).toBe(1_000_000)
     expect(outputBudgetOf(entryId, 'openrouter', config)).toBe(128_000)
-    expect(getDefaultMaxOutputTokensForModel(entryId, 'openrouter', config)).toBe(32_768)
+    expect(getDefaultMaxOutputTokensForModel(entryId, 'openrouter', config)).toBe(128_000)
 
     // A later catalog replaces the mirrored row instead of stacking on it.
     createConfiguredModelCatalog(entryCatalog(400_000), config)

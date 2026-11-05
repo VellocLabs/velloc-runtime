@@ -26,7 +26,7 @@ import {
   stepBudgetRow,
 } from './turnRows'
 import { emit, finish, idle, openDraft, patchState, request, seal, type Draft } from './turnStep'
-import { openRequest } from './turnRequest'
+import { openRequest, outputRoomTokens } from './turnRequest'
 import { estimateTranscriptTokens } from './tokenCounts'
 import { runToolsFor } from './turnContinuation'
 
@@ -70,9 +70,7 @@ export function onModelAnswer(
     // The raised allowance has to fit the window beside the prompt: a catalog
     // may list an output ceiling as large as the whole window.
     const ceiling = state.limits.outputCeilingTokens ?? FALLBACK_OUTPUT_CEILING
-    const raised = state.limits.blockingLimitTokens === undefined
-      ? ceiling
-      : Math.min(ceiling, state.limits.blockingLimitTokens - promptTokensOf(last, state.messages))
+    const raised = Math.min(ceiling, outputRoomTokens(state.limits, promptTokensOf(last, state.messages)) ?? ceiling)
     // Raising gains nothing when the prompt leaves no more room than the cut reply used.
     if (choice === 'escalate' && raised <= outputTokensOf(last)) {
       choice = policies.recoverOutputCap({ outputCapRetries: state.outputCapRetries, outputTokenCapOverride: raised })

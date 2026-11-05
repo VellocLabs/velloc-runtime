@@ -80,6 +80,10 @@ export type TurnLimits = {
   readonly servingModel?: string
   readonly blockingLimitTokens?: number
   readonly outputCeilingTokens?: number
+  /** The model's window less the safety buffer: a request's prompt and output allowance share it. */
+  readonly windowRoomTokens?: number
+  /** The allowance a request carries when nothing overrides it. */
+  readonly defaultOutputTokens?: number
   /** The caller's output cap: it bounds every request of the turn, not only the first. */
   readonly outputCapTokens?: number
 }

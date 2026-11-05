@@ -97,6 +97,19 @@ export function onCompactionRows(
   return seal(d)
 }
 
+/** The output tokens the window leaves beside a prompt of `promptTokens`; undefined when the window is not known. */
+export function outputRoomTokens(limits: TurnState['limits'], promptTokens: number): number | undefined {
+  return limits.windowRoomTokens === undefined ? undefined : limits.windowRoomTokens - promptTokens
+}
+
+/** The allowance a request carries: the one asked for, lowered to the room the prompt leaves. */
+function fittedAllowance(s: TurnState): number | undefined {
+  const asked = s.outputTokenCapOverride ?? s.limits.outputCapTokens
+  const sent = asked ?? s.limits.defaultOutputTokens
+  const room = outputRoomTokens(s.limits, estimateTranscriptTokens(s.messages as Message[]))
+  return sent !== undefined && room !== undefined && room > 0 && room < sent ? room : asked
+}
+
 export function issueModelRequest(d: Draft, policies: TurnPolicies): void {
   const s = d.state
   request(d, {
@@ -107,7 +120,7 @@ export function issueModelRequest(d: Draft, policies: TurnPolicies): void {
     userAmbient: s.userAmbient,
     systemAmbient: s.systemAmbient,
     tools: s.visibleTools,
-    outputTokenCapOverride: s.outputTokenCapOverride ?? s.limits.outputCapTokens,
+    outputTokenCapOverride: fittedAllowance(s),
     finalResponse: finalReplyDue(s, policies),
   })
 }

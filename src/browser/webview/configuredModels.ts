@@ -12,7 +12,7 @@ import {
 } from '../../config/nexusModelConfig'
 import { recordEntryResolution } from '../../config/nexusModelConfig/modelEntryResolution'
 import {
-  FIRST_REQUEST_OUTPUT_RESERVATION,
+  firstRequestOutputTokens,
   knownModelRows,
 } from '../../config/nexusModelConfig/familyRows'
 import {
@@ -303,7 +303,7 @@ function mirrorEntryFigures(
     if (model.contextWindow !== undefined) row.contextWindow = model.contextWindow
     if (model.maxOutputTokens !== undefined) {
       row.maxOutputTokens = model.maxOutputTokens
-      row.defaultMaxOutputTokens = Math.min(model.maxOutputTokens, FIRST_REQUEST_OUTPUT_RESERVATION)
+      row.defaultMaxOutputTokens = firstRequestOutputTokens(model.maxOutputTokens, model.contextWindow)
     }
     if (model.availableThinkingTiers) row.availableThinkingTiers = [...model.availableThinkingTiers]
     if (model.defaultThinkingTier) row.defaultThinkingTier = model.defaultThinkingTier

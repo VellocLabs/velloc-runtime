@@ -367,16 +367,33 @@ describe('turn decisions', () => {
 
   describe('a cut reply on a model whose listed output ceiling is its whole window', () => {
     it('is retried with an allowance that leaves room for the prompt', () => {
-      const run = driveMachine({ model: [{ fail: 'output_cap' }, TEXT], state: { limits: { outputCeilingTokens: 1_000_000, blockingLimitTokens: 100_000 }, messages: [PROMPT] } })
+      const run = driveMachine({ model: [{ fail: 'output_cap' }, TEXT], state: { limits: { outputCeilingTokens: 1_000_000, windowRoomTokens: 100_000 }, messages: [PROMPT] } })
       const raised = run.requests[1]!.outputTokenCapOverride!
       expect(raised).toBeLessThan(100_000)
       expect(raised).toBeGreaterThan(90_000)
     })
     it('is resumed instead when the prompt leaves no room to raise it', () => {
-      const run = driveMachine({ model: [{ fail: 'output_cap' }, TEXT], state: { limits: { outputCeilingTokens: 1_000_000, blockingLimitTokens: 0 }, messages: [PROMPT] }, policies: { fitContext: () => 'fits' } })
+      const run = driveMachine({ model: [{ fail: 'output_cap' }, TEXT], state: { limits: { outputCeilingTokens: 1_000_000, windowRoomTokens: 0 }, messages: [PROMPT] } })
       expect(run.requests.map((r) => r.outputTokenCapOverride)).toEqual([undefined, undefined])
       const last = run.requests.at(-1)!.messages.at(-1) as { message?: { content?: unknown } }
       expect(last.message?.content).toBe(OUTPUT_CAP_CONTINUE_NOTE)
+    })
+  })
+
+  describe('a request whose default output allowance exceeds the room its prompt leaves', () => {
+    it('carries the room instead', () => {
+      const run = driveMachine({ model: [TEXT], state: { limits: { windowRoomTokens: 50_000, defaultOutputTokens: 131_072 }, messages: [PROMPT] } })
+      const sent = run.requests[0]!.outputTokenCapOverride!
+      expect(sent).toBeLessThan(50_000)
+      expect(sent).toBeGreaterThan(49_000)
+    })
+    it('carries no override when the allowance fits', () => {
+      const run = driveMachine({ model: [TEXT], state: { limits: { windowRoomTokens: 1_000_000, defaultOutputTokens: 131_072 }, messages: [PROMPT] } })
+      expect(run.requests[0]!.outputTokenCapOverride).toBeUndefined()
+    })
+    it('lowers a caller cap the same way', () => {
+      const run = driveMachine({ model: [TEXT], state: { limits: { windowRoomTokens: 50_000, defaultOutputTokens: 8_192, outputCapTokens: 64_000 }, messages: [PROMPT] } })
+      expect(run.requests[0]!.outputTokenCapOverride).toBeLessThan(50_000)
     })
   })
 

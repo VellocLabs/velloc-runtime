@@ -11,7 +11,8 @@ import { runnerFor } from './effectRunners'
 import { checkRecorded, guardTransition, consistent } from './turnInvariants'
 import { ambientWithIds, type Ambient } from './ambient'
 import { idReserveFor } from './idReserve'
-import { getBlockingLimitTokens, outputBudgetOf } from './contextWindow'
+import { BLOCKING_LIMIT_BUFFER_TOKENS, contextWindowOf, getBlockingLimitTokens, getDefaultMaxOutputTokensForModel, outputBudgetOf } from './contextWindow'
+import { FALLBACK_MAX_OUTPUT_TOKENS } from './turn/modelRequestFields'
 import { assembleTurnDependencies } from './turn/turnDependencies'
 import {
   mintRow,
@@ -85,6 +86,8 @@ function openState(env: TurnEnvironment): TurnState {
       servingModel: model,
       blockingLimitTokens: getBlockingLimitTokens(model, ctx.options.mainLoopProviderId),
       outputCeilingTokens: outputBudgetOf(model, input.providerId) ?? undefined,
+      windowRoomTokens: contextWindowOf(model, input.providerId) - BLOCKING_LIMIT_BUFFER_TOKENS,
+      defaultOutputTokens: getDefaultMaxOutputTokensForModel(model, input.providerId) ?? FALLBACK_MAX_OUTPUT_TOKENS,
       ...(input.outputTokenCapOverride !== undefined ? { outputCapTokens: input.outputTokenCapOverride } : {}),
     },
     k: 1,
