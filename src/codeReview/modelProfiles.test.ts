@@ -25,8 +25,9 @@ describe('review model identities', () => {
     })
   }
   it('pins gateway spellings to recorded provider listings', () => {
-    // Nebius Token Factory spellings (`deepseek-ai/...`) are not gateway spellings.
-    for (const model of REVIEW_MODEL_IDENTITIES) for (const alias of model.aliases.filter(alias => alias.includes('/') && !alias.startsWith('deepseek-ai/'))) {
+    // Nebius Token Factory spellings are not gateway spellings.
+    const factorySpelling = /^[A-Za-z-]+-ai\/|^MiniMaxAI\//
+    for (const model of REVIEW_MODEL_IDENTITIES) for (const alias of model.aliases.filter(alias => alias.includes('/') && !factorySpelling.test(alias))) {
       const providers = alias.startsWith('z-ai/') ? ['openrouter'] as const : alias.startsWith('zai/') ? ['vercel-ai-gateway'] as const : ['openrouter', 'vercel-ai-gateway'] as const
       for (const provider of providers) expect(gatewayIds[provider], `${provider}: ${alias}`).toContain(alias)
     }
@@ -64,6 +65,14 @@ describe('tier-specific review workflows', () => {
     expect(plan(id, 'medium')).toMatchObject({ recipe: 'team-eight-precise', independentVerification: true, reportLimit: 8 })
     expect(plan(id, 'medium', false)).toMatchObject({ agentMode: 'sequential-fallback', independentVerification: false, fallbackReason: 'agent-unavailable' })
     expect(plan(id, 'xhigh')).toMatchObject({ recipe: 'team-ten', level: 'xhigh' })
+  })
+  it.each(['MiniMax-M3.1-Flash', 'MiniMaxAI/MiniMax-M3.1-Flash'])('gives %s the fast profile: bounded low, a team review from medium', id => {
+    expect(resolveCapabilityProfile(id)).toBe('fast-review')
+    expect(REVIEW_LEVELS.map(level => plan(id, level).recipe)).toEqual(['quick-hunks', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'team-ten'])
+  })
+  it.each(['MiniMax-M3', 'MiniMax-M4-Flash', 'MiniMax-M3.1-Flash-Preview', 'minimax/minimax-m3.1-flash'])('does not guess a tier for %s', id => {
+    expect(resolveReviewModelIdentity(id)).toBeUndefined()
+    expect(resolveCapabilityProfile(id)).toBe('fallback')
   })
   it('keeps user limits and max authorization independent of model tier', () => {
     const result = resolveReviewPolicy({ canonicalModelId: 'gpt-6-luna', source: 'model', arguments: { level: 'max', fix: false, comment: false, maxFindings: 2 }, output: 'terminal', capabilities })

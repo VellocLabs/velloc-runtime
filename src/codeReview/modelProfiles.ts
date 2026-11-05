@@ -1,10 +1,11 @@
 import type { CapabilityProfile } from './contracts'
 
-export const REVIEW_MODEL_MAPPING_REVISION = 3
+export const REVIEW_MODEL_MAPPING_REVISION = 4
 export type ReviewModelTier = 'specialist' | 'flagship' | 'balanced' | 'fast'
 export type ReviewModelIdentity = Readonly<{
   id: string
   family: 'claude' | 'openai' | 'kimi' | 'zhipu' | 'deepseek'
+    | 'minimax'
   tier: ReviewModelTier
   profile: CapabilityProfile
   aliases: readonly string[]
@@ -39,6 +40,7 @@ export const REVIEW_MODEL_IDENTITIES: readonly ReviewModelIdentity[] = Object.fr
   identity('glm-5.3-flash', 'zhipu', 'fast', 'fast-review', ['z-ai/glm-5.3-flash', 'zai/glm-5.3-flash']),
   identity('deepseek-v4-pro', 'deepseek', 'flagship', 'fallback', ['deepseek/deepseek-v4-pro']),
   identity('deepseek-flash', 'deepseek', 'fast', 'fast-review', ['deepseek/deepseek-v4.1-flash', 'deepseek-ai/DeepSeek-V4.1-Flash']),
+  identity('MiniMax-M3.1-Flash', 'minimax', 'fast', 'fast-review', ['MiniMaxAI/MiniMax-M3.1-Flash']),
 ])
 
 const identitiesByAlias = new Map<string, ReviewModelIdentity>()
