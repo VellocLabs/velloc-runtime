@@ -91,7 +91,7 @@ describe('the catalog is the lowest layer', () => {
     // Never a name or tiers: the row's own stay.
     expect(row.availableThinkingTiers).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
     // A filled cap sets the first-request allowance, as a listed one does.
-    expect(row.defaultMaxOutputTokens).toBe(11_000)
+    expect(row.defaultMaxOutputTokens).toBe(22_000)
 
     // A row's own figure wins: 3.7 Plus states its cap, V4 Pro no images.
     setCatalogFigures('qwen', [layer({ 'qwen3.7-plus': { contextWindow: 1_000_000, maxOutputTokens: 64_000 } })])
@@ -152,7 +152,7 @@ describe('the catalog is the lowest layer', () => {
     setCatalogFigures('anthropic', [layer({ 'claude-haiku-4-5': { contextWindow: 200_000, maxOutputTokens: 64_000 } })])
     expect(contextWindowOf('claude-haiku-4-5', 'anthropic')).toBe(200_000)
     expect(outputBudgetOf('claude-haiku-4-5', 'anthropic')).toBe(64_000)
-    expect(getDefaultMaxOutputTokensForModel('claude-haiku-4-5', 'anthropic')).toBe(32_000)
+    expect(getDefaultMaxOutputTokensForModel('claude-haiku-4-5', 'anthropic')).toBe(32_768)
   })
 })
 

@@ -15,10 +15,10 @@ afterAll(resetCatalogFigures)
 
 describe('per-model output-token resolution', () => {
   describe('getDefaultMaxOutputTokensForModel — initial-request reservation', () => {
-    it('returns 32_000 for Claude Haiku 4.5', () => {
+    it('returns 32_768 for Claude Haiku 4.5', () => {
       expect(
         getDefaultMaxOutputTokensForModel('claude-haiku-4-5', 'anthropic'),
-      ).toBe(32_000)
+      ).toBe(32_768)
     })
 
     it('returns 64_000 for Claude Sonnet 5', () => {
