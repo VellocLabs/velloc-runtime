@@ -25,11 +25,8 @@ describe('review model identities', () => {
     })
   }
   it('pins gateway spellings to recorded provider listings', () => {
-    // Nebius Token Factory spells NVIDIA models with a capital `Nemotron`; those are not gateway spellings.
-    const tokenFactory = ['nvidia/Nemotron-3.5-Super-VL', 'nvidia/Nemotron-3_5-Lightning']
-    expect(REVIEW_MODEL_IDENTITIES.flatMap(model => model.aliases).filter(alias => alias.startsWith('nvidia/Nemotron-'))).toEqual(tokenFactory)
-    for (const model of REVIEW_MODEL_IDENTITIES) for (const alias of model.aliases.filter(alias => alias.includes('/') && !tokenFactory.includes(alias))) {
-      const providers = alias.startsWith('z-ai/') || alias.endsWith(':free') ? ['openrouter'] as const : alias.startsWith('zai/') ? ['vercel-ai-gateway'] as const : ['openrouter', 'vercel-ai-gateway'] as const
+    for (const model of REVIEW_MODEL_IDENTITIES) for (const alias of model.aliases.filter(alias => alias.includes('/'))) {
+      const providers = alias.startsWith('z-ai/') ? ['openrouter'] as const : alias.startsWith('zai/') ? ['vercel-ai-gateway'] as const : ['openrouter', 'vercel-ai-gateway'] as const
       for (const provider of providers) expect(gatewayIds[provider], `${provider}: ${alias}`).toContain(alias)
     }
   })
