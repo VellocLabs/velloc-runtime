@@ -21,10 +21,10 @@ describe('per-model output-token resolution', () => {
       ).toBe(32_000)
     })
 
-    it('returns 32_000 for Claude Sonnet 5', () => {
+    it('returns 64_000 for Claude Sonnet 5', () => {
       expect(
         getDefaultMaxOutputTokensForModel('claude-sonnet-5', 'anthropic'),
-      ).toBe(32_000)
+      ).toBe(64_000)
     })
 
     it('returns 64_000 for Claude Fable 5 (Opus-tier default)', () => {
@@ -39,56 +39,55 @@ describe('per-model output-token resolution', () => {
       ).toBe(64_000)
     })
 
-    it('returns 32_000 for Gemini 3.1 Pro', () => {
+    it('returns 32_768 for Gemini 3.1 Pro', () => {
       expect(
         getDefaultMaxOutputTokensForModel('gemini-3.1-pro-preview', 'google'),
-      ).toBe(32_000)
+      ).toBe(32_768)
     })
 
-    it('returns 32_000 for GPT-5.6 family', () => {
+    it('returns 64_000 for GPT-5.6 family', () => {
       expect(
         getDefaultMaxOutputTokensForModel('gpt-6-astra', 'openai'),
-      ).toBe(32_000)
+      ).toBe(64_000)
       expect(
         getDefaultMaxOutputTokensForModel('gpt-5.6-terra', 'openai'),
-      ).toBe(32_000)
+      ).toBe(64_000)
     })
 
-    it('returns 32_000 for GPT-5.6 Luna', () => {
+    it('returns 64_000 for GPT-5.6 Luna', () => {
       // Luna is the OpenAI lineup's `fastModel`, the slot
       // gpt-5.4-mini used to hold.
       expect(
         getDefaultMaxOutputTokensForModel('gpt-5.6-luna', 'openai'),
-      ).toBe(32_000)
+      ).toBe(64_000)
     })
 
     it('GPT-5.4 Mini: back on the OpenAI lineup, still off chatgpt-pro', () => {
       // gpt-5.4-mini left the OpenAI lineup and the chatgpt-pro
       // lineup; it came back to the OpenAI lineup
       // only, as the `gpt-*-mini` family row. Under chatgpt-pro it still
-      // resolves to nothing. Asserted rather than merely dropped, so a
+      // resolves to no row, so it reads the figure of an unknown model. Asserted rather than merely dropped, so a
       // silent re-add cannot go unnoticed — a half-retired model (curated
       // under one provider, not the other) is what left sessions pinned to an
       // id the composer send gate then refused to send.
       expect(
         getDefaultMaxOutputTokensForModel('gpt-5.4-mini', 'chatgpt-pro'),
-      ).toBeUndefined()
+      ).toBe(8_192)
       expect(
         getDefaultMaxOutputTokensForModel('gpt-5.4-mini', 'openai'),
-      ).toBe(32_000)
+      ).toBe(64_000)
     })
 
-    it('returns 64_000 for Kimi K3 (top-tier default, thinking always on)', () => {
+    it('returns 65_536 for Kimi K3 (half its cap, thinking always on)', () => {
       // K3 is the kimi provider's balanced tier and always thinks with
       // `reasoning_effort: max`, so reasoning is billed out of the same
-      // output envelope — it tracks the 64K Opus-tier default rather than
-      // the 32K one. See providers/kimi/config.ts.
-      expect(getDefaultMaxOutputTokensForModel('k3', 'kimi')).toBe(64_000)
+      // output envelope. See providers/kimi/config.ts.
+      expect(getDefaultMaxOutputTokensForModel('k3', 'kimi')).toBe(65_536)
     })
 
-    it('returns 64_000 for the Kimi K3.1 Pro rows (thinking cannot be turned off)', () => {
-      expect(getDefaultMaxOutputTokensForModel('k3.1-pro', 'kimi')).toBe(64_000)
-      expect(getDefaultMaxOutputTokensForModel('k3.1-pro-highspeed', 'kimi')).toBe(64_000)
+    it('returns 65_536 for the Kimi K3.1 Pro rows (thinking cannot be turned off)', () => {
+      expect(getDefaultMaxOutputTokensForModel('k3.1-pro', 'kimi')).toBe(65_536)
+      expect(getDefaultMaxOutputTokensForModel('k3.1-pro-highspeed', 'kimi')).toBe(65_536)
     })
 
     it('leaves the K2.7 Code rows at 32_000 — no published ceiling', () => {
@@ -103,10 +102,10 @@ describe('per-model output-token resolution', () => {
       ).toBe(32_000)
     })
 
-    it('returns undefined for an uncatalogued model so callers can fall back', () => {
+    it('returns the small-window figure for an uncatalogued model', () => {
       expect(
         getDefaultMaxOutputTokensForModel('definitely-not-a-real-model'),
-      ).toBeUndefined()
+      ).toBe(8_192)
     })
 
     it('returns undefined when modelId is undefined', () => {
