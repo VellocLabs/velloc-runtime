@@ -24,7 +24,8 @@ describe('the first-request output allowance', () => {
     expect(listedModelRow('vendor/mid', { contextWindow: 300_000, maxOutputTokens: 100_000 }).defaultMaxOutputTokens).toBe(50_000)
   })
   it('follows the window when a model states no cap', () => {
-    expect(firstRequestOutputTokensForWindow(1_000_000)).toBe(65_536)
+    expect(firstRequestOutputTokensForWindow(1_000_000)).toBe(128_000)
+    expect(firstRequestOutputTokensForWindow(900_001)).toBe(128_000)
     expect(firstRequestOutputTokensForWindow(900_000)).toBe(32_768)
     expect(firstRequestOutputTokensForWindow(272_000)).toBe(32_768)
     expect(firstRequestOutputTokensForWindow(200_000)).toBe(8_192)
@@ -49,7 +50,7 @@ describe('the allowance a model resolves to', () => {
   it.each([
     ['stated', 20_000],
     ['capped', 50_000],
-    ['wide', 65_536],
+    ['wide', 128_000],
     ['mid', 32_768],
     ['small', 8_192],
   ])('%s -> %i', (model, expected) => {
