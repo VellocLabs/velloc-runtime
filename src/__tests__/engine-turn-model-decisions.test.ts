@@ -181,6 +181,17 @@ describe('decideRetry', () => {
     })
   })
 
+  it('resends a reply the provider could not parse once, then stops', () => {
+    const malformed = classifyModelFailure(new Error('provider_error: HTTP 200: mismatched closing tag: expected item, got keepId'))
+    expect(decideRetry({ ...base, failure: malformed })).toMatchObject({ retry: true })
+    expect(decideRetry({ ...base, attempt: 2, failure: malformed })).toEqual({ retry: false })
+  })
+
+  it('does not resend a rejected request that only mentions a tag', () => {
+    const rejected = classifyModelFailure(new Error('HTTP 400: invalid request: unexpected tag in schema'))
+    expect(decideRetry({ ...base, failure: rejected })).toEqual({ retry: false })
+  })
+
   it('honours the server Retry-After', () => {
     expect(decideRetry({ ...base, failure: rateLimit(3000) })).toMatchObject({
       retry: true,

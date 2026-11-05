@@ -57,6 +57,8 @@ export type ProviderConnectivityIssue = {
    */
   summaryKey: MessageKey
   retryable: boolean
+  /** Retries this verdict allows, when fewer than the ladder's own limit. */
+  retryLimit?: number
   settingsRecommended: boolean
   detail: string
   status?: number
@@ -133,6 +135,8 @@ export function isAbortLikeError(value: unknown): boolean {
 
 export const PROVIDER_FAILURE_LEAD = 'API Error'
 export const PROVIDER_CONNECTIVITY_MAX_RETRIES = 10
+/** Resends of a request whose reply the provider could not parse. */
+export const MALFORMED_REPLY_RETRY_LIMIT = 1
 export const PROVIDER_CONNECTIVITY_MAX_ATTEMPTS =
   PROVIDER_CONNECTIVITY_MAX_RETRIES + 1
 export const PROVIDER_CONNECTIVITY_BASE_RETRY_DELAY_MS = 500
@@ -441,6 +445,27 @@ export function classifyProviderConnectivityIssue(
       summaryKey: 'providerIssue.credentials.summary',
       retryable: true,
       settingsRecommended: true,
+      detail,
+      status,
+      retryAfterMs,
+    }
+  }
+
+  // The provider could not read the reply its own model wrote (a tool call
+  // with unbalanced tags). The request was sound and the next sample usually
+  // parses, so it is resent once; a model that keeps writing it fails the same way.
+  if (
+    (status === undefined || status === 200) &&
+    /\b(mismatched|unclosed|unexpected|unbalanced) (closing |opening |end |start )?tag\b/.test(text)
+  ) {
+    return {
+      kind: 'service',
+      error: 'server_error',
+      titleKey: 'providerIssue.serviceUnavailable.title',
+      summaryKey: 'providerIssue.serviceUnavailable.summaryUpstream',
+      retryable: true,
+      retryLimit: MALFORMED_REPLY_RETRY_LIMIT,
+      settingsRecommended: false,
       detail,
       status,
       retryAfterMs,

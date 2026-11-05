@@ -125,6 +125,7 @@ export function decideRetry(input: RetryInput): RetryDecision {
     return { retry: false }
   }
   if (attempt >= input.maxAttempts || input.cancelled) return { retry: false }
+  if (failure.issue.retryLimit !== undefined && attempt > failure.issue.retryLimit) return { retry: false }
   const delayMs = getProviderConnectivityRetryDelayMs(
     attempt,
     failure.message,
