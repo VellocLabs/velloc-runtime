@@ -25,6 +25,7 @@ import {
   getProviderDefinition,
   isDisabledModProviderId,
   isModProviderScanComplete,
+  onProviderRegistryChanged,
 } from '../../config/nexusModelConfig/providers'
 import {
   listedFiguresOf,
@@ -318,11 +319,23 @@ function applyListing(providerId: string, incoming: Listing): void {
   // custom-provider overlay: NEXUS_MODEL_CONFIG is read by reference
   // everywhere. A built-in keeps its curated rows: a listed version of one
   // of its families reads that family's row (familyRows.ts), nothing is added.
-  const entry = catalogEntry(providerId)
-  if (entry && isRuntimeOnlyProvider(providerId)) {
-    entry.models = usableModels(providerId).map(toConfiguredModel)
-  }
+  if (!isRuntimeOnlyProvider(providerId)) return
+  // The catalog's entry, else the definition's own (a provider mod's, before
+  // the catalog takes it in).
+  const entry = catalogEntry(providerId) ?? getProviderDefinition(providerId)?.config
+  if (entry) entry.models = usableModels(providerId).map(toConfiguredModel)
 }
+
+// A provider registered again carries a new, empty entry: the listing held
+// here fills it, so its models keep their figures until the next fetch.
+onProviderRegistryChanged(() => {
+  for (const providerId of listings.keys()) {
+    const entry = getProviderDefinition(providerId)?.config
+    if (entry && entry.models.length === 0 && isRuntimeOnlyProvider(providerId)) {
+      entry.models = usableModels(providerId).map(toConfiguredModel)
+    }
+  }
+})
 
 async function loadCachedListing(providerId: string): Promise<void> {
   if (cacheLoaded.has(providerId) || !host) return
