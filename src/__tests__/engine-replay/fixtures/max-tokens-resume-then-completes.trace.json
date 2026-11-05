@@ -84,7 +84,7 @@
       "userContext": "<same as previous request>",
       "systemContext": "<same as previous request>",
       "model": "inherit",
-      "maxOutputTokens": 8192,
+      "maxOutputTokens": 64000,
       "tools": "<same as previous request>",
       "toolUseContext": {
         "permissionMode": "default",

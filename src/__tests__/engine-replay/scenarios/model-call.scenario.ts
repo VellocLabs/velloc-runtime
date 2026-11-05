@@ -21,12 +21,8 @@ export const scenarios: Scenario[] = [
     name: 'max-tokens-escalate-then-three-resumes-then-terminal',
     async run() {
       const w = engineWorld({
-        // Known quirk, kept: each resume drops the raised cap, so the next cut
-        // escalates again before the next resume.
-        replies: [
-          cut('first'), cut('escalated'), cut('resume-1'), cut('re-escalated-1'),
-          cut('resume-2'), cut('re-escalated-2'), cut('resume-3'), cut('re-escalated-3'),
-        ],
+        // Each resume keeps the raised cap, so a cut after it resumes again.
+        replies: [cut('first'), cut('escalated'), cut('resume-1'), cut('resume-2'), cut('resume-3')],
       })
       await w.submit('write a very long report')
       return w.finish()

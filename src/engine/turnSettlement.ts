@@ -91,7 +91,8 @@ export function onModelAnswer(
       patchState(d, {
         messages: [...state.messages, ...replies, outputCapNote(d)],
         outputCapRetries: state.outputCapRetries + 1,
-        outputTokenCapOverride: undefined,
+        // The continuation keeps the raised allowance; the base one was already too small.
+        outputTokenCapOverride: state.outputTokenCapOverride,
         lastContinuation: { reason: 'max_output_tokens_recovery' },
       })
       openRequest(d, policies)

@@ -380,6 +380,17 @@ describe('turn decisions', () => {
     })
   })
 
+  describe('a reply cut again after its allowance was raised', () => {
+    it('continues under the raised allowance, not the base one', () => {
+      const run = driveMachine({ model: [{ fail: 'output_cap' }, { fail: 'output_cap' }, { fail: 'output_cap' }, TEXT], state: { limits: { outputCeilingTokens: 32_768 }, messages: [PROMPT] } })
+      expect(run.requests.map((r) => r.outputTokenCapOverride)).toEqual([undefined, 32_768, 32_768, 32_768])
+    })
+    it('returns to the base allowance on the next step', () => {
+      const run = driveMachine({ model: [{ fail: 'output_cap' }, toolStep('a'), TEXT], tools: { Read: { text: 'ok' } }, state: { limits: { outputCeilingTokens: 32_768 }, messages: [PROMPT] } })
+      expect(run.requests.map((r) => r.outputTokenCapOverride)).toEqual([undefined, 32_768, undefined])
+    })
+  })
+
   describe('a request whose default output allowance exceeds the room its prompt leaves', () => {
     it('carries the room instead', () => {
       const run = driveMachine({ model: [TEXT], state: { limits: { windowRoomTokens: 50_000, defaultOutputTokens: 131_072 }, messages: [PROMPT] } })

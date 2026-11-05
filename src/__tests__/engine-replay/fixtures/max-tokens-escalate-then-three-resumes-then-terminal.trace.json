@@ -84,7 +84,7 @@
       "userContext": "<same as previous request>",
       "systemContext": "<same as previous request>",
       "model": "inherit",
-      "maxOutputTokens": 8192,
+      "maxOutputTokens": 64000,
       "tools": "<same as previous request>",
       "toolUseContext": {
         "permissionMode": "default",
@@ -110,6 +110,22 @@
             {
               "type": "text",
               "text": "escalated text…"
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": {
+            "digest": "fedaa0e467f5609272dc3fba3d273c425225af604e431a8569063d5db9c71344",
+            "chars": 212
+          }
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "resume-1 text…"
             }
           ]
         },
@@ -166,48 +182,7 @@
           "content": [
             {
               "type": "text",
-              "text": "re-escalated-1 text…"
-            }
-          ]
-        },
-        {
-          "role": "user",
-          "content": {
-            "digest": "fedaa0e467f5609272dc3fba3d273c425225af604e431a8569063d5db9c71344",
-            "chars": 212
-          }
-        }
-      ],
-      "systemPrompt": "<same as previous request>",
-      "userContext": "<same as previous request>",
-      "systemContext": "<same as previous request>",
-      "model": "inherit",
-      "maxOutputTokens": 8192,
-      "tools": "<same as previous request>",
-      "toolUseContext": {
-        "permissionMode": "default",
-        "querySource": "sdk",
-        "availableSkills": []
-      },
-      "requestContext": {
-        "sessionId": "session-replay",
-        "purpose": "turn",
-        "querySource": "sdk"
-      }
-    },
-    {
-      "action": "streamStart",
-      "messages": [
-        {
-          "role": "user",
-          "content": "write a very long report"
-        },
-        {
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "escalated text…"
+              "text": "resume-1 text…"
             }
           ]
         },
@@ -223,153 +198,7 @@
           "content": [
             {
               "type": "text",
-              "text": "re-escalated-1 text…"
-            }
-          ]
-        },
-        {
-          "role": "user",
-          "content": {
-            "digest": "fedaa0e467f5609272dc3fba3d273c425225af604e431a8569063d5db9c71344",
-            "chars": 212
-          }
-        }
-      ],
-      "systemPrompt": "<same as previous request>",
-      "userContext": "<same as previous request>",
-      "systemContext": "<same as previous request>",
-      "model": "inherit",
-      "maxOutputTokens": 64000,
-      "tools": "<same as previous request>",
-      "toolUseContext": {
-        "permissionMode": "default",
-        "querySource": "sdk",
-        "availableSkills": []
-      },
-      "requestContext": {
-        "sessionId": "session-replay",
-        "purpose": "turn",
-        "querySource": "sdk"
-      }
-    },
-    {
-      "action": "streamStart",
-      "messages": [
-        {
-          "role": "user",
-          "content": "write a very long report"
-        },
-        {
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "escalated text…"
-            }
-          ]
-        },
-        {
-          "role": "user",
-          "content": {
-            "digest": "fedaa0e467f5609272dc3fba3d273c425225af604e431a8569063d5db9c71344",
-            "chars": 212
-          }
-        },
-        {
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "re-escalated-1 text…"
-            }
-          ]
-        },
-        {
-          "role": "user",
-          "content": {
-            "digest": "fedaa0e467f5609272dc3fba3d273c425225af604e431a8569063d5db9c71344",
-            "chars": 212
-          }
-        },
-        {
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "re-escalated-2 text…"
-            }
-          ]
-        },
-        {
-          "role": "user",
-          "content": {
-            "digest": "fedaa0e467f5609272dc3fba3d273c425225af604e431a8569063d5db9c71344",
-            "chars": 212
-          }
-        }
-      ],
-      "systemPrompt": "<same as previous request>",
-      "userContext": "<same as previous request>",
-      "systemContext": "<same as previous request>",
-      "model": "inherit",
-      "maxOutputTokens": 8192,
-      "tools": "<same as previous request>",
-      "toolUseContext": {
-        "permissionMode": "default",
-        "querySource": "sdk",
-        "availableSkills": []
-      },
-      "requestContext": {
-        "sessionId": "session-replay",
-        "purpose": "turn",
-        "querySource": "sdk"
-      }
-    },
-    {
-      "action": "streamStart",
-      "messages": [
-        {
-          "role": "user",
-          "content": "write a very long report"
-        },
-        {
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "escalated text…"
-            }
-          ]
-        },
-        {
-          "role": "user",
-          "content": {
-            "digest": "fedaa0e467f5609272dc3fba3d273c425225af604e431a8569063d5db9c71344",
-            "chars": 212
-          }
-        },
-        {
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "re-escalated-1 text…"
-            }
-          ]
-        },
-        {
-          "role": "user",
-          "content": {
-            "digest": "fedaa0e467f5609272dc3fba3d273c425225af604e431a8569063d5db9c71344",
-            "chars": 212
-          }
-        },
-        {
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "re-escalated-2 text…"
+              "text": "resume-2 text…"
             }
           ]
         },
@@ -417,37 +246,16 @@
     },
     {
       "request": 4,
-      "reply": "re-escalated-1",
-      "querySource": "sdk"
-    },
-    {
-      "request": 5,
       "reply": "resume-2",
       "querySource": "sdk"
     },
     {
-      "request": 6,
-      "reply": "re-escalated-2",
-      "querySource": "sdk"
-    },
-    {
-      "request": 7,
+      "request": 5,
       "reply": "resume-3",
-      "querySource": "sdk"
-    },
-    {
-      "request": 8,
-      "reply": "re-escalated-3",
       "querySource": "sdk"
     }
   ],
   "transport": [
-    "streamStart",
-    "streamRead",
-    "streamStart",
-    "streamRead",
-    "streamStart",
-    "streamRead",
     "streamStart",
     "streamRead",
     "streamStart",
@@ -545,7 +353,7 @@
           "content": [
             {
               "type": "text",
-              "text": "re-escalated-1 text…"
+              "text": "resume-2 text…"
             }
           ],
           "stop_reason": "max_tokens",
@@ -564,44 +372,6 @@
           "content": [
             {
               "type": "text",
-              "text": "resume-2 text…"
-            }
-          ],
-          "stop_reason": "max_tokens",
-          "apiError": "max_output_tokens"
-        }
-      ],
-      "total": 6
-    },
-    {
-      "op": "record",
-      "added": [
-        {
-          "type": "assistant",
-          "uuid": "<id:6>",
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "re-escalated-2 text…"
-            }
-          ],
-          "stop_reason": "max_tokens",
-          "apiError": "max_output_tokens"
-        }
-      ],
-      "total": 7
-    },
-    {
-      "op": "record",
-      "added": [
-        {
-          "type": "assistant",
-          "uuid": "<id:7>",
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
               "text": "resume-3 text…"
             }
           ],
@@ -609,26 +379,7 @@
           "apiError": "max_output_tokens"
         }
       ],
-      "total": 8
-    },
-    {
-      "op": "record",
-      "added": [
-        {
-          "type": "assistant",
-          "uuid": "<id:8>",
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "re-escalated-3 text…"
-            }
-          ],
-          "stop_reason": "max_tokens",
-          "apiError": "max_output_tokens"
-        }
-      ],
-      "total": 9
+      "total": 6
     },
     {
       "op": "terminal",
@@ -750,7 +501,7 @@
       "content": [
         {
           "type": "text",
-          "text": "re-escalated-1 text…"
+          "text": "resume-2 text…"
         }
       ],
       "stop_reason": "max_tokens",
@@ -778,91 +529,7 @@
       "content": [
         {
           "type": "text",
-          "text": "resume-2 text…"
-        }
-      ],
-      "stop_reason": "max_tokens",
-      "apiError": "max_output_tokens"
-    },
-    {
-      "type": "stream_request_start"
-    },
-    {
-      "type": "stream_event",
-      "event": {
-        "type": "message_start"
-      }
-    },
-    {
-      "type": "stream_event",
-      "event": {
-        "type": "message_delta"
-      }
-    },
-    {
-      "type": "assistant",
-      "uuid": "<id:6>",
-      "role": "assistant",
-      "content": [
-        {
-          "type": "text",
-          "text": "re-escalated-2 text…"
-        }
-      ],
-      "stop_reason": "max_tokens",
-      "apiError": "max_output_tokens"
-    },
-    {
-      "type": "stream_request_start"
-    },
-    {
-      "type": "stream_event",
-      "event": {
-        "type": "message_start"
-      }
-    },
-    {
-      "type": "stream_event",
-      "event": {
-        "type": "message_delta"
-      }
-    },
-    {
-      "type": "assistant",
-      "uuid": "<id:7>",
-      "role": "assistant",
-      "content": [
-        {
-          "type": "text",
           "text": "resume-3 text…"
-        }
-      ],
-      "stop_reason": "max_tokens",
-      "apiError": "max_output_tokens"
-    },
-    {
-      "type": "stream_request_start"
-    },
-    {
-      "type": "stream_event",
-      "event": {
-        "type": "message_start"
-      }
-    },
-    {
-      "type": "stream_event",
-      "event": {
-        "type": "message_delta"
-      }
-    },
-    {
-      "type": "assistant",
-      "uuid": "<id:8>",
-      "role": "assistant",
-      "content": [
-        {
-          "type": "text",
-          "text": "re-escalated-3 text…"
         }
       ],
       "stop_reason": "max_tokens",
@@ -871,7 +538,7 @@
     {
       "type": "result",
       "subtype": "error_max_output_tokens",
-      "uuid": "<id:9>",
+      "uuid": "<id:6>",
       "is_error": true,
       "terminal": {
         "reason": "max_output_tokens",
