@@ -514,11 +514,12 @@ export class ReviewReportStore {
       this.event(state, 'candidate-verified')
     })
   }
-  async noteWorker(runId: string, event: 'started' | 'finished', unavailableAngles: string[] = []): Promise<void> {
+  /** A failed worker leaves its angles unavailable; a later worker that covers one makes it available again. */
+  async noteWorker(runId: string, event: 'started' | 'finished', unavailableAngles: string[] = [], coveredAngles: string[] = []): Promise<void> {
     return this.mutate(runId, state => {
       if (state.run.progress.status !== 'active') return fail('run-not-active')
       if (event === 'started') state.run.progress.spawnedTasks++
-      state.run.progress.unavailableAngles = unique([...state.run.progress.unavailableAngles, ...unavailableAngles])
+      state.run.progress.unavailableAngles = unique([...state.run.progress.unavailableAngles, ...unavailableAngles]).filter(angle => !coveredAngles.includes(angle))
       this.event(state, `worker-${event}`)
     })
   }

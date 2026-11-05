@@ -1143,6 +1143,27 @@ describe('worker hand-in through ReviewSubmit', () => {
     expect(snapshot.diagnostics).toHaveLength(1)
     expect(snapshot.run.progress.status).toBe('finished')
   })
+  it('finishes complete when a relaunched finder covers the angles a failed one left', async () => {
+    let finders = 0, failure = ''
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) {
+        if (finders++ === 0) return { text: '', interrupted: true, end: { kind: 'step-limit' as const } }
+        await submit(request, { candidates: [findingFor(request, 'lines', 'Unguarded read')], coverage: { angles: TEN, limitations: [] } })
+        return done
+      }
+      if (request.blocks.some(block => block.source === 'candidate')) return verdict('plausible')
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      failure = await invoke(request, 'Agent', { role: 'finder', angles: TEN }).then(() => '', (error: Error) => error.message)
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      await invoke(request, 'Agent', { role: 'verifier' })
+      return finishCoordinator(f, request)
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(failure).toBe('review-step-limit')
+    expect(snapshot.run.progress.unavailableAngles).toEqual([])
+    expect(snapshot.coverage.complete).toBe(true)
+    expect(snapshot.run.progress.status).toBe('finished')
+  })
   it('counts a worker that handed in as whole when its step limit stops it afterwards', async () => {
     const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
       if (request.blocks.some(block => block.source === 'assigned-angles')) {

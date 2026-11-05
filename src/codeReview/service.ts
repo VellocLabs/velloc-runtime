@@ -608,7 +608,7 @@ export class LocalReviewService {
               else live.swept = true
             }
           }
-          await this.store.noteWorker(runId, 'finished'); this.changed()
+          await this.store.noteWorker(runId, 'finished', [], role === 'finder' && whole ? value.coverage?.angles ?? [] : []); this.changed()
           return { taskId, result: value, newIds, ...(rejectedCandidates.length ? { rejectedCandidates } : {}) }
         } catch (error) { await this.store.noteWorker(runId, 'finished', angles as string[]); this.changed(); throw error }
       })
