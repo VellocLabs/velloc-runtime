@@ -1099,6 +1099,29 @@ describe('worker hand-in through ReviewSubmit', () => {
     expect(snapshot.assessments.at(-1)).toMatchObject({ disposition: 'proven' })
     expect(snapshot.run.progress.status).toBe('finished')
   })
+  it('does not close a verifier hand-in on support that is not an array', async () => {
+    const calls: Array<Record<string, any>> = []
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Unguarded read')], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+      if (request.blocks.some(block => block.source === 'candidate')) {
+        const answer = { disposition: 'proven', reason: 'The read has no guard.', missingEvidence: [] }
+        calls.push(await submit(request, { ...answer, support: [{ source: 'never-read', quote: 'x', relevance: 'Invented.' }] }))
+        calls.push(await submit(request, { ...answer, support: '[{"path": "src/a.ts", "quote": "cut off' }))
+        calls.push(await submit(request, { ...answer, support: [{ path: 'src/a.ts', quote: NULL_DEREF, relevance: 'The read.' }] }))
+        return done
+      }
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      await invoke(request, 'Agent', { role: 'verifier' })
+      return finishCoordinator(f, request)
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(calls[0]).toMatchObject({ accepted: false, rejected: [{ code: 'unknown-evidence-source' }] })
+    expect(calls[1]).toEqual({ accepted: false, refused: { code: 'unstructured-worker-answer', hint: expect.stringContaining('support') }, next: expect.stringContaining('once more') })
+    expect(calls[2]).toEqual({ accepted: true })
+    expect(snapshot.assessments.at(-1)).toMatchObject({ disposition: 'proven' })
+    expect(snapshot.run.progress.status).toBe('finished')
+  })
   it.each(['tool', 'text'] as const)('keeps a final verdict on the support the host could match (%s)', async channel => {
     const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
       if (request.blocks.some(block => block.source === 'assigned-angles')) return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Unguarded read')], coverage: { angles: TEN, limitations: [] } }), interrupted: false }

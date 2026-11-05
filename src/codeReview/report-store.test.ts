@@ -1092,6 +1092,15 @@ describe('explicit semantic duplicate merges', () => {
     await invoke(merge(h.ids[0], [h.ids[1]]), 'tool-merge')
     expect((await h.store.getSnapshot(h.id)).retainedIds).toEqual([h.ids[0]])
   })
+  it('takes a coverage statement sent beside the operation, or with the operation repeated inside it', async () => {
+    const h = await pair()
+    const tool = createReviewTools({ runId: h.id, store: h.store, signal: new AbortController().signal, read: async () => ({}), changed: () => {}, allowOutput: true }).find(tool => tool.name === 'ReviewLedger')!
+    const invoke = (input: Record<string, unknown>, id: string) => tool.call(input, undefined as never, undefined as never, { type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'ReviewLedger', input }] } } as unknown as Message)
+    expect((await invoke({ operation: 'coverage', angles: [], limitations: ['Sent beside the operation.'], complete: false }, 'flat')).data).toMatchObject({ coverageRecorded: true })
+    expect((await invoke({ operation: 'coverage', coverage: { operation: 'coverage', angles: [], limitations: ['Operation repeated inside.'], complete: false } }, 'nested')).data).toMatchObject({ coverageRecorded: true })
+    expect((await h.store.getSnapshot(h.id)).coverage.limitations).toEqual(expect.arrayContaining(['Sent beside the operation.', 'Operation repeated inside.']))
+    await expect(invoke({ operation: 'coverage' }, 'empty')).rejects.toThrow('missing-coverage')
+  })
   it('names the field an operation is missing, says a coverage write was recorded, and asks a finder for its angles', async () => {
     const h = await pair()
     const launch = vi.fn(async () => ({}))

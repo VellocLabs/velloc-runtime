@@ -63,13 +63,23 @@ const REFUSAL_HINTS: Record<string, string> = {
   'invalid-object': 'location, statement, assessment and every support item are objects',
   'unknown-field': 'remove fields the schema does not list',
   'worker-candidate-limit': 'more candidates than this task allows; keep the strongest',
-  'unstructured-worker-answer': 'candidates must be a JSON array of candidate objects and coverage a JSON object; do not send either as text',
+  'unstructured-worker-answer': 'candidates and support must each be a JSON array and coverage a JSON object; do not send them as text',
   'worker-angle-candidate-limit': 'too many candidates for one angle; keep the strongest of that angle',
   'worker-angle-not-assigned': 'every candidate angle and every coverage angle must be one of your assigned angles',
 }
 /** A refused item as a worker reads it: its code and how to correct it. */
 export const withRefusalHint = <T extends { code: string }>(item: T): T & { hint?: string } => ({ ...item, ...(REFUSAL_HINTS[item.code] ? { hint: REFUSAL_HINTS[item.code] } : {}) })
 
+/** A coverage call as the ledger takes it: the statement under `coverage`, also when its fields came beside `operation` or `operation` was repeated inside it. */
+function coverageCall(input: Record<string, unknown>): Record<string, unknown> {
+  const { coverage, angles, limitations, complete, ...rest } = input
+  if (coverage && typeof coverage === 'object' && !Array.isArray(coverage)) {
+    const { operation: _operation, ...statement } = coverage as Record<string, unknown>
+    return { ...rest, coverage: statement }
+  }
+  if (coverage !== undefined || (angles === undefined && limitations === undefined && complete === undefined)) return input
+  return { ...rest, coverage: { ...(angles !== undefined ? { angles } : {}), ...(limitations !== undefined ? { limitations } : {}), ...(complete !== undefined ? { complete } : {}) } }
+}
 export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] {
   const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[], invoke: (input: Record<string, unknown>, id: string, row: Message) => Promise<unknown>) => declareTool({
     name, description: async () => description,
@@ -103,7 +113,8 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
       operation: { type: 'string', enum: ['append-candidates', 'assess', 'coverage', 'merge-duplicates'] }, candidates,
       groups: { type: 'array', minItems: 1, maxItems: 32, items: shape({ keepId: text, duplicateIds: { ...stringList, minItems: 1, maxItems: 32, uniqueItems: true }, reason: text, support: { ...REVIEW_SUPPORT_SCHEMA, minItems: 1, maxItems: 128 } }) },
       assessments: { type: 'array', maxItems: 32, items: shape({ candidateId: text, ...REVIEW_ASSESSMENT_SCHEMA.properties, support: REVIEW_SUPPORT_SCHEMA }) }, coverage: REVIEW_COVERAGE_SCHEMA,
-    }, ['operation'], (input, id) => {
+    }, ['operation'], (called, id) => {
+      const input = called.operation === 'coverage' ? coverageCall(called) : called
       const field = LEDGER_FIELDS[String(input.operation)]
       if (field && input[field] === undefined) throw new Error(`missing-${field}: operation "${String(input.operation)}" takes "${field}" in the same call`)
       if (bindings.independentAssessments && input.operation === 'assess') throw new Error('independent-verifier-required')

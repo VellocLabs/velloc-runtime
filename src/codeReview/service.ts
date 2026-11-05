@@ -582,7 +582,10 @@ export class LocalReviewService {
             } catch { /* stays text, and is refused as text */ }
           }
           let refused: Refusal[]
-          try { refused = await record(input, final) }
+          try {
+            if (role === 'verifier' && !Array.isArray(input.support)) throw new ReviewGatewayError('unstructured-worker-answer')
+            refused = await record(input, final)
+          }
           catch (error) {
             // A hand-in refused as a whole recorded nothing, so it does not use up the correction: it is named with
             // a hint and may be sent again. The third such refusal closes the hand-in.
