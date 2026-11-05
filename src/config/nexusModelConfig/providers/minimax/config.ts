@@ -42,7 +42,7 @@ export const MINIMAX_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       // Current-generation flagship/balanced tier — no TodoWrite (see
       // `todoTools` in ../types.ts).
       todoTools: false,
-      defaultMaxOutputTokens: 8_192,
+      defaultMaxOutputTokens: 16_384,
       maxOutputTokens: 16_384,
       versions: {
         // The M2.x line: 204,800 tokens, text + tool calls only — see the
@@ -62,7 +62,7 @@ export const MINIMAX_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       // Current-generation flagship/balanced tier — no TodoWrite (see
       // `todoTools` in ../types.ts).
       todoTools: false,
-      defaultMaxOutputTokens: 8_192,
+      defaultMaxOutputTokens: 16_384,
       maxOutputTokens: 16_384,
       supportsImageInput: false,
       versions: {

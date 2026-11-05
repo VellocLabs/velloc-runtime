@@ -8,16 +8,15 @@ describe('the first-request output allowance', () => {
   it('is half the output cap', () => {
     expect(firstRequestOutputTokens(128_000)).toBe(64_000)
     expect(firstRequestOutputTokens(65_536)).toBe(32_768)
-    expect(firstRequestOutputTokens(16_384)).toBe(8_192)
   })
   it('is at most 131072', () => {
     expect(firstRequestOutputTokens(393_216)).toBe(131_072)
     expect(firstRequestOutputTokens(1_048_576)).toBe(131_072)
   })
-  it('is at least 4096, and never above the cap', () => {
-    expect(firstRequestOutputTokens(8_192)).toBe(4_096)
-    expect(firstRequestOutputTokens(6_000)).toBe(4_096)
-    expect(firstRequestOutputTokens(4_096)).toBe(4_096)
+  it('is at least 32768, and never above the cap', () => {
+    expect(firstRequestOutputTokens(50_000)).toBe(32_768)
+    expect(firstRequestOutputTokens(32_768)).toBe(32_768)
+    expect(firstRequestOutputTokens(16_384)).toBe(16_384)
     expect(firstRequestOutputTokens(1_024)).toBe(1_024)
   })
   it('is what a listed row carries', () => {

@@ -374,7 +374,7 @@ describe('resolveFamilyRow — versions[<v>] > the listing > the row', () => {
   it('the first-request allowance follows a listed cap', () => {
     expect(resolve('claude-fable-5-2', { maxOutputTokens: 16_000 })).toMatchObject({
       maxOutputTokens: 16_000,
-      defaultMaxOutputTokens: 8_000,
+      defaultMaxOutputTokens: 16_000,
     })
     expect(resolve('claude-fable-5-2', { maxOutputTokens: 256_000 })).toMatchObject({
       maxOutputTokens: 256_000,

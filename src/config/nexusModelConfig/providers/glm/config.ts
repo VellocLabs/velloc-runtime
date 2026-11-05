@@ -118,7 +118,7 @@ export const GLM_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       name: 'GLM-4 Air',
       minVersion: '4',
       contextWindow: 131_072,
-      defaultMaxOutputTokens: 4_096,
+      defaultMaxOutputTokens: 8_192,
       maxOutputTokens: 8_192,
       supportsImageInput: false,
     },

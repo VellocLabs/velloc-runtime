@@ -1,11 +1,12 @@
 /** The bounds of a first-request output allowance derived from a model's output cap. */
 export const FIRST_REQUEST_OUTPUT_CEILING = 131_072
-export const FIRST_REQUEST_OUTPUT_FLOOR = 4_096
+export const FIRST_REQUEST_OUTPUT_FLOOR = 32_768
 
 /**
  * The output allowance a first request carries for a model whose cap is
  * `maxOutputTokens`: half the cap, at most the ceiling, at least the floor,
- * never above the cap. Truncation recovery raises it toward the cap.
+ * never above the cap — a cap at or under the floor is sent whole, since
+ * halving it would cut replies the model is able to finish.
  */
 export function firstRequestOutputTokens(maxOutputTokens: number): number {
   const half = Math.floor(maxOutputTokens / 2)
