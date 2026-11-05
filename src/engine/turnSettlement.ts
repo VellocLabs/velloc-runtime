@@ -27,10 +27,22 @@ import {
 } from './turnRows'
 import { emit, finish, idle, openDraft, patchState, request, seal, type Draft } from './turnStep'
 import { openRequest } from './turnRequest'
+import { estimateTranscriptTokens } from './tokenCounts'
 import { runToolsFor } from './turnContinuation'
 
 /** Used when the model's catalog entry names no output ceiling. */
 export const FALLBACK_OUTPUT_CEILING = 64_000
+
+const usageOf = (reply: Message | undefined): Record<string, unknown> | undefined =>
+  (reply as { message?: { usage?: Record<string, unknown> } } | undefined)?.message?.usage
+const count = (value: unknown): number => (typeof value === 'number' && value > 0 ? value : 0)
+/** The prompt a cut reply answered, in tokens: its reported input, or an estimate of the transcript. */
+function promptTokensOf(reply: Message | undefined, messages: readonly Message[]): number {
+  const usage = usageOf(reply)
+  const reported = count(usage?.input_tokens) + count(usage?.cache_read_input_tokens) + count(usage?.cache_creation_input_tokens)
+  return reported || estimateTranscriptTokens(messages as Message[])
+}
+const outputTokensOf = (reply: Message | undefined): number => count(usageOf(reply)?.output_tokens)
 
 function withoutDigest(d: Draft): void {
   patchState(d, { background: d.state.background.filter((b) => b.kind !== 'toolDigest') })
@@ -50,17 +62,27 @@ export function onModelAnswer(
   const failure = reported ?? replyFailure(last)
   if (failure === 'aborted') return settleCancellation(d, 'user', replies)
   if (failure === 'output_cap') {
-    const choice = policies.recoverOutputCap({
+    let choice = policies.recoverOutputCap({
       outputCapRetries: state.outputCapRetries,
       // A turn its caller capped is never escalated past that cap.
       outputTokenCapOverride: state.outputTokenCapOverride ?? state.limits.outputCapTokens,
     })
+    // The raised allowance has to fit the window beside the prompt: a catalog
+    // may list an output ceiling as large as the whole window.
+    const ceiling = state.limits.outputCeilingTokens ?? FALLBACK_OUTPUT_CEILING
+    const raised = state.limits.blockingLimitTokens === undefined
+      ? ceiling
+      : Math.min(ceiling, state.limits.blockingLimitTokens - promptTokensOf(last, state.messages))
+    // Raising gains nothing when the prompt leaves no more room than the cut reply used.
+    if (choice === 'escalate' && raised <= outputTokensOf(last)) {
+      choice = policies.recoverOutputCap({ outputCapRetries: state.outputCapRetries, outputTokenCapOverride: raised })
+    }
     if (choice === 'escalate') {
-      // Same input again with the model's full output allowance; the cut
-      // reply is dropped.
+      // Same input again with the raised output allowance; the cut reply is
+      // dropped.
       withoutDigest(d)
       patchState(d, {
-        outputTokenCapOverride: state.limits.outputCeilingTokens ?? FALLBACK_OUTPUT_CEILING,
+        outputTokenCapOverride: raised,
         lastContinuation: { reason: 'max_output_tokens_escalate' },
       })
       openRequest(d, policies)

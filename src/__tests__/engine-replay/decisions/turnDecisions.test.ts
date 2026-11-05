@@ -365,6 +365,21 @@ describe('turn decisions', () => {
     })
   })
 
+  describe('a cut reply on a model whose listed output ceiling is its whole window', () => {
+    it('is retried with an allowance that leaves room for the prompt', () => {
+      const run = driveMachine({ model: [{ fail: 'output_cap' }, TEXT], state: { limits: { outputCeilingTokens: 1_000_000, blockingLimitTokens: 100_000 }, messages: [PROMPT] } })
+      const raised = run.requests[1]!.outputTokenCapOverride!
+      expect(raised).toBeLessThan(100_000)
+      expect(raised).toBeGreaterThan(90_000)
+    })
+    it('is resumed instead when the prompt leaves no room to raise it', () => {
+      const run = driveMachine({ model: [{ fail: 'output_cap' }, TEXT], state: { limits: { outputCeilingTokens: 1_000_000, blockingLimitTokens: 0 }, messages: [PROMPT] }, policies: { fitContext: () => 'fits' } })
+      expect(run.requests.map((r) => r.outputTokenCapOverride)).toEqual([undefined, undefined])
+      const last = run.requests.at(-1)!.messages.at(-1) as { message?: { content?: unknown } }
+      expect(last.message?.content).toBe(OUTPUT_CAP_CONTINUE_NOTE)
+    })
+  })
+
   for (const row of DECISIONS) {
     describe(row.decision, () => {
       for (const fixture of row.fixtures) {
