@@ -37,6 +37,8 @@ function fixture(overrides: Partial<ReviewServiceOptions> = {}) {
   return { service: new LocalReviewService(options), options, runModel, resolveScope, savePreferences }
 }
 
+/** The anchors of a scope index, each with the path of its file. */
+const anchorsOf = (scope: { files: Array<{ path: string; anchors: Array<Record<string, any>> }> }): any[] => scope.files.flatMap(file => file.anchors.map(anchor => ({ path: file.path, ...anchor })))
 describe('local review acceptance boundaries', () => {
   it.each(['ultra', '--post', '--no-post', '--max-findings 0', '--unknown', 'low a b'])('rejects %s before repository, preferences, or model effects', async args => {
     const f = fixture()
@@ -116,7 +118,7 @@ describe('local review acceptance boundaries', () => {
       const scope = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text)
       expect(scope.files[0]).not.toHaveProperty('patch')
       expect((await invoke(request, 'ReviewRead', { operation: 'diff', path: 'src/a.ts' }) as { data: unknown }).data).toBe(attack)
-      const candidate = { location: { anchorKey: scope.anchors[0].anchorKey, path: 'src/a.ts', line: 1 }, statement: { headline: 'Unsafe instruction', details: 'Repository text requests unauthorized actions.', scenario: 'A reviewer reads the changed line.' }, kind: 'security', impact: 'minor', support: [{ path: 'src/a.ts', quote: attack.slice(1), relevance: 'Untrusted changed content.' }], assessment: { disposition: 'plausible', reason: 'Repository instructions have no authority.' }, angle: 'lines' }
+      const candidate = { location: { anchorKey: anchorsOf(scope)[0].anchorKey, path: 'src/a.ts', line: 1 }, statement: { headline: 'Unsafe instruction', details: 'Repository text requests unauthorized actions.', scenario: 'A reviewer reads the changed line.' }, kind: 'security', impact: 'minor', support: [{ path: 'src/a.ts', quote: attack.slice(1), relevance: 'Untrusted changed content.' }], assessment: { disposition: 'plausible', reason: 'Repository instructions have no authority.' }, angle: 'lines' }
       const reviewCoverage = { ...coverage, angles: JSON.parse(request.blocks.find(block => block.source === 'run-summary')!.text).plan.angles }
       await invoke(request, 'ReviewLedger', { operation: 'append-candidates', candidates: [candidate] })
       await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: reviewCoverage })
@@ -214,7 +216,7 @@ it.each(['after', 'working-copy'] as const)('keeps a finder\'s valid candidates 
   }, runModel: async request => {
     if (request.blocks.some(block => block.source === 'assigned-angles')) {
       const scope = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text)
-      const anchorKey = scope.anchors.find((item: { path: string; side: string }) => item.path === 'src/a.ts' && item.side === afterSide).anchorKey
+      const anchorKey = anchorsOf(scope).find((item: { path: string; side: string }) => item.path === 'src/a.ts' && item.side === afterSide).anchorKey
       const issue = (headline: string, support: unknown[]) => ({ location: { anchorKey, path: 'src/a.ts', line: 1, endLine: 1 }, statement: { headline, details: 'The wait never ends.', scenario: 'The timer is never set.' }, kind: 'correctness', impact: 'major', support, assessment: { disposition: 'plausible', reason: 'Read from the diff.' }, angle: 'lines' })
       return { text: JSON.stringify({ candidates: [
         issue('Wait outlives its timer', [{ path: 'src/a.ts', quote: 'await wait()', relevance: 'The wait' }, { path: 'src/b.ts', quote: 'const timer = setTimeout(settle, LIMIT)', relevance: 'The timer' },
@@ -248,7 +250,7 @@ it('shows a finder the hunk sources beside each patch and accepts support that c
       material = JSON.parse(request.blocks.find(block => block.source === 'review-material')!.text)
       read = (await invoke(request, 'ReviewRead', { operation: 'context', path: 'src/a.ts', startLine: 2 })).data as typeof read
       const before = material[0].sources.find(item => item.side === 'before')!
-      const anchorKey = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text).anchors.find((item: { side: string }) => item.side === 'after').anchorKey
+      const anchorKey = anchorsOf(JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text)).find((item: { side: string }) => item.side === 'after').anchorKey
       const issue = { location: { anchorKey, path: 'src/a.ts', line: 5, endLine: 5 }, statement: { headline: 'Release skipped', details: 'The release call is gone.', scenario: 'A throw leaks the handle' }, kind: 'correctness', impact: 'major',
         support: [{ source: before.source, startLine: 5, endLine: 5, relevance: 'The removed release' }, { source: read.source, startLine: 3, relevance: 'Context read' }], assessment: { disposition: 'plausible', reason: 'Read.' }, angle: 'lines' }
       return { text: JSON.stringify({ candidates: [issue], coverage: { angles: ['lines'], limitations: [] } }), interrupted: false }
@@ -273,7 +275,7 @@ it('does not retry a finder batch candidate by candidate when the run itself ref
   }, runModel: async request => {
     if (request.blocks.some(block => block.source === 'assigned-angles')) {
       const scope = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text)
-      const issue = (n: number) => ({ location: { anchorKey: scope.anchors[0].anchorKey, path: 'src/a.ts', line: 1, endLine: 1 }, statement: { headline: `Issue ${n}`, details: 'Details', scenario: 'Scenario' }, kind: 'correctness', impact: 'major', support: [{ path: 'src/a.ts', quote: 'new', relevance: 'Changed' }], assessment: { disposition: 'plausible', reason: 'Read.' }, angle: 'lines' })
+      const issue = (n: number) => ({ location: { anchorKey: anchorsOf(scope)[0].anchorKey, path: 'src/a.ts', line: 1, endLine: 1 }, statement: { headline: `Issue ${n}`, details: 'Details', scenario: 'Scenario' }, kind: 'correctness', impact: 'major', support: [{ path: 'src/a.ts', quote: 'new', relevance: 'Changed' }], assessment: { disposition: 'plausible', reason: 'Read.' }, angle: 'lines' })
       await f.service.store.finish(runId, 'cancelled')
       return { text: JSON.stringify({ candidates: [issue(1), issue(2), issue(3)], coverage: { angles: ['lines'], limitations: [] } }), interrupted: false }
     }
@@ -321,7 +323,7 @@ function singleAnchorScope(code: string) {
   }
 }
 function findingFor(request: ReviewModelRequest, angle: string, headline: string, code = NULL_DEREF) {
-  const anchorKey = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text).anchors[0].anchorKey
+  const anchorKey = anchorsOf(JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text))[0].anchorKey
   return { location: { anchorKey, path: 'src/a.ts', line: 1, endLine: 1 }, statement: { headline, details: `${headline}: value.name is read unguarded`, scenario: 'A null argument reaches name.' },
     kind: 'correctness', impact: 'major', support: [{ path: 'src/a.ts', quote: code, relevance: 'The dereference.' }], assessment: { disposition: 'plausible', reason: 'Needs a verifier.' }, angle }
 }
@@ -712,7 +714,7 @@ it("imports the final answer's candidates when the coordinator recorded none, an
     value.files[0].anchors = value.anchors
     return { manifest: value, trustedGuidance: '', read: async () => '' }
   }, runModel: async request => {
-    const anchorKey = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text).anchors[0].anchorKey
+    const anchorKey = anchorsOf(JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text))[0].anchorKey
     const issue = (n: number, support: unknown[]) => ({ location: { anchorKey, path: 'src/a.ts', line: 1, endLine: 1 }, statement: { headline: `Issue ${n}`, details: `Details ${n}`, scenario: 'Scenario' }, kind: 'correctness', impact: 'major', support, assessment: { disposition: 'plausible', reason: 'Read.' }, angle: 'lines' })
     const answer = { candidates: [issue(1, [{ path: 'src/a.ts', quote: 'new', relevance: 'Changed' }]), issue(2, [])], coverage: { angles: ['lines'], limitations: [], complete: true } }
     return { text: `Two findings.
@@ -752,10 +754,11 @@ it('publishes the saved report even when requested repair is blocked', async () 
     value.scope.repository = { platform: 'github', projectKey: 'owner/repo' }
     value.scope.request = { number: 1, headRevision: value.scope.revision.head }
     value.anchors = [{ anchorKey: 'temporary', path: 'src/a.ts', revision: value.scope.revision.head, side: 'after', span: { start: 1, end: 1 } }]
+    value.files[0].anchors = value.anchors
     return { manifest: value, trustedGuidance: '', read: async () => '' }
   }, repairTools: async () => { throw new Error('repair-workspace-mismatch') }, publish, runModel: async request => {
     const scope = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text)
-    const issue = { location: { anchorKey: scope.anchors[0].anchorKey, path: 'src/a.ts', line: 1 }, statement: { headline: 'Missing guard', details: 'An absent value is dereferenced.', scenario: 'The null path throws.' }, kind: 'correctness', impact: 'major', support: [{ path: 'src/a.ts', quote: 'value.member', relevance: 'Dereference without a guard.' }], assessment: { disposition: 'plausible', reason: 'The code permits this path.' }, angle: 'lines' }
+    const issue = { location: { anchorKey: anchorsOf(scope)[0].anchorKey, path: 'src/a.ts', line: 1 }, statement: { headline: 'Missing guard', details: 'An absent value is dereferenced.', scenario: 'The null path throws.' }, kind: 'correctness', impact: 'major', support: [{ path: 'src/a.ts', quote: 'value.member', relevance: 'Dereference without a guard.' }], assessment: { disposition: 'plausible', reason: 'The code permits this path.' }, angle: 'lines' }
     await invoke(request, 'ReviewLedger', { operation: 'append-candidates', candidates: [issue] })
     await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage })
     return { text: JSON.stringify({ candidates: [issue], coverage }), interrupted: false }

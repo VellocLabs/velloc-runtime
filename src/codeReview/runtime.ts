@@ -28,7 +28,7 @@ import { isFsNotFoundError } from '../utils/fsTransportFailure'
 import { createGitArgvRunner, GitAdapterError, gitText, isGitRefSyntax, remoteUrlsOf, repositoryNameOf, validateReviewPath, type GitStreamSpawner } from './git-adapter'
 import { isTestOrFixturePath, reviewLevelsOfTiers, thinkingTierForLevel } from './recipes'
 import { resolveLocalReviewScope, reviewDigest, scopeComplete, type WorkspaceRead, type LocalReviewTarget } from './scope'
-import { LocalReviewService, ReviewGatewayError, scopeIndex, type ReviewServiceOptions } from './service'
+import { LocalReviewService, ReviewGatewayError, anchorIndex, scopeIndex, type ReviewServiceOptions } from './service'
 import type { ScopeManifest } from './scope'
 import { createReviewModelRunner } from './runner'
 import { registerReviewSession } from './review-channel'
@@ -65,7 +65,7 @@ function readDiff(manifest: ScopeManifest, input: Record<string, unknown>): unkn
   const patchOf = (path: unknown) => {
     const file = typeof path === 'string' ? manifest.files.find(entry => entry.path === path) ?? manifest.files.find(entry => entry.beforePath === path) : undefined
     if (!file) throw new ReviewGatewayError('read-outside-review-scope')
-    return { path: file.path, beforePath: file.beforePath, status: file.status, reason: file.reason, patch: file.patch, anchors: file.anchors }
+    return { path: file.path, beforePath: file.beforePath, status: file.status, reason: file.reason, patch: file.patch, anchors: anchorIndex(file) }
   }
   if (input.paths !== undefined) {
     if (input.path !== undefined || !Array.isArray(input.paths) || !input.paths.length || input.paths.length > 50) throw new ReviewGatewayError('invalid-review-read')

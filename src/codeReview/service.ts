@@ -75,9 +75,14 @@ const whenAborted = (signal: AbortSignal): Promise<never> => new Promise((_, rej
 })
 const countLines = (patch: string, sign: '+' | '-'): number => patch.split('\n').filter(line => line.startsWith(sign) && !line.startsWith(sign.repeat(3))).length
 
-/** Contract: the manifest without patch text; patches are read per file through ReviewRead. */
+/** A file's anchors as a model reads them: key, side and span; the path only where it is not the file's own. */
+export function anchorIndex(file: Pick<ScopeManifest['files'][number], 'path' | 'anchors'>): Array<Record<string, unknown>> {
+  return file.anchors.map(anchor => ({ anchorKey: anchor.anchorKey, ...(anchor.path !== file.path ? { path: anchor.path } : {}), side: anchor.side, ...(anchor.span ? { span: anchor.span } : {}) }))
+}
+/** Contract: the manifest without patch text; patches are read per file through ReviewRead. Anchors are listed once, under their file. */
 export function scopeIndex(manifest: ScopeManifest): Record<string, unknown> {
-  return { ...manifest, files: manifest.files.map(({ patch, ...file }) => ({ ...file,
+  const { anchors: _anchors, ...rest } = manifest
+  return { ...rest, files: manifest.files.map(({ patch, ...file }) => ({ ...file, anchors: anchorIndex(file),
     hunks: (patch.match(/^@@ /gm) ?? []).length, added: countLines(patch, '+'), removed: countLines(patch, '-') })) }
 }
 /**

@@ -99,6 +99,17 @@ describe('review runs as an observable task tree', () => {
 
 describe('worker material', () => {
   const manifest = setup().manifest
+  it('lists each anchor once, under its file, as key, side and span', () => {
+    const anchor = { anchorKey: 'k1', path: 'src/a.ts', revision: 'r'.repeat(40), side: 'after' as const, span: { start: 1, end: 2 }, contextDigest: 'd'.repeat(64) }
+    const moved = { ...anchor, anchorKey: 'k2', path: 'src/old.ts', side: 'before' as const }
+    const value = { ...manifest, anchors: [anchor, moved], files: manifest.files.map((file, index) => index ? file : { ...file, anchors: [anchor, moved] }) } as typeof manifest
+    const index = scopeIndex(value) as { anchors?: unknown; files: Array<{ anchors: unknown[] }> }
+    expect(index.anchors).toBeUndefined()
+    expect(index.files[0]!.anchors).toEqual([
+      { anchorKey: 'k1', side: 'after', span: { start: 1, end: 2 } },
+      { anchorKey: 'k2', path: 'src/old.ts', side: 'before', span: { start: 1, end: 2 } },
+    ])
+  })
   it('indexes without patches and selects included patches by path', () => {
     expect(JSON.stringify(scopeIndex(manifest))).not.toContain('+new')
     expect(JSON.parse(reviewMaterial(manifest))).toEqual([{ path: 'src/a.ts', beforePath: undefined, patch, sources: [] }])
