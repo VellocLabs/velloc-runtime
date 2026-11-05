@@ -250,6 +250,19 @@ describe('level selection boundaries', () => {
   }
 
   it.each([
+    ['nvidia/Nemotron-3_5-Lightning', ['quick-hunks', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'team-ten']],
+    ['nvidia/nemotron-3.5-lightning', ['quick-hunks', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'team-ten']],
+    ['nvidia/nemotron-3.5-lightning:free', ['quick-hunks', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'team-ten']],
+    ['nvidia/Nemotron-3.5-Super-VL', ['quick-hunks', 'local-eight', 'team-eight-recall', 'team-ten', 'team-ten']],
+  ] as const)('routes Nemotron %s by its tier', (id, recipes) => {
+    expect(REVIEW_LEVELS.map(level => policy({ canonicalModelId: id, arguments: { ...base.arguments, level } }).recipe)).toEqual(recipes)
+  })
+
+  it.each(['nvidia/Nemotron-3-Ultra-550b-a55b', 'nvidia/nemotron-3-super-120b-a12b', 'nvidia/nemotron-3.5-super-vl', 'nvidia/Nemotron-3.5-Lightning'])('keeps other Nemotron spellings on fallback: %s', id => {
+    expect(resolveCapabilityProfile(id)).toBe('fallback')
+  })
+
+  it.each([
     'claude-opus-5-5', 'claude-sonnet-5-5', 'anthropic/claude-opus-5.5', 'anthropic/claude-sonnet-5.5',
     'anthropic/claude-opus-4.8-fast', 'anthropic/claude-opus-5-fast', 'anthropic/claude-opus-5:batch',
     'anthropic/claude-opus-4-8', 'relay/claude-opus-5', 'claude-opus-5-latest',
