@@ -6,7 +6,7 @@ import { hunkSides, type ScopeManifest } from './scope'
 import { isReviewId } from './review-protocol'
 import { ReportStoreError, ReviewReportStore, answerObjects, type ReportSnapshot, type ReportStorageAdapter, type ReportGrant, type ReportWriteResult } from './report-store'
 import { isMergedDuplicate, latestAssessment } from './ledger-lookups'
-import { createReviewTools, REVIEW_RESULT_SCHEMA, REVIEW_ASSESSMENT_SCHEMA, REVIEW_SUPPORT_SCHEMA } from './tools'
+import { createReviewTools, withRefusalHint, REVIEW_RESULT_SCHEMA, REVIEW_ASSESSMENT_SCHEMA, REVIEW_SUPPORT_SCHEMA, type ReviewToolBindings } from './tools'
 import { ReviewWorkerPool, endOf, type ReviewModelRunner, type ReviewTaskObserver } from './runner'
 import { lookupForkTaskId } from '../backgroundTasks/sideTaskSink'
 import type { ToolContract } from '../toolkit/toolContract'
@@ -47,7 +47,9 @@ export interface ReviewServiceOptions {
 /** The finder key of candidates the coordinator records itself; never a verifier's task key. */
 const COORDINATOR_TASK = 'coordinator'
 /** One finished worker task: its answer, and the candidate IDs it added to the ledger. */
-type WorkerOutcome = { taskId: string; result: Record<string, any>; newIds: string[]; rejectedCandidates?: Array<{ index: number; code: string }> }
+/** An item of a worker's answer the host refused; `support` lists the support items at fault. */
+type Refusal = { index: number; code: string; support?: Array<{ index: number; code: string }> }
+type WorkerOutcome ={ taskId: string; result: Record<string, any>; newIds: string[]; rejectedCandidates?: Array<{ index: number; code: string }> }
 /** The outcome of a run's verification step: one verdict or error per candidate, then the gap sweep when the recipe has one. */
 type VerificationOutcome = { verification: Array<Record<string, unknown>>; sweep?: Record<string, unknown> }
 interface LiveRun {
@@ -65,7 +67,7 @@ const newLive = (base: Omit<LiveRun, 'completedAngles' | 'finderTasks' | 'verifi
   ({ ...base, completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false, tasks: new Map(), agentIds: new Map() })
 const endCode = (end: ReviewRunEnd): string => `review-${end.kind}`
 /** A worker's step limit, and the steps it may spend reading before it must answer. */
-const WORKER_STEPS = 16, WORKER_READ_STEPS = 14
+const WORKER_STEPS = 18, WORKER_READ_STEPS = 14
 const whenAborted = (signal: AbortSignal): Promise<never> => new Promise((_, reject) => {
   const fail = () => reject(new ReviewGatewayError('review-cancelled'))
   if (signal.aborted) fail()
@@ -392,7 +394,7 @@ export class LocalReviewService {
     }
     return result
   }
-  private tools(runId: string, live: LiveRun, delegate: boolean, readSteps?: number): ToolContract[] {
+  private tools(runId: string, live: LiveRun, delegate: boolean, readSteps?: number, submit?: ReviewToolBindings['submit']): ToolContract[] {
     const pool = new ReviewWorkerPool(Math.min(4, live.plan.workerConcurrency))
     let launched = 0
     const verifications = new Map<string, Promise<WorkerOutcome>>()
@@ -480,64 +482,117 @@ export class LocalReviewService {
           : composeSweeperPrompt({ scope_manifest: index, review_material: reviewMaterial(live.access.manifest), existing_findings: JSON.stringify(verdictList(snapshot)) })
         const blocks = [...promptBlocks, block(JSON.stringify(role === 'verifier' ? { type: 'object', properties: { ...REVIEW_ASSESSMENT_SCHEMA.properties, support: REVIEW_SUPPORT_SCHEMA, missingEvidence: { type: 'array', items: { type: 'string' } } }, required: ['disposition', 'reason', 'support'] } : REVIEW_RESULT_SCHEMA), 'required-json-schema')]
         await this.store.noteWorker(runId, 'started'); this.changed()
-        try {
-          const result = await this.runModel({ blocks, tools: this.tools(runId, live, false, WORKER_READ_STEPS).filter(t => t.name === 'ReviewRead'), signal: live.controller.signal, taskId, maxTurns: WORKER_STEPS,
-            role: role as 'finder' | 'verifier' | 'sweeper', ...(role === 'verifier' ? { label: candidate!.claim.title } : role === 'finder' ? { angles: angles as string[] } : {}), observer: this.observer(live) })
-          const end = endOf(result)
-          // A worker stopped by its step limit still counts when its last reply holds the answer.
-          const [value] = end.kind === 'completed' || end.kind === 'step-limit' ? answerObjects(result.text, role === 'verifier' ? ['disposition'] : ['candidates']) as Array<Record<string, any>> : []
-          if (end.kind !== 'completed' && !value) throw new ReviewGatewayError(endCode(end))
-          if (!value) throw new ReviewGatewayError('unstructured-worker-answer')
-          const rejectedCandidates: Array<{ index: number; code: string }> = []
-          const newIds: string[] = []
+        const rejectedCandidates: Array<{ index: number; code: string }> = []
+        const newIds: string[] = []
+        const assigned = role === 'sweeper' ? [...live.plan.angles] : angles as string[]
+        const counts = new Map<string, number>()
+        const kept: Array<Record<string, any>> = []
+        let answer: Record<string, any> | undefined
+        let writes = 0
+        // Contract (F-38): records one answer of this worker and returns what the host refused. A candidate is
+        // accepted or refused on its own. A verdict is refused whole while the worker can still correct it; a final
+        // one is kept on the support the host could match.
+        const record = async (value: Record<string, any>, final: boolean): Promise<Refusal[]> => {
+          const badSupport = async (support: unknown) => Array.isArray(support) ? this.store.checkSupport(runId, support) : []
           if (role === 'verifier') {
             const candidateId = String(input.candidateId)
             // A candidate the coordinator recorded itself, such as one it corrected after the ledger refused a finder's, is the coordinator's.
             const finderTaskKey = live.finderTasks.get(candidateId) ?? COORDINATOR_TASK
             if (live.sweepIds.has(candidateId) || live.verified.has(candidateId)) throw new ReviewGatewayError('verifier-assignment-not-authorized')
-            await this.store.submitLedger(runId, taskId, { operation: 'assess', assessments: [{ candidateId, disposition: value.disposition, reason: value.reason, support: value.support }] })
+            const assess = (support: unknown) => this.store.submitLedger(runId, `${taskId}-${++writes}`, { operation: 'assess', assessments: [{ candidateId, disposition: value.disposition, reason: value.reason, support }] })
+            try { await assess(value.support) } catch (error) {
+              if (!(error instanceof ReportStoreError)) throw error
+              const bad = await badSupport(value.support)
+              if (!final) return [{ index: 0, code: error.code, ...(bad.length ? { support: bad } : {}) }]
+              if (!bad.length || bad.length === value.support.length) throw error
+              value.support = value.support.filter((_: unknown, index: number) => !bad.some(item => item.index === index))
+              await assess(value.support)
+            }
             if (value.disposition !== 'unchecked') {
               const assessment = latestAssessment(await this.store.getSnapshot(runId), candidateId)!
               await this.store.noteIndependentVerification(runId, { ref: taskId, diagnosticId: candidateId, assessmentId: assessment.id, finderTaskKey, verifierTaskKey: taskId })
               live.verified.add(candidateId)
             }
-          } else {
-            if (!Array.isArray(value.candidates) || value.candidates.length > (role === 'sweeper' ? 8 : live.plan.candidatesPerAngle * angles.length)) throw new ReviewGatewayError('worker-candidate-limit')
-            const assigned = role === 'sweeper' ? [...live.plan.angles] : angles as string[]
-            const counts = new Map<string, number>()
-            for (const candidate of value.candidates) {
-              if (!assigned.includes(candidate.angle)) throw new ReviewGatewayError('worker-angle-not-assigned')
-              const count = (counts.get(candidate.angle) ?? 0) + 1
-              counts.set(candidate.angle, count)
-              if (count > live.plan.candidatesPerAngle) throw new ReviewGatewayError('worker-angle-candidate-limit')
-              if (candidate.assessment?.disposition === 'proven') candidate.assessment = { disposition: 'plausible', reason: candidate.assessment.reason }
+            answer = value
+            return []
+          }
+          if (!Array.isArray(value.candidates) || kept.length + value.candidates.length > (role === 'sweeper' ? 8 : live.plan.candidatesPerAngle * angles.length)) throw new ReviewGatewayError('worker-candidate-limit')
+          const seen = new Map(counts)
+          for (const candidate of value.candidates) {
+            if (!assigned.includes(candidate?.angle)) throw new ReviewGatewayError('worker-angle-not-assigned')
+            const count = (seen.get(candidate.angle) ?? 0) + 1
+            seen.set(candidate.angle, count)
+            if (count > live.plan.candidatesPerAngle) throw new ReviewGatewayError('worker-angle-candidate-limit')
+            if (candidate.assessment?.disposition === 'proven') candidate.assessment = { disposition: 'plausible', reason: candidate.assessment.reason }
+          }
+          const covered: string[] = value.coverage?.angles ?? []
+          if (covered.some(angle => !assigned.includes(angle))) throw new ReviewGatewayError('worker-angle-not-assigned')
+          const refused: Array<{ index: number; code: string }> = []
+          for (let i = 0; i < value.candidates.length; i += 32) {
+            const batch: unknown[] = value.candidates.slice(i, i + 32)
+            let written: Pick<ReportWriteResult, 'accepted' | 'rejected'>
+            try { written = await this.store.submitLedger(runId, `${taskId}-${++writes}`, { operation: 'append-candidates', candidates: batch }) }
+            catch (error) {
+              if (!(error instanceof ReportStoreError) || !error.rejected) throw error
+              written = { accepted: [], rejected: [...error.rejected] }
             }
-            const covered: string[] = value.coverage?.angles ?? []
-            if (covered.some(angle => !assigned.includes(angle))) throw new ReviewGatewayError('worker-angle-not-assigned')
-            for (let i = 0; i < value.candidates.length; i += 32) {
-              const batch: unknown[] = value.candidates.slice(i, i + 32)
-              let written: Pick<ReportWriteResult, 'accepted' | 'rejected'>
-              try { written = await this.store.submitLedger(runId, `${taskId}-${i}`, { operation: 'append-candidates', candidates: batch }) }
-              catch (error) {
-                if (!(error instanceof ReportStoreError) || !error.rejected) throw error
-                written = { accepted: [], rejected: [...error.rejected] }
-              }
-              rejectedCandidates.push(...(written.rejected ?? []).map(item => ({ index: i + item.index, code: item.code })))
-              for (const { index, diagnosticId } of written.accepted) {
-                // The coordinator merges by these host IDs.
-                value.candidates[i + index].candidateId = diagnosticId
-                if (!live.finderTasks.has(diagnosticId)) {
-                  live.finderTasks.set(diagnosticId, taskId)
-                  newIds.push(diagnosticId)
-                  if (role === 'sweeper') live.sweepIds.add(diagnosticId)
-                }
+            refused.push(...(written.rejected ?? []).map(item => ({ index: i + item.index, code: item.code })))
+            for (const { index, diagnosticId } of written.accepted) {
+              const candidate = value.candidates[i + index]
+              // The coordinator merges by these host IDs.
+              candidate.candidateId = diagnosticId
+              counts.set(candidate.angle, (counts.get(candidate.angle) ?? 0) + 1)
+              kept.push(candidate)
+              if (!live.finderTasks.has(diagnosticId)) {
+                live.finderTasks.set(diagnosticId, taskId)
+                newIds.push(diagnosticId)
+                if (role === 'sweeper') live.sweepIds.add(diagnosticId)
               }
             }
-            const limitations: string[] = [...(value.coverage?.limitations ?? []), ...(rejectedCandidates.length ? ['worker-candidates-rejected'] : []), ...(end.kind === 'step-limit' ? ['review-step-limit'] : [])]
-            await this.store.submitLedger(runId, `${taskId}-coverage`, { operation: 'coverage', coverage: { angles: covered, limitations, complete: false } })
+          }
+          // The answer lists the accepted candidates first, then the ones this call left refused.
+          rejectedCandidates.splice(0, Infinity, ...refused.map((item, index) => ({ index: kept.length + index, code: item.code })))
+          answer = { ...value, candidates: [...kept, ...refused.map(item => value.candidates[item.index])] }
+          return Promise.all(refused.map(async item => {
+            const bad = await badSupport(value.candidates[item.index]?.support)
+            return { ...item, ...(bad.length ? { support: bad } : {}) }
+          }))
+        }
+        // A worker hands in through ReviewSubmit: once, and once more when the first call left something refused.
+        let handed = 0, open = true
+        const hand = async (value: Record<string, unknown>) => {
+          if (!open) throw new ReviewGatewayError('already-submitted')
+          const final = handed++ > 0
+          let refused: Refusal[]
+          try { refused = await record(structuredClone(value), final) }
+          catch (error) { if (final) open = false; throw error }
+          if (final || !refused.length) open = false
+          if (!refused.length) return { accepted: true }
+          return { ...(role === 'verifier' ? { accepted: false } : { acceptedCandidates: kept.length }),
+            rejected: refused.map(item => ({ ...withRefusalHint(item), ...(item.support ? { support: item.support.map(withRefusalHint) } : {}) })),
+            next: final ? 'final: nothing more to hand in' : role === 'verifier' ? 'correct the verdict and call ReviewSubmit once more' : 'call ReviewSubmit once more with only the rejected candidates, corrected' }
+        }
+        try {
+          const result = await this.runModel({ blocks, tools: this.tools(runId, live, false, WORKER_READ_STEPS, { role: role as 'finder' | 'verifier' | 'sweeper', hand }).filter(t => t.name === 'ReviewRead' || t.name === 'ReviewSubmit'), signal: live.controller.signal, taskId, maxTurns: WORKER_STEPS,
+            role: role as 'finder' | 'verifier' | 'sweeper', ...(role === 'verifier' ? { label: candidate!.claim.title } : role === 'finder' ? { angles: angles as string[] } : {}), observer: this.observer(live) })
+          const end = endOf(result)
+          const answered = end.kind === 'completed' || end.kind === 'step-limit'
+          // A worker that handed its answer in is whole even when its step limit stopped it afterwards.
+          const whole = end.kind === 'completed' || answered && !!answer
+          if (!answer) {
+            // A worker that never called ReviewSubmit still counts when its last reply holds the answer.
+            const [found] = answered ? answerObjects(result.text, role === 'verifier' ? ['disposition'] : ['candidates']) as Array<Record<string, any>> : []
+            if (end.kind !== 'completed' && !found) throw new ReviewGatewayError(endCode(end))
+            if (!found) throw new ReviewGatewayError('unstructured-worker-answer')
+            await record(found, true)
+          } else if (!answered) throw new ReviewGatewayError(endCode(end))
+          const value: Record<string, any> = answer!
+          if (role !== 'verifier') {
+            const limitations: string[] = [...(value.coverage?.limitations ?? []), ...(rejectedCandidates.length ? ['worker-candidates-rejected'] : []), ...(whole ? [] : ['review-step-limit'])]
+            await this.store.submitLedger(runId, `${taskId}-coverage`, { operation: 'coverage', coverage: { angles: value.coverage?.angles ?? [], limitations, complete: false } })
             // A worker cut off by its step limit leaves its angles, or the sweep, uncovered.
-            if (end.kind === 'completed') {
-              if (role === 'finder') for (const angle of covered) live.completedAngles.add(angle)
+            if (whole) {
+              if (role === 'finder') for (const angle of value.coverage?.angles ?? []) live.completedAngles.add(angle)
               else live.swept = true
             }
           }
@@ -548,7 +603,7 @@ export class LocalReviewService {
     }
     return createReviewTools({ runId, store: this.store, signal: live.controller.signal,
       read: input => this.read(runId, live, input), changed: this.changed,
-      independentAssessments: live.plan.independentVerification, ...(readSteps !== undefined ? { readSteps } : {}),
+      independentAssessments: live.plan.independentVerification, ...(readSteps !== undefined ? { readSteps } : {}), ...(submit ? { submit } : {}),
       allowOutput: live.plan.presentation === 'panel', launch: delegate && live.plan.agentMode === 'parallel' ? launch : undefined })
   }
   private async actionGrant(runId: string, kind: 'repair' | 'publication', ids?: string[]): Promise<ReportGrant> {

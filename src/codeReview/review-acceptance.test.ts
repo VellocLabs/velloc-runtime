@@ -270,8 +270,8 @@ it('does not retry a finder batch candidate by candidate when the run itself ref
   } })
   await f.service.wait((await f.service.startUser('max')).runId).catch(() => undefined)
   const ids = (await f.service.store.getRawResults(runId)).map(item => item.toolCallId)
-  expect(ids.filter(id => /-0$/.test(id))).toHaveLength(1)
-  expect(ids.filter(id => /-0-\d+$/.test(id))).toEqual([])
+  expect(ids.filter(id => /-1$/.test(id))).toHaveLength(1)
+  expect(ids.filter(id => /-1[-#]\d+$/.test(id))).toEqual([])
 })
 it('records successful finder coverage and a separate sweep from actual worker runs', async () => {
   const angles = ['lines', 'removed', 'calls', 'reuse', 'simplification', 'efficiency', 'root-cause', 'guidance', 'language', 'wrappers']
@@ -337,7 +337,7 @@ it.each([
     }
     if (request.blocks.some(block => block.source === 'candidate')) {
       verifierTaskId = request.taskId
-      expect(request.tools.map(tool => tool.name)).toEqual(['ReviewRead'])
+      expect(request.tools.map(tool => tool.name)).toEqual(['ReviewRead', 'ReviewSubmit'])
       return verdict(disposition, reason, code)
     }
     if (request.blocks.some(block => block.source === 'existing-findings')) {
@@ -835,7 +835,7 @@ describe('worker step budget', () => {
     let finderReads: Array<string> = [], coordinatorReads = 0
     const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
       if (request.blocks.some(block => block.source === 'assigned-angles')) {
-        expect(request.maxTurns).toBe(16)
+        expect(request.maxTurns).toBe(18)
         for (let step = 0; step < 15; step++) finderReads.push(await readAt(request).then(() => 'ok', (error: Error) => error.message))
         return { text: JSON.stringify({ candidates: [], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
       }
@@ -996,5 +996,128 @@ describe('team run completeness', () => {
     const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
     expect(snapshot.run.progress.status).toBe('finished')
     expect(snapshot.coverage.limitations).not.toContain('verified-after-summary')
+  })
+})
+
+describe('worker hand-in through ReviewSubmit', () => {
+  const done = { text: 'Handed in.', interrupted: false }
+  const submit = async (request: ReviewModelRequest, input: Record<string, unknown>) => (await invoke(request, 'ReviewSubmit', input)).data as Record<string, any>
+  it('keeps the valid candidates, names what it refused, and takes the corrected ones once', async () => {
+    let first: Record<string, any> = {}, second: Record<string, any> = {}, third = ''
+    let found: Record<string, any> = {}
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) {
+        const good = findingFor(request, 'lines', 'Unguarded read')
+        const { line: _line, endLine: _end, ...unlocated } = good.location
+        const noLine = { ...findingFor(request, 'removed', 'Dropped guard'), location: unlocated }
+        const badSupport = { ...findingFor(request, 'calls', 'Caller passes null'), support: [{ path: 'src/a.ts', quote: NULL_DEREF, relevance: 'The read.' }, { source: 'never-read', quote: 'x', relevance: 'Invented.' }] }
+        first = await submit(request, { candidates: [good, noLine, badSupport], coverage: { angles: TEN, limitations: [] } })
+        second = await submit(request, { candidates: [{ ...noLine, location: good.location }, { ...badSupport, support: [badSupport.support[0]] }], coverage: { angles: TEN, limitations: [] } })
+        third = await submit(request, { candidates: [], coverage: { angles: TEN, limitations: [] } }).then(() => 'accepted', (error: Error) => error.message)
+        return done
+      }
+      if (request.blocks.some(block => block.source === 'candidate')) return verdict('plausible')
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      found = (await invoke(request, 'Agent', { role: 'finder', angles: TEN })).data as Record<string, any>
+      await invoke(request, 'Agent', { role: 'verifier' })
+      return finishCoordinator(f, request)
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(first.acceptedCandidates).toBe(1)
+    expect(first.rejected).toEqual([
+      { index: 1, code: 'missing-line', hint: expect.stringContaining('location.line') },
+      { index: 2, code: 'unknown-evidence-source', hint: expect.any(String), support: [{ index: 1, code: 'unknown-evidence-source', hint: expect.any(String) }] },
+    ])
+    expect(first.next).toContain('once more')
+    expect(second).toEqual({ accepted: true })
+    expect(third).toBe('already-submitted')
+    expect(found.result.candidates.map((candidate: { candidateId?: string }) => typeof candidate.candidateId)).toEqual(['string', 'string', 'string'])
+    expect(found).not.toHaveProperty('rejectedCandidates')
+    expect(snapshot.diagnostics.map(d => d.claim.title).sort()).toEqual(['Caller passes null', 'Dropped guard', 'Unguarded read'])
+    expect(snapshot.unverified ?? []).toEqual([])
+    expect(snapshot.coverage.limitations).not.toContain('worker-candidates-rejected')
+    expect(snapshot.run.progress.status).toBe('finished')
+  })
+  it('reports what the second hand-in still leaves refused and closes', async () => {
+    let second: Record<string, any> = {}
+    let found: Record<string, any> = {}
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) {
+        const good = findingFor(request, 'lines', 'Unguarded read')
+        const bad = { ...findingFor(request, 'removed', 'Dropped guard'), kind: 'bug' }
+        await submit(request, { candidates: [good, bad], coverage: { angles: TEN, limitations: [] } })
+        second = await submit(request, { candidates: [bad], coverage: { angles: TEN, limitations: [] } })
+        return done
+      }
+      if (request.blocks.some(block => block.source === 'candidate')) return verdict('plausible')
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      found = (await invoke(request, 'Agent', { role: 'finder', angles: TEN })).data as Record<string, any>
+      await invoke(request, 'Agent', { role: 'verifier' })
+      return finishCoordinator(f, request)
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(second).toMatchObject({ acceptedCandidates: 1, rejected: [{ index: 0, code: 'invalid-enum' }], next: expect.stringContaining('final') })
+    expect(found.rejectedCandidates).toEqual([{ index: 1, code: 'invalid-enum' }])
+    expect(snapshot.diagnostics).toHaveLength(1)
+    expect(snapshot.coverage.limitations).toContain('worker-candidates-rejected')
+  })
+  it('lets a verifier correct a refused verdict, and records it once', async () => {
+    let first: Record<string, any> = {}, second: Record<string, any> = {}
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Unguarded read')], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+      if (request.blocks.some(block => block.source === 'candidate')) {
+        const answer = { disposition: 'proven', reason: 'The read has no guard.', missingEvidence: [] }
+        first = await submit(request, { ...answer, support: [{ source: 'never-read', quote: 'x', relevance: 'Invented.' }] })
+        second = await submit(request, { ...answer, support: [{ path: 'src/a.ts', quote: NULL_DEREF, relevance: 'The read.' }] })
+        return done
+      }
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      await invoke(request, 'Agent', { role: 'verifier' })
+      return finishCoordinator(f, request)
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(first).toMatchObject({ accepted: false, rejected: [{ index: 0, code: 'unknown-evidence-source', support: [{ index: 0, code: 'unknown-evidence-source' }] }] })
+    expect(second).toEqual({ accepted: true })
+    expect(snapshot.run.progress.verifiedCandidates).toBe(1)
+    expect(snapshot.assessments.at(-1)).toMatchObject({ disposition: 'proven' })
+    expect(snapshot.run.progress.status).toBe('finished')
+  })
+  it.each(['tool', 'text'] as const)('keeps a final verdict on the support the host could match (%s)', async channel => {
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Unguarded read')], coverage: { angles: TEN, limitations: [] } }), interrupted: false }
+      if (request.blocks.some(block => block.source === 'candidate')) {
+        const answer = { disposition: 'dismissed', reason: 'A guard exists.', missingEvidence: [], support: [{ path: 'src/a.ts', quote: NULL_DEREF, relevance: 'The read.' }, { source: 'never-read', quote: 'x', relevance: 'Invented.' }] }
+        if (channel === 'text') return { text: JSON.stringify(answer), interrupted: false }
+        await submit(request, answer)
+        expect(await submit(request, answer)).toEqual({ accepted: true })
+        return done
+      }
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      const step = (await invoke(request, 'Agent', { role: 'verifier' })).data as { verification: Array<Record<string, unknown>> }
+      expect(step.verification[0]).toMatchObject({ disposition: 'dismissed' })
+      return finishCoordinator(f, request)
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(snapshot.run.progress.verifiedCandidates).toBe(1)
+    expect(snapshot.assessments.at(-1)).toMatchObject({ disposition: 'dismissed' })
+    expect(snapshot.run.progress.status).toBe('finished')
+  })
+  it('counts a worker that handed in as whole when its step limit stops it afterwards', async () => {
+    const f = fixture({ resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+      if (request.blocks.some(block => block.source === 'assigned-angles')) {
+        await submit(request, { candidates: [findingFor(request, 'lines', 'Unguarded read')], coverage: { angles: TEN, limitations: [] } })
+        return { text: '', interrupted: true, end: { kind: 'step-limit' as const } }
+      }
+      if (request.blocks.some(block => block.source === 'candidate')) return verdict('plausible')
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      await invoke(request, 'Agent', { role: 'finder', angles: TEN })
+      await invoke(request, 'Agent', { role: 'verifier' })
+      return finishCoordinator(f, request)
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(snapshot.coverage.limitations).not.toContain('review-step-limit')
+    expect(snapshot.run.progress.status).toBe('finished')
   })
 })

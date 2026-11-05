@@ -629,6 +629,7 @@ export class ReviewReportStore {
     const anchor = state.anchors.find(item => item.key === key)?.anchor
     if (!anchor || relativePath(location.path) !== anchor.path) return fail('invalid-anchor')
     if (location.line === undefined && location.endLine !== undefined) return fail('invalid-span')
+    if (location.line === undefined && anchor.span) return fail('missing-line')
     const line = location.line === undefined ? undefined : integer(location.line)
     const end = location.endLine === undefined ? line : integer(location.endLine)
     if (line !== undefined && (!anchor.span || line < anchor.span.start || end! > anchor.span.end || end! < line)) return fail('invalid-span')
@@ -765,6 +766,16 @@ export class ReviewReportStore {
         await this.save(draft)
         throw error
       }
+    })
+  }
+  /** The support items this run would refuse, each with its reason code; reads only. */
+  async checkSupport(runId: string, support: readonly unknown[]): Promise<Array<{ index: number; code: string }>> {
+    return this.serial(runId, async () => {
+      const state = await this.load(runId)
+      return support.flatMap((item, index) => {
+        try { this.support(state, [item]); return [] }
+        catch (error) { if (!(error instanceof ReportStoreError)) throw error; return [{ index, code: error.code }] }
+      })
     })
   }
   async submitLedger(runId: string, toolCallId: string, input: unknown): Promise<ReportWriteResult> {

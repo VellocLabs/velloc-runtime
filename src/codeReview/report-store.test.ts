@@ -311,6 +311,12 @@ describe('review report store', () => {
     await expect(append([{ source: 'd9', quote: 'ten', relevance: 'x' }], 3)).rejects.toThrow('unknown-evidence-source')
     await expect(append([{ source: 'd1', quote: 'twelve', relevance: 'x' }], 3)).rejects.toThrow('quote-not-in-source')
     await expect(append([{ source: read, startLine: 12, endLine: 13, relevance: 'x' }], 3)).rejects.toThrow('invalid-span')
+    const before = await store.getSnapshot(id)
+    expect(await store.checkSupport(id, [{ source: 'd1', quote: 'ten', relevance: 'x' }, { source: 'd1', quote: 'twelve', relevance: 'x' }, { source: 'd9', quote: 'ten', relevance: 'x' }, 'text']))
+      .toEqual([{ index: 1, code: 'quote-not-in-source' }, { index: 2, code: 'unknown-evidence-source' }, { index: 3, code: 'invalid-object' }])
+    expect(await store.getSnapshot(id)).toEqual(before)
+    const { line: _line, ...unlocated } = candidate(anchorKey, 4).location
+    await expect(store.submitLedger(id, 'no-line', { operation: 'append-candidates', candidates: [{ ...candidate(anchorKey, 4), location: unlocated }] })).rejects.toThrow('missing-line')
     await expect(append([{ source: read, startLine: 10, relevance: 'x', path: 'src/a.ts' }], 3)).rejects.toThrow('evidence-source-path-mismatch')
     await expect(append([{ path: 'src/b.ts', startLine: 10, quote: 'ten', relevance: 'x' }], 3)).rejects.toThrow('invalid-span')
     const long = await store.registerEvidenceSource(id, { path: 'src/b.ts', revision: 'head', excerpt: Array.from({ length: 41 }, (_, i) => `line ${i}`).join('\n') })
@@ -996,7 +1002,7 @@ describe('explicit semantic duplicate merges', () => {
     if (kind === 'other-path') key = await h.store.registerAnchor(h.id, { path: 'src/b.ts', revision: 'head', side: 'after', span: { start: 1, end: 10 } })
     const input = candidate(key, kind === 'nonoverlap' ? 10 : 1, 'Another wording')
     if (kind === 'other-path') input.location.path = 'src/b.ts'
-    if (kind === 'no-span') delete input.location.line
+    if (kind === 'no-span') { key = await h.store.registerAnchor(h.id, { path: 'src/a.ts', revision: 'head', side: 'after' }); input.location.anchorKey = key; delete input.location.line }
     let duplicate: string
     if (kind === 'foreign-id') {
       const foreign = await h.run()

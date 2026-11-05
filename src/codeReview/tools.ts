@@ -15,6 +15,8 @@ export interface ReviewToolBindings {
   independentAssessments?: boolean
   /** A worker's read budget in model steps: a ReviewRead from a later step fails with `review-step-budget`. */
   readSteps?: number
+  /** A worker's hand-in: `hand` records the answer and returns what the host refused. */
+  submit?: { role: 'finder' | 'verifier' | 'sweeper'; hand(input: Record<string, unknown>): Promise<unknown> }
 }
 function callId(row: Message, name: string, input: unknown): string {
   const content = (row as Message & { message?: { content?: unknown } }).message?.content
@@ -31,7 +33,7 @@ export const REVIEW_SUPPORT_SCHEMA = { type: 'array', items: shape({ source: tex
 export const REVIEW_ASSESSMENT_SCHEMA = shape({ disposition: { type: 'string', enum: ['proven', 'plausible', 'dismissed', 'unchecked'] }, reason: text })
 export const REVIEW_COVERAGE_SCHEMA = shape({ angles: stringList, limitations: stringList, complete: { type: 'boolean' } })
 export const REVIEW_CANDIDATE_SCHEMA = shape({
-  location: shape({ anchorKey: text, path: text, line: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 } }, ['anchorKey', 'path']),
+  location: shape({ anchorKey: text, path: text, line: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 } }, ['anchorKey', 'path', 'line']),
   statement: shape({ headline: text, details: text, scenario: text }),
   kind: { type: 'string', enum: ['correctness', 'security', 'reuse', 'simplicity', 'efficiency', 'root-cause', 'guidance'] },
   impact: { type: 'string', enum: ['critical', 'major', 'minor'] }, support: REVIEW_SUPPORT_SCHEMA, assessment: REVIEW_ASSESSMENT_SCHEMA, angle: text,
@@ -40,6 +42,27 @@ export const REVIEW_RESULT_SCHEMA = shape({ candidates: { type: 'array', items: 
 const updatesSchema = { type: 'array', maxItems: 32, items: shape({ diagnosticId: text, observation: { type: 'string', enum: ['edited', 'not-needed', 'left-open'] }, explanation: text, executionRefs: stringList }) }
 /** The field each ReviewLedger operation reads its items from. */
 const LEDGER_FIELDS: Record<string, string> = { 'append-candidates': 'candidates', assess: 'assessments', coverage: 'coverage', 'merge-duplicates': 'groups' }
+
+/** How to correct an item the host refused, by reason code. */
+const REFUSAL_HINTS: Record<string, string> = {
+  'quote-not-in-source': 'quote must be copied character for character from the cited source; or drop quote and cite startLine and endLine',
+  'unknown-evidence-source': 'source must be a source id carried by a patch or a ReviewRead result of this run',
+  'evidence-source-path-mismatch': 'path differs from the path of the cited source; drop path or cite the right source',
+  'evidence-lines-required': 'the source is longer than 40 lines; add a quote or startLine and endLine',
+  'unsupported-evidence-path': 'path is not a file of this review; cite a source id instead',
+  'missing-evidence': 'support needs at least one item with a quote or lines from a source',
+  'invalid-anchor': 'location.anchorKey and location.path must both come from one anchor of the patch of that file',
+  'missing-line': 'location.line is required: the line the defect is on, inside the span of its anchor',
+  'invalid-span': 'line..endLine must lie inside the span of the anchor; support startLine..endLine must lie inside the source, at most 40 lines',
+  'invalid-enum': 'kind, impact and disposition take only their listed values',
+  'invalid-text': 'every text field must be a nonempty string',
+  'invalid-integer': 'line numbers are integers from 1',
+  'invalid-array': 'candidates, support, angles and limitations are arrays',
+  'invalid-object': 'location, statement, assessment and every support item are objects',
+  'unknown-field': 'remove fields the schema does not list',
+}
+/** A refused item as a worker reads it: its code and how to correct it. */
+export const withRefusalHint = <T extends { code: string }>(item: T): T & { hint?: string } => ({ ...item, ...(REFUSAL_HINTS[item.code] ? { hint: REFUSAL_HINTS[item.code] } : {}) })
 
 export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] {
   const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[], invoke: (input: Record<string, unknown>, id: string, row: Message) => Promise<unknown>) => declareTool({
@@ -80,6 +103,13 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
       return bindings.store.submitLedger(bindings.runId, id, input)
     }),
   ]
+  if (bindings.submit) tools.push(bindings.submit.role === 'verifier'
+    ? tool('ReviewSubmit', 'Hand in your verdict for the candidate. The host checks it at once: when the result lists `rejected`, correct what each hint names and call once more; the second call is final.', {
+      ...REVIEW_ASSESSMENT_SCHEMA.properties, support: REVIEW_SUPPORT_SCHEMA, missingEvidence: stringList,
+    }, ['disposition', 'reason', 'support'], input => bindings.submit!.hand(input))
+    : tool('ReviewSubmit', 'Hand in your candidates and coverage. The host checks each candidate at once and keeps the valid ones: when the result lists `rejected`, call once more with only those candidates, corrected as each hint names; the second call is final.', {
+      candidates, coverage: shape({ angles: stringList, limitations: stringList }),
+    }, ['candidates', 'coverage'], input => bindings.submit!.hand(input)))
   if (bindings.allowOutput) tools.push(tool('ReviewOutput', 'Commit a final report from the ledger. Candidates and coverage must exactly match the retained ledger. reconcile requires real edit execution references.', {
     operation: { type: 'string', enum: ['record', 'reconcile'] }, candidates, coverage: REVIEW_COVERAGE_SCHEMA, updates: updatesSchema,
   }, ['operation'], (input, id) => input.operation === 'reconcile' && bindings.actions
