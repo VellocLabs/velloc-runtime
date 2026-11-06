@@ -599,6 +599,42 @@ describe('FileSnapshotRecorder — finalize + dedup', () => {
   })
 })
 
+describe('FileSnapshotRecorder — ignored dependency/cache dirs', () => {
+  it('never captures a file under node_modules, .vite or .git', async () => {
+    const { fake, recorder } = makeHarness({
+      initialFiles: {
+        '/ws/node_modules/.vite/deps/chunk.js': 'x',
+        '/ws/.git/index': 'i',
+        '/ws/src/app.ts': 'a',
+      },
+    })
+    await recorder.trackBeforeMutation('/ws/node_modules/.vite/deps/chunk.js', T1)
+    await recorder.trackBeforeMutation('/ws/.git/index', T1)
+    await recorder.trackBeforeMutation('/ws/src/app.ts', T1)
+    expect([...fake.turnFiles.keys()]).toEqual(['1|/ws/src/app.ts'])
+  })
+
+  it('skips ignored subtrees during a directory-removal walk', async () => {
+    const { fake, recorder } = makeHarness({
+      initialFiles: {
+        '/ws/pkg/index.ts': '1',
+        '/ws/pkg/node_modules/dep/a.js': '2',
+        '/ws/pkg/.vite/deps/b.js': '3',
+      },
+    })
+    await recorder.trackBeforeDirectoryRemoval('/ws/pkg', T1)
+    expect([...fake.turnFiles.keys()]).toEqual(['1|/ws/pkg/index.ts'])
+  })
+
+  it('records nothing for the removal of an ignored directory itself', async () => {
+    const { fake, recorder } = makeHarness({
+      initialFiles: { '/ws/node_modules/dep/a.js': '1' },
+    })
+    await recorder.trackBeforeDirectoryRemoval('/ws/node_modules', T1)
+    expect(fake.turnFiles.size).toBe(0)
+  })
+})
+
 describe('FileSnapshotRecorder — directory removal', () => {
   it('captures every file under a removed directory (bounded walk)', async () => {
     const { fake, recorder } = makeHarness({

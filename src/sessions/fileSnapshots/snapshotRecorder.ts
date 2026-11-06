@@ -43,6 +43,22 @@ export const DEFAULT_MAX_SNAPSHOT_BYTES = 32 * 1024 * 1024
  *  of thousands of blobs. */
 export const MAX_DIR_REMOVAL_CAPTURE_FILES = 512
 
+/** Directory names whose contents are dependencies, VCS state or build
+ *  caches. A path with any of these as a segment is never captured, so it
+ *  never reaches the Diff panel and a removal walk never descends into it
+ *  (F-6). Matched case-insensitively. */
+export const SNAPSHOT_IGNORED_DIR_NAMES: ReadonlySet<string> = new Set([
+  'node_modules', '.git', '.hg', '.svn', '.vite', '.next', '.nuxt',
+  '.turbo', '.parcel-cache', '.cache', '__pycache__', '.pytest_cache',
+  '.mypy_cache', '.ruff_cache', '.tox', '.venv', '.gradle',
+])
+
+/** Whether a normalized path key lies under an ignored directory. */
+export function isSnapshotIgnoredPath(pathKey: string): boolean {
+  const segments = pathKey.split('/')
+  return segments.some(seg => SNAPSHOT_IGNORED_DIR_NAMES.has(seg.toLowerCase()))
+}
+
 /** One side of the session diff, with content when captured. */
 export type SnapshotContentState = {
   exists: boolean
@@ -157,6 +173,7 @@ export class FileSnapshotRecorder {
   }
 
   private isExcluded(pathKey: string): boolean {
+    if (isSnapshotIgnoredPath(pathKey)) return true
     return this.excludeKeys.some(
       root => pathKey === root || pathKey.startsWith(`${root}/`),
     )
@@ -320,7 +337,7 @@ export class FileSnapshotRecorder {
       for (const entry of entries) {
         const child = `${current.replace(/[\\/]+$/, '')}/${entry.name}`
         if (entry.isDirectory()) {
-          stack.push(child)
+          if (!SNAPSHOT_IGNORED_DIR_NAMES.has(entry.name.toLowerCase())) stack.push(child)
         } else {
           out.push(child)
           if (out.length > limit) return null
