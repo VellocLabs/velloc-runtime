@@ -61,6 +61,8 @@ export class SessionLedger {
   runningTurnId: string | undefined
   /** Settles when the turn in flight ends; reloads wait for it. */
   turnEnded: Promise<void> | undefined
+  /** Settles when the submitted turn in flight ends, its command and prompt stages included. */
+  submitEnded: Promise<void> | undefined
   /** The extension reload that follows a turn, while it runs. */
   modsSettling: Promise<void> | undefined
   /** The extensions coming back after an idle unload, while that runs. */

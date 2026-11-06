@@ -28,6 +28,10 @@ export class ConversationEngine {
   private betweenTurns: Promise<void> = Promise.resolve()
 
   constructor(config: ConversationEngineConfig) {
+    if (config.reviewRuntime) {
+      config.reviewRuntime = { ...config.reviewRuntime,
+        transcript: { epoch: () => this.ledger.epoch, append: (rows, epoch) => this.appendBetweenTurns(rows, epoch) } }
+    }
     this.ledger = new SessionLedger(config)
     const writer = new TranscriptWriter(this.ledger)
     this.writer = writer
@@ -40,7 +44,7 @@ export class ConversationEngine {
     if (config.reviewRuntime && config.fsOperations) {
       void import('../codeReview/runtime').then(({ getOrCreateReviewService }) =>
         getOrCreateReviewService(this.ledger.callContext(), config.decidePermission),
-      ).then(service => { service.transcript = { append: rows => this.appendBetweenTurns(rows) } }).catch(error => console.warn('[review] restore unavailable', error))
+      ).catch(error => console.warn('[review] restore unavailable', error))
     }
   }
 
@@ -78,15 +82,21 @@ export class ConversationEngine {
   }
 
   /**
-   * Contract: appends `rows` and stores them when no model turn runs, else as soon as the turn in flight ends, in call
-   * order; open pages are told through the rewritten listener. Rows meant for a conversation `/clear` has since
-   * replaced are dropped. Never rejects.
+   * Contract: appends `rows` and stores them when no turn runs, else as soon as the submitted turn in flight ends
+   * (its command and prompt stages included), in call order; extension append hooks see them only then. Open pages
+   * are told through the rewritten listener. Rows are dropped when the conversation's epoch is no longer `epoch`
+   * (default: the current one), that is when `/clear` has since replaced it. Never rejects.
    */
-  appendBetweenTurns(rows: readonly Message[]): Promise<void> {
-    const epoch = this.ledger.epoch
+  appendBetweenTurns(rows: readonly Message[], epoch = this.ledger.epoch): Promise<void> {
     const next = this.betweenTurns.then(async () => {
+      const turnDone = async () => {
+        let busy: Promise<void> | undefined
+        while ((busy = this.ledger.submitEnded ?? this.ledger.turnEnded)) await busy
+      }
+      await turnDone()
+      if (this.ledger.epoch !== epoch) return
       const kept = await this.writer.appendRows(rows)
-      while (this.ledger.turnEnded) await this.ledger.turnEnded
+      await turnDone()
       if (this.ledger.epoch !== epoch || kept.length === 0) return
       this.ledger.rows.push(...kept)
       await this.writer.persist()

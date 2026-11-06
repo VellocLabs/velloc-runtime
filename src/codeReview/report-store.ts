@@ -3,6 +3,7 @@ import {
   type ReviewEvidence, type ReviewRun, type ReviewScope,
 } from './contracts'
 import { isMergedDuplicate, latestAssessment } from './ledger-lookups'
+import { isReviewId } from './review-protocol'
 
 import { reassessmentTouches, validateReassessmentUpdates, type ReassessmentEvidence, type ReassessmentUpdate } from './reassessment'
 
@@ -392,7 +393,7 @@ export class ReviewReportStore {
     const runId = text(this.id())
     text(input.conversationKey)
     if (input.toolCallId !== undefined && !/^[A-Za-z0-9_.:-]{1,300}$/.test(input.toolCallId)) return fail('invalid-text')
-    if (input.rerunOf !== undefined && !/^[A-Za-z0-9_.:-]{1,300}$/.test(input.rerunOf)) return fail('invalid-text')
+    if (input.rerunOf !== undefined && !isReviewId(input.rerunOf)) return fail('invalid-text')
     text(input.scope.workspaceKey); text(input.scope.repository.projectKey)
     text(input.scope.revision.base); text(input.scope.revision.head)
     if (input.policy.reportLimit !== 'unlimited') integer(input.policy.reportLimit)

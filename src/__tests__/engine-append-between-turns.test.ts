@@ -97,4 +97,41 @@ describe('rows appended between turns', () => {
     expect(rows.slice(rows.indexOf('answer-1') + 1)).toEqual([first.uuid, second.uuid])
     expect(uuids(store.getRecordedMessages())).toEqual(expect.arrayContaining([first.uuid, second.uuid]))
   })
+
+  it('holds rows while a submitted turn is still before its model loop, append hooks included', async () => {
+    const store = new MemoryConversationStore('between-prepare')
+    let entered!: () => void
+    let release!: () => void
+    const preparing = new Promise<void>(resolve => { entered = resolve })
+    const gate = new Promise<void>(resolve => { release = resolve })
+    Object.assign(store, { hydrateMessagesForModel: async () => { entered(); await gate; return null } })
+    const engine = makeEngine(store)
+    const hooked: string[] = []
+    engine.setMods({ hasSessionAppendHooks: () => true, sessionAppend: async (row: Message) => { hooked.push(row.uuid!); return row } } as never)
+    const turn = (async () => {
+      for await (const _row of engine.submitTurn('question', { uuid: 'prompt-1' })) {
+        // run to the result row
+      }
+    })()
+    await preparing
+    const note = makeNoticeRow(runtimeConfig, 'note')
+    const appended = engine.appendBetweenTurns([note])
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(uuids(engine.transcriptRows())).not.toContain(note.uuid)
+    expect(hooked).not.toContain(note.uuid)
+    release()
+    await turn
+    await appended
+    const rows = uuids(engine.transcriptRows())
+    expect(rows.indexOf(note.uuid)).toBeGreaterThan(rows.indexOf('answer-1'))
+    expect(hooked.at(-1)).toBe(note.uuid)
+  })
+
+  it('drops rows tied to a conversation epoch that is no longer current', async () => {
+    const store = new MemoryConversationStore('between-epoch')
+    const engine = makeEngine(store)
+    const stale = makeNoticeRow(runtimeConfig, 'stale')
+    await engine.appendBetweenTurns([stale], engine.getConversationEpoch() - 1)
+    expect(uuids(engine.transcriptRows())).toEqual([])
+  })
 })

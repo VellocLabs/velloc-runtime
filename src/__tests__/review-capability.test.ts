@@ -87,10 +87,10 @@ it('routes persisted report metadata without parsing the notice body or blocking
   expect(transcriptWillHydrateAssistantBody(rows)).toBe(false)
 })
 
-it('shows a rerun result row to the model only, never as a transcript notice', () => {
+it('shows a rerun result note to the model only, never in the transcript', () => {
   const { messages: rows } = convertTranscriptToThreadMessages([
     { type: 'system', subtype: 'code-review', uuid: 'card-1', message: 'The user started code review r1 again', review: { runId: 'r2' } },
-    { type: 'system', subtype: 'code-review-result', uuid: 'result-1', message: 'Code review run r2 ended: {}' },
+    { type: 'user', uuid: 'result-1', isMeta: true, message: { role: 'user', content: '<system-reminder>\nCode review run r2 ended.\n{}\n</system-reminder>' } },
   ])
   expect(rows.map(row => row.id)).toEqual(['card-1'])
 })

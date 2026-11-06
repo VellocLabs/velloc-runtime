@@ -361,22 +361,30 @@ export async function* runTurn(
   // with no extra await between them.
   const { ledger } = parts
   announceSubmit(ledger)
-  if (ledger.modsSettling || ledger.modsArriving || options?.delivery) {
-    const received = await receive(ledger, prompt, options)
-    if (received === undefined) return
-    prompt = received
-  } else {
-    openTurn(ledger, prompt)
-  }
-  const received = prompt
-  // The topbar shows the session as thinking while no tool runs; cleared
-  // however the turn ends.
-  const sessionId = parts.ledger.sessionId()
-  const manager = sessionId ? getActiveSessionManager() : null
-  manager?.markStreamStart(sessionId)
+  let endSubmit!: () => void
+  const submitEnded = new Promise<void>(resolve => { endSubmit = resolve })
+  ledger.submitEnded = submitEnded
   try {
-    yield* accepted(parts, received, options)
+    if (ledger.modsSettling || ledger.modsArriving || options?.delivery) {
+      const received = await receive(ledger, prompt, options)
+      if (received === undefined) return
+      prompt = received
+    } else {
+      openTurn(ledger, prompt)
+    }
+    const received = prompt
+    // The topbar shows the session as thinking while no tool runs; cleared
+    // however the turn ends.
+    const sessionId = parts.ledger.sessionId()
+    const manager = sessionId ? getActiveSessionManager() : null
+    manager?.markStreamStart(sessionId)
+    try {
+      yield* accepted(parts, received, options)
+    } finally {
+      manager?.markStreamEnd(sessionId)
+    }
   } finally {
-    manager?.markStreamEnd(sessionId)
+    if (ledger.submitEnded === submitEnded) ledger.submitEnded = undefined
+    endSubmit()
   }
 }

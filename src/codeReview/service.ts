@@ -10,7 +10,6 @@ import { createReviewTools, withRefusalHint, REVIEW_RESULT_SCHEMA, REVIEW_ASSESS
 import { ReviewWorkerPool, endOf, type ReviewModelRunner, type ReviewTaskObserver } from './runner'
 import { lookupForkTaskId } from '../backgroundTasks/sideTaskSink'
 import type { ToolContract } from '../toolkit/toolContract'
-import type { Message } from '../runtime/RuntimeTypes'
 
 export interface ReviewPreferencesStorage { load(): Promise<ReviewPreferences>; save(value: ReviewPreferences): Promise<void> }
 export interface ReviewScopeAccess {
@@ -61,8 +60,6 @@ interface LiveRun {
   startVerification?: () => Promise<VerificationOutcome>
   findersLaunched?: boolean
 }
-/** Contract: adds rows to the session's transcript between model turns, in call order; never rejects. */
-export interface ReviewTranscriptSink { append(rows: readonly Message[]): Promise<void> }
 export class ReviewGatewayError extends Error { constructor(readonly code: string) { super(code) } }
 const onlyTestsSkipped = (manifest: ScopeManifest): boolean => !manifest.files.some(file => file.status === 'included') && manifest.files.some(file => file.status === 'skipped' && isTestOrFixturePath(file.path))
 const block = (text: string, source: string): ReviewPromptBlock => ({ type: 'text', text, source, provenance: 'trusted-task' })
@@ -127,8 +124,6 @@ export function reviewMaterial(manifest: ScopeManifest, paths?: readonly string[
 /** Invocation provenance is selected by separate host entry points, never by model JSON. */
 export class LocalReviewService {
   readonly store: ReviewReportStore
-  /** The session's transcript, set by the session's engine; a rerun is announced through it. */
-  transcript?: ReviewTranscriptSink
   private readonly live = new Map<string, LiveRun>()
   private readonly pending = new Map<string, { toolCallId: string; controller: AbortController }>()
   /** Controllers aborted by the card's cancel action; a start and its run share one, so both read the same cause. */
