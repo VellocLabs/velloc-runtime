@@ -638,7 +638,7 @@ export async function createBrowserRuntime(
           // Never capture the session-storage tree itself (our own blobs/DB
           // would recurse; sibling sessions' transcripts aren't workspace).
           excludeRoots: [sessionStorageRootOf(options.sessionStoragePath, options.isSubAgent === true)],
-          workspaceRoot: resolvedCwd,
+          workspaceRoots: [resolvedProjectRoot, resolvedCwd],
         })
       : undefined
   // Read the persisted transcript early for `onUiReady`; reused later as `initialMessages`. Skipped
