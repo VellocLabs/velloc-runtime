@@ -701,7 +701,7 @@ it('cancels a review that is still preparing, so the Skill call ends without a r
   expect((await f.service.snapshots()).reports).toEqual([])
   expect(f.runModel).not.toHaveBeenCalled()
 })
-it('records a card cancel that lands after the run is created as the user\'s on that run', async () => {
+it('returns the run a card cancel lands on after it is created, recorded as the user\'s', async () => {
   let release!: () => void
   const held = new Promise<void>(resolve => { release = resolve })
   let saving!: () => void
@@ -711,11 +711,13 @@ it('records a card cancel that lands after the run is created as the user\'s on 
   await reached
   expect(await f.service.cancel(f.service.preparing()[0].id)).toEqual({ accepted: true })
   release()
-  await expect(started).rejects.toThrow(USER_CANCELLED)
+  const { runId } = await started
   const [report] = (await f.service.snapshots()).reports
-  const snapshot = await f.service.wait(report.run.id)
+  expect(report.run.id).toBe(runId)
+  const snapshot = await f.service.wait(runId)
   expect(snapshot.run.progress.status).toBe('cancelled')
   expect(snapshot.coverage.limitations).toContain(USER_CANCELLED)
+  expect(f.service.preparing()).toEqual([])
 })
 it('drops a Skill call id the run cannot keep, and still runs the review', async () => {
   const f = fixture()

@@ -240,7 +240,7 @@ describe('local review runtime gateway', () => {
     await h.service.cancel(runId)
     const report = await h.service.wait(runId)
     expect(report.run.progress.status).toBe('cancelled')
-    expect(report.coverage.limitations).toContain('review-cancelled')
+    expect(report.coverage.limitations).toContain('review-cancelled-by-user')
     expect(report.coverage.angles).toEqual(['lines', 'removed'])
     expect(report.structured).toBe(true)
   })
