@@ -219,26 +219,24 @@ export class LocalReviewService {
     const operation = this.operation(signal)
     const pendingId = toolCallId ? `preparing-${crypto.randomUUID()}` : undefined
     if (pendingId) { this.pending.set(pendingId, { toolCallId: toolCallId!, controller: operation.controller }); this.changed() }
-    const created: { runId?: string } = {}
+    const created: { creating?: boolean } = {}
     const prepared = this.prepare(raw, source, operation.controller, presentation, toolCallId, created)
+    const handOff = (result: { runId: string }) => { void this.live.get(result.runId)!.done.then(operation.release, operation.release); return result }
     try {
       // Scope resolution can wait on a prompt that ignores the signal; a cancelled start still returns at once.
-      const result = await Promise.race([prepared, whenAborted(operation.controller.signal)])
-      void this.live.get(result.runId)!.done.then(operation.release, operation.release)
-      return result
+      return handOff(await Promise.race([prepared, whenAborted(operation.controller.signal)]))
     } catch (error) {
-      // A card cancel after the run exists returns that run, so its cancelled report stays the call's result.
-      if (created.runId && this.userCancelled.has(operation.controller)) {
-        const result = await prepared.catch(() => undefined)
-        if (result) { void this.live.get(result.runId)!.done.then(operation.release, operation.release); return result }
-      }
+      const byUser = this.userCancelled.has(operation.controller)
+      // A card cancel once the run is being created returns that run, so its cancelled report stays the call's result.
+      const result = byUser && created.creating ? await prepared.catch(() => undefined) : undefined
+      if (result) return handOff(result)
       prepared.catch(() => {})
       operation.release()
-      if (this.userCancelled.has(operation.controller)) throw new ReviewGatewayError(USER_CANCELLED)
+      if (byUser) throw new ReviewGatewayError(USER_CANCELLED)
       throw error
     } finally { if (pendingId && this.pending.delete(pendingId)) this.changed() }
   }
-  private async prepare(raw: string, source: 'user' | 'model', controller: AbortController, presentation?: OutputMode, toolCallId?: string, created?: { runId?: string }): Promise<{ runId: string }> {
+  private async prepare(raw: string, source: 'user' | 'model', controller: AbortController, presentation?: OutputMode, toolCallId?: string, created?: { creating?: boolean }): Promise<{ runId: string }> {
     const parsed = parseReviewArguments(raw)
     if (!parsed.ok) throw new ReviewGatewayError(parsed.error.code)
     if (source === 'model' && (parsed.arguments.fix || parsed.arguments.comment)) throw new ReviewGatewayError('action-not-authorized')
@@ -272,9 +270,9 @@ export class LocalReviewService {
     const next = resolveReviewPreferences({ current: preferences, arguments: parsed.arguments, source, targetAuthorized: true })
     if (source === 'user' && JSON.stringify(preferences) !== JSON.stringify(next)) await this.options.preferences.save(next)
     this.admit(controller.signal)
+    if (created) created.creating = true
     const runId = await this.store.createRun({ conversationKey: this.options.conversationKey, scope: access.manifest.scope,
       policy: plan, expectedAngles: access.manifest.status === 'empty' ? [] : [...plan.angles], ...(toolCallId ? { toolCallId } : {}) })
-    if (created) created.runId = runId
     await this.options.saveTarget?.(runId, parsed.arguments.target, parsed.arguments.targetLiteral, parsed.arguments.directory)
     await this.options.savePresentation?.(runId, { notices: plan.notices, emptyScope: access.manifest.status === 'empty', target: [parsed.arguments.directory, parsed.arguments.target].filter(Boolean).join(' ') || undefined })
     for (const anchor of access.manifest.anchors) {

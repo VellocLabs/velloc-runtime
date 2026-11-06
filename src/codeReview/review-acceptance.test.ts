@@ -719,6 +719,23 @@ it('returns the run a card cancel lands on after it is created, recorded as the 
   expect(snapshot.coverage.limitations).toContain(USER_CANCELLED)
   expect(f.service.preparing()).toEqual([])
 })
+it('returns the run a card cancel lands on while the run is being created', async () => {
+  const f = fixture()
+  let release!: () => void
+  const held = new Promise<void>(resolve => { release = resolve })
+  let creating!: () => void
+  const reached = new Promise<void>(resolve => { creating = resolve })
+  const createRun = f.service.store.createRun.bind(f.service.store)
+  vi.spyOn(f.service.store, 'createRun').mockImplementationOnce(async input => { creating(); await held; return createRun(input) })
+  const started = f.service.startModel('high', undefined, 'call-1')
+  await reached
+  expect(await f.service.cancel(f.service.preparing()[0].id)).toEqual({ accepted: true })
+  release()
+  const { runId } = await started
+  const snapshot = await f.service.wait(runId)
+  expect(snapshot.run.progress.status).toBe('cancelled')
+  expect(snapshot.coverage.limitations).toContain(USER_CANCELLED)
+})
 it('drops a Skill call id the run cannot keep, and still runs the review', async () => {
   const f = fixture()
   const { runId } = await f.service.startModel('high', undefined, 'call|with/odd+chars=')
