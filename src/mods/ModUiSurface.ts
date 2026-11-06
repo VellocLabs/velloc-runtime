@@ -565,9 +565,6 @@ export abstract class ModUiSurface extends ModEngineEvents {
     }
   }
 
-  /** A plugin unloaded or lost its worker: its panes go ("`unload` drops a
-   *  pane nothing draws any more … gone before the hooks hear of it"), and
-   *  its drawings are forgotten. */
   /** The slot is disposed: pending invalidations are cancelled and every
    *  drawing's handlers and `$.state` reads are let go. */
   protected disposeUi(): void {
@@ -578,6 +575,9 @@ export abstract class ModUiSurface extends ModEngineEvents {
     this.readsOf.clear()
   }
 
+  /** A plugin unloaded or lost its worker: its panes go ("`unload` drops a
+   *  pane nothing draws any more … gone before the hooks hear of it"), and
+   *  its drawings are forgotten. */
   protected pluginGone(plugin: string): void {
     for (const id of this.panes.clearPlugin(plugin)) {
       for (const key of this.keysOfSite('Pane', id)) {
