@@ -306,7 +306,8 @@ describe('MultiSessionShell wiring', () => {
 
   it("keeps the Delete's Projects folder on the confirmation target", () => {
     expect(shellSource).toMatch(/const requestSessionDelete = useMemo\(\s*\(\) => createShellRequestSessionDelete\(setSessionDeleteTarget\)/)
-    const body = /function createShellRequestSessionDelete\(([\s\S]*?)\n\}\n/.exec(shellSource)?.[1] ?? ''
+    const threadActions = readFileSync(join(__dirname, '..', 'browser', 'webview', 'shellThreadActions.ts'), 'utf8')
+    const body = /function createShellRequestSessionDelete\(([\s\S]*?)\n\}\n/.exec(threadActions)?.[1] ?? ''
     expect(body).toMatch(/\(sessionId: string, origin\?: SessionDeleteOrigin\)/)
     expect(body).toMatch(/setSessionDeleteTarget\(\{ \.\.\.origin, sessionId \}\)/)
   })

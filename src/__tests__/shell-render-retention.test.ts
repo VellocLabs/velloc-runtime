@@ -630,9 +630,11 @@ function collect(node: ts.Node) {
   ts.forEachChild(node, collect)
 }
 collect(shell)
-const factories = file.statements.filter(node => ts.isFunctionDeclaration(node) &&
+const taskSource = readFileSync(new URL('../browser/webview/shellTaskActions.ts', import.meta.url), 'utf8')
+const taskFile = ts.createSourceFile('shellTaskActions.ts', taskSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+const factories = taskFile.statements.filter(node => ts.isFunctionDeclaration(node) &&
   node.name?.text === 'createShellSubAgentRowsForSession'
-).map(node => node.getText(file)).join('\n')
+).map(node => node.getText(taskFile)).join('\n')
 
 function runProduction(minify: boolean) {
   const program = `

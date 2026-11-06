@@ -8,29 +8,12 @@ import {
   useState,
   useSyncExternalStore,
   type ReactNode,
-  type RefObject,
-  type Dispatch,
-  type SetStateAction,
-  type ActionDispatch,
 } from 'react'
 import type { AppendMessage } from '@assistant-ui/react'
-import type { GlobalDefaultMirror } from './globalDefaultSelection'
-import type { SettingsBridge } from '../runtimeClient/settingsBridgeOverConnection'
-import type { TranslateFn } from './i18n/translate'
-import type { BootSession } from './bootSessionPointer'
-import type { RightPanelPresenceEvent } from './layout/rightPanelPresence'
-import type { CapabilityQuery } from './useCan'
-import type { PendingApproval } from '@/runtime/RuntimeTypes'
-import type { RuleEdit } from '@/permissions/ruleUpdates'
-import type { SessionCardPrefs } from './layout/sessionCards'
-import type { LocalSessionEntry, SessionMetaUpdate } from './useSessionManager'
-import type { BrowserRuntimeToolResultSubmission } from './BrowserRuntimeClient'
 import type {
   BrowserBridgeTransport,
   BrowserLlmCatalog,
   BrowserLlmSelection,
-  NexusSettingsSection,
-  ProviderMissingPrompt,
 } from '../bridge/browserBridgeProtocol'
 import type { AgentRuntimeWorkerInitPayload } from '../worker/workerProtocol'
 import type { RuntimeFileAccess } from '../runtimeClient/fileAccess'
@@ -38,68 +21,43 @@ import type { SessionListChannel } from '../runtimeClient/sessionListChannel'
 import type { SessionStatusChannel } from '../runtimeClient/sessionStatusChannel'
 import type { ShellChannel } from '../runtimeClient/shellChannel'
 import { SessionStatusChannelContext } from './topbar/useNexusSessionStatus'
-import type { BrowserSessionMetadata } from '../../sessions/sessionStore'
 import type { BrowserWorkerClientTransport } from './BrowserRuntimeClient'
 import type { SessionListItem } from './Sidebar'
-import type { BrowserRuntimeClientState } from './BrowserRuntimeClient'
 import { AssistantUiThread } from './AssistantUiThread'
 import { Sidebar } from './Sidebar'
 import { SidebarSplitter } from './SidebarSplitter'
 import { SidebarPeek } from './SidebarPeek'
 import { resolveShellLayout, rightPanelWantWidth } from './layout/shellLayout'
 import { initialRightPanelPresence, stepRightPanelPresence } from './layout/rightPanelPresence'
-import { setSessionCardsShown } from './layout/sessionCards'
 import { useSessionCardPrefs } from '@/components/assistant-ui/session-card-stack'
 import {
   PANE_GUTTER_PX,
   RIGHT_PANEL_MIN_WIDTH_PX,
-  SIDEBAR_DEFAULT_WIDTH_PX,
   SIDEBAR_MAX_WIDTH_PX,
   SIDEBAR_MIN_WIDTH_PX,
   SIDEBAR_RAIL_WIDTH_PX,
 } from './layout/layoutConstants'
-import { useSidebarCollapsed, writeSidebarCollapsed } from './sidebarCollapsedPref'
+import { useSidebarCollapsed } from './sidebarCollapsedPref'
 import {
-  clampSidebarWidth,
   readViewportWidth,
 } from './layout/computeLayout'
 import {
   closePane,
   dropModsPane,
   hasPane,
-  browserToggleAction,
   followBrowserTabs,
   openPane,
-  movePane,
-  paneLayoutEquals,
   panesIn,
   paneToggleAction,
   paneWeightFor,
   pruneUnrestorable,
   keepOnlyPanes,
-  resetPaneLayout,
   setMaximized,
-  type FilesPaneState,
-  type PaneDropTarget,
   type PaneLayout,
-  type SessionPaneRecord,
   type SidePaneKind,
   CHAT_WEIGHT as PANE_CHAT_WEIGHT,
 } from './layout/paneLayout'
 import { sideRegionMetrics } from './layout/paneGeometry'
-import { fitRootRowAfterOpen } from './layout/paneFit'
-import { rootPaneWeightsByKind } from './layout/paneResize'
-import {
-  activateFileTab,
-  closeAllTabs,
-  closeFileTab,
-  closeOtherTabs,
-  closeTabsAfter,
-  emptyFilesPane,
-  openFileTab,
-} from './layout/filesPane'
-import { createQuotedAttachmentPrefix } from './BrowserComposerAttachmentAdapter'
-import type { FilesBulkClose } from './panes/FilesPane'
 import { createSessionLayoutsStore, useSessionLayouts, type SessionLayoutsStore } from './layout/sessionLayouts'
 import { paneShortcutFor, paneShortcutStep, paneShortcutYieldsToTerminal } from './layout/paneShortcuts'
 import { toggleFilesTreeVisible } from './panes/filesTreePrefs'
@@ -108,16 +66,14 @@ import { PaneFrame } from './panes/PaneFrame'
 import { PANE_LABEL_KEY } from './panes/paneKinds'
 import {
   DOCK_FLOOR_CELLS,
-  forgetAskedPane,
   modPaneOfKey,
   modsPanePlaces,
-  modsPaneWeight,
   newModPaneOpens,
   opensBringModsPane,
   rememberAskedPanes,
   type ModsPaneRow,
 } from './layout/modsPane'
-import { loadModPanesAsked, saveModPanesAsked } from './layout/layoutStorage'
+import { loadModPanesAsked } from './layout/layoutStorage'
 import { ModsPane } from './panes/ModsPane'
 import { SideChatPane } from './panes/SideChatPane'
 import { useModCellWidth } from '@/components/assistant-ui/mod-render'
@@ -126,9 +82,6 @@ import { useSessionModUi } from './mods/useSessionModUi'
 import { useModAgentView } from './mods/useModAgentView'
 import {
   RightPanelContentContext,
-  type RightPanelDiffTarget,
-  type RightPanelSkillTarget,
-  type RightPanelFileTarget,
 } from '@/components/assistant-ui/right-panel-content-context'
 import {
   FilePathContext,
@@ -137,15 +90,9 @@ import {
 import { ThreadErrorBoundary } from './ThreadErrorBoundary'
 import { TopbarSearch } from './topbar/TopbarSearch'
 import {
-  clearPendingMessageJump,
-  setPendingMessageJump,
-  type PendingMessageJump,
-} from './pendingMessageJumpStore'
-import {
   createConfiguredModelCatalog,
   orderCatalogProviders,
   isSelectionEnabled,
-  healReplacesGlobalDefault,
 } from './modelCatalog'
 import { setCustomProviderRecords } from '../../config/customProviderRegistry'
 import {
@@ -159,8 +106,6 @@ import {
   withoutHidden,
   withoutHiddenKeys,
 } from './sessionVisibility'
-import { readSectionCollapsed, readSessionListView } from './sessionListView'
-import { sidebarRowOrder } from './sessionPinning'
 import { subscribeTeammateJump } from './teammateJumpRequests'
 import { publishSessionStatuses } from './sessionStatusStore'
 import {
@@ -168,10 +113,6 @@ import {
   sessionStatusEntries,
   type SessionActivityById,
 } from './sessionStatusEntries'
-import {
-  ATTENTION_SECTION_ATTR,
-  revealAttentionSource,
-} from './attentionSource'
 import { SessionAttentionBar } from './SessionAttentionBar'
 import {
   RuntimeReadyContext,
@@ -200,11 +141,9 @@ import {
 } from './sessionAttention'
 import { showHostNotification } from './nexusBridgeActions'
 import { sessionDisplayTitle } from './SessionRows'
-import { createCopyTranscriptPath } from './copyTranscriptPath'
 import {
   createGlobalDefaultMirror,
   followGlobalDefault,
-  writeGlobalDefault,
 } from './globalDefaultSelection'
 import {
   createProvidersReadGate,
@@ -213,15 +152,8 @@ import {
 } from './settings/clients'
 import type { NexusProviderConfig } from '../../settings/settingsTypes'
 import {
-  activateSessionTab,
-  closeSessionTab,
-  getProviderMissingPrompt,
-  navigateSessionTab,
-  openSessionTab,
   openUrl,
   setActiveSessionTitle,
-  setWindowDragRegions,
-  pickProjectFolder,
   revealProjectFolder,
   subscribeAgentConfig,
   subscribeSessionTabsChanged,
@@ -229,7 +161,6 @@ import {
 } from './nexusBridgeActions'
 import type { SessionTabEntry } from '../bridge/protocol/session'
 import { WebviewArea } from './WebviewArea'
-import { fileOpenKind } from '@/utils/fileOpenKind'
 import { BrowserAddressBar, BrowserTabStrip } from './panes/BrowserPaneChrome'
 import { postMainContentsLayout } from './useMainContentsLayout'
 import {
@@ -241,19 +172,13 @@ import {
 } from './windowTitle'
 import { getProductName } from '../../branding/productName'
 import { signalFirstScreen } from '../boot/firstScreenSignal'
-import { addRecentFolder } from './recentFoldersStorage'
-import { writeLastFolderForType } from './lastFolderByTypeStorage'
-import { isForcedFolderTemplateType } from '../../utils/conversationStoragePaths'
 import {
-  addProject,
   removeProject,
 } from './projectsStorage'
 import { useWorkspaceState } from './workspaceStore'
 import { Button } from '@/components/ui/button'
 import {
-  SESSION_REMOVAL_TIMEOUT_MS,
   SessionDeleteConfirm,
-  type SessionDeleteOrigin,
   type SessionDeleteTarget,
 } from './SessionDeleteDialog'
 import { ProjectDeleteConfirm, type ProjectDeleteTarget } from './ProjectDeleteDialog'
@@ -272,11 +197,8 @@ import {
   filterSubAgentRowsBySession,
   subAgentsEqual,
 } from './backgroundSubAgents'
-import { loopTimerStopRequest } from './loopTimers'
-import { resolvePlanApproval } from '@/permissions/planApproval'
 import { createPlanAutoOpenGate } from './planAutoOpenGate'
 import { snapshotNeedsAnswer } from '@/utils/sessionNeedsAnswer'
-import { writeClipboard } from '@/utils/clipboard'
 import { randomUuid } from '@/utils/randomUuid'
 import type {
   NexusSessionActivity,
@@ -286,13 +208,11 @@ import type {
   NexusTaskSummaryRow,
   NexusTaskTranscriptEntry,
   NexusTurnEnding,
-  WindowDragRect,
 } from '../bridge/protocol/ui'
 import {
   buildSessionSkillPanelList,
   restoreSessionSkillsFromTranscript,
   sessionSkillsEqual,
-  type SkillPanelListRow,
 } from './sessionSkills'
 // Settings, the right panel and the import dialog load on demand — see
 // `coldUi.ts` for the measurement and for why the prefetch below is part of
@@ -308,15 +228,11 @@ import {
   CliSessionView,
 } from './coldUi'
 import { useResolvedConnection, useTerminalsState } from './terminal/useTerminals'
-import { markCliSessionFresh } from './terminal/freshCliSessions'
-import { requestTerminalFocus } from './terminal/terminalFocus'
 import { cliOfTemplateType, getLauncherCatalog, getTemplateTitle } from '../../prompting/templateCatalog'
 import { TERMINAL_CAPABILITY } from '../../terminal/protocol'
 import { WorkspaceProjectFolderDialog } from './ThreadDialogs'
 
 const NO_CLIS: readonly string[] = []
-// The side panes a CLI session offers (F-34); every other pane stays closed.
-const CLI_SESSION_PANES: readonly SidePaneKind[] = ['browser', 'terminal']
 // Type-only, so it adds no edge to the emitted graph and the split holds.
 import type { SettingsSectionId } from './settings/SettingsScreen'
 import { isSettingsSectionVisible } from './settings/settingsNav'
@@ -327,14 +243,11 @@ import {
   SettingsBridgeContext,
   SettingsHostActionsContext,
   SettingsSessionContext,
-  type SettingsHostActions,
 } from './nexusSettingsBridge'
-import { NEXUS_MODEL_CONFIG } from '../../config/nexusModelConfig'
 import { useSessionManager } from './useSessionManager'
 import { useMultiSessionClients } from './useMultiSessionClients'
-import { isTurnAnchoredMessageId, shouldDismissBootWelcome, sideChatCutForRow } from './assistantUiAdapter'
+import { shouldDismissBootWelcome } from './assistantUiAdapter'
 import { createSessionMessageCallbackFactory } from './sessionMessageCallbacks'
-import { serializePassagePrompt } from './capturedPassages'
 import {
   mountedWithSideChat,
   parentsNeedingAnswer,
@@ -344,43 +257,151 @@ import {
   withoutListedSideChats,
 } from './sideChat'
 import { createForkSendRegistry, deliverForkSend } from './forkSend'
-import type { ForkRetarget } from '../worker/sharedWorkerProtocol'
-import type { ContinueInCodeFolder } from './sessionMessageCallbacks'
 import {
-  isRestoredSessionPointer,
   readStoredActiveSessionId,
   resolveBootSession,
   writeStoredActiveSessionId,
 } from './bootSessionPointer'
 import { useT } from './i18n'
 import {
-  getModContributions,
   useAttachModContributions,
   useContributionsSnapshot,
 } from './mods/modContributionsView'
-import type { ModsPressTopbarResult } from '../runtimeProtocol/modContributions'
 import type { TurnFileChange } from '../../utils/turnDiffs'
 import {
   getBootDiagnosticTraceId,
   installSessionTracer,
 } from '../../utils/sessionTrace'
 import { useClientActivityReport } from './clientActivityReport'
+import {
+  CLI_SESSION_PANES,
+  PaneSessionUi,
+  EMPTY_PANE_UI,
+  EMPTY_FILES_PANE,
+  createShellReadPaneRecord,
+  createShellUpdatePaneRecord,
+  createShellFocusPane,
+  createShellOpenPaneFor,
+  createShellSetModsPaneDismissedFor,
+  createShellClosePaneFor,
+  createShellOpenBrowserTab,
+  createShellActivateBrowserTab,
+  createShellCloseBrowserTab,
+  createShellNavigateBrowserTab,
+  createShellTogglePane,
+  createShellHandleResetLayout,
+  createShellCommitPaneResize,
+  createShellCommitPaneMove,
+  createShellUpdatePaneUi,
+  createShellHandleFileDirtyChange,
+  createShellOpenFileInPanel,
+  createShellOpenFile,
+  createShellOpenTerminalInPanel,
+  createShellOpenFileFromTree,
+  createShellOpenFileTabInWindow,
+  createShellHandleActivateFileTab,
+  createShellHandleCloseFileTab,
+  createShellHandleCloseFileTabs,
+  createShellAttachPathToComposer,
+  createShellOpenDiffInPanel,
+  createShellOpenSkillInPanel,
+} from './shellPaneActions'
+import {
+  readSavedSidebarWidth,
+  createShellHandleToggleSidebar,
+  createShellSessionAreaRef,
+  createShellHandleSidebarResize,
+  createShellHandleSidebarResizeStart,
+  createShellHandleSidebarResizeEnd,
+  createShellMergeSessionTabCounts,
+  createShellSetSessionTabList,
+  createShellResolveSearchHomeDir,
+  createShellCreateSessionInitPayload,
+} from './shellSidebarActions'
+import {
+  createShellHandleReconnectNow,
+  createShellHandlePressPluginItem,
+  createShellPickGlobalDefaultSelection,
+  createShellHandleRequestDelete,
+  createShellHandleRequestRename,
+  createShellHandlePinThread,
+  createShellHandleArchiveThread,
+  createShellHandleRequestFork,
+  createShellHandleStopSubAgent,
+  createShellHandleResumeSubAgent,
+  createShellHandleLoadSubAgentTranscript,
+  createShellLoadAgentTurnDiffDetail,
+  createShellHandleRewindFromMessage,
+  createShellHandlePendingQuestionsChange,
+} from './shellSessionRequests'
+import {
+  createShellSubAgentRowsForSession,
+  createShellHandleStopBackgroundTask,
+  createShellHandleSelectSkill,
+  createShellHandleOpenBackgroundTasks,
+  createShellHandleOpenBackgroundTasksList,
+  createShellHandleTaskFocusConsumed,
+  createShellResolveActivePlan,
+  createShellHandleToggleSessionCards,
+  createShellCloseSessionCardsPopover,
+} from './shellTaskActions'
+import {
+  createShellHandleOpenPluginSettings,
+  createShellHandleOpenMcpServerSettings,
+  createShellWriteModPanesAsked,
+  createShellBringModsPane,
+  createShellHandleCloseModTab,
+  createShellHandleSettingsNavigate,
+  createShellHandleOpenNexusSettings,
+  createShellHandleOpenCustomize,
+  createShellHandleCloseCustomize,
+  createShellHandleOpenProviderSettings,
+  createShellHandleDragRegionsChange,
+  createShellHandleTopbarSelectModel,
+  createShellHandleSessionSelectModel,
+  createShellHandleSetAutoCompactWindow,
+} from './shellSettingsActions'
+import {
+  createShellHealActiveSessionSelection,
+  createShellHandleAdoptDefaultSelection,
+  createShellHandleSelectSideChat,
+  createShellHandleAddSideChat,
+  createShellHandleStartSideChat,
+  createShellHandleDetachSideChat,
+  createShellHandleArchiveSideChat,
+  createShellPublishAttentionQueue,
+  createShellRevealAttentionInSession,
+  createShellHandleAttentionSelect,
+  createShellHandleSearchOpenSession,
+  createShellHandleSearchJump,
+} from './shellSelectionActions'
+import {
+  createShellHandleDeleteThread,
+  createShellHandleComposerEdit,
+  createShellHandleSendInForkedSession,
+  createShellHandleContinueInCode,
+  createShellHandleForkAfterMessage,
+  createShellHandleForkThread,
+  createShellHandleSelectProjectFolder,
+  createShellHandleOpenProjectFolder,
+  createShellHandleAddProject,
+  createShellHandleLaunchInProject,
+  createShellRequestSessionDelete,
+  createShellHandleLaunchThread,
+  createShellLaunchCliIn,
+  createShellPickCliFolder,
+  createShellHandleCopyTranscriptPath,
+  createShellHandleCopyProjectPath,
+  createShellDeleteAndAwaitRemoval,
+  createShellHandleRevealProjectFolder,
+  createShellHandleOpenSettings,
+  createShellHandleLoadProviderMissingPrompt,
+  createShellSettingsHostActions,
+  createShellOpenTerminalLink,
+  createShellOnSessionStateChange,
+} from './shellThreadActions'
 
 const EMPTY_TAB_LIST: readonly SessionTabEntry[] = []
-
-/** Two tab lists the strip would draw identically. */
-function sameTabList(a: readonly SessionTabEntry[], b: readonly SessionTabEntry[]): boolean {
-  if (a.length !== b.length) return false
-  return a.every((tab, i) => {
-    const other = b[i]
-    return (
-      tab.id === other.id &&
-      tab.title === other.title &&
-      tab.url === other.url &&
-      tab.active === other.active
-    )
-  })
-}
 
 /**
  * An opaque identity of what a snapshot is halted ON — the ids of its pending
@@ -464,87 +485,11 @@ export type MultiSessionShellProps = {
 // read, write, and the durability caveat that makes a restored id a hint.
 const NEXUS_ACTIVE_SESSION_CHANGED_EVENT = 'nexus:activeSessionChanged'
 
-// Wide-mode sidebar width (px). Persists across reloads; mirrors the
-// collapse pref's behavior — only written when the splitter is actually
-// usable (i.e. wide viewport + sidebar expanded). Narrow-mode auto-
-// collapses hide the splitter entirely, so the saved width survives a
-// resize round-trip.
-const SIDEBAR_WIDTH_STORAGE_KEY = 'shift-sidebar-width'
-
-function readSavedSidebarWidth(): number {
-  try {
-    const raw = globalThis.localStorage?.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
-    if (raw == null) return SIDEBAR_DEFAULT_WIDTH_PX
-    const parsed = Number(raw)
-    if (!Number.isFinite(parsed)) return SIDEBAR_DEFAULT_WIDTH_PX
-    return clampSidebarWidth(parsed)
-  } catch {
-    return SIDEBAR_DEFAULT_WIDTH_PX
-  }
-}
-
-function writeSavedSidebarWidth(width: number): void {
-  try {
-    globalThis.localStorage?.setItem(
-      SIDEBAR_WIDTH_STORAGE_KEY,
-      String(Math.round(width)),
-    )
-  } catch {
-    // localStorage may be unavailable; persistence is best-effort.
-  }
-}
-
 /**
  * Number of recent thread trees kept mounted: switching among them is a `display:` toggle;
  * an evicted session pays a full remount. Each mounted tree costs ~10 MB.
  */
 const MAX_MOUNTED_THREADS = 5
-
-// Boot-splash logic was reverted — multiple iterations didn't
-// reliably eliminate the right-panel welcome flash. We're now in
-// "instrument and observe" mode: see the diagnostic console traces
-// inside the component for the timeline of state transitions, then
-// fix once we understand the actual race.
-
-function getTranscriptUpdatedAt(state: BrowserRuntimeClientState): number {
-  for (let index = state.transcriptMessages.length - 1; index >= 0; index -= 1) {
-    const timestamp = (
-      state.transcriptMessages[index] as { timestamp?: unknown } | undefined
-    )?.timestamp
-    if (typeof timestamp !== 'string') {
-      continue
-    }
-
-    const parsed = Date.parse(timestamp)
-    if (Number.isFinite(parsed)) {
-      return parsed
-    }
-  }
-
-  return Date.now()
-}
-
-/**
- * Per-session, in-memory pane content that is not layout (F-9): the Diff and
- * Skill targets and a file's reveal request. The layout itself is the
- * session's persisted record (`sessionLayouts`).
- */
-interface PaneSessionUi {
-  // The diff the Diff pane shows: the last one the person opened.
-  diffTarget: RightPanelDiffTarget | null
-  // The skill whose instructions the Skill pane shows (Skill card "View skill").
-  skillTarget: RightPanelSkillTarget | null
-  // Line-reveal request for a file, from a `path:42` transcript mention. The
-  // nonce edge-triggers delivery, so clicking the same `path:42` twice
-  // re-centers.
-  fileReveal: { path: string; line: number; nonce: number } | null
-}
-
-const EMPTY_PANE_UI: PaneSessionUi = { diffTarget: null, skillTarget: null, fileReveal: null }
-
-const EMPTY_FILES_PANE: FilesPaneState = emptyFilesPane()
-/** The Plugins pane's px around its body's cells: frame borders, the body's insets, the scrollbar's room. */
-const MODS_PANE_CHROME_PX = 40
 
 export function MultiSessionShell({
   createWorkerTransport,
@@ -4391,1681 +4336,4 @@ export function MultiSessionShell({
     </RuntimeReadyContext.Provider>
     </RuntimeCapabilitiesContext.Provider>
   )
-}
-
-function createShellHandleReconnectNow(
-  runtimeConnection: (() => Promise<RuntimeConnection>) | undefined,
-) {
-  return () => {
-    void runtimeConnection?.().then(
-      connection => connection.reconnectNow(),
-      () => {
-        // No connection to hurry — the overlay only shows over a live one.
-      },
-    )
-  }
-}
-
-function createShellHandlePressPluginItem(
-  runtimeConnection: (() => Promise<RuntimeConnection>) | undefined,
-) {
-  return async (sessionId: string, id: string): Promise<ModsPressTopbarResult> => {
-    if (!runtimeConnection) return { ok: false, reason: 'no-session' }
-    const connection = await runtimeConnection()
-    return connection.request<ModsPressTopbarResult>('mods.pressTopbar', { sessionId, id })
-  }
-}
-
-function createShellPickGlobalDefaultSelection(
-  globalDefaultMirror: GlobalDefaultMirror,
-  settingsBridgeRef: RefObject<SettingsBridge | undefined>,
-) {
-  return (selection: BrowserLlmSelection) => {
-    globalDefaultMirror.pick(selection, () =>
-      writeGlobalDefault(settingsBridgeRef.current, selection),
-    )
-  }
-}
-
-function createShellHandleRequestDelete(
-  sessionChannelRef: RefObject<SessionListChannel | null>,
-) {
-  return (sessionId: string, requestId: string) => {
-    sessionChannelRef.current?.request('session.delete', { sessionId, requestId })
-  }
-}
-
-function createShellHandleRequestRename(
-  sessionChannelRef: RefObject<SessionListChannel | null>,
-) {
-  return (sessionId: string, title: string, requestId: string) => {
-    sessionChannelRef.current?.request('session.rename', {
-      sessionId,
-      title,
-      requestId,
-    })
-  }
-}
-
-function createShellHandlePinThread(
-  sessionChannelRef: RefObject<SessionListChannel | null>,
-) {
-  return (sessionId: string, pinned: boolean) => {
-    sessionChannelRef.current?.request('session.pin', {
-      sessionId,
-      pinned,
-      requestId: randomUuid(),
-    })
-  }
-}
-
-function createShellHandleArchiveThread(
-  sessionChannelRef: RefObject<SessionListChannel | null>,
-) {
-  return (sessionId: string, archived: boolean) => {
-    sessionChannelRef.current?.request('session.archive', {
-      sessionId,
-      archived,
-      requestId: randomUuid(),
-    })
-  }
-}
-
-function createShellHandleRequestFork(
-  ownForkRequestsRef: RefObject<Set<string>>,
-  ownSideChatForksRef: RefObject<Map<string, string>>,
-  sessionChannelRef: RefObject<SessionListChannel | null>,
-  t: TranslateFn,
-) {
-  return (
-    fromSessionId: string,
-    cutUuid: string | undefined,
-    requestId: string,
-    sourceTitle?: string,
-    keepCutMessage?: boolean,
-    retarget?: ForkRetarget,
-    sideChat?: { initialDraft?: string },
-  ) => {
-    ownForkRequestsRef.current.add(requestId)
-    if (sideChat) ownSideChatForksRef.current.set(requestId, fromSessionId)
-    sessionChannelRef.current?.request('session.fork', {
-      fromSessionId,
-      ...(cutUuid !== undefined ? { cutUuid } : {}),
-      requestId,
-      ...(retarget ? { retarget } : {}),
-      ...(sideChat
-        ? { sideChat: true, ...(sideChat.initialDraft ? { initialDraft: sideChat.initialDraft } : {}) }
-        : {}),
-      ...(keepCutMessage ? {} : { moveCutMessageToDraft: true }),
-      ...(sourceTitle
-        ? { title: t('session.forkTitle', { title: sourceTitle }) }
-        : {}),
-    })
-  }
-}
-
-function createShellHandleStopSubAgent(
-  sessionChannelRef: RefObject<SessionListChannel | null>,
-) {
-  return (subAgentSessionId: string) => {
-    sessionChannelRef.current?.request('task.stop', {
-      sessionId: subAgentSessionId,
-      requestId: randomUuid(),
-    })
-  }
-}
-
-function createShellHandleResumeSubAgent(
-  sessionChannelRef: RefObject<SessionListChannel | null>,
-) {
-  return (subAgentSessionId: string, prompt: string) => {
-    sessionChannelRef.current?.request('task.resume', {
-      sessionId: subAgentSessionId,
-      prompt,
-      requestId: randomUuid(),
-    })
-  }
-}
-
-function createShellHandleLoadSubAgentTranscript(
-  sessionChannelRef: RefObject<SessionListChannel | null>,
-  subAgentTranscriptWaitersRef: RefObject<Map<string, (detail: NexusTaskDetail | null) => void>>,
-) {
-  return (
-    subAgentSessionId: string,
-  ): Promise<NexusTaskDetail | null> => {
-    const channel = sessionChannelRef.current
-    if (!channel) return Promise.resolve(null)
-    const requestId = randomUuid()
-    return new Promise((resolve) => {
-      const waiters = subAgentTranscriptWaitersRef.current
-      // Safety net: resolve null if the worker never replies.
-      const timer = window.setTimeout(() => {
-        if (waiters.delete(requestId)) resolve(null)
-      }, 10_000)
-      // Wrap the resolver so the normal worker reply also CLEARS the safety-net
-      // timer (otherwise it leaks a 10s timer + closure per detail open).
-      waiters.set(requestId, (detail) => {
-        window.clearTimeout(timer)
-        resolve(detail)
-      })
-      channel.request('task.transcript', {
-        sessionId: subAgentSessionId,
-        requestId,
-      })
-    })
-  }
-}
-
-function createShellLoadAgentTurnDiffDetail(
-  sessionChannelRef: RefObject<SessionListChannel | null>,
-  agentTurnDiffWaitersRef: RefObject<Map<string, (files: TurnFileChange[] | null) => void>>,
-) {
-  return (taskId: string, turnIndex: number): Promise<TurnFileChange[] | null> => {
-    const channel = sessionChannelRef.current
-    if (!channel) return Promise.resolve(null)
-    const requestId = randomUuid()
-    return new Promise((resolve) => {
-      const waiters = agentTurnDiffWaitersRef.current
-      const timer = window.setTimeout(() => {
-        if (waiters.delete(requestId)) resolve(null)
-      }, 10_000)
-      waiters.set(requestId, (files) => {
-        window.clearTimeout(timer)
-        resolve(files)
-      })
-      channel.request('task.turnDiff', { sessionId: taskId, requestId, turnIndex })
-    })
-  }
-}
-
-function createShellHandleRewindFromMessage(
-  pendingRewindRef: RefObject<Map<string, string>>,
-  sessionChannelRef: RefObject<SessionListChannel | null>,
-) {
-  return (fromSessionId: string, cutUuid: string) => {
-    const requestId = randomUuid()
-    pendingRewindRef.current.set(requestId, fromSessionId)
-    sessionChannelRef.current?.request('session.fork', {
-      fromSessionId,
-      cutUuid,
-      requestId,
-      replacesSource: true,
-    })
-  }
-}
-
-function createShellHandlePendingQuestionsChange(
-  setSessionsWithPendingQuestions: Dispatch<SetStateAction<ReadonlySet<string>>>,
-) {
-  return (sessionId: string, hasPending: boolean) => {
-    setSessionsWithPendingQuestions(prev => {
-      if (prev.has(sessionId) === hasPending) return prev
-      const next = new Set(prev)
-      if (hasPending) next.add(sessionId)
-      else next.delete(sessionId)
-      return next
-    })
-  }
-}
-
-function createShellHandleToggleSidebar(
-  sidebarHiddenRef: RefObject<boolean>,
-  setSidebarPeek: Dispatch<SetStateAction<boolean>>,
-  sidebarCollapsedRef: RefObject<boolean>,
-) {
-  return () => {
-    if (sidebarHiddenRef.current) {
-      setSidebarPeek(open => !open)
-      return
-    }
-    setSidebarPeek(false)
-    writeSidebarCollapsed(!sidebarCollapsedRef.current)
-  }
-}
-
-function createShellSessionAreaRef(
-  sessionAreaObserverRef: RefObject<ResizeObserver | null>,
-  setSessionAreaWidth: Dispatch<SetStateAction<number>>,
-) {
-  return (node: HTMLDivElement | null) => {
-    sessionAreaObserverRef.current?.disconnect()
-    sessionAreaObserverRef.current = null
-    if (!node || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(entries => {
-      const width = Math.round(entries[entries.length - 1]?.contentRect.width ?? 0)
-      if (width > 0) setSessionAreaWidth(width)
-    })
-    observer.observe(node)
-    sessionAreaObserverRef.current = observer
-  }
-}
-
-function createShellHandleSidebarResize(
-  setSidebarWidth: Dispatch<SetStateAction<number>>,
-  isResizingSidebarRef: RefObject<boolean>,
-) {
-  return (width: number) => {
-    setSidebarWidth(width)
-    // Pointer-drag path: skip storage writes mid-drag — drag-end
-    // persists the final value. Keyboard path: persist every step
-    // (cheap; one localStorage write per ArrowLeft/Right is fine).
-    if (!isResizingSidebarRef.current) {
-      writeSavedSidebarWidth(width)
-    }
-  }
-}
-
-function createShellHandleSidebarResizeStart(
-  setIsResizingSidebar: Dispatch<SetStateAction<boolean>>,
-) {
-  return () => {
-    setIsResizingSidebar(true)
-  }
-}
-
-function createShellHandleSidebarResizeEnd(
-  setIsResizingSidebar: Dispatch<SetStateAction<boolean>>,
-  sidebarWidth: number,
-) {
-  return () => {
-    setIsResizingSidebar(false)
-    writeSavedSidebarWidth(sidebarWidth)
-  }
-}
-
-function createShellMergeSessionTabCounts(
-  setSessionTabCounts: Dispatch<SetStateAction<ReadonlyMap<string, { nexus: number; total: number; }>>>,
-) {
-  return (sessionId: string, nexus: number, total: number) => {
-    setSessionTabCounts(prev => {
-      const existing = prev.get(sessionId)
-      if (existing && existing.nexus === nexus && existing.total === total) {
-        return prev
-      }
-      const next = new Map(prev)
-      next.set(sessionId, { nexus, total })
-      return next
-    })
-  }
-}
-
-function createShellSetSessionTabList(
-  setSessionTabLists: Dispatch<SetStateAction<ReadonlyMap<string, readonly SessionTabEntry[]>>>,
-) {
-  return (sessionId: string, tabs: SessionTabEntry[]) => {
-    setSessionTabLists(prev => {
-      const existing = prev.get(sessionId)
-      if (existing && sameTabList(existing, tabs)) return prev
-      const next = new Map(prev)
-      if (tabs.length === 0) next.delete(sessionId)
-      else next.set(sessionId, tabs)
-      return next
-    })
-  }
-}
-
-function createShellResolveSearchHomeDir(
-  files: RuntimeFileAccess | undefined,
-) {
-  return (): Promise<string> =>
-      files
-        ? files.userHome()
-        : Promise.reject(new Error('fsx: the shell was built without file access'))
-}
-
-function createShellCreateSessionInitPayload(
-  createInitPayload: (sessionId: string) => AgentRuntimeWorkerInitPayload,
-  globalDefaultSelectionRef: RefObject<BrowserLlmSelection | null>,
-  defaultSelectionRef: RefObject<BrowserLlmSelection | null>,
-  activeSelectionRef: RefObject<BrowserLlmSelection | null | undefined>,
-  getSessionTemplateType: (sessionId: string) => string | undefined,
-  getSessionProjectRoot: (sessionId: string) => string | undefined,
-  sharedModelCatalogRef: RefObject<BrowserLlmCatalog | null>,
-  bootSession: BootSession,
-) {
-  return (sessionId: string) => {
-    const payload = createInitPayload(sessionId)
-    // Seed from the GLOBAL default (the last topbar pick, model + effort),
-    // then the catalog default, then — early boot only — the active
-    // session's selection. NOT the active session first: its effort may be
-    // a per-session composer override that must not leak into new
-    // sessions. An existing session reopened with this payload keeps its
-    // own persisted model + effort (`resolveSelection` /
-    // `mergeRequestedTier`).
-    const defaultSelection =
-      globalDefaultSelectionRef.current ??
-      defaultSelectionRef.current ??
-      activeSelectionRef.current
-    const effectiveTemplateType =
-      getSessionTemplateType(sessionId) ?? payload.templateType
-    // The folder this page KNOWS for the session (one it persisted, or one it
-    // was just created bound to). With none, the runtime decides at
-    // `session.open`: a forced-folder type (`code`/`safe_code`) inherits the
-    // user's last folder of that type, every other type opens in its per-type
-    // shared workspace (`worker/sessionOpenComposer.ts`).
-    const autoProjectRoot = getSessionProjectRoot(sessionId)
-    return {
-      ...payload,
-      ...(defaultSelection
-        ? {
-            userSpecifiedProviderId: defaultSelection.providerId,
-            userSpecifiedModel: defaultSelection.modelId,
-            // Carry the user's current reasoning-effort over so a brand-
-            // new session inherits the same tier instead of resetting to
-            // the model's catalog default (or no tier at all).
-            ...(defaultSelection.thinkingTier
-              ? {
-                  userSpecifiedThinkingTier: defaultSelection.thinkingTier,
-                }
-              : {}),
-          }
-        : {}),
-      initialModelCatalog:
-        sharedModelCatalogRef.current ?? payload.initialModelCatalog,
-      // Per-session agent template chosen by the thread launcher (selects
-      // the prompt + tools). Falls back to the boot-default templateType.
-      templateType: effectiveTemplateType,
-      ...(autoProjectRoot ? { projectRoot: autoProjectRoot } : {}),
-      // ONLY the session restored from the persisted pointer carries this.
-      // Every other id in this document was minted here — by `openNewSession`
-      // or by the boot fallback — so an absent record genuinely means "new"
-      // and must still be created at bind. Narrow here is not enough on its
-      // own: the worker replays this payload under minted ids for every
-      // background spawn, so `commitInitTemplate` scrubs the flag out of
-      // `lastInitTemplate` (F-17).
-      ...(isRestoredSessionPointer(bootSession, sessionId)
-        ? { restoredSessionId: true }
-        : {}),
-    }
-  }
-}
-
-function createShellReadPaneRecord(
-  sessionLayoutsStore: SessionLayoutsStore,
-  sessionTabCountsRef: RefObject<ReadonlyMap<string, { nexus: number; total: number; }>>,
-  modPaneCountsRef: RefObject<Map<string, number>>,
-  getSessionTemplateType: (sessionId: string) => string | undefined,
-) {
-  return (sessionId: string) => {
-    const record = pruneUnrestorable(sessionLayoutsStore.get(sessionId), {
-      browserTabs: sessionTabCountsRef.current.get(sessionId)?.nexus ?? 0,
-      modPanes: modPaneCountsRef.current.get(sessionId),
-    })
-    return cliOfTemplateType(getSessionTemplateType(sessionId)) ? keepOnlyPanes(record, CLI_SESSION_PANES) : record
-  }
-}
-
-function createShellUpdatePaneRecord(
-  activeSessionIdRef: RefObject<string>,
-  readPaneRecord: (sessionId: string) => SessionPaneRecord,
-  rowWidthForRef: RefObject<(layout: PaneLayout) => number | null>,
-  presentRightPanel: ActionDispatch<[event: RightPanelPresenceEvent]>,
-  sessionLayoutsStore: SessionLayoutsStore,
-) {
-  return (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId = activeSessionIdRef.current) => {
-    if (!sessionId) return
-    const prev = readPaneRecord(sessionId)
-    let next = fn(prev)
-    if (next === prev) return
-    for (const kind of panesIn(next.layout)) {
-      if (hasPane(prev.layout, kind)) continue
-      const rowWidth = rowWidthForRef.current(next.layout)
-      if (rowWidth === null) continue
-      const layout = fitRootRowAfterOpen(next.layout, kind, { rowWidth, gutter: PANE_GUTTER_PX })
-      if (layout !== next.layout) next = { ...next, layout }
-    }
-    if (panesIn(prev.layout).length > 0 && panesIn(next.layout).length === 0) {
-      presentRightPanel({ type: 'close' })
-    }
-    sessionLayoutsStore.put(sessionId, next)
-  }
-}
-
-function createShellFocusPane(
-  activeSessionIdRef: RefObject<string>,
-  focusedPaneRef: RefObject<Map<string, SidePaneKind>>,
-) {
-  return (kind: SidePaneKind) => {
-    const id = activeSessionIdRef.current
-    if (id) focusedPaneRef.current.set(id, kind)
-  }
-}
-
-function createShellOpenPaneFor(
-  activeCliRef: RefObject<string | undefined>,
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  sessionLayoutsStore: SessionLayoutsStore,
-  focusPane: (kind: SidePaneKind) => void,
-  presentRightPanel: ActionDispatch<[event: RightPanelPresenceEvent]>,
-) {
-  return (kind: SidePaneKind) => {
-    if (activeCliRef.current && !CLI_SESSION_PANES.includes(kind)) return
-    updatePaneRecord(r => {
-      const opened = openPane(r, kind, sessionLayoutsStore.getSnapshot().weights)
-      return opened.maximized !== null ? setMaximized(opened, kind) : opened
-    })
-    focusPane(kind)
-    presentRightPanel({ type: 'personOpen', view: kind })
-  }
-}
-
-function createShellSetModsPaneDismissedFor(
-  setModsPaneDismissed: Dispatch<SetStateAction<ReadonlySet<string>>>,
-) {
-  return (sessionId: string, dismissed: boolean) => {
-    setModsPaneDismissed(prev => {
-      if (prev.has(sessionId) === dismissed) return prev
-      const next = new Set(prev)
-      if (dismissed) next.add(sessionId)
-      else next.delete(sessionId)
-      return next
-    })
-  }
-}
-
-function createShellClosePaneFor(
-  activeSessionIdRef: RefObject<string>,
-  readPaneRecord: (sessionId: string) => SessionPaneRecord,
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  lastClosedPaneRef: RefObject<Map<string, SidePaneKind>>,
-  focusedPaneRef: RefObject<Map<string, SidePaneKind>>,
-  browserDismissedAtRef: RefObject<Map<string, number>>,
-  sessionTabCountsRef: RefObject<ReadonlyMap<string, { nexus: number; total: number; }>>,
-  setModsPaneDismissedFor: (sessionId: string, dismissed: boolean) => void,
-) {
-  return (kind: SidePaneKind) => {
-    const id = activeSessionIdRef.current
-    if (!id) return
-    if (!hasPane(readPaneRecord(id).layout, kind)) return
-    updatePaneRecord(r => closePane(r, kind))
-    lastClosedPaneRef.current.set(id, kind)
-    if (focusedPaneRef.current.get(id) === kind) focusedPaneRef.current.delete(id)
-    if (kind === 'browser') {
-      browserDismissedAtRef.current.set(id, sessionTabCountsRef.current.get(id)?.nexus ?? 0)
-    }
-    if (kind === 'mods') setModsPaneDismissedFor(id, true)
-  }
-}
-
-function createShellOpenBrowserTab(
-  browserDismissedAtRef: RefObject<Map<string, number>>,
-  hostBridgeTransport: BrowserBridgeTransport,
-) {
-  return (sessionId: string) => {
-    browserDismissedAtRef.current.delete(sessionId)
-    void openSessionTab(hostBridgeTransport, sessionId).catch(() => {
-      /* no Nexus window (a remote page, the dev mock): nothing to show */
-    })
-  }
-}
-
-function createShellActivateBrowserTab(
-  activeSessionId: string,
-  hostBridgeTransport: BrowserBridgeTransport,
-) {
-  return (tabId: number) => {
-    if (!activeSessionId) return
-    void activateSessionTab(hostBridgeTransport, activeSessionId, tabId).catch(() => {})
-  }
-}
-
-function createShellCloseBrowserTab(
-  activeSessionId: string,
-  hostBridgeTransport: BrowserBridgeTransport,
-) {
-  return (tabId: number) => {
-    if (!activeSessionId) return
-    void closeSessionTab(hostBridgeTransport, activeSessionId, tabId).catch(() => {})
-  }
-}
-
-function createShellNavigateBrowserTab(
-  activeSessionId: string,
-  hostBridgeTransport: BrowserBridgeTransport,
-) {
-  return (tabId: number, text: string) => {
-    if (!activeSessionId) return
-    void navigateSessionTab(hostBridgeTransport, activeSessionId, tabId, text).catch(() => {})
-  }
-}
-
-function createShellTogglePane(
-  activeSessionIdRef: RefObject<string>,
-  activeCliRef: RefObject<string | undefined>,
-  setBackgroundTaskFocusSessionId: Dispatch<SetStateAction<string | null>>,
-  readPaneRecord: (sessionId: string) => SessionPaneRecord,
-  sessionTabCountsRef: RefObject<ReadonlyMap<string, { nexus: number; total: number; }>>,
-  openBrowserTab: (sessionId: string) => void,
-  browserDismissedAtRef: RefObject<Map<string, number>>,
-  setModsPaneDismissedFor: (sessionId: string, dismissed: boolean) => void,
-  openPaneFor: (kind: SidePaneKind) => void,
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  focusPane: (kind: SidePaneKind) => void,
-  closePaneFor: (kind: SidePaneKind) => void,
-) {
-  return (kind: SidePaneKind) => {
-    const id = activeSessionIdRef.current
-    if (!id) return
-    if (activeCliRef.current && !CLI_SESSION_PANES.includes(kind)) return
-    setBackgroundTaskFocusSessionId(null)
-    const action =
-      kind === 'browser'
-        ? browserToggleAction(readPaneRecord(id), {
-            browserTabs: sessionTabCountsRef.current.get(id)?.nexus ?? 0,
-          })
-        : paneToggleAction(readPaneRecord(id), kind)
-    switch (action) {
-      case 'new-tab':
-        openBrowserTab(id)
-        break
-      case 'open':
-        if (kind === 'browser') browserDismissedAtRef.current.delete(id)
-        if (kind === 'mods') setModsPaneDismissedFor(id, false)
-        openPaneFor(kind)
-        break
-      case 'move-expansion':
-        updatePaneRecord(r => setMaximized(r, kind))
-        focusPane(kind)
-        break
-      case 'close':
-        closePaneFor(kind)
-        break
-    }
-  }
-}
-
-function createShellHandleResetLayout(
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-) {
-  return () => {
-    updatePaneRecord(resetPaneLayout)
-  }
-}
-
-function createShellCommitPaneResize(
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  sessionLayoutsStore: SessionLayoutsStore,
-  presentRightPanel: ActionDispatch<[event: RightPanelPresenceEvent]>,
-) {
-  return (layout: PaneLayout) => {
-    updatePaneRecord(r => (paneLayoutEquals(r.layout, layout) ? r : { ...r, layout }))
-    for (const [kind, weight] of Object.entries(rootPaneWeightsByKind(layout))) {
-      if (typeof weight === 'number') sessionLayoutsStore.setWeight(kind as SidePaneKind, weight)
-    }
-    presentRightPanel({ type: 'drag' })
-  }
-}
-
-function createShellCommitPaneMove(
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  sessionLayoutsStore: SessionLayoutsStore,
-) {
-  return (kind: SidePaneKind, target: PaneDropTarget) => {
-    updatePaneRecord(r => {
-      const layout = movePane(r.layout, kind, target, sessionLayoutsStore.getSnapshot().weights)
-      return layout === r.layout ? r : { ...r, layout }
-    })
-  }
-}
-
-function createShellUpdatePaneUi(
-  setPaneSessionUi: Dispatch<SetStateAction<Map<string, PaneSessionUi>>>,
-) {
-  return (sessionId: string, fn: (prev: PaneSessionUi) => PaneSessionUi) => {
-    setPaneSessionUi(prev => {
-      const cur = prev.get(sessionId) ?? EMPTY_PANE_UI
-      const next = fn(cur)
-      if (next === cur) return prev
-      const m = new Map(prev)
-      m.set(sessionId, next)
-      return m
-    })
-  }
-}
-
-function createShellHandleFileDirtyChange(
-  setDirtyFilePaths: Dispatch<SetStateAction<ReadonlySet<string>>>,
-) {
-  return (path: string, dirty: boolean) => {
-    setDirtyFilePaths(prev => {
-      if (prev.has(path) === dirty) return prev
-      const next = new Set(prev)
-      if (dirty) next.add(path)
-      else next.delete(path)
-      return next
-    })
-  }
-}
-
-function createShellOpenFileInPanel(
-  activeSessionIdRef: RefObject<string>,
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  dirtyFilePathsRef: RefObject<ReadonlySet<string>>,
-  sessionLayoutsStore: SessionLayoutsStore,
-  focusPane: (kind: SidePaneKind) => void,
-  updatePaneUi: (sessionId: string, fn: (prev: PaneSessionUi) => PaneSessionUi) => void,
-  fileRevealNonceRef: RefObject<number>,
-  presentRightPanel: ActionDispatch<[event: RightPanelPresenceEvent]>,
-) {
-  return (target: RightPanelFileTarget) => {
-    const id = activeSessionIdRef.current
-    if (!id) return
-    updatePaneRecord(r => {
-      const files = openFileTab(r.files ?? EMPTY_FILES_PANE, target.path, {
-        protectedPaths: dirtyFilePathsRef.current,
-      })
-      const opened = openPane(r, 'files', sessionLayoutsStore.getSnapshot().weights)
-      return files === r.files ? opened : { ...opened, files }
-    })
-    focusPane('files')
-    // A `path:42` mention carries a landing line — record the reveal even
-    // for an already-open tab (the click means "take me THERE, again").
-    if (target.line !== undefined) {
-      const line = target.line
-      updatePaneUi(id, cur => ({
-        ...cur,
-        fileReveal: { path: target.path, line, nonce: ++fileRevealNonceRef.current },
-      }))
-    }
-    presentRightPanel({ type: 'personOpen', view: 'files' })
-  }
-}
-
-function createShellOpenFile(
-  runtimeCapabilities: CapabilityQuery,
-  openFileInPanel: (target: RightPanelFileTarget) => void,
-  openFileInWindow: (path: string) => Promise<boolean>,
-) {
-  return (target: RightPanelFileTarget) => {
-    if (fileOpenKind(target.path) !== 'media' || !runtimeCapabilities.can('fsx', 'openInWindow')) {
-      openFileInPanel(target)
-      return
-    }
-    openFileInWindow(target.path).then(
-      opened => {
-        if (!opened) openFileInPanel(target)
-      },
-      () => openFileInPanel(target),
-    )
-  }
-}
-
-function createShellOpenTerminalInPanel(
-  openPaneFor: (kind: SidePaneKind) => void,
-) {
-  return (sessionId: string, terminalId: string) => {
-    requestTerminalFocus(sessionId, terminalId)
-    openPaneFor('terminal')
-  }
-}
-
-function createShellOpenFileFromTree(
-  openFile: (target: RightPanelFileTarget) => void,
-) {
-  return (path: string, line?: number) => openFile(line === undefined ? { path } : { path, line })
-}
-
-function createShellOpenFileTabInWindow(
-  openFileInWindow: (path: string) => Promise<boolean>,
-) {
-  return (path: string) => void openFileInWindow(path).catch(() => {})
-}
-
-function createShellHandleActivateFileTab(
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-) {
-  return (path: string) => {
-    updatePaneRecord(r => {
-      const files = activateFileTab(r.files ?? EMPTY_FILES_PANE, path)
-      return files === r.files ? r : { ...r, files }
-    })
-  }
-}
-
-function createShellHandleCloseFileTab(
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-) {
-  return (path: string) => {
-    updatePaneRecord(r => {
-      const files = closeFileTab(r.files ?? EMPTY_FILES_PANE, path)
-      return files === r.files ? r : { ...r, files }
-    })
-  }
-}
-
-function createShellHandleCloseFileTabs(
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  dirtyFilePathsRef: RefObject<ReadonlySet<string>>,
-) {
-  return (close: FilesBulkClose, path: string) => {
-    updatePaneRecord(r => {
-      const current = r.files ?? EMPTY_FILES_PANE
-      const dirty = dirtyFilePathsRef.current
-      const files =
-        close === 'others'
-          ? closeOtherTabs(current, path, dirty)
-          : close === 'right'
-            ? closeTabsAfter(current, path, dirty)
-            : closeAllTabs(current, dirty)
-      return files === r.files ? r : { ...r, files }
-    })
-  }
-}
-
-function createShellAttachPathToComposer(
-  activeSessionIdRef: RefObject<string>,
-  setComposerInsert: Dispatch<SetStateAction<{ sessionId: string; text: string; nonce: number; } | null>>,
-  composerInsertNonceRef: RefObject<number>,
-) {
-  return (path: string) => {
-    const sessionId = activeSessionIdRef.current
-    if (!sessionId) return
-    setComposerInsert({
-      sessionId,
-      text: createQuotedAttachmentPrefix([path]),
-      nonce: ++composerInsertNonceRef.current,
-    })
-  }
-}
-
-function createShellOpenDiffInPanel(
-  activeSessionIdRef: RefObject<string>,
-  updatePaneUi: (sessionId: string, fn: (prev: PaneSessionUi) => PaneSessionUi) => void,
-  openPaneFor: (kind: SidePaneKind) => void,
-) {
-  return (target: RightPanelDiffTarget) => {
-    const id = activeSessionIdRef.current
-    if (!id) return
-    updatePaneUi(id, cur => ({ ...cur, diffTarget: target }))
-    openPaneFor('diff')
-  }
-}
-
-function createShellOpenSkillInPanel(
-  activeSessionIdRef: RefObject<string>,
-  updatePaneUi: (sessionId: string, fn: (prev: PaneSessionUi) => PaneSessionUi) => void,
-  openPaneFor: (kind: SidePaneKind) => void,
-) {
-  return (target: RightPanelSkillTarget) => {
-    const id = activeSessionIdRef.current
-    if (!id) return
-    updatePaneUi(id, cur => ({ ...cur, skillTarget: target }))
-    openPaneFor('skill')
-  }
-}
-
-function createShellSubAgentRowsForSession(
-  subAgentRows: readonly NexusTaskSummaryRow[],
-  subAgentRowsSeenRef: RefObject<Map<string, NexusTaskSummaryRow[]>>,
-) {
-  return (() => {
-    const bySession = new Map<string, NexusTaskSummaryRow[]>()
-    return (sessionId: string): NexusTaskSummaryRow[] => {
-      let rows = bySession.get(sessionId)
-      if (!rows) {
-        rows = filterSubAgentRowsBySession(subAgentRows, sessionId)
-        const seen = subAgentRowsSeenRef.current.get(sessionId)
-        if (seen && subAgentsEqual(seen, rows)) rows = seen
-        else subAgentRowsSeenRef.current.set(sessionId, rows)
-        bySession.set(sessionId, rows)
-      }
-      return rows
-    }
-  })()
-}
-
-function createShellHandleStopBackgroundTask(
-  subAgentRowsRef: RefObject<readonly NexusTaskSummaryRow[]>,
-  submitPromptToSession: (sessionId: string, prompt: string) => Promise<void>,
-  handleStopSubAgent: (subAgentSessionId: string) => void,
-) {
-  return (taskId: string) => {
-    const timerStop = loopTimerStopRequest(subAgentRowsRef.current, taskId)
-    if (timerStop) {
-      void submitPromptToSession(timerStop.sessionId, timerStop.prompt)
-      return
-    }
-    handleStopSubAgent(taskId)
-  }
-}
-
-function createShellHandleSelectSkill(
-  openSkillInPanel: (target: RightPanelSkillTarget) => void,
-) {
-  return (skill: SkillPanelListRow) => {
-    // A failed invocation has no body — open it as an error target.
-    if (skill.status === 'failed') {
-      openSkillInPanel({
-        name: skill.name,
-        detailId: null,
-        inlineBody: null,
-        eventId: skill.id,
-        status: 'failed',
-        error: skill.error,
-      })
-      return
-    }
-    const diskPath =
-      skill.path && skill.source !== 'bundled' ? skill.path : null
-    openSkillInPanel({
-      name: skill.name,
-      path: diskPath ?? undefined,
-      detailId: diskPath ? null : skill.detailId ?? null,
-      inlineBody: null,
-      eventId: skill.id,
-      status: skill.status,
-    })
-  }
-}
-
-function createShellHandleOpenBackgroundTasks(
-  setBackgroundTaskFocusSessionId: Dispatch<SetStateAction<string | null>>,
-  openPaneFor: (kind: SidePaneKind) => void,
-) {
-  return (focusSessionId?: string) => {
-    setBackgroundTaskFocusSessionId(focusSessionId ?? null)
-    openPaneFor('tasks')
-  }
-}
-
-function createShellHandleOpenBackgroundTasksList(
-  setBackgroundTaskFocusSessionId: Dispatch<SetStateAction<string | null>>,
-  setBackgroundTaskListRequest: Dispatch<SetStateAction<number>>,
-  openPaneFor: (kind: SidePaneKind) => void,
-) {
-  return () => {
-    setBackgroundTaskFocusSessionId(null)
-    setBackgroundTaskListRequest(n => n + 1)
-    openPaneFor('tasks')
-  }
-}
-
-function createShellHandleTaskFocusConsumed(
-  setBackgroundTaskFocusSessionId: Dispatch<SetStateAction<string | null>>,
-) {
-  return () => {
-    setBackgroundTaskFocusSessionId(null)
-  }
-}
-
-function createShellResolveActivePlan(
-  activePlanEntry: { toolCallId: string; request: { toolName: string; planText: string; planFilePath: string; restoreMode: string; }; } | null,
-  activeQueuedPlanConfirm: PendingApproval | null,
-  resolveToolUseConfirm: (params: { approvalCallId: string; behavior: "allow" | "reject" | "abort"; updatedInput?: Record<string, unknown>; feedback?: string; ruleEdits?: RuleEdit[]; }) => Promise<void>,
-  clearPlanApproval: (toolCallId?: string) => Promise<void>,
-  setPermissionMode: (mode: string) => Promise<void>,
-  submitToolResult: (submission: BrowserRuntimeToolResultSubmission) => Promise<void>,
-) {
-  return (decision: 'approve' | 'reject', feedback?: string) => {
-    if (!activePlanEntry) return
-    if (activeQueuedPlanConfirm) {
-      return resolveToolUseConfirm({
-        approvalCallId: activeQueuedPlanConfirm.approvalCallId,
-        behavior: decision === 'approve' ? 'allow' : 'reject',
-        updatedInput:
-          decision === 'approve' ? activeQueuedPlanConfirm.input : undefined,
-        feedback,
-      })
-    }
-    return resolvePlanApproval(
-      decision,
-      activePlanEntry.toolCallId,
-      activePlanEntry.request,
-      { clearPlanApproval, setPermissionMode, submitToolResult },
-      feedback,
-    )
-  }
-}
-
-function createShellHandleToggleSessionCards(
-  paneMaximized: SidePaneKind | null,
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  sessionCardsFit: boolean,
-  writeSessionCardPrefs: (next: SessionCardPrefs) => void,
-  sessionCardPrefs: SessionCardPrefs,
-  setSessionCardsPopoverOpen: Dispatch<SetStateAction<boolean>>,
-) {
-  return () => {
-    // A maximized panel covers the cards: the toggle restores the chat and
-    // shows them.
-    if (paneMaximized !== null) {
-      updatePaneRecord(r => setMaximized(r, null))
-      if (sessionCardsFit) writeSessionCardPrefs(setSessionCardsShown(sessionCardPrefs, true))
-      else setSessionCardsPopoverOpen(true)
-      return
-    }
-    if (sessionCardsFit) {
-      writeSessionCardPrefs(setSessionCardsShown(sessionCardPrefs, !sessionCardPrefs.shown))
-    } else {
-      setSessionCardsPopoverOpen(open => !open)
-    }
-  }
-}
-
-function createShellCloseSessionCardsPopover(
-  setSessionCardsPopoverOpen: Dispatch<SetStateAction<boolean>>,
-) {
-  return () => setSessionCardsPopoverOpen(false)
-}
-
-function createShellHandleOpenPluginSettings(
-  setProviderSettingsRequest: Dispatch<SetStateAction<{ providerId: string; seq: number; } | null>>,
-  setMcpSettingsRequest: Dispatch<SetStateAction<{ server: string; seq: number; } | null>>,
-  setPluginSettingsRequest: Dispatch<SetStateAction<{ plugin: string; seq: number; } | null>>,
-  setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
-) {
-  return (plugin: string) => {
-    setProviderSettingsRequest(null)
-    setMcpSettingsRequest(null)
-    setPluginSettingsRequest(prev => ({ plugin, seq: (prev?.seq ?? 0) + 1 }))
-    setSettingsSection('plugins')
-  }
-}
-
-function createShellHandleOpenMcpServerSettings(
-  setProviderSettingsRequest: Dispatch<SetStateAction<{ providerId: string; seq: number; } | null>>,
-  setPluginSettingsRequest: Dispatch<SetStateAction<{ plugin: string; seq: number; } | null>>,
-  setMcpSettingsRequest: Dispatch<SetStateAction<{ server: string; seq: number; } | null>>,
-  setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
-) {
-  return (server: string) => {
-    setProviderSettingsRequest(null)
-    setPluginSettingsRequest(null)
-    setMcpSettingsRequest(prev => ({ server, seq: (prev?.seq ?? 0) + 1 }))
-    setSettingsSection('mcp')
-  }
-}
-
-function createShellWriteModPanesAsked(
-  modPanesAskedRef: RefObject<readonly string[]>,
-  setModPanesAsked: Dispatch<SetStateAction<readonly string[]>>,
-) {
-  return (next: readonly string[]) => {
-    if (next === modPanesAskedRef.current) return
-    modPanesAskedRef.current = next
-    setModPanesAsked(next)
-    saveModPanesAsked(next)
-  }
-}
-
-function createShellBringModsPane(
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  sessionLayoutsStore: SessionLayoutsStore,
-  modCellWidth: number,
-  modRowWidthRef: RefObject<number>,
-) {
-  return (sessionId: string, columns: number | undefined, forward: boolean) => {
-    updatePaneRecord(r => {
-      const weights = sessionLayoutsStore.getSnapshot().weights
-      const asked =
-        weights.mods === undefined
-          ? modsPaneWeight({
-              columns,
-              cellWidth: modCellWidth,
-              chromeWidth: MODS_PANE_CHROME_PX,
-              rowWidth: modRowWidthRef.current,
-              chatWeight: PANE_CHAT_WEIGHT,
-            })
-          : null
-      const opened = openPane(r, 'mods', asked !== null ? { ...weights, mods: asked } : weights)
-      return forward && opened.maximized !== null ? setMaximized(opened, 'mods') : opened
-    }, sessionId)
-  }
-}
-
-function createShellHandleCloseModTab(
-  writeModPanesAsked: (next: readonly string[]) => void,
-  modPanesAskedRef: RefObject<readonly string[]>,
-  closeModPane: ((plugin: string, id: string) => Promise<void>) | undefined,
-) {
-  return (pane: { plugin: string; id: string }) => {
-    writeModPanesAsked(forgetAskedPane(modPanesAskedRef.current, pane))
-    void closeModPane?.(pane.plugin, pane.id)
-  }
-}
-
-function createShellHandleSettingsNavigate(
-  setPluginSettingsRequest: Dispatch<SetStateAction<{ plugin: string; seq: number; } | null>>,
-  setMcpSettingsRequest: Dispatch<SetStateAction<{ server: string; seq: number; } | null>>,
-  setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
-) {
-  return (section: SettingsSectionId) => {
-    setPluginSettingsRequest(null)
-    setMcpSettingsRequest(null)
-    setSettingsSection(section)
-  }
-}
-
-function createShellHandleOpenNexusSettings(
-  setProviderSettingsRequest: Dispatch<SetStateAction<{ providerId: string; seq: number; } | null>>,
-  setPluginSettingsRequest: Dispatch<SetStateAction<{ plugin: string; seq: number; } | null>>,
-  setMcpSettingsRequest: Dispatch<SetStateAction<{ server: string; seq: number; } | null>>,
-  setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
-) {
-  return (section: SettingsSectionId = 'models') => {
-    setProviderSettingsRequest(null)
-    setPluginSettingsRequest(null)
-    setMcpSettingsRequest(null)
-    setSettingsSection(section)
-  }
-}
-
-function createShellHandleOpenCustomize(
-  setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
-  setCustomizeOpen: Dispatch<SetStateAction<boolean>>,
-) {
-  return () => {
-    setSettingsSection(null)
-    setCustomizeOpen(true)
-  }
-}
-
-function createShellHandleCloseCustomize(
-  setCustomizeOpen: Dispatch<SetStateAction<boolean>>,
-) {
-  return () => {
-    setCustomizeOpen(false)
-  }
-}
-
-function createShellHandleOpenProviderSettings(
-  setProviderSettingsRequest: Dispatch<SetStateAction<{ providerId: string; seq: number; } | null>>,
-  setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
-) {
-  return (providerId: string) => {
-    setProviderSettingsRequest(prev => ({ providerId, seq: (prev?.seq ?? 0) + 1 }))
-    setSettingsSection('models')
-  }
-}
-
-function createShellHandleDragRegionsChange(
-  hostBridgeTransport: BrowserBridgeTransport,
-) {
-  return (regions: WindowDragRect[]) => {
-    void setWindowDragRegions(hostBridgeTransport, regions).catch(() => {
-      /* build-gated C++ route / mock host has no window to drag */
-    })
-  }
-}
-
-function createShellHandleTopbarSelectModel(
-  pickGlobalDefaultSelection: (selection: BrowserLlmSelection) => void,
-  setModelSelection: (selection: BrowserLlmSelection) => Promise<void>,
-) {
-  return (selection: BrowserLlmSelection) => {
-    pickGlobalDefaultSelection(selection)
-    void setModelSelection(selection).catch(() => {})
-  }
-}
-
-function createShellHandleSessionSelectModel(
-  setModelSelectionForSession: (sessionId: string, selection: BrowserLlmSelection) => Promise<void>,
-) {
-  return (sessionId: string, selection: BrowserLlmSelection) => {
-    void setModelSelectionForSession(sessionId, selection).catch(() => {})
-  }
-}
-
-function createShellHandleSetAutoCompactWindow(
-  setAutoCompactWindowForSession: (sessionId: string, value: number | "auto") => Promise<void>,
-) {
-  return (sessionId: string, value: number | 'auto') => {
-    void setAutoCompactWindowForSession(sessionId, value).catch(() => {})
-  }
-}
-
-function createShellHealActiveSessionSelection(
-  configuredActiveCatalog: BrowserLlmCatalog | null | undefined,
-  globalDefaultSelectionRef: RefObject<BrowserLlmSelection | null>,
-  handleTopbarSelectModel: (selection: BrowserLlmSelection) => void,
-  setModelSelection: (selection: BrowserLlmSelection) => Promise<void>,
-) {
-  return (selection: BrowserLlmSelection) => {
-    if (
-      healReplacesGlobalDefault(
-        configuredActiveCatalog,
-        globalDefaultSelectionRef.current,
-      )
-    ) {
-      handleTopbarSelectModel(selection)
-      return
-    }
-    void setModelSelection(selection).catch(() => {})
-  }
-}
-
-function createShellHandleAdoptDefaultSelection(
-  healActiveSessionSelection: (selection: BrowserLlmSelection) => void,
-  setModelPickerOpenToken: Dispatch<SetStateAction<number>>,
-) {
-  return (selection: BrowserLlmSelection) => {
-    healActiveSessionSelection(selection)
-    setModelPickerOpenToken(token => token + 1)
-  }
-}
-
-function createShellHandleSelectSideChat(
-  activeSessionIdRef: RefObject<string>,
-  setSideChatSelection: Dispatch<SetStateAction<ReadonlyMap<string, string>>>,
-) {
-  return (sideChatId: string) => {
-    const parent = activeSessionIdRef.current
-    if (!parent) return
-    setSideChatSelection(prev => new Map(prev).set(parent, sideChatId))
-  }
-}
-
-function createShellHandleAddSideChat(
-  activeSessionIdRef: RefObject<string>,
-  forkSession: (fromSessionId: string, cutUuid: string | undefined, options?: { keepCutMessage?: boolean; retarget?: ForkRetarget; sideChat?: boolean; initialDraft?: string; }) => string,
-) {
-  return () => {
-    const parent = activeSessionIdRef.current
-    if (!parent) return
-    forkSession(parent, undefined, { keepCutMessage: true, sideChat: true })
-  }
-}
-
-function createShellHandleStartSideChat(
-  sessionStatesRef: RefObject<ReadonlyMap<string, BrowserRuntimeClientState>>,
-  forkSession: (fromSessionId: string, cutUuid: string | undefined, options?: { keepCutMessage?: boolean; retarget?: ForkRetarget; sideChat?: boolean; initialDraft?: string; }) => string,
-) {
-  return (fromSessionId: string, cutUuid: string, selection: string) => {
-    // A cut at the closing reply while the turn runs would miss its text.
-    const running = sessionStatesRef.current.get(fromSessionId)?.status === 'submitting'
-    const cut = sideChatCutForRow(cutUuid, running && isTurnAnchoredMessageId(cutUuid))
-    if (!cut) return
-    forkSession(fromSessionId, cut.cutUuid, {
-      keepCutMessage: true,
-      sideChat: true,
-      initialDraft: serializePassagePrompt([selection.trim()], ''),
-    })
-  }
-}
-
-function createShellHandleDetachSideChat(
-  sessionChannelRef: RefObject<SessionListChannel | null>,
-) {
-  return (sideChatId: string) => {
-    sessionChannelRef.current?.request('session.detachLineage', {
-      sessionId: sideChatId,
-      requestId: randomUuid(),
-    })
-  }
-}
-
-function createShellHandleArchiveSideChat(
-  handleArchiveThread: (sessionId: string, archived: boolean) => void,
-) {
-  return (sideChatId: string) => handleArchiveThread(sideChatId, true)
-}
-
-function createShellPublishAttentionQueue(
-  attentionQueueRef: RefObject<AttentionEvent[]>,
-  setAttentionQueue: Dispatch<SetStateAction<AttentionEvent[]>>,
-) {
-  return (next: AttentionEvent[]) => {
-    if (next === attentionQueueRef.current) return
-    attentionQueueRef.current = next
-    setAttentionQueue(next)
-  }
-}
-
-function createShellRevealAttentionInSession(
-
-) {
-  return (sessionId: string): boolean =>
-      revealAttentionSource(
-        document.querySelector(
-          `[${ATTENTION_SECTION_ATTR}="${CSS.escape(sessionId)}"]`,
-        ),
-      )
-}
-
-function createShellHandleAttentionSelect(
-  activeSessionId: string,
-  revealAttentionInSession: (sessionId: string) => boolean,
-  attentionQueueRef: RefObject<AttentionEvent[]>,
-  acknowledgedAttentionRef: RefObject<Set<string>>,
-  publishAttentionQueue: (next: AttentionEvent[]) => void,
-  focusSession: (sessionId: string) => void,
-) {
-  return (sessionId: string) => {
-    if (sessionId === activeSessionId) {
-      // Already here - the switch would be a no-op, so the useful action is
-      // the reveal the `focus` route would have done. The visit effect will
-      // not fire (neither of its inputs changes), so acknowledge here or the
-      // row returns on the next switch away.
-      revealAttentionInSession(sessionId)
-      for (const event of attentionQueueRef.current) {
-        if (event.sessionId !== sessionId) continue
-        acknowledgedAttentionRef.current.add(event.id)
-      }
-      publishAttentionQueue(
-        clearAttentionForSession(attentionQueueRef.current, sessionId),
-      )
-      return
-    }
-    focusSession(sessionId)
-  }
-}
-
-function createShellHandleSearchOpenSession(
-  activeSessionId: string,
-  focusSession: (sessionId: string) => void,
-) {
-  return (sessionId: string, target?: PendingMessageJump) => {
-    if (target) {
-      setPendingMessageJump(sessionId, target)
-    } else {
-      clearPendingMessageJump(sessionId)
-    }
-    // Only switch when it is a DIFFERENT conversation. Re-switching to
-    // the one already on screen tears its view down and rebuilds it,
-    // which reads as a reload and loses the scroll position we are
-    // about to jump within.
-    if (sessionId !== activeSessionId) {
-      focusSession(sessionId)
-    }
-  }
-}
-
-function createShellHandleSearchJump(
-  handleSearchOpenSession: (sessionId: string, target?: PendingMessageJump) => void,
-) {
-  return (
-      sessionId: string,
-      uuid: string,
-      lineOrdinal: number,
-      needle?: string,
-      term?: string,
-    ) => handleSearchOpenSession(sessionId, { uuid, lineOrdinal, needle, term })
-}
-
-function createShellHandleDeleteThread(
-  sessionsRef: RefObject<LocalSessionEntry[]>,
-  disposeClient: (sessionId: string) => void,
-  sessionItemsRef: RefObject<SessionListItem[]>,
-  sidebarRailRef: RefObject<boolean>,
-  deleteSession: (sessionId: string, rowOrders?: readonly (readonly string[])[]) => void,
-  setMountedSessionIds: Dispatch<SetStateAction<string[]>>,
-  sessionLayoutsStore: SessionLayoutsStore,
-  setPaneSessionUi: Dispatch<SetStateAction<Map<string, PaneSessionUi>>>,
-) {
-  return (sessionId: string) => {
-    // The runtime deletes a lead's teammates with it, so their threads go too;
-    // a session's side chats go with it as well (F-36).
-    const doomed = new Set([
-      sessionId,
-      ...sessionsRef.current
-        .filter(session => session.spawnerSessionId === sessionId)
-        .map(session => session.sessionId),
-    ])
-    for (const id of doomed) disposeClient(id)
-    // The successor of a deleted on-screen session is its neighbor among the
-    // rows the sidebar shows; a row a collapsed section hides takes its
-    // neighbor in the full order. The rail ignores collapse.
-    const view = readSessionListView()
-    const now = Date.now()
-    const ids = (collapsed?: { pinned: boolean; recents: boolean }) =>
-      sidebarRowOrder(sessionItemsRef.current, view, now, collapsed).map(
-        session => session.sessionId,
-      )
-    const full = ids()
-    const rowOrders = sidebarRailRef.current
-      ? [full]
-      : [
-          ids({
-            pinned: readSectionCollapsed('pinned'),
-            recents: readSectionCollapsed('recents'),
-          }),
-          full,
-        ]
-    deleteSession(sessionId, rowOrders)
-    setMountedSessionIds(prev => prev.filter(id => !doomed.has(id)))
-    // Drop the deleted sessions' pane records and content (no leak).
-    sessionLayoutsStore.remove(doomed)
-    setPaneSessionUi(prev => {
-      if (![...doomed].some(id => prev.has(id))) return prev
-      const m = new Map(prev)
-      for (const id of doomed) m.delete(id)
-      return m
-    })
-  }
-}
-
-function createShellHandleComposerEdit(
-  updateSessionMeta: (sessionId: string, meta: SessionMetaUpdate) => void,
-  updateSessionMetadata: (sessionId: string, metadata: Partial<BrowserSessionMetadata>) => Promise<void>,
-) {
-  return (sessionId: string, composerDraft: string, editedAt: number) => {
-    // Optimistic local cache update so the sidebar reorders before
-    // the fs round-trip completes.
-    updateSessionMeta(sessionId, {
-      composerDraft,
-      lastComposerEditAt: editedAt,
-    })
-    // Authoritative persist via the worker → conversation store →
-    // fs. The SharedWorker manager will rebroadcast `session.updated`
-    // back to us; mergeSessions reconciles by `lastComposerEditAt`.
-    void updateSessionMetadata(sessionId, {
-      composerDraft,
-      lastComposerEditAt: editedAt,
-    }).catch(error => {
-      console.warn(
-        'Failed to persist composer draft for session',
-        sessionId,
-        error,
-      )
-    })
-  }
-}
-
-function createShellHandleSendInForkedSession(
-  forkSendRegistry: { register(requestId: string, payload: AppendMessage): Promise<boolean>; take(requestId: string | undefined): { payload: AppendMessage; settle: (ok: boolean) => void; } | undefined; },
-  forkSession: (fromSessionId: string, cutUuid: string | undefined, options?: { keepCutMessage?: boolean; retarget?: ForkRetarget; sideChat?: boolean; initialDraft?: string; }) => string,
-) {
-  return (fromSessionId: string, cutUuid: string, message: AppendMessage) =>
-      forkSendRegistry.register(
-        forkSession(fromSessionId, cutUuid, { keepCutMessage: true }),
-        message,
-      )
-}
-
-function createShellHandleContinueInCode(
-  hostBridgeTransport: BrowserBridgeTransport,
-  forkSession: (fromSessionId: string, cutUuid: string | undefined, options?: { keepCutMessage?: boolean; retarget?: ForkRetarget; sideChat?: boolean; initialDraft?: string; }) => string,
-) {
-  return async (fromSessionId: string, cutUuid: string, folder: ContinueInCodeFolder) => {
-    let path = 'path' in folder ? folder.path.trim() : ''
-    if ('pick' in folder) {
-      try {
-        const result = await pickProjectFolder(hostBridgeTransport)
-        if (result.canceled || !result.path) return false
-        path = result.path.trim()
-      } catch (error) {
-        console.warn('Failed to open the project-folder picker:', error)
-        return false
-      }
-    }
-    if (!path) return false
-    addRecentFolder(path)
-    writeLastFolderForType('code', path)
-    forkSession(fromSessionId, cutUuid, { retarget: { templateType: 'code', projectRoot: path } })
-    return true
-  }
-}
-
-function createShellHandleForkAfterMessage(
-  forkSession: (fromSessionId: string, cutUuid: string | undefined, options?: { keepCutMessage?: boolean; retarget?: ForkRetarget; sideChat?: boolean; initialDraft?: string; }) => string,
-) {
-  return (sessionId: string, cutUuid: string) => {
-    forkSession(sessionId, cutUuid, { keepCutMessage: true })
-  }
-}
-
-function createShellHandleForkThread(
-  forkSession: (fromSessionId: string, cutUuid: string | undefined, options?: { keepCutMessage?: boolean; retarget?: ForkRetarget; sideChat?: boolean; initialDraft?: string; }) => string,
-) {
-  return (sessionId: string) => {
-    forkSession(sessionId, undefined, { keepCutMessage: true })
-  }
-}
-
-function createShellHandleSelectProjectFolder(
-  rebindProjectFolder: (sessionId: string, projectRoot: string) => Promise<boolean>,
-  getSessionTemplateType: (sessionId: string) => string | undefined,
-  updateSessionMetadata: (sessionId: string, metadata: Partial<BrowserSessionMetadata>) => Promise<void>,
-) {
-  return (sessionId: string, path: string) => {
-    const trimmed = path.trim()
-    if (!trimmed) return
-    void rebindProjectFolder(sessionId, trimmed).then(bound => {
-      if (!bound) return
-      addRecentFolder(trimmed)
-      // Remember this folder as the default for a NEW session of the SAME
-      // forced-folder type (`code`/`safe_code`, or a plugin type that
-      // requires a folder) — the only types that inherit their last-bound
-      // folder (`isForcedFolderTemplateType`; the runtime's `session.open`
-      // composer), each in its OWN bucket. Never for other types: an
-      // agent/chat bind must not leak into the bucket new sessions read, and
-      // defaulting an unknown type to `'agent'` here is exactly how the
-      // `'agent'` bucket got polluted and opened agent sessions blank.
-      const boundType = getSessionTemplateType(sessionId)
-      if (isForcedFolderTemplateType(boundType, getModContributions().templates)) {
-        writeLastFolderForType(boundType, trimmed)
-      }
-      // Authoritative persist (worker → conversation store → fs). On resume /
-      // reload `createSessionInitPayload` reads it back via
-      // `getSessionProjectRoot` and re-binds the same folder. The current
-      // session is already live on the new folder from the rebind above, so
-      // no optimistic local write is needed.
-      void updateSessionMetadata(sessionId, { projectRoot: trimmed }).catch(
-        error => {
-          console.warn(
-            'Failed to persist project folder for session',
-            sessionId,
-            error,
-          )
-        },
-      )
-    })
-  }
-}
-
-function createShellHandleOpenProjectFolder(
-  hostBridgeTransport: BrowserBridgeTransport,
-  handleSelectProjectFolder: (sessionId: string, path: string) => void,
-) {
-  return async (sessionId: string) => {
-    let result: Awaited<ReturnType<typeof pickProjectFolder>>
-    try {
-      result = await pickProjectFolder(hostBridgeTransport)
-    } catch (error) {
-      console.warn('Failed to open the project-folder picker:', error)
-      return
-    }
-    if (result.canceled || !result.path) return
-    handleSelectProjectFolder(sessionId, result.path)
-  }
-}
-
-function createShellHandleAddProject(
-  hostBridgeTransport: BrowserBridgeTransport,
-) {
-  return async () => {
-    let result: Awaited<ReturnType<typeof pickProjectFolder>>
-    try {
-      result = await pickProjectFolder(hostBridgeTransport)
-    } catch (error) {
-      console.warn('Failed to open the project-folder picker:', error)
-      return
-    }
-    if (result.canceled || !result.path) return
-    addProject(result.path)
-    // Also feed the type-agnostic MRU the composer chip's quick-picks read, so
-    // a folder added here is offered there too.
-    addRecentFolder(result.path)
-  }
-}
-
-function createShellHandleLaunchInProject(
-  openNewSession: (templateType?: string, projectRoot?: string) => string,
-) {
-  return (projectRoot: string, templateType: string) => {
-    const trimmed = projectRoot.trim()
-    if (!trimmed) return
-    const sessionId = openNewSession(templateType, trimmed)
-    // A CLI session launched here starts its CLI on first sight (F-34).
-    if (cliOfTemplateType(templateType)) markCliSessionFresh(sessionId)
-    addRecentFolder(trimmed)
-    writeLastFolderForType(templateType, trimmed)
-  }
-}
-
-function createShellRequestSessionDelete(
-  setSessionDeleteTarget: Dispatch<SetStateAction<SessionDeleteTarget | null>>,
-) {
-  return (sessionId: string, origin?: SessionDeleteOrigin) =>
-    setSessionDeleteTarget({ ...origin, sessionId })
-}
-
-function createShellHandleLaunchThread(
-  setCliLaunchType: Dispatch<SetStateAction<string | null>>,
-  openNewSession: (templateType?: string, projectRoot?: string) => string,
-) {
-  return (templateType?: string) => {
-    if (cliOfTemplateType(templateType)) setCliLaunchType(templateType ?? null)
-    else openNewSession(templateType)
-  }
-}
-
-function createShellLaunchCliIn(
-  cliLaunchType: string | null,
-  setCliLaunchType: Dispatch<SetStateAction<string | null>>,
-  handleLaunchInProject: (projectRoot: string, templateType: string) => void,
-) {
-  return (path: string) => {
-    const type = cliLaunchType
-    setCliLaunchType(null)
-    if (type) handleLaunchInProject(path, type)
-  }
-}
-
-function createShellPickCliFolder(
-  hostBridgeTransport: BrowserBridgeTransport,
-  launchCliIn: (path: string) => void,
-) {
-  return async () => {
-    let result: Awaited<ReturnType<typeof pickProjectFolder>>
-    try {
-      result = await pickProjectFolder(hostBridgeTransport)
-    } catch (error) {
-      console.warn('Failed to open the project-folder picker:', error)
-      return
-    }
-    if (result.canceled || !result.path) return
-    launchCliIn(result.path)
-  }
-}
-
-function createShellHandleCopyTranscriptPath(
-  resolveHomeDir: () => Promise<string>,
-  sessionItemsRef: RefObject<SessionListItem[]>,
-) {
-  const copy = createCopyTranscriptPath(resolveHomeDir, () => sessionItemsRef.current, writeClipboard)
-  return (sessionId: string) => void copy(sessionId)
-}
-
-function createShellHandleCopyProjectPath(
-
-) {
-  return (path: string) => {
-    // Through the shared util: it falls back to execCommand where
-    // `navigator.clipboard` is missing (non-secure context / guest webview).
-    void writeClipboard(path).then(ok => {
-      if (!ok) console.warn('Failed to copy the project path')
-    })
-  }
-}
-
-function createShellDeleteAndAwaitRemoval(
-  handleDeleteThread: (sessionId: string) => void,
-  waitersRef: RefObject<Map<string, (removed: boolean) => void>>,
-) {
-  return (sessionId: string) =>
-    new Promise<boolean>(resolve => {
-      const settle = (removed: boolean) => {
-        clearTimeout(timer)
-        if (waitersRef.current.get(sessionId) === settle) waitersRef.current.delete(sessionId)
-        resolve(removed)
-      }
-      const timer = setTimeout(() => settle(false), SESSION_REMOVAL_TIMEOUT_MS)
-      waitersRef.current.set(sessionId, settle)
-      handleDeleteThread(sessionId)
-    })
-}
-
-function createShellHandleRevealProjectFolder(
-  hostBridgeTransport: BrowserBridgeTransport,
-) {
-  return (path: string) => {
-    const trimmed = path.trim()
-    if (!trimmed) return
-    void revealProjectFolder(hostBridgeTransport, trimmed).catch(error => {
-      console.warn('Failed to reveal the project folder:', error)
-    })
-  }
-}
-
-function createShellHandleOpenSettings(
-  setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
-) {
-  return async (section?: NexusSettingsSection): Promise<void> => {
-    // Settings render IN-APP (React) instead of the separate Lit
-    // panel pane. Map the legacy bridge sections onto the React nav: the
-    // webapp-URL field now lives under "About".
-    const legacySection = section as string | undefined
-    const mapped: SettingsSectionId =
-      legacySection === 'mcp'
-        ? 'mcp'
-        : legacySection === 'webapp'
-          ? 'about'
-          : legacySection === 'tools'
-            ? 'general'
-            : 'models'
-    setSettingsSection(mapped)
-  }
-}
-
-function createShellHandleLoadProviderMissingPrompt(
-  hostBridgeTransport: BrowserBridgeTransport,
-) {
-  return async (): Promise<ProviderMissingPrompt> =>
-      getProviderMissingPrompt(hostBridgeTransport)
-}
-
-function createShellSettingsHostActions(
-  hostBridgeTransport: BrowserBridgeTransport,
-) {
-  return (() => ({
-      revealFolder: (path: string) =>
-        revealProjectFolder(hostBridgeTransport, path),
-    }))()
-}
-
-function createShellOpenTerminalLink(
-  runtimeCapabilities: CapabilityQuery,
-  hostBridgeTransport: BrowserBridgeTransport,
-) {
-  return (url: string) => {
-    if (runtimeCapabilities.can('ui', 'openUrl')) {
-      void openUrl(hostBridgeTransport, url).catch(() => {})
-    } else {
-      openInClientTab(url)
-    }
-  }
-}
-
-function createShellOnSessionStateChange(
-  updateSessionMeta: (sessionId: string, meta: SessionMetaUpdate) => void,
-) {
-  return (
-    sessionId: string,
-    state: BrowserRuntimeClientState,
-    metadata: BrowserSessionMetadata,
-  ) => {
-    updateSessionMeta(sessionId, {
-      title: metadata.firstPrompt || 'New Thread',
-      previewText: metadata.previewText || metadata.firstPrompt || '',
-      updatedAt: getTranscriptUpdatedAt(state),
-      // Forward the live transcript length (or a pending prompt) so `openNewSession` never
-      // reuses a thread that is no longer empty.
-      messageCount: Math.max(
-        state.transcriptMessages.length,
-        typeof metadata.messageCount === 'number' ? metadata.messageCount : 0,
-      ),
-    })
-  }
 }
