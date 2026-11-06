@@ -13,8 +13,7 @@ const policy = (input: Partial<ReviewPolicyInput> = {}) => resolveReviewPolicy({
 
 const expectedRoutes = {
   fallback: [['quick-hunks', 4], ['local-eight', 10], ['local-eight', 10], ['local-ten', 15], ['team-ten', 15]],
-  'balanced-review': [['quick-hunks', 4], ['local-eight', 8], ['team-eight-recall', 10], ['team-ten', 15], ['team-ten', 15]],
-  'fast-review': [['quick-hunks', 4], ['team-eight-precise', 8], ['team-eight-recall', 10], ['team-ten', 15], ['team-ten', 15]],
+  'fallback-no-team': [['quick-hunks', 4], ['local-eight', 10], ['local-eight', 10], ['local-ten', 15], ['local-ten', 15]],
   'context-specialist': [['quick-expand', 8], ['local-eight', 8], ['local-eight', 10], ['local-ten', 15], ['team-ten', 15]],
   'minimal-specialist': [['quick-hunks', 4], ['careful-pass', 15], ['careful-pass', 15], ['local-ten', 15], ['team-ten', 15]],
   'delegation-specialist': [['quick-expand', 'unlimited'], ['team-eight-precise', 8], ['team-eight-recall', 10], ['team-ten', 15], ['team-ten', 15]],
@@ -41,11 +40,11 @@ describe('recipe routes', () => {
   }
 
   it('does not infer capabilities from arbitrary model names', () => {
-    for (const name of ['unknown', 'context-specialist', 'delegation-specialist-preview', 'toString', '__proto__']) expect(resolveCapabilityProfile(name)).toBe('fallback')
+    for (const name of ['unknown', 'context-specialist', 'delegation-specialist-preview', 'toString', '__proto__']) expect(resolveCapabilityProfile(name)).toBe('fallback-no-team')
     expect(resolveCapabilityProfile('unknown', 'context-specialist')).toBe('context-specialist')
   })
 
-  it.each(['fallback', 'context-specialist', 'minimal-specialist', 'delegation-specialist', 'balanced-review', 'fast-review'] as const)('%s low remains a bounded diff-only review', profile => {
+  it.each(['fallback', 'fallback-no-team', 'context-specialist', 'minimal-specialist', 'delegation-specialist'] as const)('%s low remains a bounded diff-only review', profile => {
     const result = policy({ profile, arguments: { ...base.arguments, level: 'low' } })
     expect(result.agentMode).toBe('none')
     expect(result.sweep).toBe('none')
@@ -124,7 +123,7 @@ describe('output limits, capabilities and budget', () => {
     [{ agentPermitted: false }, 'agent-denied'],
     [{ remainingDepth: 0 }, 'agent-depth-exhausted'],
   ] as const)('falls back without inventing independent verification: %s', (override, reason) => {
-    const result = policy({ arguments: { ...base.arguments, level: 'max' }, capabilities: { ...base.capabilities, ...override } })
+    const result = policy({ profile: 'fallback', arguments: { ...base.arguments, level: 'max' }, capabilities: { ...base.capabilities, ...override } })
     expect(result).toMatchObject({ recipe: 'team-ten', angles: TEN_ANGLES, agentMode: 'sequential-fallback', fallbackReason: reason, independentVerification: false, sweep: 'same-context', candidatesPerAngle: 8, sweepCandidateLimit: 8 })
     expect(result.notices).toContainEqual({ code: reason })
   })
@@ -196,7 +195,7 @@ describe('automatic runtime verification', () => {
 
   for (const profile of Object.keys(expectedRoutes) as CapabilityProfile[]) {
     it.each(REVIEW_LEVELS)(`${profile} %s uses the explicit verification routing`, level => {
-      const eligible = profile === 'delegation-specialist' || (profile === 'context-specialist' ? level === 'max' : profile === 'fast-review' || profile === 'balanced-review' ? false : level === 'low' || level === 'max')
+      const eligible = profile === 'delegation-specialist' || (profile === 'context-specialist' ? level === 'max' : level === 'low' || level === 'max')
       expect(policy({ profile, output: 'panel', arguments: { ...base.arguments, level } }).automaticVerificationEligible).toBe(eligible)
     })
   }
@@ -231,7 +230,7 @@ describe('level selection boundaries', () => {
     ['claude-sonnet-5', 'delegation-specialist'],
   ] as const)('maps only the verified canonical ID %s', (id, profile) => {
     expect(resolveCapabilityProfile(id)).toBe(profile)
-    for (const variant of [`${id}-preview`, `vendor/${id}`, `${id}-5`, id.toUpperCase()]) expect(resolveCapabilityProfile(variant)).toBe('fallback')
+    for (const variant of [`${id}-preview`, `vendor/${id}`, `${id}-9`, id.toUpperCase()]) expect(resolveCapabilityProfile(variant)).toBe('fallback-no-team')
     expect(resolveCapabilityProfile(id, 'fallback')).toBe('fallback')
   })
 
@@ -251,17 +250,21 @@ describe('level selection boundaries', () => {
 
   it('routes the Nebius Token Factory DeepSeek V4.1 Flash like the direct Flash model, a team review at medium', () => {
     const recipes = REVIEW_LEVELS.map(level => policy({ canonicalModelId: 'deepseek-ai/DeepSeek-V4.1-Flash', arguments: { ...base.arguments, level } }).recipe)
-    expect(recipes).toEqual(['quick-hunks', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'team-ten'])
-    expect(resolveCapabilityProfile('deepseek-ai/DeepSeek-V4-Flash')).toBe('fallback')
+    expect(recipes).toEqual(['quick-expand', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'team-ten'])
+    expect(resolveCapabilityProfile('deepseek-ai/DeepSeek-V4-Flash')).toBe('fallback-no-team')
+  })
+
+  it.each(['claude-opus-5-5', 'claude-sonnet-5-5', 'anthropic/claude-opus-5.5', 'anthropic/claude-sonnet-5.5'])('keeps %s on fallback', id => {
+    expect(resolveCapabilityProfile(id)).toBe('fallback')
+    for (const level of REVIEW_LEVELS) expect(policy({ canonicalModelId: id, arguments: { ...base.arguments, level } }).recipe).toBe(selectReviewRecipe('fallback', level).recipe)
   })
 
   it.each([
-    'claude-opus-5-5', 'claude-sonnet-5-5', 'anthropic/claude-opus-5.5', 'anthropic/claude-sonnet-5.5',
     'anthropic/claude-opus-4.8-fast', 'anthropic/claude-opus-5-fast', 'anthropic/claude-opus-5:batch',
     'anthropic/claude-opus-4-8', 'relay/claude-opus-5', 'claude-opus-5-latest',
     'openai/gpt-5.5', 'google/gemini-3.1-pro-preview', 'unknown-latest',
-  ])('keeps new models and unverified variants on fallback: %s', id => {
-    expect(resolveCapabilityProfile(id)).toBe('fallback')
-    for (const level of REVIEW_LEVELS) expect(policy({ canonicalModelId: id, arguments: { ...base.arguments, level } }).recipe).toBe(selectReviewRecipe('fallback', level).recipe)
+  ])('keeps new models and unverified variants on the no-team profile: %s', id => {
+    expect(resolveCapabilityProfile(id)).toBe('fallback-no-team')
+    for (const level of REVIEW_LEVELS) expect(policy({ canonicalModelId: id, arguments: { ...base.arguments, level } }).recipe).toBe(selectReviewRecipe('fallback-no-team', level).recipe)
   })
 })

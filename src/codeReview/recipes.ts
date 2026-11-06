@@ -16,15 +16,14 @@ export type RecipeRoute = { recipe: RecipeId; defaultLimit: ReportLimit }
 const route = (recipe: RecipeId, defaultLimit: ReportLimit): Readonly<RecipeRoute> => Object.freeze({ recipe, defaultLimit })
 export const RECIPE_ROUTES: Readonly<Record<CapabilityProfile, Readonly<Record<ReviewLevel, Readonly<RecipeRoute>>>>> = Object.freeze({
   fallback: Object.freeze({ low: route('quick-hunks', 4), medium: route('local-eight', 10), high: route('local-eight', 10), xhigh: route('local-ten', 15), max: route('team-ten', 15) }),
-  'balanced-review': Object.freeze({ low: route('quick-hunks', 4), medium: route('local-eight', 8), high: route('team-eight-recall', 10), xhigh: route('team-ten', 15), max: route('team-ten', 15) }),
-  'fast-review': Object.freeze({ low: route('quick-hunks', 4), medium: route('team-eight-precise', 8), high: route('team-eight-recall', 10), xhigh: route('team-ten', 15), max: route('team-ten', 15) }),
+  'fallback-no-team': Object.freeze({ low: route('quick-hunks', 4), medium: route('local-eight', 10), high: route('local-eight', 10), xhigh: route('local-ten', 15), max: route('local-ten', 15) }),
   'context-specialist': Object.freeze({ low: route('quick-expand', 8), medium: route('local-eight', 8), high: route('local-eight', 10), xhigh: route('local-ten', 15), max: route('team-ten', 15) }),
   'minimal-specialist': Object.freeze({ low: route('quick-hunks', 4), medium: route('careful-pass', 15), high: route('careful-pass', 15), xhigh: route('local-ten', 15), max: route('team-ten', 15) }),
   'delegation-specialist': Object.freeze({ low: route('quick-expand', 'unlimited'), medium: route('team-eight-precise', 8), high: route('team-eight-recall', 10), xhigh: route('team-ten', 15), max: route('team-ten', 15) }),
 })
 
 export function resolveCapabilityProfile(canonicalModelId?: string, explicitProfile?: CapabilityProfile): CapabilityProfile {
-  return explicitProfile ?? resolveReviewModelIdentity(canonicalModelId)?.profile ?? 'fallback'
+  return explicitProfile ?? resolveReviewModelIdentity(canonicalModelId)?.profile ?? 'fallback-no-team'
 }
 
 /** The review levels a model's thinking tiers offer; a tier is read by its wire word (`extra-high` is `xhigh`). */
@@ -146,7 +145,7 @@ export function resolveReviewPolicy(input: ReviewPolicyInput): ReviewPlan {
   const coordinatorWorkerRequired = Boolean(caps.coordinator && !caps.coordinatorCanExecuteSkill)
   const blocked = coordinatorWorkerRequired && !caps.coordinatorWorkerAvailable
   if (coordinatorWorkerRequired) notices.push({ code: blocked ? 'coordinator-worker-unavailable' : 'coordinator-worker-required' })
-  const verificationRoute = profile === 'delegation-specialist' || (profile === 'context-specialist' ? level === 'max' : profile === 'fast-review' || profile === 'balanced-review' ? false : level === 'low' || level === 'max')
+  const verificationRoute = profile === 'delegation-specialist' || (profile === 'context-specialist' ? level === 'max' : level === 'low' || level === 'max')
   return Object.freeze({
     level,
     levelSource: resolved.source,

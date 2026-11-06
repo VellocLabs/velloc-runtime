@@ -32,47 +32,48 @@ describe('review model identities', () => {
       for (const provider of providers) expect(gatewayIds[provider], `${provider}: ${alias}`).toContain(alias)
     }
   })
-  it('distinguishes recognized flagships from unknown fallback models', () => {
-    for (const id of ['claude-opus-5-5', 'anthropic/claude-opus-5.5', 'gpt-6-astra', 'k3.1-pro', 'glm-5.3', 'deepseek-v4-pro']) {
+  it('distinguishes recognized flagships from unknown models', () => {
+    for (const [id, profile] of [['claude-opus-5-5', 'fallback'], ['anthropic/claude-opus-5.5', 'fallback'], ['gpt-6-astra', 'fallback'], ['k3.1-pro', 'delegation-specialist'], ['glm-5.3', 'fallback-no-team'], ['deepseek-v4-pro', 'delegation-specialist']] as const) {
       expect(resolveReviewModelIdentity(id)?.tier).toBe('flagship')
-      expect(resolveCapabilityProfile(id)).toBe('fallback')
+      expect(resolveCapabilityProfile(id)).toBe(profile)
     }
     expect(resolveReviewModelIdentity('future-flagship')).toBeUndefined()
-    expect(resolveCapabilityProfile('future-flagship')).toBe('fallback')
+    expect(resolveCapabilityProfile('future-flagship')).toBe('fallback-no-team')
   })
   it.each(['gpt-7-luna', 'gpt-6-luna-fast', 'openai/gpt-6-luna-fast', 'moonshotai/kimi-k3-fast', 'k4', 'z-ai/glm-5.3-flashx', 'glm-6-flash', 'deepseek-v5-flash', '~openai/gpt-sol-latest', 'vendor/glm-5.2', 'GLM-5.2', 'openai/gpt-5.4-mini:batch'])('does not guess a tier for %s', id => {
     expect(resolveReviewModelIdentity(id)).toBeUndefined()
-    expect(resolveCapabilityProfile(id)).toBe('fallback')
+    expect(resolveCapabilityProfile(id)).toBe('fallback-no-team')
   })
   it('resolves virtual latest entries before exact identity lookup', () => {
     const entry = 'gpt-*-luna@latest'
     try {
       recordEntryResolution('openai', entry, { id: 'gpt-6-luna', versionLabel: '6', preview: false })
-      expect(resolveCapabilityProfile(resolveModelId('openai', entry))).toBe('fast-review')
+      expect(resolveCapabilityProfile(resolveModelId('openai', entry))).toBe('delegation-specialist')
       recordEntryResolution('openai', entry, { id: 'gpt-7-luna', versionLabel: '7', preview: false })
-      expect(resolveCapabilityProfile(resolveModelId('openai', entry))).toBe('fallback')
+      expect(resolveCapabilityProfile(resolveModelId('openai', entry))).toBe('fallback-no-team')
     } finally { recordEntryResolution('openai', entry, undefined) }
   })
 })
 
-describe('tier-specific review workflows', () => {
-  it.each(['gpt-6.1-sol', 'gpt-6-sol', 'k3', 'glm-5.2'])('keeps %s balanced at medium and adds independent review at high', id => {
-    expect(plan(id, 'medium')).toMatchObject({ recipe: 'local-eight', agentMode: 'none', level: 'medium' })
-    expect(plan(id, 'high')).toMatchObject({ recipe: 'team-eight-recall', independentVerification: true, level: 'high' })
-  })
-  it.each(['gpt-6-luna', 'gpt-5.4-mini', 'kimi-for-coding', 'glm-5.3-flash', 'deepseek-flash'])('gives %s bounded low and independent medium verification', id => {
-    expect(plan(id, 'low')).toMatchObject({ recipe: 'quick-hunks', agentMode: 'none', reportLimit: 4 })
-    expect(plan(id, 'medium')).toMatchObject({ recipe: 'team-eight-precise', independentVerification: true, reportLimit: 8 })
+describe('profile-specific review workflows', () => {
+  it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-5.6-terra', 'gpt-6-luna', 'gpt-5.4-mini', 'k3', 'k3.1-pro', 'deepseek-v4-pro', 'deepseek-flash', 'deepseek-ai/DeepSeek-V4.1-Flash'])('runs %s as a team from medium', id => {
+    expect(resolveCapabilityProfile(id)).toBe('delegation-specialist')
+    expect(REVIEW_LEVELS.map(level => plan(id, level).recipe)).toEqual(['quick-expand', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'team-ten'])
+    expect(plan(id, 'medium')).toMatchObject({ independentVerification: true, reportLimit: 8 })
     expect(plan(id, 'medium', false)).toMatchObject({ agentMode: 'sequential-fallback', independentVerification: false, fallbackReason: 'agent-unavailable' })
-    expect(plan(id, 'xhigh')).toMatchObject({ recipe: 'team-ten', level: 'xhigh' })
   })
-  it.each(['MiniMax-M3.1-Flash', 'MiniMaxAI/MiniMax-M3.1-Flash'])('gives %s the fast profile: bounded low, a team review from medium', id => {
-    expect(resolveCapabilityProfile(id)).toBe('fast-review')
-    expect(REVIEW_LEVELS.map(level => plan(id, level).recipe)).toEqual(['quick-hunks', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'team-ten'])
-  })
-  it.each(['MiniMax-M3', 'MiniMax-M4-Flash', 'MiniMax-M3.1-Flash-Preview', 'minimax/minimax-m3.1-flash'])('does not guess a tier for %s', id => {
-    expect(resolveReviewModelIdentity(id)).toBeUndefined()
+  it.each(['gpt-6-astra', 'gpt-5.5-pro', 'gpt-5.5', 'claude-fable-5-1', 'claude-haiku-4-5'])('keeps %s single-context below max', id => {
     expect(resolveCapabilityProfile(id)).toBe('fallback')
+    expect(REVIEW_LEVELS.map(level => plan(id, level).recipe)).toEqual(['quick-hunks', 'local-eight', 'local-eight', 'local-ten', 'team-ten'])
+  })
+  it.each(['MiniMax-M3.1-Flash', 'MiniMaxAI/MiniMax-M3.1-Flash', 'MiniMax-M3', 'k3-256k', 'kimi-for-coding', 'glm-5.3', 'glm-5.2', 'glm-5.3-flash', 'gemini-2.5-pro', 'qwen3.8-max'])('never starts a team for %s', id => {
+    expect(resolveCapabilityProfile(id)).toBe('fallback-no-team')
+    expect(REVIEW_LEVELS.map(level => plan(id, level).recipe)).toEqual(['quick-hunks', 'local-eight', 'local-eight', 'local-ten', 'local-ten'])
+    for (const level of REVIEW_LEVELS) expect(plan(id, level)).toMatchObject({ agentMode: 'none', independentVerification: false })
+  })
+  it.each(['MiniMax-M4-Flash', 'MiniMax-M3.1-Flash-Preview', 'minimax/minimax-m3.1-flash'])('does not guess a tier for %s', id => {
+    expect(resolveReviewModelIdentity(id)).toBeUndefined()
+    expect(resolveCapabilityProfile(id)).toBe('fallback-no-team')
   })
   it('keeps user limits and max authorization independent of model tier', () => {
     const result = resolveReviewPolicy({ canonicalModelId: 'gpt-6-luna', source: 'model', arguments: { level: 'max', fix: false, comment: false, maxFindings: 2 }, output: 'terminal', capabilities })

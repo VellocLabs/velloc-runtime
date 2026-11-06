@@ -25,7 +25,7 @@ function setup() {
     request.observer?.ended({ key: request.taskId, end: { kind: 'completed' } })
     return { text: JSON.stringify({ candidates: [], coverage }), interrupted: false, end: { kind: 'completed' as const } }
   })
-  const service = new LocalReviewService({ conversationKey: 'session', modelId: 'unknown',
+  const service = new LocalReviewService({ conversationKey: 'session', modelId: 'claude-opus-5-5',
     capabilities: { agentAvailable: true, agentPermitted: true, remainingDepth: 2, outputToolAvailable: true },
     preferences: { load: async () => ({}), save: async () => {} }, storage: { listRunIds: async () => [...storage.keys()], load: async id => storage.get(id) ?? null, save: async (id, value) => { storage.set(id, value) } },
     sanitizeExcerpt: text => text, resolveScope: async () => ({ manifest, trustedGuidance: '', read: vi.fn() }), runModel })

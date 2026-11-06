@@ -29,7 +29,7 @@ function fixture(overrides: Partial<ReviewServiceOptions> = {}) {
   })
   const resolveScope = vi.fn(async () => ({ manifest: manifest(), trustedGuidance: '', read: async () => '' }))
   const options: ReviewServiceOptions = {
-    conversationKey: 'session', modelId: 'unknown', capabilities: { agentAvailable: true, agentPermitted: true, remainingDepth: 3, outputToolAvailable: true },
+    conversationKey: 'session', modelId: 'claude-opus-5-5', capabilities: { agentAvailable: true, agentPermitted: true, remainingDepth: 3, outputToolAvailable: true },
     preferences: { load: async () => preferences, save: savePreferences },
     storage: { listRunIds: async () => [...persisted.keys()], load: async id => persisted.get(id) ?? null, save: async (id, data) => { persisted.set(id, data) } },
     sanitizeExcerpt: text => text, resolveScope, runModel, ...overrides,
@@ -825,7 +825,7 @@ it('completes a local ten-angle run that takes longer than ten minutes with no t
 
 it.each([['delegation-specialist', 'high', true], ['delegation-specialist', 'medium', false], ['fallback', 'max', false]] as const)('gives the %s %s verifiers the recall stance: %s', async (profile, level, recall) => {
   const stances: boolean[] = []
-  const modelId = profile === 'fallback' ? 'unknown' : REVIEW_MODEL_IDENTITIES.find(identity => identity.profile === profile)!.id
+  const modelId = REVIEW_MODEL_IDENTITIES.find(identity => identity.profile === profile)!.id
   const f = fixture({ modelId, resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
     const assigned = request.blocks.find(block => block.source === 'assigned-angles')
     if (assigned) return { text: JSON.stringify({ candidates: [findingFor(request, 'lines', 'Null dereference')], coverage: { angles: JSON.parse(assigned.text), limitations: [] } }), interrupted: false }

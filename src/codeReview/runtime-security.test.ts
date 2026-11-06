@@ -854,6 +854,8 @@ describe('review runtime refreshed boundaries', () => {
     const h = fixture()
     const agent = { name: 'Agent', offeredNow: () => true, selfVerdict: async () => ({ behavior: 'allow' }) } as unknown as ToolCallContext['options']['tools'][number]
     h.context.options.tools = [agent]
+    // A profile whose max review runs a team.
+    h.context.options.mainLoopModel = 'claude-opus-5-5'
     const service = await getOrCreateReviewService(h.context, h.permission)
     let sawAgent = false
     mocks.model.mockImplementation(async request => {
