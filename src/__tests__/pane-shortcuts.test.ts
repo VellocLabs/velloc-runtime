@@ -22,6 +22,10 @@ describe('paneShortcutFor', () => {
 
   it('Ctrl+Shift+E toggles the Files tree; without Shift it is nothing', () => {
     expect(paneShortcutFor(key('KeyE', { shiftKey: true }))).toEqual({ action: 'toggle-files-tree' })
+    expect(paneShortcutFor(key('KeyB', { shiftKey: true }))).toEqual({ action: 'toggle', kind: 'browser' })
+    expect(paneShortcutFor(key('KeyF', { shiftKey: true }))).toEqual({ action: 'toggle', kind: 'files' })
+    expect(paneShortcutFor(key('KeyB'))).toBeNull()
+    expect(paneShortcutFor(key('KeyF'))).toBeNull()
     expect(paneShortcutFor(key('KeyE'))).toBeNull()
     expect(paneShortcutFor(key('KeyE', { shiftKey: true, altKey: true }))).toBeNull()
   })
@@ -49,6 +53,8 @@ describe('paneShortcutFor', () => {
   it('labels only the kinds with a shortcut', () => {
     expect(paneShortcutLabel('diff')).toBe('Ctrl+Shift+D')
     expect(paneShortcutLabel('sidechat')).toBe('Ctrl+;')
+    expect(paneShortcutLabel('browser')).toBe('Ctrl+Shift+B')
+    expect(paneShortcutLabel('files')).toBe('Ctrl+Shift+F')
     expect(paneShortcutLabel('tasks')).toBeNull()
   })
 })

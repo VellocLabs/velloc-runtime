@@ -4,6 +4,9 @@
  *
  *   Ctrl+Shift+D   toggle the Diff pane
  *   Ctrl+`         toggle the Terminal pane
+ *   Ctrl+Shift+B   toggle the Browser pane
+ *   Ctrl+Shift+F   toggle the Files pane (not while focus is in a terminal,
+ *                  where it opens the find bar)
  *   Ctrl+;         toggle the Side chats pane
  *   Ctrl+\         close the focused pane
  *   Ctrl+Shift+\   expand or restore the focused pane
@@ -38,6 +41,10 @@ export function paneShortcutFor(event: ShortcutKeyEvent): PaneShortcut | null {
   switch (event.code) {
     case 'KeyD':
       return event.shiftKey ? { action: 'toggle', kind: 'diff' } : null
+    case 'KeyB':
+      return event.shiftKey ? { action: 'toggle', kind: 'browser' } : null
+    case 'KeyF':
+      return event.shiftKey ? { action: 'toggle', kind: 'files' } : null
     case 'Backquote':
       return event.shiftKey ? null : { action: 'toggle', kind: 'terminal' }
     case 'Semicolon':
@@ -108,6 +115,8 @@ export function paneShortcutLabel(kind: SidePaneKind): string | null {
       return 'Ctrl+Shift+D'
     case 'terminal':
       return 'Ctrl+`'
+    case 'browser':
+      return 'Ctrl+Shift+B'
     case 'files':
       return 'Ctrl+Shift+F'
     case 'sidechat':

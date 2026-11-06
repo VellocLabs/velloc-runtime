@@ -2712,6 +2712,14 @@ export function MultiSessionShell({
         toggleFilesTreeVisible()
         return
       }
+      // Inside a terminal Ctrl+Shift+F is its find bar.
+      if (
+        shortcut.action === 'toggle' &&
+        shortcut.kind === 'files' &&
+        document.activeElement instanceof Element &&
+        document.activeElement.closest('[data-pane="terminal"]')
+      )
+        return
       const id = activeSessionIdRef.current
       if (!id) return
       const cli = activeCliRef.current
