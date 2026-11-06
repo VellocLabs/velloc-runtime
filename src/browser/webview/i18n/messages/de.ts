@@ -73,7 +73,7 @@ export const de: Messages = {
   "reviewCard.notice.untracked": "Andere unversionierte Dateien sind in diesem Review nicht enthalten.",
   "reviewCard.actionFailed": "Die Aktion konnte nicht abgeschlossen werden. Der lokale Bericht bleibt erhalten.",
   "reviewCard.stop": "Review stoppen",
-  "reviewCard.stopConfirm": "Diese Review stoppen?",
+  "reviewCard.stopConfirm": "Dieses Review stoppen?",
   "reviewCard.stopYes": "Stoppen",
   "reviewCard.stopKeep": "Weiterlaufen lassen",
   "reviewCard.collapse": "Bericht einklappen",

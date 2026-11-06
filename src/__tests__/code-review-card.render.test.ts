@@ -131,9 +131,10 @@ describe('review report card', () => {
     expect(screen.queryByTestId('review-more')).toBeNull()
     // Stop asks first; keeping the review going cancels nothing.
     fireEvent.click(screen.getByTestId('review-cancel'))
+    expect(document.activeElement).toBe(screen.getByTestId('review-cancel-no'))
     fireEvent.click(screen.getByTestId('review-cancel-no'))
     expect(action).not.toHaveBeenCalled()
-    expect(screen.getByTestId('review-cancel')).toBeTruthy()
+    expect(document.activeElement).toBe(screen.getByTestId('review-cancel'))
     fireEvent.click(screen.getByTestId('review-cancel'))
     fireEvent.click(screen.getByTestId('review-cancel-yes'))
     expect(action).toHaveBeenCalledWith('cancel', undefined)
@@ -142,7 +143,9 @@ describe('review report card', () => {
     renderReport(value)
     expect(screen.queryByTestId('review-stages')).toBeNull()
     expect(screen.getByTestId('review-finding')).toBeTruthy()
-    expect(screen.getByTestId('review-cancel')).toBeTruthy()
+    // The header's toggle covers the row; the stop control is lifted above it.
+    expect(screen.getByTestId('review-header-action').className).toContain('z-10')
+    expect(screen.getByTestId('review-header-action').contains(screen.getByTestId('review-cancel'))).toBe(true)
     expect(screen.queryByTestId('review-repair')).toBeNull()
     cleanup()
     value.run.progress.status = 'queued'

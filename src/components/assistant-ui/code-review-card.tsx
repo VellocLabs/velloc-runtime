@@ -188,7 +188,7 @@ const ReviewCardHeader: FC<{
       {range && <ReviewRange {...range} />}
     </div>
     <div className="flex h-8 shrink-0 items-center gap-1">
-      {!collapsed && action}
+      {!collapsed && action && <div data-testid="review-header-action" className="relative z-10">{action}</div>}
       {!(statusInBody && !collapsed) && <Badge variant={variant} size="sm" aria-live="polite" data-testid="review-status">
         {running && <Loader2Icon aria-hidden className="animate-spin" />}{status}
       </Badge>}
@@ -225,11 +225,18 @@ const ReviewActivity: FC<{ tasks: ReviewTaskView[]; status: string }> = ({ tasks
 const ReviewStop: FC<{ disabled: boolean; onConfirm: () => void }> = ({ disabled, onConfirm }) => {
   const t = useT()
   const [asking, setAsking] = useState(false)
-  if (!asking) return <Button type="button" variant="ghost" size="icon-sm" className="ml-auto shrink-0 text-muted-foreground hover:text-foreground" disabled={disabled} data-testid="review-cancel" aria-label={t('reviewCard.stop')} title={t('reviewCard.stop')} onClick={() => setAsking(true)}><SquareIcon aria-hidden className="fill-current" /></Button>
+  const returning = useRef(false)
+  const stopRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (asking || !returning.current) return
+    returning.current = false
+    stopRef.current?.focus()
+  }, [asking])
+  if (!asking) return <Button ref={stopRef} type="button" variant="ghost" size="icon-sm" className="ml-auto shrink-0 text-muted-foreground hover:text-foreground" disabled={disabled} data-testid="review-cancel" aria-label={t('reviewCard.stop')} title={t('reviewCard.stop')} onClick={() => setAsking(true)}><SquareIcon aria-hidden className="fill-current" /></Button>
   return <div role="group" aria-label={t('reviewCard.stopConfirm')} data-testid="review-cancel-confirm" className="ml-auto flex shrink-0 items-center gap-1.5">
     <span>{t('reviewCard.stopConfirm')}</span>
     <Button type="button" variant="destructive" size="sm" disabled={disabled} data-testid="review-cancel-yes" onClick={() => { setAsking(false); onConfirm() }}>{t('reviewCard.stopYes')}</Button>
-    <Button type="button" variant="ghost" size="sm" data-testid="review-cancel-no" onClick={() => setAsking(false)}>{t('reviewCard.stopKeep')}</Button>
+    <Button type="button" variant="ghost" size="sm" autoFocus data-testid="review-cancel-no" onClick={() => { returning.current = true; setAsking(false) }}>{t('reviewCard.stopKeep')}</Button>
   </div>
 }
 
@@ -411,17 +418,18 @@ export const ReviewReportCard: FC<{
     <DropdownMenuPrimitive.Item data-testid={`review-${label}`} className={MENU_ITEM_CLASS} disabled={busy || !can(action) || disabled} onSelect={handler}>{t(`reviewCard.${label}`)}</DropdownMenuPrimitive.Item>
   )
   const progress = reviewProgressCounts(report)
+  const stop = running ? <ReviewStop disabled={busy || !can('cancel')} onConfirm={() => act('cancel')} /> : undefined
   const clean = report.coverage.complete && status === 'finished'
   const notices = report.notices && report.notices.length > 0 ? <ul data-testid="review-notices" className="space-y-1">{report.notices.map((notice, index) => <li key={index}>{reviewMessage(t, notice)}</li>)}</ul> : null
   const target = report.targetLabel !== undefined && report.targetLabel !== run.scope.repository.projectKey && report.targetLabel !== run.scope.workspaceKey ? report.targetLabel : undefined
   return <TooltipProvider><Card className="my-2 gap-0 overflow-hidden py-0 text-sm" data-testid="code-review-card" data-status={status}>
     <ReviewCardHeader level={enumText(run.policy.level)} range={{ repository: reviewRepositoryName(run.scope), base: run.scope.revision.base, head: run.scope.revision.head, target }}
       status={enumText(reviewStatusValue(status, stage))} variant={STATUS_VARIANT[status]} running={running} collapsed={collapsed} bodyId={bodyId} onToggle={() => setCollapsed(value => !value)} statusInBody={reviewing}
-      action={running && !reviewing ? <ReviewStop disabled={busy || !can('cancel')} onConfirm={() => act('cancel')} /> : undefined} />
+      action={reviewing ? undefined : stop} />
     {!collapsed && <div id={bodyId}>
       <div className="flex flex-col gap-3 border-t px-4 py-3">
         {reviewing ? <>
-          <ReviewStages recipe={run.policy.recipe} agentMode={run.policy.agentMode} stage={stage} queued={status === 'queued'} action={<ReviewStop disabled={busy || !can('cancel')} onConfirm={() => act('cancel')} />} />
+          <ReviewStages recipe={run.policy.recipe} agentMode={run.policy.agentMode} stage={stage} queued={status === 'queued'} action={stop} />
           <ReviewActivity tasks={report.tasks ?? []} status={enumText(reviewStatusValue(status, stage))} />
           {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{progress.found === 0 ? t('reviewCard.progressNone') : progress.found === 1 ? t('reviewCard.progressFoundOne', progress) : t('reviewCard.progressFound', progress)}</p>}
         </> : <>
