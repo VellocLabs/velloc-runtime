@@ -1113,6 +1113,7 @@ export const fr: Messages = {
   'a2ui.openInPanel': 'Ouvrir dans le panneau',
   'a2ui.shownInPanel': 'Affichée dans le panneau latéral',
   'a2ui.surfaceTabs': 'Interfaces',
+  'a2ui.chart.noData': 'Aucune donnée à afficher.',
 
   // ── Interfaces d'outils génératives ────────────────────────────────────
   'gen.loadingLocation': 'Chargement du lieu...',

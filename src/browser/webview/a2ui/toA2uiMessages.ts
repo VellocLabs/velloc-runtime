@@ -14,9 +14,8 @@ import {
 } from '../../../toolkit/builtin/a2ui/a2uiToolNames'
 
 // The basic catalog's id (matches @copilotkit/a2ui-renderer's `basicCatalog`).
-// The panel passes `basicCatalog.id` directly; this constant is the documented
-// fallback and must stay in sync with the registered catalog or createSurface
-// fails with "Catalog not found".
+// The host passes the registered catalog's id (the Velloc catalog); a
+// mismatched id makes createSurface fail with "Catalog not found".
 export const BASIC_CATALOG_ID =
   'https://a2ui.org/specification/v0_9/basic_catalog.json'
 

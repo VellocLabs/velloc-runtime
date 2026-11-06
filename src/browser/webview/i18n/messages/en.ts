@@ -1146,6 +1146,7 @@ export const en = {
   'a2ui.openInPanel': 'Open in panel',
   'a2ui.shownInPanel': 'Shown in the side panel',
   'a2ui.surfaceTabs': 'Interfaces',
+  'a2ui.chart.noData': 'No data to show.',
 
   // ── Generative tool UIs ────────────────────────────────────────────────
   'gen.loadingLocation': 'Loading location...',

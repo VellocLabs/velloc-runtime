@@ -16,7 +16,6 @@ import { createPortal } from 'react-dom'
 import {
   A2UIProvider,
   A2UIRenderer,
-  basicCatalog,
   useA2UI,
   type A2UIClientEventMessage,
 } from '@copilotkit/a2ui-renderer'
@@ -28,6 +27,7 @@ import './a2ui-surface.css'
 import type { Message } from '../../../runtime/RuntimeTypes'
 import { extractA2uiCommands } from './surfaceStore'
 import { commandsToA2uiMessages } from './toA2uiMessages'
+import { vellocCatalog } from './catalog/vellocCatalog'
 import {
   A2uiPresentationProvider,
   useA2uiPresentation,
@@ -111,7 +111,7 @@ function A2uiFeeder({
     const fresh = commands.slice(processedRef.current)
     processedRef.current = commands.length
     const createdThisBatch = new Set<string>()
-    for (const message of commandsToA2uiMessages(fresh, basicCatalog.id)) {
+    for (const message of commandsToA2uiMessages(fresh, vellocCatalog.id)) {
       const create = (message as { createSurface?: { surfaceId?: unknown } })
         .createSurface
       const id = create?.surfaceId
@@ -240,7 +240,7 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
   }, [])
 
   return (
-    <A2UIProvider onAction={onAction}>
+    <A2UIProvider onAction={onAction} catalog={vellocCatalog}>
       <A2uiPresentationProvider sessionId={sessionId} messages={messages} busy={busy}>
         <A2uiFeeder
           messages={messages}

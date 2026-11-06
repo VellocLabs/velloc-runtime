@@ -1105,6 +1105,7 @@ export const ja: Messages = {
   'a2ui.openInPanel': 'パネルで開く',
   'a2ui.shownInPanel': 'サイドパネルに表示中',
   'a2ui.surfaceTabs': 'インターフェース一覧',
+  'a2ui.chart.noData': '表示するデータがありません。',
 
   // ── 生成型ツール UI ───────────────────────────────────────────────────
   'gen.loadingLocation': '位置情報を読み込み中…',

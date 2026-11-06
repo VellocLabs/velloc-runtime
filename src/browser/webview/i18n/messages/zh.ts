@@ -1099,6 +1099,7 @@ export const zh: Messages = {
   'a2ui.openInPanel': '在侧栏打开',
   'a2ui.shownInPanel': '已在侧栏显示',
   'a2ui.surfaceTabs': '界面列表',
+  'a2ui.chart.noData': '没有可显示的数据。',
 
   // ── 生成式工具界面 ────────────────────────────────────────────────────
   'gen.loadingLocation': '正在加载位置……',

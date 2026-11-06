@@ -1112,6 +1112,7 @@ export const de: Messages = {
   'a2ui.openInPanel': 'Im Bereich öffnen',
   'a2ui.shownInPanel': 'Im Seitenbereich angezeigt',
   'a2ui.surfaceTabs': 'Oberflächen',
+  'a2ui.chart.noData': 'Keine Daten zum Anzeigen.',
 
   // ── Generative Tool-Oberflächen ────────────────────────────────────────
   'gen.loadingLocation': 'Standort wird geladen ...',

@@ -32,6 +32,16 @@ separate surface.
     person, mail, phone, home, info, warning, star, favorite, calendarToday,
     shoppingCart, play, pause, refresh, lock, visibility) OR {"path":"<svg>"}.
     Kebab-case like "check-circle" is INVALID (renders as text).
+- Charts and data (draw numbers as charts, not as prose):
+  - `PieChart` { data: [{label, value, color?}] | {"path":"/p"}, donut?, title?, height? }
+  - `LineChart` { data: rows | {"path":"/p"}, xKey, series: [{key, label?, color?}], curved?, title?, height? }
+  - `BarChart` { data: rows | {"path":"/p"}, xKey, series: [{key, label?, color?}], stacked?, title?, height? }
+    — `rows` is an array of objects; `xKey` names the category field and each
+    series `key` a numeric field, e.g. data:[{month:"Jan",sales:120}], xKey:"month",
+    series:[{key:"sales",label:"Sales"}]. Leave `color` out to use the theme palette.
+  - `Metric` { label, value, delta?, trend?: up | down | flat, caption? } — one key figure.
+  - `DataTable` { columns: [{key, label}], rows: rows | {"path":"/p"} }
+  - Group them in `Card`s inside a `Row`/`Column` for a dashboard.
 - Dynamic values: a binding `{"path":"/json/pointer"}` or a function
   `{"call":"<fn>","args":{...}}`. Validation: `checks: [{ "condition":
   {"call":"required","args":{"value":{"path":"/p"}}}, "message":"..." }]`.

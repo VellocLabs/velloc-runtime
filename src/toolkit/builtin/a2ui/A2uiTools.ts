@@ -65,7 +65,7 @@ const COMPONENT_ITEM_SCHEMA = {
     component: {
       type: 'string',
       description:
-        'Catalog component type: Text, Image, Icon, Row, Column, List, Card, Button, TextField, CheckBox, Divider, ChoicePicker, Slider, Tabs, Modal, DateTimeInput, Video, AudioPlayer.',
+        'Catalog component type: Text, Image, Icon, Row, Column, List, Card, Button, TextField, CheckBox, Divider, ChoicePicker, Slider, Tabs, Modal, DateTimeInput, Video, AudioPlayer, PieChart, LineChart, BarChart, Metric, DataTable.',
     },
     id: {
       type: 'string',
