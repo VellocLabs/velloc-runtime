@@ -1,31 +1,52 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAssistantState, useComposerRuntime } from "@assistant-ui/react";
+import { useComposerRuntime, useThreadRuntime } from "@assistant-ui/react";
 
 /**
  * Composer history browsing: on an empty composer ArrowUp opens the
  * session's past user messages, newest first; ArrowUp/ArrowDown step
  * through them. Any text change the browser did not make itself ends it.
+ * The entries are captured when browsing opens, so messages arriving
+ * meanwhile do not shift the position.
  */
-export type ComposerHistoryState = { index: number; shownText: string } | null;
+export type ComposerHistoryState = {
+  entries: readonly string[];
+  index: number;
+  shownText: string;
+} | null;
 
-/** Position 1..total, oldest = 1, newest = total. */
+/** Caret span inside the composer text. */
+export type ComposerCaret = { start: number; end: number };
+
+/**
+ * True when the key would leave the text's first line (ArrowUp) or last
+ * line (ArrowDown); otherwise the key belongs to the textarea's caret.
+ */
+export function caretOnEdgeLine(text: string, caret: ComposerCaret, key: "ArrowUp" | "ArrowDown"): boolean {
+  return key === "ArrowUp"
+    ? !text.slice(0, caret.start).includes("\n")
+    : !text.slice(caret.end).includes("\n");
+}
+
+/** Position 1..total, oldest = 1, newest = total. "pass" leaves the key to the textarea. */
 export function stepHistory(
   entries: readonly string[],
   state: ComposerHistoryState,
   key: "ArrowUp" | "ArrowDown",
   composerText: string,
+  caret: ComposerCaret = { start: composerText.length, end: composerText.length },
 ): ComposerHistoryState | "pass" {
-  const total = entries.length;
-  if (total === 0) return "pass";
   if (state === null) {
-    if (key !== "ArrowUp" || composerText.length > 0) return "pass";
-    return { index: total, shownText: entries[total - 1] };
+    if (entries.length === 0 || key !== "ArrowUp" || composerText.length > 0) return "pass";
+    return { entries, index: entries.length, shownText: entries[entries.length - 1] };
   }
+  if (!caretOnEdgeLine(composerText, caret, key)) return "pass";
+  const total = state.entries.length;
   const next = key === "ArrowUp" ? Math.max(1, state.index - 1) : Math.min(total, state.index + 1);
-  return { index: next, shownText: entries[next - 1] };
+  if (next === state.index) return "pass";
+  return { entries: state.entries, index: next, shownText: state.entries[next - 1] };
 }
 
-/** True when the composer text no longer matches what history put there. */
+/** True while the composer still holds exactly what history put there. */
 export function historyStillActive(state: ComposerHistoryState, composerText: string): boolean {
   return state !== null && composerText === state.shownText;
 }
@@ -48,7 +69,7 @@ export function userMessageTexts(messages: readonly MessageLike[]): string[] {
 
 export function useComposerHistory() {
   const composer = useComposerRuntime();
-  const messages = useAssistantState((s) => s.thread.messages) as readonly MessageLike[];
+  const thread = useThreadRuntime();
   const [state, setState] = useState<ComposerHistoryState>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -67,20 +88,24 @@ export function useComposerHistory() {
 
   /** Returns true when the key was consumed. */
   const onKey = useCallback(
-    (key: string): boolean => {
+    (key: string, caret: ComposerCaret): boolean => {
       if (key !== "ArrowUp" && key !== "ArrowDown") return false;
       const composerState = composer.getState();
-      if (stateRef.current === null && composerState.attachments.length > 0) return false;
-      const next = stepHistory(userMessageTexts(messages), stateRef.current, key, composerState.text);
+      const current = stateRef.current;
+      if (current === null && composerState.attachments.length > 0) return false;
+      const entries =
+        current === null && key === "ArrowUp" && composerState.text.length === 0
+          ? userMessageTexts(thread.getState().messages as readonly MessageLike[])
+          : [];
+      const next = stepHistory(entries, current, key, composerState.text, caret);
       if (next === "pass" || next === null) return false;
       stateRef.current = next;
       setState(next);
       composer.setText(next.shownText);
       return true;
     },
-    [composer, messages],
+    [composer, thread],
   );
 
-  const total = state === null ? 0 : userMessageTexts(messages).length;
-  return { state, total, onKey };
+  return { state, onKey };
 }

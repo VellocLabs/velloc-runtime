@@ -1789,14 +1789,19 @@ export const Composer: FC = () => {  const t = useT();
     e: ReactKeyboardEvent<HTMLTextAreaElement>,
   ) => {
     const state = composer.getState();
-    if (
+    const plainKey =
       !e.shiftKey &&
       !e.ctrlKey &&
       !e.metaKey &&
       !e.altKey &&
       !e.defaultPrevented &&
-      !e.nativeEvent.isComposing &&
-      history.onKey(e.key)
+      !e.nativeEvent.isComposing;
+    if (
+      plainKey &&
+      history.onKey(e.key, {
+        start: e.currentTarget.selectionStart,
+        end: e.currentTarget.selectionEnd,
+      })
     ) {
       e.preventDefault();
       return;
@@ -1804,12 +1809,7 @@ export const Composer: FC = () => {  const t = useT();
     if (
       (e.key === "Tab" || e.key === "ArrowRight") &&
       modSuggestion !== null &&
-      !e.shiftKey &&
-      !e.ctrlKey &&
-      !e.metaKey &&
-      !e.altKey &&
-      !e.defaultPrevented &&
-      !e.nativeEvent.isComposing &&
+      plainKey &&
       takeSuggestion()
     ) {
       e.preventDefault();
@@ -1877,7 +1877,10 @@ export const Composer: FC = () => {  const t = useT();
       }}
     >
       <PlanModeBanner />
-      <SlashCommandPicker commands={slashCommands}>
+      <SlashCommandPicker
+        commands={slashCommands}
+        quietText={history.state?.shownText ?? null}
+      >
         <ComposerPrimitive.AttachmentDropzone asChild>
           <div
             data-slot="composer-shell"
@@ -1900,7 +1903,7 @@ export const Composer: FC = () => {  const t = useT();
               >
                 {t("composer.historyPosition", {
                   index: String(history.state.index),
-                  total: String(history.total),
+                  total: String(history.state.entries.length),
                 })}
               </div>
             )}

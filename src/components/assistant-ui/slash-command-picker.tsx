@@ -194,6 +194,8 @@ function useModAutocompleteRows(text: string, caret: number) {
 
 export type SlashCommandPickerProps = {
   commands: readonly SlashCommandSummary[];
+  /** While the composer holds exactly this text the popover stays closed. */
+  quietText?: string | null;
   children: ReactNode;
 };
 
@@ -204,6 +206,7 @@ export type SlashCommandPickerProps = {
  */
 export const SlashCommandPicker: FC<SlashCommandPickerProps> = ({
   commands,
+  quietText = null,
   children,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -213,15 +216,16 @@ export const SlashCommandPicker: FC<SlashCommandPickerProps> = ({
       className="aui-slash-picker-root relative flex w-full flex-col"
     >
       {children}
-      <SlashCommandPickerSurface commands={commands} rootRef={rootRef} />
+      <SlashCommandPickerSurface commands={commands} quietText={quietText} rootRef={rootRef} />
     </div>
   );
 };
 
 const SlashCommandPickerSurface: FC<{
   commands: readonly SlashCommandSummary[];
+  quietText: string | null;
   rootRef: RefObject<HTMLDivElement | null>;
-}> = ({ commands, rootRef }) => {
+}> = ({ commands, quietText, rootRef }) => {
   // `useAuiState` resubscribes the picker whenever composer text changes,
   // which is exactly what we want — type a char, re-render, re-evaluate
   // the trigger. No flush-order race like the mention primitive.
@@ -299,7 +303,7 @@ const SlashCommandPickerSurface: FC<{
     setHighlight(0);
   }, [items]);
 
-  const open = items.length > 0 && dismissedText !== text;
+  const open = items.length > 0 && dismissedText !== text && quietText !== text;
   const selectByIndex = useCallback(
     (index: number) => {
       const row = items[index];
