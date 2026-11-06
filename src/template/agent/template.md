@@ -19,6 +19,7 @@ tools:
   - schedule
   - skills
   - misc
+  - sessions
 deferredTools: [a2ui, agent-teams]
 ---
 
@@ -61,7 +62,7 @@ deferredTools: [a2ui, agent-teams]
 
 # this type since its browser tools are eager.
 
-# `!agent_autonomy` (chatgpt-agent-style: "go as far as you can", plan→act→
+# `!agent_autonomy` (autonomous-agent style: "go as far as you can", plan→act→
 
 # verify, clarify only when blocked) sits right after `!agent_intro` so its
 
@@ -96,6 +97,7 @@ deferredTools: [a2ui, agent-teams]
 !agent_autonomy
 !delivering_work
 !agent_using_your_tools
+!child_sessions
 !tool_call_parallelism @standard
 $skill_catalogs
 $mcp_servers

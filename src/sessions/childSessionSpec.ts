@@ -85,8 +85,6 @@ export type ChildSessionRequest = {
 
 /** What the checks need to know about the calling session. */
 export type ChildSessionCallerContext = {
-  /** The release channel the runtime serves; children exist on `beta` only. */
-  channel: string
   templateType: string | undefined
   /** Whether the call comes from a loop under the session (a sub-agent or a
    *  teammate), which may not start sessions. */
@@ -161,9 +159,6 @@ export function checkChildSessionRequest(
   caller: ChildSessionCallerContext,
   options: { briefLater?: boolean } = {},
 ): ChildSessionCheck {
-  if (caller.channel !== 'beta') {
-    return { ok: false, reason: 'child sessions are not available on this release channel.' }
-  }
   if (caller.routineOrigin) {
     return { ok: false, reason: 'a routine turn cannot start or propose child sessions; message an existing worker instead.' }
   }

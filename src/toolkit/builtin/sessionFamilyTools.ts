@@ -9,7 +9,6 @@
 import type { ToolContract, InputCheck, ToolArgsJsonShape } from '../toolContract'
 import type { ToolCallContext } from '../toolCallContext'
 import { declareTool } from '../toolContract'
-import { templateChannel } from '../../prompting/templateCatalog'
 import { getSessionDirectory, type DeliveryReceipt, type FamilyRefusal } from '../../sessions/sessionDirectory'
 import {
   LIST_SESSIONS_DEFAULT_LIMIT,
@@ -61,7 +60,6 @@ function isNestedCaller(context: ToolCallContext): boolean {
  *  tools are. */
 export function checkSessionFamilyCaller(context: ToolCallContext): CallerCheck {
   return checkFamilyToolCaller({
-    channel: templateChannel(),
     templateType: context.options.templateType,
     nested: isNestedCaller(context),
     sessionId: context.options.sessionId,

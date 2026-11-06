@@ -80,10 +80,10 @@ afterEach(() => {
 })
 
 describe('the gate', () => {
-  it('refuses the stable channel, a chat session, a nested caller; errors without a directory', async () => {
+  it('opens on the stable channel; refuses a chat session, a nested caller; errors without a directory', async () => {
     setSessionDirectory(stubDirectory())
     setTemplateChannelForTest('stable')
-    expect(await ListSessionsTool.call({}, ctx(), ALLOW, PARENT)).toMatchObject({ data: /^Refused: .*release channel/ })
+    expect((await ListSessionsTool.call({}, ctx(), ALLOW, PARENT)).data).not.toMatch(/^Refused: /)
     setTemplateChannelForTest('beta')
     expect(await ListSessionsTool.call({}, ctx({ templateType: 'chat' }), ALLOW, PARENT)).toMatchObject({ data: /^Refused: .*"chat"/ })
     expect(await ListSessionsTool.call({}, ctx({ teammateName: 'ada' }), ALLOW, PARENT)).toMatchObject({ data: /^Refused: .*teammate/ })
@@ -94,9 +94,8 @@ describe('the gate', () => {
 
   it('applies to every tool of the group', async () => {
     setSessionDirectory(stubDirectory())
-    setTemplateChannelForTest('stable')
     for (const tool of SESSION_FAMILY_TOOLS) {
-      const out = await tool.call({ sessionId: 'c1' }, ctx(), ALLOW, PARENT)
+      const out = await tool.call({ sessionId: 'c1' }, ctx({ templateType: 'chat' }), ALLOW, PARENT)
       expect(out.data).toMatch(/^Refused: /)
     }
   })
@@ -221,14 +220,11 @@ describe('SendMessage to a session', () => {
     }
   })
 
-  it('a session recipient is offered only where the session tools are: a stable lead, a chat session, a teammate and a sub-agent keep the team failure and never reach the directory', async () => {
+  it('a session recipient is offered only where the session tools are: a chat session, a teammate and a sub-agent keep the team failure and never reach the directory', async () => {
     setTeamMessenger(noMember)
     const dir = stubDirectory()
     setSessionDirectory(dir)
     const teamFailure = { isError: true, data: 'Message not delivered: no member "x" in team "y".' }
-    setTemplateChannelForTest('stable')
-    expect(await MailTool.call({ to: 'parent', message: 'hi' }, ctx(), ALLOW, PARENT)).toMatchObject(teamFailure)
-    setTemplateChannelForTest('beta')
     expect(await MailTool.call({ to: 'parent', message: 'hi' }, ctx({ templateType: 'chat' }), ALLOW, PARENT)).toMatchObject(teamFailure)
     expect(await MailTool.call({ to: 'parent', message: 'hi' }, ctx({ teammateName: 'ada', teamName: 'team-1' }, 'teammate-7'), ALLOW, PARENT)).toMatchObject(teamFailure)
     expect(await MailTool.call({ to: 'c1', message: 'hi' }, ctx({}, 'subagent-9'), ALLOW, PARENT)).toMatchObject(teamFailure)

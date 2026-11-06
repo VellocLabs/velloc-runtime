@@ -1041,11 +1041,7 @@ describe('templateRegistry — beta variants (index-beta.md, template-beta.md)',
     expect(getTemplate('acme:variant')!.config.tools).toEqual(['read', 'shell'])
   })
 
-  it('only code and agent ship a beta manifest, and it adds child sessions alone (F-36)', () => {
-    // A bundled template-beta.md is deliberate: it carries its own -beta
-    // goldens and e2e cases. Today `code` and `agent` have one, offering the
-    // `sessions` tool group (`SpawnSession`) and the `child_sessions` holder;
-    // every other bundled type resolves to the SAME manifest on both channels.
+  it('no bundled type ships a beta manifest; code and agent offer child sessions on both channels (F-36)', () => {
     __setTemplateChannelForTest('beta')
     // A CLI session type (`kind: terminal`, F-34) has no manifest on either channel.
     const types = getLauncherCatalog()
@@ -1056,32 +1052,17 @@ describe('templateRegistry — beta variants (index-beta.md, template-beta.md)',
     const beta = new Map(types.map(t => [t, getTemplate(t)!]))
     __setTemplateChannelForTest('stable')
     for (const type of types) {
-      expect(beta.get(type), `${type} on beta`).toBeDefined()
-      const stable = getTemplate(type)!
-      if (type !== 'code' && type !== 'agent') {
-        expect(beta.get(type), `${type} has a bundled beta manifest`).toBe(stable)
-        continue
-      }
-      const variant = beta.get(type)!
-      expect(variant, `${type} has no beta manifest`).not.toBe(stable)
-      // The tool set differs by the `sessions` group only.
-      expect(variant.config.tools).toEqual([...(stable.config.tools ?? []), 'sessions'])
-      expect(variant.config.deferredTools).toEqual(stable.config.deferredTools)
-      expect(variant.config.sealedTools ?? []).toEqual(stable.config.sealedTools ?? [])
-      expect(expandGroups(variant.config.tools ?? [])).toContain('SpawnSession')
-      expect(expandGroups(stable.config.tools ?? [])).not.toContain('SpawnSession')
-      // The prompt differs by the `child_sessions` holder only, placed right
-      // after the type's tools block.
-      const holdersOf = (t: typeof variant) => t.prompt.filter(e => e.kind === 'holder').map(e => e.name)
-      const betaHolders = holdersOf(variant)
-      const stableHolders = holdersOf(stable)
-      expect(betaHolders.filter(h => h !== 'child_sessions')).toEqual(stableHolders)
-      expect(stableHolders).not.toContain('child_sessions')
-      expect(betaHolders[betaHolders.indexOf('child_sessions') - 1]).toBe(`${type}_using_your_tools`)
+      expect(beta.get(type), `${type} has a bundled beta manifest`).toBe(getTemplate(type)!)
     }
-    // code on beta keeps stable's shell: the raw shell eager, no SuperShell.
-    const code = beta.get('code')!
-    const eager = expandGroups(code.config.tools ?? [])
+    for (const type of ['code', 'agent']) {
+      const stable = getTemplate(type)!
+      expect(expandGroups(stable.config.tools ?? [])).toContain('SpawnSession')
+      // The `child_sessions` holder sits right after the type's tools block.
+      const holders = stable.prompt.filter(e => e.kind === 'holder').map(e => e.name)
+      expect(holders[holders.indexOf('child_sessions') - 1]).toBe(`${type}_using_your_tools`)
+    }
+    // code keeps the raw shell eager, no SuperShell.
+    const eager = expandGroups(getTemplate('code')!.config.tools ?? [])
     expect(eager).toContain('Bash')
     expect(eager).not.toContain('SuperShell')
   })
@@ -1238,6 +1219,7 @@ describe('code template — coding prompt skeleton and holders', () => {
       // (after `!pronouns`) — the same holder, listed once per profile.
       { kind: 'holder', name: 'executing_with_care', profile: 'standard' },
       { kind: 'holder', name: 'code_using_your_tools' },
+      { kind: 'holder', name: 'child_sessions' },
       // Shared, and `@standard` only: the lean `# Harness` block already
       // says independent tool calls can run in parallel.
       { kind: 'holder', name: 'tool_call_parallelism', profile: 'standard' },

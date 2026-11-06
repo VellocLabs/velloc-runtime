@@ -40,7 +40,6 @@ function input(overrides: Partial<SpawnSessionInput> = {}): SpawnSessionInput {
 
 function caller(overrides: Partial<ChildSessionCallerContext> = {}): ChildSessionCallerContext {
   return {
-    channel: 'beta',
     templateType: 'code',
     nested: false,
     parentPermissionMode: 'acceptEdits',
@@ -73,14 +72,12 @@ describe('checkChildSessionRequest — the gate', () => {
     })
   })
 
-  it('refuses off the beta channel, from a nested loop, and from other session types', () => {
-    expect(refusal({}, { channel: 'stable' })).toMatch(/release channel/)
+  it('refuses from a nested loop and from other session types', () => {
+    expect(checkChildSessionRequest(input(), caller()).ok).toBe(true)
     expect(refusal({}, { nested: true })).toMatch(/sub-agent or teammate/)
     expect(refusal({}, { templateType: 'chat' })).toMatch(/code or agent session/)
     expect(refusal({}, { templateType: 'team' })).toMatch(/code or agent session/)
     expect(refusal({}, { templateType: undefined })).toMatch(/code or agent session/)
-    // The channel is checked first: a nested caller on stable hears about the channel.
-    expect(refusal({}, { channel: 'stable', nested: true })).toMatch(/release channel/)
   })
 
   it('defaults omitted and empty from to fresh while retaining required task and briefing checks', () => {

@@ -96,7 +96,7 @@ import type {
   ForkRetarget,
 } from './sharedWorkerProtocol'
 import { hasTemplate } from '../../prompting/templateRegistry'
-import { cliOfTypeInAnyChannel, templateChannel } from '../../prompting/templateCatalog'
+import { cliOfTypeInAnyChannel } from '../../prompting/templateCatalog'
 import type { BrowserLlmSelection } from '../bridge/protocol/nexus_llm'
 import { coerceSessionMode, type SessionMode } from '../../permissions/sessionModes'
 import type {
@@ -4481,7 +4481,7 @@ export class SharedWorkerSessionManager {
       return summary ? lineageInputFromRelationFields(summary) : undefined
     }
     return {
-      wakeGateOpen: () => templateChannel() === 'beta',
+      wakeGateOpen: () => true,
       liveStore: sessionId => this.sessions.get(sessionId)?.conversationStore ?? null,
       readStoredMeta: async sessionId =>
         (await this.storage?.readSessionMeta(sessionId))?.metadata ?? null,

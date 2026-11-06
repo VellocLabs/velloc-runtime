@@ -57,21 +57,18 @@ describe('SendMessage in the sessions group', () => {
     expect(MailTool.skill).toBe(AGENT_TEAMS_SKILL_NAME)
   })
 
-  it('a beta code session has SendMessage from its first request; the other team tools stay deferred', () => {
-    const { visible, loadable } = offeredFromStart('code', 'beta')
-    expect(visible).toEqual(['SendMessage'])
-    expect(loadable).not.toContain('SendMessage')
-    expect(loadable).toContain(TeamOpenTool.name)
+  it('a code session has SendMessage from its first request on both channels; the other team tools stay deferred', () => {
+    for (const channel of ['beta', null] as const) {
+      const { visible, loadable } = offeredFromStart('code', channel)
+      expect(visible, `channel ${channel}`).toEqual(['SendMessage'])
+      expect(loadable).not.toContain('SendMessage')
+      expect(loadable).toContain(TeamOpenTool.name)
+    }
   })
 
-  it('a beta agent session has SendMessage from its first request', () => {
+  it('an agent session has SendMessage from its first request on both channels', () => {
     expect(offeredFromStart('agent', 'beta').visible).toEqual(['SendMessage'])
-  })
-
-  it('a stable code session, which lists no sessions group, still loads SendMessage through ToolSearch', () => {
-    const { visible, loadable } = offeredFromStart('code', null)
-    expect(visible).toEqual([])
-    expect(loadable).toContain('SendMessage')
+    expect(offeredFromStart('agent', null).visible).toEqual(['SendMessage'])
   })
 
   it('a safe_code session is offered no SendMessage at all', () => {

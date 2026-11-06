@@ -35,7 +35,6 @@ export const EVENT_TEXT_MAX_CHARS = 4000
 export const PEER_INBOX_MAX = 32
 
 export type FamilyCaller = {
-  channel: string
   templateType: string | undefined
   /** The call comes from a loop under the session (a sub-agent or teammate). */
   nested: boolean
@@ -46,9 +45,6 @@ export type CallerCheck = { ok: true; sessionId: string } | { ok: false; reason:
 
 /** The gate every session-family tool runs first; it fails closed. */
 export function checkFamilyToolCaller(caller: FamilyCaller): CallerCheck {
-  if (caller.channel !== 'beta') {
-    return { ok: false, reason: 'session tools are not available on this release channel.' }
-  }
   if (caller.nested) {
     return { ok: false, reason: 'a sub-agent or teammate cannot use the session tools. Finish the task with your own tools.' }
   }

@@ -32,13 +32,12 @@ function indexOf(entries: Record<string, SessionLineageInput>): Map<string, Sess
 }
 
 describe('checkFamilyToolCaller', () => {
-  const ok = { channel: 'beta', templateType: 'code', nested: false, sessionId: 's' }
-  it('passes a beta code or agent session', () => {
+  const ok = { templateType: 'code', nested: false, sessionId: 's' }
+  it('passes a code or agent session', () => {
     expect(checkFamilyToolCaller(ok)).toEqual({ ok: true, sessionId: 's' })
     expect(checkFamilyToolCaller({ ...ok, templateType: 'agent' }).ok).toBe(true)
   })
-  it('refuses the stable channel, other types, nested callers and no session', () => {
-    expect(checkFamilyToolCaller({ ...ok, channel: 'stable' })).toMatchObject({ ok: false, reason: /release channel/ })
+  it('refuses other types, nested callers and no session', () => {
     expect(checkFamilyToolCaller({ ...ok, templateType: 'chat' })).toMatchObject({ ok: false, reason: /"chat"/ })
     expect(checkFamilyToolCaller({ ...ok, nested: true })).toMatchObject({ ok: false, reason: /sub-agent or teammate/ })
     expect(checkFamilyToolCaller({ ...ok, sessionId: undefined })).toMatchObject({ ok: false, reason: /session id/ })

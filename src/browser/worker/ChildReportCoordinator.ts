@@ -62,7 +62,7 @@ export type SessionActivity = {
 }
 
 export interface ChildReportHost {
-  /** Whether automatic continuations are on (the feature's channel gate). */
+  /** Whether automatic continuations are on. */
   wakeGateOpen(): boolean
   /** The session's live store, or null when no runtime holds it. */
   liveStore(sessionId: string): ChildReportStore | null

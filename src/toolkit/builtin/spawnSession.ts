@@ -44,7 +44,6 @@ import {
   type SessionSpawnInput as SessionSpawnEvent,
   type SessionSpawnRewrite,
 } from '../../mods/sessionFamilyEvents'
-import { templateChannel } from '../../prompting/templateCatalog'
 import { enabledModelsFor } from '../../team/sessionTrust'
 import { getAvailableThinkingTiersForModel } from '../../engine/contextWindow'
 import { routineOriginIdOf } from '../../routines/routineOrigin'
@@ -168,7 +167,6 @@ function callerInWorktree(context: ToolCallContext): boolean {
 /** What the request checks need to know about the calling turn. */
 export function childCallerContext(context: ToolCallContext): ChildSessionCallerContext {
   return {
-    channel: templateChannel(),
     templateType: context.options.templateType,
     nested: isNestedCaller(context),
     routineOrigin: routineOriginIdOf(context.options) !== undefined,

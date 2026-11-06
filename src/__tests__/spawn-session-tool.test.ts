@@ -217,12 +217,12 @@ describe('SpawnSession — the gate', () => {
     expect(calls).toHaveLength(1)
   })
 
-  it('refuses on the stable channel before anything else, and calls no spawner', async () => {
+  it('starts a child on the stable channel too', async () => {
     setTemplateChannelForTest('stable')
     const calls = fakeSpawner({ ok: true, sessionId: 'c', name: 'n', sharedCheckout: true })
     const { data } = await spawnChildSession(input(), ctx())
-    expect(data).toMatch(/^Refused: child sessions are not available on this release channel/)
-    expect(calls).toEqual([])
+    expect(data).not.toMatch(/^Refused: /)
+    expect(calls).toHaveLength(1)
   })
 
   it('refuses from a sub-agent or teammate loop', async () => {

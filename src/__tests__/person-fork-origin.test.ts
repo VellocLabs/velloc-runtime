@@ -149,10 +149,12 @@ describe('a person\'s fork and its origin', () => {
     expect(resolveLineage(metadata)).toMatchObject({ sessionId: 'source-session', kind: 'fork', initiator: 'user' })
   })
 
-  it('records none off the beta channel, for a type that has no child sessions, for a rewind, or for a side chat', async () => {
+  it('records one on the stable channel too', async () => {
     setTemplateChannelForTest('stable')
-    expect((await forkOf('code')).spawnedFrom).toBeUndefined()
-    setTemplateChannelForTest('beta')
+    expect((await forkOf('code')).spawnedFrom).toBeDefined()
+  })
+
+  it('records none for a type that has no child sessions, for a rewind, or for a side chat', async () => {
     expect((await forkOf('chat')).spawnedFrom).toBeUndefined()
     expect((await forkOf('code', { replacesSource: true })).spawnedFrom).toBeUndefined()
     const sideChat = await forkOf('code', { sideChat: true })

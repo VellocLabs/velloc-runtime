@@ -16,6 +16,7 @@ tools:
   - skills
   - superedit
   - misc
+  - sessions
 deferredTools: [browser, schedule, a2ui, agent-teams]
 ---
 
@@ -32,6 +33,7 @@ deferredTools: [browser, schedule, a2ui, agent-teams]
 !code_doing_tasks @standard
 !executing_with_care @standard
 !code_using_your_tools
+!child_sessions
 !tool_call_parallelism @standard
 !code_tone_and_style
 !pronouns

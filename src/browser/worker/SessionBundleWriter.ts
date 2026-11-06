@@ -9,7 +9,6 @@ import { CHILD_SESSION_TEMPLATE_TYPES } from '../../sessions/childSessionSpec'
 import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
 import { DEFAULT_TEMPLATE_TYPE } from './workerProtocol'
 import type { ForkRetarget } from './sharedWorkerProtocol'
-import { templateChannel } from '../../prompting/templateCatalog'
 import { type SessionMode } from '../../permissions/sessionModes'
 
 /**
@@ -110,7 +109,6 @@ export class SessionBundleWriter {
         !replacesSource &&
         !retarget &&
         sideChat?.enabled !== true &&
-        templateChannel() === 'beta' &&
         CHILD_SESSION_TEMPLATE_TYPES.includes(sourceMetadata?.templateType ?? '')
           ? { spawnedFrom: personForkOrigin(fromSessionId) }
           : undefined
