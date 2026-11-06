@@ -24,7 +24,7 @@ interface CheckResult {
 
 function runCheck(): Promise<CheckResult> {
   return new Promise((resolve) => {
-    execFile(
+    const child = execFile(
       'python',
       [SCRIPT, '--check'],
       { encoding: 'utf8', timeout: SCRIPT_TIMEOUT_MS, windowsHide: true },
@@ -39,6 +39,7 @@ function runCheck(): Promise<CheckResult> {
         })
       },
     )
+    child.stdin?.end()
   })
 }
 
