@@ -320,6 +320,7 @@ export const ko: Messages = {
   'composer.placeholder': '/를 입력해 명령 사용',
   'composer.placeholderEmptyThread': '작업을 설명하거나 질문하세요',
   'composer.inputAria': '메시지 입력란',
+  'composer.historyPosition': '기록 {index}/{total}',
   'composer.nextMessage': '다음 메시지',
   'composer.removeNextMessage': '다음 메시지 삭제',
   'composer.nextMessagePosition': '대기 중인 메시지 {count}개 중 {index}번째',

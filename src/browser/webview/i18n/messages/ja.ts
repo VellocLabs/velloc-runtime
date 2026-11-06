@@ -320,6 +320,7 @@ export const ja: Messages = {
   'composer.placeholder': '/ でコマンドを入力',
   'composer.placeholderEmptyThread': 'タスクを説明するか、質問してください',
   'composer.inputAria': 'メッセージ入力欄',
+  'composer.historyPosition': '履歴 {index}/{total}',
   'composer.nextMessage': '次のメッセージ',
   'composer.removeNextMessage': '次のメッセージを削除',
   'composer.nextMessagePosition': '{count} 件中 {index} 番目のメッセージが待機中',

@@ -322,6 +322,7 @@ export const de: Messages = {
   'composer.placeholder': 'Tippe / für Befehle',
   'composer.placeholderEmptyThread': 'Beschreibe eine Aufgabe oder stelle eine Frage',
   'composer.inputAria': 'Nachrichteneingabe',
+  'composer.historyPosition': 'Verlauf {index}/{total}',
   'composer.nextMessage': 'Nächste Nachricht',
   'composer.removeNextMessage': 'Nächste Nachricht entfernen',
   'composer.nextMessagePosition': 'Nachricht {index} von {count} in der Warteschlange',

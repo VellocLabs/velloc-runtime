@@ -323,6 +323,7 @@ export const es: Messages = {
   'composer.placeholder': 'Escriba / para ver los comandos',
   'composer.placeholderEmptyThread': 'Describa una tarea o haga una pregunta',
   'composer.inputAria': 'Entrada de mensaje',
+  'composer.historyPosition': 'Historial {index}/{total}',
   'composer.nextMessage': 'Mensaje siguiente',
   'composer.removeNextMessage': 'Quitar el mensaje siguiente',
   'composer.nextMessagePosition': 'Mensaje {index} de {count} en cola',

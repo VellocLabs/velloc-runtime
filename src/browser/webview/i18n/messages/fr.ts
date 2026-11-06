@@ -319,6 +319,7 @@ export const fr: Messages = {
   'composer.placeholder': 'Tapez / pour les commandes',
   'composer.placeholderEmptyThread': 'Décrivez une tâche ou posez une question',
   'composer.inputAria': 'Saisie du message',
+  'composer.historyPosition': 'Historique {index}/{total}',
   'composer.nextMessage': 'Message suivant',
   'composer.removeNextMessage': 'Supprimer le message suivant',
   'composer.nextMessagePosition': 'Message {index} sur {count} en attente',

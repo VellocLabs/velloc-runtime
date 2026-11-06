@@ -322,6 +322,7 @@ export const zh: Messages = {
   'composer.placeholder': '输入 / 使用命令',
   'composer.placeholderEmptyThread': '描述一个任务或提出一个问题',
   'composer.inputAria': '消息输入框',
+  'composer.historyPosition': '历史 {index}/{total}',
   'composer.nextMessage': '下一条消息',
   'composer.removeNextMessage': '移除下一条消息',
   'composer.nextMessagePosition': '已排队 {count} 条消息中的第 {index} 条',

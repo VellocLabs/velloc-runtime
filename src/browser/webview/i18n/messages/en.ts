@@ -329,6 +329,7 @@ export const en = {
   // once it has one, `composer.placeholder` points at slash commands.
   'composer.placeholderEmptyThread': 'Describe a task or ask a question',
   'composer.inputAria': 'Message input',
+  'composer.historyPosition': 'History {index}/{total}',
   'composer.nextMessage': 'Next message',
   'composer.removeNextMessage': 'Remove next message',
   // The strip shows ONE queued message at a time and rotates through them on a

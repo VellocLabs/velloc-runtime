@@ -157,6 +157,7 @@ import {
   resolveComposerSendShortcuts,
   shouldSendInForkOnModAltEnter,
 } from "./composer-send-shortcuts";
+import { useComposerHistory } from "./composer-history";
 import { useT, useLocale, type TranslateFn } from "@/browser/webview/i18n";
 import type { MessageKey } from "@/browser/webview/i18n/messages/en";
 import { getWelcome } from "@/prompting/templateCatalog";
@@ -1783,10 +1784,23 @@ export const Composer: FC = () => {  const t = useT();
     isRunning,
     isBlocked: awaitingAnswer,
   });
+  const history = useComposerHistory();
   const handleComposerKeyDown = (
     e: ReactKeyboardEvent<HTMLTextAreaElement>,
   ) => {
     const state = composer.getState();
+    if (
+      !e.shiftKey &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !e.defaultPrevented &&
+      !e.nativeEvent.isComposing &&
+      history.onKey(e.key)
+    ) {
+      e.preventDefault();
+      return;
+    }
     if (
       (e.key === "Tab" || e.key === "ArrowRight") &&
       modSuggestion !== null &&
@@ -1879,6 +1893,17 @@ export const Composer: FC = () => {  const t = useT();
                 box's top edge, passive text that belongs to the prompt —
                 apart from the interactive band outside the box above. */}
             <ModComposerStatus />
+            {history.state !== null && (
+              <div
+                data-testid="composer-history-label"
+                className="px-1.75 text-xs text-muted-foreground"
+              >
+                {t("composer.historyPosition", {
+                  index: String(history.state.index),
+                  total: String(history.total),
+                })}
+              </div>
+            )}
             <ComposerPassageStrip />
             <ComposerAttachments />
             <ComposerPrimitive.Input
