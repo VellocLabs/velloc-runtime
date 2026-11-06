@@ -90,9 +90,9 @@ async function forkOf(
   coordinator.groupedStorage = storage
   coordinator.homeDir = '/home/me'
   if (child) {
-    const forked = await (manager as unknown as {
+    const forked = await (manager as unknown as { bundles: {
       forkForChild: (parent: string, cut: string, patch: Partial<BrowserSessionMetadata>, title: string, resolve: () => SessionMode) => Promise<{ ok: boolean; reason?: string }>
-    }).forkForChild('source-session', 'u1', { permissionMode: 'bypassPermissions' }, 'Child', child.resolvePermissionMode)
+    } }).bundles.forkForChild('source-session', 'u1', { permissionMode: 'bypassPermissions' }, 'Child', child.resolvePermissionMode)
     if (!forked.ok) {
       expect(metaWrites).toEqual([])
       throw new Error(forked.reason)
