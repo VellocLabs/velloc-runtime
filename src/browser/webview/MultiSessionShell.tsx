@@ -360,6 +360,9 @@ import {
   createShellHandleTopbarSelectModel,
   createShellHandleSessionSelectModel,
   createShellHandleSetAutoCompactWindow,
+  createShellHandleOpenSettings,
+  createShellHandleLoadProviderMissingPrompt,
+  createShellSettingsHostActions,
 } from './shellSettingsActions'
 import {
   createShellHealActiveSessionSelection,
@@ -394,9 +397,6 @@ import {
   createShellHandleCopyProjectPath,
   createShellDeleteAndAwaitRemoval,
   createShellHandleRevealProjectFolder,
-  createShellHandleOpenSettings,
-  createShellHandleLoadProviderMissingPrompt,
-  createShellSettingsHostActions,
   createShellOpenTerminalLink,
   createShellOnSessionStateChange,
 } from './shellThreadActions'

@@ -10,7 +10,7 @@ import type { SessionTabEntry } from '../bridge/protocol/session'
 import { isRestoredSessionPointer } from './bootSessionPointer'
 
 /** Two tab lists the strip would draw identically. */
-export function sameTabList(a: readonly SessionTabEntry[], b: readonly SessionTabEntry[]): boolean {
+function sameTabList(a: readonly SessionTabEntry[], b: readonly SessionTabEntry[]): boolean {
   if (a.length !== b.length) return false
   return a.every((tab, i) => {
     const other = b[i]
@@ -27,7 +27,7 @@ export function sameTabList(a: readonly SessionTabEntry[], b: readonly SessionTa
 // usable (i.e. wide viewport + sidebar expanded). Narrow-mode auto-
 // collapses hide the splitter entirely, so the saved width survives a
 // resize round-trip.
-export const SIDEBAR_WIDTH_STORAGE_KEY = 'shift-sidebar-width'
+const SIDEBAR_WIDTH_STORAGE_KEY = 'shift-sidebar-width'
 export function readSavedSidebarWidth(): number {
   try {
     const raw = globalThis.localStorage?.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
@@ -39,7 +39,7 @@ export function readSavedSidebarWidth(): number {
     return SIDEBAR_DEFAULT_WIDTH_PX
   }
 }
-export function writeSavedSidebarWidth(width: number): void {
+function writeSavedSidebarWidth(width: number): void {
   try {
     globalThis.localStorage?.setItem(
       SIDEBAR_WIDTH_STORAGE_KEY,

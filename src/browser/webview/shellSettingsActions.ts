@@ -1,5 +1,10 @@
 import { type RefObject, type Dispatch, type SetStateAction } from 'react'
-import type { BrowserBridgeTransport, BrowserLlmSelection } from '../bridge/browserBridgeProtocol'
+import type {
+  BrowserBridgeTransport,
+  BrowserLlmSelection,
+  NexusSettingsSection,
+  ProviderMissingPrompt,
+} from '../bridge/browserBridgeProtocol'
 import {
   openPane,
   setMaximized,
@@ -9,12 +14,12 @@ import {
 import { type SessionLayoutsStore } from './layout/sessionLayouts'
 import { forgetAskedPane, modsPaneWeight } from './layout/modsPane'
 import { saveModPanesAsked } from './layout/layoutStorage'
-import { setWindowDragRegions } from './nexusBridgeActions'
+import { getProviderMissingPrompt, revealProjectFolder, setWindowDragRegions } from './nexusBridgeActions'
 import type { WindowDragRect } from '../bridge/protocol/ui'
 import type { SettingsSectionId } from './settings/SettingsScreen'
 
 /** The Plugins pane's px around its body's cells: frame borders, the body's insets, the scrollbar's room. */
-export const MODS_PANE_CHROME_PX = 40
+const MODS_PANE_CHROME_PX = 40
 export function createShellHandleOpenPluginSettings(
   setProviderSettingsRequest: Dispatch<SetStateAction<{ providerId: string; seq: number; } | null>>,
   setMcpSettingsRequest: Dispatch<SetStateAction<{ server: string; seq: number; } | null>>,
@@ -166,4 +171,37 @@ export function createShellHandleSetAutoCompactWindow(
   return (sessionId: string, value: number | 'auto') => {
     void setAutoCompactWindowForSession(sessionId, value).catch(() => {})
   }
+}
+export function createShellHandleOpenSettings(
+  setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
+) {
+  return async (section?: NexusSettingsSection): Promise<void> => {
+    // Settings render IN-APP (React) instead of the separate Lit
+    // panel pane. Map the legacy bridge sections onto the React nav: the
+    // webapp-URL field now lives under "About".
+    const legacySection = section as string | undefined
+    const mapped: SettingsSectionId =
+      legacySection === 'mcp'
+        ? 'mcp'
+        : legacySection === 'webapp'
+          ? 'about'
+          : legacySection === 'tools'
+            ? 'general'
+            : 'models'
+    setSettingsSection(mapped)
+  }
+}
+export function createShellHandleLoadProviderMissingPrompt(
+  hostBridgeTransport: BrowserBridgeTransport,
+) {
+  return async (): Promise<ProviderMissingPrompt> =>
+      getProviderMissingPrompt(hostBridgeTransport)
+}
+export function createShellSettingsHostActions(
+  hostBridgeTransport: BrowserBridgeTransport,
+) {
+  return (() => ({
+      revealFolder: (path: string) =>
+        revealProjectFolder(hostBridgeTransport, path),
+    }))()
 }

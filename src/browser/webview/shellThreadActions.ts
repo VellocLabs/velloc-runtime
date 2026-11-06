@@ -2,11 +2,7 @@ import { type RefObject, type Dispatch, type SetStateAction } from 'react'
 import type { AppendMessage } from '@assistant-ui/react'
 import type { CapabilityQuery } from './useCan'
 import type { LocalSessionEntry, SessionMetaUpdate } from './useSessionManager'
-import type {
-  BrowserBridgeTransport,
-  NexusSettingsSection,
-  ProviderMissingPrompt,
-} from '../bridge/browserBridgeProtocol'
+import type { BrowserBridgeTransport } from '../bridge/browserBridgeProtocol'
 import type { BrowserSessionMetadata } from '../../sessions/sessionStore'
 import type { SessionListItem } from './Sidebar'
 import type { BrowserRuntimeClientState } from './BrowserRuntimeClient'
@@ -16,7 +12,6 @@ import { sidebarRowOrder } from './sessionPinning'
 import { openInClientTab } from './externalLinkClicks'
 import { createCopyTranscriptPath } from './copyTranscriptPath'
 import {
-  getProviderMissingPrompt,
   openUrl,
   pickProjectFolder,
   revealProjectFolder,
@@ -33,19 +28,12 @@ import {
 import { writeClipboard } from '@/utils/clipboard'
 import { markCliSessionFresh } from './terminal/freshCliSessions'
 import { cliOfTemplateType } from '../../prompting/templateCatalog'
-import type { SettingsSectionId } from './settings/SettingsScreen'
 import type { ForkRetarget } from '../worker/sharedWorkerProtocol'
 import type { ContinueInCodeFolder } from './sessionMessageCallbacks'
 import { getModContributions } from './mods/modContributionsView'
-import { PaneSessionUi } from './shellPaneActions'
+import type { PaneSessionUi } from './shellPaneActions'
 
-// Boot-splash logic was reverted — multiple iterations didn't
-// reliably eliminate the right-panel welcome flash. We're now in
-// "instrument and observe" mode: see the diagnostic console traces
-// inside the component for the timeline of state transitions, then
-// fix once we understand the actual race.
-
-export function getTranscriptUpdatedAt(state: BrowserRuntimeClientState): number {
+function getTranscriptUpdatedAt(state: BrowserRuntimeClientState): number {
   for (let index = state.transcriptMessages.length - 1; index >= 0; index -= 1) {
     const timestamp = (
       state.transcriptMessages[index] as { timestamp?: unknown } | undefined
@@ -359,39 +347,6 @@ export function createShellHandleRevealProjectFolder(
       console.warn('Failed to reveal the project folder:', error)
     })
   }
-}
-export function createShellHandleOpenSettings(
-  setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
-) {
-  return async (section?: NexusSettingsSection): Promise<void> => {
-    // Settings render IN-APP (React) instead of the separate Lit
-    // panel pane. Map the legacy bridge sections onto the React nav: the
-    // webapp-URL field now lives under "About".
-    const legacySection = section as string | undefined
-    const mapped: SettingsSectionId =
-      legacySection === 'mcp'
-        ? 'mcp'
-        : legacySection === 'webapp'
-          ? 'about'
-          : legacySection === 'tools'
-            ? 'general'
-            : 'models'
-    setSettingsSection(mapped)
-  }
-}
-export function createShellHandleLoadProviderMissingPrompt(
-  hostBridgeTransport: BrowserBridgeTransport,
-) {
-  return async (): Promise<ProviderMissingPrompt> =>
-      getProviderMissingPrompt(hostBridgeTransport)
-}
-export function createShellSettingsHostActions(
-  hostBridgeTransport: BrowserBridgeTransport,
-) {
-  return (() => ({
-      revealFolder: (path: string) =>
-        revealProjectFolder(hostBridgeTransport, path),
-    }))()
 }
 export function createShellOpenTerminalLink(
   runtimeCapabilities: CapabilityQuery,
