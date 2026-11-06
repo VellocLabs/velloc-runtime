@@ -522,6 +522,16 @@ describe('review card header and live activity', () => {
     fireEvent.focus(screen.getByTestId('review-range-short'))
     expect((await screen.findByRole('tooltip')).textContent).toContain(`${base} → ${head}`)
   })
+  it('names the repository on the title line after the level, not on the range line', () => {
+    renderReport(running())
+    const heading = screen.getByTestId('review-heading')
+    const repository = screen.getByTestId('review-repository')
+    expect(heading.contains(repository)).toBe(true)
+    expect(screen.getByTestId('review-range').contains(repository)).toBe(false)
+    expect(screen.getByTestId('review-level').compareDocumentPosition(repository) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(repository.previousElementSibling!.textContent).toBe('·')
+    expect(repository.textContent).not.toBe('')
+  })
   it('appends a target label that says more than the revisions', () => {
     const value = running()
     value.targetLabel = './src/a.ts'

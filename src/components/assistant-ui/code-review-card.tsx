@@ -134,15 +134,13 @@ export function reviewRepositoryName(scope: ReviewRun['scope']): string {
   return key.split(/[\\/]/).filter(Boolean).at(-1) ?? key
 }
 
-/** The repository and the revision pair shown short; hover or focus shows the pair in full, and the button copies it in full. */
-const ReviewRange: FC<{ repository: string; base: string; head: string; target?: string }> = ({ repository, base, head, target }) => {
+/** The revision pair shown short; hover or focus shows the pair in full, and the button copies it in full. */
+const ReviewRange: FC<{ base: string; head: string; target?: string }> = ({ base, head, target }) => {
   const t = useT()
   const { isCopied: copied, copyToClipboard } = useCopyToClipboard({ copiedDuration: 1500 })
   const full = `${base} → ${head}`
   const extra = target && !REVISION_ONLY_LABEL.test(target) ? target : undefined
   return <div data-testid="review-range" className="relative z-10 flex min-w-0 max-w-full items-center gap-1 self-start text-xs text-muted-foreground">
-    <span data-testid="review-repository" className="min-w-0 max-w-[40%] shrink truncate font-medium text-foreground/80" title={repository}>{repository}</span>
-    <span aria-hidden>·</span>
     <Tooltip>
       <TooltipTrigger asChild>
         <span tabIndex={0} data-testid="review-range-short" className="shrink-0 rounded-sm font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring">{shortRevision(base)} → {shortRevision(head)}</span>
@@ -160,7 +158,7 @@ const ReviewRange: FC<{ repository: string; base: string; head: string; target?:
 }
 
 /**
- * The header both card states share: title and level on one line, the range under them, one status badge. With
+ * The header both card states share: title, level and repository on one line, the range under them, one status badge. With
  * `onToggle`, the whole row is one toggle button; the range's own controls sit above it.
  */
 const ReviewCardHeader: FC<{
@@ -184,8 +182,12 @@ const ReviewCardHeader: FC<{
       <div data-testid="review-heading" className="flex min-h-8 min-w-0 items-center gap-2">
         <h3 className="truncate font-medium">{t('reviewCard.title')}</h3>
         {level && <span data-testid="review-level" className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{level}</span>}
+        {range && <>
+          <span aria-hidden className="shrink-0 text-xs text-muted-foreground">·</span>
+          <span data-testid="review-repository" className="min-w-0 shrink truncate text-xs font-medium text-foreground/80" title={range.repository}>{range.repository}</span>
+        </>}
       </div>
-      {range && <ReviewRange {...range} />}
+      {range && <ReviewRange base={range.base} head={range.head} target={range.target} />}
     </div>
     <div className="flex h-8 shrink-0 items-center gap-1">
       {!collapsed && action && <div data-testid="review-header-action" className="relative z-10">{action}</div>}
