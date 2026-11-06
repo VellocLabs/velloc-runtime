@@ -101,7 +101,7 @@ import {
 import { createQuotedAttachmentPrefix } from './BrowserComposerAttachmentAdapter'
 import type { FilesBulkClose } from './panes/FilesPane'
 import { createSessionLayoutsStore, useSessionLayouts, type SessionLayoutsStore } from './layout/sessionLayouts'
-import { paneShortcutFor, paneShortcutStep } from './layout/paneShortcuts'
+import { paneShortcutFor, paneShortcutStep, paneShortcutYieldsToTerminal } from './layout/paneShortcuts'
 import { toggleFilesTreeVisible } from './panes/filesTreePrefs'
 import { PaneArea } from './panes/PaneArea'
 import { PaneFrame } from './panes/PaneFrame'
@@ -2712,14 +2712,8 @@ export function MultiSessionShell({
         toggleFilesTreeVisible()
         return
       }
-      // Inside a terminal Ctrl+Shift+F is its find bar.
-      if (
-        shortcut.action === 'toggle' &&
-        shortcut.kind === 'files' &&
-        document.activeElement instanceof Element &&
-        document.activeElement.closest('[data-pane="terminal"]')
-      )
-        return
+      const focused = document.activeElement
+      if (paneShortcutYieldsToTerminal(shortcut, focused instanceof Element ? focused : null)) return
       const id = activeSessionIdRef.current
       if (!id) return
       const cli = activeCliRef.current

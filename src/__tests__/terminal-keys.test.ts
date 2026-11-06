@@ -23,6 +23,7 @@ describe('terminalKeyDecision', () => {
     expect(terminalKeyDecision(key('Backslash'), none)).toBe('app')
     expect(terminalKeyDecision(key('Backslash', { shiftKey: true }), none)).toBe('app')
     expect(terminalKeyDecision(key('Semicolon'), none)).toBe('app')
+    expect(terminalKeyDecision(key('KeyB', { shiftKey: true }), none)).toBe('app')
     expect(terminalKeyDecision(key('KeyD', { shiftKey: true }), none)).toBe('app')
     expect(terminalKeyDecision(key('KeyT', { shiftKey: true }), none)).toBe('app')
   })

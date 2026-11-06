@@ -30,7 +30,7 @@ const APP_CODES: ReadonlySet<string> = new Set([
   'Semicolon', // toggle the Side chats pane
 ])
 /** The app's Ctrl+Shift chords that stay with the app. */
-const APP_SHIFT_CODES: ReadonlySet<string> = new Set(['KeyD', 'KeyT'])
+const APP_SHIFT_CODES: ReadonlySet<string> = new Set(['KeyB', 'KeyD', 'KeyT'])
 
 export function terminalKeyDecision(
   event: TerminalKeyEvent,

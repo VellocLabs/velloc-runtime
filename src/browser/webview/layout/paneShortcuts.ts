@@ -60,6 +60,20 @@ export function paneShortcutFor(event: ShortcutKeyEvent): PaneShortcut | null {
   }
 }
 
+/**
+ * Whether `shortcut` is left to the terminal emulator `focused` sits in:
+ * Ctrl+Shift+F is its find bar there. Elsewhere in the Terminal pane (its
+ * header, an empty state) the shortcut stays a pane shortcut.
+ */
+export function paneShortcutYieldsToTerminal(shortcut: PaneShortcut, focused: Element | null): boolean {
+  return (
+    shortcut.action === 'toggle' &&
+    shortcut.kind === 'files' &&
+    focused !== null &&
+    focused.closest('[data-terminal-view="live"]') !== null
+  )
+}
+
 /** What a session's panes look like when a pane shortcut is pressed. */
 export interface PaneShortcutScene {
   /** The open panes, in layout order. */
