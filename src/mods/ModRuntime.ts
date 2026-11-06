@@ -285,7 +285,7 @@ class WorkerGoneWhileLoading extends Error {
 }
 
 /** One module's place in the slot, across the generations of its worker. */
-export type Seat = {
+type Seat = {
   /** Replaced when a reconcile brings the same path with other options. */
   ref: ModModuleRef
   /** The chain group's key: the plugin's name, `#n` for its nth module. */
@@ -1708,9 +1708,6 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     this.bounds.delete(bound)
   }
 
-  /** A plugin unloaded or lost its worker: its panes go ("`unload` drops a
-   *  pane nothing draws any more … gone before the hooks hear of it"), and
-   *  its drawings are forgotten. */
   /** "A removed one's" registered tools go the way its commands do; the
    *  restart's `session.start` registers them again. */
   private forgetTools(plugin: string): void {
@@ -1722,8 +1719,8 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     }
   }
 
-  protected seatOf(plugin: string): Seat | undefined {
-    return this.seats.find(seat => seat.ref.plugin === plugin && seat.loaded) ?? this.seats.find(seat => seat.ref.plugin === plugin)
+  protected instanceOf(plugin: string): ModInstance | undefined {
+    return this.seats.find(seat => seat.ref.plugin === plugin && seat.loaded)?.loaded?.instance
   }
 
   /**
@@ -2374,11 +2371,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     this.panes.clear()
     this.composer?.dispose()
     this.page?.dispose()
-    for (const timer of this.invalidations.values()) clearTimeout(timer)
-    this.invalidations.clear()
-    this.drawings.clear()
-    this.readersOf.clear()
-    this.readsOf.clear()
+    this.disposeUi()
     for (const seat of this.seats) {
       if (seat.timer !== undefined) clearTimeout(seat.timer)
       seat.timer = undefined

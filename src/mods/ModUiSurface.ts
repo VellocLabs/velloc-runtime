@@ -7,7 +7,7 @@
  */
 
 import type { DispatchContext, TraceEntry } from './modTypes'
-import type { Seat } from './ModRuntime'
+import type { ModInstance } from './ModInstance'
 import { ModComposerBridge, type DecoratedPromptBox, type ModComposerAnswer } from './modComposer'
 import { ModEngineEvents } from './ModEngineEvents'
 import { errorMessage } from './chainRules'
@@ -44,21 +44,21 @@ export abstract class ModUiSurface extends ModEngineEvents {
   abstract readonly panes: ModPaneRegistry
   protected abstract readonly composer: ModComposerBridge | undefined
   protected abstract readonly page: ModPageBridge | undefined
-  protected abstract seatOf(plugin: string): Seat | undefined
+  protected abstract instanceOf(plugin: string): ModInstance | undefined
   /** How many of the person's presses, typings and picks are being answered
    *  now: a `$.ui.scroll` of a transcript row is theirs to ask. */
   protected personInputs = 0
   /** Each drawing's handlers, by drawing then plugin: what the worker keeps
    *  "for the lifetime of the drawing", dropped when it is drawn again. */
-  protected readonly drawings = new Map<string, Map<string, Set<number>>>()
+  private readonly drawings = new Map<string, Map<string, Set<number>>>()
   /** The ask of each drawing's render still in flight, the latest only. */
-  protected readonly latestRender = new Map<string, number>()
-  protected renderAsks = 0
+  private readonly latestRender = new Map<string, number>()
+  private renderAsks = 0
   /** Which drawings read which `$.state` value while drawn, both ways. */
-  protected readonly readersOf = new Map<string, Set<string>>()
-  protected readonly readsOf = new Map<string, Set<string>>()
+  private readonly readersOf = new Map<string, Set<string>>()
+  private readonly readsOf = new Map<string, Set<string>>()
   /** `$.ui.invalidate` folds: "ten a second at most". */
-  protected readonly invalidations = new Map<string, ReturnType<typeof setTimeout>>()
+  private readonly invalidations = new Map<string, ReturnType<typeof setTimeout>>()
 
   // ── `ui.render`, the panes, and the input a drawing raises ──
 
@@ -237,7 +237,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
       )
       this.replaceHandles(key, new Map())
       // The refused tree's handlers are nobody's: dropped at once.
-      for (const [plugin, handles] of held) this.seatOf(plugin)?.loaded?.instance.dropHandles([...handles])
+      for (const [plugin, handles] of held) this.instanceOf(plugin)?.dropHandles([...handles])
       return { kind: 'engine' }
     }
     this.replaceHandles(key, held)
@@ -269,7 +269,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
       for (const [plugin, handles] of handlesIn(tree)) {
         const kept = held.get(plugin)
         const gone = [...handles].filter(handle => !kept?.has(handle))
-        if (gone.length > 0) this.seatOf(plugin)?.loaded?.instance.dropHandles(gone)
+        if (gone.length > 0) this.instanceOf(plugin)?.dropHandles(gone)
       }
     }
   }
@@ -302,8 +302,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
     const key = drawingKeyOf(input.component, input.requestId, input.client)
     const owned = this.drawings.get(key)?.get(input.plugin)?.has(input.handle) === true
     if (!owned) return { ok: false, reason: 'the drawing is gone' }
-    const seat = this.seatOf(input.plugin)
-    const instance = seat?.loaded?.instance
+    const instance = this.instanceOf(input.plugin)
     if (!instance) return { ok: false, reason: `${input.plugin} is not loaded` }
     const event = input.kind === 'press' ? 'ui.press' : input.kind === 'input' ? 'ui.input' : 'ui.select'
     const base = {
@@ -545,7 +544,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
       for (const [plugin, handles] of previous) {
         const kept = held.get(plugin)
         const gone = [...handles].filter(handle => !kept?.has(handle))
-        if (gone.length > 0) this.seatOf(plugin)?.loaded?.instance.dropHandles(gone)
+        if (gone.length > 0) this.instanceOf(plugin)?.dropHandles(gone)
       }
     }
     if (held.size === 0) this.drawings.delete(drawing)
@@ -557,13 +556,26 @@ export abstract class ModUiSurface extends ModEngineEvents {
     if (!held) return
     for (const [owner, handles] of held) {
       if (plugin !== undefined && owner !== plugin) continue
-      this.seatOf(owner)?.loaded?.instance.dropHandles([...handles])
+      this.instanceOf(owner)?.dropHandles([...handles])
       held.delete(owner)
     }
     if (held.size === 0) {
       this.drawings.delete(drawing)
       this.unsubscribeAll(drawing)
     }
+  }
+
+  /** A plugin unloaded or lost its worker: its panes go ("`unload` drops a
+   *  pane nothing draws any more … gone before the hooks hear of it"), and
+   *  its drawings are forgotten. */
+  /** The slot is disposed: pending invalidations are cancelled and every
+   *  drawing's handlers and `$.state` reads are let go. */
+  protected disposeUi(): void {
+    for (const timer of this.invalidations.values()) clearTimeout(timer)
+    this.invalidations.clear()
+    this.drawings.clear()
+    this.readersOf.clear()
+    this.readsOf.clear()
   }
 
   protected pluginGone(plugin: string): void {
