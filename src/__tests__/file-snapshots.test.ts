@@ -643,6 +643,30 @@ describe('FileSnapshotRecorder — ignored dependency/cache dirs', () => {
     expect([...fake.turnFiles.keys()]).toEqual(['1|/other/node_modules/.vite'])
   })
 
+  it('captures a removal of the workspace root itself when it sits under an ignored name', async () => {
+    const { fake, recorder } = makeHarness({
+      initialFiles: { '/home/.cache/app/src/a.ts': 'a' },
+      workspaceRoots: ['/home/.cache/app'],
+    })
+    await recorder.trackBeforeDirectoryRemoval('/home/.cache/app', T1)
+    expect([...fake.turnFiles.keys()]).toEqual(['1|/home/.cache/app/src/a.ts'])
+  })
+
+  it('walks into the ignored-name directory that holds the workspace when removing an ancestor', async () => {
+    const { fake, recorder } = makeHarness({
+      initialFiles: {
+        '/home/.cache/app/src/a.ts': 'a',
+        '/home/.cache/app/node_modules/d.js': 'd',
+      },
+      workspaceRoots: ['/home/.cache/app'],
+    })
+    await recorder.trackBeforeDirectoryRemoval('/home', T1)
+    expect([...fake.turnFiles.keys()].sort()).toEqual([
+      '1|/home/.cache/app/node_modules',
+      '1|/home/.cache/app/src/a.ts',
+    ])
+  })
+
   it('matches the workspace root prefix case-insensitively', async () => {
     const { fake, recorder } = makeHarness({
       initialFiles: { '/home/.cache/app/pkg/a.ts': 'a' },

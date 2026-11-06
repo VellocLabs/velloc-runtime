@@ -59,13 +59,16 @@ export const SNAPSHOT_IGNORED_DIR_NAMES: ReadonlySet<string> = new Set([
  *  `rootKeys` are normalized keys without a trailing slash (the project root,
  *  the session cwd). Inside a root only the segments below the deepest
  *  containing root count, so a workspace that itself sits under e.g.
- *  `.cache/` is not ignored; a path outside every root is checked on every
- *  segment. Root prefixes match case-insensitively. */
+ *  `.cache/` is not ignored; a root itself or a directory containing one is
+ *  never ignored; any other path is checked on every segment. Root prefixes
+ *  match case-insensitively. */
 export function isSnapshotIgnoredPath(pathKey: string, rootKeys: readonly string[]): boolean {
   const lowerKey = pathKey.toLowerCase()
   let baseLength = -1
   for (const root of rootKeys) {
-    if (root.length > baseLength && lowerKey.startsWith(`${root.toLowerCase()}/`)) baseLength = root.length
+    const lowerRoot = root.toLowerCase()
+    if (lowerRoot === lowerKey || lowerRoot.startsWith(`${lowerKey}/`)) return false
+    if (root.length > baseLength && lowerKey.startsWith(`${lowerRoot}/`)) baseLength = root.length
   }
   return lowerKey
     .slice(baseLength + 1)
@@ -381,8 +384,14 @@ export class FileSnapshotRecorder {
       for (const entry of entries) {
         const child = `${current.replace(/[\\/]+$/, '')}/${entry.name}`
         if (entry.isDirectory()) {
-          if (SNAPSHOT_IGNORED_DIR_NAMES.has(entry.name.toLowerCase())) pruned.push(child)
-          else stack.push(child)
+          if (
+            SNAPSHOT_IGNORED_DIR_NAMES.has(entry.name.toLowerCase()) &&
+            isSnapshotIgnoredPath(normalizePathKey(child), this.workspaceKeys)
+          ) {
+            pruned.push(child)
+          } else {
+            stack.push(child)
+          }
         } else {
           files.push(child)
         }
