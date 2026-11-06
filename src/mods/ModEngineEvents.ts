@@ -12,6 +12,7 @@ import type { DispatchedStream } from './streamChain'
 import type { ModDispatcher } from './ModDispatcher'
 import type { ModRuntimeOptions } from './ModRuntime'
 import type { ModUiTurnNote } from './modUi'
+import { errorMessage } from './chainRules'
 import { IDS_NEXT_BUDGET_MS, isIdsNextResult, type IdsNextInput } from './idsEvent'
 import {
   applyAppendRewrite,
@@ -143,9 +144,9 @@ export abstract class ModEngineEvents {
   protected turnNote: ModUiTurnNote | undefined
   /** `session.measure`: the figures the last raised measurement carried, the
    *  measurement running, and the reader a burst folded into one more. */
-  protected measured: MeasuredFigures | undefined
-  protected measuring: Promise<void> | undefined
-  protected measureNext: (() => SessionUsage) | undefined
+  private measured: MeasuredFigures | undefined
+  private measuring: Promise<void> | undefined
+  private measureNext: (() => SessionUsage) | undefined
 
   protected abstract emitUiState(): void
 
@@ -400,7 +401,7 @@ export abstract class ModEngineEvents {
     return measuring
   }
 
-  protected async measureOnce(read: () => SessionUsage): Promise<void> {
+  private async measureOnce(read: () => SessionUsage): Promise<void> {
     let usage: SessionUsage
     try {
       usage = read()
@@ -654,18 +655,26 @@ export abstract class ModEngineEvents {
    *  until `$.ui.invalidate('tool.describe')`". Each answer is kept with the
    *  description it was computed from: Velloc's Agent and Skill tools list
    *  what is installed in their description, so a changed description is
-   *  asked again rather than frozen at its first render (review fix). */
+   *  asked again rather than frozen at its first render. */
   protected readonly toolDescriptions = new Map<string, { from: string; answer: string }>()
   /** `command.describe`'s answers, by command name (with the declaration
    *  they answered, as above), and the dispatches in flight — the picker's
    *  list is republished when one lands. */
   protected readonly commandCache = new Map<string, { from: string; answer: CommandDescription }>()
-  protected readonly commandPending = new Map<string, Promise<void>>()
+  private readonly commandPending = new Map<string, Promise<void>>()
 
   /** `config.describe`'s answers, by row key, each with the label and
    *  description it answered — "cached until `$.ui.invalidate(
    *  'config.describe')`, or the plugins change". */
   protected readonly configDescriptions = new Map<string, { from: string; answer: ConfigDescribeResult }>()
+
+  /** Forgets every describe answer: the hooks that gave them may be gone or
+   *  changed. */
+  protected clearDescribeCaches(): void {
+    this.toolDescriptions.clear()
+    this.commandCache.clear()
+    this.configDescriptions.clear()
+  }
 
   /**
    * `config.describe`: "fires once per row, when the menu or `$.config.list`
@@ -791,7 +800,7 @@ export abstract class ModEngineEvents {
     while (this.commandPending.size > 0) await Promise.all([...this.commandPending.values()])
   }
 
-  protected async describeCommand(input: CommandDescribeInput): Promise<void> {
+  private async describeCommand(input: CommandDescribeInput): Promise<void> {
     const declared: CommandDescription = {
       description: input.description,
       ...(input.argumentHint !== undefined ? { argumentHint: input.argumentHint } : {}),
@@ -866,7 +875,7 @@ export abstract class ModEngineEvents {
       return result.isDelivered === false ? result : { isDelivered: false, reason: 'a hook answered without sending' }
     } catch (error) {
       // Delivered is delivered, aborted or not: reported as a failure, the
-      // model would send it again (review fix).
+      // model would send it again.
       if (ran) return ran
       if (signal?.aborted) throw error
       this.options.report(`mods: session.send (${input.to}) failed: ${errorMessage(error)}; the message is sent as typed`)
@@ -958,8 +967,8 @@ export abstract class ModEngineEvents {
     let handed: AgentSpawnInput | undefined
     /** What core answered, if it ran: relayed unchanged it is the engine's
      *  own choice, which the tool makes again from the input — so it is not
-     *  handed back as a model to run on (review fix: a pass-through hook made
-     *  the resolved id the tool's `model`, which it reads as a tier). */
+     *  handed back as a model to run on: the tool reads its `model` as a
+     *  tier, not a resolved id. */
     let coreModel: string | undefined
     try {
       const result = (await this.dispatcher.dispatch(
@@ -1328,10 +1337,6 @@ export abstract class ModEngineEvents {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 /** What a `command.describe` answer was computed from: the command's

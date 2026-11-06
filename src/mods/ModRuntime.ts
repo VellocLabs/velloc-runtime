@@ -935,11 +935,7 @@ export class ModRuntime extends ModEngineEvents implements TurnExtensions {
       if (!this.disposed) this.emitUi({ kind: 'stale', stale: { plugin } })
     }
     if (outcome.added.length + outcome.removed.length + outcome.reloaded.length > 0) {
-      // The hooks that answered the describe caches may be gone or changed:
-      // ask again (review fix — a disabled or reloaded mod's rewrite stayed).
-      this.toolDescriptions.clear()
-      this.commandCache.clear()
-      this.configDescriptions.clear()
+      this.clearDescribeCaches()
       if (!this.disposed) this.options.onCommandsChanged?.()
     }
     return outcome
