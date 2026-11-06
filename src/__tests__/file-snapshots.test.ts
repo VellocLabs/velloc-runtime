@@ -602,12 +602,14 @@ describe('FileSnapshotRecorder — finalize + dedup', () => {
 })
 
 describe('FileSnapshotRecorder — ignored dependency/cache dirs', () => {
-  it('records nothing for a removal rooted inside an ignored directory', async () => {
+  it('records one placeholder row for a removal rooted inside an ignored directory', async () => {
     const { fake, recorder } = makeHarness({
       initialFiles: { '/ws/node_modules/.vite/deps/chunk.js': 'x' },
     })
     await recorder.trackBeforeDirectoryRemoval('/ws/node_modules/.vite', T1)
-    expect(fake.turnFiles.size).toBe(0)
+    expect(fake.snapshots.size).toBe(0)
+    expect([...fake.turnFiles.keys()]).toEqual(['1|/ws/node_modules/.vite'])
+    expect(fake.turnFiles.get('1|/ws/node_modules/.vite')!.slice(3, 6)).toEqual([1, null, 1])
   })
 
   it('ignores directory names at or above the workspace root', async () => {
@@ -636,24 +638,66 @@ describe('FileSnapshotRecorder — ignored dependency/cache dirs', () => {
     expect(disk.has('/ws/src/api.ts')).toBe(false)
   })
 
-  it('skips ignored subtrees during a directory-removal walk', async () => {
+  it('records one placeholder row per ignored subtree a directory-removal walk prunes', async () => {
     const { fake, recorder } = makeHarness({
       initialFiles: {
         '/ws/pkg/index.ts': '1',
         '/ws/pkg/node_modules/dep/a.js': '2',
+        '/ws/pkg/node_modules/dep/b.js': '2',
         '/ws/pkg/.vite/deps/b.js': '3',
       },
     })
     await recorder.trackBeforeDirectoryRemoval('/ws/pkg', T1)
-    expect([...fake.turnFiles.keys()]).toEqual(['1|/ws/pkg/index.ts'])
+    expect([...fake.turnFiles.keys()].sort()).toEqual([
+      '1|/ws/pkg/.vite',
+      '1|/ws/pkg/index.ts',
+      '1|/ws/pkg/node_modules',
+    ])
+    expect(fake.turnFiles.get('1|/ws/pkg/node_modules')!.slice(3, 6)).toEqual([1, null, 1])
+    expect(fake.turnFiles.get('1|/ws/pkg/.vite')!.slice(3, 6)).toEqual([1, null, 1])
   })
 
-  it('records nothing for the removal of an ignored directory itself', async () => {
+  it('records one placeholder row for the removal of an ignored directory itself', async () => {
     const { fake, recorder } = makeHarness({
       initialFiles: { '/ws/node_modules/dep/a.js': '1' },
     })
     await recorder.trackBeforeDirectoryRemoval('/ws/node_modules', T1)
-    expect(fake.turnFiles.size).toBe(0)
+    expect([...fake.turnFiles.keys()]).toEqual(['1|/ws/node_modules'])
+  })
+
+  it('shows a pruned .git as one not-captured row, and revert restores the files beside it', async () => {
+    const { disk, recorder } = makeHarness({
+      initialFiles: {
+        '/ws/vendor/lib/src/a.ts': 'a',
+        '/ws/vendor/lib/.git/HEAD': 'ref',
+        '/ws/vendor/lib/.git/objects/x': 'obj',
+      },
+    })
+    await recorder.trackBeforeDirectoryRemoval('/ws/vendor/lib', T1)
+    disk.delete('/ws/vendor/lib/src/a.ts')
+    disk.delete('/ws/vendor/lib/.git/HEAD')
+    disk.delete('/ws/vendor/lib/.git/objects/x')
+    await recorder.finalizeOpenTurns()
+
+    const changes = await recorder.getSessionDiff()
+    const byPath = new Map(changes.map(c => [c.path, c]))
+    expect([...byPath.keys()].sort()).toEqual(['/ws/vendor/lib/.git', '/ws/vendor/lib/src/a.ts'])
+    expect(byPath.get('/ws/vendor/lib/.git')!.original.skipped).toBe(true)
+
+    const result = await recorder.revertSession()
+    expect(result.skipped).toEqual(['/ws/vendor/lib/.git'])
+    expect(disk.read('/ws/vendor/lib/src/a.ts')).toBe('a')
+  })
+
+  it('counts pruned subtrees toward the walk cap', async () => {
+    const files: Record<string, string> = {}
+    for (let i = 0; i < MAX_DIR_REMOVAL_CAPTURE_FILES; i++) {
+      files[`/ws/many/f${i}.txt`] = String(i)
+    }
+    files['/ws/many/node_modules/dep/a.js'] = 'x'
+    const { fake, recorder } = makeHarness({ initialFiles: files })
+    await recorder.trackBeforeDirectoryRemoval('/ws/many', T1)
+    expect([...fake.turnFiles.keys()]).toEqual(['1|/ws/many'])
   })
 })
 

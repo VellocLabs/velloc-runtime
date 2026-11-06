@@ -44,10 +44,11 @@ export const DEFAULT_MAX_SNAPSHOT_BYTES = 32 * 1024 * 1024
 export const MAX_DIR_REMOVAL_CAPTURE_FILES = 512
 
 /** Directory names whose contents are dependencies, VCS state or build
- *  caches. A recursive removal never descends into one and records nothing
- *  when it is rooted inside one, so these trees never flood the Diff panel
- *  (F-6). A single-path capture still records such a path: a move or write
- *  that touches one stays revertible. Matched case-insensitively. */
+ *  caches. A recursive removal never descends into one: the pruned subtree,
+ *  or a removal rooted inside one, is recorded as ONE skipped placeholder
+ *  row, so these trees never flood the Diff panel (F-6). A single-path
+ *  capture still records such a path: a move or write that touches one
+ *  stays revertible. Matched case-insensitively. */
 export const SNAPSHOT_IGNORED_DIR_NAMES: ReadonlySet<string> = new Set([
   'node_modules', '.git', '.hg', '.svn', '.vite', '.next', '.nuxt',
   '.turbo', '.parcel-cache', '.cache', '__pycache__', '.pytest_cache',
@@ -299,8 +300,10 @@ export class FileSnapshotRecorder {
 
   /**
    * Before a RECURSIVE directory removal: capture every file under `absDir`
-   * (bounded walk). Past {@link MAX_DIR_REMOVAL_CAPTURE_FILES} the directory
-   * is recorded as ONE skipped placeholder row instead — the removal still
+   * (bounded walk). Each ignored subtree the walk prunes, or `absDir` itself
+   * when it lies at or inside an ignored directory, is recorded as ONE
+   * skipped placeholder row. Past {@link MAX_DIR_REMOVAL_CAPTURE_FILES} rows
+   * the directory is recorded as one placeholder instead — the removal still
    * proceeds (record-and-skip, same policy as the size cap).
    */
   async trackBeforeDirectoryRemoval(
@@ -308,10 +311,14 @@ export class FileSnapshotRecorder {
     turn: SnapshotTurnInfo,
   ): Promise<void> {
     const dirKey = normalizePathKey(absDir)
-    if (this.isExcluded(dirKey) || isSnapshotIgnoredPath(dirKey, this.workspaceKey)) return
-    let files: string[] | null
+    if (this.isExcluded(dirKey)) return
+    if (isSnapshotIgnoredPath(dirKey, this.workspaceKey)) {
+      await this.recordSkippedPlaceholder(absDir, turn)
+      return
+    }
+    let walk: { files: string[]; pruned: string[] } | null
     try {
-      files = await this.walkFiles(absDir, MAX_DIR_REMOVAL_CAPTURE_FILES)
+      walk = await this.walkFiles(absDir, MAX_DIR_REMOVAL_CAPTURE_FILES)
     } catch (err) {
       throw new SnapshotCaptureError(
         `File snapshot capture failed for ${absDir}: ${
@@ -319,29 +326,44 @@ export class FileSnapshotRecorder {
         }`,
       )
     }
-    if (files === null) {
-      // Too many files — one placeholder row marks the whole tree untracked.
-      await this.enqueue(async () => {
-        const captured = this.capturedByTurn.get(turn.seq)
-        if (captured?.has(dirKey)) return
-        await this.store.recordBeforeCapture({
-          turn,
-          path: dirKey,
-          displayPath: absDir,
-          before: { exists: true, snapshotId: null, skipped: true },
-        })
-        this.remember(turn.seq, dirKey)
-      })
+    if (walk === null) {
+      await this.recordSkippedPlaceholder(absDir, turn)
       return
     }
-    for (const file of files) {
+    for (const file of walk.files) {
       await this.trackBeforeMutation(file, turn)
+    }
+    for (const dir of walk.pruned) {
+      await this.recordSkippedPlaceholder(dir, turn)
     }
   }
 
-  /** Depth-first file list under `dir`, or null once `limit` is exceeded. */
-  private async walkFiles(dir: string, limit: number): Promise<string[] | null> {
-    const out: string[] = []
+  /** One `skipped` before row for a directory whose files are not captured;
+   *  diff/revert then mark it untracked. */
+  private async recordSkippedPlaceholder(absDir: string, turn: SnapshotTurnInfo): Promise<void> {
+    const dirKey = normalizePathKey(absDir)
+    if (this.isExcluded(dirKey)) return
+    await this.enqueue(async () => {
+      const captured = this.capturedByTurn.get(turn.seq)
+      if (captured?.has(dirKey)) return
+      await this.store.recordBeforeCapture({
+        turn,
+        path: dirKey,
+        displayPath: absDir,
+        before: { exists: true, snapshotId: null, skipped: true },
+      })
+      this.remember(turn.seq, dirKey)
+    })
+  }
+
+  /** Depth-first walk under `dir`: its files, and the ignored subdirectories
+   *  it did not descend into. Null once files plus pruned exceed `limit`. */
+  private async walkFiles(
+    dir: string,
+    limit: number,
+  ): Promise<{ files: string[]; pruned: string[] } | null> {
+    const files: string[] = []
+    const pruned: string[] = []
     const stack = [dir]
     while (stack.length > 0) {
       const current = stack.pop()!
@@ -349,14 +371,15 @@ export class FileSnapshotRecorder {
       for (const entry of entries) {
         const child = `${current.replace(/[\\/]+$/, '')}/${entry.name}`
         if (entry.isDirectory()) {
-          if (!SNAPSHOT_IGNORED_DIR_NAMES.has(entry.name.toLowerCase())) stack.push(child)
+          if (SNAPSHOT_IGNORED_DIR_NAMES.has(entry.name.toLowerCase())) pruned.push(child)
+          else stack.push(child)
         } else {
-          out.push(child)
-          if (out.length > limit) return null
+          files.push(child)
         }
+        if (files.length + pruned.length > limit) return null
       }
     }
-    return out
+    return { files, pruned }
   }
 
   /**
