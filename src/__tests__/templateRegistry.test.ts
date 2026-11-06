@@ -1780,9 +1780,9 @@ describe('templateRegistry — tool resolution helpers', () => {
     // Absent from `agent` on purpose: `exec` (subsumed by agent's real Bash), `SuperEdit` (agent edits through hosted
     // Write/Edit), `SuperShell` (registered only by a manifest listing `supershell`; none is bundled), and
     // `ContinueInCode` (a chat's offer to move into a Code session; meaningless elsewhere).
-    // The `sessions` group (child sessions, F-36) is offered by the beta
-    // manifests of `code` and `agent` only; stable lists it nowhere.
-    const agentExempt = new Set(['Exec', 'SuperEdit', 'SuperShell', 'ContinueInCode', ...expandGroups(['sessions'])])
+    // `SendMessage` is in the `sessions` group as well as the deferred `agent-teams`
+    // skill: the listed group loads it from the first request (F-36).
+    const agentExempt = new Set(['Exec', 'SuperEdit', 'SuperShell', 'ContinueInCode', 'SendMessage'])
     for (const tool of allBundledTools('default')) {
       if (agentExempt.has(tool.name)) continue
       const isDeferredSkillTool =
