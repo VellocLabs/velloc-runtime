@@ -39,7 +39,7 @@ export type SnapshotTurnInfo = {
 export const DEFAULT_MAX_SNAPSHOT_BYTES = 32 * 1024 * 1024
 
 /** Directory-removal walk cap: a tree with more files than this (e.g. a
- *  node_modules delete) is recorded as ONE skipped placeholder row instead
+ *  large asset tree) is recorded as ONE skipped placeholder row instead
  *  of thousands of blobs. */
 export const MAX_DIR_REMOVAL_CAPTURE_FILES = 512
 
