@@ -200,6 +200,7 @@ import {
 } from './sessionAttention'
 import { showHostNotification } from './nexusBridgeActions'
 import { sessionDisplayTitle } from './SessionRows'
+import { createCopyTranscriptPath } from './copyTranscriptPath'
 import {
   createGlobalDefaultMirror,
   followGlobalDefault,
@@ -3587,6 +3588,13 @@ export function MultiSessionShell({
   sessionsRef.current = sessions
   const sessionItemsRef = useRef(sessionItems)
   sessionItemsRef.current = sessionItems
+  const handleCopyTranscriptPath = useMemo(
+    () => {
+      const copy = createCopyTranscriptPath(resolveSearchHomeDir, () => sessionItemsRef.current, text => navigator.clipboard.writeText(text))
+      return (sessionId: string) => void copy(sessionId)
+    },
+    [resolveSearchHomeDir],
+  )
   const handleDeleteThread = useMemo(
     () => createShellHandleDeleteThread(sessionsRef, disposeClient, sessionItemsRef, sidebarRailRef, deleteSession, setMountedSessionIds, sessionLayoutsStore, setPaneSessionUi),
     [disposeClient, deleteSession, sessionLayoutsStore],
@@ -4291,6 +4299,7 @@ export function MultiSessionShell({
           onDeleteThread={requestSessionDelete}
           onRenameThread={retitleSession}
           onPinThread={handlePinThread}
+          onCopyTranscriptPath={handleCopyTranscriptPath}
           onArchiveThread={handleArchiveThread}
           onForkThread={handleForkThread}
           width={sidebarWidth}

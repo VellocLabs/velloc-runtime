@@ -64,6 +64,7 @@ export type ProjectSectionProps = {
   onDeleteThread?: (sessionId: string, origin?: SessionDeleteOrigin) => void
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
+  onCopyTranscriptPath?: (sessionId: string) => void
   onForkThread?: (sessionId: string) => void
   /** Archive or unarchive a session: a failed start's dismiss. (F-36) */
   onArchiveThread?: (sessionId: string, archived: boolean) => void
@@ -90,6 +91,7 @@ export function ProjectSection({
   onDeleteThread,
   onRenameThread,
   onPinThread,
+  onCopyTranscriptPath,
   onForkThread,
   onArchiveThread,
   editing,
@@ -237,6 +239,7 @@ export function ProjectSection({
             onDeleteThread={onDeleteThread}
             onRenameThread={onRenameThread}
             onPinThread={onPinThread}
+            onCopyTranscriptPath={onCopyTranscriptPath}
             onForkThread={onForkThread}
             onArchiveThread={onArchiveThread}
             editing={editing}
@@ -274,6 +277,7 @@ type ProjectRowProps = {
   onDeleteThread?: (sessionId: string, origin?: SessionDeleteOrigin) => void
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
+  onCopyTranscriptPath?: (sessionId: string) => void
   onForkThread?: (sessionId: string) => void
   onArchiveThread?: (sessionId: string, archived: boolean) => void
   editing?: SessionRowEditing
@@ -296,6 +300,7 @@ function ProjectRow({
   onDeleteThread,
   onRenameThread,
   onPinThread,
+  onCopyTranscriptPath,
   onForkThread,
   onArchiveThread,
   editing,
@@ -562,6 +567,7 @@ function ProjectRow({
               onDeleteThread={onDeleteInFolder}
               onRenameThread={onRenameThread}
               onPinThread={onPinThread}
+              onCopyTranscriptPath={onCopyTranscriptPath}
               onForkThread={onForkThread}
               onArchiveThread={onArchiveThread}
               editing={editing}

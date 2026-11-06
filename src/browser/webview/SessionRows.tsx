@@ -184,6 +184,7 @@ export type SessionRowListProps = {
   /** An empty `title` clears a rename, so the automatic title shows again. */
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
+  onCopyTranscriptPath?: (sessionId: string) => void
   /** Copy the session's whole conversation into a new session and open it. */
   onForkThread?: (sessionId: string) => void
   /**
@@ -221,6 +222,7 @@ export function SessionRowList({
   onDeleteThread,
   onRenameThread,
   onPinThread,
+  onCopyTranscriptPath,
   onForkThread,
   onArchiveThread,
   parentLookup,
@@ -262,6 +264,7 @@ export function SessionRowList({
     onDeleteThread,
     onRenameThread,
     onPinThread,
+    onCopyTranscriptPath,
     onForkThread,
     onArchiveThread,
     parentLookup,
@@ -419,6 +422,7 @@ function SessionRow({
   onDeleteThread,
   onRenameThread,
   onPinThread,
+  onCopyTranscriptPath,
   onForkThread,
   onArchiveThread,
   parentLookup,
@@ -761,6 +765,12 @@ function SessionRow({
                     title: session.title,
                   })}
                   onClick={e => e.stopPropagation()}
+                  onContextMenu={e => {
+                    if (!onCopyTranscriptPath) return
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onCopyTranscriptPath(session.sessionId)
+                  }}
                   className="absolute right-1.5 top-1/2 z-10 hidden -translate-y-1/2 rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground group-hover:block data-[state=open]:block"
                 >
                   <MoreHorizontalIcon className="size-3.5" />

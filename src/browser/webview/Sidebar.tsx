@@ -214,6 +214,7 @@ type SessionListBodyProps = SidebarProjectProps & {
   onDeleteThread?: (sessionId: string, origin?: SessionDeleteOrigin) => void
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
+  onCopyTranscriptPath?: (sessionId: string) => void
   onForkThread?: (sessionId: string) => void
   /** Archive or unarchive a session: a failed start's dismiss, Archived's Unarchive. (F-36) */
   onArchiveThread?: (sessionId: string, archived: boolean) => void
@@ -251,6 +252,7 @@ export function SessionListBody({
   onDeleteThread,
   onRenameThread,
   onPinThread,
+  onCopyTranscriptPath,
   onForkThread,
   onArchiveThread,
   view,
@@ -399,6 +401,7 @@ export function SessionListBody({
             onDeleteThread={onDeleteThread}
             onRenameThread={onRenameThread}
             onPinThread={onPinThread}
+            onCopyTranscriptPath={onCopyTranscriptPath}
             onForkThread={onForkThread}
             onArchiveThread={onArchiveThread}
             editing={editing}
@@ -432,6 +435,7 @@ export function SessionListBody({
                 onDeleteThread={onDeleteThread}
                 onRenameThread={onRenameThread}
                 onPinThread={onPinThread}
+                onCopyTranscriptPath={onCopyTranscriptPath}
                 onForkThread={onForkThread}
                 onArchiveThread={onArchiveThread}
                 scope="pinned"
@@ -466,6 +470,7 @@ export function SessionListBody({
               onDeleteThread={onDeleteThread}
               onRenameThread={onRenameThread}
               onPinThread={onPinThread}
+              onCopyTranscriptPath={onCopyTranscriptPath}
               onForkThread={onForkThread}
               onArchiveThread={onArchiveThread}
               scope="recents"
@@ -673,6 +678,7 @@ export function Sidebar({
   onDeleteThread,
   onRenameThread,
   onPinThread,
+  onCopyTranscriptPath,
   onForkThread,
   onArchiveThread,
   width,
@@ -700,6 +706,7 @@ export function Sidebar({
   onDeleteThread?: (sessionId: string, origin?: SessionDeleteOrigin) => void
   onRenameThread?: (sessionId: string, title: string) => void
   onPinThread?: (sessionId: string, pinned: boolean) => void
+  onCopyTranscriptPath?: (sessionId: string) => void
   onForkThread?: (sessionId: string) => void
   /** Archive or unarchive a session (a failed start's dismiss, Unarchive). (F-36) */
   onArchiveThread?: (sessionId: string, archived: boolean) => void
@@ -776,6 +783,7 @@ export function Sidebar({
             onDeleteThread={onDeleteThread}
             onRenameThread={onRenameThread}
             onPinThread={onPinThread}
+            onCopyTranscriptPath={onCopyTranscriptPath}
             onForkThread={onForkThread}
             onArchiveThread={onArchiveThread}
             view={view}
