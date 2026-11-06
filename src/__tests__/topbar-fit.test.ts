@@ -152,6 +152,21 @@ describe('NexusTopBar on a narrow window', () => {
     expect(onTogglePane).toHaveBeenCalledWith('files')
   })
 
+  it('the Background tasks row shows the running count beside its shortcut', async () => {
+    renderBar(1200, { backgroundTaskCount: 2 })
+    openMore()
+    const row = await screen.findByTestId('topbar-pane-row-tasks')
+    const count = screen.getByTestId('topbar-pane-row-tasks-count')
+    expect(count.textContent).toBe('2')
+    expect(row.contains(count)).toBe(true)
+    expect(count.parentElement?.className).toContain('ms-auto')
+    cleanup()
+    renderBar(1200, { backgroundTaskCount: 0 })
+    openMore()
+    await screen.findByTestId('topbar-pane-row-tasks')
+    expect(screen.queryByTestId('topbar-pane-row-tasks-count')).toBeNull()
+  })
+
   it('narrowest: the right group is down to More, then the left extras fold too', async () => {
     const { onOpenImport, onToggleRail } = renderBar(150)
     for (const id of ['topbar-session-rail', 'topbar-pane-terminal', 'topbar-import-acme-agent']) {

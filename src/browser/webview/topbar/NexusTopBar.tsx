@@ -666,7 +666,7 @@ export function NexusTopBar({
                     >
                       <Icon aria-hidden className="size-4 text-muted-foreground" />
                       <span className="flex flex-1 items-center">
-                        <PaneLabel kind={kind} />
+                        <span>{t(PANE_LABEL_KEY[kind])}</span>
                         {paneAttention?.has(kind) ? (
                           <span
                             aria-hidden
@@ -674,10 +674,27 @@ export function NexusTopBar({
                             className="ms-2 size-1.5 rounded-full bg-destructive"
                           />
                         ) : null}
+                        <span className="ms-auto flex items-center gap-2 ps-4">
+                          {kind === "tasks" && backgroundTaskCount && backgroundTaskCount > 0 ? (
+                            <span
+                              data-testid="topbar-pane-row-tasks-count"
+                              className="flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium leading-4 text-primary-foreground"
+                            >
+                              {backgroundTaskCount}
+                            </span>
+                          ) : null}
+                          {paneShortcutLabel(kind) ? (
+                            <kbd className="font-sans text-caption text-muted-foreground">
+                              {paneShortcutLabel(kind)}
+                            </kbd>
+                          ) : null}
+                        </span>
                       </span>
-                      <DropdownMenuPrimitive.ItemIndicator>
-                        <CheckIcon aria-hidden className="size-4 text-primary" />
-                      </DropdownMenuPrimitive.ItemIndicator>
+                      <span className="flex size-4 shrink-0 items-center justify-center">
+                        <DropdownMenuPrimitive.ItemIndicator>
+                          <CheckIcon aria-hidden className="size-4 text-primary" />
+                        </DropdownMenuPrimitive.ItemIndicator>
+                      </span>
                     </DropdownMenuPrimitive.CheckboxItem>
                   );
                 })}
