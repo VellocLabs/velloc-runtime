@@ -14,8 +14,9 @@ import { type SessionMode } from '../../permissions/sessionModes'
 
 /**
  * Contract: writes complete sessions to storage (log, `meta.json`, sidecars)
- * and copies a session's prefix into a fork. Owns no state; reads storage
- * routing through the storage coordinator and publishes through the summary
+ * and copies a session's prefix into a fork. Owns no state; takes its
+ * storage from the storage coordinator, sets each written session's project
+ * dir on the grouped storage itself, and publishes through the summary
  * repository. Shared by fork, child sessions (F-36) and session import.
  */
 export class SessionBundleWriter {
