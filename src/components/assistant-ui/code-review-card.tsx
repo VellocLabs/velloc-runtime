@@ -372,6 +372,7 @@ export const ReviewReportCard: FC<{
   const [kind, setKind] = useState('all')
   const [state, setState] = useState('all')
   const [selected, setSelected] = useState<string[]>([])
+  const [expandedFindings, setExpandedFindings] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
@@ -480,6 +481,7 @@ export const ReviewReportCard: FC<{
             const workingCopy = diagnostic.anchor.side === 'working-copy'
             const canLocate = workingCopy && !!report.permissions?.locate && can('locate') && !!openFile
             const checked = selectedIds.includes(diagnostic.id)
+            const expanded = expandedFindings.includes(diagnostic.id)
             const findingState = reviewFindingState(report, diagnostic.id)
             return <li key={diagnostic.id} data-testid="review-finding" data-impact={diagnostic.classification.impact} className={cn('rounded-lg border p-3', checked ? 'border-primary/50 bg-primary/5' : 'bg-card')}>
               <div className="flex items-start gap-2">
@@ -488,21 +490,23 @@ export const ReviewReportCard: FC<{
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <Badge variant={IMPACT_VARIANT[diagnostic.classification.impact]} size="sm">{enumText(diagnostic.classification.impact)}</Badge>
                     <span className="text-xs text-muted-foreground">{enumText(diagnostic.classification.kind)}</span>
+                    <span className="text-xs text-muted-foreground">· {enumText(assessment?.disposition ?? 'unchecked')} · <span className={cn(findingState !== 'open' && 'text-success')}>{enumText(findingState)}</span></span>
                     <button type="button" className="ml-auto max-w-full truncate font-mono text-xs text-muted-foreground underline-offset-2 hover:underline disabled:no-underline disabled:opacity-60" disabled={busy || !canLocate} onClick={() => locate(diagnostic)}>{diagnostic.anchor.path}{diagnostic.anchor.span ? `:${diagnostic.anchor.span.start}` : ''}</button>
                   </div>
-                  <p className="font-medium leading-snug">{diagnostic.claim.title}</p>
-                  <p className="line-clamp-2 text-xs text-muted-foreground">{diagnostic.claim.explanation}</p>
-                  {!workingCopy && <p className="text-xs text-muted-foreground">{t('reviewCard.historical', { revision: diagnostic.anchor.revision })}</p>}
-                  <p className="text-xs text-muted-foreground">{enumText(assessment?.disposition ?? 'unchecked')} · <span className={cn(findingState !== 'open' && 'text-success')}>{enumText(findingState)}</span></p>
-                  <details className="text-xs"><summary className="cursor-pointer text-primary">{t('reviewCard.evidence')}</summary>
-                    <div className="mt-1 space-y-2">
-                      <p className="whitespace-pre-wrap">{diagnostic.claim.explanation}</p>
-                      <p className="whitespace-pre-wrap">{diagnostic.claim.trigger}</p>
-                      {assessment && <p className="text-muted-foreground">{assessment.rationale}</p>}
-                      {report.evidence.filter(item => item.diagnosticId === diagnostic.id && item.runId === run.id).map(item => <blockquote key={item.id} className="border-l-2 pl-3"><pre className="overflow-auto whitespace-pre-wrap">{item.excerpt}</pre><p className="text-muted-foreground">{item.reason}</p></blockquote>)}
-                    </div>
-                  </details>
-                  {receipts.map(receipt => <p className="text-xs text-muted-foreground" key={receipt.id}>{enumText(receipt.kind)} · {enumText(receipt.state)}{receipt.verification && <> · {enumText(receipt.verification)}</>}{receipt.reason && <> · {reviewDetailMessage(t, receipt.reason)}</>}</p>)}
+                  <div className="flex items-start gap-1">
+                    <p className="min-w-0 flex-1 font-medium leading-snug">{diagnostic.claim.title}</p>
+                    <button type="button" data-testid="review-finding-toggle" className="mt-0.5 shrink-0 rounded text-muted-foreground hover:text-foreground" aria-expanded={expanded} aria-label={t('reviewCard.evidence')} title={t('reviewCard.evidence')} onClick={() => setExpandedFindings(ids => expanded ? ids.filter(id => id !== diagnostic.id) : [...ids, diagnostic.id])}>
+                      <ChevronDownIcon aria-hidden className={cn('size-4 transition-transform', expanded && 'rotate-180')} />
+                    </button>
+                  </div>
+                  {expanded && <div data-testid="review-finding-details" className="space-y-2 pt-1 text-xs">
+                    <p className="whitespace-pre-wrap text-muted-foreground">{diagnostic.claim.explanation}</p>
+                    {!workingCopy && <p className="text-muted-foreground">{t('reviewCard.historical', { revision: diagnostic.anchor.revision })}</p>}
+                    <p className="whitespace-pre-wrap">{diagnostic.claim.trigger}</p>
+                    {assessment && <p className="text-muted-foreground">{assessment.rationale}</p>}
+                    {report.evidence.filter(item => item.diagnosticId === diagnostic.id && item.runId === run.id).map(item => <blockquote key={item.id} className="border-l-2 pl-3"><pre className="overflow-auto whitespace-pre-wrap">{item.excerpt}</pre><p className="text-muted-foreground">{item.reason}</p></blockquote>)}
+                    {receipts.map(receipt => <p className="text-muted-foreground" key={receipt.id}>{enumText(receipt.kind)} · {enumText(receipt.state)}{receipt.verification && <> · {enumText(receipt.verification)}</>}{receipt.reason && <> · {reviewDetailMessage(t, receipt.reason)}</>}</p>)}
+                  </div>}
                 </div>
               </div>
             </li>
