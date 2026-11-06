@@ -44,19 +44,25 @@ export const DEFAULT_MAX_SNAPSHOT_BYTES = 32 * 1024 * 1024
 export const MAX_DIR_REMOVAL_CAPTURE_FILES = 512
 
 /** Directory names whose contents are dependencies, VCS state or build
- *  caches. A path with any of these as a segment is never captured, so it
- *  never reaches the Diff panel and a removal walk never descends into it
- *  (F-6). Matched case-insensitively. */
+ *  caches. A recursive removal never descends into one and records nothing
+ *  when it is rooted inside one, so these trees never flood the Diff panel
+ *  (F-6). A single-path capture still records such a path: a move or write
+ *  that touches one stays revertible. Matched case-insensitively. */
 export const SNAPSHOT_IGNORED_DIR_NAMES: ReadonlySet<string> = new Set([
   'node_modules', '.git', '.hg', '.svn', '.vite', '.next', '.nuxt',
   '.turbo', '.parcel-cache', '.cache', '__pycache__', '.pytest_cache',
   '.mypy_cache', '.ruff_cache', '.tox', '.venv', '.gradle',
 ])
 
-/** Whether a normalized path key lies under an ignored directory. */
-export function isSnapshotIgnoredPath(pathKey: string): boolean {
-  const segments = pathKey.split('/')
-  return segments.some(seg => SNAPSHOT_IGNORED_DIR_NAMES.has(seg.toLowerCase()))
+/** Whether a normalized path key has an ignored directory segment below
+ *  `rootKey`. Segments at or above the root never count, and a path outside
+ *  the root (or with no root) is never ignored. */
+export function isSnapshotIgnoredPath(pathKey: string, rootKey: string | undefined): boolean {
+  if (rootKey === undefined || !pathKey.startsWith(`${rootKey}/`)) return false
+  return pathKey
+    .slice(rootKey.length + 1)
+    .split('/')
+    .some(seg => SNAPSHOT_IGNORED_DIR_NAMES.has(seg.toLowerCase()))
 }
 
 /** One side of the session diff, with content when captured. */
@@ -116,6 +122,9 @@ export type FileSnapshotRecorderOptions = {
    *  tree — capturing our own blobs/DB would recurse). The store's own
    *  session dir is always excluded. */
   excludeRoots?: string[]
+  /** The session's working directory. Ignored directory names count only
+   *  below it; without it only a removal walk's own children are checked. */
+  workspaceRoot?: string
   maxSnapshotBytes?: number
 }
 
@@ -142,6 +151,7 @@ export class FileSnapshotRecorder {
   private readonly store: SessionSnapshotStore
   private readonly fs: RuntimeFs
   private readonly excludeKeys: string[]
+  private readonly workspaceKey: string | undefined
   private readonly maxSnapshotBytes: number
   /** Serializes every recorder op — the store is single-writer per session
    *  and this chain is what makes that true under concurrent tool calls. */
@@ -160,6 +170,9 @@ export class FileSnapshotRecorder {
       options.store.snapshotRoot(),
       ...(options.excludeRoots ?? []),
     ].map(root => normalizePathKey(root).replace(/\/+$/, ''))
+    this.workspaceKey = options.workspaceRoot
+      ? normalizePathKey(options.workspaceRoot).replace(/\/+$/, '')
+      : undefined
     this.maxSnapshotBytes = options.maxSnapshotBytes ?? DEFAULT_MAX_SNAPSHOT_BYTES
   }
 
@@ -173,7 +186,6 @@ export class FileSnapshotRecorder {
   }
 
   private isExcluded(pathKey: string): boolean {
-    if (isSnapshotIgnoredPath(pathKey)) return true
     return this.excludeKeys.some(
       root => pathKey === root || pathKey.startsWith(`${root}/`),
     )
@@ -296,7 +308,7 @@ export class FileSnapshotRecorder {
     turn: SnapshotTurnInfo,
   ): Promise<void> {
     const dirKey = normalizePathKey(absDir)
-    if (this.isExcluded(dirKey)) return
+    if (this.isExcluded(dirKey) || isSnapshotIgnoredPath(dirKey, this.workspaceKey)) return
     let files: string[] | null
     try {
       files = await this.walkFiles(absDir, MAX_DIR_REMOVAL_CAPTURE_FILES)

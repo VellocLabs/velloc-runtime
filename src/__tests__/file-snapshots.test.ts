@@ -330,6 +330,7 @@ function makeHarness(opts?: {
   initialFiles?: Record<string, string>
   failWrites?: boolean
   maxSnapshotBytes?: number
+  workspaceRoot?: string
 }) {
   const disk = makeFakeFs(opts?.initialFiles)
   // The real DB file is created by the sqlite HOST, not through fs — mirror
@@ -350,6 +351,7 @@ function makeHarness(opts?: {
     store,
     fs: disk.fs,
     excludeRoots: [STORAGE_BASE],
+    workspaceRoot: opts?.workspaceRoot ?? '/ws',
     maxSnapshotBytes: opts?.maxSnapshotBytes,
   })
   return { disk, fake, store, recorder }
@@ -600,18 +602,38 @@ describe('FileSnapshotRecorder — finalize + dedup', () => {
 })
 
 describe('FileSnapshotRecorder — ignored dependency/cache dirs', () => {
-  it('never captures a file under node_modules, .vite or .git', async () => {
+  it('records nothing for a removal rooted inside an ignored directory', async () => {
     const { fake, recorder } = makeHarness({
-      initialFiles: {
-        '/ws/node_modules/.vite/deps/chunk.js': 'x',
-        '/ws/.git/index': 'i',
-        '/ws/src/app.ts': 'a',
-      },
+      initialFiles: { '/ws/node_modules/.vite/deps/chunk.js': 'x' },
     })
-    await recorder.trackBeforeMutation('/ws/node_modules/.vite/deps/chunk.js', T1)
-    await recorder.trackBeforeMutation('/ws/.git/index', T1)
-    await recorder.trackBeforeMutation('/ws/src/app.ts', T1)
-    expect([...fake.turnFiles.keys()]).toEqual(['1|/ws/src/app.ts'])
+    await recorder.trackBeforeDirectoryRemoval('/ws/node_modules/.vite', T1)
+    expect(fake.turnFiles.size).toBe(0)
+  })
+
+  it('ignores directory names at or above the workspace root', async () => {
+    const { fake, recorder } = makeHarness({
+      initialFiles: { '/home/.cache/app/pkg/a.ts': 'a' },
+      workspaceRoot: '/home/.cache/app',
+    })
+    await recorder.trackBeforeMutation('/home/.cache/app/src/b.ts', T1)
+    await recorder.trackBeforeDirectoryRemoval('/home/.cache/app/pkg', T1)
+    expect([...fake.turnFiles.keys()].sort()).toEqual([
+      '1|/home/.cache/app/pkg/a.ts',
+      '1|/home/.cache/app/src/b.ts',
+    ])
+  })
+
+  it('still captures a single path under an ignored directory, so a move out of one reverts', async () => {
+    const { disk, recorder } = makeHarness({
+      initialFiles: { '/ws/.cache/gen/api.ts': 'api' },
+    })
+    await recorder.trackBeforeMutation('/ws/.cache/gen/api.ts', T1)
+    await recorder.trackBeforeMutation('/ws/src/api.ts', T1)
+    await disk.fs.rm('/ws/.cache/gen/api.ts')
+    disk.write('/ws/src/api.ts', 'api')
+    await recorder.revertSession()
+    expect(disk.read('/ws/.cache/gen/api.ts')).toBe('api')
+    expect(disk.has('/ws/src/api.ts')).toBe(false)
   })
 
   it('skips ignored subtrees during a directory-removal walk', async () => {
