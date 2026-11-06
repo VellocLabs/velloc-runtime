@@ -63,7 +63,7 @@ import { TOP_BAR_HEIGHT_CLASS } from "./barHeight";
 /** The pane kinds with a toggle of their own in the bar, in bar order. */
 const BAR_PANE_KINDS: readonly SidePaneKind[] = ["terminal", "diff", "browser", "files", "mods"];
 /** The pane kinds listed as rows of the More menu, in menu order. */
-const MENU_PANE_KINDS: readonly SidePaneKind[] = ["sidechat", "tasks", "plan", "skill"];
+const MENU_PANE_KINDS: readonly SidePaneKind[] = ["sidechat", "tasks", "plan", "skill", "a2ui"];
 
 const MENU_ITEM_CLASS =
   "flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-start text-body outline-none data-[highlighted]:bg-muted";

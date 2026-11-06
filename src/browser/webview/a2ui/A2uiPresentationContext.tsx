@@ -1,38 +1,45 @@
-// Presentation state shared by the inline A2UI surfaces (rendered by the
-// `a2ui_*` tool UIs) and the maximize overlay (in A2uiProviderHost).
+// Presentation state shared by the inline A2UI cards (rendered by the `a2ui_*`
+// tool UIs) and the side pane content (in A2uiProviderHost) (F-1).
 //
-// A surface is identified by surfaceId but can be mentioned by several
-// tool-calls over a conversation (create, then updates). We render the LIVE
-// surface only at the LATEST mention; older mentions render a "jump to latest"
-// breadcrumb. This module derives that map from the transcript + holds the
-// maximize + busy UI state.
+// Surfaces render in the side pane; each tool-call position in the
+// conversation renders a card that opens its surface there. The pane's tabs,
+// selection and open/close requests come from `stepA2uiPane`.
 
 import {
   createContext,
+  useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import type { Message } from '../../../runtime/RuntimeTypes'
 import { deriveA2uiPresentation } from './surfaceStore'
+import {
+  EMPTY_A2UI_PANE_STATE,
+  dismissA2uiPane,
+  paneSurfaceOrder,
+  selectA2uiSurface,
+  stepA2uiPane,
+  type A2uiPaneState,
+} from './a2uiPaneModel'
+import { onPaneClosed, requestPane } from './a2uiPaneBus'
 
 export type A2uiPresentation = {
-  /**
-   * For each surfaceId, the toolCallId of its LATEST non-delete mention — only
-   * that tool-call position renders the live surface.
-   */
+  /** For each live surfaceId, the toolCallId of its latest mention. */
   latestToolCallIdBySurface: ReadonlyMap<string, string>
   /** surfaceIds whose net state is deleted — render nothing at every position. */
   deletedSurfaceIds: ReadonlySet<string>
-  /**
-   * The conversation is processing a turn — dim/disable surfaces so the user
-   * sees that input is gated (one action per turn).
-   */
+  /** A turn is running: surfaces are dimmed and take no input (one action per turn). */
   busy: boolean
-  /** The surfaceId currently shown full-pane in the maximize overlay, or null. */
-  maximizedSurfaceId: string | null
-  setMaximizedSurfaceId: (surfaceId: string | null) => void
+  /** The pane's tabs, in first-creation order. */
+  paneSurfaceIds: readonly string[]
+  /** The surface the pane shows, or null when there is none. */
+  selectedSurfaceId: string | null
+  /** Select `surfaceId` and open the pane on it. */
+  openSurface: (surfaceId: string) => void
 }
 
 const A2uiPresentationContext = createContext<A2uiPresentation | null>(null)
@@ -48,46 +55,71 @@ export function useA2uiPresentation(): A2uiPresentation {
 }
 
 /**
- * Like {@link useA2uiPresentation} but returns null instead of throwing when no
- * provider is present. Inline surfaces use this because they can briefly render
- * in a Suspense fallback tree (before the lazy A2uiProviderHost mounts the
- * provider) — there they must degrade to rendering nothing, never crash. They
- * re-render with the live surface once the provider is up.
+ * Like {@link useA2uiPresentation} but returns null when no provider is
+ * present: a card can render in a Suspense fallback before the lazy host mounts.
  */
 export function useA2uiPresentationOptional(): A2uiPresentation | null {
   return useContext(A2uiPresentationContext)
 }
 
 export function A2uiPresentationProvider({
+  sessionId,
   messages,
   busy,
   children,
 }: {
+  sessionId: string
   messages: readonly Message[]
   busy: boolean
   children: ReactNode
 }) {
-  const [maximizedSurfaceId, setMaximizedSurfaceId] = useState<string | null>(
-    null,
+  const derived = useMemo(() => deriveA2uiPresentation(messages), [messages])
+  const [pane, setPane] = useState<A2uiPaneState>(EMPTY_A2UI_PANE_STATE)
+  const paneRef = useRef(pane)
+  const commit = useCallback((next: A2uiPaneState) => {
+    paneRef.current = next
+    setPane(next)
+  }, [])
+  // The first derivation is live only when a turn is running: a session
+  // loaded from disk replays its surfaces without opening the pane.
+  const steppedRef = useRef(false)
+  const busyRef = useRef(busy)
+  busyRef.current = busy
+
+  useEffect(() => {
+    const live = steppedRef.current || busyRef.current
+    steppedRef.current = true
+    const step = stepA2uiPane(paneRef.current, derived, live)
+    commit(step.state)
+    if (step.open !== null) requestPane({ sessionId, open: step.open })
+  }, [derived, sessionId, commit])
+
+  useEffect(
+    () =>
+      onPaneClosed(closedId => {
+        if (closedId === sessionId) commit(dismissA2uiPane(paneRef.current))
+      }),
+    [sessionId, commit],
   )
 
-  const derived = useMemo(() => deriveA2uiPresentation(messages), [messages])
-
-  // A maximized surface that gets deleted should close the overlay.
-  const effectiveMaximized =
-    maximizedSurfaceId && !derived.deletedSurfaceIds.has(maximizedSurfaceId)
-      ? maximizedSurfaceId
-      : null
+  const openSurface = useCallback(
+    (surfaceId: string) => {
+      commit(selectA2uiSurface(paneRef.current, surfaceId))
+      requestPane({ sessionId, open: true })
+    },
+    [sessionId, commit],
+  )
 
   const value = useMemo<A2uiPresentation>(
     () => ({
       latestToolCallIdBySurface: derived.latestToolCallIdBySurface,
       deletedSurfaceIds: derived.deletedSurfaceIds,
       busy,
-      maximizedSurfaceId: effectiveMaximized,
-      setMaximizedSurfaceId,
+      paneSurfaceIds: paneSurfaceOrder(derived),
+      selectedSurfaceId: pane.selected,
+      openSurface,
     }),
-    [derived, busy, effectiveMaximized],
+    [derived, busy, pane.selected, openSurface],
   )
 
   return (

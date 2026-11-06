@@ -13,6 +13,7 @@ import type { TurnDiffMeta } from '@/utils/turnDiffs'
 
 import type { NexusAgentChangeSection, NexusTaskDetail, NexusTaskSummaryRow } from '../../bridge/protocol/ui'
 import { BackgroundTasksDrawer } from '../BackgroundTasksDrawer'
+import { A2uiPaneSlot } from '../a2ui/A2uiPaneSlot'
 import { DiffPanel } from '../DiffPanel'
 import { useT } from '../i18n'
 import type { SidePaneKind } from '../layout/paneLayout'
@@ -47,6 +48,8 @@ export type SidePaneContentProps = {
   agentChanges?: readonly NexusAgentChangeSection[]
   loadAgentTurnDiffDetail?: LoadAgentTurnDiffDetail
   onOpenFile?: (target: RightPanelFileTarget) => void
+  /** The foreground session, whose A2UI surfaces the A2UI pane shows. */
+  activeSessionId?: string | null
 }
 
 function EmptyState({ label }: { label: string }): ReactElement {
@@ -103,6 +106,8 @@ export function SidePaneBody({
           onOpenFile={props.onOpenFile}
         />
       )
+    case 'a2ui':
+      return <A2uiPaneSlot sessionId={props.activeSessionId ?? null} />
     case 'skill':
       return (
         <SkillPanel

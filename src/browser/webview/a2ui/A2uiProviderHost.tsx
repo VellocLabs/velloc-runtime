@@ -1,6 +1,6 @@
 // Lazy host wrapping the conversation with the shared A2UI runtime: one per-session
 // MessageProcessor, the transcript feeder, the action loop, the presentation context
-// and the maximize overlay. Loaded only when a conversation has an `a2ui_*` tool call.
+// and the side pane portal. Loaded only when a conversation has an `a2ui_*` tool call.
 
 import {
   Component,
@@ -9,8 +9,10 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import {
   A2UIProvider,
   A2UIRenderer,
@@ -23,7 +25,6 @@ import {
 import '@material-symbols/font-400/outlined.css'
 // Scoped fix for the catalog's width:100%+margin right-overflow (uneven margins).
 import './a2ui-surface.css'
-import { XIcon } from 'lucide-react'
 import type { Message } from '../../../runtime/RuntimeTypes'
 import { extractA2uiCommands } from './surfaceStore'
 import { commandsToA2uiMessages } from './toA2uiMessages'
@@ -32,6 +33,7 @@ import {
   useA2uiPresentation,
 } from './A2uiPresentationContext'
 import { useT } from '../i18n'
+import { getOwner, getSlot, setOwner, subscribeSlot } from './a2uiPaneBus'
 
 type SurfaceUserAction = {
   name?: string
@@ -146,50 +148,93 @@ function A2uiFeeder({
   return null
 }
 
-// Full-pane overlay covering the conversation when a surface is maximized.
-function A2uiMaximizeOverlay() {
-  const { maximizedSurfaceId, setMaximizedSurfaceId } = useA2uiPresentation()
+// The selected surface, portalled into the side pane's slot while this
+// session is in the foreground (F-1). The portal keeps the surface inside this
+// session's providers, so its data model and actions stay where they are.
+function A2uiPanePortal({
+  sessionId,
+  foreground,
+}: {
+  sessionId: string
+  foreground: boolean
+}) {
+  const slot = useSyncExternalStore(subscribeSlot, getSlot, () => null)
+  const { paneSurfaceIds, selectedSurfaceId, openSurface, busy } =
+    useA2uiPresentation()
   const t = useT()
-  if (!maximizedSurfaceId) return null
-  return (
-    <div
-      data-slot="a2ui-maximized"
-      data-surface-id={maximizedSurfaceId}
-      className="absolute inset-0 z-50 flex flex-col bg-background"
-    >
-      <div className="flex items-center justify-between border-b px-3 py-2">
-        <span className="truncate text-sm font-medium text-muted-foreground">
-          {maximizedSurfaceId}
-        </span>
-        <button
-          type="button"
-          data-slot="a2ui-restore-btn"
-          title={t('a2ui.restore')}
-          aria-label={t('a2ui.restoreSurface')}
-          onClick={() => setMaximizedSurfaceId(null)}
-          className="rounded-md border bg-background p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+  const shown = foreground ? slot : null
+
+  const filled = shown !== null && selectedSurfaceId !== null
+  useEffect(() => {
+    if (!filled) return
+    setOwner(sessionId)
+    return () => {
+      if (getOwner() === sessionId) setOwner(null)
+    }
+  }, [filled, sessionId])
+
+  if (!shown || !selectedSurfaceId) return null
+  return createPortal(
+    <div data-slot="a2ui-pane-content" className="flex h-full min-h-0 flex-col">
+      {paneSurfaceIds.length > 1 && (
+        <div
+          role="tablist"
+          aria-label={t('a2ui.surfaceTabs')}
+          className="flex shrink-0 gap-1 overflow-x-auto border-b px-2 py-1"
         >
-          <XIcon className="size-4" />
-        </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+          {paneSurfaceIds.map(id => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              data-slot="a2ui-pane-tab"
+              data-surface-id={id}
+              aria-selected={id === selectedSurfaceId}
+              onClick={() => openSurface(id)}
+              className={
+                'max-w-48 shrink-0 truncate rounded-md px-2 py-1 text-xs ' +
+                (id === selectedSurfaceId
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground')
+              }
+            >
+              {id}
+            </button>
+          ))}
+        </div>
+      )}
+      <div
+        data-slot="a2ui-surface"
+        data-surface-id={selectedSurfaceId}
+        aria-busy={busy || undefined}
+        className={
+          'min-h-0 flex-1 overflow-auto p-3 transition-opacity' +
+          (busy ? ' pointer-events-none select-none opacity-60' : '')
+        }
+      >
         <SurfaceErrorBoundary
-          surfaceId={maximizedSurfaceId}
+          key={selectedSurfaceId}
+          surfaceId={selectedSurfaceId}
           fallbackText={t('a2ui.renderFailed')}
         >
-          <A2UIRenderer surfaceId={maximizedSurfaceId} fallback={null} />
+          <A2UIRenderer surfaceId={selectedSurfaceId} fallback={null} />
         </SurfaceErrorBoundary>
       </div>
-    </div>
+    </div>,
+    shown,
   )
 }
 
 export const A2uiProviderHost = memo(function A2uiProviderHost({
+  sessionId,
+  foreground,
   messages,
   submitActionMessage,
   busy,
   children,
 }: {
+  sessionId: string
+  foreground: boolean
   messages: readonly Message[]
   submitActionMessage?: (prompt: string) => Promise<void>
   busy: boolean
@@ -204,7 +249,7 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
 
   return (
     <A2UIProvider onAction={onAction}>
-      <A2uiPresentationProvider messages={messages} busy={busy}>
+      <A2uiPresentationProvider sessionId={sessionId} messages={messages} busy={busy}>
         <A2uiFeeder
           messages={messages}
           submitActionMessage={submitActionMessage}
@@ -212,7 +257,7 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
           actionHandlerRef={actionHandlerRef}
         />
         {children}
-        <A2uiMaximizeOverlay />
+        <A2uiPanePortal sessionId={sessionId} foreground={foreground} />
       </A2uiPresentationProvider>
     </A2UIProvider>
   )

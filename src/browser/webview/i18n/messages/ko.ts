@@ -596,6 +596,7 @@ export const ko: Messages = {
   'topbar.pane.plan': '계획',
   'topbar.pane.skill': '스킬',
   'topbar.pane.sidechat': '사이드 채팅',
+  'topbar.pane.a2ui': '인터페이스',
   'topbar.pane.show': '{pane} 표시',
   'topbar.pane.hide': '{pane} 숨기기',
   'topbar.morePanes': '더 많은 패널',
@@ -607,6 +608,7 @@ export const ko: Messages = {
   'pane.move': '{pane} 이동',
   'pane.resize': '패널 크기 조절',
   'pane.noActivePlan': '진행 중인 계획이 없습니다.',
+  'pane.noA2uiSurface': '표시할 인터페이스가 없습니다.',
   'pane.closeFileTab': '{name} 닫기',
   'filesFind.placeholder': '파일 찾기, ? 입력 시 파일 내용 검색',
   'filesFind.searching': '검색 중…',
@@ -1096,11 +1098,10 @@ export const ko: Messages = {
 
   // ── A2UI 표면 ─────────────────────────────────────────────────────────
   'a2ui.renderFailed': '이 A2UI 표면을 렌더링하지 못했습니다.',
-  'a2ui.moved': '"{id}"이(가) 이동했습니다 — 최신 버전으로 이동',
-  'a2ui.maximize': '최대화',
-  'a2ui.maximizeSurface': '표면 최대화',
-  'a2ui.restore': '복원',
-  'a2ui.restoreSurface': '표면 복원',
+  'a2ui.moved': '“{id}”이(가) 업데이트됨 — 최신 버전 보기',
+  'a2ui.openInPanel': '패널에서 열기',
+  'a2ui.shownInPanel': '사이드 패널에 표시됨',
+  'a2ui.surfaceTabs': '인터페이스 목록',
 
   // ── 생성형 도구 UI ────────────────────────────────────────────────────
   'gen.loadingLocation': '위치를 불러오는 중…',

@@ -64,6 +64,7 @@ import { toggleFilesTreeVisible } from './panes/filesTreePrefs'
 import { PaneArea } from './panes/PaneArea'
 import { PaneFrame } from './panes/PaneFrame'
 import { PANE_LABEL_KEY } from './panes/paneKinds'
+import { onPaneRequest as onA2uiPaneRequest } from './a2ui/a2uiPaneBus'
 import {
   DOCK_FLOOR_CELLS,
   modPaneOfKey,
@@ -2312,6 +2313,19 @@ export function MultiSessionShell({
     agentOpenRightPanelRef.current('plan')
     updatePaneRecord(r => openPane(r, 'plan', sessionLayoutsStore.getSnapshot().weights))
   }, [activePlanEntry, activeSessionId, updatePaneRecord, sessionLayoutsStore])
+  // A session's A2UI host opens its pane on a new surface and closes it when
+  // the last surface is deleted (F-1); a background session's record changes
+  // without taking the foreground.
+  useEffect(
+    () =>
+      onA2uiPaneRequest(({ sessionId, open }) => {
+        updatePaneRecord(
+          r => (open ? openPane(r, 'a2ui', sessionLayoutsStore.getSnapshot().weights) : closePane(r, 'a2ui')),
+          sessionId,
+        )
+      }),
+    [updatePaneRecord, sessionLayoutsStore],
+  )
   // Declared after the plan auto-open, so a switch keeps the float that
   // effect just opened for the session switched to.
   useEffect(() => {
@@ -4023,6 +4037,7 @@ export function MultiSessionShell({
         agentChanges={activeState.agentChanges}
         loadAgentTurnDiffDetail={loadAgentTurnDiffDetail}
         onOpenFile={openFile}
+        activeSessionId={activeSessionId}
       />,
     )
   }

@@ -1,4 +1,5 @@
 import { type RefObject, type Dispatch, type SetStateAction, type ActionDispatch } from 'react'
+import { notifyClosed as notifyA2uiPaneClosed } from './a2ui/a2uiPaneBus'
 import type { RightPanelPresenceEvent } from './layout/rightPanelPresence'
 import type { CapabilityQuery } from './useCan'
 import type { BrowserBridgeTransport } from '../bridge/browserBridgeProtocol'
@@ -169,6 +170,7 @@ export function createShellClosePaneFor(
       browserDismissedAtRef.current.set(id, sessionTabCountsRef.current.get(id)?.nexus ?? 0)
     }
     if (kind === 'mods') setModsPaneDismissedFor(id, true)
+    if (kind === 'a2ui') notifyA2uiPaneClosed(id)
   }
 }
 export function createShellOpenBrowserTab(

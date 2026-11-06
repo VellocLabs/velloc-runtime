@@ -599,6 +599,7 @@ export const ja: Messages = {
   'topbar.pane.plan': '計画',
   'topbar.pane.skill': 'スキル',
   'topbar.pane.sidechat': 'サイドチャット',
+  'topbar.pane.a2ui': 'インターフェース',
   'topbar.pane.show': '{pane}を表示',
   'topbar.pane.hide': '{pane}を非表示',
   'topbar.morePanes': 'その他のパネル',
@@ -610,6 +611,7 @@ export const ja: Messages = {
   'pane.move': '{pane}を移動',
   'pane.resize': 'パネルのサイズを変更',
   'pane.noActivePlan': '進行中の計画はありません。',
+  'pane.noA2uiSurface': '表示するインターフェースはありません。',
   'pane.closeFileTab': '{name}を閉じる',
   'filesFind.placeholder': 'ファイルを検索（? でファイル内を検索）',
   'filesFind.searching': '検索中…',
@@ -1099,11 +1101,10 @@ export const ja: Messages = {
 
   // ── A2UI サーフェス ───────────────────────────────────────────────────
   'a2ui.renderFailed': 'この A2UI サーフェスの描画に失敗しました。',
-  'a2ui.moved': '「{id}」は移動しました — 最新版に移動',
-  'a2ui.maximize': '最大化',
-  'a2ui.maximizeSurface': 'サーフェスを最大化',
-  'a2ui.restore': '元に戻す',
-  'a2ui.restoreSurface': 'サーフェスを元に戻す',
+  'a2ui.moved': '“{id}”が更新されました — 最新版を表示',
+  'a2ui.openInPanel': 'パネルで開く',
+  'a2ui.shownInPanel': 'サイドパネルに表示中',
+  'a2ui.surfaceTabs': 'インターフェース一覧',
 
   // ── 生成型ツール UI ───────────────────────────────────────────────────
   'gen.loadingLocation': '位置情報を読み込み中…',

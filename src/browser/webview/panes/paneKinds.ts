@@ -2,6 +2,7 @@ import {
   ClipboardListIcon,
   FileDiffIcon,
   FolderIcon,
+  LayoutPanelLeftIcon,
   ListTodoIcon,
   MessagesSquareIcon,
   PuzzleIcon,
@@ -25,6 +26,7 @@ export const PANE_LABEL_KEY: Record<SidePaneKind, MessageKey> = {
   terminal: 'topbar.pane.terminal',
   mods: 'topbar.pane.mods',
   sidechat: 'topbar.pane.sidechat',
+  a2ui: 'topbar.pane.a2ui',
 }
 
 export const PANE_ICON: Record<SidePaneKind, LucideIcon> = {
@@ -37,4 +39,5 @@ export const PANE_ICON: Record<SidePaneKind, LucideIcon> = {
   terminal: TerminalIcon,
   mods: PuzzleIcon,
   sidechat: MessagesSquareIcon,
+  a2ui: LayoutPanelLeftIcon,
 }

@@ -606,6 +606,7 @@ export const fr: Messages = {
   'topbar.pane.plan': 'Plan',
   'topbar.pane.skill': 'Compétences',
   'topbar.pane.sidechat': 'Conversations parallèles',
+  'topbar.pane.a2ui': 'Interface',
   'topbar.pane.show': 'Afficher {pane}',
   'topbar.pane.hide': 'Masquer {pane}',
   'topbar.morePanes': 'Autres panneaux',
@@ -617,6 +618,7 @@ export const fr: Messages = {
   'pane.move': 'Déplacer {pane}',
   'pane.resize': 'Redimensionner les panneaux',
   'pane.noActivePlan': 'Aucun plan actif.',
+  'pane.noA2uiSurface': 'Aucune interface à afficher.',
   'pane.closeFileTab': 'Fermer {name}',
   'filesFind.placeholder': 'Rechercher des fichiers, ou ? pour chercher dans leur contenu',
   'filesFind.searching': 'Recherche en cours…',
@@ -1107,11 +1109,10 @@ export const fr: Messages = {
 
   // ── Surfaces A2UI ──────────────────────────────────────────────────────
   'a2ui.renderFailed': 'Le rendu de cette surface A2UI a échoué.',
-  'a2ui.moved': '« {id} » a été déplacé — aller à la dernière version',
-  'a2ui.maximize': 'Agrandir',
-  'a2ui.maximizeSurface': 'Agrandir la surface',
-  'a2ui.restore': 'Restaurer',
-  'a2ui.restoreSurface': 'Restaurer la surface',
+  'a2ui.moved': '« {id} » a été mise à jour — afficher la dernière version',
+  'a2ui.openInPanel': 'Ouvrir dans le panneau',
+  'a2ui.shownInPanel': 'Affichée dans le panneau latéral',
+  'a2ui.surfaceTabs': 'Interfaces',
 
   // ── Interfaces d'outils génératives ────────────────────────────────────
   'gen.loadingLocation': 'Chargement du lieu...',

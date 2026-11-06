@@ -605,6 +605,7 @@ export const de: Messages = {
   'topbar.pane.plan': 'Plan',
   'topbar.pane.skill': 'Skills',
   'topbar.pane.sidechat': 'Nebengespräche',
+  'topbar.pane.a2ui': 'Oberfläche',
   'topbar.pane.show': '{pane} einblenden',
   'topbar.pane.hide': '{pane} ausblenden',
   'topbar.morePanes': 'Weitere Bereiche',
@@ -616,6 +617,7 @@ export const de: Messages = {
   'pane.move': '{pane} verschieben',
   'pane.resize': 'Bereiche in der Größe ändern',
   'pane.noActivePlan': 'Kein aktiver Plan.',
+  'pane.noA2uiSurface': 'Keine Oberfläche zum Anzeigen.',
   'pane.closeFileTab': '{name} schließen',
   'filesFind.placeholder': 'Dateien suchen, oder ? für Dateiinhalte',
   'filesFind.searching': 'Suche läuft…',
@@ -1106,11 +1108,10 @@ export const de: Messages = {
 
   // ── A2UI-Oberflächen ───────────────────────────────────────────────────
   'a2ui.renderFailed': 'Diese A2UI-Oberfläche konnte nicht gerendert werden.',
-  'a2ui.moved': '„{id}“ ist umgezogen — zur neuesten Fassung springen',
-  'a2ui.maximize': 'Maximieren',
-  'a2ui.maximizeSurface': 'Oberfläche maximieren',
-  'a2ui.restore': 'Wiederherstellen',
-  'a2ui.restoreSurface': 'Oberfläche wiederherstellen',
+  'a2ui.moved': '„{id}“ wurde aktualisiert — neueste Version anzeigen',
+  'a2ui.openInPanel': 'Im Bereich öffnen',
+  'a2ui.shownInPanel': 'Im Seitenbereich angezeigt',
+  'a2ui.surfaceTabs': 'Oberflächen',
 
   // ── Generative Tool-Oberflächen ────────────────────────────────────────
   'gen.loadingLocation': 'Standort wird geladen ...',

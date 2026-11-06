@@ -2368,6 +2368,8 @@ function InteractiveAssistantUiThread({
                         </ContinueConversationProvider>
                       }>
                         <A2uiProviderHost
+                          sessionId={sessionId}
+                          foreground={isForegroundSession}
                           messages={state.transcriptMessages}
                           submitActionMessage={submitActionMessage}
                           busy={state.status === 'submitting'}

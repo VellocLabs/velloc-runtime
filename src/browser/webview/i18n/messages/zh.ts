@@ -594,6 +594,7 @@ export const zh: Messages = {
   'topbar.pane.plan': '计划',
   'topbar.pane.skill': '技能',
   'topbar.pane.sidechat': '旁支对话',
+  'topbar.pane.a2ui': '界面',
   'topbar.pane.show': '显示{pane}',
   'topbar.pane.hide': '隐藏{pane}',
   'topbar.morePanes': '更多面板',
@@ -605,6 +606,7 @@ export const zh: Messages = {
   'pane.move': '移动{pane}',
   'pane.resize': '调整面板大小',
   'pane.noActivePlan': '当前没有计划。',
+  'pane.noA2uiSurface': '没有可显示的界面。',
   'pane.closeFileTab': '关闭{name}',
   'filesFind.placeholder': '查找文件，输入 ? 可搜索文件内容',
   'filesFind.searching': '正在搜索…',
@@ -1093,11 +1095,10 @@ export const zh: Messages = {
 
   // ── A2UI 界面 ─────────────────────────────────────────────────────────
   'a2ui.renderFailed': '此 A2UI 界面渲染失败。',
-  'a2ui.moved': '“{id}”已移动 — 跳转到最新版本',
-  'a2ui.maximize': '最大化',
-  'a2ui.maximizeSurface': '最大化界面',
-  'a2ui.restore': '还原',
-  'a2ui.restoreSurface': '还原界面',
+  'a2ui.moved': '“{id}”已更新 — 显示最新版本',
+  'a2ui.openInPanel': '在侧栏打开',
+  'a2ui.shownInPanel': '已在侧栏显示',
+  'a2ui.surfaceTabs': '界面列表',
 
   // ── 生成式工具界面 ────────────────────────────────────────────────────
   'gen.loadingLocation': '正在加载位置……',

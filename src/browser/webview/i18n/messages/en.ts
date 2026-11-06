@@ -633,6 +633,7 @@ export const en = {
   'topbar.pane.plan': 'Plan',
   'topbar.pane.skill': 'Skills',
   'topbar.pane.sidechat': 'Side chats',
+  'topbar.pane.a2ui': 'Interface',
   'topbar.pane.show': 'Show {pane}',
   'topbar.pane.hide': 'Hide {pane}',
   'topbar.morePanes': 'More panes',
@@ -644,6 +645,7 @@ export const en = {
   'pane.move': 'Move {pane}',
   'pane.resize': 'Resize panes',
   'pane.noActivePlan': 'No active plan.',
+  'pane.noA2uiSurface': 'No interface to show.',
   'pane.closeFileTab': 'Close {name}',
   'filesFind.placeholder': 'Find files, or ? to search in files',
   'filesFind.searching': 'Searching…',
@@ -1140,11 +1142,10 @@ export const en = {
 
   // ── A2UI surfaces ──────────────────────────────────────────────────────
   'a2ui.renderFailed': 'This A2UI surface failed to render.',
-  'a2ui.moved': '“{id}” moved — jump to the latest version',
-  'a2ui.maximize': 'Maximize',
-  'a2ui.maximizeSurface': 'Maximize surface',
-  'a2ui.restore': 'Restore',
-  'a2ui.restoreSurface': 'Restore surface',
+  'a2ui.moved': '“{id}” was updated — show the latest version',
+  'a2ui.openInPanel': 'Open in panel',
+  'a2ui.shownInPanel': 'Shown in the side panel',
+  'a2ui.surfaceTabs': 'Interfaces',
 
   // ── Generative tool UIs ────────────────────────────────────────────────
   'gen.loadingLocation': 'Loading location...',

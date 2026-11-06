@@ -16,6 +16,7 @@ export type SidePaneKind =
   | 'terminal'
   | 'mods'
   | 'sidechat'
+  | 'a2ui'
 
 export const SIDE_PANE_KINDS: readonly SidePaneKind[] = [
   'tasks',
@@ -27,6 +28,7 @@ export const SIDE_PANE_KINDS: readonly SidePaneKind[] = [
   'terminal',
   'mods',
   'sidechat',
+  'a2ui',
 ]
 
 /** A leaf of the tree: the chat, or one side pane. */
