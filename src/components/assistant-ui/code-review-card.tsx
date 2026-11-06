@@ -496,9 +496,9 @@ export const ReviewReportCard: FC<{
                     <button type="button" className="ml-auto max-w-full truncate font-mono text-xs text-muted-foreground underline-offset-2 hover:underline disabled:no-underline disabled:opacity-60" disabled={busy || !canLocate} onClick={() => locate(diagnostic)}>{diagnostic.anchor.path}{diagnostic.anchor.span ? `:${diagnostic.anchor.span.start}` : ''}</button>
                   </div>
                   <div className="flex items-start gap-1">
-                    <p className="min-w-0 flex-1 font-medium leading-snug">{diagnostic.claim.title}</p>
+                    <p className="min-w-0 flex-1 leading-snug">{diagnostic.claim.title}</p>
                     <button type="button" data-testid="review-finding-toggle" className="mt-0.5 shrink-0 rounded text-muted-foreground hover:text-foreground" aria-expanded={expanded} aria-label={t('reviewCard.evidence')} title={t('reviewCard.evidence')} onClick={() => setExpandedFindings(ids => expanded ? ids.filter(id => id !== diagnostic.id) : [...ids, diagnostic.id])}>
-                      <ChevronDownIcon aria-hidden className={cn('size-4 transition-transform', expanded && 'rotate-180')} />
+                      <ChevronDownIcon aria-hidden className={cn('size-4 transition-transform', !expanded && '-rotate-90')} />
                     </button>
                   </div>
                   {expanded && <div data-testid="review-finding-details" className="space-y-2 pt-1 text-xs">

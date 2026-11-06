@@ -87,6 +87,18 @@ describe('review report card', () => {
     fireEvent.click(toggle)
     expect(screen.queryByTestId('review-finding-details')).toBeNull()
   })
+  it('shows a finding title in regular weight with a chevron pointing right when closed and down when open', () => {
+    const value = report()
+    value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy', span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
+    renderReport(value)
+    const title = screen.getByText('Unsafe branch')
+    expect(title.className).not.toMatch(/font-(medium|semibold|bold)/)
+    const toggle = screen.getByTestId('review-finding-toggle')
+    const chevron = () => toggle.querySelector('svg')!.getAttribute('class') ?? ''
+    expect(chevron()).toContain('-rotate-90')
+    fireEvent.click(toggle)
+    expect(chevron()).not.toMatch(/rotate/)
+  })
   it('publishes only after confirmation when host policy requires it', async () => {
     const action = renderReport()
     await openMore()
