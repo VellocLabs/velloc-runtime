@@ -456,6 +456,7 @@ describe('no realm-slot reads on session paths (source guard)', () => {
   // a `= processFs()` default parameter for minimal/test callers.
   const FILES = [
     'browser/runtime/createAgentRuntime.ts',
+    'browser/runtime/modSlotBuilder.ts',
     'browser/worker/AgentPermissionCoordinator.ts',
     'browser/worker/AgentModelController.ts',
     'browser/worker/AgentRuntimeRecovery.ts',

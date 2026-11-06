@@ -879,6 +879,7 @@ describe('Process globals: concurrent sub-agent hazard', () => {
       '../skillLibrary/executeForkedSkill.ts',
       '../lifecycleHooks/hookAgentRunner.ts',
       '../browser/runtime/createAgentRuntime.ts',
+      '../browser/runtime/modSlotBuilder.ts',
     ]) {
       const source = readSource(rel)
       expect(source.length, rel).toBeGreaterThan(0)

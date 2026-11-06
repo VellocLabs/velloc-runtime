@@ -252,8 +252,8 @@ export async function buildSlotModRuntime(
       fs: fileModFs(slot.installedFs, {
         cwd: slot.resolvedCwd,
         ...(slot.homeDir ? { homeDir: slot.homeDir } : {}),
-        ...((slot.resolvedOptions as { untrustedReadRoot?: string }).untrustedReadRoot
-          ? { readRoot: (slot.resolvedOptions as { untrustedReadRoot?: string }).untrustedReadRoot as string }
+        ...(slot.resolvedOptions.untrustedReadRoot
+          ? { readRoot: slot.resolvedOptions.untrustedReadRoot }
           : {}),
         ...(typeof slot.options.sessionStoragePath === 'string' && slot.options.sessionStoragePath.length > 0
           ? { sessionStoragePath: slot.options.sessionStoragePath }
@@ -288,7 +288,7 @@ export async function buildSlotModRuntime(
               },
               {
                 cwd: slot.resolvedCwd,
-                // `$.process.spawn` (4c): a streaming child through
+                // `$.process.spawn`: a streaming child through
                 // `shell.spawn`'s shell form. Its output events arrive at
                 // any time, and a session's scoped transport forwards
                 // events only while the session has a request in flight —
@@ -329,7 +329,7 @@ export async function buildSlotModRuntime(
             }),
           }
         : {}),
-      // `$.config` (plan item 7): the enabled plugins' `userConfig` rows,
+      // `$.config`: the enabled plugins' `userConfig` rows,
       // built as the `/config` listing builds them, over settings.json
       // `pluginConfigs`; a write stores the option under the plugin's id
       // and every session's plugins reload with it — as the Settings
