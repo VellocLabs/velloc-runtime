@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type FC, type ReactNode } from 'react'
 import { useAssistantState } from '@assistant-ui/react'
-import { CheckIcon, ChevronDownIcon, CircleSlashIcon, CopyIcon, EllipsisIcon, Loader2Icon, SearchCheckIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, CircleSlashIcon, CopyIcon, EllipsisIcon, Loader2Icon, SearchCheckIcon, SquareIcon } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import type { RuntimeConnection } from '@/browser/runtimeClient/RuntimeConnection'
 import { useT } from '@/browser/webview/i18n'
@@ -174,7 +174,9 @@ const ReviewCardHeader: FC<{
   onToggle?: () => void
   /** The open body shows the status under its steps instead. */
   statusInBody?: boolean
-}> = ({ level, range, status, variant, running, collapsed = false, bodyId, onToggle, statusInBody = false }) => {
+  /** A control shown beside the status badge. */
+  action?: ReactNode
+}> = ({ level, range, status, variant, running, collapsed = false, bodyId, onToggle, statusInBody = false, action }) => {
   const t = useT()
   return <header className="relative flex items-start gap-3 px-4 py-3">
     <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><SearchCheckIcon className="size-4" /></span>
@@ -186,6 +188,7 @@ const ReviewCardHeader: FC<{
       {range && <ReviewRange {...range} />}
     </div>
     <div className="flex h-8 shrink-0 items-center gap-1">
+      {!collapsed && action}
       {!(statusInBody && !collapsed) && <Badge variant={variant} size="sm" aria-live="polite" data-testid="review-status">
         {running && <Loader2Icon aria-hidden className="animate-spin" />}{status}
       </Badge>}
@@ -218,11 +221,15 @@ const ReviewActivity: FC<{ tasks: ReviewTaskView[]; status: string }> = ({ tasks
   </div>
 }
 
-/** A ghost cancel at the bottom of a running card's body. */
-const ReviewCancel: FC<{ disabled: boolean; onClick: () => void }> = ({ disabled, onClick }) => {
+/** A stop button that asks for confirmation in place before it calls `onConfirm`. */
+const ReviewStop: FC<{ disabled: boolean; onConfirm: () => void }> = ({ disabled, onConfirm }) => {
   const t = useT()
-  return <div className="flex justify-end">
-    <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" disabled={disabled} data-testid="review-cancel" onClick={onClick}>{t('reviewCard.cancel')}</Button>
+  const [asking, setAsking] = useState(false)
+  if (!asking) return <Button type="button" variant="ghost" size="icon-sm" className="ml-auto shrink-0 text-muted-foreground hover:text-foreground" disabled={disabled} data-testid="review-cancel" aria-label={t('reviewCard.stop')} title={t('reviewCard.stop')} onClick={() => setAsking(true)}><SquareIcon aria-hidden className="fill-current" /></Button>
+  return <div role="group" aria-label={t('reviewCard.stopConfirm')} data-testid="review-cancel-confirm" className="ml-auto flex shrink-0 items-center gap-1.5">
+    <span>{t('reviewCard.stopConfirm')}</span>
+    <Button type="button" variant="destructive" size="sm" disabled={disabled} data-testid="review-cancel-yes" onClick={() => { setAsking(false); onConfirm() }}>{t('reviewCard.stopYes')}</Button>
+    <Button type="button" variant="ghost" size="sm" data-testid="review-cancel-no" onClick={() => setAsking(false)}>{t('reviewCard.stopKeep')}</Button>
   </div>
 }
 
@@ -308,24 +315,24 @@ const ReviewPreparingCard: FC<{ canCancel: boolean; onCancel: () => Promise<void
   return <Card className="my-2 gap-0 overflow-hidden py-0 text-sm" data-testid="code-review-card" data-status="preparing">
     <ReviewCardHeader status={reviewValueMessage(t, 'scope')} variant="muted" running />
     <div className="flex flex-col gap-3 border-t px-4 py-3">
-      <ReviewStages recipe="" stage="scope" queued={false} />
-      <p className="text-xs text-muted-foreground" data-testid="review-preparing">{t('reviewCard.preparing')}</p>
-      <ReviewCancel disabled={busy || !canCancel} onClick={() => {
+      <ReviewStages recipe="" stage="scope" queued={false} action={<ReviewStop disabled={busy || !canCancel} onConfirm={() => {
         setBusy(true)
         setError(false)
         void onCancel().catch(() => { setError(true); setBusy(false) })
-      }} />
+      }} />} />
+      <p className="text-xs text-muted-foreground" data-testid="review-preparing">{t('reviewCard.preparing')}</p>
     </div>
     {error && <p role="alert" className="border-t px-4 py-2 text-xs text-destructive">{t('reviewCard.actionFailed')}</p>}
   </Card>
 }
 
 /** The steps of a running review; a follow-up stage shows them all done. */
-const ReviewStages: FC<{ recipe: string; agentMode?: string; stage: Stage; queued: boolean }> = ({ recipe, agentMode, stage, queued }) => {
+const ReviewStages: FC<{ recipe: string; agentMode?: string; stage: Stage; queued: boolean; action?: ReactNode }> = ({ recipe, agentMode, stage, queued, action }) => {
   const t = useT()
   const steps = reviewSteps(recipe, agentMode)
   const current = queued ? -1 : stepOfStage(steps, stage)
-  return <ol data-testid="review-stages" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-muted/50 px-3 py-2 text-xs">
+  return <div data-testid="review-stages" className="flex items-center gap-x-3 rounded-lg bg-muted/50 px-3 py-2 text-xs">
+    <ol className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
     {steps.map((step, index) => {
       const state = index < current ? 'done' : index === current ? 'current' : 'pending'
       return <li key={step} data-state={state} className="flex items-center gap-1.5">
@@ -336,7 +343,9 @@ const ReviewStages: FC<{ recipe: string; agentMode?: string; stage: Stage; queue
         <span className={cn(state === 'current' ? 'font-medium text-foreground' : 'text-muted-foreground')}>{t(`reviewCard.stage.${step}`)}</span>
       </li>
     })}
-  </ol>
+    </ol>
+    {action}
+  </div>
 }
 
 export const ReviewReportCard: FC<{
@@ -407,11 +416,12 @@ export const ReviewReportCard: FC<{
   const target = report.targetLabel !== undefined && report.targetLabel !== run.scope.repository.projectKey && report.targetLabel !== run.scope.workspaceKey ? report.targetLabel : undefined
   return <TooltipProvider><Card className="my-2 gap-0 overflow-hidden py-0 text-sm" data-testid="code-review-card" data-status={status}>
     <ReviewCardHeader level={enumText(run.policy.level)} range={{ repository: reviewRepositoryName(run.scope), base: run.scope.revision.base, head: run.scope.revision.head, target }}
-      status={enumText(reviewStatusValue(status, stage))} variant={STATUS_VARIANT[status]} running={running} collapsed={collapsed} bodyId={bodyId} onToggle={() => setCollapsed(value => !value)} statusInBody={reviewing} />
+      status={enumText(reviewStatusValue(status, stage))} variant={STATUS_VARIANT[status]} running={running} collapsed={collapsed} bodyId={bodyId} onToggle={() => setCollapsed(value => !value)} statusInBody={reviewing}
+      action={running && !reviewing ? <ReviewStop disabled={busy || !can('cancel')} onConfirm={() => act('cancel')} /> : undefined} />
     {!collapsed && <div id={bodyId}>
       <div className="flex flex-col gap-3 border-t px-4 py-3">
         {reviewing ? <>
-          <ReviewStages recipe={run.policy.recipe} agentMode={run.policy.agentMode} stage={stage} queued={status === 'queued'} />
+          <ReviewStages recipe={run.policy.recipe} agentMode={run.policy.agentMode} stage={stage} queued={status === 'queued'} action={<ReviewStop disabled={busy || !can('cancel')} onConfirm={() => act('cancel')} />} />
           <ReviewActivity tasks={report.tasks ?? []} status={enumText(reviewStatusValue(status, stage))} />
           {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{progress.found === 0 ? t('reviewCard.progressNone') : progress.found === 1 ? t('reviewCard.progressFoundOne', progress) : t('reviewCard.progressFound', progress)}</p>}
         </> : <>
@@ -505,7 +515,6 @@ export const ReviewReportCard: FC<{
           <p className="mt-1.5 text-muted-foreground">{t('reviewCard.workers', { started: run.progress.spawnedTasks, finished: report.finishedTasks ?? 0 })}</p>
           {report.exportJson !== undefined && <details className="mt-2"><summary className="cursor-pointer">{t('reviewCard.exportJson')}</summary><pre data-testid="review-export-json" className="mt-1 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{report.exportJson}</pre></details>}
         </details>
-        {running && <ReviewCancel disabled={busy || !can('cancel')} onClick={() => act('cancel')} />}
       </div>
       {!running && <footer className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-2.5">
         <span className="mr-auto text-xs text-muted-foreground">{selectedIds.length > 0 && t('reviewCard.selected', { count: selectedIds.length })}</span>

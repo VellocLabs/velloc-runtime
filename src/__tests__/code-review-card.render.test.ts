@@ -129,7 +129,13 @@ describe('review report card', () => {
     expect(screen.queryByTestId('review-repair')).toBeNull()
     expect(screen.queryByTestId('review-rerun')).toBeNull()
     expect(screen.queryByTestId('review-more')).toBeNull()
+    // Stop asks first; keeping the review going cancels nothing.
     fireEvent.click(screen.getByTestId('review-cancel'))
+    fireEvent.click(screen.getByTestId('review-cancel-no'))
+    expect(action).not.toHaveBeenCalled()
+    expect(screen.getByTestId('review-cancel')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('review-cancel'))
+    fireEvent.click(screen.getByTestId('review-cancel-yes'))
     expect(action).toHaveBeenCalledWith('cancel', undefined)
     cleanup()
     value.run.progress.stage = 'repair'
@@ -381,6 +387,7 @@ describe('a model-requested review found by its Skill call', () => {
     expect(screen.getByTestId('code-review-card').dataset.status).toBe('preparing')
     expect(screen.getByTestId('review-preparing').textContent).toBe(t('reviewCard.preparing'))
     fireEvent.click(screen.getByTestId('review-cancel'))
+    fireEvent.click(screen.getByTestId('review-cancel-yes'))
     await waitFor(() => expect(request).toHaveBeenCalledWith('review.cancel', { sessionId: 's1', runId: 'preparing-1' }))
   })
   it('keeps the preparing card, without cancel, before the runtime lists the call or for an observer', async () => {
@@ -502,7 +509,9 @@ describe('review card header and live activity', () => {
     const card = screen.getByTestId('code-review-card')
     expect(card.textContent).not.toContain(t('reviewCard.value.active'))
     expect(card.querySelector('footer')).toBeNull()
-    expect(screen.getByTestId('review-cancel')).toBeTruthy()
+    // The stop button sits in the steps row, not in a row of its own under the details.
+    expect(screen.getByTestId('review-stages').contains(screen.getByTestId('review-cancel'))).toBe(true)
+    expect(screen.getByTestId('review-cancel').textContent).toBe('')
     expect(screen.getByTestId('review-progress').textContent).toBe(t('reviewCard.progressNone'))
   })
   it('keeps the same header collapsed, toggled by one button covering the row', () => {
