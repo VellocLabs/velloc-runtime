@@ -3589,10 +3589,7 @@ export function MultiSessionShell({
   const sessionItemsRef = useRef(sessionItems)
   sessionItemsRef.current = sessionItems
   const handleCopyTranscriptPath = useMemo(
-    () => {
-      const copy = createCopyTranscriptPath(resolveSearchHomeDir, () => sessionItemsRef.current, text => navigator.clipboard.writeText(text))
-      return (sessionId: string) => void copy(sessionId)
-    },
+    () => createShellHandleCopyTranscriptPath(resolveSearchHomeDir, sessionItemsRef),
     [resolveSearchHomeDir],
   )
   const handleDeleteThread = useMemo(
@@ -5949,6 +5946,14 @@ function createShellPickCliFolder(
     if (result.canceled || !result.path) return
     launchCliIn(result.path)
   }
+}
+
+function createShellHandleCopyTranscriptPath(
+  resolveHomeDir: () => Promise<string>,
+  sessionItemsRef: RefObject<SessionListItem[]>,
+) {
+  const copy = createCopyTranscriptPath(resolveHomeDir, () => sessionItemsRef.current, writeClipboard)
+  return (sessionId: string) => void copy(sessionId)
 }
 
 function createShellHandleCopyProjectPath(

@@ -70,7 +70,7 @@ describe('createCopyTranscriptPath', () => {
   const home = 'C:/Users/u'
 
   it('writes the same path storage writes, for bound and unbound sessions', async () => {
-    const writeText = vi.fn(async () => {})
+    const writeText = vi.fn(async () => true)
     const copy = createCopyTranscriptPath(async () => home, () => SESSIONS, writeText)
     for (const session of SESSIONS) {
       const expected = transcriptPathForSession(home, session)
@@ -80,8 +80,26 @@ describe('createCopyTranscriptPath', () => {
     expect(transcriptPathForSession(home, SESSIONS[0])).toMatch(/D--work-proj[\\/]a[\\/]transcript\.jsonl$/)
   })
 
+  it('asks for the home directory once and writes later copies without waiting on it', async () => {
+    const resolveHome = vi.fn(async () => home)
+    const writeText = vi.fn(async () => true)
+    const copy = createCopyTranscriptPath(resolveHome, () => SESSIONS, writeText)
+    await copy('a')
+    const pending = copy('b')
+    expect(writeText).toHaveBeenCalledTimes(2)
+    expect(await pending).toBe(transcriptPathForSession(home, SESSIONS[1]))
+    expect(resolveHome).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries the home directory after a failed lookup', async () => {
+    const resolveHome = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValue(home)
+    const copy = createCopyTranscriptPath(resolveHome, () => SESSIONS, async () => true)
+    expect(await copy('a')).toBeNull()
+    expect(await copy('a')).toBe(transcriptPathForSession(home, SESSIONS[0]))
+  })
+
   it('writes nothing for an unknown session', async () => {
-    const writeText = vi.fn(async () => {})
+    const writeText = vi.fn(async () => true)
     const copy = createCopyTranscriptPath(async () => home, () => SESSIONS, writeText)
     expect(await copy('missing')).toBeNull()
     expect(writeText).not.toHaveBeenCalled()
@@ -92,5 +110,7 @@ describe('createCopyTranscriptPath', () => {
     expect(await failingHome('a')).toBeNull()
     const failingClip = createCopyTranscriptPath(async () => home, () => SESSIONS, () => Promise.reject(new Error('denied')))
     expect(await failingClip('a')).toBeNull()
+    const refusedClip = createCopyTranscriptPath(async () => home, () => SESSIONS, async () => false)
+    expect(await refusedClip('a')).toBeNull()
   })
 })
