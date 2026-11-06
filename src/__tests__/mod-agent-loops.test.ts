@@ -443,8 +443,9 @@ describe('the wiring names both kinds of child', () => {
     expect(block).toContain('spawnerSessionId')
     expect(block).toContain('linkModChild(resolvedSessionId, modParentSessionId)')
     expect(block).toContain('modsForAgentLoop(')
-    expect(runtime).toContain('ownSlot = Object.assign(modRuntime,')
-    expect(runtime).toContain('unregisterSlot = registerModSlot(resolvedSessionId, ownSlot)')
+    const builder = read_('browser/runtime/modSlotBuilder.ts')
+    expect(builder).toContain('slot.ownSlot = Object.assign(modRuntime,')
+    expect(builder).toContain('unregisterSlot = registerModSlot(slot.resolvedSessionId, slot.ownSlot)')
   })
 
   it("createAgentRuntime publishes a slot's registered tools and a child lists them, scoped as its own tools", () => {

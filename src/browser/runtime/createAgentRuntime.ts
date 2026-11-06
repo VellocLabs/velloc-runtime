@@ -14,7 +14,6 @@ import { buildProfilePromptBlock } from '../context/buildProfilePromptBlock'
 import { buildTeammatePromptAddendum } from '../../team/teammateBrief'
 import { subAgentLoopId } from '../../team/subAgentController'
 import { resolveOutputStyleSection } from '../../prompting/responseStyles'
-import { SHELL_TOOL_ID } from '../../prompting/processToolNames'
 import {
   applyPermissionRulesBySource,
   type PermissionSettingsBySource,
@@ -53,7 +52,7 @@ import {
 } from '../../memory/resolveMemorySettings'
 import { setSessionModelSettingsSnapshot } from '../../models/tierSettingsSnapshot'
 import type { ResolvedMemorySettings } from '../../memory/memoryPaths'
-import { checkNotesDir, isMemoryEnabled, resolveMemoryDir } from '../../memory/memoryPaths'
+import { checkNotesDir } from '../../memory/memoryPaths'
 import { createBrowserFsOperations } from '../../utils/BrowserFsOperations'
 import { openNexusSettings } from '../webview/nexusBridgeActions'
 import type { NexusSettingsSection } from '../bridge/browserBridgeProtocol'
@@ -73,10 +72,8 @@ import {
 } from '../../utils/resolveProjectRoot'
 import {
   getConversationSessionDirectoryPath,
-  getScratchpadDirectoryPath,
   isForcedFolderTemplateType,
   projectsHome,
-  resolveSessionStorageBase,
 } from '../../utils/conversationStoragePaths'
 import { resolveHomeDirViaBridge } from '../../utils/resolveHomeDirViaBridge'
 import {
@@ -100,7 +97,6 @@ import { SessionSnapshotStore } from '../../sessions/fileSnapshots/snapshotStore
 import { FileSnapshotRecorder } from '../../sessions/fileSnapshots/snapshotRecorder'
 import { WorkspaceDiffTool } from '../../toolkit/builtin/workspaceDiff'
 import { isPluginTemplateId } from '../../mods/ui/uiManifest'
-import { pluginTasksForSession } from '../../mods/modTasks'
 import { runtimeProviderGate } from '../../pluginHost/providerGate'
 import { registerMemoryExtractor } from '../../memory/extract/extractionRunner'
 import { registerMemoryConsolidator } from '../../memory/consolidate/consolidationRunner'
@@ -142,24 +138,12 @@ import { getMcpHost, hostServesWorkerMcp } from '../../mcp/mcpHost'
 import { createNativePrimitives } from '../bridge/nativePrimitives'
 import { loadLocalAgents } from '../../agents/agentRegistry'
 import { withBuiltInAgents } from '../../agents/builtInAgents'
-import { loadPluginContributions, pluginMcpServer } from '../../pluginHost'
+import { loadPluginContributions } from '../../pluginHost'
 import { storePluginSecrets } from '../../pluginHost/pluginMcpUserConfig'
-import { traceLine } from '../../utils/debugLog'
 import { isModSlot, selectModModules } from '../../mods/modSlot'
+import type { ModSlotHost } from './modSlotBuilder'
 import { createModIdleUnload, type ModIdleUnload } from '../../mods/modIdleUnload'
-import { modConfigWrite, pluginConfigRows } from '../../mods/modConfig'
-import { readSessionRepo } from '../../mods/sessionRepo'
-import { PLUGIN_NOTIFICATION_TYPE } from '../../mods/modNotify'
-import { fileModBuildStore } from '../../mods/modBuildStore'
-import { renderPartsEnglish, key } from '../../input/systemMessageParts'
-import {
-  BUILTIN_SLASH_COMMAND_DESCRIPTION_KEYS,
-  type BrowserSlashCommand,
-} from '../../input/slashCommandCatalog'
-import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
-import { dirnameRuntimePath, joinRuntimePath } from '../../utils/runtimePaths'
-import { NEXUS_INTERFACE_VERSION } from '../bridge/protocol/interfaceVersion.gen'
-import { getBuildTime } from '../../branding/buildInfo'
+import { dirnameRuntimePath } from '../../utils/runtimePaths'
 import {
   linkModChild,
   modSlotToolsFor,
@@ -167,9 +151,6 @@ import {
   publishModSlotTools,
   modRoster,
   modsForAgentLoop,
-  noteModSlotChanged,
-  noteModUiEvent,
-  registerModSlot,
   type ModSlot,
   undoWhenScopeEnds,
   watchModRoster,
@@ -1825,6 +1806,69 @@ ${teammateAddendum}`
   /** The slot's `$.state`: memory alone, as long as the slot. Every runtime
    *  the slot builds shares it, so the idle unload's reload keeps it. */
   let slotModState: import('../../mods/modState').ModStateStore | undefined
+  const modSlotHost: ModSlotHost = {
+    allowsMcp,
+    coreState,
+    get engineForMods() {
+      return engineForMods
+    },
+    forgetOnEngine,
+    homeDir,
+    hostBridge,
+    get installedFs() {
+      return installedFs
+    },
+    mcpOrigins,
+    get mcpPluginConfigs() {
+      return mcpPluginConfigs
+    },
+    mcpPool,
+    get mcpProviderKeys() {
+      return mcpProviderKeys
+    },
+    modEngine,
+    get modPlugins() {
+      return modPlugins
+    },
+    modToolHost,
+    get mods() {
+      return mods
+    },
+    offerLaunchedMcpServer,
+    options,
+    get ownSlot() {
+      return ownSlot
+    },
+    set ownSlot(value) {
+      ownSlot = value
+    },
+    readPluginConfigs,
+    registerOnEngine,
+    resolvedCwd,
+    get resolvedMemory() {
+      return resolvedMemory
+    },
+    resolvedOptions,
+    resolvedProjectRoot,
+    resolvedSessionId,
+    runtimeConfig,
+    settingsHome,
+    settingsHomeDir,
+    get slotModState() {
+      return slotModState
+    },
+    set slotModState(value) {
+      slotModState = value
+    },
+    supportedSlashCommands,
+    templateType,
+    get unregisterModSlot() {
+      return unregisterModSlot
+    },
+    set unregisterModSlot(value) {
+      unregisterModSlot = value
+    },
+  }
   /**
    * Build the slot's mod runtime for `modules` — at boot when an enabled
    * plugin carries a hooks module, or LATER, when `/plugins enable` (or the
@@ -1834,433 +1878,8 @@ ${teammateAddendum}`
   const buildModRuntime = async (
     modules: ReturnType<typeof selectModModules>,
   ): Promise<import('../../mods/ModRuntime').ModRuntime> => {
-    const [
-      { ModRuntime },
-      { openInstance, KERNEL_SPAWN_ACK_TIMEOUT_MS },
-      { MOD_WORKER_KIND },
-      { SANDBOX_READY_TIMEOUT_MS },
-      { ModStateStore },
-      { fileModStore },
-      { ensureDirRecursive },
-      { compileModModule, loadTypeScript },
-      { scanModuleUses },
-      { fileModFs },
-      { isBuiltinModPath, readBuiltinMod },
-      { hostModProcess },
-      { hostModHttp },
-      { modToolFullName },
-      { modAgentFullName },
-      { poolModMcp },
-      { createWindowAudioPlayer },
-    ] = await Promise.all([
-      import('../../mods/ModRuntime'),
-      import('../workerKernel/IsolatedWorkerKernel'),
-      import('../../mods/modTypes'),
-      import('../workerKernel/SandboxedWorkerHost'),
-      import('../../mods/modState'),
-      import('../../mods/modStore'),
-      import('../../pluginHost/writeExtracted'),
-      import('../../mods/modCompiler'),
-      import('../../mods/modScan'),
-      import('../../mods/modFs'),
-      import('../../mods/builtinMods'),
-      import('../../mods/modProcess'),
-      import('../../mods/modHttp'),
-      import('../../mods/modRegisteredTools'),
-      import('../../mods/modAgents'),
-      import('../../mods/modMcp'),
-      import('../workerKernel/windowAudio'),
-    ])
-    const reportMods = (line: string) => {
-      // A mod that did not load, a hook that failed, a worker that died:
-      // the debug log, and the console of whoever is developing the mod.
-      traceLine(`[mods] ${line}`, { level: 'warn' })
-      console.warn(`[mods] ${line}`)
-    }
-    slotModState ??= new ModStateStore()
-    // `$.store`: `~/.velloc/mods/<plugin>/store.json`. No resolvable home —
-    // an in-memory store, which the runtime supplies by default.
-    const modsDir = (() => {
-      try {
-        return joinRuntimePath(settingsHome(), RUNTIME_DIR_NAME, 'mods')
-      } catch {
-        return undefined
-      }
-    })()
-    const modStoreFs = {
-      readFile: (path: string, o: { encoding: string }) => installedFs.readFile(path, o),
-      writeFile: (path: string, data: string, o?: { encoding?: string }) =>
-        installedFs.writeFile(path, data, o),
-      ensureDir: (dir: string) => ensureDirRecursive(installedFs, dir),
-    }
-    // What each module's last load produced (`modBuildStore.ts`):
-    // `~/.velloc/mods/.builds/`, one file per module, replaced at each load —
-    // an unchanged module is not read, compiled or scanned again.
-    const modBuilds = modsDir
-      ? fileModBuildStore(installedFs, modsDir, { ensureDir: dir => ensureDirRecursive(installedFs, dir) })
-      : undefined
-    // Declared before the runtime so its `dispose` can call it: the registry
-    // entry goes with the runtime, not only with the scope's abort.
-    let unregisterSlot: (() => void) | undefined
-    const modRuntime = new ModRuntime({
-      modules,
-      // `$.plugin.locale` / `session.start`'s `locale`: the page's language.
-      ...(options.locale !== undefined ? { locale: options.locale } : {}),
-      onDisposed: () => unregisterSlot?.(),
-      // A TypeScript / TSX module, or one that imports: compiled to one
-      // module from its graph, read through the session's fs, within the
-      // plugin's folder alone.
-      compile: ref =>
-        compileModModule({
-          entry: ref.path,
-          root: ref.root ?? ref.path.replace(/[\\/][^\\/]*[\\/][^\\/]*$/, ''),
-          fs: {
-            readFile: (path, o) => installedFs.readFile(path, o).then(String),
-          },
-        }).then(result => ({ source: result.source, files: result.files, uses: result.uses })),
-      ...(modBuilds ? { builds: modBuilds } : {}),
-      // The scan for a plain module the compiler never sees: the same
-      // parser, over its one file.
-      scan: (ref, source) => loadTypeScript().then(ts => scanModuleUses(ts, [{ path: ref.path, text: source }])),
-      // The dev loop: the module's files are stat'ed at turn end through
-      // the fs bridge; a changed one reloads the module.
-      // A built-in's text is the registry's: never on disk, never polled.
-      statModule: path => (isBuiltinModPath(path) ? Promise.resolve(undefined) : installedFs.stat(path).then(stat => stat.mtimeMs)),
-      stateStore: slotModState,
-      readModule: async path => {
-        if (isBuiltinModPath(path)) {
-          const text = readBuiltinMod(path)
-          if (text === undefined) throw new Error(`no built-in mod serves ${path}`)
-          return text
-        }
-        return String(await installedFs.readFile(path, { encoding: 'utf-8' }))
-      },
-      // Each module gets a worker of its own from the isolated-worker kernel:
-      // spawned by the sandboxed frame, opaque origin, `default-src 'none'`.
-      // A mod is spawned while the session boots, when the spawner frame may
-      // not have committed yet: the spawn waits on the control port for it,
-      // so the acknowledgement is given the frame's own deadline on top.
-      openWorker: plugin =>
-        openInstance({
-          kind: MOD_WORKER_KIND,
-          init: { plugin },
-          label: `mod ${plugin}`,
-          // DevTools lists it as `nexus-mod: <plugin>`.
-          name: plugin,
-          spawnAckTimeoutMs: SANDBOX_READY_TIMEOUT_MS + KERNEL_SPAWN_ACK_TIMEOUT_MS,
-        }),
-      session: {
-        id: () => resolvedSessionId,
-        cwd: () => resolvedCwd,
-        root: () => resolvedProjectRoot,
-        type: () => templateType,
-        // The directory the engine's memory section names, resolved the same way.
-        memoryDir: () =>
-          isMemoryEnabled(runtimeConfig, resolvedMemory)
-            ? resolveMemoryDir(coreState.options.cwd ?? resolvedCwd, runtimeConfig, installedFs, {
-                projectRoot: coreState.options.projectRoot,
-                homeDir,
-                memorySettings: resolvedMemory,
-              })
-            : Promise.resolve(null),
-        // The directory the engine's scratchpad section names.
-        scratchpadDir: () => {
-          const base = resolveSessionStorageBase({
-            storageBase: typeof options.sessionStoragePath === 'string' && options.sessionStoragePath.length > 0 ? options.sessionStoragePath : undefined,
-            homeDir,
-            projectRoot: coreState.options.projectRoot,
-          })
-          return base ? getScratchpadDirectoryPath(base, resolvedSessionId) : null
-        },
-        // `$.session.model` / `.turns`: the engine's, bound late like `tools`.
-        model: () => modEngine('$.session.model').getCurrentModel(),
-        turns: () => modEngine('$.session.turns').countUserTurns(),
-        // "The version of the engine the session runs on": Velloc's runtime
-        // has no upstream release number, so `base` is absent — "the version is
-        // not spelled as a release" — and a mod reads `velloc/` to know.
-        version: () => ({
-          version: `velloc/${NEXUS_INTERFACE_VERSION}`,
-          ...(getBuildTime() ? { builtAt: getBuildTime() } : {}),
-        }),
-        repo: () => readSessionRepo(installedFs, resolvedCwd),
-        // `$.fs`: the session's fs bridge, trusted as a settings
-        // command hook is, under the untrusted-session read
-        // boundary when this session has one.
-        fs: fileModFs(installedFs, {
-          cwd: resolvedCwd,
-          ...(homeDir ? { homeDir } : {}),
-          ...((resolvedOptions as { untrustedReadRoot?: string }).untrustedReadRoot
-            ? { readRoot: (resolvedOptions as { untrustedReadRoot?: string }).untrustedReadRoot as string }
-            : {}),
-          ...(typeof options.sessionStoragePath === 'string' && options.sessionStoragePath.length > 0
-            ? { sessionStoragePath: options.sessionStoragePath }
-            : {}),
-        }),
-        // `$.process.run`: the hosted Bash tool with its hook fields,
-        // the route a settings `command` hook takes (`hookCommandRunner.ts`):
-        // trusted as that hook is. A host without the
-        // `browser` capability (a mock host) cannot run commands: absent.
-        ...(hostBridge.supportsBridgeCapability('browser')
-          ? {
-              process: hostModProcess(
-                async ({ command, shell, stdin, env, timeoutMs, cwd }) => {
-                  const raw = (await hostBridge.browser.callTool({
-                    name: SHELL_TOOL_ID,
-                    args: {
-                      command,
-                      hook_shell: shell,
-                      hook_stdin: stdin,
-                      hook_env: Object.keys(env).length > 0 ? JSON.stringify(env) : '',
-                      timeout: timeoutMs,
-                      // The host's session cwd may not be pushed yet.
-                      ...(cwd ? { cwd } : {}),
-                    },
-                    executionContext: { sessionId: resolvedSessionId },
-                  })) as { output?: unknown; exit_code?: unknown; data?: { output?: unknown; exit_code?: unknown } } | undefined
-                  const body = raw?.data && typeof raw.data === 'object' ? raw.data : raw
-                  return {
-                    output: typeof body?.output === 'string' ? body.output : '',
-                    exitCode: typeof body?.exit_code === 'number' ? body.exit_code : 0,
-                  }
-                },
-                {
-                  cwd: resolvedCwd,
-                  // `$.process.spawn` (4c): a streaming child through
-                  // `shell.spawn`'s shell form. Its output events arrive at
-                  // any time, and a session's scoped transport forwards
-                  // events only while the session has a request in flight —
-                  // so the child is spawned on the runtime's host port, as
-                  // the MCP stdio servers are (`mcp/mcpHost.ts`); the session
-                  // transport is the fallback where there is no manager.
-                  // The mods' unload kills it (`ModInstance.dispose`).
-                  ...(hostBridge.supportsBridgeCapability('shell')
-                    ? {
-                        spawnStream: (spec, handlers) => {
-                          const host = getMcpHost()
-                          const primitives = host
-                            ? createNativePrimitives({
-                                transport: host.transport,
-                                createRequestId: () => runtimeConfig.createUUID(),
-                                manifest: host.manifest ?? resolvedOptions.hostManifest,
-                              })
-                            : hostBridge.primitives
-                          return primitives.shell.spawnShellStream(spec, handlers)
-                        },
-                      }
-                    : {}),
-                },
-              ),
-            }
-          : {}),
-        // `$.http.fetch`: the bridge's `network.httpRequest`, under the
-        // C++ egress policy (publicly routable hosts only) and the user's
-        // WebFetch deny rules, read when the call is made. No prompt.
-        // Not gated on the manifest: the host registers
-        // `network` on every port without advertising it (WebFetch's route
-        // too); a binary older than `httpRequest` rejects the call by name.
-        ...(hostBridge.network.httpRequest
-          ? {
-              http: hostModHttp({
-                request: (request, o) => hostBridge.network.httpRequest!(request, o),
-                denyRules: () => coreState.getAppState().permissionRules.denyRuleBook,
-              }),
-            }
-          : {}),
-        // `$.config` (plan item 7): the enabled plugins' `userConfig` rows,
-        // built as the `/config` listing builds them, over settings.json
-        // `pluginConfigs`; a write stores the option under the plugin's id
-        // and every session's plugins reload with it — as the Settings
-        // form's save does. Nothing stored → no reload and no write.
-        ...(settingsHomeDir
-          ? {
-              config: {
-                rows: async () => pluginConfigRows(modPlugins, await readPluginConfigs()),
-                write: modConfigWrite({
-                  store: async (row, value) => {
-                    const { setPluginOption } = await import('../../pluginHost/pluginConfigs')
-                    return setPluginOption({ homeDir: settingsHomeDir }, installedFs, row.pluginId, row.field, value)
-                  },
-                  reload: () =>
-                    options.reloadPluginsOnAllSessions
-                      ? options.reloadPluginsOnAllSessions()
-                      : engineForMods?.refreshPluginSet(),
-                  report: reportMods,
-                }),
-              },
-            }
-          : {}),
-        // `$.settings.read`: Velloc reads ONE settings.json (the user's); the
-        // merge and the `user` source are the same object, the other sources
-        // are empty.
-        settings: async ({ source }) => {
-          if (source !== undefined && source !== 'user') return {}
-          if (!settingsHomeDir) return {}
-          const { settings } = await readUserLayer(settingsHomeDir, installedFs)
-          return settings
-        },
-        ...(modsDir
-          ? { store: (plugin: string) => fileModStore(modsDir, plugin, modStoreFs, { report: reportMods }) }
-          : {}),
-        // `$.tool`: served by the engine, which is built just below. A hook
-        // may run before it is (`session.start`): a registration then waits
-        // for it (`registerOnEngine`); the other calls say "not yet".
-        // `$.model`: the engine's completions, bound late like `tools`.
-        // `$.agent`: the engine's agent types and subagents, bound late.
-        agents: {
-          register: (spec, plugin) =>
-            registerOnEngine('agent', plugin, engine => engine.modAgents.register(spec, plugin), modAgentFullName(plugin, spec.name), reportMods),
-          forget: plugin => forgetOnEngine('agent', plugin, engine => engine.modAgents.forget(plugin)),
-          list: () => modEngine('$.agent').modAgents.list(),
-          // `$.ui.view`'s lookup: no agent to find before the engine binds.
-          viewTarget: agentId => engineForMods?.modAgents.viewTarget?.(agentId),
-          spawn: (args, raise) => modEngine('$.agent').modAgents.spawn(args, raise),
-          wait: (agentId, options) => modEngine('$.agent').modAgents.wait(agentId, options),
-        },
-        // `$.task`: the session's plugin tasks, kept by the session manager.
-        tasks: pluginTasksForSession(resolvedSessionId),
-        // `$.prompt.submit`: `prompt.submit` raised by the slot's mod
-        // runtime with the caller's context, core the worker's turn queue;
-        // `$.prompt.compose`: the engine's render, bound late like `tools`.
-        prompt: {
-          submit: (args, raise) => {
-            const enqueue = options.enqueuePluginTurn
-            if (!mods || !enqueue) {
-              const error = new Error('$.prompt.submit is not available: this session queues no turns from plugins')
-              error.name = 'NotSupportedError'
-              return Promise.reject(error)
-            }
-            return mods.pluginSubmit(args, enqueue, raise)
-          },
-          compose: (args, raise) => modEngine('$.prompt.compose').modPrompt.compose(args, raise),
-        },
-        // `$.session.messages` / `.usage`: the engine's transcript,
-        // bound late like `tools`.
-        transcript: {
-          rows: () => modEngine('$.session.messages').modTranscript.rows(),
-          agentRows: agentId => modEngine('$.session.messages').modTranscript.agentRows(agentId),
-          usage: () => modEngine('$.session.usage').modTranscript.usage(),
-          breakdown: args => modEngine('$.session.usage').modTranscript.breakdown(args),
-        },
-        // `$.session.compact` / `.send` / `.append`: the engine raises
-        // each event with the caller's context; bound late like `tools`.
-        conversation: {
-          compact: (args, raise) => modEngine('$.session.compact').modConversation.compact(args, raise),
-          send: (args, raise) => modEngine('$.session.send').modConversation.send(args, raise),
-          append: (args, raise) => modEngine('$.session.append').modConversation.append(args, raise),
-        },
-        // `$.mcp`: the process's MCP pool, trusted (F-25) —
-        // no permission prompt. A type that takes no MCP (`safe_code`) takes
-        // none here either: absent, so the noun is refused by name.
-        ...(allowsMcp
-          ? {
-              mcp: poolModMcp({
-                pool: () => mcpPool,
-                manifestServer: (plugin, key) => {
-                  const owner = modPlugins.find(candidate => candidate.name === plugin)
-                  return owner
-                    ? pluginMcpServer(owner, key, { getEnv: name => runtimeConfig.getEnv(name), configs: mcpPluginConfigs, providers: mcpProviderKeys })
-                    : undefined
-                },
-                onNativeLaunched: () => offerLaunchedMcpServer(),
-                origins: () => mcpOrigins,
-              }),
-            }
-          : {}),
-        completions: {
-          complete: (request, options) => modEngine('$.model').modModel.complete(request, options),
-          fork: (request, options) => modEngine('$.model').modModel.fork(request, options),
-          fastModel: () => modEngine('$.model').modModel.fastModel(),
-        },
-        tools: {
-          list: () => modToolHost().list(),
-          call: (input, raise) => modToolHost().call(input, raise),
-          check: (input, raise) => modToolHost().check(input, raise),
-          register: (spec, plugin) =>
-            registerOnEngine('tool', plugin, engine => engine.modTools.register!(spec, plugin), modToolFullName(plugin, spec.name), reportMods),
-          forget: plugin => forgetOnEngine('tool', plugin, engine => engine.modTools.forget?.(plugin)),
-        },
-        // `$.turn.abort`: the engine's running turn, bound late like `tools`.
-        turn: {
-          abort: turnId => modEngine('$.turn.abort').abortTurn(turnId),
-        },
-        // `$.ui.notify`: the session's `Notification` hooks; "unbound or
-        // exiting, none" run.
-        notifications: {
-          runHooks: async (notice, context) => {
-            await engineForMods?.runNotificationHooks({
-              message: notice.message,
-              title: notice.title,
-              notificationType: PLUGIN_NOTIFICATION_TYPE,
-              raisedBy: context,
-            })
-          },
-        },
-      },
-      report: reportMods,
-      // What became of each module is runtime STATE the UI reads
-      // (`mods/state`): the slot registry fans the change out to the hub.
-      onStatusChanged: () => noteModSlotChanged(resolvedSessionId),
-      // A registered command changes the picker's list, which rides the
-      // worker snapshot: the same fan-out republishes it.
-      onCommandsChanged: () => noteModSlotChanged(resolvedSessionId),
-      // A mod's status line, notice or toast: `mods/ui/<sessionId>`, through
-      // the same registry.
-      onUiChanged: event => noteModUiEvent(resolvedSessionId, event),
-      // `$.prompt.read` / `.fill` / `.suggest`: the page's box, the
-      // interactive session's alone.
-      ...(options.drawsComposer ? { drawsComposer: true } : {}),
-      // `$.ui.copy`'s first path: the OS clipboard from the browser process,
-      // which needs no focus and no gesture. A failure (an older host's
-      // NOT_IMPLEMENTED included) leaves the copy to the page's paths.
-      ...(hostBridge.supportsBridgeCapability('ui')
-        ? {
-            clipboard: {
-              write: (text: string) =>
-                hostBridge.ui.writeClipboard({ text }).then(
-                  result => result?.ok === true,
-                  () => false,
-                ),
-            },
-          }
-        : {}),
-      // `$.audio`: played by the newest Velloc window of the kernel's pool.
-      audio: createWindowAudioPlayer(),
-      // `$.command.list`: the engine's own commands as the picker lists them
-      // — built-ins (their English description) and the user-invocable skills.
-      engineCommands: () => [
-        ...supportedSlashCommands.map(name => ({
-          name,
-          description: renderPartsEnglish([
-            key(BUILTIN_SLASH_COMMAND_DESCRIPTION_KEYS[name as BrowserSlashCommand] ?? 'slash.builtin.help'),
-          ]),
-          source: 'builtin' as const,
-        })),
-        ...(coreState.options.commands ?? [])
-          .filter(command => command.type === 'prompt' && command.userCallable !== false)
-          .map(command => ({
-            name: command.name,
-            description: command.description ?? '',
-            source: (command.source === 'plugin' ? 'plugin' : 'user') as 'plugin' | 'user',
-            ...(command.source === 'plugin' && command.loadedFrom ? {} : {}),
-          })),
-      ],
-    })
-    // Announce the slot, so the loops this session starts (sub-agents,
-    // teammates) raise their tool calls here (mods/modSlotRegistry.ts).
-    ownSlot = Object.assign(modRuntime, { uiState: () => modRuntime.uiSnapshot() })
-    unregisterSlot = registerModSlot(resolvedSessionId, ownSlot)
-    unregisterModSlot = unregisterSlot
-    undoWhenScopeEnds(unregisterSlot, options.runtimeScopeSignal)
-    // The slot is gone when its runtime scope is: `session.end` for the mods
-    // (bounded — it cannot hold the teardown), then leave the chain and close
-    // the workers.
-    if (options.runtimeScopeSignal?.aborted) modRuntime.dispose()
-    else {
-      options.runtimeScopeSignal?.addEventListener('abort', () => {
-        void modRuntime.end('other')
-      })
-    }
-    return modRuntime
+    const { buildSlotModRuntime } = await import('./modSlotBuilder')
+    return buildSlotModRuntime(modSlotHost, modules)
   }
   if (modModules.length > 0) mods = await buildModRuntime(modModules)
   /**

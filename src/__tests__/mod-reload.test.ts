@@ -548,10 +548,14 @@ describe('the session follows its plugin set (source pin)', () => {
 
   it('a runtime built by a reload loads the list it was given, not the list the session booted with; reloads are serialized', () => {
     const source = read('browser/runtime/createAgentRuntime.ts')
-    const build = source.indexOf('const buildModRuntime = async')
-    const constructed = source.indexOf('new ModRuntime({', build)
+    const closure = source.indexOf('const buildModRuntime = async')
+    expect(closure).toBeGreaterThan(-1)
+    expect(source.slice(closure, closure + 400)).toContain('return buildSlotModRuntime(modSlotHost, modules)')
+    const builder = read('browser/runtime/modSlotBuilder.ts')
+    const build = builder.indexOf('export async function buildSlotModRuntime(')
+    const constructed = builder.indexOf('new ModRuntime({', build)
     expect(build).toBeGreaterThan(-1)
-    expect(source.slice(constructed, constructed + 80)).toMatch(/new ModRuntime\(\{\s*modules,/)
+    expect(builder.slice(constructed, constructed + 80)).toMatch(/new ModRuntime\(\{\s*modules,/)
     expect(source).toMatch(/reconcilingMods\.then\(\(\) => reconcileModsNow\(plugins\)\)/)
   })
 
