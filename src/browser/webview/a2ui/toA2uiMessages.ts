@@ -109,13 +109,7 @@ function normalizeComponent(node: unknown): unknown {
 
   // 2. Legacy List template (items + string template) → canonical children.
   if (typeof record.template === 'string' && record.items != null) {
-    const items = record.items
-    const path =
-      typeof items === 'string'
-        ? items
-        : items && typeof items === 'object' && typeof (items as Record<string, unknown>).path === 'string'
-          ? ((items as Record<string, unknown>).path as string)
-          : undefined
+    const path = itemsPath(record.items)
     if (path) {
       record.children = { componentId: record.template, path }
       delete record.template
@@ -148,8 +142,9 @@ function normalizeComponent(node: unknown): unknown {
 
 const HEADING_LEVEL: Record<string, number> = { h1: 1, h2: 2, h3: 3, h4: 4, h5: 5 }
 
-// Props the earlier basic catalog had and v1.0 renamed or dropped. The v1.0
-// catalog validates strictly, so an unknown prop would drop the component.
+// Maps props whose v1.0 form differs (Text heading variants, Image alt, Slider
+// step, CheckBox checked). The catalog validates strictly, so an unknown prop
+// would drop the component.
 function mapEarlierProps(record: Record<string, unknown>): Record<string, unknown> {
   if (record.component === 'Text' && typeof record.variant === 'string' && record.variant in HEADING_LEVEL) {
     // v1.0 Text has only caption/body; a heading is Markdown in the text.
@@ -163,7 +158,7 @@ function mapEarlierProps(record: Record<string, unknown>): Record<string, unknow
     delete record.alt
   }
   if (record.component === 'Slider' && 'step' in record) delete record.step
-  // v1.0 Button requires an action; an inert earlier Button sends an event named after it.
+  // A v1.0 Button requires an action; one given none sends an event named after it.
   if (record.component === 'Button' && record.action == null) {
     record.action = { event: { name: typeof record.id === 'string' ? record.id : 'button' } }
   }
@@ -337,9 +332,9 @@ export function commandsToA2uiMessages(
         }
       }
       // Single path/value (canonical). Emitted only when present so an empty
-      // call is a no-op.
-      // A write always carries `value` (v1.0); `null` removes the key.
-      if ('value' in args) {
+      // call is a no-op. A write always carries `value`; `null` removes the
+      // key, and so does a path with no value.
+      if (typeof args.path === 'string' || 'value' in args) {
         const updateDataModel: Record<string, unknown> = { surfaceId, value: args.value ?? null }
         if (typeof args.path === 'string') updateDataModel.path = args.path
         out.push({ version: A2UI_PROTOCOL_VERSION, updateDataModel })

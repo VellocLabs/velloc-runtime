@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { MessageProcessor } from '@a2ui/web_core/v1_0'
 import { commandsToA2uiMessages } from '../browser/webview/a2ui/toA2uiMessages'
-import { vellocCatalog } from '../browser/webview/a2ui/catalog/vellocCatalog'
+import { vellocCatalog, vellocCatalogPropNames } from '../browser/webview/a2ui/catalog/vellocCatalog'
 import { buildActionTurn } from '../browser/webview/a2ui/A2uiProviderHost'
 
 const create = (args: Record<string, unknown>) => ({ name: 'a2ui_create_surface', args })
@@ -18,10 +18,30 @@ describe('A2UI v1.0 adapter', () => {
     for (const message of messages) expect(message.version).toBe('1.0')
   })
 
-  it('always gives a data write a value, null for a removal, and skips a write without one', () => {
+  it('always gives a data write a value, null for a removal, and skips an empty write', () => {
     const [removal] = commandsToA2uiMessages([data({ surfaceId: 's', path: '/a', value: null })], 'c')
     expect(removal.updateDataModel).toEqual({ surfaceId: 's', path: '/a', value: null })
-    expect(commandsToA2uiMessages([data({ surfaceId: 's', path: '/a' })], 'c')).toEqual([])
+    const [pathOnly] = commandsToA2uiMessages([data({ surfaceId: 's', path: '/a' })], 'c')
+    expect(pathOnly.updateDataModel, 'a path with no value removes the key').toEqual({ surfaceId: 's', path: '/a', value: null })
+    expect(commandsToA2uiMessages([data({ surfaceId: 's' })], 'c')).toEqual([])
+  })
+
+  it('turns a legacy List with an @path items binding and a string template into a child template', () => {
+    const [, update] = commandsToA2uiMessages(
+      [
+        create({
+          surfaceId: 's',
+          components: [
+            { id: 'root', component: 'List', items: { '@path': '/rows' }, template: 'row' },
+            { id: 'row', component: 'Text', text: 'x' },
+          ],
+        }),
+      ],
+      vellocCatalog.id,
+      vellocCatalogPropNames,
+    )
+    const components = (update.updateComponents as { components: Record<string, unknown>[] }).components
+    expect(components[0]).toEqual({ id: 'root', component: 'List', children: { componentId: 'row', path: '/rows' } })
   })
 
   it('maps props the earlier basic catalog had onto their v1.0 form', () => {

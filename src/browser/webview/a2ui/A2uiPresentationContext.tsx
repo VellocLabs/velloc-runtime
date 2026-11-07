@@ -49,6 +49,11 @@ export type A2uiPresentation = {
 
 const LIVE_MENTION_WINDOW_MS = 2 * 60 * 1000
 
+/** Whether an A2UI mention at `mentionedAt` (epoch ms) is recent enough to count as live. */
+export function isRecentMention(mentionedAt: number | null, now = Date.now()): boolean {
+  return mentionedAt !== null && now - mentionedAt < LIVE_MENTION_WINDOW_MS
+}
+
 const A2uiPresentationContext = createContext<A2uiPresentation | null>(null)
 
 export function useA2uiPresentation(): A2uiPresentation {
@@ -98,11 +103,10 @@ export function A2uiPresentationProvider({
   messagesRef.current = messages
 
   useEffect(() => {
-    const mentionedAt = latestA2uiMentionTime(messagesRef.current)
     const live =
       steppedRef.current ||
       busyRef.current ||
-      (mentionedAt !== null && Date.now() - mentionedAt < LIVE_MENTION_WINDOW_MS)
+      isRecentMention(latestA2uiMentionTime(messagesRef.current))
     steppedRef.current = true
     const step = stepA2uiPane(paneRef.current, derived, live)
     commit(step.state)

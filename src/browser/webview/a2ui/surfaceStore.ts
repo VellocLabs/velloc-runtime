@@ -10,6 +10,19 @@ import {
 
 export type A2uiCommand = { name: string; args: Record<string, unknown> }
 
+/** The `a2ui_*` tool name of a transcript content part, or undefined. */
+function a2uiToolNameOf(part: unknown): string | undefined {
+  const record = asRecord(part)
+  if (!record || record.type !== 'tool-call') return undefined
+  const toolName =
+    typeof record.toolName === 'string'
+      ? record.toolName
+      : typeof record.name === 'string'
+        ? record.name
+        : undefined
+  return toolName && isA2uiToolName(toolName) ? toolName : undefined
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null
     ? (value as Record<string, unknown>)
@@ -25,15 +38,9 @@ export function extractA2uiCommands(messages: readonly Message[]): A2uiCommand[]
     const content = inner?.content
     if (!Array.isArray(content)) continue
     for (const part of content) {
-      const record = asRecord(part)
-      if (!record || record.type !== 'tool-call') continue
-      const toolName =
-        typeof record.toolName === 'string'
-          ? record.toolName
-          : typeof record.name === 'string'
-            ? record.name
-            : undefined
-      if (!toolName || !isA2uiToolName(toolName)) continue
+      const toolName = a2uiToolNameOf(part)
+      if (!toolName) continue
+      const record = part as Record<string, unknown>
       const args = asRecord(record.args) ?? asRecord(record.input) ?? {}
       commands.push({ name: toolName, args })
     }
@@ -63,15 +70,9 @@ export function extractA2uiToolCalls(
     const content = inner?.content
     if (!Array.isArray(content)) continue
     for (const part of content) {
-      const record = asRecord(part)
-      if (!record || record.type !== 'tool-call') continue
-      const toolName =
-        typeof record.toolName === 'string'
-          ? record.toolName
-          : typeof record.name === 'string'
-            ? record.name
-            : undefined
-      if (!toolName || !isA2uiToolName(toolName)) continue
+      const toolName = a2uiToolNameOf(part)
+      if (!toolName) continue
+      const record = part as Record<string, unknown>
       const toolCallId =
         typeof record.toolCallId === 'string' ? record.toolCallId : undefined
       const args = asRecord(record.args) ?? asRecord(record.input) ?? {}
@@ -127,12 +128,7 @@ export function latestA2uiMentionTime(messages: readonly Message[]): number | nu
     if (message.type !== 'assistant') continue
     const content = asRecord(message.message)?.content
     if (!Array.isArray(content)) continue
-    const mentions = content.some(part => {
-      const record = asRecord(part)
-      const toolName = record?.toolName ?? record?.name
-      return record?.type === 'tool-call' && typeof toolName === 'string' && isA2uiToolName(toolName)
-    })
-    if (!mentions) continue
+    if (!content.some(part => a2uiToolNameOf(part) !== undefined)) continue
     const time = typeof message.timestamp === 'string' ? Date.parse(message.timestamp) : NaN
     return Number.isFinite(time) ? time : null
   }

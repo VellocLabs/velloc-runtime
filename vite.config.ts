@@ -343,6 +343,7 @@ export default defineConfig(({ mode }) => ({
       '@a2ui/react',
       '@a2ui/web_core/v1_0',
       '@a2ui/web_core/catalogs/basic/v1',
+      '@a2ui/markdown-it',
       'recharts',
       '@leeoniya/ufuzzy',
       '@mixmark-io/domino',

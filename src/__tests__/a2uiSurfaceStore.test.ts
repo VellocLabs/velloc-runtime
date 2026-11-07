@@ -103,4 +103,24 @@ describe('latestA2uiMentionTime', () => {
     expect(latestA2uiMentionTime(messages as never)).toBe(Date.parse('2026-11-07T00:05:00Z'))
     expect(latestA2uiMentionTime([] as never)).toBeNull()
   })
+
+  it('reads a tool-call named by `name` when `toolName` is not a string', async () => {
+    const { latestA2uiMentionTime } = await import('../browser/webview/a2ui/surfaceStore')
+    const messages = [
+      { type: 'assistant', timestamp: '2026-11-07T00:05:00Z', message: { content: [{ type: 'tool-call', toolName: null, name: 'a2ui_create_surface' }] } },
+    ]
+    expect(latestA2uiMentionTime(messages as never)).toBe(Date.parse('2026-11-07T00:05:00Z'))
+  })
+})
+
+describe('isRecentMention', () => {
+  it('counts a mention within two minutes as live, and an older or missing one as replay', async () => {
+    const { isRecentMention } = await import('../browser/webview/a2ui/A2uiPresentationContext')
+    const now = Date.parse('2026-11-07T00:10:00Z')
+    expect(isRecentMention(now - 5_000, now)).toBe(true)
+    expect(isRecentMention(now - 119_999, now)).toBe(true)
+    expect(isRecentMention(now - 120_000, now)).toBe(false)
+    expect(isRecentMention(now - 10 * 60_000, now)).toBe(false)
+    expect(isRecentMention(null, now)).toBe(false)
+  })
 })

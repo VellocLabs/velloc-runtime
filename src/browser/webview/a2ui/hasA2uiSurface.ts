@@ -1,5 +1,5 @@
 // Cheap, dependency-light detector used to gate the lazy <A2uiProviderHost>
-// mount (the CopilotKit renderer + Material Symbols font). It imports ONLY the
+// mount (the A2UI renderer). It imports ONLY the
 // dependency-free tool-name module (no reducer, no renderer), so it stays in the
 // resident bundle while the heavy A2UI chunk is fetched on demand. Mirrors
 // `hasGenerativeToolParts` in AssistantUiThread.
