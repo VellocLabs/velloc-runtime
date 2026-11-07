@@ -70,7 +70,9 @@ function memoryFs(initial: Record<string, string>, links: Record<string, string>
       }
       return [...names].map(([name, kind]) => entry(name, kind))
     },
-    realpath: async path => {
+    realpath: async (path, options) => {
+      // As on Windows: only the link-resolving form follows a link.
+      if (!options?.resolveLinks) return path
       for (const [link, target] of Object.entries(links)) if (path === link || path.startsWith(`${link}/`)) return target + path.slice(link.length)
       return path
     },
@@ -156,6 +158,20 @@ describe('the seed copy', () => {
     const { fs, text } = memoryFs({ ...seedFiles, [`${SEED}/linked/secret.txt`]: 'outside' }, { [`${SEED}/linked`]: '/home/secrets' })
     expect((await seedAppFolder(request(fs))).written).not.toContain('linked/secret.txt')
     expect(text(`${APP}/linked/secret.txt`)).toBeUndefined()
+  })
+
+  it('refuses a folder whose record names another plugin, and writes nothing', async () => {
+    const { fs, writes } = memoryFs(seedFiles)
+    await seedAppFolder(request(fs))
+    writes.length = 0
+    await expect(seedAppFolder({ ...request(fs, 2), plugin: 'other' })).rejects.toThrow('belongs to the plugin pay')
+    expect(writes).toEqual([])
+  })
+
+  it('refuses a seed file that grew past the limit after it was measured', async () => {
+    const { fs } = memoryFs(seedFiles)
+    const grown: AppSeedFs = { ...fs, readFileBytes: async path => (path.startsWith(SEED) ? new Uint8Array(1024 * 1024 + 1) : fs.readFileBytes(path)) }
+    await expect(seedAppFolder(request(grown))).rejects.toThrow('larger than')
   })
 
   it('refuses a seed with too many files or a file too large', async () => {

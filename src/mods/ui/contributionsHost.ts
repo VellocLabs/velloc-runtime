@@ -194,8 +194,6 @@ export class ModUiContributionsHost {
     const waiting = this.current.waiting.find(entry => entry.plugin === plugin)
     if (waiting) return { state: 'waiting', plugin, providers: waiting.providers }
     const template = owner.templates.find(entry => entry.type === type)!
-    // An app left out of the published list (its id is another plugin's) opens nowhere.
-    if (template.decl.app && !this.current.apps?.some(app => app.type === type)) return { state: 'absent', plugin }
     return { state: 'ready', source: { type, plugin, owner: pluginOwnerId(owner), dir: template.dir } }
   }
 

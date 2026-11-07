@@ -81,12 +81,13 @@ const underRoot = (root: string, path: string): boolean => {
 
 /** The seed's files, app-relative with `/`, in a stable order. */
 async function listSeed(fs: AppSeedFs, seedDir: string): Promise<string[]> {
-  const realRoot = fs.realpath ? await fs.realpath(seedDir) : seedDir
+  const real = (path: string) => fs.realpath!(path, { resolveLinks: true })
+  const realRoot = fs.realpath ? await real(seedDir) : seedDir
   const out: string[] = []
   const walk = async (dir: string, relative: string, depth: number): Promise<void> => {
     if (depth > SEED_MAX_DEPTH) throw new AppSeedError(`the seed is nested deeper than ${SEED_MAX_DEPTH} folders`)
     // A link is never reported as one, so each folder's real path is checked.
-    if (fs.realpath && !underRoot(realRoot, await fs.realpath(dir))) return
+    if (fs.realpath && !underRoot(realRoot, await real(dir))) return
     const entries = [...(await fs.readdir(dir))].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
     for (const entry of entries) {
       if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue
@@ -95,7 +96,7 @@ async function listSeed(fs: AppSeedFs, seedDir: string): Promise<string[]> {
       if (entry.isDirectory()) {
         await walk(path, rel, depth + 1)
       } else if (entry.isFile()) {
-        if (fs.realpath && !underRoot(realRoot, await fs.realpath(path))) continue
+        if (fs.realpath && !underRoot(realRoot, await real(path))) continue
         out.push(rel)
         if (out.length > SEED_MAX_FILES) throw new AppSeedError(`the seed holds more than ${SEED_MAX_FILES} files`)
       }
@@ -127,6 +128,7 @@ async function seedNow({ fs, seedDir, appDir, appId, plugin, seedVersion }: AppS
     recordText = undefined
   }
   const record = readRecord(recordText)
+  if (record && record.plugin !== plugin) throw new AppSeedError(`the folder belongs to the plugin ${record.plugin}`)
   if (record && record.seedVersion >= seedVersion) return { version: record.seedVersion, written: [], conflicts: [] }
 
   const files = await listSeed(fs, seedDir)
@@ -139,6 +141,7 @@ async function seedNow({ fs, seedDir, appDir, appId, plugin, seedVersion }: AppS
     const stat = await fs.stat(source)
     if (stat.size > SEED_MAX_FILE_BYTES) throw new AppSeedError(`the seed file ${rel} is larger than ${SEED_MAX_FILE_BYTES} bytes`)
     const bytes = await fs.readFileBytes(source, SEED_MAX_FILE_BYTES + 1)
+    if (bytes.length > SEED_MAX_FILE_BYTES) throw new AppSeedError(`the seed file ${rel} is larger than ${SEED_MAX_FILE_BYTES} bytes`)
     const seedHash = await hashOf(bytes)
     const current = await readOptional(() => fs.readFileBytes(target, SEED_MAX_FILE_BYTES + 1))
     if (current === undefined) {
