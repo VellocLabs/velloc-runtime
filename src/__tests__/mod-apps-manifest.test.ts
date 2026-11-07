@@ -225,7 +225,7 @@ describe('the apps the contributions host publishes', () => {
   it('the icon of a left-out app is not published', async () => {
     const { contributions } = host({ '/plugins/acme-pay/pay.svg': SVG })
     const second = appPlugin('acme-pay', 'x')
-    second.templates![0]!.decl.icon = { kind: 'file', src: './pay.svg' }
+    second.templates![0]!.decl.icon = { kind: 'file', src: './pay.svg', mask: false }
     await contributions.sync({ enabled: [appPlugin('acme', 'pay_x'), second] })
     expect(contributions.state().icons).toEqual({})
   })
