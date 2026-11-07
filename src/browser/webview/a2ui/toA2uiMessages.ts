@@ -333,8 +333,15 @@ export function commandsToA2uiMessages(
       }
       // Single path/value (canonical). Emitted only when present so an empty
       // call is a no-op. A write always carries `value`; `null` removes the
-      // key, and so does a path with no value.
-      if (typeof args.path === 'string' || 'value' in args) {
+      // key. A bare non-root path with nothing else to write removes its key;
+      // a root path never does, since that would clear the whole model.
+      const pathOnlyRemoval =
+        typeof args.path === 'string' &&
+        args.path !== '' &&
+        args.path !== '/' &&
+        args.merge == null &&
+        args.patches == null
+      if ('value' in args || pathOnlyRemoval) {
         const updateDataModel: Record<string, unknown> = { surfaceId, value: args.value ?? null }
         if (typeof args.path === 'string') updateDataModel.path = args.path
         out.push({ version: A2UI_PROTOCOL_VERSION, updateDataModel })

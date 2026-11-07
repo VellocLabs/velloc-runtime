@@ -13,6 +13,19 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null
 }
 
+/** The `a2ui_*` tool name of a transcript content part, or undefined. */
+export function a2uiToolNameOf(part: unknown): string | undefined {
+  const record = asRecord(part)
+  if (!record || record.type !== 'tool-call') return undefined
+  const toolName =
+    typeof record.toolName === 'string'
+      ? record.toolName
+      : typeof record.name === 'string'
+        ? record.name
+        : undefined
+  return toolName && isA2uiToolName(toolName) ? toolName : undefined
+}
+
 /** True if any assistant message contains an `a2ui_*` tool-call. */
 export function hasA2uiToolCall(messages: readonly Message[]): boolean {
   for (const message of messages) {
@@ -20,17 +33,7 @@ export function hasA2uiToolCall(messages: readonly Message[]): boolean {
     const inner = asRecord(message.message)
     const content = inner?.content
     if (!Array.isArray(content)) continue
-    for (const part of content) {
-      const record = asRecord(part)
-      if (!record || record.type !== 'tool-call') continue
-      const toolName =
-        typeof record.toolName === 'string'
-          ? record.toolName
-          : typeof record.name === 'string'
-            ? record.name
-            : undefined
-      if (isA2uiToolName(toolName)) return true
-    }
+    if (content.some(part => a2uiToolNameOf(part) !== undefined)) return true
   }
   return false
 }

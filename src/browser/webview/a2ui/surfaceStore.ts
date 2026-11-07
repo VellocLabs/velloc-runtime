@@ -5,23 +5,10 @@ import type { Message } from '../../../runtime/RuntimeTypes'
 import {
   A2UI_CREATE_SURFACE,
   A2UI_DELETE_SURFACE,
-  isA2uiToolName,
 } from '../../../toolkit/builtin/a2ui/a2uiToolNames'
+import { a2uiToolNameOf } from './hasA2uiSurface'
 
 export type A2uiCommand = { name: string; args: Record<string, unknown> }
-
-/** The `a2ui_*` tool name of a transcript content part, or undefined. */
-function a2uiToolNameOf(part: unknown): string | undefined {
-  const record = asRecord(part)
-  if (!record || record.type !== 'tool-call') return undefined
-  const toolName =
-    typeof record.toolName === 'string'
-      ? record.toolName
-      : typeof record.name === 'string'
-        ? record.name
-        : undefined
-  return toolName && isA2uiToolName(toolName) ? toolName : undefined
-}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null

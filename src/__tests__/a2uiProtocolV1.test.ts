@@ -24,6 +24,12 @@ describe('A2UI v1.0 adapter', () => {
     const [pathOnly] = commandsToA2uiMessages([data({ surfaceId: 's', path: '/a' })], 'c')
     expect(pathOnly.updateDataModel, 'a path with no value removes the key').toEqual({ surfaceId: 's', path: '/a', value: null })
     expect(commandsToA2uiMessages([data({ surfaceId: 's' })], 'c')).toEqual([])
+    expect(commandsToA2uiMessages([data({ surfaceId: 's', path: '/' })], 'c'), 'never clears the root').toEqual([])
+    expect(commandsToA2uiMessages([data({ surfaceId: 's', path: '' })], 'c')).toEqual([])
+    const merged = commandsToA2uiMessages([data({ surfaceId: 's', path: '/form', merge: { name: 'Ada' } })], 'c')
+    expect(merged.map(message => message.updateDataModel), 'a path beside a merge removes nothing').toEqual([
+      { surfaceId: 's', path: '/name', value: 'Ada' },
+    ])
   })
 
   it('turns a legacy List with an @path items binding and a string template into a child template', () => {
