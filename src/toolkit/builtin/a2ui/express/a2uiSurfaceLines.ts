@@ -4,9 +4,11 @@
 // `surface("<id>", update=true)`. A new id, an id the block deleted on an
 // earlier line, and a `surface()` call with other arguments are left as written.
 
-const BARE_SURFACE = /^(\s*surface\(\s*"((?:[^"\\]|\\.)*)")\s*\)\s*$/
-const ANY_SURFACE = /^\s*surface\(\s*"((?:[^"\\]|\\.)*)"/
-const DELETE_SURFACE = /^\s*deleteSurface\(\s*"((?:[^"\\]|\\.)*)"/
+import { SURFACE_ID } from './a2uiBlocks'
+
+const BARE_SURFACE = new RegExp(String.raw`^(\s*surface\(\s*${SURFACE_ID})\s*\)\s*$`)
+const ANY_SURFACE = new RegExp(String.raw`^\s*surface\(\s*${SURFACE_ID}`)
+const DELETE_SURFACE = new RegExp(String.raw`^\s*deleteSurface\(\s*${SURFACE_ID}`)
 const DIRECTIVES = ['surface(', 'deleteSurface(']
 
 /** Whether the surface exists before the block: the compiler state's view. */

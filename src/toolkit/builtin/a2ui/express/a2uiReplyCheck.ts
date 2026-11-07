@@ -26,7 +26,7 @@ function errorPosition(body: string, message: string): A2uiBlockFailure['at'] {
   if (text === undefined) return undefined
   const column = match[2] === undefined ? undefined : Number(match[2])
   const from = column === undefined || column >= text.length ? undefined : text.slice(column, column + EXCERPT_LENGTH)
-  return from === undefined ? { line, text } : { line, text, from }
+  return { line, text, ...(from !== undefined && { from }) }
 }
 
 function messageTexts(message: Message): string[] {
@@ -74,7 +74,7 @@ export async function findA2uiBlockFailures(
     const result = compiler.compile(segment.body, state)
     if (result.ok) continue
     const at = errorPosition(segment.body, result.message)
-    failures.push(at ? { index, surfaceIds, message: result.message, at } : { index, surfaceIds, message: result.message })
+    failures.push({ index, surfaceIds, message: result.message, ...(at && { at }) })
   }
   return failures
 }

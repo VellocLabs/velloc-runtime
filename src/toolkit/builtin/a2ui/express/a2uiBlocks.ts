@@ -80,8 +80,11 @@ export function hasA2uiBlock(text: string): boolean {
   return findOpenTag(text, 0) !== -1
 }
 
-const SURFACE_CALL = /^\s*surface\(\s*"((?:[^"\\]|\\.)*)"\s*\)/gm
-const DELETE_CALL = /^\s*deleteSurface\(\s*"((?:[^"\\]|\\.)*)"\s*\)/gm
+/** A surface id as written in a `surface()` / `deleteSurface()` call: a quoted string, its escapes kept. */
+export const SURFACE_ID = String.raw`"((?:[^"\\]|\\.)*)"`
+
+const SURFACE_CALL = new RegExp(String.raw`^\s*surface\(\s*${SURFACE_ID}\s*\)`, 'gm')
+const DELETE_CALL = new RegExp(String.raw`^\s*deleteSurface\(\s*${SURFACE_ID}\s*\)`, 'gm')
 
 /** The surfaces a block targets and the ones it deletes, by their `surface()` / `deleteSurface()` lines. */
 export function blockSurfaceIds(body: string): { targets: string[]; deletes: string[] } {
