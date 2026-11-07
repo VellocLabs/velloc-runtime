@@ -198,8 +198,8 @@ describe('live block finish', () => {
     live.feed('m:0:1', BODY.slice(0, 40), false)
     expect(live.finish('stored:0', 'form', BODY)).toEqual({ kind: 'drawn' })
     expect(live.finish('stored:0', 'form', BODY)).toEqual({ kind: 'not-streamed' })
-    // Compiling the same create block again is what the finish spares.
-    expect(c.compile(BODY, state)).toMatchObject({ ok: false })
+    // The surface is complete: the same block again only updates it.
+    expect(c.compile(BODY, state)).toMatchObject({ ok: true, messages: [{ updateComponents: { surfaceId: 'form' } }] })
   })
 
   it('reports a streamed block that fails, and whether it made the surface', () => {

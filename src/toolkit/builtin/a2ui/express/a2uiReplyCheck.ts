@@ -6,7 +6,28 @@
 import type { Message } from '../../../../runtime/RuntimeTypes'
 import { blockSurfaceIds, hasA2uiBlock, splitA2uiText } from './a2uiBlocks'
 
-export type A2uiBlockFailure = { index: number; surfaceIds: string[]; message: string }
+export type A2uiBlockFailure = {
+  index: number
+  surfaceIds: string[]
+  message: string
+  /** The block's line the error names, and its text from the error's column, when the error names one. */
+  at?: { line: number; text: string; from?: string }
+}
+
+const ERROR_POSITION = /\bline (\d+)(?::(\d+))?/i
+const EXCERPT_LENGTH = 40
+
+// The compiler counts lines from 1 and columns from 0, in the block's body.
+function errorPosition(body: string, message: string): A2uiBlockFailure['at'] {
+  const match = ERROR_POSITION.exec(message)
+  if (!match) return undefined
+  const line = Number(match[1])
+  const text = body.split('\n')[line - 1]?.replace(/\r$/, '')
+  if (text === undefined) return undefined
+  const column = match[2] === undefined ? undefined : Number(match[2])
+  const from = column === undefined || column >= text.length ? undefined : text.slice(column, column + EXCERPT_LENGTH)
+  return from === undefined ? { line, text } : { line, text, from }
+}
 
 function messageTexts(message: Message): string[] {
   if (message.type !== 'assistant') return []
@@ -51,16 +72,21 @@ export async function findA2uiBlockFailures(
       continue
     }
     const result = compiler.compile(segment.body, state)
-    if (!result.ok) failures.push({ index, surfaceIds, message: result.message })
+    if (result.ok) continue
+    const at = errorPosition(segment.body, result.message)
+    failures.push(at ? { index, surfaceIds, message: result.message, at } : { index, surfaceIds, message: result.message })
   }
   return failures
 }
 
 /** The note that asks the model to correct the failed blocks. */
 export function describeA2uiBlockFailures(failures: readonly A2uiBlockFailure[]): string {
-  const lines = failures.map(({ index, surfaceIds, message }) => {
+  const lines = failures.flatMap(({ index, surfaceIds, message, at }) => {
     const where = surfaceIds.length ? ` (surface ${surfaceIds.map(id => `"${id}"`).join(', ')})` : ''
-    return `- Block ${index}${where}: ${message}`
+    const entry = [`- Block ${index}${where}: ${message}`]
+    if (at) entry.push(`  Line ${at.line} of that block is: ${at.text}`)
+    if (at?.from !== undefined) entry.push(`  The error is where this text starts: ${at.from}`)
+    return entry
   })
   return [
     'The user could not see these A2UI interfaces from your last reply, because they did not compile:',

@@ -11,6 +11,7 @@ import {
 } from '@a2ui/agent'
 import type { CatalogApi, ComponentApi } from '@a2ui/web_core/catalog'
 import type { MessageProcessor } from '@a2ui/web_core/v1_0'
+import { continueReusedSurfaces, createSurfaceLineFilter, type SurfaceExists } from './a2uiSurfaceLines'
 
 export type A2uiCompileResult =
   | { ok: true; messages: AgentToRendererMessage[] }
@@ -21,7 +22,10 @@ export type A2uiExpressCompiler = {
   createState(): RendererState
   /** A record bound to a renderer: compiled messages are applied to it. */
   stateFor(renderer: MessageProcessor<ComponentApi>): RendererState
-  /** Compile one block body against `state`; on failure nothing is applied. */
+  /**
+   * Compile one block body against `state`; on failure nothing is applied. A
+   * bare `surface()` line for an existing surface updates it in place.
+   */
   compile(body: string, state: RendererState): A2uiCompileResult
   /** Read one block body as it streams; each message is applied to `state` as it is read. */
   stream(state: RendererState): A2uiBlockStream
@@ -47,6 +51,10 @@ function errorText(error: unknown): string {
   return text.replace(/\s+-\s+Help: Please correct the syntax error in your Express DSL\.?$/, '')
 }
 
+function existsIn(state: RendererState): SurfaceExists {
+  return surfaceId => state.getSurface(surfaceId) !== undefined
+}
+
 export function createA2uiExpressCompiler(catalog: CatalogApi): A2uiExpressCompiler {
   const generator = new A2uiGenerator([new CatalogConfig(catalog)], undefined, new ExpressFormatFactory())
   const processor: A2uiRequestProcessor = generator.createProcessor({
@@ -57,7 +65,8 @@ export function createA2uiExpressCompiler(catalog: CatalogApi): A2uiExpressCompi
     stateFor: renderer => RendererState.of(renderer),
     compile(body, state) {
       try {
-        const parts = processor.parseResponse(body, { wrapped: false, state })
+        const source = continueReusedSurfaces(body, existsIn(state))
+        const parts = processor.parseResponse(source, { wrapped: false, state })
         return { ok: true, messages: partMessages(parts) }
       } catch (error) {
         return { ok: false, message: errorText(error) }
@@ -65,6 +74,7 @@ export function createA2uiExpressCompiler(catalog: CatalogApi): A2uiExpressCompi
     },
     stream(state) {
       const stream = processor.openStream({ wrapped: false, state } as never)
+      const lines = createSurfaceLineFilter(existsIn(state))
       let failed = false
       const read = (step: () => { type: string; a2ui?: unknown }[]): A2uiStreamResult => {
         if (failed) return { ok: false, messages: [], message: 'stopped' }
@@ -77,8 +87,14 @@ export function createA2uiExpressCompiler(catalog: CatalogApi): A2uiExpressCompi
         }
       }
       return {
-        feed: chunk => read(() => stream.feed(chunk)),
-        close: () => read(() => stream.close()),
+        feed: chunk => read(() => {
+          const text = lines.push(chunk)
+          return text ? stream.feed(text) : []
+        }),
+        close: () => read(() => {
+          const rest = lines.flush()
+          return [...(rest ? stream.feed(rest) : []), ...stream.close()]
+        }),
       }
     },
   }

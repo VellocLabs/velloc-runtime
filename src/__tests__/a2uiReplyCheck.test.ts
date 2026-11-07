@@ -40,6 +40,28 @@ describe('findA2uiBlockFailures', () => {
     const history = [reply(block(FORM))]
     expect(await findA2uiBlockFailures(history, [reply(block('surface("contact")\n$/agree = true'))])).toEqual([])
   })
+
+  it('accepts a block that redraws a surface an earlier reply drew, root and all', async () => {
+    const history = [reply(block(FORM))]
+    const redraw = 'surface("contact")\nroot = Column([CheckBox("Agree", $/agree), Text("Thanks")])'
+    expect(await findA2uiBlockFailures(history, [reply(block(redraw))])).toEqual([])
+  })
+
+  it('quotes the line an error names, from the column it names', async () => {
+    const body = 'surface("board")\n$/metrics = {count: "87"}\nroot = Card(m1)\nm1 = Metric("Count", $/metrics.count)'
+    const [failure] = await findA2uiBlockFailures([], [reply(block(body))])
+    expect(failure.message).toContain('line 4:')
+    expect(failure.at).toEqual({ line: 4, text: 'm1 = Metric("Count", $/metrics.count)', from: '.count)' })
+    const note = describeA2uiBlockFailures([failure])
+    expect(note).toContain('  Line 4 of that block is: m1 = Metric("Count", $/metrics.count)')
+    expect(note).toContain('  The error is where this text starts: .count)')
+  })
+
+  it('quotes nothing for an error that names no line', async () => {
+    const [failure] = await findA2uiBlockFailures([], [reply(block('surface("broken")\nroot = CheckBox("Agree")'))])
+    expect(failure.at).toBeUndefined()
+    expect(describeA2uiBlockFailures([failure])).not.toContain('Line ')
+  })
 })
 
 describe('createA2uiTurnEndCheck', () => {
