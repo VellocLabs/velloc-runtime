@@ -7,6 +7,7 @@
  */
 
 import type {
+  ContributedApp,
   ContributedTemplate,
   ContributedTopbarItem,
   ContributionIcon,
@@ -25,7 +26,7 @@ import {
 import { parseWelcome } from '../../prompting/templateParsing'
 import { safeIconSvg } from '../provider/modProviderDefinition'
 import { publishModContributions, setModContributionsSyncGate, setTopbarResolver } from './contributionsState'
-import { modUiId, type ModUiIconDecl } from './uiManifest'
+import { appIdOf, modUiId, type ModUiIconDecl } from './uiManifest'
 
 export type ContributingPlugin = Pick<
   ActivePlugin,
@@ -87,6 +88,8 @@ export class ModUiContributionsHost {
    *  yet: nothing is judged or published until they are. */
   private unjudged = false
   private readonly syncedWaiters = new Set<() => void>()
+  /** Lines `publish` reported, so a republish does not repeat them. */
+  private readonly reported = new Set<string>()
 
   configure(options: ContributionsHostOptions): void {
     this.options = options
@@ -282,6 +285,12 @@ export class ModUiContributionsHost {
     return { icons, welcome }
   }
 
+  private reportOnce(line: string): void {
+    if (this.reported.has(line)) return
+    this.reported.add(line)
+    this.options?.report(line)
+  }
+
   private publish(): void {
     const options = this.options
     if (!options) return
@@ -300,10 +309,23 @@ export class ModUiContributionsHost {
     }
     const templates: ContributedTemplate[] = []
     const topbar: ContributedTopbarItem[] = []
+    const apps: ContributedApp[] = []
+    const appIds = new Map<string, string>()
     for (const plugin of effective) {
       const owner = pluginOwnerId(plugin)
       for (const template of plugin.templates ?? []) {
         const icon = iconOf(plugin.name, template.decl.icon)
+        if (template.decl.app) {
+          // Two apps naming one folder: the first in scan order keeps it.
+          const appId = appIdOf(plugin.name, template.key)
+          const holder = appIds.get(appId)
+          if (holder !== undefined) {
+            this.reportOnce(`${plugin.name}: app "${template.key}" is left out; its id "${appId}" is ${holder}'s`)
+            continue
+          }
+          appIds.set(appId, plugin.name)
+          apps.push({ type: template.type, appId, plugin: plugin.name, title: template.decl.title, ...(icon ? { icon } : {}) })
+        }
         const welcome = this.assets.get(plugin.name)?.welcome.get(template.key)
         templates.push({
           type: template.type,
@@ -325,6 +347,7 @@ export class ModUiContributionsHost {
     const next: ModContributionsState = {
       templates,
       topbar,
+      ...(apps.length > 0 ? { apps } : {}),
       icons: Object.fromEntries([...used].sort().map(hash => [hash, this.iconTexts.get(hash)!])),
       waiting: waiting.map(({ plugin, unmet }) => {
         const unknown = unmet.flatMap(entry => (entry.kind === 'unknown' ? [entry.word] : []))

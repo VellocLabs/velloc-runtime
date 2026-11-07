@@ -8,6 +8,7 @@ import {
 } from '../mcp/config'
 import type { NexusMcpServerLaunchConfig } from '../mcp/nativeBridge'
 import type { MCPServerConfig } from '../mcp/types'
+import { currentTemplateChannel, type UpdateChannel } from '../branding/updateChannels'
 import { parseHooksSettings } from '../lifecycleHooks/hookTypes'
 import { checkProviderManifests } from '../mods/provider/providerManifest'
 import { checkTemplateDecls, checkUiDecl } from '../mods/ui/uiManifest'
@@ -83,7 +84,8 @@ function inlineServers(
 
 const TEXT_KEYS = ['version', 'description', 'homepage', 'repository', 'license'] as const
 
-export function checkPluginDescriptor(value: unknown): ManifestCheck {
+/** `channel` decides the beta-only parts (`requires.features`, app templates). */
+export function checkPluginDescriptor(value: unknown, channel: UpdateChannel = currentTemplateChannel()): ManifestCheck {
   if (!isRecord(value)) return { manifest: null, errors: ['Manifest must be a JSON object'] }
   const { name } = value
   if (typeof name !== 'string' || name === '') {
@@ -171,10 +173,10 @@ export function checkPluginDescriptor(value: unknown): ManifestCheck {
   if (value.providers !== undefined) {
     set('providers', checkProviderManifests(name, value.providers, errors))
   }
-  if (value.templates !== undefined) set('templates', checkTemplateDecls(name, value.templates, errors))
+  if (value.templates !== undefined) set('templates', checkTemplateDecls(name, value.templates, errors, channel))
   if (value.ui !== undefined) set('ui', checkUiDecl(name, value.ui, errors))
   if (value.requires !== undefined) {
-    set('requires', checkRequires(value.requires, Object.keys(manifest.providers ?? {}), errors))
+    set('requires', checkRequires(value.requires, Object.keys(manifest.providers ?? {}), errors, channel))
   }
 
   return { manifest, errors }

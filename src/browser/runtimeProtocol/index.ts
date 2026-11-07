@@ -239,6 +239,7 @@ export {
   MODS_CONTRIBUTIONS_EVENT,
   MODS_CONTRIBUTIONS_TOPIC,
   isModsPressTopbarPayload,
+  type ContributedApp,
   type ContributedTemplate,
   type ContributedTopbarItem,
   type ContributionIcon,

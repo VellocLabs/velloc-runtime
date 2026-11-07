@@ -143,29 +143,29 @@ describe('requires', () => {
 
   it('reads providers; an undeclared key or an unknown word is reported and keeps the plugin waiting', () => {
     const errors: string[] = []
-    expect(checkRequires({ providers: ['main', 'main'] }, ['main'], errors)).toEqual({ providers: ['main'] })
+    expect(checkRequires({ providers: ['main', 'main'] }, ['main'], errors, 'stable')).toEqual({ providers: ['main'] })
     expect(errors).toEqual([])
-    expect(checkRequires({ providers: ['other'] }, ['main'], errors)).toEqual({ providers: ['other'] })
-    expect(checkRequires({ plugins: ['x'] }, ['main'], errors)).toEqual({ unknown: ['plugins'] })
-    expect(checkRequires({ providers: [] }, ['main'], errors)).toEqual({ unknown: ['providers'] })
+    expect(checkRequires({ providers: ['other'] }, ['main'], errors, 'stable')).toEqual({ providers: ['other'] })
+    expect(checkRequires({ plugins: ['x'] }, ['main'], errors, 'stable')).toEqual({ unknown: ['plugins'] })
+    expect(checkRequires({ providers: [] }, ['main'], errors, 'stable')).toEqual({ unknown: ['providers'] })
     expect(errors).toHaveLength(3)
   })
 
   it('reads features; one this Velloc lacks is reported and keeps the plugin waiting', () => {
     const errors: string[] = []
-    expect(checkRequires({ features: ['template-mcp-scope', 'template-mcp-scope'] }, [], errors)).toEqual({
+    expect(checkRequires({ features: ['template-mcp-scope', 'template-mcp-scope'] }, [], errors, 'stable')).toEqual({
       features: ['template-mcp-scope'],
     })
     expect(errors).toEqual([])
-    expect(checkRequires({ features: ['template-mcp-scope', 'warp-drive'] }, [], errors)).toEqual({
+    expect(checkRequires({ features: ['template-mcp-scope', 'warp-drive'] }, [], errors, 'stable')).toEqual({
       features: ['template-mcp-scope'],
       unknown: ['features:warp-drive'],
     })
     // `session-type`: `$.session.type()` and `$.session.memoryDir()` are served.
-    expect(checkRequires({ features: ['template-mcp-scope', 'session-type'] }, [], errors)).toEqual({
+    expect(checkRequires({ features: ['template-mcp-scope', 'session-type'] }, [], errors, 'stable')).toEqual({
       features: ['template-mcp-scope', 'session-type'],
     })
-    expect(checkRequires({ features: [] }, [], errors)).toEqual({ unknown: ['features'] })
+    expect(checkRequires({ features: [] }, [], errors, 'stable')).toEqual({ unknown: ['features'] })
     expect(errors).toHaveLength(2)
     // A met feature list alone gates nothing; a missing one is an unmet requirement.
     const met = plugin({ features: ['template-mcp-scope'] })

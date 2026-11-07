@@ -81,7 +81,8 @@ export function isModContributionsState(value: unknown): value is ModContributio
     Array.isArray(value.templates) &&
     Array.isArray(value.topbar) &&
     isRecord(value.icons) &&
-    Array.isArray(value.waiting)
+    Array.isArray(value.waiting) &&
+    (value.apps === undefined || Array.isArray(value.apps))
   )
 }
 

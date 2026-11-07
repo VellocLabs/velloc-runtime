@@ -52,6 +52,17 @@ export type ContributedTopbarItem = {
   icon?: ContributionIcon
 }
 
+/** An app (F-40, beta only): a topbar icon that opens its template's session. */
+export type ContributedApp = {
+  /** `<plugin>:<key>` — the app session's `templateType`. */
+  type: string
+  /** Names the app's folder, `shared-workspace/app-<appId>`. */
+  appId: string
+  plugin: string
+  title: ContributionText
+  icon?: ContributionIcon
+}
+
 /** A plugin the person switched on whose `requires` is not met. */
 export type WaitingPlugin = {
   plugin: string
@@ -65,6 +76,8 @@ export type WaitingPlugin = {
 export type ModContributionsState = {
   templates: ContributedTemplate[]
   topbar: ContributedTopbarItem[]
+  /** Present on the beta channel only, when some plugin offers an app. */
+  apps?: ContributedApp[]
   /** Content hash → SVG text: one copy of each icon however often it is used. */
   icons: Record<string, string>
   waiting: WaitingPlugin[]

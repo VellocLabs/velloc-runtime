@@ -6,6 +6,7 @@
  * the other entries stay. Pure.
  */
 
+import type { UpdateChannel } from '../../branding/updateChannels'
 import { isLocalizedText, whyNotLocalizedText, type LocalizedText } from '../../config/localizedText'
 
 /** Where a template's launcher is offered: the sidebar list, the project
@@ -29,6 +30,26 @@ export type PluginTemplateDecl = {
   projectFolder?: 'required'
   /** Plugin-relative folder holding `template.md`, `./`-prefixed. */
   path: string
+  /** The template is an app (beta only): a topbar icon opens it in its own folder. */
+  app?: PluginAppDecl
+}
+
+/**
+ * An app's files (F-40). Paths other than `seed` are relative to the app's
+ * folder, `shared-workspace/app-<appId>`, and never reach outside it or into
+ * its `.velloc/`.
+ */
+export type PluginAppDecl = {
+  /** Plugin-relative folder copied into the app's folder, `./`-prefixed. */
+  seed: string
+  /** Raised when `seed` changes, so an open brings in the files the person did not edit. */
+  seedVersion: number
+  /** The Express file the app's dashboard is drawn from. */
+  surface: string
+  /** A JSON file the dashboard reads under `/data`. */
+  data?: string
+  /** Dashboard event names the plugin answers itself, without the model. */
+  localActions?: string[]
 }
 
 export type PluginTopbarItemDecl = {
@@ -52,6 +73,16 @@ const COMMAND = /^[A-Za-z0-9_-]{1,64}(?::[A-Za-z0-9_-]{1,64}){0,3}$/
 const ARGS_MAX = 500
 /** A plugin offers at most this many topbar items; the topbar is shared. */
 export const TOPBAR_ITEMS_PER_PLUGIN = 4
+/** A plugin offers at most this many apps; each one is a topbar icon. */
+export const APPS_PER_PLUGIN = 2
+/** An app id: the last segment of its folder name. */
+export const APP_ID = /^[a-z0-9][a-z0-9-]{0,62}$/
+/** A path inside an app's folder: no segment starts with `.`, so none is `..` or `.velloc`. */
+const APP_PATH = /^[A-Za-z0-9_][A-Za-z0-9_.-]*(?:\/[A-Za-z0-9_][A-Za-z0-9_.-]*)*$/
+const APP_PATH_MAX = 200
+const LOCAL_ACTION = /^[A-Za-z0-9_-]{1,64}$/
+const LOCAL_ACTIONS_MAX = 16
+const SEED_VERSION_MAX = 1_000_000
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -74,6 +105,12 @@ export function isPluginTemplateId(type: string | undefined): type is string {
 /** The plugin half of a plugin template id. */
 export function pluginOfTemplateId(type: string): string {
   return type.slice(0, type.indexOf(':'))
+}
+
+/** The id of `plugin`'s app `key`: lower case, `_` read as `-`. Not always an
+ *  `APP_ID`; the manifest check refuses one that is not. */
+export function appIdOf(plugin: string, key: string): string {
+  return `${plugin}-${key}`.toLowerCase().replace(/_/g, '-')
 }
 
 type Bad = (message: string) => void
@@ -121,6 +158,50 @@ function readText(value: unknown, label: string, bad: Bad, required: boolean): L
   return null
 }
 
+function readAppPath(value: unknown, label: string, bad: Bad, extension: string): string | null {
+  if (typeof value === 'string' && value.length <= APP_PATH_MAX && APP_PATH.test(value) && value.toLowerCase().endsWith(extension)) {
+    return value
+  }
+  bad(`${label}: expected a "${extension}" path inside the app's folder, without "..", a leading "." segment or "\\"`)
+  return null
+}
+
+function readApp(value: unknown, label: string, appId: string, bad: Bad): PluginAppDecl | null {
+  if (!isRecord(value)) {
+    bad(`${label}: expected an object`)
+    return null
+  }
+  if (!APP_ID.test(appId)) bad(`${label}: the app id "${appId}" (plugin name and key) must be 1-63 letters, digits and "-", starting with a letter or digit`)
+  let seed: string | null = null
+  if (typeof value.seed === 'string' && insidePlugin(value.seed)) seed = value.seed.replace(/\/+$/, '')
+  else bad(`${label}.seed: must be a relative folder starting with "./" and without ".."`)
+  let seedVersion = 1
+  if (value.seedVersion !== undefined) {
+    const v = value.seedVersion
+    if (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= SEED_VERSION_MAX) seedVersion = v
+    else bad(`${label}.seedVersion: expected a whole number from 1 to ${SEED_VERSION_MAX}`)
+  }
+  const surface = readAppPath(value.surface, `${label}.surface`, bad, '.a2ui')
+  const data = value.data === undefined ? undefined : readAppPath(value.data, `${label}.data`, bad, '.json')
+  let localActions: string[] | undefined
+  if (value.localActions !== undefined) {
+    const list = value.localActions
+    if (Array.isArray(list) && list.length <= LOCAL_ACTIONS_MAX && list.every(name => typeof name === 'string' && LOCAL_ACTION.test(name))) {
+      localActions = [...new Set(list as string[])]
+    } else {
+      bad(`${label}.localActions: expected at most ${LOCAL_ACTIONS_MAX} event names of letters, digits, "_" and "-"`)
+    }
+  }
+  if (!seed || !surface || data === null) return null
+  return {
+    seed,
+    seedVersion,
+    surface,
+    ...(data ? { data } : {}),
+    ...(localActions && localActions.length > 0 ? { localActions } : {}),
+  }
+}
+
 function keyed(
   field: string,
   pluginName: string,
@@ -148,15 +229,18 @@ function keyed(
   return out
 }
 
-/** Validate a manifest's `templates` map. */
+/** Validate a manifest's `templates` map. An app template is beta only: on
+ *  another channel it is reported and left out. */
 export function checkTemplateDecls(
   pluginName: string,
   value: unknown,
   errors: string[],
+  channel: UpdateChannel = 'stable',
 ): Record<string, PluginTemplateDecl> | undefined {
   const entries = keyed('templates', pluginName, value, errors)
   if (!entries) return undefined
   const out: Record<string, PluginTemplateDecl> = {}
+  let apps = 0
   for (const [key, raw] of entries) {
     const label = `templates.${key}`
     let ok = true
@@ -164,15 +248,29 @@ export function checkTemplateDecls(
       ok = false
       errors.push(message)
     }
+    let app: PluginAppDecl | null | undefined
+    if (raw.app !== undefined) {
+      if (channel !== 'beta') {
+        errors.push(`${label}.app: apps are served on the beta channel only; the template is left out`)
+        continue
+      }
+      if (apps >= APPS_PER_PLUGIN) {
+        errors.push(`${label}: a plugin offers at most ${APPS_PER_PLUGIN} apps; this one is left out`)
+        continue
+      }
+      app = readApp(raw.app, `${label}.app`, appIdOf(pluginName, key), bad)
+      if (raw.launcher !== undefined && raw.launcher !== 'hidden') bad(`${label}.launcher: an app opens from its topbar icon; expected "hidden" or no launcher`)
+      if (raw.projectFolder !== undefined) bad(`${label}.projectFolder: an app works in its own folder; leave projectFolder out`)
+    }
     const title = readText(raw.title, `${label}.title`, bad, true)
     const description = readText(raw.description, `${label}.description`, bad, false)
     const icon = readIcon(raw.icon, `${label}.icon`, bad)
-    let launcher: TemplateLauncherPlace = 'both'
-    if (raw.launcher !== undefined) {
+    let launcher: TemplateLauncherPlace = app ? 'hidden' : 'both'
+    if (raw.launcher !== undefined && raw.app === undefined) {
       if ((TEMPLATE_LAUNCHER_PLACES as readonly unknown[]).includes(raw.launcher)) launcher = raw.launcher as TemplateLauncherPlace
       else bad(`${label}.launcher: expected one of ${TEMPLATE_LAUNCHER_PLACES.join(', ')}`)
     }
-    if (raw.projectFolder !== undefined && raw.projectFolder !== 'required') {
+    if (raw.projectFolder !== undefined && raw.projectFolder !== 'required' && raw.app === undefined) {
       bad(`${label}.projectFolder: expected "required"`)
     }
     let path = `./templates/${key}`
@@ -180,14 +278,16 @@ export function checkTemplateDecls(
       if (typeof raw.path === 'string' && insidePlugin(raw.path)) path = raw.path.replace(/\/+$/, '')
       else bad(`${label}.path: must be a relative path starting with "./" and without ".."`)
     }
-    if (!ok || !title) continue
+    if (!ok || !title || app === null) continue
+    if (app) apps += 1
     out[key] = {
       title,
       ...(description ? { description } : {}),
       ...(icon ? { icon } : {}),
       launcher,
-      ...(raw.projectFolder === 'required' ? { projectFolder: 'required' as const } : {}),
+      ...(raw.projectFolder === 'required' && !app ? { projectFolder: 'required' as const } : {}),
       path,
+      ...(app ? { app } : {}),
     }
   }
   return Object.keys(out).length > 0 ? out : undefined

@@ -7,6 +7,7 @@
  * person meets the gate. Pure.
  */
 
+import type { UpdateChannel } from '../branding/updateChannels'
 import type { ActivePlugin } from './pluginModel'
 
 export type PluginRequires = {
@@ -25,7 +26,16 @@ export const REQUIRES_WORDS = ['providers', 'features'] as const
 /** The `requires.features` names this Velloc has. A plugin naming another
  *  waits, so a template or component that needs the feature never runs on a
  *  Velloc that would read it as something weaker. */
-export const KNOWN_FEATURES = ['template-mcp-scope', 'session-type'] as const
+export const KNOWN_FEATURES = ['template-mcp-scope', 'session-type', 'apps'] as const
+
+/** Features served on the beta channel only: on another channel a plugin
+ *  naming one waits, as for a feature this Velloc lacks. */
+export const BETA_FEATURES: readonly string[] = ['apps']
+
+/** The `requires.features` names served on `channel`. */
+export function knownFeatures(channel: UpdateChannel): readonly string[] {
+  return channel === 'beta' ? KNOWN_FEATURES : KNOWN_FEATURES.filter(name => !BETA_FEATURES.includes(name))
+}
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -38,6 +48,7 @@ export function checkRequires(
   value: unknown,
   declaredProviders: readonly string[],
   errors: string[],
+  channel: UpdateChannel,
 ): PluginRequires | undefined {
   if (!isRecord(value)) {
     errors.push('requires: expected an object')
@@ -68,8 +79,15 @@ export function checkRequires(
       out.unknown = [...(out.unknown ?? []), 'features']
     } else {
       const names = [...new Set(list as string[])]
-      const missing = names.filter(name => !(KNOWN_FEATURES as readonly string[]).includes(name))
-      for (const name of missing) errors.push(`requires.features: this Velloc does not have "${name}"; the plugin stays waiting`)
+      const served = knownFeatures(channel)
+      const missing = names.filter(name => !served.includes(name))
+      for (const name of missing) {
+        errors.push(
+          BETA_FEATURES.includes(name)
+            ? `requires.features: "${name}" is served on the beta channel only; the plugin stays waiting`
+            : `requires.features: this Velloc does not have "${name}"; the plugin stays waiting`,
+        )
+      }
       if (missing.length > 0) out.unknown = [...(out.unknown ?? []), ...missing.map(name => `features:${name}`)]
       const known = names.filter(name => !missing.includes(name))
       if (known.length > 0) out.features = known
