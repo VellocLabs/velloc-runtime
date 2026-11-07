@@ -272,13 +272,11 @@ export class ModelMaskingHolder {
   }
 
   /**
-   * Reads the settings again, so an edit of settings.json (the section
-   * removed, turned off or changed) applies to the next stream. The table is
-   * recompiled only when the section differs. One read at a time: a call made
-   * while one is in flight waits for that read. Resolves when the read is
-   * applied, when `signal` aborts, or after `timeoutMs`; a read still running
-   * then is applied when it lands, unless a `configure` came first. A read
-   * that fails leaves the state as it is.
+   * Reads the settings again, so an edit of settings.json applies to the next
+   * stream; the table is recompiled only when the section differs. One read
+   * at a time: a call made meanwhile waits for it. Resolves when the read is
+   * applied, when `signal` aborts, or after `timeoutMs`; a later read still
+   * applies unless a `configure` came first. A failed read changes nothing.
    */
   async refresh(signal?: AbortSignal, timeoutMs: number = MASKING_REFRESH_WAIT_MS): Promise<void> {
     const read = this.reader
