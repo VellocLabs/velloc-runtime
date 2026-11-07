@@ -380,3 +380,38 @@ describe('session.onStop gate for sub-agents', () => {
     }
   })
 })
+
+describe('turn-end check', () => {
+  const row = { type: 'user', isMeta: true, uuid: 'check-row' } as unknown as QueryStopHookParams['messages'][number]
+
+  it('adds the rows of a main-loop turn-end check to the blockers', async () => {
+    const turnEndCheck = vi.fn(async () => [row])
+    const deps = assembleTurnDependencies(new BrowserRuntimeConfig(), {}, { turnEndCheck })
+    const { params } = makeStopHookParams('sess-check')
+    const result = await deps.runTurnEndHooks(params)
+    expect(turnEndCheck).toHaveBeenCalledOnce()
+    expect(result.blockerRows).toEqual([row])
+  })
+
+  it('skips the check for a fork, another caller, or a turn already answering a blocker', async () => {
+    const turnEndCheck = vi.fn(async () => [row])
+    const deps = assembleTurnDependencies(new BrowserRuntimeConfig(), {}, { turnEndCheck })
+    const fork = makeStopHookParams('sess-check-fork').params
+    fork.toolUseContext.agentId = 'agent-1' as never
+    expect((await deps.runTurnEndHooks(fork)).blockerRows).toEqual([])
+    const other = makeStopHookParams('sess-check-other').params
+    expect((await deps.runTurnEndHooks({ ...other, querySource: 'compact' as never })).blockerRows).toEqual([])
+    const again = makeStopHookParams('sess-check-again').params
+    expect((await deps.runTurnEndHooks({ ...again, stopHookActive: true })).blockerRows).toEqual([])
+    expect(turnEndCheck).not.toHaveBeenCalled()
+  })
+
+  it('adds no rows when the check throws', async () => {
+    const deps = assembleTurnDependencies(new BrowserRuntimeConfig(), {}, {
+      turnEndCheck: async () => {
+        throw new Error('boom')
+      },
+    })
+    expect((await deps.runTurnEndHooks(makeStopHookParams('sess-check-throw').params)).blockerRows).toEqual([])
+  })
+})

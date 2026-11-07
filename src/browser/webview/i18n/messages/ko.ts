@@ -1103,6 +1103,8 @@ export const ko: Messages = {
   'a2ui.shownInPanel': '사이드 패널에 표시됨',
   'a2ui.surfaceTabs': '인터페이스 목록',
   'a2ui.chart.noData': '표시할 데이터가 없습니다.',
+  'a2ui.building': '인터페이스를 만드는 중…',
+  'a2ui.blockFailed': '이 인터페이스를 그릴 수 없습니다.',
 
   // ── 생성형 도구 UI ────────────────────────────────────────────────────
   'gen.loadingLocation': '위치를 불러오는 중…',

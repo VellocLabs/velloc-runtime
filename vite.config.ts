@@ -306,9 +306,11 @@ export default defineConfig(({ mode }) => ({
     // ~4.6 MB of immutable assets on every deploy.
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: [
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+      // @a2ui/agent's web_core module, without the renderer (F-1).
+      { find: /^(?:\.\.?\/)+internal\/web-core\.js$/, replacement: path.resolve(__dirname, './vite/a2uiAgentWebCore.js') },
+    ],
   },
   worker: {
     format: 'es',
@@ -339,11 +341,23 @@ export default defineConfig(({ mode }) => ({
     // reloads every open page, and can fail an in-flight dynamic import
     // ("Failed to fetch dynamically imported module"). Dev only; production
     // (rollup) is unaffected.
+    // @a2ui/agent is served unbundled so the web_core alias above applies to
+    // it; its own dependencies are listed here instead.
+    exclude: ['@a2ui/agent'],
     include: [
       '@a2ui/react',
       '@a2ui/web_core/v1_0',
       '@a2ui/web_core/catalogs/basic/v1',
       '@a2ui/markdown-it',
+      '@a2ui/web_core/catalog',
+      '@a2ui/web_core/errors',
+      '@a2ui/web_core/processing',
+      '@a2ui/web_core/semver',
+      '@a2ui/web_core/state',
+      '@a2ui/web_core/v0_8',
+      '@a2ui/web_core/validating',
+      'antlr4ng',
+      'zod',
       'recharts',
       '@leeoniya/ufuzzy',
       '@mixmark-io/domino',

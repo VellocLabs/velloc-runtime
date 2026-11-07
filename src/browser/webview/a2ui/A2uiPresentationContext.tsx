@@ -30,7 +30,7 @@ import { getOwner, getShownSession, onPaneClosed, requestPane, subscribeSlot } f
 
 export type A2uiPresentation = {
   /** For each live surfaceId, the toolCallId of its latest mention. */
-  latestToolCallIdBySurface: ReadonlyMap<string, string>
+  latestMentionBySurface: ReadonlyMap<string, string>
   /** surfaceIds whose net state is deleted — render nothing at every position. */
   deletedSurfaceIds: ReadonlySet<string>
   /** A turn is running: surfaces are dimmed and take no input (one action per turn). */
@@ -136,7 +136,7 @@ export function A2uiPresentationProvider({
 
   const value = useMemo<A2uiPresentation>(
     () => ({
-      latestToolCallIdBySurface: derived.latestToolCallIdBySurface,
+      latestMentionBySurface: derived.latestMentionBySurface,
       deletedSurfaceIds: derived.deletedSurfaceIds,
       busy,
       paneSurfaceIds: paneSurfaceOrder(derived),

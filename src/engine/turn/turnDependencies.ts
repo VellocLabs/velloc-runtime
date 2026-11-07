@@ -72,7 +72,7 @@ export function assembleTurnDependencies(
     uuid() {
       return createUUID(runtimeConfig)
     },
-    runTurnEndHooks: createStopHandler(logEvent),
+    runTurnEndHooks: createStopHandler(logEvent, modelTransport?.turnEndCheck),
     async *getQueuedAttachments(params) {
       if (!modelTransport?.queuedAttachmentProvider) return
       yield* modelTransport.queuedAttachmentProvider(params)

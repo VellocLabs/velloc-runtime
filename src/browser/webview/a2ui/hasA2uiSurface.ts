@@ -6,6 +6,7 @@
 
 import type { Message } from '../../../runtime/RuntimeTypes'
 import { isA2uiToolName } from '../../../toolkit/builtin/a2ui/a2uiToolNames'
+import { hasA2uiBlock } from '../../../toolkit/builtin/a2ui/express/a2uiBlocks'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null
@@ -26,14 +27,21 @@ export function a2uiToolNameOf(part: unknown): string | undefined {
   return toolName && isA2uiToolName(toolName) ? toolName : undefined
 }
 
-/** True if `message` is an assistant message holding an `a2ui_*` tool-call. */
-export function messageHasA2uiToolCall(message: Message): boolean {
+/** True if `message` is an assistant message holding an `<a2ui>` block or an `a2ui_*` tool-call. */
+export function messageHasA2uiContent(message: Message): boolean {
   if (message.type !== 'assistant') return false
   const content = asRecord(message.message)?.content
-  return Array.isArray(content) && content.some(part => a2uiToolNameOf(part) !== undefined)
+  return (
+    Array.isArray(content) &&
+    content.some(part => {
+      const record = asRecord(part)
+      if (record?.type === 'text') return typeof record.text === 'string' && hasA2uiBlock(record.text)
+      return a2uiToolNameOf(part) !== undefined
+    })
+  )
 }
 
-/** True if any assistant message contains an `a2ui_*` tool-call. */
-export function hasA2uiToolCall(messages: readonly Message[]): boolean {
-  return messages.some(messageHasA2uiToolCall)
+/** True if any assistant message holds an `<a2ui>` block or an `a2ui_*` tool-call. */
+export function hasA2uiContent(messages: readonly Message[]): boolean {
+  return messages.some(messageHasA2uiContent)
 }

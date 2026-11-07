@@ -1,6 +1,7 @@
 import type { RuntimeConfig } from '../../runtime/interfaces/RuntimeConfig'
 
-import type { QueryRuntimeDeps } from '../../runtime/interfaces/QueryRuntimeDeps'
+import type { QueryRuntimeDeps, QueryStopHookParams } from '../../runtime/interfaces/QueryRuntimeDeps'
+import type { Message } from '../../runtime/RuntimeTypes'
 import type {
   BrowserBridgeTransport,
 } from '../../browser/bridge/browserBridgeProtocol'
@@ -9,6 +10,11 @@ export type ModelTransportOptions = {
   bridgeTransport?: BrowserBridgeTransport
   runtimeConfig?: RuntimeConfig
   queuedAttachmentProvider?: QueryRuntimeDeps['getQueuedAttachments']
+  /**
+   * Checks a main-loop reply that ends the turn. The rows it returns are meta
+   * user messages the turn answers once more, as a blocking Stop hook's are.
+   */
+  turnEndCheck?: (params: QueryStopHookParams) => Promise<Message[]>
   traceLogger?: (entry: TraceLoggerEntry) => void
 }
 

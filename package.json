@@ -39,6 +39,7 @@
     "ws": "^8.18.0"
   },
   "dependencies": {
+    "@a2ui/agent": "0.1.0",
     "@a2ui/markdown-it": "0.2.2",
     "@a2ui/react": "0.15.0",
     "@a2ui/web_core": "0.15.0",

@@ -2,11 +2,14 @@
  * An assistant reply's text part as a mod's `AssistantMessage` site (F-25): a rewrite
  * changes the drawing and leaves the stored message alone. Raised only for a settled
  * block of a model's reply; streaming parts, system rows, command output, error cards
- * and reasoning are not raised.
+ * and reasoning are not raised. A reply holding `<a2ui>` blocks is drawn by
+ * `AssistantA2uiText` and is not raised either.
  */
 import { memo, useMemo } from "react";
 import { useAssistantState, useAui } from "@assistant-ui/react";
 
+import { hasA2uiBlock } from "@/toolkit/builtin/a2ui/express/a2uiBlocks";
+import { AssistantA2uiText } from "./assistant-a2ui-text";
 import { MarkdownText } from "./markdown-text";
 import { ModAssistantMessageSite, type ModAssistantMessageProps } from "./mod-render";
 import { StaticMarkdown } from "./static-markdown";
@@ -46,6 +49,7 @@ const AssistantTextImpl = () => {
     () => ({ text, isFirstOfReply: index !== null && index === firstText }),
     [text, index, firstText],
   );
+  if (isReply && hasA2uiBlock(text)) return <AssistantA2uiText text={text} />;
   if (index === null || !isReply || !isSettled) return <MarkdownText />;
   return (
     <ModAssistantMessageSite

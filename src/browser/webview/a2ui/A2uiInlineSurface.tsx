@@ -1,5 +1,5 @@
-// Inline A2UI card, rendered by the `a2ui_*` tool UIs at the tool-call's
-// position in the conversation (F-1). The surface itself renders in the side
+// Inline A2UI card, rendered where a surface is mentioned in the conversation
+// (an `<a2ui>` block, or an `a2ui_*` tool call in an older session) (F-1). The surface itself renders in the side
 // pane; the card names it and opens the pane on it. The latest mention of a
 // surface reads "Open in panel"; an earlier one says the surface was updated.
 // Both are disabled in a session the shell does not show (a side chat).
@@ -10,10 +10,10 @@ import { useT } from '../i18n'
 
 export function A2uiInlineSurface({
   surfaceId,
-  toolCallId,
+  mentionKey,
 }: {
   surfaceId?: string
-  toolCallId: string
+  mentionKey: string
 }) {
   // A tool UI can render in a Suspense fallback before the lazy host mounts the
   // provider: render nothing until it exists.
@@ -21,7 +21,7 @@ export function A2uiInlineSurface({
   const t = useT()
   if (!presentation || !surfaceId) return null
   const {
-    latestToolCallIdBySurface,
+    latestMentionBySurface,
     deletedSurfaceIds,
     selectedSurfaceId,
     paneShown,
@@ -31,7 +31,7 @@ export function A2uiInlineSurface({
 
   if (deletedSurfaceIds.has(surfaceId)) return null
 
-  const isLatest = latestToolCallIdBySurface.get(surfaceId) === toolCallId
+  const isLatest = latestMentionBySurface.get(surfaceId) === mentionKey
 
   if (!isLatest) {
     return (

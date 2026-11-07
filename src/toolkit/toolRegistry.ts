@@ -55,7 +55,6 @@ import { SpawnSessionTool } from './builtin/spawnSession'
 import { SESSION_FAMILY_TOOLS } from './builtin/sessionFamilyTools'
 import { ProposeSessionTool, WithdrawProposalTool } from './builtin/proposeSession'
 import { HandOffSessionTool } from './builtin/handOffSession'
-import { A2UI_TOOLS } from './builtin/a2ui/A2uiTools'
 import { buildHostTools } from './builtin/host/hostTools'
 
 /** The named tool sets a runtime can start with. */
@@ -177,13 +176,12 @@ const NAMED_TOOL_POOL = firstOfEachName([
   ...SCHEDULE_TOOLS,
   ...TEAM_TOOLS,
   ...CHILD_SESSION_TOOLS,
-  ...A2UI_TOOLS,
 ])
 
 function setMembers(preset: ToolSetName = 'default'): ToolContractList {
   switch (preset) {
     case 'glic':
-      // The overlay set leaves out scheduling, teams and the A2UI tools:
+      // The overlay set leaves out scheduling and teams:
       // background work does not belong on a transient surface.
       return [...WORKSPACE_TOOLS, ...SESSION_TOOLS]
     case 'nexus':
@@ -194,8 +192,7 @@ function setMembers(preset: ToolSetName = 'default'): ToolContractList {
         ...SCHEDULE_TOOLS,
         ...TEAM_TOOLS,
         ...CHILD_SESSION_TOOLS,
-        ...A2UI_TOOLS,
-      ]
+            ]
   }
 }
 
@@ -225,8 +222,7 @@ export function getToolsForHostManifest(
         ...SCHEDULE_TOOLS,
         ...TEAM_TOOLS,
         ...CHILD_SESSION_TOOLS,
-        ...A2UI_TOOLS,
-      ]),
+            ]),
       emptyPermissionRuleSet(),
     ).filter(tool => tool.offeredNow())
   }
@@ -324,7 +320,6 @@ export * from './builtin/scheduleCron'
 export * from './builtin/remoteTrigger'
 export * from './builtin/routineSignal'
 export * from './builtin/teamTools'
-export * from './builtin/a2ui/A2uiTools'
 export * from './builtin/host/hostTools'
 export * from './builtin/host/shellArgs'
 export * from './builtin/host/pathArgs'

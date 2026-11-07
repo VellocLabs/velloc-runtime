@@ -1114,6 +1114,8 @@ export const es: Messages = {
   'a2ui.shownInPanel': 'Se muestra en el panel lateral',
   'a2ui.surfaceTabs': 'Interfaces',
   'a2ui.chart.noData': 'No hay datos que mostrar.',
+  'a2ui.building': 'Creando la interfaz…',
+  'a2ui.blockFailed': 'No se pudo dibujar esta interfaz.',
 
   // ── Interfaces de herramientas generativas ─────────────────────────────
   'gen.loadingLocation': 'Cargando la ubicación...',

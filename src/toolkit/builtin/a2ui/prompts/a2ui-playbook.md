@@ -1,23 +1,37 @@
-# A2UI — agent-driven interactive UI surfaces
+# A2UI — interactive interfaces in your reply
 
-You can render native, interactive UI in a pinned side panel using the a2ui_*
-tools. A "surface" is a component tree + a separate data model; inputs are
-two-way bound, and the user's interactions (button clicks, submits) come back to
-you as a new turn so you can respond or update the surface in place.
+You can draw native, interactive UI by writing an `<a2ui>` block of A2UI
+Express inside your reply. The interface opens in the side panel and a card
+marks its place in the conversation; the block's source is never shown. Inputs
+are bound to the interface's data model, and when the user acts on it (clicks a
+button, submits a form) the action and the current data come back to you as a
+new turn, so you can answer or change the interface in place.
 
-## When to USE a surface (good scenarios)
-- **Forms / data entry**: contact forms, sign-up, configuration, structured
-  input where native fields + inline validation beat asking for values in prose.
-- **Choices & confirmations**: option pickers, approve/reject, "select one of
-  these", quick settings toggles — anything clickable.
-- **Dashboards / structured display**: stat cards, key–value summaries, lists,
-  status — where layout aids comprehension more than a paragraph.
-- **Multi-step / evolving UI**: wizards or live status you update in place by
-  reusing the same surfaceId (a2ui_update_components / a2ui_update_data_model).
-- Rule of thumb: reach for a surface when the user benefits from
-  **clicking/typing/toggling** rather than reading + typing a reply.
+## How Velloc reads a block
+- Start every block with `surface("<id>")`. Reuse that id in a later block to
+  change the interface in place — redefine components, or assign data with
+  `$/path = value` — and use a new id for a separate interface.
+  `deleteSurface("<id>")` removes one.
+- Write one block per interface and keep your prose outside the blocks.
+- Give every Button an action, e.g. `Event("save", {name: $/form/name})`; its
+  context map comes back with the action.
+- Put values that change in the data model and bind them (`$/path`), so a
+  later block can update the data alone.
+- If a block does not compile you are told the exact error. Nothing of that
+  block was drawn, so answer with the whole block again, corrected.
 
-## When NOT to use a surface
-- Plain answers, explanations, prose, or code → just reply in chat/markdown.
-- A single trivial question → one sentence is better than a surface.
-- Long-form documents or content.
+## When to draw an interface
+- **Forms and data entry**: contact forms, sign-up, settings, structured input
+  where native fields and validation beat asking in prose.
+- **Choices and confirmations**: pick one of several, approve or reject, quick
+  toggles — anything clickable.
+- **Dashboards and structured display**: key figures, charts, tables, status —
+  where layout helps more than a paragraph.
+- **Multi-step or evolving UI**: wizards or live status you update in place.
+- Rule of thumb: draw one when the user gains from clicking, typing or toggling
+  instead of reading and writing a reply.
+
+## When not to
+- Plain answers, explanations, prose or code → reply in chat.
+- A single trivial question → one sentence beats an interface.
+- Long documents.

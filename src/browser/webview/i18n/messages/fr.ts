@@ -1114,6 +1114,8 @@ export const fr: Messages = {
   'a2ui.shownInPanel': 'Affichée dans le panneau latéral',
   'a2ui.surfaceTabs': 'Interfaces',
   'a2ui.chart.noData': 'Aucune donnée à afficher.',
+  'a2ui.building': 'Création de l’interface…',
+  'a2ui.blockFailed': 'Impossible d’afficher cette interface.',
 
   // ── Interfaces d'outils génératives ────────────────────────────────────
   'gen.loadingLocation': 'Chargement du lieu...',

@@ -1,22 +1,16 @@
-// Wire names + skill bucket for the A2UI command tools.
+// The A2UI skill name, and the wire names of the command tools older sessions
+// used to draw surfaces; those calls still render (F-1).
 //
-// Kept in a dedicated, dependency-free module (no `buildTool` / tool
-// implementations imported) so always-loaded webview/runtime paths — e.g.
-// `utils/toolCallDetails` and the lazy-mount detector in AssistantUiThread —
-// can reference the names without dragging the A2UI tool/renderer code into
-// the resident bundle. See F-1 (lazy-loading).
+// Dependency-free, so always-loaded webview paths — e.g. `utils/toolCallDetails`
+// and the lazy-mount detector in AssistantUiThread — can use it without
+// dragging the A2UI renderer into the resident bundle.
 
 export const A2UI_CREATE_SURFACE = 'a2ui_create_surface'
 export const A2UI_UPDATE_COMPONENTS = 'a2ui_update_components'
 export const A2UI_UPDATE_DATA_MODEL = 'a2ui_update_data_model'
 export const A2UI_DELETE_SURFACE = 'a2ui_delete_surface'
 
-/**
- * Skill bucket these tools belong to (`Tool.skill`). Once `a2ui` is
- * registered as a deferred skill (see toolkit/run/deferredTools.ts), the
- * serializer omits these tools' schemas until the skill is activated. Until
- * then the tools are always-loaded (a non-deferred skill name is a no-op gate).
- */
+/** The A2UI skill's name. */
 export const A2UI_SKILL_NAME = 'a2ui'
 
 export const A2UI_TOOL_NAMES = [

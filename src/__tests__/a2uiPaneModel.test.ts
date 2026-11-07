@@ -7,7 +7,7 @@ import {
 } from '../browser/webview/a2ui/a2uiPaneModel'
 
 const input = (entries: Array<[string, string]>) => ({
-  latestToolCallIdBySurface: new Map(entries),
+  latestMentionBySurface: new Map(entries),
 })
 
 describe('A2UI side pane model', () => {

@@ -1113,6 +1113,8 @@ export const de: Messages = {
   'a2ui.shownInPanel': 'Im Seitenbereich angezeigt',
   'a2ui.surfaceTabs': 'Oberflächen',
   'a2ui.chart.noData': 'Keine Daten zum Anzeigen.',
+  'a2ui.building': 'Oberfläche wird erstellt…',
+  'a2ui.blockFailed': 'Diese Oberfläche konnte nicht gezeichnet werden.',
 
   // ── Generative Tool-Oberflächen ────────────────────────────────────────
   'gen.loadingLocation': 'Standort wird geladen ...',

@@ -206,7 +206,7 @@ import {
 } from '@/components/assistant-ui/thread'
 import { ASK_TOOL_ID } from '@/toolkit/builtin/askUser'
 import { SKILL_TOOL_NAME } from '@/prompting/skillToolName'
-import { hasA2uiToolCall } from './a2ui/hasA2uiSurface'
+import { hasA2uiContent } from './a2ui/hasA2uiSurface'
 import {
   A2UI_CREATE_SURFACE,
   A2UI_DELETE_SURFACE,
@@ -254,7 +254,7 @@ const GenerativeToolUIs = lazy(async () => {
 // the conversation. This host wraps <Thread> with the shared A2UI runtime (one
 // processor + the action loop + the pane portal) so the cards and the pane
 // share it. The renderer + Material Symbols font live in this on-demand chunk;
-// only the cheap `hasA2uiToolCall` detector stays resident, so conversations
+// only the cheap `hasA2uiContent` detector stays resident, so conversations
 // that never use A2UI never fetch this code.
 const A2uiProviderHost = lazy(async () => {
   const module = await import('./a2ui/A2uiProviderHost')
@@ -1603,7 +1603,7 @@ function InteractiveAssistantUiThread({
     [messages],
   )
   const shouldLoadA2uiSurfaces = useMemo(
-    () => hasA2uiToolCall(state.transcriptMessages),
+    () => hasA2uiContent(state.transcriptMessages),
     [state.transcriptMessages],
   )
   const conversationTitle = useMemo(() => getConversationTitle(state), [state])

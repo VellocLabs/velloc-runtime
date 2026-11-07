@@ -287,7 +287,7 @@ function A2uiSurfaceToolRender({
   if (!surfaceId) return null
   return (
     <Suspense fallback={null}>
-      <A2uiInlineSurface surfaceId={surfaceId} toolCallId={toolCallId} />
+      <A2uiInlineSurface surfaceId={surfaceId} mentionKey={toolCallId} />
     </Suspense>
   )
 }

@@ -1,7 +1,7 @@
 /**
  * A turn ending without tool calls: diagnostic, host told the turn completed (main agent), counters
- * reset, Stop / SubagentStop hooks, then background memory work. A blocking hook failure becomes a meta
- * user message the turn answers once more.
+ * reset, the turn-end check, Stop / SubagentStop hooks, then background memory work. A blocking hook
+ * failure, or a row from the turn-end check, becomes a meta user message the turn answers once more.
  */
 import type {
   QueryRuntimeDeps,
@@ -22,6 +22,7 @@ import { createNetworkHookHttpRunner } from '../../lifecycleHooks/hookHttpRunner
 import { runMemoryExtraction } from '../../memory/extract/extractionRunner'
 import { runMemoryConsolidation } from '../../memory/consolidate/consolidationRunner'
 import { createGeneratedUserMessage } from '../../messages/messageFactories'
+import type { Message } from '../../runtime/RuntimeTypes'
 
 type StopEventLogger = QueryRuntimeDeps['logEvent']
 type StopSessionKey = QueryStopHookParams['toolUseContext']['options']['sessionId']
@@ -168,9 +169,28 @@ function startMemoryUpkeep(
   void runMemoryConsolidation(input).catch(report('nexus_periodic_tidy_unhandled'))
 }
 
+/** The turn-end check of a main-loop reply; a failing check adds no rows. */
+async function runTurnEndCheck(
+  params: QueryStopHookParams,
+  turnEndCheck: ((params: QueryStopHookParams) => Promise<Message[]>) | undefined,
+  logEvent: StopEventLogger,
+): Promise<Message[]> {
+  if (!turnEndCheck || params.toolUseContext.agentId || params.querySource !== MAIN_LOOP_CALLER) return []
+  try {
+    return await turnEndCheck(params)
+  } catch (error: unknown) {
+    logEvent('nexus_turn_end_check_failed', {
+      sessionId: params.toolUseContext.options.sessionId,
+      message: error instanceof Error ? error.message : String(error),
+    })
+    return []
+  }
+}
+
 /** The default `runTurnEndHooks`; `logEvent` receives its diagnostics. */
 export function createStopHandler(
   logEvent: StopEventLogger,
+  turnEndCheck?: (params: QueryStopHookParams) => Promise<Message[]>,
 ): (params: QueryStopHookParams) => Promise<TurnEndVerdict> {
   return async function runTurnEndHooks(params) {
     // Already answering a blocking Stop hook: do not run them again.
@@ -185,16 +205,17 @@ export function createStopHandler(
     if (params.toolUseContext.agentLoopState) {
       resetAgentLoopState(params.toolUseContext.agentLoopState)
     }
+    const checkRows = await runTurnEndCheck(params, turnEndCheck, logEvent)
     const hookResult = await runUserStopHooks(params, sessionId)
     if (!params.toolUseContext.agentId) startMemoryUpkeep(params, sessionId, logEvent)
-    if (hookResult.errors.length === 0) {
-      return { preventContinuation: false, blockerRows: [] }
-    }
     return {
       preventContinuation: false,
-      blockerRows: hookResult.errors.map(err =>
-        createGeneratedUserMessage(`[Stop hook]: ${err}`, { isMeta: true }),
-      ),
+      blockerRows: [
+        ...checkRows,
+        ...hookResult.errors.map(err =>
+          createGeneratedUserMessage(`[Stop hook]: ${err}`, { isMeta: true }),
+        ),
+      ],
     }
   }
 }

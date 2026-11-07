@@ -1,6 +1,6 @@
 // Lazy host wrapping the conversation with the shared A2UI runtime: one per-session
 // MessageProcessor, the transcript feeder, the action loop, the presentation context
-// and the side pane portal. Loaded only when a conversation has an `a2ui_*` tool call.
+// and the side pane portal. Loaded only when a conversation has an A2UI source.
 
 import {
   Component,
@@ -24,8 +24,11 @@ import '@material-symbols/font-400/outlined.css'
 // Maps the basic catalog's --a2ui-* variables onto the Velloc theme.
 import './a2ui-surface.css'
 import type { Message } from '../../../runtime/RuntimeTypes'
-import { extractA2uiCommands } from './surfaceStore'
+import { extractA2uiSources } from './surfaceStore'
 import { commandsToA2uiMessages } from './toA2uiMessages'
+import { createA2uiExpressCompiler } from '../../../toolkit/builtin/a2ui/express/a2uiExpressCompiler'
+import { a2uiBlockKey } from '../../../toolkit/builtin/a2ui/express/a2uiBlocks'
+import { setA2uiBlockError } from './a2uiBlockErrors'
 import { vellocCatalog, vellocCatalogPropNames } from './catalog/vellocCatalog'
 import {
   A2uiPresentationProvider,
@@ -46,11 +49,12 @@ setMarkdownRenderer((value, options) =>
 )
 
 const ACTION_PROMPT_PREFIX =
-  'A user interacted with an A2UI surface you created (e.g. a button click). ' +
-  'Respond by updating that surface IN PLACE — reuse the same surfaceId with ' +
-  'a2ui_update_data_model and/or a2ui_update_components — or with a brief chat ' +
-  'reply if that fits better. Do not narrate this event to the user. The ' +
-  'action and the surface’s current data model:'
+  'The user acted on an A2UI surface you drew (for example, clicked a button). ' +
+  'Answer by writing an <a2ui> block that targets the same surface — ' +
+  'surface("<surfaceId>") — to change it in place (assign data with ' +
+  '$/path = value, or redefine components), or reply briefly in chat if that ' +
+  'fits better. Do not narrate this event. The action and the surface’s ' +
+  'current data model:'
 
 export function buildActionTurn(action: ActionPayload, dataModel: unknown): string {
   const payload: Record<string, unknown> = {
@@ -89,7 +93,7 @@ class SurfaceErrorBoundary extends Component<
   }
 }
 
-// Feeds new transcript commands into the session's processor and installs the
+// Feeds new transcript sources (blocks and older tool calls) into the session's processor and installs the
 // surface-action handler (which snapshots the live data model).
 function A2uiFeeder({
   messages,
@@ -103,33 +107,38 @@ function A2uiFeeder({
   actionHandlerRef: React.MutableRefObject<SurfaceActionHandler | null>
 }) {
   const processor = useA2uiProcessor()
-  const commands = useMemo(() => extractA2uiCommands(messages), [messages])
+  const sources = useMemo(() => extractA2uiSources(messages), [messages])
+  const compiler = useMemo(() => createA2uiExpressCompiler(vellocCatalog), [])
+  const state = useMemo(() => compiler.stateFor(processor), [compiler, processor])
   const processedRef = useRef(0)
   const busyRef = useRef(busy)
   busyRef.current = busy
 
-  // Feed only NEW commands each turn; dedupe createSurface for existing ids and
-  // feed one message at a time so one malformed message can't abort the batch.
+  // Feed only NEW sources each time, one at a time, so one bad source cannot
+  // abort the rest. A block that fails leaves the renderer as it was.
   useEffect(() => {
-    if (commands.length <= processedRef.current) return
-    const fresh = commands.slice(processedRef.current)
-    processedRef.current = commands.length
-    const createdThisBatch = new Set<string>()
-    for (const message of commandsToA2uiMessages(fresh, vellocCatalog.id, vellocCatalogPropNames)) {
-      const create = (message as { createSurface?: { surfaceId?: unknown } })
-        .createSurface
-      const id = create?.surfaceId
-      if (typeof id === 'string') {
-        if (processor.getSurface(id) || createdThisBatch.has(id)) continue
-        createdThisBatch.add(id)
+    if (sources.length <= processedRef.current) return
+    const fresh = sources.slice(processedRef.current)
+    processedRef.current = sources.length
+    for (const source of fresh) {
+      if (source.kind === 'block') {
+        const { body, targets } = source.block
+        const result = compiler.compile(body, state)
+        setA2uiBlockError(a2uiBlockKey(targets[0] ?? '', body), result.ok ? null : result.message)
+        if (!result.ok) console.warn('[a2ui] block rejected', result.message)
+        continue
       }
-      try {
-        processor.processMessages(message as Parameters<VellocProcessor['processMessages']>[0])
-      } catch (error) {
-        console.error('[a2ui] message rejected', error)
+      for (const message of commandsToA2uiMessages([source.command], vellocCatalog.id, vellocCatalogPropNames)) {
+        const id = (message as { createSurface?: { surfaceId?: unknown } }).createSurface?.surfaceId
+        if (typeof id === 'string' && processor.getSurface(id)) continue
+        try {
+          processor.processMessages(message as Parameters<VellocProcessor['processMessages']>[0])
+        } catch (error) {
+          console.error('[a2ui] message rejected', error)
+        }
       }
     }
-  }, [commands, processor])
+  }, [sources, processor, compiler, state])
 
   // Forward surface actions to the model as a hidden isMeta turn (gated while a
   // turn is in flight — one action per turn).

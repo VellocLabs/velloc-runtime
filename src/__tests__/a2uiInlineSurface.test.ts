@@ -20,7 +20,7 @@ const render = (messages: Message[], toolCallId: string, surfaceId = 's1') =>
       sessionId: 'session',
       messages,
       busy: false,
-      children: createElement(A2uiInlineSurface, { surfaceId, toolCallId }),
+      children: createElement(A2uiInlineSurface, { surfaceId, mentionKey: toolCallId }),
     }),
   )
 
@@ -28,7 +28,7 @@ const render = (messages: Message[], toolCallId: string, surfaceId = 's1') =>
 describe('A2uiInlineSurface', () => {
   it('renders nothing before the lazy host mounts its provider', () => {
     const bare = () =>
-      renderToStaticMarkup(createElement(A2uiInlineSurface, { surfaceId: 's1', toolCallId: 'tc1' }))
+      renderToStaticMarkup(createElement(A2uiInlineSurface, { surfaceId: 's1', mentionKey: 'tc1' }))
     expect(bare).not.toThrow()
     expect(bare()).toBe('')
   })

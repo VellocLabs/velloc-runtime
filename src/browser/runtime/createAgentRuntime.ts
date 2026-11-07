@@ -103,7 +103,8 @@ import { registerMemoryConsolidator } from '../../memory/consolidate/consolidati
 import { registerDeferrableSkills } from '../../toolkit/run/deferredTools'
 import { isToolGroup } from '../../toolkit/builtin/toolGroups'
 import { filterSubAgentTools } from '../../agents/subAgentToolScope'
-import { A2UI_SKILL_NAME, A2UI_TOOL_NAMES } from '../../toolkit/builtin/a2ui/a2uiToolNames'
+import { createA2uiTurnEndCheck } from '../../toolkit/builtin/a2ui/express/a2uiReplyCheck'
+import { createGeneratedUserMessage } from '../../messages/messageFactories'
 import { registerSkillCatalog } from '../../toolkit/run/skillCatalogs'
 import type { HostedSkillDefinition } from '../bridge/protocol/manifest'
 import type { ChromiumPromptCommand } from '../../runtime/CommandTypes'
@@ -163,11 +164,7 @@ import { registerPluginHooks } from '../../pluginHost/registerPluginHooks'
 import { describePluginError } from '../../pluginHost/pluginModel'
 import { removeSessionHooksBySkillRoot } from '../../lifecycleHooks/sessionScopedHooks'
 import { registerSettingsHooks } from '../../lifecycleHooks/registerSettingsHooks'
-import {
-  A2UI_CATALOG_HOLDER,
-  A2UI_HOSTED_SKILL,
-  A2UI_SYSTEM_PROMPT_CATALOG,
-} from '../../toolkit/builtin/a2ui/a2uiSkill'
+import { A2UI_HOSTED_SKILL } from '../../toolkit/builtin/a2ui/a2uiSkill'
 import {
   BROWSER_CATALOG_HOLDER,
   BROWSER_SKILL_NAME,
@@ -1088,14 +1085,6 @@ export async function createBrowserRuntime(
     holderName: BROWSER_CATALOG_HOLDER,
     content: BROWSER_SYSTEM_PROMPT_CATALOG,
   })
-  // a2ui has no C++ tool-catalog section and never had one — it was the first
-  // skill on this seam.
-  registerSkillCatalog({
-    skillName: A2UI_SKILL_NAME,
-    toolNames: A2UI_TOOL_NAMES,
-    holderName: A2UI_CATALOG_HOLDER,
-    content: A2UI_SYSTEM_PROMPT_CATALOG,
-  })
   // Deferral is TEMPLATE-ONLY now: `resolveDeferrableSkills` (above) derives the
   // deferred units SOLELY from the session template's `deferredTools`. The old
   // per-skill `defer<Skill>` guest-URL override (deferBrowser / deferA2ui /
@@ -1353,6 +1342,7 @@ export async function createBrowserRuntime(
         bridgeTransport: options.bridgeTransport,
         runtimeConfig,
         traceLogger: options.traceLogger,
+        turnEndCheck: createA2uiTurnEndCheck(text => createGeneratedUserMessage(text, { isMeta: true })),
         queuedAttachmentProvider: params =>
           collectQueuedAttachmentMessages({
             messages: params.messages,

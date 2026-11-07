@@ -1147,6 +1147,8 @@ export const en = {
   'a2ui.shownInPanel': 'Shown in the side panel',
   'a2ui.surfaceTabs': 'Interfaces',
   'a2ui.chart.noData': 'No data to show.',
+  'a2ui.building': 'Building the interface…',
+  'a2ui.blockFailed': 'This interface could not be drawn.',
 
   // ── Generative tool UIs ────────────────────────────────────────────────
   'gen.loadingLocation': 'Loading location...',

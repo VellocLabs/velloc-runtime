@@ -8,6 +8,7 @@ import { basicCatalog } from '@a2ui/web_core/catalogs/basic/v1'
 import { TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
 import {
   VELLOC_CATALOG_ID,
+  CHART_CATALOG_INSTRUCTIONS,
   asRows,
   chartCatalogDefinitions,
   type ChartComponentName,
@@ -172,6 +173,9 @@ export const vellocCatalog = new Catalog<ReactCatalogComponent>(
   'v1.0',
   [...basicCatalog.components.values(), ...chartComponents],
   [...basicCatalog.functions.values()],
+  {
+    instructions: [basicCatalog.instructions, CHART_CATALOG_INSTRUCTIONS].filter(Boolean).join('\n\n'),
+  },
 )
 
 type SchemaDef = { typeName?: string; innerType?: SchemaLike; schema?: SchemaLike; shape?: () => Record<string, unknown> }

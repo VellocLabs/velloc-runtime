@@ -2,8 +2,8 @@
 // is selected, and when the pane opens or closes. Pure; no React.
 
 export type A2uiPaneInput = {
-  /** Live surfaces' latest tool-call ids, keyed in first-creation order. */
-  latestToolCallIdBySurface: ReadonlyMap<string, string>
+  /** Live surfaces' latest mention keys, in first-creation order. */
+  latestMentionBySurface: ReadonlyMap<string, string>
 }
 
 export type A2uiPaneState = {
@@ -27,7 +27,7 @@ export const EMPTY_A2UI_PANE_STATE: A2uiPaneState = {
 
 /** Tab order: the order the surfaces were first created in. */
 export function paneSurfaceOrder(input: A2uiPaneInput): string[] {
-  return [...input.latestToolCallIdBySurface.keys()]
+  return [...input.latestMentionBySurface.keys()]
 }
 
 /**
@@ -40,12 +40,12 @@ export function stepA2uiPane(
   live: boolean,
 ): A2uiPaneStep {
   const order = paneSurfaceOrder(input)
-  const dismissed = new Set([...prev.dismissed].filter(id => input.latestToolCallIdBySurface.has(id)))
+  const dismissed = new Set([...prev.dismissed].filter(id => input.latestMentionBySurface.has(id)))
   let selected = prev.selected
   let open: boolean | null = null
   let lastChanged: string | null = null
   for (const id of order) {
-    const toolCallId = input.latestToolCallIdBySurface.get(id)
+    const toolCallId = input.latestMentionBySurface.get(id)
     const before = prev.seen.get(id)
     if (before === toolCallId) continue
     // A surface the pane has not seen yet is new: it is shown even after a close.
@@ -56,18 +56,18 @@ export function stepA2uiPane(
     selected = lastChanged
     open = true
   }
-  if (selected === null || !input.latestToolCallIdBySurface.has(selected)) {
+  if (selected === null || !input.latestMentionBySurface.has(selected)) {
     selected = order.at(-1) ?? null
   }
   if (order.length === 0 && prev.seen.size > 0) open = false
   const unchanged =
     selected === prev.selected &&
     sameSet(dismissed, prev.dismissed) &&
-    sameMap(input.latestToolCallIdBySurface, prev.seen)
+    sameMap(input.latestMentionBySurface, prev.seen)
   return {
     state: unchanged
       ? prev
-      : { selected, dismissed, seen: new Map(input.latestToolCallIdBySurface) },
+      : { selected, dismissed, seen: new Map(input.latestMentionBySurface) },
     open,
   }
 }

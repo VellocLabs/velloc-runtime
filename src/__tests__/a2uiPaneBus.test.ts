@@ -72,7 +72,7 @@ describe('A2UI pane slot ownership', () => {
         sessionId,
         messages: transcript('s1'),
         busy: false,
-        children: createElement(A2uiInlineSurface, { surfaceId: 's1', toolCallId: 'tc-s1' }),
+        children: createElement(A2uiInlineSurface, { surfaceId: 's1', mentionKey: 'tc-s1' }),
       })
     const view = render(card('main'))
     expect(view.container.textContent).not.toContain('Shown in the side panel')
@@ -90,7 +90,7 @@ describe('A2UI pane slot ownership', () => {
         sessionId,
         messages: transcript('s1'),
         busy: false,
-        children: createElement(A2uiInlineSurface, { surfaceId: 's1', toolCallId: 'tc-s1' }),
+        children: createElement(A2uiInlineSurface, { surfaceId: 's1', mentionKey: 'tc-s1' }),
       })
     setShownSession('main')
     const view = render(createElement('div', null, card('main'), card('side')))
