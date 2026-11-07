@@ -80,26 +80,61 @@ export const MASKING_READ_RETRY_MS = 5_000
  *  as `unknown`; well inside a stream's idle budget. */
 export const MASKING_KNOWN_WAIT_MS = 20_000
 
+/** Longest a stream waits for the settings to be read again before it goes
+ *  on with the state it has. */
+export const MASKING_REFRESH_WAIT_MS = 2_000
+
+type MaskingSettingsRead = () => Promise<NexusModelMaskingSettings | undefined | 'unreadable'>
+
 /** The preset User-Agent the host would fill in for a provider, if any. */
 export type PresetUserAgentOf = (providerId: string) => string | undefined
 
+/** Host-side placeholders; the host expands them, so their names stay as written. */
+const HOST_PLACEHOLDER = /\{\{(?:secret|oauth):[^}]*\}\}/g
+
+/** `value` masked outside its host-side placeholders. */
+function maskOutsidePlaceholders(value: string, masking: CompiledMasking): string {
+  let out = ''
+  let last = 0
+  for (const placeholder of value.matchAll(HOST_PLACEHOLDER)) {
+    out += masking.maskText(value.slice(last, placeholder.index), undefined, false).text + placeholder[0]
+    last = placeholder.index + placeholder[0].length
+  }
+  return out + masking.maskText(value.slice(last), undefined, false).text
+}
+
+function maskValues(values: Record<string, string>, masking: CompiledMasking): Record<string, string> | undefined {
+  let changed = false
+  const out: Record<string, string> = {}
+  for (const [name, value] of Object.entries(values)) {
+    out[name] = maskOutsidePlaceholders(value, masking)
+    if (out[name] !== value) changed = true
+  }
+  return changed ? out : undefined
+}
+
 /**
- * `request` with its User-Agent masked. The host fills a provider's preset
- * User-Agent only when the request has none, out of the guard's sight, so
- * with masking on the request always carries one explicitly.
+ * `request` with every header value and query value masked; names are kept.
+ * The host fills a provider's preset User-Agent only when the request has
+ * none, out of the guard's sight, so with masking on the request always
+ * carries one explicitly.
  */
-export function withMaskedUserAgent<T extends { headers?: Record<string, string> }>(
+export function withMaskedHeaders<T extends { headers?: Record<string, string>; queryParams?: Record<string, string> }>(
   request: T,
   masking: CompiledMasking,
-  preset: string | undefined,
+  presetUserAgent: string | undefined,
 ): T {
-  const headers = request.headers ?? {}
-  const name = Object.keys(headers).find(header => header.toLowerCase() === 'user-agent')
-  const current = name !== undefined ? headers[name]! : preset
-  if (!current) return request
-  const masked = masking.maskText(current).text
-  if (name !== undefined && masked === current) return request
-  return { ...request, headers: { ...headers, [name ?? 'user-agent']: masked } }
+  let headers = request.headers ?? {}
+  const hasUserAgent = Object.keys(headers).some(header => header.toLowerCase() === 'user-agent')
+  if (!hasUserAgent && presetUserAgent) headers = { ...headers, 'user-agent': presetUserAgent }
+  const maskedHeaders = maskValues(headers, masking) ?? (headers !== request.headers ? headers : undefined)
+  const maskedQuery = request.queryParams ? maskValues(request.queryParams, masking) : undefined
+  if (!maskedHeaders && !maskedQuery) return request
+  return {
+    ...request,
+    ...(maskedHeaders ? { headers: maskedHeaders } : {}),
+    ...(maskedQuery ? { queryParams: maskedQuery } : {}),
+  }
 }
 
 /** One stream's masking: its payload copy, its restore filter, its guard, its log lines. */
@@ -160,6 +195,7 @@ export class ModelMaskingHolder {
   private readonly listeners = new Set<(status: MaskingStatus) => void>()
   private readonly waiters = new Set<() => void>()
   private presetUserAgentOf: PresetUserAgentOf = () => undefined
+  private reader: MaskingSettingsRead | undefined
 
   constructor() {
     this.installEgressCheck()
@@ -205,7 +241,8 @@ export class ModelMaskingHolder {
    * after `MASKING_READ_RETRY_MS`; `undefined` means the file holds no section.
    * A read that lands after a `configure` (a `/masking` change) is dropped.
    */
-  load(read: () => Promise<NexusModelMaskingSettings | undefined | 'unreadable'>): Promise<void> {
+  load(read: MaskingSettingsRead): Promise<void> {
+    this.reader = read
     this.cancelRetry()
     const generation = this.generation
     const pending = read().then(
@@ -222,6 +259,27 @@ export class ModelMaskingHolder {
     })
     this.pending = pending
     return pending
+  }
+
+  /**
+   * Reads the settings again, so an edit of settings.json (the section
+   * removed, turned off or changed) applies to the next stream. The table is
+   * recompiled only when the section differs. A read that fails or takes
+   * longer than `timeoutMs` leaves the state as it is.
+   */
+  async refresh(signal?: AbortSignal, timeoutMs: number = MASKING_REFRESH_WAIT_MS): Promise<void> {
+    const read = this.reader
+    if (!read || this.state === 'unknown' || signal?.aborted) return
+    const generation = this.generation
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const settled = await Promise.race([
+      read().then(settings => ({ settings }), () => undefined),
+      new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), timeoutMs) }),
+    ])
+    clearTimeout(timer)
+    if (!settled || settled.settings === 'unreadable' || generation !== this.generation) return
+    if (JSON.stringify(settled.settings ?? {}) === JSON.stringify(this.settings)) return
+    this.configure(settled.settings)
   }
 
   /** Resolves once the state is known (anything but `unknown`), when
@@ -320,6 +378,7 @@ export class ModelMaskingHolder {
     this.lastError = undefined
     this.pending = undefined
     this.writer = undefined
+    this.reader = undefined
     this.lastOut = new Set()
   }
 
@@ -329,13 +388,13 @@ export class ModelMaskingHolder {
 
   /** The check every raw provider request passes, set once: requests other
    *  than a driver stream's (documents, mod fetches) see the current table,
-   *  and carry an explicit masked User-Agent. */
+   *  with their header and query values masked. */
   private installEgressCheck(): void {
     setRawProviderEgressCheck((request): RawProviderStreamRequest | void => {
       if (request.masking === 'stream') return
       if (this.state === 'off') return
       if (this.state === 'active' && this.compiled) {
-        const sent = withMaskedUserAgent(request, this.compiled, this.presetUserAgent(request.providerId))
+        const sent = withMaskedHeaders(request, this.compiled, this.presetUserAgent(request.providerId))
         this.refuseResidual(this.compiled, sent)
         return sent
       }
@@ -344,7 +403,7 @@ export class ModelMaskingHolder {
   }
 
   private readFailed(
-    read: () => Promise<NexusModelMaskingSettings | undefined | 'unreadable'>,
+    read: MaskingSettingsRead,
     error: MaskingError,
   ): void {
     if (this.state === 'unknown') {

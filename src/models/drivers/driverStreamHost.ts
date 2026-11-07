@@ -31,7 +31,7 @@ import {
   type ProviderRequestSeam,
 } from './providerRequestSeam'
 import { sessionWorkingDirOf } from './sessionWorkingDirs'
-import { modelMasking, withMaskedUserAgent, type MaskingStream } from '../masking/maskingHolder'
+import { modelMasking, withMaskedHeaders, type MaskingStream } from '../masking/maskingHolder'
 import { MaskingResidualError, MaskingUnavailableError, MaskingUndecodableError } from '../masking/egressGuard'
 import { storedKeyProblemFromReason, withStoredKeyMarker } from '../../utils/storedKeyProblem'
 
@@ -226,6 +226,8 @@ class DriverStream {
     this.push([{ type: 'message_start', model: this.model }])
     // No request leaves before it is known whether it must be masked (F-39).
     await modelMasking.whenKnown(this.abort.signal)
+    // settings.json may have changed since it was read: off means off.
+    await modelMasking.refresh(this.abort.signal)
     if (this.abort.signal.aborted) return this.finishIfOpen()
     try {
       this.masking = modelMasking.openStream()
@@ -323,10 +325,10 @@ class DriverStream {
     }
   }
 
-  private withMaskedUserAgent(request: DriverHttpRequest): DriverHttpRequest {
+  private withMaskedHeaders(request: DriverHttpRequest): DriverHttpRequest {
     const masking = this.masking
     if (!masking) return request
-    return withMaskedUserAgent(request, masking.masking, modelMasking.presetUserAgent(this.provider.id))
+    return withMaskedHeaders(request, masking.masking, modelMasking.presetUserAgent(this.provider.id))
   }
 
   /** Resolves true once this stream holds a slot, false when it is cancelled
@@ -353,7 +355,7 @@ class DriverStream {
 
   private async send(sent: DriverHttpRequest, seamed?: SeamedSend): Promise<void> {
     const idleTimeoutMs = seamed?.prepared.idleTimeoutMs ?? this.provider.spec.idleTimeoutMs
-    const request = this.withMaskedUserAgent(sent)
+    const request = this.withMaskedHeaders(sent)
     try {
       // The stream's own table guards its request, whatever the realm's
       // table has become since it opened.
