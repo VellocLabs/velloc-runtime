@@ -3,6 +3,7 @@ import { Catalog } from '@a2ui/web_core/catalog'
 import { createA2uiExpressCompiler, type A2uiBlockStream } from '../toolkit/builtin/a2ui/express/a2uiExpressCompiler'
 import catalogDocument from '../toolkit/builtin/a2ui/express/velloc-catalog.json'
 import { createA2uiLiveBlocks, liveMentionKey, withLiveMention } from '../browser/webview/a2ui/a2uiLiveBlock'
+import { splitA2uiText } from '../toolkit/builtin/a2ui/express/a2uiBlocks'
 
 const BODY = 'surface("form")\nroot = Card(col)\ncol = Column([hi])\nhi = Text("hello")\n'
 
@@ -65,6 +66,29 @@ describe('live block reader', () => {
     expect(chunks).toEqual(['surface("form")\nroot = Card(col)\n'])
     live.feed('m:0:1', 'surface("form")\nroot = Card(col)\n<b', false)
     expect(chunks.at(-1)).toBe('<b')
+  })
+
+  it('holds back a closing tag begun at the end of a statement line', () => {
+    const { live, chunks } = recorder()
+    live.feed('m:0:1', 'surface("form")\nroot = Card(col)', false)
+    live.feed('m:0:1', 'surface("form")\nroot = Card(col) <', false)
+    live.feed('m:0:1', 'surface("form")\nroot = Card(col) </a2', false)
+    expect(chunks.join('')).toBe('surface("form")\nroot = Card(col)')
+  })
+
+  it('finishes a block whose closing tag ends its last statement line', () => {
+    const catalog = (Catalog as unknown as { fromJson(json: unknown): never }).fromJson(catalogDocument)
+    const c = createA2uiExpressCompiler(catalog)
+    const state = c.createState()
+    const live = createA2uiLiveBlocks(() => c.stream(state))
+    const reply = 'Here:\n<a2ui>\nsurface("form")\nroot = Text("x")</a2ui>\nDone.'
+    for (let end = 1; end <= reply.length; end++) {
+      for (const segment of splitA2uiText(reply.slice(0, end))) {
+        if (segment.kind === 'block') live.feed('k:0', segment.body, segment.closed)
+      }
+    }
+    const block = splitA2uiText(reply).find(segment => segment.kind === 'block') as { body: string }
+    expect(live.finish('u:0', 'form', block.body)).toEqual({ kind: 'drawn' })
   })
 
   it('starts over when the text is rewritten, not when it shrinks', () => {

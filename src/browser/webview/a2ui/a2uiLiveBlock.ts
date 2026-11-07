@@ -1,5 +1,5 @@
-// The A2UI blocks the model is writing (F-1). Each body is read line by line as
-// it streams, so its surface draws before the block is finished; when the stored
+// The A2UI blocks the model is writing (F-1). Each body is read as it streams,
+// so its surface draws before the block is finished; when the stored
 // copy of the block arrives, `finish` reads only what is left of it.
 
 import { A2UI_CLOSE_TAG, blockSurfaceIds } from '@/toolkit/builtin/a2ui/express/a2uiBlocks'
@@ -50,7 +50,7 @@ function messageSurfaceId(message: unknown): string | null {
 
 type LiveBlock = {
   blockKey: string
-  /** The complete lines read so far. */
+  /** The text read so far; it need not end at a line break. */
   fed: string
   stream: A2uiBlockStream
   surfaceId: string | null
@@ -63,13 +63,18 @@ type LiveBlock = {
 // body is read up to its end, so the last statement draws without waiting for
 // the next line: only a trailing fragment that could still turn into a closing
 // tag or a fence is held back, since those are not Express and a half-read one
-// cannot be taken back.
+// cannot be taken back. The closing tag can also end a statement's line.
 function readableText(body: string, closed: boolean): string {
   if (closed) return body.endsWith('\n') ? body : `${body}\n`
   const lineStart = body.lastIndexOf('\n') + 1
-  const fragment = body.slice(lineStart).trimStart()
-  if (fragment && (A2UI_CLOSE_TAG.startsWith(fragment) || '```'.startsWith(fragment))) return body.slice(0, lineStart)
-  return body
+  const line = body.slice(lineStart)
+  const fragment = line.trimStart()
+  if (fragment && '```'.startsWith(fragment)) return body.slice(0, lineStart)
+  const tag = line.lastIndexOf('<')
+  if (tag === -1 || !A2UI_CLOSE_TAG.startsWith(line.slice(tag))) return body
+  let held = tag
+  while (held > 0 && (line[held - 1] === ' ' || line[held - 1] === '\t')) held -= 1
+  return body.slice(0, lineStart + held)
 }
 
 export function createA2uiLiveBlocks(openStream: () => A2uiBlockStream): A2uiLiveBlocks {
