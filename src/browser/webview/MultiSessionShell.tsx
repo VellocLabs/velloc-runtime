@@ -2314,10 +2314,11 @@ export function MultiSessionShell({
   // the last surface is deleted (F-1); a background session's record changes
   // without taking the foreground. A person's card press in the shown session
   // opens it the way a pane toggle does.
-  useEffect(
-    () => onA2uiPaneRequest(createShellA2uiPaneRequest(openPaneForSession, updatePaneRecord, sessionLayoutsStore)),
+  const handleA2uiPaneRequest = useMemo(
+    () => createShellA2uiPaneRequest(openPaneForSession, updatePaneRecord, sessionLayoutsStore),
     [openPaneForSession, updatePaneRecord, sessionLayoutsStore],
   )
+  useEffect(() => onA2uiPaneRequest(handleA2uiPaneRequest), [handleA2uiPaneRequest])
   useLayoutEffect(() => {
     setA2uiShownSession(activeSessionId || null)
     return () => setA2uiShownSession(null)
