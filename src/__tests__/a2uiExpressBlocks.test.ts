@@ -29,8 +29,20 @@ describe('splitA2uiText', () => {
   })
 
   it('marks a block still being written as open', () => {
-    const segments = splitA2uiText('Hi <a2ui>\nsurface("x")\nroot = Card(')
+    const segments = splitA2uiText('Hi\n<a2ui>\nsurface("x")\nroot = Card(')
     expect(segments.at(-1)).toMatchObject({ kind: 'block', closed: false })
+  })
+
+  it('takes only a tag at the start of a line for a block', () => {
+    const prose = 'The model wraps the UI in an `<a2ui>` tag inside its text.'
+    expect(hasA2uiBlock(prose)).toBe(false)
+    expect(splitA2uiText(prose)).toEqual([{ kind: 'text', text: prose }])
+    expect(hasA2uiBlock('Here:\n  <a2ui>\nsurface("x")')).toBe(true)
+  })
+
+  it('finds a second block right after a fenced first one', () => {
+    const text = '```\n<a2ui>\nroot = Text("a")\n</a2ui>\n```\n<a2ui>\nroot = Text("b")\n</a2ui>'
+    expect(splitA2uiText(text).filter(s => s.kind === 'block')).toHaveLength(2)
   })
 
   it('drops code fences around or inside the block', () => {

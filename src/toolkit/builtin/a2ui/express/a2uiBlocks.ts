@@ -17,6 +17,17 @@ export type A2uiTextSegment =
       index: number
     }
 
+// An opening tag counts only at the start of a line, so prose or inline code
+// that names the tag is not taken for a block.
+const OPEN_TAG_LINE = /(^|\n)[ \t]*<a2ui>/g
+
+function findOpenTag(text: string, from: number): number {
+  // A tag right after a trimmed fence line still starts its line.
+  OPEN_TAG_LINE.lastIndex = from > 0 && text[from - 1] === '\n' ? from - 1 : from
+  const match = OPEN_TAG_LINE.exec(text)
+  return match ? match.index + match[0].length - A2UI_OPEN_TAG.length : -1
+}
+
 // A model sometimes wraps the block, or its body, in a Markdown code fence.
 const FENCE_LINE = /^\s*```[\w-]*\s*$/
 
@@ -41,7 +52,7 @@ export function splitA2uiText(text: string): A2uiTextSegment[] {
   let cursor = 0
   let index = 0
   while (cursor < text.length) {
-    const open = text.indexOf(A2UI_OPEN_TAG, cursor)
+    const open = findOpenTag(text, cursor)
     if (open === -1) {
       segments.push({ kind: 'text', text: text.slice(cursor) })
       break
@@ -66,7 +77,7 @@ export function splitA2uiText(text: string): A2uiTextSegment[] {
 
 /** Whether text holds an A2UI block, finished or not. */
 export function hasA2uiBlock(text: string): boolean {
-  return text.includes(A2UI_OPEN_TAG)
+  return findOpenTag(text, 0) !== -1
 }
 
 const SURFACE_CALL = /^\s*surface\(\s*"((?:[^"\\]|\\.)*)"\s*\)/gm

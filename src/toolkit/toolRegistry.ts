@@ -192,7 +192,7 @@ function setMembers(preset: ToolSetName = 'default'): ToolContractList {
         ...SCHEDULE_TOOLS,
         ...TEAM_TOOLS,
         ...CHILD_SESSION_TOOLS,
-            ]
+      ]
   }
 }
 
@@ -222,7 +222,7 @@ export function getToolsForHostManifest(
         ...SCHEDULE_TOOLS,
         ...TEAM_TOOLS,
         ...CHILD_SESSION_TOOLS,
-            ]),
+      ]),
       emptyPermissionRuleSet(),
     ).filter(tool => tool.offeredNow())
   }

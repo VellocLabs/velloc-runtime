@@ -1,6 +1,6 @@
-// The A2UI block the model is writing right now (F-1). Its body is read as it
-// streams, so its surface draws before the block is finished; the transcript's
-// copy of the finished block is compiled again by the feeder, as an update.
+// The A2UI blocks the model is writing (F-1). Each body is read line by line as
+// it streams, so its surface draws before the block is finished; the stored copy
+// of the finished block completes it (`finish`) instead of being compiled again.
 
 import { a2uiBlockKey, blockSurfaceIds } from '@/toolkit/builtin/a2ui/express/a2uiBlocks'
 import type { A2uiBlockStream } from '@/toolkit/builtin/a2ui/express/a2uiExpressCompiler'
@@ -44,16 +44,29 @@ function messageSurfaceId(message: unknown): string | null {
   return null
 }
 
+type LiveBlock = {
+  segmentKey: string
+  /** The complete lines read so far. */
+  fed: string
+  stream: A2uiBlockStream
+  surfaceId: string | null
+  closed: boolean
+  failed: boolean
+  created: boolean
+}
+
+// Only complete lines are read: a statement, a fence or the closing tag can
+// arrive split across chunks, and a half-read one cannot be taken back.
+function completeLines(body: string, closed: boolean): string {
+  if (closed) return body.endsWith('\n') ? body : `${body}\n`
+  return body.slice(0, body.lastIndexOf('\n') + 1)
+}
+
 export function createA2uiLiveBlocks(openStream: () => A2uiBlockStream): A2uiLiveBlocks {
-  let current: {
-    segmentKey: string
-    fed: string
-    stream: A2uiBlockStream
-    closed: boolean
-    finished: boolean
-    failed: boolean
-    created: boolean
-  } | null = null
+  // Blocks that streamed here and whose stored copy has not arrived yet, oldest
+  // first. A reply can hold several, and the next reply can start before the
+  // last one is stored.
+  const blocks: LiveBlock[] = []
   let snapshot: A2uiLiveSnapshot | null = null
   const listeners = new Set<() => void>()
 
@@ -70,45 +83,59 @@ export function createA2uiLiveBlocks(openStream: () => A2uiBlockStream): A2uiLiv
     for (const listener of listeners) listener()
   }
 
+  const read = (block: LiveBlock, text: string) => {
+    const result = block.stream.feed(text)
+    if (!result.ok) block.failed = true
+    for (const message of result.messages) {
+      block.surfaceId ??= messageSurfaceId(message)
+      if ('createSurface' in (message as object)) block.created = true
+    }
+  }
+
   return {
     feed(segmentKey, body, closed) {
+      let block = blocks.find(candidate => candidate.segmentKey === segmentKey)
       if (closed) {
-        // Only the block that was streaming takes its finished key; a block
+        // Only a block that was streaming takes its finished key; a block
         // already finished when it was first drawn is the feeder's alone.
-        if (!current || current.segmentKey !== segmentKey || current.closed) return
-        current.closed = true
-        const surfaceId = snapshot?.surfaceId ?? blockSurfaceIds(body).targets[0] ?? null
-        publish({ segmentKey, surfaceId, mentionKey: surfaceId ? a2uiBlockKey(surfaceId, body) : liveMentionKey(segmentKey) })
+        if (!block || block.closed) return
+        block.closed = true
+        block.surfaceId ??= blockSurfaceIds(body).targets[0] ?? null
+        if (snapshot?.segmentKey === segmentKey) {
+          const surfaceId = block.surfaceId
+          publish({ segmentKey, surfaceId, mentionKey: surfaceId ? a2uiBlockKey(surfaceId, body) : liveMentionKey(segmentKey) })
+        }
         return
       }
-      if (!current || current.segmentKey !== segmentKey || current.closed || !body.startsWith(current.fed)) {
-        current = { segmentKey, fed: '', stream: openStream(), closed: false, finished: false, failed: false, created: false }
-        snapshot = null
+      const lines = completeLines(body, false)
+      if (block && !block.closed && !lines.startsWith(block.fed)) {
+        // Text that shrank (a trailing fence stripped) adds nothing; text that
+        // was rewritten starts the block over.
+        if (block.fed.startsWith(lines)) return
+        blocks.splice(blocks.indexOf(block), 1)
+        block = undefined
       }
-      const chunk = body.slice(current.fed.length)
-      current.fed = body
-      let surfaceId = snapshot?.segmentKey === segmentKey ? snapshot.surfaceId : null
-      if (chunk) {
-        const result = current.stream.feed(chunk)
-        if (!result.ok) current.failed = true
-        for (const message of result.messages) {
-          surfaceId ??= messageSurfaceId(message)
-          if ('createSurface' in (message as object)) current.created = true
-        }
+      if (!block || block.closed) {
+        if (block) blocks.splice(blocks.indexOf(block), 1)
+        block = { segmentKey, fed: '', stream: openStream(), surfaceId: null, closed: false, failed: false, created: false }
+        blocks.push(block)
       }
-      surfaceId ??= blockSurfaceIds(body).targets[0] ?? null
-      publish({ segmentKey, surfaceId, mentionKey: liveMentionKey(segmentKey) })
+      const chunk = lines.slice(block.fed.length)
+      block.fed = lines
+      if (chunk) read(block, chunk)
+      block.surfaceId ??= blockSurfaceIds(body).targets[0] ?? null
+      publish({ segmentKey, surfaceId: block.surfaceId, mentionKey: liveMentionKey(segmentKey) })
     },
     finish(surfaceId, body) {
-      const block = current
-      if (!block || block.finished || snapshot?.surfaceId !== surfaceId || !body.startsWith(block.fed)) {
-        return { kind: 'not-streamed' }
-      }
-      block.finished = true
-      const rest = body.slice(block.fed.length)
-      block.fed = body
-      for (const result of [rest ? block.stream.feed(rest) : null, block.stream.close()]) {
-        if (!result) continue
+      const full = completeLines(body, true)
+      const block = blocks.find(candidate => candidate.surfaceId === surfaceId && full.startsWith(candidate.fed))
+      if (!block) return { kind: 'not-streamed' }
+      blocks.splice(blocks.indexOf(block), 1)
+      const rest = full.slice(block.fed.length)
+      block.fed = full
+      if (rest && !block.failed) read(block, rest)
+      if (!block.failed) {
+        const result = block.stream.close()
         if (!result.ok) block.failed = true
         if (result.messages.some(message => 'createSurface' in (message as object))) block.created = true
       }

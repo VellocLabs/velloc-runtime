@@ -1,5 +1,5 @@
-// The A2UI skill name, and the wire names of the command tools older sessions
-// used to draw surfaces; those calls still render (F-1).
+// The A2UI skill name, and the wire names of the A2UI command tools that
+// stored transcripts may hold; those calls still render (F-1).
 //
 // Dependency-free, so always-loaded webview paths — e.g. `utils/toolCallDetails`
 // and the lazy-mount detector in AssistantUiThread — can use it without

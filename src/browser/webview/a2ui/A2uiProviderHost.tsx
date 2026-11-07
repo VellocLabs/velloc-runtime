@@ -124,7 +124,9 @@ function A2uiFeeder({
   busyRef.current = busy
 
   // Feed only NEW sources each time, one at a time, so one bad source cannot
-  // abort the rest. A block that fails leaves the renderer as it was.
+  // abort the rest. A block compiled here that fails leaves the renderer as it
+  // was; a streamed update block that fails keeps the statements read before
+  // the error.
   useEffect(() => {
     if (sources.length <= processedRef.current) return
     const fresh = sources.slice(processedRef.current)
