@@ -44,8 +44,8 @@ export type PluginAppDecl = {
   seed: string
   /** Raised when `seed` changes, so an open brings in the files the person did not edit. */
   seedVersion: number
-  /** The Express file the app's dashboard is drawn from. */
-  surface: string
+  /** The Express file the app's surfaces are built from; `app.a2ui` when unset. */
+  entry: string
   /** A JSON file the dashboard reads under `/data`. */
   data?: string
   /** Dashboard event names the plugin answers itself, without the model. */
@@ -83,6 +83,8 @@ const APP_PATH_MAX = 200
 const LOCAL_ACTION = /^[A-Za-z0-9_-]{1,64}$/
 const LOCAL_ACTIONS_MAX = 16
 const SEED_VERSION_MAX = 1_000_000
+/** The entry file of an app that names none. */
+export const APP_ENTRY_DEFAULT = 'app.a2ui'
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -181,7 +183,7 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
     if (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= SEED_VERSION_MAX) seedVersion = v
     else bad(`${label}.seedVersion: expected a whole number from 1 to ${SEED_VERSION_MAX}`)
   }
-  const surface = readAppPath(value.surface, `${label}.surface`, bad, '.a2ui')
+  const entry = value.entry === undefined ? APP_ENTRY_DEFAULT : readAppPath(value.entry, `${label}.entry`, bad, '.a2ui')
   const data = value.data === undefined ? undefined : readAppPath(value.data, `${label}.data`, bad, '.json')
   let localActions: string[] | undefined
   if (value.localActions !== undefined) {
@@ -192,11 +194,11 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
       bad(`${label}.localActions: expected at most ${LOCAL_ACTIONS_MAX} event names of letters, digits, "_" and "-"`)
     }
   }
-  if (!seed || !surface || data === null) return null
+  if (!seed || !entry || data === null) return null
   return {
     seed,
     seedVersion,
-    surface,
+    entry,
     ...(data ? { data } : {}),
     ...(localActions && localActions.length > 0 ? { localActions } : {}),
   }

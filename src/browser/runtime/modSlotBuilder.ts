@@ -44,6 +44,8 @@ import type { CreateBrowserRuntimeOptions } from './createAgentRuntime'
  */
 export interface ModSlotHost {
   readonly options: CreateBrowserRuntimeOptions
+  /** An app session's board (F-40): told of every `$.fs` write. */
+  readonly appSurface?: Pick<import('../../mods/app/appSurfaceHost').AppSurfaceHost, 'noteWrite'>
   readonly resolvedOptions: CreateBrowserRuntimeOptions & { untrustedReadRoot?: string }
   readonly resolvedSessionId: string
   readonly resolvedCwd: string
@@ -251,6 +253,7 @@ export async function buildSlotModRuntime(
       // boundary when this session has one.
       fs: fileModFs(slot.installedFs, {
         cwd: slot.resolvedCwd,
+        ...(slot.appSurface ? { onWrite: (path: string) => slot.appSurface?.noteWrite(path) } : {}),
         ...(slot.homeDir ? { homeDir: slot.homeDir } : {}),
         ...(slot.resolvedOptions.untrustedReadRoot
           ? { readRoot: slot.resolvedOptions.untrustedReadRoot }

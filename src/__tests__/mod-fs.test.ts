@@ -140,6 +140,16 @@ describe('fileModFs', () => {
     expect(MOD_FS_READ_LIMIT).toBe(4 * 1024 * 1024)
   })
 
+  it('a write is told by its absolute path once written; a refused one is not told', async () => {
+    const world = fakeFs({})
+    const told: string[] = []
+    const fs = fileModFs(world.fs, { cwd: '/work/project', onWrite: path => told.push(path) })
+    await fs.write('data/latest.json', '{}')
+    expect(told.map(path => path.replace(/\\/g, '/'))).toEqual(['/work/project/data/latest.json'])
+    await expect(fs.write('', 'x')).rejects.toThrow(TypeError)
+    expect(told).toHaveLength(1)
+  })
+
   it('write creates the directories it needs; list, exists, stat and a link', async () => {
     const world = fakeFs({ '/work/project/src/a.ts': 'a' })
     const fs = fileModFs(world.fs, { cwd: '/work/project' })

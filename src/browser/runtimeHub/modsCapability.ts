@@ -74,6 +74,9 @@ import {
   type ModsPressTopbarResult,
 } from '../runtimeProtocol/modContributions'
 import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
+import { registerModsAppTopic } from './modsAppTopic'
+import { buildRegisteredApp } from '../../mods/app/appSurfaceRegistry'
+import { isModsBuildAppPayload, type ModsBuildAppPayload, type ModsBuildAppResult } from '../runtimeProtocol/modApps'
 import type { TopicBroker } from './TopicBroker'
 import type { ConnectionInfo, SnapshotPage, TopicProvider } from './types'
 
@@ -218,6 +221,8 @@ export function registerModsCapability(
     /** Settles when the contributions may be read; defaults to the realm's first judged scan. */
     contributionsSynced?: () => Promise<void>
     resolveTopbar?: (id: string) => TopbarResolution
+    /** `mods.buildApp`: build a session's app; defaults to the realm's registry. */
+    buildApp?: (sessionId: string) => Promise<ModsBuildAppResult> | undefined
   } = {},
 ): { publish(): void; dispose(): void } {
   const getState = options.getState ?? modsStatePayload
@@ -252,6 +257,11 @@ export function registerModsCapability(
         scope: MODS_ACTION_SCOPES.pressTopbar,
         guard: isModsPressTopbarPayload,
         sessionOf: payload => (payload as ModsPressTopbarPayload).sessionId,
+      },
+      buildApp: {
+        scope: MODS_ACTION_SCOPES.buildApp,
+        guard: isModsBuildAppPayload,
+        sessionOf: payload => (payload as ModsBuildAppPayload).sessionId,
       },
     },
     handle: async request => {
@@ -366,6 +376,14 @@ export function registerModsCapability(
             }) === true
           return (submitted ? { ok: true } : { ok: false, reason: 'no-session' }) satisfies ModsPressTopbarResult
         }
+        case 'buildApp': {
+          const { sessionId } = request.payload as ModsBuildAppPayload
+          if (!inScope(request.conn, sessionId)) {
+            throw wireError('forbidden_scope', `session ${sessionId} is not in this connection's scope`)
+          }
+          const built = (options.buildApp ?? buildRegisteredApp)(sessionId)
+          return (await built) ?? ({ ok: false, message: 'this session is not an open app' } satisfies ModsBuildAppResult)
+        }
         case 'setOptions': {
           const payload = request.payload as ModsSetOptionsPayload
           if (!options.setOptions) throw wireError('host_unavailable', 'this runtime stores no plugin options')
@@ -379,6 +397,7 @@ export function registerModsCapability(
   })
   broker.registerProvider(modsStateTopicProvider(getState))
   broker.registerProvider(modsUiTopicProvider())
+  const unsubscribeApps = registerModsAppTopic(broker)
   broker.registerProvider(modsContributionsTopicProvider(getContributions, options.contributionsSynced))
   const unsubscribeContributions = (options.onContributionsChanged ?? onModContributionsChanged)(state =>
     broker.publish(MODS_CONTRIBUTIONS_TOPIC, state, { type: MODS_CONTRIBUTIONS_EVENT }),
@@ -436,6 +455,7 @@ export function registerModsCapability(
       unsubscribe()
       unsubscribeUi()
       unsubscribeContributions()
+      unsubscribeApps()
       told.clear()
     },
   }

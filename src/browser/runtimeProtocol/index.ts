@@ -252,6 +252,21 @@ export {
 } from './modContributions'
 
 export {
+  MODS_APP_STATE_EVENT,
+  MODS_APP_TOPIC_PREFIX,
+  isAppSurfaceState,
+  isModsBuildAppPayload,
+  modsAppTopic,
+  modsAppTopicSession,
+  type AppSurfaceBuild,
+  type AppSurfaceError,
+  type AppSurfaceErrorKind,
+  type AppSurfaceState,
+  type ModsBuildAppPayload,
+  type ModsBuildAppResult,
+} from './modApps'
+
+export {
   SESSION_TOPIC_KINDS,
   isTopicSegment,
   parseTopic,

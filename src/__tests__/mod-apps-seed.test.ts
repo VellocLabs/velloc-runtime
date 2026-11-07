@@ -191,7 +191,7 @@ describe('the seed copy', () => {
   })
 })
 
-const APP_DECL = { seed: './app', seedVersion: 1, surface: 'dashboard.a2ui' }
+const APP_DECL = { seed: './app', seedVersion: 1, entry: 'app.a2ui' }
 const appTemplate = { appId: 'pay-board', plugin: 'pay', decl: APP_DECL, seedDir: SEED }
 
 describe('an app session\'s opener', () => {

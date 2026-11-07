@@ -207,6 +207,7 @@ import {
 import { ASK_TOOL_ID } from '@/toolkit/builtin/askUser'
 import { SKILL_TOOL_NAME } from '@/prompting/skillToolName'
 import { hasA2uiBlockInRecentRows, hasA2uiContent } from './a2ui/hasA2uiSurface'
+import { useAppBoard } from './apps/appSurfaceView'
 import {
   A2UI_CREATE_SURFACE,
   A2UI_DELETE_SURFACE,
@@ -1613,8 +1614,10 @@ function InteractiveAssistantUiThread({
     () => hasA2uiContent(state.transcriptMessages),
     [state.transcriptMessages],
   )
+  const appBoard = useAppBoard(runtimeConnection, state.snapshot?.sessionId, activeTemplateType)
   const shouldLoadA2uiSurfaces =
     a2uiLoadedRef.current.loaded ||
+    appBoard !== undefined ||
     a2uiInTranscript ||
     hasA2uiBlockInRecentRows(messages as readonly { role?: unknown; content?: unknown }[])
   a2uiLoadedRef.current.loaded = shouldLoadA2uiSurfaces
@@ -2384,6 +2387,7 @@ function InteractiveAssistantUiThread({
                           messages={state.transcriptMessages}
                           submitActionMessage={submitActionMessage}
                           busy={state.status === 'submitting'}
+                          appBoard={appBoard}
                         >
                           <ContinueConversationProvider value={{ onContinueConversation: handleContinueConversation }}>
                           <IsResumableProvider value={isResumable}>

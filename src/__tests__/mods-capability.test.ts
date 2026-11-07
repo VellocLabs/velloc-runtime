@@ -849,3 +849,28 @@ describe('mods/contributions: the snapshot waits for the first judged scan', () 
     expect(settled).toBe(true)
   })
 })
+
+describe('mods.buildApp', () => {
+  it("control: builds the session's app and returns the build; refused under observe; no app is a plain failure", async () => {
+    const built: string[] = []
+    const buildApp = (sessionId: string) => {
+      built.push(sessionId)
+      return sessionId === 's1' ? Promise.resolve({ ok: true as const, surfaceIds: ['overview'] }) : undefined
+    }
+    const observe = makeRig({ buildApp })
+    await observe.client.hello({ scopeCeiling: 'observe' })
+    const refused = await observe.client.request('mods.buildApp', { sessionId: 's1' })
+    expect(!refused.ok && refused.error.code).toBe('forbidden_scope')
+    expect(built).toEqual([])
+
+    const control = makeRig({ buildApp })
+    await control.client.hello({ scopeCeiling: 'control' })
+    const ok = await control.client.request('mods.buildApp', { sessionId: 's1' })
+    expect(ok.ok && ok.result).toEqual({ ok: true, surfaceIds: ['overview'] })
+    const none = await control.client.request('mods.buildApp', { sessionId: 's2' })
+    expect(none.ok && none.result).toEqual({ ok: false, message: 'this session is not an open app' })
+    const bad = await control.client.request('mods.buildApp', { sessionId: '' })
+    expect(bad.ok).toBe(false)
+    expect(built).toEqual(['s1', 's2'])
+  })
+})

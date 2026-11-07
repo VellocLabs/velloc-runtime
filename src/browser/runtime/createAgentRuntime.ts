@@ -319,6 +319,8 @@ function hostedSkillToCommand(
   }
 }
 
+const metaNote = (text: string): Message => createGeneratedUserMessage(text, { isMeta: true })
+
 /** The project's session-storage dir: a sub-agent's path is `<project>/<parent>/subagents`. */
 function sessionStorageRootOf(sessionStoragePath: string, isSubAgent: boolean): string {
   return isSubAgent
@@ -426,6 +428,11 @@ export async function createBrowserRuntime(
   const appSession = pluginApp
     ? await (await import('../../mods/app/appSession')).openAppFolder({ fs: installedFs, homeDir, app: pluginApp })
     : undefined
+  const appSurface = appSession && options.isSubAgent !== true
+    ? (await import('../../mods/app/appSurfaceHost')).createAppSurfaceHost({ fs: installedFs, app: appSession, sessionId: resolvedSessionId })
+    : undefined
+  if (appSurface) undoWhenScopeEnds(() => appSurface.dispose(), options.runtimeScopeSignal)
+  void appSurface?.start().catch(error => console.warn('[mods/app] board read failed', error))
   const resolvedProjectRoot = await resolveProjectRoot({
     projectRoot: appSession?.folder ?? options.projectRoot,
     homeDir,
@@ -1209,7 +1216,9 @@ export async function createBrowserRuntime(
   // The servers whose tools this runtime's list holds. A plugin reload re-reads the pool
   // (`refreshMcpOffering`), so a server a plugin brings or takes mid-session follows.
   const mcpServersOffered = new Set(mcpOffering.servers)
-  const allTools = [...baseTools, ...snapshotTools, ...mcpOffering.tools]
+  // An app session builds its entry file with BuildApp, past the template's allowlist.
+  const appTools = appSurface ? [appSurface.tool] : []
+  const allTools = [...baseTools, ...snapshotTools, ...appTools, ...mcpOffering.tools]
   // After a plugin reload: the engine's MCP tools, the deferral units, the Skill commands and the
   // offered set follow the pool, so the prompt, the tool list and the server views agree.
   const refreshMcpOffering = (): McpSessionOffering => {
@@ -1350,7 +1359,9 @@ export async function createBrowserRuntime(
         bridgeTransport: options.bridgeTransport,
         runtimeConfig,
         traceLogger: options.traceLogger,
-        turnEndCheck: createA2uiTurnEndCheck(text => createGeneratedUserMessage(text, { isMeta: true })),
+        turnEndCheck: appSurface
+          ? appSurface.wrapTurnEndCheck(createA2uiTurnEndCheck(metaNote), metaNote)
+          : createA2uiTurnEndCheck(metaNote),
         queuedAttachmentProvider: params =>
           collectQueuedAttachmentMessages({
             messages: params.messages,
@@ -1619,6 +1630,7 @@ export async function createBrowserRuntime(
   } catch {
     /* keep the caller's appendSystemPrompt — non-fatal, same as the agent overlay */
   }
+  if (appSurface) effectiveAppendSystemPrompt = [effectiveAppendSystemPrompt, appSurface.promptBlock].filter(Boolean).join('\n\n')
 
   // Security: a sub-agent or headless session has no interactive surface, so every would-be
   // permission ask becomes a denial; `runToolUse` reads this flag at each ask site.
@@ -1806,6 +1818,7 @@ ${teammateAddendum}`
   let slotModState: import('../../mods/modState').ModStateStore | undefined
   const modSlotHost: ModSlotHost = {
     allowsMcp,
+    appSurface,
     coreState,
     get engineForMods() {
       return engineForMods

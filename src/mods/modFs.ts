@@ -52,6 +52,8 @@ export type ModFsOptions = {
   homeDir?: string
   /** The read cap, for tests. */
   readLimit?: number
+  /** Told the absolute path of every file `write` wrote. */
+  onWrite?: (absPath: string) => void
 }
 
 function named(name: string, message: string, code?: string): Error {
@@ -168,6 +170,7 @@ export function fileModFs(fs: RuntimeFs, options: ModFsOptions): ModFsHost {
       const abs = await resolve(path)
       await ensureDir(dirnameRuntimePath(abs))
       await fs.writeFile(abs, text, { encoding: 'utf-8' })
+      options.onWrite?.(abs)
     },
     async list(path) {
       const abs = await resolve(path ?? '.')

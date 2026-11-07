@@ -10,6 +10,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -41,6 +42,9 @@ import {
 } from './A2uiPresentationContext'
 import { useT } from '../i18n'
 import { getOwner, getSlot, setOwner, subscribeSlot } from './a2uiPaneBus'
+import { AppSurfaceFeeder, appSurfaceIds } from './AppSurfaceFeeder'
+import type { AppBoard } from '../apps/appSurfaceView'
+import { AppSurfaceBar } from '../apps/AppSurfaceBar'
 
 type SurfaceActionHandler = (action: ActionPayload) => void
 type VellocProcessor = MessageProcessor<ReactCatalogComponent>
@@ -98,6 +102,13 @@ class SurfaceErrorBoundary extends Component<
   }
 }
 
+/** Whether an A2UI message acts on `surfaceId`. */
+function drawsSurface(message: unknown, surfaceId: string): boolean {
+  return Object.values((message ?? {}) as Record<string, unknown>).some(
+    value => (value as { surfaceId?: unknown } | null)?.surfaceId === surfaceId,
+  )
+}
+
 // Feeds new transcript sources (blocks and older tool calls) into the session's processor and installs the
 // surface-action handler (which snapshots the live data model).
 function A2uiFeeder({
@@ -107,9 +118,14 @@ function A2uiFeeder({
   actionHandlerRef,
   compiler,
   live,
+  reservedIds,
+  onBoardTouched,
 }: {
   compiler: A2uiExpressCompiler
   live: A2uiLiveBlocks
+  /** An app session's own surfaces: chat may not draw them. */
+  reservedIds: readonly string[]
+  onBoardTouched: () => void
   messages: readonly Message[]
   submitActionMessage?: (prompt: string) => Promise<void>
   busy: boolean
@@ -133,6 +149,13 @@ function A2uiFeeder({
     for (const source of fresh) {
       if (source.kind === 'block') {
         const { key, body, targets } = source.block
+        const reserved = targets.find(id => reservedIds.includes(id))
+        if (reserved !== undefined) {
+          // The app's surfaces come from its build: whatever streamed is undone.
+          live.finish(key, targets[0] ?? reserved, body)
+          onBoardTouched()
+          continue
+        }
         // A block that streamed is already drawn; the stored copy completes it.
         const streamed = targets[0] ? live.finish(key, targets[0], body) : { kind: 'not-streamed' as const }
         if (streamed.kind === 'drawn') {
@@ -151,6 +174,7 @@ function A2uiFeeder({
       for (const message of commandsToA2uiMessages([source.command], vellocCatalog.id, vellocCatalogPropNames)) {
         const id = (message as { createSurface?: { surfaceId?: unknown } }).createSurface?.surfaceId
         if (typeof id === 'string' && processor.getSurface(id)) continue
+        if (reservedIds.some(reservedId => drawsSurface(message, reservedId))) continue
         try {
           processor.processMessages(message as Parameters<VellocProcessor['processMessages']>[0])
         } catch (error) {
@@ -158,7 +182,7 @@ function A2uiFeeder({
         }
       }
     }
-  }, [sources, processor, compiler, state, live])
+  }, [sources, processor, compiler, state, live, reservedIds, onBoardTouched])
 
   // Forward surface actions to the model as a hidden isMeta turn (gated while a
   // turn is in flight — one action per turn).
@@ -184,14 +208,17 @@ function A2uiFeeder({
 // The selected surface, portalled into the side pane's slot while the slot
 // belongs to this session (F-1). The portal keeps the surface inside this
 // session's providers, so its data model and actions stay where they are.
-function A2uiPanePortal({ sessionId }: { sessionId: string }) {
+function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoard | undefined }) {
   const slot = useSyncExternalStore(subscribeSlot, getSlot, () => null)
   const { paneSurfaceIds, selectedSurfaceId, openSurface, busy } =
     useA2uiPresentation()
   const t = useT()
   const shown = slot !== null && slot.sessionId === sessionId ? slot.element : null
 
-  const filled = shown !== null && selectedSurfaceId !== null
+  // An app with no surface yet still shows its bar: Reload and why it did not build.
+  const appIds = appSurfaceIds(board?.state)
+  const showsBar = board !== undefined && (selectedSurfaceId === null || appIds.includes(selectedSurfaceId))
+  const filled = shown !== null && (selectedSurfaceId !== null || board !== undefined)
   useEffect(() => {
     if (!filled) return
     setOwner(sessionId)
@@ -200,7 +227,7 @@ function A2uiPanePortal({ sessionId }: { sessionId: string }) {
     }
   }, [filled, sessionId])
 
-  if (!shown || !selectedSurfaceId) return null
+  if (!shown || (!selectedSurfaceId && !board)) return null
   return createPortal(
     <div data-slot="a2ui-pane-content" className="flex h-full min-h-0 flex-col">
       {paneSurfaceIds.length > 1 && (
@@ -232,20 +259,23 @@ function A2uiPanePortal({ sessionId }: { sessionId: string }) {
       )}
       <div
         data-slot="a2ui-surface"
-        data-surface-id={selectedSurfaceId}
+        data-surface-id={selectedSurfaceId ?? undefined}
         aria-busy={busy || undefined}
         className={
           'min-h-0 flex-1 overflow-auto p-3 transition-opacity' +
           (busy ? ' pointer-events-none select-none opacity-60' : '')
         }
       >
-        <SurfaceErrorBoundary
-          key={selectedSurfaceId}
-          surfaceId={selectedSurfaceId}
-          fallbackText={t('a2ui.renderFailed')}
-        >
-          <SelectedSurface surfaceId={selectedSurfaceId} />
-        </SurfaceErrorBoundary>
+        {showsBar && board ? <AppSurfaceBar board={board} /> : null}
+        {selectedSurfaceId ? (
+          <SurfaceErrorBoundary
+            key={selectedSurfaceId}
+            surfaceId={selectedSurfaceId}
+            fallbackText={t('a2ui.renderFailed')}
+          >
+            <SelectedSurface surfaceId={selectedSurfaceId} />
+          </SurfaceErrorBoundary>
+        ) : null}
       </div>
     </div>,
     shown,
@@ -280,12 +310,15 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
   messages,
   submitActionMessage,
   busy,
+  appBoard,
   children,
 }: {
   sessionId: string
   messages: readonly Message[]
   submitActionMessage?: (prompt: string) => Promise<void>
   busy: boolean
+  /** An app session's surfaces (F-40); undefined for any other session. */
+  appBoard?: AppBoard
   children: ReactNode
 }) {
   // The processor's action listener is fixed at construction; the feeder
@@ -302,6 +335,10 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
     const state = compiler.stateFor(processor)
     return createA2uiLiveBlocks(() => compiler.stream(state))
   })
+  const [boardEpoch, onBoardTouched] = useReducer((n: number) => n + 1, 0)
+  const isApp = appBoard !== undefined
+  const appState = appBoard?.state ?? null
+  const reservedIds = useMemo(() => appSurfaceIds(appState), [appState])
   useEffect(() => {
     injectBasicCatalogStyles()
     return () => processor.dispose()
@@ -310,17 +347,20 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
   return (
     <ProcessorContext.Provider value={processor}>
       <A2uiLiveContext.Provider value={live}>
-      <A2uiPresentationProvider sessionId={sessionId} messages={messages} busy={busy} live={live}>
+      <A2uiPresentationProvider sessionId={sessionId} messages={messages} busy={busy} live={live} boardKey={appState?.surface?.hash} boardIds={reservedIds}>
+        {isApp ? <AppSurfaceFeeder board={appState} processor={processor} compiler={compiler} epoch={boardEpoch} /> : null}
         <A2uiFeeder
           compiler={compiler}
           live={live}
+          reservedIds={reservedIds}
+          onBoardTouched={onBoardTouched}
           messages={messages}
           submitActionMessage={submitActionMessage}
           busy={busy}
           actionHandlerRef={actionHandlerRef}
         />
         {children}
-        <A2uiPanePortal sessionId={sessionId} />
+        <A2uiPanePortal sessionId={sessionId} board={appBoard} />
       </A2uiPresentationProvider>
       </A2uiLiveContext.Provider>
     </ProcessorContext.Provider>

@@ -4,6 +4,11 @@
 export type A2uiPaneInput = {
   /** Live surfaces' latest mention keys, in first-creation order. */
   latestMentionBySurface: ReadonlyMap<string, string>
+  /**
+   * An app's first surface (F-40): shown when nothing is selected, and when a
+   * build changes it while the person is on none of the surfaces it changed.
+   */
+  preferred?: string
 }
 
 export type A2uiPaneState = {
@@ -43,21 +48,26 @@ export function stepA2uiPane(
   const dismissed = new Set([...prev.dismissed].filter(id => input.latestMentionBySurface.has(id)))
   let selected = prev.selected
   let open: boolean | null = null
-  let lastChanged: string | null = null
+  const changed: string[] = []
   for (const id of order) {
     const toolCallId = input.latestMentionBySurface.get(id)
     const before = prev.seen.get(id)
     if (before === toolCallId) continue
     // A surface the pane has not seen yet is new: it is shown even after a close.
     if (before === undefined) dismissed.delete(id)
-    if (!dismissed.has(id)) lastChanged = id
+    if (!dismissed.has(id)) changed.push(id)
   }
+  const lastChanged = changed.at(-1)
   if (live && lastChanged) {
-    selected = lastChanged
+    const built = input.preferred !== undefined && changed.includes(input.preferred)
+    selected = !built ? lastChanged : prev.selected !== null && changed.includes(prev.selected) ? prev.selected : input.preferred!
     open = true
   }
   if (selected === null || !input.latestMentionBySurface.has(selected)) {
-    selected = order.at(-1) ?? null
+    selected =
+      input.preferred !== undefined && input.latestMentionBySurface.has(input.preferred)
+        ? input.preferred
+        : (order.at(-1) ?? null)
   }
   if (order.length === 0 && prev.seen.size > 0) open = false
   const unchanged =

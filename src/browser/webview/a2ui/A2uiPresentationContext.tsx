@@ -28,6 +28,23 @@ import {
 } from './a2uiPaneModel'
 import { getOwner, getShownSession, onPaneClosed, requestPane, subscribeSlot } from './a2uiPaneBus'
 import { withLiveMention, type A2uiLiveBlocks } from './a2uiLiveBlock'
+/**
+ * The presentation with an app's surfaces (F-40) as the first tabs, in their
+ * build's order, the first shown when nothing is selected; `boardKey` (the
+ * build's hash) is their mention, so a new build counts as an update.
+ */
+export function withAppBoard<T extends { latestMentionBySurface: ReadonlyMap<string, string>; deletedSurfaceIds: ReadonlySet<string> }>(
+  derived: T,
+  boardKey: string | undefined,
+  boardIds: readonly string[],
+): T & { preferred?: string } {
+  if (boardKey === undefined || boardIds.length === 0) return derived
+  const latestMentionBySurface = new Map<string, string>(boardIds.map(id => [id, `app:${boardKey}`]))
+  for (const [id, key] of derived.latestMentionBySurface) if (!boardIds.includes(id)) latestMentionBySurface.set(id, key)
+  const deletedSurfaceIds = new Set(derived.deletedSurfaceIds)
+  for (const id of boardIds) deletedSurfaceIds.delete(id)
+  return { ...derived, latestMentionBySurface, deletedSurfaceIds, preferred: boardIds[0] }
+}
 
 export type A2uiPresentation = {
   /** For each live surfaceId, the key of its latest mention. */
@@ -75,11 +92,15 @@ export function useA2uiPresentationOptional(): A2uiPresentation | null {
   return useContext(A2uiPresentationContext)
 }
 
+const NO_BOARD_IDS: readonly string[] = []
+
 export function A2uiPresentationProvider({
   sessionId,
   messages,
   busy,
   live,
+  boardKey,
+  boardIds = NO_BOARD_IDS,
   children,
 }: {
   sessionId: string
@@ -87,6 +108,9 @@ export function A2uiPresentationProvider({
   busy: boolean
   /** The block the model is writing: its surface shows before it is finished. */
   live?: A2uiLiveBlocks
+  /** An app's build (F-40): its hash, and the surfaces it draws. */
+  boardKey?: string
+  boardIds?: readonly string[]
   children: ReactNode
 }) {
   const fromTranscript = useMemo(() => deriveA2uiPresentation(messages), [messages])
@@ -104,10 +128,11 @@ export function A2uiPresentationProvider({
       mention: fromTranscript.latestMentionBySurface.get(liveBlock.surfaceId),
     }
   }
-  const derived = useMemo(
+  const withLive = useMemo(
     () => withLiveMention(fromTranscript, liveBlock, baseRef.current?.mention),
     [fromTranscript, liveBlock],
   )
+  const derived = useMemo(() => withAppBoard(withLive, boardKey, boardIds), [withLive, boardKey, boardIds])
   const [pane, setPane] = useState<A2uiPaneState>(EMPTY_A2UI_PANE_STATE)
   const paneRef = useRef(pane)
   const commit = useCallback((next: A2uiPaneState) => {
@@ -124,7 +149,7 @@ export function A2uiPresentationProvider({
   const messagesRef = useRef(messages)
   messagesRef.current = messages
   const liveRef = useRef(false)
-  liveRef.current = derived !== fromTranscript
+  liveRef.current = withLive !== fromTranscript
 
   useEffect(() => {
     const isLive =

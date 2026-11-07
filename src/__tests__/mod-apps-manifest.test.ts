@@ -14,7 +14,7 @@ import { isModContributionsState } from '../browser/webview/mods/modContribution
 
 afterEach(() => resetModContributionsState())
 
-const APP = { seed: './app', surface: 'dashboard.a2ui', data: 'data/latest.json', localActions: ['refresh', 'refresh'] }
+const APP = { seed: './app', entry: 'board.a2ui', data: 'data/latest.json', localActions: ['refresh', 'refresh'] }
 
 describe('the apps feature', () => {
   it('is served on beta only; on stable a plugin naming it waits with a reason', () => {
@@ -45,7 +45,7 @@ describe('an app template in the manifest', () => {
         title: 'Payments',
         launcher: 'hidden',
         path: './templates/board',
-        app: { seed: './app', seedVersion: 1, surface: 'dashboard.a2ui', data: 'data/latest.json', localActions: ['refresh'] },
+        app: { seed: './app', seedVersion: 1, entry: 'board.a2ui', data: 'data/latest.json', localActions: ['refresh'] },
       },
     })
   })
@@ -58,14 +58,14 @@ describe('an app template in the manifest', () => {
   })
 
   it('refuses a path that leaves the app\'s folder or the plugin, with a reason per problem', () => {
-    for (const surface of ['../x.a2ui', '.velloc/x.a2ui', 'ui/.hidden.a2ui', 'a\\b.a2ui', '/abs.a2ui', 'board.json']) {
+    for (const entry of ['../x.a2ui', '.velloc/x.a2ui', 'ui/.hidden.a2ui', 'a\\b.a2ui', '/abs.a2ui', 'board.json']) {
       const errors: string[] = []
-      expect(checkTemplateDecls('pay', { board: { title: 'P', app: { ...APP, surface } } }, errors, 'beta')).toBeUndefined()
+      expect(checkTemplateDecls('pay', { board: { title: 'P', app: { ...APP, entry } } }, errors, 'beta')).toBeUndefined()
       expect(errors).toHaveLength(1)
-      expect(errors[0]).toMatch(/^templates\.board\.app\.surface: /)
+      expect(errors[0]).toMatch(/^templates\.board\.app\.entry: /)
     }
     const errors: string[] = []
-    const bad = { seed: '../elsewhere', surface: 'd.a2ui', data: 'd.txt', seedVersion: 0, localActions: ['a b'] }
+    const bad = { seed: '../elsewhere', entry: 'd.a2ui', data: 'd.txt', seedVersion: 0, localActions: ['a b'] }
     expect(checkTemplateDecls('pay', { board: { title: 'P', app: bad } }, errors, 'beta')).toBeUndefined()
     expect(errors.map(line => line.split(':')[0])).toEqual([
       'templates.board.app.seed',
@@ -94,7 +94,7 @@ describe('an app template in the manifest', () => {
     const decls = checkTemplateDecls(
       'pay',
       {
-        broken: { title: 'B', app: { surface: 'x.a2ui' } },
+        broken: { title: 'B', app: { entry: 'x.a2ui' } },
         one: { title: '1', app: APP },
         two: { title: '2', app: APP },
         three: { title: '3', app: APP },
@@ -107,6 +107,13 @@ describe('an app template in the manifest', () => {
       'templates.broken.app.seed: must be a relative folder starting with "./" and without ".."',
       'templates.three: a plugin offers at most 2 apps; this one is left out',
     ])
+  })
+
+  it('an app without an entry builds from app.a2ui', () => {
+    const errors: string[] = []
+    const decls = checkTemplateDecls('pay', { board: { title: 'P', app: { seed: './app' } } }, errors, 'beta')
+    expect(errors).toEqual([])
+    expect(decls?.board?.app).toEqual({ seed: './app', seedVersion: 1, entry: 'app.a2ui' })
   })
 
   it('an app id is the plugin name and key in lower case, "_" read as "-"', () => {
@@ -124,7 +131,7 @@ describe('an app template in the manifest', () => {
     const value = { name: 'pay', templates: { board: { title: 'P', app: APP } }, requires: { features: ['apps'] } }
     const beta = checkPluginDescriptor(value, 'beta')
     expect(beta.errors).toEqual([])
-    expect(beta.manifest?.templates?.board?.app?.surface).toBe('dashboard.a2ui')
+    expect(beta.manifest?.templates?.board?.app?.entry).toBe('board.a2ui')
     const stable = checkPluginDescriptor(value, 'stable')
     expect(stable.manifest?.templates).toBeUndefined()
     expect(stable.manifest?.requires).toEqual({ unknown: ['features:apps'] })
@@ -167,7 +174,7 @@ function appPlugin(name: string, key: string, extra: Partial<ContributingPlugin>
           icon: { kind: 'lucide', name: 'wallet' },
           launcher: 'hidden',
           path: `./templates/${key}`,
-          app: { seed: './app', seedVersion: 1, surface: 'dashboard.a2ui' },
+          app: { seed: './app', seedVersion: 1, entry: 'app.a2ui' },
         },
         dir: `/plugins/${name}/templates/${key}`,
       },

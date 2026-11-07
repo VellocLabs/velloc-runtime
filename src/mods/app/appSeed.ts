@@ -60,7 +60,8 @@ function readRecord(text: string | undefined): AppRecord | undefined {
   }
 }
 
-async function hashOf(bytes: Uint8Array): Promise<string> {
+/** SHA-256 of `bytes`, lower-case hex. */
+export async function hashOf(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes))
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('')
 }
