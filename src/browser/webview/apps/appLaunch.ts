@@ -5,8 +5,10 @@
  * screen. Page-side; the runtime seeds the folder when the session starts.
  */
 
-import { openPane, setMaximized, type PaneWeightByKind, type SessionPaneRecord } from '../layout/paneLayout'
-import { sessionActivityTime } from '../sessionTimeBucket'
+import { openPane, setMaximized, type PaneWeightByKind, type SessionPaneRecord, type SidePaneKind } from '../layout/paneLayout'
+import type { RightPanelPresenceEvent } from '../layout/rightPanelPresence'
+import { sessionActivityTime, sessionTimeBucket } from '../sessionTimeBucket'
+import { isSideChatUnderParent } from '../sideChat'
 
 /** The fields the rules read; a `LocalSessionEntry` satisfies it. */
 export type AppSessionEntry = {
@@ -17,22 +19,21 @@ export type AppSessionEntry = {
   messageCount?: number
   archived?: boolean
   spawnerSessionId?: string
+  sideChat?: boolean
+  detached?: boolean
+  parentSessionId?: string
 }
 
-const sameLocalDay = (a: number, b: number): boolean => {
-  const x = new Date(a)
-  const y = new Date(b)
-  return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate()
-}
+const NONE: ReadonlySet<string> = new Set()
 
 /** The newest session of app `type` used on `now`'s local day; undefined when there is none. */
 export function pickAppSession<T extends AppSessionEntry>(entries: readonly T[], type: string, now: number): T | undefined {
   let best: T | undefined
   let bestAt = -Infinity
   for (const entry of entries) {
-    if (entry.templateType !== type || entry.archived || entry.spawnerSessionId) continue
+    if (entry.templateType !== type || entry.archived || entry.spawnerSessionId || isSideChatUnderParent(entry)) continue
     const at = sessionActivityTime(entry.updatedAt, entry.lastComposerEditAt)
-    if (at > 0 && sameLocalDay(at, now) && at > bestAt) {
+    if (at > 0 && sessionTimeBucket(at, now) === 'sidebar.timeToday' && at > bestAt) {
       best = entry
       bestAt = at
     }
@@ -46,13 +47,23 @@ export function unlistedAppSessionIds(
   appTypes: ReadonlySet<string>,
   activeSessionId: string | undefined,
 ): ReadonlySet<string> {
+  if (appTypes.size === 0) return NONE
   const out = new Set<string>()
-  if (appTypes.size === 0) return out
   for (const entry of entries) {
     if (entry.sessionId === activeSessionId) continue
     if (entry.templateType !== undefined && appTypes.has(entry.templateType) && entry.messageCount === 0) out.add(entry.sessionId)
   }
-  return out
+  return out.size === 0 ? NONE : out
+}
+
+/** The same ids as one string, so a memo keyed on it changes only when the ids do. */
+export function unlistedAppSessionKey(ids: ReadonlySet<string>): string {
+  return [...ids].sort().join('\n')
+}
+
+/** The ids back from `unlistedAppSessionKey`. */
+export function unlistedAppSessionSet(key: string): ReadonlySet<string> {
+  return key === '' ? NONE : new Set(key.split('\n'))
 }
 
 /** The pane record an app opens with: the A2UI pane open and covering the chat. */
@@ -71,6 +82,9 @@ export function createOpenApp<T extends AppSessionEntry>(
   openNewSession: (type: string) => string,
   updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
   layouts: { getSnapshot(): { weights: PaneWeightByKind } },
+  /** The pane each session's pane shortcuts act on. */
+  focusedPane: { readonly current: Map<string, SidePaneKind> },
+  presentRightPanel: (event: RightPanelPresenceEvent) => void,
   now: () => number = Date.now,
 ): (type: string) => string {
   return type => {
@@ -83,6 +97,8 @@ export function createOpenApp<T extends AppSessionEntry>(
       sessionId = openNewSession(type)
     }
     updatePaneRecord(record => appPaneRecord(record, layouts.getSnapshot().weights), sessionId)
+    focusedPane.current.set(sessionId, 'a2ui')
+    presentRightPanel({ type: 'personOpen', view: 'a2ui' })
     return sessionId
   }
 }

@@ -107,7 +107,7 @@ import {
   withoutHidden,
   withoutHiddenKeys,
 } from './sessionVisibility'
-import { createOpenApp, unlistedAppSessionIds } from './apps/appLaunch'
+import { createOpenApp, unlistedAppSessionIds, unlistedAppSessionKey, unlistedAppSessionSet } from './apps/appLaunch'
 import { subscribeTeammateJump } from './teammateJumpRequests'
 import { publishSessionStatuses } from './sessionStatusStore'
 import {
@@ -1881,7 +1881,7 @@ export function MultiSessionShell({
   const appSessionsRef = useRef(sessions)
   appSessionsRef.current = sessions
   const handleOpenApp = useMemo(
-    () => createOpenApp(appSessionsRef, focusSession, openNewSession, updatePaneRecord, sessionLayoutsStore),
+    () => createOpenApp(appSessionsRef, focusSession, openNewSession, updatePaneRecord, sessionLayoutsStore, focusedPaneRef, presentRightPanel),
     [focusSession, openNewSession, updatePaneRecord, sessionLayoutsStore],
   )
   /** Open `kind` for the person: placed, focused, and expanded in place of
@@ -3127,10 +3127,11 @@ export function MultiSessionShell({
     () => hiddenSessionIds(allSessionItems, modContributions),
     [allSessionItems, modContributions],
   )
-  const unlistedIds = useMemo(
-    () => unlistedAppSessionIds(sessions, new Set((modContributions?.apps ?? []).map(app => app.type)), activeSessionId),
+  const unlistedKey = useMemo(
+    () => unlistedAppSessionKey(unlistedAppSessionIds(sessions, new Set((modContributions?.apps ?? []).map(app => app.type)), activeSessionId)),
     [sessions, modContributions, activeSessionId],
   )
+  const unlistedIds = useMemo(() => unlistedAppSessionSet(unlistedKey), [unlistedKey])
 
   // THE one place teammates and channel-hidden sessions are dropped.
   // Everything the sidebar, the search corpus and the thread list read is this

@@ -33,6 +33,8 @@ export type PluginTopbarItem = {
   /** A command item runs for the active session, so it waits for one. */
   needsSession: boolean;
   testId: string;
+  /** The test id in the More menu once folded. */
+  foldedTestId: string;
 };
 
 /** The item id of app `type`, apart from the plugin's command items. */
@@ -95,6 +97,7 @@ export function usePluginTopbarItems(
         icon: <ModIconSlot icon={item.icon} icons={contributions.icons} className="size-4" />,
         needsSession: true,
         testId: `topbar-plugin-item-${item.id.replace(":", "--")}`,
+        foldedTestId: `topbar-folded-plugin-${item.id.replace(":", "--")}`,
       })),
       ...appItems.map(app => {
         const title = resolveLocalizedText(app.title, locale);
@@ -105,6 +108,7 @@ export function usePluginTopbarItems(
           icon: <ModIconSlot icon={app.icon} icons={contributions.icons} className="size-4" />,
           needsSession: false,
           testId: `topbar-app-${app.appId}`,
+          foldedTestId: `topbar-folded-app-${app.appId}`,
         };
       }),
     ],

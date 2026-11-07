@@ -749,7 +749,7 @@ export function NexusTopBar({
                         key={item.id}
                         disabled={item.needsSession && !plugins.sessionReady}
                         onSelect={() => plugins.press(item.id)}
-                        data-testid={item.testId.replace(/^topbar-plugin-item-/, "topbar-folded-plugin-").replace(/^topbar-app-/, "topbar-folded-app-")}
+                        data-testid={item.foldedTestId}
                         className={MENU_ITEM_CLASS}
                       >
                         {item.icon}
