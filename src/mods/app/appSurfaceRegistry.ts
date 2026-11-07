@@ -41,10 +41,17 @@ export function onAppSurfaceChanged(listener: Listener): () => void {
   }
 }
 
-/** Records how `sessionId`'s app is built; null forgets it. */
-export function setAppBuilder(sessionId: string, build: AppBuild | null): void {
-  if (build) builders.set(sessionId, build)
-  else builders.delete(sessionId)
+/**
+ * Records how `sessionId`'s app is built. The result forgets it while it is
+ * still this build, and says whether it was.
+ */
+export function setAppBuilder(sessionId: string, build: AppBuild): () => boolean {
+  builders.set(sessionId, build)
+  return () => {
+    if (builders.get(sessionId) !== build) return false
+    builders.delete(sessionId)
+    return true
+  }
 }
 
 /** Builds `sessionId`'s app; undefined when the session is not an open app's. */

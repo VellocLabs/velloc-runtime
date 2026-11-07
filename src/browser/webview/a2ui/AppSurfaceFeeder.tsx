@@ -68,11 +68,13 @@ export function AppSurfaceFeeder({
     }
     if (board && (redrawn || board.data !== dataRef.current)) {
       dataRef.current = board.data
-      if (board.data !== undefined) {
+      // No value removes `/data`: the data file is gone.
+      if (board.data !== undefined || !redrawn) {
+        const value = board.data !== undefined ? { value: board.data } : {}
         for (const surfaceId of surface.surfaceIds) {
           processor.processMessages({
             version: A2UI_PROTOCOL_VERSION,
-            updateDataModel: { surfaceId, path: '/data', value: board.data },
+            updateDataModel: { surfaceId, path: '/data', ...value },
           } as never)
         }
       }

@@ -34,8 +34,11 @@ export type AppSurfaceHostOptions = {
   compile?: AppEntryCompile
   /** Where a changed state goes; defaults to the realm registry. */
   publish?: (sessionId: string, state: AppSurfaceState | null) => void
-  /** Where `mods.buildApp` finds this build; defaults to the realm registry. */
-  registerBuild?: (sessionId: string, build: (() => Promise<ModsBuildAppResult>) | null) => void
+  /**
+   * Where `mods.buildApp` finds this build; defaults to the realm registry.
+   * The result forgets it, and is true while it was still this host's.
+   */
+  registerBuild?: (sessionId: string, build: () => Promise<ModsBuildAppResult>) => () => boolean
 }
 
 export type TurnEndCheck = (params: { messages: Message[]; assistantMessages: Message[] }) => Promise<Message[]>
@@ -265,7 +268,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     },
   }) as ToolContract<Record<string, never>, string>
 
-  registerBuild(sessionId, build)
+  const releaseBuild = registerBuild(sessionId, build)
 
   return {
     async start() {
@@ -301,8 +304,8 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     dispose() {
       if (disposed) return
       disposed = true
-      registerBuild(sessionId, null)
-      publish(sessionId, null)
+      // A newer runtime of the same session may own the entry by now.
+      if (releaseBuild()) publish(sessionId, null)
     },
   }
 }

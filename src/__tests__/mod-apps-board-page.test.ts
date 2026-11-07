@@ -120,6 +120,14 @@ describe('the board in the session\'s processor', () => {
     expect(data('/data')).toEqual({ count: 4 })
   })
 
+  it('a data file that is gone takes its values off the surfaces', () => {
+    const { view, data } = rig()
+    const { rerender } = render(view(board(BOARD, 'h1', { count: 3 })))
+    expect(data('/data/count')).toBe(3)
+    rerender(view(board(BOARD, 'h1')))
+    expect(data('/data')).toBeUndefined()
+  })
+
   it('every surface of a build is drawn with the data; a build that drops one deletes it', () => {
     const { processor, view } = rig()
     const both = board(`${BOARD}\n${REFUNDS}`, 'h1', { count: 3, refunds: 'R 2' }, ['dashboard', 'refunds'])

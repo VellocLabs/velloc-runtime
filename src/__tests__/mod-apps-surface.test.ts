@@ -80,8 +80,8 @@ function rig(files: Record<string, string>, decl?: Partial<AppSessionInfo['decl'
     compile,
     publish: (_id, state) => published.push(state),
     registerBuild: (id, build) => {
-      if (build) builds.set(id, build)
-      else builds.delete(id)
+      builds.set(id, build)
+      return () => builds.delete(id)
     },
   })
   return { disk, host, published, builds }
@@ -95,7 +95,7 @@ const callTool = (host: ReturnType<typeof rig>['host']) =>
 
 afterEach(() => {
   setAppSurfaceState('s1', null)
-  setAppBuilder('s1', null)
+  setAppBuilder('s1', async () => ({ ok: false, message: 'reset' }))()
   compiled.length = 0
 })
 
@@ -191,6 +191,18 @@ describe('the app built from its entry file', () => {
     expect(buildRegisteredApp('s1')).toBeUndefined()
   })
 
+  it('a superseded host of the same session, closed after the newer one opened, leaves the newer one registered', async () => {
+    const disk = memoryFs({ 'app.a2ui': BOARD })
+    const older = createAppSurfaceHost({ fs: disk.fs, app: app({ data: undefined }), sessionId: 's1', compile })
+    const newer = createAppSurfaceHost({ fs: disk.fs, app: app({ data: undefined }), sessionId: 's1', compile })
+    await newer.start()
+    older.dispose()
+    expect(appSurfaceState('s1')?.surface?.body).toBe(BOARD)
+    expect(await buildRegisteredApp('s1')).toEqual({ ok: true, surfaceIds: ['overview'] })
+    newer.dispose()
+    expect(appSurfaceState('s1')).toBeNull()
+  })
+
   it('the runtime compiler: several surfaces in one file, a Tabs container, a broken file and a delete refused', async () => {
     const tabs = [
       'surface("main")',
@@ -204,7 +216,7 @@ describe('the app built from its entry file', () => {
       app: app({ data: undefined }),
       sessionId: 's1',
       publish: () => {},
-      registerBuild: () => {},
+      registerBuild: () => () => true,
     })
     expect((await host.start()).surface?.surfaceIds).toEqual(['overview', 'refunds'])
     disk.write('app.a2ui', tabs)
