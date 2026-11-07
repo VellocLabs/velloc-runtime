@@ -90,3 +90,17 @@ describe('deriveA2uiPresentation (inline move-to-latest)', () => {
     expect(latestToolCallIdBySurface.get('counter')).toBe('d2')
   })
 })
+
+describe('latestA2uiMentionTime', () => {
+  it('reads the timestamp of the newest assistant message with an a2ui tool-call', async () => {
+    const { latestA2uiMentionTime } = await import('../browser/webview/a2ui/surfaceStore')
+    const call = (id: string) => ({ type: 'tool-call', toolCallId: id, toolName: 'a2ui_create_surface', args: { surfaceId: 's' } })
+    const messages = [
+      { type: 'assistant', timestamp: '2026-11-07T00:00:00Z', message: { content: [call('a')] } },
+      { type: 'assistant', timestamp: '2026-11-07T00:05:00Z', message: { content: [call('b')] } },
+      { type: 'assistant', timestamp: '2026-11-07T00:09:00Z', message: { content: [{ type: 'text', text: 'done' }] } },
+    ]
+    expect(latestA2uiMentionTime(messages as never)).toBe(Date.parse('2026-11-07T00:05:00Z'))
+    expect(latestA2uiMentionTime([] as never)).toBeNull()
+  })
+})

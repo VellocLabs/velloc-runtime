@@ -30,7 +30,6 @@ export type A2uiCreateSurfaceInput = {
   root?: string
   components?: A2uiComponentNode[]
   dataModel?: Record<string, unknown>
-  theme?: Record<string, unknown>
 }
 
 export type A2uiUpdateComponentsInput = {
@@ -56,7 +55,7 @@ export type A2uiDeleteSurfaceInput = {
 // Nested schema values are typed `unknown` by ToolInputJSONSchema (only the
 // top-level `type:'object'` is required), so plain object fragments suffice.
 
-// Canonical A2UI v0.9 component: `component` + `id`, with type-specific
+// Canonical A2UI v1.0 component: `component` + `id`, with type-specific
 // properties FLAT on the object (e.g. text, label, value, action, checks),
 // `child` (single) or `children` (string[] or {componentId,path} template).
 const COMPONENT_ITEM_SCHEMA = {
@@ -129,11 +128,6 @@ export const A2uiCreateSurfaceTool: ToolContract<A2uiCreateSurfaceInput, string>
           additionalProperties: true,
           description:
             'Initial data model, addressed by JSON Pointer (RFC 6901) from component bindings.',
-        },
-        theme: {
-          type: 'object',
-          additionalProperties: true,
-          description: 'Optional theme (e.g. primaryColor).',
         },
       },
       required: ['surfaceId', 'components'],
@@ -242,7 +236,7 @@ export const A2uiUpdateDataModelTool: ToolContract<A2uiUpdateDataModelInput, str
                 type: 'string',
                 description: 'RFC 6901 JSON Pointer, e.g. "/form/name".',
               },
-              value: { description: 'Any JSON value to set at the pointer.' },
+              value: { description: 'Any JSON value to set at the pointer; null removes the key.' },
             },
             required: ['pointer', 'value'],
             additionalProperties: false,

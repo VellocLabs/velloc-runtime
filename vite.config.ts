@@ -340,7 +340,10 @@ export default defineConfig(({ mode }) => ({
     // ("Failed to fetch dynamically imported module"). Dev only; production
     // (rollup) is unaffected.
     include: [
-      '@copilotkit/a2ui-renderer',
+      '@a2ui/react',
+      '@a2ui/web_core/v1_0',
+      '@a2ui/web_core/catalogs/basic/v1',
+      'recharts',
       '@leeoniya/ufuzzy',
       '@mixmark-io/domino',
       '@modelcontextprotocol/sdk/client/index.js',

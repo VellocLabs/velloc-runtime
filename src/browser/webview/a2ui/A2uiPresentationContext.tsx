@@ -17,7 +17,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { Message } from '../../../runtime/RuntimeTypes'
-import { deriveA2uiPresentation } from './surfaceStore'
+import { deriveA2uiPresentation, latestA2uiMentionTime } from './surfaceStore'
 import {
   EMPTY_A2UI_PANE_STATE,
   dismissA2uiPane,
@@ -46,6 +46,8 @@ export type A2uiPresentation = {
   /** Select `surfaceId` and open the pane on it. */
   openSurface: (surfaceId: string) => void
 }
+
+const LIVE_MENTION_WINDOW_MS = 2 * 60 * 1000
 
 const A2uiPresentationContext = createContext<A2uiPresentation | null>(null)
 
@@ -86,14 +88,21 @@ export function A2uiPresentationProvider({
     paneRef.current = next
     setPane(next)
   }, [])
-  // The first derivation is live only when a turn is running: a session
-  // loaded from disk replays its surfaces without opening the pane.
+  // The host mounts lazily, often after a fast turn has ended, so the first
+  // derivation counts as live when a turn is running or the newest A2UI
+  // mention is recent; a session loaded from disk replays without opening.
   const steppedRef = useRef(false)
   const busyRef = useRef(busy)
   busyRef.current = busy
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
 
   useEffect(() => {
-    const live = steppedRef.current || busyRef.current
+    const mentionedAt = latestA2uiMentionTime(messagesRef.current)
+    const live =
+      steppedRef.current ||
+      busyRef.current ||
+      (mentionedAt !== null && Date.now() - mentionedAt < LIVE_MENTION_WINDOW_MS)
     steppedRef.current = true
     const step = stepA2uiPane(paneRef.current, derived, live)
     commit(step.state)

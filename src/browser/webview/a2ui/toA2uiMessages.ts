@@ -1,4 +1,4 @@
-// Translator: our transcript `a2ui_*` command tool-calls → canonical A2UI v0.9
+// Translator: our transcript `a2ui_*` command tool-calls → canonical A2UI v1.0
 // server-to-client messages, fed to the upstream `MessageProcessor`. Our tools
 // now emit canonical component shapes (flat props, {path} bindings,
 // children:string[]|{componentId,path}, action:{event}, checks:[{condition}]),
@@ -13,8 +13,11 @@ import {
   A2UI_UPDATE_DATA_MODEL,
 } from '../../../toolkit/builtin/a2ui/a2uiToolNames'
 
-/** Canonical v0.9 message (shape validated by the upstream processor). */
+/** Canonical v1.0 message (shape validated by the upstream processor). */
 export type A2uiMessage = Record<string, unknown>
+
+/** The protocol version every emitted message carries. */
+export const A2UI_PROTOCOL_VERSION = '1.0'
 
 // Normalize ANY model dialect → valid canonical A2UI, so the upstream renderer
 // is never fed malformed input (the cause of the render-loop → renderer crash).
@@ -23,22 +26,41 @@ export type A2uiMessage = Record<string, unknown>
 // {$fn,args} expressions → {call,args}; and old List `items`+`template` → a
 // canonical `children:{componentId,path}` template.
 
-/** Recursively normalize a value: bare "/..." string → {path}; {$fn}→{call}. */
+/**
+ * Recursively normalize a value to v1.0: a bare "/..." string or a `{path}`
+ * object → `{"@path"}`; `{call}` / `{$fn}` → `{"@call"}`. v1.0 reads only the
+ * `@`-prefixed forms as a binding or a function call.
+ */
 function normalizeValue(value: unknown): unknown {
   if (typeof value === 'string') {
-    return value.startsWith('/') ? { path: value } : value
+    return value.startsWith('/') ? { '@path': value } : value
   }
   if (Array.isArray(value)) return value.map(normalizeValue)
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>
-    if (typeof record.$fn === 'string') {
-      return { call: record.$fn, args: normalizeValue(record.args ?? {}) }
+    if (typeof record['@path'] === 'string') return record
+    if (typeof record.path === 'string' && !('componentId' in record)) {
+      return { '@path': record.path }
+    }
+    const call =
+      typeof record['@call'] === 'string'
+        ? record['@call']
+        : typeof record.call === 'string'
+          ? record.call
+          : typeof record.$fn === 'string'
+            ? record.$fn
+            : null
+    if (call !== null) {
+      const out: Record<string, unknown> = { '@call': call }
+      for (const [key, nested] of Object.entries(record)) {
+        if (key === 'call' || key === '@call' || key === '$fn') continue
+        out[key] = normalizeValue(nested)
+      }
+      if (!('args' in out)) out.args = {}
+      return out
     }
     const out: Record<string, unknown> = {}
-    for (const [key, nested] of Object.entries(record)) {
-      // 'path' already holds a pointer string — don't wrap it again.
-      out[key] = key === 'path' ? nested : normalizeValue(nested)
-    }
+    for (const [key, nested] of Object.entries(record)) out[key] = normalizeValue(nested)
     return out
   }
   return value
@@ -59,10 +81,12 @@ const LITERAL_DISPLAY_KEYS = new Set([
   'label',
   'placeholder',
   'alt',
+  'description',
+  'caption',
+  'userMessage',
   'url',
   'src',
   'delta',
-  'caption',
 ])
 
 // Props that carry literal chart/table data. An inline array is data, never a
@@ -119,14 +143,44 @@ function normalizeComponent(node: unknown): unknown {
     if (LITERAL_DATA_KEYS.has(key) && Array.isArray(value)) continue
     record[key] = normalizeValue(value)
   }
+  return mapEarlierProps(record)
+}
+
+const HEADING_LEVEL: Record<string, number> = { h1: 1, h2: 2, h3: 3, h4: 4, h5: 5 }
+
+// Props the earlier basic catalog had and v1.0 renamed or dropped. The v1.0
+// catalog validates strictly, so an unknown prop would drop the component.
+function mapEarlierProps(record: Record<string, unknown>): Record<string, unknown> {
+  if (record.component === 'Text' && typeof record.variant === 'string' && record.variant in HEADING_LEVEL) {
+    // v1.0 Text has only caption/body; a heading is Markdown in the text.
+    if (typeof record.text === 'string') {
+      record.text = `${'#'.repeat(HEADING_LEVEL[record.variant])} ${record.text}`
+    }
+    delete record.variant
+  }
+  if (record.component === 'Image' && 'alt' in record) {
+    if (!('description' in record)) record.description = record.alt
+    delete record.alt
+  }
+  if (record.component === 'Slider' && 'step' in record) delete record.step
+  // v1.0 Button requires an action; an inert earlier Button sends an event named after it.
+  if (record.component === 'Button' && record.action == null) {
+    record.action = { event: { name: typeof record.id === 'string' ? record.id : 'button' } }
+  }
+  if (record.component === 'CheckBox' && 'checked' in record) {
+    if (!('value' in record)) record.value = record.checked
+    delete record.checked
+  }
   return record
 }
 
 /** Pull a JSON-pointer string out of an `items` binding (string or {path}). */
 function itemsPath(items: unknown): string | undefined {
   if (typeof items === 'string') return items
-  if (items && typeof items === 'object' && typeof (items as Record<string, unknown>).path === 'string') {
-    return (items as Record<string, unknown>).path as string
+  if (items && typeof items === 'object') {
+    const record = items as Record<string, unknown>
+    if (typeof record['@path'] === 'string') return record['@path']
+    if (typeof record.path === 'string') return record.path
   }
   return undefined
 }
@@ -177,15 +231,48 @@ function normalizeComponents(value: unknown): unknown[] {
         out.push(normalizeComponent({ ...templateRecord, id: templateId }))
         continue
       }
+      // v1.0 Button draws a child component; an inline `label` becomes a Text child.
+      if (record.component === 'Button' && record.child == null && record.label != null) {
+        const labelId = `${typeof record.id === 'string' ? record.id : 'button'}__label`
+        out.push(node)
+        out.push({ id: labelId, component: 'Text', text: record.label })
+        record.child = labelId
+        delete record.label
+        continue
+      }
     }
     out.push(node)
   }
   return out
 }
 
+/** The props each catalog component accepts, by component name. */
+export type CatalogPropNames = ReadonlyMap<string, ReadonlySet<string>>
+
+const STRUCTURAL_KEYS = new Set(['id', 'component', 'accessibility', 'weight'])
+
+// The v1.0 catalog validates strictly: a component with a prop its schema does
+// not define is rejected, and a rejected root blanks the whole surface. Drop
+// such props; components of unknown type pass through for the processor to report.
+function stripUnknownProps(components: unknown[], propNames?: CatalogPropNames): unknown[] {
+  if (!propNames) return components
+  return components.map(component => {
+    if (!component || typeof component !== 'object' || Array.isArray(component)) return component
+    const record = component as Record<string, unknown>
+    const allowed = typeof record.component === 'string' ? propNames.get(record.component) : undefined
+    if (!allowed) return component
+    const out: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(record)) {
+      if (STRUCTURAL_KEYS.has(key) || allowed.has(key)) out[key] = value
+    }
+    return out
+  })
+}
+
 export function commandsToA2uiMessages(
   commands: ReadonlyArray<{ name: string; args: Record<string, unknown> }>,
   catalogId: string,
+  propNames?: CatalogPropNames,
 ): A2uiMessage[] {
   const out: A2uiMessage[] = []
   for (const { name, args } of commands) {
@@ -196,33 +283,36 @@ export function commandsToA2uiMessages(
       // Always use the registered catalog's id — a mismatched catalogId makes
       // the upstream processor throw "Catalog not found".
       out.push({
-        version: 'v0.9',
+        version: A2UI_PROTOCOL_VERSION,
         createSurface: { surfaceId, catalogId, sendDataModel: true },
       })
       if (Array.isArray(args.components)) {
         out.push({
-          version: 'v0.9',
+          version: A2UI_PROTOCOL_VERSION,
           updateComponents: {
             surfaceId,
-            components: remapRootId(
-              normalizeComponents(args.components),
-              typeof args.root === 'string' ? args.root : undefined,
+            components: stripUnknownProps(
+              remapRootId(
+                normalizeComponents(args.components),
+                typeof args.root === 'string' ? args.root : undefined,
+              ),
+              propNames,
             ),
           },
         })
       }
       if (args.dataModel && typeof args.dataModel === 'object') {
         out.push({
-          version: 'v0.9',
+          version: A2UI_PROTOCOL_VERSION,
           updateDataModel: { surfaceId, value: args.dataModel },
         })
       }
     } else if (name === A2UI_UPDATE_COMPONENTS) {
       out.push({
-        version: 'v0.9',
+        version: A2UI_PROTOCOL_VERSION,
         updateComponents: {
           surfaceId,
-          components: normalizeComponents(args.components),
+          components: stripUnknownProps(normalizeComponents(args.components), propNames),
         },
       })
     } else if (name === A2UI_UPDATE_DATA_MODEL) {
@@ -236,11 +326,11 @@ export function commandsToA2uiMessages(
           const record = patch as { pointer?: unknown; value?: unknown }
           if (typeof record.pointer === 'string' && 'value' in record) {
             out.push({
-              version: 'v0.9',
+              version: A2UI_PROTOCOL_VERSION,
               updateDataModel: {
                 surfaceId,
                 path: record.pointer,
-                value: record.value,
+                value: record.value ?? null,
               },
             })
           }
@@ -248,11 +338,11 @@ export function commandsToA2uiMessages(
       }
       // Single path/value (canonical). Emitted only when present so an empty
       // call is a no-op.
-      if (typeof args.path === 'string' || 'value' in args) {
-        const updateDataModel: Record<string, unknown> = { surfaceId }
+      // A write always carries `value` (v1.0); `null` removes the key.
+      if ('value' in args) {
+        const updateDataModel: Record<string, unknown> = { surfaceId, value: args.value ?? null }
         if (typeof args.path === 'string') updateDataModel.path = args.path
-        if ('value' in args) updateDataModel.value = args.value
-        out.push({ version: 'v0.9', updateDataModel })
+        out.push({ version: A2UI_PROTOCOL_VERSION, updateDataModel })
       }
       // Shallow `merge` (back-compat): expand into one single-pointer write per
       // top-level key so untouched fields survive. A PATHLESS updateDataModel
@@ -269,13 +359,13 @@ export function commandsToA2uiMessages(
           if (key === '') continue // path "/" would replace the whole root
           const pointer = `/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`
           out.push({
-            version: 'v0.9',
-            updateDataModel: { surfaceId, path: pointer, value },
+            version: A2UI_PROTOCOL_VERSION,
+            updateDataModel: { surfaceId, path: pointer, value: value ?? null },
           })
         }
       }
     } else if (name === A2UI_DELETE_SURFACE) {
-      out.push({ version: 'v0.9', deleteSurface: { surfaceId } })
+      out.push({ version: A2UI_PROTOCOL_VERSION, deleteSurface: { surfaceId } })
     }
   }
   return out
@@ -284,6 +374,7 @@ export function commandsToA2uiMessages(
 export function messagesToA2ui(
   messages: readonly Message[],
   catalogId: string,
+  propNames?: CatalogPropNames,
 ): A2uiMessage[] {
-  return commandsToA2uiMessages(extractA2uiCommands(messages), catalogId)
+  return commandsToA2uiMessages(extractA2uiCommands(messages), catalogId, propNames)
 }

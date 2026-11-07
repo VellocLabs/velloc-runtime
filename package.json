@@ -39,6 +39,9 @@
     "ws": "^8.18.0"
   },
   "dependencies": {
+    "@a2ui/markdown-it": "0.2.2",
+    "@a2ui/react": "0.15.0",
+    "@a2ui/web_core": "0.15.0",
     "@assistant-ui/react": "^0.12.22",
     "@assistant-ui/react-devtools": "^1.0.4",
     "@assistant-ui/react-markdown": "^0.12.8",
@@ -48,7 +51,6 @@
     "@codemirror/search": "^6.7.1",
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.6",
-    "@copilotkit/a2ui-renderer": "^1.59.2",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
     "@leeoniya/ufuzzy": "^1.0.19",
@@ -84,5 +86,10 @@
     "tw-shimmer": "^0.4.9",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
+  },
+  "overrides": {
+    "@a2ui/markdown-it": {
+      "@a2ui/web_core": "$@a2ui/web_core"
+    }
   }
 }

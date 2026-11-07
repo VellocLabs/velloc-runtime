@@ -43,8 +43,8 @@ describe('toA2uiMessages component normalization', () => {
     const comps = updateComponents(msgs)
 
     // Two-way binding strings → {path}
-    expect(byId(comps, 'name').value).toEqual({ path: '/form/name' })
-    expect(byId(comps, 'sub').checked).toEqual({ path: '/form/subscribe' })
+    expect(byId(comps, 'name').value).toEqual({ '@path': '/form/name' })
+    expect(byId(comps, 'sub').value).toEqual({ '@path': '/form/subscribe' })
 
     // Literals + non-pointer values untouched
     expect(byId(comps, 'name').label).toBe('Full name')
@@ -83,11 +83,11 @@ describe('toA2uiMessages component normalization', () => {
     // Display + URL strings stay literal (NOT wrapped into {path}).
     expect(byId(comps, 'note').text).toBe('/tmp/report.txt was saved')
     expect(byId(comps, 'logo').url).toBe('/assets/logo.png')
-    expect(byId(comps, 'logo').alt).toBe('/brand')
+    expect(byId(comps, 'logo').description, 'v1.0 names the alt text description').toBe('/brand')
     expect(byId(comps, 'field').label).toBe('/path label')
 
     // A real two-way binding emitted as a bare string still coerces to {path}.
-    expect(byId(comps, 'field').value).toEqual({ path: '/form/name' })
+    expect(byId(comps, 'field').value).toEqual({ '@path': '/form/name' })
   })
 
   it('flattens a legacy props bag and maps $fn / List template to canonical', () => {
@@ -110,14 +110,14 @@ describe('toA2uiMessages component normalization', () => {
     const comps = updateComponents(msgs)
 
     // props bag flattened onto the component
-    expect(byId(comps, 'name').value).toEqual({ path: '/form/name' })
+    expect(byId(comps, 'name').value).toEqual({ '@path': '/form/name' })
     expect(byId(comps, 'name').label).toBe('Name')
     expect(byId(comps, 'name').props).toBeUndefined()
 
     // {$fn,args} → {call,args}
     expect(byId(comps, 'greet').text).toEqual({
-      call: 'formatString',
-      args: ['Hi {0}', { path: '/form/name' }],
+      '@call': 'formatString',
+      args: ['Hi {0}', { '@path': '/form/name' }],
     })
 
     // legacy List items+template → canonical children template
@@ -161,7 +161,7 @@ describe('toA2uiMessages component normalization', () => {
     expect(byId(comps, 'tmpl').children).toEqual(['icon', 'title'])
 
     // Relative binding preserved (resolves per-item upstream); icon flattened.
-    expect(byId(comps, 'title').text).toEqual({ path: 'title' })
+    expect(byId(comps, 'title').text).toEqual({ '@path': 'title' })
     expect(byId(comps, 'icon').name).toBe('check-circle')
   })
 

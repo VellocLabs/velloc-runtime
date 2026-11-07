@@ -1,32 +1,29 @@
-// The Velloc A2UI catalog (F-1): the basic catalog plus the chart and data
-// components. Chart renderers are lazy, so recharts loads on the first chart.
+// The Velloc A2UI catalog (F-1): the v1.0 basic catalog plus the chart and
+// data components. Chart renderers are lazy, so recharts loads on the first chart.
 
-import { lazy, Suspense, type ComponentType, type ReactElement } from 'react'
-import {
-  createCatalog,
-  type CatalogDefinitions,
-  type CatalogRenderers,
-} from '@copilotkit/a2ui-renderer'
+import { lazy, Suspense, type ReactElement } from 'react'
+import { createComponentImplementation, type ReactCatalogComponent } from '@a2ui/react'
+import { Catalog, type ComponentApi } from '@a2ui/web_core/v1_0'
+import { basicCatalog } from '@a2ui/web_core/catalogs/basic/v1'
 import { TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
 import {
   VELLOC_CATALOG_ID,
   asRows,
   chartCatalogDefinitions,
+  type ChartComponentName,
   chartHeight,
-  type ChartCatalogDefinitions,
-  type PropsOfChart,
 } from './chartCatalogDefinitions'
+import type { CatalogPropNames } from '../toA2uiMessages'
 
-function lazyChart<P extends { height?: number }>(load: () => Promise<ComponentType<P>>) {
-  const View = lazy(async () => ({ default: await load() }))
-  return function LazyChart({ props }: { props: P }): ReactElement {
-    return (
-      <Suspense fallback={<ChartPlaceholder height={props.height} />}>
-        <View {...props} />
-      </Suspense>
-    )
-  }
-}
+const PieChartView = lazy(async () => ({
+  default: (await import('./ChartViews')).PieChartView,
+}))
+const LineChartView = lazy(async () => ({
+  default: (await import('./ChartViews')).LineChartView,
+}))
+const BarChartView = lazy(async () => ({
+  default: (await import('./ChartViews')).BarChartView,
+}))
 
 function ChartPlaceholder({ height }: { height?: number }): ReactElement {
   return <div data-slot="a2ui-chart-loading" style={{ height: chartHeight(height) }} className="w-full" />
@@ -36,7 +33,7 @@ function text(value: unknown): string {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : ''
 }
 
-function MetricView({ label, value, delta, trend, caption }: PropsOfChart<'Metric'>): ReactElement {
+function MetricView({ label, value, delta, trend, caption }: MetricProps): ReactElement {
   const tone =
     trend === 'up'
       ? 'text-success'
@@ -63,7 +60,7 @@ function MetricView({ label, value, delta, trend, caption }: PropsOfChart<'Metri
   )
 }
 
-function DataTableView({ columns, rows }: PropsOfChart<'DataTable'>): ReactElement {
+function DataTableView({ columns = [], rows }: DataTableProps): ReactElement {
   const list = asRows(rows)
   return (
     <div data-slot="a2ui-table" className="w-full overflow-x-auto">
@@ -96,22 +93,105 @@ function DataTableView({ columns, rows }: PropsOfChart<'DataTable'>): ReactEleme
   )
 }
 
-type ChartRenderers = {
-  [K in keyof ChartCatalogDefinitions]: (input: { props: PropsOfChart<K> }) => ReactElement
+type MetricProps = {
+  label?: unknown
+  value?: unknown
+  delta?: unknown
+  trend?: 'up' | 'down' | 'flat'
+  caption?: unknown
+}
+type DataTableProps = { columns?: { key: string; label: string }[]; rows?: unknown }
+type ChartProps = {
+  title?: unknown
+  data?: unknown
+  xKey?: string
+  series?: { key: string; label?: string; color?: string }[]
+  donut?: boolean
+  curved?: boolean
+  stacked?: boolean
+  height?: number
 }
 
-const renderers: ChartRenderers = {
-  PieChart: lazyChart<PropsOfChart<'PieChart'>>(async () => (await import('./ChartViews')).PieChartView),
-  LineChart: lazyChart<PropsOfChart<'LineChart'>>(async () => (await import('./ChartViews')).LineChartView),
-  BarChart: lazyChart<PropsOfChart<'BarChart'>>(async () => (await import('./ChartViews')).BarChartView),
-  Metric: ({ props }) => <MetricView {...props} />,
-  DataTable: ({ props }) => <DataTableView {...props} />,
+const views: Record<ChartComponentName, (props: Record<string, unknown>) => ReactElement> = {
+  PieChart: props => {
+    const p = props as ChartProps
+    return (
+      <Suspense fallback={<ChartPlaceholder height={p.height} />}>
+        <PieChartView title={p.title} data={p.data} donut={p.donut} height={p.height} />
+      </Suspense>
+    )
+  },
+  LineChart: props => {
+    const p = props as ChartProps
+    return (
+      <Suspense fallback={<ChartPlaceholder height={p.height} />}>
+        <LineChartView
+          title={p.title}
+          data={p.data}
+          xKey={p.xKey ?? ''}
+          series={p.series ?? []}
+          curved={p.curved}
+          height={p.height}
+        />
+      </Suspense>
+    )
+  },
+  BarChart: props => {
+    const p = props as ChartProps
+    return (
+      <Suspense fallback={<ChartPlaceholder height={p.height} />}>
+        <BarChartView
+          title={p.title}
+          data={p.data}
+          xKey={p.xKey ?? ''}
+          series={p.series ?? []}
+          stacked={p.stacked}
+          height={p.height}
+        />
+      </Suspense>
+    )
+  },
+  Metric: props => <MetricView {...(props as MetricProps)} />,
+  DataTable: props => <DataTableView {...(props as DataTableProps)} />,
 }
 
-// The definitions use `zod/v3`, the renderer its own zod 3 copy: the schemas
-// match at runtime (the binder reads `_def`), not as nominal types.
-export const vellocCatalog = createCatalog(
-  chartCatalogDefinitions as unknown as CatalogDefinitions,
-  renderers as unknown as CatalogRenderers<CatalogDefinitions>,
-  { catalogId: VELLOC_CATALOG_ID, includeBasicCatalog: true },
+const chartComponents: ReactCatalogComponent[] = (
+  Object.keys(chartCatalogDefinitions) as ChartComponentName[]
+).map(name => {
+  const View = views[name]
+  // Typed loosely: `zod/v3` and the renderer's own zod copy match at runtime
+  // (the binder reads `_def`), and comparing their types exhausts the checker.
+  const api = { name, schema: chartCatalogDefinitions[name].schema } as unknown as ComponentApi
+  return createComponentImplementation(api, ({ props }) => (
+    <View {...(props as Record<string, unknown>)} />
+  ))
+})
+
+export const vellocCatalog = new Catalog<ReactCatalogComponent>(
+  VELLOC_CATALOG_ID,
+  'v1.0',
+  [...basicCatalog.components.values(), ...chartComponents],
+  [...basicCatalog.functions.values()],
+)
+
+type SchemaDef = { typeName?: string; innerType?: SchemaLike; schema?: SchemaLike; shape?: () => Record<string, unknown> }
+type SchemaLike = { _def?: SchemaDef }
+
+// Reads an object schema's keys through the optional/default/effects wrappers.
+function schemaKeys(schema: SchemaLike | undefined): string[] {
+  let current = schema
+  for (let depth = 0; current?._def && depth < 8; depth++) {
+    const def: SchemaDef = current._def
+    if (def.typeName === 'ZodObject' && def.shape) return Object.keys(def.shape())
+    current = def.innerType ?? def.schema
+  }
+  return []
+}
+
+/** The props each Velloc catalog component accepts (F-1). */
+export const vellocCatalogPropNames: CatalogPropNames = new Map(
+  [...vellocCatalog.components.values()].map(component => [
+    component.name,
+    new Set(schemaKeys(component.schema as unknown as SchemaLike)),
+  ]),
 )

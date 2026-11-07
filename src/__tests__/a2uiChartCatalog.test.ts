@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -21,15 +22,15 @@ describe('Velloc A2UI chart catalog', () => {
   })
 
   it('accepts literal data and a data-model binding for chart data', () => {
-    const line = chartCatalogDefinitions.LineChart.props
+    const line = chartCatalogDefinitions.LineChart.schema
     expect(
       line.safeParse({ data: [{ month: 'Jan', sales: 1 }], xKey: 'month', series: [{ key: 'sales' }] }).success,
     ).toBe(true)
     expect(line.safeParse({ data: { path: '/sales' }, xKey: 'month', series: [] }).success).toBe(true)
     expect(line.safeParse({ data: [], series: [] }).success, 'xKey is required').toBe(false)
-    const pie = chartCatalogDefinitions.PieChart.props
+    const pie = chartCatalogDefinitions.PieChart.schema
     expect(pie.safeParse({ data: [{ label: 'A', value: 2 }], donut: true }).success).toBe(true)
-    expect(pie.safeParse({ data: [{ label: 'A', value: '2' }] }).success, 'value is a number').toBe(false)
+    expect(pie.safeParse({ data: [], legend: true }).success, 'unknown props are rejected').toBe(false)
   })
 
   it('treats anything but an array as no rows', () => {
@@ -76,11 +77,12 @@ describe('Velloc A2UI chart catalog', () => {
     const byId = (id: string) => components.find(c => c.id === id)!
     expect(byId('root').data).toEqual([{ route: '/pricing', views: 1 }])
     expect(byId('pie').data).toEqual([{ label: '/home', value: 2 }])
-    expect(chartCatalogDefinitions.PieChart.props.safeParse(byId('pie')).success).toBe(true)
+    const { id: _id, component: _component, ...pieProps } = byId('pie')
+    expect(chartCatalogDefinitions.PieChart.schema.safeParse(pieProps).success).toBe(true)
     expect(byId('table').rows).toEqual([{ file: '/src/a.ts' }])
     expect(byId('table').columns).toEqual([{ key: 'file', label: '/File' }])
-    expect(byId('bound').data, 'a bare pointer still binds the whole prop').toEqual({ path: '/sales' })
-    expect(byId('metric').value).toEqual({ path: '/stats/load' })
+    expect(byId('bound').data, 'a bare pointer still binds the whole prop').toEqual({ '@path': '/sales' })
+    expect(byId('metric').value).toEqual({ '@path': '/stats/load' })
     expect(byId('metric').delta).toBe('/ 5 min')
     expect(byId('metric').caption).toBe('/proc')
   })

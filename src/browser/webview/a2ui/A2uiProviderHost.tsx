@@ -4,30 +4,29 @@
 
 import {
   Component,
+  createContext,
   memo,
-  useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
-import {
-  A2UIProvider,
-  A2UIRenderer,
-  useA2UI,
-  type A2UIClientEventMessage,
-} from '@copilotkit/a2ui-renderer'
-// The renderer's Icon relies on the Material Symbols font's ligatures; self-host
-// it here (the lazy host) so the ~475 KB woff2 lands in the on-demand A2UI chunk.
+import { A2uiSurface, type ReactCatalogComponent } from '@a2ui/react'
+import { MessageProcessor, type ActionPayload } from '@a2ui/web_core/v1_0'
+import { injectBasicCatalogStyles, setMarkdownRenderer } from '@a2ui/web_core/catalogs/basic/v1'
+// The basic catalog's Icon relies on the Material Symbols font's ligatures;
+// self-host it here (the lazy host) so the woff2 lands in the A2UI chunk.
 import '@material-symbols/font-400/outlined.css'
-// Scoped fix for the catalog's width:100%+margin right-overflow (uneven margins).
+// Maps the basic catalog's --a2ui-* variables onto the Velloc theme.
 import './a2ui-surface.css'
 import type { Message } from '../../../runtime/RuntimeTypes'
 import { extractA2uiCommands } from './surfaceStore'
 import { commandsToA2uiMessages } from './toA2uiMessages'
-import { vellocCatalog } from './catalog/vellocCatalog'
+import { vellocCatalog, vellocCatalogPropNames } from './catalog/vellocCatalog'
 import {
   A2uiPresentationProvider,
   useA2uiPresentation,
@@ -35,13 +34,16 @@ import {
 import { useT } from '../i18n'
 import { getOwner, getSlot, setOwner, subscribeSlot } from './a2uiPaneBus'
 
-type SurfaceUserAction = {
-  name?: string
-  surfaceId?: string
-  sourceComponentId?: string
-  context?: unknown
-}
-type SurfaceActionHandler = (message: A2UIClientEventMessage) => void
+type SurfaceActionHandler = (action: ActionPayload) => void
+type VellocProcessor = MessageProcessor<ReactCatalogComponent>
+
+const ProcessorContext = createContext<VellocProcessor | null>(null)
+
+// Text renders simple Markdown. Security: the renderer sanitises its HTML
+// (DOMPurify); it loads as its own chunk on the first Text drawn.
+setMarkdownRenderer((value, options) =>
+  import('@a2ui/markdown-it').then(module => module.renderMarkdown(value, options)),
+)
 
 const ACTION_PROMPT_PREFIX =
   'A user interacted with an A2UI surface you created (e.g. a button click). ' +
@@ -50,13 +52,16 @@ const ACTION_PROMPT_PREFIX =
   'reply if that fits better. Do not narrate this event to the user. The ' +
   'action and the surface’s current data model:'
 
-function buildActionTurn(action: SurfaceUserAction, dataModel: unknown): string {
-  const payload = {
+export function buildActionTurn(action: ActionPayload, dataModel: unknown): string {
+  const payload: Record<string, unknown> = {
     surfaceId: action.surfaceId ?? null,
     action: action.name ?? 'unknown',
     sourceComponentId: action.sourceComponentId ?? null,
     context: action.context ?? null,
     dataModel: dataModel ?? {},
+  }
+  if (typeof action.userMessage === 'string' && action.userMessage) {
+    payload.userMessage = action.userMessage
   }
   return `${ACTION_PROMPT_PREFIX}\n\n<a2ui_action>\n${JSON.stringify(payload)}\n</a2ui_action>`
 }
@@ -84,9 +89,8 @@ class SurfaceErrorBoundary extends Component<
   }
 }
 
-// Lives INSIDE <A2UIProvider> so it can reach the processor. Feeds new
-// transcript commands into the shared processor and installs the surface-action
-// handler (which needs getSurface to snapshot the live data model).
+// Feeds new transcript commands into the session's processor and installs the
+// surface-action handler (which snapshots the live data model).
 function A2uiFeeder({
   messages,
   submitActionMessage,
@@ -98,7 +102,7 @@ function A2uiFeeder({
   busy: boolean
   actionHandlerRef: React.MutableRefObject<SurfaceActionHandler | null>
 }) {
-  const { processMessages, getSurface } = useA2UI()
+  const processor = useA2uiProcessor()
   const commands = useMemo(() => extractA2uiCommands(messages), [messages])
   const processedRef = useRef(0)
   const busyRef = useRef(busy)
@@ -111,30 +115,30 @@ function A2uiFeeder({
     const fresh = commands.slice(processedRef.current)
     processedRef.current = commands.length
     const createdThisBatch = new Set<string>()
-    for (const message of commandsToA2uiMessages(fresh, vellocCatalog.id)) {
+    for (const message of commandsToA2uiMessages(fresh, vellocCatalog.id, vellocCatalogPropNames)) {
       const create = (message as { createSurface?: { surfaceId?: unknown } })
         .createSurface
       const id = create?.surfaceId
       if (typeof id === 'string') {
-        if (getSurface(id) || createdThisBatch.has(id)) continue
+        if (processor.getSurface(id) || createdThisBatch.has(id)) continue
         createdThisBatch.add(id)
       }
-      processMessages([message as Record<string, unknown>])
+      try {
+        processor.processMessages(message as Parameters<VellocProcessor['processMessages']>[0])
+      } catch (error) {
+        console.error('[a2ui] message rejected', error)
+      }
     }
-  }, [commands, processMessages, getSurface])
+  }, [commands, processor])
 
   // Forward surface actions to the model as a hidden isMeta turn (gated while a
   // turn is in flight — one action per turn).
   useEffect(() => {
-    actionHandlerRef.current = (message: A2UIClientEventMessage) => {
+    actionHandlerRef.current = (action: ActionPayload) => {
       try {
         if (!submitActionMessage || busyRef.current) return
-        const action = (message as { userAction?: SurfaceUserAction }).userAction
-        if (!action || typeof action.surfaceId !== 'string') return
-        const surface = getSurface(action.surfaceId)
-        const dataModel =
-          (surface as { dataModel?: { data?: unknown } } | undefined)?.dataModel
-            ?.data ?? {}
+        if (typeof action.surfaceId !== 'string') return
+        const dataModel = processor.getSurface(action.surfaceId)?.dataModel.get('/') ?? {}
         void submitActionMessage(buildActionTurn(action, dataModel))
       } catch (error) {
         console.error('[a2ui] failed to forward surface action', error)
@@ -143,7 +147,7 @@ function A2uiFeeder({
     return () => {
       actionHandlerRef.current = null
     }
-  }, [getSurface, submitActionMessage, actionHandlerRef])
+  }, [processor, submitActionMessage, actionHandlerRef])
 
   return null
 }
@@ -211,12 +215,35 @@ function A2uiPanePortal({ sessionId }: { sessionId: string }) {
           surfaceId={selectedSurfaceId}
           fallbackText={t('a2ui.renderFailed')}
         >
-          <A2UIRenderer surfaceId={selectedSurfaceId} fallback={null} />
+          <SelectedSurface surfaceId={selectedSurfaceId} />
         </SurfaceErrorBoundary>
       </div>
     </div>,
     shown,
   )
+}
+
+function useA2uiProcessor(): VellocProcessor {
+  const processor = useContext(ProcessorContext)
+  if (!processor) throw new Error('useA2uiProcessor must be used within A2uiProviderHost')
+  return processor
+}
+
+// The surface model of `surfaceId`, kept current across create and delete.
+function SelectedSurface({ surfaceId }: { surfaceId: string }) {
+  const processor = useA2uiProcessor()
+  const [, setVersion] = useState(0)
+  useEffect(() => {
+    const bump = () => setVersion(v => v + 1)
+    const created = processor.onSurfaceCreated(bump)
+    const deleted = processor.onSurfaceDeleted(bump)
+    return () => {
+      created.unsubscribe()
+      deleted.unsubscribe()
+    }
+  }, [processor])
+  const surface = processor.getSurface(surfaceId)
+  return surface ? <A2uiSurface key={surfaceId} surface={surface} /> : null
 }
 
 export const A2uiProviderHost = memo(function A2uiProviderHost({
@@ -232,15 +259,22 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
   busy: boolean
   children: ReactNode
 }) {
-  // Bridge: <A2UIProvider onAction> is fixed at mount (before getSurface
-  // exists); the feeder installs the real handler into this ref.
+  // The processor's action listener is fixed at construction; the feeder
+  // installs the real handler into this ref.
   const actionHandlerRef = useRef<SurfaceActionHandler | null>(null)
-  const onAction = useCallback((message: A2UIClientEventMessage) => {
-    actionHandlerRef.current?.(message)
-  }, [])
+  const [processor] = useState<VellocProcessor>(
+    () =>
+      new MessageProcessor<ReactCatalogComponent>([vellocCatalog], action => {
+        actionHandlerRef.current?.(action)
+      }),
+  )
+  useEffect(() => {
+    injectBasicCatalogStyles()
+    return () => processor.dispose()
+  }, [processor])
 
   return (
-    <A2UIProvider onAction={onAction} catalog={vellocCatalog}>
+    <ProcessorContext.Provider value={processor}>
       <A2uiPresentationProvider sessionId={sessionId} messages={messages} busy={busy}>
         <A2uiFeeder
           messages={messages}
@@ -251,7 +285,7 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
         {children}
         <A2uiPanePortal sessionId={sessionId} />
       </A2uiPresentationProvider>
-    </A2UIProvider>
+    </ProcessorContext.Provider>
   )
 })
 

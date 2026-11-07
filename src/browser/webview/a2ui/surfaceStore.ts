@@ -116,3 +116,25 @@ export function deriveA2uiPresentation(messages: readonly Message[]): {
   }
   return { latestToolCallIdBySurface, deletedSurfaceIds }
 }
+
+/**
+ * Epoch ms of the newest assistant message holding an `a2ui_*` tool-call, or
+ * null when there is none or it carries no parseable timestamp.
+ */
+export function latestA2uiMentionTime(messages: readonly Message[]): number | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message.type !== 'assistant') continue
+    const content = asRecord(message.message)?.content
+    if (!Array.isArray(content)) continue
+    const mentions = content.some(part => {
+      const record = asRecord(part)
+      const toolName = record?.toolName ?? record?.name
+      return record?.type === 'tool-call' && typeof toolName === 'string' && isA2uiToolName(toolName)
+    })
+    if (!mentions) continue
+    const time = typeof message.timestamp === 'string' ? Date.parse(message.timestamp) : NaN
+    return Number.isFinite(time) ? time : null
+  }
+  return null
+}
