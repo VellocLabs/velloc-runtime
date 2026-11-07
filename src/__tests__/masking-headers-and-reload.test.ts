@@ -10,7 +10,9 @@ import { DriverStreamHost } from '../models/drivers/driverStreamHost'
 import { createModelProvider } from '../models/drivers/modelProvider'
 import { registerProviderDriver } from '../models/drivers/driverRegistry'
 import type { DriverStreamEvent, ProviderDriver } from '../models/drivers/driverTypes'
-import { modelMasking } from '../models/masking/maskingHolder'
+import { registerProviderRequestSeam, resetProviderRequestSeams } from '../models/drivers/providerRequestSeam'
+import { ModelMaskingHolder, modelMasking } from '../models/masking/maskingHolder'
+import { fakeProviderRequestSeam } from './_helpers/fakeProviderRequestSeam'
 import type { NexusModelMaskingSettings } from '../settings/settingsTypes'
 
 const RULES = [{ match: 'acmeco', alias: 'northwind' }]
@@ -68,6 +70,7 @@ const errorsOf = (chunks: any[]) => chunks.filter(chunk => chunk.type === 'error
 
 afterEach(() => {
   modelMasking.resetForTest()
+  resetProviderRequestSeams()
 })
 
 describe('header and query values', () => {
@@ -138,5 +141,79 @@ describe('a settings edit', () => {
     const { opened } = await run('hello acmeco')
     expect(modelMasking.status().state).toBe('active')
     expect(opened[0]!.headers['http-referer']).toBe('https://northwind.app')
+  })
+})
+
+describe('a provider seam', () => {
+  it('sees the masked values, and what it signs is sent unchanged', async () => {
+    modelMasking.configure({ enabled: true, rules: RULES })
+    const fake = fakeProviderRequestSeam({
+      request: undefined,
+      sign: e => ({ headers: { 'x-signature': `signed:${e.headers['http-referer']}` } }),
+    })
+    registerProviderRequestSeam('masking-hdr', fake.seam)
+    const { opened, chunks } = await run('hello acmeco')
+    expect(errorsOf(chunks)).toEqual([])
+    expect(fake.calls.request[0]!.headers['http-referer']).toBe('https://northwind.app')
+    expect(fake.calls.sign[0]!.headers['http-referer']).toBe('https://northwind.app')
+    expect(opened[0]!.headers['http-referer']).toBe('https://northwind.app')
+    expect(opened[0]!.headers['x-signature']).toBe('signed:https://northwind.app')
+  })
+})
+
+describe('refresh', () => {
+  function deferredReader(first: NexusModelMaskingSettings | undefined) {
+    let calls = 0
+    let release: ((settings: NexusModelMaskingSettings | undefined) => void) | undefined
+    const read = () => {
+      calls += 1
+      if (calls === 1) return Promise.resolve(first)
+      return new Promise<NexusModelMaskingSettings | undefined>(resolve => { release = resolve })
+    }
+    return { read, calls: () => calls, release: (s: NexusModelMaskingSettings | undefined) => release!(s) }
+  }
+
+  it('returns when the stream is cancelled during a slow read', async () => {
+    const holder = new ModelMaskingHolder()
+    const reader = deferredReader(undefined)
+    await holder.load(reader.read)
+    const abort = new AbortController()
+    const refreshed = holder.refresh(abort.signal, 60_000)
+    abort.abort()
+    await expect(Promise.race([refreshed.then(() => 'returned'), new Promise(r => setTimeout(() => r('waiting'), 200))]))
+      .resolves.toBe('returned')
+  })
+
+  it('streams that start together share one read', async () => {
+    const holder = new ModelMaskingHolder()
+    const reader = deferredReader(undefined)
+    await holder.load(reader.read)
+    const both = Promise.all([holder.refresh(), holder.refresh()])
+    reader.release({ enabled: true, rules: RULES })
+    await both
+    expect(reader.calls()).toBe(2)
+    expect(holder.status().state).toBe('active')
+  })
+
+  it('a read slower than the wait still applies once it lands', async () => {
+    const holder = new ModelMaskingHolder()
+    const reader = deferredReader(undefined)
+    await holder.load(reader.read)
+    await holder.refresh(undefined, 10)
+    expect(holder.status().state).toBe('off')
+    reader.release({ enabled: true, rules: RULES })
+    await new Promise(r => setTimeout(r, 0))
+    expect(holder.status().state).toBe('active')
+  })
+
+  it('a slow read is dropped when /masking changed the section meanwhile', async () => {
+    const holder = new ModelMaskingHolder()
+    const reader = deferredReader({ enabled: true, rules: RULES })
+    await holder.load(reader.read)
+    await holder.refresh(undefined, 10)
+    holder.configure({ enabled: false, rules: RULES })
+    reader.release({ enabled: true, rules: RULES })
+    await new Promise(r => setTimeout(r, 0))
+    expect(holder.status().state).toBe('off')
   })
 })

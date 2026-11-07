@@ -18,6 +18,7 @@ import type { DriverStreamEvent } from '../drivers/driverTypes'
 import type { NexusModelMaskingSettings } from '../../settings/settingsTypes'
 import {
   findEgressResidual,
+  HOST_PLACEHOLDER,
   MaskingResidualError,
   MaskingUnavailableError,
   type EgressRequest,
@@ -89,9 +90,6 @@ type MaskingSettingsRead = () => Promise<NexusModelMaskingSettings | undefined |
 /** The preset User-Agent the host would fill in for a provider, if any. */
 export type PresetUserAgentOf = (providerId: string) => string | undefined
 
-/** Host-side placeholders; the host expands them, so their names stay as written. */
-const HOST_PLACEHOLDER = /\{\{(?:secret|oauth):[^}]*\}\}/g
-
 /** `value` masked outside its host-side placeholders. */
 function maskOutsidePlaceholders(value: string, masking: CompiledMasking): string {
   let out = ''
@@ -113,21 +111,12 @@ function maskValues(values: Record<string, string>, masking: CompiledMasking): R
   return changed ? out : undefined
 }
 
-/**
- * `request` with every header value and query value masked; names are kept.
- * The host fills a provider's preset User-Agent only when the request has
- * none, out of the guard's sight, so with masking on the request always
- * carries one explicitly.
- */
-export function withMaskedHeaders<T extends { headers?: Record<string, string>; queryParams?: Record<string, string> }>(
+/** `request` with every header value and query value masked; names are kept. */
+export function withMaskedValues<T extends { headers?: Record<string, string>; queryParams?: Record<string, string> }>(
   request: T,
   masking: CompiledMasking,
-  presetUserAgent: string | undefined,
 ): T {
-  let headers = request.headers ?? {}
-  const hasUserAgent = Object.keys(headers).some(header => header.toLowerCase() === 'user-agent')
-  if (!hasUserAgent && presetUserAgent) headers = { ...headers, 'user-agent': presetUserAgent }
-  const maskedHeaders = maskValues(headers, masking) ?? (headers !== request.headers ? headers : undefined)
+  const maskedHeaders = request.headers ? maskValues(request.headers, masking) : undefined
   const maskedQuery = request.queryParams ? maskValues(request.queryParams, masking) : undefined
   if (!maskedHeaders && !maskedQuery) return request
   return {
@@ -135,6 +124,25 @@ export function withMaskedHeaders<T extends { headers?: Record<string, string>; 
     ...(maskedHeaders ? { headers: maskedHeaders } : {}),
     ...(maskedQuery ? { queryParams: maskedQuery } : {}),
   }
+}
+
+/**
+ * `request` with its User-Agent masked. The host fills a provider's preset
+ * User-Agent only when the request has none, out of the guard's sight, so
+ * with masking on the request always carries one explicitly.
+ */
+export function withMaskedUserAgent<T extends { headers?: Record<string, string> }>(
+  request: T,
+  masking: CompiledMasking,
+  preset: string | undefined,
+): T {
+  const headers = request.headers ?? {}
+  const name = Object.keys(headers).find(header => header.toLowerCase() === 'user-agent')
+  const current = name !== undefined ? headers[name]! : preset
+  if (!current) return request
+  const masked = masking.maskText(current).text
+  if (name !== undefined && masked === current) return request
+  return { ...request, headers: { ...headers, [name ?? 'user-agent']: masked } }
 }
 
 /** One stream's masking: its payload copy, its restore filter, its guard, its log lines. */
@@ -196,6 +204,8 @@ export class ModelMaskingHolder {
   private readonly waiters = new Set<() => void>()
   private presetUserAgentOf: PresetUserAgentOf = () => undefined
   private reader: MaskingSettingsRead | undefined
+  /** The settings re-read in flight; streams that start meanwhile share it. */
+  private refreshing: Promise<void> | undefined
 
   constructor() {
     this.installEgressCheck()
@@ -264,22 +274,42 @@ export class ModelMaskingHolder {
   /**
    * Reads the settings again, so an edit of settings.json (the section
    * removed, turned off or changed) applies to the next stream. The table is
-   * recompiled only when the section differs. A read that fails or takes
-   * longer than `timeoutMs` leaves the state as it is.
+   * recompiled only when the section differs. One read at a time: a call made
+   * while one is in flight waits for that read. Resolves when the read is
+   * applied, when `signal` aborts, or after `timeoutMs`; a read still running
+   * then is applied when it lands, unless a `configure` came first. A read
+   * that fails leaves the state as it is.
    */
   async refresh(signal?: AbortSignal, timeoutMs: number = MASKING_REFRESH_WAIT_MS): Promise<void> {
     const read = this.reader
     if (!read || this.state === 'unknown' || signal?.aborted) return
-    const generation = this.generation
+    if (!this.refreshing) {
+      const generation = this.generation
+      const reading: Promise<void> = read().then(
+        settings => {
+          if (settings === 'unreadable' || generation !== this.generation) return
+          if (JSON.stringify(settings ?? {}) === JSON.stringify(this.settings)) return
+          this.configure(settings)
+        },
+        () => undefined,
+      ).finally(() => {
+        if (this.refreshing === reading) this.refreshing = undefined
+      })
+      this.refreshing = reading
+    }
+    const reading = this.refreshing
     let timer: ReturnType<typeof setTimeout> | undefined
-    const settled = await Promise.race([
-      read().then(settings => ({ settings }), () => undefined),
-      new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), timeoutMs) }),
+    let onAbort: (() => void) | undefined
+    await Promise.race([
+      reading,
+      new Promise<void>(resolve => {
+        timer = setTimeout(resolve, timeoutMs)
+        onAbort = () => resolve()
+        signal?.addEventListener('abort', onAbort, { once: true })
+      }),
     ])
     clearTimeout(timer)
-    if (!settled || settled.settings === 'unreadable' || generation !== this.generation) return
-    if (JSON.stringify(settled.settings ?? {}) === JSON.stringify(this.settings)) return
-    this.configure(settled.settings)
+    if (onAbort) signal?.removeEventListener('abort', onAbort)
   }
 
   /** Resolves once the state is known (anything but `unknown`), when
@@ -379,6 +409,7 @@ export class ModelMaskingHolder {
     this.pending = undefined
     this.writer = undefined
     this.reader = undefined
+    this.refreshing = undefined
     this.lastOut = new Set()
   }
 
@@ -394,7 +425,11 @@ export class ModelMaskingHolder {
       if (request.masking === 'stream') return
       if (this.state === 'off') return
       if (this.state === 'active' && this.compiled) {
-        const sent = withMaskedHeaders(request, this.compiled, this.presetUserAgent(request.providerId))
+        const sent = withMaskedUserAgent(
+          withMaskedValues(request, this.compiled),
+          this.compiled,
+          this.presetUserAgent(request.providerId),
+        )
         this.refuseResidual(this.compiled, sent)
         return sent
       }

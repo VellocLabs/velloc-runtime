@@ -49,7 +49,8 @@ export class MaskingUnavailableError extends Error {
   }
 }
 
-const PLACEHOLDER = /\{\{(?:secret|oauth):[^}]*\}\}/g
+/** Host-side placeholders; the host expands them, so their names stay as written. */
+export const HOST_PLACEHOLDER = /\{\{(?:secret|oauth):[^}]*\}\}/g
 const DECODER = new TextDecoder('utf-8')
 
 function escapedForms(match: string): string[] {
@@ -77,11 +78,11 @@ export function findEgressResidual(
   const found = inText(request.url, 'url')
   if (found) return found
   for (const [name, value] of Object.entries(request.headers ?? {})) {
-    const hit = inText(`${name}: ${value.replace(PLACEHOLDER, '')}`, `header:${name.toLowerCase()}`)
+    const hit = inText(`${name}: ${value.replace(HOST_PLACEHOLDER, '')}`, `header:${name.toLowerCase()}`)
     if (hit) return hit
   }
   for (const [name, value] of Object.entries(request.queryParams ?? {})) {
-    const hit = inText(`${name}=${value.replace(PLACEHOLDER, '')}`, `query:${name}`)
+    const hit = inText(`${name}=${value.replace(HOST_PLACEHOLDER, '')}`, `query:${name}`)
     if (hit) return hit
   }
   if (request.body && request.body.byteLength > 0) {

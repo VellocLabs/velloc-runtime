@@ -31,7 +31,7 @@ import {
   type ProviderRequestSeam,
 } from './providerRequestSeam'
 import { sessionWorkingDirOf } from './sessionWorkingDirs'
-import { modelMasking, withMaskedHeaders, type MaskingStream } from '../masking/maskingHolder'
+import { modelMasking, withMaskedUserAgent, withMaskedValues, type MaskingStream } from '../masking/maskingHolder'
 import { MaskingResidualError, MaskingUnavailableError, MaskingUndecodableError } from '../masking/egressGuard'
 import { storedKeyProblemFromReason, withStoredKeyMarker } from '../../utils/storedKeyProblem'
 
@@ -240,7 +240,7 @@ class DriverStream {
       // Every reader of the payload from here on (the codec, the seam's
       // parts, a provider mod's hooks) sees the masked copy.
       if (this.masking) this.payload = this.masking.maskPayload(this.payload)
-      request = this.provider.buildRequest(this.payload, this.model)
+      request = this.withMaskedValues(this.provider.buildRequest(this.payload, this.model))
     } catch (error) {
       if (error instanceof MaskingResidualError || error instanceof MaskingUndecodableError) {
         this.fail(errorText(error), maskingRefusal(error))
@@ -320,15 +320,20 @@ class DriverStream {
           ...(over.system !== undefined ? { systemPrompt: over.system } : {}),
           ...(over.tools !== undefined ? { tools: over.tools as BridgeModelRequestPayload['tools'] } : {}),
         }
-        return this.provider.buildRequest(next, this.model)
+        return this.withMaskedValues(this.provider.buildRequest(next, this.model))
       },
     }
   }
 
-  private withMaskedHeaders(request: DriverHttpRequest): DriverHttpRequest {
+  /** Masked before the seam's hooks run, so what `sign` signs is what is sent. */
+  private withMaskedValues(request: DriverHttpRequest): DriverHttpRequest {
+    return this.masking ? withMaskedValues(request, this.masking.masking) : request
+  }
+
+  private withMaskedUserAgent(request: DriverHttpRequest): DriverHttpRequest {
     const masking = this.masking
     if (!masking) return request
-    return withMaskedHeaders(request, masking.masking, modelMasking.presetUserAgent(this.provider.id))
+    return withMaskedUserAgent(request, masking.masking, modelMasking.presetUserAgent(this.provider.id))
   }
 
   /** Resolves true once this stream holds a slot, false when it is cancelled
@@ -355,7 +360,7 @@ class DriverStream {
 
   private async send(sent: DriverHttpRequest, seamed?: SeamedSend): Promise<void> {
     const idleTimeoutMs = seamed?.prepared.idleTimeoutMs ?? this.provider.spec.idleTimeoutMs
-    const request = this.withMaskedHeaders(sent)
+    const request = this.withMaskedUserAgent(sent)
     try {
       // The stream's own table guards its request, whatever the realm's
       // table has become since it opened.
