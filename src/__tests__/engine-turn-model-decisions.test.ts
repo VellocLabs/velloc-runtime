@@ -275,6 +275,27 @@ describe('assembleChunk', () => {
     expect(acc.blocks[0]).toMatchObject({ text: 'Hello' })
   })
 
+  it('passes text and reasoning on as stream events while they stream', () => {
+    const acc = openStreamAccumulator(isReadOnly)
+    const start = assembleChunk(acc, chunk({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }), ctx())
+    const delta = assembleChunk(acc, chunk({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hi' } }), ctx())
+    expect(start.emit).toEqual({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } })
+    expect(delta.emit).toEqual({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hi' } } })
+    assembleChunk(acc, chunk({ type: 'content_block_start', index: 1, content_block: { type: 'thinking', thinking: '' } }), ctx())
+    const thought = assembleChunk(acc, chunk({ type: 'content_block_delta', index: 1, delta: { type: 'thinking_delta', thinking: 'hmm' } }), ctx())
+    expect(thought.emit).toEqual({ type: 'stream_event', event: { type: 'content_block_delta', index: 1, delta: { type: 'thinking_delta', thinking: 'hmm' } } })
+  })
+
+  it('passes no event for an empty delta, a signature, or a tool call', () => {
+    const acc = openStreamAccumulator(isReadOnly)
+    assembleChunk(acc, chunk({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }), ctx())
+    expect(assembleChunk(acc, chunk({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '' } }), ctx()).emit).toBeUndefined()
+    assembleChunk(acc, chunk({ type: 'content_block_start', index: 1, content_block: { type: 'thinking', thinking: '' } }), ctx())
+    expect(assembleChunk(acc, chunk({ type: 'content_block_delta', index: 1, delta: { type: 'signature_delta', signature: 's' } }), ctx()).emit).toBeUndefined()
+    const tool = assembleChunk(acc, chunk({ type: 'content_block_start', index: 2, content_block: { type: 'tool_use', id: 't1', name: 'Grep', input: {} } }), ctx())
+    expect(tool.emit).toBeUndefined()
+  })
+
   it('stamps the stop reason and merges delta usage', () => {
     const acc = openStreamAccumulator(isReadOnly)
     const out = assembleChunk(

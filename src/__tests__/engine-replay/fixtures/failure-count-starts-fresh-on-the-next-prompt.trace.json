@@ -1415,7 +1415,7 @@
       "added": [
         {
           "type": "user",
-          "uuid": "prompt-34",
+          "uuid": "prompt-36",
           "isMeta": false,
           "role": "user",
           "content": "try once more"
@@ -1758,6 +1758,18 @@
     {
       "type": "stream_event",
       "event": {
+        "type": "content_block_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
         "type": "message_delta"
       }
     },
@@ -1843,6 +1855,18 @@
       "type": "stream_event",
       "event": {
         "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta"
       }
     },
     {

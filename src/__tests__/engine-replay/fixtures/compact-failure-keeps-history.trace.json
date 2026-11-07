@@ -168,15 +168,11 @@
       "reason": "completed"
     },
     {
-      "op": "aiTitle",
-      "aiTitle": "A title"
-    },
-    {
       "op": "record",
       "added": [
         {
           "type": "user",
-          "uuid": "prompt-8",
+          "uuid": "prompt-10",
           "isMeta": false,
           "role": "user",
           "content": "/compact"
@@ -188,6 +184,10 @@
         }
       ],
       "total": 4
+    },
+    {
+      "op": "aiTitle",
+      "aiTitle": "A title"
     }
   ],
   "emitted": [
@@ -206,6 +206,18 @@
       "type": "stream_event",
       "event": {
         "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta"
       }
     },
     {

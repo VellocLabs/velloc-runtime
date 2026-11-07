@@ -323,9 +323,8 @@ describe('callModel — blocking-call fallback gating', () => {
         runtimeConfig,
       })
 
-      const next = (
-        deps.callModel(makeCallModelParams() as never) as AsyncGenerator<unknown>
-      ).next()
+      const stream = deps.callModel(makeCallModelParams() as never) as AsyncGenerator<unknown>
+      const next = stream.next()
       await vi.advanceTimersByTimeAsync(0)
 
       expect(streamReadCount).toBe(1)
@@ -333,7 +332,11 @@ describe('callModel — blocking-call fallback gating', () => {
       expect(streamReadCount).toBe(1)
 
       await vi.advanceTimersByTimeAsync(1)
-      const value = await next
+      // The streamed text events come first; the assembled reply follows them.
+      let value = await next
+      while (!value.done && (value.value as { type?: string }).type === 'stream_event') {
+        value = await stream.next()
+      }
       expect(value.done).toBe(false)
       expect(
         (value.value as { message?: { content?: Array<{ text?: string }> } })

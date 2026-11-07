@@ -122,6 +122,18 @@
       }
     },
     {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta"
+      }
+    },
+    {
       "type": "assistant",
       "uuid": "<id:1>",
       "role": "assistant",

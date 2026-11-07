@@ -167,7 +167,7 @@ export type ChunkContext = {
 }
 
 export type ChunkOutcome = {
-  /** A usage event to pass on to the turn. */
+  /** A stream event to pass on to the turn: usage, or a text or reasoning chunk. */
   emit?: Message
   /** A diagnostic record for the call log. */
   note?: { event: string; data: Record<string, unknown> }
@@ -271,7 +271,7 @@ function onBlockStart(acc: StreamAccumulator, chunk: StreamChunk, ctx: ChunkCont
     }
   }
   acc.blocks.push(block)
-  if (!acc.guard.observe(block)) return {}
+  if (!acc.guard.observe(block)) return { emit: streamedBlockStart(acc.blocks.length - 1, block) }
   // The model is looping on one read-only call: keep the first of the run,
   // drop the copies, and finish as an ordinary tool-use response.
   acc.blocks.splice(acc.blocks.length - (REPEATED_TOOL_CALL_LIMIT - 1))
@@ -280,16 +280,35 @@ function onBlockStart(acc: StreamAccumulator, chunk: StreamChunk, ctx: ChunkCont
   return { cut: acc.cut }
 }
 
+// Text and reasoning reach the clients as they stream, so a reply draws before
+// it is finished; the stored row is still the assembled message.
+function streamedBlockStart(index: number, block: Block): Message | undefined {
+  if (block.type === PART_TEXT) {
+    return streamEvent({ type: STREAM_CONTENT_BLOCK_START, index, content_block: { type: PART_TEXT, text: String(block.text ?? '') } })
+  }
+  if (block.type === PART_THINKING) {
+    return streamEvent({ type: STREAM_CONTENT_BLOCK_START, index, content_block: { type: PART_THINKING, thinking: String(block.thinking ?? '') } })
+  }
+  return undefined
+}
+
+function streamEvent(event: Record<string, unknown>): Message {
+  return { type: MSG_TYPE_STREAM_EVENT, event } as Message
+}
+
 function onBlockDelta(acc: StreamAccumulator, chunk: StreamChunk): ChunkOutcome {
   const { delta, index } = chunk as { delta?: { type?: unknown }; index?: number }
   if (!delta || index === undefined) return {}
   const block = acc.blocks[index]
   if (!block) return {}
   if (delta.type === DELTA_TEXT) {
-    block.text = (block.text ?? '') + String((delta as { text?: string }).text ?? '')
+    const text = String((delta as { text?: string }).text ?? '')
+    block.text = (block.text ?? '') + text
+    if (text) return { emit: streamEvent({ type: STREAM_CONTENT_BLOCK_DELTA, index, delta: { type: DELTA_TEXT, text } }) }
   } else if (delta.type === DELTA_THINKING && block.type === PART_THINKING) {
-    block.thinking = String(block.thinking ?? '')
-      + String((delta as { thinking?: string }).thinking ?? '')
+    const thinking = String((delta as { thinking?: string }).thinking ?? '')
+    block.thinking = String(block.thinking ?? '') + thinking
+    if (thinking) return { emit: streamEvent({ type: STREAM_CONTENT_BLOCK_DELTA, index, delta: { type: DELTA_THINKING, thinking } }) }
   } else if (delta.type === DELTA_SIGNATURE && block.type === PART_THINKING) {
     const signature = (delta as { signature?: unknown }).signature
     if (typeof signature === 'string' && signature) block.signature = signature

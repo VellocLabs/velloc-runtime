@@ -246,7 +246,7 @@
       "added": [
         {
           "type": "user",
-          "uuid": "prompt-8",
+          "uuid": "prompt-10",
           "isMeta": false,
           "role": "user",
           "content": "/clear"
@@ -274,7 +274,7 @@
       "added": [
         {
           "type": "user",
-          "uuid": "prompt-13",
+          "uuid": "prompt-15",
           "isMeta": false,
           "role": "user",
           "content": "what number?"
@@ -330,6 +330,18 @@
     {
       "type": "stream_event",
       "event": {
+        "type": "content_block_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
         "type": "message_delta"
       }
     },
@@ -364,7 +376,7 @@
     },
     {
       "type": "user",
-      "uuid": "prompt-8",
+      "uuid": "prompt-10",
       "isMeta": false,
       "role": "user",
       "content": "/clear"
@@ -402,6 +414,18 @@
       "type": "stream_event",
       "event": {
         "type": "message_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta"
       }
     },
     {

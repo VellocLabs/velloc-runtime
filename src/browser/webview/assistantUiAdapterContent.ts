@@ -43,12 +43,15 @@ export function appendTextPart(
   text: string,
   type: 'text' | 'reasoning' = 'text',
 ): void {
-  if (!text.trim()) {
+  const lastPart = parts.at(-1)
+  const continues = lastPart !== undefined && lastPart.type === type
+  // Whitespace alone never starts a part, but inside one it is kept: streamed
+  // text arrives in small pieces, and a space or a newline may be one of them.
+  if (!text || (!continues && !text.trim())) {
     return
   }
 
-  const lastPart = parts.at(-1)
-  if (lastPart && lastPart.type === type) {
+  if (continues) {
     const mergedText = `${lastPart.text}${text}`
     parts[parts.length - 1] =
       type === 'reasoning'

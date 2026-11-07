@@ -150,6 +150,30 @@
     {
       "type": "stream_event",
       "event": {
+        "type": "content_block_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_start"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta"
+      }
+    },
+    {
+      "type": "stream_event",
+      "event": {
         "type": "message_delta"
       }
     },
