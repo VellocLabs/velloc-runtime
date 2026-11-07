@@ -4,7 +4,9 @@ import { MessageProcessor } from '@a2ui/web_core/v1_0'
 import {
   a2uiBlockKey,
   blockSurfaceIds,
+  countA2uiBlocks,
   hasA2uiBlock,
+  messageA2uiBlockKeys,
   splitA2uiText,
 } from '../toolkit/builtin/a2ui/express/a2uiBlocks'
 import { createA2uiExpressCompiler } from '../toolkit/builtin/a2ui/express/a2uiExpressCompiler'
@@ -65,9 +67,19 @@ describe('blockSurfaceIds / a2uiBlockKey', () => {
     expect(blockSurfaceIds(`${FORM}\ndeleteSurface("old")`)).toEqual({ targets: ['contact'], deletes: ['old'] })
   })
 
-  it('keys a block by surface and source', () => {
-    expect(a2uiBlockKey('a', 'x')).toBe(a2uiBlockKey('a', 'x'))
-    expect(a2uiBlockKey('a', 'x')).not.toBe(a2uiBlockKey('a', 'y'))
+  it('keys a block by its message and ordinal, and counts blocks in a text', () => {
+    expect(a2uiBlockKey('m1', 0)).toBe(a2uiBlockKey('m1', 0))
+    expect(a2uiBlockKey('m1', 0)).not.toBe(a2uiBlockKey('m2', 0))
+    expect(a2uiBlockKey('m1', 0)).not.toBe(a2uiBlockKey('m1', 1))
+    expect(messageA2uiBlockKeys('m', [
+      { type: 'text', text: `<a2ui>\n${FORM}\n</a2ui>` },
+      { type: 'tool_use', id: 't', name: 'Read', input: {} },
+      { type: 'text', text: 'none' },
+      { type: 'text', text: `<a2ui>\n${FORM}\n</a2ui>\n<a2ui>\nsurface("x")` },
+    ])).toEqual(['m:0', 'm:1', 'm:2'])
+    expect(messageA2uiBlockKeys('m', 'text')).toEqual([])
+    expect(countA2uiBlocks('plain')).toBe(0)
+    expect(countA2uiBlocks(`<a2ui>\n${FORM}\n</a2ui>\n<a2ui>\n${FORM}\n</a2ui>\n<a2ui>\nsurface("x")`)).toBe(3)
   })
 })
 

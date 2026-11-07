@@ -1,16 +1,16 @@
 // The A2UI blocks the model is writing (F-1). Each body is read line by line as
-// it streams, so its surface draws before the block is finished; the stored copy
-// of the finished block completes it (`finish`) instead of being compiled again.
+// it streams, so its surface draws before the block is finished; when the stored
+// copy of the block arrives, `finish` reads only what is left of it.
 
-import { a2uiBlockKey, blockSurfaceIds } from '@/toolkit/builtin/a2ui/express/a2uiBlocks'
+import { A2UI_CLOSE_TAG, blockSurfaceIds } from '@/toolkit/builtin/a2ui/express/a2uiBlocks'
 import type { A2uiBlockStream } from '@/toolkit/builtin/a2ui/express/a2uiExpressCompiler'
 
 export type A2uiLiveSnapshot = {
-  /** The reply segment holding the block: message, part and block index. */
-  segmentKey: string
+  /** The block's `a2uiBlockKey` as the chat draws it. */
+  blockKey: string
   /** The surface the block draws, once known. */
   surfaceId: string | null
-  /** The mention its card uses: a live key while open, the block key once closed. */
+  /** The mention its card uses: a live key while open, `blockKey` once closed. */
   mentionKey: string
 }
 
@@ -24,16 +24,20 @@ export type A2uiLiveFinish =
   | { kind: 'failed'; created: boolean }
 
 export type A2uiLiveBlocks = {
-  /** A block segment changed; `closed` once its closing tag arrived. */
-  feed(segmentKey: string, body: string, closed: boolean): void
-  /** The stored block `body` for `surfaceId` arrived: read what is left of it, once. */
-  finish(surfaceId: string, body: string): A2uiLiveFinish
+  /** A block changed; `closed` once its closing tag arrived. */
+  feed(blockKey: string, body: string, closed: boolean): void
+  /**
+   * The stored block `body` for `surfaceId` arrived under `blockKey`: read
+   * what is left of it, once. The streaming row's key can differ from the
+   * stored one, so a block is also found by its surface and what it read.
+   */
+  finish(blockKey: string, surfaceId: string, body: string): A2uiLiveFinish
   snapshot(): A2uiLiveSnapshot | null
   subscribe(listener: () => void): () => void
 }
 
-export function liveMentionKey(segmentKey: string): string {
-  return `live:${segmentKey}`
+export function liveMentionKey(blockKey: string): string {
+  return `live:${blockKey}`
 }
 
 function messageSurfaceId(message: unknown): string | null {
@@ -45,7 +49,7 @@ function messageSurfaceId(message: unknown): string | null {
 }
 
 type LiveBlock = {
-  segmentKey: string
+  blockKey: string
   /** The complete lines read so far. */
   fed: string
   stream: A2uiBlockStream
@@ -55,11 +59,17 @@ type LiveBlock = {
   created: boolean
 }
 
-// Only complete lines are read: a statement, a fence or the closing tag can
-// arrive split across chunks, and a half-read one cannot be taken back.
-function completeLines(body: string, closed: boolean): string {
+// The text read so far, with a closing newline once the block is closed. The
+// body is read up to its end, so the last statement draws without waiting for
+// the next line: only a trailing fragment that could still turn into a closing
+// tag or a fence is held back, since those are not Express and a half-read one
+// cannot be taken back.
+function readableText(body: string, closed: boolean): string {
   if (closed) return body.endsWith('\n') ? body : `${body}\n`
-  return body.slice(0, body.lastIndexOf('\n') + 1)
+  const lineStart = body.lastIndexOf('\n') + 1
+  const fragment = body.slice(lineStart).trimStart()
+  if (fragment && (A2UI_CLOSE_TAG.startsWith(fragment) || '```'.startsWith(fragment))) return body.slice(0, lineStart)
+  return body
 }
 
 export function createA2uiLiveBlocks(openStream: () => A2uiBlockStream): A2uiLiveBlocks {
@@ -73,7 +83,7 @@ export function createA2uiLiveBlocks(openStream: () => A2uiBlockStream): A2uiLiv
   const publish = (next: A2uiLiveSnapshot) => {
     if (
       snapshot &&
-      snapshot.segmentKey === next.segmentKey &&
+      snapshot.blockKey === next.blockKey &&
       snapshot.surfaceId === next.surfaceId &&
       snapshot.mentionKey === next.mentionKey
     ) {
@@ -93,21 +103,18 @@ export function createA2uiLiveBlocks(openStream: () => A2uiBlockStream): A2uiLiv
   }
 
   return {
-    feed(segmentKey, body, closed) {
-      let block = blocks.find(candidate => candidate.segmentKey === segmentKey)
+    feed(blockKey, body, closed) {
+      let block = blocks.find(candidate => candidate.blockKey === blockKey)
       if (closed) {
         // Only a block that was streaming takes its finished key; a block
         // already finished when it was first drawn is the feeder's alone.
         if (!block || block.closed) return
         block.closed = true
         block.surfaceId ??= blockSurfaceIds(body).targets[0] ?? null
-        if (snapshot?.segmentKey === segmentKey) {
-          const surfaceId = block.surfaceId
-          publish({ segmentKey, surfaceId, mentionKey: surfaceId ? a2uiBlockKey(surfaceId, body) : liveMentionKey(segmentKey) })
-        }
+        if (snapshot?.blockKey === blockKey) publish({ blockKey, surfaceId: block.surfaceId, mentionKey: blockKey })
         return
       }
-      const lines = completeLines(body, false)
+      const lines = readableText(body, false)
       if (block && !block.closed && !lines.startsWith(block.fed)) {
         // Text that shrank (a trailing fence stripped) adds nothing; text that
         // was rewritten starts the block over.
@@ -117,18 +124,20 @@ export function createA2uiLiveBlocks(openStream: () => A2uiBlockStream): A2uiLiv
       }
       if (!block || block.closed) {
         if (block) blocks.splice(blocks.indexOf(block), 1)
-        block = { segmentKey, fed: '', stream: openStream(), surfaceId: null, closed: false, failed: false, created: false }
+        block = { blockKey, fed: '', stream: openStream(), surfaceId: null, closed: false, failed: false, created: false }
         blocks.push(block)
       }
       const chunk = lines.slice(block.fed.length)
       block.fed = lines
       if (chunk) read(block, chunk)
       block.surfaceId ??= blockSurfaceIds(body).targets[0] ?? null
-      publish({ segmentKey, surfaceId: block.surfaceId, mentionKey: liveMentionKey(segmentKey) })
+      publish({ blockKey, surfaceId: block.surfaceId, mentionKey: liveMentionKey(blockKey) })
     },
-    finish(surfaceId, body) {
-      const full = completeLines(body, true)
-      const block = blocks.find(candidate => candidate.surfaceId === surfaceId && full.startsWith(candidate.fed))
+    finish(blockKey, surfaceId, body) {
+      const full = readableText(body, true)
+      const block =
+        blocks.find(candidate => candidate.blockKey === blockKey && full.startsWith(candidate.fed)) ??
+        blocks.find(candidate => candidate.surfaceId === surfaceId && full.startsWith(candidate.fed))
       if (!block) return { kind: 'not-streamed' }
       blocks.splice(blocks.indexOf(block), 1)
       const rest = full.slice(block.fed.length)

@@ -5,21 +5,21 @@
 
 import { useCallback, useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import { TriangleAlertIcon } from 'lucide-react'
-import { a2uiBlockKey, blockSurfaceIds } from '../../../toolkit/builtin/a2ui/express/a2uiBlocks'
+import { blockSurfaceIds } from '../../../toolkit/builtin/a2ui/express/a2uiBlocks'
 import { getA2uiBlockError, subscribeA2uiBlockErrors } from './a2uiBlockErrors'
 import { A2uiInlineSurface } from './A2uiInlineSurface'
 import { useT } from '../i18n'
 import { useA2uiLiveBlocks } from './a2uiLiveContext'
 
-export function A2uiBlockMention({ body, segmentKey }: { body: string; segmentKey?: string }) {
+/** `blockKey` is the block's `a2uiBlockKey`: its error entry and the mention key of its cards. */
+export function A2uiBlockMention({ body, blockKey }: { body: string; blockKey: string }) {
   const t = useT()
   const live = useA2uiLiveBlocks()
   useEffect(() => {
-    if (segmentKey) live?.feed(segmentKey, body, true)
-  }, [live, segmentKey, body])
+    live?.feed(blockKey, body, true)
+  }, [live, blockKey, body])
   const { targets } = useMemo(() => blockSurfaceIds(body), [body])
-  const key = a2uiBlockKey(targets[0] ?? '', body)
-  const read = () => getA2uiBlockError(key)
+  const read = () => getA2uiBlockError(blockKey)
   const error = useSyncExternalStore(subscribeA2uiBlockErrors, read, read)
   if (error) {
     return (
@@ -38,7 +38,7 @@ export function A2uiBlockMention({ body, segmentKey }: { body: string; segmentKe
   return (
     <>
       {targets.map(surfaceId => (
-        <A2uiInlineSurface key={surfaceId} surfaceId={surfaceId} mentionKey={a2uiBlockKey(surfaceId, body)} />
+        <A2uiInlineSurface key={surfaceId} surfaceId={surfaceId} mentionKey={blockKey} />
       ))}
     </>
   )
@@ -47,20 +47,20 @@ export function A2uiBlockMention({ body, segmentKey }: { body: string; segmentKe
 /** A block still streaming: fed to the live reader, drawn once its surface is known. */
 export function A2uiLiveBlockMention({
   body,
-  segmentKey,
+  blockKey,
   pending,
 }: {
   body: string
-  segmentKey: string
+  blockKey: string
   pending: ReactNode
 }) {
   const live = useA2uiLiveBlocks()
   useEffect(() => {
-    live?.feed(segmentKey, body, false)
-  }, [live, segmentKey, body])
+    live?.feed(blockKey, body, false)
+  }, [live, blockKey, body])
   const read = useCallback(() => live?.snapshot() ?? null, [live])
   const subscribe = useCallback((listener: () => void) => live?.subscribe(listener) ?? (() => {}), [live])
   const snapshot = useSyncExternalStore(subscribe, read, read)
-  if (!snapshot || snapshot.segmentKey !== segmentKey || !snapshot.surfaceId) return <>{pending}</>
+  if (!snapshot || snapshot.blockKey !== blockKey || !snapshot.surfaceId) return <>{pending}</>
   return <A2uiInlineSurface surfaceId={snapshot.surfaceId} mentionKey={snapshot.mentionKey} />
 }

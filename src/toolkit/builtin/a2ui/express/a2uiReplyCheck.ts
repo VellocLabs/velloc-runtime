@@ -65,7 +65,7 @@ export function describeA2uiBlockFailures(failures: readonly A2uiBlockFailure[])
   return [
     'The user could not see these A2UI interfaces from your last reply, because they did not compile:',
     ...lines,
-    'Nothing of these blocks was drawn: write each one again in full, corrected. Your other text is already shown, so do not repeat it; add at most one short sentence.',
+    'The statements before the error may already be applied; sending the whole corrected block again is safe. Write each failed block again in full, corrected. Your other text is already shown, so do not repeat it; add at most one short sentence.',
   ].join('\n')
 }
 

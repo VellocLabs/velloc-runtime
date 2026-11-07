@@ -14,6 +14,7 @@ import {
 } from '../browser/webview/assistantUiAdapter'
 import type { BrowserRuntimeClientState } from '../browser/webview/BrowserRuntimeClient'
 import { attachmentToText } from '../browser/webview/assistantUiAdapterContent'
+import { a2uiBlockKeysOfRow, mergeA2uiBlockKeys } from '../browser/webview/a2ui/a2uiRowKeys'
 import type { ContextRow } from '../runtime/RuntimeTypes'
 import { renderTeamFrame } from '../team/renderTeamFrame'
 
@@ -23,6 +24,35 @@ function expectUniqueMessageIds(messages: Array<{ id?: string }>): void {
 }
 
 describe('assistantUiAdapter', () => {
+  it('stamps a row with the keys of its A2UI blocks, by transcript uuid, and merges them in order', () => {
+    const block = '<a2ui>\nsurface("s")\nroot = Text("a")\n</a2ui>'
+    const converted = convertTranscriptToThreadMessages([
+      { type: 'user', uuid: 'u-1', message: { content: 'draw' } },
+      {
+        type: 'assistant',
+        uuid: 'a-1',
+        message: { content: [{ type: 'text', text: `${block}\n${block}` }] },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-2',
+        message: { content: [{ type: 'text', text: 'plain' }, { type: 'text', text: block }] },
+      },
+      { type: 'assistant', uuid: 'a-3', message: { content: [{ type: 'text', text: 'no block' }] } },
+    ] as never)
+    const rows = converted.messages.filter((m) => m.role === 'assistant')
+    expect(rows.map((m) => m.metadata?.custom?.a2uiBlockKeys)).toEqual([['a-1:0', 'a-1:1'], ['a-2:0'], undefined])
+    // Merged rows concatenate their keys in content order, keeping each uuid.
+    expect(mergeA2uiBlockKeys(rows[0], rows[1])).toEqual({ a2uiBlockKeys: ['a-1:0', 'a-1:1', 'a-2:0'] })
+    expect(mergeA2uiBlockKeys(rows[1], rows[2])).toEqual({ a2uiBlockKeys: ['a-2:0'] })
+    expect(mergeA2uiBlockKeys(rows[2], rows[2])).toEqual({})
+    // The row's own array comes back, so a selector sees one value across renders.
+    const custom = rows[0].metadata?.custom as Record<string, unknown>
+    expect(a2uiBlockKeysOfRow(custom)).toBe(custom.a2uiBlockKeys)
+    expect(a2uiBlockKeysOfRow({ a2uiBlockKeys: ['a', 1] })).toBeUndefined()
+    expect(a2uiBlockKeysOfRow(undefined)).toBeUndefined()
+  })
+
   it('records the transcript lines each row covers', () => {
     // Rows are sparse: this assistant row stands for its own line AND the
     // tool-result line that renders inside its card. A search hit on

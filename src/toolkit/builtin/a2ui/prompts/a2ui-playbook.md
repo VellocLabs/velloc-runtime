@@ -17,8 +17,9 @@ new turn, so you can answer or change the interface in place.
   context map comes back with the action.
 - Put values that change in the data model and bind them (`$/path`), so a
   later block can update the data alone.
-- If a block does not compile you are told the exact error. Nothing of that
-  block was drawn, so answer with the whole block again, corrected.
+- If a block does not compile you are told the exact error. The statements
+  before the error may already be applied; sending the whole block again is
+  safe, so answer with the whole block again, corrected.
 
 ## When to draw an interface
 - **Forms and data entry**: contact forms, sign-up, settings, structured input

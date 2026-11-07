@@ -97,10 +97,10 @@ export function A2uiPresentationProvider({
   )
   const liveBlock = useSyncExternalStore(subscribeLive, readLive, readLive)
   // What the transcript said of the live surface when its block started.
-  const baseRef = useRef<{ segmentKey: string; mention: string | undefined } | null>(null)
-  if (liveBlock?.surfaceId && baseRef.current?.segmentKey !== liveBlock.segmentKey) {
+  const baseRef = useRef<{ blockKey: string; mention: string | undefined } | null>(null)
+  if (liveBlock?.surfaceId && baseRef.current?.blockKey !== liveBlock.blockKey) {
     baseRef.current = {
-      segmentKey: liveBlock.segmentKey,
+      blockKey: liveBlock.blockKey,
       mention: fromTranscript.latestMentionBySurface.get(liveBlock.surfaceId),
     }
   }

@@ -8,18 +8,15 @@ import {
   A2UI_CREATE_SURFACE,
   A2UI_DELETE_SURFACE,
 } from '../../../toolkit/builtin/a2ui/a2uiToolNames'
-import {
-  a2uiBlockKey,
-  blockSurfaceIds,
-  hasA2uiBlock,
-  splitA2uiText,
-} from '../../../toolkit/builtin/a2ui/express/a2uiBlocks'
+import { a2uiBlockKey, blockSurfaceIds, hasA2uiBlock, splitA2uiText } from '../../../toolkit/builtin/a2ui/express/a2uiBlocks'
 import { a2uiToolNameOf, messageHasA2uiContent } from './hasA2uiSurface'
 
 export type A2uiCommand = { name: string; args: Record<string, unknown> }
 
 /** One finished `<a2ui>` block, with the surfaces it targets and deletes. */
 export type A2uiBlockSource = {
+  /** Its `a2uiBlockKey`: the mention key of every surface it targets. */
+  key: string
   body: string
   targets: string[]
   deletes: string[]
@@ -43,13 +40,20 @@ export function extractA2uiSources(messages: readonly Message[]): A2uiSource[] {
     if (message.type !== 'assistant') continue
     const content = asRecord(message.message)?.content
     if (!Array.isArray(content)) continue
+    // Blocks are numbered across the message's text parts, so each text part's
+    // blocks start where the previous part's ended.
+    const messageId = typeof message.uuid === 'string' ? message.uuid : ''
+    let ordinal = 0
     for (const part of content) {
       const record = asRecord(part)
       if (!record) continue
-      if (record.type === 'text' && typeof record.text === 'string' && hasA2uiBlock(record.text)) {
+      if (record.type === 'text' && typeof record.text === 'string') {
+        if (!hasA2uiBlock(record.text)) continue
         for (const segment of splitA2uiText(record.text)) {
-          if (segment.kind !== 'block' || !segment.closed) continue
-          sources.push({ kind: 'block', block: { body: segment.body, ...blockSurfaceIds(segment.body) } })
+          if (segment.kind !== 'block') continue
+          const key = a2uiBlockKey(messageId, ordinal++)
+          if (!segment.closed) continue
+          sources.push({ kind: 'block', block: { key, body: segment.body, ...blockSurfaceIds(segment.body) } })
         }
         continue
       }
@@ -124,12 +128,12 @@ export function deriveA2uiPresentation(messages: readonly Message[]): {
   }
   for (const source of extractA2uiSources(messages)) {
     if (source.kind === 'block') {
-      const { body, targets, deletes } = source.block
+      const { key, targets, deletes } = source.block
       for (const surfaceId of deletes) remove(surfaceId)
       for (const surfaceId of targets) {
         // A block that targets a deleted surface builds it anew.
         deletedSurfaceIds.delete(surfaceId)
-        latestMentionBySurface.set(surfaceId, a2uiBlockKey(surfaceId, body))
+        latestMentionBySurface.set(surfaceId, key)
       }
       continue
     }

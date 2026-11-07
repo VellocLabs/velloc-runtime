@@ -7,7 +7,7 @@
 import { lazy, memo, Suspense, useMemo } from "react";
 import { LoaderCircleIcon } from "lucide-react";
 
-import { splitA2uiText } from "@/toolkit/builtin/a2ui/express/a2uiBlocks";
+import { a2uiBlockKey, splitA2uiText } from "@/toolkit/builtin/a2ui/express/a2uiBlocks";
 import { useT } from "@/browser/webview/i18n";
 import { StaticMarkdown } from "./static-markdown";
 
@@ -31,24 +31,39 @@ function A2uiBlockPending() {
   );
 }
 
-/** `partKey` names the text part (message and part index), so a block keeps its key as it streams. */
-const AssistantA2uiTextImpl = ({ text, partKey }: { text: string; partKey: string }) => {
+/**
+ * A block's key is the row's `blockKeys` entry at its ordinal across the row's
+ * text parts (`firstOrdinal` blocks come before this part), the key the
+ * transcript derives; without one (a streaming row) it is keyed by the row id.
+ */
+const AssistantA2uiTextImpl = ({
+  text,
+  messageId,
+  firstOrdinal,
+  blockKeys,
+}: {
+  text: string;
+  messageId: string;
+  firstOrdinal: number;
+  blockKeys?: readonly string[];
+}) => {
   const segments = useMemo(() => splitA2uiText(text), [text]);
   return (
     <>
       {segments.map((segment, i) => {
         if (segment.kind === "text") return <StaticMarkdown key={i} content={segment.text} />;
-        const segmentKey = `${partKey}:${segment.index}`;
+        const ordinal = firstOrdinal + segment.index;
+        const blockKey = blockKeys?.[ordinal] ?? a2uiBlockKey(messageId, ordinal);
         if (!segment.closed) {
           return (
             <Suspense key={i} fallback={<A2uiBlockPending />}>
-              <A2uiLiveBlockMention body={segment.body} segmentKey={segmentKey} pending={<A2uiBlockPending />} />
+              <A2uiLiveBlockMention body={segment.body} blockKey={blockKey} pending={<A2uiBlockPending />} />
             </Suspense>
           );
         }
         return (
           <Suspense key={i} fallback={<A2uiBlockPending />}>
-            <A2uiBlockMention body={segment.body} segmentKey={segmentKey} />
+            <A2uiBlockMention body={segment.body} blockKey={blockKey} />
           </Suspense>
         );
       })}

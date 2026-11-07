@@ -128,9 +128,11 @@ describe('isRecentMention', () => {
 })
 
 describe('A2UI blocks in reply text', () => {
+  let seq = 0
   const reply = (text: string, timestamp?: string): Message =>
     ({
       type: 'assistant',
+      uuid: `m${++seq}`,
       timestamp,
       message: { role: 'assistant', content: [{ type: 'text', text }] },
     }) as unknown as Message
@@ -138,18 +140,53 @@ describe('A2UI blocks in reply text', () => {
   const update = 'surface("contact")\n$/x = 1'
 
   it('lists finished blocks as sources, in order, and skips one still being written', () => {
-    const sources = extractA2uiSources([
+    const [first, second] = [
       reply(`a\n<a2ui>\n${form}\n</a2ui>\nb`),
       reply('<a2ui>\nsurface("later")\nroot = Card('),
-    ])
-    expect(sources).toEqual([
-      { kind: 'block', block: { body: form, targets: ['contact'], deletes: [] } },
+    ]
+    expect(extractA2uiSources([first, second])).toEqual([
+      { kind: 'block', block: { key: a2uiBlockKey(first.uuid ?? '', 0), body: form, targets: ['contact'], deletes: [] } },
     ])
   })
 
+  it('numbers blocks across the text parts of one message', () => {
+    const message = {
+      type: 'assistant',
+      uuid: 'm-parts',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: `<a2ui>\n${form}\n</a2ui>` },
+          { type: 'tool_use', id: 't1', name: 'Read', input: {} },
+          { type: 'text', text: `<a2ui>\n${update}\n</a2ui>\n<a2ui>\nsurface("b")\nroot = Text("b")\n</a2ui>` },
+        ],
+      },
+    } as unknown as Message
+    expect(extractA2uiSources([message]).map(source => source.kind === 'block' && source.block.key)).toEqual([
+      'm-parts:0',
+      'm-parts:1',
+      'm-parts:2',
+    ])
+  })
+
+  it('gives the same block sent on two turns two mentions, so the later one moves the card', async () => {
+    const reset = 'surface("counter")\n$/count = 0'
+    const [first, second] = [reply(`<a2ui>\n${reset}\n</a2ui>`), reply(`<a2ui>\n${reset}\n</a2ui>`)]
+    const before = deriveA2uiPresentation([first])
+    const after = deriveA2uiPresentation([first, second])
+    expect(before.latestMentionBySurface.get('counter')).toBe(a2uiBlockKey(first.uuid ?? '', 0))
+    expect(after.latestMentionBySurface.get('counter')).toBe(a2uiBlockKey(second.uuid ?? '', 0))
+    expect(after.latestMentionBySurface.get('counter')).not.toBe(before.latestMentionBySurface.get('counter'))
+    const { stepA2uiPane, EMPTY_A2UI_PANE_STATE } = await import('../browser/webview/a2ui/a2uiPaneModel')
+    const shown = stepA2uiPane(EMPTY_A2UI_PANE_STATE, before, true).state
+    expect(stepA2uiPane(shown, before, true).open).toBeNull()
+    expect(stepA2uiPane(shown, after, true).open).toBe(true)
+  })
+
   it('places a surface at its latest block, and a deleteSurface line removes it', () => {
-    const live = deriveA2uiPresentation([reply(`<a2ui>\n${form}\n</a2ui>`), reply(`<a2ui>\n${update}\n</a2ui>`)])
-    expect(live.latestMentionBySurface.get('contact')).toBe(a2uiBlockKey('contact', update))
+    const updated = reply(`<a2ui>\n${update}\n</a2ui>`)
+    const live = deriveA2uiPresentation([reply(`<a2ui>\n${form}\n</a2ui>`), updated])
+    expect(live.latestMentionBySurface.get('contact')).toBe(a2uiBlockKey(updated.uuid ?? '', 0))
     const removed = deriveA2uiPresentation([
       reply(`<a2ui>\n${form}\n</a2ui>`),
       reply('<a2ui>\ndeleteSurface("contact")\n</a2ui>'),

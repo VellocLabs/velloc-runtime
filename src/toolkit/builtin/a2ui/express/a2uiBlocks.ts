@@ -89,9 +89,28 @@ export function blockSurfaceIds(body: string): { targets: string[]; deletes: str
   return { targets: read(SURFACE_CALL), deletes: read(DELETE_CALL) }
 }
 
-/** A stable key for one block: the surface it targets plus a hash of its source. */
-export function a2uiBlockKey(surfaceId: string, body: string): string {
-  let hash = 5381
-  for (let i = 0; i < body.length; i++) hash = ((hash << 5) + hash + body.charCodeAt(i)) | 0
-  return `${surfaceId}#${(hash >>> 0).toString(36)}`
+/**
+ * The key of one block: the message it is in and the block's ordinal across
+ * that message's text parts, counting from 0. Two messages with the same block
+ * thus get different keys, so a repeated block is a new mention.
+ */
+export function a2uiBlockKey(messageId: string, ordinal: number): string {
+  return `${messageId}:${ordinal}`
+}
+
+/** The number of blocks in `text`, finished or not. */
+export function countA2uiBlocks(text: string): number {
+  return hasA2uiBlock(text) ? splitA2uiText(text).filter(segment => segment.kind === 'block').length : 0
+}
+
+/** The keys of every block across a message's content parts, in order; empty without a block. */
+export function messageA2uiBlockKeys(messageId: string, content: unknown): string[] {
+  if (!Array.isArray(content)) return []
+  const keys: string[] = []
+  for (const part of content) {
+    const text = (part as { type?: unknown; text?: unknown } | null)?.text
+    if ((part as { type?: unknown } | null)?.type !== 'text' || typeof text !== 'string') continue
+    for (let i = countA2uiBlocks(text); i > 0; i--) keys.push(a2uiBlockKey(messageId, keys.length))
+  }
+  return keys
 }

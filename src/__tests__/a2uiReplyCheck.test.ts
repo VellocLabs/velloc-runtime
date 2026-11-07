@@ -53,6 +53,11 @@ describe('createA2uiTurnEndCheck', () => {
       describeA2uiBlockFailures(await findA2uiBlockFailures([], [bad])),
     )
     expect((row as unknown as { text: string }).text).toContain('Block 1 (surface "s")')
+    // A failed update keeps the statements before the error, so the note never
+    // promises a clean slate; resending the whole block must stay safe.
+    expect((row as unknown as { text: string }).text).toContain('may already be applied')
+    expect((row as unknown as { text: string }).text).toContain('sending the whole corrected block again is safe')
+    expect((row as unknown as { text: string }).text).not.toContain('Nothing of')
     const good = reply(block(FORM))
     expect(await check({ messages: [good], assistantMessages: [good] })).toEqual([])
   })

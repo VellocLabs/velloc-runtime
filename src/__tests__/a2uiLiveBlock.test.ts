@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { Catalog } from '@a2ui/web_core/catalog'
-import { a2uiBlockKey } from '../toolkit/builtin/a2ui/express/a2uiBlocks'
 import { createA2uiExpressCompiler, type A2uiBlockStream } from '../toolkit/builtin/a2ui/express/a2uiExpressCompiler'
 import catalogDocument from '../toolkit/builtin/a2ui/express/velloc-catalog.json'
 import { createA2uiLiveBlocks, liveMentionKey, withLiveMention } from '../browser/webview/a2ui/a2uiLiveBlock'
@@ -49,13 +48,23 @@ describe('live block reader', () => {
     return { live, chunks, opened: () => opened }
   }
 
-  it('feeds only the complete lines added and names the surface', () => {
+  it('feeds what was added, to the end of the line being written, and names the surface', () => {
     const { live, chunks } = recorder()
     live.feed('m:0:1', 'surface("form")\nroot', false)
     live.feed('m:0:1', 'surface("form")\nroot = Card(col)', false)
     live.feed('m:0:1', 'surface("form")\nroot = Card(col)\n', false)
-    expect(chunks).toEqual(['surface("form")\n', 'root = Card(col)\n'])
-    expect(live.snapshot()).toEqual({ segmentKey: 'm:0:1', surfaceId: 'form', mentionKey: liveMentionKey('m:0:1') })
+    expect(chunks).toEqual(['surface("form")\nroot', ' = Card(col)', '\n'])
+    expect(live.snapshot()).toEqual({ blockKey: 'm:0:1', surfaceId: 'form', mentionKey: liveMentionKey('m:0:1') })
+  })
+
+  it('holds back only a fragment that could become the closing tag or a fence', () => {
+    const { live, chunks } = recorder()
+    live.feed('m:0:1', 'surface("form")\nroot = Card(col)\n<', false)
+    live.feed('m:0:1', 'surface("form")\nroot = Card(col)\n</a2', false)
+    live.feed('m:0:1', 'surface("form")\nroot = Card(col)\n  ``', false)
+    expect(chunks).toEqual(['surface("form")\nroot = Card(col)\n'])
+    live.feed('m:0:1', 'surface("form")\nroot = Card(col)\n<b', false)
+    expect(chunks.at(-1)).toBe('<b')
   })
 
   it('starts over when the text is rewritten, not when it shrinks', () => {
@@ -69,13 +78,13 @@ describe('live block reader', () => {
     expect(opened()).toBe(3)
   })
 
-  it('takes the finished block key when its own block closes', () => {
+  it('takes its block key as the mention when its own block closes', () => {
     const { live } = recorder()
     live.feed('m:0:1', BODY.slice(0, 20), false)
     live.feed('m:0:9', BODY, true)
     expect(live.snapshot()?.mentionKey).toBe(liveMentionKey('m:0:1'))
     live.feed('m:0:1', BODY, true)
-    expect(live.snapshot()?.mentionKey).toBe(a2uiBlockKey('form', BODY))
+    expect(live.snapshot()?.mentionKey).toBe('m:0:1')
   })
 
   it('ignores a block that was finished when first drawn', () => {
@@ -101,7 +110,7 @@ describe('withLiveMention', () => {
     latestMentionBySurface: new Map(entries),
     deletedSurfaceIds: new Set<string>(['form']),
   })
-  const live = { segmentKey: 'm:0:1', surfaceId: 'form', mentionKey: 'live:m:0:1' }
+  const live = { blockKey: 'm:0:1', surfaceId: 'form', mentionKey: 'live:m:0:1' }
 
   it('puts the streaming surface on top while the transcript has not caught up', () => {
     const merged = withLiveMention(derived([['a', 'k1']]), live, undefined)
@@ -141,8 +150,8 @@ describe('live block finish', () => {
     live.feed('m:0:0', BODY, true)
     live.feed('m:0:1', other, false)
     live.feed('m:0:1', other, true)
-    expect(live.finish('form', BODY)).toEqual({ kind: 'drawn' })
-    expect(live.finish('other', other)).toEqual({ kind: 'drawn' })
+    expect(live.finish('stored:0', 'form', BODY)).toEqual({ kind: 'drawn' })
+    expect(live.finish('stored:1', 'other', other)).toEqual({ kind: 'drawn' })
   })
 
   it('does not replay a block whose closing tag arrives split across chunks', () => {
@@ -150,21 +159,21 @@ describe('live block finish', () => {
     live.feed('m:0:0', BODY, false)
     live.feed('m:0:0', `${BODY}</`, false)
     live.feed('m:0:0', BODY, true)
-    expect(live.finish('form', BODY.trimEnd())).toEqual({ kind: 'drawn' })
+    expect(live.finish('stored:0', 'form', BODY.trimEnd())).toEqual({ kind: 'drawn' })
   })
 
   it('does not replay a block whose closing fence arrives split across chunks', () => {
     const { live } = realLive()
     live.feed('m:0:0', `${BODY}\`\``, false)
     live.feed('m:0:0', BODY, false)
-    expect(live.finish('form', BODY)).toEqual({ kind: 'drawn' })
+    expect(live.finish('stored:0', 'form', BODY)).toEqual({ kind: 'drawn' })
   })
 
   it('completes a streamed block from its stored copy, so it is not compiled twice', () => {
     const { c, state, live } = realLive()
     live.feed('m:0:1', BODY.slice(0, 40), false)
-    expect(live.finish('form', BODY)).toEqual({ kind: 'drawn' })
-    expect(live.finish('form', BODY)).toEqual({ kind: 'not-streamed' })
+    expect(live.finish('stored:0', 'form', BODY)).toEqual({ kind: 'drawn' })
+    expect(live.finish('stored:0', 'form', BODY)).toEqual({ kind: 'not-streamed' })
     // Compiling the same create block again is what the finish spares.
     expect(c.compile(BODY, state)).toMatchObject({ ok: false })
   })
@@ -172,14 +181,29 @@ describe('live block finish', () => {
   it('reports a streamed block that fails, and whether it made the surface', () => {
     const { live } = realLive()
     live.feed('m:0:1', 'surface("form")\nroot = Card(col)\n', false)
-    expect(live.finish('form', 'surface("form")\nroot = Card(col)\ncol = Nope(1)\n')).toEqual({ kind: 'failed', created: true })
+    expect(live.finish('stored:0', 'form', 'surface("form")\nroot = Card(col)\ncol = Nope(1)\n')).toEqual({ kind: 'failed', created: true })
+  })
+
+  it('finds a block by its key when two blocks draw one surface alike', () => {
+    const { live } = realLive()
+    const reset = 'surface("form")\n$/count = 0\n'
+    live.feed('m:0', BODY, false)
+    live.feed('m:0', BODY, true)
+    expect(live.finish('m:0', 'form', BODY)).toEqual({ kind: 'drawn' })
+    live.feed('m2:0', reset, false)
+    live.feed('m2:0', reset, true)
+    live.feed('m3:0', reset, false)
+    live.feed('m3:0', reset, true)
+    expect(live.finish('m3:0', 'form', reset)).toEqual({ kind: 'drawn' })
+    expect(live.finish('m2:0', 'form', reset)).toEqual({ kind: 'drawn' })
+    expect(live.finish('m2:0', 'form', reset)).toEqual({ kind: 'not-streamed' })
   })
 
   it('leaves a block it did not stream to the feeder', () => {
     const { live } = realLive()
-    expect(live.finish('form', BODY)).toEqual({ kind: 'not-streamed' })
+    expect(live.finish('stored:0', 'form', BODY)).toEqual({ kind: 'not-streamed' })
     live.feed('m:0:1', 'surface("form")\n', false)
-    expect(live.finish('other', 'surface("other")\n')).toEqual({ kind: 'not-streamed' })
-    expect(live.finish('form', 'surface("form")\nx = Text("changed")\n'.replace('surface("form")\n', 'surface("form") \n'))).toEqual({ kind: 'not-streamed' })
+    expect(live.finish('stored:1', 'other', 'surface("other")\n')).toEqual({ kind: 'not-streamed' })
+    expect(live.finish('stored:0', 'form', 'surface("form")\nx = Text("changed")\n'.replace('surface("form")\n', 'surface("form") \n'))).toEqual({ kind: 'not-streamed' })
   })
 })

@@ -31,7 +31,6 @@ import {
   createA2uiExpressCompiler,
   type A2uiExpressCompiler,
 } from '../../../toolkit/builtin/a2ui/express/a2uiExpressCompiler'
-import { a2uiBlockKey } from '../../../toolkit/builtin/a2ui/express/a2uiBlocks'
 import { setA2uiBlockError } from './a2uiBlockErrors'
 import { createA2uiLiveBlocks, type A2uiLiveBlocks } from './a2uiLiveBlock'
 import { A2uiLiveContext } from './a2uiLiveContext'
@@ -133,10 +132,9 @@ function A2uiFeeder({
     processedRef.current = sources.length
     for (const source of fresh) {
       if (source.kind === 'block') {
-        const { body, targets } = source.block
-        const key = a2uiBlockKey(targets[0] ?? '', body)
+        const { key, body, targets } = source.block
         // A block that streamed is already drawn; the stored copy completes it.
-        const streamed = targets[0] ? live.finish(targets[0], body) : { kind: 'not-streamed' as const }
+        const streamed = targets[0] ? live.finish(key, targets[0], body) : { kind: 'not-streamed' as const }
         if (streamed.kind === 'drawn') {
           setA2uiBlockError(key, null)
           continue

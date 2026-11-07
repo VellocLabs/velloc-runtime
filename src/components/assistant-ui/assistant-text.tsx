@@ -8,7 +8,8 @@
 import { memo, useMemo } from "react";
 import { useAssistantState, useAui } from "@assistant-ui/react";
 
-import { hasA2uiBlock } from "@/toolkit/builtin/a2ui/express/a2uiBlocks";
+import { a2uiBlockKeysOfRow } from "@/browser/webview/a2ui/a2uiRowKeys";
+import { countA2uiBlocks, hasA2uiBlock } from "@/toolkit/builtin/a2ui/express/a2uiBlocks";
 import { AssistantA2uiText } from "./assistant-a2ui-text";
 import { MarkdownText } from "./markdown-text";
 import { ModAssistantMessageSite, type ModAssistantMessageProps } from "./mod-render";
@@ -45,11 +46,25 @@ const AssistantTextImpl = () => {
   const text = useAssistantState((s) => (s.part.type === "text" ? s.part.text : ""));
   const isSettled = useAssistantState((s) => s.part.status.type !== "running");
   const firstText = useAssistantState((s) => s.message.content.findIndex((p) => p.type === "text"));
+  // Blocks are numbered across the row's text parts; their keys come from the
+  // row's transcript messages, since the row's own id is not a uuid (F-1).
+  const blocksBefore = useAssistantState((s) => {
+    let count = 0;
+    for (const part of s.message.content.slice(0, index ?? 0)) {
+      if (part.type === "text") count += countA2uiBlocks(part.text);
+    }
+    return count;
+  });
+  const blockKeys = useAssistantState((s) =>
+    a2uiBlockKeysOfRow(s.message.metadata?.custom as Record<string, unknown> | undefined),
+  );
   const props = useMemo<ModAssistantMessageProps>(
     () => ({ text, isFirstOfReply: index !== null && index === firstText }),
     [text, index, firstText],
   );
-  if (isReply && hasA2uiBlock(text)) return <AssistantA2uiText text={text} partKey={`${messageId}:${index ?? 0}`} />;
+  if (isReply && hasA2uiBlock(text)) {
+    return <AssistantA2uiText text={text} messageId={messageId} firstOrdinal={blocksBefore} blockKeys={blockKeys} />;
+  }
   if (index === null || !isReply || !isSettled) return <MarkdownText />;
   return (
     <ModAssistantMessageSite

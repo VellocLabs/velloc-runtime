@@ -87,6 +87,7 @@ import { parseTeamMessageEnvelope } from '../../team/parseTeamFrame'
 import { withoutPluginPromptFrame } from '../../mods/promptNouns'
 import { passagesOfMetadata, splitQuotedPrompt } from './replyQuote'
 import { serializePassagePrompt } from './capturedPassages'
+import { a2uiBlockKeysOf, mergeA2uiBlockKeys } from './a2ui/a2uiRowKeys'
 
 function findPreviousVisibleUserPrompt(
   messages: readonly Message[],
@@ -380,6 +381,7 @@ function convertTranscriptMessage(
           custom: {
             model: assistantMessage.message.model,
             stopReason: assistantMessage.message.stop_reason,
+            ...a2uiBlockKeysOf(assistantMessage.uuid, assistantMessage.message.content),
           },
         },
       }, assistantMessage, retryPrompt)
@@ -699,6 +701,7 @@ function createLiveAssistantMessages(
             metadata: {
               custom: {
                 sourceType: 'live_events',
+                ...a2uiBlockKeysOf(assistantMessage.uuid, assistantMessage.message.content),
               },
             },
           }, assistantMessage, retryPrompt))
@@ -1104,6 +1107,7 @@ function mergeConsecutiveAssistantMessages(
             ...mergeLineRanges(previous, message),
             ...mergePartLines(previous, message),
             ...mergeTextLines(previous, message),
+            ...mergeA2uiBlockKeys(previous, message),
           },
         },
       }
