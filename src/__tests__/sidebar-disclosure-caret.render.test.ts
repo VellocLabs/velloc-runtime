@@ -145,4 +145,16 @@ describe('docked sidebar inset', () => {
     expect(scrollClasses).toContain('pe-0.5')
     expect(scrollClasses).toContain('[scrollbar-gutter:stable]')
   })
+
+  it('lines the launchers up with the rows and rounds rows to 8px', () => {
+    render(createElement(Sidebar, {
+      title: 'Conversation', sessionId: 'p', activeSessionId: 'p',
+      sessions: [item('p')], collapsed: false,
+    }))
+    const launchers = screen.getByTestId('sidebar-new-thread').parentElement!
+    expect(launchers.className.split(/\s+/)).toContain('pe-2')
+    const rowClasses = screen.getByTestId('sidebar-row-p').className.split(/\s+/)
+    expect(rowClasses).toContain('rounded-md')
+    expect(rowClasses).not.toContain('rounded-lg')
+  })
 })
