@@ -329,7 +329,7 @@ export function SessionRowList({
             setVisibleCount(revealNextPage(sessions.length, effectiveCount))
           }
           className={cn(
-            'flex w-full shrink-0 items-center rounded-lg px-3 text-start text-caption text-muted-foreground/70 transition-colors hover:bg-sidebar-row-hover hover:text-muted-foreground',
+            'flex w-full shrink-0 items-center rounded-md px-3 text-start text-caption text-muted-foreground/70 transition-colors hover:bg-sidebar-row-hover hover:text-muted-foreground',
             SIDEBAR_ROW_HEIGHT,
             indented && 'pl-7',
           )}
@@ -399,7 +399,7 @@ function SessionRowSubtree(props: SessionRowProps) {
                 onClick={() => nesting?.onToggle?.(session.sessionId)}
                 style={{ paddingLeft: connectorLeft + SESSION_ROW_INDENT_PX }}
                 className={cn(
-                  'w-full truncate rounded-lg pr-3 text-start text-body text-muted-foreground hover:bg-sidebar-row-hover hover:text-foreground',
+                  'w-full truncate rounded-md pr-3 text-start text-body text-muted-foreground hover:bg-sidebar-row-hover hover:text-foreground',
                   SIDEBAR_ROW_HEIGHT,
                 )}
               >
@@ -515,7 +515,7 @@ function SessionRow({
   return (
     <div
       className={cn(
-        'group relative flex items-center rounded-lg',
+        'group relative flex items-center rounded-md',
         isActive ? 'bg-sidebar-row-selected' : 'hover:bg-sidebar-row-hover',
         hasChildren && (canDismissStart
           ? cn('pr-8', hasRowActions && 'hover:pr-14')
@@ -554,7 +554,7 @@ function SessionRow({
             }
             onEditingChange?.(null)
           }}
-          className="h-7 w-full rounded-lg border border-input bg-background px-3 text-body leading-tight outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-7 w-full rounded-md border border-input bg-background px-3 text-body leading-tight outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       ) : (
         <>
@@ -578,7 +578,7 @@ function SessionRow({
               // sidebar and the narrow popover. Preview text + the relative timestamp
               // were dropped from the visible row; preview is
               // preserved screen-reader-only below.
-              'flex min-w-0 items-center rounded-lg px-3 text-start text-body transition-[background-color,padding] after:absolute after:inset-0 after:rounded-lg',
+              'flex min-w-0 items-center rounded-md px-3 text-start text-body transition-[background-color,padding] after:absolute after:inset-0 after:rounded-md',
               hasChildren ? 'max-w-full pr-0' : 'w-full',
               SIDEBAR_ROW_HEIGHT,
               // Reserve right-side space for the absolutely-

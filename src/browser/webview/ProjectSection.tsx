@@ -376,7 +376,7 @@ function ProjectRow({
           aria-expanded={expanded}
           onClick={onToggle}
           className={cn(
-            'relative flex w-full items-center gap-1.5 rounded-lg px-3 text-start text-body transition-[background-color,padding] hover:bg-sidebar-row-hover group-hover:pr-8',
+            'relative flex w-full items-center gap-1.5 rounded-md px-3 text-start text-body transition-[background-color,padding] hover:bg-sidebar-row-hover group-hover:pr-8',
             SIDEBAR_ROW_HEIGHT,
           )}
         >

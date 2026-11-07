@@ -351,7 +351,7 @@ export function SessionListBody({
           ("New Thread", type undefined) keeps the boot default + empty
           reuse. Config lives in threadLaunchers.tsx. */}
       {!titlesOnly && (
-        <div className="flex shrink-0 flex-col gap-0.5">
+        <div className="flex shrink-0 flex-col gap-0.5 pe-2">
           {filterLaunchers(getThreadLaunchers(), 'sidebar', installedClis).map((launcher, index) => {
             const Icon = launcher.Icon
             return (
@@ -360,7 +360,7 @@ export function SessionListBody({
                 variant="ghost"
                 data-testid={launcher.testId}
                 title={launcherTooltip(launcher, t, locale)}
-                className="h-9 w-full justify-start gap-2 rounded-lg px-3 text-sm hover:bg-muted"
+                className="h-9 w-full justify-start gap-2 rounded-md px-3 text-sm hover:bg-muted"
                 onClick={() =>
                   launcher.type
                     ? onLaunchThread?.(launcher.type)
@@ -381,7 +381,7 @@ export function SessionListBody({
           Projects node, the "Recents" header and the rows all scroll together.
           (The header used to be pinned too, but with a Projects node above it
           a fixed header would pin the middle of the tree.) */}
-      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pe-0.5 [scrollbar-gutter:stable]">
         {/* Projects — the project-grouped view of the same sessions Recents
             shows by time. Derived from `projectRoot` on rows the sidebar
             already holds, so it costs no extra fs reads. */}
@@ -483,7 +483,7 @@ export function SessionListBody({
           <>
             <button
               type="button"
-              className="flex h-7 items-center gap-2 rounded-lg bg-muted px-3 text-start text-sm transition-colors"
+              className="flex h-7 items-center gap-2 rounded-md bg-muted px-3 text-start text-sm transition-colors"
               data-active="true"
               aria-current="true"
             >
@@ -770,7 +770,7 @@ export function Sidebar({
           collapsedParents={collapsedParents}
         />
       ) : (
-        <div data-slot="sidebar-body" className="flex min-h-0 flex-1 flex-col px-3 py-2">
+        <div data-slot="sidebar-body" className="flex min-h-0 flex-1 flex-col ps-2 pe-0 py-2">
           <SessionListBody
             title={title}
             sessionId={sessionId}

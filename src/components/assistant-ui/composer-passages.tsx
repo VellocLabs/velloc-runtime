@@ -295,7 +295,7 @@ export const ComposerPassageStrip: FC = () => {
         <div
           ref={stripRef}
           data-testid="composer-passages"
-          className="aui-composer-passages flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]"
+          className="aui-composer-passages flex gap-2 overflow-x-auto pb-1"
         >
           {models.map((model) => (
             <PassageTile

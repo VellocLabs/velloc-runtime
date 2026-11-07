@@ -137,6 +137,12 @@ describe('docked sidebar inset', () => {
     }))
     const body = document.querySelector('[data-slot="sidebar-body"]')!
     expect(body.contains(screen.getByTestId('sidebar-row-p'))).toBe(true)
-    expect(body.className.split(/\s+/)).toContain('px-3')
+    const bodyClasses = body.className.split(/\s+/)
+    expect(bodyClasses).toContain('ps-2')
+    expect(bodyClasses).toContain('pe-0')
+    const scroller = screen.getByTestId('sidebar-row-p').closest('.overflow-y-auto')!
+    const scrollClasses = scroller.className.split(/\s+/)
+    expect(scrollClasses).toContain('pe-0.5')
+    expect(scrollClasses).toContain('[scrollbar-gutter:stable]')
   })
 })
