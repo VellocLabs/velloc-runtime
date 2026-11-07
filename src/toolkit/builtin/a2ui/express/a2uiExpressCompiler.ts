@@ -23,6 +23,23 @@ export type A2uiExpressCompiler = {
   stateFor(renderer: MessageProcessor<ComponentApi>): RendererState
   /** Compile one block body against `state`; on failure nothing is applied. */
   compile(body: string, state: RendererState): A2uiCompileResult
+  /** Read one block body as it streams; each message is applied to `state` as it is read. */
+  stream(state: RendererState): A2uiBlockStream
+}
+
+/** A block read chunk by chunk. After a failure it reads nothing more. */
+export type A2uiBlockStream = {
+  feed(chunk: string): A2uiStreamResult
+  /** The block ended: checks what is left, as a whole block is checked. */
+  close(): A2uiStreamResult
+}
+
+export type A2uiStreamResult =
+  | { ok: true; messages: AgentToRendererMessage[] }
+  | { ok: false; messages: AgentToRendererMessage[]; message: string }
+
+function partMessages(parts: readonly { type: string; a2ui?: unknown }[]): AgentToRendererMessage[] {
+  return parts.flatMap(part => (part.type === 'a2ui' ? (part.a2ui as AgentToRendererMessage[]) : []))
 }
 
 function errorText(error: unknown): string {
@@ -41,10 +58,27 @@ export function createA2uiExpressCompiler(catalog: CatalogApi): A2uiExpressCompi
     compile(body, state) {
       try {
         const parts = processor.parseResponse(body, { wrapped: false, state })
-        const messages = parts.flatMap(part => (part.type === 'a2ui' ? part.a2ui : []))
-        return { ok: true, messages }
+        return { ok: true, messages: partMessages(parts) }
       } catch (error) {
         return { ok: false, message: errorText(error) }
+      }
+    },
+    stream(state) {
+      const stream = processor.openStream({ wrapped: false, state } as never)
+      let failed = false
+      const read = (step: () => { type: string; a2ui?: unknown }[]): A2uiStreamResult => {
+        if (failed) return { ok: false, messages: [], message: 'stopped' }
+        try {
+          return { ok: true, messages: partMessages(step()) }
+        } catch (error) {
+          failed = true
+          const partial = (error as { partialResults?: { type: string; a2ui?: unknown }[] }).partialResults ?? []
+          return { ok: false, messages: partMessages(partial), message: errorText(error) }
+        }
+      }
+      return {
+        feed: chunk => read(() => stream.feed(chunk)),
+        close: () => read(() => stream.close()),
       }
     },
   }

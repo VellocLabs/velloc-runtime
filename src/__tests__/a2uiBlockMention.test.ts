@@ -44,7 +44,7 @@ describe('A2uiBlockMention', () => {
 
 describe('AssistantA2uiText', () => {
   it('keeps the prose and hides the Express source', () => {
-    const html = renderToStaticMarkup(createElement(AssistantA2uiText, { text: replyText }))
+    const html = renderToStaticMarkup(createElement(AssistantA2uiText, { text: replyText, partKey: 'm:0' }))
     expect(html).toContain('Here is the form.')
     expect(html).toContain('Fill it in.')
     expect(html).not.toContain('surface(')
@@ -52,7 +52,7 @@ describe('AssistantA2uiText', () => {
   })
 
   it('shows a placeholder for a block still being written', () => {
-    const html = renderToStaticMarkup(createElement(AssistantA2uiText, { text: 'One moment.\n<a2ui>\nsurface("x")\nroot = Ca' }))
+    const html = renderToStaticMarkup(createElement(AssistantA2uiText, { text: 'One moment.\n<a2ui>\nsurface("x")\nroot = Ca', partKey: 'm:0' }))
     expect(html).toContain('data-slot="a2ui-block-pending"')
     expect(html).not.toContain('root = Ca')
   })

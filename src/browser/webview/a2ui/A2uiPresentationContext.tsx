@@ -1,5 +1,5 @@
-// Presentation state shared by the inline A2UI cards (rendered by the `a2ui_*`
-// tool UIs) and the side pane content (in A2uiProviderHost) (F-1).
+// Presentation state shared by the inline A2UI cards and the side pane content
+// (in A2uiProviderHost) (F-1), including the block the model is still writing.
 //
 // Surfaces render in the side pane; each tool-call position in the
 // conversation renders a card that opens its surface there. The pane's tabs,
@@ -27,9 +27,10 @@ import {
   type A2uiPaneState,
 } from './a2uiPaneModel'
 import { getOwner, getShownSession, onPaneClosed, requestPane, subscribeSlot } from './a2uiPaneBus'
+import { withLiveMention, type A2uiLiveBlocks } from './a2uiLiveBlock'
 
 export type A2uiPresentation = {
-  /** For each live surfaceId, the toolCallId of its latest mention. */
+  /** For each live surfaceId, the key of its latest mention. */
   latestMentionBySurface: ReadonlyMap<string, string>
   /** surfaceIds whose net state is deleted — render nothing at every position. */
   deletedSurfaceIds: ReadonlySet<string>
@@ -78,14 +79,35 @@ export function A2uiPresentationProvider({
   sessionId,
   messages,
   busy,
+  live,
   children,
 }: {
   sessionId: string
   messages: readonly Message[]
   busy: boolean
+  /** The block the model is writing: its surface shows before it is finished. */
+  live?: A2uiLiveBlocks
   children: ReactNode
 }) {
-  const derived = useMemo(() => deriveA2uiPresentation(messages), [messages])
+  const fromTranscript = useMemo(() => deriveA2uiPresentation(messages), [messages])
+  const readLive = useCallback(() => live?.snapshot() ?? null, [live])
+  const subscribeLive = useCallback(
+    (listener: () => void) => live?.subscribe(listener) ?? (() => {}),
+    [live],
+  )
+  const liveBlock = useSyncExternalStore(subscribeLive, readLive, readLive)
+  // What the transcript said of the live surface when its block started.
+  const baseRef = useRef<{ segmentKey: string; mention: string | undefined } | null>(null)
+  if (liveBlock?.surfaceId && baseRef.current?.segmentKey !== liveBlock.segmentKey) {
+    baseRef.current = {
+      segmentKey: liveBlock.segmentKey,
+      mention: fromTranscript.latestMentionBySurface.get(liveBlock.surfaceId),
+    }
+  }
+  const derived = useMemo(
+    () => withLiveMention(fromTranscript, liveBlock, baseRef.current?.mention),
+    [fromTranscript, liveBlock],
+  )
   const [pane, setPane] = useState<A2uiPaneState>(EMPTY_A2UI_PANE_STATE)
   const paneRef = useRef(pane)
   const commit = useCallback((next: A2uiPaneState) => {
@@ -101,14 +123,17 @@ export function A2uiPresentationProvider({
   busyRef.current = busy
   const messagesRef = useRef(messages)
   messagesRef.current = messages
+  const liveRef = useRef(false)
+  liveRef.current = derived !== fromTranscript
 
   useEffect(() => {
-    const live =
+    const isLive =
+      liveRef.current ||
       steppedRef.current ||
       busyRef.current ||
       isRecentMention(latestA2uiMentionTime(messagesRef.current))
     steppedRef.current = true
-    const step = stepA2uiPane(paneRef.current, derived, live)
+    const step = stepA2uiPane(paneRef.current, derived, isLive)
     commit(step.state)
     if (step.open !== null) requestPane({ sessionId, open: step.open })
   }, [derived, sessionId, commit])

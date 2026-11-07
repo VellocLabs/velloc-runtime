@@ -1,6 +1,7 @@
 // Lazy host wrapping the conversation with the shared A2UI runtime: one per-session
 // MessageProcessor, the transcript feeder, the action loop, the presentation context
-// and the side pane portal. Loaded only when a conversation has an A2UI source.
+// the streaming-block reader and the side pane portal. Loaded only when a
+// conversation has an A2UI source.
 
 import {
   Component,
@@ -25,10 +26,15 @@ import '@material-symbols/font-400/outlined.css'
 import './a2ui-surface.css'
 import type { Message } from '../../../runtime/RuntimeTypes'
 import { extractA2uiSources } from './surfaceStore'
-import { commandsToA2uiMessages } from './toA2uiMessages'
-import { createA2uiExpressCompiler } from '../../../toolkit/builtin/a2ui/express/a2uiExpressCompiler'
+import { A2UI_PROTOCOL_VERSION, commandsToA2uiMessages } from './toA2uiMessages'
+import {
+  createA2uiExpressCompiler,
+  type A2uiExpressCompiler,
+} from '../../../toolkit/builtin/a2ui/express/a2uiExpressCompiler'
 import { a2uiBlockKey } from '../../../toolkit/builtin/a2ui/express/a2uiBlocks'
 import { setA2uiBlockError } from './a2uiBlockErrors'
+import { createA2uiLiveBlocks, type A2uiLiveBlocks } from './a2uiLiveBlock'
+import { A2uiLiveContext } from './a2uiLiveContext'
 import { vellocCatalog, vellocCatalogPropNames } from './catalog/vellocCatalog'
 import {
   A2uiPresentationProvider,
@@ -100,7 +106,11 @@ function A2uiFeeder({
   submitActionMessage,
   busy,
   actionHandlerRef,
+  compiler,
+  live,
 }: {
+  compiler: A2uiExpressCompiler
+  live: A2uiLiveBlocks
   messages: readonly Message[]
   submitActionMessage?: (prompt: string) => Promise<void>
   busy: boolean
@@ -108,7 +118,6 @@ function A2uiFeeder({
 }) {
   const processor = useA2uiProcessor()
   const sources = useMemo(() => extractA2uiSources(messages), [messages])
-  const compiler = useMemo(() => createA2uiExpressCompiler(vellocCatalog), [])
   const state = useMemo(() => compiler.stateFor(processor), [compiler, processor])
   const processedRef = useRef(0)
   const busyRef = useRef(busy)
@@ -123,8 +132,19 @@ function A2uiFeeder({
     for (const source of fresh) {
       if (source.kind === 'block') {
         const { body, targets } = source.block
+        const key = a2uiBlockKey(targets[0] ?? '', body)
+        // A block that streamed is already drawn; the stored copy completes it.
+        const streamed = targets[0] ? live.finish(targets[0], body) : { kind: 'not-streamed' as const }
+        if (streamed.kind === 'drawn') {
+          setA2uiBlockError(key, null)
+          continue
+        }
+        if (streamed.kind === 'failed' && streamed.created && targets[0]) {
+          // Compile it as if it had not streamed, so the error is the block's own.
+          processor.processMessages({ version: A2UI_PROTOCOL_VERSION, deleteSurface: { surfaceId: targets[0] } } as never)
+        }
         const result = compiler.compile(body, state)
-        setA2uiBlockError(a2uiBlockKey(targets[0] ?? '', body), result.ok ? null : result.message)
+        setA2uiBlockError(key, result.ok ? null : result.message)
         if (!result.ok) console.warn('[a2ui] block rejected', result.message)
         continue
       }
@@ -138,7 +158,7 @@ function A2uiFeeder({
         }
       }
     }
-  }, [sources, processor, compiler, state])
+  }, [sources, processor, compiler, state, live])
 
   // Forward surface actions to the model as a hidden isMeta turn (gated while a
   // turn is in flight — one action per turn).
@@ -277,6 +297,11 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
         actionHandlerRef.current?.(action)
       }),
   )
+  const [compiler] = useState(() => createA2uiExpressCompiler(vellocCatalog))
+  const [live] = useState(() => {
+    const state = compiler.stateFor(processor)
+    return createA2uiLiveBlocks(() => compiler.stream(state))
+  })
   useEffect(() => {
     injectBasicCatalogStyles()
     return () => processor.dispose()
@@ -284,8 +309,11 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
 
   return (
     <ProcessorContext.Provider value={processor}>
-      <A2uiPresentationProvider sessionId={sessionId} messages={messages} busy={busy}>
+      <A2uiLiveContext.Provider value={live}>
+      <A2uiPresentationProvider sessionId={sessionId} messages={messages} busy={busy} live={live}>
         <A2uiFeeder
+          compiler={compiler}
+          live={live}
           messages={messages}
           submitActionMessage={submitActionMessage}
           busy={busy}
@@ -294,6 +322,7 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
         {children}
         <A2uiPanePortal sessionId={sessionId} />
       </A2uiPresentationProvider>
+      </A2uiLiveContext.Provider>
     </ProcessorContext.Provider>
   )
 })

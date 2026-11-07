@@ -45,3 +45,19 @@ export function messageHasA2uiContent(message: Message): boolean {
 export function hasA2uiContent(messages: readonly Message[]): boolean {
   return messages.some(messageHasA2uiContent)
 }
+
+/** True if one of the last `tail` thread rows (live ones included) holds an `<a2ui>` block in its text. */
+export function hasA2uiBlockInRecentRows(
+  rows: readonly { role?: unknown; content?: unknown }[],
+  tail = 3,
+): boolean {
+  for (let i = rows.length - 1; i >= 0 && i >= rows.length - tail; i--) {
+    const row = rows[i]
+    if (row.role !== 'assistant' || !Array.isArray(row.content)) continue
+    for (const part of row.content) {
+      const record = asRecord(part)
+      if (record?.type === 'text' && typeof record.text === 'string' && hasA2uiBlock(record.text)) return true
+    }
+  }
+  return false
+}

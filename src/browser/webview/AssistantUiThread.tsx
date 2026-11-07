@@ -206,7 +206,7 @@ import {
 } from '@/components/assistant-ui/thread'
 import { ASK_TOOL_ID } from '@/toolkit/builtin/askUser'
 import { SKILL_TOOL_NAME } from '@/prompting/skillToolName'
-import { hasA2uiContent } from './a2ui/hasA2uiSurface'
+import { hasA2uiBlockInRecentRows, hasA2uiContent } from './a2ui/hasA2uiSurface'
 import {
   A2UI_CREATE_SURFACE,
   A2UI_DELETE_SURFACE,
@@ -1602,10 +1602,21 @@ function InteractiveAssistantUiThread({
     () => hasGenerativeToolParts(messages),
     [messages],
   )
-  const shouldLoadA2uiSurfaces = useMemo(
+  // A block the model is writing loads the host too, so its surface draws as it
+  // streams; once loaded the host stays for the session (it owns the surfaces).
+  const a2uiLoadedRef = useRef<{ sessionId: string | undefined; loaded: boolean }>({ sessionId: undefined, loaded: false })
+  if (a2uiLoadedRef.current.sessionId !== state.snapshot?.sessionId) {
+    a2uiLoadedRef.current = { sessionId: state.snapshot?.sessionId, loaded: false }
+  }
+  const a2uiInTranscript = useMemo(
     () => hasA2uiContent(state.transcriptMessages),
     [state.transcriptMessages],
   )
+  const shouldLoadA2uiSurfaces =
+    a2uiLoadedRef.current.loaded ||
+    a2uiInTranscript ||
+    hasA2uiBlockInRecentRows(messages as readonly { role?: unknown; content?: unknown }[])
+  a2uiLoadedRef.current.loaded = shouldLoadA2uiSurfaces
   const conversationTitle = useMemo(() => getConversationTitle(state), [state])
   const sessionId = state.snapshot?.sessionId ?? 'pending'
   // Handle for the conversation's Agent tool cards to open the global Background

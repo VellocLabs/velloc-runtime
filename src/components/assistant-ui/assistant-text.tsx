@@ -49,7 +49,7 @@ const AssistantTextImpl = () => {
     () => ({ text, isFirstOfReply: index !== null && index === firstText }),
     [text, index, firstText],
   );
-  if (isReply && hasA2uiBlock(text)) return <AssistantA2uiText text={text} />;
+  if (isReply && hasA2uiBlock(text)) return <AssistantA2uiText text={text} partKey={`${messageId}:${index ?? 0}`} />;
   if (index === null || !isReply || !isSettled) return <MarkdownText />;
   return (
     <ModAssistantMessageSite
