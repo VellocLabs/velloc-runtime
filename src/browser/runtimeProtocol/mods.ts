@@ -70,7 +70,7 @@ export const MODS_ACTION_SCOPES = {
   /** A press on a plugin's topbar item: runs that plugin's command in the
    *  named session, as typing it in that session's box does — `control`. */
   pressTopbar: 'control',
-  /** A press on an app's Reload: builds its entry file again � `control`. */
+  /** A press on an app's Reload: builds its entry file again — `control`. */
   buildApp: 'control',
 } as const satisfies Record<string, ScopeMode>
 export type ModsAction = keyof typeof MODS_ACTION_SCOPES
