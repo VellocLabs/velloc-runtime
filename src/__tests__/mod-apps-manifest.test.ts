@@ -8,6 +8,7 @@ import { appIdOf, checkTemplateDecls } from '../mods/ui/uiManifest'
 import { checkRequires, knownFeatures } from '../pluginHost/pluginRequirements'
 import { checkPluginDescriptor } from '../pluginHost/manifestValidator'
 import { ModUiContributionsHost, type ContributingPlugin } from '../mods/ui/contributionsHost'
+import type { ProviderGateState } from '../pluginHost/pluginRequirements'
 import { resetModContributionsState } from '../mods/ui/contributionsState'
 import { isModContributionsState } from '../browser/webview/mods/modContributionsView'
 
@@ -112,6 +113,13 @@ describe('an app template in the manifest', () => {
     expect(appIdOf('PayPal_Tools', 'month_board')).toBe('paypal-tools-month-board')
   })
 
+  it('two keys of one plugin giving one app id: the second is reported and left out', () => {
+    const errors: string[] = []
+    const decls = checkTemplateDecls('pay', { a_b: { title: '1', app: APP }, 'a-b': { title: '2', app: APP } }, errors, 'beta')
+    expect(Object.keys(decls ?? {})).toEqual(['a_b'])
+    expect(errors).toEqual(['templates.a-b.app: its app id "pay-a-b" is also templates.a_b\'s; this one is left out'])
+  })
+
   it('the descriptor check reads the channel it is given', () => {
     const value = { name: 'pay', templates: { board: { title: 'P', app: APP } }, requires: { features: ['apps'] } }
     const beta = checkPluginDescriptor(value, 'beta')
@@ -124,18 +132,23 @@ describe('an app template in the manifest', () => {
   })
 })
 
-function host() {
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16z"/></svg>'
+
+function host(files: Record<string, string> = {}) {
   const reports: string[] = []
+  let gate: ProviderGateState = { loaded: true, isSetUp: () => true, owner: () => '' }
   const contributions = new ModUiContributionsHost()
   contributions.configure({
-    readText: async () => {
-      throw new Error('ENOENT')
+    readText: async path => {
+      const text = files[path.replace(/\\/g, '/')]
+      if (text === undefined) throw new Error('ENOENT')
+      return text
     },
     listFiles: async () => [],
-    gate: () => ({ loaded: true, isSetUp: () => true, owner: () => '' }),
+    gate: () => gate,
     report: line => reports.push(line),
   })
-  return { contributions, reports }
+  return { contributions, reports, setGate: (next: ProviderGateState) => (gate = next) }
 }
 
 function appPlugin(name: string, key: string, extra: Partial<ContributingPlugin> = {}): ContributingPlugin {
@@ -189,6 +202,32 @@ describe('the apps the contributions host publishes', () => {
     expect(contributions.state().apps?.map(app => app.type)).toEqual(['acme:pay_x'])
     expect(contributions.state().templates.map(template => template.type)).toEqual(['acme:pay_x'])
     expect(reports).toEqual(['acme-pay: app "x" is left out; its id "acme-pay-x" is acme\'s'])
+    expect(contributions.templateStatus('acme-pay:x')).toEqual({ state: 'absent', plugin: 'acme-pay' })
+    expect(contributions.templateStatus('acme:pay_x').state).toBe('ready')
+  })
+
+  it('a waiting plugin earlier in scan order still holds its app id', async () => {
+    const { contributions, setGate } = host()
+    setGate({ loaded: true, isSetUp: () => false, owner: () => undefined })
+    const first = appPlugin('acme', 'pay_x', {
+      manifest: { name: 'acme', requires: { providers: ['main'] } },
+      providers: [{ key: 'main', id: 'mod.acme.main', manifest: {} as never, modulePath: '/p' }],
+    })
+    const second = appPlugin('acme-pay', 'x')
+    await contributions.sync({ enabled: [first, second] })
+    expect('apps' in contributions.state()).toBe(false)
+    expect(contributions.templateStatus('acme-pay:x').state).toBe('absent')
+    setGate({ loaded: true, isSetUp: () => true, owner: () => 'acme@mkt' })
+    contributions.recheckGate()
+    expect(contributions.state().apps?.map(app => app.type)).toEqual(['acme:pay_x'])
+  })
+
+  it('the icon of a left-out app is not published', async () => {
+    const { contributions } = host({ '/plugins/acme-pay/pay.svg': SVG })
+    const second = appPlugin('acme-pay', 'x')
+    second.templates![0]!.decl.icon = { kind: 'file', src: './pay.svg' }
+    await contributions.sync({ enabled: [appPlugin('acme', 'pay_x'), second] })
+    expect(contributions.state().icons).toEqual({})
   })
 
   it('the page takes a state with or without apps, and refuses apps that are not a list', () => {

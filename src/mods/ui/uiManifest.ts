@@ -235,12 +235,13 @@ export function checkTemplateDecls(
   pluginName: string,
   value: unknown,
   errors: string[],
-  channel: UpdateChannel = 'stable',
+  channel: UpdateChannel,
 ): Record<string, PluginTemplateDecl> | undefined {
   const entries = keyed('templates', pluginName, value, errors)
   if (!entries) return undefined
   const out: Record<string, PluginTemplateDecl> = {}
   let apps = 0
+  const appIds = new Map<string, string>()
   for (const [key, raw] of entries) {
     const label = `templates.${key}`
     let ok = true
@@ -258,7 +259,13 @@ export function checkTemplateDecls(
         errors.push(`${label}: a plugin offers at most ${APPS_PER_PLUGIN} apps; this one is left out`)
         continue
       }
-      app = readApp(raw.app, `${label}.app`, appIdOf(pluginName, key), bad)
+      const appId = appIdOf(pluginName, key)
+      const twin = appIds.get(appId)
+      if (twin !== undefined) {
+        errors.push(`${label}.app: its app id "${appId}" is also templates.${twin}'s; this one is left out`)
+        continue
+      }
+      app = readApp(raw.app, `${label}.app`, appId, bad)
       if (raw.launcher !== undefined && raw.launcher !== 'hidden') bad(`${label}.launcher: an app opens from its topbar icon; expected "hidden" or no launcher`)
       if (raw.projectFolder !== undefined) bad(`${label}.projectFolder: an app works in its own folder; leave projectFolder out`)
     }
@@ -279,7 +286,10 @@ export function checkTemplateDecls(
       else bad(`${label}.path: must be a relative path starting with "./" and without ".."`)
     }
     if (!ok || !title || app === null) continue
-    if (app) apps += 1
+    if (app) {
+      apps += 1
+      appIds.set(appIdOf(pluginName, key), key)
+    }
     out[key] = {
       title,
       ...(description ? { description } : {}),

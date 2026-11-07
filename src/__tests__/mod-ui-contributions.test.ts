@@ -39,6 +39,7 @@ describe('templates in the manifest', () => {
         themed: { title: 'T', icon: { src: './l.svg', dark: './d.svg' }, launcher: 'hidden' },
       },
       errors,
+      'stable',
     )
     expect(errors).toEqual([])
     expect(out).toEqual({
@@ -58,6 +59,7 @@ describe('templates in the manifest', () => {
         loose: { title: 'Loose', projectFolder: true },
       },
       errors,
+      'stable',
     )
     expect(out).toEqual({
       safe: { title: 'Safe', launcher: 'both', projectFolder: 'required', path: './templates/safe' },
@@ -78,6 +80,7 @@ describe('templates in the manifest', () => {
         place: { title: 'x', launcher: 'everywhere' },
       },
       errors,
+      'stable',
     )
     expect(Object.keys(out!)).toEqual(['ok'])
     expect(errors).toHaveLength(5)
@@ -87,7 +90,7 @@ describe('templates in the manifest', () => {
 
   it('refuses a plugin name that cannot form an id', () => {
     const errors: string[] = []
-    expect(checkTemplateDecls('acme corp', { a: { title: 'A' } }, errors)).toBeUndefined()
+    expect(checkTemplateDecls('acme corp', { a: { title: 'A' } }, errors, 'stable')).toBeUndefined()
     expect(errors[0]).toMatch(/cannot form an id/)
   })
 

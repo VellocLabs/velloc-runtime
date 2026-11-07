@@ -78,6 +78,8 @@ export class ModUiContributionsHost {
   private assets = new Map<string, PluginAssets>()
   private iconTexts = new Map<string, string>()
   private current: ModContributionsState = { templates: [], topbar: [], icons: {}, waiting: [] }
+  /** App template types left out because an earlier plugin in scan order holds their app id. */
+  private leftOutApps = new Set<string>()
   private currentJson = JSON.stringify(this.current)
   private gateSignature = ''
   private readonly changed = new Set<(state: ModContributionsState) => void>()
@@ -183,7 +185,9 @@ export class ModUiContributionsHost {
   templateStatus(type: string): PluginTemplateStatus {
     const plugin = type.slice(0, type.indexOf(':'))
     const owner = this.plugins.find(entry => entry.name === plugin)
-    if (!owner || !owner.templates?.some(template => template.type === type)) return { state: 'absent', plugin }
+    if (!owner || !owner.templates?.some(template => template.type === type) || this.leftOutApps.has(type)) {
+      return { state: 'absent', plugin }
+    }
     const waiting = this.current.waiting.find(entry => entry.plugin === plugin)
     if (waiting) return { state: 'waiting', plugin, providers: waiting.providers }
     const template = owner.templates.find(entry => entry.type === type)!
@@ -310,20 +314,30 @@ export class ModUiContributionsHost {
     const templates: ContributedTemplate[] = []
     const topbar: ContributedTopbarItem[] = []
     const apps: ContributedApp[] = []
+    // Two apps naming one folder: the first in scan order keeps it, whether or not its plugin waits.
     const appIds = new Map<string, string>()
+    const leftOut = new Set<string>()
+    for (const plugin of this.plugins) {
+      for (const template of plugin.templates ?? []) {
+        if (!template.decl.app) continue
+        const appId = appIdOf(plugin.name, template.key)
+        const holder = appIds.get(appId)
+        if (holder === undefined) {
+          appIds.set(appId, plugin.name)
+          continue
+        }
+        leftOut.add(template.type)
+        this.reportOnce(`${plugin.name}: app "${template.key}" is left out; its id "${appId}" is ${holder}'s`)
+      }
+    }
+    this.leftOutApps = leftOut
     for (const plugin of effective) {
       const owner = pluginOwnerId(plugin)
       for (const template of plugin.templates ?? []) {
+        if (leftOut.has(template.type)) continue
         const icon = iconOf(plugin.name, template.decl.icon)
         if (template.decl.app) {
-          // Two apps naming one folder: the first in scan order keeps it.
           const appId = appIdOf(plugin.name, template.key)
-          const holder = appIds.get(appId)
-          if (holder !== undefined) {
-            this.reportOnce(`${plugin.name}: app "${template.key}" is left out; its id "${appId}" is ${holder}'s`)
-            continue
-          }
-          appIds.set(appId, plugin.name)
           apps.push({ type: template.type, appId, plugin: plugin.name, title: template.decl.title, ...(icon ? { icon } : {}) })
         }
         const welcome = this.assets.get(plugin.name)?.welcome.get(template.key)
