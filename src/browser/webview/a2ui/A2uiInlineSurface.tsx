@@ -19,7 +19,7 @@ export function A2uiInlineSurface({
   const presentation = useA2uiPresentationOptional()
   const t = useT()
   if (!presentation || !surfaceId) return null
-  const { latestToolCallIdBySurface, deletedSurfaceIds, selectedSurfaceId, openSurface } =
+  const { latestToolCallIdBySurface, deletedSurfaceIds, selectedSurfaceId, paneShown, openSurface } =
     presentation
 
   if (deletedSurfaceIds.has(surfaceId)) return null
@@ -41,7 +41,7 @@ export function A2uiInlineSurface({
     )
   }
 
-  const selected = selectedSurfaceId === surfaceId
+  const selected = paneShown && selectedSurfaceId === surfaceId
   return (
     <div
       data-slot="a2ui-card"

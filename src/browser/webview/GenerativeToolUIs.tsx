@@ -267,11 +267,10 @@ export const ContactFormToolUI =
     },
   })
 
-// A2UI surfaces render INLINE at their tool-call's position in the conversation
-// (no side panel). For each surfaceId only the LATEST mention renders the live
-// surface; earlier mentions render a "jump to latest" breadcrumb. The heavy
-// renderer + font live behind this lazy import, so they never load for non-A2UI
-// conversations (or for other generative tools in this same chunk).
+// A2UI tool-calls render a card at their position in the conversation; the
+// surface itself is in the side pane. For each surfaceId only the LATEST
+// mention renders the card; earlier mentions render an update note. Lazy, so
+// non-A2UI conversations never load it.
 const A2uiInlineSurface = lazy(() =>
   import('./a2ui/A2uiInlineSurface').then(m => ({ default: m.A2uiInlineSurface })),
 )

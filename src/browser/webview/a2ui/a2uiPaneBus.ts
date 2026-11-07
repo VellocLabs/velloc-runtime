@@ -1,18 +1,23 @@
 // A2UI side pane bus (F-1); no renderer import, so the shell loads it eagerly.
 
 // Contract:
-// - The pane body registers its mount element with `setSlot` (null on unmount).
-//   Only the active session's pane is drawn, so at most one slot exists.
-// - The foreground session's host portals its surfaces into that element and
-//   marks itself the owner with `setOwner`, so the slot can show its empty state.
+// - The pane body registers its mount element and the session the shell shows
+//   with `setSlot` (null on unmount). Only the shown session's pane is drawn,
+//   so at most one slot exists.
+// - The host of the session the slot names portals its surfaces into that
+//   element and marks itself the owner with `setOwner`, so the slot can show
+//   its empty state. Any other host (a hidden session, a side chat) does not.
 // - The host asks the shell to open or close the pane with `requestPane`; the
 //   shell reports a person's close with `notifyClosed`.
 
-export type A2uiPaneRequest = { sessionId: string; open: boolean }
+/** `byPerson`: the person pressed a card or tab, not a transcript change. */
+export type A2uiPaneRequest = { sessionId: string; open: boolean; byPerson?: boolean }
+
+export type A2uiPaneSlot = { element: HTMLElement; sessionId: string }
 
 type Listener = () => void
 
-let slot: HTMLElement | null = null
+let slot: A2uiPaneSlot | null = null
 let owner: string | null = null
 const slotListeners = new Set<Listener>()
 const requestListeners = new Set<(request: A2uiPaneRequest) => void>()
@@ -22,13 +27,14 @@ function emitSlot(): void {
   for (const listener of slotListeners) listener()
 }
 
-export function setSlot(element: HTMLElement | null): void {
-  if (slot === element) return
-  slot = element
+export function setSlot(element: HTMLElement | null, sessionId: string | null): void {
+  const next = element && sessionId ? { element, sessionId } : null
+  if (slot?.element === next?.element && slot?.sessionId === next?.sessionId) return
+  slot = next
   emitSlot()
 }
 
-export function getSlot(): HTMLElement | null {
+export function getSlot(): A2uiPaneSlot | null {
   return slot
 }
 

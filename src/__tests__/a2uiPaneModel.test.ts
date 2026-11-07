@@ -60,4 +60,10 @@ describe('A2UI side pane model', () => {
     expect(none.open).toBe(false)
     expect(none.state.selected).toBeNull()
   })
+
+  it('keeps the same state object when a derivation changes nothing', () => {
+    const first = stepA2uiPane(EMPTY_A2UI_PANE_STATE, input([['s1', 'tc1']]), true).state
+    expect(stepA2uiPane(first, input([['s1', 'tc1']]), true).state).toBe(first)
+    expect(stepA2uiPane(first, input([['s1', 'tc2']]), true).state).not.toBe(first)
+  })
 })

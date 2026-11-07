@@ -148,21 +148,15 @@ function A2uiFeeder({
   return null
 }
 
-// The selected surface, portalled into the side pane's slot while this
-// session is in the foreground (F-1). The portal keeps the surface inside this
+// The selected surface, portalled into the side pane's slot while the slot
+// belongs to this session (F-1). The portal keeps the surface inside this
 // session's providers, so its data model and actions stay where they are.
-function A2uiPanePortal({
-  sessionId,
-  foreground,
-}: {
-  sessionId: string
-  foreground: boolean
-}) {
+function A2uiPanePortal({ sessionId }: { sessionId: string }) {
   const slot = useSyncExternalStore(subscribeSlot, getSlot, () => null)
   const { paneSurfaceIds, selectedSurfaceId, openSurface, busy } =
     useA2uiPresentation()
   const t = useT()
-  const shown = foreground ? slot : null
+  const shown = slot !== null && slot.sessionId === sessionId ? slot.element : null
 
   const filled = shown !== null && selectedSurfaceId !== null
   useEffect(() => {
@@ -227,14 +221,12 @@ function A2uiPanePortal({
 
 export const A2uiProviderHost = memo(function A2uiProviderHost({
   sessionId,
-  foreground,
   messages,
   submitActionMessage,
   busy,
   children,
 }: {
   sessionId: string
-  foreground: boolean
   messages: readonly Message[]
   submitActionMessage?: (prompt: string) => Promise<void>
   busy: boolean
@@ -257,7 +249,7 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
           actionHandlerRef={actionHandlerRef}
         />
         {children}
-        <A2uiPanePortal sessionId={sessionId} foreground={foreground} />
+        <A2uiPanePortal sessionId={sessionId} />
       </A2uiPresentationProvider>
     </A2UIProvider>
   )

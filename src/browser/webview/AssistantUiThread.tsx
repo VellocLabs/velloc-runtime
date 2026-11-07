@@ -250,10 +250,10 @@ const GenerativeToolUIs = lazy(async () => {
   return { default: module.GenerativeToolUIs }
 })
 
-// A2UI surfaces render INLINE in the conversation (via the a2ui_* tool UIs).
-// This host wraps <Thread> with the shared A2UI runtime (one processor + the
-// action loop + the maximize overlay) so those tool UIs can render the live
-// surface. The renderer + Material Symbols font live in this on-demand chunk;
+// A2UI surfaces render in the side pane; the a2ui_* tool UIs render a card in
+// the conversation. This host wraps <Thread> with the shared A2UI runtime (one
+// processor + the action loop + the pane portal) so the cards and the pane
+// share it. The renderer + Material Symbols font live in this on-demand chunk;
 // only the cheap `hasA2uiToolCall` detector stays resident, so conversations
 // that never use A2UI never fetch this code.
 const A2uiProviderHost = lazy(async () => {
@@ -266,8 +266,8 @@ const GENERATIVE_TOOL_NAMES = new Set([
   'select_date',
   'show_location',
   ASK_TOOL_ID,
-  // The a2ui_* tool-calls render the surface (or a "jump to latest" breadcrumb)
-  // inline at their position in the conversation.
+  // The a2ui_* tool-calls render a card (or an update note) at their position
+  // in the conversation; the surface itself is in the side pane.
   A2UI_CREATE_SURFACE,
   A2UI_UPDATE_COMPONENTS,
   A2UI_UPDATE_DATA_MODEL,
@@ -2355,8 +2355,8 @@ function InteractiveAssistantUiThread({
                   >
                     {shouldLoadA2uiSurfaces ? (
                       // Wrap the conversation with the shared A2UI runtime so the
-                      // inline a2ui_* tool UIs (rendered inside <Thread/>) can draw
-                      // the live surface + the maximize overlay can cover this pane.
+                      // a2ui_* cards (rendered inside <Thread/>) and the side pane
+                      // share one processor and action loop.
                       // fallback keeps <Thread/> visible during the lazy chunk load.
                       <Suspense fallback={
                         <ContinueConversationProvider value={{ onContinueConversation: handleContinueConversation }}>
@@ -2369,7 +2369,6 @@ function InteractiveAssistantUiThread({
                       }>
                         <A2uiProviderHost
                           sessionId={sessionId}
-                          foreground={isForegroundSession}
                           messages={state.transcriptMessages}
                           submitActionMessage={submitActionMessage}
                           busy={state.status === 'submitting'}

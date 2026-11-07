@@ -85,9 +85,9 @@ export function extractA2uiToolCalls(
 
 /**
  * For each surfaceId, the toolCallId of its LATEST mention (create /
- * update_components / update_data_model) — only that position renders the live
- * surface, every earlier one a "jump to latest" breadcrumb — plus the set of
- * surfaces whose net state is deleted. A data patch also relocates the surface.
+ * update_components / update_data_model) — only that position renders the
+ * surface's card, every earlier one an update note — plus the set of surfaces
+ * whose net state is deleted. A data patch also moves the card.
  */
 export function deriveA2uiPresentation(messages: readonly Message[]): {
   latestToolCallIdBySurface: Map<string, string>

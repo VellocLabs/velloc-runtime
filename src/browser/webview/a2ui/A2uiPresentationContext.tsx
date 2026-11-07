@@ -13,6 +13,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react'
 import type { Message } from '../../../runtime/RuntimeTypes'
@@ -25,7 +26,7 @@ import {
   stepA2uiPane,
   type A2uiPaneState,
 } from './a2uiPaneModel'
-import { onPaneClosed, requestPane } from './a2uiPaneBus'
+import { getOwner, onPaneClosed, requestPane, subscribeSlot } from './a2uiPaneBus'
 
 export type A2uiPresentation = {
   /** For each live surfaceId, the toolCallId of its latest mention. */
@@ -38,6 +39,8 @@ export type A2uiPresentation = {
   paneSurfaceIds: readonly string[]
   /** The surface the pane shows, or null when there is none. */
   selectedSurfaceId: string | null
+  /** The side pane is drawn and shows this session's surface. */
+  paneShown: boolean
   /** Select `surfaceId` and open the pane on it. */
   openSurface: (surfaceId: string) => void
 }
@@ -77,6 +80,7 @@ export function A2uiPresentationProvider({
   const [pane, setPane] = useState<A2uiPaneState>(EMPTY_A2UI_PANE_STATE)
   const paneRef = useRef(pane)
   const commit = useCallback((next: A2uiPaneState) => {
+    if (next === paneRef.current) return
     paneRef.current = next
     setPane(next)
   }, [])
@@ -105,10 +109,13 @@ export function A2uiPresentationProvider({
   const openSurface = useCallback(
     (surfaceId: string) => {
       commit(selectA2uiSurface(paneRef.current, surfaceId))
-      requestPane({ sessionId, open: true })
+      requestPane({ sessionId, open: true, byPerson: true })
     },
     [sessionId, commit],
   )
+
+  const paneOwner = useSyncExternalStore(subscribeSlot, getOwner, getOwner)
+  const paneShown = paneOwner === sessionId
 
   const value = useMemo<A2uiPresentation>(
     () => ({
@@ -117,9 +124,10 @@ export function A2uiPresentationProvider({
       busy,
       paneSurfaceIds: paneSurfaceOrder(derived),
       selectedSurfaceId: pane.selected,
+      paneShown,
       openSurface,
     }),
-    [derived, busy, pane.selected, openSurface],
+    [derived, busy, pane.selected, paneShown, openSurface],
   )
 
   return (

@@ -60,10 +60,28 @@ export function stepA2uiPane(
     selected = order.at(-1) ?? null
   }
   if (order.length === 0 && prev.seen.size > 0) open = false
+  const unchanged =
+    selected === prev.selected &&
+    sameSet(dismissed, prev.dismissed) &&
+    sameMap(input.latestToolCallIdBySurface, prev.seen)
   return {
-    state: { selected, dismissed, seen: new Map(input.latestToolCallIdBySurface) },
+    state: unchanged
+      ? prev
+      : { selected, dismissed, seen: new Map(input.latestToolCallIdBySurface) },
     open,
   }
+}
+
+function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false
+  for (const id of a) if (!b.has(id)) return false
+  return true
+}
+
+function sameMap(a: ReadonlyMap<string, string>, b: ReadonlyMap<string, string>): boolean {
+  if (a.size !== b.size) return false
+  for (const [id, value] of a) if (b.get(id) !== value) return false
+  return true
 }
 
 /** The person closed the pane: the surfaces now shown stop reopening it. */

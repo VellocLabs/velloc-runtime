@@ -2315,16 +2315,21 @@ export function MultiSessionShell({
   }, [activePlanEntry, activeSessionId, updatePaneRecord, sessionLayoutsStore])
   // A session's A2UI host opens its pane on a new surface and closes it when
   // the last surface is deleted (F-1); a background session's record changes
-  // without taking the foreground.
+  // without taking the foreground. A person's card press in the shown session
+  // opens it the way a pane toggle does.
   useEffect(
     () =>
-      onA2uiPaneRequest(({ sessionId, open }) => {
+      onA2uiPaneRequest(({ sessionId, open, byPerson }) => {
+        if (open && byPerson && sessionId === activeSessionIdRef.current) {
+          openPaneFor('a2ui')
+          return
+        }
         updatePaneRecord(
           r => (open ? openPane(r, 'a2ui', sessionLayoutsStore.getSnapshot().weights) : closePane(r, 'a2ui')),
           sessionId,
         )
       }),
-    [updatePaneRecord, sessionLayoutsStore],
+    [updatePaneRecord, sessionLayoutsStore, openPaneFor],
   )
   // Declared after the plan auto-open, so a switch keeps the float that
   // effect just opened for the session switched to.
