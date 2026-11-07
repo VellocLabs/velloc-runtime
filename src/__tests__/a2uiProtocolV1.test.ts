@@ -30,6 +30,14 @@ describe('A2UI v1.0 adapter', () => {
     expect(merged.map(message => message.updateDataModel), 'a path beside a merge removes nothing').toEqual([
       { surfaceId: 's', path: '/name', value: 'Ada' },
     ])
+    for (const empty of [{ patches: [] }, { merge: {} }, { merge: 'x' }]) {
+      const [removal] = commandsToA2uiMessages([data({ surfaceId: 's', path: '/draft', ...empty })], 'c')
+      expect(removal?.updateDataModel, `an empty ${Object.keys(empty)[0]} still removes`).toEqual({
+        surfaceId: 's',
+        path: '/draft',
+        value: null,
+      })
+    }
   })
 
   it('turns a legacy List with an @path items binding and a string template into a child template', () => {

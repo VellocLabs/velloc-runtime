@@ -6,7 +6,7 @@ import {
   A2UI_CREATE_SURFACE,
   A2UI_DELETE_SURFACE,
 } from '../../../toolkit/builtin/a2ui/a2uiToolNames'
-import { a2uiToolNameOf } from './hasA2uiSurface'
+import { a2uiToolNameOf, messageHasA2uiToolCall } from './hasA2uiSurface'
 
 export type A2uiCommand = { name: string; args: Record<string, unknown> }
 
@@ -112,10 +112,7 @@ export function deriveA2uiPresentation(messages: readonly Message[]): {
 export function latestA2uiMentionTime(messages: readonly Message[]): number | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
-    if (message.type !== 'assistant') continue
-    const content = asRecord(message.message)?.content
-    if (!Array.isArray(content)) continue
-    if (!content.some(part => a2uiToolNameOf(part) !== undefined)) continue
+    if (!messageHasA2uiToolCall(message)) continue
     const time = typeof message.timestamp === 'string' ? Date.parse(message.timestamp) : NaN
     return Number.isFinite(time) ? time : null
   }

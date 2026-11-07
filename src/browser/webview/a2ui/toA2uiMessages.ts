@@ -315,6 +315,7 @@ export function commandsToA2uiMessages(
       // patch becomes a canonical single-pointer updateDataModel message (the
       // shape web_core applies). Without this, a model that followed the tool
       // schema and sent `patches` would no-op.
+      const patchWritesBefore = out.length
       if (Array.isArray(args.patches)) {
         for (const patch of args.patches) {
           if (!patch || typeof patch !== 'object') continue
@@ -335,12 +336,17 @@ export function commandsToA2uiMessages(
       // call is a no-op. A write always carries `value`; `null` removes the
       // key. A bare non-root path with nothing else to write removes its key;
       // a root path never does, since that would clear the whole model.
+      const merge =
+        args.merge && typeof args.merge === 'object' && !Array.isArray(args.merge)
+          ? (args.merge as Record<string, unknown>)
+          : null
+      const mergeKeys = merge ? Object.keys(merge).filter(key => key !== '') : []
       const pathOnlyRemoval =
         typeof args.path === 'string' &&
         args.path !== '' &&
         args.path !== '/' &&
-        args.merge == null &&
-        args.patches == null
+        out.length === patchWritesBefore &&
+        mergeKeys.length === 0
       if ('value' in args || pathOnlyRemoval) {
         const updateDataModel: Record<string, unknown> = { surfaceId, value: args.value ?? null }
         if (typeof args.path === 'string') updateDataModel.path = args.path
@@ -352,10 +358,6 @@ export function commandsToA2uiMessages(
       // emitting `{value: merge}` would wipe every other field — the bug this
       // avoids. Keys are RFC-6901 escaped so a "/" or "~" in a key stays a
       // single top-level field instead of a nested path.
-      const merge =
-        args.merge && typeof args.merge === 'object' && !Array.isArray(args.merge)
-          ? (args.merge as Record<string, unknown>)
-          : null
       if (merge) {
         for (const [key, value] of Object.entries(merge)) {
           if (key === '') continue // path "/" would replace the whole root

@@ -26,14 +26,14 @@ export function a2uiToolNameOf(part: unknown): string | undefined {
   return toolName && isA2uiToolName(toolName) ? toolName : undefined
 }
 
+/** True if `message` is an assistant message holding an `a2ui_*` tool-call. */
+export function messageHasA2uiToolCall(message: Message): boolean {
+  if (message.type !== 'assistant') return false
+  const content = asRecord(message.message)?.content
+  return Array.isArray(content) && content.some(part => a2uiToolNameOf(part) !== undefined)
+}
+
 /** True if any assistant message contains an `a2ui_*` tool-call. */
 export function hasA2uiToolCall(messages: readonly Message[]): boolean {
-  for (const message of messages) {
-    if (message.type !== 'assistant') continue
-    const inner = asRecord(message.message)
-    const content = inner?.content
-    if (!Array.isArray(content)) continue
-    if (content.some(part => a2uiToolNameOf(part) !== undefined)) return true
-  }
-  return false
+  return messages.some(messageHasA2uiToolCall)
 }
