@@ -9,6 +9,8 @@
 //   its empty state. Any other host (a hidden session, a side chat) does not.
 // - The host asks the shell to open or close the pane with `requestPane`; the
 //   shell reports a person's close with `notifyClosed`.
+// - The shell publishes the session it shows with `setShownSession`, so a
+//   host whose surfaces can never reach the pane (a side chat) knows it.
 
 /** `byPerson`: the person pressed a card or tab, not a transcript change. */
 export type A2uiPaneRequest = { sessionId: string; open: boolean; byPerson?: boolean }
@@ -19,6 +21,7 @@ type Listener = () => void
 
 let slot: A2uiPaneSlot | null = null
 let owner: string | null = null
+let shown: string | null = null
 const slotListeners = new Set<Listener>()
 const requestListeners = new Set<(request: A2uiPaneRequest) => void>()
 const closedListeners = new Set<(sessionId: string) => void>()
@@ -46,6 +49,16 @@ export function setOwner(sessionId: string | null): void {
 
 export function getOwner(): string | null {
   return owner
+}
+
+export function setShownSession(sessionId: string | null): void {
+  if (shown === sessionId) return
+  shown = sessionId
+  emitSlot()
+}
+
+export function getShownSession(): string | null {
+  return shown
 }
 
 export function subscribeSlot(listener: Listener): () => void {

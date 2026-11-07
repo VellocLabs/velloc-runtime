@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { act, cleanup, render } from '@testing-library/react'
 import { A2uiProviderHost } from '../browser/webview/a2ui/A2uiProviderHost'
 import { A2uiInlineSurface } from '../browser/webview/a2ui/A2uiInlineSurface'
-import { getOwner, setOwner, setSlot } from '../browser/webview/a2ui/a2uiPaneBus'
+import { getOwner, setOwner, setShownSession, setSlot } from '../browser/webview/a2ui/a2uiPaneBus'
 import type { Message } from '../runtime/RuntimeTypes'
 
 const transcript = (surfaceId: string) =>
@@ -42,6 +42,7 @@ describe('A2UI pane slot ownership', () => {
     cleanup()
     setSlot(null, null)
     setOwner(null)
+    setShownSession(null)
   })
 
   it('portals only the surfaces of the session the slot names', () => {
@@ -81,5 +82,23 @@ describe('A2UI pane slot ownership', () => {
     expect(view.container.textContent).toContain('Shown in the side panel')
     act(() => setSlot(null, null))
     expect(view.container.textContent).not.toContain('Shown in the side panel')
+  })
+
+  it('the card opens the pane only in the session the shell shows', () => {
+    const card = (sessionId: string) =>
+      createElement(A2uiProviderHost, {
+        sessionId,
+        messages: transcript('s1'),
+        busy: false,
+        children: createElement(A2uiInlineSurface, { surfaceId: 's1', toolCallId: 'tc-s1' }),
+      })
+    setShownSession('main')
+    const view = render(createElement('div', null, card('main'), card('side')))
+    const buttons = [
+      ...view.container.querySelectorAll<HTMLButtonElement>('[data-slot="a2ui-open-in-panel"]'),
+    ]
+    expect(buttons.map(b => b.disabled)).toEqual([false, true])
+    act(() => setShownSession('side'))
+    expect(buttons.map(b => b.disabled)).toEqual([true, false])
   })
 })

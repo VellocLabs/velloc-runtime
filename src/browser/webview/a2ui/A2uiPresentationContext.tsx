@@ -26,7 +26,7 @@ import {
   stepA2uiPane,
   type A2uiPaneState,
 } from './a2uiPaneModel'
-import { getOwner, onPaneClosed, requestPane, subscribeSlot } from './a2uiPaneBus'
+import { getOwner, getShownSession, onPaneClosed, requestPane, subscribeSlot } from './a2uiPaneBus'
 
 export type A2uiPresentation = {
   /** For each live surfaceId, the toolCallId of its latest mention. */
@@ -41,6 +41,8 @@ export type A2uiPresentation = {
   selectedSurfaceId: string | null
   /** The side pane is drawn and shows this session's surface. */
   paneShown: boolean
+  /** This session is the one the shell shows, so its pane can be opened. */
+  paneAvailable: boolean
   /** Select `surfaceId` and open the pane on it. */
   openSurface: (surfaceId: string) => void
 }
@@ -116,6 +118,8 @@ export function A2uiPresentationProvider({
 
   const paneOwner = useSyncExternalStore(subscribeSlot, getOwner, getOwner)
   const paneShown = paneOwner === sessionId
+  const shownSession = useSyncExternalStore(subscribeSlot, getShownSession, getShownSession)
+  const paneAvailable = shownSession === sessionId
 
   const value = useMemo<A2uiPresentation>(
     () => ({
@@ -125,9 +129,10 @@ export function A2uiPresentationProvider({
       paneSurfaceIds: paneSurfaceOrder(derived),
       selectedSurfaceId: pane.selected,
       paneShown,
+      paneAvailable,
       openSurface,
     }),
-    [derived, busy, pane.selected, paneShown, openSurface],
+    [derived, busy, pane.selected, paneShown, paneAvailable, openSurface],
   )
 
   return (

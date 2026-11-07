@@ -1,5 +1,5 @@
 import { type RefObject, type Dispatch, type SetStateAction, type ActionDispatch } from 'react'
-import { notifyClosed as notifyA2uiPaneClosed } from './a2ui/a2uiPaneBus'
+import { notifyClosed as notifyA2uiPaneClosed, type A2uiPaneRequest } from './a2ui/a2uiPaneBus'
 import type { RightPanelPresenceEvent } from './layout/rightPanelPresence'
 import type { CapabilityQuery } from './useCan'
 import type { BrowserBridgeTransport } from '../bridge/browserBridgeProtocol'
@@ -134,6 +134,40 @@ export function createShellOpenPaneFor(
     })
     focusPane(kind)
     presentRightPanel({ type: 'personOpen', view: kind })
+  }
+}
+/** Open `kind` in `sessionId`'s record: for the person when that session is
+ *  shown, else placed without taking the foreground. */
+export function createShellOpenPaneForSession(
+  activeSessionIdRef: RefObject<string>,
+  openPaneFor: (kind: SidePaneKind) => void,
+  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
+  sessionLayoutsStore: SessionLayoutsStore,
+) {
+  return (kind: SidePaneKind, sessionId: string) => {
+    if (activeSessionIdRef.current === sessionId) {
+      openPaneFor(kind)
+      return
+    }
+    updatePaneRecord(r => openPane(r, kind, sessionLayoutsStore.getSnapshot().weights), sessionId)
+  }
+}
+/** An A2UI host's pane request (F-1): a person's open goes through
+ *  `openPaneForSession`; a transcript change only edits that session's record. */
+export function createShellA2uiPaneRequest(
+  openPaneForSession: (kind: SidePaneKind, sessionId: string) => void,
+  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
+  sessionLayoutsStore: SessionLayoutsStore,
+) {
+  return ({ sessionId, open, byPerson }: A2uiPaneRequest) => {
+    if (open && byPerson) {
+      openPaneForSession('a2ui', sessionId)
+      return
+    }
+    updatePaneRecord(
+      r => (open ? openPane(r, 'a2ui', sessionLayoutsStore.getSnapshot().weights) : closePane(r, 'a2ui')),
+      sessionId,
+    )
   }
 }
 export function createShellSetModsPaneDismissedFor(

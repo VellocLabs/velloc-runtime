@@ -2,6 +2,7 @@
 // position in the conversation (F-1). The surface itself renders in the side
 // pane; the card names it and opens the pane on it. The latest mention of a
 // surface reads "Open in panel"; an earlier one says the surface was updated.
+// Both are disabled in a session the shell does not show (a side chat).
 
 import { CornerDownRightIcon, LayoutPanelLeftIcon } from 'lucide-react'
 import { useA2uiPresentationOptional } from './A2uiPresentationContext'
@@ -19,8 +20,14 @@ export function A2uiInlineSurface({
   const presentation = useA2uiPresentationOptional()
   const t = useT()
   if (!presentation || !surfaceId) return null
-  const { latestToolCallIdBySurface, deletedSurfaceIds, selectedSurfaceId, paneShown, openSurface } =
-    presentation
+  const {
+    latestToolCallIdBySurface,
+    deletedSurfaceIds,
+    selectedSurfaceId,
+    paneShown,
+    paneAvailable,
+    openSurface,
+  } = presentation
 
   if (deletedSurfaceIds.has(surfaceId)) return null
 
@@ -32,8 +39,9 @@ export function A2uiInlineSurface({
         type="button"
         data-slot="a2ui-breadcrumb"
         data-surface-id={surfaceId}
+        disabled={!paneAvailable}
         onClick={() => openSurface(surfaceId)}
-        className="my-2 inline-flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="my-2 inline-flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
       >
         <CornerDownRightIcon className="size-3.5" />
         {t('a2ui.moved', { id: surfaceId })}
@@ -56,8 +64,9 @@ export function A2uiInlineSurface({
       <button
         type="button"
         data-slot="a2ui-open-in-panel"
+        disabled={!paneAvailable}
         onClick={() => openSurface(surfaceId)}
-        className="shrink-0 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+        className="shrink-0 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
       >
         {t('a2ui.openInPanel')}
       </button>

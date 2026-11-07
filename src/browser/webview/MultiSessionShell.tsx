@@ -64,7 +64,7 @@ import { toggleFilesTreeVisible } from './panes/filesTreePrefs'
 import { PaneArea } from './panes/PaneArea'
 import { PaneFrame } from './panes/PaneFrame'
 import { PANE_LABEL_KEY } from './panes/paneKinds'
-import { onPaneRequest as onA2uiPaneRequest } from './a2ui/a2uiPaneBus'
+import { onPaneRequest as onA2uiPaneRequest, setShownSession as setA2uiShownSession } from './a2ui/a2uiPaneBus'
 import {
   DOCK_FLOOR_CELLS,
   modPaneOfKey,
@@ -283,6 +283,8 @@ import {
   createShellUpdatePaneRecord,
   createShellFocusPane,
   createShellOpenPaneFor,
+  createShellOpenPaneForSession,
+  createShellA2uiPaneRequest,
   createShellSetModsPaneDismissedFor,
   createShellClosePaneFor,
   createShellOpenBrowserTab,
@@ -1880,16 +1882,11 @@ export function MultiSessionShell({
     () => createShellOpenPaneFor(activeCliRef, updatePaneRecord, sessionLayoutsStore, focusPane, presentRightPanel),
     [updatePaneRecord, sessionLayoutsStore, focusPane],
   )
-  openSideChatPaneForRef.current = (parentId: string) => {
-    if (activeSessionIdRef.current === parentId) {
-      openPaneFor('sidechat')
-      return
-    }
-    updatePaneRecord(
-      r => openPane(r, 'sidechat', sessionLayoutsStore.getSnapshot().weights),
-      parentId,
-    )
-  }
+  const openPaneForSession = useMemo(
+    () => createShellOpenPaneForSession(activeSessionIdRef, openPaneFor, updatePaneRecord, sessionLayoutsStore),
+    [openPaneFor, updatePaneRecord, sessionLayoutsStore],
+  )
+  openSideChatPaneForRef.current = (parentId: string) => openPaneForSession('sidechat', parentId)
   // The tab count a session's browser pane was closed at: the pane returns
   // on new tab activity (another count), not for the state it was closed in.
   // Transient, like the dismissal it replaces.
@@ -2318,19 +2315,13 @@ export function MultiSessionShell({
   // without taking the foreground. A person's card press in the shown session
   // opens it the way a pane toggle does.
   useEffect(
-    () =>
-      onA2uiPaneRequest(({ sessionId, open, byPerson }) => {
-        if (open && byPerson && sessionId === activeSessionIdRef.current) {
-          openPaneFor('a2ui')
-          return
-        }
-        updatePaneRecord(
-          r => (open ? openPane(r, 'a2ui', sessionLayoutsStore.getSnapshot().weights) : closePane(r, 'a2ui')),
-          sessionId,
-        )
-      }),
-    [updatePaneRecord, sessionLayoutsStore, openPaneFor],
+    () => onA2uiPaneRequest(createShellA2uiPaneRequest(openPaneForSession, updatePaneRecord, sessionLayoutsStore)),
+    [openPaneForSession, updatePaneRecord, sessionLayoutsStore],
   )
+  useLayoutEffect(() => {
+    setA2uiShownSession(activeSessionId || null)
+    return () => setA2uiShownSession(null)
+  }, [activeSessionId])
   // Declared after the plan auto-open, so a switch keeps the float that
   // effect just opened for the session switched to.
   useEffect(() => {
