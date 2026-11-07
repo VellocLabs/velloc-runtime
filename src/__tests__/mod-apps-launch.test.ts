@@ -1,0 +1,167 @@
+// @vitest-environment happy-dom
+/**
+ * Opening an app (F-40): which session an icon press lands on, which app
+ * sessions the list leaves out, the pane the app opens with, and the icon.
+ */
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { createElement as h } from 'react'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+
+import {
+  appPaneRecord,
+  createOpenApp,
+  pickAppSession,
+  unlistedAppSessionIds,
+  type AppSessionEntry,
+} from '../browser/webview/apps/appLaunch'
+import { defaultSessionPaneRecord, hasPane } from '../browser/webview/layout/paneLayout'
+import { setModContributions } from '../browser/webview/mods/modContributionsView'
+import { PluginTopbarItems, appItemId, usePluginTopbarItems } from '../browser/webview/topbar/PluginTopbarItems'
+import { TooltipProvider } from '../components/ui/tooltip'
+import { RuntimeCapabilitiesContext } from '../browser/webview/useCan'
+import { EMPTY_MOD_CONTRIBUTIONS, type ModContributionsState } from '../browser/runtimeProtocol/modContributions'
+
+beforeAll(() => {
+  let n = 0
+  URL.createObjectURL ??= (() => `blob:test/${++n}`) as never
+  URL.revokeObjectURL ??= (() => {}) as never
+})
+
+afterEach(() => {
+  cleanup()
+  act(() => setModContributions(EMPTY_MOD_CONTRIBUTIONS))
+})
+
+const at = (day: number, hour: number) => new Date(2026, 10, day, hour, 0, 0).getTime()
+const NOW = at(7, 9)
+const entry = (sessionId: string, extra: Partial<AppSessionEntry> = {}): AppSessionEntry => ({
+  sessionId,
+  templateType: 'pay:board',
+  updatedAt: at(7, 8),
+  messageCount: 2,
+  ...extra,
+})
+
+describe('the session an app\'s icon lands on', () => {
+  it('the newest one of the app used today, by local day', () => {
+    const sessions = [
+      entry('yesterday-late', { updatedAt: at(6, 23) }),
+      entry('today-early', { updatedAt: at(7, 0) }),
+      entry('today-later', { updatedAt: at(7, 1), lastComposerEditAt: at(7, 8) }),
+      entry('other-app', { templateType: 'pay:ledger', updatedAt: at(7, 9) }),
+    ]
+    expect(pickAppSession(sessions, 'pay:board', NOW)?.sessionId).toBe('today-later')
+  })
+
+  it('none from another day, archived, a teammate, or with no clock yet', () => {
+    const sessions = [
+      entry('yesterday', { updatedAt: at(6, 12) }),
+      entry('archived', { archived: true }),
+      entry('teammate', { spawnerSessionId: 'lead' }),
+      entry('no-clock', { updatedAt: 0 }),
+    ]
+    expect(pickAppSession(sessions, 'pay:board', NOW)).toBeUndefined()
+  })
+})
+
+describe('app sessions the list leaves out', () => {
+  it('an app session never written in, unless it is on screen; nothing else', () => {
+    const sessions = [
+      entry('untouched', { messageCount: 0 }),
+      entry('on-screen', { messageCount: 0 }),
+      entry('used'),
+      entry('empty-agent', { templateType: 'agent', messageCount: 0 }),
+    ]
+    expect([...unlistedAppSessionIds(sessions, new Set(['pay:board']), 'on-screen')]).toEqual(['untouched'])
+    expect(unlistedAppSessionIds(sessions, new Set(), 'on-screen').size).toBe(0)
+  })
+})
+
+describe('an app press', () => {
+  it('opens the A2UI pane and has it cover the chat', () => {
+    const record = appPaneRecord(defaultSessionPaneRecord(), {})
+    expect(hasPane(record.layout, 'a2ui')).toBe(true)
+    expect(record.maximized).toBe('a2ui')
+  })
+
+  function rig(sessions: AppSessionEntry[]) {
+    const records = new Map<string, ReturnType<typeof defaultSessionPaneRecord>>()
+    const focusSession = vi.fn()
+    const openNewSession = vi.fn(() => 'new-session')
+    const open = createOpenApp(
+      { current: sessions },
+      focusSession,
+      openNewSession,
+      (fn, sessionId) => {
+        records.set(sessionId!, fn(records.get(sessionId!) ?? defaultSessionPaneRecord()))
+      },
+      { getSnapshot: () => ({ weights: {} }) },
+      () => NOW,
+    )
+    return { open, records, focusSession, openNewSession }
+  }
+
+  it('focuses today\'s session of the app and shows its pane', () => {
+    const { open, records, focusSession, openNewSession } = rig([entry('today')])
+    expect(open('pay:board')).toBe('today')
+    expect(focusSession).toHaveBeenCalledWith('today')
+    expect(openNewSession).not.toHaveBeenCalled()
+    expect(records.get('today')?.maximized).toBe('a2ui')
+  })
+
+  it('opens a session of the app when none was used today, and shows its pane', () => {
+    const { open, records, focusSession, openNewSession } = rig([entry('yesterday', { updatedAt: at(6, 12) })])
+    expect(open('pay:board')).toBe('new-session')
+    expect(openNewSession).toHaveBeenCalledWith('pay:board')
+    expect(focusSession).not.toHaveBeenCalled()
+    expect(records.get('new-session')?.maximized).toBe('a2ui')
+  })
+})
+
+const STATE: ModContributionsState = {
+  templates: [{ type: 'pay:board', plugin: 'pay', owner: 'pay@mkt', title: 'Payments', launcher: 'hidden' }],
+  topbar: [{ id: 'pay:sync', plugin: 'pay', title: 'Sync', icon: { lucide: 'zap' } }],
+  apps: [{ type: 'pay:board', appId: 'pay-board', plugin: 'pay', title: { en: 'Payments', zh: '收付款' }, icon: { lucide: 'star' } }],
+  icons: {},
+  waiting: [],
+}
+
+describe('an app\'s topbar icon', () => {
+  function Bar(props: { session: string | undefined; onPress?: () => Promise<never>; onOpenApp?: (type: string) => void }) {
+    return h(PluginTopbarItems, { state: usePluginTopbarItems(props.session, props.onPress, props.onOpenApp), folded: new Set<string>() })
+  }
+  const renderBar = (props: Parameters<typeof Bar>[0], canPress = true) =>
+    render(
+      h(
+        RuntimeCapabilitiesContext.Provider,
+        { value: { can: (cap: string, act?: string) => canPress || !(cap === 'mods' && act === 'pressTopbar') } },
+        h(TooltipProvider, null, h(Bar, props)),
+      ),
+    )
+
+  it('is named for the app, opens it by its type, and needs no session on screen', () => {
+    act(() => setModContributions(STATE))
+    const onOpenApp = vi.fn()
+    const onPress = vi.fn(async () => ({ ok: true }) as never)
+    renderBar({ session: undefined, onPress, onOpenApp })
+    const icon = screen.getByTestId('topbar-app-pay-board')
+    expect(icon.getAttribute('aria-label')).toBe('Open Payments')
+    expect((icon as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByTestId('topbar-plugin-item-pay--sync') as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(icon)
+    expect(onOpenApp).toHaveBeenCalledWith('pay:board')
+    expect(onPress).not.toHaveBeenCalled()
+    expect(appItemId('pay:board')).toBe('app:pay:board')
+  })
+
+  it('shows for a connection that may not press commands; not without an opener', () => {
+    act(() => setModContributions(STATE))
+    renderBar({ session: 's1', onPress: vi.fn(), onOpenApp: vi.fn() }, false)
+    expect(screen.queryByTestId('topbar-plugin-item-pay--sync')).toBeNull()
+    expect(screen.getByTestId('topbar-app-pay-board')).not.toBeNull()
+    cleanup()
+    renderBar({ session: 's1', onPress: vi.fn() })
+    expect(screen.queryByTestId('topbar-app-pay-board')).toBeNull()
+    expect(screen.getByTestId('topbar-plugin-item-pay--sync')).not.toBeNull()
+  })
+})

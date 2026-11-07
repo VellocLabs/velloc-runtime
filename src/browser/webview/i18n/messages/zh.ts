@@ -788,6 +788,7 @@ export const zh: Messages = {
   'proposalCard.open': '打开',
   'proposalCard.openAria': '打开会话 {name}',
   'topbar.pluginItemTooltip': '{title}（{plugin}）',
+  'topbar.openApp': '打开 {title}',
   'topbar.pluginItemWaiting': '请先设置此插件的服务商',
   'topbar.pluginItemUnavailable': '此项已不可用',
   'topbar.pluginItemNoSession': '请先打开一个会话再使用此项',

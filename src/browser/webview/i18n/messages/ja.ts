@@ -793,6 +793,7 @@ export const ja: Messages = {
   'proposalCard.open': '開く',
   'proposalCard.openAria': 'セッション {name} を開く',
   'topbar.pluginItemTooltip': '{title}（{plugin}）',
+  'topbar.openApp': '{title} を開く',
   'topbar.pluginItemWaiting': 'このプラグインは先にプロバイダーの設定が必要です',
   'topbar.pluginItemUnavailable': 'この項目は利用できなくなりました',
   'topbar.pluginItemNoSession': 'この項目を使うにはセッションを開いてください',

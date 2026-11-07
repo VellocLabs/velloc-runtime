@@ -170,6 +170,8 @@ export type NexusTopBarProps = {
   /** Run a plugin's topbar item (F-25) for a session; omitted → plugins add
    *  no items. They sit just before the search control. */
   onPressPluginItem?: (sessionId: string, id: string) => Promise<ModsPressTopbarResult>;
+  /** Open a plugin's app (F-40) by its template type; omitted → no app icons. */
+  onOpenApp?: (type: string) => void;
   /** Not drawn and reports no drag map, but stays mounted so its controls
    *  keep their state (Settings takes the window, F-18). */
   hidden?: boolean;
@@ -236,6 +238,7 @@ export function NexusTopBar({
   remoteHost,
   onRemoteLogOut,
   onPressPluginItem,
+  onOpenApp,
   hidden = false,
 }: NexusTopBarProps) {
   const t = useT();
@@ -253,7 +256,7 @@ export function NexusTopBar({
   const leftGroupRef = React.useRef<HTMLDivElement>(null);
   const rightGroupRef = React.useRef<HTMLDivElement>(null);
   const open = new Set(openPanes ?? []);
-  const plugins = usePluginTopbarItems(activeSessionId, onPressPluginItem);
+  const plugins = usePluginTopbarItems(activeSessionId, onPressPluginItem, onOpenApp);
   const offered = (kind: SidePaneKind) => !paneKinds || paneKinds.includes(kind);
   const barPaneKinds = onTogglePane
     ? BAR_PANE_KINDS.filter(
@@ -744,9 +747,9 @@ export function NexusTopBar({
                   ? foldedPlugins.map((item) => (
                       <DropdownMenuPrimitive.Item
                         key={item.id}
-                        disabled={!plugins.sessionReady}
+                        disabled={item.needsSession && !plugins.sessionReady}
                         onSelect={() => plugins.press(item.id)}
-                        data-testid={`topbar-folded-plugin-${item.id.replace(":", "--")}`}
+                        data-testid={item.testId.replace(/^topbar-plugin-item-/, "topbar-folded-plugin-").replace(/^topbar-app-/, "topbar-folded-app-")}
                         className={MENU_ITEM_CLASS}
                       >
                         {item.icon}

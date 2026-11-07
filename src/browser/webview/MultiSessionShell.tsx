@@ -107,6 +107,7 @@ import {
   withoutHidden,
   withoutHiddenKeys,
 } from './sessionVisibility'
+import { createOpenApp, unlistedAppSessionIds } from './apps/appLaunch'
 import { subscribeTeammateJump } from './teammateJumpRequests'
 import { publishSessionStatuses } from './sessionStatusStore'
 import {
@@ -1876,6 +1877,13 @@ export function MultiSessionShell({
     () => createShellFocusPane(activeSessionIdRef, focusedPaneRef),
     [],
   )
+  // An app's topbar icon (F-40): today's session of the app, or a new one, its pane covering the chat.
+  const appSessionsRef = useRef(sessions)
+  appSessionsRef.current = sessions
+  const handleOpenApp = useMemo(
+    () => createOpenApp(appSessionsRef, focusSession, openNewSession, updatePaneRecord, sessionLayoutsStore),
+    [focusSession, openNewSession, updatePaneRecord, sessionLayoutsStore],
+  )
   /** Open `kind` for the person: placed, focused, and expanded in place of
    *  a pane that was expanded. */
   const openPaneFor = useMemo(
@@ -3119,6 +3127,10 @@ export function MultiSessionShell({
     () => hiddenSessionIds(allSessionItems, modContributions),
     [allSessionItems, modContributions],
   )
+  const unlistedIds = useMemo(
+    () => unlistedAppSessionIds(sessions, new Set((modContributions?.apps ?? []).map(app => app.type)), activeSessionId),
+    [sessions, modContributions, activeSessionId],
+  )
 
   // THE one place teammates and channel-hidden sessions are dropped.
   // Everything the sidebar, the search corpus and the thread list read is this
@@ -3130,9 +3142,9 @@ export function MultiSessionShell({
   const sessionItems: SessionListItem[] = useMemo(
     () =>
       withoutListedSideChats(allSessionItems).filter(
-        s => !s.spawnerSessionId && !hiddenIds.has(s.sessionId),
+        s => !s.spawnerSessionId && !hiddenIds.has(s.sessionId) && !unlistedIds.has(s.sessionId),
       ),
-    [allSessionItems, hiddenIds],
+    [allSessionItems, hiddenIds, unlistedIds],
   )
   // The tab strip reads every visible session, teammates included — a hidden
   // lead takes its whole family out of it.
@@ -4078,6 +4090,7 @@ export function MultiSessionShell({
         onOpenSettings={handleOpenNexusSettings}
         onOpenProviderSettings={handleOpenProviderSettings}
         onPressPluginItem={runtimeConnection ? handlePressPluginItem : undefined}
+        onOpenApp={runtimeConnection ? handleOpenApp : undefined}
         sidebarCollapsed={sidebarCollapsed || sidebarHidden}
         onToggleSidebar={handleToggleSidebar}
         searchSlot={

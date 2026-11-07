@@ -799,6 +799,7 @@ export const de: Messages = {
   'proposalCard.open': 'Öffnen',
   'proposalCard.openAria': 'Sitzung {name} öffnen',
   'topbar.pluginItemTooltip': '{title} ({plugin})',
+  'topbar.openApp': '{title} öffnen',
   'topbar.pluginItemWaiting': 'Für dieses Plugin muss zuerst sein Anbieter eingerichtet werden',
   'topbar.pluginItemUnavailable': 'Dieses Element ist nicht mehr verfügbar',
   'topbar.pluginItemNoSession': 'Öffne eine Sitzung, um dieses Element zu verwenden',

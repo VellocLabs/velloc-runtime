@@ -1,8 +1,9 @@
 /**
  * The topbar items the person's plugins contribute (F-25), just before the
- * search control. A press asks the runtime to run the item for the active
- * session (`mods.pressTopbar`); what it runs is the runtime's to decide. Not
- * rendered for a connection that may not press.
+ * search control. A command item's press asks the runtime to run it for the
+ * active session (`mods.pressTopbar`), and is not rendered for a connection
+ * that may not press. An app's icon (F-40) opens the app's session, with or
+ * without a session on screen.
  */
 import * as React from "react";
 
@@ -23,7 +24,19 @@ const REFUSAL: Record<Extract<ModsPressTopbarResult, { ok: false }>["reason"], M
 };
 const NOTICE_MS = 4000;
 
-export type PluginTopbarItem = { id: string; label: string; icon: React.ReactNode };
+export type PluginTopbarItem = {
+  id: string;
+  label: string;
+  /** The hover text when it is not `label`. */
+  tooltip?: string;
+  icon: React.ReactNode;
+  /** A command item runs for the active session, so it waits for one. */
+  needsSession: boolean;
+  testId: string;
+};
+
+/** The item id of app `type`, apart from the plugin's command items. */
+export const appItemId = (type: string) => `app:${type}`;
 
 export type PluginTopbarState = {
   items: readonly PluginTopbarItem[];
@@ -36,8 +49,10 @@ export type PluginTopbarState = {
 /** The plugin topbar items and their press, or `null` when none render. */
 export function usePluginTopbarItems(
   activeSessionId: string | undefined,
-  /** Run the item `id` for `sessionId`. Omitted: nothing renders. */
+  /** Run the item `id` for `sessionId`. Omitted: no command item renders. */
   onPress: ((sessionId: string, id: string) => Promise<ModsPressTopbarResult>) | undefined,
+  /** Open the app of template `type`. Omitted: no app icon renders. */
+  onOpenApp?: (type: string) => void,
 ): PluginTopbarState | null {
   const t = useT();
   const locale = useLocale();
@@ -49,26 +64,50 @@ export function usePluginTopbarItems(
     const timer = setTimeout(() => setNotice(null), NOTICE_MS);
     return () => clearTimeout(timer);
   }, [notice]);
+  const apps = contributions.apps ?? [];
   const press = React.useCallback(
     (id: string) => {
+      const app = onOpenApp ? apps.find(entry => appItemId(entry.type) === id) : undefined;
+      if (app) {
+        setNotice(null);
+        onOpenApp!(app.type);
+        return;
+      }
       if (!onPress || !activeSessionId) return;
       onPress(activeSessionId, id).then(
         result => setNotice(result.ok ? null : { id, key: REFUSAL[result.reason] }),
         () => setNotice({ id, key: "topbar.pluginItemUnavailable" }),
       );
     },
-    [onPress, activeSessionId],
+    [onPress, onOpenApp, activeSessionId, apps],
   );
-  if (!onPress || !canPress || contributions.topbar.length === 0) return null;
+  const commands = onPress && canPress ? contributions.topbar : [];
+  const appItems = onOpenApp ? apps : [];
+  if (commands.length === 0 && appItems.length === 0) return null;
   return {
-    items: contributions.topbar.map(item => ({
-      id: item.id,
-      label: t("topbar.pluginItemTooltip", {
-        title: resolveLocalizedText(item.title, locale),
-        plugin: item.plugin,
+    items: [
+      ...commands.map(item => ({
+        id: item.id,
+        label: t("topbar.pluginItemTooltip", {
+          title: resolveLocalizedText(item.title, locale),
+          plugin: item.plugin,
+        }),
+        icon: <ModIconSlot icon={item.icon} icons={contributions.icons} className="size-4" />,
+        needsSession: true,
+        testId: `topbar-plugin-item-${item.id.replace(":", "--")}`,
+      })),
+      ...appItems.map(app => {
+        const title = resolveLocalizedText(app.title, locale);
+        return {
+          id: appItemId(app.type),
+          label: t("topbar.openApp", { title }),
+          tooltip: title,
+          icon: <ModIconSlot icon={app.icon} icons={contributions.icons} className="size-4" />,
+          needsSession: false,
+          testId: `topbar-app-${app.appId}`,
+        };
       }),
-      icon: <ModIconSlot icon={item.icon} icons={contributions.icons} className="size-4" />,
-    })),
+    ],
     press,
     notice,
     sessionReady: !!activeSessionId,
@@ -99,16 +138,16 @@ export function PluginTopbarItems({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  data-testid={`topbar-plugin-item-${item.id.replace(":", "--")}`}
+                  data-testid={item.testId}
                   data-topbar-fold={pluginFoldKey(item.id)}
                   aria-label={item.label}
-                  disabled={!state.sessionReady}
+                  disabled={item.needsSession && !state.sessionReady}
                   onClick={() => state.press(item.id)}
                 >
                   {item.icon}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">{item.label}</TooltipContent>
+              <TooltipContent side="bottom">{item.tooltip ?? item.label}</TooltipContent>
             </Tooltip>
           )}
           {state.notice?.id === item.id ? (

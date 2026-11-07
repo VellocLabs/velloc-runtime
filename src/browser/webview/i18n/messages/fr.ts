@@ -800,6 +800,7 @@ export const fr: Messages = {
   'proposalCard.open': 'Ouvrir',
   'proposalCard.openAria': 'Ouvrir la session {name}',
   'topbar.pluginItemTooltip': '{title} ({plugin})',
+  'topbar.openApp': 'Ouvrir {title}',
   'topbar.pluginItemWaiting': "Cette extension a d'abord besoin que son fournisseur soit configuré",
   'topbar.pluginItemUnavailable': "Cet élément n'est plus disponible",
   'topbar.pluginItemNoSession': 'Ouvrez une session pour utiliser cet élément',

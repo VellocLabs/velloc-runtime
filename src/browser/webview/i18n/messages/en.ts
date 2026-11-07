@@ -830,6 +830,7 @@ export const en = {
   'proposalCard.open': 'Open',
   'proposalCard.openAria': 'Open session {name}',
   'topbar.pluginItemTooltip': '{title} ({plugin})',
+  'topbar.openApp': 'Open {title}',
   'topbar.pluginItemWaiting': 'This plugin needs its provider set up first',
   'topbar.pluginItemUnavailable': 'This item is no longer available',
   'topbar.pluginItemNoSession': 'Open a session to use this item',

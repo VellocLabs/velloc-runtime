@@ -790,6 +790,7 @@ export const ko: Messages = {
   'proposalCard.open': '열기',
   'proposalCard.openAria': '{name} 세션 열기',
   'topbar.pluginItemTooltip': '{title} ({plugin})',
+  'topbar.openApp': '{title} 열기',
   'topbar.pluginItemWaiting': '이 플러그인은 먼저 제공업체를 설정해야 합니다',
   'topbar.pluginItemUnavailable': '이 항목은 더 이상 사용할 수 없습니다',
   'topbar.pluginItemNoSession': '이 항목을 사용하려면 세션을 여세요',
