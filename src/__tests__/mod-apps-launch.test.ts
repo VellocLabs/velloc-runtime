@@ -198,4 +198,15 @@ describe('an app\'s topbar icon', () => {
     expect(screen.queryByTestId('topbar-app-pay-board')).toBeNull()
     expect(screen.getByTestId('topbar-plugin-item-pay--sync')).not.toBeNull()
   })
+
+  it('carries its id in the More menu once folded, apart from a command item\'s', () => {
+    act(() => setModContributions(STATE))
+    let state: ReturnType<typeof usePluginTopbarItems> = null
+    function Probe() {
+      state = usePluginTopbarItems('s1', vi.fn(), vi.fn())
+      return null
+    }
+    render(h(RuntimeCapabilitiesContext.Provider, { value: { can: () => true } }, h(Probe)))
+    expect(state!.items.map(item => item.foldedTestId)).toEqual(['topbar-folded-plugin-pay--sync', 'topbar-folded-app-pay-board'])
+  })
 })

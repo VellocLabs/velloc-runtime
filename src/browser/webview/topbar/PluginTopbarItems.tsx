@@ -23,6 +23,7 @@ const REFUSAL: Record<Extract<ModsPressTopbarResult, { ok: false }>["reason"], M
   "no-session": "topbar.pluginItemNoSession",
 };
 const NOTICE_MS = 4000;
+const NO_APPS: readonly never[] = [];
 
 export type PluginTopbarItem = {
   id: string;
@@ -66,7 +67,7 @@ export function usePluginTopbarItems(
     const timer = setTimeout(() => setNotice(null), NOTICE_MS);
     return () => clearTimeout(timer);
   }, [notice]);
-  const apps = contributions.apps ?? [];
+  const apps = contributions.apps ?? NO_APPS;
   const press = React.useCallback(
     (id: string) => {
       const app = onOpenApp ? apps.find(entry => appItemId(entry.type) === id) : undefined;
