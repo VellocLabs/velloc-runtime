@@ -75,6 +75,16 @@ export type PropsOfChart<K extends keyof ChartCatalogDefinitions> = z.infer<
   ChartCatalogDefinitions[K]['props']
 >
 
+export const DEFAULT_CHART_HEIGHT = 240
+const MIN_CHART_HEIGHT = 120
+const MAX_CHART_HEIGHT = 800
+
+/** A model-supplied height, clamped so a chart never collapses or outgrows the pane. */
+export function chartHeight(height: unknown): number {
+  if (typeof height !== 'number' || !Number.isFinite(height)) return DEFAULT_CHART_HEIGHT
+  return Math.min(MAX_CHART_HEIGHT, Math.max(MIN_CHART_HEIGHT, Math.round(height)))
+}
+
 /** Bound values arrive resolved; anything else (still a binding, missing) is no rows. */
 export function asRows(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)

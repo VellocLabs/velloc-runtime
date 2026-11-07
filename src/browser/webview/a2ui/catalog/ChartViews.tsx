@@ -19,10 +19,9 @@ import {
   YAxis,
 } from 'recharts'
 import { useT } from '../../i18n'
-import { asRows } from './chartCatalogDefinitions'
+import { asRows, chartHeight } from './chartCatalogDefinitions'
 
 const PALETTE = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)']
-const DEFAULT_HEIGHT = 240
 const AXIS_TICK = { fill: 'var(--muted-foreground)', fontSize: 12 }
 const TOOLTIP_STYLE = {
   background: 'var(--popover)',
@@ -45,7 +44,7 @@ function Frame({ title, height, empty, children }: {
   children: ReactElement
 }): ReactElement {
   const t = useT()
-  const h = height ?? DEFAULT_HEIGHT
+  const h = chartHeight(height)
   return (
     <figure data-slot="a2ui-chart" className="m-0 w-full min-w-0">
       {typeof title === 'string' && title && (

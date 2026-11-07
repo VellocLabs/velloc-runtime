@@ -13,12 +13,6 @@ import {
   A2UI_UPDATE_DATA_MODEL,
 } from '../../../toolkit/builtin/a2ui/a2uiToolNames'
 
-// The basic catalog's id (matches @copilotkit/a2ui-renderer's `basicCatalog`).
-// The host passes the registered catalog's id (the Velloc catalog); a
-// mismatched id makes createSurface fail with "Catalog not found".
-export const BASIC_CATALOG_ID =
-  'https://a2ui.org/specification/v0_9/basic_catalog.json'
-
 /** Canonical v0.9 message (shape validated by the upstream processor). */
 export type A2uiMessage = Record<string, unknown>
 
@@ -67,7 +61,14 @@ const LITERAL_DISPLAY_KEYS = new Set([
   'alt',
   'url',
   'src',
+  'delta',
+  'caption',
 ])
+
+// Props that carry literal chart/table data. An inline array is data, never a
+// binding, so strings inside its rows ("/pricing", "/src/a.ts") stay literal;
+// a bare string or {path} still binds the whole prop.
+const LITERAL_DATA_KEYS = new Set(['data', 'rows', 'columns', 'series'])
 
 function normalizeComponent(node: unknown): unknown {
   if (!node || typeof node !== 'object' || Array.isArray(node)) return node
@@ -115,6 +116,7 @@ function normalizeComponent(node: unknown): unknown {
     // don't coerce it to a {path} binding. Objects/arrays (e.g. text:{$fn,…} or
     // an explicit {path}) still normalize.
     if (LITERAL_DISPLAY_KEYS.has(key) && typeof value === 'string') continue
+    if (LITERAL_DATA_KEYS.has(key) && Array.isArray(value)) continue
     record[key] = normalizeValue(value)
   }
   return record

@@ -1,7 +1,7 @@
 // The Velloc A2UI catalog (F-1): the basic catalog plus the chart and data
 // components. Chart renderers are lazy, so recharts loads on the first chart.
 
-import { lazy, Suspense, type ReactElement } from 'react'
+import { lazy, Suspense, type ComponentType, type ReactElement } from 'react'
 import {
   createCatalog,
   type CatalogDefinitions,
@@ -12,22 +12,28 @@ import {
   VELLOC_CATALOG_ID,
   asRows,
   chartCatalogDefinitions,
+  chartHeight,
   type ChartCatalogDefinitions,
   type PropsOfChart,
 } from './chartCatalogDefinitions'
 
-const PieChartView = lazy(async () => ({
-  default: (await import('./ChartViews')).PieChartView,
-}))
-const LineChartView = lazy(async () => ({
-  default: (await import('./ChartViews')).LineChartView,
-}))
-const BarChartView = lazy(async () => ({
-  default: (await import('./ChartViews')).BarChartView,
-}))
+type ChartViewName = 'PieChartView' | 'LineChartView' | 'BarChartView'
+
+function lazyChart<P extends { height?: number }>(name: ChartViewName) {
+  const View = lazy(async () => ({
+    default: (await import('./ChartViews'))[name] as unknown as ComponentType<P>,
+  }))
+  return function LazyChart({ props }: { props: P }): ReactElement {
+    return (
+      <Suspense fallback={<ChartPlaceholder height={props.height} />}>
+        <View {...props} />
+      </Suspense>
+    )
+  }
+}
 
 function ChartPlaceholder({ height }: { height?: number }): ReactElement {
-  return <div data-slot="a2ui-chart-loading" style={{ height: height ?? 240 }} className="w-full" />
+  return <div data-slot="a2ui-chart-loading" style={{ height: chartHeight(height) }} className="w-full" />
 }
 
 function text(value: unknown): string {
@@ -99,21 +105,9 @@ type ChartRenderers = {
 }
 
 const renderers: ChartRenderers = {
-  PieChart: ({ props }) => (
-    <Suspense fallback={<ChartPlaceholder height={props.height} />}>
-      <PieChartView {...props} />
-    </Suspense>
-  ),
-  LineChart: ({ props }) => (
-    <Suspense fallback={<ChartPlaceholder height={props.height} />}>
-      <LineChartView {...props} />
-    </Suspense>
-  ),
-  BarChart: ({ props }) => (
-    <Suspense fallback={<ChartPlaceholder height={props.height} />}>
-      <BarChartView {...props} />
-    </Suspense>
-  ),
+  PieChart: lazyChart<PropsOfChart<'PieChart'>>('PieChartView'),
+  LineChart: lazyChart<PropsOfChart<'LineChart'>>('LineChartView'),
+  BarChart: lazyChart<PropsOfChart<'BarChart'>>('BarChartView'),
   Metric: ({ props }) => <MetricView {...props} />,
   DataTable: ({ props }) => <DataTableView {...props} />,
 }
