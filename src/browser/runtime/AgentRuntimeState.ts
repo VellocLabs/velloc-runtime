@@ -1,4 +1,5 @@
 import type { ConversationEngine } from '../../engine/conversationEngine'
+import type { AppSessionInfo } from '../../mods/app/appSession'
 import type { SidechainTranscriptStore } from '../../utils/sidechainTranscripts'
 import type { ChromiumCommandMetadata } from '../../runtime/CommandTypes'
 import type { QueryRuntimeDeps } from '../../runtime/interfaces/QueryRuntimeDeps'
@@ -123,6 +124,8 @@ export type BrowserRuntimeCoreState = {
    * `projectFolder: "required"` (F-25).
    */
   requiresProjectFolder: boolean
+  /** Set for an app's session (F-40): its folder and what its seed did. */
+  appSession?: AppSessionInfo
   /**
    * True when a `code` session fell back to the shared sandbox workspace
    * because it had no valid `projectRoot` override — i.e. it is not bound to a

@@ -325,10 +325,14 @@ export function isForcedFolderTemplateType(
 // hostile or garbage `?templateType=` can never inject a path fragment.
 const SAFE_TEMPLATE_TYPE_SEGMENT = /^[a-z0-9][a-z0-9-]*$/
 
+/** The folder-name prefix of an app's folder under the shared workspace (F-40). */
+export const APP_FOLDER_PREFIX = 'app-'
+
 /**
  * True when `templateType` gets a per-type `~/.velloc/shared-workspace/<type>/`
  * default: any safe-named type except {@link FORCED_FOLDER_TEMPLATE_TYPES}. A
- * non-segment value returns false.
+ * non-segment value returns false, and so does one that would name an app's
+ * folder.
  */
 export function isPerTypeSharedTemplateType(
   templateType: string | undefined,
@@ -336,8 +340,18 @@ export function isPerTypeSharedTemplateType(
   return (
     templateType !== undefined &&
     !FORCED_FOLDER_TEMPLATE_TYPES.has(templateType) &&
+    !templateType.startsWith(APP_FOLDER_PREFIX) &&
     SAFE_TEMPLATE_TYPE_SEGMENT.test(templateType)
   )
+}
+
+/**
+ * The folder an app's sessions work in: `~/.velloc/shared-workspace/app-<appId>`.
+ * Throws for an id that is not one safe path segment.
+ */
+export function getNexusAppDir(homeDir: string, appId: string): string {
+  if (!SAFE_TEMPLATE_TYPE_SEGMENT.test(appId)) throw new Error(`not an app id: "${appId}"`)
+  return joinRuntimePath(getNexusWorkspaceDir(homeDir), `${APP_FOLDER_PREFIX}${appId}`)
 }
 
 /**

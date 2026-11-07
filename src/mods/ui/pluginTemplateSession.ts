@@ -9,12 +9,13 @@
 
 import { registerPluginType } from '../../prompting/templateRegistry'
 import { isForcedFolderTemplateType } from '../../utils/conversationStoragePaths'
-import { getModUiContributionsHost, type ModUiContributionsHost } from './contributionsHost'
+import { getModUiContributionsHost, type AppTemplate, type ModUiContributionsHost } from './contributionsHost'
 
 export type PluginTemplateErrorCode =
   | 'plugin_template_absent'
   | 'plugin_template_waiting'
   | 'plugin_template_owner'
+  | 'plugin_app_seed'
 
 export class PluginTemplateUnavailableError extends Error {
   constructor(
@@ -26,12 +27,12 @@ export class PluginTemplateUnavailableError extends Error {
   }
 }
 
-/** Register `type` from the plugin in effect that offers it; its owner, and
- *  whether its manifest has it bound to a project folder. */
+/** Register `type` from the plugin in effect that offers it; its owner,
+ *  whether its manifest has it bound to a project folder, and its app. */
 export async function openPluginTemplate(
   type: string,
   host: ModUiContributionsHost = getModUiContributionsHost(),
-): Promise<{ owner: string; requiresProjectFolder: boolean }> {
+): Promise<{ owner: string; requiresProjectFolder: boolean; app?: AppTemplate }> {
   await host.whenSynced()
   const status = host.templateStatus(type)
   if (status.state === 'absent') {
@@ -47,9 +48,11 @@ export async function openPluginTemplate(
     )
   }
   await registerPluginType(type, await host.readTemplateFiles(status.source))
+  const app = host.appOf(type)
   return {
     owner: status.source.owner,
     requiresProjectFolder: isForcedFolderTemplateType(type, host.state().templates),
+    ...(app ? { app } : {}),
   }
 }
 

@@ -1385,6 +1385,7 @@ export const zh: Messages = {
   'thread.pluginTemplateAbsent': '提供此模板的插件已关闭或未安装。请在 设置 → 插件与模组 中开启。',
   'thread.pluginTemplateWaiting': '此模板的插件需要先设置其服务商。请在 设置 → 模型 中添加。',
   'thread.pluginTemplateOwner': '此会话的模板来自该插件的另一个安装，而它已不再安装。',
+  'thread.pluginAppSeedFailed': '此应用无法准备它的文件夹。请重试；如果仍然失败，请重新安装它的插件。',
   'thread.topbarCommandUnknown': '该插件未提供此项要运行的命令。',
   'thread.runtimeConnectionFailed':
     '连接智能体运行时失败。请重新加载窗口后重试。',

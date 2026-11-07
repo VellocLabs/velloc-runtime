@@ -1397,6 +1397,7 @@ export const ja: Messages = {
   'thread.pluginTemplateAbsent': 'このテンプレートを提供するプラグインがオフになっているか、インストールされていません。設定 → プラグインと Mods でオンにしてください。',
   'thread.pluginTemplateWaiting': 'このテンプレートのプラグインは、先にプロバイダーの設定が必要です。設定 → モデル で追加してください。',
   'thread.pluginTemplateOwner': 'このセッションのテンプレートは、すでにインストールされていない別のプラグインのインストールから来ています。',
+  'thread.pluginAppSeedFailed': 'このアプリはフォルダーを準備できませんでした。もう一度お試しください。失敗が続く場合は、プラグインを再インストールしてください。',
   'thread.topbarCommandUnknown': 'プラグインはこの項目が実行するコマンドを提供していません。',
   'thread.runtimeConnectionFailed':
     'エージェントランタイムへの接続に失敗しました。ウィンドウを再読み込みして、もう一度お試しください。',

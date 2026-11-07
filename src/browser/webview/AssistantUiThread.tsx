@@ -631,6 +631,7 @@ const RUNTIME_ERROR_MESSAGE_KEYS: Partial<Record<string, Parameters<TranslateFn>
   plugin_template_absent: 'thread.pluginTemplateAbsent',
   plugin_template_waiting: 'thread.pluginTemplateWaiting',
   plugin_template_owner: 'thread.pluginTemplateOwner',
+  plugin_app_seed: 'thread.pluginAppSeedFailed',
   topbar_command_unknown: 'thread.topbarCommandUnknown',
 }
 

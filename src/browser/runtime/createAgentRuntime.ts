@@ -97,6 +97,7 @@ import { SessionSnapshotStore } from '../../sessions/fileSnapshots/snapshotStore
 import { FileSnapshotRecorder } from '../../sessions/fileSnapshots/snapshotRecorder'
 import { WorkspaceDiffTool } from '../../toolkit/builtin/workspaceDiff'
 import { isPluginTemplateId } from '../../mods/ui/uiManifest'
+import type { AppTemplate } from '../../mods/ui/contributionsHost'
 import { runtimeProviderGate } from '../../pluginHost/providerGate'
 import { registerMemoryExtractor } from '../../memory/extract/extractionRunner'
 import { registerMemoryConsolidator } from '../../memory/consolidate/consolidationRunner'
@@ -356,11 +357,13 @@ export async function createBrowserRuntime(
   // effect that offers it, or the session does not start.
   let pluginTemplateOwner: string | undefined
   let pluginRequiresProjectFolder = false
+  let pluginApp: AppTemplate | undefined
   if (isPluginTemplateId(templateType)) {
     const { openPluginTemplate } = await import('../../mods/ui/pluginTemplateSession')
     const opened = await openPluginTemplate(templateType)
     pluginTemplateOwner = opened.owner
     pluginRequiresProjectFolder = opened.requiresProjectFolder
+    pluginApp = opened.app
   }
   const sessionTemplate = getTemplate(templateType)
   // Precedence: explicit option → host-mode default. (With a host manifest the
@@ -419,8 +422,12 @@ export async function createBrowserRuntime(
   // With neither, the session refuses to start rather than work under the browser's own folder.
   const homeDir =
     (await resolveHomeDirViaBridge(options.bridgeTransport)) ?? undefined
+  // An app session works in its own seeded folder, whatever folder it was given (F-40).
+  const appSession = pluginApp
+    ? await (await import('../../mods/app/appSession')).openAppFolder({ fs: installedFs, homeDir, app: pluginApp })
+    : undefined
   const resolvedProjectRoot = await resolveProjectRoot({
-    projectRoot: options.projectRoot,
+    projectRoot: appSession?.folder ?? options.projectRoot,
     homeDir,
     // Drives the per-type `~/.velloc/shared-workspace/<type>/` default for
     // unbound non-`code` sessions (no-op when `options.projectRoot` is set).
@@ -1280,6 +1287,7 @@ export async function createBrowserRuntime(
     },
     requiresProjectFolder,
     usedSandboxProjectRoot,
+    ...(appSession ? { appSession } : {}),
     runtimeConfig,
     hostBridge,
     conversationStore,

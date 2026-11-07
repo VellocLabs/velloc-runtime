@@ -1455,6 +1455,7 @@ export const en = {
   'thread.pluginTemplateAbsent': 'The plugin that provides this template is turned off or not installed. Turn it on in Settings → Plugins & Mods.',
   'thread.pluginTemplateWaiting': "This template's plugin needs its provider set up first. Add it in Settings → Models.",
   'thread.pluginTemplateOwner': "This session's template came from another install of its plugin, which is no longer installed.",
+  'thread.pluginAppSeedFailed': 'This app could not set up its folder. Try again; if it keeps failing, reinstall its plugin.',
   'thread.topbarCommandUnknown': 'The plugin does not offer the command this item runs.',
   'thread.runtimeConnectionFailed':
     'The connection to the agent runtime failed. Reload the window to try again.',

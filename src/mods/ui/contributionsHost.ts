@@ -26,7 +26,7 @@ import {
 import { parseWelcome } from '../../prompting/templateParsing'
 import { safeIconSvg } from '../provider/modProviderDefinition'
 import { publishModContributions, setModContributionsSyncGate, setTopbarResolver } from './contributionsState'
-import { appIdOf, modUiId, type ModUiIconDecl } from './uiManifest'
+import { appIdOf, modUiId, type ModUiIconDecl, type PluginAppDecl } from './uiManifest'
 
 export type ContributingPlugin = Pick<
   ActivePlugin,
@@ -48,6 +48,9 @@ export type PluginTemplateStatus =
   | { state: 'ready'; source: PluginTemplateSource }
   | { state: 'waiting'; plugin: string; providers: WaitingPlugin['providers'] }
   | { state: 'absent'; plugin: string }
+
+/** An app a session of its type opens in (F-40). */
+export type AppTemplate = { appId: string; plugin: string; decl: PluginAppDecl; seedDir: string }
 
 /** What a topbar press runs, as the runtime resolved it. */
 export type TopbarTarget = { plugin: string; command: string; args?: string }
@@ -191,7 +194,18 @@ export class ModUiContributionsHost {
     const waiting = this.current.waiting.find(entry => entry.plugin === plugin)
     if (waiting) return { state: 'waiting', plugin, providers: waiting.providers }
     const template = owner.templates.find(entry => entry.type === type)!
+    // An app left out of the published list (its id is another plugin's) opens nowhere.
+    if (template.decl.app && !this.current.apps?.some(app => app.type === type)) return { state: 'absent', plugin }
     return { state: 'ready', source: { type, plugin, owner: pluginOwnerId(owner), dir: template.dir } }
+  }
+
+  /** The app a session of `type` opens in; undefined when `type` is no published app. */
+  appOf(type: string): AppTemplate | undefined {
+    const app = this.current.apps?.find(entry => entry.type === type)
+    const owner = app && this.plugins.find(entry => entry.name === app.plugin)
+    const decl = owner?.templates?.find(entry => entry.type === type)?.decl.app
+    if (!app || !owner || !decl) return undefined
+    return { appId: app.appId, plugin: owner.name, decl, seedDir: insideRoot(owner.path, decl.seed) }
   }
 
   /** What the topbar item `id` runs; undefined when no plugin in effect offers it. */

@@ -1411,6 +1411,7 @@ export const fr: Messages = {
   'thread.pluginTemplateAbsent': "L'extension qui fournit ce modèle est désactivée ou n'est pas installée. Activez-la dans Paramètres → Extensions et mods.",
   'thread.pluginTemplateWaiting': "L'extension de ce modèle a d'abord besoin que son fournisseur soit configuré. Ajoutez-le dans Paramètres → Modèles.",
   'thread.pluginTemplateOwner': "Le modèle de cette session provient d'une autre installation de son extension, qui n'est plus installée.",
+  'thread.pluginAppSeedFailed': "Cette application n'a pas pu préparer son dossier. Réessayez ; si l'échec persiste, réinstallez son extension.",
   'thread.topbarCommandUnknown': "L'extension ne propose pas la commande que cet élément exécute.",
   'thread.runtimeConnectionFailed':
     'La connexion au runtime de l’agent a échoué. Rechargez la fenêtre pour réessayer.',

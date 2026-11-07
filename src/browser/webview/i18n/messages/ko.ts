@@ -1393,6 +1393,7 @@ export const ko: Messages = {
   'thread.pluginTemplateAbsent': '이 템플릿을 제공하는 플러그인이 꺼져 있거나 설치되어 있지 않습니다. 설정 → 플러그인 및 Mods에서 켜세요.',
   'thread.pluginTemplateWaiting': '이 템플릿의 플러그인은 먼저 제공업체를 설정해야 합니다. 설정 → 모델에서 추가하세요.',
   'thread.pluginTemplateOwner': '이 세션의 템플릿은 더 이상 설치되어 있지 않은 다른 플러그인 설치에서 왔습니다.',
+  'thread.pluginAppSeedFailed': '이 앱이 폴더를 준비하지 못했습니다. 다시 시도해 보세요. 계속 실패하면 플러그인을 다시 설치하세요.',
   'thread.topbarCommandUnknown': '플러그인이 이 항목이 실행하는 명령을 제공하지 않습니다.',
   'thread.runtimeConnectionFailed':
     '에이전트 런타임에 연결하지 못했습니다. 창을 새로 고쳐 다시 시도하세요.',

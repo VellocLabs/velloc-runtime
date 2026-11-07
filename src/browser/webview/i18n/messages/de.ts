@@ -1408,6 +1408,7 @@ export const de: Messages = {
   'thread.pluginTemplateAbsent': 'Das Plugin, das diese Vorlage bereitstellt, ist ausgeschaltet oder nicht installiert. Schalte es unter Einstellungen → Plugins & Mods ein.',
   'thread.pluginTemplateWaiting': 'Für das Plugin dieser Vorlage muss zuerst sein Anbieter eingerichtet werden. Füge ihn unter Einstellungen → Modelle hinzu.',
   'thread.pluginTemplateOwner': 'Die Vorlage dieser Sitzung stammt aus einer anderen Installation ihres Plugins, die nicht mehr installiert ist.',
+  'thread.pluginAppSeedFailed': 'Diese App konnte ihren Ordner nicht einrichten. Versuche es erneut; wenn es weiter fehlschlägt, installiere ihr Plugin neu.',
   'thread.topbarCommandUnknown': 'Das Plugin bietet den Befehl, den dieses Element ausführt, nicht an.',
   'thread.runtimeConnectionFailed':
     'Die Verbindung zur Agent-Runtime ist fehlgeschlagen. Laden Sie das Fenster neu, um es erneut zu versuchen.',

@@ -1411,6 +1411,7 @@ export const es: Messages = {
   'thread.pluginTemplateAbsent': 'El complemento que ofrece esta plantilla está desactivado o no está instalado. Actívalo en Ajustes → Complementos y mods.',
   'thread.pluginTemplateWaiting': 'El complemento de esta plantilla necesita que configures antes su proveedor. Añádelo en Ajustes → Modelos.',
   'thread.pluginTemplateOwner': 'La plantilla de esta sesión procede de otra instalación de su complemento, que ya no está instalada.',
+  'thread.pluginAppSeedFailed': 'Esta aplicación no pudo preparar su carpeta. Inténtalo de nuevo; si sigue fallando, reinstala su complemento.',
   'thread.topbarCommandUnknown': 'El complemento no ofrece el comando que ejecuta este elemento.',
   'thread.runtimeConnectionFailed':
     'Falló la conexión con el runtime del agente. Recarga la ventana para volver a intentarlo.',
