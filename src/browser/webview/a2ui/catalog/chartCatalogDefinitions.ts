@@ -75,7 +75,7 @@ export type PropsOfChart<K extends keyof ChartCatalogDefinitions> = z.infer<
   ChartCatalogDefinitions[K]['props']
 >
 
-export const DEFAULT_CHART_HEIGHT = 240
+const DEFAULT_CHART_HEIGHT = 240
 const MIN_CHART_HEIGHT = 120
 const MAX_CHART_HEIGHT = 800
 

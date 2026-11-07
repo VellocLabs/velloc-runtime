@@ -17,12 +17,8 @@ import {
   type PropsOfChart,
 } from './chartCatalogDefinitions'
 
-type ChartViewName = 'PieChartView' | 'LineChartView' | 'BarChartView'
-
-function lazyChart<P extends { height?: number }>(name: ChartViewName) {
-  const View = lazy(async () => ({
-    default: (await import('./ChartViews'))[name] as unknown as ComponentType<P>,
-  }))
+function lazyChart<P extends { height?: number }>(load: () => Promise<ComponentType<P>>) {
+  const View = lazy(async () => ({ default: await load() }))
   return function LazyChart({ props }: { props: P }): ReactElement {
     return (
       <Suspense fallback={<ChartPlaceholder height={props.height} />}>
@@ -105,9 +101,9 @@ type ChartRenderers = {
 }
 
 const renderers: ChartRenderers = {
-  PieChart: lazyChart<PropsOfChart<'PieChart'>>('PieChartView'),
-  LineChart: lazyChart<PropsOfChart<'LineChart'>>('LineChartView'),
-  BarChart: lazyChart<PropsOfChart<'BarChart'>>('BarChartView'),
+  PieChart: lazyChart<PropsOfChart<'PieChart'>>(async () => (await import('./ChartViews')).PieChartView),
+  LineChart: lazyChart<PropsOfChart<'LineChart'>>(async () => (await import('./ChartViews')).LineChartView),
+  BarChart: lazyChart<PropsOfChart<'BarChart'>>(async () => (await import('./ChartViews')).BarChartView),
   Metric: ({ props }) => <MetricView {...props} />,
   DataTable: ({ props }) => <DataTableView {...props} />,
 }
