@@ -99,6 +99,19 @@ describe('review model runs on the fork substrate', () => {
     expect(launch.systemPromptOverride).toEqual(['generic safety'])
     expect(launch.overrides?.options?.tools).toEqual([])
   })
+  it('continues from seed rows without recording them again, and returns the whole transcript', async () => {
+    const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })
+    const seed = [{ type: 'user', message: { content: 'earlier review material' } }] as unknown as Message[]
+    const result = await runner({ blocks: [{ type: 'text', text: 'record coverage now', source: 'step-limit-wrap-up', provenance: 'trusted-task' }], seedRows: seed, tools: [], signal: new AbortController().signal, taskId: 'wrap', maxTurns: 3 })
+    const launch = lastLaunch()
+    expect(launch.openingRows[0]).toBe(seed[0])
+    expect(JSON.stringify(launch.openingRows[1])).toContain('record coverage now')
+    expect(launch.recordedOpeningRows).toHaveLength(1)
+    expect(JSON.stringify(launch.recordedOpeningRows)).not.toContain('earlier review material')
+    expect(launch.maxTurns).toBe(3)
+    expect(result.transcript).toHaveLength(3)
+    expect(result.transcript![0]).toBe(seed[0])
+  })
   it('reports the task to its observer with role, label, activity and end', async () => {
     const observer: ReviewTaskObserver = { started: vi.fn(), activity: vi.fn(), ended: vi.fn() }
     const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })

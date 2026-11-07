@@ -33,8 +33,10 @@ export interface ReviewModelRequest {
   observer?: ReviewTaskObserver
   /** Called when the task itself is stopped (its drawer Stop) while `signal` is still live. */
   onStop?: () => void
+  /** An earlier run's transcript the model continues from; read by the model, not recorded again. */
+  seedRows?: readonly Message[]
 }
-export interface ReviewModelResult { text: string; interrupted: boolean; end?: ReviewRunEnd; agentId?: string }
+export interface ReviewModelResult { text: string; interrupted: boolean; end?: ReviewRunEnd; agentId?: string; transcript?: readonly Message[] }
 /** A result without an explicit end reads its `interrupted` flag. */
 export const endOf = (result: Pick<ReviewModelResult, 'interrupted' | 'end'>): ReviewRunEnd => result.end ?? { kind: result.interrupted ? 'crash' : 'completed' }
 export type ReviewModelRunner = (request: ReviewModelRequest) => Promise<ReviewModelResult>
@@ -131,8 +133,9 @@ export function createReviewModelRunner(input: {
       // The task record keeps the size of the run's own material (patches, report, ledger), not another copy of it.
       const recorded = request.blocks.map((block, index) => RECORDED_BY_SIZE.has(block.source) ? blockRow(block, { omittedBytes: new TextEncoder().encode(block.text).length }) : opening[index]!)
       if (role) request.observer?.started({ key: request.taskId, agentId, role, label: request.label, angles: request.angles })
+      const seeded = [...(request.seedRows ?? []), ...opening]
       const outcome = await launchFork({
-        openingRows: opening, recordedOpeningRows: recorded, skipStartHooks: true, forkPrefix, canUseTool: input.decidePermission,
+        openingRows: seeded, recordedOpeningRows: recorded, skipStartHooks: true, forkPrefix, canUseTool: input.decidePermission,
         querySource: 'skill_fork', forkLabel: REVIEW_FORK_LABEL, agentType, description: request.label, agentId,
         overrides: { options, abortController: cancelSource, messages: [], readFileState: new Map(), inheritConfirm: true },
         systemPromptOverride: prompt.defaultSystemPrompt,
@@ -145,7 +148,7 @@ export function createReviewModelRunner(input: {
       })
       if (!end) end = cancelSource.signal.aborted ? { kind: 'cancelled' } : { kind: 'crash' }
       if (cancelSource.signal.aborted && end.kind === 'completed') end = { kind: 'cancelled' }
-      return { text: lastAssistantText(outcome.messages), interrupted: end.kind !== 'completed', end, agentId }
+      return { text: lastAssistantText(outcome.messages), interrupted: end.kind !== 'completed', end, agentId, transcript: [...seeded, ...outcome.messages] }
     } catch (error) {
       if (!end) end = cancelSource.signal.aborted ? { kind: 'cancelled' } : { kind: 'crash', detail: error instanceof Error ? error.message : String(error) }
       throw error

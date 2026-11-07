@@ -985,6 +985,51 @@ describe('worker step budget', () => {
   })
 })
 
+describe('single-context step limit', () => {
+  const transcript = [{ type: 'user', message: { content: 'reads so far' } }] as unknown as Message[]
+  const wrapUp = (request: ReviewModelRequest) => request.blocks.some(block => block.source === 'step-limit-wrap-up')
+  const anglesOf = (request: ReviewModelRequest) => JSON.parse(request.blocks.find(block => block.source === 'run-summary')!.text).plan.angles as string[]
+  it.each([[true, 'finished'], [false, 'partial']] as const)('gives the run one wrap-up turn without reads to record coverage (complete=%s)', async (complete, status) => {
+    const requests: ReviewModelRequest[] = []
+    let angles: string[] = []
+    const f = fixture({ runModel: async request => {
+      requests.push(request)
+      if (!wrapUp(request)) { angles = anglesOf(request); return { text: '', interrupted: true, end: { kind: 'step-limit' as const }, transcript } }
+      await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: complete ? angles : angles.slice(1), limitations: complete ? [] : ['calls not finished'], complete } })
+      return { text: 'Reviewed src/a.ts.', interrupted: false, end: { kind: 'completed' as const } }
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('high')).runId)
+    expect(snapshot.run.policy.recipe).toBe('local-eight')
+    expect(requests).toHaveLength(2)
+    expect(requests[0]!.maxTurns).toBe(64)
+    expect(requests[1]!).toMatchObject({ seedRows: transcript, maxTurns: 3 })
+    expect(requests[1]!.tools.map(tool => tool.name)).toEqual(['ReviewLedger'])
+    expect(snapshot.run.progress.status).toBe(status)
+    expect(snapshot.coverage.limitations).toContain('review-step-limit')
+  })
+  it('stays partial when the wrap-up turn itself stops short', async () => {
+    let calls = 0
+    const f = fixture({ runModel: async request => {
+      calls++
+      return wrapUp(request) ? { text: '', interrupted: true, end: { kind: 'step-limit' as const } } : { text: '', interrupted: true, end: { kind: 'step-limit' as const }, transcript }
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('high')).runId).catch(() => undefined)
+    expect(calls).toBe(2)
+    if (snapshot) expect(snapshot.run.progress.status).toBe('partial')
+  })
+  it('keeps a team coordinator on its own limit with no wrap-up turn', async () => {
+    const requests: ReviewModelRequest[] = []
+    const f = fixture({ runModel: async request => {
+      requests.push(request)
+      if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
+      return { text: '', interrupted: true, end: { kind: 'step-limit' as const }, transcript }
+    } })
+    await f.service.wait((await f.service.startUser('max')).runId).catch(() => undefined)
+    expect(requests[0]!.maxTurns).toBe(32)
+    expect(requests.some(wrapUp)).toBe(false)
+  })
+})
+
 describe('verification step retries', () => {
   it('retries an unchecked verdict and a failed sweep on the next call, and keeps a settled verdict', async () => {
     let verifiers = 0, sweeps = 0

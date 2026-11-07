@@ -220,7 +220,7 @@ describe('local review runtime gateway', () => {
       await vi.waitFor(() => expect(budget).toBeDefined())
       await vi.advanceTimersByTimeAsync(120 * 60_000)
       const report = await h.service.wait(runId)
-      expect(budget).toEqual({ concurrency: 4, maxTurns: 32 })
+      expect(budget).toEqual({ concurrency: 4, maxTurns: 64 })
       expect(report.run.progress.status).toBe('finished')
       expect(report.coverage.angles).toHaveLength(10)
     } finally { vi.useRealTimers() }
