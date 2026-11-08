@@ -20,6 +20,7 @@ import type { PageFingerprint } from '../../../engine/loop/agentLoopState'
 import type { RuntimeConfig } from '../../../runtime/interfaces/RuntimeConfig'
 import { SHELL_TOOL_ID } from '../../../prompting/processToolNames'
 import { isHostedToolReadOnly } from '../../../permissions/hostedToolReadOnly'
+import { normalizePathKey } from '../../../utils/paths'
 import {
   HOST_DISPLAY_COMMAND,
   HOST_RESULT_ACKNOWLEDGED,
@@ -459,7 +460,8 @@ function buildHostTool(
           const receipt = result as Record<string, unknown>
           const path = (callArgs as Record<string, unknown>).file_path
           const outcomes = definition.name === EDIT_TOOL_ID ? ['updated', 'updated_all'] : ['created', 'updated']
-          if (typeof path === 'string' && receipt.path === path && outcomes.includes(String(receipt.outcome))
+          if (typeof path === 'string' && typeof receipt.path === 'string'
+            && normalizePathKey(receipt.path) === normalizePathKey(path) && outcomes.includes(String(receipt.outcome))
             && !('error' in receipt) && !('code' in receipt) && receipt.ok !== false && receipt.isError !== true) {
             await observeWorkspaceMutation(context, 'write', beforeMutation)
           }
@@ -635,7 +637,7 @@ function buildHostTool(
           }
         }
       }
-      // Edit/Write: split the host's enriched `{ message, original_file }`
+      // Edit/Write: split the host's enriched `{ message, path, original_file }`
       // result into the model-facing prose (`data`) and a UI-only file-relative
       // diff (`uiEditDiff`). See buildHostEditDiff for why original_file never
       // leaves this function.

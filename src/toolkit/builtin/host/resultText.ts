@@ -685,7 +685,8 @@ function renderWriteOrEditResult(toolName: string, data: unknown): unknown {
   const record = data as Record<string, unknown>
   const outcome = str(record, 'outcome')
   if (outcome === undefined) return data
-  const path = text(str(record, 'path'))
+  const hostPath = str(record, 'path')
+  const path = text(hostPath)
   let message: string
   if (outcome === 'updated_all') {
     message = `The file ${path} has been updated. All occurrences were successfully replaced.`
@@ -699,7 +700,6 @@ function renderWriteOrEditResult(toolName: string, data: unknown): unknown {
     message = `The file ${path} has been updated successfully.`
   }
   const originalFile = str(record, 'original_file')
-  const hostPath = str(record, 'path')
   return {
     message,
     ...(hostPath !== undefined ? { path: hostPath } : {}),

@@ -99,6 +99,20 @@ describe('workspace mutation receipts', () => {
     expect(observer.mock.calls[0][0].changes[0]).toMatchObject({ before: { content: 'old' }, after: { content: 'new' } })
   })
 
+  it.each(['Edit', 'Write'])('emits %s when the host reports the path with the other separator', async name => {
+    const { ctx, files } = fixture()
+    const callTool = vi.fn()
+    ctx.platformCapabilities = { browser: { callTool } } as never
+    const observer = vi.fn()
+    cleanup.push(registerWorkspaceMutationObserver(ctx.options, observer))
+    const [tool] = buildHostTools([{ name, description: 'test', parameters: { type: 'object' } } as never])
+    const args = { file_path: '/proj/a', content: 'new', old_string: 'old', new_string: 'new' }
+    callTool.mockImplementationOnce(async () => { files.set('/proj/a', 'new'); return { outcome: 'updated', path: String.raw`\proj\a` } })
+    await tool.call(args, ctx, vi.fn(), {} as never)
+    await flush()
+    expect(observer).toHaveBeenCalledTimes(1)
+  })
+
   it('emits completed SuperEdit file operations before a partial failure', async () => {
     const { ctx, fs } = fixture()
     const observer = vi.fn()

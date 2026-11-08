@@ -8,16 +8,18 @@ import { renderHostResult } from '../toolkit/builtin/host/resultText'
 
 describe('buildHostEditDiff path', () => {
   it('uses the host-reported path over the model-typed file_path', () => {
-    const data = renderHostResult('Edit', { outcome: 'updated', path: 'D:\repo\a.ts', original_file: 'x\n' })
+    const hostPath = String.raw`D:\repo\a.ts`
+    const data = renderHostResult('Edit', { outcome: 'updated', path: hostPath, original_file: 'x\n' })
     const built = buildHostEditDiff('Edit', { file_path: 'D:/repo/a.ts', old_string: 'x', new_string: 'y' }, data)
-    expect(built?.editDiff.filePath).toBe('D:\repo\a.ts')
-    expect(built?.modelData).toBe('The file D:\repo\a.ts has been updated successfully.')
+    expect(built?.editDiff.filePath).toBe(hostPath)
+    expect(built?.modelData).toBe(`The file ${hostPath} has been updated successfully.`)
   })
 
-  it('keeps a POSIX host path unchanged', () => {
-    const data = renderHostResult('Write', { outcome: 'created', path: '/repo/a\b.ts', bytes: 1 })
-    const built = buildHostEditDiff('Write', { file_path: '/repo/a\b.ts', content: 'y' }, data)
-    expect(built?.editDiff.filePath).toBe('/repo/a\b.ts')
+  it('keeps a POSIX host path containing a backslash unchanged', () => {
+    const hostPath = String.raw`/repo/a\b.ts`
+    const data = renderHostResult('Write', { outcome: 'created', path: hostPath, bytes: 1 })
+    const built = buildHostEditDiff('Write', { file_path: hostPath, content: 'y' }, data)
+    expect(built?.editDiff.filePath).toBe(hostPath)
   })
 
   it('falls back to file_path when the host reports no path', () => {
