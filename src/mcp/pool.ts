@@ -467,14 +467,12 @@ export class MCPPool {
   }
 
   /**
-   * Runs `attempt` with the sign-in `url` holds (F-10). A missing sign-in the
-   * server asked for gives `placeholder()` without connecting; a 401 with a
-   * sign-in a refresh renews is tried once more; a 401 without one records
-   * that the server asks for a sign-in. A renewal that failed for a reason
-   * that may pass leaves the server `failed`, still signed in, for a later
-   * refresh. Before the boot installs the service, a connect waits for it; a
-   * connect that went out unsigned and met 401 tries once more with a sign-in
-   * that became usable meanwhile (the host came up during the connect).
+   * Runs `attempt` with the sign-in `url` holds (F-10), waiting for the boot
+   * to install the service. A missing sign-in the server asked for gives
+   * `placeholder()` without connecting; a 401 is tried once more with a
+   * sign-in renewed or usable by then, else records that the server asks for
+   * one. A renewal that failed for a reason that may pass leaves the server
+   * `failed`, still signed in, for a later refresh.
    */
   private async withSignIn(
     url: string | undefined,
