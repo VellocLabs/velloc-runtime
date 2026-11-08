@@ -92,7 +92,7 @@ export function PieChartView({ title, data, donut, height }: {
           data={slices}
           dataKey="value"
           nameKey="label"
-          innerRadius={donut ? '55%' : 0}
+          innerRadius={donut ? '40%' : 0}
           outerRadius="80%"
           isAnimationActive={false}
         >

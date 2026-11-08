@@ -70,11 +70,23 @@ function BadgeView({ text: label, tone }: { text?: unknown; tone?: unknown }): R
 
 const HEADING_CLASS = ['text-2xl font-semibold', 'text-lg font-semibold', 'text-sm font-semibold'] as const
 
-function HeadingView({ text: title, level }: { text?: unknown; level?: number }): ReactElement {
+type HeadingProps = { text?: unknown; level?: number; subtitle?: unknown }
+
+function HeadingView({ text: title, level, subtitle }: HeadingProps): ReactElement {
   const index = level === 1 || level === 3 ? level - 1 : 1
-  return (
+  const heading = (
     <div data-slot="a2ui-heading" role="heading" aria-level={index + 1} className={HEADING_CLASS[index]}>
       {text(title)}
+    </div>
+  )
+  const sub = text(subtitle)
+  if (!sub) return heading
+  return (
+    <div className="flex flex-col gap-1">
+      {heading}
+      <div data-slot="a2ui-heading-subtitle" className="text-xs text-muted-foreground">
+        {sub}
+      </div>
     </div>
   )
 }
@@ -89,7 +101,7 @@ function MetricView({ label, value, delta, trend: bound, caption }: MetricProps)
         : 'text-muted-foreground'
   return (
     <div data-slot="a2ui-metric" className="flex min-w-0 flex-col gap-1">
-      <span className="truncate text-xs text-muted-foreground">{text(label)}</span>
+      <span className="truncate text-xs font-medium uppercase tracking-wider text-muted-foreground">{text(label)}</span>
       <span className="text-2xl font-semibold tabular-nums">{text(value)}</span>
       {(text(delta) || text(caption)) && (
         <span className="flex items-center gap-1 text-xs">
@@ -118,7 +130,7 @@ function DataTableView({ columns = [], rows }: DataTableProps): ReactElement {
             {columns.map((column) => (
               <th
                 key={column.key}
-                className={`border-b px-2 py-1.5 ${align(column)} text-xs font-medium text-muted-foreground`}
+                className={`border-b px-2 py-1.5 ${align(column)} text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground`}
               >
                 {column.label}
               </th>
@@ -212,7 +224,7 @@ const views: Record<ChartComponentName, (props: Record<string, unknown>) => Reac
   },
   Metric: props => <MetricView {...(props as MetricProps)} />,
   DataTable: props => <DataTableView {...(props as DataTableProps)} />,
-  Heading: props => <HeadingView {...(props as { text?: unknown; level?: number })} />,
+  Heading: props => <HeadingView {...(props as HeadingProps)} />,
   Badge: props => <BadgeView {...(props as { text?: unknown; tone?: unknown })} />,
 }
 

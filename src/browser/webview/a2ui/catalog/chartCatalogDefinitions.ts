@@ -130,6 +130,7 @@ export const chartCatalogDefinitions = {
       .object({
         text: DynamicString.describe('The title text, literal or a data binding.'),
         level: z.number().int().min(1).max(3).optional().describe('1, 2 or 3; default 2.'),
+        subtitle: DynamicString.optional().describe('A short line under the title in small muted text.'),
         weight,
       })
       .strict()
@@ -196,7 +197,7 @@ export const CHART_CATALOG_INSTRUCTIONS = [
     'in the data model and bind them, so a later update can change the data alone. Group charts ' +
     'in Cards inside a Row or Column for a dashboard. Leave colors out to use the theme palette.',
   '',
-  'Title a dashboard with Heading (level 1 for the page, 3 for a card). Show a status with Badge, ' +
+  'Title a dashboard with Heading (level 1 for the page, 3 for a card); its subtitle is the small line under it. Show a status with Badge, ' +
     'or give a DataTable column a badge map so each cell is one. Put units on a chart\'s value axis ' +
     'with valuePrefix / valueSuffix rather than in the numbers.',
   '',

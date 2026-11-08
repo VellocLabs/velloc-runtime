@@ -17,9 +17,10 @@ const DASHBOARD = [
   '$/orders = [{id: "#1", total: "$9,420", status: "Paid"}, {id: "#2", total: "$3,990", status: "Failed"}, {id: "#3", total: "$10", status: "Lost"}]',
   '$/kpi = {value: "$980K", delta: "-2.1%", trend: "down"}',
   '$/state = "warning"',
+  '$/range = "Jan 1 – Mar 31, 2025"',
   'root = Column([title, sub, kpi, state, orders])',
-  'title = Heading("Q1 2025 Sales Dashboard", 1)',
-  'sub = Heading("Recent orders", 3)',
+  'title = Heading("Q1 2025 Sales Dashboard", 1, $/range)',
+  'sub = Heading("Recent orders", 3, "Top 5 by value")',
   'kpi = Metric("AOV", $/kpi/value, $/kpi/delta, $/kpi/trend)',
   'state = Badge("Delayed", $/state)',
   'orders = DataTable([{key: "id", label: "Order"}, {key: "total", label: "Total", align: "end"}, {key: "status", label: "Status", badge: {Paid: "success", Failed: "danger"}}], $/orders)',
@@ -52,6 +53,7 @@ describe('the dashboard components of the Velloc catalog', () => {
     expect(heading.safeParse({ text: 'Q1', level: 1 }).success).toBe(true)
     expect(heading.safeParse({ text: { path: '/title' } }).success, 'text binds').toBe(true)
     expect(heading.safeParse({ text: 'Q1', level: 4 }).success, 'level is 1 to 3').toBe(false)
+    expect(heading.safeParse({ text: 'Q1', subtitle: { path: '/range' } }).success, 'subtitle binds').toBe(true)
     const badge = chartCatalogDefinitions.Badge.schema
     expect(badge.safeParse({ text: 'Paid', tone: { path: '/tone' } }).success, 'tone binds').toBe(true)
     const table = chartCatalogDefinitions.DataTable.schema
@@ -78,6 +80,12 @@ describe('the dashboard components of the Velloc catalog', () => {
       ['Q1 2025 Sales Dashboard', '1'],
       ['Recent orders', '3'],
     ])
+    const subtitles = [...view.querySelectorAll('[data-slot="a2ui-heading-subtitle"]')]
+    expect(subtitles.map(s => s.textContent), 'a subtitle sits under its heading, outside its name').toEqual([
+      'Jan 1 – Mar 31, 2025',
+      'Top 5 by value',
+    ])
+    expect(subtitles.some(s => s.querySelector('em')), 'a subtitle is upright').toBe(false)
     expect(view.querySelector('[data-slot="a2ui-metric"] .text-destructive')?.textContent).toBe('-2.1%')
     const badges = [...view.querySelectorAll('[data-slot="a2ui-badge"]')].map(b => [b.textContent, b.getAttribute('data-tone')])
     expect(badges).toEqual([

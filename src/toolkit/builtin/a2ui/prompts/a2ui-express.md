@@ -133,9 +133,10 @@ Use these exact positional signatures to instantiate components. Do not output p
 • Divider(axis? (static), weight? (static))
   - axis: The orientation of the divider. Must be one of: 'horizontal', 'vertical'
   - weight: The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column.
-• Heading(text, level? (static), weight? (static))
+• Heading(text, level? (static), subtitle?, weight? (static))
   - text: The title text, literal or a data binding.
   - level: 1, 2 or 3; default 2.
+  - subtitle: A short line under the title in small muted text.
   - weight: Flex share inside a Row or Column; only on a direct child of one.
 • Icon(name, weight? (static))
   - name: The name of the icon to display. Must be one of: 'accountCircle', 'add', 'arrowBack', 'arrowForward', 'attachFile', 'calendarToday', 'call', 'camera', 'check', 'close', 'delete', 'download', 'edit', 'event', 'error', 'fastForward', 'favorite', 'favoriteOff', 'folder', 'help', 'home', 'info', 'locationOn', 'lock', 'lockOpen', 'mail', 'menu', 'moreVert', 'moreHoriz', 'notificationsOff', 'notifications', 'pause', 'payment', 'person', 'phone', 'photo', 'play', 'print', 'refresh', 'rewind', 'search', 'send', 'settings', 'share', 'shoppingCart', 'skipNext', 'skipPrevious', 'star', 'starHalf', 'starOff', 'stop', 'upload', 'visibility', 'visibilityOff', 'volumeDown', 'volumeMute', 'volumeOff', 'volumeUp', 'warning'
@@ -403,7 +404,7 @@ Example 2: Dynamic list with templates
 
 Draw numbers as charts, not prose: PieChart for shares, LineChart for a trend over time, BarChart to compare categories, Metric for one key figure, DataTable for rows. Put the rows in the data model and bind them, so a later update can change the data alone. Group charts in Cards inside a Row or Column for a dashboard. Leave colors out to use the theme palette.
 
-Title a dashboard with Heading (level 1 for the page, 3 for a card). Show a status with Badge, or give a DataTable column a badge map so each cell is one. Put units on a chart's value axis with valuePrefix / valueSuffix rather than in the numbers.
+Title a dashboard with Heading (level 1 for the page, 3 for a card); its subtitle is the small line under it. Show a status with Badge, or give a DataTable column a badge map so each cell is one. Put units on a chart's value axis with valuePrefix / valueSuffix rather than in the numbers.
 
 Example 3: Sales dashboard
 ```
