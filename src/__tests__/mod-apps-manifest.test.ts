@@ -244,3 +244,35 @@ describe('the apps the contributions host publishes', () => {
     expect(isModContributionsState({ ...base, apps: {} })).toBe(false)
   })
 })
+
+describe('an app with a background module', () => {
+  it('takes a plugin-relative module path and refuses one outside the plugin or of another kind', () => {
+    const errors: string[] = []
+    const decls = checkTemplateDecls('pay', { board: { title: 'P', app: { ...APP, background: './bg/app.js' } } }, errors, 'beta')
+    expect(decls?.board?.app?.background).toBe('./bg/app.js')
+    expect(errors).toEqual([])
+    for (const bad of ['bg/app.js', './../x.js', './bg\\app.js', './bg/app.json', 7]) {
+      const refused: string[] = []
+      expect(checkTemplateDecls('pay', { board: { title: 'P', app: { ...APP, background: bad } } }, refused, 'beta')).toBeUndefined()
+      expect(refused.map(line => line.split(':')[0])).toEqual(['templates.board.app.background'])
+    }
+  })
+
+  it('the contributions host lists the published apps that declare one, with the module resolved under the plugin', async () => {
+    const { contributions } = host()
+    const withModule = appPlugin('pay', 'board')
+    withModule.templates![0]!.decl.app!.background = './bg/app.js'
+    await contributions.sync({ enabled: [withModule, appPlugin('notes', 'list')] })
+    expect(contributions.backgroundApps()).toEqual([
+      {
+        appId: 'pay-board',
+        type: 'pay:board',
+        plugin: 'pay',
+        root: '/plugins/pay',
+        module: expect.stringMatching(/^[/\\]plugins[/\\]pay[/\\]bg[/\\]app\.js$/),
+        owner: 'pay@mkt',
+        decl: { seed: './app', seedVersion: 1, entry: 'app.a2ui', background: './bg/app.js' },
+      },
+    ])
+  })
+})

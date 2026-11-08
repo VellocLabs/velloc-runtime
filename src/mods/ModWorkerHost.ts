@@ -28,6 +28,7 @@ import { isEngineTable, type EngineTable } from './modEngineTable'
 import { MOD_DEFAULT_LOCALE, normalizeModLocale } from './modLocale'
 import { DESKTOP_ELEMENTS, RENDER_SURFACE } from './modRender'
 import { makeInteractHandle, makeProviderNoun } from './provider/nouns/workerProviderNoun'
+import { makeWorkerAppNoun } from './app/workerAppNoun'
 
 /** What a hooks module exports — `register`, and nothing the loader reads
  *  besides. Its return is dropped, a promise awaited. */
@@ -705,6 +706,8 @@ export function installModWorkerHost(
                     ? makeScript(invocation)
                   : noun === 'agent'
                     ? makeAgent(invocation)
+                  : noun === 'app'
+                    ? makeWorkerAppNoun((method, args) => callRuntime(invocation, 'app', method, args))
                     : new Proxy(Object.freeze({}), {
                   get: (_target, method) =>
                     // `then`: so that `await $.fs` does not treat the noun as a promise.

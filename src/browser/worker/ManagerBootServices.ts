@@ -104,6 +104,8 @@ export class ManagerBootServices {
   private maskingBoot: Promise<void> | null = null
   private maskingRetry: ReturnType<typeof setTimeout> | null = null
   private providerModsBoot: Promise<void> | null = null
+  private appBackgroundBoot: Promise<void> | null = null
+  private homeAsk: Promise<string | null> | null = null
   private modelCatalogInstalled = false
   private readonly directBridgeWaiters = new Set<
     (transport: DirectPortBridgeTransport) => void
@@ -134,6 +136,7 @@ export class ManagerBootServices {
     void this.publishProviderConfigsAtBoot()
     void this.startModelMasking()
     void this.bootProviderModsOnce()
+    void this.bootAppBackgroundOnce()
     void this.installModelCatalogOnce()
     void this.publishBinaryRegistryAtBoot()
     // MCP server sign-in (F-10) needs the home, which storage may learn after
@@ -155,6 +158,8 @@ export class ManagerBootServices {
     // starts here, not at storage ready, so the plugin launchers are published
     // before the first window subscribes (F-25).
     void this.bootProviderModsOnce()
+    // …and the apps' background modules (F-40), which follow that scan's apps.
+    void this.bootAppBackgroundOnce()
     // …and the model catalog (its cache lives under the home, read by the fs).
     void this.installModelCatalogOnce()
     // Client auto-update (F-30) needs the port and the manifest; retried per port and per manifest until it starts.
@@ -390,9 +395,19 @@ export class ManagerBootServices {
     return boot
   }
 
+  /** The home, as the host knows it or asked of it once; a null answer is asked again next time. */
+  private async askHomeDir(): Promise<string | null> {
+    const known = this.host.getHomeDir()
+    if (known) return known
+    if (!this.host.resolveHomeDir) return null
+    this.homeAsk ??= this.host.resolveHomeDir().catch(() => null)
+    const home = await this.homeAsk
+    if (!home) this.homeAsk = null
+    return home
+  }
+
   private async bootProviderMods(): Promise<void> {
-    const homeDir =
-      this.host.getHomeDir() ?? (await this.host.resolveHomeDir?.().catch(() => null)) ?? null
+    const homeDir = await this.askHomeDir()
     if (!homeDir || !this.host.getDirectBridgeTransport()) {
       this.providerModsBoot = null
       return
@@ -413,6 +428,41 @@ export class ManagerBootServices {
       })
     } catch (error) {
       this.host.trace('providerMods.boot_failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  /**
+   * The apps' background modules (F-40): the published apps that declare one
+   * are synced into the realm's runtime, created only when there is such an
+   * app. Needs the fs and the home; once only, retried while either is missing.
+   */
+  private bootAppBackgroundOnce(): Promise<void> {
+    if (this.appBackgroundBoot) return this.appBackgroundBoot
+    if (!this.host.getDirectBridgeTransport()) return Promise.resolve()
+    const boot = this.bootAppBackground()
+    this.appBackgroundBoot = boot
+    return boot
+  }
+
+  private async bootAppBackground(): Promise<void> {
+    const homeDir = await this.askHomeDir()
+    if (!homeDir || !this.host.getDirectBridgeTransport()) {
+      this.appBackgroundBoot = null
+      return
+    }
+    try {
+      const { bootAppBackground } = await import('../../mods/app/appBackgroundBoot')
+      await bootAppBackground({
+        homeDir,
+        fs: this.createTransportResolvingFs(),
+        transport: () => this.host.getDirectBridgeTransport(),
+        locale: () => this.host.getLocale?.(),
+        report: line => this.host.trace('appBackground.report', { line }),
+      })
+    } catch (error) {
+      this.host.trace('appBackground.boot_failed', {
         error: error instanceof Error ? error.message : String(error),
       })
     }

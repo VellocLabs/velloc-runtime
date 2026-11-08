@@ -20,6 +20,9 @@ export type AppSurfaceError = { kind: AppSurfaceErrorKind; message: string }
 /** One build of the app's entry file: its text and the surfaces it draws, in order. */
 export type AppSurfaceBuild = { body: string; hash: string; surfaceIds: string[] }
 
+/** One change to the app's data: an RFC 6901 pointer from the data's root (`""` the root) and its new value, or a removal when `value` is absent. */
+export type AppDataPatch = { path: string; value?: unknown }
+
 export type AppSurfaceState = {
   appId: string
   /** The latest successful build; null before one has succeeded. */
@@ -28,6 +31,10 @@ export type AppSurfaceState = {
   data?: unknown
   /** When the data file was last written (epoch ms). */
   dataAt?: number
+  /** Counts the data changes this host published; with `data`. */
+  dataSeq?: number
+  /** The patches that took the data of the board with `dataSeq === from` to this one; absent when the data was read whole. */
+  dataPatches?: { from: number; patches: AppDataPatch[] }
   /** The plugin is refreshing the data. */
   refreshing: boolean
   /** The latest build failed, or the data file could not be read. */
@@ -69,6 +76,12 @@ export function isAppSurfaceState(value: unknown): value is AppSurfaceState {
     if (!Array.isArray(ids) || ids.length === 0 || !ids.every(id => typeof id === 'string')) return false
   }
   if (value.dataAt !== undefined && typeof value.dataAt !== 'number') return false
+  if (value.dataSeq !== undefined && typeof value.dataSeq !== 'number') return false
+  if (value.dataPatches !== undefined) {
+    const patches = value.dataPatches
+    if (!isRecord(patches) || typeof patches.from !== 'number' || !Array.isArray(patches.patches)) return false
+    if (!patches.patches.every(p => isRecord(p) && typeof p.path === 'string')) return false
+  }
   if (value.errors !== undefined) {
     if (!Array.isArray(value.errors)) return false
     const ok = value.errors.every(e => isRecord(e) && (e.kind === 'build' || e.kind === 'data') && typeof e.message === 'string')

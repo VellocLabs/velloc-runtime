@@ -8,6 +8,7 @@
 
 import type { UpdateChannel } from '../../branding/updateChannels'
 import { isLocalizedText, whyNotLocalizedText, type LocalizedText } from '../../config/localizedText'
+import { MOD_MODULE_EXTENSIONS } from '../modCompilerSurface'
 
 /** Where a template's launcher is offered: the sidebar list, the project
  *  folder menu, both, or neither (creatable by id only). */
@@ -50,6 +51,9 @@ export type PluginAppDecl = {
   data?: string
   /** Dashboard event names the plugin answers itself, without the model. */
   localActions?: string[]
+  /** Plugin-relative path of the app's background module, `./`-prefixed: one
+   *  resident worker that owns the app's data while Velloc runs. */
+  background?: string
 }
 
 export type PluginTopbarItemDecl = {
@@ -194,6 +198,15 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
       bad(`${label}.localActions: expected at most ${LOCAL_ACTIONS_MAX} event names of letters, digits, "_" and "-"`)
     }
   }
+  let background: string | undefined
+  if (value.background !== undefined) {
+    const module = value.background
+    if (typeof module === 'string' && insidePlugin(module) && MOD_MODULE_EXTENSIONS.some(ext => module.toLowerCase().endsWith(ext))) {
+      background = module
+    } else {
+      bad(`${label}.background: expected a module path starting with "./", without "..", ending in ${MOD_MODULE_EXTENSIONS.join(', ')}`)
+    }
+  }
   if (!seed || !entry || data === null) return null
   return {
     seed,
@@ -201,6 +214,7 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
     entry,
     ...(data ? { data } : {}),
     ...(localActions && localActions.length > 0 ? { localActions } : {}),
+    ...(background ? { background } : {}),
   }
 }
 

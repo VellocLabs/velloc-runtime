@@ -2,7 +2,8 @@
 // build updates the app's surfaces in place, so a component's own state (the
 // tab a Tabs shows) and what the person typed or picked are kept; a surface the
 // build no longer has is deleted. The data file's value is set under `/data`
-// on each surface.
+// on each surface; a board that carries the patches from the data the surfaces
+// hold sets each patched path alone, so only the components bound to it re-render.
 
 import { useEffect, useMemo, useRef } from 'react'
 import type { ReactCatalogComponent } from '@a2ui/react'
@@ -38,6 +39,8 @@ export function AppSurfaceFeeder({
   const state = useMemo(() => compiler.stateFor(processor), [compiler, processor])
   const drawnRef = useRef<{ hash: string; ids: string[] } | null>(null)
   const dataRef = useRef<unknown>(undefined)
+  /** The `dataSeq` of the board whose data the surfaces hold. */
+  const seqRef = useRef<number | undefined>(undefined)
   const epochRef = useRef(epoch)
 
   useEffect(() => {
@@ -81,8 +84,23 @@ export function AppSurfaceFeeder({
     }
     if (board && (redrawn || board.data !== dataRef.current)) {
       dataRef.current = board.data
-      // No value removes `/data`: the data file is gone. A surface drawn whole has none.
-      if (board.data !== undefined || !whole) {
+      // Patches apply only onto the data the surfaces hold: a board the page
+      // did not draw (batched away) leaves `from` behind, and the value is set whole.
+      const patches = !redrawn && board.dataPatches && seqRef.current !== undefined && board.dataPatches.from === seqRef.current
+        ? board.dataPatches.patches
+        : undefined
+      seqRef.current = board.dataSeq
+      if (patches) {
+        for (const surfaceId of surface.surfaceIds) {
+          for (const patch of patches) {
+            processor.processMessages({
+              version: A2UI_PROTOCOL_VERSION,
+              updateDataModel: { surfaceId, path: `/data${patch.path}`, ...('value' in patch ? { value: patch.value } : {}) },
+            } as never)
+          }
+        }
+      } else if (board.data !== undefined || !whole) {
+        // No value removes `/data`: the data file is gone. A surface drawn whole has none.
         const value = board.data !== undefined ? { value: board.data } : {}
         for (const surfaceId of surface.surfaceIds) {
           processor.processMessages({

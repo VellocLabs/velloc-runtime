@@ -20,7 +20,14 @@ import type {
 import { blockSurfaceIds, hasA2uiBlock, splitA2uiText } from '../../toolkit/builtin/a2ui/express/a2uiBlocks'
 import { hashOf, SEED_MAX_FILE_BYTES } from './appSeed'
 import type { AppSessionInfo } from './appSession'
+import { liveAppState, onAppState, type AppStateEvent, type AppStateSnapshot } from './appStateBus'
 import { setAppBuilder, setAppSurfaceState } from './appSurfaceRegistry'
+
+/** The app's live state, while its background module holds one. */
+export type AppLiveData = {
+  snapshot(appId: string): AppStateSnapshot | undefined
+  subscribe(appId: string, listener: (event: AppStateEvent) => void): () => void
+}
 
 export const BUILD_APP_TOOL_NAME = 'BuildApp'
 
@@ -39,6 +46,9 @@ export type AppSurfaceHostOptions = {
    * The result forgets it, and is true while it was still this host's.
    */
   registerBuild?: (sessionId: string, build: () => Promise<ModsBuildAppResult>) => () => boolean
+  /** The background module's state, read in place of the data file while there is one; defaults to the realm bus. */
+  liveData?: AppLiveData
+  now?: () => number
 }
 
 export type TurnEndCheck = (params: { messages: Message[]; assistantMessages: Message[] }) => Promise<Message[]>
@@ -103,8 +113,9 @@ async function readText(fs: AppSurfaceHostOptions['fs'], path: string): Promise<
   }
 }
 
+/** The same board; the patches that led to it are not part of what it shows. */
 const sameState = (a: AppSurfaceState | undefined, b: AppSurfaceState): boolean =>
-  a !== undefined && JSON.stringify(a) === JSON.stringify(b)
+  a !== undefined && JSON.stringify({ ...a, dataPatches: undefined }) === JSON.stringify({ ...b, dataPatches: undefined })
 
 /** The surface ids a reply's `<a2ui>` blocks draw that are among `ids`. */
 export function replyDrawsAppSurface(reply: readonly Message[], ids: readonly string[]): string[] {
@@ -152,6 +163,8 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
   const compile = options.compile ?? defaultCompile
   const publish = options.publish ?? setAppSurfaceState
   const registerBuild = options.registerBuild ?? setAppBuilder
+  const live: AppLiveData = options.liveData ?? { snapshot: liveAppState, subscribe: onAppState }
+  const now = options.now ?? Date.now
   const entry = app.decl.entry
   const entryPath = joinRuntimePath(app.folder, entry)
   const dataPath = app.decl.data ? joinRuntimePath(app.folder, app.decl.data) : undefined
@@ -161,6 +174,11 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
   let buildError: AppSurfaceError | undefined
   let data: { value: unknown; at: number; hash: string } | undefined
   let dataError: AppSurfaceError | undefined
+  /** Counts the data values this host published. */
+  let dataSeq = 0
+  /** The patches from the last published data to the current one; one publish only. */
+  let dataPatches: AppSurfaceState['dataPatches']
+  let unsubscribeLive: (() => void) | undefined
   /** The entry hash of the last build attempt and what it gave, so an unchanged entry is not compiled again. */
   let attempted: { hash: string; result: ModsBuildAppResult } | undefined
   let published: AppSurfaceState | undefined
@@ -175,11 +193,13 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     const state: AppSurfaceState = {
       appId: app.appId,
       surface: built,
-      ...(data ? { data: data.value, dataAt: data.at } : {}),
+      ...(data ? { data: data.value, dataAt: data.at, dataSeq } : {}),
+      ...(data && dataPatches ? { dataPatches } : {}),
       refreshing: false,
       ...(list.length > 0 ? { errors: list } : {}),
       ...(app.seed.conflicts.length > 0 ? { seedConflicts: [...app.seed.conflicts] } : {}),
     }
+    dataPatches = undefined
     if (!disposed && !sameState(published, state)) {
       published = state
       publish(sessionId, state)
@@ -187,7 +207,19 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     return state
   }
 
+  const setData = (value: unknown, at: number, hash: string): void => {
+    if (data?.hash === hash) return
+    data = { value, at, hash }
+    dataError = undefined
+    dataSeq += 1
+  }
+
   const readData = async (): Promise<void> => {
+    const snapshot = live.snapshot(app.appId)
+    if (snapshot) {
+      setData(snapshot.value, now(), `live:${snapshot.version}`)
+      return
+    }
     if (!dataPath) return
     const read = await readText(fs, dataPath)
     if ('failed' in read) {
@@ -197,8 +229,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
       data = undefined
     } else if (read.hash !== data?.hash) {
       try {
-        data = { value: JSON.parse(read.text), at: read.mtimeMs, hash: read.hash }
-        dataError = undefined
+        setData(JSON.parse(read.text), read.mtimeMs, read.hash)
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error)
         dataError = { kind: 'data', message: `${app.decl.data} is not JSON: ${reason}` }
@@ -272,6 +303,13 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
 
   return {
     async start() {
+      unsubscribeLive ??= live.subscribe(app.appId, event => {
+        if (disposed) return
+        const from = dataSeq
+        setData(event.value, now(), `live:${event.version}`)
+        if (dataSeq !== from) dataPatches = { from, patches: [...event.patches] }
+        emit()
+      })
       await build()
       return published ?? emit()
     },
@@ -304,6 +342,8 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     dispose() {
       if (disposed) return
       disposed = true
+      unsubscribeLive?.()
+      unsubscribeLive = undefined
       // A newer runtime of the same session may own the entry by now.
       if (releaseBuild()) publish(sessionId, null)
     },

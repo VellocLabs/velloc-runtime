@@ -263,3 +263,36 @@ describe('the app bar', () => {
     expect(container.querySelector('[data-slot="app-build-message"]')).toBeNull()
   })
 })
+
+describe('the board patched in place', () => {
+  function patchRig() {
+    const processor = new MessageProcessor<ReactCatalogComponent>([vellocCatalog], () => {})
+    const compiler = createA2uiExpressCompiler(vellocCatalog)
+    const view = (state: AppSurfaceState | null) => h(AppSurfaceFeeder, { board: state, processor, compiler, epoch: 0 })
+    const data = (path: string) => processor.getSurface('dashboard')?.dataModel.get(path)
+    return { processor, view, data }
+  }
+  const withSeq = (state: AppSurfaceState, dataSeq: number, dataPatches?: AppSurfaceState['dataPatches']): AppSurfaceState => ({
+    ...state,
+    dataSeq,
+    ...(dataPatches ? { dataPatches } : {}),
+  })
+
+  it('patches from the data the surface holds set each path alone, keeping the rest; a gap or a redraw sets the value whole', () => {
+    const { processor, view, data } = patchRig()
+    const { rerender } = render(view(withSeq(board(BOARD, 'h1', { count: 3, other: 'a' }), 1)))
+    expect(data('/data')).toEqual({ count: 3, other: 'a' })
+    processor.processMessages({ version: '1.0', updateDataModel: { surfaceId: 'dashboard', path: '/data/local', value: 'kept' } } as never)
+    rerender(view(withSeq(board(BOARD, 'h1', { count: 4, other: 'a' }), 2, { from: 1, patches: [{ path: '/count', value: 4 }] })))
+    expect(data('/data')).toEqual({ count: 4, other: 'a', local: 'kept' })
+    rerender(view(withSeq(board(BOARD, 'h1', { count: 4 }), 3, { from: 2, patches: [{ path: '/other' }] })))
+    expect(data('/data')).toEqual({ count: 4, local: 'kept' })
+    // A board the page never drew (seq 4 skipped): the value is set whole, the local path gone with it.
+    rerender(view(withSeq(board(BOARD, 'h1', { count: 6 }), 5, { from: 4, patches: [{ path: '/count', value: 6 }] })))
+    expect(data('/data')).toEqual({ count: 6 })
+    processor.processMessages({ version: '1.0', updateDataModel: { surfaceId: 'dashboard', path: '/data/local', value: 'again' } } as never)
+    // A new build redraws: the value is set whole even with patches that apply.
+    rerender(view(withSeq(board(BOARD.replace('"Payments"', '"Pay"'), 'h2', { count: 7 }), 6, { from: 5, patches: [{ path: '/count', value: 7 }] })))
+    expect(data('/data')).toEqual({ count: 7 })
+  })
+})

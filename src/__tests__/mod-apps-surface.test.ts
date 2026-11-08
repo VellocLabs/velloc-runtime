@@ -360,3 +360,63 @@ describe('the mods/app topic', () => {
     expect(seen).toEqual([['s1', null]])
   })
 })
+
+describe('the live state of a background module', () => {
+  function liveRig(start?: { version: number; value: unknown }) {
+    let snapshot = start
+    let listener: ((event: { appId: string; version: number; value: unknown; patches: Array<{ path: string; value?: unknown }> }) => void) | undefined
+    const unsubscribed: string[] = []
+    const liveData = {
+      snapshot: () => snapshot,
+      subscribe: (appId: string, fn: typeof listener) => {
+        listener = fn
+        return () => void unsubscribed.push(appId)
+      },
+    }
+    const disk = memoryFs({ 'app.a2ui': BOARD, 'data/latest.json': '{"count":3}' })
+    const published: AppSurfaceState[] = []
+    const host = createAppSurfaceHost({
+      fs: disk.fs,
+      app: app(),
+      sessionId: 's1',
+      compile,
+      publish: (_id, state) => {
+        if (state) published.push(state)
+      },
+      registerBuild: () => () => true,
+      liveData,
+      now: () => 5000,
+    })
+    const emit = (event: Parameters<NonNullable<typeof listener>>[0]) => {
+      snapshot = { version: event.version, value: event.value }
+      listener?.(event)
+    }
+    return { host, published, unsubscribed, emit }
+  }
+
+  it('is read in place of the data file, and each batch is published as patches from the board before it', async () => {
+    const { host, published, unsubscribed, emit } = liveRig({ version: 7, value: { count: 9 } })
+    const first = await host.start()
+    expect(first).toMatchObject({ data: { count: 9 }, dataAt: 5000, dataSeq: 1 })
+    expect(first.dataPatches).toBeUndefined()
+    emit({ appId: 'pay-board', version: 8, value: { count: 10 }, patches: [{ path: '/count', value: 10 }] })
+    expect(published.at(-1)).toMatchObject({ data: { count: 10 }, dataSeq: 2, dataPatches: { from: 1, patches: [{ path: '/count', value: 10 }] } })
+    // The same version again changes nothing; the next build reads the data whole, without patches.
+    emit({ appId: 'pay-board', version: 8, value: { count: 10 }, patches: [] })
+    expect(published).toHaveLength(2)
+    await host.build()
+    expect(published).toHaveLength(2)
+    host.dispose()
+    expect(unsubscribed).toEqual(['pay-board'])
+  })
+
+  it('without a live state the data file is read as before, and the page check takes the new fields', async () => {
+    const { host } = liveRig()
+    const state = await host.start()
+    expect(state).toMatchObject({ data: { count: 3 }, dataAt: 1000, dataSeq: 1 })
+    expect(isAppSurfaceState({ ...state, dataPatches: { from: 0, patches: [{ path: '/a', value: 1 }, { path: '/b' }] } })).toBe(true)
+    expect(isAppSurfaceState({ ...state, dataSeq: 'x' })).toBe(false)
+    expect(isAppSurfaceState({ ...state, dataPatches: { from: 0, patches: [{ value: 1 }] } })).toBe(false)
+    host.dispose()
+  })
+})
