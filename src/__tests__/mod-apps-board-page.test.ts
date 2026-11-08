@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * An app session's surfaces (F-40), page half: the shared topic store, the
- * surfaces in the session's processor (redrawn per build, data under `/data`
+ * surfaces in the session's processor (updated in place per build, data under `/data`
  * on each), the app's surfaces as the pane's first tabs, and the hook that
  * tells an app session from any other and builds it again.
  */
@@ -142,11 +142,17 @@ describe('the board in the session\'s processor', () => {
     expect(processor.getSurface('app')?.dataModel.get('/data/count')).toBe(5)
   })
 
-  it('a data file that is gone takes its values off the surfaces', () => {
-    const { view, data } = rig()
+  it('a data file that is gone takes its values off the surfaces, with the same build or a new one', () => {
+    const { processor, view, data } = rig()
     const { rerender } = render(view(board(BOARD, 'h1', { count: 3 })))
     expect(data('/data/count')).toBe(3)
     rerender(view(board(BOARD, 'h1')))
+    expect(data('/data')).toBeUndefined()
+    rerender(view(board(BOARD, 'h2', { count: 4 })))
+    const drawn = processor.getSurface('dashboard')
+    expect(data('/data/count')).toBe(4)
+    rerender(view(board(BOARD.replace('"Payments"', '"Payments, this month"'), 'h3')))
+    expect(processor.getSurface('dashboard')).toBe(drawn)
     expect(data('/data')).toBeUndefined()
   })
 
@@ -159,6 +165,18 @@ describe('the board in the session\'s processor', () => {
     rerender(view(board(BOARD, 'h2', { count: 3 })))
     expect(processor.getSurface('refunds')).toBeUndefined()
     expect(processor.getSurface('dashboard')).toBeDefined()
+  })
+
+  it('a surface id new to the app is drawn from nothing, not over a chat surface with that id', () => {
+    const { processor, compiler, view } = rig()
+    const { rerender } = render(view(board(BOARD, 'h1', { count: 3 })))
+    compiler.compile('surface("refunds")\nroot = Column([extra])\nextra = Text("left over")\n$/note = "chat"', compiler.stateFor(processor))
+    expect(processor.getSurface('refunds')?.componentsModel.get('extra')).toBeDefined()
+    rerender(view(board(`${BOARD}\n${REFUNDS}`, 'h2', { count: 3, refunds: 'R 2' }, ['dashboard', 'refunds'])))
+    const refunds = processor.getSurface('refunds')
+    expect(refunds?.componentsModel.get('extra')).toBeUndefined()
+    expect(refunds?.dataModel.get('/note')).toBeUndefined()
+    expect(refunds?.dataModel.get('/data/refunds')).toBe('R 2')
   })
 
   it('a chat block that touched the board is undone on the next epoch; no board deletes it', () => {

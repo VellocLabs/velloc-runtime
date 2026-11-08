@@ -58,12 +58,14 @@ export function AppSurfaceFeeder({
     }
     if (surface.hash !== drawnRef.current?.hash) {
       const before = drawnRef.current?.ids ?? []
+      // An id new to the app starts from nothing, so a chat surface under it is not continued.
       deleteSurfaces(processor, whole
         ? [...new Set([...before, ...surface.surfaceIds])]
-        : before.filter(id => !surface.surfaceIds.includes(id)))
+        : [...before.filter(id => !surface.surfaceIds.includes(id)), ...surface.surfaceIds.filter(id => !before.includes(id))])
       let result = compiler.compile(surface.body, state)
       if (!result.ok && !whole) {
         deleteSurfaces(processor, surface.surfaceIds)
+        whole = true
         result = compiler.compile(surface.body, state)
       }
       if (!result.ok) {
@@ -79,8 +81,8 @@ export function AppSurfaceFeeder({
     }
     if (board && (redrawn || board.data !== dataRef.current)) {
       dataRef.current = board.data
-      // No value removes `/data`: the data file is gone.
-      if (board.data !== undefined || !redrawn) {
+      // No value removes `/data`: the data file is gone. A surface drawn whole has none.
+      if (board.data !== undefined || !whole) {
         const value = board.data !== undefined ? { value: board.data } : {}
         for (const surfaceId of surface.surfaceIds) {
           processor.processMessages({
