@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import {
   APP_PATCH_BATCH_MAX,
   appStateBytes,
+  utf8Length,
   applyAppPatch,
   applyAppPatches,
   checkAppPatches,
@@ -111,6 +112,26 @@ describe('the document', () => {
     })
     return { document, events }
   }
+
+  it('counts UTF-8 bytes as the encoder does, surrogate pairs included', () => {
+    for (const text of ['', 'abc', 'é', '€', '😀', 'a�', '�b', 'mixed é € 😀 end']) {
+      expect(utf8Length(text)).toBe(new TextEncoder().encode(text).length)
+    }
+  })
+
+  it('a key named as an Object member is removed like any other', () => {
+    expect(diffJson({ words: { valueOf: 3, a: 1 } }, { words: { a: 1 } })).toEqual([{ path: '/words/valueOf' }])
+    expect(applyAppPatch({ words: { toString: 1 } }, { path: '/words/toString' })).toEqual({ words: {} })
+  })
+
+  it('a change wider than a batch is published as the whole state', () => {
+    const { document, events } = make()
+    const rows = Object.fromEntries(Array.from({ length: APP_PATCH_BATCH_MAX + 1 }, (_, i) => [`r${i}`, i]))
+    document.apply([{ path: '', value: rows }])
+    expect(events.at(-1)!.patches).toEqual([{ path: '', value: rows }])
+    document.apply([{ path: '/r0', value: -1 }])
+    expect(events.at(-1)!.patches).toEqual([{ path: '/r0', value: -1 }])
+  })
 
   it('caps the state at the UTF-8 size of the file it writes', () => {
     const value = { name: 'é'.repeat(20) }

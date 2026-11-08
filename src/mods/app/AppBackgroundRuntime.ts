@@ -344,7 +344,9 @@ export class AppBackgroundRuntime {
   private stop(module: Module, reason: string): Promise<void> {
     const { appId } = module.ref
     if (this.modules.get(appId) === module) this.modules.delete(appId)
-    const done = (this.stopping.get(appId) ?? Promise.resolve()).then(() => this.teardown(module, reason))
+    const done = (this.stopping.get(appId) ?? Promise.resolve())
+      .then(() => this.teardown(module, reason))
+      .catch(error => this.options.report(`${module.ref.plugin}: the background module of ${appId} did not stop cleanly (${errorMessage(error)})`))
     this.stopping.set(appId, done)
     void done.finally(() => {
       if (this.stopping.get(appId) === done) this.stopping.delete(appId)
@@ -387,7 +389,7 @@ export class AppBackgroundRuntime {
     await module.document.dispose()
   }
 
-  /** The module cannot load as it is: off until its plugin or module changes. */
+  /** The module cannot load as it is: off until its plugin is switched off and on again, or its module path changes. */
   private off(module: Module, error: unknown): void {
     const refused = error instanceof ModuleRefused ? error : new ModuleRefused('failed', errorMessage(error))
     this.note(module, refused.state, refused.message)
@@ -401,7 +403,7 @@ export class AppBackgroundRuntime {
     const recent = module.crashes.filter(at => now - at < MOD_RESPAWN_WINDOW_MS)
     if (recent.length >= MOD_RESPAWN_LIMIT) {
       module.crashes = recent
-      this.note(module, 'dead', `${reason}; it crashed ${MOD_RESPAWN_LIMIT + 1} times within a minute, so it stays off until its plugin or module changes`)
+      this.note(module, 'dead', `${reason}; it crashed ${MOD_RESPAWN_LIMIT + 1} times within a minute, so it stays off until its plugin is switched off and on again`)
       this.options.report(`${module.ref.plugin}: the background module of ${module.ref.appId} stopped — ${module.reason}`)
       return
     }

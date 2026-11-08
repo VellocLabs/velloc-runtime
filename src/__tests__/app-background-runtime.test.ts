@@ -29,7 +29,7 @@ afterEach(async () => {
   resetAppStateBusForTests()
 })
 
-type Worker = ModWorkerHandle & { crash(message?: string): void; id: number }
+type Worker = ModWorkerHandle & { crash(message?: string): void; id: number; failClose?: boolean }
 
 const FOLDER = 'C:/home/.velloc/shared-workspace/app-pay-board'
 
@@ -73,7 +73,10 @@ function world(
         id,
         port: channel.port1,
         closed,
-        close: () => settle({ reason: 'closed' }),
+        close: () => {
+          if (worker.failClose) throw new Error('close failed')
+          settle({ reason: 'closed' })
+        },
         crash: message => settle({ reason: 'crashed', ...(message ? { message } : {}) }),
       }
       workers.push(worker)
@@ -206,6 +209,18 @@ describe('AppBackgroundRuntime — a synced app', () => {
     expect(liveAppState('pay-board')?.value, 'the old module going leaves the new one\'s live state').toBe(document.value)
     await document.flush()
     expect(JSON.parse(files.get(`${FOLDER}/data/latest.json`)!)).toMatchObject({ ticks: 2, saved: 'on stop' })
+  })
+
+  it('a stop that throws is reported and does not hold back the next module of the app', async () => {
+    const { runtime, ref, status, workers, reports } = world({ '/plugins/pay/bg.js': COUNTER, '/plugins/pay/bg2.js': COUNTER, '/plugins/pay/bg3.js': COUNTER })
+    runtime.sync([ref('/plugins/pay/bg.js')])
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    workers[0]!.failClose = true
+    runtime.sync([ref('/plugins/pay/bg2.js')])
+    runtime.sync([ref('/plugins/pay/bg3.js')])
+    await vi.waitFor(() => expect(reports).toContainEqual(expect.stringMatching(/did not stop cleanly \(close failed\)/)))
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    expect(runtime.document('pay-board')!.value).toMatchObject({ started: 'pay-board' })
   })
 
   it('waits for a window instead of failing', async () => {

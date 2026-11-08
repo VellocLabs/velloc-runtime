@@ -113,7 +113,7 @@ async function readText(fs: AppSurfaceHostOptions['fs'], path: string): Promise<
   }
 }
 
-/** The same board; the patches that led to it are not part of what it shows. A new `dataSeq` is a new board. */
+/** The same board; the patches that led to it are not part of what it shows. `dataSeq` first: a live batch differs there without serializing the board. */
 const sameState = (a: AppSurfaceState | undefined, b: AppSurfaceState): boolean =>
   a !== undefined &&
   a.dataSeq === b.dataSeq &&

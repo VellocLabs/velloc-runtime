@@ -19,8 +19,26 @@ export const APP_STATE_MAX_BYTES = 1024 * 1024
 /** The state as the document writes it, pretty-printed. */
 export const appStateText = (value: unknown): string => JSON.stringify(value, null, 2) ?? ''
 
+/** The UTF-8 size of `text`, counted without encoding it. */
+export function utf8Length(text: string): number {
+  let bytes = 0
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i)
+    if (code < 0x80) bytes += 1
+    else if (code < 0x800) bytes += 2
+    else if (code >= 0xd800 && code < 0xdc00 && i + 1 < text.length) {
+      const next = text.charCodeAt(i + 1)
+      if (next >= 0xdc00 && next < 0xe000) {
+        bytes += 4
+        i++
+      } else bytes += 3
+    } else bytes += 3
+  }
+  return bytes
+}
+
 /** The UTF-8 size of `appStateText(value)`. */
-export const appStateBytes = (value: unknown): number => new TextEncoder().encode(appStateText(value)).length
+export const appStateBytes = (value: unknown): number => utf8Length(appStateText(value))
 
 const FORBIDDEN_SEGMENTS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype'])
 
@@ -61,7 +79,7 @@ export function diffJson(before: unknown, after: unknown, base = ''): AppDataPat
   if (isObject(before) && isObject(after)) {
     const patches: AppDataPatch[] = []
     for (const key of Object.keys(before)) {
-      if (!(key in after)) patches.push({ path: `${base}/${escape(key)}` })
+      if (!Object.hasOwn(after, key)) patches.push({ path: `${base}/${escape(key)}` })
     }
     for (const key of Object.keys(after)) {
       if (FORBIDDEN_SEGMENTS.has(key)) continue
@@ -116,14 +134,14 @@ function applyAt(node: unknown, segments: readonly string[], index: number, valu
   const current = node ?? undefined
   if (last) {
     if (remove) {
-      if (!current || !(segment in current)) return current ?? {}
+      if (!current || !Object.hasOwn(current, segment)) return current ?? {}
       const { [segment]: _gone, ...rest } = current
       return rest
     }
     return { ...(current ?? {}), [segment]: value }
   }
   const child = current?.[segment]
-  if (remove && (current === undefined || !(segment in current))) return current ?? {}
+  if (remove && (current === undefined || !Object.hasOwn(current, segment))) return current ?? {}
   const next = segments[index + 1]!
   const seed = child !== undefined ? child : /^(0|[1-9]\d*|-)$/.test(next) ? [] : undefined
   return { ...(current ?? {}), [segment]: applyAt(seed, segments, index + 1, value, remove, path) }
