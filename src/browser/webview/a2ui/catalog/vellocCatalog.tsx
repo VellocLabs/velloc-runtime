@@ -7,6 +7,7 @@ import { createComponentImplementation, type ReactCatalogComponent } from '@a2ui
 import { Catalog, type ComponentApi } from '@a2ui/web_core/v1_0'
 import { basicCatalog } from '@a2ui/web_core/catalogs/basic/v1'
 import { TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import {
   BADGE_TONES,
   type BadgeTone,
@@ -47,24 +48,20 @@ export function badgeTone(tone: unknown): BadgeTone {
   return typeof tone === 'string' && (BADGE_TONES as readonly string[]).includes(tone) ? (tone as BadgeTone) : 'neutral'
 }
 
-const TONE_CLASS: Record<BadgeTone, string> = {
-  neutral: 'bg-muted text-muted-foreground',
-  info: 'bg-info/15 text-info',
-  success: 'bg-success/15 text-success',
-  warning: 'bg-warning/15 text-warning',
-  danger: 'bg-destructive/15 text-destructive',
-}
+const TONE_VARIANT = {
+  neutral: 'muted',
+  info: 'info',
+  success: 'success',
+  warning: 'warning',
+  danger: 'destructive',
+} as const satisfies Record<BadgeTone, string>
 
 function BadgeView({ text: label, tone }: { text?: unknown; tone?: unknown }): ReactElement {
   const known = badgeTone(tone)
   return (
-    <span
-      data-slot="a2ui-badge"
-      data-tone={known}
-      className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASS[known]}`}
-    >
+    <Badge data-slot="a2ui-badge" data-tone={known} variant={TONE_VARIANT[known]} className="h-auto rounded-full">
       {text(label)}
-    </span>
+    </Badge>
   )
 }
 
@@ -106,7 +103,7 @@ function MetricView({ label, value, delta, trend: bound, caption }: MetricProps)
       {(text(delta) || text(caption)) && (
         <span className="flex items-center gap-1 text-xs">
           {text(delta) && (
-            <span className={`inline-flex items-center gap-0.5 ${tone}`}>
+            <span data-trend={trend} className={`inline-flex items-center gap-0.5 ${tone}`}>
               {trend === 'up' && <TrendingUpIcon className="size-3.5" />}
               {trend === 'down' && <TrendingDownIcon className="size-3.5" />}
               {text(delta)}
@@ -142,7 +139,7 @@ function DataTableView({ columns = [], rows }: DataTableProps): ReactElement {
             <tr key={index} className="border-b last:border-b-0">
               {columns.map((column) => (
                 <td key={column.key} className={`px-2 py-1.5 ${align(column)} tabular-nums`}>
-                  {column.badge ? (
+                  {column.badge && text(row[column.key]) ? (
                     <BadgeView text={row[column.key]} tone={column.badge[text(row[column.key])]} />
                   ) : (
                     text(row[column.key])

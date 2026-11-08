@@ -37,9 +37,11 @@ export function colorAt(index: number, color?: string): string {
   return color ?? PALETTE[index % PALETTE.length]
 }
 
-/** A value with the chart's unit around it; no prefix or suffix leaves it as it is. */
+/** A value with the chart's unit around it, a minus sign leading the prefix; no prefix or suffix leaves it as it is. */
 export function valueText(value: unknown, prefix?: string, suffix?: string): string {
-  return `${prefix ?? ''}${typeof value === 'number' || typeof value === 'string' ? value : ''}${suffix ?? ''}`
+  const raw = typeof value === 'number' || typeof value === 'string' ? String(value) : ''
+  const negative = raw.startsWith('-')
+  return `${negative ? '-' : ''}${prefix ?? ''}${negative ? raw.slice(1) : raw}${suffix ?? ''}`
 }
 
 type ValueUnit = { valuePrefix?: string; valueSuffix?: string }

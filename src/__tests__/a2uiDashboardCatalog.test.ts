@@ -14,7 +14,7 @@ import { getRuntimeA2uiCompiler } from '../toolkit/builtin/a2ui/express/a2uiRunt
 
 const DASHBOARD = [
   'surface("sales")',
-  '$/orders = [{id: "#1", total: "$9,420", status: "Paid"}, {id: "#2", total: "$3,990", status: "Failed"}, {id: "#3", total: "$10", status: "Lost"}]',
+  '$/orders = [{id: "#1", total: "$9,420", status: "Paid"}, {id: "#2", total: "$3,990", status: "Failed"}, {id: "#3", total: "$10", status: "Lost"}, {id: "#4", total: "$5"}]',
   '$/kpi = {value: "$980K", delta: "-2.1%", trend: "down"}',
   '$/state = "warning"',
   '$/range = "Jan 1 – Mar 31, 2025"',
@@ -58,7 +58,7 @@ describe('the dashboard components of the Velloc catalog', () => {
     expect(badge.safeParse({ text: 'Paid', tone: { path: '/tone' } }).success, 'tone binds').toBe(true)
     const table = chartCatalogDefinitions.DataTable.schema
     expect(table.safeParse({ columns: [{ key: 's', label: 'S', badge: { Paid: 'success' } }], rows: [] }).success).toBe(true)
-    expect(table.safeParse({ columns: [{ key: 's', label: 'S', badge: { Paid: 'green' } }], rows: [] }).success, 'tones are named').toBe(false)
+    expect(table.safeParse({ columns: [{ key: 's', label: 'S', badge: { Paid: 'green' } }], rows: [] }).success, 'an unknown tone is drawn neutral, as on a Badge').toBe(true)
     expect(chartCatalogDefinitions.Metric.schema.safeParse({ label: 'A', value: 1, trend: { path: '/t' } }).success, 'trend binds').toBe(true)
     expect(chartCatalogDefinitions.BarChart.schema.safeParse({ data: [], xKey: 'm', series: [], valuePrefix: '$', valueSuffix: 'K' }).success).toBe(true)
   })
@@ -71,6 +71,9 @@ describe('the dashboard components of the Velloc catalog', () => {
     expect(badgeTone('green')).toBe('neutral')
     expect(valueText(360, '$', 'K')).toBe('$360K')
     expect(valueText(360)).toBe('360')
+    expect(valueText(-20, '$', 'K'), 'the sign leads the unit').toBe('-$20K')
+    expect(valueText('-5', '$')).toBe('-$5')
+    expect(valueText(0, '$')).toBe('$0')
   })
 
   it('a dashboard written in Express draws its headings, a bound trend and tone, and badge cells by value', async () => {
@@ -95,7 +98,13 @@ describe('the dashboard components of the Velloc catalog', () => {
       ['Lost', 'neutral'],
     ])
     const totals = [...view.querySelectorAll('[data-slot="a2ui-table"] td:nth-child(2)')]
+    expect(totals).toHaveLength(4)
     expect(totals.every(td => td.className.includes('text-right'))).toBe(true)
+    expect(view.querySelector('[data-slot="a2ui-table"] tr:nth-child(4) td:nth-child(3)')?.innerHTML, 'a missing value draws no pill').toBe('')
+    expect(view.querySelector('[data-slot="a2ui-metric"] [data-trend]')?.getAttribute('data-trend')).toBe('down')
+    const headers = [...view.querySelectorAll('[data-slot="a2ui-table"] th')]
+    expect(headers.every(th => th.className.includes('uppercase')), 'table headers are uppercase').toBe(true)
+    expect(view.querySelector('[data-slot="a2ui-metric"] > span')?.className, 'a Metric label is uppercase').toContain('uppercase')
   })
 
   it('the runtime compiler, built from the catalog document, accepts the same dashboard', async () => {

@@ -35,7 +35,6 @@ const valueSuffix = z.string().optional().describe('Text after each value on the
 /** A badge's colour, named by meaning so it follows the theme. */
 export const BADGE_TONES = ['neutral', 'info', 'success', 'warning', 'danger'] as const
 export type BadgeTone = (typeof BADGE_TONES)[number]
-const tone = z.enum(BADGE_TONES)
 
 export const chartCatalogDefinitions = {
   PieChart: {
@@ -112,7 +111,7 @@ export const chartCatalogDefinitions = {
               label: z.string().describe('The header.'),
               align: z.enum(['start', 'end']).optional().describe('"end" right-aligns the column, e.g. for amounts.'),
               badge: z
-                .record(z.string(), tone)
+                .record(z.string(), z.string())
                 .optional()
                 .describe('Draw each cell as a badge, toned by its value, e.g. {Paid: "success", Failed: "danger"}; other values are neutral.'),
             }),
