@@ -20,3 +20,16 @@
   font-family: var(--font-sans);
   color: var(--foreground);
 }
+
+/*
+ * Maximized, a surface whose root is a Card drops that card's frame so the app
+ * sits directly in the pane; nested cards keep theirs (F-1).
+ */
+[data-pane='a2ui'][data-maximized='true'] [data-slot='a2ui-surface'] > a2ui-card > .a2ui-card {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  margin: 0;
+  padding: 0;
+}
