@@ -10,7 +10,7 @@ import {
   type McpBridgeOperations,
   type NexusMcpServerLaunchConfig,
 } from './nativeBridge'
-import { currentMcpOAuthService, onMcpOAuthServiceChanged } from './oauth/mcpOAuthHolder'
+import { currentMcpOAuthService, onMcpOAuthServiceChanged, whenMcpOAuthService } from './oauth/mcpOAuthHolder'
 import { McpSignInRenewalError, type McpConnectAuth } from './oauth/McpOAuthService'
 import { normalizeMcpServerUrl } from './oauth/oauthKeys'
 import { isMcpUnauthorized, mcpSignInRequiredMessage, mcpSignInUrl } from './unauthorized'
@@ -467,12 +467,12 @@ export class MCPPool {
   }
 
   /**
-   * Runs `attempt` with the sign-in `url` holds (F-10). A sign-in the server
-   * asked for but that is missing gives `placeholder()` without connecting; a
-   * 401 with a sign-in that a refresh renews is tried once more; a 401 without
-   * one records that the server asks for a sign-in. A sign-in whose renewal
-   * failed for a reason that may pass leaves the server `failed`, still signed
-   * in, so a later refresh tries again.
+   * Runs `attempt` with the sign-in `url` holds (F-10). A missing sign-in the
+   * server asked for gives `placeholder()` without connecting; a 401 with a
+   * sign-in a refresh renews is tried once more; a 401 without one records
+   * that the server asks for a sign-in. A renewal that failed for a reason
+   * that may pass leaves the server `failed`, still signed in, for a later
+   * refresh. Before the boot installs the service, a connect waits for it.
    */
   private async withSignIn(
     url: string | undefined,
@@ -480,7 +480,7 @@ export class MCPPool {
     attempt: (auth: McpConnectAuth | undefined) => Promise<LiveServerLink>,
     placeholder: () => LiveServerLink,
   ): Promise<LiveServerLink> {
-    const service = url ? currentMcpOAuthService() : null
+    const service = !url ? null : ownCredentials ? currentMcpOAuthService() : await whenMcpOAuthService()
     if (!url || !service) return attempt(undefined)
     if (ownCredentials) {
       // The person's own credential replaces any sign-in the server waited for.

@@ -136,6 +136,9 @@ export class ManagerBootServices {
     void this.bootProviderModsOnce()
     void this.installModelCatalogOnce()
     void this.publishBinaryRegistryAtBoot()
+    // MCP server sign-in (F-10) needs the home, which storage may learn after
+    // the port attached; its records are read through that port.
+    if (this.host.getDirectBridgeTransport()) this.installMcpOAuth()
   }
 
   onDirectTransportAttached(transport: DirectPortBridgeTransport): void {

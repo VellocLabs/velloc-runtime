@@ -203,6 +203,8 @@ export class McpOAuthService {
   private readonly lastErrors = new Map<string, string>()
   private readonly stateListeners = new Set<(state: McpAuthState) => void>()
   private readonly authListeners = new Set<(url: string, signedIn: boolean) => void>()
+  /** Set once `load` has announced the stored sign-ins with a host present. */
+  private announcedStored = false
 
   constructor(options: McpOAuthServiceOptions) {
     this.options = options
@@ -245,10 +247,20 @@ export class McpOAuthService {
     return () => this.authListeners.delete(listener)
   }
 
-  /** Loads the records once, so the first published state is complete. */
+  /**
+   * Loads the records once, so the first published state is complete. The
+   * first load that finds a host announces every stored sign-in, so a pool
+   * that connected before the service could serve one (its server answered
+   * 401 and waits for a sign-in) reconnects with it.
+   */
   async load(): Promise<void> {
     await this.loadRecords()
     this.publish()
+    if (this.announcedStored || this.options.host() === null) return
+    this.announcedStored = true
+    for (const record of Object.values(this.records ?? {})) {
+      if (record.tokens) this.announce(record.url, true)
+    }
   }
 
   private publish(): void {

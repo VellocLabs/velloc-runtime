@@ -1,12 +1,30 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MCPPool } from '../mcp/pool'
 import type { McpBridgeOperations, NexusMcpServerLaunchConfig } from '../mcp/nativeBridge'
-import { configureMcpOAuthService } from '../mcp/oauth/mcpOAuthHolder'
-import { McpSignInRenewalError, type McpConnectAuth, type McpOAuthService } from '../mcp/oauth/McpOAuthService'
+import { setMcpHostProvider } from '../mcp/mcpHost'
+import { configureMcpOAuthService, MCP_OAUTH_SERVICE_WAIT_MS } from '../mcp/oauth/mcpOAuthHolder'
+import {
+  McpOAuthService,
+  McpSignInRenewalError,
+  type McpConnectAuth,
+  type McpOAuthHost,
+} from '../mcp/oauth/McpOAuthService'
+import { mcpOAuthKey } from '../mcp/oauth/oauthKeys'
+import { mcpOAuthRecordsPath } from '../mcp/oauth/oauthRecords'
+import type { MCPServerConfig } from '../mcp/types'
 import { isMcpUnauthorized, mcpSignInUrl } from '../mcp/unauthorized'
 import { pluginServerUrls, startInstallSignIns } from '../mcp/oauth/signInAfterInstall'
 import { installDirectoryTarget, type DirectoryOfferDeps } from '../customize/directoryOffer'
 import { installProcessFs, resetProcessFs, unconfiguredFs } from '../utils/fs/runtimeFs'
+import type { RuntimeFs } from '../utils/fs/runtimeFs'
+
+/** The browser-transport connect, for servers a module adds (`$.mcp.connect`). */
+const browser = vi.hoisted(() => ({ connect: vi.fn() }))
+vi.mock('../mcp/client', async importOriginal => ({
+  ...(await importOriginal<typeof import('../mcp/client')>()),
+  connectMCPServer: (options: unknown) => browser.connect(options),
+  disconnectMCPServer: async () => {},
+}))
 
 const URL_ = 'https://mcp.example.test/mcp'
 const HTTP: NexusMcpServerLaunchConfig = { transport: 'http', url: URL_ }
@@ -55,6 +73,42 @@ function fakeService(initial: McpConnectAuth | 'required' | null): FakeService {
   }
   configureMcpOAuthService(service as unknown as McpOAuthService)
   return service
+}
+
+/** A real service over an in-memory records file holding a sign-in for `URL_`, with a host present. */
+function storedSignInService(): McpOAuthService {
+  const files = new Map<string, string>([
+    [
+      mcpOAuthRecordsPath('/home/u'),
+      JSON.stringify({
+        version: 1,
+        servers: {
+          [mcpOAuthKey(URL_)!]: {
+            url: URL_,
+            tokens: {
+              tokenEndpoint: 'https://auth.example.test/token',
+              accessOrigin: 'https://mcp.example.test',
+              hasRefresh: true,
+              signedInAt: 1,
+            },
+          },
+        },
+      }),
+    ],
+  ])
+  const fs = {
+    readFile: async (path: string) => {
+      const text = files.get(path)
+      if (text === undefined) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+      return text
+    },
+    writeFile: async (path: string, text: string) => {
+      files.set(path, text)
+    },
+    mkdir: async () => {},
+  } as unknown as RuntimeFs
+  const host = { transportFetch: () => vi.fn() as never } as unknown as McpOAuthHost
+  return new McpOAuthService({ homeDir: () => '/home/u', fs: () => fs, host: () => host })
 }
 
 function bridge(overrides: Partial<McpBridgeOperations> = {}): McpBridgeOperations {
@@ -177,6 +231,110 @@ describe('MCPPool sign-in', () => {
     expect(p.getServer('notion')?.status).toBe('failed')
     expect(p.getServer('notion')?.error).toMatch(/could not be renewed: offline/)
     expect(service.markRequired).not.toHaveBeenCalled()
+  })
+})
+
+describe('MCPPool before the sign-in service exists', () => {
+  afterEach(() => {
+    setMcpHostProvider(null)
+    browser.connect.mockReset()
+    vi.useRealTimers()
+  })
+
+  const carriesBearer = (headers?: Record<string, string>) => /^Bearer /.test(headers?.Authorization ?? '')
+  /** A bridge whose server admits only a request carrying a sign-in. */
+  function guardedBridge(): McpBridgeOperations {
+    return bridge({
+      connect: vi.fn(async (_name: string, config: NexusMcpServerLaunchConfig) =>
+        carriesBearer(config.headers)
+          ? { ok: true, tools: [{ name: 'search' }] }
+          : { ok: false, tools: [], error: 'HTTP 401: invalid_token' },
+      ),
+    })
+  }
+  const SIGNED_IN_HEADERS = { Authorization: expect.stringMatching(/^Bearer \{\{secret:/) }
+
+  it('a server parked by a 401 at boot reconnects, signed in, once the service has loaded its records', async () => {
+    const b = guardedBridge()
+    const p = pool(b)
+    await p.init()
+    expect(p.getServer('notion')?.status).toBe('needs-auth')
+    expect(b.connect).toHaveBeenCalledTimes(1)
+
+    const service = storedSignInService()
+    configureMcpOAuthService(service)
+    await service.load()
+    await vi.waitFor(() => expect(p.getServer('notion')?.status).toBe('connected'))
+    expect(b.connect).toHaveBeenCalledTimes(2)
+    expect(b.connect).toHaveBeenLastCalledWith('notion', { ...HTTP, headers: SIGNED_IN_HEADERS })
+  })
+
+  it('a server a module added while the service was missing reconnects the same way', async () => {
+    browser.connect.mockImplementation(
+      async ({ name, config, auth }: { name: string; config: MCPServerConfig; auth?: McpConnectAuth }) =>
+        auth
+          ? { name, config, status: 'connected', tools: [{ name: 'search' }] }
+          : { name, config, status: 'needs-auth', tools: [], error: 'HTTP 401: invalid_token' },
+    )
+    installProcessFs(unconfiguredFs)
+    const p = new MCPPool({ cwd: '/w', projectServers: false })
+    await p.init()
+    const parked = await p.addServer({ name: 'notes', type: 'http', url: URL_ })
+    expect(parked.status).toBe('needs-auth')
+    expect(browser.connect).toHaveBeenCalledTimes(1)
+
+    const service = storedSignInService()
+    configureMcpOAuthService(service)
+    await service.load()
+    await vi.waitFor(() => expect(p.getServer('notes')?.status).toBe('connected'))
+    expect(browser.connect).toHaveBeenCalledTimes(2)
+    expect(browser.connect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ auth: expect.objectContaining({ headers: SIGNED_IN_HEADERS }) }),
+    )
+  })
+
+  it('a connect that starts with a host port but no service yet waits for the service', async () => {
+    vi.useFakeTimers()
+    setMcpHostProvider(() => ({ transport: {} as never }))
+    const b = guardedBridge()
+    const p = pool(b)
+    const booting = p.init()
+    await vi.advanceTimersByTimeAsync(50)
+    expect(b.connect).not.toHaveBeenCalled()
+
+    fakeService(SIGNED_IN)
+    await booting
+    expect(b.connect).toHaveBeenCalledTimes(1)
+    expect(b.connect).toHaveBeenCalledWith('notion', { ...HTTP, headers: SIGNED_IN.headers })
+    expect(p.getServer('notion')?.status).toBe('connected')
+  })
+
+  it('a host realm that never installs a service connects as before once the wait ends', async () => {
+    vi.useFakeTimers()
+    setMcpHostProvider(() => ({ transport: {} as never }))
+    const b = bridge()
+    const p = pool(b)
+    const booting = p.init()
+    await vi.advanceTimersByTimeAsync(MCP_OAUTH_SERVICE_WAIT_MS - 1)
+    expect(b.connect).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+    await booting
+    expect(b.connect).toHaveBeenCalledWith('notion', HTTP)
+    expect(p.getServer('notion')?.status).toBe('connected')
+  })
+
+  it("a server with the person's own credential does not wait", async () => {
+    vi.useFakeTimers()
+    setMcpHostProvider(() => ({ transport: {} as never }))
+    const keyed: NexusMcpServerLaunchConfig = { ...HTTP, headers: { Authorization: 'token' } }
+    const b = bridge()
+    const p = pool(b, keyed)
+    const booting = p.init()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(b.connect).toHaveBeenCalledWith('notion', keyed)
+    await booting
+    expect(p.getServer('notion')?.status).toBe('connected')
   })
 })
 

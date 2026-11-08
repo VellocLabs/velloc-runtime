@@ -592,6 +592,27 @@ describe('McpOAuthService tokens', () => {
     await reloaded.load()
     expect(reloaded.getState().servers).toEqual([{ url: SERVER_NORMALIZED, phase: 'signed-in' }])
   })
+
+  it('the first load with a host announces each stored sign-in, once', async () => {
+    const r = await signedIn()
+    let hostPresent = false
+    const reloaded = new McpOAuthService({
+      homeDir: () => '/home/u',
+      fs: () => memoryFs(r.files),
+      host: () => (hostPresent ? r.host : null),
+      now: () => 1_000_000,
+      oauth: r.oauth,
+    })
+    const changes: Array<[string, boolean]> = []
+    reloaded.onAuthChanged((url, signedIn) => changes.push([url, signedIn]))
+    await reloaded.load()
+    expect(changes).toEqual([])
+
+    hostPresent = true
+    await reloaded.load()
+    await reloaded.load()
+    expect(changes).toEqual([[SERVER_NORMALIZED, true]])
+  })
 })
 
 describe('McpOAuthService install-time sign-in', () => {
