@@ -1,4 +1,4 @@
-import { installRuntimeMcpOAuth } from '../../mcp/oauth/mcpOAuthHolder'
+import { installRuntimeMcpOAuth, markMcpOAuthUnavailable } from '../../mcp/oauth/mcpOAuthHolder'
 import type { DirectPortBridgeTransport } from '../bridge/DirectPortBridgeTransport'
 import type { BrowserHostManifest } from '../bridge/protocol/manifest'
 import { createBridgeRoute } from '../bridge/protocol/core'
@@ -347,8 +347,13 @@ export class ManagerBootServices {
   }
 
   /** Once a home is known; later calls republish availability for a new port or manifest. */
+  /** Installs the sign-in service once the home is known; storage ready
+   *  without one means this realm never has a service (F-10). */
   private installMcpOAuth(): void {
-    if (!this.host.getHomeDir()) return
+    if (!this.host.getHomeDir()) {
+      if (this.storageReady) markMcpOAuthUnavailable()
+      return
+    }
     const service = installRuntimeMcpOAuth({
       homeDir: () => this.host.getHomeDir(),
       fs: () => this.createTransportResolvingFs(),

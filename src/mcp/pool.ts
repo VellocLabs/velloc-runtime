@@ -11,7 +11,7 @@ import {
   type NexusMcpServerLaunchConfig,
 } from './nativeBridge'
 import { currentMcpOAuthService, onMcpOAuthServiceChanged, whenMcpOAuthService } from './oauth/mcpOAuthHolder'
-import { McpSignInRenewalError, type McpConnectAuth } from './oauth/McpOAuthService'
+import { McpSignInRenewalError, type McpConnectAuth, type McpOAuthService } from './oauth/McpOAuthService'
 import { normalizeMcpServerUrl } from './oauth/oauthKeys'
 import { isMcpUnauthorized, mcpSignInRequiredMessage, mcpSignInUrl } from './unauthorized'
 import type {
@@ -472,7 +472,9 @@ export class MCPPool {
    * sign-in a refresh renews is tried once more; a 401 without one records
    * that the server asks for a sign-in. A renewal that failed for a reason
    * that may pass leaves the server `failed`, still signed in, for a later
-   * refresh. Before the boot installs the service, a connect waits for it.
+   * refresh. Before the boot installs the service, a connect waits for it; a
+   * connect that went out unsigned and met 401 tries once more with a sign-in
+   * that became usable meanwhile (the host came up during the connect).
    */
   private async withSignIn(
     url: string | undefined,
@@ -481,7 +483,11 @@ export class MCPPool {
     placeholder: () => LiveServerLink,
   ): Promise<LiveServerLink> {
     const service = !url ? null : ownCredentials ? currentMcpOAuthService() : await whenMcpOAuthService()
-    if (!url || !service) return attempt(undefined)
+    if (!url || !service) {
+      const server = await attempt(undefined)
+      const late = !ownCredentials && server.status === 'needs-auth' ? currentMcpOAuthService() : null
+      return url && late ? this.retryUnsigned(late, url, server, attempt) : server
+    }
     if (ownCredentials) {
       // The person's own credential replaces any sign-in the server waited for.
       const server = await attempt(undefined)
@@ -502,10 +508,7 @@ export class MCPPool {
     if (auth === 'required') return placeholder()
     let server = await attempt(auth ?? undefined)
     if (server.status !== 'needs-auth') return server
-    if (!auth) {
-      await service.markRequired(url)
-      return server
-    }
+    if (!auth) return this.retryUnsigned(service, url, server, attempt)
     try {
       if (await service.handleUnauthorized(url)) {
         const renewed = await service.connectAuth(url).catch(() => null)
@@ -516,6 +519,20 @@ export class MCPPool {
       if (!failed) throw err
       server = failed
     }
+    return server
+  }
+
+  /** An unsigned connect met 401: connect once more if a sign-in is usable
+   *  now, else record that the server asks for one. */
+  private async retryUnsigned(
+    service: McpOAuthService,
+    url: string,
+    server: LiveServerLink,
+    attempt: (auth: McpConnectAuth | undefined) => Promise<LiveServerLink>,
+  ): Promise<LiveServerLink> {
+    const auth = await service.connectAuth(url).catch(() => null)
+    if (auth && auth !== 'required') return attempt(auth)
+    await service.markRequired(url)
     return server
   }
 
@@ -533,8 +550,8 @@ export class MCPPool {
     let off: (() => void) | null = null
     const attach = (): void => {
       off?.()
-      off = currentMcpOAuthService()?.onAuthChanged((url, signedIn) => {
-        void this.followSignIn(url, signedIn).catch(err =>
+      off = currentMcpOAuthService()?.onAuthChanged((url, signedIn, stored) => {
+        void this.followSignIn(url, signedIn, stored === true).catch(err =>
           console.warn('[mcp] following a sign-in failed:', err),
         )
       }) ?? null
@@ -547,7 +564,8 @@ export class MCPPool {
     }
   }
 
-  private async followSignIn(url: string, signedIn: boolean): Promise<void> {
+  /** A `stored` sign-in, announced at boot, leaves connected servers alone. */
+  private async followSignIn(url: string, signedIn: boolean, stored = false): Promise<void> {
     if (this.closed) return
     const target = normalizeMcpServerUrl(url)
     const matches = Array.from(this.servers.values()).filter(server => {
@@ -555,8 +573,9 @@ export class MCPPool {
       return own !== undefined && normalizeMcpServerUrl(own) === target
     })
     if (signedIn) {
-      await Promise.all(matches.map(server => this.reconnectSignedIn(server)))
-      if (matches.some(server => this.servers.get(server.name)?.status === 'connected')) {
+      const targets = stored ? matches.filter(server => server.status !== 'connected') : matches
+      await Promise.all(targets.map(server => this.reconnectSignedIn(server)))
+      if (targets.some(server => this.servers.get(server.name)?.status === 'connected')) {
         this.notifyAuthorized()
       }
       return

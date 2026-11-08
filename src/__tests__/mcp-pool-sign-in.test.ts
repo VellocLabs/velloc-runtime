@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MCPPool } from '../mcp/pool'
 import type { McpBridgeOperations, NexusMcpServerLaunchConfig } from '../mcp/nativeBridge'
 import { setMcpHostProvider } from '../mcp/mcpHost'
-import { configureMcpOAuthService, MCP_OAUTH_SERVICE_WAIT_MS } from '../mcp/oauth/mcpOAuthHolder'
+import {
+  configureMcpOAuthService,
+  markMcpOAuthUnavailable,
+  MCP_OAUTH_SERVICE_WAIT_MS,
+} from '../mcp/oauth/mcpOAuthHolder'
 import {
   McpOAuthService,
   McpSignInRenewalError,
@@ -17,6 +21,7 @@ import { pluginServerUrls, startInstallSignIns } from '../mcp/oauth/signInAfterI
 import { installDirectoryTarget, type DirectoryOfferDeps } from '../customize/directoryOffer'
 import { installProcessFs, resetProcessFs, unconfiguredFs } from '../utils/fs/runtimeFs'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
+import type { McpOAuthTokenRecord } from '../mcp/oauth/oauthRecords'
 
 /** The browser-transport connect, for servers a module adds (`$.mcp.connect`). */
 const browser = vi.hoisted(() => ({ connect: vi.fn() }))
@@ -41,12 +46,12 @@ type FakeService = {
   handleUnauthorized: ReturnType<typeof vi.fn>
   signInIfRequired: ReturnType<typeof vi.fn>
   clearRequired: ReturnType<typeof vi.fn>
-  onAuthChanged: (listener: (url: string, signedIn: boolean) => void) => () => void
-  announce: (url: string, signedIn: boolean) => void
+  onAuthChanged: (listener: (url: string, signedIn: boolean, stored?: boolean) => void) => () => void
+  announce: (url: string, signedIn: boolean, stored?: boolean) => void
 }
 
 function fakeService(initial: McpConnectAuth | 'required' | null): FakeService {
-  const listeners = new Set<(url: string, signedIn: boolean) => void>()
+  const listeners = new Set<(url: string, signedIn: boolean, stored?: boolean) => void>()
   const service: FakeService = {
     auth: initial,
     refreshWorks: false,
@@ -67,16 +72,19 @@ function fakeService(initial: McpConnectAuth | 'required' | null): FakeService {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
-    announce: (url, signedIn) => {
-      for (const listener of listeners) listener(url, signedIn)
+    announce: (url, signedIn, stored) => {
+      for (const listener of listeners) listener(url, signedIn, stored)
     },
   }
   configureMcpOAuthService(service as unknown as McpOAuthService)
   return service
 }
 
-/** A real service over an in-memory records file holding a sign-in for `URL_`, with a host present. */
-function storedSignInService(): McpOAuthService {
+/** A real service over an in-memory records file holding a sign-in for `URL_`; a host is present
+ *  while `hostPresent()` says so. */
+function storedSignInService(
+  options: { tokens?: Partial<McpOAuthTokenRecord>; hostPresent?: () => boolean; now?: number } = {},
+): McpOAuthService {
   const files = new Map<string, string>([
     [
       mcpOAuthRecordsPath('/home/u'),
@@ -90,6 +98,7 @@ function storedSignInService(): McpOAuthService {
               accessOrigin: 'https://mcp.example.test',
               hasRefresh: true,
               signedInAt: 1,
+              ...options.tokens,
             },
           },
         },
@@ -108,7 +117,13 @@ function storedSignInService(): McpOAuthService {
     mkdir: async () => {},
   } as unknown as RuntimeFs
   const host = { transportFetch: () => vi.fn() as never } as unknown as McpOAuthHost
-  return new McpOAuthService({ homeDir: () => '/home/u', fs: () => fs, host: () => host })
+  const hostPresent = options.hostPresent ?? (() => true)
+  return new McpOAuthService({
+    homeDir: () => '/home/u',
+    fs: () => fs,
+    host: () => (hostPresent() ? host : null),
+    ...(options.now !== undefined ? { now: () => options.now! } : {}),
+  })
 }
 
 function bridge(overrides: Partial<McpBridgeOperations> = {}): McpBridgeOperations {
@@ -322,6 +337,108 @@ describe('MCPPool before the sign-in service exists', () => {
     await booting
     expect(b.connect).toHaveBeenCalledWith('notion', HTTP)
     expect(p.getServer('notion')?.status).toBe('connected')
+  })
+
+  it('a connect that went out unsigned because the host was not up retries once the sign-in is usable', async () => {
+    let hostUp = false
+    const service = storedSignInService({ hostPresent: () => hostUp })
+    configureMcpOAuthService(service)
+    await service.load()
+    const guarded = guardedBridge()
+    const b = bridge({
+      connect: vi.fn(async (name: string, config: NexusMcpServerLaunchConfig) => {
+        const answer = await guarded.connect(name, config)
+        hostUp = true
+        await service.load()
+        return answer
+      }),
+    })
+    const p = pool(b)
+    await p.init()
+    expect(p.getServer('notion')?.status).toBe('connected')
+    expect(b.connect).toHaveBeenCalledTimes(2)
+    expect(b.connect).toHaveBeenLastCalledWith('notion', { ...HTTP, headers: SIGNED_IN_HEADERS })
+  })
+
+  it('a server the service was installed during reconnects signed in, though the announcement came early', async () => {
+    const service = storedSignInService()
+    const guarded = guardedBridge()
+    const b = bridge({
+      connect: vi.fn(async (name: string, config: NexusMcpServerLaunchConfig) => {
+        const answer = await guarded.connect(name, config)
+        if (!carriesBearer(config.headers)) {
+          configureMcpOAuthService(service)
+          await service.load()
+        }
+        return answer
+      }),
+    })
+    const p = pool(b)
+    await p.init()
+    expect(p.getServer('notion')?.status).toBe('connected')
+    expect(b.connect).toHaveBeenLastCalledWith('notion', { ...HTTP, headers: SIGNED_IN_HEADERS })
+  })
+
+  it('a stored sign-in whose access token expired with no refresh token is not announced', async () => {
+    const b = guardedBridge()
+    const p = pool(b)
+    await p.init()
+    expect(p.getServer('notion')?.status).toBe('needs-auth')
+
+    const service = storedSignInService({ tokens: { hasRefresh: false, expiresAt: 1_000 }, now: 5_000 })
+    const heard: Array<[string, boolean]> = []
+    service.onAuthChanged((url, signedIn) => heard.push([url, signedIn]))
+    configureMcpOAuthService(service)
+    await service.load()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(heard).toEqual([])
+    expect(b.connect).toHaveBeenCalledTimes(1)
+    expect(p.getServer('notion')?.status).toBe('needs-auth')
+  })
+
+  it('a stored sign-in with an expired access token but a refresh token is announced', async () => {
+    const service = storedSignInService({ tokens: { expiresAt: 1_000 }, now: 5_000 })
+    const heard: Array<[string, boolean]> = []
+    service.onAuthChanged((url, signedIn) => heard.push([url, signedIn]))
+    await service.load()
+    expect(heard).toEqual([[URL_, true]])
+  })
+
+  it('the boot-time announcement leaves a server that is already connected alone', async () => {
+    const service = fakeService(SIGNED_IN)
+    const b = bridge()
+    const p = pool(b)
+    await p.init()
+    expect(p.getServer('notion')?.status).toBe('connected')
+    const authorized = vi.fn()
+    p.onServersAuthorized(authorized)
+
+    service.announce(URL_, true, true)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(b.disconnect).not.toHaveBeenCalled()
+    expect(b.connect).toHaveBeenCalledTimes(1)
+    expect(authorized).not.toHaveBeenCalled()
+  })
+
+  it('a host realm whose boot settled without a sign-in service connects at once', async () => {
+    vi.useFakeTimers()
+    setMcpHostProvider(() => ({ transport: {} as never }))
+    const b = bridge()
+    const p = pool(b)
+    const booting = p.init()
+    await vi.advanceTimersByTimeAsync(50)
+    expect(b.connect).not.toHaveBeenCalled()
+
+    markMcpOAuthUnavailable()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(b.connect).toHaveBeenCalledWith('notion', HTTP)
+    await booting
+
+    const second = pool(bridge())
+    const again = second.init()
+    await vi.advanceTimersByTimeAsync(0)
+    await again
+    expect(second.getServer('notion')?.status).toBe('connected')
   })
 
   it("a server with the person's own credential does not wait", async () => {

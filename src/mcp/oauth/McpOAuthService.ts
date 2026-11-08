@@ -202,7 +202,7 @@ export class McpOAuthService {
   private readonly classified = new Set<string>()
   private readonly lastErrors = new Map<string, string>()
   private readonly stateListeners = new Set<(state: McpAuthState) => void>()
-  private readonly authListeners = new Set<(url: string, signedIn: boolean) => void>()
+  private readonly authListeners = new Set<(url: string, signedIn: boolean, stored?: boolean) => void>()
   /** Set once `load` has announced the stored sign-ins with a host present. */
   private announcedStored = false
 
@@ -241,15 +241,17 @@ export class McpOAuthService {
     return () => this.stateListeners.delete(listener)
   }
 
-  /** A server gained (`true`) or lost (`false`) its sign-in. */
-  onAuthChanged(listener: (url: string, signedIn: boolean) => void): () => void {
+  /** A server gained (`true`) or lost (`false`) its sign-in; `stored` marks a
+   *  sign-in kept from before, announced by the first load with a host. */
+  onAuthChanged(listener: (url: string, signedIn: boolean, stored?: boolean) => void): () => void {
     this.authListeners.add(listener)
     return () => this.authListeners.delete(listener)
   }
 
   /**
    * Loads the records once, so the first published state is complete. The
-   * first load that finds a host announces every stored sign-in, so a pool
+   * first load that finds a host announces every stored sign-in still usable
+   * (an unexpired access token, or a refresh token to renew it), so a pool
    * that connected before the service could serve one (its server answered
    * 401 and waits for a sign-in) reconnects with it.
    */
@@ -259,7 +261,10 @@ export class McpOAuthService {
     if (this.announcedStored || this.options.host() === null) return
     this.announcedStored = true
     for (const record of Object.values(this.records ?? {})) {
-      if (record.tokens) this.announce(record.url, true)
+      const tokens = record.tokens
+      if (!tokens) continue
+      if (!tokens.hasRefresh && tokens.expiresAt !== undefined && this.now() >= tokens.expiresAt) continue
+      this.announce(record.url, true, true)
     }
   }
 
@@ -268,8 +273,8 @@ export class McpOAuthService {
     for (const listener of Array.from(this.stateListeners)) listener(state)
   }
 
-  private announce(url: string, signedIn: boolean): void {
-    for (const listener of Array.from(this.authListeners)) listener(url, signedIn)
+  private announce(url: string, signedIn: boolean, stored = false): void {
+    for (const listener of Array.from(this.authListeners)) listener(url, signedIn, stored)
   }
 
   // ---- records -------------------------------------------------------------
