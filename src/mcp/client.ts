@@ -14,6 +14,15 @@ import type {
 export const CLIENT_NAME = 'nexus-web'
 export const CLIENT_VERSION = '0.1.0'
 
+/** The SDK `Client` for one MCP server; every Velloc MCP connection is built
+ *  here so each carries the tolerant output-schema validator. */
+export function createMcpClient(serverName: string): Client {
+  return new Client(
+    { name: CLIENT_NAME, version: CLIENT_VERSION },
+    { capabilities: {}, jsonSchemaValidator: createTolerantSchemaValidator(serverName) },
+  )
+}
+
 /** How long a browser-transport connect may take before the server is marked
  *  failed — the worker path's bound (workerServers.ts MCP_CONNECT_TIMEOUT_MS).
  *  Without it one unresponsive server holds the whole runtime build, which
@@ -55,10 +64,7 @@ export async function connectMCPServer(
       fs: options.fs,
       ...(options.auth ? { auth: options.auth } : {}),
     })
-    const client = new Client(
-      { name: CLIENT_NAME, version: CLIENT_VERSION },
-      { capabilities: {}, jsonSchemaValidator: createTolerantSchemaValidator() },
-    )
+    const client = createMcpClient(name)
     const connectTimeoutMs = options.connectTimeoutMs ?? MCP_CLIENT_CONNECT_TIMEOUT_MS
     let timer: ReturnType<typeof setTimeout> | undefined
     try {

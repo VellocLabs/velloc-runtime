@@ -5,13 +5,13 @@
  * connection (including one on a replaced port) answers `MCP server is not
  * connected…`, which `MCPPool.callTool` retries once.
  */
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
 import { createBridgeRoute } from '../browser/bridge/browserBridgeProtocol'
 import { createNativePrimitives } from '../browser/bridge/nativePrimitives'
-import { CLIENT_NAME, CLIENT_VERSION } from './client'
+import { createMcpClient } from './client'
 import { cleanMcpInstructions } from './instructions'
 import type { McpHostAccess } from './mcpHost'
 import {
@@ -25,7 +25,6 @@ import {
   ShellStdioClientTransport,
   type ShellStdioTransportOptions,
 } from './primitiveTransports'
-import { createTolerantSchemaValidator } from './schemaValidator'
 import type { MCPToolDescriptor } from './types'
 import { summarizeMcpTools, type McpToolSummary } from './toolSummary'
 
@@ -212,10 +211,7 @@ export function createWorkerMcpOperations(
       config = { ...config, cwd: await hostCwd(host.transport, options.createRequestId) }
     }
     const transport = buildTransport(host, config, allowPrivateNetwork)
-    const client = new Client(
-      { name: CLIENT_NAME, version: CLIENT_VERSION },
-      { capabilities: {}, jsonSchemaValidator: createTolerantSchemaValidator() },
-    )
+    const client = createMcpClient(label)
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       await Promise.race([

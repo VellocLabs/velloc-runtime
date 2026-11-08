@@ -7,22 +7,27 @@ import type {
 } from '@modelcontextprotocol/sdk/validation/types.js'
 
 /**
- * Contract: the `jsonSchemaValidator` of every SDK `Client` Velloc creates.
- * Velloc reads a tool result as content and never rejects it on
- * output-schema grounds. A declared `outputSchema` that fails to compile
- * yields a validator that accepts every value, so the tool stays listed; a
- * result that disagrees with a schema that did compile is reported once per
- * schema through `console.warn('[mcp] …')` and then passed through as valid.
- * Without this one unparseable schema costs a server its whole tool list,
- * and a correct call fails on the server's own declaration.
+ * Contract: the `jsonSchemaValidator` of every SDK `Client` Velloc creates
+ * (`createMcpClient`). Velloc reads a tool result as content and never
+ * rejects its `structuredContent` for disagreeing with the tool's declared
+ * `outputSchema`. A schema that fails to compile yields a validator that
+ * accepts every value, so the tool stays listed; a result that disagrees with
+ * a schema that did compile is reported once per schema through
+ * `console.warn('[mcp] Server "<name>": …')` and then passed through as
+ * valid, and later results for that schema are not checked again. Nothing
+ * downstream may treat `structuredContent` as schema-checked. The SDK still
+ * rejects a non-error result that omits `structuredContent` for a tool that
+ * declares an `outputSchema`; this validator is not consulted there.
  *
  * Ajv is set up as the SDK's default validator is, except patterns compile
  * without the `u` flag: servers publish patterns such as `^https\://` that
  * only the unicode mode rejects.
  */
 export function createTolerantSchemaValidator(
+  serverName: string,
   warn: (message: string) => void = message => console.warn(message),
 ): jsonSchemaValidator {
+  const prefix = `[mcp] Server "${serverName}":`
   const ajv = new Ajv({
     strict: false,
     validateFormats: true,
@@ -39,23 +44,25 @@ export function createTolerantSchemaValidator(
         compiled = ajv.compile(schema)
       } catch (err) {
         warn(
-          `[mcp] A tool's output schema does not compile; its results are accepted unchecked: ${describe(err)}`,
+          `${prefix} a tool's output schema does not compile; its results are accepted unchecked: ${describe(err)}`,
         )
         return input => ({ valid: true, data: input as T, errorMessage: undefined })
       }
       let reported = false
       return input => {
-        let mismatch: string | undefined
-        try {
-          if (!compiled(input)) mismatch = ajv.errorsText(compiled.errors)
-        } catch (err) {
-          mismatch = describe(err)
-        }
-        if (mismatch !== undefined && !reported) {
-          reported = true
-          warn(
-            `[mcp] A tool result does not match the tool's declared output schema; passing it through: ${mismatch}`,
-          )
+        if (!reported) {
+          let mismatch: string | undefined
+          try {
+            if (!compiled(input)) mismatch = ajv.errorsText(compiled.errors)
+          } catch (err) {
+            mismatch = describe(err)
+          }
+          if (mismatch !== undefined) {
+            reported = true
+            warn(
+              `${prefix} a tool result does not match the tool's declared output schema; passing it through: ${mismatch}`,
+            )
+          }
         }
         return { valid: true, data: input as T, errorMessage: undefined }
       }

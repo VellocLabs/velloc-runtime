@@ -7,11 +7,10 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 
-// A remote server's declared output schemas must never cost Velloc its tools
-// or a correct call: one `pattern` the unicode regexp mode rejects made the
-// SDK's listTools throw (so every tool of the server was lost), and a result
-// carrying a field its own schema forbids made callTool throw. Velloc reads a
-// result as content; the validator warns and passes it through.
+// A remote server's declared output schemas never cost Velloc its tools or a
+// structured result: a `pattern` only the unicode regexp mode rejects still
+// lists every tool, and a result carrying a field its own schema forbids is
+// returned with one warning naming the server (F-10).
 const link: { transport?: Transport } = {}
 vi.mock('../mcp/transport', () => ({
   createTransport: async () => link.transport,
@@ -112,7 +111,7 @@ describe('MCP client output-schema tolerance', () => {
       .map(call => String(call[0]))
       .filter(line => line.includes('declared output schema'))
     expect(schemaWarnings).toHaveLength(1)
-    expect(schemaWarnings[0]).toMatch(/^\[mcp\] /)
+    expect(schemaWarnings[0]).toMatch(/^\[mcp\] Server "fixture": /)
     expect(schemaWarnings[0]).toContain('additional properties')
     await disconnectMCPServer(live)
   })
@@ -135,21 +134,41 @@ describe('MCP client output-schema tolerance', () => {
 describe('createTolerantSchemaValidator', () => {
   it('accepts every value for a schema that does not compile', () => {
     const warnings: string[] = []
-    const validator = createTolerantSchemaValidator(message => warnings.push(message))
+    const validator = createTolerantSchemaValidator('fixture', message => warnings.push(message))
     const validate = validator.getValidator({ type: 'string', pattern: '(' })
     expect(validate(42)).toEqual({ valid: true, data: 42, errorMessage: undefined })
     expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toMatch(/^\[mcp\] .*does not compile/)
+    expect(warnings[0]).toMatch(/^\[mcp\] Server "fixture": .*does not compile/)
   })
 
   it('keeps formats and reports a mismatch once per schema', () => {
     const warnings: string[] = []
-    const validator = createTolerantSchemaValidator(message => warnings.push(message))
+    const validator = createTolerantSchemaValidator('fixture', message => warnings.push(message))
     const validate = validator.getValidator({ type: 'string', format: 'uri' })
     expect(validate('https://example.test/').valid).toBe(true)
     expect(validate('not a uri').valid).toBe(true)
     expect(validate('still not').valid).toBe(true)
     expect(warnings).toHaveLength(1)
     expect(warnings[0]).toContain('format "uri"')
+  })
+
+  it('stops checking a schema once its mismatch is reported', () => {
+    const validator = createTolerantSchemaValidator('fixture', () => {})
+    let reads = 0
+    const probe = {
+      get value() {
+        reads += 1
+        return 1
+      },
+    }
+    const validate = validator.getValidator({
+      type: 'object',
+      properties: { value: { type: 'string' } },
+    })
+    validate(probe)
+    const afterFirst = reads
+    expect(afterFirst).toBeGreaterThan(0)
+    validate(probe)
+    expect(reads).toBe(afterFirst)
   })
 })
