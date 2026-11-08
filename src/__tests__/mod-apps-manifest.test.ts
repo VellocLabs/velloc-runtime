@@ -251,10 +251,28 @@ describe('an app with a background module', () => {
     const decls = checkTemplateDecls('pay', { board: { title: 'P', app: { ...APP, background: './bg/app.js' } } }, errors, 'beta')
     expect(decls?.board?.app?.background).toBe('./bg/app.js')
     expect(errors).toEqual([])
-    for (const bad of ['bg/app.js', './../x.js', './bg\\app.js', './bg/app.json', 7]) {
+    for (const bad of ['bg/app.js', './../x.js', './bg\\app.js', './bg/app.json', 7, { fs: {} }]) {
       const refused: string[] = []
       expect(checkTemplateDecls('pay', { board: { title: 'P', app: { ...APP, background: bad } } }, refused, 'beta')).toBeUndefined()
       expect(refused.map(line => line.split(':')[0])).toEqual(['templates.board.app.background'])
+    }
+  })
+
+  it('takes { module, fs } with the folders it may reach, folded; a bad folder refuses the template naming the field', () => {
+    const errors: string[] = []
+    const background = { module: './bg/app.js', fs: { read: ['~/Downloads/', '~/Documents/invoices'], write: ['~/Documents/invoices'] } }
+    const decls = checkTemplateDecls('pay', { board: { title: 'P', app: { ...APP, background } } }, errors, 'beta')
+    expect(errors).toEqual([])
+    expect(decls?.board?.app).toMatchObject({
+      background: './bg/app.js',
+      backgroundFs: { read: ['~/Downloads'], write: ['~/Documents/invoices'] },
+    })
+    const empty = checkTemplateDecls('pay', { board: { title: 'P', app: { ...APP, background: { module: './bg/app.js', fs: {} } } } }, errors, 'beta')
+    expect(empty?.board?.app?.backgroundFs).toBeUndefined()
+    for (const bad of [{ read: ['~/.ssh'] }, { write: ['~/'] }, { read: 'x' }, [], { read: ['~/a/../b'] }]) {
+      const refused: string[] = []
+      expect(checkTemplateDecls('pay', { board: { title: 'P', app: { ...APP, background: { module: './bg/app.js', fs: bad } } } }, refused, 'beta')).toBeUndefined()
+      expect(refused.map(line => line.split(':')[0])).toEqual(['templates.board.app.background.fs'])
     }
   })
 
@@ -273,6 +291,7 @@ describe('an app with a background module', () => {
         owner: 'pay@mkt',
         decl: { seed: './app', seedVersion: 1, entry: 'app.a2ui', background: './bg/app.js' },
         mcp: { name: 'pay', path: '/plugins/pay', installIdentifier: 'pay@mkt', manifest: { name: 'pay' } },
+        consentId: 'pay@mkt',
       },
     ])
   })

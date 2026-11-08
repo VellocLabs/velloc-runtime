@@ -146,6 +146,20 @@ describe('ProviderConsentDialog', () => {
     expect(screen.queryByTestId('consent-sign-zen')).toBeNull()
   })
 
+  it("an app's folders are listed, read and written apart, with their own intro and standing line; no provider, no provider line", () => {
+    open({}, status({ grant: { providers: {}, folders: { read: ['~/Downloads'], write: ['~/Documents/invoices'] } } }))
+    expect(screen.getByText(/runs in the background and asks to reach folders of yours/)).toBeTruthy()
+    expect(screen.getByTestId('consent-folders-read').textContent).toBe('May read: ~/Downloads')
+    expect(screen.getByTestId('consent-folders-write').textContent).toBe('May read and write: ~/Documents/invoices')
+    expect(screen.getByTestId('consent-folders-standing').textContent).toMatch(/with no session open/)
+    expect(screen.queryByTestId('consent-standing')).toBeNull()
+    cleanup()
+    open({}, status({ grant: { ...GRANT, folders: { read: ['~/Downloads'], write: [] } } }))
+    expect(screen.getByText(/adds model providers and asks to reach folders of yours/)).toBeTruthy()
+    expect(screen.getByTestId('consent-standing')).toBeTruthy()
+    expect(screen.queryByTestId('consent-folders-write')).toBeNull()
+  })
+
   it('Turn on and Cancel are the two ways out; a failure is shown inside the dialog', () => {
     const calls = open({ error: 'no connection' })
     expect(screen.getByTestId('consent-error').textContent).toBe("Couldn't turn it on: no connection")

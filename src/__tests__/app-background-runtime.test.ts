@@ -54,6 +54,15 @@ function world(
       writes.push(path.split('\\').join('/'))
     },
     mkdir: async () => undefined,
+    stat: async (path: string) => {
+      const key = path.split('\\').join('/').replace(/\/+$/, '')
+      const text = files.get(key)
+      if (text !== undefined) return { isFile: () => true, isDirectory: () => false, size: text.length, mtimeMs: 1 }
+      if ([...files.keys()].some(file => file.startsWith(`${key}/`)) || FOLDER.startsWith(key)) {
+        return { isFile: () => false, isDirectory: () => true, size: 0, mtimeMs: 1 }
+      }
+      throw Object.assign(new Error(`ENOENT ${path}`), { code: 'ENOENT' })
+    },
   }
   const runtime = new AppBackgroundRuntime({
     readModule: async path => {
@@ -429,5 +438,46 @@ describe('AppBackgroundRuntime — $.mcp', () => {
     const document = runtime.document('pay-board')!
     await vi.waitFor(() => expect(document.value).toHaveProperty('result'))
     expect(document.value).toEqual({ connect: { error: 'NotSupportedError' }, result: { error: 'NotSupportedError' } })
+  })
+})
+
+describe('AppBackgroundRuntime — declared folders', () => {
+  /** Reads a file of a declared folder, writes into the writable one, tries the read-only one and an outside path. */
+  const FOLDER_USER = `
+    export function register(on) {
+      on('app.start', async ($, e) => {
+        const out = { folders: e.folders }
+        out.read = await $.fs.read('C:/home/Downloads/in.csv', 'text')
+        await $.fs.write('C:/home/Documents/invoices/2026/new.txt', 'n')
+        try { await $.fs.write('C:/home/Downloads/out.txt', 'x') } catch (error) { out.readOnly = error.name }
+        try { await $.fs.read('C:/home/secret.txt', 'text') } catch (error) { out.outside = error.name }
+        await $.app.state.set(out)
+      })
+    }
+  `
+  const FOLDERS = { read: ['C:/home/Downloads'], write: ['C:/home/Documents/invoices'] }
+
+  it("reaches its approved folders beside the app's own, writes only where declared, and app.start names them", async () => {
+    const { runtime, ref, status, files } = world(
+      { '/plugins/pay/bg.js': FOLDER_USER },
+      { files: { 'C:/home/Downloads/in.csv': 'csv', 'C:/home/secret.txt': 's' } },
+    )
+    runtime.sync([{ ...ref('/plugins/pay/bg.js'), folders: FOLDERS }])
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    const document = runtime.document('pay-board')!
+    await vi.waitFor(() => expect(document.value).toHaveProperty('outside'))
+    expect(document.value).toEqual({ folders: FOLDERS, read: 'csv', readOnly: 'NotAllowedError', outside: 'NotAllowedError' })
+    expect(files.get('C:/home/Documents/invoices/2026/new.txt')).toBe('n')
+    expect(files.has('C:/home/Downloads/out.txt')).toBe(false)
+  })
+
+  it('without approved folders the module stays in the app folder and app.start names none', async () => {
+    const { runtime, ref, status } = world({ '/plugins/pay/bg.js': FOLDER_USER }, { files: { 'C:/home/Downloads/in.csv': 'csv' } })
+    runtime.sync([ref('/plugins/pay/bg.js')])
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    const document = runtime.document('pay-board')!
+    await sleep(50)
+    expect(document.value).toEqual({})
   })
 })

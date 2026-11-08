@@ -43,11 +43,11 @@ const deps = { homeDir: 'C:/home', fs: {} as never, transport: () => null }
 describe('the ref', () => {
   it('names the app folder, the data file as the state file, or data/state.json without one', () => {
     const slash = (path: string) => path.split('\\').join('/')
-    const ref = appBackgroundRef('C:/home', template('pay-board', 'data/latest.json'))
+    const ref = appBackgroundRef('C:/home', template('pay-board', 'data/latest.json'), 'exempt')
     expect(ref).toMatchObject({ plugin: 'pay', path: 'C:/plugins/pay/bg.js', root: 'C:/plugins/pay', provenance: 'pay@mkt', appId: 'pay-board' })
     expect(slash(ref.folder)).toBe('C:/home/.velloc/shared-workspace/app-pay-board')
     expect(slash(ref.stateFile)).toBe('C:/home/.velloc/shared-workspace/app-pay-board/data/latest.json')
-    expect(slash(appBackgroundRef('C:/home', template('pay-board')).stateFile)).toBe('C:/home/.velloc/shared-workspace/app-pay-board/data/state.json')
+    expect(slash(appBackgroundRef('C:/home', template('pay-board'), 'exempt').stateFile)).toBe('C:/home/.velloc/shared-workspace/app-pay-board/data/state.json')
     expect(ref.mcpOwner).toBe(MCP_OWNER)
   })
 })
@@ -97,5 +97,45 @@ describe('the boot', () => {
     notify?.()
     await vi.waitFor(() => expect(appBackgroundRuntime()).toBe(runtime))
     expect(createRuntime).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('the declared folders', () => {
+  const slash = (path: string) => path.split('\\').join('/')
+  const declaring = (): AppBackgroundTemplate => {
+    const app = template('pay-board')
+    app.decl.backgroundFs = { read: ['~/Downloads'], write: ['~/Documents/invoices'] }
+    return app
+  }
+  const expanded = { read: ['C:/home/Downloads'], write: ['C:/home/Documents/invoices'] }
+  const foldersOf = (ref: AppBackgroundRef) => ref.folders && { read: ref.folders.read.map(slash), write: ref.folders.write.map(slash) }
+
+  it('a hand-placed plugin is exempt; a marketplace plugin gets them only as approved, expanded under the home', () => {
+    expect(foldersOf(appBackgroundRef('C:/home', declaring(), 'exempt'))).toEqual(expanded)
+    expect(foldersOf(appBackgroundRef('C:/home', declaring(), undefined))).toBeUndefined()
+    expect(foldersOf(appBackgroundRef('C:/home', declaring(), { read: ['~/Downloads'], write: [] }))).toBeUndefined()
+    expect(foldersOf(appBackgroundRef('C:/home', declaring(), { read: [], write: ['~/Documents/invoices', '~/Downloads'] }))).toEqual(expanded)
+    expect(appBackgroundRef('C:/home', template('pay-board'), undefined).folders).toBeUndefined()
+  })
+
+  it('the boot reads the consent file for a marketplace plugin and reports folders it does not cover', async () => {
+    const { runtime, synced } = fakeRuntime()
+    const reports: string[] = []
+    let consent: unknown = { version: 1, plugins: { 'pay@mkt': { consent: { version: '1', at: 'x', grant: { providers: {}, folders: { read: [], write: ['~/Documents/invoices', '~/Downloads'] } } } } } }
+    const fs = { readFile: async () => JSON.stringify(consent) } as never
+    const app = { ...declaring(), consentId: 'pay@mkt' }
+    let notify: (() => void) | undefined
+    await bootAppBackground(
+      { ...deps, fs, report: line => reports.push(line) },
+      { apps: () => [app], onChanged: listener => ((notify = listener), () => undefined), createRuntime: async () => runtime },
+    )
+    await vi.waitFor(() => expect(synced).toHaveLength(1))
+    expect(foldersOf(synced[0]![0]!)).toEqual(expanded)
+    expect(reports).toEqual([])
+    consent = { version: 1, plugins: {} }
+    notify?.()
+    await vi.waitFor(() => expect(synced).toHaveLength(2))
+    expect(synced[1]![0]!.folders).toBeUndefined()
+    expect(reports).toEqual(["pay: the folders pay-board declares are not approved; its $.fs stays in the app's folder"])
   })
 })

@@ -351,3 +351,45 @@ describe('$.fs through the runtime', () => {
     expect(bare.reports).toEqual(['probe: NotSupportedError: $.fs is not available: this session has no file system'])
   })
 })
+
+describe('fileModFs with declared folders', () => {
+  it('a path in a declared folder is read beside the root; a write needs a folder declared for writing; the rest stays outside', async () => {
+    const world = fakeFs({
+      '/home/u/app/state.json': '{}',
+      '/home/u/Downloads/in.csv': 'csv',
+      '/home/u/Documents/invoices/old.txt': 'old',
+      '/home/u/secret.txt': 's',
+    })
+    const fs = fileModFs(world.fs, {
+      cwd: '/home/u/app',
+      readRoot: '/home/u/app',
+      extraRoots: [
+        { root: '/home/u/Downloads', write: false },
+        { root: '/home/u/Documents/invoices', write: true },
+      ],
+    })
+    expect(await fs.read('state.json', 'text')).toBe('{}')
+    expect(await fs.read('/home/u/Downloads/in.csv', 'text')).toBe('csv')
+    expect((await fs.list('/home/u/Downloads')).map(entry => entry.name)).toEqual(['in.csv'])
+    await fs.write('/home/u/Documents/invoices/2026/new.txt', 'n')
+    expect(world.text('/home/u/Documents/invoices/2026/new.txt')).toBe('n')
+    await expect(fs.write('/home/u/Downloads/out.txt', 'x')).rejects.toMatchObject({
+      name: 'NotAllowedError',
+      message: '$.fs: the folder /home/u/Downloads is declared for reading only',
+    })
+    await expect(fs.read('/home/u/secret.txt', 'text')).rejects.toMatchObject({
+      name: 'NotAllowedError',
+      message: "$.fs: the path is outside this session's allowed root (/home/u/app) or the declared folders (/home/u/Downloads, /home/u/Documents/invoices)",
+    })
+    await expect(fs.read('/home/u/Downloads/../secret.txt', 'text')).rejects.toMatchObject({ name: 'NotAllowedError' })
+    expect(world.text('/home/u/Downloads/out.txt')).toBeUndefined()
+  })
+
+  it('a link inside a declared folder that leads outside is refused', async () => {
+    const world = fakeFs({ '/home/u/secret.txt': 's', '/home/u/Downloads/a.txt': 'a' })
+    world.link('/home/u/Downloads/leak', '/home/u/secret.txt')
+    const fs = fileModFs(world.fs, { cwd: '/home/u/app', readRoot: '/home/u/app', extraRoots: [{ root: '/home/u/Downloads', write: false }] })
+    expect(await fs.read('/home/u/Downloads/a.txt', 'text')).toBe('a')
+    await expect(fs.read('/home/u/Downloads/leak', 'text')).rejects.toMatchObject({ name: 'NotAllowedError' })
+  })
+})

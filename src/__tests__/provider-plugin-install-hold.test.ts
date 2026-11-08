@@ -10,7 +10,7 @@ import { installFromHttps } from '../pluginHost/httpsSource'
 import { forgetRegistryFile } from '../pluginHost/installedRegistry'
 import { setupPlugin } from '../pluginHost/installSteps'
 import { addMarketplace, forgetCatalogs } from '../pluginHost/marketplaces'
-import { consentCovers, manifestDeclaresProviders, readConsentedPluginIds } from '../pluginHost/providerPluginConsent'
+import { consentCovers, manifestDeclaresProviders, manifestNeedsConsent, readConsentedPluginIds } from '../pluginHost/providerPluginConsent'
 import { createProviderModUpdateService } from '../pluginHost/providerModUpdates'
 import { wipeSettingsMemos } from '../settings/settingsStore'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
@@ -114,6 +114,38 @@ describe('manifestDeclaresProviders', () => {
     expect(manifestDeclaresProviders({ providers: [] })).toBe(false)
     expect(manifestDeclaresProviders({})).toBe(false)
     expect(manifestDeclaresProviders(null)).toBe(false)
+  })
+})
+
+describe('manifestNeedsConsent', () => {
+  it("is true for providers, or for an app background module's folders", () => {
+    expect(manifestNeedsConsent({ providers: { main: {} } })).toBe(true)
+    expect(manifestNeedsConsent({ templates: { board: { app: { background: { module: './bg.js', fs: { read: ['~/Downloads'] } } } } } })).toBe(true)
+    expect(manifestNeedsConsent({ templates: { board: { app: { background: './bg.js' } } } })).toBe(false)
+    expect(manifestNeedsConsent({})).toBe(false)
+  })
+
+  it('consent covers the folders only as approved: a wider list, or a write where a read was approved, is not covered', async () => {
+    const fs = makeMemFs() as unknown as RuntimeFs
+    const service = createProviderModUpdateService({ ctx, fs } as never)
+    void service
+    const declared = (fsDecl: unknown) => ({ name: 'acme', templates: { board: { app: { background: { module: './bg.js', fs: fsDecl } } } } })
+    expect(await consentCovers(ctx, fs, 'acme@mkt', declared({ read: ['~/Downloads'] }))).toBe(false)
+    const { providerModUpdatesFilePath } = await import('../pluginHost/pluginDirs')
+    const dir = providerModUpdatesFilePath(ctx).replace(/\/[^/]*$/, '')
+    await fs.mkdir(dir.replace(/\/[^/]*$/, '')).catch(() => undefined)
+    await fs.mkdir(dir).catch(() => undefined)
+    await fs.writeFile(
+      providerModUpdatesFilePath(ctx),
+      JSON.stringify({
+        version: 1,
+        plugins: { 'acme@mkt': { consent: { version: '1.0.0', at: 'x', grant: { providers: {}, folders: { read: ['~/Downloads'], write: [] } } } } },
+      }),
+      { encoding: 'utf-8' },
+    )
+    expect(await consentCovers(ctx, fs, 'acme@mkt', declared({ read: ['~/Downloads'] }))).toBe(true)
+    expect(await consentCovers(ctx, fs, 'acme@mkt', declared({ write: ['~/Downloads'] }))).toBe(false)
+    expect(await consentCovers(ctx, fs, 'acme@mkt', declared({ read: ['~/Downloads', '~/Pictures'] }))).toBe(false)
   })
 })
 

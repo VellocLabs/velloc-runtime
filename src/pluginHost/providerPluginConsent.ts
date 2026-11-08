@@ -1,14 +1,15 @@
 /**
- * Security: provider plugin consent. A plugin declaring `providers` installs
- * DISABLED; its providers register only when the consent baseline on file
- * covers the grant its manifest declares now, whatever its enabled flag says.
- * A version that asks for more is unapproved until the person consents again.
+ * Security: plugin consent. A plugin declaring `providers`, or folders for an
+ * app's background module, installs DISABLED; its providers register and its
+ * modules reach those folders only when the consent baseline on file covers
+ * the grant its manifest declares now, whatever its enabled flag says. A
+ * version that asks for more is unapproved until the person consents again.
  * Hand-placed directory plugins are exempt.
  */
-import type { ProviderManifest } from '../mods/provider/providerManifest'
+import { folderScopesOf } from '../mods/app/appFolderScopes'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { setPluginEnabled } from './enabledPlugins'
-import { grantOf, widened, type Grant } from './providerGrant'
+import { pluginGrantOf, widened, type Grant } from './providerGrant'
 import { providerModUpdatesFilePath, type PluginInstallPathContext } from './pluginDirs'
 
 /** Whether a parsed plugin.json declares at least one provider. */
@@ -17,14 +18,19 @@ export function manifestDeclaresProviders(manifest: unknown): boolean {
   return !!providers && typeof providers === 'object' && !Array.isArray(providers) && Object.keys(providers).length > 0
 }
 
-/** Install-time hold: disable `identifier` when its manifest declares providers. */
+/** Whether a parsed plugin.json declares anything the person consents to: providers, or an app's folders. */
+export function manifestNeedsConsent(manifest: unknown): boolean {
+  return manifestDeclaresProviders(manifest) || folderScopesOf(manifest) !== undefined
+}
+
+/** Install-time hold: disable `identifier` when its manifest declares providers or folders. */
 export async function holdProviderPluginForConsent(
   ctx: PluginInstallPathContext,
   fs: RuntimeFs,
   identifier: string,
   manifest: unknown,
 ): Promise<boolean> {
-  if (!manifestDeclaresProviders(manifest)) return false
+  if (!manifestNeedsConsent(manifest)) return false
   // Installing again a plugin the person already approved keeps it as it is,
   // unless this version asks for more than they approved.
   if (await consentCovers(ctx, fs, identifier, manifest)) return false
@@ -66,9 +72,8 @@ export async function consentCovers(
 ): Promise<boolean> {
   const approved = (await readConsentedGrants(ctx, fs)).get(identifier)
   if (approved === undefined) return false
-  const providers = (manifest as { providers?: Record<string, ProviderManifest> } | null)?.providers ?? {}
   try {
-    return !widened(approved, grantOf(providers)).widened
+    return !widened(approved, pluginGrantOf(manifest)).widened
   } catch {
     return false
   }

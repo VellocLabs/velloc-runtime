@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { checkProviderManifests, type ProviderManifest } from '../mods/provider/providerManifest'
-import { grantOf, providerGrantOf, widened, type Grant } from '../pluginHost/providerGrant'
+import { grantOf, pluginGrantOf, providerGrantOf, widened, type Grant } from '../pluginHost/providerGrant'
 import { providerJson } from './_helpers/pluginArchive'
 
 function manifests(over: Record<string, Record<string, unknown>>): Record<string, ProviderManifest> {
@@ -170,5 +170,31 @@ describe('narrowing is silent', () => {
     )
     expect(delta.widened).toBe(true)
     expect(delta.added.perProvider.main).toMatchObject({ domains: ['new.acme.test'], requestNeeds: [] })
+  })
+})
+
+describe('the folders of an app background module', () => {
+  const FS = { read: ['~/Downloads'], write: ['~/Documents/invoices'] }
+  const withFolders = (fs: unknown) => ({
+    providers: {},
+    templates: { board: { app: { background: { module: './bg.js', fs } } } },
+  })
+
+  it('pluginGrantOf reads them from the manifest beside the providers; none declared, none in the grant', () => {
+    expect(pluginGrantOf(withFolders(FS))).toEqual({ providers: {}, folders: FS })
+    expect(pluginGrantOf({ providers: {}, templates: { board: { app: { background: './bg.js' } } } })).toEqual({ providers: {} })
+    expect(pluginGrantOf(null)).toEqual({ providers: {} })
+    expect(grantOf({}, { read: [], write: [] })).toEqual({ providers: {} })
+  })
+
+  it('a folder not consented to, or a read-only one asked for writing, widens; fewer folders do not', () => {
+    const consented = grantOf({}, FS)
+    expect(widened(consented, grantOf({}, FS))).toEqual({ widened: false, added: { providers: [], perProvider: {} }, removed: [] })
+    expect(widened(consented, grantOf({}, { read: [], write: [] }))).toEqual({ widened: false, added: { providers: [], perProvider: {} }, removed: [] })
+    expect(widened(consented, grantOf({}))).toEqual({ widened: false, added: { providers: [], perProvider: {} }, removed: [] })
+    const delta = widened(consented, grantOf({}, { read: ['~/Downloads', '~/Pictures'], write: ['~/Downloads'] }))
+    expect(delta.widened).toBe(true)
+    expect(delta.added.folders).toEqual({ read: ['~/Pictures'], write: ['~/Downloads'] })
+    expect(widened(grantOf({}), grantOf({}, FS)).added.folders).toEqual(FS)
   })
 })

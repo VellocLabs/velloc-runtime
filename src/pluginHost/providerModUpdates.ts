@@ -31,7 +31,7 @@ import { readStrictPluginRef } from './pluginRef'
 import type { PluginSetupRecord } from './registryFormats'
 import type { ExtractedFile } from './extract'
 import { ensureDirRecursive } from './writeExtracted'
-import { grantOf, widened, type Grant, type GrantDelta } from './providerGrant'
+import { pluginGrantOf, widened, type Grant, type GrantDelta } from './providerGrant'
 
 // ── state ──
 
@@ -325,7 +325,7 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
       pluginId: installed.id,
       state,
       consented: record?.consent !== undefined,
-      grant: grantOf(installed.plugin.manifest.providers ?? {}),
+      grant: pluginGrantOf(installed.plugin.manifest),
       ...(installed.plugin.manifest.author?.name ? { publisher: installed.plugin.manifest.author.name } : {}),
       ...(source ? { source } : {}),
       ...(installed.entry.version !== undefined ? { activeVersion: installed.entry.version } : {}),
@@ -478,7 +478,7 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
     record.previous = {
       version: oldVersion ?? 'unknown',
       installPath: oldPath,
-      grant: record.consent?.grant ?? grantOf(installed.plugin.manifest.providers ?? {}),
+      grant: record.consent?.grant ?? pluginGrantOf(installed.plugin.manifest),
     }
     record.consent = { version: staged.version, grant: staged.grant, at: iso() }
     record.applied = { version: staged.version, at: iso(), silent }
@@ -525,7 +525,7 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
       }
       stagedPath = await writeVersionDir(ctx, fs, installed.catalog, installed.name, identity.version, candidate.files)
       const plugin = await admitStaged(installed, stagedPath, identity.version)
-      const grant = grantOf(plugin.manifest.providers ?? {})
+      const grant = pluginGrantOf(plugin.manifest)
       const delta = widened(record.consent.grant, grant)
       const staged = {
         version: identity.version,
@@ -679,7 +679,7 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
         const record = (state.plugins[pluginId] ??= {})
         record.consent = {
           version: installed.entry.version ?? 'unknown',
-          grant: grantOf(installed.plugin.manifest.providers ?? {}),
+          grant: pluginGrantOf(installed.plugin.manifest),
           at: iso(),
         }
         await writeState(state)

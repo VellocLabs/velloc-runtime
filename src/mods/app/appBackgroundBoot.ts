@@ -7,10 +7,12 @@
 
 import type { BrowserBridgeTransport } from '../../browser/bridge/browserBridgeProtocol'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
+import { readConsentedGrants } from '../../pluginHost/providerPluginConsent'
 import { getNexusAppDir } from '../../utils/conversationStoragePaths'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import { getModUiContributionsHost, type AppBackgroundTemplate } from '../ui/contributionsHost'
 import type { AppBackgroundRef, AppBackgroundRuntime } from './AppBackgroundRuntime'
+import { coversFolderScopes, expandScopeFolder, type FolderScopes } from './appFolderScopes'
 
 /** Where an app with a `background` and no `data` file keeps its state, under the app's folder. */
 export const APP_STATE_DEFAULT_FILE = 'data/state.json'
@@ -34,9 +36,19 @@ export type AppBackgroundBootSeams = {
   createRuntime?: (deps: AppBackgroundBootDeps) => Promise<AppBackgroundRuntime>
 }
 
-export function appBackgroundRef(homeDir: string, app: AppBackgroundTemplate): AppBackgroundRef {
+/** The folders the person approved for a plugin; `'exempt'` for a hand-placed one. */
+export type ApprovedFolders = FolderScopes | 'exempt' | undefined
+
+/**
+ * Security: the module reaches its declared folders only when the consent on
+ * file covers every one of them as declared; a declared set not covered
+ * leaves `$.fs` in the app's folder, and the boot reports it.
+ */
+export function appBackgroundRef(homeDir: string, app: AppBackgroundTemplate, approved: ApprovedFolders): AppBackgroundRef {
   const folder = getNexusAppDir(homeDir, app.appId)
   const stateFile = joinRuntimePath(folder, ...(app.decl.data ?? APP_STATE_DEFAULT_FILE).split('/'))
+  const declared = app.decl.backgroundFs
+  const granted = declared && (approved === 'exempt' || coversFolderScopes(approved, declared))
   return {
     plugin: app.plugin,
     path: app.module,
@@ -46,7 +58,26 @@ export function appBackgroundRef(homeDir: string, app: AppBackgroundTemplate): A
     folder,
     stateFile,
     mcpOwner: app.mcp,
+    ...(granted
+      ? {
+          folders: {
+            read: declared.read.map(scope => expandScopeFolder(scope, homeDir)),
+            write: declared.write.map(scope => expandScopeFolder(scope, homeDir)),
+          },
+        }
+      : {}),
   }
+}
+
+/** The approved folders per published app, from the consent file; a hand-placed plugin is exempt. */
+async function approvedFoldersOf(deps: AppBackgroundBootDeps, apps: readonly AppBackgroundTemplate[]): Promise<Map<string, ApprovedFolders>> {
+  const out = new Map<string, ApprovedFolders>()
+  const needing = apps.filter(app => app.decl.backgroundFs && app.consentId)
+  const grants = needing.length > 0 ? await readConsentedGrants({ homeDir: deps.homeDir }, deps.fs) : new Map()
+  for (const app of apps) {
+    out.set(app.appId, app.consentId ? (grants.get(app.consentId)?.folders as FolderScopes | undefined) : 'exempt')
+  }
+  return out
 }
 
 type Booted = {
@@ -76,7 +107,18 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
     creating: null,
     stop: () => undefined,
     sync: async () => {
-      const refs = apps().map(app => appBackgroundRef(deps.homeDir, app))
+      const refsOf = async (): Promise<AppBackgroundRef[]> => {
+        const published = apps()
+        const approved = await approvedFoldersOf(deps, published)
+        return published.map(app => {
+          const ref = appBackgroundRef(deps.homeDir, app, approved.get(app.appId))
+          if (app.decl.backgroundFs && !ref.folders) {
+            report(`${app.plugin}: the folders ${app.appId} declares are not approved; its $.fs stays in the app's folder`)
+          }
+          return ref
+        })
+      }
+      const refs = await refsOf()
       if (refs.length === 0 && !state.runtime && !state.creating) return
       if (!state.runtime) {
         state.creating ??= createRuntime(deps)
@@ -92,7 +134,7 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
           return
         }
       }
-      state.runtime.sync(apps().map(app => appBackgroundRef(deps.homeDir, app)))
+      state.runtime.sync(refs)
     },
   }
   booted = state

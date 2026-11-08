@@ -8,6 +8,7 @@
 
 import type { UpdateChannel } from '../../branding/updateChannels'
 import { isLocalizedText, whyNotLocalizedText, type LocalizedText } from '../../config/localizedText'
+import { readFolderScopes, type FolderScopes } from '../app/appFolderScopes'
 import { MOD_MODULE_EXTENSIONS } from '../modCompilerSurface'
 
 /** Where a template's launcher is offered: the sidebar list, the project
@@ -54,6 +55,8 @@ export type PluginAppDecl = {
   /** Plugin-relative path of the app's background module, `./`-prefixed: one
    *  resident worker that owns the app's data while Velloc runs. */
   background?: string
+  /** The folders under the person's home the background module may reach, as declared (`~/`-relative). */
+  backgroundFs?: FolderScopes
 }
 
 export type PluginTopbarItemDecl = {
@@ -199,12 +202,19 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
     }
   }
   let background: string | undefined
+  let backgroundFs: FolderScopes | undefined
   if (value.background !== undefined) {
-    const module = value.background
+    const declared = value.background
+    const module = isRecord(declared) ? declared.module : declared
     if (typeof module === 'string' && insidePlugin(module) && MOD_MODULE_EXTENSIONS.some(ext => module.toLowerCase().endsWith(ext))) {
       background = module
     } else {
-      bad(`${label}.background: expected a module path starting with "./", without "..", ending in ${MOD_MODULE_EXTENSIONS.join(', ')}`)
+      bad(`${label}.background: expected a module path starting with "./", without "..", ending in ${MOD_MODULE_EXTENSIONS.join(', ')}, or { module, fs? }`)
+    }
+    if (isRecord(declared) && declared.fs !== undefined) {
+      const scopes = readFolderScopes(declared.fs)
+      if ('error' in scopes) bad(`${label}.background.fs: ${scopes.error}`)
+      else if (scopes.read.length > 0 || scopes.write.length > 0) backgroundFs = scopes
     }
   }
   if (!seed || !entry || data === null) return null
@@ -215,6 +225,7 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
     ...(data ? { data } : {}),
     ...(localActions && localActions.length > 0 ? { localActions } : {}),
     ...(background ? { background } : {}),
+    ...(background && backgroundFs ? { backgroundFs } : {}),
   }
 }
 

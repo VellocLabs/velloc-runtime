@@ -56,6 +56,8 @@ export type AppBackgroundRef = ModModuleRef & {
   readonly stateFile: string
   /** The plugin's manifest as `$.mcp.connect` resolves its servers. Absent: `$.mcp` is refused. */
   readonly mcpOwner?: AppBackgroundMcpOwner
+  /** The declared folders the person approved, absolute: `$.fs` reaches them beside the app's folder. */
+  readonly folders?: { read: readonly string[]; write: readonly string[] }
 }
 
 /** Where workers are spawned from: some window's control port. */
@@ -146,7 +148,13 @@ const sameRef = (a: AppBackgroundRef, b: AppBackgroundRef): boolean =>
   a.stateFile === b.stateFile &&
   a.provenance === b.provenance &&
   a.plugin === b.plugin &&
-  sameMcpOwner(a.mcpOwner, b.mcpOwner)
+  sameMcpOwner(a.mcpOwner, b.mcpOwner) &&
+  JSON.stringify(a.folders ?? null) === JSON.stringify(b.folders ?? null)
+
+const extraRootsOf = (ref: AppBackgroundRef): Array<{ root: string; write: boolean }> => [
+  ...(ref.folders?.read ?? []).map(root => ({ root, write: false })),
+  ...(ref.folders?.write ?? []).map(root => ({ root, write: true })),
+]
 
 const named = (name: string, message: string): Error => {
   const error = new Error(message)
@@ -339,7 +347,12 @@ export class AppBackgroundRuntime {
     try {
       await module.dispatcher.dispatch(
         'app.start',
-        { appId: ref.appId, folder: ref.folder, locale: normalizeModLocale(this.currentLocale()) },
+        {
+          appId: ref.appId,
+          folder: ref.folder,
+          folders: { read: [...(ref.folders?.read ?? [])], write: [...(ref.folders?.write ?? [])] },
+          locale: normalizeModLocale(this.currentLocale()),
+        },
         () => undefined,
         { signal: controller.signal, accepts: () => true, budgetMs: timeoutMs },
       )
@@ -474,7 +487,7 @@ export class AppBackgroundRuntime {
       cwd: () => module.ref.folder,
       store: plugin => this.storeOf(plugin),
       ...(this.options.http ? { http: this.options.http } : {}),
-      ...(fs ? { fs: fileModFs(fs, { cwd: module.ref.folder, readRoot: module.ref.folder }) } : {}),
+      ...(fs ? { fs: fileModFs(fs, { cwd: module.ref.folder, readRoot: module.ref.folder, extraRoots: extraRootsOf(module.ref) }) } : {}),
       ...(mcp ? { mcp: mcp.host } : {}),
     }
   }

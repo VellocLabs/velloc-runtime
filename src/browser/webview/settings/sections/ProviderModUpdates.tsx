@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { ProviderModUpdateStatus, UpdateFailureKind } from "../../../../pluginHost/providerModUpdates";
+import type { FolderScopes } from "../../../../mods/app/appFolderScopes";
 import type { ProviderGrant } from "../../../../pluginHost/providerGrant";
 import type { TranslateFn } from "../../i18n";
 
@@ -33,12 +34,36 @@ function signText(t: TranslateFn, provider: string, sign: "digest" | "body"): st
   });
 }
 
-/** Whether a status has any provider to consent to. */
+/** Whether a status has anything to consent to: a provider, or an app's folders. */
 export function hasProviderGrant(status: ProviderModUpdateStatus | undefined): status is ProviderModUpdateStatus {
-  return !!status && Object.keys(status.grant?.providers ?? {}).length > 0;
+  return !!status && (Object.keys(status.grant?.providers ?? {}).length > 0 || hasFolders(status.grant?.folders));
+}
+
+function hasFolders(folders: FolderScopes | undefined): folders is FolderScopes {
+  return !!folders && folders.read.length + folders.write.length > 0;
 }
 
 // ── consent ──
+
+function FolderGrantBlock({ folders, t }: { folders: FolderScopes; t: TranslateFn }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/30 p-3" data-testid="consent-folders">
+      <div className="font-medium text-sm">{t("settings.plugins.providers.consent.folders")}</div>
+      <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm">
+        {folders.read.length > 0 ? (
+          <li data-testid="consent-folders-read">
+            {t("settings.plugins.providers.consent.foldersRead", { folders: folders.read.join(", ") })}
+          </li>
+        ) : null}
+        {folders.write.length > 0 ? (
+          <li data-testid="consent-folders-write">
+            {t("settings.plugins.providers.consent.foldersWrite", { folders: folders.write.join(", ") })}
+          </li>
+        ) : null}
+      </ul>
+    </div>
+  );
+}
 
 function ProviderGrantBlock({ provider, grant, t }: { provider: string; grant: ProviderGrant; t: TranslateFn }) {
   return (
@@ -98,6 +123,13 @@ export function ProviderConsentDialog({
 }) {
   const status = target?.status;
   const providers = Object.entries(status?.grant.providers ?? {});
+  const folders = hasFolders(status?.grant.folders) ? status!.grant.folders! : undefined;
+  const introKey =
+    providers.length > 0 && folders
+      ? "settings.plugins.providers.consent.introBoth"
+      : folders
+        ? "settings.plugins.providers.consent.introFolders"
+        : "settings.plugins.providers.consent.intro";
   return (
     <Dialog
       open={target !== null}
@@ -108,7 +140,7 @@ export function ProviderConsentDialog({
       <DialogContent data-testid="provider-consent-dialog" className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("settings.plugins.providers.consent.title", { name: target?.name ?? "" })}</DialogTitle>
-          <DialogDescription>{t("settings.plugins.providers.consent.intro", { name: target?.name ?? "" })}</DialogDescription>
+          <DialogDescription>{t(introKey, { name: target?.name ?? "" })}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="text-sm" data-testid="consent-publisher">
@@ -119,9 +151,17 @@ export function ProviderConsentDialog({
           {providers.map(([provider, grant]) => (
             <ProviderGrantBlock key={provider} provider={provider} grant={grant} t={t} />
           ))}
-          <p className="text-sm" data-testid="consent-standing">
-            {t("settings.plugins.providers.consent.standing")}
-          </p>
+          {folders ? <FolderGrantBlock folders={folders} t={t} /> : null}
+          {providers.length > 0 ? (
+            <p className="text-sm" data-testid="consent-standing">
+              {t("settings.plugins.providers.consent.standing")}
+            </p>
+          ) : null}
+          {folders ? (
+            <p className="text-sm" data-testid="consent-folders-standing">
+              {t("settings.plugins.providers.consent.foldersStanding")}
+            </p>
+          ) : null}
           {error ? (
             <p className="text-destructive text-sm" role="alert" data-testid="consent-error">
               {t("settings.plugins.providers.consent.failed", { error })}
@@ -179,6 +219,12 @@ export function grantDeltaLines(status: ProviderModUpdateStatus, t: TranslateFn)
       lines.push(t("settings.plugins.providers.updates.addedNeeds", { id: provider, needs: needsText(t, added.requestNeeds) }));
     }
     if (added.signNeeds) lines.push(signText(t, provider, added.signNeeds));
+  }
+  if (delta.added.folders?.read.length) {
+    lines.push(t("settings.plugins.providers.updates.addedFoldersRead", { folders: delta.added.folders.read.join(", ") }));
+  }
+  if (delta.added.folders?.write.length) {
+    lines.push(t("settings.plugins.providers.updates.addedFoldersWrite", { folders: delta.added.folders.write.join(", ") }));
   }
   return lines;
 }

@@ -1,10 +1,12 @@
 /**
- * Provider mods: the GRANT a person consents to (`domains`, `secrets`,
- * `readsSecrets`, `requestNeeds`, `signNeeds`). Consent binds to the grant, not
+ * Plugins: the GRANT a person consents to — each provider's `domains`,
+ * `secrets`, `readsSecrets`, `requestNeeds`, `signNeeds`, and the folders an
+ * app's background module may reach (F-40). Consent binds to the grant, not
  * the bytes: an update no wider than the consented grant needs no new consent.
  * Pure.
  */
 
+import { addedFolderScopes, folderScopesOf, type FolderScopes } from '../mods/app/appFolderScopes'
 import type {
   ProviderManifest,
   ProviderRequestNeed,
@@ -23,9 +25,11 @@ export type ProviderGrant = {
   signNeeds?: ProviderSignNeed
 }
 
-/** A plugin's grant: its providers' grants, by provider key. */
+/** A plugin's grant: its providers' grants, by provider key, and the folders its background modules reach. */
 export type Grant = {
   providers: Record<string, ProviderGrant>
+  /** Absent: no folder beyond the apps' own. */
+  folders?: FolderScopes
 }
 
 /** What a provider asks for beyond what was consented to. Only the added parts. */
@@ -46,6 +50,8 @@ export type GrantDelta = {
     providers: string[]
     /** What each provider (new ones in full) asks for beyond the consent. */
     perProvider: Record<string, ProviderGrantAddition>
+    /** Folders not consented to, or consented read-only and asked for writing. */
+    folders?: FolderScopes
   }
   /** Provider keys the new version no longer has (never widening). */
   removed: string[]
@@ -68,11 +74,17 @@ export function providerGrantOf(manifest: ProviderManifest): ProviderGrant {
   }
 }
 
-/** The grant of a plugin's `providers` map. */
-export function grantOf(providers: Readonly<Record<string, ProviderManifest>>): Grant {
+/** The grant of a plugin's `providers` map, and of its declared folders. */
+export function grantOf(providers: Readonly<Record<string, ProviderManifest>>, folders?: FolderScopes): Grant {
   const out: Record<string, ProviderGrant> = {}
   for (const key of Object.keys(providers).sort()) out[key] = providerGrantOf(providers[key]!)
-  return { providers: out }
+  return { providers: out, ...(folders && (folders.read.length > 0 || folders.write.length > 0) ? { folders } : {}) }
+}
+
+/** The grant of a whole plugin manifest: its providers and its apps' folders. */
+export function pluginGrantOf(manifest: unknown): Grant {
+  const providers = (manifest as { providers?: Record<string, ProviderManifest> } | null)?.providers ?? {}
+  return grantOf(providers, folderScopesOf(manifest))
 }
 
 function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): ProviderGrantAddition | undefined {
@@ -96,10 +108,12 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
 /**
  * Whether `next` asks for more than `consented`. A new provider key, a new
  * domain, a new secret name, `readsSecrets` turned on, a new `requestNeeds`
- * value, or a larger `signNeeds` (none < digest < body) is wider. Dropping or
+ * value, or a larger `signNeeds` (none < digest < body) is wider, as is a
+ * folder not consented to or a read-only one asked for writing. Dropping or
  * reducing any of them, or dropping a provider, is not.
  */
 export function widened(consented: Grant, next: Grant): GrantDelta {
+  const folders = addedFolderScopes(consented.folders, next.folders)
   const perProvider: Record<string, ProviderGrantAddition> = {}
   const addedProviders: string[] = []
   for (const key of Object.keys(next.providers).sort()) {
@@ -116,8 +130,8 @@ export function widened(consented: Grant, next: Grant): GrantDelta {
     .filter(key => next.providers[key] === undefined)
     .sort()
   return {
-    widened: Object.keys(perProvider).length > 0,
-    added: { providers: addedProviders, perProvider },
+    widened: Object.keys(perProvider).length > 0 || folders !== undefined,
+    added: { providers: addedProviders, perProvider, ...(folders ? { folders } : {}) },
     removed,
   }
 }

@@ -46,6 +46,9 @@ export type ModFsOptions = {
   /** A child session on an untrusted provider: the root it may not leave
    *  (`ToolUseContext.options.untrustedReadRoot`). Absent: no boundary. */
   readRoot?: string
+  /** Further roots a path under `readRoot`'s boundary may be in (an app's
+   *  declared folders, F-40); a write needs one with `write`. Nothing without `readRoot`. */
+  extraRoots?: ReadonlyArray<{ root: string; write: boolean }>
   /** The session storage tree, kept out of an untrusted child's reach. */
   sessionStoragePath?: string
   /** The home directory an instruction file's `@~/` import stands under. */
@@ -94,23 +97,32 @@ function spellingOf(dir: string): string {
 export function fileModFs(fs: RuntimeFs, options: ModFsOptions): ModFsHost {
   const limit = options.readLimit ?? MOD_FS_READ_LIMIT
 
-  /** The absolute path, inside the boundary when there is one. */
-  const resolve = async (path: string): Promise<string> => {
+  const within = (path: string, root: string, excluded?: string) =>
+    assertUntrustedReadAllowed(
+      path,
+      { options: { cwd: options.cwd, untrustedReadRoot: root, ...(excluded ? { sessionStoragePath: excluded } : {}) } },
+      fs,
+    )
+
+  /** The absolute path, inside the boundary when there is one: the root, or one of the extra roots (one with `write` for a write). */
+  const resolve = async (path: string, write = false): Promise<string> => {
     if (typeof path !== 'string' || path === '') throw new TypeError('$.fs: path must be a non-empty string')
     const abs = resolveRuntimePath(options.cwd, path)
     if (options.readRoot) {
-      const verdict = await assertUntrustedReadAllowed(
-        path,
-        {
-          options: {
-            cwd: options.cwd,
-            untrustedReadRoot: options.readRoot,
-            ...(options.sessionStoragePath ? { sessionStoragePath: options.sessionStoragePath } : {}),
-          },
-        },
-        fs,
+      const verdict = await within(path, options.readRoot, options.sessionStoragePath)
+      if (verdict.ok) return abs
+      let readOnly: string | undefined
+      for (const extra of options.extraRoots ?? []) {
+        if (!(await within(path, extra.root)).ok) continue
+        if (!write || extra.write) return abs
+        readOnly = extra.root
+      }
+      if (readOnly !== undefined) throw named('NotAllowedError', `$.fs: the folder ${readOnly} is declared for reading only`)
+      const declared = (options.extraRoots ?? []).map(extra => extra.root)
+      throw named(
+        'NotAllowedError',
+        `$.fs: ${verdict.reason}${declared.length > 0 ? ` or the declared folders (${declared.join(', ')})` : ''}`,
       )
-      if (!verdict.ok) throw named('NotAllowedError', `$.fs: ${verdict.reason}`)
     }
     return abs
   }
@@ -167,7 +179,7 @@ export function fileModFs(fs: RuntimeFs, options: ModFsOptions): ModFsHost {
     },
     async write(path, text) {
       if (typeof text !== 'string') throw new TypeError('$.fs.write(path, text): text must be a string')
-      const abs = await resolve(path)
+      const abs = await resolve(path, true)
       await ensureDir(dirnameRuntimePath(abs))
       await fs.writeFile(abs, text, { encoding: 'utf-8' })
       options.onWrite?.(abs)

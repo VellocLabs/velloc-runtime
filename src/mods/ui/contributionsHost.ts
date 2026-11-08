@@ -67,7 +67,11 @@ export type AppBackgroundTemplate = {
   decl: PluginAppDecl
   /** The plugin's manifest as the module's `$.mcp.connect` resolves its servers. */
   mcp: AppBackgroundMcpOwner
+  /** The plugin's id in the consent file (`<name>@<catalog>`); absent for a hand-placed plugin, which needs no consent. */
+  consentId?: string
 }
+
+const MARKETPLACE_SOURCE = 'marketplace:'
 
 /** What a topbar press runs, as the runtime resolved it. */
 export type TopbarTarget = { plugin: string; command: string; args?: string }
@@ -239,6 +243,7 @@ export class ModUiContributionsHost {
         owner: pluginOwnerId(owner),
         decl,
         mcp: appBackgroundMcpOwner(owner),
+        ...(owner.source.startsWith(MARKETPLACE_SOURCE) ? { consentId: owner.source.slice(MARKETPLACE_SOURCE.length) } : {}),
       })
     }
     return list
