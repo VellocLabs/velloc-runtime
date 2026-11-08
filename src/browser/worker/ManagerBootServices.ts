@@ -346,9 +346,8 @@ export class ManagerBootServices {
     if (skipped) this.host.trace('render_cache.skipped', { reason: skipped })
   }
 
-  /** Once a home is known; later calls republish availability for a new port or manifest. */
-  /** Installs the sign-in service once the home is known; storage ready
-   *  without one means this realm never has a service (F-10). */
+  /** Once a home is known; later calls republish availability for a new port or manifest.
+   *  Storage ready without a home means this realm never has a service (F-10). */
   private installMcpOAuth(): void {
     if (!this.host.getHomeDir()) {
       if (this.storageReady) markMcpOAuthUnavailable()
