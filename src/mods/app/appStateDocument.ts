@@ -6,7 +6,7 @@
  */
 
 import type { AppDataPatch } from '../../browser/runtimeProtocol/modApps'
-import { APP_STATE_MAX_BYTES, applyAppPatches, checkAppPatches } from './appStateDiff'
+import { APP_STATE_MAX_BYTES, appStateBytes, appStateText, applyAppPatches, checkAppPatches, diffJson } from './appStateDiff'
 import { clearAppState, publishAppState, type AppStateEvent } from './appStateBus'
 
 export const APP_STATE_PERSIST_DELAY_MS = 300
@@ -35,7 +35,11 @@ const dirOf = (file: string): string => {
   return at > 0 ? file.slice(0, at) : file
 }
 
+let nextOwner = 0
+
 export class AppStateDocument {
+  /** Unique per document in the realm, so two documents of one app never share a version. */
+  readonly owner = ++nextOwner
   private current: unknown = {}
   private currentVersion = 0
   private timer: ReturnType<typeof setTimeout> | undefined
@@ -78,13 +82,15 @@ export class AppStateDocument {
     if (refused) throw new TypeError(refused)
     const list = patches as readonly AppDataPatch[]
     const next = applyAppPatches(this.current, list)
-    const bytes = JSON.stringify(next)?.length ?? 0
+    const bytes = appStateBytes(next)
     const cap = this.options.maxBytes ?? APP_STATE_MAX_BYTES
     if (bytes > cap) throw new RangeError(`$.app.publish(patches): the state would be ${bytes} bytes; at most ${cap}`)
+    // Published as the diff, not as given: `-` and array removals become the replacements every reader applies alike.
+    const published = diffJson(this.current, next)
     this.current = next
     this.currentVersion += 1
     this.schedulePersist()
-    ;(this.options.publish ?? publishAppState)({ appId: this.options.appId, version: this.currentVersion, value: next, patches: list })
+    ;(this.options.publish ?? publishAppState)({ appId: this.options.appId, owner: this.owner, version: this.currentVersion, value: next, patches: published })
     return { version: this.currentVersion }
   }
 
@@ -101,7 +107,7 @@ export class AppStateDocument {
   async dispose(): Promise<void> {
     if (this.disposed) return
     this.disposed = true
-    clearAppState(this.options.appId)
+    clearAppState(this.options.appId, this.owner)
     await this.flush()
   }
 
@@ -116,7 +122,7 @@ export class AppStateDocument {
 
   private persistNow(): void {
     this.dirty = false
-    const text = JSON.stringify(this.current, null, 2)
+    const text = appStateText(this.current)
     const { file, fs, ensureDir } = this.options
     this.writing = this.writing
       .then(async () => {

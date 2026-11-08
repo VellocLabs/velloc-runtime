@@ -13,8 +13,14 @@ import type { AppDataPatch } from '../../browser/runtimeProtocol/modApps'
 
 /** Patches a single `$.app.publish` may carry. */
 export const APP_PATCH_BATCH_MAX = 256
-/** The state's size, as JSON text; the same cap as an app file. */
+/** The state's size, in UTF-8 bytes of the file it is written to; the same cap as an app file. */
 export const APP_STATE_MAX_BYTES = 1024 * 1024
+
+/** The state as the document writes it, pretty-printed. */
+export const appStateText = (value: unknown): string => JSON.stringify(value, null, 2) ?? ''
+
+/** The UTF-8 size of `appStateText(value)`. */
+export const appStateBytes = (value: unknown): number => new TextEncoder().encode(appStateText(value)).length
 
 const FORBIDDEN_SEGMENTS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype'])
 

@@ -15,12 +15,11 @@
 import { errorMessage } from '../chainRules'
 import { ModDispatcher } from '../ModDispatcher'
 import { ModInstance, type ModCall } from '../ModInstance'
-import { refuseModuleSource } from '../modAdmission'
 import type { ModBuildStore } from '../modBuildStore'
-import { needsCompiler } from '../modCompilerSurface'
 import { fileModFs } from '../modFs'
 import type { ModHttpHost } from '../modHttp'
 import { normalizeModLocale } from '../modLocale'
+import { ModuleRefused, ModuleUnreadable, prepareModule } from '../modPrepare'
 import { serveNoun, type ModNounHost } from '../modNouns'
 import {
   MOD_RESPAWN_BACKOFF_MS,
@@ -46,6 +45,8 @@ import { AppStateDocument, type AppStateDocumentFs } from './appStateDocument'
 
 /** One app's background module: a hooks-module ref plus the app it serves. */
 export type AppBackgroundRef = ModModuleRef & {
+  /** The plugin's directory, absolute: `$.plugin.root`. */
+  readonly root: string
   readonly appId: string
   /** The app's folder, absolute: the module's `$.fs` root and `e.folder`. */
   readonly folder: string
@@ -109,17 +110,10 @@ type Module = {
   /** The load in flight, so a stop waits for it before closing. */
   starting?: Promise<void>
   restart?: ReturnType<typeof setTimeout>
+  /** Its text could not be read: the next sync reads it again. */
+  unreadable?: boolean
 }
 
-class ModuleUnreadable extends Error {}
-class ModuleRefused extends Error {
-  constructor(
-    readonly state: 'refused' | 'failed',
-    reason: string,
-  ) {
-    super(reason)
-  }
-}
 class WorkerGoneWhileLoading extends Error {}
 
 const KERNEL_WINDOW: AppBackgroundWindow = {
@@ -137,10 +131,6 @@ function kernelOpenWorker(ref: AppBackgroundRef): Promise<ModWorkerHandle> {
   })
 }
 
-function pluginRootOf(modulePath: string): string {
-  return modulePath.replace(/[\\/][^\\/]*[\\/][^\\/]*$/, '')
-}
-
 const sameRef = (a: AppBackgroundRef, b: AppBackgroundRef): boolean =>
   a.path === b.path && a.root === b.root && a.folder === b.folder && a.stateFile === b.stateFile && a.provenance === b.provenance && a.plugin === b.plugin
 
@@ -153,18 +143,20 @@ const named = (name: string, message: string): Error => {
 export class AppBackgroundRuntime {
   private readonly modules = new Map<string, Module>()
   private readonly stores = new Map<string, ModStoreHost>()
+  /** A stopping module's teardown by app id: its successor starts after it, so one state file has one writer. */
+  private readonly stopping = new Map<string, Promise<void>>()
   private disposed = false
 
   constructor(private readonly options: AppBackgroundRuntimeOptions) {}
 
-  /** The apps to run: a new one starts, a gone one stops, a changed one restarts. */
+  /** The apps to run: a new one starts, a gone one stops, a changed one restarts, an unreadable one is read again. */
   sync(refs: readonly AppBackgroundRef[]): void {
     if (this.disposed) return
     const wanted = new Map(refs.map(ref => [ref.appId, ref]))
     for (const [appId, module] of [...this.modules]) {
       const next = wanted.get(appId)
-      if (next && sameRef(module.ref, next)) continue
-      void this.stop(module, next ? 'the app changed' : 'the app is gone')
+      if (next && sameRef(module.ref, next) && !module.unreadable) continue
+      void this.stop(module, next && !module.unreadable ? 'the app changed' : next ? 'it is read again' : 'the app is gone')
     }
     for (const ref of refs) {
       const module = this.modules.get(ref.appId)
@@ -225,8 +217,9 @@ export class AppBackgroundRuntime {
     }
     this.modules.set(ref.appId, module)
     this.options.onStatusChanged?.()
-    module.starting = module.document
-      .load()
+    const before = this.stopping.get(ref.appId) ?? Promise.resolve()
+    module.starting = before
+      .then(() => (module.gone.signal.aborted ? undefined : module.document.load()))
       .then(() => this.load(module))
       .finally(() => {
         module.starting = undefined
@@ -242,6 +235,7 @@ export class AppBackgroundRuntime {
       source = await this.prepare(module)
     } catch (error) {
       if (error instanceof ModuleUnreadable) {
+        module.unreadable = true
         this.note(module, 'failed', error.message)
         this.options.report(`${ref.plugin}: the background module of ${ref.appId} could not be read — ${error.message}`)
         return
@@ -270,7 +264,7 @@ export class AppBackgroundRuntime {
     const instance = new ModInstance({
       key: module.key,
       plugin: ref.plugin,
-      root: ref.root ?? pluginRootOf(ref.path),
+      root: ref.root,
       tier: ref.tier ?? 'user',
       generation: module.generation,
       peer: worker.port,
@@ -316,53 +310,7 @@ export class AppBackgroundRuntime {
 
   /** Read, admit, compile and scan the module; unchanged files come from the build store. */
   private async prepare(module: Module): Promise<string> {
-    const { ref } = module
-    const kept = await this.options.builds?.lookup(ref).catch(() => null)
-    if (kept) {
-      if (kept.uses) {
-        const refusedUses = refuseAppBackgroundUses(kept.uses)
-        if (refusedUses) throw new ModuleRefused('refused', refusedUses)
-      }
-      return kept.source
-    }
-    let source: string
-    try {
-      source = await this.options.readModule(ref.path)
-    } catch (error) {
-      throw new ModuleUnreadable(`${ref.path} could not be read (${errorMessage(error)})`)
-    }
-    const refused = refuseModuleSource(ref.path, source, this.options.compile !== undefined)
-    if (refused) throw new ModuleRefused('refused', refused)
-    const original = source
-    let uses: ModUses | undefined
-    let files: readonly string[] = [ref.path]
-    if (this.options.compile && needsCompiler(ref.path, source)) {
-      try {
-        const built = await this.options.compile(ref, source)
-        source = typeof built === 'string' ? built : built.source
-        if (typeof built !== 'string') {
-          uses = built.uses
-          files = built.files
-        }
-      } catch (error) {
-        throw new ModuleRefused('refused', `it did not compile — ${errorMessage(error)}`)
-      }
-    }
-    if (!uses && this.options.scan) {
-      try {
-        uses = await this.options.scan(ref, original)
-      } catch (error) {
-        this.options.report(`${ref.plugin}: the scan failed (${errorMessage(error)}); what it calls is checked at the call`)
-      }
-    }
-    if (this.options.builds) {
-      void this.options.builds.remember(ref, { source, entrySource: original, compiled: source !== original, files, ...(uses ? { uses } : {}) })
-    }
-    if (uses) {
-      const refusedUses = refuseAppBackgroundUses(uses)
-      if (refusedUses) throw new ModuleRefused('refused', refusedUses)
-    }
-    return source
+    return (await prepareModule(module.ref, this.options, refuseAppBackgroundUses)).source
   }
 
   private async raiseStart(module: Module): Promise<void> {
@@ -393,8 +341,18 @@ export class AppBackgroundRuntime {
     }
   }
 
-  private async stop(module: Module, reason: string): Promise<void> {
-    if (this.modules.get(module.ref.appId) === module) this.modules.delete(module.ref.appId)
+  private stop(module: Module, reason: string): Promise<void> {
+    const { appId } = module.ref
+    if (this.modules.get(appId) === module) this.modules.delete(appId)
+    const done = (this.stopping.get(appId) ?? Promise.resolve()).then(() => this.teardown(module, reason))
+    this.stopping.set(appId, done)
+    void done.finally(() => {
+      if (this.stopping.get(appId) === done) this.stopping.delete(appId)
+    })
+    return done
+  }
+
+  private async teardown(module: Module, reason: string): Promise<void> {
     if (module.restart !== undefined) clearTimeout(module.restart)
     const wasLoaded = module.loaded
     if (wasLoaded && module.dispatcher.hasHooksFor('app.stop')) {
@@ -429,7 +387,7 @@ export class AppBackgroundRuntime {
     await module.document.dispose()
   }
 
-  /** The module cannot load as it is: off until the app is synced again. */
+  /** The module cannot load as it is: off until its plugin or module changes. */
   private off(module: Module, error: unknown): void {
     const refused = error instanceof ModuleRefused ? error : new ModuleRefused('failed', errorMessage(error))
     this.note(module, refused.state, refused.message)
@@ -443,7 +401,7 @@ export class AppBackgroundRuntime {
     const recent = module.crashes.filter(at => now - at < MOD_RESPAWN_WINDOW_MS)
     if (recent.length >= MOD_RESPAWN_LIMIT) {
       module.crashes = recent
-      this.note(module, 'dead', `${reason}; it crashed ${MOD_RESPAWN_LIMIT + 1} times within a minute, so it stays off until the app is synced again`)
+      this.note(module, 'dead', `${reason}; it crashed ${MOD_RESPAWN_LIMIT + 1} times within a minute, so it stays off until its plugin or module changes`)
       this.options.report(`${module.ref.plugin}: the background module of ${module.ref.appId} stopped — ${module.reason}`)
       return
     }

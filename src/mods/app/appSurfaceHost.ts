@@ -113,9 +113,13 @@ async function readText(fs: AppSurfaceHostOptions['fs'], path: string): Promise<
   }
 }
 
-/** The same board; the patches that led to it are not part of what it shows. */
+/** The same board; the patches that led to it are not part of what it shows. A new `dataSeq` is a new board. */
 const sameState = (a: AppSurfaceState | undefined, b: AppSurfaceState): boolean =>
-  a !== undefined && JSON.stringify({ ...a, dataPatches: undefined }) === JSON.stringify({ ...b, dataPatches: undefined })
+  a !== undefined &&
+  a.dataSeq === b.dataSeq &&
+  JSON.stringify({ ...a, dataPatches: undefined }) === JSON.stringify({ ...b, dataPatches: undefined })
+
+const liveHash = (owner: number, version: number): string => `live:${owner}:${version}`
 
 /** The surface ids a reply's `<a2ui>` blocks draw that are among `ids`. */
 export function replyDrawsAppSurface(reply: readonly Message[], ids: readonly string[]): string[] {
@@ -217,7 +221,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
   const readData = async (): Promise<void> => {
     const snapshot = live.snapshot(app.appId)
     if (snapshot) {
-      setData(snapshot.value, now(), `live:${snapshot.version}`)
+      setData(snapshot.value, now(), liveHash(snapshot.owner, snapshot.version))
       return
     }
     if (!dataPath) return
@@ -306,8 +310,10 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
       unsubscribeLive ??= live.subscribe(app.appId, event => {
         if (disposed) return
         const from = dataSeq
-        setData(event.value, now(), `live:${event.version}`)
-        if (dataSeq !== from) dataPatches = { from, patches: [...event.patches] }
+        // The patches lead from the document's version before this one: valid only onto that value.
+        const follows = data?.hash === liveHash(event.owner, event.version - 1)
+        setData(event.value, now(), liveHash(event.owner, event.version))
+        if (dataSeq !== from && follows) dataPatches = { from, patches: [...event.patches] }
         emit()
       })
       await build()

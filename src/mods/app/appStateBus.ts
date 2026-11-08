@@ -6,7 +6,8 @@
 
 import type { AppDataPatch } from '../../browser/runtimeProtocol/modApps'
 
-export type AppStateSnapshot = { version: number; value: unknown }
+/** `owner` names the document that publishes it; `version` counts that document's batches. */
+export type AppStateSnapshot = { owner: number; version: number; value: unknown }
 
 export type AppStateEvent = AppStateSnapshot & {
   appId: string
@@ -20,7 +21,7 @@ const live = new Map<string, AppStateSnapshot>()
 const listeners = new Map<string, Set<Listener>>()
 
 export function publishAppState(event: AppStateEvent): void {
-  live.set(event.appId, { version: event.version, value: event.value })
+  live.set(event.appId, { owner: event.owner, version: event.version, value: event.value })
   for (const listener of [...(listeners.get(event.appId) ?? [])]) listener(event)
 }
 
@@ -29,9 +30,9 @@ export function liveAppState(appId: string): AppStateSnapshot | undefined {
   return live.get(appId)
 }
 
-/** The module is gone: there is no live state for the app any more. */
-export function clearAppState(appId: string): void {
-  live.delete(appId)
+/** The module of `owner` is gone: its live state goes, a successor's stays. */
+export function clearAppState(appId: string, owner: number): void {
+  if (live.get(appId)?.owner === owner) live.delete(appId)
 }
 
 export function onAppState(appId: string, listener: Listener): () => void {

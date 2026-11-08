@@ -1,18 +1,22 @@
 /**
  * An app's state as patches (F-40): the diff names leaves, arrays of one
  * length by index and of two lengths whole; a patch applies without touching
- * the value it was applied to; a batch the document refuses, and why.
+ * the value it was applied to; a batch the document refuses, and why; the
+ * document's byte cap and the patches it publishes.
  */
 import { describe, expect, it } from 'vitest'
 
 import {
   APP_PATCH_BATCH_MAX,
+  appStateBytes,
   applyAppPatch,
   applyAppPatches,
   checkAppPatches,
   diffJson,
   parseAppPointer,
 } from '../mods/app/appStateDiff'
+import type { AppStateEvent } from '../mods/app/appStateBus'
+import { AppStateDocument } from '../mods/app/appStateDocument'
 
 describe('the diff', () => {
   it('names the leaves that changed, a key gone as a removal, and nothing for equal values', () => {
@@ -90,5 +94,41 @@ describe('the check', () => {
     expect(checkAppPatches([{ path: '' }])).toMatch(/root cannot be removed/)
     expect(checkAppPatches(Array.from({ length: APP_PATCH_BATCH_MAX + 1 }, () => ({ path: '/a', value: 1 })))).toMatch(/at most 256/)
     expect(parseAppPointer('/a~1b/c~0d')).toEqual(['a/b', 'c~d'])
+  })
+})
+
+describe('the document', () => {
+  const make = (maxBytes?: number) => {
+    const events: AppStateEvent[] = []
+    const document = new AppStateDocument({
+      appId: 'pay-board',
+      file: 'C:/app/data/state.json',
+      fs: { readFile: () => Promise.reject(new Error('none')), writeFile: async () => undefined },
+      ensureDir: async () => undefined,
+      report: () => undefined,
+      publish: event => events.push(event),
+      ...(maxBytes !== undefined ? { maxBytes } : {}),
+    })
+    return { document, events }
+  }
+
+  it('caps the state at the UTF-8 size of the file it writes', () => {
+    const value = { name: 'é'.repeat(20) }
+    const bytes = appStateBytes(value)
+    expect(bytes).toBe(new TextEncoder().encode(JSON.stringify(value, null, 2)).length)
+    expect(bytes).toBeGreaterThan(JSON.stringify(value).length)
+    expect(() => make(bytes - 1).document.apply([{ path: '', value }])).toThrow(/at most/)
+    expect(make(bytes).document.apply([{ path: '', value }])).toEqual({ version: 1 })
+  })
+
+  it('publishes the change as the diff of the state, so an append or a removal reaches every reader alike', () => {
+    const { document, events } = make()
+    document.apply([{ path: '/list', value: ['a'] }])
+    document.apply([{ path: '/list/-', value: 'b' }])
+    expect(events.at(-1)!.patches).toEqual([{ path: '/list', value: ['a', 'b'] }])
+    document.apply([{ path: '/list/0' }])
+    expect(events.at(-1)!.patches).toEqual([{ path: '/list', value: ['b'] }])
+    expect(events.map(e => e.owner)).toEqual([document.owner, document.owner, document.owner])
+    expect(make().document.owner).not.toBe(document.owner)
   })
 })

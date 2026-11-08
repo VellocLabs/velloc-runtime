@@ -11,8 +11,8 @@
 import { errorMessage } from '../chainRules'
 import { ModDispatcher, type HookFailureReport } from '../ModDispatcher'
 import { ModInstance, type ModCall } from '../ModInstance'
-import { refuseModuleSource, refuseProviderModuleUses, refuseProviderRegistrations } from '../modAdmission'
-import { needsCompiler } from '../modCompilerSurface'
+import { refuseProviderModuleUses, refuseProviderRegistrations } from '../modAdmission'
+import { ModuleRefused, ModuleUnreadable, prepareModule } from '../modPrepare'
 import { normalizeModLocale } from '../modLocale'
 import type { ModHttpHost } from '../modHttp'
 import { serveNoun, type ModNounHost } from '../modNouns'
@@ -280,85 +280,13 @@ function pluginRootOf(modulePath: string): string {
 
 /** The worker died before it answered `mod.load`: a crash. */
 class WorkerGoneWhileLoading extends Error {}
-/** The module cannot load as it is: refused or failed, not retried. */
-/** The module's text could not be read: environmental (a file lock, a plugin
- *  directory swapped by an update, a bridge not ready), so the module stays
- *  cold and the next call reads it again — unlike a refusal, which is final. */
-class ModuleUnreadable extends Error {}
-class ModuleRefused extends Error {
-  constructor(
-    readonly state: 'refused' | 'failed',
-    reason: string,
-  ) {
-    super(reason)
-  }
-}
 
 /** What `prepareProviderModule` needs of the runtime's options. */
 export type ProviderModulePrepareDeps = Pick<ProviderModRuntimeOptions, 'readModule' | 'compile' | 'scan' | 'report' | 'builds'>
 
-/**
- * Read, admit, compile and scan one provider module — what a load does before
- * it spawns a worker. Throws `ModuleUnreadable` (environmental: retry later)
- * or `ModuleRefused` (final). `uses` is what the scan found, when it ran.
- */
-async function prepareProviderModule(
-  ref: ProviderModuleRef,
-  deps: ProviderModulePrepareDeps,
-): Promise<{ source: string; uses?: ModUses }> {
-  // Unchanged files: the last load's text and scan, nothing read or compiled.
-  const kept = await deps.builds?.lookup(ref).catch(() => null)
-  if (kept) {
-    if (kept.uses) {
-      const refusedUses = refuseProviderModuleUses(kept.uses)
-      if (refusedUses) throw new ModuleRefused('refused', refusedUses)
-    }
-    return { source: kept.source, ...(kept.uses ? { uses: kept.uses } : {}) }
-  }
-  let source: string
-  try {
-    source = await deps.readModule(ref.path)
-  } catch (error) {
-    throw new ModuleUnreadable(`${ref.path} could not be read (${errorMessage(error)})`)
-  }
-  const refused = refuseModuleSource(ref.path, source, deps.compile !== undefined)
-  if (refused) throw new ModuleRefused('refused', refused)
-  const original = source
-  let uses: ModUses | undefined
-  let files: readonly string[] = [ref.path]
-  if (deps.compile && needsCompiler(ref.path, source)) {
-    try {
-      const built = await deps.compile(ref, source)
-      source = typeof built === 'string' ? built : built.source
-      if (typeof built !== 'string') {
-        uses = built.uses
-        files = built.files
-      }
-    } catch (error) {
-      throw new ModuleRefused('refused', `it did not compile — ${errorMessage(error)}`)
-    }
-  }
-  if (!uses && deps.scan) {
-    try {
-      uses = await deps.scan(ref, original)
-    } catch (error) {
-      deps.report(`${ref.plugin}: the scan failed (${errorMessage(error)}); what it calls is checked at the call`)
-    }
-  }
-  if (deps.builds) {
-    void deps.builds.remember(ref, {
-      source,
-      entrySource: original,
-      compiled: source !== original,
-      files,
-      ...(uses ? { uses } : {}),
-    })
-  }
-  if (uses) {
-    const refusedUses = refuseProviderModuleUses(uses)
-    if (refusedUses) throw new ModuleRefused('refused', refusedUses)
-  }
-  return { source, ...(uses ? { uses } : {}) }
+/** Read, admit, compile and scan one provider module: what a load does before it spawns a worker. */
+function prepareProviderModule(ref: ProviderModuleRef, deps: ProviderModulePrepareDeps): Promise<{ source: string; uses?: ModUses }> {
+  return prepareModule(ref, deps, refuseProviderModuleUses)
 }
 
 /**

@@ -183,6 +183,31 @@ describe('AppBackgroundRuntime — a synced app', () => {
     expect(document.value).toMatchObject({ started: 'pay-board' })
   })
 
+  it('a changed module starts after the old one stopped: it reads what the old one wrote, and keeps the live state', async () => {
+    const SAVER = `
+      export function register(on) {
+        on('app.start', async ($) => { await $.app.state.update(s => { s.ticks = (s.ticks ?? 0) + 1 }) })
+        on('app.stop', async ($) => {
+          await $.clock.sleep(30)
+          await $.app.state.update(s => { s.saved = 'on stop' })
+        })
+      }
+    `
+    const { runtime, ref, status, files } = world(
+      { '/plugins/pay/bg.js': SAVER, '/plugins/pay/bg2.js': SAVER },
+      { persistDelayMs: 1000 },
+    )
+    runtime.sync([ref('/plugins/pay/bg.js')])
+    await vi.waitFor(() => expect(runtime.document('pay-board')?.value).toMatchObject({ ticks: 1 }))
+    runtime.sync([ref('/plugins/pay/bg2.js')])
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    const document = runtime.document('pay-board')!
+    await vi.waitFor(() => expect(document.value).toMatchObject({ ticks: 2, saved: 'on stop' }))
+    expect(liveAppState('pay-board')?.value, 'the old module going leaves the new one\'s live state').toBe(document.value)
+    await document.flush()
+    expect(JSON.parse(files.get(`${FOLDER}/data/latest.json`)!)).toMatchObject({ ticks: 2, saved: 'on stop' })
+  })
+
   it('waits for a window instead of failing', async () => {
     let attached!: () => void
     const { runtime, ref, status, opened } = world(
@@ -209,7 +234,7 @@ describe('AppBackgroundRuntime — admission', () => {
     await expect(workers[0]!.closed).resolves.toEqual({ reason: 'closed' })
   })
 
-  it('a session noun is refused at the call; an unreadable module is failed, not retried', async () => {
+  it('a session noun is refused at the call; an unreadable module is failed until it can be read', async () => {
     const { runtime, ref, status } = world({
       '/plugins/pay/bg.js': `
         export function register(on) {
@@ -224,6 +249,21 @@ describe('AppBackgroundRuntime — admission', () => {
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
     await vi.waitFor(() => expect((runtime.document('pay-board')!.value as { message: string }).message).toMatch(/^NotAllowedError: \$\.ui is a session noun/))
     expect(status('pay-other')).toMatchObject({ state: 'failed', reason: expect.stringMatching(/could not be read/) })
+  })
+
+  it('an unreadable module is read again on the next sync; a refused one is left off', async () => {
+    const modules: Record<string, string> = { '/plugins/pay/refused.js': `export function register(on) { on('session.start', () => {}) }` }
+    const { runtime, ref, status, opened } = world(modules)
+    const refs = [ref('/plugins/pay/bg.js'), ref('/plugins/pay/refused.js', 'pay-other')]
+    runtime.sync(refs)
+    await vi.waitFor(() => expect(status()?.state).toBe('failed'))
+    await vi.waitFor(() => expect(status('pay-other')?.state).toBe('refused'))
+    const spawned = opened()
+    modules['/plugins/pay/bg.js'] = COUNTER
+    runtime.sync(refs)
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    expect(opened(), 'one new worker, for the module now read').toBe(spawned + 1)
+    expect(status('pay-other')?.state).toBe('refused')
   })
 
   it('a batch the document refuses rejects the call and leaves the state as it was', async () => {
@@ -242,6 +282,28 @@ describe('AppBackgroundRuntime — admission', () => {
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
     await vi.waitFor(() => expect(runtime.document('pay-board')!.value).toMatchObject({ ok: 1, refused: expect.stringMatching(/not a JSON pointer/) }))
     expect(runtime.document('pay-board')!.version).toBe(2)
+  })
+
+  it('an object the module got and edited in place is still published when set', async () => {
+    const { runtime, ref, status } = world({
+      '/plugins/pay/bg.js': `
+        export function register(on) {
+          on('app.start', async ($) => {
+            await $.app.state.set({ count: 1, list: [] })
+            const s = await $.app.state.get()
+            s.count += 1
+            await $.app.state.set(s)
+            s.count += 1
+            await $.app.state.update(d => { d.note = 'after' })
+            const u = await $.app.state.update(d => { d.list.push('a') })
+            u.list.push('b')
+            await $.app.state.set(u)
+          })
+        }`,
+    })
+    runtime.sync([ref('/plugins/pay/bg.js')])
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    await vi.waitFor(() => expect(runtime.document('pay-board')!.value).toEqual({ count: 2, note: 'after', list: ['a', 'b'] }))
   })
 
   it('the static checks name the session events, the session nouns and the forbidden methods', () => {

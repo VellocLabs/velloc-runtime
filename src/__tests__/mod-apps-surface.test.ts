@@ -362,9 +362,9 @@ describe('the mods/app topic', () => {
 })
 
 describe('the live state of a background module', () => {
-  function liveRig(start?: { version: number; value: unknown }) {
+  function liveRig(start?: { owner: number; version: number; value: unknown }) {
     let snapshot = start
-    let listener: ((event: { appId: string; version: number; value: unknown; patches: Array<{ path: string; value?: unknown }> }) => void) | undefined
+    let listener: ((event: { appId: string; owner: number; version: number; value: unknown; patches: Array<{ path: string; value?: unknown }> }) => void) | undefined
     const unsubscribed: string[] = []
     const liveData = {
       snapshot: () => snapshot,
@@ -388,26 +388,42 @@ describe('the live state of a background module', () => {
       now: () => 5000,
     })
     const emit = (event: Parameters<NonNullable<typeof listener>>[0]) => {
-      snapshot = { version: event.version, value: event.value }
+      snapshot = { owner: event.owner, version: event.version, value: event.value }
       listener?.(event)
     }
     return { host, published, unsubscribed, emit }
   }
 
   it('is read in place of the data file, and each batch is published as patches from the board before it', async () => {
-    const { host, published, unsubscribed, emit } = liveRig({ version: 7, value: { count: 9 } })
+    const { host, published, unsubscribed, emit } = liveRig({ owner: 1, version: 7, value: { count: 9 } })
     const first = await host.start()
     expect(first).toMatchObject({ data: { count: 9 }, dataAt: 5000, dataSeq: 1 })
     expect(first.dataPatches).toBeUndefined()
-    emit({ appId: 'pay-board', version: 8, value: { count: 10 }, patches: [{ path: '/count', value: 10 }] })
+    emit({ appId: 'pay-board', owner: 1, version: 8, value: { count: 10 }, patches: [{ path: '/count', value: 10 }] })
     expect(published.at(-1)).toMatchObject({ data: { count: 10 }, dataSeq: 2, dataPatches: { from: 1, patches: [{ path: '/count', value: 10 }] } })
     // The same version again changes nothing; the next build reads the data whole, without patches.
-    emit({ appId: 'pay-board', version: 8, value: { count: 10 }, patches: [] })
+    emit({ appId: 'pay-board', owner: 1, version: 8, value: { count: 10 }, patches: [] })
     expect(published).toHaveLength(2)
     await host.build()
     expect(published).toHaveLength(2)
     host.dispose()
     expect(unsubscribed).toEqual(['pay-board'])
+  })
+
+  it('a restarted module\'s document is a new owner: its first batch is taken, set whole, and its patches follow from it', async () => {
+    const { host, published, emit } = liveRig({ owner: 1, version: 1, value: { count: 1 } })
+    await host.start()
+    emit({ appId: 'pay-board', owner: 2, version: 1, value: { count: 5 }, patches: [{ path: '/count', value: 5 }] })
+    const restarted = published.at(-1)!
+    expect(restarted).toMatchObject({ data: { count: 5 }, dataSeq: 2 })
+    expect(restarted.dataPatches, 'not computed against what the board holds').toBeUndefined()
+    emit({ appId: 'pay-board', owner: 2, version: 2, value: { count: 6 }, patches: [{ path: '/count', value: 6 }] })
+    expect(published.at(-1)).toMatchObject({ data: { count: 6 }, dataSeq: 3, dataPatches: { from: 2, patches: [{ path: '/count', value: 6 }] } })
+    // A skipped version leaves the board's value behind: set whole.
+    emit({ appId: 'pay-board', owner: 2, version: 4, value: { count: 8 }, patches: [{ path: '/count', value: 8 }] })
+    expect(published.at(-1)).toMatchObject({ data: { count: 8 }, dataSeq: 4 })
+    expect(published.at(-1)!.dataPatches).toBeUndefined()
+    host.dispose()
   })
 
   it('without a live state the data file is read as before, and the page check takes the new fields', async () => {

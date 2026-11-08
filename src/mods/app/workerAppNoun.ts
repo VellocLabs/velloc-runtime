@@ -25,10 +25,11 @@ export function makeWorkerAppNoun(call: WorkerAppCall): unknown {
     chain = run.catch(() => undefined)
     return run
   }
+  // `known` is never an object the module holds, so an in-place edit of one never reads as "unchanged".
   const fetchState = async (): Promise<unknown> => {
     const state = (await call('state', [])) as { value: unknown }
     known = { value: state.value }
-    return state.value
+    return clone(state.value)
   }
   const commit = async (before: unknown, next: unknown): Promise<unknown> => {
     const patches = diffJson(before, next)
@@ -40,7 +41,7 @@ export function makeWorkerAppNoun(call: WorkerAppCall): unknown {
         throw error
       }
     }
-    known = { value: next }
+    known = { value: clone(next) }
     return next
   }
   const state = Object.freeze({
@@ -48,15 +49,16 @@ export function makeWorkerAppNoun(call: WorkerAppCall): unknown {
     update: (fn: unknown) =>
       serial(async () => {
         if (typeof fn !== 'function') throw new TypeError('$.app.state.update(fn): fn is not a function')
-        const before = known ? known.value : await fetchState()
+        if (!known) await fetchState()
+        const before = known!.value
         const draft = clone(before ?? {})
         const returned = (await (fn as (draft: unknown) => unknown)(draft)) as unknown
         return commit(before, returned === undefined ? draft : returned)
       }),
     set: (value: unknown) =>
       serial(async () => {
-        const before = known ? known.value : await fetchState()
-        return commit(before, value)
+        if (!known) await fetchState()
+        return commit(known!.value, value)
       }),
   })
   return Object.freeze({
