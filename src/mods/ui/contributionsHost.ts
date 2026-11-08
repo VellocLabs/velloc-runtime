@@ -24,13 +24,14 @@ import {
   type ProviderGateState,
 } from '../../pluginHost/pluginRequirements'
 import { parseWelcome } from '../../prompting/templateParsing'
+import { appBackgroundMcpOwner, type AppBackgroundMcpOwner } from '../app/appBackgroundMcp'
 import { safeIconSvg } from '../provider/modProviderDefinition'
 import { publishModContributions, setModContributionsSyncGate, setTopbarResolver } from './contributionsState'
 import { appIdOf, modUiId, type ModUiIconDecl, type PluginAppDecl } from './uiManifest'
 
 export type ContributingPlugin = Pick<
   ActivePlugin,
-  'name' | 'path' | 'source' | 'installIdentifier' | 'manifest' | 'providers' | 'templates'
+  'name' | 'path' | 'source' | 'installIdentifier' | 'manifest' | 'providers' | 'templates' | 'mcpServers' | 'nativeMcpServers'
 >
 
 export type ContributionsHostOptions = {
@@ -64,6 +65,8 @@ export type AppBackgroundTemplate = {
   /** `pluginOwnerId` of the plugin: the module's provenance. */
   owner: string
   decl: PluginAppDecl
+  /** The plugin's manifest as the module's `$.mcp.connect` resolves its servers. */
+  mcp: AppBackgroundMcpOwner
 }
 
 /** What a topbar press runs, as the runtime resolved it. */
@@ -235,6 +238,7 @@ export class ModUiContributionsHost {
         module: insideRoot(owner.path, decl.background),
         owner: pluginOwnerId(owner),
         decl,
+        mcp: appBackgroundMcpOwner(owner),
       })
     }
     return list

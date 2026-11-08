@@ -16,6 +16,7 @@ import {
   type AppBackgroundRuntimeOptions,
 } from '../mods/app/AppBackgroundRuntime'
 import { refuseAppBackgroundCall, refuseAppBackgroundRegistrations, refuseAppBackgroundUses } from '../mods/app/appBackgroundEvents'
+import type { AppBackgroundMcpOwner } from '../mods/app/appBackgroundMcp'
 import { liveAppState, resetAppStateBusForTests } from '../mods/app/appStateBus'
 import { createAppSurfaceHost } from '../mods/app/appSurfaceHost'
 
@@ -329,7 +330,80 @@ describe('AppBackgroundRuntime — admission', () => {
     expect(refuseAppBackgroundCall('app', 'publish')).toBeNull()
     expect(refuseAppBackgroundCall('app', 'delete')).toMatch(/offers state, publish/)
     expect(refuseAppBackgroundCall('http', 'post')).toMatch(/offers fetch/)
+    expect(refuseAppBackgroundCall('mcp', 'call')).toBeNull()
+    expect(refuseAppBackgroundCall('mcp', 'connect')).toBeNull()
+    expect(refuseAppBackgroundCall('mcp', 'listTools')).toMatch(/offers call, connect/)
     expect(refuseAppBackgroundCall('tool', 'register')).toMatch(/session noun/)
     expect(refuseAppBackgroundUses({ calls: ['app.state', 'prompt.submit'] } as never)).toMatch(/\$\.prompt is a session noun/)
+  })
+})
+
+describe('AppBackgroundRuntime — $.mcp', () => {
+  const OWNER: AppBackgroundMcpOwner = {
+    name: 'pay',
+    path: '/plugins/pay',
+    manifest: { name: 'pay' } as never,
+    mcpServers: { docs: { type: 'http', url: 'https://docs.test/mcp' } },
+  }
+  /** Connects its own server at start, calls it, and keeps both answers in the state. */
+  const MCP_USER = `
+    export function register(on) {
+      on('app.start', async ($) => {
+        let connect, result
+        try { connect = await $.mcp.connect('docs') } catch (error) { connect = { error: error.name } }
+        try { result = await $.mcp.call('docs', 'search', { q: 1 }) } catch (error) { result = { error: error.name } }
+        await $.app.state.update(s => { s.connect = connect; s.result = result })
+      })
+    }
+  `
+
+  it('a module connects its own manifest server and calls it through a pool of its own, built at the first call and closed at the stop', async () => {
+    const built: string[] = []
+    const connects: string[] = []
+    let closed = 0
+    const { runtime, ref, status, reports } = world(
+      { '/plugins/pay/bg.js': MCP_USER },
+      {
+        mcp: moduleRef => {
+          built.push(`${moduleRef.appId}:${moduleRef.folder}:${moduleRef.mcpOwner.name}`)
+          return {
+            host: {
+              connect: async (plugin, key) => {
+                connects.push(`${plugin}/${key}`)
+                return { isConnected: true, server: key }
+              },
+              call: async input => ({ content: [{ type: 'text', text: `${input.server}/${input.tool} ${JSON.stringify(input.args)}` }], isError: false }),
+            },
+            close: async () => {
+              closed += 1
+            },
+          }
+        },
+      },
+    )
+    runtime.sync([{ ...ref('/plugins/pay/bg.js'), mcpOwner: OWNER }])
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    const document = runtime.document('pay-board')!
+    await vi.waitFor(() => expect(document.value).toHaveProperty('result'))
+    expect(document.value).toEqual({
+      connect: { isConnected: true, server: 'docs' },
+      result: { content: [{ type: 'text', text: 'docs/search {"q":1}' }], isError: false },
+    })
+    expect(built).toEqual([`pay-board:${FOLDER}:pay`])
+    expect(connects).toEqual(['pay/docs'])
+    expect(closed).toBe(0)
+    runtime.sync([])
+    await vi.waitFor(() => expect(status()).toBeUndefined())
+    expect(closed).toBe(1)
+    expect(reports.filter(line => /failed/.test(line))).toEqual([])
+  })
+
+  it('without an MCP host, or a plugin manifest, $.mcp is refused at the call as not supported', async () => {
+    const { runtime, ref, status } = world({ '/plugins/pay/bg.js': MCP_USER })
+    runtime.sync([{ ...ref('/plugins/pay/bg.js'), mcpOwner: OWNER }])
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    const document = runtime.document('pay-board')!
+    await vi.waitFor(() => expect(document.value).toHaveProperty('result'))
+    expect(document.value).toEqual({ connect: { error: 'NotSupportedError' }, result: { error: 'NotSupportedError' } })
   })
 })

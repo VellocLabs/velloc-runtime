@@ -43,6 +43,7 @@ export function appBackgroundRef(homeDir: string, app: AppBackgroundTemplate): A
     appId: app.appId,
     folder,
     stateFile,
+    mcpOwner: app.mcp,
   }
 }
 

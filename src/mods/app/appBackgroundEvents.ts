@@ -14,12 +14,13 @@ export const APP_BACKGROUND_ABI = 'Velloc app background ABI 0.1'
 export const APP_BACKGROUND_EVENTS: readonly string[] = Object.freeze(['app.start', 'app.stop'])
 
 /** The nouns a background module may call; `$.plugin` holds values, not calls. */
-export const APP_BACKGROUND_NOUNS: readonly string[] = Object.freeze(['app', 'store', 'http', 'log', 'clock', 'fs', 'plugin'])
+export const APP_BACKGROUND_NOUNS: readonly string[] = Object.freeze(['app', 'store', 'http', 'log', 'clock', 'fs', 'mcp', 'plugin'])
 
 const ONLY_METHODS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   app: Object.freeze(['state', 'publish']),
   http: Object.freeze(['fetch']),
   log: Object.freeze(['debug', 'info', 'warn', 'error']),
+  mcp: Object.freeze(['call', 'connect']),
 })
 
 /** Why a background module may not hook what it registered, or null. */

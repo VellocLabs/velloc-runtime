@@ -272,6 +272,7 @@ describe('an app with a background module', () => {
         module: expect.stringMatching(/^[/\\]plugins[/\\]pay[/\\]bg[/\\]app\.js$/),
         owner: 'pay@mkt',
         decl: { seed: './app', seedVersion: 1, entry: 'app.a2ui', background: './bg/app.js' },
+        mcp: { name: 'pay', path: '/plugins/pay', installIdentifier: 'pay@mkt', manifest: { name: 'pay' } },
       },
     ])
   })

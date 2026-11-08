@@ -9,7 +9,8 @@
  *
  * Security: a background module belongs to no session. Its admission
  * (`appBackgroundEvents.ts`) refuses every session event and noun; its
- * `$.fs` is the app's folder alone.
+ * `$.fs` is the app's folder alone; its `$.mcp` is a pool of its own,
+ * holding its plugin's manifest servers alone (`appBackgroundMcp.ts`).
  */
 
 import { errorMessage } from '../chainRules'
@@ -41,6 +42,7 @@ import {
 } from '../../browser/workerKernel/IsolatedWorkerKernel'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { refuseAppBackgroundCall, refuseAppBackgroundRegistrations, refuseAppBackgroundUses } from './appBackgroundEvents'
+import { sameMcpOwner, type AppBackgroundMcp, type AppBackgroundMcpOwner } from './appBackgroundMcp'
 import { AppStateDocument, type AppStateDocumentFs } from './appStateDocument'
 
 /** One app's background module: a hooks-module ref plus the app it serves. */
@@ -52,6 +54,8 @@ export type AppBackgroundRef = ModModuleRef & {
   readonly folder: string
   /** The state file, absolute. */
   readonly stateFile: string
+  /** The plugin's manifest as `$.mcp.connect` resolves its servers. Absent: `$.mcp` is refused. */
+  readonly mcpOwner?: AppBackgroundMcpOwner
 }
 
 /** Where workers are spawned from: some window's control port. */
@@ -75,6 +79,8 @@ export type AppBackgroundRuntimeOptions = {
   http?: ModHttpHost
   /** The app folders and the state files. Absent: `$.fs` is refused and the state stays in memory. */
   fs?: RuntimeFs
+  /** `$.mcp`, one pool per module, built at its first call. Absent: refused at the call. */
+  mcp?: (ref: AppBackgroundRef & { mcpOwner: AppBackgroundMcpOwner }) => AppBackgroundMcp
   report: (line: string) => void
   locale?: () => string | undefined
   onStatusChanged?: () => void
@@ -107,6 +113,8 @@ type Module = {
   state: AppBackgroundState
   reason?: string
   loaded?: Loaded
+  /** The module's MCP pool, from its first `$.mcp` call to its stop or crash. */
+  mcp?: AppBackgroundMcp
   /** The load in flight, so a stop waits for it before closing. */
   starting?: Promise<void>
   restart?: ReturnType<typeof setTimeout>
@@ -132,7 +140,13 @@ function kernelOpenWorker(ref: AppBackgroundRef): Promise<ModWorkerHandle> {
 }
 
 const sameRef = (a: AppBackgroundRef, b: AppBackgroundRef): boolean =>
-  a.path === b.path && a.root === b.root && a.folder === b.folder && a.stateFile === b.stateFile && a.provenance === b.provenance && a.plugin === b.plugin
+  a.path === b.path &&
+  a.root === b.root &&
+  a.folder === b.folder &&
+  a.stateFile === b.stateFile &&
+  a.provenance === b.provenance &&
+  a.plugin === b.plugin &&
+  sameMcpOwner(a.mcpOwner, b.mcpOwner)
 
 const named = (name: string, message: string): Error => {
   const error = new Error(message)
@@ -386,7 +400,14 @@ export class AppBackgroundRuntime {
       loaded.worker.close()
     }
     this.note(module, 'stopped', reason)
-    await module.document.dispose()
+    await Promise.all([module.document.dispose(), this.closeMcp(module)])
+  }
+
+  /** The module's MCP pool is closed with its worker; the next worker builds its own. */
+  private async closeMcp(module: Module): Promise<void> {
+    const mcp = module.mcp
+    module.mcp = undefined
+    await mcp?.close()
   }
 
   /** The module cannot load as it is: off until its plugin is switched off and on again, or its module path changes. */
@@ -394,11 +415,13 @@ export class AppBackgroundRuntime {
     const refused = error instanceof ModuleRefused ? error : new ModuleRefused('failed', errorMessage(error))
     this.note(module, refused.state, refused.message)
     this.options.report(`${module.ref.plugin}: the background module of ${module.ref.appId} did not load — ${refused.message}`)
+    void this.closeMcp(module)
   }
 
   /** Count a crash: the module restarts after the backoff, or past the limit stays off. */
   private crashed(module: Module, reason: string): void {
     if (module.gone.signal.aborted) return
+    void this.closeMcp(module)
     const now = this.now()
     const recent = module.crashes.filter(at => now - at < MOD_RESPAWN_WINDOW_MS)
     if (recent.length >= MOD_RESPAWN_LIMIT) {
@@ -441,16 +464,26 @@ export class AppBackgroundRuntime {
     return await serveNoun(call, module.dispatcher, this.nounHost(module), line => this.options.report(line))
   }
 
-  /** The host the shared nouns are served with: no session, the app's folder as its fs. */
+  /** The host the shared nouns are served with: no session, the app's folder as its fs, a pool of its own as its mcp. */
   private nounHost(module: Module): ModNounHost {
     const { fs } = this.options
+    const mcp = this.mcpOf(module)
     return {
       id: () => '',
       cwd: () => module.ref.folder,
       store: plugin => this.storeOf(plugin),
       ...(this.options.http ? { http: this.options.http } : {}),
       ...(fs ? { fs: fileModFs(fs, { cwd: module.ref.folder, readRoot: module.ref.folder }) } : {}),
+      ...(mcp ? { mcp: mcp.host } : {}),
     }
+  }
+
+  private mcpOf(module: Module): AppBackgroundMcp | undefined {
+    const { mcp } = this.options
+    const { mcpOwner } = module.ref
+    if (!mcp || !mcpOwner || !module.loaded) return undefined
+    if (!module.mcp) module.mcp = mcp({ ...module.ref, mcpOwner })
+    return module.mcp
   }
 
   private storeOf(plugin: string): ModStoreHost {

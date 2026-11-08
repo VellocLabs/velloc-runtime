@@ -19,7 +19,15 @@ const template = (appId: string, data?: string): AppBackgroundTemplate => ({
   module: 'C:/plugins/pay/bg.js',
   owner: 'pay@mkt',
   decl: { seed: './app', seedVersion: 1, entry: 'app.a2ui', background: './bg.js', ...(data ? { data } : {}) },
+  mcp: MCP_OWNER,
 })
+
+const MCP_OWNER = {
+  name: 'pay',
+  path: 'C:/plugins/pay',
+  manifest: { name: 'pay' } as never,
+  mcpServers: { docs: { type: 'http' as const, url: 'https://docs.test/mcp' } },
+}
 
 function fakeRuntime() {
   const synced: AppBackgroundRef[][] = []
@@ -40,6 +48,7 @@ describe('the ref', () => {
     expect(slash(ref.folder)).toBe('C:/home/.velloc/shared-workspace/app-pay-board')
     expect(slash(ref.stateFile)).toBe('C:/home/.velloc/shared-workspace/app-pay-board/data/latest.json')
     expect(slash(appBackgroundRef('C:/home', template('pay-board')).stateFile)).toBe('C:/home/.velloc/shared-workspace/app-pay-board/data/state.json')
+    expect(ref.mcpOwner).toBe(MCP_OWNER)
   })
 })
 
