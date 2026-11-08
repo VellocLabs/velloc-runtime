@@ -699,7 +699,12 @@ function renderWriteOrEditResult(toolName: string, data: unknown): unknown {
     message = `The file ${path} has been updated successfully.`
   }
   const originalFile = str(record, 'original_file')
-  return originalFile === undefined ? { message } : { message, original_file: originalFile }
+  const hostPath = str(record, 'path')
+  return {
+    message,
+    ...(hostPath !== undefined ? { path: hostPath } : {}),
+    ...(originalFile !== undefined ? { original_file: originalFile } : {}),
+  }
 }
 
 function stringList(value: unknown): string[] {

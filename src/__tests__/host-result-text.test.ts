@@ -244,16 +244,20 @@ describe('host result text', () => {
   it('Write and Edit outcomes', () => {
     expect(renderHostResult('Write', { outcome: 'created', path: 'a.txt', bytes: 5 })).toEqual({
       message: 'File created successfully at: a.txt. Wrote 5 bytes.',
+      path: 'a.txt',
     })
     expect(renderHostResult('Write', { outcome: 'updated', path: 'a.txt', bytes: 5, original_file: 'old' })).toEqual({
       message: 'The file a.txt has been updated successfully. Wrote 5 bytes.',
+      path: 'a.txt',
       original_file: 'old',
     })
     expect(renderHostResult('Edit', { outcome: 'updated', path: 'a.txt' })).toEqual({
       message: 'The file a.txt has been updated successfully.',
+      path: 'a.txt',
     })
     expect(renderHostResult('Edit', { outcome: 'updated_all', path: 'a.txt' })).toEqual({
       message: 'The file a.txt has been updated. All occurrences were successfully replaced.',
+      path: 'a.txt',
     })
   })
 

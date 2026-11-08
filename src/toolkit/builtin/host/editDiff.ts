@@ -1,5 +1,6 @@
-// Edit / Write: the host's `{message, original_file?}` result split into the
-// model-facing sentence and a UI-only file-relative diff.
+// Edit / Write: the host's `{message, path?, original_file?}` result split into
+// the model-facing sentence and a UI-only file-relative diff. The diff is keyed
+// by the host's resolved `path` (platform separators), not the model's input.
 import { WRITE_TOOL_ID } from '../../../prompting/fileToolNames'
 import { summarizeFileChange, type FileChangeDiff } from '../../../utils/fileChangeHunks'
 
@@ -15,7 +16,12 @@ export function buildHostEditDiff(
 
   const originalFile =
     typeof d.original_file === 'string' ? d.original_file : undefined
-  const filePath = typeof args.file_path === 'string' ? args.file_path : ''
+  const filePath =
+    typeof d.path === 'string' && d.path !== ''
+      ? d.path
+      : typeof args.file_path === 'string'
+        ? args.file_path
+        : ''
 
   if (toolName === WRITE_TOOL_ID) {
     const content = typeof args.content === 'string' ? args.content : ''
