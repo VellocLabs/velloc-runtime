@@ -45,6 +45,7 @@ import { getActionsSlot, getOwner, getSlot, setOwner, subscribeSlot } from './a2
 import { AppSurfaceFeeder, appSurfaceIds } from './AppSurfaceFeeder'
 import type { AppBoard } from '../apps/appSurfaceView'
 import { AppReloadButton, AppSurfaceBar } from '../apps/AppSurfaceBar'
+import { watchRootCardFrame } from './a2uiRootFrame'
 
 type SurfaceActionHandler = (action: ActionPayload) => void
 type VellocProcessor = MessageProcessor<ReactCatalogComponent>
@@ -215,6 +216,8 @@ function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoa
     useA2uiPresentation()
   const t = useT()
   const shown = slot !== null && slot.sessionId === sessionId ? slot.element : null
+  const [surfaceElement, setSurfaceElement] = useState<HTMLDivElement | null>(null)
+  useEffect(() => (surfaceElement ? watchRootCardFrame(surfaceElement) : undefined), [surfaceElement])
 
   // An app with no surface yet still shows Reload in the header and why it did not build.
   const appIds = appSurfaceIds(board?.state)
@@ -261,6 +264,7 @@ function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoa
         </div>
       )}
       <div
+        ref={setSurfaceElement}
         data-slot="a2ui-surface"
         data-surface-id={selectedSurfaceId ?? undefined}
         aria-busy={busy || undefined}
