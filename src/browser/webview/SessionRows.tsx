@@ -43,6 +43,7 @@ import type { SessionLineageKind } from '../../sessions/sessionLineage'
 import {
   aggregateDescendantState,
   countDescendants,
+  findDescendant,
   rootOf,
   type SessionTree,
 } from './sessionTree'
@@ -354,6 +355,10 @@ function SessionRowSubtree(props: SessionRowProps) {
   const children = nesting?.tree.childrenOf.get(session.sessionId)
   const expanded = !nesting?.collapsed.has(session.sessionId)
   const childCount = nesting ? countDescendants(session.sessionId, nesting.tree.childrenOf) : 0
+  // A collapsed subtree still shows the active session, first, above the summary.
+  const revealed = !expanded && nesting
+    ? findDescendant(session.sessionId, props.activeSessionId, nesting.tree.childrenOf)
+    : undefined
   const connectorLeft = (indented ? 28 : 12) + depth * SESSION_ROW_INDENT_PX + 6
   return (
     <>
@@ -382,7 +387,17 @@ function SessionRowSubtree(props: SessionRowProps) {
                 depth={depth + 1}
               />
             </div>
-          )) : (
+          )) : (<>
+            {revealed && (
+              <div className="relative" data-testid="sidebar-revealed-active">
+                <span
+                  aria-hidden
+                  style={{ left: connectorLeft }}
+                  className="pointer-events-none absolute -bottom-1 -top-1 border-l border-border"
+                />
+                <SessionRow {...props} session={revealed} depth={depth + 1} />
+              </div>
+            )}
             <div className="relative">
               <span
                 aria-hidden
@@ -406,7 +421,7 @@ function SessionRowSubtree(props: SessionRowProps) {
                 {t(childCount === 1 ? 'sidebar.nestedSessionOne' : 'sidebar.nestedSessions', { count: childCount })}
               </button>
             </div>
-          )}
+          </>)}
         </div>
       )}
     </>

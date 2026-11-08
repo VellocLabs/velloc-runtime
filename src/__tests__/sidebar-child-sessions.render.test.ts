@@ -174,7 +174,9 @@ describe('collapse', () => {
     fireEvent.click(toggleOf('p')!)
     const summary = screen.getByTestId('sidebar-children-summary')
     expect(summary.textContent).toBe(en['sidebar.nestedSessions'].replace('{count}', '2'))
-    expect(screen.queryByTestId('sidebar-row-c')).toBeNull()
+    // The active child stays on screen, first under the parent, above the summary.
+    expect(sequence()).toEqual(['#sidebar-recents-toggle', 'p', 'c'])
+    expect(screen.queryByTestId('sidebar-row-g')).toBeNull()
     fireEvent.click(summary)
     expect(screen.queryByTestId('sidebar-children-summary')).toBeNull()
     expect(rowOf('c').dataset.active).toBe('true')
@@ -190,6 +192,27 @@ describe('collapse', () => {
     expect(screen.getByRole('button', { name: label })).toBe(summary)
     expect(summary.getAttribute('aria-description')).toBe(en['sidebar.expandChildrenAria']
       .replace('{title}', 'p').replace('{count}', String(count)))
+  })
+
+  it('a collapsed parent reveals an active descendant one level in, then the unchanged summary', () => {
+    localStorage.setItem('nexus:sidebar:childrenCollapsed', JSON.stringify(['p']))
+    renderSidebar([item('p'), item('c', under('p')), item('g', under('c')), item('h', under('p'))], 'g')
+    expect(sequence()).toEqual(['#sidebar-recents-toggle', 'p', 'g'])
+    expect(rowOf('g').dataset.depth).toBe('1')
+    expect(rowOf('g').dataset.active).toBe('true')
+    const children = document.querySelector('[data-testid="sidebar-children"][data-parent-session-id="p"]')!
+    const order = Array.from(children.querySelectorAll<HTMLElement>('[data-testid="sidebar-row-g"], [data-testid="sidebar-children-summary"]'))
+      .map(el => el.dataset.testid)
+    expect(order).toEqual(['sidebar-row-g', 'sidebar-children-summary'])
+    expect(screen.getByTestId('sidebar-children-summary').textContent)
+      .toBe(en['sidebar.nestedSessions'].replace('{count}', '3'))
+  })
+
+  it('a collapsed parent without the active session shows only its summary', () => {
+    localStorage.setItem('nexus:sidebar:childrenCollapsed', JSON.stringify(['p']))
+    renderSidebar([item('p'), item('c', under('p')), item('q', { updatedAt: NOW - 2000 })], 'q')
+    expect(screen.queryByTestId('sidebar-row-c')).toBeNull()
+    expect(screen.queryByTestId('sidebar-revealed-active')).toBeNull()
   })
 
   it('uses the singular summary for one child', () => {
@@ -372,5 +395,30 @@ describe('the Workspaces node', () => {
       fireEvent.click(node.querySelector<HTMLElement>('[data-testid="sidebar-children-toggle"]')!)
     })
     expect(document.querySelectorAll('[data-testid="sidebar-row-c"]')).toHaveLength(0)
+  })
+
+  it('a collapsed folder shows the active session as its only row', () => {
+    const sessions = [
+      item('p', { projectRoot: 'D:\w' }),
+      item('c', { ...under('p'), projectRoot: 'D:\w' }),
+      item('o', { projectRoot: 'D:\w' }),
+    ]
+    const props = (active: string) => ({
+      title: 'Conversation', sessionId: active, activeSessionId: active, sessions,
+      addedProjectPaths: ['D:\w'], addedProjectOrder: new Map([['D:\w', 0]]),
+    })
+    const view = render(createElement(Sidebar, props('c')))
+    act(() => {
+      fireEvent.click(screen.getByTestId('sidebar-projects-toggle'))
+    })
+    expect(screen.getByTestId('sidebar-project-row').getAttribute('aria-expanded')).toBe('false')
+    const node = screen.getByTestId('sidebar-project-child')
+    const rows = Array.from(node.querySelectorAll<HTMLElement>('[data-testid^="sidebar-row-"][data-session-id]'))
+      .map(el => el.dataset.sessionId)
+    expect(rows).toEqual(['c'])
+    expect(node.querySelector('[data-testid="sidebar-children-summary"]')).toBeNull()
+
+    view.rerender(createElement(Sidebar, props('none')))
+    expect(screen.queryByTestId('sidebar-project-child')).toBeNull()
   })
 })

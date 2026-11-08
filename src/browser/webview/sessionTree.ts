@@ -166,6 +166,25 @@ export function countDescendants<T extends TreeableSession>(
   return count
 }
 
+/** The row `targetId` when it sits under `sessionId` at any depth, else `undefined`. */
+export function findDescendant<T extends TreeableSession>(
+  sessionId: string,
+  targetId: string,
+  childrenOf: ReadonlyMap<string, T[]>,
+): T | undefined {
+  const seen = new Set<string>([sessionId])
+  const queue = [sessionId]
+  while (queue.length > 0) {
+    for (const child of childrenOf.get(queue.shift()!) ?? []) {
+      if (child.sessionId === targetId) return child
+      if (seen.has(child.sessionId)) continue
+      seen.add(child.sessionId)
+      queue.push(child.sessionId)
+    }
+  }
+  return undefined
+}
+
 /**
  * Every row drawn under `sessionId` in a tree's `childrenOf`, at every depth,
  * nearest level first: the rows {@link countDescendants} counts. Empty for a

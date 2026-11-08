@@ -327,6 +327,10 @@ function ProjectRow({
         : undefined,
     [onDeleteThread, node.path],
   )
+  // A collapsed project still shows the active session as its only row.
+  const revealedActive = expanded
+    ? undefined
+    : node.sessions.find(s => s.sessionId === activeSessionId)
   const FolderGlyph = expanded ? FolderOpenIcon : FolderIcon
   // Tracked so the hover actions stay on screen while the ⋯ menu is open. The
   // menu is portal'd, so moving the pointer from the trigger onto a menu item
@@ -553,15 +557,16 @@ function ProjectRow({
           The wrapper scopes "rows belonging to THIS project" for tests and for
           anything that needs to tell a project's copy of a session row apart
           from the same session's row under Recents. */}
-      {expanded && (
+      {(expanded || revealedActive) && (
         <div
           data-testid="sidebar-project-child"
           data-project-path={node.path}
+          data-revealed-active={!expanded || undefined}
           className="flex flex-col gap-1"
         >
           {node.sessions.length > 0 ? (
             <SessionRowList
-              groups={ungroupedView(pinnedFirst(nodeTree.roots))}
+              groups={expanded ? ungroupedView(pinnedFirst(nodeTree.roots)) : ungroupedView([revealedActive!])}
               activeSessionId={activeSessionId}
               onSwitchThread={onSwitchThread}
               onDeleteThread={onDeleteInFolder}
@@ -572,7 +577,7 @@ function ProjectRow({
               onArchiveThread={onArchiveThread}
               editing={editing}
               onEditingChange={onEditingChange}
-              nesting={nesting}
+              nesting={expanded ? nesting : undefined}
               indented
               scope={`project:${node.path}`}
             />
