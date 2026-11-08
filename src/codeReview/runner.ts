@@ -8,6 +8,7 @@ import type { ToolContractList } from '../toolkit/toolContract'
 import type { PermissionDecider } from '../toolkit/permissionVerdict'
 import { REVIEW_FORK_LABEL } from '../backgroundTasks/sideTaskSink'
 import { createSidechainAgentId, getContextSidechainStore } from '../utils/sidechainTranscripts'
+import { liveWindowRows } from '../engine/windowBreakdownInput'
 import type { ReviewPromptBlock } from './composer'
 import type { ReviewRunEnd, ReviewTaskRole } from './contracts'
 
@@ -148,7 +149,7 @@ export function createReviewModelRunner(input: {
       })
       if (!end) end = cancelSource.signal.aborted ? { kind: 'cancelled' } : { kind: 'crash' }
       if (cancelSource.signal.aborted && end.kind === 'completed') end = { kind: 'cancelled' }
-      return { text: lastAssistantText(outcome.messages), interrupted: end.kind !== 'completed', end, agentId, transcript: [...seeded, ...outcome.messages] }
+      return { text: lastAssistantText(outcome.messages), interrupted: end.kind !== 'completed', end, agentId, transcript: liveWindowRows([...seeded, ...outcome.messages]) }
     } catch (error) {
       if (!end) end = cancelSource.signal.aborted ? { kind: 'cancelled' } : { kind: 'crash', detail: error instanceof Error ? error.message : String(error) }
       throw error

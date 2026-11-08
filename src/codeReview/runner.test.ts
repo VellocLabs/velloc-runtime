@@ -112,6 +112,18 @@ describe('review model runs on the fork substrate', () => {
     expect(result.transcript).toHaveLength(3)
     expect(result.transcript![0]).toBe(seed[0])
   })
+  it('returns the transcript from its last compaction on', async () => {
+    const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })
+    const boundary = { type: 'system', subtype: 'compact_boundary', message: 'Conversation compacted' } as unknown as Message
+    const summary = { type: 'user', message: { content: 'summary of the reads' } } as unknown as Message
+    const before = { type: 'assistant', message: { content: [{ type: 'text', text: 'pre-compaction read' }] } } as unknown as Message
+    vi.mocked(launchFork).mockImplementationOnce(async params => {
+      params.onConclusion?.({ kind: 'outcome', phase: 'completed', outcome: { reason: 'completed' } } as never)
+      return { messages: [before, boundary, summary], agentId: params.agentId ?? 'fork' }
+    })
+    const result = await runner({ blocks: [{ type: 'text', text: 'review', source: 'step-limit-wrap-up', provenance: 'trusted-task' }], tools: [], signal: new AbortController().signal, taskId: 'compacted', maxTurns: 3 })
+    expect(result.transcript).toEqual([boundary, summary])
+  })
   it('reports the task to its observer with role, label, activity and end', async () => {
     const observer: ReviewTaskObserver = { started: vi.fn(), activity: vi.fn(), ended: vi.fn() }
     const runner = createReviewModelRunner({ context: parentContext(), promptContextProvider: provider, decidePermission: () => ({ behavior: 'allow' }) })

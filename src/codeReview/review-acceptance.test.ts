@@ -1013,9 +1013,23 @@ describe('single-context step limit', () => {
       calls++
       return wrapUp(request) ? { text: '', interrupted: true, end: { kind: 'step-limit' as const } } : { text: '', interrupted: true, end: { kind: 'step-limit' as const }, transcript }
     } })
-    const snapshot = await f.service.wait((await f.service.startUser('high')).runId).catch(() => undefined)
+    const snapshot = await f.service.wait((await f.service.startUser('high')).runId)
     expect(calls).toBe(2)
-    if (snapshot) expect(snapshot.run.progress.status).toBe('partial')
+    expect(snapshot.run.progress.status).toBe('partial')
+    expect(snapshot.coverage.limitations).toContain('review-step-limit')
+  })
+  it('keeps the step-limit reason when the wrap-up turn fails', async () => {
+    let calls = 0
+    const f = fixture({ runModel: async request => {
+      calls++
+      if (wrapUp(request)) throw new Error('transport down')
+      return { text: '', interrupted: true, end: { kind: 'step-limit' as const }, transcript }
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('high')).runId)
+    expect(calls).toBe(2)
+    expect(snapshot.run.progress.status).toBe('partial')
+    expect(snapshot.coverage.limitations).toContain('review-step-limit')
+    expect(snapshot.coverage.limitations).not.toContain('transport down')
   })
   it('keeps a team coordinator on its own limit with no wrap-up turn', async () => {
     const requests: ReviewModelRequest[] = []

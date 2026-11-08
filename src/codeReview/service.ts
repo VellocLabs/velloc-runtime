@@ -313,10 +313,11 @@ export class LocalReviewService {
         await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
       } else {
         const tools = this.tools(runId, live, true)
+        const maxTurns = plan.agentMode === 'parallel' ? COORDINATOR_STEPS : SINGLE_CONTEXT_STEPS
         const blocks = composeReviewPrompt(plan, {
           run_summary: JSON.stringify({ runId, plan }), scope_manifest: JSON.stringify(scopeIndex(access.manifest)),
           trusted_guidance: access.trustedGuidance, capability_text: tools.map(t => t.name).join(', '),
-          budget_text: JSON.stringify({ concurrency: plan.workerConcurrency, maxTurns: plan.agentMode === 'parallel' ? COORDINATOR_STEPS : SINGLE_CONTEXT_STEPS }),
+          budget_text: JSON.stringify({ concurrency: plan.workerConcurrency, maxTurns }),
           verification_contract: 'Runtime verification is a separate permission boundary; do not run tests during static review.',
         }, { repair: false, publication: false })
         if (plan.coordinatorWorkerRequired) await this.store.noteWorker(runId, 'started')
@@ -324,16 +325,18 @@ export class LocalReviewService {
         try {
           result = await this.runModel({ blocks, tools, signal: controller.signal, taskId: plan.coordinatorWorkerRequired ? `${runId}-worker` : runId,
             execution: plan.coordinatorWorkerRequired ? 'isolated' : plan.execution, reasoningLevel: plan.reasoningLevel,
-            maxTurns: plan.agentMode === 'parallel' ? COORDINATOR_STEPS : SINGLE_CONTEXT_STEPS,
+            maxTurns,
             role: 'coordinator', observer: this.observer(live), onStop: () => controller.abort() })
         } finally { if (plan.coordinatorWorkerRequired) await this.store.noteWorker(runId, 'finished') }
         let end = endOf(result)
         // A single-context review stopped by its step limit gets one short turn, with no reads, to record what it covered.
         if (end.kind === 'step-limit' && plan.agentMode !== 'parallel' && result.transcript?.length) {
+          // A wrap-up that fails leaves the run ended by its step limit; only a cancellation propagates.
           const wrapUp = await this.runModel({ blocks: [block(WRAP_UP_TEXT, 'step-limit-wrap-up')], seedRows: result.transcript,
             tools: tools.filter(tool => tool.name === 'ReviewLedger' || tool.name === 'ReviewOutput'), signal: controller.signal, taskId: `${runId}-wrap-up`,
             execution: 'isolated', reasoningLevel: plan.reasoningLevel, maxTurns: WRAP_UP_STEPS, role: 'coordinator', observer: this.observer(live), onStop: () => controller.abort() })
-          if (endOf(wrapUp).kind === 'completed') {
+            .catch((error: unknown) => { if (controller.signal.aborted) throw error; return undefined })
+          if (wrapUp && endOf(wrapUp).kind === 'completed') {
             result = wrapUp; end = endOf(wrapUp)
             await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['review-step-limit'], complete: (await this.store.getSnapshot(runId)).coverage.complete } })
           }
