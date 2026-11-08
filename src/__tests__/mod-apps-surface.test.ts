@@ -284,13 +284,15 @@ describe("the app session's turn end", () => {
 })
 
 describe('the app prompt block', () => {
-  it('names the entry file, several surfaces or Tabs, the skill, BuildApp, the data file and its binding', () => {
+  it('names the entry file, one surface with Tabs for its pages, the skill, BuildApp, the data file and its binding', () => {
     const block = appPromptBlock(app())
     expect(block).toContain('# This session is an app')
     expect(block).toContain('"pay-board"')
     expect(block).toContain('`app.a2ui`')
-    expect(block).toContain('several surface("...") sections')
-    expect(block).toContain('Tabs')
+    expect(block).toContain('with one surface("...")')
+    expect(block).toContain('pages are a Tabs component in that surface')
+    expect(block).toContain('Tabs([{title: "Overview", child: overview}')
+    expect(block).not.toContain('several surface')
     expect(block).toContain('Load the a2ui skill')
     expect(block).toContain(`call ${BUILD_APP_TOOL_NAME}`)
     expect(block).toContain('`data/latest.json`, set under $/data')

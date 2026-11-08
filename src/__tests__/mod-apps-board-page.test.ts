@@ -106,18 +106,40 @@ describe('the board in the session\'s processor', () => {
     return { processor, compiler, view, data }
   }
 
-  it('drawn from the file with its data; new data keeps the rest of the surface\'s state; a new version replaces it', () => {
+  it('drawn from the file with its data; new data keeps the rest of the surface\'s state; a new version updates the surface in place', () => {
     const { processor, view, data } = rig()
     const { rerender } = render(view(board(BOARD, 'h1', { count: 3 })))
-    expect(processor.getSurface('dashboard')).toBeDefined()
+    const drawn = processor.getSurface('dashboard')
+    expect(drawn).toBeDefined()
     expect(data('/data')).toEqual({ count: 3 })
     processor.processMessages({ version: '1.0', updateDataModel: { surfaceId: 'dashboard', path: '/form', value: { pick: 'b' } } } as never)
     rerender(view(board(BOARD, 'h1', { count: 4 })))
     expect(data('/data')).toEqual({ count: 4 })
     expect(data('/form')).toEqual({ pick: 'b' })
     rerender(view(board(BOARD.replace('"Payments"', '"Payments, this month"'), 'h2', { count: 4 })))
-    expect(data('/form')).toBeUndefined()
+    expect(processor.getSurface('dashboard')).toBe(drawn)
+    expect(processor.getSurface('dashboard')?.componentsModel.get('title')?.properties).toMatchObject({ text: 'Payments, this month' })
+    expect(data('/form')).toEqual({ pick: 'b' })
     expect(data('/data')).toEqual({ count: 4 })
+  })
+
+  it('a Tabs app keeps its surface across a build; a build that cannot update in place is drawn whole', () => {
+    const { processor, compiler } = rig()
+    const TABS = ['surface("app")', 'root = Tabs([{title: "Overview", child: a}, {title: "Refunds", child: b}])', 'a = Text($/data/count)', 'b = Text("Refunds")'].join('\n')
+    const compile = vi.fn(compiler.compile)
+    const flaky = { ...compiler, compile }
+    const view = (state: AppSurfaceState) => h(AppSurfaceFeeder, { board: state, processor, compiler: flaky, epoch: 0 })
+    const { rerender } = render(view(board(TABS, 'h1', { count: 3 }, ['app'])))
+    const drawn = processor.getSurface('app')
+    expect(drawn?.componentsModel.get('root')?.type).toBe('Tabs')
+    rerender(view(board(TABS.replace('"Refunds")', '"Refunds, this month")'), 'h2', { count: 3 }, ['app'])))
+    expect(processor.getSurface('app')).toBe(drawn)
+    compile.mockReturnValueOnce({ ok: false, message: 'cannot update' })
+    rerender(view(board(TABS.replace('"Refunds")', '"All refunds")'), 'h3', { count: 5 }, ['app'])))
+    expect(compile).toHaveBeenCalledTimes(4)
+    expect(processor.getSurface('app')).not.toBe(drawn)
+    expect(processor.getSurface('app')?.componentsModel.get('b')?.properties).toMatchObject({ text: 'All refunds' })
+    expect(processor.getSurface('app')?.dataModel.get('/data/count')).toBe(5)
   })
 
   it('a data file that is gone takes its values off the surfaces', () => {

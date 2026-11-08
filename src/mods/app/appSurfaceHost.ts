@@ -131,7 +131,7 @@ export function appPromptBlock(app: AppSessionInfo): string {
   return [
     `# This session is an app`,
     `This session runs the app "${app.appId}" of the plugin "${app.plugin}". Its folder is the project root; AGENTS.md there says what the app is for.`,
-    `- What the person sees is built from \`${entry}\`, an A2UI Express file. It may hold several surface("...") sections, each a page the person switches between, or one surface that lays out pages with Tabs. Load the a2ui skill before you edit it: it has the grammar and the components.`,
+    `- What the person sees is built from \`${entry}\`, an A2UI Express file with one surface("..."). The app's pages are a Tabs component in that surface, as in \`root = Tabs([{title: "Overview", child: overview}, {title: "Refunds", child: refunds}])\`: the person switches between them, and a new build keeps the tab they are on. Load the a2ui skill before you edit it: it has the grammar and the components.`,
     `- After you change the app's files, call ${BUILD_APP_TOOL_NAME}: it builds \`${entry}\`, shows the result to the person and returns any error to fix. Never write an <a2ui> block in chat for one of the app's surfaces; a chart that answers a question in chat is fine.`,
     data
       ? `- The app's data is \`${data}\`, set under $/data on each of its surfaces: bind to $/data/... . A2UI does no arithmetic, so every figure shown must already be in the data.`

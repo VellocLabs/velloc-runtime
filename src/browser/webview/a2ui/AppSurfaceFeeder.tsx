@@ -1,7 +1,8 @@
 // An app session's surfaces in the session's A2UI processor (F-40). A new
-// build replaces every surface of the app whole; the data file's value is set
-// under `/data` on each, so a data change keeps the rest of a surface's state
-// (what the person typed or picked).
+// build updates the app's surfaces in place, so a component's own state (the
+// tab a Tabs shows) and what the person typed or picked are kept; a surface the
+// build no longer has is deleted. The data file's value is set under `/data`
+// on each surface.
 
 import { useEffect, useMemo, useRef } from 'react'
 import type { ReactCatalogComponent } from '@a2ui/react'
@@ -48,13 +49,23 @@ export function AppSurfaceFeeder({
       return
     }
     let redrawn = false
+    // Whole: drawn from nothing, on the first draw and after chat touched the app.
+    let whole = !drawn
     if (epoch !== epochRef.current) {
       epochRef.current = epoch
       if (drawnRef.current) drawnRef.current = { ...drawnRef.current, hash: '' }
+      whole = true
     }
     if (surface.hash !== drawnRef.current?.hash) {
-      deleteSurfaces(processor, [...new Set([...(drawnRef.current?.ids ?? []), ...surface.surfaceIds])])
-      const result = compiler.compile(surface.body, state)
+      const before = drawnRef.current?.ids ?? []
+      deleteSurfaces(processor, whole
+        ? [...new Set([...before, ...surface.surfaceIds])]
+        : before.filter(id => !surface.surfaceIds.includes(id)))
+      let result = compiler.compile(surface.body, state)
+      if (!result.ok && !whole) {
+        deleteSurfaces(processor, surface.surfaceIds)
+        result = compiler.compile(surface.body, state)
+      }
       if (!result.ok) {
         // The runtime built it against the same catalog; a page that still
         // cannot draw it shows nothing rather than part of it.
