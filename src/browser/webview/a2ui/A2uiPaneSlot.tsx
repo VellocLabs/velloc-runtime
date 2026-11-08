@@ -1,9 +1,10 @@
-// The A2UI side pane's body (F-1): a mount element the shown session's A2UI
-// host portals its surfaces into, and an empty state when none does.
+// The A2UI side pane's body and header actions (F-1): mount elements the
+// shown session's A2UI host portals its surfaces and actions into, and an
+// empty state when none does.
 // Imports no renderer, so the shell loads it eagerly.
 
 import { useCallback, useSyncExternalStore, type ReactElement } from 'react'
-import { getOwner, setSlot, subscribeSlot } from './a2uiPaneBus'
+import { getOwner, setActionsSlot, setSlot, subscribeSlot } from './a2uiPaneBus'
 import { useT } from '../i18n'
 
 export function A2uiPaneSlot({ sessionId }: { sessionId: string | null }): ReactElement {
@@ -26,4 +27,9 @@ export function A2uiPaneSlot({ sessionId }: { sessionId: string | null }): React
       )}
     </div>
   )
+}
+
+// The pane header's mount element for the shown session's own actions.
+export function A2uiPaneActionsSlot(): ReactElement {
+  return <div ref={setActionsSlot} data-testid="a2ui-pane-actions" className="flex items-center gap-0.5" />
 }

@@ -41,10 +41,10 @@ import {
   useA2uiPresentation,
 } from './A2uiPresentationContext'
 import { useT } from '../i18n'
-import { getOwner, getSlot, setOwner, subscribeSlot } from './a2uiPaneBus'
+import { getActionsSlot, getOwner, getSlot, setOwner, subscribeSlot } from './a2uiPaneBus'
 import { AppSurfaceFeeder, appSurfaceIds } from './AppSurfaceFeeder'
 import type { AppBoard } from '../apps/appSurfaceView'
-import { AppSurfaceBar } from '../apps/AppSurfaceBar'
+import { AppReloadButton, AppSurfaceBar } from '../apps/AppSurfaceBar'
 
 type SurfaceActionHandler = (action: ActionPayload) => void
 type VellocProcessor = MessageProcessor<ReactCatalogComponent>
@@ -210,12 +210,13 @@ function A2uiFeeder({
 // session's providers, so its data model and actions stay where they are.
 function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoard | undefined }) {
   const slot = useSyncExternalStore(subscribeSlot, getSlot, () => null)
+  const actionsSlot = useSyncExternalStore(subscribeSlot, getActionsSlot, () => null)
   const { paneSurfaceIds, selectedSurfaceId, openSurface, busy } =
     useA2uiPresentation()
   const t = useT()
   const shown = slot !== null && slot.sessionId === sessionId ? slot.element : null
 
-  // An app with no surface yet still shows its bar: Reload and why it did not build.
+  // An app with no surface yet still shows Reload in the header and why it did not build.
   const appIds = appSurfaceIds(board?.state)
   const showsBar = board !== undefined && (selectedSurfaceId === null || appIds.includes(selectedSurfaceId))
   const filled = shown !== null && (selectedSurfaceId !== null || board !== undefined)
@@ -228,7 +229,9 @@ function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoa
   }, [filled, sessionId])
 
   if (!shown || (!selectedSurfaceId && !board)) return null
-  return createPortal(
+  const reload =
+    showsBar && board && actionsSlot ? createPortal(<AppReloadButton board={board} />, actionsSlot) : null
+  const body = createPortal(
     <div data-slot="a2ui-pane-content" className="flex h-full min-h-0 flex-col">
       {paneSurfaceIds.length > 1 && (
         <div
@@ -279,6 +282,12 @@ function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoa
       </div>
     </div>,
     shown,
+  )
+  return (
+    <>
+      {body}
+      {reload}
+    </>
   )
 }
 

@@ -9,6 +9,8 @@
 //   its empty state. Any other host (a hidden session, a side chat) does not.
 // - The host asks the shell to open or close the pane with `requestPane`; the
 //   shell reports a person's close with `notifyClosed`.
+// - The pane header registers an element for the shown host's own header
+//   actions with `setActionsSlot`; the host portals them into it.
 // - The shell publishes the session it shows with `setShownSession`, so a
 //   host whose surfaces can never reach the pane (a side chat) knows it.
 
@@ -20,6 +22,7 @@ export type A2uiPaneSlot = { element: HTMLElement; sessionId: string }
 type Listener = () => void
 
 let slot: A2uiPaneSlot | null = null
+let actionsSlot: HTMLElement | null = null
 let owner: string | null = null
 let shown: string | null = null
 const slotListeners = new Set<Listener>()
@@ -39,6 +42,16 @@ export function setSlot(element: HTMLElement | null, sessionId: string | null): 
 
 export function getSlot(): A2uiPaneSlot | null {
   return slot
+}
+
+export function setActionsSlot(element: HTMLElement | null): void {
+  if (actionsSlot === element) return
+  actionsSlot = element
+  emitSlot()
+}
+
+export function getActionsSlot(): HTMLElement | null {
+  return actionsSlot
 }
 
 export function setOwner(sessionId: string | null): void {

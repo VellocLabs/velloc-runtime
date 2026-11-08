@@ -16,7 +16,7 @@ import { AppSurfaceFeeder } from '../browser/webview/a2ui/AppSurfaceFeeder'
 import { withAppBoard } from '../browser/webview/a2ui/A2uiPresentationContext'
 import { EMPTY_A2UI_PANE_STATE, stepA2uiPane } from '../browser/webview/a2ui/a2uiPaneModel'
 import { holdAppSurface, useAppBoard } from '../browser/webview/apps/appSurfaceView'
-import { AppSurfaceBar } from '../browser/webview/apps/AppSurfaceBar'
+import { AppReloadButton, AppSurfaceBar } from '../browser/webview/apps/AppSurfaceBar'
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
 import { EMPTY_MOD_CONTRIBUTIONS } from '../browser/runtimeProtocol/modContributions'
 import { MODS_APP_STATE_EVENT, type AppSurfaceState } from '../browser/runtimeProtocol/modApps'
@@ -229,14 +229,20 @@ describe('the app bar', () => {
     element: h(AppSurfaceBar, { board: { state, reload } }),
   })
 
-  it('Reload builds the app again; a build error shows its message; a data error its line', async () => {
-    const plain = view(board(BOARD, 'h1'))
-    const { container, rerender } = render(plain.element)
-    expect(container.querySelector('[data-slot="app-board-error"]')).toBeNull()
+  it('Reload builds the app again', async () => {
+    const reload = vi.fn(async () => ({ ok: true as const, surfaceIds: ['dashboard'] }))
+    const { container } = render(h(AppReloadButton, { board: { state: board(BOARD, 'h1'), reload } }))
     const button = container.querySelector<HTMLButtonElement>('[data-slot="app-reload"]')!
     expect(button.getAttribute('aria-label')).toBe('Reload app')
     await act(async () => button.click())
-    expect(plain.reload).toHaveBeenCalledTimes(1)
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('the bar is drawn only for an error: a build error shows its message; a data error its line', async () => {
+    const plain = view(board(BOARD, 'h1'))
+    const { container, rerender } = render(plain.element)
+    expect(container.querySelector('[data-slot="app-surface-bar"]')).toBeNull()
+    expect(container.querySelector('[data-slot="app-reload"]'), 'Reload is in the pane header').toBeNull()
     const failed = { ...board(BOARD, 'h1'), errors: [{ kind: 'build' as const, message: 'app.a2ui did not build: line 2' }] }
     rerender(view(failed).element)
     const error = container.querySelector('[data-slot="app-board-error"]')!

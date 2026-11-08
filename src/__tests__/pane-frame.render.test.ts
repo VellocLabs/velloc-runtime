@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 /**
  * The pane frame (F-9): renders outside any TooltipProvider, carries the
- * title slot, Expand / Restore and Close, and reports presses as focus.
+ * title slot, Expand / Restore and Close, and reports presses as focus;
+ * an immersive pane, maximized, floats its buttons in place of the header.
  */
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -49,6 +50,42 @@ describe('PaneFrame', () => {
     expect(expand.getAttribute('aria-pressed')).toBe('true')
     fireEvent.click(expand)
     expect(props.onToggleMaximized).toHaveBeenCalledTimes(1)
+  })
+
+  it('immersive and maximized, the header is gone; actions, Restore and Close float in the corner', () => {
+    const action = createElement('button', { 'data-testid': 'own-action', type: 'button' }, 'Reload')
+    const props = renderFrame({ immersiveWhenMaximized: true, maximized: true, actions: action })
+    expect(screen.queryByTestId('pane-diff-header')).toBeNull()
+    expect(screen.queryByTestId('title-slot')).toBeNull()
+    const bar = screen.getByTestId('pane-diff-float-bar')
+    expect([...bar.querySelectorAll('button')].map(b => b.getAttribute('data-testid'))).toEqual([
+      'own-action',
+      'pane-diff-expand',
+      'pane-diff-close',
+    ])
+    expect(bar.className, 'hidden until hovered or focused').toContain('opacity-0')
+    expect(bar.className).toContain('group-hover/pane-float:opacity-100')
+    expect(bar.className).toContain('group-focus-within/pane-float:opacity-100')
+    fireEvent.click(screen.getByTestId('pane-diff-expand'))
+    expect(props.onToggleMaximized).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByTestId('pane-diff-close'))
+    expect(props.onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('immersive but not maximized, or maximized but not immersive, the header stays with the actions first', () => {
+    const action = createElement('button', { 'data-testid': 'own-action', type: 'button' }, 'Reload')
+    renderFrame({ immersiveWhenMaximized: true, actions: action })
+    const header = screen.getByTestId('pane-diff-header')
+    expect([...header.querySelectorAll('button')].map(b => b.getAttribute('data-testid'))).toEqual([
+      'own-action',
+      'pane-diff-expand',
+      'pane-diff-close',
+    ])
+    expect(screen.queryByTestId('pane-diff-float')).toBeNull()
+    cleanup()
+    renderFrame({ maximized: true })
+    expect(screen.getByTestId('pane-diff-header')).toBeTruthy()
+    expect(screen.queryByTestId('pane-diff-float')).toBeNull()
   })
 
   it('close closes, and a press inside focuses the pane', () => {

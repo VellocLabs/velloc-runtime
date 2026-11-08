@@ -63,6 +63,7 @@ import { paneShortcutFor, paneShortcutStep, paneShortcutYieldsToTerminal } from 
 import { toggleFilesTreeVisible } from './panes/filesTreePrefs'
 import { PaneArea } from './panes/PaneArea'
 import { PaneFrame } from './panes/PaneFrame'
+import { A2uiPaneActionsSlot } from './a2ui/A2uiPaneSlot'
 import { PANE_LABEL_KEY } from './panes/paneKinds'
 import { onPaneRequest as onA2uiPaneRequest, setShownSession as setA2uiShownSession } from './a2ui/a2uiPaneBus'
 import {
@@ -3888,6 +3889,7 @@ export function MultiSessionShell({
         title={title}
         actions={actions}
         maximized={paneMaximized === kind}
+        immersiveWhenMaximized={kind === 'a2ui'}
         onToggleMaximized={() =>
           updatePaneRecord(r => setMaximized(r, r.maximized === kind ? null : kind))
         }
@@ -4049,6 +4051,7 @@ export function MultiSessionShell({
         onOpenFile={openFile}
         activeSessionId={activeSessionId}
       />,
+      kind === 'a2ui' ? <A2uiPaneActionsSlot /> : undefined,
     )
   }
 
