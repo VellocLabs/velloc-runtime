@@ -25,6 +25,7 @@ import {
   ShellStdioClientTransport,
   type ShellStdioTransportOptions,
 } from './primitiveTransports'
+import { createTolerantSchemaValidator } from './schemaValidator'
 import type { MCPToolDescriptor } from './types'
 import { summarizeMcpTools, type McpToolSummary } from './toolSummary'
 
@@ -213,7 +214,7 @@ export function createWorkerMcpOperations(
     const transport = buildTransport(host, config, allowPrivateNetwork)
     const client = new Client(
       { name: CLIENT_NAME, version: CLIENT_VERSION },
-      { capabilities: {} },
+      { capabilities: {}, jsonSchemaValidator: createTolerantSchemaValidator() },
     )
     let timer: ReturnType<typeof setTimeout> | undefined
     try {

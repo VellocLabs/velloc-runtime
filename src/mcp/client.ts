@@ -2,6 +2,7 @@ import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { traceLine } from '../utils/debugLog'
 import { cleanMcpInstructions } from './instructions'
+import { createTolerantSchemaValidator } from './schemaValidator'
 import { createTransport, type CreateTransportOptions } from './transport'
 import { isMcpUnauthorized } from './unauthorized'
 import type {
@@ -56,7 +57,7 @@ export async function connectMCPServer(
     })
     const client = new Client(
       { name: CLIENT_NAME, version: CLIENT_VERSION },
-      { capabilities: {} },
+      { capabilities: {}, jsonSchemaValidator: createTolerantSchemaValidator() },
     )
     const connectTimeoutMs = options.connectTimeoutMs ?? MCP_CLIENT_CONNECT_TIMEOUT_MS
     let timer: ReturnType<typeof setTimeout> | undefined
