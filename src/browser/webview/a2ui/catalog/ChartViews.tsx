@@ -37,6 +37,19 @@ export function colorAt(index: number, color?: string): string {
   return color ?? PALETTE[index % PALETTE.length]
 }
 
+/** A value with the chart's unit around it; no prefix or suffix leaves it as it is. */
+export function valueText(value: unknown, prefix?: string, suffix?: string): string {
+  return `${prefix ?? ''}${typeof value === 'number' || typeof value === 'string' ? value : ''}${suffix ?? ''}`
+}
+
+type ValueUnit = { valuePrefix?: string; valueSuffix?: string }
+
+function unitProps({ valuePrefix, valueSuffix }: ValueUnit) {
+  if (!valuePrefix && !valueSuffix) return { tick: {}, tooltip: {} }
+  const format = (value: unknown) => valueText(value, valuePrefix, valueSuffix)
+  return { tick: { tickFormatter: format }, tooltip: { formatter: format } }
+}
+
 function Frame({ title, height, empty, children }: {
   title?: unknown
   height?: number
@@ -97,22 +110,23 @@ export function PieChartView({ title, data, donut, height }: {
   )
 }
 
-export function LineChartView({ title, data, xKey, series, curved, height }: {
+export function LineChartView({ title, data, xKey, series, curved, height, ...unit }: {
   title?: unknown
   data: unknown
   xKey: string
   series: readonly SeriesSpec[]
   curved?: boolean
   height?: number
-}): ReactElement {
+} & ValueUnit): ReactElement {
   const rows = asRows(data)
+  const units = unitProps(unit)
   return (
     <Frame title={title} height={height} empty={rows.length === 0 || series.length === 0}>
       <LineChart data={rows} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
         <CartesianGrid stroke="var(--border)" vertical={false} />
         <XAxis dataKey={xKey} tick={AXIS_TICK} stroke="var(--border)" />
-        <YAxis tick={AXIS_TICK} stroke="var(--border)" width={48} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} />
+        <YAxis tick={AXIS_TICK} stroke="var(--border)" width={56} {...units.tick} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} {...units.tooltip} />
         {series.length > 1 && <Legend wrapperStyle={{ fontSize: 12 }} />}
         {series.map((s, index) => (
           <Line
@@ -131,22 +145,23 @@ export function LineChartView({ title, data, xKey, series, curved, height }: {
   )
 }
 
-export function BarChartView({ title, data, xKey, series, stacked, height }: {
+export function BarChartView({ title, data, xKey, series, stacked, height, ...unit }: {
   title?: unknown
   data: unknown
   xKey: string
   series: readonly SeriesSpec[]
   stacked?: boolean
   height?: number
-}): ReactElement {
+} & ValueUnit): ReactElement {
   const rows = asRows(data)
+  const units = unitProps(unit)
   return (
     <Frame title={title} height={height} empty={rows.length === 0 || series.length === 0}>
       <BarChart data={rows} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
         <CartesianGrid stroke="var(--border)" vertical={false} />
         <XAxis dataKey={xKey} tick={AXIS_TICK} stroke="var(--border)" />
-        <YAxis tick={AXIS_TICK} stroke="var(--border)" width={48} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'var(--muted)' }} />
+        <YAxis tick={AXIS_TICK} stroke="var(--border)" width={56} {...units.tick} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'var(--muted)' }} {...units.tooltip} />
         {series.length > 1 && <Legend wrapperStyle={{ fontSize: 12 }} />}
         {series.map((s, index) => (
           <Bar

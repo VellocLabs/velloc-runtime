@@ -1,5 +1,6 @@
 // Velloc A2UI chart catalog definitions (F-1): the props contract of the data
-// components added on top of the basic catalog. No React and no chart library.
+// and dashboard components added on top of the basic catalog. No React and no
+// chart library.
 // Schemas are zod v3 (`zod/v3`) built on the protocol's common schemas, so the
 // renderer's binder resolves `{path}` / `{"@path"}` bindings in them.
 
@@ -28,6 +29,13 @@ const title = DynamicString.optional().describe('Heading drawn above the chart.'
 const height = z.number().optional().describe('Chart height in pixels; default 240.')
 const rows = (what: string) => DynamicValue.describe(what)
 const xKey = z.string().describe('The field of each row used as the category axis.')
+const valuePrefix = z.string().optional().describe('Text before each value on the value axis and in the tooltip, e.g. "$".')
+const valueSuffix = z.string().optional().describe('Text after each value on the value axis and in the tooltip, e.g. "K".')
+
+/** A badge's colour, named by meaning so it follows the theme. */
+export const BADGE_TONES = ['neutral', 'info', 'success', 'warning', 'danger'] as const
+export type BadgeTone = (typeof BADGE_TONES)[number]
+const tone = z.enum(BADGE_TONES)
 
 export const chartCatalogDefinitions = {
   PieChart: {
@@ -53,6 +61,8 @@ export const chartCatalogDefinitions = {
         series,
         curved: z.boolean().optional().describe('Smooth the lines.'),
         height,
+        valuePrefix,
+        valueSuffix,
         weight,
       })
       .strict()
@@ -68,6 +78,8 @@ export const chartCatalogDefinitions = {
         series,
         stacked: z.boolean().optional().describe('Stack the series in one bar per row.'),
         height,
+        valuePrefix,
+        valueSuffix,
         weight,
       })
       .strict()
@@ -80,7 +92,9 @@ export const chartCatalogDefinitions = {
         label: DynamicString.describe('What the figure measures.'),
         value: DynamicValue.describe('The figure, already formatted (e.g. "$980K").'),
         delta: DynamicString.optional().describe('Change versus the previous period, e.g. "+12%".'),
-        trend: z.enum(['up', 'down', 'flat']).optional().describe('Direction of the change; colours the delta.'),
+        trend: DynamicString.optional().describe(
+          'Direction of the change, "up", "down" or "flat" ("neutral" reads as "flat"), literal or a data binding; colours the delta.',
+        ),
         caption: DynamicString.optional().describe('A short note under the figure.'),
         weight,
       })
@@ -92,13 +106,47 @@ export const chartCatalogDefinitions = {
     schema: z
       .object({
         columns: z
-          .array(z.object({ key: z.string(), label: z.string() }))
+          .array(
+            z.object({
+              key: z.string().describe('The row field this column shows.'),
+              label: z.string().describe('The header.'),
+              align: z.enum(['start', 'end']).optional().describe('"end" right-aligns the column, e.g. for amounts.'),
+              badge: z
+                .record(z.string(), tone)
+                .optional()
+                .describe('Draw each cell as a badge, toned by its value, e.g. {Paid: "success", Failed: "danger"}; other values are neutral.'),
+            }),
+          )
           .describe('Columns in order: key names the row field, label the header.'),
         rows: rows('Row objects keyed by the column keys, literal or a data binding.'),
         weight,
       })
       .strict()
       .describe('A table of rows with named columns.'),
+  },
+  Heading: {
+    description: 'A title: level 1 for the page, 2 for a section, 3 for a card.',
+    schema: z
+      .object({
+        text: DynamicString.describe('The title text, literal or a data binding.'),
+        level: z.number().int().min(1).max(3).optional().describe('1, 2 or 3; default 2.'),
+        weight,
+      })
+      .strict()
+      .describe('A title: level 1 for the page, 2 for a section, 3 for a card.'),
+  },
+  Badge: {
+    description: 'A short status label in a coloured pill.',
+    schema: z
+      .object({
+        text: DynamicString.describe('The label, literal or a data binding.'),
+        tone: DynamicString.optional().describe(
+          `Its colour by meaning: ${BADGE_TONES.map(name => `"${name}"`).join(', ')}; literal or a data binding; default "neutral".`,
+        ),
+        weight,
+      })
+      .strict()
+      .describe('A short status label in a coloured pill.'),
   },
 }
 
@@ -147,6 +195,10 @@ export const CHART_CATALOG_INSTRUCTIONS = [
     'BarChart to compare categories, Metric for one key figure, DataTable for rows. Put the rows ' +
     'in the data model and bind them, so a later update can change the data alone. Group charts ' +
     'in Cards inside a Row or Column for a dashboard. Leave colors out to use the theme palette.',
+  '',
+  'Title a dashboard with Heading (level 1 for the page, 3 for a card). Show a status with Badge, ' +
+    'or give a DataTable column a badge map so each cell is one. Put units on a chart\'s value axis ' +
+    'with valuePrefix / valueSuffix rather than in the numbers.',
   '',
   'Example 3: Sales dashboard',
   '```json',

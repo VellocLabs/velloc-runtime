@@ -66,7 +66,11 @@ Use these exact positional signatures to instantiate components. Do not output p
   - url: The URL of the audio to be played.
   - description: A description of the audio, such as a title or summary.
   - weight: The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column.
-• BarChart(title?, data, xKey (static), series (static), stacked? (static), height? (static), weight? (static))
+• Badge(text, tone?, weight? (static))
+  - text: The label, literal or a data binding.
+  - tone: Its colour by meaning: "neutral", "info", "success", "warning", "danger"; literal or a data binding; default "neutral".
+  - weight: Flex share inside a Row or Column; only on a direct child of one.
+• BarChart(title?, data, xKey (static), series (static), stacked? (static), height? (static), valuePrefix? (static), valueSuffix? (static), weight? (static))
   - title: Heading drawn above the chart.
   - data: Row objects, literal or a data binding, e.g. [{month: "Jan", sales: 120}].
   - xKey: The field of each row used as the category axis.
@@ -77,6 +81,8 @@ Use these exact positional signatures to instantiate components. Do not output p
     * color - CSS color; leave out to use the theme palette.
   - stacked: Stack the series in one bar per row.
   - height: Chart height in pixels; default 240.
+  - valuePrefix: Text before each value on the value axis and in the tooltip, e.g. "$".
+  - valueSuffix: Text after each value on the value axis and in the tooltip, e.g. "K".
   - weight: Flex share inside a Row or Column; only on a direct child of one.
 • Button(child (static), variant? (static), action (static), weight? (static), checks? (static))
   - child: The ID of the child component. Use a 'Text' component for a labeled button. Only use an 'Icon' if the requirements explicitly ask for an icon-only button.
@@ -110,8 +116,10 @@ Use these exact positional signatures to instantiate components. Do not output p
 • DataTable(columns (static), rows, weight? (static))
   - columns: Columns in order: key names the row field, label the header.
     List of maps keys:
-    * key
-    * label
+    * key - The row field this column shows.
+    * label - The header.
+    * align - "end" right-aligns the column, e.g. for amounts.
+    * badge - Draw each cell as a badge, toned by its value, e.g. {Paid: "success", Failed: "danger"}; other values are neutral.
   - rows: Row objects keyed by the column keys, literal or a data binding.
   - weight: Flex share inside a Row or Column; only on a direct child of one.
 • DateTimeInput(value, enableDate? (static), enableTime? (static), min?, max?, label?, weight? (static), checks? (static))
@@ -125,6 +133,10 @@ Use these exact positional signatures to instantiate components. Do not output p
 • Divider(axis? (static), weight? (static))
   - axis: The orientation of the divider. Must be one of: 'horizontal', 'vertical'
   - weight: The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column.
+• Heading(text, level? (static), weight? (static))
+  - text: The title text, literal or a data binding.
+  - level: 1, 2 or 3; default 2.
+  - weight: Flex share inside a Row or Column; only on a direct child of one.
 • Icon(name, weight? (static))
   - name: The name of the icon to display. Must be one of: 'accountCircle', 'add', 'arrowBack', 'arrowForward', 'attachFile', 'calendarToday', 'call', 'camera', 'check', 'close', 'delete', 'download', 'edit', 'event', 'error', 'fastForward', 'favorite', 'favoriteOff', 'folder', 'help', 'home', 'info', 'locationOn', 'lock', 'lockOpen', 'mail', 'menu', 'moreVert', 'moreHoriz', 'notificationsOff', 'notifications', 'pause', 'payment', 'person', 'phone', 'photo', 'play', 'print', 'refresh', 'rewind', 'search', 'send', 'settings', 'share', 'shoppingCart', 'skipNext', 'skipPrevious', 'star', 'starHalf', 'starOff', 'stop', 'upload', 'visibility', 'visibilityOff', 'volumeDown', 'volumeMute', 'volumeOff', 'volumeUp', 'warning'
   - weight: The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column.
@@ -134,7 +146,7 @@ Use these exact positional signatures to instantiate components. Do not output p
   - fit: Specifies how the image should be resized to fit its container. This corresponds to the CSS 'object-fit' property. Must be one of: 'contain', 'cover', 'fill', 'none', 'scaleDown'
   - variant: A hint for the image size and style. Must be one of: 'icon', 'avatar', 'smallFeature', 'mediumFeature', 'largeFeature', 'header'
   - weight: The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column.
-• LineChart(title?, data, xKey (static), series (static), curved? (static), height? (static), weight? (static))
+• LineChart(title?, data, xKey (static), series (static), curved? (static), height? (static), valuePrefix? (static), valueSuffix? (static), weight? (static))
   - title: Heading drawn above the chart.
   - data: Row objects, literal or a data binding, e.g. [{month: "Jan", sales: 120}].
   - xKey: The field of each row used as the category axis.
@@ -145,17 +157,19 @@ Use these exact positional signatures to instantiate components. Do not output p
     * color - CSS color; leave out to use the theme palette.
   - curved: Smooth the lines.
   - height: Chart height in pixels; default 240.
+  - valuePrefix: Text before each value on the value axis and in the tooltip, e.g. "$".
+  - valueSuffix: Text after each value on the value axis and in the tooltip, e.g. "K".
   - weight: Flex share inside a Row or Column; only on a direct child of one.
 • List(children, direction? (static), align? (static), weight? (static))
   - children: Defines the children. Use an array of strings for a fixed set of children, or a template object to generate children from a data list.
   - direction: The direction in which the list items are laid out. Must be one of: 'vertical', 'horizontal'
   - align: Defines the alignment of children along the cross axis. Must be one of: 'start', 'center', 'end', 'stretch'
   - weight: The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column.
-• Metric(label, value, delta?, trend? (static), caption?, weight? (static))
+• Metric(label, value, delta?, trend?, caption?, weight? (static))
   - label: What the figure measures.
   - value: The figure, already formatted (e.g. "$980K").
   - delta: Change versus the previous period, e.g. "+12%".
-  - trend: Direction of the change; colours the delta. Must be one of: 'up', 'down', 'flat'
+  - trend: Direction of the change, "up", "down" or "flat" ("neutral" reads as "flat"), literal or a data binding; colours the delta.
   - caption: A short note under the figure.
   - weight: Flex share inside a Row or Column; only on a direct child of one.
 • Modal(trigger (static), content (static), weight? (static))
@@ -388,6 +402,8 @@ Example 2: Dynamic list with templates
 ## Charts and data
 
 Draw numbers as charts, not prose: PieChart for shares, LineChart for a trend over time, BarChart to compare categories, Metric for one key figure, DataTable for rows. Put the rows in the data model and bind them, so a later update can change the data alone. Group charts in Cards inside a Row or Column for a dashboard. Leave colors out to use the theme palette.
+
+Title a dashboard with Heading (level 1 for the page, 3 for a card). Show a status with Badge, or give a DataTable column a badge map so each cell is one. Put units on a chart's value axis with valuePrefix / valueSuffix rather than in the numbers.
 
 Example 3: Sales dashboard
 ```

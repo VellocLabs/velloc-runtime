@@ -1,5 +1,6 @@
-// The Velloc A2UI catalog (F-1): the v1.0 basic catalog plus the chart and
-// data components. Chart renderers are lazy, so recharts loads on the first chart.
+// The Velloc A2UI catalog (F-1): the v1.0 basic catalog plus the chart, data
+// and dashboard components. Chart renderers are lazy, so recharts loads on the
+// first chart.
 
 import { lazy, Suspense, type ReactElement } from 'react'
 import { createComponentImplementation, type ReactCatalogComponent } from '@a2ui/react'
@@ -7,6 +8,8 @@ import { Catalog, type ComponentApi } from '@a2ui/web_core/v1_0'
 import { basicCatalog } from '@a2ui/web_core/catalogs/basic/v1'
 import { TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
 import {
+  BADGE_TONES,
+  type BadgeTone,
   VELLOC_CATALOG_ID,
   CHART_CATALOG_INSTRUCTIONS,
   asRows,
@@ -34,7 +37,50 @@ function text(value: unknown): string {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : ''
 }
 
-function MetricView({ label, value, delta, trend, caption }: MetricProps): ReactElement {
+/** A bound trend as one of the three directions; "neutral" and anything unknown are flat. */
+export function metricTrend(trend: unknown): 'up' | 'down' | 'flat' {
+  return trend === 'up' || trend === 'down' ? trend : 'flat'
+}
+
+/** A bound tone as a known one; anything else is neutral. */
+export function badgeTone(tone: unknown): BadgeTone {
+  return typeof tone === 'string' && (BADGE_TONES as readonly string[]).includes(tone) ? (tone as BadgeTone) : 'neutral'
+}
+
+const TONE_CLASS: Record<BadgeTone, string> = {
+  neutral: 'bg-muted text-muted-foreground',
+  info: 'bg-info/15 text-info',
+  success: 'bg-success/15 text-success',
+  warning: 'bg-warning/15 text-warning',
+  danger: 'bg-destructive/15 text-destructive',
+}
+
+function BadgeView({ text: label, tone }: { text?: unknown; tone?: unknown }): ReactElement {
+  const known = badgeTone(tone)
+  return (
+    <span
+      data-slot="a2ui-badge"
+      data-tone={known}
+      className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASS[known]}`}
+    >
+      {text(label)}
+    </span>
+  )
+}
+
+const HEADING_CLASS = ['text-2xl font-semibold', 'text-lg font-semibold', 'text-sm font-semibold'] as const
+
+function HeadingView({ text: title, level }: { text?: unknown; level?: number }): ReactElement {
+  const index = level === 1 || level === 3 ? level - 1 : 1
+  return (
+    <div data-slot="a2ui-heading" role="heading" aria-level={index + 1} className={HEADING_CLASS[index]}>
+      {text(title)}
+    </div>
+  )
+}
+
+function MetricView({ label, value, delta, trend: bound, caption }: MetricProps): ReactElement {
+  const trend = metricTrend(bound)
   const tone =
     trend === 'up'
       ? 'text-success'
@@ -62,6 +108,7 @@ function MetricView({ label, value, delta, trend, caption }: MetricProps): React
 }
 
 function DataTableView({ columns = [], rows }: DataTableProps): ReactElement {
+  const align = (column: TableColumn) => (column.align === 'end' ? 'text-right' : 'text-left')
   const list = asRows(rows)
   return (
     <div data-slot="a2ui-table" className="w-full overflow-x-auto">
@@ -71,7 +118,7 @@ function DataTableView({ columns = [], rows }: DataTableProps): ReactElement {
             {columns.map((column) => (
               <th
                 key={column.key}
-                className="border-b px-2 py-1.5 text-left text-xs font-medium text-muted-foreground"
+                className={`border-b px-2 py-1.5 ${align(column)} text-xs font-medium text-muted-foreground`}
               >
                 {column.label}
               </th>
@@ -82,8 +129,12 @@ function DataTableView({ columns = [], rows }: DataTableProps): ReactElement {
           {list.map((row, index) => (
             <tr key={index} className="border-b last:border-b-0">
               {columns.map((column) => (
-                <td key={column.key} className="px-2 py-1.5 tabular-nums">
-                  {text(row[column.key])}
+                <td key={column.key} className={`px-2 py-1.5 ${align(column)} tabular-nums`}>
+                  {column.badge ? (
+                    <BadgeView text={row[column.key]} tone={column.badge[text(row[column.key])]} />
+                  ) : (
+                    text(row[column.key])
+                  )}
                 </td>
               ))}
             </tr>
@@ -98,10 +149,11 @@ type MetricProps = {
   label?: unknown
   value?: unknown
   delta?: unknown
-  trend?: 'up' | 'down' | 'flat'
+  trend?: unknown
   caption?: unknown
 }
-type DataTableProps = { columns?: { key: string; label: string }[]; rows?: unknown }
+type TableColumn = { key: string; label: string; align?: 'start' | 'end'; badge?: Record<string, BadgeTone> }
+type DataTableProps = { columns?: TableColumn[]; rows?: unknown }
 type ChartProps = {
   title?: unknown
   data?: unknown
@@ -111,6 +163,8 @@ type ChartProps = {
   curved?: boolean
   stacked?: boolean
   height?: number
+  valuePrefix?: string
+  valueSuffix?: string
 }
 
 const views: Record<ChartComponentName, (props: Record<string, unknown>) => ReactElement> = {
@@ -133,6 +187,8 @@ const views: Record<ChartComponentName, (props: Record<string, unknown>) => Reac
           series={p.series ?? []}
           curved={p.curved}
           height={p.height}
+          valuePrefix={p.valuePrefix}
+          valueSuffix={p.valueSuffix}
         />
       </Suspense>
     )
@@ -148,12 +204,16 @@ const views: Record<ChartComponentName, (props: Record<string, unknown>) => Reac
           series={p.series ?? []}
           stacked={p.stacked}
           height={p.height}
+          valuePrefix={p.valuePrefix}
+          valueSuffix={p.valueSuffix}
         />
       </Suspense>
     )
   },
   Metric: props => <MetricView {...(props as MetricProps)} />,
   DataTable: props => <DataTableView {...(props as DataTableProps)} />,
+  Heading: props => <HeadingView {...(props as { text?: unknown; level?: number })} />,
+  Badge: props => <BadgeView {...(props as { text?: unknown; tone?: unknown })} />,
 }
 
 const chartComponents: ReactCatalogComponent[] = (
