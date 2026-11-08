@@ -103,20 +103,16 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
         onPointerDownCapture={props.onFocus}
         onFocusCapture={props.onFocus}
       >
-        {immersive ? (
-          <div data-testid={`pane-${kind}-float`} className="group/pane-float absolute end-0 top-0 z-20 pb-6 pe-1 ps-12 pt-1">
-            <div
-              data-testid={`pane-${kind}-float-bar`}
-              className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 opacity-0 shadow-sm transition-opacity group-focus-within/pane-float:opacity-100 group-hover/pane-float:opacity-100"
-            >
-              {buttons}
-            </div>
-          </div>
-        ) : (
-          <div
-            data-testid={`pane-${kind}-header`}
-            className="group/pane-header flex h-9 shrink-0 items-center gap-0.5 border-b border-border pe-1 ps-2"
-          >
+        {/* One element in both modes, so the buttons keep focus and state across Expand / Restore. */}
+        <div
+          data-testid={immersive ? `pane-${kind}-float-bar` : `pane-${kind}-header`}
+          className={
+            immersive
+              ? 'absolute end-1 top-1 z-20 flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 opacity-0 shadow-sm transition-opacity focus-within:opacity-100 hover:opacity-100'
+              : 'group/pane-header flex h-9 shrink-0 items-center gap-0.5 border-b border-border pe-1 ps-2'
+          }
+        >
+          {immersive ? null : (
             <div
               role="button"
               tabIndex={0}
@@ -141,15 +137,17 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
                 />
               ) : null}
             </div>
+          )}
+          {immersive ? null : (
             <div
               data-testid={`pane-${kind}-title`}
               className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-[13px] font-medium leading-none"
             >
               {props.title}
             </div>
-            {buttons}
-          </div>
-        )}
+          )}
+          {buttons}
+        </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{props.children}</div>
       </section>
     </TooltipProvider>

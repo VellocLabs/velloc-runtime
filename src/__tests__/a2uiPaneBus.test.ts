@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { act, cleanup, render } from '@testing-library/react'
 import { A2uiProviderHost } from '../browser/webview/a2ui/A2uiProviderHost'
 import { A2uiInlineSurface } from '../browser/webview/a2ui/A2uiInlineSurface'
-import { getOwner, setOwner, setShownSession, setSlot } from '../browser/webview/a2ui/a2uiPaneBus'
+import { getOwner, setActionsSlot, setOwner, setShownSession, setSlot } from '../browser/webview/a2ui/a2uiPaneBus'
 import type { Message } from '../runtime/RuntimeTypes'
 
 const transcript = (surfaceId: string) =>
@@ -41,6 +41,7 @@ describe('A2UI pane slot ownership', () => {
   afterEach(() => {
     cleanup()
     setSlot(null, null)
+    setActionsSlot(null)
     setOwner(null)
     setShownSession(null)
   })
@@ -55,6 +56,37 @@ describe('A2UI pane slot ownership', () => {
     )
     expect(shown).toEqual(['surface-main'])
     expect(getOwner()).toBe('main')
+  })
+
+  it("an app session's Reload goes in the header actions slot, only for the session the slot names", () => {
+    const slot = document.createElement('div')
+    const actions = document.createElement('div')
+    document.body.append(slot, actions)
+    const appBoard = {
+      state: { appId: 'pay', surface: { body: ['surface("dashboard")', 'root = Text("Pay")'].join('\n'), hash: 'h1', surfaceIds: ['dashboard'] }, refreshing: false },
+      reload: async () => undefined,
+    }
+    const app = (sessionId: string, busy: boolean) =>
+      createElement(A2uiProviderHost, { sessionId, messages: [], busy, appBoard, children: null })
+    setSlot(slot, 'main')
+    setActionsSlot(actions)
+    const view = render(createElement('div', null, app('main', false), app('side', false)))
+    expect(actions.querySelectorAll('[data-slot="app-reload"]')).toHaveLength(1)
+    expect(slot.querySelector('[data-slot="app-reload"]'), 'not in the body').toBeNull()
+    view.rerender(createElement('div', null, app('main', true), app('side', false)))
+    expect(actions.querySelector<HTMLButtonElement>('[data-slot="app-reload"]')!.disabled, 'busy').toBe(true)
+    act(() => setActionsSlot(null))
+    expect(actions.querySelector('[data-slot="app-reload"]')).toBeNull()
+  })
+
+  it('a session that is not an app puts nothing in the header actions slot', () => {
+    const slot = document.createElement('div')
+    const actions = document.createElement('div')
+    document.body.append(slot, actions)
+    setSlot(slot, 'main')
+    setActionsSlot(actions)
+    render(host('main'))
+    expect(actions.childElementCount).toBe(0)
   })
 
   it('leaves the slot empty when it names a session with no host', () => {

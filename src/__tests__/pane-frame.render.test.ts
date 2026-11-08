@@ -64,12 +64,34 @@ describe('PaneFrame', () => {
       'pane-diff-close',
     ])
     expect(bar.className, 'hidden until hovered or focused').toContain('opacity-0')
-    expect(bar.className).toContain('group-hover/pane-float:opacity-100')
-    expect(bar.className).toContain('group-focus-within/pane-float:opacity-100')
+    expect(bar.className).toContain('hover:opacity-100')
+    expect(bar.className).toContain('focus-within:opacity-100')
     fireEvent.click(screen.getByTestId('pane-diff-expand'))
     expect(props.onToggleMaximized).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByTestId('pane-diff-close'))
     expect(props.onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('immersive, Expand and Restore keep the same button, so it keeps keyboard focus', () => {
+    const props = {
+      kind: 'diff' as const,
+      name: 'Diff',
+      title: 'Diff',
+      maximized: false,
+      immersiveWhenMaximized: true,
+      onToggleMaximized: vi.fn(),
+      onClose: vi.fn(),
+      children: null,
+    }
+    const view = render(createElement(PaneFrame, props))
+    const expand = screen.getByTestId('pane-diff-expand')
+    expand.focus()
+    view.rerender(createElement(PaneFrame, { ...props, maximized: true }))
+    expect(screen.getByTestId('pane-diff-expand')).toBe(expand)
+    expect(document.activeElement).toBe(expand)
+    view.rerender(createElement(PaneFrame, props))
+    expect(screen.getByTestId('pane-diff-expand')).toBe(expand)
+    expect(document.activeElement).toBe(expand)
   })
 
   it('immersive but not maximized, or maximized but not immersive, the header stays with the actions first', () => {
@@ -81,11 +103,11 @@ describe('PaneFrame', () => {
       'pane-diff-expand',
       'pane-diff-close',
     ])
-    expect(screen.queryByTestId('pane-diff-float')).toBeNull()
+    expect(screen.queryByTestId('pane-diff-float-bar')).toBeNull()
     cleanup()
     renderFrame({ maximized: true })
     expect(screen.getByTestId('pane-diff-header')).toBeTruthy()
-    expect(screen.queryByTestId('pane-diff-float')).toBeNull()
+    expect(screen.queryByTestId('pane-diff-float-bar')).toBeNull()
   })
 
   it('close closes, and a press inside focuses the pane', () => {

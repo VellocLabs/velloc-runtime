@@ -230,7 +230,7 @@ function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoa
 
   if (!shown || (!selectedSurfaceId && !board)) return null
   const reload =
-    showsBar && board && actionsSlot ? createPortal(<AppReloadButton board={board} />, actionsSlot) : null
+    showsBar && board && actionsSlot ? createPortal(<AppReloadButton board={board} busy={busy} />, actionsSlot) : null
   const body = createPortal(
     <div data-slot="a2ui-pane-content" className="flex h-full min-h-0 flex-col">
       {paneSurfaceIds.length > 1 && (

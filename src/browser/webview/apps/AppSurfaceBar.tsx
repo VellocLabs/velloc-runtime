@@ -9,11 +9,11 @@ import { Button } from '@/components/ui/button'
 import { useT } from '../i18n'
 import type { AppBoard } from './appSurfaceView'
 
-export function AppReloadButton({ board }: { board: AppBoard }) {
+export function AppReloadButton({ board, busy = false }: { board: AppBoard; busy?: boolean }) {
   const t = useT()
   const [pending, setPending] = useState(false)
   const reload = () => {
-    if (pending) return
+    if (pending || busy) return
     setPending(true)
     void board
       .reload()
@@ -29,7 +29,7 @@ export function AppReloadButton({ board }: { board: AppBoard }) {
       data-slot="app-reload"
       aria-label={t('apps.reload')}
       title={t('apps.reload')}
-      disabled={pending}
+      disabled={pending || busy}
       onClick={reload}
     >
       <RefreshCwIcon aria-hidden className={'size-3.5' + (pending ? ' animate-spin' : '')} />

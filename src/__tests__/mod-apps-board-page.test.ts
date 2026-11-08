@@ -238,6 +238,15 @@ describe('the app bar', () => {
     expect(reload).toHaveBeenCalledTimes(1)
   })
 
+  it('Reload waits while a turn is running', async () => {
+    const reload = vi.fn(async () => ({ ok: true as const, surfaceIds: ['dashboard'] }))
+    const { container } = render(h(AppReloadButton, { board: { state: board(BOARD, 'h1'), reload }, busy: true }))
+    const button = container.querySelector<HTMLButtonElement>('[data-slot="app-reload"]')!
+    expect(button.disabled).toBe(true)
+    await act(async () => button.click())
+    expect(reload).not.toHaveBeenCalled()
+  })
+
   it('the bar is drawn only for an error: a build error shows its message; a data error its line', async () => {
     const plain = view(board(BOARD, 'h1'))
     const { container, rerender } = render(plain.element)
