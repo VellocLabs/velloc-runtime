@@ -3,6 +3,7 @@ import {
   aggregateDescendantState,
   countDescendants,
   descendantSessionIds,
+  findDescendant,
   flattenSessionTree,
   nestSessions,
   rootOf,
@@ -159,5 +160,36 @@ describe('descendantSessionIds', () => {
     const nested = flat === 'x' ? 'y' : 'x'
     expect(descendantSessionIds(nested, tree.childrenOf)).toEqual([])
     expect(descendantSessionIds(flat, tree.childrenOf)).toEqual([nested])
+  })
+})
+
+describe('findDescendant', () => {
+  it('finds a row the tree draws under a parent at any depth, and nothing else', () => {
+    const tree = nestSessions([
+      row('p'),
+      row('c', { parentSessionId: 'p', lineageKind: 'side_session' }),
+      row('g', { parentSessionId: 'c', lineageKind: 'fork' }),
+      row('d', { parentSessionId: 'p', lineageKind: 'side_session', detached: true }),
+      row('q'),
+    ])
+    expect(findDescendant('p', 'g', tree)?.sessionId).toBe('g')
+    expect(findDescendant('c', 'g', tree)?.sessionId).toBe('g')
+    expect(findDescendant('p', 'p', tree)).toBeUndefined()
+    expect(findDescendant('g', 'c', tree)).toBeUndefined()
+    expect(findDescendant('p', 'd', tree)).toBeUndefined()
+    expect(findDescendant('p', 'q', tree)).toBeUndefined()
+    expect(findDescendant('p', 'missing', tree)).toBeUndefined()
+  })
+
+  it('agrees with descendantSessionIds when a loop is drawn flat', () => {
+    const tree = nestSessions([
+      row('x', { parentSessionId: 'y', lineageKind: 'side_session' }),
+      row('y', { parentSessionId: 'x', lineageKind: 'side_session' }),
+    ])
+    for (const a of ['x', 'y']) {
+      for (const b of ['x', 'y']) {
+        expect(!!findDescendant(a, b, tree)).toBe(descendantSessionIds(a, tree.childrenOf).includes(b))
+      }
+    }
   })
 })

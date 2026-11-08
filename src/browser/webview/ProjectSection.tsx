@@ -553,7 +553,7 @@ function ProjectRow({
         </div>
       </div>
 
-      {/* Collapsed project → children are not rendered.
+      {/* Collapsed project → only the active session's row, if it is here.
           The wrapper scopes "rows belonging to THIS project" for tests and for
           anything that needs to tell a project's copy of a session row apart
           from the same session's row under Recents. */}

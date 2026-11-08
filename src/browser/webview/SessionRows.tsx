@@ -348,7 +348,12 @@ type SessionRowProps = Omit<SessionRowListProps, 'groups'> & {
   depth: number
 }
 
-/** A row followed by its children (recursively) unless the row is collapsed. */
+const NO_CHILDREN: ReadonlyMap<string, SessionListItem[]> = new Map()
+
+/**
+ * A row followed by its children (recursively); collapsed, the active
+ * descendant (if any) and a summary instead.
+ */
 function SessionRowSubtree(props: SessionRowProps) {
   const { session, depth, nesting, indented } = props
   const t = useT()
@@ -357,7 +362,11 @@ function SessionRowSubtree(props: SessionRowProps) {
   const childCount = nesting ? countDescendants(session.sessionId, nesting.tree.childrenOf) : 0
   // A collapsed subtree still shows the active session, first, above the summary.
   const revealed = !expanded && nesting
-    ? findDescendant(session.sessionId, props.activeSessionId, nesting.tree.childrenOf)
+    ? findDescendant(session.sessionId, props.activeSessionId, nesting.tree)
+    : undefined
+  // The revealed row draws no subtree, so it gets no children toggle either.
+  const revealedNesting = revealed && nesting
+    ? { ...nesting, tree: { ...nesting.tree, childrenOf: NO_CHILDREN } }
     : undefined
   const connectorLeft = (indented ? 28 : 12) + depth * SESSION_ROW_INDENT_PX + 6
   return (
@@ -395,7 +404,7 @@ function SessionRowSubtree(props: SessionRowProps) {
                   style={{ left: connectorLeft }}
                   className="pointer-events-none absolute -bottom-1 -top-1 border-l border-border"
                 />
-                <SessionRow {...props} session={revealed} depth={depth + 1} />
+                <SessionRow {...props} session={revealed} depth={depth + 1} nesting={revealedNesting} />
               </div>
             )}
             <div className="relative">

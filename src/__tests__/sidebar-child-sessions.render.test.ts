@@ -177,6 +177,7 @@ describe('collapse', () => {
     // The active child stays on screen, first under the parent, above the summary.
     expect(sequence()).toEqual(['#sidebar-recents-toggle', 'p', 'c'])
     expect(screen.queryByTestId('sidebar-row-g')).toBeNull()
+    expect(toggleOf('c')).toBeNull()
     fireEvent.click(summary)
     expect(screen.queryByTestId('sidebar-children-summary')).toBeNull()
     expect(rowOf('c').dataset.active).toBe('true')
