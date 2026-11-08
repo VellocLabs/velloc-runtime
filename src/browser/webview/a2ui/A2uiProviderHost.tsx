@@ -109,6 +109,13 @@ function drawsSurface(message: unknown, surfaceId: string): boolean {
   )
 }
 
+/** An app's actions the plugin answers itself (F-40): the names, and the call that offers one to the app's module. */
+export type LocalSurfaceActions = {
+  names: readonly string[]
+  /** Resolves true when the module handled the action. */
+  run: (name: string, context: unknown) => Promise<boolean>
+}
+
 // Feeds new transcript sources (blocks and older tool calls) into the session's processor and installs the
 // surface-action handler (which snapshots the live data model).
 function A2uiFeeder({
@@ -119,12 +126,15 @@ function A2uiFeeder({
   compiler,
   live,
   reservedIds,
+  localActions,
   onBoardTouched,
 }: {
   compiler: A2uiExpressCompiler
   live: A2uiLiveBlocks
   /** An app session's own surfaces: chat may not draw them. */
   reservedIds: readonly string[]
+  /** The app's local actions; undefined for a session that is not an app's, or an app with none. */
+  localActions?: LocalSurfaceActions
   onBoardTouched: () => void
   messages: readonly Message[]
   submitActionMessage?: (prompt: string) => Promise<void>
@@ -185,14 +195,27 @@ function A2uiFeeder({
   }, [sources, processor, compiler, state, live, reservedIds, onBoardTouched])
 
   // Forward surface actions to the model as a hidden isMeta turn (gated while a
-  // turn is in flight — one action per turn).
+  // turn is in flight — one action per turn). An action on one of the app's own
+  // surfaces that the manifest names local is offered to the app's background
+  // module first; the model gets it only when the module did not take it.
   useEffect(() => {
     actionHandlerRef.current = (action: ActionPayload) => {
       try {
         if (!submitActionMessage || busyRef.current) return
         if (typeof action.surfaceId !== 'string') return
         const dataModel = processor.getSurface(action.surfaceId)?.dataModel.get('/') ?? {}
-        void submitActionMessage(buildActionTurn(action, dataModel))
+        const turn = buildActionTurn(action, dataModel)
+        const name = action.name
+        if (localActions && typeof name === 'string' && localActions.names.includes(name) && reservedIds.includes(action.surfaceId)) {
+          const toModel = () => {
+            if (!busyRef.current) void submitActionMessage(turn)
+          }
+          localActions.run(name, action.context ?? null).then(handled => {
+            if (!handled) toModel()
+          }, toModel)
+          return
+        }
+        void submitActionMessage(turn)
       } catch (error) {
         console.error('[a2ui] failed to forward surface action', error)
       }
@@ -200,7 +223,7 @@ function A2uiFeeder({
     return () => {
       actionHandlerRef.current = null
     }
-  }, [processor, submitActionMessage, actionHandlerRef])
+  }, [processor, submitActionMessage, actionHandlerRef, localActions, reservedIds])
 
   return null
 }
@@ -348,6 +371,12 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
   const isApp = appBoard !== undefined
   const appState = appBoard?.state ?? null
   const reservedIds = useMemo(() => appSurfaceIds(appState), [appState])
+  const act = appBoard?.act
+  const localNames = appState?.localActions
+  const localActions = useMemo<LocalSurfaceActions | undefined>(() => {
+    if (!act || !localNames || localNames.length === 0) return undefined
+    return { names: localNames, run: async (name, context) => (await act(name, context))?.handled === true }
+  }, [act, localNames])
   useEffect(() => {
     injectBasicCatalogStyles()
     return () => processor.dispose()
@@ -362,6 +391,7 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
           compiler={compiler}
           live={live}
           reservedIds={reservedIds}
+          localActions={localActions}
           onBoardTouched={onBoardTouched}
           messages={messages}
           submitActionMessage={submitActionMessage}

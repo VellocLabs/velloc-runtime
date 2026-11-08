@@ -18,7 +18,7 @@ import {
 } from '../browser/webview/apps/appLaunch'
 import { defaultSessionPaneRecord, hasPane } from '../browser/webview/layout/paneLayout'
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
-import { PluginTopbarItems, appItemId, usePluginTopbarItems } from '../browser/webview/topbar/PluginTopbarItems'
+import { PluginTopbarItems, appBadgeText, appItemId, usePluginTopbarItems } from '../browser/webview/topbar/PluginTopbarItems'
 import { TooltipProvider } from '../components/ui/tooltip'
 import { RuntimeCapabilitiesContext } from '../browser/webview/useCan'
 import { EMPTY_MOD_CONTRIBUTIONS, type ModContributionsState } from '../browser/runtimeProtocol/modContributions'
@@ -197,6 +197,27 @@ describe('an app\'s topbar icon', () => {
     renderBar({ session: 's1', onPress: vi.fn() })
     expect(screen.queryByTestId('topbar-app-pay-board')).toBeNull()
     expect(screen.getByTestId('topbar-plugin-item-pay--sync')).not.toBeNull()
+  })
+
+  it("draws the module's badge as a pill with the count in the label and tooltip, capped at 99+; none for 0 or no badge", () => {
+    const withBadge = (badge: number | undefined): ModContributionsState => ({
+      ...STATE,
+      apps: [{ ...STATE.apps![0]!, ...(badge === undefined ? {} : { badge }) }],
+    })
+    act(() => setModContributions(withBadge(3)))
+    renderBar({ session: undefined, onPress: vi.fn(), onOpenApp: vi.fn() })
+    expect(screen.getByTestId('topbar-app-pay-board-badge').textContent).toBe('3')
+    expect(screen.getByTestId('topbar-app-pay-board-badge').getAttribute('aria-hidden')).toBe('true')
+    expect(screen.getByTestId('topbar-app-pay-board').getAttribute('aria-label')).toBe('Open Payments. Needs attention: 3')
+    act(() => setModContributions(withBadge(250)))
+    expect(screen.getByTestId('topbar-app-pay-board-badge').textContent).toBe('99+')
+    expect(screen.getByTestId('topbar-app-pay-board').getAttribute('aria-label')).toBe('Open Payments. Needs attention: 99+')
+    act(() => setModContributions(withBadge(0)))
+    expect(screen.queryByTestId('topbar-app-pay-board-badge')).toBeNull()
+    expect(screen.getByTestId('topbar-app-pay-board').getAttribute('aria-label')).toBe('Open Payments')
+    act(() => setModContributions(withBadge(undefined)))
+    expect(screen.queryByTestId('topbar-app-pay-board-badge')).toBeNull()
+    expect([appBadgeText(undefined), appBadgeText(0), appBadgeText(1), appBadgeText(99), appBadgeText(100), appBadgeText(2.7)]).toEqual(['', '', '1', '99', '99+', '2'])
   })
 
   it('carries its id in the More menu once folded, apart from a command item\'s', () => {

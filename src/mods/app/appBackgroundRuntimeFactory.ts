@@ -21,7 +21,9 @@ import { AppBackgroundRuntime } from './AppBackgroundRuntime'
 import type { AppBackgroundBootDeps } from './appBackgroundBoot'
 import { createAppBackgroundMcp } from './appBackgroundMcp'
 
-export function createAppBackgroundRuntime(deps: AppBackgroundBootDeps & { report: (line: string) => void }): AppBackgroundRuntime {
+export function createAppBackgroundRuntime(
+  deps: AppBackgroundBootDeps & { report: (line: string) => void; onBadge?: (appId: string, count: number | null) => void },
+): AppBackgroundRuntime {
   const { fs, homeDir, report } = deps
   const modsDir = providerModsDir(homeDir)
   const storeFs = {
@@ -88,5 +90,6 @@ export function createAppBackgroundRuntime(deps: AppBackgroundBootDeps & { repor
       }),
     report,
     ...(deps.locale ? { locale: deps.locale } : {}),
+    ...(deps.onBadge ? { onBadge: deps.onBadge } : {}),
   })
 }

@@ -86,12 +86,19 @@ export type AppBackgroundRuntimeOptions = {
   report: (line: string) => void
   locale?: () => string | undefined
   onStatusChanged?: () => void
+  /** `$.app.badge`: the count the app's icon shows, or null for none; also null at the module's stop. */
+  onBadge?: (appId: string, count: number | null) => void
   startTimeoutMs?: number
   stopTimeoutMs?: number
+  /** The budget of an `app.action` hook; past it the action goes to the model. */
+  actionTimeoutMs?: number
   respawnBackoffMs?: readonly number[]
   persistDelayMs?: number
   now?: () => number
 }
+
+/** The budget of one `app.action` hook. */
+export const APP_ACTION_TIMEOUT_MS = 10_000
 
 export type AppBackgroundState = 'loading' | 'waiting' | 'ready' | 'crashed' | 'refused' | 'failed' | 'dead' | 'stopped'
 
@@ -122,6 +129,14 @@ type Module = {
   restart?: ReturnType<typeof setTimeout>
   /** Its text could not be read: the next sync reads it again. */
   unreadable?: boolean
+  /** The badge the module set last; cleared at its stop. */
+  badge?: number
+}
+
+/** An `app.action` answer: `{handled}` read as given, anything else by its truth. */
+const handledBy = (result: unknown): boolean => {
+  if (typeof result === 'object' && result !== null && 'handled' in result) return (result as { handled: unknown }).handled === true
+  return Boolean(result)
 }
 
 class WorkerGoneWhileLoading extends Error {}
@@ -199,6 +214,43 @@ export class AppBackgroundRuntime {
   /** The state document of a running app; undefined when it is not synced in. */
   document(appId: string): AppStateDocument | undefined {
     return this.modules.get(appId)?.document
+  }
+
+  /**
+   * Offers a surface action of the person's to the app's module as `app.action`.
+   * True when a hook answered `{handled: true}` or another truthy value; false
+   * when the app has no running module or hook, or the hook answered falsy,
+   * failed, or ran past its budget — the action then goes to the model.
+   */
+  async action(appId: string, action: string, context: unknown, sessionId: string): Promise<boolean> {
+    const module = this.modules.get(appId)
+    if (!module || !module.loaded || !module.dispatcher.hasHooksFor('app.action')) return false
+    const timeoutMs = this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    const onGone = () => controller.abort()
+    module.gone.signal.addEventListener('abort', onGone, { once: true })
+    try {
+      const result = await module.dispatcher.dispatch(
+        'app.action',
+        { appId, action, context: context ?? null, sessionId },
+        () => undefined,
+        { signal: controller.signal, accepts: () => true, budgetMs: timeoutMs },
+      )
+      return handledBy(result)
+    } catch (error) {
+      if (!module.gone.signal.aborted) {
+        this.options.report(
+          controller.signal.aborted
+            ? `${module.ref.plugin}: app.action "${action}" of ${appId} did not finish within ${timeoutMs}ms; the model takes it`
+            : `${module.ref.plugin}: app.action "${action}" of ${appId} failed: ${errorMessage(error)}; the model takes it`,
+        )
+      }
+      return false
+    } finally {
+      clearTimeout(timer)
+      module.gone.signal.removeEventListener('abort', onGone)
+    }
   }
 
   async dispose(): Promise<void> {
@@ -413,8 +465,24 @@ export class AppBackgroundRuntime {
       loaded.instance.dispose()
       loaded.worker.close()
     }
+    if (module.badge !== undefined) {
+      module.badge = undefined
+      this.options.onBadge?.(module.ref.appId, null)
+    }
     this.note(module, 'stopped', reason)
     await Promise.all([module.document.dispose(), this.closeMcp(module)])
+  }
+
+  /** `$.app.badge(count)`: a whole number from 0, or null for none. */
+  private setBadge(module: Module, count: unknown): undefined {
+    if (count !== null && !(typeof count === 'number' && Number.isInteger(count) && count >= 0)) {
+      throw named('TypeError', '$.app.badge(count): count is a whole number from 0, or null to clear the badge')
+    }
+    const next = count === null ? undefined : count
+    if (module.badge === next) return undefined
+    module.badge = next
+    this.options.onBadge?.(module.ref.appId, count)
+    return undefined
   }
 
   /** The module's MCP pool is closed with its worker; the next worker builds its own. */
@@ -467,6 +535,7 @@ export class AppBackgroundRuntime {
     }
     if (call.noun === 'app') {
       if (call.method === 'state') return { value: module.document.value, version: module.document.version }
+      if (call.method === 'badge') return this.setBadge(module, call.args[0])
       return module.document.apply(call.args[0])
     }
     if (call.noun === 'log') {

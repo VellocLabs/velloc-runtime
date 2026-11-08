@@ -12,6 +12,7 @@ import { readConsentedGrants } from '../../pluginHost/providerPluginConsent'
 import { getNexusAppDir } from '../../utils/conversationStoragePaths'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import { getModUiContributionsHost, type AppBackgroundTemplate } from '../ui/contributionsHost'
+import { setAppActionDispatch } from './appActionBus'
 import type { AppBackgroundRef, AppBackgroundRuntime } from './AppBackgroundRuntime'
 import { coversFolderScopes, expandScopeFolder, type FolderScopes } from './appFolderScopes'
 
@@ -34,7 +35,9 @@ export type AppBackgroundBootSeams = {
   /** Runs `listener` when the published apps changed; default the contributions host's. */
   onChanged?: (listener: () => void) => () => void
   /** Builds the runtime; default the factory. */
-  createRuntime?: (deps: AppBackgroundBootDeps) => Promise<AppBackgroundRuntime>
+  createRuntime?: (deps: AppBackgroundBootDeps & { onBadge: (appId: string, count: number | null) => void }) => Promise<AppBackgroundRuntime>
+  /** Where a module's badge goes; default the contributions host's app entry. */
+  badge?: (appId: string, count: number | null) => void
 }
 
 /** The folders the person approved for a plugin; `'exempt'` for a hand-placed one. */
@@ -108,9 +111,10 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
       }
     })
   const unapproved = new Set<string>()
+  const onBadge = seams.badge ?? ((appId: string, count: number | null) => host.setAppBadge(appId, count))
   const createRuntime =
     seams.createRuntime ??
-    (async (bootDeps: AppBackgroundBootDeps) => {
+    (async (bootDeps: AppBackgroundBootDeps & { onBadge: typeof onBadge }) => {
       const { createAppBackgroundRuntime } = await import('./appBackgroundRuntimeFactory')
       return createAppBackgroundRuntime({ ...bootDeps, report })
     })
@@ -137,7 +141,7 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
       const refs = await refsOf()
       if (refs.length === 0 && !state.runtime && !state.creating) return
       if (!state.runtime) {
-        state.creating ??= createRuntime(deps)
+        state.creating ??= createRuntime({ ...deps, onBadge })
         try {
           state.runtime = await state.creating
         } catch (error) {
@@ -149,6 +153,8 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
           await state.runtime.dispose()
           return
         }
+        const runtime = state.runtime
+        setAppActionDispatch((appId, action, context, sessionId) => runtime.action(appId, action, context, sessionId))
       }
       state.runtime.sync(refs)
     },
@@ -171,6 +177,7 @@ export function appBackgroundRuntime(): AppBackgroundRuntime | null {
 export async function resetAppBackgroundBootForTests(): Promise<void> {
   const state = booted
   booted = null
+  setAppActionDispatch(undefined)
   if (!state) return
   state.stop()
   const runtime = state.runtime ?? (state.creating ? await state.creating.catch(() => null) : null)

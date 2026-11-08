@@ -116,6 +116,8 @@ export class ModUiContributionsHost {
   private readonly syncedWaiters = new Set<() => void>()
   /** Lines `publish` reported, so a republish does not repeat them. */
   private readonly reported = new Set<string>()
+  /** The badge each app's background module set, by app id; kept across a scan, cleared by the module. */
+  private readonly badges = new Map<string, number>()
 
   configure(options: ContributionsHostOptions): void {
     this.options = options
@@ -134,6 +136,30 @@ export class ModUiContributionsHost {
   onChanged(listener: (state: ModContributionsState) => void): () => void {
     this.changed.add(listener)
     return () => this.changed.delete(listener)
+  }
+
+  /** The count on app `appId`'s icon, or null for none: published on its entry, now and after each scan. */
+  setAppBadge(appId: string, count: number | null): void {
+    if (count === null) this.badges.delete(appId)
+    else this.badges.set(appId, count)
+    if (!this.current.apps?.some(app => app.appId === appId)) return
+    this.commit({ ...this.current, apps: this.current.apps.map(app => this.badged(app)) })
+  }
+
+  private badged(app: ContributedApp): ContributedApp {
+    const { badge: _dropped, ...rest } = app
+    const badge = this.badges.get(app.appId)
+    return badge === undefined ? rest : { ...rest, badge }
+  }
+
+  /** Publishes `next` when it differs from the current state. */
+  private commit(next: ModContributionsState): void {
+    const json = JSON.stringify(next)
+    if (json === this.currentJson) return
+    this.current = next
+    this.currentJson = json
+    publishModContributions(next)
+    for (const listener of [...this.changed]) listener(next)
   }
 
   /** `listener` runs when some plugin moved between in effect and waiting. */
@@ -416,7 +442,7 @@ export class ModUiContributionsHost {
     const next: ModContributionsState = {
       templates,
       topbar,
-      ...(apps.length > 0 ? { apps } : {}),
+      ...(apps.length > 0 ? { apps: apps.map(app => this.badged(app)) } : {}),
       icons: Object.fromEntries([...used].sort().map(hash => [hash, this.iconTexts.get(hash)!])),
       waiting: waiting.map(({ plugin, unmet }) => {
         const unknown = unmet.flatMap(entry => (entry.kind === 'unknown' ? [entry.word] : []))
@@ -430,12 +456,7 @@ export class ModUiContributionsHost {
         }
       }),
     }
-    const json = JSON.stringify(next)
-    if (json === this.currentJson) return
-    this.current = next
-    this.currentJson = json
-    publishModContributions(next)
-    for (const listener of [...this.changed]) listener(next)
+    this.commit(next)
   }
 }
 

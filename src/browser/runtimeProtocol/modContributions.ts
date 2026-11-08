@@ -60,6 +60,8 @@ export type ContributedApp = {
   appId: string
   plugin: string
   title: ContributionText
+  /** A count the app's background module set on its icon (`$.app.badge`); absent when none is set. */
+  badge?: number
   icon?: ContributionIcon
 }
 

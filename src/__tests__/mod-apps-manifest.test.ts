@@ -237,10 +237,33 @@ describe('the apps the contributions host publishes', () => {
     expect(contributions.state().icons).toEqual({})
   })
 
+  it("a background module's badge is published on its app's entry, kept across a scan, and cleared by null; one for an app not published waits for it", async () => {
+    const { contributions } = host()
+    const states: Array<number | undefined> = []
+    contributions.onChanged(state => states.push(state.apps?.[0]?.badge))
+    await contributions.sync({ enabled: [appPlugin('pay', 'board')] })
+    contributions.setAppBadge('pay-board', 4)
+    expect(contributions.state().apps?.[0]).toMatchObject({ appId: 'pay-board', badge: 4 })
+    contributions.setAppBadge('pay-board', 4)
+    expect(states).toEqual([undefined, 4])
+    await contributions.sync({ enabled: [appPlugin('pay', 'board'), appPlugin('notes', 'list')] })
+    expect(contributions.state().apps?.map(app => [app.appId, app.badge])).toEqual([['pay-board', 4], ['notes-list', undefined]])
+    contributions.setAppBadge('notes-list', 0)
+    expect(contributions.state().apps?.[1]).toMatchObject({ appId: 'notes-list', badge: 0 })
+    contributions.setAppBadge('pay-board', null)
+    expect('badge' in contributions.state().apps![0]!).toBe(false)
+    contributions.setAppBadge('later-app', 9)
+    expect(states.at(-1)).toBeUndefined()
+    expect(states).toHaveLength(5)
+    await contributions.sync({ enabled: [appPlugin('later', 'app')] })
+    expect(contributions.state().apps?.[0]).toMatchObject({ appId: 'later-app', badge: 9 })
+  })
+
   it('the page takes a state with or without apps, and refuses apps that are not a list', () => {
     const base = { templates: [], topbar: [], icons: {}, waiting: [] }
     expect(isModContributionsState(base)).toBe(true)
     expect(isModContributionsState({ ...base, apps: [] })).toBe(true)
+    expect(isModContributionsState({ ...base, apps: [{ type: 'pay:board', appId: 'pay-board', plugin: 'pay', title: 'P', badge: 3 }] })).toBe(true)
     expect(isModContributionsState({ ...base, apps: {} })).toBe(false)
   })
 })

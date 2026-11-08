@@ -1,6 +1,6 @@
 /**
- * Admission of an app's background module (F-40): the two events it may
- * hook and the nouns it may call. Security: the module runs outside every
+ * Admission of an app's background module (F-40): the events it may hook
+ * and the nouns it may call. Security: the module runs outside every
  * session, so every session noun is refused by name, before it loads where
  * the scan sees the call and at the call otherwise.
  */
@@ -11,13 +11,13 @@ import { isValidPattern } from '../eventPattern'
 
 export const APP_BACKGROUND_ABI = 'Velloc app background ABI 0.1'
 
-export const APP_BACKGROUND_EVENTS: readonly string[] = Object.freeze(['app.start', 'app.stop'])
+export const APP_BACKGROUND_EVENTS: readonly string[] = Object.freeze(['app.start', 'app.stop', 'app.action'])
 
 /** The nouns a background module may call; `$.plugin` holds values, not calls. */
 export const APP_BACKGROUND_NOUNS: readonly string[] = Object.freeze(['app', 'store', 'http', 'log', 'clock', 'fs', 'mcp', 'plugin'])
 
 const ONLY_METHODS: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  app: Object.freeze(['state', 'publish']),
+  app: Object.freeze(['state', 'publish', 'badge']),
   http: Object.freeze(['fetch']),
   log: Object.freeze(['debug', 'info', 'warn', 'error']),
   mcp: Object.freeze(['call', 'connect']),
@@ -37,8 +37,9 @@ export function refuseAppBackgroundRegistrations(hooks: readonly HookRegistratio
   }
   const reasons: string[] = []
   if (foreign.length > 0) {
+    const events = `${APP_BACKGROUND_EVENTS.slice(0, -1).join(', ')} and ${APP_BACKGROUND_EVENTS.at(-1)}`
     reasons.push(
-      `an app's background module hooks ${APP_BACKGROUND_EVENTS.join(' and ')} alone, and it hooks ` +
+      `an app's background module hooks ${events} alone, and it hooks ` +
         `${[...new Set(foreign)].join(', ')} — put session hooks in a module listed under the manifest's hooks (${APP_BACKGROUND_ABI})`,
     )
   }

@@ -65,6 +65,7 @@ describe('A2UI pane slot ownership', () => {
     const appBoard = {
       state: { appId: 'pay', surface: { body: ['surface("dashboard")', 'root = Text("Pay")'].join('\n'), hash: 'h1', surfaceIds: ['dashboard'] }, refreshing: false },
       reload: async () => undefined,
+      act: async () => undefined,
     }
     const app = (sessionId: string, busy: boolean) =>
       createElement(A2uiProviderHost, { sessionId, messages: [], busy, appBoard, children: null })

@@ -75,8 +75,15 @@ import {
 } from '../runtimeProtocol/modContributions'
 import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
 import { registerModsAppTopic } from './modsAppTopic'
-import { buildRegisteredApp } from '../../mods/app/appSurfaceRegistry'
-import { isModsBuildAppPayload, type ModsBuildAppPayload, type ModsBuildAppResult } from '../runtimeProtocol/modApps'
+import { buildRegisteredApp, runRegisteredAppAction } from '../../mods/app/appSurfaceRegistry'
+import {
+  isModsAppActionPayload,
+  isModsBuildAppPayload,
+  type ModsAppActionPayload,
+  type ModsAppActionResult,
+  type ModsBuildAppPayload,
+  type ModsBuildAppResult,
+} from '../runtimeProtocol/modApps'
 import type { TopicBroker } from './TopicBroker'
 import type { ConnectionInfo, SnapshotPage, TopicProvider } from './types'
 
@@ -223,6 +230,8 @@ export function registerModsCapability(
     resolveTopbar?: (id: string) => TopbarResolution
     /** `mods.buildApp`: build a session's app; defaults to the realm's registry. */
     buildApp?: (sessionId: string) => Promise<ModsBuildAppResult> | undefined
+    /** `mods.appAction`: offer a surface action to a session's app; defaults to the realm's registry. */
+    appAction?: (sessionId: string, action: string, context: unknown) => Promise<ModsAppActionResult> | undefined
   } = {},
 ): { publish(): void; dispose(): void } {
   const getState = options.getState ?? modsStatePayload
@@ -262,6 +271,11 @@ export function registerModsCapability(
         scope: MODS_ACTION_SCOPES.buildApp,
         guard: isModsBuildAppPayload,
         sessionOf: payload => (payload as ModsBuildAppPayload).sessionId,
+      },
+      appAction: {
+        scope: MODS_ACTION_SCOPES.appAction,
+        guard: isModsAppActionPayload,
+        sessionOf: payload => (payload as ModsAppActionPayload).sessionId,
       },
     },
     handle: async request => {
@@ -383,6 +397,14 @@ export function registerModsCapability(
           }
           const built = (options.buildApp ?? buildRegisteredApp)(sessionId)
           return (await built) ?? ({ ok: false, message: 'this session is not an open app' } satisfies ModsBuildAppResult)
+        }
+        case 'appAction': {
+          const { sessionId, action, context } = request.payload as ModsAppActionPayload
+          if (!inScope(request.conn, sessionId)) {
+            throw wireError('forbidden_scope', `session ${sessionId} is not in this connection's scope`)
+          }
+          const offered = (options.appAction ?? runRegisteredAppAction)(sessionId, action, context ?? null)
+          return (await offered) ?? ({ handled: false } satisfies ModsAppActionResult)
         }
         case 'setOptions': {
           const payload = request.payload as ModsSetOptionsPayload

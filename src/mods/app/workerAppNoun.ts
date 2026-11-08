@@ -68,5 +68,7 @@ export function makeWorkerAppNoun(call: WorkerAppCall): unknown {
         known = undefined
         return call('publish', [patches])
       }),
+    /** A count on the app's topbar icon; `null` clears it. Checked by the runtime. */
+    badge: (count: unknown) => call('badge', [count]),
   })
 }

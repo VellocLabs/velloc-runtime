@@ -15,13 +15,15 @@ import type {
   AppSurfaceBuild,
   AppSurfaceError,
   AppSurfaceState,
+  ModsAppActionResult,
   ModsBuildAppResult,
 } from '../../browser/runtimeProtocol/modApps'
 import { blockSurfaceIds, hasA2uiBlock, splitA2uiText } from '../../toolkit/builtin/a2ui/express/a2uiBlocks'
+import { dispatchAppAction, type AppActionDispatch } from './appActionBus'
 import { hashOf, SEED_MAX_FILE_BYTES } from './appSeed'
 import type { AppSessionInfo } from './appSession'
 import { liveAppState, onAppState, type AppStateEvent, type AppStateSnapshot } from './appStateBus'
-import { setAppBuilder, setAppSurfaceState } from './appSurfaceRegistry'
+import { setAppActor, setAppBuilder, setAppSurfaceState, type AppActor } from './appSurfaceRegistry'
 
 /** The app's live state, while its background module holds one. */
 export type AppLiveData = {
@@ -46,8 +48,12 @@ export type AppSurfaceHostOptions = {
    * The result forgets it, and is true while it was still this host's.
    */
   registerBuild?: (sessionId: string, build: () => Promise<ModsBuildAppResult>) => () => boolean
+  /** Where `mods.appAction` finds this host; defaults to the realm registry, released as the build is. */
+  registerActor?: (sessionId: string, act: AppActor) => () => boolean
   /** The background module's state, read in place of the data file while there is one; defaults to the realm bus. */
   liveData?: AppLiveData
+  /** Offers a local action to the app's background module; defaults to the realm bus. */
+  dispatchAction?: AppActionDispatch
   now?: () => number
 }
 
@@ -60,6 +66,13 @@ export type AppSurfaceHost = {
   build(): Promise<ModsBuildAppResult>
   /** A plugin's write at `absPath`: the data is read again when it is the data file. */
   noteWrite(absPath: string): void
+  /**
+   * A surface action of the person's: offered to the app's background module
+   * when the manifest names it local, with `refreshing` published while the
+   * module has it; `{handled: false}` for any other action, or when the
+   * module did not take it.
+   */
+  action(name: string, context: unknown): Promise<ModsAppActionResult>
   /** The session's system-prompt block for the app. */
   promptBlock: string
   /** The model's way to build the app: offered in this session alone. */
@@ -167,9 +180,12 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
   const compile = options.compile ?? defaultCompile
   const publish = options.publish ?? setAppSurfaceState
   const registerBuild = options.registerBuild ?? setAppBuilder
+  const registerActor = options.registerActor ?? setAppActor
   const live: AppLiveData = options.liveData ?? { snapshot: liveAppState, subscribe: onAppState }
+  const dispatchAction = options.dispatchAction ?? dispatchAppAction
   const now = options.now ?? Date.now
   const entry = app.decl.entry
+  const localActions = app.decl.localActions ?? []
   const entryPath = joinRuntimePath(app.folder, entry)
   const dataPath = app.decl.data ? joinRuntimePath(app.folder, app.decl.data) : undefined
   const dataKey = dataPath ? pathCompareKey(normalizeRuntimePath(dataPath)) : undefined
@@ -189,6 +205,8 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
   let disposed = false
   let queue: Promise<unknown> = Promise.resolve()
   let pendingData = false
+  /** Counts the local actions the background module has in hand. */
+  let acting = 0
 
   const errors = (): AppSurfaceError[] => [buildError, dataError].filter((e): e is AppSurfaceError => e !== undefined)
 
@@ -199,9 +217,10 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
       surface: built,
       ...(data ? { data: data.value, dataAt: data.at, dataSeq } : {}),
       ...(data && dataPatches ? { dataPatches } : {}),
-      refreshing: false,
+      refreshing: acting > 0,
       ...(list.length > 0 ? { errors: list } : {}),
       ...(app.seed.conflicts.length > 0 ? { seedConflicts: [...app.seed.conflicts] } : {}),
+      ...(localActions.length > 0 ? { localActions: [...localActions] } : {}),
     }
     dataPatches = undefined
     if (!disposed && !sameState(published, state)) {
@@ -303,7 +322,22 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     },
   }) as ToolContract<Record<string, never>, string>
 
+  const action = async (name: string, context: unknown): Promise<ModsAppActionResult> => {
+    if (disposed || !localActions.includes(name)) return { handled: false }
+    acting += 1
+    emit()
+    try {
+      return { handled: (await dispatchAction(app.appId, name, context, sessionId)) === true }
+    } catch {
+      return { handled: false }
+    } finally {
+      acting -= 1
+      emit()
+    }
+  }
+
   const releaseBuild = registerBuild(sessionId, build)
+  const releaseActor = registerActor(sessionId, action)
 
   return {
     async start() {
@@ -332,6 +366,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
         }).catch(error => console.warn('[mods/app] data read failed', error))
       })
     },
+    action,
     promptBlock: appPromptBlock(app),
     tool,
     wrapTurnEndCheck(inner, makeNote) {
@@ -351,6 +386,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
       unsubscribeLive?.()
       unsubscribeLive = undefined
       // A newer runtime of the same session may own the entry by now.
+      releaseActor()
       if (releaseBuild()) publish(sessionId, null)
     },
   }

@@ -224,14 +224,15 @@ describe('the app in the pane', () => {
 })
 
 describe('the app bar', () => {
+  const actOn = async () => undefined
   const view = (state: AppSurfaceState | null, reload = vi.fn(async () => ({ ok: true as const, surfaceIds: ['dashboard'] }))) => ({
     reload,
-    element: h(AppSurfaceBar, { board: { state, reload } }),
+    element: h(AppSurfaceBar, { board: { state, reload, act: actOn } }),
   })
 
   it('Reload builds the app again', async () => {
     const reload = vi.fn(async () => ({ ok: true as const, surfaceIds: ['dashboard'] }))
-    const { container } = render(h(AppReloadButton, { board: { state: board(BOARD, 'h1'), reload } }))
+    const { container } = render(h(AppReloadButton, { board: { state: board(BOARD, 'h1'), reload, act: actOn } }))
     const button = container.querySelector<HTMLButtonElement>('[data-slot="app-reload"]')!
     expect(button.getAttribute('aria-label')).toBe('Reload app')
     await act(async () => button.click())
@@ -240,7 +241,7 @@ describe('the app bar', () => {
 
   it('Reload waits while a turn is running', async () => {
     const reload = vi.fn(async () => ({ ok: true as const, surfaceIds: ['dashboard'] }))
-    const { container } = render(h(AppReloadButton, { board: { state: board(BOARD, 'h1'), reload }, busy: true }))
+    const { container } = render(h(AppReloadButton, { board: { state: board(BOARD, 'h1'), reload, act: actOn }, busy: true }))
     const button = container.querySelector<HTMLButtonElement>('[data-slot="app-reload"]')!
     expect(button.disabled).toBe(true)
     await act(async () => button.click())

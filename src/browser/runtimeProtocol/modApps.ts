@@ -35,18 +35,30 @@ export type AppSurfaceState = {
   dataSeq?: number
   /** The patches that took the data of the board with `dataSeq === from` to this one; absent when the data was read whole. */
   dataPatches?: { from: number; patches: AppDataPatch[] }
-  /** The plugin is refreshing the data. */
+  /** The app's background module is handling an action of the person's (`mods.appAction`). */
   refreshing: boolean
   /** The latest build failed, or the data file could not be read. */
   errors?: AppSurfaceError[]
   /** Files the person edited that a newer seed would have replaced. */
   seedConflicts?: string[]
+  /** The surface actions the manifest names as the plugin's own: the page offers each to `mods.appAction` before the model. */
+  localActions?: string[]
 }
 
 /** `mods.buildApp`: build the app's entry file again and redraw it. */
 export type ModsBuildAppPayload = { sessionId: string }
 
 export type ModsBuildAppResult = { ok: true; surfaceIds: string[] } | { ok: false; message: string }
+
+/** `mods.appAction`: an action on one of the app's own surfaces, offered to the app's background module. */
+export type ModsAppActionPayload = { sessionId: string; action: string; context?: unknown }
+
+/** `handled`: the module took the action; false sends it to the model as any surface action. */
+export type ModsAppActionResult = { handled: boolean }
+
+const ACTION_NAME = /^[A-Za-z0-9_-]{1,64}$/
+/** The bytes an action's context may take on the wire. */
+export const APP_ACTION_CONTEXT_MAX_BYTES = 64 * 1024
 
 export function modsAppTopic(sessionId: string): TopicId {
   if (!isTopicSegment(sessionId)) {
@@ -90,9 +102,25 @@ export function isAppSurfaceState(value: unknown): value is AppSurfaceState {
   if (value.seedConflicts !== undefined && !(Array.isArray(value.seedConflicts) && value.seedConflicts.every(p => typeof p === 'string'))) {
     return false
   }
+  if (value.localActions !== undefined && !(Array.isArray(value.localActions) && value.localActions.every(p => typeof p === 'string'))) {
+    return false
+  }
   return true
 }
 
 export function isModsBuildAppPayload(value: unknown): value is ModsBuildAppPayload {
   return isRecord(value) && typeof value.sessionId === 'string' && value.sessionId.length > 0
+}
+
+/** Security: the action name has the manifest's form and the context is bounded JSON; anything else is refused at the wire. */
+export function isModsAppActionPayload(value: unknown): value is ModsAppActionPayload {
+  if (!isRecord(value) || typeof value.sessionId !== 'string' || value.sessionId.length === 0) return false
+  if (typeof value.action !== 'string' || !ACTION_NAME.test(value.action)) return false
+  if (value.context === undefined) return true
+  try {
+    const json = JSON.stringify(value.context)
+    return json !== undefined && json.length <= APP_ACTION_CONTEXT_MAX_BYTES
+  } catch {
+    return false
+  }
 }

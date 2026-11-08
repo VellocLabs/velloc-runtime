@@ -831,6 +831,7 @@ export const en = {
   'proposalCard.openAria': 'Open session {name}',
   'topbar.pluginItemTooltip': '{title} ({plugin})',
   'topbar.openApp': 'Open {title}',
+  'topbar.appBadge': 'Needs attention: {count}',
   'apps.buildFailed': 'The app did not build.',
   'apps.dataFileError': "The app's data file could not be read, so its last data is shown.",
   'apps.reload': 'Reload app',

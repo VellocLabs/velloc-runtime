@@ -3,7 +3,9 @@
  * worker, `app.start` is raised with the app, the module's `$.app.state`
  * reaches the state document (the file, the bus, an open session's board as
  * path patches), `$.clock.every` runs, a session noun or event is refused,
- * a crash restarts under the backoff, a sync-out raises `app.stop`.
+ * a crash restarts under the backoff, a sync-out raises `app.stop`; an
+ * `app.action` is handled or falls through, within its budget; `$.app.badge`
+ * reaches the icon and clears at the stop.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -255,7 +257,7 @@ describe('AppBackgroundRuntime — admission', () => {
     })
     runtime.sync([ref('/plugins/pay/bg.js')])
     await vi.waitFor(() => expect(status()?.state).toBe('refused'))
-    expect(status()?.reason).toMatch(/hooks app\.start and app\.stop alone, and it hooks session\.start/)
+    expect(status()?.reason).toMatch(/hooks app\.start, app\.stop and app\.action alone, and it hooks session\.start/)
     await expect(workers[0]!.closed).resolves.toEqual({ reason: 'closed' })
   })
 
@@ -332,18 +334,145 @@ describe('AppBackgroundRuntime — admission', () => {
   })
 
   it('the static checks name the session events, the session nouns and the forbidden methods', () => {
-    expect(refuseAppBackgroundRegistrations([{ pattern: 'app.start' }, { pattern: 'app.stop' }] as never)).toBeNull()
+    expect(refuseAppBackgroundRegistrations([{ pattern: 'app.start' }, { pattern: 'app.stop' }, { pattern: 'app.action' }] as never)).toBeNull()
     expect(refuseAppBackgroundRegistrations([{ pattern: 'tool.call' }] as never)).toMatch(/hooks tool\.call/)
     expect(refuseAppBackgroundRegistrations([{ pattern: 'app.start', streams: true }] as never)).toMatch(/async generator/)
     expect(refuseAppBackgroundCall('clock', 'every')).toBeNull()
     expect(refuseAppBackgroundCall('app', 'publish')).toBeNull()
-    expect(refuseAppBackgroundCall('app', 'delete')).toMatch(/offers state, publish/)
+    expect(refuseAppBackgroundCall('app', 'badge')).toBeNull()
+    expect(refuseAppBackgroundCall('app', 'delete')).toMatch(/offers state, publish, badge/)
     expect(refuseAppBackgroundCall('http', 'post')).toMatch(/offers fetch/)
     expect(refuseAppBackgroundCall('mcp', 'call')).toBeNull()
     expect(refuseAppBackgroundCall('mcp', 'connect')).toBeNull()
     expect(refuseAppBackgroundCall('mcp', 'listTools')).toMatch(/offers call, connect/)
     expect(refuseAppBackgroundCall('tool', 'register')).toMatch(/session noun/)
     expect(refuseAppBackgroundUses({ calls: ['app.state', 'prompt.submit'] } as never)).toMatch(/\$\.prompt is a session noun/)
+  })
+})
+
+describe('AppBackgroundRuntime — app.action', () => {
+  /** Handles `refresh` by counting it into the state; says no to `other`; throws on `boom`; sleeps on `slow`. */
+  const ACTOR = `
+    export function register(on) {
+      on('app.start', async ($) => { await $.app.state.set({ seen: [] }) })
+      on('app.action', async ($, e) => {
+        await $.app.state.update(s => { s.seen.push([e.appId, e.action, e.context, e.sessionId]) })
+        if (e.action === 'boom') throw new Error('no such case')
+        if (e.action === 'slow') await new Promise(resolve => setTimeout(resolve, 200))
+        if (e.action === 'plain') return 1
+        return { handled: e.action === 'refresh' }
+      })
+    }`
+
+  async function ready(source = ACTOR, options: Partial<AppBackgroundRuntimeOptions> = {}) {
+    const w = world({ '/plugins/pay/bg.js': source }, options)
+    w.runtime.sync([w.ref('/plugins/pay/bg.js')])
+    await vi.waitFor(() => expect(w.status()?.state).toBe('ready'))
+    return w
+  }
+
+  it('a handled action is true and the module saw the event; a refused one, a failing one and an unknown app are false', async () => {
+    const { runtime, reports } = await ready()
+    expect(await runtime.action('pay-board', 'refresh', { id: 7 }, 's1')).toBe(true)
+    expect(await runtime.action('pay-board', 'other', undefined, 's1')).toBe(false)
+    expect(await runtime.action('pay-board', 'plain', null, 's2')).toBe(true)
+    expect(await runtime.action('pay-board', 'boom', null, 's1')).toBe(false)
+    expect(await runtime.action('pay-other', 'refresh', null, 's1')).toBe(false)
+    expect((runtime.document('pay-board')!.value as { seen: unknown[] }).seen).toEqual([
+      ['pay-board', 'refresh', { id: 7 }, 's1'],
+      ['pay-board', 'other', null, 's1'],
+      ['pay-board', 'plain', null, 's2'],
+      ['pay-board', 'boom', null, 's1'],
+    ])
+    expect(reports).toContainEqual(expect.stringMatching(/pay: the background module's app\.action hook failed \(throw\)/))
+  })
+
+  it('a handler past its budget is false and reported; a module without the hook is false without a dispatch', async () => {
+    const { runtime, reports } = await ready(ACTOR, { actionTimeoutMs: 40 })
+    expect(await runtime.action('pay-board', 'slow', null, 's1')).toBe(false)
+    expect(reports).toContainEqual(expect.stringMatching(/pay: (the background module's app\.action hook failed \(|app\.action "slow" of pay-board did not finish within 40ms)/))
+    const quiet = await ready(COUNTER)
+    expect(await quiet.runtime.action('pay-board', 'refresh', null, 's1')).toBe(false)
+  })
+
+  it("a session's board is refreshing while the module has the action, and not after; an action the manifest does not name is not offered", async () => {
+    const { runtime } = await ready()
+    const published: AppSurfaceState[] = []
+    const disk = { stat: async () => ({ isFile: () => true, isDirectory: () => false, size: 1, mtimeMs: 1 }) as never, readFileBytes: async () => new TextEncoder().encode('surface("app")\nroot = Text("x")') }
+    const host = createAppSurfaceHost({
+      fs: disk,
+      app: { appId: 'pay-board', plugin: 'pay', folder: FOLDER, decl: { seed: './app', seedVersion: 1, entry: 'app.a2ui', localActions: ['refresh', 'slow'] }, seed: { version: 1, written: [], conflicts: [] } },
+      sessionId: 's1',
+      compile: async () => ({ ok: true, surfaceIds: ['app'] }),
+      publish: (_id, state) => {
+        if (state) published.push(state)
+      },
+      registerBuild: () => () => true,
+      registerActor: () => () => true,
+      dispatchAction: (appId, action, context, sessionId) => runtime.action(appId, action, context, sessionId),
+    })
+    const first = await host.start()
+    expect(first.localActions).toEqual(['refresh', 'slow'])
+    expect(first.refreshing).toBe(false)
+    const flags = () => published.map(state => state.refreshing)
+    await expect(host.action('refresh', { id: 1 })).resolves.toEqual({ handled: true })
+    expect(flags().slice(-2)).toEqual([true, false])
+    const before = published.length
+    await expect(host.action('open_case', { id: 1 })).resolves.toEqual({ handled: false })
+    expect(published.length).toBe(before)
+    expect((runtime.document('pay-board')!.value as { seen: unknown[][] }).seen.map(row => row[1])).toEqual(['refresh'])
+    host.dispose()
+  })
+})
+
+describe('AppBackgroundRuntime — $.app.badge', () => {
+  /** Sets a badge at start; a `badge` action sets what it is told and keeps a refusal in the state. */
+  const BADGER = `
+    export function register(on) {
+      on('app.start', async ($) => { await $.app.badge(3) })
+      on('app.action', async ($, e) => {
+        try { await $.app.badge(e.context) } catch (error) { await $.app.state.update(s => { s.refused = error.name + ': ' + error.message }) }
+        return true
+      })
+    }`
+
+  it('reaches the icon as set, once per change, refuses what is not a count, and clears at the stop', async () => {
+    const badges: Array<[string, number | null]> = []
+    const { runtime, ref, status } = world({ '/plugins/pay/bg.js': BADGER }, { onBadge: (appId, count) => badges.push([appId, count]) })
+    runtime.sync([ref('/plugins/pay/bg.js')])
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    await vi.waitFor(() => expect(badges).toEqual([['pay-board', 3]]))
+    await runtime.action('pay-board', 'badge', 3, 's1')
+    await runtime.action('pay-board', 'badge', 12, 's1')
+    expect(badges).toEqual([['pay-board', 3], ['pay-board', 12]])
+    for (const bad of [-1, 1.5, 'x']) {
+      await runtime.action('pay-board', 'badge', bad, 's1')
+      expect((runtime.document('pay-board')!.value as { refused: string }).refused).toMatch(/^TypeError: \$\.app\.badge\(count\): count is a whole number from 0, or null/)
+    }
+    await runtime.action('pay-board', 'badge', 0, 's1')
+    expect(badges.at(-1)).toEqual(['pay-board', 0])
+    runtime.sync([])
+    await vi.waitFor(() => expect(status()).toBeUndefined())
+    expect(badges.at(-1)).toEqual(['pay-board', null])
+    expect(badges).toHaveLength(4)
+  })
+
+  it('a module that set no badge clears nothing at its stop; null clears before the stop', async () => {
+    const badges: Array<[string, number | null]> = []
+    const { runtime, ref, status } = world({ '/plugins/pay/bg.js': COUNTER }, { onBadge: (appId, count) => badges.push([appId, count]) })
+    runtime.sync([ref('/plugins/pay/bg.js')])
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    runtime.sync([])
+    await vi.waitFor(() => expect(status()).toBeUndefined())
+    expect(badges).toEqual([])
+    const second = world({ '/plugins/pay/bg.js': BADGER }, { onBadge: (appId, count) => badges.push([appId, count]) })
+    second.runtime.sync([second.ref('/plugins/pay/bg.js')])
+    await vi.waitFor(() => expect(badges).toEqual([['pay-board', 3]]))
+    await second.runtime.action('pay-board', 'badge', null, 's1')
+    expect(badges).toEqual([['pay-board', 3], ['pay-board', null]])
+    second.runtime.sync([])
+    await vi.waitFor(() => expect(second.status()).toBeUndefined())
+    expect(badges).toHaveLength(2)
   })
 })
 

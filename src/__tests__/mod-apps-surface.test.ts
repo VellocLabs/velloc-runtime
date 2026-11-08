@@ -8,8 +8,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Message } from '../runtime/RuntimeTypes'
 import {
+  APP_ACTION_CONTEXT_MAX_BYTES,
   MODS_APP_STATE_EVENT,
   isAppSurfaceState,
+  isModsAppActionPayload,
   isModsBuildAppPayload,
   modsAppTopic,
   modsAppTopicSession,
@@ -21,6 +23,8 @@ import {
   appSurfaceState,
   buildRegisteredApp,
   onAppSurfaceChanged,
+  runRegisteredAppAction,
+  setAppActor,
   setAppBuilder,
   setAppSurfaceState,
 } from '../mods/app/appSurfaceRegistry'
@@ -318,6 +322,25 @@ describe('the mods/app topic', () => {
     expect(isModsBuildAppPayload({ sessionId: '' })).toBe(false)
     expect(MODS_ACTION_SCOPES.buildApp).toBe('control')
     expect(isAppSurfaceState({ ...good, errors: [{ kind: 'other', message: 'm' }] })).toBe(false)
+    expect(isAppSurfaceState({ ...good, localActions: ['refresh'] })).toBe(true)
+    expect(isAppSurfaceState({ ...good, localActions: 'refresh' })).toBe(false)
+    expect(isAppSurfaceState({ ...good, localActions: [1] })).toBe(false)
+  })
+
+  it('mods.appAction: control; the payload names a session and an action of the manifest form, with a bounded JSON context', () => {
+    expect(MODS_ACTION_SCOPES.appAction).toBe('control')
+    expect(isModsAppActionPayload({ sessionId: 's1', action: 'refresh' })).toBe(true)
+    expect(isModsAppActionPayload({ sessionId: 's1', action: 'open_case', context: { id: 'c-1', nested: [1, null] } })).toBe(true)
+    expect(isModsAppActionPayload({ sessionId: 's1', action: 'refresh', context: null })).toBe(true)
+    expect(isModsAppActionPayload({ sessionId: '', action: 'refresh' })).toBe(false)
+    expect(isModsAppActionPayload({ sessionId: 's1', action: '' })).toBe(false)
+    expect(isModsAppActionPayload({ sessionId: 's1', action: 'open case' })).toBe(false)
+    expect(isModsAppActionPayload({ sessionId: 's1', action: 'a'.repeat(65) })).toBe(false)
+    expect(isModsAppActionPayload({ sessionId: 's1', action: 'refresh', context: 'x'.repeat(APP_ACTION_CONTEXT_MAX_BYTES) })).toBe(false)
+    expect(isModsAppActionPayload({ sessionId: 's1', action: 'refresh', context: () => 1 })).toBe(false)
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+    expect(isModsAppActionPayload({ sessionId: 's1', action: 'refresh', context: cyclic })).toBe(false)
   })
 
   it('session-bound: a connection sees the boards of its sessions; the snapshot is the registry\'s, null for no app', async () => {
@@ -358,6 +381,84 @@ describe('the mods/app topic', () => {
     setAppSurfaceState('s1', null)
     off()
     expect(seen).toEqual([['s1', null]])
+  })
+})
+
+describe("a local action of the person's", () => {
+  function actRig(answer: (action: string) => Promise<boolean>) {
+    const disk = memoryFs({ 'app.a2ui': BOARD })
+    const published: AppSurfaceState[] = []
+    const offered: Array<[string, string, unknown, string]> = []
+    const host = createAppSurfaceHost({
+      fs: disk.fs,
+      app: app({ localActions: ['refresh', 'open_case'] }),
+      sessionId: 's1',
+      compile,
+      publish: (_id, state) => {
+        if (state) published.push(state)
+      },
+      registerBuild: () => () => true,
+      registerActor: () => () => true,
+      dispatchAction: (appId, action, context, sessionId) => {
+        offered.push([appId, action, context, sessionId])
+        return answer(action)
+      },
+    })
+    return { host, published, offered }
+  }
+
+  it('is offered to the background module with the app, the context and the session; the board is refreshing meanwhile and names the local actions', async () => {
+    let settle!: (handled: boolean) => void
+    const { host, published, offered } = actRig(() => new Promise<boolean>(resolve => (settle = resolve)))
+    const first = await host.start()
+    expect(first.localActions).toEqual(['refresh', 'open_case'])
+    const pending = host.action('open_case', { id: 'c-9' })
+    expect(offered).toEqual([['pay-board', 'open_case', { id: 'c-9' }, 's1']])
+    expect(published.at(-1)?.refreshing).toBe(true)
+    settle(true)
+    await expect(pending).resolves.toEqual({ handled: true })
+    expect(published.at(-1)?.refreshing).toBe(false)
+    expect(published.map(state => state.refreshing)).toEqual([false, true, false])
+  })
+
+  it('an action the manifest does not name, a module that declines, and a failing dispatch are not handled; a disposed host answers no', async () => {
+    const { host, published, offered } = actRig(async action => {
+      if (action === 'refresh') throw new Error('gone')
+      return false
+    })
+    await host.start()
+    await expect(host.action('other', null)).resolves.toEqual({ handled: false })
+    expect(offered).toEqual([])
+    expect(published).toHaveLength(1)
+    await expect(host.action('open_case', null)).resolves.toEqual({ handled: false })
+    await expect(host.action('refresh', null)).resolves.toEqual({ handled: false })
+    expect(offered.map(row => row[1])).toEqual(['open_case', 'refresh'])
+    expect(published.at(-1)?.refreshing).toBe(false)
+    host.dispose()
+    await expect(host.action('refresh', null)).resolves.toEqual({ handled: false })
+    expect(offered).toHaveLength(2)
+  })
+
+  it('the defaults are the realm registry: mods.appAction reaches the session that is open, and no other', async () => {
+    const disk = memoryFs({ 'app.a2ui': BOARD })
+    const host = createAppSurfaceHost({
+      fs: disk.fs,
+      app: app({ localActions: ['refresh'] }),
+      sessionId: 's-act',
+      compile,
+      publish: () => undefined,
+      registerBuild: () => () => true,
+      dispatchAction: async () => true,
+    })
+    await host.start()
+    await expect(runRegisteredAppAction('s-act', 'refresh', null)).resolves.toEqual({ handled: true })
+    await expect(runRegisteredAppAction('s-act', 'other', null)).resolves.toEqual({ handled: false })
+    expect(runRegisteredAppAction('s-none', 'refresh', null)).toBeUndefined()
+    const release = setAppActor('s-x', async () => ({ handled: true }))
+    expect(release()).toBe(true)
+    expect(release()).toBe(false)
+    host.dispose()
+    expect(runRegisteredAppAction('s-act', 'refresh', null)).toBeUndefined()
   })
 })
 

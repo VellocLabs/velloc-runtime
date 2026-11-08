@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AppBackgroundRef, AppBackgroundRuntime } from '../mods/app/AppBackgroundRuntime'
+import { dispatchAppAction } from '../mods/app/appActionBus'
 import { appBackgroundRef, appBackgroundRuntime, bootAppBackground, resetAppBackgroundBootForTests } from '../mods/app/appBackgroundBoot'
 import type { AppBackgroundTemplate } from '../mods/ui/contributionsHost'
 import { notifyProviderModUpdatesChanged } from '../pluginHost/providerModUpdateHolder'
@@ -32,11 +33,13 @@ const MCP_OWNER = {
 
 function fakeRuntime() {
   const synced: AppBackgroundRef[][] = []
+  const actions: unknown[][] = []
   const runtime = {
     sync: vi.fn((refs: readonly AppBackgroundRef[]) => void synced.push([...refs])),
     dispose: vi.fn(async () => undefined),
+    action: vi.fn(async (...args: unknown[]) => (actions.push(args), args[1] === 'refresh')),
   } as unknown as AppBackgroundRuntime
-  return { runtime, synced }
+  return { runtime, synced, actions }
 }
 
 const deps = { homeDir: 'C:/home', fs: {} as never, transport: () => null }
@@ -82,6 +85,32 @@ describe('the boot', () => {
     await vi.waitFor(() => expect(synced).toHaveLength(2))
     expect(synced[1]).toEqual([])
     expect(createRuntime).toHaveBeenCalledTimes(1)
+  })
+
+  it("the runtime's badge goes where the boot is told, and a session's local action reaches the runtime once it exists", async () => {
+    const { runtime, actions } = fakeRuntime()
+    const badges: Array<[string, number | null]> = []
+    let onBadge: ((appId: string, count: number | null) => void) | undefined
+    const createRuntime = vi.fn(async (bootDeps: { onBadge: typeof onBadge }) => {
+      onBadge = bootDeps.onBadge
+      return runtime
+    })
+    expect(await dispatchAppAction('pay-board', 'refresh', null, 's1')).toBe(false)
+    await bootAppBackground(deps, {
+      apps: () => [template('pay-board')],
+      onChanged: () => () => undefined,
+      createRuntime: createRuntime as never,
+      badge: (appId, count) => badges.push([appId, count]),
+    })
+    onBadge!('pay-board', 5)
+    onBadge!('pay-board', null)
+    expect(badges).toEqual([['pay-board', 5], ['pay-board', null]])
+    expect(await dispatchAppAction('pay-board', 'refresh', { id: 1 }, 's1')).toBe(true)
+    expect(await dispatchAppAction('pay-board', 'other', null, 's1')).toBe(false)
+    expect(actions).toEqual([['pay-board', 'refresh', { id: 1 }, 's1'], ['pay-board', 'other', null, 's1']])
+    await resetAppBackgroundBootForTests()
+    expect(await dispatchAppAction('pay-board', 'refresh', null, 's1')).toBe(false)
+    expect(actions).toHaveLength(2)
   })
 
   it('a second boot is a no-op; a runtime that cannot be created is reported and tried again', async () => {

@@ -874,3 +874,30 @@ describe('mods.buildApp', () => {
     expect(built).toEqual(['s1', 's2'])
   })
 })
+
+describe('mods.appAction', () => {
+  it("control: offers the action to the session's app and answers whether it was handled; refused under observe; no app is not handled; a bad name is refused at the wire", async () => {
+    const offered: Array<[string, string, unknown]> = []
+    const appAction = (sessionId: string, action: string, context: unknown) => {
+      offered.push([sessionId, action, context])
+      return sessionId === 's1' ? Promise.resolve({ handled: action === 'refresh' }) : undefined
+    }
+    const observe = makeRig({ appAction })
+    await observe.client.hello({ scopeCeiling: 'observe' })
+    const refused = await observe.client.request('mods.appAction', { sessionId: 's1', action: 'refresh' })
+    expect(!refused.ok && refused.error.code).toBe('forbidden_scope')
+    expect(offered).toEqual([])
+
+    const control = makeRig({ appAction })
+    await control.client.hello({ scopeCeiling: 'control' })
+    const handled = await control.client.request('mods.appAction', { sessionId: 's1', action: 'refresh', context: { id: 3 } })
+    expect(handled.ok && handled.result).toEqual({ handled: true })
+    const declined = await control.client.request('mods.appAction', { sessionId: 's1', action: 'open_case' })
+    expect(declined.ok && declined.result).toEqual({ handled: false })
+    const none = await control.client.request('mods.appAction', { sessionId: 's2', action: 'refresh' })
+    expect(none.ok && none.result).toEqual({ handled: false })
+    const bad = await control.client.request('mods.appAction', { sessionId: 's1', action: 'open case' })
+    expect(bad.ok).toBe(false)
+    expect(offered).toEqual([['s1', 'refresh', { id: 3 }], ['s1', 'open_case', null], ['s2', 'refresh', null]])
+  })
+})

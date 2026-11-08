@@ -24,6 +24,14 @@ const REFUSAL: Record<Extract<ModsPressTopbarResult, { ok: false }>["reason"], M
 };
 const NOTICE_MS = 4000;
 const NO_APPS: readonly never[] = [];
+/** The largest count the badge spells out; beyond it the pill reads `99+`. */
+export const APP_BADGE_MAX = 99;
+
+/** The pill's text for a badge count; empty for a count that draws no pill. */
+export function appBadgeText(count: number | undefined): string {
+  if (count === undefined || !Number.isFinite(count) || count <= 0) return "";
+  return count > APP_BADGE_MAX ? `${APP_BADGE_MAX}+` : String(Math.floor(count));
+}
 
 export type PluginTopbarItem = {
   id: string;
@@ -33,6 +41,8 @@ export type PluginTopbarItem = {
   icon: React.ReactNode;
   /** A command item runs for the active session, so it waits for one. */
   needsSession: boolean;
+  /** The pill on an app's icon, as drawn (`appBadgeText`); absent when none. */
+  badge?: string;
   testId: string;
   /** The test id in the More menu once folded. */
   foldedTestId: string;
@@ -102,12 +112,16 @@ export function usePluginTopbarItems(
       })),
       ...appItems.map(app => {
         const title = resolveLocalizedText(app.title, locale);
+        const badge = appBadgeText(app.badge);
+        const open = t("topbar.openApp", { title });
+        const attention = badge ? t("topbar.appBadge", { count: badge }) : "";
         return {
           id: appItemId(app.type),
-          label: t("topbar.openApp", { title }),
-          tooltip: title,
+          label: attention ? `${open}. ${attention}` : open,
+          tooltip: attention ? `${title}. ${attention}` : title,
           icon: <ModIconSlot icon={app.icon} icons={contributions.icons} className="size-4" />,
           needsSession: false,
+          ...(badge ? { badge } : {}),
           testId: `topbar-app-${app.appId}`,
           foldedTestId: `topbar-folded-app-${app.appId}`,
         };
@@ -143,6 +157,7 @@ export function PluginTopbarItems({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
+                  className={item.badge ? "relative" : undefined}
                   data-testid={item.testId}
                   data-topbar-fold={pluginFoldKey(item.id)}
                   aria-label={item.label}
@@ -150,6 +165,15 @@ export function PluginTopbarItems({
                   onClick={() => state.press(item.id)}
                 >
                   {item.icon}
+                  {item.badge ? (
+                    <span
+                      aria-hidden="true"
+                      data-testid={`${item.testId}-badge`}
+                      className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium leading-none text-destructive-foreground"
+                    >
+                      {item.badge}
+                    </span>
+                  ) : null}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">{item.tooltip ?? item.label}</TooltipContent>

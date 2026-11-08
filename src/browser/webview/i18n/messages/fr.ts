@@ -801,6 +801,7 @@ export const fr: Messages = {
   'proposalCard.openAria': 'Ouvrir la session {name}',
   'topbar.pluginItemTooltip': '{title} ({plugin})',
   'topbar.openApp': 'Ouvrir {title}',
+  'topbar.appBadge': 'Nécessite votre attention : {count}',
   'apps.buildFailed': "L'application n'a pas pu être construite.",
   'apps.dataFileError': "Le fichier de données de l'application est illisible, les dernières données sont affichées.",
   'apps.reload': "Recharger l'application",

@@ -800,6 +800,7 @@ export const de: Messages = {
   'proposalCard.openAria': 'Sitzung {name} öffnen',
   'topbar.pluginItemTooltip': '{title} ({plugin})',
   'topbar.openApp': '{title} öffnen',
+  'topbar.appBadge': 'Braucht deine Aufmerksamkeit: {count}',
   'apps.buildFailed': 'Die App konnte nicht gebaut werden.',
   'apps.dataFileError': 'Die Datendatei der App konnte nicht gelesen werden, daher werden die letzten Daten angezeigt.',
   'apps.reload': 'App neu laden',

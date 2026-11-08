@@ -11,6 +11,7 @@ import {
   isAppSurfaceState,
   modsAppTopic,
   type AppSurfaceState,
+  type ModsAppActionResult,
   type ModsBuildAppResult,
 } from '../../runtimeProtocol/modApps'
 import { useModContributions } from '../mods/modContributionsView'
@@ -83,11 +84,13 @@ export function useAppSurface(
   return enabled && held !== null && held.sessionId === sessionId ? held.state : null
 }
 
-/** An app session as the page sees it: its latest state and a way to build it again. */
+/** An app session as the page sees it: its latest state, a way to build it again, and a way to offer it an action. */
 export type AppBoard = {
   state: AppSurfaceState | null
   /** `mods.buildApp`; undefined when there is no connection. */
   reload(): Promise<ModsBuildAppResult | undefined>
+  /** `mods.appAction`: offers a surface action to the app's background module; undefined when there is no connection. */
+  act(action: string, context: unknown): Promise<ModsAppActionResult | undefined>
 }
 
 /**
@@ -107,6 +110,14 @@ export function useAppBoard(
     const connection = await runtimeConnection()
     return connection.request<ModsBuildAppResult>('mods.buildApp', { sessionId })
   }, [runtimeConnection, sessionId])
-  const board = useMemo(() => ({ state, reload }), [state, reload])
+  const act = useCallback(
+    async (action: string, context: unknown): Promise<ModsAppActionResult | undefined> => {
+      if (!runtimeConnection || !sessionId) return undefined
+      const connection = await runtimeConnection()
+      return connection.request<ModsAppActionResult>('mods.appAction', { sessionId, action, ...(context === undefined ? {} : { context }) })
+    },
+    [runtimeConnection, sessionId],
+  )
+  const board = useMemo(() => ({ state, reload, act }), [state, reload, act])
   return isApp ? board : undefined
 }
