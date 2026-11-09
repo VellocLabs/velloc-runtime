@@ -30,6 +30,7 @@ import {
   notifyProviderModUpdatesChanged,
 } from '../../pluginHost/providerModUpdateHolder'
 import { consentCovers } from '../../pluginHost/providerPluginConsent'
+import { manifestAsksAgent } from '../app/appAgentRun'
 import { folderScopesOf } from '../app/appFolderScopes'
 import {
   getProviderModHost,
@@ -95,15 +96,19 @@ export async function scanProviderPlugins(deps: ProviderModBootDeps): Promise<Pr
 
 const MARKETPLACE_SOURCE = 'marketplace:'
 
-/** A marketplace plugin whose apps declare folders and that carries no provider. */
-function isFoldersOnly(plugin: ProviderPluginScan['enabled'][number]): boolean {
-  return !(plugin.providers?.length ?? 0) && plugin.source.startsWith(MARKETPLACE_SOURCE) && folderScopesOf(plugin.manifest) !== undefined
+/** A marketplace plugin whose apps declare folders or agent runs and that carries no provider. */
+function isAppGrantOnly(plugin: ProviderPluginScan['enabled'][number]): boolean {
+  return (
+    !(plugin.providers?.length ?? 0) &&
+    plugin.source.startsWith(MARKETPLACE_SOURCE) &&
+    (folderScopesOf(plugin.manifest) !== undefined || manifestAsksAgent(plugin.manifest))
+  )
 }
 
-/** The plugins in a scan that are the person's own and carry a grant: providers, or an app's folders. */
+/** The plugins in a scan that are the person's own and carry a grant: providers, or an app's folders or agent runs. */
 function grantPluginsOf(scan: ProviderPluginScan): ProviderPluginScan['enabled'] {
   return [...scan.enabled, ...scan.disabled].filter(
-    plugin => ((plugin.providers?.length ?? 0) > 0 || isFoldersOnly(plugin)) && isGlobalPluginSource(plugin.source),
+    plugin => ((plugin.providers?.length ?? 0) > 0 || isAppGrantOnly(plugin)) && isGlobalPluginSource(plugin.source),
   )
 }
 
@@ -112,7 +117,7 @@ export function hasProviderUpdateSource(scan: ProviderPluginScan): boolean {
   return grantPluginsOf(scan).some(
     plugin =>
       plugin.source.startsWith(MARKETPLACE_SOURCE) &&
-      (isFoldersOnly(plugin) ||
+      (isAppGrantOnly(plugin) ||
         Object.values(plugin.manifest?.providers ?? {}).some(provider => provider.updates !== undefined)),
   )
 }

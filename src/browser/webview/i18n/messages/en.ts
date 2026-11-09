@@ -2223,6 +2223,7 @@ export const en = {
   'settings.plugins.providers.updates.failure.activate': 'it could not be switched on, so the previous version keeps running',
   'settings.plugins.providers.review.waiting': 'Its providers are switched off until you approve them.',
   'settings.plugins.providers.review.waitingFolders': 'Its apps can\'t reach your folders until you approve them.',
+  'settings.plugins.providers.review.waitingAgent': 'Its apps can\'t run the agent until you approve them.',
   'settings.plugins.providers.review.button': 'Review and turn on',
   'settings.plugins.mods.local': 'Local',
   'settings.plugins.mods.builtin': 'Built-in',

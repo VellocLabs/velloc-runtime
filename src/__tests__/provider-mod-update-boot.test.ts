@@ -227,6 +227,21 @@ describe('a plugin whose apps declare folders and that carries no provider', () 
     await boot()
     expect(providerModUpdatesAvailable()).toBe(false)
   })
+
+  it('with agent runs and no folders, from a marketplace: the boot offers the update service and starts the schedule', async () => {
+    const plugin = foldersOnly('marketplace:kit@shop')
+    plugin.manifest = {
+      name: 'kit',
+      version: '1.0.0',
+      templates: { board: { title: 'Board', app: { seed: './app', entry: 'board.a2ui', background: './bg.js', backgroundAgent: true } } },
+    } as never
+    scanResult = { enabled: [], disabled: [plugin], errors: [] }
+    expect(hasProviderUpdateSource(scanResult)).toBe(true)
+    await boot()
+    expect(providerModUpdatesAvailable()).toBe(true)
+    expect(await acquireProviderModUpdateService()).toBe(fakeService)
+    await vi.waitFor(() => expect(providerUpdateScheduleRunning()).toBe(true))
+  })
 })
 
 describe('the first consent at a built-in install', () => {

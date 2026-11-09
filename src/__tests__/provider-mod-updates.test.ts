@@ -564,35 +564,37 @@ describe('a plugin whose apps declare folders and that carries no provider', () 
   const archiveUrl = (version: string) => `https://plugins.acme.test/kit-${version}.tar.gz`
   const PID = 'kit@mkt'
 
-  const kitArchive = (version: string, fs: Record<string, string[]>) =>
+  const kitArchive = (version: string, fs: Record<string, string[]> | undefined, agent?: true) =>
     archive([
       {
         name: `${PLUGIN_MANIFEST_DIR_NAME}/plugin.json`,
         content: JSON.stringify({
           name: 'kit',
           version,
-          templates: { board: { title: 'Board', app: { seed: './app', entry: 'board.a2ui', background: { module: './bg.js', fs } } } },
+          templates: { board: { title: 'Board', app: { seed: './app', entry: 'board.a2ui', background: { module: './bg.js', fs, ...(agent ? { agent } : {}) } } } },
         }),
       },
       { name: 'app/board.a2ui', content: '{}\n' },
       { name: 'bg.js', content: `export function register() {} // ${version}\n` },
     ])
 
-  async function serve(w: World, version: string, fs: Record<string, string[]>): Promise<void> {
+  async function serve(w: World, version: string, fs: Record<string, string[]> | undefined, agent?: true): Promise<void> {
     w.served.set(MKT_URL, {
       body: await archive(
         [{ name: `${PLUGIN_MANIFEST_DIR_NAME}/marketplace.json`, content: JSON.stringify({ name: 'mkt', plugins: [{ name: 'kit', version, source: { source: 'https', url: archiveUrl(version) } }] }) }],
         'me-mkt-abc',
       ),
     })
-    w.served.set(archiveUrl(version), { body: await kitArchive(version, fs) })
+    w.served.set(archiveUrl(version), { body: await kitArchive(version, fs, agent) })
   }
 
-  async function installed(): Promise<{ w: World; service: ProviderModUpdateService; afterConsent: ReturnType<typeof vi.fn> }> {
+  async function installed(
+    first: { fs?: Record<string, string[]>; agent?: true } = { fs: { read: ['~/Downloads'] } },
+  ): Promise<{ w: World; service: ProviderModUpdateService; afterConsent: ReturnType<typeof vi.fn>; held: boolean }> {
     const w = await world({ install: false })
     await addMarketplace(ctx, w.fs as unknown as RuntimeFs, 'mkt', { source: 'github', repo: 'me/mkt' }, new Date(T0).toISOString())
-    await serve(w, '1.0.0', { read: ['~/Downloads'] })
-    await setupPlugin(ctx, w.fs as unknown as RuntimeFs, 'mkt', 'kit', { fetchImpl: w.fetchImpl, refreshFirst: true })
+    await serve(w, '1.0.0', first.fs, first.agent)
+    const { heldForConsent: held } = await setupPlugin(ctx, w.fs as unknown as RuntimeFs, 'mkt', 'kit', { fetchImpl: w.fetchImpl, refreshFirst: true })
     const afterConsent = vi.fn(async () => {})
     const service = createProviderModUpdateService({
       ctx,
@@ -603,7 +605,7 @@ describe('a plugin whose apps declare folders and that carries no provider', () 
       afterConsent,
       report: line => w.report.push(line),
     })
-    return { w, service, afterConsent }
+    return { w, service, afterConsent, held }
   }
 
   beforeEach(() => {
@@ -666,6 +668,32 @@ describe('a plugin whose apps declare folders and that carries no provider', () 
 
   it('on stable, where its app is left out, it asks for nothing and is not listed', async () => {
     const { service } = await installed()
+    adoptRuntimeChannel('stable')
+    expect((await service.status()).map(s => s.pluginId)).not.toContain(PID)
+    await expect(service.recordInitialConsent(PID)).rejects.toThrow(/not an installed provider mod/)
+  })
+
+  it('with agent runs and no folders: held at install, listed with agent runs as the grant, and the first consent records them', async () => {
+    const { w, service, held } = await installed({ agent: true })
+    expect(held).toBe(true)
+    expect(await statusOf(service, PID)).toMatchObject({ consented: false, source: { marketplace: 'mkt' }, grant: { providers: {}, agent: true } })
+    expect((await statusOf(service, PID))!.grant.folders).toBeUndefined()
+    await service.recordInitialConsent(PID)
+    const state = JSON.parse(String(await w.fs.readFile(STATE, { encoding: 'utf-8' })))
+    expect(state.plugins[PID].consent).toMatchObject({ version: '1.0.0', grant: { providers: {}, agent: true } })
+    expect(await statusOf(service, PID)).toMatchObject({ consented: true })
+  })
+
+  it('with agent runs and no folders: a version that keeps them is applied from its catalog', async () => {
+    const { w, service } = await installed({ agent: true })
+    await service.recordInitialConsent(PID)
+    await serve(w, '1.1.0', undefined, true)
+    const [status] = await service.checkNow(PID)
+    expect(status).toMatchObject({ state: 'up-to-date', activeVersion: '1.1.0', rollbackVersion: '1.0.0' })
+  })
+
+  it('with agent runs and no folders, on stable, where its app is left out: not listed', async () => {
+    const { service } = await installed({ agent: true })
     adoptRuntimeChannel('stable')
     expect((await service.status()).map(s => s.pluginId)).not.toContain(PID)
     await expect(service.recordInitialConsent(PID)).rejects.toThrow(/not an installed provider mod/)

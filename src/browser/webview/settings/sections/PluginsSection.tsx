@@ -1560,7 +1560,9 @@ export function PluginsSection({
                               {t(
                                 Object.keys(status.grant.providers).length > 0
                                   ? "settings.plugins.providers.review.waiting"
-                                  : "settings.plugins.providers.review.waitingFolders",
+                                  : status.grant.folders
+                                    ? "settings.plugins.providers.review.waitingFolders"
+                                    : "settings.plugins.providers.review.waitingAgent",
                               )}
                             </span>
                             {canConsent ? (

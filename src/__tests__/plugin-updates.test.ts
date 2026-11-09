@@ -34,7 +34,7 @@ const HOME = '/home/u'
 const ctx = { homeDir: HOME }
 const ID = 'cool@my-mkt'
 
-type Listing = { name: string; version: string; providers?: boolean; folders?: boolean; missing?: boolean }
+type Listing = { name: string; version: string; providers?: boolean; folders?: boolean; agent?: boolean; missing?: boolean }
 
 async function marketplaceTarball(plugins: Listing[]): Promise<Uint8Array> {
   const files = [
@@ -54,6 +54,9 @@ async function marketplaceTarball(plugins: Listing[]): Promise<Uint8Array> {
             name: p.name,
             version: p.version,
             ...(p.providers ? { providers: { main: { providerApi: 1 } } } : {}),
+            ...(p.agent
+              ? { templates: { board: { title: 'B', app: { seed: './app', entry: 'board.a2ui', background: { module: './bg.js', agent: true } } } } }
+              : {}),
             ...(p.folders
               ? { templates: { board: { title: 'B', app: { seed: './app', entry: 'board.a2ui', background: { module: './bg.js', fs: { read: ['~/Downloads'] } } } } } }
               : {}),
@@ -274,6 +277,7 @@ describe('plugin update service', () => {
       { name: 'cool', version: '1.0.0' },
       { name: 'acme', version: '1.0.0', providers: true },
       { name: 'kit', version: '1.0.0', folders: true },
+      { name: 'bot', version: '1.0.0', agent: true },
     ])
     await recordPluginSetup(ctx, r.fs, 'proj@my-mkt', {
       scope: 'project',
@@ -285,6 +289,7 @@ describe('plugin update service', () => {
     expect(state.plugins.map(p => p.identifier)).toEqual([ID])
     await expect(r.service.update('acme@my-mkt')).rejects.toThrow(/not a marketplace plugin installed for this user/)
     await expect(r.service.update('kit@my-mkt')).rejects.toThrow(/not a marketplace plugin installed for this user/)
+    await expect(r.service.update('bot@my-mkt')).rejects.toThrow(/not a marketplace plugin installed for this user/)
     adoptRuntimeChannel(null)
   })
 })

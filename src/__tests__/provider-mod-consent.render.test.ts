@@ -561,4 +561,12 @@ describe('PluginsSection - a plugin whose apps ask for folders and that carries 
       "Its apps can't reach your folders until you approve them.Review and turn on",
     )
   })
+
+  it('asking for agent runs and no folders, left on and never approved, its line speaks of the agent', async () => {
+    const rig = pageRig({ enabled: true, states: [status({ consented: false, grant: { providers: {}, agent: true } })] })
+    renderPage(rig, FULL)
+    expect((await screen.findByTestId('provider-unapproved-zen-plugin')).textContent).toBe(
+      "Its apps can't run the agent until you approve them.Review and turn on",
+    )
+  })
 })

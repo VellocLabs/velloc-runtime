@@ -2190,6 +2190,7 @@ export const es: Messages = {
   'settings.plugins.providers.updates.failure.activate': 'no se pudo activar, así que sigue en uso la versión anterior',
   'settings.plugins.providers.review.waiting': 'Sus proveedores permanecen desactivados hasta que usted los apruebe.',
   'settings.plugins.providers.review.waitingFolders': 'Sus aplicaciones no pueden acceder a sus carpetas hasta que usted las apruebe.',
+  'settings.plugins.providers.review.waitingAgent': 'Sus aplicaciones no pueden ejecutar el agente hasta que usted las apruebe.',
   'settings.plugins.providers.review.button': 'Revisar y activar',
   'settings.plugins.mods.local': 'Local',
   'settings.plugins.mods.builtin': 'Integrado',
