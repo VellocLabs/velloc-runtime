@@ -8,7 +8,7 @@ import type * as TS from 'typescript'
 import { ModRuntime, type ModModuleRef, type ModWorkerHandle } from '../mods/ModRuntime'
 import { installModWorkerHost } from '../mods/ModWorkerHost'
 import { MOD_SERVE_TIMEOUT_MS } from '../mods/ModInstance'
-import { loadTypeScript } from '../mods/modCompiler'
+import { loadTypeScript, needsCompiler } from '../mods/modCompiler'
 import { scanModuleUses } from '../mods/modScan'
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
@@ -54,7 +54,11 @@ function world(
       if (source === undefined) throw new Error('ENOENT')
       return source
     },
-    compile: async (_ref, source) => ({ source: `${source}\n// load ${++uniq}`, files: [] }),
+    // As the real compiler does: a plain module comes back as written.
+    compile: async (ref, source) =>
+      needsCompiler(ref.path, source)
+        ? { source: `${source}\n// load ${++uniq}`, files: [] }
+        : { source, files: [ref.path] },
     ...(options.scan === false
       ? {}
       : {

@@ -175,9 +175,10 @@ export async function buildSlotModRuntime(
     // A TypeScript / TSX module, or one that imports: compiled to one
     // module from its graph, read through the session's fs, within the
     // plugin's folder alone.
-    compile: ref =>
+    compile: (ref, source) =>
       compileModModule({
         entry: ref.path,
+        entrySource: source,
         root: ref.root ?? ref.path.replace(/[\\/][^\\/]*[\\/][^\\/]*$/, ''),
         fs: {
           readFile: (path, o) => slot.installedFs.readFile(path, o).then(String),

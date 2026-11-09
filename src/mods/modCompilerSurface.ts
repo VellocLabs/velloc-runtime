@@ -25,14 +25,17 @@ export function extensionOf(path: string): string {
 /**
  * Whether a module's TEXT needs the compiler: anything but plain `.js` / `.mjs`, or
  * such a file that imports (checked on the text, erring loud; `import` as a whole
- * word only).
+ * word only, whitespace and comments before its `(` or specifier included). This
+ * picks the path, not the verdict: with a compiler, every module's syntax tree is
+ * verified (`compileModModule`).
  */
 export function needsCompiler(path: string, source: string): boolean {
   const extension = extensionOf(path)
   if (extension !== '.js' && extension !== '.mjs') return true
   return (
-    /^[ \t]*import(?:[ \t]*['"{*]|[ \t]+[\w$])/m.test(source) ||
+    /^[ \t]*import(?:\s*['"{*]|\s+[\w$])/m.test(source) ||
     /^[ \t]*export[ \t][^;\n]*\bfrom\b/m.test(source) ||
-    /\bimport[ \t]*\(/.test(source)
+    /^[ \t]*export\s*(?:\*(?:\s*as\s+[\w$]+)?|\{[^}]*\})\s*from\b/m.test(source) ||
+    /\bimport(?:\s|\/\*[\s\S]*?\*\/|\/\/[^\n]*)*\(/.test(source)
   )
 }

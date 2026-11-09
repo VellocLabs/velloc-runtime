@@ -12,6 +12,7 @@ import { MODS_ABI } from './modAdmission'
 import { scanModuleUses, type ModUses } from './modScan'
 
 export { MOD_MODULE_EXTENSIONS, extensionOf, needsCompiler } from './modCompilerSurface'
+import { needsCompiler } from './modCompilerSurface'
 import { MOD_MODULE_EXTENSIONS, extensionOf } from './modCompilerSurface'
 
 /** What a resolution tries, in order, for a specifier with no suffix. */
@@ -82,6 +83,10 @@ export type ModCompileOptions = {
   cache?: ModCompileCache
   /** The compiler, loaded lazily. Defaults to `import('typescript')`. */
   loadTypeScript?: () => Promise<typeof TS>
+  /** The entry's text as the runtime read it: what is verified is what
+   *  loads, and a built-in that is not on disk compiles too. Read through
+   *  `fs` when absent. */
+  entrySource?: string
 }
 
 export type ModCompileResult = {
@@ -342,12 +347,27 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
   // ── discover ──
   const texts = new Map<string, string>()
   try {
-    texts.set(entry, await fs.readFile(entry, { encoding: 'utf-8' }))
+    texts.set(entry, options.entrySource ?? (await fs.readFile(entry, { encoding: 'utf-8' })))
   } catch (error) {
     throw new ModCompileError(
       `the hooks module could not be read (${error instanceof Error ? error.message : String(error)})`,
       { file: entry },
     )
+  }
+  // A plain module the text check finds nothing to compile in loads as
+  // written, but only once its own syntax tree passes the verifier: the
+  // text check picks the path, never the verdict.
+  const entryText = texts.get(entry)!
+  if (!needsCompiler(entry, entryText)) {
+    verifyCompiledModule(ts, entryText, line => ({ file: entry, line }))
+    const digest = await sha256Hex([MODS_ABI, `typescript ${ts.version}`, `${entry}\u0000${entryText}`].join('\u0001'))
+    return {
+      source: entryText,
+      files: [entry],
+      uses: scanModuleUses(ts, [{ path: entry, text: entryText }]),
+      digest,
+      fromCache: false,
+    }
   }
   const modules = new Map<string, GraphModule>()
   const order: string[] = []
@@ -496,8 +516,9 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
 }
 
 /**
- * The verifier: the output holds no import of any kind (the linker produced
- * none), no `import()`, and no module-level use of a forbidden identifier —
+ * The verifier, over the compiled output or a plain module's own text: no
+ * import or re-export of any kind (the linker produced none; a plain module
+ * holding one needed the compiler), no `import()`, and no use of a forbidden identifier —
  * a free identifier, not a property named like one (`$.http.fetch` is a
  * noun; `fetch(...)` is the network).
  */
@@ -512,7 +533,9 @@ export function verifyCompiledModule(
     throw new ModCompileError(message, where(lineOf(ts, file, node)))
   }
   const visit = (node: TS.Node): void => {
-    if (ts.isImportDeclaration(node)) refuse('the compiled module may not import', node)
+    if (ts.isImportDeclaration(node) || (ts.isExportDeclaration(node) && node.moduleSpecifier)) {
+      refuse('a hooks module may not import here', node)
+    }
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       refuse('import() is not allowed in a hooks module', node)
     }

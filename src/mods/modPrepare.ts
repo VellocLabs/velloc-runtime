@@ -7,7 +7,6 @@
 import { errorMessage } from './chainRules'
 import { refuseModuleSource } from './modAdmission'
 import type { ModBuildStore } from './modBuildStore'
-import { needsCompiler } from './modCompilerSurface'
 import type { ModModuleRef } from './ModRuntime'
 import type { ModUses } from './modScan'
 
@@ -63,7 +62,9 @@ export async function prepareModule(
   const original = source
   let uses: ModUses | undefined
   let files: readonly string[] = [ref.path]
-  if (deps.compile && needsCompiler(ref.path, source)) {
+  // Every module goes through the compiler when there is one: it compiles
+  // what needs it and verifies the rest (`compileModModule`).
+  if (deps.compile) {
     try {
       const built = await deps.compile(ref, source)
       source = typeof built === 'string' ? built : built.source

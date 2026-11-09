@@ -26,9 +26,10 @@ export function providerModuleLoaders(deps: ProviderModuleLoaderDeps): ProviderM
   const { fs, report } = deps
   return {
     readModule: async path => String(await fs.readFile(path, { encoding: 'utf-8' })),
-    compile: ref =>
+    compile: (ref, source) =>
       compileModModule({
         entry: ref.path,
+        entrySource: source,
         root: ref.root ?? ref.path.replace(/[\\/][^\\/]*[\\/][^\\/]*$/, ''),
         fs: { readFile: (path, o) => fs.readFile(path, o).then(String) },
       }).then(result => ({ source: result.source, files: result.files, uses: result.uses })),

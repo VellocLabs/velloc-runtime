@@ -19,7 +19,6 @@ import {
   refuseRegistrations,
   unraisedRenderSites,
 } from './modAdmission'
-import { needsCompiler } from './modCompilerSurface'
 import { implementedNouns, isOpResult, serveNoun, serveNounStream, type ModEnvHost, type ModNounHost } from './modNouns'
 import { HEADLESS_COMPOSER, ModComposerBridge } from './modComposer'
 import { EMPTY_USES, ENGINE_NOUNS, pluginNounCalls, unsupportedEngineCalls, type ModUses } from './modScan'
@@ -974,11 +973,13 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       seat.files = [ref.path]
       const refusedSource = refuseModuleSource(ref.path, source, this.options.compile !== undefined)
       if (refusedSource) return absent('refused', refusedSource)
-      if (this.options.compile && needsCompiler(ref.path, source)) {
+      // Every module goes through the compiler when there is one: it
+      // compiles what needs it and verifies the rest.
+      if (this.options.compile) {
         try {
           const built = await this.options.compile(ref, source)
           source = typeof built === 'string' ? built : built.source
-          seat.compiled = source
+          if (source !== seat.source) seat.compiled = source
           seat.files = typeof built === 'string' ? [ref.path] : [...built.files]
           if (typeof built !== 'string') uses = built.uses
         } catch (error) {
