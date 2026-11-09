@@ -98,22 +98,23 @@ function askLabelOf(action: unknown, actionLabel: unknown): string {
 
 type HeadingProps = { text?: unknown; level?: number; subtitle?: unknown; action?: unknown; actionLabel?: unknown }
 
-function HeadingView({ text: title, level, subtitle, action, actionLabel }: HeadingProps): ReactElement {
+function HeadingView({ text: title, level, subtitle, action, actionLabel }: HeadingProps): ReactElement | null {
   const index = level === 1 || level === 3 ? level - 1 : 1
   const askLabel = askLabelOf(action, actionLabel)
   const ask = askLabel ? <AskButton slot="a2ui-heading-action" label={askLabel} action={action} reveal="group-hover/heading:opacity-100" /> : null
   const sub = text(subtitle)
-  const heading = (
+  const titleText = text(title)
+  // No title text means no heading element: a subtitle is then drawn alone, and with no subtitle either, nothing is.
+  const heading = titleText ? (
     <div data-slot="a2ui-heading" role="heading" aria-level={index + 1} className={HEADING_CLASS[index]}>
-      {text(title)}
+      {titleText}
     </div>
-  )
+  ) : null
+  if (!heading && !sub) return null
   if (!sub && !ask) return heading
-  // A subtitle with no title is drawn alone, as the muted line.
-  const titled = !sub || text(title) !== ''
   return (
     <div className="group/heading flex flex-col gap-1">
-      {!titled ? null : sub ? heading : <div className="flex min-w-0 items-center gap-2">{heading}{ask}</div>}
+      {sub ? heading : <div className="flex min-w-0 items-center gap-2">{heading}{ask}</div>}
       {sub && (
         <div className="flex min-w-0 items-center gap-2">
           <div data-slot="a2ui-heading-subtitle" className="min-w-0 text-xs text-muted-foreground">

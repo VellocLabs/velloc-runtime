@@ -304,6 +304,20 @@ describe('the dashboard components of the Velloc catalog', () => {
     expect(chartCatalogDefinitions.Heading.schema.safeParse({ subtitle: { path: '/range' } }).success).toBe(true)
   })
 
+  it('a Heading with neither a title nor a subtitle draws nothing, not an empty heading', async () => {
+    const view = await draw(
+      [
+        'surface("sales")',
+        'root = Column([unset, asking, empty])',
+        'unset = Heading(subtitle=$/missing)',
+        'asking = Heading(action=Event("compose", {text: "Explain"}), actionLabel="Explain")',
+        'empty = Heading("")',
+      ].join('\n'),
+    )
+    expect(view.querySelectorAll('[role="heading"]')).toHaveLength(0)
+    expect(view.querySelectorAll('[data-slot="a2ui-heading-subtitle"], [data-slot="a2ui-heading-action"]')).toHaveLength(0)
+  })
+
   it('the runtime compiler, built from the catalog document, accepts the same dashboard', async () => {
     const compiler = await getRuntimeA2uiCompiler()
     expect(compiler.compile(DASHBOARD, compiler.createState())).toMatchObject({ ok: true })
