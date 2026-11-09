@@ -12,6 +12,7 @@ export const VELLOC_CATALOG_ID = 'https://velloc.app/a2ui/catalog/v1'
 // Typed loosely: the protocol schemas' full types are too deep to infer here.
 const DynamicString = CommonSchemas.DynamicString as unknown as z.ZodTypeAny
 const DynamicValue = CommonSchemas.DynamicValue as unknown as z.ZodTypeAny
+const Action = CommonSchemas.Action as unknown as z.ZodTypeAny
 const series = z
   .array(
     z.object({
@@ -95,6 +96,15 @@ export const chartCatalogDefinitions = {
           'Direction of the change, "up", "down" or "flat" ("neutral" reads as "flat"), literal or a data binding; colours the delta.',
         ),
         caption: DynamicString.optional().describe('A short note under the figure.'),
+        better: DynamicString.optional().describe(
+          'Which direction is good, "up" (default) or "down", literal or a data binding. With "down" a rise is coloured as bad and a fall as good, e.g. for a refund rate; the arrow still follows trend.',
+        ),
+        action: Action.optional().describe(
+          'REF:#/$defs/Action|Optional. With actionLabel, a small help button after the delta sends this action when clicked, as a Button press does, e.g. Event("explain_metric", {metric: "Refund rate"}).',
+        ),
+        actionLabel: DynamicString.optional().describe(
+          'The help button\'s label, e.g. "Ask why", literal or a data binding; it shows while the pointer is over the figure. Without it there is no button.',
+        ),
         weight,
       })
       .strict()
@@ -199,6 +209,10 @@ export const CHART_CATALOG_INSTRUCTIONS = [
   'Title a dashboard with Heading (level 1 for the page, 3 for a card); its subtitle is the small line under it. Show a status with Badge, ' +
     'or give a DataTable column a badge map so each cell is one. Put units on a chart\'s value axis ' +
     'with valuePrefix / valueSuffix rather than in the numbers.',
+  '',
+  'Give a Metric better: "down" when a rise is bad (refund rate, churn, latency), so its delta is coloured by meaning. ' +
+    'To let the user ask about a change where it is shown, give the Metric an action and an actionLabel, e.g. ' +
+    'action=Event("explain_metric", {metric: "Refund rate"}), actionLabel="Ask why"; the action comes back to you like a Button press.',
   '',
   'Example 3: Sales dashboard',
   '```json',

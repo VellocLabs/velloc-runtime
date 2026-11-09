@@ -6,7 +6,7 @@ import { lazy, Suspense, type ReactElement } from 'react'
 import { createComponentImplementation, type ReactCatalogComponent } from '@a2ui/react'
 import { Catalog, type ComponentApi } from '@a2ui/web_core/v1_0'
 import { basicCatalog } from '@a2ui/web_core/catalogs/basic/v1'
-import { TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
+import { CircleHelpIcon, TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import {
   BADGE_TONES,
@@ -88,28 +88,54 @@ function HeadingView({ text: title, level, subtitle }: HeadingProps): ReactEleme
   )
 }
 
-function MetricView({ label, value, delta, trend: bound, caption }: MetricProps): ReactElement {
+/** A bound `better` as the direction that is good; anything but "down" is "up". */
+export function metricBetter(better: unknown): 'up' | 'down' {
+  return better === 'down' ? 'down' : 'up'
+}
+
+/** Whether a move reads as good, bad or neither, given which direction is better. */
+export function metricSense(trend: unknown, better: unknown): 'good' | 'bad' | 'flat' {
+  const direction = metricTrend(trend)
+  if (direction === 'flat') return 'flat'
+  return direction === metricBetter(better) ? 'good' : 'bad'
+}
+
+const SENSE_TONE = {
+  good: 'text-success',
+  bad: 'text-destructive',
+  flat: 'text-muted-foreground',
+} as const
+
+function MetricView({ label, value, delta, trend: bound, caption, better, action, actionLabel }: MetricProps): ReactElement {
   const trend = metricTrend(bound)
-  const tone =
-    trend === 'up'
-      ? 'text-success'
-      : trend === 'down'
-        ? 'text-destructive'
-        : 'text-muted-foreground'
+  const sense = metricSense(trend, better)
+  const askLabel = typeof action === 'function' ? text(actionLabel) : ''
   return (
-    <div data-slot="a2ui-metric" className="flex min-w-0 flex-col gap-1">
+    <div data-slot="a2ui-metric" className="group/metric flex min-w-0 flex-col gap-1">
       <span className="truncate text-xs font-medium uppercase tracking-wider text-muted-foreground">{text(label)}</span>
       <span className="text-2xl font-semibold tabular-nums">{text(value)}</span>
-      {(text(delta) || text(caption)) && (
-        <span className="flex items-center gap-1 text-xs">
+      {(text(delta) || text(caption) || askLabel) && (
+        <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-xs">
           {text(delta) && (
-            <span data-trend={trend} className={`inline-flex items-center gap-0.5 ${tone}`}>
+            <span data-trend={trend} data-sense={sense} className={`inline-flex items-center gap-0.5 ${SENSE_TONE[sense]}`}>
               {trend === 'up' && <TrendingUpIcon className="size-3.5" />}
               {trend === 'down' && <TrendingDownIcon className="size-3.5" />}
               {text(delta)}
             </span>
           )}
-          {text(caption) && <span className="text-muted-foreground">{text(caption)}</span>}
+          {askLabel && (
+            <button
+              type="button"
+              data-slot="a2ui-metric-action"
+              aria-label={askLabel}
+              onClick={() => (action as () => void)()}
+              className="inline-flex min-w-0 shrink items-center gap-0.5 rounded-sm text-muted-foreground opacity-0 transition-opacity outline-none hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring group-hover/metric:opacity-100"
+            >
+              <CircleHelpIcon aria-hidden="true" className="size-3.5 shrink-0" />
+              <span className="truncate">{askLabel}</span>
+            </button>
+          )}
+          {text(caption) && <span className="truncate text-muted-foreground">{text(caption)}</span>}
         </span>
       )}
     </div>
@@ -160,6 +186,10 @@ type MetricProps = {
   delta?: unknown
   trend?: unknown
   caption?: unknown
+  better?: unknown
+  /** The binder's dispatch closure for the Metric's action, the same as a Button's. */
+  action?: unknown
+  actionLabel?: unknown
 }
 type TableColumn = { key: string; label: string; align?: 'start' | 'end'; badge?: Record<string, BadgeTone> }
 type DataTableProps = { columns?: TableColumn[]; rows?: unknown }

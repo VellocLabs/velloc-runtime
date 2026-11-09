@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { A2uiSurface, type ReactCatalogComponent } from '@a2ui/react'
 import { MessageProcessor } from '@a2ui/web_core/v1_0'
 import { chartCatalogDefinitions } from '../browser/webview/a2ui/catalog/chartCatalogDefinitions'
-import { badgeTone, metricTrend, vellocCatalog } from '../browser/webview/a2ui/catalog/vellocCatalog'
+import { badgeTone, metricBetter, metricSense, metricTrend, vellocCatalog } from '../browser/webview/a2ui/catalog/vellocCatalog'
 import { valueText } from '../browser/webview/a2ui/catalog/ChartViews'
 import { createA2uiExpressCompiler } from '../toolkit/builtin/a2ui/express/a2uiExpressCompiler'
 import { getRuntimeA2uiCompiler } from '../toolkit/builtin/a2ui/express/a2uiRuntimeCompiler'
@@ -33,8 +33,8 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-async function draw(body: string): Promise<HTMLElement> {
-  const processor = new MessageProcessor<ReactCatalogComponent>([vellocCatalog], () => {})
+async function draw(body: string, onAction: (action: unknown) => void = () => {}): Promise<HTMLElement> {
+  const processor = new MessageProcessor<ReactCatalogComponent>([vellocCatalog], onAction)
   const compiler = createA2uiExpressCompiler(vellocCatalog)
   const result = compiler.compile(body, compiler.stateFor(processor))
   expect(result).toMatchObject({ ok: true })
@@ -105,6 +105,85 @@ describe('the dashboard components of the Velloc catalog', () => {
     const headers = [...view.querySelectorAll('[data-slot="a2ui-table"] th')]
     expect(headers.every(th => th.className.includes('uppercase')), 'table headers are uppercase').toBe(true)
     expect(view.querySelector('[data-slot="a2ui-metric"] > span')?.className, 'a Metric label is uppercase').toContain('uppercase')
+  })
+
+  it('a Metric colours its delta by whether the move is the better way', () => {
+    const matrix = (['up', 'down'] as const).map(better =>
+      (['up', 'down', 'flat'] as const).map(trend => metricSense(trend, better)),
+    )
+    expect(matrix).toEqual([
+      ['good', 'bad', 'flat'],
+      ['bad', 'good', 'flat'],
+    ])
+    expect(metricBetter(undefined)).toBe('up')
+    expect(metricBetter('sideways'), 'an unknown value reads as up').toBe('up')
+    expect(metricSense('up', 'sideways')).toBe('good')
+    const metric = chartCatalogDefinitions.Metric.schema
+    expect(metric.safeParse({ label: 'A', value: 1, better: { path: '/b' } }).success, 'better binds').toBe(true)
+    expect(metric.safeParse({ label: 'A', value: 1, action: { event: { name: 'why' } }, actionLabel: 'Ask' }).success).toBe(true)
+  })
+
+  it('better: "down" draws a rise red and a fall green, with the arrow following the trend', async () => {
+    const view = await draw(
+      [
+        'surface("sales")',
+        '$/sense = "down"',
+        'root = Column([rise, fall, flat, plain])',
+        'rise = Metric("Refund rate", "2.4%", "+0.6pt", "up", better=$/sense)',
+        'fall = Metric("Churn", "1.1%", "-0.2pt", "down", better="down")',
+        'flat = Metric("Latency", "120ms", "0ms", "flat", better="down")',
+        'plain = Metric("Revenue", "$9K", "+3%", "up", better="sideways")',
+      ].join('\n'),
+    )
+    const deltas = [...view.querySelectorAll('[data-slot="a2ui-metric"] [data-trend]')]
+    expect(deltas.map(d => [d.getAttribute('data-trend'), d.getAttribute('data-sense')])).toEqual([
+      ['up', 'bad'],
+      ['down', 'good'],
+      ['flat', 'flat'],
+      ['up', 'good'],
+    ])
+    expect(deltas.map(d => d.className.match(/text-(success|destructive|muted-foreground)/)?.[1])).toEqual([
+      'destructive',
+      'success',
+      'muted-foreground',
+      'success',
+    ])
+    expect(deltas[0].querySelector('svg')?.getAttribute('class'), 'a rise keeps the up arrow').toContain('trending-up')
+  })
+
+  it('a Metric with an action and a label shows a help button after its delta that dispatches like a Button', async () => {
+    const actions: unknown[] = []
+    const view = await draw(
+      [
+        'surface("sales")',
+        'root = Column([rate, bare, button])',
+        'rate = Metric("Refund rate", "2.4%", "+0.6pt", "up", "vs last week", better="down", action=Event("explain_metric", {metric: "Refund rate"}), actionLabel="Ask why")',
+        'bare = Metric("Churn", "1.1%", "-0.2pt", "down", action=Event("explain_metric", {metric: "Churn"}))',
+        'button = Button(Text("Ask why"), action=Event("explain_metric", {metric: "Refund rate"}))',
+      ].join('\n'),
+      action => actions.push(action),
+    )
+    const affordances = [...view.querySelectorAll<HTMLButtonElement>('[data-slot="a2ui-metric-action"]')]
+    expect(affordances, 'no label, no button').toHaveLength(1)
+    const ask = affordances[0]
+    expect(ask.tagName).toBe('BUTTON')
+    expect(ask.getAttribute('aria-label')).toBe('Ask why')
+    expect(ask.textContent).toBe('Ask why')
+    expect(ask.querySelector('svg')?.getAttribute('class')).toContain('circle-question-mark')
+    expect(ask.previousElementSibling?.hasAttribute('data-trend'), 'it sits right after the delta').toBe(true)
+    expect(ask.parentElement?.className, 'on the delta line, which does not wrap').toContain('whitespace-nowrap')
+    expect(ask.className.split(' ')).toEqual(
+      expect.arrayContaining(['opacity-0', 'group-hover/metric:opacity-100', 'focus-visible:opacity-100', 'hover:text-foreground']),
+    )
+    expect(ask.closest('[data-slot="a2ui-metric"]')?.className).toContain('group/metric')
+    await act(async () => ask.click())
+    const press = [...view.querySelectorAll('button')].find(b => !b.hasAttribute('data-slot'))!
+    await act(async () => press.click())
+    expect(actions).toHaveLength(2)
+    const [fromMetric, fromButton] = actions as { name: string; context: unknown }[]
+    expect(fromMetric).toMatchObject({ name: 'explain_metric', context: { metric: 'Refund rate' } })
+    expect({ ...fromMetric, sourceComponentId: '', timestamp: '' }).toEqual({ ...fromButton, sourceComponentId: '', timestamp: '' })
+    expect(fromMetric).toMatchObject({ sourceComponentId: 'rate' })
   })
 
   it('the runtime compiler, built from the catalog document, accepts the same dashboard', async () => {
