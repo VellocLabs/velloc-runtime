@@ -64,6 +64,10 @@ describe('folderScopesOf and mergeFolderScopes', () => {
     expect(folderScopesOf({ name: 'pay' })).toBeUndefined()
     expect(folderScopesOf({ templates: { plain: { app: { background: './p.js' } } } })).toBeUndefined()
     expect(folderScopesOf(null)).toBeUndefined()
+    expect(folderScopesOf({ templates: { board: { app: { background: './bg.js', backgroundFs: { read: ['~/Downloads'], write: [] } } } } })).toEqual({
+      read: ['~/Downloads'],
+      write: [],
+    })
     expect(mergeFolderScopes(undefined, { read: ['~/a'], write: [] })).toEqual({ read: ['~/a'], write: [] })
     expect(mergeFolderScopes({ read: ['~/a'], write: [] }, { read: [], write: ['~/a'] })).toEqual({ read: [], write: ['~/a'] })
   })

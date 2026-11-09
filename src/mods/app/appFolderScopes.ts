@@ -80,19 +80,21 @@ export function mergeFolderScopes(a: FolderScopes | undefined, b: FolderScopes |
 }
 
 /**
- * The folders a plugin's manifest declares across its app templates
- * (`templates.<key>.app.background.fs`), merged; undefined when none. A
- * value that is not a scopes object counts for nothing here — the manifest
- * check reports it.
+ * The folders a plugin's manifest declares across its app templates, merged;
+ * undefined when none. Reads a parsed plugin.json
+ * (`templates.<key>.app.background.fs`) and a checked manifest
+ * (`templates.<key>.app.backgroundFs`) alike. A value that is not a scopes
+ * object counts for nothing here — the manifest check reports it.
  */
 export function folderScopesOf(manifest: unknown): FolderScopes | undefined {
   const templates = isRecord(manifest) && isRecord(manifest.templates) ? manifest.templates : undefined
   if (!templates) return undefined
   let merged: FolderScopes | undefined
   for (const decl of Object.values(templates)) {
-    const background = isRecord(decl) && isRecord(decl.app) ? decl.app.background : undefined
-    if (!isRecord(background) || background.fs === undefined) continue
-    const scopes = readFolderScopes(background.fs)
+    const app = isRecord(decl) && isRecord(decl.app) ? decl.app : undefined
+    const declared = isRecord(app?.background) ? app.background.fs : app?.backgroundFs
+    if (declared === undefined) continue
+    const scopes = readFolderScopes(declared)
     if ('error' in scopes) continue
     if (scopes.read.length === 0 && scopes.write.length === 0) continue
     merged = mergeFolderScopes(merged, scopes)

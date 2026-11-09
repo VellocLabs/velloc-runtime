@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppBackgroundRef, AppBackgroundRuntime } from '../mods/app/AppBackgroundRuntime'
 import { appBackgroundRef, appBackgroundRuntime, bootAppBackground, resetAppBackgroundBootForTests } from '../mods/app/appBackgroundBoot'
 import type { AppBackgroundTemplate } from '../mods/ui/contributionsHost'
+import { notifyProviderModUpdatesChanged } from '../pluginHost/providerModUpdateHolder'
 
 afterEach(() => resetAppBackgroundBootForTests())
 
@@ -137,5 +138,29 @@ describe('the declared folders', () => {
     await vi.waitFor(() => expect(synced).toHaveLength(2))
     expect(synced[1]![0]!.folders).toBeUndefined()
     expect(reports).toEqual(["pay: the folders pay-board declares are not approved; its $.fs stays in the app's folder"])
+  })
+})
+
+describe('a consent change', () => {
+  it('syncs the refs again without a publish, and reports an unapproved set once', async () => {
+    const { runtime, synced } = fakeRuntime()
+    const reports: string[] = []
+    let consent: unknown = { version: 1, plugins: {} }
+    const fs = { readFile: async () => JSON.stringify(consent) } as never
+    const app = template('pay-board')
+    app.decl.backgroundFs = { read: ['~/Downloads'], write: [] }
+    await bootAppBackground(
+      { ...deps, fs, report: line => reports.push(line) },
+      { apps: () => [{ ...app, consentId: 'pay@mkt' }], createRuntime: async () => runtime },
+    )
+    await vi.waitFor(() => expect(synced).toHaveLength(1))
+    expect(synced[0]![0]!.folders).toBeUndefined()
+    notifyProviderModUpdatesChanged()
+    await vi.waitFor(() => expect(synced).toHaveLength(2))
+    expect(reports).toEqual(["pay: the folders pay-board declares are not approved; its $.fs stays in the app's folder"])
+    consent = { version: 1, plugins: { 'pay@mkt': { consent: { version: '1', at: 'x', grant: { providers: {}, folders: { read: ['~/Downloads'], write: [] } } } } } }
+    notifyProviderModUpdatesChanged()
+    await vi.waitFor(() => expect(synced).toHaveLength(3))
+    expect(synced[2]![0]!.folders?.read.map(path => path.split('\\').join('/'))).toEqual(['C:/home/Downloads'])
   })
 })

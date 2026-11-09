@@ -127,8 +127,6 @@ describe('manifestNeedsConsent', () => {
 
   it('consent covers the folders only as approved: a wider list, or a write where a read was approved, is not covered', async () => {
     const fs = makeMemFs() as unknown as RuntimeFs
-    const service = createProviderModUpdateService({ ctx, fs } as never)
-    void service
     const declared = (fsDecl: unknown) => ({ name: 'acme', templates: { board: { app: { background: { module: './bg.js', fs: fsDecl } } } } })
     expect(await consentCovers(ctx, fs, 'acme@mkt', declared({ read: ['~/Downloads'] }))).toBe(false)
     const { providerModUpdatesFilePath } = await import('../pluginHost/pluginDirs')

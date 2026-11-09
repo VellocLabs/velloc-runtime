@@ -7,6 +7,7 @@
 
 import type { BrowserBridgeTransport } from '../../browser/bridge/browserBridgeProtocol'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
+import { onProviderModUpdatesChanged } from '../../pluginHost/providerModUpdateHolder'
 import { readConsentedGrants } from '../../pluginHost/providerPluginConsent'
 import { getNexusAppDir } from '../../utils/conversationStoragePaths'
 import { joinRuntimePath } from '../../utils/runtimePaths'
@@ -95,7 +96,18 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
   const report = deps.report ?? ((line: string) => console.warn(`[mods/app] ${line}`))
   const host = getModUiContributionsHost()
   const apps = seams.apps ?? (() => host.backgroundApps())
-  const onChanged = seams.onChanged ?? ((listener: () => void) => host.onChanged(() => listener()))
+  // A consent change (approve, update, rollback) moves the approved folders without a publish.
+  const onChanged =
+    seams.onChanged ??
+    ((listener: () => void) => {
+      const stopHost = host.onChanged(() => listener())
+      const stopConsent = onProviderModUpdatesChanged(listener)
+      return () => {
+        stopHost()
+        stopConsent()
+      }
+    })
+  const unapproved = new Set<string>()
   const createRuntime =
     seams.createRuntime ??
     (async (bootDeps: AppBackgroundBootDeps) => {
@@ -112,7 +124,11 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
         const approved = await approvedFoldersOf(deps, published)
         return published.map(app => {
           const ref = appBackgroundRef(deps.homeDir, app, approved.get(app.appId))
-          if (app.decl.backgroundFs && !ref.folders) {
+          const key = `${app.plugin}\u0000${app.appId}\u0000${JSON.stringify(app.decl.backgroundFs ?? null)}`
+          if (!app.decl.backgroundFs || ref.folders) {
+            unapproved.delete(key)
+          } else if (!unapproved.has(key)) {
+            unapproved.add(key)
             report(`${app.plugin}: the folders ${app.appId} declares are not approved; its $.fs stays in the app's folder`)
           }
           return ref

@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { checkProviderManifests, type ProviderManifest } from '../mods/provider/providerManifest'
 import { grantOf, pluginGrantOf, providerGrantOf, widened, type Grant } from '../pluginHost/providerGrant'
+import { checkPluginDescriptor } from '../pluginHost/manifestValidator'
 import { providerJson } from './_helpers/pluginArchive'
 
 function manifests(over: Record<string, Record<string, unknown>>): Record<string, ProviderManifest> {
@@ -185,6 +186,13 @@ describe('the folders of an app background module', () => {
     expect(pluginGrantOf({ providers: {}, templates: { board: { app: { background: './bg.js' } } } })).toEqual({ providers: {} })
     expect(pluginGrantOf(null)).toEqual({ providers: {} })
     expect(grantOf({}, { read: [], write: [] })).toEqual({ providers: {} })
+  })
+
+  it('pluginGrantOf reads them from a checked manifest as from the parsed plugin.json', () => {
+    const raw = { name: 'pay', templates: { board: { title: 'B', app: { seed: './seed', entry: 'index.a2ui', background: { module: './bg.js', fs: FS } } } } }
+    const { manifest, errors } = checkPluginDescriptor(raw, 'beta')
+    expect(errors).toEqual([])
+    expect(pluginGrantOf(manifest)).toEqual({ providers: {}, folders: FS })
   })
 
   it('a folder not consented to, or a read-only one asked for writing, widens; fewer folders do not', () => {
