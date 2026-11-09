@@ -26,6 +26,7 @@ const URL_A = 'https://plugins.acme.test/acme.tar.gz'
 const ID = 'acme@direct'
 const DIR = '/home/u/.velloc/plugins/cache/direct/acme'
 const STATE = '/home/u/.velloc/plugins/provider_mod_updates.json'
+const REGISTRY = '/home/u/.velloc/plugins/installed_plugins.json'
 const T0 = Date.parse('2026-10-09T00:00:00.000Z')
 
 /** The memory fs plus the `stat` the plugin loader asks for. */
@@ -646,6 +647,22 @@ describe('a plugin whose apps declare folders and that carries no provider', () 
     const [parked] = await service.checkNow(PID)
     expect(parked).toMatchObject({ state: 'needs-consent', activeVersion: '1.1.0', pending: { version: '1.2.0', delta: { widened: true, added: { folders: { read: [], write: ['~/Downloads'] } } } } })
     expect(await service.rollback(PID)).toMatchObject({ activeVersion: '1.0.0' })
+  })
+
+  it('installed from an https URL: that URL is its source; a registry entry with no origin has none', async () => {
+    const w = await world({ install: false })
+    const url = archiveUrl('1.0.0')
+    w.served.set(url, { body: await kitArchive('1.0.0', { read: ['~/Downloads'] }) })
+    await installFromHttps(ctx, w.fs as unknown as RuntimeFs, { url }, { fetchImpl: w.fetchImpl })
+    expect(await statusOf(w.service, 'kit@direct')).toMatchObject({ state: 'unchecked', source: { url } })
+
+    const registry = JSON.parse(String(await w.fs.readFile(REGISTRY, { encoding: 'utf-8' })))
+    delete registry.plugins['kit@direct'][0].origin
+    await w.fs.writeFile(REGISTRY, JSON.stringify(registry), { encoding: 'utf-8' })
+    forgetRegistryFile()
+    const bare = await statusOf(w.service, 'kit@direct')
+    expect(bare).toMatchObject({ state: 'no-source', grant: { folders: { read: ['~/Downloads'], write: [] } } })
+    expect(bare.source).toBeUndefined()
   })
 
   it('on stable, where its app is left out, it asks for nothing and is not listed', async () => {
