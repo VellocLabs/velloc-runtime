@@ -901,3 +901,26 @@ describe('mods.appAction', () => {
     expect(offered).toEqual([['s1', 'refresh', { id: 3 }], ['s1', 'open_case', null], ['s2', 'refresh', null]])
   })
 })
+
+describe('mods.appView', () => {
+  it("control: passes the session, the connection and the layout on; refused under observe; a bad layout is refused at the wire", async () => {
+    const viewed: unknown[] = []
+    const appView = (sessionId: string, client: string, layout: unknown) => void viewed.push([sessionId, client, layout])
+    const observe = makeRig({ appView })
+    await observe.client.hello({ scopeCeiling: 'observe' })
+    const refused = await observe.client.request('mods.appView', { sessionId: 's1', layout: 'full' })
+    expect(!refused.ok && refused.error.code).toBe('forbidden_scope')
+    expect(viewed).toEqual([])
+
+    const control = makeRig({ appView })
+    await control.client.hello({ scopeCeiling: 'control' })
+    const shown = await control.client.request('mods.appView', { sessionId: 's1', layout: 'full' })
+    expect(shown.ok).toBe(true)
+    const gone = await control.client.request('mods.appView', { sessionId: 's1', layout: null })
+    expect(gone.ok).toBe(true)
+    const bad = await control.client.request('mods.appView', { sessionId: 's1', layout: 'max' })
+    expect(bad.ok).toBe(false)
+    const connectionId = control.hub.list()[0]!.connectionId
+    expect(viewed).toEqual([['s1', connectionId, 'full'], ['s1', connectionId, null]])
+  })
+})

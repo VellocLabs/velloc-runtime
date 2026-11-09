@@ -131,6 +131,19 @@ describe('useShownApp', () => {
     expect(updatePaneRecord).not.toHaveBeenCalled()
   })
 
+  it('a later change waits for the reports before it, so the runtime keeps the last one', async () => {
+    const { view, reports, flush } = rig({ app1: 'pay:board', app2: 'crm:board', chat: 'chat' })
+    await flush()
+    view.rerender({ sessionId: 'app2' })
+    view.rerender({ sessionId: 'chat' })
+    await flush()
+    expect(reports.slice(1)).toEqual([
+      ['mods.appView', { sessionId: 'app1', layout: null }],
+      ['mods.appView', { sessionId: 'app2', layout: 'full' }],
+      ['mods.appView', { sessionId: 'app2', layout: null }],
+    ])
+  })
+
   it('sends nothing while the link is down, and reports the app again when it comes back', async () => {
     const { view, reports, flush } = rig({ app1: 'pay:board' })
     await flush()

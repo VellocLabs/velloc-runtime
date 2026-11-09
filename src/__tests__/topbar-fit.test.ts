@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { I18nProvider } from '../browser/webview/i18n'
 import type { SessionListItem } from '../browser/webview/SessionRows'
 import { NexusTopBar, type NexusTopBarProps } from '../browser/webview/topbar/NexusTopBar'
 import { planTopbarFit } from '../browser/webview/topbar/topbarFit'
+import { clearModContributions, setModContributions } from '../browser/webview/mods/modContributionsView'
 
 /**
  * A topbar too narrow for all of it gives way in one order (F-9): the centre
@@ -180,6 +181,29 @@ describe('NexusTopBar on a narrow window', () => {
     openMore()
     fireEvent.click(await screen.findByTestId('topbar-folded-import-acme-agent'))
     expect(onOpenImport).toHaveBeenCalledWith('acme-agent')
+  })
+
+  it("a folded app's entry reads as checked while its app is on screen", async () => {
+    act(() => setModContributions({
+      templates: [{ type: 'pay:board', plugin: 'pay', owner: 'pay@mkt', title: 'Payments', launcher: 'hidden' }],
+      topbar: [],
+      apps: [{ type: 'pay:board', appId: 'pay-board', plugin: 'pay', title: 'Payments', icon: { lucide: 'star' } }],
+      icons: {},
+      waiting: [],
+    }))
+    renderBar(150, { onOpenApp: vi.fn(), shownAppType: 'pay:board' })
+    openMore()
+    const row = await screen.findByTestId('topbar-folded-app-pay-board')
+    expect(row.getAttribute('role')).toBe('menuitemcheckbox')
+    expect(row.getAttribute('aria-checked')).toBe('true')
+    expect(row.hasAttribute('data-pressed')).toBe(true)
+    cleanup()
+    renderBar(150, { onOpenApp: vi.fn() })
+    openMore()
+    const released = await screen.findByTestId('topbar-folded-app-pay-board')
+    expect(released.getAttribute('aria-checked')).toBe('false')
+    expect(released.hasAttribute('data-pressed')).toBe(false)
+    act(() => clearModContributions())
   })
 
   it('without a More menu nothing folds', () => {

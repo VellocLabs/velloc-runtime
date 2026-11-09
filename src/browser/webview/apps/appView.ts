@@ -67,6 +67,7 @@ export function useShownApp(args: {
     }
   }, [shown, sessionId, covered, updatePaneRecord])
   const reportedRef = useRef<ShownApp | null>(null)
+  const sendingRef = useRef<Promise<void>>(Promise.resolve())
   useEffect(() => {
     const before = reportedRef.current
     reportedRef.current = shown
@@ -75,12 +76,13 @@ export function useShownApp(args: {
     if (before && before.sessionId !== shown?.sessionId) reports.push({ sessionId: before.sessionId, layout: null })
     if (shown) reports.push({ sessionId: shown.sessionId, layout: shown.layout })
     if (reports.length === 0) return
-    void runtimeConnection().then(
-      async connection => {
+    // Reports go out one at a time, across changes, so the runtime keeps the last one.
+    sendingRef.current = sendingRef.current
+      .then(async () => {
+        const connection = await runtimeConnection()
         for (const report of reports) await connection.request('mods.appView', report)
-      },
-      () => undefined,
-    ).catch(() => undefined)
+      })
+      .catch(() => undefined)
   }, [shown, runtimeConnection, linkReady])
   return shown?.type
 }

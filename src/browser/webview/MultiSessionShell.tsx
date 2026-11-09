@@ -3129,13 +3129,13 @@ export function MultiSessionShell({
     () => hiddenSessionIds(allSessionItems, modContributions),
     [allSessionItems, modContributions],
   )
+  const appTypes = useMemo(() => new Set((modContributions?.apps ?? []).map(app => app.type)), [modContributions])
   const unlistedKey = useMemo(
-    () => unlistedAppSessionKey(unlistedAppSessionIds(sessions, new Set((modContributions?.apps ?? []).map(app => app.type)), activeSessionId)),
-    [sessions, modContributions, activeSessionId],
+    () => unlistedAppSessionKey(unlistedAppSessionIds(sessions, appTypes, activeSessionId)),
+    [sessions, appTypes, activeSessionId],
   )
   const unlistedIds = useMemo(() => unlistedAppSessionSet(unlistedKey), [unlistedKey])
   // The app on screen (F-40): its icon pressed; covered, its pane closes.
-  const appTypes = useMemo(() => new Set((modContributions?.apps ?? []).map(app => app.type)), [modContributions])
   const shownAppType = useShownApp({
     sessionId: activeSessionId,
     templateType: activeSessionId ? sessions.find(entry => entry.sessionId === activeSessionId)?.templateType : undefined,

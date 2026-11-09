@@ -103,6 +103,14 @@ export function viewRegisteredApp(sessionId: string, client: string, layout: App
   if (appId) dispatchAppView(appId, sessionId, client, layout)
 }
 
+/** Passes every held report of an open app's session on again, for a dispatch seated after they came. */
+export function replayAppViews(): void {
+  for (const [sessionId, clients] of views) {
+    const appId = boards.get(sessionId)?.appId
+    if (appId) for (const [client, layout] of clients) dispatchAppView(appId, sessionId, client, layout)
+  }
+}
+
 /** A client's connection closed: it shows no app. */
 export function appViewClientGone(client: string): void {
   for (const [sessionId, clients] of views) {

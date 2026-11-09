@@ -15,8 +15,11 @@ import { AppBackgroundRuntime, type AppBackgroundRef } from '../mods/app/AppBack
 import { setAppViewDispatch, type AppViewDispatch } from '../mods/app/appActionBus'
 import { refuseAppBackgroundRegistrations } from '../mods/app/appBackgroundEvents'
 import { resetAppStateBusForTests } from '../mods/app/appStateBus'
-import { appViewClientGone, setAppSurfaceState, viewRegisteredApp } from '../mods/app/appSurfaceRegistry'
+import { appViewClientGone, replayAppViews, setAppSurfaceState, viewRegisteredApp } from '../mods/app/appSurfaceRegistry'
 import { AppViews } from '../mods/app/appViews'
+import { RuntimeHub, type RuntimeHubHost } from '../browser/runtimeHub/RuntimeHub'
+import { connectRuntime } from '../browser/runtimeClient'
+import { createMessagePortTransport } from '../browser/runtimeTransport'
 
 const ports: MessagePort[] = []
 const runtimes: AppBackgroundRuntime[] = []
@@ -79,6 +82,53 @@ describe('the registry', () => {
     setAppSurfaceState('v1', board('pay'))
     expect(calls.at(-1)).toEqual(['clientGone', 'c1'])
     setAppSurfaceState('v1', null)
+  })
+
+  it('passes the held reports of open apps on again for a dispatch seated after they came', () => {
+    setAppViewDispatch(undefined)
+    viewRegisteredApp('v2', 'c1', 'beside')
+    viewRegisteredApp('v3', 'c1', 'full')
+    setAppSurfaceState('v2', board('pay'))
+    const calls: unknown[] = []
+    setAppViewDispatch({
+      view: (...args) => calls.push(['view', ...args]),
+      clientGone: () => undefined,
+      sessionGone: () => undefined,
+    })
+    replayAppViews()
+    expect(calls).toEqual([['view', 'pay', 'v2', 'c1', 'beside']])
+    appViewClientGone('c1')
+    setAppSurfaceState('v2', null)
+  })
+})
+
+describe('the hub', () => {
+  it("a client's closed connection reaches the app's module", async () => {
+    const calls: unknown[] = []
+    setAppViewDispatch({
+      view: (...args) => calls.push(['view', ...args]),
+      clientGone: client => calls.push(['clientGone', client]),
+      sessionGone: () => undefined,
+    })
+    const hub = new RuntimeHub({
+      getDirectBridgeTransport: () => null,
+      createBridgeRequestId: () => 'r',
+      applyAgentSettingsToAllSessions: () => {},
+      reloadPluginsOnAllSessions: () => {},
+      runtimeVersion: 'test',
+    } as unknown as RuntimeHubHost)
+    const channel = new MessageChannel()
+    ports.push(channel.port1, channel.port2)
+    hub.attachPort(channel.port1, '/home/u')
+    const connection = await connectRuntime({ transport: createMessagePortTransport(channel.port2), client: { clientId: 'c', kind: 'desktop-shell' } })
+    setAppSurfaceState('h1', { appId: 'pay', surface: null, refreshing: false })
+    await connection.request('mods.appView', { sessionId: 'h1', layout: 'full' })
+    const client = (calls[0] as unknown[])[3]
+    expect(calls).toEqual([['view', 'pay', 'h1', client, 'full']])
+    connection.close()
+    await vi.waitFor(() => expect(calls.at(-1)).toEqual(['clientGone', client]))
+    setAppSurfaceState('h1', null)
+    hub.dispose()
   })
 })
 
@@ -144,6 +194,26 @@ describe('AppBackgroundRuntime — the app on screen', () => {
     runtime.viewClientGone('c2')
     await vi.waitFor(() => expect(seen()).toHaveLength(6))
     expect(seen().slice(4)).toEqual([['app.show', 's2', 'full'], ['app.hide', 's2', null]])
+  })
+
+  it('a view that changes while app.start runs reaches the module once, after the start', async () => {
+    const SLOW_START = `
+      export function register(on) {
+        on('app.start', async ($) => {
+          await $.clock.sleep(40)
+          await $.app.state.update(s => { (s.seen ??= []).push('start') })
+        })
+        for (const name of ['app.show', 'app.layout', 'app.hide']) {
+          on(name, async ($, e) => { await $.app.state.update(s => { (s.seen ??= []).push([name, e.sessionId, e.layout ?? null]) }) })
+        }
+      }`
+    const { runtime, ref, seen } = world(SLOW_START)
+    runtime.sync([ref])
+    await vi.waitFor(() => expect(runtime.status()[0]?.state).toBe('ready'))
+    runtime.view('pay-board', 's1', 'c1', 'full')
+    await vi.waitFor(() => expect(seen()).toEqual(['start', ['app.show', 's1', 'full']]))
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(seen()).toEqual(['start', ['app.show', 's1', 'full']])
   })
 
   it('a module that starts while the app is on screen hears app.show after app.start', async () => {

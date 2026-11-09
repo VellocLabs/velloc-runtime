@@ -753,6 +753,9 @@ export function NexusTopBar({
                         disabled={item.needsSession && !plugins.sessionReady}
                         onSelect={() => plugins.press(item.id)}
                         data-testid={item.foldedTestId}
+                        {...(item.pressed === undefined
+                          ? {}
+                          : { role: "menuitemcheckbox", "aria-checked": item.pressed })}
                         {...(item.pressed ? { "data-pressed": "" } : {})}
                         className={MENU_ITEM_CLASS}
                       >

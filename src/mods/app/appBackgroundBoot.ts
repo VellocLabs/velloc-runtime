@@ -14,6 +14,7 @@ import { getNexusAppDir } from '../../utils/conversationStoragePaths'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import { getModUiContributionsHost, type AppBackgroundTemplate } from '../ui/contributionsHost'
 import { setAppActionDispatch, setAppViewDispatch } from './appActionBus'
+import { replayAppViews } from './appSurfaceRegistry'
 import type { AppAgentRunner } from './appAgentRun'
 import type { AppBackgroundRef, AppBackgroundRuntime } from './AppBackgroundRuntime'
 import { coversFolderScopes, expandScopeFolder, type FolderScopes } from './appFolderScopes'
@@ -183,6 +184,7 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
           clientGone: client => runtime.viewClientGone(client),
           sessionGone: (appId, sessionId) => runtime.viewSessionGone(appId, sessionId),
         })
+        replayAppViews()
       }
       state.runtime.sync(refs)
     },

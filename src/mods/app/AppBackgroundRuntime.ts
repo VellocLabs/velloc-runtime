@@ -143,6 +143,8 @@ type Module = {
   badge?: number
   /** The view events raised so far, so each waits for the one before. */
   viewChain?: Promise<unknown>
+  /** The load whose `app.start` has finished; view events reach only it. */
+  viewsOpen?: Loaded
 }
 
 /** An `app.action` answer: `{handled}` read as given, anything else by its truth. */
@@ -285,10 +287,15 @@ export class AppBackgroundRuntime {
     }
   }
 
-  /** Raises a view event after the ones before it; skipped while the module is not loaded or does not hook it. */
+  /**
+   * Raises a view event after the ones before it; skipped unless the load
+   * that was started when it was raised is still loaded, or when the module
+   * does not hook it. A load hears the view on screen after its `app.start`.
+   */
   private raiseView(module: Module, event: AppViewEvent['event'], payload: AppViewEvent['payload']): Promise<unknown> {
+    const open = module.viewsOpen
     const run = () => {
-      if (!module.loaded || !module.dispatcher.hasHooksFor(event)) return undefined
+      if (!open || module.loaded !== open || !module.dispatcher.hasHooksFor(event)) return undefined
       return this.raise(module, event, payload, this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS, `${event} of ${payload.appId}`)
     }
     const next = (module.viewChain ?? Promise.resolve()).then(run, run)
@@ -414,6 +421,8 @@ export class AppBackgroundRuntime {
         }
       })
       await this.raiseStart(module)
+      if (module.loaded !== loaded) return
+      module.viewsOpen = loaded
       const shown = this.views.current(ref.appId)
       if (shown) void this.raiseView(module, 'app.show', { appId: ref.appId, ...shown })
     } catch (error) {
