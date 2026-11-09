@@ -44,7 +44,7 @@ export const tabsSchema = z
 
 /** Usage guidance for Tabs, appended to the catalog's instructions. */
 export const TABS_CATALOG_INSTRUCTIONS =
-  'Give a tab a badge for a count that needs attention, e.g. {title: "To do", child: todo, badge: $/todo/count}; ' +
+  'Give a tab a badge for a count that needs attention, e.g. {title: "Inbox", child: inbox, badge: $/inbox/count}; ' +
   'a badge of 0 or no value is hidden, so bind it rather than leaving it out. Use open=1 (zero-based) to show a tab other than the first when the surface is drawn.'
 
 function label(value: unknown): string {
