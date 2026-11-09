@@ -150,4 +150,11 @@ describe('expandSkillBodyShell — session-type shell gating', () => {
     expect(callTool).toHaveBeenCalledTimes(1)
     expect(out).not.toBe(body)
   })
+
+  it('a session under a read boundary leaves the body verbatim and never reaches the shell, even on an all type', async () => {
+    const { context, callTool } = ctx('agent')
+    ;(context.options as { untrustedReadRoot?: string }).untrustedReadRoot = 'C:/home/.velloc/shared-workspace/app-pay-board'
+    expect(await expandSkillBodyShell(body, context)).toBe(body)
+    expect(callTool).not.toHaveBeenCalled()
+  })
 })

@@ -80,6 +80,24 @@ export function mergeFolderScopes(a: FolderScopes | undefined, b: FolderScopes |
 }
 
 /**
+ * The `app.background` blocks of a manifest, one per app template that has
+ * one: the object form of a parsed plugin.json as written, and a checked
+ * manifest's `backgroundFs` / `backgroundAgent` read back as `{ fs, agent }`.
+ */
+export function backgroundBlocksOf(manifest: unknown): Array<Record<string, unknown>> {
+  const templates = isRecord(manifest) && isRecord(manifest.templates) ? manifest.templates : undefined
+  if (!templates) return []
+  const blocks: Array<Record<string, unknown>> = []
+  for (const decl of Object.values(templates)) {
+    const app = isRecord(decl) && isRecord(decl.app) ? decl.app : undefined
+    if (!app) continue
+    if (isRecord(app.background)) blocks.push(app.background)
+    else if (app.backgroundFs !== undefined || app.backgroundAgent !== undefined) blocks.push({ fs: app.backgroundFs, agent: app.backgroundAgent })
+  }
+  return blocks
+}
+
+/**
  * The folders a plugin's manifest declares across its app templates, merged;
  * undefined when none. Reads a parsed plugin.json
  * (`templates.<key>.app.background.fs`) and a checked manifest
@@ -87,14 +105,10 @@ export function mergeFolderScopes(a: FolderScopes | undefined, b: FolderScopes |
  * object counts for nothing here — the manifest check reports it.
  */
 export function folderScopesOf(manifest: unknown): FolderScopes | undefined {
-  const templates = isRecord(manifest) && isRecord(manifest.templates) ? manifest.templates : undefined
-  if (!templates) return undefined
   let merged: FolderScopes | undefined
-  for (const decl of Object.values(templates)) {
-    const app = isRecord(decl) && isRecord(decl.app) ? decl.app : undefined
-    const declared = isRecord(app?.background) ? app.background.fs : app?.backgroundFs
-    if (declared === undefined) continue
-    const scopes = readFolderScopes(declared)
+  for (const background of backgroundBlocksOf(manifest)) {
+    if (background.fs === undefined) continue
+    const scopes = readFolderScopes(background.fs)
     if ('error' in scopes) continue
     if (scopes.read.length === 0 && scopes.write.length === 0) continue
     merged = mergeFolderScopes(merged, scopes)

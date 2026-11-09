@@ -943,7 +943,9 @@ export async function createBrowserRuntime(
   // registered tools alone, no settings.json server, no project server file,
   // no other plugin's server. Decided here, where the root pool is built, so
   // the loops under the session inherit the same pool.
-  const mcpScope = sessionMcpScopeOf(templateType, sessionTemplate?.config)
+  const mcpScope = appAgentRun
+    ? (await import('../../mods/app/appRunTools')).appRunMcpScope(templateType)
+    : sessionMcpScopeOf(templateType, sessionTemplate?.config)
   // Shared by every runtime reading this settings home: a pool outlives the
   // runtime that created it, and that runtime's bridge still asks this set.
   // A plugin-scoped session never reads settings.json, so its set stays empty

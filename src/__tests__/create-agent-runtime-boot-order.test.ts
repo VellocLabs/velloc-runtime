@@ -22,6 +22,8 @@ describe('createBrowserRuntime boot order', () => {
     const toolsAt = source.indexOf("const tools = appAgentRun ? (await import('../../mods/app/appRunTools')).appRunTools(scopedTools) : scopedTools")
     expect(scopedAt).toBeGreaterThan(-1)
     expect(toolsAt).toBeGreaterThan(scopedAt)
+    const scopeAt = source.indexOf("const mcpScope = appAgentRun\n    ? (await import('../../mods/app/appRunTools')).appRunMcpScope(templateType)")
+    expect(scopeAt).toBeGreaterThan(readAt)
   })
   it('binds review argv streams to the direct host event transport before launching', () => {
     const start = source.indexOf('reviewRuntime: {')

@@ -19,7 +19,7 @@ import {
   type AppAgentRunOutcome,
 } from '../mods/app/appAgentRun'
 import { refuseAppBackgroundCall } from '../mods/app/appBackgroundEvents'
-import { appRunKeepsTool, appRunTools } from '../mods/app/appRunTools'
+import { appRunKeepsTool, appRunMcpScope, appRunTools } from '../mods/app/appRunTools'
 
 const FOLDER = 'C:/home/.velloc/shared-workspace/app-pay-board'
 const TYPE = 'pay:board'
@@ -216,6 +216,17 @@ describe('AppAgentRuns', () => {
     expect(seen?.aborted).toBe(true)
   })
 
+  it('a run that never settles after its abort still ends the call, and the app is free again', async () => {
+    const gone = new AbortController()
+    const run = vi.fn((_job: AppAgentRunJob) => new Promise<AppAgentRunOutcome>(() => undefined))
+    const timed = new AppAgentRuns({ run, report: () => undefined, timeoutMs: 20 })
+    expect(await timed.start(job, gone.signal)).toEqual({ ok: false, reason: 'failed: the run did not finish within 20 ms' })
+    const second = timed.start(job, gone.signal)
+    expect(run).toHaveBeenCalledTimes(2)
+    gone.abort()
+    expect(await second).toEqual({ ok: false, reason: 'stopped' })
+  })
+
   it('a gone module is stopped before a run starts, and a run it outlives ends stopped', async () => {
     const before = new AbortController()
     before.abort()
@@ -257,5 +268,9 @@ describe('the request, the manifest and the tools', () => {
       expect(appRunKeepsTool(name)).toBe(false)
     }
     expect(appRunTools([{ name: 'Read' }, { name: 'Bash' }])).toEqual([{ name: 'Read' }])
+  })
+
+  it("an app run takes its own plugin's MCP sources alone, whatever its type declares", () => {
+    expect(appRunMcpScope(TYPE)).toEqual({ kind: 'plugin', plugin: 'pay' })
   })
 })

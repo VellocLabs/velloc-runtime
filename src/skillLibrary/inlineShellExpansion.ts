@@ -61,8 +61,9 @@ export async function expandShellSnippets(
 }
 
 // Expands shell snippets in a skill body. Skipped in plan mode, in a chat
-// session, in a session type that does not take every MCP source, and when
-// no shell runner is available, leaving the body as written.
+// session, in a session under a read boundary, in a session type that does
+// not take every MCP source, and when no shell runner is available, leaving
+// the body as written.
 export async function expandSkillBodyShell(
   body: string,
   context: ToolCallContext,
@@ -76,6 +77,11 @@ export async function expandSkillBodyShell(
   }
 
   if (isLocalAccessConfined(context.options.templateType)) {
+    return body
+  }
+
+  // Security: a session under a read boundary runs no command (F-40).
+  if (context.options.untrustedReadRoot) {
     return body
   }
 

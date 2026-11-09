@@ -514,7 +514,6 @@ export class AppBackgroundRuntime {
     this.options.onBadge?.(module.ref.appId, null)
   }
 
-  /** The module's MCP pool is closed with its worker; the next worker builds its own. */
   /** `$.app.analyze(request)`: one headless agent run in the app's folder, ended `stopped` when the module stops. */
   private analyze(module: Module, request: unknown): Promise<AppAnalyzeResult> {
     const { agentType, appId, plugin, folder } = module.ref
@@ -529,6 +528,7 @@ export class AppBackgroundRuntime {
     return this.agentRuns.start({ appId, plugin, templateType: agentType, folder, prompt, ...(title ? { title } : {}) }, module.gone.signal)
   }
 
+  /** The module's MCP pool is closed with its worker; the next worker builds its own. */
   private async closeMcp(module: Module): Promise<void> {
     const mcp = module.mcp
     module.mcp = undefined

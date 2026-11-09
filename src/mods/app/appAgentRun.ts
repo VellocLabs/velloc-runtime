@@ -7,6 +7,8 @@
  * and reads nothing outside that folder.
  */
 
+import { backgroundBlocksOf } from './appFolderScopes'
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -51,12 +53,7 @@ export type AppAgentRunner = (job: AppAgentRunJob) => Promise<AppAgentRunOutcome
 
 /** Whether a parsed plugin.json has an app whose background block declares `agent: true`. */
 export function manifestAsksAgent(manifest: unknown): boolean {
-  const templates = isRecord(manifest) && isRecord(manifest.templates) ? manifest.templates : undefined
-  if (!templates) return false
-  return Object.values(templates).some(decl => {
-    const background = isRecord(decl) && isRecord(decl.app) ? decl.app.background : undefined
-    return isRecord(background) && background.agent === true
-  })
+  return backgroundBlocksOf(manifest).some(background => background.agent === true)
 }
 
 /** The request of `$.app.analyze(request)`; a `TypeError` names what is wrong. */
@@ -128,9 +125,13 @@ export class AppAgentRuns {
       controller.abort()
     }, timeoutMs)
     this.options.report(`${plugin}: ${appId} started an agent run${job.title ? ` "${job.title}"` : ''}`)
+    // A stop or a timeout ends the call even when the run never settles after its abort.
+    const aborted = new Promise<AppAgentRunOutcome>(resolve =>
+      controller.signal.addEventListener('abort', () => resolve({ status: 'aborted' }), { once: true }),
+    )
     let result: AppAnalyzeResult
     try {
-      const outcome = await run({ ...job, abortSignal: controller.signal })
+      const outcome = await Promise.race([run({ ...job, abortSignal: controller.signal }), aborted])
       if (ended === 'stopped') result = { ok: false, reason: 'stopped' }
       else if (ended === 'timeout') result = { ok: false, reason: `failed: the run did not finish within ${durationText(timeoutMs)}` }
       else if (outcome.status === 'success') result = { ok: true, text: outcome.text }
