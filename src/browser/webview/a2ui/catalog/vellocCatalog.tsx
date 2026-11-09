@@ -2,12 +2,13 @@
 // Tabs, plus the chart, data and dashboard components. Chart renderers are
 // lazy, so recharts loads on the first chart.
 
-import { lazy, Suspense, type ReactElement } from 'react'
+import { createContext, lazy, Suspense, useContext, type ReactElement, type ReactNode } from 'react'
 import { createComponentImplementation, type ReactCatalogComponent } from '@a2ui/react'
 import { Catalog, type ComponentApi } from '@a2ui/web_core/v1_0'
 import { basicCatalog } from '@a2ui/web_core/catalogs/basic/v1'
 import { CircleHelpIcon, TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   BADGE_TONES,
   type BadgeTone,
@@ -17,6 +18,7 @@ import {
   chartCatalogDefinitions,
   type ChartComponentName,
   chartHeight,
+  gridMinWidth,
 } from './chartCatalogDefinitions'
 import { TABS_CATALOG_INSTRUCTIONS, tabsComponent } from './TabsView'
 import type { CatalogPropNames } from '../toA2uiMessages'
@@ -207,7 +209,89 @@ type ChartProps = {
   valueSuffix?: string
 }
 
-const views: Record<ChartComponentName, (props: Record<string, unknown>) => ReactElement> = {
+type BuildChild = (id: string, basePath?: string) => ReactNode
+/** A resolved child-list entry: a fixed id, or a template cell with its data path. */
+type ChildRef = string | { id: string; basePath?: string }
+
+function childKey(child: ChildRef, index: number): string {
+  return typeof child === 'string' ? child : `${child.basePath ?? index}/${child.id}`
+}
+
+/** True inside a Grid cell, where a HoverBar pins itself to the cell's corner. */
+const GridCellContext = createContext(false)
+
+function childList(children: unknown): ChildRef[] {
+  return (Array.isArray(children) ? children : []).filter(
+    (child): child is ChildRef => typeof child === 'string' || (!!child && typeof child === 'object' && typeof (child as { id?: unknown }).id === 'string'),
+  )
+}
+
+function buildRef(child: ChildRef, buildChild: BuildChild): ReactNode {
+  return typeof child === 'string' ? buildChild(child) : buildChild(child.id, child.basePath)
+}
+
+export function GridView({ children, minWidth, after, buildChild }: { children?: unknown; minWidth?: unknown; after?: unknown; buildChild: BuildChild }): ReactElement {
+  const cells = childList(children)
+  if (typeof after === 'string' && after) cells.push(after)
+  return (
+    <div
+      data-slot="a2ui-grid"
+      className="grid w-full gap-4"
+      style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${gridMinWidth(minWidth)}px), 1fr))` }}
+    >
+      {cells.map((child, index) => (
+        <div key={childKey(child, index)} data-slot="a2ui-grid-cell" className="group/cell relative flex min-w-0 *:min-w-0 *:flex-1">
+          <GridCellContext.Provider value={true}>{buildRef(child, buildChild)}</GridCellContext.Provider>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** The bar's buttons are small, the basic catalog's sizes scaled down inside it, with a rule between two buttons. */
+const HOVER_BAR_COMPACT =
+  'flex items-center [--a2ui-button-margin:0] [--a2ui-button-padding:2px_0] [--a2ui-button-border:none] [--a2ui-row-gap:4px] [--a2ui-icon-size:14px] [--a2ui-font-size-m:12px] [--a2ui-font-size-s:12px] [&>span+span]:border-l'
+const HOVER_BAR_PINNED =
+  'absolute -top-3 right-3 z-10 rounded-md border bg-popover p-0.5 shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 group-focus-within/cell:opacity-100'
+
+export function HoverBarView({ children, buildChild }: { children?: unknown; buildChild: BuildChild }): ReactElement {
+  const pinned = useContext(GridCellContext)
+  return (
+    <div data-slot="a2ui-hover-bar" data-pinned={pinned} className={`${HOVER_BAR_COMPACT} ${pinned ? HOVER_BAR_PINNED : ''}`}>
+      {childList(children).map((child, index) => (
+        <span key={childKey(child, index)} className="flex items-center px-2">{buildRef(child, buildChild)}</span>
+      ))}
+    </div>
+  )
+}
+
+export function AddCardView({ label, action }: { label?: unknown; action?: unknown }): ReactElement {
+  const tip = text(label)
+  const run = typeof action === 'function' ? (action as () => void) : undefined
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            data-slot="a2ui-add-card"
+            aria-label={tip}
+            disabled={!run}
+            onClick={() => run?.()}
+            className="flex min-h-32 w-full items-center justify-center rounded-lg border-2 border-dashed text-muted-foreground transition-colors outline-none hover:border-ring hover:bg-muted/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="size-14" fill="none" stroke="currentColor" strokeWidth={1} strokeLinejoin="round">
+              <path d="M9.5 3h5v6.5H21v5h-6.5V21h-5v-6.5H3v-5h6.5z" />
+            </svg>
+          </button>
+        </TooltipTrigger>
+        {tip && <TooltipContent>{tip}</TooltipContent>}
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+const views: Record<ChartComponentName, (props: Record<string, unknown>, buildChild: BuildChild) => ReactElement> = {
   PieChart: props => {
     const p = props as ChartProps
     return (
@@ -261,6 +345,9 @@ const views: Record<ChartComponentName, (props: Record<string, unknown>) => Reac
   DataTable: props => <DataTableView {...(props as DataTableProps)} />,
   Heading: props => <HeadingView {...(props as HeadingProps)} />,
   Badge: props => <BadgeView {...(props as { text?: unknown; tone?: unknown })} />,
+  Grid: (props, buildChild) => <GridView children={props.children} minWidth={props.minWidth} after={props.after} buildChild={buildChild} />,
+  HoverBar: (props, buildChild) => <HoverBarView children={props.children} buildChild={buildChild} />,
+  AddCard: props => <AddCardView label={props.label} action={props.action} />,
 }
 
 const chartComponents: ReactCatalogComponent[] = (
@@ -270,9 +357,7 @@ const chartComponents: ReactCatalogComponent[] = (
   // Typed loosely: `zod/v3` and the renderer's own zod copy match at runtime
   // (the binder reads `_def`), and comparing their types exhausts the checker.
   const api = { name, schema: chartCatalogDefinitions[name].schema } as unknown as ComponentApi
-  return createComponentImplementation(api, ({ props }) => (
-    <View {...(props as Record<string, unknown>)} />
-  ))
+  return createComponentImplementation(api, ({ props, buildChild }) => View(props as Record<string, unknown>, buildChild))
 })
 
 export const vellocCatalog = new Catalog<ReactCatalogComponent>(

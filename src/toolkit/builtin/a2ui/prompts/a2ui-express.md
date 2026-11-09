@@ -62,6 +62,10 @@ The host compiler will compile your A2UI Express output into the correct JSON en
 ## Positional Component Signatures
 
 Use these exact positional signatures to instantiate components. Do not output property keys:
+• AddCard(label, action (static), weight? (static))
+  - label: What a click does, shown as the tooltip and read by screen readers, e.g. "Add alert".
+  - action: Sent when the card is clicked, as a Button press is.
+  - weight: Flex share inside a Row or Column; only on a direct child of one.
 • AudioPlayer(url, description?, weight? (static))
   - url: The URL of the audio to be played.
   - description: A description of the audio, such as a title or summary.
@@ -133,10 +137,18 @@ Use these exact positional signatures to instantiate components. Do not output p
 • Divider(axis? (static), weight? (static))
   - axis: The orientation of the divider. Must be one of: 'horizontal', 'vertical'
   - weight: The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column.
+• Grid(children, minWidth? (static), after? (component ID), weight? (static))
+  - children: The cells: an array of ids, or a template over a data list, e.g. one Card per row of the list.
+  - minWidth: The narrowest a column may get, in pixels; default 280. A child narrower than the pane never overflows it.
+  - after: One more cell after the children, by id, e.g. an AddCard that adds to the list.
+  - weight: Flex share inside a Row or Column; only on a direct child of one.
 • Heading(text, level? (static), subtitle?, weight? (static))
   - text: The title text, literal or a data binding.
   - level: 1, 2 or 3; default 2.
   - subtitle: A short line under the title in small muted text.
+  - weight: Flex share inside a Row or Column; only on a direct child of one.
+• HoverBar(children, weight? (static))
+  - children: The buttons, by id, e.g. [editButton, deleteButton]; borderless Buttons with an Icon and a short Text read best.
   - weight: Flex share inside a Row or Column; only on a direct child of one.
 • Icon(name, weight? (static))
   - name: The name of the icon to display. Must be one of: 'accountCircle', 'add', 'arrowBack', 'arrowForward', 'attachFile', 'calendarToday', 'call', 'camera', 'check', 'close', 'delete', 'download', 'edit', 'event', 'error', 'fastForward', 'favorite', 'favoriteOff', 'folder', 'help', 'home', 'info', 'locationOn', 'lock', 'lockOpen', 'mail', 'menu', 'moreVert', 'moreHoriz', 'notificationsOff', 'notifications', 'pause', 'payment', 'person', 'phone', 'photo', 'play', 'print', 'refresh', 'rewind', 'search', 'send', 'settings', 'share', 'shoppingCart', 'skipNext', 'skipPrevious', 'star', 'starHalf', 'starOff', 'stop', 'upload', 'visibility', 'visibilityOff', 'volumeDown', 'volumeMute', 'volumeOff', 'volumeUp', 'warning'
@@ -409,7 +421,7 @@ Example 2: Dynamic list with templates
 
 ## Charts and data
 
-Draw numbers as charts, not prose: PieChart for shares, LineChart for a trend over time, BarChart to compare categories, Metric for one key figure, DataTable for rows. Put the rows in the data model and bind them, so a later update can change the data alone. Group charts in Cards inside a Row or Column for a dashboard. Leave colors out to use the theme palette.
+Draw numbers as charts, not prose: PieChart for shares, LineChart for a trend over time, BarChart to compare categories, Metric for one key figure, DataTable for rows. Put the rows in the data model and bind them, so a later update can change the data alone. Group charts in Cards inside a Row or Column for a dashboard. Leave colors out to use the theme palette. For a list of like cards (one per alert, product or account), use a Grid with a template child: Grid(_template($/alerts, alertCard)); the cards wrap into equal columns instead of stretching across the pane. To offer per-card actions without crowding the card, put a HoverBar of borderless Buttons anywhere in it: it shows in the cell's top-right corner while the pointer is over the card. To let the user add to the list, end the Grid with an AddCard rather than a separate button: Grid(_template($/alerts, alertCard), after=addAlert), addAlert = AddCard("Add alert", Event("add_alert")).
 
 Title a dashboard with Heading (level 1 for the page, 3 for a card); its subtitle is the small line under it. Show a status with Badge, or give a DataTable column a badge map so each cell is one. Put a chart's unit (its value axis, a pie's legend, the tooltip) in valuePrefix / valueSuffix rather than in the numbers.
 

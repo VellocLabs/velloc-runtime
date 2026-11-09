@@ -13,6 +13,8 @@ export const VELLOC_CATALOG_ID = 'https://velloc.app/a2ui/catalog/v1'
 const DynamicString = CommonSchemas.DynamicString as unknown as z.ZodTypeAny
 const DynamicValue = CommonSchemas.DynamicValue as unknown as z.ZodTypeAny
 const Action = CommonSchemas.Action as unknown as z.ZodTypeAny
+const ChildList = CommonSchemas.ChildList as unknown as z.ZodTypeAny
+const ComponentId = CommonSchemas.ComponentId as unknown as z.ZodTypeAny
 const series = z
   .array(
     z.object({
@@ -160,6 +162,41 @@ export const chartCatalogDefinitions = {
       .strict()
       .describe('A short status label in a coloured pill.'),
   },
+  Grid: {
+    description: 'Lays its children out in equal-width columns that wrap: as many columns as fit at minWidth each, so a set of Cards reads as a tidy grid at any width.',
+    schema: z
+      .object({
+        children: ChildList.describe(
+          'REF:#/$defs/ChildList|The cells: an array of ids, or a template over a data list, e.g. one Card per row of the list.',
+        ),
+        minWidth: z.number().optional().describe('The narrowest a column may get, in pixels; default 280. A child narrower than the pane never overflows it.'),
+        after: ComponentId.optional().describe('REF:#/$defs/ComponentId|One more cell after the children, by id, e.g. an AddCard that adds to the list.'),
+        weight,
+      })
+      .strict()
+      .describe('Lays its children out in equal-width columns that wrap: as many columns as fit at minWidth each, so a set of Cards reads as a tidy grid at any width.'),
+  },
+  HoverBar: {
+    description: 'A small flat bar of buttons in the top-right corner of the Grid cell it sits in, shown while the pointer is over that cell or a button in it has focus; outside a Grid it is an inline row.',
+    schema: z
+      .object({
+        children: ChildList.describe('REF:#/$defs/ChildList|The buttons, by id, e.g. [editButton, deleteButton]; borderless Buttons with an Icon and a short Text read best.'),
+        weight,
+      })
+      .strict()
+      .describe('A small flat bar of buttons in the top-right corner of the Grid cell it sits in, shown while the pointer is over that cell or a button in it has focus; outside a Grid it is an inline row.'),
+  },
+  AddCard: {
+    description: 'An empty dashed card with a plus in its middle that adds an item to the list it ends; its label shows as a tooltip on hover.',
+    schema: z
+      .object({
+        label: DynamicString.describe('What a click does, shown as the tooltip and read by screen readers, e.g. "Add alert".'),
+        action: Action.describe('REF:#/$defs/Action|Sent when the card is clicked, as a Button press is.'),
+        weight,
+      })
+      .strict()
+      .describe('An empty dashed card with a plus in its middle that adds an item to the list it ends; its label shows as a tooltip on hover.'),
+  },
 }
 
 const CHART_EXAMPLE = [
@@ -206,7 +243,13 @@ export const CHART_CATALOG_INSTRUCTIONS = [
   'Draw numbers as charts, not prose: PieChart for shares, LineChart for a trend over time, ' +
     'BarChart to compare categories, Metric for one key figure, DataTable for rows. Put the rows ' +
     'in the data model and bind them, so a later update can change the data alone. Group charts ' +
-    'in Cards inside a Row or Column for a dashboard. Leave colors out to use the theme palette.',
+    'in Cards inside a Row or Column for a dashboard. Leave colors out to use the theme palette. ' +
+    'For a list of like cards (one per alert, product or account), use a Grid with a template child: ' +
+    'Grid(_template($/alerts, alertCard)); the cards wrap into equal columns instead of stretching across the pane. ' +
+    'To offer per-card actions without crowding the card, put a HoverBar of borderless Buttons anywhere in it: ' +
+    'it shows in the cell\'s top-right corner while the pointer is over the card. ' +
+    'To let the user add to the list, end the Grid with an AddCard rather than a separate button: Grid(_template($/alerts, alertCard), after=addAlert), ' +
+    'addAlert = AddCard("Add alert", Event("add_alert")).',
   '',
   'Title a dashboard with Heading (level 1 for the page, 3 for a card); its subtitle is the small line under it. Show a status with Badge, ' +
     'or give a DataTable column a badge map so each cell is one. Put a chart\'s unit (its value axis, ' +
@@ -233,6 +276,16 @@ const MAX_CHART_HEIGHT = 800
 export function chartHeight(height: unknown): number {
   if (typeof height !== 'number' || !Number.isFinite(height)) return DEFAULT_CHART_HEIGHT
   return Math.min(MAX_CHART_HEIGHT, Math.max(MIN_CHART_HEIGHT, Math.round(height)))
+}
+
+const DEFAULT_GRID_MIN_WIDTH = 280
+const MIN_GRID_MIN_WIDTH = 120
+const MAX_GRID_MIN_WIDTH = 800
+
+/** A model-supplied grid column width, clamped like a chart height. */
+export function gridMinWidth(width: unknown): number {
+  if (typeof width !== 'number' || !Number.isFinite(width)) return DEFAULT_GRID_MIN_WIDTH
+  return Math.min(MAX_GRID_MIN_WIDTH, Math.max(MIN_GRID_MIN_WIDTH, Math.round(width)))
 }
 
 /** Bound values arrive resolved; anything else (still a binding, missing) is no rows. */

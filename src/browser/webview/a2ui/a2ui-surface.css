@@ -33,3 +33,12 @@
   margin: 0;
   padding: 0;
 }
+
+/* A Card in a Grid cell fills the cell, so the cards of one row are one height (F-1). */
+[data-slot='a2ui-grid-cell'] > a2ui-card {
+  display: flex;
+  flex-direction: column;
+}
+[data-slot='a2ui-grid-cell'] > a2ui-card > .a2ui-card {
+  flex: 1;
+}
