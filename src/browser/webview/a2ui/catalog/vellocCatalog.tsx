@@ -210,6 +210,7 @@ type ChartProps = {
 }
 
 type BuildChild = (id: string, basePath?: string) => ReactNode
+type ViewProps = Record<string, unknown>
 /** A resolved child-list entry: a fixed id, or a template cell with its data path. */
 type ChildRef = string | { id: string; basePath?: string }
 
@@ -291,7 +292,7 @@ export function AddCardView({ label, action }: { label?: unknown; action?: unkno
   )
 }
 
-const views: Record<ChartComponentName, (props: Record<string, unknown>, buildChild: BuildChild) => ReactElement> = {
+const views: Record<ChartComponentName, (props: ViewProps, buildChild: BuildChild) => ReactElement> = {
   PieChart: props => {
     const p = props as ChartProps
     return (
@@ -357,7 +358,7 @@ const chartComponents: ReactCatalogComponent[] = (
   // Typed loosely: `zod/v3` and the renderer's own zod copy match at runtime
   // (the binder reads `_def`), and comparing their types exhausts the checker.
   const api = { name, schema: chartCatalogDefinitions[name].schema } as unknown as ComponentApi
-  return createComponentImplementation(api, ({ props, buildChild }) => View(props as Record<string, unknown>, buildChild))
+  return createComponentImplementation(api, ({ props, buildChild }) => View(props as ViewProps, buildChild))
 })
 
 export const vellocCatalog = new Catalog<ReactCatalogComponent>(
