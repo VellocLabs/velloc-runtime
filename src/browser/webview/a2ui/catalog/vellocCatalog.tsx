@@ -2,13 +2,14 @@
 // Tabs, plus the chart, data and dashboard components. Chart renderers are
 // lazy, so recharts loads on the first chart.
 
-import { createContext, lazy, Suspense, useContext, type ReactElement, type ReactNode } from 'react'
+import { createContext, lazy, Suspense, useContext, useState, type ReactElement, type ReactNode } from 'react'
 import { createComponentImplementation, type ReactCatalogComponent } from '@a2ui/react'
 import { Catalog, type ComponentApi } from '@a2ui/web_core/v1_0'
 import { basicCatalog } from '@a2ui/web_core/catalogs/basic/v1'
-import { CircleHelpIcon, TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
+import { CircleHelpIcon, EllipsisIcon, TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Popover as PopoverPrimitive } from 'radix-ui'
 import {
   BADGE_TONES,
   type BadgeTone,
@@ -266,28 +267,71 @@ export function HoverBarView({ children, buildChild }: { children?: unknown; bui
   )
 }
 
+/** The menu's buttons as full-width rows, the basic catalog's sizes scaled down. */
+const MENU_ITEMS =
+  'flex min-w-36 flex-col p-1 [--a2ui-button-margin:0] [--a2ui-button-padding:4px_8px] [--a2ui-button-border:none] [--a2ui-font-size-m:13px] [--a2ui-font-size-s:13px] [&_a2ui-basic-button]:w-full'
+
+/**
+ * Contract: the content is not portaled, so the items keep the surface's
+ * --a2ui-* theme; any click inside it closes the menu after the item's own
+ * action has run.
+ */
+export function MenuView({ label, children, buildChild, defaultOpen = false }: { label?: unknown; children?: unknown; buildChild: BuildChild; defaultOpen?: boolean }): ReactElement {
+  const [open, setOpen] = useState(defaultOpen)
+  const name = text(label)
+  return (
+    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+      <PopoverPrimitive.Trigger asChild>
+        <button
+          type="button"
+          data-slot="a2ui-menu"
+          aria-label={name}
+          title={name}
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted data-[state=open]:text-foreground"
+        >
+          <EllipsisIcon aria-hidden="true" className="size-4" />
+        </button>
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Content
+        data-slot="a2ui-menu-content"
+        align="end"
+        sideOffset={4}
+        onClick={() => setOpen(false)}
+        className={`z-50 rounded-md border bg-popover text-popover-foreground shadow-md outline-none ${MENU_ITEMS}`}
+      >
+        {childList(children).map((child, index) => (
+          <div key={childKey(child, index)} className="flex rounded-sm px-2 py-0.5 hover:bg-muted">{buildRef(child, buildChild)}</div>
+        ))}
+      </PopoverPrimitive.Content>
+    </PopoverPrimitive.Root>
+  )
+}
+
 export function AddCardView({ label, action }: { label?: unknown; action?: unknown }): ReactElement {
   const tip = text(label)
   const run = typeof action === 'function' && tip ? (action as () => void) : undefined
   return (
     <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            data-slot="a2ui-add-card"
-            aria-label={tip}
-            disabled={!run}
-            onClick={() => run?.()}
-            className="flex min-h-32 w-full items-center justify-center rounded-lg border-2 border-dashed text-muted-foreground transition-colors outline-none hover:border-ring hover:bg-muted/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-          >
-            <svg aria-hidden="true" viewBox="0 0 24 24" className="size-14" fill="none" stroke="currentColor" strokeWidth={1} strokeLinejoin="round">
-              <path d="M9.5 3h5v6.5H21v5h-6.5V21h-5v-6.5H3v-5h6.5z" />
-            </svg>
-          </button>
-        </TooltipTrigger>
-        {tip && <TooltipContent>{tip}</TooltipContent>}
-      </Tooltip>
+      {/* The card's own margin, so a plus card lines up with the Cards beside it. */}
+      <div data-slot="a2ui-add-card-frame" className="flex h-full w-full p-[var(--a2ui-card-margin,var(--a2ui-spacing-m,16px))]">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              data-slot="a2ui-add-card"
+              aria-label={tip}
+              disabled={!run}
+              onClick={() => run?.()}
+              className="flex min-h-32 w-full items-center justify-center rounded-[var(--a2ui-card-border-radius,var(--a2ui-border-radius,8px))] border-2 border-dashed text-muted-foreground transition-colors outline-none hover:border-ring hover:bg-muted/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="size-14" fill="none" stroke="currentColor" strokeWidth={1} strokeLinejoin="round">
+                <path d="M9.5 3h5v6.5H21v5h-6.5V21h-5v-6.5H3v-5h6.5z" />
+              </svg>
+            </button>
+          </TooltipTrigger>
+          {tip && <TooltipContent>{tip}</TooltipContent>}
+        </Tooltip>
+      </div>
     </TooltipProvider>
   )
 }
@@ -349,6 +393,7 @@ const views: Record<ChartComponentName, (props: ViewProps, buildChild: BuildChil
   Grid: (props, buildChild) => <GridView children={props.children} minWidth={props.minWidth} after={props.after} buildChild={buildChild} />,
   HoverBar: (props, buildChild) => <HoverBarView children={props.children} buildChild={buildChild} />,
   AddCard: props => <AddCardView label={props.label} action={props.action} />,
+  Menu: (props, buildChild) => <MenuView label={props.label} children={props.children} buildChild={buildChild} />,
 }
 
 const chartComponents: ReactCatalogComponent[] = (

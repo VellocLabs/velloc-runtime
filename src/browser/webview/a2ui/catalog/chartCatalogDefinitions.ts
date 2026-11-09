@@ -186,6 +186,17 @@ export const chartCatalogDefinitions = {
       .strict()
       .describe('A small flat bar of buttons in the top-right corner of the Grid cell it sits in, shown while the pointer is over that cell or a button in it has focus; outside a Grid it is an inline row.'),
   },
+  Menu: {
+    description: 'A small "more" button (three dots) that opens a short menu of its children, one per line, and closes when one is clicked; for actions a card needs rarely.',
+    schema: z
+      .object({
+        label: DynamicString.describe('The button\'s accessible name and tooltip, e.g. "More".'),
+        children: ChildList.describe('REF:#/$defs/ChildList|The menu items, by id, top to bottom, e.g. [undoButton, deleteButton]; borderless Buttons with a short Text read best.'),
+        weight,
+      })
+      .strict()
+      .describe('A small "more" button (three dots) that opens a short menu of its children, one per line, and closes when one is clicked; for actions a card needs rarely.'),
+  },
   AddCard: {
     description: 'An empty dashed card with a plus in its middle that adds an item to the list it ends; its label shows as a tooltip on hover.',
     schema: z
@@ -249,7 +260,8 @@ export const CHART_CATALOG_INSTRUCTIONS = [
     'To offer per-card actions without crowding the card, put one HoverBar of borderless Buttons anywhere in it: ' +
     'it shows in the cell\'s top-right corner while the pointer is over the card (every HoverBar in a cell takes that corner, so give each card one). ' +
     'To let the user add to the list, end the Grid with an AddCard rather than a separate button: Grid(_template($/alerts, alertCard), after=addAlert), ' +
-    'addAlert = AddCard("Add alert", Event("add_alert")).',
+    'addAlert = AddCard("Add alert", Event("add_alert")). ' +
+    'Put actions a card needs rarely (undo, delete) in a Menu, so they stay out of the way: Menu("More", [undoButton, deleteButton]).',
   '',
   'Title a dashboard with Heading (level 1 for the page, 3 for a card); its subtitle is the small line under it. Show a status with Badge, ' +
     'or give a DataTable column a badge map so each cell is one. Put a chart\'s unit (its value axis, ' +
