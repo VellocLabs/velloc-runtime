@@ -42,3 +42,24 @@
 [data-slot='a2ui-grid-cell'] > a2ui-card > .a2ui-card {
   flex: 1;
 }
+
+/*
+ * Inside a Card, a Metric's ask button sits in the card's top-right corner and
+ * shows while the pointer or focus is in that card, not merely in an outer one
+ * (F-1). Outside a card it stays after the delta.
+ */
+[data-slot='a2ui-surface'] .a2ui-card:has([data-slot='a2ui-metric-action']) {
+  position: relative;
+}
+[data-slot='a2ui-surface'] .a2ui-card [data-slot='a2ui-metric-action'] {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 1;
+  max-width: calc(100% - 1rem);
+}
+[data-slot='a2ui-surface']
+  .a2ui-card:is(:hover, :focus-within)
+  [data-slot='a2ui-metric-action']:not(.a2ui-card:not(:hover, :focus-within) [data-slot='a2ui-metric-action']) {
+  opacity: 1;
+}

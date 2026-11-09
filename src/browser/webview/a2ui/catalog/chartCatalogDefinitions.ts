@@ -104,10 +104,10 @@ export const chartCatalogDefinitions = {
           'Which direction is good, "up" (default) or "down", literal or a data binding. With "down" a rise is coloured as bad and a fall as good, e.g. for a refund rate; the arrow still follows trend.',
         ),
         action: Action.optional().describe(
-          'REF:#/$defs/Action|Optional, unlike a Button\'s action: leave it out when there is nothing to ask. With actionLabel, a small help button after the delta sends this action when clicked, as a Button press does, e.g. Event("explain_metric", {metric: "Refund rate"}).',
+          'REF:#/$defs/Action|Optional, unlike a Button\'s action: leave it out when there is nothing to ask. With actionLabel, a small ask button sends this action when clicked, as a Button press does, e.g. Event("explain_metric", {metric: "Refund rate"}). In a Card it sits in the card\'s top-right corner; elsewhere after the delta.',
         ),
         actionLabel: DynamicString.optional().describe(
-          'The help button\'s label, e.g. "Ask why", literal or a data binding; it shows while the pointer is over the figure. Without it there is no button.',
+          'The ask button\'s label, e.g. "Ask why", literal or a data binding; it shows while the pointer is over the figure, or its Card. Without it there is no button.',
         ),
         weight,
       })
@@ -144,6 +144,12 @@ export const chartCatalogDefinitions = {
         text: DynamicString.describe('The title text, literal or a data binding.'),
         level: z.number().int().min(1).max(3).optional().describe('1, 2 or 3; default 2.'),
         subtitle: DynamicString.optional().describe('A short line under the title in small muted text.'),
+        action: Action.optional().describe(
+          'REF:#/$defs/Action|Optional: leave it out when there is nothing to ask. With actionLabel, a small ask button after the subtitle (or the title) sends this action when clicked, as a Button press does.',
+        ),
+        actionLabel: DynamicString.optional().describe(
+          'The ask button\'s label, literal or a data binding; it shows while the pointer is over the heading. Without it there is no button.',
+        ),
         weight,
       })
       .strict()
@@ -270,7 +276,8 @@ export const CHART_CATALOG_INSTRUCTIONS = [
   'Give a Metric better: "down" when a rise is bad (refund rate, churn, latency), so its delta is coloured by meaning. ' +
     'To let the user ask about a change where it is shown, give the Metric an action and an actionLabel, e.g. ' +
     'action=Event("explain_metric", {metric: "Refund rate"}), actionLabel="Ask why"; the action comes back to you like a Button press. A Metric\'s action is optional: ' +
-    'leave both out on a plain figure, and never give it a placeholder Event("click").',
+    'leave both out on a plain figure, and never give it a placeholder Event("click"). ' +
+    'A Heading takes the same action and actionLabel, to ask about everything under it.',
   '',
   'Example 3: Sales dashboard',
   '```json',

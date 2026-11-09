@@ -142,10 +142,12 @@ Use these exact positional signatures to instantiate components. Do not output p
   - minWidth: The narrowest a column may get, in pixels; default 280, kept within 120-800. A child narrower than the pane never overflows it.
   - after: One more cell after the children, by id, e.g. an AddCard that adds to the list.
   - weight: Flex share inside a Row or Column; only on a direct child of one.
-• Heading(text, level? (static), subtitle?, weight? (static))
+• Heading(text, level? (static), subtitle?, action? (static), actionLabel?, weight? (static))
   - text: The title text, literal or a data binding.
   - level: 1, 2 or 3; default 2.
   - subtitle: A short line under the title in small muted text.
+  - action: Optional: leave it out when there is nothing to ask. With actionLabel, a small ask button after the subtitle (or the title) sends this action when clicked, as a Button press does.
+  - actionLabel: The ask button's label, literal or a data binding; it shows while the pointer is over the heading. Without it there is no button.
   - weight: Flex share inside a Row or Column; only on a direct child of one.
 • HoverBar(children, weight? (static))
   - children: The buttons, by id, e.g. [editButton, deleteButton]; borderless Buttons with an Icon and a short Text read best.
@@ -189,8 +191,8 @@ Use these exact positional signatures to instantiate components. Do not output p
   - trend: Direction of the change, "up", "down" or "flat" ("neutral" reads as "flat"), literal or a data binding; colours the delta.
   - caption: A short note under the figure.
   - better: Which direction is good, "up" (default) or "down", literal or a data binding. With "down" a rise is coloured as bad and a fall as good, e.g. for a refund rate; the arrow still follows trend.
-  - action: Optional, unlike a Button's action: leave it out when there is nothing to ask. With actionLabel, a small help button after the delta sends this action when clicked, as a Button press does, e.g. Event("explain_metric", {metric: "Refund rate"}).
-  - actionLabel: The help button's label, e.g. "Ask why", literal or a data binding; it shows while the pointer is over the figure. Without it there is no button.
+  - action: Optional, unlike a Button's action: leave it out when there is nothing to ask. With actionLabel, a small ask button sends this action when clicked, as a Button press does, e.g. Event("explain_metric", {metric: "Refund rate"}). In a Card it sits in the card's top-right corner; elsewhere after the delta.
+  - actionLabel: The ask button's label, e.g. "Ask why", literal or a data binding; it shows while the pointer is over the figure, or its Card. Without it there is no button.
   - weight: Flex share inside a Row or Column; only on a direct child of one.
 • Modal(trigger (static), content (static), weight? (static))
   - trigger: The ID of the component that opens the modal when interacted with (e.g., a button).
@@ -429,7 +431,7 @@ Draw numbers as charts, not prose: PieChart for shares, LineChart for a trend ov
 
 Title a dashboard with Heading (level 1 for the page, 3 for a card); its subtitle is the small line under it. Show a status with Badge, or give a DataTable column a badge map so each cell is one. Put a chart's unit (its value axis, a pie's legend, the tooltip) in valuePrefix / valueSuffix rather than in the numbers.
 
-Give a Metric better: "down" when a rise is bad (refund rate, churn, latency), so its delta is coloured by meaning. To let the user ask about a change where it is shown, give the Metric an action and an actionLabel, e.g. action=Event("explain_metric", {metric: "Refund rate"}), actionLabel="Ask why"; the action comes back to you like a Button press. A Metric's action is optional: leave both out on a plain figure, and never give it a placeholder Event("click").
+Give a Metric better: "down" when a rise is bad (refund rate, churn, latency), so its delta is coloured by meaning. To let the user ask about a change where it is shown, give the Metric an action and an actionLabel, e.g. action=Event("explain_metric", {metric: "Refund rate"}), actionLabel="Ask why"; the action comes back to you like a Button press. A Metric's action is optional: leave both out on a plain figure, and never give it a placeholder Event("click"). A Heading takes the same action and actionLabel, to ask about everything under it.
 
 Example 3: Sales dashboard
 ```

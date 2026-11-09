@@ -6,7 +6,7 @@ import { createContext, lazy, Suspense, useContext, useState, type ReactElement,
 import { createComponentImplementation, type ReactCatalogComponent } from '@a2ui/react'
 import { Catalog, type ComponentApi } from '@a2ui/web_core/v1_0'
 import { basicCatalog } from '@a2ui/web_core/catalogs/basic/v1'
-import { CircleHelpIcon, EllipsisIcon, TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
+import { CircleHelpIcon, EllipsisIcon, SparklesIcon, TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover as PopoverPrimitive } from 'radix-ui'
@@ -71,23 +71,54 @@ function BadgeView({ text: label, tone }: { text?: unknown; tone?: unknown }): R
 
 const HEADING_CLASS = ['text-2xl font-semibold', 'text-lg font-semibold', 'text-sm font-semibold'] as const
 
-type HeadingProps = { text?: unknown; level?: number; subtitle?: unknown }
+/**
+ * The small ask button a Metric or Heading draws for its action: hidden until
+ * the pointer is over its owner (`reveal`) or it has keyboard focus.
+ */
+function AskButton({ slot, label, action, reveal }: { slot: string; label: string; action: unknown; reveal: string }): ReactElement {
+  return (
+    <button
+      type="button"
+      data-slot={slot}
+      aria-label={label}
+      onClick={() => (action as () => void)()}
+      className={`inline-flex h-5 min-w-0 shrink items-center gap-1 whitespace-nowrap rounded-full border bg-background px-2 text-xs font-medium text-muted-foreground opacity-0 shadow-xs transition-opacity outline-none hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring ${reveal}`}
+    >
+      <SparklesIcon aria-hidden="true" className="size-3 shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
+  )
+}
 
-function HeadingView({ text: title, level, subtitle }: HeadingProps): ReactElement {
+/** The ask label when both an action and a label are given, else ''. */
+function askLabelOf(action: unknown, actionLabel: unknown): string {
+  return typeof action === 'function' ? text(actionLabel) : ''
+}
+
+type HeadingProps = { text?: unknown; level?: number; subtitle?: unknown; action?: unknown; actionLabel?: unknown }
+
+function HeadingView({ text: title, level, subtitle, action, actionLabel }: HeadingProps): ReactElement {
   const index = level === 1 || level === 3 ? level - 1 : 1
+  const askLabel = askLabelOf(action, actionLabel)
+  const ask = askLabel ? <AskButton slot="a2ui-heading-action" label={askLabel} action={action} reveal="group-hover/heading:opacity-100" /> : null
+  const sub = text(subtitle)
   const heading = (
     <div data-slot="a2ui-heading" role="heading" aria-level={index + 1} className={HEADING_CLASS[index]}>
       {text(title)}
     </div>
   )
-  const sub = text(subtitle)
-  if (!sub) return heading
+  if (!sub && !ask) return heading
   return (
-    <div className="flex flex-col gap-1">
-      {heading}
-      <div data-slot="a2ui-heading-subtitle" className="text-xs text-muted-foreground">
-        {sub}
-      </div>
+    <div className="group/heading flex flex-col gap-1">
+      {sub || !ask ? heading : <div className="flex min-w-0 items-center gap-2">{heading}{ask}</div>}
+      {sub && (
+        <div className="flex min-w-0 items-center gap-2">
+          <div data-slot="a2ui-heading-subtitle" className="min-w-0 text-xs text-muted-foreground">
+            {sub}
+          </div>
+          {ask}
+        </div>
+      )}
     </div>
   )
 }
@@ -113,7 +144,7 @@ const SENSE_TONE = {
 function MetricView({ label, value, delta, trend: bound, caption, better, action, actionLabel }: MetricProps): ReactElement {
   const trend = metricTrend(bound)
   const sense = metricSense(trend, better)
-  const askLabel = typeof action === 'function' ? text(actionLabel) : ''
+  const askLabel = askLabelOf(action, actionLabel)
   return (
     <div data-slot="a2ui-metric" className="group/metric flex min-w-0 flex-col gap-1">
       <span className="truncate text-xs font-medium uppercase tracking-wider text-muted-foreground">{text(label)}</span>
@@ -127,18 +158,7 @@ function MetricView({ label, value, delta, trend: bound, caption, better, action
               {text(delta)}
             </span>
           )}
-          {askLabel && (
-            <button
-              type="button"
-              data-slot="a2ui-metric-action"
-              aria-label={askLabel}
-              onClick={() => (action as () => void)()}
-              className="inline-flex min-w-0 shrink items-center gap-0.5 rounded-sm text-muted-foreground opacity-0 transition-opacity outline-none hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring group-hover/metric:opacity-100"
-            >
-              <CircleHelpIcon aria-hidden="true" className="size-3.5 shrink-0" />
-              <span className="truncate">{askLabel}</span>
-            </button>
-          )}
+          {askLabel && <AskButton slot="a2ui-metric-action" label={askLabel} action={action} reveal="group-hover/metric:opacity-100" />}
           {text(caption) && <span className="min-w-0 text-muted-foreground">{text(caption)}</span>}
         </span>
       )}

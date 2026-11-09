@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -25,6 +27,8 @@ const DASHBOARD = [
   'state = Badge("Delayed", $/state)',
   'orders = DataTable([{key: "id", label: "Order"}, {key: "total", label: "Total", align: "end"}, {key: "status", label: "Status", badge: {Paid: "success", Failed: "danger"}}], $/orders)',
 ].join('\n')
+
+const SURFACE_CSS = readFileSync(join(__dirname, '..', 'browser', 'webview', 'a2ui', 'a2ui-surface.css'), 'utf8')
 
 let root: Root | null = null
 afterEach(() => {
@@ -151,7 +155,7 @@ describe('the dashboard components of the Velloc catalog', () => {
     expect(deltas[0].querySelector('svg')?.getAttribute('class'), 'a rise keeps the up arrow').toContain('trending-up')
   })
 
-  it('a Metric with an action and a label shows a help button after its delta that dispatches like a Button', async () => {
+  it('a Metric with an action and a label shows an ask button after its delta that dispatches like a Button', async () => {
     const actions: unknown[] = []
     const view = await draw(
       [
@@ -169,7 +173,7 @@ describe('the dashboard components of the Velloc catalog', () => {
     expect(ask.tagName).toBe('BUTTON')
     expect(ask.getAttribute('aria-label')).toBe('Ask why')
     expect(ask.textContent).toBe('Ask why')
-    expect(ask.querySelector('svg')?.getAttribute('class')).toContain('circle-question-mark')
+    expect(ask.querySelector('svg')?.getAttribute('class')).toContain('sparkles')
     expect(ask.previousElementSibling?.hasAttribute('data-trend'), 'it sits right after the delta').toBe(true)
     expect(ask.previousElementSibling?.className, 'the delta does not wrap').toContain('whitespace-nowrap')
     expect(ask.querySelector('span')?.className, 'the label does not wrap').toContain('truncate')
@@ -178,7 +182,7 @@ describe('the dashboard components of the Velloc catalog', () => {
     expect(caption.className, 'a long caption still wraps').not.toMatch(/truncate|whitespace-nowrap/)
     expect(ask.parentElement?.className).not.toContain('whitespace-nowrap')
     expect(ask.className.split(' ')).toEqual(
-      expect.arrayContaining(['opacity-0', 'group-hover/metric:opacity-100', 'focus-visible:opacity-100', 'hover:text-foreground']),
+      expect.arrayContaining(['opacity-0', 'group-hover/metric:opacity-100', 'focus-visible:opacity-100', 'hover:text-foreground', 'rounded-full']),
     )
     expect(ask.closest('[data-slot="a2ui-metric"]')?.className).toContain('group/metric')
     await act(async () => ask.click())
@@ -189,6 +193,65 @@ describe('the dashboard components of the Velloc catalog', () => {
     expect(fromMetric).toMatchObject({ name: 'explain_metric', context: { metric: 'Refund rate' } })
     expect({ ...fromMetric, sourceComponentId: '', timestamp: '' }).toEqual({ ...fromButton, sourceComponentId: '', timestamp: '' })
     expect(fromMetric).toMatchObject({ sourceComponentId: 'rate' })
+  })
+
+  it('a Metric\'s ask button in a Card takes the card\'s top-right corner, shown only while that card is hovered or focused', async () => {
+    const view = await draw(
+      [
+        'surface("sales")',
+        'root = Card(Row([net, plain]))',
+        'net = Card(Column([Heading("Net sales", 3, "vs. previous 7 days"), Metric("Net", "$27.6K", "+4.2%", "up", action=Event("ask", {metric: "net"}), actionLabel="Analyze")]), 1)',
+        'plain = Card(Metric("Orders", "72", "+3.0%", "up"), 1)',
+      ].join('\n'),
+    )
+    const ask = view.querySelector<HTMLButtonElement>('[data-slot="a2ui-metric-action"]')!
+    const cards = [...view.querySelectorAll('.a2ui-card')]
+    expect(cards).toHaveLength(3)
+    expect(ask.closest('.a2ui-card'), 'the nearest card is the figure\'s own').toBe(cards[1])
+    const rule = (needle: string) => {
+      const block = SURFACE_CSS.replace(/\/\*[\s\S]*?\*\//g, '').split('}').find(b => b.slice(0, b.indexOf('{')).includes(needle))
+      expect(block, needle).toBeDefined()
+      return block!.replace(/\s+/g, ' ')
+    }
+    expect(rule(".a2ui-card:has([data-slot='a2ui-metric-action'])")).toContain('position: relative')
+    const corner = rule(".a2ui-card [data-slot='a2ui-metric-action']")
+    for (const decl of ['position: absolute', 'top: 0.5rem', 'right: 0.5rem']) expect(corner).toContain(decl)
+    const reveal = rule(':is(:hover, :focus-within)')
+    expect(reveal).toContain('opacity: 1')
+    expect(reveal, 'an outer card\'s hover does not reveal an inner card\'s button').toContain(
+      ":not(.a2ui-card:not(:hover, :focus-within) [data-slot='a2ui-metric-action'])",
+    )
+  })
+
+  it('a Heading with an action and a label shows an ask button after its subtitle, or its title, that dispatches like a Button', async () => {
+    const actions: unknown[] = []
+    const view = await draw(
+      [
+        'surface("sales")',
+        'root = Column([week, solo, quiet])',
+        'week = Heading("Store sales", 1, "Nov 1 – Nov 7, 2026", action=Event("compose", {text: "Analyze all changes"}), actionLabel="Analyze all changes")',
+        'solo = Heading("Refunds", 3, action=Event("ask", {what: "refunds"}), actionLabel="Ask")',
+        'quiet = Heading("Orders", 3, "No label", action=Event("ask", {what: "orders"}))',
+      ].join('\n'),
+      action => actions.push(action),
+    )
+    const asks = [...view.querySelectorAll<HTMLButtonElement>('[data-slot="a2ui-heading-action"]')]
+    expect(asks.map(b => b.textContent), 'no label, no button').toEqual(['Analyze all changes', 'Ask'])
+    const [week, solo] = asks
+    expect(week.previousElementSibling?.getAttribute('data-slot'), 'it sits right after the subtitle').toBe('a2ui-heading-subtitle')
+    expect(solo.previousElementSibling?.getAttribute('data-slot'), 'with no subtitle, right after the title').toBe('a2ui-heading')
+    for (const ask of asks) {
+      expect(ask.className.split(' ')).toEqual(expect.arrayContaining(['opacity-0', 'group-hover/heading:opacity-100', 'focus-visible:opacity-100']))
+      expect(ask.closest('.group\\/heading')).not.toBeNull()
+      expect(ask.querySelector('svg')?.getAttribute('class')).toContain('sparkles')
+    }
+    expect(view.querySelectorAll('[data-slot="a2ui-heading"]')).toHaveLength(3)
+    await act(async () => week.click())
+    await act(async () => solo.click())
+    expect(actions).toMatchObject([
+      { name: 'compose', context: { text: 'Analyze all changes' }, sourceComponentId: 'week' },
+      { name: 'ask', context: { what: 'refunds' }, sourceComponentId: 'solo' },
+    ])
   })
 
   it('the runtime compiler, built from the catalog document, accepts the same dashboard', async () => {
