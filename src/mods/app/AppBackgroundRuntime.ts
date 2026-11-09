@@ -47,6 +47,7 @@ import { AppAgentRuns, readAnalyzeRequest, type AppAgentRunner, type AppAnalyzeR
 import { APP_BACKGROUND_ABI, refuseAppBackgroundCall, refuseAppBackgroundRegistrations, refuseAppBackgroundUses } from './appBackgroundEvents'
 import { sameMcpOwner, type AppBackgroundMcp, type AppBackgroundMcpOwner } from './appBackgroundMcp'
 import { AppStateDocument, type AppStateDocumentFs } from './appStateDocument'
+import { AppViews, type AppViewEvent, type AppViewLayout } from './appViews'
 
 /** One app's background module: a hooks-module ref plus the app it serves. */
 export type AppBackgroundRef = ModModuleRef & {
@@ -140,6 +141,8 @@ type Module = {
   unreadable?: boolean
   /** The badge the module set last; cleared at its stop. */
   badge?: number
+  /** The view events raised so far, so each waits for the one before. */
+  viewChain?: Promise<unknown>
 }
 
 /** An `app.action` answer: `{handled}` read as given, anything else by its truth. */
@@ -189,6 +192,7 @@ const named = (name: string, message: string): Error => {
 
 export class AppBackgroundRuntime {
   private readonly modules = new Map<string, Module>()
+  private readonly views = new AppViews()
   private readonly stores = new Map<string, ModStoreHost>()
   /** A stopping module's teardown by app id: its successor starts after it, so one state file has one writer. */
   private readonly stopping = new Map<string, Promise<void>>()
@@ -253,6 +257,43 @@ export class AppBackgroundRuntime {
       '; the model takes it',
     )
     return raised !== undefined && handledBy(raised.result)
+  }
+
+  /**
+   * `client` shows `sessionId` of app `appId` in `layout`, or no longer shows
+   * it (null): raises `app.show`, `app.layout` or `app.hide` on the app's
+   * module when what the people see of the app changed.
+   */
+  view(appId: string, sessionId: string, client: string, layout: AppViewLayout | null): void {
+    this.raiseViews(this.views.set(appId, sessionId, client, layout))
+  }
+
+  /** A client's connection closed: the apps it showed close unless another client shows them. */
+  viewClientGone(client: string): void {
+    this.raiseViews(this.views.clientGone(client))
+  }
+
+  /** An app's session ended: it is no longer on screen anywhere. */
+  viewSessionGone(appId: string, sessionId: string): void {
+    this.raiseViews(this.views.sessionGone(appId, sessionId))
+  }
+
+  private raiseViews(events: readonly AppViewEvent[]): void {
+    for (const { event, payload } of events) {
+      const module = this.modules.get(payload.appId)
+      if (module) this.raiseView(module, event, payload)
+    }
+  }
+
+  /** Raises a view event after the ones before it; skipped while the module is not loaded or does not hook it. */
+  private raiseView(module: Module, event: AppViewEvent['event'], payload: AppViewEvent['payload']): Promise<unknown> {
+    const run = () => {
+      if (!module.loaded || !module.dispatcher.hasHooksFor(event)) return undefined
+      return this.raise(module, event, payload, this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS, `${event} of ${payload.appId}`)
+    }
+    const next = (module.viewChain ?? Promise.resolve()).then(run, run)
+    module.viewChain = next
+    return next
   }
 
   async dispose(): Promise<void> {
@@ -373,6 +414,8 @@ export class AppBackgroundRuntime {
         }
       })
       await this.raiseStart(module)
+      const shown = this.views.current(ref.appId)
+      if (shown) void this.raiseView(module, 'app.show', { appId: ref.appId, ...shown })
     } catch (error) {
       instance.dispose()
       worker.close()

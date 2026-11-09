@@ -75,11 +75,13 @@ import {
 } from '../runtimeProtocol/modContributions'
 import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
 import { registerModsAppTopic } from './modsAppTopic'
-import { buildRegisteredApp, runRegisteredAppAction } from '../../mods/app/appSurfaceRegistry'
+import { buildRegisteredApp, runRegisteredAppAction, viewRegisteredApp } from '../../mods/app/appSurfaceRegistry'
 import {
   isModsAppActionPayload,
+  isModsAppViewPayload,
   isModsBuildAppPayload,
   type ModsAppActionPayload,
+  type ModsAppViewPayload,
   type ModsAppActionResult,
   type ModsBuildAppPayload,
   type ModsBuildAppResult,
@@ -232,6 +234,8 @@ export function registerModsCapability(
     buildApp?: (sessionId: string) => Promise<ModsBuildAppResult> | undefined
     /** `mods.appAction`: offer a surface action to a session's app; defaults to the realm's registry. */
     appAction?: (sessionId: string, action: string, context: unknown) => Promise<ModsAppActionResult> | undefined
+    /** `mods.appView`: what a client shows of a session's app; defaults to the realm's registry. */
+    appView?: (sessionId: string, client: string, layout: ModsAppViewPayload['layout']) => void
   } = {},
 ): { publish(): void; dispose(): void } {
   const getState = options.getState ?? modsStatePayload
@@ -276,6 +280,11 @@ export function registerModsCapability(
         scope: MODS_ACTION_SCOPES.appAction,
         guard: isModsAppActionPayload,
         sessionOf: payload => (payload as ModsAppActionPayload).sessionId,
+      },
+      appView: {
+        scope: MODS_ACTION_SCOPES.appView,
+        guard: isModsAppViewPayload,
+        sessionOf: payload => (payload as ModsAppViewPayload).sessionId,
       },
     },
     handle: async request => {
@@ -405,6 +414,15 @@ export function registerModsCapability(
           }
           const offered = (options.appAction ?? runRegisteredAppAction)(sessionId, action, context ?? null)
           return (await offered) ?? ({ handled: false } satisfies ModsAppActionResult)
+        }
+        case 'appView': {
+          // Kept by connection: its close drops what it showed (`appViewClientGone`).
+          const { sessionId, layout } = request.payload as ModsAppViewPayload
+          if (!inScope(request.conn, sessionId)) {
+            throw wireError('forbidden_scope', `session ${sessionId} is not in this connection's scope`)
+          }
+          ;(options.appView ?? viewRegisteredApp)(sessionId, request.conn.connectionId, layout)
+          return {}
         }
         case 'setOptions': {
           const payload = request.payload as ModsSetOptionsPayload

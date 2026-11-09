@@ -172,6 +172,8 @@ export type NexusTopBarProps = {
   onPressPluginItem?: (sessionId: string, id: string) => Promise<ModsPressTopbarResult>;
   /** Open a plugin's app (F-40) by its template type; omitted → no app icons. */
   onOpenApp?: (type: string) => void;
+  /** The template type of the app on screen: its icon reads as pressed. */
+  shownAppType?: string;
   /** Not drawn and reports no drag map, but stays mounted so its controls
    *  keep their state (Settings takes the window, F-18). */
   hidden?: boolean;
@@ -239,6 +241,7 @@ export function NexusTopBar({
   onRemoteLogOut,
   onPressPluginItem,
   onOpenApp,
+  shownAppType,
   hidden = false,
 }: NexusTopBarProps) {
   const t = useT();
@@ -256,7 +259,7 @@ export function NexusTopBar({
   const leftGroupRef = React.useRef<HTMLDivElement>(null);
   const rightGroupRef = React.useRef<HTMLDivElement>(null);
   const open = new Set(openPanes ?? []);
-  const plugins = usePluginTopbarItems(activeSessionId, onPressPluginItem, onOpenApp);
+  const plugins = usePluginTopbarItems(activeSessionId, onPressPluginItem, onOpenApp, shownAppType);
   const offered = (kind: SidePaneKind) => !paneKinds || paneKinds.includes(kind);
   const barPaneKinds = onTogglePane
     ? BAR_PANE_KINDS.filter(
@@ -750,10 +753,12 @@ export function NexusTopBar({
                         disabled={item.needsSession && !plugins.sessionReady}
                         onSelect={() => plugins.press(item.id)}
                         data-testid={item.foldedTestId}
+                        {...(item.pressed ? { "data-pressed": "" } : {})}
                         className={MENU_ITEM_CLASS}
                       >
                         {item.icon}
                         <span className="flex-1">{item.label}</span>
+                        {item.pressed ? <CheckIcon aria-hidden className="size-4 text-primary" /> : null}
                       </DropdownMenuPrimitive.Item>
                     ))
                   : null}

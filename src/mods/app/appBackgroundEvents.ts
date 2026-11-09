@@ -11,7 +11,7 @@ import { isValidPattern } from '../eventPattern'
 
 export const APP_BACKGROUND_ABI = 'Velloc app background ABI 0.1'
 
-export const APP_BACKGROUND_EVENTS: readonly string[] = Object.freeze(['app.start', 'app.stop', 'app.action'])
+export const APP_BACKGROUND_EVENTS: readonly string[] = Object.freeze(['app.start', 'app.stop', 'app.action', 'app.show', 'app.layout', 'app.hide'])
 
 /** The nouns a background module may call; `$.plugin` holds values, not calls. */
 export const APP_BACKGROUND_NOUNS: readonly string[] = Object.freeze(['app', 'store', 'http', 'log', 'clock', 'fs', 'mcp', 'plugin'])

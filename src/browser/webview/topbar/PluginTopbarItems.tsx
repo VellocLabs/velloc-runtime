@@ -3,7 +3,8 @@
  * search control. A command item's press asks the runtime to run it for the
  * active session (`mods.pressTopbar`), and is not rendered for a connection
  * that may not press. An app's icon (F-40) opens the app's session, with or
- * without a session on screen.
+ * without a session on screen, and reads as pressed while the app is on
+ * screen.
  */
 import * as React from "react";
 
@@ -41,6 +42,8 @@ export type PluginTopbarItem = {
   icon: React.ReactNode;
   /** A command item runs for the active session, so it waits for one. */
   needsSession: boolean;
+  /** An app's icon while the app is on screen; absent for every other item. */
+  pressed?: boolean;
   /** The pill on an app's icon, as drawn (`appBadgeText`); absent when none. */
   badge?: string;
   testId: string;
@@ -66,6 +69,8 @@ export function usePluginTopbarItems(
   onPress: ((sessionId: string, id: string) => Promise<ModsPressTopbarResult>) | undefined,
   /** Open the app of template `type`. Omitted: no app icon renders. */
   onOpenApp?: (type: string) => void,
+  /** The template type of the app on screen. */
+  shownAppType?: string,
 ): PluginTopbarState | null {
   const t = useT();
   const locale = useLocale();
@@ -119,6 +124,7 @@ export function usePluginTopbarItems(
           tooltip: badge ? t("topbar.appAttention", { title, count: badge }) : title,
           icon: <ModIconSlot icon={app.icon} icons={contributions.icons} className="size-4" />,
           needsSession: false,
+          pressed: app.type === shownAppType,
           ...(badge ? { badge } : {}),
           testId: `topbar-app-${app.appId}`,
           foldedTestId: `topbar-folded-app-${app.appId}`,
@@ -159,6 +165,7 @@ export function PluginTopbarItems({
                   data-testid={item.testId}
                   data-topbar-fold={pluginFoldKey(item.id)}
                   aria-label={item.label}
+                  {...(item.pressed === undefined ? {} : { "aria-pressed": item.pressed })}
                   disabled={item.needsSession && !state.sessionReady}
                   onClick={() => state.press(item.id)}
                 >

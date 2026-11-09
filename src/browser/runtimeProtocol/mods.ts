@@ -76,6 +76,11 @@ export const MODS_ACTION_SCOPES = {
    *  background module before the model: runs the plugin's own handler, as
    *  a press on an element a mod drew does — `control`. */
   appAction: 'control',
+  /** What the page shows of a session's app — open beside the chat, open
+   *  over it, or not at all: raises the app background module's `app.show`,
+   *  `app.layout` and `app.hide` — `control`, as it runs the plugin's own
+   *  handlers. */
+  appView: 'control',
 } as const satisfies Record<string, ScopeMode>
 export type ModsAction = keyof typeof MODS_ACTION_SCOPES
 

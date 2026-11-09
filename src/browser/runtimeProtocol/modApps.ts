@@ -57,6 +57,12 @@ export type ModsAppActionPayload = { sessionId: string; action: string; context?
 export type ModsAppActionResult = { handled: boolean }
 
 const ACTION_NAME = /^[A-Za-z0-9_-]{1,64}$/
+/** How an app's pane is drawn: over the chat (`full`) or beside it (`beside`). */
+export type AppViewLayout = 'full' | 'beside'
+
+/** `mods.appView`: this client shows the session's app in `layout`, or no longer shows it (null). */
+export type ModsAppViewPayload = { sessionId: string; layout: AppViewLayout | null }
+
 /** The bytes an action's context may take on the wire, as UTF-8 JSON. */
 export const APP_ACTION_CONTEXT_MAX_BYTES = 64 * 1024
 const contextEncoder = new TextEncoder()
@@ -124,4 +130,9 @@ export function isModsAppActionPayload(value: unknown): value is ModsAppActionPa
   } catch {
     return false
   }
+}
+
+export function isModsAppViewPayload(value: unknown): value is ModsAppViewPayload {
+  if (!isRecord(value) || typeof value.sessionId !== 'string' || value.sessionId === '') return false
+  return value.layout === null || value.layout === 'full' || value.layout === 'beside'
 }

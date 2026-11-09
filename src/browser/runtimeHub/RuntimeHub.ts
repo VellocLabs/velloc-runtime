@@ -76,6 +76,7 @@ import { registerProviderUsageCapability } from './providerUsageCapability'
 import { getProviderCredentials } from '../../mods/provider/login/credentialDeps'
 import { registerModsCapability } from './modsCapability'
 import { modSlotsClientGone } from '../../mods/modSlotRegistry'
+import { appViewClientGone } from '../../mods/app/appSurfaceRegistry'
 import { knownProjectRoots, type SessionProjectRoot } from './knownProjects'
 import { PresenceTable, registerPresenceCapability, type PresenceChange } from './presence'
 import {
@@ -269,6 +270,8 @@ export class RuntimeHub {
         this.presence.remove(info.connectionId)
         // Its mod drawings and their handles go with it (F-25).
         modSlotsClientGone(info.connectionId)
+        // The apps it showed close unless another client shows them (F-40).
+        appViewClientGone(info.connectionId)
         // F-24: the device left the connected-device list. Only a websocket
         // connection is ON that list, so a panel port closing republishes
         // nothing anyone can see — but it is also not worth a second hook.

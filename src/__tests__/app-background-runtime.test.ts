@@ -257,7 +257,7 @@ describe('AppBackgroundRuntime — admission', () => {
     })
     runtime.sync([ref('/plugins/pay/bg.js')])
     await vi.waitFor(() => expect(status()?.state).toBe('refused'))
-    expect(status()?.reason).toMatch(/hooks app\.start, app\.stop and app\.action alone, and it hooks session\.start/)
+    expect(status()?.reason).toMatch(/hooks app\.start, app\.stop, app\.action, app\.show, app\.layout and app\.hide alone, and it hooks session\.start/)
     await expect(workers[0]!.closed).resolves.toEqual({ reason: 'closed' })
   })
 

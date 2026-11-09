@@ -13,7 +13,7 @@ import { readConsentedGrants } from '../../pluginHost/providerPluginConsent'
 import { getNexusAppDir } from '../../utils/conversationStoragePaths'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import { getModUiContributionsHost, type AppBackgroundTemplate } from '../ui/contributionsHost'
-import { setAppActionDispatch } from './appActionBus'
+import { setAppActionDispatch, setAppViewDispatch } from './appActionBus'
 import type { AppAgentRunner } from './appAgentRun'
 import type { AppBackgroundRef, AppBackgroundRuntime } from './AppBackgroundRuntime'
 import { coversFolderScopes, expandScopeFolder, type FolderScopes } from './appFolderScopes'
@@ -178,6 +178,11 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
         }
         const runtime = state.runtime
         setAppActionDispatch((appId, action, context, sessionId) => runtime.action(appId, action, context, sessionId))
+        setAppViewDispatch({
+          view: (appId, sessionId, client, layout) => runtime.view(appId, sessionId, client, layout),
+          clientGone: client => runtime.viewClientGone(client),
+          sessionGone: (appId, sessionId) => runtime.viewSessionGone(appId, sessionId),
+        })
       }
       state.runtime.sync(refs)
     },
@@ -201,6 +206,7 @@ export async function resetAppBackgroundBootForTests(): Promise<void> {
   const state = booted
   booted = null
   setAppActionDispatch(undefined)
+  setAppViewDispatch(undefined)
   if (!state) return
   state.stop()
   const runtime = state.runtime ?? (state.creating ? await state.creating.catch(() => null) : null)

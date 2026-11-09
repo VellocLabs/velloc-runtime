@@ -109,6 +109,7 @@ import {
   withoutHiddenKeys,
 } from './sessionVisibility'
 import { createOpenApp, unlistedAppSessionIds, unlistedAppSessionKey, unlistedAppSessionSet } from './apps/appLaunch'
+import { useShownApp } from './apps/appView'
 import { subscribeTeammateJump } from './teammateJumpRequests'
 import { publishSessionStatuses } from './sessionStatusStore'
 import {
@@ -3133,6 +3134,18 @@ export function MultiSessionShell({
     [sessions, modContributions, activeSessionId],
   )
   const unlistedIds = useMemo(() => unlistedAppSessionSet(unlistedKey), [unlistedKey])
+  // The app on screen (F-40): its icon pressed; covered, its pane closes.
+  const appTypes = useMemo(() => new Set((modContributions?.apps ?? []).map(app => app.type)), [modContributions])
+  const shownAppType = useShownApp({
+    sessionId: activeSessionId,
+    templateType: activeSessionId ? sessions.find(entry => entry.sessionId === activeSessionId)?.templateType : undefined,
+    appTypes,
+    record: activePaneRecord,
+    covered: settingsSection !== null || customizeOpen,
+    updatePaneRecord,
+    runtimeConnection,
+    linkReady: isRuntimeReady(connectionState),
+  })
 
   // THE one place teammates and channel-hidden sessions are dropped.
   // Everything the sidebar, the search corpus and the thread list read is this
@@ -4095,6 +4108,7 @@ export function MultiSessionShell({
         onOpenProviderSettings={handleOpenProviderSettings}
         onPressPluginItem={runtimeConnection ? handlePressPluginItem : undefined}
         onOpenApp={runtimeConnection ? handleOpenApp : undefined}
+        shownAppType={shownAppType}
         sidebarCollapsed={sidebarCollapsed || sidebarHidden}
         onToggleSidebar={handleToggleSidebar}
         searchSlot={
