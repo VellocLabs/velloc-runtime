@@ -57,8 +57,9 @@ export type ModsAppActionPayload = { sessionId: string; action: string; context?
 export type ModsAppActionResult = { handled: boolean }
 
 const ACTION_NAME = /^[A-Za-z0-9_-]{1,64}$/
-/** The bytes an action's context may take on the wire. */
+/** The bytes an action's context may take on the wire, as UTF-8 JSON. */
 export const APP_ACTION_CONTEXT_MAX_BYTES = 64 * 1024
+const contextEncoder = new TextEncoder()
 
 export function modsAppTopic(sessionId: string): TopicId {
   if (!isTopicSegment(sessionId)) {
@@ -119,7 +120,7 @@ export function isModsAppActionPayload(value: unknown): value is ModsAppActionPa
   if (value.context === undefined) return true
   try {
     const json = JSON.stringify(value.context)
-    return json !== undefined && json.length <= APP_ACTION_CONTEXT_MAX_BYTES
+    return json !== undefined && contextEncoder.encode(json).byteLength <= APP_ACTION_CONTEXT_MAX_BYTES
   } catch {
     return false
   }

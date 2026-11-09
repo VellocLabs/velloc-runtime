@@ -147,6 +147,7 @@ function A2uiFeeder({
   const processedRef = useRef(0)
   const busyRef = useRef(busy)
   busyRef.current = busy
+  const localPendingRef = useRef(false)
 
   // Feed only NEW sources each time, one at a time, so one bad source cannot
   // abort the rest. A block compiled here that fails leaves the renderer as it
@@ -197,11 +198,12 @@ function A2uiFeeder({
   // Forward surface actions to the model as a hidden isMeta turn (gated while a
   // turn is in flight — one action per turn). An action on one of the app's own
   // surfaces that the manifest names local is offered to the app's background
-  // module first; the model gets it only when the module did not take it.
+  // module first; the model gets it only when the module did not take it. While
+  // the module has one in hand, every other press is dropped too.
   useEffect(() => {
     actionHandlerRef.current = (action: ActionPayload) => {
       try {
-        if (!submitActionMessage || busyRef.current) return
+        if (!submitActionMessage || busyRef.current || localPendingRef.current) return
         if (typeof action.surfaceId !== 'string') return
         const dataModel = processor.getSurface(action.surfaceId)?.dataModel.get('/') ?? {}
         const turn = buildActionTurn(action, dataModel)
@@ -210,9 +212,17 @@ function A2uiFeeder({
           const toModel = () => {
             if (!busyRef.current) void submitActionMessage(turn)
           }
-          localActions.run(name, action.context ?? null).then(handled => {
-            if (!handled) toModel()
-          }, toModel)
+          localPendingRef.current = true
+          localActions.run(name, action.context ?? null).then(
+            handled => {
+              localPendingRef.current = false
+              if (!handled) toModel()
+            },
+            () => {
+              localPendingRef.current = false
+              toModel()
+            },
+          )
           return
         }
         void submitActionMessage(turn)

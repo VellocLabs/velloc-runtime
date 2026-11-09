@@ -474,6 +474,22 @@ describe('AppBackgroundRuntime — $.app.badge', () => {
     await vi.waitFor(() => expect(second.status()).toBeUndefined())
     expect(badges).toHaveLength(2)
   })
+
+  it('a crash restart keeps the badge; a module that stays off after its crashes clears it', async () => {
+    const badges: Array<[string, number | null]> = []
+    const { runtime, ref, status, workers, opened } = world({ '/plugins/pay/bg.js': BADGER }, { onBadge: (appId, count) => badges.push([appId, count]) })
+    runtime.sync([ref('/plugins/pay/bg.js')])
+    await vi.waitFor(() => expect(badges).toEqual([['pay-board', 3]]))
+    for (let crash = 1; crash <= 3; crash++) {
+      workers[crash - 1]!.crash('boom')
+      await vi.waitFor(() => expect(opened()).toBe(crash + 1))
+      await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    }
+    expect(badges).toEqual([['pay-board', 3]])
+    workers[3]!.crash('boom')
+    await vi.waitFor(() => expect(status()?.state).toBe('dead'))
+    expect(badges).toEqual([['pay-board', 3], ['pay-board', null]])
+  })
 })
 
 describe('AppBackgroundRuntime — $.mcp', () => {

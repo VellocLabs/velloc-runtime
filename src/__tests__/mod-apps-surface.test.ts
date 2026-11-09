@@ -337,6 +337,8 @@ describe('the mods/app topic', () => {
     expect(isModsAppActionPayload({ sessionId: 's1', action: 'open case' })).toBe(false)
     expect(isModsAppActionPayload({ sessionId: 's1', action: 'a'.repeat(65) })).toBe(false)
     expect(isModsAppActionPayload({ sessionId: 's1', action: 'refresh', context: 'x'.repeat(APP_ACTION_CONTEXT_MAX_BYTES) })).toBe(false)
+    expect(isModsAppActionPayload({ sessionId: 's1', action: 'refresh', context: '账'.repeat(30_000) })).toBe(false)
+    expect(isModsAppActionPayload({ sessionId: 's1', action: 'refresh', context: '账'.repeat(20_000) })).toBe(true)
     expect(isModsAppActionPayload({ sessionId: 's1', action: 'refresh', context: () => 1 })).toBe(false)
     const cyclic: Record<string, unknown> = {}
     cyclic.self = cyclic

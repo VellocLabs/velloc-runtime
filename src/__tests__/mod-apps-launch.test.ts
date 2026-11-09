@@ -20,6 +20,7 @@ import { defaultSessionPaneRecord, hasPane } from '../browser/webview/layout/pan
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
 import { PluginTopbarItems, appBadgeText, appItemId, usePluginTopbarItems } from '../browser/webview/topbar/PluginTopbarItems'
 import { TooltipProvider } from '../components/ui/tooltip'
+import { I18nProvider } from '../browser/webview/i18n'
 import { RuntimeCapabilitiesContext } from '../browser/webview/useCan'
 import { EMPTY_MOD_CONTRIBUTIONS, type ModContributionsState } from '../browser/runtimeProtocol/modContributions'
 
@@ -212,6 +213,11 @@ describe('an app\'s topbar icon', () => {
     act(() => setModContributions(withBadge(250)))
     expect(screen.getByTestId('topbar-app-pay-board-badge').textContent).toBe('99+')
     expect(screen.getByTestId('topbar-app-pay-board').getAttribute('aria-label')).toBe('Open Payments. Needs attention: 99+')
+    cleanup()
+    render(h(I18nProvider, { locale: 'zh' }, h(RuntimeCapabilitiesContext.Provider, { value: { can: () => true } }, h(TooltipProvider, null, h(Bar, { session: undefined, onPress: vi.fn(), onOpenApp: vi.fn() })))))
+    expect(screen.getByTestId('topbar-app-pay-board').getAttribute('aria-label')).toBe('打开 收付款。需要你处理：99+')
+    cleanup()
+    renderBar({ session: undefined, onPress: vi.fn(), onOpenApp: vi.fn() })
     act(() => setModContributions(withBadge(0)))
     expect(screen.queryByTestId('topbar-app-pay-board-badge')).toBeNull()
     expect(screen.getByTestId('topbar-app-pay-board').getAttribute('aria-label')).toBe('Open Payments')

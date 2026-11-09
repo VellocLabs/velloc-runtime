@@ -113,12 +113,10 @@ export function usePluginTopbarItems(
       ...appItems.map(app => {
         const title = resolveLocalizedText(app.title, locale);
         const badge = appBadgeText(app.badge);
-        const open = t("topbar.openApp", { title });
-        const attention = badge ? t("topbar.appBadge", { count: badge }) : "";
         return {
           id: appItemId(app.type),
-          label: attention ? `${open}. ${attention}` : open,
-          tooltip: attention ? `${title}. ${attention}` : title,
+          label: badge ? t("topbar.openAppAttention", { title, count: badge }) : t("topbar.openApp", { title }),
+          tooltip: badge ? t("topbar.appAttention", { title, count: badge }) : title,
           icon: <ModIconSlot icon={app.icon} icons={contributions.icons} className="size-4" />,
           needsSession: false,
           ...(badge ? { badge } : {}),

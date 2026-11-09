@@ -86,7 +86,7 @@ export type AppBackgroundRuntimeOptions = {
   report: (line: string) => void
   locale?: () => string | undefined
   onStatusChanged?: () => void
-  /** `$.app.badge`: the count the app's icon shows, or null for none; also null at the module's stop. */
+  /** `$.app.badge`: the count the app's icon shows, or null for none; also null when the module stops, fails to load or is off after its crashes. */
   onBadge?: (appId: string, count: number | null) => void
   startTimeoutMs?: number
   stopTimeoutMs?: number
@@ -225,32 +225,15 @@ export class AppBackgroundRuntime {
   async action(appId: string, action: string, context: unknown, sessionId: string): Promise<boolean> {
     const module = this.modules.get(appId)
     if (!module || !module.loaded || !module.dispatcher.hasHooksFor('app.action')) return false
-    const timeoutMs = this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs)
-    const onGone = () => controller.abort()
-    module.gone.signal.addEventListener('abort', onGone, { once: true })
-    try {
-      const result = await module.dispatcher.dispatch(
-        'app.action',
-        { appId, action, context: context ?? null, sessionId },
-        () => undefined,
-        { signal: controller.signal, accepts: () => true, budgetMs: timeoutMs },
-      )
-      return handledBy(result)
-    } catch (error) {
-      if (!module.gone.signal.aborted) {
-        this.options.report(
-          controller.signal.aborted
-            ? `${module.ref.plugin}: app.action "${action}" of ${appId} did not finish within ${timeoutMs}ms; the model takes it`
-            : `${module.ref.plugin}: app.action "${action}" of ${appId} failed: ${errorMessage(error)}; the model takes it`,
-        )
-      }
-      return false
-    } finally {
-      clearTimeout(timer)
-      module.gone.signal.removeEventListener('abort', onGone)
-    }
+    const raised = await this.raise(
+      module,
+      'app.action',
+      { appId, action, context: context ?? null, sessionId },
+      this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS,
+      `app.action "${action}" of ${appId}`,
+      '; the model takes it',
+    )
+    return raised !== undefined && handledBy(raised.result)
   }
 
   async dispose(): Promise<void> {
@@ -391,30 +374,53 @@ export class AppBackgroundRuntime {
   private async raiseStart(module: Module): Promise<void> {
     const { ref } = module
     if (!module.dispatcher.hasHooksFor('app.start')) return
-    const timeoutMs = this.options.startTimeoutMs ?? MOD_SESSION_START_TIMEOUT_MS
+    await this.raise(
+      module,
+      'app.start',
+      {
+        appId: ref.appId,
+        folder: ref.folder,
+        folders: { read: [...(ref.folders?.read ?? [])], write: [...(ref.folders?.write ?? [])] },
+        locale: normalizeModLocale(this.currentLocale()),
+      },
+      this.options.startTimeoutMs ?? MOD_SESSION_START_TIMEOUT_MS,
+      `app.start of ${ref.appId}`,
+    )
+  }
+
+  /**
+   * Raises an event on a loaded module under a budget, ended early when the
+   * module goes. The hooks' answer, or undefined after a failure or the budget,
+   * reported unless the module is gone.
+   */
+  private async raise(
+    module: Module,
+    event: string,
+    payload: unknown,
+    timeoutMs: number,
+    label: string,
+    after = '',
+  ): Promise<{ result: unknown } | undefined> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     const onGone = () => controller.abort()
     module.gone.signal.addEventListener('abort', onGone, { once: true })
     try {
-      await module.dispatcher.dispatch(
-        'app.start',
-        {
-          appId: ref.appId,
-          folder: ref.folder,
-          folders: { read: [...(ref.folders?.read ?? [])], write: [...(ref.folders?.write ?? [])] },
-          locale: normalizeModLocale(this.currentLocale()),
-        },
-        () => undefined,
-        { signal: controller.signal, accepts: () => true, budgetMs: timeoutMs },
-      )
+      const result: unknown = await module.dispatcher.dispatch(event, payload, () => undefined, {
+        signal: controller.signal,
+        accepts: () => true,
+        budgetMs: timeoutMs,
+      })
+      return { result }
     } catch (error) {
-      if (module.gone.signal.aborted) return
-      this.options.report(
-        controller.signal.aborted
-          ? `${ref.plugin}: app.start of ${ref.appId} did not finish within ${timeoutMs}ms`
-          : `${ref.plugin}: app.start of ${ref.appId} failed: ${errorMessage(error)}`,
-      )
+      if (!module.gone.signal.aborted) {
+        this.options.report(
+          controller.signal.aborted
+            ? `${module.ref.plugin}: ${label} did not finish within ${timeoutMs}ms${after}`
+            : `${module.ref.plugin}: ${label} failed: ${errorMessage(error)}${after}`,
+        )
+      }
+      return undefined
     } finally {
       clearTimeout(timer)
       module.gone.signal.removeEventListener('abort', onGone)
@@ -465,10 +471,7 @@ export class AppBackgroundRuntime {
       loaded.instance.dispose()
       loaded.worker.close()
     }
-    if (module.badge !== undefined) {
-      module.badge = undefined
-      this.options.onBadge?.(module.ref.appId, null)
-    }
+    this.clearBadge(module)
     this.note(module, 'stopped', reason)
     await Promise.all([module.document.dispose(), this.closeMcp(module)])
   }
@@ -485,6 +488,13 @@ export class AppBackgroundRuntime {
     return undefined
   }
 
+  /** A module that stops for good takes its badge with it; a crash restart keeps it. */
+  private clearBadge(module: Module): void {
+    if (module.badge === undefined) return
+    module.badge = undefined
+    this.options.onBadge?.(module.ref.appId, null)
+  }
+
   /** The module's MCP pool is closed with its worker; the next worker builds its own. */
   private async closeMcp(module: Module): Promise<void> {
     const mcp = module.mcp
@@ -497,6 +507,7 @@ export class AppBackgroundRuntime {
     const refused = error instanceof ModuleRefused ? error : new ModuleRefused('failed', errorMessage(error))
     this.note(module, refused.state, refused.message)
     this.options.report(`${module.ref.plugin}: the background module of ${module.ref.appId} did not load — ${refused.message}`)
+    this.clearBadge(module)
     void this.closeMcp(module)
   }
 
@@ -510,6 +521,7 @@ export class AppBackgroundRuntime {
       module.crashes = recent
       this.note(module, 'dead', `${reason}; it crashed ${MOD_RESPAWN_LIMIT + 1} times within a minute, so it stays off until its plugin is switched off and on again`)
       this.options.report(`${module.ref.plugin}: the background module of ${module.ref.appId} stopped — ${module.reason}`)
+      this.clearBadge(module)
       return
     }
     module.crashes = [...recent, now]

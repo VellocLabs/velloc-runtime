@@ -148,6 +148,21 @@ describe('a press on the app\'s surface', () => {
     expect(actFn).not.toHaveBeenCalled()
     expect(submit).not.toHaveBeenCalled()
   })
+
+  it('while the module has a local action in hand, further presses go nowhere; after its answer they go again', async () => {
+    let answer!: (result: ModsAppActionResult) => void
+    const { submit, actFn, button } = rig(state(['refresh']), { act: () => new Promise(resolve => { answer = resolve }) })
+    await waitFor(() => expect(button('Refresh')).toBeDefined())
+    fireEvent.click(button('Refresh'))
+    fireEvent.click(button('Refresh'))
+    fireEvent.click(button('Work this case'))
+    await act(async () => undefined)
+    expect(actFn).toHaveBeenCalledTimes(1)
+    expect(submit).not.toHaveBeenCalled()
+    await act(async () => answer({ handled: true }))
+    fireEvent.click(button('Refresh'))
+    await waitFor(() => expect(actFn).toHaveBeenCalledTimes(2))
+  })
 })
 
 describe('the board\'s act', () => {
