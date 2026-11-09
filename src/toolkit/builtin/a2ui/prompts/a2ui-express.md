@@ -173,7 +173,7 @@ Use these exact positional signatures to instantiate components. Do not output p
   - trend: Direction of the change, "up", "down" or "flat" ("neutral" reads as "flat"), literal or a data binding; colours the delta.
   - caption: A short note under the figure.
   - better: Which direction is good, "up" (default) or "down", literal or a data binding. With "down" a rise is coloured as bad and a fall as good, e.g. for a refund rate; the arrow still follows trend.
-  - action: Optional. With actionLabel, a small help button after the delta sends this action when clicked, as a Button press does, e.g. Event("explain_metric", {metric: "Refund rate"}).
+  - action: Optional, unlike a Button's action: leave it out when there is nothing to ask. With actionLabel, a small help button after the delta sends this action when clicked, as a Button press does, e.g. Event("explain_metric", {metric: "Refund rate"}).
   - actionLabel: The help button's label, e.g. "Ask why", literal or a data binding; it shows while the pointer is over the figure. Without it there is no button.
   - weight: Flex share inside a Row or Column; only on a direct child of one.
 • Modal(trigger (static), content (static), weight? (static))
@@ -409,7 +409,7 @@ Draw numbers as charts, not prose: PieChart for shares, LineChart for a trend ov
 
 Title a dashboard with Heading (level 1 for the page, 3 for a card); its subtitle is the small line under it. Show a status with Badge, or give a DataTable column a badge map so each cell is one. Put units on a chart's value axis with valuePrefix / valueSuffix rather than in the numbers.
 
-Give a Metric better: "down" when a rise is bad (refund rate, churn, latency), so its delta is coloured by meaning. To let the user ask about a change where it is shown, give the Metric an action and an actionLabel, e.g. action=Event("explain_metric", {metric: "Refund rate"}), actionLabel="Ask why"; the action comes back to you like a Button press.
+Give a Metric better: "down" when a rise is bad (refund rate, churn, latency), so its delta is coloured by meaning. To let the user ask about a change where it is shown, give the Metric an action and an actionLabel, e.g. action=Event("explain_metric", {metric: "Refund rate"}), actionLabel="Ask why"; the action comes back to you like a Button press. A Metric's action is optional: leave both out on a plain figure, and never give it a placeholder Event("click").
 
 Example 3: Sales dashboard
 ```

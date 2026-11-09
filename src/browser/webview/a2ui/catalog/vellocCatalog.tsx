@@ -115,9 +115,9 @@ function MetricView({ label, value, delta, trend: bound, caption, better, action
       <span className="truncate text-xs font-medium uppercase tracking-wider text-muted-foreground">{text(label)}</span>
       <span className="text-2xl font-semibold tabular-nums">{text(value)}</span>
       {(text(delta) || text(caption) || askLabel) && (
-        <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-xs">
+        <span className="flex min-w-0 items-center gap-1 text-xs">
           {text(delta) && (
-            <span data-trend={trend} data-sense={sense} className={`inline-flex items-center gap-0.5 ${SENSE_TONE[sense]}`}>
+            <span data-trend={trend} data-sense={sense} className={`inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap ${SENSE_TONE[sense]}`}>
               {trend === 'up' && <TrendingUpIcon className="size-3.5" />}
               {trend === 'down' && <TrendingDownIcon className="size-3.5" />}
               {text(delta)}
@@ -135,7 +135,7 @@ function MetricView({ label, value, delta, trend: bound, caption, better, action
               <span className="truncate">{askLabel}</span>
             </button>
           )}
-          {text(caption) && <span className="truncate text-muted-foreground">{text(caption)}</span>}
+          {text(caption) && <span className="min-w-0 text-muted-foreground">{text(caption)}</span>}
         </span>
       )}
     </div>

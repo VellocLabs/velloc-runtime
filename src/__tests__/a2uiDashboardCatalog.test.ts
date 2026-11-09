@@ -171,7 +171,12 @@ describe('the dashboard components of the Velloc catalog', () => {
     expect(ask.textContent).toBe('Ask why')
     expect(ask.querySelector('svg')?.getAttribute('class')).toContain('circle-question-mark')
     expect(ask.previousElementSibling?.hasAttribute('data-trend'), 'it sits right after the delta').toBe(true)
-    expect(ask.parentElement?.className, 'on the delta line, which does not wrap').toContain('whitespace-nowrap')
+    expect(ask.previousElementSibling?.className, 'the delta does not wrap').toContain('whitespace-nowrap')
+    expect(ask.querySelector('span')?.className, 'the label does not wrap').toContain('truncate')
+    const caption = ask.nextElementSibling!
+    expect(caption.textContent).toBe('vs last week')
+    expect(caption.className, 'a long caption still wraps').not.toMatch(/truncate|whitespace-nowrap/)
+    expect(ask.parentElement?.className).not.toContain('whitespace-nowrap')
     expect(ask.className.split(' ')).toEqual(
       expect.arrayContaining(['opacity-0', 'group-hover/metric:opacity-100', 'focus-visible:opacity-100', 'hover:text-foreground']),
     )
