@@ -142,10 +142,10 @@ Use these exact positional signatures to instantiate components. Do not output p
   - minWidth: The narrowest a column may get, in pixels; default 280, kept within 120-800. A child narrower than the pane never overflows it.
   - after: One more cell after the children, by id, e.g. an AddCard that adds to the list.
   - weight: Flex share inside a Row or Column; only on a direct child of one.
-• Heading(text, level? (static), subtitle?, action? (static), actionLabel?, weight? (static))
-  - text: The title text, literal or a data binding.
+• Heading(text?, level? (static), subtitle?, action? (static), actionLabel?, weight? (static))
+  - text: The title text, literal or a data binding. Leave it out for the subtitle alone, e.g. the period a tab covers.
   - level: 1, 2 or 3; default 2.
-  - subtitle: A short line under the title in small muted text.
+  - subtitle: A short line under the title in small muted text; with no title, that line alone.
   - action: Optional: leave it out when there is nothing to ask. With actionLabel, a small ask button after the subtitle (or the title) sends this action when clicked, as a Button press does.
   - actionLabel: The ask button's label, literal or a data binding; it shows while the pointer is over the heading. Without it there is no button.
   - weight: Flex share inside a Row or Column; only on a direct child of one.

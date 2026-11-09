@@ -109,9 +109,11 @@ function HeadingView({ text: title, level, subtitle, action, actionLabel }: Head
     </div>
   )
   if (!sub && !ask) return heading
+  // A subtitle with no title is drawn alone, as the muted line.
+  const titled = !sub || text(title) !== ''
   return (
     <div className="group/heading flex flex-col gap-1">
-      {sub ? heading : <div className="flex min-w-0 items-center gap-2">{heading}{ask}</div>}
+      {!titled ? null : sub ? heading : <div className="flex min-w-0 items-center gap-2">{heading}{ask}</div>}
       {sub && (
         <div className="flex min-w-0 items-center gap-2">
           <div data-slot="a2ui-heading-subtitle" className="min-w-0 text-xs text-muted-foreground">

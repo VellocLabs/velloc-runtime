@@ -281,6 +281,29 @@ describe('the dashboard components of the Velloc catalog', () => {
     ])
   })
 
+  it('a Heading with a subtitle and no title draws the muted line alone, its ask button after it', async () => {
+    const actions: unknown[] = []
+    const view = await draw(
+      [
+        'surface("sales")',
+        'root = Column([period, bare])',
+        'period = Heading(subtitle="Nov 1 – Nov 7, 2026", action=Event("compose", {text: "Analyze all changes"}), actionLabel="Analyze all changes")',
+        'bare = Heading(subtitle="3 open")',
+      ].join('\n'),
+      action => actions.push(action),
+    )
+    expect(view.querySelectorAll('[data-slot="a2ui-heading"]'), 'no title element, so nothing bold').toHaveLength(0)
+    const lines = [...view.querySelectorAll('[data-slot="a2ui-heading-subtitle"]')]
+    expect(lines.map(l => l.textContent)).toEqual(['Nov 1 – Nov 7, 2026', '3 open'])
+    for (const line of lines) expect(line.className.split(' ')).toEqual(expect.arrayContaining(['text-xs', 'text-muted-foreground']))
+    const ask = view.querySelector<HTMLButtonElement>('[data-slot="a2ui-heading-action"]')!
+    expect(ask.previousElementSibling).toBe(lines[0])
+    expect(ask.closest('.group\\/heading')).not.toBeNull()
+    await act(async () => ask.click())
+    expect(actions).toMatchObject([{ name: 'compose', context: { text: 'Analyze all changes' }, sourceComponentId: 'period' }])
+    expect(chartCatalogDefinitions.Heading.schema.safeParse({ subtitle: { path: '/range' } }).success).toBe(true)
+  })
+
   it('the runtime compiler, built from the catalog document, accepts the same dashboard', async () => {
     const compiler = await getRuntimeA2uiCompiler()
     expect(compiler.compile(DASHBOARD, compiler.createState())).toMatchObject({ ok: true })

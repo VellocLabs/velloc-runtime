@@ -1355,7 +1355,7 @@
               "description": "Invokes a named function, combining common function properties with the catalog function definition."
             }
           ],
-          "description": "The title text, literal or a data binding."
+          "description": "The title text, literal or a data binding. Leave it out for the subtitle alone, e.g. the period a tab covers."
         },
         "level": {
           "type": "integer",
@@ -1376,7 +1376,7 @@
               "description": "Invokes a named function, combining common function properties with the catalog function definition."
             }
           ],
-          "description": "A short line under the title in small muted text."
+          "description": "A short line under the title in small muted text; with no title, that line alone."
         },
         "action": {
           "$ref": "common_types.json#/$defs/Action",
@@ -1403,8 +1403,7 @@
         }
       },
       "required": [
-        "component",
-        "text"
+        "component"
       ],
       "unevaluatedProperties": false
     },

@@ -141,9 +141,11 @@ export const chartCatalogDefinitions = {
     description: 'A title: level 1 for the page, 2 for a section, 3 for a card.',
     schema: z
       .object({
-        text: DynamicString.describe('The title text, literal or a data binding.'),
+        text: DynamicString.optional().describe(
+          'The title text, literal or a data binding. Leave it out for the subtitle alone, e.g. the period a tab covers.',
+        ),
         level: z.number().int().min(1).max(3).optional().describe('1, 2 or 3; default 2.'),
-        subtitle: DynamicString.optional().describe('A short line under the title in small muted text.'),
+        subtitle: DynamicString.optional().describe('A short line under the title in small muted text; with no title, that line alone.'),
         action: Action.optional().describe(
           'REF:#/$defs/Action|Optional: leave it out when there is nothing to ask. With actionLabel, a small ask button after the subtitle (or the title) sends this action when clicked, as a Button press does.',
         ),
