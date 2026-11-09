@@ -1,11 +1,13 @@
 /**
- * Security: plugin consent. A plugin declaring `providers`, or folders for an
- * app's background module, installs DISABLED; its providers register and its
- * modules reach those folders only when the consent baseline on file covers
- * the grant its manifest declares now, whatever its enabled flag says. A
- * version that asks for more is unapproved until the person consents again.
+ * Security: plugin consent. A plugin declaring `providers`, or folders or
+ * agent runs for an app's background module, installs DISABLED; its providers
+ * register and its modules reach those folders or run the agent only when the
+ * consent baseline on file covers the grant its manifest declares now,
+ * whatever its enabled flag says. A version that asks for more is unapproved
+ * until the person consents again.
  * Hand-placed directory plugins are exempt.
  */
+import { manifestAsksAgent } from '../mods/app/appAgentRun'
 import { folderScopesOf } from '../mods/app/appFolderScopes'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import type { UpdateChannel } from '../branding/updateChannels'
@@ -22,7 +24,7 @@ export function manifestDeclaresProviders(manifest: unknown): boolean {
 
 /**
  * A parsed plugin.json with its `templates` as this channel's manifest check
- * keeps them: an app the channel leaves out declares no folders.
+ * keeps them: an app the channel leaves out declares no folders or agent runs.
  */
 function withChannelTemplates(manifest: unknown, channel?: UpdateChannel): unknown {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return manifest
@@ -30,12 +32,14 @@ function withChannelTemplates(manifest: unknown, channel?: UpdateChannel): unkno
   return { ...(manifest as Record<string, unknown>), templates: checked?.templates }
 }
 
-/** Whether a parsed plugin.json declares anything the person consents to: providers, or folders of an app this channel runs. */
+/** Whether a parsed plugin.json declares anything the person consents to: providers, or folders or agent runs of an app this channel runs. */
 export function manifestNeedsConsent(manifest: unknown, channel?: UpdateChannel): boolean {
-  return manifestDeclaresProviders(manifest) || folderScopesOf(withChannelTemplates(manifest, channel)) !== undefined
+  if (manifestDeclaresProviders(manifest)) return true
+  const apps = withChannelTemplates(manifest, channel)
+  return folderScopesOf(apps) !== undefined || manifestAsksAgent(apps)
 }
 
-/** Install-time hold: disable `identifier` when its manifest declares providers or folders. */
+/** Install-time hold: disable `identifier` when its manifest declares providers, folders or agent runs. */
 export async function holdProviderPluginForConsent(
   ctx: PluginInstallPathContext,
   fs: RuntimeFs,

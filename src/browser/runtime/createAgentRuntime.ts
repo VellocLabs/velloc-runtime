@@ -428,7 +428,9 @@ export async function createBrowserRuntime(
   const appSession = pluginApp
     ? await (await import('../../mods/app/appSession')).openAppFolder({ fs: installedFs, homeDir, app: pluginApp })
     : undefined
-  const appSurfaceModule = appSession && options.isSubAgent !== true ? await import('../../mods/app/appSurfaceHost') : undefined
+  // An app's agent run (F-40) is headless: it has no surface, and keeps only the app-run tools.
+  const appAgentRun = (options as { appAgentRun?: string }).appAgentRun
+  const appSurfaceModule = appSession && options.isSubAgent !== true && !appAgentRun ? await import('../../mods/app/appSurfaceHost') : undefined
   // A superseded build registers nothing: its host would take the session's entry from the newer one.
   const appSurface = appSurfaceModule && appSession && options.runtimeScopeSignal?.aborted !== true
     ? appSurfaceModule.createAppSurfaceHost({ fs: installedFs, app: appSession, sessionId: resolvedSessionId })
@@ -1248,7 +1250,7 @@ export async function createBrowserRuntime(
   // A background FORK keeps the parent's EXACT tool pool (no sub-agent strip),
   // so its serialized tools array stays aligned with the parent's for prompt-
   // cache reuse; a named/general-purpose sub-agent gets the scoped set.
-  const tools = subAgentScope.forkExactTools
+  const scopedTools = subAgentScope.forkExactTools
     ? allTools
     : applySubAgentToolScope(
         allTools,
@@ -1256,6 +1258,7 @@ export async function createBrowserRuntime(
         subAgentScope.subAgentDisallowTools,
         subAgentScope.isSubAgent === true,
       )
+  const tools = appAgentRun ? (await import('../../mods/app/appRunTools')).appRunTools(scopedTools) : scopedTools
   const readFileCache = createBrowserReadFileCache()
   // A background FORK seeds the parent's conversation here as the engine's
   // initial messages so it continues the parent's context (the QueryEngine

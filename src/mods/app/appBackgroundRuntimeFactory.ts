@@ -2,7 +2,8 @@
  * Builds the realm's one `AppBackgroundRuntime` (F-40), imported only once an
  * app with a background module is published: the module loaders, the per-plugin
  * store and build store under `~/.velloc/mods`, `$.http.fetch` over the host,
- * `$.mcp` as a pool per module over the host's MCP primitives.
+ * `$.mcp` as a pool per module over the host's MCP primitives, `$.app.analyze`
+ * over the realm's headless spawn.
  */
 
 import { MCPPool } from '../../mcp/pool'
@@ -91,5 +92,6 @@ export function createAppBackgroundRuntime(
     report,
     ...(deps.locale ? { locale: deps.locale } : {}),
     ...(deps.onBadge ? { onBadge: deps.onBadge } : {}),
+    ...(deps.runAgent ? { runAgent: deps.runAgent } : {}),
   })
 }

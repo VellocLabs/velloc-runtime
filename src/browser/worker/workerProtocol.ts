@@ -200,6 +200,12 @@ export type AgentRuntimeWorkerInitPayload = {
    * Stamped by the MANAGER from the provider's trust setting, never from a model; no way to turn it off.
    */
   untrustedReadRoot?: string
+  /**
+   * Security: the app whose background module started this headless run (F-40). Stamped by the
+   * MANAGER (`RoutineCoordinator.spawnAppRun`) beside `untrustedReadRoot` on the app's folder; the
+   * runtime then keeps only the app-run tools (`appRunTools.ts`) and gives the run no app surface.
+   */
+  appAgentRun?: string
   /** The team id this teammate belongs to (only when `isTeammate`). */
   teamName?: string
   /** This teammate's member name within the team (only when `isTeammate`). */

@@ -299,6 +299,19 @@ describe('an app with a background module', () => {
     }
   })
 
+  it('takes { module, agent: true } as backgroundAgent; false is none, anything else refuses the template naming the field', () => {
+    const errors: string[] = []
+    const app = (agent: unknown) => ({ board: { title: 'P', app: { ...APP, background: { module: './bg/app.js', agent } } } })
+    expect(checkTemplateDecls('pay', app(true), errors, 'beta')?.board?.app?.backgroundAgent).toBe(true)
+    expect(checkTemplateDecls('pay', app(false), errors, 'beta')?.board?.app).not.toHaveProperty('backgroundAgent')
+    expect(errors).toEqual([])
+    for (const bad of ['yes', 1, {}]) {
+      const refused: string[] = []
+      expect(checkTemplateDecls('pay', app(bad), refused, 'beta')).toBeUndefined()
+      expect(refused.map(line => line.split(':')[0])).toEqual(['templates.board.app.background.agent'])
+    }
+  })
+
   it('the contributions host lists the published apps that declare one, with the module resolved under the plugin', async () => {
     const { contributions } = host()
     const withModule = appPlugin('pay', 'board')

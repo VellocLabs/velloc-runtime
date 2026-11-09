@@ -10,7 +10,9 @@
  * Security: a background module belongs to no session. Its admission
  * (`appBackgroundEvents.ts`) refuses every session event and noun; its
  * `$.fs` is the app's folder alone; its `$.mcp` is a pool of its own,
- * holding its plugin's manifest servers alone (`appBackgroundMcp.ts`).
+ * holding its plugin's manifest servers alone (`appBackgroundMcp.ts`); its
+ * `$.app.analyze` runs the agent only when declared and approved
+ * (`appAgentRun.ts`).
  */
 
 import { errorMessage } from '../chainRules'
@@ -41,7 +43,8 @@ import {
   whenKernelControlPortAttached,
 } from '../../browser/workerKernel/IsolatedWorkerKernel'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
-import { refuseAppBackgroundCall, refuseAppBackgroundRegistrations, refuseAppBackgroundUses } from './appBackgroundEvents'
+import { AppAgentRuns, readAnalyzeRequest, type AppAgentRunner, type AppAnalyzeResult } from './appAgentRun'
+import { APP_BACKGROUND_ABI, refuseAppBackgroundCall, refuseAppBackgroundRegistrations, refuseAppBackgroundUses } from './appBackgroundEvents'
 import { sameMcpOwner, type AppBackgroundMcp, type AppBackgroundMcpOwner } from './appBackgroundMcp'
 import { AppStateDocument, type AppStateDocumentFs } from './appStateDocument'
 
@@ -58,6 +61,8 @@ export type AppBackgroundRef = ModModuleRef & {
   readonly mcpOwner?: AppBackgroundMcpOwner
   /** The declared folders the person approved, absolute: `$.fs` reaches them beside the app's folder. */
   readonly folders?: { read: readonly string[]; write: readonly string[] }
+  /** The app's template type, present when the module may run the agent (declared and approved). */
+  readonly agentType?: string
 }
 
 /** Where workers are spawned from: some window's control port. */
@@ -88,6 +93,10 @@ export type AppBackgroundRuntimeOptions = {
   onStatusChanged?: () => void
   /** `$.app.badge`: the count the app's icon shows, or null for none; also null when the module stops, fails to load or is off after its crashes. */
   onBadge?: (appId: string, count: number | null) => void
+  /** `$.app.analyze`: the realm's headless spawn. Absent: a run fails as unavailable. */
+  runAgent?: AppAgentRunner
+  agentDailyLimit?: number
+  agentRunTimeoutMs?: number
   startTimeoutMs?: number
   stopTimeoutMs?: number
   /** The budget of an `app.action` hook; past it the action goes to the model. */
@@ -164,6 +173,7 @@ const sameRef = (a: AppBackgroundRef, b: AppBackgroundRef): boolean =>
   a.provenance === b.provenance &&
   a.plugin === b.plugin &&
   sameMcpOwner(a.mcpOwner, b.mcpOwner) &&
+  a.agentType === b.agentType &&
   JSON.stringify(a.folders ?? null) === JSON.stringify(b.folders ?? null)
 
 const extraRootsOf = (ref: AppBackgroundRef): Array<{ root: string; write: boolean }> => [
@@ -183,8 +193,17 @@ export class AppBackgroundRuntime {
   /** A stopping module's teardown by app id: its successor starts after it, so one state file has one writer. */
   private readonly stopping = new Map<string, Promise<void>>()
   private disposed = false
+  private readonly agentRuns: AppAgentRuns
 
-  constructor(private readonly options: AppBackgroundRuntimeOptions) {}
+  constructor(private readonly options: AppBackgroundRuntimeOptions) {
+    this.agentRuns = new AppAgentRuns({
+      ...(options.runAgent ? { run: options.runAgent } : {}),
+      report: options.report,
+      now: () => this.now(),
+      ...(options.agentDailyLimit !== undefined ? { dailyLimit: options.agentDailyLimit } : {}),
+      ...(options.agentRunTimeoutMs !== undefined ? { timeoutMs: options.agentRunTimeoutMs } : {}),
+    })
+  }
 
   /** The apps to run: a new one starts, a gone one stops, a changed one restarts, an unreadable one is read again. */
   sync(refs: readonly AppBackgroundRef[]): void {
@@ -496,6 +515,20 @@ export class AppBackgroundRuntime {
   }
 
   /** The module's MCP pool is closed with its worker; the next worker builds its own. */
+  /** `$.app.analyze(request)`: one headless agent run in the app's folder, ended `stopped` when the module stops. */
+  private analyze(module: Module, request: unknown): Promise<AppAnalyzeResult> {
+    const { agentType, appId, plugin, folder } = module.ref
+    if (!agentType) {
+      const reason =
+        `$.app.analyze needs "agent": true in the app's background block of the manifest, ` +
+        `approved with the plugin (${APP_BACKGROUND_ABI})`
+      this.options.report(`${plugin}: ${appId} called $.app.analyze, refused — ${reason}`)
+      return Promise.reject(named('NotAllowedError', reason))
+    }
+    const { prompt, title } = readAnalyzeRequest(request)
+    return this.agentRuns.start({ appId, plugin, templateType: agentType, folder, prompt, ...(title ? { title } : {}) }, module.gone.signal)
+  }
+
   private async closeMcp(module: Module): Promise<void> {
     const mcp = module.mcp
     module.mcp = undefined
@@ -548,6 +581,7 @@ export class AppBackgroundRuntime {
     if (call.noun === 'app') {
       if (call.method === 'state') return { value: module.document.value, version: module.document.version }
       if (call.method === 'badge') return this.setBadge(module, call.args[0])
+      if (call.method === 'analyze') return await this.analyze(module, call.args[0])
       return module.document.apply(call.args[0])
     }
     if (call.noun === 'log') {

@@ -160,6 +160,17 @@ describe('ProviderConsentDialog', () => {
     expect(screen.queryByTestId('consent-folders-write')).toBeNull()
   })
 
+  it("an app's agent runs have their own block, naming the daily limit, and their own intro, with or without providers", () => {
+    open({}, status({ grant: { providers: {}, agent: true } }))
+    expect(screen.getByText(/runs in the background and asks to start agent runs on its own/)).toBeTruthy()
+    expect(screen.getByTestId('consent-agent').textContent).toMatch(/^Agent runs.*at most 24 times a day.*runs no commands/)
+    expect(screen.queryByTestId('consent-standing')).toBeNull()
+    cleanup()
+    open({}, status({ grant: { ...GRANT, agent: true } }))
+    expect(screen.getByText(/adds model providers and asks to start agent runs on its own/)).toBeTruthy()
+    expect(screen.getByTestId('consent-standing')).toBeTruthy()
+  })
+
   it('Turn on and Cancel are the two ways out; a failure is shown inside the dialog', () => {
     const calls = open({ error: 'no connection' })
     expect(screen.getByTestId('consent-error').textContent).toBe("Couldn't turn it on: no connection")
@@ -310,6 +321,14 @@ describe('ProviderUpdatePanel', () => {
       },
     })
     expect(grantDeltaLines(parked, t)).toEqual(["zen's code is now also shown: the folder the session is working in"])
+  })
+
+  it('grantDeltaLines names agent runs newly asked for', () => {
+    const parked = status({
+      ...NEEDS_CONSENT,
+      pending: { ...NEEDS_CONSENT.pending!, delta: { widened: true, added: { providers: [], perProvider: {}, agent: true }, removed: [] } },
+    })
+    expect(grantDeltaLines(parked, t)).toEqual(['Asks to start agent runs on its own'])
   })
 
   it('grantDeltaLines reads nothing when nothing is parked', () => {

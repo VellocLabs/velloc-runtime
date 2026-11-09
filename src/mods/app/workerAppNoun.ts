@@ -70,5 +70,7 @@ export function makeWorkerAppNoun(call: WorkerAppCall): unknown {
       }),
     /** A count on the app's topbar icon; `null` clears it. Checked by the runtime. */
     badge: (count: unknown) => call('badge', [count]),
+    /** A headless agent run in the app's folder: `{ ok: true, text }` or `{ ok: false, reason }`. Not serialized with the state. */
+    analyze: (request: unknown) => call('analyze', [request]),
   })
 }

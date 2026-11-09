@@ -1,6 +1,7 @@
 /**
  * Contract: RoutineCoordinator — the headless routine-run lifecycle: the `headlessRuns` map, spawn +
- * single-turn drive, stop and emit interception. Invariants:
+ * single-turn drive, stop and emit interception; an app's agent run (F-40) is one more headless
+ * run on the same path. Invariants:
  * - `headlessRuns` stays independent of the TaskRegistry's live tasks (only terminal records join it)
  * - headless sessions never appear in the normal session list
  * - ONE terminal authority: the submitAndWait resolution path
@@ -18,6 +19,7 @@ import type {
   HeadlessRunResult,
   SpawnHeadlessSession,
 } from '../../routines/HeadlessRunner'
+import { APP_RUN_SESSION_PREFIX, type AppAgentRunOutcome, type AppAgentRunner } from '../../mods/app/appAgentRun'
 import { getProductName } from '../../branding/productName'
 import { mintTaskHandle } from '../../backgroundTasks/taskId'
 import {
@@ -157,92 +159,150 @@ export class RoutineCoordinator {
         // inheriting the UI tab's traceId.
         traceId: undefined,
       }
-
-      const now = Date.now()
-      const state: HeadlessRunState = {
+      this.launchHeadless(sessionId, initPayload, abortSignal, resolve, {
         routineId: routine.id,
-        sessionId,
-        messages: [],
-        resolve,
-        completed: false,
-        startedAt: now,
-        // `local_routine` task surfacing (Background Tasks drawer).
-        taskId: mintTaskHandle('local_routine'),
         description: routine.name || routine.id,
         model: routine.model,
         prompt: routine.prompt,
-        lastActivityAt: now,
-      }
-      this.register(sessionId, state)
-      // Index the public `r…` id → native headless sessionId (drawer Stop /
-      // detail requests send the public id) and show the row immediately.
-      this.registry.indexTaskId(state.taskId, sessionId)
-      this.host.scheduleSummary()
-
-      // Wire the runner-supplied abort to a `worker.interrupt`. Fire
-      // once; chaining further aborts would no-op anyway because the
-      // worker becomes !isBusy after the first interrupt.
-      const onAbort = () => {
-        const w = this.host.getSessionWorker(sessionId)
-        if (w) {
-          void w.receiveFrame({
-            type: 'worker.interrupt',
-            sessionId,
-            payload: {},
-          } as SessionWorkerInboundMessage)
-        }
-      }
-      // No pre-fire check needed: the guard above already returned for a
-      // pre-aborted signal, and everything between it and worker registration
-      // below is synchronous — an abort event can only dispatch from a task
-      // boundary, by which point the worker exists for onAbort to find.
-      abortSignal.addEventListener('abort', onAbort, { once: true })
-
-      // Allocate the worker. Same path the UI takes, minus the
-      // `ports` set (no UI port is attached). Routing for emitted
-      // events happens via the worker-emit router, which checks
-      // `headlessRuns` first.
-      const headlessBackend = this.host.prepareWorkerStorage(
-        sessionId,
-        initPayload,
-      )
-      const { worker, instanceId } = this.host.createWorker(
-        sessionId,
-        headlessBackend,
-      )
-      // With no binding on the entry, a sub-agent this run spawns read a
-      // non-null `{}` parent binding and booted unbound, on the default
-      // template, while the run itself works in the template's project.
-      this.host.registerSessionEntry(sessionId, worker, instanceId, {
-        ...(initPayload.projectRoot
-          ? { projectRoot: initPayload.projectRoot }
-          : {}),
-        ...(initPayload.templateType
-          ? { templateType: initPayload.templateType }
-          : {}),
       })
-
-      // Single terminal authority: drive the init +
-      // submit chain using submitAndWait for explicit turn-completion
-      // semantics, compute ONE terminal result, and finalize exactly once.
-      // The emit interceptor never finalizes — it only accumulates
-      // stream events, marks `completed`, and records a `worker.error`
-      // summary for this path to consume — which removes the dual-finalizer
-      // race where the emit path could dispose the session while
-      // executeSubmit was still in its finally block.
-      void (async () => {
-        this.finalizeHeadlessRun(
-          sessionId,
-          await this.runHeadlessTurn(
-            worker,
-            sessionId,
-            initPayload,
-            state,
-            abortSignal,
-          ),
-        )
-      })()
     })
+  }
+
+  /**
+   * Security: an app's agent run (F-40) — headless, so every permission ask is refused; bound to
+   * the app's template and folder whatever the template's last session was bound to; read-bounded
+   * to that folder (no shell, no memory, nothing read outside it); routine-originated, so it
+   * registers no cron or trigger; on the default model, not the last session's pick.
+   */
+  readonly spawnAppRun: AppAgentRunner = async (job) => {
+    if (job.abortSignal.aborted) return { status: 'aborted' }
+    const template = this.host.getInitTemplate()
+    if (!template) {
+      return {
+        status: 'error',
+        message: `no session has started in a ${getProductName()} window yet, so there is nothing to run on`,
+      }
+    }
+    const sessionId = `${APP_RUN_SESSION_PREFIX}${crypto.randomUUID()}`
+    const initPayload: AgentRuntimeWorkerInitPayload = {
+      ...template,
+      sessionId,
+      cwd: job.folder,
+      projectRoot: job.folder,
+      cwdOverride: undefined,
+      templateType: job.templateType,
+      isHeadless: true,
+      routineId: undefined,
+      routineOriginId: `app:${job.appId}`,
+      appAgentRun: job.appId,
+      untrustedReadRoot: job.folder,
+      userSpecifiedProviderId: undefined,
+      userSpecifiedModel: undefined,
+      userSpecifiedThinkingTier: undefined,
+      traceId: undefined,
+    }
+    const result = await new Promise<HeadlessRunResult>(resolve => {
+      this.launchHeadless(sessionId, initPayload, job.abortSignal, resolve, {
+        routineId: `app:${job.appId}`,
+        description: job.title ?? job.appId,
+        prompt: job.prompt,
+      })
+    })
+    return appRunOutcome(result)
+  }
+
+  /** Register a headless run, allocate its portless worker, and drive its single turn. */
+  private launchHeadless(
+    sessionId: string,
+    initPayload: AgentRuntimeWorkerInitPayload,
+    abortSignal: AbortSignal,
+    resolve: (result: HeadlessRunResult) => void,
+    run: { routineId: string; description: string; model?: string; prompt: string },
+  ): void {
+    const now = Date.now()
+    const state: HeadlessRunState = {
+      routineId: run.routineId,
+      sessionId,
+      messages: [],
+      resolve,
+      completed: false,
+      startedAt: now,
+      // `local_routine` task surfacing (Background Tasks drawer).
+      taskId: mintTaskHandle('local_routine'),
+      description: run.description,
+      model: run.model,
+      prompt: run.prompt,
+      lastActivityAt: now,
+    }
+    this.register(sessionId, state)
+    // Index the public `r…` id → native headless sessionId (drawer Stop /
+    // detail requests send the public id) and show the row immediately.
+    this.registry.indexTaskId(state.taskId, sessionId)
+    this.host.scheduleSummary()
+
+    // Wire the runner-supplied abort to a `worker.interrupt`. Fire
+    // once; chaining further aborts would no-op anyway because the
+    // worker becomes !isBusy after the first interrupt.
+    const onAbort = () => {
+      const w = this.host.getSessionWorker(sessionId)
+      if (w) {
+        void w.receiveFrame({
+          type: 'worker.interrupt',
+          sessionId,
+          payload: {},
+        } as SessionWorkerInboundMessage)
+      }
+    }
+    // No pre-fire check needed: each caller already returned for a
+    // pre-aborted signal, and everything between its guard and worker
+    // registration below is synchronous — an abort event can only dispatch
+    // from a task boundary, by which point the worker exists for onAbort to find.
+    abortSignal.addEventListener('abort', onAbort, { once: true })
+
+    // Allocate the worker. Same path the UI takes, minus the
+    // `ports` set (no UI port is attached). Routing for emitted
+    // events happens via the worker-emit router, which checks
+    // `headlessRuns` first.
+    const headlessBackend = this.host.prepareWorkerStorage(
+      sessionId,
+      initPayload,
+    )
+    const { worker, instanceId } = this.host.createWorker(
+      sessionId,
+      headlessBackend,
+    )
+    // With no binding on the entry, a sub-agent this run spawns read a
+    // non-null `{}` parent binding and booted unbound, on the default
+    // template, while the run itself works in the template's project.
+    this.host.registerSessionEntry(sessionId, worker, instanceId, {
+      ...(initPayload.projectRoot
+        ? { projectRoot: initPayload.projectRoot }
+        : {}),
+      ...(initPayload.templateType
+        ? { templateType: initPayload.templateType }
+        : {}),
+    })
+
+    // Single terminal authority: drive the init +
+    // submit chain using submitAndWait for explicit turn-completion
+    // semantics, compute ONE terminal result, and finalize exactly once.
+    // The emit interceptor never finalizes — it only accumulates
+    // stream events, marks `completed`, and records a `worker.error`
+    // summary for this path to consume — which removes the dual-finalizer
+    // race where the emit path could dispose the session while
+    // executeSubmit was still in its finally block.
+    void (async () => {
+      this.finalizeHeadlessRun(
+        sessionId,
+        await this.runHeadlessTurn(
+          worker,
+          sessionId,
+          initPayload,
+          state,
+          abortSignal,
+        ),
+      )
+    })()
   }
 
   /**
@@ -411,4 +471,11 @@ export class RoutineCoordinator {
     }
     return true
   }
+}
+
+/** An app run's end as the app sees it: its final text, empty when it wrote none. */
+function appRunOutcome(result: HeadlessRunResult): AppAgentRunOutcome {
+  if (result.status === 'success') return { status: 'success', text: result.summary === HEADLESS_NO_TEXT ? '' : result.summary }
+  if (result.status === 'aborted') return { status: 'aborted' }
+  return { status: 'error', message: result.summary || 'the run failed' }
 }

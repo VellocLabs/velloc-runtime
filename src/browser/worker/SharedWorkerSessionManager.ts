@@ -1100,6 +1100,7 @@ export class SharedWorkerSessionManager {
       storageRoot: () => this.storagePath,
       spawnHeadlessSession: params =>
         this.routines.spawnHeadlessSession(params),
+      spawnAppRun: job => this.routines.spawnAppRun(job),
       deliverRoutineToSession: params => this.deliverRoutineToSession(params),
       canDeliverRoutineToSession: sessionId =>
         this.canDeliverRoutineToSession(sessionId),

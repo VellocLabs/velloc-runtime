@@ -79,6 +79,8 @@ export interface ManagerBootServicesHost {
   getHostManifest?(): Pick<BrowserHostManifest, 'capabilities' | 'primitives'> | null
   storageRoot(): string | null
   spawnHeadlessSession: RoutineCoordinator['spawnHeadlessSession']
+  /** An app's agent run for its background module's `$.app.analyze` (F-40). Absent: such runs fail as unavailable. */
+  spawnAppRun?: RoutineCoordinator['spawnAppRun']
   deliverRoutineToSession: DeliverRoutineToSession
   canDeliverRoutineToSession: CanDeliverRoutineToSession
   scheduleSummary(): void
@@ -461,6 +463,7 @@ export class ManagerBootServices {
         locale: () => this.host.getLocale?.(),
         env: () => this.host.getHostEnvironment?.()?.env,
         report: line => this.host.trace('appBackground.report', { line }),
+        ...(this.host.spawnAppRun ? { runAgent: this.host.spawnAppRun } : {}),
       })
     } catch (error) {
       this.host.trace('appBackground.boot_failed', {

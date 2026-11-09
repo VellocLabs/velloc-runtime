@@ -13,6 +13,16 @@ const source = readFileSync(
 )
 
 describe('createBrowserRuntime boot order', () => {
+  it("an app's agent run (F-40) builds no app surface and keeps only the app-run tools of its scoped set", () => {
+    const readAt = source.indexOf("const appAgentRun = (options as { appAgentRun?: string }).appAgentRun")
+    const surfaceAt = source.indexOf('const appSurfaceModule = appSession && options.isSubAgent !== true && !appAgentRun ?')
+    expect(readAt).toBeGreaterThan(-1)
+    expect(surfaceAt).toBeGreaterThan(readAt)
+    const scopedAt = source.indexOf('const scopedTools = subAgentScope.forkExactTools')
+    const toolsAt = source.indexOf("const tools = appAgentRun ? (await import('../../mods/app/appRunTools')).appRunTools(scopedTools) : scopedTools")
+    expect(scopedAt).toBeGreaterThan(-1)
+    expect(toolsAt).toBeGreaterThan(scopedAt)
+  })
   it('binds review argv streams to the direct host event transport before launching', () => {
     const start = source.indexOf('reviewRuntime: {')
     expect(start).toBeGreaterThan(-1)

@@ -9,6 +9,7 @@ import { openPane, setMaximized, type PaneWeightByKind, type SessionPaneRecord, 
 import type { RightPanelPresenceEvent } from '../layout/rightPanelPresence'
 import { sessionActivityTime, sessionTimeBucket } from '../sessionTimeBucket'
 import { isSideChatUnderParent } from '../sideChat'
+import { isAppRunSessionId } from '../../../mods/app/appAgentRun'
 
 /** The fields the rules read; a `LocalSessionEntry` satisfies it. */
 export type AppSessionEntry = {
@@ -26,12 +27,12 @@ export type AppSessionEntry = {
 
 const NONE: ReadonlySet<string> = new Set()
 
-/** The newest session of app `type` used on `now`'s local day; undefined when there is none. */
+/** The newest session of app `type` used on `now`'s local day, never an agent run's; undefined when there is none. */
 export function pickAppSession<T extends AppSessionEntry>(entries: readonly T[], type: string, now: number): T | undefined {
   let best: T | undefined
   let bestAt = -Infinity
   for (const entry of entries) {
-    if (entry.templateType !== type || entry.archived || entry.spawnerSessionId || isSideChatUnderParent(entry)) continue
+    if (entry.templateType !== type || entry.archived || entry.spawnerSessionId || isSideChatUnderParent(entry) || isAppRunSessionId(entry.sessionId)) continue
     const at = sessionActivityTime(entry.updatedAt, entry.lastComposerEditAt)
     if (at > 0 && sessionTimeBucket(at, now) === 'sidebar.timeToday' && at > bestAt) {
       best = entry
@@ -41,7 +42,7 @@ export function pickAppSession<T extends AppSessionEntry>(entries: readonly T[],
   return best
 }
 
-/** App sessions the person never wrote in, except the one on screen. */
+/** App sessions the person never wrote in, and app agent runs, except the one on screen. */
 export function unlistedAppSessionIds(
   entries: readonly AppSessionEntry[],
   appTypes: ReadonlySet<string>,
@@ -51,6 +52,10 @@ export function unlistedAppSessionIds(
   const out = new Set<string>()
   for (const entry of entries) {
     if (entry.sessionId === activeSessionId) continue
+    if (isAppRunSessionId(entry.sessionId)) {
+      out.add(entry.sessionId)
+      continue
+    }
     if (entry.templateType !== undefined && appTypes.has(entry.templateType) && entry.messageCount === 0) out.add(entry.sessionId)
   }
   return out.size === 0 ? NONE : out

@@ -16,6 +16,7 @@ import {
   unlistedAppSessionSet,
   type AppSessionEntry,
 } from '../browser/webview/apps/appLaunch'
+import { APP_RUN_SESSION_PREFIX } from '../mods/app/appAgentRun'
 import { defaultSessionPaneRecord, hasPane } from '../browser/webview/layout/paneLayout'
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
 import { PluginTopbarItems, appBadgeText, appItemId, usePluginTopbarItems } from '../browser/webview/topbar/PluginTopbarItems'
@@ -76,6 +77,15 @@ describe('the session an app\'s icon lands on', () => {
     expect(pickAppSession(detached, 'pay:board', NOW)?.sessionId).toBe('side')
   })
 
+  it("never an agent run of the app, though it carries the app's type, is newer and was written in", () => {
+    const sessions = [
+      entry('app', { updatedAt: at(7, 7) }),
+      entry(`${APP_RUN_SESSION_PREFIX}1`, { updatedAt: at(7, 9), messageCount: 3 }),
+    ]
+    expect(pickAppSession(sessions, 'pay:board', NOW)?.sessionId).toBe('app')
+    expect(pickAppSession(sessions.slice(1), 'pay:board', NOW)).toBeUndefined()
+  })
+
   it('today as the sidebar files it, a clock running a little ahead included', () => {
     const late = new Date(2026, 10, 7, 23, 58).getTime()
     const ahead = entry('ahead', { updatedAt: new Date(2026, 10, 8, 0, 3).getTime() })
@@ -93,6 +103,13 @@ describe('app sessions the list leaves out', () => {
     ]
     expect([...unlistedAppSessionIds(sessions, new Set(['pay:board']), 'on-screen')]).toEqual(['untouched'])
     expect(unlistedAppSessionIds(sessions, new Set(), 'on-screen').size).toBe(0)
+  })
+
+  it('an app agent run, written in or not, unless it is on screen', () => {
+    const run = `${APP_RUN_SESSION_PREFIX}1`
+    const sessions = [entry(run, { messageCount: 3 }), entry('used')]
+    expect([...unlistedAppSessionIds(sessions, new Set(['pay:board']), 'used')]).toEqual([run])
+    expect(unlistedAppSessionIds(sessions, new Set(['pay:board']), run).size).toBe(0)
   })
 
   it('the same ids give the same key, so the list keeps its identity across a switch', () => {

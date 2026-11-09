@@ -57,6 +57,8 @@ export type PluginAppDecl = {
   background?: string
   /** The folders under the person's home the background module may reach, as declared (`~/`-relative). */
   backgroundFs?: FolderScopes
+  /** The background module may start headless agent runs in the app's folder (`$.app.analyze`). */
+  backgroundAgent?: true
 }
 
 export type PluginTopbarItemDecl = {
@@ -203,18 +205,23 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
   }
   let background: string | undefined
   let backgroundFs: FolderScopes | undefined
+  let backgroundAgent = false
   if (value.background !== undefined) {
     const declared = value.background
     const module = isRecord(declared) ? declared.module : declared
     if (typeof module === 'string' && insidePlugin(module) && MOD_MODULE_EXTENSIONS.some(ext => module.toLowerCase().endsWith(ext))) {
       background = module
     } else {
-      bad(`${label}.background: expected a module path starting with "./", without "..", ending in ${MOD_MODULE_EXTENSIONS.join(', ')}, or { module, fs? }`)
+      bad(`${label}.background: expected a module path starting with "./", without "..", ending in ${MOD_MODULE_EXTENSIONS.join(', ')}, or { module, fs?, agent? }`)
     }
     if (isRecord(declared) && declared.fs !== undefined) {
       const scopes = readFolderScopes(declared.fs)
       if ('error' in scopes) bad(`${label}.background.fs: ${scopes.error}`)
       else if (scopes.read.length > 0 || scopes.write.length > 0) backgroundFs = scopes
+    }
+    if (isRecord(declared) && declared.agent !== undefined) {
+      if (typeof declared.agent === 'boolean') backgroundAgent = declared.agent
+      else bad(`${label}.background.agent: expected true or false`)
     }
   }
   if (!seed || !entry || data === null) return null
@@ -226,6 +233,7 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
     ...(localActions && localActions.length > 0 ? { localActions } : {}),
     ...(background ? { background } : {}),
     ...(background && backgroundFs ? { backgroundFs } : {}),
+    ...(background && backgroundAgent ? { backgroundAgent: true as const } : {}),
   }
 }
 

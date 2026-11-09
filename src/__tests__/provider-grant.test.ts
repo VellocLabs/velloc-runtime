@@ -206,3 +206,19 @@ describe('the folders of an app background module', () => {
     expect(widened(grantOf({}), grantOf({}, FS)).added.folders).toEqual(FS)
   })
 })
+
+describe('the agent runs of an app background module', () => {
+  const asking = (agent: unknown) => ({ providers: {}, templates: { board: { app: { background: { module: './bg.js', agent } } } } })
+
+  it('pluginGrantOf reads background.agent; false or absent is no agent in the grant', () => {
+    expect(pluginGrantOf(asking(true))).toEqual({ providers: {}, agent: true })
+    expect(pluginGrantOf(asking(false))).toEqual({ providers: {} })
+  })
+
+  it('agent runs not consented to widen; consented, or dropped, do not', () => {
+    const delta = widened(grantOf({}), grantOf({}, undefined, true))
+    expect(delta).toEqual({ widened: true, added: { providers: [], perProvider: {}, agent: true }, removed: [] })
+    expect(widened(grantOf({}, undefined, true), grantOf({}, undefined, true)).widened).toBe(false)
+    expect(widened(grantOf({}, undefined, true), grantOf({})).widened).toBe(false)
+  })
+})

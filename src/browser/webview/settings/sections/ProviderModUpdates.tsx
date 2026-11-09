@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { ProviderModUpdateStatus, UpdateFailureKind } from "../../../../pluginHost/providerModUpdates";
+import { APP_AGENT_DAILY_LIMIT } from "../../../../mods/app/appAgentRun";
 import type { FolderScopes } from "../../../../mods/app/appFolderScopes";
 import type { ProviderGrant } from "../../../../pluginHost/providerGrant";
 import type { TranslateFn } from "../../i18n";
@@ -34,9 +35,12 @@ function signText(t: TranslateFn, provider: string, sign: "digest" | "body"): st
   });
 }
 
-/** Whether a status has anything to consent to: a provider, or an app's folders. */
+/** Whether a status has anything to consent to: a provider, an app's folders, or its agent runs. */
 export function hasProviderGrant(status: ProviderModUpdateStatus | undefined): status is ProviderModUpdateStatus {
-  return !!status && (Object.keys(status.grant?.providers ?? {}).length > 0 || hasFolders(status.grant?.folders));
+  return (
+    !!status &&
+    (Object.keys(status.grant?.providers ?? {}).length > 0 || hasFolders(status.grant?.folders) || status.grant?.agent === true)
+  );
 }
 
 function hasFolders(folders: FolderScopes | undefined): folders is FolderScopes {
@@ -61,6 +65,15 @@ function FolderGrantBlock({ folders, t }: { folders: FolderScopes; t: TranslateF
           </li>
         ) : null}
       </ul>
+    </div>
+  );
+}
+
+function AgentGrantBlock({ t }: { t: TranslateFn }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/30 p-3" data-testid="consent-agent">
+      <div className="font-medium text-sm">{t("settings.plugins.providers.consent.agent")}</div>
+      <p className="mt-1.5 text-sm">{t("settings.plugins.providers.consent.agentBody", { limit: APP_AGENT_DAILY_LIMIT })}</p>
     </div>
   );
 }
@@ -124,8 +137,12 @@ export function ProviderConsentDialog({
   const status = target?.status;
   const providers = Object.entries(status?.grant.providers ?? {});
   const folders = hasFolders(status?.grant.folders) ? status!.grant.folders! : undefined;
-  const introKey =
-    providers.length > 0 && folders
+  const agent = status?.grant.agent === true;
+  const introKey = agent
+    ? providers.length > 0
+      ? "settings.plugins.providers.consent.introProvidersApp"
+      : "settings.plugins.providers.consent.introApp"
+    : providers.length > 0 && folders
       ? "settings.plugins.providers.consent.introBoth"
       : folders
         ? "settings.plugins.providers.consent.introFolders"
@@ -152,6 +169,7 @@ export function ProviderConsentDialog({
             <ProviderGrantBlock key={provider} provider={provider} grant={grant} t={t} />
           ))}
           {folders ? <FolderGrantBlock folders={folders} t={t} /> : null}
+          {agent ? <AgentGrantBlock t={t} /> : null}
           {providers.length > 0 ? (
             <p className="text-sm" data-testid="consent-standing">
               {t("settings.plugins.providers.consent.standing")}
@@ -226,6 +244,7 @@ export function grantDeltaLines(status: ProviderModUpdateStatus, t: TranslateFn)
   if (delta.added.folders?.write.length) {
     lines.push(t("settings.plugins.providers.updates.addedFoldersWrite", { folders: delta.added.folders.write.join(", ") }));
   }
+  if (delta.added.agent) lines.push(t("settings.plugins.providers.updates.addedAgent"));
   return lines;
 }
 

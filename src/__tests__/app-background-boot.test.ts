@@ -193,3 +193,40 @@ describe('a consent change', () => {
     expect(synced[2]![0]!.folders?.read.map(path => path.split('\\').join('/'))).toEqual(['C:/home/Downloads'])
   })
 })
+
+describe('the agent runs', () => {
+  const declaring = (): AppBackgroundTemplate => {
+    const app = template('pay-board')
+    app.decl.backgroundAgent = true
+    return app
+  }
+
+  it("the ref names the app's template only when agent runs are declared and approved, or the plugin is hand-placed", () => {
+    expect(appBackgroundRef('C:/home', declaring(), 'exempt').agentType).toBe('pay:pay-board')
+    expect(appBackgroundRef('C:/home', declaring(), undefined).agentType).toBeUndefined()
+    expect(appBackgroundRef('C:/home', declaring(), undefined, true).agentType).toBe('pay:pay-board')
+    expect(appBackgroundRef('C:/home', template('pay-board'), 'exempt').agentType).toBeUndefined()
+  })
+
+  it('the boot reads the approval from the consent file, reports one missing, and hands the runtime the spawn', async () => {
+    const { runtime, synced } = fakeRuntime()
+    const reports: string[] = []
+    let consent: unknown = { version: 1, plugins: { 'pay@mkt': { consent: { version: '1', at: 'x', grant: { providers: {}, agent: true } } } } }
+    const fs = { readFile: async () => JSON.stringify(consent) } as never
+    const runAgent = vi.fn()
+    const createRuntime = vi.fn(async (_deps: unknown) => runtime)
+    let notify: (() => void) | undefined
+    await bootAppBackground(
+      { ...deps, fs, report: line => reports.push(line), runAgent },
+      { apps: () => [{ ...declaring(), consentId: 'pay@mkt' }], onChanged: listener => ((notify = listener), () => undefined), createRuntime },
+    )
+    await vi.waitFor(() => expect(synced).toHaveLength(1))
+    expect(synced[0]![0]!.agentType).toBe('pay:pay-board')
+    expect(createRuntime.mock.calls[0]![0]).toMatchObject({ runAgent })
+    consent = { version: 1, plugins: {} }
+    notify?.()
+    await vi.waitFor(() => expect(synced).toHaveLength(2))
+    expect(synced[1]![0]!.agentType).toBeUndefined()
+    expect(reports).toEqual(['pay: the agent runs pay-board declares are not approved; its $.app.analyze is refused'])
+  })
+})
