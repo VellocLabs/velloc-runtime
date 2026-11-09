@@ -8,14 +8,17 @@
 //   element and marks itself the owner with `setOwner`, so the slot can show
 //   its empty state. Any other host (a hidden session, a side chat) does not.
 // - The host asks the shell to open or close the pane with `requestPane`; the
-//   shell reports a person's close with `notifyClosed`.
+//   shell reports a person's close with `notifyClosed`. A `restore` request
+//   takes the session's expanded pane back down so its chat shows.
 // - The pane header registers an element for the shown host's own header
 //   actions with `setActionsSlot`; the host portals them into it.
 // - The shell publishes the session it shows with `setShownSession`, so a
 //   host whose surfaces can never reach the pane (a side chat) knows it.
 
 /** `byPerson`: the person pressed a card or tab, not a transcript change. */
-export type A2uiPaneRequest = { sessionId: string; open: boolean; byPerson?: boolean }
+export type A2uiPaneRequest =
+  | { sessionId: string; open: boolean; byPerson?: boolean }
+  | { sessionId: string; restore: true }
 
 export type A2uiPaneSlot = { element: HTMLElement; sessionId: string }
 

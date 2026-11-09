@@ -1065,6 +1065,7 @@ export const Thread: FC<{
       onChange={onPendingQuestionsChange}
     />
     <ThreadPrimitive.Root
+      data-thread-session={sessionId}
       className="aui-root aui-thread-root @container relative flex h-full flex-col bg-background has-[[data-slot=session-card-stack]]:[--thread-end-reserve:clamp(24px,calc(var(--thread-max-width)+654px-100cqw),315px)]"
       style={{
         ["--thread-max-width" as string]: "48rem",

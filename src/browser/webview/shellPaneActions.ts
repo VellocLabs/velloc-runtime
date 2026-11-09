@@ -153,13 +153,20 @@ export function createShellOpenPaneForSession(
   }
 }
 /** An A2UI host's pane request (F-1): a person's open goes through
- *  `openPaneForSession`; a transcript change only edits that session's record. */
+ *  `openPaneForSession`; a transcript change only edits that session's record;
+ *  a restore un-maximizes that session's panes (F-40). */
 export function createShellA2uiPaneRequest(
   openPaneForSession: (kind: SidePaneKind, sessionId: string) => void,
   updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
   sessionLayoutsStore: SessionLayoutsStore,
 ) {
-  return ({ sessionId, open, byPerson }: A2uiPaneRequest) => {
+  return (request: A2uiPaneRequest) => {
+    const { sessionId } = request
+    if ('restore' in request) {
+      updatePaneRecord(r => setMaximized(r, null), sessionId)
+      return
+    }
+    const { open, byPerson } = request
     if (open && byPerson) {
       openPaneForSession('a2ui', sessionId)
       return

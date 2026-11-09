@@ -18,6 +18,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { A2uiSurface, type ReactCatalogComponent } from '@a2ui/react'
+import { useComposerRuntime } from '@assistant-ui/react'
 import { MessageProcessor, type ActionPayload } from '@a2ui/web_core/v1_0'
 import { injectBasicCatalogStyles, setMarkdownRenderer } from '@a2ui/web_core/catalogs/basic/v1'
 // The basic catalog's Icon relies on the Material Symbols font's ligatures;
@@ -45,6 +46,7 @@ import { getActionsSlot, getOwner, getSlot, setOwner, subscribeSlot } from './a2
 import { AppSurfaceFeeder, appSurfaceIds } from './AppSurfaceFeeder'
 import type { AppBoard } from '../apps/appSurfaceView'
 import { AppReloadButton, AppSurfaceBar } from '../apps/AppSurfaceBar'
+import { APP_COMPOSE_EVENT, composeDraftOf, composeIntoSession } from '../apps/appCompose'
 
 type SurfaceActionHandler = (action: ActionPayload) => void
 type VellocProcessor = MessageProcessor<ReactCatalogComponent>
@@ -119,6 +121,7 @@ export type LocalSurfaceActions = {
 // Feeds new transcript sources (blocks and older tool calls) into the session's processor and installs the
 // surface-action handler (which snapshots the live data model).
 function A2uiFeeder({
+  sessionId,
   messages,
   submitActionMessage,
   busy,
@@ -129,6 +132,7 @@ function A2uiFeeder({
   localActions,
   onBoardTouched,
 }: {
+  sessionId: string
   compiler: A2uiExpressCompiler
   live: A2uiLiveBlocks
   /** An app session's own surfaces: chat may not draw them. */
@@ -144,6 +148,7 @@ function A2uiFeeder({
   const processor = useA2uiProcessor()
   const sources = useMemo(() => extractA2uiSources(messages), [messages])
   const state = useMemo(() => compiler.stateFor(processor), [compiler, processor])
+  const composer = useComposerRuntime({ optional: true })
   const processedRef = useRef(0)
   const busyRef = useRef(busy)
   busyRef.current = busy
@@ -199,12 +204,19 @@ function A2uiFeeder({
   // turn is in flight — one action per turn). An action on one of the app's own
   // surfaces that the manifest names local is offered to the app's background
   // module first; the model gets it only when the module did not take it. While
-  // the module has one in hand, every other press is dropped too.
+  // the module has one in hand, every other press is dropped too. `compose` on
+  // one of the app's own surfaces only fills the composer, even while a turn runs.
   useEffect(() => {
     actionHandlerRef.current = (action: ActionPayload) => {
       try {
-        if (!submitActionMessage || busyRef.current || localPendingRef.current) return
+        if (!submitActionMessage) return
         if (typeof action.surfaceId !== 'string') return
+        if (action.name === APP_COMPOSE_EVENT && reservedIds.includes(action.surfaceId)) {
+          const draft = composeDraftOf(action.context)
+          if (draft !== null && composer) composeIntoSession(sessionId, draft, text => composer.setText(text))
+          return
+        }
+        if (busyRef.current || localPendingRef.current) return
         const dataModel = processor.getSurface(action.surfaceId)?.dataModel.get('/') ?? {}
         const turn = buildActionTurn(action, dataModel)
         const name = action.name
@@ -233,7 +245,7 @@ function A2uiFeeder({
     return () => {
       actionHandlerRef.current = null
     }
-  }, [processor, submitActionMessage, actionHandlerRef, localActions, reservedIds])
+  }, [processor, submitActionMessage, actionHandlerRef, localActions, reservedIds, composer, sessionId])
 
   return null
 }
@@ -398,6 +410,7 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
       <A2uiPresentationProvider sessionId={sessionId} messages={messages} busy={busy} live={live} boardKey={appState?.surface?.hash} boardIds={reservedIds}>
         {isApp ? <AppSurfaceFeeder board={appState} processor={processor} compiler={compiler} epoch={boardEpoch} /> : null}
         <A2uiFeeder
+          sessionId={sessionId}
           compiler={compiler}
           live={live}
           reservedIds={reservedIds}

@@ -1,7 +1,7 @@
 /** Shell pane actions for opening a pane in a given session (F-1, F-36). */
 import { describe, expect, it, vi } from 'vitest'
 
-import { defaultSessionPaneRecord, hasPane, openPane, type SessionPaneRecord } from '@/browser/webview/layout/paneLayout'
+import { defaultSessionPaneRecord, hasPane, openPane, setMaximized, type SessionPaneRecord } from '@/browser/webview/layout/paneLayout'
 import type { SessionLayoutsStore } from '@/browser/webview/layout/sessionLayouts'
 import {
   createShellA2uiPaneRequest,
@@ -71,5 +71,16 @@ describe('createShellA2uiPaneRequest', () => {
     request({ sessionId: 'main', open: false })
     expect(hasPane(updates[0].prev.layout, 'a2ui')).toBe(true)
     expect(hasPane(updates[0].next.layout, 'a2ui')).toBe(false)
+  })
+
+  it('a restore un-maximizes that session and keeps its panes', () => {
+    const { openPaneFor, updates, prevBySession, request } = setup('main')
+    prevBySession.set('other', setMaximized(openPane(defaultSessionPaneRecord(), 'a2ui', {}), 'a2ui'))
+    expect(prevBySession.get('other')!.maximized).toBe('a2ui')
+    request({ sessionId: 'other', restore: true })
+    expect(openPaneFor).not.toHaveBeenCalled()
+    expect(updates[0].sessionId).toBe('other')
+    expect(updates[0].next.maximized).toBeNull()
+    expect(hasPane(updates[0].next.layout, 'a2ui')).toBe(true)
   })
 })

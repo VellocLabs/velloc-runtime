@@ -49,6 +49,6 @@ describe('A2uiPresentationProvider first derivation', () => {
 
   it('replays an older session without opening the pane', () => {
     const requests = mount(transcript(new Date(Date.now() - 10 * 60_000).toISOString()))
-    expect(requests.filter(request => request.open)).toEqual([])
+    expect(requests.filter(request => 'open' in request && request.open)).toEqual([])
   })
 })

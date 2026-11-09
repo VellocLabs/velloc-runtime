@@ -80,6 +80,19 @@ export function focusComposerNear(from: Element | null | undefined): void {
   input?.focus({ preventScroll: true });
 }
 
+/** Focuses the prompt box of `sessionId`'s thread, caret at the end; false when that thread has none. */
+export function focusSessionComposer(sessionId: string): boolean {
+  for (const root of document.querySelectorAll<HTMLElement>(".aui-thread-root")) {
+    if (root.dataset.threadSession !== sessionId) continue;
+    const input = root.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]');
+    if (!input) return false;
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(input.value.length, input.value.length);
+    return document.activeElement === input;
+  }
+  return false;
+}
+
 /**
  * Provides the composer's cards; with no store (a read-only thread) nothing
  * takes passages. One element either way, so a store coming or going never
