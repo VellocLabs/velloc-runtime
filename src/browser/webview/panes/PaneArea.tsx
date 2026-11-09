@@ -56,6 +56,8 @@ export type PaneAreaProps = {
   chat: ReactNode
   /** One pane's frame. */
   renderPane: (kind: SidePaneKind) => ReactNode
+  /** A pane's shown name, for the drag chip; the kind's catalog label when absent. */
+  paneName?: (kind: SidePaneKind) => string
   /** A separator run ended on a changed layout: persist it. */
   onResizeCommit?: (layout: PaneLayout) => void
   /** A pane was dropped on a zone or moved by a key: apply `movePane` and persist. */
@@ -400,7 +402,7 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
             className="pointer-events-none absolute z-50 flex items-center gap-1.5 rounded-md border border-border bg-popover px-2 py-1 text-[13px] font-medium text-popover-foreground shadow-md"
           >
             <ChipIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-            <span>{t(PANE_LABEL_KEY[paneDrag.dragging])}</span>
+            <span>{props.paneName?.(paneDrag.dragging) ?? t(PANE_LABEL_KEY[paneDrag.dragging])}</span>
           </div>
         </>
       ) : null}

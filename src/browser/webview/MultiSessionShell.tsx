@@ -3366,15 +3366,13 @@ export function MultiSessionShell({
   }, [allSessionItems, t])
   // The shown session's app title names its A2UI pane; other sessions keep the pane's own name.
   const locale = useLocale()
+  const shownTemplateType = activeSessionId ? attentionSessions.templateTypes.get(activeSessionId) : undefined
   const shownAppTitle = useMemo(
-    () =>
-      appPaneTitle(
-        modContributions?.apps,
-        activeSessionId ? attentionSessions.templateTypes.get(activeSessionId) : undefined,
-        locale,
-      ),
-    [activeSessionId, attentionSessions, modContributions, locale],
+    () => appPaneTitle(modContributions?.apps, shownTemplateType, locale),
+    [shownTemplateType, modContributions, locale],
   )
+  const sidePaneName = (kind: SidePaneKind): string =>
+    (kind === 'a2ui' ? shownAppTitle : null) ?? t(PANE_LABEL_KEY[kind])
 
   // Reconcile, then deliver whatever is NEW. Delivery is decided per event by
   // `attentionDelivery`, and only `bar` actually needs the queue - a `focus`
@@ -3905,7 +3903,7 @@ export function MultiSessionShell({
   // One pane's frame and body (F-9). The panes render outside the thread
   // providers, so each brings the handles the deep cards need.
   const renderSidePane = (kind: SidePaneKind): ReactNode => {
-    const name = (kind === 'a2ui' ? shownAppTitle : null) ?? t(PANE_LABEL_KEY[kind])
+    const name = sidePaneName(kind)
     const frame = (title: ReactNode, body: ReactNode, actions?: ReactNode) => (
       <PaneFrame
         kind={kind}
@@ -4336,6 +4334,7 @@ export function MultiSessionShell({
           chatWidth={shellLayout.chatW}
           seatWidth={shellLayout.panelOffRowW}
           renderPane={renderSidePane}
+          paneName={sidePaneName}
           onResizeCommit={commitPaneResize}
           onPaneMove={commitPaneMove}
           chat={

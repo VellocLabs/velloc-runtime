@@ -138,6 +138,13 @@ describe('dragging a pane', () => {
     expect(moves(props)).toEqual([])
   })
 
+  it('the chip carries the pane’s shown name when the shell gives one', () => {
+    renderArea({ paneName: kind => (kind === 'tasks' ? 'Board' : kind) })
+    press('tasks', 1000, 320)
+    moveTo(1000, 330)
+    expect(chip()?.textContent).toBe('Board')
+  })
+
   it('the drop reports the zone’s target once and restores the source', () => {
     const { props } = renderArea()
     press('tasks', 1000, 320)
