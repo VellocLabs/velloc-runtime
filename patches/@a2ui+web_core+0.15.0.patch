@@ -1,0 +1,14 @@
+diff --git a/node_modules/@a2ui/web_core/src/resolution/generic-binder.js b/node_modules/@a2ui/web_core/src/resolution/generic-binder.js
+index 8d84160..22e69a9 100644
+--- a/node_modules/@a2ui/web_core/src/resolution/generic-binder.js
++++ b/node_modules/@a2ui/web_core/src/resolution/generic-binder.js
+@@ -305,7 +305,8 @@ export class GenericBinder {
+         this.dataListeners = [];
+         const props = this.context.componentModel.properties;
+         const resolved = this.resolveAndBind(props, this.behaviorTree, [], false);
+-        this.currentProps = { ...this.currentProps, ...(resolved || {}) };
++        // The model's properties are the whole set: a prop the update leaves out is gone.
++        this.currentProps = { ...(resolved || {}) };
+         this.notify();
+     }
+     bindDynamicValue(value, path, isSync) {
