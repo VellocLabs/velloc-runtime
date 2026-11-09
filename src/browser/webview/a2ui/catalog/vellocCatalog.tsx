@@ -269,15 +269,15 @@ export function HoverBarView({ children, buildChild }: { children?: unknown; bui
 
 /** The menu's buttons as full-width rows, the basic catalog's sizes scaled down. */
 const MENU_ITEMS =
-  'flex min-w-36 flex-col p-1 [--a2ui-button-margin:0] [--a2ui-button-padding:4px_8px] [--a2ui-button-border:none] [--a2ui-font-size-m:13px] [--a2ui-font-size-s:13px] [&_a2ui-basic-button]:w-full'
+  'flex min-w-36 flex-col p-1 [--a2ui-button-margin:0] [--a2ui-button-padding:4px_8px] [--a2ui-button-border:none] [--a2ui-font-size-m:13px] [--a2ui-font-size-s:13px] [&_a2ui-basic-button]:block [&_a2ui-basic-button]:w-full [&_.a2ui-button]:w-full [&_.a2ui-button]:text-left'
 
 /**
  * Contract: the content is not portaled, so the items keep the surface's
- * --a2ui-* theme; any click inside it closes the menu after the item's own
- * action has run.
+ * --a2ui-* theme; a click on an item's button closes the menu after the
+ * item's own action has run. A Menu whose label resolves empty is disabled.
  */
-export function MenuView({ label, children, buildChild, defaultOpen = false }: { label?: unknown; children?: unknown; buildChild: BuildChild; defaultOpen?: boolean }): ReactElement {
-  const [open, setOpen] = useState(defaultOpen)
+export function MenuView({ label, children, buildChild }: { label?: unknown; children?: unknown; buildChild: BuildChild }): ReactElement {
+  const [open, setOpen] = useState(false)
   const name = text(label)
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
@@ -287,7 +287,8 @@ export function MenuView({ label, children, buildChild, defaultOpen = false }: {
           data-slot="a2ui-menu"
           aria-label={name}
           title={name}
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted data-[state=open]:text-foreground"
+          disabled={!name}
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground"
         >
           <EllipsisIcon aria-hidden="true" className="size-4" />
         </button>
@@ -296,11 +297,13 @@ export function MenuView({ label, children, buildChild, defaultOpen = false }: {
         data-slot="a2ui-menu-content"
         align="end"
         sideOffset={4}
-        onClick={() => setOpen(false)}
+        onClick={event => {
+          if ((event.target as Element).closest('button')) setOpen(false)
+        }}
         className={`z-50 rounded-md border bg-popover text-popover-foreground shadow-md outline-none ${MENU_ITEMS}`}
       >
         {childList(children).map((child, index) => (
-          <div key={childKey(child, index)} className="flex rounded-sm px-2 py-0.5 hover:bg-muted">{buildRef(child, buildChild)}</div>
+          <div key={childKey(child, index)} className="flex rounded-sm hover:bg-muted">{buildRef(child, buildChild)}</div>
         ))}
       </PopoverPrimitive.Content>
     </PopoverPrimitive.Root>

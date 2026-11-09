@@ -20,12 +20,16 @@ afterEach(() => {
   clicked.length = 0
 })
 
-function mount(defaultOpen: boolean): HTMLElement {
+function mount(label = 'More'): HTMLElement {
   const host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
-  act(() => root!.render(createElement(MenuView, { label: 'More', children: ['undo', 'delete'], buildChild, defaultOpen })))
+  act(() => root!.render(createElement(MenuView, { label, children: ['undo', 'delete'], buildChild })))
   return host
+}
+
+function openMenu(host: HTMLElement): void {
+  act(() => (host.querySelector('[data-slot=a2ui-menu]') as HTMLElement).click())
 }
 
 describe('Menu', () => {
@@ -42,8 +46,25 @@ describe('Menu', () => {
     expect(html).not.toContain('data-id="undo"')
   })
 
+  it('a click beside an item keeps the menu open and runs nothing', () => {
+    const host = mount()
+    openMenu(host)
+    act(() => (host.querySelector('[data-slot=a2ui-menu-content] > div') as HTMLElement).click())
+    expect(clicked).toEqual([])
+    expect(host.querySelector('[data-slot=a2ui-menu-content]')).not.toBeNull()
+  })
+
+  it('is disabled while its label resolves empty', () => {
+    const host = mount('')
+    const trigger = host.querySelector('[data-slot=a2ui-menu]') as HTMLButtonElement
+    expect(trigger.disabled).toBe(true)
+    openMenu(host)
+    expect(host.querySelector('[data-slot=a2ui-menu-content]')).toBeNull()
+  })
+
   it('lists its items in order inside the surface, and closes once one is clicked', () => {
-    const host = mount(true)
+    const host = mount()
+    openMenu(host)
     const items = [...host.querySelectorAll('[data-slot=a2ui-menu-content] [data-id]')].map(e => e.getAttribute('data-id'))
     expect(items, 'not portaled out of the surface').toEqual(['undo', 'delete'])
     act(() => (host.querySelector('[data-id=delete]') as HTMLElement).click())
