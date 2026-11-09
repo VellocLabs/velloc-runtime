@@ -1,5 +1,5 @@
-// The Velloc A2UI catalog (F-1): the v1.0 basic catalog plus the chart, data
-// and dashboard components. Chart renderers are lazy, so recharts loads on the
+// The Velloc A2UI catalog (F-1): the v1.0 basic catalog with Velloc's own
+// Tabs, plus the chart, data and dashboard components. Chart renderers are lazy, so recharts loads on the
 // first chart.
 
 import { lazy, Suspense, type ReactElement } from 'react'
@@ -18,6 +18,7 @@ import {
   type ChartComponentName,
   chartHeight,
 } from './chartCatalogDefinitions'
+import { TABS_CATALOG_INSTRUCTIONS, tabsComponent } from './TabsView'
 import type { CatalogPropNames } from '../toA2uiMessages'
 
 const PieChartView = lazy(async () => ({
@@ -277,10 +278,10 @@ const chartComponents: ReactCatalogComponent[] = (
 export const vellocCatalog = new Catalog<ReactCatalogComponent>(
   VELLOC_CATALOG_ID,
   'v1.0',
-  [...basicCatalog.components.values(), ...chartComponents],
+  [...[...basicCatalog.components.values()].map(component => (component.name === 'Tabs' ? tabsComponent : component)), ...chartComponents],
   [...basicCatalog.functions.values()],
   {
-    instructions: [basicCatalog.instructions, CHART_CATALOG_INSTRUCTIONS].filter(Boolean).join('\n\n'),
+    instructions: [basicCatalog.instructions, CHART_CATALOG_INSTRUCTIONS, TABS_CATALOG_INSTRUCTIONS].filter(Boolean).join('\n\n'),
   },
 )
 

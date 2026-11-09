@@ -201,11 +201,13 @@ Use these exact positional signatures to instantiate components. Do not output p
   - value: The current value of the slider.
   - steps: The number of discrete divisions in the slider range. If specified, the slider will snap to discrete values.
   - weight: The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column.
-• Tabs(tabs (static), weight? (static))
-  - tabs: An array of objects, where each object defines a tab with a title and a child component.
+• Tabs(tabs (static), open?, weight? (static))
+  - tabs: An array of objects, where each object defines a tab with a title, a child component and an optional badge.
     List of maps keys:
     * title - The tab title.
     * child - The ID of the child component.
+    * badge - A count drawn as a small red pill after the title, e.g. open items; literal or a data binding. Hidden when missing, 0 or empty.
+  - open: The zero-based index of the tab shown first, literal or a data binding; default 0, out of range is 0. Once the user picks a tab, a later change does not move them.
   - weight: The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column.
 • Text(text, variant? (static), weight? (static))
   - text: The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation.
@@ -429,3 +431,5 @@ trendCard = Card(trend, 1)
 trend = LineChart("Monthly", $/months, "month", [{key: "sales", label: "Sales"}])
 </a2ui>
 ```
+
+Give a tab a badge for a count that needs attention, e.g. {title: "To do", child: todo, badge: $/todo/count}; a badge of 0 or no value is hidden, so bind it rather than leaving it out. Use open=1 (zero-based) to show a tab other than the first when the surface is drawn.
