@@ -453,7 +453,7 @@ describe('AppBackgroundRuntime — $.app.badge', () => {
     expect(badges.at(-1)).toEqual(['pay-board', 0])
     runtime.sync([])
     await vi.waitFor(() => expect(status()).toBeUndefined())
-    expect(badges.at(-1)).toEqual(['pay-board', null])
+    await vi.waitFor(() => expect(badges.at(-1)).toEqual(['pay-board', null]))
     expect(badges).toHaveLength(4)
   })
 
