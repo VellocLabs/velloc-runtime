@@ -3,7 +3,7 @@
  * real extraction, manifest checking, grant comparison and registry.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { forgetRegistryFile, loadInstalledPlugins } from '../pluginHost/installedRegistry'
+import { forgetRegistryFile, loadInstalledPlugins, saveInstalledPlugins } from '../pluginHost/installedRegistry'
 import { installFromHttps, sha256Of } from '../pluginHost/httpsSource'
 import { setupPlugin } from '../pluginHost/installSteps'
 import { addMarketplace, forgetCatalogs } from '../pluginHost/marketplaces'
@@ -26,7 +26,6 @@ const URL_A = 'https://plugins.acme.test/acme.tar.gz'
 const ID = 'acme@direct'
 const DIR = '/home/u/.velloc/plugins/cache/direct/acme'
 const STATE = '/home/u/.velloc/plugins/provider_mod_updates.json'
-const REGISTRY = '/home/u/.velloc/plugins/installed_plugins.json'
 const T0 = Date.parse('2026-10-09T00:00:00.000Z')
 
 /** The memory fs plus the `stat` the plugin loader asks for. */
@@ -656,10 +655,9 @@ describe('a plugin whose apps declare folders and that carries no provider', () 
     await installFromHttps(ctx, w.fs as unknown as RuntimeFs, { url }, { fetchImpl: w.fetchImpl })
     expect(await statusOf(w.service, 'kit@direct')).toMatchObject({ state: 'unchecked', source: { url } })
 
-    const registry = JSON.parse(String(await w.fs.readFile(REGISTRY, { encoding: 'utf-8' })))
-    delete registry.plugins['kit@direct'][0].origin
-    await w.fs.writeFile(REGISTRY, JSON.stringify(registry), { encoding: 'utf-8' })
-    forgetRegistryFile()
+    const { registry } = await loadInstalledPlugins(ctx, w.fs as unknown as RuntimeFs)
+    delete registry.plugins['kit@direct']![0]!.origin
+    await saveInstalledPlugins(ctx, w.fs as unknown as RuntimeFs, registry)
     const bare = await statusOf(w.service, 'kit@direct')
     expect(bare).toMatchObject({ state: 'no-source', grant: { folders: { read: ['~/Downloads'], write: [] } } })
     expect(bare.source).toBeUndefined()
