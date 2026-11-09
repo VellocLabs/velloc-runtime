@@ -31,8 +31,9 @@ const TOOLTIP_STYLE = {
   fontSize: 12,
 }
 
-/** Legends list slices and series in the order the author gave them. */
 const LEGEND_STYLE = { fontSize: 12 }
+/** Legend props shared by every chart: entries keep the order the author gave the slices or series. */
+const LEGEND_PROPS = { itemSorter: null, wrapperStyle: LEGEND_STYLE }
 
 export type SeriesSpec = { key: string; label?: string; color?: string }
 
@@ -117,7 +118,7 @@ export function PieChartView({ title, data, donut, height, valuePrefix, valueSuf
           layout="vertical"
           align="left"
           verticalAlign="middle"
-          itemSorter={null}
+          {...LEGEND_PROPS}
           formatter={legendText}
           wrapperStyle={{ ...LEGEND_STYLE, lineHeight: '22px' }}
         />
@@ -143,7 +144,7 @@ export function LineChartView({ title, data, xKey, series, curved, height, ...un
         <XAxis dataKey={xKey} tick={AXIS_TICK} stroke="var(--border)" />
         <YAxis tick={AXIS_TICK} stroke="var(--border)" width={56} {...units.tick} />
         <Tooltip contentStyle={TOOLTIP_STYLE} {...units.tooltip} />
-        {series.length > 1 && <Legend itemSorter={null} wrapperStyle={LEGEND_STYLE} />}
+        {series.length > 1 && <Legend {...LEGEND_PROPS} />}
         {series.map((s, index) => (
           <Line
             key={s.key}
@@ -178,7 +179,7 @@ export function BarChartView({ title, data, xKey, series, stacked, height, ...un
         <XAxis dataKey={xKey} tick={AXIS_TICK} stroke="var(--border)" />
         <YAxis tick={AXIS_TICK} stroke="var(--border)" width={56} {...units.tick} />
         <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'var(--muted)' }} {...units.tooltip} />
-        {series.length > 1 && <Legend itemSorter={null} wrapperStyle={LEGEND_STYLE} />}
+        {series.length > 1 && <Legend {...LEGEND_PROPS} />}
         {series.map((s, index) => (
           <Bar
             key={s.key}
