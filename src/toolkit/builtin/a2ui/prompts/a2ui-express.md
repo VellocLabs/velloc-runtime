@@ -139,7 +139,7 @@ Use these exact positional signatures to instantiate components. Do not output p
   - weight: The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column.
 • Grid(children, minWidth? (static), after? (component ID), weight? (static))
   - children: The cells: an array of ids, or a template over a data list, e.g. one Card per row of the list.
-  - minWidth: The narrowest a column may get, in pixels; default 280. A child narrower than the pane never overflows it.
+  - minWidth: The narrowest a column may get, in pixels; default 280, kept within 120-800. A child narrower than the pane never overflows it.
   - after: One more cell after the children, by id, e.g. an AddCard that adds to the list.
   - weight: Flex share inside a Row or Column; only on a direct child of one.
 • Heading(text, level? (static), subtitle?, weight? (static))
@@ -421,7 +421,7 @@ Example 2: Dynamic list with templates
 
 ## Charts and data
 
-Draw numbers as charts, not prose: PieChart for shares, LineChart for a trend over time, BarChart to compare categories, Metric for one key figure, DataTable for rows. Put the rows in the data model and bind them, so a later update can change the data alone. Group charts in Cards inside a Row or Column for a dashboard. Leave colors out to use the theme palette. For a list of like cards (one per alert, product or account), use a Grid with a template child: Grid(_template($/alerts, alertCard)); the cards wrap into equal columns instead of stretching across the pane. To offer per-card actions without crowding the card, put a HoverBar of borderless Buttons anywhere in it: it shows in the cell's top-right corner while the pointer is over the card. To let the user add to the list, end the Grid with an AddCard rather than a separate button: Grid(_template($/alerts, alertCard), after=addAlert), addAlert = AddCard("Add alert", Event("add_alert")).
+Draw numbers as charts, not prose: PieChart for shares, LineChart for a trend over time, BarChart to compare categories, Metric for one key figure, DataTable for rows. Put the rows in the data model and bind them, so a later update can change the data alone. Group charts in Cards inside a Row or Column for a dashboard. Leave colors out to use the theme palette. For a list of like cards (one per alert, product or account), use a Grid with a template child: Grid(_template($/alerts, alertCard)); the cards wrap into equal columns instead of stretching across the pane. To offer per-card actions without crowding the card, put one HoverBar of borderless Buttons anywhere in it: it shows in the cell's top-right corner while the pointer is over the card (every HoverBar in a cell takes that corner, so give each card one). To let the user add to the list, end the Grid with an AddCard rather than a separate button: Grid(_template($/alerts, alertCard), after=addAlert), addAlert = AddCard("Add alert", Event("add_alert")).
 
 Title a dashboard with Heading (level 1 for the page, 3 for a card); its subtitle is the small line under it. Show a status with Badge, or give a DataTable column a badge map so each cell is one. Put a chart's unit (its value axis, a pie's legend, the tooltip) in valuePrefix / valueSuffix rather than in the numbers.
 

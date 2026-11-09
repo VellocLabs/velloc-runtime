@@ -1,7 +1,11 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest'
-import { createElement, type ReactNode } from 'react'
+import { afterEach, describe, expect, it } from 'vitest'
+import { act, createElement, type ReactNode } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { A2uiSurface, type ReactCatalogComponent } from '@a2ui/react'
+import { MessageProcessor } from '@a2ui/web_core/v1_0'
+import { createA2uiExpressCompiler } from '../toolkit/builtin/a2ui/express/a2uiExpressCompiler'
 import { chartCatalogDefinitions, gridMinWidth } from '../browser/webview/a2ui/catalog/chartCatalogDefinitions'
 import { AddCardView, GridView, HoverBarView, vellocCatalog } from '../browser/webview/a2ui/catalog/vellocCatalog'
 import { commandsToA2uiMessages } from '../browser/webview/a2ui/toA2uiMessages'
@@ -62,6 +66,8 @@ describe('Grid and HoverBar', () => {
     }))
     expect(html.match(/data-slot="a2ui-grid-cell"/g)).toHaveLength(2)
     expect(html.indexOf('data-path="/alerts/0"')).toBeLessThan(html.indexOf('data-id="add"'))
+    const repeated = renderToStaticMarkup(createElement(GridView, { children: ['a', 'add'], after: 'add', buildChild }))
+    expect(repeated.match(/data-id="add"/g), 'an after already among the children is not drawn twice').toHaveLength(1)
   })
 
   it('draws an AddCard as a dashed plus button named by its label, disabled without an action', () => {
@@ -70,6 +76,7 @@ describe('Grid and HoverBar', () => {
     expect(html).toContain('<svg')
     expect(html).not.toContain('disabled=')
     expect(renderToStaticMarkup(createElement(AddCardView, { label: 'Add' }))).toContain('disabled=')
+    expect(renderToStaticMarkup(createElement(AddCardView, { label: '', action: () => {} })), 'a nameless plus is not clickable').toContain('disabled=')
   })
 
   it('pins a HoverBar to its grid cell corner, shown on hover, and leaves it inline elsewhere', () => {
@@ -84,5 +91,40 @@ describe('Grid and HoverBar', () => {
     const alone = renderToStaticMarkup(bar)
     expect(alone).toContain('data-pinned="false"')
     expect(alone).not.toContain('absolute')
+  })
+})
+
+;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+describe('a Grid drawn from an Express surface', () => {
+  let root: Root | null = null
+  afterEach(() => {
+    act(() => root?.unmount())
+    root = null
+    document.body.innerHTML = ''
+  })
+
+  it('draws one cell per data item, each bound to its item, then the after cell', async () => {
+    const processor = new MessageProcessor<ReactCatalogComponent>([vellocCatalog], () => {})
+    const compiler = createA2uiExpressCompiler(vellocCatalog)
+    const body = [
+      'surface("s")',
+      'root = Grid(_template($/alerts, card), after=add)',
+      'card = Card(name)',
+      'name = Text($name)',
+      'add = AddCard("Add alert", Event("add_alert"))',
+      '$/alerts = [{name: "CPU high"}, {name: "Disk full"}, {name: "Late payout"}]',
+      '',
+    ].join('\n')
+    const compiled = compiler.compile(body, compiler.stateFor(processor))
+    expect(compiled, JSON.stringify(compiled)).toMatchObject({ ok: true })
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    root = createRoot(host)
+    await act(async () => root!.render(createElement(A2uiSurface, { surface: processor.getSurface('s')! })))
+    await act(async () => new Promise(resolve => setTimeout(resolve, 20)))
+    const cells = Array.from(host.querySelectorAll('[data-slot="a2ui-grid-cell"]'))
+    expect(cells.map(cell => cell.textContent?.trim())).toEqual(['CPU high', 'Disk full', 'Late payout', ''])
+    expect(cells[3].querySelector('[data-slot="a2ui-add-card"]')?.getAttribute('aria-label')).toBe('Add alert')
   })
 })

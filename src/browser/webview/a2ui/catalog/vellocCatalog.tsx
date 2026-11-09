@@ -232,7 +232,7 @@ function buildRef(child: ChildRef, buildChild: BuildChild): ReactNode {
 
 export function GridView({ children, minWidth, after, buildChild }: { children?: unknown; minWidth?: unknown; after?: unknown; buildChild: BuildChild }): ReactElement {
   const cells = childList(children)
-  if (typeof after === 'string' && after) cells.push(after)
+  if (typeof after === 'string' && after && !cells.includes(after)) cells.push(after)
   return (
     <div
       data-slot="a2ui-grid"
@@ -267,7 +267,7 @@ export function HoverBarView({ children, buildChild }: { children?: unknown; bui
 
 export function AddCardView({ label, action }: { label?: unknown; action?: unknown }): ReactElement {
   const tip = text(label)
-  const run = typeof action === 'function' ? (action as () => void) : undefined
+  const run = typeof action === 'function' && tip ? (action as () => void) : undefined
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>

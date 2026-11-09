@@ -169,7 +169,7 @@ export const chartCatalogDefinitions = {
         children: ChildList.describe(
           'REF:#/$defs/ChildList|The cells: an array of ids, or a template over a data list, e.g. one Card per row of the list.',
         ),
-        minWidth: z.number().optional().describe('The narrowest a column may get, in pixels; default 280. A child narrower than the pane never overflows it.'),
+        minWidth: z.number().optional().describe('The narrowest a column may get, in pixels; default 280, kept within 120-800. A child narrower than the pane never overflows it.'),
         after: ComponentId.optional().describe('REF:#/$defs/ComponentId|One more cell after the children, by id, e.g. an AddCard that adds to the list.'),
         weight,
       })
@@ -246,8 +246,8 @@ export const CHART_CATALOG_INSTRUCTIONS = [
     'in Cards inside a Row or Column for a dashboard. Leave colors out to use the theme palette. ' +
     'For a list of like cards (one per alert, product or account), use a Grid with a template child: ' +
     'Grid(_template($/alerts, alertCard)); the cards wrap into equal columns instead of stretching across the pane. ' +
-    'To offer per-card actions without crowding the card, put a HoverBar of borderless Buttons anywhere in it: ' +
-    'it shows in the cell\'s top-right corner while the pointer is over the card. ' +
+    'To offer per-card actions without crowding the card, put one HoverBar of borderless Buttons anywhere in it: ' +
+    'it shows in the cell\'s top-right corner while the pointer is over the card (every HoverBar in a cell takes that corner, so give each card one). ' +
     'To let the user add to the list, end the Grid with an AddCard rather than a separate button: Grid(_template($/alerts, alertCard), after=addAlert), ' +
     'addAlert = AddCard("Add alert", Event("add_alert")).',
   '',
