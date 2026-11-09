@@ -1556,7 +1556,13 @@ export function PluginsSection({
                         <>
                         {p.enabled && !status.consented ? (
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm" data-testid={`provider-unapproved-${p.name}`}>
-                            <span className="text-muted-foreground">{t("settings.plugins.providers.review.waiting")}</span>
+                            <span className="text-muted-foreground">
+                              {t(
+                                Object.keys(status.grant.providers).length > 0
+                                  ? "settings.plugins.providers.review.waiting"
+                                  : "settings.plugins.providers.review.waitingFolders",
+                              )}
+                            </span>
                             {canConsent ? (
                               <Button
                                 size="sm"

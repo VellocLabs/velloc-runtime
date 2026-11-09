@@ -519,3 +519,27 @@ describe('PluginsSection - an enabled plugin the person never approved', () => {
     expect(screen.queryByTestId('provider-review-zen-plugin')).toBeNull()
   })
 })
+
+describe('PluginsSection - a plugin whose apps ask for folders and that carries no provider', () => {
+  const FOLDERS_ONLY = status({ consented: false, grant: { providers: {}, folders: { read: ['~/Downloads'], write: [] } } })
+
+  it('turning it on opens the consent dialog with its folders; Turn on records the baseline, then enables it', async () => {
+    const rig = pageRig({ enabled: false, states: [FOLDERS_ONLY] })
+    renderPage(rig, FULL)
+    await screen.findByTestId('provider-updates-zen-plugin')
+    fireEvent.click(screen.getByTestId('plugin-toggle-zen-plugin'))
+    expect(await screen.findByTestId('provider-consent-dialog')).toBeTruthy()
+    expect(screen.getByTestId('consent-folders-read').textContent).toBe('May read: ~/Downloads')
+    expect(rig.calls).toEqual([])
+    fireEvent.click(screen.getByTestId('consent-enable'))
+    await waitFor(() => expect(rig.calls).toEqual(['providerUpdates.baseline', 'plugins.setEnabled']))
+  })
+
+  it('left on and never approved, its line speaks of folders, not providers', async () => {
+    const rig = pageRig({ enabled: true, states: [FOLDERS_ONLY] })
+    renderPage(rig, FULL)
+    expect((await screen.findByTestId('provider-unapproved-zen-plugin')).textContent).toBe(
+      "Its apps can't reach your folders until you approve them.Review and turn on",
+    )
+  })
+})

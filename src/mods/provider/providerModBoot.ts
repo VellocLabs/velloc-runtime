@@ -30,6 +30,7 @@ import {
   notifyProviderModUpdatesChanged,
 } from '../../pluginHost/providerModUpdateHolder'
 import { consentCovers } from '../../pluginHost/providerPluginConsent'
+import { folderScopesOf } from '../app/appFolderScopes'
 import {
   getProviderModHost,
   isGlobalPluginSource,
@@ -92,19 +93,27 @@ export async function scanProviderPlugins(deps: ProviderModBootDeps): Promise<Pr
 
 // ── updates ──
 
-/** The providers' plugins in a scan that are the person's own. */
-function providerPluginsOf(scan: ProviderPluginScan): ProviderPluginScan['enabled'] {
+const MARKETPLACE_SOURCE = 'marketplace:'
+
+/** A marketplace plugin whose apps declare folders and that carries no provider. */
+function isFoldersOnly(plugin: ProviderPluginScan['enabled'][number]): boolean {
+  return !(plugin.providers?.length ?? 0) && plugin.source.startsWith(MARKETPLACE_SOURCE) && folderScopesOf(plugin.manifest) !== undefined
+}
+
+/** The plugins in a scan that are the person's own and carry a grant: providers, or an app's folders. */
+function grantPluginsOf(scan: ProviderPluginScan): ProviderPluginScan['enabled'] {
   return [...scan.enabled, ...scan.disabled].filter(
-    plugin => (plugin.providers?.length ?? 0) > 0 && isGlobalPluginSource(plugin.source),
+    plugin => ((plugin.providers?.length ?? 0) > 0 || isFoldersOnly(plugin)) && isGlobalPluginSource(plugin.source),
   )
 }
 
-/** Whether some installed provider plugin names a place to look for updates. */
+/** Whether some installed plugin with a grant has a place to look for updates: a provider's `updates`, or the catalog of a plugin without providers. */
 export function hasProviderUpdateSource(scan: ProviderPluginScan): boolean {
-  return providerPluginsOf(scan).some(
+  return grantPluginsOf(scan).some(
     plugin =>
-      plugin.source.startsWith('marketplace:') &&
-      Object.values(plugin.manifest?.providers ?? {}).some(provider => provider.updates !== undefined),
+      plugin.source.startsWith(MARKETPLACE_SOURCE) &&
+      (isFoldersOnly(plugin) ||
+        Object.values(plugin.manifest?.providers ?? {}).some(provider => provider.updates !== undefined)),
   )
 }
 
@@ -136,7 +145,7 @@ function stopUpdateSchedule(): void {
  * COMPLETED. Nothing is scheduled or fetched unless some plugin has `updates`.
  */
 async function followUpdates(scan: ProviderPluginScan): Promise<void> {
-  if (providerPluginsOf(scan).length === 0) {
+  if (grantPluginsOf(scan).length === 0) {
     stopUpdateSchedule()
     configureProviderModUpdates(null)
     return
@@ -220,7 +229,7 @@ export async function bootProviderMods(deps: ProviderModBootDeps): Promise<void>
     // approved its grant (the consent dialog), and nothing wider than they
     // approved; directory plugins are exempt.
     consented: plugin =>
-      consentCovers({ homeDir: deps.homeDir }, deps.fs, plugin.source.slice('marketplace:'.length), plugin.manifest),
+      consentCovers({ homeDir: deps.homeDir }, deps.fs, plugin.source.slice(MARKETPLACE_SOURCE.length), plugin.manifest),
     createRuntime: async () => {
       const { createProviderModRuntime } = await import('./providerModRuntimeFactory')
       return createProviderModRuntime({
@@ -279,10 +288,10 @@ function configureContributions(deps: ProviderModBootDeps): void {
 }
 
 /**
- * Records the first consent to the installed provider plugin `pluginId` (the
- * grant of the version on disk) and registers its providers. Before the boot
- * it only records, over `at`; the boot's scan then registers them. Rejects
- * when the plugin is not an installed provider plugin.
+ * Records the first consent to the installed plugin `pluginId` (the grant of
+ * the version on disk: its providers, its apps' folders) and registers its
+ * providers. Before the boot it only records, over `at`; the boot's scan then
+ * registers them. Rejects when the plugin has no grant.
  */
 export async function recordProviderPluginConsent(
   pluginId: string,
@@ -290,7 +299,7 @@ export async function recordProviderPluginConsent(
 ): Promise<void> {
   let service = await acquireProviderModUpdateService()
   if (!service) {
-    // No provider plugin was installed at the last scan, so no service exists.
+    // No plugin with a grant was installed at the last scan, so no service exists.
     const { createProductionUpdateService } = await import('./providerModUpdateWiring')
     service = createProductionUpdateService({
       homeDir: current?.homeDir ?? at.homeDir,

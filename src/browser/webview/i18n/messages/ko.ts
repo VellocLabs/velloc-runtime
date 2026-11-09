@@ -2142,6 +2142,7 @@ export const ko: Messages = {
   'settings.plugins.providers.updates.failure.admission': '코드가 안전하게 실행할 수 없다고 판단되어 거부되었습니다',
   'settings.plugins.providers.updates.failure.activate': '새 버전으로 전환하지 못해 이전 버전이 계속 실행됩니다',
   'settings.plugins.providers.review.waiting': '승인하기 전까지 이 플러그인의 제공업체는 꺼져 있습니다.',
+  'settings.plugins.providers.review.waitingFolders': '승인하기 전까지 이 플러그인의 앱은 폴더에 접근할 수 없습니다.',
   'settings.plugins.providers.review.button': '검토하고 켜기',
   'settings.plugins.mods.local': '로컬',
   'settings.plugins.mods.builtin': '기본 제공',

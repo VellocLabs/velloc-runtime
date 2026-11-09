@@ -2113,6 +2113,7 @@ export const zh: Messages = {
   'settings.plugins.providers.updates.failure.admission': '其代码被判定为不安全而被拒绝运行',
   'settings.plugins.providers.updates.failure.activate': '无法切换到新版本，因此旧版本继续运行',
   'settings.plugins.providers.review.waiting': '在你批准之前，它的服务商不会启用。',
+  'settings.plugins.providers.review.waitingFolders': '在你批准之前，它的应用无法访问你的文件夹。',
   'settings.plugins.providers.review.button': '查看并启用',
   'settings.plugins.mods.local': '本地',
   'settings.plugins.mods.builtin': '内置',

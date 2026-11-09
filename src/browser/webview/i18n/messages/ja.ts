@@ -2148,6 +2148,7 @@ export const ja: Messages = {
   'settings.plugins.providers.updates.failure.admission': 'コードが安全に実行できないとして拒否されました',
   'settings.plugins.providers.updates.failure.activate': '新しいバージョンに切り替えられなかったため、以前のバージョンが引き続き動作します',
   'settings.plugins.providers.review.waiting': '承認するまで、このプラグインのプロバイダは無効です。',
+  'settings.plugins.providers.review.waitingFolders': '承認するまで、このプラグインのアプリはあなたのフォルダにアクセスできません。',
   'settings.plugins.providers.review.button': '確認して有効にする',
   'settings.plugins.mods.local': 'ローカル',
   'settings.plugins.mods.builtin': '組み込み',

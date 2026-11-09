@@ -25,6 +25,7 @@ import {
   isPluginUpdatesPluginPayload,
 } from '../pluginHost/pluginUpdatesProtocol'
 import { comparePluginVersions, isNewerPluginVersion } from '../pluginHost/pluginVersionCompare'
+import { adoptRuntimeChannel } from '../branding/updateChannels'
 import { wipeSettingsMemos } from '../settings/settingsStore'
 import { makeMemFs } from './_helpers/memFs'
 import { archive } from './_helpers/pluginArchive'
@@ -33,7 +34,7 @@ const HOME = '/home/u'
 const ctx = { homeDir: HOME }
 const ID = 'cool@my-mkt'
 
-type Listing = { name: string; version: string; providers?: boolean; missing?: boolean }
+type Listing = { name: string; version: string; providers?: boolean; folders?: boolean; missing?: boolean }
 
 async function marketplaceTarball(plugins: Listing[]): Promise<Uint8Array> {
   const files = [
@@ -53,6 +54,9 @@ async function marketplaceTarball(plugins: Listing[]): Promise<Uint8Array> {
             name: p.name,
             version: p.version,
             ...(p.providers ? { providers: { main: { providerApi: 1 } } } : {}),
+            ...(p.folders
+              ? { templates: { board: { title: 'B', app: { seed: './app', entry: 'board.a2ui', background: { module: './bg.js', fs: { read: ['~/Downloads'] } } } } } }
+              : {}),
           }),
         },
         { name: `plugins/${p.name}/skills/hello/SKILL.md`, content: `v${p.version}\n` },
@@ -264,10 +268,12 @@ describe('plugin update service', () => {
     expect(state.plugins.find(p => p.identifier === 'quiet@my-mkt')!.state).toBe('available')
   })
 
-  it('leaves out provider plugins and plugins recorded for a project', async () => {
+  it('leaves out provider plugins, plugins whose apps ask for folders, and plugins recorded for a project', async () => {
+    adoptRuntimeChannel('beta')
     const r = await rig([
       { name: 'cool', version: '1.0.0' },
       { name: 'acme', version: '1.0.0', providers: true },
+      { name: 'kit', version: '1.0.0', folders: true },
     ])
     await recordPluginSetup(ctx, r.fs, 'proj@my-mkt', {
       scope: 'project',
@@ -278,6 +284,8 @@ describe('plugin update service', () => {
     const state = await r.service.snapshot()
     expect(state.plugins.map(p => p.identifier)).toEqual([ID])
     await expect(r.service.update('acme@my-mkt')).rejects.toThrow(/not a marketplace plugin installed for this user/)
+    await expect(r.service.update('kit@my-mkt')).rejects.toThrow(/not a marketplace plugin installed for this user/)
+    adoptRuntimeChannel(null)
   })
 })
 

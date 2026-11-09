@@ -1,8 +1,9 @@
 /**
  * Contract: marketplace plugin update service (F-14). Covers user-scope plugins
  * installed from a registered marketplace or straight from the plugin
- * directory (F-35); project and local scopes, folder plugins and provider
- * plugins (their own consent flow, F-27) are left out.
+ * directory (F-35); project and local scopes, folder plugins and plugins
+ * the person consents to (providers or an app's folders: their own consent
+ * flow, F-27) are left out.
  *
  * `check` refreshes each marketplace that has a covered plugin — for
  * directory installs, their records' reviewed commits — and records an
@@ -36,7 +37,7 @@ import {
 import { getPluginManifestPath } from './pluginPaths'
 import { joinPluginRef, splitPluginRef } from './pluginRef'
 import { isNewerPluginVersion } from './pluginVersionCompare'
-import { manifestDeclaresProviders } from './providerPluginConsent'
+import { manifestNeedsConsent } from './providerPluginConsent'
 import type { CatalogListing, PluginSetupRecord } from './registryFormats'
 
 /** How long a check stays fresh for a non-forced `check`. */
@@ -229,7 +230,7 @@ export function createPluginUpdateService(deps: PluginUpdateServiceDeps): Plugin
       if (!marketplace || !(marketplace in known || marketplace === DIRECTORY_CATALOG_KEY)) continue
       const record = records.find(entry => entry.scope === 'user')
       if (!record) continue
-      if (manifestDeclaresProviders(await readJson(fs, getPluginManifestPath(record.installPath)))) continue
+      if (manifestNeedsConsent(await readJson(fs, getPluginManifestPath(record.installPath)))) continue
       out.push({ identifier, name, marketplace, record })
     }
     return out

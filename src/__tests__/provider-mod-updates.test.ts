@@ -7,7 +7,7 @@ import { forgetRegistryFile, loadInstalledPlugins } from '../pluginHost/installe
 import { installFromHttps, sha256Of } from '../pluginHost/httpsSource'
 import { setupPlugin } from '../pluginHost/installSteps'
 import { addMarketplace, forgetCatalogs } from '../pluginHost/marketplaces'
-import type { PluginInstallPathContext } from '../pluginHost/pluginDirs'
+import { PLUGIN_MANIFEST_DIR_NAME, type PluginInstallPathContext } from '../pluginHost/pluginDirs'
 import {
   createProviderModUpdateService,
   startProviderModUpdateSchedule,
@@ -15,6 +15,7 @@ import {
   type ProviderModUpdateService,
   type ProviderModSwapper,
 } from '../pluginHost/providerModUpdates'
+import { adoptRuntimeChannel } from '../branding/updateChannels'
 import { wipeSettingsMemos } from '../settings/settingsStore'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { archive, pluginArchive, providerJson, servedFetch, type Served } from './_helpers/pluginArchive'
@@ -555,5 +556,102 @@ describe('a marketplace id as the update source', () => {
     await w.service.recordInitialConsent('acme@mkt')
     w.served.set(MKT_URL, { body: await archive([{ name: '.claude-plugin/marketplace.json', content: JSON.stringify({ name: 'mkt', plugins: [] }) }], 'me-mkt-abc') })
     expect((await w.service.checkNow('acme@mkt'))[0]).toMatchObject({ state: 'failed', failure: { kind: 'source-missing' } })
+  })
+})
+
+describe('a plugin whose apps declare folders and that carries no provider', () => {
+  const MKT_URL = 'https://codeload.github.com/me/mkt/tar.gz/refs/heads/main'
+  const archiveUrl = (version: string) => `https://plugins.acme.test/kit-${version}.tar.gz`
+  const PID = 'kit@mkt'
+
+  const kitArchive = (version: string, fs: Record<string, string[]>) =>
+    archive([
+      {
+        name: `${PLUGIN_MANIFEST_DIR_NAME}/plugin.json`,
+        content: JSON.stringify({
+          name: 'kit',
+          version,
+          templates: { board: { title: 'Board', app: { seed: './app', entry: 'board.a2ui', background: { module: './bg.js', fs } } } },
+        }),
+      },
+      { name: 'app/board.a2ui', content: '{}\n' },
+      { name: 'bg.js', content: `export function register() {} // ${version}\n` },
+    ])
+
+  async function serve(w: World, version: string, fs: Record<string, string[]>): Promise<void> {
+    w.served.set(MKT_URL, {
+      body: await archive(
+        [{ name: `${PLUGIN_MANIFEST_DIR_NAME}/marketplace.json`, content: JSON.stringify({ name: 'mkt', plugins: [{ name: 'kit', version, source: { source: 'https', url: archiveUrl(version) } }] }) }],
+        'me-mkt-abc',
+      ),
+    })
+    w.served.set(archiveUrl(version), { body: await kitArchive(version, fs) })
+  }
+
+  async function installed(): Promise<{ w: World; service: ProviderModUpdateService; afterConsent: ReturnType<typeof vi.fn> }> {
+    const w = await world({ install: false })
+    await addMarketplace(ctx, w.fs as unknown as RuntimeFs, 'mkt', { source: 'github', repo: 'me/mkt' }, new Date(T0).toISOString())
+    await serve(w, '1.0.0', { read: ['~/Downloads'] })
+    await setupPlugin(ctx, w.fs as unknown as RuntimeFs, 'mkt', 'kit', { fetchImpl: w.fetchImpl, refreshFirst: true })
+    const afterConsent = vi.fn(async () => {})
+    const service = createProviderModUpdateService({
+      ctx,
+      fs: w.fs as unknown as RuntimeFs,
+      fetchImpl: w.fetchImpl,
+      now: () => w.clock.t,
+      host: w.host,
+      afterConsent,
+      report: line => w.report.push(line),
+    })
+    return { w, service, afterConsent }
+  }
+
+  beforeEach(() => {
+    adoptRuntimeChannel('beta')
+    return () => {
+      adoptRuntimeChannel(null)
+    }
+  })
+
+  it('is listed with its folders as the grant, and the first consent records them', async () => {
+    const { w, service } = await installed()
+    expect(await statusOf(service, PID)).toMatchObject({
+      consented: false,
+      source: { marketplace: 'mkt' },
+      grant: { providers: {}, folders: { read: ['~/Downloads'], write: [] } },
+    })
+    await service.recordInitialConsent(PID)
+    const state = JSON.parse(String(await w.fs.readFile(STATE, { encoding: 'utf-8' })))
+    expect(state.plugins[PID].consent).toMatchObject({ version: '1.0.0', grant: { providers: {}, folders: { read: ['~/Downloads'], write: [] } } })
+    expect(await statusOf(service, PID)).toMatchObject({ consented: true })
+  })
+
+  it('a version with the same folders is applied from its catalog with no provider, and the plugins are read again', async () => {
+    const { w, service, afterConsent } = await installed()
+    await service.recordInitialConsent(PID)
+    afterConsent.mockClear()
+    await serve(w, '1.1.0', { read: ['~/Downloads'] })
+    const [status] = await service.checkNow(PID)
+    expect(status).toMatchObject({ state: 'up-to-date', activeVersion: '1.1.0', rollbackVersion: '1.0.0' })
+    expect(status!.failure).toBeUndefined()
+    expect(afterConsent).toHaveBeenCalledTimes(1)
+  })
+
+  it('a version that asks for more folders waits for consent; a rollback goes back with its grant', async () => {
+    const { w, service } = await installed()
+    await service.recordInitialConsent(PID)
+    await serve(w, '1.1.0', { read: ['~/Downloads'] })
+    await service.checkNow(PID)
+    await serve(w, '1.2.0', { write: ['~/Downloads'] })
+    const [parked] = await service.checkNow(PID)
+    expect(parked).toMatchObject({ state: 'needs-consent', activeVersion: '1.1.0', pending: { version: '1.2.0', delta: { widened: true, added: { folders: { read: [], write: ['~/Downloads'] } } } } })
+    expect(await service.rollback(PID)).toMatchObject({ activeVersion: '1.0.0' })
+  })
+
+  it('on stable, where its app is left out, it asks for nothing and is not listed', async () => {
+    const { service } = await installed()
+    adoptRuntimeChannel('stable')
+    expect((await service.status()).map(s => s.pluginId)).not.toContain(PID)
+    await expect(service.recordInitialConsent(PID)).rejects.toThrow(/not an installed provider mod/)
   })
 })

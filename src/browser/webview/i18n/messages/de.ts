@@ -2179,6 +2179,7 @@ export const de: Messages = {
   'settings.plugins.providers.updates.failure.admission': 'ihr Code wurde als nicht sicher ausführbar abgelehnt',
   'settings.plugins.providers.updates.failure.activate': 'sie ließ sich nicht aktivieren, daher läuft die vorherige Version weiter',
   'settings.plugins.providers.review.waiting': 'Seine Anbieter bleiben ausgeschaltet, bis du sie freigibst.',
+  'settings.plugins.providers.review.waitingFolders': 'Seine Apps erreichen deine Ordner erst, wenn du sie freigibst.',
   'settings.plugins.providers.review.button': 'Prüfen und aktivieren',
   'settings.plugins.mods.local': 'Lokal',
   'settings.plugins.mods.builtin': 'Integriert',

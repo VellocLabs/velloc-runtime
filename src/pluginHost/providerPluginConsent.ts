@@ -8,7 +8,9 @@
  */
 import { folderScopesOf } from '../mods/app/appFolderScopes'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
+import type { UpdateChannel } from '../branding/updateChannels'
 import { setPluginEnabled } from './enabledPlugins'
+import { checkPluginDescriptor } from './manifestValidator'
 import { pluginGrantOf, widened, type Grant } from './providerGrant'
 import { providerModUpdatesFilePath, type PluginInstallPathContext } from './pluginDirs'
 
@@ -18,9 +20,19 @@ export function manifestDeclaresProviders(manifest: unknown): boolean {
   return !!providers && typeof providers === 'object' && !Array.isArray(providers) && Object.keys(providers).length > 0
 }
 
-/** Whether a parsed plugin.json declares anything the person consents to: providers, or an app's folders. */
-export function manifestNeedsConsent(manifest: unknown): boolean {
-  return manifestDeclaresProviders(manifest) || folderScopesOf(manifest) !== undefined
+/**
+ * A parsed plugin.json with its `templates` as this channel's manifest check
+ * keeps them: an app the channel leaves out declares no folders.
+ */
+function withChannelTemplates(manifest: unknown, channel?: UpdateChannel): unknown {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return manifest
+  const checked = checkPluginDescriptor(manifest, channel).manifest
+  return { ...(manifest as Record<string, unknown>), templates: checked?.templates }
+}
+
+/** Whether a parsed plugin.json declares anything the person consents to: providers, or folders of an app this channel runs. */
+export function manifestNeedsConsent(manifest: unknown, channel?: UpdateChannel): boolean {
+  return manifestDeclaresProviders(manifest) || folderScopesOf(withChannelTemplates(manifest, channel)) !== undefined
 }
 
 /** Install-time hold: disable `identifier` when its manifest declares providers or folders. */
@@ -33,7 +45,7 @@ export async function holdProviderPluginForConsent(
   if (!manifestNeedsConsent(manifest)) return false
   // Installing again a plugin the person already approved keeps it as it is,
   // unless this version asks for more than they approved.
-  if (await consentCovers(ctx, fs, identifier, manifest)) return false
+  if (await consentCovers(ctx, fs, identifier, withChannelTemplates(manifest))) return false
   await setPluginEnabled({ homeDir: ctx.homeDir }, fs, identifier, false)
   return true
 }

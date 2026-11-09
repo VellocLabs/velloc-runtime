@@ -5,12 +5,19 @@
  * recorded, the active version stays); a grant no wider than the consented one
  * activates (old directory kept for rollback); a wider one parks as
  * `needs-consent` until `recordConsent`. A plugin with no consent on file is not
- * running and not checked. State: `~/.velloc/plugins/provider_mod_updates.json`.
+ * running and not checked. Covers every marketplace plugin with a grant: its
+ * providers, or the folders its apps declare (F-40); a plugin without providers
+ * that names no source is checked against its own catalog.
+ * State: `~/.velloc/plugins/provider_mod_updates.json`.
  */
 
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import type { ActivePlugin, PluginLoadIssue } from './pluginModel'
 import { getProviderModHost } from '../mods/provider/providerModHost'
+import { folderScopesOf } from '../mods/app/appFolderScopes'
+import { refreshDirectoryListings } from './directoryInstall'
+import { DIRECTORY_CATALOG_KEY } from './directoryListings'
+import { DIRECT_CATALOG_KEY } from './httpsSource'
 import { fetchCatalog, findCatalogPlugin } from './marketplaces'
 import {
   DEFAULT_HTTPS_LIMITS,
@@ -119,7 +126,7 @@ export type ProviderModUpdateStatus = {
  * to roll back) rejects.
  */
 export interface ProviderModUpdateService {
-  /** Every installed plugin that carries providers. */
+  /** Every installed plugin with a grant: providers, or its apps' folders. */
   status(): Promise<ProviderModUpdateStatus[]>
   /** Check now: one plugin, or all of them. */
   checkNow(pluginId?: string): Promise<ProviderModUpdateStatus[]>
@@ -156,8 +163,8 @@ export type ProviderModUpdateDeps = {
   /** Admission of a staged version before it can be activated: throws to refuse
    *  it. Default: each provider module must be readable. */
   admit?: (plugin: ActivePlugin) => Promise<void>
-  /** Called after a baseline was recorded: the host registers the plugin's
-   *  providers now that the person approved them. Failures are reported. */
+  /** Called after a baseline was recorded, or a version without providers was
+   *  switched in: the host reads the plugins again. Failures are reported. */
   afterConsent?: () => Promise<void>
   /** The most between checks of one plugin. Default one day. */
   intervalMs?: number
@@ -216,7 +223,15 @@ type InstalledProvider = {
   catalog: string
   entry: PluginSetupRecord
   plugin: ActivePlugin
+  /** Whether the installed version carries providers. */
+  hasProviders: boolean
   updates?: PluginUpdateSource
+}
+
+/** Where a plugin without providers that names no source is updated from: its catalog, or the https URL it came from. */
+function catalogSourceOf(catalog: string, entry: PluginSetupRecord): PluginUpdateSource | undefined {
+  if (catalog !== DIRECT_CATALOG_KEY) return { marketplace: catalog }
+  return entry.origin?.url ? { url: entry.origin.url } : undefined
 }
 
 export function createProviderModUpdateService(deps: ProviderModUpdateDeps): ProviderModUpdateService {
@@ -229,6 +244,19 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
   const report = deps.report ?? (() => {})
   const listeners = new Set<() => void>()
   let chain: Promise<unknown> = Promise.resolve()
+  // A version without providers was switched in: no provider swap carries it,
+  // so the host reads the plugins again once the exclusive section is left.
+  let rescanDue = false
+
+  const rescanIfDue = async (): Promise<void> => {
+    if (!rescanDue) return
+    rescanDue = false
+    try {
+      await deps.afterConsent?.()
+    } catch (error) {
+      report(`the plugins could not be read again after a switch: ${failureText(error)}`)
+    }
+  }
 
   const exclusive = <T>(work: () => Promise<T>): Promise<T> => {
     const run = chain.then(work)
@@ -287,15 +315,18 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
         const { plugin } = await assemblePluginAt(entry.installPath, `marketplace:${id}`, true, ref.value.name, fs)
         plugin.installIdentifier = id
         const providers = Object.values(plugin.manifest.providers ?? {})
-        if (providers.length === 0) continue
-        const updates = providers.find(provider => provider.updates !== undefined)?.updates
+        const hasProviders = providers.length > 0
+        if (!hasProviders && folderScopesOf(plugin.manifest) === undefined) continue
+        const declared = providers.find(provider => provider.updates !== undefined)?.updates
+        const updates = declared ? { ...declared } : hasProviders ? undefined : catalogSourceOf(ref.value.marketplace, entry)
         out.push({
           id,
           name: ref.value.name,
           catalog: ref.value.marketplace,
           entry,
           plugin,
-          ...(updates ? { updates: { ...updates } } : {}),
+          hasProviders,
+          ...(updates ? { updates } : {}),
         })
       } catch (error) {
         report(`${id}: could not be read: ${failureText(error)}`)
@@ -379,8 +410,10 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
   }
 
   async function fetchFromMarketplace(installed: InstalledProvider, marketplace: string, record: PluginUpdateRecord): Promise<Candidate | null> {
-    await fetchCatalog(ctx, fs, marketplace, iso(), fetchImpl)
-    const listing = await findCatalogPlugin(ctx, fs, marketplace, installed.name)
+    const listing =
+      marketplace === DIRECTORY_CATALOG_KEY
+        ? ((await refreshDirectoryListings(ctx, fs, [installed.name], fetchImpl))[0] ?? null)
+        : (await fetchCatalog(ctx, fs, marketplace, iso(), fetchImpl), await findCatalogPlugin(ctx, fs, marketplace, installed.name))
     if (!listing) {
       throw new StageFailure('source-missing', `${installed.name} is not listed in marketplace '${marketplace}'`)
     }
@@ -418,7 +451,7 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
     if (plugin.name !== installed.name) {
       throw new StageFailure('name-mismatch', `the new version is named "${plugin.name}", not "${installed.name}"`, version)
     }
-    if (!plugin.providers || plugin.providers.length === 0) {
+    if (installed.hasProviders && (!plugin.providers || plugin.providers.length === 0)) {
       const why = errors.length > 0 ? `: ${errors.map(describeIssue).join('; ')}` : ''
       throw new StageFailure('no-providers', `the new version has no provider${why}`, version)
     }
@@ -474,6 +507,7 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
     const oldVersion = installed.entry.version
     const oldPath = installed.entry.installPath
     await switchTo(installed, staged, plugin)
+    if (!plugin.providers?.length) rescanDue = true
     const stalePrevious = record.previous
     record.previous = {
       version: oldVersion ?? 'unknown',
@@ -585,19 +619,26 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
         return (await installedProviders()).map(installed => statusOf(installed, state.plugins[installed.id]))
       }),
 
-    checkNow: pluginId => exclusive(() => runChecks(installed => pluginId === undefined || installed.id === pluginId)),
+    checkNow: async pluginId => {
+      const statuses = await exclusive(() => runChecks(installed => pluginId === undefined || installed.id === pluginId))
+      await rescanIfDue()
+      return statuses
+    },
 
-    checkDue: () =>
-      exclusive(() =>
+    checkDue: async () => {
+      const statuses = await exclusive(() =>
         runChecks((installed, record) => {
           if (!installed.updates) return false
           const last = record?.lastCheckedAt ? Date.parse(record.lastCheckedAt) : Number.NaN
           return Number.isNaN(last) || now() - last >= intervalMs
         }),
-      ),
+      )
+      await rescanIfDue()
+      return statuses
+    },
 
-    recordConsent: (pluginId, version) =>
-      exclusive(async () => {
+    recordConsent: async (pluginId, version) => {
+      const status = await exclusive(async () => {
         const state = await readState(true)
         const installed = await findInstalled(pluginId)
         const record = (state.plugins[pluginId] ??= {})
@@ -620,7 +661,10 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
         await writeState(state)
         changed()
         return statusOf(await findInstalled(pluginId), record)
-      }),
+      })
+      await rescanIfDue()
+      return status
+    },
 
     decline: (pluginId, version) =>
       exclusive(async () => {
@@ -638,8 +682,8 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
         return statusOf(installed, record)
       }),
 
-    rollback: pluginId =>
-      exclusive(async () => {
+    rollback: async pluginId => {
+      const status = await exclusive(async () => {
         const state = await readState(true)
         const installed = await findInstalled(pluginId)
         const record = (state.plugins[pluginId] ??= {})
@@ -647,12 +691,13 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
         if (!previous) throw new Error(`${pluginId} has no previous version to roll back to`)
         const { plugin, errors } = await assemblePluginAt(previous.installPath, `marketplace:${pluginId}`, true, installed.name, fs)
         plugin.installIdentifier = pluginId
-        if (errors.some(isProviderIssue) || !plugin.providers?.length) {
+        if (errors.some(isProviderIssue) || (installed.hasProviders && !plugin.providers?.length)) {
           throw new Error(`${pluginId}: the previous version ${previous.version} is no longer usable`)
         }
         const demotedVersion = installed.entry.version
         const demotedPath = installed.entry.installPath
         await switchTo(installed, { version: previous.version, installPath: previous.installPath }, plugin)
+        if (!plugin.providers?.length) rescanDue = true
         record.consent = { version: previous.version, grant: previous.grant, at: iso() }
         if (demotedVersion) record.skippedVersion = demotedVersion
         record.applied = { version: previous.version, at: iso(), silent: false }
@@ -670,7 +715,10 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
         await writeState(state)
         changed()
         return statusOf(await findInstalled(pluginId), record)
-      }),
+      })
+      await rescanIfDue()
+      return status
+    },
 
     recordInitialConsent: async pluginId => {
       const status = await exclusive(async () => {

@@ -118,11 +118,18 @@ describe('manifestDeclaresProviders', () => {
 })
 
 describe('manifestNeedsConsent', () => {
-  it("is true for providers, or for an app background module's folders", () => {
-    expect(manifestNeedsConsent({ providers: { main: {} } })).toBe(true)
-    expect(manifestNeedsConsent({ templates: { board: { app: { background: { module: './bg.js', fs: { read: ['~/Downloads'] } } } } } })).toBe(true)
-    expect(manifestNeedsConsent({ templates: { board: { app: { background: './bg.js' } } } })).toBe(false)
-    expect(manifestNeedsConsent({})).toBe(false)
+  const APP = { seed: './app', entry: 'board.a2ui' }
+  const withApp = (background: unknown) => ({ name: 'acme', templates: { board: { title: 'B', app: { ...APP, background } } } })
+
+  it("is true for providers, or for the folders of an app's background module the channel runs", () => {
+    expect(manifestNeedsConsent({ providers: { main: {} } }, 'stable')).toBe(true)
+    expect(manifestNeedsConsent(withApp({ module: './bg.js', fs: { read: ['~/Downloads'] } }), 'beta')).toBe(true)
+    expect(manifestNeedsConsent(withApp('./bg.js'), 'beta')).toBe(false)
+    expect(manifestNeedsConsent({}, 'beta')).toBe(false)
+  })
+
+  it('on stable, where app templates are left out, declared folders ask for nothing', () => {
+    expect(manifestNeedsConsent(withApp({ module: './bg.js', fs: { read: ['~/Downloads'] } }), 'stable')).toBe(false)
   })
 
   it('consent covers the folders only as approved: a wider list, or a write where a read was approved, is not covered', async () => {

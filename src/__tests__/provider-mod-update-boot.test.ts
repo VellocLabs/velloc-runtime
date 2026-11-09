@@ -197,6 +197,38 @@ describe('the boot and the update schedule', () => {
   })
 })
 
+describe('a plugin whose apps declare folders and that carries no provider', () => {
+  function foldersOnly(source: string): ActivePlugin {
+    const path = '/home/u/.velloc/plugins/kit'
+    return {
+      name: 'kit',
+      manifest: {
+        name: 'kit',
+        version: '1.0.0',
+        templates: { board: { title: 'Board', app: { seed: './app', entry: 'board.a2ui', background: './bg.js', backgroundFs: { read: ['~/Downloads'], write: [] } } } },
+      } as never,
+      path,
+      source,
+      enabled: true,
+    }
+  }
+
+  it('from a marketplace: the boot offers the update service and its catalog starts the schedule', async () => {
+    scanResult = { enabled: [], disabled: [foldersOnly('marketplace:kit@shop')], errors: [] }
+    expect(hasProviderUpdateSource(scanResult)).toBe(true)
+    await boot()
+    expect(providerModUpdatesAvailable()).toBe(true)
+    expect(await acquireProviderModUpdateService()).toBe(fakeService)
+    await vi.waitFor(() => expect(providerUpdateScheduleRunning()).toBe(true))
+  })
+
+  it('placed by hand in the plugins folder: no service, nothing to consent to', async () => {
+    scanResult = { enabled: [foldersOnly('user:/home/u/.velloc/plugins/kit')], disabled: [], errors: [] }
+    await boot()
+    expect(providerModUpdatesAvailable()).toBe(false)
+  })
+})
+
 describe('the first consent at a built-in install', () => {
   const AT = { homeDir: '/home/at', fs: { at: true } as never }
 
