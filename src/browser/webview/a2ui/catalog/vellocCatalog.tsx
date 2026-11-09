@@ -325,7 +325,7 @@ export function AddCardView({ label, action }: { label?: unknown; action?: unkno
               aria-label={tip}
               disabled={!run}
               onClick={() => run?.()}
-              className="flex min-h-32 w-full items-center justify-center rounded-[var(--a2ui-card-border-radius,var(--a2ui-border-radius,8px))] border-2 border-dashed text-muted-foreground transition-colors outline-none hover:border-ring hover:bg-muted/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              className="flex min-h-20 w-full items-center justify-center rounded-[var(--a2ui-card-border-radius,var(--a2ui-border-radius,8px))] border-2 border-dashed text-muted-foreground transition-colors outline-none hover:border-ring hover:bg-muted/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             >
               <svg aria-hidden="true" viewBox="0 0 24 24" className="size-14" fill="none" stroke="currentColor" strokeWidth={1} strokeLinejoin="round">
                 <path d="M9.5 3h5v6.5H21v5h-6.5V21h-5v-6.5H3v-5h6.5z" />
