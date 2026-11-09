@@ -244,6 +244,8 @@ describe('resolveAreaGeometry', () => {
     expect(expanded.panes.has('tasks')).toBe(false)
     expect(expanded.separators).toEqual([])
     expect(expanded.chatContent).toBeNull()
+    const filling = resolveAreaGeometry(input({ maximized: 'diff', maximizedFills: true }))
+    expect(filling.panes.get('diff'), 'an immersive pane fills the area').toEqual({ left: 0, top: 0, width: 1508, height: 600 })
     const float = resolveAreaGeometry(input({ form: 'float', seatWidth: 500 }))
     expect(float.chat).toEqual({ left: 0, top: 0, width: 1508, height: 600 })
     expect(float.chatContent).toEqual(float.chat)

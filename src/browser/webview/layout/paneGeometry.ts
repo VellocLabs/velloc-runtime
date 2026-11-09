@@ -313,6 +313,8 @@ export interface AreaGeometryInput {
   /** The seat's width while the region floats. */
   seatWidth: number
   gutter?: number
+  /** The maximized pane fills the area with no gutter around it. */
+  maximizedFills?: boolean
 }
 
 /**
@@ -358,11 +360,12 @@ export function resolveAreaGeometry(input: AreaGeometryInput): AreaGeometry {
     return { chat: full, ...contentOf(full), seat: null, panes, separators: [] }
   }
   if (maximized !== null) {
+    const inset = input.maximizedFills ? 0 : gutter
     panes.set(maximized, {
-      left: gutter,
-      top: gutter,
-      width: Math.max(0, width - 2 * gutter),
-      height: Math.max(0, height - 2 * gutter),
+      left: inset,
+      top: inset,
+      width: Math.max(0, width - 2 * inset),
+      height: Math.max(0, height - 2 * inset),
     })
     return { chat: null, chatContent: null, chatCovers: [], seat: full, panes, separators: [] }
   }

@@ -64,7 +64,7 @@ import { toggleFilesTreeVisible } from './panes/filesTreePrefs'
 import { PaneArea } from './panes/PaneArea'
 import { PaneFrame } from './panes/PaneFrame'
 import { A2uiPaneActionsSlot } from './a2ui/A2uiPaneSlot'
-import { PANE_LABEL_KEY } from './panes/paneKinds'
+import { IMMERSIVE_PANES, PANE_LABEL_KEY } from './panes/paneKinds'
 import { onPaneRequest as onA2uiPaneRequest, setShownSession as setA2uiShownSession } from './a2ui/a2uiPaneBus'
 import {
   DOCK_FLOOR_CELLS,
@@ -3902,7 +3902,7 @@ export function MultiSessionShell({
         title={title}
         actions={actions}
         maximized={paneMaximized === kind}
-        immersiveWhenMaximized={kind === 'a2ui'}
+        immersiveWhenMaximized={IMMERSIVE_PANES.has(kind)}
         onToggleMaximized={() =>
           updatePaneRecord(r => setMaximized(r, r.maximized === kind ? null : kind))
         }

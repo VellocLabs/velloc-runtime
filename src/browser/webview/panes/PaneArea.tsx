@@ -30,7 +30,7 @@ import {
 } from '../layout/paneLayout'
 import { clampResizeDelta, resizeLayoutAt } from '../layout/paneResize'
 import type { PanelForm } from '../layout/shellLayout'
-import { PANE_ICON, PANE_LABEL_KEY } from './paneKinds'
+import { IMMERSIVE_PANES, PANE_ICON, PANE_LABEL_KEY } from './paneKinds'
 import { PaneDropIndicator } from './PaneDropIndicator'
 import { PaneSeparator, separatorStyle } from './PaneSeparator'
 import { PaneHandleContext, usePaneDrag } from './usePaneDrag'
@@ -131,6 +131,7 @@ export function PaneArea(props: PaneAreaProps): ReactElement {
             chatWidth: props.chatWidth,
             seatWidth: props.seatWidth,
             gutter,
+            maximizedFills: maximized !== null && IMMERSIVE_PANES.has(maximized),
           }
         : null,
     [

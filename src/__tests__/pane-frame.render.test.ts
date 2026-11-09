@@ -110,6 +110,19 @@ describe('PaneFrame', () => {
     expect(screen.queryByTestId('pane-diff-float-bar')).toBeNull()
   })
 
+  it('immersive and maximized, the pane drops its rounded border; otherwise it keeps it', () => {
+    const frameClasses = () => screen.getByTestId('pane-diff').className.split(/\s+/)
+    renderFrame({ immersiveWhenMaximized: true, maximized: true })
+    expect(frameClasses()).not.toContain('border')
+    expect(frameClasses()).not.toContain('rounded-lg')
+    cleanup()
+    renderFrame({ immersiveWhenMaximized: true })
+    expect(frameClasses()).toEqual(expect.arrayContaining(['border', 'rounded-lg']))
+    cleanup()
+    renderFrame({ maximized: true })
+    expect(frameClasses()).toEqual(expect.arrayContaining(['border', 'rounded-lg']))
+  })
+
   it('close closes, and a press inside focuses the pane', () => {
     const props = renderFrame()
     fireEvent.click(screen.getByTestId('pane-diff-close'))

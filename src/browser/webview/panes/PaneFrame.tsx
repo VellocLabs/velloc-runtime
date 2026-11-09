@@ -96,7 +96,8 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
         data-maximized={props.maximized ? 'true' : undefined}
         aria-label={name}
         className={cn(
-          'relative flex flex-col overflow-hidden rounded-lg border border-border bg-card text-card-foreground',
+          'relative flex flex-col overflow-hidden bg-card text-card-foreground',
+          immersive ? null : 'rounded-lg border border-border',
           props.className,
         )}
         style={props.style}
