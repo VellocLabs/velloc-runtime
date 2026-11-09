@@ -73,24 +73,36 @@ export function usePassageList(): readonly CapturedPassage[] {
   );
 }
 
+function composerInputIn(root: ParentNode): HTMLTextAreaElement | null {
+  return root.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]');
+}
+
+function sessionComposerInput(sessionId: string): HTMLTextAreaElement | null {
+  for (const root of document.querySelectorAll<HTMLElement>(".aui-thread-root")) {
+    if (root.dataset.threadSession !== sessionId) continue;
+    const input = composerInputIn(root);
+    if (input) return input;
+  }
+  return null;
+}
+
 /** Focuses the prompt box of the thread `from` sits in, else the first one in the document. */
 export function focusComposerNear(from: Element | null | undefined): void {
-  const root = from?.closest(".aui-thread-root") ?? document;
-  const input = root.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]');
-  input?.focus({ preventScroll: true });
+  composerInputIn(from?.closest(".aui-thread-root") ?? document)?.focus({ preventScroll: true });
 }
 
 /** Focuses the prompt box of `sessionId`'s thread, caret at the end; false when that thread has none. */
 export function focusSessionComposer(sessionId: string): boolean {
-  for (const root of document.querySelectorAll<HTMLElement>(".aui-thread-root")) {
-    if (root.dataset.threadSession !== sessionId) continue;
-    const input = root.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]');
-    if (!input) return false;
-    input.focus({ preventScroll: true });
-    input.setSelectionRange(input.value.length, input.value.length);
-    return document.activeElement === input;
-  }
-  return false;
+  const input = sessionComposerInput(sessionId);
+  if (!input) return false;
+  input.focus({ preventScroll: true });
+  input.setSelectionRange(input.value.length, input.value.length);
+  return document.activeElement === input;
+}
+
+/** True while `sessionId`'s prompt box is shown and disabled (a question awaits an answer, or the runtime is unreachable). */
+export function isSessionComposerDisabled(sessionId: string): boolean {
+  return sessionComposerInput(sessionId)?.disabled === true;
 }
 
 /**

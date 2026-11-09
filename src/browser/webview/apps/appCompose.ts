@@ -4,7 +4,7 @@
  * Nothing reaches the model or the app's background module.
  */
 import { requestPane } from '../a2ui/a2uiPaneBus'
-import { focusSessionComposer } from '@/components/assistant-ui/composer-passages'
+import { focusSessionComposer, isSessionComposerDisabled } from '@/components/assistant-ui/composer-passages'
 
 export const APP_COMPOSE_EVENT = 'compose'
 export const APP_COMPOSE_MAX_CHARS = 8000
@@ -27,11 +27,12 @@ export function composeDraftOf(context: unknown): string | null {
 
 /**
  * Puts `draft` in `sessionId`'s composer: the session's expanded pane is
- * restored so its chat shows, the text replaces the composer's, and that
+ * restored so its chat shows, `setText` replaces the whole draft, and that
  * thread's composer takes focus once it can (a few frames, while the layout
- * settles).
+ * settles). Nothing happens while that composer is disabled.
  */
 export function composeIntoSession(sessionId: string, draft: string, setText: (text: string) => void): void {
+  if (isSessionComposerDisabled(sessionId)) return
   requestPane({ sessionId, restore: true })
   setText(draft)
   let frames = 0

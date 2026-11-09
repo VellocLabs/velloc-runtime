@@ -22,6 +22,8 @@ import {
   type A2uiPaneRequest,
 } from '../browser/webview/a2ui/a2uiPaneBus'
 import { APP_COMPOSE_MAX_CHARS, composeDraftOf } from '../browser/webview/apps/appCompose'
+import { createPassageDraftStore, type PassageDraftStore } from '../browser/webview/capturedPassages'
+import { ComposerPassagesProvider } from '../components/assistant-ui/composer-passages'
 import type { AppSurfaceState } from '../browser/runtimeProtocol/modApps'
 import type { Message } from '../runtime/RuntimeTypes'
 
@@ -79,21 +81,38 @@ const chatTranscript = [
 ] as unknown as Message[]
 
 /** A thread runtime and its composer, inside the session's thread root. */
-function Runtime({ sessionId, children }: { sessionId: string; children?: ReactNode }) {
+function Runtime({
+  sessionId,
+  disabled,
+  passages,
+  children,
+}: {
+  sessionId: string
+  disabled: boolean
+  passages: PassageDraftStore
+  children?: ReactNode
+}) {
   const runtime = useExternalStoreRuntime({ messages: [] as ThreadMessage[], onNew: async () => undefined })
   return h(
     AssistantRuntimeProvider,
     { runtime },
     h(
-      'div',
-      { className: 'aui-thread-root', 'data-thread-session': sessionId },
-      h(ComposerPrimitive.Root, null, h(ComposerPrimitive.Input, { 'data-testid': 'composer-input' } as never)),
-      children,
+      ComposerPassagesProvider,
+      { store: passages },
+      h(
+        'div',
+        { className: 'aui-thread-root', 'data-thread-session': sessionId },
+        h(ComposerPrimitive.Root, null, h(ComposerPrimitive.Input, { 'data-testid': 'composer-input', disabled } as never)),
+        children,
+      ),
     ),
   )
 }
 
-function rig(state: AppSurfaceState | null, options: { busy?: boolean; messages?: Message[]; children?: ReactNode } = {}) {
+function rig(
+  state: AppSurfaceState | null,
+  options: { busy?: boolean; disabled?: boolean; messages?: Message[]; children?: ReactNode } = {},
+) {
   // Another session's composer comes first in the document.
   const other = document.createElement('div')
   other.className = 'aui-thread-root'
@@ -110,10 +129,11 @@ function rig(state: AppSurfaceState | null, options: { busy?: boolean; messages?
   const submit = vi.fn(async (_prompt: string) => undefined)
   const actFn = vi.fn(async () => ({ handled: true }))
   const appBoard = { state, reload: async () => undefined, act: actFn }
+  const passages = createPassageDraftStore()
   const view = render(
     h(
       Runtime,
-      { sessionId: 's1' },
+      { sessionId: 's1', disabled: options.disabled ?? false, passages },
       h(A2uiProviderHost, {
         sessionId: 's1',
         messages: options.messages ?? [],
@@ -127,7 +147,7 @@ function rig(state: AppSurfaceState | null, options: { busy?: boolean; messages?
   const input = () => view.container.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')!
   const button = (text: string) => [...slot.querySelectorAll('button')].find(el => el.textContent?.includes(text))!
   const type = (text: string) => fireEvent.change(input(), { target: { value: text } })
-  return { submit, actFn, requests, input, button, type }
+  return { submit, actFn, requests, input, button, type, passages }
 }
 
 describe('compose on an app surface', () => {
@@ -153,6 +173,33 @@ describe('compose on an app surface', () => {
     await waitFor(() => expect(input().value).toBe('Refund order 42 in full.'))
     await act(async () => undefined)
     expect(actFn).not.toHaveBeenCalled()
+    expect(submit).not.toHaveBeenCalled()
+  })
+
+  it('replaces the quote cards with the draft too', async () => {
+    const { input, button, passages } = rig(board())
+    await waitFor(() => expect(button('Draft reply')).toBeDefined())
+    act(() => {
+      passages.add({ body: 'a quoted passage from earlier', method: 'range', anchors: [] })
+    })
+    expect(passages.getPassages()).toHaveLength(1)
+    fireEvent.click(button('Draft reply'))
+    await waitFor(() => expect(input().value).toBe('Refund order 42 in full.'))
+    expect(passages.getPassages()).toEqual([])
+  })
+
+  it('is ignored while the composer is disabled: the draft stays and the pane is not restored', async () => {
+    const { submit, requests, input, button, passages } = rig(board(), { disabled: true })
+    await waitFor(() => expect(button('Draft reply')).toBeDefined())
+    fireEvent.change(input(), { target: { value: 'half typed' } })
+    act(() => {
+      passages.add({ body: 'a quoted passage from earlier', method: 'range', anchors: [] })
+    })
+    fireEvent.click(button('Draft reply'))
+    await act(async () => undefined)
+    expect(input().value).toBe('half typed')
+    expect(passages.getPassages()).toHaveLength(1)
+    expect(requests.filter(request => 'restore' in request)).toEqual([])
     expect(submit).not.toHaveBeenCalled()
   })
 

@@ -47,6 +47,7 @@ import { AppSurfaceFeeder, appSurfaceIds } from './AppSurfaceFeeder'
 import type { AppBoard } from '../apps/appSurfaceView'
 import { AppReloadButton, AppSurfaceBar } from '../apps/AppSurfaceBar'
 import { APP_COMPOSE_EVENT, composeDraftOf, composeIntoSession } from '../apps/appCompose'
+import { useComposerPassages } from '@/components/assistant-ui/composer-passages'
 
 type SurfaceActionHandler = (action: ActionPayload) => void
 type VellocProcessor = MessageProcessor<ReactCatalogComponent>
@@ -149,6 +150,7 @@ function A2uiFeeder({
   const sources = useMemo(() => extractA2uiSources(messages), [messages])
   const state = useMemo(() => compiler.stateFor(processor), [compiler, processor])
   const composer = useComposerRuntime({ optional: true })
+  const passageStore = useComposerPassages()?.store ?? null
   const processedRef = useRef(0)
   const busyRef = useRef(busy)
   busyRef.current = busy
@@ -213,7 +215,12 @@ function A2uiFeeder({
         if (typeof action.surfaceId !== 'string') return
         if (action.name === APP_COMPOSE_EVENT && reservedIds.includes(action.surfaceId)) {
           const draft = composeDraftOf(action.context)
-          if (draft !== null && composer) composeIntoSession(sessionId, draft, text => composer.setText(text))
+          if (draft !== null && composer) {
+            composeIntoSession(sessionId, draft, text => {
+              passageStore?.replace([])
+              composer.setText(text)
+            })
+          }
           return
         }
         if (busyRef.current || localPendingRef.current) return
@@ -245,7 +252,7 @@ function A2uiFeeder({
     return () => {
       actionHandlerRef.current = null
     }
-  }, [processor, submitActionMessage, actionHandlerRef, localActions, reservedIds, composer, sessionId])
+  }, [processor, submitActionMessage, actionHandlerRef, localActions, reservedIds, composer, passageStore, sessionId])
 
   return null
 }
