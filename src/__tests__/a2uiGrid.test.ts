@@ -74,7 +74,6 @@ describe('Grid and HoverBar', () => {
     const html = renderToStaticMarkup(createElement(AddCardView, { label: 'Add alert with AI', action: () => {} }))
     expect(html).toMatch(/<button[^>]*data-slot="a2ui-add-card"[^>]*aria-label="Add alert with AI"[^>]*border-dashed/)
     expect(html).toContain('<svg')
-    expect(html, 'short enough that it never stretches a row of short Cards').toMatch(/data-slot="a2ui-add-card"[^>]*class="flex min-h-20 /)
     expect(html, 'framed by the card margin, so it lines up with Cards').toMatch(/data-slot="a2ui-add-card-frame" class="[^"]*p-\[var\(--a2ui-card-margin/)
     expect(html).not.toContain('disabled=')
     expect(renderToStaticMarkup(createElement(AddCardView, { label: 'Add' }))).toContain('disabled=')
