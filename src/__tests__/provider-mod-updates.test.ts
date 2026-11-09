@@ -658,6 +658,7 @@ describe('a plugin whose apps declare folders and that carries no provider', () 
     const { registry } = await loadInstalledPlugins(ctx, w.fs as unknown as RuntimeFs)
     delete registry.plugins['kit@direct']![0]!.origin
     await saveInstalledPlugins(ctx, w.fs as unknown as RuntimeFs, registry)
+    forgetRegistryFile()
     const bare = await statusOf(w.service, 'kit@direct')
     expect(bare).toMatchObject({ state: 'no-source', grant: { folders: { read: ['~/Downloads'], write: [] } } })
     expect(bare.source).toBeUndefined()
