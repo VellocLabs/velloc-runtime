@@ -207,7 +207,7 @@ Use these exact positional signatures to instantiate components. Do not output p
     * title - The tab title.
     * child - The ID of the child component.
     * badge - A count drawn as a small red pill after the title, e.g. open items; literal or a data binding. Hidden when missing, 0 or empty.
-  - open: The zero-based index of the tab shown first, literal or a data binding; default 0, out of range is 0. Once the user picks a tab, a later change does not move them.
+  - open: The zero-based index of the tab shown first, literal or a data binding; default 0, out of range is 0. Only its first value is applied; a later change does not move the view.
   - weight: The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column.
 • Text(text, variant? (static), weight? (static))
   - text: The text content to display. While simple Markdown formatting is supported (i.e. without HTML, images, or links), utilizing dedicated UI components is generally preferred for a richer and more structured presentation.

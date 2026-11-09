@@ -1,6 +1,6 @@
 // The Velloc A2UI catalog (F-1): the v1.0 basic catalog with Velloc's own
-// Tabs, plus the chart, data and dashboard components. Chart renderers are lazy, so recharts loads on the
-// first chart.
+// Tabs, plus the chart, data and dashboard components. Chart renderers are
+// lazy, so recharts loads on the first chart.
 
 import { lazy, Suspense, type ReactElement } from 'react'
 import { createComponentImplementation, type ReactCatalogComponent } from '@a2ui/react'

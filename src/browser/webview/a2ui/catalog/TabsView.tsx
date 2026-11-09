@@ -35,7 +35,7 @@ export const tabsSchema = z
       .min(1)
       .describe('An array of objects, where each object defines a tab with a title, a child component and an optional badge.'),
     open: DynamicNumber.optional().describe(
-      'The zero-based index of the tab shown first, literal or a data binding; default 0, out of range is 0. Once the user picks a tab, a later change does not move them.',
+      'The zero-based index of the tab shown first, literal or a data binding; default 0, out of range is 0. Only its first value is applied; a later change does not move the view.',
     ),
     weight: (WeightSchema as unknown as z.ZodTypeAny).optional(),
   })

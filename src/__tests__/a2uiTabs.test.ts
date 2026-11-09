@@ -133,6 +133,16 @@ describe('Tabs in the Velloc catalog', () => {
     expect(view.panel()).toBe('Archive list')
   })
 
+  it('a list shrinking under the selected tab shows the first tab', async () => {
+    const view = await draw(tabsBody(`root = Tabs(${THREE})`))
+    await view.click(2)
+    expect(view.selected()).toBe('Archive')
+    await view.compile(['surface("app")', 'root = Tabs([{title: "To do", child: a}, {title: "Done", child: b}])', ...PAGES.slice(0, 2)].join('\n'))
+    expect(view.tabs()).toHaveLength(2)
+    expect(view.selected()).toBe('To do')
+    expect(view.panel()).toBe('Todo list')
+  })
+
   it('arrow keys, Home and End move the selection and focus; only the selected tab is in the tab order', async () => {
     const view = await draw(tabsBody(`root = Tabs(${THREE})`))
     expect(view.tabs().map(tab => tab.tabIndex)).toEqual([0, -1, -1])
@@ -147,12 +157,15 @@ describe('Tabs in the Velloc catalog', () => {
     expect(document.activeElement).toBe(view.tabs()[1])
     await key('End')
     expect(view.selected()).toBe('Archive')
+    expect(document.activeElement).toBe(view.tabs()[2])
     await key('ArrowRight')
     expect(view.selected(), 'wraps').toContain('To do')
     await key('ArrowLeft')
     expect(view.selected()).toBe('Archive')
+    expect(document.activeElement).toBe(view.tabs()[2])
     await key('Home')
     expect(view.selected()).toContain('To do')
+    expect(document.activeElement).toBe(view.tabs()[0])
     const panel = view.container.querySelector('[role="tabpanel"]')!
     expect(document.getElementById(panel.getAttribute('aria-labelledby')!)).toBe(view.tabs()[0])
   })

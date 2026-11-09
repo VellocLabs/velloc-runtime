@@ -427,7 +427,7 @@
               "description": "Invokes a named function, combining common function properties with the catalog function definition."
             }
           ],
-          "description": "The zero-based index of the tab shown first, literal or a data binding; default 0, out of range is 0. Once the user picks a tab, a later change does not move them."
+          "description": "The zero-based index of the tab shown first, literal or a data binding; default 0, out of range is 0. Only its first value is applied; a later change does not move the view."
         },
         "weight": {
           "type": "number",
