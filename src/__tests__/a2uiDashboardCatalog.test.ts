@@ -195,7 +195,7 @@ describe('the dashboard components of the Velloc catalog', () => {
     expect(fromMetric).toMatchObject({ sourceComponentId: 'rate' })
   })
 
-  it('a Metric\'s ask button in a Card takes the card\'s top-right corner, shown only while that card is hovered or focused', async () => {
+  it('a Metric\'s ask button in a Card takes the card\'s top-right corner, shown only while that card is hovered or keyboard-focused', async () => {
     const view = await draw(
       [
         'surface("sales")',
@@ -216,10 +216,10 @@ describe('the dashboard components of the Velloc catalog', () => {
     expect(rule(".a2ui-card:has([data-slot='a2ui-metric-action'])")).toContain('position: relative')
     const corner = rule(".a2ui-card [data-slot='a2ui-metric-action']")
     for (const decl of ['position: absolute', 'top: 0.5rem', 'right: 0.5rem']) expect(corner).toContain(decl)
-    const reveal = rule(':is(:hover, :focus-within)')
+    const reveal = rule(':is(:hover, :has(:focus-visible))')
     expect(reveal).toContain('opacity: 1')
     expect(reveal, 'an outer card\'s hover does not reveal an inner card\'s button').toContain(
-      ":not(.a2ui-card:not(:hover, :focus-within) [data-slot='a2ui-metric-action'])",
+      ":not(.a2ui-card:not(:hover, :has(:focus-visible)) [data-slot='a2ui-metric-action'])",
     )
   })
 

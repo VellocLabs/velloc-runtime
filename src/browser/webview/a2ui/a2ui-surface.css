@@ -45,7 +45,7 @@
 
 /*
  * Inside a Card, a Metric's ask button sits in the card's top-right corner and
- * shows while the pointer or focus is in that card, not merely in an outer one
+ * shows while the pointer or keyboard focus is in that card, not merely in an outer one
  * (F-1). Outside a card it stays after the delta.
  */
 [data-slot='a2ui-surface'] .a2ui-card:has([data-slot='a2ui-metric-action']) {
@@ -59,7 +59,7 @@
   max-width: calc(100% - 1rem);
 }
 [data-slot='a2ui-surface']
-  .a2ui-card:is(:hover, :focus-within)
-  [data-slot='a2ui-metric-action']:not(.a2ui-card:not(:hover, :focus-within) [data-slot='a2ui-metric-action']) {
+  .a2ui-card:is(:hover, :has(:focus-visible))
+  [data-slot='a2ui-metric-action']:not(.a2ui-card:not(:hover, :has(:focus-visible)) [data-slot='a2ui-metric-action']) {
   opacity: 1;
 }

@@ -110,7 +110,7 @@ function HeadingView({ text: title, level, subtitle, action, actionLabel }: Head
   if (!sub && !ask) return heading
   return (
     <div className="group/heading flex flex-col gap-1">
-      {sub || !ask ? heading : <div className="flex min-w-0 items-center gap-2">{heading}{ask}</div>}
+      {sub ? heading : <div className="flex min-w-0 items-center gap-2">{heading}{ask}</div>}
       {sub && (
         <div className="flex min-w-0 items-center gap-2">
           <div data-slot="a2ui-heading-subtitle" className="min-w-0 text-xs text-muted-foreground">
