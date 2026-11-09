@@ -12,8 +12,7 @@ import { MODS_ABI } from './modAdmission'
 import { scanModuleUses, type ModUses } from './modScan'
 
 export { MOD_MODULE_EXTENSIONS, extensionOf, needsCompiler } from './modCompilerSurface'
-import { needsCompiler } from './modCompilerSurface'
-import { MOD_MODULE_EXTENSIONS, extensionOf } from './modCompilerSurface'
+import { MOD_MODULE_EXTENSIONS, extensionOf, needsCompiler } from './modCompilerSurface'
 
 /** What a resolution tries, in order, for a specifier with no suffix. */
 const RESOLUTION_SUFFIXES: readonly string[] = Object.freeze([
@@ -250,6 +249,18 @@ function lineOf(ts: typeof TS, file: TS.SourceFile, node: TS.Node): number {
   return ts.getLineAndCharacterOfPosition(file, node.getStart(file)).line + 1
 }
 
+/** Throws the first error among a transpile's diagnostics, with its line. */
+function refuseSyntaxError(ts: typeof TS, path: string, diagnostics: readonly TS.Diagnostic[] | undefined): void {
+  const error = diagnostics?.find(d => d.category === ts.DiagnosticCategory.Error)
+  if (!error) return
+  const line =
+    error.file && error.start !== undefined ? ts.getLineAndCharacterOfPosition(error.file, error.start).line + 1 : undefined
+  throw new ModCompileError(ts.flattenDiagnosticMessageText(error.messageText, '\n'), {
+    file: path,
+    ...(line !== undefined ? { line } : {}),
+  })
+}
+
 /** Every specifier a module imports or re-exports from, with its line; a
  *  dynamic `import()` is refused here. */
 function specifiersOf(ts: typeof TS, path: string, text: string): Array<{ specifier: string; line: number }> {
@@ -354,11 +365,17 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
       { file: entry },
     )
   }
-  // A plain module the text check finds nothing to compile in loads as
-  // written, but only once its own syntax tree passes the verifier: the
-  // text check picks the path, never the verdict.
+  // A plain module whose tree holds no import loads as written, but only once
+  // it parses and its own syntax tree passes the verifier: the text check
+  // never decides alone.
   const entryText = texts.get(entry)!
-  if (!needsCompiler(entry, entryText)) {
+  if (!needsCompiler(entry, entryText) && specifiersOf(ts, entry, entryText).length === 0) {
+    const parsed = ts.transpileModule(entryText, {
+      fileName: entry,
+      reportDiagnostics: true,
+      compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+    })
+    refuseSyntaxError(ts, entry, parsed.diagnostics)
     verifyCompiledModule(ts, entryText, line => ({ file: entry, line }))
     const digest = await sha256Hex([MODS_ABI, `typescript ${ts.version}`, `${entry}\u0000${entryText}`].join('\u0001'))
     return {
@@ -446,17 +463,7 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
         removeComments: false,
       },
     })
-    const error = result.diagnostics?.find(d => d.category === ts.DiagnosticCategory.Error)
-    if (error) {
-      const line =
-        error.file && error.start !== undefined
-          ? ts.getLineAndCharacterOfPosition(error.file, error.start).line + 1
-          : undefined
-      throw new ModCompileError(ts.flattenDiagnosticMessageText(error.messageText, '\n'), {
-        file: path,
-        ...(line !== undefined ? { line } : {}),
-      })
-    }
+    refuseSyntaxError(ts, path, result.diagnostics)
     compiled.set(path, result.outputText)
   }
 

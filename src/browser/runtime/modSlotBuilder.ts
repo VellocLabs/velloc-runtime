@@ -172,9 +172,9 @@ export async function buildSlotModRuntime(
     // `$.plugin.locale` / `session.start`'s `locale`: the page's language.
     ...(slot.options.locale !== undefined ? { locale: slot.options.locale } : {}),
     onDisposed: () => unregisterSlot?.(),
-    // A TypeScript / TSX module, or one that imports: compiled to one
-    // module from its graph, read through the session's fs, within the
-    // plugin's folder alone.
+    // Every module: one that is TypeScript / TSX or imports is compiled to
+    // one module from its graph, read through the session's fs, within the
+    // plugin's folder alone; any other is verified and loads as written.
     compile: (ref, source) =>
       compileModModule({
         entry: ref.path,
@@ -185,7 +185,7 @@ export async function buildSlotModRuntime(
         },
       }).then(result => ({ source: result.source, files: result.files, uses: result.uses })),
     ...(modBuilds ? { builds: modBuilds } : {}),
-    // The scan for a plain module the compiler never sees: the same
+    // The scan for a module whose compile answered no `uses`: the same
     // parser, over its one file.
     scan: (ref, source) => loadTypeScript().then(ts => scanModuleUses(ts, [{ path: ref.path, text: source }])),
     // The dev loop: the module's files are stat'ed at turn end through

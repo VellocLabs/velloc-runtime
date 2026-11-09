@@ -36,6 +36,7 @@ export function needsCompiler(path: string, source: string): boolean {
     /^[ \t]*import(?:\s*['"{*]|\s+[\w$])/m.test(source) ||
     /^[ \t]*export[ \t][^;\n]*\bfrom\b/m.test(source) ||
     /^[ \t]*export\s*(?:\*(?:\s*as\s+[\w$]+)?|\{[^}]*\})\s*from\b/m.test(source) ||
-    /\bimport(?:\s|\/\*[\s\S]*?\*\/|\/\/[^\n]*)*\(/.test(source)
+    // A line comment ends only at its newline, so a run of slashes splits one way.
+    /\bimport(?:\s|\/\*[\s\S]*?\*\/|\/\/[^\n]*\n)*\(/.test(source)
   )
 }

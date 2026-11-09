@@ -14,7 +14,7 @@ import type { ModUses } from './modScan'
 
 /** Raise when the compiler, the linker or the scan changes what it produces:
  *  every record made before is then ignored. */
-export const MOD_BUILD_REVISION = 1
+export const MOD_BUILD_REVISION = 2
 
 export const MOD_BUILD_STAMP = `${MODS_ABI}; build ${MOD_BUILD_REVISION}`
 

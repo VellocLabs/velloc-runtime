@@ -140,8 +140,8 @@ export type ModRuntimeOptions = {
     ref: ModModuleRef,
     source: string,
   ) => Promise<string | { source: string; files: readonly string[]; uses?: ModUses }>
-  /** The scan for a module the compiler did not see (a plain `.js`
-   *  with no import): what it hooks and calls, read off its text. Absent,
+  /** The scan for a module whose compile answered no `uses` (or a runtime
+   *  with no compiler): what it hooks and calls, read off its text. Absent,
    *  and with no `uses` from the compiler: nothing is known of the module
    *  before it runs — `plugin.register` carries its registrations alone,
    *  and an unsupported noun is refused at the call. */

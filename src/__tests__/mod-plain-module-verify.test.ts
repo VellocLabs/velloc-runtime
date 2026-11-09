@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import { compileModModule, loadTypeScript, needsCompiler, verifyCompiledModule } from '../mods/modCompiler'
 import { ModuleRefused, prepareModule } from '../mods/modPrepare'
+import { MOD_BUILD_STAMP } from '../mods/modBuildStore'
 
 const ENTRY = '/plugins/plain/hooks/register.mjs'
 const ROOT = '/plugins/plain'
@@ -92,5 +93,30 @@ describe('a plain module is verified, not only a compiled one', () => {
     expect(prepared.uses).toBeDefined()
     // A property named like a forbidden identifier is a noun on $, not the network.
     await expect(prepare(`${REGISTER}const get = $ => $.http.fetch('x')\n`)).resolves.toMatchObject({})
+  })
+
+  it('a plain module with a syntax error is refused, naming its line', async () => {
+    await expect(prepare(`${REGISTER}}\n`)).rejects.toThrow(`${ENTRY}:2:`)
+  })
+
+  it('an import the text check misses is linked from the tree, not refused', async () => {
+    const entry = `${ROOT}/hooks/register.js`
+    const fs = fsOf({
+      [entry]: `import /* helpers */ { two } from './two.js'\nexport function register(on) { return two }\n`,
+      [`${ROOT}/hooks/two.js`]: 'export const two = 2\n',
+    })
+    expect(needsCompiler(entry, await fs.readFile(entry))).toBe(false)
+    const result = await compileModModule({ entry, root: ROOT, fs })
+    expect(result.files).toEqual([entry, `${ROOT}/hooks/two.js`])
+  })
+
+  it('the text check stays linear on a long run of slashes after import', () => {
+    const started = Date.now()
+    expect(needsCompiler(ENTRY, `import ${'/'.repeat(200)}`)).toBe(false)
+    expect(Date.now() - started).toBeLessThan(1000)
+  })
+
+  it('build records made before every module was verified are not reused', () => {
+    expect(MOD_BUILD_STAMP).not.toMatch(/; build 1$/)
   })
 })
