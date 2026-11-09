@@ -206,15 +206,33 @@ export function pluginMcpServer(
   | { kind: 'native'; id: string; config: NexusMcpServerLaunchConfig }
   | { kind: 'refused'; reason: string }
   | undefined {
+  const resolved = resolveManifestServer(plugin, key, scope)
+  if (!resolved) return undefined
+  if (!resolved.ok) return { kind: 'refused', reason: resolved.reason }
+  return resolved.kind === 'native'
+    ? { kind: 'native', id: key, config: resolved.config }
+    : { kind: 'browser', entry: { name: key, ...resolved.config } }
+}
+
+/** The secrets `pluginMcpServer(plugin, key, scope)` needs stored before it starts; none when it cannot start. */
+export function pluginMcpServerSecrets(
+  plugin: Pick<ActivePlugin, 'name' | 'path' | 'installIdentifier' | 'manifest' | 'providers' | 'mcpServers' | 'nativeMcpServers'>,
+  key: string,
+  scope: PluginMcpScope,
+): PluginSecretWrite[] {
+  const resolved = resolveManifestServer(plugin, key, scope)
+  return resolved?.ok ? resolved.secrets : []
+}
+
+function resolveManifestServer(
+  plugin: Pick<ActivePlugin, 'name' | 'path' | 'installIdentifier' | 'manifest' | 'providers' | 'mcpServers' | 'nativeMcpServers'>,
+  key: string,
+  scope: PluginMcpScope,
+) {
   const browser = plugin.mcpServers && Object.hasOwn(plugin.mcpServers, key) ? plugin.mcpServers[key] : undefined
   const native = plugin.nativeMcpServers && Object.hasOwn(plugin.nativeMcpServers, key) ? plugin.nativeMcpServers[key] : undefined
   const server: PluginMcpServer | undefined = browser
     ? { kind: 'browser', config: browser }
     : native ? { kind: 'native', config: native } : undefined
-  if (!server) return undefined
-  const resolved = resolvePluginMcpServer(plugin, key, server, scope)
-  if (!resolved.ok) return { kind: 'refused', reason: resolved.reason }
-  return resolved.kind === 'native'
-    ? { kind: 'native', id: key, config: resolved.config }
-    : { kind: 'browser', entry: { name: key, ...resolved.config } }
+  return server ? resolvePluginMcpServer(plugin, key, server, scope) : undefined
 }

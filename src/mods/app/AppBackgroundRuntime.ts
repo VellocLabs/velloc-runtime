@@ -113,7 +113,7 @@ type Module = {
   state: AppBackgroundState
   reason?: string
   loaded?: Loaded
-  /** The module's MCP pool, from its first `$.mcp` call to its stop or crash. */
+  /** The module's MCP pool, from its first `$.mcp` call until its worker is gone. */
   mcp?: AppBackgroundMcp
   /** The load in flight, so a stop waits for it before closing. */
   starting?: Promise<void>
@@ -304,6 +304,7 @@ export class AppBackgroundRuntime {
       void worker.closed.then(closed => {
         if (module.loaded !== loaded) return
         module.loaded = undefined
+        void this.closeMcp(module)
         if (closed.reason === 'crashed' && !module.gone.signal.aborted) {
           instance.dispose()
           this.crashed(module, `its worker is gone${closed.message ? ` (${closed.message})` : ''}`)

@@ -20,6 +20,8 @@ export type AppBackgroundBootDeps = {
   fs: RuntimeFs
   transport: () => BrowserBridgeTransport | null
   locale?: () => string | undefined
+  /** The host environment a plugin's MCP server's `${VAR}` resolves with, as a session's. */
+  env?: () => Readonly<Record<string, string>> | undefined
   report?: (line: string) => void
 }
 

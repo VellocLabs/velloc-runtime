@@ -8,7 +8,9 @@
 import { MCPPool } from '../../mcp/pool'
 import { getMcpHost, hostServesWorkerMcp } from '../../mcp/mcpHost'
 import { createWorkerMcpOperations } from '../../mcp/workerServers'
+import { createNativePrimitives } from '../../browser/bridge/nativePrimitives'
 import { getPluginConfigsMap, getPluginProviderKeys } from '../../pluginHost/pluginConfigs'
+import { storePluginSecrets, type PluginSecretWrite } from '../../pluginHost/pluginMcpUserConfig'
 import { ensureDirRecursive } from '../../pluginHost/writeExtracted'
 import { readUserLayer } from '../../settings/settingsStore'
 import { fileModBuildStore } from '../modBuildStore'
@@ -40,6 +42,15 @@ export function createAppBackgroundRuntime(deps: AppBackgroundBootDeps & { repor
       allowPrivateNetwork: () => false,
     })
   }
+  // A sensitive option reaches a server as a stored secret, as a session
+  // stores it; never pruned here, since a session owns the full set.
+  const storeSecrets = async (writes: PluginSecretWrite[]): Promise<void> => {
+    const host = getMcpHost()
+    if (!host) throw new Error('the host port is not attached')
+    if (host.manifest && !host.manifest.capabilities.includes('secrets')) throw new Error('this host stores no secrets')
+    const { secrets } = createNativePrimitives({ transport: host.transport, createRequestId: () => crypto.randomUUID(), ...(host.manifest ? { manifest: host.manifest } : {}) })
+    await storePluginSecrets(writes, [], secrets, report, { prune: false })
+  }
   return new AppBackgroundRuntime({
     readModule: loaders.readModule,
     ...(loaders.compile ? { compile: loaders.compile } : {}),
@@ -58,10 +69,12 @@ export function createAppBackgroundRuntime(deps: AppBackgroundBootDeps & { repor
       createAppBackgroundMcp({
         owner: ref.mcpOwner,
         folder: ref.folder,
-        scope: async () => ({
-          configs: await getPluginConfigsMap({ homeDir }, fs),
-          providers: await getPluginProviderKeys({ homeDir }, fs),
-        }),
+        scope: async () => {
+          const [configs, providers] = await Promise.all([getPluginConfigsMap({ homeDir }, fs), getPluginProviderKeys({ homeDir }, fs)])
+          return { configs, providers }
+        },
+        getEnv: name => deps.env?.()?.[name],
+        storeSecrets,
         createPool: ({ cwd }) => {
           const bridge = nativeBridge()
           return new MCPPool({

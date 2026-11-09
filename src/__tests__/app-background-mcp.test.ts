@@ -158,6 +158,46 @@ describe('createAppBackgroundMcp', () => {
     expect(pools[1]!.inits).toBe(1)
   })
 
+  it('a server taking a sensitive option has its secret stored before it starts, from the settings read at that connect; a failed store is reported', async () => {
+    const owner: AppBackgroundMcpOwner = {
+      name: 'pay',
+      path: '/plugins/pay',
+      installIdentifier: 'pay@mkt',
+      manifest: { name: 'pay', userConfig: { apiKey: { type: 'string', title: 'Key', description: 'Key', sensitive: true } } } as never,
+      nativeMcpServers: { shell: { transport: 'stdio', command: 's', env: { KEY: '${user_config.apiKey}' } } },
+    }
+    const order: string[] = []
+    const stored: Array<{ name: string; value: string }> = []
+    let key = 'k1'
+    const { mcp, pools } = rig({
+      owner,
+      scope: async () => ({ configs: { 'pay@mkt': { options: { apiKey: key } } } }),
+      storeSecrets: async writes => {
+        order.push('store')
+        stored.push(...writes.map(({ name, value }) => ({ name, value })))
+      },
+    })
+    expect(await mcp.host.connect('pay', 'shell')).toEqual({ isConnected: true, server: 'shell' })
+    order.push(...pools[0]!.launchNativeServer.mock.calls.map(() => 'launch'))
+    expect(order).toEqual(['store', 'launch'])
+    expect(stored).toHaveLength(1)
+    expect(stored[0]!.value).toBe('k1')
+    const config = pools[0]!.launchNativeServer.mock.calls[0]![1] as { env: Record<string, string> }
+    expect(config.env.KEY).toBe(`{{secret:${stored[0]!.name}}}`)
+    key = 'k2'
+    await mcp.host.connect('pay', 'shell')
+    expect(stored.map(s => s.value)).toEqual(['k1', 'k2'])
+
+    const failing = rig({
+      owner,
+      scope: async () => ({ configs: { 'pay@mkt': { options: { apiKey: 'k' } } } }),
+      storeSecrets: async () => Promise.reject(new Error('no secrets')),
+    })
+    expect(await failing.mcp.host.connect('pay', 'shell')).toEqual({ isConnected: true, server: 'shell' })
+    expect(failing.reports).toEqual(['pay: the secrets of "shell" could not be stored for $.mcp.connect (no secrets)'])
+    expect(await rig().mcp.host.connect('pay', 'docs')).toEqual({ isConnected: true, server: 'docs' })
+  })
+
   it('sameMcpOwner: the same plugin with the same servers; a changed server list is another', () => {
     expect(sameMcpOwner(OWNER, { ...OWNER })).toBe(true)
     expect(sameMcpOwner(undefined, undefined)).toBe(true)
@@ -165,5 +205,7 @@ describe('createAppBackgroundMcp', () => {
     expect(sameMcpOwner(OWNER, { ...OWNER, nativeMcpServers: {} })).toBe(false)
     expect(sameMcpOwner(OWNER, { ...OWNER, mcpServers: { docs: { type: 'http', url: 'https://else.test/mcp' } } })).toBe(false)
     expect(sameMcpOwner(OWNER, { ...OWNER, path: '/elsewhere/pay' })).toBe(false)
+    expect(sameMcpOwner(OWNER, { ...OWNER, manifest: { name: 'pay', userConfig: { k: { type: 'string', sensitive: true } } } as never })).toBe(false)
+    expect(sameMcpOwner(OWNER, { ...OWNER, providers: [{ key: 'x', id: 'mod.pay.x', manifest: {} as never, modulePath: '/p' }] })).toBe(false)
   })
 })

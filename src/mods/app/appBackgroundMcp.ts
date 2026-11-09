@@ -8,12 +8,13 @@
  * Security: no settings.json server, project server or other plugin's server
  * is ever in the pool, so none can be named. A server's config is resolved
  * from the plugin's manifest as a session resolves it, with the settings
- * (plugin options, provider keys) read at the connect.
+ * (plugin options, provider keys) read at the connect, and the secrets it
+ * takes stored before it starts.
  */
 
 import type { ActivePlugin } from '../../pluginHost/pluginModel'
-import { pluginMcpServer } from '../../pluginHost'
-import type { PluginMcpScope } from '../../pluginHost/pluginMcpUserConfig'
+import { pluginMcpServer, pluginMcpServerSecrets } from '../../pluginHost'
+import type { PluginMcpScope, PluginSecretWrite } from '../../pluginHost/pluginMcpUserConfig'
 import type { McpServerOriginSources, PluginMcpServerOwner } from '../../mcp/serverOrigin'
 import { poolModMcp, type ModMcpHost, type ModMcpPool } from '../modMcp'
 
@@ -36,6 +37,8 @@ export type AppBackgroundMcpOptions = {
   /** The settings a server's `${user_config.*}` and `${provider_key.*}` resolve with, read at each connect. */
   scope: () => Promise<Pick<PluginMcpScope, 'configs' | 'providers'>>
   getEnv?: (name: string) => string | undefined
+  /** Stores the secrets a server about to connect takes. Absent: none are stored. */
+  storeSecrets?: (writes: PluginSecretWrite[]) => Promise<void>
   createPool: (options: { cwd: string }) => AppBackgroundMcpPool
   report: (line: string) => void
 }
@@ -66,15 +69,11 @@ export function sameMcpOwner(a: AppBackgroundMcpOwner | undefined, b: AppBackgro
     a.name === b.name &&
     a.path === b.path &&
     a.installIdentifier === b.installIdentifier &&
+    JSON.stringify(a.manifest ?? null) === JSON.stringify(b.manifest ?? null) &&
+    JSON.stringify(a.providers ?? null) === JSON.stringify(b.providers ?? null) &&
     JSON.stringify(a.mcpServers ?? null) === JSON.stringify(b.mcpServers ?? null) &&
     JSON.stringify(a.nativeMcpServers ?? null) === JSON.stringify(b.nativeMcpServers ?? null)
   )
-}
-
-const named = (name: string, message: string): Error => {
-  const error = new Error(message)
-  error.name = name
-  return error
 }
 
 export function createAppBackgroundMcp(options: AppBackgroundMcpOptions): AppBackgroundMcp {
@@ -91,7 +90,7 @@ export function createAppBackgroundMcp(options: AppBackgroundMcpOptions): AppBac
     ],
   }
   const ready = (): Promise<AppBackgroundMcpPool> => {
-    if (closed) return Promise.reject(named('NotSupportedError', '$.mcp is not available: the background module is stopped'))
+    if (closed) return Promise.reject(Object.assign(new Error('$.mcp is not available: the background module is stopped'), { name: 'NotSupportedError' }))
     if (pool) return Promise.resolve(pool)
     if (!opening) {
       const built = options.createPool({ cwd: options.folder })
@@ -109,13 +108,14 @@ export function createAppBackgroundMcp(options: AppBackgroundMcpOptions): AppBac
     }
     return opening
   }
+  const getEnv = options.getEnv ?? (() => undefined)
   const inner = poolModMcp({
     pool: () => pool,
     // Security: the calling plugin is the module's own, and the key is one of
     // its own manifest; any other pair is unlisted.
     manifestServer: (plugin, key) =>
       plugin === owner.name
-        ? pluginMcpServer(owner, key, { getEnv: options.getEnv ?? (() => undefined), ...scope })
+        ? pluginMcpServer(owner, key, { getEnv, ...scope })
         : undefined,
     origins: () => origins,
   })
@@ -132,6 +132,14 @@ export function createAppBackgroundMcp(options: AppBackgroundMcpOptions): AppBac
         } catch (error) {
           options.report(`${owner.name}: the plugin's settings could not be read for $.mcp.connect; options and keys unresolved (${error instanceof Error ? error.message : String(error)})`)
           scope = {}
+        }
+        const writes = plugin === owner.name ? pluginMcpServerSecrets(owner, key, { getEnv, ...scope }) : []
+        if (writes.length > 0 && options.storeSecrets) {
+          try {
+            await options.storeSecrets(writes)
+          } catch (error) {
+            options.report(`${owner.name}: the secrets of "${key}" could not be stored for $.mcp.connect (${error instanceof Error ? error.message : String(error)})`)
+          }
         }
         return inner.connect(plugin, key)
       },

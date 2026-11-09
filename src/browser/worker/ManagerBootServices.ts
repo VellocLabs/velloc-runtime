@@ -74,7 +74,7 @@ export interface ManagerBootServicesHost {
   reloadPluginsOnAllSessions?(): void
   /** The host half of the init payload the desktop page published, if any
    *  (a provider mod's `$.provider.device()` reads the user agent and locale). */
-  getHostEnvironment?(): { userAgent?: string; locale?: string } | null
+  getHostEnvironment?(): { userAgent?: string; locale?: string; env?: Record<string, string> } | null
   /** The host manifest from the latest init payload, if any (F-30 reads `primitives`). */
   getHostManifest?(): Pick<BrowserHostManifest, 'capabilities' | 'primitives'> | null
   storageRoot(): string | null
@@ -459,6 +459,7 @@ export class ManagerBootServices {
         fs: this.createTransportResolvingFs(),
         transport: () => this.host.getDirectBridgeTransport(),
         locale: () => this.host.getLocale?.(),
+        env: () => this.host.getHostEnvironment?.()?.env,
         report: line => this.host.trace('appBackground.report', { line }),
       })
     } catch (error) {

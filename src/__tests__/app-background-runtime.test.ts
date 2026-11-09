@@ -394,8 +394,32 @@ describe('AppBackgroundRuntime — $.mcp', () => {
     expect(closed).toBe(0)
     runtime.sync([])
     await vi.waitFor(() => expect(status()).toBeUndefined())
-    expect(closed).toBe(1)
+    await vi.waitFor(() => expect(closed).toBe(1))
     expect(reports.filter(line => /failed/.test(line))).toEqual([])
+  })
+
+  it('a worker that closes without crashing closes the pool with it', async () => {
+    let closed = 0
+    const { runtime, ref, status, workers } = world(
+      { '/plugins/pay/bg.js': MCP_USER },
+      {
+        mcp: () => ({
+          host: {
+            connect: async (_plugin, key) => ({ isConnected: true, server: key }),
+            call: async () => ({ content: [], isError: false }),
+          },
+          close: async () => {
+            closed += 1
+          },
+        }),
+      },
+    )
+    runtime.sync([{ ...ref('/plugins/pay/bg.js'), mcpOwner: OWNER }])
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    await vi.waitFor(() => expect(runtime.document('pay-board')!.value).toHaveProperty('result'))
+    expect(closed).toBe(0)
+    workers[0]!.close()
+    await vi.waitFor(() => expect(closed).toBe(1))
   })
 
   it('without an MCP host, or a plugin manifest, $.mcp is refused at the call as not supported', async () => {
