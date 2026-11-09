@@ -12,6 +12,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
+import { resolveLocalizedText } from '../../../config/localizedText'
+import type { ContributedApp } from '../../runtimeProtocol/modContributions'
 import type { MessageKey } from '../i18n/messages/en'
 import type { SidePaneKind } from '../layout/paneLayout'
 
@@ -27,6 +29,16 @@ export const PANE_LABEL_KEY: Record<SidePaneKind, MessageKey> = {
   mods: 'topbar.pane.mods',
   sidechat: 'topbar.pane.sidechat',
   a2ui: 'topbar.pane.a2ui',
+}
+
+/** The A2UI pane's name for a session of `type`: its app's title, or null when the type is no app. */
+export function appPaneTitle(
+  apps: readonly Pick<ContributedApp, 'type' | 'title'>[] | undefined,
+  type: string | undefined,
+  locale?: string,
+): string | null {
+  const app = type ? apps?.find(entry => entry.type === type) : undefined
+  return app ? resolveLocalizedText(app.title, locale) || null : null
 }
 
 /** Panes that, maximized, fill the area edge to edge with no header or frame (F-9). */

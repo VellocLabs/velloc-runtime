@@ -153,6 +153,13 @@ describe('NexusTopBar on a narrow window', () => {
     expect(onTogglePane).toHaveBeenCalledWith('files')
   })
 
+  it('the More menu lists no row for the A2UI pane', async () => {
+    renderBar(1200)
+    openMore()
+    await screen.findByTestId('topbar-pane-row-tasks')
+    expect(screen.queryByTestId('topbar-pane-row-a2ui')).toBeNull()
+  })
+
   it('the Background tasks row shows the running count beside its shortcut', async () => {
     renderBar(1200, { backgroundTaskCount: 2 })
     openMore()

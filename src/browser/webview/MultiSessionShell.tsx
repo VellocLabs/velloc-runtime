@@ -64,7 +64,7 @@ import { toggleFilesTreeVisible } from './panes/filesTreePrefs'
 import { PaneArea } from './panes/PaneArea'
 import { PaneFrame } from './panes/PaneFrame'
 import { A2uiPaneActionsSlot } from './a2ui/A2uiPaneSlot'
-import { IMMERSIVE_PANES, PANE_LABEL_KEY } from './panes/paneKinds'
+import { IMMERSIVE_PANES, PANE_LABEL_KEY, appPaneTitle } from './panes/paneKinds'
 import { onPaneRequest as onA2uiPaneRequest, setShownSession as setA2uiShownSession } from './a2ui/a2uiPaneBus'
 import {
   DOCK_FLOOR_CELLS,
@@ -266,7 +266,7 @@ import {
   resolveBootSession,
   writeStoredActiveSessionId,
 } from './bootSessionPointer'
-import { useT } from './i18n'
+import { useLocale, useT } from './i18n'
 import {
   useAttachModContributions,
   useContributionsSnapshot,
@@ -3364,6 +3364,17 @@ export function MultiSessionShell({
     }
     return { titles, templateTypes }
   }, [allSessionItems, t])
+  // The shown session's app title names its A2UI pane; other sessions keep the pane's own name.
+  const locale = useLocale()
+  const shownAppTitle = useMemo(
+    () =>
+      appPaneTitle(
+        modContributions?.apps,
+        activeSessionId ? attentionSessions.templateTypes.get(activeSessionId) : undefined,
+        locale,
+      ),
+    [activeSessionId, attentionSessions, modContributions, locale],
+  )
 
   // Reconcile, then deliver whatever is NEW. Delivery is decided per event by
   // `attentionDelivery`, and only `bar` actually needs the queue - a `focus`
@@ -3894,7 +3905,7 @@ export function MultiSessionShell({
   // One pane's frame and body (F-9). The panes render outside the thread
   // providers, so each brings the handles the deep cards need.
   const renderSidePane = (kind: SidePaneKind): ReactNode => {
-    const name = t(PANE_LABEL_KEY[kind])
+    const name = (kind === 'a2ui' ? shownAppTitle : null) ?? t(PANE_LABEL_KEY[kind])
     const frame = (title: ReactNode, body: ReactNode, actions?: ReactNode) => (
       <PaneFrame
         kind={kind}
