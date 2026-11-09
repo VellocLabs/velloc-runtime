@@ -850,6 +850,14 @@
           "type": "number",
           "description": "Chart height in pixels; default 240."
         },
+        "valuePrefix": {
+          "type": "string",
+          "description": "Text before each value in the legend and the tooltip, e.g. \"$\"."
+        },
+        "valueSuffix": {
+          "type": "string",
+          "description": "Text after each value in the legend and the tooltip, e.g. \"%\"."
+        },
         "weight": {
           "type": "number",
           "description": "Flex share inside a Row or Column; only on a direct child of one."

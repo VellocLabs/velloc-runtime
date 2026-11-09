@@ -39,17 +39,19 @@ export type BadgeTone = (typeof BADGE_TONES)[number]
 
 export const chartCatalogDefinitions = {
   PieChart: {
-    description: 'Pie or donut chart of labelled values: data is [{label, value, color?}].',
+    description: 'Pie or donut chart of labelled values: data is [{label, value, color?}]. The legend, a column beside the pie, lists the slices in data order, each with its value.',
     schema: z
       .object({
         title,
         data: rows('Slices: [{label, value, color?}], literal or a data binding.'),
         donut: z.boolean().optional().describe('Draw as a ring instead of a full pie.'),
         height,
+        valuePrefix: z.string().optional().describe('Text before each value in the legend and the tooltip, e.g. "$".'),
+        valueSuffix: z.string().optional().describe('Text after each value in the legend and the tooltip, e.g. "%".'),
         weight,
       })
       .strict()
-      .describe('Pie or donut chart of labelled values: data is [{label, value, color?}].'),
+      .describe('Pie or donut chart of labelled values: data is [{label, value, color?}]. The legend, a column beside the pie, lists the slices in data order, each with its value.'),
   },
   LineChart: {
     description: 'Line chart: one line per series over rows keyed by xKey.',

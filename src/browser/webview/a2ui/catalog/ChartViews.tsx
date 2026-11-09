@@ -31,6 +31,9 @@ const TOOLTIP_STYLE = {
   fontSize: 12,
 }
 
+/** Legends list slices and series in the order the author gave them. */
+const LEGEND_STYLE = { fontSize: 12 }
+
 export type SeriesSpec = { key: string; label?: string; color?: string }
 
 export function colorAt(index: number, color?: string): string {
@@ -80,13 +83,17 @@ function Frame({ title, height, empty, children }: {
   )
 }
 
-export function PieChartView({ title, data, donut, height }: {
+export function PieChartView({ title, data, donut, height, valuePrefix, valueSuffix }: {
   title?: unknown
   data: unknown
   donut?: boolean
   height?: number
-}): ReactElement {
+} & ValueUnit): ReactElement {
   const slices = asRows(data).filter(row => typeof row.value === 'number')
+  const format = (value: unknown) => valueText(value, valuePrefix, valueSuffix)
+  // The legend's text is the slice's label; its value follows in the chart's unit.
+  const legendText = (label: unknown, entry: { payload?: { value?: unknown } }) =>
+    `${String(label)} ${format(entry.payload?.value)}`
   return (
     <Frame title={title} height={height} empty={slices.length === 0}>
       <PieChart>
@@ -105,8 +112,15 @@ export function PieChartView({ title, data, donut, height }: {
             />
           ))}
         </Pie>
-        <Tooltip contentStyle={TOOLTIP_STYLE} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={format} />
+        <Legend
+          layout="vertical"
+          align="left"
+          verticalAlign="middle"
+          itemSorter={null}
+          formatter={legendText}
+          wrapperStyle={{ ...LEGEND_STYLE, lineHeight: '22px' }}
+        />
       </PieChart>
     </Frame>
   )
@@ -129,7 +143,7 @@ export function LineChartView({ title, data, xKey, series, curved, height, ...un
         <XAxis dataKey={xKey} tick={AXIS_TICK} stroke="var(--border)" />
         <YAxis tick={AXIS_TICK} stroke="var(--border)" width={56} {...units.tick} />
         <Tooltip contentStyle={TOOLTIP_STYLE} {...units.tooltip} />
-        {series.length > 1 && <Legend wrapperStyle={{ fontSize: 12 }} />}
+        {series.length > 1 && <Legend itemSorter={null} wrapperStyle={LEGEND_STYLE} />}
         {series.map((s, index) => (
           <Line
             key={s.key}
@@ -164,7 +178,7 @@ export function BarChartView({ title, data, xKey, series, stacked, height, ...un
         <XAxis dataKey={xKey} tick={AXIS_TICK} stroke="var(--border)" />
         <YAxis tick={AXIS_TICK} stroke="var(--border)" width={56} {...units.tick} />
         <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'var(--muted)' }} {...units.tooltip} />
-        {series.length > 1 && <Legend wrapperStyle={{ fontSize: 12 }} />}
+        {series.length > 1 && <Legend itemSorter={null} wrapperStyle={LEGEND_STYLE} />}
         {series.map((s, index) => (
           <Bar
             key={s.key}

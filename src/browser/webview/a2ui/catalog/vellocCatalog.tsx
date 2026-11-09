@@ -211,7 +211,14 @@ const views: Record<ChartComponentName, (props: Record<string, unknown>) => Reac
     const p = props as ChartProps
     return (
       <Suspense fallback={<ChartPlaceholder height={p.height} />}>
-        <PieChartView title={p.title} data={p.data} donut={p.donut} height={p.height} />
+        <PieChartView
+          title={p.title}
+          data={p.data}
+          donut={p.donut}
+          height={p.height}
+          valuePrefix={p.valuePrefix}
+          valueSuffix={p.valueSuffix}
+        />
       </Suspense>
     )
   },

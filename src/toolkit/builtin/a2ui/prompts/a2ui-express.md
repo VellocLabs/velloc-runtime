@@ -180,11 +180,13 @@ Use these exact positional signatures to instantiate components. Do not output p
   - trigger: The ID of the component that opens the modal when interacted with (e.g., a button).
   - content: The ID of the component to be displayed inside the modal.
   - weight: The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column.
-• PieChart(title?, data, donut? (static), height? (static), weight? (static))
+• PieChart(title?, data, donut? (static), height? (static), valuePrefix? (static), valueSuffix? (static), weight? (static))
   - title: Heading drawn above the chart.
   - data: Slices: [{label, value, color?}], literal or a data binding.
   - donut: Draw as a ring instead of a full pie.
   - height: Chart height in pixels; default 240.
+  - valuePrefix: Text before each value in the legend and the tooltip, e.g. "$".
+  - valueSuffix: Text after each value in the legend and the tooltip, e.g. "%".
   - weight: Flex share inside a Row or Column; only on a direct child of one.
 • Row(children, justify? (static), align? (static), weight? (static))
   - Description: A layout component that arranges its children horizontally. To create a grid layout, nest Columns within this Row.
