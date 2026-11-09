@@ -2131,7 +2131,7 @@ export const fr: Messages = {
   'settings.plugins.providers.consent.introApp': '{name} s’exécute en arrière-plan et demande à lancer l’agent de lui-même. Vérifiez ce qu’il peut faire avant de l’activer.',
   'settings.plugins.providers.consent.introProvidersApp': '{name} ajoute des fournisseurs de modèles et demande à lancer l’agent de lui-même. Vérifiez ce qu’ils peuvent faire avant de l’activer.',
   'settings.plugins.providers.consent.agent': 'Exécutions de l’agent',
-  'settings.plugins.providers.consent.agentBody': 'Son module en arrière-plan peut lancer l’agent de lui-même, sans aucune fenêtre ouverte, au plus {limit} fois par jour, avec votre modèle par défaut. Chaque exécution travaille dans le dossier de l’application : elle ne lit rien en dehors, n’exécute aucune commande, et tout ce qui demanderait votre approbation est refusé.',
+  'settings.plugins.providers.consent.agentBody': 'Son module en arrière-plan peut lancer l’agent de lui-même, sans aucune fenêtre ouverte, avec votre modèle par défaut, au plus {limit} fois par jour pour chacune de ses applications, comptées depuis le dernier démarrage de {product}. Chaque exécution travaille dans le dossier de l’application : elle ne lit rien en dehors, n’exécute aucune commande, et tout ce qui demanderait votre approbation est refusé.',
   'settings.plugins.providers.need.system': 'le prompt système',
   'settings.plugins.providers.need.tools': 'les définitions d’outils',
   'settings.plugins.providers.need.body': 'toute la requête, conversation comprise',

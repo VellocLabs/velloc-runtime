@@ -163,7 +163,7 @@ describe('ProviderConsentDialog', () => {
   it("an app's agent runs have their own block, naming the daily limit, and their own intro, with or without providers", () => {
     open({}, status({ grant: { providers: {}, agent: true } }))
     expect(screen.getByText(/runs in the background and asks to start agent runs on its own/)).toBeTruthy()
-    expect(screen.getByTestId('consent-agent').textContent).toMatch(/^Agent runs.*at most 24 times a day.*runs no commands/)
+    expect(screen.getByTestId('consent-agent').textContent).toMatch(/^Agent runs.*at most 24 times a day for each of its apps, counted since .+ last started\..*runs no commands/)
     expect(screen.queryByTestId('consent-standing')).toBeNull()
     cleanup()
     open({}, status({ grant: { ...GRANT, agent: true } }))

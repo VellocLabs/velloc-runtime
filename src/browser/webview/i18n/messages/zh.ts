@@ -2056,7 +2056,7 @@ export const zh: Messages = {
   'settings.plugins.providers.consent.introApp': '{name} 会在后台运行，并请求自行启动智能体运行。启用前，请先查看它可以做什么。',
   'settings.plugins.providers.consent.introProvidersApp': '{name} 会添加模型服务商，并请求自行启动智能体运行。启用前，请先查看它们可以做什么。',
   'settings.plugins.providers.consent.agent': '智能体运行',
-  'settings.plugins.providers.consent.agentBody': '它的后台模块可以在没有打开任何窗口时自行启动智能体，每天最多 {limit} 次，使用你的默认模型。每次运行都只在该应用的文件夹中工作：不会读取文件夹以外的内容，不会执行命令，任何需要你批准的操作都会被拒绝。',
+  'settings.plugins.providers.consent.agentBody': '它的后台模块可以在没有打开任何窗口时使用你的默认模型自行启动智能体，每个应用每天最多 {limit} 次，从 {product} 上次启动时开始计数。每次运行都只在该应用的文件夹中工作：不会读取文件夹以外的内容，不会执行命令，任何需要你批准的操作都会被拒绝。',
   'settings.plugins.providers.need.system': '系统提示词',
   'settings.plugins.providers.need.tools': '工具定义',
   'settings.plugins.providers.need.body': '整个请求（包括对话）',

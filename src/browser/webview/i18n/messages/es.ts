@@ -2125,7 +2125,7 @@ export const es: Messages = {
   'settings.plugins.providers.consent.introApp': '{name} se ejecuta en segundo plano y pide iniciar el agente por su cuenta. Revise lo que puede hacer antes de activarlo.',
   'settings.plugins.providers.consent.introProvidersApp': '{name} añade proveedores de modelos y pide iniciar el agente por su cuenta. Revise lo que pueden hacer antes de activarlo.',
   'settings.plugins.providers.consent.agent': 'Ejecuciones del agente',
-  'settings.plugins.providers.consent.agentBody': 'Su módulo en segundo plano puede iniciar el agente por su cuenta, sin ninguna ventana abierta, como máximo {limit} veces al día y con su modelo predeterminado. Cada ejecución trabaja en la carpeta de la aplicación: no lee nada fuera de ella, no ejecuta comandos y se rechaza todo lo que necesitaría su aprobación.',
+  'settings.plugins.providers.consent.agentBody': 'Su módulo en segundo plano puede iniciar el agente por su cuenta, sin ninguna ventana abierta y con su modelo predeterminado, como máximo {limit} veces al día por cada una de sus aplicaciones, contadas desde el último inicio de {product}. Cada ejecución trabaja en la carpeta de la aplicación: no lee nada fuera de ella, no ejecuta comandos y se rechaza todo lo que necesitaría su aprobación.',
   'settings.plugins.providers.need.system': 'el prompt del sistema',
   'settings.plugins.providers.need.tools': 'las definiciones de herramientas',
   'settings.plugins.providers.need.body': 'toda la solicitud, incluida la conversación',

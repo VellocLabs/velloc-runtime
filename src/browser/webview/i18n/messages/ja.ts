@@ -2091,7 +2091,7 @@ export const ja: Messages = {
   'settings.plugins.providers.consent.introApp': '{name} はバックグラウンドで動作し、エージェントを自動で実行することを求めています。有効にする前に、何ができるかを確認してください。',
   'settings.plugins.providers.consent.introProvidersApp': '{name} はモデルのプロバイダを追加し、エージェントを自動で実行することを求めています。有効にする前に、何ができるかを確認してください。',
   'settings.plugins.providers.consent.agent': 'エージェントの実行',
-  'settings.plugins.providers.consent.agentBody': 'バックグラウンドモジュールは、ウィンドウを開いていなくてもエージェントを自動で実行できます。1 日に最大 {limit} 回、既定のモデルを使います。各実行はアプリのフォルダ内でのみ動作し、フォルダ外は読み取らず、コマンドも実行しません。あなたの承認が必要な操作はすべて拒否されます。',
+  'settings.plugins.providers.consent.agentBody': 'バックグラウンドモジュールは、ウィンドウを開いていなくても既定のモデルでエージェントを自動で実行できます。回数はアプリごとに 1 日最大 {limit} 回で、{product} を最後に起動してから数えます。各実行はアプリのフォルダ内でのみ動作し、フォルダ外は読み取らず、コマンドも実行しません。あなたの承認が必要な操作はすべて拒否されます。',
   'settings.plugins.providers.need.system': 'システムプロンプト',
   'settings.plugins.providers.need.tools': 'ツール定義',
   'settings.plugins.providers.need.body': '会話を含むリクエスト全体',

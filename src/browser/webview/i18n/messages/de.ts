@@ -2122,7 +2122,7 @@ export const de: Messages = {
   'settings.plugins.providers.consent.introApp': '{name} läuft im Hintergrund und möchte den Agent selbstständig starten. Sieh dir an, was es darf, bevor du es aktivierst.',
   'settings.plugins.providers.consent.introProvidersApp': '{name} fügt Modellanbieter hinzu und möchte den Agent selbstständig starten. Sieh dir an, was sie dürfen, bevor du es aktivierst.',
   'settings.plugins.providers.consent.agent': 'Agent-Läufe',
-  'settings.plugins.providers.consent.agentBody': 'Sein Hintergrundmodul darf den Agent selbstständig starten, auch ohne offenes Fenster, höchstens {limit}-mal am Tag, mit deinem Standardmodell. Jeder Lauf arbeitet im Ordner der App: Er liest nichts außerhalb, führt keine Befehle aus, und alles, was deine Zustimmung bräuchte, wird abgelehnt.',
+  'settings.plugins.providers.consent.agentBody': 'Sein Hintergrundmodul darf den Agent selbstständig starten, auch ohne offenes Fenster, mit deinem Standardmodell, höchstens {limit}-mal am Tag für jede seiner Apps, gezählt seit dem letzten Start von {product}. Jeder Lauf arbeitet im Ordner der App: Er liest nichts außerhalb, führt keine Befehle aus, und alles, was deine Zustimmung bräuchte, wird abgelehnt.',
   'settings.plugins.providers.need.system': 'den System-Prompt',
   'settings.plugins.providers.need.tools': 'die Tool-Definitionen',
   'settings.plugins.providers.need.body': 'die gesamte Anfrage einschließlich der Unterhaltung',

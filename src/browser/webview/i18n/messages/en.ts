@@ -2158,7 +2158,7 @@ export const en = {
   'settings.plugins.providers.consent.introApp': '{name} runs in the background and asks to start agent runs on its own. Check what it may do before you turn it on.',
   'settings.plugins.providers.consent.introProvidersApp': '{name} adds model providers and asks to start agent runs on its own. Check what they may do before you turn it on.',
   'settings.plugins.providers.consent.agent': 'Agent runs',
-  'settings.plugins.providers.consent.agentBody': 'Its background module may start the agent on its own, with no window open, at most {limit} times a day, on your default model. Each run works in the app\'s folder: it reads nothing outside it, runs no commands, and anything that would need your approval is refused.',
+  'settings.plugins.providers.consent.agentBody': 'Its background module may start the agent on its own, with no window open, on your default model, at most {limit} times a day for each of its apps, counted since {product} last started. Each run works in the app\'s folder: it reads nothing outside it, runs no commands, and anything that would need your approval is refused.',
   'settings.plugins.providers.need.system': 'the system prompt',
   'settings.plugins.providers.need.tools': 'the tool definitions',
   'settings.plugins.providers.need.body': 'the whole request, including the conversation',

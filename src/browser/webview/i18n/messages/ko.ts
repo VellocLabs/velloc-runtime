@@ -2085,7 +2085,7 @@ export const ko: Messages = {
   'settings.plugins.providers.consent.introApp': '{name}은(는) 백그라운드에서 실행되며 에이전트를 스스로 실행하려고 합니다. 켜기 전에 무엇을 할 수 있는지 확인하세요.',
   'settings.plugins.providers.consent.introProvidersApp': '{name}은(는) 모델 제공업체를 추가하고 에이전트를 스스로 실행하려고 합니다. 켜기 전에 무엇을 할 수 있는지 확인하세요.',
   'settings.plugins.providers.consent.agent': '에이전트 실행',
-  'settings.plugins.providers.consent.agentBody': '백그라운드 모듈은 창이 열려 있지 않아도 에이전트를 스스로 실행할 수 있으며, 하루 최대 {limit}회, 기본 모델을 사용합니다. 각 실행은 앱 폴더 안에서만 작업합니다. 폴더 밖은 읽지 않고, 명령을 실행하지 않으며, 내 승인이 필요한 작업은 모두 거부됩니다.',
+  'settings.plugins.providers.consent.agentBody': '백그라운드 모듈은 창이 열려 있지 않아도 기본 모델로 에이전트를 스스로 실행할 수 있으며, 앱마다 하루 최대 {limit}회까지이고 {product}을 마지막으로 시작한 이후부터 셉니다. 각 실행은 앱 폴더 안에서만 작업합니다. 폴더 밖은 읽지 않고, 명령을 실행하지 않으며, 내 승인이 필요한 작업은 모두 거부됩니다.',
   'settings.plugins.providers.need.system': '시스템 프롬프트',
   'settings.plugins.providers.need.tools': '도구 정의',
   'settings.plugins.providers.need.body': '대화를 포함한 요청 전체',
