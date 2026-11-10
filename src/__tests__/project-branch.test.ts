@@ -56,7 +56,7 @@ describe('readProjectBranch', () => {
   it('reports shellResponded:false when no shell tool works (callTool throws)', async () => {
     // Nothing ran, so the answer is NOT "this folder has no branch" — it is "we
     // never found out". The worker retries exactly this case (a host bridge
-    // still coming up at boot); see AgentRuntimeWorker.resolveProjectBranchAtInit.
+    // still coming up at boot); see AgentRuntimeBoot.resolveProjectBranchAtInit.
     const callTool = vi.fn(async () => {
       throw new Error('bridge capability "browser" is not available')
     })

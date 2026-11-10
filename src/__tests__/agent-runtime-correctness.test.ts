@@ -250,9 +250,10 @@ describe('Scope isolation: detached disposal must not corrupt new scope', () => 
     } as never)
 
     // disposeDetachedScope must not touch Worker-level fields such as projectBranch (runInit resets it).
-    const managerSource = workerSource()
-    const disposeDetachedBody = extractMethodBody(managerSource, 'disposeDetachedScope')
-    expect(disposeDetachedBody.includes('this.projectBranch')).toBe(false)
+    const bootSource = workerBootSource()
+    const disposeDetachedBody = extractMethodBody(bootSource, 'private async disposeDetachedScope')
+    expect(disposeDetachedBody).toContain('disposeScopeResources')
+    expect(disposeDetachedBody.includes('.projectBranch')).toBe(false)
 
     // Cleanup.
     disposeA.resolve()
@@ -907,8 +908,8 @@ function SharedWorkerSessionManagerSource(): string {
   return readSource('../browser/worker/SharedWorkerSessionManager.ts')
 }
 
-function workerSource(): string {
-  return readSource('../browser/worker/AgentRuntimeWorker.ts')
+function workerBootSource(): string {
+  return readSource('../browser/worker/AgentRuntimeBoot.ts')
 }
 
 /** Extract the body of a method by name (from signature to matching close brace). */
