@@ -5,7 +5,6 @@ import { closeSessionMCPPool } from '../../mcp/sessionPools'
 import { hasTemplate } from '../../prompting/templateRegistry'
 import { currentRenderCachePolicy } from '../../renderCache/runtimeRenderCache'
 import type { CliConversationRecord } from '../../terminal/TerminalService'
-import type { AgentRuntimeWorkerSnapshot } from './workerProtocol'
 import type { SessionWorkerInboundMessage, ForkRetarget } from './sharedWorkerProtocol'
 import type { SharedWorkerSessionManager } from './SharedWorkerSessionManager'
 

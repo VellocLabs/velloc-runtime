@@ -566,7 +566,7 @@ describe('Teardown: disposal must be awaited', () => {
   it('finalizeSubAgentRun must await worker.dispose', () => {
     // The sub-agent finalize lifecycle lives on the
     // SubAgentCoordinator; the sync entry reap it delegates to
-    // (reapSessionEntrySync, Manager-side) is covered by the
+    // (SessionListMutations.reapSessionEntrySync) is covered by the
     // delete/dispose pairing invariant.
     const coordinatorSource = readSource('../browser/worker/SubAgentCoordinator.ts')
 
