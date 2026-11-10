@@ -4,7 +4,6 @@ import type { BrowserToolCallDetailRecord } from '../utils/toolCallDetails'
 import {
   cloneValue,
   cloneMessages,
-  type BrowserConversationRecord,
   type BrowserSessionMetadata,
   type BrowserSessionSummary,
   type SessionMetaFile,

@@ -6,8 +6,6 @@ import {
   SESSION_META_FILE_SCHEMA_VERSION,
   type SessionMetaFile,
   type BrowserSessionMetaEntry,
-  type BrowserCustomTitleEntry,
-  type BrowserAiTitleEntry,
   isBrowserSessionMetaEntry,
   isBrowserCustomTitleEntry,
   isBrowserAiTitleEntry,

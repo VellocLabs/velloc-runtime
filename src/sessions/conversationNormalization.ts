@@ -5,14 +5,10 @@ import type { Message } from '../runtime/RuntimeTypes'
 import { MSG_TYPE_SYSTEM, isUserMessage, isAssistantMessage } from '../runtime/VercelModelConstants'
 import {
   cloneValue,
-  type BrowserConversationRecord,
   type BrowserSessionMetadata,
   type BrowserSessionSummary,
   SESSION_META_FILE_SCHEMA_VERSION,
   type SessionMetaFile,
-  type BrowserSessionMetaEntry,
-  type BrowserCustomTitleEntry,
-  type BrowserAiTitleEntry,
   type BrowserTranscriptMessage,
   type BrowserConversationStoragePayload,
   isBrowserSessionMetaEntry,
