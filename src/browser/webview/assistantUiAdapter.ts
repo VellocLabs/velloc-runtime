@@ -599,6 +599,8 @@ function injectBubbleThreadMessage(bubble: InjectBubble): ThreadMessageLike {
   }
 }
 
+/** The cheap half: appends the pending prompt + live events onto the memoized transcript
+ *  conversion, then merges; the only part that re-runs per token. */
 export function combineThreadMessages(
   transcript: ConvertedTranscript,
   state: BrowserRuntimeClientState,

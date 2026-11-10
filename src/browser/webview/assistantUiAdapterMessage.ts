@@ -214,12 +214,9 @@ export function convertTranscriptMessage(
       const { content, attachments, quotes } = convertUserContentWithAttachments(
         displayedUserContent(userMessage),
       )
-      // Nothing legitimate produces a visible empty user turn — the composer
-      // blocks empty sends — but transcripts written before
-      // `continueConversation` switched to hidden `isMeta` continuations
-      // carry one empty non-meta user message per continue-after-stop click.
-      // Rendering it draws a blank user bubble; drop it like the assistant
-      // branch drops empty content below. An attachment-only send is not
+      // A visible empty user turn renders as a blank bubble, so it is dropped
+      // like the assistant branch drops empty content below. Older transcripts
+      // carry one empty non-meta user message per continue-after-stop click. An attachment-only send is not
       // empty: its cards are the message.
       if (
         attachments.length === 0 &&
@@ -408,12 +405,9 @@ export function convertTranscriptMessage(
         })
       }
       // Attachment messages (skill listing, file/pdf references, plan-mode,
-      // date-change, and formerly browser context) are INTERNAL context
-      // attached to the user turn for the model — not user-authored chat.
-      // Don't render them as conversation bubbles; the model still receives
-      // them in the API payload, this only affects the visible transcript.
-      // `attachmentToText` is kept for diagnostics / a possible future
-      // "show attachments" affordance.
+      // date-change, browser context) are INTERNAL context attached to the
+      // user turn for the model — not user-authored chat. They are not
+      // rendered as bubbles; the model still receives them in the API payload.
       return null
     }
 
@@ -455,8 +449,6 @@ export function markEndTurnReply(content: ThreadPart[], stopReason: unknown): vo
   }
 }
 
-/** The cheap half: appends the pending prompt + live events onto the memoized transcript
- *  conversion, then merges; the only part that re-runs per token. */
 /**
  * A `queued_command` attachment carrying user input (`commandMode:'prompt'`)
  * as the user's own message. Null for every other attachment.
