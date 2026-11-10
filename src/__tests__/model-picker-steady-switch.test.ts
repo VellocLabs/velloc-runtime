@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 
 import {
@@ -18,26 +18,48 @@ import type { BrowserLlmCatalog } from '../browser/bridge/protocol/nexus_llm'
  * widths so similar labels share one.
  */
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
+
+const stubContentWidth = (px: number) =>
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(px)
 
 const A = { providerId: 'p', modelId: 'a' }
 const B = { providerId: 'p', modelId: 'b' }
 
+type HelperState = Parameters<typeof topbarModelSelection>[0]
+const pending: HelperState = { status: 'initializing', snapshot: null }
+const loaded = (currentSelection?: typeof A): HelperState =>
+  ({ status: 'ready', snapshot: { currentSelection } } as HelperState)
+
 describe('topbarModelSelection', () => {
-  it('keeps the last shown selection while the snapshot is missing', () => {
-    expect(topbarModelSelection(false, undefined, A)).toBe(A)
+  it('keeps the last shown selection while the session has not settled', () => {
+    expect(topbarModelSelection(pending, A)).toBe(A)
   })
 
   it('switches to the session selection once the snapshot is there', () => {
-    expect(topbarModelSelection(true, B, A)).toBe(B)
+    expect(topbarModelSelection(loaded(B), A)).toBe(B)
   })
 
   it('shows a loaded session without a selection as having none', () => {
-    expect(topbarModelSelection(true, undefined, A)).toBeUndefined()
+    expect(topbarModelSelection(loaded(), A)).toBeUndefined()
+  })
+
+  it('stops holding for a transcript-only view or a failed client', () => {
+    expect(topbarModelSelection({ status: 'idle', snapshot: null, transcriptOnly: true }, A)).toBeUndefined()
+    expect(topbarModelSelection({ status: 'error', snapshot: null }, A)).toBeUndefined()
   })
 
   it('has nothing to hold before any selection was shown', () => {
-    expect(topbarModelSelection(false, undefined, undefined)).toBeUndefined()
+    expect(topbarModelSelection(pending, undefined)).toBeUndefined()
+  })
+
+  it('holds what was shown, not an older defined selection', () => {
+    let shown = topbarModelSelection(loaded(A), undefined)
+    shown = topbarModelSelection(loaded(), shown)
+    expect(topbarModelSelection(pending, shown)).toBeUndefined()
   })
 })
 
@@ -68,6 +90,7 @@ const CATALOG = {
 
 describe('stepped trigger', () => {
   it('sets a stepped width on the topbar trigger only', () => {
+    stubContentWidth(80)
     render(
       createElement('div', null,
         createElement(ModelQuickPicker, {
@@ -79,22 +102,29 @@ describe('stepped trigger', () => {
       ),
     )
     const top = screen.getByTestId('top-model-picker-trigger')
-    const width = Number(top.getAttribute('data-stepped-width'))
-    expect(TRIGGER_WIDTH_STEPS).toContain(width)
-    expect(top.style.width).toBe(`${width}px`)
+    expect(top.getAttribute('data-stepped-width')).toBe(String(steppedTriggerWidth(80 + 42)))
+    expect(top.style.width).toBe(`${steppedTriggerWidth(80 + 42)}px`)
     expect(screen.getByTestId('row-model-picker-trigger').style.width).toBe('')
+  })
+
+  it('sets no width while the trigger is not laid out', () => {
+    stubContentWidth(0)
+    render(createElement(ModelQuickPicker, {
+      catalog: CATALOG, selection: A, onSelect: () => {}, steppedWidth: true, testIdPrefix: 'top',
+    }))
+    expect(screen.getByTestId('top-model-picker-trigger').style.width).toBe('')
   })
 
   it('keeps the label through a switch with the held selection', () => {
     const view = render(createElement(ModelQuickPicker, {
-      catalog: CATALOG, selection: topbarModelSelection(true, A, undefined), onSelect: () => {},
+      catalog: CATALOG, selection: topbarModelSelection(loaded(A), undefined), onSelect: () => {},
     }))
     view.rerender(createElement(ModelQuickPicker, {
-      catalog: CATALOG, selection: topbarModelSelection(false, undefined, A), onSelect: () => {},
+      catalog: CATALOG, selection: topbarModelSelection(pending, A), onSelect: () => {},
     }))
     expect(screen.getByTestId('nexus-model-picker-trigger').textContent).toContain('Alpha')
     view.rerender(createElement(ModelQuickPicker, {
-      catalog: CATALOG, selection: topbarModelSelection(true, B, A), onSelect: () => {},
+      catalog: CATALOG, selection: topbarModelSelection(loaded(B), A), onSelect: () => {},
     }))
     expect(screen.getByTestId('nexus-model-picker-trigger').textContent).toContain('Beta')
   })

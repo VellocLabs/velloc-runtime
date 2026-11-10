@@ -591,6 +591,10 @@ export function MultiSessionShell({
   const activeSelectionRef = useRef<BrowserLlmSelection | null | undefined>(
     undefined,
   )
+  // What the topbar picker showed last render; held across a session switch.
+  const topbarShownSelectionRef = useRef<BrowserLlmSelection | null | undefined>(
+    undefined,
+  )
 
   // The raw port still carries the main-contents layout;
   // session-list traffic and presence ride `sessionChannel`.
@@ -2851,13 +2855,14 @@ export function MultiSessionShell({
   }, [configuredActiveCatalog, activeState.snapshot, healActiveSessionSelection])
 
   const activeSelection = activeState.snapshot?.currentSelection
+  const topbarSelection = topbarModelSelection(activeState, topbarShownSelectionRef.current)
+  topbarShownSelectionRef.current = topbarSelection
   // Track the last DEFINED active selection for new-thread inheritance. Only
   // overwrite when defined: by the time createSessionInitPayload runs for a
   // New Thread, the active session has already switched to the new (empty)
   // session whose snapshot has no selection yet — overwriting with that
   // `undefined` would lose the outgoing session's pick and reset to the boot
   // default. Keeping the last defined value inherits what the user was using.
-  const topbarSelection = topbarModelSelection(!!activeState.snapshot, activeSelection, activeSelectionRef.current)
   if (activeSelection) activeSelectionRef.current = activeSelection
 
   // Mirror the active session's title into the NATIVE window title via the host bridge (and

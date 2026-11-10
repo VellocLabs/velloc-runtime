@@ -146,8 +146,9 @@ export function steppedTriggerWidth(contentPx: number): number {
   );
 }
 
-/** Horizontal padding + border of the trigger (`px-2.5`, 1px border). */
-const TRIGGER_CHROME_PX = 22;
+/** Trigger width beyond its measured content: `px-2.5`, 1px border, and the
+ *  chevron (`size-3.5`) after a `gap-1.5`. */
+const TRIGGER_CHROME_PX = 42;
 
 export type ModelQuickPickerProviderMenu = {
   /** Add `family@version` to the provider's entries (and select it). */
@@ -359,8 +360,11 @@ function ModelQuickPickerImpl({
   React.useLayoutEffect(() => {
     const el = contentRef.current;
     if (!stepped || !el) return;
-    const measure = () =>
+    const measure = () => {
+      // A hidden topbar measures 0 wide: keep the last width until it is shown.
+      if (el.offsetWidth === 0) return;
       setSteppedPx(steppedTriggerWidth(el.offsetWidth + TRIGGER_CHROME_PX));
+    };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
@@ -471,17 +475,18 @@ function ModelQuickPickerImpl({
           className={cn(
             "inline-flex h-8 max-w-[16rem] items-center gap-1.5 rounded-md border bg-background px-2.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background",
             stepped &&
-              "overflow-hidden motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out",
+              "justify-between overflow-hidden motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out",
             triggerClassName,
           )}
         >
           {/* Stepped: the content is measured at its own width, never the
-              button's, and capped so a long label still truncates. */}
+              button's, and capped so a long label still truncates; the
+              chevron stays outside it, at the button's right edge. */}
           <span
             ref={stepped ? contentRef : undefined}
             className={
               stepped
-                ? "inline-flex w-max max-w-[calc(16rem-22px)] items-center gap-1.5"
+                ? "inline-flex w-max max-w-[calc(16rem-42px)] items-center gap-1.5"
                 : "contents"
             }
           >
@@ -513,8 +518,8 @@ function ModelQuickPickerImpl({
               ) : null}
             </>
           )}
-          <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
           </span>
+          <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
         </button>
       </PopoverTrigger>
       {/* 26rem (416px): wide enough that a model label ("GPT-5.6 Terra")
