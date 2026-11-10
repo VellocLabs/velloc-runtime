@@ -422,8 +422,8 @@ export class SharedWorkerSessionManager {
   // session's writes here (one timer per session, latest state wins), and reads
   // the `skill-events.json` sidecar back on session bind — once per session per
   // lifetime, promise-cached below — so the loaded/failed history
-  // survives a process restart. See `ensureSkillEventsRecovered` /
-  // `flushSkillEventsPersist`.
+  // survives a process restart. See `ToolDetailLoader.ensureSkillEventsRecovered` /
+  // `ToolDetailLoader.flushSkillEventsPersist`.
   private readonly skillEventsWriteTimers = new Map<
     string,
     ReturnType<typeof setTimeout>
@@ -703,7 +703,7 @@ export class SharedWorkerSessionManager {
   private readonly superShells: SuperShellTaskCoordinator
   private readonly pluginTasks: PluginTaskCoordinator
   /** Per owning session: the read of its plugin task files, once per
-   *  lifetime (`restorePluginTasksFromDisk`). */
+   *  lifetime (`ToolDetailLoader.restorePluginTasksFromDisk`). */
   private readonly pluginTaskRestores = new Map<string, Promise<void>>()
   // Sub-agent waiter management + queries are owned by the SubAgentCoordinator.
   private readonly subAgents: SubAgentCoordinator

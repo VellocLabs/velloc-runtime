@@ -486,13 +486,6 @@ export class ToolDetailLoader {
     }
   }
 
-  /**
-   * The drawer's detail fallback for a background shell whose live/finished
-   * registry record is gone (session reloaded after an app restart). Looks the
-   * recovered row up by public task id across every loaded session's rebuilt
-   * rows and returns its command + output-file path so
-   * `TaskControlSurface.loadInfoWithOutput` can read the persisted log lazily.
-   */
   loadRecoveredTitle(taskId: string): { title: string } | null {
     for (const rows of this.recoveredTitles.values()) {
       const row = rows.find(r => r.taskId === taskId)
@@ -501,6 +494,13 @@ export class ToolDetailLoader {
     return null
   }
 
+  /**
+   * The drawer's detail fallback for a background shell whose live/finished
+   * registry record is gone (session reloaded after an app restart). Looks the
+   * recovered row up by public task id across every loaded session's rebuilt
+   * rows and returns its command + output-file path so
+   * `TaskControlSurface.loadInfoWithOutput` can read the persisted log lazily.
+   */
   loadRecoveredShell(
     taskId: string,
   ): { command?: string; outputFilePath?: string; detailId?: string } | null {
