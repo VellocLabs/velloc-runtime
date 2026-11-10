@@ -21,7 +21,7 @@ import {
   setSlot,
   type A2uiPaneRequest,
 } from '../browser/webview/a2ui/a2uiPaneBus'
-import { APP_COMPOSE_MAX_CHARS, composeDraftOf } from '../browser/webview/apps/appCompose'
+import { APP_COMPOSE_MAX_CHARS, APP_COMPOSE_QUOTE_MAX_CHARS, composeDraftOf, composeQuoteOf } from '../browser/webview/apps/appCompose'
 import { createPassageDraftStore, type PassageDraftStore } from '../browser/webview/capturedPassages'
 import { ComposerPassagesProvider } from '../components/assistant-ui/composer-passages'
 import type { AppSurfaceState } from '../browser/runtimeProtocol/modApps'
@@ -39,12 +39,14 @@ afterEach(() => {
 
 const BODY = [
   'surface("dashboard")',
-  'root = Column([draft, empty, wrong, blank, work])',
+  'root = Column([draft, empty, wrong, blank, work, quoted, quoteOnly])',
   'draft = Button(Text("Draft reply"), action=Event("compose", {text: "  Refund order 42 in full.  "}))',
   'empty = Button(Text("No context"), action=Event("compose"))',
   'wrong = Button(Text("Number text"), action=Event("compose", {text: 5}))',
   'blank = Button(Text("Blank text"), action=Event("compose", {text: "   "}))',
   'work = Button(Text("Work this case"), action=Event("open_case", {id: 7}))',
+  'quoted = Button(Text("Discuss case"), action=Event("compose", {text: "Why refund?", quote: "  Verdict: refund the second charge.  "}))',
+  'quoteOnly = Button(Text("Quote only"), action=Event("compose", {quote: "Verdict: contest it."}))',
 ].join('\n')
 
 const board = (localActions?: string[]): AppSurfaceState => ({
@@ -188,6 +190,30 @@ describe('compose on an app surface', () => {
     expect(passages.getPassages()).toEqual([])
   })
 
+  it('puts a quote as the one quote card of the draft, replacing earlier cards, with the text below it', async () => {
+    const { submit, input, button, passages } = rig(board())
+    await waitFor(() => expect(button('Discuss case')).toBeDefined())
+    act(() => {
+      passages.add({ body: 'a quoted passage from earlier', method: 'range', anchors: [] })
+    })
+    fireEvent.click(button('Discuss case'))
+    await waitFor(() => expect(input().value).toBe('Why refund?'))
+    expect(passages.getPassages().map(passage => passage.payload.body)).toEqual(['Verdict: refund the second charge.'])
+    await act(async () => undefined)
+    expect(submit).not.toHaveBeenCalled()
+  })
+
+  it('takes a quote without text: the card shows and the composer is left empty and focused', async () => {
+    const { requests, input, button, type, passages } = rig(board())
+    await waitFor(() => expect(button('Quote only')).toBeDefined())
+    type('an old draft')
+    fireEvent.click(button('Quote only'))
+    await waitFor(() => expect(passages.getPassages().map(passage => passage.payload.body)).toEqual(['Verdict: contest it.']))
+    expect(input().value).toBe('')
+    expect(requests).toContainEqual({ sessionId: 's1', restore: true })
+    await waitFor(() => expect(document.activeElement).toBe(input()))
+  })
+
   it('is ignored while the composer is disabled: the draft stays and the pane is not restored', async () => {
     const { submit, requests, input, button, passages } = rig(board(), { disabled: true })
     await waitFor(() => expect(button('Draft reply')).toBeDefined())
@@ -241,6 +267,16 @@ describe('compose on a chat surface', () => {
     expect(submit.mock.calls[0]![0] as unknown as string).toContain('"action":"compose"')
     expect(input().value).toBe('')
     expect(requests.filter(request => 'restore' in request)).toEqual([])
+  })
+})
+
+describe('composeQuoteOf', () => {
+  it('trims and caps the quote, and refuses anything but a non-blank string', () => {
+    expect(composeQuoteOf({ quote: '  **Verdict**\n- why \n' })).toBe('**Verdict**\n- why')
+    expect(composeQuoteOf({ quote: 'x'.repeat(APP_COMPOSE_QUOTE_MAX_CHARS + 9) })).toHaveLength(APP_COMPOSE_QUOTE_MAX_CHARS)
+    for (const context of [null, { text: 'only text' }, { quote: 5 }, { quote: '  ' }]) {
+      expect(composeQuoteOf(context)).toBeNull()
+    }
   })
 })
 

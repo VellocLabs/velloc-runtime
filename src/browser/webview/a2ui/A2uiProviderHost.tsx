@@ -46,7 +46,7 @@ import { getActionsSlot, getOwner, getSlot, setOwner, subscribeSlot } from './a2
 import { AppSurfaceFeeder, appSurfaceIds } from './AppSurfaceFeeder'
 import type { AppBoard } from '../apps/appSurfaceView'
 import { AppReloadButton, AppSurfaceBar } from '../apps/AppSurfaceBar'
-import { APP_COMPOSE_EVENT, composeDraftOf, composeIntoSession } from '../apps/appCompose'
+import { APP_COMPOSE_EVENT, composeDraftOf, composeIntoSession, composeQuoteOf } from '../apps/appCompose'
 import { useComposerPassages } from '@/components/assistant-ui/composer-passages'
 
 type SurfaceActionHandler = (action: ActionPayload) => void
@@ -215,9 +215,10 @@ function A2uiFeeder({
         if (typeof action.surfaceId !== 'string') return
         if (action.name === APP_COMPOSE_EVENT && reservedIds.includes(action.surfaceId)) {
           const draft = composeDraftOf(action.context)
-          if (draft !== null && composer) {
-            composeIntoSession(sessionId, draft, text => {
-              passageStore?.replace([])
+          const quote = composeQuoteOf(action.context)
+          if ((draft !== null || quote !== null) && composer) {
+            composeIntoSession(sessionId, draft ?? '', text => {
+              passageStore?.replace(quote !== null ? [quote] : [])
               composer.setText(text)
             })
           }
