@@ -1,50 +1,26 @@
-import type {
-  BrowserBridgeAction,
-  BrowserBridgeCapability,
-  BrowserBridgeRequestPayload,
-  BrowserBridgeResult,
-  BrowserBridgeRoute,
-  BrowserBridgeTransport,
-  BrowserLlmSelection,
-} from '../bridge/browserBridgeProtocol'
-import { createBridgeRoute } from '../bridge/browserBridgeProtocol'
+import type { BrowserBridgeTransport, BrowserLlmSelection } from '../bridge/browserBridgeProtocol'
 import type { RuleEdit } from '../../permissions/ruleUpdates'
 import type {
   AgentRuntimeWorkerInitPayload,
   AgentRuntimeWorkerSnapshot,
-  AgentWorkerInboundMessage,
-  AgentWorkerOutboundMessage,
-  InjectMessageView,
 } from '../worker/workerProtocol'
 import { isSlashCommandPrompt } from '../../utils/slashCommandPrompt'
 import { randomUuid } from '../../utils/randomUuid'
-
-/** How a submit made while the session is busy is delivered: `inject` (plain
- *  Enter — into the running turn) or `next` (Ctrl/Cmd+Enter — the
- *  next-message strip). See `worker.submitMessage` `delivery`. */
-export type SubmitDelivery = 'inject' | 'next'
-import type { Message, StreamRecord } from '../../runtime/RuntimeTypes'
+import type { Message } from '../../runtime/RuntimeTypes'
 import type { ContentBlockParam } from '../../runtime/RuntimeTypes'
-import type { AppendMessage, CompleteAttachment } from '@assistant-ui/react'
-import { startFileSearch, type FileSearchRequest, type RuntimeFileAccess } from '../runtimeClient/fileAccess'
+import type { AppendMessage } from '@assistant-ui/react'
+import type { FileSearchRequest, RuntimeFileAccess } from '../runtimeClient/fileAccess'
 import type { FsxListDirResult, FsxListTreeResult, FsxSearchState } from '../runtimeProtocol'
 import { SESSION_OPEN_FORBIDDEN } from '../runtimeClient/workerTransportOverConnection'
-import {
-  BROWSER_COMPOSER_ATTACHMENT_EXTENSIONS,
-  BROWSER_COMPOSER_ATTACHMENT_EXTENSIONS_NO_IMAGES,
-  pathBytesToAttachmentFile,
-} from './BrowserComposerAttachmentAdapter'
 import {
   buildPromptFromAppendMessage,
   extractTextFromAppendMessage,
 } from './assistantUiAdapter'
-import { joinPassagePrompts, serializePassagePrompt } from './capturedPassages'
+import { serializePassagePrompt } from './capturedPassages'
 import { passagesOfMetadata } from './replyQuote'
 import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
 import type { BundledSkillBodyResult } from '../../skillLibrary/builtinSkillBody'
-import type { TurnDiffMeta, TurnFileChange } from '../../utils/turnDiffs'
-import type { NexusAgentChangeSection } from '../bridge/protocol/ui'
-import type { SessionChangeFigures } from '../../utils/sessionChangeDigest'
+import type { TurnFileChange } from '../../utils/turnDiffs'
 import type { BrowserSessionMetadata } from '../../sessions/sessionStore'
 import {
   getBootDiagnosticTraceId,
@@ -52,377 +28,41 @@ import {
   type Span as TraceSpan,
 } from '../../utils/sessionTrace'
 import { isTraceLogUrlFlagEnabled } from '../../utils/traceLogGate'
+import type {
+  BrowserWorkerClientInboundMessage,
+  BrowserWorkerClientTransport,
+} from './sharedWorkerTransport'
+import type {
+  BrowserRuntimeClientState,
+  InjectRemoveResult,
+  InjectRestoreDraft,
+  SubmitDelivery,
+} from './browserRuntimeClientState'
+import { RuntimeClientParkedInput } from './RuntimeClientParkedInput'
+import { RuntimeClientFileRequests } from './RuntimeClientFileRequests'
+import type { RuntimeClientDetailRequests } from './RuntimeClientDetailRequests'
+import { routeWorkerDebugLog } from './workerDebugLog'
 
-/**
- * The stream topic missed events (`createWorkerTransportOverConnection`
- * recovering a gap). Made by the transport, never sent by a worker and never
- * on the wire: the current turn's live events have a hole and are dropped; the
- * transcript refetch that accompanies it brings back what the turn persisted.
- */
-export type WorkerStreamGapMessage = { type: 'worker.streamGap' }
+export {
+  createSharedWorkerTransport,
+  type AgentChangesMessage,
+  type BrowserWorkerClientInboundMessage,
+  type BrowserWorkerClientTransport,
+  type WorkerStreamGapMessage,
+} from './sharedWorkerTransport'
+export type {
+  BrowserRuntimeClientState,
+  InjectBubble,
+  InjectRemoveResult,
+  SubmitDelivery,
+} from './browserRuntimeClientState'
 
-/** The session's sub-agent file-change sections, from its diff topic (F-2).
- *  Sent by the runtime's manager, not by the session's worker. */
-export type AgentChangesMessage = {
-  type: 'worker.agentChanges'
-  payload: { agents: NexusAgentChangeSection[] }
-}
-
-/** Union delivered to client message listeners. */
-export type BrowserWorkerClientInboundMessage =
-  | AgentWorkerOutboundMessage
-  | WorkerStreamGapMessage
-  | AgentChangesMessage
-
-// Optional handler installed by `nexusBoot` when the model-upload
-// trace gate is on. Kept as a runtime reference (no static import of
-// `modelUploadBus`) so production bundles with the switch off omit
-// the bus module entirely — `setModelUploadHandler` is the sole
-// load-bearing surface, and `nexusBoot` only calls it from inside a
-// dynamic `import('../../utils/modelUploadBus')` behind the same gate.
-type ModelUploadHandler = (entry: unknown) => void
-let modelUploadHandler: ModelUploadHandler | null = null
-
-export function setModelUploadHandler(
-  handler: ModelUploadHandler | null,
-): void {
-  modelUploadHandler = handler
-}
-
-export interface BrowserWorkerClientTransport {
-  postMessage(message: AgentWorkerInboundMessage): void | Promise<void>
-  addMessageListener(
-    listener: (message: BrowserWorkerClientInboundMessage) => void,
-  ): () => void
-  /**
-   * Send a raw envelope directly to the SharedWorker manager — used for
-   * manager-level protocol like `toolDetail.subscribe` that isn't scoped
-   * to a single session's worker. Optional; transports that don't front a
-   * SharedWorker can omit it (the client degrades gracefully).
-   */
-  postManagerMessage?(data: unknown): void
-  /**
-   * Subscribe to manager-level broadcasts (`toolDetail.ready`, etc.).
-   * The listener receives the raw message data as sent by the manager.
-   * Returns an unsubscribe function.
-   */
-  addManagerListener?(listener: (data: unknown) => void): () => void
-  dispose?(): void | Promise<void>
-}
+export { setModelUploadHandler } from './workerDebugLog'
 
 // Re-exported from its own module so the early index.html warm-up script and
 // this boot path share ONE worker asset (same URL + name) and thus one shared
 // instance. See createBrowserRuntimeSharedWorker.ts.
 export { createBrowserRuntimeSharedWorker } from './createBrowserRuntimeSharedWorker'
-
-type SharedWorkerDispatchEntry = {
-  listeners: Set<(message: BrowserWorkerClientInboundMessage) => void>
-  /**
-   * Number of live transports sharing this entry: two can front one session (strict-mode
-   * double mount, async dispose), and a stale dispose must not delete the shared entry.
-   */
-  refs: number
-}
-
-class SharedWorkerPortDispatcher {
-  private readonly port: MessagePort
-  private readonly sessions = new Map<string, SharedWorkerDispatchEntry>()
-  private readonly globalListeners = new Set<(event: MessageEvent) => void>()
-  private started = false
-
-  constructor(sharedWorker: SharedWorker) {
-    this.port = sharedWorker.port
-    this.port.addEventListener('message', this.receiveFrame)
-  }
-
-  register(
-    sessionId: string,
-  ): SharedWorkerDispatchEntry {
-    let entry = this.sessions.get(sessionId)
-    if (!entry) {
-      entry = { listeners: new Set(), refs: 0 }
-      this.sessions.set(sessionId, entry)
-    }
-    entry.refs++
-    this.startOnce()
-    return entry
-  }
-
-  /**
-   * Release one transport's hold on the session entry. The entry (and the
-   * session's message routing) survives until the LAST holder unregisters.
-   * Returns true when this call removed the entry — the caller uses that to
-   * decide whether to tell the manager to detach the session from this port.
-   */
-  unregister(sessionId: string): boolean {
-    const entry = this.sessions.get(sessionId)
-    if (!entry) return true
-    entry.refs--
-    if (entry.refs <= 0) {
-      this.sessions.delete(sessionId)
-      return true
-    }
-    return false
-  }
-
-  addGlobalListener(listener: (event: MessageEvent) => void): () => void {
-    this.globalListeners.add(listener)
-    this.startOnce()
-    return () => {
-      this.globalListeners.delete(listener)
-    }
-  }
-
-  postMessage(data: unknown, transfer?: Transferable[]): void {
-    this.startOnce()
-    if (transfer) {
-      this.port.postMessage(data, transfer)
-    } else {
-      this.port.postMessage(data)
-    }
-  }
-
-  private startOnce(): void {
-    if (!this.started) {
-      this.port.start()
-      this.started = true
-    }
-  }
-
-  private receiveFrame = (event: MessageEvent): void => {
-    const data = event.data as Record<string, unknown>
-    if (!data || typeof data.type !== 'string') return
-
-    for (const listener of this.globalListeners) {
-      listener(event)
-    }
-
-    const sessionId = data.sessionId as string
-    if (!sessionId) return
-
-    const entry = this.sessions.get(sessionId)
-    if (!entry) return
-
-    const { sessionId: _sid, ...stripped } = data
-    const message = stripped as unknown as BrowserWorkerClientInboundMessage
-    for (const listener of entry.listeners) {
-      listener(message)
-    }
-  }
-}
-
-const dispatcherCache = new WeakMap<SharedWorker, SharedWorkerPortDispatcher>()
-
-function getOrCreateDispatcher(
-  sharedWorker: SharedWorker,
-): SharedWorkerPortDispatcher {
-  let dispatcher = dispatcherCache.get(sharedWorker)
-  if (!dispatcher) {
-    dispatcher = new SharedWorkerPortDispatcher(sharedWorker)
-    dispatcherCache.set(sharedWorker, dispatcher)
-  }
-  return dispatcher
-}
-
-export function createSharedWorkerTransport(
-  sharedWorker: SharedWorker,
-  openingSessionId?: string,
-): BrowserWorkerClientTransport {
-  let sessionId = openingSessionId ?? ''
-  const dispatcher = getOrCreateDispatcher(sharedWorker)
-  let entry: SharedWorkerDispatchEntry | null = null
-  const pendingListeners = new Set<
-    (message: BrowserWorkerClientInboundMessage) => void
-  >()
-
-  function flushPendingListeners(): void {
-    if (!entry || pendingListeners.size === 0) return
-    for (const listener of pendingListeners) {
-      entry.listeners.add(listener)
-    }
-    pendingListeners.clear()
-  }
-
-  return {
-    postMessage(message: AgentWorkerInboundMessage): void {
-      if (message.type === 'worker.init') {
-        if (!sessionId) {
-          sessionId =
-            message.payload.sessionId || randomUuid()
-        }
-        // Hold at most ONE ref per transport: a re-init on the live
-        // transport (forceReinit) or an addMessageListener that already
-        // registered must not double-count — dispose releases exactly one.
-        if (!entry) {
-          entry = dispatcher.register(sessionId)
-        }
-        flushPendingListeners()
-        dispatcher.postMessage({
-          ...message,
-          sessionId,
-          payload: { ...message.payload, sessionId },
-        })
-        return
-      }
-
-      dispatcher.postMessage({ ...message, sessionId })
-    },
-
-    addMessageListener(
-      listener: (message: BrowserWorkerClientInboundMessage) => void,
-    ): () => void {
-      if (!entry && sessionId) {
-        entry = dispatcher.register(sessionId)
-      }
-      if (entry) {
-        entry.listeners.add(listener)
-      } else {
-        pendingListeners.add(listener)
-      }
-      return () => {
-        entry?.listeners.delete(listener)
-        pendingListeners.delete(listener)
-      }
-    },
-
-    postManagerMessage(data: unknown): void {
-      dispatcher.postMessage(data)
-    },
-
-    addManagerListener(listener: (data: unknown) => void): () => void {
-      return dispatcher.addGlobalListener(event => {
-        listener((event as MessageEvent).data)
-      })
-    },
-
-    dispose(): void {
-      if (sessionId) {
-        // Only the LAST local holder detaches the session from the shared
-        // port — a strict-mode ghost's late dispose must not tear down the
-        // routing (dispatcher entry + manager port attachment) that the
-        // surviving client of the SAME session is using.
-        const last = dispatcher.unregister(sessionId)
-        if (last) {
-          dispatcher.postMessage({ type: 'session.detach', sessionId })
-        }
-      }
-      pendingListeners.clear()
-      entry = null
-    },
-  }
-}
-
-export type BrowserRuntimeClientState = {
-  status: 'idle' | 'initializing' | 'ready' | 'submitting' | 'error'
-  snapshot: AgentRuntimeWorkerSnapshot | null
-  transcriptMessages: Message[]
-  liveEvents: StreamRecord[]
-  lastError: { code: string; message: string } | null
-  /**
-   * A TRANSCRIPT-ONLY view (`startReadOnly`) whose load has settled, with the transcript or
-   * `transcript_read_failed`. The loading gates read `snapshot != null`, and a read-only
-   * client never gets a snapshot (a shutdown session must not claim a runtime), so this
-   * flag marks it as loaded.
-   */
-  transcriptOnly?: boolean
-  pendingPrompt: string | null
-  pendingPromptId: string | null
-  /**
-   * Index into `liveEvents` where the CURRENT turn's events begin; earlier events render
-   * BEFORE the optimistic pending-prompt bubble. Reset to 0 when `liveEvents` is cleared;
-   * pre-split events are dropped on the next transcript reconcile. The live client always
-   * sets it.
-   */
-  liveEventsTurnStart?: number
-  /**
-   * The PREVIOUS turn's optimistic user bubble, kept when a consumed next-message batch
-   * re-arms `pendingPrompt`, so the consume is a pure APPEND ([U, A] → [U, A, U', A']).
-   * Rendered before the pre-split live events, deduped by uuid, cleared by the next
-   * transcript reconcile. Single slot. The live client always sets it.
-   */
-  preSplitPrompt?: string | null
-  preSplitPromptId?: string | null
-  /**
-   * Turn-diff HISTORY metadata for the "Changes this turn" bar, newest first: stats and file
-   * list, no hunks (`loadTurnDiffDetail`). `null` before the first `worker.turnDiffHistory`
-   * push; `[]` = nothing to show. The live client always sets it.
-   */
-  turnDiffHistory?: TurnDiffMeta[] | null
-  /**
-   * The Outputs and Changes cards' figures from the session's stored digest,
-   * sent on open in place of the history (`worker.sessionChangeFigures`).
-   * Read only while `turnDiffHistory` is null. `null` = none sent.
-   */
-  sessionChangeFigures?: SessionChangeFigures | null
-  /** File changes of the background sub-agents this session started, one
-   *  section per sub-agent, newest first (F-2). */
-  agentChanges?: NexusAgentChangeSection[]
-  /**
-   * The session's saved "next message" (a plain-text submit made while the
-   * agent was busy, accumulated by the manager and broadcast in FULL). `null`
-   * = none. Rendered verbatim by the NextMessage strip; consumed (auto-run) on
-   * completion. Sourced from `worker.pendingMessageUpdated`/`…Cleared`.
-   */
-  pendingMessage?: string | null
-  /**
-   * The same saved "next message", but as ONE ENTRY PER PARKED SUBMIT.
-   * `pendingMessage` is these joined with newlines and cannot be split back
-   * apart — a single submit can be multi-line (Shift+Enter) — so the strip
-   * counts and slices the queue from here. `null` = none, or an older worker
-   * that doesn't send the list (the strip falls back to splitting the text).
-   */
-  pendingMessageEntries?: string[] | null
-  /**
-   * Set when the user clicked the Next-message strip's clear (×) and the
-   * manager hasn't confirmed yet. While set, incoming `pendingMessageUpdated`
-   * events are ignored so a stale in-flight append can't re-flash the strip the
-   * user just dismissed. Cleared by `worker.pendingMessageCleared`. Per-session
-   * (each sessionId has its own client), so sessions never interfere.
-   */
-  pendingClearInFlight?: boolean
-  /**
-   * Messages sent with plain Enter during a running turn, pinned at the bottom until they
-   * land. `pending`: in the worker's inject queue. `landed`: `midturn` or `nextturn`
-   * (persisted under `turnUuid`). Dropped once the transcript or live stream renders it.
-   */
-  injectBubbles?: InjectBubble[]
-  /**
-   * Inject texts Stop dropped, to hand back to THIS page's composer (set only
-   * on the page that asked for the interrupt). Taken from the worker's
-   * `injectMessagesCleared`, never from local bubbles: a message drained into
-   * the model in the same instant must not also come back. `id` is unique per
-   * restore so the composer applies it once. `files` are the attachments this
-   * page sent with those messages (`InjectRestoreDraft`); absent when none.
-   */
-  injectRestore?: { id: string; text: string; files?: File[] } | null
-}
-
-/**
- * What THIS page sent with an inject message that carried attachments: the
- * composer text as typed and the attached files. The worker hands a removed /
- * Stop-dropped message back as its display text only — for an attachment-only
- * send, the file names — so without this the attachments were lost and their
- * names came back as typed text.
- */
-type InjectRestoreDraft = { text: string; files: File[] }
-
-/** The result of `removeInjectMessage`: `text` (and `files`, when this page
- *  sent attachments with it) go back to the composer on `ok`. */
-export type InjectRemoveResult = { ok: boolean; text?: string; files?: File[] }
-
-export type InjectBubble = {
-  uuid: string
-  text: string
-  hasAttachments: boolean
-  state: 'pending' | 'landed'
-  landedVia?: 'midturn' | 'nextturn'
-  /** `nextturn` only: the user message the merged turn persists under. */
-  turnUuid?: string
-  /** Shown before the worker confirmed it parked the submit. */
-  optimistic?: boolean
-  /** Hidden while this page's remove (×) request is in flight. */
-  removing?: boolean
-}
 
 export type BrowserRuntimeToolResultSubmission = {
   toolCallId: string
@@ -462,16 +102,7 @@ export const RESUME_INTERRUPTED_TOOLS_PROMPT =
   '[Resume interrupted tool execution]'
 
 export class BrowserRuntimeClient {
-  /**
-   * Outer bound for a tool-detail subscribe that never resolves — e.g. the
-   * tool call was interrupted or the server restarted before persisting.
-   * Short enough that a stuck click doesn't sit forever, long enough that
-   * genuinely slow tools still land.
-   */
-  private static readonly TOOL_DETAIL_TIMEOUT_MS = 15_000
   private readonly createWorkerTransport: () => BrowserWorkerClientTransport
-  private readonly hostBridgeTransport: BrowserBridgeTransport
-  private readonly files: RuntimeFileAccess | null
   private initPayload: AgentRuntimeWorkerInitPayload
   private transport: BrowserWorkerClientTransport | null = null
   private unsubscribeTransport: (() => void) | null = null
@@ -519,30 +150,32 @@ export class BrowserRuntimeClient {
   /** Cancels an in-flight `startReadOnly` read (its timer and listener). */
   private cancelReadOnlyLoad: (() => void) | null = null
   private messagesWaiters: Array<(messages: Message[]) => void> = []
-  private readonly toolCallDetailWaiters = new Map<
-    string,
-    Array<(detail: BrowserToolCallDetailRecord | null) => void>
-  >()
-  private readonly turnDiffDetailWaiters = new Map<
-    number,
-    Array<(files: TurnFileChange[] | null) => void>
-  >()
-  /** Pending `worker.getSkillBody` requests, keyed by bundled-skill name. */
-  private readonly skillBodyWaiters = new Map<
-    string,
-    Array<(result: BundledSkillBodyResult | null) => void>
-  >()
-  /** Per-turn hunks, cached after first fetch; cleared on each history push. */
-  private readonly turnDiffDetailCache = new Map<
-    number,
-    TurnFileChange[] | null
-  >()
+  private readonly parkedInput: RuntimeClientParkedInput
+  private readonly fileRequests: RuntimeClientFileRequests
+  /** Set once the first detail request has loaded it (`loadDetailRequests`). */
+  private detailRequests: RuntimeClientDetailRequests | null = null
+  private detailRequestsLoad: Promise<RuntimeClientDetailRequests> | null = null
 
   constructor(options: BrowserRuntimeClientOptions) {
     this.createWorkerTransport = options.createWorkerTransport
-    this.hostBridgeTransport = options.hostBridgeTransport
-    this.files = options.files ?? null
     this.initPayload = options.initPayload
+    const client = this
+    this.parkedInput = new RuntimeClientParkedInput({
+      get state() { return client.state },
+      set state(next) { client.state = next },
+      get transport() { return client.transport },
+      get interruptRequested() { return client.interruptRequested },
+      emitState: () => this.emitState(),
+    })
+    this.fileRequests = new RuntimeClientFileRequests(
+      options.files ?? null,
+      options.hostBridgeTransport,
+      {
+        get state() { return client.state },
+        get initPayload() { return client.initPayload },
+        startOnce: () => this.startOnce(),
+      },
+    )
   }
 
   getState(): BrowserRuntimeClientState {
@@ -698,7 +331,7 @@ export class BrowserRuntimeClient {
   ): Promise<void> {
     const prompt = await buildPromptFromAppendMessage(
       message,
-      attachment => this.uploadComposerAttachment(attachment),
+      attachment => this.fileRequests.uploadComposerAttachment(attachment),
     )
     // Kept in case this lands as an inject message that is later removed or
     // dropped by Stop: the composer gets the files back, not their names.
@@ -741,106 +374,13 @@ export class BrowserRuntimeClient {
     await this.submitMessage(prompt, displayPrompt, options.delivery, restoreDraft)
   }
 
-  /**
-   * Remove one parked inject message (its × in the conversation). Hidden at
-   * once; resolves with the worker's verdict. `ok:true` carries the text the
-   * caller hands back to the composer; `ok:false` means it already landed or
-   * another window removed it first — the caller must NOT restore it.
-   */
+  // Parked mid-turn input (inject bubbles, next-message strip): RuntimeClientParkedInput.
   removeInjectMessage(uuid: string): Promise<InjectRemoveResult> {
-    const requestId = randomUuid()
-    this.setInjectBubbles(
-      (this.state.injectBubbles ?? []).map(bubble =>
-        bubble.uuid === uuid ? { ...bubble, removing: true } : bubble,
-      ),
-    )
-    const result = new Promise<InjectRemoveResult>(resolve => {
-      this.injectRemoveWaiters.set(requestId, resolve)
-    })
-    void this.transport?.postMessage({
-      type: 'worker.removeInjectMessage',
-      payload: { uuid, requestId },
-    })
-    return result
+    return this.parkedInput.removeInjectMessage(uuid)
   }
 
-  private setInjectBubbles(next: InjectBubble[]): void {
-    this.state = { ...this.state, injectBubbles: next }
-    this.emitState()
-  }
-
-  /** Replace the pending half of the bubble list with the worker's list;
-   *  landed bubbles and not-yet-confirmed optimistic ones are kept. */
-  private reconcileInjectEntries(entries: readonly InjectMessageView[]): InjectBubble[] {
-    const byUuid = new Map(entries.map(entry => [entry.uuid, entry]))
-    const current = this.state.injectBubbles ?? []
-    const next: InjectBubble[] = []
-    const seen = new Set<string>()
-    for (const bubble of current) {
-      const entry = byUuid.get(bubble.uuid)
-      if (entry) {
-        next.push({
-          ...bubble,
-          text: entry.text,
-          hasAttachments: entry.hasAttachments,
-          state: 'pending',
-          optimistic: false,
-        })
-        seen.add(bubble.uuid)
-        continue
-      }
-      if (bubble.state === 'landed' || bubble.optimistic) {
-        next.push(bubble)
-      }
-    }
-    for (const entry of entries) {
-      if (seen.has(entry.uuid)) continue
-      next.push({
-        uuid: entry.uuid,
-        text: entry.text,
-        hasAttachments: entry.hasAttachments,
-        state: 'pending',
-      })
-    }
-    return next
-  }
-
-  /** Bubbles whose message the transcript now carries — as the persisted
-   *  user message (its own uuid or the merged turn's) or as a mid-turn
-   *  `queued_command` attachment — are no longer needed. */
-  private pruneInjectBubbles(
-    bubbles: readonly InjectBubble[],
-    transcript: readonly Message[],
-  ): InjectBubble[] {
-    if (bubbles.length === 0) return bubbles as InjectBubble[]
-    const ids = new Set<string>()
-    for (const message of transcript) {
-      const record = message as { uuid?: string; type?: string; attachment?: { source_uuid?: unknown } }
-      if (typeof record.uuid === 'string') ids.add(record.uuid)
-      const source = record.attachment?.source_uuid
-      if (record.type === 'attachment' && typeof source === 'string') ids.add(source)
-    }
-    return bubbles.filter(
-      bubble =>
-        !ids.has(bubble.uuid) &&
-        !(bubble.turnUuid !== undefined && ids.has(bubble.turnUuid)),
-    )
-  }
-
-  /**
-   * Optimistically clear the saved "next message": hide the strip now, ignore stale
-   * `pendingMessageUpdated` events while the clear is in flight, then ask the manager to drop
-   * the text. Composer-text restore is the strip's own (UI-local) job.
-   */
   clearPendingMessage(): void {
-    this.state = {
-      ...this.state,
-      pendingMessage: null,
-      pendingMessageEntries: null,
-      pendingClearInFlight: true,
-    }
-    this.emitState()
-    void this.transport?.postMessage({ type: 'worker.clearPendingMessage' })
+    this.parkedInput.clearPendingMessage()
   }
 
   async submitToolResult(
@@ -916,55 +456,27 @@ export class BrowserRuntimeClient {
     })
   }
 
+  /** The detail-request helper, imported on the first detail request. */
+  private loadDetailRequests(): Promise<RuntimeClientDetailRequests> {
+    this.detailRequestsLoad ??= import('./RuntimeClientDetailRequests').then(
+      ({ RuntimeClientDetailRequests }) => {
+        const client = this
+        this.detailRequests = new RuntimeClientDetailRequests({
+          get transport() { return client.transport },
+          get initPayload() { return client.initPayload },
+          startOnce: () => this.startOnce(),
+        })
+        return this.detailRequests
+      },
+    )
+    return this.detailRequestsLoad
+  }
+
+  // On-demand details: RuntimeClientDetailRequests, loaded on first use.
   async loadToolCallDetail(
     toolCallId: string,
   ): Promise<BrowserToolCallDetailRecord | null> {
-    await this.startOnce()
-
-    const transport = this.transport
-    if (!transport?.postManagerMessage || !transport.addManagerListener) {
-      // Transport doesn't expose manager-level channels (e.g. test doubles)
-      // — fall back to the legacy point-to-point request so callers keep
-      // working. Still no retry loop; the worker returns whatever it has
-      // after one round-trip.
-      return this.legacyRequestToolCallDetail(toolCallId)
-    }
-
-    return new Promise<BrowserToolCallDetailRecord | null>(resolve => {
-      let settled = false
-      const settle = (detail: BrowserToolCallDetailRecord | null) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timeoutId)
-        unsubscribe()
-        transport.postManagerMessage?.({
-          type: 'toolDetail.unsubscribe',
-          toolCallIds: [toolCallId],
-        })
-        resolve(detail)
-      }
-
-      const unsubscribe = transport.addManagerListener!(data => {
-        const msg = data as { type?: string; payload?: unknown } | null
-        if (msg?.type !== 'toolDetail.ready') return
-        const payload = msg.payload as {
-          toolCallId?: string
-          detail?: BrowserToolCallDetailRecord | null
-        }
-        if (payload?.toolCallId !== toolCallId) return
-        settle(payload.detail ?? null)
-      })
-
-      const timeoutId = setTimeout(() => {
-        settle(null)
-      }, BrowserRuntimeClient.TOOL_DETAIL_TIMEOUT_MS)
-
-      transport.postManagerMessage!({
-        type: 'toolDetail.subscribe',
-        toolCallIds: [toolCallId],
-        sessionId: this.initPayload.sessionId,
-      })
-    })
+    return (await this.loadDetailRequests()).loadToolCallDetail(toolCallId)
   }
 
   /**
@@ -977,87 +489,16 @@ export class BrowserRuntimeClient {
     await this.transport?.postMessage({ type: 'worker.getTurnDiffHistory' })
   }
 
-  /**
-   * Fetch one turn's hunks from the worker history cache, on expand. Cached
-   * client-side after the first fetch (cleared whenever a new history pushes).
-   * Point-to-point request/response (`worker.getTurnDiffDetail` →
-   * `worker.turnDiffDetail`) — the worker serves it from memory.
-   */
   async loadTurnDiffDetail(
     turnIndex: number,
   ): Promise<TurnFileChange[] | null> {
-    await this.startOnce()
-    const cached = this.turnDiffDetailCache.get(turnIndex)
-    if (cached !== undefined) return cached
-
-    const promise = new Promise<TurnFileChange[] | null>(resolve => {
-      const waiters = this.turnDiffDetailWaiters.get(turnIndex) ?? []
-      waiters.push(resolve)
-      this.turnDiffDetailWaiters.set(turnIndex, waiters)
-    })
-    await this.transport?.postMessage({
-      type: 'worker.getTurnDiffDetail',
-      payload: { turnIndex },
-    })
-    return promise
+    return (await this.loadDetailRequests()).loadTurnDiffDetail(turnIndex)
   }
 
-  private resolveTurnDiffDetailWaiters(
-    turnIndex: number,
-    files: TurnFileChange[] | null,
-  ): void {
-    this.turnDiffDetailCache.set(turnIndex, files)
-    const waiters = this.turnDiffDetailWaiters.get(turnIndex) ?? []
-    this.turnDiffDetailWaiters.delete(turnIndex)
-    for (const waiter of waiters) {
-      waiter(files)
-    }
-  }
-
-  /**
-   * Resolve a BUNDLED skill's body for the Skills tab (`bundled:<name>` has no file on disk):
-   * `worker.getSkillBody` → `worker.skillBody`, uncached. Resolves `null` on dispose.
-   */
   async loadBundledSkillBody(
     name: string,
   ): Promise<BundledSkillBodyResult | null> {
-    await this.startOnce()
-    const promise = new Promise<BundledSkillBodyResult | null>(resolve => {
-      const waiters = this.skillBodyWaiters.get(name) ?? []
-      waiters.push(resolve)
-      this.skillBodyWaiters.set(name, waiters)
-    })
-    await this.transport?.postMessage({
-      type: 'worker.getSkillBody',
-      payload: { name },
-    })
-    return promise
-  }
-
-  private resolveSkillBodyWaiters(
-    name: string,
-    result: BundledSkillBodyResult | null,
-  ): void {
-    const waiters = this.skillBodyWaiters.get(name) ?? []
-    this.skillBodyWaiters.delete(name)
-    for (const waiter of waiters) {
-      waiter(result)
-    }
-  }
-
-  private async legacyRequestToolCallDetail(
-    toolCallId: string,
-  ): Promise<BrowserToolCallDetailRecord | null> {
-    const promise = new Promise<BrowserToolCallDetailRecord | null>(resolve => {
-      const waiters = this.toolCallDetailWaiters.get(toolCallId) ?? []
-      waiters.push(resolve)
-      this.toolCallDetailWaiters.set(toolCallId, waiters)
-    })
-    await this.transport?.postMessage({
-      type: 'worker.getToolCallDetail',
-      payload: { toolCallId },
-    })
-    return promise
+    return (await this.loadDetailRequests()).loadBundledSkillBody(name)
   }
 
   private async submitInput(
@@ -1089,7 +530,7 @@ export class BrowserRuntimeClient {
       options.promptUuid !== undefined &&
       !isSlashCommandPrompt(prompt)
     if (showInjectBubble && options.restoreDraft) {
-      this.injectDrafts.set(options.promptUuid!, options.restoreDraft)
+      this.parkedInput.injectDrafts.set(options.promptUuid!, options.restoreDraft)
     }
     this.state = {
       ...this.state,
@@ -1559,18 +1000,7 @@ export class BrowserRuntimeClient {
     this.transport = null
     this.lastKnownOrdinal = 0
     this.catchUpPullPending = false
-    for (const [toolCallId, waiters] of this.toolCallDetailWaiters) {
-      this.toolCallDetailWaiters.delete(toolCallId)
-      for (const waiter of waiters) {
-        waiter(null)
-      }
-    }
-    for (const [name, waiters] of this.skillBodyWaiters) {
-      this.skillBodyWaiters.delete(name)
-      for (const waiter of waiters) {
-        waiter(null)
-      }
-    }
+    this.detailRequests?.releaseWaiters()
     this.state = {
       ...this.state,
       status: 'idle',
@@ -1595,266 +1025,46 @@ export class BrowserRuntimeClient {
     }
   }
 
-  private async requestHostBridge<
-    C extends BrowserBridgeCapability,
-    A extends BrowserBridgeAction<C>,
-  >(
-    route: BrowserBridgeRoute<C, A>,
-    payload: BrowserBridgeRequestPayload<C, A>,
-  ): Promise<BrowserBridgeResult<C, A>> {
-    const response = await this.hostBridgeTransport.request({
-      id: randomUuid(),
-      route,
-      payload,
-    }) as { ok: true; result: BrowserBridgeResult<C, A> } | {
-      ok: false
-      error: { code: string; message: string }
-    }
-
-    if (!response.ok) {
-      throw new Error(`${response.error.code}: ${response.error.message}`)
-    }
-
-    return response.result
+  // Files and the attachment picker: RuntimeClientFileRequests.
+  readFileText(path: string): Promise<string> {
+    return this.fileRequests.readFileText(path)
   }
 
-  /** The session this client's file requests are made for. */
-  private fileSessionId(): string {
-    const sessionId = this.state.snapshot?.sessionId ?? this.initPayload.sessionId
-    if (!sessionId) throw new Error('fsx: this client has no session id yet')
-    return sessionId
+  openFileInWindow(path: string): Promise<void> {
+    return this.fileRequests.openFileInWindow(path)
   }
 
-  /** `fsx` over the runtime connection. Absent only in tests that never touch files — and then loudly. */
-  private requireFiles(): RuntimeFileAccess {
-    if (!this.files) throw new Error('fsx: this BrowserRuntimeClient was built without file access')
-    return this.files
+  listDir(path: string): Promise<FsxListDirResult> {
+    return this.fileRequests.listDir(path)
   }
 
-  /**
-   * Read a file's full contents as UTF-8 text, over `fsx.readText`. Backs the
-   * right-panel Files view, which shows the complete, current file for a
-   * path the user clicked in the transcript (the inline Read card only has the
-   * slice that was read). Rejects on error (missing file, a path outside a
-   * scoped connection's roots).
-   */
-  async readFileText(path: string): Promise<string> {
-    await this.startOnce()
-    return this.requireFiles().readText(this.fileSessionId(), path)
+  listTree(path: string, depth?: number): Promise<FsxListTreeResult> {
+    return this.fileRequests.listTree(path, depth)
   }
 
-  /**
-   * Show a video, audio, image or PDF file in the host's viewer window, over
-   * `fsx.openInWindow`. Rejects like `readFileText`, and for any other file.
-   */
-  async openFileInWindow(path: string): Promise<void> {
-    await this.startOnce()
-    await this.requireFiles().openInWindow(this.fileSessionId(), path)
-  }
-
-  /**
-   * A directory's entries over `fsx.listDir` (the Files pane's browse state). A relative
-   * `path` resolves against the session's cwd. Rejects like `readFileText`.
-   */
-  async listDir(path: string): Promise<FsxListDirResult> {
-    await this.startOnce()
-    return this.requireFiles().listDir(this.fileSessionId(), path)
-  }
-
-  /** The tree below `path` over `fsx.listTree` (go-to-file index); see `RuntimeFileAccess.listTree`. */
-  async listTree(path: string, depth?: number): Promise<FsxListTreeResult> {
-    await this.startOnce()
-    return this.requireFiles().listTree(this.fileSessionId(), path, depth)
-  }
-
-  /**
-   * One Files pane search over `fsx.findFiles` / `fsx.searchText`, its state followed with
-   * `onState`; resolves with the function that ends it. Rejects like `listDir`.
-   */
-  async startFileSearch(
+  startFileSearch(
     request: FileSearchRequest,
     onState: (state: FsxSearchState) => void,
   ): Promise<() => void> {
-    await this.startOnce()
-    return startFileSearch(this.requireFiles(), this.fileSessionId(), request, onState)
+    return this.fileRequests.startFileSearch(request, onState)
   }
 
-  /**
-   * Existence check for a batch of paths (one `fsx.statBatch`). Never rejects: anything that
-   * cannot be stat'ed resolves `isFile: false`.
-   */
-  async statFilePaths(
+  statFilePaths(
     paths: string[],
   ): Promise<Array<{ path: string; isFile: boolean }>> {
-    if (paths.length === 0) return []
-    await this.startOnce()
-    try {
-      const results = await this.requireFiles().statBatch(this.fileSessionId(), paths)
-      return results.map((entry) => ({ path: entry.path, isFile: entry.isFile }))
-    } catch {
-      return paths.map((path) => ({ path, isFile: false }))
-    }
+    return this.fileRequests.statFilePaths(paths)
   }
 
-  /**
-   * Write UTF-8 text back to a file over `fsx.writeText` (`full` scope) —
-   * backs the right-panel Files view's editable mode (explicit save).
-   */
-  async writeFileText(path: string, text: string): Promise<void> {
-    await this.startOnce()
-    await this.requireFiles().writeText(this.fileSessionId(), path, text)
+  writeFileText(path: string, text: string): Promise<void> {
+    return this.fileRequests.writeFileText(path, text)
   }
 
-  /**
-   * Open the host's native multi-file picker and return the chosen files as `File`s (read
-   * via `fsx.readBlob`). `[]` on cancel; a file that fails to read is skipped. `allowImages`
-   * is a UX hint only — `BrowserComposerAttachmentAdapter.add` is the hard gate; an explicit
-   * `options.extensions` wins over it.
-   */
-  async pickComposerAttachmentFiles(
+  pickComposerAttachmentFiles(
     options?: { allowImages?: boolean; extensions?: readonly string[] },
   ): Promise<File[]> {
-    await this.startOnce()
-    const extensions =
-      options?.extensions !== undefined
-        ? [...options.extensions]
-        : options?.allowImages === false
-          ? [...BROWSER_COMPOSER_ATTACHMENT_EXTENSIONS_NO_IMAGES]
-          : [...BROWSER_COMPOSER_ATTACHMENT_EXTENSIONS]
-    const result = await this.requestHostBridge(
-      createBridgeRoute('ui', 'pickAttachmentFiles'),
-      { extensions },
-    )
-    if (result.canceled || result.paths.length === 0) {
-      return []
-    }
-    const files: File[] = []
-    const sessionId = this.fileSessionId()
-    for (const path of result.paths) {
-      try {
-        const bytes = await this.requireFiles().readBytes(sessionId, path)
-        files.push(pathBytesToAttachmentFile(path, bytes))
-      } catch (error) {
-        console.warn('Failed to read picked attachment file:', path, error)
-      }
-    }
-    return files
+    return this.fileRequests.pickComposerAttachmentFiles(options)
   }
 
-  /**
-   * Store a composer attachment as a session upload (`sys.putBlob` +
-   * `fsx.commitUpload`); the runtime picks the path under the session's
-   * uploads directory and the prompt quotes it.
-   */
-  private async uploadComposerAttachment(
-    attachment: CompleteAttachment,
-  ): Promise<string | null> {
-    const file = attachment.file
-    if (!(file instanceof File)) {
-      return null
-    }
-    await this.startOnce()
-    const content = new Uint8Array(await file.arrayBuffer())
-    return this.requireFiles().upload(
-      this.fileSessionId(),
-      attachment.name || file.name,
-      content,
-      file.type || undefined,
-    )
-  }
-
-  /**
-   * Re-arm the optimistic user bubble for a turn the worker built from parked
-   * input (a consumed next message, or inject messages merged into the next
-   * turn). Its user message is persisted but never streamed back, and the
-   * transcript isn't refetched until the turn ends.
-   */
-  private rearmPendingPrompt(
-    text: string,
-    promptUuid: string | null,
-  ): Partial<BrowserRuntimeClientState> {
-    // Any re-arm (a consumed strip batch OR an inject next-turn landing) is
-    // what a later landing from the same consume must not displace.
-    this.injectRearmTurnUuid = promptUuid
-    return {
-      pendingPrompt: text,
-      pendingPromptId: promptUuid,
-      // The finished turn's own optimistic bubble may still be the
-      // only render of ITS user message (same reconcile gap) —
-      // promote it to the pre-split slot instead of overwriting it,
-      // so the thread transition is a pure append. Dropping it here
-      // blanked the previous user message until the reconcile AND
-      // reshaped every message index, which could crash the thread
-      // mid-render (see `preSplitPrompt` in the state type).
-      preSplitPrompt: this.state.pendingPrompt,
-      preSplitPromptId: this.state.pendingPromptId,
-      // Everything in `liveEvents` right now belongs to the turn(s)
-      // that just FINISHED (the consume fires at their boundary) —
-      // their transcript reconcile may not have landed yet, so they
-      // must keep rendering, but BEFORE the re-armed bubble. Record
-      // the split; the combine layer renders pre-split events ahead
-      // of the bubble so the picked-up message never jumps above
-      // the tool block it followed.
-      liveEventsTurnStart: this.state.liveEvents.length,
-    }
-  }
-
-  /** True while the bubble armed by a re-arm (a consumed strip batch or an
-   *  inject next-turn landing) still stands for a turn that has not streamed
-   *  anything yet — a later landing from the same consume (a send that became
-   *  its own later turn) must not displace it. */
-  private injectRearmActive(): boolean {
-    return (
-      this.injectRearmTurnUuid !== null &&
-      this.state.pendingPromptId === this.injectRearmTurnUuid &&
-      this.state.liveEvents.length === (this.state.liveEventsTurnStart ?? 0)
-    )
-  }
-
-  /**
-   * Parked mid-turn input is runtime state carried by every snapshot: a page
-   * that attached (or reloaded) after it was parked restores the pending
-   * bubbles and the next-message strip from here instead of showing nothing
-   * until the next change event.
-   */
-  private restoreParkedInputFromSnapshot(
-    snapshot: AgentRuntimeWorkerSnapshot,
-  ): Partial<BrowserRuntimeClientState> {
-    const patch: Partial<BrowserRuntimeClientState> = {}
-    if (snapshot.injectMessages) {
-      const next = this.reconcileInjectEntries(snapshot.injectMessages)
-      const current = this.state.injectBubbles ?? []
-      const same =
-        next.length === current.length &&
-        next.every((bubble, i) => {
-          const other = current[i]!
-          return other.uuid === bubble.uuid && other.state === bubble.state &&
-            other.text === bubble.text && other.optimistic === bubble.optimistic
-        })
-      if (!same) patch.injectBubbles = next
-    }
-    if (
-      snapshot.nextMessages &&
-      snapshot.nextMessages.length > 0 &&
-      !this.state.pendingMessage &&
-      !this.state.pendingClearInFlight
-    ) {
-      patch.pendingMessage = joinPassagePrompts(snapshot.nextMessages)
-      patch.pendingMessageEntries = [...snapshot.nextMessages]
-    }
-    return patch
-  }
-
-  /** Pending `removeInjectMessage` replies, keyed by requestId. */
-  private readonly injectRemoveWaiters = new Map<
-    string,
-    (result: InjectRemoveResult) => void
-  >()
-  /** Attachment-carrying inject messages this page sent, by bubble uuid —
-   *  kept while their bubble is shown (`pruneInjectDrafts`). */
-  private readonly injectDrafts = new Map<string, InjectRestoreDraft>()
-  /** The turn uuid the last re-arm (strip consume or inject landing) armed. */
-  private injectRearmTurnUuid: string | null = null
   /** This page asked for the interrupt now in flight: only it restores the
    *  inject texts Stop drops. Cleared once the session settles. */
   private interruptRequested = false
@@ -1863,186 +1073,14 @@ export class BrowserRuntimeClient {
     message: BrowserWorkerClientInboundMessage,
   ): Promise<void> {
     switch (message.type) {
-      // Manager-sourced "next message" feed. The pending text always arrives
-      // in FULL (never a delta) — render it verbatim.
-      case 'worker.pendingMessageUpdated': {
-        // Ignore stale updates while a clear is in flight: the manager may have
-        // already queued an append before it processes our clear request, and
-        // replaying it would re-flash the strip the user just dismissed.
-        if (this.state.pendingClearInFlight) return
-        const { promptUuids, consumed } = message.payload
-        // The worker is authoritative about whether a submit started a turn or
-        // was parked. `submitInput` guesses from `snapshot.isBusy`, which lags
-        // the worker by a postMessage — when it guessed wrong we are showing an
-        // optimistic bubble for a message the worker actually parked, and the
-        // same text renders twice (bubble + strip) for the rest of the turn.
-        // The worker names the parked uuids, so retract the bubble here.
-        const bubbleWasParked =
-          this.state.pendingPromptId !== null &&
-          promptUuids?.includes(this.state.pendingPromptId) === true
-        // Same for a plain-Enter bubble the worker routed to the strip (a
-        // slash command it recognised, or an older worker without the inject
-        // queue): the strip is then its only surface.
-        const injectBubbles = (this.state.injectBubbles ?? []).filter(
-          bubble => !(bubble.optimistic && promptUuids?.includes(bubble.uuid) === true),
-        )
-        // A consumed batch becomes a persisted but never-streamed turn: re-arm the optimistic
-        // bubble with its uuid, unless the transcript already carries it (nothing would clear it).
-        const rearm =
-          consumed?.text != null &&
-          consumed.text.length > 0 &&
-          !(
-            consumed.promptUuid != null &&
-            this.state.transcriptMessages.some(
-              m => (m as { uuid?: string }).uuid === consumed.promptUuid,
-            )
-          )
-        this.state = {
-          ...this.state,
-          injectBubbles,
-          pendingMessage: message.payload.text ? message.payload.text : null,
-          // Kept in lockstep with the text: a `consumed` event carries neither,
-          // and it is the text going empty that hides the strip.
-          pendingMessageEntries: message.payload.text
-            ? (message.payload.entries ?? null)
-            : null,
-          ...(rearm
-            ? this.rearmPendingPrompt(consumed!.text, consumed!.promptUuid ?? null)
-            : bubbleWasParked
-              ? { pendingPrompt: null, pendingPromptId: null }
-              : {}),
-        }
-        this.emitState()
+      case 'worker.pendingMessageUpdated':
+      case 'worker.injectMessagesUpdated':
+      case 'worker.injectMessagesLanded':
+      case 'worker.injectMessageRemoved':
+      case 'worker.injectMessagesCleared':
+      case 'worker.pendingMessageCleared':
+        this.parkedInput.handleMessage(message)
         return
-      }
-
-      case 'worker.injectMessagesUpdated': {
-        const injectBubbles = this.reconcileInjectEntries(message.payload.entries)
-        // `submitInput` guessed idle and armed the optimistic user bubble, but
-        // the worker parked the submit: the pending bubble is now its only
-        // surface (same as `bubbleWasParked` for the strip).
-        const parkedPrompt =
-          this.state.pendingPromptId !== null &&
-          message.payload.entries.some(entry => entry.uuid === this.state.pendingPromptId)
-        this.state = {
-          ...this.state,
-          injectBubbles,
-          ...(parkedPrompt ? { pendingPrompt: null, pendingPromptId: null } : {}),
-        }
-        this.emitState()
-        return
-      }
-
-      case 'worker.injectMessagesLanded': {
-        const { uuids, via, turnUuid, text } = message.payload
-        const landedSet = new Set(uuids)
-        let bubbles = (this.state.injectBubbles ?? []).map(bubble =>
-          landedSet.has(bubble.uuid)
-            ? {
-                ...bubble,
-                state: 'landed' as const,
-                landedVia: via,
-                optimistic: false,
-                removing: false,
-                ...(turnUuid !== undefined ? { turnUuid } : {}),
-              }
-            : bubble,
-        )
-        let rearm: Partial<BrowserRuntimeClientState> = {}
-        if (via === 'nextturn' && turnUuid !== undefined && text) {
-          const persisted = this.state.transcriptMessages.some(
-            m => (m as { uuid?: string }).uuid === turnUuid,
-          )
-          if (this.state.pendingPromptId === turnUuid) {
-            // The strip's `consumed` already armed this turn's bubble (a
-            // merged Enter + Ctrl+Enter batch): show the whole merged text and
-            // let that one bubble stand for all of them.
-            rearm = { pendingPrompt: text }
-            bubbles = bubbles.filter(bubble => !landedSet.has(bubble.uuid))
-          } else if (!persisted && !this.injectRearmActive()) {
-            // Inject-only next turn: arm the optimistic user bubble exactly
-            // like a consumed next message (stable anchor for the new turn's
-            // live assistant ids).
-            rearm = this.rearmPendingPrompt(text, turnUuid)
-            bubbles = bubbles.filter(bubble => !landedSet.has(bubble.uuid))
-          }
-        }
-        this.state = { ...this.state, ...rearm, injectBubbles: bubbles }
-        this.emitState()
-        return
-      }
-
-      case 'worker.injectMessageRemoved': {
-        const { uuid, requestId, ok, text } = message.payload
-        const waiter = this.injectRemoveWaiters.get(requestId)
-        // Read before the bubble goes (pruning drops the draft with it).
-        const draft = this.injectDrafts.get(uuid)
-        if (ok) {
-          this.setInjectBubbles(
-            (this.state.injectBubbles ?? []).filter(bubble => bubble.uuid !== uuid),
-          )
-        } else if (waiter) {
-          this.setInjectBubbles(
-            (this.state.injectBubbles ?? []).map(bubble =>
-              bubble.uuid === uuid ? { ...bubble, removing: false } : bubble,
-            ),
-          )
-        }
-        if (waiter) {
-          this.injectRemoveWaiters.delete(requestId)
-          waiter(
-            !ok
-              ? { ok }
-              : draft
-                ? { ok, text: draft.text, files: draft.files }
-                : { ok, ...(text !== undefined ? { text } : {}) },
-          )
-        }
-        return
-      }
-
-      case 'worker.injectMessagesCleared': {
-        const cleared = new Set(message.payload.entries.map(entry => entry.uuid))
-        // This page's own attachment sends come back as typed (text + files),
-        // not as the worker's display text (the file names).
-        const drafts = message.payload.entries.map(entry =>
-          this.injectDrafts.get(entry.uuid),
-        )
-        const restoreText = joinPassagePrompts(
-          message.payload.entries
-            .map((entry, index) => drafts[index]?.text ?? entry.text)
-            .filter(text => text.length > 0),
-        )
-        const restoreFiles = drafts.flatMap(draft => draft?.files ?? [])
-        this.state = {
-          ...this.state,
-          injectBubbles: (this.state.injectBubbles ?? []).filter(
-            bubble => bubble.state === 'landed' || !cleared.has(bubble.uuid),
-          ),
-          ...(this.interruptRequested && (restoreText || restoreFiles.length > 0)
-            ? {
-                injectRestore: {
-                  id: randomUuid(),
-                  text: restoreText,
-                  ...(restoreFiles.length > 0 ? { files: restoreFiles } : {}),
-                },
-              }
-            : {}),
-        }
-        this.emitState()
-        return
-      }
-
-      case 'worker.pendingMessageCleared': {
-        this.state = {
-          ...this.state,
-          pendingMessage: null,
-          pendingMessageEntries: null,
-          pendingClearInFlight: false,
-        }
-        this.emitState()
-        return
-      }
 
       case 'worker.uiReady': {
         // UI-ready split: provisional boot snapshot — the persisted
@@ -2174,7 +1212,7 @@ export class BrowserRuntimeClient {
           ...this.state,
           snapshot: message.payload,
           status: message.payload.isBusy ? 'submitting' : 'ready',
-          ...this.restoreParkedInputFromSnapshot(message.payload),
+          ...this.parkedInput.restoreParkedInputFromSnapshot(message.payload),
         }
         this.resolveStateWaiters(message.payload)
         this.emitState()
@@ -2271,7 +1309,7 @@ export class BrowserRuntimeClient {
           preSplitPromptId: null,
           pendingPrompt: keepBubble ? this.state.pendingPrompt : null,
           pendingPromptId: keepBubble ? this.state.pendingPromptId : null,
-          injectBubbles: this.pruneInjectBubbles(
+          injectBubbles: this.parkedInput.pruneInjectBubbles(
             this.state.injectBubbles ?? [],
             mergedMessages,
           ),
@@ -2282,7 +1320,7 @@ export class BrowserRuntimeClient {
       }
 
       case 'worker.toolCallDetail':
-        this.resolveToolCallDetailWaiters(
+        this.detailRequests?.resolveToolCallDetailWaiters(
           message.payload.toolCallId,
           message.payload.detail,
         )
@@ -2291,7 +1329,7 @@ export class BrowserRuntimeClient {
       case 'worker.turnDiffHistory':
         // History changed → any cached per-turn detail may be stale (the
         // current turn can grow); drop it so the next expand re-fetches.
-        this.turnDiffDetailCache.clear()
+        this.detailRequests?.clearTurnDiffDetailCache()
         this.state = {
           ...this.state,
           turnDiffHistory: message.payload.turns,
@@ -2313,55 +1351,22 @@ export class BrowserRuntimeClient {
         return
 
       case 'worker.turnDiffDetail':
-        this.resolveTurnDiffDetailWaiters(
+        this.detailRequests?.resolveTurnDiffDetailWaiters(
           message.payload.turnIndex,
           message.payload.files,
         )
         return
 
       case 'worker.skillBody':
-        this.resolveSkillBodyWaiters(
+        this.detailRequests?.resolveSkillBodyWaiters(
           message.payload.name,
           message.payload.result,
         )
         return
 
-      case 'worker.debugLog': {
-        const { level, data } = message.payload
-        // ModelUpload info entries go EXCLUSIVELY to the upload bus when its handler is installed;
-        // warn-level entries always reach the console.
-        const isModelUploadTraceEntry =
-          data !== null
-          && typeof data === 'object'
-          && (data as { trace?: unknown }).trace === 'NexusTrace'
-          && (data as { scope?: unknown }).scope === 'ModelUpload'
-        const traceUiOnly =
-          level !== 'warn'
-          && isModelUploadTraceEntry
-          && modelUploadHandler !== null
-        if (!traceUiOnly) {
-          if (level === 'warn') {
-            if (data !== undefined) {
-              console.warn(data)
-            } else {
-              console.warn(message.payload.message)
-            }
-          } else {
-            if (data !== undefined) {
-              console.info(data)
-            } else {
-              console.info(message.payload.message)
-            }
-          }
-        }
-        if (modelUploadHandler && data !== undefined) {
-          // The handler is responsible for checking the entry shape;
-          // when it's not installed, no work is done here at all and
-          // the `modelUploadBus` module is never imported.
-          modelUploadHandler(data)
-        }
+      case 'worker.debugLog':
+        routeWorkerDebugLog(message.payload)
         return
-      }
 
       case 'worker.error':
         // The manager refused worker.init because this session's persisted
@@ -2424,17 +1429,6 @@ export class BrowserRuntimeClient {
     }
   }
 
-  private resolveToolCallDetailWaiters(
-    toolCallId: string,
-    detail: BrowserToolCallDetailRecord | null,
-  ): void {
-    const waiters = this.toolCallDetailWaiters.get(toolCallId) ?? []
-    this.toolCallDetailWaiters.delete(toolCallId)
-    for (const waiter of waiters) {
-      waiter(detail)
-    }
-  }
-
   private waitForReady(): Promise<AgentRuntimeWorkerSnapshot> {
     if (this.state.snapshot) {
       return Promise.resolve(this.state.snapshot)
@@ -2445,17 +1439,8 @@ export class BrowserRuntimeClient {
     })
   }
 
-  /** Drop the drafts whose bubble is gone (landed into the transcript,
-   *  removed, cleared): nothing can hand them back any more. */
-  private pruneInjectDrafts(): void {
-    const shown = new Set((this.state.injectBubbles ?? []).map(bubble => bubble.uuid))
-    for (const uuid of [...this.injectDrafts.keys()]) {
-      if (!shown.has(uuid)) this.injectDrafts.delete(uuid)
-    }
-  }
-
   private emitState(): void {
-    if (this.injectDrafts.size > 0) this.pruneInjectDrafts()
+    if (this.parkedInput.injectDrafts.size > 0) this.parkedInput.pruneInjectDrafts()
     this.cachedExternalState = null
     const snapshot = this.getState()
     for (const listener of this.listeners) {
