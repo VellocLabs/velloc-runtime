@@ -47,7 +47,7 @@ describe('routineTurnScope', () => {
   })
 
   it('survives a throwing turn body when end runs in a finally', () => {
-    // Mirrors AgentRuntimeWorker.executeSubmit's try/finally. A stuck
+    // Mirrors AgentTurnExecutor.executeSubmit's try/finally. A stuck
     // marker would permanently disable CronCreate for that session.
     expect(() => {
       try {

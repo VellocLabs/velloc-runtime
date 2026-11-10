@@ -70,7 +70,7 @@ type ModelTraceGlobal = typeof globalThis & {
   __nexusModelUploads?: ModelUploadTraceEntry[]
 }
 
-// Model-upload trace switch, off by default; set by `AgentRuntimeWorker.runInit` from the init payload's
+// Model-upload trace switch, off by default; set by `AgentRuntimeBoot.runInit` from the init payload's
 // `traceModelRequests` (the worker's `location` is not the page URL).
 let modelUploadTraceEnabled = false
 

@@ -91,9 +91,9 @@ export class AgentTurnExecutor {
         message: 'Worker has not been initialized.',
       }
     }
-    // The turn controller marks the phase busy AT DEQUEUE now, so
+    // The turn controller marks the phase busy AT DEQUEUE, so
     // "phase is running" is true for our own turn and can't serve as the
-    // overlap guard anymore. Overlap is structurally prevented by the submit
+    // overlap guard. Overlap is structurally prevented by the submit
     // queue (one onTurnReady at a time via `submitting`); this flag is the
     // defensive backstop against a hypothetical direct executeSubmit call.
     if (this.worker.executingTurn) {
@@ -343,9 +343,9 @@ export class AgentTurnExecutor {
       // force the phase back to idle so the session doesn't stay stuck busy.
       this.worker.turns.finishStopping()
       // Every terminal path clears the retry countdown: the
-      // completion and abort paths already call endRetry explicitly, but a
-      // non-abort FAILURE while the phase was `retry` left the interval
-      // ticking until its deadline self-clear.
+      // completion and abort paths call endRetry explicitly, and a
+      // non-abort FAILURE while the phase is `retry` would otherwise leave
+      // the interval ticking until its deadline self-clear.
       this.worker.turns.endRetry()
       this.normalizeTurnEndPhase()
       // File snapshots: the turn is over on EVERY terminal path (completed,

@@ -191,7 +191,7 @@ export class AgentRuntimeBoot {
     // result. A superseded scope stays silent.
     const initRun = (async () => {
       // Dispose the previous scope asynchronously (detached — it can
-      // never mutate this.runtimeScope because it's no longer current).
+      // never mutate the worker's runtimeScope because it's no longer current).
       await this.disposeDetachedScope(previousScope, 'reinitialize')
       await this.runInit(payload, scope)
     })()
@@ -242,7 +242,7 @@ export class AgentRuntimeBoot {
 
   /**
    * Dispose a scope that has already been detached (replaced by a newer scope).
-   * Unlike disposeRuntimeScope, this NEVER touches this.runtimeScope — the
+   * Unlike disposeRuntimeScope, this NEVER touches the worker's runtimeScope — the
    * scope is already stale by definition. Only cleans up the scope's own
    * resources (callbacks, engine). All state mutations are scope-local.
    */
@@ -256,7 +256,7 @@ export class AgentRuntimeBoot {
       cancelGeneration: generation =>
         this.worker.bridgeTransport.cancelGeneration(generation),
     })
-    // No field to null out: `this.runtime` derives from `runtimeScope`,
+    // No field to null out: the worker's `runtime` derives from `runtimeScope`,
     // which by definition no longer points at this detached scope.
   }
 
@@ -298,7 +298,7 @@ export class AgentRuntimeBoot {
     // The dispatcher awaits `whenEnCatalogReady()` at its own entry point.
     primeEnCatalog(payload.enCatalogUrl)
 
-    // Resume restore (the "always shows workspace after restart" fix) — read
+    // Resume restore — read
     // the bound folder from this session's persisted summary, AWAITED, before
     // createAgentRuntime. See resolveResumeProjectRoot.
     const effectivePayload = await resolveResumeProjectRoot(
@@ -307,10 +307,9 @@ export class AgentRuntimeBoot {
     )
 
     // Generation guard BEFORE the expensive runtime build: the
-    // await above can lose the race to a newer init, and the first guard used
-    // to sit AFTER createAgentRuntime — a stale init built a full runtime
-    // (engine boot, storage, model init) just to dispose it. Bail now; the
-    // newer scope owns the worker.
+    // await above can lose the race to a newer init, and a stale init must
+    // not build a full runtime (engine boot, storage, model init) just to
+    // dispose it. Bail now; the newer scope owns the worker.
     if (!this.worker.isCurrentScope(scope)) {
       return
     }
@@ -346,7 +345,7 @@ export class AgentRuntimeBoot {
       },
     )
     // Use a LOCAL variable for the created runtime. Only assign to
-    // this.runtime AFTER the scope guard passes — a stale init must never
+    // the worker's runtime AFTER the scope guard passes — a stale init must never
     // write (and then null) the shared field, which would wipe a newer
     // runtime that already installed itself.
     let createdRuntime: AgentRuntimeState
@@ -440,8 +439,8 @@ export class AgentRuntimeBoot {
 
     // Generation guard: if a newer init was started while we were awaiting
     // createAgentRuntime, discard this result and let the newer scope win.
-    // The stale runtime is disposed via its LOCAL reference — this.runtime
-    // is never touched, so a newer scope's runtime stays intact.
+    // The stale runtime is disposed via its LOCAL reference — the worker's
+    // runtime is never touched, so a newer scope's runtime stays intact.
     if (!this.worker.isCurrentScope(scope)) {
       try {
         await (createdRuntime.engine as { dispose?: () => Promise<void> })?.dispose?.()
@@ -451,8 +450,8 @@ export class AgentRuntimeBoot {
       return
     }
 
-    // Scope is still current — install the runtime atomically. `this.runtime`
-    // derives from the scope, so this single write installs it.
+    // Scope is still current — install the runtime atomically. The worker's
+    // `runtime` derives from the scope, so this single write installs it.
     scope.runtime = createdRuntime
     // The runtime is the snapshot source from here on; drop the provisional
     // feed (and its retained transcript copy).
@@ -683,8 +682,7 @@ export class AgentRuntimeBoot {
     )
     // Generation guard: never accept a branch result from an older runtime
     // generation (e.g. a stale resolve that lands after a forceReinit).
-    // Scope is mandatory — the optional param let a caller
-    // omit it and silently skip this guard.
+    // Scope is mandatory so no caller can skip this guard.
     if (!this.worker.isCurrentScope(scope)) return true
     // A real branch always wins. `undefined` only wins when a shell actually
     // answered — that is a SETTLED "this folder has no branch" (detached HEAD,

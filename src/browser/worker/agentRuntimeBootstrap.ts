@@ -1,5 +1,5 @@
 /**
- * agentRuntimeBootstrap — pure init-step helpers for AgentRuntimeWorker's runInit: trace emitter,
+ * agentRuntimeBootstrap — pure init-step helpers for AgentRuntimeBoot's runInit: trace emitter,
  * storage backend resolution, resume projectRoot restore, boot-stage reporter + keepalive.
  */
 import {
