@@ -174,7 +174,7 @@ export function PluginTopbarItems({
                     <span
                       aria-hidden="true"
                       data-testid={`${item.testId}-badge`}
-                      className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium leading-none text-destructive-foreground"
+                      className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[color-mix(in_oklab,var(--destructive)_16%,var(--background))] px-1 text-[10px] font-semibold leading-none text-destructive ring-1 ring-background"
                     >
                       {item.badge}
                     </span>
