@@ -503,7 +503,7 @@ const MODELS_UI_NAME = /^[A-Za-z0-9_.-]{1,40}$/
  *  filter chip would show the same thing twice. Dropped, not refused. */
 export const PLATFORM_FREE_TAG = 'free'
 const STARTER_MODEL_ID = /^\S{1,256}$/
-const STARTER_MODELS_MAX = 8
+const STARTER_MODELS_MAX = 16
 const MODEL_TIERS = ['best', 'balanced', 'fast'] as const
 export type ProviderModelTier = (typeof MODEL_TIERS)[number]
 const MODELS_UI_MAX_ENTRIES = 32

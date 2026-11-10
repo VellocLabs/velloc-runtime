@@ -167,11 +167,18 @@ describe('manifest modelsUi.starterModels', () => {
     expect(check({ starterModels: ['a/b:free', 'a/b:free', 'plain'] }).ui?.starterModels).toEqual(['a/b:free', 'plain'])
   })
 
+  it('keeps up to 16 ids, in the order given', () => {
+    const ids = Array.from({ length: 16 }, (_, i) => `m${15 - i}`)
+    const result = check({ starterModels: ids })
+    expect(result.errors).toEqual([])
+    expect(result.ui?.starterModels).toEqual(ids)
+  })
+
   it.each([
     ['a non-list', { starterModels: 'a' }],
     ['an id with a space', { starterModels: ['a b'] }],
     ['an empty id', { starterModels: [''] }],
-    ['too many', { starterModels: Array.from({ length: 9 }, (_, i) => `m${i}`) }],
+    ['too many', { starterModels: Array.from({ length: 17 }, (_, i) => `m${i}`) }],
   ])('refuses %s', (_name, block) => {
     expect(check(block).errors.join('\n')).toMatch(/starterModels/)
   })
