@@ -19,17 +19,13 @@ import {
   type RunJsTaskStart,
 } from '../../backgroundTasks/sideTaskSink'
 import { mintTaskHandle } from '../../backgroundTasks/taskId'
-import {
-  SUBAGENT_TASK_FILE_NAME,
-  finishedRecordFromSessionMeta,
-  finishedRecordFromTaskFile,
-  parseSubAgentTaskFile,
-} from './subAgentTaskFile'
+import { SUBAGENT_TASK_FILE_NAME } from './subAgentTaskFile'
 import { awaitMemoryExtractions } from '../../memory/extract/extractionRunner'
 import { snapshotNeedsAnswer } from '../../utils/sessionNeedsAnswer'
 import { SessionStorageCoordinator } from './SessionStorageCoordinator'
 import { SessionSummaryRepository } from './SessionSummaryRepository'
 import { SessionBundleWriter } from './SessionBundleWriter'
+import { ToolDetailLoader } from './ToolDetailLoader'
 import { WorkerEventRouter } from './WorkerEventRouter'
 import { PortMessageRouter } from './PortMessageRouter'
 import { SessionWorkerFactory } from './SessionWorkerFactory'
@@ -175,39 +171,17 @@ import { SuperShellTaskCoordinator } from './SuperShellTaskCoordinator'
 import {
   PLUGIN_TASK_DIR,
   PluginTaskCoordinator,
-  pluginTaskRecordFromFile,
 } from './PluginTaskCoordinator'
 import { setPluginTaskController } from '../../backgroundTasks/pluginTaskController'
 import { setSuperShellTaskSink } from '../../backgroundTasks/superShellTaskSink'
 import { BackgroundShellHostBridge } from './BackgroundShellHostBridge'
 import { SubAgentCoordinator } from './SubAgentCoordinator'
 import { SessionFeedPublisher } from './SessionFeedPublisher'
-import {
-  extractRecoveredRunJsRows,
-  type RecoveredRunJsRow,
-} from './recoverRunJsRows'
-import {
-  extractRecoveredTitleRows,
-  type RecoveredTitleRow,
-} from './recoverTitleRows'
-import {
-  extractRecoveredBashRows,
-  SHELL_LAUNCH_TOOL_IDS,
-  type RecoveredBashRow,
-} from './recoverBashRows'
-import {
-  extractRecoveredSuperShellRows,
-  parseSuperShellDetachedTaskId,
-  parseSuperShellTaskOutputResult,
-  resolveRecoveredSuperShellRows,
-  type RecoveredSuperShellRow,
-} from './recoverSuperShellRows'
-import {
-  clearSkillInvocationLogForSession,
-  getAllSkillInvocationEvents,
-  seedSkillInvocationEvents,
-  setSkillEventLogPersister,
-} from '../../skillLibrary/skillInvocationLog'
+import { type RecoveredRunJsRow } from './recoverRunJsRows'
+import { type RecoveredTitleRow } from './recoverTitleRows'
+import { type RecoveredBashRow } from './recoverBashRows'
+import { type RecoveredSuperShellRow } from './recoverSuperShellRows'
+import { setSkillEventLogPersister } from '../../skillLibrary/skillInvocationLog'
 import { BridgeRequestRouter } from './BridgeRequestRouter'
 import { ManagerBootServices } from './ManagerBootServices'
 import { endProviderSessions } from '../../mods/provider/providerSessionEnd'
@@ -218,10 +192,6 @@ import { closeSessionMCPPool } from '../../mcp/sessionPools'
 import { SessionInitOrchestrator } from './SessionInitOrchestrator'
 import { setMcpHostProvider, type McpHostAccess } from '../../mcp/mcpHost'
 import { TaskControlSurface } from './TaskControlSurface'
-import type {
-  RunJsSidecarDetail,
-  SuperShellSidecarDetail,
-} from './TaskControlSurface'
 import {
   ZERO_COUNTERS,
   type SubAgentRunState,
@@ -230,7 +200,6 @@ import {
   type NexusTaskDeliveryResult,
   type NexusTaskState,
   type NexusFinishedTaskRecord,
-  type FinishedSubAgentRecord,
 } from './taskTypes'
 import {
   extractFinalAssistantText,
@@ -246,13 +215,6 @@ import {
 import { currentRenderCachePolicy } from '../../renderCache/runtimeRenderCache'
 
 const TOOL_DETAIL_CACHE_MAX = 64
-
-// Super Edit's wire name. Inline literal (matching `SUPER_EDIT_TOOL_NAME` in
-// browser/runJs/runJsProtocol.ts) for the same reason the renderer utils
-// inline theirs — this module has no business importing a tool module.
-const SUPER_EDIT_TOOL_NAME = 'SuperEdit'
-// SuperShell's wire name — same inline-literal rule (`SUPER_SHELL_TOOL_NAME`).
-const SUPER_SHELL_TOOL_NAME = 'SuperShell'
 
 type SessionEntry = {
   worker: AgentRuntimeWorkerHandle
@@ -316,10 +278,6 @@ type SessionEntry = {
  *  user input outranks team messages outrank
  *  sub-agent result deliveries. */
 const SUBMIT_PRIORITY = { user: 0, mailbox: 1, delivery: 2 } as const
-
-/** Coalesce window for `skill-events.json` writes: several invocations in one
- *  turn collapse into a single truncate-and-rewrite of the capped log. */
-const SKILL_EVENTS_WRITE_COALESCE_MS = 250
 
 export type SharedWorkerSessionManagerOptions = {
   createWorker: (options: AgentRuntimeWorkerOptions) => AgentRuntimeWorkerHandle
@@ -679,9 +637,9 @@ export class SharedWorkerSessionManager {
     handleUnsubscribe: (port, all, sessionIds) =>
       this.handleUnsubscribe(port, all, sessionIds),
     handleToolDetailSubscribe: (port, toolCallIds, sessionIdHint) =>
-      this.handleToolDetailSubscribe(port, toolCallIds, sessionIdHint),
+      this.toolDetailLoader.handleToolDetailSubscribe(port, toolCallIds, sessionIdHint),
     handleToolDetailUnsubscribe: (port, toolCallIds) =>
-      this.handleToolDetailUnsubscribe(port, toolCallIds),
+      this.toolDetailLoader.handleToolDetailUnsubscribe(port, toolCallIds),
     handleTraceFlush: (port, requestId) =>
       this.handleTraceFlush(port, requestId),
     handleTraceSubscribe: (port, traceId) =>
@@ -749,6 +707,29 @@ export class SharedWorkerSessionManager {
   private readonly pluginTaskRestores = new Map<string, Promise<void>>()
   // Sub-agent waiter management + queries are owned by the SubAgentCoordinator.
   private readonly subAgents: SubAgentCoordinator
+  /** Tool-call detail, restart recovery and disk restores (`ToolDetailLoader`). */
+  private readonly toolDetailLoader = new ToolDetailLoader({
+    sessions: this.sessions,
+    portHub: this.portHub,
+    toolDetails: this.toolDetails,
+    recoveredRunJs: this.recoveredRunJs,
+    recoveredBash: this.recoveredBash,
+    recoveredSuperShell: this.recoveredSuperShell,
+    recoveredTitles: this.recoveredTitles,
+    lifetimeStartedAt: this.lifetimeStartedAt,
+    backgroundRecoveries: this.backgroundRecoveries,
+    skillEventsWriteTimers: this.skillEventsWriteTimers,
+    skillEventsRecovery: this.skillEventsRecovery,
+    storageCoordinator: this.storageCoordinator,
+    getStorage: () => this.storage,
+    getFsSummaries: () => this.fsSummaries,
+    taskRegistry: this.taskRegistry,
+    pluginTaskRestores: this.pluginTaskRestores,
+    getFeed: () => this.feed,
+    getPluginTasks: () => this.pluginTasks,
+    getSubAgents: () => this.subAgents,
+    notifyToolDetailReady: (toolCallId, detail) => this.notifyToolDetailReady(toolCallId, detail),
+  })
   // Task delivery now owned by TaskDeliveryQueue. Flushed (injected as
   // one re-activation turn) when the parent is idle and not suppressed.
   private readonly taskDelivery = new TaskDeliveryQueue<NexusTaskDeliveryResult>({
@@ -1020,7 +1001,7 @@ export class SharedWorkerSessionManager {
       getAgentChanges: sessionId => this.subAgents.changeSections(sessionId),
       buildSessionInfoList: () => this.buildSessionInfoList(),
       loadToolDetail: (sessionId, toolCallId) =>
-        this.loadToolDetailForRuntime(sessionId, toolCallId),
+        this.toolDetailLoader.loadToolDetailForRuntime(sessionId, toolCallId),
       loadPersistedTranscript: sessionId =>
         this.loadPersistedTranscript(sessionId),
       openSession: (port, open, panelId) => this.openSession(port, open, panelId),
@@ -1154,7 +1135,7 @@ export class SharedWorkerSessionManager {
     // per session; the flush recovers the pre-restart log first so it can never
     // clobber the on-disk history with just this lifetime's newer events.
     setSkillEventLogPersister(sessionId =>
-      this.scheduleSkillEventsPersist(sessionId),
+      this.toolDetailLoader.scheduleSkillEventsPersist(sessionId),
     )
     this.sideTasks = new SideTaskCoordinator(this.taskRegistry, {
       scheduleSummary: () => this.feed.scheduleSummary(),
@@ -1334,13 +1315,13 @@ export class SharedWorkerSessionManager {
         dropSessionRouting: sessionId =>
           this.groupedStorage?.dropSessionRouting(sessionId),
         scheduleSummary: () => this.feed.scheduleSummary(),
-        loadRunJsSidecar: toolCallId => this.loadRunJsSidecar(toolCallId),
+        loadRunJsSidecar: toolCallId => this.toolDetailLoader.loadRunJsSidecar(toolCallId),
         loadSuperShellSidecar: toolCallId =>
-          this.loadSuperShellSidecar(toolCallId),
-        loadRecoveredShell: taskId => this.loadRecoveredShell(taskId),
+          this.toolDetailLoader.loadSuperShellSidecar(toolCallId),
+        loadRecoveredShell: taskId => this.toolDetailLoader.loadRecoveredShell(taskId),
         loadRecoveredShellDetail: toolCallId =>
-          this.loadRecoveredShellDetail(toolCallId),
-        loadRecoveredTitle: taskId => this.loadRecoveredTitle(taskId),
+          this.toolDetailLoader.loadRecoveredShellDetail(toolCallId),
+        loadRecoveredTitle: taskId => this.toolDetailLoader.loadRecoveredTitle(taskId),
       },
       [this.superShells, this.pluginTasks],
     )
@@ -1647,7 +1628,7 @@ export class SharedWorkerSessionManager {
       adoptChild: (spawner, plugin, taskId, agentId) =>
         this.pluginTasks.adoptChild(spawner, plugin, taskId, agentId),
       list: async (spawner, plugin) => {
-        await this.restorePluginTasksFromDisk(spawner)
+        await this.toolDetailLoader.restorePluginTasksFromDisk(spawner)
         return this.pluginTasks.list(spawner, plugin)
       },
     })
@@ -1879,7 +1860,7 @@ export class SharedWorkerSessionManager {
       // invocation event log so its loaded/failed rows reappear in
       // the summary feed. Best-effort + once per lifetime; sub-agents/routines
       // (background) have no Skills tab, so they never pay the sidecar read.
-      void this.ensureSkillEventsRecovered(sessionId)
+      void this.toolDetailLoader.ensureSkillEventsRecovered(sessionId)
       // A team lead coming back: any teammate it has on record but no
       // runtime for was lost to a browser restart. Settle them now, not when
       // someone happens to open their tab.
@@ -2391,24 +2372,24 @@ export class SharedWorkerSessionManager {
       this.backgroundRecovered.delete(sessionId)
       return
     }
-    this.recoverRunJsRowsFromTranscript(sessionId, messages)
-    this.recoverTitleRowsFromTranscript(sessionId, messages)
+    this.toolDetailLoader.recoverRunJsRowsFromTranscript(sessionId, messages)
+    this.toolDetailLoader.recoverTitleRowsFromTranscript(sessionId, messages)
     // The shell rows need no sidecar: publish them now, synchronously, rather
     // than behind the SuperShell sidecar reads below (one per run, from
     // storage). Those reads name the `background: true` steps whose completion
     // notifications the shell rebuild leaves out — so the rows are rebuilt a
     // second time, minus those steps, once the reads have settled.
-    this.recoverBashRowsFromTranscript(sessionId, messages)
-    const superShellSteps = await this.recoverSuperShellRowsFromTranscript(
+    this.toolDetailLoader.recoverBashRowsFromTranscript(sessionId, messages)
+    const superShellSteps = await this.toolDetailLoader.recoverSuperShellRowsFromTranscript(
       sessionId,
       messages,
     )
     if (superShellSteps.size > 0) {
-      this.recoverBashRowsFromTranscript(sessionId, messages, superShellSteps)
+      this.toolDetailLoader.recoverBashRowsFromTranscript(sessionId, messages, superShellSteps)
     }
     // The persisted transcript parts don't carry pass/fail — upgrade a
     // recovered row to 'error' from its tool-detail sidecar's isError.
-    await this.markRecoveredTaskErrors(sessionId)
+    await this.toolDetailLoader.markRecoveredTaskErrors(sessionId)
   }
 
   /** `trace.flush`: one-shot drain of the trace ring + console capture. */
@@ -2483,521 +2464,6 @@ export class SharedWorkerSessionManager {
     this.portHub.unsubscribe(port, all, sessionIds ?? [])
   }
 
-  private handleToolDetailSubscribe(
-    port: MessagePort,
-    toolCallIds: string[],
-    sessionIdHint: string | undefined,
-  ): void {
-    this.portHub.subscribeToolDetail(port, toolCallIds)
-    for (const toolCallId of toolCallIds) {
-      // Immediate flush from cache so the UI doesn't wait if the detail
-      // is already known. `null` cached means "looked and nothing there"
-      // — still a valid terminal answer.
-      if (this.toolDetails.has(toolCallId)) {
-        port.postMessage({
-          type: 'toolDetail.ready',
-          payload: {
-            toolCallId,
-            detail: this.toolDetails.get(toolCallId) ?? null,
-          },
-        })
-        continue
-      }
-
-      // Not cached — try to pull it from disk. If the session isn't
-      // known we try every known session (cheap: it's one stat per).
-      void this.lookupToolDetailFromDisk(toolCallId, sessionIdHint)
-    }
-  }
-
-  private handleToolDetailUnsubscribe(
-    port: MessagePort,
-    toolCallIds: string[],
-  ): void {
-    this.portHub.unsubscribeToolDetail(port, toolCallIds)
-  }
-
-  private async lookupToolDetailFromDisk(
-    toolCallId: string,
-    sessionIdHint: string | undefined,
-  ): Promise<void> {
-    const storage = this.storage
-    if (!storage) return
-
-    const candidates: string[] = []
-    if (sessionIdHint) candidates.push(sessionIdHint)
-    for (const sessionId of this.sessions.keys()) {
-      if (sessionId !== sessionIdHint) candidates.push(sessionId)
-    }
-    for (const sessionId of this.fsSummaries.keys()) {
-      if (!candidates.includes(sessionId)) candidates.push(sessionId)
-    }
-
-    for (const sessionId of candidates) {
-      try {
-        const detail = await storage.loadToolCallDetail(sessionId, toolCallId)
-        if (detail) {
-          this.toolDetails.set(toolCallId, detail)
-          this.notifyToolDetailReady(toolCallId, detail)
-          return
-        }
-      } catch {
-        // try the next candidate
-      }
-    }
-
-    // Not on disk (yet). Leave the subscription open and DO NOT push
-    // `null` — a still-running tool call will produce the sidecar later
-    // via `worker.toolDetailPersisted`, and we want the UI to see that
-    // instead of a premature terminal-null. The UI's own timeout is the
-    // only escape hatch for "this truly doesn't exist."
-  }
-
-  /**
-   * Recover a SuperEdit's persisted detail for the drawer when its registry record is gone, by tool call
-   * id (cache, then candidate sessions). Null when absent or not a SuperEdit call.
-   */
-  private async loadRunJsSidecar(
-    toolCallId: string,
-  ): Promise<RunJsSidecarDetail | null> {
-    const storage = this.storage
-    if (!storage?.loadToolCallDetail) return null
-
-    let detail: BrowserToolCallDetailRecord | null =
-      this.toolDetails.get(toolCallId) ?? null
-    if (!detail) {
-      const candidates: string[] = []
-      const push = (sessionId: string | null | undefined): void => {
-        if (sessionId && !candidates.includes(sessionId)) {
-          candidates.push(sessionId)
-        }
-      }
-      push(this.sessionOfRecoveredCall(toolCallId))
-      for (const sessionId of this.sessions.keys()) push(sessionId)
-      for (const sessionId of this.fsSummaries.keys()) push(sessionId)
-      for (const sessionId of candidates) {
-        try {
-          detail = await storage.loadToolCallDetail(sessionId, toolCallId)
-        } catch {
-          detail = null
-        }
-        if (detail) break
-      }
-    }
-
-    if (!detail || detail.toolName !== SUPER_EDIT_TOOL_NAME) return null
-    const args =
-      detail.args && typeof detail.args === 'object'
-        ? (detail.args as Record<string, unknown>)
-        : {}
-    const path = typeof args.path === 'string' ? args.path : undefined
-    const resultText =
-      typeof detail.result === 'string'
-        ? detail.result
-        : detail.result != null
-          ? JSON.stringify(detail.result)
-          : undefined
-    return {
-      code: typeof args.code === 'string' ? args.code : '',
-      description:
-        typeof args.description === 'string' ? args.description : undefined,
-      path,
-      inputs:
-        args.inputs && typeof args.inputs === 'object' && !Array.isArray(args.inputs)
-          ? (args.inputs as Record<string, unknown>)
-          : undefined,
-      timeoutSec: typeof args.timeoutSec === 'number' ? args.timeoutSec : undefined,
-      inlineCode: !path,
-      resultText,
-    }
-  }
-
-  /**
-   * Recover a SuperShell call's persisted detail for the drawer by tool call id, preferring the run's
-   * own recovered result over the hand-off. Null when absent or not a SuperShell call.
-   */
-  private async loadSuperShellSidecar(
-    toolCallId: string,
-  ): Promise<SuperShellSidecarDetail | null> {
-    const detail = await this.loadToolCallDetailAcrossSessions(toolCallId)
-    if (!detail || detail.toolName !== SUPER_SHELL_TOOL_NAME) return null
-    const args =
-      detail.args && typeof detail.args === 'object'
-        ? (detail.args as Record<string, unknown>)
-        : {}
-    const callResult =
-      typeof detail.result === 'string'
-        ? detail.result
-        : detail.result != null
-          ? JSON.stringify(detail.result)
-          : undefined
-    const resultText =
-      callResult !== undefined && parseSuperShellDetachedTaskId(callResult) !== null
-        ? ((await this.recoveredSuperShellResult(toolCallId)) ?? callResult)
-        : callResult
-    return {
-      code: typeof args.code === 'string' ? args.code : '',
-      description:
-        typeof args.description === 'string' ? args.description : undefined,
-      inputs:
-        args.inputs && typeof args.inputs === 'object' && !Array.isArray(args.inputs)
-          ? (args.inputs as Record<string, unknown>)
-          : undefined,
-      resultText,
-    }
-  }
-
-  /**
-   * The result of a detached SuperShell run that restart recovery found — from
-   * its `<task-notification>`, or from the TaskOutput call that read it — else
-   * undefined. Waits for recoveries still in flight first: a card's jump asks for
-   * the detail while the drawer, opening, recovers the rows, and a detail loaded
-   * before that ends would show the hand-off.
-   */
-  private async recoveredSuperShellResult(
-    toolCallId: string,
-  ): Promise<string | undefined> {
-    await Promise.allSettled(this.backgroundRecoveries.values())
-    for (const rows of this.recoveredSuperShell.values()) {
-      const row = rows.find(r => r.callId === toolCallId)
-      if (!row) continue
-      if (row.resultText !== undefined) return row.resultText
-      if (!row.resultDetailId) return undefined
-      const read = await this.loadToolCallDetailAcrossSessions(row.resultDetailId)
-      return typeof read?.result === 'string'
-        ? parseSuperShellTaskOutputResult(read.result)?.resultText
-        : undefined
-    }
-    return undefined
-  }
-
-  /**
-   * Rebuild `sessionId`'s recovered run_js drawer rows from a full
-   * transcript emission. Registry-known ids are NOT filtered here (the map
-   * is rebuilt only on full loads, but a run can start/finish after it) —
-   * the publisher filters at read time, where the registry state is
-   * current.
-   */
-  private recoverRunJsRowsFromTranscript(
-    sessionId: string,
-    messages: unknown[],
-  ): void {
-    const rows = extractRecoveredRunJsRows(messages)
-    const prev = this.recoveredRunJs.get(sessionId)
-    if (rows.length === 0) {
-      if (!prev) return
-      this.recoveredRunJs.delete(sessionId)
-    } else {
-      this.recoveredRunJs.set(sessionId, rows)
-    }
-    this.feed.scheduleSummary()
-  }
-
-  /**
-   * Rebuild `sessionId`'s recovered session-title rows from the transcript's
-   * stored titles — those written before this worker lifetime (see
-   * `recoveredTitles`).
-   */
-  private recoverTitleRowsFromTranscript(
-    sessionId: string,
-    messages: unknown[],
-  ): void {
-    const rows = extractRecoveredTitleRows(
-      sessionId,
-      messages,
-      this.lifetimeStartedAt,
-    )
-    if (rows.length === 0) {
-      if (!this.recoveredTitles.delete(sessionId)) return
-    } else {
-      this.recoveredTitles.set(sessionId, rows)
-    }
-    this.feed.scheduleSummary()
-  }
-
-  /**
-   * Rebuild `sessionId`'s recovered `local_bash` drawer rows from a full transcript; the publisher
-   * filters registry-known ids at read time. `excludeTaskIds` are recovered SuperShell steps.
-   */
-  private recoverBashRowsFromTranscript(
-    sessionId: string,
-    messages: unknown[],
-    excludeTaskIds: ReadonlySet<string> = new Set(),
-  ): void {
-    const rows = extractRecoveredBashRows(messages).filter(
-      row => !excludeTaskIds.has(row.taskId),
-    )
-    const prev = this.recoveredBash.get(sessionId)
-    if (rows.length === 0) {
-      if (!prev) return
-      this.recoveredBash.delete(sessionId)
-    } else {
-      this.recoveredBash.set(sessionId, rows)
-    }
-    this.feed.scheduleSummary()
-  }
-
-  /**
-   * Rebuild `sessionId`'s recovered `local_supershell` drawer rows: the
-   * transcript scan, completed from each call's tool-detail sidecar — whether the
-   * run ended inline or continued in the background, and how a detached run
-   * ended (recoverSuperShellRows.ts). Registry-known runs are filtered by the
-   * publisher at read time, as for run_js. Returns the task ids of the
-   * `background: true` steps the recovered runs started.
-   */
-  private async recoverSuperShellRowsFromTranscript(
-    sessionId: string,
-    messages: unknown[],
-  ): Promise<ReadonlySet<string>> {
-    const { rows, backgroundStepTaskIds } = await resolveRecoveredSuperShellRows(
-      extractRecoveredSuperShellRows(messages),
-      toolCallId => this.loadToolDetailForRuntime(sessionId, toolCallId),
-    )
-    const prev = this.recoveredSuperShell.get(sessionId)
-    if (rows.length === 0) {
-      if (!prev) return backgroundStepTaskIds
-      this.recoveredSuperShell.delete(sessionId)
-    } else {
-      this.recoveredSuperShell.set(sessionId, rows)
-    }
-    this.feed.scheduleSummary()
-    return backgroundStepTaskIds
-  }
-
-  /**
-   * Merge `sessionId`'s `skill-events.json` sidecar into the realm-global `skillInvocationLog` once per
-   * lifetime (promise-cached). Best-effort.
-   */
-  private ensureSkillEventsRecovered(sessionId: string): Promise<void> {
-    const inflight = this.skillEventsRecovery.get(sessionId)
-    if (inflight) return inflight
-    const promise = (async () => {
-      const storage = this.storage
-      if (!storage?.loadSkillEvents) return
-      try {
-        const events = await storage.loadSkillEvents(sessionId)
-        if (
-          events &&
-          events.length > 0 &&
-          seedSkillInvocationEvents(sessionId, events)
-        ) {
-          this.feed.scheduleSummary()
-        }
-      } catch {
-        // best-effort — a missing/torn sidecar leaves the transcript-scan
-        // fallback; drop the cache entry so a later open can retry.
-        this.skillEventsRecovery.delete(sessionId)
-      }
-    })()
-    this.skillEventsRecovery.set(sessionId, promise)
-    return promise
-  }
-
-  /** A DELETED session's skill event log and its recovery entry go with it.
-   *  (A dispose keeps both on purpose — see `disposeManagedSession` — but a
-   *  deleted id never re-opens, so without this the realm-global log and the
-   *  recovery cache grew by one session for every delete in the worker's
-   *  lifetime.) Runs after `disposeManagedSession`, whose flush has already
-   *  taken the pending write. */
-  private forgetSkillEvents(sessionId: string): void {
-    const timer = this.skillEventsWriteTimers.get(sessionId)
-    if (timer !== undefined) {
-      clearTimeout(timer)
-      this.skillEventsWriteTimers.delete(sessionId)
-    }
-    this.skillEventsRecovery.delete(sessionId)
-    clearSkillInvocationLogForSession(sessionId)
-  }
-
-  /** Queue a coalesced write of `sessionId`'s skill event log to its sidecar.
-   *  Called (via the registered persister) on every logged invocation; a burst
-   *  in one turn collapses into a single write. */
-  private scheduleSkillEventsPersist(sessionId: string): void {
-    if (this.skillEventsWriteTimers.has(sessionId)) return
-    const timer = setTimeout(() => {
-      void this.flushSkillEventsPersist(sessionId)
-    }, SKILL_EVENTS_WRITE_COALESCE_MS)
-    this.skillEventsWriteTimers.set(sessionId, timer)
-  }
-
-  /** Write `sessionId`'s current skill event log to its sidecar now. Recovers
-   *  the pre-restart log FIRST so this write can never clobber the on-disk
-   *  history with only this lifetime's newer events (the first post-restart
-   *  invocation would otherwise overwrite it before recovery had run). */
-  private async flushSkillEventsPersist(sessionId: string): Promise<void> {
-    const timer = this.skillEventsWriteTimers.get(sessionId)
-    if (timer !== undefined) {
-      clearTimeout(timer)
-      this.skillEventsWriteTimers.delete(sessionId)
-    }
-    const storage = this.storage
-    if (!storage?.saveSkillEvents) return
-    try {
-      await this.ensureSkillEventsRecovered(sessionId)
-    } catch {
-      // best-effort — proceed with whatever is in memory
-    }
-    try {
-      await storage.saveSkillEvents(
-        sessionId,
-        getAllSkillInvocationEvents(sessionId),
-      )
-    } catch {
-      // best-effort — a failed persist just leaves the log live-session-only
-    }
-  }
-
-  /**
-   * The drawer's detail fallback for a background shell whose live/finished
-   * registry record is gone (session reloaded after an app restart). Looks the
-   * recovered row up by public task id across every loaded session's rebuilt
-   * rows and returns its command + output-file path so
-   * `TaskControlSurface.loadInfoWithOutput` can read the persisted log lazily.
-   */
-  private loadRecoveredTitle(taskId: string): { title: string } | null {
-    for (const rows of this.recoveredTitles.values()) {
-      const row = rows.find(r => r.taskId === taskId)
-      if (row) return { title: row.title }
-    }
-    return null
-  }
-
-  private loadRecoveredShell(
-    taskId: string,
-  ): { command?: string; outputFilePath?: string; detailId?: string } | null {
-    for (const rows of this.recoveredBash.values()) {
-      const row = rows.find(r => r.taskId === taskId)
-      if (row) {
-        return {
-          command: row.command,
-          outputFilePath: row.outputFilePath,
-          detailId: row.detailId,
-        }
-      }
-    }
-    return null
-  }
-
-  /** The protocol's `session.getToolDetail`: the hinted session first (one
-   *  stat), then the cache-first search across every candidate session. */
-  private async loadToolDetailForRuntime(
-    sessionId: string,
-    toolCallId: string,
-  ): Promise<BrowserToolCallDetailRecord | null> {
-    const cached = this.toolDetails.get(toolCallId)
-    if (cached) return cached
-    const storage = this.storage
-    if (storage?.loadToolCallDetail && sessionId) {
-      try {
-        const detail = await storage.loadToolCallDetail(sessionId, toolCallId)
-        if (detail) return detail
-      } catch {
-        // fall through to the cross-session search
-      }
-    }
-    // WITH the session as the hint: this is the loader the session's own
-    // background recovery runs, and a hint-less search waits on every
-    // in-flight recovery to learn the session — including the one asking,
-    // which then waited on itself for good (a SuperShell sidecar the
-    // session's storage did not hold).
-    return this.loadToolCallDetailAcrossSessions(toolCallId, sessionId)
-  }
-
-  /**
-   * The session a recovered drawer row with this tool call id (or result
-   * sidecar id) was rebuilt from — the first place its sidecar can be. There is
-   * no "current session" to guess with instead.
-   */
-  private sessionOfRecoveredCall(id: string): string | undefined {
-    for (const [sessionId, rows] of this.recoveredRunJs) {
-      if (rows.some(row => row.callId === id)) return sessionId
-    }
-    for (const [sessionId, rows] of this.recoveredSuperShell) {
-      if (rows.some(row => row.callId === id || row.resultDetailId === id)) return sessionId
-    }
-    for (const [sessionId, rows] of this.recoveredBash) {
-      if (rows.some(row => row.detailId === id)) return sessionId
-    }
-    return undefined
-  }
-
-  private async loadToolCallDetailAcrossSessions(
-    toolCallId: string,
-    sessionHint?: string,
-  ): Promise<BrowserToolCallDetailRecord | null> {
-    const storage = this.storage
-    if (!storage?.loadToolCallDetail) return null
-    const cached = this.toolDetails.get(toolCallId)
-    if (cached) return cached
-    const candidates: string[] = []
-    const push = (sessionId: string | null | undefined): void => {
-      if (sessionId && !candidates.includes(sessionId)) candidates.push(sessionId)
-    }
-    let hint = sessionHint ?? this.sessionOfRecoveredCall(toolCallId)
-    if (hint === undefined && this.backgroundRecoveries.size > 0) {
-      // A drawer jump can ask while its session's recovery is still reading the
-      // transcript: the row that names the session is not there yet.
-      await Promise.allSettled(this.backgroundRecoveries.values())
-      hint = this.sessionOfRecoveredCall(toolCallId)
-    }
-    push(hint)
-    for (const sessionId of this.sessions.keys()) push(sessionId)
-    for (const sessionId of this.fsSummaries.keys()) push(sessionId)
-    for (const sessionId of candidates) {
-      try {
-        const detail = await storage.loadToolCallDetail(sessionId, toolCallId)
-        if (detail) return detail
-      } catch {
-        // try the next candidate session
-      }
-    }
-    return null
-  }
-
-  /**
-   * After a lazy recovery, upgrade a recovered row to `'error'` when its sidecar records `isError`;
-   * never downgrades.
-   */
-  private async markRecoveredTaskErrors(sessionId: string): Promise<void> {
-    const sidecarIsError = async (id: string | undefined): Promise<boolean> => {
-      if (!id) return false
-      const detail = await this.loadToolCallDetailAcrossSessions(id, sessionId)
-      return detail?.isError === true
-    }
-    let changed = false
-    for (const row of this.recoveredRunJs.get(sessionId) ?? []) {
-      if (row.status !== 'error' && (await sidecarIsError(row.callId))) {
-        row.status = 'error'
-        changed = true
-      }
-    }
-    for (const row of this.recoveredBash.get(sessionId) ?? []) {
-      if (row.status !== 'error' && (await sidecarIsError(row.detailId))) {
-        row.status = 'error'
-        changed = true
-      }
-    }
-    if (changed) this.feed.scheduleSummary()
-  }
-
-  private async loadRecoveredShellDetail(
-    toolCallId: string,
-  ): Promise<{ outputFilePath?: string; outputText?: string } | null> {
-    const detail = await this.loadToolCallDetailAcrossSessions(toolCallId)
-    if (!detail || !SHELL_LAUNCH_TOOL_IDS.has(detail.toolName ?? '')) return null
-    const result =
-      detail.result && typeof detail.result === 'object'
-        ? (detail.result as Record<string, unknown>)
-        : {}
-    const outputFilePath =
-      typeof result.output_file === 'string' && result.output_file.length > 0
-        ? result.output_file
-        : undefined
-    const outputText =
-      typeof result.output === 'string' ? result.output : undefined
-    return { outputFilePath, outputText }
-  }
-
   private notifyToolDetailReady(
     toolCallId: string,
     detail: BrowserToolCallDetailRecord | null,
@@ -3043,7 +2509,7 @@ export class SharedWorkerSessionManager {
     // it holds a resolved read, and the realm-global log persists across a
     // dispose, so a re-open needs no second sidecar read.
     if (this.skillEventsWriteTimers.has(sessionId)) {
-      void this.flushSkillEventsPersist(sessionId)
+      void this.toolDetailLoader.flushSkillEventsPersist(sessionId)
     }
     const session = this.sessions.get(sessionId)
     if (!session) return
@@ -3281,7 +2747,7 @@ export class SharedWorkerSessionManager {
       this.startStates.delete(sessionId)
       this.family.forget(sessionId)
       this.proposals.forget(sessionId)
-      this.forgetSkillEvents(sessionId)
+      this.toolDetailLoader.forgetSkillEvents(sessionId)
       // Written on every `session.open`; this is its only removal.
       this.panelOfSession.delete(sessionId)
       this.runtimeSessionSurface?.dropSessionTopics(sessionId)
@@ -3361,7 +2827,7 @@ export class SharedWorkerSessionManager {
       this.panelOfSession.delete(teammateId)
       this.runtimeSessionSurface?.dropSessionTopics(teammateId)
       this.feed.forgetStatus(teammateId)
-      this.forgetSkillEvents(teammateId)
+      this.toolDetailLoader.forgetSkillEvents(teammateId)
       const childRemoved = {
         type: 'session.removed' as const,
         payload: { sessionId: teammateId },
@@ -4058,127 +3524,13 @@ export class SharedWorkerSessionManager {
     return this.teams.spawn(params)
   }
 
-  /** Parents whose finished sub-agents were already restored from disk this
-   *  worker lifetime (`restoreFinishedSubAgentsFromDisk`). */
-  private readonly restoredSubAgentParents = new Set<string>()
-
-  /**
-   * Restore a parent's FINISHED background sub-agents into the task registry from their `task.json`
-   * seeds (or `meta.json`), once per parent per lifetime after its routing commits; released on failure.
-   * Restored sub-agents re-register their storage routing.
-   */
-  private async restoreFinishedSubAgentsFromDisk(
-    spawnerSessionId: string,
-  ): Promise<void> {
-    if (
-      isSubAgentSessionId(spawnerSessionId) ||
-      this.restoredSubAgentParents.has(spawnerSessionId)
-    ) {
-      return
-    }
-    this.restoredSubAgentParents.add(spawnerSessionId)
-    try {
-      const dirs =
-        await this.storageCoordinator.listSubAgentSessionDirs(spawnerSessionId)
-      let seeded = 0
-      for (const subagentSessionId of dirs) {
-        if (
-          this.taskRegistry.getLive(subagentSessionId) ||
-          this.taskRegistry.getFinished(subagentSessionId)
-        ) {
-          continue
-        }
-        const record = await this.readRestoredSubAgentRecord(
-          spawnerSessionId,
-          subagentSessionId,
-        )
-        if (!record) continue
-        if (this.subAgents.seedRestoredRecord(record)) {
-          this.storageCoordinator.registerSubAgentRouting(
-            spawnerSessionId,
-            subagentSessionId,
-          )
-          seeded++
-        }
-      }
-      if (seeded > 0) this.feed.scheduleSummary()
-    } catch {
-      // Storage not up yet / bridge hiccup: release the guard so the next
-      // session upsert retries.
-      this.restoredSubAgentParents.delete(spawnerSessionId)
-    }
-  }
-
-  /** One restored record: `task.json` first, `meta.json` fallback. */
-  private async readRestoredSubAgentRecord(
-    spawnerSessionId: string,
-    subagentSessionId: string,
-  ): Promise<FinishedSubAgentRecord | null> {
-    const now = Date.now()
-    const taskText = await this.storageCoordinator.readSubAgentFile(
-      spawnerSessionId,
-      subagentSessionId,
-      SUBAGENT_TASK_FILE_NAME,
-    )
-    if (taskText) {
-      const file = parseSubAgentTaskFile(taskText)
-      if (file && file.sessionId === subagentSessionId) {
-        return finishedRecordFromTaskFile(file, now)
-      }
-    }
-    // A sub-agent's meta now lives as a ROW in the single sqlite store (keyed by
-    // its sessionId), not a `subagents/<id>/meta.json` FILE — new sub-agents no
-    // longer write that file. `readSessionMeta` does not filter sub-agent ids
-    // (only the sidebar `listAll` does), so it answers here.
-    const meta = await this.storage?.readSessionMeta(subagentSessionId)
-    if (!meta) return null
-    return finishedRecordFromSessionMeta({
-      sessionId: subagentSessionId,
-      spawnerSessionId,
-      taskId: mintTaskHandle('local_agent'),
-      firstPrompt: meta.metadata.firstPrompt,
-      previewText: meta.metadata.previewText,
-      lastTerminalReason: meta.metadata.lastTerminalReason,
-      updatedAt: meta.updatedAt,
-      now,
-    })
-  }
-
-  /**
-   * Read a session's plugin task files back into the registry, once per
-   * session per lifetime; a task that was running when the app closed comes
-   * back stopped and interrupted. A failed read is retried on the next call.
-   */
-  private restorePluginTasksFromDisk(spawnerSessionId: string): Promise<void> {
-    if (isSubAgentSessionId(spawnerSessionId)) return Promise.resolve()
-    const known = this.pluginTaskRestores.get(spawnerSessionId)
-    if (known) return known
-    const restore = (async () => {
-      const names = await this.storageCoordinator.listSubAgentFiles(spawnerSessionId, PLUGIN_TASK_DIR)
-      const now = Date.now()
-      let seeded = 0
-      for (const name of names) {
-        if (!name.endsWith('.json')) continue
-        const text = await this.storageCoordinator.readSubAgentFile(spawnerSessionId, PLUGIN_TASK_DIR, name)
-        const record = text ? pluginTaskRecordFromFile(text, now) : null
-        if (!record || record.spawnerSessionId !== spawnerSessionId) continue
-        if (this.pluginTasks.seedRestored(record)) seeded++
-      }
-      if (seeded > 0) this.feed.scheduleSummary()
-    })().catch(() => {
-      this.pluginTaskRestores.delete(spawnerSessionId)
-    })
-    this.pluginTaskRestores.set(spawnerSessionId, restore)
-    return restore
-  }
-
   private notifySessionUpserted(sessionId: string): void {
     // A session upsert fires (among other places) when an init commits -- the
     // first moment the parent's storage routing is known, which is what the
     // sub-agent restart-restore needs. Guarded + idempotent, so the extra
     // firings are cheap no-ops.
-    void this.restoreFinishedSubAgentsFromDisk(sessionId)
-    void this.restorePluginTasksFromDisk(sessionId)
+    void this.toolDetailLoader.restoreFinishedSubAgentsFromDisk(sessionId)
+    void this.toolDetailLoader.restorePluginTasksFromDisk(sessionId)
     const session = this.buildSessionInfo(sessionId)
     if (!session) return
     const message = {

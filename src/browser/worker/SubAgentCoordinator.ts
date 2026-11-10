@@ -955,7 +955,7 @@ export class SubAgentCoordinator {
   /**
    * Seed a registry record restored from disk (app restart lost the in-memory
    * registry; the manager re-reads `task.json` / `meta.json` — see
-   * `SharedWorkerSessionManager.restoreFinishedSubAgentsFromDisk`). Skipped if
+   * `ToolDetailLoader.restoreFinishedSubAgentsFromDisk`). Skipped if
    * the session is already known (live or finished). Deliberately does NOT go
    * through `recordFinishedSubAgent`: a restore must not resolve waiters or
    * re-persist the file it was just read from.

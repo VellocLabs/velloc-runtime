@@ -1199,7 +1199,9 @@ describe('queryFastModel — sink lifecycle', () => {
 
 describe('side-task registry — recovered local_js rows (restart recovery)', () => {
   type RecoveryInternals = {
-    recoverRunJsRowsFromTranscript(sessionId: string, messages: unknown[]): void
+    toolDetailLoader: {
+      recoverRunJsRowsFromTranscript(sessionId: string, messages: unknown[]): void
+    }
     sideTasks: {
       registerRunJs(start: {
         callId: string
@@ -1246,7 +1248,7 @@ describe('side-task registry — recovered local_js rows (restart recovery)', ()
     // empty for every reloaded session.
     const { i } = manager()
     const r = i as unknown as RecoveryInternals
-    r.recoverRunJsRowsFromTranscript('S1', runJsTranscript('toolu_re_1', 'Old run'))
+    r.toolDetailLoader.recoverRunJsRowsFromTranscript('S1', runJsTranscript('toolu_re_1', 'Old run'))
     const row = rowByType(i, 'local_js', 'Old run')
     expect(row).toBeDefined()
     expect(row!.sessionId).toBe('toolu_re_1')
@@ -1259,7 +1261,7 @@ describe('side-task registry — recovered local_js rows (restart recovery)', ()
   it('falls back to the generic label for pre-preview history (stripped args)', () => {
     const { i } = manager()
     const r = i as unknown as RecoveryInternals
-    r.recoverRunJsRowsFromTranscript('S1', runJsTranscript('toolu_re_2'))
+    r.toolDetailLoader.recoverRunJsRowsFromTranscript('S1', runJsTranscript('toolu_re_2'))
     const row = rowsOf(i).find(x => x.sessionId === 'toolu_re_2')
     expect(row).toBeDefined()
     expect(row!.description).toBeTruthy()
@@ -1276,7 +1278,7 @@ describe('side-task registry — recovered local_js rows (restart recovery)', ()
       inlineCode: true,
       startedAt: 2000,
     })
-    r.recoverRunJsRowsFromTranscript(
+    r.toolDetailLoader.recoverRunJsRowsFromTranscript(
       'S1',
       runJsTranscript('toolu_live_1', 'Old run'),
     )
@@ -1289,9 +1291,9 @@ describe('side-task registry — recovered local_js rows (restart recovery)', ()
   it('a later full load without run_js clears the recovered rows', () => {
     const { i } = manager()
     const r = i as unknown as RecoveryInternals
-    r.recoverRunJsRowsFromTranscript('S1', runJsTranscript('toolu_re_3', 'Old run'))
+    r.toolDetailLoader.recoverRunJsRowsFromTranscript('S1', runJsTranscript('toolu_re_3', 'Old run'))
     expect(rowsOf(i).some(x => x.sessionId === 'toolu_re_3')).toBe(true)
-    r.recoverRunJsRowsFromTranscript('S1', [])
+    r.toolDetailLoader.recoverRunJsRowsFromTranscript('S1', [])
     expect(rowsOf(i).some(x => x.sessionId === 'toolu_re_3')).toBe(false)
   })
 })
@@ -1302,7 +1304,9 @@ describe('side-task registry — recovered local_js rows (restart recovery)', ()
 
 describe('side-task registry — recovered local_bash rows (restart recovery)', () => {
   type BashRecoveryInternals = {
-    recoverBashRowsFromTranscript(sessionId: string, messages: unknown[]): void
+    toolDetailLoader: {
+      recoverBashRowsFromTranscript(sessionId: string, messages: unknown[]): void
+    }
   }
 
   /** A completed background-shell launch + its `<task-notification>` turn. */
@@ -1368,7 +1372,7 @@ describe('side-task registry — recovered local_bash rows (restart recovery)', 
     // vanished from the drawer.
     const { i } = manager()
     const r = i as unknown as BashRecoveryInternals
-    r.recoverBashRowsFromTranscript(
+    r.toolDetailLoader.recoverBashRowsFromTranscript(
       'S1',
       bashTranscript('b-restore', 'npm run build', '/tmp/b-restore.log'),
     )
@@ -1385,7 +1389,7 @@ describe('side-task registry — recovered local_bash rows (restart recovery)', 
   it('surfaces a launch with no completion as a stopped row (running at app close)', () => {
     const { i } = manager()
     const r = i as unknown as BashRecoveryInternals
-    r.recoverBashRowsFromTranscript('S1', [
+    r.toolDetailLoader.recoverBashRowsFromTranscript('S1', [
       {
         type: 'assistant',
         message: {
@@ -1418,12 +1422,12 @@ describe('side-task registry — recovered local_bash rows (restart recovery)', 
   it('a later full load without shells clears the recovered rows', () => {
     const { i } = manager()
     const r = i as unknown as BashRecoveryInternals
-    r.recoverBashRowsFromTranscript(
+    r.toolDetailLoader.recoverBashRowsFromTranscript(
       'S1',
       bashTranscript('b-gone', 'make', '/tmp/b-gone.log'),
     )
     expect(rowsOf(i).some(x => x.sessionId === 'b-gone')).toBe(true)
-    r.recoverBashRowsFromTranscript('S1', [])
+    r.toolDetailLoader.recoverBashRowsFromTranscript('S1', [])
     expect(rowsOf(i).some(x => x.sessionId === 'b-gone')).toBe(false)
   })
 })

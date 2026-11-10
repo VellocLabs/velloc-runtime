@@ -3119,7 +3119,7 @@ type ShellManagerInternals = {
     outputFilePath?: string
     superShellTaskId?: string
   }) => void
-  recoverBashRowsFromTranscript: (sessionId: string, messages: unknown[]) => void
+  toolDetailLoader: { recoverBashRowsFromTranscript: (sessionId: string, messages: unknown[]) => void }
   loadTaskInfoWithOutput: (
     id: string,
   ) => Promise<{
@@ -3673,7 +3673,7 @@ describe('SharedWorkerSessionManager — background shells (local_bash)', () => 
       },
     } as RuntimeFs)
     try {
-      manager.recoverBashRowsFromTranscript(
+      manager.toolDetailLoader.recoverBashRowsFromTranscript(
         'S-restart',
         recoveredBashTranscript('b-restore', 'npm run build', '/tasks/b-restore.output'),
       )
@@ -3920,7 +3920,7 @@ describe('SharedWorkerSessionManager — background shells (local_bash)', () => 
       command: 'npm run watch',
       spawnerSessionId: 'S-dup',
     })
-    manager.recoverBashRowsFromTranscript(
+    manager.toolDetailLoader.recoverBashRowsFromTranscript(
       'S-dup',
       recoveredBashTranscript('b-dup', 'npm run watch', '/tasks/b-dup.output'),
     )

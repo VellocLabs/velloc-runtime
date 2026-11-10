@@ -135,8 +135,10 @@ type Internals = {
     readSubAgentFile(parent: string, sub: string, file: string): Promise<string | null>
     registerSubAgentRouting(parent: string, sub: string): void
   }
-  restoreFinishedSubAgentsFromDisk(parent: string): Promise<void>
-  restoredSubAgentParents: Set<string>
+  toolDetailLoader: {
+    restoreFinishedSubAgentsFromDisk(parent: string): Promise<void>
+    restoredSubAgentParents: Set<string>
+  }
 }
 
 function makeManager(
@@ -178,7 +180,7 @@ describe('restoreFinishedSubAgentsFromDisk', () => {
         [SUBAGENT_TASK_FILE_NAME]: JSON.stringify(taskFileFromFinishedRecord(FINISHED)),
       },
     })
-    await internals.restoreFinishedSubAgentsFromDisk('parent-1')
+    await internals.toolDetailLoader.restoreFinishedSubAgentsFromDisk('parent-1')
     expect(internals.taskRegistry.hasFinished('subagent-Explore_x_y')).toBe(true)
     expect(internals.taskRegistry.getFinished('subagent-Explore_x_y')).toMatchObject({
       status: 'success',
@@ -197,7 +199,7 @@ describe('restoreFinishedSubAgentsFromDisk', () => {
         [SUBAGENT_TASK_FILE_NAME]: JSON.stringify(taskFileFromRunState(RUN_STATE)),
       },
     })
-    await internals.restoreFinishedSubAgentsFromDisk('parent-1')
+    await internals.toolDetailLoader.restoreFinishedSubAgentsFromDisk('parent-1')
     expect(internals.taskRegistry.getFinished('subagent-Explore_x_y')).toMatchObject({
       status: 'stopped',
       summary: RESTART_INTERRUPTED_SUMMARY,
@@ -222,7 +224,7 @@ describe('restoreFinishedSubAgentsFromDisk', () => {
         },
       },
     )
-    await internals.restoreFinishedSubAgentsFromDisk('parent-1')
+    await internals.toolDetailLoader.restoreFinishedSubAgentsFromDisk('parent-1')
     expect(internals.taskRegistry.getFinished('subagent-old_1')).toMatchObject({
       status: 'success',
       summary: 'done',
@@ -242,18 +244,18 @@ describe('restoreFinishedSubAgentsFromDisk', () => {
       { ...RUN_STATE },
       RUN_STATE.taskId,
     )
-    await internals.restoreFinishedSubAgentsFromDisk('parent-1')
+    await internals.toolDetailLoader.restoreFinishedSubAgentsFromDisk('parent-1')
     expect(internals.taskRegistry.hasFinished('subagent-Explore_x_y')).toBe(false)
     expect(routed).toEqual([])
     // Second call is a guarded no-op (Set) — even after the live run is gone.
-    expect(internals.restoredSubAgentParents.has('parent-1')).toBe(true)
+    expect(internals.toolDetailLoader.restoredSubAgentParents.has('parent-1')).toBe(true)
   })
 
   it('skips sub-agent parents and unreadable dirs without seeding', async () => {
     const { internals } = makeManager({ 'subagent-broken': {} })
-    await internals.restoreFinishedSubAgentsFromDisk('subagent-someone')
-    expect(internals.restoredSubAgentParents.has('subagent-someone')).toBe(false)
-    await internals.restoreFinishedSubAgentsFromDisk('parent-1')
+    await internals.toolDetailLoader.restoreFinishedSubAgentsFromDisk('subagent-someone')
+    expect(internals.toolDetailLoader.restoredSubAgentParents.has('subagent-someone')).toBe(false)
+    await internals.toolDetailLoader.restoreFinishedSubAgentsFromDisk('parent-1')
     expect(internals.taskRegistry.hasFinished('subagent-broken')).toBe(false)
   })
 
@@ -262,7 +264,7 @@ describe('restoreFinishedSubAgentsFromDisk', () => {
     internals.storageCoordinator.listSubAgentSessionDirs = async () => {
       throw new Error('storage not up')
     }
-    await internals.restoreFinishedSubAgentsFromDisk('parent-1')
-    expect(internals.restoredSubAgentParents.has('parent-1')).toBe(false)
+    await internals.toolDetailLoader.restoreFinishedSubAgentsFromDisk('parent-1')
+    expect(internals.toolDetailLoader.restoredSubAgentParents.has('parent-1')).toBe(false)
   })
 })
