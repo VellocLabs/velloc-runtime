@@ -63,8 +63,8 @@ describe('panel and code surfaces carry the type-scale utilities', () => {
 
   it('the topbar session tab and the composer hint are on the interface size', () => {
     expect(read('browser/webview/topbar/SessionTabStrip.tsx')).toMatch(/rounded px-2 text-body"/)
-    expect(read('components/assistant-ui/thread.tsx')).toMatch(/aui-composer-input-hint [^"]*text-body"/)
-    expect(read('components/assistant-ui/thread.tsx')).toMatch(/aui-edit-composer-input [^"]*text-composer /)
+    expect(read('components/assistant-ui/composer-action.tsx')).toMatch(/aui-composer-input-hint [^"]*text-body"/)
+    expect(read('components/assistant-ui/transcript-rows.tsx')).toMatch(/aui-edit-composer-input [^"]*text-composer /)
   })
 
   it('the composer types at the conversation size at every step', () => {
@@ -75,7 +75,7 @@ describe('panel and code surfaces carry the type-scale utilities', () => {
     )
     // A composer-only step would let the input drift from the transcript again.
     expect(css).not.toContain('--nx-composer-')
-    expect(read('components/assistant-ui/thread.tsx')).toMatch(/aui-composer-input [^"]*text-composer /)
+    expect(read('components/assistant-ui/composer.tsx')).toMatch(/aui-composer-input [^"]*text-composer /)
   })
 
   it('text entry keeps a 16px floor on touch screens', () => {

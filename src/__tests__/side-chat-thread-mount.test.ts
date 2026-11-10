@@ -110,7 +110,7 @@ describe('the row a side chat is cut at', () => {
   })
 
   it('the toolbar button subscribes to the rows, so it re-enables when the reply ends', () => {
-    const thread = readFileSync(join(__dirname, '..', 'components', 'assistant-ui', 'thread.tsx'), 'utf8')
+    const thread = readFileSync(join(__dirname, '..', 'components', 'assistant-ui', 'selection-reply.tsx'), 'utf8')
     const button = thread.slice(thread.indexOf('const StartSideChatButton'), thread.indexOf('const ComposerQuote'))
     expect(button).toContain('useAssistantState((s) => s.thread.messages)')
     expect(button).toContain('sideChatCutForThreadRow(messages, currentRow)')

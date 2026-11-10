@@ -155,18 +155,20 @@ describe('where the mods\' rows sit in the composer footer', () => {
 
   it('the status lines are the prompt box\'s top row, and the turn note sits in the transcript under the last answer', () => {
     const thread = readFileSync(join(__dirname, '..', 'components', 'assistant-ui', 'thread.tsx'), 'utf8')
-    const at = (tag: string, from = 0) => {
-      const index = thread.slice(from).search(new RegExp(`^\\s*<${tag}[\\s/>]`, 'm'))
+    const composer = readFileSync(join(__dirname, '..', 'components', 'assistant-ui', 'composer.tsx'), 'utf8')
+    const atIn = (source: string, tag: string, from = 0) => {
+      const index = source.slice(from).search(new RegExp(`^\\s*<${tag}[\\s/>]`, 'm'))
       expect(index, tag).toBeGreaterThan(-1)
       return from + index
     }
+    const at = (tag: string, from = 0) => atIn(thread, tag, from)
     // Inside the composer's shell, before the attachments and the input.
-    const shell = thread.indexOf('data-slot="composer-shell"')
+    const shell = composer.indexOf('data-slot="composer-shell"')
     expect(shell).toBeGreaterThan(-1)
-    const status = at('ModComposerStatus', shell)
-    expect(status).toBeLessThan(at('ComposerAttachments', shell))
-    expect(status).toBeLessThan(at('ComposerPrimitive.Input', shell))
-    expect(thread.search(/^\s*<ModComposerStatus[\s/>]/m)).toBe(status)
+    const status = atIn(composer, 'ModComposerStatus', shell)
+    expect(status).toBeLessThan(atIn(composer, 'ComposerAttachments', shell))
+    expect(status).toBeLessThan(atIn(composer, 'ComposerPrimitive.Input', shell))
+    expect(composer.search(/^\s*<ModComposerStatus[\s/>]/m)).toBe(status)
     // The note follows the message list, before the composer's footer.
     const note = at('ModTurnNote')
     expect(note).toBeGreaterThan(at('VirtualizedThreadMessages'))
