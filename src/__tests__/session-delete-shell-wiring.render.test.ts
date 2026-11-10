@@ -299,6 +299,29 @@ function jsxElements(tag: string, file: ts.SourceFile = shellFile): Map<string, 
   return found
 }
 
+/** The source text the shell binds to `name` in its `sessionThreadInputs` literal. */
+function sessionThreadInput(name: string): string | undefined {
+  let found: string | undefined
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      node.name.getText(shellFile) === 'sessionThreadInputs' &&
+      node.initializer &&
+      ts.isObjectLiteralExpression(node.initializer)
+    ) {
+      for (const prop of node.initializer.properties) {
+        if (ts.isShorthandPropertyAssignment(prop) && prop.name.text === name) found = name
+        else if (ts.isPropertyAssignment(prop) && prop.name.getText(shellFile) === name) {
+          found = prop.initializer.getText(shellFile)
+        }
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(shellFile)
+  return found
+}
+
 describe('MultiSessionShell wiring', () => {
   it("routes the sidebar's Delete to the confirmation target", () => {
     const sidebars = jsxElements('Sidebar')
@@ -340,5 +363,6 @@ describe('MultiSessionShell wiring', () => {
     for (const attrs of threads) {
       if (attrs.has('onDeleteThread')) expect(attrs.get('onDeleteThread')).toBe('handleDeleteThread')
     }
+    expect(sessionThreadInput('handleDeleteThread')).toBe('handleDeleteThread')
   })
 })

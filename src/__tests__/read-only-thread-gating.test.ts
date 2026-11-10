@@ -128,6 +128,9 @@ describe('AssistantUiThread read-only gating (shutdown tab)', () => {
     // hands down, and marking stays off.
     const SHELL = readFileSync(join(SRC, 'browser', 'webview', 'shellSessionThread.tsx'), 'utf8')
     expect(SHELL).toMatch(/readOnly=\{shutdownSessionIds\.has\(sessionId\)\}\s+threadSessionId=\{sessionId\}/)
+    const shellSource = readFileSync(join(SRC, 'browser', 'webview', 'MultiSessionShell.tsx'), 'utf8')
+    const inputs = /const sessionThreadInputs: ShellSessionThreadInputs = \{([\s\S]*?)\n {2}\}/.exec(shellSource)?.[1] ?? ''
+    expect(inputs).toMatch(/(^|[\s,])shutdownSessionIds(,|\s*$)/)
     expect(interactivePropsBlock()).toContain('threadSessionId={threadSessionId}')
     expect(THREAD).toMatch(/useSessionChapters\(\s*runtimeConnection,\s*modSessionId \?\? threadSessionId,\s*canMarkChapters,?\s*\)/)
     expect(THREAD).toContain("const canMarkChapters = useCan('chapters', 'mark') && !readOnly")
