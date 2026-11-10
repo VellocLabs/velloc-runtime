@@ -739,6 +739,17 @@ describe('FileSnapshotRecorder — ignored dependency/cache dirs', () => {
     expect([...fake.turnFiles.keys()]).toEqual(['1|/ws/node_modules'])
   })
 
+  it('spells a pruned ignored directory in the Windows host form like the files beside it', async () => {
+    const { fake, recorder } = makeHarness({
+      initialFiles: { 'D:\\ws\\x\\a.ts': '1', 'D:\\ws\\x\\node_modules\\dep\\b.js': '2' },
+      workspaceRoots: ['D:\\ws'],
+      hostCwd: 'D:\\ws',
+    })
+    await recorder.trackBeforeDirectoryRemoval('D:/ws/x', T1)
+    expect(fake.sessionFiles.get('d:/ws/x/a.ts')?.[1]).toBe('D:\\ws\\x\\a.ts')
+    expect(fake.sessionFiles.get('d:/ws/x/node_modules')?.[1]).toBe('D:\\ws\\x\\node_modules')
+  })
+
   it('shows a pruned .git as one not-captured row, and revert restores the files beside it', async () => {
     const { disk, recorder } = makeHarness({
       initialFiles: {
@@ -1120,6 +1131,17 @@ describe('FileSnapshotRecorder — shell probes (speculative capture + discard)'
     expect(h.fake.turnFiles.size).toBe(1)
     expect(h.fake.sessionFiles.size).toBe(1)
     expect(h.fake.snapshots.size).toBe(blobsAfterTurn1)
+  })
+
+  it('discards a Windows probe named in shell form, keyed as its capture was', async () => {
+    const h = makeHarness({
+      initialFiles: { 'D:\\ws\\b.txt': 'y' },
+      workspaceRoots: ['D:\\ws'],
+      hostCwd: 'D:\\ws',
+    })
+    expect(await h.recorder.probeBeforeMutation('/d/ws/b.txt', T1)).toBe(true)
+    expect(await h.recorder.discardUnchangedProbe('/d/ws/b.txt', 1)).toBe(true)
+    expect(h.fake.turnFiles.size).toBe(0)
   })
 
   it('an absent path: still absent → discarded; created → kept as a new file', async () => {

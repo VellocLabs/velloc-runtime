@@ -287,7 +287,7 @@ export class FileSnapshotRecorder {
    */
   discardUnchangedProbe(absPath: string, turnSeq: number): Promise<boolean> {
     return this.enqueue(async () => {
-      const pathKey = normalizePathKey(absPath)
+      const pathKey = normalizePathKey(this.spell(absPath))
       if (this.sharedByTurn.get(turnSeq)?.has(pathKey)) return false
       try {
         const row = await this.store.getTurnFile(turnSeq, pathKey)
@@ -365,7 +365,8 @@ export class FileSnapshotRecorder {
 
   /** One `skipped` before row for a directory whose files are not captured;
    *  diff/revert then mark it untracked. */
-  private async recordSkippedPlaceholder(absDir: string, turn: SnapshotTurnInfo): Promise<void> {
+  private async recordSkippedPlaceholder(rawDir: string, turn: SnapshotTurnInfo): Promise<void> {
+    const absDir = this.spell(rawDir)
     const dirKey = normalizePathKey(absDir)
     if (this.isExcluded(dirKey)) return
     await this.enqueue(async () => {
