@@ -144,8 +144,8 @@ describe('a side chat mounted in the pane', () => {
 
   it('carries light controls: no model, settings or folder control reaches the pane thread', () => {
     expect(threadMount('side', true, 'parent').lightControls).toBe(true)
-    const shell = readFileSync(join(__dirname, '..', 'browser', 'webview', 'MultiSessionShell.tsx'), 'utf8')
-    const start = shell.indexOf('const renderSessionThread = (')
+    const shell = readFileSync(join(__dirname, '..', 'browser', 'webview', 'shellSessionThread.tsx'), 'utf8')
+    const start = shell.indexOf('export function renderShellSessionThread(')
     const end = shell.indexOf('<ThreadErrorBoundary', start)
     const block = shell.slice(start, shell.indexOf('</ThreadErrorBoundary>', end))
     expect(block).toContain('activeSessionId={mount.foregroundSessionId}')

@@ -62,9 +62,7 @@ import { createSessionLayoutsStore, useSessionLayouts, type SessionLayoutsStore 
 import { paneShortcutFor, paneShortcutStep, paneShortcutYieldsToTerminal } from './layout/paneShortcuts'
 import { toggleFilesTreeVisible } from './panes/filesTreePrefs'
 import { PaneArea } from './panes/PaneArea'
-import { PaneFrame } from './panes/PaneFrame'
-import { A2uiPaneActionsSlot } from './a2ui/A2uiPaneSlot'
-import { IMMERSIVE_PANES, PANE_LABEL_KEY, appPaneTitle } from './panes/paneKinds'
+import { PANE_LABEL_KEY, appPaneTitle } from './panes/paneKinds'
 import { onPaneRequest as onA2uiPaneRequest, setShownSession as setA2uiShownSession } from './a2ui/a2uiPaneBus'
 import {
   DOCK_FLOOR_CELLS,
@@ -76,20 +74,13 @@ import {
   type ModsPaneRow,
 } from './layout/modsPane'
 import { loadModPanesAsked } from './layout/layoutStorage'
-import { ModsPane } from './panes/ModsPane'
-import { SideChatPane } from './panes/SideChatPane'
 import { useModCellWidth } from '@/components/assistant-ui/mod-render'
 import type { ModUiSeatPlaces } from '@/components/assistant-ui/mod-ui-context'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useModAgentView } from './mods/useModAgentView'
 import {
-  RightPanelContentContext,
-} from '@/components/assistant-ui/right-panel-content-context'
-import {
-  FilePathContext,
   createFilePathProbe,
 } from '@/components/assistant-ui/file-path-context'
-import { ThreadErrorBoundary } from './ThreadErrorBoundary'
 import { TopbarSearch } from './topbar/TopbarSearch'
 import {
   createConfiguredModelCatalog,
@@ -127,6 +118,8 @@ import { RemoteInstallTip } from './remote/RemoteInstallTip'
 import { RemoteOfflineOverlay } from './remote/RemoteOfflineOverlay'
 import { RuntimeCapabilitiesContext, useCapabilityQuery } from './useCan'
 import { SessionAreaVisibleContext } from './sessionAreaVisibility'
+import { renderShellSessionThread, type ShellSessionThreadInputs } from './shellSessionThread'
+import { renderShellSidePane, type ShellSidePaneInputs } from './shellSidePane'
 import { useActiveSessionOnHost } from './useActiveSessionOnHost'
 import {
   createExternalLinkClickHandler,
@@ -164,8 +157,6 @@ import {
   subscribeSessionTabListChanged,
 } from './nexusBridgeActions'
 import type { SessionTabEntry } from '../bridge/protocol/session'
-import { WebviewArea } from './WebviewArea'
-import { BrowserAddressBar, BrowserTabStrip } from './panes/BrowserPaneChrome'
 import { postMainContentsLayout } from './useMainContentsLayout'
 import {
   applyE2eTestCodePrefix,
@@ -180,13 +171,11 @@ import {
   removeProject,
 } from './projectsStorage'
 import { useWorkspaceState } from './workspaceStore'
-import { Button } from '@/components/ui/button'
 import {
   SessionDeleteConfirm,
   type SessionDeleteTarget,
 } from './SessionDeleteDialog'
 import { ProjectDeleteConfirm, type ProjectDeleteTarget } from './ProjectDeleteDialog'
-import { PlusIcon } from 'lucide-react'
 import { NexusTopBar } from './topbar/NexusTopBar'
 import { topbarImportEntries } from './sessionImport/sourceMeta'
 import type { ImportSource } from '../bridge/protocol/sessionImport'
@@ -226,10 +215,6 @@ import {
   ImportDialog,
   SettingsScreen,
   prefetchColdUi,
-  SidePaneBody,
-  FilesPane,
-  TerminalPane,
-  CliSessionView,
 } from './coldUi'
 import { useResolvedConnection, useTerminalsState } from './terminal/useTerminals'
 import { cliOfTemplateType, getLauncherCatalog, getTemplateTitle } from '../../prompting/templateCatalog'
@@ -257,7 +242,6 @@ import {
   parentsNeedingAnswer,
   pickSideChat,
   sideChatsOf,
-  threadMount,
   withoutListedSideChats,
 } from './sideChat'
 import { createForkSendRegistry, deliverForkSend } from './forkSend'
@@ -281,7 +265,6 @@ import {
   CLI_SESSION_PANES,
   PaneSessionUi,
   EMPTY_PANE_UI,
-  EMPTY_FILES_PANE,
   createShellReadPaneRecord,
   createShellUpdatePaneRecord,
   createShellFocusPane,
@@ -3789,293 +3772,46 @@ export function MultiSessionShell({
     [runtimeCapabilities, hostBridgeTransport],
   )
 
-  // One session's conversation: in the chat slot (shown when active, kept
-  // mounted hidden otherwise) or in the Side chats pane (`inPane`), where its
-  // actions are bound to it rather than to the active session (F-36).
-  const renderSessionThread = (sessionId: string, inPane: boolean): ReactNode => {
-    const isActive = inPane || sessionId === activeSessionId
-    const bound = inPane ? sessionActionsFor(sessionId) : null
-    const mount = threadMount(sessionId, inPane, activeSessionId)
-          const state = sessionStates.get(sessionId) ?? activeState
-          const messageCallbacks = getSessionMessageCallbacks(sessionId)
-          const cliSession = cliSessions.get(sessionId)
-          return (
-            <section
-              key={sessionId}
-              // Scope for the attention reveal: every mounted thread is in the
-              // DOM at once, so the reveal must find THIS session's control.
-              data-session-section={sessionId}
-              style={{
-                height: '100%',
-                flex: isActive ? 1 : undefined,
-                // A maximized Right Panel covers the conversation: hide it the
-                // same way an inactive session is hidden (display none keeps
-                // the thread mounted, so restoring is a paint toggle).
-                display: isActive ? 'flex' : 'none',
-                // A row-flex item: without it the section cannot narrow below a
-                // terminal's drawn width, and the emulator refits a few columns at a time.
-                minWidth: 0,
-              }}
-            >
-              <div className="flex h-full min-w-0 flex-1">
-              {cliSession ? (
-                <Suspense fallback={null}>
-                  <CliSessionView
-                    sessionId={sessionId}
-                    cli={cliSession.cli}
-                    name={getTemplateTitle(cliSession.type)}
-                    runtimeConnection={runtimeConnection}
-                    openLink={openTerminalLink}
-                  />
-                </Suspense>
-              ) : (
-              <ThreadErrorBoundary sessionId={sessionId} t={t}>
-                <AssistantUiThread
-                  state={state}
-                  readOnly={shutdownSessionIds.has(sessionId)}
-                  threadSessionId={sessionId}
-                  submitPrompt={bound?.submitPrompt ?? submitPrompt}
-                  submitActionMessage={bound?.submitActionMessage ?? submitActionMessage}
-                  continueConversation={bound?.continueConversation ?? continueConversation}
-                  submitComposerMessage={bound?.submitComposerMessage ?? submitComposerMessage}
-                  onPickAttachmentFiles={pickComposerAttachmentFiles}
-                  submitToolResult={bound?.submitToolResult ?? submitToolResult}
-                  loadToolCallDetail={bound?.loadToolCallDetail ?? loadToolCallDetail}
-                  loadTurnDiffDetail={loadTurnDiffDetail}
-                  interrupt={bound?.interrupt ?? interrupt}
-                  setPermissionMode={bound?.setPermissionMode ?? setPermissionMode}
-                  setSkipDangerousMode={bound?.setSkipDangerousMode ?? setSkipDangerousMode}
-                  onClearPendingMessage={bound?.clearPendingMessage ?? clearPendingMessage}
-                  onRemoveInjectMessage={bound?.removeInjectMessage ?? removeInjectMessage}
-                  resolveToolUseConfirm={bound?.resolveToolUseConfirm ?? resolveToolUseConfirm}
-                  clearPlanApproval={bound?.clearPlanApproval ?? clearPlanApproval}
-                  sessions={sessionItems}
-                  activeSessionId={mount.foregroundSessionId}
-                  onOpenBackgroundTasks={handleOpenBackgroundTasks}
-                  // THIS session's running background tasks (not the active
-                  // session's) — each mounted thread shows its own footer
-                  // "still working" indicator.
-                  runningBackgroundTaskCount={countRunning(subAgentRowsForSession(sessionId))}
-                  backgroundTaskRows={subAgentRowsForSession(sessionId)}
-                  onStopBackgroundTask={handleStopBackgroundTask}
-                  onOpenBackgroundTasksList={handleOpenBackgroundTasksList}
-                  onOpenPlanPanel={() => openPaneFor('plan')}
-                  onOpenFileInPanel={openFile}
-                  onOpenTerminalInPanel={openTerminalInPanel}
-                  statFilePaths={statFilePaths}
-                  onOpenDiffInPanel={openDiffInPanel}
-                  onOpenSkillInPanel={openSkillInPanel}
-                  onSwitchThread={focusSession}
-                  onDeleteThread={handleDeleteThread}
-                  onRenameThread={retitleSession}
-                  onForkFromMessage={messageCallbacks.onFork}
-                  onForkAfterMessage={messageCallbacks.onForkAfter}
-                  onSendInForkedSession={messageCallbacks.onSendInFork}
-                  onContinueInCode={messageCallbacks.onContinueInCode}
-                  onRewindToMessage={messageCallbacks.onRewind}
-                  onStartSideChat={inPane ? undefined : messageCallbacks.onStartSideChat}
-                  onPendingQuestionsChange={handlePendingQuestionsChange}
-                  onNewThread={openNewSession}
-                  openSettings={mount.lightControls ? undefined : handleOpenSettings}
-                  onOpenPluginSettings={handleOpenPluginSettings}
-                  modPanesDocked={modPanesDocked}
-                  sessionCardsDocked={sessionCardsDocked}
-                  sessionCardsPopoverOpen={!inPane && isActive && !sessionCardsFit && sessionCardsPopoverOpen}
-                  onSessionCardsPopoverClose={closeSessionCardsPopover}
-                  runtimeConnection={runtimeConnection}
-                  loadProviderMissingPrompt={handleLoadProviderMissingPrompt}
-                  onAdoptDefaultSelection={handleAdoptDefaultSelection}
-                  onSelectSessionModel={mount.lightControls ? undefined : handleSessionSelectModel}
-                  onSetAutoCompactWindow={handleSetAutoCompactWindow}
-                  onSelectProjectFolder={mount.lightControls ? undefined : handleSelectProjectFolder}
-                  onOpenProjectFolder={mount.lightControls ? undefined : handleOpenProjectFolder}
-                  onRevealProjectFolder={mount.lightControls ? undefined : handleRevealProjectFolder}
-                  initialComposerDraft={sessionDraftBySessionId.get(sessionId)}
-                  composerInsert={composerInsert?.sessionId === sessionId ? composerInsert : null}
-                  onComposerEdit={handleComposerEdit}
-                />
-              </ThreadErrorBoundary>
-              )}
-              </div>
-            </section>
-          )
+  // One session's conversation, in the chat slot or the Side chats pane (F-36).
+  const sessionThreadInputs: ShellSessionThreadInputs = {
+    activeSessionId, sessionActionsFor, sessionStates, activeState,
+    getSessionMessageCallbacks, cliSessions, runtimeConnection, openTerminalLink, t,
+    shutdownSessionIds, submitPrompt, submitActionMessage, continueConversation,
+    submitComposerMessage, pickComposerAttachmentFiles, submitToolResult,
+    loadToolCallDetail, loadTurnDiffDetail, interrupt, setPermissionMode,
+    setSkipDangerousMode, clearPendingMessage, removeInjectMessage, resolveToolUseConfirm,
+    clearPlanApproval, sessionItems, handleOpenBackgroundTasks, subAgentRowsForSession,
+    handleStopBackgroundTask, handleOpenBackgroundTasksList, openPaneFor, openFile,
+    openTerminalInPanel, statFilePaths, openDiffInPanel, openSkillInPanel, focusSession,
+    handleDeleteThread, retitleSession, handlePendingQuestionsChange, openNewSession,
+    handleOpenSettings, handleOpenPluginSettings, modPanesDocked, sessionCardsDocked,
+    sessionCardsFit, sessionCardsPopoverOpen, closeSessionCardsPopover,
+    handleLoadProviderMissingPrompt, handleAdoptDefaultSelection, handleSessionSelectModel,
+    handleSetAutoCompactWindow, handleSelectProjectFolder, handleOpenProjectFolder,
+    handleRevealProjectFolder, sessionDraftBySessionId, composerInsert, handleComposerEdit,
   }
-  // One pane's frame and body (F-9). The panes render outside the thread
-  // providers, so each brings the handles the deep cards need.
-  const renderSidePane = (kind: SidePaneKind): ReactNode => {
-    const name = sidePaneName(kind)
-    const frame = (title: ReactNode, body: ReactNode, actions?: ReactNode) => (
-      <PaneFrame
-        kind={kind}
-        name={name}
-        title={title}
-        actions={actions}
-        maximized={paneMaximized === kind}
-        immersiveWhenMaximized={IMMERSIVE_PANES.has(kind)}
-        onToggleMaximized={() =>
-          updatePaneRecord(r => setMaximized(r, r.maximized === kind ? null : kind))
-        }
-        onClose={() => closePaneFor(kind)}
-        onFocus={() => focusPane(kind)}
-        className="h-full"
-      >
-        <SessionAreaVisibleContext.Provider value={!settingsSection && !customizeOpen}>
-        <RightPanelContentContext.Provider value={shellRightPanelContentValue}>
-        <FilePathContext.Provider value={shellFilePathContextValue}>
-        <Suspense fallback={null}>{body}</Suspense>
-        </FilePathContext.Provider>
-        </RightPanelContentContext.Provider>
-        </SessionAreaVisibleContext.Provider>
-      </PaneFrame>
-    )
-    if (kind === 'mods') {
-      return (
-        <ModsPane
-          modUi={shellModUi}
-          onCloseTab={handleCloseModTab}
-          frame={({ title, body }) => frame(title, body)}
-        />
-      )
-    }
-    if (kind === 'sidechat') {
-      return (
-        <SideChatPane
-          items={activeSideChats}
-          selectedId={shownSideChatId}
-          onSelect={handleSelectSideChat}
-          onAdd={canAddSideChat ? handleAddSideChat : undefined}
-          onDetach={handleDetachSideChat}
-          onArchive={handleArchiveSideChat}
-          frame={({ title, actions, body }) => frame(title, body, actions)}
-        >
-          {shownSideChatId && shownSideChatId !== activeSessionId
-            ? renderSessionThread(shownSideChatId, true)
-            : null}
-        </SideChatPane>
-      )
-    }
-    if (kind === 'terminal') {
-      return (
-        <Suspense fallback={null}>
-          <TerminalPane
-            runtimeConnection={runtimeConnection}
-            sessionId={activeSessionId}
-            openLink={openTerminalLink}
-            frame={({ title, actions, body }) => frame(title, body, actions)}
-          />
-        </Suspense>
-      )
-    }
-    if (kind === 'files') {
-      return (
-        <Suspense fallback={null}>
-          <FilesPane
-            state={activePaneRecord.files ?? EMPTY_FILES_PANE}
-            sessionKey={activeSessionId}
-            onActivate={handleActivateFileTab}
-            onCloseTab={handleCloseFileTab}
-            onCloseTabs={handleCloseFileTabs}
-            onAttach={attachPathToComposer}
-            onShowInFolder={
-              runtimeCapabilities.can('ui', 'revealProjectFolder') ? handleRevealProjectFolder : undefined
-            }
-            protectedPaths={dirtyFilePaths}
-            onDirtyChange={handleFileDirtyChange}
-            fileReveal={rightPanelFileReveal}
-            readFileText={readFileText}
-            writeFileText={writeFileText}
-            // Lock the editor while THIS session's turn is running (the agent
-            // may be writing the same files); editing re-enables when it ends.
-            editingLocked={runningSessionIds.has(activeSessionId)}
-            onOpen={openFileFromTree}
-            onOpenInWindow={runtimeCapabilities.can('fsx', 'openInWindow') ? openFileTabInWindow : undefined}
-            listDir={listDir}
-            search={startFileSearch}
-            roots={filesTreeRoots}
-            frame={({ title, actions, body }) => frame(title, body, actions)}
-          />
-        </Suspense>
-      )
-    }
-    const label = (
-      <>
-        <span className="min-w-0 truncate">{name}</span>
-      </>
-    )
-    if (kind === 'browser') {
-      // The title slot is the session's tab strip, the count beside it; the
-      // body stacks the address field over the native view's placeholder.
-      const activeTab = activeSessionTabs.find(tab => tab.active) ?? null
-      return frame(
-        <>
-          {label}
-          <BrowserTabStrip
-            tabs={activeSessionTabs}
-            onActivate={activateBrowserTab}
-            onClose={closeBrowserTab}
-          />
-          <span
-            data-testid="pane-browser-tab-count"
-            className="min-w-0 shrink-0 truncate font-normal text-muted-foreground"
-          >
-            {activeNexusTabCount === 1
-              ? t('pane.browser.oneTab')
-              : t('pane.browser.tabs', { count: String(activeNexusTabCount) })}
-          </span>
-        </>,
-        <div className="flex h-full min-h-0 flex-col">
-          <BrowserAddressBar tab={activeTab} onNavigate={navigateBrowserTab} />
-          <WebviewArea active={!customizeOpen} shell={shellChannel ?? null} />
-        </div>,
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          className="size-7"
-          data-testid="pane-browser-new-tab"
-          aria-label={t('pane.browser.newTab')}
-          title={t('pane.browser.newTab')}
-          onClick={() => {
-            if (activeSessionId) openBrowserTab(activeSessionId)
-          }}
-        >
-          <PlusIcon className="size-3.5" />
-        </Button>,
-      )
-    }
-    return frame(
-      label,
-      <SidePaneBody
-        kind={kind}
-        planEntry={activePlanEntry}
-        onPlanResolve={resolveActivePlan}
-        onClosePlan={() => closePaneFor('plan')}
-        taskRows={activeSessionSubAgentRows}
-        taskFocusSessionId={backgroundTaskFocusSessionId}
-        taskListRequest={backgroundTaskListRequest}
-        onTaskFocusConsumed={handleTaskFocusConsumed}
-        onCloseTasks={() => closePaneFor('tasks')}
-        onTaskStop={handleStopBackgroundTask}
-        onTaskResume={handleResumeSubAgent}
-        loadTaskTranscript={handleLoadSubAgentTranscript}
-        diffTarget={rightPanelDiffTarget}
-        skillTarget={rightPanelSkillTarget}
-        loadedSkills={activeLoadedSkills}
-        onSelectSkill={handleSelectSkill}
-        loadToolCallDetail={loadToolCallDetail}
-        loadBundledSkillBody={loadBundledSkillBody}
-        readFileText={readFileText}
-        turnDiffHistory={activeState.turnDiffHistory ?? null}
-        loadTurnDiffDetail={loadTurnDiffDetail}
-        requestTurnDiffHistory={requestTurnDiffHistory}
-        agentChanges={activeState.agentChanges}
-        loadAgentTurnDiffDetail={loadAgentTurnDiffDetail}
-        onOpenFile={openFile}
-        activeSessionId={activeSessionId}
-      />,
-      kind === 'a2ui' ? <A2uiPaneActionsSlot /> : undefined,
-    )
+  const renderSessionThread = (sessionId: string, inPane: boolean): ReactNode =>
+    renderShellSessionThread(sessionThreadInputs, sessionId, inPane)
+  // One pane's frame and body (F-9).
+  const sidePaneInputs: ShellSidePaneInputs = {
+    sidePaneName, paneMaximized, updatePaneRecord, closePaneFor, focusPane, settingsSection,
+    customizeOpen, shellRightPanelContentValue, shellFilePathContextValue, shellModUi,
+    handleCloseModTab, activeSideChats, shownSideChatId, handleSelectSideChat, canAddSideChat,
+    handleAddSideChat, handleDetachSideChat, handleArchiveSideChat, activeSessionId,
+    renderSessionThread, runtimeConnection, openTerminalLink, activePaneRecord,
+    handleActivateFileTab, handleCloseFileTab, handleCloseFileTabs, attachPathToComposer,
+    runtimeCapabilities, handleRevealProjectFolder, dirtyFilePaths, handleFileDirtyChange,
+    rightPanelFileReveal, readFileText, writeFileText, runningSessionIds, openFileFromTree,
+    openFileTabInWindow, listDir, startFileSearch, filesTreeRoots, activeSessionTabs,
+    activateBrowserTab, closeBrowserTab, activeNexusTabCount, t, navigateBrowserTab,
+    shellChannel, openBrowserTab, activePlanEntry, resolveActivePlan, activeSessionSubAgentRows,
+    backgroundTaskFocusSessionId, backgroundTaskListRequest, handleTaskFocusConsumed,
+    handleStopBackgroundTask, handleResumeSubAgent, handleLoadSubAgentTranscript,
+    rightPanelDiffTarget, rightPanelSkillTarget, activeLoadedSkills, handleSelectSkill,
+    loadToolCallDetail, loadBundledSkillBody, activeState, loadTurnDiffDetail,
+    requestTurnDiffHistory, loadAgentTurnDiffDetail, openFile,
   }
+  const renderSidePane = (kind: SidePaneKind): ReactNode => renderShellSidePane(sidePaneInputs, kind)
 
   return (
     // Both providers are no-ops on the desktop (F-24): a `full`

@@ -274,26 +274,28 @@ describe('the sidebar delete, wired as the shell wires it', () => {
 // The source half: the shell must mount the pieces as rendered above.
 const shellSource = readFileSync(join(__dirname, '..', 'browser', 'webview', 'MultiSessionShell.tsx'), 'utf8')
 const shellFile = ts.createSourceFile('MultiSessionShell.tsx', shellSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+const threadSource = readFileSync(join(__dirname, '..', 'browser', 'webview', 'shellSessionThread.tsx'), 'utf8')
+const threadFile = ts.createSourceFile('shellSessionThread.tsx', threadSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 
-/** Each JSX element named `tag`, with its attributes' source text by name. */
-function jsxElements(tag: string): Map<string, string>[] {
+/** Each JSX element named `tag` in `file`, with its attributes' source text by name. */
+function jsxElements(tag: string, file: ts.SourceFile = shellFile): Map<string, string>[] {
   const found: Map<string, string>[] = []
   const visit = (node: ts.Node) => {
     if (
       (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) &&
-      node.tagName.getText(shellFile) === tag
+      node.tagName.getText(file) === tag
     ) {
       const attrs = new Map<string, string>()
       for (const attr of node.attributes.properties) {
         if (ts.isJsxAttribute(attr) && attr.initializer && ts.isJsxExpression(attr.initializer)) {
-          attrs.set(attr.name.getText(shellFile), attr.initializer.expression?.getText(shellFile) ?? '')
+          attrs.set(attr.name.getText(file), attr.initializer.expression?.getText(file) ?? '')
         }
       }
       found.push(attrs)
     }
     ts.forEachChild(node, visit)
   }
-  visit(shellFile)
+  visit(file)
   return found
 }
 
@@ -333,7 +335,7 @@ describe('MultiSessionShell wiring', () => {
   })
 
   it("keeps the folder picker's cancel deleting at once, without the dialog", () => {
-    const threads = jsxElements('AssistantUiThread')
+    const threads = jsxElements('AssistantUiThread', threadFile)
     expect(threads.length).toBeGreaterThan(0)
     for (const attrs of threads) {
       if (attrs.has('onDeleteThread')) expect(attrs.get('onDeleteThread')).toBe('handleDeleteThread')
