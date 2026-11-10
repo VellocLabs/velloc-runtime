@@ -298,6 +298,29 @@ it('offers no filter for a property every finding shares, and shows a finding it
   fireEvent.change(handling, { target: { value: 'verified' } })
   expect(screen.getAllByTestId('review-finding-toggle').map(item => item.textContent)).toEqual(['Finding d1'])
 })
+it('drops a filter choice once the findings no longer offer it, so it does not return on its own', () => {
+  const value = report()
+  value.diagnostics = ['d1', 'd2'].map(id => ({ id, runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy' as const }, claim: { title: `Finding ${id}`, explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'correctness' as const, impact: 'minor' as const }, evidenceKeys: [], origin: { angle: 'lines' } }))
+  const applied = { ...value, actions: [{ id: 'a1', kind: 'repair' as const, state: 'applied' as const, diagnosticIds: ['d1'] }] }
+  const props = (next: ReviewReportView) => ({ report: next, can: () => true, onAction: vi.fn(async () => {}) })
+  const { rerender } = render(createElement(ReviewReportCard, props(applied)))
+  fireEvent.change(screen.getByLabelText(t('reviewCard.state')), { target: { value: 'applied' } })
+  expect(screen.getAllByTestId('review-finding')).toHaveLength(1)
+  rerender(createElement(ReviewReportCard, props(value)))
+  expect(screen.queryByLabelText(t('reviewCard.state'))).toBeNull()
+  rerender(createElement(ReviewReportCard, props(applied)))
+  expect((screen.getByLabelText(t('reviewCard.state')) as HTMLSelectElement).value).toBe('all')
+  expect(screen.getAllByTestId('review-finding')).toHaveLength(2)
+})
+it('says repair is unavailable during a follow-up stage as well as once finished', () => {
+  const value = report()
+  value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy' }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
+  value.run.scope = { ...value.run.scope, kind: 'range' }
+  value.run.progress.status = 'active'
+  value.run.progress.stage = 'repair'
+  render(createElement(ReviewReportCard, { report: value, can: action => action !== 'repair', onAction: vi.fn(async () => {}) }))
+  expect(screen.getAllByTestId('review-repair-unavailable')).toHaveLength(1)
+})
 it('opens a finding from its title', () => {
   const value = report()
   value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy', span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
@@ -332,6 +355,9 @@ it('keeps of a target label only what the revisions do not already say', () => {
   expect(reviewTargetExtra(`${sha}..${sha}`)).toBeUndefined()
   expect(reviewTargetExtra('2fdd67f')).toBeUndefined()
   expect(reviewTargetExtra('./src/a.ts')).toBe('./src/a.ts')
+  expect(reviewTargetExtra('../shared/a.ts')).toBe('../shared/a.ts')
+  expect(reviewTargetExtra('main..')).toBe('main..')
+  expect(reviewTargetExtra('src/../a.ts')).toBe('src/../a.ts')
   expect(reviewTargetExtra(undefined)).toBeUndefined()
 })
 it('lists unverified items apart from the findings, with no repair selection', () => {

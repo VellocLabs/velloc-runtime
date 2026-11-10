@@ -136,7 +136,8 @@ export function reviewTargetExtra(label: string | undefined): string | undefined
   if (!label) return undefined
   const separator = label.match(/\.\.\.?|→|->/)?.[0]
   const sides = (separator ? label.split(separator) : [label]).map(side => side.trim())
-  const kept = sides.filter(side => side && !/^[0-9a-f]{7,}$/i.test(side))
+  if (sides.some(side => !side)) return label.trim()
+  const kept = sides.filter(side => !/^[0-9a-f]{7,}$/i.test(side))
   if (kept.length === 0) return undefined
   return kept.length === sides.length ? label.trim() : kept.join(' ')
 }
@@ -416,7 +417,8 @@ export const ReviewReportCard: FC<{
   const hasFindings = report.diagnostics.length > 0
   const listed = report.diagnostics.slice(0, 32)
   const kindOf = (diagnostic: Diagnostic) => CORRECTNESS_KINDS.includes(diagnostic.classification.kind) ? 'correctness' : 'cleanup'
-  // A filter is offered only for a property the listed findings differ in; a choice they no longer offer counts as none.
+  const stateOf = new Map(listed.map(diagnostic => [diagnostic.id, reviewFindingState(report, diagnostic.id)]))
+  // A filter is offered only for a property the listed findings differ in; a choice they no longer offer is cleared.
   const facet = (choice: string, values: string[], read: (diagnostic: Diagnostic) => string) => {
     const options = values.filter(value => listed.some(diagnostic => read(diagnostic) === value))
     const value = options.length > 1 && options.includes(choice) ? choice : 'all'
@@ -425,8 +427,11 @@ export const ReviewReportCard: FC<{
   const facets = {
     severity: facet(severity, ['critical', 'major', 'minor'], diagnostic => diagnostic.classification.impact),
     kind: facet(kind, ['correctness', 'cleanup'], kindOf),
-    state: facet(state, ['open', 'applied', 'verified', 'skipped'], diagnostic => reviewFindingState(report, diagnostic.id)),
+    state: facet(state, ['open', 'applied', 'verified', 'skipped'], diagnostic => stateOf.get(diagnostic.id) ?? 'open'),
   }
+  if (severity !== facets.severity.value) setSeverity(facets.severity.value)
+  if (kind !== facets.kind.value) setKind(facets.kind.value)
+  if (state !== facets.state.value) setState(facets.state.value)
   const shown = listed.filter(diagnostic => facets.severity.keeps(diagnostic) && facets.kind.keeps(diagnostic) && facets.state.keeps(diagnostic))
   const selectedIds = selected.filter(id => report.diagnostics.some(item => item.id === id))
   // Selection only feeds repair: without it there is nothing to select.
@@ -493,7 +498,7 @@ export const ReviewReportCard: FC<{
           {(!cancelled || hasFindings) && <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
               {!hasFindings && clean && !report.emptyScope && <CircleCheckIcon aria-hidden className="size-4 shrink-0 text-success" />}
-              <p className="text-base font-semibold leading-tight" data-testid="review-count">{report.diagnostics.length === 1 ? t('reviewCard.findingsOne') : t('reviewCard.findingsMany', { count: report.diagnostics.length })}</p>
+              <p className="text-base font-semibold leading-tight" data-testid="review-count">{summary}</p>
               {impactCounts.map(([impact, count]) => <Badge key={impact} variant={IMPACT_VARIANT[impact]} size="sm">{enumText(impact)} · {count}</Badge>)}
               {run.progress.omittedByLimit > 0 && <span className="text-xs text-muted-foreground">{t('reviewCard.omitted', { omitted: run.progress.omittedByLimit })}</span>}
             </div>
@@ -519,7 +524,7 @@ export const ReviewReportCard: FC<{
             const canLocate = workingCopy && !!report.permissions?.locate && can('locate') && !!openFile
             const checked = selectedIds.includes(diagnostic.id)
             const expanded = expandedFindings.includes(diagnostic.id)
-            const findingState = reviewFindingState(report, diagnostic.id)
+            const findingState = stateOf.get(diagnostic.id) ?? 'open'
             return <li key={diagnostic.id} data-testid="review-finding" data-impact={diagnostic.classification.impact} className={cn('px-3 py-2.5', checked && 'bg-primary/5')}>
               <div className="flex items-start gap-2.5">
                 {repairable && <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-primary" checked={checked} disabled={busy} onChange={event => setSelected(ids => event.target.checked ? [...ids, diagnostic.id] : ids.filter(id => id !== diagnostic.id))} aria-label={t('reviewCard.select', { title: diagnostic.claim.title })} />}
@@ -545,6 +550,7 @@ export const ReviewReportCard: FC<{
               </div>
             </li>
           })}</ul>}
+          {running && repairNote && <p data-testid="review-repair-unavailable" className="text-xs text-muted-foreground">{t('reviewCard.repairUnavailable')}</p>}
         </>}
         {!reviewing && (report.unverified?.length ?? 0) > 0 && <details data-testid="review-unverified" className="group/fold rounded-lg border border-dashed px-3 py-2 text-xs">
           <FoldSummary>{t('reviewCard.unverified')} · {report.unverified!.length}</FoldSummary>
