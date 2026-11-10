@@ -62,6 +62,8 @@ export type ContributedApp = {
   title: ContributionText
   /** A count the app's background module set on its icon (`$.app.badge`); absent when none is set. */
   badge?: number
+  /** The http MCP server URLs its plugin declares, for a sign-in at the press (F-10); absent when none. */
+  signInUrls?: string[]
   icon?: ContributionIcon
 }
 

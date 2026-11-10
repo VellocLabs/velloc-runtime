@@ -19,6 +19,8 @@ import {
 import { APP_RUN_SESSION_PREFIX } from '../mods/app/appAgentRun'
 import { defaultSessionPaneRecord, hasPane } from '../browser/webview/layout/paneLayout'
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
+import { createAppSignIn, dueSignIns } from '../browser/webview/mcpAuthView'
+import type { McpAuthServerState } from '../mcp/oauth/mcpAuthProtocol'
 import { PluginTopbarItems, appBadgeText, appItemId, usePluginTopbarItems } from '../browser/webview/topbar/PluginTopbarItems'
 import { TooltipProvider } from '../components/ui/tooltip'
 import { I18nProvider } from '../browser/webview/i18n'
@@ -179,8 +181,16 @@ const STATE: ModContributionsState = {
 }
 
 describe('an app\'s topbar icon', () => {
-  function Bar(props: { session: string | undefined; onPress?: () => Promise<never>; onOpenApp?: (type: string) => void }) {
-    return h(PluginTopbarItems, { state: usePluginTopbarItems(props.session, props.onPress, props.onOpenApp), folded: new Set<string>() })
+  function Bar(props: {
+    session: string | undefined
+    onPress?: () => Promise<never>
+    onOpenApp?: (type: string) => void
+    onAppSignIn?: (urls: readonly string[]) => void
+  }) {
+    return h(PluginTopbarItems, {
+      state: usePluginTopbarItems(props.session, props.onPress, props.onOpenApp, undefined, props.onAppSignIn),
+      folded: new Set<string>(),
+    })
   }
   const renderBar = (props: Parameters<typeof Bar>[0], canPress = true) =>
     render(
@@ -204,6 +214,24 @@ describe('an app\'s topbar icon', () => {
     expect(onOpenApp).toHaveBeenCalledWith('pay:board')
     expect(onPress).not.toHaveBeenCalled()
     expect(appItemId('pay:board')).toBe('app:pay:board')
+  })
+
+  it("hands its MCP servers' sign-in URLs on with the press after opening it; none when it declares none", () => {
+    const urls = ['https://mcp.example.com/mcp']
+    act(() => setModContributions({ ...STATE, apps: [{ ...STATE.apps![0]!, signInUrls: urls }] }))
+    const order: string[] = []
+    const onOpenApp = vi.fn(() => order.push('open'))
+    const onAppSignIn = vi.fn(() => order.push('sign-in'))
+    renderBar({ session: undefined, onOpenApp, onAppSignIn })
+    fireEvent.click(screen.getByTestId('topbar-app-pay-board'))
+    expect(onAppSignIn).toHaveBeenCalledWith(urls)
+    expect(order).toEqual(['open', 'sign-in'])
+    cleanup()
+    act(() => setModContributions(STATE))
+    onAppSignIn.mockClear()
+    renderBar({ session: undefined, onOpenApp, onAppSignIn })
+    fireEvent.click(screen.getByTestId('topbar-app-pay-board'))
+    expect(onAppSignIn).not.toHaveBeenCalled()
   })
 
   it('shows for a connection that may not press commands; not without an opener', () => {
@@ -252,5 +280,37 @@ describe('an app\'s topbar icon', () => {
     }
     render(h(RuntimeCapabilitiesContext.Provider, { value: { can: () => true } }, h(Probe)))
     expect(state!.items.map(item => item.foldedTestId)).toEqual(['topbar-folded-plugin-pay--sync', 'topbar-folded-app-pay-board'])
+  })
+})
+
+describe('the sign-ins an app press starts', () => {
+  it('only servers the runtime reads as needing one, never one that waits on a client id or is not known', () => {
+    const states: Record<string, McpAuthServerState> = {
+      'https://a.example/mcp': { url: 'https://a.example/mcp', phase: 'needs-sign-in' },
+      'https://b.example/mcp': { url: 'https://b.example/mcp', phase: 'signed-in' },
+      'https://c.example/mcp': { url: 'https://c.example/mcp', phase: 'signing-in' },
+      'https://d.example/mcp': { url: 'https://d.example/mcp', phase: 'needs-sign-in', needsCredentials: true },
+    }
+    const urls = [...Object.keys(states), 'https://e.example/mcp']
+    expect(dueSignIns(urls, url => states[url])).toEqual(['https://a.example/mcp'])
+    expect(dueSignIns(undefined, url => states[url])).toEqual([])
+  })
+
+  it('signs in each due server at the press, and a refusal does not throw', async () => {
+    const signIn = vi.fn(async () => { throw new Error('refused') })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const start = createAppSignIn({
+      current: {
+        serverState: (url: string | undefined) => (url?.includes('a.') ? { url, phase: 'needs-sign-in' } : { url: url ?? '', phase: 'signed-in' }),
+        signIn,
+      },
+    })
+    start(['https://a.example/mcp', 'https://b.example/mcp'])
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(signIn).toHaveBeenCalledTimes(1)
+    expect(signIn).toHaveBeenCalledWith({ url: 'https://a.example/mcp' })
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
   })
 })

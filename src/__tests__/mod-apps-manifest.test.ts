@@ -259,6 +259,20 @@ describe('the apps the contributions host publishes', () => {
     expect(contributions.state().apps?.[0]).toMatchObject({ appId: 'later-app', badge: 9 })
   })
 
+  it("an app's entry carries its plugin's http MCP server URLs for a sign-in, once each; none when no URL is plain http(s)", async () => {
+    const { contributions } = host()
+    const mcpServers = {
+      pay: { type: 'http', url: 'https://mcp.example.com/mcp' },
+      again: { type: 'http', url: 'https://mcp.example.com/mcp' },
+      events: { type: 'sse', url: 'https://mcp.example.com/sse' },
+      templated: { type: 'http', url: 'https://${user_config.host}/mcp' },
+      local: { type: 'stdio', command: 'node' },
+    } as unknown as ContributingPlugin['mcpServers']
+    await contributions.sync({ enabled: [appPlugin('pay', 'board', { mcpServers }), appPlugin('notes', 'list')] })
+    expect(contributions.state().apps?.[0]?.signInUrls).toEqual(['https://mcp.example.com/mcp'])
+    expect('signInUrls' in contributions.state().apps![1]!).toBe(false)
+  })
+
   it('the page takes a state with or without apps, and refuses apps that are not a list', () => {
     const base = { templates: [], topbar: [], icons: {}, waiting: [] }
     expect(isModContributionsState(base)).toBe(true)

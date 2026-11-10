@@ -71,6 +71,8 @@ export function usePluginTopbarItems(
   onOpenApp?: (type: string) => void,
   /** The template type of the app on screen. */
   shownAppType?: string,
+  /** Starts the sign-ins an app's MCP servers wait on, at its press. Omitted: none is started. */
+  onAppSignIn?: (urls: readonly string[]) => void,
 ): PluginTopbarState | null {
   const t = useT();
   const locale = useLocale();
@@ -89,6 +91,7 @@ export function usePluginTopbarItems(
       if (app) {
         setNotice(null);
         onOpenApp!(app.type);
+        if (app.signInUrls?.length) onAppSignIn?.(app.signInUrls);
         return;
       }
       if (!onPress || !activeSessionId) return;
@@ -97,7 +100,7 @@ export function usePluginTopbarItems(
         () => setNotice({ id, key: "topbar.pluginItemUnavailable" }),
       );
     },
-    [onPress, onOpenApp, activeSessionId, apps],
+    [onPress, onOpenApp, onAppSignIn, activeSessionId, apps],
   );
   const commands = onPress && canPress ? contributions.topbar : [];
   const appItems = onOpenApp ? apps : [];

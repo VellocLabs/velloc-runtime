@@ -62,6 +62,34 @@ export function newlySignedIn(previous: McpAuthState | null, next: McpAuthState 
     .map(server => server.url)
 }
 
+/**
+ * Of `urls`, the ones to start a sign-in for: the runtime reads them as
+ * needing one, and a sign-in needs no client id from the person.
+ */
+export function dueSignIns(
+  urls: readonly string[] | undefined,
+  serverState: (url: string) => McpAuthServerState | undefined,
+): string[] {
+  return (urls ?? []).filter(url => {
+    const server = serverState(url)
+    return server?.phase === 'needs-sign-in' && server.needsCredentials !== true
+  })
+}
+
+/** An app press's sign-in starter: the due servers of `urls` get `signIn`; a refusal is logged. */
+export function createAppSignIn(
+  auth: { readonly current: Pick<McpAuthControls, 'serverState' | 'signIn'> },
+): (urls: readonly string[]) => void {
+  return urls => {
+    const controls = auth.current
+    for (const url of dueSignIns(urls, controls.serverState)) {
+      void controls.signIn({ url }).catch(err => {
+        console.warn('[mcp] app sign-in failed:', err instanceof Error ? err.message : err)
+      })
+    }
+  }
+}
+
 /** What a page can see and ask about MCP server sign-ins. */
 export type McpAuthControls = {
   /** Latest published state; null until the topic answers. */

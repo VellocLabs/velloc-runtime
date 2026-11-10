@@ -172,6 +172,8 @@ export type NexusTopBarProps = {
   onPressPluginItem?: (sessionId: string, id: string) => Promise<ModsPressTopbarResult>;
   /** Open a plugin's app (F-40) by its template type; omitted → no app icons. */
   onOpenApp?: (type: string) => void;
+  /** Starts the sign-ins an app's MCP servers wait on, at its icon's press (F-10). */
+  onAppSignIn?: (urls: readonly string[]) => void;
   /** The template type of the app on screen: its icon reads as pressed. */
   shownAppType?: string;
   /** Not drawn and reports no drag map, but stays mounted so its controls
@@ -241,6 +243,7 @@ export function NexusTopBar({
   onRemoteLogOut,
   onPressPluginItem,
   onOpenApp,
+  onAppSignIn,
   shownAppType,
   hidden = false,
 }: NexusTopBarProps) {
@@ -259,7 +262,7 @@ export function NexusTopBar({
   const leftGroupRef = React.useRef<HTMLDivElement>(null);
   const rightGroupRef = React.useRef<HTMLDivElement>(null);
   const open = new Set(openPanes ?? []);
-  const plugins = usePluginTopbarItems(activeSessionId, onPressPluginItem, onOpenApp, shownAppType);
+  const plugins = usePluginTopbarItems(activeSessionId, onPressPluginItem, onOpenApp, shownAppType, onAppSignIn);
   const offered = (kind: SidePaneKind) => !paneKinds || paneKinds.includes(kind);
   const barPaneKinds = onTogglePane
     ? BAR_PANE_KINDS.filter(

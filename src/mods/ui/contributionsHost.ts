@@ -419,7 +419,15 @@ export class ModUiContributionsHost {
         const icon = iconOf(plugin.name, template.decl.icon)
         if (template.decl.app) {
           const appId = appIdOf(plugin.name, template.key)
-          apps.push({ type: template.type, appId, plugin: plugin.name, title: template.decl.title, ...(icon ? { icon } : {}) })
+          const signInUrls = appSignInUrls(plugin)
+          apps.push({
+            type: template.type,
+            appId,
+            plugin: plugin.name,
+            title: template.decl.title,
+            ...(signInUrls.length > 0 ? { signInUrls } : {}),
+            ...(icon ? { icon } : {}),
+          })
         }
         const welcome = this.assets.get(plugin.name)?.welcome.get(template.key)
         templates.push({
@@ -464,4 +472,15 @@ const host = new ModUiContributionsHost()
 
 export function getModUiContributionsHost(): ModUiContributionsHost {
   return host
+}
+
+/** The plugin's http MCP server URLs, those with no `${...}` left to resolve, deduplicated. */
+export function appSignInUrls(plugin: Pick<ContributingPlugin, 'mcpServers'>): string[] {
+  const urls = new Set<string>()
+  for (const config of Object.values(plugin.mcpServers ?? {})) {
+    if (config.type !== 'http' || typeof config.url !== 'string') continue
+    if (!/^https?:\/\//i.test(config.url) || config.url.includes('${')) continue
+    urls.add(config.url)
+  }
+  return [...urls]
 }
