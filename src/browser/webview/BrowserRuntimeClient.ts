@@ -155,6 +155,8 @@ export class BrowserRuntimeClient {
   /** Set once the first detail request has loaded it (`loadDetailRequests`). */
   private detailRequests: RuntimeClientDetailRequests | null = null
   private detailRequestsLoad: Promise<RuntimeClientDetailRequests> | null = null
+  /** Bumped by `dispose`, so a detail request that spans one resolves null. */
+  private disposeCount = 0
 
   constructor(options: BrowserRuntimeClientOptions) {
     this.createWorkerTransport = options.createWorkerTransport
@@ -456,8 +458,13 @@ export class BrowserRuntimeClient {
     })
   }
 
-  /** The detail-request helper, imported on the first detail request. */
-  private loadDetailRequests(): Promise<RuntimeClientDetailRequests> {
+  /**
+   * The detail-request helper, imported on the first detail request. Resolves
+   * null when the client was disposed while the import was pending; a failed
+   * import is retried by the next request.
+   */
+  private async loadDetailRequests(): Promise<RuntimeClientDetailRequests | null> {
+    const disposeCount = this.disposeCount
     this.detailRequestsLoad ??= import('./RuntimeClientDetailRequests').then(
       ({ RuntimeClientDetailRequests }) => {
         const client = this
@@ -468,15 +475,20 @@ export class BrowserRuntimeClient {
         })
         return this.detailRequests
       },
+      (error: unknown) => {
+        this.detailRequestsLoad = null
+        throw error
+      },
     )
-    return this.detailRequestsLoad
+    const detailRequests = await this.detailRequestsLoad
+    return disposeCount === this.disposeCount ? detailRequests : null
   }
 
   // On-demand details: RuntimeClientDetailRequests, loaded on first use.
   async loadToolCallDetail(
     toolCallId: string,
   ): Promise<BrowserToolCallDetailRecord | null> {
-    return (await this.loadDetailRequests()).loadToolCallDetail(toolCallId)
+    return (await this.loadDetailRequests())?.loadToolCallDetail(toolCallId) ?? null
   }
 
   /**
@@ -492,13 +504,13 @@ export class BrowserRuntimeClient {
   async loadTurnDiffDetail(
     turnIndex: number,
   ): Promise<TurnFileChange[] | null> {
-    return (await this.loadDetailRequests()).loadTurnDiffDetail(turnIndex)
+    return (await this.loadDetailRequests())?.loadTurnDiffDetail(turnIndex) ?? null
   }
 
   async loadBundledSkillBody(
     name: string,
   ): Promise<BundledSkillBodyResult | null> {
-    return (await this.loadDetailRequests()).loadBundledSkillBody(name)
+    return (await this.loadDetailRequests())?.loadBundledSkillBody(name) ?? null
   }
 
   private async submitInput(
@@ -992,6 +1004,7 @@ export class BrowserRuntimeClient {
   }
 
   async dispose(): Promise<void> {
+    this.disposeCount += 1
     this.cancelReadOnlyLoad?.()
     this.cancelReadOnlyLoad = null
     this.unsubscribeTransport?.()

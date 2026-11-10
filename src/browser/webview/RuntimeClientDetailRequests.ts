@@ -199,17 +199,17 @@ export class RuntimeClientDetailRequests {
 
   /** Resolve every pending tool-detail and skill-body request with `null`. */
   releaseWaiters(): void {
-  for (const [toolCallId, waiters] of this.toolCallDetailWaiters) {
-    this.toolCallDetailWaiters.delete(toolCallId)
-    for (const waiter of waiters) {
-      waiter(null)
+    for (const [toolCallId, waiters] of this.toolCallDetailWaiters) {
+      this.toolCallDetailWaiters.delete(toolCallId)
+      for (const waiter of waiters) {
+        waiter(null)
+      }
     }
-  }
-  for (const [name, waiters] of this.skillBodyWaiters) {
-    this.skillBodyWaiters.delete(name)
-    for (const waiter of waiters) {
-      waiter(null)
+    for (const [name, waiters] of this.skillBodyWaiters) {
+      this.skillBodyWaiters.delete(name)
+      for (const waiter of waiters) {
+        waiter(null)
+      }
     }
-  }
   }
 }
