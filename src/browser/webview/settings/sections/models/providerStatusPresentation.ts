@@ -2,7 +2,15 @@ import type { TranslateFn } from "../../../i18n/translate";
 import { mapErrorCode } from "../../verifyErrorText";
 import type { ProviderStatus } from "./modelsPageTypes";
 
-/** Status-card presentation — strings match the original grd defaults exactly. */
+/** How one provider status shows on the status card. */
+export type ProviderStatusPresentation = {
+  chip: string;
+  chipVariant: "info" | "success" | "warning" | "muted" | "destructive";
+  title: string;
+  detail: string;
+};
+
+/** Status-card presentation for every provider status. */
 export function providerStatusPresentation({
   t,
   modelCount,
@@ -13,15 +21,7 @@ export function providerStatusPresentation({
   modelCount: number;
   selectedId: string;
   verifyError: string | null;
-}): Record<
-  ProviderStatus,
-  {
-    chip: string;
-    chipVariant: "info" | "success" | "warning" | "muted" | "destructive";
-    title: string;
-    detail: string;
-  }
-> {
+}): Record<ProviderStatus, ProviderStatusPresentation> {
   return {
     verifying: {
       chip: t("settings.models.chipConnecting"),

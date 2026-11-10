@@ -1,5 +1,24 @@
 import type { ProviderConnectionKind } from "../../providerFormHelpers";
 
+/** A pointer drag of a provider row, live from press to release. */
+export type ProviderDragState = {
+  id: string;
+  /** The order at the press: a release on it writes nothing. */
+  start: string[];
+  preview: string[];
+  /** The row the last move swapped with, until the pointer is over the dragged row again. */
+  passed: string | null;
+  /** Removes the drag's window listeners. */
+  detach: () => void;
+};
+
+/** A built-in provider's sign-in flow: busy while it runs, plus the device code to show. */
+export type OAuthState = {
+  busy: boolean;
+  userCode?: string;
+  verificationUri?: string;
+};
+
 /** Which of the page's two views is showing — see the component doc. */
 export type PageView = "home" | "edit";
 

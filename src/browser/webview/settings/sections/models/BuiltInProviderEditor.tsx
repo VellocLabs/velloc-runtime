@@ -24,7 +24,8 @@ import type { Dispatch, SetStateAction } from "react";
 import type { TranslateFn } from "../../../i18n/translate";
 import type { SettingsBridge } from "../../../../runtimeClient/settingsBridgeOverConnection";
 import type { ProviderSecretField } from "../../../../../config/nexusModelConfig/providerDefinition";
-import type { ProviderStatus } from "./modelsPageTypes";
+import type { OAuthState, ProviderStatus } from "./modelsPageTypes";
+import type { ProviderStatusPresentation } from "./providerStatusPresentation";
 import { ApiKeyLabel, type ApiKeyRowState } from "./ApiKeyLabel";
 
 export type BuiltInProviderEditorContext = {
@@ -34,7 +35,7 @@ export type BuiltInProviderEditorContext = {
   oauthConnected: boolean;
   t: TranslateFn;
   info: ProviderAuthProviderInfo;
-  oauth: { busy: boolean; userCode?: string | undefined; verificationUri?: string | undefined; };
+  oauth: OAuthState;
   signIn: () => Promise<void>;
   supportsBaseUrl: boolean;
   form: NexusProviderConfig;
@@ -53,7 +54,7 @@ export type BuiltInProviderEditorContext = {
   bridge: SettingsBridge;
   status: ProviderStatus;
   reload: () => Promise<void>;
-  present: { chip: string; chipVariant: "muted" | "info" | "success" | "warning" | "destructive"; title: string; detail: string; };
+  present: ProviderStatusPresentation;
   setResetOpen: Dispatch<SetStateAction<boolean>>;
 };
 

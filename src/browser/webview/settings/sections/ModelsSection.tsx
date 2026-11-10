@@ -102,6 +102,8 @@ import type {
   DeleteTarget,
   ProviderStatus,
   TestState,
+  ProviderDragState,
+  OAuthState,
 } from "./models/modelsPageTypes";
 import {
   renderProviderModelCount,
@@ -218,16 +220,7 @@ export function ModelsSection({
    * (events dispatched back to back — the e2e does exactly that), and a
    * handler reading state would still see "not dragging" and drop the move.
    */
-  const dragRef = React.useRef<{
-    id: string;
-    /** The order at the press: a release on it writes nothing. */
-    start: string[];
-    preview: string[];
-    /** The row the last move swapped with, until the pointer is over the dragged row again. */
-    passed: string | null;
-    /** Removes the drag's window listeners. */
-    detach: () => void;
-  } | null>(null);
+  const dragRef = React.useRef<ProviderDragState | null>(null);
   React.useEffect(() => () => dragRef.current?.detach(), []);
   /**
    * An arrow-key reorder not yet written (see `KEYBOARD_REORDER_COMMIT_MS`):
@@ -274,11 +267,7 @@ export function ModelsSection({
   >({});
   const [registryLoaded, setRegistryLoaded] = React.useState(false);
   // OAuth device-code scratch state for the in-progress sign-in.
-  const [oauth, setOAuth] = React.useState<{
-    busy: boolean;
-    userCode?: string;
-    verificationUri?: string;
-  }>({ busy: false });
+  const [oauth, setOAuth] = React.useState<OAuthState>({ busy: false });
 
   // ── Custom-provider editor state ──────────────────────────────────────────
   const [creating, setCreating] = React.useState(false);

@@ -26,7 +26,7 @@ import {
 import type { ProviderConnectionKind } from "../../providerFormHelpers";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { TranslateFn } from "../../../i18n/translate";
-import type { AddedProviderRow, DeleteTarget } from "./modelsPageTypes";
+import type { AddedProviderRow, DeleteTarget, ProviderDragState } from "./modelsPageTypes";
 
 /** The catalog key for each row's connection-kind line. */
 export const CONNECTION_KIND_KEY = {
@@ -86,7 +86,7 @@ export function renderProviderModelCount(
 export type ProviderListRowContext = {
   draggingId: string | null;
   t: TranslateFn;
-  dragRef: RefObject<{ id: string; start: string[]; preview: string[]; passed: string | null; detach: () => void; } | null>;
+  dragRef: RefObject<ProviderDragState | null>;
   providerRowAt: (x: number, y: number) => string | null;
   moveId: (ids: string[], moving: string, target: string) => string[];
   setDragPreview: Dispatch<SetStateAction<string[] | null>>;

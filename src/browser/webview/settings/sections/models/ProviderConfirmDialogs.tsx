@@ -14,7 +14,7 @@ import type { CustomProviderRecord } from "../../../../../config/customProviderR
 import type { TranslateFn } from "../../../i18n/translate";
 import type { DeleteTarget } from "./modelsPageTypes";
 
-/** Reset confirmation dialog — mirrors the original modal. */
+/** Reset confirmation dialog. */
 export function renderResetConnectionDialog({
   t,
   resetOpen,

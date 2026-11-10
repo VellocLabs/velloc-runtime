@@ -28,7 +28,7 @@ export const ADD_CUSTOM_PROVIDER_VALUE = "__add_custom_provider__";
 /**
  * Dropdown value for "+ Add OpenCode Zen…" — the same create flow as
  * `ADD_CUSTOM_PROVIDER_VALUE`, started from the Zen preset instead of an
- * empty draft (`../opencodeZenPreset.ts`).
+ * empty draft (`../../opencodeZenPreset.ts`).
  */
 export const ADD_OPENCODE_ZEN_VALUE = "__add_opencode_zen__";
 
