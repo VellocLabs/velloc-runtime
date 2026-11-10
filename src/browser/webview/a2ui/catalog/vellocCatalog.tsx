@@ -2,7 +2,7 @@
 // Tabs, plus the chart, data and dashboard components. Chart renderers are
 // lazy, so recharts loads on the first chart.
 
-import { createContext, lazy, Suspense, useContext, useState, type ReactElement, type ReactNode } from 'react'
+import { createContext, lazy, Suspense, useContext, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
 import { createComponentImplementation, type ReactCatalogComponent } from '@a2ui/react'
 import { Catalog, type ComponentApi } from '@a2ui/web_core/v1_0'
 import { basicCatalog } from '@a2ui/web_core/catalogs/basic/v1'
@@ -75,11 +75,12 @@ const HEADING_CLASS = ['text-2xl font-semibold', 'text-lg font-semibold', 'text-
  * The small ask button a Metric or Heading draws for its action: hidden until
  * the pointer is over its owner (`reveal`) or it has keyboard focus.
  */
-function AskButton({ slot, label, action, reveal }: { slot: string; label: string; action: unknown; reveal: string }): ReactElement {
+function AskButton({ slot, label, action, reveal, placement }: { slot: string; label: string; action: unknown; reveal: string; placement?: string }): ReactElement {
   return (
     <button
       type="button"
       data-slot={slot}
+      data-placement={placement}
       aria-label={label}
       onClick={() => (action as () => void)()}
       className={`inline-flex h-5 min-w-0 shrink items-center gap-1 whitespace-nowrap rounded-full border bg-background px-2 text-xs font-medium text-muted-foreground opacity-0 shadow-xs transition-opacity outline-none hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring ${reveal}`}
@@ -141,12 +142,45 @@ const SENSE_TONE = {
   flat: 'text-muted-foreground',
 } as const
 
+type CornerPeer = (alone: boolean) => void
+
+/** The actionable Metrics under each card element, keyed by their nearest `.a2ui-card`. */
+const cardAskPeers = new WeakMap<Element, Set<CornerPeer>>()
+
+/**
+ * Whether the Metric at `ref` is the only actionable figure of its nearest
+ * Card, the one case where its ask button takes the card's corner (F-1). The
+ * basic Card is a custom element, so a React context set above it does not
+ * reach the Metrics inside it; the count is kept per card element instead.
+ */
+function useSoleCardAsk(ref: RefObject<HTMLElement | null>, actionable: boolean): boolean {
+  const [alone, setAlone] = useState(false)
+  useLayoutEffect(() => {
+    const card = actionable ? ref.current?.closest('.a2ui-card') : null
+    if (!card) return
+    const peers = cardAskPeers.get(card) ?? new Set<CornerPeer>()
+    cardAskPeers.set(card, peers)
+    const publish = () => peers.forEach(peer => peer(peers.size === 1))
+    peers.add(setAlone)
+    publish()
+    return () => {
+      peers.delete(setAlone)
+      setAlone(false)
+      if (peers.size) publish()
+      else cardAskPeers.delete(card)
+    }
+  }, [ref, actionable])
+  return alone
+}
+
 function MetricView({ label, value, delta, trend: bound, caption, better, action, actionLabel }: MetricProps): ReactElement {
   const trend = metricTrend(bound)
   const sense = metricSense(trend, better)
   const askLabel = askLabelOf(action, actionLabel)
+  const self = useRef<HTMLDivElement>(null)
+  const corner = useSoleCardAsk(self, !!askLabel)
   return (
-    <div data-slot="a2ui-metric" className="group/metric flex min-w-0 flex-col gap-1">
+    <div ref={self} data-slot="a2ui-metric" className="group/metric flex min-w-0 flex-col gap-1">
       <span className="truncate text-xs font-medium uppercase tracking-wider text-muted-foreground">{text(label)}</span>
       <span className="text-2xl font-semibold tabular-nums">{text(value)}</span>
       {(text(delta) || text(caption) || askLabel) && (
@@ -158,7 +192,9 @@ function MetricView({ label, value, delta, trend: bound, caption, better, action
               {text(delta)}
             </span>
           )}
-          {askLabel && <AskButton slot="a2ui-metric-action" label={askLabel} action={action} reveal="group-hover/metric:opacity-100" />}
+          {askLabel && (
+            <AskButton slot="a2ui-metric-action" label={askLabel} action={action} reveal="group-hover/metric:opacity-100" placement={corner ? 'corner' : 'inline'} />
+          )}
           {text(caption) && <span className="min-w-0 text-muted-foreground">{text(caption)}</span>}
         </span>
       )}

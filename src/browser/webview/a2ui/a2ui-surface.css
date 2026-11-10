@@ -44,14 +44,15 @@
 }
 
 /*
- * Inside a Card, a Metric's ask button sits in the card's top-right corner and
- * shows while the pointer or keyboard focus is in that card, not merely in an outer one
- * (F-1). Outside a card it stays after the delta.
+ * The ask button of a Metric that is its Card's only actionable figure sits in
+ * the card's top-right corner and shows while the pointer or keyboard focus is
+ * in that card, not merely in an outer one (F-1). Every other ask button stays
+ * after its delta.
  */
-[data-slot='a2ui-surface'] .a2ui-card:has([data-slot='a2ui-metric-action']) {
+[data-slot='a2ui-surface'] .a2ui-card:has([data-slot='a2ui-metric-action'][data-placement='corner']) {
   position: relative;
 }
-[data-slot='a2ui-surface'] .a2ui-card [data-slot='a2ui-metric-action'] {
+[data-slot='a2ui-surface'] .a2ui-card [data-slot='a2ui-metric-action'][data-placement='corner'] {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
@@ -60,6 +61,6 @@
 }
 [data-slot='a2ui-surface']
   .a2ui-card:is(:hover, :has(:focus-visible))
-  [data-slot='a2ui-metric-action']:not(.a2ui-card:not(:hover, :has(:focus-visible)) [data-slot='a2ui-metric-action']) {
+  [data-slot='a2ui-metric-action'][data-placement='corner']:not(.a2ui-card:not(:hover, :has(:focus-visible)) [data-slot='a2ui-metric-action']) {
   opacity: 1;
 }

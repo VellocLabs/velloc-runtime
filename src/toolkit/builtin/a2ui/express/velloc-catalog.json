@@ -1224,7 +1224,7 @@
         },
         "action": {
           "$ref": "common_types.json#/$defs/Action",
-          "description": "Optional, unlike a Button's action: leave it out when there is nothing to ask. With actionLabel, a small ask button sends this action when clicked, as a Button press does, e.g. Event(\"explain_metric\", {metric: \"Refund rate\"}). In a Card it sits in the card's top-right corner; elsewhere after the delta."
+          "description": "Optional, unlike a Button's action: leave it out when there is nothing to ask. With actionLabel, a small ask button sends this action when clicked, as a Button press does, e.g. Event(\"explain_metric\", {metric: \"Refund rate\"}). When it is the only Metric with an action in its Card it sits in the card's top-right corner; otherwise after the delta."
         },
         "actionLabel": {
           "anyOf": [
@@ -1239,7 +1239,7 @@
               "description": "Invokes a named function, combining common function properties with the catalog function definition."
             }
           ],
-          "description": "The ask button's label, e.g. \"Ask why\", literal or a data binding; it shows while the pointer is over the figure, or its Card. Without it there is no button."
+          "description": "The ask button's label, e.g. \"Ask why\", literal or a data binding; it shows while the pointer is over the figure, or over its Card when it takes the corner. Without it there is no button."
         },
         "weight": {
           "type": "number",

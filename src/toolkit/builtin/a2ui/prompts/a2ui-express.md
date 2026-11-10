@@ -191,8 +191,8 @@ Use these exact positional signatures to instantiate components. Do not output p
   - trend: Direction of the change, "up", "down" or "flat" ("neutral" reads as "flat"), literal or a data binding; colours the delta.
   - caption: A short note under the figure.
   - better: Which direction is good, "up" (default) or "down", literal or a data binding. With "down" a rise is coloured as bad and a fall as good, e.g. for a refund rate; the arrow still follows trend.
-  - action: Optional, unlike a Button's action: leave it out when there is nothing to ask. With actionLabel, a small ask button sends this action when clicked, as a Button press does, e.g. Event("explain_metric", {metric: "Refund rate"}). In a Card it sits in the card's top-right corner; elsewhere after the delta.
-  - actionLabel: The ask button's label, e.g. "Ask why", literal or a data binding; it shows while the pointer is over the figure, or its Card. Without it there is no button.
+  - action: Optional, unlike a Button's action: leave it out when there is nothing to ask. With actionLabel, a small ask button sends this action when clicked, as a Button press does, e.g. Event("explain_metric", {metric: "Refund rate"}). When it is the only Metric with an action in its Card it sits in the card's top-right corner; otherwise after the delta.
+  - actionLabel: The ask button's label, e.g. "Ask why", literal or a data binding; it shows while the pointer is over the figure, or over its Card when it takes the corner. Without it there is no button.
   - weight: Flex share inside a Row or Column; only on a direct child of one.
 • Modal(trigger (static), content (static), weight? (static))
   - trigger: The ID of the component that opens the modal when interacted with (e.g., a button).

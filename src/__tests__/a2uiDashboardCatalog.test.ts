@@ -205,6 +205,7 @@ describe('the dashboard components of the Velloc catalog', () => {
       ].join('\n'),
     )
     const ask = view.querySelector<HTMLButtonElement>('[data-slot="a2ui-metric-action"]')!
+    expect(ask.dataset.placement, 'the card\'s only actionable figure takes the corner').toBe('corner')
     const cards = [...view.querySelectorAll('.a2ui-card')]
     expect(cards).toHaveLength(3)
     expect(ask.closest('.a2ui-card'), 'the nearest card is the figure\'s own').toBe(cards[1])
@@ -213,14 +214,40 @@ describe('the dashboard components of the Velloc catalog', () => {
       expect(block, needle).toBeDefined()
       return block!.replace(/\s+/g, ' ')
     }
-    expect(rule(".a2ui-card:has([data-slot='a2ui-metric-action'])")).toContain('position: relative')
-    const corner = rule(".a2ui-card [data-slot='a2ui-metric-action']")
+    expect(rule(".a2ui-card:has([data-slot='a2ui-metric-action'][data-placement='corner'])")).toContain('position: relative')
+    const corner = rule(".a2ui-card [data-slot='a2ui-metric-action'][data-placement='corner']")
     for (const decl of ['position: absolute', 'top: 0.5rem', 'right: 0.5rem']) expect(corner).toContain(decl)
     const reveal = rule(':is(:hover, :has(:focus-visible))')
     expect(reveal).toContain('opacity: 1')
     expect(reveal, 'an outer card\'s hover does not reveal an inner card\'s button').toContain(
       ":not(.a2ui-card:not(:hover, :has(:focus-visible)) [data-slot='a2ui-metric-action'])",
     )
+  })
+
+  it('two actionable Metrics in one Card both keep their ask button after the delta, and each dispatches its own action', async () => {
+    const actions: unknown[] = []
+    const view = await draw(
+      [
+        'surface("sales")',
+        'root = Card(Row([net, refunds, orders]))',
+        'net = Metric("Net", "$27.6K", "+4.2%", "up", action=Event("ask", {metric: "net"}), actionLabel="Analyze")',
+        'refunds = Metric("Refunds", "2.4%", "+0.6pt", "up", better="down", action=Event("ask", {metric: "refunds"}), actionLabel="Ask why")',
+        'orders = Metric("Orders", "72", "+3.0%", "up")',
+      ].join('\n'),
+      action => actions.push(action),
+    )
+    const asks = [...view.querySelectorAll<HTMLButtonElement>('[data-slot="a2ui-metric-action"]')]
+    expect(asks.map(b => b.textContent)).toEqual(['Analyze', 'Ask why'])
+    for (const ask of asks) {
+      expect(ask.dataset.placement, 'two in one card stay inline').toBe('inline')
+      expect(ask.previousElementSibling?.hasAttribute('data-trend'), 'it sits right after the delta').toBe(true)
+      expect(ask.closest('.a2ui-card')).toBe(view.querySelector('.a2ui-card'))
+    }
+    for (const ask of asks) await act(async () => ask.click())
+    expect(actions).toMatchObject([
+      { name: 'ask', context: { metric: 'net' }, sourceComponentId: 'net' },
+      { name: 'ask', context: { metric: 'refunds' }, sourceComponentId: 'refunds' },
+    ])
   })
 
   it('a Heading with an action and a label shows an ask button after its subtitle, or its title, that dispatches like a Button', async () => {
