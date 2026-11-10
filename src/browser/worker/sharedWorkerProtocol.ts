@@ -111,7 +111,7 @@ export type SharedWorkerInboundMessage =
       // Rename a session: persist a manual `customTitle` (which overrides
       // the derived title) and broadcast `session.updated`. Works for
       // live AND disk-only sessions — see
-      // `SharedWorkerSessionManager.handleSessionRename`. Empty/whitespace
+      // `SessionListMutations.handleSessionRename`. Empty/whitespace
       // `title` clears the override (reverts to the derived title).
       type: 'session.rename'
       sessionId: string

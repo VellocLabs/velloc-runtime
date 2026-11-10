@@ -4666,8 +4666,8 @@ describe('SharedWorkerSessionManager', () => {
       manager.handleConnect(port)
       await expect(
         (manager as unknown as {
-          handleSessionDelete: (port: MessagePort, sessionId: string) => Promise<void>
-        }).handleSessionDelete(port as unknown as MessagePort, 's'),
+          listMutations: { handleSessionDelete: (port: MessagePort, sessionId: string) => Promise<void> }
+        }).listMutations.handleSessionDelete(port as unknown as MessagePort, 's'),
       ).rejects.toThrow('teardown failed')
       expect(internals().deletingSessions.has('s')).toBe(false)
       port._simulateMessage({ type: 'session.pin', sessionId: 's', pinned: true, requestId: 'p3' })

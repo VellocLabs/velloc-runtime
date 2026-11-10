@@ -37,9 +37,9 @@ describe('the runtime delete queue', () => {
     manager.handleConnect(port)
     const events: string[] = []
     const releases = new Map<string, () => void>()
-    const internals = manager as unknown as {
-      handleSessionDelete(port: unknown, sessionId: string): Promise<void>
-    }
+    const internals = (manager as unknown as {
+      listMutations: { handleSessionDelete(port: unknown, sessionId: string): Promise<void> }
+    }).listMutations
     internals.handleSessionDelete = (_port, sessionId) => {
       events.push(`start ${sessionId}`)
       return new Promise<void>((resolve, reject) => {

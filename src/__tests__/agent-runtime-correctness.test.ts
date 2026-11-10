@@ -581,7 +581,8 @@ describe('Teardown: disposal must be awaited', () => {
   })
 
   it('every sessions.delete is paired with the shared worker-dispose step', () => {
-    const managerSource = SharedWorkerSessionManagerSource()
+    const managerSource =
+      SharedWorkerSessionManagerSource() + readSource('../browser/worker/SessionListMutations.ts')
 
     // Count all `this.sessions.delete(` occurrences.
     const deleteCalls = (managerSource.match(/this\.sessions\.delete\(/g) ?? []).length

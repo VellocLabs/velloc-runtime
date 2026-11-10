@@ -53,7 +53,7 @@ type Internals = {
   fsSummaries: Map<string, unknown>
   sessions: Map<string, unknown>
   handleSessionMessage(port: MessagePort, message: unknown): void
-  handleSessionDelete(port: MessagePort, sessionId: string): Promise<void>
+  listMutations: { handleSessionDelete(port: MessagePort, sessionId: string): Promise<void> }
 }
 
 afterEach(() => {
@@ -129,7 +129,7 @@ describe('SharedWorkerSessionManager — proposals', () => {
     const kept = await board.propose('S2', { mode: 'suggest', request })
     const waiting = board.awaitOffer('S1', offer.taskId)
     const port = { postMessage() {} } as unknown as MessagePort
-    await internals.handleSessionDelete(port, 'S1').catch(() => {})
+    await internals.listMutations.handleSessionDelete(port, 'S1').catch(() => {})
     expect(await board.get('S1', gone.taskId)).toBeUndefined()
     expect(await waiting).toBe('stopped')
     expect(await board.get('S2', kept.taskId)).toBeDefined()
