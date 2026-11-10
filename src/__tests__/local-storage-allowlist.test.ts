@@ -117,7 +117,7 @@ const ALLOWLIST: Record<string, Row> = {
     kind: 'view',
     why: "how this client groups and orders its session list (group by, sort field, direction), and which of its Pinned / Recents / Archived sections are collapsed; another device lists its own way",
   },
-  'browser/webview/settings/sections/PluginsSection.tsx': {
+  'browser/webview/settings/sections/plugins/marketplaceListing.ts': {
     keys: ['nexus.plugins.marketplaceListings.v1'],
     kind: 'cache',
     why: 'marketplace listings shown while the fresh fetch runs',
