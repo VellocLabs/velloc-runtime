@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type FC, type ReactNode } from 'react'
 import { useAssistantState } from '@assistant-ui/react'
-import { CheckIcon, ChevronDownIcon, CircleSlashIcon, CopyIcon, EllipsisIcon, Loader2Icon, RotateCwIcon, SearchCheckIcon, SquareIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleSlashIcon, CopyIcon, EllipsisIcon, InfoIcon, Loader2Icon, RotateCwIcon, SearchCheckIcon, SquareIcon } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import type { RuntimeConnection } from '@/browser/runtimeClient/RuntimeConnection'
 import { useT } from '@/browser/webview/i18n'
@@ -27,18 +27,26 @@ function reviewTaskCounts(tasks: ReviewTaskView[]): { running: number; finished:
   return { running, finished, notCompleted: tasks.length - running - finished }
 }
 
+/** The summary of a folded section: one chevron for every section of the card, in place of the native marker. Its `details` carries `group/fold`. */
+const FoldSummary: FC<{ children: ReactNode }> = ({ children }) => (
+  <summary className="flex cursor-pointer list-none items-center gap-1 rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+    <ChevronDownIcon aria-hidden className="size-3.5 shrink-0 -rotate-90 transition-transform group-open/fold:rotate-0" />
+    <span className="min-w-0">{children}</span>
+  </summary>
+)
+
 /** The run's model tasks: role, label, status, last action, end reason and a jump to the drawer transcript. A stopped task's status already says it was cancelled. */
 export const ReviewTaskTree: FC<{ tasks: ReviewTaskView[]; open?: boolean }> = ({ tasks, open = true }) => {
   const t = useT()
   const { openTasksDrawer } = useBackgroundTasksContext()
   if (!tasks.length) return null
   const counts = reviewTaskCounts(tasks)
-  return <details open={open} data-testid="review-tasks" className="text-xs">
-    <summary className="cursor-pointer text-muted-foreground">{t('reviewCard.tasks')} · {counts.running > 0 ? tasks.length : <>
+  return <details open={open} data-testid="review-tasks" className="group/fold text-xs">
+    <FoldSummary>{t('reviewCard.tasks')} · {counts.running > 0 ? tasks.length : <>
       {t('reviewCard.tasksCompleted', { count: counts.finished })}
       {counts.notCompleted > 0 && <> · {t('reviewCard.tasksNotCompleted', { count: counts.notCompleted })}</>}
-    </>}</summary>
-    <ul className="mt-1.5 space-y-1">{tasks.map(task => {
+    </>}</FoldSummary>
+    <ul className="mt-1.5 space-y-1 pl-[1.125rem]">{tasks.map(task => {
       const end = task.end && task.end.kind !== 'cancelled' ? reviewEndMessage(t, task.end) : undefined
       const detail = taskDetail(t, task)
       return <li key={task.key} data-testid="review-task" data-role={task.role} data-status={task.status} className={task.role === 'coordinator' ? '' : 'ml-4'}>
@@ -120,8 +128,18 @@ export function stepOfStage(steps: Step[], stage: Stage): number {
 }
 /** A revision shown short; the full identity stays in the title. */
 const shortRevision = (revision: string) => /^[0-9a-f]{12,}$/i.test(revision) ? revision.slice(0, 7) : revision
-/** A target label that names only revisions, which the range line already shows. */
-const REVISION_ONLY_LABEL = /^\s*[0-9a-f]{7,}\s*(?:(?:\.\.\.?|→|->)\s*[0-9a-f]{7,}\s*)?$/i
+/**
+ * What a target label says beyond the revisions the range line already shows: a side that only spells a revision is dropped,
+ * so a revision paired with a branch leaves the branch; undefined when nothing is left.
+ */
+export function reviewTargetExtra(label: string | undefined): string | undefined {
+  if (!label) return undefined
+  const separator = label.match(/\.\.\.?|→|->/)?.[0]
+  const sides = (separator ? label.split(separator) : [label]).map(side => side.trim())
+  const kept = sides.filter(side => side && !/^[0-9a-f]{7,}$/i.test(side))
+  if (kept.length === 0) return undefined
+  return kept.length === sides.length ? label.trim() : kept.join(' ')
+}
 /** The catalog value naming the card's state: a running review names its stage. */
 export function reviewStatusValue(status: ReviewRun['progress']['status'], stage: Stage): string {
   return status === 'active' ? stage : status
@@ -139,7 +157,7 @@ const ReviewRange: FC<{ base: string; head: string; target?: string }> = ({ base
   const t = useT()
   const { isCopied: copied, copyToClipboard } = useCopyToClipboard({ copiedDuration: 1500 })
   const full = `${base} → ${head}`
-  const extra = target && !REVISION_ONLY_LABEL.test(target) ? target : undefined
+  const extra = reviewTargetExtra(target)
   return <div data-testid="review-range" className="relative z-10 flex min-w-0 max-w-full items-center gap-1 self-start text-xs text-muted-foreground">
     <Tooltip>
       <TooltipTrigger asChild>
@@ -153,7 +171,7 @@ const ReviewRange: FC<{ base: string; head: string; target?: string }> = ({ base
         event.stopPropagation()
         copyToClipboard(full)
       }}>{copied ? <CheckIcon aria-hidden className="size-3.5 text-success" /> : <CopyIcon aria-hidden className="size-3.5" />}</button>
-    {extra && <span className="min-w-0 truncate" title={extra}>· {extra}</span>}
+    {extra && <span data-testid="review-target" className="min-w-0 truncate" title={extra}>· {extra}</span>}
   </div>
 }
 
@@ -174,7 +192,9 @@ const ReviewCardHeader: FC<{
   statusInBody?: boolean
   /** A control shown beside the status badge. */
   action?: ReactNode
-}> = ({ level, range, status, variant, running, collapsed = false, bodyId, onToggle, statusInBody = false, action }) => {
+  /** The result in a few words, shown while the card is collapsed. */
+  summary?: string
+}> = ({ level, range, status, variant, running, collapsed = false, bodyId, onToggle, statusInBody = false, action, summary }) => {
   const t = useT()
   return <header className="relative flex items-start gap-3 px-4 py-3">
     <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><SearchCheckIcon className="size-4" /></span>
@@ -190,11 +210,12 @@ const ReviewCardHeader: FC<{
       {range && <ReviewRange base={range.base} head={range.head} target={range.target} />}
     </div>
     <div className="flex h-8 shrink-0 items-center gap-1">
+      {collapsed && summary && <span data-testid="review-collapsed-summary" className="mr-1 whitespace-nowrap text-xs text-muted-foreground">{summary}</span>}
       {!collapsed && action && <div data-testid="review-header-action" className="relative z-10">{action}</div>}
       {!(statusInBody && !collapsed) && <Badge variant={variant} size="sm" aria-live="polite" data-testid="review-status">
         {running && <Loader2Icon aria-hidden className="animate-spin" />}{status}
       </Badge>}
-      {onToggle && <button type="button" data-testid="review-toggle" aria-expanded={!collapsed} aria-controls={collapsed ? undefined : bodyId} aria-label={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} title={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} onClick={onToggle}
+      {onToggle && <button type="button" data-testid="review-toggle" data-slot="review-card-trigger" aria-expanded={!collapsed} aria-controls={collapsed ? undefined : bodyId} aria-label={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} title={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} onClick={onToggle}
         className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none after:absolute after:inset-0 after:content-[''] hover:text-foreground focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring">
         <ChevronDownIcon aria-hidden className={cn('size-4 transition-transform', collapsed && '-rotate-90')} />
       </button>}
@@ -243,6 +264,7 @@ const ReviewStop: FC<{ disabled: boolean; onConfirm: () => void }> = ({ disabled
 }
 
 const SCOPE_BLOCK_CLASS = 'rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground'
+const CORRECTNESS_KINDS = ['correctness', 'security']
 const IMPACT_VARIANT = { critical: 'destructive', major: 'warning', minor: 'muted' } as const
 const STATUS_VARIANT = { queued: 'muted', active: 'info', finished: 'success', partial: 'warning', cancelled: 'muted', failed: 'destructive' } as const
 const MENU_CONTENT_CLASS = 'z-50 min-w-[14rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md'
@@ -392,10 +414,20 @@ export const ReviewReportCard: FC<{
   const cancelled = status === 'cancelled'
   const cancelledByUser = isCancelledByUser(status, report.coverage.limitations)
   const hasFindings = report.diagnostics.length > 0
-  const shown = report.diagnostics.slice(0, 32).filter(diagnostic =>
-    (severity === 'all' || diagnostic.classification.impact === severity) &&
-    (kind === 'all' || (kind === 'correctness' ? ['correctness', 'security'].includes(diagnostic.classification.kind) : !['correctness', 'security'].includes(diagnostic.classification.kind))) &&
-    (state === 'all' || reviewFindingState(report, diagnostic.id) === state))
+  const listed = report.diagnostics.slice(0, 32)
+  const kindOf = (diagnostic: Diagnostic) => CORRECTNESS_KINDS.includes(diagnostic.classification.kind) ? 'correctness' : 'cleanup'
+  // A filter is offered only for a property the listed findings differ in; a choice they no longer offer counts as none.
+  const facet = (choice: string, values: string[], read: (diagnostic: Diagnostic) => string) => {
+    const options = values.filter(value => listed.some(diagnostic => read(diagnostic) === value))
+    const value = options.length > 1 && options.includes(choice) ? choice : 'all'
+    return { options, value, keeps: (diagnostic: Diagnostic) => value === 'all' || read(diagnostic) === value }
+  }
+  const facets = {
+    severity: facet(severity, ['critical', 'major', 'minor'], diagnostic => diagnostic.classification.impact),
+    kind: facet(kind, ['correctness', 'cleanup'], kindOf),
+    state: facet(state, ['open', 'applied', 'verified', 'skipped'], diagnostic => reviewFindingState(report, diagnostic.id)),
+  }
+  const shown = listed.filter(diagnostic => facets.severity.keeps(diagnostic) && facets.kind.keeps(diagnostic) && facets.state.keeps(diagnostic))
   const selectedIds = selected.filter(id => report.diagnostics.some(item => item.id === id))
   // Selection only feeds repair: without it there is nothing to select.
   const repairable = can('repair')
@@ -418,9 +450,12 @@ export const ReviewReportCard: FC<{
   }
   const enumText = (value: string) => reviewValueMessage(t, value)
   const endMessage = report.end && !(cancelled && report.end.kind === 'cancelled') && reviewEndMessage(t, report.end)
-  const filter = (name: 'severity' | 'kind' | 'state', value: string, values: string[], change: (value: string) => void) => (
-    <label className="flex items-center gap-1 text-xs text-muted-foreground">{t(`reviewCard.${name}`)}<select aria-label={t(`reviewCard.${name}`)} className="rounded-md border bg-background px-1.5 py-0.5 text-xs text-foreground" value={value} onChange={event => change(event.target.value)}>{values.map(item => <option key={item} value={item}>{enumText(item)}</option>)}</select></label>
+  const filter = (name: 'severity' | 'kind' | 'state', change: (value: string) => void) => facets[name].options.length > 1 && (
+    <label className="flex items-center gap-1 text-xs text-muted-foreground">{t(`reviewCard.${name}`)}<select aria-label={t(`reviewCard.${name}`)} className="h-6 cursor-pointer rounded-md bg-transparent px-1 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring" value={facets[name].value} onChange={event => change(event.target.value)}>{['all', ...facets[name].options].map(item => <option key={item} value={item}>{enumText(item)}</option>)}</select></label>
   )
+  const filters = [filter('severity', setSeverity), filter('kind', setKind), filter('state', setState)]
+  const repairNote = !repairable && hasFindings && !['workspace', 'paths'].includes(run.scope.kind)
+  const summary = cancelled && !hasFindings ? undefined : report.diagnostics.length === 1 ? t('reviewCard.findingsOne') : t('reviewCard.findingsMany', { count: report.diagnostics.length })
   const method = <>{enumText(run.policy.recipe)} · {t(run.scope.revision.workingCopyDigest ? 'reviewCard.workingCopy' : 'reviewCard.revisionOnly')}</>
   const openPublish = () => report.permissions?.publishConfirmation ? setConfirming(true) : act('publish', { preview: false, confirmed: false, ...publicationOptions })
   const menuItem = (label: 'preview' | 'publish' | 'verify', action: ReviewAction, handler: () => void, disabled = false): ReactNode => (
@@ -429,12 +464,12 @@ export const ReviewReportCard: FC<{
   const progress = reviewProgressCounts(report)
   const stop = running ? <ReviewStop disabled={busy || !can('cancel')} onConfirm={() => act('cancel')} /> : undefined
   const clean = report.coverage.complete && status === 'finished'
-  const notices = report.notices && report.notices.length > 0 ? <ul data-testid="review-notices" className="space-y-1">{report.notices.map((notice, index) => <li key={index}>{reviewMessage(t, notice)}</li>)}</ul> : null
+  const notices = report.notices && report.notices.length > 0 ? <ul data-testid="review-notices" className="space-y-1">{report.notices.map((notice, index) => <li key={index} className="flex items-start gap-1.5"><InfoIcon aria-hidden className="mt-px size-3.5 shrink-0 opacity-70" /><span className="min-w-0">{reviewMessage(t, notice)}</span></li>)}</ul> : null
   const target = report.targetLabel !== undefined && report.targetLabel !== run.scope.repository.projectKey && report.targetLabel !== run.scope.workspaceKey ? report.targetLabel : undefined
   return <TooltipProvider><Card className="my-2 gap-0 overflow-hidden py-0 text-sm" data-testid="code-review-card" data-status={status}>
     <ReviewCardHeader level={enumText(run.policy.level)} range={{ repository: reviewRepositoryName(run.scope), base: run.scope.revision.base, head: run.scope.revision.head, target }}
       status={enumText(reviewStatusValue(status, stage))} variant={STATUS_VARIANT[status]} running={running} collapsed={collapsed} bodyId={bodyId} onToggle={() => setCollapsed(value => !value)} statusInBody={reviewing}
-      action={reviewing ? undefined : stop} />
+      action={reviewing ? undefined : stop} summary={reviewing ? undefined : summary} />
     {!collapsed && <div id={bodyId}>
       <div className="flex flex-col gap-3 border-t px-4 py-3">
         {rerun && <div data-testid="review-rerun-of" className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-1.5 text-xs text-muted-foreground">
@@ -457,13 +492,14 @@ export const ReviewReportCard: FC<{
           </div>}
           {(!cancelled || hasFindings) && <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-lg font-semibold leading-tight" data-testid="review-count">{report.diagnostics.length === 1 ? t('reviewCard.findingsOne') : t('reviewCard.findingsMany', { count: report.diagnostics.length })}</p>
+              {!hasFindings && clean && !report.emptyScope && <CircleCheckIcon aria-hidden className="size-4 shrink-0 text-success" />}
+              <p className="text-base font-semibold leading-tight" data-testid="review-count">{report.diagnostics.length === 1 ? t('reviewCard.findingsOne') : t('reviewCard.findingsMany', { count: report.diagnostics.length })}</p>
               {impactCounts.map(([impact, count]) => <Badge key={impact} variant={IMPACT_VARIANT[impact]} size="sm">{enumText(impact)} · {count}</Badge>)}
               {run.progress.omittedByLimit > 0 && <span className="text-xs text-muted-foreground">{t('reviewCard.omitted', { omitted: run.progress.omittedByLimit })}</span>}
             </div>
             {report.diagnostics.length === 0 && <p data-testid="review-empty" className={cn('text-xs', report.emptyScope || clean ? 'text-muted-foreground' : 'text-warning-emphasis')}>{t(report.emptyScope ? 'reviewCard.emptyScope' : clean ? 'reviewCard.emptyComplete' : 'reviewCard.emptyPartial')}</p>}
           </div>}
-          <div data-testid="review-scope" className={cn('space-y-1', SCOPE_BLOCK_CLASS)}>
+          <div data-testid="review-scope" className="space-y-1 text-xs text-muted-foreground">
             <p data-testid="review-method">{method}</p>
             {notices}
           </div>
@@ -472,12 +508,11 @@ export const ReviewReportCard: FC<{
         {reviewing && notices && <div className={SCOPE_BLOCK_CLASS}>{notices}</div>}
         {finished && !cancelled && !report.coverage.complete && !report.emptyScope && hasFindings && <p data-testid="review-incomplete" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{t('reviewCard.notice.incomplete')}</p>}
         {!reviewing && report.diagnostics.length > 0 && <>
-          <div className="flex flex-wrap items-center gap-3">
+          {(repairable || filters.some(Boolean)) && <div data-testid="review-toolbar" className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {repairable && <label className="flex items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" data-testid="review-select-all" className="size-4 accent-primary" checked={allShown} disabled={busy || shown.length === 0} onChange={event => setSelected(ids => event.target.checked ? [...new Set([...ids, ...shown.map(item => item.id)])] : ids.filter(id => !shown.some(item => item.id === id)))} />{t('reviewCard.selectAll')}</label>}
-            {filter('severity', severity, ['all', 'critical', 'major', 'minor'], setSeverity)}{filter('kind', kind, ['all', 'correctness', 'cleanup'], setKind)}{filter('state', state, ['all', 'open', 'applied', 'verified', 'skipped'], setState)}
-          </div>
-          {!repairable && !['workspace', 'paths'].includes(run.scope.kind) && <p data-testid="review-repair-unavailable" className="text-xs text-muted-foreground">{t('reviewCard.repairUnavailable')}</p>}
-          <ul className="space-y-2">{shown.map(diagnostic => {
+            <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">{filters[0]}{filters[1]}{filters[2]}</div>
+          </div>}
+          {shown.length > 0 && <ul className="divide-y overflow-hidden rounded-lg border">{shown.map(diagnostic => {
             const assessment = latestAssessment(report, diagnostic.id)
             const receipts = report.actions.filter(item => item.diagnosticIds.includes(diagnostic.id))
             const workingCopy = diagnostic.anchor.side === 'working-copy'
@@ -485,21 +520,18 @@ export const ReviewReportCard: FC<{
             const checked = selectedIds.includes(diagnostic.id)
             const expanded = expandedFindings.includes(diagnostic.id)
             const findingState = reviewFindingState(report, diagnostic.id)
-            return <li key={diagnostic.id} data-testid="review-finding" data-impact={diagnostic.classification.impact} className={cn('rounded-lg border p-3', checked ? 'border-primary/50 bg-primary/5' : 'bg-card')}>
-              <div className="flex items-start gap-2">
+            return <li key={diagnostic.id} data-testid="review-finding" data-impact={diagnostic.classification.impact} className={cn('px-3 py-2.5', checked && 'bg-primary/5')}>
+              <div className="flex items-start gap-2.5">
                 {repairable && <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-primary" checked={checked} disabled={busy} onChange={event => setSelected(ids => event.target.checked ? [...ids, diagnostic.id] : ids.filter(id => id !== diagnostic.id))} aria-label={t('reviewCard.select', { title: diagnostic.claim.title })} />}
                 <div className="min-w-0 flex-1 space-y-1">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <button type="button" data-testid="review-finding-toggle" className="flex w-full items-start gap-2 rounded-sm text-start outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-expanded={expanded} title={t('reviewCard.evidence')} onClick={() => setExpandedFindings(ids => expanded ? ids.filter(id => id !== diagnostic.id) : [...ids, diagnostic.id])}>
+                    <span className="min-w-0 flex-1 leading-snug">{diagnostic.claim.title}</span>
+                    <ChevronDownIcon aria-hidden className={cn('mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform', !expanded && '-rotate-90')} />
+                  </button>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                     <Badge variant={IMPACT_VARIANT[diagnostic.classification.impact]} size="sm">{enumText(diagnostic.classification.impact)}</Badge>
-                    <span className="text-xs text-muted-foreground">{enumText(diagnostic.classification.kind)}</span>
-                    <span className="text-xs text-muted-foreground">· {enumText(assessment?.disposition ?? 'unchecked')} · <span className={cn(findingState !== 'open' && 'text-success')}>{enumText(findingState)}</span></span>
-                    <button type="button" className="ml-auto max-w-full truncate font-mono text-xs text-muted-foreground underline-offset-2 hover:underline disabled:no-underline disabled:opacity-60" disabled={busy || !canLocate} onClick={() => locate(diagnostic)}>{diagnostic.anchor.path}{diagnostic.anchor.span ? `:${diagnostic.anchor.span.start}` : ''}</button>
-                  </div>
-                  <div className="flex items-start gap-1">
-                    <p className="min-w-0 flex-1 leading-snug">{diagnostic.claim.title}</p>
-                    <button type="button" data-testid="review-finding-toggle" className="mt-0.5 shrink-0 rounded text-muted-foreground hover:text-foreground" aria-expanded={expanded} aria-label={t('reviewCard.evidence')} title={t('reviewCard.evidence')} onClick={() => setExpandedFindings(ids => expanded ? ids.filter(id => id !== diagnostic.id) : [...ids, diagnostic.id])}>
-                      <ChevronDownIcon aria-hidden className={cn('size-4 transition-transform', !expanded && '-rotate-90')} />
-                    </button>
+                    <span data-testid="review-finding-meta">{enumText(diagnostic.classification.kind)} · {enumText(assessment?.disposition ?? 'unchecked')}{findingState !== 'open' && <> · <span className="text-success">{enumText(findingState)}</span></>}</span>
+                    <button type="button" data-testid="review-finding-location" className="ml-auto max-w-full truncate font-mono underline-offset-2 hover:underline disabled:no-underline disabled:opacity-70" disabled={busy || !canLocate} title={diagnostic.anchor.path} onClick={() => locate(diagnostic)}>{diagnostic.anchor.path}{diagnostic.anchor.span ? `:${diagnostic.anchor.span.start}` : ''}</button>
                   </div>
                   {expanded && <div data-testid="review-finding-details" className="space-y-2 pt-1 text-xs">
                     <p className="whitespace-pre-wrap text-muted-foreground">{diagnostic.claim.explanation}</p>
@@ -512,10 +544,10 @@ export const ReviewReportCard: FC<{
                 </div>
               </div>
             </li>
-          })}</ul>
+          })}</ul>}
         </>}
-        {!reviewing && (report.unverified?.length ?? 0) > 0 && <details data-testid="review-unverified" className="rounded-lg border border-dashed px-3 py-2 text-xs">
-          <summary className="cursor-pointer text-muted-foreground">{t('reviewCard.unverified')} · {report.unverified!.length}</summary>
+        {!reviewing && (report.unverified?.length ?? 0) > 0 && <details data-testid="review-unverified" className="group/fold rounded-lg border border-dashed px-3 py-2 text-xs">
+          <FoldSummary>{t('reviewCard.unverified')} · {report.unverified!.length}</FoldSummary>
           <p className="mt-1 text-muted-foreground">{t('reviewCard.unverifiedNote')}</p>
           <ul className="mt-2 space-y-2">{report.unverified!.map(item => <li key={item.id} data-testid="review-unverified-item" className="space-y-0.5">
             <div className="flex flex-wrap items-center gap-x-2">
@@ -526,24 +558,24 @@ export const ReviewReportCard: FC<{
             {item.details && <p className="line-clamp-3 whitespace-pre-wrap text-muted-foreground">{item.details}</p>}
           </li>)}</ul>
         </details>}
-        {(report.verifications ?? []).map(check => <details key={check.ref} data-testid="review-verification" className="text-xs"><summary className="cursor-pointer">{t('reviewCard.verify')} · {enumText(check.afterLatestEdit ? check.succeeded ? 'passed' : 'failed' : 'not-run')}</summary>{check.command && <pre className="whitespace-pre-wrap">{check.command}</pre>}{check.codeRevision && <p className="break-all">{check.codeRevision}</p>}{check.evidence.map((evidence, index) => <pre key={index} className="overflow-auto whitespace-pre-wrap">{evidence.quote}</pre>)}{check.missingCases.map((item, index) => <p key={index}>{reviewDetailMessage(t, item)}</p>)}</details>)}
-        {report.publicationPreview !== undefined && <details open className="text-xs"><summary className="cursor-pointer">{t('reviewCard.preview')}</summary><pre className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{report.publicationPreview}</pre></details>}
+        {(report.verifications ?? []).map(check => <details key={check.ref} data-testid="review-verification" className="group/fold text-xs"><FoldSummary>{t('reviewCard.verify')} · {enumText(check.afterLatestEdit ? check.succeeded ? 'passed' : 'failed' : 'not-run')}</FoldSummary>{check.command && <pre className="whitespace-pre-wrap">{check.command}</pre>}{check.codeRevision && <p className="break-all">{check.codeRevision}</p>}{check.evidence.map((evidence, index) => <pre key={index} className="overflow-auto whitespace-pre-wrap">{evidence.quote}</pre>)}{check.missingCases.map((item, index) => <p key={index}>{reviewDetailMessage(t, item)}</p>)}</details>)}
+        {report.publicationPreview !== undefined && <details open className="group/fold text-xs"><FoldSummary>{t('reviewCard.preview')}</FoldSummary><pre className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{report.publicationPreview}</pre></details>}
         {!reviewing && report.tasks && <ReviewTaskTree tasks={report.tasks} open={false} />}
-        <details data-testid="review-details" className="text-xs">
-          <summary className="cursor-pointer text-muted-foreground">{t('reviewCard.details')}</summary>
-          <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-muted-foreground">
+        <details data-testid="review-details" className="group/fold text-xs">
+          <FoldSummary>{t('reviewCard.details')}</FoldSummary>
+          <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 pl-[1.125rem] text-muted-foreground">
             {reviewing && <><dt>{t('reviewCard.method')}</dt><dd data-testid="review-method">{method}</dd></>}
             <dt>{t('reviewCard.policyLabel')}</dt><dd>{t('reviewCard.policy', { level: enumText(run.policy.level), recipe: enumText(run.policy.recipe), mode: enumText(run.policy.execution), cap: run.policy.reportLimit === 'unlimited' ? enumText('unlimited') : run.policy.reportLimit })}</dd>
             <dt>{t('reviewCard.coverage')}</dt><dd>
               {report.coverage.limitations.length === 0 && run.progress.unavailableAngles.length === 0 ? <span>{t(report.coverage.complete ? 'reviewCard.coverageComplete' : 'reviewCard.notice.incomplete')}</span> : <ul className="list-disc pl-4">{report.coverage.limitations.map((text, index) => <li key={index}>{reviewDetailMessage(t, text)}</li>)}{run.progress.unavailableAngles.length > 0 && <li>{t('reviewCard.uncovered', { angles: run.progress.unavailableAngles.map(angle => reviewAngleMessage(t, angle)).join(', ') })}</li>}</ul>}
             </dd>
           </dl>
-          <p className="mt-1.5 text-muted-foreground">{t('reviewCard.workers', { started: run.progress.spawnedTasks, finished: report.finishedTasks ?? 0 })}</p>
-          {report.exportJson !== undefined && <details className="mt-2"><summary className="cursor-pointer">{t('reviewCard.exportJson')}</summary><pre data-testid="review-export-json" className="mt-1 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{report.exportJson}</pre></details>}
+          <p className="mt-1.5 pl-[1.125rem] text-muted-foreground">{t('reviewCard.workers', { started: run.progress.spawnedTasks, finished: report.finishedTasks ?? 0 })}</p>
+          {report.exportJson !== undefined && <details className="group/fold mt-2 pl-[1.125rem]"><FoldSummary>{t('reviewCard.exportJson')}</FoldSummary><pre data-testid="review-export-json" className="mt-1 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{report.exportJson}</pre></details>}
         </details>
       </div>
       {!running && <footer className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-4 py-2.5">
-        <span className="mr-auto text-xs text-muted-foreground">{selectedIds.length > 0 && t('reviewCard.selected', { count: selectedIds.length })}</span>
+        <span className="mr-auto min-w-0 text-xs text-muted-foreground">{selectedIds.length > 0 ? t('reviewCard.selected', { count: selectedIds.length }) : repairNote && <span data-testid="review-repair-unavailable">{t('reviewCard.repairUnavailable')}</span>}</span>
           <Button type="button" variant={cancelled && !hasFindings ? 'default' : 'outline'} size="sm" disabled={busy || !can('rerun')} onClick={() => act('rerun', { presentation })} data-testid="review-rerun">{t('reviewCard.rerun')}</Button>
           {report.diagnostics.length > 0 && repairable && <Button type="button" size="sm" disabled={busy || selectedIds.length === 0} onClick={() => act('repair', { diagnosticIds: selectedIds })} data-testid="review-repair">{selectedIds.length > 0 ? t('reviewCard.repairCount', { count: selectedIds.length }) : t('reviewCard.repair')}</Button>}
           <DropdownMenuPrimitive.Root>

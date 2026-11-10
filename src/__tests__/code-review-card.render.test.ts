@@ -3,7 +3,8 @@ import { RightPanelContentContext } from '../components/assistant-ui/right-panel
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { CodeReviewCard, CodeReviewProvider, CodeReviewRow, ReviewReportCard, currentReviewLocation, reviewFindingState } from '../components/assistant-ui/code-review-card'
+import { CodeReviewCard, CodeReviewProvider, CodeReviewRow, ReviewReportCard, currentReviewLocation, reviewFindingState, reviewTargetExtra } from '../components/assistant-ui/code-review-card'
+import { collapseConversationCollapsibles } from '../browser/webview/conversationScrollLock'
 import type { ReviewReportView, ReviewSessionSnapshot } from '../codeReview/review-protocol'
 import { createTranslate } from '../browser/webview/i18n/translate'
 import { writeClipboard } from '../utils/clipboard'
@@ -228,12 +229,22 @@ describe('review report card', () => {
   })
   it('filters findings, selects repairs and refuses historical line jumps', async () => {
     const value = report()
-    value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'old', side: 'before', span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
+    value.diagnostics = [
+      { id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'old', side: 'before', span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } },
+      { id: 'd2', runId: 'r1', anchor: { path: 'src/b.ts', revision: 'old', side: 'before' }, claim: { title: 'Repeated helper', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'reuse', impact: 'minor' }, evidenceKeys: [], origin: { angle: 'reuse' } },
+    ]
     const action = renderReport(value)
+    const titles = () => screen.queryAllByTestId('review-finding-toggle').map(item => item.textContent)
     expect((screen.getByText('src/a.ts:2') as HTMLButtonElement).disabled).toBe(true)
     fireEvent.change(screen.getByLabelText(t('reviewCard.severity')), { target: { value: 'minor' } })
-    expect(screen.queryByTestId('review-finding')).toBeNull()
+    expect(titles()).toEqual(['Repeated helper'])
     fireEvent.change(screen.getByLabelText(t('reviewCard.severity')), { target: { value: 'all' } })
+    fireEvent.change(screen.getByLabelText(t('reviewCard.kind')), { target: { value: 'correctness' } })
+    expect(titles()).toEqual(['Unsafe branch'])
+    fireEvent.change(screen.getByLabelText(t('reviewCard.kind')), { target: { value: 'all' } })
+    expect(titles()).toEqual(['Unsafe branch', 'Repeated helper'])
+    // Both findings are open: there is nothing to filter the handling by.
+    expect(screen.queryByLabelText(t('reviewCard.state'))).toBeNull()
     fireEvent.click(screen.getByLabelText(t('reviewCard.select', { title: 'Unsafe branch' })))
     fireEvent.click(screen.getByTestId('review-repair'))
     await waitFor(() => expect(action).toHaveBeenCalledWith('repair', { diagnosticIds: ['d1'] }))
@@ -269,6 +280,59 @@ it('selects every shown finding at once, and offers no selection where repair is
   noRepair()
   expect(screen.getByTestId('review-repair-unavailable').textContent).toBe(t('reviewCard.repairUnavailable'))
   expect(screen.getByTestId('review-rerun')).toBeTruthy()
+})
+it('offers no filter for a property every finding shares, and shows a finding its handling only once it has one', () => {
+  const value = report()
+  value.diagnostics = ['d1', 'd2'].map(id => ({ id, runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy' as const }, claim: { title: `Finding ${id}`, explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'correctness' as const, impact: 'minor' as const }, evidenceKeys: [], origin: { angle: 'lines' } }))
+  renderReport(value)
+  for (const name of ['severity', 'kind', 'state'] as const) expect(screen.queryByLabelText(t(`reviewCard.${name}`))).toBeNull()
+  expect(screen.getAllByTestId('review-finding')).toHaveLength(2)
+  for (const meta of screen.getAllByTestId('review-finding-meta')) expect(meta.textContent).not.toContain(t('reviewCard.value.open'))
+  cleanup()
+  value.actions = [{ id: 'a1', kind: 'repair', state: 'applied', diagnosticIds: ['d1'], verification: 'passed' }]
+  renderReport(value)
+  expect(screen.getAllByTestId('review-finding-meta')[0]!.textContent).toContain(t('reviewCard.value.verified'))
+  // The findings now differ in handling, and only in the handlings they have.
+  const handling = screen.getByLabelText(t('reviewCard.state')) as HTMLSelectElement
+  expect(Array.from(handling.options).map(option => option.value)).toEqual(['all', 'open', 'verified'])
+  fireEvent.change(handling, { target: { value: 'verified' } })
+  expect(screen.getAllByTestId('review-finding-toggle').map(item => item.textContent)).toEqual(['Finding d1'])
+})
+it('opens a finding from its title', () => {
+  const value = report()
+  value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy', span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
+  renderReport(value)
+  fireEvent.click(screen.getByText('Unsafe branch'))
+  expect(screen.getByTestId('review-finding-details').textContent).toContain('Mechanism')
+})
+it('folds with the conversation\'s other cards, and says its result while folded', () => {
+  const value = report()
+  value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy' }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
+  const viewport = document.createElement('div')
+  viewport.className = 'aui-thread-viewport'
+  document.body.append(viewport)
+  render(createElement(ReviewReportCard, { report: value, can: () => true, onAction: vi.fn(async () => {}) }), { container: viewport })
+  expect(screen.queryByTestId('review-collapsed-summary')).toBeNull()
+  let folded = 0
+  act(() => { folded = collapseConversationCollapsibles(document) })
+  expect(folded).toBe(1)
+  expect(screen.getByTestId('review-toggle').getAttribute('aria-expanded')).toBe('false')
+  expect(screen.queryByTestId('review-finding')).toBeNull()
+  expect(screen.getByTestId('review-collapsed-summary').textContent).toBe(t('reviewCard.findingsOne'))
+  // Already folded: a second pass leaves it folded.
+  expect(collapseConversationCollapsibles(document)).toBe(0)
+  expect(screen.getByTestId('review-toggle').getAttribute('aria-expanded')).toBe('false')
+  cleanup()
+  viewport.remove()
+})
+it('keeps of a target label only what the revisions do not already say', () => {
+  const sha = `2fdd67f${'c'.repeat(33)}`
+  expect(reviewTargetExtra(`${sha}..authoring-model-picker`)).toBe('authoring-model-picker')
+  expect(reviewTargetExtra('main..authoring-app-open-sign-in')).toBe('main..authoring-app-open-sign-in')
+  expect(reviewTargetExtra(`${sha}..${sha}`)).toBeUndefined()
+  expect(reviewTargetExtra('2fdd67f')).toBeUndefined()
+  expect(reviewTargetExtra('./src/a.ts')).toBe('./src/a.ts')
+  expect(reviewTargetExtra(undefined)).toBeUndefined()
 })
 it('lists unverified items apart from the findings, with no repair selection', () => {
   const value = { ...report(), unverified: [{ id: 'u1', headline: 'Handle leaks on throw', details: 'The release call is gone.', path: 'src/a.ts', line: 5, impact: 'major' as const, code: 'quote-not-in-source' }] }

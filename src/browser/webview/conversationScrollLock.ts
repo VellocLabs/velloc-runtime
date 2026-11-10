@@ -7,12 +7,13 @@ export type RefLike<T> = { current: T }
 const VIEWPORT_SELECTOR = '.aui-thread-viewport'
 
 // The card slots are shared with the search reveal (collapsibleCardSlots.ts);
-// the two extra entries are scroll-lock-only: file entries are not cards
-// the reveal opens, and the bare `collapsible-trigger` is scoped here to
-// the background-results card while the reveal opens any of them.
+// the extra entries are scroll-lock-only: file entries and review cards are
+// not cards the reveal opens, and the bare `collapsible-trigger` is scoped
+// here to the background-results card while the reveal opens any of them.
 const COLLAPSIBLE_TRIGGER_SELECTOR = [
   ...COLLAPSIBLE_CARD_TRIGGER_SLOTS.map(slot => `[data-slot="${slot}"]`),
   '[data-slot="file-entry-toggle"]',
+  '[data-slot="review-card-trigger"]',
   '[data-role="background-results-card"] [data-slot="collapsible-trigger"]',
 ].join(',')
 const COLLAPSIBLE_EXCLUDED_ANCESTOR_SELECTOR = [
