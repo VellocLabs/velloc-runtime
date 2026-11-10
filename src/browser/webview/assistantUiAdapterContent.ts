@@ -35,7 +35,8 @@ import {
  * `ThreadPart`s.
  *
  * Sits between `assistantUiAdapterParts.ts` (the primitives it builds on) and
- * `assistantUiAdapter.ts` (the transcript/live conversion that calls it).
+ * `assistantUiAdapterMessage.ts` / `assistantUiAdapterLive.ts` (the transcript
+ * and live conversion that call it).
  */
 
 export function appendTextPart(

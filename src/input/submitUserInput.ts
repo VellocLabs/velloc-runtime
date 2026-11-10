@@ -129,7 +129,7 @@ export async function processUserInput(
   if (!params.noContextScan) {
     // `@"path"` file mentions are expanded into attachment messages here.
     // For a plain string this is the typed prompt. For a multimodal array
-    // (composer image send — see assistantUiAdapter.ts
+    // (composer image send — see assistantUiAdapterPrompt.ts
     // buildPromptFromAppendMessage), any co-attached non-image file rides as
     // an `@"path"` mention inside the array's text block, so pull that text
     // out and run the same expansion. Image blocks carry no mentions; an

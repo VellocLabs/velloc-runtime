@@ -166,6 +166,27 @@ describe('assistantUiAdapter/ split', () => {
     }
   })
 
+  it('keeps the message, live, line-range and prompt modules below the top-level adapter', () => {
+    // The top-level adapter imports and re-exports these; an edge back to it
+    // makes the transcript conversion graph cyclic.
+    for (const name of [
+      'assistantUiAdapterMessage.ts',
+      'assistantUiAdapterLive.ts',
+      'assistantUiAdapterLines.ts',
+      'assistantUiAdapterPrompt.ts',
+    ]) {
+      expect(
+        importsFrom(read(...dir, name), './assistantUiAdapter'),
+        `${name} must not import the top-level adapter — it is their caller.`,
+      ).toBe(false)
+    }
+    // Message conversion is shared by the transcript and live paths; it must
+    // not depend on the live path that calls it.
+    expect(
+      importsFrom(read(...dir, 'assistantUiAdapterMessage.ts'), './assistantUiAdapterLive'),
+    ).toBe(false)
+  })
+
   it('keeps the card builder and its predicate in the same module', () => {
     // A card is written by a builder and recognised again by a predicate;
     // they encode the same identity twice. Splitting them across modules is
