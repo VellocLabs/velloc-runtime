@@ -365,8 +365,7 @@ export class FileSnapshotRecorder {
 
   /** One `skipped` before row for a directory whose files are not captured;
    *  diff/revert then mark it untracked. */
-  private async recordSkippedPlaceholder(rawDir: string, turn: SnapshotTurnInfo): Promise<void> {
-    const absDir = this.spell(rawDir)
+  private async recordSkippedPlaceholder(absDir: string, turn: SnapshotTurnInfo): Promise<void> {
     const dirKey = normalizePathKey(absDir)
     if (this.isExcluded(dirKey)) return
     await this.enqueue(async () => {
@@ -395,7 +394,7 @@ export class FileSnapshotRecorder {
       const current = stack.pop()!
       const entries = await this.fs.readdir(current)
       for (const entry of entries) {
-        const child = `${current.replace(/[\\/]+$/, '')}/${entry.name}`
+        const child = this.spell(`${current.replace(/[\\/]+$/, '')}/${entry.name}`)
         if (entry.isDirectory()) {
           if (
             SNAPSHOT_IGNORED_DIR_NAMES.has(entry.name.toLowerCase()) &&
