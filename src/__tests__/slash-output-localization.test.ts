@@ -421,7 +421,7 @@ describe('slash output — the call site that actually broke', () => {
     expect(call, 'call not found — was it renamed?').toBeTruthy()
     expect(
       call![1],
-      'AssistantUiThread must pass `t` to convertTranscriptToThreadMessages, '
+      'useThreadTranscriptMessages must pass `t` to convertTranscriptToThreadMessages, '
         + 'or persisted slash output renders English in every locale.',
     ).toMatch(/\bt,?\s*$/)
   })
@@ -429,7 +429,7 @@ describe('slash output — the call site that actually broke', () => {
   it('threads the translator into the combine layer', () => {
     expect(
       source,
-      'AssistantUiThread must pass `t` to combineThreadMessages.',
+      'useThreadTranscriptMessages must pass `t` to combineThreadMessages.',
     ).toMatch(/combineThreadMessages\(transcriptThreadMessages,\s*state,\s*t\)/)
   })
 

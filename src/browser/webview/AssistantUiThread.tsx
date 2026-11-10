@@ -22,8 +22,6 @@ import {
 } from '../../components/assistant-ui/chapter-marks'
 import { SessionProposalsContext } from '../../components/assistant-ui/session-proposals-context'
 import { useCan } from './useCan'
-
-
 import type {
   ThreadMessageLike,
 } from '@assistant-ui/react'
@@ -32,7 +30,6 @@ import {
   takeInjectRestoreFiles,
   type ComposerDelivery,
 } from '../../components/assistant-ui/inject-message-context'
-
 import { resolveAfterResponseCut } from './messageContextMenuModel'
 import { ComposerPassagesProvider } from '@/components/assistant-ui/composer-passages'
 import {
@@ -40,7 +37,6 @@ import {
   mergeWantedRows,
   windowMessageContent,
 } from './historyContentWindow'
-
 import {
   AssistantRuntimeProvider,
   AuiIf,
@@ -77,7 +73,6 @@ import {
   isConversationResumable,
   resolvePromptCutForToolCall,
 } from '../../sessions/sessionStore'
-
 import type { ContinueInCodeFolder } from './sessionMessageCallbacks'
 import { BrowserComposerAttachmentAdapter } from './BrowserComposerAttachmentAdapter'
 import { getSupportsImageInputForModel } from '../../engine/contextWindow'
@@ -88,7 +83,6 @@ import {
 import {
   BypassPermissionsDialog,
 } from './BypassPermissionsDialog'
-
 import { BackgroundTasksContext } from '@/components/assistant-ui/background-tasks-context'
 import { SessionConnectorsContext } from '@/components/assistant-ui/session-connectors-context'
 import { SessionBusyProvider } from '@/components/assistant-ui/session-busy-context'
@@ -108,11 +102,8 @@ import {
 import {
   EnterPlanApprovalContext,
 } from '@/components/assistant-ui/enter-plan-approval-context'
-
 import { snapshotNeedsAnswer, snapshotBlocksComposerInput } from '@/utils/sessionNeedsAnswer'
-
 import type { BrowserRuntimeClientState } from './BrowserRuntimeClient'
-
 import {
   PROVIDER_API_ERROR_RESUME_PROMPT,
   resolveProviderApiErrorRetryAction,
@@ -150,7 +141,6 @@ import { MessageActionsContext } from '@/components/assistant-ui/message-actions
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-
 import {
   getBootDiagnosticTraceId,
   installSessionTracer,
@@ -171,19 +161,14 @@ import {
   Thread,
   ThreadWelcome,
 } from '@/components/assistant-ui/thread'
-
-
 import { hasA2uiBlockInRecentRows, hasA2uiContent } from './a2ui/hasA2uiSurface'
 import { useAppBoard } from './apps/appSurfaceView'
-
 import {
   revealChapterRow,
 } from './revealThreadMessage'
-
 import { useShowReasoning, withoutReasoningParts } from './showReasoning'
 import { ComposerDraftSync, ComposerTextInsert, ComposerTextRestore } from './ThreadComposerSync'
 import { ProviderMissingDialog, WorkspaceProjectFolderDialog } from './ThreadDialogs'
-
 import type { AssistantUiThreadProps } from './AssistantUiThreadProps'
 import { runtimeErrorText } from './runtimeErrorText'
 import { hasGenerativeToolParts } from './generativeToolParts'
