@@ -98,3 +98,16 @@ export function nativizeForHost(value: string, sessionCwd: string): string {
   if (!isNativeWindowsAbsolute(sessionCwd)) return value
   return shellPathToWindows(collapseDoubledDriveSlash(value))
 }
+
+/**
+ * One spelling per file for a host whose session cwd is `hostCwd`: on a
+ * Windows host a drive-rooted path gets backslashes and a shell-form path
+ * becomes native, so `D:/a` and `D:\a` read the same. Anything else, and
+ * every value on a POSIX host (where a backslash is a name character), comes
+ * back unchanged.
+ */
+export function hostSpelling(value: string, hostCwd: string): string {
+  if (!isNativeWindowsAbsolute(hostCwd)) return value
+  if (value.startsWith('/')) return nativizeForHost(value, hostCwd)
+  return hasDriveRoot(value) ? withBackslashes(value) : value
+}

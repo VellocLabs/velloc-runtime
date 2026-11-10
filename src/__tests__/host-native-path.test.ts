@@ -3,6 +3,7 @@ import {
   nativizeForHost,
   shellPathToWindows,
   windowsPathToShell,
+  hostSpelling,
 } from '../utils/hostPathForm'
 
 // Behaviour pinned for the path-form conversions used at the JS -> C++ host
@@ -144,5 +145,19 @@ describe('nativizeForHost', () => {
 
   it('returns an empty value unchanged', () => {
     expect(nativizeForHost('', WIN)).toBe('')
+  })
+})
+
+describe('hostSpelling', () => {
+  it('gives a Windows host one native spelling', () => {
+    expect(hostSpelling('D:/a/b.ts', 'C:\\w')).toBe('D:\\a\\b.ts')
+    expect(hostSpelling('D:\\a\\b.ts', 'C:\\w')).toBe('D:\\a\\b.ts')
+    expect(hostSpelling('/d/a/b.ts', 'C:\\w')).toBe('D:\\a\\b.ts')
+    expect(hostSpelling('\\\\srv\\share\\x', 'C:\\w')).toBe('\\\\srv\\share\\x')
+  })
+
+  it('leaves every path alone on a POSIX host', () => {
+    expect(hostSpelling('/a/b\\c', '/w')).toBe('/a/b\\c')
+    expect(hostSpelling('D:/a', '/w')).toBe('D:/a')
   })
 })

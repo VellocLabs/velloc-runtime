@@ -331,6 +331,7 @@ function makeHarness(opts?: {
   failWrites?: boolean
   maxSnapshotBytes?: number
   workspaceRoots?: string[]
+  hostCwd?: string
 }) {
   const disk = makeFakeFs(opts?.initialFiles)
   // The real DB file is created by the sqlite HOST, not through fs — mirror
@@ -353,6 +354,7 @@ function makeHarness(opts?: {
     excludeRoots: [STORAGE_BASE],
     workspaceRoots: opts?.workspaceRoots ?? ['/ws'],
     maxSnapshotBytes: opts?.maxSnapshotBytes,
+    hostCwd: opts?.hostCwd,
   })
   return { disk, fake, store, recorder }
 }
@@ -446,6 +448,27 @@ describe('FileSnapshotRecorder — before-capture', () => {
       0,
     ])
     expect(fake.turns.get(1)).toEqual([1, 'u1', 'first turn', 1000, 0])
+  })
+
+  it('records a Windows file in the host spelling whichever separator the caller used', async () => {
+    const { fake, recorder } = makeHarness({
+      initialFiles: { 'D:\\ws\\a.txt': 'x', 'D:\\ws\\b.txt': 'y' },
+      workspaceRoots: ['D:\\ws'],
+      hostCwd: 'D:\\ws',
+    })
+    await recorder.trackBeforeMutation('D:/ws/a.txt', T1)
+    await recorder.probeBeforeMutation('/d/ws/b.txt', T1)
+    expect(fake.sessionFiles.get('d:/ws/a.txt')?.[1]).toBe('D:\\ws\\a.txt')
+    expect(fake.sessionFiles.get('d:/ws/b.txt')?.[1]).toBe('D:\\ws\\b.txt')
+  })
+
+  it('leaves a POSIX host path as given, backslash included', async () => {
+    const { fake, recorder } = makeHarness({
+      initialFiles: { '/ws/a\\b.txt': 'x' },
+      hostCwd: '/ws',
+    })
+    await recorder.trackBeforeMutation('/ws/a\\b.txt', T1)
+    expect(fake.sessionFiles.get('/ws/a/b.txt')?.[1]).toBe('/ws/a\\b.txt')
   })
 
   it('is idempotent per (turn, path): a script writing one file in a loop captures once', async () => {

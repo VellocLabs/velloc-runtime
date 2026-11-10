@@ -11,6 +11,7 @@
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { isFsNotFoundError } from '../../utils/fsTransportFailure'
 import { normalizePathKey } from '../../utils/paths'
+import { hostSpelling } from '../../utils/hostPathForm'
 import {
   computeSnapshotFileDiff,
   decodeSnapshotBytes,
@@ -141,6 +142,9 @@ export type FileSnapshotRecorderOptions = {
    *  ignored directory names count only below it; elsewhere, on every
    *  segment. */
   workspaceRoots?: string[]
+  /** The session's absolute cwd: tells the host's path form, so every
+   *  incoming path is recorded and shown in one spelling. */
+  hostCwd?: string
   maxSnapshotBytes?: number
 }
 
@@ -169,6 +173,7 @@ export class FileSnapshotRecorder {
   private readonly excludeKeys: string[]
   private readonly workspaceKeys: string[]
   private readonly maxSnapshotBytes: number
+  private readonly hostCwd: string
   /** Serializes every recorder op — the store is single-writer per session
    *  and this chain is what makes that true under concurrent tool calls. */
   private tail: Promise<unknown> = Promise.resolve()
@@ -188,6 +193,12 @@ export class FileSnapshotRecorder {
     ].map(toRootKey)
     this.workspaceKeys = (options.workspaceRoots ?? []).map(toRootKey)
     this.maxSnapshotBytes = options.maxSnapshotBytes ?? DEFAULT_MAX_SNAPSHOT_BYTES
+    this.hostCwd = options.hostCwd ?? ''
+  }
+
+  /** A caller's path in the host's own spelling (see {@link hostSpelling}). */
+  private spell(path: string): string {
+    return hostSpelling(path, this.hostCwd)
   }
 
   /** Serialize an op onto the recorder's single-writer chain. The stored
@@ -213,7 +224,7 @@ export class FileSnapshotRecorder {
    */
   trackBeforeMutation(absPath: string, turn: SnapshotTurnInfo): Promise<void> {
     return this.enqueue(async () => {
-      await this.captureBefore(absPath, turn)
+      await this.captureBefore(this.spell(absPath), turn)
     })
   }
 
@@ -225,7 +236,7 @@ export class FileSnapshotRecorder {
    * handed back to {@link discardUnchangedProbe}.
    */
   probeBeforeMutation(absPath: string, turn: SnapshotTurnInfo): Promise<boolean> {
-    return this.enqueue(() => this.captureBefore(absPath, turn))
+    return this.enqueue(() => this.captureBefore(this.spell(absPath), turn))
   }
 
   /** True when this call recorded the (turn, path) row. */
@@ -320,9 +331,10 @@ export class FileSnapshotRecorder {
    * proceeds (record-and-skip, same policy as the size cap).
    */
   async trackBeforeDirectoryRemoval(
-    absDir: string,
+    rawDir: string,
     turn: SnapshotTurnInfo,
   ): Promise<void> {
+    const absDir = this.spell(rawDir)
     const dirKey = normalizePathKey(absDir)
     if (this.isExcluded(dirKey)) return
     if (isSnapshotIgnoredPath(dirKey, this.workspaceKeys)) {
