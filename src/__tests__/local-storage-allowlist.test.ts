@@ -132,7 +132,7 @@ const ALLOWLIST: Record<string, Row> = {
     kind: 'cache',
     why: 'per manifest path, the build whose assets are already prefetched into the HTTP cache',
   },
-  'sessions/sessionStore.ts': {
+  'sessions/conversationStorageBackends.ts': {
     keys: ['chromium-runtime:conversation'],
     kind: 'fallback',
     why: 'the conversation backend chosen only when no fs-backed one is given; the SharedWorker has no localStorage, so the desktop never reaches it',
