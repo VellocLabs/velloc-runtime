@@ -16,6 +16,8 @@ import type {
   WaitingPlugin,
 } from '../../browser/runtimeProtocol/modContributions'
 import { joinRuntimePath } from '../../utils/runtimePaths'
+import { normalizeMcpServerUrl } from '../../mcp/oauth/oauthKeys'
+import { pluginMcpServerListings } from '../../pluginHost/pluginMcpServerList'
 import type { ActivePlugin } from '../../pluginHost/pluginModel'
 import {
   pluginOwnerId,
@@ -474,13 +476,15 @@ export function getModUiContributionsHost(): ModUiContributionsHost {
   return host
 }
 
-/** The plugin's http MCP server URLs, those with no `${...}` left to resolve, deduplicated. */
-export function appSignInUrls(plugin: Pick<ContributingPlugin, 'mcpServers'>): string[] {
-  const urls = new Set<string>()
-  for (const config of Object.values(plugin.mcpServers ?? {})) {
-    if (config.type !== 'http' || typeof config.url !== 'string') continue
-    if (!/^https?:\/\//i.test(config.url) || config.url.includes('${')) continue
-    urls.add(config.url)
+/**
+ * The plugin's http MCP server URLs as the installed-plugin listing gives
+ * them (no `${...}` left to resolve), http(s) only, one per server.
+ */
+export function appSignInUrls(plugin: Pick<ContributingPlugin, 'name' | 'mcpServers' | 'nativeMcpServers'>): string[] {
+  const byServer = new Map<string, string>()
+  for (const listing of pluginMcpServerListings([plugin])) {
+    const key = listing.url ? normalizeMcpServerUrl(listing.url) : null
+    if (key && !byServer.has(key)) byServer.set(key, listing.url!)
   }
-  return [...urls]
+  return [...byServer.values()]
 }

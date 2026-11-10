@@ -20,7 +20,7 @@ import { APP_RUN_SESSION_PREFIX } from '../mods/app/appAgentRun'
 import { defaultSessionPaneRecord, hasPane } from '../browser/webview/layout/paneLayout'
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
 import { createAppSignIn, dueSignIns } from '../browser/webview/mcpAuthView'
-import type { McpAuthServerState } from '../mcp/oauth/mcpAuthProtocol'
+import type { McpAuthServerState, McpAuthState } from '../mcp/oauth/mcpAuthProtocol'
 import { PluginTopbarItems, appBadgeText, appItemId, usePluginTopbarItems } from '../browser/webview/topbar/PluginTopbarItems'
 import { TooltipProvider } from '../components/ui/tooltip'
 import { I18nProvider } from '../browser/webview/i18n'
@@ -284,33 +284,61 @@ describe('an app\'s topbar icon', () => {
 })
 
 describe('the sign-ins an app press starts', () => {
-  it('only servers the runtime reads as needing one, never one that waits on a client id or is not known', () => {
+  it('only servers the runtime reads as needing one, never one that waits on a client id or a key, or is not known', () => {
     const states: Record<string, McpAuthServerState> = {
       'https://a.example/mcp': { url: 'https://a.example/mcp', phase: 'needs-sign-in' },
       'https://b.example/mcp': { url: 'https://b.example/mcp', phase: 'signed-in' },
       'https://c.example/mcp': { url: 'https://c.example/mcp', phase: 'signing-in' },
       'https://d.example/mcp': { url: 'https://d.example/mcp', phase: 'needs-sign-in', needsCredentials: true },
+      'https://f.example/mcp': { url: 'https://f.example/mcp', phase: 'needs-sign-in', needsClient: true },
     }
     const urls = [...Object.keys(states), 'https://e.example/mcp']
     expect(dueSignIns(urls, url => states[url])).toEqual(['https://a.example/mcp'])
     expect(dueSignIns(undefined, url => states[url])).toEqual([])
   })
 
-  it('signs in each due server at the press, and a refusal does not throw', async () => {
-    const signIn = vi.fn(async () => { throw new Error('refused') })
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const start = createAppSignIn({
+  function starter(request: (route: string, payload: unknown) => Promise<unknown>) {
+    const latest: { current: McpAuthState | null } = {
       current: {
-        serverState: (url: string | undefined) => (url?.includes('a.') ? { url, phase: 'needs-sign-in' } : { url: url ?? '', phase: 'signed-in' }),
-        signIn,
+        available: true,
+        servers: [
+          { url: 'https://a.example/mcp', phase: 'needs-sign-in' },
+          { url: 'https://b.example/mcp', phase: 'signed-in' },
+        ],
       },
+    }
+    const conn = { request: vi.fn(request) }
+    const context = {
+      current: {
+        runtimeConnection: async () => conn as never,
+        t: ((key: string, params?: Record<string, string | number>) => `${key}:${params?.server}`) as never,
+      },
+    }
+    return { start: createAppSignIn(latest, context), conn }
+  }
+
+  it('signs in each due server at the press, its window titled by the server, and a refusal does not throw', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { start, conn } = starter(async () => { throw new Error('refused') })
+    start(['https://a.example/mcp/', 'https://b.example/mcp'])
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled())
+    expect(conn.request).toHaveBeenCalledTimes(1)
+    expect(conn.request).toHaveBeenCalledWith('mcpAuth.signIn', {
+      url: 'https://a.example/mcp/',
+      windowTitle: 'mcpAuth.windowTitle:a.example',
     })
-    start(['https://a.example/mcp', 'https://b.example/mcp'])
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(signIn).toHaveBeenCalledTimes(1)
-    expect(signIn).toHaveBeenCalledWith({ url: 'https://a.example/mcp' })
-    expect(warn).toHaveBeenCalled()
     warn.mockRestore()
+  })
+
+  it('a second press while the first is unanswered asks once; answered, a later press may ask again', async () => {
+    let answer!: () => void
+    const { start, conn } = starter(() => new Promise<unknown>(resolve => { answer = () => resolve({}) }))
+    start(['https://a.example/mcp'])
+    start(['https://a.example/mcp/', 'https://A.example/mcp'])
+    await vi.waitFor(() => expect(conn.request).toHaveBeenCalledTimes(1))
+    answer()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    start(['https://a.example/mcp'])
+    await vi.waitFor(() => expect(conn.request).toHaveBeenCalledTimes(2))
   })
 })

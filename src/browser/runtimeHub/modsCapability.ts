@@ -173,6 +173,16 @@ export function modsUiTopicProvider(
 }
 
 /**
+ * The contributions as `conn` may see them: an app's `signInUrls` name the
+ * person's servers, which `mcpAuth/status` shows from `manager` up, so a
+ * connection below it gets the apps without them (F-10).
+ */
+export function projectModContributions(state: ModContributionsState, conn: ConnectionInfo): ModContributionsState {
+  if (!state.apps || scopeAllows(conn.scope.mode, 'manager')) return state
+  return { ...state, apps: state.apps.map(({ signInUrls: _signInUrls, ...app }) => app) }
+}
+
+/**
  * `mods/contributions` â€” the launchers and topbar items of the person's
  * plugins (F-25). Not session-bound: every `observe` connection sees it. The
  * snapshot is withheld until the first plugin scan is judged: the pre-scan
@@ -187,10 +197,11 @@ export function modsContributionsTopicProvider(
   return {
     matches: (id: TopicId) => id === MODS_CONTRIBUTIONS_TOPIC,
     authorize: (_id, conn) => scopeAllows(conn.scope.mode, 'observe'),
-    async *snapshot(): AsyncIterable<SnapshotPage> {
+    async *snapshot(_id, conn): AsyncIterable<SnapshotPage> {
       await whenSynced()
-      yield { type: MODS_CONTRIBUTIONS_EVENT, payload: getState() }
+      yield { type: MODS_CONTRIBUTIONS_EVENT, payload: projectModContributions(getState(), conn) }
     },
+    project: (_id, conn, evt) => projectModContributions(evt.payload as ModContributionsState, conn),
   }
 }
 
@@ -380,7 +391,7 @@ export function registerModsCapability(
           return { accepted: slot?.pageAnswer?.(answer) === true }
         }
         case 'contributions':
-          return getContributions()
+          return projectModContributions(getContributions(), request.conn)
         case 'pressTopbar': {
           const payload = request.payload as ModsPressTopbarPayload
           if (!inScope(request.conn, payload.sessionId)) {

@@ -115,8 +115,8 @@ import {
 } from './RuntimeConnectionBanner'
 import { RemoteInstallTip } from './remote/RemoteInstallTip'
 import { RemoteOfflineOverlay } from './remote/RemoteOfflineOverlay'
-import { RuntimeCapabilitiesContext, useCan, useCapabilityQuery } from './useCan'
-import { createAppSignIn, useMcpAuth } from './mcpAuthView'
+import { RuntimeCapabilitiesContext, useCapabilityQuery } from './useCan'
+import { createAppSignIn, useMcpAuthLatest, type AppSignInContext } from './mcpAuthView'
 import { SessionAreaVisibleContext } from './sessionAreaVisibility'
 import { renderShellSessionThread, type ShellSessionThreadInputs } from './shellSessionThread'
 import { renderShellSidePane, type ShellSidePaneInputs } from './shellSidePane'
@@ -1875,11 +1875,10 @@ export function MultiSessionShell({
     [focusSession, openNewSession, updatePaneRecord, sessionLayoutsStore],
   )
   // At an app's press, its MCP servers that wait on a sign-in get one (F-10).
-  const appMcpAuth = useMcpAuth(runtimeConnection)
-  const appMcpAuthRef = useRef(appMcpAuth)
-  appMcpAuthRef.current = appMcpAuth
-  const canSignIn = useCan('mcpAuth', 'signIn')
-  const handleAppSignIn = useMemo(() => createAppSignIn(appMcpAuthRef), [])
+  const appMcpAuthLatest = useMcpAuthLatest(runtimeConnection)
+  const appSignInContextRef = useRef<AppSignInContext>({ runtimeConnection, t })
+  appSignInContextRef.current = { runtimeConnection, t }
+  const handleAppSignIn = useMemo(() => createAppSignIn(appMcpAuthLatest, appSignInContextRef), [appMcpAuthLatest])
   /** Open `kind` for the person: placed, focused, and expanded in place of
    *  a pane that was expanded. */
   const openPaneFor = useMemo(
@@ -3866,7 +3865,7 @@ export function MultiSessionShell({
         onOpenProviderSettings={handleOpenProviderSettings}
         onPressPluginItem={runtimeConnection ? handlePressPluginItem : undefined}
         onOpenApp={runtimeConnection ? handleOpenApp : undefined}
-        onAppSignIn={runtimeConnection && canSignIn ? handleAppSignIn : undefined}
+        onAppSignIn={runtimeConnection && runtimeCapabilities.can('mcpAuth', 'signIn') ? handleAppSignIn : undefined}
         shownAppType={shownAppType}
         sidebarCollapsed={sidebarCollapsed || sidebarHidden}
         onToggleSidebar={handleToggleSidebar}

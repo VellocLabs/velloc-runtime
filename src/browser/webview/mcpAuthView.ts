@@ -6,6 +6,7 @@
 import * as React from 'react'
 
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
+import type { TranslateFn } from './i18n/translate'
 import type { RouteKey } from '../runtimeProtocol'
 import {
   MCP_AUTH_CAPABILITY,
@@ -62,9 +63,26 @@ export function newlySignedIn(previous: McpAuthState | null, next: McpAuthState 
     .map(server => server.url)
 }
 
+/** The state of the server at `url` in `state`, matched on the normalized URL. */
+export function serverStateIn(state: McpAuthState | null, url: string | undefined): McpAuthServerState | undefined {
+  const target = url ? normalizeMcpServerUrl(url) : null
+  return target ? state?.servers.find(server => server.url === target) : undefined
+}
+
+/** Sends `mcpAuth.<action>`; rejects when there is no connection or the runtime refuses. */
+export async function askMcpAuth(
+  runtimeConnection: (() => Promise<RuntimeConnection>) | undefined,
+  action: 'signIn' | 'cancel' | 'signOut',
+  payload: Record<string, unknown>,
+): Promise<void> {
+  if (!runtimeConnection) throw new Error('no runtime connection')
+  const conn = await runtimeConnection()
+  await conn.request(`${MCP_AUTH_CAPABILITY}.${action}` as RouteKey, payload)
+}
+
 /**
  * Of `urls`, the ones to start a sign-in for: the runtime reads them as
- * needing one, and a sign-in needs no client id from the person.
+ * needing one, and a sign-in needs neither a client id nor a key from the person.
  */
 export function dueSignIns(
   urls: readonly string[] | undefined,
@@ -72,22 +90,74 @@ export function dueSignIns(
 ): string[] {
   return (urls ?? []).filter(url => {
     const server = serverState(url)
-    return server?.phase === 'needs-sign-in' && server.needsCredentials !== true
+    return server?.phase === 'needs-sign-in' && server.needsCredentials !== true && server.needsClient !== true
   })
 }
 
-/** An app press's sign-in starter: the due servers of `urls` get `signIn`; a refusal is logged. */
+/** What an app press's sign-in reads at the press: the connection and the page's language. */
+export type AppSignInContext = {
+  runtimeConnection: (() => Promise<RuntimeConnection>) | undefined
+  t: TranslateFn
+}
+
+/**
+ * An app press's sign-in starter: each due server of `urls` gets `mcpAuth.signIn`,
+ * its window titled by the server's host. A server asked for and not yet
+ * answered is not asked again, so a second press keeps the window open. A
+ * refusal is logged.
+ */
 export function createAppSignIn(
-  auth: { readonly current: Pick<McpAuthControls, 'serverState' | 'signIn'> },
+  latest: { readonly current: McpAuthState | null },
+  context: { readonly current: AppSignInContext },
 ): (urls: readonly string[]) => void {
+  const asking = new Set<string>()
   return urls => {
-    const controls = auth.current
-    for (const url of dueSignIns(urls, controls.serverState)) {
-      void controls.signIn({ url }).catch(err => {
-        console.warn('[mcp] app sign-in failed:', err instanceof Error ? err.message : err)
-      })
+    const state = latest.current
+    for (const url of dueSignIns(urls, each => serverStateIn(state, each))) {
+      const key = normalizeMcpServerUrl(url)
+      if (!key || asking.has(key)) continue
+      asking.add(key)
+      const { runtimeConnection, t } = context.current
+      const windowTitle = t('mcpAuth.windowTitle', { server: new URL(key).host })
+      void askMcpAuth(runtimeConnection, 'signIn', { url, windowTitle })
+        .catch(err => {
+          console.warn('[mcp] app sign-in failed:', err instanceof Error ? err.message : err)
+        })
+        .finally(() => asking.delete(key))
     }
   }
+}
+
+/**
+ * The latest `mcpAuth/status`, held without re-rendering its host: for a
+ * reader that looks at it only when it acts.
+ */
+export function useMcpAuthLatest(
+  runtimeConnection: (() => Promise<RuntimeConnection>) | undefined,
+): { readonly current: McpAuthState | null } {
+  const latest = React.useRef<McpAuthState | null>(null)
+  React.useEffect(() => {
+    latest.current = null
+    if (!runtimeConnection) return
+    let live = true
+    let release: (() => void) | null = null
+    void runtimeConnection().then(
+      conn => {
+        if (!live) return
+        release = holdMcpAuthStatus(conn, next => {
+          if (live) latest.current = next
+        })
+      },
+      () => {
+        // No connection: nothing to read.
+      },
+    )
+    return () => {
+      live = false
+      release?.()
+    }
+  }, [runtimeConnection])
+  return latest
 }
 
 /** What a page can see and ask about MCP server sign-ins. */
@@ -128,20 +198,14 @@ export function useMcpAuth(runtimeConnection: (() => Promise<RuntimeConnection>)
     }
   }, [runtimeConnection])
   const ask = React.useCallback(
-    async (action: 'signIn' | 'cancel' | 'signOut', payload: Record<string, unknown>): Promise<void> => {
-      if (!runtimeConnection) throw new Error('no runtime connection')
-      const conn = await runtimeConnection()
-      await conn.request(`${MCP_AUTH_CAPABILITY}.${action}` as RouteKey, payload)
-    },
+    (action: 'signIn' | 'cancel' | 'signOut', payload: Record<string, unknown>): Promise<void> =>
+      askMcpAuth(runtimeConnection, action, payload),
     [runtimeConnection],
   )
   return React.useMemo<McpAuthControls>(
     () => ({
       state,
-      serverState: url => {
-        const target = url ? normalizeMcpServerUrl(url) : null
-        return target ? state?.servers.find(server => server.url === target) : undefined
-      },
+      serverState: url => serverStateIn(state, url),
       signIn: payload => ask('signIn', payload),
       cancel: url => ask('cancel', { url }),
       signOut: url => ask('signOut', { url }),

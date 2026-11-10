@@ -38,7 +38,7 @@ import {
   type ModSlot,
   type ModSlotStatus,
 } from '../mods/modSlotRegistry'
-import { modsContributionsTopicProvider, modsUiTopicProvider } from '../browser/runtimeHub/modsCapability'
+import { modsContributionsTopicProvider, modsUiTopicProvider, projectModContributions } from '../browser/runtimeHub/modsCapability'
 import {
   resetModContributionsState,
   setModContributionsSyncGate,
@@ -768,6 +768,32 @@ describe('mods/contributions and mods.pressTopbar', () => {
     expect(res.ok && res.result).toEqual({ ok: false, reason: 'no-session' })
     const bad = await gone.client.request('mods.pressTopbar', { sessionId: 's1' })
     expect(!bad.ok && bad.error.code).toBe('bad_payload')
+  })
+})
+
+describe('mods/contributions: an app\'s sign-in URLs by scope', () => {
+  const WITH_APP = {
+    templates: [],
+    topbar: [],
+    apps: [{ type: 'pay:board', appId: 'pay-board', plugin: 'pay', title: 'Payments', signInUrls: ['https://mcp.example.com/mcp'] }],
+    icons: {},
+    waiting: [],
+  }
+  const at = (mode: string) => ({ scope: { mode, sessions: 'all' } }) as unknown as ConnectionInfo
+
+  it('a manager or full connection gets them; observe and control get the app without them', async () => {
+    expect(projectModContributions(WITH_APP, at('full'))).toBe(WITH_APP)
+    expect(projectModContributions(WITH_APP, at('manager'))).toBe(WITH_APP)
+    for (const mode of ['observe', 'control']) {
+      const seen = projectModContributions(WITH_APP, at(mode))
+      expect(seen.apps).toEqual([{ type: 'pay:board', appId: 'pay-board', plugin: 'pay', title: 'Payments' }])
+    }
+    const provider = modsContributionsTopicProvider(() => WITH_APP, () => Promise.resolve())
+    const pages: unknown[] = []
+    for await (const page of provider.snapshot('mods/contributions' as never, at('observe'))) pages.push(page.payload)
+    expect((pages[0] as typeof WITH_APP).apps[0]).not.toHaveProperty('signInUrls')
+    const delta = provider.project!('mods/contributions' as never, at('observe'), { payload: WITH_APP }) as typeof WITH_APP
+    expect(delta.apps[0]).not.toHaveProperty('signInUrls')
   })
 })
 
