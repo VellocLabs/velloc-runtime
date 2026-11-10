@@ -10,7 +10,8 @@ import {
   waitFor,
 } from '@testing-library/react'
 
-import { ModelsSection, settleEchoedOrder } from '../browser/webview/settings/sections/ModelsSection'
+import { ModelsSection } from '../browser/webview/settings/sections/ModelsSection'
+import { settleEchoedOrder } from '../browser/webview/settings/sections/models/providerOrder'
 import { SettingsBridgeContext } from '../browser/webview/nexusSettingsBridge'
 import type { NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'

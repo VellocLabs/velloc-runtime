@@ -1,49 +1,10 @@
 import * as React from "react";
-import {
-  ArrowLeftIcon,
-  CheckIcon,
-  GripVerticalIcon,
-  Loader2Icon,
-  MoreHorizontalIcon,
-  PlusIcon,
-  SettingsIcon,
-  StarIcon,
-  Trash2Icon,
-  TriangleAlertIcon,
-} from "lucide-react";
-import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
+import { ArrowLeftIcon } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ProviderIcon } from "../../ProviderIcon";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { useUnsavedEditsGate } from "@/glic/unsavedEditsGate";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { RadioGroup, RadioOption } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectRoot,
-  SelectSeparator,
-  SelectTrigger,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 
 import type { BrowserBridgeTransport } from "../../../bridge/browserBridgeProtocol";
 import type {
@@ -75,27 +36,15 @@ import {
   providersUpsert,
   providersVerify,
 } from "../clients";
-import {
-  modelAvailability,
-  pickerModelIds,
-  type FreshModelIds,
-} from "../providerModelAvailability";
+import type { FreshModelIds } from "../providerModelAvailability";
 import {
   isRuntimeOnlyProvider,
   providerSecretFields,
   verifiesInRuntime,
 } from "../../../../models/drivers/driverRegistry";
 import { getProviderUsageStore } from "../../providerUsageStore";
-import { ProviderSecretFields } from "./ProviderSecretFields";
-import { mapErrorCode } from "../verifyErrorText";
 import { ModProviderEditor, modProviderName } from "./ModProviderEditor";
 import { isModProviderAdded, isModProviderConnected } from "../modProviderForm";
-import { runtimeProviderDefaultBaseUrl } from "../../../../models/drivers/runtimeProviders";
-import {
-  ProviderModelEntries,
-  RuntimeProviderUsageLine,
-} from "./ProviderModelEntries";
-import { usesModelEntries } from "../../../../models/drivers/modelEntryCatalog";
 import { orderByProviderIds } from "../../modelCatalog";
 import { mergeProviderConfigForSave } from "../providerConfigMerge";
 import type { ProviderTrust } from "../../../../settings/providerTrust";
@@ -108,9 +57,7 @@ import {
   isBuiltInProviderAdded,
   isBuiltInProviderConnected,
   isProviderFormDirty,
-  providerBaseUrlPlaceholder,
   providerConnectionKind,
-  type ProviderConnectionKind,
   shouldAutoConnect,
 } from "../providerFormHelpers";
 import {
@@ -119,86 +66,63 @@ import {
   configFromDraft,
   draftFromRecord,
   emptyCustomProviderDraft,
-  formatTokenCount,
   generateCustomProviderId,
   isCustomBackendId,
   isCustomDraftDirty,
   isModelComplete,
   isValidBaseUrl,
   listCustomProviderRecords,
-  modelCapabilityBadges,
-  modelLabel,
   normaliseBaseUrl,
   isProviderNameTaken,
-  PROVIDER_ICON_KEYS,
-  PROVIDER_ICON_LABELS,
   resolveCustomProviderIconSvg,
-  type ProviderIconKey,
-  type CustomApiCompatibility,
   type CustomProviderDraft,
   type CustomProviderRecord,
 } from "../customProviderHelpers";
 import {
-  isOpencodeZenBaseUrl,
   opencodeZenDraft,
   resolveOpencodeZenApiKey,
 } from "../opencodeZenPreset";
-import { OPENCODE_ZEN_ENABLED } from "../../../../config/opencodeZen";
 import { customProviderUserAgent } from "../../../../config/providerUserAgent";
 import { AddModelDialog } from "./AddModelDialog";
 import { SettingsSubpageLayout, settingsText } from "../SettingsSubpageLayout";
+import {
+  sameOrder,
+  MAX_UNECHOED_ORDERS,
+  settleEchoedOrder,
+  KEYBOARD_REORDER_COMMIT_MS,
+} from "./models/providerOrder";
+import {
+  ADD_CUSTOM_PROVIDER_VALUE,
+  ADD_OPENCODE_ZEN_VALUE,
+  renderAddProviderMenu,
+} from "./models/AddProviderMenu";
+import type {
+  PageView,
+  AddedProviderRow,
+  DeleteTarget,
+  ProviderStatus,
+  TestState,
+} from "./models/modelsPageTypes";
+import {
+  renderProviderModelCount,
+  renderProviderListRow,
+  renderProviderRowMenu,
+} from "./models/ProviderListRow";
+import type { ApiKeyRowState } from "./models/ApiKeyLabel";
+import { renderCustomProviderEditor } from "./models/CustomProviderEditor";
+import { renderBuiltInProviderEditor } from "./models/BuiltInProviderEditor";
+import { providerStatusPresentation } from "./models/providerStatusPresentation";
+import {
+  renderDeleteProviderDialog,
+  renderDiscardChangesDialog,
+  renderResetConnectionDialog,
+} from "./models/ProviderConfirmDialogs";
 
 /** Debounce before an edit auto-triggers the verify+persist connection. */
 const AUTO_CONNECT_DEBOUNCE_MS = 700;
 
 /** How long the "<name> added." confirmation stays up. */
 const ADDED_NOTICE_MS = 4000;
-/** Same ids in the same positions. */
-function sameOrder(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((id, i) => id === b[i]);
-}
-
-/** How many unechoed order writes are remembered (`settleEchoedOrder`). */
-const MAX_UNECHOED_ORDERS = 16;
-
-/**
- * Settles `written` (orders this page wrote that nothing has echoed yet,
- * oldest first) against an echoed `order`. The host echoes writes in order,
- * so the echo is the OLDEST equal write: it and every write before it are
- * dropped. Returns whether the echo may be shown: only once no write of this
- * page is unechoed — any order seen before that is older than the list's,
- * and showing it would make the next drop look current and write nothing.
- */
-export function settleEchoedOrder(
-  written: string[][],
-  order: readonly string[],
-): boolean {
-  const index = written.findIndex((w) => sameOrder(w, order));
-  if (index >= 0) written.splice(0, index + 1);
-  return written.length === 0;
-}
-
-/**
- * Arrow-key reordering moves the row at once but writes the order only once
- * the keys have been still this long (or the grip loses focus): holding or
- * tapping an arrow is one gesture, not one `providers.setOrder` — and one
- * `providers.changed` fan-out to every open surface — per keypress.
- */
-const KEYBOARD_REORDER_COMMIT_MS = 400;
-
-/**
- * "Add provider" dropdown value for the "+ Add custom provider…" row. It is an
- * ACTION, not a provider: picking it opens the editor in create mode and never
- * becomes a persisted selection.
- */
-const ADD_CUSTOM_PROVIDER_VALUE = "__add_custom_provider__";
-
-/**
- * Dropdown value for "+ Add OpenCode Zen…" — the same create flow as
- * `ADD_CUSTOM_PROVIDER_VALUE`, started from the Zen preset instead of an
- * empty draft (`../opencodeZenPreset.ts`).
- */
-const ADD_OPENCODE_ZEN_VALUE = "__add_opencode_zen__";
 
 /** Which draft a create flow started from. */
 type CreatePreset = "blank" | "opencode-zen";
@@ -241,210 +165,6 @@ function customProbeKey(
  * backend slot id for its wire dialect (`custom-openai` / `custom-anthropic`).
  * Views: HOME (added providers + "Add provider") and one provider's editor.
  */
-
-/** Which of the page's two views is showing — see the component doc. */
-type PageView = "home" | "edit";
-
-/** A provider listed on the home page. */
-type AddedProviderRow = {
-  id: string;
-  label: string;
-  iconSvg: string | undefined;
-  custom: boolean;
-  /** Built-ins only — custom providers carry no live verification state. */
-  connected: boolean;
-  /** The line under the name: subscription, API key, local or custom. */
-  kind: ProviderConnectionKind;
-};
-
-/** The catalog key for each row's connection-kind line. */
-const CONNECTION_KIND_KEY = {
-  subscription: "settings.models.kindSubscription",
-  apiKey: "settings.models.kindApiKey",
-  plugin: "settings.models.mod.kindPlugin",
-  local: "settings.models.kindLocal",
-  custom: "settings.models.kindCustom",
-} as const satisfies Record<ProviderConnectionKind, string>;
-
-/** The provider a Remove / Delete confirmation is for. */
-type DeleteTarget = { id: string; name: string; custom: boolean };
-
-type ProviderStatus = "idle" | "verifying" | "ready" | "draft" | "error";
-
-type TestState =
-  | { status: "idle" }
-  | { status: "testing" }
-  | { status: "ok"; modelCount?: number; verifiedAtMs?: number }
-  | { status: "failed"; errorCode?: string };
-
-/**
- * The API-key field's label row. A stored key is said ONCE, as "Saved ✓" at
- * the end of this row — not again in the placeholder and a hint below. And it
- * says "saved", never "verified": the host only knows the last probe with
- * this key succeeded, and "verified" reads as the vendor vouching for it.
- */
-function ApiKeyLabel({ state, testId }: { state: ApiKeyRowState | null; testId: string }) {
-  const t = useT();
-  return (
-    <span className="flex items-center justify-between gap-2">
-      <span className="font-medium">{t("settings.models.apiKey")}</span>
-      {state === "saving" ? (
-        <span
-          className="flex items-center gap-1 text-muted-foreground text-xs"
-          data-testid={testId}
-          data-state={state}
-          role="status"
-        >
-          {t("settings.models.apiKeySaving")}
-          <Loader2Icon className="size-3.5 animate-spin" />
-        </span>
-      ) : state ? (
-        <span
-          className="flex items-center gap-1 text-success text-xs"
-          data-testid={testId}
-          data-state={state}
-          role={state === "updated" ? "status" : undefined}
-        >
-          {t(state === "updated" ? "settings.models.apiKeyUpdated" : "settings.models.apiKeySaved")}
-          <CheckIcon className="size-3.5" />
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-/**
- * The key row's state: `saving` from the first keystroke of a typed key until
- * its save settles, `updated` once a typed key was stored, `saved` for a key
- * stored before.
- */
-type ApiKeyRowState = "saving" | "updated" | "saved";
-
-/** One row in the "Configured models" list. */
-function ModelRow({
-  model,
-  onEdit,
-  onRemove,
-}: {
-  model: CustomModelDef;
-  onEdit: () => void;
-  onRemove: () => void;
-}) {
-  const t = useT();
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const complete = isModelComplete(model);
-  const badges = modelCapabilityBadges(model, {
-    tools: t("settings.models.capToolCalling"),
-    reasoning: t("settings.models.capReasoning"),
-    vision: t("settings.models.capVision"),
-    imageGen: t("settings.models.capImageGen"),
-    structured: t("settings.models.capStructuredOutput"),
-  });
-  const summary = complete
-    ? [
-        t("settings.models.contextLabel", {
-          value: formatTokenCount(model.contextWindow),
-        }),
-        t("settings.models.maxOutputLabel", {
-          value: formatTokenCount(model.maxOutputTokens),
-        }),
-        ...badges,
-      ].join(" · ")
-    : t("settings.models.modelDetailsRequired");
-
-  return (
-    <div
-      className="flex items-start gap-2 border-b px-3 py-2 last:border-b-0 hover:bg-accent/30"
-      data-testid={`custom-model-row-${model.modelId}`}
-    >
-      <button
-        type="button"
-        className="min-w-0 flex-1 cursor-pointer text-left"
-        onClick={onEdit}
-      >
-        <div className="truncate font-medium text-sm">{modelLabel(model)}</div>
-        <div className="truncate font-mono text-muted-foreground text-xs">
-          {model.modelId}
-        </div>
-        <div
-          className={
-            complete
-              ? "mt-0.5 truncate text-muted-foreground text-xs"
-              : "mt-0.5 truncate text-warning text-xs"
-          }
-        >
-          {summary}
-        </div>
-      </button>
-      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={modelLabel(model)}
-            data-testid={`custom-model-menu-${model.modelId}`}
-          >
-            <MoreHorizontalIcon className="size-4" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-36">
-          <button
-            type="button"
-            className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
-            onClick={() => {
-              setMenuOpen(false);
-              onEdit();
-            }}
-          >
-            {t("settings.models.modelEdit")}
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-destructive text-sm hover:bg-accent"
-            data-testid={`custom-model-remove-${model.modelId}`}
-            onClick={() => {
-              setMenuOpen(false);
-              onRemove();
-            }}
-          >
-            {t("settings.models.modelRemove")}
-          </button>
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
-}
-
-/** One row in the "Pending models" list — a model id with a "+" button. */
-function PendingModelRow({
-  model,
-  onAdd,
-}: {
-  model: CustomModelDef;
-  onAdd: () => void;
-}) {
-  const t = useT();
-  return (
-    <div
-      className="flex items-center gap-2 border-b px-3 py-1.5 last:border-b-0 hover:bg-accent/30"
-      data-testid={`pending-model-row-${model.modelId}`}
-    >
-      <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
-        {model.modelId}
-      </span>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-6 shrink-0"
-        aria-label={t("settings.models.addModelTitle")}
-        data-testid={`pending-model-add-${model.modelId}`}
-        onClick={onAdd}
-      >
-        <PlusIcon className="size-3.5" />
-      </Button>
-    </div>
-  );
-}
 
 export function ModelsSection({
   catalog,
@@ -1081,59 +801,12 @@ export function ModelsSection({
     selectedProvider?.models.length ??
     0;
 
-  // Status-card presentation — strings match the original grd defaults exactly.
-  const STATUS_PRESENTATION: Record<
-    ProviderStatus,
-    {
-      chip: string;
-      chipVariant: "info" | "success" | "warning" | "muted" | "destructive";
-      title: string;
-      detail: string;
-    }
-  > = {
-    verifying: {
-      chip: t("settings.models.chipConnecting"),
-      chipVariant: "info",
-      title: t("settings.models.titleConnecting"),
-      detail: t("settings.models.detailConnecting"),
-    },
-    ready: {
-      chip: t("settings.models.chipConnected"),
-      chipVariant: "success",
-      title: t("settings.models.titleConnected"),
-      detail:
-        modelCount > 0
-          ? t("settings.models.modelsFound", {
-              count: modelCount,
-              unit: t(
-                modelCount === 1
-                  ? "settings.models.unitModel"
-                  : "settings.models.unitModels",
-              ),
-            })
-          : t("settings.models.detailReady"),
-    },
-    draft: {
-      chip: t("settings.models.chipPending"),
-      chipVariant: "warning",
-      title: t("settings.models.titleVerification"),
-      detail: t("settings.models.detailVerify"),
-    },
-    idle: {
-      chip: t("settings.models.chipNotConfigured"),
-      chipVariant: "muted",
-      title: t("settings.models.titleNoProvider"),
-      detail: selectedId
-        ? t("settings.models.detailAdditionalSetup")
-        : t("settings.models.detailSelectProvider"),
-    },
-    error: {
-      chip: t("settings.models.chipFailed"),
-      chipVariant: "destructive",
-      title: t("settings.models.titleFailed"),
-      detail: mapErrorCode(t, verifyError),
-    },
-  };
+  const STATUS_PRESENTATION = providerStatusPresentation({
+    t,
+    modelCount,
+    selectedId,
+    verifyError,
+  });
   const present = STATUS_PRESENTATION[status];
 
   const save = async () => {
@@ -1818,357 +1491,38 @@ export function ModelsSection({
     );
   };
 
-  /**
-   * "Add provider" — an add
-   * menu: only the built-ins not yet added, then the two create actions,
-   * which are always offered. Controlled at `""` so it never holds a
-   * selection; a pick opens that provider's editor.
-   */
-  const renderAddMenu = () => (
-    <SelectRoot
-      value=""
-      onValueChange={addFromMenu}
-      open={addMenuOpen}
-      onOpenChange={(open) => {
-        setAddMenuOpen(open);
-        if (!open) setHighlightAddMenu(false);
-      }}
-    >
-      <SelectTrigger
-        size="sm"
-        className="shrink-0"
-        data-testid="models-add-provider"
-      >
-        <span className="flex items-center gap-1.5">
-          <PlusIcon className="size-4" />
-          {t("settings.models.addProviderMenu")}
-        </span>
-      </SelectTrigger>
-      <SelectContent
-        align="end"
-        data-testid="models-add-provider-menu"
-        className={highlightAddMenu ? "nexus-provider-guidance" : undefined}
-      >
-        {(
-          [
-            { key: "vendors", label: "settings.models.builtInProviders", list: addableVendors },
-            { key: "gateways", label: "settings.models.gatewayProviders", list: addableGateways },
-            { key: "plugins", label: "settings.models.mod.pluginProviders", list: addablePlugins },
-          ] as const
-        ).map(({ key, label, list }) =>
-          list.length > 0 ? (
-            <React.Fragment key={key}>
-              <SelectGroup data-testid={`models-add-group-${key}`}>
-                <SelectLabel className="px-2 py-1.5 text-muted-foreground text-xs">
-                  {t(label)}
-                </SelectLabel>
-                {list.map((p) => (
-                  <SelectItem
-                    key={p.id}
-                    value={p.id}
-                    data-testid={`models-provider-select-option-${p.id}`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <ProviderIcon svg={p.iconSvg} />
-                      {p.mod ? modProviderName(p, locale) : p.label}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-              <SelectSeparator className="my-1 h-px bg-border" />
-            </React.Fragment>
-          ) : null,
-        )}
-        <SelectItem
-          value={ADD_CUSTOM_PROVIDER_VALUE}
-          data-testid="models-add-custom-provider"
-        >
-          {t("settings.models.addCustomProvider")}
-        </SelectItem>
-        {OPENCODE_ZEN_ENABLED ? (
-          <SelectItem
-            value={ADD_OPENCODE_ZEN_VALUE}
-            data-testid="models-add-opencode-zen"
-          >
-            {t("settings.models.addOpencodeZen")}
-          </SelectItem>
-        ) : null}
-      </SelectContent>
-    </SelectRoot>
-  );
-
-  /**
-   * One home-list row, reordered by POINTER drag from its grip (or arrow keys); the
-   * order is written once on a release that changed it. Move / release / cancel are
-   * heard on the WINDOW, since re-inserting the row releases pointer capture.
-   */
-  /** "N models available"; red only when a fresh listing confirmed zero. */
-  const renderModelCount = (row: AddedProviderRow) => {
-    const { count, confirmed } = modelAvailability(
-      pickerModelIds(catalog, row.id),
-      freshModelIds[row.id],
-      // Picked from the provider's own listing: the ids must match verbatim.
-      row.custom || isRuntimeOnlyProvider(row.id),
+  const renderAddMenu = () =>
+    renderAddProviderMenu(
+      {
+        addFromMenu, addMenuOpen, setAddMenuOpen, setHighlightAddMenu, t,
+        highlightAddMenu, addableVendors, addableGateways, addablePlugins,
+        locale
+      },
     );
-    const none = confirmed && count === 0;
-    return (
-      <>
-        <span aria-hidden className="text-muted-foreground">·</span>
-        <span
-          className={cn(
-            "shrink-0 tabular-nums",
-            none ? "font-medium text-destructive" : "text-muted-foreground",
-          )}
-          data-testid={`models-provider-models-${row.id}`}
-          data-confirmed={confirmed ? "true" : "false"}
-          data-count={count}
-          title={none ? t("settings.models.noModelsConfirmed") : undefined}
-        >
-          {t("settings.models.modelsFound", {
-            count,
-            unit: t(
-              count === 1
-                ? "settings.models.unitModel"
-                : "settings.models.unitModels",
-            ),
-          })}
-        </span>
-      </>
-    );
-  };
 
-  const renderProviderRow = (row: AddedProviderRow) => (
-    <div
-      key={row.id}
-      className={cn(
-        "flex items-center gap-3 border-b bg-background px-3 py-2.5 last:border-b-0",
-        draggingId === row.id && "relative z-10 bg-accent/40 shadow-sm",
-      )}
-      data-testid={`models-provider-row-${row.id}`}
-      data-provider-row={row.id}
-      data-provider-dragging={draggingId === row.id ? "" : undefined}
-    >
-      <span
-        role="button"
-        tabIndex={0}
-        className={cn(
-          "-ml-1 flex touch-none select-none items-center text-muted-foreground/70 hover:text-muted-foreground",
-          draggingId === row.id ? "cursor-grabbing" : "cursor-grab",
-        )}
-        data-testid={`models-provider-grip-${row.id}`}
-        aria-label={t("settings.models.reorderProviderAria", {
-          name: row.label,
-        })}
-        title={t("settings.models.reorderProviderHint")}
-        onPointerDown={(e) => {
-          if (e.button !== 0) return;
-          e.preventDefault();
-          try {
-            e.currentTarget.setPointerCapture(e.pointerId);
-          } catch {
-            /* no capture (test DOM) — moves still arrive on the grip */
-          }
-          dragRef.current?.detach();
-          const pointerId = e.pointerId;
-          const onMove = (ev: PointerEvent) => {
-            const drag = dragRef.current;
-            if (!drag || ev.pointerId !== pointerId) return;
-            const target = providerRowAt(ev.clientX, ev.clientY);
-            if (!target || target === drag.id) {
-              drag.passed = null;
-              return;
-            }
-            // Moves can outrun the re-layout and hit the row just passed at
-            // its old place again; moving over it twice would undo the move.
-            if (target === drag.passed) return;
-            drag.passed = target;
-            const next = moveId(drag.preview, drag.id, target);
-            if (next === drag.preview) return;
-            drag.preview = next;
-            setDragPreview(next);
-          };
-          const onUp = (ev: PointerEvent) => {
-            const drag = dragRef.current;
-            if (!drag || ev.pointerId !== pointerId) return;
-            // A press and release that moved nothing writes nothing — with no
-            // stored order yet, writing would freeze today's order.
-            if (drag.preview.some((id, i) => id !== drag.start[i])) {
-              commitOrderRef.current(drag.preview);
-            }
-            endDrag();
-          };
-          // The OS took the pointer (a gesture, a lost window): drop the
-          // preview and write nothing.
-          const onCancel = (ev: PointerEvent) => {
-            if (ev.pointerId === pointerId) endDrag();
-          };
-          window.addEventListener("pointermove", onMove);
-          window.addEventListener("pointerup", onUp);
-          window.addEventListener("pointercancel", onCancel);
-          const preview = orderedRows.map((r) => r.id);
-          dragRef.current = {
-            id: row.id,
-            start: preview,
-            preview,
-            passed: null,
-            detach: () => {
-              window.removeEventListener("pointermove", onMove);
-              window.removeEventListener("pointerup", onUp);
-              window.removeEventListener("pointercancel", onCancel);
-            },
-          };
-          setDraggingId(row.id);
-          setDragPreview(preview);
-        }}
-        onKeyDown={(e) => {
-          if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-          e.preventDefault();
-          const ids = orderedRows.map((r) => r.id);
-          const index = ids.indexOf(row.id);
-          const target = ids[e.key === "ArrowUp" ? index - 1 : index + 1];
-          if (target) stageKeyboardOrder(ids, moveId(ids, row.id, target));
-        }}
-        onBlur={flushKeyboardOrder}
-      >
-        <GripVerticalIcon className="size-4" />
-      </span>
-      <ProviderIcon svg={row.iconSvg} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate font-medium text-sm">{row.label}</span>
-          {row.id === activeProviderId ? (
-            <Badge
-              variant="info"
-              size="sm"
-              data-testid={`models-provider-default-${row.id}`}
-            >
-              {t("settings.models.defaultBadge")}
-            </Badge>
-          ) : null}
-        </div>
-        <div className="flex min-w-0 items-center gap-1.5 text-xs">
-          <span
-            className="truncate text-muted-foreground"
-            data-testid={`models-provider-kind-${row.id}`}
-          >
-            {t(CONNECTION_KIND_KEY[row.kind])}
-          </span>
-          {renderModelCount(row)}
-        </div>
-      </div>
-      {/* Connected is the normal state, so it is said quietly (a dot and
-          muted text); only a provider that is NOT connected is flagged. */}
-      {row.custom ? null : row.connected ? (
-        <span
-          className="flex shrink-0 items-center gap-1.5 text-muted-foreground text-xs"
-          data-testid={`models-provider-status-${row.id}`}
-          data-status="connected"
-        >
-          <span aria-hidden className="size-1.5 rounded-full bg-success" />
-          {t("settings.models.connected")}
-        </span>
-      ) : (
-        <span
-          className="flex shrink-0 items-center gap-1 text-warning text-xs"
-          data-testid={`models-provider-status-${row.id}`}
-          data-status="not-connected"
-        >
-          <TriangleAlertIcon aria-hidden className="size-3.5" />
-          {t("settings.models.notConnected")}
-        </span>
-      )}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-7 text-muted-foreground hover:text-foreground"
-        data-testid={`models-provider-settings-${row.id}`}
-        aria-label={t("settings.models.providerSettingsAria", {
-          name: row.label,
-        })}
-        title={t("settings.models.providerSettingsAria", {
-          name: row.label,
-        })}
-        onClick={() => openProvider(row.id)}
-      >
-        <SettingsIcon className="size-4" />
-      </Button>
-      {renderRowMenu(row)}
-    </div>
-  );
-
-  /**
-   * A row's "⋯" menu: the low-frequency actions, kept out of the row so a
-   * list of six providers is not six red trash cans. Remove is last and the
-   * only red item. "Set as default" turns into a disabled "Default provider"
-   * on the default row, and stays disabled for a built-in that is not
-   * connected — a default that cannot answer would break every new session.
-   */
-  const renderRowMenu = (row: AddedProviderRow) => {
-    const isDefault = row.id === activeProviderId;
-    const canBeDefault = row.custom || row.connected;
-    const itemClass =
-      "flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-start text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-muted";
-    return (
-      <DropdownMenuPrimitive.Root>
-        <DropdownMenuPrimitive.Trigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground hover:text-foreground"
-            data-testid={`models-provider-menu-${row.id}`}
-            aria-label={t("settings.models.providerActionsAria", {
-              name: row.label,
-            })}
-            title={t("settings.models.providerActionsAria", {
-              name: row.label,
-            })}
-          >
-            <MoreHorizontalIcon className="size-4" />
-          </Button>
-        </DropdownMenuPrimitive.Trigger>
-        <DropdownMenuPrimitive.Portal>
-          <DropdownMenuPrimitive.Content
-            align="end"
-            sideOffset={4}
-            className="z-50 min-w-[10rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-          >
-            <DropdownMenuPrimitive.Item
-              className={itemClass}
-              disabled={isDefault || !canBeDefault}
-              data-testid={`models-provider-set-default-${row.id}`}
-              onSelect={() => makeDefault(row.id)}
-            >
-              <StarIcon className="size-4" />
-              {isDefault
-                ? t("settings.models.isDefaultProvider")
-                : t("settings.models.setAsDefault")}
-            </DropdownMenuPrimitive.Item>
-            <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-            <DropdownMenuPrimitive.Item
-              className={cn(
-                itemClass,
-                "text-destructive data-[highlighted]:bg-destructive/10",
-              )}
-              data-testid={`models-provider-delete-${row.id}`}
-              aria-label={t("settings.models.removeProviderAria", {
-                name: row.label,
-              })}
-              onSelect={() =>
-                setDeleteTarget({
-                  id: row.id,
-                  name: row.label,
-                  custom: row.custom,
-                })
-              }
-            >
-              <Trash2Icon className="size-4" />
-              {t("settings.models.removeProvider")}
-            </DropdownMenuPrimitive.Item>
-          </DropdownMenuPrimitive.Content>
-        </DropdownMenuPrimitive.Portal>
-      </DropdownMenuPrimitive.Root>
+  const renderModelCount = (row: AddedProviderRow) =>
+    renderProviderModelCount(
+      {
+        catalog, freshModelIds, t
+      }, row,
     );
-  };
+
+  const renderProviderRow = (row: AddedProviderRow) =>
+    renderProviderListRow(
+      {
+        draggingId, t, dragRef, providerRowAt, moveId, setDragPreview,
+        commitOrderRef, endDrag, orderedRows, setDraggingId,
+        stageKeyboardOrder, flushKeyboardOrder, activeProviderId,
+        renderModelCount, openProvider, renderRowMenu
+      }, row,
+    );
+
+  const renderRowMenu = (row: AddedProviderRow) =>
+    renderProviderRowMenu(
+      {
+        activeProviderId, t, makeDefault, setDeleteTarget
+      }, row,
+    );
 
   const renderHome = () => (
     <div className="flex flex-col gap-3" data-testid="models-provider-home">
@@ -2240,419 +1594,17 @@ export function ModelsSection({
     </header>
   );
 
-  const renderCustomEditor = () => (
-    <div className="flex flex-col gap-5" data-testid="custom-provider-editor">
-
-      {/* ── Provider details ── */}
-      <section className="flex flex-col gap-3">
-        <h2 className={settingsText.sectionTitle}>
-          {t("settings.models.providerDetails")}
-        </h2>
-
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">
-            {t("settings.models.providerIcon")}
-          </span>
-          <Select
-            value={draft.providerIcon}
-            onValueChange={(v) =>
-              setDraft((prev) => {
-                const next: CustomProviderDraft = { ...prev, providerIcon: v };
-                // Default the provider name to "<IconLabel>-custom" (e.g.
-                // "Qwen-custom") when the user hasn't typed a name yet, OR
-                // when the name still matches the previous icon's default —
-                // so switching icons keeps the name in sync until the user
-                // overrides it.
-                const label =
-                  PROVIDER_ICON_LABELS[v as ProviderIconKey] ?? "Provider";
-                const previousLabel =
-                  PROVIDER_ICON_LABELS[
-                    prev.providerIcon as ProviderIconKey
-                  ] ?? "Provider";
-                const previousDefault = `${previousLabel}-custom`;
-                const nextDefault = `${label}-custom`;
-                if (
-                  !prev.displayName.trim() ||
-                  prev.displayName.trim() === previousDefault
-                ) {
-                  next.displayName = nextDefault;
-                }
-                return next;
-              })
-            }
-            options={PROVIDER_ICON_KEYS.map((key) => ({
-              value: key,
-              label: (
-                <span className="flex items-center gap-2">
-                  <ProviderIcon
-                    svg={resolveCustomProviderIconSvg(key, catalog)}
-                  />
-                  {PROVIDER_ICON_LABELS[key]}
-                </span>
-              ),
-            }))}
-            className="mt-1 w-full"
-            testId="custom-provider-icon"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">
-            {t("settings.models.providerName")}
-          </span>
-          <Input
-            data-testid="custom-provider-name"
-            value={draft.displayName}
-            onChange={(e) => {
-              setNameError(null);
-              setDraft((prev) => ({ ...prev, displayName: e.target.value }));
-            }}
-            placeholder={t("settings.models.providerNamePlaceholder")}
-            aria-invalid={draftNameTaken || !!nameError}
-          />
-          {draftNameTaken || nameError ? (
-            <span
-              data-testid="custom-provider-name-error"
-              className="text-destructive text-xs"
-            >
-              {nameError ??
-                t("settings.models.providerNameExists", {
-                  name: draft.displayName.trim(),
-                })}
-            </span>
-          ) : null}
-        </label>
-      </section>
-
-      {/* ── Connection ── */}
-      <section className="flex flex-col gap-3">
-        <h2 className={settingsText.sectionTitle}>
-          {t("settings.models.connection")}
-        </h2>
-
-        <div className="flex flex-col gap-2 text-sm">
-          <span className="font-medium">
-            {t("settings.models.apiCompatibility")}
-          </span>
-          <RadioGroup
-            value={draft.apiCompatibility}
-            onValueChange={(v) => {
-              setDraft((prev) => ({
-                ...prev,
-                apiCompatibility: v as CustomApiCompatibility,
-              }));
-              // The dialects probe DIFFERENT URLs, so a prior result no
-              // longer describes this connection.
-              setTestState({ status: "idle" });
-            }}
-            // `flex` is REQUIRED, not redundant: RadioGroup's base class is
-            // `grid`, and tailwind-merge only drops a class from the SAME
-            // group — `flex-row` (flex-direction) does not displace `grid`
-            // (display), so a bare `flex-row` left the options stacked.
-            className="mt-1 flex flex-row flex-wrap gap-x-6 gap-y-2"
-          >
-            <RadioOption
-              value="openai"
-              label={t("settings.models.apiCompatOpenai")}
-              testId="custom-compat-openai"
-            />
-            <RadioOption
-              value="anthropic"
-              label={t("settings.models.apiCompatAnthropic")}
-              testId="custom-compat-anthropic"
-            />
-          </RadioGroup>
-        </div>
-
-        {/* Trust — one toggle describing the connection PATH, not the
-            vendor: on = the provider's own endpoint, off = a relay, proxy or
-            gateway in between. The teammate spawn reads the same value to
-            decide whether a child runs unrestricted or locked down, but that
-            policy is deliberately not spelled out here. */}
-        <div className="flex flex-col gap-2 text-sm">
-          <span className="font-medium">{t("settings.models.trust")}</span>
-          <div className="flex items-center justify-between gap-4">
-            <span>{t("settings.models.trustOfficial")}</span>
-            <Switch
-              data-testid="custom-provider-trust-official"
-              checked={draft.trust === "trusted"}
-              onCheckedChange={(next) =>
-                setDraft((prev) => ({
-                  ...prev,
-                  trust: (next ? "trusted" : "untrusted") as ProviderTrust,
-                }))
-              }
-              aria-label={t("settings.models.trustOfficial")}
-            />
-          </div>
-          <span className="text-muted-foreground text-xs">
-            {t("settings.models.trustHint")}
-          </span>
-        </div>
-
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">{t("settings.models.baseUrl")}</span>
-          <Input
-            data-testid="custom-provider-base-url"
-            value={draft.baseUrl}
-            onChange={(e) => {
-              setDraft((prev) => ({ ...prev, baseUrl: e.target.value }));
-              setTestState({ status: "idle" });
-            }}
-            placeholder={
-              draft.apiCompatibility === "anthropic"
-                ? t("settings.models.baseUrlPlaceholderAnthropic")
-                : t("settings.models.baseUrlPlaceholderOpenai")
-            }
-            aria-invalid={!!draft.baseUrl && !isValidBaseUrl(draft.baseUrl)}
-          />
-          <span className="text-muted-foreground text-xs">
-            {draft.apiCompatibility === "anthropic"
-              ? t("settings.models.customPathHintAnthropic")
-              : t("settings.models.customPathHintOpenai")}
-          </span>
-        </label>
-
-        <label className="flex flex-col gap-1 text-sm">
-          <ApiKeyLabel
-            state={selectedRecord?.hasApiKey ? "saved" : null}
-            testId="custom-provider-api-key-saved"
-          />
-          <Input
-            data-testid="custom-provider-api-key"
-            type="password"
-            value={draft.apiKey}
-            onChange={(e) => {
-              setDraft((prev) => ({ ...prev, apiKey: e.target.value }));
-              setTestState({ status: "idle" });
-            }}
-            placeholder={
-              selectedRecord?.hasApiKey && !draft.apiKey
-                ? t("settings.models.apiKeySealedPlaceholder")
-                : t("settings.models.apiKeyPlaceholder")
-            }
-            autoComplete="off"
-          />
-          <span className="text-muted-foreground text-xs">
-            {selectedRecord?.hasApiKey
-              ? t("settings.models.apiKeyStoredHint")
-              : t("settings.models.apiKeyHint")}
-          </span>
-          {isOpencodeZenBaseUrl(draft.baseUrl) ? (
-            <span
-              data-testid="custom-provider-opencode-zen-hint"
-              className="text-muted-foreground text-xs"
-            >
-              {t("settings.models.opencodeZenHint")}
-            </span>
-          ) : null}
-        </label>
-
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="custom-provider-test"
-            disabled={testState.status === "testing"}
-            onClick={() => void testCustomConnection()}
-          >
-            {t("settings.models.testAndDiscover")}
-          </Button>
-          <span
-            className="text-xs"
-            data-testid="custom-provider-test-status"
-          >
-            {testState.status === "idle" ? (
-              <span className="text-muted-foreground">
-                {t("settings.models.testNotTested")}
-              </span>
-            ) : testState.status === "testing" ? (
-              <span className="text-muted-foreground">
-                {t("settings.models.chipConnecting")}
-              </span>
-            ) : testState.status === "ok" ? (
-              <span className="text-success">
-                {t("settings.models.testSuccessful")}
-                {typeof testState.modelCount === "number"
-                  ? ` ${t("settings.models.testModelsFound", {
-                      count: testState.modelCount,
-                    })}`
-                  : ""}
-              </span>
-            ) : (
-              <span className="text-destructive">
-                {t("settings.models.testFailed")}
-                {` ${mapErrorCode(t, testState.errorCode)}`}
-              </span>
-            )}
-          </span>
-        </div>
-      </section>
-
-      {/* ── Models ── */}
-      <section className="flex flex-col gap-3">
-        <h2 className={settingsText.sectionTitle}>
-          {t("settings.models.modelsSection")}
-        </h2>
-
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">
-            {t("settings.models.defaultModel")}
-          </span>
-          <Select
-            value={draft.defaultModel}
-            onValueChange={(v) =>
-              setDraft((prev) => ({ ...prev, defaultModel: v }))
-            }
-            // Only COMPLETE models can be the default — an id
-            // without limits has no token budget to run against.
-            options={completeModels.map((m) => ({
-              value: m.modelId,
-              label: modelLabel(m),
-            }))}
-            placeholder={t("settings.models.selectModel")}
-            disabled={completeModels.length === 0}
-            className="mt-1 w-full"
-            testId="custom-provider-default-model"
-          />
-        </label>
-
-        <div className="flex items-center justify-between">
-          <span className="font-medium text-sm">
-            {t("settings.models.configuredModels")}
-          </span>
-          <span
-            className="text-muted-foreground text-xs"
-            data-testid="custom-provider-model-count"
-          >
-            {completeModels.length}
-          </span>
-        </div>
-
-        <div className="rounded-md border">
-          {completeModels.length === 0 ? (
-            <p className="p-3 text-center text-muted-foreground text-sm">
-              {t("settings.models.noModelsYet")}
-            </p>
-          ) : (
-            completeModels.map((model) => (
-              <ModelRow
-                key={model.modelId}
-                model={model}
-                onEdit={() => {
-                  setEditingModel(model);
-                  setPendingModel(null);
-                  setAddModelOpen(true);
-                }}
-                onRemove={() => removeDraftModel(model.modelId)}
-              />
-            ))
-          )}
-        </div>
-
-        {pendingModels.length > 0 ? (
-          <>
-            <div className="flex items-center justify-between">
-              <span className="font-medium text-sm">
-                {t("settings.models.pendingModels")}
-              </span>
-              <span
-                className="text-muted-foreground text-xs"
-                data-testid="custom-provider-pending-count"
-              >
-                {pendingModels.length}
-              </span>
-            </div>
-            <div
-              className="max-h-[300px] overflow-y-auto rounded-md border"
-              data-testid="custom-provider-pending-list"
-            >
-              {pendingModels.map((model) => (
-                <PendingModelRow
-                  key={model.modelId}
-                  model={model}
-                  onAdd={() => {
-                    setEditingModel(null);
-                    setPendingModel(model);
-                    setAddModelOpen(true);
-                  }}
-                />
-              ))}
-            </div>
-          </>
-        ) : null}
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="custom-provider-add-model"
-            onClick={() => {
-              setEditingModel(null);
-              setAddModelOpen(true);
-            }}
-          >
-            {t("settings.models.addModel")}
-          </Button>
-        </div>
-      </section>
-
-      {/* ── Page actions ── */}
-      <div className="flex items-center justify-between gap-2 border-t pt-4">
-        <div>
-          {!creating && selectedRecord ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive"
-              data-testid="custom-provider-delete"
-              onClick={() =>
-                setDeleteTarget({
-                  id: selectedRecord.id,
-                  name: selectedRecord.displayName,
-                  custom: true,
-                })
-              }
-            >
-              {t("settings.models.deleteProvider")}
-            </Button>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-2">
-          {creating ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid="custom-provider-cancel"
-              onClick={cancelCreate}
-            >
-              {t("settings.models.cancel")}
-            </Button>
-          ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid="custom-provider-discard"
-              disabled={!customDirty}
-              onClick={discardCustomChanges}
-            >
-              {t("settings.models.discardChanges")}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            data-testid="custom-provider-submit"
-            disabled={!canSubmitCustom || saving || (!creating && !customDirty)}
-            onClick={() => void submitCustomProvider()}
-          >
-            {creating
-              ? t("settings.models.addProvider")
-              : t("settings.models.saveChanges")}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
+  const renderCustomEditor = () =>
+    renderCustomProviderEditor(
+      {
+        t, draft, setDraft, catalog, setNameError, draftNameTaken, nameError,
+        setTestState, selectedRecord, testState, testCustomConnection,
+        completeModels, setEditingModel, setPendingModel, setAddModelOpen,
+        removeDraftModel, pendingModels, creating, setDeleteTarget,
+        cancelCreate, customDirty, discardCustomChanges, canSubmitCustom,
+        saving, submitCustomProvider
+      },
+    );
 
   // A provider a plugin adds has its own editor: it is drawn from the catalog
   // row (credential methods, prompts, declared secrets and settings) and does
@@ -2666,202 +1618,17 @@ export function ModelsSection({
     />
   );
 
-  const renderBuiltInEditor = () => selectedProvider?.mod ? renderModEditor(selectedProvider) : (
-    <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card p-4">
-      {isOAuth ? (
-        /* OAuth providers connect by sign-in (no API key). */
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-sm">
-            <Badge variant={oauthConnected ? "success" : "muted"} size="sm">
-              {oauthConnected
-                ? t("settings.models.connected")
-                : t("settings.models.notConnected")}
-            </Badge>
-            {oauthConnected ? (
-              <span className="text-muted-foreground text-xs">
-                {info?.connectedEmail ?? t("settings.models.signedIn")}
-              </span>
-            ) : null}
-          </div>
-          {!oauthConnected ? (
-            <Button
-              size="sm"
-              className="self-start"
-              disabled={oauth.busy}
-              onClick={() => void signIn()}
-            >
-              {oauth.busy
-                ? t("settings.models.waitingSignIn")
-                : t("settings.models.signInWith", {
-                    provider:
-                      selectedProvider?.label ??
-                      t("settings.models.providerFallback"),
-                  })}
-            </Button>
-          ) : null}
-          {oauth.userCode ? (
-            <div className="rounded-md border bg-muted/30 p-3 text-xs">
-              <div className="text-muted-foreground">
-                {t("settings.models.enterCode")}
-              </div>
-              <code className="mt-1 block font-mono text-sm">
-                {oauth.userCode}
-              </code>
-              {oauth.verificationUri ? (
-                <div className="mt-1 break-all text-muted-foreground">
-                  {oauth.verificationUri}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          <span className="text-muted-foreground text-xs">
-            {t("settings.models.useSubscription")}
-          </span>
-        </div>
-      ) : (
-        <>
-          {supportsBaseUrl ? (
-            /* A div, not a label: the official-connection checkbox shares this
-               row and a nested label would steal its clicks for the URL input.
-               The input keeps its name via `aria-label`. The two belong
-               together — the checkbox is a claim about THIS URL's endpoint,
-               and it is re-derived whenever the URL changes. */
-            <div className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">{t("settings.models.baseUrl")}</span>
-              <div className="flex items-center gap-3">
-                <Input
-                  className="flex-1"
-                  data-testid="models-base-url"
-                  aria-label={t("settings.models.baseUrl")}
-                  value={form.baseUrl ?? ""}
-                  onChange={(e) => onBaseUrlChange(e.target.value)}
-                  placeholder={providerBaseUrlPlaceholder(
-                    info?.baseUrl,
-                    runtimeProviderDefaultBaseUrl(selectedId),
-                  )}
-                />
-                {officialConnectionCheckbox}
-              </div>
-            </div>
-          ) : null}
-
-          {supportsApiKey ? (
-            <div className="flex flex-col gap-1 text-sm">
-              <ApiKeyLabel state={keyRowState} testId="models-api-key-state" />
-              <Input
-                data-testid="models-api-key"
-                data-state={keyRowState === "updated" ? "updated" : undefined}
-                className={keyRowState === "updated" ? "border-success" : undefined}
-                type="password"
-                aria-label={t("settings.models.apiKey")}
-                value={form.apiKey ?? ""}
-                onChange={(e) => {
-                  setKeyStoredFor(null);
-                  setForm({ ...form, apiKey: e.target.value });
-                }}
-                placeholder={
-                  hasStoredKey && !form.apiKey
-                    ? t("settings.models.apiKeySealedPlaceholder")
-                    : t("settings.models.apiKeyPlaceholder")
-                }
-                autoComplete="off"
-              />
-              {keyRowState === "updated" ? (
-                <span
-                  className="text-success text-xs"
-                  data-testid="models-api-key-replaced"
-                  role="status"
-                >
-                  {t("settings.models.apiKeyReplaced")}
-                </span>
-              ) : (
-                <span className="text-muted-foreground text-xs">
-                  {hasStoredKey
-                    ? t("settings.models.apiKeyStoredHint")
-                    : t("settings.models.enterKeyHint")}
-                </span>
-              )}
-            </div>
-          ) : null}
-
-          {/* Extra credentials (OpenRouter's management key, for the account
-              balance) — once the API key is stored: they extend a working
-              connection, they do not make one. */}
-          {supportsApiKey && hasStoredKey && secretFields.length > 0 ? (
-            <ProviderSecretFields
-              fields={secretFields}
-              storedNames={saved?.storedSecrets ?? []}
-              onSave={saveSecret}
-            />
-          ) : null}
-        </>
-      )}
-
-
-      {supportsBaseUrl ? null : (
-        <div className="flex text-sm">{officialConnectionCheckbox}</div>
-      )}
-
-      {providerNote ? (
-        <p className="text-muted-foreground text-xs">{providerNote}</p>
-      ) : null}
-
-      {/* The provider's model entries — a family's Latest or a pinned
-          version; only these reach the picker. A runtime-only provider (a
-          gateway listing hundreds of models) shows them from the start, the
-          user picking what to use; a built-in one once it is connected. */}
-      {bridge &&
-      usesModelEntries(selectedId) &&
-      (isRuntimeOnlyProvider(selectedId) || status === "ready") ? (
-        <ProviderModelEntries
-          bridge={bridge}
-          providerId={selectedId}
-          providerLabel={selectedProvider?.label ?? selectedId}
-          saved={saved}
-          provider={selectedProvider}
-          onChanged={reload}
-          connected={status === "ready" || !!saved?.hasApiKey}
-        />
-      ) : null}
-
-      {/* Status card. In the connected state the chip and the title say the
-          same word ("Connected" twice, one under the other), so the title is
-          dropped and the detail — "N models available" — moves up onto the
-          chip's line. Keyed on the STATE, not on the two strings being equal:
-          they are equal in all seven catalogs today, but that is a property of
-          the translations, and a translator wording them differently would
-          silently bring the duplicate back. */}
-      <div className="flex flex-col gap-1 rounded-md border bg-muted/30 p-3">
-        <div className="flex items-center gap-2">
-          <Badge variant={present.chipVariant} size="sm">
-            {present.chip}
-          </Badge>
-          {status === "ready" ? (
-            <span className="text-muted-foreground text-xs">{present.detail}</span>
-          ) : (
-            <span className="font-medium text-sm">{present.title}</span>
-          )}
-        </div>
-        {status === "ready" ? null : (
-          <span className="text-muted-foreground text-xs">{present.detail}</span>
-        )}
-        {status === "ready" && isRuntimeOnlyProvider(selectedId) ? (
-          <RuntimeProviderUsageLine providerId={selectedId} />
-        ) : null}
-      </div>
-
-      {/* No explicit Save button: edits auto-connect (verify + persist)
-          once the form settles (see the debounce effect). Only the reset
-          affordance remains, surfaced once the connection is live. */}
-      {status === "ready" ? (
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setResetOpen(true)}>
-            {t("settings.models.resetConnection")}
-          </Button>
-        </div>
-      ) : null}
-    </div>
-  );
+  const renderBuiltInEditor = () =>
+    renderBuiltInProviderEditor(
+      {
+        selectedProvider, renderModEditor, isOAuth, oauthConnected, t, info,
+        oauth, signIn, supportsBaseUrl, form, onBaseUrlChange, selectedId,
+        officialConnectionCheckbox, supportsApiKey, keyRowState,
+        setKeyStoredFor, setForm, hasStoredKey, secretFields, saved,
+        saveSecret, providerNote, bridge, status, reload, present,
+        setResetOpen
+      },
+    );
 
   return (
     <SettingsSubpageLayout
@@ -2887,131 +1654,29 @@ export function ModelsSection({
               ? renderBuiltInEditor()
               : null}
 
-        {/* Reset confirmation dialog — mirrors the original modal. */}
-        <Dialog open={resetOpen} onOpenChange={setResetOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {t("settings.models.resetTitle", {
-                  provider:
-                    selectedProvider?.label ??
-                    t("settings.models.providerFallback"),
-                })}
-              </DialogTitle>
-              <DialogDescription>
-                {t("settings.models.resetDescription", {
-                  provider:
-                    selectedProvider?.label ??
-                    t("settings.models.thisProviderFallback"),
-                })}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="ghost" size="sm" onClick={() => setResetOpen(false)}>
-                {t("settings.models.cancel")}
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => void doReset()}
-              >
-                {t("settings.models.resetConnection")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {renderResetConnectionDialog({
+          t,
+          resetOpen,
+          setResetOpen,
+          selectedProvider,
+          doReset,
+        })}
 
-        {/* Delete a custom provider, or remove a built-in from the
-            home list. The custom wording is deliberately NOT "Reset
-            connection": for a user-created provider it must be obvious that the
-            whole thing goes away, not just the key. A built-in is only
-            disconnected — it stays on offer under "Add provider". */}
-        <Dialog
-          open={deleteTarget !== null}
-          onOpenChange={(open) => {
-            if (!open) setDeleteTarget(null);
-          }}
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {deleteTarget?.custom === false
-                  ? t("settings.models.removeProviderTitle", {
-                      name: deleteTarget.name,
-                    })
-                  : t("settings.models.deleteProviderTitle", {
-                      name: deleteTarget?.name ?? "",
-                    })}
-              </DialogTitle>
-              <DialogDescription>
-                {deleteTarget?.custom === false
-                  ? t("settings.models.removeProviderDescription", {
-                      name: deleteTarget.name,
-                    })
-                  : t("settings.models.deleteProviderDescription")}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setDeleteTarget(null)}
-              >
-                {t("settings.models.cancel")}
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                data-testid={
-                  deleteTarget?.custom === false
-                    ? "models-provider-remove-confirm"
-                    : "custom-provider-delete-confirm"
-                }
-                onClick={() => void confirmDelete()}
-              >
-                {deleteTarget?.custom === false
-                  ? t("settings.models.removeProviderConfirm")
-                  : t("settings.models.deleteProviderConfirm")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {renderDeleteProviderDialog({
+          t,
+          deleteTarget,
+          setDeleteTarget,
+          confirmDelete,
+        })}
 
-        {/* Unsaved-changes guard on the way back to home. */}
-        <Dialog open={leaveConfirmOpen} onOpenChange={setLeaveConfirmOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {t("settings.models.discardUnsavedTitle")}
-              </DialogTitle>
-              <DialogDescription>
-                {t("settings.models.discardUnsavedDescription", {
-                  name: creating
-                    ? t("settings.models.newCustomProvider")
-                    : (selectedRecord?.displayName ?? ""),
-                })}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button
-                variant="ghost"
-                size="sm"
-                data-testid="custom-provider-keep-editing"
-                onClick={() => setLeaveConfirmOpen(false)}
-              >
-                {t("settings.models.keepEditing")}
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                data-testid="custom-provider-discard-confirm"
-                onClick={goHome}
-              >
-                {t("settings.models.discardChanges")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {renderDiscardChangesDialog({
+          t,
+          leaveConfirmOpen,
+          setLeaveConfirmOpen,
+          creating,
+          selectedRecord,
+          goHome,
+        })}
 
         <AddModelDialog
           open={addModelOpen}
